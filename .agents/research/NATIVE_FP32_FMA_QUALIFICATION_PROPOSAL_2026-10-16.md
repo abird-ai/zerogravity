@@ -1,0 +1,40 @@
+# Proposed native FP32 GEMV FMA qualification
+
+Status: proposal only; no implementation, policy enablement, performance gain, or acceptance is claimed. H24 frozen executables and their measured WideF64 arithmetic remain unchanged. This candidate reserves no next phase ID. It is queued after the user-ordered workspace/layout redesign and its immediately following left-right concurrency redesign pass; an independent bounded optimization may proceed only when compatible with that ordering and explicitly coordinated. Qualification of the existing native paths across the authorized hardware inventory remains the preceding acceptance boundary.
+
+## Bounded change and current source
+
+`crates/zerogravity-gpu/src/source_accumulation.rs` already defines `WideF64` and a diagnostic `NativeF32`. `source_mul_add` selects either a widened multiply/add followed by FP32 conversion or the backend's explicit FP32 `fma`. The widened path documents checkpoint qualification rather than universal IEEE equivalence. `model_workers.rs` exposes `model-workers-native-cuda`, but that fixture exercises one chosen matrix per model; it does not establish all-codec or resident whole-model eligibility.
+
+The resident program currently checks WideF64 capability at construction and passes the constant `true` at each Project kernel launch: original F32, Q4_0, Q4_1, Q8_0, and Q6_K matrix paths. The provider device-activation execution path already derives the same kernel boolean from `SourceAccumulation`. The smallest candidate change is a cold, immutable resident projection policy using these existing kernels and quantization bindings. No separate runtime, source cache, state authority, or numerical engine is needed.
+
+Default policy remains WideF64 until every applicable gate below passes. Initially expose NativeF32 only as an explicit qualification choice on the tested native backend/device, with source-bit comparisons mandatory. Refuse unsupported or unqualified combinations before launch. A selected region failure propagates and preserves existing StateRoot rollback and quarantine; it must never silently execute on CPU or switch accumulation policy after failure.
+
+## Identity and physical ownership
+
+Carry the immutable policy in the prepared model/program configuration. Include it in every relevant prepared-program/cache identity and generated kernel comptime variant key, together with existing backend/device/source identity. Confirm that source weight ownership can be shared across variants while generated kernels and any policy-specific prepared metadata cannot be confused. An existing prepared program must not change policy between launches.
+
+Change only Project accumulation selection. Preserve original source quantization, integer dot/reduction topology, intermediate FP32 boundaries, finite/status certificates, static projection bindings, source leases, resource admission, actual completion events, cancellation cohorts, and root publication. Keep all other FP64 use required by independently qualified operations: normalization and L2, GDN coefficients and recurrence, SiLU, RoPE, attention QK/value residual correction, softmax and its two-round reciprocal. Native FP32 GEMV eligibility does not imply that the device-resident pipeline has become FP32-only.
+
+## Numerical acceptance
+
+First qualify an actual device FP32 FMA operation against the pinned host source `fmaf` arithmetic, comparing all 32 bits and retaining physical readback receipts. Cover finite normal values, positive/negative zeros in all operand positions, cancellation to zero, subnormal operands and results, underflow ties, minimum/maximum subnormals, minimum normal and adjacent values, maximum finite and overflow ties, halfway cases, widely separated exponents, sign permutations, and deterministic randomized bit patterns. Include the previously discovered coupled midpoint construction where widened multiplication/addition can double-round; a native FMA must match the original fused source result. Check signed zero explicitly. Record hardware/backend/compiler/driver and floating-point mode; do not infer denormal preservation from language syntax or an instruction name. Separate nonfinite refusal fixtures from admitted finite numeric fixtures.
+
+Then qualify all five actual source matrix kinds (F32, Q4_0, Q4_1, Q8_0, Q6_K) using original trained compressed bytes and activations for both pinned Qwen3.5 models. Include every used codec, multiple matrix shapes and reduction lengths, genuine nonzero token-dependent activations, and adversarial rows/activations. Compare source quantization intermediates/statuses and full output vectors exactly, so a changed quantizer or dequantization ordering cannot conceal a difference. Synthetic stress supplements trained tensors and is not model-context proof.
+
+Required end-to-end regressions for every proposed eligible backend/device profile:
+
+- Both real models: full four-token resident pipeline, every logit, all 42 physical state domains, and ordered diagnostic trace; state-only prefix specialization and all finite/status certificates remain exact.
+- Genuine sequential official-tokenizer 512-token contexts with the existing 12 milestones, including 255/256/257 padding transitions, full logits/state/trace, private chunk replay, restore, and exhausted-capacity refusal. A constructed 4096-element operator fixture is not whole-model context acceptance.
+- Concurrent independent sessions; shared immutable source ownership; stale/foreign root, epoch and generation rejection; reset, restore, and snapshot lifetime; canonical unused KV tails; admission failure before publication.
+- Post-launch graph cancellation across the 256 boundary and checkpoint upload cancellation: actual unknown completion, authentic handle retention/quarantine, device fence and unchanged committed root/state. No fake Ready or trusted recovery.
+- Portable CPU/device checkpoint round trips, cross-backend replay where available, exact resumed suffixes, and final physical charge retirement on successful paths.
+- Product raw prompt/output parity against the fresh pinned CPU candidate, device-token feedback, warm transfer counters, and existing prelaunch limits; default SDK-free Vulkan regression remains intact.
+
+A failure blocks NativeF32 eligibility for that profile or input contract. Retain the first failing fixture, logs, hashes, differing bits and source arithmetic before proposing a repair. Do not widen tolerances or redefine source mathematics. If native arithmetic flushes denormals, identify the exact affected instruction and source operation before considering a separately qualified correction.
+
+## Performance evidence and closure
+
+Measure the existing WideF64 and candidate NativeF32 variants using comparable frozen source/build inputs, hardware clocks/power conditions, CPU thread counts, source cache and warm-up policy, context/prompt/token counts, diagnostic settings and transfer boundaries. Report cold model preparation separately from warm prefill and decode. Alternate repeated measurements and retain dispersion and raw timing receipts. Include end-to-end product inference and the dispatch count; host launch/validation overhead may dominate. Report host CPU time/counts and actual transfer/allocation counters where available. Neither an FMA flag, a native instruction, nor an isolated kernel timing proves model throughput improvement.
+
+Run complete build/lint/tests, independent source gates, physical acceptance and documentation-integrity checks before enabling any default. Record exact eligible source/backend/device/compiler profiles, any failures, acceptance receipts, measured timing limits, and remaining work. Update the comprehensive handoff and SHA manifest at the completed phase boundary and commit verified work atomically with explicit paths. Until then this file is a plan, and existing H24 claims remain bounded by their own receipts.

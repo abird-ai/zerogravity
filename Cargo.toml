@@ -1,0 +1,20 @@
+[workspace]
+members = [
+]
+exclude = [
+    "crates/zerogravity-gpu/vendor/cubecl-ir",
+    "crates/zerogravity-gpu/vendor/cubecl-cpp",
+    "crates/zerogravity-gpu/vendor/cubecl-cuda",
+    "crates/zerogravity-gpu/vendor/cubecl-hip",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+
+[patch.crates-io]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

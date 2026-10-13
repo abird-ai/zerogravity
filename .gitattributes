@@ -1,0 +1,4 @@
+# These checksum-verified published files contain original trailing spaces.
+# Preserve their bytes; keep other whitespace checks and all local patches active.
+crates/zerogravity-gpu/vendor/cubecl-cpp/README.md whitespace=-blank-at-eol
+crates/zerogravity-gpu/vendor/cubecl-cpp/src/cuda/ptx/asm.rs whitespace=-blank-at-eol

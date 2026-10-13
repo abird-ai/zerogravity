@@ -1,0 +1,98 @@
+# Accelerator execution prior art — Blackwell, TPU, wafer-scale, static dataflow and specialized runtimes
+
+**Research snapshot:** 2026-10-12. **Role:** attributed, non-normative **prior-art evidence** only. Project-neutral architecture is in `ACCELERATOR_EXECUTION_FAMILIES_AND_BACKEND_CONTRACT.md`, `MODULAR_AI_SYSTEMS_REFERENCE_ARCHITECTURE.md`, `MINIMAL_EXECUTION_SPINE_AND_PROTOCOL_V4.md` and the master plan. The separate source research directory `/home/pvl/spaces/abird/research/inference` is read-only and unaffected.
+
+**User question:** account for NVIDIA DGX Spark/GB10, other Blackwell systems, Google TPU, “cerberus” (plausibly **Cerebras** wafer scale, but **Cerberus** is also a *different published speculative-decoding algorithm*), plus other accelerators/runtimes. The real issue is not a missing GPU product enum; it is whether the core can execute **kernel, captured graph, AOT graph, compile-time scheduled dataflow and remote session-managed regions** without cloning a server.
+
+**Evidence classes:** [VERIFIED-DOC] first-party public architecture documentation as inspected; [AUTHOR-REPORTED] published specifications/claims not independently reproduced on project hardware; [INFERRED] architecture implications; [OPEN] native compiler/runtime/IP capability or policy not yet demonstrated. No zerogravity kernel, TPU program, Cerebras wafer program, Blackwell benchmark or cluster experiment exists.
+
+## 1. NVIDIA Blackwell is multiple hardware *systems*, not one GPU profile
+
+### DGX Spark / GB10 (local ARM + coherent low-power Blackwell)
+
+- [First-party DGX Spark product specification](https://www.nvidia.com/en-us/products/workstations/dgx-spark/): **Grace Blackwell GB10**, 20-core Arm CPU, Blackwell GPU, 64 GB or 128 GB LPDDR5x coherent unified **system memory**, listed 273 GB/s memory bandwidth and up to 1 PFLOP FP4 theoretical. These are vendor peak/platform claims, not an actual measured memory headroom; even with common addressability, sharing bandwidth and OS memory is real.
+- [DGX Spark release notes](https://docs.nvidia.com/dgx/dgx-spark/release-notes.html): software/firmware/driver and unified-memory pressure behavior are version-sensitive; current document's release table can change independently of OEM partner systems. The device probe needs **a system profile not just `compute_capability=Blackwell`**.
+- [NVIDIA DGX Spark native inference tutorial](https://build.nvidia.com/spark/llama-cpp/overview) documents device-specific native CUDA/offloading paths, but its C++ serving runtime is **prior art**, not an engine dependency.
+
+**Transferable mechanisms:** CPU/accelerator coherent memory with explicit physical headroom; ARM64 device+host executable support; tensor low-bit cache/packing and decoded/prefill shape specific strategies; avoid assuming HBM7TB/s from datacenter Blackwell. Hypotheses: small batch memory-bound decode can prioritize device bandwidth and resident expert policies differently from Blackwell B200 large batch. Need actual GB10 reference hardware to qualify.
+
+### Blackwell RTX/PRO discrete vs B200/B300 and GB200/GB300 rack domains
+
+- [NVIDIA Blackwell architecture/inference](https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/) documents `NVFP4`: E2M1 FP4 payload with **FP8 E4M3 scale per 16 values** and an additional per-tensor scale; `MXFP4` is different (shared power-of-two block scale of 32). **Don't conflate NVFP4, MXFP4, GGUF IQ2/Q4 and on-SoC shared-exponent BF8 as one codec or instruction path.** Stored checkpoint quant, transformed physical representation and compute arithmetic remain separate identities and quality gates.
+- [B200 and GB200 hardware and network](https://developer.nvidia.com/blog/nvidia-blackwell-delivers-massive-performance-leaps-in-mlperf-inference-v5-0/) documents standalone 8-GPU NVLink/NVSwitch DGX B200 and rack-scale GB200 NVL72. [NVLink topology](https://developer.nvidia.com/blog/low-latency-inference-chapter-2-blackwell-is-coming-nvidia-gh200-nvl32-with-nvlink-switch-gives-signs-of-big-leap-in-time-to-first-token-performance) demands true GPU peer/fabric dataflow; B200/GB200/GB300/HBM, GDDR workstation RTX and Spark shared LPDDR cannot share one memory/bandwidth/resident tensor assumption.
+- [NVIDIA current generational NVFP4 and hardware](https://developer.nvidia.com/blog/inside-nvidia-blackwell-ultra-the-chip-powering-the-ai-factory-era/) and [low precision diffusion](https://developer.nvidia.com/blog/scaling-nvfp4-inference-for-flux-2-on-nvidia-blackwell-data-center-gpus/) show why **kernel/region execution specialization must cover *both* LLM/decoding and repeated diffusion/flow tasks**, graph captured steps, low-bit tiling and multi-GPU sharding. Published speedups depend on quant and selected algorithm (including optional denoiser cache changes), not necessarily identical model quality.
+
+**Prior-art runtimes/techniques:** CUDA graph/captured eager runners, vendor GEMM/attention kernel libraries, current autotuned attention-kernel research and open local C/C++ runners. Project-neutral mechanism = supported `NativeKernel` or `CapturedGraph` region variants, with local device managers/collective topology and real shape/numeric/precision/quality proof. Do not wrap one of those inference *engines* as our required runtime.
+
+## 2. Google TPU v5e/v6e/v7x — compiled graph + fabric, not ordinary CUDA commands
+
+- [Google TPU7x (Ironwood) hardware](https://cloud.google.com/tpu/docs/tpu7x) and [2026 Ironwood hardware+system architecture](https://cloud.google.com/blog/products/compute/training-large-models-on-ironwood-tpus/) characterize chip/pod topologies and HBM/ICI, multiple dimensions of device placement and collective communication.
+- [Cloud TPU software/PJRT](https://docs.cloud.google.com/tpu/docs/runtimes) explains that TPU v5e and newer use **PJRT**, with host/framework API and compiler-managed device execution. The user cannot assume a raw CUDA-like per-op `KernelProvider` in a common address space.
+- First-party 2026 TPU software architecture documentation describes a **model graph→StableHLO→XLA** compiler route and custom framework-native kernels, plus the real problem of **dynamic sequence-length recompilation**. First-party TPU inference backend documentation covers PyTorch support and separate tested v6e/v7x model recipes/support matrices. First-party TPU kernel-language documentation warns of restricted experimental custom code semantics; not all arbitrary GPU ops are native TPU kernels.
+- First-party Google TPU execution stack documentation describes a compiler-centric device path with on-chip tiling, memory movement and topology partitioning; host-runner control and compiled graph loops differ from GPU explicit per-op launches.
+
+**Transferable mechanisms:** a **large closed SIR region/subgraph** passed to a trusted *AOT Graph Compiler Provider*, with explicit graph-boundary input/output/state and collective topology; dynamic shape constraints, compile cache, HBM and rendezvous, asynchronous program launches and state snapshot capability. Optional TPU specific custom region lowering requires vendor compiler/IR/runtime interfaces. A working high-performance TPU native backend may **not** be possible in pure Rust kernel-source mode without an approved external compiler that emits device binaries; record this as OPEN, don't pretend TPU is already supported.
+
+## 3. Cerebras WSE3 / CS3 — wafer-scale static dataflow and streamed weight model
+
+User said “cerberus”; this likely references **Cerebras**, a wafer-scale AI architecture, but see §4 for a separate similarly named decoder.
+
+- [Cerebras wafer-scale cluster](https://training-api.cerebras.ai/en/latest/wsc/Concepts/how-cerebras-works.html) describes WSE-3 / CS-3 with a fabric of large numbers of processing elements rather than CUDA blocks.
+- [Weight streaming](https://training-api.cerebras.ai/en/latest/wsc/Concepts/cerebras-execution-modes.html) describes streaming one layer's weights from an external MemoryX service to WSE when total weights don't fit on-chip, including backward/gradient streaming in training. **The accessible document primarily describes a training execution mode**; don't assume identical contracts or access for arbitrary inference workloads.
+- [Cerebras compiler and low-level SDK](https://www.cerebras.ai/product-software) and [SDK dataflow kernels](https://www.cerebras.ai/blog/supercharge-your-hpc-research-with-the-cerebras-sdk) describe graph compiler placement/communication and Cerebras Software Language (CSL), a **C-like** low-level WSE kernel language, with simulator and supported hardware generation limitations. Source language/proprietary runtime constraints prevent us from claiming a Rust-owned native WSE compiler exists.
+
+**Transferable mechanisms:** `CompileStaticDataflowProgram` across an entire closed model or stage region, compile-time placement/routing and on-chip buffers, external streamed tensor/weight sources, large resident model program/fabric partition, bulk collective capacity and long **device program lifetime**. The host orchestrator owns task/session/state; the programmed fabric handles its internal micro-schedule. Expose compiled subgraph or a **managed remote service boundary**, but don't conflate calling a Cerebras inference API with truly executing our SIR under our native provider. If only a model-serving endpoint is available, that is **external TaskService interoperability**, not native kernel/graph integration.
+
+## 4. Cerberus — a distinct parallel-decoding algorithm, not wafer-scale hardware
+
+- [Cerberus: Efficient Inference with Adaptive Parallel Decoding and Sequential Knowledge Enhancement](https://arxiv.org/abs/2410.13344) describes adaptive parallel decoding and sequential knowledge-enhanced draft heads; author reports acceleration up to 2.12× on benchmark settings. **Do not confuse it with Cerebras WSE**.
+- Our architecture already supports this *class* through `DraftSource`, `TargetVerifier`, `CommitPlan` and full SIR StateRoot speculative rollback. Whether published Cerberus decoding **preserves exact target distribution** for each decoding mode requires separate algorithm-specific proof. Do not copy model weights or source code based on an unverified license or marketing result.
+
+## 5. AWS Trainium/Inferentia — specialized AOT accelerator compiler and runtime
+
+- [AWS Neuron SDK](https://aws.amazon.com/ai/machine-learning/neuron/) is a distinct compiler/runtime/kernel system for Trainium and Inferentia, using graph compiler and custom Neuron Kernel Interface (NKI), runtime memory and collective management.
+- [Neuron 2.30, May 26 2026](https://aws.amazon.com/about-aws/whats-new/2026/05/aws-announce-neuron-2-30-0/) includes Trainium3 kernels, segmented attention, KV-parallel prefill, FP8/MXFP8 and model porting/quality validation, runtime zero-copy host-device features.
+- [Neuron 2.27, December 2025](https://aws.amazon.com/about-aws/whats-new/2025/12/announcing-aws-neuron-2-27/) explicitly details SDK integration, custom compiler and newer Trainium3 support.
+
+**Transferable:** `AOTGraph` and optional fine-grained `AcceleratorKernel` candidates, graph compiler fingerprint, compiler-owned high bandwidth memory/collective layouts, real **compile/warmup costs** and model/config/precision-specific quality/shape qualification. No claim direct Rust source can yet produce equivalent Trainium ISA without vendor toolchain.
+
+## 6. Deterministic dataflow, SRAM processors and hybrid GPU+LPU
+
+- [Groq LPU architecture](https://groq.com/blog/the-groq-lpu-explained): compiler-managed deterministic static dataflow schedule, on-chip SRAM, inter-chip communication planned at compilation. A static `ExecutableBundle` can represent a host submission to an opaque **on-device scheduled program**, not every micro-op as a host command.
+- [NVIDIA Groq 3 LPX March 2026 architecture](https://developer.nvidia.com/blog/inside-nvidia-groq-3-lpx-the-low-latency-inference-accelerator-for-the-nvidia-vera-rubin-platform) presents a **heterogeneous GPU+deterministic LPU pipeline**, where different model regions can run on accelerator families specialized for prefill, attention and FFN/MoE. Vendor projected hardware speedups aren't measured by zerogravity.
+- [SambaNova reconfigurable dataflow](https://sambanova.ai/products/dataflow-architecture) describes programmable compute+SRAM memory grid and long fused operator pipelines; [additional execution modes](https://sambanova.ai/blog/accelerating-scientific-applications-with-sambanova-reconfigurable-dataflow-architecture) are a prior-art concept for dataflow graphs/programs.
+
+**Transferable:** compile-time **placement/schedule**, internal SRAM-local buffers, deterministic or bounded shape/branch control, streaming transfers and host-orchestrated task boundaries; one backend ProgramProvider with static program region extent. **Not** permission to claim Groq or RDU native compilation without SDK/source/driver access.
+
+## 7. Other hardware families informing provider constraints
+
+| Hardware/program family | Verified first-party docs | Specific abstraction test |
+|---|---|---|
+| **AMD Instinct CDNA4 MI350/MI355 and CDNA5 MI400/Helios** | [ROCm MI350 microarchitecture](https://rocm.docs.amd.com/en/latest/reference/gpu-arch/mi350.html), [AMD CDNA families](https://www.amd.com/en/technologies/cdna.html) | MXFP4/6/8 scaling, MI350 partitioning, Infinity Fabric and rack collective topology; distinct from RDNA3.5 iGPU |
+| **Intel Gaudi 3 / Ethernet accelerator fabric** | [Intel Gaudi 3](https://www.intel.com/content/www/us/en/products/details/processors/ai-accelerators/gaudi.html) | graph compiler and runtime, Ethernet/RoCE topology, distributed collective failure |
+| **Tenstorrent Wormhole/Blackhole** | [TT system software](https://docs.tenstorrent.com/) | Tensix local SRAM/dataflow and graph/custom kernel compilation, licensed low-level C++ kernel toolchain; needs independent Rust-source feasibility |
+| **Qualcomm Cloud AI 100 / edge NPUs** | [Qualcomm Cloud AI SDK](https://www.qualcomm.com/developer/software/cloud-ai-sdk) | compiled graph accelerator with licensed runtime, static kernels and quantization/model converter; standalone managed device, not CUDA |
+| **Apple Silicon / Metal and Neural Engine** | source references in previous research | unified physical memory, GPU shader/graph and NPU subset with optional OS/framework device program interface; source/OS restrictions |
+| **Huawei Ascend / CANN** | external infrastructure ecosystem source pins to be verified if prioritised | new compiler and matrix precision/collective source adapter, driver and firmware qualification |
+| **FPGA / DSP / ASIC future** | architecture class (not a concrete vendor implementation claim) | bitstream/program identity and state/layout, program-load time and trust, streaming latency/tile constraints |
+
+The **architecture** must be capable of modeling these families, but the **implementation** cannot be universal without licensed compiler/runtime/driver, reference model and real hardware tests. A remote appliance that only exposes an inference API cannot promise intermediate tensors, KV/SSM state snapshots, device-resident draft verification or custom operator lowering.
+
+## 8. Why this changes the design beyond v4
+
+v4's `KernelProvider` and `DeviceBackend` naturally express explicit CPU/GPU launches and on-SoC NPU tiles but are **not sufficient as currently written** to guarantee high-performance SIR execution on graph-only/distributed/statically scheduled fabrics. Required neutral refinement:
+
+1. **`RegionExecutionProvider`** replaces "KernelProvider only" as the *single* capability-discovery/lowering seam. Candidate compiled implementation kinds: `NativeKernel`, `CapturedCommandGraph`, `AheadOfTimeGraph`, `StaticallyScheduledDataflow` (and only optional `ManagedSessionRegion` where semantics/state API permit). Native KernelProvider becomes an internal variant, not a new top-level engine.
+2. **Compiler-owned region cuts:** choose a *large closed subgraph/model task stage* for graph compiler/static dataflow, with full state input/output, effect/position, quant/shape guards and external memory residency. A graph-only backend may be unable to execute one arbitrary tiny operator with acceptable cost. Compiler avoids expensive host↔accelerator transfers and per-token graph recompilation.
+3. **`ProgramLifecycle` and `PlacementContract`**: compile/warmup/upload/load/resident program memory, param/weight IO, static topology/tile placement and collective/rank membership, micro-scheduler owner, program cache+source version, exact supported shape/precision/bitstream/source-language policy.
+4. **`StateBridge`**: provider must explicitly support copy-on-write/provisional state, snapshot/export/import/restore or safe replay so TaskCoordinator's **one Prepare→PublishRoot** is not defeated by an opaque stateful remote program. A black-box API service not giving an acceptable state bridge must stay above computation as a TaskService adapter with weaker/explicit session semantics.
+5. **Host versus device scheduler boundary:** TaskCoordinator manages fairness, admission and session logical roots, while TPU graph compiler or static dataflow fabric owns its **device-internal** tile placement and execution timing. Do not recreate each micro operation as a host GPU command—this would lose the hardware's performance advantage.
+6. **Topology and quant are first class:** Spark UMA, HBM GPU and rack-scale NVLink, TPU ICI, WSE on-chip SRAM+weight stream, LPU on-chip SRAM/fabric have distinct tiers/links/power, native FP4/FP8 scaling and shape/compilation sensitivities. A one-dimensional `gpu_memory_bytes` or universally "fastest FP4" plan is wrong.
+7. **Ownership and honesty:** Rust-owned `SemanticProgram`/TaskCoordinator/ResourceArbiter can use a vendor AOT compiler or device program if explicitly allowed by source-language/vendor runtime policy. That is **not** equivalent to building a fully Rust-authored native TPU/Cerebras/LPU kernel compiler; label capabilities `designed/needs-toolchain/needs-hardware/functional/qualified` distinctly.
+8. **Future-proof exit gates:** independent capability tests for a graph-only fake device, static dataflow simulator, opaque state refusal, topology partition failure and precision/shape fallback **without implementing separate model server**.
+
+## 9. Status and scope discipline
+
+Source evidence dates/speeds and model support are as of 2026-10-12; online pages may describe experimental preview, release timing, theoretical peak hardware, author-tested subset or vendor-specific deployment. Never equate those to an implemented zerogravity runtime. **No hardware was connected, benchmarked or compiled during this research.** No source from prior-art projects was copied unless directly vendored (for example, CubeCL (vendored)), which retains its upstream license; the Zerogravity engine is a from-scratch rebuild informed by prior-art concepts, learnings and research. Only `src/zerogravity/.agents` plans/docs are in scope; external `research/inference` remains read-only.
+
+**Key conclusion:** To absorb genuine backend diversity, the engine must own **semantic model/task correctness and resource/state publication** and delegate the **smallest efficient closed physical execution unit required by the accelerator**, which ranges from a tensor kernel to an entire compiled distributed dataflow program. That is the necessary and sufficient **architectural extension contract**; performance and native execution rights require actual proven backends.

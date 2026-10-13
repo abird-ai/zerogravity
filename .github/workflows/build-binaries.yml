@@ -1,0 +1,103 @@
+name: Build, test, cross-compile and release
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zerogravity-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+
+jobs:
+  quality:
+    name: Native CPU workspace quality gates (no GPU SDK)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+      - name: CPU build, tests, clippy, formatting, source integrity and module evaluation
+        run: nix --extra-experimental-features "nix-command flakes" flake check --show-trace
+
+  build:
+    name: Explicit six-target CPU release artifacts
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    needs: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+      - name: Cross-compile six CPU release binaries (includes declared platform SDKs)
+        run: nix --extra-experimental-features "nix-command flakes" build .#release-all --out-link result-release
+      - name: Materialize checksummed release artifacts
+        run: |
+          mkdir -p artifacts
+          cp -L result-release/* artifacts/
+          (
+            cd artifacts
+            sha256sum -c ./*.sha256
+          )
+      - name: Native Linux CPU CLI smoke and exact workspace version
+        run: |
+          set -euo pipefail
+          actual="$(./artifacts/zerogravity-linux-x86_64 --version)"
+          expected="zerogravity v$(cat artifacts/VERSION)"
+          test "$actual" = "$expected"
+          ./artifacts/zerogravity-linux-x86_64 --help
+          if ./artifacts/zerogravity-linux-x86_64 serve; then
+            echo "CLI must refuse the unimplemented serving API" >&2
+            exit 1
+          fi
+      - name: Upload CI artifact set
+        uses: actions/upload-artifact@v4
+        with:
+          name: zerogravity-release-binaries
+          path: artifacts/
+          if-no-files-found: error
+
+  release:
+    name: Publish a GitHub Release only for matching version tags
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download validated artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: zerogravity-release-binaries
+          path: artifacts
+      - name: Publish release assets without silently overwriting a tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          expected="v$(cat artifacts/VERSION)"
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match workspace version $expected" >&2
+            exit 1
+          fi
+          (
+            cd artifacts
+            sha256sum -c ./*.sha256
+          )
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists. Refusing to overwrite signed/versioned assets." >&2
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" artifacts/zerogravity-* artifacts/VERSION artifacts/PLATFORMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "zerogravity $GITHUB_REF_NAME" \
+            --notes "CPU text release: Qwen3.5 inference and source inspection. GPU backends require separate optional builds and qualification. The serving API remains unimplemented."
