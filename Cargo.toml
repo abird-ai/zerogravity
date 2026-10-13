@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/zerogravity-core",
 ]
 exclude = [
     "crates/zerogravity-gpu/vendor/cubecl-ir",

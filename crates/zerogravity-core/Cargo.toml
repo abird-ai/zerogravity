@@ -1,0 +1,15 @@
+[package]
+name = "zerogravity-core"
+version.workspace = true
+edition = "2024"
+rust-version = "1.95"
+description = "Model-neutral state, completion and physical resource contracts"
+publish = false
+license = "MIT"
+
+[features]
+diagnostic-cpu-checkpoint = []
+serde = ["dep:serde"]
+
+[dependencies]
+serde = { version = "=1.0.229", features = ["derive"], optional = true }
