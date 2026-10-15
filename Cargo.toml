@@ -2,6 +2,7 @@
 members = [
     "crates/zerogravity-core",
     "crates/zerogravity-artifacts",
+    "crates/zerogravity-cpu",
 ]
 exclude = [
     "crates/zerogravity-gpu/vendor/cubecl-ir",
