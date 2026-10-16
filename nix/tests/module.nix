@@ -3,13 +3,26 @@
   module,
 }: let
   lib = pkgs.lib;
+  # The checks inspect every assertion in the evaluated system, so the base
+  # configuration must be a complete, valid NixOS system. Recent nixpkgs
+  # asserts that a root filesystem and a boot loader are configured; this is
+  # evaluation-only and never built.
+  base = {
+    system.stateVersion = "25.11";
+    fileSystems."/" = {
+      device = "/dev/sda1";
+      fsType = "ext4";
+    };
+    boot.loader.grub.devices = ["/dev/sda"];
+  };
+
   evaluate = value:
     import (pkgs.path + "/nixos/lib/eval-config.nix") {
       inherit pkgs;
       system = pkgs.stdenv.hostPlatform.system;
       modules = [
         module
-        {system.stateVersion = "25.11";}
+        base
         value
       ];
     };
