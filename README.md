@@ -112,6 +112,15 @@ A larger batch can waste padded MoE rows. A longer draft can touch more experts.
 - **Composable specialization** from tensor format and fused operator through task, model, hardware, and cluster.
 - **Native and hosted models are distinct**; external APIs use explicit service adapters, not counterfeit local kernels.
 
+## Engineering
+
+- [Architecture and subsystem specifications](.agents/docs/)
+- [Joint serving and optimization contract](.agents/docs/JOINT_CONCURRENT_SERVING_OPTIMIZATION_AND_GOODPUT_CONTRACT_2026-10-15.md)
+- [Multimodal and real-time architecture](.agents/docs/UNIVERSAL_MULTIMODAL_EXECUTION_ARCHITECTURE_V5_1_2026-10-15.md)
+- [Unified GPU/RAM/SSD residency](.agents/docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_AND_SSD_STREAMING_2026-10-15.md)
+- [Whitepaper](docs/WHITEPAPER.md) · [Engineering specification](docs/ENGINEERING_SPECIFICATION.md)
+- [Build, releases, NixOS, and previous implementation details](.agents/research/README_PRE_PRODUCT_REWRITE_SNAPSHOT_2026-10-15.md)
+
 ## Interfaces
 
 | Surface | Purpose |
@@ -123,18 +132,6 @@ A larger batch can waste padded MoE rows. A longer draft can touch more experts.
 | **Distributed** | Qualified compute, model weights, session state, and cache placement across devices or peers |
 
 These are **architectural targets**, not a claim that every interface or model family is implemented today.
-
-## FAQ
-
-**Which models does zerogravity support?** The architecture is model-family agnostic, but execution requires verified source semantics, codecs, and kernels. See [Implementation status](#implementation-status-and-roadmap) for what runs today.
-
-**Does it require a GPU or a Python inference engine?** No. The core is native Rust and supports CPU execution; accelerator providers are optional. Zerogravity does not wrap a separate Python/C++ model-serving engine.
-
-**Can a model use SSD when it does not fit in GPU memory?** The design supports one logical tensor across GPU, unified RAM, host memory, and asynchronously streamed SSD. Resident access remains direct; actual SSD misses have measurable latency. Native SSD execution is still on the roadmap.
-
-**How does it differ from vLLM?** Zerogravity targets the same concurrency fundamentals while jointly specializing model semantics, kernels, quantization, state, memory tier, hardware, and serving QoS. Performance superiority must be established by comparable benchmarks, not assumed.
-
-**Can I run several models at once?** The model catalog and shared-weight foundation exist. Full multi-model inference serving and cross-model admission are planned; registering models does not imply they all fit in physical memory.
 
 ## Implementation status and roadmap
 
@@ -150,14 +147,17 @@ These are **architectural targets**, not a claim that every interface or model f
 
 **Roadmap:** [phases P00–P23](.agents/plans/IMPLEMENTATION_ROADMAP.md) · [current progress](.agents/plans/CURRENT_STATUS_AND_TRACKING.md) · [acceptance and evidence](.agents/plans/REQUIREMENTS_AND_TEST_TRACEABILITY.md)
 
-## Engineering
+## FAQ
 
-- [Architecture and subsystem specifications](.agents/docs/)
-- [Joint serving and optimization contract](.agents/docs/JOINT_CONCURRENT_SERVING_OPTIMIZATION_AND_GOODPUT_CONTRACT_2026-10-15.md)
-- [Multimodal and real-time architecture](.agents/docs/UNIVERSAL_MULTIMODAL_EXECUTION_ARCHITECTURE_V5_1_2026-10-15.md)
-- [Unified GPU/RAM/SSD residency](.agents/docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_AND_SSD_STREAMING_2026-10-15.md)
-- [Whitepaper](docs/WHITEPAPER.md) · [Engineering specification](docs/ENGINEERING_SPECIFICATION.md)
-- [Build, releases, NixOS, and previous implementation details](.agents/research/README_PRE_PRODUCT_REWRITE_SNAPSHOT_2026-10-15.md)
+**Which models does zerogravity support?** The architecture is model-family agnostic, but execution requires verified source semantics, codecs, and kernels. See [Implementation status](#implementation-status-and-roadmap) for what runs today.
+
+**Does it require a GPU or a Python inference engine?** No. The core is native Rust and supports CPU execution; accelerator providers are optional. Zerogravity does not wrap a separate Python/C++ model-serving engine.
+
+**Can a model use SSD when it does not fit in GPU memory?** The design supports one logical tensor across GPU, unified RAM, host memory, and asynchronously streamed SSD. Resident access remains direct; actual SSD misses have measurable latency. Native SSD execution is still on the roadmap.
+
+**How does it differ from vLLM?** Zerogravity targets the same concurrency fundamentals while jointly specializing model semantics, kernels, quantization, state, memory tier, hardware, and serving QoS. Performance superiority must be established by comparable benchmarks, not assumed.
+
+**Can I run several models at once?** The model catalog and shared-weight foundation exist. Full multi-model inference serving and cross-model admission are planned; registering models does not imply they all fit in physical memory.
 
 ## Related projects
 
@@ -181,7 +181,7 @@ independent, from-scratch rebuild.
 
 ## Contributing
 
-**We are building zerogravity in the open with you.** We'd love your ideas, architectural challenges, research, and thoughtful improvements. I (**Prasanna Loganathar**) believe the best way to develop software is with human-led design and AI-led implementation. [More on the contributing guide here.](CONTRIBUTING.md)
+**We are building zerogravity in the open with you.** We'd love your ideas, architectural challenges, research, and thoughtful improvements. We believe the best way to develop software is with human-led design and AI-led implementation. [More on the contributing guide here.](CONTRIBUTING.md)
 
 ## AI disclosure
 
@@ -189,7 +189,7 @@ independent, from-scratch rebuild.
 
 ## License
 
-[MIT](LICENSE) © 2026 Prasanna Loganathar and contributors. Zerogravity-authored
+[MIT](https://github.com/abird-ai/zerogravity/blob/main/LICENSE) © 2026 Prasanna Loganathar and zerogravity contributors. Zerogravity-authored
 text and software are MIT-licensed. Vendored third-party components (for example,
 CubeCL) and other assets retain their respective upstream licenses. Model
 weights, third-party libraries, and other assets retain their respective licenses.
