@@ -1,0 +1,23 @@
+[package]
+name = "zerogravity-model-qwen35"
+version.workspace = true
+edition = "2024"
+rust-version = "1.95"
+publish = false
+license = "MIT"
+
+[features]
+default = []
+cpu = ["dep:zerogravity-cpu"]
+text = ["dep:tokenizers"]
+diagnostic-gdn-trace = []
+diagnostic-cpu-checkpoint = ["zerogravity-core/diagnostic-cpu-checkpoint"]
+
+[dependencies]
+zerogravity-core = { path = "../zerogravity-core", features = ["serde"] }
+zerogravity-artifacts = { path = "../zerogravity-artifacts" }
+zerogravity-cpu = { path = "../zerogravity-cpu", optional = true }
+tokenizers = { version = "=0.22.2", default-features = false, features = ["fancy-regex"], optional = true }
+
+[dev-dependencies]
+serde_json = "=1.0.151"
