@@ -86,6 +86,10 @@
       for name in ["ca.pem", "server.pem", "server.key", "README.md"]:
           relative = pathlib.Path("crates/zerogravity-artifacts/tests/fixtures/acquisition") / name
           assert (filtered / relative).read_bytes() == (original / relative).read_bytes(), relative
+      # Independent synthetic Azure wire signature verification is also an
+      # exact reviewed test input, not a general Python-source allowance.
+      relative = pathlib.Path("crates/zerogravity-artifacts/tests/fixtures/azure_wire.py")
+      assert (filtered / relative).read_bytes() == (original / relative).read_bytes(), relative
       output.mkdir()
       (output / "manifest.json").write_text(json.dumps({"vendor_files": files, "workspace_members": sorted(members), "workspace_version_inherited": True, "model_sources": model_sources, "model_fixtures": model_fixtures, "single_root_lock": True, "root_readme_unchanged": True, "arm_math_notice_sha256": hashlib.sha256((filtered / arm_notice).read_bytes()).hexdigest()}, indent=2) + "\n")
       PY

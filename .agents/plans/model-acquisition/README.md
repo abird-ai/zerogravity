@@ -587,6 +587,57 @@ bytes do not establish present listing membership, access or remote freshness.
 Broader vendor features, presigning, archive restoration, customer keys, delegated
 credential acquisition and FULL_OBJECT checksum-mode integration remain open.
 
+## Native Azure BlockBlob revisions
+
+`pull azure object` selects an explicit opaque version ID or snapshot on the
+native public-cloud account endpoint. HEAD supplies exact size and a transient
+strong ETag; GET and every retry/resume preserve the same revision query through
+the existing opaque target and HTTP owner. Responses require a complete,
+identity-encoded BlockBlob; structured bodies, customer-key representations and
+incomplete copies refuse. A present version echo must agree, but the official
+protocol does not require that echo. Snapshots and version IDs remain separate
+namespaces.
+
+```text
+zerogravity pull azure object --origin https://ACCOUNT.blob.core.windows.net \
+  --container selected-container --blob selected/model.gguf \
+  --file model.gguf --role weights --version-id SELECTED_VERSION \
+  --sha256 RAW_SHA256 --dry-run --cache /absolute/cache
+```
+
+The example authorizes no source. Caller SHA256 gives TrustedSha256; otherwise
+original final hashing remains FirstSeen. ETag, MD5 and CRC64 are separate from
+raw SHA authority. Source identity binds the exact origin/container/blob,
+revision kind/value, logical path/role, observed bytes and optional caller SHA;
+credentials and the transient ETag do not become offline source inputs.
+
+Anonymous, preissued bearer, account SharedKey and a bounded ad-hoc serviceSAS
+are explicit mutually exclusive profiles. SharedKey signs each actual request
+with checked UTC, fixed REST version2023-11-03 and independently tested
+HMAC-SHA256 canonicalization. Account keys come only from a named environment
+variable. SAS comes from a bounded8KiB nofollow regular file or explicit stdin;
+its escaped query stays private inside the same HTTP owner and is preserved
+verbatim. The supported serviceSAS profile requires HTTPS/read access, an
+appropriate version/snapshot/container resource, and sv2019-12-12 through
+2023-11-03. The owner appends unsigned api-version=2023-11-03 to pin REST behavior.
+Stored policies, account/delegation SAS, response overrides, ambient credential
+chains, minting, SDK login and refresh remain outside this profile. Pinned
+requests never redirect.
+
+`pull azure prefix` uses bounded current-version XML listing and returns
+independent Auxiliary/FirstSeen plans. It checks the entire selected listing,
+continuations, version/type/copy properties, paths, aggregate controls and byte
+budgets before returning. It grants no atomic container snapshot or model
+closure; earlier complete publications may survive later failure.
+
+Offline object mode requires the same source contract, revision kind/value,
+exact bytes (including zero), cached snapshot digest and original caller SHA if
+used. It verifies the original managed bytes and provenance before any secret
+file/stdin/environment read, client, admission or signal setup. Prefix offline
+selection and mutable refs refuse. Cached bytes attest neither current access nor
+remote freshness. Latest/unversioned objects, other endpoints/blob types and
+broader credential profiles remain open work.
+
 ## Provider and compatibility frontier
 
 The retired research captures once counted57 rows; that historical count is not
@@ -605,7 +656,7 @@ passing provider gate. Open implementation and acceptance work stays in TODO.md.
 | OCI/Docker | Native tag-or-manifest pin/raw-GGUF layer, public/preissued bearer and fixed Docker Hub anonymous broker. Index/compressed/container/signature/generic private-login profiles remain open; no model closure follows. |
 | GCS | Native JSON object generation/metageneration media pins, auxiliary prefix/pageToken listing, anonymous/preissued bearer and explicit offline object pins. ADC/minting/requester-pays/custom endpoints and atomic/closure semantics remain outside this profile. |
 | S3/compatible endpoints | Native non-null versions, exact-path regional/path/virtual-host GET/HEAD/ranges, bounded V2/latest-version prefixes and static/session SigV4. Unversioned objects, broader partitions/vendor/credential profiles and FULL_OBJECT checksum mode remain open; presigned HTTPS alone grants no native S3 parity. |
-| Azure Blob | Native versions/snapshots/listing/ranges and explicit SAS/bearer/SharedKey profiles remain open; managed/default credential chains are separate. |
+| Azure Blob | Native explicit BlockBlob versions/snapshots, bounded current-version auxiliary listing, pinned ranges and anonymous/bearer/SharedKey/ad-hoc serviceSAS. Latest/unversioned objects, other endpoints/types/SAS and managed/default credential chains remain open. |
 | ModelScope | Native pinned revision/file/list/auth protocol remains open; no Python SDK/delegated runtime is introduced. |
 | HF Xet | Resolve/LFS-compatible HTTPS acquisition does not qualify native CAS reconstruction, chunk codecs/hash rules or its performance path; native work remains open. |
 | Auxiliary/preset convenience | Explicit auxiliary/component bytes are supported data. Specialized mmproj/draft/MTP/DFlash/Eagle3/DSpark discovery and bounded presets remain open convenience work; a preset cannot authorize new sources or limits. |
@@ -745,6 +796,14 @@ logit/state/session checks while their raw source reservation remains owned.
 Numerical acceptance is tracked in TODO.md.
 
 ## References
+
+- [Azure GET Blob](https://learn.microsoft.com/en-us/rest/api/storageservices/get-blob),
+  [properties](https://learn.microsoft.com/en-us/rest/api/storageservices/get-blob-properties),
+  [listing](https://learn.microsoft.com/en-us/rest/api/storageservices/list-blobs),
+  [SharedKey](https://learn.microsoft.com/en-us/rest/api/storageservices/authorize-with-shared-key),
+  [serviceSAS](https://learn.microsoft.com/en-us/rest/api/storageservices/create-service-sas) and
+  [REST versioning](https://learn.microsoft.com/en-us/rest/api/storageservices/versioning-for-the-azure-storage-services),
+  used to bound revision echoes, canonical authentication and SAS protocol version.
 
 - [S3 SigV4 canonicalization and official signature vectors](https://docs.aws.amazon.com/AmazonS3/latest/developerguide/sig-v4-header-based-auth.html),
   [HeadObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html) and

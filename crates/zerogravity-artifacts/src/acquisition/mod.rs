@@ -1,6 +1,7 @@
 //! Explicit, bounded acquisition into the existing cache. Acquired bytes do not
 //! establish executable model support, SourceIdentity or device readiness.
 
+pub mod azure;
 pub mod components;
 mod executor;
 pub mod gcs;
@@ -154,6 +155,10 @@ pub struct ResolvedFile {
 /// content SHA256. Only the owning resolver may construct these bindings.
 #[derive(Clone, Copy, Debug)]
 pub(super) enum ResponseBinding {
+    AzureVersion {
+        version_sha256: [u8; 32],
+    },
+    AzureSnapshot,
     S3Version {
         version_sha256: [u8; 32],
     },

@@ -163,13 +163,19 @@ fn parse(args: &[String]) -> Result<ObjectOptions> {
     })
 }
 fn read_url(input: &str) -> Result<String> {
-    let mut bytes = Vec::with_capacity(URL_LIMIT + 1);
+    read_secret_input(input, URL_LIMIT)
+}
+pub(super) fn read_secret_input(input: &str, limit: usize) -> Result<String> {
+    if limit == 0 || limit > URL_LIMIT {
+        return Err(Error::Limit("invalid secret input bound".into()));
+    }
+    let mut bytes = Vec::with_capacity(limit + 1);
     if input == "-" {
         std::io::stdin()
             .lock()
-            .take((URL_LIMIT + 1) as u64)
+            .take((limit + 1) as u64)
             .read_to_end(&mut bytes)
-            .map_err(|_| Error::State("object URL input could not be read".into()))?;
+            .map_err(|_| Error::State("secret input could not be read".into()))?;
     } else {
         let fd = rustix::fs::open(
             input,
@@ -179,22 +185,22 @@ fn read_url(input: &str) -> Result<String> {
                 | rustix::fs::OFlags::CLOEXEC,
             rustix::fs::Mode::empty(),
         )
-        .map_err(|_| Error::State("object URL file could not be opened".into()))?;
+        .map_err(|_| Error::State("secret file could not be opened".into()))?;
         let file = File::from(fd);
         let metadata = file
             .metadata()
-            .map_err(|_| Error::State("object URL file could not be inspected".into()))?;
-        if !metadata.is_file() || metadata.len() > URL_LIMIT as u64 {
+            .map_err(|_| Error::State("secret file could not be inspected".into()))?;
+        if !metadata.is_file() || metadata.len() > limit as u64 {
             return Err(Error::Limit(
-                "object URL input must be a bounded regular file".into(),
+                "secret input must be a bounded regular file".into(),
             ));
         }
-        file.take((URL_LIMIT + 1) as u64)
+        file.take((limit + 1) as u64)
             .read_to_end(&mut bytes)
-            .map_err(|_| Error::State("object URL input could not be read".into()))?;
+            .map_err(|_| Error::State("secret input could not be read".into()))?;
     }
-    if bytes.len() > URL_LIMIT {
-        return Err(Error::Limit("object URL input exceeds16KiB".into()));
+    if bytes.len() > limit {
+        return Err(Error::Limit("secret input exceeds its bound".into()));
     }
     if bytes.last() == Some(&b'\n') {
         bytes.pop();
@@ -202,10 +208,10 @@ fn read_url(input: &str) -> Result<String> {
             bytes.pop();
         }
     }
-    let url = String::from_utf8(bytes)
-        .map_err(|_| Error::Malformed("invalid object URL input".into()))?;
+    let url =
+        String::from_utf8(bytes).map_err(|_| Error::Malformed("invalid secret input".into()))?;
     if url.is_empty() || url.chars().any(|c| c.is_control() || c.is_whitespace()) {
-        return Err(Error::Malformed("invalid object URL input".into()));
+        return Err(Error::Malformed("invalid secret input".into()));
     }
     Ok(url)
 }

@@ -31,6 +31,7 @@ in
         "crates/zerogravity-model-gemma4/tests/fixtures/official-26b-it-config.json"
       ];
       acquisitionFixture = builtins.elem relative [
+        "crates/zerogravity-artifacts/tests/fixtures/azure_wire.py"
         "crates/zerogravity-artifacts/tests/fixtures/acquisition/ca.pem"
         "crates/zerogravity-artifacts/tests/fixtures/acquisition/server.pem"
         "crates/zerogravity-artifacts/tests/fixtures/acquisition/server.key"

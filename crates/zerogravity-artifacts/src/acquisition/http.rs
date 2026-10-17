@@ -12,6 +12,9 @@ use super::resume::ResumeRequest;
 #[path = "s3_signing.rs"]
 mod s3_signing;
 pub use s3_signing::S3Credentials;
+#[path = "azure_auth.rs"]
+mod azure_auth;
+pub use azure_auth::AzureSharedKey;
 
 /// Provider-constructed immutable request target. Public custom transports may
 /// explicitly implement the capability; arbitrary raw text is never accepted
@@ -25,6 +28,13 @@ pub struct HttpTarget {
 #[derive(Clone)]
 enum TargetProfile {
     S3 { region: String },
+    Azure { kind: AzureRequestKind },
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum AzureRequestKind {
+    List,
+    Version,
+    Snapshot,
 }
 impl std::fmt::Debug for HttpTarget {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -32,6 +42,37 @@ impl std::fmt::Debug for HttpTarget {
     }
 }
 impl HttpTarget {
+    pub(super) fn azure(
+        origin: &str,
+        path_and_query: &str,
+        kind: AzureRequestKind,
+    ) -> Result<Self> {
+        let parsed = parse_provider_origin(origin)?;
+        validate_origin_url(&parsed)?;
+        if parsed.origin().ascii_serialization() != origin
+            || !path_and_query.starts_with('/')
+            || path_and_query.len() > 14 * 1024
+            || !path_and_query
+                .bytes()
+                .all(|byte| byte.is_ascii_graphic() && !b"#\\".contains(&byte))
+        {
+            return Err(Error::Malformed("invalid canonical Azure target".into()));
+        }
+        let uri = format!("{origin}{path_and_query}")
+            .parse()
+            .map_err(|_| Error::Malformed("invalid canonical Azure URI".into()))?;
+        Ok(Self {
+            origin: origin.to_owned(),
+            profile: TargetProfile::Azure { kind },
+            uri,
+        })
+    }
+    fn azure_kind(&self) -> Option<AzureRequestKind> {
+        match self.profile {
+            TargetProfile::Azure { kind } => Some(kind),
+            _ => None,
+        }
+    }
     pub(super) fn s3(origin: &str, region: &str, path_and_query: &str) -> Result<Self> {
         let parsed = parse_provider_origin(origin)?;
         validate_origin_url(&parsed)?;
@@ -58,6 +99,7 @@ impl HttpTarget {
     fn s3_region(&self) -> Result<&str> {
         match &self.profile {
             TargetProfile::S3 { region } => Ok(region),
+            _ => Err(Error::Unsupported("SigV4 requires an S3 target".into())),
         }
     }
     pub(super) fn url(&self) -> String {
@@ -67,6 +109,7 @@ impl HttpTarget {
         self.origin.len()
             + match &self.profile {
                 TargetProfile::S3 { region } => region.len(),
+                TargetProfile::Azure { .. } => 8,
             }
             + self.uri.to_string().len()
             + 128
@@ -318,6 +361,34 @@ pub(super) fn validate_response_binding(
     use sha2::Digest;
     match binding {
         None => Ok(()),
+        Some(
+            super::ResponseBinding::AzureVersion { .. } | super::ResponseBinding::AzureSnapshot,
+        ) => {
+            if response.header("x-ms-blob-type") != Some("BlockBlob")
+                || response.header("x-ms-structured-body").is_some()
+                || response.header("x-ms-encryption-key-sha256").is_some()
+                || response
+                    .header("x-ms-copy-status")
+                    .is_some_and(|value| value != "success")
+                || response
+                    .header("content-encoding")
+                    .is_some_and(|value| !value.eq_ignore_ascii_case("identity"))
+            {
+                return Err(Error::Unsupported(
+                    "Azure requires a complete identity-encoded BlockBlob".into(),
+                ));
+            }
+            if let Some(super::ResponseBinding::AzureVersion { version_sha256 }) = binding
+                && let Some(actual) = response.header("x-ms-version-id")
+                && (actual.is_empty()
+                    || actual.len() > 128
+                    || !actual.bytes().all(|byte| byte.is_ascii_graphic())
+                    || <[u8; 32]>::from(sha2::Sha256::digest(actual.as_bytes())) != version_sha256)
+            {
+                return Err(Error::State("Azure object version binding changed".into()));
+            }
+            Ok(())
+        }
         Some(super::ResponseBinding::S3Version { version_sha256 }) => {
             let version = response
                 .header("x-amz-version-id")
@@ -391,9 +462,46 @@ pub struct HttpsClient {
     options: HttpOptions,
     loopback: bool,
     s3_signing: Option<s3_signing::Signing>,
+    azure_auth: Option<azure_auth::Auth>,
 }
 
 impl HttpsClient {
+    pub fn with_azure_shared_key(
+        origin: &str,
+        credentials: AzureSharedKey,
+        options: HttpOptions,
+    ) -> Result<Self> {
+        azure_auth::check_origin(origin, Some(credentials.account()), false)?;
+        let mut client = Self::build(origin, None, options, false, None)?;
+        client.azure_auth = Some(azure_auth::Auth::SharedKey(credentials));
+        Ok(client)
+    }
+    pub fn with_azure_sas(origin: &str, query: &str, options: HttpOptions) -> Result<Self> {
+        azure_auth::check_origin(origin, None, false)?;
+        let auth = azure_auth::Auth::sas(query)?;
+        let mut client = Self::build(origin, None, options, false, None)?;
+        client.azure_auth = Some(auth);
+        Ok(client)
+    }
+    #[cfg(any(test, feature = "diagnostic-acquisition"))]
+    pub fn diagnostic_azure_shared_key(
+        origin: &str,
+        credentials: AzureSharedKey,
+        options: HttpOptions,
+    ) -> Result<Self> {
+        azure_auth::check_origin(origin, Some(credentials.account()), true)?;
+        let mut client = Self::build(origin, None, options, true, None)?;
+        client.azure_auth = Some(azure_auth::Auth::SharedKey(credentials));
+        Ok(client)
+    }
+    #[cfg(any(test, feature = "diagnostic-acquisition"))]
+    pub fn diagnostic_azure_sas(origin: &str, query: &str, options: HttpOptions) -> Result<Self> {
+        azure_auth::check_origin(origin, None, true)?;
+        let auth = azure_auth::Auth::sas(query)?;
+        let mut client = Self::build(origin, None, options, true, None)?;
+        client.azure_auth = Some(auth);
+        Ok(client)
+    }
     /// Explicit, single-origin SigV4 credentials. Only opaque provider-created
     /// S3 targets may use this client; no ambient credential chain is consulted.
     pub fn with_s3_credentials(
@@ -481,9 +589,9 @@ impl HttpsClient {
 
     /// Explicit additional initial-request origin, never redirect authorization.
     pub fn with_credential_origin(mut self, origin: &str) -> Result<Self> {
-        if self.s3_signing.is_some() {
+        if self.s3_signing.is_some() || self.azure_auth.is_some() {
             return Err(Error::Unsupported(
-                "S3 credentials have one exact origin".into(),
+                "provider credentials have one exact origin".into(),
             ));
         }
         let parsed = parse_url(origin, self.loopback)?;
@@ -575,6 +683,7 @@ impl HttpsClient {
             options,
             loopback,
             s3_signing: None,
+            azure_auth: None,
         })
     }
 }
@@ -647,6 +756,11 @@ impl HttpsClient {
                 "SigV4 requires a canonical S3 target".into(),
             ));
         }
+        if self.azure_auth.is_some() && target.is_none_or(|target| target.azure_kind().is_none()) {
+            return Err(Error::Unsupported(
+                "Azure credentials require a canonical Azure target".into(),
+            ));
+        }
         check_cancel(cancel)?;
         let initial = parse_url(&request.url, self.loopback)?;
         if let Some(range) = &request.range {
@@ -675,7 +789,22 @@ impl HttpsClient {
                     }
                     HttpAccept::Binary => "application/octet-stream",
                 };
-                let wire = target.map_or_else(|| current.as_str().to_owned(), HttpTarget::url);
+                let prepared = target
+                    .filter(|target| target.azure_kind().is_some())
+                    .map(|target| {
+                        azure_auth::prepare(
+                            self.azure_auth.as_ref(),
+                            target,
+                            request,
+                            head,
+                            std::time::SystemTime::now(),
+                        )
+                    })
+                    .transpose()?;
+                let wire = prepared.as_ref().map_or_else(
+                    || target.map_or_else(|| current.as_str().to_owned(), HttpTarget::url),
+                    |prepared| prepared.uri.clone(),
+                );
                 let call = if head {
                     self.agent.head(wire.as_str())
                 } else {
@@ -689,6 +818,11 @@ impl HttpsClient {
                     .header("Accept", accept);
                 if authorization && let Some(token) = &self.token {
                     call = call.header("Authorization", format!("Bearer {token}"));
+                }
+                if let Some(prepared) = prepared {
+                    for (name, value) in prepared.headers {
+                        call = call.header(name, value);
+                    }
                 }
                 if let (Some(target), Some(signing)) = (target, &self.s3_signing) {
                     for (name, value) in
@@ -793,6 +927,11 @@ impl HttpsClient {
                     "x-amz-delete-marker",
                     "x-goog-generation",
                     "x-goog-metageneration",
+                    "x-ms-version-id",
+                    "x-ms-blob-type",
+                    "x-ms-structured-body",
+                    "x-ms-encryption-key-sha256",
+                    "x-ms-copy-status",
                 ] {
                     let values: Vec<_> = response.headers().get_all(name).iter().collect();
                     if values.len() > 1 {

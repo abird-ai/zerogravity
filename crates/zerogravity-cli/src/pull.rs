@@ -2,6 +2,8 @@
 use std::path::PathBuf;
 use std::sync::{Arc, atomic::AtomicBool};
 
+#[path = "pull_azure.rs"]
+mod azure;
 #[path = "pull_components.rs"]
 mod components;
 #[path = "pull_gcs.rs"]
@@ -349,6 +351,9 @@ impl ProgressDisplay {
 }
 
 pub(super) fn run(args: &[String]) -> Result<()> {
+    if args.first().is_some_and(|arg| arg == "azure") {
+        return azure::run(&args[1..]);
+    }
     if args.first().is_some_and(|arg| arg == "s3") {
         return s3::run(&args[1..]);
     }
@@ -468,6 +473,7 @@ fn help() {
     zerogravity pull oci --help
     zerogravity pull gcs --help
     zerogravity pull s3 --help
+    zerogravity pull azure --help
     zerogravity pull list
     zerogravity pull inspect DIGEST_OR_REF
     zerogravity pull verify DIGEST_OR_REF

@@ -158,7 +158,7 @@ impl Signing {
         ))
     }
 }
-fn mac(key: &[u8], value: &[u8]) -> Result<[u8; 32]> {
+pub(super) fn mac(key: &[u8], value: &[u8]) -> Result<[u8; 32]> {
     let mut mac = Hmac::<Sha256>::new_from_slice(key).map_err(|_| invalid())?;
     mac.update(value);
     Ok(mac.finalize().into_bytes().into())
@@ -167,6 +167,18 @@ fn invalid() -> Error {
     Error::Malformed("invalid S3 signature inputs".into())
 }
 fn utc_timestamp(now: SystemTime) -> Result<String> {
+    let datetime = checked_utc(now)?;
+    Ok(format!(
+        "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
+        datetime.year(),
+        u8::from(datetime.month()),
+        datetime.day(),
+        datetime.hour(),
+        datetime.minute(),
+        datetime.second()
+    ))
+}
+pub(super) fn checked_utc(now: SystemTime) -> Result<time::OffsetDateTime> {
     let seconds = now
         .duration_since(UNIX_EPOCH)
         .map_err(|_| invalid())?
@@ -177,15 +189,7 @@ fn utc_timestamp(now: SystemTime) -> Result<String> {
     if !(1000..=9999).contains(&datetime.year()) {
         return Err(invalid());
     }
-    Ok(format!(
-        "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
-        datetime.year(),
-        u8::from(datetime.month()),
-        datetime.day(),
-        datetime.hour(),
-        datetime.minute(),
-        datetime.second()
-    ))
+    Ok(datetime)
 }
 
 #[cfg(test)]

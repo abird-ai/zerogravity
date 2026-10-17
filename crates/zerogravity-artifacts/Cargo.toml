@@ -10,7 +10,7 @@ license = "MIT"
 [features]
 cache = ["dep:sha2", "dep:rustix"]
 diagnostic-cache = ["cache"]
-acquisition = ["cache", "dep:ureq", "dep:url", "dep:log", "dep:hmac", "dep:quick-xml", "dep:time"]
+acquisition = ["cache", "dep:ureq", "dep:url", "dep:log", "dep:hmac", "dep:quick-xml", "dep:time", "dep:base64"]
 diagnostic-acquisition = ["acquisition"]
 
 [dependencies]
@@ -27,3 +27,4 @@ log = { version = "=0.4.34", features = ["max_level_debug"], optional = true }
 hmac = { version = "=0.12.1", default-features = false, optional = true }
 quick-xml = { version = "=0.41.0", default-features = false, optional = true }
 time = { version = "=0.3.55", default-features = false, features = ["std"], optional = true }
+base64 = { version = "=0.22.1", default-features = false, features = ["std"], optional = true }
