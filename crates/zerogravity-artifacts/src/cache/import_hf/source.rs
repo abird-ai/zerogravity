@@ -64,6 +64,82 @@ fn same_mount(file: &File, expected: u64) -> Result<()> {
     Ok(())
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FilesystemKind {
+    Btrfs,
+    Tmpfs,
+    Other,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RootIdentity {
+    mount: u64,
+    device: u64,
+    inode: u64,
+    // Read only for differing-mount policy. Existing same-mount imports do not
+    // gain a filesystem-kind or fstatfs requirement.
+    kind: Option<FilesystemKind>,
+}
+
+impl RootIdentity {
+    fn read(file: &File) -> Result<Self> {
+        let metadata = file.metadata()?;
+        Ok(Self {
+            mount: mount_id(file.as_fd())?,
+            device: metadata.dev(),
+            inode: metadata.ino(),
+            kind: None,
+        })
+    }
+
+    fn with_kind(mut self, file: &File) -> Result<Self> {
+        let stat = os(fs::fstatfs(file))?;
+        // Linux filesystem magic values occupy the low 32 bits of FsWord,
+        // whose signedness/width varies by target architecture.
+        self.kind = Some(match stat.f_type as u32 {
+            0x9123_683e => FilesystemKind::Btrfs,
+            0x0102_1994 => FilesystemKind::Tmpfs,
+            _ => FilesystemKind::Other,
+        });
+        Ok(self)
+    }
+
+    fn inode_key(self) -> (u64, u64) {
+        (self.device, self.inode)
+    }
+
+    fn ensure_bound(self, file: &File) -> Result<()> {
+        let current = Self::read(file)?;
+        if current.mount != self.mount || current.inode_key() != self.inode_key() {
+            return Err(Error::State("local HF root identity changed".into()));
+        }
+        Ok(())
+    }
+}
+
+/// A policy decision, independently qualified by actual cross-filesystem
+/// copies. Device numbers alone never authorize an arbitrary filesystem pair.
+fn cross_filesystem(source: RootIdentity, target: RootIdentity) -> Result<bool> {
+    if source.mount == target.mount {
+        return Ok(false);
+    }
+    if source.device == target.device {
+        return Err(Error::Unsupported(
+            "same-device mount aliases in local HF import are unsupported".into(),
+        ));
+    }
+    use FilesystemKind::{Btrfs, Tmpfs};
+    if !matches!(
+        (source.kind, target.kind),
+        (Some(Btrfs), Some(Tmpfs)) | (Some(Tmpfs), Some(Btrfs)) | (Some(Tmpfs), Some(Tmpfs))
+    ) {
+        return Err(Error::Unsupported(
+            "local HF cross-filesystem pair is not qualified".into(),
+        ));
+    }
+    Ok(true)
+}
+
 fn lower_hex(value: &str, length: usize) -> bool {
     value.len() == length
         && value
@@ -189,7 +265,7 @@ impl Stamp {
 
 pub(super) struct SourceView {
     root: File,
-    mount: u64,
+    identity: RootIdentity,
     entries: Vec<SourceFile>,
 }
 
@@ -222,7 +298,8 @@ impl SourceView {
                 ))?);
             }
         }
-        let mount = mount_id(directory.as_fd())?;
+        let root_identity = RootIdentity::read(&directory)?;
+        let mount = root_identity.mount;
         let snapshots = open_directory(&directory, "snapshots", mount)?;
         let snapshot = open_directory(&snapshots, commit, mount)?;
         let mut entries = Vec::with_capacity(selected.len());
@@ -305,7 +382,7 @@ impl SourceView {
         }
         let view = Self {
             root: directory,
-            mount,
+            identity: root_identity,
             entries,
         };
         view.ensure_stable(cancel)?;
@@ -317,30 +394,35 @@ impl SourceView {
     }
 
     pub(super) fn ensure_stable(&self, cancel: &AtomicBool) -> Result<()> {
+        check_cancel(cancel)?;
+        self.identity.ensure_bound(&self.root)?;
         for entry in &self.entries {
             entry.ensure_stable(cancel)?;
         }
         check_cancel(cancel)
     }
 
-    /// This first slice deliberately refuses distinct mounts rather than guess
-    /// whether another mount is a bind alias. No source paths are reopened.
+    /// Prove bounded topology disjointness under each root's own identity.
+    /// Distinct-mount pairs are deliberately limited to qualified filesystems;
+    /// same-device aliases still refuse. No source paths are reopened.
     pub(super) fn ensure_disjoint(
         &self,
         target: BorrowedFd<'_>,
         cancel: &AtomicBool,
     ) -> Result<()> {
-        check_cancel(cancel)?;
-        if mount_id(target)? != self.mount {
-            return Err(Error::Unsupported(
-                "local HF source and destination must use the same mount".into(),
-            ));
-        }
+        self.ensure_stable(cancel)?;
         let target_file = File::from(os(fs::openat(target, ".", dir_flags(), Mode::empty()))?);
-        let source_identity = identity(&self.root.metadata()?);
-        let target_identity = identity(&target_file.metadata()?);
-        if contains_ancestor(&self.root, target_identity, cancel)?
-            || contains_ancestor(&target_file, source_identity, cancel)?
+        let mut source_identity = self.identity;
+        let mut target_identity = RootIdentity::read(&target_file)?;
+        if source_identity.mount != target_identity.mount
+            && source_identity.device != target_identity.device
+        {
+            source_identity = source_identity.with_kind(&self.root)?;
+            target_identity = target_identity.with_kind(&target_file)?;
+        }
+        let crossfs = cross_filesystem(source_identity, target_identity)?;
+        if contains_ancestor(&self.root, target_identity.inode_key(), cancel)?
+            || contains_ancestor(&target_file, source_identity.inode_key(), cancel)?
         {
             return Err(Error::State(
                 "local HF source and destination trees overlap".into(),
@@ -349,17 +431,37 @@ impl SourceView {
         // Compact inode keys are the only retained inventory. The walk never
         // reads refs or unselected payload contents and keeps at most one
         // directory stream per depth; symlinks are metadata-only capabilities.
-        let mut source_walk = TreeWalk::new(self.mount, None, cancel);
-        source_walk.collected.insert(source_identity);
+        let mut source_walk = TreeWalk::new(source_identity, crossfs, None, cancel);
+        source_walk.collected.insert(source_identity.inode_key());
         source_walk
             .collected
             .extend(self.entries.iter().map(|entry| entry.stamp.identity()));
+        if crossfs {
+            for entry in &self.entries {
+                check_cancel(cancel)?;
+                if entry.stamp.device != source_identity.device {
+                    return Err(Error::Unsupported(
+                        "crossed source devices in local HF import are unsupported".into(),
+                    ));
+                }
+                same_mount(&entry.file, source_identity.mount)?;
+            }
+        }
         source_walk.inspect(&self.root, 0, 0)?;
-        TreeWalk::new(self.mount, Some(&source_walk.collected), cancel).inspect(
-            &target_file,
-            0,
-            0,
-        )?;
+        if source_walk.collected.contains(&target_identity.inode_key()) {
+            return Err(Error::State(
+                "local HF source inode aliases destination root".into(),
+            ));
+        }
+        TreeWalk::new(
+            target_identity,
+            crossfs,
+            Some(&source_walk.collected),
+            cancel,
+        )
+        .inspect(&target_file, 0, 0)?;
+        source_identity.ensure_bound(&self.root)?;
+        target_identity.ensure_bound(&target_file)?;
         self.ensure_stable(cancel)
     }
 }
@@ -461,6 +563,7 @@ fn contains_ancestor(start: &File, candidate: (u64, u64), cancel: &AtomicBool) -
 
 struct TreeWalk<'a> {
     mount: u64,
+    device: Option<u64>,
     forbidden: Option<&'a BTreeSet<(u64, u64)>>,
     collected: BTreeSet<(u64, u64)>,
     cancel: &'a AtomicBool,
@@ -470,12 +573,14 @@ struct TreeWalk<'a> {
 
 impl<'a> TreeWalk<'a> {
     fn new(
-        mount: u64,
+        root: RootIdentity,
+        enforce_device: bool,
         forbidden: Option<&'a BTreeSet<(u64, u64)>>,
         cancel: &'a AtomicBool,
     ) -> Self {
         Self {
-            mount,
+            mount: root.mount,
+            device: enforce_device.then_some(root.device),
             forbidden,
             collected: BTreeSet::new(),
             cancel,
@@ -532,6 +637,11 @@ impl<'a> TreeWalk<'a> {
                 ));
             }
             same_mount(&file, self.mount)?;
+            if self.device.is_some_and(|device| metadata.dev() != device) {
+                return Err(Error::Unsupported(
+                    "crossed topology devices in local HF import are unsupported".into(),
+                ));
+            }
             let inode = identity(&metadata);
             if self
                 .forbidden
@@ -563,6 +673,74 @@ mod tests {
 
     const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
     const BLOB: &str = "abcdef0123456789abcdef0123456789abcdef01";
+
+    fn policy_root(device: u64, mount: u64, kind: Option<FilesystemKind>) -> RootIdentity {
+        RootIdentity {
+            device,
+            mount,
+            inode: 1,
+            kind,
+        }
+    }
+
+    // These pure checks exercise policy only. The independent actual-filesystem
+    // fixtures establish cross-filesystem behavior; synthetic IDs do not.
+    #[test]
+    fn cross_filesystem_policy_accepts_only_the_qualified_kind_pairs() {
+        use FilesystemKind::{Btrfs, Other, Tmpfs};
+        for source in [Btrfs, Tmpfs, Other] {
+            for target in [Btrfs, Tmpfs, Other] {
+                let accepted = matches!(
+                    (source, target),
+                    (Btrfs, Tmpfs) | (Tmpfs, Btrfs) | (Tmpfs, Tmpfs)
+                );
+                assert_eq!(
+                    cross_filesystem(
+                        policy_root(1, 10, Some(source)),
+                        policy_root(2, 20, Some(target))
+                    )
+                    .is_ok(),
+                    accepted,
+                    "{source:?} -> {target:?}"
+                );
+            }
+        }
+        assert!(
+            cross_filesystem(policy_root(1, 10, None), policy_root(2, 20, Some(Tmpfs))).is_err()
+        );
+    }
+
+    #[test]
+    fn cross_filesystem_policy_refuses_same_device_mount_aliases() {
+        use FilesystemKind::{Btrfs, Other, Tmpfs};
+        for source in [Btrfs, Tmpfs, Other] {
+            for target in [Btrfs, Tmpfs, Other] {
+                assert!(matches!(
+                    cross_filesystem(
+                        policy_root(1, 10, Some(source)),
+                        policy_root(1, 20, Some(target))
+                    ),
+                    Err(Error::Unsupported(_))
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn same_mount_policy_retains_original_device_and_kind_behavior() {
+        for device in [1, 2] {
+            for kind in [
+                None,
+                Some(FilesystemKind::Other),
+                Some(FilesystemKind::Btrfs),
+            ] {
+                assert!(
+                    !cross_filesystem(policy_root(1, 10, None), policy_root(device, 10, kind))
+                        .unwrap()
+                );
+            }
+        }
+    }
 
     struct Fixture {
         base: PathBuf,
@@ -691,6 +869,8 @@ mod tests {
             .read_to_end(&mut bytes)
             .unwrap();
         assert_eq!(bytes, b"original");
+        view.ensure_disjoint(fixture.target().as_fd(), &AtomicBool::new(false))
+            .unwrap();
     }
 
     #[test]

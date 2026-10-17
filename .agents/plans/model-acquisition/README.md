@@ -374,13 +374,21 @@ not a model-closure resolver. The example names illustrate layout and select no
 approved source. Ordinary run/inspect and cache misses do not import anything.
 No environment-based cache discovery, branch/ref lookup or remote code runs.
 
-This first slice requires a two-component repository name and a matching
+Import requires a two-component repository name and a matching
 `models--owner--repo` source basename, a40-digit lowercase commit and an existing
 absolute destination directory with0700 permissions. An empty destination can be
 initialized after validation; missing directories are never created. Renamed or
 unnamespaced repository caches remain outside this slice. Source/destination
-must share the same Linux mount identity; cross-filesystem and bind-mount cases
-refuse pending separate qualification. Missing statx mount identity also refuses.
+may use the original same-mount path or one narrowly qualified cross-filesystem
+pair: Btrfs with tmpfs in either direction, or two distinct tmpfs filesystems.
+Cross-filesystem roots must differ in both Linux mount ID and device ID, and
+retained-FD fstatfs must report that permitted type pair. Each traversed node and
+selected source descriptor must remain on its own root device and mount.
+Across different mounts, same-device bind aliases, Btrfs-to-Btrfs pairs,
+overlay/FUSE and other unqualified pairs refuse. Missing statx mount identity
+also refuses. This allowlist is a bounded qualification policy, not a claim
+that different device IDs alone
+prove independent storage. The original same-mount behavior is unchanged.
 
 Read-only source capabilities accept regular snapshot files or canonical HF leaf
 links into flat40/64-digit lowercase blob names in the same repository root.
@@ -394,10 +402,10 @@ Preparation admits a bounded control envelope in the caller's existing physical
 ResourceArbiter domain before opening source metadata. The plan retains that
 lease and its source descriptors. Destination checking walks bounded source and
 target directory metadata without reading refs contents, cached trees/*.json or
-unselected file bodies. No symlink is followed during that topology walk. Bidirectional ancestry,
-mount and inode checks reject overlapping trees and hardlink aliases, including
-unselected source inodes. This explicit selected-repository safety inspection is
-not a cache-discovery scan. A successful dry-run is not a reservation or permission
+unselected file bodies. No symlink is followed during that topology walk.
+Bidirectional ancestry, mount and inode checks reject overlapping trees and hardlink aliases, including
+unselected source inodes and the destination root itself. This explicit
+selected-repository safety inspection is not a cache-discovery scan. A successful dry-run is not a reservation or permission
 for a later changed tree; apply repeats the checks.
 
 Apply initializes the exact preflighted destination directory capability through
@@ -426,7 +434,12 @@ leave initialized destination metadata before transaction admission refuses;
 initialization metadata is not rolled back. Reading can update source atime;
 tests preserve source names/content/modes/mtime. Ownership and mutation checks do
 not establish global RAM/UMA accounting or filesystem free-space reservation.
-Acceptance and remaining cross-filesystem/layout work are tracked in TODO.md.
+A tmpfs destination remains volatile: the original publisher's successful fsync
+acknowledgments do not promise survival across unmount, reboot or power loss.
+No filesystem is mounted or privileges changed by import or by the selected
+existing-filesystem fixtures. Real hidden bind/subvolume/overlay alias fixtures
+remain separately unqualified; those ambiguous cross-filesystem pairs refuse.
+Acceptance and remaining filesystem/layout work are tracked in TODO.md.
 
 ## Cache-to-model preparation
 
@@ -490,6 +503,17 @@ Numerical acceptance is tracked in TODO.md.
   used to check timeout, TLS and redirect behavior.
 - [HTTP/1.1 framing and chunked completion, RFC9112](https://www.rfc-editor.org/rfc/rfc9112.html#section-6.3),
   with the pinned ureq/ureq-proto decoder sources checked locally.
+- [Linux tmpfs](https://docs.kernel.org/filesystems/tmpfs.html),
+  [Btrfs subvolumes](https://btrfs.readthedocs.io/en/latest/Subvolumes.html),
+  [overlay identities](https://docs.kernel.org/filesystems/overlayfs.html) and
+  [FUSE passthrough](https://docs.kernel.org/filesystems/fuse/fuse-passthrough.html),
+  used to bound the qualified filesystem-pair policy. The pair policy follows
+  from these filesystem semantics plus actual local fixtures; it is not a general
+  cross-filesystem identity guarantee stated by those documents.
+  Retained-identity review also checked Linux v6.17
+  [anonymous superblocks](https://raw.githubusercontent.com/torvalds/linux/v6.17/fs/super.c),
+  [tmpfs implementation](https://raw.githubusercontent.com/torvalds/linux/v6.17/mm/shmem.c)
+  and [Btrfs inode identities](https://raw.githubusercontent.com/torvalds/linux/v6.17/fs/btrfs/inode.c).
 - [Linux flock lifetime and advisory semantics](https://man7.org/linux/man-pages/man2/flock.2.html).
 - [A1 local cache contract](../../research/PULL_A1_LOCAL_XDG_CACHE_2026-10-16.md),
   [current workflow](../../../AGENTS.md) and [TODO rules](../TODO-SPEC.md).
