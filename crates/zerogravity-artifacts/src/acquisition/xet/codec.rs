@@ -50,6 +50,7 @@ impl ChunkHeader {
     pub(crate) fn compressed_bytes(self) -> usize {
         self.compressed
     }
+    #[cfg(test)]
     pub(crate) fn raw_bytes(self) -> usize {
         self.raw
     }

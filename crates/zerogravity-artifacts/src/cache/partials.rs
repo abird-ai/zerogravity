@@ -67,6 +67,7 @@ pub struct PartialObject<'a> {
     // allocating another private copy against that deduplicated reservation.
     object_lock: Option<CacheLock>,
     write_failed: bool,
+    ephemeral: bool,
 }
 
 /// One transaction-owned object acquisition. A verified concurrent fill never
@@ -85,7 +86,7 @@ impl DiscoveredTransaction {
         logical_path: &str,
         immutable_identity: &str,
     ) -> Result<PartialObject<'_>> {
-        match self.prepare_object(logical_path, immutable_identity, false)? {
+        match self.prepare_object(logical_path, immutable_identity, false, false)? {
             DiscoveredObject::Partial(partial) => Ok(*partial),
             DiscoveredObject::Cached(_) => Err(Error::State(
                 "known object is already cached; use try_cached".into(),
@@ -100,7 +101,22 @@ impl DiscoveredTransaction {
         logical_path: &str,
         immutable_identity: &str,
     ) -> Result<DiscoveredObject<'_>> {
-        self.prepare_object(logical_path, immutable_identity, true)
+        self.prepare_object(logical_path, immutable_identity, true, false)
+    }
+
+    /// Exact ephemeral source stream using the same locks, admission, private
+    /// stage and sole publisher. It never recovers or persists HTTP prefixes.
+    pub fn cached_or_ephemeral_object(
+        &mut self,
+        logical_path: &str,
+        immutable_identity: &str,
+    ) -> Result<DiscoveredObject<'_>> {
+        if self.entry(logical_path)?.length.exact().is_none() {
+            return Err(Error::Unsupported(
+                "ephemeral source requires exact length".into(),
+            ));
+        }
+        self.prepare_object(logical_path, immutable_identity, true, true)
     }
 
     fn prepare_object(
@@ -108,6 +124,7 @@ impl DiscoveredTransaction {
         logical_path: &str,
         immutable_identity: &str,
         accept_cached: bool,
+        ephemeral: bool,
     ) -> Result<DiscoveredObject<'_>> {
         self.inner.ensure_owner()?;
         if self.verified.contains_key(logical_path) {
@@ -186,7 +203,7 @@ impl DiscoveredTransaction {
                 Err(error) => return Err(error),
             }
         }
-        let saved = if length.exact().is_some() {
+        let saved = if length.exact().is_some() && !ephemeral {
             recover_candidate(&self.inner, &key, total)?
         } else {
             None
@@ -260,6 +277,7 @@ impl DiscoveredTransaction {
             partial_lock,
             object_lock,
             write_failed: false,
+            ephemeral,
         })))
     }
 }
@@ -347,6 +365,11 @@ impl PartialObject<'_> {
 
     pub fn set_validator(&mut self, validator: &str) -> Result<()> {
         self.ensure_owner()?;
+        if self.ephemeral {
+            return Err(Error::Unsupported(
+                "ephemeral sources do not retain validators".into(),
+            ));
+        }
         if self
             .transaction
             .entry(&self.logical_path)?
@@ -412,6 +435,11 @@ impl PartialObject<'_> {
     /// Synchronize an already written prefix even after cancellation. This
     /// acquires no new transfer memory and performs no input/network read.
     pub fn checkpoint(&mut self) -> Result<()> {
+        if self.ephemeral {
+            return Err(Error::Unsupported(
+                "ephemeral sources do not support checkpoints".into(),
+            ));
+        }
         if self
             .transaction
             .entry(&self.logical_path)?

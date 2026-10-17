@@ -5,7 +5,9 @@ use crate::{Error, Result};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 pub(crate) const MAX_HASH_CHUNKS: usize = 1_048_576;
+#[cfg(test)]
 pub(crate) const MAX_XORB_CHUNKS: usize = 8192;
+#[cfg(test)]
 const MAX_XORB_RAW_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_CHUNK_BYTES: usize = 128 * 1024;
 const DATA_KEY: [u8; 32] = [
@@ -16,6 +18,7 @@ const INTERNAL_KEY: [u8; 32] = [
     1, 126, 197, 199, 165, 71, 41, 150, 253, 148, 102, 102, 180, 138, 2, 230, 93, 221, 83, 111, 55,
     199, 109, 210, 248, 99, 82, 230, 74, 83, 113, 63,
 ];
+#[cfg(test)]
 const VERIFICATION_KEY: [u8; 32] = [
     127, 24, 87, 214, 206, 86, 237, 102, 18, 127, 249, 19, 231, 165, 195, 243, 164, 205, 38, 213,
     181, 219, 73, 230, 65, 36, 152, 127, 40, 251, 148, 195,
@@ -25,6 +28,7 @@ const VERIFICATION_KEY: [u8; 32] = [
 pub(crate) struct XetHash([u8; 32]);
 impl XetHash {
     pub(crate) const ZERO: Self = Self([0; 32]);
+    #[cfg(test)]
     pub(crate) const fn from_bytes(raw: [u8; 32]) -> Self {
         Self(raw)
     }
@@ -100,6 +104,7 @@ pub(crate) fn chunk_hash(raw: &[u8], cancel: &AtomicBool) -> Result<XetHash> {
 
 /// Reuses the caller's admitted hash/length vector in place; no second vector.
 /// All input entries are consumed and can no longer be used as original leaves.
+#[cfg(test)]
 pub(crate) fn xorb_hash(chunks: &mut [(XetHash, u64)], cancel: &AtomicBool) -> Result<XetHash> {
     if chunks.len() > MAX_XORB_CHUNKS {
         return Err(Error::Limit("Xet xorb chunk count bound".into()));
@@ -187,6 +192,7 @@ pub(crate) fn file_hash(chunks: &mut [(XetHash, u64)], cancel: &AtomicBool) -> R
 
 /// Shard/upload verification primitive. Download responses do not contain an
 /// expected value, so merely calculating it does not authenticate a term.
+#[cfg(test)]
 pub(crate) fn verification_hash(chunks: &[XetHash], cancel: &AtomicBool) -> Result<XetHash> {
     if chunks.len() > MAX_HASH_CHUNKS {
         return Err(Error::Limit("Xet verification hash count bound".into()));

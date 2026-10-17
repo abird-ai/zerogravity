@@ -727,10 +727,9 @@ introduced.
 
 ## Xet hash and chunk primitives
 
-The private future Xet reader sources are tested through an exact-source test
-wrapper. They are presently unwired: enabling acquisition does not yet enable
-native HF/CAS reconstruction. The implementation follows protocol1.1.0 and its
-pinned xet-core reference, with separate raw32-byte and limb-reversed textual
+The native reader shares exact hash/codec sources with the standalone primitive
+test wrapper. The implementation follows protocol1.1.0 and its pinned xet-core
+reference, with separate raw32-byte and limb-reversed textual
 identifiers, keyed BLAKE3 chunks, in-place ordered Merkle aggregation, zero-key
 file finalization and the special empty root. Raw SHA256 remains a separate
 content/provenance authority. Download metadata supplies no expected per-term
@@ -747,13 +746,70 @@ copying, checksumming, decoding and hashing. Literal upstream Merkle vectors and
 independent hash/frame goldens exercise exact namespaces and malformed inputs.
 
 Only two direct acquisition dependency edges, cached BLAKE3(std/pure) and
-xxhash32, are added; CPU/cache-only transport isolation remains. Native discovery, scoped CAS
-grants, exact signed multi-range/multipart requests, ordered reconstruction,
-whole-file root/raw-SHA/EOF, expiry/reissue and original-cache integration are
-separate unfinished work. Future integration must admit scratch/hash vectors
-before allocation, count actual retries and discarded work, suppress credentials
-on signed transfer URLs and preserve original cancellation/publication ownership.
-Passing primitive tests grants no native-transfer throughput or model capability.
+xxhash32, are added; CPU/cache-only transport isolation remains. The explicit
+native route below uses these same primitives. Primitive tests alone grant no
+native-transfer throughput or model capability.
+
+## Native HF Xet
+
+`pull xet OWNER/REPO --revision REV --file PATH` explicitly selects native
+reconstruction through the existing optional acquisition owner. Original HF
+pinning, complete bounded inventory, selectors, model/shard/sidecar closure and
+source identity stay authoritative. At least one selected LFS object must announce
+an Xet file identity. Discovery observes headers without following its redirect or
+reading a compatibility payload. Declared ordinary Git sidecars retain the original
+HTTP route, redirect credential stripping and strong-validator suffix resume.
+Announced native files have no silent compatibility fallback on protocol failure.
+
+A repository/commit-scoped read grant is obtained from a locally constructed Hub
+route. The grant is ephemeral and restricted to the fixed CAS origin; arbitrary
+refresh links do not supply authority. CAS uses only that grant, and signed range
+requests suppress all Hub/cloud credentials even at the same origin. The original
+HTTP owner preserves TLS, raw signed URI bytes, exact complete signed interval
+sets, no-follow policy for native metadata/payloads, redaction and request deadlines.
+Custom transports must explicitly implement the opaque target/accounting contract
+or refuse; no secret getter or arbitrary-header interface is added.
+
+Native reconstruction tries v2, with v1 only after404/501. Scoped401 and signed403
+can refresh within one finite combined reissue budget. The file identity and
+ordered semantic term contract must stay fixed. Parsing validates full-file offset,
+exact aggregate lengths, unique maps, bounded terms/groups/ranges/chunks and full
+coverage. Terms may repeat or overlap; only their selected logical chunks enter
+the final file root, in file order. Fetched edge chunks are decoded and charged,
+but do not enter that root or logical progress. Missing sibling data cannot prove
+a full/partial-xorb root, and the protocol supplies no per-term verification hash.
+
+The reader holds one decoded chunk and admitted codec/hash scratch. It requests
+the complete signed range set, validates every multipart boundary, interval,
+length, representation and terminal EOF, and handles parts in arbitrary order.
+It can reissue a full set for later selected spans; fetched/decoded repeats remain
+charged. Interrupted refetch compares already accepted leaves without duplicating
+logical progress. This bounded reader has no throughput or fetch-coalescing claim;
+measured coalescing remains future work.
+
+One invocation bounds actual HTTP attempts, observed body/control bytes, decoded
+chunks, logical leaves and refreshes. Accepted term/group/range counts accumulate
+across files and metadata reissues, while each document is also bounded. At most
+one observed overflow sentinel is charged; after overflow, the invocation refuses
+further reads or attempts. Exact-budget zero-byte EOF probes remain possible.
+Per-request deadlines plus finite work do not create a whole-operation elapsed
+bound or kernel/TLS traffic accounting.
+
+The original arbiter admits scratch before allocation and retains it alongside
+the original cache transaction. Native CLI defaults to256MiB to cover both full
+admission envelopes; ordinary pulls remain128MiB and explicit limits are unchanged.
+The same cache locks, private staging, raw SHA/length/LFS/EOF checks and sole
+publisher apply. Native objects use an exact ephemeral stream: HTTP prefixes are
+neither recovered nor checkpointed, and process exit requires a new full native
+transfer. The final Xet file root precedes successful source EOF and publication.
+Cache hits remain verified cached data, with no assertion of native execution.
+
+Dry-run performs Hub metadata/discovery only, with no CAS grant or signed body.
+Offline opens an existing cache, checks original source/selection/current bounds
+and pointer policy before credentials, client, admission or signals. It proves
+cached data, not native protocol execution, freshness or present access. Native
+LFS/index reconstruction during closure and measured fetch coalescing remain open;
+acquired bytes grant no new loader, inference, license or model qualification.
 
 ## Provider and compatibility frontier
 
@@ -775,7 +831,7 @@ passing provider gate. Open implementation and acceptance work stays in TODO.md.
 | S3/compatible endpoints | Native non-null versions, exact-path regional/path/virtual-host GET/HEAD/ranges, bounded V2/latest-version prefixes and static/session SigV4. Explicit current/unversioned objects additionally support caller SHA/size contracts; no-SHA conditional, broader partitions/vendor/credential profiles and FULL_OBJECT checksum mode remain open; presigned HTTPS alone grants no native S3 parity. |
 | Azure Blob | Native explicit BlockBlob versions/snapshots, bounded current-version auxiliary listing, pinned ranges and anonymous/bearer/SharedKey/ad-hoc serviceSAS. Explicit current/unversioned objects additionally support caller SHA/size contracts; no-SHA conditional/latest convenience, other endpoints/types/SAS and managed/default credentials remain open. |
 | ModelScope | Native explicit40hex commit, bounded complete shallow walk, exact files/model closure, anonymous/official-token and digest-only offline. Aliases, redirect/CDN/mirror profiles and missing sizes remain open; no SDK/login runtime. |
-| HF Xet | Exact private hash/NONE/framed-LZ4/BG4 primitives are tested but unwired. Native discovery/CAS/signed-range/reconstruction/auth/cache integration and performance remain open; compatibility HTTPS does not qualify them. |
+| HF Xet | Explicit bounded native discovery, scoped CAS, signed ranges/multipart, ordered NONE/LZ4/BG4 reconstruction and original ephemeral importer/CLI. Native index closure and measured coalescing/performance remain open; cache hits/compatibility HTTPS grant no native execution proof. |
 | Auxiliary/preset convenience | Explicit auxiliary/component bytes are supported data. Specialized mmproj/draft/MTP/DFlash/Eagle3/DSpark discovery and bounded presets remain open convenience work; a preset cannot authorize new sources or limits. |
 | Transport/streaming | Exact strong-validator resume, bounded retry/deadline/cancel/progress and explicit capped Auxiliary streams are qualified. Required unknown lengths, capped resume, independent full HTTP trailer validation and broader concurrency/performance remain open. |
 | Loader/runtime delegates | Safetensors/PT/serialized tensors, RunAI/ModelExpress internals, IPC/distributed/lazy loading, quant reconstruction and speculative/multimodal execution belong to the execution/streaming plans. Acquiring opaque bytes grants none of those capabilities. |

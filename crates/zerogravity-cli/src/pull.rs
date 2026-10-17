@@ -18,6 +18,8 @@ mod oci;
 mod s3;
 #[path = "pull_signals.rs"]
 mod signals;
+#[path = "pull_xet.rs"]
+mod xet;
 use zerogravity::acquisition::http::{HttpOptions, HttpsClient};
 use zerogravity::acquisition::{self, Provider, PullLimits, PullRequest, Selection};
 use zerogravity::cache::{
@@ -353,6 +355,9 @@ impl ProgressDisplay {
 }
 
 pub(super) fn run(args: &[String]) -> Result<()> {
+    if args.first().is_some_and(|arg| arg == "xet") {
+        return xet::run(&args[1..]);
+    }
     if args.first().is_some_and(|arg| arg == "modelscope") {
         return modelscope::run(&args[1..]);
     }
@@ -385,92 +390,149 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         }
         Action::Inspect(name) | Action::Verify(name) => describe(&cached(&open(&options)?, name)?),
         Action::Components(path) => components::run(path, &options),
-        Action::Fetch(request) => {
-            let reference = options.reference.clone().unwrap_or_else(|| {
-                format!(
-                    "{}/{}/{}",
-                    request.provider.label(),
-                    request.repository,
-                    request.revision
-                )
-            });
-            // Offline is terminal before client, credentials, metadata, DNS or
-            // transfer-admission construction. Local validation is still real.
-            if options.offline {
-                let lease = cached(&open(&options)?, &reference)?;
-                acquisition::validate_cached_selection(&lease, request)?;
-                return describe(&lease);
-            }
-            let (origin, token) = match request.provider {
-                Provider::HuggingFace => ("https://huggingface.co", "HF_TOKEN"),
-                Provider::GitHub => ("https://api.github.com", "GITHUB_TOKEN"),
-            };
-            let mut http_options = HttpOptions::default();
-            if let Some(seconds) = options.timeout {
-                http_options.total_timeout = std::time::Duration::from_secs(seconds);
-            }
-            let mut client =
-                HttpsClient::from_env(origin, request.provider.label(), Some(token), http_options)?;
-            if request.provider == Provider::GitHub {
-                client = client.with_credential_origin("https://raw.githubusercontent.com")?;
-            }
-            let admission = admission(options.memory)?;
-            let cancel = Arc::new(AtomicBool::new(false));
-            let _signals = signals::CancellationSignals::register(cancel.clone())?;
-            let plan =
-                acquisition::resolve(&client, request, &limits(&options)?, &admission, &cancel)?;
-            if options.dry_run {
-                println!(
-                    "Provider: {}\nRepository: {}\nPinned revision: {}\nSelected bytes: {}",
-                    plan.source().provider(),
-                    plan.source().repository(),
-                    plan.source().revision(),
-                    selected_bytes(plan.total_bytes(), plan.maximum_bytes())
-                );
-                for file in plan.files() {
-                    println!(
-                        "{} {} {:?}",
-                        file.path(),
-                        selected_bytes(file.bytes(), file.maximum_bytes()),
-                        file.digest_provenance()
-                    );
-                }
-                println!(
-                    "DRY RUN: metadata only; no model-weight transfer/cache publication or inference qualification."
-                );
-                return Ok(());
-            }
-            let mut display = ProgressDisplay::default();
-            let mut progress = |event: &acquisition::PullProgress<'_>| {
-                // Progress output is best-effort; it cannot certify publication.
-                let _ = display.report(event, &mut std::io::stderr());
-            };
-            let receipt = acquisition::execute_with_progress(
-                &open(&options)?,
-                &plan,
-                &client,
-                &admission,
-                &cancel,
-                Some(&reference),
-                &mut progress,
-            )?;
-            match receipt.outcome() {
-                CommitOutcome::Durable(snapshot) => {
-                    println!("Snapshot: {}\nReference: {reference}\nVerified data only; no inference eligibility implied.", snapshot.digest());
-                    use std::io::Write;
-                    std::io::stdout().write_all(&receipt.manifest().canonical_bytes()?)?;
-                    eprintln!("Verified during acquisition; data only, not immutable against arbitrary same-UID writers or executable model readiness.");
-                    Ok(())
-                }
-                CommitOutcome::DurabilityUnknown { .. } => Err(Error::State("complete cache binding is visible but durability is unknown; inspect before retrying".into())),
-            }
-        }
+        Action::Fetch(request) => run_fetch(&options, request, None),
     }
 }
+/// One shared fetch/publish path. Native Xet changes only cold resolution and
+/// offline eligibility; ordinary None retains its original branch/owners.
+fn run_fetch(
+    options: &Options,
+    request: &PullRequest,
+    native: Option<&acquisition::xet::XetOptions>,
+) -> Result<()> {
+    if let Some(native) = native {
+        native.validate()?;
+        if request.provider != Provider::HuggingFace
+            || !matches!(request.selection, Selection::Files { .. })
+            || options.unknown_size_cap.is_some()
+        {
+            return Err(invalid());
+        }
+    }
+
+    let reference = options.reference.clone().unwrap_or_else(|| {
+        format!(
+            "{}/{}/{}",
+            request.provider.label(),
+            request.repository,
+            request.revision
+        )
+    });
+    // Offline is terminal before client, credentials, metadata, DNS or
+    // transfer-admission construction. Local validation is still real.
+    if options.offline {
+        if native.is_some() {
+            let mut cache = CacheOptions::new(options.root.clone(), options.disk);
+            cache.limits = limits(options)?.cache;
+            let store = CacheStore::open_existing(cache)?;
+            let lease = cached(&store, &reference)?;
+            acquisition::xet::validate_cached_selection(
+                &lease,
+                request,
+                &limits(options)?,
+                &AtomicBool::new(false),
+            )?;
+            eprintln!(
+                "Offline verified HF data only; cached bytes do not attest native Xet protocol execution, remote freshness or current authorization."
+            );
+            return describe(&lease);
+        }
+        let lease = cached(&open(options)?, &reference)?;
+        acquisition::validate_cached_selection(&lease, request)?;
+        return describe(&lease);
+    }
+    let (origin, token) = match request.provider {
+        Provider::HuggingFace => ("https://huggingface.co", "HF_TOKEN"),
+        Provider::GitHub => ("https://api.github.com", "GITHUB_TOKEN"),
+    };
+    let mut http_options = HttpOptions::default();
+    if let Some(seconds) = options.timeout {
+        http_options.total_timeout = std::time::Duration::from_secs(seconds);
+    }
+    let mut client =
+        HttpsClient::from_env(origin, request.provider.label(), Some(token), http_options)?;
+    if request.provider == Provider::GitHub {
+        client = client.with_credential_origin("https://raw.githubusercontent.com")?;
+    }
+    let admission = admission(options.memory)?;
+    let cancel = Arc::new(AtomicBool::new(false));
+    let _signals = signals::CancellationSignals::register(cancel.clone())?;
+    let plan = match native {
+        Some(native) => acquisition::xet::resolve(
+            &client,
+            request,
+            &limits(options)?,
+            native,
+            &admission,
+            &cancel,
+        )?,
+        None => acquisition::resolve(&client, request, &limits(options)?, &admission, &cancel)?,
+    };
+    if options.dry_run {
+        if native.is_some() {
+            println!(
+                "Explicit native Xet: Hub metadata/discovery only; no CAS grants or signed range payloads. No silent compatibility fallback."
+            );
+        }
+        println!(
+            "Provider: {}\nRepository: {}\nPinned revision: {}\nSelected bytes: {}",
+            plan.source().provider(),
+            plan.source().repository(),
+            plan.source().revision(),
+            selected_bytes(plan.total_bytes(), plan.maximum_bytes())
+        );
+        for file in plan.files() {
+            println!(
+                "{} {} {:?}",
+                file.path(),
+                selected_bytes(file.bytes(), file.maximum_bytes()),
+                file.digest_provenance()
+            );
+        }
+        println!(
+            "DRY RUN: metadata only; no model-weight transfer/cache publication or inference qualification."
+        );
+        return Ok(());
+    }
+    let mut display = ProgressDisplay::default();
+    let mut progress = |event: &acquisition::PullProgress<'_>| {
+        // Progress output is best-effort; it cannot certify publication.
+        let _ = display.report(event, &mut std::io::stderr());
+    };
+    let receipt = acquisition::execute_with_progress(
+        &open(options)?,
+        &plan,
+        &client,
+        &admission,
+        &cancel,
+        Some(&reference),
+        &mut progress,
+    )?;
+    match receipt.outcome() {
+        CommitOutcome::Durable(snapshot) => {
+            println!(
+                "Snapshot: {}\nReference: {reference}\nVerified data only; no inference eligibility implied.",
+                snapshot.digest()
+            );
+            use std::io::Write;
+            std::io::stdout().write_all(&receipt.manifest().canonical_bytes()?)?;
+            eprintln!(
+                "Verified during acquisition; data only, not immutable against arbitrary same-UID writers or executable model readiness."
+            );
+            Ok(())
+        }
+        CommitOutcome::DurabilityUnknown { .. } => Err(Error::State(
+            "complete cache binding is visible but durability is unknown; inspect before retrying"
+                .into(),
+        )),
+    }
+}
+
 fn help() {
     println!(
         "USAGE:
     zerogravity pull hf REPO --revision REV --file PATH [--file PATH ...]
+    zerogravity pull xet --help
     zerogravity pull github OWNER/REPO --revision REV --file PATH
     zerogravity pull github OWNER/REPO --release TAG --asset NAME
     zerogravity pull components PLAN.json [--dry-run | --offline]

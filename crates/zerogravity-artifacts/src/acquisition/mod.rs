@@ -14,6 +14,7 @@ pub mod oci;
 pub mod resume;
 pub mod s3;
 mod selection;
+pub mod xet;
 
 pub use crate::cache::ByteLength;
 pub use crate::cache::manifest::DigestProvenance;
@@ -151,6 +152,8 @@ pub struct ResolvedFile {
     validator: Option<String>,
     response_binding: Option<ResponseBinding>,
     request_target: Option<http::HttpTarget>,
+    hf_lfs: Option<bool>,
+    xet: Option<xet::XetSpec>,
 }
 
 /// Provider protocol expectations, separate from strong ETag resume and raw
@@ -211,6 +214,8 @@ impl ResolvedFile {
             validator: None,
             response_binding: None,
             request_target: None,
+            hf_lfs: None,
+            xet: None,
         };
         validate_relative_path(&file.path)?;
         if let Some(hash) = &file.sha256 {
@@ -276,6 +281,10 @@ impl ResolvedFile {
     pub(super) fn request_target(&self) -> Option<&http::HttpTarget> {
         self.request_target.as_ref()
     }
+    pub(super) fn with_hf_lfs(mut self, lfs: bool) -> Self {
+        self.hf_lfs = Some(lfs);
+        self
+    }
     pub(super) fn with_response_binding(mut self, binding: ResponseBinding) -> Self {
         self.response_binding = Some(binding);
         self
@@ -310,6 +319,7 @@ pub struct ResolvedPullPlan {
     total_bytes: Option<u64>,
     maximum_bytes: u64,
     limits: PullLimits,
+    xet: Option<xet::PlanState>,
 }
 impl ResolvedPullPlan {
     pub fn new(
@@ -345,6 +355,7 @@ impl ResolvedPullPlan {
                         + file.identity.len()
                         + file.validator.as_ref().map_or(0, String::len)
                         + file.response_binding.map_or(0, |_| 32)
+                        + file.xet.as_ref().map_or(0, xet::XetSpec::metadata_bytes)
                         + file
                             .request_target
                             .as_ref()
@@ -367,6 +378,7 @@ impl ResolvedPullPlan {
             total_bytes: all_exact.then_some(maximum_bytes),
             maximum_bytes,
             limits: *limits,
+            xet: None,
         })
     }
     pub fn source(&self) -> &ManifestSource {

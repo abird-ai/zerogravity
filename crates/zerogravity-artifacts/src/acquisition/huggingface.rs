@@ -97,7 +97,7 @@ pub fn diagnostic_resolve(
     )
 }
 
-fn resolve_from(
+pub(super) fn resolve_from(
     transport: &impl HttpTransport,
     request: &PullRequest,
     limits: &PullLimits,
@@ -398,6 +398,7 @@ fn resolve_from(
                 format!("hf:{}:{pin}:{path}", request.repository),
             )?
             .with_validator(entry.validator.clone())
+            .map(|file| file.with_hf_lfs(entry.lfs.is_some()))
         })
         .collect::<Result<Vec<_>>>()?;
     let source = ManifestSource::new("huggingface", &request.repository, pin)?;
@@ -515,7 +516,7 @@ fn metadata_checked(
     Ok((body, link))
 }
 
-fn validate_repo(repo: &str) -> Result<()> {
+pub(super) fn validate_repo(repo: &str) -> Result<()> {
     let parts: Vec<_> = repo.split('/').collect();
     if parts.is_empty()
         || parts.len() > 2

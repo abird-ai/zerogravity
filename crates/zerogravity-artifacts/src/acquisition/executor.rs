@@ -110,6 +110,8 @@ impl PullProgress<'_> {
     pub fn resumed_bytes(&self) -> u64 {
         self.resumed_bytes
     }
+    /// Newly accepted logical source bytes. Native compressed transports may
+    /// fetch/decode extra or repeated wire data; this is not network telemetry.
     pub fn downloaded_bytes(&self) -> u64 {
         self.total_bytes - self.cached_bytes - self.resumed_bytes
     }
@@ -147,6 +149,7 @@ pub fn execute_with_progress(
     progress: &mut impl FnMut(&PullProgress<'_>),
 ) -> Result<PullReceipt> {
     validate_split_closure(plan)?;
+    let mut native = super::xet::Invocation::new(plan, admission, cancel)?;
     let entries = plan
         .files()
         .iter()
@@ -199,8 +202,14 @@ pub fn execute_with_progress(
                 event.cached_bytes = cached_bytes + cached;
                 progress(&event);
             };
-            let (actual, resumed, cached) =
-                transfer_object(&mut transaction, file, transport, cancel, &mut report)?;
+            let (actual, resumed, cached) = transfer_object(
+                &mut transaction,
+                file,
+                transport,
+                cancel,
+                &mut report,
+                native.as_mut(),
+            )?;
             resumed_bytes += resumed;
             cached_bytes += cached;
             actual
@@ -251,8 +260,14 @@ fn transfer_object(
     transport: &impl HttpTransport,
     cancel: &AtomicBool,
     report: &mut impl FnMut(u64, u64, u64),
+    native: Option<&mut super::xet::Invocation>,
 ) -> Result<(ManifestEntry, u64, u64)> {
-    let mut partial = match transaction.cached_or_partial_object(file.path(), file.identity())? {
+    let object = if file.xet.is_some() {
+        transaction.cached_or_ephemeral_object(file.path(), file.identity())?
+    } else {
+        transaction.cached_or_partial_object(file.path(), file.identity())?
+    };
+    let mut partial = match object {
         DiscoveredObject::Cached(actual) => {
             let mut prefix = [0u8; 128];
             let count = transaction.read_prefix(file.path(), &mut prefix)?;
@@ -289,8 +304,23 @@ fn transfer_object(
                 .to_string(),
         })
     };
-    let mut reader = RetryReader::open(transport, file, cancel, range)?;
-    if let Some(validator) = &reader.validator
+    let ordinary = if file.xet.is_none() {
+        native
+            .as_ref()
+            .map(|native| native.ordinary(file))
+            .transpose()?
+    } else {
+        None
+    };
+    let file = ordinary.as_ref().unwrap_or(file);
+    let mut reader = if file.xet.is_some() {
+        let native =
+            native.ok_or_else(|| Error::State("native source invocation is absent".into()))?;
+        SourceReader::Xet(Box::new(native.reader(transport, file, cancel)?))
+    } else {
+        SourceReader::Http(RetryReader::open(transport, file, cancel, range)?)
+    };
+    if let Some(validator) = reader.validator()
         && file.bytes().is_some()
     {
         partial.set_validator(validator)?;
@@ -358,10 +388,31 @@ fn transfer_object(
 }
 
 fn checkpoint_if_exact(partial: &mut PartialObject<'_>, file: &ResolvedFile) -> Result<()> {
-    if file.bytes().is_some() {
+    if file.bytes().is_some() && file.xet.is_none() {
         partial.checkpoint()?;
     }
     Ok(())
+}
+
+enum SourceReader<'a, T> {
+    Http(RetryReader<'a, T>),
+    Xet(Box<super::xet::XetReader<'a>>),
+}
+impl<T> SourceReader<'_, T> {
+    fn validator(&self) -> Option<&str> {
+        match self {
+            Self::Http(reader) => reader.validator.as_deref(),
+            Self::Xet(_) => None,
+        }
+    }
+}
+impl<T: HttpTransport> Read for SourceReader<'_, T> {
+    fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+        match self {
+            Self::Http(reader) => reader.read(output),
+            Self::Xet(reader) => reader.read(output),
+        }
+    }
 }
 
 fn acquired(file: &ResolvedFile, entry: &ManifestEntry) -> AcquiredFile {
@@ -801,6 +852,7 @@ mod cached_start_tests {
             &NoRequest,
             &cancel,
             &mut |bytes, resumed, cached| progress.push((bytes, resumed, cached)),
+            None,
         )
         .unwrap();
         assert_eq!(entry.digest(), fixture.file.sha256().unwrap());
@@ -839,6 +891,7 @@ mod cached_start_tests {
                 calls += 1;
                 cancel.store(true, Ordering::Release);
             },
+            None,
         )
         .unwrap_err();
         assert!(matches!(error, Error::State(_)));
@@ -858,6 +911,7 @@ mod cached_start_tests {
             &NoRequest,
             &cancel,
             &mut |_, _, _| panic!("pointer cannot be reported as accepted progress"),
+            None,
         )
         .unwrap_err();
         assert!(matches!(error, Error::Unsupported(_)));

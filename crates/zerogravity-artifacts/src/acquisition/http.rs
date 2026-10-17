@@ -4,6 +4,7 @@
 use crate::{Error, Result};
 use std::collections::BTreeMap;
 use std::io::{self, Read};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use url::Url;
@@ -28,8 +29,82 @@ pub struct HttpTarget {
 #[derive(Clone)]
 enum TargetProfile {
     Direct,
-    S3 { region: String },
-    Azure { kind: AzureRequestKind },
+    S3 {
+        region: String,
+    },
+    Azure {
+        kind: AzureRequestKind,
+    },
+    XetHub {
+        budget: Arc<super::xet::budget::Budget>,
+        mode: XetHubMode,
+    },
+    XetCas {
+        grant: Arc<XetGrant>,
+        budget: Arc<super::xet::budget::Budget>,
+    },
+    XetRanges {
+        ranges: Vec<super::xet::reconstruction::ByteInterval>,
+        budget: Arc<super::xet::budget::Budget>,
+    },
+}
+/// Ephemeral read grant owned by this HTTP module. In particular, there is no
+/// secret getter for a custom transport: opaque profiles require this owner or
+/// a wrapper delegating to it, otherwise get_target safely stays Unsupported.
+pub(super) struct XetGrant {
+    origin: String,
+    token: String,
+    expires: u64,
+    repository: String,
+    commit: String,
+}
+impl XetGrant {
+    pub(super) fn new(
+        origin: &str,
+        token: String,
+        expires: u64,
+        repository: &str,
+        commit: &str,
+        diagnostic: bool,
+    ) -> Result<Arc<Self>> {
+        super::huggingface::validate_repo(repository)?;
+        let parsed = parse_url(origin, diagnostic)?;
+        validate_origin_url(&parsed)?;
+        if parsed.origin().ascii_serialization() != origin
+            || (!diagnostic && origin != "https://cas-server.xethub.hf.co")
+            || token.is_empty()
+            || token.len() > 64000
+            || !token.bytes().all(|byte| byte.is_ascii_graphic())
+            || expires == 0
+            || commit.len() != 40
+            || !commit
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err(Error::Malformed("invalid scoped Xet read grant".into()));
+        }
+        if diagnostic && !cfg!(any(test, feature = "diagnostic-acquisition")) {
+            return Err(Error::Unsupported(
+                "Xet diagnostic endpoint is unavailable".into(),
+            ));
+        }
+        Ok(Arc::new(Self {
+            origin: origin.to_owned(),
+            token,
+            expires,
+            repository: repository.to_owned(),
+            commit: commit.to_owned(),
+        }))
+    }
+    pub(super) fn expires(&self) -> u64 {
+        self.expires
+    }
+}
+#[derive(Clone, Copy)]
+pub(super) enum XetHubMode {
+    Metadata,
+    Discovery,
+    OrdinaryPayload,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum AzureRequestKind {
@@ -44,6 +119,132 @@ impl std::fmt::Debug for HttpTarget {
     }
 }
 impl HttpTarget {
+    pub(super) fn xet_hub(
+        url: &str,
+        budget: Arc<super::xet::budget::Budget>,
+        mode: XetHubMode,
+    ) -> Result<Self> {
+        let parsed = parse_provider_origin(url)?;
+        budget.check_hub_origin(&parsed.origin().ascii_serialization())?;
+        Ok(Self {
+            origin: parsed.origin().ascii_serialization(),
+            profile: TargetProfile::XetHub { budget, mode },
+            uri: parsed
+                .as_str()
+                .parse()
+                .map_err(|_| Error::Malformed("invalid Xet Hub target".into()))?,
+        })
+    }
+    pub(super) fn xet_cas(
+        url: &str,
+        grant: Arc<XetGrant>,
+        budget: Arc<super::xet::budget::Budget>,
+    ) -> Result<Self> {
+        let parsed = parse_provider_origin(url)?;
+        if parsed.origin().ascii_serialization() != grant.origin {
+            return Err(Error::State("Xet CAS grant origin differs".into()));
+        }
+        Ok(Self {
+            origin: grant.origin.clone(),
+            profile: TargetProfile::XetCas { grant, budget },
+            uri: parsed
+                .as_str()
+                .parse()
+                .map_err(|_| Error::Malformed("invalid Xet CAS target".into()))?,
+        })
+    }
+    pub(super) fn xet_ranges(
+        url: &str,
+        ranges: Vec<super::xet::reconstruction::ByteInterval>,
+        budget: Arc<super::xet::budget::Budget>,
+    ) -> Result<Self> {
+        let parsed = parse_provider_origin(url)?;
+        if ranges.is_empty()
+            || url.len() > 16 * 1024
+            || !url
+                .bytes()
+                .all(|b| b.is_ascii_graphic() && !b"#\\".contains(&b))
+        {
+            return Err(Error::Malformed("invalid Xet signed target".into()));
+        }
+        Ok(Self {
+            origin: parsed.origin().ascii_serialization(),
+            profile: TargetProfile::XetRanges { ranges, budget },
+            uri: url
+                .parse()
+                .map_err(|_| Error::Malformed("invalid Xet signed URI".into()))?,
+        })
+    }
+    fn xet_budget(&self) -> Option<&Arc<super::xet::budget::Budget>> {
+        match &self.profile {
+            TargetProfile::XetHub { budget, .. }
+            | TargetProfile::XetCas { budget, .. }
+            | TargetProfile::XetRanges { budget, .. } => Some(budget),
+            _ => None,
+        }
+    }
+    fn xet_metadata(&self) -> bool {
+        matches!(
+            self.profile,
+            TargetProfile::XetHub {
+                mode: XetHubMode::Metadata | XetHubMode::Discovery,
+                ..
+            } | TargetProfile::XetCas { .. }
+        )
+    }
+    fn xet_isolated(&self) -> bool {
+        matches!(
+            self.profile,
+            TargetProfile::XetCas { .. } | TargetProfile::XetRanges { .. }
+        )
+    }
+    fn xet_observation(&self) -> bool {
+        matches!(
+            self.profile,
+            TargetProfile::XetHub {
+                mode: XetHubMode::Discovery,
+                ..
+            }
+        )
+    }
+    fn xet_ordinary(&self) -> bool {
+        matches!(
+            self.profile,
+            TargetProfile::XetHub {
+                mode: XetHubMode::OrdinaryPayload,
+                ..
+            }
+        )
+    }
+    /// Custom wrappers executing an opaque Xet target must call this immediately
+    /// before EVERY actual attempt, including internal retries. This exposes no
+    /// authentication capability or profile/secret getter. A wrapper delegating
+    /// to HttpsClient leaves accounting to that owner, without double charging.
+    pub fn begin_attempt(&self, cancel: &AtomicBool) -> Result<()> {
+        self.xet_budget()
+            .ok_or_else(|| Error::Unsupported("target has no Xet work capability".into()))?
+            .begin_attempt(cancel)
+    }
+    /// Charge actual decoded HTTP body bytes, including discarded/refetched data.
+    /// Metadata bodies also charge the separate cumulative control bound.
+    pub fn charge_body(&self, bytes: u64) -> Result<()> {
+        self.xet_budget()
+            .ok_or_else(|| Error::Unsupported("target has no Xet work capability".into()))?
+            .charge_body(bytes, self.xet_metadata())
+    }
+    /// Charge received response-header/control bytes, including retry responses.
+    pub fn charge_metadata(&self, bytes: u64) -> Result<()> {
+        self.xet_budget()
+            .ok_or_else(|| Error::Unsupported("target has no Xet work capability".into()))?
+            .charge_metadata(bytes)
+    }
+    /// Read allowance includes at most one overflow sentinel byte. The caller
+    /// still charges actual returned bytes and refuses an exhausted budget.
+    pub fn body_read_limit(&self, requested: usize) -> Result<usize> {
+        self.xet_budget()
+            .ok_or_else(|| Error::Unsupported("target has no Xet work capability".into()))?
+            .read_limit(requested, self.xet_metadata())
+    }
     // Only the pinned provider may construct this no-redirect target. Generic
     // callers cannot relabel arbitrary URLs with a privileged credential profile.
     pub(super) fn direct(url: &str) -> Result<Self> {
@@ -127,6 +328,14 @@ impl HttpTarget {
                 TargetProfile::S3 { region } => region.len(),
                 TargetProfile::Azure { .. } => 8,
                 TargetProfile::Direct => 0,
+                TargetProfile::XetCas { grant, .. } => {
+                    grant.token.len()
+                        + grant.origin.len()
+                        + grant.repository.len()
+                        + grant.commit.len()
+                        + 256
+                }
+                TargetProfile::XetHub { .. } | TargetProfile::XetRanges { .. } => 256,
             }
             + self.uri.to_string().len()
             + 128
@@ -808,12 +1017,14 @@ impl HttpsClient {
         cancel: &AtomicBool,
         head: bool,
     ) -> Result<HttpResponse> {
-        if request.url != target.url() || !self.credential_origins.contains(&target.origin) {
+        if request.url != target.url()
+            || (!target.xet_isolated() && !self.credential_origins.contains(&target.origin))
+        {
             return Err(Error::State(
                 "provider target and client origin differ".into(),
             ));
         }
-        self.request(request, cancel, head, false, Some(target))
+        self.request(request, cancel, head, target.xet_ordinary(), Some(target))
     }
     fn request(
         &self,
@@ -823,7 +1034,10 @@ impl HttpsClient {
         follow_redirects: bool,
         target: Option<&HttpTarget>,
     ) -> Result<HttpResponse> {
-        if self.modelscope_token
+        let isolated = target.is_some_and(HttpTarget::xet_isolated);
+        let observation = target.is_some_and(HttpTarget::xet_observation);
+        if !isolated
+            && self.modelscope_token
             && !target.is_some_and(|target| matches!(target.profile, TargetProfile::Direct))
         {
             return Err(Error::Unsupported(
@@ -837,12 +1051,15 @@ impl HttpsClient {
                 "SigV4 cannot authorize a direct provider target".into(),
             ));
         }
-        if target.is_none() && self.s3_signing.is_some() {
+        if !isolated && target.is_none() && self.s3_signing.is_some() {
             return Err(Error::Unsupported(
                 "SigV4 requires a canonical S3 target".into(),
             ));
         }
-        if self.azure_auth.is_some() && target.is_none_or(|target| target.azure_kind().is_none()) {
+        if !isolated
+            && self.azure_auth.is_some()
+            && target.is_none_or(|target| target.azure_kind().is_none())
+        {
             return Err(Error::Unsupported(
                 "Azure credentials require a canonical Azure target".into(),
             ));
@@ -851,6 +1068,12 @@ impl HttpsClient {
         let initial = parse_url(&request.url, self.loopback)?;
         if let Some(range) = &request.range {
             range.validate()?;
+            if target.is_some_and(|target| target.xet_budget().is_some() && !target.xet_ordinary())
+            {
+                return Err(Error::Unsupported(
+                    "Xet requests cannot use HTTP suffix resume".into(),
+                ));
+            }
         }
         let deadline = Instant::now()
             .checked_add(self.options.total_timeout)
@@ -860,7 +1083,8 @@ impl HttpsClient {
             let mut current = initial.clone();
             let mut authorization = self
                 .credential_origins
-                .contains(&initial.origin().ascii_serialization());
+                .contains(&initial.origin().ascii_serialization())
+                && !isolated;
             for redirects in 0..=self.options.max_redirects {
                 check_cancel(cancel)?;
                 let remaining = deadline
@@ -888,7 +1112,11 @@ impl HttpsClient {
                     })
                     .transpose()?;
                 let wire = prepared.as_ref().map_or_else(
-                    || target.map_or_else(|| current.as_str().to_owned(), HttpTarget::url),
+                    || {
+                        target
+                            .filter(|target| !target.xet_ordinary())
+                            .map_or_else(|| current.as_str().to_owned(), HttpTarget::url)
+                    },
                     |prepared| prepared.uri.clone(),
                 );
                 let call = if head {
@@ -913,7 +1141,7 @@ impl HttpsClient {
                         call = call.header(name, value);
                     }
                 }
-                if let (Some(target), Some(signing)) = (target, &self.s3_signing) {
+                if !isolated && let (Some(target), Some(signing)) = (target, &self.s3_signing) {
                     for (name, value) in
                         signing.headers(target, request, head, std::time::SystemTime::now())?
                     {
@@ -924,6 +1152,39 @@ impl HttpsClient {
                     call = call
                         .header("Range", format!("bytes={}-", range.start))
                         .header("If-Range", &range.validator);
+                }
+                if let Some(target) = target {
+                    match &target.profile {
+                        TargetProfile::XetCas { grant, .. } => {
+                            let now = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map_err(|_| {
+                                    Error::State("invalid Xet authorization clock".into())
+                                })?
+                                .as_secs();
+                            if now >= grant.expires {
+                                return Err(Error::State("Xet read grant expired".into()));
+                            }
+                            call = call.header("Authorization", format!("Bearer {}", grant.token));
+                        }
+                        TargetProfile::XetRanges { ranges, .. } => {
+                            use std::fmt::Write;
+                            let mut header = String::from("bytes=");
+                            for (index, interval) in ranges.iter().enumerate() {
+                                if index != 0 {
+                                    header.push(',');
+                                }
+                                write!(header, "{}-{}", interval.start(), interval.end()).map_err(
+                                    |_| Error::Malformed("invalid Xet range capability".into()),
+                                )?;
+                            }
+                            call = call.header("Range", header);
+                        }
+                        _ => {}
+                    }
+                    if target.xet_budget().is_some() {
+                        target.begin_attempt(cancel)?;
+                    }
                 }
                 let response = match call.call() {
                     Ok(response) => response,
@@ -950,7 +1211,27 @@ impl HttpsClient {
                     }
                 };
                 let status = response.status().as_u16();
-                if matches!(status, 301 | 302 | 303 | 307 | 308) {
+                if let Some(target) = target.filter(|target| target.xet_budget().is_some()) {
+                    let header_bytes =
+                        response
+                            .headers()
+                            .iter()
+                            .try_fold(32u64, |total, (name, value)| {
+                                total
+                                    .checked_add(
+                                        name.as_str().len() as u64
+                                            + value.as_bytes().len() as u64
+                                            + 4,
+                                    )
+                                    .ok_or_else(|| {
+                                        Error::Limit(
+                                            "Xet response header accounting overflow".into(),
+                                        )
+                                    })
+                            })?;
+                    target.charge_metadata(header_bytes)?;
+                }
+                if matches!(status, 301 | 302 | 303 | 307 | 308) && !observation {
                     if !follow_redirects {
                         return Err(Error::Unsupported(
                             "version-pinned HTTP redirects are unsupported".into(),
@@ -1012,6 +1293,7 @@ impl HttpsClient {
                     "x-repo-commit",
                     "x-linked-etag",
                     "x-linked-size",
+                    "x-xet-hash",
                     "x-amz-version-id",
                     "x-amz-delete-marker",
                     "x-goog-generation",
@@ -1047,10 +1329,11 @@ impl HttpsClient {
                     .transpose()?;
                 if declared.is_some_and(|n| n > request.max_body_bytes)
                     && !(head && matches!(status, 405 | 501))
+                    && !observation
                 {
                     return Err(Error::Limit("HTTP declared body limit".into()));
                 }
-                let body: Box<dyn Read + Send> = if head {
+                let body: Box<dyn Read + Send> = if head || observation {
                     // Drop the HTTP response without reading a body, including
                     // when a nonconforming server sends bytes after HEAD.
                     Box::new(io::empty())
@@ -1059,6 +1342,9 @@ impl HttpsClient {
                         inner: response.into_body().into_reader(),
                         remaining: request.max_body_bytes,
                         deadline,
+                        xet: target
+                            .filter(|target| target.xet_budget().is_some())
+                            .cloned(),
                     })
                 };
                 let response = HttpResponse {
@@ -1080,6 +1366,7 @@ struct BoundedBody<R> {
     inner: R,
     remaining: u64,
     deadline: Instant,
+    xet: Option<HttpTarget>,
 }
 impl<R: Read> Read for BoundedBody<R> {
     fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
@@ -1092,14 +1379,24 @@ impl<R: Read> Read for BoundedBody<R> {
                 "HTTP body deadline",
             ));
         }
-        let count = output
+        let mut count = output
             .len()
             .min(usize::try_from(self.remaining).unwrap_or(usize::MAX))
             .max(1);
+        if let Some(target) = &self.xet {
+            count = target
+                .body_read_limit(count)
+                .map_err(|_| io::Error::other("Xet body work budget exhausted"))?;
+        }
         let read = self
             .inner
             .read(&mut output[..count])
             .map_err(|_| io::Error::other("HTTP body read failed"))?;
+        if let Some(target) = &self.xet {
+            target
+                .charge_body(read as u64)
+                .map_err(|_| io::Error::other("Xet body work budget exhausted"))?;
+        }
         if Instant::now() >= self.deadline {
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,
@@ -1281,6 +1578,287 @@ mod tests {
             },
         )
         .unwrap()
+    }
+
+    fn xet_budget(origin: &str, maximum: usize) -> Arc<super::super::xet::budget::Budget> {
+        let mut options = super::super::xet::XetOptions::default()
+            .diagnostic_endpoints(origin, origin)
+            .unwrap();
+        options.max_requests = maximum;
+        Arc::new(super::super::xet::budget::Budget::for_test(&options, 1024 * 1024).unwrap())
+    }
+
+    #[test]
+    fn xet_discovery_observes_headers_without_following_or_opening_compatibility_body() {
+        let (origin, captured, worker) = serve(vec![reply(
+            "302 Found",
+            "Location: http://127.0.0.1:1/NEVER_FOLLOW?secret=NEVER_ECHO\r\nX-Xet-Hash: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n",
+            "NEVER_READ_COMPATIBILITY_PAYLOAD",
+        )]);
+        let request = HttpRequest::new(format!("{origin}/owner/repo/resolve/pin/a.bin"), 1);
+        let target =
+            HttpTarget::xet_hub(&request.url, xet_budget(&origin, 1), XetHubMode::Discovery)
+                .unwrap();
+        let mut response = client(&origin)
+            .get_target(&request, &target, &AtomicBool::new(false))
+            .unwrap();
+        assert_eq!(response.status, 302);
+        assert_eq!(response.header("x-xet-hash").unwrap().len(), 64);
+        assert!(response.header("location").is_none());
+        assert_eq!(response.body.read(&mut [0u8; 1]).unwrap(), 0);
+        worker.join().unwrap();
+        assert_eq!(captured.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn xet_attempt_budget_is_enforced_inside_original_transient_retry_loop() {
+        let (origin, captured, worker) = serve(vec![reply("503 Service Unavailable", "", "")]);
+        let request = HttpRequest::new(format!("{origin}/metadata"), 1024);
+        let target =
+            HttpTarget::xet_hub(&request.url, xet_budget(&origin, 1), XetHubMode::Metadata)
+                .unwrap();
+        let error = client(&origin)
+            .get_target(&request, &target, &AtomicBool::new(false))
+            .err()
+            .unwrap();
+        assert!(matches!(error, Error::Limit(_)));
+        worker.join().unwrap();
+        assert_eq!(captured.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn xet_observed_overflow_charges_one_sentinel_and_prevents_further_reads_or_attempts() {
+        use super::super::xet::{XetOptions, budget::Budget, reconstruction::ByteInterval};
+        let (origin, captured, worker) = serve(vec![reply(
+            "206 Partial Content",
+            "Content-Range: bytes 0-3/4\r\n",
+            "abcd",
+        )]);
+        let mut options = XetOptions::default()
+            .diagnostic_endpoints(&origin, &origin)
+            .unwrap();
+        options.max_wire_bytes = 3;
+        options.max_requests = 3;
+        let budget = Arc::new(Budget::for_test(&options, 1024 * 1024).unwrap());
+        let interval: ByteInterval = serde_json::from_str(r#"{"start":0,"end":3}"#).unwrap();
+        let target = HttpTarget::xet_ranges(
+            &format!("{origin}/xorb?X-Xet-Signed-Range=bytes%3D0-3"),
+            vec![interval],
+            budget.clone(),
+        )
+        .unwrap();
+        let request = HttpRequest::new(target.url(), 64);
+        let owner = client(&origin);
+        let mut response = owner
+            .get_target(&request, &target, &AtomicBool::new(false))
+            .unwrap();
+        loop {
+            match response.body.read(&mut [0u8; 64]) {
+                Ok(0) => panic!("overlong bounded body cannot report successful EOF"),
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
+        assert_eq!(budget.observed_wire_bytes(), 4);
+        assert!(response.body.read(&mut [0u8; 64]).is_err());
+        assert_eq!(budget.observed_wire_bytes(), 4);
+        assert!(matches!(
+            owner.get_target(&request, &target, &AtomicBool::new(false)),
+            Err(Error::Limit(_))
+        ));
+        worker.join().unwrap();
+        assert_eq!(captured.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn xet_exact_wire_budget_still_allows_the_terminal_zero_byte_probe() {
+        use super::super::xet::{XetOptions, budget::Budget, reconstruction::ByteInterval};
+        let (origin, captured, worker) = serve(vec![reply(
+            "206 Partial Content",
+            "Content-Range: bytes 0-2/3\r\n",
+            "abc",
+        )]);
+        let mut options = XetOptions::default()
+            .diagnostic_endpoints(&origin, &origin)
+            .unwrap();
+        options.max_wire_bytes = 3;
+        let budget = Arc::new(Budget::for_test(&options, 1024 * 1024).unwrap());
+        let interval: ByteInterval = serde_json::from_str(r#"{"start":0,"end":2}"#).unwrap();
+        let target = HttpTarget::xet_ranges(
+            &format!("{origin}/xorb?X-Xet-Signed-Range=bytes%3D0-2"),
+            vec![interval],
+            budget.clone(),
+        )
+        .unwrap();
+        let request = HttpRequest::new(target.url(), 3);
+        // read_bounded must make the extra read and observe actual zero-byte EOF.
+        assert_eq!(
+            client(&origin)
+                .get_target(&request, &target, &AtomicBool::new(false))
+                .unwrap()
+                .read_bounded(3, &AtomicBool::new(false))
+                .unwrap(),
+            b"abc"
+        );
+        assert_eq!(budget.observed_wire_bytes(), 3);
+        worker.join().unwrap();
+        assert_eq!(captured.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn xet_cas_and_signed_ranges_isolate_credentials_even_at_same_client_origin() {
+        use super::super::xet::reconstruction::ByteInterval;
+        let (origin, captured, worker) = serve(vec![
+            reply("200 OK", "", "abc"),
+            reply(
+                "206 Partial Content",
+                "Content-Range: bytes 0-2/3\r\n",
+                "abc",
+            ),
+        ]);
+        let budget = xet_budget(&origin, 2);
+        let expires = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 3600;
+        let grant = XetGrant::new(
+            &origin,
+            "CAS_SECRET".into(),
+            expires,
+            "owner/repo",
+            &"a".repeat(40),
+            true,
+        )
+        .unwrap();
+        let owner = client(&origin);
+        let cas = HttpRequest::new(format!("{origin}/v2/reconstructions/file"), 3);
+        let target = HttpTarget::xet_cas(&cas.url, grant, budget.clone()).unwrap();
+        assert_eq!(
+            owner
+                .get_target(&cas, &target, &AtomicBool::new(false))
+                .unwrap()
+                .read_bounded(3, &AtomicBool::new(false))
+                .unwrap(),
+            b"abc"
+        );
+        let interval: ByteInterval = serde_json::from_str(r#"{"start":0,"end":2}"#).unwrap();
+        let target = HttpTarget::xet_ranges(
+            &format!("{origin}/xorb?X-Xet-Signed-Range=bytes%3D0-2&Signature=HIDE"),
+            vec![interval],
+            budget,
+        )
+        .unwrap();
+        let request = HttpRequest::new(target.url(), 3);
+        assert_eq!(
+            owner
+                .get_target(&request, &target, &AtomicBool::new(false))
+                .unwrap()
+                .read_bounded(3, &AtomicBool::new(false))
+                .unwrap(),
+            b"abc"
+        );
+        worker.join().unwrap();
+        let wire = captured.lock().unwrap();
+        assert!(
+            wire[0]
+                .to_ascii_lowercase()
+                .contains("authorization: bearer cas_secret")
+        );
+        assert!(!wire[0].contains("secret_fixture_token"));
+        let range = wire[1].to_ascii_lowercase();
+        assert!(range.contains("range: bytes=0-2"));
+        for name in [
+            "authorization:",
+            "cookie:",
+            "x-amz-security-token:",
+            "x-ms-date:",
+        ] {
+            assert!(!range.contains(name));
+        }
+    }
+
+    #[test]
+    fn xet_ordinary_payload_uses_redirected_wire_target_and_strips_cross_origin_credentials() {
+        let (destination, final_wire, destination_worker) = serve(vec![reply("200 OK", "", "abc")]);
+        let (origin, first_wire, first_worker) = serve(vec![reply(
+            "302 Found",
+            &format!("Location: {destination}/changed-path?opaque=HIDE\r\n"),
+            "",
+        )]);
+        let request = HttpRequest::new(format!("{origin}/ordinary-git-file"), 3);
+        let target = HttpTarget::xet_hub(
+            &request.url,
+            xet_budget(&origin, 2),
+            XetHubMode::OrdinaryPayload,
+        )
+        .unwrap();
+        assert_eq!(
+            client(&origin)
+                .get_target(&request, &target, &AtomicBool::new(false))
+                .unwrap()
+                .read_bounded(3, &AtomicBool::new(false))
+                .unwrap(),
+            b"abc"
+        );
+        first_worker.join().unwrap();
+        destination_worker.join().unwrap();
+        assert!(
+            first_wire.lock().unwrap()[0]
+                .to_ascii_lowercase()
+                .contains("authorization:")
+        );
+        let wire = final_wire.lock().unwrap();
+        assert!(wire[0].starts_with("GET /changed-path?opaque=HIDE "));
+        assert!(!wire[0].to_ascii_lowercase().contains("authorization:"));
+    }
+
+    #[test]
+    fn xet_ordinary_suffix_resume_preserves_original_wire_checks_and_actual_retry_budget() {
+        for maximum in [1, 2] {
+            let mut replies = vec![reply("503 Service Unavailable", "", "")];
+            if maximum == 2 {
+                replies.push(reply(
+                    "206 Partial Content",
+                    "ETag: \"stable\"\r\nContent-Range: bytes 2-4/5\r\n",
+                    "cde",
+                ));
+            }
+            let (origin, captured, worker) = serve(replies);
+            let mut request = HttpRequest::new(format!("{origin}/ordinary.txt"), 3);
+            request.range = Some(ResumeRequest {
+                start: 2,
+                total: 5,
+                validator: "\"stable\"".into(),
+            });
+            let target = HttpTarget::xet_hub(
+                &request.url,
+                xet_budget(&origin, maximum),
+                XetHubMode::OrdinaryPayload,
+            )
+            .unwrap();
+            let result = client(&origin).get_target(&request, &target, &AtomicBool::new(false));
+            if maximum == 1 {
+                assert!(matches!(result, Err(Error::Limit(_))));
+            } else {
+                assert_eq!(
+                    result
+                        .unwrap()
+                        .read_bounded(3, &AtomicBool::new(false))
+                        .unwrap(),
+                    b"cde"
+                );
+            }
+            worker.join().unwrap();
+            let wire = captured.lock().unwrap();
+            assert_eq!(wire.len(), maximum);
+            for request in wire.iter() {
+                let lower = request.to_ascii_lowercase();
+                assert!(lower.contains("range: bytes=2-"));
+                assert!(lower.contains("if-range: \"stable\""));
+                assert!(lower.contains("authorization: bearer secret_fixture_token"));
+            }
+        }
     }
 
     struct CaptureLogger(Mutex<Vec<String>>);
