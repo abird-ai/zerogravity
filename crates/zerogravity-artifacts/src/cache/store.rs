@@ -4,8 +4,8 @@ use super::paths::{
 #[cfg(feature = "diagnostic-cache")]
 use super::{CacheHook, CacheMoment, CacheOperation, CachePoint};
 use super::{
-    CacheOptions, CommitOutcome, DiskUsage, FilesystemProfile, Manifest, PublishedSnapshot,
-    SnapshotLease, TransferAdmission,
+    CacheOptions, CommitOutcome, DigestProvenance, DiskUsage, FileRole, FilesystemProfile,
+    Manifest, ManifestEntry, ManifestSource, PublishedSnapshot, SnapshotLease, TransferAdmission,
 };
 use crate::{Error, Result};
 use rustix::fs::{AtFlags, Mode, OFlags, RenameFlags};
@@ -78,6 +78,45 @@ pub struct CacheTransaction {
     // PID test, determines whether an abandoned reservation may be recovered.
     owner_lock: Option<CacheLock>,
     _memory: GlobalResourceLease,
+}
+
+/// An exact listed length is required before reservation. A missing raw SHA256
+/// is first-seen content, not permission for an unbounded transfer.
+#[derive(Clone, Debug)]
+pub struct DiscoveredEntry {
+    path: String,
+    bytes: u64,
+    role: FileRole,
+    sha256: Option<String>,
+}
+impl DiscoveredEntry {
+    pub fn new(
+        path: impl Into<String>,
+        bytes: u64,
+        role: FileRole,
+        sha256: Option<String>,
+    ) -> Result<Self> {
+        let path = path.into();
+        validate_relative_path(&path)?;
+        if let Some(hash) = &sha256 {
+            validate_digest(hash)?;
+        }
+        Ok(Self {
+            path,
+            bytes,
+            role,
+            sha256,
+        })
+    }
+}
+
+/// Same owned attempt, reservation, publisher and cleanup as A1. Planning
+/// digests are private accounting keys: this type has no way to publish them.
+/// Only the final actual-byte Manifest can reach CacheTransaction::commit.
+pub struct DiscoveredTransaction {
+    inner: CacheTransaction,
+    entries: Vec<DiscoveredEntry>,
+    verified: BTreeMap<String, ManifestEntry>,
 }
 
 fn add(a: u64, b: u64) -> Result<u64> {
@@ -478,6 +517,93 @@ impl CacheStore {
         self.usage_locked()
     }
 
+    /// Bounded offline listing of complete immutable snapshots. This does not
+    /// confer model readiness or authenticate a cached first-seen upstream.
+    pub fn list_snapshots(&self) -> Result<Vec<String>> {
+        let lock = self.lock("publication", &AtomicBool::new(false))?;
+        lock.ensure_bound()?;
+        let mut result = Vec::new();
+        for node in self.inner.root.walk_tree(MAX_NODES)? {
+            if let Some(name) = node.path.strip_prefix("snapshots/")
+                && node.is_directory
+                && !name.contains('/')
+            {
+                validate_digest(name)?;
+                // A complete snapshot always has a valid bound manifest;
+                // malformed/incomplete entries refuse rather than look ready.
+                let manifest = Manifest::from_json(
+                    &self.read(
+                        &format!("snapshots/{name}/manifest.json"),
+                        self.inner.options.limits.max_manifest_bytes,
+                    )?,
+                    &self.inner.options.limits,
+                )?;
+                if manifest.digest()? != name {
+                    return Err(Error::Malformed(
+                        "snapshot manifest identity mismatch".into(),
+                    ));
+                }
+                result.push(name.to_string());
+            }
+        }
+        result.sort_unstable();
+        Ok(result)
+    }
+
+    pub fn begin_discovered(
+        &self,
+        source: ManifestSource,
+        mut entries: Vec<DiscoveredEntry>,
+        admission: &TransferAdmission,
+        cancel: Arc<AtomicBool>,
+    ) -> Result<DiscoveredTransaction> {
+        check_cancel(&cancel)?;
+        let memory = self.admit_transfer(admission)?;
+        if entries.is_empty() || entries.len() > self.inner.options.limits.max_files {
+            return Err(Error::Limit("discovered cache file count".into()));
+        }
+        entries.sort_unstable_by(|a, b| a.path.cmp(&b.path));
+        let mut used: BTreeSet<String> = entries.iter().filter_map(|e| e.sha256.clone()).collect();
+        let mut next = 0u64;
+        let mut planned = Vec::new();
+        for entry in &entries {
+            let key = match &entry.sha256 {
+                Some(hash) => hash.clone(),
+                None => loop {
+                    let key = format!("{next:064x}");
+                    next = next
+                        .checked_add(1)
+                        .ok_or_else(|| Error::Limit("planning keys exhausted".into()))?;
+                    if used.insert(key.clone()) {
+                        break key;
+                    }
+                },
+            };
+            // Distinct unknown files reserve worst-case bytes independently.
+            // The final fixed-width digest and provenance occupy exactly the
+            // same metadata envelope as this non-publishable planned entry.
+            planned.push(
+                ManifestEntry::new(&entry.path, key, entry.bytes, entry.role)?
+                    .with_digest_provenance(if entry.sha256.is_some() {
+                        DigestProvenance::TrustedSha256
+                    } else {
+                        DigestProvenance::FirstSeen
+                    }),
+            );
+        }
+        let manifest = Manifest::new(source, planned, &self.inner.options.limits)?;
+        let known_objects = entries
+            .iter()
+            .filter_map(|entry| entry.sha256.clone())
+            .collect();
+        let inner = self.begin_admitted(manifest, cancel, memory, Some(known_objects))?;
+        Ok(DiscoveredTransaction {
+            inner,
+            entries,
+            verified: BTreeMap::new(),
+        })
+    }
+
     pub fn begin(
         &self,
         manifest: Manifest,
@@ -485,6 +611,11 @@ impl CacheStore {
         cancel: Arc<AtomicBool>,
     ) -> Result<CacheTransaction> {
         check_cancel(&cancel)?;
+        let memory = self.admit_transfer(admission)?;
+        self.begin_admitted(manifest, cancel, memory, None)
+    }
+
+    fn admit_transfer(&self, admission: &TransferAdmission) -> Result<GlobalResourceLease> {
         // Reserve a conservative operation-local envelope before creating
         // canonical/parsed control copies or a transfer buffer. Inventory is
         // independently bounded to 8MiB of reserved path characters (including
@@ -509,14 +640,23 @@ impl CacheStore {
             )?,
             add(self.inner.options.buffer_bytes as u64, 64 * 1024)?,
         )?;
-        let memory = admission.arbiter.admit(
+        admission.arbiter.admit(
             &admission.resource,
             admission.owner.clone(),
             &[AllocationRequest {
                 kind: AllocationClass::TransferStaging,
                 bytes: envelope,
             }],
-        )?;
+        )
+    }
+
+    fn begin_admitted(
+        &self,
+        manifest: Manifest,
+        cancel: Arc<AtomicBool>,
+        memory: GlobalResourceLease,
+        reservation_objects: Option<Vec<String>>,
+    ) -> Result<CacheTransaction> {
         // Revalidate against this store's bounds when a caller used wider
         // limits. No file mutation or input read precedes this validation.
         let manifest =
@@ -576,7 +716,11 @@ impl CacheStore {
             schema: "zerogravity.cache.reservation.v1".into(),
             remaining: peak,
             snapshot: digest.clone(),
-            objects: objects.into_iter().map(str::to_string).collect(),
+            // Discovery keys must never credit an unrelated named blob.
+            // Only known upstream digests enter this cohort; discovered bytes
+            // remain observed through their original staging inode links.
+            objects: reservation_objects
+                .unwrap_or_else(|| objects.into_iter().map(str::to_string).collect()),
         };
         let mut reservation_file = self.inner.root.open_file(
             &format!("staging/{attempt}/reservation.json"),
@@ -700,6 +844,24 @@ impl CacheTransaction {
     }
 
     pub fn import_object(&mut self, logical_path: &str, reader: &mut impl Read) -> Result<()> {
+        let entry = self
+            .manifest
+            .entries()
+            .iter()
+            .find(|e| e.path() == logical_path)
+            .ok_or_else(|| Error::Malformed("object not in resolved cache manifest".into()))?;
+        let hash = entry.digest().to_string();
+        self.import_verified(logical_path, reader, Some(&hash), false)?;
+        Ok(())
+    }
+
+    fn import_verified(
+        &mut self,
+        logical_path: &str,
+        reader: &mut impl Read,
+        expected: Option<&str>,
+        retain_stage: bool,
+    ) -> Result<ManifestEntry> {
         self.ensure_owner()?;
         let ordinal = self
             .manifest
@@ -710,21 +872,26 @@ impl CacheTransaction {
         if self.complete.contains(logical_path) {
             return Err(Error::State("cache object already imported".into()));
         }
-        let entry = &self.manifest.entries()[ordinal];
-        let expected_digest = entry.digest().to_string();
-        let bytes = entry.bytes();
-        let object_lock = self
-            .store
-            .lock(&format!("object-{expected_digest}"), &self.cancel)?;
-        object_lock.ensure_bound()?;
-        let blob = format!("blobs/sha256/{expected_digest}");
-        match self.store.verify_file(&blob, &expected_digest, bytes) {
-            Ok(_) => {
-                self.complete.insert(logical_path.to_string());
-                return Ok(());
+        let bytes = self.manifest.entries()[ordinal].bytes();
+        let role = self.manifest.entries()[ordinal].role();
+        let mut object_lock = expected
+            .map(|hash| self.store.lock(&format!("object-{hash}"), &self.cancel))
+            .transpose()?;
+        if let Some(lock) = &object_lock {
+            lock.ensure_bound()?;
+        }
+        if let Some(hash) = expected {
+            match self
+                .store
+                .verify_file(&format!("blobs/sha256/{hash}"), hash, bytes)
+            {
+                Ok(_) => {
+                    self.complete.insert(logical_path.to_string());
+                    return ManifestEntry::new(logical_path, hash, bytes, role);
+                }
+                Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e),
             }
-            Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(e),
         }
         let temporary = self.stage(&format!("object-{ordinal}"));
         let mut target = self.store.inner.root.open_file(
@@ -748,12 +915,13 @@ impl CacheTransaction {
             target.write_all(&self.buffer[..read])?;
             remaining -= read as u64;
         }
-        let mut extra = [0u8; 1];
         self.ensure_owner()?;
-        if reader.read(&mut extra)? != 0 || format!("{:x}", hasher.finalize()) != expected_digest {
-            return Err(Error::Malformed(
-                "cache source digest/length mismatch".into(),
-            ));
+        if reader.read(&mut self.buffer[..1])? != 0 {
+            return Err(Error::Malformed("cache source length mismatch".into()));
+        }
+        let actual = format!("{:x}", hasher.finalize());
+        if expected.is_some_and(|value| value != actual) {
+            return Err(Error::Malformed("cache source digest mismatch".into()));
         }
         #[cfg(feature = "diagnostic-cache")]
         self.store.point(
@@ -768,39 +936,64 @@ impl CacheTransaction {
             CacheMoment::After,
             Some(ordinal),
         )?;
-        object_lock.ensure_bound()?;
+        if object_lock.is_none() {
+            object_lock = Some(self.store.lock(&format!("object-{actual}"), &self.cancel)?);
+        }
+        let lock = object_lock.as_ref().expect("actual object lock acquired");
+        lock.ensure_bound()?;
         self.ensure_owner()?;
-        #[cfg(feature = "diagnostic-cache")]
-        self.store.point(
-            CacheOperation::ObjectInstall,
-            CacheMoment::Before,
-            Some(ordinal),
-        )?;
-        object_lock.ensure_bound()?;
-        self.ensure_owner()?;
-        self.store.link(&temporary, &blob)?;
-        #[cfg(feature = "diagnostic-cache")]
-        self.store.point(
-            CacheOperation::ObjectInstall,
-            CacheMoment::After,
-            Some(ordinal),
-        )?;
-        #[cfg(feature = "diagnostic-cache")]
-        self.store.point(
-            CacheOperation::ObjectDirectorySync,
-            CacheMoment::Before,
-            Some(ordinal),
-        )?;
-        self.store.sync_dir("blobs/sha256")?;
-        #[cfg(feature = "diagnostic-cache")]
-        self.store.point(
-            CacheOperation::ObjectDirectorySync,
-            CacheMoment::After,
-            Some(ordinal),
-        )?;
-        self.store.unlink(&temporary, false)?;
+        let blob = format!("blobs/sha256/{actual}");
+        // Unknown checksums may converge after their single-pass downloads.
+        // Verify an existing inode rather than replacing it or trusting its name.
+        let exists = if expected.is_none() {
+            match self.store.verify_file(&blob, &actual, bytes) {
+                Ok(_) => true,
+                Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => false,
+                Err(e) => return Err(e),
+            }
+        } else {
+            false
+        };
+        if !exists {
+            #[cfg(feature = "diagnostic-cache")]
+            self.store.point(
+                CacheOperation::ObjectInstall,
+                CacheMoment::Before,
+                Some(ordinal),
+            )?;
+            lock.ensure_bound()?;
+            self.ensure_owner()?;
+            self.store.link(&temporary, &blob)?;
+            #[cfg(feature = "diagnostic-cache")]
+            self.store.point(
+                CacheOperation::ObjectInstall,
+                CacheMoment::After,
+                Some(ordinal),
+            )?;
+            #[cfg(feature = "diagnostic-cache")]
+            self.store.point(
+                CacheOperation::ObjectDirectorySync,
+                CacheMoment::Before,
+                Some(ordinal),
+            )?;
+            self.store.sync_dir("blobs/sha256")?;
+            #[cfg(feature = "diagnostic-cache")]
+            self.store.point(
+                CacheOperation::ObjectDirectorySync,
+                CacheMoment::After,
+                Some(ordinal),
+            )?;
+        }
+        // Discovery reservations do not know the final blob key in advance.
+        // Retain the original staging inode link so usage_locked observes and
+        // credits its real bytes against that live attempt's reserved peak.
+        // If a dedup hit uses another inode, retaining the private copy also
+        // keeps its physical temporary bytes counted until exact-owned cleanup.
+        if !retain_stage {
+            self.store.unlink(&temporary, false)?;
+        }
         self.complete.insert(logical_path.to_string());
-        Ok(())
+        ManifestEntry::new(logical_path, actual, bytes, role)
     }
 
     pub fn commit(self, reference: Option<&str>) -> Result<CommitOutcome> {
@@ -1070,6 +1263,162 @@ impl CacheTransaction {
         // Reservation is released by exact-owned staging cleanup. Installed
         // unreferenced snapshots/blobs remain in the next inventory charge.
         Ok(CommitOutcome::Durable(published))
+    }
+}
+
+impl DiscoveredTransaction {
+    fn entry(&self, logical_path: &str) -> Result<&DiscoveredEntry> {
+        self.entries
+            .iter()
+            .find(|e| e.path == logical_path)
+            .ok_or_else(|| Error::Malformed("object not in acquisition plan".into()))
+    }
+
+    pub fn try_cached(&mut self, logical_path: &str) -> Result<Option<ManifestEntry>> {
+        self.inner.ensure_owner()?;
+        if self.verified.contains_key(logical_path) {
+            return Err(Error::State("cache object already imported".into()));
+        }
+        let entry = self.entry(logical_path)?;
+        let Some(hash) = &entry.sha256 else {
+            return Ok(None);
+        };
+        let lock = self
+            .inner
+            .store
+            .lock(&format!("object-{hash}"), &self.inner.cancel)?;
+        lock.ensure_bound()?;
+        match self
+            .inner
+            .store
+            .verify_file(&format!("blobs/sha256/{hash}"), hash, entry.bytes)
+        {
+            Ok(_) => {
+                let actual = ManifestEntry::new(&entry.path, hash, entry.bytes, entry.role)?
+                    .with_digest_provenance(DigestProvenance::TrustedSha256);
+                self.inner.complete.insert(logical_path.to_string());
+                self.verified
+                    .insert(logical_path.to_string(), actual.clone());
+                Ok(Some(actual))
+            }
+            Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn import_object(
+        &mut self,
+        logical_path: &str,
+        reader: &mut impl Read,
+    ) -> Result<ManifestEntry> {
+        let expected = self.entry(logical_path)?.sha256.clone();
+        let actual = self
+            .inner
+            .import_verified(logical_path, reader, expected.as_deref(), true)?
+            .with_digest_provenance(if expected.is_some() {
+                DigestProvenance::TrustedSha256
+            } else {
+                DigestProvenance::FirstSeen
+            });
+        self.verified
+            .insert(logical_path.to_string(), actual.clone());
+        Ok(actual)
+    }
+
+    /// Only small already-verified index/control bodies can be materialized.
+    /// Model-weight objects never pass through a whole-file RAM buffer.
+    pub fn read_object(&self, logical_path: &str, limit: usize) -> Result<Vec<u8>> {
+        self.inner.ensure_owner()?;
+        if limit > 8 * 1024 * 1024 {
+            return Err(Error::Limit("acquisition control object bound".into()));
+        }
+        let entry = self
+            .verified
+            .get(logical_path)
+            .ok_or_else(|| Error::State("object not verified".into()))?;
+        if entry.bytes() > limit as u64 {
+            return Err(Error::Limit("acquisition control object too large".into()));
+        }
+        let mut file = self.inner.store.verify_file(
+            &format!("blobs/sha256/{}", entry.digest()),
+            entry.digest(),
+            entry.bytes(),
+        )?;
+        let mut bytes = Vec::new();
+        bytes
+            .try_reserve_exact(entry.bytes() as usize)
+            .map_err(|_| Error::Limit("control object allocation refused".into()))?;
+        Read::by_ref(&mut file)
+            .take(entry.bytes() + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() as u64 != entry.bytes() || digest(&bytes) != entry.digest() {
+            return Err(Error::Malformed(
+                "acquisition control content changed".into(),
+            ));
+        }
+        Ok(bytes)
+    }
+
+    pub fn read_prefix(&self, logical_path: &str, output: &mut [u8]) -> Result<usize> {
+        self.inner.ensure_owner()?;
+        if output.len() > 4096 {
+            return Err(Error::Limit("acquisition prefix bound".into()));
+        }
+        let entry = self
+            .verified
+            .get(logical_path)
+            .ok_or_else(|| Error::State("object not verified".into()))?;
+        let mut file = self.inner.store.inner.root.open_file(
+            &format!("blobs/sha256/{}", entry.digest()),
+            OFlags::RDONLY,
+            Mode::empty(),
+        )?;
+        let count = output
+            .len()
+            .min(entry.bytes().min(usize::MAX as u64) as usize);
+        file.read_exact(&mut output[..count])?;
+        Ok(count)
+    }
+
+    pub fn manifest(&self) -> Result<Manifest> {
+        self.inner.ensure_owner()?;
+        if self.verified.len() != self.entries.len() {
+            return Err(Error::State("acquisition snapshot incomplete".into()));
+        }
+        Manifest::new(
+            self.inner.manifest.source().clone(),
+            self.verified.values().cloned().collect(),
+            &self.inner.store.inner.options.limits,
+        )
+    }
+
+    pub fn commit(mut self, reference: Option<&str>) -> Result<CommitOutcome> {
+        let manifest = self.manifest()?;
+        // Fixed-width real digests and the same provenance fields cannot grow
+        // beyond the exact planned metadata reservation. The reservation's
+        // snapshot field is only a private accounting identity, never a ref or
+        // a promise that a manifest exists. Its objects remain planned keys;
+        // actual payload consumption is pinned by retained staging hardlinks.
+        if manifest.canonical_bytes()?.len() > self.inner.manifest.canonical_bytes()?.len() {
+            return Err(Error::Limit(
+                "discovered manifest exceeds planned peak".into(),
+            ));
+        }
+        #[cfg(feature = "diagnostic-cache")]
+        self.inner.store.point(
+            CacheOperation::DiscoveredManifestReady,
+            CacheMoment::Before,
+            None,
+        )?;
+        self.inner.digest = manifest.digest()?;
+        self.inner.manifest = manifest;
+        #[cfg(feature = "diagnostic-cache")]
+        self.inner.store.point(
+            CacheOperation::DiscoveredManifestReady,
+            CacheMoment::After,
+            None,
+        )?;
+        self.inner.commit(reference)
     }
 }
 

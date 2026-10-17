@@ -6,6 +6,10 @@
 //! `model-gemma4` exposes source metadata contracts. Feature selection alone
 //! does not qualify a runnable checkpoint or add a model execution command.
 
+#[cfg(all(feature = "acquisition", target_os = "linux"))]
+pub use zerogravity_artifacts::acquisition;
+#[cfg(all(feature = "cache", target_os = "linux"))]
+pub use zerogravity_artifacts::cache;
 pub use zerogravity_artifacts::{artifact, model, quant, sharded};
 pub use zerogravity_core::{Error, Result, accelerator, session_root};
 pub use zerogravity_core::{device_events, device_queue, resource_arbiter, state};

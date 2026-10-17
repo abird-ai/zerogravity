@@ -1,6 +1,6 @@
 # TODO — historical records
 
-Status: active
+Status: done
 Provenance: 7e61cb6
 
 Retire superseded historical bodies after preserving distinct useful design,
@@ -45,9 +45,9 @@ HEAD above. The root README and implementation remain outside this change.
 - [x] Single plan index, per-plan TODOs and separate agent run TODOs exist.
 - [x] New work uses these checklists; old duplicated evidence does not become a fresh verification requirement.
 
-## Uncommitted
+### 9239719 — retire historical archive bodies
 
-### Historical archive retirement
+#### Historical archive retirement
 
 - [x] Retire `DESIGN_EVOLUTION_V3_SNAPSHOT.md` after retaining useful rejected-design rationale in the [current critical review](../../prior-art/ARCHITECTURE_V4_CRITICAL_REVIEW_2026-10-12.md).
 - [x] Retire `DESIGN_EVOLUTION_V3_HANDOFF_SNAPSHOT.md` after updating inbound links. StateDomains prepare; the current coordinator alone publishes roots.
@@ -70,7 +70,7 @@ Keep historical rank/state commit, four enduring IR and obsolete archive-generat
 instructions superseded. Current API/auth/trust/SLO/plugin/quality questions stay
 in their active plan TODOs.
 
-### Integrated continuation
+#### Integrated continuation
 
 - [x] Preserve rejected-design rationale and one-publisher/compiler/physical ownership in the critical review; replace stale implementation prefixes in the master with current plan authority.
 - [x] Retain all SSD-01..32, QTIP/HYB/GFX and MM-01..24 plus 77 family fixture requirements in their current technical owners; carry distinct pending tests/policies into the owning plan TODOs. None is promoted by this document cleanup.
@@ -78,7 +78,11 @@ in their active plan TODOs.
 - [x] Replace the pre-product body with current navigation; move verified build/release/Nix interfaces into docs/DEVELOPMENT.md. Root README bytes remain unchanged.
 - [x] Recover the initial gate failure caused by a copied CLI test embedding the retired checkout path. Refresh only test-source mtime and recompile; source bytes and the gate command are unchanged.
 - [x] Reconcile independent final review, resolve leftover archive-preservation claims, and replace remaining active generated-handoff/SHA closeout duties with TODO-SPEC. Preserve historical user-decision rows, current source identifiers and numerical/physical tests.
-- [ ] Integrate completed run findings, retire their temporary files, commit this phase with signing and close the index line.
+- [x] Integrate completed run findings, retire their temporary files, commit this phase with signing and close the index line.
+
+## Uncommitted
+
+None. Continue [model acquisition A2](../model-acquisition/TODO.md).
 
 ## Tests and verification
 
@@ -88,4 +92,4 @@ in their active plan TODOs.
 - [x] All current first-party Markdown local links resolve; no live reference claims a deleted archive is still preserved.
 - [x] Root README bytes, runtime/source/dependencies, vendor/reference fixtures and recorded model-content identifiers are unchanged from 7e61cb6.
 - [x] `CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=4 python3 scripts/native-gpu.py -- bash scripts/check.sh` passes without downloading models/SDKs or launching held GPUs.
-- [ ] Review explicit paths, create a signed commit, integrate finished agent work and retire its temporary run files.
+- [x] Review explicit paths, create a signed commit, integrate finished agent work and retire its temporary run files.

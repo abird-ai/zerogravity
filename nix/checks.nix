@@ -81,6 +81,11 @@
           body = (original / relative).read_bytes()
           assert (filtered / relative).read_bytes() == body, relative
           model_fixtures.append({"path": str(relative), "sha256": hashlib.sha256(body).hexdigest()})
+      # Synthetic localhost TLS material is test input, never production trust
+      # or credentials. Keep the exact reviewed fixtures in optional builds.
+      for name in ["ca.pem", "server.pem", "server.key", "README.md"]:
+          relative = pathlib.Path("crates/zerogravity-artifacts/tests/fixtures/acquisition") / name
+          assert (filtered / relative).read_bytes() == (original / relative).read_bytes(), relative
       output.mkdir()
       (output / "manifest.json").write_text(json.dumps({"vendor_files": files, "workspace_members": sorted(members), "workspace_version_inherited": True, "model_sources": model_sources, "model_fixtures": model_fixtures, "single_root_lock": True, "root_readme_unchanged": True, "arm_math_notice_sha256": hashlib.sha256((filtered / arm_notice).read_bytes()).hexdigest()}, indent=2) + "\n")
       PY

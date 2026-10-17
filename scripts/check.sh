@@ -34,7 +34,9 @@ tree = subprocess.check_output([
 ], text=True)
 for line in tree.splitlines():
     name = line.split()[0]
-    assert not name.startswith(("cubecl", "tracel-llvm")) and name != "zerogravity-gpu", line
+    assert not name.startswith(("cubecl", "tracel-llvm")) and name not in {
+        "zerogravity-gpu", "ureq", "ureq-proto", "rustls", "url"
+    }, line
 PYWORKSPACE
 
 echo "Checking CPU clippy (including explicit CPU diagnostics)..."
@@ -55,6 +57,48 @@ cargo clippy --locked --offline -p zerogravity-artifacts --no-default-features -
 cargo test --locked --offline -p zerogravity-artifacts --no-default-features --features cache --test cache_transactions
 cargo clippy --locked --offline -p zerogravity-artifacts --no-default-features --features cache,diagnostic-cache --all-targets -- -D warnings
 cargo test --locked --offline -p zerogravity-artifacts --no-default-features --features cache,diagnostic-cache --all-targets
+
+if [[ "$(uname -s)" == Linux ]]; then
+  echo "Checking optional acquisition with isolated loopback fixtures..."
+  # native-gpu.py creates a private network namespace with lo down. Enable
+  # only that namespace's loopback; never change a host interface or route.
+  python3 - <<'PYLOOPBACK'
+import fcntl
+import os
+import socket
+import struct
+from pathlib import Path
+
+with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as control:
+    request = struct.pack("16sH22x", b"lo", 0)
+    current = fcntl.ioctl(control, 0x8913, request)
+    flags = struct.unpack_from("H", current, 16)[0]
+    if not flags & 1:
+        mapping = Path("/proc/self/uid_map").read_text().split()
+        if len(mapping) != 3 or mapping[0] != "0" or mapping[1] == "0" or mapping[2] != "1":
+            raise SystemExit("refusing to change loopback outside a private mapped user namespace")
+        # NS_GET_USERNS returns the network namespace's owning user namespace.
+        # Unlike /proc/1/ns, these own-process handles work with restricted proc.
+        network = os.open("/proc/self/ns/net", os.O_RDONLY)
+        try:
+            owner = fcntl.ioctl(network, 0xB701)
+            try:
+                if os.fstat(owner).st_ino != os.stat("/proc/self/ns/user").st_ino:
+                    raise SystemExit("refusing to change a network namespace owned by another user namespace")
+            finally:
+                os.close(owner)
+        finally:
+            os.close(network)
+        fcntl.ioctl(control, 0x8914, struct.pack("16sH22x", b"lo", flags | 1))
+PYLOOPBACK
+  cargo clippy --locked --offline -p zerogravity-artifacts --no-default-features --features acquisition --all-targets -- -D warnings
+  cargo clippy --locked --offline -p zerogravity-cli --no-default-features --features acquisition --all-targets -- -D warnings
+  cargo check --locked --offline -p zerogravity-cli --features acquisition
+  cargo clippy --locked --offline -p zerogravity-artifacts --no-default-features --features acquisition,diagnostic-acquisition,diagnostic-cache --all-targets -- -D warnings
+  cargo test --locked --offline -p zerogravity-artifacts --no-default-features --features acquisition,diagnostic-acquisition,diagnostic-cache --all-targets
+  cargo clippy --locked --offline -p zerogravity-cli --no-default-features --features acquisition,diagnostic-acquisition --all-targets -- -D warnings
+  cargo test --locked --offline -p zerogravity-cli --no-default-features --features acquisition,diagnostic-acquisition --all-targets
+fi
 
 echo "Building the default CPU release CLI..."
 cargo build --locked --offline --release --no-default-features -p zerogravity-cli --bin zerogravity --features cpu,model-qwen35,text

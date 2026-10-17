@@ -12,8 +12,10 @@ pub mod paths;
 mod store;
 
 pub use leases::SnapshotLease;
-pub use manifest::{CacheLimits, FileRole, Manifest, ManifestEntry, ManifestSource};
-pub use store::{CacheStore, CacheTransaction};
+pub use manifest::{
+    CacheLimits, DigestProvenance, FileRole, Manifest, ManifestEntry, ManifestSource,
+};
+pub use store::{CacheStore, CacheTransaction, DiscoveredEntry, DiscoveredTransaction};
 
 use crate::Error;
 #[cfg(feature = "diagnostic-cache")]
@@ -96,6 +98,7 @@ pub struct DiskUsage {
 #[cfg(feature = "diagnostic-cache")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CacheOperation {
+    DiscoveredManifestReady,
     ReservationFileSync,
     ReservationDirectorySync,
     StagingDirectorySync,

@@ -56,6 +56,17 @@ pub enum FileRole {
     Auxiliary,
 }
 
+/// A local content hash does not authenticate an upstream source. This records
+/// whether the resolver supplied a raw SHA256 or observed bytes for the first
+/// time. Older/local manifests conservatively report Unspecified.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DigestProvenance {
+    Unspecified,
+    TrustedSha256,
+    FirstSeen,
+}
+
 /// Secret-free provenance labels; a provider resolver must qualify its own pin.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ManifestSource {
@@ -117,6 +128,8 @@ pub struct ManifestEntry {
     digest: String,
     bytes: u64,
     role: FileRole,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    digest_provenance: Option<DigestProvenance>,
 }
 impl ManifestEntry {
     pub fn new(
@@ -130,6 +143,7 @@ impl ManifestEntry {
             digest: digest.into(),
             bytes,
             role,
+            digest_provenance: None,
         };
         validate_relative_path(&value.path)?;
         validate_digest(&value.digest)?;
@@ -146,6 +160,14 @@ impl ManifestEntry {
     }
     pub fn role(&self) -> FileRole {
         self.role
+    }
+    pub fn with_digest_provenance(mut self, provenance: DigestProvenance) -> Self {
+        self.digest_provenance = Some(provenance);
+        self
+    }
+    pub fn digest_provenance(&self) -> DigestProvenance {
+        self.digest_provenance
+            .unwrap_or(DigestProvenance::Unspecified)
     }
 }
 
@@ -165,6 +187,8 @@ struct RawEntry {
     // are not part of this explicit cache schema, including zero fractions.
     bytes: u64,
     role: FileRole,
+    #[serde(default)]
+    digest_provenance: Option<DigestProvenance>,
 }
 struct RawEntries(Vec<RawEntry>);
 impl<'de> Deserialize<'de> for RawEntries {
@@ -282,7 +306,11 @@ impl Manifest {
             .files
             .0
             .into_iter()
-            .map(|r| ManifestEntry::new(r.path, r.digest, r.bytes, r.role))
+            .map(|r| {
+                let mut entry = ManifestEntry::new(r.path, r.digest, r.bytes, r.role)?;
+                entry.digest_provenance = r.digest_provenance;
+                Ok(entry)
+            })
             .collect::<Result<Vec<_>>>()?;
         Self::new(source, entries, limits)
     }

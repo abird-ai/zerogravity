@@ -30,8 +30,13 @@ in
         "crates/zerogravity-model-gemma4/tests/fixtures/official-e2b-it-config.json"
         "crates/zerogravity-model-gemma4/tests/fixtures/official-26b-it-config.json"
       ];
+      acquisitionFixture = builtins.elem relative [
+        "crates/zerogravity-artifacts/tests/fixtures/acquisition/ca.pem"
+        "crates/zerogravity-artifacts/tests/fixtures/acquisition/server.pem"
+        "crates/zerogravity-artifacts/tests/fixtures/acquisition/server.key"
+      ];
       rootInput = builtins.elem relative ["Cargo.toml" "Cargo.lock" "rust-toolchain.toml" "README.md" "LICENSE" "LICENSE-MIT" "LICENSE-APACHE"];
     in
       !buildOutput
-      && (rootInput || (sourceTree && (craneLib.filterCargoSources path type || vendorTree || packageNotice || modelFixture)));
+      && (rootInput || (sourceTree && (craneLib.filterCargoSources path type || vendorTree || packageNotice || modelFixture || acquisitionFixture)));
   }

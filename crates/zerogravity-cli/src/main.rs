@@ -25,6 +25,9 @@ use zerogravity::tokenize::QwenTokenizer;
 ))]
 mod gpu;
 
+#[cfg(all(feature = "acquisition", target_os = "linux"))]
+mod pull;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum GpuBackend {
     VulkanAmd,
@@ -118,6 +121,7 @@ enum Command {
         backend: GpuBackend,
         args: Vec<String>,
     },
+    Pull(Vec<String>),
     NotImplemented(String),
     Invalid(String),
     Unknown(String),
@@ -248,6 +252,7 @@ where
                         args: args.map(|arg| arg.as_ref().to_owned()).collect(),
                     }
                 }
+                "pull" => Command::Pull(args.map(|arg| arg.as_ref().to_owned()).collect()),
                 "serve" | "models" | "config" => Command::NotImplemented(first.as_ref().to_owned()),
                 other => Command::Unknown(other.to_owned()),
             }
@@ -260,8 +265,12 @@ fn usage() {
         feature = "cpu",
         feature = "model-qwen35",
         feature = "text"
-    )) || cfg!(any(feature = "vulkan", feature = "cuda", feature = "hip"))
-    {
+    )) || cfg!(any(
+        feature = "vulkan",
+        feature = "cuda",
+        feature = "hip",
+        feature = "acquisition"
+    )) {
         composed_usage();
         return;
     }
@@ -323,6 +332,11 @@ fn composed_usage() {
                 );
             }
         }
+    }
+    if cfg!(all(feature = "acquisition", target_os = "linux")) {
+        println!(
+            "    zerogravity pull --help  (explicit data acquisition and offline cache inspection)"
+        );
     }
     println!("\nCOMPILED CAPABILITIES:");
     println!("    source inspection: enabled");
@@ -711,6 +725,24 @@ fn run(command: Command) -> ExitCode {
                 ExitCode::from(2)
             }
         },
+        Command::Pull(args) => {
+            #[cfg(all(feature = "acquisition", target_os = "linux"))]
+            let result = pull::run(&args);
+            #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
+            let result: Result<()> = {
+                let _ = args;
+                Err(zerogravity::Error::Unsupported(
+                    "pull requires the optional acquisition feature on Linux".into(),
+                ))
+            };
+            match result {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("zerogravity pull: {error}");
+                    ExitCode::from(2)
+                }
+            }
+        }
         Command::NotImplemented(name) => {
             eprintln!(
                 "zerogravity: '{name}' is not implemented (local Qwen3.5 CPU run/inspect exist; router, API and model management are future work)"

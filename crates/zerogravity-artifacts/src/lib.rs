@@ -8,3 +8,6 @@ pub use source_weights::SourceWeights;
 
 #[cfg(all(feature = "cache", target_os = "linux"))]
 pub mod cache;
+
+#[cfg(all(feature = "acquisition", target_os = "linux"))]
+pub mod acquisition;

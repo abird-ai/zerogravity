@@ -10,6 +10,8 @@ license = "MIT"
 [features]
 cache = ["dep:sha2", "dep:rustix"]
 diagnostic-cache = ["cache"]
+acquisition = ["cache", "dep:ureq", "dep:url", "dep:log"]
+diagnostic-acquisition = ["acquisition"]
 
 [dependencies]
 zerogravity-core = { path = "../zerogravity-core" }
@@ -17,3 +19,8 @@ serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = { version = "=1.0.151", features = ["raw_value"] }
 sha2 = { version = "=0.10.9", optional = true }
 rustix = { version = "=1.1.5", features = ["fs", "process"], optional = true }
+ureq = { version = "=3.4.2", default-features = false, features = ["rustls"], optional = true }
+url = { version = "=2.5.8", optional = true }
+# ureq deliberately reveals URI queries/Location at TRACE. The optional
+# acquisition build caps the shared log facade at DEBUG to preserve redaction.
+log = { version = "=0.4.34", features = ["max_level_debug"], optional = true }
