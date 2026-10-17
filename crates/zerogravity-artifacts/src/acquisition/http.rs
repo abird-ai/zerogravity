@@ -88,6 +88,18 @@ impl HttpResponse {
 
 pub trait HttpTransport: Send + Sync {
     fn get(&self, request: &HttpRequest, cancel: &AtomicBool) -> Result<HttpResponse>;
+    /// A version-precondition URL must reach the selected endpoint unchanged.
+    /// Legacy custom transports explicitly refuse until they can guarantee that
+    /// redirects are neither followed nor returned as a successful object body.
+    fn get_without_redirects(
+        &self,
+        _request: &HttpRequest,
+        _cancel: &AtomicBool,
+    ) -> Result<HttpResponse> {
+        Err(Error::Unsupported(
+            "HTTP direct-response capability is unavailable".into(),
+        ))
+    }
     /// Metadata only. Older custom transports safely refuse probes until they
     /// implement HEAD; no GET fallback may transfer an unadmitted object body.
     fn head(&self, _request: &HttpRequest, _cancel: &AtomicBool) -> Result<HttpResponse> {
@@ -207,6 +219,35 @@ pub(super) fn validate_validator(expected: Option<&str>, response: &HttpResponse
         ));
     }
     Ok(())
+}
+
+/// JSON GCS generation/precondition queries bind the request. Its version
+/// response headers are optional in the documented JSON protocol (and official
+/// client); contradictory or noncanonical present headers always refuse.
+pub(super) fn validate_response_binding(
+    binding: Option<super::ResponseBinding>,
+    response: &HttpResponse,
+) -> Result<()> {
+    match binding {
+        None => Ok(()),
+        Some(super::ResponseBinding::GcsVersion {
+            generation,
+            metageneration,
+        }) => {
+            for (name, expected) in [
+                ("x-goog-generation", generation),
+                ("x-goog-metageneration", metageneration),
+            ] {
+                if response
+                    .header(name)
+                    .is_some_and(|actual| actual != expected.to_string())
+                {
+                    return Err(Error::State("HTTP object version binding changed".into()));
+                }
+            }
+            Ok(())
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -402,7 +443,14 @@ impl HttpsClient {
 
 impl HttpTransport for HttpsClient {
     fn get(&self, request: &HttpRequest, cancel: &AtomicBool) -> Result<HttpResponse> {
-        self.request(request, cancel, false)
+        self.request(request, cancel, false, true)
+    }
+    fn get_without_redirects(
+        &self,
+        request: &HttpRequest,
+        cancel: &AtomicBool,
+    ) -> Result<HttpResponse> {
+        self.request(request, cancel, false, false)
     }
     fn head(&self, request: &HttpRequest, cancel: &AtomicBool) -> Result<HttpResponse> {
         if request.range.is_some() {
@@ -410,7 +458,7 @@ impl HttpTransport for HttpsClient {
                 "HEAD probe cannot request a byte range".into(),
             ));
         }
-        self.request(request, cancel, true)
+        self.request(request, cancel, true, true)
     }
 }
 impl HttpsClient {
@@ -419,6 +467,7 @@ impl HttpsClient {
         request: &HttpRequest,
         cancel: &AtomicBool,
         head: bool,
+        follow_redirects: bool,
     ) -> Result<HttpResponse> {
         check_cancel(cancel)?;
         let initial = parse_url(&request.url, self.loopback)?;
@@ -493,6 +542,11 @@ impl HttpsClient {
                 };
                 let status = response.status().as_u16();
                 if matches!(status, 301 | 302 | 303 | 307 | 308) {
+                    if !follow_redirects {
+                        return Err(Error::Unsupported(
+                            "version-pinned HTTP redirects are unsupported".into(),
+                        ));
+                    }
                     if redirects == self.options.max_redirects {
                         return Err(Error::Limit("HTTP redirect limit".into()));
                     }
@@ -549,6 +603,8 @@ impl HttpsClient {
                     "x-repo-commit",
                     "x-linked-etag",
                     "x-linked-size",
+                    "x-goog-generation",
+                    "x-goog-metageneration",
                 ] {
                     let values: Vec<_> = response.headers().get_all(name).iter().collect();
                     if values.len() > 1 {

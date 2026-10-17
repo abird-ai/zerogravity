@@ -11,7 +11,7 @@ retain the broader scope.
 
 ## Design
 
-One optional synchronous HTTPS owner serves both providers. Native Rustls TLS
+One optional synchronous HTTPS owner serves the provider resolvers. Native Rustls TLS
 verification, origin-scoped credentials, bounded metadata/headers/redirects and
 identity encoding protect exact transferred bytes. Default CPU, core and source
 inspection builds keep the transport dependency closure disabled.
@@ -24,8 +24,9 @@ Downstream builds cannot select a conflicting `log/max_level_*` feature. This
 explicit dependency constraint avoids silently leaking credentials through a
 host application's logger; it can be revisited when upstream safely redacts TRACE.
 
-Resolution uses a caller-owned transfer admission, pins a repository commit or
-release asset identity, validates file paths and selects the required closure.
+Resolution uses a caller-owned transfer admission, pins a repository commit,
+release asset, versioned object or explicit content contract, validates file
+paths and selects only the applicable declared closure.
 The returned plan has private validated fields; expiring download URLs stay in
 memory. It grants neither SourceIdentity nor model/device readiness.
 
@@ -469,6 +470,64 @@ login remain unsupported. Acquiring a GGUF layer supplies no model sidecars,
 model closure, license acceptance or new inference eligibility. This is a bounded
 native registry-data path, not full OCI conformance or container execution.
 
+## Native GCS versioned objects
+
+The native JSON API resolver accepts explicit objects or bounded auxiliary
+prefixes at `https://storage.googleapis.com`. `GcsObjectRequest` resolves metadata
+once; `GcsObjectPin` records generation, metageneration and exact size. Public
+`resolve_with_pin`/`resolve_with_pins` expose those observed pins alongside the
+original plans. Ordinary `resolve` still returns original plans alone.
+
+```text
+zerogravity pull gcs object --bucket selected-bucket --object selected/model.gguf \
+  --file model.gguf --role weights --generation GENERATION --sha256 RAW_SHA256 \
+  --dry-run --cache /absolute/cache
+zerogravity pull gcs prefix --bucket selected-bucket --prefix selected/ \
+  --dry-run --cache /absolute/cache
+```
+
+These examples authorize no bucket or data. Object roles are explicit; caller
+SHA256 is optional and independently authorized. Without it the final original
+raw hash remains FirstSeen: GCS MD5, CRC32C and ETag are not raw SHA256 authority.
+Omitting generation resolves latest metadata once to a concrete generation.
+Dry-run reads only admitted bounded metadata; online defaults to apply.
+
+Media requests derive locally from the validated bucket/name and carry both
+`generation` and `ifMetagenerationMatch`. Returned mediaLink values are ignored.
+Pinning metadata version also protects stored representation: nonidentity
+contentEncoding refuses before transfer, including a later representation change
+via the metageneration precondition. Customer-key and soft-deleted profiles
+remain unsupported. The original HTTP owner refuses all media redirects so a
+Location cannot discard these query preconditions. Existing custom transports
+must explicitly implement that direct-response capability or fail closed.
+
+One private typed binding in the original executor checks contradicting PRESENT
+x-goog-generation/metageneration headers before initial, resumed and live-retry
+bodies. JSON API does not require those response headers; absence is allowed,
+with query preconditions supplying the protocol binding. Original duplicate-
+header, exact length/hash/EOF, strong-validator resume and publication rules
+remain independent checks. There is no additional transfer engine.
+
+Prefixes must be nonempty and slash terminated. The resolver bounds all page
+bytes, calls, tokens, file count, control metadata and aggregate selected bytes;
+cycles, duplicates, unsafe paths and file/directory collisions refuse. Every
+selected object yields an independent Auxiliary/FirstSeen plan. Listing and
+publication are not atomic: a later failure may leave earlier verified snapshots.
+No config/tokenizer/index/model closure is inferred.
+
+Anonymous and explicitly named bearer-environment profiles reuse the shared
+HTTP owner. There is no ADC, metadata-server discovery, service-account minting,
+SDK, refresh or requester-pays fallback. Custom production GCS endpoints remain
+unsupported; diagnostic literal-loopback fixtures are separate.
+
+Offline object selection requires the original bucket/name/logical path/role,
+exact `--generation`, `--metageneration`, `--bytes` and snapshot digest, plus the
+same caller SHA if used online. It verifies original managed bytes and exact
+source/selection/trust under caller limits before credentials/client/admission/
+signals. Receipts print the observed pin for later reuse. Prefix offline selection
+refuses; choose each explicit pinned object instead. Offline byte/source matching
+attests neither present remote access nor bucket membership/freshness.
+
 ## Provider and compatibility frontier
 
 The retired research captures once counted57 rows; that historical count is not
@@ -485,7 +544,7 @@ passing provider gate. Open implementation and acceptance work stays in TODO.md.
 | XDG/offline/removal | Native XDG/explicit root, zero-network offline, inspect/list/verify and protected exact-snapshot removal. Compatibility aliases, legacy migration, automatic eviction/general orphan cleanup and unmanaged readers remain separate open work. |
 | Auth/endpoints | Origin-scoped explicit bearer environment inputs, safe redirects and TLS. Mirror/profile policy, broader compatibility env aliases and provider-specific credentials remain open; offline bytes do not attest current remote access. |
 | OCI/Docker | Native tag-or-manifest pin/raw-GGUF layer, public/preissued bearer and fixed Docker Hub anonymous broker. Index/compressed/container/signature/generic private-login profiles remain open; no model closure follows. |
-| GCS | Native generation metadata/media/pagination and explicit public/bearer profiles remain open. ADC/service-account minting/metadata-server credentials are separate profiles. |
+| GCS | Native JSON object generation/metageneration media pins, auxiliary prefix/pageToken listing, anonymous/preissued bearer and explicit offline object pins. ADC/minting/requester-pays/custom endpoints and atomic/closure semantics remain outside this profile. |
 | S3/compatible endpoints | Native object versions/listing/ranges and explicit endpoint/region/SigV4/session profiles remain open; a presigned HTTPS object is not a qualified S3 adapter. |
 | Azure Blob | Native versions/snapshots/listing/ranges and explicit SAS/bearer/SharedKey profiles remain open; managed/default credential chains are separate. |
 | ModelScope | Native pinned revision/file/list/auth protocol remains open; no Python SDK/delegated runtime is introduced. |
@@ -627,6 +686,11 @@ logit/state/session checks while their raw source reservation remains owned.
 Numerical acceptance is tracked in TODO.md.
 
 ## References
+
+- [GCS JSON objects.get](https://docs.cloud.google.com/storage/docs/json_api/v1/objects/get),
+  [objects.list](https://docs.cloud.google.com/storage/docs/json_api/v1/objects/list) and
+  [decompressive transcoding](https://docs.cloud.google.com/storage/docs/transcoding),
+  used for native generation/metageneration and representation preconditions.
 
 - [OCI Distribution v1.1.1 manifest/blob protocol](https://github.com/opencontainers/distribution-spec/blob/v1.1.1/spec.md) and
   [Docker registry authentication](https://docs.docker.com/reference/api/registry/auth/),

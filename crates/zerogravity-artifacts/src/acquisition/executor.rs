@@ -423,6 +423,18 @@ struct RetryReader<'a, T> {
     response_length: Option<u64>,
     retries: usize,
 }
+fn object_response(
+    transport: &(impl HttpTransport + ?Sized),
+    file: &ResolvedFile,
+    request: &HttpRequest,
+    cancel: &AtomicBool,
+) -> Result<super::http::HttpResponse> {
+    if file.response_binding().is_some() {
+        transport.get_without_redirects(request, cancel)
+    } else {
+        transport.get(request, cancel)
+    }
+}
 impl<'a, T: HttpTransport> RetryReader<'a, T> {
     fn open(
         transport: &'a T,
@@ -432,19 +444,21 @@ impl<'a, T: HttpTransport> RetryReader<'a, T> {
     ) -> Result<Self> {
         super::http::check_cancel(cancel)?;
         let count = range.as_ref().map_or(0, |range| range.start);
-        let response = transport
-            .get(
-                &HttpRequest {
-                    url: file.url().to_string(),
-                    accept: HttpAccept::Binary,
-                    range: range.clone(),
-                    max_body_bytes: file.maximum_bytes() - count,
-                },
-                cancel,
-            )
-            .map_err(|_| Error::State("HTTP object request failed".into()))?;
+        let response = object_response(
+            transport,
+            file,
+            &HttpRequest {
+                url: file.url().to_string(),
+                accept: HttpAccept::Binary,
+                range: range.clone(),
+                max_body_bytes: file.maximum_bytes() - count,
+            },
+            cancel,
+        )
+        .map_err(|_| Error::State("HTTP object request failed".into()))?;
         super::http::check_cancel(cancel)?;
         super::http::validate_validator(file.validator(), &response)?;
+        super::http::validate_response_binding(file.response_binding(), &response)?;
         if let Some(range) = &range {
             if validate_range_response(range, &response)? != ResumeDisposition::Append {
                 return Err(Error::State(
@@ -579,18 +593,20 @@ impl<T: HttpTransport> Read for RetryReader<'_, T> {
                 total,
                 validator,
             };
-            let response = self
-                .transport
-                .get(
-                    &HttpRequest {
-                        url: self.file.url().to_string(),
-                        accept: HttpAccept::Binary,
-                        range: Some(range.clone()),
-                        max_body_bytes: total - self.count,
-                    },
-                    self.cancel,
-                )
-                .map_err(|_| io::Error::other("HTTP range retry failed"))?;
+            let response = object_response(
+                self.transport,
+                self.file,
+                &HttpRequest {
+                    url: self.file.url().to_string(),
+                    accept: HttpAccept::Binary,
+                    range: Some(range.clone()),
+                    max_body_bytes: total - self.count,
+                },
+                self.cancel,
+            )
+            .map_err(|_| io::Error::other("HTTP range retry failed"))?;
+            super::http::validate_response_binding(self.file.response_binding(), &response)
+                .map_err(|_| io::Error::other("HTTP object version validation failed"))?;
             if validate_range_response(&range, &response)
                 .map_err(|_| io::Error::other("HTTP range validation failed"))?
                 != ResumeDisposition::Append

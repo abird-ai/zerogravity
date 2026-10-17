@@ -3,6 +3,7 @@
 
 pub mod components;
 mod executor;
+pub mod gcs;
 pub mod github;
 pub mod http;
 pub mod huggingface;
@@ -144,6 +145,17 @@ pub struct ResolvedFile {
     identity: String,
     // Transient HEAD validator; never changes digest provenance or persistence.
     validator: Option<String>,
+    response_binding: Option<ResponseBinding>,
+}
+
+/// Provider protocol expectations, separate from strong ETag resume and raw
+/// content SHA256. Only the owning resolver may construct these bindings.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum ResponseBinding {
+    GcsVersion {
+        generation: u64,
+        metageneration: u64,
+    },
 }
 impl ResolvedFile {
     pub fn new(
@@ -183,6 +195,7 @@ impl ResolvedFile {
             sha256,
             identity: identity.into(),
             validator: None,
+            response_binding: None,
         };
         validate_relative_path(&file.path)?;
         if let Some(hash) = &file.sha256 {
@@ -240,6 +253,13 @@ impl ResolvedFile {
     }
     pub(super) fn validator(&self) -> Option<&str> {
         self.validator.as_deref()
+    }
+    pub(super) fn with_response_binding(mut self, binding: ResponseBinding) -> Self {
+        self.response_binding = Some(binding);
+        self
+    }
+    pub(super) fn response_binding(&self) -> Option<ResponseBinding> {
+        self.response_binding
     }
     pub fn digest_provenance(&self) -> DigestProvenance {
         if self.sha256.is_some() {
@@ -302,6 +322,7 @@ impl ResolvedPullPlan {
                         + file.url.len()
                         + file.identity.len()
                         + file.validator.as_ref().map_or(0, String::len)
+                        + file.response_binding.map_or(0, |_| 32)
                         + 128,
                 )
                 .filter(|v| *v <= limits.cache.max_manifest_bytes)
