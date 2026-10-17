@@ -318,7 +318,21 @@ These repository names illustrate the schema; they do not select an approved
 source or imply format/model eligibility. Resolution pins aliases before payload
 transfer. Repeated file-source provider/repository/requested-revision tuples reuse
 the first exact commit, preventing alias movement between components. Repeated
-release aliases remain Unsupported pending exact multi-asset qualification.
+GitHub release selections reuse the first validated release ID for the same
+literal provider/repository/requested-tag tuple. Later components select assets
+from that release ID through their own label-scoped transport, without resolving
+the tag again. Separate file and release pin maps prevent equal selector strings
+from crossing locator kinds. Ordinary single-asset resolution keeps its existing
+behavior; no synthetic tag or public pin argument is introduced.
+
+Every label still lists and validates assets through its own credentials and the
+shared metadata/request budget. Listings retain path/name/ID, pagination and
+count checks; the selected asset must be uploaded and satisfy digest validation
+before supplying an asset-ID download URL. Each selected asset retains its original release-ID/asset-ID source
+locator, exact or explicitly capped length and TrustedSha256/FirstSeen provenance.
+A stable release ID does not freeze its mutable asset set: re-listing can observe
+a renamed, missing or replaced asset, and identity/digest checks apply to the
+actually selected object. This does not establish a cross-asset atomic snapshot.
 Only an explicitly declared config/tokenizer supplier relaxes the corresponding
 missing weight-repository sidecar; shard/index/split closure remains strict.
 
@@ -333,8 +347,12 @@ remain after a later failure; no mutable reference is changed by component pulls
 `--dry-run` resolves metadata only. `--offline` requires an explicit `snapshot`
 selector on every component and verifies the complete local set before any
 credentials/client/provider work. Online plans reject those offline selectors.
-The pure library `open_components` takes no transport. Offline verification cannot
-prove mutable selector freshness, token revocation, model compatibility or licensing.
+The pure library `open_components` takes no transport. A shared canonical locator
+parser requires positive decimal release and asset IDs without alternate spellings.
+Repeated release bindings must agree on the release ID for the requested source
+while permitting different asset IDs; repeated file bindings must still agree on
+their exact commit. Offline verification cannot prove mutable selector freshness,
+remote asset membership, token revocation, model compatibility or licensing.
 
 ## Cache-to-model preparation
 
@@ -385,8 +403,10 @@ Numerical acceptance is tracked in TODO.md.
 
 - [Hugging Face Hub API](https://huggingface.co/docs/hub/api) and
   [official OpenAPI](https://huggingface.co/.well-known/openapi.md).
-- [GitHub Git trees](https://docs.github.com/en/rest/git/trees) and
-  [release assets](https://docs.github.com/en/rest/releases/assets).
+- [GitHub Git trees](https://docs.github.com/en/rest/git/trees),
+  [release tag lookup](https://docs.github.com/en/rest/releases/releases#get-a-release-by-tag-name)
+  and [release-ID asset listing/download](https://docs.github.com/en/rest/releases/assets),
+  checked against the official endpoint contracts for this component extension.
 - [signal-hook flags](https://docs.rs/signal-hook/0.3.18/signal_hook/flag/) and
   [registry cleanup](https://docs.rs/signal-hook-registry/1.4.8/signal_hook_registry/fn.unregister.html),
   checked against the exact already-cached dependency sources.

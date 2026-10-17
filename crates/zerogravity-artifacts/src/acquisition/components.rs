@@ -85,7 +85,6 @@ impl ComponentPullRequest {
         let mut suppliers = BTreeSet::new();
         let mut files = 0usize;
         let mut metadata = 0usize;
-        let mut releases = BTreeSet::new();
         for component in &self.components {
             component.request.validate(limits)?;
             if !labels.insert(component.label()) {
@@ -103,13 +102,6 @@ impl ComponentPullRequest {
                 }
                 Selection::ReleaseAsset { name } => {
                     files = files.checked_add(1).ok_or_else(limit)?;
-                    if !releases.insert((
-                        request.provider.label(),
-                        &request.repository,
-                        &request.revision,
-                    )) {
-                        return Err(Error::Unsupported("repeated release aliases require separately qualified exact asset plans".into()));
-                    }
                     name.len()
                 }
             };
@@ -337,6 +329,8 @@ impl Read for BudgetBody {
 
 /// Resolve only declared sources. Repeated file-source aliases are replaced
 /// with the first exact commit before resolving another selector from that source.
+/// Release aliases use a separate typed release-ID cohort. Every label still
+/// lists/selects assets through its own adapter; release IDs do not freeze assets.
 pub fn resolve_components(
     request: &ComponentPullRequest,
     transport: &impl ComponentTransport,
@@ -363,7 +357,9 @@ pub fn resolve_components(
         requests: limits.max_pages,
     }));
     let sidecars = request.sidecars();
-    let mut pins = BTreeMap::<(&'static str, String, String), String>::new();
+    let mut file_pins = BTreeMap::<(&'static str, String, String), String>::new();
+    let mut release_pins =
+        BTreeMap::<(&'static str, String, String), super::github::ReleasePin>::new();
     let mut components = Vec::new();
     let mut totals = Totals::default();
     let mut all_exact = true;
@@ -376,7 +372,7 @@ pub fn resolve_components(
             selected.revision.clone(),
         );
         if matches!(selected.selection, Selection::Files { .. })
-            && let Some(pin) = pins.get(&key)
+            && let Some(pin) = file_pins.get(&key)
         {
             selected.revision = pin.clone();
         }
@@ -395,11 +391,30 @@ pub fn resolve_components(
                 super::huggingface::resolve_component(&adapter, &selected, limits, cancel, policy)?
             }
             Provider::GitHub => {
-                super::github::resolve_component(&adapter, &selected, limits, cancel, policy)?
+                if matches!(selected.selection, Selection::ReleaseAsset { .. }) {
+                    let (plan, pin) = super::github::resolve_release_component(
+                        &adapter,
+                        &selected,
+                        limits,
+                        cancel,
+                        release_pins.get(&key).copied(),
+                    )?;
+                    if release_pins
+                        .insert(key.clone(), pin)
+                        .is_some_and(|prior| prior != pin)
+                    {
+                        return Err(Error::State(
+                            "components disagree on a shared release pin".into(),
+                        ));
+                    }
+                    plan
+                } else {
+                    super::github::resolve_component(&adapter, &selected, limits, cancel, policy)?
+                }
             }
         };
         if matches!(selected.selection, Selection::Files { .. }) {
-            pins.insert(key, plan.source().revision().to_string());
+            file_pins.insert(key, plan.source().revision().to_string());
         }
         totals.add(
             plan.files()
@@ -602,17 +617,9 @@ pub fn validate_cached_selection(lease: &SnapshotLease, request: &PullRequest) -
                     .bytes()
                     .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         }
-        Selection::ReleaseAsset { .. } => source
-            .revision()
-            .strip_prefix("release-")
-            .and_then(|rest| rest.split_once("-asset-"))
-            .is_some_and(|(release, asset)| {
-                [release, asset].iter().all(|part| {
-                    part.parse::<u64>()
-                        .ok()
-                        .is_some_and(|n| n > 0 && n.to_string() == *part)
-                })
-            }),
+        Selection::ReleaseAsset { .. } => {
+            super::github::parse_release_locator(source.revision()).is_some()
+        }
     };
     if !locator_ok {
         return Err(Error::Malformed(
@@ -686,7 +693,8 @@ pub fn open_components(
         }
     }
     let mut components = Vec::new();
-    let mut pins = BTreeMap::new();
+    let mut file_pins = BTreeMap::new();
+    let mut release_pins = BTreeMap::new();
     let mut totals = Totals::default();
     for component in request.components() {
         let snapshot = selected
@@ -703,19 +711,33 @@ pub fn open_components(
         };
         validate_cached_selection(&lease, component.request())?;
         let source = lease.manifest().source();
-        if matches!(component.request.selection, Selection::Files { .. }) {
-            let key = (
-                component.request.provider.label(),
-                &component.request.repository,
-                &component.request.revision,
-            );
-            if pins
-                .insert(key, source.revision().to_string())
-                .is_some_and(|previous| previous != source.revision())
-            {
-                return Err(Error::Malformed(
-                    "cached components disagree on a shared source pin".into(),
-                ));
+        let key = (
+            component.request.provider.label(),
+            &component.request.repository,
+            &component.request.revision,
+        );
+        match &component.request.selection {
+            Selection::Files { .. } => {
+                if file_pins
+                    .insert(key, source.revision().to_string())
+                    .is_some_and(|previous| previous != source.revision())
+                {
+                    return Err(Error::Malformed(
+                        "cached components disagree on a shared source pin".into(),
+                    ));
+                }
+            }
+            Selection::ReleaseAsset { .. } => {
+                let (pin, _) = super::github::parse_release_locator(source.revision())
+                    .ok_or_else(|| Error::Malformed("invalid cached release locator".into()))?;
+                if release_pins
+                    .insert(key, pin)
+                    .is_some_and(|previous| previous != pin)
+                {
+                    return Err(Error::Malformed(
+                        "cached components disagree on a shared release pin".into(),
+                    ));
+                }
             }
         }
         validate_role(

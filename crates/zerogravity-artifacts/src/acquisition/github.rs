@@ -9,6 +9,7 @@ use crate::cache::{FileRole, ManifestSource, paths::validate_relative_path};
 use crate::{Error, Result};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
+use std::num::NonZeroU64;
 use std::sync::atomic::AtomicBool;
 
 #[derive(Deserialize)]
@@ -45,6 +46,28 @@ struct TreeEntry {
 struct Release {
     id: u64,
     tag_name: String,
+}
+
+/// A stable release-ID binding for a previously resolved alias. This does not
+/// freeze its asset set; each label still lists/selects its own pinned assets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct ReleasePin {
+    id: NonZeroU64,
+}
+
+/// Canonical original per-asset cache locator, never a tag or payload digest.
+pub(super) fn parse_release_locator(value: &str) -> Option<(ReleasePin, u64)> {
+    fn positive(value: &str) -> Option<NonZeroU64> {
+        let number = value.parse::<NonZeroU64>().ok()?;
+        (number.to_string() == value).then_some(number)
+    }
+    let (release, asset) = value.strip_prefix("release-")?.split_once("-asset-")?;
+    Some((
+        ReleasePin {
+            id: positive(release)?,
+        },
+        positive(asset)?.get(),
+    ))
 }
 #[derive(Deserialize)]
 struct Asset {
@@ -379,6 +402,25 @@ fn metadata<T: for<'de> Deserialize<'de>>(
     serde_json::from_slice(&bytes).map_err(|_| malformed())
 }
 
+fn checked_api(request: &PullRequest, limits: &PullLimits) -> Result<String> {
+    request.validate(limits)?;
+    limits.validate()?;
+    if request.provider != Provider::GitHub {
+        return Err(malformed());
+    }
+    repository(&request.repository)?;
+    if request.revision.is_empty()
+        || request.revision.len() > 256
+        || request.revision.chars().any(char::is_control)
+    {
+        return Err(malformed());
+    }
+    Ok(format!(
+        "https://api.github.com/repos/{}",
+        request.repository
+    ))
+}
+
 /// Only the parent admitted front door may invoke provider metadata work.
 pub(super) fn resolve(
     transport: &(impl HttpTransport + ?Sized),
@@ -402,19 +444,7 @@ pub(super) fn resolve_component(
     cancel: &AtomicBool,
     sidecars: super::ExternalSidecars,
 ) -> Result<ResolvedPullPlan> {
-    request.validate(limits)?;
-    limits.validate()?;
-    if request.provider != Provider::GitHub {
-        return Err(malformed());
-    }
-    repository(&request.repository)?;
-    if request.revision.is_empty()
-        || request.revision.len() > 256
-        || request.revision.chars().any(char::is_control)
-    {
-        return Err(malformed());
-    }
-    let api = format!("https://api.github.com/repos/{}", request.repository);
+    let api = checked_api(request, limits)?;
     let mut metadata_left = limits.max_metadata_bytes;
     let mut probes_left = limits.max_pages;
     match &request.selection {
@@ -533,114 +563,140 @@ pub(super) fn resolve_component(
                 limits,
             )
         }
-        Selection::ReleaseAsset { name } => {
-            validate_relative_path(name)?;
-            if name.contains('/') {
-                return Err(malformed());
-            }
-            let release: Release = metadata(
+        Selection::ReleaseAsset { .. } => {
+            resolve_release_component(transport, request, limits, cancel, None)
+                .map(|(plan, _)| plan)
+        }
+    }
+}
+
+/// Reuse only a typed release pin. Every call retains the supplied label's
+/// transport and bounded asset listing; a prior pin never becomes a fake tag.
+pub(super) fn resolve_release_component(
+    transport: &(impl HttpTransport + ?Sized),
+    request: &PullRequest,
+    limits: &PullLimits,
+    cancel: &AtomicBool,
+    prior: Option<ReleasePin>,
+) -> Result<(ResolvedPullPlan, ReleasePin)> {
+    let api = checked_api(request, limits)?;
+    let Selection::ReleaseAsset { name } = &request.selection else {
+        return Err(malformed());
+    };
+    super::http::check_cancel(cancel)?;
+    let mut metadata_left = limits.max_metadata_bytes;
+    let mut probes_left = limits.max_pages;
+    validate_relative_path(name)?;
+    if name.contains('/') {
+        return Err(malformed());
+    }
+    let release = match prior {
+        Some(pin) => pin,
+        None => {
+            let resolved: Release = metadata(
                 transport,
                 format!("{api}/releases/tags/{}", component(&request.revision)),
                 &mut metadata_left,
                 cancel,
             )?;
-            if release.id == 0 || release.tag_name != request.revision {
+            if resolved.tag_name != request.revision {
                 return Err(malformed());
             }
-            let mut ids = BTreeSet::new();
-            let mut names = BTreeSet::new();
-            let mut selected = None;
-            let mut complete = false;
-            for page in 1..=limits.max_pages {
-                let assets: Vec<Asset> = metadata(
-                    transport,
-                    format!(
-                        "{api}/releases/{}/assets?per_page=100&page={page}",
-                        release.id
-                    ),
-                    &mut metadata_left,
-                    cancel,
-                )?;
-                if assets.len() > 100
-                    || ids.len().saturating_add(assets.len()) > limits.cache.max_files
-                {
-                    return Err(Error::Limit("GitHub release exceeds asset bound".into()));
-                }
-                let last = assets.len() < 100;
-                for asset in assets {
-                    if asset.id == 0 || !ids.insert(asset.id) || !names.insert(asset.name.clone()) {
-                        return Err(malformed());
-                    }
-                    validate_relative_path(&asset.name)?;
-                    if asset.name == *name {
-                        selected = Some(asset);
-                    }
-                }
-                if last {
-                    complete = true;
-                    break;
-                }
+            ReleasePin {
+                id: NonZeroU64::new(resolved.id).ok_or_else(malformed)?,
             }
-            if !complete {
-                return Err(Error::Limit(
-                    "GitHub release pagination exceeds configured bound".into(),
-                ));
+        }
+    };
+    let mut ids = BTreeSet::new();
+    let mut names = BTreeSet::new();
+    let mut selected = None;
+    let mut complete = false;
+    for page in 1..=limits.max_pages {
+        let assets: Vec<Asset> = metadata(
+            transport,
+            format!(
+                "{api}/releases/{}/assets?per_page=100&page={page}",
+                release.id
+            ),
+            &mut metadata_left,
+            cancel,
+        )?;
+        if assets.len() > 100 || ids.len().saturating_add(assets.len()) > limits.cache.max_files {
+            return Err(Error::Limit("GitHub release exceeds asset bound".into()));
+        }
+        let last = assets.len() < 100;
+        for asset in assets {
+            if asset.id == 0 || !ids.insert(asset.id) || !names.insert(asset.name.clone()) {
+                return Err(malformed());
             }
-            let asset = selected.ok_or_else(|| {
-                Error::Unsupported("required GitHub release asset is absent".into())
-            })?;
-            if asset.state != "uploaded" {
-                return Err(Error::Unsupported(
-                    "GitHub release asset is not uploaded".into(),
-                ));
+            validate_relative_path(&asset.name)?;
+            if asset.name == *name {
+                selected = Some(asset);
             }
-            let digest = match asset.digest {
-                None => None,
-                Some(value) => {
-                    let digest = value.strip_prefix("sha256:").ok_or_else(|| {
-                        Error::Unsupported("GitHub asset checksum is not SHA256".into())
-                    })?;
-                    crate::cache::paths::validate_digest(digest)?;
-                    Some(digest.to_owned())
-                }
-            };
-            let asset_url = format!("{api}/releases/assets/{}", asset.id);
-            let (bytes, validator) = match asset.size {
-                Some(bytes) => (ByteLength::Exact(bytes), None),
-                None => super::http::probe_length_with_cap(
-                    transport,
-                    asset_url.clone(),
-                    limits.cache.max_file_bytes,
-                    &mut probes_left,
-                    cancel,
-                    None,
-                    if role(name) == FileRole::Auxiliary {
-                        limits.unknown_length_cap
-                    } else {
-                        None
-                    },
-                )?,
-            };
-            let file = ResolvedFile::new_with_length(
-                name,
-                asset_url,
-                role(name),
-                bytes,
-                digest,
-                format!("release:{}:asset:{}", release.id, asset.id),
-            )?
-            .with_validator(validator)?;
-            ResolvedPullPlan::new(
-                ManifestSource::new(
-                    "github",
-                    &request.repository,
-                    format!("release-{}-asset-{}", release.id, asset.id),
-                )?,
-                vec![file],
-                limits,
-            )
+        }
+        if last {
+            complete = true;
+            break;
         }
     }
+    if !complete {
+        return Err(Error::Limit(
+            "GitHub release pagination exceeds configured bound".into(),
+        ));
+    }
+    let asset = selected
+        .ok_or_else(|| Error::Unsupported("required GitHub release asset is absent".into()))?;
+    if asset.state != "uploaded" {
+        return Err(Error::Unsupported(
+            "GitHub release asset is not uploaded".into(),
+        ));
+    }
+    let digest = match asset.digest {
+        None => None,
+        Some(value) => {
+            let digest = value
+                .strip_prefix("sha256:")
+                .ok_or_else(|| Error::Unsupported("GitHub asset checksum is not SHA256".into()))?;
+            crate::cache::paths::validate_digest(digest)?;
+            Some(digest.to_owned())
+        }
+    };
+    let asset_url = format!("{api}/releases/assets/{}", asset.id);
+    let (bytes, validator) = match asset.size {
+        Some(bytes) => (ByteLength::Exact(bytes), None),
+        None => super::http::probe_length_with_cap(
+            transport,
+            asset_url.clone(),
+            limits.cache.max_file_bytes,
+            &mut probes_left,
+            cancel,
+            None,
+            if role(name) == FileRole::Auxiliary {
+                limits.unknown_length_cap
+            } else {
+                None
+            },
+        )?,
+    };
+    let file = ResolvedFile::new_with_length(
+        name,
+        asset_url,
+        role(name),
+        bytes,
+        digest,
+        format!("release:{}:asset:{}", release.id, asset.id),
+    )?
+    .with_validator(validator)?;
+    let plan = ResolvedPullPlan::new(
+        ManifestSource::new(
+            "github",
+            &request.repository,
+            format!("release-{}-asset-{}", release.id, asset.id),
+        )?,
+        vec![file],
+        limits,
+    )?;
+    Ok((plan, release))
 }
 
 fn ensure_length(
@@ -906,6 +962,237 @@ mod tests {
                 name: "tiny.gguf".into(),
             },
         }
+    }
+    #[test]
+    fn canonical_release_locators_preserve_distinct_asset_ids_and_reject_aliases() {
+        let (pin, asset) = parse_release_locator("release-91-asset-113").unwrap();
+        assert_eq!(pin.id.get(), 91);
+        assert_eq!(asset, 113);
+        let (same, other_asset) = parse_release_locator("release-91-asset-114").unwrap();
+        assert_eq!(pin, same);
+        assert_ne!(asset, other_asset);
+        assert!(
+            parse_release_locator(&format!("release-{}-asset-{}", u64::MAX, u64::MAX)).is_some()
+        );
+        for bad in [
+            "v1",
+            "release-91",
+            "release-0-asset-1",
+            "release-1-asset-0",
+            "release-01-asset-1",
+            "release-1-asset-01",
+            "release-+1-asset-1",
+            "release-1-asset-+1",
+            "release-18446744073709551616-asset-1",
+            "release-1-asset-18446744073709551616",
+            "release-1-asset-2-asset-3",
+            "release-1-asset-2\n",
+            "release-１-asset-2",
+            "release--1-asset-2",
+            "release-1-asset-",
+        ] {
+            assert!(parse_release_locator(bad).is_none(), "{bad:?}");
+        }
+    }
+    #[test]
+    fn prior_release_pin_skips_alias_lookup_and_selects_original_asset_sources() {
+        let fixture = Fixture::new(vec![
+            (
+                "https://api.github.com/repos/owner/repo/releases/tags/v1".into(),
+                json!({"id":91,"tag_name":"v1"}),
+            ),
+            (
+                "https://api.github.com/repos/owner/repo/releases/91/assets?per_page=100&page=1"
+                    .into(),
+                json!([{"id":113,"name":"tiny.gguf","size":7,"state":"uploaded","digest":null}]),
+            ),
+            (
+                "https://api.github.com/repos/owner/repo/releases/91/assets?per_page=100&page=1"
+                    .into(),
+                json!([{"id":114,"name":"config.json","size":2,"state":"uploaded","digest":format!("sha256:{}", "a".repeat(64))}]),
+            ),
+        ]);
+        let (weights, pin) = resolve_release_component(
+            &fixture,
+            &release_request(),
+            &PullLimits::default(),
+            &AtomicBool::new(false),
+            None,
+        )
+        .unwrap();
+        let mut config_request = release_request();
+        config_request.selection = Selection::ReleaseAsset {
+            name: "config.json".into(),
+        };
+        let (config, reused) = resolve_release_component(
+            &fixture,
+            &config_request,
+            &PullLimits::default(),
+            &AtomicBool::new(false),
+            Some(pin),
+        )
+        .unwrap();
+        assert_eq!(pin, reused);
+        assert_eq!(weights.source().revision(), "release-91-asset-113");
+        assert_eq!(config.source().revision(), "release-91-asset-114");
+        assert_eq!(
+            parse_release_locator(config.source().revision()).unwrap(),
+            (pin, 114)
+        );
+        assert_eq!(weights.files()[0].sha256(), None);
+        assert_eq!(config.files()[0].sha256(), Some("a".repeat(64).as_str()));
+        assert_eq!(
+            config.files()[0].url(),
+            "https://api.github.com/repos/owner/repo/releases/assets/114"
+        );
+        fixture.finished();
+    }
+    #[test]
+    fn prior_release_pin_does_not_freeze_asset_membership_or_retry_the_tag() {
+        let pin = parse_release_locator("release-91-asset-113").unwrap().0;
+        let fixture = Fixture::new(vec![
+            (
+                "https://api.github.com/repos/owner/repo/releases/91/assets?per_page=100&page=1"
+                    .into(),
+                json!([{"id":999,"name":"tiny.gguf","size":7,"state":"uploaded","digest":null}]),
+            ),
+            (
+                "https://api.github.com/repos/owner/repo/releases/91/assets?per_page=100&page=1"
+                    .into(),
+                json!([]),
+            ),
+        ]);
+        let (plan, reused) = resolve_release_component(
+            &fixture,
+            &release_request(),
+            &PullLimits::default(),
+            &AtomicBool::new(false),
+            Some(pin),
+        )
+        .unwrap();
+        assert_eq!(reused, pin);
+        assert_eq!(plan.source().revision(), "release-91-asset-999");
+        assert!(matches!(
+            resolve_release_component(
+                &fixture,
+                &release_request(),
+                &PullLimits::default(),
+                &AtomicBool::new(false),
+                Some(pin)
+            ),
+            Err(Error::Unsupported(_))
+        ));
+        fixture.finished();
+    }
+    #[test]
+    fn prior_release_pin_still_validates_source_selection_and_cancellation_before_io() {
+        let pin = parse_release_locator("release-91-asset-113").unwrap().0;
+        let fixture = Fixture::new(Vec::new());
+        for invalid in 0..5 {
+            let mut req = release_request();
+            match invalid {
+                0 => req.provider = Provider::HuggingFace,
+                1 => {
+                    req.selection = Selection::Files {
+                        paths: vec!["config.json".into()],
+                        subfolder: None,
+                    }
+                }
+                2 => req.repository = "owner/repo?secret".into(),
+                3 => req.revision.clear(),
+                _ => {
+                    req.selection = Selection::ReleaseAsset {
+                        name: "nested/config.json".into(),
+                    }
+                }
+            }
+            let error = resolve_release_component(
+                &fixture,
+                &req,
+                &PullLimits::default(),
+                &AtomicBool::new(false),
+                Some(pin),
+            )
+            .unwrap_err();
+            assert!(!error.to_string().contains("secret"));
+        }
+        assert!(matches!(
+            resolve_release_component(
+                &fixture,
+                &release_request(),
+                &PullLimits::default(),
+                &AtomicBool::new(true),
+                Some(pin)
+            ),
+            Err(Error::State(_))
+        ));
+        fixture.finished();
+    }
+    #[test]
+    fn release_pin_requires_matching_alias_and_positive_id_before_asset_listing() {
+        for (id, tag) in [(0, "v1"), (91, "changed")] {
+            let fixture = Fixture::new(vec![(
+                "https://api.github.com/repos/owner/repo/releases/tags/v1".into(),
+                json!({"id":id,"tag_name":tag}),
+            )]);
+            assert!(matches!(
+                resolve_release_component(
+                    &fixture,
+                    &release_request(),
+                    &PullLimits::default(),
+                    &AtomicBool::new(false),
+                    None
+                ),
+                Err(Error::Malformed(_))
+            ));
+            fixture.finished();
+        }
+    }
+    #[test]
+    fn prior_release_pin_keeps_duplicate_id_name_state_and_metadata_limits() {
+        let pin = parse_release_locator("release-91-asset-113").unwrap().0;
+        for assets in [
+            json!([{"id":113,"name":"tiny.gguf","size":7,"state":"uploaded"},{"id":113,"name":"other.txt","size":1,"state":"uploaded"}]),
+            json!([{"id":113,"name":"tiny.gguf","size":7,"state":"uploaded"},{"id":114,"name":"tiny.gguf","size":1,"state":"uploaded"}]),
+            json!([{"id":0,"name":"tiny.gguf","size":7,"state":"uploaded"}]),
+            json!([{"id":113,"name":"tiny.gguf","size":7,"state":"new"}]),
+        ] {
+            let fixture = Fixture::new(vec![(
+                "https://api.github.com/repos/owner/repo/releases/91/assets?per_page=100&page=1"
+                    .into(),
+                assets,
+            )]);
+            assert!(
+                resolve_release_component(
+                    &fixture,
+                    &release_request(),
+                    &PullLimits::default(),
+                    &AtomicBool::new(false),
+                    Some(pin)
+                )
+                .is_err()
+            );
+            fixture.finished();
+        }
+        let fixture = Fixture::new(vec![(
+            "https://api.github.com/repos/owner/repo/releases/91/assets?per_page=100&page=1".into(),
+            json!([]),
+        )]);
+        let limits = PullLimits {
+            max_metadata_bytes: 1,
+            ..Default::default()
+        };
+        assert!(matches!(
+            resolve_release_component(
+                &fixture,
+                &release_request(),
+                &limits,
+                &AtomicBool::new(false),
+                Some(pin)
+            ),
+            Err(Error::Limit(_))
+        ));
+        fixture.finished();
     }
     #[test]
     fn github_release_asset_id_and_optional_trusted_digest_are_explicit() {
