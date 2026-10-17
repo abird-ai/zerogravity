@@ -65,7 +65,16 @@ compilation or mocks do not establish inference support. Inspect changed code
 and failed/interrupted tests when resuming; Git IDs are source references.
 
 The root README is user-authored: leave its bytes unchanged. Do not download
-models/SDKs, change device privileges or recovery, push, tag or release without
-applicable user authorization. The local Renoir/gfx90c AMD launch hold remains.
+models/SDKs or change device privileges or recovery without applicable user
+authorization. The local Renoir/gfx90c AMD launch hold remains.
 Use subagents for independent implementation/review/test work; the main agent
 coordinates, reconciles, decides and merges. Preserve unrelated user work.
+
+## Git safety
+
+Commits are signed; never disable signing. Never push, force-push, tag,
+publish, deploy, or run destructive operations — history rewrite, `reset
+--hard`, branch deletion, or touching another agent's staged or uncommitted
+work — without explicit user confirmation for that action. Confirm each such
+action on its own: a request to "commit" or "apply" is not authorization to
+push.
