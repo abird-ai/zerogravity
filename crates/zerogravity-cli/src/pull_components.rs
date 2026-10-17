@@ -111,6 +111,18 @@ fn read_plan(
 }
 struct Clients(BTreeMap<String, HttpsClient>);
 impl ComponentTransport for Clients {
+    fn head(
+        &self,
+        label: &str,
+        request: &HttpRequest,
+        cancel: &AtomicBool,
+    ) -> Result<HttpResponse> {
+        self.0
+            .get(label)
+            .ok_or_else(|| Error::State("component client binding missing".into()))?
+            .head(request, cancel)
+    }
+
     fn get(&self, label: &str, request: &HttpRequest, cancel: &AtomicBool) -> Result<HttpResponse> {
         self.0
             .get(label)
@@ -218,4 +230,88 @@ pub(super) fn run(path: &str, options: &Options) -> Result<()> {
         "Independent component snapshots verified; no cross-source atomic ref or model-readiness claim. Earlier snapshots may remain after a later component failure."
     );
     Ok(())
+}
+
+#[cfg(all(test, feature = "diagnostic-acquisition"))]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn component_head_uses_only_the_selected_label_client_without_body_transfer() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            for token in ["first", "second"] {
+                let mut stream = loop {
+                    match listener.accept() {
+                        Ok((stream, _)) => break stream,
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            assert!(Instant::now() < deadline, "HEAD fixture timed out");
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(error) => panic!("HEAD fixture accept failed: {error}"),
+                    }
+                };
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                stream
+                    .set_write_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                let mut request = Vec::new();
+                while !request.ends_with(b"\r\n\r\n") {
+                    assert!(request.len() < 8192);
+                    let mut byte = [0];
+                    stream.read_exact(&mut byte).unwrap();
+                    request.push(byte[0]);
+                }
+                let request = String::from_utf8(request).unwrap();
+                assert!(request.starts_with("HEAD /pinned-object HTTP/1.1\r\n"));
+                assert!(
+                    request
+                        .to_ascii_lowercase()
+                        .contains(&format!("authorization: bearer {token}\r\n"))
+                );
+                // A large Content-Length describes the selected object; the
+                // HEAD response transfers no body and must not wait for one.
+                stream
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 67108864\r\nConnection: close\r\n\r\n",
+                    )
+                    .unwrap();
+            }
+        });
+        let mut clients = BTreeMap::new();
+        for token in ["first", "second"] {
+            let options = HttpOptions {
+                total_timeout: Duration::from_secs(2),
+                max_retries: 0,
+                ..HttpOptions::default()
+            };
+            clients.insert(
+                token.to_string(),
+                HttpsClient::diagnostic_loopback(&origin, Some(token.to_string()), options)
+                    .unwrap(),
+            );
+        }
+        let clients = Clients(clients);
+        let request = HttpRequest::new(format!("{origin}/pinned-object"), 67108864);
+        let cancel = AtomicBool::new(false);
+        assert!(matches!(
+            clients.head("absent", &request, &cancel),
+            Err(Error::State(_))
+        ));
+        for label in ["first", "second"] {
+            let response = clients.head(label, &request, &cancel).unwrap();
+            assert_eq!(response.status, 200);
+            assert_eq!(response.header("content-length"), Some("67108864"));
+            assert!(response.read_bounded(0, &cancel).unwrap().is_empty());
+        }
+        server.join().unwrap();
+    }
 }

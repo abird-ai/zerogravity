@@ -36,9 +36,9 @@ entries replace private accounting placeholders before the original snapshot/ref
 publisher can run. Existing leases, stable locks, failure outcomes and quota
 ownership remain authoritative; there is no second cache or allocator.
 
-The current continuation qualifies durable partial recovery through that same
-attempt owner. Only a synced proper prefix (shorter than the complete object)
-can be saved, bound to immutable source/object identity, exact total, strong ETag,
+Durable partial recovery uses that same attempt owner. Only a synced proper
+prefix (shorter than the complete object) can be saved, bound to immutable
+source/object identity, exact total, strong ETag,
 prefix digest and inode identity. Recovery rehashes and copies those bytes into
 an exclusively created file under a new full-peak admission. It never reopens a
 shared cache inode for writing. An exact206 response must match validator,
@@ -60,9 +60,13 @@ For a trusted checksum it also holds the original digest lock through staging,
 so another publisher cannot create a named blob that falsely credits a private
 copy's reservation. An already verified named object refuses the partial-write
 API before file creation; callers use try_cached instead. Publication and digest
-dedup remain A1's authority. A concurrent cache fill between the executor's initial
-lookup and guard acquisition can require a retry; an automatic post-wait cache-hit
-result is a remaining optimization, not a network single-flight guarantee.
+dedup remain A1's authority. The executor rechecks a known digest after acquiring
+those locks. A concurrent fill returns a typed verified cached result before a
+new private payload or HTTP
+body is requested. It is counted as cached progress, with the same prefix/LFS
+checks and original transaction completion. The legacy partial-write API still
+refuses a known object; callers can explicitly select the cached-or-partial API.
+Unknown-digest first-seen transfers do not gain a network single-flight guarantee.
 
 ## Decisions
 
@@ -73,9 +77,11 @@ result is a remaining optimization, not a network single-flight guarantee.
   cache manifests, progress text or upstream error strings. No remote code runs.
 - Source-provided SHA256 and first-seen local content hashes have different trust
   strength. Neither automatically supplies a model license or execution contract.
-- Exact metadata lengths are required in this slice; chunked bodies can still
-  transfer against that bound. Host admission covers this process's transfer
-  work, and disk quotas cover cooperating cache writers, not global OS resources.
+- Exact lengths are required before payload reservation/transfer; omitted listing
+  lengths can be recovered from pinned LFS metadata or bounded body-free HEAD.
+  Chunked bodies can still transfer against an exact established bound. Host
+  admission covers this process's transfer work, and disk quotas cover cooperating
+  cache writers, not global OS resources.
 - Linux local-filesystem semantics are qualified first. Open/read-only cache
   descriptors do not prevent arbitrary same-UID mutation; A3 must hash the bytes
   of its actual owned source copy before the existing source issuer runs.
@@ -91,11 +97,12 @@ Ordinary pulls retain strict same-repository model closure. Explicit component
 plans can supply config/tokenizer from separate authorized sources. Each member
 retains its own original provider/repository/immutable revision and manifest;
 there is no merged-source manifest, composite ref or cross-source transaction.
-Git LFS pointer payloads, missing metadata sizes and lease-aware removal refuse.
+Git LFS pointer payloads, lengths still unknown after bounded recovery and
+lease-aware removal refuse.
 Acquiring an auxiliary file or unqualified model format grants no loader support.
 The wider Hub/cloud/OCI/Xet/parity inventory remains separate unchecked work.
 
-The continuation adds a borrowed source-bound progress callback to the existing
+A borrowed source-bound progress callback extends the existing
 executor, preserving its original entry point. Logical file/aggregate bytes count
 accepted streamed bytes, verified cache hits and rehashed resumed prefixes;
 cached/resumed bytes are distinct. Complete byte progress is not publication.
@@ -110,9 +117,59 @@ help/offline/cache commands or default CPU builds. signal-hook leaves its OS
 dispatcher installed after callbacks are removed; this standalone single-command
 CLI exits afterward rather than claiming restoration of prior dispositions.
 Blocking HTTP reads remain bounded by the configured whole-request deadline;
-cancellation is checked between reads and at deadlines. Existing whole-object cached verification can finish its hash scan before the
-flag is observed. Filesystem syncs and blocked reads do not gain a real-time
+cancellation is checked between reads and at deadlines. Online acquisition
+threads that same flag through cached-object verification before/after each
+64 KiB read, EOF and digest finalization. Additive cancellable snapshot/ref APIs
+allow an existing caller flag to cover final verification. Legacy convenience
+APIs without a cancellation input retain their existing behavior. Parsing,
+inventory, filesystem syncs and blocked reads do not gain a real-time
 cancellation guarantee.
+
+## Exact length recovery
+
+Resolution first uses valid size metadata for the immutable selected object.
+HF LFS metadata can supply a missing tree length while retaining its original
+SHA256 trust; contradictory lengths refuse. A selected/required file whose size
+is still absent can use HEAD on its exact pinned HF commit, GitHub raw commit or
+release-asset-ID URL. Unselected files require no speculative probe. One shared
+HTTP owner retains TLS, origin credentials, redirect policy, identity encoding,
+request deadlines/retries and error redaction. Custom transports that do not
+implement HEAD return Unsupported; there is no fallback GET for size discovery.
+
+A probe must return HTTP200 with an exact valid Content-Length within the file
+limit. Missing, overflowing, contradictory, encoded or ranged/ambiguous framing
+refuses. No response payload is read; dry-run remains metadata-only. Probe counts
+are bounded per source by max_pages independently of listing-page counts.
+Component GET and HEAD calls also share the set's single max_pages request
+budget. Metadata body limits keep their existing separate authority.
+The resulting exact lengths enter the original full-peak cache admission; no
+zero placeholder, guessed total or unreserved growing payload is introduced.
+
+A strong probe ETag, when supplied, must match the initial transfer and applicable
+range responses. Weak/absent validators grant no extra resume authority. ETags
+and Git object IDs do not become raw SHA256, and recovery does not strengthen
+first-seen content provenance. Final original raw digest, exact bytes and terminal
+EOF checks remain mandatory. Truly unknown-body streaming remains a separate
+unchecked implementation and qualification task.
+
+## Remaining removal contract
+
+Removal is still Unsupported. SnapshotLease exposes readable File handles that
+can be cloned beyond the wrapper's lifetime; a wrapper-owned lock cannot prove
+that physical bytes were released. A future compatible protocol needs actual
+opened-descriptor lifetime pins, old-reader/policy migration handling, serialized
+reference/snapshot graph capture, safe lock ordering and preservation of shared
+blobs/live attempts/stable lock inodes. Candidates must remain named and charged
+through crash-safe retirement until actual release is proved. Close payload and
+control descriptors before releasing an owner pin; a destructured partial
+recovery tuple can otherwise drop its owner lock before the opened file.
+First-seen actual blob digests are absent from known-hash reservation cohorts,
+and dedup staging can retain a different inode; neither ledger nor staging links
+alone proves complete live reachability. Exclude relevant live transactions from
+blob GC or pin their actual blob handles through completion. Qualify faults,
+real process exits, escaped handles and exact release accounting before exposing
+explicit offline dry-run/apply removal. No live cache deletion or migration is
+performed by this slice.
 
 ## Explicit components
 

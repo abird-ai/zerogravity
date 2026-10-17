@@ -16,7 +16,8 @@ pub use manifest::{
     CacheLimits, DigestProvenance, FileRole, Manifest, ManifestEntry, ManifestSource,
 };
 pub use store::{
-    CacheStore, CacheTransaction, DiscoveredEntry, DiscoveredTransaction, PartialObject,
+    CacheStore, CacheTransaction, DiscoveredEntry, DiscoveredObject, DiscoveredTransaction,
+    PartialObject,
 };
 
 use crate::Error;

@@ -450,8 +450,11 @@ can take its configured HTTP deadline. Progress bytes are logical completed byte
 including verified cached/resumed prefixes, not a network-throughput measurement.
 Select an exact weight/index or auxiliary path; same-repository required model
 closure is added, and missing sidecars or ambiguous variants refuse. First-seen
-SHA256 is weaker than a trusted provider digest. No eviction, A3 loader or new inference
-format support. Resume requires a rehashed saved prefix and matching strong ETag;
+SHA256 is weaker than a trusted provider digest. Missing listing sizes may be recovered
+from pinned provider metadata or bounded body-free HEAD; totals still unknown refuse.
+HEAD is metadata only and does not establish content digest trust. Cache removal remains
+Unsupported. Explicit run-cache uses the existing supported CPU loader; acquisition
+adds no inference formats. Resume requires a rehashed saved prefix and matching strong ETag;
 changed or ignored range responses refuse."
     );
 }

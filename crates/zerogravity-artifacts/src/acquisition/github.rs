@@ -36,6 +36,8 @@ struct TreeEntry {
     kind: String,
     sha: String,
     size: Option<u64>,
+    #[serde(skip)]
+    validator: Option<String>,
 }
 #[derive(Deserialize)]
 struct Release {
@@ -46,7 +48,7 @@ struct Release {
 struct Asset {
     id: u64,
     name: String,
-    size: u64,
+    size: Option<u64>,
     state: String,
     digest: Option<String>,
 }
@@ -175,10 +177,7 @@ fn require(
     let entry = entries.get(&path).ok_or_else(|| {
         Error::Unsupported("required GitHub shard or sidecar is absent in pinned repository".into())
     })?;
-    if entry.kind != "blob"
-        || !matches!(entry.mode.as_str(), "100644" | "100755")
-        || entry.size.is_none()
-    {
+    if entry.kind != "blob" || !matches!(entry.mode.as_str(), "100644" | "100755") {
         return Err(Error::Unsupported(
             "required GitHub file is not a bounded regular blob".into(),
         ));
@@ -188,14 +187,14 @@ fn require(
 }
 fn close_model_selection(
     transport: &(impl HttpTransport + ?Sized),
-    source: (&str, &str, super::ExternalSidecars),
-    entries: &BTreeMap<String, TreeEntry>,
+    source: (&str, &str, super::ExternalSidecars, &mut usize),
+    entries: &mut BTreeMap<String, TreeEntry>,
     selected: &mut BTreeSet<String>,
     limits: &PullLimits,
     remaining: &mut usize,
     cancel: &AtomicBool,
 ) -> Result<()> {
-    let (repository, pin, sidecars) = source;
+    let (repository, pin, sidecars, probes) = source;
     let initial = selected.clone();
     let mut indexes = BTreeSet::new();
     for path in &initial {
@@ -225,16 +224,21 @@ fn close_model_selection(
     let mut covered = BTreeMap::<String, usize>::new();
     let mut index_shards = BTreeSet::new();
     for path in indexes {
-        let entry = &entries[&path];
+        let entry = entries.get_mut(&path).ok_or_else(malformed)?;
         if entry.kind != "blob" || !matches!(entry.mode.as_str(), "100644" | "100755") {
             return Err(Error::Unsupported(
                 "GitHub index is not a regular blob".into(),
             ));
         }
-        let size = entry.size.ok_or_else(malformed)?;
-        if size > *remaining as u64 {
-            return Err(Error::Limit("GitHub index metadata bound".into()));
-        }
+        let size = ensure_length(
+            entry,
+            transport,
+            raw_url(repository, pin, &path),
+            limits.cache.max_file_bytes.min(*remaining as u64),
+            probes,
+            cancel,
+            pin,
+        )?;
         let request = HttpRequest::new(raw_url(repository, pin, &path), size);
         let response = transport.get(&request, cancel)?;
         if response.status != 200 {
@@ -242,6 +246,7 @@ fn close_model_selection(
                 "GitHub index metadata request failed".into(),
             ));
         }
+        super::http::validate_validator(entry.validator.as_deref(), &response)?;
         let bytes = response.read_bounded(size as usize, cancel)?;
         *remaining -= bytes.len();
         if bytes.len() as u64 != size {
@@ -409,6 +414,7 @@ pub(super) fn resolve_component(
     }
     let api = format!("https://api.github.com/repos/{}", request.repository);
     let mut metadata_left = limits.max_metadata_bytes;
+    let mut probes_left = limits.max_pages;
     match &request.selection {
         Selection::Files { paths, subfolder } => {
             if paths.is_empty() || paths.len() > limits.cache.max_files {
@@ -465,8 +471,8 @@ pub(super) fn resolve_component(
             }
             close_model_selection(
                 transport,
-                (&request.repository, &commit.sha, sidecars),
-                &entries,
+                (&request.repository, &commit.sha, sidecars, &mut probes_left),
+                &mut entries,
                 &mut selected,
                 limits,
                 &mut metadata_left,
@@ -475,7 +481,7 @@ pub(super) fn resolve_component(
             let mut files = Vec::with_capacity(selected.len());
             for path in selected {
                 let entry = entries
-                    .get(&path)
+                    .get_mut(&path)
                     .ok_or_else(|| Error::Unsupported("required GitHub path is absent".into()))?;
                 if entry.kind != "blob" || !matches!(entry.mode.as_str(), "100644" | "100755") {
                     return Err(Error::Unsupported(
@@ -483,21 +489,30 @@ pub(super) fn resolve_component(
                             .into(),
                     ));
                 }
-                let bytes = entry.size.ok_or_else(|| {
-                    Error::Unsupported("GitHub file lacks an exact length".into())
-                })?;
+                let bytes = ensure_length(
+                    entry,
+                    transport,
+                    raw_url(&request.repository, &commit.sha, &path),
+                    limits.cache.max_file_bytes,
+                    &mut probes_left,
+                    cancel,
+                    &commit.sha,
+                )?;
                 let encoded_path = path.split('/').map(component).collect::<Vec<_>>().join("/");
-                files.push(ResolvedFile::new(
-                    &path,
-                    format!(
-                        "https://raw.githubusercontent.com/{}/{}/{encoded_path}",
-                        request.repository, commit.sha
-                    ),
-                    role(&path),
-                    bytes,
-                    None,
-                    format!("git-commit:{}:blob:{}", commit.sha, entry.sha),
-                )?);
+                files.push(
+                    ResolvedFile::new(
+                        &path,
+                        format!(
+                            "https://raw.githubusercontent.com/{}/{}/{encoded_path}",
+                            request.repository, commit.sha
+                        ),
+                        role(&path),
+                        bytes,
+                        None,
+                        format!("git-commit:{}:blob:{}", commit.sha, entry.sha),
+                    )?
+                    .with_validator(entry.validator.clone())?,
+                );
             }
             ResolvedPullPlan::new(
                 ManifestSource::new("github", &request.repository, commit.sha)?,
@@ -576,14 +591,27 @@ pub(super) fn resolve_component(
                     Some(digest.to_owned())
                 }
             };
+            let asset_url = format!("{api}/releases/assets/{}", asset.id);
+            let (bytes, validator) = match asset.size {
+                Some(bytes) => (bytes, None),
+                None => super::http::probe_length(
+                    transport,
+                    asset_url.clone(),
+                    limits.cache.max_file_bytes,
+                    &mut probes_left,
+                    cancel,
+                    None,
+                )?,
+            };
             let file = ResolvedFile::new(
                 name,
-                format!("{api}/releases/assets/{}", asset.id),
+                asset_url,
                 role(name),
-                asset.size,
+                bytes,
                 digest,
                 format!("release:{}:asset:{}", release.id, asset.id),
-            )?;
+            )?
+            .with_validator(validator)?;
             ResolvedPullPlan::new(
                 ManifestSource::new(
                     "github",
@@ -595,6 +623,31 @@ pub(super) fn resolve_component(
             )
         }
     }
+}
+
+fn ensure_length(
+    entry: &mut TreeEntry,
+    transport: &(impl HttpTransport + ?Sized),
+    url: String,
+    maximum: u64,
+    probes: &mut usize,
+    cancel: &AtomicBool,
+    pin: &str,
+) -> Result<u64> {
+    let size = match entry.size {
+        Some(size) => size,
+        None => {
+            let (size, validator) =
+                super::http::probe_length(transport, url, maximum, probes, cancel, Some(pin))?;
+            entry.size = Some(size);
+            entry.validator = validator;
+            size
+        }
+    };
+    if size > maximum {
+        return Err(Error::Limit("GitHub selected file length limit".into()));
+    }
+    Ok(size)
 }
 
 #[cfg(test)]

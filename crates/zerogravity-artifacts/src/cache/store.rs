@@ -26,7 +26,7 @@ const CONTROL_LIMIT: usize = 4096;
 
 #[path = "partials.rs"]
 mod partials;
-pub use partials::PartialObject;
+pub use partials::{DiscoveredObject, PartialObject};
 
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -217,8 +217,10 @@ fn verify_opened_file(
     mut file: File,
     expected: &str,
     bytes: u64,
+    cancel: &AtomicBool,
     mut after_chunk: impl FnMut(&File) -> Result<()>,
 ) -> Result<File> {
+    check_cancel(cancel)?;
     let before = file.metadata()?;
     if before.len() != bytes {
         return Err(Error::Malformed("cache object length mismatch".into()));
@@ -227,8 +229,10 @@ fn verify_opened_file(
     let mut buffer = [0u8; 64 * 1024];
     let mut remaining = bytes;
     while remaining != 0 {
+        check_cancel(cancel)?;
         let count = buffer.len().min(remaining.min(usize::MAX as u64) as usize);
         let read = file.read(&mut buffer[..count])?;
+        check_cancel(cancel)?;
         if read == 0 {
             return Err(Error::Malformed(
                 "cache object truncated while verifying".into(),
@@ -237,17 +241,22 @@ fn verify_opened_file(
         hasher.update(&buffer[..read]);
         remaining -= read as u64;
         after_chunk(&file)?;
+        check_cancel(cancel)?;
     }
+    check_cancel(cancel)?;
     if file.read(&mut buffer[..1])? != 0 {
         return Err(Error::Malformed("cache object grew while verifying".into()));
     }
+    check_cancel(cancel)?;
     let after = file.metadata()?;
+    let actual = format!("{:x}", hasher.finalize());
+    check_cancel(cancel)?;
     if before.dev() != after.dev()
         || before.ino() != after.ino()
         || before.len() != after.len()
         || before.mtime() != after.mtime()
         || before.mtime_nsec() != after.mtime_nsec()
-        || format!("{:x}", hasher.finalize()) != expected
+        || actual != expected
     {
         return Err(Error::Malformed(
             "cache object digest or identity mismatch".into(),
@@ -255,6 +264,48 @@ fn verify_opened_file(
     }
     file.seek(SeekFrom::Start(0))?;
     Ok(file)
+}
+
+// Verify the actual owned control bytes as they are copied, rather than hash
+// the opened file and assume the later copy observed identical mutable bytes.
+fn read_control_cancellable(
+    reader: &mut impl Read,
+    expected: &str,
+    count: usize,
+    cancel: &AtomicBool,
+) -> Result<Vec<u8>> {
+    check_cancel(cancel)?;
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(count)
+        .map_err(|_| Error::Limit("control object allocation refused".into()))?;
+    bytes.resize(count, 0);
+    let mut hasher = Sha256::new();
+    let mut offset = 0;
+    while offset < count {
+        check_cancel(cancel)?;
+        let end = count.min(offset + 64 * 1024);
+        let read = reader.read(&mut bytes[offset..end])?;
+        check_cancel(cancel)?;
+        if read == 0 {
+            return Err(Error::Malformed(
+                "acquisition control content changed".into(),
+            ));
+        }
+        hasher.update(&bytes[offset..offset + read]);
+        offset += read;
+    }
+    check_cancel(cancel)?;
+    let trailing = reader.read(&mut [0u8; 1])?;
+    check_cancel(cancel)?;
+    let actual = format!("{:x}", hasher.finalize());
+    check_cancel(cancel)?;
+    if trailing != 0 || actual != expected {
+        return Err(Error::Malformed(
+            "acquisition control content changed".into(),
+        ));
+    }
+    Ok(bytes)
 }
 
 impl CacheStore {
@@ -436,12 +487,19 @@ impl CacheStore {
         .map_err(io)
     }
 
-    fn verify_file(&self, path: &str, expected: &str, bytes: u64) -> Result<File> {
+    fn verify_file_cancellable(
+        &self,
+        path: &str,
+        expected: &str,
+        bytes: u64,
+        cancel: &AtomicBool,
+    ) -> Result<File> {
+        check_cancel(cancel)?;
         let file = self
             .inner
             .root
             .open_file(path, OFlags::RDONLY, Mode::empty())?;
-        verify_opened_file(file, expected, bytes, |_| Ok(()))
+        verify_opened_file(file, expected, bytes, cancel, |_| Ok(()))
     }
 
     /// Conservative cooperative allocation accounting: count each physical
@@ -803,6 +861,17 @@ impl CacheStore {
     }
 
     pub fn open_snapshot(&self, digest: &str) -> Result<SnapshotLease> {
+        self.open_snapshot_cancellable(digest, &AtomicBool::new(false))
+    }
+
+    /// Cooperative cancellation between bounded object reads. Filesystem calls,
+    /// parsing and inventory work do not gain a real-time interruption bound.
+    pub fn open_snapshot_cancellable(
+        &self,
+        digest: &str,
+        cancel: &AtomicBool,
+    ) -> Result<SnapshotLease> {
+        check_cancel(cancel)?;
         validate_digest(digest)?;
         let manifest = Manifest::from_json(
             &self.read(
@@ -814,14 +883,16 @@ impl CacheStore {
         if manifest.digest()? != digest {
             return Err(Error::Malformed("snapshot manifest digest mismatch".into()));
         }
+        check_cancel(cancel)?;
         let mut files = BTreeMap::new();
         for entry in manifest.entries() {
             files.insert(
                 entry.path().to_string(),
-                self.verify_file(
+                self.verify_file_cancellable(
                     &format!("snapshots/{digest}/files/{}", entry.path()),
                     entry.digest(),
                     entry.bytes(),
+                    cancel,
                 )?,
             );
         }
@@ -833,13 +904,22 @@ impl CacheStore {
     }
 
     pub fn resolve_ref(&self, name: &str) -> Result<SnapshotLease> {
+        self.resolve_ref_cancellable(name, &AtomicBool::new(false))
+    }
+
+    pub fn resolve_ref_cancellable(
+        &self,
+        name: &str,
+        cancel: &AtomicBool,
+    ) -> Result<SnapshotLease> {
+        check_cancel(cancel)?;
         let reference: Reference =
             serde_json::from_slice(&self.read(&reference_key(name)?, CONTROL_LIMIT * 2)?)
                 .map_err(|e| Error::Malformed(e.to_string()))?;
         if reference.schema != "zerogravity.cache.reference.v1" || reference.name != name {
             return Err(Error::Malformed("cache reference identity mismatch".into()));
         }
-        self.open_snapshot(&reference.snapshot)
+        self.open_snapshot_cancellable(&reference.snapshot, cancel)
     }
 
     pub fn remove_snapshot(&self, _digest: &str) -> Result<()> {
@@ -900,10 +980,12 @@ impl CacheTransaction {
             lock.ensure_bound()?;
         }
         if let Some(hash) = expected {
-            match self
-                .store
-                .verify_file(&format!("blobs/sha256/{hash}"), hash, bytes)
-            {
+            match self.store.verify_file_cancellable(
+                &format!("blobs/sha256/{hash}"),
+                hash,
+                bytes,
+                &self.cancel,
+            ) {
                 Ok(_) => {
                     self.complete.insert(logical_path.to_string());
                     return ManifestEntry::new(logical_path, hash, bytes, role);
@@ -1002,7 +1084,10 @@ impl CacheTransaction {
         // Unknown checksums may converge after their single-pass downloads.
         // Verify an existing inode rather than replacing it or trusting its name.
         let exists = if check_existing {
-            match self.store.verify_file(&blob, actual, bytes) {
+            match self
+                .store
+                .verify_file_cancellable(&blob, actual, bytes, &self.cancel)
+            {
                 Ok(_) => true,
                 Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => false,
                 Err(e) => return Err(e),
@@ -1098,9 +1183,12 @@ impl CacheTransaction {
             #[cfg(not(feature = "diagnostic-cache"))]
             let _ = ordinal;
             let blob = format!("blobs/sha256/{}", entry.digest());
-            let source = self
-                .store
-                .verify_file(&blob, entry.digest(), entry.bytes())?;
+            let source = self.store.verify_file_cancellable(
+                &blob,
+                entry.digest(),
+                entry.bytes(),
+                &self.cancel,
+            )?;
             let destination = format!("{stage_snapshot}/files/{}", entry.path());
             #[cfg(feature = "diagnostic-cache")]
             self.store.point(
@@ -1202,7 +1290,8 @@ impl CacheTransaction {
         ) {
             Ok(()) => {}
             Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                self.store.open_snapshot(&self.digest)?;
+                self.store
+                    .open_snapshot_cancellable(&self.digest, &self.cancel)?;
             }
             Err(e) => return Err(e),
         }
@@ -1256,10 +1345,11 @@ impl CacheTransaction {
             match self.store.link(&temporary, &record_target) {
                 Ok(()) => {}
                 Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                    self.store.verify_file(
+                    self.store.verify_file_cancellable(
                         &record_target,
                         &record_digest,
                         record_bytes.len() as u64,
+                        &self.cancel,
                     )?;
                     // Reuse the backing inode itself, not merely equal bytes:
                     // every published alias must retain a named second link.
@@ -1344,11 +1434,12 @@ impl DiscoveredTransaction {
             .store
             .lock(&format!("object-{hash}"), &self.inner.cancel)?;
         lock.ensure_bound()?;
-        match self
-            .inner
-            .store
-            .verify_file(&format!("blobs/sha256/{hash}"), hash, entry.bytes)
-        {
+        match self.inner.store.verify_file_cancellable(
+            &format!("blobs/sha256/{hash}"),
+            hash,
+            entry.bytes,
+            &self.inner.cancel,
+        ) {
             Ok(_) => {
                 let actual = ManifestEntry::new(&entry.path, hash, entry.bytes, entry.role)?
                     .with_digest_provenance(DigestProvenance::TrustedSha256);
@@ -1395,24 +1486,18 @@ impl DiscoveredTransaction {
         if entry.bytes() > limit as u64 {
             return Err(Error::Limit("acquisition control object too large".into()));
         }
-        let mut file = self.inner.store.verify_file(
+        let mut file = self.inner.store.verify_file_cancellable(
             &format!("blobs/sha256/{}", entry.digest()),
             entry.digest(),
             entry.bytes(),
+            &self.inner.cancel,
         )?;
-        let mut bytes = Vec::new();
-        bytes
-            .try_reserve_exact(entry.bytes() as usize)
-            .map_err(|_| Error::Limit("control object allocation refused".into()))?;
-        Read::by_ref(&mut file)
-            .take(entry.bytes() + 1)
-            .read_to_end(&mut bytes)?;
-        if bytes.len() as u64 != entry.bytes() || digest(&bytes) != entry.digest() {
-            return Err(Error::Malformed(
-                "acquisition control content changed".into(),
-            ));
-        }
-        Ok(bytes)
+        read_control_cancellable(
+            &mut file,
+            entry.digest(),
+            entry.bytes() as usize,
+            &self.inner.cancel,
+        )
     }
 
     pub fn read_prefix(&self, logical_path: &str, output: &mut [u8]) -> Result<usize> {
@@ -1433,6 +1518,7 @@ impl DiscoveredTransaction {
             .len()
             .min(entry.bytes().min(usize::MAX as u64) as usize);
         file.read_exact(&mut output[..count])?;
+        self.inner.ensure_owner()?;
         Ok(count)
     }
 
@@ -1593,6 +1679,7 @@ mod tests {
             File::open(&fixture.path).unwrap(),
             &digest(&fixture.bytes),
             fixture.bytes.len() as u64,
+            &AtomicBool::new(false),
             |_| {
                 if !linked {
                     // Cross a kernel coarse-clock tick so the historical ctime
@@ -1629,6 +1716,7 @@ mod tests {
             File::open(&fixture.path).unwrap(),
             &digest(&fixture.bytes),
             fixture.bytes.len() as u64,
+            &AtomicBool::new(false),
             |_| {
                 if !changed {
                     let mut writer = std::fs::OpenOptions::new()
@@ -1660,6 +1748,7 @@ mod tests {
                 File::open(&fixture.path).unwrap(),
                 &digest(&fixture.bytes),
                 fixture.bytes.len() as u64,
+                &AtomicBool::new(false),
                 |_| {
                     if !changed {
                         let mut writer = std::fs::OpenOptions::new()
@@ -1678,6 +1767,109 @@ mod tests {
             );
             assert!(changed);
             assert!(matches!(result, Err(Error::Malformed(_))));
+        }
+    }
+
+    #[test]
+    fn cancellation_interrupts_cached_hash_after_first_or_last_bounded_chunk() {
+        for stop_after in [1, 2] {
+            let fixture = VerificationFixture::new();
+            let cancel = AtomicBool::new(false);
+            let mut chunks = 0;
+            let result = verify_opened_file(
+                File::open(&fixture.path).unwrap(),
+                &digest(&fixture.bytes),
+                fixture.bytes.len() as u64,
+                &cancel,
+                |_| {
+                    chunks += 1;
+                    if chunks == stop_after {
+                        cancel.store(true, Ordering::Release);
+                    }
+                    Ok(())
+                },
+            );
+            assert_eq!(chunks, stop_after);
+            assert!(matches!(result, Err(Error::State(_))));
+            assert_eq!(std::fs::read(&fixture.path).unwrap(), fixture.bytes);
+        }
+    }
+
+    #[test]
+    fn control_copy_checks_cancellation_at_data_and_eof_boundaries() {
+        struct CancelReader<'a> {
+            bytes: std::io::Cursor<Vec<u8>>,
+            cancel: &'a AtomicBool,
+            stop_after: usize,
+            reads: usize,
+        }
+        impl Read for CancelReader<'_> {
+            fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+                assert!(output.len() <= 64 * 1024);
+                let count = self.bytes.read(output)?;
+                self.reads += 1;
+                if self.reads == self.stop_after {
+                    self.cancel.store(true, Ordering::Release);
+                }
+                Ok(count)
+            }
+        }
+        let bytes = vec![7u8; 128 * 1024];
+        for stop_after in [1, 2, 3] {
+            let cancel = AtomicBool::new(false);
+            let mut reader = CancelReader {
+                bytes: std::io::Cursor::new(bytes.clone()),
+                cancel: &cancel,
+                stop_after,
+                reads: 0,
+            };
+            assert!(matches!(
+                read_control_cancellable(&mut reader, &digest(&bytes), bytes.len(), &cancel),
+                Err(Error::State(_))
+            ));
+            assert_eq!(reader.reads, stop_after);
+        }
+    }
+
+    #[test]
+    fn control_copy_verifies_actual_length_and_digest_including_empty_files() {
+        for bytes in [Vec::new(), vec![7u8; 128 * 1024]] {
+            let cancel = AtomicBool::new(false);
+            let copied = read_control_cancellable(
+                &mut std::io::Cursor::new(&bytes),
+                &digest(&bytes),
+                bytes.len(),
+                &cancel,
+            )
+            .unwrap();
+            assert_eq!(copied, bytes);
+            let mut oversized = bytes.clone();
+            oversized.push(9);
+            for (observed, expected) in [
+                (oversized, digest(&bytes)),
+                (bytes.clone(), digest(b"wrong")),
+            ] {
+                assert!(matches!(
+                    read_control_cancellable(
+                        &mut std::io::Cursor::new(observed),
+                        &expected,
+                        bytes.len(),
+                        &cancel,
+                    ),
+                    Err(Error::Malformed(_))
+                ));
+            }
+            if !bytes.is_empty() {
+                assert!(matches!(
+                    read_control_cancellable(
+                        &mut std::io::Cursor::new(&bytes[..bytes.len() - 1]),
+                        &digest(&bytes),
+                        bytes.len(),
+                        &cancel,
+                    ),
+                    Err(Error::Malformed(_))
+                ));
+            }
         }
     }
 }

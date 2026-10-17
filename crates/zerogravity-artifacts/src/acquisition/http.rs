@@ -82,6 +82,97 @@ impl HttpResponse {
 
 pub trait HttpTransport: Send + Sync {
     fn get(&self, request: &HttpRequest, cancel: &AtomicBool) -> Result<HttpResponse>;
+    /// Metadata only. Older custom transports safely refuse probes until they
+    /// implement HEAD; no GET fallback may transfer an unadmitted object body.
+    fn head(&self, _request: &HttpRequest, _cancel: &AtomicBool) -> Result<HttpResponse> {
+        Err(Error::Unsupported(
+            "HTTP HEAD metadata is unavailable".into(),
+        ))
+    }
+}
+
+pub(super) fn probe_length(
+    transport: &(impl HttpTransport + ?Sized),
+    url: String,
+    maximum: u64,
+    probes: &mut usize,
+    cancel: &AtomicBool,
+    expected_commit: Option<&str>,
+) -> Result<(u64, Option<String>)> {
+    check_cancel(cancel)?;
+    if *probes == 0 {
+        return Err(Error::Limit("object length probe limit".into()));
+    }
+    *probes -= 1;
+    let response = transport.head(&HttpRequest::new(url, maximum), cancel);
+    check_cancel(cancel)?;
+    let response = response.map_err(redact_head_error)?;
+    if response.status != 200 {
+        return Err(Error::Unsupported(
+            "object length probe requires HTTP200".into(),
+        ));
+    }
+    if response.header("content-range").is_some() || response.header("transfer-encoding").is_some()
+    {
+        return Err(Error::Malformed(
+            "ambiguous object length probe framing".into(),
+        ));
+    }
+    if response
+        .header("content-encoding")
+        .is_some_and(|value| !value.eq_ignore_ascii_case("identity"))
+    {
+        return Err(Error::Unsupported(
+            "length probe requires identity encoding".into(),
+        ));
+    }
+    let bytes = response
+        .header("content-length")
+        .ok_or_else(|| Error::Unsupported("exact object length is required".into()))
+        .and_then(parse_u64)?;
+    if bytes > maximum {
+        return Err(Error::Limit(
+            "object length exceeds planned file limit".into(),
+        ));
+    }
+    if let Some(linked) = response.header("x-linked-size")
+        && parse_u64(linked)? != bytes
+    {
+        return Err(Error::Malformed("object length metadata conflicts".into()));
+    }
+    if let (Some(expected), Some(actual)) = (expected_commit, response.header("x-repo-commit"))
+        && !actual.eq_ignore_ascii_case(expected)
+    {
+        return Err(Error::State(
+            "object length probe contradicts pinned commit".into(),
+        ));
+    }
+    let validator = response
+        .header("etag")
+        .filter(|value| super::resume::strong_etag(value).is_ok())
+        .map(str::to_string);
+    // In particular, never inspect response.body: dry-run remains payload-free.
+    Ok((bytes, validator))
+}
+
+pub(super) fn redact_head_error(error: Error) -> Error {
+    match error {
+        Error::Limit(_) => Error::Limit("object length probe exceeded a bound".into()),
+        Error::Malformed(_) => Error::Malformed("invalid object length probe metadata".into()),
+        Error::State(_) | Error::Io(_) => {
+            Error::State("object length probe failed or canceled".into())
+        }
+        _ => Error::Unsupported("exact object length metadata is unavailable".into()),
+    }
+}
+
+pub(super) fn validate_validator(expected: Option<&str>, response: &HttpResponse) -> Result<()> {
+    if expected.is_some_and(|validator| response.header("etag") != Some(validator)) {
+        return Err(Error::State(
+            "HTTP object validator changed after length probe".into(),
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug)]
@@ -264,6 +355,24 @@ impl HttpsClient {
 
 impl HttpTransport for HttpsClient {
     fn get(&self, request: &HttpRequest, cancel: &AtomicBool) -> Result<HttpResponse> {
+        self.request(request, cancel, false)
+    }
+    fn head(&self, request: &HttpRequest, cancel: &AtomicBool) -> Result<HttpResponse> {
+        if request.range.is_some() {
+            return Err(Error::Malformed(
+                "HEAD probe cannot request a byte range".into(),
+            ));
+        }
+        self.request(request, cancel, true)
+    }
+}
+impl HttpsClient {
+    fn request(
+        &self,
+        request: &HttpRequest,
+        cancel: &AtomicBool,
+        head: bool,
+    ) -> Result<HttpResponse> {
         check_cancel(cancel)?;
         let initial = parse_url(&request.url, self.loopback)?;
         if let Some(range) = &request.range {
@@ -289,9 +398,12 @@ impl HttpTransport for HttpsClient {
                     HttpAccept::GitHubJson => "application/vnd.github+json",
                     HttpAccept::Binary => "application/octet-stream",
                 };
-                let mut call = self
-                    .agent
-                    .get(current.as_str())
+                let call = if head {
+                    self.agent.head(current.as_str())
+                } else {
+                    self.agent.get(current.as_str())
+                };
+                let mut call = call
                     .config()
                     .timeout_global(Some(remaining))
                     .build()
@@ -378,6 +490,7 @@ impl HttpTransport for HttpsClient {
                     "content-length",
                     "content-range",
                     "content-encoding",
+                    "transfer-encoding",
                     "etag",
                     "last-modified",
                     "link",
@@ -411,11 +524,17 @@ impl HttpTransport for HttpsClient {
                 if declared.is_some_and(|n| n > request.max_body_bytes) {
                     return Err(Error::Limit("HTTP declared body limit".into()));
                 }
-                let body = Box::new(BoundedBody {
-                    inner: response.into_body().into_reader(),
-                    remaining: request.max_body_bytes,
-                    deadline,
-                });
+                let body: Box<dyn Read + Send> = if head {
+                    // Drop the HTTP response without reading a body, including
+                    // when a nonconforming server sends bytes after HEAD.
+                    Box::new(io::empty())
+                } else {
+                    Box::new(BoundedBody {
+                        inner: response.into_body().into_reader(),
+                        remaining: request.max_body_bytes,
+                        deadline,
+                    })
+                };
                 let response = HttpResponse {
                     status,
                     headers,

@@ -2,8 +2,8 @@ use super::http::{HttpAccept, HttpRequest, HttpTransport};
 use super::resume::{ResumeDisposition, ResumeRequest, strong_etag, validate_range_response};
 use super::{DigestProvenance, ResolvedFile, ResolvedPullPlan};
 use crate::cache::{
-    CacheStore, CommitOutcome, DiscoveredEntry, DiscoveredTransaction, Manifest, ManifestEntry,
-    ManifestSource, TransferAdmission,
+    CacheStore, CommitOutcome, DiscoveredEntry, DiscoveredObject, DiscoveredTransaction, Manifest,
+    ManifestEntry, ManifestSource, TransferAdmission,
 };
 use crate::{Error, Result};
 use std::collections::BTreeSet;
@@ -178,15 +178,17 @@ pub fn execute_with_progress(
             super::http::check_cancel(cancel)?;
             cached
         } else {
-            let mut report = |count, resumed| {
+            let mut report = |count, resumed, cached| {
                 event.file_bytes = count;
                 event.total_bytes = completed_bytes + count;
                 event.resumed_bytes = resumed_bytes + resumed;
+                event.cached_bytes = cached_bytes + cached;
                 progress(&event);
             };
-            let (actual, resumed) =
+            let (actual, resumed, cached) =
                 transfer_object(&mut transaction, file, transport, cancel, &mut report)?;
             resumed_bytes += resumed;
+            cached_bytes += cached;
             actual
         };
         files.push(acquired(file, &actual));
@@ -227,15 +229,25 @@ fn transfer_object(
     file: &ResolvedFile,
     transport: &impl HttpTransport,
     cancel: &AtomicBool,
-    report: &mut impl FnMut(u64, u64),
-) -> Result<(ManifestEntry, u64)> {
-    let mut partial = transaction.partial_object(file.path(), file.identity())?;
+    report: &mut impl FnMut(u64, u64, u64),
+) -> Result<(ManifestEntry, u64, u64)> {
+    let mut partial = match transaction.cached_or_partial_object(file.path(), file.identity())? {
+        DiscoveredObject::Cached(actual) => {
+            let mut prefix = [0u8; 128];
+            let count = transaction.read_prefix(file.path(), &mut prefix)?;
+            reject_pointer(&prefix[..count])?;
+            report(file.bytes(), 0, file.bytes());
+            super::http::check_cancel(cancel)?;
+            return Ok((actual, 0, file.bytes()));
+        }
+        DiscoveredObject::Partial(partial) => partial,
+    };
     let resumed = partial.resume_bytes();
     let mut prefix = [0u8; 128];
     let saved_prefix = partial.read_prefix(&mut prefix)?;
     reject_pointer(&prefix[..saved_prefix])?;
     if resumed != 0 {
-        report(resumed, resumed);
+        report(resumed, resumed, 0);
         if let Err(cause) = super::http::check_cancel(cancel) {
             partial.checkpoint()?;
             return Err(cause);
@@ -274,7 +286,7 @@ fn transfer_object(
             partial.checkpoint()?;
             return Err(cause);
         }
-        report(partial.bytes(), resumed);
+        report(partial.bytes(), resumed, 0);
     }
     let mut checkpoint_bytes = partial.bytes();
     let mut checkpoint_time = Instant::now();
@@ -305,9 +317,9 @@ fn transfer_object(
             checkpoint_bytes = partial.bytes();
             checkpoint_time = Instant::now();
         }
-        report(partial.bytes(), resumed);
+        report(partial.bytes(), resumed, 0);
     }
-    Ok((partial.finish()?, resumed))
+    Ok((partial.finish()?, resumed, 0))
 }
 
 fn acquired(file: &ResolvedFile, entry: &ManifestEntry) -> AcquiredFile {
@@ -389,6 +401,7 @@ impl<'a, T: HttpTransport> RetryReader<'a, T> {
             )
             .map_err(|_| Error::State("HTTP object request failed".into()))?;
         super::http::check_cancel(cancel)?;
+        super::http::validate_validator(file.validator(), &response)?;
         if let Some(range) = &range {
             if validate_range_response(range, &response)? != ResumeDisposition::Append {
                 return Err(Error::State(
@@ -504,4 +517,198 @@ fn reject_pointer(prefix: &[u8]) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod cached_start_tests {
+    use super::*;
+    use crate::cache::{CacheOptions, FileRole};
+    use sha2::{Digest, Sha256};
+    use std::os::unix::fs::DirBuilderExt;
+    use std::path::PathBuf;
+    use std::sync::atomic::AtomicU64;
+    use zerogravity_core::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, ResourceOwner};
+
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    struct Fixture {
+        root: PathBuf,
+        store: CacheStore,
+        admission: TransferAdmission,
+        file: ResolvedFile,
+        source: ManifestSource,
+        previous: String,
+    }
+    impl Fixture {
+        fn new(bytes: &[u8]) -> Self {
+            let root = std::env::temp_dir().join(format!(
+                "zerogravity-executor-cached-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::DirBuilder::new()
+                .mode(0o700)
+                .create(&root)
+                .unwrap();
+            let store =
+                CacheStore::open(CacheOptions::new(Some(root.clone()), 8 * 1024 * 1024)).unwrap();
+            let resource = PhysicalDeviceKey::new("test-host", "executor-cached-start").unwrap();
+            let arbiter = ResourceArbiter::new();
+            arbiter
+                .register(resource.clone(), 128 * 1024 * 1024)
+                .unwrap();
+            let admission = TransferAdmission {
+                arbiter,
+                resource,
+                owner: ResourceOwner::new("tiny-local-fixture", "cached-start").unwrap(),
+            };
+            let hash = format!("{:x}", Sha256::digest(bytes));
+            let source = ManifestSource::new("github", "fixture/repo", "1".repeat(40)).unwrap();
+            let file = ResolvedFile::new(
+                "payload.bin",
+                "https://example.invalid/payload",
+                FileRole::Auxiliary,
+                bytes.len() as u64,
+                Some(hash.clone()),
+                "immutable/payload",
+            )
+            .unwrap();
+            let manifest = Manifest::new(
+                source.clone(),
+                vec![ManifestEntry::new(file.path(), hash, file.bytes(), file.role()).unwrap()],
+                &Default::default(),
+            )
+            .unwrap();
+            let mut publisher = store
+                .begin(manifest, &admission, Arc::new(AtomicBool::new(false)))
+                .unwrap();
+            let mut input = bytes;
+            publisher.import_object(file.path(), &mut input).unwrap();
+            let CommitOutcome::Durable(previous) = publisher.commit(Some("previous")).unwrap()
+            else {
+                panic!("fixture publication must be durable");
+            };
+            Self {
+                root,
+                store,
+                admission,
+                file,
+                source,
+                previous: previous.digest().to_string(),
+            }
+        }
+        fn transaction(&self, cancel: Arc<AtomicBool>) -> DiscoveredTransaction {
+            self.store
+                .begin_discovered(
+                    self.source.clone(),
+                    vec![
+                        DiscoveredEntry::new(
+                            self.file.path(),
+                            self.file.bytes(),
+                            self.file.role(),
+                            self.file.sha256().map(str::to_string),
+                        )
+                        .unwrap(),
+                    ],
+                    &self.admission,
+                    cancel,
+                )
+                .unwrap()
+        }
+        fn unchanged(&self) {
+            assert_eq!(
+                self.store
+                    .resolve_ref("previous")
+                    .unwrap()
+                    .manifest()
+                    .digest()
+                    .unwrap(),
+                self.previous
+            );
+            assert_eq!(self.store.usage().unwrap().reserved_bytes, 0);
+            assert_eq!(
+                self.admission
+                    .arbiter
+                    .snapshot(&self.admission.resource)
+                    .unwrap()
+                    .reserved,
+                0
+            );
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+    struct NoRequest;
+    impl HttpTransport for NoRequest {
+        fn get(&self, _: &HttpRequest, _: &AtomicBool) -> Result<super::super::http::HttpResponse> {
+            panic!("concurrent verified fill must never request another body");
+        }
+    }
+
+    #[test]
+    fn concurrent_cached_start_reports_only_verified_cached_bytes_without_a_request() {
+        let fixture = Fixture::new(b"tiny cached data");
+        let cancel = Arc::new(AtomicBool::new(false));
+        let mut transaction = fixture.transaction(cancel.clone());
+        let mut progress = Vec::new();
+        let (entry, resumed, cached) = transfer_object(
+            &mut transaction,
+            &fixture.file,
+            &NoRequest,
+            &cancel,
+            &mut |bytes, resumed, cached| progress.push((bytes, resumed, cached)),
+        )
+        .unwrap();
+        assert_eq!(entry.digest(), fixture.file.sha256().unwrap());
+        assert_eq!((resumed, cached), (0, fixture.file.bytes()));
+        assert_eq!(progress, [(fixture.file.bytes(), 0, fixture.file.bytes())]);
+        drop(transaction);
+        fixture.unchanged();
+    }
+    #[test]
+    fn concurrent_cached_progress_cancellation_is_immediate_and_preserves_previous_ref() {
+        let fixture = Fixture::new(b"tiny cached data");
+        let cancel = Arc::new(AtomicBool::new(false));
+        let mut transaction = fixture.transaction(cancel.clone());
+        let mut calls = 0;
+        let error = transfer_object(
+            &mut transaction,
+            &fixture.file,
+            &NoRequest,
+            &cancel,
+            &mut |bytes, resumed, cached| {
+                assert_eq!(
+                    (bytes, resumed, cached),
+                    (fixture.file.bytes(), 0, fixture.file.bytes())
+                );
+                calls += 1;
+                cancel.store(true, Ordering::Release);
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(error, Error::State(_)));
+        assert_eq!(calls, 1);
+        drop(transaction);
+        fixture.unchanged();
+    }
+    #[test]
+    fn concurrent_cached_lfs_pointer_refuses_before_progress_or_requests() {
+        let fixture =
+            Fixture::new(b"version https://git-lfs.github.com/spec/v1\noid sha256:placeholder\n");
+        let cancel = Arc::new(AtomicBool::new(false));
+        let mut transaction = fixture.transaction(cancel.clone());
+        let error = transfer_object(
+            &mut transaction,
+            &fixture.file,
+            &NoRequest,
+            &cancel,
+            &mut |_, _, _| panic!("pointer cannot be reported as accepted progress"),
+        )
+        .unwrap_err();
+        assert!(matches!(error, Error::Unsupported(_)));
+        drop(transaction);
+        fixture.unchanged();
+    }
 }

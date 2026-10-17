@@ -53,7 +53,7 @@ Technical API/bounds: [A1 cache reference](../../research/PULL_A1_LOCAL_XDG_CACH
 - [x] Verify actual offline Nix filtered-source integrity,23 local documentation links, single tracked Cargo.lock and byte-identical root README. No dependency/model/SDK/provider acquisition, device action or publication occurred.
 - [x] Integrate completed run outcomes into this checklist and design reference; retire temporary run checklists/logs. Keep independent A3, removal, component and parity gates open.
 
-## Uncommitted
+### baa9d88 — pinned components and A3 cached CPU preparation
 
 - [x] Add explicit independently pinned component requests/plans, per-label credential transport adapters, bounded role suppliers and separate original verified snapshots. No composite source manifest, mutable ref, second publisher/runtime or model-readiness claim.
 - [x] Reuse the first exact commit for repeated file-source aliases and preserve strict ordinary model closure. Relax only explicitly supplied config/tokenizer sidecars; retain missing-shard/index/split/role refusal. Repeated release aliases remain a separate unsupported frontier.
@@ -73,13 +73,38 @@ Technical API/bounds: [A1 cache reference](../../research/PULL_A1_LOCAL_XDG_CACH
 - [x] Verify actual offline Nix filtered-source integrity, changed-document local links, one tracked Cargo.lock and byte-identical user root README. No new dependency packages, model/SDK/provider fetch, device action or publication; optional CLI serde reuses the already locked package.
 - [x] Integrate completed implementation run outcomes into this checklist/design reference and retire their temporary tracking. Keep source shards/new families, missing lengths, removal/reclamation and broader provider parity open.
 
-- [ ] Qualify plans with missing provider metadata lengths; this slice requires exact listed sizes, including for chunked bodies.
-- [ ] Independently qualify repeated release-alias multi-asset component plans; these currently refuse rather than silently mixing source identities.
-- [ ] Separately qualify snapshot/retained-partial lease-aware removal, orphan reclamation and actual release accounting; automatic removal remains Unsupported until then.
-- [ ] Finish the provisional acquisition capability ledger: external-cache read-only import, additional hosted model hubs, S3/GCS/Azure/S3-compatible and OCI/Xet profiles; opaque serialization/plugin loaders remain separate format/runtime work.
-- [ ] Continue explicit source/license authorization and trusted-digest versus first-seen provenance through A3 and every additional provider; acquisition does not grant a license or loading support.
-- [ ] Add a verified cached-result path for concurrent cache fill between initial lookup and partial guard acquisition; currently a known-object race refuses safely and callers retry explicitly.
-- [ ] Poll cancellation through large local cached-object hash scans; current cooperative checks can observe the flag only after that existing scan completes. Blocking filesystem calls do not gain real-time interruption guarantees.
+
+## Uncommitted
+
+- [x] Recover omitted selected/required sizes from valid pinned HF LFS metadata or bounded HEAD on the exact HF commit/GitHub raw commit/release-asset-ID URL. Distinguish missing from zero, refuse conflicting LFS/tree sizes and avoid probes for unselected files.
+- [x] Extend the existing synchronous HTTP owner with backward-compatible HEAD, preserving TLS/origin credentials/redirect/retry/deadline/identity/header limits and error redaction. HEAD reads no payload and unsupported custom transports never fall back to GET.
+- [x] Require exact HTTP200 Content-Length within the file cap; refuse missing/malformed/overflow/conflicting/encoded/ranged metadata and contradictory HF commit headers, then use original full-peak A1 admission. Truly unknown-body streaming remains open.
+- [x] Bind optional strong HEAD ETags to index metadata GET and initial/ranged transfer, preserving original digest/length/EOF and saved-prefix validation. Git OIDs/ETags never become trusted raw SHA256; changed validators cannot append older prefixes.
+- [x] Bound per-source probes separately from listing pages and component GET/HEAD under one shared request budget. Preserve large object caps independently of JSON body limits; account transient validators in plan metadata and omit them/URLs from Debug.
+- [x] Observe cancellation after failed HEAD before sanitized error mapping, preserving Limit/State categories. Keep offline before credentials/client/provider and body-free dry-run; CLI forwards HEAD through existing label/origin-scoped clients.
+- [x] Add cached_or_partial_object/DiscoveredObject using original stable source/digest locks, reservation and publisher. A concurrent known-digest fill returns verified cached data before another private payload/request; legacy partial_object retains strict refusal.
+- [x] Attribute those hits solely to cached progress with prefix/LFS rejection and immediate callback cancellation. Preserve original transaction completion, first-seen transfer limits and physically charged retained partials.
+- [x] Thread transaction cancellation through bounded cache hashing, EOF/finalization, lookup/dedup/install/commit/partial verification and online final component open. Add cancellable snapshot/ref APIs; retain legacy no-flag wrappers and existing blocked-filesystem/inventory/parser boundaries.
+- [x] Close control-copy cancellation: exact preallocation, bounded checked reads, separate EOF and SHA256 of actual owned control bytes before parsing. Raw A3 source copying/parsing and inference mathematics are unchanged.
+- [x] Refresh CLI help for size recovery, body-free metadata, trust limits and accepted explicit A3 CPU loading; retain optional/default isolation and removal Unsupported. No new runtime, allocator, source issuer, inference format or CLI flags.
+- [x] Integrate independent provider/HTTP/cache/CLI reviews. Fix actual development lint reports by boxing only the cold Partial guard (296B versus64B) and making the fixture Ordering import unconditional. Production/diagnostic rechecks pass without allowances/tolerance changes.
+- [x] Verify12 new length tests,37 original provider/HTTP,10 component,11 progress and11 transaction tests;72 cache executions (33 library/4 maintenance/13 partial/7 source bridge/15 transactions);16 selected CLI executions and three final direct Cached-arm executor cases.
+- [x] Requalify both approved original .8B/2B models:2 tokens each, all248320 logits/all42 state domains bit exact, independent sessions, exact raw-source lease lifetime and ref/private-mutation isolation. One selected ignored A3 test passed in21.61s; import enforced accepted source hashes and originals were untouched.
+- [x] Run the complete frozen isolated gate:449 Rust executions passed,0 failed,54 optional/helper entries ignored across81 suites (feature repetitions included); strict minimal/default/cache/acquisition/diagnostic lint, CPU release/installer,18 namespace and comparator/resume checks passed.
+- [x] Verify actual offline Nix filtered-source integrity, changed-document links, one unchanged tracked Cargo.lock and byte-identical user README. No dependency/model/SDK/provider acquisition, live cache deletion/migration, device action or publication.
+- [x] Record dedicated removal requirements: escaped descriptor lifetime/old-reader policy compatibility, first-seen actual-blob reachability, partial file-before-owner close order, safe lock order and still-charged crash-safe retirement. Keep Unsupported until physical protocol qualification.
+- [x] Integrate finished agent results/failures/frontiers into this checklist/design reference and retire temporary implementation checklists/scripts/logs after reconciliation.
+
+- [ ] Design and qualify genuinely unknown-body streaming with explicit caps/reservations, final actual manifest lengths/digest/EOF and honest progress/resume. Omitted-listing-size recovery does not implement this path.
+- [ ] Independently qualify repeated release-alias multi-asset component plans; these refuse rather than mix source identities.
+- [ ] Removal: qualify actual descriptor-lifetime pins across try_clone/dup/fork, new opens versus final unlink, file-before-owner close order and lazy/raw-path consumers; SnapshotLease wrapper lifetime alone is insufficient.
+- [ ] Removal: introduce compatible policy/protocol epochs for protected readers. Existing v1 roots/readers remain unchanged; fresh roots or separately authorized proven-quiescent migration precedes reclamation.
+- [ ] Removal: capture refs/snapshot/shared-blob/live-attempt/partial reachability under publication authority without waiting on object/attempt locks while holding publication. Known-hash cohorts/staging inodes miss first-seen/dedup actual blobs; exclude live transactions or pin actual handles through completion.
+- [ ] Removal: implement still-named/charged retirement and crash-safe unlink/sync accounting; close all payload/control/collector handles before physical release credit. Preserve referenced/shared/live data and stable lock inodes.
+- [ ] Removal tests: escaped same-process/child handles, old readers, ref/open races, aliases/dedup, live/dead partials, symlink/inode substitution, every destructive fault/real exit, canceled waits and rebuilt unique-inode/st_blocks charge through final close.
+- [ ] Removal CLI: explicit offline exact-target dry-run/apply only after those gates; honest busy/retained/durability/reclaimed-charge results. No automatic eviction, force-live cleanup or hidden ref deletion.
+- [ ] Finish the provisional provider/loader ledger: external-cache read-only import, additional model hubs, S3/GCS/Azure/S3-compatible and OCI/Xet; opaque serialization/plugin loaders remain separate runtime work.
+- [ ] Continue explicit source/license authorization and trusted-digest versus first-seen provenance through additional providers/loaders; acquisition grants no license or loading support.
 
 ## Tests and verification
 
@@ -103,7 +128,13 @@ Technical API/bounds: [A1 cache reference](../../research/PULL_A1_LOCAL_XDG_CACH
 - [x] Components/A3 facade/CLI gates:21 selected executions passed, including8 frontend cases, tiny preparation refusal,10 corrected component tests, minimal cache-only refusal and1 explicitly selected real-model test exercising both checkpoints. Strict all-target default CPU+cache/acquisition and minimal cache lint/check passed; same-descriptor/cursor/path/mutation/lease guarantees received independent review.
 - [x] Components/A3 full gate: `CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=4 python3 scripts/native-gpu.py -- bash scripts/check.sh` passed once on frozen source:419 Rust executions/0 failures/54 ignored across75 suite executions. Release/installer/lint/18 namespace and comparator/resume checks passed. Actual offline Nix source-integrity, all changed-document local links, single tracked lock and original root README passed.
 
+- [x] Exact-size recovery:12 scripted/actual-loopback tests passed for pinned HF LFS/HEAD/GitHub raw/release-ID recovery; missing/zero/conflicting/encoded/ranged/oversize/status refusals; full index/shard closure; changed validators/saved-prefix refusal; cancellation/redaction; body-free redirects/auth/deadlines and shared request/large-object versus JSON budgets.
+- [x] Cache verification:72 focused executions and strict production/diagnostic lint passed. Deterministic chunk/data/EOF cancellation, empty/truncated/oversize/wrong-digest control copies, concurrent fill/corruption/canceled waiter/ref/accounting and original source/fault/real-exit regressions passed.
+- [x] Executor/CLI: final gate ran all three new direct Cached-arm tests (zero HTTP/payload, exact cached counters, immediate cancellation/ref preservation and LFS-before-progress refusal).16 scoped CLI executions/8 distinct names and final default-disabled/production/diagnostic checks passed.
+- [x] Actual A3 requalification: isolated jobs2/Rayon4 cargo test --release --locked --offline -p zerogravity --features cache --test cache_prepare approved_cached_models_match_direct_source_exactly -- --ignored --exact --nocapture passed both approved original models in21.61s. Numerical/state/ownership criteria unchanged; no new model/context/GPU claim.
+- [x] Recovery/cache full gate: CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=4 python3 scripts/native-gpu.py -- bash scripts/check.sh passed once on frozen source:449 Rust executions/0 failures/54 ignored across81 suites. Release/installer/lint/18 namespace/comparator/resume and actual offline Nix source-integrity passed; changed-document links, original README and one unchanged tracked lock pass.
+
 ## Deferred
 
-- [ ] Unsupported plans fail closed until qualified: missing metadata lengths, repeated release-alias multi-asset plans and physical removal/reclamation remain explicit above. Independent component data grants no additional loader eligibility.
+- [ ] Unsupported plans fail closed until qualified: truly unknown payload lengths, repeated release-alias multi-asset plans and physical removal/reclamation remain explicit above. Independent component data grants no additional loader eligibility.
 - [ ] Linux local-filesystem semantics are qualified first. HTTP cancellation obeys configured whole-request bounds; old retained attempts consume real quota and arbitrary same-UID mutation remains outside descriptor isolation.

@@ -149,6 +149,16 @@ impl ComponentPullRequest {
 /// credential scopes. This interface does not create clients or infer origins.
 pub trait ComponentTransport: Send + Sync {
     fn get(&self, label: &str, request: &HttpRequest, cancel: &AtomicBool) -> Result<HttpResponse>;
+    fn head(
+        &self,
+        _label: &str,
+        _request: &HttpRequest,
+        _cancel: &AtomicBool,
+    ) -> Result<HttpResponse> {
+        Err(Error::Unsupported(
+            "component HTTP HEAD metadata is unavailable".into(),
+        ))
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -277,6 +287,23 @@ impl<T: ComponentTransport> HttpTransport for Adapter<'_, T> {
         }
         Ok(response)
     }
+    fn head(&self, request: &HttpRequest, cancel: &AtomicBool) -> Result<HttpResponse> {
+        check_cancel(cancel)?;
+        if let Some(budget) = &self.budget {
+            let mut budget = budget
+                .lock()
+                .map_err(|_| Error::State("component budget unavailable".into()))?;
+            if budget.requests == 0 || budget.bytes == 0 {
+                return Err(limit());
+            }
+            budget.requests -= 1;
+        }
+        // max_body_bytes bounds the described object, not HEAD metadata bytes.
+        // Never clamp a potentially large exact length to the JSON body budget.
+        self.transport
+            .head(self.label, request, cancel)
+            .map_err(super::http::redact_head_error)
+    }
 }
 struct BudgetBody {
     inner: Box<dyn Read + Send>,
@@ -373,7 +400,12 @@ pub fn resolve_components(
             plan.files().iter().map(|file| (file.path(), file.bytes())),
             plan.files()
                 .iter()
-                .map(|file| file.url().len() + file.identity().len() + 128)
+                .map(|file| {
+                    file.url().len()
+                        + file.identity().len()
+                        + file.validator().map_or(0, str::len)
+                        + 128
+                })
                 .sum::<usize>()
                 + component.label.len()
                 + plan.source().provider().len()
@@ -528,7 +560,7 @@ pub fn execute_components_with_progress(
                 "component snapshot durability is unknown; inspect before retrying".into(),
             ));
         };
-        let lease = store.open_snapshot(snapshot.digest())?;
+        let lease = store.open_snapshot_cancellable(snapshot.digest(), cancel)?;
         components.push(VerifiedComponent {
             label: component.label.clone(),
             kind: component.kind,

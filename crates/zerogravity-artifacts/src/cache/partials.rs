@@ -61,6 +61,13 @@ pub struct PartialObject<'a> {
     write_failed: bool,
 }
 
+/// One transaction-owned object acquisition. A verified concurrent fill never
+/// allocates a second private payload or asks the caller for another body.
+pub enum DiscoveredObject<'a> {
+    Cached(ManifestEntry),
+    Partial(Box<PartialObject<'a>>),
+}
+
 impl DiscoveredTransaction {
     /// Start one admitted transfer after checking try_cached. A concurrent
     /// trusted-digest fill may refuse here before stage creation; callers must
@@ -70,6 +77,30 @@ impl DiscoveredTransaction {
         logical_path: &str,
         immutable_identity: &str,
     ) -> Result<PartialObject<'_>> {
+        match self.prepare_object(logical_path, immutable_identity, false)? {
+            DiscoveredObject::Partial(partial) => Ok(*partial),
+            DiscoveredObject::Cached(_) => Err(Error::State(
+                "known object is already cached; use try_cached".into(),
+            )),
+        }
+    }
+
+    /// Recheck a trusted digest after acquiring the original transfer locks.
+    /// A fill between try_cached and this call returns a verified cached result.
+    pub fn cached_or_partial_object(
+        &mut self,
+        logical_path: &str,
+        immutable_identity: &str,
+    ) -> Result<DiscoveredObject<'_>> {
+        self.prepare_object(logical_path, immutable_identity, true)
+    }
+
+    fn prepare_object(
+        &mut self,
+        logical_path: &str,
+        immutable_identity: &str,
+        accept_cached: bool,
+    ) -> Result<DiscoveredObject<'_>> {
         self.inner.ensure_owner()?;
         if self.verified.contains_key(logical_path) {
             return Err(Error::State("cache object already imported".into()));
@@ -86,6 +117,7 @@ impl DiscoveredTransaction {
         }
         let entry = self.entry(logical_path)?;
         let total = entry.bytes;
+        let role = entry.role;
         let expected = entry.sha256.clone();
         let key = digest(
             &serde_json::to_vec(&(
@@ -122,12 +154,21 @@ impl DiscoveredTransaction {
             lock.ensure_bound()?;
         }
         if let Some(hash) = &expected {
-            match self
-                .inner
-                .store
-                .verify_file(&format!("blobs/sha256/{hash}"), hash, total)
-            {
+            match self.inner.store.verify_file_cancellable(
+                &format!("blobs/sha256/{hash}"),
+                hash,
+                total,
+                &self.inner.cancel,
+            ) {
                 Ok(_) => {
+                    if accept_cached {
+                        let actual = ManifestEntry::new(logical_path, hash, total, role)?
+                            .with_digest_provenance(DigestProvenance::TrustedSha256);
+                        self.inner.complete.insert(logical_path.to_string());
+                        self.verified
+                            .insert(logical_path.to_string(), actual.clone());
+                        return Ok(DiscoveredObject::Cached(actual));
+                    }
                     return Err(Error::State(
                         "known object is already cached; use try_cached".into(),
                     ));
@@ -166,6 +207,7 @@ impl DiscoveredTransaction {
                     .len()
                     .min(remaining.min(usize::MAX as u64) as usize);
                 let read = file.read(&mut self.inner.buffer[..count])?;
+                self.inner.ensure_owner()?;
                 if read == 0 {
                     return Err(Error::Malformed("saved partial truncated".into()));
                 }
@@ -188,7 +230,7 @@ impl DiscoveredTransaction {
             // The source descriptor/old owner close before any later attempt
             // cleanup. Old named files continue to be charged, including tails.
         }
-        Ok(PartialObject {
+        Ok(DiscoveredObject::Partial(Box::new(PartialObject {
             transaction: self,
             logical_path: logical_path.to_string(),
             key,
@@ -202,7 +244,7 @@ impl DiscoveredTransaction {
             partial_lock,
             object_lock,
             write_failed: false,
-        })
+        })))
     }
 }
 

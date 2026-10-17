@@ -30,6 +30,8 @@ struct Entry {
     path: String,
     size: Option<u64>,
     lfs: Option<Lfs>,
+    #[serde(skip)]
+    validator: Option<String>,
 }
 
 /// Internal resolver: the public front door holds metadata admission first.
@@ -126,6 +128,7 @@ fn resolve_from(
     revision_segments.extend(&repo);
     revision_segments.extend(["revision", &request.revision]);
     let mut metadata_left = limits.max_metadata_bytes;
+    let mut probes_left = limits.max_pages;
     let (bytes, _) = metadata(
         transport,
         make_url(&base, &revision_segments)?,
@@ -169,9 +172,6 @@ fn resolve_from(
             }
             if entry.kind != "file" {
                 return Err(Error::Unsupported("unsupported HF tree entry type".into()));
-            }
-            if entry.size.is_none() {
-                return Err(Error::Unsupported("HF file length is required".into()));
             }
             if entries.len() >= limits.cache.max_files {
                 return Err(Error::Limit("HF tree file limit".into()));
@@ -234,9 +234,26 @@ fn resolve_from(
     let mut covered = BTreeMap::<String, usize>::new();
     for path in indexes {
         let url = file_url(&base, &repo, &pin, &path)?;
-        let (body, _) = metadata(transport, url, &mut metadata_left, cancel)?;
-        let entry = &entries[&path];
-        if body.len() as u64 != entry.size.unwrap_or(0) {
+        let entry = entries
+            .get_mut(&path)
+            .ok_or_else(|| Error::Malformed("HF index disappeared".into()))?;
+        let size = ensure_length(
+            entry,
+            transport,
+            url.to_string(),
+            limits.cache.max_file_bytes.min(metadata_left as u64),
+            &mut probes_left,
+            cancel,
+            &pin,
+        )?;
+        let (body, _) = metadata_checked(
+            transport,
+            url,
+            &mut metadata_left,
+            cancel,
+            entry.validator.as_deref(),
+        )?;
+        if body.len() as u64 != size {
             return Err(Error::Malformed("HF index length changed".into()));
         }
         verify_metadata_digest(entry, &body)?;
@@ -335,10 +352,19 @@ fn resolve_from(
     let files = selected
         .into_iter()
         .map(|path| {
-            let entry = &entries[&path];
-            let size = entry
-                .size
-                .ok_or_else(|| Error::Unsupported("HF file length required".into()))?;
+            let url = file_url(&base, &repo, &pin, &path)?;
+            let entry = entries
+                .get_mut(&path)
+                .ok_or_else(|| Error::Malformed("HF selection disappeared".into()))?;
+            let size = ensure_length(
+                entry,
+                transport,
+                url.to_string(),
+                limits.cache.max_file_bytes,
+                &mut probes_left,
+                cancel,
+                &pin,
+            )?;
             let digest = match &entry.lfs {
                 Some(lfs) => {
                     if lfs.size != size
@@ -372,7 +398,6 @@ fn resolve_from(
             } else {
                 FileRole::Auxiliary
             };
-            let url = file_url(&base, &repo, &pin, &path)?;
             ResolvedFile::new(
                 &path,
                 url.to_string(),
@@ -380,11 +405,46 @@ fn resolve_from(
                 size,
                 digest,
                 format!("hf:{}:{pin}:{path}", request.repository),
-            )
+            )?
+            .with_validator(entry.validator.clone())
         })
         .collect::<Result<Vec<_>>>()?;
     let source = ManifestSource::new("huggingface", &request.repository, pin)?;
     ResolvedPullPlan::new(source, files, limits)
+}
+
+fn ensure_length(
+    entry: &mut Entry,
+    transport: &impl HttpTransport,
+    url: String,
+    maximum: u64,
+    probes: &mut usize,
+    cancel: &AtomicBool,
+    pin: &str,
+) -> Result<u64> {
+    if let Some(lfs) = &entry.lfs {
+        crate::cache::paths::validate_digest(&lfs.oid.to_ascii_lowercase())?;
+        if entry.size.is_some_and(|size| size != lfs.size) {
+            return Err(Error::Malformed(
+                "HF listed and LFS lengths conflict".into(),
+            ));
+        }
+        entry.size = Some(lfs.size);
+    }
+    let size = match entry.size {
+        Some(size) => size,
+        None => {
+            let (size, validator) =
+                super::http::probe_length(transport, url, maximum, probes, cancel, Some(pin))?;
+            entry.size = Some(size);
+            entry.validator = validator;
+            size
+        }
+    };
+    if size > maximum {
+        return Err(Error::Limit("HF selected file length limit".into()));
+    }
+    Ok(size)
 }
 
 fn metadata(
@@ -392,6 +452,15 @@ fn metadata(
     url: Url,
     remaining: &mut usize,
     cancel: &AtomicBool,
+) -> Result<(Vec<u8>, Option<String>)> {
+    metadata_checked(transport, url, remaining, cancel, None)
+}
+fn metadata_checked(
+    transport: &impl HttpTransport,
+    url: Url,
+    remaining: &mut usize,
+    cancel: &AtomicBool,
+    validator: Option<&str>,
 ) -> Result<(Vec<u8>, Option<String>)> {
     if *remaining == 0 {
         return Err(Error::Limit("HF metadata aggregate limit".into()));
@@ -402,6 +471,7 @@ fn metadata(
     if response.status != 200 {
         return Err(Error::State("HF metadata request failed".into()));
     }
+    super::http::validate_validator(validator, &response)?;
     let link = response.header("link").map(str::to_string);
     let body = response.read_bounded(*remaining, cancel)?;
     *remaining -= body.len();

@@ -128,6 +128,8 @@ pub struct ResolvedFile {
     bytes: u64,
     sha256: Option<String>,
     identity: String,
+    // Transient HEAD validator; never changes digest provenance or persistence.
+    validator: Option<String>,
 }
 impl ResolvedFile {
     pub fn new(
@@ -145,6 +147,7 @@ impl ResolvedFile {
             bytes,
             sha256,
             identity: identity.into(),
+            validator: None,
         };
         validate_relative_path(&file.path)?;
         if let Some(hash) = &file.sha256 {
@@ -186,6 +189,16 @@ impl ResolvedFile {
     }
     pub fn identity(&self) -> &str {
         &self.identity
+    }
+    pub(super) fn with_validator(mut self, validator: Option<String>) -> Result<Self> {
+        if let Some(value) = &validator {
+            resume::strong_etag(value)?;
+        }
+        self.validator = validator;
+        Ok(self)
+    }
+    pub(super) fn validator(&self) -> Option<&str> {
+        self.validator.as_deref()
     }
     pub fn digest_provenance(&self) -> DigestProvenance {
         if self.sha256.is_some() {
@@ -240,7 +253,13 @@ impl ResolvedPullPlan {
                 .filter(|v| *v <= limits.cache.max_snapshot_bytes)
                 .ok_or_else(|| Error::Limit("resolved pull total length".into()))?;
             metadata_bytes = metadata_bytes
-                .checked_add(file.path.len() + file.url.len() + file.identity.len() + 128)
+                .checked_add(
+                    file.path.len()
+                        + file.url.len()
+                        + file.identity.len()
+                        + file.validator.as_ref().map_or(0, String::len)
+                        + 128,
+                )
                 .filter(|v| *v <= limits.cache.max_manifest_bytes)
                 .ok_or_else(|| Error::Limit("resolved pull metadata bound".into()))?;
         }

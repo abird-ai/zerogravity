@@ -280,6 +280,11 @@ mod enabled {
         assert!(text.contains("--offline"));
         assert!(text.contains("First-seen"));
         assert!(text.contains("strong ETag"));
+        assert!(text.contains("body-free HEAD"));
+        assert!(text.contains("totals still unknown refuse"));
+        assert!(text.contains("Cache removal remains\nUnsupported"));
+        assert!(text.contains("run-cache uses the existing supported CPU loader"));
+        assert!(!text.contains("No eviction, A3 loader"));
     }
     #[test]
     fn offline_hf_filters_reuse_online_selection_without_credentials() {
