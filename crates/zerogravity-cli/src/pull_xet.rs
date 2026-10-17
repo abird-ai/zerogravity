@@ -38,6 +38,7 @@ fn parse(args: &[String]) -> Result<(Options, XetOptions)> {
                 | "--ref"
                 | "--revision"
                 | "--file"
+                | "--quant"
                 | "--subfolder"
                 | "--disk-limit-bytes"
                 | "--memory-limit-bytes"
@@ -60,7 +61,8 @@ fn parse(args: &[String]) -> Result<(Options, XetOptions)> {
     if !explicit_memory {
         options.memory = 256 * 1024 * 1024;
     }
-    if !matches!(&options.action, Action::Fetch(request) if request.provider==Provider::HuggingFace && matches!(request.selection,Selection::Files{..}))
+    if !(matches!(&options.action, Action::Fetch(request) if request.provider==Provider::HuggingFace && matches!(request.selection,Selection::Files{..}))
+        || matches!(&options.action,Action::Quant(request) if request.source().provider()==Provider::HuggingFace))
         || options.unknown_size_cap.is_some()
         || (options.offline && options.dry_run)
     {
@@ -74,8 +76,10 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         return Ok(());
     }
     let (options, native) = parse(args)?;
-    let Action::Fetch(request) = &options.action else {
-        return Err(invalid());
+    let request = match &options.action {
+        Action::Fetch(request) => super::FetchRequest::Files(request),
+        Action::Quant(request) => super::FetchRequest::Quant(request),
+        _ => return Err(invalid()),
     };
     super::run_fetch(&options, request, Some(&native))
 }
@@ -86,6 +90,8 @@ fn help() {
     zerogravity pull xet [same HF request flags] --offline [--ref DIGEST_OR_REF]
 
 OPTIONS:
+    --quant TAG                 Explicit GGUF terminal filename tag instead of --file, no fallback
+                                Offline requires --ref SNAPSHOT_DIGEST; cached subset only
     --subfolder PATH            Original bounded HF exact/glob selection and model closure
     --cache ABS_PATH --ref NAME Original XDG cache/ref publisher (default HF request ref)
     --dry-run                   Hub metadata/discovery only; no CAS grants or signed ranges

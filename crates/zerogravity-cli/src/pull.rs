@@ -45,6 +45,7 @@ enum Action {
     Inspect(String),
     Verify(String),
     Fetch(PullRequest),
+    Quant(acquisition::GgufQuantRequest),
     Components(String),
 }
 #[derive(Debug)]
@@ -128,6 +129,7 @@ fn parse(args: &[String]) -> Result<Options> {
     let mut asset = None;
     let mut subfolder = None;
     let mut files = Vec::new();
+    let mut quant = None;
     let mut seen = std::collections::BTreeSet::new();
     while let Some(flag) = rest.next() {
         if flag != "--file" && !seen.insert(flag.as_str()) {
@@ -142,6 +144,7 @@ fn parse(args: &[String]) -> Result<Options> {
             | "--release"
             | "--asset"
             | "--file"
+            | "--quant"
             | "--subfolder"
             | "--disk-limit-bytes"
             | "--memory-limit-bytes"
@@ -182,6 +185,7 @@ fn parse(args: &[String]) -> Result<Options> {
                     "--release" => release = Some(value.clone()),
                     "--asset" => asset = Some(value.clone()),
                     "--file" => files.push(value.clone()),
+                    "--quant" => quant = Some(value.clone()),
                     "--subfolder" => subfolder = Some(value.clone()),
                     "--disk-limit-bytes" => result.disk = number()?,
                     "--memory-limit-bytes" => result.memory = number()?,
@@ -213,6 +217,30 @@ fn parse(args: &[String]) -> Result<Options> {
     }
     limits(&result)?;
     if let Some(provider) = provider {
+        if let Some(tag) = quant {
+            if !files.is_empty()
+                || release.is_some()
+                || asset.is_some()
+                || result.unknown_size_cap.is_some()
+                || result.offline && result.dry_run
+            {
+                return Err(invalid());
+            }
+            if result.offline {
+                zerogravity::cache::paths::validate_digest(
+                    result.reference.as_deref().ok_or_else(invalid)?,
+                )
+                .map_err(|_| invalid())?;
+            }
+            let source = acquisition::CandidateRequest::new(
+                provider,
+                &positional.ok_or_else(invalid)?,
+                &revision.ok_or_else(invalid)?,
+                subfolder.as_deref(),
+            )?;
+            result.action = Action::Quant(acquisition::GgufQuantRequest::new(source, &tag)?);
+            return Ok(result);
+        }
         let (revision, selection) = match (revision, release, asset) {
             (Some(revision), None, None) if !files.is_empty() => (
                 revision,
@@ -237,7 +265,8 @@ fn parse(args: &[String]) -> Result<Options> {
         request.validate(&limits(&result)?)?;
         result.action = Action::Fetch(request);
     } else {
-        if revision.is_some()
+        if quant.is_some()
+            || revision.is_some()
             || release.is_some()
             || asset.is_some()
             || subfolder.is_some()
@@ -395,20 +424,46 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         }
         Action::Inspect(name) | Action::Verify(name) => describe(&cached(&open(&options)?, name)?),
         Action::Components(path) => components::run(path, &options),
-        Action::Fetch(request) => run_fetch(&options, request, None),
+        Action::Fetch(request) => run_fetch(&options, FetchRequest::Files(request), None),
+        Action::Quant(request) => run_fetch(&options, FetchRequest::Quant(request), None),
+    }
+}
+#[derive(Clone, Copy)]
+enum FetchRequest<'a> {
+    Files(&'a PullRequest),
+    Quant(&'a acquisition::GgufQuantRequest),
+}
+impl<'a> FetchRequest<'a> {
+    fn provider(self) -> Provider {
+        match self {
+            Self::Files(r) => r.provider,
+            Self::Quant(r) => r.source().provider(),
+        }
+    }
+    fn repository(self) -> &'a str {
+        match self {
+            Self::Files(r) => &r.repository,
+            Self::Quant(r) => r.source().repository(),
+        }
+    }
+    fn revision(self) -> &'a str {
+        match self {
+            Self::Files(r) => &r.revision,
+            Self::Quant(r) => r.source().revision(),
+        }
     }
 }
 /// One shared fetch/publish path. Native Xet changes only cold resolution and
 /// offline eligibility; ordinary None retains its original branch/owners.
 fn run_fetch(
     options: &Options,
-    request: &PullRequest,
+    request: FetchRequest<'_>,
     native: Option<&acquisition::xet::XetOptions>,
 ) -> Result<()> {
     if let Some(native) = native {
         native.validate()?;
-        if request.provider != Provider::HuggingFace
-            || !matches!(request.selection, Selection::Files { .. })
+        if request.provider() != Provider::HuggingFace
+            || matches!(request,FetchRequest::Files(r) if !matches!(r.selection,Selection::Files{..}))
             || options.unknown_size_cap.is_some()
         {
             return Err(invalid());
@@ -418,14 +473,34 @@ fn run_fetch(
     let reference = options.reference.clone().unwrap_or_else(|| {
         format!(
             "{}/{}/{}",
-            request.provider.label(),
-            request.repository,
-            request.revision
+            request.provider().label(),
+            request.repository(),
+            request.revision()
         )
     });
     // Offline is terminal before client, credentials, metadata, DNS or
     // transfer-admission construction. Local validation is still real.
     if options.offline {
+        if let FetchRequest::Quant(quant) = request {
+            zerogravity::cache::paths::validate_digest(&reference).map_err(|_| invalid())?;
+            let mut cache = CacheOptions::new(options.root.clone(), options.disk);
+            cache.limits = limits(options)?.cache;
+            let store = CacheStore::open_existing(cache)?;
+            let lease = store.open_snapshot(&reference)?;
+            acquisition::quant::validate_cached_selection(
+                &lease,
+                quant,
+                &limits(options)?,
+                &AtomicBool::new(false),
+            )?;
+            eprintln!(
+                "Explicit quant over verified cache subset only; not remote uniqueness, native Xet execution, current freshness/access or inference qualification."
+            );
+            return describe(&lease);
+        }
+        let FetchRequest::Files(request) = request else {
+            return Err(invalid());
+        };
         if native.is_some() {
             let mut cache = CacheOptions::new(options.root.clone(), options.disk);
             cache.limits = limits(options)?.cache;
@@ -446,7 +521,7 @@ fn run_fetch(
         acquisition::validate_cached_selection(&lease, request)?;
         return describe(&lease);
     }
-    let (origin, token) = match request.provider {
+    let (origin, token) = match request.provider() {
         Provider::HuggingFace => ("https://huggingface.co", "HF_TOKEN"),
         Provider::GitHub => ("https://api.github.com", "GITHUB_TOKEN"),
     };
@@ -454,16 +529,20 @@ fn run_fetch(
     if let Some(seconds) = options.timeout {
         http_options.total_timeout = std::time::Duration::from_secs(seconds);
     }
-    let mut client =
-        HttpsClient::from_env(origin, request.provider.label(), Some(token), http_options)?;
-    if request.provider == Provider::GitHub {
+    let mut client = HttpsClient::from_env(
+        origin,
+        request.provider().label(),
+        Some(token),
+        http_options,
+    )?;
+    if request.provider() == Provider::GitHub {
         client = client.with_credential_origin("https://raw.githubusercontent.com")?;
     }
     let admission = admission(options.memory)?;
     let cancel = Arc::new(AtomicBool::new(false));
     let _signals = signals::CancellationSignals::register(cancel.clone())?;
-    let plan = match native {
-        Some(native) => acquisition::xet::resolve(
+    let plan = match (request, native) {
+        (FetchRequest::Files(request), Some(native)) => acquisition::xet::resolve(
             &client,
             request,
             &limits(options)?,
@@ -471,8 +550,27 @@ fn run_fetch(
             &admission,
             &cancel,
         )?,
-        None => acquisition::resolve(&client, request, &limits(options)?, &admission, &cancel)?,
+        (FetchRequest::Files(request), None) => {
+            acquisition::resolve(&client, request, &limits(options)?, &admission, &cancel)?
+        }
+        (FetchRequest::Quant(request), Some(native)) => acquisition::xet::resolve_quant(
+            &client,
+            request,
+            &limits(options)?,
+            native,
+            &admission,
+            &cancel,
+        )?,
+        (FetchRequest::Quant(request), None) => {
+            acquisition::quant::resolve(&client, request, &limits(options)?, &admission, &cancel)?
+        }
     };
+    if let FetchRequest::Quant(request) = request {
+        eprintln!(
+            "Requested GGUF filename tag: {}; not tensor encoding eligibility.",
+            request.quant()
+        );
+    }
     if options.dry_run {
         if native.is_some() {
             println!(
@@ -539,6 +637,7 @@ fn help() {
     zerogravity pull hf REPO --revision REV --file PATH [--file PATH ...]
     zerogravity pull candidates --help
     zerogravity pull xet --help
+    zerogravity pull hf|github OWNER/REPO --revision REV --quant TAG
     zerogravity pull github OWNER/REPO --revision REV --file PATH
     zerogravity pull github OWNER/REPO --release TAG --asset NAME
     zerogravity pull components PLAN.json [--dry-run | --offline]
@@ -557,6 +656,10 @@ OPTIONS:
                               Default: $XDG_CACHE_HOME/abird/zerogravity/models
                               (fallback $HOME/.cache/abird/zerogravity/models)
     --ref NAME                 Local reference (default provider/repo/requested-revision)
+    --quant TAG                Explicit terminal GGUF filename tag instead of --file; no fallback
+                              Tag ASCII letter then letters/digits/_ (1..32); case-insensitive tag only
+                              Offline requires --ref SNAPSHOT_DIGEST and a complete role-bound cached subset
+                              No remote uniqueness/tensor/inference claim; releases/caps refuse
     --subfolder PATH           Paths are relative to this repository subfolder
     --dry-run                  Resolve metadata; no model-weight transfer/publication
     --offline                  Verified local cache only; no token/client/provider construction

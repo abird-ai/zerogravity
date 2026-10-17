@@ -21,6 +21,9 @@ fn sibling(path: &str, leaf: &str) -> String {
     }
 }
 fn split_gguf(path: &str) -> Result<Option<(String, usize)>> {
+    Ok(split_gguf_parts(path)?.map(|(prefix, _, total)| (prefix, total)))
+}
+pub(super) fn split_gguf_parts(path: &str) -> Result<Option<(String, usize, usize)>> {
     let Some(stem) = path.strip_suffix(".gguf") else {
         return Ok(None);
     };
@@ -42,7 +45,7 @@ fn split_gguf(path: &str) -> Result<Option<(String, usize)>> {
     if total == 0 || ordinal == 0 || ordinal > total {
         return Err(malformed());
     }
-    Ok(Some((prefix.to_owned(), total)))
+    Ok(Some((prefix.to_owned(), ordinal, total)))
 }
 fn require(
     entries: &BTreeMap<String, bool>,

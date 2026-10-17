@@ -164,6 +164,48 @@ Cached results describe retained data only; they do not prove a full remote tree
 current access, freshness, quantization, complete model closure or native execution.
 No new endpoint, mutable publication, automatic selection or fallback is introduced.
 
+## Explicit GGUF filename quant selection
+
+`pull hf|github OWNER/REPO --revision REV --quant TAG [--subfolder PATH]`
+chooses one complete GGUF filename family. Native `pull xet` accepts the same
+explicit choice through its original HF inventory and discovery owner. `--quant`
+and `--file` or release-asset selection are mutually exclusive. There is no default
+tag, preferred model or fallback. A tag is only a filename label; it does not
+establish tensor encoding, model eligibility or inference support.
+
+Tags contain1..32ASCII bytes: a letter followed by letters, digits or underscores,
+normalized to uppercase. Remove the exact lowercase `.gguf` suffix and a canonical
+`-NNNNN-of-NNNNN` split trailer. The remaining basename must equal the tag or end
+in `-TAG` or `.TAG`, with ASCII case-insensitive tag comparison. Original path and
+family identity retain exact case. Underscores belong inside tags, so `Q4` does
+not match `Q4_K_M`. Directory names never supply a tag or split trailer. Other
+filename conventions remain available through explicit file selection.
+
+Every matching split cohort must contain exactly1..N using the original strict
+split parser. Missing/malformed/conflicting-total or nonregular members refuse;
+a complete family cannot conceal an incomplete matching cohort. Singles, splits,
+case variants and different model prefixes remain distinct families. Zero matches
+or multiple families refuse and direct the caller to candidate discovery or an
+explicit file; no second lookup chooses an alternative.
+
+The additive private-field `GgufQuantRequest` and `quant::resolve` select inside the
+same retained provider inventory, before original model closure, exact sizing and
+source construction. One admitted metadata envelope and one logical-call budget
+cover pin/tree/HEAD/index/native discovery; original HTTP independently owns
+physical retries. Public `Selection` and `PullRequest` retain their original
+shape. One shared CLI fetch path retains credentials, cancellation, progress,
+transaction admission and typed publication completion.
+
+New quant offline mode requires `--offline --ref SNAPSHOT_DIGEST`. Fully verified
+managed bytes, exact source/current bounds, pointer refusal, complete selected
+closure and required Weights/Config/Tokenizer roles are checked before environment,
+client, admission or signal handling. The result describes the retained snapshot
+and validates the requested family within it; other retained data is not removed.
+It does not prove remote-global uniqueness, access, freshness or native execution.
+Legacy Files offline retains its original selection and role semantics. Native
+quant's new focused fixture qualifies inventory/announcement/plan selection;
+existing native CAS execution gates remain separate from that fixture.
+
 Remaining convenience work has explicit authority boundaries. Required sidecars
 need family/format-backed schemas and positive, missing and collision tests;
 config/tokenizer closure does not establish vocab/merges/templates, adapters or
@@ -923,7 +965,7 @@ passing provider gate. Open implementation and acceptance work stays in TODO.md.
 
 | Surface | Current qualified scope and remaining work |
 | --- | --- |
-| HF repository/files/revisions | Native exact commit pinning, subfolder, bounded `*`/`?`, required index/shard and config/tokenizer closure. Metadata-only candidates share the same pinned tree. Excludes/full fnmatch, quant shorthand, broader required sidecar policy and endpoint/env compatibility remain open. |
+| HF repository/files/revisions | Native exact commit pinning, subfolder, bounded `*`/`?`, required index/shard and config/tokenizer closure. Metadata-only candidates share the same pinned tree. Explicit filename quant uses original model closure; excludes/full fnmatch, broader required sidecar policy and endpoint/env compatibility remain open. |
 | GitHub files/releases/components | Native commit/tree and release/asset pins, exact sizing, independent pinned components and alias pin reuse. Qualified LFS-pointer resolution is separate; pointers refuse. |
 | Direct HTTPS objects | Explicit origin/role/path/exact size/caller SHA; original transfer, offline verification and cache publisher. Broader missing-size/digest or repository discovery is outside this slice. |
 | Local HF caches | Explicit pinned selections and independent verified copies, original same-mount policy plus qualified Btrfs/tmpfs and distinct tmpfs pairs. Renamed/unnamespaced roots and other filesystems remain open. |

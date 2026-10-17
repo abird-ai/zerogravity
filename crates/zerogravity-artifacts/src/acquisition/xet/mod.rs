@@ -37,11 +37,11 @@ pub(super) struct PlanState {
     seed: budget::Seed,
 }
 
-struct Hub<'a, T> {
+struct Hub<'a, T: ?Sized> {
     transport: &'a T,
     budget: Arc<budget::Budget>,
 }
-impl<T: HttpTransport> HttpTransport for Hub<'_, T> {
+impl<T: HttpTransport + ?Sized> HttpTransport for Hub<'_, T> {
     fn get(&self, request: &HttpRequest, cancel: &AtomicBool) -> Result<HttpResponse> {
         let target = HttpTarget::xet_hub(&request.url, self.budget.clone(), XetHubMode::Metadata)?;
         self.transport.get_target(request, &target, cancel)
@@ -63,9 +63,56 @@ pub fn resolve(
     cancel: &AtomicBool,
 ) -> Result<ResolvedPullPlan> {
     request.validate(limits)?;
+    resolve_choice(
+        transport,
+        NativeChoice::Files(request),
+        limits,
+        options,
+        admission,
+        cancel,
+    )
+}
+/// Explicit GGUF filename selection through the SAME native metadata/grant owner.
+/// No candidate projection, repin or compatibility fallback.
+pub fn resolve_quant(
+    transport: &impl HttpTransport,
+    request: &super::quant::GgufQuantRequest,
+    limits: &PullLimits,
+    options: &XetOptions,
+    admission: &TransferAdmission,
+    cancel: &AtomicBool,
+) -> Result<ResolvedPullPlan> {
+    limits.validate()?;
+    if request.source().provider() != Provider::HuggingFace || limits.unknown_length_cap.is_some() {
+        return Err(Error::Unsupported(
+            "native GGUF quant requires exact HF model selection".into(),
+        ));
+    }
+    resolve_choice(
+        transport,
+        NativeChoice::Quant(request),
+        limits,
+        options,
+        admission,
+        cancel,
+    )
+}
+#[derive(Clone, Copy)]
+enum NativeChoice<'a> {
+    Files(&'a PullRequest),
+    Quant(&'a super::quant::GgufQuantRequest),
+}
+fn resolve_choice(
+    transport: &impl HttpTransport,
+    choice: NativeChoice<'_>,
+    limits: &PullLimits,
+    options: &XetOptions,
+    admission: &TransferAdmission,
+    cancel: &AtomicBool,
+) -> Result<ResolvedPullPlan> {
     options.validate()?;
     check_cancel(cancel)?;
-    if request.provider != Provider::HuggingFace {
+    if matches!(choice,NativeChoice::Files(request) if request.provider!=Provider::HuggingFace) {
         return Err(Error::Unsupported(
             "native Xet requires an HF file request".into(),
         ));
@@ -87,18 +134,33 @@ pub fn resolve(
         limits.max_metadata_bytes,
         budget::Seed::default(),
     )?);
+    let counted = super::candidates::MetadataCalls::new(transport, limits.max_pages);
+    let transport: &dyn HttpTransport = if matches!(choice, NativeChoice::Quant(_)) {
+        &counted
+    } else {
+        transport
+    };
     let hub = Hub {
         transport,
         budget: budget.clone(),
     };
-    let mut plan = super::huggingface::resolve_from(
-        &hub,
-        request,
-        limits,
-        cancel,
-        &format!("{}/", options.endpoints.hub),
-        super::ExternalSidecars::default(),
-    )?;
+    let mut plan = match choice {
+        NativeChoice::Files(request) => super::huggingface::resolve_from(
+            &hub,
+            request,
+            limits,
+            cancel,
+            &format!("{}/", options.endpoints.hub),
+            super::ExternalSidecars::default(),
+        )?,
+        NativeChoice::Quant(request) => super::huggingface::resolve_quant_from(
+            &hub,
+            request,
+            limits,
+            cancel,
+            &format!("{}/", options.endpoints.hub),
+        )?,
+    };
     let mut native = 0usize;
     for file in &mut plan.files {
         check_cancel(cancel)?;

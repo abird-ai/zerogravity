@@ -1,6 +1,6 @@
 //! Metadata-only file discovery. Choices are not a transfer plan, model closure,
 //! verified tensor quantization or remote authorization proof for cached bytes.
-use super::http::{HttpRequest, HttpResponse, HttpTransport, check_cancel};
+use super::http::{HttpRequest, HttpResponse, HttpTarget, HttpTransport, check_cancel};
 use super::{Provider, PullLimits};
 use crate::cache::{
     DigestProvenance, FileRole, Manifest, ManifestSource, SnapshotLease, TransferAdmission,
@@ -10,7 +10,7 @@ use crate::{Error, Result};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CandidateRequest {
     provider: Provider,
     repository: String,
@@ -187,19 +187,32 @@ fn bound() -> Error {
 
 /// Counts logical metadata calls (pin included). Original HTTPS owns bounded
 /// physical retries/deadlines/TLS; this is not physical-wire telemetry.
-struct MetadataCalls<'a, T> {
+pub(super) struct MetadataCalls<'a, T> {
     inner: &'a T,
     calls: AtomicUsize,
     maximum: usize,
 }
-impl<T: HttpTransport> HttpTransport for MetadataCalls<'_, T> {
-    fn get(&self, request: &HttpRequest, cancel: &AtomicBool) -> Result<HttpResponse> {
+impl<'a, T> MetadataCalls<'a, T> {
+    pub(super) fn new(inner: &'a T, maximum: usize) -> Self {
+        Self {
+            inner,
+            maximum,
+            calls: AtomicUsize::new(0),
+        }
+    }
+    fn before(&self, cancel: &AtomicBool) -> Result<()> {
         check_cancel(cancel)?;
         self.calls
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
-                used.checked_add(1).filter(|next| *next <= self.maximum)
+                used.checked_add(1).filter(|n| *n <= self.maximum)
             })
             .map_err(|_| bound())?;
+        Ok(())
+    }
+}
+impl<T: HttpTransport> HttpTransport for MetadataCalls<'_, T> {
+    fn get(&self, request: &HttpRequest, cancel: &AtomicBool) -> Result<HttpResponse> {
+        self.before(cancel)?;
         let result = self.inner.get(request, cancel);
         check_cancel(cancel)?;
         result.map_err(|error| match error {
@@ -209,6 +222,40 @@ impl<T: HttpTransport> HttpTransport for MetadataCalls<'_, T> {
             }
             _ => Error::State("candidate metadata request failed".into()),
         })
+    }
+    fn head(&self, request: &HttpRequest, cancel: &AtomicBool) -> Result<HttpResponse> {
+        self.before(cancel)?;
+        let result = self.inner.head(request, cancel);
+        check_cancel(cancel)?;
+        result.map_err(|error| match error {
+            Error::Limit(_) => bound(),
+            Error::Unsupported(_) => {
+                Error::Unsupported("candidate metadata request unsupported".into())
+            }
+            _ => Error::State("candidate metadata request failed".into()),
+        })
+    }
+    fn get_target(
+        &self,
+        request: &HttpRequest,
+        target: &HttpTarget,
+        cancel: &AtomicBool,
+    ) -> Result<HttpResponse> {
+        self.before(cancel)?;
+        let result = self.inner.get_target(request, target, cancel);
+        check_cancel(cancel)?;
+        result
+    }
+    fn head_target(
+        &self,
+        request: &HttpRequest,
+        target: &HttpTarget,
+        cancel: &AtomicBool,
+    ) -> Result<HttpResponse> {
+        self.before(cancel)?;
+        let result = self.inner.head_target(request, target, cancel);
+        check_cancel(cancel)?;
+        result
     }
 }
 

@@ -278,10 +278,64 @@ pub(super) fn resolve_component(
     sidecars: super::ExternalSidecars,
 ) -> Result<ResolvedPullPlan> {
     let api = checked_api(request, limits)?;
+    match &request.selection {
+        Selection::Files { paths, subfolder } => resolve_files(
+            transport,
+            (&api, &request.repository, &request.revision),
+            super::quant::InitialChoice::Files {
+                paths,
+                subfolder: subfolder.as_deref(),
+            },
+            limits,
+            cancel,
+            sidecars,
+        ),
+        Selection::ReleaseAsset { .. } => {
+            resolve_release_component(transport, request, limits, cancel, None)
+                .map(|(plan, _)| plan)
+        }
+    }
+}
+
+pub(super) fn resolve_quant(
+    transport: &impl HttpTransport,
+    request: &super::quant::GgufQuantRequest,
+    limits: &PullLimits,
+    cancel: &AtomicBool,
+) -> Result<ResolvedPullPlan> {
+    if request.source().provider() != super::Provider::GitHub {
+        return Err(malformed());
+    }
+    let api = format!(
+        "https://api.github.com/repos/{}",
+        request.source().repository()
+    );
+    resolve_files(
+        transport,
+        (
+            &api,
+            request.source().repository(),
+            request.source().revision(),
+        ),
+        super::quant::InitialChoice::Quant(request),
+        limits,
+        cancel,
+        super::ExternalSidecars::default(),
+    )
+}
+fn resolve_files(
+    transport: &(impl HttpTransport + ?Sized),
+    source: (&str, &str, &str),
+    choice: super::quant::InitialChoice<'_>,
+    limits: &PullLimits,
+    cancel: &AtomicBool,
+    sidecars: super::ExternalSidecars,
+) -> Result<ResolvedPullPlan> {
+    let (api, repository, revision) = source;
     let mut metadata_left = limits.max_metadata_bytes;
     let mut probes_left = limits.max_pages;
-    match &request.selection {
-        Selection::Files { paths, subfolder } => {
+    let initial = match choice {
+        super::quant::InitialChoice::Files { paths, subfolder } => {
             if paths.is_empty() || paths.len() > limits.cache.max_files {
                 return Err(Error::Limit(
                     "GitHub file selection exceeds configured bounds".into(),
@@ -289,85 +343,91 @@ pub(super) fn resolve_component(
             }
             let mut selected = BTreeSet::new();
             for path in paths {
-                if !selected.insert(logical_path(path, subfolder.as_deref())?) {
+                if !selected.insert(logical_path(path, subfolder)?) {
                     return Err(malformed());
                 }
             }
-            let (commit, mut entries) = repository_tree(
-                transport,
-                &api,
-                &request.revision,
-                limits,
-                &mut metadata_left,
-                cancel,
-            )?;
-            close_model_selection(
-                transport,
-                (&request.repository, &commit.sha, sidecars, &mut probes_left),
-                &mut entries,
-                &mut selected,
-                limits,
-                &mut metadata_left,
-                cancel,
-            )?;
-            let mut files = Vec::with_capacity(selected.len());
-            let model_selection = selected
+            selected
+        }
+        super::quant::InitialChoice::Quant(_) => BTreeSet::new(),
+    };
+    let (commit, mut entries) =
+        repository_tree(transport, api, revision, limits, &mut metadata_left, cancel)?;
+    let mut selected = match choice {
+        super::quant::InitialChoice::Files { .. } => initial,
+        super::quant::InitialChoice::Quant(request) => {
+            let available = entries
                 .iter()
-                .any(|path| matches!(role(path), FileRole::Weights | FileRole::Index));
-            for path in selected {
-                let entry = entries
-                    .get_mut(&path)
-                    .ok_or_else(|| Error::Unsupported("required GitHub path is absent".into()))?;
-                if entry.kind != "blob" || !matches!(entry.mode.as_str(), "100644" | "100755") {
-                    return Err(Error::Unsupported(
-                        "GitHub symlinks, submodules and directories are not downloadable files"
-                            .into(),
-                    ));
-                }
-                let file_role = role(&path);
-                let length = ensure_length_with_cap(
-                    entry,
-                    transport,
-                    raw_url(&request.repository, &commit.sha, &path),
+                .map(|(path, entry)| {
                     (
-                        limits.cache.max_file_bytes,
-                        if file_role == FileRole::Auxiliary && !model_selection {
-                            limits.unknown_length_cap
-                        } else {
-                            None
-                        },
-                    ),
-                    &mut probes_left,
-                    cancel,
-                    &commit.sha,
-                )?;
-                let encoded_path = path.split('/').map(component).collect::<Vec<_>>().join("/");
-                files.push(
-                    ResolvedFile::new_with_length(
-                        &path,
-                        format!(
-                            "https://raw.githubusercontent.com/{}/{}/{encoded_path}",
-                            request.repository, commit.sha
-                        ),
-                        file_role,
-                        length,
-                        None,
-                        format!("git-commit:{}:blob:{}", commit.sha, entry.sha),
-                    )?
-                    .with_validator(entry.validator.clone())?,
-                );
-            }
-            ResolvedPullPlan::new(
-                ManifestSource::new("github", &request.repository, commit.sha)?,
-                files,
-                limits,
-            )
+                        path.clone(),
+                        entry.kind == "blob" && matches!(entry.mode.as_str(), "100644" | "100755"),
+                    )
+                })
+                .collect();
+            super::quant::select(&available, request, limits, cancel)?
         }
-        Selection::ReleaseAsset { .. } => {
-            resolve_release_component(transport, request, limits, cancel, None)
-                .map(|(plan, _)| plan)
+    };
+    close_model_selection(
+        transport,
+        (repository, &commit.sha, sidecars, &mut probes_left),
+        &mut entries,
+        &mut selected,
+        limits,
+        &mut metadata_left,
+        cancel,
+    )?;
+    let mut files = Vec::with_capacity(selected.len());
+    let model_selection = selected
+        .iter()
+        .any(|path| matches!(role(path), FileRole::Weights | FileRole::Index));
+    for path in selected {
+        let entry = entries
+            .get_mut(&path)
+            .ok_or_else(|| Error::Unsupported("required GitHub path is absent".into()))?;
+        if entry.kind != "blob" || !matches!(entry.mode.as_str(), "100644" | "100755") {
+            return Err(Error::Unsupported(
+                "GitHub symlinks, submodules and directories are not downloadable files".into(),
+            ));
         }
+        let file_role = role(&path);
+        let length = ensure_length_with_cap(
+            entry,
+            transport,
+            raw_url(repository, &commit.sha, &path),
+            (
+                limits.cache.max_file_bytes,
+                if file_role == FileRole::Auxiliary && !model_selection {
+                    limits.unknown_length_cap
+                } else {
+                    None
+                },
+            ),
+            &mut probes_left,
+            cancel,
+            &commit.sha,
+        )?;
+        let encoded_path = path.split('/').map(component).collect::<Vec<_>>().join("/");
+        files.push(
+            ResolvedFile::new_with_length(
+                &path,
+                format!(
+                    "https://raw.githubusercontent.com/{}/{}/{encoded_path}",
+                    repository, commit.sha
+                ),
+                file_role,
+                length,
+                None,
+                format!("git-commit:{}:blob:{}", commit.sha, entry.sha),
+            )?
+            .with_validator(entry.validator.clone())?,
+        );
     }
+    ResolvedPullPlan::new(
+        ManifestSource::new("github", repository, commit.sha)?,
+        files,
+        limits,
+    )
 }
 
 // Preserve the original commit/tree policy for both resolution and discovery.

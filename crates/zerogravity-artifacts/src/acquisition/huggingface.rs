@@ -115,6 +115,55 @@ pub(super) fn resolve_from(
             "HF release assets are not supported".into(),
         ));
     };
+    resolve_choice(
+        transport,
+        (
+            &request.repository,
+            &request.revision,
+            super::quant::InitialChoice::Files {
+                paths,
+                subfolder: subfolder.as_deref(),
+            },
+        ),
+        limits,
+        cancel,
+        endpoint,
+        sidecars,
+    )
+}
+pub(super) fn resolve_quant_from(
+    transport: &impl HttpTransport,
+    request: &super::quant::GgufQuantRequest,
+    limits: &PullLimits,
+    cancel: &AtomicBool,
+    endpoint: &str,
+) -> Result<ResolvedPullPlan> {
+    limits.validate()?;
+    if request.source().provider() != Provider::HuggingFace {
+        return Err(Error::Unsupported("HF quant source required".into()));
+    }
+    resolve_choice(
+        transport,
+        (
+            request.source().repository(),
+            request.source().revision(),
+            super::quant::InitialChoice::Quant(request),
+        ),
+        limits,
+        cancel,
+        endpoint,
+        ExternalSidecars::default(),
+    )
+}
+fn resolve_choice(
+    transport: &impl HttpTransport,
+    source: (&str, &str, super::quant::InitialChoice<'_>),
+    limits: &PullLimits,
+    cancel: &AtomicBool,
+    endpoint: &str,
+    sidecars: ExternalSidecars,
+) -> Result<ResolvedPullPlan> {
+    let (repository, revision, choice) = source;
     let base = Url::parse(endpoint).map_err(|_| Error::Malformed("invalid HF endpoint".into()))?;
     if !base.username().is_empty()
         || base.password().is_some()
@@ -124,20 +173,28 @@ pub(super) fn resolve_from(
     {
         return Err(Error::Malformed("invalid HF endpoint authority".into()));
     }
-    let repo: Vec<_> = request.repository.split('/').collect();
+    let repo: Vec<_> = repository.split('/').collect();
     let mut metadata_left = limits.max_metadata_bytes;
     let mut probes_left = limits.max_pages;
     let (pin, mut entries) = repository_tree(
         transport,
-        &request.repository,
-        &request.revision,
+        repository,
+        revision,
         limits,
         cancel,
         &base,
         &mut metadata_left,
     )?;
     let available: Vec<_> = entries.keys().map(String::as_str).collect();
-    let mut selected = select_paths(paths, subfolder.as_deref(), &available)?;
+    let mut selected = match choice {
+        super::quant::InitialChoice::Files { paths, subfolder } => {
+            select_paths(paths, subfolder, &available)?
+        }
+        super::quant::InitialChoice::Quant(request) => {
+            let regular = entries.keys().map(|path| (path.clone(), true)).collect();
+            super::quant::select(&regular, request, limits, cancel)?
+        }
+    };
     let initial = selected.clone();
     let mut indexes = BTreeSet::new();
     let mut index_shards = BTreeSet::new();
@@ -330,13 +387,13 @@ pub(super) fn resolve_from(
                 role,
                 length,
                 digest,
-                format!("hf:{}:{pin}:{path}", request.repository),
+                format!("hf:{}:{pin}:{path}", repository),
             )?
             .with_validator(entry.validator.clone())
             .map(|file| file.with_hf_lfs(entry.lfs.is_some()))
         })
         .collect::<Result<Vec<_>>>()?;
-    let source = ManifestSource::new("huggingface", &request.repository, pin)?;
+    let source = ManifestSource::new("huggingface", repository, pin)?;
     ResolvedPullPlan::new(source, files, limits)
 }
 

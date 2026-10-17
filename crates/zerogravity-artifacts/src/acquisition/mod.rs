@@ -12,6 +12,7 @@ pub mod huggingface;
 pub mod modelscope;
 pub mod object;
 pub mod oci;
+pub mod quant;
 pub mod resume;
 pub mod s3;
 mod selection;
@@ -33,6 +34,7 @@ pub use components::{
     validate_cached_selection,
 };
 pub use executor::{AcquiredFile, PullProgress, PullReceipt, execute, execute_with_progress};
+pub use quant::GgufQuantRequest;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest};
