@@ -9,8 +9,10 @@ import sys
 import urllib.parse
 
 requested_mode = sys.argv[1]
-content = requested_mode.startswith('content-')
-mode = requested_mode.removeprefix('content-')
+conditional = requested_mode.startswith('conditional-')
+refuse = requested_mode.endswith('-412')
+content = requested_mode.startswith('content-') or conditional
+mode = requested_mode.removeprefix('content-').removeprefix('conditional-').removesuffix('-412')
 assert mode in ('public', 'bearer', 'key', 'sas')
 key = bytes(range(64))
 account = 'fixtureaccount'
@@ -24,7 +26,8 @@ with socket.socket() as listener:
     listener.bind(('127.0.0.1', 0))
     listener.listen(4)
     print(listener.getsockname()[1], flush=True)
-    for expected_method in (('GET',) if content else ('HEAD', 'GET')):
+    methods = ('HEAD', 'GET') if refuse else (('HEAD', 'GET', 'GET') if conditional else (('GET',) if content else ('HEAD', 'GET')))
+    for index, expected_method in enumerate(methods):
         conn, _ = listener.accept()
         with conn:
             conn.settimeout(10)
@@ -47,7 +50,11 @@ with socket.socket() as listener:
                 fields[name] = value.strip()
             assert fields['accept-encoding'] == 'identity'
             assert fields['x-ms-version'] == '2023-11-03'
-            assert fields.get('range') is None
+            expected_range = 'bytes=8-' if conditional and index == 2 else None
+            assert fields.get('range') == expected_range
+            assert fields.get('if-match') == ('\"wire-etag\"' if conditional and method == 'GET' else None)
+            if expected_range:
+                assert fields['if-range'] == '\"wire-etag\"'
             if content:
                 if mode == 'sas':
                     assert target == '/container/dir/a%20b.bin?api-version=2023-11-03&' + raw_sas
@@ -77,6 +84,7 @@ with socket.socket() as listener:
                 for name in sorted(values):
                     resource += '\n' + name + ':' + ','.join(sorted(values[name]))
                 standard = [method] + [''] * 10 + [fields.get('range', '')]
+                standard[8] = fields.get('if-match', '')
                 preimage = '\n'.join(standard) + '\nx-ms-date:' + date + '\nx-ms-version:2023-11-03\n' + resource
                 signature = base64.b64encode(hmac.new(key, preimage.encode('utf-8'), hashlib.sha256).digest()).decode('ascii')
                 assert hmac.compare_digest(fields['authorization'], 'SharedKey ' + account + ':' + signature)
@@ -84,6 +92,15 @@ with socket.socket() as listener:
                 assert fields['authorization'] == 'Bearer synthetic-azure-bearer'
             elif mode == 'public':
                 assert 'authorization' not in fields
-            headers = ('HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: ' + str(len(body)) + '\r\nETag: "wire-etag"\r\nx-ms-blob-type: BlockBlob\r\nx-ms-version-id: ' + version + '\r\n\r\n').encode('ascii')
-            conn.sendall(headers + (body if method == 'GET' else b''))
+            if refuse and method == 'GET':
+                conn.sendall(b'HTTP/1.1 412 Precondition Failed\r\nConnection: close\r\nContent-Length: 0\r\n\r\n')
+                continue
+            ranged = conditional and index == 2
+            status = '206 Partial Content' if ranged else '200 OK'
+            payload = body[8:] if ranged else body
+            extra = ('Content-Range: bytes 8-' + str(len(body)-1) + '/' + str(len(body)) + '\r\n') if ranged else ''
+            headers = ('HTTP/1.1 ' + status + '\r\nConnection: close\r\nContent-Length: ' + str(len(payload)) + '\r\n' + extra + 'ETag: "wire-etag"\r\nx-ms-blob-type: BlockBlob\r\nx-ms-version-id: ' + version + '\r\n\r\n').encode('ascii')
+            if conditional and index == 1:
+                payload = payload[:8]  # premature EOF forces the original ranged retry
+            conn.sendall(headers + (payload if method == 'GET' else b''))
 print('VERIFIED ' + requested_mode, flush=True)

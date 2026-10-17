@@ -5,8 +5,7 @@ use super::http::{self, HttpRequest, HttpResponse, HttpTarget, HttpTransport};
 use super::{PullLimits, ResolvedFile, ResolvedPullPlan, ResponseBinding};
 use crate::cache::paths::{validate_digest, validate_relative_path};
 use crate::cache::{
-    CacheStore, DigestProvenance, FileRole, ManifestEntry, ManifestSource, SnapshotLease,
-    TransferAdmission,
+    CacheStore, DigestProvenance, FileRole, ManifestSource, SnapshotLease, TransferAdmission,
 };
 use crate::{Error, Result};
 use serde::Serialize;
@@ -313,6 +312,165 @@ impl S3ObjectRequest {
     }
 }
 
+/// Explicit current-object observation; no remote version or raw SHA is inferred.
+#[derive(Clone, Debug)]
+pub struct S3ConditionalRequest {
+    request: S3ObjectRequest,
+}
+impl S3ConditionalRequest {
+    pub fn new(
+        endpoint: &S3Endpoint,
+        bucket: &str,
+        key: &str,
+        path: &str,
+        role: FileRole,
+    ) -> Result<Self> {
+        Ok(Self {
+            request: S3ObjectRequest::new(endpoint, bucket, key, path, role, None, None)?,
+        })
+    }
+    pub fn request(&self) -> &S3ObjectRequest {
+        &self.request
+    }
+    pub fn resolve(
+        &self,
+        transport: &(impl HttpTransport + ?Sized),
+        limits: &PullLimits,
+        admission: &TransferAdmission,
+        cancel: &AtomicBool,
+    ) -> Result<ResolvedPullPlan> {
+        self.resolve_with_pin(transport, limits, admission, cancel)
+            .map(|(_, plan)| plan)
+    }
+    pub fn resolve_with_pin(
+        &self,
+        transport: &(impl HttpTransport + ?Sized),
+        limits: &PullLimits,
+        admission: &TransferAdmission,
+        cancel: &AtomicBool,
+    ) -> Result<(S3ConditionalPin, ResolvedPullPlan)> {
+        let _lease = admit(limits, admission, cancel)?;
+        let target = self.target()?;
+        let response = Budget::new(limits).head(transport, &target, cancel)?;
+        let (bytes, etag) =
+            http::conditional_metadata(&response, limits, ResponseBinding::S3Content)?;
+        let pin = S3ConditionalPin::new(self, bytes, &etag)?;
+        let plan = pin.plan(limits)?;
+        http::check_cancel(cancel)?;
+        Ok((pin, plan))
+    }
+    fn target(&self) -> Result<HttpTarget> {
+        self.request
+            .endpoint
+            .target(&self.request.bucket, Some(&self.request.key), &[])
+    }
+}
+/// A pure declared observation for offline verification, not an independently
+/// authorized raw digest or assertion that a current remote object is unchanged.
+#[derive(Clone)]
+pub struct S3ConditionalPin {
+    request: S3ConditionalRequest,
+    bytes: u64,
+    etag: String,
+    source: ManifestSource,
+    identity: String,
+}
+impl S3ConditionalPin {
+    pub fn new(request: &S3ConditionalRequest, bytes: u64, etag: &str) -> Result<Self> {
+        super::resume::strong_etag(etag)?;
+        let r = &request.request;
+        let object = hash_tuple(&(
+            "zerogravity.s3-conditional.object.v1",
+            &r.endpoint,
+            &r.bucket,
+            &r.key,
+        ))?;
+        let contract = hash_tuple(&(
+            "zerogravity.s3-conditional.contract.v1",
+            &r.endpoint,
+            &r.bucket,
+            &r.key,
+            &r.path,
+            r.role,
+            bytes,
+            etag,
+        ))?;
+        Ok(Self {
+            request: request.clone(),
+            bytes,
+            etag: etag.to_owned(),
+            source: ManifestSource::new(
+                "s3-conditional",
+                format!("object-{object}"),
+                format!("conditional-{contract}"),
+            )?,
+            identity: format!("s3-conditional-{contract}"),
+        })
+    }
+    pub fn request(&self) -> &S3ConditionalRequest {
+        &self.request
+    }
+    pub fn bytes(&self) -> u64 {
+        self.bytes
+    }
+    pub fn etag(&self) -> &str {
+        &self.etag
+    }
+    pub fn source(&self) -> &ManifestSource {
+        &self.source
+    }
+    fn plan(&self, limits: &PullLimits) -> Result<ResolvedPullPlan> {
+        let r = &self.request.request;
+        let target = self.request.target()?.with_if_match(&self.etag)?;
+        let file = ResolvedFile::new(
+            &r.path,
+            target.url(),
+            r.role,
+            self.bytes,
+            None,
+            &self.identity,
+        )?
+        .with_validator(Some(self.etag.clone()))?
+        .with_request_target(target)
+        .with_response_binding(ResponseBinding::S3Content);
+        ResolvedPullPlan::new(self.source.clone(), vec![file], limits)
+    }
+    pub fn open_cached(
+        &self,
+        store: &CacheStore,
+        snapshot: &str,
+        limits: &PullLimits,
+        cancel: &AtomicBool,
+    ) -> Result<SnapshotLease> {
+        validate_digest(snapshot)?;
+        http::check_cancel(cancel)?;
+        self.plan(limits)?;
+        let r = &self.request.request;
+        super::object::open_cached_object(
+            store,
+            snapshot,
+            limits,
+            super::object::ExpectedObject {
+                source: &self.source,
+                path: &r.path,
+                role: r.role,
+                bytes: self.bytes,
+                digest: super::object::ExpectedDigest::FirstSeen,
+            },
+            cancel,
+        )
+    }
+}
+impl fmt::Debug for S3ConditionalPin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("S3ConditionalPin")
+            .field("request", &self.request)
+            .field("bytes", &self.bytes)
+            .field("source", &self.source)
+            .finish_non_exhaustive()
+    }
+}
+
 /// An explicit caller-authorized content contract at a mutable S3 locator.
 /// No remote version, HEAD metadata or checksum authority is inferred.
 #[derive(Clone)]
@@ -433,14 +591,19 @@ impl S3ContentSpec {
     ) -> Result<SnapshotLease> {
         validate_digest(snapshot)?;
         self.plan(limits)?;
-        let expected = ManifestEntry::new(
-            &self.request.path,
-            self.sha256(),
-            self.bytes,
-            self.request.role,
-        )?
-        .with_digest_provenance(DigestProvenance::TrustedSha256);
-        super::object::open_cached_trusted(store, snapshot, limits, &self.source, &expected, cancel)
+        super::object::open_cached_object(
+            store,
+            snapshot,
+            limits,
+            super::object::ExpectedObject {
+                source: &self.source,
+                path: &self.request.path,
+                role: self.request.role,
+                bytes: self.bytes,
+                digest: super::object::ExpectedDigest::TrustedSha256(self.sha256()),
+            },
+            cancel,
+        )
     }
 }
 impl fmt::Debug for S3ContentSpec {

@@ -176,6 +176,7 @@ pub(super) fn prepare(
                     .map(|range| format!("bytes={}-", range.start))
                     .as_deref(),
                 &date,
+                target.if_match(),
             )?;
             headers.push(("x-ms-date", date));
             headers.push(("Authorization", authorization));
@@ -189,6 +190,7 @@ fn authorization(
     uri: &ureq::http::Uri,
     range: Option<&str>,
     date: &str,
+    if_match: Option<&str>,
 ) -> Result<String> {
     let mut canonical = format!("/{}{}", credentials.account, uri.path());
     let mut queries = BTreeMap::<String, Vec<String>>::new();
@@ -209,7 +211,8 @@ fn authorization(
         canonical.push_str(&values.join(","));
     }
     let preimage = format!(
-        "{method}\n\n\n\n\n\n\n\n\n\n\n{}\nx-ms-date:{date}\nx-ms-version:{API_VERSION}\n{canonical}",
+        "{method}\n\n\n\n\n\n\n\n{}\n\n\n{}\nx-ms-date:{date}\nx-ms-version:{API_VERSION}\n{canonical}",
+        if_match.unwrap_or(""),
         range.unwrap_or("")
     );
     let digest =
@@ -360,7 +363,7 @@ mod tests {
             ),
         ] {
             assert_eq!(
-                authorization(&credentials, method, &uri, range, DATE).unwrap(),
+                authorization(&credentials, method, &uri, range, DATE, None).unwrap(),
                 format!("SharedKey fixtureaccount:{expected}")
             );
         }
@@ -370,6 +373,36 @@ mod tests {
         );
         assert!(rfc1123(UNIX_EPOCH - Duration::from_secs(40_000_000_000)).is_err());
         assert!(!format!("{credentials:?}").contains(KEY));
+    }
+
+    #[test]
+    fn conditional_shared_key_literal_preimages_include_standard_if_match_slot() {
+        // Independent Python stdlib, twelve-field REST preimages: field8 is
+        // If-Match, field11 is Range. Existing None vectors above remain exact.
+        let credentials = AzureSharedKey::new("fixtureaccount", KEY).unwrap();
+        let uri = "https://fixtureaccount.blob.core.windows.net/container/dir/a%20b.bin"
+            .parse()
+            .unwrap();
+        for (range, expected) in [
+            (None, "1y8XKbNvJqlUlX5Y320ewRAMq0F1scHSslUgI9b6rG4="),
+            (
+                Some("bytes=3-"),
+                "MES9TgHku9q6TUBtP9TaakOkKlWKiOtDd5p/13Cag9M=",
+            ),
+        ] {
+            assert_eq!(
+                authorization(
+                    &credentials,
+                    "GET",
+                    &uri,
+                    range,
+                    DATE,
+                    Some("\"observed-2\"")
+                )
+                .unwrap(),
+                format!("SharedKey fixtureaccount:{expected}")
+            );
+        }
     }
 
     #[test]

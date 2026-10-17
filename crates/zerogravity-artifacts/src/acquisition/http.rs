@@ -25,6 +25,11 @@ pub struct HttpTarget {
     origin: String,
     profile: TargetProfile,
     uri: ureq::http::Uri,
+    condition: Option<ReadCondition>,
+}
+#[derive(Clone)]
+enum ReadCondition {
+    IfMatch(String),
 }
 #[derive(Clone)]
 enum TargetProfile {
@@ -127,6 +132,7 @@ impl HttpTarget {
         let parsed = parse_provider_origin(url)?;
         budget.check_hub_origin(&parsed.origin().ascii_serialization())?;
         Ok(Self {
+            condition: None,
             origin: parsed.origin().ascii_serialization(),
             profile: TargetProfile::XetHub { budget, mode },
             uri: parsed
@@ -145,6 +151,7 @@ impl HttpTarget {
             return Err(Error::State("Xet CAS grant origin differs".into()));
         }
         Ok(Self {
+            condition: None,
             origin: grant.origin.clone(),
             profile: TargetProfile::XetCas { grant, budget },
             uri: parsed
@@ -168,6 +175,7 @@ impl HttpTarget {
             return Err(Error::Malformed("invalid Xet signed target".into()));
         }
         Ok(Self {
+            condition: None,
             origin: parsed.origin().ascii_serialization(),
             profile: TargetProfile::XetRanges { ranges, budget },
             uri: url
@@ -254,6 +262,7 @@ impl HttpTarget {
             .parse()
             .map_err(|_| Error::Malformed("invalid direct provider target".into()))?;
         Ok(Self {
+            condition: None,
             origin: parsed.origin().ascii_serialization(),
             profile: TargetProfile::Direct,
             uri,
@@ -279,6 +288,7 @@ impl HttpTarget {
             .parse()
             .map_err(|_| Error::Malformed("invalid canonical Azure URI".into()))?;
         Ok(Self {
+            condition: None,
             origin: origin.to_owned(),
             profile: TargetProfile::Azure { kind },
             uri,
@@ -306,6 +316,7 @@ impl HttpTarget {
             .parse()
             .map_err(|_| Error::Malformed("invalid canonical S3 URI".into()))?;
         Ok(Self {
+            condition: None,
             origin: origin.to_owned(),
             profile: TargetProfile::S3 {
                 region: region.to_owned(),
@@ -318,6 +329,32 @@ impl HttpTarget {
             TargetProfile::S3 { region } => Ok(region),
             _ => Err(Error::Unsupported("SigV4 requires an S3 target".into())),
         }
+    }
+    /// A single strong If-Match condition, if this provider target requires it.
+    /// Explicit custom target transports must emit it on every request, including
+    /// ranges/retries, and must never downgrade to an unconditional read.
+    pub fn if_match(&self) -> Option<&str> {
+        self.condition.as_ref().map(|condition| match condition {
+            ReadCondition::IfMatch(value) => value.as_str(),
+        })
+    }
+    pub(super) fn with_if_match(mut self, value: &str) -> Result<Self> {
+        super::resume::strong_etag(value)?;
+        if self.uri.query().is_some()
+            || !matches!(
+                self.profile,
+                TargetProfile::S3 { .. }
+                    | TargetProfile::Azure {
+                        kind: AzureRequestKind::Content
+                    }
+            )
+        {
+            return Err(Error::Unsupported(
+                "conditional reads require a current object target".into(),
+            ));
+        }
+        self.condition = Some(ReadCondition::IfMatch(value.to_owned()));
+        Ok(self)
     }
     pub(super) fn url(&self) -> String {
         self.uri.to_string()
@@ -338,6 +375,7 @@ impl HttpTarget {
                 TargetProfile::XetHub { .. } | TargetProfile::XetRanges { .. } => 256,
             }
             + self.uri.to_string().len()
+            + self.if_match().map_or(0, str::len)
             + 128
     }
 }
@@ -566,6 +604,56 @@ pub(super) fn redact_head_error(error: Error) -> Error {
         }
         _ => Error::Unsupported("exact object length metadata is unavailable".into()),
     }
+}
+
+/// Body-free validation for one explicitly opted-in current-object observation.
+pub(super) fn conditional_metadata(
+    response: &HttpResponse,
+    limits: &super::PullLimits,
+    binding: super::ResponseBinding,
+) -> Result<(u64, String)> {
+    if response.status != 200 {
+        return Err(Error::State(format!(
+            "conditional HEAD status {}",
+            response.status
+        )));
+    }
+    let header_bytes = response
+        .headers
+        .iter()
+        .try_fold(0usize, |sum, (key, value)| {
+            sum.checked_add(key.len())
+                .and_then(|n| n.checked_add(value.len()))
+                .and_then(|n| n.checked_add(32))
+        })
+        .ok_or_else(|| Error::Limit("conditional metadata overflow".into()))?;
+    if header_bytes > limits.max_metadata_bytes {
+        return Err(Error::Limit("conditional metadata header bound".into()));
+    }
+    validate_response_binding(Some(binding), response)?;
+    if response.header("content-range").is_some()
+        || response.header("transfer-encoding").is_some()
+        || response
+            .header("content-encoding")
+            .is_some_and(|v| !v.eq_ignore_ascii_case("identity"))
+    {
+        return Err(Error::Unsupported(
+            "conditional HEAD requires complete identity metadata".into(),
+        ));
+    }
+    let bytes = parse_u64(
+        response
+            .header("content-length")
+            .ok_or_else(|| Error::Malformed("conditional HEAD length is absent".into()))?,
+    )?;
+    if bytes > limits.cache.max_file_bytes || bytes > limits.cache.max_snapshot_bytes {
+        return Err(Error::Limit("conditional object byte bound".into()));
+    }
+    let etag = response
+        .header("etag")
+        .ok_or_else(|| Error::Malformed("conditional HEAD validator is absent".into()))?;
+    super::resume::strong_etag(etag)?;
+    Ok((bytes, etag.to_owned()))
 }
 
 pub(super) fn validate_validator(expected: Option<&str>, response: &HttpResponse) -> Result<()> {
@@ -1068,6 +1156,14 @@ impl HttpsClient {
         let initial = parse_url(&request.url, self.loopback)?;
         if let Some(range) = &request.range {
             range.validate()?;
+            if target
+                .and_then(HttpTarget::if_match)
+                .is_some_and(|expected| expected != range.validator)
+            {
+                return Err(Error::State(
+                    "range validator differs from conditional target".into(),
+                ));
+            }
             if target.is_some_and(|target| target.xet_budget().is_some() && !target.xet_ordinary())
             {
                 return Err(Error::Unsupported(
@@ -1147,6 +1243,9 @@ impl HttpsClient {
                     {
                         call = call.header(name, value);
                     }
+                }
+                if let Some(value) = target.and_then(HttpTarget::if_match) {
+                    call = call.header("If-Match", value);
                 }
                 if let Some(range) = &request.range {
                     call = call

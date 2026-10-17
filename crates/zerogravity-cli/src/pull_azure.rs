@@ -6,12 +6,18 @@ use std::path::Path;
 use std::sync::{Arc, atomic::AtomicBool};
 use zerogravity::acquisition;
 use zerogravity::acquisition::azure::{
-    AzureContentSpec, AzureObjectPin, AzureObjectRequest, AzurePrefixRequest, AzureRevision,
+    AzureConditionalPin, AzureConditionalRequest, AzureContentSpec, AzureObjectPin,
+    AzureObjectRequest, AzurePrefixRequest, AzureRevision,
 };
 use zerogravity::acquisition::http::{AzureSharedKey, HttpOptions, HttpsClient};
 use zerogravity::cache::{CacheOptions, CacheStore, CommitOutcome, FileRole};
 use zerogravity::{Error, Result};
 enum Selection {
+    Conditional(AzureConditionalRequest),
+    ConditionalOffline {
+        pin: Box<AzureConditionalPin>,
+        snapshot: String,
+    },
     Content {
         spec: Box<AzureContentSpec>,
         snapshot: Option<String>,
@@ -28,6 +34,10 @@ enum AuthInput {
     Bearer(String),
     SharedKey(String),
     SasFile(String),
+}
+enum SelectedPin {
+    Version(AzureObjectPin),
+    Conditional(AzureConditionalPin),
 }
 struct AzureOptions {
     selection: Selection,
@@ -88,6 +98,8 @@ fn parse(args: &[String]) -> Result<AzureOptions> {
     let mut sha = None;
     let mut auth = None;
     let mut content_contract = false;
+    let mut conditional_read = false;
+    let mut etag = None;
     let mut seen = BTreeSet::new();
     let mut rest = args[1..].iter();
     while let Some(flag) = rest.next() {
@@ -95,6 +107,10 @@ fn parse(args: &[String]) -> Result<AzureOptions> {
             return Err(invalid());
         }
         match flag.as_str() {
+            "--conditional-read" => {
+                conditional_read = true;
+                continue;
+            }
             "--content-contract" => {
                 content_contract = true;
                 continue;
@@ -138,6 +154,7 @@ fn parse(args: &[String]) -> Result<AzureOptions> {
             "--version-id" => version = Some(value.clone()),
             "--snapshot" => snapshot = Some(value.clone()),
             "--sha256" => sha = Some(value.clone()),
+            "--etag" => etag = Some(value.clone()),
             "--bytes" => bytes = Some(value.parse::<u64>().map_err(|_| invalid())?),
             "--cached-snapshot" => {
                 if value.len() != 64
@@ -195,6 +212,11 @@ fn parse(args: &[String]) -> Result<AzureOptions> {
     {
         return Err(invalid());
     }
+    if conditional_read && content_contract
+        || etag.is_some() && (!conditional_read || !common.offline)
+    {
+        return Err(invalid());
+    }
     let bounds = limits(&common)?;
     let origin = origin.ok_or_else(invalid)?;
     let container = container.ok_or_else(invalid)?;
@@ -202,7 +224,8 @@ fn parse(args: &[String]) -> Result<AzureOptions> {
         if common.offline {
             return Err(Error::Unsupported("offline Azure prefix is unavailable; select one explicit version/snapshot and cached snapshot digest".into()));
         }
-        if content_contract
+        if conditional_read
+            || content_contract
             || blob.is_some()
             || path.is_some()
             || role.is_some()
@@ -221,7 +244,38 @@ fn parse(args: &[String]) -> Result<AzureOptions> {
         if prefix.is_some() {
             return Err(invalid());
         }
-        if content_contract {
+        if conditional_read {
+            if version.is_some() || snapshot.is_some() || sha.is_some() {
+                return Err(invalid());
+            }
+            let request = AzureConditionalRequest::new(
+                &origin,
+                &container,
+                &blob.ok_or_else(invalid)?,
+                &path.ok_or_else(invalid)?,
+                role.ok_or_else(invalid)?,
+            )?;
+            if common.offline {
+                let pin = AzureConditionalPin::new(
+                    &request,
+                    bytes.ok_or_else(invalid)?,
+                    etag.as_deref().ok_or_else(invalid)?,
+                )?;
+                if pin.bytes() > bounds.cache.max_file_bytes
+                    || pin.bytes() > bounds.cache.max_snapshot_bytes
+                {
+                    return Err(Error::Limit(
+                        "Azure conditional pin exceeds byte bounds".into(),
+                    ));
+                }
+                Selection::ConditionalOffline {
+                    pin: Box::new(pin),
+                    snapshot: cached.ok_or_else(invalid)?,
+                }
+            } else {
+                Selection::Conditional(request)
+            }
+        } else if content_contract {
             if version.is_some() || snapshot.is_some() {
                 return Err(invalid());
             }
@@ -302,14 +356,23 @@ fn describe(pin: &AzureObjectPin) {
         pin.bytes()
     );
 }
+fn describe_conditional(bytes: u64, etag: &str) {
+    let etag = serde_json::to_string(etag).expect("string serialization");
+    println!(
+        "Conditional observation: FirstSeen\nETag (JSON string): {etag}\nExact bytes: {bytes}"
+    );
+}
 fn describe_content(bytes: u64, sha256: &str) {
     println!(
         "Content contract: caller-authorized SHA256\nExact bytes: {bytes}\nExpected SHA256: {sha256}"
     );
 }
-fn describe_selected(pin: Option<&AzureObjectPin>, plan: &acquisition::ResolvedPullPlan) {
+fn describe_selected(pin: Option<&SelectedPin>, plan: &acquisition::ResolvedPullPlan) {
     if let Some(pin) = pin {
-        describe(pin);
+        match pin {
+            SelectedPin::Version(pin) => describe(pin),
+            SelectedPin::Conditional(pin) => describe_conditional(pin.bytes(), pin.etag()),
+        }
     } else {
         let file = &plan.files()[0];
         describe_content(
@@ -352,6 +415,16 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         );
         return Ok(());
     }
+    if let Selection::ConditionalOffline { pin, snapshot } = &options.selection {
+        let store = CacheStore::open_existing(cache_options(&options.common)?)?;
+        let lease = pin.open_cached(&store, snapshot, &bounds, &cancel)?;
+        describe_conditional(pin.bytes(), pin.etag());
+        std::io::stdout().write_all(&lease.manifest().canonical_bytes()?)?;
+        eprintln!(
+            "Verified cached FirstSeen conditional observation; no present remote version/freshness or caller-authorized raw SHA assertion."
+        );
+        return Ok(());
+    }
     let admission = admission(options.common.memory)?;
     if options.common.dry_run
         && let Selection::Content { spec, .. } = &options.selection
@@ -375,10 +448,13 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         http.total_timeout = std::time::Duration::from_secs(n);
     }
     let origin = match &options.selection {
+        Selection::Conditional(request) => request.origin(),
         Selection::Content { spec, .. } => spec.origin(),
         Selection::Object(r) => r.origin(),
         Selection::Prefix(r) => r.origin(),
-        Selection::Offline { .. } => unreachable!("offline returned"),
+        Selection::Offline { .. } | Selection::ConditionalOffline { .. } => {
+            unreachable!("offline returned")
+        }
     };
     let client = match &options.auth {
         AuthInput::Anonymous => HttpsClient::new(origin, http)?,
@@ -403,19 +479,25 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         }
     };
     let plans = match &options.selection {
+        Selection::Conditional(request) => {
+            let (pin, plan) = request.resolve_with_pin(&client, &bounds, &admission, &cancel)?;
+            vec![(Some(SelectedPin::Conditional(pin)), plan)]
+        }
         Selection::Content { spec, .. } => {
             vec![(None, spec.prepare(&bounds, &admission, &cancel)?)]
         }
         Selection::Object(request) => {
             let (pin, plan) = request.resolve_with_pin(&client, &bounds, &admission, &cancel)?;
-            vec![(Some(pin), plan)]
+            vec![(Some(SelectedPin::Version(pin)), plan)]
         }
         Selection::Prefix(request) => request
             .resolve_with_pins(&client, &bounds, &admission, &cancel)?
             .into_iter()
-            .map(|(pin, plan)| (Some(pin), plan))
+            .map(|(pin, plan)| (Some(SelectedPin::Version(pin)), plan))
             .collect(),
-        Selection::Offline { .. } => unreachable!("offline returned"),
+        Selection::Offline { .. } | Selection::ConditionalOffline { .. } => {
+            unreachable!("offline returned")
+        }
     };
     if options.common.dry_run {
         for (index, (pin, plan)) in plans.iter().enumerate() {
@@ -478,6 +560,9 @@ fn help() {
         --prefix PATH/ [--dry-run]
 
 OPTIONS:
+    --conditional-read            Object-only HEAD ETag/size observation; FirstSeen
+    --etag QUOTED_ETAG             Required offline conditional observation only
+    --bytes N                     Offline revision/conditional pin or content contract; zero allowed
     --token-env NAME | --shared-key-env NAME | --sas-file ABS_PATH|-
                                   Optional mutually exclusive explicit credentials
     --content-contract --bytes N --sha256 SHA
@@ -495,7 +580,13 @@ Its dry-run is local before credentials/client/signals, with no HEAD or payload.
 Offline requires exact
 bytes (zero allowed) and a cached snapshot DIGEST, before ALL env/file/stdin,
 client/admission/signal work; no ETag input. Online cached-snapshot and bytes without content mode refuse.
-No mutable refs, unknown-size caps or offline prefix. Roles are weights, config,
+No mutable refs, unknown-size caps or offline prefix.
+Explicit --conditional-read observes HEAD exact bytes/strong ETag, then requires
+If-Match and matching ETag on every GET/range/retry. No caller SHA or remote version
+is inferred: full raw hash is FirstSeen. Online --bytes/--etag and SHA/revision/
+content-mode conflicts refuse. Offline adds --bytes, --etag and cached digest
+before credentials/client/admission/signals. Its dry-run is HEAD metadata only.
+ Roles are weights, config,
 tokenizer, index, license, auxiliary. Caller SHA256 alone supplies TrustedSha256;
 otherwise full raw hash is FirstSeen. ETag/MD5/CRC64 are not raw SHA authority.
 Prefix selects independent current-version Auxiliary/FirstSeen data; no atomic

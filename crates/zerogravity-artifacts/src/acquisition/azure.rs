@@ -4,9 +4,7 @@
 use super::http::{AzureRequestKind, HttpRequest, HttpTarget, HttpTransport, check_cancel};
 use super::{DigestProvenance, PullLimits, ResolvedFile, ResolvedPullPlan, ResponseBinding};
 use crate::cache::paths::{validate_digest, validate_relative_path};
-use crate::cache::{
-    CacheStore, FileRole, ManifestEntry, ManifestSource, SnapshotLease, TransferAdmission,
-};
+use crate::cache::{CacheStore, FileRole, ManifestSource, SnapshotLease, TransferAdmission};
 use crate::{Error, Result};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
@@ -232,6 +230,204 @@ impl fmt::Debug for AzureObjectRequest {
     }
 }
 
+/// Explicit current native BlockBlob observation, without a fabricated revision.
+#[derive(Clone)]
+pub struct AzureConditionalRequest {
+    origin: String,
+    container: String,
+    blob: String,
+    path: String,
+    role: FileRole,
+}
+impl AzureConditionalRequest {
+    pub fn new(
+        origin: &str,
+        container: &str,
+        blob: &str,
+        path: &str,
+        role: FileRole,
+    ) -> Result<Self> {
+        let origin = origin_checked(origin)?;
+        container_checked(container)?;
+        blob_checked(blob)?;
+        validate_relative_path(path)?;
+        Ok(Self {
+            origin,
+            container: container.to_owned(),
+            blob: blob.to_owned(),
+            path: path.to_owned(),
+            role,
+        })
+    }
+    pub fn origin(&self) -> &str {
+        &self.origin
+    }
+    pub fn container(&self) -> &str {
+        &self.container
+    }
+    pub fn blob(&self) -> &str {
+        &self.blob
+    }
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+    pub fn role(&self) -> FileRole {
+        self.role
+    }
+    fn target(&self) -> Result<HttpTarget> {
+        HttpTarget::azure(
+            &self.origin,
+            &format!("/{}/{}", self.container, encoded_blob(&self.blob)),
+            AzureRequestKind::Content,
+        )
+    }
+    pub fn resolve(
+        &self,
+        transport: &(impl HttpTransport + ?Sized),
+        limits: &PullLimits,
+        admission: &TransferAdmission,
+        cancel: &AtomicBool,
+    ) -> Result<ResolvedPullPlan> {
+        self.resolve_with_pin(transport, limits, admission, cancel)
+            .map(|(_, plan)| plan)
+    }
+    pub fn resolve_with_pin(
+        &self,
+        transport: &(impl HttpTransport + ?Sized),
+        limits: &PullLimits,
+        admission: &TransferAdmission,
+        cancel: &AtomicBool,
+    ) -> Result<(AzureConditionalPin, ResolvedPullPlan)> {
+        let _lease = admit(limits, admission, cancel)?;
+        let target = self.target()?;
+        let response = transport.head_target(
+            &HttpRequest::new(target.url(), limits.cache.max_file_bytes),
+            &target,
+            cancel,
+        );
+        check_cancel(cancel)?;
+        let response =
+            response.map_err(|_| Error::State("Azure conditional properties failed".into()))?;
+        let (bytes, etag) =
+            super::http::conditional_metadata(&response, limits, ResponseBinding::AzureContent)?;
+        let pin = AzureConditionalPin::new(self, bytes, &etag)?;
+        let plan = pin.plan(limits)?;
+        check_cancel(cancel)?;
+        Ok((pin, plan))
+    }
+}
+impl fmt::Debug for AzureConditionalRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AzureConditionalRequest")
+            .field("origin", &self.origin)
+            .field("path", &self.path)
+            .field("role", &self.role)
+            .finish_non_exhaustive()
+    }
+}
+#[derive(Clone)]
+pub struct AzureConditionalPin {
+    request: AzureConditionalRequest,
+    bytes: u64,
+    etag: String,
+    source: ManifestSource,
+    identity: String,
+}
+impl AzureConditionalPin {
+    pub fn new(request: &AzureConditionalRequest, bytes: u64, etag: &str) -> Result<Self> {
+        super::resume::strong_etag(etag)?;
+        let object = hashed(&(
+            "zerogravity.azure-conditional.object.v1",
+            &request.origin,
+            &request.container,
+            &request.blob,
+        ))?;
+        let contract = hashed(&(
+            "zerogravity.azure-conditional.contract.v1",
+            &request.origin,
+            &request.container,
+            &request.blob,
+            &request.path,
+            request.role,
+            bytes,
+            etag,
+        ))?;
+        Ok(Self {
+            request: request.clone(),
+            bytes,
+            etag: etag.to_owned(),
+            source: ManifestSource::new(
+                "azure-conditional",
+                format!("object-{object}"),
+                format!("conditional-{contract}"),
+            )?,
+            identity: format!("azure-conditional-{contract}"),
+        })
+    }
+    pub fn request(&self) -> &AzureConditionalRequest {
+        &self.request
+    }
+    pub fn bytes(&self) -> u64 {
+        self.bytes
+    }
+    pub fn etag(&self) -> &str {
+        &self.etag
+    }
+    pub fn source(&self) -> &ManifestSource {
+        &self.source
+    }
+    fn plan(&self, limits: &PullLimits) -> Result<ResolvedPullPlan> {
+        let r = &self.request;
+        let target = r.target()?.with_if_match(&self.etag)?;
+        let file = ResolvedFile::new(
+            &r.path,
+            target.url(),
+            r.role,
+            self.bytes,
+            None,
+            &self.identity,
+        )?
+        .with_validator(Some(self.etag.clone()))?
+        .with_request_target(target)
+        .with_response_binding(ResponseBinding::AzureContent);
+        ResolvedPullPlan::new(self.source.clone(), vec![file], limits)
+    }
+    pub fn open_cached(
+        &self,
+        store: &CacheStore,
+        snapshot: &str,
+        limits: &PullLimits,
+        cancel: &AtomicBool,
+    ) -> Result<SnapshotLease> {
+        validate_digest(snapshot)?;
+        check_cancel(cancel)?;
+        self.plan(limits)?;
+        let r = &self.request;
+        super::object::open_cached_object(
+            store,
+            snapshot,
+            limits,
+            super::object::ExpectedObject {
+                source: &self.source,
+                path: &r.path,
+                role: r.role,
+                bytes: self.bytes,
+                digest: super::object::ExpectedDigest::FirstSeen,
+            },
+            cancel,
+        )
+    }
+}
+impl fmt::Debug for AzureConditionalPin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AzureConditionalPin")
+            .field("request", &self.request)
+            .field("bytes", &self.bytes)
+            .field("source", &self.source)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Exact caller-authorized raw bytes at a mutable native BlockBlob locator.
 /// No remote version/metadata lookup or ETag digest authority is inferred.
 #[derive(Clone)]
@@ -378,9 +574,19 @@ impl AzureContentSpec {
     ) -> Result<SnapshotLease> {
         validate_digest(snapshot)?;
         self.plan(limits)?;
-        let expected = ManifestEntry::new(&self.path, &self.sha256, self.bytes, self.role)?
-            .with_digest_provenance(DigestProvenance::TrustedSha256);
-        super::object::open_cached_trusted(store, snapshot, limits, &self.source, &expected, cancel)
+        super::object::open_cached_object(
+            store,
+            snapshot,
+            limits,
+            super::object::ExpectedObject {
+                source: &self.source,
+                path: &self.path,
+                role: self.role,
+                bytes: self.bytes,
+                digest: super::object::ExpectedDigest::TrustedSha256(&self.sha256),
+            },
+            cancel,
+        )
     }
 }
 impl fmt::Debug for AzureContentSpec {

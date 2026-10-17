@@ -3,7 +3,7 @@
 use super::{PullLimits, ResolvedFile, ResolvedPullPlan, http};
 use crate::cache::paths::{validate_digest, validate_relative_path};
 use crate::cache::{
-    CacheStore, DigestProvenance, FileRole, Manifest, ManifestEntry, ManifestSource, SnapshotLease,
+    CacheStore, DigestProvenance, FileRole, Manifest, ManifestSource, SnapshotLease,
     TransferAdmission,
 };
 use crate::{Error, Result};
@@ -179,22 +179,41 @@ impl HttpsObjectSpec {
     ) -> Result<SnapshotLease> {
         self.validate_limits(limits)?;
         check_cancel(cancel)?;
-        let expected = ManifestEntry::new(&self.path, &self.sha256, self.bytes, self.role)?
-            .with_digest_provenance(DigestProvenance::TrustedSha256);
-        open_cached_trusted(store, snapshot, limits, &self.source, &expected, cancel)
+        open_cached_object(
+            store,
+            snapshot,
+            limits,
+            ExpectedObject {
+                source: &self.source,
+                path: &self.path,
+                role: self.role,
+                bytes: self.bytes,
+                digest: ExpectedDigest::TrustedSha256(&self.sha256),
+            },
+            cancel,
+        )
     }
 }
 
-/// Reuse the original single trusted-object managed open, full hash, caller
-/// manifest bounds and positioned LFS check. This is provider-private metadata
-/// validation, never another cache/publisher or source-identity issuer. Native
-/// provider callers validate a snapshot digest first; HTTPS retains ref support.
-pub(super) fn open_cached_trusted(
+pub(super) enum ExpectedDigest<'a> {
+    TrustedSha256(&'a str),
+    FirstSeen,
+}
+pub(super) struct ExpectedObject<'a> {
+    pub source: &'a ManifestSource,
+    pub path: &'a str,
+    pub role: FileRole,
+    pub bytes: u64,
+    pub digest: ExpectedDigest<'a>,
+}
+/// The original managed single-object full hash, exact caller metadata and LFS
+/// policy. A FirstSeen contract has no fabricated expected raw SHA or provenance.
+/// Native callers validate a snapshot digest first; HTTPS retains ref support.
+pub(super) fn open_cached_object(
     store: &CacheStore,
     snapshot: &str,
     limits: &PullLimits,
-    source: &ManifestSource,
-    expected: &ManifestEntry,
+    expected: ExpectedObject<'_>,
     cancel: &AtomicBool,
 ) -> Result<SnapshotLease> {
     check_cancel(cancel)?;
@@ -204,29 +223,32 @@ pub(super) fn open_cached_trusted(
         store.resolve_ref_cancellable(snapshot, cancel)?
     };
     let manifest = lease.manifest();
-    if manifest.source() != source || manifest.entries().len() != 1 {
+    if manifest.source() != expected.source || manifest.entries().len() != 1 {
         return Err(Error::Malformed(
-            "cached trusted object source/closure mismatch".into(),
+            "cached object source/closure mismatch".into(),
         ));
     }
     let entry = &manifest.entries()[0];
-    if entry.path() != expected.path()
-        || entry.role() != expected.role()
-        || entry.bytes() != expected.bytes()
-        || entry.digest() != expected.digest()
-        || entry.digest_provenance() != DigestProvenance::TrustedSha256
+    let digest_matches = match expected.digest {
+        ExpectedDigest::TrustedSha256(sha) => {
+            entry.digest() == sha && entry.digest_provenance() == DigestProvenance::TrustedSha256
+        }
+        ExpectedDigest::FirstSeen => entry.digest_provenance() == DigestProvenance::FirstSeen,
+    };
+    if entry.path() != expected.path
+        || entry.role() != expected.role
+        || entry.bytes() != expected.bytes
+        || !digest_matches
     {
         return Err(Error::Malformed(
-            "cached trusted object content contract mismatch".into(),
+            "cached object content contract mismatch".into(),
         ));
     }
-    // The store may have wider limits than this particular caller. Apply
-    // caller metadata/schema bounds as well as the exact entry checks.
     Manifest::from_json(&manifest.canonical_bytes()?, &limits.cache)?;
     let mut prefix = [0u8; 128];
-    let count = expected.bytes().min(prefix.len() as u64) as usize;
+    let count = expected.bytes.min(prefix.len() as u64) as usize;
     lease
-        .file(expected.path())?
+        .file(expected.path)?
         .read_exact_at(&mut prefix[..count], 0)?;
     check_cancel(cancel)?;
     super::executor::reject_pointer(&prefix[..count])?;

@@ -684,6 +684,39 @@ or transfer admission, using the shared managed-file verifier. HTTPS retains its
 existing ref selection. Strong-conditional observations without caller SHA and
 per-object digest-map prefixes remain separate work.
 
+## Strong conditional cloud observations
+
+The explicit object-only `--conditional-read` mode supports S3 and Azure current
+objects when the caller supplies no raw SHA. The existing arbiter admits metadata
+work before a body-free HEAD to the exact native target. An exact200 response must
+provide complete identity-representation length and one strong ETag within the
+original limits and provider representation checks. Missing/weak validators,
+redirects, unsupported status/framing and exhausted bounds refuse.
+
+A separate `s3-conditional` or `azure-conditional` source contract binds the full
+normalized locator/profile, logical path/role, exact bytes and ETag. This is a
+conditional observation. Actual raw SHA remains FirstSeen; neither ETag nor the
+current locator supplies a trusted raw digest or immutable remote version.
+Changing the declared observation changes its contract and retained-prefix key.
+
+The original opaque HTTP target carries a private typed If-Match condition. Every
+initial GET, range and retry sends it, with exact response ETag validation before
+body reads. A differing resume validator refuses before wire/signing. SigV4 signs
+the same If-Match bytes; Azure SharedKey uses the standard If-Match slot. Existing
+anonymous, bearer and serviceSAS profiles retain their original ownership. HTTP412
+refuses without refreshing metadata, downgrading the condition or choosing another
+profile. The original exact length/hash/EOF/LFS/cancellation and sole cache
+publisher remain authoritative.
+
+Online dry-run resolves HEAD metadata only. Offline takes the same explicit
+conditional request plus exact bytes, quoted ETag and snapshot digest; it checks
+source/path/role/size/FirstSeen provenance, original full managed bytes and current
+limits before credentials, file/FIFO/stdin, client, admission or signals. The pure
+library pin constructor represents a caller-declared observation; offline access
+asserts no present remote freshness or authorization. Receipts escape the ETag as
+a JSON string. There is no conditional prefix/digest-map or implicit fallback;
+existing remote-version and caller-SHA contracts keep their original semantics.
+
 ## Native ModelScope explicit commits
 
 `pull modelscope OWNER/REPO --commit FULL40HEX --file PATH` uses the native
@@ -828,8 +861,8 @@ passing provider gate. Open implementation and acceptance work stays in TODO.md.
 | Auth/endpoints | Origin-scoped explicit bearer environment inputs, safe redirects and TLS. Mirror/profile policy, broader compatibility env aliases and provider-specific credentials remain open; offline bytes do not attest current remote access. |
 | OCI/Docker | Native tag-or-manifest pin/raw-GGUF layer, public/preissued bearer and fixed Docker Hub anonymous broker. Index/compressed/container/signature/generic private-login profiles remain open; no model closure follows. |
 | GCS | Native JSON object generation/metageneration media pins, auxiliary prefix/pageToken listing, anonymous/preissued bearer and explicit offline object pins. ADC/minting/requester-pays/custom endpoints and atomic/closure semantics remain outside this profile. |
-| S3/compatible endpoints | Native non-null versions, exact-path regional/path/virtual-host GET/HEAD/ranges, bounded V2/latest-version prefixes and static/session SigV4. Explicit current/unversioned objects additionally support caller SHA/size contracts; no-SHA conditional, broader partitions/vendor/credential profiles and FULL_OBJECT checksum mode remain open; presigned HTTPS alone grants no native S3 parity. |
-| Azure Blob | Native explicit BlockBlob versions/snapshots, bounded current-version auxiliary listing, pinned ranges and anonymous/bearer/SharedKey/ad-hoc serviceSAS. Explicit current/unversioned objects additionally support caller SHA/size contracts; no-SHA conditional/latest convenience, other endpoints/types/SAS and managed/default credentials remain open. |
+| S3/compatible endpoints | Native non-null versions, exact-path regional/path/virtual-host GET/HEAD/ranges, bounded V2/latest-version prefixes and static/session SigV4. Explicit current/unversioned objects additionally support caller SHA/size contracts; Strong conditional FirstSeen observations are explicit; broader partitions/vendor/credential profiles and FULL_OBJECT checksum mode remain open; presigned HTTPS alone grants no native S3 parity. |
+| Azure Blob | Native explicit BlockBlob versions/snapshots, bounded current-version auxiliary listing, pinned ranges and anonymous/bearer/SharedKey/ad-hoc serviceSAS. Explicit current/unversioned objects additionally support caller SHA/size contracts; Strong conditional FirstSeen observations are explicit; latest convenience, other endpoints/types/SAS and managed/default credentials remain open. |
 | ModelScope | Native explicit40hex commit, bounded complete shallow walk, exact files/model closure, anonymous/official-token and digest-only offline. Aliases, redirect/CDN/mirror profiles and missing sizes remain open; no SDK/login runtime. |
 | HF Xet | Explicit bounded native discovery, scoped CAS, signed ranges/multipart, ordered NONE/LZ4/BG4 reconstruction and original ephemeral importer/CLI. Native index closure and measured coalescing/performance remain open; cache hits/compatibility HTTPS grant no native execution proof. |
 | Auxiliary/preset convenience | Explicit auxiliary/component bytes are supported data. Specialized mmproj/draft/MTP/DFlash/Eagle3/DSpark discovery and bounded presets remain open convenience work; a preset cannot authorize new sources or limits. |

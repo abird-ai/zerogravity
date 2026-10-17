@@ -7,8 +7,8 @@ use std::sync::{Arc, atomic::AtomicBool};
 use zerogravity::acquisition;
 use zerogravity::acquisition::http::{HttpOptions, HttpsClient, S3Credentials};
 use zerogravity::acquisition::s3::{
-    S3Addressing, S3ContentSpec, S3Endpoint, S3Listing, S3ObjectPin, S3ObjectRequest,
-    S3PrefixRequest,
+    S3Addressing, S3ConditionalPin, S3ConditionalRequest, S3ContentSpec, S3Endpoint, S3Listing,
+    S3ObjectPin, S3ObjectRequest, S3PrefixRequest,
 };
 use zerogravity::cache::{CacheOptions, CacheStore, CommitOutcome, FileRole};
 use zerogravity::{Error, Result};
@@ -18,6 +18,11 @@ enum Profile {
     SigV4,
 }
 enum Selection {
+    Conditional(S3ConditionalRequest),
+    ConditionalOffline {
+        pin: Box<S3ConditionalPin>,
+        snapshot: String,
+    },
     Content {
         spec: Box<S3ContentSpec>,
         snapshot: Option<String>,
@@ -28,6 +33,10 @@ enum Selection {
         pin: Box<S3ObjectPin>,
         snapshot: String,
     },
+}
+enum SelectedPin {
+    Version(S3ObjectPin),
+    Conditional(S3ConditionalPin),
 }
 struct S3Options {
     selection: Selection,
@@ -99,6 +108,8 @@ fn parse(args: &[String]) -> Result<S3Options> {
     let mut snapshot = None;
     let mut listing = None;
     let mut content_contract = false;
+    let mut conditional_read = false;
+    let mut etag = None;
     let mut seen = BTreeSet::new();
     let mut rest = args[1..].iter();
     while let Some(flag) = rest.next() {
@@ -106,6 +117,10 @@ fn parse(args: &[String]) -> Result<S3Options> {
             return Err(invalid());
         }
         match flag.as_str() {
+            "--conditional-read" => {
+                conditional_read = true;
+                continue;
+            }
             "--content-contract" => {
                 content_contract = true;
                 continue;
@@ -172,6 +187,7 @@ fn parse(args: &[String]) -> Result<S3Options> {
                 })
             }
             "--version-id" => version = Some(value.clone()),
+            "--etag" => etag = Some(value.clone()),
             "--bytes" => bytes = Some(value.parse::<u64>().map_err(|_| invalid())?),
             "--sha256" => sha256 = Some(value.clone()),
             "--listing" => {
@@ -228,6 +244,11 @@ fn parse(args: &[String]) -> Result<S3Options> {
     {
         return Err(invalid());
     }
+    if conditional_read && content_contract
+        || etag.is_some() && (!conditional_read || !common.offline)
+    {
+        return Err(invalid());
+    }
     let bounds = limits(&common)?;
     let region = region.ok_or_else(invalid)?;
     let addressing = addressing.ok_or_else(invalid)?;
@@ -242,7 +263,8 @@ fn parse(args: &[String]) -> Result<S3Options> {
         if common.offline {
             return Err(Error::Unsupported("offline S3 prefix selection is unavailable; select an explicit object/version/bytes/snapshot digest".into()));
         }
-        if content_contract
+        if conditional_read
+            || content_contract
             || key.is_some()
             || path.is_some()
             || role.is_some()
@@ -261,7 +283,38 @@ fn parse(args: &[String]) -> Result<S3Options> {
         if prefix.is_some() || listing.is_some() {
             return Err(invalid());
         }
-        if content_contract {
+        if conditional_read {
+            if version.is_some() || sha256.is_some() {
+                return Err(invalid());
+            }
+            let request = S3ConditionalRequest::new(
+                &endpoint,
+                &bucket,
+                &key.ok_or_else(invalid)?,
+                &path.ok_or_else(invalid)?,
+                role.ok_or_else(invalid)?,
+            )?;
+            if common.offline {
+                let pin = S3ConditionalPin::new(
+                    &request,
+                    bytes.ok_or_else(invalid)?,
+                    etag.as_deref().ok_or_else(invalid)?,
+                )?;
+                if pin.bytes() > bounds.cache.max_file_bytes
+                    || pin.bytes() > bounds.cache.max_snapshot_bytes
+                {
+                    return Err(Error::Limit(
+                        "S3 conditional pin exceeds byte bounds".into(),
+                    ));
+                }
+                Selection::ConditionalOffline {
+                    pin: Box::new(pin),
+                    snapshot: snapshot.ok_or_else(invalid)?,
+                }
+            } else {
+                Selection::Conditional(request)
+            }
+        } else if content_contract {
             if version.is_some() {
                 return Err(invalid());
             }
@@ -344,14 +397,23 @@ fn describe_pin(pin: &S3ObjectPin) {
         pin.bytes()
     );
 }
+fn describe_conditional(bytes: u64, etag: &str) {
+    let etag = serde_json::to_string(etag).expect("string serialization");
+    println!(
+        "Conditional observation: FirstSeen\nETag (JSON string): {etag}\nExact bytes: {bytes}"
+    );
+}
 fn describe_content(bytes: u64, sha256: &str) {
     println!(
         "Content contract: caller-authorized SHA256\nExact bytes: {bytes}\nExpected SHA256: {sha256}"
     );
 }
-fn describe_selected(pin: Option<&S3ObjectPin>, plan: &acquisition::ResolvedPullPlan) {
+fn describe_selected(pin: Option<&SelectedPin>, plan: &acquisition::ResolvedPullPlan) {
     if let Some(pin) = pin {
-        describe_pin(pin);
+        match pin {
+            SelectedPin::Version(pin) => describe_pin(pin),
+            SelectedPin::Conditional(pin) => describe_conditional(pin.bytes(), pin.etag()),
+        }
     } else {
         let file = &plan.files()[0];
         describe_content(
@@ -397,6 +459,16 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         );
         return Ok(());
     }
+    if let Selection::ConditionalOffline { pin, snapshot } = &options.selection {
+        let store = CacheStore::open_existing(cache_options(&options.common)?)?;
+        let lease = pin.open_cached(&store, snapshot, &bounds, &cancel)?;
+        describe_conditional(pin.bytes(), pin.etag());
+        std::io::stdout().write_all(&lease.manifest().canonical_bytes()?)?;
+        eprintln!(
+            "Verified cached FirstSeen conditional observation; no present remote version/freshness or caller-authorized raw SHA assertion."
+        );
+        return Ok(());
+    }
     let admission = admission(options.common.memory)?;
     if options.common.dry_run
         && let Selection::Content { spec, .. } = &options.selection
@@ -439,19 +511,25 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         }
     };
     let plans = match &options.selection {
+        Selection::Conditional(request) => {
+            let (pin, plan) = request.resolve_with_pin(&client, &bounds, &admission, &cancel)?;
+            vec![(Some(SelectedPin::Conditional(pin)), plan)]
+        }
         Selection::Content { spec, .. } => {
             vec![(None, spec.prepare(&bounds, &admission, &cancel)?)]
         }
         Selection::Object(request) => {
             let (pin, plan) = request.resolve_with_pin(&client, &bounds, &admission, &cancel)?;
-            vec![(Some(pin), plan)]
+            vec![(Some(SelectedPin::Version(pin)), plan)]
         }
         Selection::Prefix(request) => request
             .resolve(&client, &bounds, &admission, &cancel)?
             .into_iter()
-            .map(|(pin, plan)| (Some(pin), plan))
+            .map(|(pin, plan)| (Some(SelectedPin::Version(pin)), plan))
             .collect(),
-        Selection::Offline { .. } => unreachable!("offline branch returned"),
+        Selection::Offline { .. } | Selection::ConditionalOffline { .. } => {
+            unreachable!("offline branch returned")
+        }
     };
     if options.common.dry_run {
         for (index, (pin, plan)) in plans.iter().enumerate() {
@@ -521,6 +599,8 @@ fn help() {
         --bucket BUCKET --prefix PATH/ [--listing current|latest-versions] [--dry-run]
 
 OPTIONS:
+    --conditional-read            Object-only HEAD ETag/size observation; FirstSeen
+    --etag QUOTED_ETAG             Required offline conditional observation only
     --endpoint-profile aws|compatible  Default aws; explicit region/addressing required
     --endpoint HTTPS_ORIGIN      Required only for compatible; AWS origin derived from region
     --profile anonymous|sigv4     Default anonymous; no ambient AWS credential chain
@@ -530,7 +610,7 @@ OPTIONS:
     --version-id ID               Online optional; offline exact non-null immutable version
     --sha256 RAW_SHA256           Independent caller SHA256, object only
     --offline --snapshot DIGEST   Full verified cache pin before credentials/client/admission
-    --bytes N                     Offline pin or explicit content contract; zero allowed
+    --bytes N                     Offline version/conditional pin or content contract; zero allowed
     --content-contract            Object-only caller SHA256 +exact bytes; no version ID
     --cache ABS_PATH              Existing pull XDG default, or explicit cache root
     --disk-limit-bytes N --memory-limit-bytes N
@@ -543,6 +623,12 @@ It supports unversioned/current locators, uses no HEAD, and binds source to call
 raw bytes rather than a remote version. Content dry-run is local before credential
 reads/client/signals; offline requires the same contract and --snapshot DIGEST.
 No raw SHA means no content mode; there is no fallback from versioned selection.
+Explicit --conditional-read observes HEAD exact bytes/strong ETag, then requires
+If-Match and matching ETag on every GET/range/retry. No caller SHA or remote version
+is inferred: full raw hash is FirstSeen. Online --bytes/--etag and SHA/revision/
+content-mode conflicts refuse. Offline adds --bytes, --etag and cached digest
+before credentials/client/admission/signals. Its dry-run is HEAD metadata only.
+
 Version IDs are printed as JSON strings for unambiguous offline reconstruction.
 Versioned mode HEAD selection resolves once to a non-null version; unversioned/null
 objects refuse in that mode. Anonymous sends no credentials. SigV4 reads only the selected environment

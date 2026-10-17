@@ -93,6 +93,9 @@ impl Signing {
         if let Some(token) = &self.credentials.session {
             headers.insert("x-amz-security-token", token.clone());
         }
+        if let Some(value) = target.if_match() {
+            headers.insert("if-match", value.to_owned());
+        }
         if let Some(range) = &request.range {
             headers.insert("range", format!("bytes={}-", range.start));
             headers.insert("if-range", range.validator.clone());
@@ -195,6 +198,42 @@ pub(super) fn checked_utc(now: SystemTime) -> Result<time::OffsetDateTime> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn conditional_range_literal_hmac_covers_both_precondition_and_range() {
+        // Independent Python stdlib canonical request with the official example
+        // key/date/host, additional exact condition and range/if-range fields.
+        let signer = Signing::new(
+            "us-east-1",
+            S3Credentials::new(
+                "AKIAIOSFODNN7EXAMPLE",
+                "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+                None,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let headers = BTreeMap::from([
+            ("host", "examplebucket.s3.amazonaws.com".into()),
+            ("if-match", "\"observed-2\"".into()),
+            ("if-range", "\"observed-2\"".into()),
+            ("range", "bytes=3-".into()),
+            ("x-amz-content-sha256", EMPTY_SHA.into()),
+            ("x-amz-date", "20130524T000000Z".into()),
+        ]);
+        let uri = "https://examplebucket.s3.amazonaws.com/test.txt"
+            .parse()
+            .unwrap();
+        let actual = signer
+            .authorization("GET", &uri, &headers, "20130524T000000Z")
+            .unwrap();
+        assert!(actual.contains(
+            "SignedHeaders=host;if-match;if-range;range;x-amz-content-sha256;x-amz-date"
+        ));
+        assert!(actual.ends_with(
+            "Signature=75122cb9a81cbd4019147582dbd1ebef726e5d264101666ffea9062ac241dae5"
+        ));
+    }
+
     #[test]
     fn official_s3_get_range_and_listing_signature_vectors() {
         let signer = Signing::new(
