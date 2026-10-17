@@ -6,6 +6,8 @@
 **2026-10-15 | DESIGN PLAN, not runtime implementation, performance proof or new user authorization to download weights.**
 **References:** new derived-quantization/QTIP quant, hybrid/DFlash and gfx1151/UMA contracts under .agents/docs; detailed specialist source atlas. Existing P00–P23 phase order and user-selected Qwen3.5/Gemma4/Qwen3.8 CPU-first model order remain unchanged.
 
+Current work is tracked in the [CPU/GPU optimization TODO](../plans/cpu-gpu-optimization/TODO.md), [model execution TODO](../plans/model-execution/TODO.md) and [serving/speculation TODO](../plans/serving-and-speculation/TODO.md). This reference preserves proposed acceptance, not a support or performance claim. The [source atlas](SPECIALIZATION_SOURCE_ATLAS_2026-10-15.md) supplies the dated research context; recheck exact source revisions and licensing before implementation.
+
 ## 1. Success definition
 
 Any future extreme sparse/hybrid architecture (Qwen3.8 Flash-Next, GLM5.3 Flash, MiMo2.6 Flash, new MOPD/BitNet/ternary variants) must be added through **one VerifiedModelAssembly + exact model semantic adapter + optional DerivedQuantArtifact + TaskDriver/DraftSource + StateDomains + guarded KernelCandidates**, not a parallel runtime.
@@ -132,6 +134,16 @@ Each promotion candidate has one exact source digest, original/derived pack, dev
 
 **Benchmark fairness:** match actual derived packs and original reference precision, tokenizer, source prompt templates, context, sampling, MTP depth, active sessions and device power/fabric clocks. Report per-session TTFT/tokens per sec AND aggregate committed output. The specialist prior-art external results are targets for experimental comparison, not facts about Zerogravity.
 
+### Research cautions retained from the retired handoff
+
+- A gfx1151 Wave32 WMMA/LDS layout is a capability- and caller-specific candidate. A useful staging-stride change in one kernel can invalidate another caller's wider scratch requirement. Check every caller, complete trained rows and final logits; aggregate perplexity alone can hide a defect.
+- Smaller quantized storage can decode more slowly. Likewise, one source's grouped-MoE row boundary made a larger batch slower, and single-stream versus aggregate rates measured different objectives. Reproduce these mechanisms on the selected source/device; do not copy a batch constant, row-cost formula or advertised token rate into model semantics.
+- A correct target can reject a broken draft and conceal its semantic error. Independently test draft masks, taps, partial RoPE, sink/value scaling and acceptance, including workloads where drafting slows execution.
+- A source pack's FP16 overflow workaround paired conversion-time scaling with runtime scaling. Treat that as a separately identified derived artifact with quality tests; do not generalize it into clamping or a source-exact transform.
+- Clean source-shard page cache can compete with resident GPU weights in one coherent memory pool. Driver free memory, GTT addressability and OS MemAvailable are different observations. Admission must include both uses and OS headroom, without automatic process killing or global page-cache discard.
+- CPU expert offload, some INT8/prefetch/graph variants, lower bitrates and deeper draft trees produced neutral or negative results in the source study. Keep a correct disabled baseline and require complete-request gains. First-image shape search also needs a bounded policy; any convolution-to-GEMM alternative still needs source equivalence.
+- Activation steering changes model behavior. Keep it off by default and separately versioned, authorized and quality-assessed rather than presenting it as a kernel optimization.
+
 ## 6. Small design decisions and open questions
 
 | ID | Disposition | Decision |
@@ -155,16 +167,10 @@ Each promotion candidate has one exact source digest, original/derived pack, dev
 
 Do not treat a proposal as a user-approved implementation requirement or an open question as resolved. The actual new user request is to **strengthen plans and specifications** cleanly, not to launch experiments.
 
-## 7. Handoff for independent agent
+SYK IDs retain their local proposal/open-question meaning; they do not renumber the separate U-040/U-041 histories. SYK-013 is the original question about an LLVM code-generation path and permissions. The subsequently accepted native C++ NVRTC/HIPRTC profiles do not qualify that LLVM path, and this historical question is not a claim that current native execution requires LLVM23. Current backend and permission limits remain in the linked TODOs.
 
-Read:
-1. existing v4.3 governing architecture and v5.1 ModelAssembly/semantic contract;
-2. this integration roadmap;
-3. each of three new specialization contracts **in full**;
-4. specialist original source atlas, including negative results/method;
-5. original user decision register/current implementation handoff and live Git;
-6. existing P00–P23 and experimental Qwen3.5 CPU8K/partial GPU quality evidence.
+## 7. References and implementation boundary
 
-Then independently implement smallest source-free acceptance within its assigned phase only after user authorization; quantify all errors and prevent cross-agent file staging conflicts. Report model/codec support honestly. **Never substitute a new local engine, hidden quant format, unapproved BF16 behavior steering, or fake GPU event.**
+The detailed requirements are in the [derived quantization contract](../docs/DERIVED_QUANTIZATION_CONTRACT_2026-10-15.md), [hybrid-model and drafter semantics](../docs/EXTREME_HYBRID_MODELS_AND_SPECULATIVE_DRAFTER_SEMANTICS_2026-10-15.md), [gfx1151 cost and unified-memory contract](../docs/GFX1151_ROCM_KERNEL_COST_AND_UNIFIED_MEMORY_SAFETY_CONTRACT_2026-10-15.md) and [source atlas](SPECIALIZATION_SOURCE_ATLAS_2026-10-15.md). Use the [plan index](../plans/TODO.md) for current work and the [repository workflow](../../AGENTS.md) for coordination.
 
-This plan is documentation and test design only; the v4.3 architecture and P00–P23 implementation sequence remain authoritative.
+Implement only the assigned bounded slice, beginning with source-free acceptance and an independent original-source CPU reference before actual trained GPU and performance gates. Report the achieved model/codec/device scope explicitly. Never substitute a new local engine, hidden quant format, behavior steering or fake GPU event. This reference supplies proposed design and acceptance; it does not establish implementation or qualify a new source model.

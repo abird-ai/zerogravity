@@ -4,10 +4,10 @@
 GPU tokenization, device execution scheduling and detokenization.
 
 **Status: planned; none of the capabilities below is qualified by this document.**
-This addendum extends the existing phase definitions without renumbering them
-or assigning the next implementation handoff ID. Native CUDA/ROCm enablement
-remains the current implementation stream. The addendum is kept separate from
-its working files and the shared generated handoff/manifest during that work.
+This addendum extends the existing phase definitions without renumbering them.
+Current implementation ordering and completion live in the
+[CPU/GPU optimization TODO](../plans/cpu-gpu-optimization/TODO.md); this design
+does not reopen completed backend work or qualify the capabilities below.
 
 ## Existing architecture and phase ownership
 
@@ -190,9 +190,11 @@ Implementation order is profiling, captured replay, bounded device execution,
 then measured GPU tokenizer/decoder candidates and joint qualification. Text
 codec research may proceed independently when it does not interfere with native
 backend bring-up. Persistent scheduling follows a measured need and complete
-ownership/fairness gates. Each implementation slice needs its own bounded plan,
-source/hardware evidence and normal handoff/archive/SHA closeout. Do not renumber
-existing phases or reserve a native-backend handoff ID from this side discussion.
+ownership/fairness gates. Track each bounded implementation slice, source/model
+identities, actual hardware/numerical results, failures and unfinished gates in
+the owning plan/run TODOs under [TODO-SPEC.md](../plans/TODO-SPEC.md). Commit
+verified implementation, tests and plan updates together; no generated handoff,
+archive or documentation SHA closeout is required. Existing phase IDs remain.
 
 ## Research evidence and its limits
 
@@ -226,12 +228,10 @@ authorization is granted by this roadmap.
   illustrates a host detokenization process with incremental text state. It is
   a semantic/placement reference, not evidence of a GPU text decoder.
 
-## Integration during the active implementation phase
+## Implementation integration
 
-This side-conversation change owns this addendum only. Leave current native
-source/build changes, working handoff, root README, Git index and generated
-archive/manifest untouched. At the next coordinated documentation closeout,
-link this addendum from IMPLEMENTATION_ROADMAP and full GPU tracking, add it to
-the source archive/manifest eligibility, and regenerate both deterministically.
-Until then it is an explicit saved roadmap addition, not a completed phase or
-an archived implementation claim.
+Use the current plan TODO for ownership and applicable gates, with separate
+agent run TODOs until coordinator integration. Preserve unrelated work and the
+user-authored root README. Commit only verified, scoped changes and carry every
+unfinished item forward. This roadmap remains a design reference; reading or
+linking it does not establish implementation or qualification.

@@ -43,7 +43,7 @@ The project root is `/home/pvl/spaces/abird/src/zerogravity/`. Its `.agents/docs
 2. **This integration specification**, [Modular Reference Architecture](../.agents/docs/MODULAR_AI_SYSTEMS_REFERENCE_ARCHITECTURE.md), [Composition Contracts](../.agents/docs/COMPOSITION_AND_EXTENSION_CONTRACTS.md) and [current Master Plan](../.agents/plans/ZEROGRAVITY_MASTER_PLAN_2026-10-10.md).
 3. Detailed current normative subsystem specs for precise operators, numeric and hardware behavior; newer explicit v4.x corrections supersede earlier appended examples.
 4. [Current implementation roadmap](../.agents/plans/IMPLEMENTATION_ROADMAP.md), [Stage0 gates](../.agents/plans/INTEGRATED_PHASE_0_AND_DELIVERY_GATES.md), [experiments](../.agents/plans/EXPERIMENT_PROGRAM.md), [release criteria](../.agents/plans/RELEASE_ACCEPTANCE_GATES.md). They define work and **prove nothing until run**.
-5. Historical `PRIOR_ART_HISTORICAL_*` and `DESIGN_EVOLUTION_*` snapshots and source-specific research: **attributed non-normative evidence, not implementation authority**.
+5. Retained design reviews and source-specific research: **attributed non-normative context, not implementation authority**. Superseded snapshot bodies remain in Git history.
 
 In an apparent contradiction, **record it and choose the smallest contract-consistent implementation**, rather than silently inventing source semantics or conflating physical device execution with logical session commit. Research source names are not core Rust API names.
 
@@ -898,7 +898,7 @@ Review each proposed optimization against:
 
 ### ES-14.2 Historical traceability and open decisions
 
-The original user decisions, proposals and unresolved product questions remain in [Decision Register](../.agents/plans/DECISION_REGISTER.md). The v2/v3 archive and research source atlas have been retained for learning and exact prior-art attribution. **The currently proposed Rust interfaces are not irreversible public types**, and future measured code may justify revisions. Frozen security, numerical and session guarantees require an explicit decision/test protocol before relaxation.
+The original user decisions, proposals and unresolved product questions remain in [Decision Register](../.agents/plans/DECISION_REGISTER.md). The [critical review](../.agents/prior-art/ARCHITECTURE_V4_CRITICAL_REVIEW_2026-10-12.md) retains rejected-design rationale, and the [research source atlas](../.agents/prior-art/RESEARCH_SOURCE_ATLAS.md) retains prior-art attribution. Superseded v2/v3 bodies remain in Git history. **The currently proposed Rust interfaces are not irreversible public types**, and future measured code may justify revisions. Frozen security, numerical and session guarantees require an explicit decision/test protocol before relaxation.
 
 ### ES-14.3 What makes the published documents usable independently?
 

@@ -1,6 +1,6 @@
 # zerogravity — modular AI execution reference architecture v4.1
 
-**2026-10-12 · authoritative v4.1, design only.** This is the **smallest architectural contract** for a high-performance, composable Rust AI runtime, including native kernels and compiler-centric/device-graph/dataflow execution families. Exact formal execution/state details are in `MINIMAL_EXECUTION_SPINE_AND_PROTOCOL_V4.md`; model/task/compiler details in `TASK_PROGRAM_AND_COMPILER_REFINEMENT_V4.md`; critical review and decisions in `ARCHITECTURE_V4_CRITICAL_REVIEW_2026-10-12.md`. The previous v3 text is preserved in `DESIGN_EVOLUTION_V3_SNAPSHOT.md`. No code or benchmark has been implemented.
+**2026-10-12 · authoritative v4.1, design only.** This is the **smallest architectural contract** for a high-performance, composable Rust AI runtime, including native kernels and compiler-centric/device-graph/dataflow execution families. Exact formal execution/state details are in `MINIMAL_EXECUTION_SPINE_AND_PROTOCOL_V4.md`; model/task/compiler details in `TASK_PROGRAM_AND_COMPILER_REFINEMENT_V4.md`; critical review and decisions in `ARCHITECTURE_V4_CRITICAL_REVIEW_2026-10-12.md`. Rejected v3 design choices are summarized in the [critical review](../prior-art/ARCHITECTURE_V4_CRITICAL_REVIEW_2026-10-12.md). No code or benchmark has been implemented.
 
 ## 1. Prime rule — compose execution capabilities, never new engines
 

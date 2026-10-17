@@ -4,6 +4,16 @@
 **Status:** explicit user architectural requirement to treat SSD-backed model residency and streaming as first class across the same model and tensor structures; no user authorization to download enormous models or run physical memory-pressure experiments.
 **Authorities:** .agents/docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_AND_SSD_STREAMING_2026-10-15.md and existing v4.3 ModelAssembly/SemanticProgram, CIR, DeviceBackend, ResourceArbiter, ModelRouter, TaskCoordinator. No model-specific disk engine, no new persistent IR.
 
+Current implementation work is tracked in the [memory and streaming TODO](../plans/memory-and-streaming/TODO.md). This document retains the design and the SSD acceptance scenarios; their presence does not establish streamed-model support.
+
+### Reading the design without the retired handoff
+
+Use the [virtual tensor residency contract](../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_AND_SSD_STREAMING_2026-10-15.md) for the source/materialization/lease protocol and the [source research](../prior-art/SSD_STREAMING_AND_RELATED_PRIOR_ART_2026-10-15.md) for attributed findings. VST-USER-001 records the requirement for first-class SSD residency through the same tensor structures as RAM/GPU backing; it does not authorize large downloads, memory-pressure experiments or provider execution.
+
+One verified source tensor binds to either an already-ready resident lease or a provisional source extent. A miss requires checked IO, admitted staging and actual upload completion before the same source kernel can consume it. Host read completion alone cannot publish a ready device slot or StateRoot. The resident path requires no per-token filesystem access, IO worker wakeup, cache lookup or hidden bulk copy; these are acceptance conditions to measure.
+
+Keep four policies distinct over that shared substrate: routed expert slabs, bounded selected lookup rows, immutable committed session snapshots, and optional slower dense-trunk reload. A universal LRU across these lifetimes is not the design. The encoded-reader and mixed-codec regressions below remain required even when a cache reports high hit rates. Prefetch or lower storage use cannot change source routes, quantization, numerical policy or the committed result.
+
 ## 0. Implementation principle and current status
 
 The old design already covered expert SSD miss path, disk-only n-gram/Engram rows, prefetched experts and disk KV snapshots conceptually. What needed strengthening is ONE verified immutable TensorView and source tensor identity independent of backing, clear materialization/IO/physical GPU lease contracts, zero-extra-IO resident fast path, whole-batch encoded reader pin lifetime, mixed-codec byte budgeting, IO provider portability and performance-truth admission. All are specified now; no SSD streaming path is hereby implemented in the current Rust binary.
@@ -159,6 +169,6 @@ Other agents may be working in repository; use precise owned paths, no unrelated
 
 **OPEN:** which cache/popularity and IO algorithm performs best on each actual target; default minimum physical OS headroom; pressure stress authorization; optional GDS/remote storage policy; disk KV retention/encryption; mandatory realtime QoS; source model/backend/quant streaming qualification. These need measurements and/or explicit authorization and must not be filled with DS4/prior-art-specific constants.
 
-## 9. Implementation agent starting instructions
+## 9. References and implementation boundary
 
-Read entire .agents/docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_AND_SSD_STREAMING_2026-10-15.md and .agents/prior-art/SSD_STREAMING_AND_RELATED_PRIOR_ART_2026-10-15.md and this roadmap; then existing MEMORY_RESIDENCY_AND_IO.md, ASYNC_RESOURCE_COMMAND_IR.md, STATE_CACHE_AND_TRANSACTIONS.md, MODEL_ROUTING_RESIDENCY..., FORMATS..., COST_MODEL..., INVARIANTS..., latest decision/handoff and live source/Git. Start with SSD-01 source-free mock only after authorized. Preserve single model engine and per-session root. Never claim file-on-disk means source qualified streaming. No unapproved model download, driver permissions, system cache purge or release push.
+Use the [current plan](../plans/memory-and-streaming/TODO.md) and [repository workflow](../../AGENTS.md) for an assigned implementation slice. The [virtual residency contract](../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_AND_SSD_STREAMING_2026-10-15.md), [source research](../prior-art/SSD_STREAMING_AND_RELATED_PRIOR_ART_2026-10-15.md), [physical memory design](../docs/MEMORY_RESIDENCY_AND_IO.md), [command/event contract](../docs/ASYNC_RESOURCE_COMMAND_IR.md) and [state transaction contract](../docs/STATE_CACHE_AND_TRANSACTIONS.md) supply the detailed technical requirements. Start with the bounded source-free scenarios, then original checkpoint CPU, actual GPU and authorized SSD-pressure gates. Mock IO cannot establish streamed-model or physical-lifetime qualification.

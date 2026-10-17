@@ -37,7 +37,7 @@ No requirement that contributors personally author every line. Never overwrite c
 
 Root README is a **product entry point**, not the running implementation log. Include the exact user tagline, clear text/image/video/audio/realtime ambitions, minimal highlights, simple local quick start, compact fabric and joint optimization diagrams, FAQ, high-level honest status/roadmap, contribution invite, AI disclosure and MIT license.
 
-The original pre-rewrite README is preserved verbatim under `.agents/research/README_PRE_PRODUCT_REWRITE_SNAPSHOT_2026-10-15.md` for build, release, Nix, and detailed qualification history. Links in that historic snapshot were originally relative to the repository root. Current `.agents/plans/CURRENT_STATUS_AND_TRACKING.md` and actual live source/test evidence govern implementation status.
+The root-README-linked `.agents/research/README_PRE_PRODUCT_REWRITE_SNAPSHOT_2026-10-15.md` remains a navigation pointer to current build/release/Nix guidance and plan TODOs. The old snapshot body remains in Git history. Current plan checklists and verified code/tests govern implementation status.
 
 No proposed architecture, benchmark or generated explanation establishes support for original trained image/audio/video, full GPU Qwen or production vLLM-class serving absent source-real tests.
 

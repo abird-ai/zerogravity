@@ -1,6 +1,6 @@
 # zerogravity — v4 critical architectural review, challenges and resolution record
 
-**Review date:** 2026-10-12. **Scope:** a fresh cross-cutting engineering review of the complete v3 Markdown architecture, subsystem specs, 24-phase implementation roadmap, 31 experiments, task/device API sketches, state/memory/safety contracts, and the prior-art research corpus. **Classification:** design review and adjudicated architecture proposals, **not code or benchmark results**. New authoritative execution rules live in `MINIMAL_EXECUTION_SPINE_AND_PROTOCOL_V4.md` and `TASK_PROGRAM_AND_COMPILER_REFINEMENT_V4.md`. Legacy v3 core is preserved in `DESIGN_EVOLUTION_V3_SNAPSHOT.md`. The current master/decision register controls status.
+**Review date:** 2026-10-12. **Scope:** a fresh cross-cutting engineering review of the complete v3 Markdown architecture, subsystem specs, 24-phase implementation roadmap, 31 experiments, task/device API sketches, state/memory/safety contracts, and the prior-art research corpus. **Classification:** design review and adjudicated architecture proposals, **not code or benchmark results**. Execution rules live in the [minimal spine](../docs/MINIMAL_EXECUTION_SPINE_AND_PROTOCOL_V4.md) and [task/compiler contract](../docs/TASK_PROGRAM_AND_COMPILER_REFINEMENT_V4.md). Earlier v2/v3 document versions are available in Git. The [master](../plans/ZEROGRAVITY_MASTER_PLAN_2026-10-10.md) carries design context; [active TODOs](../plans/TODO.md) and the accepted checkpoint control current completion. Historical review proposals and open-policy labels below are not a new implementation mandate or a reversal of later decisions.
 
 **User objective:** achieve the highest plausible performance/quality/productivity Pareto frontier for **composable AI execution**, retaining a very small mandatory core, clean future model/operator/device/quant/task extensibility and no new model-specific inference engine for specializations. Performance supremacy is *unverified*, not an architectural guarantee.
 
@@ -18,7 +18,7 @@ The review does **not** claim other systems lack some technique or that new 2026
 
 ## 2. Severity-ranked findings: concrete faults in v3
 
-Severity indicates *cost of freezing the wrong interface*, not a discovered executable bug—**no executable engine exists yet**.
+Severity indicates the historical *cost of freezing the wrong interface*, not a discovered executable bug. This review preceded the working engine; its findings explain the contract choices rather than assert today’s implementation status.
 
 | ID / priority | v3 design problem | Consequence if coded literally | v4 correction |
 |---|---|---|---|
@@ -81,7 +81,7 @@ Performance-oriented design must be stated as measurable *budget categories* rat
 
 ## 5. Minimality budget / architectural complexity constraints
 
-**Required in first real vertical slice:** one semantic program representation, bounded verified state-effect graph, reference execution, one task driver, one kernel registry for a handful of ops, one device provider, a small command DAG/event lease verifier, one resource-admission manager, and one session owner/worker protocol. They can live in **2–4 Rust crates initially** (or one library + binary), not 9 mandatory crates.
+**Required in first real vertical slice:** one semantic program representation, bounded verified state-effect graph, reference execution, one task driver, one kernel registry for a handful of ops, one device provider, a small command DAG/event lease verifier, one resource-admission manager, and one session owner/worker protocol. The original **2–4-crate bootstrap** suggestion (or one library + binary) was a way to avoid speculative scaffolding, not a permanent cap on the subsequently tested workspace.
 
 **Explicitly deferred until tests justify it:** general workflow/agent DSL and external-action runtime; dynamic library plugin ABI; arbitrary offline equality saturation; distributed transaction WAL; automatic topology co-optimizer; every quant format; media modalities without model test fixtures; online training engine; JIT per new token shape; persistent cross-driver graph cache serialization.
 
@@ -108,7 +108,7 @@ Performance-oriented design must be stated as measurable *budget categories* rat
 | **T4-11 Cross-run numeric fidelity** | source quant/compute precision and deliberate approximation tracked independently | route/top-k silently reduced for t/s |
 | **T4-12 External tool boundary** | untrusted task graph cannot issue arbitrary process/network/file action through inference kernel or IR op | model tensor can trigger privileged tool calls |
 
-These tests must become executable only when user authorizes implementation. Add to experiment and gates without inventing passing results.
+These are design proof obligations. Consult current source/tests and [active plans](../plans/TODO.md) for completed slices and remaining gates; do not infer passing results or reopen completed work from this historical table.
 
 ## 7. Risks and unresolved policy, retained deliberately
 
@@ -121,15 +121,17 @@ These tests must become executable only when user authorizes implementation. Add
 - **Legal scope:** project-neutral design and provenance remain separate. Verified MIT source may be considered for concrete source reuse with file-level notices and Rust-source approval; non-MIT upstream code is cited research only by user's project policy.
 - **Performance:** even the best designed modular architecture may trail a hand-coded specialist on one workload. Specialized-region substitution is the mechanism to compete **without duplicating engine ownership**, not a promise of guaranteed outperformance.
 
-## 8. v4 migration of authoritative specs
+## 8. Retained migration rationale and current references
 
-- **Rewrite** `MODULAR_AI_SYSTEMS_REFERENCE_ARCHITECTURE.md` as one-page-of-concepts normative top-level, linking deep contracts and drawing the correct 2-durable-representation architecture.
-- **Rewrite** `COMPOSITION_AND_EXTENSION_CONTRACTS.md` to remove per-domain mutating `commit` and mandate prepared root publication, plus task driver/shape guard/provider and physical plan identity.
-- **Revise** master plan, START_HERE, NEXT_AGENT_PROMPT, handoff to v4 authority/read order.
-- **Add** precise execution/state protocol `MINIMAL_EXECUTION_SPINE_AND_PROTOCOL_V4.md`, and task/compiler `TASK_PROGRAM_AND_COMPILER_REFINEMENT_V4.md`.
-- **Update** roadmap/Stage0/experiment/release gates and relevant subsystem specs with direct v4 proof tests and late-bound physical safety/precision.
-- **Preserve** v3 originals in `DESIGN_EVOLUTION_V3_SNAPSHOT.md`, older v2 archive, all prior-art and license evidence. Research library remains read-only; update SHA-256 manifest **last**.
-- **No Git initialization, kernel build or benchmark** is part of this architecture review.
+The v2/v3 archives are no longer required live documents. The useful rejected alternatives remain in R4-01…R4-24 above and in these technical contracts:
+
+- **One publication authority:** domain-level commit and rank-local commit were rejected because failure could expose inconsistent KV/recurrent/RNG frontiers. [The execution spine](../docs/MINIMAL_EXECUTION_SPINE_AND_PROTOCOL_V4.md) defines Prepare/Ready and one logical PublishRoot; [peer handoff](../docs/REMOTE_PEER_TRANSPORT_AND_STATE_HANDOFF_PROTOCOL.md) adds fencing and fail-stop/replay rather than network exactly-once promises.
+- **No duplicate compiler or task runtime:** four enduring IR ecosystems and a generic in-core workflow DSL were rejected for versioning, hot-loop and privilege cost. [Task/compiler refinement](../docs/TASK_PROGRAM_AND_COMPILER_REFINEMENT_V4.md) retains transient RIR/KIR views, one physical plan and a small trusted TaskDriver. External tools remain above the compute boundary.
+- **Measured costs, not optimistic labels:** a cheap logical frontier does not prove O(1) physical rollback; multiple callers do not prove native batching; CPU expert work on UMA can compete for the same bandwidth. [State transactions](../docs/STATE_CACHE_AND_TRANSACTIONS.md), [memory/IO](../docs/MEMORY_RESIDENCY_AND_IO.md) and [joint serving](../docs/JOINT_CONCURRENT_SERVING_OPTIMIZATION_AND_GOODPUT_CONTRACT_2026-10-15.md) retain those distinctions.
+- **Correct sources before reuse:** the old disk-header arithmetic and mismatched-model benchmark errors are retained in [the reconciliation record](ARCHITECTURE_RECONCILIATION_AND_AUTHORITY.md). They justify fresh checked schemas and matched comparisons, not frozen legacy formats or performance floors.
+- **Independent hardware strategies and source rights:** routed expert ownership, same-SoC projection-row slicing and remote collectives have distinct costs and failure boundaries. [Placement](../docs/DISTRIBUTED_PLACEMENT_AND_NETWORK_EXECUTION_CONTRACT.md) and [GPU/NPU cooperation](../docs/NPU_GPU_COOPERATIVE_EXECUTION_AND_TASK_PIPELINES.md) own the contracts; the [pinned fork research](GUFO_FORK_AND_XDNA2_PREFILL_SOURCE_RESEARCH_2026-10-12.md) retains attribution, source-language and hard-hang caveats. A device-present probe or Rust host wrapper alone proves neither safety nor Rust-authored device code.
+
+Current source/license decisions follow [the provenance policy](PRIOR_ART_LICENSE_AND_PROVENANCE_POLICY.md) and decision register; existing qualified native profiles are not reopened by the historical FFI questions. Work tracking follows [AGENTS.md](../../AGENTS.md) and [TODO-SPEC.md](../plans/TODO-SPEC.md). No archive-retention, handoff-generation or SHA-manifest process is required.
 
 ## 9. Review verdict
 

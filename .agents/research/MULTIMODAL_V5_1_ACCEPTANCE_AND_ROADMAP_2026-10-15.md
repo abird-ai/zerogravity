@@ -6,7 +6,11 @@
 **15 Oct additive extreme-text/quant implementation precision:** The source-bound [QTIP + MiMo/DFlash + gfx1151/UMA integration roadmap](EXTREME_MODEL_SPECIALIZATION_INTEGRATION_AND_ACCEPTANCE_2026-10-15.md) supplies **50 distinct planned QTIP/HYB/GFX acceptance fixtures** under existing P03–P22 without altering media MM-01..24 or any model implementation priority. Large video/audio/decision TaskDrivers remain independent; source artifact/codec+TensorEncoding/region kernel support remains orthogonal to each task. The specialist source atlas is source evidence, NOT hardware/quality proof for Zerogravity; vendor-specific memory page-cache and row grouping are candidate kernel/cost properties, not generic multimodal task semantics.
 
 
-**15 October 2026 · implementation plan / DESIGN ONLY.** This plan is additive to the historic P00–P23 roadmap and user-decided first-model priority; **it is not authorization to change running code or build and deploy models.** The latest full Qwen3.5 CPU Phase1 acceptance and partial Vulkan GPU source execution are separate existing evidence. Future audio/image/video/decision/ternary support is only conceptual until original checkpoints and real devices pass.
+Technical implementation and acceptance reference. Live work and completed results
+belong to [the multimodal TODO](../plans/multimodal/TODO.md), under
+[TODO-SPEC](../plans/TODO-SPEC.md). The requirements below do not grant permission
+to acquire checkpoints, invoke a provider or change devices. Real media/decision
+support requires its original source, task/state and eligible-device gates.
 
 ## 0. Universal execution truth and success definition
 
@@ -24,26 +28,33 @@ Support tiers (each scoped by model artifact, component assembly, task, backend,
 
 The catalog and CLI/SDK/API must show exact tier and missing gates, not a vague "multimodal supported" flag.
 
-## 1. Immutable existing scope (P00–P23 remains)
+## 1. Scope and source authority
 
-- User chose Qwen3.5 0.8B and 2B CPU first, then full NVIDIA CUDA, AMD ROCm/HIP, Vulkan on NVIDIA/AMD; Qwen Phase1 genuine through 8K 16/16 passed, 16K/32K deferred under U-027.
-- Next model CPU-first order: Gemma4 E2B → Gemma4 26B-A4B → Qwen3.8 27B.
-- GPU source Q4/partial model proof on NVIDIA/AMD Vulkan and physical handle quarantine exist, but full GDN/attention/KV GPU execution not yet complete.
-- Independent 8K CPU GDN numerical investigation remains open, and historically MM0 six source-free tests pass; no media weights executed locally yet.
-- Native Rust-authored engine, no opaque foreign local inference runtime, no unapproved driver/download/network/release.
-- This plan supplements the roadmap; starting implementation on an unrelated multimodal large checkpoint needs a separate sequencing and hardware approval if it conflicts with those priorities.
+Preserve the user-directed breadth: standalone and native duplex speech, image
+creation/editing, temporal video and coupled AV, finite decisions, unusual source
+codecs, composable model assemblies, and high-performance serving in one Rust
+engine. A direct neural duplex model and an ASR→language→TTS composition remain
+distinct tasks. Hosted services expose authorized observable APIs, not invented
+local weights or proprietary internals. No family name implies streaming,
+commercial licensing, source-equivalent math or a runnable checkpoint.
+
+Use the [retained source atlas](MULTIMODAL_MODEL_FAMILY_SOURCE_ATLAS_AND_IMPLEMENTATION_2026-10-14.md),
+the per-family dossiers below, the governing execution/assembly contracts and
+current plan TODOs. Do not revive old baseline statuses or change the authorized
+CPU-first model/acquisition priorities because a media design is ready. User
+requirements remain distinct from assistant proposals and unresolved policy.
 
 ## 2. Design readiness gates MM-D0..MM-D5
 
-### MM-D0 — authority consolidation (design docs, NOW)
+### MM-D0 — source and design consistency
 Deliver:
 - v5.1 unified execution, model assembly/codec and real-time serving specifications.
 - research dossiers for ASR/translation, TTS/duplex, image, video/AV, decision/ternary, protocol/provider prior art.
 - U40/U41 explicit user decision provenance, research/design recommendation register and open options.
 - independent reviewer reconciliation with remaining conflicts and falsification criteria.
-- SHA-verified append-only master handoff containing prior source archive and all new design docs.
+- linked original-source references, unresolved decisions and modality-specific adverse fixtures in their retained technical owners; no duplicate handoff or checksum inventory.
 
-Gate D0-PASS only if no application/code/build/test/runtime edits by design document owner, no other agent staging touched, all document links resolved, no false unsupported model claims, and original roadmap/version decisions retained. This is a documentation gate, not a claimed runtime test.
+Gate: contracts agree on one state/resource authority, algorithms/clocks and exact capability scope; references resolve and no model support is invented. A design consistency review does not qualify runtime behavior. Current TODOs record implementation and actual tests.
 
 ### MM-D1 — typed media and clocks (later CODE only if authorized)
 - ValueDescriptor with exact sample/frame/codebook/latent/decision types and registered parser limits.
@@ -134,22 +145,22 @@ Coupled A/V source stages, independent audio/video latents and synchronizing one
 
 ## 4. Complete MM-01..MM-12 inherited acceptance matrix
 
-| ID | Fixture and minimum observable assertion | Starting status |
-|---|---|---|
-| MM-01 | exact rational 44.1k PCM↔29.97FPS clocks, correct residual over long durations | Source-free mock PASS historically |
-| MM-02 | verified conditioner→generator→decoder ports; wrong processor/shape/format refused | Source-free mock PASS historically |
-| MM-03 | 20-step dummy flow with seed, RNG/guidance and per-step atomic StateRoot | Source-free mock PASS historically |
-| MM-04 | Dual-AR slow temporal ~21Hz × ten RVQ codebooks; only complete frame can decode | NOT IMPLEMENTED |
-| MM-05 | Whisper encoder/AR vs Parakeet CTC/RNNT/TDT blank/duration/timestamps | NOT IMPLEMENTED |
-| MM-06 | full-duplex input/out + barge-in/epoch and device lease/mock completion fencing | Source-free mock PASS historically |
-| MM-07 | Coupled-style synchronized two-track A/V publication and failure | Source-free mock PASS historically |
-| MM-08 | multiple typed finite schema decisions atomically scored, nonfinite/refusal | Source-free mock PASS historically |
-| MM-09 | Ternary PTQ1/PQ2+Hadamard exact codec mock and source shape guard | NOT IMPLEMENTED |
-| MM-10 | one TaskRequest supports fake CPU/GPU/AOT/hosted with distinct truth tiers | NOT IMPLEMENTED |
-| MM-11 | long streams bounded, partial playback/cancel/rollback and event/resource safety | NOT IMPLEMENTED |
-| MM-12 | recognized vs CPU-only vs GPU-region vs full GPU vs realtime vs hosted capability status | NOT IMPLEMENTED |
+| ID | Fixture and minimum observable assertion |
+|---|---|
+| MM-01 | exact rational 44.1k PCM↔29.97FPS clocks, correct residual over long durations |
+| MM-02 | verified conditioner→generator→decoder ports; wrong processor/shape/format refused |
+| MM-03 | 20-step dummy flow with seed, RNG/guidance and per-step atomic StateRoot |
+| MM-04 | Dual-AR slow temporal ~21Hz × ten RVQ codebooks; only complete frame can decode |
+| MM-05 | Whisper encoder/AR vs Parakeet CTC/RNNT/TDT blank/duration/timestamps |
+| MM-06 | full-duplex input/out + barge-in/epoch and device lease/mock completion fencing |
+| MM-07 | Coupled-style synchronized two-track A/V publication and failure |
+| MM-08 | multiple typed finite schema decisions atomically scored, nonfinite/refusal |
+| MM-09 | Ternary PTQ1/PQ2+Hadamard exact codec mock and source shape guard |
+| MM-10 | one TaskRequest supports fake CPU/GPU/AOT/hosted with distinct truth tiers |
+| MM-11 | long streams bounded, partial playback/cancel/rollback and event/resource safety |
+| MM-12 | recognized vs CPU-only vs GPU-region vs full GPU vs realtime vs hosted capability status |
 
-Historical mock test names are recorded in tests/multimodal_mm0.rs (source file belongs to ongoing implementation agents; design-only agents may inspect but never edit). Prior status must be reverified when actual implementation starts.
+Existing synthetic foundations are in `crates/zerogravity/tests/multimodal_mm0.rs`. The matrix is a requirement inventory, not a new test result. Check current code and the multimodal TODO before extending it; synthetic clocks or dummy flow do not qualify trained media.
 
 ## 5. MM-13..MM-24 new realtime/API acceptance matrix (all not implemented)
 
@@ -182,22 +193,33 @@ Research dossiers define named tests:
 
 These roughly 77 more focused fixtures supplement MM01–24, not replace them. An agent must import *all* relevant suites for a source model, and explicitly classify source-free mock, original source trained CPU, physical GPU, hosted API, or soft-realtime measurement evidence.
 
-## 7. Reproducibility/evidence schema for every model or endpoint
+## 7. Source binding and review obligations
 
-Every test or benchmark report must contain:
-- model exact source artifact/hash/config/tokenizer/processor/codec/LoRA/assembly and licensing;
-- task kind, input modality, prompt/audio/video fixtures with non-sensitive source checksums, output validity;
-- numerical/quality policy and exact reference oracle (one checkpoint/driver revision);
-- device PCI/LUID/registry, CPU architecture, driver/firmware, compiler/runtime pinned versions, resource cap;
-- tensor shape/batch/context/token/acoustic/video clock and duration/frame/step counts;
-- original source expected and candidate actual result hashes/numeric error/finality, no unexplained comparator substitution;
-- StateRoot epoch/root hash, commit groups and allowed rollback behavior;
-- physical readback/lease/event/retained charge evidence, host-only vs physical device;
-- soft realtime first output/jitter/real time factor/throughput and cold/warm state if measured;
-- API protocol/model/transport version and retries/idempotency for hosted;
-- PASS/FAIL/BLOCKED/UNVERIFIED and reasons; **never auto-green absent evidence**.
+For each actual model/variant, identify original config/tensors, tokenizer,
+processor, codec, scheduler/solver and licenses; keep code, weights, voice/G2P
+assets and provider rights separate. Model/content identities remain required.
+Source code is reference input, not executable checkpoint Python. A source matrix
+must say which processor/codecs/checkpoint APIs are still unverified.
 
-Report no prior-art benchmark as Zerogravity performance. A native CUDA compiler test is not proof of exact model full GPU inference. A chatbot can recognize an image model name and still have T0 only.
+Keep the distinct gates from the retired review briefs:
+
+| Slice | Required source trace and negative cases |
+|---|---|
+| ASR/translation | Whisper window/encoder/AR; CTC blank-collapse; RNN-T predictor/joiner and TDT duration advances. Check frame/subsampling clocks, streaming checkpoint lookahead, language/task headers and provisional diarization corrections. Offline FastConformer is not automatically streaming; encoder classification is not CTC. |
+| TTS/duplex | Non-AR phoneme/duration/prosody/vocoder, nested time/depth RVQ and truly simultaneous codec input/output traces. Bind G2P/voice assets separately; incomplete codebooks, stale overlap or changed voice/codec generation cannot become audible PCM. |
+| Image/editing | Check exact conditioner, latent packing, VAE/crop/color/mask, seed/guidance and source solver. Dev/distilled conditioners and schedules differ. Audit the selected AR/hybrid image generation entrypoint instead of choosing AR or diffusion from its name. |
+| Video/coupled AV | Check temporal 3D-VAE stride/overlap, rectangular attention, sparse tile selection and timestep expert transitions. Audio/video cross-attention and independent clocks must meet their joint commit group; unrelated TTS over video is a compound task. |
+| Decisions/low-bit | Check direct option/joint-schema head, option order, null/refusal and calibrated versus raw scores; text JSON is not equivalent. PTQ1_0/PQ2_0 group scales and the source1024 Hadamard/sign transform must match; ordinary Q2 is not a valid substitute. |
+| Serving/providers | Check model/task/transport field conformance, prepared binary packet path, bounded credits, reconnect epochs and actual playback uncertainty. Ambiguous accepted remote jobs stay Unknown until reconciled; no duplicate billable create or implicit egress. |
+
+Each implementation review identifies private state and its sole publisher,
+source/numeric reference, clocks/finality, cancellation/readback/lease retention,
+missing support tier and extension change radius. Adding a model must not require
+a second router, allocator, runtime, arbitrary workflow DSL or public plugin ABI
+per operator. Record actual command/result and failures in the plan/run TODO;
+ordinary evidence-file hashes, archive construction and generated status copies
+are not acceptance requirements. Physical or provider tests remain required for
+their own claims; documentation or a compiled kernel is insufficient.
 
 ## 8. Perf/maintainability gates
 
@@ -228,32 +250,28 @@ Test both speed and extension cost:
 
 **Release gate:** a feature cannot move from proposal to "supported" without exact source math, output and state/clock verification and device/API evidence. The user has not approved any numerical latency SLA, provider account linking or proprietary weight substitution.
 
-## 10. Handoff ownership and parallel agent protocols
+## 10. Implementation ownership and pending policy
 
-Independent research leads A-H use the research brief document as their source/owner; *implementation* agents own narrow source files only by explicitly agreed phase, not design authors. Keep other agents' in-flight files, no whole-tree git add/stash/reset or concurrent index edits. Stage/commit only review-owned paths using atomic --only operations when authorized.
+Assign narrow source/driver/codec/provider work to disjoint owners; the coordinator
+integrates reviewed changes and test results. Use the current multimodal TODO and
+TODO-SPEC, not copied agent briefs or a static aggregate. Named research lanes are
+not evidence that independent reviewers ran, and no future test is passed by
+writing its specification.
 
-For design implementation takeover:
-1. read current decision/provenance ledger + comprehensive v5.1 handoff;
-2. verify live HEAD/worktree, source/checkpoint/hardware and docs hashes;
-3. pick the smallest unimplemented acceptance fixture;
-4. implement source-free behavior with strict fail-closed unit tests;
-5. source-real model CPU/physical backend independently;
-6. update evidence/roadmap/status without rewriting older phase evidence;
-7. commit only phase-owned files; never report partial region as complete model or proxy API as native model.
+Unanswered choices remain explicit: first licensed feasible ASR/TTS/image/video
+checkpoints; source-bit versus a separately approved media-quality policy; exact
+AR-image entrypoint; temporal VAE/memory-fit limits; physical headroom/quiescence;
+measured mouth-to-ear/first-output/jitter objectives; and packaging of optional
+transports or future component ABI. None follows from model marketing or user
+examples of API names. The detailed live-session questions are in
+[the realtime policy section](../docs/REALTIME_MULTIMODAL_SERVING_AND_QOS_V5_1_2026-10-15.md#18-open-policy-decisions-before-live-serving).
 
-## 11. Next steps if user authorizes implementation
+## 11. Technical references
 
-First the **proposed v5.1 design** must be accepted/adjusted; current request authorizes documentation only. Then MM-D1..D5 acceptance mocks can be built as source-free Rust fixtures, independently of ongoing P07 GPU and 8K GDN investigation. Source-model implementations can proceed in independently prioritized bounded steps without changing the user's prior practical GPU/model order. Multiple agents may research streams in parallel when authentic subagent tooling/credentials exist; don't claim parallel execution from mere stream titles.
+- [Universal execution](../docs/UNIVERSAL_MULTIMODAL_EXECUTION_ARCHITECTURE_V5_1_2026-10-15.md), [verified assemblies](../docs/VERIFIED_MODEL_ASSEMBLIES_AND_SPECIALIZATION_V5_1_2026-10-15.md), [realtime QoS](../docs/REALTIME_MULTIMODAL_SERVING_AND_QOS_V5_1_2026-10-15.md).
+- [ASR](multimodal/ASR_AND_STREAMING_SPEECH_UNDERSTANDING_2026-10-15.md), [TTS/duplex](multimodal/TTS_VOICE_CODECS_AND_FULL_DUPLEX_2026-10-15.md), [image](multimodal/IMAGE_GENERATION_EDITING_AND_FLOW_MODELS_2026-10-15.md), [video/AV](multimodal/VIDEO_TEMPORAL_MODELS_AND_SYNCHRONIZED_AV_2026-10-15.md).
+- [Decisions/ternary](multimodal/DECISION_MODELS_TERNARY_AND_SPECIALIST_TEXT_2026-10-15.md), [serving prior art](multimodal/SERVING_API_AND_REALTIME_PRIOR_ART_2026-10-15.md), [adversarial reconciliation](multimodal/CROSS_STREAM_ARCHITECTURE_RECONCILIATION_2026-10-15.md).
 
-## 12. Documentary trace
-
-- Core: .agents/docs/UNIVERSAL_MULTIMODAL_EXECUTION_ARCHITECTURE_V5_1_2026-10-15.md
-- Serving: .agents/docs/REALTIME_MULTIMODAL_SERVING_AND_QOS_V5_1_2026-10-15.md
-- Model assembly: .agents/docs/VERIFIED_MODEL_ASSEMBLIES_AND_SPECIALIZATION_V5_1_2026-10-15.md
-- Research: .agents/research/multimodal/*.md
-- Decisions: .agents/research/MULTIMODAL_V5_1_DECISIONS_AND_PROVENANCE_2026-10-15.md
-- Workstreams: .agents/research/MULTIMODAL_V5_1_RESEARCH_WORKSTREAMS_AND_AGENT_BRIEFS_2026-10-15.md
-- Handoff: .agents/research/COMPREHENSIVE_MULTIMODAL_DESIGN_HANDOFF_2026-10-15.md
-- Historical authority: .agents/docs/MODULAR_AI_SYSTEMS_REFERENCE_ARCHITECTURE.md; .agents/plans/FULL_COMPREHENSIVE_IMPLEMENTATION_HANDOFF_2026-10-14.md
-
-**This document is a roadmap and acceptance specification. None of the future MM-D/I tasks or tests is asserted implemented merely by authoring them.**
+The original authors' source/license references in those owners remain intact.
+These are technical research and future gates, not claims of native trained media
+execution or completed API/realtime acceptance.

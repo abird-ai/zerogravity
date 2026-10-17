@@ -1,7 +1,11 @@
 # Zerogravity v5.1 Multimodal Decisions, User Requirements, Design Proposals and Open Questions
 
 **15 October 2026 · user intent and model-research provenance addendum.**  
-**Important:** This file ADDS user decisions U-040/U-041 and new design-proposal/open IDs without modifying the concurrent agent's shared .agents/plans/DECISION_REGISTER.md. For full project user decisions U-001..U-039 consult the existing decision register and the historical comprehensive implementation archive. The new comprehensive v5.1 handoff incorporates that history verbatim as a dated snapshot.
+This retained ledger distinguishes historical user decisions U-040/U-041,
+research proposals and unresolved policy. The [decision register](../plans/DECISION_REGISTER.md)
+retains the wider project decisions. Current work uses [the plan TODOs](../plans/TODO.md)
+and [TODO-SPEC](../plans/TODO-SPEC.md); historical handoff/manifest instructions
+below are superseded tracking methods, not current duties. Git retains history.
 
 ## 0. How to interpret the decision ledger
 
@@ -44,7 +48,11 @@ The user requested:
 - keep design-only scope: documentation permitted, **no Rust/application/build/CI/test changes**, and preserve other active agents' changes/staging.
 - no implied approval to run a model or proprietary service or modify running systems.
 
-**Fulfillment plan:** new uniquely named v5.1 doc set, individual modality and serving research dossiers, DMM decisions/open ledger, acceptance roadmap, source-provenance append-only master handoff and SHA manifest. Shared original decision register and old comprehensive archive stay untouched because other agents may be concurrently editing them; they are incorporated into the v5.1 handoff by dated hash-verified snapshot.
+**Current fulfillment:** retained architecture/assembly/serving contracts,
+individual source research dossiers and this USER/PROPOSAL/OPEN ledger preserve
+the substantive design. The multimodal plan TODO carries implementation/tests;
+Git preserves earlier documents. Append-only handoffs, SHA manifests and dated
+snapshot copies are superseded by the current TODO workflow and are not required.
 
 ## 2. Prior user decisions explicitly retained (not newly re-approved)
 
@@ -58,7 +66,7 @@ The user requested:
 | U-025..U-027 | Qwen3.5 0.8B then 2B CPU→CUDA/ROCm/Vulkan, Gemma4 E2B/26B then Qwen3.8 27B CPU-first; 8K Phase1 16/16; extended 16K/32K deferred | MM design does NOT silently reorder practical implementation gates |
 | U-028..U-029 | independent long-context GDN accuracy investigation and three parallel workstreams including multimodal research | separate CPU math/GPU/architecture ownership, no invented subagent execution |
 | U-030..U-039 | source-correct GPU P07-A→G3a and critical review gates, true device readback/quarantine, single StateRoot, no false hardware proof | existing partial GPU status honest; source-free media mocks ≠ media support |
-| All previous explicit user decisions | full record in .agents/plans/DECISION_REGISTER.md | new handoff snapshots it, no duplication/rewriting of history here |
+| All previous explicit user decisions | full record in .agents/plans/DECISION_REGISTER.md | current decisions and Git retain history; plan TODOs track implementation without snapshot copies |
 
 ## 3. Research-derived design proposals DMM-001..DMM-032
 
@@ -137,15 +145,15 @@ Previous user-approved original research topics (Strix Halo cooperative NPU/GPU,
 ## 6. Research and source provenance
 
 Official source URLs and claimed model mechanisms are individually recorded in:
-- multimodal-research/ASR_AND_STREAMING_SPEECH_UNDERSTANDING_2026-10-15.md
-- multimodal-research/TTS_VOICE_CODECS_AND_FULL_DUPLEX_2026-10-15.md
-- multimodal-research/IMAGE_GENERATION_EDITING_AND_FLOW_MODELS_2026-10-15.md
-- multimodal-research/VIDEO_TEMPORAL_MODELS_AND_SYNCHRONIZED_AV_2026-10-15.md
-- multimodal-research/DECISION_MODELS_TERNARY_AND_SPECIALIST_TEXT_2026-10-15.md
-- multimodal-research/SERVING_API_AND_REALTIME_PRIOR_ART_2026-10-15.md
-- multimodal-research/CROSS_STREAM_ARCHITECTURE_RECONCILIATION_2026-10-15.md
+- multimodal/ASR_AND_STREAMING_SPEECH_UNDERSTANDING_2026-10-15.md
+- multimodal/TTS_VOICE_CODECS_AND_FULL_DUPLEX_2026-10-15.md
+- multimodal/IMAGE_GENERATION_EDITING_AND_FLOW_MODELS_2026-10-15.md
+- multimodal/VIDEO_TEMPORAL_MODELS_AND_SYNCHRONIZED_AV_2026-10-15.md
+- multimodal/DECISION_MODELS_TERNARY_AND_SPECIALIST_TEXT_2026-10-15.md
+- multimodal/SERVING_API_AND_REALTIME_PRIOR_ART_2026-10-15.md
+- multimodal/CROSS_STREAM_ARCHITECTURE_RECONCILIATION_2026-10-15.md
 
-Verified against publicly available upstream docs as of 2026-10-15, not tested on all exact source checkpoints. No source facts from third-party blog/forum are considered stronger than original repositories/papers/verified APIs. The original comprehensive implementation archive and decision register contain full historical user decisions and remain separately hashed in new master handoff.
+Research references were reviewed against publicly available upstream docs as of 2026-10-15, not tested on all exact source checkpoints. No third-party blog/forum is stronger than original repositories, papers or verified APIs. Retain source/license attribution in the linked technical owners and the decision register; historical archives/manifests are not current acceptance requirements.
 
 ## 7. Changes explicitly forbidden during this documentation task
 
@@ -156,4 +164,4 @@ Verified against publicly available upstream docs as of 2026-10-15, not tested o
 - No new runtime architecture implemented merely because diagrams and type sketches are written.
 - No automatic external egress or provider account installation.
 
-New design files and a separate manifest/handoff are the authorized deliverables.
+The original scope was design-only; it did not authorize runtime/provider execution. Current deliverables and actual tests belong in the applicable plan TODO, without a separate manifest/handoff.

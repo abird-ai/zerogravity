@@ -1,6 +1,6 @@
 # zerogravity — Independent Stage-0 feasibility and delivery gates (v4 reviewed)
 
-**2026-10-12 · NOT STARTED.** This is the project-neutral execution plan for architecture feasibility. It retains stable IDs **S0-00…S0-14** and optional NPU IDs **S0-NPU-A…F**; all remain PLANNED/NOT_STARTED. Historic source-specific spike design is research-only in `../prior-art/PRIOR_ART_HISTORICAL_STAGE0_V2.md`. Normative math/task/kernel/resource contracts are in `../docs/MODULAR_AI_SYSTEMS_REFERENCE_ARCHITECTURE.md` and `../docs/COMPOSITION_AND_EXTENSION_CONTRACTS.md`.
+**2026-10-12 · NOT STARTED.** This is the project-neutral execution plan for architecture feasibility. It retains stable IDs **S0-00…S0-14** and optional NPU IDs **S0-NPU-A…F**; all remain PLANNED/NOT_STARTED. Normative math/task/kernel/resource contracts are in `../docs/MODULAR_AI_SYSTEMS_REFERENCE_ARCHITECTURE.md` and `../docs/COMPOSITION_AND_EXTENSION_CONTRACTS.md`.
 
 ## 1. Hard problem and mitigation
 

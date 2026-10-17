@@ -150,9 +150,8 @@ Authoritative for agents:
 - .agents/docs/REALTIME_MULTIMODAL_SERVING_AND_QOS_V5_1_2026-10-15.md
 - .agents/docs/VERIFIED_MODEL_ASSEMBLIES_AND_SPECIALIZATION_V5_1_2026-10-15.md
 - Independent ASR, TTS, image, video, decision/ternary, serving research dossiers (this folder).
-- .agents/research/MULTIMODAL_V5_1_ACCEPTANCE_AND_ROADMAP_2026-10-15.md
 - .agents/research/MULTIMODAL_V5_1_DECISIONS_AND_PROVENANCE_2026-10-15.md
-- .agents/research/MULTIMODAL_V5_1_RESEARCH_WORKSTREAMS_AND_AGENT_BRIEFS_2026-10-15.md
-- Comprehensive new handoff and SHA manifest, while preserving original full historical implementation archive.
+- .agents/research/MULTIMODAL_V5_1_ACCEPTANCE_AND_ROADMAP_2026-10-15.md
+- Current [multimodal checklist](../../plans/multimodal/TODO.md) and [TODO rules](../../plans/TODO-SPEC.md); earlier aggregate bodies remain in Git history.
 
 All choices remain subject to explicit user approval where they are recommendations rather than user directives.

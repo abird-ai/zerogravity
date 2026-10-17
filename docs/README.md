@@ -67,7 +67,7 @@ Retained for context and legal/provenance review, **not as additional architectu
 - [Prior-art and License Policy](../.agents/prior-art/PRIOR_ART_LICENSE_AND_PROVENANCE_POLICY.md) and [Original Source Atlas](../.agents/prior-art/RESEARCH_SOURCE_ATLAS.md).
 - [Compiler/Runtime Research](../.agents/prior-art/COMPARATIVE_COMPILER_AND_RUNTIME_RESEARCH_2026-10-10.md), [Historical Reconciliation](../.agents/prior-art/ARCHITECTURE_RECONCILIATION_AND_AUTHORITY.md), [Strix Halo Dossier](../.agents/research/STRIX_HALO_OPTIMIZATION_DOSSIER.md).
 - [GPU/NPU Source Investigation](../.agents/prior-art/GUFO_FORK_AND_XDNA2_PREFILL_SOURCE_RESEARCH_2026-10-12.md), [Accelerator Platform Research](../.agents/prior-art/ACCELERATOR_PRIOR_ART_AND_PLATFORM_RESEARCH_2026-10-12.md), [Distributed/Tunnel Research](../.agents/prior-art/DISTRIBUTED_PRIOR_ART_AND_TUNNEL_RESEARCH_2026-10-12.md), [Router/API Research](../.agents/prior-art/MULTI_MODEL_ROUTER_AND_API_PRIOR_ART_RESEARCH_2026-10-12.md).
-- `../.agents/prior-art/PRIOR_ART_HISTORICAL_*.md` and `../.agents/prior-art/DESIGN_EVOLUTION_*.md`: old complete plans/roadmaps/handoffs preserved, **superseded** where different from v4.3.
+- Retired design snapshots are available in Git history. Their useful rejected-design rationale is retained in the [critical review](../.agents/prior-art/ARCHITECTURE_V4_CRITICAL_REVIEW_2026-10-12.md); current work is tracked in [plan TODOs](../.agents/plans/TODO.md).
 - The external pre-existing research library is **READ-ONLY**.
 
 ## Invariants in one paragraph

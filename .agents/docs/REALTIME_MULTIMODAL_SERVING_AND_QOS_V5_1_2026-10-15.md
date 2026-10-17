@@ -336,3 +336,31 @@ MM-23: source A/V joint generator cannot expose video without corresponding vali
 MM-24: malicious media, unauthorized egress and cross-tenant replay tokens rejected before heavy resource reservation.
 
 **Before feature implementation:** design mocks MM-01..MM-24 with deterministic fault injection and explicit assertable counters. Then original source checkpoints and actual local device tests with observed latency. No raw model weights or untrusted live audio required for the mock phase.
+
+
+## 18. Open policy decisions before live serving
+
+The user requires broad native/authorized-hosted media and realtime capability,
+not a particular proprietary implementation or an assumed numeric SLA. Resolve
+these choices explicitly for the selected source/task/transport; type sketches
+above do not settle policy or freeze an ABI.
+
+| Open decision | Safe constraint until resolved |
+|---|---|
+| Media numerical/perceptual agreement | Preserve the selected source's declared arithmetic/quality contract; any tolerant mode requires separate approval and task-level tests. Existing exact Qwen gates do not relax. |
+| First source/codec and actual streaming eligibility | Choose exact licensed feasible checkpoints/processors; distinguish source capability, native implementation and measured playable latency. Family labels and hosted responses do not qualify local execution. |
+| Mouth-to-ear/first-audible/packet-gap targets | Measure under explicit device/load/transport/endpoint-clock conditions; no invented default P95, hard realtime or SSD-latency guarantee. Bound warmup and shape-band compilation outside the audio hot path. |
+| Heard/presented watermark after interruption or reconnect | Retain origin, uncertainty and missing-feedback state. Authenticated ACK is still not proof of human hearing; never rewrite neural state from a transport callback. |
+| Model, voice or codec changes mid-turn | Refuse unless an explicit new generation and source-compatible state transition/replay are supported. An old codec tail, callback or prior source cannot publish under the new generation. |
+| Session persistence and media retention | Ephemeral bounded retention until duration/encryption/access/deletion policies are chosen. No silent recording or unlimited replay buffers. |
+| Voice/face/reference-asset consent | Explicit rights and tenant-scoped authorization; separately validate G2P/codec/weight licenses and biometric-reference handling. No implicit cloning or remote egress. |
+| Hosted auth, alias selection, cost and retry | Provider/profile/domain/region/egress must be explicit; a pathname or alias is not authorization. Cap upload/result lifetime and cost; reconcile ambiguous accepted jobs without blind replay. |
+| WebRTC/SIP packaging and codec interoperability | Optional versioned transport adapters with reviewed licenses/auth, loopback-safe defaults and bounded media/control paths. Choose multiplexed versus separate tracks only with declared clock/epoch mappings. |
+| Native component/plugin interface and cancellation | Start with static registered Rust components; no unreviewed dynamic code. Session/turn cancellation cannot advance a physical card epoch, release Unknown work or invent safe recovery. |
+
+A future implementation must turn each applicable choice into an explicit plan
+item and positive/negative test. The architecture permits either a direct native
+duplex model or an explicitly composed speech pipeline; no mandatory cascade may
+replace the selected model's simultaneous acoustic state. API version/model names
+must be revalidated when implementing a provider; the dated examples here are
+research references, not live catalog discovery.

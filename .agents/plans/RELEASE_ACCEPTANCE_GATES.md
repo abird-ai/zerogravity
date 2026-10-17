@@ -1,6 +1,6 @@
 # zerogravity — Model-neutral release, quality and composability gates (v4 reviewed)
 
-**2026-10-12 · NOT EXECUTED.** All stage and release gates are proposed verification rules for the original modular AI architecture, not declarations that code exists. Source-specific historical gate versions are preserved in `../prior-art/PRIOR_ART_HISTORICAL_ACCEPTANCE_GATES_V2.md`. Use `IMPLEMENTATION_ROADMAP.md`, `INTEGRATED_PHASE_0_AND_DELIVERY_GATES.md`, the modular AI reference architecture and composition contracts as authority.
+**2026-10-12 · NOT EXECUTED.** All stage and release gates are proposed verification rules for the original modular AI architecture, not declarations that code exists. Use `IMPLEMENTATION_ROADMAP.md`, `INTEGRATED_PHASE_0_AND_DELIVERY_GATES.md`, the modular AI reference architecture and composition contracts as authority.
 
 ## 1. Approval states
 
@@ -111,7 +111,7 @@ next decision / guarded fallback / reviewer source license
 
 An unknown metric remains null/omitted rather than a misleading zero. Tests, raw data and hardware/OS error reports link the exact implementation state. No user private prompts or copyrighted weights in public artifacts.
 
-**Documentation closure:** every passing gate updates roadmap/status, relevant source/policy decision, handoff and integrity manifest. Until tested, all phases remain NOT_STARTED, regardless of how complete the plans look.
+**Implementation closure:** follow [TODO-SPEC.md](TODO-SPEC.md). Record actual gate commands/results, source/model-content identities, hardware scope, failures and remaining work in the owning plan/run TODOs. Commit verified implementation, tests and relevant design/policy updates together; completed work is grouped under its actual landing commit and unfinished work remains in Uncommitted. Plans alone do not pass a gate. No generated handoff, archive or documentation SHA manifest is required.
 
 ## v4 mandatory architecture acceptance refinements — 2026-10-12
 
@@ -198,5 +198,4 @@ This is a **separate bootstrap acceptance class**, not a claim the model runtime
 | GitHub Actions/release publish | **NOT RUN** | repo/owner/license and real tag not established; successful hosted CI/tag release required |
 | NixOS future service | **DESIGN/SYNTAX ONLY** | module disabled default, no restart loop; real `serve` not implemented |
 
-**Completion rule:** P00 packaging may be described as a *working local Rust CLI bootstrap*, **not** as a fully cross-platform published release or complete P00 source-policy/model-runtime foundation until the outstanding gates are exercised. Installer SHA256 is corruption detection, not a release authenticity signature. Public project license, owner/repository and Apple/Windows signing policy still open O-072…O-074. [Bootstrap handoff](platform-and-release/TODO.md).
-
+**Completion rule:** P00 packaging may be described as a *working local Rust CLI bootstrap*, **not** as a fully cross-platform published release or complete P00 source-policy/model-runtime foundation until the outstanding gates are exercised. Installer SHA256 is corruption detection, not a release authenticity signature. The project uses MIT; release ownership/repository and Apple/Windows signing policy follow the [current platform/release TODO](platform-and-release/TODO.md).
