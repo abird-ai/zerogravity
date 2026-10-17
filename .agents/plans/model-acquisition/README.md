@@ -354,6 +354,93 @@ while permitting different asset IDs; repeated file bindings must still agree on
 their exact commit. Offline verification cannot prove mutable selector freshness,
 remote asset membership, token revocation, model compatibility or licensing.
 
+## Explicit HTTPS objects
+
+`acquisition::object::HttpsObjectSpec` describes one caller-authorized object:
+a strict bare origin, logical path, role, exact byte count (including zero) and
+raw SHA256. It stores no download URL. Its admitted `prepare(url, ...)` performs
+local validation and returns the original `ResolvedPullPlan`; the existing
+executor owns transfer, resume, hashing, staging and publication.
+
+```text
+zerogravity pull object --origin https://objects.example \
+  --file payload.gguf --role weights --bytes 123 --sha256 EXPECTED_SHA256 \
+  --url-file /absolute/private-url.txt --dry-run --cache /absolute/cache
+```
+
+The example selects no approved source. Online defaults to apply; omit
+`--dry-run` only for an authorized fetch. `--url-file -` explicitly reads stdin.
+URL files use no-follow, nonblocking opens, must be regular files and fit16KiB;
+one final LF/CRLF is accepted. Other controls, whitespace, userinfo and fragments
+refuse. Input errors omit the contents. Explicit stdin can block, and intermediate
+path components are not a directory-capability ownership proof. No automatic
+credential-file or source discovery occurs.
+
+The expected origin is supplied separately and normalized by the existing URL
+parser. The actual URL must match it before client/credential construction.
+Production requires HTTPS; diagnostic HTTP remains literal-loopback only. Signed
+URL paths and queries stay in memory within the existing redacted plan; changing
+a signed locator on the same origin does not change the content contract.
+Optional `--token-env NAME` reads only that named environment variable during
+online execution and scopes the bearer to the expected origin. Existing redirect
+stripping, TLS, framing, deadline, cancellation and progress rules apply.
+
+The manifest provider is `https-object`. Its repository identity hashes the
+versioned canonical origin; its revision hashes the versioned complete tuple of
+origin, logical path, role, exact length and caller raw digest. Receipts/manifests
+and Debug do not contain object URL paths/queries or credential values. The raw
+checksum is independently caller-authorized, not inferred from an ETag, Git ID
+or URL; normal raw-byte verification records TrustedSha256. These source labels
+identify the declared data contract, not remote repository membership or a model
+SourceIdentity. This first object frontend publishes no mutable reference.
+
+`--dry-run` validates the caller contract and URL locally, without credentials,
+client, remote metadata, payload transfer or cache initialization. Printed sizes
+are caller-supplied exact bounds, not observations of a remote object. Preparation
+admits1MiB of bounded operation-local control work; it does not retain a transfer
+or TLS/global-memory reservation after returning the plan.
+
+Offline needs no URL input at all:
+
+```text
+zerogravity pull object --origin https://objects.example \
+  --file payload.gguf --role weights --bytes 123 --sha256 EXPECTED_SHA256 \
+  --offline --snapshot SNAPSHOT_DIGEST --cache /absolute/cache
+```
+
+The API's `open_cached` and CLI offline path precede URL-file/stdin inspection,
+credential/client construction and transfer admission. They open original managed
+descriptors, verify all bytes and the exact single-entry source/path/role/length/
+SHA/TrustedSha256 contract under caller limits, and reuse LFS-pointer refusal.
+An existing ordinary cache ref may be selected instead of a snapshot digest;
+that lookup grants no online freshness, license acceptance or inference support.
+No repository sidecars or model closure are inferred for this explicit object.
+
+## Provider and compatibility frontier
+
+The retired research captures once counted57 rows; that historical count is not
+an extant exhaustive ledger. The current finite frontier below reflects inspected
+native entrypoints and the pinned reference classes. A disposition is not a
+passing provider gate. Open implementation and acceptance work stays in TODO.md.
+
+| Surface | Current qualified scope and remaining work |
+| --- | --- |
+| HF repository/files/revisions | Native exact commit pinning, subfolder, bounded `*`/`?`, required index/shard and config/tokenizer closure. Excludes/full fnmatch, quant shorthand/candidates, broader required sidecar policy and endpoint/env compatibility remain open. |
+| GitHub files/releases/components | Native commit/tree and release/asset pins, exact sizing, independent pinned components and alias pin reuse. Qualified LFS-pointer resolution is separate; pointers refuse. |
+| Direct HTTPS objects | Explicit origin/role/path/exact size/caller SHA; original transfer, offline verification and cache publisher. Broader missing-size/digest or repository discovery is outside this slice. |
+| Local HF caches | Explicit pinned selections and independent verified copies, original same-mount policy plus qualified Btrfs/tmpfs and distinct tmpfs pairs. Renamed/unnamespaced roots and other filesystems remain open. |
+| XDG/offline/removal | Native XDG/explicit root, zero-network offline, inspect/list/verify and protected exact-snapshot removal. Compatibility aliases, legacy migration, automatic eviction/general orphan cleanup and unmanaged readers remain separate open work. |
+| Auth/endpoints | Origin-scoped explicit bearer environment inputs, safe redirects and TLS. Mirror/profile policy, broader compatibility env aliases and provider-specific credentials remain open; offline bytes do not attest current remote access. |
+| OCI/Docker | Native manifest/raw-GGUF layer resolution and registry auth are the next implementation; no registry/container support is granted by HTTPS object acquisition. |
+| GCS | Native generation metadata/media/pagination and explicit public/bearer profiles remain open. ADC/service-account minting/metadata-server credentials are separate profiles. |
+| S3/compatible endpoints | Native object versions/listing/ranges and explicit endpoint/region/SigV4/session profiles remain open; a presigned HTTPS object is not a qualified S3 adapter. |
+| Azure Blob | Native versions/snapshots/listing/ranges and explicit SAS/bearer/SharedKey profiles remain open; managed/default credential chains are separate. |
+| ModelScope | Native pinned revision/file/list/auth protocol remains open; no Python SDK/delegated runtime is introduced. |
+| HF Xet | Resolve/LFS-compatible HTTPS acquisition does not qualify native CAS reconstruction, chunk codecs/hash rules or its performance path; native work remains open. |
+| Auxiliary/preset convenience | Explicit auxiliary/component bytes are supported data. Specialized mmproj/draft/MTP/DFlash/Eagle3/DSpark discovery and bounded presets remain open convenience work; a preset cannot authorize new sources or limits. |
+| Transport/streaming | Exact strong-validator resume, bounded retry/deadline/cancel/progress and explicit capped Auxiliary streams are qualified. Required unknown lengths, capped resume, independent full HTTP trailer validation and broader concurrency/performance remain open. |
+| Loader/runtime delegates | Safetensors/PT/serialized tensors, RunAI/ModelExpress internals, IPC/distributed/lazy loading, quant reconstruction and speculative/multimodal execution belong to the execution/streaming plans. Acquiring opaque bytes grants none of those capabilities. |
+
 ## Explicit read-only HF cache import
 
 The independent Linux `cache` feature exposes `cache::import_hf` and an explicit

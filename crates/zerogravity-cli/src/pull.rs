@@ -4,6 +4,8 @@ use std::sync::{Arc, atomic::AtomicBool};
 
 #[path = "pull_components.rs"]
 mod components;
+#[path = "pull_object.rs"]
+mod object;
 #[path = "pull_signals.rs"]
 mod signals;
 use zerogravity::acquisition::http::{HttpOptions, HttpsClient};
@@ -341,6 +343,9 @@ impl ProgressDisplay {
 }
 
 pub(super) fn run(args: &[String]) -> Result<()> {
+    if args.first().is_some_and(|arg| arg == "object") {
+        return object::run(&args[1..]);
+    }
     let options = parse(args)?;
     match &options.action {
         Action::Help => {
@@ -444,6 +449,7 @@ fn help() {
     zerogravity pull github OWNER/REPO --revision REV --file PATH
     zerogravity pull github OWNER/REPO --release TAG --asset NAME
     zerogravity pull components PLAN.json [--dry-run | --offline]
+    zerogravity pull object --help
     zerogravity pull list
     zerogravity pull inspect DIGEST_OR_REF
     zerogravity pull verify DIGEST_OR_REF
@@ -475,8 +481,10 @@ HF --file supports bounded component-local * and ? filters, including offline.
 SIGINT/SIGTERM request cooperative cancellation of online pulls; a blocked read
 can take its configured HTTP deadline. Progress bytes are logical accepted bytes
 including verified cached/resumed prefixes, not a network-throughput measurement.
-Select an exact weight/index or auxiliary path; same-repository required model
-closure is added, and missing sidecars or ambiguous variants refuse. First-seen
+For HF/GitHub repository pulls, select an exact weight/index or auxiliary path;
+same-repository required model closure is added, and missing sidecars or ambiguous
+variants refuse. Direct object pulls use only the caller's exact contract and add
+no repository closure; see pull object --help. First-seen
 SHA256 is weaker than a trusted provider digest. Missing listing sizes may be recovered
 from pinned provider metadata or bounded body-free HEAD. Still-unknown auxiliary
 bodies require explicit --unknown-size-cap-bytes (positive, <=max-file-bytes);

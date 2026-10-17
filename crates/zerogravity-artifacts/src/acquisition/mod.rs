@@ -6,6 +6,7 @@ mod executor;
 pub mod github;
 pub mod http;
 pub mod huggingface;
+pub mod object;
 pub mod resume;
 
 pub use crate::cache::ByteLength;

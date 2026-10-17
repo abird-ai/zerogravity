@@ -604,7 +604,7 @@ impl<T: HttpTransport> Read for RetryReader<'_, T> {
     }
 }
 
-fn reject_pointer(prefix: &[u8]) -> Result<()> {
+pub(super) fn reject_pointer(prefix: &[u8]) -> Result<()> {
     if prefix.starts_with(b"version https://git-lfs.github.com/spec/v1") {
         return Err(Error::Unsupported(
             "Git LFS pointer requires qualified LFS resolver".into(),

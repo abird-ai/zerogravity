@@ -658,7 +658,7 @@ pub(crate) fn parse_u64(value: &str) -> Result<u64> {
         .map_err(|_| Error::Limit("HTTP byte count overflow".into()))
 }
 
-fn parse_url(value: &str, loopback: bool) -> Result<Url> {
+pub(super) fn parse_url(value: &str, loopback: bool) -> Result<Url> {
     if value.len() > 16 * 1024 {
         return Err(Error::Limit("HTTP URL limit".into()));
     }
