@@ -679,6 +679,36 @@ alias native data. Offline data does not prove present access, remote membership
 license or inference support. No mutable ref or capped required-file mode is
 introduced.
 
+## Xet hash and chunk primitives
+
+The private future Xet reader sources are tested through an exact-source test
+wrapper. They are presently unwired: enabling acquisition does not yet enable
+native HF/CAS reconstruction. The implementation follows protocol1.1.0 and its
+pinned xet-core reference, with separate raw32-byte and limb-reversed textual
+identifiers, keyed BLAKE3 chunks, in-place ordered Merkle aggregation, zero-key
+file finalization and the special empty root. Raw SHA256 remains a separate
+content/provenance authority. Download metadata supplies no expected per-term
+verification hash; computing a shard/upload verification primitive does not
+authenticate an absent field or a partial xorb root.
+
+The safe decoder borrows caller buffers and allocates nothing. It bounds encoded
+chunks to256KiB and decoded chunks to128KiB, validates the8-byte header and exact
+consumption, and supports NONE, framed LZ4 and BG4/LZ4 including every tail
+remainder. Standard frame/block checksums, linked versus independent history,
+end markers and terminal EOF are checked. Unsupported dictionary, legacy,
+skippable and concatenated frames refuse. Bounded cancellation checks cover
+copying, checksumming, decoding and hashing. Literal upstream Merkle vectors and
+independent hash/frame goldens exercise exact namespaces and malformed inputs.
+
+Only two direct acquisition dependency edges, cached BLAKE3(std/pure) and
+xxhash32, are added; CPU/cache-only transport isolation remains. Native discovery, scoped CAS
+grants, exact signed multi-range/multipart requests, ordered reconstruction,
+whole-file root/raw-SHA/EOF, expiry/reissue and original-cache integration are
+separate unfinished work. Future integration must admit scratch/hash vectors
+before allocation, count actual retries and discarded work, suppress credentials
+on signed transfer URLs and preserve original cancellation/publication ownership.
+Passing primitive tests grants no native-transfer throughput or model capability.
+
 ## Provider and compatibility frontier
 
 The retired research captures once counted57 rows; that historical count is not
@@ -699,7 +729,7 @@ passing provider gate. Open implementation and acceptance work stays in TODO.md.
 | S3/compatible endpoints | Native non-null versions, exact-path regional/path/virtual-host GET/HEAD/ranges, bounded V2/latest-version prefixes and static/session SigV4. Unversioned objects, broader partitions/vendor/credential profiles and FULL_OBJECT checksum mode remain open; presigned HTTPS alone grants no native S3 parity. |
 | Azure Blob | Native explicit BlockBlob versions/snapshots, bounded current-version auxiliary listing, pinned ranges and anonymous/bearer/SharedKey/ad-hoc serviceSAS. Latest/unversioned objects, other endpoints/types/SAS and managed/default credential chains remain open. |
 | ModelScope | Native explicit40hex commit, bounded complete shallow walk, exact files/model closure, anonymous/official-token and digest-only offline. Aliases, redirect/CDN/mirror profiles and missing sizes remain open; no SDK/login runtime. |
-| HF Xet | Resolve/LFS-compatible HTTPS acquisition does not qualify native CAS reconstruction, chunk codecs/hash rules or its performance path; native work remains open. |
+| HF Xet | Exact private hash/NONE/framed-LZ4/BG4 primitives are tested but unwired. Native discovery/CAS/signed-range/reconstruction/auth/cache integration and performance remain open; compatibility HTTPS does not qualify them. |
 | Auxiliary/preset convenience | Explicit auxiliary/component bytes are supported data. Specialized mmproj/draft/MTP/DFlash/Eagle3/DSpark discovery and bounded presets remain open convenience work; a preset cannot authorize new sources or limits. |
 | Transport/streaming | Exact strong-validator resume, bounded retry/deadline/cancel/progress and explicit capped Auxiliary streams are qualified. Required unknown lengths, capped resume, independent full HTTP trailer validation and broader concurrency/performance remain open. |
 | Loader/runtime delegates | Safetensors/PT/serialized tensors, RunAI/ModelExpress internals, IPC/distributed/lazy loading, quant reconstruction and speculative/multimodal execution belong to the execution/streaming plans. Acquiring opaque bytes grants none of those capabilities. |
@@ -837,6 +867,11 @@ logit/state/session checks while their raw source reservation remains owned.
 Numerical acceptance is tracked in TODO.md.
 
 ## References
+
+- [Xet protocol1.1.0](https://github.com/huggingface/hub-docs/blob/39aa2452668744552cc6690c75cd239771148e58/docs/xet/index.md),
+  [pinned hash/codec reference](https://github.com/huggingface/xet-core/tree/c3c726bed5cf54ded92a63fab892cfb7857c751a/xet_core_structures/src), and
+  [LZ4 v1.10.0 format](https://github.com/lz4/lz4/blob/ebb370ca83af193212df4dcbadcc5d87bc0de2f0/doc/lz4_Frame_format.md),
+  used for exact hash namespaces, aggregation, framing and BG4 behavior.
 
 - [Official ModelScope client0.4.6 source](https://github.com/modelscope/modelscope_hub/blob/65255a78b451c3785f2dfbfaff97172552fea3af/src/modelscope_hub/_legacy_api.py),
   [explicit revision flow](https://github.com/modelscope/modelscope_hub/blob/65255a78b451c3785f2dfbfaff97172552fea3af/src/modelscope_hub/_download.py), and
