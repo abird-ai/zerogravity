@@ -2,6 +2,7 @@
 //! establish executable model support, SourceIdentity or device readiness.
 
 pub mod azure;
+pub mod candidates;
 pub mod components;
 mod executor;
 pub mod gcs;
@@ -21,6 +22,10 @@ pub use crate::cache::manifest::DigestProvenance;
 use crate::cache::paths::{validate_digest, validate_relative_path};
 use crate::cache::{CacheLimits, FileRole, ManifestSource, TransferAdmission};
 use crate::{Error, Result};
+pub use candidates::{
+    CandidateCoverage, CandidateFile, CandidateRequest, RepositoryCandidates, discover_candidates,
+    inspect_cached_candidates,
+};
 pub use components::{
     ComponentKind, ComponentPullRequest, ComponentReceipt, ComponentRequest, ComponentTransport,
     ResolvedComponent, ResolvedComponentPlan, VerifiedComponent, VerifiedComponentSet,

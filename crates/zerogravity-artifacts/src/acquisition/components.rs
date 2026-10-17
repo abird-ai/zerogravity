@@ -599,41 +599,66 @@ pub fn execute_components_with_progress(
     })
 }
 
-/// Verify cached source and initial selection without constructing any remote
-/// client. Mutable selector freshness and token revocation cannot be checked offline.
-pub fn validate_cached_selection(lease: &SnapshotLease, request: &PullRequest) -> Result<()> {
-    request.validate(&PullLimits::default())?;
+/// File-source binding only, shared with metadata discovery. No selection is
+/// fabricated to obtain a source check or to bypass ambiguity validation.
+pub(super) fn validate_cached_file_source(
+    lease: &SnapshotLease,
+    provider: Provider,
+    repository: &str,
+    revision: &str,
+) -> Result<()> {
     let source = lease.manifest().source();
-    if source.provider() != request.provider.label() || source.repository() != request.repository {
+    if source.provider() != provider.label() || source.repository() != repository {
         return Err(Error::Malformed(
             "cached reference has a different provider/repository".into(),
         ));
     }
-    let locator_ok = match &request.selection {
-        Selection::Files { .. } => {
-            source.revision().len() == 40
-                && source
-                    .revision()
-                    .bytes()
-                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-        }
-        Selection::ReleaseAsset { .. } => {
-            super::github::parse_release_locator(source.revision()).is_some()
-        }
-    };
-    if !locator_ok {
+    if source.revision().len() != 40
+        || !source
+            .revision()
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
         return Err(Error::Malformed(
             "cached reference has a different or unpinned locator kind".into(),
         ));
     }
-    if matches!(request.selection, Selection::Files { .. })
-        && request.revision.len() == 40
-        && request.revision.bytes().all(|b| b.is_ascii_hexdigit())
-        && !source.revision().eq_ignore_ascii_case(&request.revision)
+    if revision.len() == 40
+        && revision.bytes().all(|b| b.is_ascii_hexdigit())
+        && !source.revision().eq_ignore_ascii_case(revision)
     {
         return Err(Error::Malformed(
             "cached reference has a different pinned revision".into(),
         ));
+    }
+    Ok(())
+}
+
+/// Verify cached source and initial selection without constructing any remote
+/// client. Mutable selector freshness and token revocation cannot be checked offline.
+pub fn validate_cached_selection(lease: &SnapshotLease, request: &PullRequest) -> Result<()> {
+    request.validate(&PullLimits::default())?;
+    if matches!(request.selection, Selection::Files { .. }) {
+        validate_cached_file_source(
+            lease,
+            request.provider,
+            &request.repository,
+            &request.revision,
+        )?;
+    } else {
+        let source = lease.manifest().source();
+        if source.provider() != request.provider.label()
+            || source.repository() != request.repository
+        {
+            return Err(Error::Malformed(
+                "cached reference has a different provider/repository".into(),
+            ));
+        }
+        if super::github::parse_release_locator(source.revision()).is_none() {
+            return Err(Error::Malformed(
+                "cached reference has a different or unpinned locator kind".into(),
+            ));
+        }
     }
     let paths: Vec<String> = match &request.selection {
         Selection::Files { paths, subfolder } if request.provider == Provider::HuggingFace => {

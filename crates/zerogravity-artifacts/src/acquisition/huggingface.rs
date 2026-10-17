@@ -125,82 +125,17 @@ pub(super) fn resolve_from(
         return Err(Error::Malformed("invalid HF endpoint authority".into()));
     }
     let repo: Vec<_> = request.repository.split('/').collect();
-    let mut revision_segments = vec!["api", "models"];
-    revision_segments.extend(&repo);
-    revision_segments.extend(["revision", &request.revision]);
     let mut metadata_left = limits.max_metadata_bytes;
     let mut probes_left = limits.max_pages;
-    let (bytes, _) = metadata(
+    let (pin, mut entries) = repository_tree(
         transport,
-        make_url(&base, &revision_segments)?,
-        &mut metadata_left,
+        &request.repository,
+        &request.revision,
+        limits,
         cancel,
+        &base,
+        &mut metadata_left,
     )?;
-    let pin: Revision = serde_json::from_slice(&bytes)
-        .map_err(|_| Error::Malformed("invalid HF revision metadata".into()))?;
-    if pin.sha.len() != 40 || !pin.sha.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return Err(Error::Malformed(
-            "HF revision did not resolve to exact commit".into(),
-        ));
-    }
-    let pin = pin.sha.to_ascii_lowercase();
-    if request.revision.len() == 40
-        && request.revision.bytes().all(|b| b.is_ascii_hexdigit())
-        && !request.revision.eq_ignore_ascii_case(&pin)
-    {
-        return Err(Error::State("HF resolved commit changed".into()));
-    }
-    let mut tree_segments = vec!["api", "models"];
-    tree_segments.extend(&repo);
-    tree_segments.extend(["tree", pin.as_str()]);
-    let mut next = make_url(&base, &tree_segments)?;
-    next.set_query(Some("recursive=true&expand=false&limit=1000"));
-    let expected_tree_path = next.path().to_string();
-    let mut visited = BTreeSet::new();
-    let mut entries = BTreeMap::new();
-    for page in 0..limits.max_pages {
-        check_cancel(cancel)?;
-        if !visited.insert(next.as_str().to_string()) {
-            return Err(Error::Malformed("HF pagination cycle".into()));
-        }
-        let (body, link) = metadata(transport, next.clone(), &mut metadata_left, cancel)?;
-        let listed: Vec<Entry> = serde_json::from_slice(&body)
-            .map_err(|_| Error::Malformed("invalid HF tree metadata".into()))?;
-        for entry in listed {
-            validate_relative_path(&entry.path)?;
-            if entry.kind == "directory" {
-                continue;
-            }
-            if entry.kind != "file" {
-                return Err(Error::Unsupported("unsupported HF tree entry type".into()));
-            }
-            if entries.len() >= limits.cache.max_files {
-                return Err(Error::Limit("HF tree file limit".into()));
-            }
-            if entries.insert(entry.path.clone(), entry).is_some() {
-                return Err(Error::Malformed("duplicate HF tree path".into()));
-            }
-        }
-        match link.as_deref().map(next_link).transpose()?.flatten() {
-            None => break,
-            Some(url) => {
-                if page + 1 == limits.max_pages {
-                    return Err(Error::Limit("HF tree page limit".into()));
-                }
-                next = base
-                    .join(&url)
-                    .map_err(|_| Error::Malformed("invalid HF pagination URL".into()))?;
-                if next.origin() != base.origin()
-                    || next.path() != expected_tree_path
-                    || next.fragment().is_some()
-                    || !next.username().is_empty()
-                    || next.password().is_some()
-                {
-                    return Err(Error::Malformed("HF pagination escaped pinned tree".into()));
-                }
-            }
-        }
-    }
     let available: Vec<_> = entries.keys().map(String::as_str).collect();
     let mut selected = select_paths(paths, subfolder.as_deref(), &available)?;
     let initial = selected.clone();
@@ -405,7 +340,142 @@ pub(super) fn resolve_from(
     ResolvedPullPlan::new(source, files, limits)
 }
 
-fn file_role(path: &str) -> FileRole {
+// Shared pin/tree owner. The ordinary resolver retains its original page/body
+// semantics; an admitted discovery caller may impose an additional logical-call
+// budget through its transport without changing the original resolution API.
+fn repository_tree(
+    transport: &impl HttpTransport,
+    repository: &str,
+    revision: &str,
+    limits: &PullLimits,
+    cancel: &AtomicBool,
+    base: &Url,
+    metadata_left: &mut usize,
+) -> Result<(String, BTreeMap<String, Entry>)> {
+    let repo: Vec<_> = repository.split('/').collect();
+    let mut revision_segments = vec!["api", "models"];
+    revision_segments.extend(&repo);
+    revision_segments.extend(["revision", revision]);
+    let (bytes, _) = metadata(
+        transport,
+        make_url(base, &revision_segments)?,
+        metadata_left,
+        cancel,
+    )?;
+    let pin: Revision = serde_json::from_slice(&bytes)
+        .map_err(|_| Error::Malformed("invalid HF revision metadata".into()))?;
+    if pin.sha.len() != 40 || !pin.sha.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(Error::Malformed(
+            "HF revision did not resolve to exact commit".into(),
+        ));
+    }
+    let pin = pin.sha.to_ascii_lowercase();
+    if revision.len() == 40
+        && revision.bytes().all(|b| b.is_ascii_hexdigit())
+        && !revision.eq_ignore_ascii_case(&pin)
+    {
+        return Err(Error::State("HF resolved commit changed".into()));
+    }
+    let mut tree_segments = vec!["api", "models"];
+    tree_segments.extend(&repo);
+    tree_segments.extend(["tree", pin.as_str()]);
+    let mut next = make_url(base, &tree_segments)?;
+    next.set_query(Some("recursive=true&expand=false&limit=1000"));
+    let expected_tree_path = next.path().to_string();
+    let mut visited = BTreeSet::new();
+    let mut entries = BTreeMap::new();
+    for page in 0..limits.max_pages {
+        check_cancel(cancel)?;
+        if !visited.insert(next.as_str().to_string()) {
+            return Err(Error::Malformed("HF pagination cycle".into()));
+        }
+        let (body, link) = metadata(transport, next.clone(), metadata_left, cancel)?;
+        let listed: Vec<Entry> = serde_json::from_slice(&body)
+            .map_err(|_| Error::Malformed("invalid HF tree metadata".into()))?;
+        for entry in listed {
+            validate_relative_path(&entry.path)?;
+            if entry.kind == "directory" {
+                continue;
+            }
+            if entry.kind != "file" {
+                return Err(Error::Unsupported("unsupported HF tree entry type".into()));
+            }
+            if entries.len() >= limits.cache.max_files {
+                return Err(Error::Limit("HF tree file limit".into()));
+            }
+            if entries.insert(entry.path.clone(), entry).is_some() {
+                return Err(Error::Malformed("duplicate HF tree path".into()));
+            }
+        }
+        match link.as_deref().map(next_link).transpose()?.flatten() {
+            None => break,
+            Some(url) => {
+                if page + 1 == limits.max_pages {
+                    return Err(Error::Limit("HF tree page limit".into()));
+                }
+                next = base
+                    .join(&url)
+                    .map_err(|_| Error::Malformed("invalid HF pagination URL".into()))?;
+                if next.origin() != base.origin()
+                    || next.path() != expected_tree_path
+                    || next.fragment().is_some()
+                    || !next.username().is_empty()
+                    || next.password().is_some()
+                {
+                    return Err(Error::Malformed("HF pagination escaped pinned tree".into()));
+                }
+            }
+        }
+    }
+    Ok((pin, entries))
+}
+
+pub(super) fn discover_candidates(
+    transport: &impl HttpTransport,
+    request: &super::candidates::CandidateRequest,
+    limits: &PullLimits,
+    cancel: &AtomicBool,
+) -> Result<(ManifestSource, Vec<super::candidates::CandidateFile>)> {
+    let base = Url::parse("https://huggingface.co/")
+        .map_err(|_| Error::Malformed("invalid HF endpoint".into()))?;
+    let mut remaining = limits.max_metadata_bytes;
+    let (pin, entries) = repository_tree(
+        transport,
+        request.repository(),
+        request.revision(),
+        limits,
+        cancel,
+        &base,
+        &mut remaining,
+    )?;
+    let mut files = Vec::new();
+    for entry in entries.into_values() {
+        check_cancel(cancel)?;
+        let (bytes, sha256) = match entry.lfs {
+            Some(lfs) => {
+                let hash = lfs.oid.to_ascii_lowercase();
+                crate::cache::paths::validate_digest(&hash)?;
+                if entry.size.is_some_and(|size| size != lfs.size) {
+                    return Err(Error::Malformed(
+                        "HF listed and LFS lengths conflict".into(),
+                    ));
+                }
+                (Some(lfs.size), Some(hash))
+            }
+            None => (entry.size, None),
+        };
+        let role = file_role(&entry.path);
+        files.push(super::candidates::CandidateFile::from_metadata(
+            entry.path, bytes, role, sha256,
+        )?);
+    }
+    Ok((
+        ManifestSource::new("huggingface", request.repository(), pin)?,
+        files,
+    ))
+}
+
+pub(super) fn file_role(path: &str) -> FileRole {
     if is_weight(path) {
         FileRole::Weights
     } else if path.ends_with(".index.json") {

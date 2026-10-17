@@ -4,6 +4,8 @@ use std::sync::{Arc, atomic::AtomicBool};
 
 #[path = "pull_azure.rs"]
 mod azure;
+#[path = "pull_candidates.rs"]
+mod candidates;
 #[path = "pull_components.rs"]
 mod components;
 #[path = "pull_gcs.rs"]
@@ -355,6 +357,9 @@ impl ProgressDisplay {
 }
 
 pub(super) fn run(args: &[String]) -> Result<()> {
+    if args.first().is_some_and(|arg| arg == "candidates") {
+        return candidates::run(&args[1..]);
+    }
     if args.first().is_some_and(|arg| arg == "xet") {
         return xet::run(&args[1..]);
     }
@@ -532,6 +537,7 @@ fn help() {
     println!(
         "USAGE:
     zerogravity pull hf REPO --revision REV --file PATH [--file PATH ...]
+    zerogravity pull candidates --help
     zerogravity pull xet --help
     zerogravity pull github OWNER/REPO --revision REV --file PATH
     zerogravity pull github OWNER/REPO --release TAG --asset NAME

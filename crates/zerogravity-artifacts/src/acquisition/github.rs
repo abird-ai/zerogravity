@@ -91,7 +91,7 @@ fn object_id(id: &str) -> Result<()> {
     }
     Ok(())
 }
-fn repository(repository: &str) -> Result<()> {
+pub(super) fn repository(repository: &str) -> Result<()> {
     let parts: Vec<_> = repository.split('/').collect();
     if parts.len() != 2
         || parts.iter().any(|p| {
@@ -293,47 +293,14 @@ pub(super) fn resolve_component(
                     return Err(malformed());
                 }
             }
-            let commit: Commit = metadata(
+            let (commit, mut entries) = repository_tree(
                 transport,
-                format!("{api}/commits/{}", component(&request.revision)),
+                &api,
+                &request.revision,
+                limits,
                 &mut metadata_left,
                 cancel,
             )?;
-            object_id(&commit.sha)?;
-            if request.revision.len() == 40
-                && request.revision.bytes().all(|c| c.is_ascii_hexdigit())
-                && !request.revision.eq_ignore_ascii_case(&commit.sha)
-            {
-                return Err(malformed());
-            }
-            object_id(&commit.commit.tree.sha)?;
-            let tree: Tree = metadata(
-                transport,
-                format!("{api}/git/trees/{}?recursive=1", commit.commit.tree.sha),
-                &mut metadata_left,
-                cancel,
-            )?;
-            if tree.truncated {
-                return Err(Error::Unsupported(
-                    "GitHub tree is truncated; complete selection cannot be proved".into(),
-                ));
-            }
-            if tree.sha != commit.commit.tree.sha {
-                return Err(malformed());
-            }
-            if tree.tree.len() > limits.cache.max_files {
-                return Err(Error::Limit(
-                    "GitHub tree exceeds configured entry bound".into(),
-                ));
-            }
-            let mut entries = BTreeMap::new();
-            for entry in tree.tree {
-                validate_relative_path(&entry.path)?;
-                object_id(&entry.sha)?;
-                if entries.insert(entry.path.clone(), entry).is_some() {
-                    return Err(malformed());
-                }
-            }
             close_model_selection(
                 transport,
                 (&request.repository, &commit.sha, sidecars, &mut probes_left),
@@ -401,6 +368,93 @@ pub(super) fn resolve_component(
                 .map(|(plan, _)| plan)
         }
     }
+}
+
+// Preserve the original commit/tree policy for both resolution and discovery.
+fn repository_tree(
+    transport: &(impl HttpTransport + ?Sized),
+    api: &str,
+    revision: &str,
+    limits: &PullLimits,
+    metadata_left: &mut usize,
+    cancel: &AtomicBool,
+) -> Result<(Commit, BTreeMap<String, TreeEntry>)> {
+    let commit: Commit = metadata(
+        transport,
+        format!("{api}/commits/{}", component(revision)),
+        metadata_left,
+        cancel,
+    )?;
+    object_id(&commit.sha)?;
+    if revision.len() == 40
+        && revision.bytes().all(|c| c.is_ascii_hexdigit())
+        && !revision.eq_ignore_ascii_case(&commit.sha)
+    {
+        return Err(malformed());
+    }
+    object_id(&commit.commit.tree.sha)?;
+    let tree: Tree = metadata(
+        transport,
+        format!("{api}/git/trees/{}?recursive=1", commit.commit.tree.sha),
+        metadata_left,
+        cancel,
+    )?;
+    if tree.truncated {
+        return Err(Error::Unsupported(
+            "GitHub tree is truncated; complete selection cannot be proved".into(),
+        ));
+    }
+    if tree.sha != commit.commit.tree.sha {
+        return Err(malformed());
+    }
+    if tree.tree.len() > limits.cache.max_files {
+        return Err(Error::Limit(
+            "GitHub tree exceeds configured entry bound".into(),
+        ));
+    }
+    let mut entries = BTreeMap::new();
+    for entry in tree.tree {
+        validate_relative_path(&entry.path)?;
+        object_id(&entry.sha)?;
+        if entries.insert(entry.path.clone(), entry).is_some() {
+            return Err(malformed());
+        }
+    }
+    Ok((commit, entries))
+}
+
+pub(super) fn discover_candidates(
+    transport: &impl HttpTransport,
+    request: &super::candidates::CandidateRequest,
+    limits: &PullLimits,
+    cancel: &AtomicBool,
+) -> Result<(ManifestSource, Vec<super::candidates::CandidateFile>)> {
+    let api = format!("https://api.github.com/repos/{}", request.repository());
+    let mut remaining = limits.max_metadata_bytes;
+    let (commit, entries) = repository_tree(
+        transport,
+        &api,
+        request.revision(),
+        limits,
+        &mut remaining,
+        cancel,
+    )?;
+    let mut files = Vec::new();
+    for entry in entries.into_values() {
+        super::http::check_cancel(cancel)?;
+        // Nonregular tree members are not download candidates, even when their
+        // names resemble a GGUF. Their paths/OIDs were still validated above.
+        if entry.kind == "blob" && matches!(entry.mode.as_str(), "100644" | "100755") {
+            let role = role(&entry.path);
+            files.push(super::candidates::CandidateFile::from_metadata(
+                entry.path, entry.size, role, None,
+            )?);
+        }
+    }
+    Ok((
+        ManifestSource::new("github", request.repository(), commit.sha)?,
+        files,
+    ))
 }
 
 /// Reuse only a typed release pin. Every call retains the supplied label's

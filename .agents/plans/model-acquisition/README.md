@@ -131,6 +131,50 @@ APIs without a cancellation input retain their existing behavior. Parsing,
 inventory, filesystem syncs and blocked reads do not gain a real-time
 cancellation guarantee.
 
+## Metadata-only candidate discovery
+
+`pull candidates hf|github OWNER/REPO --revision REV [--subfolder PATH]`
+lists regular file choices from one exact pinned inventory. It does not select a
+model, read an index or payload, probe lengths, reserve payload bytes or publish
+a snapshot. Multiple GGUF families are useful discovery results rather than an
+ambiguity error. Complete regular-file inventory validation precedes subfolder
+projection, so a hidden regular ancestor cannot conceal a file/directory collision.
+
+The additive `CandidateRequest`, `discover_candidates` and
+`inspect_cached_candidates` APIs reuse the original provider pin/tree owner.
+Metadata admission, aggregate control/file/path/body bounds and a cumulative
+logical-call limit apply before any result. Existing HTTP independently bounds
+physical retries and deadlines. Existing source identity, pull selection and model
+closure remain with their original owners. Listed sizes may exceed transfer caps;
+actual acquisition enforces its own file, snapshot and memory limits.
+
+Results identify `pinned-remote-tree` or `verified-cached-subset` coverage. Each
+repository-relative path has an optional size, filename role hint and optional
+expected raw SHA. GitHub sizes describe stored Git blobs, including possible LFS
+pointers; HF sizes describe tree/LFS metadata. Cached sizes describe fully verified
+retained content. Unknown sizes stay unknown, Git object IDs are never raw SHA256,
+and cached FirstSeen content is not promoted to a trusted expected hash. The JSON
+`size_basis` makes those distinctions explicit.
+
+Online credentials use only the existing origin-scoped `HF_TOKEN` or
+`GITHUB_TOKEN`. Offline requires `--offline --snapshot DIGEST_OR_REF`, optionally
+an existing explicit cache root. Source, current bounds, full managed hashes and
+pointer policy are checked before credentials, clients, admission or signals.
+Cached results describe retained data only; they do not prove a full remote tree,
+current access, freshness, quantization, complete model closure or native execution.
+No new endpoint, mutable publication, automatic selection or fallback is introduced.
+
+Remaining convenience work has explicit authority boundaries. Required sidecars
+need family/format-backed schemas and positive, missing and collision tests;
+config/tokenizer closure does not establish vocab/merges/templates, adapters or
+sparse-quant support. Any first preset should be caller-selected bounded local
+data mapped to existing component requests, with duplicate/unknown-field refusal.
+It cannot add URLs, repositories, credentials, limits, scripts or serving options.
+Mirror/environment compatibility needs a documented precedence table and an
+explicit origin-bound credential/source profile before new aliases are consulted.
+Observed401/403/404 cannot establish license acceptance, gating or model absence;
+private services may mask access. No automatic login or license acceptance follows.
+
 ## Exact length recovery
 
 Resolution first uses valid size metadata for the immutable selected object.
@@ -752,6 +796,16 @@ Aliases still need authoritative alias-to-commit mapping; caller revision echoes
 file timestamps and last-modified commits are insufficient. CDN/mirror credentials
 and unknown-size caps remain separate unqualified profiles.
 
+A future file-only CDN profile must require exact bytes and an authorized raw
+SHA before delegation. Its finite download-origin policy needs explicit authority;
+one redirect cannot authorize a wildcard cloud suffix. The original HTTP owner
+must strip Bearer and session cookies after every delegated hop, including a
+bounce back, and keep signed locators ephemeral and redacted. Refresh must start
+from the same native full-commit URL with unchanged hash, length and range rules.
+Metadata Direct targets remain no-follow. Mirrors, ambient region discovery and
+aliases do not inherit this potential profile; implementation and actual two-origin
+credential/refresh/rollback tests remain open.
+
 The original HF initial selector and extracted private GitHub closure logic
 supply required config/tokenizer, indexed shards and split-GGUF checks, including
 ambiguous-model refusal. GitHub retains its original metadata/size/raw-URL/LFS
@@ -869,7 +923,7 @@ passing provider gate. Open implementation and acceptance work stays in TODO.md.
 
 | Surface | Current qualified scope and remaining work |
 | --- | --- |
-| HF repository/files/revisions | Native exact commit pinning, subfolder, bounded `*`/`?`, required index/shard and config/tokenizer closure. Excludes/full fnmatch, quant shorthand/candidates, broader required sidecar policy and endpoint/env compatibility remain open. |
+| HF repository/files/revisions | Native exact commit pinning, subfolder, bounded `*`/`?`, required index/shard and config/tokenizer closure. Metadata-only candidates share the same pinned tree. Excludes/full fnmatch, quant shorthand, broader required sidecar policy and endpoint/env compatibility remain open. |
 | GitHub files/releases/components | Native commit/tree and release/asset pins, exact sizing, independent pinned components and alias pin reuse. Qualified LFS-pointer resolution is separate; pointers refuse. |
 | Direct HTTPS objects | Explicit origin/role/path/exact size/caller SHA; original transfer, offline verification and cache publisher. Broader missing-size/digest or repository discovery is outside this slice. |
 | Local HF caches | Explicit pinned selections and independent verified copies, original same-mount policy plus qualified Btrfs/tmpfs and distinct tmpfs pairs. Renamed/unnamespaced roots and other filesystems remain open. |
@@ -884,6 +938,21 @@ passing provider gate. Open implementation and acceptance work stays in TODO.md.
 | Auxiliary/preset convenience | Explicit auxiliary/component bytes are supported data. Specialized mmproj/draft/MTP/DFlash/Eagle3/DSpark discovery and bounded presets remain open convenience work; a preset cannot authorize new sources or limits. |
 | Transport/streaming | Exact strong-validator resume, bounded retry/deadline/cancel/progress and explicit capped Auxiliary streams are qualified. Required unknown lengths, capped resume, independent full HTTP trailer validation and broader concurrency/performance remain open. |
 | Loader/runtime delegates | Safetensors/PT/serialized tensors, RunAI/ModelExpress internals, IPC/distributed/lazy loading, quant reconstruction and speculative/multimodal execution belong to the execution/streaming plans. Acquiring opaque bytes grants none of those capabilities. |
+
+The pinned reference loader registry has separate execution responsibilities:
+
+| Reference loader surface | Responsibility beyond native byte acquisition |
+| --- | --- |
+| auto / hf / safetensors / pt / mistral | Format choice, deserialization and family validation; cached PT/pickle is never executed by pull. |
+| npcache | Derived cache representation and loading. |
+| fastsafetensors / instanttensor | Loading, prefetch, placement and measured performance. |
+| sharded_state / runai_streamer_sharded | Rank/shard selection, collectives and distributed loading. |
+| runai_streamer | Tensor streaming, device buffers, broadcast and optional SDK/cache integration; its concrete cloud byte protocols remain acquisition work. |
+| tensorizer | Serialization, encryption and per-tensor verification over acquired local/HTTPS/S3 bytes. |
+| ipc_cache | Process/device ownership and CUDA IPC. |
+| dummy | Synthetic parameter construction. |
+| modelexpress | Inventory the selected package revision's finite source/auth contracts before native equivalence; its external delegation is not an open-ended native guarantee. |
+| custom plugins / remote code | Add concrete missing protocols through the existing owner; arbitrary foreign loader execution is outside finite transport parity. |
 
 ## Explicit read-only HF cache import
 
@@ -1018,6 +1087,18 @@ logit/state/session checks while their raw source reservation remains owned.
 Numerical acceptance is tracked in TODO.md.
 
 ## References
+
+- [Pinned llama.cpp arguments](https://github.com/ggml-org/llama.cpp/blob/2851b3bcbf8d993a2243ae751c0a7dfa8e944a40/common/arg.cpp) and
+  [download selection](https://github.com/ggml-org/llama.cpp/blob/2851b3bcbf8d993a2243ae751c0a7dfa8e944a40/common/download.cpp),
+  used to inventory filename quant, companions and presets. Their default/first-file
+  fallback is not this project's explicit-source selection policy.
+- [Pinned vLLM weight helpers](https://github.com/vllm-project/vllm/blob/a8be1500bad93d3c459e435bf71194aa8062e49d/vllm/model_executor/model_loader/weight_utils.py),
+  [registered loaders](https://github.com/vllm-project/vllm/blob/a8be1500bad93d3c459e435bf71194aa8062e49d/vllm/model_executor/model_loader/__init__.py) and
+  [Tensorizer wrapper](https://github.com/vllm-project/vllm/blob/a8be1500bad93d3c459e435bf71194aa8062e49d/vllm/model_executor/model_loader/tensorizer.py),
+  used for the finite acquisition versus runtime dispositions above.
+- [Hub filtering](https://huggingface.co/docs/huggingface_hub/en/guides/download#filter-files-to-download) and
+  [environment variables](https://huggingface.co/docs/huggingface_hub/en/package_reference/environment_variables),
+  used to identify compatibility work, not authority to consult ambient external caches or credentials.
 
 - [Xet protocol1.1.0](https://github.com/huggingface/hub-docs/blob/39aa2452668744552cc6690c75cd239771148e58/docs/xet/index.md),
   [pinned hash/codec reference](https://github.com/huggingface/xet-core/tree/c3c726bed5cf54ded92a63fab892cfb7857c751a/xet_core_structures/src), and
