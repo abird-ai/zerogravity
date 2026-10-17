@@ -394,17 +394,7 @@ pub(super) fn resolve_choice(
                 require(&entries, &mut selected, path)?;
             }
         }
-        for optional in [
-            "tokenizer_config.json",
-            "special_tokens_map.json",
-            "generation_config.json",
-            "added_tokens.json",
-            "vocab.json",
-            "merges.txt",
-            "LICENSE",
-            "LICENSE.md",
-            "README.md",
-        ] {
+        for &optional in super::selection::OPTIONAL_MODEL_COMPANIONS {
             let path = folder
                 .as_ref()
                 .map(|f| format!("{f}/{optional}"))

@@ -8,6 +8,14 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
+- [ ] After the accepted source-acquisition v1 cutover, use the existing
+  pinned HF index-first path to inspect explicit original Qwen3.8-27B and
+  Gemma4 26B-A4B index/config/tokenizer/chat/processor identities
+  (see [acquisition v1 handoff](../model-acquisition/README.md)).
+  Select an authorized exact revision and admitted local host. Do not treat
+  synthetic >51GB transfer-plan tests, public model pages or cached bytes
+  as authorization, execution-ready source, or trained CPU parity.
+
 - [ ] Acquire/bind authorized original config/index/tokenizer/checkpoint identities and choose a capable admitted host. Large BF16 sources exceed current local RAM; current executable source limit stays 4 GiB.
 - [ ] Implement explicitly admitted verified owned shards, exact complete index/header/name/dtype/offset/shape/hash binding and retained source leases; no unsafe mutable-file mapping shortcut or second issuer.
 - [ ] Qwen3.8 27B: original HF grouped-head ordering and Q/K replication 16→48, explicit converted-profile permutations, untied head and source-derived norm/RoPE geometry.

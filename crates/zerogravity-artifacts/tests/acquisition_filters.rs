@@ -726,3 +726,280 @@ fn filtered_plan_publishes_only_selected_verified_bytes_via_original_cache_execu
         assert_no_host_reservation(&admission);
     }
 }
+
+#[test]
+fn qwen_and_gemma_companions_are_bounded_same_folder_and_not_executable() {
+    let newly_supported = [
+        "tokenizer.model",
+        "spiece.model",
+        "sentencepiece.bpe.model",
+        "vocab.txt",
+        "tokenizer.tiktoken",
+        "chat_template.jinja",
+        "processor_config.json",
+        "preprocessor_config.json",
+        "image_processor_config.json",
+        "video_processor_config.json",
+        "feature_extractor_config.json",
+        "audio_processor_config.json",
+    ];
+    for provider in [Provider::HuggingFace, Provider::GitHub] {
+        let mut paths = vec![
+            "q/weights-Q8_0.gguf",
+            "q/config.json",
+            "q/tokenizer.json",
+            "q/README.md",
+            "q/deliberate-other-quant-Q4_0.gguf",
+            "q/subdir/processor_config.json",
+            "other/chat_template.jinja",
+            "q/unrelated.txt",
+        ];
+        let companions = newly_supported
+            .iter()
+            .map(|leaf| format!("q/{leaf}"))
+            .collect::<Vec<_>>();
+        paths.extend(companions.iter().map(String::as_str));
+        let quant = request(provider, "Q8_0", Some("q"));
+        let script = Script::new(rows(provider, &paths));
+        let plan = quant::resolve(
+            &script,
+            &quant,
+            &PullLimits::default(),
+            &admission(128 * 1024 * 1024),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        script.empty();
+        for companion in &companions {
+            assert!(
+                plan.files().iter().any(|file| file.path() == companion),
+                "missing bounded source companion {companion}"
+            );
+        }
+        for unrelated in [
+            "q/unrelated.txt",
+            "other/chat_template.jinja",
+            "q/subdir/processor_config.json",
+            "q/deliberate-other-quant-Q4_0.gguf",
+        ] {
+            assert!(
+                !plan.files().iter().any(|file| file.path() == unrelated),
+                "model pull may not silently traverse or select other family"
+            );
+        }
+        assert_eq!(
+            plan.files().len(),
+            newly_supported.len() + 4,
+            "one weight, config, tokenizer, README plus known companions"
+        );
+        let skip_template = filters::FilterRequest::for_quant(
+            quant,
+            vec!["chat_template.jinja".into(), "README.md".into()],
+        )
+        .unwrap();
+        let script = Script::new(rows(provider, &paths));
+        let filtered = filters::resolve(
+            &script,
+            &skip_template,
+            &PullLimits::default(),
+            &admission(128 * 1024 * 1024),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        script.empty();
+        assert!(
+            !filtered
+                .files()
+                .iter()
+                .any(|file| file.path() == "q/chat_template.jinja")
+        );
+        assert!(
+            !filtered
+                .files()
+                .iter()
+                .any(|file| file.path() == "q/README.md")
+        );
+        assert!(
+            filtered
+                .files()
+                .iter()
+                .any(|file| file.path() == "q/processor_config.json")
+        );
+    }
+}
+
+#[test]
+fn qwen_gemma_large_indexed_model_pull_plans_refuse_unadmitted_weight_bytes() {
+    // Representative pinned original HF-style safetensors index layouts.
+    // No learned tensor/header/model qualification is inferred; this validates
+    // transfer source closure, full sizes and the original disk admission.
+    use zerogravity_artifacts::acquisition::{PullRequest, Selection};
+    let index = serde_json::to_vec(&serde_json::json!({
+        "metadata": {"total_size": 51_600_000_000u64},
+        "weight_map": {
+            "language_model.layers.0.weight": "model-00001-of-00002.safetensors",
+            "language_model.layers.1.weight": "model-00002-of-00002.safetensors"
+        }
+    }))
+    .unwrap();
+    let paths = [
+        "model-00001-of-00002.safetensors",
+        "model-00002-of-00002.safetensors",
+        "model.safetensors.index.json",
+        "config.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "processor_config.json",
+        "chat_template.jinja",
+        "generation_config.json",
+        "unrelated-fp8.gguf",
+    ];
+    for provider in [Provider::HuggingFace, Provider::GitHub] {
+        let mut planned = rows(provider, &paths);
+        let mut tree: serde_json::Value = serde_json::from_slice(&planned[1].body).unwrap();
+        let items = if provider == Provider::HuggingFace {
+            tree.as_array_mut().unwrap()
+        } else {
+            tree["tree"].as_array_mut().unwrap()
+        };
+        for node in items {
+            let size = match node["path"].as_str().unwrap() {
+                "model-00001-of-00002.safetensors" => 49_900_000_000,
+                "model-00002-of-00002.safetensors" => 1_700_000_000,
+                "model.safetensors.index.json" => index.len() as u64,
+                _ => 3,
+            };
+            node["size"] = serde_json::json!(size);
+        }
+        planned[1].body = serde_json::to_vec(&tree).unwrap();
+        planned.push(Row {
+            method: "GET",
+            url: match provider {
+                Provider::HuggingFace => {
+                    format!("https://huggingface.co/owner/repo/resolve/{PIN}/model.safetensors.index.json")
+                }
+                Provider::GitHub => {
+                    format!("https://raw.githubusercontent.com/owner/repo/{PIN}/model.safetensors.index.json")
+                }
+            },
+            status: 200,
+            headers: BTreeMap::new(),
+            body: index.clone(),
+        });
+        let script = Script::new(planned);
+        let request = PullRequest {
+            provider,
+            repository: "owner/repo".into(),
+            revision: "main".into(),
+            selection: Selection::Files {
+                paths: vec!["model.safetensors.index.json".into()],
+                subfolder: None,
+            },
+        };
+        let admission = admission(128 * 1024 * 1024);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let plan = acquisition::resolve(
+            &script,
+            &request,
+            &PullLimits::default(),
+            &admission,
+            &cancel,
+        )
+        .unwrap();
+        assert_eq!(plan.source().revision(), PIN);
+        assert!(plan.total_bytes().unwrap() > 51_600_000_000);
+        for expected in [
+            "model-00001-of-00002.safetensors",
+            "model-00002-of-00002.safetensors",
+            "model.safetensors.index.json",
+            "processor_config.json",
+            "chat_template.jinja",
+        ] {
+            assert!(plan.files().iter().any(|file| file.path() == expected));
+        }
+        assert!(
+            !plan
+                .files()
+                .iter()
+                .any(|file| file.path() == "unrelated-fp8.gguf")
+        );
+        // Resolve only pins one commit/tree and reads one bounded index. No
+        // credential, weight GET, cache publication or 50GiB fixture copy.
+        script.empty();
+        let fixture = Fixture::new();
+        let store = fixture.open(); // 8MiB cooperative local quota
+        let result = acquisition::execute(
+            &store,
+            &plan,
+            &script,
+            &admission,
+            &cancel,
+            Some("never-publish"),
+        );
+        assert!(
+            result.is_err(),
+            "unadmitted >50GB payload must refuse before GET"
+        );
+        assert!(store.resolve_ref("never-publish").is_err());
+        assert_no_host_reservation(&admission);
+    }
+}
+
+#[test]
+fn known_companions_roundtrip_through_exact_offline_cache_closure() {
+    let paths = [
+        ("weights-Q8_0.gguf", FileRole::Weights),
+        ("config.json", FileRole::Config),
+        ("tokenizer.json", FileRole::Tokenizer),
+        ("chat_template.jinja", FileRole::Auxiliary),
+        ("processor_config.json", FileRole::Config),
+        ("preprocessor_config.json", FileRole::Config),
+        ("tokenizer.model", FileRole::Tokenizer),
+    ];
+    for provider in [Provider::HuggingFace, Provider::GitHub] {
+        let (name, _display) = match provider {
+            Provider::HuggingFace => ("huggingface", "HF"),
+            Provider::GitHub => ("github", "GH"),
+        };
+        let source = CandidateRequest::new(provider, "owner/repo", PIN, None).unwrap();
+        let request =
+            filters::FilterRequest::new(source.clone(), vec!["*.gguf".into()], vec![]).unwrap();
+        let (_fixture, lease) = seed(name, PIN, &paths, false);
+        filters::validate_cached_selection(
+            &lease,
+            &request,
+            &PullLimits::default(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        let exclude = filters::FilterRequest::new(
+            source.clone(),
+            vec!["*.gguf".into()],
+            vec!["processor_config.json".into()],
+        )
+        .unwrap();
+        assert!(
+            filters::validate_cached_selection(
+                &lease,
+                &exclude,
+                &PullLimits::default(),
+                &AtomicBool::new(false)
+            )
+            .is_err(),
+            "cached excluded companion must not be silently removed"
+        );
+        let mut extra = paths.to_vec();
+        extra.push(("irrelevant-other-family.bin", FileRole::Auxiliary));
+        let (_fixture, lease) = seed(name, PIN, &extra, false);
+        assert!(
+            filters::validate_cached_selection(
+                &lease,
+                &request,
+                &PullLimits::default(),
+                &AtomicBool::new(false)
+            )
+            .is_err(),
+            "cached unrelated file is never declared source closure"
+        );
+    }
+}

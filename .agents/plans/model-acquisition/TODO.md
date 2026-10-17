@@ -179,7 +179,7 @@ Completed phases from `e0073a5` through signed `a774ded` are in
   live provider/account/SDK/data download, privilege/mount/device operation,
   push or publication is implied.
 
-## Uncommitted
+### f56b574 — trusted AWS-standard FULL_OBJECT SHA256
 
 - [x] C5 AWS-standard FULL_OBJECT SHA256 checksum admission:
   one six-file Rust slice with explicit --aws-full-object-sha256 and
@@ -213,6 +213,38 @@ Completed phases from `e0073a5` through signed `a774ded` are in
   reclaim exact. No inference/multimodal/GPU performance qualification
   is implied. Acceptance requires a signed local exact-path commit;
   no push or external provider payload testing is implied.
+
+## Uncommitted
+
+- [x] Model-pull v1 execution cutover: close the finite companion gap
+  for original index-first Qwen3.8 and Gemma4-like source layouts,
+  using one shared bounded optional same-folder companion list in original
+  HF and shared GH/cache closure. Known chat template, processor/image/audio/
+  video metadata and alternate tokenizer files remain opaque source bytes;
+  no arbitrary directory recursion, inferred model variant or auto-loader.
+  Source-only two-provider synthetic >51GB indexed shard tests confirm
+  no weight GET or cache publication when disk admission is insufficient,
+  plus explicit GGUF/companion filtering/source closure and CLI index-first
+  large-disk-budget argument validation. Keep 4GiB executable-source gate,
+  original model numerical/CPU/GPU and authorization tasks in model-execution.
+- [x] Final frozen model-pull v1 source/transfer gate: 988 Rust executions,
+  0 failed, 69 intentionally ignored, 222 suite executions under exact
+  original scripts/check.sh with private user/network namespace and guarded
+  loopback. Strict artifact and CLI production+diagnostic lint, CPU workspace,
+  release build/installer, Nix formatting and 18 Python namespace fixtures
+  pass. Actual offline Nix filtered-source-integrity passes; root README,
+  Cargo.lock/manifests unchanged, current local plan links checked.
+  Independently reran original approved release cache_prepare sources:
+  cache/direct16.38s and HF-import21.88s (both 0.8B+2B,
+  all248320 logits/all42domains/2 tokens/source lease/mutation/reclaim exact).
+  New source-closure tests cover original HF/GH GGUF+12 known metadata
+  companions, filtered optional omissions, strict exact offline subsets
+  and synthetic two-shard >51.6GB index plan refusing insufficient disk
+  before any weight GET; no actual weight/model/SDK download and no license,
+  trained-execution, GPU or general-provider compatibility qualification.
+  Four bounded Rust files and four plan files only; remaining separately
+  qualified provider/mirror/gating/filesystem/SSD throughput work stays
+  explicitly unchecked without obstructing the model-execution CPU-first plan.
 
 - [ ] Extend cloud profiles beyond the narrow qualified AWS FULL_OBJECT SHA256 object route: broader S3 partitions/compatible vendors/credentials/checksum algorithms, Azure latest/SAS/managed chains and per-object digest-map prefixes. Keep explicit version, caller-SHA and conditional FirstSeen contracts distinct; never infer immutable versions or trusted raw hashes from unqualified validators or multipart COMPOSITE checksums.
 - [ ] Extend ModelScope only through separately qualified alias authority and redirect/CDN/mirror/credential profiles. Selected missing sizes now use exact pinned HEAD; no alias-to-commit authority was established from revision echoes, timestamps or file last-modified IDs. The current profile does not close broader parity or independently prove server revision/membership behavior.

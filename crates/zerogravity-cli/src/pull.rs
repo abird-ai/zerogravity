@@ -777,6 +777,17 @@ cross-source ref/model-readiness claim.
 
 Credentials: HF_TOKEN or GITHUB_TOKEN environment only; no token command-line option.
 HF --file supports bounded component-local * and ? filters, including offline.
+For pinned, sharded HF safetensors weights, select the exact
+--file model.safetensors.index.json; the source index supplies all referenced
+shards and same-directory known tokenizer, chat-template and processor companions.
+Do not request every variant or guess the shard count. Large original sources
+need an explicit --disk-limit-bytes above their full admitted snapshot (the
+default16GiB is intentionally conservative, and the quota is not free-space
+telemetry). Use --dry-run for bounded pin/tree/index metadata only and inspect
+the exact pinned revision and selected sizes before any APPLY. Native Xet
+--dry-run can refuse a required Xet-backed index without CAS permission; the
+ordinary HF metadata route is the inspection alternative. Source acquisition
+does not grant model loading, license approval, tokenizer parity or GPU support.
 SIGINT/SIGTERM request cooperative cancellation of online pulls; a blocked read
 can take its configured HTTP deadline. Progress bytes are logical accepted bytes
 including verified cached/resumed prefixes, not a network-throughput measurement.
@@ -805,6 +816,33 @@ mod tests {
     fn args(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|s| s.to_string()).collect()
     }
+    #[test]
+    fn sharded_model_pull_is_one_explicit_index_with_a_separate_disk_admission() {
+        let options = parse(&args(&[
+            "hf",
+            "google/gemma-4-26B-A4B-it",
+            "--revision",
+            "a".repeat(40).as_str(),
+            "--file",
+            "model.safetensors.index.json",
+            "--disk-limit-bytes",
+            "137438953472",
+            "--dry-run",
+        ]))
+        .unwrap();
+        assert_eq!(options.disk, 137438953472);
+        assert!(options.dry_run);
+        let Action::Fetch(request) = options.action else {
+            panic!("large HF model metadata selection is not an explicit pull");
+        };
+        assert_eq!(request.repository, "google/gemma-4-26B-A4B-it");
+        assert!(matches!(
+            request.selection,
+            Selection::Files { paths, subfolder: None }
+                if paths == ["model.safetensors.index.json"]
+        ));
+    }
+
     #[test]
     fn exact_selection_and_release_are_explicit() {
         let _schedule = PROCESS_FIXTURE_SCHEDULE.lock().unwrap();

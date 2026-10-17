@@ -3,6 +3,32 @@
 use super::{ExternalSidecars, PullLimits};
 use crate::{Error, Result};
 use std::collections::{BTreeMap, BTreeSet};
+/// Finite, optional, same-directory companions for original model pulls.
+/// Never infer optional filenames from the model family, parse executable
+/// templates, traverse arbitrary subdirectories, or require absent metadata.
+pub(super) const OPTIONAL_MODEL_COMPANIONS: &[&str] = &[
+    "tokenizer_config.json",
+    "special_tokens_map.json",
+    "generation_config.json",
+    "added_tokens.json",
+    "vocab.json",
+    "merges.txt",
+    "tokenizer.model",
+    "spiece.model",
+    "sentencepiece.bpe.model",
+    "vocab.txt",
+    "tokenizer.tiktoken",
+    "chat_template.jinja",
+    "processor_config.json",
+    "preprocessor_config.json",
+    "image_processor_config.json",
+    "video_processor_config.json",
+    "feature_extractor_config.json",
+    "audio_processor_config.json",
+    "LICENSE",
+    "LICENSE.md",
+    "README.md",
+];
 fn malformed() -> Error {
     Error::Malformed("invalid repository model selection".into())
 }
@@ -195,17 +221,7 @@ pub(super) fn close_model_selection_filtered(
                 require(entries, selected, candidate, exclusions)?;
             }
         }
-        for leaf in [
-            "tokenizer_config.json",
-            "special_tokens_map.json",
-            "generation_config.json",
-            "added_tokens.json",
-            "vocab.json",
-            "merges.txt",
-            "LICENSE",
-            "LICENSE.md",
-            "README.md",
-        ] {
+        for &leaf in OPTIONAL_MODEL_COMPANIONS {
             let candidate = path(leaf);
             if entries.contains_key(&candidate) && exclusions.allows(&candidate) {
                 require(entries, selected, candidate, exclusions)?;

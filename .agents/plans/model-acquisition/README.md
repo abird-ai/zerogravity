@@ -1191,6 +1191,83 @@ existing-filesystem fixtures. Real hidden bind/subvolume/overlay alias fixtures
 remain separately unqualified; those ambiguous cross-filesystem pairs refuse.
 Acceptance and remaining filesystem/layout work are tracked in TODO.md.
 
+## Model pull v1 acceptance and execution cutover
+
+The bounded original-source **data-acquisition path** is the prerequisite for
+CPU-first model execution, not a model runtime. The optional acquisition CLI
+covers HF/GitHub pinned files/index/quant/filter/native Xet; native ModelScope
+explicit full-commit metadata; direct HTTPS, OCI, GCS, versioned S3/Azure and
+explicit multi-source components. Each provider has separately qualified,
+**narrow** source/version/auth/byte semantics. Unknown/gated/incompatible
+profiles refuse rather than silently substituting an origin, checksum, family
+or model loader. The unresolved provider-parity backlog remains in TODO.md but
+is not a prerequisite to beginning source binding in the model-execution plan.
+
+### Large HF safetensors examples (source discovery/metadata only)
+
+The target source repositories include
+[Qwen3.8 27B](https://huggingface.co/Qwen/Qwen3.8-27B) and
+[Gemma4 26B-A4B](https://huggingface.co/google/gemma-4-26B-A4B-it).
+Examples below **do not download anything by themselves** and are not license
+or account-access authorization. A caller selects the exact intended
+repository/revision, must hold any necessary access rights, and separately
+authorizes APPLY and storage. Do not infer a learned model/format entitlement
+from a repository name.
+
+```sh
+# The executable must be built with the optional acquisition feature.
+# The exact safetensors index is an explicit source member, never a guessed
+# selection among arbitrary weight families. 128GiB is a cooperative cache
+# reservation policy, not proof of free space or a recommended RAM size.
+zerogravity pull hf Qwen/Qwen3.8-27B \
+  --revision SELECTED_REVISION --file model.safetensors.index.json \
+  --disk-limit-bytes 137438953472 --dry-run
+
+zerogravity pull hf google/gemma-4-26B-A4B-it \
+  --revision SELECTED_REVISION --file model.safetensors.index.json \
+  --disk-limit-bytes 137438953472 --dry-run
+
+# Inspect the output pinned commit and exact selected bytes FIRST.
+# Only then explicitly omit --dry-run to authorize a real transfer.
+# Native HF Xet APPLY can reconstruct an Xet-backed index under the
+# same admitted owner; native dry-run refuses that case without CAS grants.
+# For GGUF, inspect candidates and explicitly choose one exact --quant tag
+# or an exact --file (no implicit default, ranking, or fallback).
+```
+
+The same original pinned HF/GH model closure selects every shard referenced
+by the validated safetensors index and the source's same-directory config,
+tokenizer and known available companions. Besides the older vocab, generation,
+license and documentation members, the finite optional set now retains
+`chat_template.jinja`, `processor_config.json`,
+`preprocessor_config.json`, `image_processor_config.json`,
+`video_processor_config.json`, `feature_extractor_config.json`,
+`audio_processor_config.json`, `tokenizer.model`, `spiece.model`,
+`sentencepiece.bpe.model`, `vocab.txt` and `tokenizer.tiktoken`.
+They are original opaque bytes: neither template evaluation, processor syntax,
+tokenizer parity, arbitrary nested-directory copying nor complete multimodal
+configuration is implied. C3 excludes can omit optional companions; required
+shard/index/config/tokenizer selection still fails closed.
+
+The original 16GiB CLI disk default is deliberately too small for the cited
+multi-tens-of-GB models; explicit `--disk-limit-bytes` controls only the
+cooperating cache reservation. Full provider plan sizing precedes any weight
+body, and disk/full-transfer peak admission refuses insufficient quotas.
+Verify actual available storage and permitted source use independently.
+Offline source verification must bind to the **pinned commit** shown by
+resolution, not a floating `main` alias; original cache hashes, source
+identity, roles and bounds are rechecked. Receipt and cache eligibility
+prove retained bytes, **not** the ability to load them.
+
+**Execution handoff:** the source executor still has a 4GiB in-memory
+executable-source cap, and large original BF16 checkpoints are not executable
+merely because the acquisition plan supports their lengths. Next actions belong
+to [model-execution](../model-execution/TODO.md): choose an authorized actual
+checkpoint, admitted hardware and shard identity; implement large-source owned
+shard reading, header/tensor/reference binding, qualified CPU outputs and then
+GPU. No model weights, SDK, cloud object, live cache or held device is touched
+by these source-only tests and examples.
+
 ## Cache-to-model preparation
 
 The independent `cache` feature enables Linux cache loading without enabling
