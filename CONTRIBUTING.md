@@ -1,18 +1,72 @@
 # Contributing to zerogravity
 
-You're welcome here. We're building zerogravity in the open, and we'd love to build it with you. We believe the best way to collaborate is through human-led design and AI-assisted implementation, guided by clear plans, tests, and shared decisions.
+Welcome — we're building zerogravity in the open and would love to build it with
+you. This guide covers the best ways to contribute, how work is planned, and the
+engineering principles we hold to. For how we use AI, see the AI disclosure in
+the [README](README.md#ai-disclosure).
 
 ## Best ways to contribute
 
-- **Design and architecture:** open an issue describing the problem, alternatives, correctness constraints, and expected impact. Propose a plan at `.agents/plans/<plan>/TODO.md` and link it from `.agents/plans/TODO.md` so others and AI coding agents can reason from the same decisions.
-- **Contained implementation:** start with a short `.agents/plans/<plan>/TODO.md` covering the provenance commit, implementation steps, required tests and unfinished work. Parallel agents keep their own checklist under `.agents/runs/<plan>-<agent-id>/TODO.md` until the coordinator integrates it. Then submit a focused PR with source references, tests, and measured results where applicable.
-- **Research and verification:** contribute reproducible model/source analysis, failing cases, hardware measurements, counterexamples, or simpler architectural options. Clearly separate reproduced evidence from hypotheses.
-- **Documentation fixes:** direct small PRs are welcome; a dedicated plan is unnecessary for a typo or broken link.
+- **Design and architecture.** Open an issue describing the problem,
+  alternatives, correctness constraints, and expected impact. For nontrivial
+  work, propose a plan under `.agents/plans/<plan>/` (see
+  [How work is planned](#how-work-is-planned)) and link it from
+  `.agents/plans/TODO.md` so people and AI agents reason from the same decisions.
+- **Contained implementation.** Send a focused PR with source references, tests,
+  and measured results where applicable, working from the plan's `TODO.md`.
+  Parallel agents keep their own checklist under
+  `.agents/runs/<plan>-<agent-id>/TODO.md` until a coordinator integrates it.
+- **Research and verification.** Contribute reproducible analysis, failing
+  cases, hardware measurements, counterexamples, or simpler architectural
+  options. Keep reproduced evidence separate from hypotheses.
+- **Documentation fixes.** Small PRs are welcome; a typo or broken link needs no
+  plan.
+
+## How work is planned
+
+Read the [TODO spec](.agents/plans/TODO-SPEC.md) before opening a plan. A plan
+lives in `.agents/plans/<plan>/`:
+
+- **`README.md`** — optional; the plan details (what it is and why it exists),
+  plus, as needed, sections for design (interfaces, invariants, alternatives),
+  decisions (user decisions that bind the plan, with rationale), and references
+  (papers, specs, prior art, source files). Open it with the plan's authorship —
+  human-led (`Author: <user>` and `Co-authors: <comma-separated AI models used>`)
+  or AI-led (`Author: <the AI models only>`). Split a section into `DESIGN.md`,
+  `DECISIONS.md`, or `REFERENCES.md` only when it grows large.
+- **`TODO.md`** — required and extensive: implementation, tests, verification,
+  gates, and evidence. Completed work is grouped under the commit that landed
+  it, open work sits under `## Uncommitted`, and every test and gate is listed
+  under a `## Tests and verification` section that must be fully checked before
+  the plan is done.
+
+Keep plans flat and prefer one plan per effort; if a design is too large for one
+`TODO.md`, split it into sibling plans that stand on their own and have the
+larger plan's `TODO.md` link to them. Link the plan from the
+`.agents/plans/TODO.md` index.
 
 ## Engineering principles
 
-Keep one Rust-native engine, exact model/quantization semantics, one session-state publisher, and safe physical resource ownership. Prefer minimal, composable changes over new infrastructure. Never label planned support as implemented or benchmark results as source-equivalent without evidence.
+Keep one Rust-native engine, exact model/quantization semantics, one
+session-state publisher, and safe physical resource ownership.
 
-**AI-assisted contributions are welcome.** Share the design decisions, tests and validation evidence; contributors aren't expected to manually author or inspect every line. Humans remain responsible for the goal and acceptance criteria, and AI can help with implementation and iteration.
+Prefer minimal, composable changes over new infrastructure, and never label
+planned support as implemented or unverified results as equivalent. Run the
+test suite before committing and keep it green.
 
-Thank you for helping make fast, open inference better for everyone.
+## AI-assisted contributions
+
+Implementations are AI-assisted by default, so they need no special marking.
+Plans record their authorship instead:
+
+- **Human-led:** `Author: Prasanna Loganathar` and
+  `Co-authors: GPT-6.1-Sol, GPT-6-Astra, DeepSeek v4.1 Flash`.
+- **AI-led:** `Author: GPT-6.1-Sol, GPT-6-Astra, DeepSeek v4.1 Flash`.
+
+Reviewers — human and AI — can then see at a glance how a plan was produced and
+weigh its design accordingly.
+
+See the README's [AI disclosure](README.md#ai-disclosure) for how the project
+itself is built.
+
+Thank you for helping make zerogravity better.
