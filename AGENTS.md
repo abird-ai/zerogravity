@@ -5,6 +5,13 @@ plan, and read its `TODO.md` plus the specifications it links. These TODO files
 replace the old handoffs, status ledgers, evidence workflow and SHA inventories.
 Older documents remain design/history references, not extra tracking duties.
 
+Read [.agents/plans/TODO-SPEC.md](.agents/plans/TODO-SPEC.md) before opening a
+plan — it is the rulebook for the layout. A plan is `.agents/plans/<plan>/` with
+an optional `README.md` (what it is and why it exists, plus design, decisions and
+references sections, opened with its `Author:`/`Co-authors:`) and a required,
+extensive `TODO.md` whose completed work is grouped under the commit that landed
+it and whose open work sits under `## Uncommitted`.
+
 ## One checklist per plan
 
 - `.agents/plans/TODO.md`: one checkbox and link per plan. Check it only when
