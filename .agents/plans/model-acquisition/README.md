@@ -87,13 +87,13 @@ pull/cache commands. `diagnostic-acquisition` adds controlled fixture endpoints
 and trust roots; it is not a production insecure-TLS option. Current supported
 commands and limits are shown by `zerogravity pull --help` in that build.
 
-The A2 slice uses one repo/revision per plan. Required selected-model sidecars
-and shards must be available there; independently pinned cross-repository
-components remain future work. Git LFS pointer payloads, missing metadata sizes,
-lease-aware removal refuse in this slice.
+Ordinary pulls retain strict same-repository model closure. Explicit component
+plans can supply config/tokenizer from separate authorized sources. Each member
+retains its own original provider/repository/immutable revision and manifest;
+there is no merged-source manifest, composite ref or cross-source transaction.
+Git LFS pointer payloads, missing metadata sizes and lease-aware removal refuse.
 Acquiring an auxiliary file or unqualified model format grants no loader support.
-A3 cache-to-model loading and the wider
-Hub/cloud/OCI/Xet/parity inventory remain separate unchecked work.
+The wider Hub/cloud/OCI/Xet/parity inventory remains separate unchecked work.
 
 The continuation adds a borrowed source-bound progress callback to the existing
 executor, preserving its original entry point. Logical file/aggregate bytes count
@@ -113,6 +113,90 @@ Blocking HTTP reads remain bounded by the configured whole-request deadline;
 cancellation is checked between reads and at deadlines. Existing whole-object cached verification can finish its hash scan before the
 flag is observed. Filesystem syncs and blocked reads do not gain a real-time
 cancellation guarantee.
+
+## Explicit components
+
+`pull components PLAN.json` accepts the fixed `zerogravity.pull.components.v1`
+schema, bounded to 1 MiB and 16 components. Each component declares a unique label,
+role (`weights`, `config`, `tokenizer`, `auxiliary`), provider (`huggingface` or
+`github`), repository and either revision/files/optional subfolder or release/asset.
+Unknown/duplicate fields, URL/token fields and conflicting selectors refuse.
+For example, independently authorized original files can be selected with:
+
+```json
+{
+  "schema": "zerogravity.pull.components.v1",
+  "components": [
+    {"label":"weights","role":"weights","provider":"huggingface","repository":"owner/converted-model","revision":"main","files":["model.gguf"]},
+    {"label":"config","role":"config","provider":"huggingface","repository":"owner/original-model","revision":"main","files":["config.json"]},
+    {"label":"tokenizer","role":"tokenizer","provider":"huggingface","repository":"owner/original-model","revision":"main","files":["tokenizer.json"]}
+  ]
+}
+```
+
+These repository names illustrate the schema; they do not select an approved
+source or imply format/model eligibility. Resolution pins aliases before payload
+transfer. Repeated file-source provider/repository/requested-revision tuples reuse
+the first exact commit, preventing alias movement between components. Repeated
+release aliases remain Unsupported pending exact multi-asset qualification.
+Only an explicitly declared config/tokenizer supplier relaxes the corresponding
+missing weight-repository sidecar; shard/index/split closure remains strict.
+
+Actual metadata bytes and requests share aggregate budgets across the set, as do
+resolved file counts, payload bytes and plan metadata. The caller's existing
+transfer admission covers resolution and the same A1 executor handles each source.
+Credential clients are bound to explicit labels and provider origins. A final
+component receipt requires every individual publication to be durable and its
+original snapshot descriptors verified. Earlier complete immutable snapshots can
+remain after a later failure; no mutable reference is changed by component pulls.
+
+`--dry-run` resolves metadata only. `--offline` requires an explicit `snapshot`
+selector on every component and verifies the complete local set before any
+credentials/client/provider work. Online plans reject those offline selectors.
+The pure library `open_components` takes no transport. Offline verification cannot
+prove mutable selector freshness, token revocation, model compatibility or licensing.
+
+## Cache-to-model preparation
+
+The independent `cache` feature enables Linux cache loading without enabling
+HTTP, TLS or signal handlers. With CPU/Qwen/text also selected, use:
+
+```text
+zerogravity run-cache MODEL_SNAPSHOT --model-file model.gguf \
+  --config-snapshot CONFIG_SNAPSHOT --config-file config.json \
+  --tokenizer-snapshot TOKENIZER_SNAPSHOT --tokenizer-file tokenizer.json \
+  --prompt "Hello" --max-tokens 2
+```
+
+Selectors are explicit snapshot digests or existing refs. Missing sources refuse;
+run-cache never acquires. Normal paths and cache preparation share `PreparedQwen`,
+the family's geometry/tensor/tokenizer validation and the same CPU inference loop.
+The family constructor accepts bounded config bytes and reuses the existing
+parser; publicly mutable ModelGeometry is never a trusted construction argument.
+A cheap family eligibility check rejects unsupported geometry before copying
+weights, and the constructor still parses those verified config bytes itself.
+The supported executable sources remain original approved Qwen3.5 .8B/2B GGUF;
+new families, shards, formats or GPU eligibility do not follow from this bridge.
+
+`SnapshotLease` supplies the original opened descriptors and original logical
+format names. Positioned reads avoid OS cursor sharing across cloned descriptors.
+The source bridge copies within the existing 4 GiB cap, verifies the SHA256 of that
+actual owned allocation, reparses those same bytes and invokes the sole existing
+SourceIdentity issuer. Config/tokenizer copies are likewise bounded and hashed
+before parsing (1 MiB/64 MiB respectively). Path/ref replacement cannot retarget
+these descriptors. Arbitrary same-UID inode mutation can still occur, so the
+owned-copy digest is mandatory; descriptors alone are not immutable storage.
+
+The caller's existing ResourceArbiter domain admits raw source bytes before
+allocation. Its ImmutableWeights lease stays inside SourceWeights through all
+shared model owners and releases after the actual raw allocation is dropped.
+Sidecar staging admission lasts through copying/hashing/parsing; parsed metadata,
+tokenizer structures, session memory and global host/UMA capacity are outside
+this scoped accounting. The CLI registers one process-shared source domain with
+a 5 GiB default cap, adjustable via `--source-memory-limit-bytes`. Legacy path-open
+accounting keeps its existing boundary. Cache preparation grants a fresh source
+allocation identity, while sessions on one loaded Arc share that immutable source
+and retain independent StateRoots. Numerical acceptance is tracked in TODO.md.
 
 ## References
 

@@ -12,6 +12,8 @@ use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
+#[cfg(unix)]
+use std::os::unix::fs::FileExt;
 use std::path::Path;
 
 const MAX_HEADER: u64 = 64 * 1024 * 1024;
@@ -52,23 +54,129 @@ pub struct Artifact {
     pub info: ArtifactInfo,
 }
 
+// File::try_clone shares an OS cursor. Parse and materialize original opened
+// cache descriptors through a local positioned view, never that shared cursor.
+#[cfg(unix)]
+struct PositionedFile<'a> {
+    file: &'a File,
+    position: u64,
+}
+#[cfg(unix)]
+impl<'a> PositionedFile<'a> {
+    fn new(file: &'a File) -> Self {
+        Self { file, position: 0 }
+    }
+}
+#[cfg(unix)]
+impl Read for PositionedFile<'_> {
+    fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+        let count = self.file.read_at(output, self.position)?;
+        self.position = self
+            .position
+            .checked_add(count as u64)
+            .ok_or_else(|| std::io::Error::other("artifact read position overflow"))?;
+        Ok(count)
+    }
+}
+#[cfg(unix)]
+impl Seek for PositionedFile<'_> {
+    fn seek(&mut self, from: SeekFrom) -> std::io::Result<u64> {
+        self.position = match from {
+            SeekFrom::Start(position) => Some(position),
+            SeekFrom::Current(delta) => self.position.checked_add_signed(delta),
+            SeekFrom::End(delta) => self.file.metadata()?.len().checked_add_signed(delta),
+        }
+        .ok_or_else(|| std::io::Error::other("invalid artifact seek position"))?;
+        Ok(self.position)
+    }
+}
+
+fn read_owned_bytes(reader: &mut impl Read, expected: u64, maximum: u64) -> Result<Vec<u8>> {
+    if expected > maximum {
+        return Err(Error::Limit(
+            "source artifact exceeds CPU byte budget".into(),
+        ));
+    }
+    let mut source = Vec::new();
+    source
+        .try_reserve_exact(
+            usize::try_from(expected)
+                .map_err(|_| Error::Limit("source allocation exceeds address space".into()))?,
+        )
+        .map_err(|_| Error::Limit("source allocation refused".into()))?;
+    source.resize(expected as usize, 0);
+    reader.read_exact(&mut source)?;
+    if reader.read(&mut [0; 1])? != 0 {
+        return Err(Error::Malformed(
+            "source length changed while reading opened artifact".into(),
+        ));
+    }
+    Ok(source)
+}
+
+#[cfg(all(feature = "cache", target_os = "linux"))]
+fn verify_owned_bytes(source: &[u8], expected_sha256: &str) -> Result<()> {
+    use sha2::{Digest, Sha256};
+    if format!("{:x}", Sha256::digest(source)) != expected_sha256 {
+        return Err(Error::Malformed(
+            "owned cache source digest mismatch".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(all(feature = "cache", target_os = "linux"))]
+pub(crate) fn copy_verified_file(
+    file: &File,
+    expected_bytes: u64,
+    expected_sha256: &str,
+    maximum: u64,
+) -> Result<Vec<u8>> {
+    crate::cache::paths::validate_digest(expected_sha256)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() != expected_bytes {
+        return Err(Error::Malformed(
+            "cache source type or length changed".into(),
+        ));
+    }
+    let source = read_owned_bytes(&mut PositionedFile::new(file), expected_bytes, maximum)?;
+    verify_owned_bytes(&source, expected_sha256)?;
+    Ok(source)
+}
+
 impl Artifact {
     pub fn open(path: &Path) -> Result<Self> {
-        let mut file = File::open(path)?;
+        Self::from_file(File::open(path)?, path)
+    }
+
+    /// Inspect this exact opened descriptor using its original logical name
+    /// only as a checked format hint. No pathname is reopened by this method.
+    pub fn from_file(file: File, logical_name: &Path) -> Result<Self> {
+        #[cfg(not(unix))]
+        let mut file = file;
         let len = file.metadata()?.len();
+        if !file.metadata()?.is_file() {
+            return Err(Error::Malformed(
+                "artifact descriptor is not a regular file".into(),
+            ));
+        }
         if len < 8 {
             return Err(Error::Malformed("file too small".into()));
         }
         let mut magic = [0; 4];
-        file.read_exact(&mut magic)?;
-        file.seek(SeekFrom::Start(0))?;
-        let ext = path
+        #[cfg(unix)]
+        let mut reader = PositionedFile::new(&file);
+        #[cfg(not(unix))]
+        let mut reader = &mut file;
+        reader.read_exact(&mut magic)?;
+        reader.seek(SeekFrom::Start(0))?;
+        let ext = logical_name
             .extension()
             .and_then(|e| e.to_str())
             .unwrap_or_default();
         let info = match (ext, magic == *b"GGUF") {
-            ("gguf", true) => parse_gguf(&mut file, len)?,
-            ("safetensors", false) => parse_safetensors(&mut file, len)?,
+            ("gguf", true) => parse_gguf(&mut reader, len)?,
+            ("safetensors", false) => parse_safetensors(&mut reader, len)?,
             ("gguf", false) => return Err(Error::Malformed("GGUF magic mismatch".into())),
             ("safetensors", true) => {
                 return Err(Error::Malformed("safetensors has GGUF magic".into()));
@@ -89,28 +197,39 @@ impl Artifact {
     /// bytes of another artifact. This method does not claim a simultaneous
     /// writer cannot mutate a file *during* the read; callers must provide
     /// immutable source checkpoints.
-    pub fn into_bounded_source(mut self, maximum: u64) -> Result<(ArtifactInfo, Vec<u8>)> {
-        if self.info.file_len > maximum {
-            return Err(Error::Limit(
-                "source artifact exceeds CPU byte budget".into(),
-            ));
+    pub fn into_bounded_source(self, maximum: u64) -> Result<(ArtifactInfo, Vec<u8>)> {
+        #[cfg(unix)]
+        let mut reader = PositionedFile::new(&self.file);
+        #[cfg(not(unix))]
+        let mut file = self.file;
+        #[cfg(not(unix))]
+        let mut reader = {
+            file.seek(SeekFrom::Start(0))?;
+            &mut file
+        };
+        let source = read_owned_bytes(&mut reader, self.info.file_len, maximum)?;
+        Self::reparse_source(self.info.format, source)
+    }
+
+    /// Hash the actual immutable owned allocation, then reparse those exact
+    /// bytes. Cache verification before this copy cannot establish its digest.
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    pub fn into_verified_bounded_source(
+        self,
+        maximum: u64,
+        expected_bytes: u64,
+        expected_sha256: &str,
+    ) -> Result<(ArtifactInfo, Vec<u8>)> {
+        if self.info.file_len != expected_bytes {
+            return Err(Error::Malformed("cache artifact length mismatch".into()));
         }
-        self.file.seek(SeekFrom::Start(0))?;
-        let mut source = Vec::new();
-        (&mut self.file)
-            .take(
-                maximum
-                    .checked_add(1)
-                    .ok_or_else(|| Error::Limit("source byte limit overflow".into()))?,
-            )
-            .read_to_end(&mut source)?;
-        if source.len() as u64 != self.info.file_len {
-            return Err(Error::Malformed(
-                "source length changed while reading opened artifact".into(),
-            ));
-        }
+        let source = copy_verified_file(&self.file, expected_bytes, expected_sha256, maximum)?;
+        Self::reparse_source(self.info.format, source)
+    }
+
+    fn reparse_source(format: ArtifactFormat, source: Vec<u8>) -> Result<(ArtifactInfo, Vec<u8>)> {
         let mut snapshot = Cursor::new(source.as_slice());
-        let info = match self.info.format {
+        let info = match format {
             ArtifactFormat::Gguf => parse_gguf(&mut snapshot, source.len() as u64)?,
             ArtifactFormat::Safetensors => parse_safetensors(&mut snapshot, source.len() as u64)?,
         };
@@ -139,8 +258,12 @@ impl Artifact {
         let n = usize::try_from(tensor.byte_len)
             .map_err(|_| Error::Limit("tensor too large".into()))?;
         let mut bytes = vec![0; n];
-        self.file.seek(SeekFrom::Start(tensor.byte_offset))?;
-        self.file.read_exact(&mut bytes)?;
+        #[cfg(unix)]
+        let mut reader = PositionedFile::new(&self.file);
+        #[cfg(not(unix))]
+        let mut reader = &mut self.file;
+        reader.seek(SeekFrom::Start(tensor.byte_offset))?;
+        reader.read_exact(&mut bytes)?;
         dequantize(tensor.kind, &bytes, count)
     }
 }

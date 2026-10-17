@@ -1,23 +1,47 @@
 //! One immutable original source allocation and bounded cold decoding.
-use crate::artifact::{Artifact, ArtifactFormat, TensorInfo};
+use crate::artifact::{Artifact, ArtifactFormat, ArtifactInfo, TensorInfo};
 use crate::quant::dequantize;
 use crate::{Error, Result};
 use std::{collections::HashMap, path::Path};
 use zerogravity_core::accelerator::{EmbeddingRegion, SourceIdentity};
+use zerogravity_core::resource_arbiter::GlobalResourceLease;
+#[cfg(all(feature = "cache", target_os = "linux"))]
+use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest};
 
 const MAX_CPU_SOURCE: u64 = 4 * 1024 * 1024 * 1024;
 
-#[derive(Debug)]
 pub struct SourceWeights {
     source_identity: SourceIdentity,
     source: Vec<u8>,
     tensors: HashMap<String, TensorInfo>,
     architecture: String,
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    _memory: Option<GlobalResourceLease>,
+}
+
+impl std::fmt::Debug for SourceWeights {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SourceWeights")
+            .field("source_identity", &self.source_identity)
+            .field("source_bytes", &self.source.len())
+            .field("tensors", &self.tensors)
+            .field("architecture", &self.architecture)
+            .finish_non_exhaustive()
+    }
 }
 
 impl SourceWeights {
     pub fn open(path: &Path) -> Result<Self> {
         let parsed = Artifact::open(path)?;
+        Self::validate_artifact(&parsed)?;
+        // Materialize through the SAME opened file descriptor and reparse
+        // tensor metadata from those exact bytes.
+        let (info, source) = parsed.into_bounded_source(MAX_CPU_SOURCE)?;
+        Self::from_owned_source(info, source, None)
+    }
+
+    fn validate_artifact(parsed: &Artifact) -> Result<()> {
         if parsed.info.format != ArtifactFormat::Gguf {
             return Err(Error::Unsupported(
                 "first CPU model runtime requires GGUF v3".into(),
@@ -28,11 +52,41 @@ impl SourceWeights {
                 "CPU source exceeds the 4 GiB initial safety budget".into(),
             ));
         }
-        // Materialize through the SAME opened file descriptor and reparse
-        // tensor metadata from those exact bytes. A replaced pathname (even
-        // when both files have the same length) must never mix metadata from
-        // one checkpoint with another checkpoint's source allocations.
-        let (info, source) = parsed.into_bounded_source(MAX_CPU_SOURCE)?;
+        Ok(())
+    }
+
+    /// The cache digest authenticates the actual immutable owned allocation,
+    /// before the same source issuer used by ordinary open can run. It grants
+    /// neither trained-model eligibility nor a new runtime/source identity.
+    /// The caller's existing resource domain retains exactly the raw source
+    /// byte charge until this source drops; metadata/allocator/host-wide memory
+    /// are outside that scoped reservation.
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    pub fn from_verified_artifact(
+        parsed: Artifact,
+        expected_bytes: u64,
+        expected_sha256: &str,
+        admission: &crate::cache::TransferAdmission,
+    ) -> Result<Self> {
+        Self::validate_artifact(&parsed)?;
+        let memory = admission.arbiter.admit(
+            &admission.resource,
+            admission.owner.clone(),
+            &[AllocationRequest {
+                kind: AllocationClass::ImmutableWeights,
+                bytes: expected_bytes,
+            }],
+        )?;
+        let (info, source) =
+            parsed.into_verified_bounded_source(MAX_CPU_SOURCE, expected_bytes, expected_sha256)?;
+        Self::from_owned_source(info, source, Some(memory))
+    }
+
+    fn from_owned_source(
+        info: ArtifactInfo,
+        source: Vec<u8>,
+        _memory: Option<GlobalResourceLease>,
+    ) -> Result<Self> {
         let tensors = info
             .tensors
             .into_iter()
@@ -43,6 +97,8 @@ impl SourceWeights {
             source,
             tensors,
             architecture: info.architecture.unwrap_or_default(),
+            #[cfg(all(feature = "cache", target_os = "linux"))]
+            _memory,
         })
     }
 

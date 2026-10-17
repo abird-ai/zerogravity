@@ -188,14 +188,14 @@ fn require(
 }
 fn close_model_selection(
     transport: &(impl HttpTransport + ?Sized),
-    source: (&str, &str),
+    source: (&str, &str, super::ExternalSidecars),
     entries: &BTreeMap<String, TreeEntry>,
     selected: &mut BTreeSet<String>,
     limits: &PullLimits,
     remaining: &mut usize,
     cancel: &AtomicBool,
 ) -> Result<()> {
-    let (repository, pin) = source;
+    let (repository, pin, sidecars) = source;
     let initial = selected.clone();
     let mut indexes = BTreeSet::new();
     for path in &initial {
@@ -320,7 +320,10 @@ fn close_model_selection(
             }
         };
         for leaf in ["config.json", "tokenizer.json"] {
-            require(entries, selected, path(leaf))?;
+            let candidate = path(leaf);
+            if entries.contains_key(&candidate) || !sidecars.allows_missing(leaf) {
+                require(entries, selected, candidate)?;
+            }
         }
         for leaf in [
             "tokenizer_config.json",
@@ -375,6 +378,22 @@ pub(super) fn resolve(
     request: &PullRequest,
     limits: &PullLimits,
     cancel: &AtomicBool,
+) -> Result<ResolvedPullPlan> {
+    resolve_component(
+        transport,
+        request,
+        limits,
+        cancel,
+        super::ExternalSidecars::default(),
+    )
+}
+
+pub(super) fn resolve_component(
+    transport: &(impl HttpTransport + ?Sized),
+    request: &PullRequest,
+    limits: &PullLimits,
+    cancel: &AtomicBool,
+    sidecars: super::ExternalSidecars,
 ) -> Result<ResolvedPullPlan> {
     request.validate(limits)?;
     limits.validate()?;
@@ -446,7 +465,7 @@ pub(super) fn resolve(
             }
             close_model_selection(
                 transport,
-                (&request.repository, &commit.sha),
+                (&request.repository, &commit.sha, sidecars),
                 &entries,
                 &mut selected,
                 limits,

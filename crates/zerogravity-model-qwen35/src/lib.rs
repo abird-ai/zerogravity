@@ -385,15 +385,20 @@ impl LoadedQwenModel {
     /// contains NO session-specific state and can be shared across users.
     pub fn open(gguf: &Path, config_json: &Path) -> Result<Arc<Self>> {
         let g = ModelGeometry::from_file(config_json)?;
-        if g.family != Family::QwenHybrid
-            || g.layers.len() != 24
-            || !matches!(g.hidden_size, 1024 | 2048)
-        {
-            return Err(Error::Unsupported(
-                "initial direct runner supports Qwen3.5 0.8B/2B dense text only".into(),
-            ));
-        }
-        let weights = SourceWeights::open(gguf)?;
+        Self::validate_direct_geometry(&g)?;
+        Self::from_checked_source(SourceWeights::open(gguf)?, g)
+    }
+
+    /// Prepare the existing family from one immutable original source owner.
+    /// Source construction/identity remains the artifact owner's authority;
+    /// this performs exactly the same geometry/tensor checks as path opening.
+    pub fn from_source(weights: SourceWeights, config_json: &[u8]) -> Result<Arc<Self>> {
+        let geometry = ModelGeometry::from_json(config_json)?;
+        Self::validate_direct_geometry(&geometry)?;
+        Self::from_checked_source(weights, geometry)
+    }
+
+    fn from_checked_source(weights: SourceWeights, g: ModelGeometry) -> Result<Arc<Self>> {
         if weights.architecture() != "qwen35" {
             return Err(Error::Unsupported(
                 "Qwen runner needs qwen35 GGUF tensors".into(),
@@ -579,6 +584,22 @@ impl LoadedQwenModel {
                 }
                 _ => return Err(Error::State(format!("invalid state layer type {i}"))),
             }
+        }
+        Ok(())
+    }
+
+    /// Cheap direct-runner geometry admission, before allocating original
+    /// source bytes. This is a subset eligibility check on parsed geometry,
+    /// not full config validation. from_source always reparses bounded config
+    /// bytes before tensor/source checks; mutable geometry is never trusted.
+    pub fn validate_direct_geometry(g: &ModelGeometry) -> Result<()> {
+        if g.family != Family::QwenHybrid
+            || g.layers.len() != 24
+            || !matches!(g.hidden_size, 1024 | 2048)
+        {
+            return Err(Error::Unsupported(
+                "initial direct runner supports Qwen3.5 0.8B/2B dense text only".into(),
+            ));
         }
         Ok(())
     }

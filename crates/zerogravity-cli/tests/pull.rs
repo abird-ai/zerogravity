@@ -328,4 +328,116 @@ mod enabled {
             assert!(!stderr.contains("HTTP"), "{stderr}");
         }
     }
+    #[test]
+    fn explicit_component_plans_are_offline_bounded_and_source_checked() {
+        let fixture = Fixture::new();
+        let store = fixture.store();
+        let arbiter = ResourceArbiter::new();
+        let resource = PhysicalDeviceKey::new("test-host", "components-cli").unwrap();
+        arbiter
+            .register(resource.clone(), 128 * 1024 * 1024)
+            .unwrap();
+        let admission = TransferAdmission {
+            arbiter,
+            resource,
+            owner: ResourceOwner::new("fixture", "components").unwrap(),
+        };
+        let mut components = Vec::new();
+        for (label, role_name, role, provider, repo, path) in [
+            (
+                "weights",
+                "weights",
+                FileRole::Weights,
+                "github",
+                "converted/model",
+                "model.gguf",
+            ),
+            (
+                "config",
+                "config",
+                FileRole::Config,
+                "huggingface",
+                "official/model",
+                "config.json",
+            ),
+            (
+                "tokenizer",
+                "tokenizer",
+                FileRole::Tokenizer,
+                "huggingface",
+                "official/model",
+                "tokenizer.json",
+            ),
+        ] {
+            let manifest = Manifest::new(
+                ManifestSource::new(provider, repo, COMMIT).unwrap(),
+                vec![
+                    ManifestEntry::new(
+                        path,
+                        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+                        3,
+                        role,
+                    )
+                    .unwrap(),
+                ],
+                &CacheLimits::default(),
+            )
+            .unwrap();
+            let digest = manifest.digest().unwrap();
+            let mut tx = store
+                .begin(manifest, &admission, Arc::new(AtomicBool::new(false)))
+                .unwrap();
+            tx.import_object(path, &mut Cursor::new(b"abc")).unwrap();
+            tx.commit(None).unwrap();
+            components.push(serde_json::json!({"label":label,"role":role_name,"provider":provider,"repository":repo,"revision":COMMIT,"files":[path],"snapshot":digest}));
+        }
+        // Plan input is not cache-owned data. Keep it outside the capability root.
+        let plan_path = fixture
+            .0
+            .with_extension("plan.json")
+            .with_file_name(format!("zg-components-input-{}.json", std::process::id()));
+        assert!(!plan_path.exists());
+        let write = |value: &serde_json::Value| {
+            std::fs::write(&plan_path, serde_json::to_vec(value).unwrap()).unwrap()
+        };
+        let mut plan =
+            serde_json::json!({"schema":"zerogravity.pull.components.v1","components":components});
+        write(&plan);
+        let invoke = || {
+            fixture
+                .command()
+                .args(["pull", "components"])
+                .arg(&plan_path)
+                .args(["--offline", "--cache"])
+                .arg(&fixture.0)
+                .output()
+                .unwrap()
+        };
+        let result = invoke();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&result.stdout)
+                .matches("Snapshot:")
+                .count(),
+            3
+        );
+        plan["components"][1]["snapshot"] = plan["components"][2]["snapshot"].clone();
+        write(&plan);
+        let result = invoke();
+        assert_eq!(result.status.code(), Some(2));
+        assert!(!String::from_utf8_lossy(&result.stderr).contains("credential"));
+        std::fs::write(
+            &plan_path,
+            br#"{"schema":"x","schema":"x","token":"DO_NOT_PRINT","components":[]}"#,
+        )
+        .unwrap();
+        let result = invoke();
+        assert_eq!(result.status.code(), Some(2));
+        assert!(!String::from_utf8_lossy(&result.stderr).contains("DO_NOT_PRINT"));
+        std::fs::remove_file(plan_path).unwrap();
+    }
 }

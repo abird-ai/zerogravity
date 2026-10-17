@@ -20,6 +20,21 @@ impl QwenTokenizer {
         }
         let inner = Tokenizer::from_file(path)
             .map_err(|e| Error::Malformed(format!("tokenizer.json: {e}")))?;
+        Self::from_tokenizer(inner)
+    }
+
+    /// Parse the actual bounded owned bytes verified by a caller, sharing the
+    /// ordinary tokenizer's special-token checks and tokenization behavior.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        if bytes.len() > 64 * 1024 * 1024 {
+            return Err(Error::Limit("tokenizer.json exceeds 64 MiB".into()));
+        }
+        let inner = Tokenizer::from_bytes(bytes)
+            .map_err(|e| Error::Malformed(format!("tokenizer.json: {e}")))?;
+        Self::from_tokenizer(inner)
+    }
+
+    fn from_tokenizer(inner: Tokenizer) -> Result<Self> {
         let begin = inner
             .token_to_id("<|im_start|>")
             .ok_or_else(|| Error::Malformed("Qwen tokenizer missing im_start".into()))?;

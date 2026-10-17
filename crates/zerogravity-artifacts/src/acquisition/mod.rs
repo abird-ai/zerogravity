@@ -1,6 +1,7 @@
 //! Explicit, bounded acquisition into the existing cache. Acquired bytes do not
 //! establish executable model support, SourceIdentity or device readiness.
 
+pub mod components;
 mod executor;
 pub mod github;
 pub mod http;
@@ -11,6 +12,12 @@ pub use crate::cache::manifest::DigestProvenance;
 use crate::cache::paths::{validate_digest, validate_relative_path};
 use crate::cache::{CacheLimits, FileRole, ManifestSource, TransferAdmission};
 use crate::{Error, Result};
+pub use components::{
+    ComponentKind, ComponentPullRequest, ComponentReceipt, ComponentRequest, ComponentTransport,
+    ResolvedComponent, ResolvedComponentPlan, VerifiedComponent, VerifiedComponentSet,
+    execute_components, execute_components_with_progress, open_components, resolve_components,
+    validate_cached_selection,
+};
 pub use executor::{AcquiredFile, PullProgress, PullReceipt, execute, execute_with_progress};
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -294,5 +301,22 @@ pub fn resolve(
     match request.provider {
         Provider::HuggingFace => huggingface::resolve(transport, request, limits, cancel),
         Provider::GitHub => github::resolve(transport, request, limits, cancel),
+    }
+}
+
+/// An explicit component set can supply only these otherwise required sidecars
+/// from a separately pinned source. Ordinary resolve always uses strict defaults.
+#[derive(Clone, Copy, Default)]
+pub(super) struct ExternalSidecars {
+    config: bool,
+    tokenizer: bool,
+}
+impl ExternalSidecars {
+    fn allows_missing(self, name: &str) -> bool {
+        match name {
+            "config.json" => self.config,
+            "tokenizer.json" => self.tokenizer,
+            _ => false,
+        }
     }
 }

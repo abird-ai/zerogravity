@@ -2,6 +2,8 @@
 use std::path::PathBuf;
 use std::sync::{Arc, atomic::AtomicBool};
 
+#[path = "pull_components.rs"]
+mod components;
 #[path = "pull_signals.rs"]
 mod signals;
 use zerogravity::acquisition::http::{HttpOptions, HttpsClient};
@@ -22,6 +24,7 @@ enum Action {
     Inspect(String),
     Verify(String),
     Fetch(PullRequest),
+    Components(String),
 }
 #[derive(Debug)]
 struct Options {
@@ -73,7 +76,7 @@ fn parse(args: &[String]) -> Result<Options> {
     let provider = match first.as_str() {
         "hf" => Some(Provider::HuggingFace),
         "github" => Some(Provider::GitHub),
-        "list" | "inspect" | "verify" => None,
+        "list" | "inspect" | "verify" | "components" => None,
         _ => return Err(invalid()),
     };
     let positional = if first == "list" {
@@ -206,12 +209,13 @@ fn parse(args: &[String]) -> Result<Options> {
             || subfolder.is_some()
             || !files.is_empty()
             || result.reference.is_some()
-            || result.dry_run
+            || result.dry_run && first != "components"
         {
             return Err(invalid());
         }
         result.action = match first.as_str() {
             "list" => Action::List,
+            "components" => Action::Components(positional.ok_or_else(invalid)?),
             "inspect" => Action::Inspect(positional.ok_or_else(invalid)?),
             "verify" => Action::Verify(positional.ok_or_else(invalid)?),
             _ => unreachable!(),
@@ -259,81 +263,6 @@ fn describe(lease: &SnapshotLease) -> Result<()> {
     use std::io::Write;
     std::io::stdout().write_all(&lease.manifest().canonical_bytes()?)?;
     eprintln!("Verified cached data; no model execution support or remote freshness inferred.");
-    Ok(())
-}
-fn validate_cached(lease: &SnapshotLease, request: &PullRequest) -> Result<()> {
-    let source = lease.manifest().source();
-    if source.provider() != request.provider.label() || source.repository() != request.repository {
-        return Err(Error::Malformed(
-            "cached reference has a different provider/repository".into(),
-        ));
-    }
-    let locator_ok = match &request.selection {
-        Selection::Files { .. } => {
-            source.revision().len() == 40
-                && source
-                    .revision()
-                    .bytes()
-                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-        }
-        Selection::ReleaseAsset { .. } => source
-            .revision()
-            .strip_prefix("release-")
-            .and_then(|rest| rest.split_once("-asset-"))
-            .is_some_and(|(release, asset)| {
-                [release, asset].iter().all(|part| {
-                    part.parse::<u64>()
-                        .ok()
-                        .is_some_and(|n| n > 0 && n.to_string() == *part)
-                })
-            }),
-    };
-    if !locator_ok {
-        return Err(Error::Malformed(
-            "cached reference has a different or unpinned locator kind".into(),
-        ));
-    }
-    if matches!(request.selection, Selection::Files { .. })
-        && request.revision.len() == 40
-        && request.revision.bytes().all(|b| b.is_ascii_hexdigit())
-        && !source.revision().eq_ignore_ascii_case(&request.revision)
-    {
-        return Err(Error::Malformed(
-            "cached reference has a different pinned revision".into(),
-        ));
-    }
-    let paths: Vec<String> = match &request.selection {
-        Selection::Files { paths, subfolder } if request.provider == Provider::HuggingFace => {
-            let available: Vec<_> = lease
-                .manifest()
-                .entries()
-                .iter()
-                .map(|entry| entry.path())
-                .collect();
-            acquisition::huggingface::select_paths(paths, subfolder.as_deref(), &available)?
-                .into_iter()
-                .collect()
-        }
-        Selection::Files { paths, subfolder } => paths
-            .iter()
-            .map(|path| match subfolder {
-                Some(folder) => format!("{folder}/{path}"),
-                None => path.clone(),
-            })
-            .collect(),
-        Selection::ReleaseAsset { name } => vec![name.clone()],
-    };
-    if paths.iter().any(|path| {
-        !lease
-            .manifest()
-            .entries()
-            .iter()
-            .any(|entry| entry.path() == path)
-    }) {
-        return Err(Error::Unsupported(
-            "cached snapshot lacks required selected files".into(),
-        ));
-    }
     Ok(())
 }
 fn admission(memory: u64) -> Result<TransferAdmission> {
@@ -399,6 +328,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             Ok(())
         }
         Action::Inspect(name) | Action::Verify(name) => describe(&cached(&open(&options)?, name)?),
+        Action::Components(path) => components::run(path, &options),
         Action::Fetch(request) => {
             let reference = options.reference.clone().unwrap_or_else(|| {
                 format!(
@@ -412,7 +342,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             // transfer-admission construction. Local validation is still real.
             if options.offline {
                 let lease = cached(&open(&options)?, &reference)?;
-                validate_cached(&lease, request)?;
+                acquisition::validate_cached_selection(&lease, request)?;
                 return describe(&lease);
             }
             let (origin, token) = match request.provider {
@@ -487,6 +417,7 @@ fn help() {
     zerogravity pull hf REPO --revision REV --file PATH [--file PATH ...]
     zerogravity pull github OWNER/REPO --revision REV --file PATH
     zerogravity pull github OWNER/REPO --release TAG --asset NAME
+    zerogravity pull components PLAN.json [--dry-run | --offline]
     zerogravity pull list
     zerogravity pull inspect DIGEST_OR_REF
     zerogravity pull verify DIGEST_OR_REF
@@ -504,6 +435,13 @@ OPTIONS:
     --max-file-bytes N --max-snapshot-bytes N --max-files N
     --max-metadata-bytes N --max-pages N
     --timeout-seconds N        Per HTTP operation total deadline (1..86400, default120)
+
+Component PLAN.json: schema=zerogravity.pull.components.v1, components array
+(up to16) of label, role(weights/config/tokenizer/auxiliary), provider
+(huggingface/github), repository and revision/files (optional subfolder), or
+release/asset. Offline additionally requires snapshot per component. No tokens
+or URLs in plans. Original component snapshots remain independent; no atomic
+cross-source ref/model-readiness claim.
 
 Credentials: HF_TOKEN or GITHUB_TOKEN environment only; no token command-line option.
 HF --file supports bounded component-local * and ? filters, including offline.

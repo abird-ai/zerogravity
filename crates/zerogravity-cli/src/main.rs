@@ -14,10 +14,7 @@ use zerogravity::artifact::{Artifact, ArtifactFormat};
 use zerogravity::math::top_logit_ranks;
 use zerogravity::model::{Family, LayerKind, ModelGeometry};
 #[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
-use zerogravity::qwen35::QwenDenseCpu;
-#[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
-use zerogravity::tokenize::QwenTokenizer;
-
+use zerogravity::prepare::PreparedQwen;
 #[cfg(all(
     feature = "model-qwen35",
     feature = "text",
@@ -27,6 +24,15 @@ mod gpu;
 
 #[cfg(all(feature = "acquisition", target_os = "linux"))]
 mod pull;
+
+#[cfg(all(
+    feature = "cache",
+    feature = "cpu",
+    feature = "model-qwen35",
+    feature = "text",
+    target_os = "linux"
+))]
+mod cache_run;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum GpuBackend {
@@ -122,6 +128,7 @@ enum Command {
         args: Vec<String>,
     },
     Pull(Vec<String>),
+    CacheRun(Vec<String>),
     NotImplemented(String),
     Invalid(String),
     Unknown(String),
@@ -253,6 +260,7 @@ where
                     }
                 }
                 "pull" => Command::Pull(args.map(|arg| arg.as_ref().to_owned()).collect()),
+                "run-cache" => Command::CacheRun(args.map(|arg| arg.as_ref().to_owned()).collect()),
                 "serve" | "models" | "config" => Command::NotImplemented(first.as_ref().to_owned()),
                 other => Command::Unknown(other.to_owned()),
             }
@@ -269,7 +277,8 @@ fn usage() {
         feature = "vulkan",
         feature = "cuda",
         feature = "hip",
-        feature = "acquisition"
+        feature = "acquisition",
+        feature = "cache"
     )) {
         composed_usage();
         return;
@@ -337,6 +346,15 @@ fn composed_usage() {
         println!(
             "    zerogravity pull --help  (explicit data acquisition and offline cache inspection)"
         );
+    }
+    if cfg!(all(
+        feature = "cache",
+        feature = "cpu",
+        feature = "model-qwen35",
+        feature = "text",
+        target_os = "linux"
+    )) {
+        println!("    zerogravity run-cache --help  (explicit offline verified cache model)");
     }
     println!("\nCOMPILED CAPABILITIES:");
     println!("    source inspection: enabled");
@@ -466,32 +484,39 @@ struct InferenceOptions {
 
 #[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
 fn infer(model: &str, options: InferenceOptions) -> Result<()> {
+    let path = Path::new(model);
+    let root = path.parent().unwrap_or_else(|| Path::new("."));
+    let default_config = root.join("config.json");
+    let default_tokenizer = root.join("tokenizer.json");
+    let config = options
+        .config
+        .as_deref()
+        .map(Path::new)
+        .unwrap_or(&default_config);
+    let tokenizer = options
+        .tokenizer
+        .as_deref()
+        .map(Path::new)
+        .unwrap_or(&default_tokenizer);
+    let prepared = PreparedQwen::from_paths(path, config, tokenizer)?;
+    infer_prepared(model, prepared, options)
+}
+
+#[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
+fn infer_prepared(model: &str, prepared: PreparedQwen, options: InferenceOptions) -> Result<()> {
     let InferenceOptions {
         prompt,
         max_tokens,
         raw,
-        config,
-        tokenizer,
+        config: _,
+        tokenizer: _,
         audit_jsonl,
         audit_layers_jsonl,
         teacher_ids,
         prefill_chunk,
     } = options;
-    let path = Path::new(model);
-    let root = path.parent().unwrap_or_else(|| Path::new("."));
-    // Avoid borrowing a temporary PathBuf for default config/tokenizer.
-    let default_config = root.join("config.json");
-    let default_tokenizer = root.join("tokenizer.json");
-    let cfg = config
-        .as_ref()
-        .map(Path::new)
-        .unwrap_or(default_config.as_path());
-    let tok_path = tokenizer
-        .as_ref()
-        .map(Path::new)
-        .unwrap_or(default_tokenizer.as_path());
-    let tokenizer = QwenTokenizer::from_file(tok_path)?;
-    let mut engine = QwenDenseCpu::open(path, cfg)?;
+    let (model_source, tokenizer) = prepared.into_parts();
+    let mut engine = model_source.new_session()?;
     let prompt = match prompt {
         Some(p) => p,
         None => {
@@ -634,7 +659,7 @@ fn infer(model: &str, options: InferenceOptions) -> Result<()> {
 }
 
 #[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
-fn execute_cpu(command: Command) -> Result<()> {
+fn cpu_options(command: Command) -> (String, InferenceOptions) {
     let Command::Run {
         model,
         prompt,
@@ -650,8 +675,8 @@ fn execute_cpu(command: Command) -> Result<()> {
     else {
         unreachable!("only CPU run reaches the CPU bridge")
     };
-    infer(
-        &model,
+    (
+        model,
         InferenceOptions {
             prompt,
             max_tokens,
@@ -664,6 +689,36 @@ fn execute_cpu(command: Command) -> Result<()> {
             prefill_chunk,
         },
     )
+}
+
+#[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
+fn execute_cpu(command: Command) -> Result<()> {
+    let (model, options) = cpu_options(command);
+    infer(&model, options)
+}
+
+#[cfg(all(
+    feature = "cache",
+    feature = "cpu",
+    feature = "model-qwen35",
+    feature = "text",
+    target_os = "linux"
+))]
+fn execute_cache(args: Vec<String>) -> Result<()> {
+    cache_run::run(args)
+}
+
+#[cfg(not(all(
+    feature = "cache",
+    feature = "cpu",
+    feature = "model-qwen35",
+    feature = "text",
+    target_os = "linux"
+)))]
+fn execute_cache(_: Vec<String>) -> Result<()> {
+    Err(zerogravity::Error::Unsupported(
+        "run-cache requires Linux and compiled cache, cpu, model-qwen35 and text features".into(),
+    ))
 }
 
 #[cfg(not(all(feature = "cpu", feature = "model-qwen35", feature = "text")))]
@@ -704,6 +759,13 @@ fn run(command: Command) -> ExitCode {
             println!("zerogravity v{VERSION}");
             ExitCode::SUCCESS
         }
+        Command::CacheRun(args) => match execute_cache(args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("zerogravity: {error}");
+                ExitCode::from(2)
+            }
+        },
         command @ Command::Run { .. } => match execute_cpu(command) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {

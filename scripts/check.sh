@@ -28,16 +28,17 @@ names = {p["id"]: p["name"] for p in metadata["packages"]}
 expected = {"zerogravity-core", "zerogravity-artifacts", "zerogravity-cpu", "zerogravity-model-qwen35", "zerogravity-model-gemma4", "zerogravity", "zerogravity-cli", "zerogravity-gpu", "zerogravity-gpu-qualify"}
 assert {names[m] for m in metadata["workspace_members"]} == expected
 assert {names[m] for m in metadata["workspace_default_members"]} == {"zerogravity", "zerogravity-cli"}
-tree = subprocess.check_output([
-    "cargo", "tree", "--locked", "--offline", "-p", "zerogravity-cli", "--no-default-features",
-    "--features", "cpu,model-qwen35,text", "--edges", "normal,build", "--prefix", "none", "--format", "{p}"
-], text=True)
-for line in tree.splitlines():
-    name = line.split()[0]
-    assert not name.startswith(("cubecl", "tracel-llvm")) and name not in {
-        "zerogravity-gpu", "ureq", "ureq-proto", "rustls", "url",
-        "signal-hook", "signal-hook-registry"
-    }, line
+for selected in ["cpu,model-qwen35,text", "cpu,model-qwen35,text,cache"]:
+    tree = subprocess.check_output([
+        "cargo", "tree", "--locked", "--offline", "-p", "zerogravity-cli", "--no-default-features",
+        "--features", selected, "--edges", "normal,build", "--prefix", "none", "--format", "{p}"
+    ], text=True)
+    for line in tree.splitlines():
+        name = line.split()[0]
+        assert not name.startswith(("cubecl", "tracel-llvm")) and name not in {
+            "zerogravity-gpu", "ureq", "ureq-proto", "rustls", "url",
+            "signal-hook", "signal-hook-registry"
+        }, (selected, line)
 PYWORKSPACE
 
 echo "Checking CPU clippy (including explicit CPU diagnostics)..."
@@ -60,6 +61,11 @@ cargo clippy --locked --offline -p zerogravity-artifacts --no-default-features -
 cargo test --locked --offline -p zerogravity-artifacts --no-default-features --features cache,diagnostic-cache --all-targets
 
 if [[ "$(uname -s)" == Linux ]]; then
+  echo "Checking explicit HTTP-free cache loading and shared CPU preparation..."
+  cargo clippy --locked --offline -p zerogravity-cli --no-default-features --features cache --all-targets -- -D warnings
+  cargo test --locked --offline -p zerogravity-cli --no-default-features --features cache --all-targets
+  cargo clippy --locked --offline -p zerogravity -p zerogravity-cli --features zerogravity-cli/cache --all-targets -- -D warnings
+  cargo test --locked --offline -p zerogravity -p zerogravity-cli --features zerogravity-cli/cache --all-targets
   echo "Checking optional acquisition with isolated loopback fixtures..."
   # native-gpu.py creates a private network namespace with lo down. Enable
   # only that namespace's loopback; never change a host interface or route.

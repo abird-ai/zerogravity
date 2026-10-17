@@ -26,6 +26,9 @@ pub use zerogravity_model_qwen35::model_catalog;
 #[cfg(feature = "text")]
 pub use zerogravity_model_qwen35::tokenize;
 
+#[cfg(all(feature = "model-qwen35", feature = "text"))]
+pub mod prepare;
+
 #[cfg(test)]
 mod tests {
     #[test]

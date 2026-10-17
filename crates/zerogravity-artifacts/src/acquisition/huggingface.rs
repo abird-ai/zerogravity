@@ -2,7 +2,9 @@
 //! the same immutable commit. Configuration never authorizes another repo.
 
 use super::http::{HttpAccept, HttpRequest, HttpTransport, check_cancel};
-use super::{Provider, PullLimits, PullRequest, ResolvedFile, ResolvedPullPlan, Selection};
+use super::{
+    ExternalSidecars, Provider, PullLimits, PullRequest, ResolvedFile, ResolvedPullPlan, Selection,
+};
 use crate::cache::paths::validate_relative_path;
 use crate::cache::{FileRole, ManifestSource};
 use crate::sharded::SafetensorsIndex;
@@ -43,6 +45,24 @@ pub(super) fn resolve(
         limits,
         cancel,
         "https://huggingface.co/",
+        ExternalSidecars::default(),
+    )
+}
+
+pub(super) fn resolve_component(
+    transport: &impl HttpTransport,
+    request: &PullRequest,
+    limits: &PullLimits,
+    cancel: &AtomicBool,
+    sidecars: ExternalSidecars,
+) -> Result<ResolvedPullPlan> {
+    resolve_from(
+        transport,
+        request,
+        limits,
+        cancel,
+        "https://huggingface.co/",
+        sidecars,
     )
 }
 
@@ -64,7 +84,14 @@ pub fn diagnostic_resolve(
             "HF fixture endpoint requires literal loopback".into(),
         ));
     }
-    resolve_from(transport, request, limits, cancel, endpoint.as_str())
+    resolve_from(
+        transport,
+        request,
+        limits,
+        cancel,
+        endpoint.as_str(),
+        ExternalSidecars::default(),
+    )
 }
 
 fn resolve_from(
@@ -73,6 +100,7 @@ fn resolve_from(
     limits: &PullLimits,
     cancel: &AtomicBool,
     endpoint: &str,
+    sidecars: ExternalSidecars,
 ) -> Result<ResolvedPullPlan> {
     request.validate(limits)?;
     if request.provider != Provider::HuggingFace {
@@ -280,7 +308,9 @@ fn resolve_from(
                 .as_ref()
                 .map(|f| format!("{f}/{required}"))
                 .unwrap_or_else(|| required.to_string());
-            require(&entries, &mut selected, path)?;
+            if entries.contains_key(&path) || !sidecars.allows_missing(required) {
+                require(&entries, &mut selected, path)?;
+            }
         }
         for optional in [
             "tokenizer_config.json",
