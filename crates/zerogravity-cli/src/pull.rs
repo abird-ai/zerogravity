@@ -609,6 +609,13 @@ fn run_fetch(
     let admission = admission(options.memory)?;
     let cancel = Arc::new(AtomicBool::new(false));
     let _signals = signals::CancellationSignals::register(cancel.clone())?;
+    // Metadata-only Xet dry-run retains the default no-CAS-grant boundary.
+    // Explicit APPLY permits required native LFS index reconstruction through
+    // the same original Xet owner, not a separate CLI mode/downloader.
+    let native_apply = native
+        .filter(|_| !options.dry_run)
+        .map(|option| option.clone().with_index_reconstruction());
+    let native = native_apply.as_ref().or(native);
     let plan = match (request, native) {
         (FetchRequest::Files(request), Some(native)) => acquisition::xet::resolve(
             &client,

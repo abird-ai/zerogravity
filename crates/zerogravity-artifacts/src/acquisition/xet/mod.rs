@@ -15,6 +15,9 @@ use super::http::{HttpRequest, HttpResponse, HttpTarget, HttpTransport, XetHubMo
 use super::{Provider, PullLimits, PullRequest, ResolvedPullPlan};
 use crate::cache::{Manifest, SnapshotLease, TransferAdmission};
 use crate::{Error, Result};
+use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
+use std::io::Read;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, GlobalResourceLease};
@@ -53,7 +56,9 @@ impl<T: HttpTransport + ?Sized> HttpTransport for Hub<'_, T> {
 }
 
 /// Resolve one explicit native HF request. Metadata and discovery use the same
-/// bounded HTTP owner; this never acquires CAS grants or signed payload bodies.
+/// bounded HTTP owner. Default options never acquire CAS grants or signed
+/// bodies during resolution. Explicit with_index_reconstruction permits only
+/// required bounded index metadata through the same native reader.
 pub fn resolve(
     transport: &impl HttpTransport,
     request: &PullRequest,
@@ -173,29 +178,56 @@ fn resolve_choice(
         transport,
         budget: budget.clone(),
     };
-    let mut plan = match choice {
-        NativeChoice::Files(request) => super::huggingface::resolve_from(
-            &hub,
-            request,
-            limits,
+    let (mut plan, mut indexed) = {
+        let source = match choice {
+            NativeChoice::Files(request) => {
+                let super::Selection::Files { paths, subfolder } = &request.selection else {
+                    return Err(Error::Unsupported(
+                        "HF release assets are not supported".into(),
+                    ));
+                };
+                (
+                    &*request.repository,
+                    &*request.revision,
+                    super::quant::InitialChoice::Files {
+                        paths,
+                        subfolder: subfolder.as_deref(),
+                    },
+                )
+            }
+            NativeChoice::Quant(request) => (
+                request.source().repository(),
+                request.source().revision(),
+                super::quant::InitialChoice::Quant(request),
+            ),
+            NativeChoice::Filtered(request) => (
+                request.source().repository(),
+                request.source().revision(),
+                super::quant::InitialChoice::Filtered(request),
+            ),
+        };
+        let mut indexes = IndexReconstruction {
+            transport,
+            options,
+            budget: budget.clone(),
+            metadata: limits.max_metadata_bytes,
+            admission,
             cancel,
-            &format!("{}/", options.endpoints.hub),
-            super::ExternalSidecars::default(),
-        )?,
-        NativeChoice::Quant(request) => super::huggingface::resolve_quant_from(
-            &hub,
-            request,
-            limits,
-            cancel,
-            &format!("{}/", options.endpoints.hub),
-        )?,
-        NativeChoice::Filtered(request) => super::huggingface::resolve_filtered_from(
-            &hub,
-            request,
-            limits,
-            cancel,
-            &format!("{}/", options.endpoints.hub),
-        )?,
+            invocation: None,
+            specs: BTreeMap::new(),
+        };
+        let plan = {
+            super::huggingface::resolve_choice(
+                &hub,
+                source,
+                limits,
+                cancel,
+                &format!("{}/", options.endpoints.hub),
+                super::ExternalSidecars::default(),
+                Some(&mut indexes),
+            )?
+        };
+        (plan, indexes.specs)
     };
     let mut native = 0usize;
     for file in &mut plan.files {
@@ -209,47 +241,27 @@ fn resolve_choice(
                 ));
             }
         }
-        let expected = file
-            .bytes()
-            .ok_or_else(|| Error::Unsupported("native Xet requires exact file size".into()))?;
-        let request = HttpRequest::new(file.url(), limits.max_metadata_bytes as u64);
-        let target = HttpTarget::xet_hub(&request.url, budget.clone(), XetHubMode::Discovery)?;
-        let response = transport.get_target(&request, &target, cancel)?;
-        if response.status != 302 {
-            return Err(Error::Unsupported(
-                "pinned HF file did not announce native Xet".into(),
-            ));
+        if let Some(spec) = indexed.remove(file.path()) {
+            file.xet = Some(spec);
+        } else {
+            let expected = file
+                .bytes()
+                .ok_or_else(|| Error::Unsupported("native Xet requires exact file size".into()))?;
+            file.xet = Some(discover(
+                transport,
+                Discovery {
+                    repository: plan.source.repository(),
+                    commit: plan.source.revision(),
+                    url: file.url(),
+                    bytes: expected,
+                    sha256: file.sha256(),
+                    validator: None,
+                },
+                budget.clone(),
+                limits.max_metadata_bytes,
+                cancel,
+            )?);
         }
-        if response
-            .header("x-repo-commit")
-            .is_some_and(|value| value != plan.source.revision())
-            || response
-                .header("x-linked-size")
-                .map(super::http::parse_u64)
-                .transpose()?
-                .is_some_and(|value| value != expected)
-            || response.header("x-linked-etag").is_some_and(|value| {
-                let value = value
-                    .strip_prefix('"')
-                    .and_then(|v| v.strip_suffix('"'))
-                    .unwrap_or(value);
-                file.sha256() != Some(value)
-            })
-        {
-            return Err(Error::State(
-                "native Xet discovery contradicts the pinned source".into(),
-            ));
-        }
-        let file_id = hash::XetHash::from_text(
-            response
-                .header("x-xet-hash")
-                .ok_or_else(|| Error::Malformed("native Xet file identity is absent".into()))?,
-        )?;
-        file.xet = Some(XetSpec {
-            file_id,
-            repository: plan.source.repository().to_string(),
-            commit: plan.source.revision().to_string(),
-        });
         native += 1;
     }
     if native == 0 {
@@ -260,10 +272,173 @@ fn resolve_choice(
     let mut result = ResolvedPullPlan::new(plan.source, plan.files, limits)?;
     result.xet = Some(PlanState {
         options: options.clone(),
-        seed: budget.seed(),
+        seed: budget.seed()?,
     });
     check_cancel(cancel)?;
     Ok(result)
+}
+
+struct Discovery<'a> {
+    repository: &'a str,
+    commit: &'a str,
+    url: &'a str,
+    bytes: u64,
+    sha256: Option<&'a str>,
+    validator: Option<&'a str>,
+}
+fn discover(
+    transport: &dyn HttpTransport,
+    contract: Discovery<'_>,
+    budget: Arc<budget::Budget>,
+    metadata: usize,
+    cancel: &AtomicBool,
+) -> Result<XetSpec> {
+    check_cancel(cancel)?;
+    let request = HttpRequest::new(contract.url, metadata as u64);
+    let target = HttpTarget::xet_hub(&request.url, budget, XetHubMode::Discovery)?;
+    let response = transport.get_target(&request, &target, cancel)?;
+    check_cancel(cancel)?;
+    if response.status != 302 {
+        return Err(Error::Unsupported(
+            "pinned HF file did not announce native Xet".into(),
+        ));
+    }
+    super::http::validate_validator(contract.validator, &response)?;
+    if response
+        .header("x-repo-commit")
+        .is_some_and(|value| value != contract.commit)
+        || response
+            .header("x-linked-size")
+            .map(super::http::parse_u64)
+            .transpose()?
+            .is_some_and(|value| value != contract.bytes)
+        || response.header("x-linked-etag").is_some_and(|value| {
+            let value = value
+                .strip_prefix('"')
+                .and_then(|v| v.strip_suffix('"'))
+                .unwrap_or(value);
+            contract.sha256 != Some(value)
+        })
+    {
+        return Err(Error::State(
+            "native Xet discovery contradicts the pinned source".into(),
+        ));
+    }
+    let file_id = hash::XetHash::from_text(
+        response
+            .header("x-xet-hash")
+            .ok_or_else(|| Error::Malformed("native Xet file identity is absent".into()))?,
+    )?;
+    Ok(XetSpec {
+        file_id,
+        repository: contract.repository.to_owned(),
+        commit: contract.commit.to_owned(),
+    })
+}
+/// Only one sequential, already admitted native reader; the bounded Vec is
+/// covered by the outer HF resolution control envelope. No staged body cache.
+struct IndexReconstruction<'a> {
+    transport: &'a dyn HttpTransport,
+    options: &'a XetOptions,
+    budget: Arc<budget::Budget>,
+    metadata: usize,
+    admission: &'a TransferAdmission,
+    cancel: &'a AtomicBool,
+    invocation: Option<Invocation>,
+    specs: BTreeMap<String, XetSpec>,
+}
+impl IndexReconstruction<'_> {
+    fn read(&mut self, index: super::huggingface::PinnedIndex<'_>) -> Result<Vec<u8>> {
+        check_cancel(self.cancel)?;
+        if !self.options.index_reconstruction {
+            return Err(Error::Unsupported("required native Xet index reconstruction needs explicit opt-in; metadata-only resolution never acquires CAS grants".into()));
+        }
+        if index.sha256.len() != 64 || !index.sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(Error::Malformed(
+                "native Xet index requires pinned raw SHA256".into(),
+            ));
+        }
+        let length = usize::try_from(index.bytes)
+            .ok()
+            .filter(|n| *n <= self.metadata && *n <= 8 * 1024 * 1024)
+            .ok_or_else(|| Error::Limit("native Xet index metadata length".into()))?;
+        let spec = discover(
+            self.transport,
+            Discovery {
+                repository: index.repository,
+                commit: index.commit,
+                url: index.url,
+                bytes: index.bytes,
+                sha256: Some(index.sha256),
+                validator: index.validator,
+            },
+            self.budget.clone(),
+            self.metadata,
+            self.cancel,
+        )?;
+        // Conservative exact logical-metadata charge before CAS. It is separate
+        // from compressed physical body bytes charged by the original owner.
+        self.budget.charge_metadata(index.bytes)?;
+        if self.invocation.is_none() {
+            self.invocation = Some(Invocation::from_budget(
+                self.options,
+                self.budget.clone(),
+                self.metadata,
+                self.admission,
+                self.cancel,
+            )?);
+        }
+        let mut bytes = Vec::new();
+        bytes
+            .try_reserve_exact(length)
+            .map_err(|_| Error::Limit("native Xet index allocation refused".into()))?;
+        bytes.resize(length, 0);
+        let mut reader = self
+            .invocation
+            .as_mut()
+            .ok_or_else(|| Error::State("Xet index owner absent".into()))?
+            .reader_spec(self.transport, &spec, index.bytes, self.cancel)?;
+        let mut done = 0;
+        let mut digest = Sha256::new();
+        while done < length {
+            check_cancel(self.cancel)?;
+            let end = (done + 8192).min(length);
+            let read = reader
+                .read(&mut bytes[done..end])
+                .map_err(|_| Error::Malformed("native Xet index reconstruction failed".into()))?;
+            check_cancel(self.cancel)?;
+            if read == 0 {
+                return Err(Error::Malformed("native Xet index truncated".into()));
+            }
+            digest.update(&bytes[done..done + read]);
+            done += read;
+        }
+        let mut extra = [0];
+        if reader
+            .read(&mut extra)
+            .map_err(|_| Error::Malformed("native Xet index terminal verification failed".into()))?
+            != 0
+        {
+            return Err(Error::Malformed(
+                "native Xet index exceeded exact length".into(),
+            ));
+        }
+        check_cancel(self.cancel)?;
+        if !format!("{:x}", digest.finalize()).eq_ignore_ascii_case(index.sha256) {
+            return Err(Error::Malformed(
+                "native Xet index raw SHA256 mismatch".into(),
+            ));
+        }
+        super::executor::reject_pointer(&bytes[..bytes.len().min(128)])?;
+        self.specs.insert(index.path.to_owned(), spec);
+        Ok(bytes)
+    }
+}
+
+impl super::huggingface::IndexReader for IndexReconstruction<'_> {
+    fn read_index(&mut self, index: super::huggingface::PinnedIndex<'_>) -> Result<Vec<u8>> {
+        self.read(index)
+    }
 }
 
 /// Offline eligibility only, after CacheStore has opened and fully verified
@@ -321,8 +496,28 @@ impl Invocation {
         let Some(state) = &plan.xet else {
             return Ok(None);
         };
+        let budget = Arc::new(budget::Budget::new(
+            &state.options,
+            plan.limits.max_metadata_bytes,
+            state.seed,
+        )?);
+        Ok(Some(Self::from_budget(
+            &state.options,
+            budget,
+            plan.limits.max_metadata_bytes,
+            admission,
+            cancel,
+        )?))
+    }
+    fn from_budget(
+        options: &XetOptions,
+        budget: Arc<budget::Budget>,
+        metadata: usize,
+        admission: &TransferAdmission,
+        cancel: &AtomicBool,
+    ) -> Result<Self> {
         check_cancel(cancel)?;
-        let bytes = reader::Scratch::reservation(&state.options, plan.limits.max_metadata_bytes)?;
+        let bytes = reader::Scratch::reservation(options, metadata)?;
         let lease = admission.arbiter.admit(
             &admission.resource,
             admission.owner.clone(),
@@ -331,17 +526,13 @@ impl Invocation {
                 bytes,
             }],
         )?;
-        Ok(Some(Self {
-            budget: Arc::new(budget::Budget::new(
-                &state.options,
-                plan.limits.max_metadata_bytes,
-                state.seed,
-            )?),
-            scratch: reader::Scratch::new(&state.options)?,
-            options: state.options.clone(),
-            metadata_limit: plan.limits.max_metadata_bytes,
+        Ok(Self {
+            budget,
+            scratch: reader::Scratch::new(options)?,
+            options: options.clone(),
+            metadata_limit: metadata,
             _lease: lease,
-        }))
+        })
     }
     pub(super) fn ordinary(&self, file: &super::ResolvedFile) -> Result<super::ResolvedFile> {
         Ok(file.clone().with_request_target(HttpTarget::xet_hub(
@@ -363,6 +554,15 @@ impl Invocation {
         let bytes = file
             .bytes()
             .ok_or_else(|| Error::Unsupported("native Xet requires exact length".into()))?;
+        self.reader_spec(transport, spec, bytes, cancel)
+    }
+    fn reader_spec<'a>(
+        &'a mut self,
+        transport: &'a dyn HttpTransport,
+        spec: &XetSpec,
+        bytes: u64,
+        cancel: &'a AtomicBool,
+    ) -> Result<reader::XetReader<'a>> {
         let mut access = access::Access::new(
             transport,
             spec,
@@ -400,6 +600,7 @@ pub struct XetOptions {
     pub max_wire_bytes: u64,
     pub max_refreshes: usize,
     endpoints: Endpoints,
+    index_reconstruction: bool,
 }
 #[derive(Clone, Debug)]
 struct Endpoints {
@@ -417,6 +618,7 @@ impl Default for XetOptions {
             max_requests: 16384,
             max_wire_bytes: 64 * 1024 * 1024 * 1024,
             max_refreshes: 2,
+            index_reconstruction: false,
             endpoints: Endpoints {
                 hub: "https://huggingface.co".into(),
                 cas: "https://cas-server.xethub.hf.co".into(),
@@ -426,6 +628,14 @@ impl Default for XetOptions {
     }
 }
 impl XetOptions {
+    /// Explicitly permit bounded required native index metadata reconstruction
+    /// during resolution. Default remains metadata/discovery-only, with no CAS
+    /// grants or signed bodies. Index and later payload consume ONE work budget.
+    pub fn with_index_reconstruction(mut self) -> Self {
+        self.index_reconstruction = true;
+        self
+    }
+
     pub fn validate(&self) -> Result<()> {
         if self.max_terms == 0
             || self.max_terms > 65536

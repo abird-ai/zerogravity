@@ -35,6 +35,21 @@ struct Entry {
     validator: Option<String>,
 }
 
+/// Exact pinned index metadata. Callback receives no authority to select a
+/// different repository, commit or URL; original closure/parser remains owner.
+pub(super) struct PinnedIndex<'a> {
+    pub repository: &'a str,
+    pub commit: &'a str,
+    pub path: &'a str,
+    pub url: &'a str,
+    pub bytes: u64,
+    pub sha256: &'a str,
+    pub validator: Option<&'a str>,
+}
+pub(super) trait IndexReader {
+    fn read_index(&mut self, index: PinnedIndex<'_>) -> Result<Vec<u8>>;
+}
+
 /// Internal resolver: the public front door holds metadata admission first.
 pub(super) fn resolve(
     transport: &impl HttpTransport,
@@ -129,6 +144,7 @@ pub(super) fn resolve_from(
         cancel,
         endpoint,
         sidecars,
+        None,
     )
 }
 pub(super) fn resolve_quant_from(
@@ -153,6 +169,7 @@ pub(super) fn resolve_quant_from(
         cancel,
         endpoint,
         ExternalSidecars::default(),
+        None,
     )
 }
 pub(super) fn resolve_filtered_from(
@@ -177,17 +194,20 @@ pub(super) fn resolve_filtered_from(
         cancel,
         endpoint,
         ExternalSidecars::default(),
+        None,
     )
 }
-fn resolve_choice(
+pub(super) fn resolve_choice(
     transport: &impl HttpTransport,
     source: (&str, &str, super::quant::InitialChoice<'_>),
     limits: &PullLimits,
     cancel: &AtomicBool,
     endpoint: &str,
     sidecars: ExternalSidecars,
+    mut index_reader: Option<&mut dyn IndexReader>,
 ) -> Result<ResolvedPullPlan> {
     let (repository, revision, choice) = source;
+    validate_repo(repository)?;
     let base = Url::parse(endpoint).map_err(|_| Error::Malformed("invalid HF endpoint".into()))?;
     if !base.username().is_empty()
         || base.password().is_some()
@@ -271,13 +291,30 @@ fn resolve_choice(
             cancel,
             &pin,
         )?;
-        let (body, _) = metadata_checked(
-            transport,
-            url,
-            &mut metadata_left,
-            cancel,
-            entry.validator.as_deref(),
-        )?;
+        let body = if let (Some(reader), Some(lfs)) = (index_reader.as_mut(), entry.lfs.as_ref()) {
+            let body = reader.read_index(PinnedIndex {
+                repository,
+                commit: &pin,
+                path: &path,
+                url: url.as_str(),
+                bytes: size,
+                sha256: &lfs.oid,
+                validator: entry.validator.as_deref(),
+            })?;
+            metadata_left = metadata_left
+                .checked_sub(body.len())
+                .ok_or_else(|| Error::Limit("HF cumulative index metadata bound".into()))?;
+            body
+        } else {
+            metadata_checked(
+                transport,
+                url,
+                &mut metadata_left,
+                cancel,
+                entry.validator.as_deref(),
+            )?
+            .0
+        };
         if body.len() as u64 != size {
             return Err(Error::Malformed("HF index length changed".into()));
         }

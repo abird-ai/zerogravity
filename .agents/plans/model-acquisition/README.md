@@ -994,9 +994,41 @@ Cache hits remain verified cached data, with no assertion of native execution.
 Dry-run performs Hub metadata/discovery only, with no CAS grant or signed body.
 Offline opens an existing cache, checks original source/selection/current bounds
 and pointer policy before credentials, client, admission or signals. It proves
-cached data, not native protocol execution, freshness or present access. Native
-LFS/index reconstruction during closure and measured fetch coalescing remain open;
+cached data, not native protocol execution, freshness or present access. Measured
+fetch coalescing, partial native prefixes and persistence remain open;
 acquired bytes grant no new loader, inference, license or model qualification.
+
+### Required native LFS/Xet safetensors index reconstruction
+
+A required selected or adjacent `.safetensors.index.json` announced as native
+Xet is now supported only through an explicit `XetOptions::with_index_reconstruction()`
+builder. The default library resolution and metadata-only CLI dry-run preserve
+their original **no CAS grant/signed body** contract and refuse the required
+index before obtaining such a grant. Native CLI **apply** opts a cloned options
+value into reconstruction; no new flag, second resolver, transport, source
+issuer or cache publisher is introduced. Ordinary non-LFS source indexes retain
+their original bounded GET route.
+
+The original pinned HF tree, exact length, source index callback and model
+closure supply the only source authority. A trusted LFS raw SHA256 is required
+independently of the full keyed Xet file root. The existing original Access,
+reader, scratch, signed-range and HTTP owners verify exact logical bytes,
+complete root, terminal EOF sentinel, raw SHA and pointer refusal **before**
+parsing index JSON or selecting any required shard. Index JSON remains bounded
+by the original cumulative HF metadata budget and 8MiB parser ceiling.
+Pre-plan reconstruction is ephemeral; publication reconstructs the index
+again under the sole existing cache transaction, hashes/verifies it again and
+reparses the staged index before a durable snapshot can replace a reference.
+
+One original TransferAdmission keeps simultaneous metadata control and scratch
+reservations, normally 80MiB + 90.5625MiB. The native CLI default256MiB
+admits the real index path; a caller-provided128MiB bound refuses before
+signed index payload. Every invocation's attempts, wire, metadata, decoded
+chunks, leaves, refreshes, accepted terms/groups/ranges survives the
+resolution-to-execution seed; poison and tightened limits refuse instead of
+silently resetting counts. Native index planning/publication and later shard
+work are cumulatively charged, including retransmitted/edge work. This is
+not a model inference, throughput, remote freshness or whole-memory guarantee.
 
 ## Provider and compatibility frontier
 
@@ -1018,7 +1050,7 @@ passing provider gate. Open implementation and acceptance work stays in TODO.md.
 | S3/compatible endpoints | Native non-null versions, exact-path regional/path/virtual-host GET/HEAD/ranges, bounded V2/latest-version prefixes and static/session SigV4. Explicit current/unversioned objects additionally support caller SHA/size contracts; Strong conditional FirstSeen observations are explicit; broader partitions/vendor/credential profiles and FULL_OBJECT checksum mode remain open; presigned HTTPS alone grants no native S3 parity. |
 | Azure Blob | Native explicit BlockBlob versions/snapshots, bounded current-version auxiliary listing, pinned ranges and anonymous/bearer/SharedKey/ad-hoc serviceSAS. Explicit current/unversioned objects additionally support caller SHA/size contracts; Strong conditional FirstSeen observations are explicit; latest convenience, other endpoints/types/SAS and managed/default credentials remain open. |
 | ModelScope | Native explicit40hex commit, bounded complete shallow walk, exact files/model closure, anonymous/official-token and digest-only offline. Selected missing sizes use exact pinned HEAD; aliases and redirect/CDN/mirror profiles remain open; no SDK/login runtime. |
-| HF Xet | Explicit bounded native discovery, scoped CAS, signed ranges/multipart, ordered NONE/LZ4/BG4 reconstruction and original ephemeral importer/CLI. Native index closure and measured coalescing/performance remain open; cache hits/compatibility HTTPS grant no native execution proof. |
+| HF Xet | Explicit bounded native discovery, scoped CAS, signed ranges/multipart, ordered NONE/LZ4/BG4 reconstruction and original ephemeral importer/CLI. Explicit APPLY reconstructs required trusted-LFS indexed safetensors JSON under the same full-root/raw-SHA/EOF/cumulative-work owner; default/dry-run still refuse before CAS. Coalescing/persistent native prefixes/performance remain open; cached bytes grant no native execution proof. |
 | Auxiliary/preset convenience | Explicit auxiliary/component bytes are supported data. Specialized mmproj/draft/MTP/DFlash/Eagle3/DSpark discovery and bounded presets remain open convenience work; a preset cannot authorize new sources or limits. |
 | Transport/streaming | Exact strong-validator resume, bounded retry/deadline/cancel/progress and explicit capped Auxiliary streams are qualified. Required unknown lengths, capped resume, independent full HTTP trailer validation and broader concurrency/performance remain open. |
 | Loader/runtime delegates | Safetensors/PT/serialized tensors, RunAI/ModelExpress internals, IPC/distributed/lazy loading, quant reconstruction and speculative/multimodal execution belong to the execution/streaming plans. Acquiring opaque bytes grants none of those capabilities. |

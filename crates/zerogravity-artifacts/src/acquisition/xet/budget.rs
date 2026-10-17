@@ -11,6 +11,10 @@ pub(super) struct Seed {
     attempts: u64,
     wire: u64,
     metadata: u64,
+    decoded: u64,
+    leaves: u64,
+    refreshes: u64,
+    accepted: Accepted,
 }
 #[derive(Debug)]
 pub(crate) struct Budget {
@@ -24,7 +28,7 @@ pub(crate) struct Budget {
     refreshes: AtomicU64,
     accepted: Mutex<Accepted>,
 }
-#[derive(Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 struct Accepted {
     terms: usize,
     groups: usize,
@@ -71,6 +75,12 @@ impl Budget {
             || seed.attempts > limits.max_requests as u64
             || seed.wire > limits.max_wire_bytes
             || seed.metadata > metadata_limit as u64
+            || seed.decoded > limits.max_chunks as u64
+            || seed.leaves > limits.max_chunks as u64
+            || seed.refreshes > limits.max_refreshes as u64
+            || seed.accepted.terms > limits.max_terms
+            || seed.accepted.groups > limits.max_fetch_groups
+            || seed.accepted.ranges > limits.max_ranges
         {
             return Err(exhausted());
         }
@@ -80,10 +90,10 @@ impl Budget {
             attempts: AtomicU64::new(seed.attempts),
             wire: AtomicU64::new(seed.wire),
             metadata: AtomicU64::new(seed.metadata),
-            decoded: AtomicU64::new(0),
-            leaves: AtomicU64::new(0),
-            refreshes: AtomicU64::new(0),
-            accepted: Mutex::new(Accepted::default()),
+            decoded: AtomicU64::new(seed.decoded),
+            leaves: AtomicU64::new(seed.leaves),
+            refreshes: AtomicU64::new(seed.refreshes),
+            accepted: Mutex::new(seed.accepted),
         })
     }
     pub(crate) fn begin_attempt(&self, cancel: &AtomicBool) -> Result<()> {
@@ -172,15 +182,85 @@ impl Budget {
         super::check_cancel(cancel)?;
         checked_increment(&self.refreshes, self.limits.max_refreshes as u64)
     }
-    pub(super) fn seed(&self) -> Seed {
-        Seed {
+    pub(super) fn seed(&self) -> Result<Seed> {
+        self.ensure_live()?;
+        let accepted = *self
+            .accepted
+            .lock()
+            .map_err(|_| Error::State("Xet control counter owner failed".into()))?;
+        Ok(Seed {
             attempts: self.attempts.load(Ordering::Acquire),
             wire: self.wire.load(Ordering::Acquire),
             metadata: self.metadata.load(Ordering::Acquire),
-        }
+            decoded: self.decoded.load(Ordering::Acquire),
+            leaves: self.leaves.load(Ordering::Acquire),
+            refreshes: self.refreshes.load(Ordering::Acquire),
+            accepted,
+        })
     }
     #[cfg(test)]
     pub(crate) fn observed_wire_bytes(&self) -> u64 {
         self.wire.load(Ordering::Acquire)
+    }
+}
+
+#[cfg(test)]
+mod seed_tests {
+    use super::*;
+    #[test]
+    fn resolution_seed_preserves_every_consumed_budget_and_refuses_current_limits() {
+        let limits = XetOptions {
+            max_requests: 1,
+            max_wire_bytes: 3,
+            max_chunks: 1,
+            max_refreshes: 1,
+            max_terms: 1,
+            max_fetch_groups: 1,
+            max_ranges: 1,
+            ..XetOptions::default()
+        };
+        let flag = AtomicBool::new(false);
+        let original = Budget::new(&limits, 3, Seed::default()).unwrap();
+        original.begin_attempt(&flag).unwrap();
+        original.charge_body(3, true).unwrap();
+        original.decode_chunk(&flag).unwrap();
+        original.file_leaf(&flag).unwrap();
+        original.refresh(&flag).unwrap();
+        original.reconstruction(1, 1, 1, &flag).unwrap();
+        let seed = original.seed().unwrap();
+        let recovered = Budget::new(&limits, 3, seed).unwrap();
+        assert!(recovered.begin_attempt(&flag).is_err());
+        assert!(recovered.decode_chunk(&flag).is_err());
+        assert!(recovered.file_leaf(&flag).is_err());
+        assert!(recovered.refresh(&flag).is_err());
+        assert!(recovered.reconstruction(1, 0, 0, &flag).is_err());
+        assert!(recovered.reconstruction(0, 1, 0, &flag).is_err());
+        assert!(recovered.reconstruction(0, 0, 1, &flag).is_err());
+        assert!(recovered.charge_body(1, false).is_err());
+        assert!(Budget::new(&limits, 2, seed).is_err());
+        let mut tighter = limits.clone();
+        tighter.max_refreshes = 0;
+        assert!(Budget::new(&tighter, 3, seed).is_err());
+        for field in 0..6 {
+            let mut excessive = Seed::default();
+            match field {
+                0 => excessive.decoded = 2,
+                1 => excessive.leaves = 2,
+                2 => excessive.refreshes = 2,
+                3 => excessive.accepted.terms = 2,
+                4 => excessive.accepted.groups = 2,
+                _ => excessive.accepted.ranges = 2,
+            }
+            assert!(Budget::new(&limits, 3, excessive).is_err());
+        }
+    }
+    #[test]
+    fn poisoned_accepted_owner_never_silently_resets_seed() {
+        let budget = Budget::new(&XetOptions::default(), 1024, Seed::default()).unwrap();
+        let _ = std::panic::catch_unwind(|| {
+            let _guard = budget.accepted.lock().unwrap();
+            panic!("test-only poison");
+        });
+        assert!(matches!(budget.seed(), Err(Error::State(_))));
     }
 }

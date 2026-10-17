@@ -102,6 +102,9 @@ OPTIONS:
     --subfolder PATH            Original bounded HF exact/glob selection and model closure
     --cache ABS_PATH --ref NAME Original XDG cache/ref publisher (default HF request ref)
     --dry-run                   Hub metadata/discovery only; no CAS grants or signed ranges
+                                If a required index needs Xet, refuse before CAS grant
+    (default apply)             Opts into verified required native Xet index reconstruction
+                                under original admitted metadata/work limits; no extra flag
     --offline                   Full verified cached HF data before credentials/client/admission/signals
     --disk-limit-bytes N --memory-limit-bytes N (native default256MiB)
     --max-file-bytes N --max-snapshot-bytes N --max-files N
