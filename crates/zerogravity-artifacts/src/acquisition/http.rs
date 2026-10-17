@@ -35,6 +35,11 @@ impl HttpRequest {
     }
 }
 
+/// `body` yields decoded payload bytes. Custom transports must report framing
+/// failures as read errors, never successful EOF. The pinned ureq decoder also
+/// accepts a zero-chunk line followed by FIN without complete trailer framing;
+/// payload completion here does not assert independent trailer validation, and
+/// trailer metadata never supplies digest or source authority.
 pub struct HttpResponse {
     pub status: u16,
     pub headers: BTreeMap<String, String>,
@@ -91,14 +96,15 @@ pub trait HttpTransport: Send + Sync {
     }
 }
 
-pub(super) fn probe_length(
+pub(super) fn probe_length_with_cap(
     transport: &(impl HttpTransport + ?Sized),
     url: String,
     maximum: u64,
     probes: &mut usize,
     cancel: &AtomicBool,
     expected_commit: Option<&str>,
-) -> Result<(u64, Option<String>)> {
+    cap: Option<u64>,
+) -> Result<(super::ByteLength, Option<String>)> {
     check_cancel(cancel)?;
     if *probes == 0 {
         return Err(Error::Limit("object length probe limit".into()));
@@ -107,12 +113,15 @@ pub(super) fn probe_length(
     let response = transport.head(&HttpRequest::new(url, maximum), cancel);
     check_cancel(cancel)?;
     let response = response.map_err(redact_head_error)?;
-    if response.status != 200 {
-        return Err(Error::Unsupported(
-            "object length probe requires HTTP200".into(),
-        ));
-    }
-    if response.header("content-range").is_some() || response.header("transfer-encoding").is_some()
+    let declared = response
+        .header("content-length")
+        .map(parse_u64)
+        .transpose()?;
+    let transfer = response.header("transfer-encoding");
+    if response.header("content-range").is_some()
+        || transfer.is_some_and(|value| {
+            declared.is_some() || cap.is_none() || !value.eq_ignore_ascii_case("chunked")
+        })
     {
         return Err(Error::Malformed(
             "ambiguous object length probe framing".into(),
@@ -126,18 +135,11 @@ pub(super) fn probe_length(
             "length probe requires identity encoding".into(),
         ));
     }
-    let bytes = response
-        .header("content-length")
-        .ok_or_else(|| Error::Unsupported("exact object length is required".into()))
-        .and_then(parse_u64)?;
-    if bytes > maximum {
-        return Err(Error::Limit(
-            "object length exceeds planned file limit".into(),
-        ));
-    }
-    if let Some(linked) = response.header("x-linked-size")
-        && parse_u64(linked)? != bytes
-    {
+    let linked = response
+        .header("x-linked-size")
+        .map(parse_u64)
+        .transpose()?;
+    if response.status == 200 && linked.is_some() && linked != declared {
         return Err(Error::Malformed("object length metadata conflicts".into()));
     }
     if let (Some(expected), Some(actual)) = (expected_commit, response.header("x-repo-commit"))
@@ -151,8 +153,39 @@ pub(super) fn probe_length(
         .header("etag")
         .filter(|value| super::resume::strong_etag(value).is_ok())
         .map(str::to_string);
+    // A405/501 describes an error representation. Its length and ETag are not
+    // authority for the pinned payload. All other status failures still refuse.
+    let length = match (response.status, declared) {
+        (200, Some(bytes)) => {
+            if bytes > maximum {
+                return Err(Error::Limit(
+                    "object length exceeds planned file limit".into(),
+                ));
+            }
+            super::ByteLength::Exact(bytes)
+        }
+        (200, None) | (405 | 501, _) if cap.is_some() && linked.is_none() => {
+            let cap = cap
+                .filter(|cap| *cap != 0 && *cap <= maximum)
+                .ok_or_else(|| Error::Limit("invalid unknown object cap".into()))?;
+            super::ByteLength::AtMost(cap)
+        }
+        (200, None) => return Err(Error::Unsupported("exact object length is required".into())),
+        _ => {
+            return Err(Error::Unsupported(
+                "object length probe requires HTTP200".into(),
+            ));
+        }
+    };
     // In particular, never inspect response.body: dry-run remains payload-free.
-    Ok((bytes, validator))
+    Ok((
+        length,
+        if response.status == 200 {
+            validator
+        } else {
+            None
+        },
+    ))
 }
 
 pub(super) fn redact_head_error(error: Error) -> Error {
@@ -521,7 +554,9 @@ impl HttpsClient {
                     .get("content-length")
                     .map(|s| parse_u64(s))
                     .transpose()?;
-                if declared.is_some_and(|n| n > request.max_body_bytes) {
+                if declared.is_some_and(|n| n > request.max_body_bytes)
+                    && !(head && matches!(status, 405 | 501))
+                {
                     return Err(Error::Limit("HTTP declared body limit".into()));
                 }
                 let body: Box<dyn Read + Send> = if head {

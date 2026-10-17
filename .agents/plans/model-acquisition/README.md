@@ -29,9 +29,10 @@ release asset identity, validates file paths and selects the required closure.
 The returned plan has private validated fields; expiring download URLs stay in
 memory. It grants neither SourceIdentity nor model/device readiness.
 
-The existing CacheStore admits exact planned lengths before object requests.
-Its acquisition transaction streams each file once, checks the actual raw digest
-and preserves TrustedSha256 versus FirstSeen provenance in the manifest. Actual
+The existing CacheStore admits exact planned lengths or explicit full reservation
+caps before object requests. Its acquisition transaction streams each file once,
+checks the actual raw digest and preserves TrustedSha256 versus FirstSeen
+provenance in the manifest. Actual
 entries replace private accounting placeholders before the original snapshot/ref
 publisher can run. Existing leases, stable locks, failure outcomes and quota
 ownership remain authoritative; there is no second cache or allocator.
@@ -77,11 +78,11 @@ Unknown-digest first-seen transfers do not gain a network single-flight guarante
   cache manifests, progress text or upstream error strings. No remote code runs.
 - Source-provided SHA256 and first-seen local content hashes have different trust
   strength. Neither automatically supplies a model license or execution contract.
-- Exact lengths are required before payload reservation/transfer; omitted listing
-  lengths can be recovered from pinned LFS metadata or bounded body-free HEAD.
-  Chunked bodies can still transfer against an exact established bound. Host
-  admission covers this process's transfer work, and disk quotas cover cooperating
-  cache writers, not global OS resources.
+- Exact lengths remain the default. Omitted listing lengths first use pinned LFS
+  metadata or bounded body-free HEAD; explicit capped auxiliary streaming is
+  described below. Chunked bodies can transfer against an established exact
+  length or authorized cap. Host admission covers this process's transfer work,
+  and disk quotas cover cooperating cache writers, not global OS resources.
 - Linux local-filesystem semantics are qualified first. Open/read-only cache
   descriptors do not prevent arbitrary same-UID mutation; A3 must hash the bytes
   of its actual owned source copy before the existing source issuer runs.
@@ -97,7 +98,8 @@ Ordinary pulls retain strict same-repository model closure. Explicit component
 plans can supply config/tokenizer from separate authorized sources. Each member
 retains its own original provider/repository/immutable revision and manifest;
 there is no merged-source manifest, composite ref or cross-source transaction.
-Git LFS pointer payloads and lengths still unknown after bounded recovery refuse.
+Git LFS pointer payloads refuse. Lengths still unknown after bounded recovery
+require the explicit auxiliary-only cap below; other unknown lengths refuse.
 Explicit cache removal has the separate protected-reader contract below.
 Acquiring an auxiliary file or unqualified model format grants no loader support.
 The wider Hub/cloud/OCI/Xet/parity inventory remains separate unchecked work.
@@ -105,7 +107,10 @@ The wider Hub/cloud/OCI/Xet/parity inventory remains separate unchecked work.
 A borrowed source-bound progress callback extends the existing
 executor, preserving its original entry point. Logical file/aggregate bytes count
 accepted streamed bytes, verified cache hits and rehashed resumed prefixes;
-cached/resumed bytes are distinct. Complete byte progress is not publication.
+cached/resumed bytes are distinct. Exact totals are optional and reservation
+maxima are separate; a cap is never displayed as an observed or exact total.
+A final file_complete event follows verified body/cache completion, including
+when its accepted-byte count repeats the prior event. It is not publication.
 The CLI throttles numeric progress on stderr; its final receipt stays on stdout.
 Offline HF filters reuse the same bounded initial selector against verified
 cached paths, before credentials/client/provider creation. This establishes no
@@ -136,10 +141,10 @@ HTTP owner retains TLS, origin credentials, redirect policy, identity encoding,
 request deadlines/retries and error redaction. Custom transports that do not
 implement HEAD return Unsupported; there is no fallback GET for size discovery.
 
-A probe must return HTTP200 with an exact valid Content-Length within the file
-limit. Missing, overflowing, contradictory, encoded or ranged/ambiguous framing
-refuses. No response payload is read; dry-run remains metadata-only. Probe counts
-are bounded per source by max_pages independently of listing-page counts.
+An exact probe must return HTTP200 with a valid Content-Length within the file
+limit. Missing lengths refuse by default. Overflowing, contradictory, encoded
+or ranged/ambiguous framing always refuses. No response payload is read; dry-run
+remains metadata-only. Probe counts are bounded per source by max_pages independently of listing-page counts.
 Component GET and HEAD calls also share the set's single max_pages request
 budget. Metadata body limits keep their existing separate authority.
 The resulting exact lengths enter the original full-peak cache admission; no
@@ -149,8 +154,72 @@ A strong probe ETag, when supplied, must match the initial transfer and applicab
 range responses. Weak/absent validators grant no extra resume authority. ETags
 and Git object IDs do not become raw SHA256, and recovery does not strengthen
 first-seen content provenance. Final original raw digest, exact bytes and terminal
-EOF checks remain mandatory. Truly unknown-body streaming remains a separate
-unchecked implementation and qualification task.
+EOF checks remain mandatory. The optional bounded path below retains these
+source and integrity boundaries.
+
+## Explicit capped auxiliary streaming
+
+`--unknown-size-cap-bytes N` authorizes a positive per-file reservation cap,
+no greater than `--max-file-bytes`. It applies only when pinned auxiliary files
+still lack lengths after normal metadata and HEAD recovery. Weights, indexes,
+config, tokenizer and license objects keep their exact-length requirement and
+ordinary required-file closure. Model/index selections keep all their files
+exact, including auxiliary closure members. The flag is rejected with offline
+mode before cache, plan-file or credential work. Components use the same global cap without
+changing their JSON schema or independent source identities.
+
+The fallback is deliberately narrow: a validated HTTP200 HEAD with no length,
+or HTTP405/501 indicating unsupported HEAD. Other status, transport, TLS,
+malformed metadata, cancellation and budget failures do not authorize streaming.
+A strong successful HEAD ETag still binds GET. Validators and lengths on405/501
+describe the error representation and grant no object authority. HEAD never
+reads a body; dry-run stays metadata-only.
+
+The shared ByteLength distinguishes Exact from AtMost. Exact constructors retain
+their behavior; explicit new_with_length constructors authorize a bounded entry.
+Provider resolvers additionally require PullLimits.unknown_length_cap; a trusted
+caller constructing a resolved plan directly supplies that authority through
+AtMost itself. Resolved-file bytes(), plan/component total_bytes() and progress
+exact-total getters now return Option rather than treating caps as exact lengths.
+Callers needing admission bounds use length()/maximum_bytes() and the explicit
+progress maximum getters. ManifestEntry and published manifest byte counts remain
+exact. This is a source API change in the optional acquisition interface.
+
+The existing attempt reserves full maxima before any payload I/O. Same trusted
+digests with unequal caps reserve their maximum once; unrelated first-seen files
+reserve independently. A private one-shot admission input feeds the original
+reservation ledger and sole installer/publisher. Final manifest entries contain
+only observed bytes and the actual raw SHA256. A known-digest hit verifies the
+original opened file's actual length against the bound and hashes those actual
+bytes; an insufficient cap or corrupt hit refuses before HTTP/private payload
+staging. The admitted attempt and reservation already exist at that lookup.
+
+The original partial guard performs ephemeral capped transfers without recovery,
+saved partial validators or durable checkpoints. Its explicit finish_after_eof
+requires the caller to have proved source completion. Cancellation, errors and saved bytes
+never imply EOF. The reader consumes at most the remaining bound plus one byte
+for overflow detection, including a nonempty sentinel read at the cap. Empty
+and short payloads are valid after EOF and hash verification; LFS pointer bodies
+still refuse before accepted progress. Existing exact resumable transfers retain
+their stricter total/range/checkpoint contract.
+
+For capped HTTP GET, require200, identity encoding, no Content-Range, and either
+a valid Content-Length within the cap or sole chunked transfer framing. Conflicting
+or stacked framing and ambiguous close-delimited bodies refuse. A declared GET
+length must still be reached exactly, including for custom transports. The single
+existing ureq decoder determines payload completion: the pinned version accepts
+a zero-sized chunk line followed by connection close without independently
+validating a complete trailer section. Tests retain this explicit boundary;
+trailer metadata is never source or checksum authority. Missing zero chunks,
+truncated data chunks and short declared lengths fail. No duplicate HTTP parser
+or silent completion-on-read-error path is introduced.
+
+Progress and final receipts count actual accepted/cached bytes. Reaching a cap
+alone is not completion; file_complete follows the verified terminal read and
+cache guard finish. Complete component receipts still require every separate
+publication and descriptor verification. A later failed member can leave earlier
+immutable data; no cross-source atomic publication is asserted. Unknown-length
+required model objects and resumable capped transfers remain separate work.
 
 ## Explicit protected-cache removal
 
@@ -323,6 +392,8 @@ Numerical acceptance is tracked in TODO.md.
   checked against the exact already-cached dependency sources.
 - [ureq 3.4.2](https://docs.rs/ureq/3.4.2/ureq/), with its exact cached source
   used to check timeout, TLS and redirect behavior.
+- [HTTP/1.1 framing and chunked completion, RFC9112](https://www.rfc-editor.org/rfc/rfc9112.html#section-6.3),
+  with the pinned ureq/ureq-proto decoder sources checked locally.
 - [Linux flock lifetime and advisory semantics](https://man7.org/linux/man-pages/man2/flock.2.html).
 - [A1 local cache contract](../../research/PULL_A1_LOCAL_XDG_CACHE_2026-10-16.md),
   [current workflow](../../../AGENTS.md) and [TODO rules](../TODO-SPEC.md).

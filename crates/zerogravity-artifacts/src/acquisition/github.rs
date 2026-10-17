@@ -2,7 +2,9 @@
 //! they are never interpreted as raw file SHA256. This module does no transfer
 //! or cache publication and executes no repository code or LFS hooks.
 use super::http::{HttpAccept, HttpRequest, HttpTransport};
-use super::{Provider, PullLimits, PullRequest, ResolvedFile, ResolvedPullPlan, Selection};
+use super::{
+    ByteLength, Provider, PullLimits, PullRequest, ResolvedFile, ResolvedPullPlan, Selection,
+};
 use crate::cache::{FileRole, ManifestSource, paths::validate_relative_path};
 use crate::{Error, Result};
 use serde::Deserialize;
@@ -479,6 +481,9 @@ pub(super) fn resolve_component(
                 cancel,
             )?;
             let mut files = Vec::with_capacity(selected.len());
+            let model_selection = selected
+                .iter()
+                .any(|path| matches!(role(path), FileRole::Weights | FileRole::Index));
             for path in selected {
                 let entry = entries
                     .get_mut(&path)
@@ -489,25 +494,33 @@ pub(super) fn resolve_component(
                             .into(),
                     ));
                 }
-                let bytes = ensure_length(
+                let file_role = role(&path);
+                let length = ensure_length_with_cap(
                     entry,
                     transport,
                     raw_url(&request.repository, &commit.sha, &path),
-                    limits.cache.max_file_bytes,
+                    (
+                        limits.cache.max_file_bytes,
+                        if file_role == FileRole::Auxiliary && !model_selection {
+                            limits.unknown_length_cap
+                        } else {
+                            None
+                        },
+                    ),
                     &mut probes_left,
                     cancel,
                     &commit.sha,
                 )?;
                 let encoded_path = path.split('/').map(component).collect::<Vec<_>>().join("/");
                 files.push(
-                    ResolvedFile::new(
+                    ResolvedFile::new_with_length(
                         &path,
                         format!(
                             "https://raw.githubusercontent.com/{}/{}/{encoded_path}",
                             request.repository, commit.sha
                         ),
-                        role(&path),
-                        bytes,
+                        file_role,
+                        length,
                         None,
                         format!("git-commit:{}:blob:{}", commit.sha, entry.sha),
                     )?
@@ -593,17 +606,22 @@ pub(super) fn resolve_component(
             };
             let asset_url = format!("{api}/releases/assets/{}", asset.id);
             let (bytes, validator) = match asset.size {
-                Some(bytes) => (bytes, None),
-                None => super::http::probe_length(
+                Some(bytes) => (ByteLength::Exact(bytes), None),
+                None => super::http::probe_length_with_cap(
                     transport,
                     asset_url.clone(),
                     limits.cache.max_file_bytes,
                     &mut probes_left,
                     cancel,
                     None,
+                    if role(name) == FileRole::Auxiliary {
+                        limits.unknown_length_cap
+                    } else {
+                        None
+                    },
                 )?,
             };
-            let file = ResolvedFile::new(
+            let file = ResolvedFile::new_with_length(
                 name,
                 asset_url,
                 role(name),
@@ -634,17 +652,39 @@ fn ensure_length(
     cancel: &AtomicBool,
     pin: &str,
 ) -> Result<u64> {
+    ensure_length_with_cap(entry, transport, url, (maximum, None), probes, cancel, pin)?
+        .exact()
+        .ok_or_else(|| Error::Unsupported("exact GitHub object length required".into()))
+}
+
+fn ensure_length_with_cap(
+    entry: &mut TreeEntry,
+    transport: &(impl HttpTransport + ?Sized),
+    url: String,
+    bounds: (u64, Option<u64>),
+    probes: &mut usize,
+    cancel: &AtomicBool,
+    pin: &str,
+) -> Result<ByteLength> {
+    let (maximum, cap) = bounds;
     let size = match entry.size {
-        Some(size) => size,
+        Some(size) => ByteLength::Exact(size),
         None => {
-            let (size, validator) =
-                super::http::probe_length(transport, url, maximum, probes, cancel, Some(pin))?;
-            entry.size = Some(size);
+            let (size, validator) = super::http::probe_length_with_cap(
+                transport,
+                url,
+                maximum,
+                probes,
+                cancel,
+                Some(pin),
+                cap,
+            )?;
+            entry.size = size.exact();
             entry.validator = validator;
             size
         }
     };
-    if size > maximum {
+    if size.maximum() > maximum {
         return Err(Error::Limit("GitHub selected file length limit".into()));
     }
     Ok(size)
@@ -737,7 +777,7 @@ mod tests {
         .unwrap();
         fixture.finished();
         assert_eq!(plan.source().revision(), COMMIT);
-        assert_eq!(plan.total_bytes(), 11);
+        assert_eq!(plan.total_bytes(), Some(11));
         let weight = plan
             .files()
             .iter()

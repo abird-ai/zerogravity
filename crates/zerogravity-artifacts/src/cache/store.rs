@@ -1,12 +1,13 @@
 use super::paths::{
     CacheLock, CacheNode, RootDir, resolve_root, validate_digest, validate_relative_path,
 };
+use super::{
+    ByteLength, CacheOptions, CommitOutcome, DigestProvenance, DiskUsage, FileRole,
+    FilesystemProfile, Manifest, ManifestEntry, ManifestSource, PublishedSnapshot, SnapshotLease,
+    TransferAdmission,
+};
 #[cfg(feature = "diagnostic-cache")]
 use super::{CacheHook, CacheMoment, CacheOperation, CachePoint};
-use super::{
-    CacheOptions, CommitOutcome, DigestProvenance, DiskUsage, FileRole, FilesystemProfile,
-    Manifest, ManifestEntry, ManifestSource, PublishedSnapshot, SnapshotLease, TransferAdmission,
-};
 use crate::{Error, Result};
 use rustix::fs::{AtFlags, Mode, OFlags, RenameFlags};
 use serde::{Deserialize, Serialize};
@@ -55,6 +56,14 @@ struct StagedObject<'a> {
     path: &'a str,
     file: &'a File,
     digest: &'a str,
+    bytes: u64,
+}
+
+// One-shot admission input, not another durable ledger. Persistent accounting
+// remains the original Reservation plus observed staging/named inodes.
+struct DiscoveryReservation {
+    known_objects: Vec<String>,
+    payload_peak: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -100,12 +109,12 @@ pub struct CacheTransaction {
     _activity: Option<CacheLock>,
 }
 
-/// An exact listed length is required before reservation. A missing raw SHA256
-/// is first-seen content, not permission for an unbounded transfer.
+/// Reserve an exact length or an explicit full cap before payload I/O. A
+/// missing raw SHA256 is first-seen content, never unbounded transfer authority.
 #[derive(Clone, Debug)]
 pub struct DiscoveredEntry {
     path: String,
-    bytes: u64,
+    length: ByteLength,
     role: FileRole,
     sha256: Option<String>,
 }
@@ -116,6 +125,18 @@ impl DiscoveredEntry {
         role: FileRole,
         sha256: Option<String>,
     ) -> Result<Self> {
+        Self::new_with_length(path, ByteLength::Exact(bytes), role, sha256)
+    }
+
+    pub fn new_with_length(
+        path: impl Into<String>,
+        length: ByteLength,
+        role: FileRole,
+        sha256: Option<String>,
+    ) -> Result<Self> {
+        if length == ByteLength::AtMost(0) {
+            return Err(Error::Limit("capped cache length must be positive".into()));
+        }
         let path = path.into();
         validate_relative_path(&path)?;
         if let Some(hash) = &sha256 {
@@ -123,7 +144,7 @@ impl DiscoveredEntry {
         }
         Ok(Self {
             path,
-            bytes,
+            length,
             role,
             sha256,
         })
@@ -599,6 +620,30 @@ impl CacheStore {
         verify_opened_file(file, expected, bytes, cancel, |_| Ok(()))
     }
 
+    fn verify_file_bound(
+        &self,
+        path: &str,
+        expected: &str,
+        length: ByteLength,
+        cancel: &AtomicBool,
+    ) -> Result<(File, u64)> {
+        check_cancel(cancel)?;
+        let file = self
+            .inner
+            .root
+            .open_file(path, OFlags::RDONLY, Mode::empty())?;
+        let bytes = file.metadata()?.len();
+        if bytes > length.maximum() || length.exact().is_some_and(|exact| bytes != exact) {
+            return Err(Error::Malformed(
+                "cache object length bound mismatch".into(),
+            ));
+        }
+        Ok((
+            verify_opened_file(file, expected, bytes, cancel, |_| Ok(()))?,
+            bytes,
+        ))
+    }
+
     /// Conservative cooperative allocation accounting: count each physical
     /// inode once, at least rounded logical bytes, observed allocated blocks,
     /// plus fixed metadata allowance. It does not reserve filesystem free space.
@@ -734,10 +779,28 @@ impl CacheStore {
         let mut used: BTreeSet<String> = entries.iter().filter_map(|e| e.sha256.clone()).collect();
         let mut next = 0u64;
         let mut planned = Vec::new();
+        let mut payloads = BTreeMap::<String, u64>::new();
+        let mut exact = BTreeMap::<String, u64>::new();
+        let mut smallest = BTreeMap::<String, u64>::new();
         for entry in &entries {
-            let key = match &entry.sha256 {
-                Some(hash) => hash.clone(),
-                None => loop {
+            if let Some(hash) = &entry.sha256 {
+                let bound = smallest
+                    .entry(hash.clone())
+                    .or_insert(entry.length.maximum());
+                *bound = (*bound).min(entry.length.maximum());
+                if let Some(bytes) = entry.length.exact()
+                    && exact
+                        .insert(hash.clone(), bytes)
+                        .is_some_and(|old| old != bytes)
+                {
+                    return Err(Error::Malformed(
+                        "one digest has conflicting lengths".into(),
+                    ));
+                }
+            }
+            let key = match (&entry.sha256, entry.length) {
+                (Some(hash), ByteLength::Exact(_)) => hash.clone(),
+                _ => loop {
                     let key = format!("{next:064x}");
                     next = next
                         .checked_add(1)
@@ -747,11 +810,15 @@ impl CacheStore {
                     }
                 },
             };
+            let payload = payloads
+                .entry(entry.sha256.as_ref().unwrap_or(&key).clone())
+                .or_default();
+            *payload = (*payload).max(entry.length.maximum());
             // Distinct unknown files reserve worst-case bytes independently.
             // The final fixed-width digest and provenance occupy exactly the
             // same metadata envelope as this non-publishable planned entry.
             planned.push(
-                ManifestEntry::new(&entry.path, key, entry.bytes, entry.role)?
+                ManifestEntry::new(&entry.path, key, entry.length.maximum(), entry.role)?
                     .with_digest_provenance(if entry.sha256.is_some() {
                         DigestProvenance::TrustedSha256
                     } else {
@@ -759,12 +826,23 @@ impl CacheStore {
                     }),
             );
         }
+        if exact.iter().any(|(hash, bytes)| *bytes > smallest[hash]) {
+            return Err(Error::Malformed(
+                "exact digest length exceeds another entry's cap".into(),
+            ));
+        }
         let manifest = Manifest::new(source, planned, &self.inner.options.limits)?;
         let known_objects = entries
             .iter()
             .filter_map(|entry| entry.sha256.clone())
             .collect();
-        let inner = self.begin_admitted(manifest, cancel, memory, Some(known_objects))?;
+        let reservation = DiscoveryReservation {
+            known_objects,
+            payload_peak: payloads
+                .values()
+                .try_fold(0, |sum, bytes| add(sum, charge(*bytes)?))?,
+        };
+        let inner = self.begin_admitted(manifest, cancel, memory, Some(reservation))?;
         Ok(DiscoveredTransaction {
             inner,
             entries,
@@ -823,7 +901,7 @@ impl CacheStore {
         manifest: Manifest,
         cancel: Arc<AtomicBool>,
         memory: GlobalResourceLease,
-        reservation_objects: Option<Vec<String>>,
+        discovery: Option<DiscoveryReservation>,
     ) -> Result<CacheTransaction> {
         let activity = self.activity(&cancel)?;
         // Revalidate against this store's bounds when a caller used wider
@@ -845,17 +923,20 @@ impl CacheStore {
             .try_reserve_exact(self.inner.options.buffer_bytes)
             .map_err(|_| Error::Limit("cache transfer buffer allocation refused".into()))?;
         buffer.resize(self.inner.options.buffer_bytes, 0);
-        let mut peak = 64 * UNIT;
+        let mut peak = add(
+            64 * UNIT,
+            discovery.as_ref().map_or(0, |plan| plan.payload_peak),
+        )?;
         let mut objects = BTreeSet::new();
         for entry in manifest.entries() {
-            if objects.insert(entry.digest()) {
+            if objects.insert(entry.digest()) && discovery.is_none() {
                 peak = add(peak, charge(entry.bytes())?)?;
             }
             peak = add(
                 peak,
                 (entry.path().split('/').count() as u64 + 3) * 2 * UNIT,
             )?;
-            if reservation_objects.is_some() {
+            if discovery.is_some() {
                 // A discovered transfer may keep one checkpoint, its atomic
                 // replacement, and one stable partial lock per planned file.
                 peak = add(peak, 3 * charge(CONTROL_LIMIT as u64)?)?;
@@ -893,8 +974,10 @@ impl CacheStore {
             // Discovery keys must never credit an unrelated named blob.
             // Only known upstream digests enter this cohort; discovered bytes
             // remain observed through their original staging inode links.
-            objects: reservation_objects
-                .unwrap_or_else(|| objects.into_iter().map(str::to_string).collect()),
+            objects: discovery.map_or_else(
+                || objects.into_iter().map(str::to_string).collect(),
+                |plan| plan.known_objects,
+            ),
         };
         let mut reservation_file = self.inner.root.open_file(
             &format!("staging/{attempt}/reservation.json"),
@@ -1062,7 +1145,8 @@ impl CacheTransaction {
             .find(|e| e.path() == logical_path)
             .ok_or_else(|| Error::Malformed("object not in resolved cache manifest".into()))?;
         let hash = entry.digest().to_string();
-        self.import_verified(logical_path, reader, Some(&hash), false)?;
+        let length = ByteLength::Exact(entry.bytes());
+        self.import_verified(logical_path, reader, Some(&hash), length, false)?;
         Ok(())
     }
 
@@ -1071,6 +1155,7 @@ impl CacheTransaction {
         logical_path: &str,
         reader: &mut impl Read,
         expected: Option<&str>,
+        length: ByteLength,
         retain_stage: bool,
     ) -> Result<ManifestEntry> {
         self.ensure_owner()?;
@@ -1083,7 +1168,10 @@ impl CacheTransaction {
         if self.complete.contains(logical_path) {
             return Err(Error::State("cache object already imported".into()));
         }
-        let bytes = self.manifest.entries()[ordinal].bytes();
+        let maximum = self.manifest.entries()[ordinal].bytes();
+        if length.maximum() > maximum {
+            return Err(Error::Limit("source length exceeds admitted bound".into()));
+        }
         let role = self.manifest.entries()[ordinal].role();
         let object_lock = expected
             .map(|hash| self.store.lock(&format!("object-{hash}"), &self.cancel))
@@ -1092,13 +1180,13 @@ impl CacheTransaction {
             lock.ensure_bound()?;
         }
         if let Some(hash) = expected {
-            match self.store.verify_file_cancellable(
+            match self.store.verify_file_bound(
                 &format!("blobs/sha256/{hash}"),
                 hash,
-                bytes,
+                length,
                 &self.cancel,
             ) {
-                Ok(_) => {
+                Ok((_, bytes)) => {
                     self.complete.insert(logical_path.to_string());
                     return ManifestEntry::new(logical_path, hash, bytes, role);
                 }
@@ -1112,7 +1200,8 @@ impl CacheTransaction {
             OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL,
             Mode::RUSR | Mode::WUSR,
         )?;
-        let mut remaining = bytes;
+        let mut remaining = length.maximum();
+        let mut ended = false;
         let mut hasher = Sha256::new();
         while remaining != 0 {
             self.ensure_owner()?;
@@ -1121,17 +1210,27 @@ impl CacheTransaction {
                 .len()
                 .min(remaining.min(usize::MAX as u64) as usize);
             let read = reader.read(&mut self.buffer[..count])?;
+            self.ensure_owner()?;
             if read == 0 {
-                return Err(Error::Malformed("cache source truncated".into()));
+                if length.exact().is_some() {
+                    return Err(Error::Malformed("cache source truncated".into()));
+                }
+                ended = true;
+                break;
             }
             hasher.update(&self.buffer[..read]);
             target.write_all(&self.buffer[..read])?;
             remaining -= read as u64;
         }
         self.ensure_owner()?;
-        if reader.read(&mut self.buffer[..1])? != 0 {
-            return Err(Error::Malformed("cache source length mismatch".into()));
+        if !ended {
+            let trailing = reader.read(&mut self.buffer[..1])?;
+            self.ensure_owner()?;
+            if trailing != 0 {
+                return Err(Error::Malformed("cache source length mismatch".into()));
+            }
         }
+        let bytes = length.maximum() - remaining;
         let actual = format!("{:x}", hasher.finalize());
         if expected.is_some_and(|value| value != actual) {
             return Err(Error::Malformed("cache source digest mismatch".into()));
@@ -1142,6 +1241,7 @@ impl CacheTransaction {
                 path: &temporary,
                 file: &target,
                 digest: &actual,
+                bytes,
             },
             object_lock,
             expected.is_none(),
@@ -1163,6 +1263,7 @@ impl CacheTransaction {
             path: temporary,
             file: target,
             digest: actual,
+            bytes,
         } = staged;
         self.ensure_owner()?;
         let ordinal = self
@@ -1171,7 +1272,11 @@ impl CacheTransaction {
             .iter()
             .position(|entry| entry.path() == logical_path)
             .ok_or_else(|| Error::Malformed("object not in resolved cache manifest".into()))?;
-        let bytes = self.manifest.entries()[ordinal].bytes();
+        if bytes > self.manifest.entries()[ordinal].bytes() || target.metadata()?.len() != bytes {
+            return Err(Error::Malformed(
+                "staged actual length exceeds bound or file length".into(),
+            ));
+        }
         let role = self.manifest.entries()[ordinal].role();
         #[cfg(feature = "diagnostic-cache")]
         self.store.point(
@@ -1561,14 +1666,14 @@ impl DiscoveredTransaction {
             .store
             .lock(&format!("object-{hash}"), &self.inner.cancel)?;
         lock.ensure_bound()?;
-        match self.inner.store.verify_file_cancellable(
+        match self.inner.store.verify_file_bound(
             &format!("blobs/sha256/{hash}"),
             hash,
-            entry.bytes,
+            entry.length,
             &self.inner.cancel,
         ) {
-            Ok(_) => {
-                let actual = ManifestEntry::new(&entry.path, hash, entry.bytes, entry.role)?
+            Ok((_, bytes)) => {
+                let actual = ManifestEntry::new(&entry.path, hash, bytes, entry.role)?
                     .with_digest_provenance(DigestProvenance::TrustedSha256);
                 self.inner.complete.insert(logical_path.to_string());
                 self.verified
@@ -1585,10 +1690,12 @@ impl DiscoveredTransaction {
         logical_path: &str,
         reader: &mut impl Read,
     ) -> Result<ManifestEntry> {
-        let expected = self.entry(logical_path)?.sha256.clone();
+        let entry = self.entry(logical_path)?;
+        let expected = entry.sha256.clone();
+        let length = entry.length;
         let actual = self
             .inner
-            .import_verified(logical_path, reader, expected.as_deref(), true)?
+            .import_verified(logical_path, reader, expected.as_deref(), length, true)?
             .with_digest_provenance(if expected.is_some() {
                 DigestProvenance::TrustedSha256
             } else {

@@ -3,7 +3,8 @@
 
 use super::http::{HttpAccept, HttpRequest, HttpTransport, check_cancel};
 use super::{
-    ExternalSidecars, Provider, PullLimits, PullRequest, ResolvedFile, ResolvedPullPlan, Selection,
+    ByteLength, ExternalSidecars, Provider, PullLimits, PullRequest, ResolvedFile,
+    ResolvedPullPlan, Selection,
 };
 use crate::cache::paths::validate_relative_path;
 use crate::cache::{FileRole, ManifestSource};
@@ -349,6 +350,9 @@ fn resolve_from(
             }
         }
     }
+    let model_selection = selected
+        .iter()
+        .any(|path| is_weight(path) || path.ends_with(".index.json"));
     let files = selected
         .into_iter()
         .map(|path| {
@@ -356,18 +360,26 @@ fn resolve_from(
             let entry = entries
                 .get_mut(&path)
                 .ok_or_else(|| Error::Malformed("HF selection disappeared".into()))?;
-            let size = ensure_length(
+            let role = file_role(&path);
+            let length = ensure_length_with_cap(
                 entry,
                 transport,
                 url.to_string(),
-                limits.cache.max_file_bytes,
+                (
+                    limits.cache.max_file_bytes,
+                    if role == FileRole::Auxiliary && !model_selection {
+                        limits.unknown_length_cap
+                    } else {
+                        None
+                    },
+                ),
                 &mut probes_left,
                 cancel,
                 &pin,
             )?;
             let digest = match &entry.lfs {
                 Some(lfs) => {
-                    if lfs.size != size
+                    if length.exact() != Some(lfs.size)
                         || lfs.oid.len() != 64
                         || !lfs.oid.bytes().all(|b| b.is_ascii_hexdigit())
                     {
@@ -377,32 +389,11 @@ fn resolve_from(
                 }
                 None => None, // A git blob OID is not the raw content SHA256.
             };
-            let role = if is_weight(&path) {
-                FileRole::Weights
-            } else if path.ends_with(".index.json") {
-                FileRole::Index
-            } else if path.ends_with("config.json") && !path.contains("tokenizer") {
-                FileRole::Config
-            } else if path.contains("tokenizer")
-                || path.ends_with("vocab.json")
-                || path.ends_with("merges.txt")
-                || path.ends_with("added_tokens.json")
-            {
-                FileRole::Tokenizer
-            } else if path
-                .rsplit('/')
-                .next()
-                .is_some_and(|name| name.starts_with("LICENSE"))
-            {
-                FileRole::License
-            } else {
-                FileRole::Auxiliary
-            };
-            ResolvedFile::new(
+            ResolvedFile::new_with_length(
                 &path,
                 url.to_string(),
                 role,
-                size,
+                length,
                 digest,
                 format!("hf:{}:{pin}:{path}", request.repository),
             )?
@@ -411,6 +402,30 @@ fn resolve_from(
         .collect::<Result<Vec<_>>>()?;
     let source = ManifestSource::new("huggingface", &request.repository, pin)?;
     ResolvedPullPlan::new(source, files, limits)
+}
+
+fn file_role(path: &str) -> FileRole {
+    if is_weight(path) {
+        FileRole::Weights
+    } else if path.ends_with(".index.json") {
+        FileRole::Index
+    } else if path.ends_with("config.json") && !path.contains("tokenizer") {
+        FileRole::Config
+    } else if path.contains("tokenizer")
+        || path.ends_with("vocab.json")
+        || path.ends_with("merges.txt")
+        || path.ends_with("added_tokens.json")
+    {
+        FileRole::Tokenizer
+    } else if path
+        .rsplit('/')
+        .next()
+        .is_some_and(|name| name.starts_with("LICENSE"))
+    {
+        FileRole::License
+    } else {
+        FileRole::Auxiliary
+    }
 }
 
 fn ensure_length(
@@ -422,6 +437,21 @@ fn ensure_length(
     cancel: &AtomicBool,
     pin: &str,
 ) -> Result<u64> {
+    ensure_length_with_cap(entry, transport, url, (maximum, None), probes, cancel, pin)?
+        .exact()
+        .ok_or_else(|| Error::Unsupported("exact HF object length required".into()))
+}
+
+fn ensure_length_with_cap(
+    entry: &mut Entry,
+    transport: &impl HttpTransport,
+    url: String,
+    bounds: (u64, Option<u64>),
+    probes: &mut usize,
+    cancel: &AtomicBool,
+    pin: &str,
+) -> Result<ByteLength> {
+    let (maximum, cap) = bounds;
     if let Some(lfs) = &entry.lfs {
         crate::cache::paths::validate_digest(&lfs.oid.to_ascii_lowercase())?;
         if entry.size.is_some_and(|size| size != lfs.size) {
@@ -432,16 +462,23 @@ fn ensure_length(
         entry.size = Some(lfs.size);
     }
     let size = match entry.size {
-        Some(size) => size,
+        Some(size) => ByteLength::Exact(size),
         None => {
-            let (size, validator) =
-                super::http::probe_length(transport, url, maximum, probes, cancel, Some(pin))?;
-            entry.size = Some(size);
+            let (size, validator) = super::http::probe_length_with_cap(
+                transport,
+                url,
+                maximum,
+                probes,
+                cancel,
+                Some(pin),
+                cap,
+            )?;
+            entry.size = size.exact();
             entry.validator = validator;
             size
         }
     };
-    if size > maximum {
+    if size.maximum() > maximum {
         return Err(Error::Limit("HF selected file length limit".into()));
     }
     Ok(size)

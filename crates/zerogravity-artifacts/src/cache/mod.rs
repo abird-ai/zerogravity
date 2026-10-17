@@ -20,6 +20,30 @@ pub use store::{
     PartialObject,
 };
 
+/// An established length or an explicit reservation bound. A bound is never
+/// an observed object length; published manifest entries always contain exact
+/// actual counts after the caller's source-completion checks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ByteLength {
+    Exact(u64),
+    AtMost(u64),
+}
+
+impl ByteLength {
+    pub const fn exact(self) -> Option<u64> {
+        match self {
+            Self::Exact(bytes) => Some(bytes),
+            Self::AtMost(_) => None,
+        }
+    }
+
+    pub const fn maximum(self) -> u64 {
+        match self {
+            Self::Exact(bytes) | Self::AtMost(bytes) => bytes,
+        }
+    }
+}
+
 use crate::Error;
 #[cfg(feature = "diagnostic-cache")]
 use crate::Result;

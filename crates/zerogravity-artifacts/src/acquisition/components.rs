@@ -181,14 +181,18 @@ impl ResolvedComponent {
 #[derive(Clone, Debug)]
 pub struct ResolvedComponentPlan {
     components: Vec<ResolvedComponent>,
-    total_bytes: u64,
+    total_bytes: Option<u64>,
+    maximum_bytes: u64,
 }
 impl ResolvedComponentPlan {
     pub fn components(&self) -> &[ResolvedComponent] {
         &self.components
     }
-    pub fn total_bytes(&self) -> u64 {
+    pub fn total_bytes(&self) -> Option<u64> {
         self.total_bytes
+    }
+    pub fn maximum_bytes(&self) -> u64 {
+        self.maximum_bytes
     }
 }
 
@@ -362,6 +366,7 @@ pub fn resolve_components(
     let mut pins = BTreeMap::<(&'static str, String, String), String>::new();
     let mut components = Vec::new();
     let mut totals = Totals::default();
+    let mut all_exact = true;
     for component in request.components() {
         check_cancel(cancel)?;
         let mut selected = component.request.clone();
@@ -397,7 +402,9 @@ pub fn resolve_components(
             pins.insert(key, plan.source().revision().to_string());
         }
         totals.add(
-            plan.files().iter().map(|file| (file.path(), file.bytes())),
+            plan.files()
+                .iter()
+                .map(|file| (file.path(), file.maximum_bytes())),
             plan.files()
                 .iter()
                 .map(|file| {
@@ -413,6 +420,7 @@ pub fn resolve_components(
                 + plan.source().revision().len(),
             limits,
         )?;
+        all_exact &= plan.total_bytes().is_some();
         validate_role(
             component.kind,
             plan.files().iter().map(|file| (file.path(), file.role())),
@@ -431,7 +439,8 @@ pub fn resolve_components(
     }
     Ok(ResolvedComponentPlan {
         components,
-        total_bytes: totals.bytes,
+        total_bytes: all_exact.then_some(totals.bytes),
+        maximum_bytes: totals.bytes,
     })
 }
 

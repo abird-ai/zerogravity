@@ -173,8 +173,8 @@ fn fresh_invocation_rehashes_prefix_and_reports_distinct_monotonic_counters() {
             assert_eq!(event.identity(), "asset-42");
             assert!(!format!("{event:?}").contains(SECRET));
             assert!(event.total_bytes() >= previous);
-            assert!(event.file_bytes() <= event.file_total_bytes());
-            assert!(event.total_bytes() <= event.total_expected_bytes());
+            assert!(event.file_bytes() <= event.file_total_bytes().unwrap());
+            assert!(event.total_bytes() <= event.total_expected_bytes().unwrap());
             assert_eq!(
                 event.downloaded_bytes() + event.cached_bytes() + event.resumed_bytes(),
                 event.total_bytes()
@@ -387,6 +387,7 @@ fn live_range_retry_never_credits_repeated_prefix_bytes() {
     );
     let script = Script::new(vec![first, second]);
     let mut counts = Vec::new();
+    let mut completed = Vec::new();
     execute_with_progress(
         &store,
         &plan(&body),
@@ -398,10 +399,14 @@ fn live_range_retry_never_credits_repeated_prefix_bytes() {
             assert_eq!(event.resumed_bytes(), 0);
             assert_eq!(event.cached_bytes(), 0);
             counts.push(event.downloaded_bytes());
+            completed.push(event.file_complete());
         },
     )
     .unwrap();
-    assert_eq!(counts, [0, 128, 500, 1024]);
+    // The final equal-count event confirms verified EOF/file completion; it
+    // does not credit the retried prefix or imply snapshot publication.
+    assert_eq!(counts, [0, 128, 500, 1024, 1024]);
+    assert_eq!(completed, [false, false, false, false, true]);
     assert_eq!(script.reads.load(Ordering::Relaxed), body.len());
     assert_eq!(script.calls.load(Ordering::Relaxed), 2);
     assert_no_host_reservation(&admission);
@@ -601,7 +606,7 @@ fn cancel_at_full_length_cannot_save_an_unproved_terminal_prefix() {
             &cancel,
             Some("fixture"),
             &mut |event| {
-                if event.file_bytes() == event.file_total_bytes() {
+                if event.file_bytes() == event.file_total_bytes().unwrap() {
                     cancel.store(true, Ordering::Release);
                 }
             }

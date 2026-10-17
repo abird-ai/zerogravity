@@ -8,6 +8,7 @@ pub mod http;
 pub mod huggingface;
 pub mod resume;
 
+pub use crate::cache::ByteLength;
 pub use crate::cache::manifest::DigestProvenance;
 use crate::cache::paths::{validate_digest, validate_relative_path};
 use crate::cache::{CacheLimits, FileRole, ManifestSource, TransferAdmission};
@@ -94,6 +95,8 @@ pub struct PullLimits {
     pub cache: CacheLimits,
     pub max_metadata_bytes: usize,
     pub max_pages: usize,
+    /// Explicit authorization for otherwise length-unavailable Auxiliary files.
+    pub unknown_length_cap: Option<u64>,
 }
 impl Default for PullLimits {
     fn default() -> Self {
@@ -101,12 +104,21 @@ impl Default for PullLimits {
             cache: CacheLimits::default(),
             max_metadata_bytes: 8 * 1024 * 1024,
             max_pages: 64,
+            unknown_length_cap: None,
         }
     }
 }
 impl PullLimits {
     pub fn validate(&self) -> Result<()> {
         self.cache.validate()?;
+        if self
+            .unknown_length_cap
+            .is_some_and(|cap| cap == 0 || cap > self.cache.max_file_bytes)
+        {
+            return Err(Error::Limit(
+                "unknown object cap exceeds file bounds".into(),
+            ));
+        }
         if self.max_metadata_bytes == 0
             || self.max_metadata_bytes > 8 * 1024 * 1024
             || self.max_pages == 0
@@ -125,7 +137,7 @@ pub struct ResolvedFile {
     path: String,
     url: String,
     role: FileRole,
-    bytes: u64,
+    length: ByteLength,
     sha256: Option<String>,
     identity: String,
     // Transient HEAD validator; never changes digest provenance or persistence.
@@ -140,11 +152,32 @@ impl ResolvedFile {
         sha256: Option<String>,
         identity: impl Into<String>,
     ) -> Result<Self> {
+        Self::new_with_length(path, url, role, ByteLength::Exact(bytes), sha256, identity)
+    }
+    /// A caller constructing an AtMost Auxiliary file explicitly authorizes its
+    /// cap. PullLimits::unknown_length_cap controls provider discovery instead;
+    /// resolved plans always enforce the cache per-file and aggregate maxima.
+    pub fn new_with_length(
+        path: impl Into<String>,
+        url: impl Into<String>,
+        role: FileRole,
+        length: ByteLength,
+        sha256: Option<String>,
+        identity: impl Into<String>,
+    ) -> Result<Self> {
+        if matches!(length, ByteLength::AtMost(0)) {
+            return Err(Error::Limit("unknown object cap is zero".into()));
+        }
+        if matches!(length, ByteLength::AtMost(_)) && role != FileRole::Auxiliary {
+            return Err(Error::Unsupported(
+                "capped acquisition requires an auxiliary file".into(),
+            ));
+        }
         let file = Self {
             path: path.into(),
             url: url.into(),
             role,
-            bytes,
+            length,
             sha256,
             identity: identity.into(),
             validator: None,
@@ -181,8 +214,14 @@ impl ResolvedFile {
     pub fn role(&self) -> FileRole {
         self.role
     }
-    pub fn bytes(&self) -> u64 {
-        self.bytes
+    pub fn bytes(&self) -> Option<u64> {
+        self.length.exact()
+    }
+    pub fn length(&self) -> ByteLength {
+        self.length
+    }
+    pub fn maximum_bytes(&self) -> u64 {
+        self.length.maximum()
     }
     pub fn sha256(&self) -> Option<&str> {
         self.sha256.as_deref()
@@ -213,7 +252,7 @@ impl fmt::Debug for ResolvedFile {
         f.debug_struct("ResolvedFile")
             .field("path", &self.path)
             .field("role", &self.role)
-            .field("bytes", &self.bytes)
+            .field("length", &self.length)
             .field("sha256", &self.sha256)
             .field("identity", &self.identity)
             .finish_non_exhaustive()
@@ -224,7 +263,8 @@ impl fmt::Debug for ResolvedFile {
 pub struct ResolvedPullPlan {
     source: ManifestSource,
     files: Vec<ResolvedFile>,
-    total_bytes: u64,
+    total_bytes: Option<u64>,
+    maximum_bytes: u64,
     limits: PullLimits,
 }
 impl ResolvedPullPlan {
@@ -238,20 +278,22 @@ impl ResolvedPullPlan {
             return Err(Error::Limit("resolved pull file count".into()));
         }
         files.sort_unstable_by(|a, b| a.path.cmp(&b.path));
-        let mut total_bytes = 0u64;
+        let mut maximum_bytes = 0u64;
+        let mut all_exact = true;
         let mut paths = std::collections::BTreeSet::new();
         let mut metadata_bytes = 0usize;
         for file in &files {
             if !paths.insert(file.path.as_str()) {
                 return Err(Error::Malformed("duplicate resolved pull path".into()));
             }
-            if file.bytes > limits.cache.max_file_bytes {
+            if file.maximum_bytes() > limits.cache.max_file_bytes {
                 return Err(Error::Limit("resolved pull file length".into()));
             }
-            total_bytes = total_bytes
-                .checked_add(file.bytes)
+            maximum_bytes = maximum_bytes
+                .checked_add(file.maximum_bytes())
                 .filter(|v| *v <= limits.cache.max_snapshot_bytes)
                 .ok_or_else(|| Error::Limit("resolved pull total length".into()))?;
+            all_exact &= file.bytes().is_some();
             metadata_bytes = metadata_bytes
                 .checked_add(
                     file.path.len()
@@ -273,7 +315,8 @@ impl ResolvedPullPlan {
         Ok(Self {
             source,
             files,
-            total_bytes,
+            total_bytes: all_exact.then_some(maximum_bytes),
+            maximum_bytes,
             limits: *limits,
         })
     }
@@ -283,8 +326,11 @@ impl ResolvedPullPlan {
     pub fn files(&self) -> &[ResolvedFile] {
         &self.files
     }
-    pub fn total_bytes(&self) -> u64 {
+    pub fn total_bytes(&self) -> Option<u64> {
         self.total_bytes
+    }
+    pub fn maximum_bytes(&self) -> u64 {
+        self.maximum_bytes
     }
     pub fn limits(&self) -> &PullLimits {
         &self.limits

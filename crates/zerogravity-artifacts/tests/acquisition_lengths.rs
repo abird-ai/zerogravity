@@ -198,7 +198,7 @@ fn hf_lfs_size_fallback_and_exact_zero_need_no_probe() {
             &AtomicBool::new(false),
         )
         .unwrap();
-        assert_eq!(plan.files()[0].bytes(), body.len() as u64);
+        assert_eq!(plan.files()[0].bytes().unwrap(), body.len() as u64);
         assert_eq!(plan.files()[0].sha256(), Some(digest(body).as_str()));
         assert_eq!(
             plan.files()[0].digest_provenance(),
@@ -236,7 +236,7 @@ fn missing_hf_length_uses_body_free_pinned_head_and_preserves_first_seen_trust()
             3,
             "metadata-only planning cannot issue payload GET"
         );
-        assert_eq!(plan.files()[0].bytes(), body.len() as u64);
+        assert_eq!(plan.files()[0].bytes().unwrap(), body.len() as u64);
         assert_eq!(
             plan.files()[0].digest_provenance(),
             DigestProvenance::FirstSeen
@@ -625,7 +625,7 @@ fn github_missing_tree_and_release_asset_sizes_probe_the_exact_object() {
             &AtomicBool::new(false),
         )
         .unwrap();
-        assert_eq!(plan.files()[0].bytes(), DATA.len() as u64);
+        assert_eq!(plan.files()[0].bytes().unwrap(), DATA.len() as u64);
         assert_eq!(
             plan.files()[0].sha256(),
             None,
@@ -763,7 +763,7 @@ fn large_exact_head_length_does_not_consume_the_component_json_body_budget() {
         &AtomicBool::new(false),
     )
     .unwrap();
-    assert_eq!(plan.total_bytes(), 64 * 1024 * 1024 + 4);
+    assert_eq!(plan.total_bytes().unwrap(), 64 * 1024 * 1024 + 4);
     script.finished();
     assert_no_host_reservation(&admission);
 }

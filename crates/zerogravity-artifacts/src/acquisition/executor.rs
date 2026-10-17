@@ -3,7 +3,7 @@ use super::resume::{ResumeDisposition, ResumeRequest, strong_etag, validate_rang
 use super::{DigestProvenance, ResolvedFile, ResolvedPullPlan};
 use crate::cache::{
     CacheStore, CommitOutcome, DiscoveredEntry, DiscoveredObject, DiscoveredTransaction, Manifest,
-    ManifestEntry, ManifestSource, TransferAdmission,
+    ManifestEntry, ManifestSource, PartialObject, TransferAdmission,
 };
 use crate::{Error, Result};
 use std::collections::BTreeSet;
@@ -67,7 +67,9 @@ pub struct PullProgress<'a> {
     file: &'a ResolvedFile,
     file_bytes: u64,
     total_bytes: u64,
-    total_expected_bytes: u64,
+    total_expected_bytes: Option<u64>,
+    total_maximum_bytes: u64,
+    file_complete: bool,
     cached_bytes: u64,
     resumed_bytes: u64,
 }
@@ -84,14 +86,23 @@ impl PullProgress<'_> {
     pub fn file_bytes(&self) -> u64 {
         self.file_bytes
     }
-    pub fn file_total_bytes(&self) -> u64 {
+    pub fn file_total_bytes(&self) -> Option<u64> {
         self.file.bytes()
+    }
+    pub fn file_maximum_bytes(&self) -> u64 {
+        self.file.maximum_bytes()
+    }
+    pub fn file_complete(&self) -> bool {
+        self.file_complete
     }
     pub fn total_bytes(&self) -> u64 {
         self.total_bytes
     }
-    pub fn total_expected_bytes(&self) -> u64 {
+    pub fn total_expected_bytes(&self) -> Option<u64> {
         self.total_expected_bytes
+    }
+    pub fn total_maximum_bytes(&self) -> u64 {
+        self.total_maximum_bytes
     }
     pub fn cached_bytes(&self) -> u64 {
         self.cached_bytes
@@ -140,9 +151,9 @@ pub fn execute_with_progress(
         .files()
         .iter()
         .map(|file| {
-            DiscoveredEntry::new(
+            DiscoveredEntry::new_with_length(
                 file.path(),
-                file.bytes(),
+                file.length(),
                 file.role(),
                 file.sha256().map(str::to_string),
             )
@@ -161,6 +172,8 @@ pub fn execute_with_progress(
             file_bytes: 0,
             total_bytes: completed_bytes,
             total_expected_bytes: plan.total_bytes(),
+            total_maximum_bytes: plan.maximum_bytes(),
+            file_complete: false,
             cached_bytes,
             resumed_bytes,
         };
@@ -170,10 +183,11 @@ pub fn execute_with_progress(
         let actual = if let Some(cached) = transaction.try_cached(file.path())? {
             let count = transaction.read_prefix(file.path(), &mut prefix)?;
             reject_pointer(&prefix[..count])?;
-            cached_bytes += file.bytes();
-            event.file_bytes = file.bytes();
-            event.total_bytes = completed_bytes + file.bytes();
+            cached_bytes += cached.bytes();
+            event.file_bytes = cached.bytes();
+            event.total_bytes = completed_bytes + cached.bytes();
             event.cached_bytes = cached_bytes;
+            event.file_complete = true;
             progress(&event);
             super::http::check_cancel(cancel)?;
             cached
@@ -191,8 +205,15 @@ pub fn execute_with_progress(
             cached_bytes += cached;
             actual
         };
+        if !event.file_complete {
+            event.file_bytes = actual.bytes();
+            event.total_bytes = completed_bytes + actual.bytes();
+            event.file_complete = true;
+            progress(&event);
+            super::http::check_cancel(cancel)?;
+        }
         files.push(acquired(file, &actual));
-        completed_bytes += file.bytes();
+        completed_bytes += actual.bytes();
     }
     let paths: BTreeSet<_> = plan.files().iter().map(ResolvedFile::path).collect();
     for file in plan
@@ -236,9 +257,10 @@ fn transfer_object(
             let mut prefix = [0u8; 128];
             let count = transaction.read_prefix(file.path(), &mut prefix)?;
             reject_pointer(&prefix[..count])?;
-            report(file.bytes(), 0, file.bytes());
+            report(actual.bytes(), 0, actual.bytes());
             super::http::check_cancel(cancel)?;
-            return Ok((actual, 0, file.bytes()));
+            let cached = actual.bytes();
+            return Ok((actual, 0, cached));
         }
         DiscoveredObject::Partial(partial) => partial,
     };
@@ -249,7 +271,7 @@ fn transfer_object(
     if resumed != 0 {
         report(resumed, resumed, 0);
         if let Err(cause) = super::http::check_cancel(cancel) {
-            partial.checkpoint()?;
+            checkpoint_if_exact(&mut partial, file)?;
             return Err(cause);
         }
     }
@@ -258,7 +280,9 @@ fn transfer_object(
     } else {
         Some(ResumeRequest {
             start: resumed,
-            total: file.bytes(),
+            total: file
+                .bytes()
+                .ok_or_else(|| Error::Unsupported("capped resume is unsupported".into()))?,
             validator: partial
                 .validator()
                 .ok_or_else(|| Error::State("saved download lacks strong validator".into()))?
@@ -266,24 +290,34 @@ fn transfer_object(
         })
     };
     let mut reader = RetryReader::open(transport, file, cancel, range)?;
-    if let Some(validator) = &reader.validator {
+    if let Some(validator) = &reader.validator
+        && file.bytes().is_some()
+    {
         partial.set_validator(validator)?;
     }
     // Inspect the original prefix before adding bytes to a retained checkpoint.
     let prefix_size = prefix
         .len()
-        .min(file.bytes().min(usize::MAX as u64) as usize);
+        .min(file.maximum_bytes().min(usize::MAX as u64) as usize);
+    let mut prefix_count = saved_prefix;
+    let mut eof = false;
     if saved_prefix < prefix_size {
-        if reader
-            .read_exact(&mut prefix[saved_prefix..prefix_size])
-            .is_err()
-        {
-            partial.checkpoint()?;
-            return Err(Error::State("HTTP object prefix read failed".into()));
+        while prefix_count < prefix_size {
+            match reader.read(&mut prefix[prefix_count..prefix_size]) {
+                Ok(0) => {
+                    eof = true;
+                    break;
+                }
+                Ok(count) => prefix_count += count,
+                Err(_) => {
+                    checkpoint_if_exact(&mut partial, file)?;
+                    return Err(Error::State("HTTP object prefix read failed".into()));
+                }
+            }
         }
-        reject_pointer(&prefix[..prefix_size])?;
-        if let Err(cause) = partial.write_chunk(&prefix[saved_prefix..prefix_size]) {
-            partial.checkpoint()?;
+        reject_pointer(&prefix[..prefix_count])?;
+        if let Err(cause) = partial.write_chunk(&prefix[saved_prefix..prefix_count]) {
+            checkpoint_if_exact(&mut partial, file)?;
             return Err(cause);
         }
         report(partial.bytes(), resumed, 0);
@@ -291,35 +325,43 @@ fn transfer_object(
     let mut checkpoint_bytes = partial.bytes();
     let mut checkpoint_time = Instant::now();
     let mut buffer = [0u8; 64 * 1024];
-    loop {
+    while !eof {
         if let Err(cause) = super::http::check_cancel(cancel) {
-            partial.checkpoint()?;
+            checkpoint_if_exact(&mut partial, file)?;
             return Err(cause);
         }
         let read = match reader.read(&mut buffer) {
             Ok(read) => read,
             Err(_) => {
-                partial.checkpoint()?;
+                checkpoint_if_exact(&mut partial, file)?;
                 return Err(Error::State("HTTP object read failed".into()));
             }
         };
         if read == 0 {
-            break;
+            eof = true;
+            continue;
         }
         if let Err(cause) = partial.write_chunk(&buffer[..read]) {
-            partial.checkpoint()?;
+            checkpoint_if_exact(&mut partial, file)?;
             return Err(cause);
         }
         if partial.bytes() - checkpoint_bytes >= 8 * 1024 * 1024
             || checkpoint_time.elapsed() >= Duration::from_secs(1)
         {
-            partial.checkpoint()?;
+            checkpoint_if_exact(&mut partial, file)?;
             checkpoint_bytes = partial.bytes();
             checkpoint_time = Instant::now();
         }
         report(partial.bytes(), resumed, 0);
     }
-    Ok((partial.finish()?, resumed, 0))
+    Ok((partial.finish_after_eof()?, resumed, 0))
+}
+
+fn checkpoint_if_exact(partial: &mut PartialObject<'_>, file: &ResolvedFile) -> Result<()> {
+    if file.bytes().is_some() {
+        partial.checkpoint()?;
+    }
+    Ok(())
 }
 
 fn acquired(file: &ResolvedFile, entry: &ManifestEntry) -> AcquiredFile {
@@ -378,6 +420,7 @@ struct RetryReader<'a, T> {
     body: Box<dyn Read + Send>,
     validator: Option<String>,
     count: u64,
+    response_length: Option<u64>,
     retries: usize,
 }
 impl<'a, T: HttpTransport> RetryReader<'a, T> {
@@ -395,7 +438,7 @@ impl<'a, T: HttpTransport> RetryReader<'a, T> {
                     url: file.url().to_string(),
                     accept: HttpAccept::Binary,
                     range: range.clone(),
-                    max_body_bytes: file.bytes() - count,
+                    max_body_bytes: file.maximum_bytes() - count,
                 },
                 cancel,
             )
@@ -423,14 +466,42 @@ impl<'a, T: HttpTransport> RetryReader<'a, T> {
                     "download requires identity encoding".into(),
                 ));
             }
-            if let Some(value) = response.header("content-length")
-                && super::http::parse_u64(value)? != file.bytes()
-            {
-                return Err(Error::Malformed(
-                    "download metadata/body length mismatch".into(),
-                ));
+            let declared = response
+                .header("content-length")
+                .map(super::http::parse_u64)
+                .transpose()?;
+            if let Some(expected) = file.bytes() {
+                if declared.is_some_and(|actual| actual != expected) {
+                    return Err(Error::Malformed(
+                        "download metadata/body length mismatch".into(),
+                    ));
+                }
+            } else {
+                if response.header("content-range").is_some() {
+                    return Err(Error::Malformed("capped response range invalid".into()));
+                }
+                if declared.is_some_and(|bytes| bytes > file.maximum_bytes()) {
+                    return Err(Error::Limit(
+                        "capped response declared length exceeds cap".into(),
+                    ));
+                }
+                let transfer = response.header("transfer-encoding");
+                if transfer.is_some_and(|value| {
+                    declared.is_some() || !value.eq_ignore_ascii_case("chunked")
+                }) {
+                    return Err(Error::Malformed("ambiguous capped response framing".into()));
+                }
+                if declared.is_none() && transfer.is_none() {
+                    return Err(Error::Unsupported(
+                        "capped response requires declared length or chunked completion".into(),
+                    ));
+                }
             }
         }
+        let response_length = file.bytes().or(response
+            .header("content-length")
+            .map(super::http::parse_u64)
+            .transpose()?);
         let validator = response
             .header("etag")
             .filter(|value| strong_etag(value).is_ok())
@@ -442,6 +513,7 @@ impl<'a, T: HttpTransport> RetryReader<'a, T> {
             body: response.body,
             validator,
             count,
+            response_length,
             retries: 0,
         })
     }
@@ -455,22 +527,44 @@ impl<T: HttpTransport> Read for RetryReader<'_, T> {
             if self.cancel.load(Ordering::Acquire) {
                 return Err(io::Error::other("acquisition canceled"));
             }
-            match self.body.read(buffer) {
+            let limit = self
+                .file
+                .maximum_bytes()
+                .min(self.response_length.unwrap_or(u64::MAX));
+            let allowed = limit.saturating_sub(self.count).saturating_add(1);
+            let count = buffer
+                .len()
+                .min(usize::try_from(allowed).unwrap_or(usize::MAX));
+            match self.body.read(&mut buffer[..count]) {
                 Ok(read) if read != 0 => {
                     self.count = self
                         .count
                         .checked_add(read as u64)
-                        .filter(|v| *v <= self.file.bytes())
+                        .filter(|v| {
+                            *v <= self.file.maximum_bytes()
+                                && self.response_length.is_none_or(|length| *v <= length)
+                        })
                         .ok_or_else(|| io::Error::other("download exceeded planned length"))?;
                     // The owning cache guard checks cancellation before accepting
                     // these bytes. Its caller checkpoints earlier accepted bytes
                     // if cancellation arrived while this blocking read completed.
                     return Ok(read);
                 }
-                Ok(0) if self.count == self.file.bytes() => return Ok(0),
+                Ok(0)
+                    if self
+                        .response_length
+                        .is_none_or(|length| self.count == length) =>
+                {
+                    return Ok(0);
+                }
                 Ok(_) | Err(_) => {}
             }
-            if self.retries == 2 || self.count == 0 || self.count >= self.file.bytes() {
+            let Some(total) = self.file.bytes() else {
+                return Err(io::Error::other(
+                    "capped download interrupted without terminal EOF",
+                ));
+            };
+            if self.retries == 2 || self.count == 0 || self.count >= total {
                 return Err(io::Error::other(
                     "download interrupted without resumable prefix",
                 ));
@@ -482,7 +576,7 @@ impl<T: HttpTransport> Read for RetryReader<'_, T> {
             self.retries += 1;
             let range = ResumeRequest {
                 start: self.count,
-                total: self.file.bytes(),
+                total,
                 validator,
             };
             let response = self
@@ -492,7 +586,7 @@ impl<T: HttpTransport> Read for RetryReader<'_, T> {
                         url: self.file.url().to_string(),
                         accept: HttpAccept::Binary,
                         range: Some(range.clone()),
-                        max_body_bytes: self.file.bytes() - self.count,
+                        max_body_bytes: total - self.count,
                     },
                     self.cancel,
                 )
@@ -574,7 +668,10 @@ mod cached_start_tests {
             .unwrap();
             let manifest = Manifest::new(
                 source.clone(),
-                vec![ManifestEntry::new(file.path(), hash, file.bytes(), file.role()).unwrap()],
+                vec![
+                    ManifestEntry::new(file.path(), hash, file.bytes().unwrap(), file.role())
+                        .unwrap(),
+                ],
                 &Default::default(),
             )
             .unwrap();
@@ -603,7 +700,7 @@ mod cached_start_tests {
                     vec![
                         DiscoveredEntry::new(
                             self.file.path(),
-                            self.file.bytes(),
+                            self.file.bytes().unwrap(),
                             self.file.role(),
                             self.file.sha256().map(str::to_string),
                         )
@@ -662,8 +759,15 @@ mod cached_start_tests {
         )
         .unwrap();
         assert_eq!(entry.digest(), fixture.file.sha256().unwrap());
-        assert_eq!((resumed, cached), (0, fixture.file.bytes()));
-        assert_eq!(progress, [(fixture.file.bytes(), 0, fixture.file.bytes())]);
+        assert_eq!((resumed, cached), (0, fixture.file.bytes().unwrap()));
+        assert_eq!(
+            progress,
+            [(
+                fixture.file.bytes().unwrap(),
+                0,
+                fixture.file.bytes().unwrap()
+            )]
+        );
         drop(transaction);
         fixture.unchanged();
     }
@@ -681,7 +785,11 @@ mod cached_start_tests {
             &mut |bytes, resumed, cached| {
                 assert_eq!(
                     (bytes, resumed, cached),
-                    (fixture.file.bytes(), 0, fixture.file.bytes())
+                    (
+                        fixture.file.bytes().unwrap(),
+                        0,
+                        fixture.file.bytes().unwrap()
+                    )
                 );
                 calls += 1;
                 cancel.store(true, Ordering::Release);

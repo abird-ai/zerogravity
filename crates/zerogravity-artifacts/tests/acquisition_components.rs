@@ -206,7 +206,7 @@ fn explicit_sources_pin_once_keep_separate_snapshots_and_open_offline() {
         script.finished();
         assert_eq!(script.calls.load(Ordering::Relaxed), 6);
         assert_eq!(
-            plan.total_bytes(),
+            plan.total_bytes().unwrap(),
             (WEIGHTS.len() + CONFIG.len() + TOKENIZER.len()) as u64
         );
         assert_eq!(plan.components()[0].plan().source().revision(), pin('1'));
@@ -222,7 +222,7 @@ fn explicit_sources_pin_once_keep_separate_snapshots_and_open_offline() {
             &admission,
             &Arc::new(AtomicBool::new(false)),
             &mut |label, event| {
-                assert!(event.total_bytes() <= event.total_expected_bytes());
+                assert!(event.total_bytes() <= event.total_expected_bytes().unwrap());
                 seen.push(label.to_string());
             },
         )

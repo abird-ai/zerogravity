@@ -124,7 +124,8 @@ impl DiscoveredTransaction {
             ));
         }
         let entry = self.entry(logical_path)?;
-        let total = entry.bytes;
+        let length = entry.length;
+        let total = length.maximum();
         let role = entry.role;
         let expected = entry.sha256.clone();
         let key = digest(
@@ -162,15 +163,15 @@ impl DiscoveredTransaction {
             lock.ensure_bound()?;
         }
         if let Some(hash) = &expected {
-            match self.inner.store.verify_file_cancellable(
+            match self.inner.store.verify_file_bound(
                 &format!("blobs/sha256/{hash}"),
                 hash,
-                total,
+                length,
                 &self.inner.cancel,
             ) {
-                Ok(_) => {
+                Ok((_, bytes)) => {
                     if accept_cached {
-                        let actual = ManifestEntry::new(logical_path, hash, total, role)?
+                        let actual = ManifestEntry::new(logical_path, hash, bytes, role)?
                             .with_digest_provenance(DigestProvenance::TrustedSha256);
                         self.inner.complete.insert(logical_path.to_string());
                         self.verified
@@ -185,7 +186,11 @@ impl DiscoveredTransaction {
                 Err(error) => return Err(error),
             }
         }
-        let saved = recover_candidate(&self.inner, &key, total)?;
+        let saved = if length.exact().is_some() {
+            recover_candidate(&self.inner, &key, total)?
+        } else {
+            None
+        };
         let temporary = self.inner.stage(&format!("object-{ordinal}"));
         let mut target = self.inner.store.inner.root.open_file(
             &temporary,
@@ -342,6 +347,17 @@ impl PartialObject<'_> {
 
     pub fn set_validator(&mut self, validator: &str) -> Result<()> {
         self.ensure_owner()?;
+        if self
+            .transaction
+            .entry(&self.logical_path)?
+            .length
+            .exact()
+            .is_none()
+        {
+            return Err(Error::Unsupported(
+                "capped transfers do not retain partial validators".into(),
+            ));
+        }
         strong_validator(validator)?;
         if self
             .validator
@@ -378,7 +394,7 @@ impl PartialObject<'_> {
         if self.write_failed {
             return Err(Error::State("partial write previously failed".into()));
         }
-        let total = self.transaction.entry(&self.logical_path)?.bytes;
+        let total = self.transaction.entry(&self.logical_path)?.length.maximum();
         let count = self
             .bytes
             .checked_add(bytes.len() as u64)
@@ -396,6 +412,17 @@ impl PartialObject<'_> {
     /// Synchronize an already written prefix even after cancellation. This
     /// acquires no new transfer memory and performs no input/network read.
     pub fn checkpoint(&mut self) -> Result<()> {
+        if self
+            .transaction
+            .entry(&self.logical_path)?
+            .length
+            .exact()
+            .is_none()
+        {
+            return Err(Error::Unsupported(
+                "capped transfers do not support durable checkpoints".into(),
+            ));
+        }
         self.transaction
             .inner
             .owner_lock
@@ -413,7 +440,7 @@ impl PartialObject<'_> {
         // Keep any earlier proper-prefix checkpoint; require a fresh response
         // and terminal framing check before a future invocation can finish.
         if self.bytes == self.checkpointed
-            || self.bytes == self.transaction.entry(&self.logical_path)?.bytes
+            || self.bytes == self.transaction.entry(&self.logical_path)?.length.maximum()
         {
             return Ok(());
         }
@@ -436,7 +463,7 @@ impl PartialObject<'_> {
             schema: PARTIAL_SCHEMA.into(),
             key: self.key.clone(),
             ordinal: self.ordinal,
-            total: self.transaction.entry(&self.logical_path)?.bytes,
+            total: self.transaction.entry(&self.logical_path)?.length.maximum(),
             bytes: self.bytes,
             sha256: format!("{:x}", self.hasher.clone().finalize()),
             validator: validator.clone(),
@@ -513,13 +540,36 @@ impl PartialObject<'_> {
         Ok(())
     }
 
-    pub fn finish(mut self) -> Result<ManifestEntry> {
+    pub fn finish(self) -> Result<ManifestEntry> {
+        if self
+            .transaction
+            .entry(&self.logical_path)?
+            .length
+            .exact()
+            .is_none()
+        {
+            return Err(Error::Unsupported(
+                "capped transfers require explicit terminal EOF".into(),
+            ));
+        }
+        self.finish_after_eof()
+    }
+
+    /// The caller attests that its original body reader reached terminal EOF,
+    /// including a separate overflow read at the bound. This does not itself
+    /// prove HTTP framing; the transport/executor remains that authority.
+    pub fn finish_after_eof(mut self) -> Result<ManifestEntry> {
         self.ensure_owner()?;
         if self.write_failed {
             return Err(Error::State("partial write previously failed".into()));
         }
         let entry = self.transaction.entry(&self.logical_path)?;
-        if self.bytes != entry.bytes {
+        if self.bytes > entry.length.maximum()
+            || entry
+                .length
+                .exact()
+                .is_some_and(|exact| self.bytes != exact)
+        {
             return Err(Error::Malformed("partial source truncated".into()));
         }
         let actual = format!("{:x}", self.hasher.clone().finalize());
@@ -548,6 +598,7 @@ impl PartialObject<'_> {
                     path: &temporary,
                     file: &self.target,
                     digest: &actual,
+                    bytes: self.bytes,
                 },
                 self.object_lock.take(),
                 true,

@@ -1,6 +1,6 @@
 //! Bounded explicit component inputs. This never infers authority from a model
 //! card/config URL or creates a composite cache/publisher.
-use super::{Options, ProgressDisplay, admission, limits, open, signals};
+use super::{Options, ProgressDisplay, admission, limits, open, selected_bytes, signals};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::io::Read;
@@ -181,7 +181,10 @@ pub(super) fn run(path: &str, options: &Options) -> Result<()> {
     let _signals = signals::CancellationSignals::register(cancel.clone())?;
     let plan = acquisition::resolve_components(&request, &clients, &bounds, &admission, &cancel)?;
     if options.dry_run {
-        println!("Selected component bytes: {}", plan.total_bytes());
+        println!(
+            "Selected component bytes: {}",
+            selected_bytes(plan.total_bytes(), plan.maximum_bytes())
+        );
         for component in plan.components() {
             println!(
                 "Component: {}\nProvider: {}\nRepository: {}\nPinned revision: {}",
@@ -194,7 +197,7 @@ pub(super) fn run(path: &str, options: &Options) -> Result<()> {
                 println!(
                     "{} {} {:?}",
                     file.path(),
-                    file.bytes(),
+                    selected_bytes(file.bytes(), file.maximum_bytes()),
                     file.digest_provenance()
                 );
             }
@@ -241,6 +244,7 @@ mod tests {
 
     #[test]
     fn component_head_uses_only_the_selected_label_client_without_body_transfer() {
+        let _schedule = super::super::PROCESS_FIXTURE_SCHEDULE.lock().unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());

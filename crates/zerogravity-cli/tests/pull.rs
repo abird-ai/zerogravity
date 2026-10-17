@@ -171,6 +171,68 @@ mod enabled {
         assert!(String::from_utf8_lossy(&list.stdout).contains(&digest));
     }
     #[test]
+    fn unknown_cap_offline_and_invalid_limits_refuse_before_any_io_or_credentials() {
+        let fixture = Fixture::new();
+        for flags in [
+            vec![
+                "hf",
+                "owner/repo",
+                "--revision",
+                COMMIT,
+                "--file",
+                "note.txt",
+                "--offline",
+                "--unknown-size-cap-bytes",
+                "4",
+            ],
+            vec![
+                "github",
+                "owner/repo",
+                "--revision",
+                COMMIT,
+                "--file",
+                "note.txt",
+                "--unknown-size-cap-bytes",
+                "0",
+            ],
+            vec![
+                "github",
+                "owner/repo",
+                "--revision",
+                COMMIT,
+                "--file",
+                "note.txt",
+                "--unknown-size-cap-bytes",
+                "5",
+                "--max-file-bytes",
+                "4",
+            ],
+            vec![
+                "components",
+                "nonexistent-private-plan.json",
+                "--offline",
+                "--unknown-size-cap-bytes",
+                "4",
+            ],
+            vec!["list", "--unknown-size-cap-bytes", "4"],
+        ] {
+            let output = fixture
+                .command()
+                .arg("pull")
+                .args(flags)
+                .arg("--cache")
+                .arg(&fixture.0)
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(2));
+            let error = String::from_utf8_lossy(&output.stderr);
+            assert!(!error.contains("credential"), "{error}");
+            assert!(!error.contains("I/O error"), "{error}");
+            assert!(!fixture.0.exists());
+        }
+    }
+
+    #[test]
     fn offline_miss_or_foreign_selection_never_uses_invalid_credentials() {
         let fixture = Fixture::new();
         fixture.seed();
@@ -281,7 +343,9 @@ mod enabled {
         assert!(text.contains("First-seen"));
         assert!(text.contains("strong ETag"));
         assert!(text.contains("body-free HEAD"));
-        assert!(text.contains("totals still unknown refuse"));
+        assert!(text.contains("without opt-in unknown totals refuse"));
+        assert!(text.contains("--unknown-size-cap-bytes"));
+        assert!(text.contains("no resume/checkpoint or body retry"));
         assert!(text.contains("explicit cache remove; legacy roots are not migrated"));
         assert!(text.contains("run-cache uses the existing supported CPU loader"));
         assert!(!text.contains("No eviction, A3 loader"));

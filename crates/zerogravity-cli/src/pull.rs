@@ -17,6 +17,11 @@ use zerogravity::{Error, Result};
 const DISK_DEFAULT: u64 = 16 * 1024 * 1024 * 1024;
 const MEMORY_DEFAULT: u64 = 128 * 1024 * 1024;
 
+// Test-only spawn scheduling: another case's child can inherit temporary cache
+// descriptors until CLOEXEC. Intentional concurrency within a case is retained.
+#[cfg(test)]
+static PROCESS_FIXTURE_SCHEDULE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[derive(Debug, PartialEq, Eq)]
 enum Action {
     Help,
@@ -33,6 +38,7 @@ struct Options {
     disk: u64,
     memory: u64,
     max_file: Option<u64>,
+    unknown_size_cap: Option<u64>,
     max_snapshot: Option<u64>,
     max_files: Option<usize>,
     metadata: Option<usize>,
@@ -59,6 +65,7 @@ fn parse(args: &[String]) -> Result<Options> {
                 disk: DISK_DEFAULT,
                 memory: MEMORY_DEFAULT,
                 max_file: None,
+                unknown_size_cap: None,
                 max_snapshot: None,
                 max_files: None,
                 metadata: None,
@@ -90,6 +97,7 @@ fn parse(args: &[String]) -> Result<Options> {
         disk: DISK_DEFAULT,
         memory: MEMORY_DEFAULT,
         max_file: None,
+        unknown_size_cap: None,
         max_snapshot: None,
         max_files: None,
         metadata: None,
@@ -122,6 +130,7 @@ fn parse(args: &[String]) -> Result<Options> {
             | "--disk-limit-bytes"
             | "--memory-limit-bytes"
             | "--max-file-bytes"
+            | "--unknown-size-cap-bytes"
             | "--max-snapshot-bytes"
             | "--max-files"
             | "--max-metadata-bytes"
@@ -161,6 +170,7 @@ fn parse(args: &[String]) -> Result<Options> {
                     "--disk-limit-bytes" => result.disk = number()?,
                     "--memory-limit-bytes" => result.memory = number()?,
                     "--max-file-bytes" => result.max_file = Some(number()?),
+                    "--unknown-size-cap-bytes" => result.unknown_size_cap = Some(number()?),
                     "--max-snapshot-bytes" => result.max_snapshot = Some(number()?),
                     "--max-files" => result.max_files = Some(count()?),
                     "--max-metadata-bytes" => result.metadata = Some(count()?),
@@ -178,6 +188,14 @@ fn parse(args: &[String]) -> Result<Options> {
             _ => return Err(invalid()),
         }
     }
+    // The cap authorizes online unknown-body transfer only. Reject it before
+    // reading a component plan/cache or touching credentials/client state.
+    if result.unknown_size_cap.is_some()
+        && (result.offline || (provider.is_none() && first != "components"))
+    {
+        return Err(invalid());
+    }
+    limits(&result)?;
     if let Some(provider) = provider {
         let (revision, selection) = match (revision, release, asset) {
             (Some(revision), None, None) if !files.is_empty() => (
@@ -240,6 +258,7 @@ fn limits(options: &Options) -> Result<PullLimits> {
     if let Some(n) = options.pages {
         limits.max_pages = n;
     }
+    limits.unknown_length_cap = options.unknown_size_cap;
     limits.validate()?;
     Ok(limits)
 }
@@ -278,6 +297,13 @@ fn admission(memory: u64) -> Result<TransferAdmission> {
     })
 }
 
+fn selected_bytes(exact: Option<u64>, maximum: u64) -> String {
+    exact.map_or_else(
+        || format!("unknown; reservation maximum {maximum}"),
+        |bytes| bytes.to_string(),
+    )
+}
+
 #[derive(Default)]
 struct ProgressDisplay {
     last_report: Option<std::time::Instant>,
@@ -291,7 +317,7 @@ impl ProgressDisplay {
     ) -> std::io::Result<()> {
         let now = std::time::Instant::now();
         if self.last_path != event.path()
-            || event.file_bytes() == event.file_total_bytes()
+            || event.file_complete()
             || self.last_report.is_none_or(|last| {
                 now.duration_since(last) >= std::time::Duration::from_millis(200)
             })
@@ -300,9 +326,9 @@ impl ProgressDisplay {
                 output,
                 "Pull bytes: {}/{} (file {}/{}, cached {}, resumed {})",
                 event.total_bytes(),
-                event.total_expected_bytes(),
+                selected_bytes(event.total_expected_bytes(), event.total_maximum_bytes()),
                 event.file_bytes(),
-                event.file_total_bytes(),
+                selected_bytes(event.file_total_bytes(), event.file_maximum_bytes()),
                 event.cached_bytes(),
                 event.resumed_bytes()
             )?;
@@ -369,13 +395,13 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                     plan.source().provider(),
                     plan.source().repository(),
                     plan.source().revision(),
-                    plan.total_bytes()
+                    selected_bytes(plan.total_bytes(), plan.maximum_bytes())
                 );
                 for file in plan.files() {
                     println!(
                         "{} {} {:?}",
                         file.path(),
-                        file.bytes(),
+                        selected_bytes(file.bytes(), file.maximum_bytes()),
                         file.digest_provenance()
                     );
                 }
@@ -433,6 +459,7 @@ OPTIONS:
     --disk-limit-bytes N       Cooperative cache-owned disk policy (default16GiB)
     --memory-limit-bytes N     This process transfer-staging cap (default128MiB, not all RAM)
     --max-file-bytes N --max-snapshot-bytes N --max-files N
+    --unknown-size-cap-bytes N Explicit online cap for still-unknown auxiliary bodies
     --max-metadata-bytes N --max-pages N
     --timeout-seconds N        Per HTTP operation total deadline (1..86400, default120)
 
@@ -446,16 +473,21 @@ cross-source ref/model-readiness claim.
 Credentials: HF_TOKEN or GITHUB_TOKEN environment only; no token command-line option.
 HF --file supports bounded component-local * and ? filters, including offline.
 SIGINT/SIGTERM request cooperative cancellation of online pulls; a blocked read
-can take its configured HTTP deadline. Progress bytes are logical completed bytes
+can take its configured HTTP deadline. Progress bytes are logical accepted bytes
 including verified cached/resumed prefixes, not a network-throughput measurement.
 Select an exact weight/index or auxiliary path; same-repository required model
 closure is added, and missing sidecars or ambiguous variants refuse. First-seen
 SHA256 is weaker than a trusted provider digest. Missing listing sizes may be recovered
-from pinned provider metadata or bounded body-free HEAD; totals still unknown refuse.
+from pinned provider metadata or bounded body-free HEAD. Still-unknown auxiliary
+bodies require explicit --unknown-size-cap-bytes (positive, <=max-file-bytes);
+without opt-in unknown totals refuse. Exact sizes and strict model closure stay unchanged.
+The cap is an upper reservation bound, never an expected length; unknown streams
+need proved HTTP body completion and have no resume/checkpoint or body retry.
+This cap is online-only (including metadata-only dry-run); offline-cap combinations refuse.
 HEAD is metadata only and does not establish content digest trust. Protected cache
 roots support explicit cache remove; legacy roots are not migrated. Explicit
 run-cache uses the existing supported CPU loader; acquisition
-adds no inference formats. Resume requires a rehashed saved prefix and matching strong ETag;
+adds no inference formats. Exact-length resume requires a rehashed saved prefix and matching strong ETag;
 changed or ignored range responses refuse."
     );
 }
@@ -468,6 +500,7 @@ mod tests {
     }
     #[test]
     fn exact_selection_and_release_are_explicit() {
+        let _schedule = PROCESS_FIXTURE_SCHEDULE.lock().unwrap();
         assert!(matches!(
             parse(&args(&[
                 "github",
@@ -512,6 +545,7 @@ mod tests {
     }
     #[test]
     fn limits_duplicate_flags_and_relative_cache_refuse() {
+        let _schedule = PROCESS_FIXTURE_SCHEDULE.lock().unwrap();
         for parts in [
             vec!["list", "--cache", "relative"],
             vec!["list", "--max-pages", "0"],
@@ -524,7 +558,179 @@ mod tests {
         }
     }
     #[test]
+    fn unknown_cap_is_explicit_online_only_and_bounded() {
+        let _schedule = PROCESS_FIXTURE_SCHEDULE.lock().unwrap();
+        let accepted = parse(&args(&[
+            "github",
+            "a/b",
+            "--revision",
+            "main",
+            "--file",
+            "note.txt",
+            "--unknown-size-cap-bytes",
+            "4",
+            "--max-file-bytes",
+            "4",
+            "--dry-run",
+        ]))
+        .unwrap();
+        assert_eq!(limits(&accepted).unwrap().unknown_length_cap, Some(4));
+        for flags in [
+            vec!["--unknown-size-cap-bytes", "0"],
+            vec!["--unknown-size-cap-bytes", "5", "--max-file-bytes", "4"],
+            vec!["--unknown-size-cap-bytes", "1", "--offline"],
+            vec![
+                "--unknown-size-cap-bytes",
+                "1",
+                "--unknown-size-cap-bytes",
+                "1",
+            ],
+        ] {
+            let mut input = args(&["hf", "a/b", "--revision", "main", "--file", "note.txt"]);
+            input.extend(args(&flags));
+            assert!(parse(&input).is_err());
+        }
+        assert!(
+            parse(&args(&[
+                "components",
+                "missing.json",
+                "--offline",
+                "--unknown-size-cap-bytes",
+                "4"
+            ]))
+            .is_err()
+        );
+        assert!(
+            parse(&args(&[
+                "inspect",
+                "missing",
+                "--unknown-size-cap-bytes",
+                "4"
+            ]))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn capped_progress_never_reports_the_reservation_as_an_exact_total() {
+        let _schedule = PROCESS_FIXTURE_SCHEDULE.lock().unwrap();
+        use std::io::Cursor;
+        use zerogravity::acquisition::http::{HttpRequest, HttpResponse, HttpTransport};
+        use zerogravity::acquisition::{ResolvedFile, ResolvedPullPlan};
+        use zerogravity::cache::{ByteLength, FileRole, Manifest, ManifestEntry, ManifestSource};
+        let root =
+            std::env::temp_dir().join(format!("zg-pull-capped-progress-{}", std::process::id()));
+        assert!(!root.exists());
+        let store = CacheStore::open(CacheOptions::new(Some(root.clone()), DISK_DEFAULT)).unwrap();
+        let arbiter = ResourceArbiter::new();
+        let resource = PhysicalDeviceKey::new("test-host", "capped-progress").unwrap();
+        arbiter.register(resource.clone(), MEMORY_DEFAULT).unwrap();
+        let admission = TransferAdmission {
+            arbiter,
+            resource,
+            owner: ResourceOwner::new("fixture", "capped-progress").unwrap(),
+        };
+        let hash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        let source = ManifestSource::new("github", "fixture/progress", "1".repeat(40)).unwrap();
+        let seeded = Manifest::new(
+            source.clone(),
+            vec![ManifestEntry::new("old", hash, 3, FileRole::Auxiliary).unwrap()],
+            &Default::default(),
+        )
+        .unwrap();
+        let mut tx = store
+            .begin(seeded, &admission, Arc::new(AtomicBool::new(false)))
+            .unwrap();
+        tx.import_object("old", &mut Cursor::new(b"abc")).unwrap();
+        tx.commit(None).unwrap();
+        let bounds = PullLimits {
+            unknown_length_cap: Some(4),
+            ..PullLimits::default()
+        };
+        let file = |path, sha| {
+            ResolvedFile::new_with_length(
+                path,
+                "https://fixture.invalid/?secret=HIDDEN",
+                FileRole::Auxiliary,
+                ByteLength::AtMost(4),
+                sha,
+                path,
+            )
+            .unwrap()
+        };
+        let plan = ResolvedPullPlan::new(
+            source,
+            vec![file("cached", Some(hash.into())), file("download", None)],
+            &bounds,
+        )
+        .unwrap();
+        assert_eq!(plan.total_bytes(), None);
+        assert_eq!(
+            selected_bytes(plan.total_bytes(), plan.maximum_bytes()),
+            "unknown; reservation maximum 8"
+        );
+        struct Body;
+        impl HttpTransport for Body {
+            fn get(&self, _: &HttpRequest, _: &AtomicBool) -> Result<HttpResponse> {
+                Ok(HttpResponse {
+                    status: 200,
+                    headers: [("transfer-encoding".into(), "chunked".into())].into(),
+                    body: Box::new(Cursor::new(b"body")),
+                })
+            }
+        }
+        let mut output = Vec::new();
+        let mut reached_cap_before_eof = false;
+        let mut completed = false;
+        let receipt = acquisition::execute_with_progress(
+            &store,
+            &plan,
+            &Body,
+            &admission,
+            &Arc::new(AtomicBool::new(false)),
+            None,
+            &mut |event| {
+                if event.path() == "download" && event.file_bytes() == 4 {
+                    reached_cap_before_eof |= !event.file_complete();
+                    completed |= event.file_complete();
+                    if !event.file_complete() {
+                        assert_eq!(event.file_total_bytes(), None);
+                    }
+                }
+                // A fresh formatter exposes every event without timing assumptions.
+                ProgressDisplay::default()
+                    .report(event, &mut output)
+                    .unwrap();
+            },
+        )
+        .unwrap();
+        let output = String::from_utf8(output).unwrap();
+        assert!(reached_cap_before_eof && completed);
+        assert!(output.contains("unknown; reservation maximum"));
+        assert!(!output.contains("7/8"));
+        assert!(!output.contains("4/4"));
+        assert!(!output.contains("HIDDEN"));
+        assert!(!output.contains("https://"));
+        assert_eq!(
+            receipt.files().iter().map(|file| file.bytes()).sum::<u64>(),
+            7
+        );
+        assert_eq!(receipt.files()[0].bytes(), 3);
+        assert_eq!(
+            admission
+                .arbiter
+                .snapshot(&admission.resource)
+                .unwrap()
+                .reserved,
+            0
+        );
+        drop(store);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn byte_progress_reports_actual_cache_and_transfer_without_urls() {
+        let _schedule = PROCESS_FIXTURE_SCHEDULE.lock().unwrap();
         use std::io::Cursor;
         use std::sync::atomic::Ordering;
         use zerogravity::acquisition::http::{HttpRequest, HttpResponse, HttpTransport};
@@ -627,6 +833,7 @@ mod tests {
 
     #[test]
     fn real_process_signals_cancel_pull_and_preserve_previous_reference() {
+        let _schedule = PROCESS_FIXTURE_SCHEDULE.lock().unwrap();
         use std::io::{BufRead, BufReader};
         use std::process::{Command, Stdio};
         use std::time::{Duration, Instant};
