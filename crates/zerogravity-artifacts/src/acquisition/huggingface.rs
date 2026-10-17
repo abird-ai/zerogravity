@@ -155,6 +155,30 @@ pub(super) fn resolve_quant_from(
         ExternalSidecars::default(),
     )
 }
+pub(super) fn resolve_filtered_from(
+    transport: &impl HttpTransport,
+    request: &super::filters::FilterRequest,
+    limits: &PullLimits,
+    cancel: &AtomicBool,
+    endpoint: &str,
+) -> Result<ResolvedPullPlan> {
+    super::quant::limits_for_quant(limits)?;
+    if request.source().provider() != Provider::HuggingFace {
+        return Err(Error::Unsupported("HF filter source required".into()));
+    }
+    resolve_choice(
+        transport,
+        (
+            request.source().repository(),
+            request.source().revision(),
+            super::quant::InitialChoice::Filtered(request),
+        ),
+        limits,
+        cancel,
+        endpoint,
+        ExternalSidecars::default(),
+    )
+}
 fn resolve_choice(
     transport: &impl HttpTransport,
     source: (&str, &str, super::quant::InitialChoice<'_>),
@@ -186,13 +210,18 @@ fn resolve_choice(
         &mut metadata_left,
     )?;
     let available: Vec<_> = entries.keys().map(String::as_str).collect();
-    let mut selected = match choice {
-        super::quant::InitialChoice::Files { paths, subfolder } => {
-            select_paths(paths, subfolder, &available)?
-        }
-        super::quant::InitialChoice::Quant(request) => {
-            let regular = entries.keys().map(|path| (path.clone(), true)).collect();
-            super::quant::select(&regular, request, limits, cancel)?
+    let regular = entries.keys().map(|path| (path.clone(), true)).collect();
+    let (mut selected, exclusions) = match choice {
+        super::quant::InitialChoice::Files { paths, subfolder } => (
+            select_paths(paths, subfolder, &available)?,
+            super::filters::Exclusions::default(),
+        ),
+        super::quant::InitialChoice::Quant(request) => (
+            super::quant::select(&regular, request, limits, cancel)?,
+            super::filters::Exclusions::default(),
+        ),
+        super::quant::InitialChoice::Filtered(request) => {
+            super::filters::select(&regular, request, limits, cancel)?
         }
     };
     let initial = selected.clone();
@@ -221,11 +250,14 @@ fn resolve_choice(
                     &mut selected,
                     format!("{prefix}-{part:05}-of-{total:05}.gguf"),
                 )?;
+                exclusions.required(&format!("{prefix}-{part:05}-of-{total:05}.gguf"))?;
             }
         }
     }
     let mut covered = BTreeMap::<String, usize>::new();
     for path in indexes {
+        // This index would be read by original closure; veto before its GET.
+        exclusions.required(&path)?;
         let url = file_url(&base, &repo, &pin, &path)?;
         let entry = entries
             .get_mut(&path)
@@ -262,8 +294,10 @@ fn resolve_choice(
             })
             .collect();
         if initial.contains(&path) || shards.iter().any(|shard| initial.contains(shard)) {
+            exclusions.required(&path)?;
             require(&entries, &mut selected, path)?;
             for shard in shards {
+                exclusions.required(&shard)?;
                 require(&entries, &mut selected, shard.clone())?;
                 *covered.entry(shard.clone()).or_default() += 1;
                 index_shards.insert(shard);
@@ -319,6 +353,7 @@ fn resolve_choice(
                 .map(|f| format!("{f}/{required}"))
                 .unwrap_or_else(|| required.to_string());
             if entries.contains_key(&path) || !sidecars.allows_missing(required) {
+                exclusions.required(&path)?;
                 require(&entries, &mut selected, path)?;
             }
         }
@@ -337,7 +372,7 @@ fn resolve_choice(
                 .as_ref()
                 .map(|f| format!("{f}/{optional}"))
                 .unwrap_or_else(|| optional.to_string());
-            if entries.contains_key(&path) {
+            if entries.contains_key(&path) && exclusions.allows(&path) {
                 selected.insert(path);
             }
         }

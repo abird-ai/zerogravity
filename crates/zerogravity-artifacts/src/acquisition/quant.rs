@@ -42,6 +42,7 @@ pub(super) enum InitialChoice<'a> {
         subfolder: Option<&'a str>,
     },
     Quant(&'a GgufQuantRequest),
+    Filtered(&'a super::filters::FilterRequest),
 }
 fn missing() -> Error {
     Error::Unsupported(
@@ -76,6 +77,19 @@ pub(super) fn select(
     limits: &PullLimits,
     cancel: &AtomicBool,
 ) -> Result<BTreeSet<String>> {
+    select_excluding(
+        entries,
+        request,
+        limits,
+        cancel,
+        &super::filters::Exclusions::default(),
+    )
+}
+pub(super) fn validate_inventory(
+    entries: &BTreeMap<String, bool>,
+    limits: &PullLimits,
+    cancel: &AtomicBool,
+) -> Result<()> {
     if entries.len() > limits.cache.max_files {
         return Err(Error::Limit("GGUF quant inventory count".into()));
     }
@@ -95,6 +109,16 @@ pub(super) fn select(
             }
         }
     }
+    Ok(())
+}
+pub(super) fn select_excluding(
+    entries: &BTreeMap<String, bool>,
+    request: &GgufQuantRequest,
+    limits: &PullLimits,
+    cancel: &AtomicBool,
+    exclusions: &super::filters::Exclusions,
+) -> Result<BTreeSet<String>> {
+    validate_inventory(entries, limits, cancel)?;
     let mut families = BTreeMap::<Family, BTreeSet<String>>::new();
     let mut totals = BTreeMap::<String, usize>::new();
     for (path, regular) in entries {
@@ -145,8 +169,20 @@ pub(super) fn select(
         }
         families.entry(family).or_default().insert(path.clone());
     }
-    // Validate every matching cohort BEFORE ambiguity, never discard an
-    // incomplete cohort to choose a complete one.
+    // Exclusions may remove a whole competing family, but never silently
+    // drop one part of a still-selected split family.
+    families.retain(|_, members| {
+        let kept = members
+            .iter()
+            .filter(|path| exclusions.allows(path))
+            .count();
+        if kept == 0 {
+            return false;
+        }
+        members.retain(|path| exclusions.allows(path));
+        true
+    });
+    // Every retained matching family must be complete before ambiguity.
     for (family, selected) in &families {
         if let Family::Split(prefix, total) = family {
             if selected.len() != *total {
@@ -169,7 +205,7 @@ pub(super) fn select(
     check_cancel(cancel)?;
     families.into_values().next().ok_or_else(missing)
 }
-fn limits_for_quant(limits: &PullLimits) -> Result<()> {
+pub(super) fn limits_for_quant(limits: &PullLimits) -> Result<()> {
     limits.validate()?;
     if limits.unknown_length_cap.is_some() {
         return Err(Error::Unsupported(
@@ -182,10 +218,18 @@ pub(super) fn metadata_admission(
     limits: &PullLimits,
     admission: &TransferAdmission,
 ) -> Result<zerogravity_core::resource_arbiter::GlobalResourceLease> {
+    metadata_admission_extra(limits, admission, 0)
+}
+pub(super) fn metadata_admission_extra(
+    limits: &PullLimits,
+    admission: &TransferAdmission,
+    additional: u64,
+) -> Result<zerogravity_core::resource_arbiter::GlobalResourceLease> {
     limits_for_quant(limits)?;
     let bytes = (limits.max_metadata_bytes as u64)
         .checked_mul(8)
         .and_then(|n| n.checked_add(16 * 1024 * 1024))
+        .and_then(|n| n.checked_add(additional))
         .ok_or_else(|| Error::Limit("GGUF quant metadata admission".into()))?;
     admission.arbiter.admit(
         &admission.resource,

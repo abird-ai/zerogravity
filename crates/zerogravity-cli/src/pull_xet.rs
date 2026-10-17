@@ -39,6 +39,8 @@ fn parse(args: &[String]) -> Result<(Options, XetOptions)> {
                 | "--revision"
                 | "--file"
                 | "--quant"
+                | "--include"
+                | "--exclude"
                 | "--subfolder"
                 | "--disk-limit-bytes"
                 | "--memory-limit-bytes"
@@ -62,7 +64,8 @@ fn parse(args: &[String]) -> Result<(Options, XetOptions)> {
         options.memory = 256 * 1024 * 1024;
     }
     if !(matches!(&options.action, Action::Fetch(request) if request.provider==Provider::HuggingFace && matches!(request.selection,Selection::Files{..}))
-        || matches!(&options.action,Action::Quant(request) if request.source().provider()==Provider::HuggingFace))
+        || matches!(&options.action,Action::Quant(request) if request.source().provider()==Provider::HuggingFace)
+        || matches!(&options.action,Action::Filters(request) if request.source().provider()==Provider::HuggingFace))
         || options.unknown_size_cap.is_some()
         || (options.offline && options.dry_run)
     {
@@ -79,6 +82,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     let request = match &options.action {
         Action::Fetch(request) => super::FetchRequest::Files(request),
         Action::Quant(request) => super::FetchRequest::Quant(request),
+        Action::Filters(request) => super::FetchRequest::Filters(request),
         _ => return Err(invalid()),
     };
     super::run_fetch(&options, request, Some(&native))
@@ -91,6 +95,9 @@ fn help() {
 
 OPTIONS:
     --quant TAG                 Explicit GGUF terminal filename tag instead of --file, no fallback
+    --include GLOB              Additive case-exact full-path Unicode filters, repeatable
+    --exclude GLOB              Exclude from --include or --quant before family ambiguity
+                                Legacy --file grammar remains component-local; these flags conflict with --file
                                 Offline requires --ref SNAPSHOT_DIGEST; cached subset only
     --subfolder PATH            Original bounded HF exact/glob selection and model closure
     --cache ABS_PATH --ref NAME Original XDG cache/ref publisher (default HF request ref)

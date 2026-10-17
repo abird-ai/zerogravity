@@ -217,6 +217,48 @@ explicit origin-bound credential/source profile before new aliases are consulted
 Observed401/403/404 cannot establish license acceptance, gating or model absence;
 private services may mask access. No automatic login or license acceptance follows.
 
+## Explicit full-path Unicode filters
+
+An additive `FilterRequest` provides full-path, case-exact `FnmatchCaseV1`
+selection on pinned HF/GitHub repositories and explicit native HF Xet. CLI:
+`--include GLOB` (repeatable, at least one), optionally `--exclude GLOB`;
+or `--quant TAG --exclude GLOB`. Filters conflict with legacy `--file`,
+release assets and capped unknown lengths. Quant plus include is not qualified.
+Other providers/components are unchanged.
+
+The grammar follows Unicode scalar `fnmatchcase`: `*` and `?` may cross `/`,
+brackets express scalar classes/ranges/negation, malformed `[` is literal,
+and backslash does not escape. No case/Unicode normalization. Subfolder scope
+is a literal directory-component boundary; match the suffix without treating
+characters in the folder name as patterns. Legacy `--file` keeps its original
+component-local byte `*`/`?` semantics.
+
+Order: include union, exclude union, **then** family ambiguity and original
+model closure. Excluding an entire competing family may disambiguate;
+excluding a required index, shard, config or tokenizer refuses. Adjacent
+indexes that original closure would inspect are vetoed before the index GET.
+Optional README/license/tokenizer companions may be omitted. No silent
+family/quant fallback, second pin/tree or alternative publisher is introduced.
+
+Bounds: 4096 patterns of at most 4096 UTF-8 bytes each, at most 8MiB aggregate
+pattern plus inventory path bytes, and one shared 16Mi matcher-work budget
+with periodic cancellation. Nonrecursive two-row matching compiles one
+pattern at a time; at most 512KiB scratch and extra 16MiB resolve-only control
+reservation use the original TransferAdmission. Ordinary 128MiB and native
+256MiB CLI defaults remain unchanged; smaller limits refuse before HTTP.
+These are scoped buffers, not all-process-memory telemetry.
+
+Offline filters require an exact snapshot digest and validate original source,
+current limits, managed byte hashes, pointer refusal, required roles and exact
+retained closed-snapshot equality before credentials/client/admission/signals.
+They neither remove excluded retained bytes nor fabricate filtered snapshots.
+Cached subsets cannot prove remote-global uniqueness, access/freshness or
+native execution. Original `--file` and bare `--quant` semantics are retained.
+The test suite includes frozen independent CPython-derived differential cases,
+required/index veto, offline roles, actual private cache publication and
+native announcement. See the live TODO for final acceptance status; filtering
+does not grant new model loader or inference support.
+
 ## Exact length recovery
 
 Resolution first uses valid size metadata for the immutable selected object.
@@ -965,7 +1007,7 @@ passing provider gate. Open implementation and acceptance work stays in TODO.md.
 
 | Surface | Current qualified scope and remaining work |
 | --- | --- |
-| HF repository/files/revisions | Native exact commit pinning, subfolder, bounded `*`/`?`, required index/shard and config/tokenizer closure. Metadata-only candidates share the same pinned tree. Explicit filename quant uses original model closure; excludes/full fnmatch, broader required sidecar policy and endpoint/env compatibility remain open. |
+| HF repository/files/revisions | Native exact commit pinning, subfolder, bounded `*`/`?`, required index/shard and config/tokenizer closure. Metadata-only candidates share the same pinned tree. Explicit filename quant and full-path fnmatchcase include/exclude selection reuse original closure; broader required sidecar policy and endpoint/env compatibility remain open. |
 | GitHub files/releases/components | Native commit/tree and release/asset pins, exact sizing, independent pinned components and alias pin reuse. Qualified LFS-pointer resolution is separate; pointers refuse. |
 | Direct HTTPS objects | Explicit origin/role/path/exact size/caller SHA; original transfer, offline verification and cache publisher. Broader missing-size/digest or repository discovery is outside this slice. |
 | Local HF caches | Explicit pinned selections and independent verified copies, original same-mount policy plus qualified Btrfs/tmpfs and distinct tmpfs pairs. Renamed/unnamespaced roots and other filesystems remain open. |

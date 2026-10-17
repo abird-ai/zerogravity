@@ -97,10 +97,34 @@ pub fn resolve_quant(
         cancel,
     )
 }
+/// Additive full-path filters through the same Hub inventory and native
+/// discovery, never by re-resolving a filtered compatibility plan.
+pub fn resolve_filtered(
+    transport: &impl HttpTransport,
+    request: &super::filters::FilterRequest,
+    limits: &PullLimits,
+    options: &XetOptions,
+    admission: &TransferAdmission,
+    cancel: &AtomicBool,
+) -> Result<ResolvedPullPlan> {
+    super::quant::limits_for_quant(limits)?;
+    if request.source().provider() != Provider::HuggingFace {
+        return Err(Error::Unsupported("native filters require HF".into()));
+    }
+    resolve_choice(
+        transport,
+        NativeChoice::Filtered(request),
+        limits,
+        options,
+        admission,
+        cancel,
+    )
+}
 #[derive(Clone, Copy)]
 enum NativeChoice<'a> {
     Files(&'a PullRequest),
     Quant(&'a super::quant::GgufQuantRequest),
+    Filtered(&'a super::filters::FilterRequest),
 }
 fn resolve_choice(
     transport: &impl HttpTransport,
@@ -117,29 +141,34 @@ fn resolve_choice(
             "native Xet requires an HF file request".into(),
         ));
     }
-    let bytes = (limits.max_metadata_bytes as u64)
-        .checked_mul(8)
-        .and_then(|v| v.checked_add(16 * 1024 * 1024))
-        .ok_or_else(|| Error::Limit("Xet resolution admission overflow".into()))?;
-    let _control = admission.arbiter.admit(
-        &admission.resource,
-        admission.owner.clone(),
-        &[AllocationRequest {
-            kind: AllocationClass::TransferStaging,
-            bytes,
-        }],
-    )?;
+    let _control = if matches!(choice, NativeChoice::Filtered(_)) {
+        super::quant::metadata_admission_extra(limits, admission, super::filters::CONTROL_BYTES)?
+    } else {
+        let bytes = (limits.max_metadata_bytes as u64)
+            .checked_mul(8)
+            .and_then(|v| v.checked_add(16 * 1024 * 1024))
+            .ok_or_else(|| Error::Limit("Xet resolution admission overflow".into()))?;
+        admission.arbiter.admit(
+            &admission.resource,
+            admission.owner.clone(),
+            &[AllocationRequest {
+                kind: AllocationClass::TransferStaging,
+                bytes,
+            }],
+        )?
+    };
     let budget = Arc::new(budget::Budget::new(
         options,
         limits.max_metadata_bytes,
         budget::Seed::default(),
     )?);
     let counted = super::candidates::MetadataCalls::new(transport, limits.max_pages);
-    let transport: &dyn HttpTransport = if matches!(choice, NativeChoice::Quant(_)) {
-        &counted
-    } else {
-        transport
-    };
+    let transport: &dyn HttpTransport =
+        if matches!(choice, NativeChoice::Quant(_) | NativeChoice::Filtered(_)) {
+            &counted
+        } else {
+            transport
+        };
     let hub = Hub {
         transport,
         budget: budget.clone(),
@@ -154,6 +183,13 @@ fn resolve_choice(
             super::ExternalSidecars::default(),
         )?,
         NativeChoice::Quant(request) => super::huggingface::resolve_quant_from(
+            &hub,
+            request,
+            limits,
+            cancel,
+            &format!("{}/", options.endpoints.hub),
+        )?,
+        NativeChoice::Filtered(request) => super::huggingface::resolve_filtered_from(
             &hub,
             request,
             limits,

@@ -51,7 +51,9 @@ fn require(
     entries: &BTreeMap<String, bool>,
     selected: &mut BTreeSet<String>,
     path: String,
+    exclusions: &super::filters::Exclusions,
 ) -> Result<()> {
+    exclusions.required(&path)?;
     if !entries.get(&path).copied().unwrap_or(false) {
         return Err(Error::Unsupported(
             "required repository shard or sidecar is absent or not regular".into(),
@@ -65,6 +67,23 @@ pub(super) fn close_model_selection(
     selected: &mut BTreeSet<String>,
     limits: &PullLimits,
     sidecars: ExternalSidecars,
+    read_index: &mut impl FnMut(&str) -> Result<Vec<u8>>,
+) -> Result<()> {
+    close_model_selection_filtered(
+        entries,
+        selected,
+        limits,
+        sidecars,
+        &super::filters::Exclusions::default(),
+        read_index,
+    )
+}
+pub(super) fn close_model_selection_filtered(
+    entries: &BTreeMap<String, bool>,
+    selected: &mut BTreeSet<String>,
+    limits: &PullLimits,
+    sidecars: ExternalSidecars,
+    exclusions: &super::filters::Exclusions,
     read_index: &mut impl FnMut(&str) -> Result<Vec<u8>>,
 ) -> Result<()> {
     let initial = selected.clone();
@@ -89,6 +108,7 @@ pub(super) fn close_model_selection(
                     entries,
                     selected,
                     format!("{prefix}-{part:05}-of-{total:05}.gguf"),
+                    exclusions,
                 )?;
             }
         }
@@ -96,6 +116,9 @@ pub(super) fn close_model_selection(
     let mut covered = BTreeMap::<String, usize>::new();
     let mut index_shards = BTreeSet::new();
     for path in indexes {
+        // Closure would inspect this adjacent source index: veto before GET,
+        // not after reading an excluded body or silently skipping membership.
+        exclusions.required(&path)?;
         let bytes = read_index(&path)?;
         let index = crate::sharded::SafetensorsIndex::from_json(&bytes)
             .map_err(|_| Error::Malformed("invalid repository safetensors index".into()))?;
@@ -110,9 +133,9 @@ pub(super) fn close_model_selection(
         let relevant =
             initial.contains(&path) || shards.iter().any(|shard| initial.contains(shard));
         if relevant {
-            require(entries, selected, path.clone())?;
+            require(entries, selected, path.clone(), exclusions)?;
             for shard in shards {
-                require(entries, selected, shard.clone())?;
+                require(entries, selected, shard.clone(), exclusions)?;
                 *covered.entry(shard.clone()).or_default() += 1;
                 index_shards.insert(shard);
             }
@@ -169,7 +192,7 @@ pub(super) fn close_model_selection(
         for leaf in ["config.json", "tokenizer.json"] {
             let candidate = path(leaf);
             if entries.contains_key(&candidate) || !sidecars.allows_missing(leaf) {
-                require(entries, selected, candidate)?;
+                require(entries, selected, candidate, exclusions)?;
             }
         }
         for leaf in [
@@ -184,8 +207,8 @@ pub(super) fn close_model_selection(
             "README.md",
         ] {
             let candidate = path(leaf);
-            if entries.contains_key(&candidate) {
-                require(entries, selected, candidate)?;
+            if entries.contains_key(&candidate) && exclusions.allows(&candidate) {
+                require(entries, selected, candidate, exclusions)?;
             }
         }
     }

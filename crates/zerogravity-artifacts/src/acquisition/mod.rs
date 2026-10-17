@@ -5,6 +5,7 @@ pub mod azure;
 pub mod candidates;
 pub mod components;
 mod executor;
+pub mod filters;
 pub mod gcs;
 pub mod github;
 pub mod http;

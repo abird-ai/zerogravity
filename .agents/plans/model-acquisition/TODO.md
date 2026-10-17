@@ -67,11 +67,7 @@ Completed phases from `e0073a5` through signed `a774ded` are in
 - [x] Integrate implementation/reviews/results and every unfinished task for signed candidate acceptance. Keep explicit quant, full filters/excludes, sidecar/preset/auth/provider/runtime frontier open. Preserve root README and dependencies; no model/SDK/provider payload/account/livecache/device/privilege/mount action, push or new runtime. Native source and cache bytes grant no additional model execution qualification.
 - [x] Actual candidate source-integrity Nix passes with four new files included; all9source paths match frozen SIDE,26local documentation links/root README/dependencies pass. Retire completed ModelScope sizing SIDE after5exact signed4db5efb/MAIN matches and no process use; integrate future finite CDN authority/credential/refresh boundaries before deleting four completed sizing/review/frontier runs.
 
-## Uncommitted
-
-- [ ] PAUSED at user request2026-10-17 after wrapping current quant acceptance. Resume only when asked; preserve the following unfinished source worktrees and run TODOs. Parent interruption revalidation found all11MAINquantpaths exact frozen draft and no duplicate Cargo; dedicated validator finishes only currentphase.
-- [ ] Resume C3 filters from `/home/pvl/spaces/abird/src/zerogravity-filters-work/.agents/runs/model-acquisition-filters/TODO.md`: base4db5efb+exactC1/C2overlays, only new acquisition/filters.rs differs from supplied baseline. Bounded matcher/oracle/API scaffold is UNWIRED and NOT compile-ready; all Rust tests unrun. Eight existing integration paths match C2, two integration tests absent; no CLI/module/provider/closure/native wiring. Preserve fixed primary oracle73cases+33345pairs, source-granted fullpath FnmatchCaseV1, includeunion→exclude→ambiguity, required-veto/optional-skip and conservative adjacent-index-before-GET policy. Validate actual512KiB scratch/16Miwork and extra16MiB sameowner admission before acceptance; preserve old Files semantics. Scoped formatting/whitespace only passed; owner stopped with no child process.
-- [ ] Resume C4 native required indexes from `/home/pvl/spaces/abird/src/zerogravity-xet-index-work/.agents/runs/model-acquisition-xet-index/TODO.md` and sibling model-acquisition-xet-index-design/TODO.md: basef22f759+frozenC2, actualdraftpaths only HF provider and xet/{mod,budget}.rs. Private callback/explicit defaultfalse builder/all-counter Result seed and2unitcases are UNCOMPILED/UNRUN; CLI opt-in/help and integration tests absent. Reuse original reader/scratch, require trusted LFSrawSHA+completeXetroot+actualEOF before parser, carry every counter through resolution→execution, reconstruct again for publication with cumulative charging. Default/dryrun noCAS; native apply explicitly opts options clone in. Reconcile accepted C2 then eventual C3 overlap before qualification; syntax/format only passed, owner stopped/no child. No native-index support advertised.
+### f197c9c — explicit GGUF filename quant families
 
 - [x] Add private-field GgufQuantRequest and explicit HF/GitHub/native filename-quant selection within the original retained provider tree and closure. Keep public Selection/PullRequest shape, original source identity, mandatory sidecars, same admission/logical counter and sole shared fetch/publisher. No default/rank/fallback or tensor eligibility follows.
 - [x] Reuse strict canonical split decomposition, ASCII1..32letter-led tag grammar and terminal basename boundaries. Every matching family must be complete before uniqueness; malformed/incomplete/conflicting-total/case/single+split ambiguities refuse. Independent review's directory -of-/tag counterexample is repaired with basename-only inspection, preserving full path family identity; regression cases drafted before execution, no RED claim.
@@ -82,12 +78,56 @@ Completed phases from `e0073a5` through signed `a774ded` are in
 - [x] Wrap currentphase after explicit user pause: revalidate HEAD/worktrees/all11MAINfrozen sourcepaths and all15C3baselinepaths/C4exact3draftdeltas, originalrootREADME/deps and26local links; actualNix passes after3newpaths included and again after interruption. Both draft owners stopped/nochildren, full design/pending tests preserved in namedSIDEs. Quant validator returned exclusive Cargo after allcommands/children exit0. Integrate acceptance and all unfinishedwork for signed local commit, then pause; no push/download/model/GPU support change. Earlier C1 rolling-doc script expected7checkeditems but correctly stopped before mutation on actual6; inspected/corrected count and rolled exactly6, no implementation or test change.
 - [x] Actual quant source-integrity passes after3newfiles add-N; all11source paths match frozen draft,26local links/root README/allCargo manifests+lock unchanged. Root approves C3 isolated source draft with fixed bounded fnmatchcase/exclusion/closure semantics and C4 native-index isolated source draft with explicit apply opt-in/default no-CAS and all-counter continuation; neither draft is execution evidence.
 
+## Uncommitted
+
+- [x] C3 full-path filters resumed and source-qualified after the pause:
+  exactly 11 intended Rust paths (3 new, 8 changed), fresh copy mtimes,
+  one-pin HF/GitHub/native-Xet filtering, required-index-before-GET/shard/
+  config/tokenizer veto, optional omission, exact retained offline closure,
+  old Files/quant policy and shared original cache/admission/publisher.
+  Independent CPython3.14 literal73 +33345-pair frozen digest, 4 filter
+  matcher/adversarial units, 11 API integration tests (including actual
+  private cache/ref publication on both providers), 4 enabled CLI tests
+  and disabled-feature refusal pass. The original C2 candidate/quant suites
+  and real private-loopback HTTP/TLS fixtures continue to pass.
+- [x] Frozen C3 complete isolated check.sh: 956 Rust executions/0fail/
+  69ignored/212 suites, plus 18 namespace fixtures, strict artifact/CLI
+  production+diagnostic lint, workspace/dependency isolation, CPU build,
+  installer, shell/Nix formatting and reference/comparator/resume self-tests.
+  The first long run was interrupted during release compilation by a tool
+  runtime failure (not an implementation test failure); the next frozen
+  full run exited0 after the source-equal release build completed.
+- [x] Actual Nix filtered-source integrity succeeds with all 3 new Rust
+  paths included; checked current Markdown links, unchanged root README,
+  Cargo.lock/manifests and no unrelated source differences. Two fresh
+  separately invoked isolated original release cache_prepare tests pass:
+  direct/cache 16.17s and HF-import 21.64s; each validates both approved
+  Qwen3.5 checkpoints/all248320 logits/all42 state domains/2 tokens/sessions/
+  original rawlease, mutation and removal behavior bit-for-bit. No new
+  model, GPU, context or performance qualification is inferred.
+
+- [x] At the owner's documentation-only request, create the [comprehensive17Octoberhandoff](../../docs/FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-17.md) and [copyabletakeoverprompt](../NEXT_AGENT_PROMPT_2026-10-17.md), preserving runtimepause. Consolidate all U056–070 decisions, V1–V5.1/currentcontracts,77reachable commits, all121openplanitems, actualprofile/test/failure limits and complete document/research catalogs. Independentreview recovers an older94-source U040/G3b archive nested at7e61cb6; compare all94ranges and13+3 outersections exactly, retain explicit original33graph/later129/191 gaps. Preserve two byte-exact portable sourcepatches/fourunfinishedfiles plus pausedcontexts/inertoracle underdocs; actualapply and independentin-memory reconstruction pass. Links/coverage/README/appendonlydecisions/runtime/deps/index/pausedSIDEs remain intact. No runtime/model/build/GPU execution or publication; retire only completed documentationruns after integration.
+
+- [x] After signedf197c9c acceptance, retire completed quantSIDE after15exact source/baseline matches toHEAD/no process use and exact cold-design copy in preserved indexSIDE; remove four integrated completed quant runs. Leave interrupted filters MAIN/SIDE runs and both unfinished source worktrees. This rolling TODO update belongs to the next commit; no new implementation or testing remains active.
+
+- [x] Record the October17 user pause as a historical handoff only:
+  C2 was signed at f197c9c, two preserved source drafts survived, and the
+  explicit October18 resume moved C3 onto MAIN without losing C4.
+- [x] Recover and complete the C3 paused source from
+  /home/pvl/spaces/abird/src/zerogravity-filters-work. At takeover only
+  filters.rs existed and was unwired/uncompiled; its frozen primary vectors
+  and source/ownership policy are now implemented with API/CLI/native/closure
+  regressions. Preserve the original paused source/run for traceability until
+  reviewed retirement; no new SDK/model/provider/account payload fetched.
+- [ ] Resume C4 native required indexes from `/home/pvl/spaces/abird/src/zerogravity-xet-index-work/.agents/runs/model-acquisition-xet-index/TODO.md` and sibling model-acquisition-xet-index-design/TODO.md: basef22f759+frozenC2, actualdraftpaths only HF provider and xet/{mod,budget}.rs. Private callback/explicit defaultfalse builder/all-counter Result seed and2unitcases are UNCOMPILED/UNRUN; CLI opt-in/help and integration tests absent. Reuse original reader/scratch, require trusted LFSrawSHA+completeXetroot+actualEOF before parser, carry every counter through resolution→execution, reconstruct again for publication with cumulative charging. Default/dryrun noCAS; native apply explicitly opts options clone in. Reconcile accepted C2 then eventual C3 overlap before qualification; syntax/format only passed, owner stopped/no child. No native-index support advertised.
+
+
 
 - [ ] Extend cloud profiles through separately qualified S3 FULL_OBJECT checksum authority, broader endpoints/partitions/credentials, Azure latest/SAS/managed chains and per-object digest-map prefixes. Keep explicit version, caller-SHA and conditional FirstSeen contracts distinct; never infer immutable versions or trusted raw hashes from validator/checksum labels.
 - [ ] Extend ModelScope only through separately qualified alias authority and redirect/CDN/mirror/credential profiles. Selected missing sizes now use exact pinned HEAD; no alias-to-commit authority was established from revision echoes, timestamps or file last-modified IDs. The current profile does not close broader parity or independently prove server revision/membership behavior.
 - [ ] Extend native Xet to required LFS/Xet index JSON reconstruction under the same source/metadata/admission authority. Ordinary non-LFS index closure is supported; native index302 currently refuses. Define dry-run authorization semantics explicitly before changing the current no-CAS-grant discovery path.
 - [ ] Measure and qualify native Xet fetch coalescing/chunk caching and any persistent native-prefix protocol. The current bounded per-intersection complete-signed-set reader has counted overfetch/refetch and no performance claim; native process interruption restarts a full transfer. Keep per-term/partial-xorb proof limits, fixed CAS scope and existing elapsed-time/HTTP-trailer boundaries explicit.
-- [ ] Close finite convenience/compatibility gaps: filter/exclude grammar disposition, required sidecar/adapter/sparse-quant policy, bounded auxiliary/presets, mirror/endpoint/env precedence and gate/license diagnostics. Preserve explicit source authority/no silent numeric fallback and separate loader/runtime plans.
+- [ ] Close remaining finite convenience/compatibility gaps: required sidecar/adapter/sparse-quant policy, bounded auxiliary/presets, mirror/endpoint/env precedence and gate/license diagnostics. Preserve explicit source authority/no silent numeric fallback and separate loader/runtime plans.
 
 - [ ] Qualify any future v1 migration only after separate authorization and proven reader/process quiescence; current removal supports originally protected roots only.
 - [ ] Extend cleanup only through separately qualified exact ownership/recovery protocols for dead retained staging/general orphans and any later eviction policy. Current exact-snapshot operation deliberately retains them and every stable lock inode.

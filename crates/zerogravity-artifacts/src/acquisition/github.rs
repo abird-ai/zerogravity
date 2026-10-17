@@ -158,14 +158,20 @@ fn raw_url(repository: &str, pin: &str, path: &str) -> String {
 }
 fn close_model_selection(
     transport: &(impl HttpTransport + ?Sized),
-    source: (&str, &str, super::ExternalSidecars, &mut usize),
+    source: (
+        &str,
+        &str,
+        super::ExternalSidecars,
+        &mut usize,
+        Option<&super::filters::Exclusions>,
+    ),
     entries: &mut BTreeMap<String, TreeEntry>,
     selected: &mut BTreeSet<String>,
     limits: &PullLimits,
     remaining: &mut usize,
     cancel: &AtomicBool,
 ) -> Result<()> {
-    let (repository, pin, sidecars, probes) = source;
+    let (repository, pin, sidecars, probes, exclusions) = source;
     let available = entries
         .iter()
         .map(|(path, entry)| {
@@ -175,42 +181,50 @@ fn close_model_selection(
             )
         })
         .collect();
-    super::selection::close_model_selection(&available, selected, limits, sidecars, &mut |path| {
-        let entry = entries.get_mut(path).ok_or_else(malformed)?;
-        if entry.kind != "blob" || !matches!(entry.mode.as_str(), "100644" | "100755") {
-            return Err(Error::Unsupported(
-                "GitHub index is not a regular blob".into(),
-            ));
-        }
-        let size = ensure_length(
-            entry,
-            transport,
-            raw_url(repository, pin, path),
-            limits.cache.max_file_bytes.min(*remaining as u64),
-            probes,
-            cancel,
-            pin,
-        )?;
-        let request = HttpRequest::new(raw_url(repository, pin, path), size);
-        let response = transport.get(&request, cancel)?;
-        if response.status != 200 {
-            return Err(Error::Unsupported(
-                "GitHub index metadata request failed".into(),
-            ));
-        }
-        super::http::validate_validator(entry.validator.as_deref(), &response)?;
-        let bytes = response.read_bounded(size as usize, cancel)?;
-        *remaining -= bytes.len();
-        if bytes.len() as u64 != size {
-            return Err(malformed());
-        }
-        if bytes.starts_with(b"version https://git-lfs.github.com/spec/v1") {
-            return Err(Error::Unsupported(
-                "GitHub LFS index requires a separately qualified LFS resolver".into(),
-            ));
-        }
-        Ok(bytes)
-    })
+    let allow_all = super::filters::Exclusions::default();
+    super::selection::close_model_selection_filtered(
+        &available,
+        selected,
+        limits,
+        sidecars,
+        exclusions.unwrap_or(&allow_all),
+        &mut |path| {
+            let entry = entries.get_mut(path).ok_or_else(malformed)?;
+            if entry.kind != "blob" || !matches!(entry.mode.as_str(), "100644" | "100755") {
+                return Err(Error::Unsupported(
+                    "GitHub index is not a regular blob".into(),
+                ));
+            }
+            let size = ensure_length(
+                entry,
+                transport,
+                raw_url(repository, pin, path),
+                limits.cache.max_file_bytes.min(*remaining as u64),
+                probes,
+                cancel,
+                pin,
+            )?;
+            let request = HttpRequest::new(raw_url(repository, pin, path), size);
+            let response = transport.get(&request, cancel)?;
+            if response.status != 200 {
+                return Err(Error::Unsupported(
+                    "GitHub index metadata request failed".into(),
+                ));
+            }
+            super::http::validate_validator(entry.validator.as_deref(), &response)?;
+            let bytes = response.read_bounded(size as usize, cancel)?;
+            *remaining -= bytes.len();
+            if bytes.len() as u64 != size {
+                return Err(malformed());
+            }
+            if bytes.starts_with(b"version https://git-lfs.github.com/spec/v1") {
+                return Err(Error::Unsupported(
+                    "GitHub LFS index requires a separately qualified LFS resolver".into(),
+                ));
+            }
+            Ok(bytes)
+        },
+    )
 }
 
 fn metadata<T: for<'de> Deserialize<'de>>(
@@ -323,6 +337,27 @@ pub(super) fn resolve_quant(
         super::ExternalSidecars::default(),
     )
 }
+pub(super) fn resolve_filtered(
+    transport: &impl HttpTransport,
+    request: &super::filters::FilterRequest,
+    limits: &PullLimits,
+    cancel: &AtomicBool,
+) -> Result<ResolvedPullPlan> {
+    super::quant::limits_for_quant(limits)?;
+    if request.source().provider() != super::Provider::GitHub {
+        return Err(malformed());
+    }
+    let repository = request.source().repository();
+    let api = format!("https://api.github.com/repos/{repository}");
+    resolve_files(
+        transport,
+        (&api, repository, request.source().revision()),
+        super::quant::InitialChoice::Filtered(request),
+        limits,
+        cancel,
+        super::ExternalSidecars::default(),
+    )
+}
 fn resolve_files(
     transport: &(impl HttpTransport + ?Sized),
     source: (&str, &str, &str),
@@ -349,28 +384,42 @@ fn resolve_files(
             }
             selected
         }
-        super::quant::InitialChoice::Quant(_) => BTreeSet::new(),
+        super::quant::InitialChoice::Quant(_) | super::quant::InitialChoice::Filtered(_) => {
+            BTreeSet::new()
+        }
     };
     let (commit, mut entries) =
         repository_tree(transport, api, revision, limits, &mut metadata_left, cancel)?;
-    let mut selected = match choice {
-        super::quant::InitialChoice::Files { .. } => initial,
-        super::quant::InitialChoice::Quant(request) => {
-            let available = entries
-                .iter()
-                .map(|(path, entry)| {
-                    (
-                        path.clone(),
-                        entry.kind == "blob" && matches!(entry.mode.as_str(), "100644" | "100755"),
-                    )
-                })
-                .collect();
-            super::quant::select(&available, request, limits, cancel)?
+    let available: BTreeMap<String, bool> = entries
+        .iter()
+        .map(|(path, entry)| {
+            (
+                path.clone(),
+                entry.kind == "blob" && matches!(entry.mode.as_str(), "100644" | "100755"),
+            )
+        })
+        .collect();
+    let (mut selected, exclusions) = match choice {
+        super::quant::InitialChoice::Files { .. } => (initial, None),
+        super::quant::InitialChoice::Quant(request) => (
+            super::quant::select(&available, request, limits, cancel)?,
+            None,
+        ),
+        super::quant::InitialChoice::Filtered(request) => {
+            let (selected, exclusions) =
+                super::filters::select(&available, request, limits, cancel)?;
+            (selected, Some(exclusions))
         }
     };
     close_model_selection(
         transport,
-        (repository, &commit.sha, sidecars, &mut probes_left),
+        (
+            repository,
+            &commit.sha,
+            sidecars,
+            &mut probes_left,
+            exclusions.as_ref(),
+        ),
         &mut entries,
         &mut selected,
         limits,
