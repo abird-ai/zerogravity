@@ -6,6 +6,7 @@
 //! Read-only descriptors do not protect against a malicious same-UID writer;
 //! the later model-loader bridge must verify the bytes of its owned copy.
 
+pub mod import_hf;
 mod leases;
 pub mod manifest;
 pub mod paths;

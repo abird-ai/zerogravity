@@ -172,6 +172,106 @@ fn import_real(
     tx.commit(Some("model")).unwrap();
     digest
 }
+#[derive(Clone, Copy)]
+enum ImportRoute {
+    Original,
+    HfCache,
+}
+fn import_hf_real(
+    store: &CacheStore,
+    destination: &Path,
+    original: &Path,
+    hashes: [&str; 3],
+    memory: &TransferAdmission,
+) -> String {
+    use zerogravity::cache::import_hf::{HfImportEntry, HfImportRequest};
+    let external = Fixture::new();
+    let repository = external.0.join("models--approved--qwen35");
+    let commit = "1".repeat(40);
+    let snapshot = repository.join("snapshots").join(&commit);
+    std::fs::create_dir_all(&snapshot).unwrap();
+    let entries = [
+        ("model.gguf", FileRole::Weights),
+        ("config.json", FileRole::Config),
+        ("tokenizer.json", FileRole::Tokenizer),
+    ];
+    for (path, _) in entries {
+        let copied = std::fs::copy(original.join(path), snapshot.join(path)).unwrap();
+        assert_eq!(
+            copied,
+            std::fs::metadata(original.join(path)).unwrap().len()
+        );
+    }
+    let request = HfImportRequest::new(
+        repository,
+        "approved/qwen35",
+        commit,
+        entries
+            .into_iter()
+            .zip(hashes)
+            .map(|((path, role), hash)| {
+                HfImportEntry::new(path, role, Some(hash.to_string())).unwrap()
+            })
+            .collect(),
+    )
+    .unwrap();
+    let plan = request
+        .prepare(
+            &CacheLimits::default(),
+            memory,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .unwrap();
+    let receipt = plan
+        .apply(CacheOptions::new(
+            Some(destination.to_owned()),
+            16 * 1024 * 1024 * 1024,
+        ))
+        .unwrap();
+    let zerogravity::cache::CommitOutcome::Durable(imported) = receipt.outcome() else {
+        panic!("approved local import must be durable");
+    };
+    let digest = imported.digest().to_string();
+    let lease = store.open_snapshot(&digest).unwrap();
+    assert_eq!(lease.manifest().source().provider(), "local-hf-cache");
+    for ((path, _), hash) in entries.into_iter().zip(hashes) {
+        let entry = lease
+            .manifest()
+            .entries()
+            .iter()
+            .find(|e| e.path() == path)
+            .unwrap();
+        assert_eq!(entry.digest(), hash);
+        assert_eq!(
+            entry.bytes(),
+            std::fs::metadata(original.join(path)).unwrap().len()
+        );
+    }
+    // Bind the initial test alias through the existing publisher/cache-hit path;
+    // the importer itself exposes no ref operation. Empty input must not be read.
+    let mut alias = store
+        .begin(
+            lease.manifest().clone(),
+            memory,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .unwrap();
+    for (path, _) in entries {
+        alias.import_object(path, &mut std::io::empty()).unwrap();
+    }
+    let zerogravity::cache::CommitOutcome::Durable(bound) = alias.commit(Some("model")).unwrap()
+    else {
+        panic!("fixture alias must be durable");
+    };
+    assert_eq!(bound.digest(), digest);
+    drop(lease);
+    drop(receipt);
+    // Remove all synthetic source bodies before preparation/inference. Keep the
+    // empty owned outer directory for the existing Fixture destructor.
+    std::fs::remove_dir_all(external.0.join("models--approved--qwen35")).unwrap();
+    assert_eq!(std::fs::read_dir(&external.0).unwrap().count(), 0);
+    digest
+}
 fn bits(values: &[f32]) -> Vec<u32> {
     values.iter().map(|v| v.to_bits()).collect()
 }
@@ -179,6 +279,16 @@ fn bits(values: &[f32]) -> Vec<u32> {
 #[test]
 #[ignore = "requires the approved original Qwen3.5 .8B/2B GGUF/config/tokenizers; sequential CPU only"]
 fn approved_cached_models_match_direct_source_exactly() {
+    qualify_approved_models(ImportRoute::Original);
+}
+
+#[test]
+#[ignore = "requires approved original checkpoints; creates private HF source copies; sequential CPU only"]
+fn approved_hf_import_models_match_direct_source_exactly() {
+    qualify_approved_models(ImportRoute::HfCache);
+}
+
+fn qualify_approved_models(route: ImportRoute) {
     for (name, model_hash, config_hash) in [
         (
             "qwen35-0.8b",
@@ -197,17 +307,19 @@ fn approved_cached_models_match_direct_source_exactly() {
         let fixture = Fixture::new();
         let store = fixture.store();
         let memory = admission(5 * 1024 * 1024 * 1024);
-        let digest = import_real(
-            &store,
-            &original,
-            [
-                model_hash,
-                config_hash,
-                "5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42",
-            ],
-            &memory,
-        );
-        let lease = store.resolve_ref("model").unwrap();
+        let hashes = [
+            model_hash,
+            config_hash,
+            "5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42",
+        ];
+        let digest = match route {
+            ImportRoute::Original => import_real(&store, &original, hashes, &memory),
+            ImportRoute::HfCache => import_hf_real(&store, &fixture.0, &original, hashes, &memory),
+        };
+        let lease = match route {
+            ImportRoute::Original => store.resolve_ref("model").unwrap(),
+            ImportRoute::HfCache => store.open_snapshot(&digest).unwrap(),
+        };
         for path in ["config.json", "tokenizer.json"] {
             let entry = lease
                 .manifest()

@@ -348,6 +348,17 @@ impl CacheStore {
     }
 
     fn open_inner(options: CacheOptions, create: bool) -> Result<Self> {
+        Self::validate_options(&options)?;
+        let path = resolve_root(
+            options.root.as_deref(),
+            std::env::var_os("XDG_CACHE_HOME").as_deref(),
+            std::env::var_os("HOME").as_deref(),
+        )?;
+        let root = RootDir::open(&path, create)?;
+        Self::initialize_root(options, root, create)
+    }
+
+    pub(super) fn validate_options(options: &CacheOptions) -> Result<()> {
         options.limits.validate()?;
         if options.disk_limit_bytes == 0
             || options.buffer_bytes == 0
@@ -358,12 +369,17 @@ impl CacheStore {
                 "invalid cache quota, buffer or lock deadline".into(),
             ));
         }
-        let path = resolve_root(
-            options.root.as_deref(),
-            std::env::var_os("XDG_CACHE_HOME").as_deref(),
-            std::env::var_os("HOME").as_deref(),
-        )?;
-        let root = RootDir::open(&path, create)?;
+        Ok(())
+    }
+
+    /// The explicit local importer proves disjointness using this same opened
+    /// capability before allowing initialization. Never reopen its pathname.
+    pub(super) fn initialize_import_root(options: CacheOptions, root: RootDir) -> Result<Self> {
+        Self::initialize_root(options, root, true)
+    }
+
+    fn initialize_root(options: CacheOptions, root: RootDir, create: bool) -> Result<Self> {
+        Self::validate_options(&options)?;
         let stat = rustix::fs::fstatvfs(root.as_fd()).map_err(io)?;
         let filesystem = checked_filesystem(stat.f_bsize, stat.f_frsize)?;
         for name in [

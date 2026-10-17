@@ -354,6 +354,80 @@ while permitting different asset IDs; repeated file bindings must still agree on
 their exact commit. Offline verification cannot prove mutable selector freshness,
 remote asset membership, token revocation, model compatibility or licensing.
 
+## Explicit read-only HF cache import
+
+The independent Linux `cache` feature exposes `cache::import_hf` and an explicit
+local CLI. No HTTP, TLS, provider client, credential lookup or online signal
+handler is involved:
+
+```text
+zerogravity cache import-hf \
+  --source /absolute/hub/models--owner--repo --repository owner/repo \
+  --commit 0123456789abcdef0123456789abcdef01234567 \
+  --file weights:model.gguf --file config:config.json \
+  --file tokenizer:tokenizer.json --dry-run --cache /absolute/destination
+```
+
+Use `--apply` for copying and optional `--sha256 PATH=DIGEST` for independently
+authorized raw checksums. Each path and role is explicit; this is a data import,
+not a model-closure resolver. The example names illustrate layout and select no
+approved source. Ordinary run/inspect and cache misses do not import anything.
+No environment-based cache discovery, branch/ref lookup or remote code runs.
+
+This first slice requires a two-component repository name and a matching
+`models--owner--repo` source basename, a40-digit lowercase commit and an existing
+absolute destination directory with0700 permissions. An empty destination can be
+initialized after validation; missing directories are never created. Renamed or
+unnamespaced repository caches remain outside this slice. Source/destination
+must share the same Linux mount identity; cross-filesystem and bind-mount cases
+refuse pending separate qualification. Missing statx mount identity also refuses.
+
+Read-only source capabilities accept regular snapshot files or canonical HF leaf
+links into flat40/64-digit lowercase blob names in the same repository root.
+Intermediate/chained/absolute/escaping links, special selected files and incomplete
+selected paths refuse. Positioned reads retain the original opened files rather
+than reopening paths. Metadata checks bind device/inode, length, mtime and ctime
+before/after copying and each read; a separate nonempty EOF sentinel proves the
+exact bound. Git LFS pointer bodies refuse during streaming.
+
+Preparation admits a bounded control envelope in the caller's existing physical
+ResourceArbiter domain before opening source metadata. The plan retains that
+lease and its source descriptors. Destination checking walks bounded source and
+target directory metadata without reading refs contents, cached trees/*.json or
+unselected file bodies. No symlink is followed during that topology walk. Bidirectional ancestry,
+mount and inode checks reject overlapping trees and hardlink aliases, including
+unselected source inodes. This explicit selected-repository safety inspection is
+not a cache-discovery scan. A successful dry-run is not a reservation or permission
+for a later changed tree; apply repeats the checks.
+
+Apply initializes the exact preflighted destination directory capability through
+the original CacheStore initializer, then uses its existing full-peak admission,
+private staging, hash/EOF validation, sole installer and snapshot publisher.
+No source inode is locked, chmodded, linked, renamed or deleted by import. Source
+bytes are copied into owned cache storage. A known-digest destination hit still
+hashes and verifies the retained external source before commit; receipt
+copied_bytes counts only bytes consumed by the importer, so such a hit reports
+zero copied bytes. Normal copies reuse the original importer's SHA256 result.
+No mutable reference is published, and typed DurabilityUnknown remains distinct
+from a successful durable snapshot.
+
+Manifests persist provider `local-hf-cache`, the caller-declared repository/commit
+and actual exact lengths/hashes. They cannot satisfy online-HF cached-selection
+checks as authenticated remote metadata. Content is FirstSeen unless an explicit
+caller checksum verifies; cache filenames and commit-directory names supply no
+raw checksum or membership authority. The existing run-cache bridge can consume
+explicit resulting snapshots through its unchanged loader eligibility checks.
+
+These are operation-local checks, not an atomic snapshot or a freeze against
+arbitrary same-UID in-place writes, renames or mount changes. Blocked filesystem
+operations do not gain real-time cancellation. The original root initializer
+retains its existing lock-deadline behavior: cancellation after preflight may
+leave initialized destination metadata before transaction admission refuses;
+initialization metadata is not rolled back. Reading can update source atime;
+tests preserve source names/content/modes/mtime. Ownership and mutation checks do
+not establish global RAM/UMA accounting or filesystem free-space reservation.
+Acceptance and remaining cross-filesystem/layout work are tracked in TODO.md.
+
 ## Cache-to-model preparation
 
 The independent `cache` feature enables Linux cache loading without enabling
@@ -401,8 +475,10 @@ Numerical acceptance is tracked in TODO.md.
 
 ## References
 
-- [Hugging Face Hub API](https://huggingface.co/docs/hub/api) and
-  [official OpenAPI](https://huggingface.co/.well-known/openapi.md).
+- [Hugging Face Hub API](https://huggingface.co/docs/hub/api),
+  [official OpenAPI](https://huggingface.co/.well-known/openapi.md) and
+  [official file-cache layout](https://huggingface.co/docs/huggingface_hub/guides/manage-cache),
+  used for the explicit local snapshot/blob import contract.
 - [GitHub Git trees](https://docs.github.com/en/rest/git/trees),
   [release tag lookup](https://docs.github.com/en/rest/releases/releases#get-a-release-by-tag-name)
   and [release-ID asset listing/download](https://docs.github.com/en/rest/releases/assets),

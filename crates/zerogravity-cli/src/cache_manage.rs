@@ -5,6 +5,9 @@ use std::sync::atomic::AtomicBool;
 use zerogravity::cache::{CacheOptions, CacheStore, ReclaimMode, ReclaimOutcome, ReclaimReport};
 use zerogravity::{Error, Result};
 
+#[path = "cache_import.rs"]
+mod import;
+
 const DEFAULT_DISK_LIMIT: u64 = 16 * 1024 * 1024 * 1024;
 
 struct Options {
@@ -105,6 +108,9 @@ fn describe(report: &ReclaimReport) {
 }
 
 pub(super) fn run(args: &[String]) -> Result<()> {
+    if args.first().is_some_and(|arg| arg == "import-hf") {
+        return import::run(&args[1..]);
+    }
     if (args.len() == 1 && matches!(args[0].as_str(), "--help" | "-h" | "help"))
         || (args.len() == 2
             && args[0] == "remove"
@@ -150,6 +156,7 @@ fn help() {
     println!(
         "USAGE:
     zerogravity cache remove DIGEST --dry-run|--apply --cache ABS_PATH
+    zerogravity cache import-hf --help
 
 OPTIONS:
     --dry-run                 Observe exact-target eligibility; no target removal
@@ -158,6 +165,7 @@ OPTIONS:
     --disk-limit-bytes N      Existing cooperative disk policy (default16GiB)
 
 Linux cache-only operation: no network, credentials, provider or signal handlers.
+import-hf explicitly copies selected local HF snapshot data; see its own help.
 Only fresh protected-v2 roots support removal; legacy roots are not migrated.
 DIGEST is an exact lowercase SHA256 snapshot identity, not a reference or path.
 Referenced or busy targets refuse. Shared blobs remain for other snapshots.
