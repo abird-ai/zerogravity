@@ -35,7 +35,8 @@ tree = subprocess.check_output([
 for line in tree.splitlines():
     name = line.split()[0]
     assert not name.startswith(("cubecl", "tracel-llvm")) and name not in {
-        "zerogravity-gpu", "ureq", "ureq-proto", "rustls", "url"
+        "zerogravity-gpu", "ureq", "ureq-proto", "rustls", "url",
+        "signal-hook", "signal-hook-registry"
     }, line
 PYWORKSPACE
 

@@ -70,6 +70,9 @@ mod enabled {
             self.seed_revision(COMMIT)
         }
         fn seed_revision(&self, revision: &str) -> String {
+            self.seed_paths("github", revision, &["tiny.gguf"])
+        }
+        fn seed_paths(&self, provider: &str, revision: &str, paths: &[&str]) -> String {
             let store = self.store();
             let arbiter = ResourceArbiter::new();
             let key = PhysicalDeviceKey::new("test-host", "pull-cli").unwrap();
@@ -79,16 +82,21 @@ mod enabled {
                 resource: key,
                 owner: ResourceOwner::new("fixture", "cli").unwrap(),
             };
-            let entry = ManifestEntry::new(
-                "tiny.gguf",
-                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
-                3,
-                FileRole::Weights,
-            )
-            .unwrap();
+            let entries = paths
+                .iter()
+                .map(|path| {
+                    ManifestEntry::new(
+                        *path,
+                        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+                        3,
+                        FileRole::Weights,
+                    )
+                    .unwrap()
+                })
+                .collect();
             let manifest = Manifest::new(
-                ManifestSource::new("github", "owner/repo", revision).unwrap(),
-                vec![entry],
+                ManifestSource::new(provider, "owner/repo", revision).unwrap(),
+                entries,
                 &CacheLimits::default(),
             )
             .unwrap();
@@ -96,8 +104,9 @@ mod enabled {
             let mut tx = store
                 .begin(manifest, &admission, Arc::new(AtomicBool::new(false)))
                 .unwrap();
-            tx.import_object("tiny.gguf", &mut Cursor::new(b"abc"))
-                .unwrap();
+            for path in paths {
+                tx.import_object(path, &mut Cursor::new(b"abc")).unwrap();
+            }
             tx.commit(Some("original")).unwrap();
             digest
         }
@@ -270,6 +279,53 @@ mod enabled {
         let text = String::from_utf8_lossy(&output.stdout);
         assert!(text.contains("--offline"));
         assert!(text.contains("First-seen"));
-        assert!(text.contains("not implemented"));
+        assert!(text.contains("strong ETag"));
+    }
+    #[test]
+    fn offline_hf_filters_reuse_online_selection_without_credentials() {
+        for (paths, pattern, subfolder, expected) in [
+            (
+                vec!["weights/q4.gguf", "weights/config.json"],
+                "q?.gguf",
+                Some("weights"),
+                true,
+            ),
+            (vec!["weights/q4.gguf"], "*.gguf", None, false),
+            (vec!["q4.gguf", "q8.gguf"], "*.gguf", None, false),
+            (vec!["weights/q4.gguf"], "missing*", Some("weights"), false),
+            (vec!["weights/日本.json"], "日*.json", Some("weights"), true),
+        ] {
+            let fixture = Fixture::new();
+            fixture.seed_paths("huggingface", COMMIT, &paths);
+            let mut command = fixture.command();
+            command
+                .args([
+                    "pull",
+                    "hf",
+                    "owner/repo",
+                    "--revision",
+                    COMMIT,
+                    "--file",
+                    pattern,
+                    "--offline",
+                    "--ref",
+                    "original",
+                    "--cache",
+                ])
+                .arg(&fixture.0);
+            if let Some(folder) = subfolder {
+                command.args(["--subfolder", folder]);
+            }
+            let output = command.output().unwrap();
+            assert_eq!(
+                output.status.success(),
+                expected,
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(!stderr.contains("credential"), "{stderr}");
+            assert!(!stderr.contains("HTTP"), "{stderr}");
+        }
     }
 }

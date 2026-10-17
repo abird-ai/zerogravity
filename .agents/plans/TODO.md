@@ -1,6 +1,6 @@
 # Zerogravity plans
 
-Provenance commit: `9239719`.
+Provenance commit: `fa6affa`.
 Workflow: [AGENTS.md](../../AGENTS.md). Each linked TODO holds that plan's
 implementation, tests, commit history and unfinished work. Read specifications
 only as needed for the task; old handoff/status documents are historical.
@@ -8,7 +8,7 @@ only as needed for the task; old handoff/status documents are historical.
 - [x] [Accepted implementation baseline](accepted-baseline/TODO.md) — `6d74f76`.
 - [x] [Simplify agent handoffs](handoff-cleanup/TODO.md) — `bfe672c`.
 - [x] [Historical records — archive retirement complete](historical-records/TODO.md) — `9239719`.
-- [ ] [Model acquisition — A1 and bounded A2 done; remaining A2, then A3 loader](model-acquisition/TODO.md).
+- [ ] [Model acquisition — bounded pulls/resume/progress done; components and A3 next](model-acquisition/TODO.md) — `fa6affa`.
 - [ ] [Model execution — CPU-first Qwen3.8 and Gemma4, then GPU](model-execution/TODO.md).
 - [ ] [Numerics and context — independent8K drift, broader GPU and16K/32K](numerics-and-context/TODO.md).
 - [ ] [CPU/GPU optimization — five GPUs/three CPUs after acquisition](cpu-gpu-optimization/TODO.md).

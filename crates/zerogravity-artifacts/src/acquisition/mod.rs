@@ -11,7 +11,7 @@ pub use crate::cache::manifest::DigestProvenance;
 use crate::cache::paths::{validate_digest, validate_relative_path};
 use crate::cache::{CacheLimits, FileRole, ManifestSource, TransferAdmission};
 use crate::{Error, Result};
-pub use executor::{AcquiredFile, PullReceipt, execute};
+pub use executor::{AcquiredFile, PullProgress, PullReceipt, execute, execute_with_progress};
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest};

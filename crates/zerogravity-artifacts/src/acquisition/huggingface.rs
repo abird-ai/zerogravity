@@ -172,47 +172,8 @@ fn resolve_from(
             }
         }
     }
-    let mut selected = BTreeSet::new();
-    let mut filter_work = 16 * 1024 * 1024_usize;
-    for requested in paths {
-        let pattern = match subfolder {
-            Some(folder) => format!("{folder}/{requested}"),
-            None => requested.clone(),
-        };
-        let mut matches = Vec::new();
-        if !pattern.contains(['*', '?']) {
-            if entries.contains_key(&pattern) {
-                matches.push(pattern.clone());
-            }
-        } else {
-            for path in entries.keys() {
-                if glob_match(&pattern, path, &mut filter_work)? {
-                    matches.push(path.clone());
-                }
-            }
-        }
-        if matches.is_empty() {
-            return Err(Error::Unsupported(
-                "requested HF file or filter is missing".into(),
-            ));
-        }
-        if matches.len() > 1 && matches.iter().any(|p| p.ends_with(".gguf")) {
-            let families: BTreeSet<_> = matches
-                .iter()
-                .map(|p| {
-                    split_gguf(p)
-                        .map(|(prefix, _, _)| prefix)
-                        .unwrap_or_else(|| p.clone())
-                })
-                .collect();
-            if families.len() != 1 {
-                return Err(Error::Unsupported(
-                    "ambiguous HF quant selection; select exact file".into(),
-                ));
-            }
-        }
-        selected.extend(matches);
-    }
+    let available: Vec<_> = entries.keys().map(String::as_str).collect();
+    let mut selected = select_paths(paths, subfolder.as_deref(), &available)?;
     let initial = selected.clone();
     let mut indexes = BTreeSet::new();
     let mut index_shards = BTreeSet::new();
@@ -483,6 +444,81 @@ fn split_gguf(path: &str) -> Option<(String, u32, u32)> {
     }
     Some((prefix.to_string(), index, total))
 }
+/// Pure byte-exact initial HF selection, shared by pinned online trees and
+/// verified offline snapshots. This selects paths; model/shard closure remains
+/// the resolver/executor's separate responsibility. Wildcards never cross '/'.
+pub fn select_paths(
+    patterns: &[String],
+    subfolder: Option<&str>,
+    available: &[&str],
+) -> Result<BTreeSet<String>> {
+    if patterns.is_empty() || patterns.len() > 4096 || available.len() > 4096 {
+        return Err(Error::Limit("HF filter input count".into()));
+    }
+    if let Some(folder) = subfolder {
+        crate::cache::paths::validate_relative_path(folder)?;
+    }
+    let mut path_bytes = 0usize;
+    for path in patterns
+        .iter()
+        .map(String::as_str)
+        .chain(available.iter().copied())
+    {
+        crate::cache::paths::validate_relative_path(path)?;
+        path_bytes = path_bytes
+            .checked_add(path.len())
+            .filter(|n| *n <= 8 * 1024 * 1024)
+            .ok_or_else(|| Error::Limit("HF filter path bytes".into()))?;
+    }
+    let available_paths: BTreeSet<_> = available.iter().copied().collect();
+    if available_paths.len() != available.len() {
+        return Err(Error::Malformed("duplicate available HF path".into()));
+    }
+    let mut selected = BTreeSet::new();
+    let mut filter_work = 16 * 1024 * 1024_usize;
+    for requested in patterns {
+        let pattern = match subfolder {
+            Some(folder) => format!("{folder}/{requested}"),
+            None => requested.clone(),
+        };
+        crate::cache::paths::validate_relative_path(&pattern)?;
+        let mut matches = Vec::new();
+        if !pattern.contains(['*', '?']) {
+            if available_paths.contains(pattern.as_str()) {
+                matches.push(pattern.clone());
+            }
+        } else {
+            for path in available {
+                if glob_match(&pattern, path, &mut filter_work)? {
+                    matches.push((*path).to_string());
+                }
+            }
+        }
+        if matches.is_empty() {
+            return Err(Error::Unsupported(
+                "requested HF file or filter is missing".into(),
+            ));
+        }
+        if matches.len() > 1 && matches.iter().any(|p| p.ends_with(".gguf")) {
+            let families: BTreeSet<_> = matches
+                .iter()
+                .map(|p| {
+                    split_gguf(p)
+                        .map(|(prefix, _, _)| prefix)
+                        .unwrap_or_else(|| p.clone())
+                })
+                .collect();
+            if families.len() != 1 {
+                return Err(Error::Unsupported(
+                    "ambiguous HF quant selection; select exact file".into(),
+                ));
+            }
+        }
+        selected.extend(matches);
+    }
+    Ok(selected)
+}
+
 fn glob_match(pattern: &str, value: &str, work: &mut usize) -> Result<bool> {
     // Bounded byte-exact filters: '*' matches within a path component only.
     let (p, v) = (pattern.as_bytes(), value.as_bytes());
@@ -605,6 +641,33 @@ mod tests {
     }
     fn file(path: &str, size: u64) -> serde_json::Value {
         serde_json::json!({"type":"file","path":path,"size":size})
+    }
+
+    #[test]
+    fn public_selection_bounds_missing_ambiguity_and_shared_byte_semantics() {
+        let available = ["q/model.gguf", "q/config.json", "q/日本.json"];
+        assert_eq!(
+            select_paths(&["m?del.*".into()], Some("q"), &available).unwrap(),
+            BTreeSet::from(["q/model.gguf".into()])
+        );
+        assert_eq!(
+            select_paths(&["日*.json".into()], Some("q"), &available).unwrap(),
+            BTreeSet::from(["q/日本.json".into()])
+        );
+        assert!(select_paths(&["*.gguf".into()], None, &available).is_err());
+        assert!(select_paths(&["*.gguf".into()], None, &["q4.gguf", "q8.gguf"]).is_err());
+        assert!(select_paths(&["../x".into()], None, &available).is_err());
+        assert!(select_paths(&["x".into()], Some("/x"), &available).is_err());
+        assert!(select_paths(&["x".into()], None, &["x", "x"]).is_err());
+        assert!(select_paths(&vec!["x".into(); 4097], None, &["x"]).is_err());
+        let values: Vec<_> = (0..4096)
+            .map(|i| format!("{i}/{}", "a".repeat(250)))
+            .collect();
+        let paths: Vec<_> = values.iter().map(String::as_str).collect();
+        assert!(matches!(
+            select_paths(&[format!("*/*{}b", "a".repeat(200))], None, &paths),
+            Err(Error::Limit(_))
+        ));
     }
 
     #[test]

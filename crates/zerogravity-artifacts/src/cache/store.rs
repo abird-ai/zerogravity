@@ -24,6 +24,10 @@ const UNIT: u64 = 4096;
 const MAX_NODES: usize = 131_072;
 const CONTROL_LIMIT: usize = 4096;
 
+#[path = "partials.rs"]
+mod partials;
+pub use partials::PartialObject;
+
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct Policy {
@@ -43,6 +47,12 @@ struct Reservation {
     remaining: u64,
     snapshot: String,
     objects: Vec<String>,
+}
+
+struct StagedObject<'a> {
+    path: &'a str,
+    file: &'a File,
+    digest: &'a str,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -77,6 +87,9 @@ pub struct CacheTransaction {
     // Keep ownership until cleanup has finished; kernel lock ownership, not a
     // PID test, determines whether an abandoned reservation may be recovered.
     owner_lock: Option<CacheLock>,
+    // A durable checkpoint keeps this exact attempt's physical inodes named
+    // after interruption. Dead-owner future reservations still end normally.
+    retained_partials: BTreeSet<usize>,
     _memory: GlobalResourceLease,
 }
 
@@ -686,6 +699,11 @@ impl CacheStore {
                 peak,
                 (entry.path().split('/').count() as u64 + 3) * 2 * UNIT,
             )?;
+            if reservation_objects.is_some() {
+                // A discovered transfer may keep one checkpoint, its atomic
+                // replacement, and one stable partial lock per planned file.
+                peak = add(peak, 3 * charge(CONTROL_LIMIT as u64)?)?;
+            }
         }
         peak = add(
             peak,
@@ -779,6 +797,7 @@ impl CacheStore {
             cancel,
             buffer,
             owner_lock: Some(owner_lock),
+            retained_partials: BTreeSet::new(),
             _memory: memory,
         })
     }
@@ -874,7 +893,7 @@ impl CacheTransaction {
         }
         let bytes = self.manifest.entries()[ordinal].bytes();
         let role = self.manifest.entries()[ordinal].role();
-        let mut object_lock = expected
+        let object_lock = expected
             .map(|hash| self.store.lock(&format!("object-{hash}"), &self.cancel))
             .transpose()?;
         if let Some(lock) = &object_lock {
@@ -923,6 +942,43 @@ impl CacheTransaction {
         if expected.is_some_and(|value| value != actual) {
             return Err(Error::Malformed("cache source digest mismatch".into()));
         }
+        self.install_staged(
+            logical_path,
+            StagedObject {
+                path: &temporary,
+                file: &target,
+                digest: &actual,
+            },
+            object_lock,
+            expected.is_none(),
+            retain_stage,
+        )
+    }
+
+    // The reader importer and durable partial guard share this one A1 object
+    // installer; neither creates a second payload file or publisher.
+    fn install_staged(
+        &mut self,
+        logical_path: &str,
+        staged: StagedObject<'_>,
+        mut object_lock: Option<CacheLock>,
+        check_existing: bool,
+        retain_stage: bool,
+    ) -> Result<ManifestEntry> {
+        let StagedObject {
+            path: temporary,
+            file: target,
+            digest: actual,
+        } = staged;
+        self.ensure_owner()?;
+        let ordinal = self
+            .manifest
+            .entries()
+            .iter()
+            .position(|entry| entry.path() == logical_path)
+            .ok_or_else(|| Error::Malformed("object not in resolved cache manifest".into()))?;
+        let bytes = self.manifest.entries()[ordinal].bytes();
+        let role = self.manifest.entries()[ordinal].role();
         #[cfg(feature = "diagnostic-cache")]
         self.store.point(
             CacheOperation::ObjectFileSync,
@@ -945,8 +1001,8 @@ impl CacheTransaction {
         let blob = format!("blobs/sha256/{actual}");
         // Unknown checksums may converge after their single-pass downloads.
         // Verify an existing inode rather than replacing it or trusting its name.
-        let exists = if expected.is_none() {
-            match self.store.verify_file(&blob, &actual, bytes) {
+        let exists = if check_existing {
+            match self.store.verify_file(&blob, actual, bytes) {
                 Ok(_) => true,
                 Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => false,
                 Err(e) => return Err(e),
@@ -963,7 +1019,7 @@ impl CacheTransaction {
             )?;
             lock.ensure_bound()?;
             self.ensure_owner()?;
-            self.store.link(&temporary, &blob)?;
+            self.store.link(temporary, &blob)?;
             #[cfg(feature = "diagnostic-cache")]
             self.store.point(
                 CacheOperation::ObjectInstall,
@@ -990,7 +1046,7 @@ impl CacheTransaction {
         // If a dedup hit uses another inode, retaining the private copy also
         // keeps its physical temporary bytes counted until exact-owned cleanup.
         if !retain_stage {
-            self.store.unlink(&temporary, false)?;
+            self.store.unlink(temporary, false)?;
         }
         self.complete.insert(logical_path.to_string());
         ManifestEntry::new(logical_path, actual, bytes, role)
@@ -1424,6 +1480,12 @@ impl DiscoveredTransaction {
 
 impl Drop for CacheTransaction {
     fn drop(&mut self) {
+        if !self.retained_partials.is_empty() {
+            // No unlinked-open inode release claim: retain the whole exact
+            // attempt, including crash tails and metadata. Recovery copies a
+            // verified prefix only after admitting a separate full new peak.
+            return;
+        }
         // Best-effort cleanup ONLY this unique owned attempt. A failed unlink
         // leaves counted orphans; never infer released bytes from Drop alone.
         let Ok(_quota) = self.store.lock("publication", &AtomicBool::new(false)) else {

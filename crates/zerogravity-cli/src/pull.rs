@@ -1,6 +1,9 @@
 //! Explicit acquisition frontend. Ordinary inspect/run never call this module.
 use std::path::PathBuf;
 use std::sync::{Arc, atomic::AtomicBool};
+
+#[path = "pull_signals.rs"]
+mod signals;
 use zerogravity::acquisition::http::{HttpOptions, HttpsClient};
 use zerogravity::acquisition::{self, Provider, PullLimits, PullRequest, Selection};
 use zerogravity::cache::{
@@ -300,6 +303,17 @@ fn validate_cached(lease: &SnapshotLease, request: &PullRequest) -> Result<()> {
         ));
     }
     let paths: Vec<String> = match &request.selection {
+        Selection::Files { paths, subfolder } if request.provider == Provider::HuggingFace => {
+            let available: Vec<_> = lease
+                .manifest()
+                .entries()
+                .iter()
+                .map(|entry| entry.path())
+                .collect();
+            acquisition::huggingface::select_paths(paths, subfolder.as_deref(), &available)?
+                .into_iter()
+                .collect()
+        }
         Selection::Files { paths, subfolder } => paths
             .iter()
             .map(|path| match subfolder {
@@ -333,6 +347,42 @@ fn admission(memory: u64) -> Result<TransferAdmission> {
         resource,
         owner: ResourceOwner::new("artifact-acquisition", "cli")?,
     })
+}
+
+#[derive(Default)]
+struct ProgressDisplay {
+    last_report: Option<std::time::Instant>,
+    last_path: String,
+}
+impl ProgressDisplay {
+    fn report(
+        &mut self,
+        event: &acquisition::PullProgress<'_>,
+        output: &mut impl std::io::Write,
+    ) -> std::io::Result<()> {
+        let now = std::time::Instant::now();
+        if self.last_path != event.path()
+            || event.file_bytes() == event.file_total_bytes()
+            || self.last_report.is_none_or(|last| {
+                now.duration_since(last) >= std::time::Duration::from_millis(200)
+            })
+        {
+            writeln!(
+                output,
+                "Pull bytes: {}/{} (file {}/{}, cached {}, resumed {})",
+                event.total_bytes(),
+                event.total_expected_bytes(),
+                event.file_bytes(),
+                event.file_total_bytes(),
+                event.cached_bytes(),
+                event.resumed_bytes()
+            )?;
+            self.last_report = Some(now);
+            self.last_path.clear();
+            self.last_path.push_str(event.path());
+        }
+        Ok(())
+    }
 }
 
 pub(super) fn run(args: &[String]) -> Result<()> {
@@ -380,6 +430,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             }
             let admission = admission(options.memory)?;
             let cancel = Arc::new(AtomicBool::new(false));
+            let _signals = signals::CancellationSignals::register(cancel.clone())?;
             let plan =
                 acquisition::resolve(&client, request, &limits(&options)?, &admission, &cancel)?;
             if options.dry_run {
@@ -403,13 +454,19 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                 );
                 return Ok(());
             }
-            let receipt = acquisition::execute(
+            let mut display = ProgressDisplay::default();
+            let mut progress = |event: &acquisition::PullProgress<'_>| {
+                // Progress output is best-effort; it cannot certify publication.
+                let _ = display.report(event, &mut std::io::stderr());
+            };
+            let receipt = acquisition::execute_with_progress(
                 &open(&options)?,
                 &plan,
                 &client,
                 &admission,
                 &cancel,
                 Some(&reference),
+                &mut progress,
             )?;
             match receipt.outcome() {
                 CommitOutcome::Durable(snapshot) => {
@@ -449,10 +506,15 @@ OPTIONS:
     --timeout-seconds N        Per HTTP operation total deadline (1..86400, default120)
 
 Credentials: HF_TOKEN or GITHUB_TOKEN environment only; no token command-line option.
+HF --file supports bounded component-local * and ? filters, including offline.
+SIGINT/SIGTERM request cooperative cancellation of online pulls; a blocked read
+can take its configured HTTP deadline. Progress bytes are logical completed bytes
+including verified cached/resumed prefixes, not a network-throughput measurement.
 Select an exact weight/index or auxiliary path; same-repository required model
 closure is added, and missing sidecars or ambiguous variants refuse. First-seen
 SHA256 is weaker than a trusted provider digest. No eviction, A3 loader or new inference
-format support; persistent cross-invocation resume is not implemented."
+format support. Resume requires a rehashed saved prefix and matching strong ETag;
+changed or ignored range responses refuse."
     );
 }
 
@@ -518,5 +580,283 @@ mod tests {
         ] {
             assert!(parse(&args(&parts)).and_then(|o| limits(&o)).is_err());
         }
+    }
+    #[test]
+    fn byte_progress_reports_actual_cache_and_transfer_without_urls() {
+        use std::io::Cursor;
+        use std::sync::atomic::Ordering;
+        use zerogravity::acquisition::http::{HttpRequest, HttpResponse, HttpTransport};
+        use zerogravity::acquisition::{ResolvedFile, ResolvedPullPlan};
+        use zerogravity::cache::{CacheLimits, FileRole, Manifest, ManifestEntry, ManifestSource};
+        let root = std::env::temp_dir().join(format!("zg-pull-progress-{}", std::process::id()));
+        assert!(!root.exists());
+        let store = CacheStore::open(CacheOptions::new(Some(root.clone()), DISK_DEFAULT)).unwrap();
+        // An isolated test arbiter avoids sharing the production-domain registration
+        // with other parallel tests. Production still uses process_shared().
+        let arbiter = ResourceArbiter::new();
+        let resource = PhysicalDeviceKey::new("test-host", "progress").unwrap();
+        arbiter.register(resource.clone(), MEMORY_DEFAULT).unwrap();
+        let admission = TransferAdmission {
+            arbiter,
+            resource,
+            owner: ResourceOwner::new("test", "progress").unwrap(),
+        };
+        let hash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        let source = ManifestSource::new("github", "fixture/progress", "1".repeat(40)).unwrap();
+        let old = Manifest::new(
+            source.clone(),
+            vec![ManifestEntry::new("old", hash, 3, FileRole::Auxiliary).unwrap()],
+            &CacheLimits::default(),
+        )
+        .unwrap();
+        let mut tx = store
+            .begin(old, &admission, Arc::new(AtomicBool::new(false)))
+            .unwrap();
+        tx.import_object("old", &mut Cursor::new(b"abc")).unwrap();
+        tx.commit(None).unwrap();
+        struct FixtureTransport(std::sync::atomic::AtomicUsize);
+        impl HttpTransport for FixtureTransport {
+            fn get(&self, _: &HttpRequest, _: &AtomicBool) -> Result<HttpResponse> {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                Ok(HttpResponse {
+                    status: 200,
+                    headers: Default::default(),
+                    body: Box::new(Cursor::new(b"body")),
+                })
+            }
+        }
+        let plan = ResolvedPullPlan::new(
+            source,
+            vec![
+                ResolvedFile::new(
+                    "cached",
+                    "https://fixture.invalid/?token=secret-value",
+                    FileRole::Auxiliary,
+                    3,
+                    Some(hash.into()),
+                    "cached",
+                )
+                .unwrap(),
+                ResolvedFile::new(
+                    "download",
+                    "https://fixture.invalid/?token=secret-value",
+                    FileRole::Auxiliary,
+                    4,
+                    None,
+                    "download",
+                )
+                .unwrap(),
+            ],
+            &PullLimits::default(),
+        )
+        .unwrap();
+        let transport = FixtureTransport(Default::default());
+        let mut display = ProgressDisplay::default();
+        let mut output = Vec::new();
+        acquisition::execute_with_progress(
+            &store,
+            &plan,
+            &transport,
+            &admission,
+            &Arc::new(AtomicBool::new(false)),
+            None,
+            &mut |event| display.report(event, &mut output).unwrap(),
+        )
+        .unwrap();
+        let output = String::from_utf8(output).unwrap();
+        assert!(
+            output.contains("Pull bytes: 7/7 (file 4/4, cached 3, resumed 0)"),
+            "{output}"
+        );
+        assert!(!output.contains("secret-value"));
+        assert!(!output.contains("https://"));
+        assert_eq!(transport.0.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            admission
+                .arbiter
+                .snapshot(&admission.resource)
+                .unwrap()
+                .reserved,
+            0
+        );
+        drop(store);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn real_process_signals_cancel_pull_and_preserve_previous_reference() {
+        use std::io::{BufRead, BufReader};
+        use std::process::{Command, Stdio};
+        use std::time::{Duration, Instant};
+        struct OwnedChild(std::process::Child);
+        impl Drop for OwnedChild {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        for signal in ["-INT", "-TERM"] {
+            let root = std::env::temp_dir()
+                .join(format!("zg-pull-signal-{}-{signal}", std::process::id()));
+            assert!(!root.exists());
+            let mut child = OwnedChild(
+                Command::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--ignored",
+                        "--exact",
+                        "pull::tests::signal_child",
+                        "--nocapture",
+                    ])
+                    .env("ZG_PULL_SIGNAL_FIXTURE", &root)
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::inherit())
+                    .spawn()
+                    .unwrap(),
+            );
+            let stdout = child.0.stdout.take().unwrap();
+            let (send, recv) = std::sync::mpsc::channel();
+            let reader = std::thread::spawn(move || {
+                for line in BufReader::new(stdout).lines() {
+                    if line.unwrap().ends_with("PULL_SIGNAL_READY") {
+                        let _ = send.send(());
+                    }
+                }
+            });
+            recv.recv_timeout(Duration::from_secs(15))
+                .expect("child reached real body read");
+            assert!(
+                Command::new("kill")
+                    .args([signal, &child.0.id().to_string()])
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+            let deadline = Instant::now() + Duration::from_secs(15);
+            let status = loop {
+                if let Some(status) = child.0.try_wait().unwrap() {
+                    break status;
+                }
+                assert!(Instant::now() < deadline, "signal child did not retire");
+                std::thread::sleep(Duration::from_millis(10));
+            };
+            reader.join().unwrap();
+            assert!(status.success(), "signal child failed: {status}");
+            std::fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    #[ignore = "owned child helper; invoked only by real-process signal test"]
+    fn signal_child() {
+        use std::io::{Cursor, Read, Write};
+        use std::sync::atomic::Ordering;
+        use std::time::{Duration, Instant};
+        use zerogravity::cache::{CacheLimits, FileRole, Manifest, ManifestEntry, ManifestSource};
+        let root = PathBuf::from(std::env::var_os("ZG_PULL_SIGNAL_FIXTURE").unwrap());
+        let store = CacheStore::open(CacheOptions::new(Some(root), DISK_DEFAULT)).unwrap();
+        let admission = admission(MEMORY_DEFAULT).unwrap();
+        let make = |revision: &str, hash: String| {
+            Manifest::new(
+                ManifestSource::new("github", "fixture/source", revision).unwrap(),
+                vec![ManifestEntry::new("tiny", hash, 3, FileRole::Auxiliary).unwrap()],
+                &CacheLimits::default(),
+            )
+            .unwrap()
+        };
+        let old = make(
+            &"1".repeat(40),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into(),
+        );
+        let mut initial = store
+            .begin(old, &admission, Arc::new(AtomicBool::new(false)))
+            .unwrap();
+        initial
+            .import_object("tiny", &mut Cursor::new(b"abc"))
+            .unwrap();
+        initial.commit(Some("previous")).unwrap();
+        let previous = store
+            .resolve_ref("previous")
+            .unwrap()
+            .manifest()
+            .digest()
+            .unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let guard = signals::CancellationSignals::register(cancel.clone()).unwrap();
+        let mut tx = store
+            .begin(
+                make(&"2".repeat(40), "0".repeat(64)),
+                &admission,
+                cancel.clone(),
+            )
+            .unwrap();
+        assert!(
+            admission
+                .arbiter
+                .snapshot(&admission.resource)
+                .unwrap()
+                .reserved
+                > 0
+        );
+        struct WaitingReader {
+            cancel: Arc<AtomicBool>,
+            read: bool,
+        }
+        impl Read for WaitingReader {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                if !self.read {
+                    self.read = true;
+                    buffer[0] = b'a';
+                    return Ok(1);
+                }
+                println!("PULL_SIGNAL_READY");
+                std::io::stdout().flush()?;
+                let deadline = Instant::now() + Duration::from_secs(12);
+                while !self.cancel.load(Ordering::Acquire) {
+                    if Instant::now() >= deadline {
+                        return Err(std::io::Error::other("fixture signal deadline"));
+                    }
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+                Err(std::io::Error::other("fixture observed cancellation"))
+            }
+        }
+        assert!(
+            tx.import_object(
+                "tiny",
+                &mut WaitingReader {
+                    cancel: cancel.clone(),
+                    read: false
+                }
+            )
+            .is_err()
+        );
+        assert!(cancel.load(Ordering::Acquire));
+        drop(tx);
+        assert_eq!(
+            store
+                .resolve_ref("previous")
+                .unwrap()
+                .manifest()
+                .digest()
+                .unwrap(),
+            previous
+        );
+        assert_eq!(
+            admission
+                .arbiter
+                .snapshot(&admission.resource)
+                .unwrap()
+                .reserved,
+            0
+        );
+        assert_eq!(store.usage().unwrap().reserved_bytes, 0);
+        drop(guard);
+        cancel.store(false, Ordering::Release);
+        signal_hook::low_level::raise(signal_hook::consts::SIGINT).unwrap();
+        signal_hook::low_level::raise(signal_hook::consts::SIGTERM).unwrap();
+        assert!(
+            !cancel.load(Ordering::Acquire),
+            "scoped callbacks were not removed"
+        );
     }
 }
