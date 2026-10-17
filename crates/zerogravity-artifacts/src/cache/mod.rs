@@ -1,4 +1,4 @@
-//! Opt-in, offline artifact acquisition transactions. A published snapshot is
+//! Opt-in, offline artifact acquisition and explicit cache maintenance. A snapshot is
 //! verified data, never model/device readiness or a session state authority.
 //!
 //! Linux-local-filesystem first. Quotas coordinate cooperating writers within
@@ -98,6 +98,88 @@ pub struct DiskUsage {
     pub limit_bytes: u64,
 }
 
+/// Exact-target maintenance is explicit and never an automatic eviction policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReclaimMode {
+    DryRun,
+    Apply,
+}
+
+/// Observed cooperative cache charge and namespace work, not filesystem free
+/// space. Entry counts include hard links; they are not counts of freed inodes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReclaimReport {
+    pub(crate) snapshot: String,
+    pub(crate) retired: bool,
+    pub(crate) used_before_bytes: u64,
+    pub(crate) used_after_bytes: Option<u64>,
+    pub(crate) candidate_files: usize,
+    pub(crate) candidate_directories: usize,
+    pub(crate) removed_files: usize,
+    pub(crate) removed_directories: usize,
+    pub(crate) retained_blobs: usize,
+}
+
+impl ReclaimReport {
+    pub fn snapshot(&self) -> &str {
+        &self.snapshot
+    }
+
+    /// Whether this request observed or began retirement. This does not mean a
+    /// retired name still exists after successful completion.
+    pub fn retired(&self) -> bool {
+        self.retired
+    }
+
+    pub fn used_before_bytes(&self) -> u64 {
+        self.used_before_bytes
+    }
+
+    /// None means a post-mutation inventory failed; no current charge or
+    /// released charge was established for that incomplete operation.
+    pub fn used_after_bytes(&self) -> Option<u64> {
+        self.used_after_bytes
+    }
+
+    pub fn candidate_files(&self) -> usize {
+        self.candidate_files
+    }
+
+    pub fn candidate_directories(&self) -> usize {
+        self.candidate_directories
+    }
+
+    pub fn removed_files(&self) -> usize {
+        self.removed_files
+    }
+
+    pub fn removed_directories(&self) -> usize {
+        self.removed_directories
+    }
+
+    pub fn retained_blobs(&self) -> usize {
+        self.retained_blobs
+    }
+}
+
+#[derive(Debug)]
+pub enum ReclaimOutcome {
+    DryRun(ReclaimReport),
+    /// An activity or payload descriptor pin prevents this attempt. No target
+    /// namespace entry has been changed.
+    Busy,
+    Referenced {
+        references: usize,
+    },
+    Durable(ReclaimReport),
+    /// Mutation began; retained names permit exact-target retry. Do not infer
+    /// rollback or successful durability from a visible namespace change.
+    Incomplete {
+        report: ReclaimReport,
+        cause: Error,
+    },
+}
+
 #[cfg(feature = "diagnostic-cache")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CacheOperation {
@@ -124,6 +206,9 @@ pub enum CacheOperation {
     ReferenceRecordDirectorySync,
     RefRename,
     RefDirectorySync,
+    RetirementRename,
+    ReclaimUnlink,
+    ReclaimDirectorySync,
 }
 
 #[cfg(feature = "diagnostic-cache")]

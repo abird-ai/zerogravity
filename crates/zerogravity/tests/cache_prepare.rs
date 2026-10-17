@@ -15,7 +15,7 @@ use std::sync::{
 };
 use zerogravity::cache::{
     CacheLimits, CacheOptions, CacheStore, FileRole, Manifest, ManifestEntry, ManifestSource,
-    TransferAdmission,
+    ReclaimMode, ReclaimOutcome, TransferAdmission,
 };
 use zerogravity::prepare::PreparedQwen;
 use zerogravity::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, ResourceOwner};
@@ -344,6 +344,25 @@ fn approved_cached_models_match_direct_source_exactly() {
             .write_all(b"X")
             .unwrap();
         assert!(store.open_snapshot(&digest).is_err());
+        let before_reclamation = store.usage().unwrap().used_bytes;
+        let ReclaimOutcome::Durable(reclaimed) = store
+            .reclaim_snapshot(&digest, ReclaimMode::Apply, &AtomicBool::new(false))
+            .unwrap()
+        else {
+            panic!("private cached weights must be reclaimable after source copying");
+        };
+        assert!(!fixture.0.join("snapshots").join(&digest).exists());
+        assert!(!fixture.0.join("blobs/sha256").join(model_hash).exists());
+        assert_eq!(reclaimed.used_before_bytes(), before_reclamation);
+        assert_eq!(
+            reclaimed.used_after_bytes(),
+            Some(store.usage().unwrap().used_bytes)
+        );
+        assert!(reclaimed.used_after_bytes().unwrap() < before_reclamation);
+        assert_eq!(
+            memory.arbiter.snapshot(&memory.resource).unwrap().reserved,
+            retained_model.source_bytes() as u64
+        );
         drop(cached);
         assert_eq!(
             memory.arbiter.snapshot(&memory.resource).unwrap().reserved,
@@ -393,7 +412,7 @@ fn approved_cached_models_match_direct_source_exactly() {
             0
         );
         println!(
-            "A3_CACHE_CPU_PASS model={name} tokens=2 full_vocab=exact all42domains=exact independent_sessions=1 rawlease_lifetime=exact mutation_isolated=1"
+            "A3_CACHE_CPU_PASS model={name} tokens=2 full_vocab=exact all42domains=exact independent_sessions=1 rawlease_lifetime=exact mutation_isolated=1 reclamation_isolated=1"
         );
     }
 }

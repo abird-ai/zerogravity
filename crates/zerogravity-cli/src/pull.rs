@@ -452,8 +452,9 @@ Select an exact weight/index or auxiliary path; same-repository required model
 closure is added, and missing sidecars or ambiguous variants refuse. First-seen
 SHA256 is weaker than a trusted provider digest. Missing listing sizes may be recovered
 from pinned provider metadata or bounded body-free HEAD; totals still unknown refuse.
-HEAD is metadata only and does not establish content digest trust. Cache removal remains
-Unsupported. Explicit run-cache uses the existing supported CPU loader; acquisition
+HEAD is metadata only and does not establish content digest trust. Protected cache
+roots support explicit cache remove; legacy roots are not migrated. Explicit
+run-cache uses the existing supported CPU loader; acquisition
 adds no inference formats. Resume requires a rehashed saved prefix and matching strong ETag;
 changed or ignored range responses refuse."
     );

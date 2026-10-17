@@ -7,7 +7,11 @@ use std::fs::File;
 use std::path::Path;
 
 /// Pins exact opened, read-only object descriptors and their verified manifest.
-/// Ref replacement cannot retarget these handles. No eviction exists in A1.
+/// Ref replacement cannot retarget these handles. Each actual open description
+/// holds a shared advisory pin: ordinary dup/try_clone and inherited child
+/// descriptors retain it after this wrapper drops. Release follows final close,
+/// never a wrapper-owned explicit unlock. Protected v2 maintenance observes
+/// those pins; legacy v1 roots do not support reclamation.
 /// A borrowed file supports positioned reads without shared cursor mutation.
 #[derive(Debug)]
 pub struct SnapshotLease {

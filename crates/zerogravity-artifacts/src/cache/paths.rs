@@ -224,12 +224,47 @@ impl RootDir {
         // between lookup and open. The opened descriptor is checked as regular.
         let file = File::from(os(fs::openat(
             &parent,
-            name,
+            name.as_str(),
             flags | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK,
             mode,
         ))?);
         private_file(&file)?;
+        match fs::flock(&file, FlockOperation::NonBlockingLockShared) {
+            Ok(()) => {}
+            Err(rustix::io::Errno::WOULDBLOCK) => {
+                return Err(Error::State("cache file is being retired".into()));
+            }
+            Err(error) => return Err(std::io::Error::from(error).into()),
+        }
+        file_bound(&parent, &name, &file)?;
         Ok(file)
+    }
+
+    /// Probe using a separate open description, never upgrading or unlocking a
+    /// reader's shared description. Drop closes this description; an escaped
+    /// dup/try_clone of a reader continues to prevent this exclusive lock.
+    pub(crate) fn try_exclusive_file(
+        &self,
+        path: &str,
+        cancel: &AtomicBool,
+    ) -> Result<Option<File>> {
+        check_cancel(cancel)?;
+        let (parent, name) = self.parent_dir(path, false)?;
+        let file = File::from(os(fs::openat(
+            &parent,
+            name.as_str(),
+            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK,
+            Mode::empty(),
+        ))?);
+        private_file(&file)?;
+        match fs::flock(&file, FlockOperation::NonBlockingLockExclusive) {
+            Ok(()) => {}
+            Err(rustix::io::Errno::WOULDBLOCK) => return Ok(None),
+            Err(error) => return Err(std::io::Error::from(error).into()),
+        }
+        check_cancel(cancel)?;
+        file_bound(&parent, &name, &file)?;
+        Ok(Some(file))
     }
     /// Bounded no-follow inventory includes the root and all empty directories.
     /// Identity and metadata must be charged by the store, not this path layer.
@@ -307,6 +342,30 @@ impl RootDir {
         timeout: Duration,
         cancel: &AtomicBool,
     ) -> Result<CacheLock> {
+        self.lock_mode(
+            name,
+            timeout,
+            cancel,
+            FlockOperation::NonBlockingLockExclusive,
+        )
+    }
+
+    pub(crate) fn lock_shared(
+        &self,
+        name: &str,
+        timeout: Duration,
+        cancel: &AtomicBool,
+    ) -> Result<CacheLock> {
+        self.lock_mode(name, timeout, cancel, FlockOperation::NonBlockingLockShared)
+    }
+
+    fn lock_mode(
+        &self,
+        name: &str,
+        timeout: Duration,
+        cancel: &AtomicBool,
+        operation: FlockOperation,
+    ) -> Result<CacheLock> {
         if name.is_empty()
             || name.len() > 128
             || !name
@@ -339,7 +398,7 @@ impl RootDir {
                 return Err(Error::State("cache lock wait canceled".into()));
             }
             lock.ensure_bound()?;
-            match fs::flock(&lock.file, FlockOperation::NonBlockingLockExclusive) {
+            match fs::flock(&lock.file, operation) {
                 Ok(()) => {
                     lock.ensure_bound()?;
                     return Ok(lock);
@@ -354,6 +413,27 @@ impl RootDir {
             std::thread::sleep(remaining.min(Duration::from_millis(5)));
         }
     }
+}
+
+fn check_cancel(cancel: &AtomicBool) -> Result<()> {
+    if cancel.load(Ordering::Acquire) {
+        return Err(Error::State("cache descriptor operation canceled".into()));
+    }
+    Ok(())
+}
+
+fn file_bound(parent: &File, name: &str, file: &File) -> Result<()> {
+    private_dir(parent)?;
+    private_file(file)?;
+    let metadata = file.metadata()?;
+    let named = os(fs::statat(parent, name, AtFlags::SYMLINK_NOFOLLOW))?;
+    if named.st_dev != metadata.dev()
+        || named.st_ino != metadata.ino()
+        || FileType::from_raw_mode(named.st_mode) != FileType::RegularFile
+    {
+        return Err(Error::State("cache file inode binding changed".into()));
+    }
+    Ok(())
 }
 fn reserve_path_bytes(total: &mut usize, length: usize) -> Result<()> {
     // Conservatively retain two copies even for files and already popped
@@ -380,8 +460,8 @@ fn node(path: String, file: &File) -> Result<CacheNode> {
     })
 }
 
-/// Closing the sole lock descriptor releases the OS advisory lock. No clone,
-/// PID inference, explicit inode deletion or unlink-based authority is exposed.
+/// Closing the final file description releases the OS advisory lock. Never
+/// issue explicit LOCK_UN: dup/inherited descriptions may still own the pin.
 pub(crate) struct CacheLock {
     parent: File,
     file: File,
@@ -435,6 +515,131 @@ mod tests {
             std::fs::remove_dir_all(&self.0).unwrap();
         }
     }
+
+    #[test]
+    fn payload_pin_survives_file_clone_and_dup_until_last_description_closes() {
+        let fixture = Fixture::new();
+        let root = RootDir::open(&fixture.0, false).unwrap();
+        let file = root
+            .open_file(
+                "payload",
+                OFlags::RDWR | OFlags::CREATE | OFlags::EXCL,
+                Mode::RUSR | Mode::WUSR,
+            )
+            .unwrap();
+        let clone = file.try_clone().unwrap();
+        let duplicate = File::from(file.as_fd().try_clone_to_owned().unwrap());
+        drop(file);
+        let cancel = AtomicBool::new(false);
+        assert!(
+            root.try_exclusive_file("payload", &cancel)
+                .unwrap()
+                .is_none()
+        );
+        drop(clone);
+        assert!(
+            root.try_exclusive_file("payload", &cancel)
+                .unwrap()
+                .is_none()
+        );
+        drop(duplicate);
+        let exclusive = root
+            .try_exclusive_file("payload", &cancel)
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            root.open_file("payload", OFlags::RDONLY, Mode::empty()),
+            Err(Error::State(_))
+        ));
+        drop(exclusive);
+        let reader = root
+            .open_file("payload", OFlags::RDONLY, Mode::empty())
+            .unwrap();
+        assert!(
+            root.try_exclusive_file("payload", &cancel)
+                .unwrap()
+                .is_none()
+        );
+        cancel.store(true, Ordering::Release);
+        assert!(matches!(
+            root.try_exclusive_file("payload", &cancel),
+            Err(Error::State(_))
+        ));
+        drop(reader);
+    }
+
+    #[test]
+    fn shared_activity_blocks_exclusive_until_every_guard_closes() {
+        let fixture = Fixture::new();
+        let root = RootDir::open(&fixture.0, false).unwrap();
+        let cancel = AtomicBool::new(false);
+        let first = root
+            .lock_shared("activity", Duration::ZERO, &cancel)
+            .unwrap();
+        let second = root
+            .lock_shared("activity", Duration::ZERO, &cancel)
+            .unwrap();
+        assert!(matches!(
+            root.lock("activity", Duration::ZERO, &cancel),
+            Err(Error::Limit(_))
+        ));
+        drop(first);
+        assert!(matches!(
+            root.lock("activity", Duration::ZERO, &cancel),
+            Err(Error::Limit(_))
+        ));
+        drop(second);
+        let exclusive = root.lock("activity", Duration::ZERO, &cancel).unwrap();
+        assert!(matches!(
+            root.lock_shared("activity", Duration::ZERO, &cancel),
+            Err(Error::Limit(_))
+        ));
+        cancel.store(true, Ordering::Release);
+        assert!(matches!(
+            root.lock_shared("activity", Duration::ZERO, &cancel),
+            Err(Error::State(_))
+        ));
+        drop(exclusive);
+    }
+
+    #[test]
+    fn post_pin_binding_rejects_replaced_leaf_and_symlink_alias() {
+        let fixture = Fixture::new();
+        let root = RootDir::open(&fixture.0, false).unwrap();
+        let file = root
+            .open_file(
+                "payload",
+                OFlags::RDWR | OFlags::CREATE | OFlags::EXCL,
+                Mode::RUSR | Mode::WUSR,
+            )
+            .unwrap();
+        let (parent, name) = root.parent_dir("payload", false).unwrap();
+        std::fs::rename(fixture.0.join("payload"), fixture.0.join("old-payload")).unwrap();
+        let replacement = root
+            .open_file(
+                "payload",
+                OFlags::RDWR | OFlags::CREATE | OFlags::EXCL,
+                Mode::RUSR | Mode::WUSR,
+            )
+            .unwrap();
+        assert!(matches!(
+            file_bound(&parent, &name, &file),
+            Err(Error::State(_))
+        ));
+        drop(replacement);
+        std::fs::remove_file(fixture.0.join("payload")).unwrap();
+        symlink("old-payload", fixture.0.join("payload")).unwrap();
+        assert!(matches!(
+            file_bound(&parent, &name, &file),
+            Err(Error::State(_))
+        ));
+        assert!(
+            root.try_exclusive_file("payload", &AtomicBool::new(false))
+                .is_err()
+        );
+        drop(file);
+    }
+
     #[test]
     fn xdg_resolution_uses_explicit_values_without_environment_mutation() {
         let home = OsStr::new("/home/cache-fixture");

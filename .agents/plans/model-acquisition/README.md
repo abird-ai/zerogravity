@@ -97,8 +97,8 @@ Ordinary pulls retain strict same-repository model closure. Explicit component
 plans can supply config/tokenizer from separate authorized sources. Each member
 retains its own original provider/repository/immutable revision and manifest;
 there is no merged-source manifest, composite ref or cross-source transaction.
-Git LFS pointer payloads, lengths still unknown after bounded recovery and
-lease-aware removal refuse.
+Git LFS pointer payloads and lengths still unknown after bounded recovery refuse.
+Explicit cache removal has the separate protected-reader contract below.
 Acquiring an auxiliary file or unqualified model format grants no loader support.
 The wider Hub/cloud/OCI/Xet/parity inventory remains separate unchecked work.
 
@@ -152,24 +152,78 @@ first-seen content provenance. Final original raw digest, exact bytes and termin
 EOF checks remain mandatory. Truly unknown-body streaming remains a separate
 unchecked implementation and qualification task.
 
-## Remaining removal contract
+## Explicit protected-cache removal
 
-Removal is still Unsupported. SnapshotLease exposes readable File handles that
-can be cloned beyond the wrapper's lifetime; a wrapper-owned lock cannot prove
-that physical bytes were released. A future compatible protocol needs actual
-opened-descriptor lifetime pins, old-reader/policy migration handling, serialized
-reference/snapshot graph capture, safe lock ordering and preservation of shared
-blobs/live attempts/stable lock inodes. Candidates must remain named and charged
-through crash-safe retirement until actual release is proved. Close payload and
-control descriptors before releasing an owner pin; a destructured partial
-recovery tuple can otherwise drop its owner lock before the opened file.
-First-seen actual blob digests are absent from known-hash reservation cohorts,
-and dedup staging can retain a different inode; neither ledger nor staging links
-alone proves complete live reachability. Exclude relevant live transactions from
-blob GC or pin their actual blob handles through completion. Qualify faults,
-real process exits, escaped handles and exact release accounting before exposing
-explicit offline dry-run/apply removal. No live cache deletion or migration is
-performed by this slice.
+Fresh empty roots use persistent policy v2. New code still opens existing v1
+roots without changing their policy bytes, but refuses their reclamation. Old
+CacheStore openers reject v2 before they can open unprotected managed readers. A
+policy-less root with existing data cannot adopt v2. There is no automatic or live migration.
+
+Every managed regular-file open acquires a shared Linux flock on that exact open
+file description and verifies its bound inode. File cloning, dup and inherited
+child handles preserve that pin until their final close; wrapper lifetime alone
+is insufficient. No explicit unlock runs on wrapper drop. Lazy Artifact readers
+constructed from managed descriptor clones retain the same pin. Advisory locks
+cover cooperating cache users. Generic local-path run/inspect, arbitrary raw
+File::open, mappings or deliberate descriptor unlocks do not join this protocol;
+raw access to cache-owned paths requires external quiescence during removal.
+Use run-cache or the managed SnapshotLease API for concurrent loading.
+
+In protected roots, a stable shared activity lock spans each complete transaction
+and each snapshot or reference binding window. Legacy roots do not gain this
+extra charged control inode. Maintenance takes activity exclusively, without
+waiting, before publication. Active transfers therefore return Busy, including
+first-seen/deduplicated blobs missing from planned checksum reservations. It
+never waits on object or attempt locks under publication. Recovered partial
+payloads close before their old attempt owner, and transaction cleanup finishes
+before activity is released. Other metadata inventory operations hold publication
+until their temporary descriptors close.
+
+Under those existing authorities, one bounded graph captures current refs and
+conservative shared-blob reachability through other manifests. Referenced targets
+refuse. Stable locks, reference-record backing, dead/retained staging and general
+orphans are retained. Maintenance probes separate actual candidate descriptors
+with nonblocking exclusive locks and validates names/inodes; escaped readers
+produce Busy before any target mutation. All local collector payload/control/tree
+handles close before the final unlink. The scope is one exact target, with no
+new cache owner, collector daemon or reservation ledger.
+
+A fresh retirement needs the existing conservative 256 KiB control allowance to
+fit under the cooperative disk policy. Dry-run and apply both check that
+headroom; a full root can refuse without mutation. Activity and publication
+exclude competing admissions throughout this bounded operation.
+
+Apply atomically moves the snapshot into retirement/DIGEST and syncs the affected
+parents before destructive cleanup. The moved manifest and then an empty retired
+directory preserve exact retry through partial cleanup. A pending retirement
+blocks publication of that same snapshot. Every mutation and directory sync has
+diagnostic fault points. Errors after mutation return Incomplete, never implied
+rollback. An already absent exact target is an idempotent zero-removal result;
+apply syncs its parents, without collecting unrelated orphan manifests or blobs.
+
+ReclaimReport counts named entries, including hard links, and reports rebuilt
+unique-inode conservative cache charge before and after. An unavailable post-error
+inventory is unknown. This is neither a physical-block-release attestation nor a
+filesystem free-space reservation. Concurrent process creation can briefly inherit
+collector descriptors until exec closes them, and kernel close effects can lag;
+local close is not a process-global last-close attestation. An incomplete removal
+can retain charged names; no optimistic release credit follows from a wrapper or
+namespace change.
+
+The independent cache-only CLI requires an existing explicit absolute root and
+one mode:
+
+```text
+zerogravity cache remove DIGEST --dry-run --cache /absolute/cache
+zerogravity cache remove DIGEST --apply --cache /absolute/cache
+```
+
+Use the root's existing disk-policy limit with --disk-limit-bytes when it differs
+from the CLI default. No aliases, force option, hidden reference deletion,
+automatic eviction, dead-stage sweep, credentials, transport or signal handlers
+are involved. Dry-run observes eligibility and is not a reservation; apply always
+revalidates. Tests and acceptance remain in TODO.md. Implementation fixtures use
+private tiny caches; no live user cache is deleted or migrated by this work.
 
 ## Explicit components
 
@@ -253,7 +307,10 @@ this scoped accounting. The CLI registers one process-shared source domain with
 a 5 GiB default cap, adjustable via `--source-memory-limit-bytes`. Legacy path-open
 accounting keeps its existing boundary. Cache preparation grants a fresh source
 allocation identity, while sessions on one loaded Arc share that immutable source
-and retain independent StateRoots. Numerical acceptance is tracked in TODO.md.
+and retain independent StateRoots. The original-checkpoint gate also removes private cached snapshot/weight names
+after source copying, then verifies both original models through the same exact
+logit/state/session checks while their raw source reservation remains owned.
+Numerical acceptance is tracked in TODO.md.
 
 ## References
 
@@ -266,5 +323,6 @@ and retain independent StateRoots. Numerical acceptance is tracked in TODO.md.
   checked against the exact already-cached dependency sources.
 - [ureq 3.4.2](https://docs.rs/ureq/3.4.2/ureq/), with its exact cached source
   used to check timeout, TLS and redirect behavior.
+- [Linux flock lifetime and advisory semantics](https://man7.org/linux/man-pages/man2/flock.2.html).
 - [A1 local cache contract](../../research/PULL_A1_LOCAL_XDG_CACHE_2026-10-16.md),
   [current workflow](../../../AGENTS.md) and [TODO rules](../TODO-SPEC.md).

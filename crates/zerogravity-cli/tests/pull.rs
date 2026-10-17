@@ -282,7 +282,7 @@ mod enabled {
         assert!(text.contains("strong ETag"));
         assert!(text.contains("body-free HEAD"));
         assert!(text.contains("totals still unknown refuse"));
-        assert!(text.contains("Cache removal remains\nUnsupported"));
+        assert!(text.contains("explicit cache remove; legacy roots are not migrated"));
         assert!(text.contains("run-cache uses the existing supported CPU loader"));
         assert!(!text.contains("No eviction, A3 loader"));
     }

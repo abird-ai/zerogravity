@@ -23,6 +23,14 @@ struct PartialRecord {
     inode: u64,
 }
 
+// Keep the payload descriptor before its dead-attempt owner guard. Rust drops
+// fields in declaration order; never destructure this into reversed locals.
+struct RecoveredPartial {
+    record: PartialRecord,
+    file: File,
+    owner: CacheLock,
+}
+
 fn strong_validator(value: &str) -> Result<()> {
     if value.len() < 2
         || value.len() > 1024
@@ -187,7 +195,10 @@ impl DiscoveredTransaction {
         let mut hasher = Sha256::new();
         let mut resumed = 0;
         let mut validator = None;
-        if let Some((record, mut file, owner)) = saved {
+        if let Some(mut saved) = saved {
+            let record = &saved.record;
+            let file = &mut saved.file;
+            let owner = &saved.owner;
             let before = file.metadata()?;
             if before.dev() != record.device
                 || before.ino() != record.inode
@@ -226,7 +237,7 @@ impl DiscoveredTransaction {
                 return Err(Error::Malformed("saved partial prefix changed".into()));
             }
             resumed = record.bytes;
-            validator = Some(record.validator);
+            validator = Some(record.validator.clone());
             // The source descriptor/old owner close before any later attempt
             // cleanup. Old named files continue to be charged, including tails.
         }
@@ -252,11 +263,11 @@ fn recover_candidate(
     transaction: &CacheTransaction,
     key: &str,
     total: u64,
-) -> Result<Option<(PartialRecord, File, CacheLock)>> {
+) -> Result<Option<RecoveredPartial>> {
     let store = &transaction.store;
     let publication = store.lock("publication", &transaction.cancel)?;
     publication.ensure_bound()?;
-    let mut selected: Option<(PartialRecord, File, CacheLock)> = None;
+    let mut selected: Option<RecoveredPartial> = None;
     for node in store.inner.root.walk_tree(MAX_NODES)? {
         let parts: Vec<_> = node.path.split('/').collect();
         if node.is_directory
@@ -298,7 +309,7 @@ fn recover_candidate(
         strong_validator(&record.validator)?;
         if selected
             .as_ref()
-            .is_some_and(|(previous, _, _)| previous.bytes >= record.bytes)
+            .is_some_and(|previous| previous.record.bytes >= record.bytes)
         {
             continue;
         }
@@ -307,7 +318,11 @@ fn recover_candidate(
             OFlags::RDONLY,
             Mode::empty(),
         )?;
-        selected = Some((record, file, owner));
+        selected = Some(RecoveredPartial {
+            record,
+            file,
+            owner,
+        });
     }
     Ok(selected)
 }

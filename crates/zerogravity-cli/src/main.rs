@@ -25,6 +25,9 @@ mod gpu;
 #[cfg(all(feature = "acquisition", target_os = "linux"))]
 mod pull;
 
+#[cfg(all(feature = "cache", target_os = "linux"))]
+mod cache_manage;
+
 #[cfg(all(
     feature = "cache",
     feature = "cpu",
@@ -129,6 +132,7 @@ enum Command {
     },
     Pull(Vec<String>),
     CacheRun(Vec<String>),
+    CacheManage(Vec<String>),
     NotImplemented(String),
     Invalid(String),
     Unknown(String),
@@ -260,6 +264,7 @@ where
                     }
                 }
                 "pull" => Command::Pull(args.map(|arg| arg.as_ref().to_owned()).collect()),
+                "cache" => Command::CacheManage(args.map(|arg| arg.as_ref().to_owned()).collect()),
                 "run-cache" => Command::CacheRun(args.map(|arg| arg.as_ref().to_owned()).collect()),
                 "serve" | "models" | "config" => Command::NotImplemented(first.as_ref().to_owned()),
                 other => Command::Unknown(other.to_owned()),
@@ -341,6 +346,9 @@ fn composed_usage() {
                 );
             }
         }
+    }
+    if cfg!(all(feature = "cache", target_os = "linux")) {
+        println!("    zerogravity cache --help  (explicit offline exact-snapshot removal)");
     }
     if cfg!(all(feature = "acquisition", target_os = "linux")) {
         println!(
@@ -749,6 +757,18 @@ fn execute_gpu(backend: GpuBackend, _: Vec<String>) -> Result<()> {
     Err(backend.unavailable())
 }
 
+#[cfg(all(feature = "cache", target_os = "linux"))]
+fn execute_cache_manage(args: Vec<String>) -> Result<()> {
+    cache_manage::run(&args)
+}
+
+#[cfg(not(all(feature = "cache", target_os = "linux")))]
+fn execute_cache_manage(_: Vec<String>) -> Result<()> {
+    Err(zerogravity::Error::Unsupported(
+        "cache commands require Linux and the optional cache feature".into(),
+    ))
+}
+
 fn run(command: Command) -> ExitCode {
     match command {
         Command::Help => {
@@ -759,6 +779,13 @@ fn run(command: Command) -> ExitCode {
             println!("zerogravity v{VERSION}");
             ExitCode::SUCCESS
         }
+        Command::CacheManage(args) => match execute_cache_manage(args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("zerogravity cache: {error}");
+                ExitCode::from(2)
+            }
+        },
         Command::CacheRun(args) => match execute_cache(args) {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {

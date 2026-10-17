@@ -27,6 +27,8 @@ const CONTROL_LIMIT: usize = 4096;
 #[path = "partials.rs"]
 mod partials;
 pub use partials::{DiscoveredObject, PartialObject};
+#[path = "maintenance.rs"]
+mod maintenance;
 
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -67,6 +69,7 @@ struct Inner {
     root: RootDir,
     options: CacheOptions,
     filesystem: FilesystemProfile,
+    protected: bool,
 }
 
 #[derive(Clone)]
@@ -91,6 +94,10 @@ pub struct CacheTransaction {
     // after interruption. Dead-owner future reservations still end normally.
     retained_partials: BTreeSet<usize>,
     _memory: GlobalResourceLease,
+    // Full transaction liveness excludes maintenance, including first-seen
+    // actual blobs absent from the reservation's known-digest cohort. Last
+    // field: all transaction handles and cleanup finish before releasing it.
+    _activity: Option<CacheLock>,
 }
 
 /// An exact listed length is required before reservation. A missing raw SHA256
@@ -310,6 +317,16 @@ fn read_control_cancellable(
 
 impl CacheStore {
     pub fn open(options: CacheOptions) -> Result<Self> {
+        Self::open_inner(options, true)
+    }
+
+    /// Open an existing cache without adopting an absent or policy-less root.
+    /// Explicit maintenance must never create the target it was asked to clean.
+    pub fn open_existing(options: CacheOptions) -> Result<Self> {
+        Self::open_inner(options, false)
+    }
+
+    fn open_inner(options: CacheOptions, create: bool) -> Result<Self> {
         options.limits.validate()?;
         if options.disk_limit_bytes == 0
             || options.buffer_bytes == 0
@@ -325,7 +342,7 @@ impl CacheStore {
             std::env::var_os("XDG_CACHE_HOME").as_deref(),
             std::env::var_os("HOME").as_deref(),
         )?;
-        let root = RootDir::open(&path, true)?;
+        let root = RootDir::open(&path, create)?;
         let stat = rustix::fs::fstatvfs(root.as_fd()).map_err(io)?;
         let filesystem = checked_filesystem(stat.f_bsize, stat.f_frsize)?;
         for name in [
@@ -337,21 +354,22 @@ impl CacheStore {
             "reference-records",
             "staging",
         ] {
-            root.open_dir(name, true)?;
+            root.open_dir(name, create)?;
         }
-        let result = Self {
+        let mut result = Self {
             inner: Arc::new(Inner {
                 root,
                 options,
                 filesystem,
+                protected: false,
             }),
             #[cfg(feature = "diagnostic-cache")]
             hook: None,
         };
         let cancel = AtomicBool::new(false);
         let lock = result.lock("publication", &cancel)?;
-        let expected = Policy {
-            schema: "zerogravity.cache.policy.v1".into(),
+        let mut expected = Policy {
+            schema: "zerogravity.cache.policy.v2".into(),
             disk_limit_bytes: result.inner.options.disk_limit_bytes,
             block_allowance: UNIT,
             inode_allowance: UNIT,
@@ -359,25 +377,76 @@ impl CacheStore {
             filesystem_block_bytes: filesystem.block_bytes,
             filesystem_fragment_bytes: filesystem.fragment_bytes,
         };
-        match result.read("policy.json", CONTROL_LIMIT) {
+        let protected = match result.read("policy.json", CONTROL_LIMIT) {
             Ok(bytes) => {
                 let actual: Policy =
                     serde_json::from_slice(&bytes).map_err(|e| Error::Malformed(e.to_string()))?;
+                let protected = match actual.schema.as_str() {
+                    "zerogravity.cache.policy.v1" => false,
+                    "zerogravity.cache.policy.v2" => true,
+                    _ => return Err(Error::State("unsupported cache root policy".into())),
+                };
+                expected.schema.clone_from(&actual.schema);
                 if actual != expected {
                     return Err(Error::State(
                         "cache policy differs from persistent root policy".into(),
                     ));
                 }
+                if protected {
+                    result.inner.root.open_dir("retirement", false)?;
+                }
+                protected
             }
-            Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
+            Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound && create => {
+                // A missing policy is not evidence that previously written
+                // payloads had protected readers. Only a genuinely fresh root
+                // may enter v2; our empty initializer dirs/locks are harmless.
+                for node in result.inner.root.walk_tree(MAX_NODES)? {
+                    let allowed = if node.is_directory {
+                        matches!(
+                            node.path.as_str(),
+                            "." | "locks"
+                                | "blobs"
+                                | "blobs/sha256"
+                                | "manifests"
+                                | "snapshots"
+                                | "refs"
+                                | "reference-records"
+                                | "staging"
+                                | "retirement"
+                        )
+                    } else {
+                        matches!(node.path.as_str(), "locks/publication" | "locks/activity")
+                    };
+                    if !allowed {
+                        return Err(Error::State(
+                            "policy-less cache data cannot adopt protected reclamation".into(),
+                        ));
+                    }
+                }
+                result.inner.root.open_dir("retirement", true)?;
+                // No protected policy/readers exist yet. Bootstrap the stable
+                // activity inode under first-initializer publication ownership;
+                // never add it to an existing v1 root merely by opening it.
+                let initial_activity =
+                    result
+                        .inner
+                        .root
+                        .lock("activity", Duration::ZERO, &cancel)?;
+                initial_activity.ensure_bound()?;
+                result.sync_dir("locks")?;
                 result.write_new(
                     "policy.json",
                     &serde_json::to_vec(&expected).map_err(|e| Error::Malformed(e.to_string()))?,
                 )?;
                 result.sync_dir("")?;
+                true
             }
             Err(e) => return Err(e),
-        }
+        };
+        Arc::get_mut(&mut result.inner)
+            .ok_or_else(|| Error::State("cache initialization unexpectedly aliased".into()))?
+            .protected = protected;
         lock.ensure_bound()?;
         let usage = result.usage_locked()?;
         if add(usage.used_bytes, usage.reserved_bytes)? > usage.limit_bytes {
@@ -415,6 +484,34 @@ impl CacheStore {
         self.inner
             .root
             .lock(name, self.inner.options.lock_timeout, cancel)
+    }
+
+    fn activity(&self, cancel: &AtomicBool) -> Result<Option<CacheLock>> {
+        check_cancel(cancel)?;
+        if !self.inner.protected {
+            return Ok(None);
+        }
+        self.inner
+            .root
+            .lock_shared("activity", self.inner.options.lock_timeout, cancel)
+            .map(Some)
+    }
+
+    fn require_protected_root(&self) -> Result<()> {
+        if !self.inner.protected {
+            return Err(Error::Unsupported(
+                "reclamation requires an originally protected v2 cache root".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn try_maintenance_activity(&self, cancel: &AtomicBool) -> Result<Option<CacheLock>> {
+        match self.inner.root.lock("activity", Duration::ZERO, cancel) {
+            Ok(guard) => Ok(Some(guard)),
+            Err(Error::Limit(_)) => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 
     fn read(&self, path: &str, limit: usize) -> Result<Vec<u8>> {
@@ -728,6 +825,7 @@ impl CacheStore {
         memory: GlobalResourceLease,
         reservation_objects: Option<Vec<String>>,
     ) -> Result<CacheTransaction> {
+        let activity = self.activity(&cancel)?;
         // Revalidate against this store's bounds when a caller used wider
         // limits. No file mutation or input read precedes this validation.
         let manifest =
@@ -857,6 +955,7 @@ impl CacheStore {
             owner_lock: Some(owner_lock),
             retained_partials: BTreeSet::new(),
             _memory: memory,
+            _activity: activity,
         })
     }
 
@@ -871,6 +970,13 @@ impl CacheStore {
         digest: &str,
         cancel: &AtomicBool,
     ) -> Result<SnapshotLease> {
+        let _activity = self.activity(cancel)?;
+        self.open_snapshot_bound(digest, cancel)
+    }
+
+    // Caller owns activity, including a committing transaction that already
+    // owns publication. Avoid acquiring another activity description there.
+    fn open_snapshot_bound(&self, digest: &str, cancel: &AtomicBool) -> Result<SnapshotLease> {
         check_cancel(cancel)?;
         validate_digest(digest)?;
         let manifest = Manifest::from_json(
@@ -912,6 +1018,7 @@ impl CacheStore {
         name: &str,
         cancel: &AtomicBool,
     ) -> Result<SnapshotLease> {
+        let _activity = self.activity(cancel)?;
         check_cancel(cancel)?;
         let reference: Reference =
             serde_json::from_slice(&self.read(&reference_key(name)?, CONTROL_LIMIT * 2)?)
@@ -919,12 +1026,14 @@ impl CacheStore {
         if reference.schema != "zerogravity.cache.reference.v1" || reference.name != name {
             return Err(Error::Malformed("cache reference identity mismatch".into()));
         }
-        self.open_snapshot_cancellable(&reference.snapshot, cancel)
+        self.open_snapshot_bound(&reference.snapshot, cancel)
     }
 
+    /// Legacy untyped removal is unsupported. Use reclaim_snapshot for explicit
+    /// dry-run/apply outcomes on protected roots, including busy/incomplete work.
     pub fn remove_snapshot(&self, _digest: &str) -> Result<()> {
         Err(Error::Unsupported(
-            "cache eviction/removal is not qualified in A1".into(),
+            "use typed reclaim_snapshot for protected cache root removal".into(),
         ))
     }
 }
@@ -936,6 +1045,9 @@ impl CacheTransaction {
 
     fn ensure_owner(&self) -> Result<()> {
         check_cancel(&self.cancel)?;
+        if let Some(activity) = &self._activity {
+            activity.ensure_bound()?;
+        }
         self.owner_lock
             .as_ref()
             .ok_or_else(|| Error::State("cache transaction closed".into()))?
@@ -1244,6 +1356,22 @@ impl CacheTransaction {
         let quota = self.store.lock("publication", &self.cancel)?;
         quota.ensure_bound()?;
         self.ensure_owner()?;
+        if self.store.inner.protected {
+            match self
+                .store
+                .inner
+                .root
+                .open_dir(&format!("retirement/{}", self.digest), false)
+            {
+                Ok(_) => {
+                    return Err(Error::State(
+                        "snapshot retirement must finish before publication".into(),
+                    ));
+                }
+                Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            }
+        }
         let manifest_target = format!("manifests/{}.json", self.digest);
         #[cfg(feature = "diagnostic-cache")]
         self.store
@@ -1290,8 +1418,7 @@ impl CacheTransaction {
         ) {
             Ok(()) => {}
             Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                self.store
-                    .open_snapshot_cancellable(&self.digest, &self.cancel)?;
+                self.store.open_snapshot_bound(&self.digest, &self.cancel)?;
             }
             Err(e) => return Err(e),
         }
