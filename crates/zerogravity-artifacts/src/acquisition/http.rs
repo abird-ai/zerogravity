@@ -27,6 +27,7 @@ pub struct HttpTarget {
 }
 #[derive(Clone)]
 enum TargetProfile {
+    Direct,
     S3 { region: String },
     Azure { kind: AzureRequestKind },
 }
@@ -42,6 +43,20 @@ impl std::fmt::Debug for HttpTarget {
     }
 }
 impl HttpTarget {
+    // Only the pinned provider may construct this no-redirect target. Generic
+    // callers cannot relabel arbitrary URLs with a privileged credential profile.
+    pub(super) fn direct(url: &str) -> Result<Self> {
+        let parsed = parse_provider_origin(url)?;
+        let uri = parsed
+            .as_str()
+            .parse()
+            .map_err(|_| Error::Malformed("invalid direct provider target".into()))?;
+        Ok(Self {
+            origin: parsed.origin().ascii_serialization(),
+            profile: TargetProfile::Direct,
+            uri,
+        })
+    }
     pub(super) fn azure(
         origin: &str,
         path_and_query: &str,
@@ -110,6 +125,7 @@ impl HttpTarget {
             + match &self.profile {
                 TargetProfile::S3 { region } => region.len(),
                 TargetProfile::Azure { .. } => 8,
+                TargetProfile::Direct => 0,
             }
             + self.uri.to_string().len()
             + 128
@@ -463,9 +479,52 @@ pub struct HttpsClient {
     loopback: bool,
     s3_signing: Option<s3_signing::Signing>,
     azure_auth: Option<azure_auth::Auth>,
+    modelscope_token: bool,
 }
 
 impl HttpsClient {
+    /// Explicit preissued official token, scoped to one native ModelScope
+    /// origin and Direct targets only. No cookie jar, login or SDK state.
+    pub fn with_modelscope_token(origin: &str, token: &str, options: HttpOptions) -> Result<Self> {
+        if origin != "https://modelscope.cn" {
+            return Err(Error::Unsupported(
+                "unsupported ModelScope credential origin".into(),
+            ));
+        }
+        Self::modelscope_client(origin, token, options, false)
+    }
+    fn modelscope_client(
+        origin: &str,
+        token: &str,
+        options: HttpOptions,
+        loopback: bool,
+    ) -> Result<Self> {
+        if token.is_empty()
+            || token.len() > 8192
+            || !token
+                .bytes()
+                .all(|b| matches!(b, 0x21 | 0x23..=0x2b | 0x2d..=0x3a | 0x3c..=0x5b | 0x5d..=0x7e))
+        {
+            return Err(Error::Malformed("invalid ModelScope official token".into()));
+        }
+        let mut client = Self::build(origin, Some(token.to_owned()), options, loopback, None)?;
+        client.modelscope_token = true;
+        Ok(client)
+    }
+    #[cfg(any(test, feature = "diagnostic-acquisition"))]
+    pub fn diagnostic_modelscope_loopback(
+        origin: &str,
+        token: &str,
+        options: HttpOptions,
+    ) -> Result<Self> {
+        let parsed = parse_url(origin, true)?;
+        if parsed.scheme() != "http" {
+            return Err(Error::Malformed(
+                "ModelScope fixture requires literal HTTP loopback".into(),
+            ));
+        }
+        Self::modelscope_client(origin, token, options, true)
+    }
     pub fn with_azure_shared_key(
         origin: &str,
         credentials: AzureSharedKey,
@@ -589,7 +648,7 @@ impl HttpsClient {
 
     /// Explicit additional initial-request origin, never redirect authorization.
     pub fn with_credential_origin(mut self, origin: &str) -> Result<Self> {
-        if self.s3_signing.is_some() || self.azure_auth.is_some() {
+        if self.s3_signing.is_some() || self.azure_auth.is_some() || self.modelscope_token {
             return Err(Error::Unsupported(
                 "provider credentials have one exact origin".into(),
             ));
@@ -684,6 +743,7 @@ impl HttpsClient {
             loopback,
             s3_signing: None,
             azure_auth: None,
+            modelscope_token: false,
         })
     }
 }
@@ -751,6 +811,20 @@ impl HttpsClient {
         follow_redirects: bool,
         target: Option<&HttpTarget>,
     ) -> Result<HttpResponse> {
+        if self.modelscope_token
+            && !target.is_some_and(|target| matches!(target.profile, TargetProfile::Direct))
+        {
+            return Err(Error::Unsupported(
+                "ModelScope credentials require a direct provider target".into(),
+            ));
+        }
+        if target.is_some_and(|target| matches!(target.profile, TargetProfile::Direct))
+            && self.s3_signing.is_some()
+        {
+            return Err(Error::Unsupported(
+                "SigV4 cannot authorize a direct provider target".into(),
+            ));
+        }
         if target.is_none() && self.s3_signing.is_some() {
             return Err(Error::Unsupported(
                 "SigV4 requires a canonical S3 target".into(),
@@ -818,6 +892,9 @@ impl HttpsClient {
                     .header("Accept", accept);
                 if authorization && let Some(token) = &self.token {
                     call = call.header("Authorization", format!("Bearer {token}"));
+                    if self.modelscope_token {
+                        call = call.header("Cookie", format!("m_session_id={token}"));
+                    }
                 }
                 if let Some(prepared) = prepared {
                     for (name, value) in prepared.headers {
@@ -1949,5 +2026,261 @@ with socket.socket() as listener:
                 .is_err()
         );
         assert!(server.0.wait().unwrap().success());
+    }
+    #[test]
+    fn modelscope_token_is_strict_cookie_safe_and_exact_origin_only() {
+        for token in ["", "a b", "a;b", "a,b", "a\"b", "a\\b", "a\nb", "é"] {
+            assert!(
+                HttpsClient::with_modelscope_token(
+                    "https://modelscope.cn",
+                    token,
+                    HttpOptions::default()
+                )
+                .is_err()
+            );
+        }
+        assert!(
+            HttpsClient::with_modelscope_token(
+                "https://other.example",
+                "SECRET",
+                HttpOptions::default()
+            )
+            .is_err()
+        );
+        let client = HttpsClient::with_modelscope_token(
+            "https://modelscope.cn",
+            "valid_token-123",
+            HttpOptions::default(),
+        )
+        .unwrap();
+        assert!(
+            client
+                .clone()
+                .with_credential_origin("https://other.example")
+                .is_err()
+        );
+        assert!(
+            client
+                .get(
+                    &HttpRequest::new("https://modelscope.cn/api", 1),
+                    &AtomicBool::new(false)
+                )
+                .is_err()
+        );
+        let target = HttpTarget::direct("https://modelscope.cn/api").unwrap();
+        let s3 = HttpsClient::with_s3_credentials(
+            "https://modelscope.cn",
+            "us-east-1",
+            S3Credentials::new("ID", "SECRET", None).unwrap(),
+            HttpOptions::default(),
+        )
+        .unwrap();
+        assert!(
+            s3.get_target(
+                &HttpRequest::new(target.url(), 1),
+                &target,
+                &AtomicBool::new(false)
+            )
+            .is_err()
+        );
+        let s3target = HttpTarget::s3("https://modelscope.cn", "us-east-1", "/api").unwrap();
+        assert!(
+            client
+                .get_target(
+                    &HttpRequest::new(s3target.url(), 1),
+                    &s3target,
+                    &AtomicBool::new(false)
+                )
+                .is_err()
+        );
+        // These are cold profile refusals, before any DNS/socket operation.
+        let azure_origin = "https://fixtureaccount.blob.core.windows.net";
+        let azure_direct = HttpTarget::direct(&format!("{azure_origin}/container/a")).unwrap();
+        let azure_key = AzureSharedKey::new("fixtureaccount", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==").unwrap();
+        let shared =
+            HttpsClient::with_azure_shared_key(azure_origin, azure_key, HttpOptions::default())
+                .unwrap();
+        let sas = HttpsClient::with_azure_sas(azure_origin, "sv=2023-11-03&sr=bv&sp=r&se=2030-01-01T00%3a00%3A00Z&spr=https&sig=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA%3d", HttpOptions::default()).unwrap();
+        for azure_client in [shared, sas] {
+            assert!(
+                azure_client
+                    .get_target(
+                        &HttpRequest::new(azure_direct.url(), 1),
+                        &azure_direct,
+                        &AtomicBool::new(false)
+                    )
+                    .is_err()
+            );
+        }
+        let azure_target = HttpTarget::azure(
+            "https://modelscope.cn",
+            "/container/a?versionid=v",
+            AzureRequestKind::Version,
+        )
+        .unwrap();
+        assert!(
+            client
+                .get_target(
+                    &HttpRequest::new(azure_target.url(), 1),
+                    &azure_target,
+                    &AtomicBool::new(false)
+                )
+                .is_err()
+        );
+        assert!(!format!("{target:?}").contains("api"));
+    }
+    #[cfg(feature = "diagnostic-acquisition")]
+    fn modelscope_admission() -> crate::cache::TransferAdmission {
+        use zerogravity_core::resource_arbiter::{
+            PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
+        };
+        let arbiter = ResourceArbiter::new();
+        let resource = PhysicalDeviceKey::new("fixture-host", "modelscope").unwrap();
+        arbiter
+            .register(resource.clone(), 128 * 1024 * 1024)
+            .unwrap();
+        crate::cache::TransferAdmission {
+            arbiter,
+            resource,
+            owner: ResourceOwner::new("fixture", "modelscope").unwrap(),
+        }
+    }
+    #[cfg(feature = "diagnostic-acquisition")]
+    #[test]
+    fn modelscope_official_token_actual_tree_and_raw_wire_use_one_direct_owner() {
+        use super::super::modelscope::ModelScopeRequest;
+        let tree = r#"{"Code":200,"Success":true,"Data":{"Files":[{"Path":"a.txt","Name":"a.txt","Type":"blob","Size":2}]}}"#;
+        let (origin, captured, worker) =
+            serve(vec![reply("200 OK", "", tree), reply("200 OK", "", "ok")]);
+        let client = HttpsClient::diagnostic_modelscope_loopback(
+            &origin,
+            "TOKEN_FIXTURE",
+            HttpOptions::default(),
+        )
+        .unwrap();
+        let request = ModelScopeRequest::new(
+            &origin,
+            "owner/repo",
+            "0123456789abcdef0123456789abcdef01234567",
+            vec!["a.txt".into()],
+            None,
+        )
+        .unwrap();
+        let admission = modelscope_admission();
+        let plan = request
+            .resolve(
+                &client,
+                &super::super::PullLimits::default(),
+                &admission,
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+        let file = &plan.files()[0];
+        let body = client
+            .get_target(
+                &HttpRequest::new(file.url(), 2),
+                file.request_target().unwrap(),
+                &AtomicBool::new(false),
+            )
+            .unwrap()
+            .read_bounded(2, &AtomicBool::new(false))
+            .unwrap();
+        assert_eq!(body, b"ok");
+        worker.join().unwrap();
+        let captured = captured.lock().unwrap();
+        assert_eq!(captured.len(), 2);
+        for wire in captured.iter() {
+            let lower = wire.to_ascii_lowercase();
+            assert!(lower.contains("authorization: bearer token_fixture\r\n"));
+            assert!(lower.contains("cookie: m_session_id=token_fixture\r\n"));
+            assert!(wire.contains("Revision=0123456789abcdef0123456789abcdef01234567"));
+        }
+        assert!(captured[0].contains("Recursive=False"));
+        assert!(captured[1].contains("FilePath=a.txt"));
+        assert_eq!(
+            admission
+                .arbiter
+                .snapshot(&admission.resource)
+                .unwrap()
+                .reserved,
+            0
+        );
+    }
+    #[cfg(feature = "diagnostic-acquisition")]
+    #[test]
+    fn modelscope_anonymous_and_pinned_metadata_raw_redirects_never_follow() {
+        use super::super::modelscope::ModelScopeRequest;
+        let tree =
+            r#"{"Code":200,"Success":true,"Data":[{"Path":"a.txt","Type":"blob","Size":2}]}"#;
+        for (metadata_redirect, authenticated, cross_origin) in [
+            (true, false, false),
+            (false, false, true),
+            (true, true, true),
+            (false, true, false),
+        ] {
+            let redirect = reply(
+                "302 Found",
+                if cross_origin {
+                    "Location: https://other.invalid/?token=NEVER_ECHO\r\n"
+                } else {
+                    "Location: /other?token=NEVER_ECHO\r\n"
+                },
+                "SECRET_BODY",
+            );
+            let replies = if metadata_redirect {
+                vec![redirect]
+            } else {
+                vec![reply("200 OK", "", tree), redirect]
+            };
+            let (origin, captured, worker) = serve(replies);
+            let client = if authenticated {
+                HttpsClient::diagnostic_modelscope_loopback(
+                    &origin,
+                    "TOKEN_FIXTURE",
+                    HttpOptions::default(),
+                )
+                .unwrap()
+            } else {
+                HttpsClient::diagnostic_loopback(&origin, None, HttpOptions::default()).unwrap()
+            };
+            let request = ModelScopeRequest::new(
+                &origin,
+                "owner/repo",
+                "0123456789abcdef0123456789abcdef01234567",
+                vec!["a.txt".into()],
+                None,
+            )
+            .unwrap();
+            let result = request.resolve(
+                &client,
+                &super::super::PullLimits::default(),
+                &modelscope_admission(),
+                &AtomicBool::new(false),
+            );
+            let error = if metadata_redirect {
+                result.unwrap_err()
+            } else {
+                let plan = result.unwrap();
+                let file = &plan.files()[0];
+                client
+                    .get_target(
+                        &HttpRequest::new(file.url(), 2),
+                        file.request_target().unwrap(),
+                        &AtomicBool::new(false),
+                    )
+                    .err()
+                    .unwrap()
+            };
+            assert!(!error.to_string().contains("NEVER_ECHO"));
+            assert!(!error.to_string().contains("SECRET_BODY"));
+            worker.join().unwrap();
+            for wire in captured.lock().unwrap().iter() {
+                assert_eq!(
+                    wire.to_ascii_lowercase().contains("authorization:"),
+                    authenticated
+                );
+                assert_eq!(wire.to_ascii_lowercase().contains("cookie:"), authenticated);
+            }
+        }
     }
 }

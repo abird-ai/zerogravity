@@ -130,7 +130,7 @@ fn logical_path(path: &str, subfolder: Option<&str>) -> Result<String> {
         Ok(path.to_owned())
     }
 }
-fn role(path: &str) -> FileRole {
+pub(super) fn role(path: &str) -> FileRole {
     let leaf = path.rsplit('/').next().unwrap_or(path);
     let lower = leaf.to_ascii_lowercase();
     if lower.ends_with(".index.json") {
@@ -156,60 +156,6 @@ fn raw_url(repository: &str, pin: &str, path: &str) -> String {
     let encoded = path.split('/').map(component).collect::<Vec<_>>().join("/");
     format!("https://raw.githubusercontent.com/{repository}/{pin}/{encoded}")
 }
-fn is_weight(path: &str) -> bool {
-    path.ends_with(".gguf") || path.ends_with(".safetensors")
-}
-fn folder(path: &str) -> &str {
-    path.rsplit_once('/').map_or("", |(parent, _)| parent)
-}
-fn sibling(path: &str, leaf: &str) -> String {
-    let folder = folder(path);
-    if folder.is_empty() {
-        leaf.to_string()
-    } else {
-        format!("{folder}/{leaf}")
-    }
-}
-fn split_gguf(path: &str) -> Result<Option<(String, usize)>> {
-    let Some(stem) = path.strip_suffix(".gguf") else {
-        return Ok(None);
-    };
-    let Some((part, total)) = stem.rsplit_once("-of-") else {
-        return Ok(None);
-    };
-    let (prefix, ordinal) = part.rsplit_once('-').ok_or_else(malformed)?;
-    if total.len() != 5
-        || ordinal.len() != 5
-        || !total
-            .bytes()
-            .chain(ordinal.bytes())
-            .all(|c| c.is_ascii_digit())
-    {
-        return Err(malformed());
-    }
-    let total = total.parse::<usize>().map_err(|_| malformed())?;
-    let ordinal = ordinal.parse::<usize>().map_err(|_| malformed())?;
-    if total == 0 || ordinal == 0 || ordinal > total {
-        return Err(malformed());
-    }
-    Ok(Some((prefix.to_owned(), total)))
-}
-fn require(
-    entries: &BTreeMap<String, TreeEntry>,
-    selected: &mut BTreeSet<String>,
-    path: String,
-) -> Result<()> {
-    let entry = entries.get(&path).ok_or_else(|| {
-        Error::Unsupported("required GitHub shard or sidecar is absent in pinned repository".into())
-    })?;
-    if entry.kind != "blob" || !matches!(entry.mode.as_str(), "100644" | "100755") {
-        return Err(Error::Unsupported(
-            "required GitHub file is not a bounded regular blob".into(),
-        ));
-    }
-    selected.insert(path);
-    Ok(())
-}
 fn close_model_selection(
     transport: &(impl HttpTransport + ?Sized),
     source: (&str, &str, super::ExternalSidecars, &mut usize),
@@ -220,36 +166,17 @@ fn close_model_selection(
     cancel: &AtomicBool,
 ) -> Result<()> {
     let (repository, pin, sidecars, probes) = source;
-    let initial = selected.clone();
-    let mut indexes = BTreeSet::new();
-    for path in &initial {
-        if path.ends_with(".safetensors.index.json") {
-            indexes.insert(path.clone());
-        }
-        if path.ends_with(".safetensors") {
-            for candidate in entries.keys().filter(|candidate| {
-                candidate.ends_with(".safetensors.index.json") && folder(candidate) == folder(path)
-            }) {
-                indexes.insert(candidate.clone());
-            }
-        }
-        if let Some((prefix, total)) = split_gguf(path)? {
-            if total > limits.cache.max_files {
-                return Err(Error::Limit("GitHub GGUF split count".into()));
-            }
-            for part in 1..=total {
-                require(
-                    entries,
-                    selected,
-                    format!("{prefix}-{part:05}-of-{total:05}.gguf"),
-                )?;
-            }
-        }
-    }
-    let mut covered = BTreeMap::<String, usize>::new();
-    let mut index_shards = BTreeSet::new();
-    for path in indexes {
-        let entry = entries.get_mut(&path).ok_or_else(malformed)?;
+    let available = entries
+        .iter()
+        .map(|(path, entry)| {
+            (
+                path.clone(),
+                entry.kind == "blob" && matches!(entry.mode.as_str(), "100644" | "100755"),
+            )
+        })
+        .collect();
+    super::selection::close_model_selection(&available, selected, limits, sidecars, &mut |path| {
+        let entry = entries.get_mut(path).ok_or_else(malformed)?;
         if entry.kind != "blob" || !matches!(entry.mode.as_str(), "100644" | "100755") {
             return Err(Error::Unsupported(
                 "GitHub index is not a regular blob".into(),
@@ -258,13 +185,13 @@ fn close_model_selection(
         let size = ensure_length(
             entry,
             transport,
-            raw_url(repository, pin, &path),
+            raw_url(repository, pin, path),
             limits.cache.max_file_bytes.min(*remaining as u64),
             probes,
             cancel,
             pin,
         )?;
-        let request = HttpRequest::new(raw_url(repository, pin, &path), size);
+        let request = HttpRequest::new(raw_url(repository, pin, path), size);
         let response = transport.get(&request, cancel)?;
         if response.status != 200 {
             return Err(Error::Unsupported(
@@ -282,102 +209,8 @@ fn close_model_selection(
                 "GitHub LFS index requires a separately qualified LFS resolver".into(),
             ));
         }
-        let index = crate::sharded::SafetensorsIndex::from_json(&bytes)
-            .map_err(|_| Error::Malformed("invalid GitHub safetensors index".into()))?;
-        let source_shards = index.shards();
-        if source_shards.len() > limits.cache.max_files {
-            return Err(Error::Limit("GitHub index shard count".into()));
-        }
-        let shards = source_shards
-            .into_iter()
-            .map(|shard| sibling(&path, shard))
-            .collect::<Vec<_>>();
-        let relevant =
-            initial.contains(&path) || shards.iter().any(|shard| initial.contains(shard));
-        if relevant {
-            require(entries, selected, path.clone())?;
-            for shard in shards {
-                require(entries, selected, shard.clone())?;
-                *covered.entry(shard.clone()).or_default() += 1;
-                index_shards.insert(shard);
-            }
-        }
-    }
-    if covered.values().any(|count| *count > 1) {
-        return Err(Error::Unsupported("ambiguous GitHub shard indexes".into()));
-    }
-    let mut families = BTreeSet::new();
-    let mut folders = BTreeSet::new();
-    let mut split_counts = BTreeMap::new();
-    for path in selected.iter() {
-        if path.ends_with(".safetensors.index.json") {
-            families.insert(path.clone());
-        }
-        if is_weight(path) || path.ends_with(".safetensors.index.json") {
-            folders.insert(folder(path).to_string());
-        }
-        if is_weight(path) && !index_shards.contains(path) {
-            if path.ends_with(".safetensors") && path.contains("-of-") {
-                return Err(Error::Unsupported(
-                    "GitHub safetensors shard requires its source index".into(),
-                ));
-            }
-            let family = if let Some((prefix, total)) = split_gguf(path)? {
-                if split_counts
-                    .insert(prefix.clone(), total)
-                    .is_some_and(|previous| previous != total)
-                {
-                    return Err(malformed());
-                }
-                prefix
-            } else {
-                path.clone()
-            };
-            families.insert(family);
-        }
-    }
-    if families.len() > 1 {
-        return Err(Error::Unsupported(
-            "ambiguous GitHub model weight variants".into(),
-        ));
-    }
-    for folder in folders {
-        let path = |leaf: &str| {
-            if folder.is_empty() {
-                leaf.to_owned()
-            } else {
-                format!("{folder}/{leaf}")
-            }
-        };
-        for leaf in ["config.json", "tokenizer.json"] {
-            let candidate = path(leaf);
-            if entries.contains_key(&candidate) || !sidecars.allows_missing(leaf) {
-                require(entries, selected, candidate)?;
-            }
-        }
-        for leaf in [
-            "tokenizer_config.json",
-            "special_tokens_map.json",
-            "generation_config.json",
-            "added_tokens.json",
-            "vocab.json",
-            "merges.txt",
-            "LICENSE",
-            "LICENSE.md",
-            "README.md",
-        ] {
-            let candidate = path(leaf);
-            if entries.contains_key(&candidate) {
-                require(entries, selected, candidate)?;
-            }
-        }
-    }
-    if selected.len() > limits.cache.max_files {
-        return Err(Error::Limit(
-            "GitHub selected closure exceeds file bound".into(),
-        ));
-    }
-    Ok(())
+        Ok(bytes)
+    })
 }
 
 fn metadata<T: for<'de> Deserialize<'de>>(

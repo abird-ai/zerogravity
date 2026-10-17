@@ -8,10 +8,12 @@ pub mod gcs;
 pub mod github;
 pub mod http;
 pub mod huggingface;
+pub mod modelscope;
 pub mod object;
 pub mod oci;
 pub mod resume;
 pub mod s3;
+mod selection;
 
 pub use crate::cache::ByteLength;
 pub use crate::cache::manifest::DigestProvenance;

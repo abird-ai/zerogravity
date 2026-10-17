@@ -638,6 +638,47 @@ selection and mutable refs refuse. Cached bytes attest neither current access no
 remote freshness. Latest/unversioned objects, other endpoints/blob types and
 broader credential profiles remain open work.
 
+## Native ModelScope explicit commits
+
+`pull modelscope OWNER/REPO --commit FULL40HEX --file PATH` uses the native
+modelscope.cn API directly, without a Python SDK or persisted login. Repeat
+`--file` for bounded selectors and use `--subfolder` for a repository directory.
+Only a canonical lowercase40hex commit is accepted; aliases/default revisions,
+mirror endpoints and missing exact file sizes remain separate work. The pinned
+official client passes an explicit revision through its listing and raw-file
+requests. This profile trusts that endpoint contract; it does not independently
+verify a Git/Merkle tree or prove live server behavior from synthetic tests.
+
+Resolution walks bounded shallow directories with Revision, Recursive=False and
+relative Root. The official legacy API silently caps a directory at3000 rows
+without pagination or completeness authority. A directory reaching that boundary
+refuses, even when the requested file is already visible. One cumulative request
+and byte budget covers the complete inventory and required index reads; caller
+file/control limits also bound the inventory. No partial walk becomes model
+closure.
+
+The original HF initial selector and extracted private GitHub closure logic
+supply required config/tokenizer, indexed shards and split-GGUF checks, including
+ambiguous-model refusal. GitHub retains its original metadata/size/raw-URL/LFS
+owner around that pure callback. A canonical source-provided raw SHA gives
+TrustedSha256; absent SHA stays FirstSeen. Git object IDs are not raw hashes.
+
+Anonymous and explicit `--profile official-token --token-env NAME` are the only
+profiles. The official-token client sends Bearer and m_session_id together within
+one exact origin, with cookie-safe token validation and no jar/login/refresh.
+Private Direct targets preserve the selected commit and refuse all redirects
+for metadata and payloads; redirecting/CDN profiles remain unqualified. S3/Azure
+credentials cannot authorize Direct, and official-token credentials cannot
+authorize their targets. The sole HTTP/executor/cache/publication owner remains.
+
+Offline requires the same repository/commit/selectors and a snapshot digest. It
+verifies all original managed bytes, source, role/provenance, exact selection,
+current bounds and pointer policy before credentials/client/admission/signals.
+The source label includes normalized origin identity so diagnostic fixtures cannot
+alias native data. Offline data does not prove present access, remote membership,
+license or inference support. No mutable ref or capped required-file mode is
+introduced.
+
 ## Provider and compatibility frontier
 
 The retired research captures once counted57 rows; that historical count is not
@@ -657,7 +698,7 @@ passing provider gate. Open implementation and acceptance work stays in TODO.md.
 | GCS | Native JSON object generation/metageneration media pins, auxiliary prefix/pageToken listing, anonymous/preissued bearer and explicit offline object pins. ADC/minting/requester-pays/custom endpoints and atomic/closure semantics remain outside this profile. |
 | S3/compatible endpoints | Native non-null versions, exact-path regional/path/virtual-host GET/HEAD/ranges, bounded V2/latest-version prefixes and static/session SigV4. Unversioned objects, broader partitions/vendor/credential profiles and FULL_OBJECT checksum mode remain open; presigned HTTPS alone grants no native S3 parity. |
 | Azure Blob | Native explicit BlockBlob versions/snapshots, bounded current-version auxiliary listing, pinned ranges and anonymous/bearer/SharedKey/ad-hoc serviceSAS. Latest/unversioned objects, other endpoints/types/SAS and managed/default credential chains remain open. |
-| ModelScope | Native pinned revision/file/list/auth protocol remains open; no Python SDK/delegated runtime is introduced. |
+| ModelScope | Native explicit40hex commit, bounded complete shallow walk, exact files/model closure, anonymous/official-token and digest-only offline. Aliases, redirect/CDN/mirror profiles and missing sizes remain open; no SDK/login runtime. |
 | HF Xet | Resolve/LFS-compatible HTTPS acquisition does not qualify native CAS reconstruction, chunk codecs/hash rules or its performance path; native work remains open. |
 | Auxiliary/preset convenience | Explicit auxiliary/component bytes are supported data. Specialized mmproj/draft/MTP/DFlash/Eagle3/DSpark discovery and bounded presets remain open convenience work; a preset cannot authorize new sources or limits. |
 | Transport/streaming | Exact strong-validator resume, bounded retry/deadline/cancel/progress and explicit capped Auxiliary streams are qualified. Required unknown lengths, capped resume, independent full HTTP trailer validation and broader concurrency/performance remain open. |
@@ -796,6 +837,11 @@ logit/state/session checks while their raw source reservation remains owned.
 Numerical acceptance is tracked in TODO.md.
 
 ## References
+
+- [Official ModelScope client0.4.6 source](https://github.com/modelscope/modelscope_hub/blob/65255a78b451c3785f2dfbfaff97172552fea3af/src/modelscope_hub/_legacy_api.py),
+  [explicit revision flow](https://github.com/modelscope/modelscope_hub/blob/65255a78b451c3785f2dfbfaff97172552fea3af/src/modelscope_hub/_download.py), and
+  [silent directory truncation tests](https://github.com/modelscope/modelscope_hub/blob/65255a78b451c3785f2dfbfaff97172552fea3af/tests/test_repo_files_truncation.py),
+  pinned to65255a78b451c3785f2dfbfaff97172552fea3af for the native first profile.
 
 - [Azure GET Blob](https://learn.microsoft.com/en-us/rest/api/storageservices/get-blob),
   [properties](https://learn.microsoft.com/en-us/rest/api/storageservices/get-blob-properties),

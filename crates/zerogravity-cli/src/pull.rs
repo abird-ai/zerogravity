@@ -8,6 +8,8 @@ mod azure;
 mod components;
 #[path = "pull_gcs.rs"]
 mod gcs;
+#[path = "pull_modelscope.rs"]
+mod modelscope;
 #[path = "pull_object.rs"]
 mod object;
 #[path = "pull_oci.rs"]
@@ -351,6 +353,9 @@ impl ProgressDisplay {
 }
 
 pub(super) fn run(args: &[String]) -> Result<()> {
+    if args.first().is_some_and(|arg| arg == "modelscope") {
+        return modelscope::run(&args[1..]);
+    }
     if args.first().is_some_and(|arg| arg == "azure") {
         return azure::run(&args[1..]);
     }
@@ -472,6 +477,7 @@ fn help() {
     zerogravity pull object --help
     zerogravity pull oci --help
     zerogravity pull gcs --help
+    zerogravity pull modelscope --help
     zerogravity pull s3 --help
     zerogravity pull azure --help
     zerogravity pull list
