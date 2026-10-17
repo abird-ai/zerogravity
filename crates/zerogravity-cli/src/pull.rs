@@ -10,6 +10,8 @@ mod gcs;
 mod object;
 #[path = "pull_oci.rs"]
 mod oci;
+#[path = "pull_s3.rs"]
+mod s3;
 #[path = "pull_signals.rs"]
 mod signals;
 use zerogravity::acquisition::http::{HttpOptions, HttpsClient};
@@ -347,6 +349,9 @@ impl ProgressDisplay {
 }
 
 pub(super) fn run(args: &[String]) -> Result<()> {
+    if args.first().is_some_and(|arg| arg == "s3") {
+        return s3::run(&args[1..]);
+    }
     if args.first().is_some_and(|arg| arg == "gcs") {
         return gcs::run(&args[1..]);
     }
@@ -462,6 +467,7 @@ fn help() {
     zerogravity pull object --help
     zerogravity pull oci --help
     zerogravity pull gcs --help
+    zerogravity pull s3 --help
     zerogravity pull list
     zerogravity pull inspect DIGEST_OR_REF
     zerogravity pull verify DIGEST_OR_REF

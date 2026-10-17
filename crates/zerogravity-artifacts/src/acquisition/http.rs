@@ -9,6 +9,69 @@ use std::time::{Duration, Instant};
 use url::Url;
 
 use super::resume::ResumeRequest;
+#[path = "s3_signing.rs"]
+mod s3_signing;
+pub use s3_signing::S3Credentials;
+
+/// Provider-constructed immutable request target. Public custom transports may
+/// explicitly implement the capability; arbitrary raw text is never accepted
+/// through a public constructor or a permissive HTTP switch.
+#[derive(Clone)]
+pub struct HttpTarget {
+    origin: String,
+    profile: TargetProfile,
+    uri: ureq::http::Uri,
+}
+#[derive(Clone)]
+enum TargetProfile {
+    S3 { region: String },
+}
+impl std::fmt::Debug for HttpTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpTarget").finish_non_exhaustive()
+    }
+}
+impl HttpTarget {
+    pub(super) fn s3(origin: &str, region: &str, path_and_query: &str) -> Result<Self> {
+        let parsed = parse_provider_origin(origin)?;
+        validate_origin_url(&parsed)?;
+        if parsed.origin().ascii_serialization() != origin
+            || !path_and_query.starts_with('/')
+            || path_and_query.len() > 14 * 1024
+            || !path_and_query
+                .bytes()
+                .all(|b| b.is_ascii_graphic() && !b"#\\".contains(&b))
+        {
+            return Err(Error::Malformed("invalid canonical S3 target".into()));
+        }
+        let uri: ureq::http::Uri = format!("{origin}{path_and_query}")
+            .parse()
+            .map_err(|_| Error::Malformed("invalid canonical S3 URI".into()))?;
+        Ok(Self {
+            origin: origin.to_owned(),
+            profile: TargetProfile::S3 {
+                region: region.to_owned(),
+            },
+            uri,
+        })
+    }
+    fn s3_region(&self) -> Result<&str> {
+        match &self.profile {
+            TargetProfile::S3 { region } => Ok(region),
+        }
+    }
+    pub(super) fn url(&self) -> String {
+        self.uri.to_string()
+    }
+    pub(super) fn metadata_bytes(&self) -> usize {
+        self.origin.len()
+            + match &self.profile {
+                TargetProfile::S3 { region } => region.len(),
+            }
+            + self.uri.to_string().len()
+            + 128
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 pub enum HttpAccept {
@@ -88,6 +151,30 @@ impl HttpResponse {
 
 pub trait HttpTransport: Send + Sync {
     fn get(&self, request: &HttpRequest, cancel: &AtomicBool) -> Result<HttpResponse>;
+    /// Preserve the provider-built target exactly, never follow redirects and
+    /// retain framing/cancellation guarantees. Legacy transports safely refuse.
+    fn get_target(
+        &self,
+        _request: &HttpRequest,
+        _target: &HttpTarget,
+        _cancel: &AtomicBool,
+    ) -> Result<HttpResponse> {
+        Err(Error::Unsupported(
+            "canonical provider request capability is unavailable".into(),
+        ))
+    }
+    /// Body-free counterpart using the same canonical target capability.
+    fn head_target(
+        &self,
+        _request: &HttpRequest,
+        _target: &HttpTarget,
+        _cancel: &AtomicBool,
+    ) -> Result<HttpResponse> {
+        Err(Error::Unsupported(
+            "canonical provider HEAD capability is unavailable".into(),
+        ))
+    }
+
     /// A version-precondition URL must reach the selected endpoint unchanged.
     /// Legacy custom transports explicitly refuse until they can guarantee that
     /// redirects are neither followed nor returned as a successful object body.
@@ -228,8 +315,26 @@ pub(super) fn validate_response_binding(
     binding: Option<super::ResponseBinding>,
     response: &HttpResponse,
 ) -> Result<()> {
+    use sha2::Digest;
     match binding {
         None => Ok(()),
+        Some(super::ResponseBinding::S3Version { version_sha256 }) => {
+            let version = response
+                .header("x-amz-version-id")
+                .ok_or_else(|| Error::Malformed("S3 response version is absent".into()))?;
+            if version.is_empty()
+                || version == "null"
+                || version.len() > 1024
+                || version.chars().any(char::is_control)
+                || <[u8; 32]>::from(sha2::Sha256::digest(version.as_bytes())) != version_sha256
+                || response
+                    .header("x-amz-delete-marker")
+                    .is_some_and(|value| value != "false")
+            {
+                return Err(Error::State("S3 object version binding changed".into()));
+            }
+            Ok(())
+        }
         Some(super::ResponseBinding::GcsVersion {
             generation,
             metageneration,
@@ -285,9 +390,36 @@ pub struct HttpsClient {
     token: Option<String>,
     options: HttpOptions,
     loopback: bool,
+    s3_signing: Option<s3_signing::Signing>,
 }
 
 impl HttpsClient {
+    /// Explicit, single-origin SigV4 credentials. Only opaque provider-created
+    /// S3 targets may use this client; no ambient credential chain is consulted.
+    pub fn with_s3_credentials(
+        origin: &str,
+        region: &str,
+        credentials: S3Credentials,
+        options: HttpOptions,
+    ) -> Result<Self> {
+        let signing = s3_signing::Signing::new(region, credentials)?;
+        let mut client = Self::build(origin, None, options, false, None)?;
+        client.s3_signing = Some(signing);
+        Ok(client)
+    }
+    #[cfg(any(test, feature = "diagnostic-acquisition"))]
+    pub fn diagnostic_s3_loopback(
+        origin: &str,
+        region: &str,
+        credentials: S3Credentials,
+        options: HttpOptions,
+    ) -> Result<Self> {
+        let signing = s3_signing::Signing::new(region, credentials)?;
+        let mut client = Self::build(origin, None, options, true, None)?;
+        client.s3_signing = Some(signing);
+        Ok(client)
+    }
+
     pub fn new(origin: &str, options: HttpOptions) -> Result<Self> {
         Self::build(origin, None, options, false, None)
     }
@@ -349,6 +481,11 @@ impl HttpsClient {
 
     /// Explicit additional initial-request origin, never redirect authorization.
     pub fn with_credential_origin(mut self, origin: &str) -> Result<Self> {
+        if self.s3_signing.is_some() {
+            return Err(Error::Unsupported(
+                "S3 credentials have one exact origin".into(),
+            ));
+        }
         let parsed = parse_url(origin, self.loopback)?;
         validate_origin_url(&parsed)?;
         if self.credential_origins.len() >= 8 {
@@ -437,20 +574,41 @@ impl HttpsClient {
             token,
             options,
             loopback,
+            s3_signing: None,
         })
     }
 }
 
 impl HttpTransport for HttpsClient {
+    fn get_target(
+        &self,
+        request: &HttpRequest,
+        target: &HttpTarget,
+        cancel: &AtomicBool,
+    ) -> Result<HttpResponse> {
+        self.request_target(request, target, cancel, false)
+    }
+    fn head_target(
+        &self,
+        request: &HttpRequest,
+        target: &HttpTarget,
+        cancel: &AtomicBool,
+    ) -> Result<HttpResponse> {
+        if request.range.is_some() {
+            return Err(Error::Malformed("S3 HEAD cannot request a range".into()));
+        }
+        self.request_target(request, target, cancel, true)
+    }
+
     fn get(&self, request: &HttpRequest, cancel: &AtomicBool) -> Result<HttpResponse> {
-        self.request(request, cancel, false, true)
+        self.request(request, cancel, false, true, None)
     }
     fn get_without_redirects(
         &self,
         request: &HttpRequest,
         cancel: &AtomicBool,
     ) -> Result<HttpResponse> {
-        self.request(request, cancel, false, false)
+        self.request(request, cancel, false, false, None)
     }
     fn head(&self, request: &HttpRequest, cancel: &AtomicBool) -> Result<HttpResponse> {
         if request.range.is_some() {
@@ -458,17 +616,37 @@ impl HttpTransport for HttpsClient {
                 "HEAD probe cannot request a byte range".into(),
             ));
         }
-        self.request(request, cancel, true, true)
+        self.request(request, cancel, true, true, None)
     }
 }
 impl HttpsClient {
+    fn request_target(
+        &self,
+        request: &HttpRequest,
+        target: &HttpTarget,
+        cancel: &AtomicBool,
+        head: bool,
+    ) -> Result<HttpResponse> {
+        if request.url != target.url() || !self.credential_origins.contains(&target.origin) {
+            return Err(Error::State(
+                "provider target and client origin differ".into(),
+            ));
+        }
+        self.request(request, cancel, head, false, Some(target))
+    }
     fn request(
         &self,
         request: &HttpRequest,
         cancel: &AtomicBool,
         head: bool,
         follow_redirects: bool,
+        target: Option<&HttpTarget>,
     ) -> Result<HttpResponse> {
+        if target.is_none() && self.s3_signing.is_some() {
+            return Err(Error::Unsupported(
+                "SigV4 requires a canonical S3 target".into(),
+            ));
+        }
         check_cancel(cancel)?;
         let initial = parse_url(&request.url, self.loopback)?;
         if let Some(range) = &request.range {
@@ -497,10 +675,11 @@ impl HttpsClient {
                     }
                     HttpAccept::Binary => "application/octet-stream",
                 };
+                let wire = target.map_or_else(|| current.as_str().to_owned(), HttpTarget::url);
                 let call = if head {
-                    self.agent.head(current.as_str())
+                    self.agent.head(wire.as_str())
                 } else {
-                    self.agent.get(current.as_str())
+                    self.agent.get(wire.as_str())
                 };
                 let mut call = call
                     .config()
@@ -510,6 +689,13 @@ impl HttpsClient {
                     .header("Accept", accept);
                 if authorization && let Some(token) = &self.token {
                     call = call.header("Authorization", format!("Bearer {token}"));
+                }
+                if let (Some(target), Some(signing)) = (target, &self.s3_signing) {
+                    for (name, value) in
+                        signing.headers(target, request, head, std::time::SystemTime::now())?
+                    {
+                        call = call.header(name, value);
+                    }
                 }
                 if let Some(range) = &request.range {
                     call = call
@@ -603,6 +789,8 @@ impl HttpsClient {
                     "x-repo-commit",
                     "x-linked-etag",
                     "x-linked-size",
+                    "x-amz-version-id",
+                    "x-amz-delete-marker",
                     "x-goog-generation",
                     "x-goog-metageneration",
                 ] {
@@ -733,6 +921,16 @@ pub(crate) fn parse_u64(value: &str) -> Result<u64> {
         .map_err(|_| Error::Limit("HTTP byte count overflow".into()))
 }
 
+/// Native provider origins retain ordinary HTTPS validation in every build.
+/// Only diagnostic literal-loopback HTTP origins use the fixture parser.
+pub(super) fn parse_provider_origin(value: &str) -> Result<Url> {
+    let diagnostic_http = cfg!(any(test, feature = "diagnostic-acquisition"))
+        && value
+            .get(..5)
+            .is_some_and(|scheme| scheme.eq_ignore_ascii_case("http:"));
+    parse_url(value, diagnostic_http)
+}
+
 pub(super) fn parse_url(value: &str, loopback: bool) -> Result<Url> {
     if value.len() > 16 * 1024 {
         return Err(Error::Limit("HTTP URL limit".into()));
@@ -775,6 +973,24 @@ mod tests {
     use std::io::Write;
     use std::net::TcpListener;
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn provider_origins_keep_native_https_in_diagnostic_builds() {
+        for origin in [
+            "https://s3.us-east-1.amazonaws.com",
+            "HTTPS://OBJECT.EXAMPLE:443",
+        ] {
+            assert_eq!(parse_provider_origin(origin).unwrap().scheme(), "https");
+        }
+        assert!(parse_provider_origin("http://object.example").is_err());
+        assert!(parse_provider_origin("http://localhost").is_err());
+        assert_eq!(
+            parse_provider_origin("http://127.0.0.1:12345")
+                .unwrap()
+                .host_str(),
+            Some("127.0.0.1")
+        );
+    }
 
     fn accept_bounded(listener: &TcpListener) -> std::net::TcpStream {
         listener.set_nonblocking(true).unwrap();
@@ -901,6 +1117,179 @@ mod tests {
                 "library logs exposed fixture credential"
             );
         }
+    }
+
+    #[test]
+    fn s3_actual_wire_preserves_raw_dot_segments_and_never_redirects_signed_credentials() {
+        let (origin, captured, worker) = serve(vec![
+            reply("200 OK", "x-amz-version-id: v1\r\n", "ok"),
+            reply("200 OK", "x-amz-version-id: v1\r\n", "")
+                .replace("Content-Length: 0", "Content-Length: 2"),
+            reply(
+                "206 Partial Content",
+                "x-amz-version-id: v1\r\nETag: \"e\"\r\nContent-Range: bytes 1-1/2\r\n",
+                "k",
+            ),
+        ]);
+        let target = HttpTarget::s3(
+            &origin,
+            "us-east-1",
+            "/bucket/a/../b//./%252E%20%C3%A9?versionId=v%2B%2F",
+        )
+        .unwrap();
+        assert_ne!(
+            parse_url(&target.url(), true).unwrap().path(),
+            target.uri.path()
+        );
+        let mut client =
+            HttpsClient::diagnostic_loopback(&origin, None, HttpOptions::default()).unwrap();
+        client.s3_signing = Some(
+            s3_signing::Signing::new(
+                "us-east-1",
+                S3Credentials::new("fixture_id", "SECRET_KEY", Some("SESSION_TOKEN")).unwrap(),
+            )
+            .unwrap(),
+        );
+        let response = client
+            .get_target(
+                &HttpRequest::new(target.url(), 2),
+                &target,
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+        assert_eq!(
+            response.read_bounded(2, &AtomicBool::new(false)).unwrap(),
+            b"ok"
+        );
+        let head = client
+            .head_target(
+                &HttpRequest::new(target.url(), 2),
+                &target,
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+        assert_eq!(head.header("content-length"), Some("2"));
+        assert!(
+            head.read_bounded(0, &AtomicBool::new(false))
+                .unwrap()
+                .is_empty()
+        );
+        let mut range = HttpRequest::new(target.url(), 1);
+        range.range = Some(ResumeRequest {
+            start: 1,
+            total: 2,
+            validator: "\"e\"".into(),
+        });
+        let response = client
+            .get_target(&range, &target, &AtomicBool::new(false))
+            .unwrap();
+        assert_eq!(
+            response.read_bounded(1, &AtomicBool::new(false)).unwrap(),
+            b"k"
+        );
+        worker.join().unwrap();
+        let wire = captured.lock().unwrap()[0].clone();
+        assert!(
+            wire.starts_with("GET /bucket/a/../b//./%252E%20%C3%A9?versionId=v%2B%2F HTTP/1.1\r\n"),
+            "{wire}"
+        );
+        assert!(wire.contains("AWS4-HMAC-SHA256 Credential=fixture_id/"));
+        assert!(
+            wire.to_ascii_lowercase()
+                .contains("x-amz-security-token: session_token")
+        );
+        assert!(!wire.contains("SECRET_KEY"));
+        for wire in captured.lock().unwrap().iter() {
+            let mut first = wire.lines().next().unwrap().split_ascii_whitespace();
+            let method = first.next().unwrap();
+            let uri: ureq::http::Uri = format!("{origin}{}", first.next().unwrap())
+                .parse()
+                .unwrap();
+            let headers = wire
+                .lines()
+                .skip(1)
+                .filter_map(|line| line.split_once(':'))
+                .map(|(name, value)| (name.to_ascii_lowercase(), value.trim().to_owned()))
+                .collect::<BTreeMap<_, _>>();
+            let authorization = &headers["authorization"];
+            let signed = authorization
+                .split("SignedHeaders=")
+                .nth(1)
+                .unwrap()
+                .split(',')
+                .next()
+                .unwrap();
+            let canonical = signed
+                .split(';')
+                .map(|name| (name, headers[name].clone()))
+                .collect();
+            let expected = client
+                .s3_signing
+                .as_ref()
+                .unwrap()
+                .authorization(method, &uri, &canonical, &headers["x-amz-date"])
+                .unwrap();
+            assert_eq!(
+                authorization, &expected,
+                "actual method/target/Host/Range/session headers must match the signature"
+            );
+        }
+        let wires = captured.lock().unwrap();
+        assert!(wires[1].starts_with("HEAD "));
+        assert!(
+            wires[2]
+                .to_ascii_lowercase()
+                .contains("range: bytes=1-\r\n")
+        );
+        assert!(
+            wires[2]
+                .to_ascii_lowercase()
+                .contains("if-range: \"e\"\r\n")
+        );
+        drop(wires);
+        assert!(
+            client
+                .get(&HttpRequest::new(target.url(), 2), &AtomicBool::new(false))
+                .is_err()
+        );
+        assert!(
+            client
+                .clone()
+                .with_credential_origin("https://other.example")
+                .is_err()
+        );
+
+        let destination = TcpListener::bind("127.0.0.1:0").unwrap();
+        destination.set_nonblocking(true).unwrap();
+        let next = format!("http://{}/unrequested", destination.local_addr().unwrap());
+        let (origin, _, worker) = serve(vec![reply(
+            "307 Temporary Redirect",
+            &format!("Location: {next}\r\n"),
+            "",
+        )]);
+        let target = HttpTarget::s3(&origin, "us-east-1", "/bucket/key?versionId=v1").unwrap();
+        let mut client =
+            HttpsClient::diagnostic_loopback(&origin, None, HttpOptions::default()).unwrap();
+        client.s3_signing = Some(
+            s3_signing::Signing::new(
+                "us-east-1",
+                S3Credentials::new("fixture_id", "SECRET_KEY", None).unwrap(),
+            )
+            .unwrap(),
+        );
+        assert!(
+            client
+                .get_target(
+                    &HttpRequest::new(target.url(), 2),
+                    &target,
+                    &AtomicBool::new(false)
+                )
+                .is_err()
+        );
+        worker.join().unwrap();
+        assert!(
+            matches!(destination.accept(), Err(error) if error.kind()==io::ErrorKind::WouldBlock)
+        );
     }
 
     #[test]

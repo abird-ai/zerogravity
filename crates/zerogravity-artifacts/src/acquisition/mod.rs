@@ -10,6 +10,7 @@ pub mod huggingface;
 pub mod object;
 pub mod oci;
 pub mod resume;
+pub mod s3;
 
 pub use crate::cache::ByteLength;
 pub use crate::cache::manifest::DigestProvenance;
@@ -146,12 +147,16 @@ pub struct ResolvedFile {
     // Transient HEAD validator; never changes digest provenance or persistence.
     validator: Option<String>,
     response_binding: Option<ResponseBinding>,
+    request_target: Option<http::HttpTarget>,
 }
 
 /// Provider protocol expectations, separate from strong ETag resume and raw
 /// content SHA256. Only the owning resolver may construct these bindings.
 #[derive(Clone, Copy, Debug)]
 pub(super) enum ResponseBinding {
+    S3Version {
+        version_sha256: [u8; 32],
+    },
     GcsVersion {
         generation: u64,
         metageneration: u64,
@@ -196,6 +201,7 @@ impl ResolvedFile {
             identity: identity.into(),
             validator: None,
             response_binding: None,
+            request_target: None,
         };
         validate_relative_path(&file.path)?;
         if let Some(hash) = &file.sha256 {
@@ -253,6 +259,13 @@ impl ResolvedFile {
     }
     pub(super) fn validator(&self) -> Option<&str> {
         self.validator.as_deref()
+    }
+    pub(super) fn with_request_target(mut self, target: http::HttpTarget) -> Self {
+        self.request_target = Some(target);
+        self
+    }
+    pub(super) fn request_target(&self) -> Option<&http::HttpTarget> {
+        self.request_target.as_ref()
     }
     pub(super) fn with_response_binding(mut self, binding: ResponseBinding) -> Self {
         self.response_binding = Some(binding);
@@ -323,6 +336,10 @@ impl ResolvedPullPlan {
                         + file.identity.len()
                         + file.validator.as_ref().map_or(0, String::len)
                         + file.response_binding.map_or(0, |_| 32)
+                        + file
+                            .request_target
+                            .as_ref()
+                            .map_or(0, http::HttpTarget::metadata_bytes)
                         + 128,
                 )
                 .filter(|v| *v <= limits.cache.max_manifest_bytes)

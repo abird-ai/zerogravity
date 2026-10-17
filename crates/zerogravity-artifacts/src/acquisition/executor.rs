@@ -429,7 +429,9 @@ fn object_response(
     request: &HttpRequest,
     cancel: &AtomicBool,
 ) -> Result<super::http::HttpResponse> {
-    if file.response_binding().is_some() {
+    if let Some(target) = file.request_target() {
+        transport.get_target(request, target, cancel)
+    } else if file.response_binding().is_some() {
         transport.get_without_redirects(request, cancel)
     } else {
         transport.get(request, cancel)

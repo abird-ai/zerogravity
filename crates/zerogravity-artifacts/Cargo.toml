@@ -10,7 +10,7 @@ license = "MIT"
 [features]
 cache = ["dep:sha2", "dep:rustix"]
 diagnostic-cache = ["cache"]
-acquisition = ["cache", "dep:ureq", "dep:url", "dep:log"]
+acquisition = ["cache", "dep:ureq", "dep:url", "dep:log", "dep:hmac", "dep:quick-xml", "dep:time"]
 diagnostic-acquisition = ["acquisition"]
 
 [dependencies]
@@ -24,3 +24,6 @@ url = { version = "=2.5.8", optional = true }
 # ureq deliberately reveals URI queries/Location at TRACE. The optional
 # acquisition build caps the shared log facade at DEBUG to preserve redaction.
 log = { version = "=0.4.34", features = ["max_level_debug"], optional = true }
+hmac = { version = "=0.12.1", default-features = false, optional = true }
+quick-xml = { version = "=0.41.0", default-features = false, optional = true }
+time = { version = "=0.3.55", default-features = false, features = ["std"], optional = true }

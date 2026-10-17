@@ -528,6 +528,65 @@ signals. Receipts print the observed pin for later reuse. Prefix offline selecti
 refuses; choose each explicit pinned object instead. Offline byte/source matching
 attests neither present remote access nor bucket membership/freshness.
 
+## Native versioned S3 objects
+
+The S3 resolver uses explicit regional AWS commercial endpoints or a caller's
+bare compatible endpoint, region and path/virtual-host addressing. It resolves
+HEAD once to an exact non-null object version and size; selected versions then
+use the original transfer/cache executor. Typed pins expose actual version and
+bytes for receipts/offline reuse. Null/unversioned and special bucket/partition
+profiles remain outside this slice.
+
+```text
+zerogravity pull s3 object --endpoint-profile aws --region us-east-1 \
+  --addressing path --bucket selected-bucket --key selected/model.gguf \
+  --file model.gguf --role weights --version-id SELECTED_VERSION \
+  --sha256 RAW_SHA256 --dry-run --cache /absolute/cache
+```
+
+The example authorizes no source. `--endpoint-profile compatible` requires an
+explicit `--endpoint`; AWS profile rejects overrides. Virtual-host credentials
+bind to the bucket-specific origin, and dotted virtual-host buckets refuse under
+this TLS profile. Online defaults to apply; dry-run reads admitted metadata only.
+
+Anonymous and explicit SigV4 profiles share the original HTTPS owner. SigV4 takes
+only named `--access-key-env`, `--secret-key-env` and optional
+`--session-token-env` inputs. It signs the actual method/Host/Range/If-Range and
+amz headers on each attempt with checked UTC. No SDK, ambient AWS config/default
+credential chain, identity service, region discovery/redirect or refresh runs.
+Credentials stay in that origin's client; they never enter source labels or plans.
+
+The opaque `HttpTarget` preserves the exact encoded request path/query through
+that same HTTP owner. Its constructor is private to validated provider code, and
+custom transports must explicitly support its default-refusing capability. S3
+keys retain dot segments and repeated slashes; UTF8, percent and query values are
+encoded once, with sorted canonical query pairs. Redirects refuse. This avoids
+ordinary URL normalization silently selecting a different key or invalidating a
+signature; no second socket or executor is introduced.
+
+The original executor requires matching x-amz-version-id and refuses delete
+markers before accepting body bytes at each initial/resume/retry response.
+Strong ETag, exact range/framing/length/full raw SHA/terminal EOF and cache
+publication retain their existing separate checks. Caller raw SHA gives
+TrustedSha256; otherwise final content remains FirstSeen. ETag, MD5, CRC and
+multipart/composite checksum labels never become raw SHA256 authority.
+
+`pull s3 prefix` selects Auxiliary/FirstSeen objects independently. `--listing
+current` uses ListObjectsV2 continuation tokens; `latest-versions` uses paired
+key/version markers and selects latest live entries. Complete bounded XML and
+HEAD validation precede returned plans, with aggregate request/metadata/control/
+file/byte budgets, cycle/duplicate/path/collision refusal, and no DTD/entity
+expansion. A prefix is not atomic, and later failure may retain earlier published
+objects. Neither listing infers model closure.
+
+Offline object mode needs the same endpoint/region/addressing/bucket/key/path/
+role contract, `--version-id`, `--bytes`, snapshot digest and any original caller
+SHA. It verifies original managed bytes/source/trust before credentials, client,
+admission or signals. Prefix offline refuses; choose explicit object pins. Cached
+bytes do not establish present listing membership, access or remote freshness.
+Broader vendor features, presigning, archive restoration, customer keys, delegated
+credential acquisition and FULL_OBJECT checksum-mode integration remain open.
+
 ## Provider and compatibility frontier
 
 The retired research captures once counted57 rows; that historical count is not
@@ -545,7 +604,7 @@ passing provider gate. Open implementation and acceptance work stays in TODO.md.
 | Auth/endpoints | Origin-scoped explicit bearer environment inputs, safe redirects and TLS. Mirror/profile policy, broader compatibility env aliases and provider-specific credentials remain open; offline bytes do not attest current remote access. |
 | OCI/Docker | Native tag-or-manifest pin/raw-GGUF layer, public/preissued bearer and fixed Docker Hub anonymous broker. Index/compressed/container/signature/generic private-login profiles remain open; no model closure follows. |
 | GCS | Native JSON object generation/metageneration media pins, auxiliary prefix/pageToken listing, anonymous/preissued bearer and explicit offline object pins. ADC/minting/requester-pays/custom endpoints and atomic/closure semantics remain outside this profile. |
-| S3/compatible endpoints | Native object versions/listing/ranges and explicit endpoint/region/SigV4/session profiles remain open; a presigned HTTPS object is not a qualified S3 adapter. |
+| S3/compatible endpoints | Native non-null versions, exact-path regional/path/virtual-host GET/HEAD/ranges, bounded V2/latest-version prefixes and static/session SigV4. Unversioned objects, broader partitions/vendor/credential profiles and FULL_OBJECT checksum mode remain open; presigned HTTPS alone grants no native S3 parity. |
 | Azure Blob | Native versions/snapshots/listing/ranges and explicit SAS/bearer/SharedKey profiles remain open; managed/default credential chains are separate. |
 | ModelScope | Native pinned revision/file/list/auth protocol remains open; no Python SDK/delegated runtime is introduced. |
 | HF Xet | Resolve/LFS-compatible HTTPS acquisition does not qualify native CAS reconstruction, chunk codecs/hash rules or its performance path; native work remains open. |
@@ -686,6 +745,11 @@ logit/state/session checks while their raw source reservation remains owned.
 Numerical acceptance is tracked in TODO.md.
 
 ## References
+
+- [S3 SigV4 canonicalization and official signature vectors](https://docs.aws.amazon.com/AmazonS3/latest/developerguide/sig-v4-header-based-auth.html),
+  [HeadObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html) and
+  [version listing](https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectVersions.html),
+  used to bound the explicit native regional/versioned profile.
 
 - [GCS JSON objects.get](https://docs.cloud.google.com/storage/docs/json_api/v1/objects/get),
   [objects.list](https://docs.cloud.google.com/storage/docs/json_api/v1/objects/list) and
