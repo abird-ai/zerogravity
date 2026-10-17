@@ -709,6 +709,40 @@ publication retain their existing separate checks. Caller raw SHA gives
 TrustedSha256; otherwise final content remains FirstSeen. ETag, MD5, CRC and
 multipart/composite checksum labels never become raw SHA256 authority.
 
+### Explicit AWS FULL_OBJECT SHA256
+
+Versioned AWS-standard S3 object pulls may opt into `--aws-full-object-sha256`
+(library: `S3ObjectRequest::with_aws_full_sha256()`). This changes only one
+selected object's pinned HEAD: the existing typed target sends
+`x-amz-checksum-mode: ENABLED`, signed as a literal in SigV4 SignedHeaders
+(or sent literally for anonymous public HEAD), and forbids redirects. AWS
+must return the exact non-null version, length, a canonical 32-byte base64
+`x-amz-checksum-sha256`, and `x-amz-checksum-type: FULL_OBJECT` together.
+The latter is essential: absent/COMPOSITE multipart checksums, missing
+or noncanonical base64, mismatching caller `--sha256`, and contradictory
+version/length or encoding refuse before payload GET. Without this explicit
+flag, ordinary S3 pulls retain FirstSeen when no independent caller digest
+is given—even if HEAD happens to include a checksum header.
+
+On success the original pinned version/bytes/source/role/expected SHA256
+contract is upgraded to TrustedSha256 and passed unchanged to the **single**
+existing cache transfer, raw SHA/EOF verifier, and atomic publisher. Dry-run
+remains HEAD metadata only and prints the observed full-object SHA256; it
+never opens a payload or creates a snapshot. Offline requires `--sha256`
+equal to that printed digest in addition to the same version, bytes and
+snapshot digest, and validates only the exact cached contract—no HEAD,
+credentials or inferred present-day AWS availability.
+
+This slice is restricted to standard commercial AWS S3 endpoints with an
+immutable non-null version and an explicit object selection. Compatible
+endpoints, prefix scans, conditional FirstSeen mode, caller-only content
+mode, null versions and assumed composite hashes **cannot** enter it.
+An S3 KMS-encrypted object may require additional KMS permissions for checksum
+access; the existing explicit credential/profile scope is unchanged and
+permission failures do not fall back to weaker trust. No SDK, default AWS
+credential discovery, region redirect, model loader or GPU action is added.
+References: [AWS HeadObject API](https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html) and [Checking object integrity](https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html).
+
 `pull s3 prefix` selects Auxiliary/FirstSeen objects independently. `--listing
 current` uses ListObjectsV2 continuation tokens; `latest-versions` uses paired
 key/version markers and selects latest live entries. Complete bounded XML and
@@ -722,8 +756,8 @@ role contract, `--version-id`, `--bytes`, snapshot digest and any original calle
 SHA. It verifies original managed bytes/source/trust before credentials, client,
 admission or signals. Prefix offline refuses; choose explicit object pins. Cached
 bytes do not establish present listing membership, access or remote freshness.
-Broader vendor features, presigning, archive restoration, customer keys, delegated
-credential acquisition and FULL_OBJECT checksum-mode integration remain open.
+Broader vendor features, presigning, archive restoration, customer keys,
+delegated credential acquisition and non-SHA full-object checksums remain open.
 
 ## Native Azure BlockBlob revisions
 
@@ -1047,7 +1081,7 @@ passing provider gate. Open implementation and acceptance work stays in TODO.md.
 | Auth/endpoints | Origin-scoped explicit bearer environment inputs, safe redirects and TLS. Mirror/profile policy, broader compatibility env aliases and provider-specific credentials remain open; offline bytes do not attest current remote access. |
 | OCI/Docker | Native tag-or-manifest pin/raw-GGUF layer, public/preissued bearer and fixed Docker Hub anonymous broker. Index/compressed/container/signature/generic private-login profiles remain open; no model closure follows. |
 | GCS | Native JSON object generation/metageneration media pins, auxiliary prefix/pageToken listing, anonymous/preissued bearer and explicit offline object pins. ADC/minting/requester-pays/custom endpoints and atomic/closure semantics remain outside this profile. |
-| S3/compatible endpoints | Native non-null versions, exact-path regional/path/virtual-host GET/HEAD/ranges, bounded V2/latest-version prefixes and static/session SigV4. Explicit current/unversioned objects additionally support caller SHA/size contracts; Strong conditional FirstSeen observations are explicit; broader partitions/vendor/credential profiles and FULL_OBJECT checksum mode remain open; presigned HTTPS alone grants no native S3 parity. |
+| S3/compatible endpoints | Native non-null versions, regional/path/virtual-host GET/HEAD/ranges, bounded V2/latest-version prefixes and explicit SigV4. Current/unversioned caller SHA/size contracts and strong conditional FirstSeen observations remain separate. Explicit AWS-standard versioned object `--aws-full-object-sha256` qualifies typed HEAD FULL_OBJECT SHA-256; no COMPOSITE/compatible trust. Broader partitions/vendor/credential profiles and other checksum algorithms remain open; presigned HTTPS alone grants no native S3 parity. |
 | Azure Blob | Native explicit BlockBlob versions/snapshots, bounded current-version auxiliary listing, pinned ranges and anonymous/bearer/SharedKey/ad-hoc serviceSAS. Explicit current/unversioned objects additionally support caller SHA/size contracts; Strong conditional FirstSeen observations are explicit; latest convenience, other endpoints/types/SAS and managed/default credentials remain open. |
 | ModelScope | Native explicit40hex commit, bounded complete shallow walk, exact files/model closure, anonymous/official-token and digest-only offline. Selected missing sizes use exact pinned HEAD; aliases and redirect/CDN/mirror profiles remain open; no SDK/login runtime. |
 | HF Xet | Explicit bounded native discovery, scoped CAS, signed ranges/multipart, ordered NONE/LZ4/BG4 reconstruction and original ephemeral importer/CLI. Explicit APPLY reconstructs required trusted-LFS indexed safetensors JSON under the same full-root/raw-SHA/EOF/cumulative-work owner; default/dry-run still refuse before CAS. Coalescing/persistent native prefixes/performance remain open; cached bytes grant no native execution proof. |

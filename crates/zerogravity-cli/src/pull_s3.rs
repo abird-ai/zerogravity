@@ -109,6 +109,7 @@ fn parse(args: &[String]) -> Result<S3Options> {
     let mut listing = None;
     let mut content_contract = false;
     let mut conditional_read = false;
+    let mut aws_full_object_sha256 = false;
     let mut etag = None;
     let mut seen = BTreeSet::new();
     let mut rest = args[1..].iter();
@@ -123,6 +124,10 @@ fn parse(args: &[String]) -> Result<S3Options> {
             }
             "--content-contract" => {
                 content_contract = true;
+                continue;
+            }
+            "--aws-full-object-sha256" => {
+                aws_full_object_sha256 = true;
                 continue;
             }
             "--dry-run" => {
@@ -246,6 +251,11 @@ fn parse(args: &[String]) -> Result<S3Options> {
     }
     if conditional_read && content_contract
         || etag.is_some() && (!conditional_read || !common.offline)
+        || aws_full_object_sha256
+            && (kind != "object"
+                || conditional_read
+                || content_contract
+                || endpoint_profile != "aws")
     {
         return Err(invalid());
     }
@@ -351,6 +361,11 @@ fn parse(args: &[String]) -> Result<S3Options> {
                 version.as_deref(),
                 sha256.as_deref(),
             )?;
+            let request = if aws_full_object_sha256 {
+                request.with_aws_full_sha256()?
+            } else {
+                request
+            };
             if common.offline {
                 let pin = S3ObjectPin::new(
                     &request,
@@ -411,7 +426,17 @@ fn describe_content(bytes: u64, sha256: &str) {
 fn describe_selected(pin: Option<&SelectedPin>, plan: &acquisition::ResolvedPullPlan) {
     if let Some(pin) = pin {
         match pin {
-            SelectedPin::Version(pin) => describe_pin(pin),
+            SelectedPin::Version(pin) => {
+                describe_pin(pin);
+                if pin.request().aws_full_sha256() {
+                    let digest = plan.files()[0]
+                        .sha256()
+                        .expect("FULL_OBJECT checksum never returns an untrusted digest");
+                    println!(
+                        "AWS FULL_OBJECT SHA256: {digest}\nTo open this exact snapshot offline, provide --sha256 with that digest alongside the version/bytes/snapshot."
+                    );
+                }
+            }
             SelectedPin::Conditional(pin) => describe_conditional(pin.bytes(), pin.etag()),
         }
     } else {
@@ -609,6 +634,10 @@ OPTIONS:
     --role ROLE                   weights|config|tokenizer|index|license|auxiliary (object only)
     --version-id ID               Online optional; offline exact non-null immutable version
     --sha256 RAW_SHA256           Independent caller SHA256, object only
+    --aws-full-object-sha256      Explicit AWS-standard object HEAD checksum-mode=ENABLED;
+                                 requires FULL_OBJECT SHA256; COMPOSITE/missing refuse
+                                 Optional caller SHA must agree; offline requires --sha256
+                                 Never compatible endpoints, prefix or conditional/content modes
     --offline --snapshot DIGEST   Full verified cache pin before credentials/client/admission
     --bytes N                     Offline version/conditional pin or content contract; zero allowed
     --content-contract            Object-only caller SHA256 +exact bytes; no version ID
@@ -635,8 +664,15 @@ objects refuse in that mode. Anonymous sends no credentials. SigV4 reads only th
 names and signs through the original owner at the actual bucket endpoint. No
 credential values in argv, SDK/config/metadata-service discovery, role assumption,
 region discovery, redirects, writes, requester-pays or archive restore.
-ETag/composite provider checksums never authenticate raw SHA; without independent
-caller SHA, acquired bytes are FirstSeen. A compatible endpoint is an explicit
+ETag and composite provider checksums never authenticate raw SHA. Without
+independent caller SHA, ordinary S3 acquired bytes remain FirstSeen.
+Only --aws-full-object-sha256 opts AWS-standard versioned HEAD into an exact
+provider FULL_OBJECT SHA256 (canonical base64), then verifies published bytes
+through the original importer; missing/untyped/composite/mismatched SHA refuses.
+This mode may require extra KMS permissions. Offline requires --sha256 and
+reconstructs the version+length+digest source contract; it does not prove
+present AWS freshness/authorization or upgrade compatible endpoints.
+A compatible endpoint is an explicit
 protocol profile, not blanket vendor parity. Standard AWS is commercial regional
 S3 only; dotted virtual-host buckets and other unqualified endpoints refuse.
 Prefix current lists current objects then pins HEAD; latest-versions selects

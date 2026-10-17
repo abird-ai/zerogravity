@@ -8,6 +8,8 @@ use crate::cache::{
     CacheStore, DigestProvenance, FileRole, ManifestSource, SnapshotLease, TransferAdmission,
 };
 use crate::{Error, Result};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
@@ -171,6 +173,7 @@ pub struct S3ObjectRequest {
     role: FileRole,
     requested_version: Option<String>,
     sha256: Option<String>,
+    aws_full_sha256: bool,
 }
 impl fmt::Debug for S3ObjectRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -208,7 +211,23 @@ impl S3ObjectRequest {
             role,
             requested_version: version.map(str::to_owned),
             sha256: sha256.map(str::to_owned),
+            aws_full_sha256: false,
         })
+    }
+    /// Opt into authoritative AWS-standard whole-object SHA-256 metadata.
+    /// Never upgrades compatible endpoints, ETags or multipart COMPOSITE hashes.
+    /// The HeadObject request explicitly asks for ChecksumMode=ENABLED.
+    pub fn with_aws_full_sha256(mut self) -> Result<Self> {
+        if self.endpoint.service != Service::AwsStandard {
+            return Err(Error::Unsupported(
+                "full-object SHA256 requires the canonical AWS S3 endpoint".into(),
+            ));
+        }
+        self.aws_full_sha256 = true;
+        Ok(self)
+    }
+    pub fn aws_full_sha256(&self) -> bool {
+        self.aws_full_sha256
     }
     pub fn endpoint(&self) -> &S3Endpoint {
         &self.endpoint
@@ -268,6 +287,13 @@ impl S3ObjectRequest {
         let target = self
             .endpoint
             .target(&self.bucket, Some(&self.key), &query)?;
+        // Only this explicit AWS-standard HEAD is allowed to request, parse
+        // and promote a provider FULL_OBJECT SHA256 to trusted raw content.
+        let target = if self.aws_full_sha256 {
+            target.with_s3_checksum_mode()?
+        } else {
+            target
+        };
         let response = budget.head(transport, &target, cancel)?;
         if response.status != 200 {
             return Err(Error::State(format!(
@@ -290,7 +316,6 @@ impl S3ObjectRequest {
         })?;
         valid_version(version)?;
         let bytes = decimal(response.header("content-length").ok_or_else(malformed)?)?;
-        let pin = S3ObjectPin::new(self, version, bytes)?;
         http::validate_response_binding(
             Some(ResponseBinding::S3Version {
                 version_sha256: version_hash(version),
@@ -307,6 +332,23 @@ impl S3ObjectRequest {
                 Ok::<String, Error>(v.to_owned())
             })
             .transpose()?;
+        let pin = if self.aws_full_sha256 {
+            let verified = aws_full_object_digest(&response)?;
+            if self
+                .sha256
+                .as_ref()
+                .is_some_and(|expected| expected != &verified)
+            {
+                return Err(Error::State(
+                    "caller SHA256 contradicts pinned AWS full-object checksum".into(),
+                ));
+            }
+            let mut trusted = self.clone();
+            trusted.sha256 = Some(verified);
+            S3ObjectPin::new(&trusted, version, bytes)?
+        } else {
+            S3ObjectPin::new(self, version, bytes)?
+        };
         http::check_cancel(cancel)?;
         Ok((pin, etag))
     }
@@ -637,6 +679,11 @@ impl fmt::Debug for S3ObjectPin {
 impl S3ObjectPin {
     pub fn new(request: &S3ObjectRequest, version: &str, bytes: u64) -> Result<Self> {
         valid_version(version)?;
+        if request.aws_full_sha256 && request.sha256.is_none() {
+            return Err(Error::Unsupported(
+                "offline AWS full-object checksum requires the observed --sha256".into(),
+            ));
+        }
         if request
             .requested_version
             .as_deref()
@@ -1112,6 +1159,27 @@ fn object_key(value: &str) -> Result<()> {
         return Err(malformed());
     }
     Ok(())
+}
+/// AWS HeadObject checksum metadata is base64, not hex. SHA256 is trusted only
+/// when AWS explicitly reports FULL_OBJECT; multipart COMPOSITE and unspecified
+/// types never become a raw content digest. Reject noncanonical padding/length.
+fn aws_full_object_digest(response: &HttpResponse) -> Result<String> {
+    if response.header("x-amz-checksum-type") != Some("FULL_OBJECT") {
+        return Err(Error::Unsupported(
+            "AWS full-object SHA256 requires explicit FULL_OBJECT checksum type".into(),
+        ));
+    }
+    let checksum = response.header("x-amz-checksum-sha256").ok_or_else(|| {
+        Error::Unsupported("AWS response lacks a full-object SHA256 checksum".into())
+    })?;
+    if checksum.len() != 44 {
+        return Err(malformed());
+    }
+    let bytes = STANDARD.decode(checksum).map_err(|_| malformed())?;
+    if bytes.len() != 32 || STANDARD.encode(&bytes) != checksum {
+        return Err(malformed());
+    }
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 fn valid_version(value: &str) -> Result<()> {
     if value.is_empty()

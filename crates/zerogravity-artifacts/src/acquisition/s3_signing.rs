@@ -90,6 +90,14 @@ impl Signing {
             ("x-amz-content-sha256", EMPTY_SHA.to_owned()),
             ("x-amz-date", timestamp.clone()),
         ]);
+        if target.s3_checksum_mode_enabled() {
+            if !head {
+                return Err(Error::Unsupported(
+                    "S3 full-object checksum request must be HEAD".into(),
+                ));
+            }
+            headers.insert("x-amz-checksum-mode", "ENABLED".to_owned());
+        }
         if let Some(token) = &self.credentials.session {
             headers.insert("x-amz-security-token", token.clone());
         }
@@ -284,6 +292,60 @@ mod tests {
                     .ends_with(expected)
             );
         }
+    }
+    #[test]
+    fn aws_full_object_head_checksum_mode_is_part_of_signed_headers_and_is_head_only() {
+        let signer = Signing::new(
+            "us-east-1",
+            S3Credentials::new(
+                "AKIAIOSFODNN7EXAMPLE",
+                "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+                None,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let target = HttpTarget::s3(
+            "https://s3.us-east-1.amazonaws.com",
+            "us-east-1",
+            "/bucket/object?versionId=v1",
+        )
+        .unwrap()
+        .with_s3_checksum_mode()
+        .unwrap();
+        let request = HttpRequest::new(target.url(), 128);
+        let at = UNIX_EPOCH + std::time::Duration::from_secs(1_369_353_600);
+        let headers = signer.headers(&target, &request, true, at).unwrap();
+        let signed = headers
+            .iter()
+            .find(|(name, _)| *name == "Authorization")
+            .unwrap()
+            .1
+            .as_str();
+        assert!(
+            signed
+                .contains("SignedHeaders=host;x-amz-checksum-mode;x-amz-content-sha256;x-amz-date")
+        );
+        assert!(signed.ends_with(
+            "Signature=65280f3b052135e6f2b51d0e7f0a7b81b763c44a513f0587a47ea13dd9ad4b59"
+        ));
+        assert!(signer.headers(&target, &request, false, at).is_err());
+        // Unselected ordinary S3 requests must never silently ask for checksum
+        // access or change their existing canonical signing contract.
+        let plain = HttpTarget::s3(
+            "https://s3.us-east-1.amazonaws.com",
+            "us-east-1",
+            "/bucket/object?versionId=v1",
+        )
+        .unwrap();
+        let original = signer.headers(&plain, &request, true, at).unwrap();
+        let signed = original
+            .iter()
+            .find(|(name, _)| *name == "Authorization")
+            .unwrap()
+            .1
+            .as_str();
+        assert!(!signed.contains("x-amz-checksum-mode"));
     }
     #[test]
     fn utc_rollover_and_credentials_are_bounded_without_local_timezone() {

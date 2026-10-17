@@ -125,7 +125,7 @@ Completed phases from `e0073a5` through signed `a774ded` are in
   regressions. Preserve the original paused source/run for traceability until
   reviewed retirement; no new SDK/model/provider/account payload fetched.
 
-## Uncommitted
+### 8195c18 — verified required native Xet indexes
 
 - [x] C4 required native Xet indexes recovered from the preserved
   /home/pvl/spaces/abird/src/zerogravity-xet-index-work source-only draft.
@@ -179,7 +179,42 @@ Completed phases from `e0073a5` through signed `a774ded` are in
   live provider/account/SDK/data download, privilege/mount/device operation,
   push or publication is implied.
 
-- [ ] Extend cloud profiles through separately qualified S3 FULL_OBJECT checksum authority, broader endpoints/partitions/credentials, Azure latest/SAS/managed chains and per-object digest-map prefixes. Keep explicit version, caller-SHA and conditional FirstSeen contracts distinct; never infer immutable versions or trusted raw hashes from validator/checksum labels.
+## Uncommitted
+
+- [x] C5 AWS-standard FULL_OBJECT SHA256 checksum admission:
+  one six-file Rust slice with explicit --aws-full-object-sha256 and
+  library builder. Only canonical AWS commercial-region immutable-version
+  object HEAD requests x-amz-checksum-mode: ENABLED; original SigV4 signer
+  includes the exact header, anonymous public profile sends it literally.
+  HEAD redirects and absent/COMPOSITE/malformed/untyped checksum data refuse;
+  only canonical base64 raw32 SHA256 from FULL_OBJECT plus matching pinned
+  version/length becomes TrustedSha256. Independently supplied caller SHA
+  must agree. No compatible endpoint, conditional/content mode, prefix or
+  other algorithm gains remote SHA authority or fallback.
+- [x] Preserve source/byte/provenance and original single publisher;
+  dry-run remains metadata-only, offline requires the observed --sha256,
+  exact version/length/snapshot before credentials. Seven dedicated
+  original executor/cache API fixtures (exact AWS checksum, trusted vs
+  FirstSeen, incompatible scope, malformed/composite/missing SHA, offline
+  source, wrong GET/ref rollback, admission/cancellation) and one S3 CLI
+  extended enabled test pass. One independent frozen Python-stdlib SigV4
+  literal golden and two actual signed/unsigned private-loopback HTTP HEAD
+  /redirect tests pass; real S3/C3/C4 regression suites remain green.
+- [x] Final frozen C5 source/acceptance checks: 984 Rust executions /
+  0 failures / 69 intentionally ignored / 222 suite executions in
+  isolated check.sh, plus18 Python namespace fixtures, complete CPU,
+  strict artifact/CLI production+diagnostic Clippy, release/installer,
+  shell/Nix formatting and reference self-tests. Source-integrity passed
+  using git add -N for new S3 API suite; local Markdown links, root README,
+  Cargo.lock/manifests unchanged. Two independently invoked original
+  release cache_prepare model routes pass: cache/direct16.03s and HF
+  import21.45s, each both approved Qwen3.5 checkpoints/full248320 logits/
+  all42domains/two tokens/independent sessions/source leases/mutation/
+  reclaim exact. No inference/multimodal/GPU performance qualification
+  is implied. Acceptance requires a signed local exact-path commit;
+  no push or external provider payload testing is implied.
+
+- [ ] Extend cloud profiles beyond the narrow qualified AWS FULL_OBJECT SHA256 object route: broader S3 partitions/compatible vendors/credentials/checksum algorithms, Azure latest/SAS/managed chains and per-object digest-map prefixes. Keep explicit version, caller-SHA and conditional FirstSeen contracts distinct; never infer immutable versions or trusted raw hashes from unqualified validators or multipart COMPOSITE checksums.
 - [ ] Extend ModelScope only through separately qualified alias authority and redirect/CDN/mirror/credential profiles. Selected missing sizes now use exact pinned HEAD; no alias-to-commit authority was established from revision echoes, timestamps or file last-modified IDs. The current profile does not close broader parity or independently prove server revision/membership behavior.
 - [ ] Measure and qualify native Xet fetch coalescing/chunk caching and any persistent native-prefix protocol. The current bounded per-intersection complete-signed-set reader has counted overfetch/refetch and no performance claim; native process interruption restarts a full transfer. Keep per-term/partial-xorb proof limits, fixed CAS scope and existing elapsed-time/HTTP-trailer boundaries explicit.
 - [ ] Close remaining finite convenience/compatibility gaps: required sidecar/adapter/sparse-quant policy, bounded auxiliary/presets, mirror/endpoint/env precedence and gate/license diagnostics. Preserve explicit source authority/no silent numeric fallback and separate loader/runtime plans.

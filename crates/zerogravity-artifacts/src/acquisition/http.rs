@@ -36,6 +36,9 @@ enum TargetProfile {
     Direct,
     S3 {
         region: String,
+        /// Only an explicitly selected AWS-standard HeadObject may request
+        /// full-object checksum metadata. Never a GET or compatible endpoint.
+        checksum_mode: bool,
     },
     Azure {
         kind: AzureRequestKind,
@@ -320,15 +323,35 @@ impl HttpTarget {
             origin: origin.to_owned(),
             profile: TargetProfile::S3 {
                 region: region.to_owned(),
+                checksum_mode: false,
             },
             uri,
         })
     }
     fn s3_region(&self) -> Result<&str> {
         match &self.profile {
-            TargetProfile::S3 { region } => Ok(region),
+            TargetProfile::S3 { region, .. } => Ok(region),
             _ => Err(Error::Unsupported("SigV4 requires an S3 target".into())),
         }
+    }
+    /// An immutable, provider-constructed HEAD-only metadata capability.
+    pub fn s3_checksum_mode_enabled(&self) -> bool {
+        matches!(
+            self.profile,
+            TargetProfile::S3 {
+                checksum_mode: true,
+                ..
+            }
+        )
+    }
+    pub(super) fn with_s3_checksum_mode(mut self) -> Result<Self> {
+        let TargetProfile::S3 { checksum_mode, .. } = &mut self.profile else {
+            return Err(Error::Unsupported(
+                "checksum-mode requires S3 HEAD target".into(),
+            ));
+        };
+        *checksum_mode = true;
+        Ok(self)
     }
     /// A single strong If-Match condition, if this provider target requires it.
     /// Explicit custom target transports must emit it on every request, including
@@ -362,7 +385,10 @@ impl HttpTarget {
     pub(super) fn metadata_bytes(&self) -> usize {
         self.origin.len()
             + match &self.profile {
-                TargetProfile::S3 { region } => region.len(),
+                TargetProfile::S3 {
+                    region,
+                    checksum_mode,
+                } => region.len() + if *checksum_mode { 64 } else { 0 },
                 TargetProfile::Azure { .. } => 8,
                 TargetProfile::Direct => 0,
                 TargetProfile::XetCas { grant, .. } => {
@@ -1112,6 +1138,11 @@ impl HttpsClient {
                 "provider target and client origin differ".into(),
             ));
         }
+        if target.s3_checksum_mode_enabled() && !head {
+            return Err(Error::Unsupported(
+                "S3 full-object checksum metadata is HEAD-only".into(),
+            ));
+        }
         self.request(request, cancel, head, target.xet_ordinary(), Some(target))
     }
     fn request(
@@ -1244,6 +1275,11 @@ impl HttpsClient {
                         call = call.header(name, value);
                     }
                 }
+                if target.is_some_and(HttpTarget::s3_checksum_mode_enabled) {
+                    // The SigV4 signer binds the same header into SignedHeaders.
+                    // Anonymous AWS HEAD emits the same literal without signing.
+                    call = call.header("x-amz-checksum-mode", "ENABLED");
+                }
                 if let Some(value) = target.and_then(HttpTarget::if_match) {
                     call = call.header("If-Match", value);
                 }
@@ -1331,6 +1367,11 @@ impl HttpsClient {
                     target.charge_metadata(header_bytes)?;
                 }
                 if matches!(status, 301 | 302 | 303 | 307 | 308) && !observation {
+                    if target.is_some_and(HttpTarget::s3_checksum_mode_enabled) {
+                        return Err(Error::Unsupported(
+                            "AWS full-object checksum HEAD redirects are unsupported".into(),
+                        ));
+                    }
                     if !follow_redirects {
                         return Err(Error::Unsupported(
                             "version-pinned HTTP redirects are unsupported".into(),
@@ -1394,6 +1435,8 @@ impl HttpsClient {
                     "x-linked-size",
                     "x-xet-hash",
                     "x-amz-version-id",
+                    "x-amz-checksum-sha256",
+                    "x-amz-checksum-type",
                     "x-amz-delete-marker",
                     "x-goog-generation",
                     "x-goog-metageneration",
@@ -1677,6 +1720,82 @@ mod tests {
             },
         )
         .unwrap()
+    }
+
+    #[test]
+    fn real_s3_head_checksum_mode_header_and_sigv4_share_original_wire_owner() {
+        let (origin, requests, server) = serve(vec![reply(
+            "200 OK",
+            "x-amz-version-id: v1\r\nx-amz-checksum-type: FULL_OBJECT\r\nx-amz-checksum-sha256: YWJj\r\n",
+            "",
+        )]);
+        let credentials = S3Credentials::new("EXAMPLE_ACCESS", "EXAMPLE_SECRET", None).unwrap();
+        let client = HttpsClient::diagnostic_s3_loopback(
+            &origin,
+            "us-east-1",
+            credentials,
+            HttpOptions {
+                max_retries: 0,
+                backoff: Duration::ZERO,
+                ..HttpOptions::default()
+            },
+        )
+        .unwrap();
+        let target = HttpTarget::s3(&origin, "us-east-1", "/bucket/model.bin?versionId=v1")
+            .unwrap()
+            .with_s3_checksum_mode()
+            .unwrap();
+        let request = HttpRequest::new(target.url(), 1024);
+        assert!(
+            client
+                .get_target(&request, &target, &AtomicBool::new(false))
+                .is_err()
+        );
+        let response = client
+            .head_target(&request, &target, &AtomicBool::new(false))
+            .unwrap();
+        assert_eq!(response.header("x-amz-checksum-type"), Some("FULL_OBJECT"));
+        assert_eq!(response.header("x-amz-checksum-sha256"), Some("YWJj"));
+        server.join().unwrap();
+        let wire = requests.lock().unwrap()[0].to_ascii_lowercase();
+        assert!(wire.starts_with("head /bucket/model.bin?versionid=v1 http/1.1"));
+        assert!(wire.contains("\r\nx-amz-checksum-mode: enabled\r\n"));
+        assert!(wire.contains("authorization: aws4-hmac-sha256 "));
+        assert!(
+            wire.contains("signedheaders=host;x-amz-checksum-mode;x-amz-content-sha256;x-amz-date")
+        );
+        assert!(!wire.contains("example_secret"));
+    }
+
+    #[test]
+    fn real_s3_checksum_head_redirect_refuses_without_following_unsigned_location() {
+        let (origin, requests, server) = serve(vec![reply(
+            "302 Found",
+            "Location: https://other.example/private\r\n",
+            "",
+        )]);
+        let client = HttpsClient::diagnostic_loopback(
+            &origin,
+            None,
+            HttpOptions {
+                max_retries: 0,
+                backoff: Duration::ZERO,
+                ..HttpOptions::default()
+            },
+        )
+        .unwrap();
+        let target = HttpTarget::s3(&origin, "us-east-1", "/bucket/model.bin?versionId=v1")
+            .unwrap()
+            .with_s3_checksum_mode()
+            .unwrap();
+        let result = client.head_target(
+            &HttpRequest::new(target.url(), 4096),
+            &target,
+            &AtomicBool::new(false),
+        );
+        assert!(matches!(result, Err(Error::Unsupported(_))));
+        server.join().unwrap();
+        assert_eq!(requests.lock().unwrap().len(), 1);
     }
 
     fn xet_budget(origin: &str, maximum: usize) -> Arc<super::super::xet::budget::Budget> {

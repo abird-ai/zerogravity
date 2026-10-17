@@ -442,4 +442,61 @@ mod enabled {
             assert!(!fixture.0.exists());
         }
     }
+    #[test]
+    fn aws_full_object_checksum_help_static_refusals_and_offline_trusted_contract() {
+        let _schedule = SCHEDULE.lock().unwrap();
+        let f = Fixture::new();
+        let help = run(&["pull".into(), "s3".into(), "--help".into()]);
+        assert!(help.status.success());
+        let text = String::from_utf8_lossy(&help.stdout);
+        assert!(text.contains("--aws-full-object-sha256"));
+        assert!(text.contains("FULL_OBJECT"));
+        assert!(text.contains("COMPOSITE"));
+        assert!(text.contains("offline requires --sha256"));
+
+        for extra in [
+            vec![
+                "--endpoint-profile",
+                "compatible",
+                "--endpoint",
+                "https://object.example",
+            ],
+            vec!["--conditional-read"],
+            vec!["--content-contract"],
+            vec!["--aws-full-object-sha256", "--aws-full-object-sha256"],
+        ] {
+            let mut argv = f.args();
+            argv.push("--aws-full-object-sha256".into());
+            argv.extend(extra.into_iter().map(str::to_owned));
+            refused(&run(&argv));
+            assert!(!f.0.exists());
+        }
+        let mut prefix = f.args();
+        prefix[2] = "prefix".into();
+        // Prefix cannot inherit object-only fields, but checksum mode must
+        // refuse statically before credentials/cache even with mixed arguments.
+        prefix.push("--aws-full-object-sha256".into());
+        refused(&run(&prefix));
+        assert!(!f.0.exists());
+
+        // Offline-only trusted snapshot and source identity, no HEAD/credentials.
+        let snapshot = f.seed(true, false);
+        let mut argv = f.offline(&snapshot, 3);
+        argv.push("--aws-full-object-sha256".into());
+        refused(&run(&argv)); // without --sha256, no guessed digest
+        argv.extend(["--sha256".into(), HASH.into()]);
+        let out = run(&argv);
+        assert!(
+            out.status.success(),
+            "{:?}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(String::from_utf8_lossy(&out.stdout).contains("trusted_sha256"));
+        for (flag, value) in [("--sha256", EMPTY_HASH), ("--version-id", "wrong")] {
+            let mut bad = argv.clone();
+            let at = bad.iter().position(|v| v == flag).unwrap();
+            bad[at + 1] = value.into();
+            refused(&run(&bad));
+        }
+    }
 }
