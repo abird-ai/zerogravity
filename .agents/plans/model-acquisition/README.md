@@ -416,6 +416,59 @@ An existing ordinary cache ref may be selected instead of a snapshot digest;
 that lookup grants no online freshness, license acceptance or inference support.
 No repository sidecars or model closure are inferred for this explicit object.
 
+## Native OCI raw GGUF layers
+
+`acquisition::oci::OciRequest` resolves one OCI/Docker schema2 image manifest
+by explicit tag or raw manifest SHA256. It hashes received manifest bytes before
+parsing, checks a supplied manifest digest and any Docker-Content-Digest header,
+and requires matching supported response/JSON media types. A recognized raw
+`application/vnd.docker.ai.gguf.v3` layer supplies its exact size and SHA256 to
+the original transfer/cache executor. Unique selection refuses multiple matching
+layers; an explicit layer digest selects exactly one recognized layer.
+
+```text
+zerogravity pull oci --origin https://registry.example --profile anonymous \
+  --repository owner/model --tag selected --file model.gguf --dry-run \
+  --cache /absolute/cache
+```
+
+The example authorizes no source. Use `--manifest-sha256 RAW_SHA256` instead of
+`--tag` for a caller-pinned manifest, and `--layer-sha256 RAW_SHA256` when selecting
+a particular layer. Dry-run performs admitted broker/manifest metadata requests
+but no layer transfer or cache initialization. Online defaults to apply.
+
+Profiles are explicit anonymous access, preissued bearer via `--token-env NAME`,
+or `dockerhub` public anonymous pull. Docker Hub fixes the registry to
+`https://registry-1.docker.io` and token broker to `https://auth.docker.io/token`
+with service `registry.docker.io` and the selected repository's pull-only scope.
+No server-provided realm, arbitrary login, Basic credential, refresh, SDK or
+ambient account discovery runs. The shared HTTP owner retains origin-scoped
+credentials, TLS verification, secret redaction, redirects and bounded requests.
+The broker consumes at most64KiB and half the metadata cap; manifest metadata
+uses the remaining cap. Docker Hub requires a two-call logical metadata budget.
+
+Provider `oci` records the raw manifest digest as revision. Its repository label
+hashes the full versioned request contract: canonical origin, profile, repository,
+requested tag-or-digest, logical file and layer selector. Secret values and URLs
+are absent from the persisted identity. The original executor verifies actual
+layer bytes against the descriptor's raw digest, including cache hits, framing,
+EOF, LFS-pointer refusal and existing cancellation/rollback rules. No mutable
+reference is published by this frontend.
+
+Offline requires `--offline --snapshot DIGEST_OR_EXISTING_REF`, together with
+the original request flags. It opens and hashes original managed cached bytes,
+checks exact one-entry source/path/Weights/trusted-digest constraints and caller
+limits, and branches before credentials, broker, client, transfer admission or
+signal construction. The cache does not retain original raw manifest JSON:
+offline contract matching cannot independently reauthenticate descriptor
+membership, tag freshness, registry signatures or current remote access.
+
+Indexes/platform selection, compressed/container layers, arbitrary descriptor
+URLs, config extraction, generic authentication challenges and private Docker
+login remain unsupported. Acquiring a GGUF layer supplies no model sidecars,
+model closure, license acceptance or new inference eligibility. This is a bounded
+native registry-data path, not full OCI conformance or container execution.
+
 ## Provider and compatibility frontier
 
 The retired research captures once counted57 rows; that historical count is not
@@ -431,7 +484,7 @@ passing provider gate. Open implementation and acceptance work stays in TODO.md.
 | Local HF caches | Explicit pinned selections and independent verified copies, original same-mount policy plus qualified Btrfs/tmpfs and distinct tmpfs pairs. Renamed/unnamespaced roots and other filesystems remain open. |
 | XDG/offline/removal | Native XDG/explicit root, zero-network offline, inspect/list/verify and protected exact-snapshot removal. Compatibility aliases, legacy migration, automatic eviction/general orphan cleanup and unmanaged readers remain separate open work. |
 | Auth/endpoints | Origin-scoped explicit bearer environment inputs, safe redirects and TLS. Mirror/profile policy, broader compatibility env aliases and provider-specific credentials remain open; offline bytes do not attest current remote access. |
-| OCI/Docker | Native manifest/raw-GGUF layer resolution and registry auth are the next implementation; no registry/container support is granted by HTTPS object acquisition. |
+| OCI/Docker | Native tag-or-manifest pin/raw-GGUF layer, public/preissued bearer and fixed Docker Hub anonymous broker. Index/compressed/container/signature/generic private-login profiles remain open; no model closure follows. |
 | GCS | Native generation metadata/media/pagination and explicit public/bearer profiles remain open. ADC/service-account minting/metadata-server credentials are separate profiles. |
 | S3/compatible endpoints | Native object versions/listing/ranges and explicit endpoint/region/SigV4/session profiles remain open; a presigned HTTPS object is not a qualified S3 adapter. |
 | Azure Blob | Native versions/snapshots/listing/ranges and explicit SAS/bearer/SharedKey profiles remain open; managed/default credential chains are separate. |
@@ -574,6 +627,10 @@ logit/state/session checks while their raw source reservation remains owned.
 Numerical acceptance is tracked in TODO.md.
 
 ## References
+
+- [OCI Distribution v1.1.1 manifest/blob protocol](https://github.com/opencontainers/distribution-spec/blob/v1.1.1/spec.md) and
+  [Docker registry authentication](https://docs.docker.com/reference/api/registry/auth/),
+  used to bound the explicit registry and fixed anonymous-broker profiles.
 
 - [Hugging Face Hub API](https://huggingface.co/docs/hub/api),
   [official OpenAPI](https://huggingface.co/.well-known/openapi.md) and

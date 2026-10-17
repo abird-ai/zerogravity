@@ -7,6 +7,7 @@ pub mod github;
 pub mod http;
 pub mod huggingface;
 pub mod object;
+pub mod oci;
 pub mod resume;
 
 pub use crate::cache::ByteLength;

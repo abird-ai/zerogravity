@@ -6,6 +6,8 @@ use std::sync::{Arc, atomic::AtomicBool};
 mod components;
 #[path = "pull_object.rs"]
 mod object;
+#[path = "pull_oci.rs"]
+mod oci;
 #[path = "pull_signals.rs"]
 mod signals;
 use zerogravity::acquisition::http::{HttpOptions, HttpsClient};
@@ -343,6 +345,9 @@ impl ProgressDisplay {
 }
 
 pub(super) fn run(args: &[String]) -> Result<()> {
+    if args.first().is_some_and(|arg| arg == "oci") {
+        return oci::run(&args[1..]);
+    }
     if args.first().is_some_and(|arg| arg == "object") {
         return object::run(&args[1..]);
     }
@@ -450,6 +455,7 @@ fn help() {
     zerogravity pull github OWNER/REPO --release TAG --asset NAME
     zerogravity pull components PLAN.json [--dry-run | --offline]
     zerogravity pull object --help
+    zerogravity pull oci --help
     zerogravity pull list
     zerogravity pull inspect DIGEST_OR_REF
     zerogravity pull verify DIGEST_OR_REF

@@ -14,6 +14,7 @@ use super::resume::ResumeRequest;
 pub enum HttpAccept {
     Json,
     GitHubJson,
+    OciManifest,
     Binary,
 }
 
@@ -250,6 +251,19 @@ impl HttpsClient {
         Self::build(origin, None, options, false, None)
     }
 
+    /// Explicit in-memory bearer credential for one declared origin. This
+    /// performs no environment lookup or token exchange; provider code owns
+    /// those cold steps before using this same HTTPS/redirect owner.
+    pub fn with_bearer(origin: &str, token: &str, options: HttpOptions) -> Result<Self> {
+        if token.is_empty()
+            || token.len() > 8192
+            || !token.bytes().all(|byte| byte.is_ascii_graphic())
+        {
+            return Err(Error::Malformed("invalid bearer credential".into()));
+        }
+        Self::build(origin, Some(token.to_owned()), options, false, None)
+    }
+
     /// This constructor reads only the explicitly selected environment variable.
     /// The public offline entry point must branch before calling it.
     pub fn from_env(
@@ -429,6 +443,9 @@ impl HttpsClient {
                 let accept = match request.accept {
                     HttpAccept::Json => "application/json",
                     HttpAccept::GitHubJson => "application/vnd.github+json",
+                    HttpAccept::OciManifest => {
+                        "application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json"
+                    }
                     HttpAccept::Binary => "application/octet-stream",
                 };
                 let call = if head {
@@ -523,6 +540,8 @@ impl HttpsClient {
                     "content-length",
                     "content-range",
                     "content-encoding",
+                    "content-type",
+                    "docker-content-digest",
                     "transfer-encoding",
                     "etag",
                     "last-modified",
@@ -826,6 +845,32 @@ mod tests {
                 "library logs exposed fixture credential"
             );
         }
+    }
+
+    #[test]
+    fn in_memory_bearer_is_validated_and_scoped_to_the_declared_origin() {
+        let client = HttpsClient::with_bearer(
+            "HTTPS://REGISTRY.EXAMPLE:443",
+            "fixture_bearer",
+            HttpOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(client.token.as_deref(), Some("fixture_bearer"));
+        assert_eq!(client.credential_origins, ["https://registry.example"]);
+        for token in ["", "has space", "line\nfeed", "unicode-é"] {
+            assert!(
+                HttpsClient::with_bearer("https://registry.example", token, HttpOptions::default())
+                    .is_err()
+            );
+        }
+        assert!(
+            HttpsClient::with_bearer(
+                "https://registry.example",
+                &"x".repeat(8193),
+                HttpOptions::default()
+            )
+            .is_err()
+        );
     }
 
     #[test]
