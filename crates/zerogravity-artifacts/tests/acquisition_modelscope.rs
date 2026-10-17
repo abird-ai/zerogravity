@@ -290,7 +290,7 @@ fn unsafe_duplicate_wrong_parent_types_sizes_and_secret_json_refuse() {
         vec![row("nested/a.txt", NEW, false)],
         vec![row("../escape", NEW, false)],
         vec![json!({"Path":"a.txt","Type":"link","Size":1})],
-        vec![json!({"Path":"a.txt","Type":"blob"})],
+        vec![json!({"Path":"a.txt","Type":"blob","Size":null})],
         vec![json!({"Path":"a.txt","Type":"blob","Size":-1})],
         vec![json!({"Path":"a.txt","Name":"other","Type":"blob","Size":0})],
         vec![json!({"Path":"a.txt","Type":"blob","Size":0,"Sha256":"notSHA"})],

@@ -157,7 +157,7 @@ impl ModelScopeRequest {
         let mut path_bytes = 0usize;
         while let Some(parent) = pending.pop_front() {
             check_cancel(cancel)?;
-            let bytes = budget.read(transport, &self.tree_url(&parent), None, cancel)?;
+            let bytes = budget.read(transport, &self.tree_url(&parent), None, None, cancel)?;
             let rows = parse_rows(&bytes)?;
             for row in rows {
                 validate_relative_path(&row.path)?;
@@ -178,9 +178,11 @@ impl ModelScopeRequest {
                 match row.kind.as_str() {
                     "tree" => pending.push_back(row.path),
                     "blob" => {
-                        let size = row.size.ok_or_else(|| {
-                            Error::Unsupported("ModelScope file is missing an exact size".into())
-                        })?;
+                        let size = match row.size {
+                            ListedSize::Missing => None,
+                            ListedSize::Exact(bytes) => Some(bytes),
+                            ListedSize::Null => return Err(malformed()),
+                        };
                         let digest = row.sha256.filter(|s| !s.is_empty());
                         if let Some(digest) = &digest {
                             validate_digest(digest)?;
@@ -193,6 +195,7 @@ impl ModelScopeRequest {
                             File {
                                 bytes: size,
                                 digest,
+                                validator: None,
                             },
                         );
                     }
@@ -213,12 +216,16 @@ impl ModelScopeRequest {
             limits,
             super::ExternalSidecars::default(),
             &mut |path| {
-                let file = files.get(path).ok_or_else(malformed)?;
-                if file.bytes > limits.cache.max_file_bytes {
-                    return Err(Error::Limit("ModelScope index file bound".into()));
-                }
-                let bytes =
-                    budget.read(transport, &self.raw_url(path), Some(file.bytes), cancel)?;
+                let file = files.get_mut(path).ok_or_else(malformed)?;
+                let url = self.raw_url(path);
+                let size = file.resolve_length(transport, &url, &mut budget, limits, cancel)?;
+                let bytes = budget.read(
+                    transport,
+                    &url,
+                    Some(size),
+                    file.validator.as_deref(),
+                    cancel,
+                )?;
                 if file
                     .digest
                     .as_ref()
@@ -235,8 +242,9 @@ impl ModelScopeRequest {
         let mut resolved = Vec::new();
         for path in selected {
             check_cancel(cancel)?;
-            let file = files.get(&path).ok_or_else(malformed)?;
+            let file = files.get_mut(&path).ok_or_else(malformed)?;
             let url = self.raw_url(&path);
+            let bytes = file.resolve_length(transport, &url, &mut budget, limits, cancel)?;
             let identity = hash(
                 &serde_json::to_vec(&(
                     "modelscope.file.v1",
@@ -244,7 +252,7 @@ impl ModelScopeRequest {
                     &self.repository,
                     &self.commit,
                     &path,
-                    file.bytes,
+                    bytes,
                     &file.digest,
                 ))
                 .map_err(|_| malformed())?,
@@ -255,10 +263,11 @@ impl ModelScopeRequest {
                     &path,
                     &url,
                     super::github::role(&path),
-                    file.bytes,
+                    bytes,
                     file.digest.clone(),
                     format!("modelscope:{identity}"),
                 )?
+                .with_validator(file.validator.clone())?
                 .with_request_target(target),
             );
         }
@@ -382,8 +391,59 @@ fn malformed() -> Error {
     Error::Malformed("invalid ModelScope metadata or selection".into())
 }
 struct File {
-    bytes: u64,
+    bytes: Option<u64>,
     digest: Option<String>,
+    validator: Option<String>,
+}
+impl File {
+    fn resolve_length(
+        &mut self,
+        transport: &(impl HttpTransport + ?Sized),
+        url: &str,
+        budget: &mut Budget,
+        limits: &PullLimits,
+        cancel: &AtomicBool,
+    ) -> Result<u64> {
+        if let Some(bytes) = self.bytes {
+            if bytes > limits.cache.max_file_bytes || bytes > limits.cache.max_snapshot_bytes {
+                return Err(Error::Limit("ModelScope selected file length".into()));
+            }
+            return Ok(bytes);
+        }
+        // The same retained full-commit selector and original Direct capability
+        // own this HEAD. Never fall back to GET, a redirect, a cap or an alias.
+        let response = budget.head(transport, url, limits.cache.max_file_bytes, cancel)?;
+        if response.status != 200 {
+            return Err(Error::Unsupported(
+                "ModelScope exact HEAD requires HTTP200".into(),
+            ));
+        }
+        if response.header("content-range").is_some()
+            || response.header("transfer-encoding").is_some()
+            || response
+                .header("content-encoding")
+                .is_some_and(|v| !v.eq_ignore_ascii_case("identity"))
+        {
+            return Err(Error::Unsupported(
+                "ModelScope HEAD requires complete identity metadata".into(),
+            ));
+        }
+        let bytes =
+            http::parse_u64(response.header("content-length").ok_or_else(|| {
+                Error::Unsupported("ModelScope exact HEAD length is absent".into())
+            })?)?;
+        if bytes > limits.cache.max_file_bytes || bytes > limits.cache.max_snapshot_bytes {
+            return Err(Error::Limit("ModelScope observed file length".into()));
+        }
+        let validator = response
+            .header("etag")
+            .filter(|v| super::resume::strong_etag(v).is_ok())
+            .map(str::to_owned);
+        check_cancel(cancel)?;
+        self.bytes = Some(bytes);
+        self.validator = validator;
+        Ok(bytes)
+    }
 }
 struct Budget {
     remaining: usize,
@@ -405,11 +465,41 @@ impl Budget {
         self.calls -= 1;
         Ok(())
     }
+    fn head(
+        &mut self,
+        transport: &(impl HttpTransport + ?Sized),
+        url: &str,
+        maximum: u64,
+        cancel: &AtomicBool,
+    ) -> Result<http::HttpResponse> {
+        check_cancel(cancel)?;
+        self.take_request()?;
+        let target = HttpTarget::direct(url)?;
+        let response =
+            transport.head_target(&HttpRequest::new(target.url(), maximum), &target, cancel);
+        check_cancel(cancel)?;
+        let response = response.map_err(http::redact_head_error)?;
+        let bytes = response
+            .headers
+            .iter()
+            .try_fold(0usize, |sum, (name, value)| {
+                sum.checked_add(name.len())
+                    .and_then(|n| n.checked_add(value.len()))
+                    .and_then(|n| n.checked_add(32))
+            })
+            .ok_or_else(|| Error::Limit("ModelScope HEAD metadata overflow".into()))?;
+        self.remaining = self
+            .remaining
+            .checked_sub(bytes)
+            .ok_or_else(|| Error::Limit("ModelScope shared HEAD header budget".into()))?;
+        Ok(response)
+    }
     fn read(
         &mut self,
         transport: &(impl HttpTransport + ?Sized),
         url: &str,
         exact: Option<u64>,
+        validator: Option<&str>,
         cancel: &AtomicBool,
     ) -> Result<Vec<u8>> {
         check_cancel(cancel)?;
@@ -429,6 +519,7 @@ impl Budget {
                 "ModelScope pinned metadata request failed".into(),
             ));
         }
+        http::validate_validator(validator, &response)?;
         let bytes = response.read_bounded(maximum as usize, cancel)?;
         if exact.is_some_and(|size| size != bytes.len() as u64) {
             return Err(malformed());
@@ -454,10 +545,23 @@ struct Row {
     name: Option<String>,
     #[serde(rename = "Type")]
     kind: String,
-    #[serde(rename = "Size")]
-    size: Option<u64>,
+    #[serde(rename = "Size", default, deserialize_with = "listed_size")]
+    size: ListedSize,
     #[serde(rename = "Sha256")]
     sha256: Option<String>,
+}
+#[derive(Default)]
+enum ListedSize {
+    #[default]
+    Missing,
+    Exact(u64),
+    Null,
+}
+fn listed_size<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<ListedSize, D::Error> {
+    Option::<u64>::deserialize(deserializer)
+        .map(|value| value.map_or(ListedSize::Null, ListedSize::Exact))
 }
 struct Rows(Vec<Row>);
 impl<'de> Deserialize<'de> for Rows {

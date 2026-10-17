@@ -64,6 +64,10 @@ also require their relevant real source, state, cancellation and physical tests;
 compilation or mocks do not establish inference support. Inspect changed code
 and failed/interrupted tests when resuming; Git IDs are source references.
 
+When merging source from a worktree, copy bytes with fresh modification times.
+Preserving older timestamps can make Cargo reuse a stale library; unchanged bytes
+may need a narrow timestamp refresh before rerunning the same affected checks.
+
 The root README is user-authored: leave its bytes unchanged. Do not download
 models/SDKs or change device privileges or recovery without applicable user
 authorization. The local Renoir/gfx90c AMD launch hold remains.

@@ -165,6 +165,8 @@ mod enabled {
             "Branches/tags",
             "modelscope.cn",
             "Bearer + m_session_id",
+            "body-free HEAD",
+            "Only exact HTTP200 identity lengths",
         ] {
             assert!(text.contains(expected), "{text}");
         }

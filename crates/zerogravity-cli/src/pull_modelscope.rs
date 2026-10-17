@@ -247,8 +247,10 @@ OPTIONS:
     --max-metadata-bytes N --max-pages N --timeout-seconds N
 
 Only https://modelscope.cn model repositories and explicit commits are supported.
-Branches/tags, mirror endpoints, unknown sizes, capped bodies and mutable refs
-are unsupported. Metadata and payload redirects refuse. A directory with 3000
+Branches/tags, mirror endpoints, capped bodies and mutable refs are unsupported.
+Missing selected file/index sizes use bounded body-free HEAD at the same full
+commit. Only exact HTTP200 identity lengths are accepted; missing/error/redirect
+metadata refuses without a GET fallback. Metadata and payload redirects refuse. A directory with 3000
 or more entries refuses because the official shallow protocol silently truncates;
 request and byte limits cover both complete tree walking and index metadata.
 Missing/ambiguous selections and required model closure refuse. Row SHA256 is a

@@ -722,8 +722,9 @@ existing remote-version and caller-SHA contracts keep their original semantics.
 `pull modelscope OWNER/REPO --commit FULL40HEX --file PATH` uses the native
 modelscope.cn API directly, without a Python SDK or persisted login. Repeat
 `--file` for bounded selectors and use `--subfolder` for a repository directory.
-Only a canonical lowercase40hex commit is accepted; aliases/default revisions,
-mirror endpoints and missing exact file sizes remain separate work. The pinned
+Only a canonical lowercase40hex commit is accepted. Alias resolution, default
+revisions and mirror endpoints remain separate work. Missing selected sizes use the bounded
+HEAD profile below. The pinned
 official client passes an explicit revision through its listing and raw-file
 requests. This profile trusts that endpoint contract; it does not independently
 verify a Git/Merkle tree or prove live server behavior from synthetic tests.
@@ -731,10 +732,25 @@ verify a Git/Merkle tree or prove live server behavior from synthetic tests.
 Resolution walks bounded shallow directories with Revision, Recursive=False and
 relative Root. The official legacy API silently caps a directory at3000 rows
 without pagination or completeness authority. A directory reaching that boundary
-refuses, even when the requested file is already visible. One cumulative request
-and byte budget covers the complete inventory and required index reads; caller
-file/control limits also bound the inventory. No partial walk becomes model
-closure.
+refuses, even when the requested file is already visible. One cumulative budget
+bounds logical metadata calls and returned bytes across the inventory, HEAD probes
+and required indexes. Original HTTP retry limits and per-request deadlines apply
+independently; caller file/control limits also bound the inventory. No partial
+walk becomes model closure.
+
+A missing Size on a selected file or required index uses one body-free exact200
+HEAD at the same full commit and opaque Direct target. The original admitted
+metadata owner charges its request and returned header controls to the same
+remaining budgets. Exact identity Content-Length is required; redirects, ranges,
+transfer encodings, unsupported status and absent/invalid lengths refuse. Index
+lengths are cached once before the index GET and reused by final planning.
+Unselected absent sizes cause no HEAD. Explicit null or malformed present blob
+sizes still refuse; the existing directory-null representation remains valid.
+A strong HEAD ETag is checked before index/payload bytes; weak or absent validators
+grant no resume authority. Listed raw SHA and FirstSeen distinctions remain intact.
+Aliases still need authoritative alias-to-commit mapping; caller revision echoes,
+file timestamps and last-modified commits are insufficient. CDN/mirror credentials
+and unknown-size caps remain separate unqualified profiles.
 
 The original HF initial selector and extracted private GitHub closure logic
 supply required config/tokenizer, indexed shards and split-GGUF checks, including
@@ -863,7 +879,7 @@ passing provider gate. Open implementation and acceptance work stays in TODO.md.
 | GCS | Native JSON object generation/metageneration media pins, auxiliary prefix/pageToken listing, anonymous/preissued bearer and explicit offline object pins. ADC/minting/requester-pays/custom endpoints and atomic/closure semantics remain outside this profile. |
 | S3/compatible endpoints | Native non-null versions, exact-path regional/path/virtual-host GET/HEAD/ranges, bounded V2/latest-version prefixes and static/session SigV4. Explicit current/unversioned objects additionally support caller SHA/size contracts; Strong conditional FirstSeen observations are explicit; broader partitions/vendor/credential profiles and FULL_OBJECT checksum mode remain open; presigned HTTPS alone grants no native S3 parity. |
 | Azure Blob | Native explicit BlockBlob versions/snapshots, bounded current-version auxiliary listing, pinned ranges and anonymous/bearer/SharedKey/ad-hoc serviceSAS. Explicit current/unversioned objects additionally support caller SHA/size contracts; Strong conditional FirstSeen observations are explicit; latest convenience, other endpoints/types/SAS and managed/default credentials remain open. |
-| ModelScope | Native explicit40hex commit, bounded complete shallow walk, exact files/model closure, anonymous/official-token and digest-only offline. Aliases, redirect/CDN/mirror profiles and missing sizes remain open; no SDK/login runtime. |
+| ModelScope | Native explicit40hex commit, bounded complete shallow walk, exact files/model closure, anonymous/official-token and digest-only offline. Selected missing sizes use exact pinned HEAD; aliases and redirect/CDN/mirror profiles remain open; no SDK/login runtime. |
 | HF Xet | Explicit bounded native discovery, scoped CAS, signed ranges/multipart, ordered NONE/LZ4/BG4 reconstruction and original ephemeral importer/CLI. Native index closure and measured coalescing/performance remain open; cache hits/compatibility HTTPS grant no native execution proof. |
 | Auxiliary/preset convenience | Explicit auxiliary/component bytes are supported data. Specialized mmproj/draft/MTP/DFlash/Eagle3/DSpark discovery and bounded presets remain open convenience work; a preset cannot authorize new sources or limits. |
 | Transport/streaming | Exact strong-validator resume, bounded retry/deadline/cancel/progress and explicit capped Auxiliary streams are qualified. Required unknown lengths, capped resume, independent full HTTP trailer validation and broader concurrency/performance remain open. |
