@@ -33,6 +33,7 @@ enum TargetProfile {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum AzureRequestKind {
+    Content,
     List,
     Version,
     Snapshot,
@@ -378,7 +379,9 @@ pub(super) fn validate_response_binding(
     match binding {
         None => Ok(()),
         Some(
-            super::ResponseBinding::AzureVersion { .. } | super::ResponseBinding::AzureSnapshot,
+            super::ResponseBinding::AzureVersion { .. }
+            | super::ResponseBinding::AzureSnapshot
+            | super::ResponseBinding::AzureContent,
         ) => {
             if response.header("x-ms-blob-type") != Some("BlockBlob")
                 || response.header("x-ms-structured-body").is_some()
@@ -402,6 +405,15 @@ pub(super) fn validate_response_binding(
                     || <[u8; 32]>::from(sha2::Sha256::digest(actual.as_bytes())) != version_sha256)
             {
                 return Err(Error::State("Azure object version binding changed".into()));
+            }
+            Ok(())
+        }
+        Some(super::ResponseBinding::S3Content) => {
+            if response
+                .header("x-amz-delete-marker")
+                .is_some_and(|value| value != "false")
+            {
+                return Err(Error::State("S3 content target is deleted".into()));
             }
             Ok(())
         }

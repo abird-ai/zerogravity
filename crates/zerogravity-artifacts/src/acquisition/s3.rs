@@ -5,7 +5,8 @@ use super::http::{self, HttpRequest, HttpResponse, HttpTarget, HttpTransport};
 use super::{PullLimits, ResolvedFile, ResolvedPullPlan, ResponseBinding};
 use crate::cache::paths::{validate_digest, validate_relative_path};
 use crate::cache::{
-    CacheStore, DigestProvenance, FileRole, ManifestSource, SnapshotLease, TransferAdmission,
+    CacheStore, DigestProvenance, FileRole, ManifestEntry, ManifestSource, SnapshotLease,
+    TransferAdmission,
 };
 use crate::{Error, Result};
 use serde::Serialize;
@@ -309,6 +310,147 @@ impl S3ObjectRequest {
             .transpose()?;
         http::check_cancel(cancel)?;
         Ok((pin, etag))
+    }
+}
+
+/// An explicit caller-authorized content contract at a mutable S3 locator.
+/// No remote version, HEAD metadata or checksum authority is inferred.
+#[derive(Clone)]
+pub struct S3ContentSpec {
+    request: S3ObjectRequest,
+    bytes: u64,
+    source: ManifestSource,
+    identity: String,
+}
+impl S3ContentSpec {
+    pub fn new(
+        endpoint: &S3Endpoint,
+        bucket: &str,
+        key: &str,
+        path: &str,
+        role: FileRole,
+        bytes: u64,
+        sha256: &str,
+    ) -> Result<Self> {
+        let request = S3ObjectRequest::new(endpoint, bucket, key, path, role, None, Some(sha256))?;
+        let object = hash_tuple(&("zerogravity.s3-content.object.v1", endpoint, bucket, key))?;
+        let contract = hash_tuple(&(
+            "zerogravity.s3-content.contract.v1",
+            endpoint,
+            bucket,
+            key,
+            path,
+            role,
+            bytes,
+            sha256,
+        ))?;
+        let source = ManifestSource::new(
+            "s3-content",
+            format!("object-{object}"),
+            format!("content-contract-{contract}"),
+        )?;
+        Ok(Self {
+            request,
+            bytes,
+            source,
+            identity: format!("s3-content-{contract}"),
+        })
+    }
+    pub fn request(&self) -> &S3ObjectRequest {
+        &self.request
+    }
+    pub fn bytes(&self) -> u64 {
+        self.bytes
+    }
+    pub fn sha256(&self) -> &str {
+        self.request
+            .sha256
+            .as_deref()
+            .expect("content constructor requires SHA256")
+    }
+    pub fn source(&self) -> &ManifestSource {
+        &self.source
+    }
+    fn validate_limits(&self, limits: &PullLimits) -> Result<()> {
+        limits.validate()?;
+        if self.bytes > limits.cache.max_file_bytes || self.bytes > limits.cache.max_snapshot_bytes
+        {
+            return Err(Error::Limit(
+                "S3 content contract exceeds caller byte bounds".into(),
+            ));
+        }
+        Ok(())
+    }
+    fn plan(&self, limits: &PullLimits) -> Result<ResolvedPullPlan> {
+        self.validate_limits(limits)?;
+        let target =
+            self.request
+                .endpoint
+                .target(&self.request.bucket, Some(&self.request.key), &[])?;
+        let file = ResolvedFile::new(
+            &self.request.path,
+            target.url(),
+            self.request.role,
+            self.bytes,
+            Some(self.sha256().to_owned()),
+            &self.identity,
+        )?
+        .with_request_target(target)
+        .with_response_binding(ResponseBinding::S3Content);
+        ResolvedPullPlan::new(self.source.clone(), vec![file], limits)
+    }
+    /// Local bounded plan preparation only; the original executor later admits
+    /// full staging and verifies actual SHA256/length/terminal EOF. No transport,
+    /// HEAD or credential state is read. The control lease is operation-local.
+    pub fn prepare(
+        &self,
+        limits: &PullLimits,
+        admission: &TransferAdmission,
+        cancel: &AtomicBool,
+    ) -> Result<ResolvedPullPlan> {
+        self.validate_limits(limits)?;
+        http::check_cancel(cancel)?;
+        let _control = admission.arbiter.admit(
+            &admission.resource,
+            admission.owner.clone(),
+            &[AllocationRequest {
+                kind: AllocationClass::TransferStaging,
+                bytes: super::object::PREPARE_CONTROL_BYTES,
+            }],
+        )?;
+        let plan = self.plan(limits)?;
+        http::check_cancel(cancel)?;
+        Ok(plan)
+    }
+    /// Pure original-cache verification of one exact trusted content contract;
+    /// neither credentials nor current remote object membership are checked.
+    pub fn open_cached(
+        &self,
+        store: &CacheStore,
+        snapshot: &str,
+        limits: &PullLimits,
+        cancel: &AtomicBool,
+    ) -> Result<SnapshotLease> {
+        validate_digest(snapshot)?;
+        self.plan(limits)?;
+        let expected = ManifestEntry::new(
+            &self.request.path,
+            self.sha256(),
+            self.bytes,
+            self.request.role,
+        )?
+        .with_digest_provenance(DigestProvenance::TrustedSha256);
+        super::object::open_cached_trusted(store, snapshot, limits, &self.source, &expected, cancel)
+    }
+}
+impl fmt::Debug for S3ContentSpec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("S3ContentSpec")
+            .field("request", &self.request)
+            .field("bytes", &self.bytes)
+            .field("sha256", &self.sha256())
+            .field("source", &self.source)
+            .finish()
     }
 }
 

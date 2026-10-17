@@ -4,7 +4,9 @@
 use super::http::{AzureRequestKind, HttpRequest, HttpTarget, HttpTransport, check_cancel};
 use super::{DigestProvenance, PullLimits, ResolvedFile, ResolvedPullPlan, ResponseBinding};
 use crate::cache::paths::{validate_digest, validate_relative_path};
-use crate::cache::{CacheStore, FileRole, ManifestSource, SnapshotLease, TransferAdmission};
+use crate::cache::{
+    CacheStore, FileRole, ManifestEntry, ManifestSource, SnapshotLease, TransferAdmission,
+};
 use crate::{Error, Result};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
@@ -226,6 +228,170 @@ impl fmt::Debug for AzureObjectRequest {
             .field("role", &self.role)
             .field("revision", &self.revision)
             .field("sha256", &self.sha256)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Exact caller-authorized raw bytes at a mutable native BlockBlob locator.
+/// No remote version/metadata lookup or ETag digest authority is inferred.
+#[derive(Clone)]
+pub struct AzureContentSpec {
+    origin: String,
+    container: String,
+    blob: String,
+    path: String,
+    role: FileRole,
+    bytes: u64,
+    sha256: String,
+    source: ManifestSource,
+    identity: String,
+}
+impl AzureContentSpec {
+    pub fn new(
+        origin: &str,
+        container: &str,
+        blob: &str,
+        path: &str,
+        role: FileRole,
+        bytes: u64,
+        sha256: &str,
+    ) -> Result<Self> {
+        let origin = origin_checked(origin)?;
+        container_checked(container)?;
+        blob_checked(blob)?;
+        validate_relative_path(path)?;
+        validate_digest(sha256)?;
+        let object = hashed(&(
+            "zerogravity.azure-content.object.v1",
+            &origin,
+            container,
+            blob,
+        ))?;
+        let contract = hashed(&(
+            "zerogravity.azure-content.contract.v1",
+            &origin,
+            container,
+            blob,
+            path,
+            role,
+            bytes,
+            sha256,
+        ))?;
+        let source = ManifestSource::new(
+            "azure-content",
+            format!("object-{object}"),
+            format!("content-contract-{contract}"),
+        )?;
+        Ok(Self {
+            origin,
+            container: container.to_owned(),
+            blob: blob.to_owned(),
+            path: path.to_owned(),
+            role,
+            bytes,
+            sha256: sha256.to_owned(),
+            source,
+            identity: format!("azure-content-{contract}"),
+        })
+    }
+    pub fn origin(&self) -> &str {
+        &self.origin
+    }
+    pub fn container(&self) -> &str {
+        &self.container
+    }
+    pub fn blob(&self) -> &str {
+        &self.blob
+    }
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+    pub fn role(&self) -> FileRole {
+        self.role
+    }
+    pub fn bytes(&self) -> u64 {
+        self.bytes
+    }
+    pub fn sha256(&self) -> &str {
+        &self.sha256
+    }
+    pub fn source(&self) -> &ManifestSource {
+        &self.source
+    }
+    fn validate_limits(&self, limits: &PullLimits) -> Result<()> {
+        limits.validate()?;
+        if self.bytes > limits.cache.max_file_bytes || self.bytes > limits.cache.max_snapshot_bytes
+        {
+            return Err(Error::Limit(
+                "Azure content contract exceeds caller byte bounds".into(),
+            ));
+        }
+        Ok(())
+    }
+    fn plan(&self, limits: &PullLimits) -> Result<ResolvedPullPlan> {
+        self.validate_limits(limits)?;
+        let target = HttpTarget::azure(
+            &self.origin,
+            &format!("/{}/{}", self.container, encoded_blob(&self.blob)),
+            AzureRequestKind::Content,
+        )?;
+        let file = ResolvedFile::new(
+            &self.path,
+            target.url(),
+            self.role,
+            self.bytes,
+            Some(self.sha256.clone()),
+            &self.identity,
+        )?
+        .with_request_target(target)
+        .with_response_binding(ResponseBinding::AzureContent);
+        ResolvedPullPlan::new(self.source.clone(), vec![file], limits)
+    }
+    /// Pure local plan preparation under a bounded operation-local control
+    /// lease; actual payload admission/verification stays in the original owner.
+    pub fn prepare(
+        &self,
+        limits: &PullLimits,
+        admission: &TransferAdmission,
+        cancel: &AtomicBool,
+    ) -> Result<ResolvedPullPlan> {
+        self.validate_limits(limits)?;
+        check_cancel(cancel)?;
+        let _control = admission.arbiter.admit(
+            &admission.resource,
+            admission.owner.clone(),
+            &[AllocationRequest {
+                kind: AllocationClass::TransferStaging,
+                bytes: super::object::PREPARE_CONTROL_BYTES,
+            }],
+        )?;
+        let plan = self.plan(limits)?;
+        check_cancel(cancel)?;
+        Ok(plan)
+    }
+    pub fn open_cached(
+        &self,
+        store: &CacheStore,
+        snapshot: &str,
+        limits: &PullLimits,
+        cancel: &AtomicBool,
+    ) -> Result<SnapshotLease> {
+        validate_digest(snapshot)?;
+        self.plan(limits)?;
+        let expected = ManifestEntry::new(&self.path, &self.sha256, self.bytes, self.role)?
+            .with_digest_provenance(DigestProvenance::TrustedSha256);
+        super::object::open_cached_trusted(store, snapshot, limits, &self.source, &expected, cancel)
+    }
+}
+impl fmt::Debug for AzureContentSpec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AzureContentSpec")
+            .field("origin", &self.origin)
+            .field("path", &self.path)
+            .field("role", &self.role)
+            .field("bytes", &self.bytes)
+            .field("sha256", &self.sha256)
+            .field("source", &self.source)
             .finish_non_exhaustive()
     }
 }

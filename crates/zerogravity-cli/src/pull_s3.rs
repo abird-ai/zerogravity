@@ -7,7 +7,8 @@ use std::sync::{Arc, atomic::AtomicBool};
 use zerogravity::acquisition;
 use zerogravity::acquisition::http::{HttpOptions, HttpsClient, S3Credentials};
 use zerogravity::acquisition::s3::{
-    S3Addressing, S3Endpoint, S3Listing, S3ObjectPin, S3ObjectRequest, S3PrefixRequest,
+    S3Addressing, S3ContentSpec, S3Endpoint, S3Listing, S3ObjectPin, S3ObjectRequest,
+    S3PrefixRequest,
 };
 use zerogravity::cache::{CacheOptions, CacheStore, CommitOutcome, FileRole};
 use zerogravity::{Error, Result};
@@ -17,6 +18,10 @@ enum Profile {
     SigV4,
 }
 enum Selection {
+    Content {
+        spec: Box<S3ContentSpec>,
+        snapshot: Option<String>,
+    },
     Object(S3ObjectRequest),
     Prefix(S3PrefixRequest),
     Offline {
@@ -93,6 +98,7 @@ fn parse(args: &[String]) -> Result<S3Options> {
     let mut sha256 = None;
     let mut snapshot = None;
     let mut listing = None;
+    let mut content_contract = false;
     let mut seen = BTreeSet::new();
     let mut rest = args[1..].iter();
     while let Some(flag) = rest.next() {
@@ -100,6 +106,10 @@ fn parse(args: &[String]) -> Result<S3Options> {
             return Err(invalid());
         }
         match flag.as_str() {
+            "--content-contract" => {
+                content_contract = true;
+                continue;
+            }
             "--dry-run" => {
                 common.dry_run = true;
                 continue;
@@ -214,7 +224,7 @@ fn parse(args: &[String]) -> Result<S3Options> {
         _ => {}
     }
     if (common.offline && common.dry_run)
-        || (!common.offline && (snapshot.is_some() || bytes.is_some()))
+        || (!common.offline && (snapshot.is_some() || (bytes.is_some() && !content_contract)))
     {
         return Err(invalid());
     }
@@ -232,7 +242,8 @@ fn parse(args: &[String]) -> Result<S3Options> {
         if common.offline {
             return Err(Error::Unsupported("offline S3 prefix selection is unavailable; select an explicit object/version/bytes/snapshot digest".into()));
         }
-        if key.is_some()
+        if content_contract
+            || key.is_some()
             || path.is_some()
             || role.is_some()
             || version.is_some()
@@ -250,34 +261,63 @@ fn parse(args: &[String]) -> Result<S3Options> {
         if prefix.is_some() || listing.is_some() {
             return Err(invalid());
         }
-        let request = S3ObjectRequest::new(
-            &endpoint,
-            &bucket,
-            &key.ok_or_else(invalid)?,
-            &path.ok_or_else(invalid)?,
-            role.ok_or_else(invalid)?,
-            version.as_deref(),
-            sha256.as_deref(),
-        )?;
-        if common.offline {
-            let pin = S3ObjectPin::new(
-                &request,
-                version.as_deref().ok_or_else(invalid)?,
+        if content_contract {
+            if version.is_some() {
+                return Err(invalid());
+            }
+            let spec = S3ContentSpec::new(
+                &endpoint,
+                &bucket,
+                &key.ok_or_else(invalid)?,
+                &path.ok_or_else(invalid)?,
+                role.ok_or_else(invalid)?,
                 bytes.ok_or_else(invalid)?,
+                sha256.as_deref().ok_or_else(invalid)?,
             )?;
-            if pin.bytes() > bounds.cache.max_file_bytes
-                || pin.bytes() > bounds.cache.max_snapshot_bytes
+            if spec.bytes() > bounds.cache.max_file_bytes
+                || spec.bytes() > bounds.cache.max_snapshot_bytes
             {
                 return Err(Error::Limit(
-                    "S3 offline pin exceeds caller byte limits".into(),
+                    "S3 content contract exceeds caller byte limits".into(),
                 ));
             }
-            Selection::Offline {
-                pin: Box::new(pin),
-                snapshot: snapshot.ok_or_else(invalid)?,
+            if common.offline && snapshot.is_none() {
+                return Err(invalid());
+            }
+            Selection::Content {
+                spec: Box::new(spec),
+                snapshot,
             }
         } else {
-            Selection::Object(request)
+            let request = S3ObjectRequest::new(
+                &endpoint,
+                &bucket,
+                &key.ok_or_else(invalid)?,
+                &path.ok_or_else(invalid)?,
+                role.ok_or_else(invalid)?,
+                version.as_deref(),
+                sha256.as_deref(),
+            )?;
+            if common.offline {
+                let pin = S3ObjectPin::new(
+                    &request,
+                    version.as_deref().ok_or_else(invalid)?,
+                    bytes.ok_or_else(invalid)?,
+                )?;
+                if pin.bytes() > bounds.cache.max_file_bytes
+                    || pin.bytes() > bounds.cache.max_snapshot_bytes
+                {
+                    return Err(Error::Limit(
+                        "S3 offline pin exceeds caller byte limits".into(),
+                    ));
+                }
+                Selection::Offline {
+                    pin: Box::new(pin),
+                    snapshot: snapshot.ok_or_else(invalid)?,
+                }
+            } else {
+                Selection::Object(request)
+            }
         }
     };
     Ok(S3Options {
@@ -304,6 +344,22 @@ fn describe_pin(pin: &S3ObjectPin) {
         pin.bytes()
     );
 }
+fn describe_content(bytes: u64, sha256: &str) {
+    println!(
+        "Content contract: caller-authorized SHA256\nExact bytes: {bytes}\nExpected SHA256: {sha256}"
+    );
+}
+fn describe_selected(pin: Option<&S3ObjectPin>, plan: &acquisition::ResolvedPullPlan) {
+    if let Some(pin) = pin {
+        describe_pin(pin);
+    } else {
+        let file = &plan.files()[0];
+        describe_content(
+            file.bytes().expect("exact content length"),
+            file.sha256().expect("trusted content SHA256"),
+        );
+    }
+}
 fn credential(name: Option<&str>) -> Result<String> {
     std::env::var(name.ok_or_else(invalid)?)
         .map_err(|_| Error::State("explicit S3 credential environment value unavailable".into()))
@@ -327,7 +383,37 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         );
         return Ok(());
     }
+    if let Selection::Content {
+        spec,
+        snapshot: Some(snapshot),
+    } = &options.selection
+    {
+        let store = CacheStore::open_existing(cache_options(&options.common)?)?;
+        let lease = spec.open_cached(&store, snapshot, &bounds, &cancel)?;
+        describe_content(spec.bytes(), spec.sha256());
+        std::io::stdout().write_all(&lease.manifest().canonical_bytes()?)?;
+        eprintln!(
+            "Verified cached S3 caller content contract; no remote version or freshness assertion."
+        );
+        return Ok(());
+    }
     let admission = admission(options.common.memory)?;
+    if options.common.dry_run
+        && let Selection::Content { spec, .. } = &options.selection
+    {
+        let plan = spec.prepare(&bounds, &admission, &cancel)?;
+        println!(
+            "Provider: {}\nPinned contract: {}\nFile: {}",
+            plan.source().provider(),
+            plan.source().revision(),
+            spec.request().path()
+        );
+        describe_content(spec.bytes(), spec.sha256());
+        println!(
+            "DRY RUN: local caller content contract only; no metadata/payload/cache writes or credential/client/signal setup."
+        );
+        return Ok(());
+    }
     let _signals = signals::CancellationSignals::register(cancel.clone())?;
     let mut http = HttpOptions::default();
     if let Some(seconds) = options.common.timeout {
@@ -353,10 +439,18 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         }
     };
     let plans = match &options.selection {
-        Selection::Object(request) => {
-            vec![request.resolve_with_pin(&client, &bounds, &admission, &cancel)?]
+        Selection::Content { spec, .. } => {
+            vec![(None, spec.prepare(&bounds, &admission, &cancel)?)]
         }
-        Selection::Prefix(request) => request.resolve(&client, &bounds, &admission, &cancel)?,
+        Selection::Object(request) => {
+            let (pin, plan) = request.resolve_with_pin(&client, &bounds, &admission, &cancel)?;
+            vec![(Some(pin), plan)]
+        }
+        Selection::Prefix(request) => request
+            .resolve(&client, &bounds, &admission, &cancel)?
+            .into_iter()
+            .map(|(pin, plan)| (Some(pin), plan))
+            .collect(),
         Selection::Offline { .. } => unreachable!("offline branch returned"),
     };
     if options.common.dry_run {
@@ -368,7 +462,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                 plan.source().provider(),
                 plan.source().revision()
             );
-            describe_pin(pin);
+            describe_selected(pin.as_ref(), plan);
             for file in plan.files() {
                 println!(
                     "File: {}\nDigest provenance: {:?}",
@@ -404,7 +498,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         match receipt.outcome() {
             CommitOutcome::Durable(snapshot) => {
                 println!("Snapshot: {}", snapshot.digest());
-                describe_pin(pin);
+                describe_selected(pin.as_ref(), plan);
                 std::io::stdout().write_all(&receipt.manifest().canonical_bytes()?)?;
             }
             CommitOutcome::DurabilityUnknown { .. } => return Err(Error::State("complete S3 object data is visible but durability is unknown; earlier independent snapshots may remain".into())),
@@ -436,16 +530,22 @@ OPTIONS:
     --version-id ID               Online optional; offline exact non-null immutable version
     --sha256 RAW_SHA256           Independent caller SHA256, object only
     --offline --snapshot DIGEST   Full verified cache pin before credentials/client/admission
-    --bytes N                     Offline only; exact zero bytes allowed
+    --bytes N                     Offline pin or explicit content contract; zero allowed
+    --content-contract            Object-only caller SHA256 +exact bytes; no version ID
     --cache ABS_PATH              Existing pull XDG default, or explicit cache root
     --disk-limit-bytes N --memory-limit-bytes N
     --max-file-bytes N --max-snapshot-bytes N --max-files N
     --max-metadata-bytes N --max-pages N --timeout-seconds N
 
-Dry-run uses listing/HEAD metadata only; no payload transfer or cache publication.
+Versioned dry-run uses listing/HEAD metadata only; no payload transfer or cache publication.
+Explicit --content-contract requires --bytes and --sha256 and forbids --version-id.
+It supports unversioned/current locators, uses no HEAD, and binds source to caller
+raw bytes rather than a remote version. Content dry-run is local before credential
+reads/client/signals; offline requires the same contract and --snapshot DIGEST.
+No raw SHA means no content mode; there is no fallback from versioned selection.
 Version IDs are printed as JSON strings for unambiguous offline reconstruction.
-Latest HEAD selection resolves once to a non-null version; unversioned/null objects
-refuse. Anonymous sends no credentials. SigV4 reads only the selected environment
+Versioned mode HEAD selection resolves once to a non-null version; unversioned/null
+objects refuse in that mode. Anonymous sends no credentials. SigV4 reads only the selected environment
 names and signs through the original owner at the actual bucket endpoint. No
 credential values in argv, SDK/config/metadata-service discovery, role assumption,
 region discovery, redirects, writes, requester-pays or archive restore.

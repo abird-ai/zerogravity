@@ -157,6 +157,8 @@ pub struct ResolvedFile {
 /// content SHA256. Only the owning resolver may construct these bindings.
 #[derive(Clone, Copy, Debug)]
 pub(super) enum ResponseBinding {
+    S3Content,
+    AzureContent,
     AzureVersion {
         version_sha256: [u8; 32],
     },

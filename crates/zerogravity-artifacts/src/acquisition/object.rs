@@ -3,7 +3,7 @@
 use super::{PullLimits, ResolvedFile, ResolvedPullPlan, http};
 use crate::cache::paths::{validate_digest, validate_relative_path};
 use crate::cache::{
-    CacheStore, DigestProvenance, FileRole, Manifest, ManifestSource, SnapshotLease,
+    CacheStore, DigestProvenance, FileRole, Manifest, ManifestEntry, ManifestSource, SnapshotLease,
     TransferAdmission,
 };
 use crate::{Error, Result};
@@ -16,7 +16,7 @@ use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest};
 
 const MAX_URL_BYTES: usize = 16 * 1024;
 const MAX_ORIGIN_BYTES: usize = 4096;
-const PREPARE_CONTROL_BYTES: u64 = 1024 * 1024;
+pub(super) const PREPARE_CONTROL_BYTES: u64 = 1024 * 1024;
 
 /// A pure, secret-free expected origin and content contract. The download URL
 /// is supplied only to prepare and remains inside the existing redacted plan.
@@ -179,40 +179,58 @@ impl HttpsObjectSpec {
     ) -> Result<SnapshotLease> {
         self.validate_limits(limits)?;
         check_cancel(cancel)?;
-        let lease = if validate_digest(snapshot).is_ok() {
-            store.open_snapshot_cancellable(snapshot, cancel)?
-        } else {
-            store.resolve_ref_cancellable(snapshot, cancel)?
-        };
-        let manifest = lease.manifest();
-        if manifest.source() != &self.source || manifest.entries().len() != 1 {
-            return Err(Error::Malformed(
-                "cached HTTPS object source/closure mismatch".into(),
-            ));
-        }
-        let entry = &manifest.entries()[0];
-        if entry.path() != self.path
-            || entry.role() != self.role
-            || entry.bytes() != self.bytes
-            || entry.digest() != self.sha256
-            || entry.digest_provenance() != DigestProvenance::TrustedSha256
-        {
-            return Err(Error::Malformed(
-                "cached HTTPS object content contract mismatch".into(),
-            ));
-        }
-        // The store may have wider limits than this particular caller. Apply
-        // caller metadata/schema bounds as well as the exact entry checks.
-        Manifest::from_json(&manifest.canonical_bytes()?, &limits.cache)?;
-        let mut prefix = [0u8; 128];
-        let count = self.bytes.min(prefix.len() as u64) as usize;
-        lease
-            .file(&self.path)?
-            .read_exact_at(&mut prefix[..count], 0)?;
-        check_cancel(cancel)?;
-        super::executor::reject_pointer(&prefix[..count])?;
-        Ok(lease)
+        let expected = ManifestEntry::new(&self.path, &self.sha256, self.bytes, self.role)?
+            .with_digest_provenance(DigestProvenance::TrustedSha256);
+        open_cached_trusted(store, snapshot, limits, &self.source, &expected, cancel)
     }
+}
+
+/// Reuse the original single trusted-object managed open, full hash, caller
+/// manifest bounds and positioned LFS check. This is provider-private metadata
+/// validation, never another cache/publisher or source-identity issuer. Native
+/// provider callers validate a snapshot digest first; HTTPS retains ref support.
+pub(super) fn open_cached_trusted(
+    store: &CacheStore,
+    snapshot: &str,
+    limits: &PullLimits,
+    source: &ManifestSource,
+    expected: &ManifestEntry,
+    cancel: &AtomicBool,
+) -> Result<SnapshotLease> {
+    check_cancel(cancel)?;
+    let lease = if validate_digest(snapshot).is_ok() {
+        store.open_snapshot_cancellable(snapshot, cancel)?
+    } else {
+        store.resolve_ref_cancellable(snapshot, cancel)?
+    };
+    let manifest = lease.manifest();
+    if manifest.source() != source || manifest.entries().len() != 1 {
+        return Err(Error::Malformed(
+            "cached trusted object source/closure mismatch".into(),
+        ));
+    }
+    let entry = &manifest.entries()[0];
+    if entry.path() != expected.path()
+        || entry.role() != expected.role()
+        || entry.bytes() != expected.bytes()
+        || entry.digest() != expected.digest()
+        || entry.digest_provenance() != DigestProvenance::TrustedSha256
+    {
+        return Err(Error::Malformed(
+            "cached trusted object content contract mismatch".into(),
+        ));
+    }
+    // The store may have wider limits than this particular caller. Apply
+    // caller metadata/schema bounds as well as the exact entry checks.
+    Manifest::from_json(&manifest.canonical_bytes()?, &limits.cache)?;
+    let mut prefix = [0u8; 128];
+    let count = expected.bytes().min(prefix.len() as u64) as usize;
+    lease
+        .file(expected.path())?
+        .read_exact_at(&mut prefix[..count], 0)?;
+    check_cancel(cancel)?;
+    super::executor::reject_pointer(&prefix[..count])?;
+    Ok(lease)
 }
 
 impl fmt::Debug for HttpsObjectSpec {

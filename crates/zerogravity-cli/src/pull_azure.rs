@@ -6,12 +6,16 @@ use std::path::Path;
 use std::sync::{Arc, atomic::AtomicBool};
 use zerogravity::acquisition;
 use zerogravity::acquisition::azure::{
-    AzureObjectPin, AzureObjectRequest, AzurePrefixRequest, AzureRevision,
+    AzureContentSpec, AzureObjectPin, AzureObjectRequest, AzurePrefixRequest, AzureRevision,
 };
 use zerogravity::acquisition::http::{AzureSharedKey, HttpOptions, HttpsClient};
 use zerogravity::cache::{CacheOptions, CacheStore, CommitOutcome, FileRole};
 use zerogravity::{Error, Result};
 enum Selection {
+    Content {
+        spec: Box<AzureContentSpec>,
+        snapshot: Option<String>,
+    },
     Object(AzureObjectRequest),
     Prefix(AzurePrefixRequest),
     Offline {
@@ -83,6 +87,7 @@ fn parse(args: &[String]) -> Result<AzureOptions> {
     let mut bytes = None;
     let mut sha = None;
     let mut auth = None;
+    let mut content_contract = false;
     let mut seen = BTreeSet::new();
     let mut rest = args[1..].iter();
     while let Some(flag) = rest.next() {
@@ -90,6 +95,10 @@ fn parse(args: &[String]) -> Result<AzureOptions> {
             return Err(invalid());
         }
         match flag.as_str() {
+            "--content-contract" => {
+                content_contract = true;
+                continue;
+            }
             "--dry-run" => {
                 common.dry_run = true;
                 continue;
@@ -181,7 +190,8 @@ fn parse(args: &[String]) -> Result<AzureOptions> {
             _ => return Err(invalid()),
         }
     }
-    if common.offline && common.dry_run || !common.offline && (bytes.is_some() || cached.is_some())
+    if common.offline && common.dry_run
+        || !common.offline && (cached.is_some() || (bytes.is_some() && !content_contract))
     {
         return Err(invalid());
     }
@@ -192,7 +202,8 @@ fn parse(args: &[String]) -> Result<AzureOptions> {
         if common.offline {
             return Err(Error::Unsupported("offline Azure prefix is unavailable; select one explicit version/snapshot and cached snapshot digest".into()));
         }
-        if blob.is_some()
+        if content_contract
+            || blob.is_some()
             || path.is_some()
             || role.is_some()
             || version.is_some()
@@ -210,33 +221,62 @@ fn parse(args: &[String]) -> Result<AzureOptions> {
         if prefix.is_some() {
             return Err(invalid());
         }
-        let revision = match (version, snapshot) {
-            (Some(v), None) => AzureRevision::version(&v)?,
-            (None, Some(s)) => AzureRevision::snapshot(&s)?,
-            _ => return Err(invalid()),
-        };
-        let request = AzureObjectRequest::new(
-            &origin,
-            &container,
-            &blob.ok_or_else(invalid)?,
-            &path.ok_or_else(invalid)?,
-            role.ok_or_else(invalid)?,
-            revision,
-            sha.as_deref(),
-        )?;
-        if common.offline {
-            let pin = AzureObjectPin::new(&request, bytes.ok_or_else(invalid)?)?;
-            if pin.bytes() > bounds.cache.max_file_bytes
-                || pin.bytes() > bounds.cache.max_snapshot_bytes
-            {
-                return Err(Error::Limit("Azure offline pin exceeds byte bounds".into()));
+        if content_contract {
+            if version.is_some() || snapshot.is_some() {
+                return Err(invalid());
             }
-            Selection::Offline {
-                pin: Box::new(pin),
-                snapshot: cached.ok_or_else(invalid)?,
+            let spec = AzureContentSpec::new(
+                &origin,
+                &container,
+                &blob.ok_or_else(invalid)?,
+                &path.ok_or_else(invalid)?,
+                role.ok_or_else(invalid)?,
+                bytes.ok_or_else(invalid)?,
+                sha.as_deref().ok_or_else(invalid)?,
+            )?;
+            if spec.bytes() > bounds.cache.max_file_bytes
+                || spec.bytes() > bounds.cache.max_snapshot_bytes
+            {
+                return Err(Error::Limit(
+                    "Azure content contract exceeds caller byte bounds".into(),
+                ));
+            }
+            if common.offline && cached.is_none() {
+                return Err(invalid());
+            }
+            Selection::Content {
+                spec: Box::new(spec),
+                snapshot: cached,
             }
         } else {
-            Selection::Object(request)
+            let revision = match (version, snapshot) {
+                (Some(v), None) => AzureRevision::version(&v)?,
+                (None, Some(s)) => AzureRevision::snapshot(&s)?,
+                _ => return Err(invalid()),
+            };
+            let request = AzureObjectRequest::new(
+                &origin,
+                &container,
+                &blob.ok_or_else(invalid)?,
+                &path.ok_or_else(invalid)?,
+                role.ok_or_else(invalid)?,
+                revision,
+                sha.as_deref(),
+            )?;
+            if common.offline {
+                let pin = AzureObjectPin::new(&request, bytes.ok_or_else(invalid)?)?;
+                if pin.bytes() > bounds.cache.max_file_bytes
+                    || pin.bytes() > bounds.cache.max_snapshot_bytes
+                {
+                    return Err(Error::Limit("Azure offline pin exceeds byte bounds".into()));
+                }
+                Selection::Offline {
+                    pin: Box::new(pin),
+                    snapshot: cached.ok_or_else(invalid)?,
+                }
+            } else {
+                Selection::Object(request)
+            }
         }
     };
     Ok(AzureOptions {
@@ -262,6 +302,22 @@ fn describe(pin: &AzureObjectPin) {
         pin.bytes()
     );
 }
+fn describe_content(bytes: u64, sha256: &str) {
+    println!(
+        "Content contract: caller-authorized SHA256\nExact bytes: {bytes}\nExpected SHA256: {sha256}"
+    );
+}
+fn describe_selected(pin: Option<&AzureObjectPin>, plan: &acquisition::ResolvedPullPlan) {
+    if let Some(pin) = pin {
+        describe(pin);
+    } else {
+        let file = &plan.files()[0];
+        describe_content(
+            file.bytes().expect("exact content length"),
+            file.sha256().expect("trusted content SHA256"),
+        );
+    }
+}
 pub(super) fn run(args: &[String]) -> Result<()> {
     if args.len() == 1 && matches!(args[0].as_str(), "--help" | "-h" | "help") {
         help();
@@ -282,13 +338,44 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         );
         return Ok(());
     }
+    if let Selection::Content {
+        spec,
+        snapshot: Some(snapshot),
+    } = &options.selection
+    {
+        let store = CacheStore::open_existing(cache_options(&options.common)?)?;
+        let lease = spec.open_cached(&store, snapshot, &bounds, &cancel)?;
+        describe_content(spec.bytes(), spec.sha256());
+        std::io::stdout().write_all(&lease.manifest().canonical_bytes()?)?;
+        eprintln!(
+            "Verified cached Azure caller content contract; no remote version or freshness assertion."
+        );
+        return Ok(());
+    }
     let admission = admission(options.common.memory)?;
+    if options.common.dry_run
+        && let Selection::Content { spec, .. } = &options.selection
+    {
+        let plan = spec.prepare(&bounds, &admission, &cancel)?;
+        println!(
+            "Provider: {}\nPinned contract: {}\nFile: {}",
+            plan.source().provider(),
+            plan.source().revision(),
+            spec.path()
+        );
+        describe_content(spec.bytes(), spec.sha256());
+        println!(
+            "DRY RUN: local caller content contract only; no metadata/payload/cache writes or credential/client/signal setup."
+        );
+        return Ok(());
+    }
     let _signals = signals::CancellationSignals::register(cancel.clone())?;
     let mut http = HttpOptions::default();
     if let Some(n) = options.common.timeout {
         http.total_timeout = std::time::Duration::from_secs(n);
     }
     let origin = match &options.selection {
+        Selection::Content { spec, .. } => spec.origin(),
         Selection::Object(r) => r.origin(),
         Selection::Prefix(r) => r.origin(),
         Selection::Offline { .. } => unreachable!("offline returned"),
@@ -316,8 +403,18 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         }
     };
     let plans = match &options.selection {
-        Selection::Object(r) => vec![r.resolve_with_pin(&client, &bounds, &admission, &cancel)?],
-        Selection::Prefix(r) => r.resolve_with_pins(&client, &bounds, &admission, &cancel)?,
+        Selection::Content { spec, .. } => {
+            vec![(None, spec.prepare(&bounds, &admission, &cancel)?)]
+        }
+        Selection::Object(request) => {
+            let (pin, plan) = request.resolve_with_pin(&client, &bounds, &admission, &cancel)?;
+            vec![(Some(pin), plan)]
+        }
+        Selection::Prefix(request) => request
+            .resolve_with_pins(&client, &bounds, &admission, &cancel)?
+            .into_iter()
+            .map(|(pin, plan)| (Some(pin), plan))
+            .collect(),
         Selection::Offline { .. } => unreachable!("offline returned"),
     };
     if options.common.dry_run {
@@ -329,7 +426,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                 plan.source().provider(),
                 plan.source().revision()
             );
-            describe(pin);
+            describe_selected(pin.as_ref(), plan);
             for file in plan.files() {
                 println!(
                     "File: {}\nDigest provenance: {:?}",
@@ -362,7 +459,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                 let _ = display.report(event, &mut std::io::stderr());
             },
         )?;
-        match receipt.outcome(){CommitOutcome::Durable(s)=>{println!("Snapshot: {}",s.digest());describe(pin);std::io::stdout().write_all(&receipt.manifest().canonical_bytes()?)?;},CommitOutcome::DurabilityUnknown{..}=>return Err(Error::State("complete Azure data visible but durability unknown; earlier independent data may remain".into()))}
+        match receipt.outcome(){CommitOutcome::Durable(s)=>{println!("Snapshot: {}",s.digest());describe_selected(pin.as_ref(), plan);std::io::stdout().write_all(&receipt.manifest().canonical_bytes()?)?;},CommitOutcome::DurabilityUnknown{..}=>return Err(Error::State("complete Azure data visible but durability unknown; earlier independent data may remain".into()))}
     }
     eprintln!(
         "Verified independent Azure data only; earlier data may survive later failure. No atomic prefix, model closure, license or inference eligibility claim."
@@ -383,15 +480,21 @@ fn help() {
 OPTIONS:
     --token-env NAME | --shared-key-env NAME | --sas-file ABS_PATH|-
                                   Optional mutually exclusive explicit credentials
+    --content-contract --bytes N --sha256 SHA
+                                  Explicit object content; no version/snapshot selector
     --cache ABS_PATH               Pull XDG default, or explicit cache root
     --disk-limit-bytes N --memory-limit-bytes N
     --max-file-bytes N --max-snapshot-bytes N --max-files N
     --max-metadata-bytes N --max-pages N --timeout-seconds N
 
-Only native public-cloud BlockBlob versions/snapshots are selected. Exactly one
-opaque revision is required; no mutable latest lookup. Offline requires exact
+Native public-cloud BlockBlob versioned mode requires exactly one opaque
+version/snapshot; no mutable latest lookup or automatic fallback. Explicit
+--content-contract instead requires exact --bytes and caller --sha256, forbids
+both revision selectors, and binds content rather than claiming a remote version.
+Its dry-run is local before credentials/client/signals, with no HEAD or payload.
+Offline requires exact
 bytes (zero allowed) and a cached snapshot DIGEST, before ALL env/file/stdin,
-client/admission/signal work; no ETag input. Online bytes/cached-snapshot refuse.
+client/admission/signal work; no ETag input. Online cached-snapshot and bytes without content mode refuse.
 No mutable refs, unknown-size caps or offline prefix. Roles are weights, config,
 tokenizer, index, license, auxiliary. Caller SHA256 alone supplies TrustedSha256;
 otherwise full raw hash is FirstSeen. ETag/MD5/CRC64 are not raw SHA authority.
@@ -402,10 +505,10 @@ Anonymous is default; no ambient/default/managed credentials, SDK, login or refr
 Account key is environment-only and account derives from native origin. Service
 SAS is an explicitly chosen bounded8KiB nofollow regular file or stdin (which may
 block), with one optional final LF/CRLF; query never argv/output/plan. Only ad-hoc
-read bv/bs or container c (read/list) HTTPS serviceSAS sv2019-12-12..2023-11-03 is
+read b for content, bv/bs for revisions or container c (read/list) HTTPS serviceSAS sv2019-12-12..2023-11-03 is
 qualified. Other SAS forms/response overrides refuse. Original escaped query is
-preserved with unsigned api-version=2023-11-03. Version/snapshot requests never
-redirect. Optional present version echoes must agree; complete identity-encoded
+preserved with unsigned api-version=2023-11-03. Native requests never redirect.
+Optional present version echoes must agree in versioned mode; complete identity-encoded
 BlockBlob responses are mandatory. Cached bytes grant no present remote access,
 freshness, license decision or inference support."
     );

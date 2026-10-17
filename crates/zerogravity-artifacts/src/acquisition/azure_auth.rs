@@ -93,7 +93,7 @@ impl Auth {
             ));
         }
         if required("spr")? != "https"
-            || !matches!(required("sr")?, "bv" | "bs" | "c")
+            || !matches!(required("sr")?, "b" | "bv" | "bs" | "c")
             || !matches!(required("sp")?, "r" | "rl")
             || (required("sr")? != "c" && required("sp")? != "r")
         {
@@ -139,6 +139,7 @@ pub(super) fn prepare(
         None => {}
         Some(Auth::Sas(sas)) => {
             let allowed = match kind {
+                AzureRequestKind::Content => sas.resource == "b" || sas.resource == "c",
                 AzureRequestKind::List => sas.resource == "c" && sas.permissions == "rl",
                 AzureRequestKind::Version => sas.resource == "bv" || sas.resource == "c",
                 AzureRequestKind::Snapshot => sas.resource == "bs" || sas.resource == "c",
@@ -449,12 +450,61 @@ mod tests {
     }
 
     #[test]
+    fn content_sas_resource_is_distinct_from_immutable_revision_targets() {
+        let origin = "https://fixtureaccount.blob.core.windows.net";
+        let content = HttpTarget::azure(origin, "/container/a", AzureRequestKind::Content).unwrap();
+        let version = HttpTarget::azure(
+            origin,
+            "/container/a?versionid=opaque",
+            AzureRequestKind::Version,
+        )
+        .unwrap();
+        let snapshot = HttpTarget::azure(
+            origin,
+            "/container/a?snapshot=opaque",
+            AzureRequestKind::Snapshot,
+        )
+        .unwrap();
+        let list = HttpTarget::azure(
+            origin,
+            "/container?comp=list&restype=container",
+            AzureRequestKind::List,
+        )
+        .unwrap();
+        for (resource, expected) in [
+            ("b", [true, false, false, false]),
+            ("bv", [false, true, false, false]),
+            ("bs", [false, false, true, false]),
+            ("c", [true, true, true, false]),
+        ] {
+            let raw = SAS.replace("sr=bv", &format!("sr={resource}"));
+            let auth = Auth::sas(&raw).unwrap();
+            for (target, allowed) in [&content, &version, &snapshot, &list]
+                .into_iter()
+                .zip(expected)
+            {
+                let actual = prepare(
+                    Some(&auth),
+                    target,
+                    &HttpRequest::new(target.url(), 1),
+                    false,
+                    UNIX_EPOCH,
+                );
+                assert_eq!(actual.is_ok(), allowed);
+                if allowed {
+                    assert!(actual.unwrap().uri.ends_with(&raw));
+                }
+            }
+        }
+    }
+
+    #[test]
     fn credentials_refuse_ambiguous_profiles_and_secret_errors_are_static() {
         for raw in [
             SAS.replace("sv=2023-11-03", "sv=2024-01-01"),
             SAS.replace("sv=2023-11-03", "sv=2023-02-30"),
             SAS.replace("spr=https", "spr=http"),
-            SAS.replace("sr=bv", "sr=b"),
+            SAS.replace("sr=bv", "sr=d"),
             SAS.replace("sp=r", "sp=rw"),
             SAS.replace("sp=r", "sp=rl"),
             format!("{SAS}&sv=2023-11-03"),
