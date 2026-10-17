@@ -71,7 +71,7 @@ pub fn resolve_root(
         return Ok(root.to_owned());
     }
     if let Some(path) = xdg.map(Path::new).filter(|p| p.is_absolute()) {
-        return Ok(path.join("zerogravity/models"));
+        return Ok(path.join("abird/zerogravity/models"));
     }
     let home = home
         .map(Path::new)
@@ -79,7 +79,7 @@ pub fn resolve_root(
         .ok_or_else(|| {
             Error::State("absolute HOME needed when XDG_CACHE_HOME is absent/relative".into())
         })?;
-    Ok(home.join(".cache/zerogravity/models"))
+    Ok(home.join(".cache/abird/zerogravity/models"))
 }
 
 fn dir_flags() -> OFlags {
@@ -441,12 +441,12 @@ mod tests {
         for xdg in [None, Some(OsStr::new("")), Some(OsStr::new("relative"))] {
             assert_eq!(
                 resolve_root(None, xdg, Some(home)).unwrap(),
-                Path::new("/home/cache-fixture/.cache/zerogravity/models")
+                Path::new("/home/cache-fixture/.cache/abird/zerogravity/models")
             );
         }
         assert_eq!(
             resolve_root(None, Some(OsStr::new("/cache")), None).unwrap(),
-            Path::new("/cache/zerogravity/models")
+            Path::new("/cache/abird/zerogravity/models")
         );
         assert_eq!(
             resolve_root(

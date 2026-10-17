@@ -65,7 +65,7 @@ The current source-qualified Qwen GGUF formats remain the inference boundary. Sa
 
 ## 4. Cache, validation and transaction design
 
-Use `${XDG_CACHE_HOME:-$HOME/.cache}/zerogravity` by default with a documented explicit override; ignore relative XDG values as required by X. Never repurpose HOME. Linux is the first qualified platform; other platforms need equivalent path/atomicity tests before portability claims. User configuration/credentials and durable alias policy belong in their appropriate config/data directories, outside a cache users may delete.
+Use `${XDG_CACHE_HOME:-$HOME/.cache}/abird/zerogravity` by default with a documented explicit override; ignore relative XDG values as required by X. Never repurpose HOME. Linux is the first qualified platform; other platforms need equivalent path/atomicity tests before portability claims. User configuration/credentials and durable alias policy belong in their appropriate config/data directories, outside a cache users may delete.
 
 A proposed internal layout is `models/blobs/sha256/<digest>`, `models/manifests/<manifest-digest>.json`, `models/snapshots/<manifest-digest>/`, `models/refs/<provider+repository-key>/<selector-key>.json` and `models/staging/<attempt-id>/`. Names are implementation details; use collision-resistant encoded keys rather than remote paths as cache roots. Provider endpoints and authorization scope participate in resolution keys. Immutable content can be shared only where cache ownership/access policy permits.
 

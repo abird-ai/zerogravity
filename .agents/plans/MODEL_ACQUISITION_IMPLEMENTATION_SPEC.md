@@ -81,7 +81,7 @@ crate needs an observed platform/dependency boundary, not an architectural label
 
 ## XDG, locking and transaction details
 
-Root: `${XDG_CACHE_HOME:-$HOME/.cache}/zerogravity/models`, ignoring relative XDG;
+Root: `${XDG_CACHE_HOME:-$HOME/.cache}/abird/zerogravity/models`, ignoring relative XDG;
 explicit absolute override wins. Root/attempt directories0700, records0600,
 completed objects read-only by convention. Keep credentials/config outside cache.
 Suggested names: `blobs/sha256/<digest>`, `manifests/<digest>.json`,
