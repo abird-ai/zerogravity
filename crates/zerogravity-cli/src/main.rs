@@ -37,6 +37,8 @@ mod cache_manage;
 ))]
 mod cache_run;
 
+mod pipeline;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum GpuBackend {
     VulkanAmd,
@@ -131,6 +133,8 @@ enum Command {
         args: Vec<String>,
     },
     Pull(Vec<String>),
+    Models(Vec<String>),
+    Pipeline(Vec<String>),
     CacheRun(Vec<String>),
     CacheManage(Vec<String>),
     NotImplemented(String),
@@ -264,9 +268,11 @@ where
                     }
                 }
                 "pull" => Command::Pull(args.map(|arg| arg.as_ref().to_owned()).collect()),
+                "models" => Command::Models(args.map(|arg| arg.as_ref().to_owned()).collect()),
+                "pipeline" => Command::Pipeline(args.map(|arg| arg.as_ref().to_owned()).collect()),
                 "cache" => Command::CacheManage(args.map(|arg| arg.as_ref().to_owned()).collect()),
                 "run-cache" => Command::CacheRun(args.map(|arg| arg.as_ref().to_owned()).collect()),
-                "serve" | "models" | "config" => Command::NotImplemented(first.as_ref().to_owned()),
+                "serve" | "config" => Command::NotImplemented(first.as_ref().to_owned()),
                 other => Command::Unknown(other.to_owned()),
             }
         }
@@ -388,8 +394,12 @@ fn composed_usage() {
             "\nGPU OPTIONS:\n    --prompt TEXT | stdin (at most 1 MiB)\n    --max-tokens N  (1..=512, default 16)\n    --raw\n    --provider-mib N  (default 2048)\n    --device-mib N  (default 4096)\n\nResident GPU prompt plus generation admits at most 512 consumed tokens.\nOriginal model.gguf, config.json and tokenizer.json must be colocated."
         );
     }
+    println!("\nMODEL MATRIX: zerogravity models [list|inspect SLUG] (offline)");
     println!(
-        "\nFUTURE COMMANDS (NOT IMPLEMENTED):\n    serve       Shared model router and OpenAI-compatible API\n    models      Model management\n    config      Runtime configuration\n\nInference requires a compiled backend, model family and text tokenizer.\nEach run command selects its explicit backend; execution never falls back."
+        "PIPELINES: zerogravity pipeline [check|run] --config FILE.toml (run NOT IMPLEMENTED)"
+    );
+    println!(
+        "\nFUTURE COMMANDS (NOT IMPLEMENTED):\n    serve       Shared model router and OpenAI-compatible API\n    config      Runtime configuration\n\nInference requires a compiled backend, model family and text tokenizer.\nEach run command selects its explicit backend; execution never falls back."
     );
 }
 
@@ -769,6 +779,84 @@ fn execute_cache_manage(_: Vec<String>) -> Result<()> {
     ))
 }
 
+/// Offline model family INTENT matrix, not the source-bound loaded model catalog.
+/// Neither model admission, network, GPU nor cache initialization occurs here.
+fn models(args: &[String]) -> Result<()> {
+    use zerogravity::targets::{MODEL_TARGETS, find};
+    match args {
+        [] | [_]
+            if args.is_empty()
+                || args
+                    .first()
+                    .is_some_and(|one| matches!(one.as_str(), "list" | "--help" | "help")) =>
+        {
+            if args
+                .first()
+                .is_some_and(|value| matches!(value.as_str(), "--help" | "help"))
+            {
+                println!(
+                    "USAGE: zerogravity models [list | inspect TARGET | run TARGET | stream TARGET]\nStatic family intents are not runnable model registrations."
+                );
+                return Ok(());
+            }
+            println!(
+                "PRIORITY  TARGET                        TASK              SOURCE STATUS           EXECUTION"
+            );
+            for target in MODEL_TARGETS {
+                println!(
+                    "{:>2}        {:<29} {:<17} {:<23} {}",
+                    target.priority,
+                    target.slug,
+                    target.task.label(),
+                    target.source_status.label(),
+                    target.execution_status.label()
+                );
+            }
+            println!(
+                "NOTE: offline target registry; no weights, cache, GPU, license or runtime started."
+            );
+            Ok(())
+        }
+        [command, slug] if matches!(command.as_str(), "inspect" | "run" | "stream") => {
+            let entry = find(slug).ok_or_else(|| {
+                zerogravity::Error::Unsupported("unknown model target; use models list".into())
+            })?;
+            if command == "run" {
+                return entry.require_source_bound_execution();
+            }
+            if command == "stream" {
+                return entry.require_streaming_media();
+            }
+            println!(
+                "Target: {}\nPriority: {}\nTask: {}\nUpstream: {}\nSource layout: {}\nSource coverage: {}\nExecution: {}\nOptimization: NOT IMPLEMENTED\nStreaming media: NOT IMPLEMENTED\nPayload hold: {}\nNotes: {}",
+                entry.slug,
+                entry.priority,
+                entry.task.label(),
+                entry
+                    .repository
+                    .unwrap_or("unverified; requires exact source"),
+                entry.source_layout.label(),
+                entry.source_status.label(),
+                entry.execution_status.label(),
+                if entry.payload_hold {
+                    "YES - PIPELINE ONLY"
+                } else {
+                    "no implicit download"
+                },
+                entry.note
+            );
+            println!(
+                "No source, tensor format, execution, quant, MTP, SSD or media transport is authorized by this entry."
+            );
+            Ok(())
+        }
+        _ => Err(zerogravity::Error::Malformed(
+            "invalid models arguments; use models [list|inspect TARGET|run TARGET|stream TARGET]"
+                .into(),
+        )),
+    }
+}
+
 fn run(command: Command) -> ExitCode {
     match command {
         Command::Help => {
@@ -832,6 +920,20 @@ fn run(command: Command) -> ExitCode {
                 }
             }
         }
+        Command::Pipeline(args) => match pipeline::run(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("zerogravity pipeline: {error}");
+                ExitCode::from(2)
+            }
+        },
+        Command::Models(args) => match models(&args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("zerogravity models: {error}");
+                ExitCode::from(2)
+            }
+        },
         Command::NotImplemented(name) => {
             eprintln!(
                 "zerogravity: '{name}' is not implemented (local Qwen3.5 CPU run/inspect exist; router, API and model management are future work)"

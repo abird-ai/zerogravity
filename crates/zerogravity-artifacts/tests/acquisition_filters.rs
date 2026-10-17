@@ -1005,3 +1005,177 @@ fn known_companions_roundtrip_through_exact_offline_cache_closure() {
         );
     }
 }
+
+#[test]
+fn explicit_opaque_multicomponent_bundle_uses_one_pinned_source_and_original_cache_publisher() {
+    use zerogravity_artifacts::cache::CommitOutcome;
+    // This is source data, NOT a verified Diffusers, ASR or TTS assembly.
+    // In particular, no arbitrary nested safetensors index is interpreted
+    // as a model's only index or a right to execute model-owned weights.
+    let files = [
+        "model_index.json",
+        "scheduler/scheduler_config.json",
+        "text_encoder/model.safetensors",
+        "transformer/diffusion_pytorch_model-00001-of-00002.safetensors",
+        "transformer/diffusion_pytorch_model-00002-of-00002.safetensors",
+        "vae/diffusion_pytorch_model.safetensors",
+        "other-fp8/model.safetensors",
+        "LICENSE",
+    ];
+    let selected = &files[..6];
+    for provider in [Provider::HuggingFace, Provider::GitHub] {
+        let mut scripted = rows(provider, &files);
+        for path in selected {
+            let url = match provider {
+                Provider::HuggingFace => {
+                    format!("https://huggingface.co/owner/repo/resolve/{PIN}/{path}")
+                }
+                Provider::GitHub => {
+                    format!("https://raw.githubusercontent.com/owner/repo/{PIN}/{path}")
+                }
+            };
+            scripted.push(Row {
+                method: "GET",
+                url,
+                status: 200,
+                headers: BTreeMap::new(),
+                body: b"abc".to_vec(),
+            });
+        }
+        let script = Script::new(scripted);
+        let source = CandidateRequest::new(provider, "owner/repo", "main", None).unwrap();
+        let req = filters::FilterRequest::bundle(
+            source.clone(),
+            [
+                "model_index.json",
+                "scheduler/*",
+                "text_encoder/*",
+                "transformer/*",
+                "vae/*",
+            ]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+            vec!["other-fp8/*".into()],
+        )
+        .unwrap();
+        let limits = PullLimits::default();
+        let budget = admission(128 * 1024 * 1024);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let plan = filters::resolve(&script, &req, &limits, &budget, &cancel).unwrap();
+        assert_eq!(plan.files().len(), selected.len());
+        assert_eq!(plan.source().repository(), "owner/repo");
+        assert_eq!(plan.source().revision(), PIN);
+        assert_eq!(
+            plan.source().provider(),
+            if provider == Provider::HuggingFace {
+                "huggingface-bundle"
+            } else {
+                "github-bundle"
+            }
+        );
+        assert!(
+            plan.files()
+                .iter()
+                .all(|f| f.role() == FileRole::Auxiliary && f.bytes() == Some(3))
+        );
+        let fixture = Fixture::new();
+        let store = fixture.open();
+        let receipt = acquisition::execute(
+            &store,
+            &plan,
+            &script,
+            &budget,
+            &cancel,
+            Some("opaque-bundle"),
+        )
+        .unwrap();
+        assert!(matches!(receipt.outcome(), CommitOutcome::Durable(_)));
+        let lease = store.resolve_ref("opaque-bundle").unwrap();
+        assert_eq!(lease.manifest().entries().len(), selected.len());
+        filters::validate_cached_selection(&lease, &req, &limits, &cancel).unwrap();
+        let exact = filters::FilterRequest::bundle(
+            CandidateRequest::new(provider, "owner/repo", PIN, None).unwrap(),
+            req.includes().to_vec(),
+            req.excludes().to_vec(),
+        )
+        .unwrap();
+        filters::validate_cached_selection(&lease, &exact, &limits, &cancel).unwrap();
+        let wrong = filters::FilterRequest::bundle(
+            CandidateRequest::new(provider, "owner/repo", PIN, None).unwrap(),
+            vec!["model_index.json".into()],
+            vec![],
+        )
+        .unwrap();
+        assert!(filters::validate_cached_selection(&lease, &wrong, &limits, &cancel).is_err());
+        let changed_source = filters::FilterRequest::bundle(
+            CandidateRequest::new(provider, "owner/repo", &"f".repeat(40), None).unwrap(),
+            req.includes().to_vec(),
+            req.excludes().to_vec(),
+        )
+        .unwrap();
+        assert!(
+            filters::validate_cached_selection(&lease, &changed_source, &limits, &cancel).is_err()
+        );
+        let ordinary =
+            filters::FilterRequest::new(source, vec!["*.safetensors".into()], vec![]).unwrap();
+        assert!(filters::validate_cached_selection(&lease, &ordinary, &limits, &cancel).is_err());
+        script.empty();
+        assert_no_host_reservation(&budget);
+    }
+}
+
+#[test]
+fn bundle_is_explicit_and_cannot_infer_validated_model_or_codec_from_one_weight_file() {
+    for provider in [Provider::HuggingFace, Provider::GitHub] {
+        let source = CandidateRequest::new(provider, "owner/repo", "main", None).unwrap();
+        assert!(filters::FilterRequest::bundle(source.clone(), vec![], vec![]).is_err());
+        assert!(
+            filters::FilterRequest::bundle(source.clone(), vec!["*".into()], vec!["*".into()])
+                .is_ok()
+        );
+        let script = Script::new(rows(
+            provider,
+            &["component/model.safetensors", "README.md"],
+        ));
+        let req = filters::FilterRequest::bundle(
+            source,
+            vec!["component/model.safetensors".into()],
+            vec![],
+        )
+        .unwrap();
+        let plan = filters::resolve(
+            &script,
+            &req,
+            &PullLimits::default(),
+            &admission(128 * 1024 * 1024),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        assert_eq!(plan.files().len(), 1);
+        assert_eq!(plan.files()[0].role(), FileRole::Auxiliary);
+        assert!(!plan.source().provider().eq(provider.label()));
+        script.empty();
+    }
+}
+
+#[test]
+fn native_xet_bundle_qualifier_refuses_before_hub_metadata_or_cas_grants() {
+    let script = Script::new(vec![]);
+    let request = filters::FilterRequest::bundle(
+        CandidateRequest::new(Provider::HuggingFace, "owner/repo", PIN, None).unwrap(),
+        vec!["model_index.json".into(), "transformer/*".into()],
+        vec![],
+    )
+    .unwrap();
+    let result = xet::resolve_filtered(
+        &script,
+        &request,
+        &PullLimits::default(),
+        &xet::XetOptions::default(),
+        &admission(256 * 1024 * 1024),
+        &AtomicBool::new(false),
+    );
+    assert!(matches!(result, Err(Error::Unsupported(_))));
+    script.empty();
+}

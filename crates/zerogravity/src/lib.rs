@@ -11,6 +11,8 @@ pub use zerogravity_artifacts::acquisition;
 #[cfg(all(feature = "cache", target_os = "linux"))]
 pub use zerogravity_artifacts::cache;
 pub use zerogravity_artifacts::{artifact, model, quant, sharded};
+pub use zerogravity_core::pipeline;
+pub use zerogravity_core::targets;
 pub use zerogravity_core::{Error, Result, accelerator, session_root};
 pub use zerogravity_core::{device_events, device_queue, resource_arbiter, state};
 #[cfg(feature = "cpu")]

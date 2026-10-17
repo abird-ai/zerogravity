@@ -411,21 +411,27 @@ fn resolve_files(
             (selected, Some(exclusions))
         }
     };
-    close_model_selection(
-        transport,
-        (
-            repository,
-            &commit.sha,
-            sidecars,
-            &mut probes_left,
-            exclusions.as_ref(),
-        ),
-        &mut entries,
-        &mut selected,
-        limits,
-        &mut metadata_left,
-        cancel,
-    )?;
+    let raw_bundle = matches!(
+        choice,
+        super::quant::InitialChoice::Filtered(request) if request.is_bundle()
+    );
+    if !raw_bundle {
+        close_model_selection(
+            transport,
+            (
+                repository,
+                &commit.sha,
+                sidecars,
+                &mut probes_left,
+                exclusions.as_ref(),
+            ),
+            &mut entries,
+            &mut selected,
+            limits,
+            &mut metadata_left,
+            cancel,
+        )?;
+    }
     let mut files = Vec::with_capacity(selected.len());
     let model_selection = selected
         .iter()
@@ -439,14 +445,18 @@ fn resolve_files(
                 "GitHub symlinks, submodules and directories are not downloadable files".into(),
             ));
         }
-        let file_role = role(&path);
+        let file_role = if raw_bundle {
+            FileRole::Auxiliary
+        } else {
+            role(&path)
+        };
         let length = ensure_length_with_cap(
             entry,
             transport,
             raw_url(repository, &commit.sha, &path),
             (
                 limits.cache.max_file_bytes,
-                if file_role == FileRole::Auxiliary && !model_selection {
+                if file_role == FileRole::Auxiliary && !model_selection && !raw_bundle {
                     limits.unknown_length_cap
                 } else {
                     None
@@ -473,7 +483,15 @@ fn resolve_files(
         );
     }
     ResolvedPullPlan::new(
-        ManifestSource::new("github", repository, commit.sha)?,
+        ManifestSource::new(
+            if raw_bundle {
+                "github-bundle"
+            } else {
+                "github"
+            },
+            repository,
+            commit.sha,
+        )?,
         files,
         limits,
     )

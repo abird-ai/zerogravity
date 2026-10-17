@@ -113,6 +113,11 @@ pub fn resolve_filtered(
     cancel: &AtomicBool,
 ) -> Result<ResolvedPullPlan> {
     super::quant::limits_for_quant(limits)?;
+    if request.is_bundle() {
+        return Err(Error::Unsupported(
+            "native Xet opaque bundle selection is not qualified; use original HF bundle".into(),
+        ));
+    }
     if request.source().provider() != Provider::HuggingFace {
         return Err(Error::Unsupported("native filters require HF".into()));
     }

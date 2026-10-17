@@ -8,6 +8,29 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
+- [ ] One router must freeze each optional prior-committed text chat
+  context slice at the session's epoch and source/tenant boundary before
+  live ASR. No same-turn LLM feedback loop, cross-tenant history, system
+  prompts, raw KV pointers or tool secrets. The ON/OFF config/flag toggle
+  leaves typed graph topology stable; the OFF path performs no context
+  retrieval. Bound 16KiB UTF-8, credit/backpressure, stale acknowledgements,
+  opt-in and privacy/consent, and source-real ASR accuracy/latency tests.
+
+- [ ] Make TOML/repeatable-flag compiled pipeline configs a first-class
+  source-bound router input: many model IDs, many typed component DAGs,
+  many explicit protocol/route bindings within ONE process; one model
+  can serve standalone chat and ASR→diarization→LLM→TTS. Preserve
+  direct one-model CLI execution with no config requirement. Current
+  pipeline check is pure scaffolding; implement model residency,
+  admission, TaskCoordinator execution, generation/hot reload and
+  authenticated OpenAI/SSE/WebSocket/WebRTC transport, then enable
+  pipeline run/serve only after source/physical tests.
+- [ ] Distinguish model-trained MTP weights and Qwen Flash-Next
+  learned n-gram embedding bank from runtime n-gram/suffix
+  speculative decoding (no extra source required). Verify
+  accept/reject and complete rollback/grammar RNG across
+  QSA/GDN/MoE before any speed claim.
+
 - [ ] Implement canonical TaskRequest/coordinator workers and CLI/SDK/API integration, model routing/residency lifecycle, explicit supported OpenAI/Anthropic interfaces, streaming/tools/reasoning/schema/sampling and truthful capabilities.
 - [ ] Enforce separate API/tenant payload, queued-prefill/residency and physical active-step admission; bounded overload, cancellation, disconnect, stale epochs and output backpressure.
 - [ ] Add real compatible continuous/grouped batches, aged chunked prefill, decode/media fairness and finite joint batch/draft/expert/kernel/placement plans; no per-token catalog/JSON/global-lock work.

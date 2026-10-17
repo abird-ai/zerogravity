@@ -8,6 +8,20 @@ Contracts: [unified residency/SSD](../../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_A
 
 ## Uncommitted
 
+- [ ] Shared one-process pipeline residency: source-exact immutable
+  model/component buffers, per-session private StateRoots, one
+  ResourceArbiter (UMA/GPU/RAM/SSD and device queue), cross-model
+  lease/zero-copy only when physical placement, codec and lifetime
+  permit it. Do not replicate weights per route or release a
+  GPU buffer before actual completion/quarantine retirement.
+- [ ] Prioritize Qwen3.5 2B resident then Qwen3.8 27B SSD
+  streaming and Gemma4 E2B/26B/31B, then sparse Qwen Flash-Next
+  learned 51B n-gram bank and 4B MTP head placements. Compare
+  source-real logits, resident/streamed StateRoot, cold/warm
+  TTFT/ITL, I/O/read amplification and throughput with full
+  physical/cancel/error gates; live audio's soft deadline may
+  demand resident codecs and refuse cold SSD layouts.
+
 - [ ] Route legacy/new model allocations, CPU state/scratch/staging and APU/GPU shared backing into the same configured physical pools with OS/cgroup headroom; never sum overlapping UMA/VRAM/GTT counters.
 - [ ] Implement paged/contiguous state policy and full-domain prefix identity/intersection/COW across KV/SWA/recurrent/indexer/draft/grammar/media state, source/template/adapter and tenant boundaries.
 - [ ] Qualify committed snapshot persistence/restore, corruption/security/compatibility UX and restore-versus-recompute; diagnostic portable checkpoints are not product persistence.

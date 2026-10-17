@@ -133,6 +133,7 @@ fn parse(args: &[String]) -> Result<Options> {
     let mut quant = None;
     let mut includes = Vec::new();
     let mut excludes = Vec::new();
+    let mut bundle = false;
     let mut seen = std::collections::BTreeSet::new();
     while let Some(flag) = rest.next() {
         if !matches!(flag.as_str(), "--file" | "--include" | "--exclude")
@@ -143,6 +144,7 @@ fn parse(args: &[String]) -> Result<Options> {
         match flag.as_str() {
             "--offline" => result.offline = true,
             "--dry-run" => result.dry_run = true,
+            "--bundle" => bundle = true,
             "--cache"
             | "--ref"
             | "--revision"
@@ -227,7 +229,8 @@ fn parse(args: &[String]) -> Result<Options> {
     limits(&result)?;
     if let Some(provider) = provider {
         if let Some(tag) = quant {
-            if !files.is_empty()
+            if bundle
+                || !files.is_empty()
                 || !includes.is_empty()
                 || release.is_some()
                 || asset.is_some()
@@ -258,7 +261,7 @@ fn parse(args: &[String]) -> Result<Options> {
             };
             return Ok(result);
         }
-        if !includes.is_empty() || !excludes.is_empty() {
+        if bundle || !includes.is_empty() || !excludes.is_empty() {
             if includes.is_empty()
                 || !files.is_empty()
                 || release.is_some()
@@ -280,9 +283,11 @@ fn parse(args: &[String]) -> Result<Options> {
                 &revision.ok_or_else(invalid)?,
                 subfolder.as_deref(),
             )?;
-            result.action = Action::Filters(acquisition::filters::FilterRequest::new(
-                source, includes, excludes,
-            )?);
+            result.action = Action::Filters(if bundle {
+                acquisition::filters::FilterRequest::bundle(source, includes, excludes)?
+            } else {
+                acquisition::filters::FilterRequest::new(source, includes, excludes)?
+            });
             return Ok(result);
         }
         let (revision, selection) = match (revision, release, asset) {
@@ -310,6 +315,7 @@ fn parse(args: &[String]) -> Result<Options> {
         result.action = Action::Fetch(request);
     } else {
         if quant.is_some()
+            || bundle
             || !includes.is_empty()
             || !excludes.is_empty()
             || revision.is_some()
@@ -513,6 +519,11 @@ fn run_fetch(
 ) -> Result<()> {
     if let Some(native) = native {
         native.validate()?;
+        if matches!(request, FetchRequest::Filters(r) if r.is_bundle()) {
+            return Err(Error::Unsupported(
+                "native Xet bundle selection not qualified; use original HF bundle or exact native model selection".into()
+            ));
+        }
         if request.provider() != Provider::HuggingFace
             || matches!(request,FetchRequest::Files(r) if !matches!(r.selection,Selection::Files{..}))
             || options.unknown_size_cap.is_some()
@@ -524,7 +535,14 @@ fn run_fetch(
     let reference = options.reference.clone().unwrap_or_else(|| {
         format!(
             "{}/{}/{}",
-            request.provider().label(),
+            if matches!(request, FetchRequest::Filters(r) if r.is_bundle()) {
+                match request.provider() {
+                    Provider::HuggingFace => "huggingface-bundle",
+                    Provider::GitHub => "github-bundle",
+                }
+            } else {
+                request.provider().label()
+            },
             request.repository(),
             request.revision()
         )
@@ -544,9 +562,15 @@ fn run_fetch(
                 &limits(options)?,
                 &AtomicBool::new(false),
             )?;
-            eprintln!(
-                "Full-path filters validated against the exact closed cached snapshot; no filtered copy or remote uniqueness/native execution claim."
-            );
+            if filters.is_bundle() {
+                eprintln!(
+                    "Exact pinned opaque Auxiliary-only bundle verified; no filtered copy, model closure, remote uniqueness or execution qualification."
+                );
+            } else {
+                eprintln!(
+                    "Full-path filters validated against the exact closed cached snapshot; no filtered copy or remote uniqueness/native execution claim."
+                );
+            }
             return describe(&lease);
         }
         if let FetchRequest::Quant(quant) = request {
@@ -657,9 +681,14 @@ fn run_fetch(
             request.quant()
         );
     }
-    if matches!(request, FetchRequest::Filters(_)) {
+    if let FetchRequest::Filters(r) = request {
         eprintln!(
-            "Full-path Unicode filters: bounded selection/closure, no fallback or new model eligibility."
+            "{}: bounded Unicode full-path selection; no model fallback, auto-assembly, runtime or codec eligibility.",
+            if r.is_bundle() {
+                "Opaque Auxiliary-only source bundle"
+            } else {
+                "Closed model filters"
+            }
         );
     }
     if options.dry_run {
@@ -730,6 +759,7 @@ fn help() {
     zerogravity pull xet --help
     zerogravity pull hf|github OWNER/REPO --revision REV --quant TAG
     zerogravity pull hf|github OWNER/REPO --revision REV --include GLOB [--exclude GLOB ...]
+    zerogravity pull hf|github OWNER/REPO --revision REV --bundle --include GLOB [--include GLOB ...]
     zerogravity pull hf|github OWNER/REPO --revision REV --quant TAG --exclude GLOB
     zerogravity pull github OWNER/REPO --revision REV --file PATH
     zerogravity pull github OWNER/REPO --release TAG --asset NAME
@@ -753,6 +783,10 @@ OPTIONS:
                               Tag ASCII letter then letters/digits/_ (1..32); case-insensitive tag only
                               Offline requires --ref SNAPSHOT_DIGEST and a complete role-bound cached subset
                               No remote uniqueness/tensor/inference claim; releases/caps refuse
+    --bundle                   Opt-in opaque multi-component source bundle; requires --include
+                              ALL files Auxiliary under provider-bundle source identity
+                              No model closure/loader/codec inferred; native Xet bundle refuses
+                              Supply exact model_index/processor/shard trees yourself
     --include GLOB             Full-path case-exact Unicode fnmatchcase selection (repeatable)
     --exclude GLOB             Remove optional selections or whole competing families (repeatable)
                               Requires --include or --quant; cannot combine --include with --quant

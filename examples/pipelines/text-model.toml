@@ -1,0 +1,30 @@
+# Single model per process uses the SAME pipeline graph model if desired.
+# Existing 'zerogravity run /path/model.gguf' remains the direct fast path.
+schema = "zerogravity.pipeline.v1"
+
+[[model]]
+id = "model"
+target = "qwen3.5-2b"
+
+[[pipeline]]
+name = "chat"
+input = "text"
+output = "text"
+
+[[pipeline.step]]
+id = "generate"
+kind = "llm"
+model = "model"
+
+[[pipeline.link]]
+from = "input.value"
+to = "generate.text"
+
+[[pipeline.link]]
+from = "generate.text"
+to = "output.value"
+
+[[route]]
+path = "/v1/chat/completions"
+pipeline = "chat"
+protocol = "openai-text"

@@ -4,11 +4,13 @@
 pub mod accelerator;
 pub mod device_events;
 pub mod device_queue;
+pub mod pipeline;
 pub mod quant;
 pub mod resource_arbiter;
 pub mod session_root;
 pub mod source;
 pub mod state;
+pub mod targets;
 
 use std::fmt;
 use std::io;

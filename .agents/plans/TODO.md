@@ -18,6 +18,7 @@ Takeover text: [next-agent starting prompt](NEXT_AGENT_PROMPT_2026-10-17.md).
 - [x] [Simplify agent handoffs](handoff-cleanup/TODO.md) — `bfe672c`.
 - [x] [Historical records — archive retirement complete](historical-records/TODO.md) — `9239719`.
 - [ ] [Model acquisition — pinned model-pull v1 accepted; separately qualified provider parity remains open](model-acquisition/TODO.md) — `d5aa5cb`.
+- [ ] [Single-process model/pipeline composition — ordered model matrix, typed config and routes](pipeline-composition/TODO.md) — core scaffolds first, runtime unqualified.
 - [ ] [Model execution — CPU-first Qwen3.8 and Gemma4, then GPU](model-execution/TODO.md).
 - [ ] [Numerics and context — independent8K drift, broader GPU and16K/32K](numerics-and-context/TODO.md).
 - [ ] [CPU/GPU optimization — five GPUs/three CPUs after acquisition](cpu-gpu-optimization/TODO.md).

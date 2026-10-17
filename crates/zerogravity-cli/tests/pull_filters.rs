@@ -249,3 +249,36 @@ mod enabled {
         }
     }
 }
+#[cfg(all(feature = "acquisition", target_os = "linux"))]
+#[test]
+fn bundle_cli_requires_explicit_paths_and_refuses_quant_or_legacy_selection() {
+    let help = binary().args(["pull", "--help"]).output().unwrap();
+    assert!(help.status.success());
+    let text = String::from_utf8_lossy(&help.stdout);
+    assert!(text.contains("--bundle"));
+    assert!(text.contains("Auxiliary"));
+    let base = ["pull", "hf", "owner/repo", "--revision", "main", "--bundle"];
+    for extra in [
+        vec![],
+        vec!["--include", "*.safetensors", "--quant", "Q4_K_M"],
+        vec!["--include", "*.safetensors", "--file", "weights.gguf"],
+        vec!["--include", "*.safetensors", "--release", "v1"],
+        vec![
+            "--include",
+            "*.safetensors",
+            "--unknown-size-cap-bytes",
+            "1000",
+        ],
+        vec!["--include", "*.safetensors", "--bundle"],
+    ] {
+        let mut args = base.to_vec();
+        args.extend(extra);
+        let out = binary()
+            .args(&args)
+            .env("HF_TOKEN", "NEVER_ECHO_SECRET")
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        assert!(!String::from_utf8_lossy(&out.stderr).contains("NEVER_ECHO_SECRET"));
+    }
+}

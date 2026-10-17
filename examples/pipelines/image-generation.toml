@@ -1,0 +1,29 @@
+# Qwen Image 2.1: Diffusers multi-component source assembly, NOT a GGUF LM.
+schema = "zerogravity.pipeline.v1"
+
+[[model]]
+id = "image"
+target = "qwen-image-2.1"
+
+[[pipeline]]
+name = "render"
+input = "text"
+output = "image-rgba"
+
+[[pipeline.step]]
+id = "generate"
+kind = "image-generate"
+model = "image"
+
+[[pipeline.link]]
+from = "input.value"
+to = "generate.prompt"
+
+[[pipeline.link]]
+from = "generate.image"
+to = "output.value"
+
+[[route]]
+path = "/v1/images/generations"
+pipeline = "render"
+protocol = "sse"

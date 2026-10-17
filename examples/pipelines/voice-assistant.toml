@@ -1,0 +1,112 @@
+# Zerogravity v1 structural example (NOT runnable yet).
+# One Rust process can share 'assistant' across this live voice pipeline and
+# the ordinary text pipeline below; no per-stage llama.cpp/ollama servers.
+schema = "zerogravity.pipeline.v1"
+
+[[model]]
+id = "recognizer"
+target = "nvidia-canary-qwen-2.5b"
+# source = "/absolute/path/to/verified/cache/snapshot"
+
+[[model]]
+id = "speakers"
+target = "speaker-diarization"
+# A chosen original speaker model and exact source are not qualified yet.
+
+[[model]]
+id = "assistant"
+target = "qwen3.5-2b"
+
+[[model]]
+id = "voice"
+target = "qwen3-tts-1.7b"
+
+[[pipeline]]
+name = "talk"
+input = "audio-pcm"
+output = "audio-pcm"
+realtime = true
+
+[[pipeline.step]]
+id = "listen"
+kind = "asr"
+model = "recognizer"
+
+[[pipeline.step]]
+id = "speaker"
+kind = "diarization"
+model = "speakers"
+
+[[pipeline.step]]
+id = "prompt"
+kind = "speakers-text"
+
+[[pipeline.step]]
+id = "reply"
+kind = "llm"
+model = "assistant"
+
+[[pipeline.step]]
+id = "speak"
+kind = "tts"
+model = "voice"
+
+[[pipeline.link]]
+from = "input.value"
+to = "listen.audio"
+
+[[pipeline.link]]
+from = "input.value"
+to = "speaker.audio"
+
+[[pipeline.link]]
+from = "listen.transcript"
+to = "speaker.transcript"
+
+[[pipeline.link]]
+from = "speaker.speakers"
+to = "prompt.speakers"
+
+[[pipeline.link]]
+from = "prompt.text"
+to = "reply.text"
+
+[[pipeline.link]]
+from = "reply.text"
+to = "speak.text"
+
+[[pipeline.link]]
+from = "speak.audio"
+to = "output.value"
+
+# The same model instance 'assistant' serves a second pipeline in the same
+# physical ResourceArbiter/device pools. Connections do not copy tensors unless
+# a registered codec/placement conversion needs them.
+[[pipeline]]
+name = "chat"
+input = "text"
+output = "text"
+
+[[pipeline.step]]
+id = "reply"
+kind = "llm"
+model = "assistant"
+
+[[pipeline.link]]
+from = "input.value"
+to = "reply.text"
+
+[[pipeline.link]]
+from = "reply.text"
+to = "output.value"
+
+# Routes are declarations. No HTTP/SSE/WebRTC/WS listener exists yet.
+[[route]]
+path = "/v1/realtime"
+pipeline = "talk"
+protocol = "websocket"
+
+[[route]]
+path = "/v1/chat/completions"
+pipeline = "chat"
+protocol = "openai-text"

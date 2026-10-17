@@ -1,0 +1,46 @@
+# Structural pipeline only. No speaker model/codec/network is started.
+schema = "zerogravity.pipeline.v1"
+
+[[model]]
+id = "asr"
+target = "nvidia-parakeet-tdt-1.1b"
+
+[[model]]
+id = "speakers"
+target = "speaker-diarization"
+
+[[pipeline]]
+name = "transcribe-speakers"
+input = "audio-pcm"
+output = "speaker-transcript"
+
+[[pipeline.step]]
+id = "asr"
+kind = "asr"
+model = "asr"
+
+[[pipeline.step]]
+id = "speakers"
+kind = "diarization"
+model = "speakers"
+
+[[pipeline.link]]
+from = "input.value"
+to = "asr.audio"
+
+[[pipeline.link]]
+from = "input.value"
+to = "speakers.audio"
+
+[[pipeline.link]]
+from = "asr.transcript"
+to = "speakers.transcript"
+
+[[pipeline.link]]
+from = "speakers.speakers"
+to = "output.value"
+
+[[route]]
+path = "/v1/audio/transcriptions-with-speakers"
+pipeline = "transcribe-speakers"
+protocol = "openai-asr"

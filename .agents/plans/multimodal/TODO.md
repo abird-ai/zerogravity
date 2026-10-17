@@ -9,6 +9,29 @@ Contracts: [unified execution](../../docs/UNIFIED_MULTIMODAL_EXECUTION_CONTRACT_
 
 ## Uncommitted
 
+- [ ] Opt-in same-session **previous committed chat context** as bounded,
+  immutable, typed hint input to ASR, acoustic-first diarization,
+  transcript-text and separately source-qualified speaker-preserving
+  translation stages. Default disabled with no copy or exposure;
+  unsupported original ASR prompt dialect refuses or uses a separately
+  verified correction stage. Actual audio A/B WER/CER/DER/translation
+  adequacy, timestamp/partial-output correctness, named speaker
+  consent and canceled-turn isolation required before any claim.
+
+- [ ] Model each ASR (Qwen ASR/Whisper/Canary/Parakeet),
+  diarization (separately sourced speaker recognition), LM, Qwen TTS,
+  Qwen Image2.1 and future video as registered typed components,
+  not separate per-node subprocesses. The ASR→speaker-tagged
+  transcript→LLM→TTS single coherent pipeline must include rational
+  clocks, codec validity, VAD, per-turn epochs, barge-in,
+  bounded fanout/backpressure and correct playback ACK frontiers.
+  Current TOML/audio/image graph skeleton has NO real media runtime.
+- [ ] Enable native progressive image output only at complete
+  source-valid VAE/tile/frame boundaries; partial latents or
+  unverified solver steps are never playable. Actual media clocks,
+  atomic commit barriers, ROS/transport and tested streaming
+  quality/latency require source-real gates.
+
 - [ ] Add typed sample/frame/codebook/latent/decision values, rational clocks, checked conversions and complete source-bound component/codec/processor assemblies.
 - [ ] Prove a small real non-token encoder/decision task and bounded iterative task through the existing engine before broad media claims.
 - [ ] Qualify CPU-first original ASR and non-AR TTS (Whisper/Parakeet and Kokoro candidates); then actual backend execution and measured streaming/audio quality.

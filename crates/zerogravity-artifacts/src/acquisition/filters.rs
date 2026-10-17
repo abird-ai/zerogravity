@@ -22,6 +22,9 @@ pub(super) const CONTROL_BYTES: u64 = 16 * 1024 * 1024;
 pub struct FilterRequest {
     source: CandidateRequest,
     quant: Option<GgufQuantRequest>,
+    // Raw multi-component source data is NOT a closed runnable model.
+    // Its separate source namespace prevents ordinary model eligibility.
+    bundle: bool,
     includes: Vec<String>,
     excludes: Vec<String>,
 }
@@ -38,6 +41,7 @@ impl FilterRequest {
         Ok(Self {
             source,
             quant: None,
+            bundle: false,
             includes,
             excludes,
         })
@@ -47,9 +51,33 @@ impl FilterRequest {
         Ok(Self {
             source: quant.source().clone(),
             quant: Some(quant),
+            bundle: false,
             includes: Vec::new(),
             excludes,
         })
+    }
+    /// Explicit, bounded patterns for one pinned multi-component source.
+    /// This selects opaque Auxiliary bytes without inferring shard, model,
+    /// tokenizer, codec or processor completeness. No silent model fallback.
+    pub fn bundle(
+        source: CandidateRequest,
+        includes: Vec<String>,
+        excludes: Vec<String>,
+    ) -> Result<Self> {
+        if includes.is_empty() {
+            return Err(Error::Malformed("bundle includes are required".into()));
+        }
+        validate_patterns(&includes, &excludes)?;
+        Ok(Self {
+            source,
+            quant: None,
+            bundle: true,
+            includes,
+            excludes,
+        })
+    }
+    pub fn is_bundle(&self) -> bool {
+        self.bundle
     }
     pub fn source(&self) -> &CandidateRequest {
         &self.source
@@ -388,12 +416,37 @@ pub fn validate_cached_selection(
         ));
     }
     check_cancel(cancel)?;
-    super::components::validate_cached_file_source(
-        lease,
-        request.source.provider(),
-        request.source.repository(),
-        request.source.revision(),
-    )?;
+    if request.bundle {
+        let source = lease.manifest().source();
+        if source.provider() != format!("{}-bundle", request.source.provider().label())
+            || source.repository() != request.source.repository()
+            || source.revision().len() != 40
+            || !source
+                .revision()
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            || (request.source.revision().len() == 40
+                && request
+                    .source
+                    .revision()
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit())
+                && !source
+                    .revision()
+                    .eq_ignore_ascii_case(request.source.revision()))
+        {
+            return Err(Error::Malformed(
+                "cached bundle source differs from requested pin".into(),
+            ));
+        }
+    } else {
+        super::components::validate_cached_file_source(
+            lease,
+            request.source.provider(),
+            request.source.repository(),
+            request.source.revision(),
+        )?;
+    }
     Manifest::new(
         lease.manifest().source().clone(),
         lease.manifest().entries().to_vec(),
@@ -409,31 +462,33 @@ pub fn validate_cached_selection(
     let (mut selected, exclusions) = select(&entries, request, limits, cancel)?;
     let mut metadata = limits.max_metadata_bytes;
     let mut pages = limits.max_pages;
-    super::selection::close_model_selection_filtered(
-        &entries,
-        &mut selected,
-        limits,
-        ExternalSidecars::default(),
-        &exclusions,
-        &mut |path| {
-            check_cancel(cancel)?;
-            pages = pages.checked_sub(1).ok_or_else(bound)?;
-            let entry = lease
-                .manifest()
-                .entries()
-                .iter()
-                .find(|e| e.path() == path)
-                .ok_or_else(|| Error::Malformed("cached filter index absent".into()))?;
-            let size = usize::try_from(entry.bytes())
-                .ok()
-                .filter(|n| *n <= metadata)
-                .ok_or_else(bound)?;
-            metadata -= size;
-            let bytes = lease.read_verified(path, size as u64)?;
-            check_cancel(cancel)?;
-            Ok(bytes)
-        },
-    )?;
+    if !request.bundle {
+        super::selection::close_model_selection_filtered(
+            &entries,
+            &mut selected,
+            limits,
+            ExternalSidecars::default(),
+            &exclusions,
+            &mut |path| {
+                check_cancel(cancel)?;
+                pages = pages.checked_sub(1).ok_or_else(bound)?;
+                let entry = lease
+                    .manifest()
+                    .entries()
+                    .iter()
+                    .find(|e| e.path() == path)
+                    .ok_or_else(|| Error::Malformed("cached filter index absent".into()))?;
+                let size = usize::try_from(entry.bytes())
+                    .ok()
+                    .filter(|n| *n <= metadata)
+                    .ok_or_else(bound)?;
+                metadata -= size;
+                let bytes = lease.read_verified(path, size as u64)?;
+                check_cancel(cancel)?;
+                Ok(bytes)
+            },
+        )?;
+    }
     if selected.len() != lease.manifest().entries().len()
         || lease
             .manifest()
@@ -447,6 +502,14 @@ pub fn validate_cached_selection(
     }
     for entry in lease.manifest().entries() {
         check_cancel(cancel)?;
+        if request.bundle {
+            if entry.role() != FileRole::Auxiliary {
+                return Err(Error::Malformed(
+                    "cached bundle must be Auxiliary-only".into(),
+                ));
+            }
+            continue;
+        }
         let expected = if entry.path().ends_with(".gguf") || entry.path().ends_with(".safetensors")
         {
             Some(FileRole::Weights)

@@ -244,169 +244,183 @@ pub(super) fn resolve_choice(
             super::filters::select(&regular, request, limits, cancel)?
         }
     };
-    let initial = selected.clone();
-    let mut indexes = BTreeSet::new();
-    let mut index_shards = BTreeSet::new();
-    for path in &initial {
-        if path.ends_with(".safetensors.index.json") {
-            indexes.insert(path.clone());
-        }
-        if path.ends_with(".safetensors") {
-            let folder = path.rsplit_once('/').map(|(folder, _)| folder);
-            for candidate in entries.keys().filter(|candidate| {
-                candidate.ends_with(".safetensors.index.json")
-                    && candidate.rsplit_once('/').map(|(folder, _)| folder) == folder
-            }) {
-                indexes.insert(candidate.clone());
+    let raw_bundle = matches!(
+        choice,
+        super::quant::InitialChoice::Filtered(request) if request.is_bundle()
+    );
+    // A bundle is explicitly selected opaque multi-component data. It does
+    // NOT inherit ordinary one-family weights/config/tokenizer completeness.
+    // Strict pin, inventory, exact lengths, LFS hashes and sole publisher stay.
+    if !raw_bundle {
+        let initial = selected.clone();
+        let mut indexes = BTreeSet::new();
+        let mut index_shards = BTreeSet::new();
+        for path in &initial {
+            if path.ends_with(".safetensors.index.json") {
+                indexes.insert(path.clone());
+            }
+            if path.ends_with(".safetensors") {
+                let folder = path.rsplit_once('/').map(|(folder, _)| folder);
+                for candidate in entries.keys().filter(|candidate| {
+                    candidate.ends_with(".safetensors.index.json")
+                        && candidate.rsplit_once('/').map(|(folder, _)| folder) == folder
+                }) {
+                    indexes.insert(candidate.clone());
+                }
+            }
+            if let Some((prefix, _, total)) = split_gguf(path) {
+                if total == 0 || total as usize > limits.cache.max_files {
+                    return Err(Error::Limit("GGUF split count".into()));
+                }
+                for part in 1..=total {
+                    require(
+                        &entries,
+                        &mut selected,
+                        format!("{prefix}-{part:05}-of-{total:05}.gguf"),
+                    )?;
+                    exclusions.required(&format!("{prefix}-{part:05}-of-{total:05}.gguf"))?;
+                }
             }
         }
-        if let Some((prefix, _, total)) = split_gguf(path) {
-            if total == 0 || total as usize > limits.cache.max_files {
-                return Err(Error::Limit("GGUF split count".into()));
-            }
-            for part in 1..=total {
-                require(
-                    &entries,
-                    &mut selected,
-                    format!("{prefix}-{part:05}-of-{total:05}.gguf"),
-                )?;
-                exclusions.required(&format!("{prefix}-{part:05}-of-{total:05}.gguf"))?;
-            }
-        }
-    }
-    let mut covered = BTreeMap::<String, usize>::new();
-    for path in indexes {
-        // This index would be read by original closure; veto before its GET.
-        exclusions.required(&path)?;
-        let url = file_url(&base, &repo, &pin, &path)?;
-        let entry = entries
-            .get_mut(&path)
-            .ok_or_else(|| Error::Malformed("HF index disappeared".into()))?;
-        let size = ensure_length(
-            entry,
-            transport,
-            url.to_string(),
-            limits.cache.max_file_bytes.min(metadata_left as u64),
-            &mut probes_left,
-            cancel,
-            &pin,
-        )?;
-        let body = if let (Some(reader), Some(lfs)) = (index_reader.as_mut(), entry.lfs.as_ref()) {
-            let body = reader.read_index(PinnedIndex {
-                repository,
-                commit: &pin,
-                path: &path,
-                url: url.as_str(),
-                bytes: size,
-                sha256: &lfs.oid,
-                validator: entry.validator.as_deref(),
-            })?;
-            metadata_left = metadata_left
-                .checked_sub(body.len())
-                .ok_or_else(|| Error::Limit("HF cumulative index metadata bound".into()))?;
-            body
-        } else {
-            metadata_checked(
-                transport,
-                url,
-                &mut metadata_left,
-                cancel,
-                entry.validator.as_deref(),
-            )?
-            .0
-        };
-        if body.len() as u64 != size {
-            return Err(Error::Malformed("HF index length changed".into()));
-        }
-        verify_metadata_digest(entry, &body)?;
-        let index = SafetensorsIndex::from_json(&body)
-            .map_err(|_| Error::Malformed("invalid HF safetensors index".into()))?;
-        let folder = path.rsplit_once('/').map(|(prefix, _)| prefix);
-        let shards: Vec<_> = index
-            .shards()
-            .into_iter()
-            .map(|shard| match folder {
-                Some(folder) => format!("{folder}/{shard}"),
-                None => shard.to_string(),
-            })
-            .collect();
-        if initial.contains(&path) || shards.iter().any(|shard| initial.contains(shard)) {
+        let mut covered = BTreeMap::<String, usize>::new();
+        for path in indexes {
+            // This index would be read by original closure; veto before its GET.
             exclusions.required(&path)?;
-            require(&entries, &mut selected, path)?;
-            for shard in shards {
-                exclusions.required(&shard)?;
-                require(&entries, &mut selected, shard.clone())?;
-                *covered.entry(shard.clone()).or_default() += 1;
-                index_shards.insert(shard);
+            let url = file_url(&base, &repo, &pin, &path)?;
+            let entry = entries
+                .get_mut(&path)
+                .ok_or_else(|| Error::Malformed("HF index disappeared".into()))?;
+            let size = ensure_length(
+                entry,
+                transport,
+                url.to_string(),
+                limits.cache.max_file_bytes.min(metadata_left as u64),
+                &mut probes_left,
+                cancel,
+                &pin,
+            )?;
+            let body =
+                if let (Some(reader), Some(lfs)) = (index_reader.as_mut(), entry.lfs.as_ref()) {
+                    let body = reader.read_index(PinnedIndex {
+                        repository,
+                        commit: &pin,
+                        path: &path,
+                        url: url.as_str(),
+                        bytes: size,
+                        sha256: &lfs.oid,
+                        validator: entry.validator.as_deref(),
+                    })?;
+                    metadata_left = metadata_left
+                        .checked_sub(body.len())
+                        .ok_or_else(|| Error::Limit("HF cumulative index metadata bound".into()))?;
+                    body
+                } else {
+                    metadata_checked(
+                        transport,
+                        url,
+                        &mut metadata_left,
+                        cancel,
+                        entry.validator.as_deref(),
+                    )?
+                    .0
+                };
+            if body.len() as u64 != size {
+                return Err(Error::Malformed("HF index length changed".into()));
             }
-        }
-    }
-    if covered.values().any(|count| *count > 1) {
-        return Err(Error::Unsupported("ambiguous HF shard indexes".into()));
-    }
-    // Selected or adjacent pinned indexes supply complete shard closure.
-    // Multiple unrelated variants never resolve by taking the first match.
-    let mut families = BTreeSet::new();
-    let mut split_counts = BTreeMap::new();
-    for path in &selected {
-        if path.ends_with(".safetensors") && path.contains("-of-") && !index_shards.contains(path) {
-            return Err(Error::Unsupported(
-                "HF safetensors shard requires a complete pinned index".into(),
-            ));
-        }
-        if path.ends_with(".gguf") && path.contains("-of-") {
-            let Some((prefix, _, total)) = split_gguf(path) else {
-                return Err(Error::Malformed("invalid HF GGUF split name".into()));
-            };
-            if split_counts
-                .insert(prefix, total)
-                .is_some_and(|prior| prior != total)
-            {
-                return Err(Error::Malformed("inconsistent HF GGUF split count".into()));
-            }
-        }
-        if path.ends_with(".safetensors.index.json")
-            || is_weight(path) && !index_shards.contains(path)
-        {
-            families.insert(
-                split_gguf(path)
-                    .map(|(prefix, _, _)| prefix)
-                    .unwrap_or_else(|| path.clone()),
-            );
-        }
-    }
-    if families.len() > 1 {
-        return Err(Error::Unsupported("ambiguous HF weight variants".into()));
-    }
-    let weight_folders: BTreeSet<_> = selected
-        .iter()
-        .filter(|p| is_weight(p) || p.ends_with(".safetensors.index.json"))
-        .map(|p| p.rsplit_once('/').map(|(prefix, _)| prefix.to_string()))
-        .collect();
-    for folder in weight_folders {
-        for required in ["config.json", "tokenizer.json"] {
-            let path = folder
-                .as_ref()
-                .map(|f| format!("{f}/{required}"))
-                .unwrap_or_else(|| required.to_string());
-            if entries.contains_key(&path) || !sidecars.allows_missing(required) {
+            verify_metadata_digest(entry, &body)?;
+            let index = SafetensorsIndex::from_json(&body)
+                .map_err(|_| Error::Malformed("invalid HF safetensors index".into()))?;
+            let folder = path.rsplit_once('/').map(|(prefix, _)| prefix);
+            let shards: Vec<_> = index
+                .shards()
+                .into_iter()
+                .map(|shard| match folder {
+                    Some(folder) => format!("{folder}/{shard}"),
+                    None => shard.to_string(),
+                })
+                .collect();
+            if initial.contains(&path) || shards.iter().any(|shard| initial.contains(shard)) {
                 exclusions.required(&path)?;
                 require(&entries, &mut selected, path)?;
+                for shard in shards {
+                    exclusions.required(&shard)?;
+                    require(&entries, &mut selected, shard.clone())?;
+                    *covered.entry(shard.clone()).or_default() += 1;
+                    index_shards.insert(shard);
+                }
             }
         }
-        for &optional in super::selection::OPTIONAL_MODEL_COMPANIONS {
-            let path = folder
-                .as_ref()
-                .map(|f| format!("{f}/{optional}"))
-                .unwrap_or_else(|| optional.to_string());
-            if entries.contains_key(&path) && exclusions.allows(&path) {
-                selected.insert(path);
+        if covered.values().any(|count| *count > 1) {
+            return Err(Error::Unsupported("ambiguous HF shard indexes".into()));
+        }
+        // Selected or adjacent pinned indexes supply complete shard closure.
+        // Multiple unrelated variants never resolve by taking the first match.
+        let mut families = BTreeSet::new();
+        let mut split_counts = BTreeMap::new();
+        for path in &selected {
+            if path.ends_with(".safetensors")
+                && path.contains("-of-")
+                && !index_shards.contains(path)
+            {
+                return Err(Error::Unsupported(
+                    "HF safetensors shard requires a complete pinned index".into(),
+                ));
+            }
+            if path.ends_with(".gguf") && path.contains("-of-") {
+                let Some((prefix, _, total)) = split_gguf(path) else {
+                    return Err(Error::Malformed("invalid HF GGUF split name".into()));
+                };
+                if split_counts
+                    .insert(prefix, total)
+                    .is_some_and(|prior| prior != total)
+                {
+                    return Err(Error::Malformed("inconsistent HF GGUF split count".into()));
+                }
+            }
+            if path.ends_with(".safetensors.index.json")
+                || is_weight(path) && !index_shards.contains(path)
+            {
+                families.insert(
+                    split_gguf(path)
+                        .map(|(prefix, _, _)| prefix)
+                        .unwrap_or_else(|| path.clone()),
+                );
+            }
+        }
+        if families.len() > 1 {
+            return Err(Error::Unsupported("ambiguous HF weight variants".into()));
+        }
+        let weight_folders: BTreeSet<_> = selected
+            .iter()
+            .filter(|p| is_weight(p) || p.ends_with(".safetensors.index.json"))
+            .map(|p| p.rsplit_once('/').map(|(prefix, _)| prefix.to_string()))
+            .collect();
+        for folder in weight_folders {
+            for required in ["config.json", "tokenizer.json"] {
+                let path = folder
+                    .as_ref()
+                    .map(|f| format!("{f}/{required}"))
+                    .unwrap_or_else(|| required.to_string());
+                if entries.contains_key(&path) || !sidecars.allows_missing(required) {
+                    exclusions.required(&path)?;
+                    require(&entries, &mut selected, path)?;
+                }
+            }
+            for &optional in super::selection::OPTIONAL_MODEL_COMPANIONS {
+                let path = folder
+                    .as_ref()
+                    .map(|f| format!("{f}/{optional}"))
+                    .unwrap_or_else(|| optional.to_string());
+                if entries.contains_key(&path) && exclusions.allows(&path) {
+                    selected.insert(path);
+                }
             }
         }
     }
-    let model_selection = selected
-        .iter()
-        .any(|path| is_weight(path) || path.ends_with(".index.json"));
+    let model_selection = !raw_bundle
+        && selected
+            .iter()
+            .any(|path| is_weight(path) || path.ends_with(".index.json"));
     let files = selected
         .into_iter()
         .map(|path| {
@@ -414,14 +428,18 @@ pub(super) fn resolve_choice(
             let entry = entries
                 .get_mut(&path)
                 .ok_or_else(|| Error::Malformed("HF selection disappeared".into()))?;
-            let role = file_role(&path);
+            let role = if raw_bundle {
+                FileRole::Auxiliary
+            } else {
+                file_role(&path)
+            };
             let length = ensure_length_with_cap(
                 entry,
                 transport,
                 url.to_string(),
                 (
                     limits.cache.max_file_bytes,
-                    if role == FileRole::Auxiliary && !model_selection {
+                    if role == FileRole::Auxiliary && !model_selection && !raw_bundle {
                         limits.unknown_length_cap
                     } else {
                         None
@@ -455,7 +473,15 @@ pub(super) fn resolve_choice(
             .map(|file| file.with_hf_lfs(entry.lfs.is_some()))
         })
         .collect::<Result<Vec<_>>>()?;
-    let source = ManifestSource::new("huggingface", repository, pin)?;
+    let source = ManifestSource::new(
+        if raw_bundle {
+            "huggingface-bundle"
+        } else {
+            "huggingface"
+        },
+        repository,
+        pin,
+    )?;
     ResolvedPullPlan::new(source, files, limits)
 }
 

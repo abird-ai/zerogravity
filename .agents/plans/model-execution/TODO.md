@@ -8,6 +8,21 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
+- [ ] Enforce new owner priority: Qwen3.5 .8B regression, Qwen3.5
+  2B highest-perf trained CPU/GPU, Qwen3.8 27B with SSD
+  streaming/owned shard tensors, Gemma4 E2B, 26B-A4B, dense 31B,
+  then Qwen3.8 Flash-Next QSA/GDN/MoE/gated residual/MTP
+  and 51B learned n-gram embeddings. Every additional DeepSeek,
+  GLM/Muse/Mistral/Llama family has a typed NOT IMPLEMENTED
+  source contract until distinct trained CPU and GPU gates pass.
+  No subfamily is generalized from metadata-only source support.
+- [ ] Treat single-model local GGUF execution and multi-model
+  pipeline-qualified execution as two frontends of ONE TaskDriver/
+  SourceIdentity/StateRoot fabric. A reusable model instance
+  serves multiple routes without another model process or implicit
+  source promotion; named replicas/adapters require separate
+  physical memory admission.
+
 - [ ] After the accepted source-acquisition v1 cutover, use the existing
   pinned HF index-first path to inspect explicit original Qwen3.8-27B and
   Gemma4 26B-A4B index/config/tokenizer/chat/processor identities

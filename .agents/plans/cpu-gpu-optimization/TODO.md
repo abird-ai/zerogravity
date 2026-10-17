@@ -9,6 +9,14 @@ Contracts: [fleet optimization](../../research/INITIAL_HARDWARE_TARGETS_AND_OPTI
 
 ## Uncommitted
 
+- [ ] Bench and hyper-optimize in strict user order:
+  Qwen3.5 2B, Qwen3.8 27B including SSD/coalesced expert streaming;
+  Gemma4 E2B/26B/31B; Qwen3.8 Flash-Next Q2/~3.5-bpw/Q4
+  and MTP/drafter/n-gram pipeline. Optimize complete
+  request goodput with the same model semantics, source quant
+  calibration and StateRoot precision. Do not change the
+  Renoir/gfx90c launch hold or assume measured superiority.
+
 - [ ] Keep the local Renoir/gfx90c hold: 2B initialization aborted and automatic resets wedged it; no further launch/reset/recovery or Drop-retirement proof is implied.
 - [ ] Establish controlled cold/warm request baselines across all five GPU/three CPU optimization targets; accepted five backend profiles do not mean five cards or fleet-wide maximal capability use.
 - [ ] Qualify capability-selected AVX2/AVX512/VNNI quantized kernels, cache/thread/topology policies and source-derived repacking while preserving reduction/rounding/zero/subnormal rules.

@@ -248,6 +248,26 @@ Completed phases from `e0073a5` through signed `a774ded` are in
 
 ## Uncommitted
 
+- [ ] Canonical source-pull execution order (18 Oct decision): Qwen3.5 .8B/
+  2B, Qwen3.8 27B; Gemma4 E2B/26B-A4B/31B, each exact chosen GGUF
+  quants or indexed original safetensors; QwenImage2.1 original
+  Diffusers components; Qwen3 TTS/ASR; Whisper; NVIDIA Canary and
+  NeMo Parakeet; Qwen3.8 Flash-Next original plus separately sourced
+  Q2/~3.5-bpw/Q4 quants and independently verified MTP/n-gram
+  embedding banks. Do not guess literal Q3.5 quant tags or conflate
+  runtime speculative n-gram with trained n-gram checkpoint tensors.
+  Implement exact typed presets/component assembly and run real
+  metadata-only then authorized actual payload/sidecar/checksum
+  publication gates. DeepSeek V4.1 Flash and GLM5.3 Flash have an
+  explicit NO PAYLOAD download hold; prepare metadata pipeline only.
+- [ ] Extend the new bounded HF/GitHub Auxiliary-only --bundle to
+  source-verified Diffusers model_index nested shard sets, ASR/TTS
+  processors/codecs, NeMo archive streaming/extraction and
+  release-specific recursive dependencies under one pin/manifest.
+  Current --bundle is a user-selected subset and cannot claim a
+  complete model/codec assembly, support auto-loading, or run without
+  newly qualified source parser and license checks.
+
 - [x] Complete the observed public Qwen3.8+Gemma4 source metadata
   filenames in original pinned same-folder closure. 2026-10-18 actual
   tokenless HF --dry-run returned Qwen3.8-27B commit
