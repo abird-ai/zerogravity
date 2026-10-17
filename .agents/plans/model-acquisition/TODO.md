@@ -214,7 +214,7 @@ Completed phases from `e0073a5` through signed `a774ded` are in
   is implied. Acceptance requires a signed local exact-path commit;
   no push or external provider payload testing is implied.
 
-## Uncommitted
+### d5aa5cb — original-model v1 source closure and execution cutover
 
 - [x] Model-pull v1 execution cutover: close the finite companion gap
   for original index-first Qwen3.8 and Gemma4-like source layouts,
@@ -245,6 +245,37 @@ Completed phases from `e0073a5` through signed `a774ded` are in
   Four bounded Rust files and four plan files only; remaining separately
   qualified provider/mirror/gating/filesystem/SSD throughput work stays
   explicitly unchecked without obstructing the model-execution CPU-first plan.
+
+## Uncommitted
+
+- [x] Complete the observed public Qwen3.8+Gemma4 source metadata
+  filenames in original pinned same-folder closure. 2026-10-18 actual
+  tokenless HF --dry-run returned Qwen3.8-27B commit
+  1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0,
+  18 shards/55,586,113,293 selected bytes; Gemma4 26B-A4B-it commit
+  4d7ae4984b7db7de8f8457170b3f1a419ee76d52,
+  2 shards/51,644,338,194 selected bytes. A third tokenless
+  HF --dry-run resolves Gemma4 E2B-it commit
+  3e22461f65e89153144f8adb70e3b8c2cc9845a7,
+  1 unsharded safetensors/10,278,848,001 selected bytes. The actual
+  observed Qwen video_preprocessor_config.json and crc32.txt (opaque
+  non-trust data) required two additive optional companion filenames.
+  Both present in real result; no credentials, tensor weights, cache
+  refs, SDK, model execution or GPU touched. Synthetic HF/GH model/quant/filter and
+  offline exact closure tests cover both additional filenames.
+  Final exact source cutover gates pass: isolated check.sh 988 Rust
+  executions/0fail/69ignored/222 suites plus18 namespace fixtures and full
+  strict production/diagnostic lint, CPU/release/installer/Nix-format/
+  reference self-tests. Actual offline Nix source-integrity and local
+  docs links pass; unchanged root README, Cargo.lock/dependency manifests.
+  Separate original release source/cached model regressions both pass:
+  cache/direct16.88s and HF-import21.72s, each both approved Qwen3.5
+  checkpoints/all248320 logits/all42 state domains/two nonzero tokens/
+  independent sessions/lease/mutation/reclaim bit-exact. This remains
+  tokenless live metadata-only Hub resolution; there is no trained-source
+  byte acquisition, inference, 8K drift closure, model-format or physical
+  GPU qualification. Sign only the two additive Rust paths and relevant
+  plan documentation; no push, tag or user-cache/device mutation.
 
 - [ ] Extend cloud profiles beyond the narrow qualified AWS FULL_OBJECT SHA256 object route: broader S3 partitions/compatible vendors/credentials/checksum algorithms, Azure latest/SAS/managed chains and per-object digest-map prefixes. Keep explicit version, caller-SHA and conditional FirstSeen contracts distinct; never infer immutable versions or trusted raw hashes from unqualified validators or multipart COMPOSITE checksums.
 - [ ] Extend ModelScope only through separately qualified alias authority and redirect/CDN/mirror/credential profiles. Selected missing sizes now use exact pinned HEAD; no alias-to-commit authority was established from revision echoes, timestamps or file last-modified IDs. The current profile does not close broader parity or independently prove server revision/membership behavior.

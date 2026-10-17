@@ -740,8 +740,10 @@ fn qwen_and_gemma_companions_are_bounded_same_folder_and_not_executable() {
         "preprocessor_config.json",
         "image_processor_config.json",
         "video_processor_config.json",
+        "video_preprocessor_config.json",
         "feature_extractor_config.json",
         "audio_processor_config.json",
+        "crc32.txt",
     ];
     for provider in [Provider::HuggingFace, Provider::GitHub] {
         let mut paths = vec![

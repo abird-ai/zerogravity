@@ -1241,8 +1241,9 @@ tokenizer and known available companions. Besides the older vocab, generation,
 license and documentation members, the finite optional set now retains
 `chat_template.jinja`, `processor_config.json`,
 `preprocessor_config.json`, `image_processor_config.json`,
-`video_processor_config.json`, `feature_extractor_config.json`,
-`audio_processor_config.json`, `tokenizer.model`, `spiece.model`,
+`video_processor_config.json`, `video_preprocessor_config.json`,
+`feature_extractor_config.json`, `audio_processor_config.json`,
+`crc32.txt` (opaque; never checksum authority), `tokenizer.model`, `spiece.model`,
 `sentencepiece.bpe.model`, `vocab.txt` and `tokenizer.tiktoken`.
 They are original opaque bytes: neither template evaluation, processor syntax,
 tokenizer parity, arbitrary nested-directory copying nor complete multimodal
@@ -1258,6 +1259,31 @@ Offline source verification must bind to the **pinned commit** shown by
 resolution, not a floating `main` alias; original cache hashes, source
 identity, roles and bounds are rechecked. Receipt and cache eligibility
 prove retained bytes, **not** the ability to load them.
+
+### October 18, 2026 — verified public metadata-only source plans
+
+These observations used the actual optional acquisition CLI with **no HF_TOKEN**
+or other account credentials and `--dry-run`. They performed pinned Hub
+tree/index metadata resolution; no learned model shard GET, cache publication,
+SDK/model download, license acceptance, or inference occurred:
+
+| Original public HF source | Resolved immutable commit | Pinned files | Selected exact bytes |
+| --- | --- | --- | ---: |
+| `Qwen/Qwen3.8-27B` | `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0` | 18 safetensors shards + index + same-folder companions, including `video_preprocessor_config.json` and auxiliary `crc32.txt` | 55,586,113,293 |
+| `google/gemma-4-26B-A4B-it` | `4d7ae4984b7db7de8f8457170b3f1a419ee76d52` | 2 safetensors shards + index + config/tokenizer/chat/processor companions | 51,644,338,194 |
+| `google/gemma-4-E2B-it` | `3e22461f65e89153144f8adb70e3b8c2cc9845a7` | 1 unsharded `model.safetensors` + config/tokenizer/chat/processor companions | 10,278,848,001 |
+
+The command line is the ordinary `pull hf REPO --revision main --file
+model.safetensors.index.json --disk-limit-bytes 137438953472 --dry-run`;
+the resolver prints the pinned commit. For the unsharded Gemma4 E2B target
+use `--file model.safetensors` instead, with an explicit suitable disk policy
+(e.g. `--disk-limit-bytes 34359738368`) and `--dry-run`.
+Pinned index/sidecars not independently digested by the provider are explicitly
+FirstSeen; weight and tokenizer LFS raw hashes are marked TrustedSha256. The trusted/first-seen distinction is not
+license, execute-on-hardware or tensor-header qualification. Use the immutable
+commits above only if the intended authorization and version match; never
+assume that later `main` remains the same model. GitHub, ModelScope, native
+Xet and cloud extended profiles retain their separately qualified boundaries.
 
 **Execution handoff:** the source executor still has a 4GiB in-memory
 executable-source cap, and large original BF16 checkpoints are not executable

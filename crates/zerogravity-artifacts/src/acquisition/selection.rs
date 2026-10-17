@@ -23,8 +23,11 @@ pub(super) const OPTIONAL_MODEL_COMPANIONS: &[&str] = &[
     "preprocessor_config.json",
     "image_processor_config.json",
     "video_processor_config.json",
+    "video_preprocessor_config.json",
     "feature_extractor_config.json",
     "audio_processor_config.json",
+    // Opaque provider-supplied auxiliary notes, not a trusted raw digest.
+    "crc32.txt",
     "LICENSE",
     "LICENSE.md",
     "README.md",

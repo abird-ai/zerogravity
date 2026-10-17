@@ -15,6 +15,15 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   Select an authorized exact revision and admitted local host. Do not treat
   synthetic >51GB transfer-plan tests, public model pages or cached bytes
   as authorization, execution-ready source, or trained CPU parity.
+  2026-10-18 tokenless live metadata-only HF source observation resolved
+  Qwen3.8-27B to `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0`
+  (18 shards, 55,586,113,293 selected bytes) and Gemma4-26B-A4B-it
+  to `4d7ae4984b7db7de8f8457170b3f1a419ee76d52`
+  (2 shards, 51,644,338,194 selected bytes); Gemma4 E2B-it commit
+  `3e22461f65e89153144f8adb70e3b8c2cc9845a7`
+  (1 unsharded safetensors, 10,278,848,001 selected bytes).
+  No trained weights downloaded, locally owned, header-audited or
+  model-execution-qualified yet.
 
 - [ ] Acquire/bind authorized original config/index/tokenizer/checkpoint identities and choose a capable admitted host. Large BF16 sources exceed current local RAM; current executable source limit stays 4 GiB.
 - [ ] Implement explicitly admitted verified owned shards, exact complete index/header/name/dtype/offset/shape/hash binding and retained source leases; no unsafe mutable-file mapping shortcut or second issuer.
