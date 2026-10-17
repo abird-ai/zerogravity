@@ -3,7 +3,7 @@ use super::resume::{ResumeDisposition, ResumeRequest, strong_etag, validate_rang
 use super::{DigestProvenance, ResolvedFile, ResolvedPullPlan};
 use crate::cache::{
     CacheStore, CommitOutcome, DiscoveredEntry, DiscoveredObject, DiscoveredTransaction, Manifest,
-    ManifestEntry, ManifestSource, PartialObject, TransferAdmission,
+    ManifestEntry, ManifestSource, PartialObject, SnapshotLease, TransferAdmission,
 };
 use crate::{Error, Result};
 use std::collections::BTreeSet;
@@ -620,6 +620,33 @@ impl<T: HttpTransport> Read for RetryReader<'_, T> {
             self.body = response.body;
         }
     }
+}
+
+/// Apply acquisition eligibility to the original managed descriptors after
+/// their full cache verification. This is not another hash/source issuer and
+/// does not make arbitrary same-UID inode writes immutable.
+pub(super) fn reject_cached_pointers(lease: &SnapshotLease, cancel: &AtomicBool) -> Result<()> {
+    use std::os::unix::fs::FileExt;
+    for entry in lease.manifest().entries() {
+        super::http::check_cancel(cancel)?;
+        let mut prefix = [0u8; 128];
+        let count = entry.bytes().min(prefix.len() as u64) as usize;
+        let file = lease.file(entry.path())?;
+        let mut position = 0;
+        while position < count {
+            super::http::check_cancel(cancel)?;
+            let read = file.read_at(&mut prefix[position..count], position as u64)?;
+            super::http::check_cancel(cancel)?;
+            if read == 0 {
+                return Err(Error::Malformed(
+                    "cached acquisition prefix truncated".into(),
+                ));
+            }
+            position += read;
+        }
+        reject_pointer(&prefix[..count])?;
+    }
+    super::http::check_cancel(cancel)
 }
 
 pub(super) fn reject_pointer(prefix: &[u8]) -> Result<()> {

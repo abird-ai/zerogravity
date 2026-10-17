@@ -355,6 +355,16 @@ while permitting different asset IDs; repeated file bindings must still agree on
 their exact commit. Offline verification cannot prove mutable selector freshness,
 remote asset membership, token revocation, model compatibility or licensing.
 
+Legacy HF/GitHub offline selection keeps its original data-only initial selection:
+file roles and complete model closure are not inferred for ordinary cached data.
+It now checks every retained managed descriptor for LFS pointer payloads after
+original full cache verification. Generic CacheStore integrity alone grants no
+acquisition eligibility. Explicit component weights additionally reuse the same
+strict split/index closure as online resolution; independent config/tokenizer
+suppliers relax only those sidecars. Reading retained indexes shares one cumulative
+metadata-byte and index-request budget across the complete component set. These
+checks use existing descriptors and parsers, with no transport or second cache.
+
 ## Explicit HTTPS objects
 
 `acquisition::object::HttpsObjectSpec` describes one caller-authorized object:

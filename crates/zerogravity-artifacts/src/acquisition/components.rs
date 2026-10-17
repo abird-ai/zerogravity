@@ -667,7 +667,9 @@ pub fn validate_cached_selection(lease: &SnapshotLease, request: &PullRequest) -
             "cached snapshot lacks required selected files".into(),
         ));
     }
-    Ok(())
+    // Legacy offline selection remains initial-only and role agnostic. Reuse
+    // the acquisition pointer policy without adding a signal-handler contract.
+    super::executor::reject_cached_pointers(lease, &AtomicBool::new(false))
 }
 
 /// Open an explicitly bound cached set. This entry point has no transport,
@@ -696,6 +698,8 @@ pub fn open_components(
     let mut file_pins = BTreeMap::new();
     let mut release_pins = BTreeMap::new();
     let mut totals = Totals::default();
+    let mut index_bytes = 0usize;
+    let mut index_requests = 0usize;
     for component in request.components() {
         let snapshot = selected
             .remove(component.label())
@@ -756,6 +760,37 @@ pub fn open_components(
                     .iter()
                     .map(|entry| (entry.path(), entry.role())),
                 request.sidecars(),
+            )?;
+            let entries: BTreeMap<_, _> = lease
+                .manifest()
+                .entries()
+                .iter()
+                .map(|entry| (entry.path().to_string(), true))
+                .collect();
+            let mut selected = entries.keys().cloned().collect();
+            super::selection::close_model_selection(
+                &entries,
+                &mut selected,
+                limits,
+                request.sidecars(),
+                &mut |path| {
+                    let ordinal = lease
+                        .manifest()
+                        .entries()
+                        .binary_search_by(|entry| entry.path().cmp(path))
+                        .map_err(|_| {
+                            Error::Malformed("cached index absent from manifest".into())
+                        })?;
+                    let bytes = usize::try_from(lease.manifest().entries()[ordinal].bytes())
+                        .map_err(|_| limit())?;
+                    index_requests = index_requests.checked_add(1).ok_or_else(limit)?;
+                    index_bytes = index_bytes.checked_add(bytes).ok_or_else(limit)?;
+                    if index_requests > limits.max_pages || index_bytes > limits.max_metadata_bytes
+                    {
+                        return Err(limit());
+                    }
+                    lease.read_verified(path, limits.max_metadata_bytes as u64)
+                },
             )?;
         }
         totals.add(
