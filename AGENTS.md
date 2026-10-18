@@ -1,56 +1,69 @@
-# Working in Zerogravity
+# AGENTS.md
+
+<!-- BEGIN common -->
+## Shared conventions
+
+These are byte-identical across all abird repositories. Repo-specific rules
+follow the markers below.
+
+- **Source of truth.** Live source, tests and executed results outrank dated
+  prose. Start at `.agents/plans/README.md` (overview + spec), then work from
+  `.agents/plans/TODO.md` (the queue).
+- **XDG paths.** Where the project owns user config, data, cache or state,
+  resolve it under `$XDG_*_HOME/abird/<project>` — an absolute XDG base, falling
+  back to `HOME` when unset. No legacy or alternate root.
+- **Shared `.gitignore`.** The block at the top of `.gitignore` is identical
+  across repos; repo-specific entries follow it. Keep it mechanical.
+- **Preserve other work.** Never revert or overwrite changes you did not make.
+  Stage explicit paths, not broad globs, and leave other agents' staged or
+  uncommitted work untouched.
+- **Git safety.** Commits are signed; never disable signing. Never push,
+  force-push, tag, publish, deploy, or run destructive operations — history
+  rewrite, `reset --hard`, branch deletion, or touching another agent's
+  staged or uncommitted work — without explicit user confirmation for each
+  action. A request to "commit" or "apply" is not authorization to push.
+<!-- END common -->
+
+<!-- BEGIN repo-specific -->
+## Repository
 
 Start with [.agents/plans/TODO.md](.agents/plans/TODO.md), choose the relevant
 plan, and read its `TODO.md` plus the specifications it links. These TODO files
 replace the old handoffs, status ledgers, evidence workflow and SHA inventories.
 Older documents remain design/history references, not extra tracking duties.
 
-Read [.agents/plans/TODO-SPEC.md](.agents/plans/TODO-SPEC.md) before opening a
+Read [.agents/plans/README.md](.agents/plans/README.md) before opening a
 plan — it is the rulebook for the layout. A plan is `.agents/plans/<plan>/` with
 an optional `README.md` (what it is and why it exists, plus design, decisions and
 references sections, opened with its `Author:`/`Co-authors:`) and a required,
 extensive `TODO.md` whose completed work is grouped under the commit that landed
 it and whose open work sits under `## Uncommitted`.
 
-## One checklist per plan
+- **XDG project:** `abird/zerogravity`.
+
+## Plans and parallel work
 
 - `.agents/plans/TODO.md`: one checkbox and link per plan. Check it only when
-  that whole plan is implemented and tested; partial milestones stay in its file.
-- `.agents/plans/<plan>/TODO.md`: the main implementation and test checklist.
-  Record a known provenance commit, an `Uncommitted` section for current work,
-  and completed work/results under their actual commit IDs.
+  the whole plan is implemented and tested; partial milestones stay in its file.
 - `.agents/runs/<plan>-<session-or-agent-id>/TODO.md`: each agent's own working
-  checklist. Include its provenance commit, main-plan link, owned scope, tests,
-  results, failures and unfinished items. Update it as work proceeds so another
-  agent can continue an interrupted run. Do not edit another agent's checklist.
+  checklist. Record its parent plan, owned scope, tests, results, failures and
+  unfinished items, so another agent can continue an interrupted run. Do not
+  edit another agent's checklist.
+- The coordinator alone reconciles the shared plan: one writer, one serialized
+  atomic update; parallel appends must not overwrite each other. A finished run
+  file can be removed once its items are in the main plan; keep an interrupted
+  run file until its work is recovered.
+- Commit verified implementation, tests and plan updates together with explicit
+  paths. After each commit, move completed items under that commit and carry
+  unfinished items forward; do not create commits merely to record their own
+  IDs. On a finished plan, check its one line in the plan index.
+- When a plan grows long, move only completed sections into
+  `.agents/plans/<plan>/archive/<date-or-milestone>/TODO.md` and link them from
+  the live TODO.
 
-Use ordinary Markdown checkboxes and short notes. A test item says what to test
-and what passes; check it only after actually running it. Record the command and
-result briefly. Failed, blocked and unrun work stays unchecked with its reason.
-Keep a useful diagnostic log beside the run TODO when needed. No mandatory run
-receipts, source snapshots, per-file hashes, archives or generated handoffs.
-Actual model/content hashes and numerical acceptance limits remain part of the
-implementation wherever they are needed; this changes only work tracking.
-
-## Integrate, commit and continue
-
-Agents work in their own run files. When an agent finishes its assigned work,
-the coordinator reviews its changes/results and incorporates completed and
-unfinished items into the latest main plan in one serialized, atomic file
-update. Use one writer for that final update; parallel appends must not overwrite
-each other. A finished run file can be removed once all useful items are in the
-main plan. Keep an interrupted run file until its work is recovered.
-
-Commit verified implementation, tests and plan updates together using explicit
-paths. After each commit, record its ID, move completed items/results under that
-commit, and carry every unfinished item into `Uncommitted`. That small rolling
-TODO update belongs with the next commit; do not create commits merely to record
-their own IDs. On a fully finished plan, check its one line in the plan index.
-
-When a plan becomes long, move only completed sections into
-`.agents/plans/<plan>/archive/<date-or-milestone>/TODO.md` and link them from the
-live TODO. Keep unfinished work in the live file. Git provides source history;
-there is no separate archive verification/sealing process.
+No mandatory run receipts, source snapshots, per-file hashes, archives or
+generated handoffs. Actual model/content hashes and numerical acceptance limits
+remain part of the implementation wherever needed.
 
 ## Implementation boundaries
 
@@ -74,11 +87,4 @@ authorization. The local Renoir/gfx90c AMD launch hold remains.
 Use subagents for independent implementation/review/test work; the main agent
 coordinates, reconciles, decides and merges. Preserve unrelated user work.
 
-## Git safety
-
-Commits are signed; never disable signing. Never push, force-push, tag,
-publish, deploy, or run destructive operations — history rewrite, `reset
---hard`, branch deletion, or touching another agent's staged or uncommitted
-work — without explicit user confirmation for that action. Confirm each such
-action on its own: a request to "commit" or "apply" is not authorization to
-push.
+<!-- END repo-specific -->
