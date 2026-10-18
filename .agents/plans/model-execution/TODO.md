@@ -8,34 +8,48 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-- [x] **ME-P0 original Qwen3.8 source/value binding (small original
-  format, not trained 27B):** bind caller-authenticated original
-  QwenTextConfig SHA256 and pinned indexed-source SHA256 on the *same*
-  immutable SourceWeights allocation. Check every ordinary-text
-  name and original [output,input] tensor shape/encoding, including
-  the untied output head; distinguish source extra vision/MTP from
-  unregistered text roles. Reuse the existing CPU source MatVecRegion
-  for HF packed F32/F16/BF16 output-first matrices with no transpose,
-  plus the existing embedding/parameter-vector decoder through a
-  source-bound QwenOriginalCpu façade. Small complete 4-layer hybrid
-  original-format integration tests and negative hash/shape/missing-
-  head/source-provider tests pass. Oversized HF source matrices
-  refuse before the optional accelerator is invoked (observed no-dispatch).
-  The complete frozen isolated
-  `CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=4 python3 scripts/native-gpu.py -- bash scripts/check.sh`
-  passes 1,103 Rust tests, 0 failures, 69 ignored across 238 suites,
-  plus 18 Python namespace fixtures, strict lint, installer/Nix
-  formatting and CPU numeric selftests.
-  Both independent Qwen3.5 0.8B/2B original trained
-  source-parity release routes pass AFTER the final safety guard:
-  cache/direct 16.70s and HF-import 22.88s, each full 248320-vocabulary
-  logits, all 42 StateRoot domains, two tokens, independent sessions
-  and lease/mutation/reclamation exact. Default and
-  acquisition/cache-CPU strict `cargo clippy --locked --offline
-  --all-targets -- -D warnings` checks also pass. The original
-  GPT-family GGUF CPU and session path is unchanged.
-  Does NOT run trained 27B, create a Qwen session, implement
-  grouped GDN permutations, or stream SSD.
+- [x] **ME-P0 original Qwen3.8 analytic one-layer operators:**
+  source-bound ordinary zero-centered RMS gamma (1+weight),
+  HF head-interleaved full Q/gate projection, per-head Q/K norm,
+  source-configured partial RoPE, 24Q/4KV grouped lookup,
+  QK/softmax/AV/sigmoid/out projection and candidate KV slabs under a
+  source-and-layer-bound immutable `OriginalFullPrefix`. Source GDN
+  four-tap causal conv and SiLU, exact 16→48 repeat_interleave of
+  original Q/K, per-head L2, stored A_log→-exp(A_log),
+  dt_bias/softplus/sigmoid beta through the existing coefficients and
+  recurrent step, output GDN gated norm/out projection. An immutable
+  `OriginalGdnPrefix` holds exact source/layer and private tentative
+  conv/recurrent state, never replacing SessionAuthority. Source FFN
+  post-attention RMSNorm, SwiGLU and residual reuse old math.
+  Small independently derived analytical checks include zero-centered
+  norms, 16→48 head signed-zero mapping, 24Q/4KV GQA six-query
+  grouping, ln2 decay beta0.5/gain0.5, full attention gates/partial
+  RoPE, GDN two-token private repeat/branch, source identity mismatch,
+  finite and dimensional errors. The original 8K diagnostic bound and
+  original default GGUF behavior remain. **No trained HF BF16 intermediate
+  rounding, full layer/model StateRoot, tokenization, actual 27B learned
+  weights or GPU/SSD support claimed.** Strict source-config-specific
+  numerical reference and official checkpoint tests remain open.
+  Final isolated `CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=4
+  python3 scripts/native-gpu.py -- bash scripts/check.sh`
+  passed 1,111 Rust test executions, 0 failures, 69 ignored across
+  238 suites, plus 18 Python namespace fixtures, release CLI/installer
+  and CPU numeric-comparator scripts; strict default and composed
+  CPU/cache/Qwen/acquisition Clippy `-D warnings` passed.
+  Actual offline Nix source-integrity passed. Two independently run
+  Qwen3.5 .8B and 2B trained-source release routes remain exact:
+  cache/direct 17.36s and HF-import 22.49s, each original complete
+  248320 logits/42 StateRoot domains/two tokens/source leases.
+  Signed commit of this source-only analytical slice is pending final
+  review.
+- [ ] **ME-P0 next after diagnostics:** wire the analytically verified
+  Qwen original operators into the ONE existing forward-plan and
+  TaskDriver/SessionAuthority (no second token loop or state issuer),
+  with exact source BF16 intermediate cast and original FLA GDN kernels,
+  real trusted tokenizer and full 248320 logits/42-or-more StateRoot
+  domains against the pinned checkpoint. Only then begin
+  SSD-resident streaming and measured Qwen3.8-27B physical throughput.
+
 - [ ] **ME-P0 next numerical stage:** source-exact original Qwen
   full attention, GDN/MLP, grouped Q/K→V replication, A_log/gate
   transformation and BF16 intermediate numerical schedule using the
@@ -165,6 +179,37 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   default and physically insufficient explicit >4GiB budgets.
   **No actual >4GiB weight load, SSD streaming, trained original
   Qwen27B/Gemma math, tokenizer or physical GPU support is claimed.**
+
+### b796a2e — original Qwen text source geometry and CPU value binding
+
+- [x] **ME-P0 original Qwen3.8 source/value binding (small original
+  format, not trained 27B):** bind caller-authenticated original
+  QwenTextConfig SHA256 and pinned indexed-source SHA256 on the *same*
+  immutable SourceWeights allocation. Check every ordinary-text
+  name and original [output,input] tensor shape/encoding, including
+  the untied output head; distinguish source extra vision/MTP from
+  unregistered text roles. Reuse the existing CPU source MatVecRegion
+  for HF packed F32/F16/BF16 output-first matrices with no transpose,
+  plus the existing embedding/parameter-vector decoder through a
+  source-bound QwenOriginalCpu façade. Small complete 4-layer hybrid
+  original-format integration tests and negative hash/shape/missing-
+  head/source-provider tests pass. Oversized HF source matrices
+  refuse before the optional accelerator is invoked (observed no-dispatch).
+  The complete frozen isolated
+  `CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=4 python3 scripts/native-gpu.py -- bash scripts/check.sh`
+  passes 1,103 Rust tests, 0 failures, 69 ignored across 238 suites,
+  plus 18 Python namespace fixtures, strict lint, installer/Nix
+  formatting and CPU numeric selftests.
+  Both independent Qwen3.5 0.8B/2B original trained
+  source-parity release routes pass AFTER the final safety guard:
+  cache/direct 16.70s and HF-import 22.88s, each full 248320-vocabulary
+  logits, all 42 StateRoot domains, two tokens, independent sessions
+  and lease/mutation/reclamation exact. Default and
+  acquisition/cache-CPU strict `cargo clippy --locked --offline
+  --all-targets -- -D warnings` checks also pass. The original
+  GPT-family GGUF CPU and session path is unchanged.
+  Does NOT run trained 27B, create a Qwen session, implement
+  grouped GDN permutations, or stream SSD.
 
 ## Deferred — after Qwen/Gemma and Flash execution
 
