@@ -1,6 +1,8 @@
 //! One immutable original source allocation and bounded cold decoding.
 use crate::artifact::{Artifact, ArtifactFormat, ArtifactInfo, TensorInfo};
 use crate::quant::dequantize;
+#[cfg(all(feature = "cache", target_os = "linux"))]
+pub use crate::verified_shards::{ExpectedSourceShard, SourceOpenLimits, VerifiedShardPlan};
 use crate::{Error, Result};
 use std::{collections::HashMap, path::Path};
 use zerogravity_core::accelerator::{EmbeddingRegion, SourceIdentity};
@@ -10,10 +12,36 @@ use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest};
 
 const MAX_CPU_SOURCE: u64 = 4 * 1024 * 1024 * 1024;
 
+/// One source identity, possibly backed by several independently verified
+/// immutable allocations. GGUF keeps the original 4GiB policy.
+enum SourceStorage {
+    Gguf(Vec<u8>),
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    Safetensors(Vec<Vec<u8>>),
+}
+impl SourceStorage {
+    fn total_bytes(&self) -> usize {
+        match self {
+            Self::Gguf(source) => source.len(),
+            #[cfg(all(feature = "cache", target_os = "linux"))]
+            Self::Safetensors(shards) => shards.iter().map(Vec::len).sum(),
+        }
+    }
+    fn file(&self, shard: usize) -> Option<&[u8]> {
+        match self {
+            Self::Gguf(source) if shard == 0 => Some(source),
+            #[cfg(all(feature = "cache", target_os = "linux"))]
+            Self::Safetensors(shards) => shards.get(shard).map(Vec::as_slice),
+            _ => None,
+        }
+    }
+}
 pub struct SourceWeights {
     source_identity: SourceIdentity,
-    source: Vec<u8>,
+    source: SourceStorage,
     tensors: HashMap<String, TensorInfo>,
+    /// Each tensor binds one exact immutable owned file allocation.
+    shards: HashMap<String, usize>,
     architecture: String,
     #[cfg(all(feature = "cache", target_os = "linux"))]
     _memory: Option<GlobalResourceLease>,
@@ -24,7 +52,7 @@ impl std::fmt::Debug for SourceWeights {
         formatter
             .debug_struct("SourceWeights")
             .field("source_identity", &self.source_identity)
-            .field("source_bytes", &self.source.len())
+            .field("source_bytes", &self.source.total_bytes())
             .field("tensors", &self.tensors)
             .field("architecture", &self.architecture)
             .finish_non_exhaustive()
@@ -87,6 +115,7 @@ impl SourceWeights {
         source: Vec<u8>,
         _memory: Option<GlobalResourceLease>,
     ) -> Result<Self> {
+        let shards = info.tensors.iter().map(|t| (t.name.clone(), 0)).collect();
         let tensors = info
             .tensors
             .into_iter()
@@ -94,11 +123,32 @@ impl SourceWeights {
             .collect();
         Ok(Self {
             source_identity: SourceIdentity::for_new_allocation()?,
-            source,
+            source: SourceStorage::Gguf(source),
             tensors,
+            shards,
             architecture: info.architecture.unwrap_or_default(),
             #[cfg(all(feature = "cache", target_os = "linux"))]
             _memory,
+        })
+    }
+
+    /// The only materialization seam for indexed source shards.
+    /// Verification and admission are owned by the original verified_shards
+    /// module; this constructs no second issuer or model/runtime state.
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    pub(crate) fn from_verified_shard_storage(
+        source: Vec<Vec<u8>>,
+        tensors: HashMap<String, TensorInfo>,
+        shards: HashMap<String, usize>,
+        memory: GlobalResourceLease,
+    ) -> Result<Self> {
+        Ok(Self {
+            source_identity: SourceIdentity::for_new_allocation()?,
+            source: SourceStorage::Safetensors(source),
+            tensors,
+            shards,
+            architecture: String::new(),
+            _memory: Some(memory),
         })
     }
 
@@ -111,7 +161,7 @@ impl SourceWeights {
     /// Actual immutable in-process GGUF source-byte allocation. Cheap to
     /// query, useful for asserting shared LoadedQwenModel lifetime/capacity.
     pub fn source_len(&self) -> usize {
-        self.source.len()
+        self.source.total_bytes()
     }
 
     pub fn contains(&self, key: &str) -> bool {
@@ -138,9 +188,37 @@ impl SourceWeights {
         let end = offset
             .checked_add(len)
             .ok_or_else(|| Error::Limit("tensor byte range overflow".into()))?;
+        let owned = self.tensor(&t.name)?;
+        if owned.kind != t.kind
+            || owned.shape != t.shape
+            || owned.byte_offset != t.byte_offset
+            || owned.byte_len != t.byte_len
+        {
+            return Err(Error::Malformed(
+                "foreign tensor metadata for owned source".into(),
+            ));
+        }
+        let shard = *self
+            .shards
+            .get(&t.name)
+            .ok_or_else(|| Error::State("owned tensor missing shard binding".into()))?;
         self.source
-            .get(offset..end)
+            .file(shard)
+            .and_then(|bytes| bytes.get(offset..end))
             .ok_or_else(|| Error::Malformed(format!("tensor '{}' extends beyond source", t.name)))
+    }
+
+    /// Source-only admission for original indexed safetensors. No model
+    /// family gains trained numerical support by constructing a source.
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    pub fn prepare_verified_shards(
+        index_json: &[u8],
+        expected_index_sha256: &str,
+        shards: Vec<ExpectedSourceShard>,
+        limits: SourceOpenLimits,
+        admission: &crate::cache::TransferAdmission,
+    ) -> Result<VerifiedShardPlan> {
+        VerifiedShardPlan::prepare(index_json, expected_index_sha256, shards, limits, admission)
     }
 
     pub fn vector(&self, name: &str) -> Result<Vec<f32>> {

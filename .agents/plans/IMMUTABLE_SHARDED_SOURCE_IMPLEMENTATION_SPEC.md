@@ -1,7 +1,15 @@
 # Large immutable source loading: bounded basic-unit proposal
 
-Status: PLANNED implementation specification, retained from the completed design review.
-No implementation gate below is passed by this document. The [accepted checkpoint](accepted-baseline/TODO.md) settles historical verification; [plan TODO index](TODO.md) is required for implementation. Revalidate source observations against the live workspace before editing. Artifact files below belong to `crates/zerogravity-artifacts/`.
+Status: PARTIALLY IMPLEMENTED (18 October 2026).
+The verified owned-shard source-only implementation now lives in
+`crates/zerogravity-artifacts/src/verified_shards.rs` and
+`source_weights.rs` with tiny original-format regression fixtures at
+`crates/zerogravity-artifacts/tests/verified_shards.rs`.
+The later original trained Qwen3.8 27B model, SSD streaming,
+full original tensor/mathematical binding and physical-device
+qualification are NOT IMPLEMENTED. See the
+[model-execution TODO](model-execution/TODO.md) for accepted gates.
+The historical proposal below is retained for implementation context. The [accepted checkpoint](accepted-baseline/TODO.md) settles historical verification; [plan TODO index](TODO.md) is required for implementation. Revalidate source observations against the live workspace before editing. Artifact files below belong to `crates/zerogravity-artifacts/`.
 
 Status of original review: design only. No production change,
 limit increase, dependency addition, benchmark, model acquisition or GPU work.

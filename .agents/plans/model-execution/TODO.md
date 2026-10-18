@@ -8,6 +8,37 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
+- [x] **ME-P0 LS-B01–B05, verified owned sharded-source allocation:**
+  implement `SourceWeights::prepare_verified_shards` in the existing
+  artifacts owner with exactly opened original Safetensors file
+  descriptors, caller-expected index SHA256 and whole-shard SHA256/length,
+  one original SafetensorsIndex parser and checked header name→shard,
+  dtype/shape/offset/payload binding. Preflight limits and reserve whole
+  captured file allocation plus a conservative metadata envelope via the
+  original caller-attested host `ResourceArbiter` before copying. Reparse
+  exact owned bytes, compare authenticated headers against preflight
+  (including same-length mutation) before issuing the single original
+  SourceIdentity. Arc owner lifetime pins all original slices and RAM
+  charge; default GGUF `SourceWeights::open` keeps the 4GiB cap and
+  original Qwen execution path.
+  10 source-only integration tests pass: positive F32/F16/BF16, complete
+  index closure, foreign tensor metadata rejection, wrong SHA/length,
+  missing/extra/duplicate/wrong shard, same-descriptor pathname
+  replacement, original inode mutation, verified copied immutability,
+  multiple admitted/shared original leases and exact resource rollback.
+  Sparse >5GiB header tests refuse before reads under both 4GiB
+  default and physically insufficient explicit >4GiB budgets.
+  **No actual >4GiB weight load, SSD streaming, trained original
+  Qwen27B/Gemma math, tokenizer or physical GPU support is claimed.**
+- [ ] **ME-P0 next:** bind source-approved original Qwen3.8 27B
+  tensor/index/config and tokenizer to the existing mathematical engine
+  with authentic head/axis geometry, strict trained CPU full logits/
+  StateRoot, then source-verifiable immutable SSD extents with stable
+  leased memory and measured decode/prefill. First finish measured
+  Qwen3.5 2B CPU/approved GPU end-to-end performance and
+  cancellation/physical readiness. Preserve no model/SDK downloads
+  and held device launch policies without explicit authorization.
+
 - [ ] **ACTIVE NEXT: ME-P0 Qwen3.5 2B then Qwen3.8 27B.**
   Begin with original qualified Qwen3.5 .8B/2B CPU and resident GPU
   source/state oracles, inspect release source ownership and exact
