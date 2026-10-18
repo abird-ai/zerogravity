@@ -286,7 +286,7 @@ fn bad_context_sources_bounds_spoofed_cycles_and_unknown_config_refuse() {
     let original = std::fs::read_to_string(example("contextual-voice-assistant.toml")).unwrap();
     let bad = [
         original.replace("max_bytes = 4096", "max_bytes = 0"),
-        original.replace("max_bytes = 4096", "max_bytes = 16385"),
+        original.replace("max_bytes = 4096", "max_bytes = 1048577"),
         original.replace("from_model = \"assistant\"", "from_model = \"voice\""),
         original.replace("from_model = \"assistant\"", "from_model = \"missing\""),
         original.replace(
@@ -328,7 +328,7 @@ fn bad_context_sources_bounds_spoofed_cycles_and_unknown_config_refuse() {
             "--chat-context-from",
             "assistant",
             "--chat-context-max-bytes",
-            "16385",
+            "1048577",
         ],
     ] {
         let mut args = vec![
@@ -352,5 +352,204 @@ fn bad_context_sources_bounds_spoofed_cycles_and_unknown_config_refuse() {
         args.extend(flags);
         let result = output(&args);
         assert_eq!(result.status.code(), Some(2), "{args:?}");
+    }
+}
+
+#[test]
+fn ordered_context_filters_and_nanojev_decision_compile_from_human_toml_without_loading_models() {
+    let file = example("contextual-voice-filtered.toml");
+    let result = output(&["pipeline", "check", "--config", file.to_str().unwrap()]);
+    assert!(
+        result.status.success(),
+        "{:?}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let text = String::from_utf8(result.stdout).unwrap();
+    assert!(text.contains("Model instances: 5"));
+    assert!(text.contains("reused model bindings: 2"));
+    assert!(text.contains("1 configured, 1 ENABLED"));
+    assert!(text.contains("Context filters: 3 ordered stages, 1 typed decision stages"));
+    assert!(text.contains("history/backend access NOT IMPLEMENTED"));
+    let execution = output(&["pipeline", "run", "--config", file.to_str().unwrap()]);
+    assert_eq!(execution.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&execution.stderr).contains("NOT IMPLEMENTED"));
+}
+
+#[test]
+fn context_sources_match_filters_and_decision_accepted_as_repeatable_flags() {
+    let args = [
+        "pipeline",
+        "check",
+        "--name",
+        "chat-context",
+        "--input",
+        "text",
+        "--output",
+        "text",
+        "--model",
+        "assistant=qwen3.5-2b",
+        "--model",
+        "gate=nanojev-decision",
+        "--step",
+        "reply=llm:assistant",
+        "--link",
+        "input.value=reply.text",
+        "--link",
+        "context.value=reply.context",
+        "--link",
+        "reply.text=output.value",
+        "--chat-context-from",
+        "assistant",
+        "--chat-context-source",
+        "session/user_message",
+        "--chat-context-source",
+        "session/tool_call",
+        "--chat-context-source",
+        "session/tool_result",
+        "--chat-context-source",
+        "application/system_prompt",
+        "--chat-context-source",
+        "shared:team-support/assistant_message",
+        "--chat-context-match",
+        "exclude:kind:tool_call",
+        "--chat-context-match",
+        "exclude:kind:tool_result",
+        "--chat-context-decision",
+        "gate:8500:omit:Is this useful for the next utterance?",
+    ];
+    // The LLM's existing text port has no context input: use an ASR stage
+    // for the correctly typed policy instead; the malformed destination
+    // must refuse rather than smuggle session context into arbitrary ports.
+    let bad = output(&args);
+    assert_eq!(bad.status.code(), Some(2));
+    let mut correct = args.to_vec();
+    let index = correct
+        .iter()
+        .position(|value| *value == "context.value=reply.context")
+        .unwrap();
+    correct.remove(index);
+    correct.remove(index - 1);
+    correct.extend(["--model", "recognizer=nvidia-canary-qwen-2.5b"]);
+    // Replace all pipeline stages with ASR -> text -> LLM and add one typed
+    // context source edge, preserving the same selector/filter/decision flags.
+    let mut fixed = Vec::new();
+    let mut cursor = 0;
+    while cursor < correct.len() {
+        if correct[cursor] == "--input" {
+            fixed.extend(["--input", "audio-pcm"]);
+            cursor += 2;
+        } else if correct[cursor] == "--step"
+            && correct.get(cursor + 1) == Some(&"reply=llm:assistant")
+        {
+            fixed.extend([
+                "--step",
+                "hear=asr:recognizer",
+                "--step",
+                "to-text=transcript-text",
+                "--step",
+                "reply=llm:assistant",
+            ]);
+            cursor += 2;
+        } else if correct[cursor] == "--link"
+            && correct.get(cursor + 1) == Some(&"input.value=reply.text")
+        {
+            fixed.extend([
+                "--link",
+                "input.value=hear.audio",
+                "--link",
+                "hear.transcript=to-text.transcript",
+                "--link",
+                "to-text.text=reply.text",
+                "--link",
+                "context.value=hear.context",
+            ]);
+            cursor += 2;
+        } else {
+            fixed.push(correct[cursor]);
+            cursor += 1;
+        }
+    }
+    let result = output(&fixed);
+    assert!(
+        result.status.success(),
+        "{:?}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let text = String::from_utf8(result.stdout).unwrap();
+    assert!(text.contains("Context filters: 3 ordered stages, 1 typed decision stages"));
+    let mut disabled = fixed.clone();
+    disabled.extend(["--chat-context-enabled", "false"]);
+    let result = output(&disabled);
+    assert!(
+        result.status.success(),
+        "{:?}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(String::from_utf8_lossy(&result.stdout).contains("1 configured, 0 ENABLED"));
+}
+
+#[test]
+fn decision_source_types_duplicates_malformed_filters_and_unqualified_targets_refuse() {
+    let base = std::fs::read_to_string(example("contextual-voice-filtered.toml")).unwrap();
+    let cases = [
+        base.replace(r#"target = "nanojev-decision""#, r#"target = "qwen3.5-2b""#),
+        base.replace(r#"model = "gate""#, r#"model = "missing""#),
+        base.replace("sources = [", r#"sources = ["session/tool_result","#),
+        base.replace(
+            "shared:team-support/assistant_message",
+            "shared:../assistant_message",
+        ),
+        base.replace("min_confidence_bps = 7500", "min_confidence_bps = 10001"),
+        base.replace(
+            r#"on_unavailable = "omit""#,
+            r#"on_unavailable = "elevate""#,
+        ),
+        base.replace(r#"field = "kind""#, r#"field = "regex_script""#),
+        base.replace(r#"values = ["tool_call"]"#, r#"values = ["bad_role"]"#),
+        base.replace(r#"kind = "decision""#, r#"kind = "arbitrary_code""#),
+        base.replace("sources = [", "sources = [] # invalid sources,"),
+    ];
+    let temp = std::env::temp_dir().join(format!("zg-context-filters-{}", std::process::id()));
+    assert!(!temp.exists());
+    std::fs::create_dir(&temp).unwrap();
+    for (i, config) in cases.iter().enumerate() {
+        assert_ne!(*config, base);
+        let path = temp.join(format!("{i}.toml"));
+        std::fs::write(&path, config).unwrap();
+        let output = output(&["pipeline", "check", "--config", path.to_str().unwrap()]);
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "case {i} {:?}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("NEVER_ECHO_SECRET"));
+    }
+    std::fs::remove_dir_all(temp).unwrap();
+    for invalid in [
+        ["--chat-context-source", "session/tool_result"].as_slice(),
+        ["--chat-context-match", "exclude:kind:tool_call"].as_slice(),
+        ["--chat-context-decision", "gate:7500:omit:Question"].as_slice(),
+    ] {
+        let mut args = vec![
+            "pipeline",
+            "check",
+            "--name",
+            "chat",
+            "--input",
+            "text",
+            "--output",
+            "text",
+            "--model",
+            "assistant=qwen3.5-2b",
+            "--step",
+            "reply=llm:assistant",
+            "--link",
+            "input.value=reply.text",
+            "--link",
+            "reply.text=output.value",
+        ];
+        args.extend_from_slice(invalid);
+        assert_eq!(output(&args).status.code(), Some(2));
     }
 }

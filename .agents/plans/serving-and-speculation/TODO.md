@@ -8,13 +8,18 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
-- [ ] One router must freeze each optional prior-committed text chat
-  context slice at the session's epoch and source/tenant boundary before
-  live ASR. No same-turn LLM feedback loop, cross-tenant history, system
-  prompts, raw KV pointers or tool secrets. The ON/OFF config/flag toggle
-  leaves typed graph topology stable; the OFF path performs no context
-  retrieval. Bound 16KiB UTF-8, credit/backpressure, stale acknowledgements,
-  opt-in and privacy/consent, and source-real ASR accuracy/latency tests.
+- [ ] One router must snapshot each enabled, source-granted context
+  stream at the declared turn/graph epoch before live ASR. Default only
+  committed user/assistant session content; explicitly selected tool
+  call/result, application-owned system/developer prompts and authorized
+  shared/cross-user records are eligible. Strict source ownership and
+  requested grants, not a blanket category blacklist, govern access.
+  No same-turn LLM feedback loop or unauthorized sources/tenants, raw
+  unowned KV pointers or tool-secret leaks. The ON/OFF toggle leaves
+  typed graph topology stable; OFF performs no retrieval. Bound
+  configurable 4KiB..1MiB plus physical admission, ordered filters,
+  typed decision models, credit/backpressure, stale ACKs and source-real
+  accuracy/consent tests before live mode.
 
 - [ ] Make TOML/repeatable-flag compiled pipeline configs a first-class
   source-bound router input: many model IDs, many typed component DAGs,

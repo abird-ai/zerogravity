@@ -18,6 +18,7 @@ pub enum TaskKind {
     SpeechRecognition,
     SpeechSynthesis,
     MultiModal,
+    Decision,
 }
 impl TaskKind {
     pub const fn label(self) -> &'static str {
@@ -28,6 +29,7 @@ impl TaskKind {
             Self::SpeechRecognition => "audio-asr",
             Self::SpeechSynthesis => "audio-tts",
             Self::MultiModal => "multimodal",
+            Self::Decision => "decision",
         }
     }
 }
@@ -137,8 +139,8 @@ use SourceLayout::{
 };
 use SourceStatus::{CataloguedUnqualified as CU, Unverified as UV, VerifiedMetadataOnly as VM};
 use TaskKind::{
-    ImageGeneration as IG, Language as L, MultiModal as MM, SpeechRecognition as ASR,
-    SpeechSynthesis as TTS, TextImage as TI,
+    Decision as D, ImageGeneration as IG, Language as L, MultiModal as MM,
+    SpeechRecognition as ASR, SpeechSynthesis as TTS, TextImage as TI,
 };
 
 /// Canonical order, with distinct family and exact source aliases. Additional
@@ -407,6 +409,19 @@ pub const MODEL_TARGETS: &[ModelTarget] = &[
         NI,
         false,
         "Placeholder speaker segmentation/embedding source; not a pretrained diarization loader.",
+    ),
+    // NanoJev is a model INTERFACE, not an implicit choice among unrelated
+    // upstream 33M/0.6B/Qwen3.5-derived research implementations.
+    target(
+        "nanojev-decision",
+        10,
+        D,
+        None,
+        U,
+        UV,
+        NI,
+        false,
+        "Generic typed decision head (choice/boolean/score); user must pin an explicit NanoJev or other calibrated decision source. NO executing model.",
     ),
     target(
         "phi",

@@ -8,6 +8,7 @@
 //! Model instances are named once and may be shared across multiple pipeline
 //! graphs. Component kinds are registered through typed port contracts, not
 //! per-model independent servers or an untyped "pass arbitrary JSON" edge.
+use crate::context_filter::{ContextFilter, ContextFilterPlan};
 use crate::targets::{TaskKind, find};
 use crate::{Error, Result};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -19,8 +20,10 @@ pub enum ValueKind {
     TimedTranscript,
     SpeakerTranscript,
     ImageRgba,
-    /// Bounded immutable hints derived from previously committed, same-session
-    /// user-visible turns; never raw KV state, private system prompts or tools.
+    /// Bounded immutable, provenance-labelled context records from explicitly
+    /// requested and authorized sources. The default is only prior
+    /// same-session user/assistant turns; app prompts, tools and authorized
+    /// shared data may be opted in. Never a raw mutable KV pointer.
     CommittedChatContext,
 }
 impl ValueKind {
@@ -173,8 +176,8 @@ pub struct Pipeline {
     pub input: ValueKind,
     pub output: ValueKind,
     pub realtime: bool,
-    /// Opt-in prior-turn immutable same-session chat hints, never a current
-    /// generation feedback loop. If disabled, context channels carry None.
+    /// Opt-in typed context selection/filter pipeline, never a current-turn
+    /// feedback loop. If disabled, context channels carry None.
     pub chat_context: Option<ChatContextPolicy>,
     pub steps: Vec<PipelineNode>,
     pub links: Vec<PipelineEdge>,
@@ -187,9 +190,14 @@ pub struct ChatContextPolicy {
     pub enabled: bool,
     pub from_model: String,
     pub max_bytes: usize,
+    /// Versioned source selectors and ordered generic include/exclude /
+    /// decision steps. Configuration requests authority; it grants none.
+    pub selection: ContextFilterPlan,
 }
 impl ChatContextPolicy {
-    pub const MAX_BYTES: usize = 16 * 1024;
+    /// Configurable input capacity is not a hardcoded 16KiB context restriction.
+    /// Actual runtime admission may impose lower per-session quotas.
+    pub const MAX_BYTES: usize = 1024 * 1024;
     pub const DEFAULT_BYTES: usize = 4 * 1024;
 }
 
@@ -213,6 +221,8 @@ pub struct VerifiedShape {
     pub route_count: usize,
     pub context_configured_pipelines: usize,
     pub context_enabled_pipelines: usize,
+    pub context_filter_stages: usize,
+    pub context_decision_stages: usize,
 }
 fn invalid() -> Error {
     Error::Malformed("invalid bounded pipeline graph/config".into())
@@ -309,6 +319,8 @@ impl Config {
         let mut refs = 0usize;
         let mut context_configured_pipelines = 0usize;
         let mut context_enabled_pipelines = 0usize;
+        let mut context_filter_stages = 0usize;
+        let mut context_decision_stages = 0usize;
         for pipeline in &self.pipelines {
             if !id_ok(&pipeline.name)
                 || !names.insert(pipeline.name.as_str())
@@ -324,6 +336,18 @@ impl Config {
                     || policy.max_bytes > ChatContextPolicy::MAX_BYTES
                 {
                     return Err(Error::Limit("chat context snapshot exceeds bounds".into()));
+                }
+                policy.selection.validate()?;
+                context_filter_stages += policy.selection.stages.len();
+                for stage in &policy.selection.stages {
+                    if let ContextFilter::Decision { model, .. } = stage {
+                        let instance = models.get(model.as_str()).ok_or_else(unsupported)?;
+                        let decision = find(&instance.target).ok_or_else(unsupported)?;
+                        if decision.task != TaskKind::Decision {
+                            return Err(Error::Unsupported("context decisions require a registered typed decision model instance".into()));
+                        }
+                        context_decision_stages += 1;
+                    }
                 }
                 let source = models
                     .get(policy.from_model.as_str())
@@ -562,6 +586,8 @@ impl Config {
             route_count: self.routes.len(),
             context_configured_pipelines,
             context_enabled_pipelines,
+            context_filter_stages,
+            context_decision_stages,
         })
     }
 }
@@ -711,6 +737,7 @@ mod context_tests {
                         enabled: true,
                         from_model: "assistant".into(),
                         max_bytes: 4096,
+                        selection: ContextFilterPlan::default(),
                     }),
                     steps: vec![PipelineNode {
                         id: "format".into(),

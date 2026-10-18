@@ -9,6 +9,36 @@ their existing numeric/source/physical acceptance gates.
 
 ## Uncommitted
 
+- [~] Replace fixed prior-visible-only history with a reusable typed
+  ContextFilterPlan for independently configurable user/assistant messages,
+  tool calls, tool results, application-owned system/developer prompts and
+  explicitly named shared/granted records. Default remains session
+  user+assistant; filters include/exclude by record kind, exact tool name,
+  source origin or text substring in deterministic order. Typed calibrated
+  NanoJev-style decision stage references a separately declared Decision
+  model, accepts threshold in basis points and configurable unavailable
+  policy (omit/reject/keep_authorized). The latter never reintroduces
+  excluded, missing or ungranted records. Support TOML and repeatable CLI
+  flags; bound source selectors/controls and configurable 4KiB default
+  through 1MiB context budget. Configuration *requests* source rights;
+  runtime source owner must verify actual authorization, not a hard-coded
+  block against application prompts or authorized sharing. No model
+  inference/automatic context history access is claimed.
+- [ ] Implement actual source-grant checked snapshot builder and filter
+  executor with source provenance, revocable session/tenant/shared grants,
+  requested app prompts, per-stage authorization, dynamic decision model
+  with calibrated source-verified logits, stable record ordering and
+  cache/graph generation binding. Bounded snapshot/latency admission,
+  user-specific preferences, redacted observability and context quality
+  A/B real speech tests must pass before any router execution.
+- [x] Audited all 6 old detached side worktrees against signed C3/C4/C5,
+  v1 and pipeline acceptance commits; preserved earlier unfinished portable
+  source patches under .agents/docs and copied nine side-only run artifacts
+  into existing MAIN .agents/runs before removing all six detached
+  worktrees. One new active, clean worktree
+  zerogravity-worktrees/agents-conventions at unmerged e0410c7 is
+  intentionally retained. No branch or unrelated user work deleted.
+
 - [x] Source-neutral ordered model target matrix for Qwen3.5+/3.5/3.8,
   Gemma4, DeepSeek V4.1 Flash, GLM5.3 Flash/full, Muse Spark, Mistral/Llama,
   additional OSS, QwenImage2.1/QwenTTS/QwenASR/Whisper/Canary/Parakeet.
@@ -34,11 +64,12 @@ their existing numeric/source/physical acceptance gates.
   checkpoint interpretation.
 - [x] Implement source-neutral explicit optional chat-context policy:
   per-pipeline enabled toggle (default absent/off), shared text LLM model
-  instance, max1..16384 UTF-8 bytes, typed synthetic prior-turn
-  context.value, optional ASR/diarization/transcript-text/speakers-text/
-  translation stage context inputs. Same-session prior committed visible
-  turns only; compiled graph has no cyclic/current-turn history flow or
-  raw KV injection. Disabled policy leaves edges but delivers None.
+  instance, originally max1..16384 UTF-8 bytes and prior committed
+  same-session visible turns (historical 4bf624e semantics, now superseded
+  by the configurable source selection/filtering policy above).
+  Typed optional context.value inputs reach ASR/diarization/
+  transcript-text/speakers-text/translation. The graph still prevents
+  same-turn cyclic feedback and unowned raw KV injection. Disabled policy leaves edges but delivers None.
   Source-real contextual speech/diarization/translation, privacy-safe
   snapshot capture and context A/B quality remain NOT IMPLEMENTED.
   TOML and repeated flags compile identical shape; include full
@@ -75,7 +106,8 @@ their existing numeric/source/physical acceptance gates.
   vocab support or separate contextual transcript reranker, acoustic-first
   diarization and source-preserving contextual translation. Implement
   prior-committed same-session snapshot freezing, cancellation epochs,
-  explicit consent, redaction, bounded history and no cross-user leaks.
+  explicit consent, redaction, bounded history and no unauthorized
+  cross-user disclosures.
   A/B compare WER/CER/DER/translation adequacy/latency for context
   ON/OFF; never override contradicted acoustic evidence. This does not
   follow from shape validation.
@@ -101,12 +133,38 @@ their existing numeric/source/physical acceptance gates.
 
 ## Tests and verification
 
+- [x] Frozen isolated updated-context-filter source-only check.sh
+  passed 1,047 Rust executions, 0 failed, 69 intentionally ignored
+  across 230 suites, plus 18 Python namespace fixtures, four strict
+  production/diagnostic feature lint gates, Nix formatting, release
+  installer and CPU comparator gates. Two independently invoked original
+  Qwen3.5 release cache_prepare routes pass both approved models,
+  full248320 logits/all42 state domains/two tokens/source-lease/
+  mutation/reclamation bit-exact: direct18.66s, HF-import23.24s.
+  Real offline Nix filtered-source integrity includes two new paths;
+  root README, workspace deps/Cargo.lock unchanged.
+  This qualifies only config shape plus pure filtering over explicitly
+  *provided* already-granted record views. Live source authorization,
+  history retrieval, calibrated NanoJev model inference and real media
+  execution are not implemented.
+
+- [x] Filter pipeline: independent tool-call and tool-result opt-in/
+  exclusion, context source selection for app prompts/shared grants,
+  no silent permission acquisition, ordered predicates, user preference
+  filters and decision confidence/fallback. Include/omit verdicts must
+  not resurrect previously filtered entries or invent inaccessible text.
+- [x] TOML + equivalent CLI filters and NanoJev-style typed decision
+  references. No inferred upstream checkpoint or executable model. Reject
+  duplicate/unknown scopes, malformed origin names, unsourced decision
+  models, non-decision heads, invalid thresholds, invalid return variants,
+  excessive source/filter/budget and unsupported executable pipelines.
 - [x] Opt-in previous-turn context *shape* passes TOML and repeated flags,
   with toggling ON/OFF on the same graph, absent-by-default channel, and
   static bounds/unknown model/non-language source/no consumer/spoofed
-  current-turn feedback refusal. No hidden prompts or cross-user data
-  can be obtained by configuration checking (it has no data/transport
-  access). Runtime content/biometric/clock and privacy tests remain open.
+  current-turn feedback refusal. Configuration checking has no
+  data/transport access; a later runtime may include explicitly
+  requested authorized app prompts or shared user records only under
+  real source grants. Runtime content/biometric/clock tests remain open.
 - [x] Core shape validation passes: one-stage Qwen, model sharing across
   two routes, ASR+diarization+optional contextual translation+LLM+TTS
   and image flow. Stages are semantic placeholders only.

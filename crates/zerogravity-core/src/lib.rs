@@ -2,6 +2,7 @@
 //! No model family, tokenizer, GPU SDK or execution backend dependencies.
 
 pub mod accelerator;
+pub mod context_filter;
 pub mod device_events;
 pub mod device_queue;
 pub mod pipeline;

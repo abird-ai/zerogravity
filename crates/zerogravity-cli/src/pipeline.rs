@@ -3,6 +3,10 @@
 //! adapter are NOT IMPLEMENTED until source, physical and protocol gates pass.
 use serde::Deserialize;
 use std::fs;
+use zerogravity::context_filter::{
+    ContextFilter, ContextFilterPlan, ContextSource, DecisionUnavailable, FilterAction, MatchField,
+    default_sources,
+};
 use zerogravity::pipeline::{
     ApiRoute, ChatContextPolicy, Config, ModelInstance, Pipeline, PipelineEdge, PipelineNode,
     ValueKind,
@@ -49,6 +53,74 @@ struct ChatContextDoc {
     enabled: bool,
     from_model: String,
     max_bytes: Option<usize>,
+    sources: Option<Vec<String>>,
+    #[serde(default)]
+    filter: Vec<ContextFilterDoc>,
+}
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum ContextFilterDoc {
+    Match {
+        action: String,
+        field: String,
+        values: Vec<String>,
+    },
+    Decision {
+        model: String,
+        question: String,
+        min_confidence_bps: Option<u16>,
+        on_unavailable: Option<String>,
+    },
+}
+impl ContextFilterDoc {
+    fn compile(self) -> Result<ContextFilter> {
+        match self {
+            Self::Match {
+                action,
+                field,
+                values,
+            } => Ok(ContextFilter::Match {
+                action: FilterAction::parse(&action)?,
+                field: MatchField::parse(&field)?,
+                values,
+            }),
+            Self::Decision {
+                model,
+                question,
+                min_confidence_bps,
+                on_unavailable,
+            } => Ok(ContextFilter::Decision {
+                model,
+                question,
+                min_confidence_bps: min_confidence_bps.unwrap_or(7500),
+                unavailable: DecisionUnavailable::parse(
+                    on_unavailable.as_deref().unwrap_or("omit"),
+                )?,
+            }),
+        }
+    }
+}
+impl ChatContextDoc {
+    fn compile(self) -> Result<ChatContextPolicy> {
+        let sources = match self.sources {
+            Some(names) => names
+                .into_iter()
+                .map(|s| ContextSource::parse(&s))
+                .collect::<Result<Vec<_>>>()?,
+            None => default_sources(),
+        };
+        let stages = self
+            .filter
+            .into_iter()
+            .map(ContextFilterDoc::compile)
+            .collect::<Result<Vec<_>>>()?;
+        Ok(ChatContextPolicy {
+            enabled: self.enabled,
+            from_model: self.from_model,
+            max_bytes: self.max_bytes.unwrap_or(ChatContextPolicy::DEFAULT_BYTES),
+            selection: ContextFilterPlan { sources, stages },
+        })
+    }
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -96,11 +168,7 @@ impl Document {
                         input: ValueKind::parse(&p.input)?,
                         output: ValueKind::parse(&p.output)?,
                         realtime: p.realtime,
-                        chat_context: p.chat_context.map(|c| ChatContextPolicy {
-                            enabled: c.enabled,
-                            from_model: c.from_model,
-                            max_bytes: c.max_bytes.unwrap_or(ChatContextPolicy::DEFAULT_BYTES),
-                        }),
+                        chat_context: p.chat_context.map(ChatContextDoc::compile).transpose()?,
                         steps: p
                             .step
                             .into_iter()
@@ -154,6 +222,8 @@ fn flags(args: &[String]) -> Result<Config> {
     let mut chat_context_from = None;
     let mut chat_context_enabled = None;
     let mut chat_context_max_bytes = None;
+    let mut chat_context_sources = Vec::new();
+    let mut chat_context_stages = Vec::new();
     let mut models = Vec::new();
     let mut steps = Vec::new();
     let mut links = Vec::new();
@@ -168,8 +238,16 @@ fn flags(args: &[String]) -> Result<Config> {
             realtime = true;
             continue;
         }
-        if !matches!(flag.as_str(), "--model" | "--step" | "--link" | "--route")
-            && !seen.insert(flag.as_str())
+        if !matches!(
+            flag.as_str(),
+            "--model"
+                | "--step"
+                | "--link"
+                | "--route"
+                | "--chat-context-source"
+                | "--chat-context-match"
+                | "--chat-context-decision"
+        ) && !seen.insert(flag.as_str())
         {
             return Err(invalid());
         }
@@ -188,6 +266,37 @@ fn flags(args: &[String]) -> Result<Config> {
             }
             "--chat-context-max-bytes" => {
                 chat_context_max_bytes = Some(value.parse::<usize>().map_err(|_| invalid())?);
+            }
+            "--chat-context-source" => {
+                chat_context_sources.push(ContextSource::parse(value)?);
+            }
+            "--chat-context-match" => {
+                let mut parts = value.splitn(3, ':');
+                let action = FilterAction::parse(parts.next().ok_or_else(invalid)?)?;
+                let field = MatchField::parse(parts.next().ok_or_else(invalid)?)?;
+                let terms = parts.next().ok_or_else(invalid)?;
+                chat_context_stages.push(ContextFilter::Match {
+                    action,
+                    field,
+                    values: terms.split(',').map(str::to_owned).collect(),
+                });
+            }
+            "--chat-context-decision" => {
+                let mut parts = value.splitn(4, ':');
+                let model = parts.next().ok_or_else(invalid)?.to_owned();
+                let min_confidence_bps = parts
+                    .next()
+                    .ok_or_else(invalid)?
+                    .parse::<u16>()
+                    .map_err(|_| invalid())?;
+                let unavailable = DecisionUnavailable::parse(parts.next().ok_or_else(invalid)?)?;
+                let question = parts.next().ok_or_else(invalid)?.to_owned();
+                chat_context_stages.push(ContextFilter::Decision {
+                    model,
+                    question,
+                    min_confidence_bps,
+                    unavailable,
+                });
             }
             "--model" => {
                 let (id, right) = assignment(value)?;
@@ -230,16 +339,25 @@ fn flags(args: &[String]) -> Result<Config> {
         }
     }
     if chat_context_from.is_none()
-        && (chat_context_enabled.is_some() || chat_context_max_bytes.is_some())
+        && (chat_context_enabled.is_some()
+            || chat_context_max_bytes.is_some()
+            || !chat_context_sources.is_empty()
+            || !chat_context_stages.is_empty())
     {
         return Err(invalid());
     }
     let chat_context = chat_context_from.map(|from_model| ChatContextPolicy {
-        // The explicit --chat-context-from is opt-in; --chat-context-enabled
-        // false is a toggled-off policy, retaining the wired optional ports.
         enabled: chat_context_enabled.unwrap_or(true),
         from_model,
         max_bytes: chat_context_max_bytes.unwrap_or(ChatContextPolicy::DEFAULT_BYTES),
+        selection: ContextFilterPlan {
+            sources: if chat_context_sources.is_empty() {
+                default_sources()
+            } else {
+                chat_context_sources
+            },
+            stages: chat_context_stages,
+        },
     });
     let name = name.ok_or_else(invalid)?;
     for route in &mut routes {
@@ -298,8 +416,16 @@ OPTIONAL CHAT CONTEXT (off by default):
     --chat-context-from assistant [--chat-context-max-bytes 4096]
     --chat-context-enabled false    (keeps optional typed ports; supplies no context)
     context.value -> stage.context only when chat_context policy exists
-    Bound to prior committed, same-session visible chat turns only;
-    no current-turn feedback, raw KV, hidden prompts or cross-user context.
+    Default context sources: session/user_message + session/assistant_message.
+    Optional sources include session/tool_call and session/tool_result,
+    application/system_prompt, application/developer_prompt,
+    shared:grant-id/assistant_message when granted by the real source owner.
+    --chat-context-source ORIGIN/KIND  (repeat)
+    --chat-context-match exclude:kind:tool_call,tool_result  (repeat)
+    --chat-context-match exclude:tool_name:read,exec  (repeat)
+    --chat-context-decision gate:7500:omit:Relevant to audio?  (repeat)
+    NanoJev-style decision model requires explicit verified model binding.
+    Source grants must be checked; config never bypasses authorization.
 
 All stages/ports, model instances and routes compile into ONE process graph.
 Only structural checking is implemented; no weights, API port, stream or model starts.
@@ -337,8 +463,14 @@ Single-model resident inference continues through zerogravity run MODEL.gguf."
         valid.route_count
     );
     println!(
-        "Committed chat context: {} configured, {} ENABLED (same-session previous-turn hints; max 16KiB; no backend attached)",
+        "Committed chat context: {} configured, {} ENABLED (source filters only; history/backend access NOT IMPLEMENTED)",
         valid.context_configured_pipelines, valid.context_enabled_pipelines,
+    );
+    println!(
+        "Context filters: {} ordered stages, {} typed decision stages; max {} configured bytes",
+        valid.context_filter_stages,
+        valid.context_decision_stages,
+        ChatContextPolicy::MAX_BYTES,
     );
     println!(
         "Streaming audio, context-aware ASR/translation, diarization, image frames, API listeners and joint StateRoot publication: NOT IMPLEMENTED."

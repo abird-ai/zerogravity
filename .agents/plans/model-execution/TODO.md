@@ -8,6 +8,15 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
+- [ ] Qualify independently selected NanoJev-like calibrated decision
+  model sources under the same model/source/cache/residency authority.
+  Register finite choice/boolean/score or include/omit heads without
+  assuming a specific research checkpoint. Validate calibrated
+  probabilities and per-question source-bound state, batching, thresholds,
+  accepted/rejected context records and decision-fallback semantics
+  before enabling generic context-filter execution; pipeline check alone
+  provides only typed static intent.
+
 - [ ] Enforce new owner priority: Qwen3.5 .8B regression, Qwen3.5
   2B highest-perf trained CPU/GPU, Qwen3.8 27B with SSD
   streaming/owned shard tensors, Gemma4 E2B, 26B-A4B, dense 31B,

@@ -9,14 +9,17 @@ Contracts: [unified execution](../../docs/UNIFIED_MULTIMODAL_EXECUTION_CONTRACT_
 
 ## Uncommitted
 
-- [ ] Opt-in same-session **previous committed chat context** as bounded,
-  immutable, typed hint input to ASR, acoustic-first diarization,
+- [ ] Opt-in, source-granted context-filter outputs as bounded,
+  immutable, typed hints to ASR, acoustic-first diarization,
   transcript-text and separately source-qualified speaker-preserving
-  translation stages. Default disabled with no copy or exposure;
-  unsupported original ASR prompt dialect refuses or uses a separately
+  translation stages. Default only prior committed session user/assistant
+  records; opt-in tool call/result, app system/developer prompts and
+  explicitly authorized shared data permitted. Generic include/exclude
+  and typed decision-model choices operate after source ownership checks.
+  Unsupported original ASR prompt dialect refuses or uses a separately
   verified correction stage. Actual audio A/B WER/CER/DER/translation
-  adequacy, timestamp/partial-output correctness, named speaker
-  consent and canceled-turn isolation required before any claim.
+  adequacy, timestamp/partial-output correctness, consent/authorization
+  and canceled-turn isolation are required before any runtime claim.
 
 - [ ] Model each ASR (Qwen ASR/Whisper/Canary/Parakeet),
   diarization (separately sourced speaker recognition), LM, Qwen TTS,

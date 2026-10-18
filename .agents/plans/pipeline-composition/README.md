@@ -183,7 +183,7 @@ The human-facing quickstart configs are
 `examples/pipelines/text-model.toml`,
 `transcribe-diarize.toml`,
 `voice-assistant.toml`, `contextual-voice-assistant.toml`,
-`image-generation.toml`.
+`contextual-voice-filtered.toml`, `image-generation.toml`.
 
 ```sh
 # Only checks the pure graph; no file/source/model or socket is opened.
@@ -282,12 +282,15 @@ text conversion→shared Qwen response→TTS pipeline and a separate chat
 API in the **same process**.
 
 **No same-turn cycle:** `context.value` is a synthetic, read-only source
-of a **prior committed conversation snapshot**, never an output edge from
-a currently executing LLM/reply stage. The compiler reserves the
+of a previously committed context snapshot, or other app-authorized
+configuration/shared source captured for this request. It is never an
+output edge from a concurrently executing LLM/reply stage. The compiler reserves the
 `context` name, validates one declared text-capable `from_model`
 that appears in a configured `llm` stage (possibly another pipeline
 in the same process), and rejects unknown providers, value spoofing,
-cycles, duplicate inputs and snapshots outside **1..16384 UTF-8 bytes**.
+cycles, duplicate inputs and snapshots outside **1..1048576 UTF-8 bytes**. A 4KiB snapshot
+is the default; a stricter runtime/resource policy can impose a lower
+limit, and larger explicit budgets need normal admission.
 The snapshot has a fixed, source-neutral `CommittedChatContext` type:
 it cannot be injected as an external `audio-pcm`, raw text, user
 parameter, model KV address or arbitrary provider callback. A disabled
@@ -295,15 +298,125 @@ policy emits `None`, even when its optional typed edges are still in
 the graph; a missing policy rejects any attempt to wire the special
 context source.
 
+### Generic ordered context filtering and decision models
+
+The same reusable, typed filter pipeline can reduce any source-granted
+context stream before it reaches ASR, diarization, text interpretation,
+translation, an LLM, or other future components. It is **not** a special
+speech-only boolean or an unconditional privacy whitelist.
+
+The new `crates/zerogravity-core/src/context_filter.rs` defines a bounded
+`ContextFilterPlan`: requested provenance-labelled record sources,
+then ordered `include`/`exclude` predicates (record kind, exact
+tool name, source origin, or literal text substring), and optionally
+a source-bound calibrated **decision-model filter** that decides whether
+each surviving record is relevant. Filtering is deterministic and
+order-preserving; an excluded source cannot be recovered by any later
+decision. Independent `tool_call` and `tool_result` kinds can be
+retained or removed separately, preserving caller preferences.
+
+Without explicit source selectors the default remains only
+`session/user_message` and `session/assistant_message`.
+The user can additionally request any authenticated context sources
+such as `session/tool_call`, `session/tool_result`,
+`application/system_prompt`, `application/developer_prompt` or
+`shared:team-support/assistant_message`. The latter needs a real
+named grant to access another user's shared history. This is an
+**authorization check**, not a blanket prohibition on sharing.
+Filters operate solely on the records actually provided under the
+source owner's grant. This way the default is conservative but nothing
+is hard-coded to refuse an application-owned prompt or an authorized
+cross-user resource.
+
+```toml
+# In a pipeline with a declared model "assistant":
+[pipeline.chat_context]
+enabled = true
+from_model = "assistant"
+max_bytes = 65536
+sources = [
+  "session/user_message",
+  "session/assistant_message",
+  "session/tool_call",
+  "session/tool_result",
+  "application/system_prompt",
+  "application/developer_prompt",
+  "shared:team-support/assistant_message",
+]
+
+# Keep only selected records. Exclude tool calls or their results separately.
+[[pipeline.chat_context.filter]]
+kind = "match"
+action = "exclude"
+field = "kind"
+values = ["tool_call"]
+
+[[pipeline.chat_context.filter]]
+kind = "match"
+action = "exclude"
+field = "tool_name"
+values = ["database.lookup", "filesystem.read"]
+
+# Add a typed decision-model stage only when it is useful.
+# "gate" is a separate declared model with target="nanojev-decision".
+[[pipeline.chat_context.filter]]
+kind = "decision"
+model = "gate"
+question = "Does this record help interpret the current utterance?"
+min_confidence_bps = 8000
+on_unavailable = "omit"
+```
+
+Equivalent repeated flags use
+`--chat-context-source ORIGIN/KIND`,
+`--chat-context-match exclude:kind:tool_result`, and
+`--chat-context-decision gate:8000:omit:Relevant to audio?`.
+A selected prompt/tool record can retain its exact structured provenance
+in later runtime stages. No filter silently recasts a tool-result as a
+higher-privilege instruction.
+
+**Decision models are optional, composable components.** NanoJev-style
+choice/boolean/score predictors are good examples, but several different
+NanoJev implementations exist, so `nanojev-decision` is an *unqualified
+model family intent*, not an implicitly selected checkpoint. It has a
+typed include/omit result and confidence in 0..10000 basis points;
+a configured threshold gates its verdict. `on_unavailable` accepts
+`omit` (default), `reject` or `keep_authorized` (explicitly permissive).
+Even the last policy may retain only records the owner already granted
+and previous filters kept. No model weights, hosted API or decoder is
+invoked by `pipeline check`; decision inference is a separate source
+and runtime acceptance gate. Arbitrary model-supplied code and unbounded
+prompts are not used as filters.
+
+**Failure and audit contract:** actual runtime implementation should
+record the selected source version/grant, ordered filter steps, typed
+decision model version, confidence, and included record IDs without
+logging sensitive raw text by default. Authorization is checked before
+filter execution and remains revocable. The context snapshot is frozen
+at the declared turn boundary, then capped at the actual admitted
+memory budget; a stale session, source revoke or missing required
+decision causes the configured explicit refusal/omission, not a new
+permission or guessed answer. For experiments, source-real A/B tests
+should compare ASR accuracy, speaker DER, and latency with no-context,
+filtered context, full authorized context and decision-filtered context.
+
 **Runtime privacy/correctness contract (not implemented yet):**
 
 - The *request's own authenticated conversation/session* supplies a
-  bounded, immutable, previously committed user-visible chat history
-  slice (or a separately authorized glossary/summary). Cross-session
-  and cross-tenant access refuse. Never export hidden system/developer
-  prompts, internal chain of thought, raw KV state, credentials or
-  tool secrets. Context is untrusted **data** for speech processing,
-  not execution instructions.
+  bounded, immutable, previously committed history slice or any
+  other **explicitly requested source** from the runtime's authorized
+  application scope. Prior turns, tool calls/results, app-owned system
+  and developer prompts, plus other users' records shared under a
+  named, actually granted source scope, are all eligible. A config
+  requests records; it does not grant permissions, invent hidden model
+  state or access another person's private data without authorization.
+  For example `application/system_prompt` means the application's
+  own provided prompt, not another provider's inaccessible internal
+  instructions. Source provenance and explicit, revocable owner grants
+  must be retained. Treat included prompts and tool results as
+  **untrusted data** for downstream ASR/decision models, not new
+  privileged instructions. The caller's declared data scope, actual
+  authorization and output consumer are separate checked contracts.
 - Freeze the snapshot and its generation/turn ID **before** ASR for the
   next audio segment. Newly generated text for that segment cannot
   retroactively bias the same segment; a barge-in or canceled/stale
@@ -479,3 +592,5 @@ authorizes physical model downloads or inference.
 - [Official Qwen Image2.1 component assembly](https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/model_index.json)
 - [NVIDIA Parakeet NeMo archive](https://huggingface.co/nvidia/parakeet-tdt-1.1b/tree/main)
 - [Meta Muse Spark model/license](https://huggingface.co/meta-models/Muse-Spark-Open-816B-A42B-NVFP4)
+
+**Source binding reference:** The [TianyuCodings NanoJev architecture](https://github.com/TianyuCodings/NanoJev) and the independent [nano-jev MiniLM decision model](https://github.com/shubham10divakar/nano-jev) illustrate distinct candidate families. No one checkpoint is presumed and no trained local decision inference is claimed.
