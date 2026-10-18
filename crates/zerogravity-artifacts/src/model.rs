@@ -11,6 +11,8 @@ use std::io::Read;
 use std::path::Path;
 
 pub mod qwen;
+#[cfg(all(feature = "cache", target_os = "linux"))]
+pub mod qwen_owned;
 
 const MAX_CONFIG: u64 = 1024 * 1024;
 

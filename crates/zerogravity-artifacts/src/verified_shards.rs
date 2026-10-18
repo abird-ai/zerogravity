@@ -74,6 +74,7 @@ impl ExpectedSourceShard {
 #[must_use = "the source plan must be materialized or dropped"]
 pub struct VerifiedShardPlan {
     index: SafetensorsIndex,
+    index_sha256: String,
     shards: Vec<ExpectedSourceShard>,
     max_owned_bytes: u64,
     _metadata_charge: u64,
@@ -193,6 +194,7 @@ impl VerifiedShardPlan {
         )?;
         Ok(Self {
             index,
+            index_sha256: expected_index_sha256.to_owned(),
             shards,
             max_owned_bytes: limits.max_owned_bytes,
             _metadata_charge: metadata_charge,
@@ -270,6 +272,12 @@ impl VerifiedShardPlan {
         }
         // Sole existing source issuer. Preserve logical source lifetime,
         // zero-copy borrowed tensors and one ResourceArbiter lease until drop.
-        SourceWeights::from_verified_shard_storage(allocations, tensors, bindings, self.memory)
+        SourceWeights::from_verified_shard_storage(
+            allocations,
+            tensors,
+            bindings,
+            self.index_sha256,
+            self.memory,
+        )
     }
 }

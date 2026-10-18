@@ -144,6 +144,11 @@ fn indexed_two_shard_owned_header_bytes_dtype_and_reference_vectors_are_real() {
     let source = Arc::new(plan.materialize().unwrap());
     assert_eq!(admit.arbiter.snapshot(&key).unwrap().reserved, charged);
     assert_eq!(source.source_len(), fx.first.len() + fx.second.len());
+    assert_eq!(
+        source.verified_shard_index_sha256(),
+        Some(sha(&fx.idx).as_str())
+    );
+    assert_eq!(source.tensor_names().count(), 2);
     assert_eq!(source.architecture(), ""); // no invented original-model identity
     assert_eq!(source.vector("a").unwrap(), [1.0, 2.0]);
     assert_eq!(source.vector("b").unwrap(), [1.0, 2.0]);

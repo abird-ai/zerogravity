@@ -43,6 +43,11 @@ pub struct SourceWeights {
     /// Each tensor binds one exact immutable owned file allocation.
     shards: HashMap<String, usize>,
     architecture: String,
+    /// Exact independently authenticated index of the owned ORIGINAL
+    /// Safetensors shard collection. GGUF has none. This provenance is
+    /// published only by the verified_shards cold transaction.
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    verified_shard_index_sha256: Option<String>,
     #[cfg(all(feature = "cache", target_os = "linux"))]
     _memory: Option<GlobalResourceLease>,
 }
@@ -128,6 +133,8 @@ impl SourceWeights {
             shards,
             architecture: info.architecture.unwrap_or_default(),
             #[cfg(all(feature = "cache", target_os = "linux"))]
+            verified_shard_index_sha256: None,
+            #[cfg(all(feature = "cache", target_os = "linux"))]
             _memory,
         })
     }
@@ -140,14 +147,18 @@ impl SourceWeights {
         source: Vec<Vec<u8>>,
         tensors: HashMap<String, TensorInfo>,
         shards: HashMap<String, usize>,
+        verified_index_sha256: String,
         memory: GlobalResourceLease,
     ) -> Result<Self> {
+        // Only internal verified_shards may construct this source. The SHA
+        // is not a user-visible reassignment facility or secondary ID.
         Ok(Self {
             source_identity: SourceIdentity::for_new_allocation()?,
             source: SourceStorage::Safetensors(source),
             tensors,
             shards,
             architecture: String::new(),
+            verified_shard_index_sha256: Some(verified_index_sha256),
             _memory: Some(memory),
         })
     }
@@ -158,10 +169,25 @@ impl SourceWeights {
         self.source_identity
     }
 
-    /// Actual immutable in-process GGUF source-byte allocation. Cheap to
-    /// query, useful for asserting shared LoadedQwenModel lifetime/capacity.
+    /// Total immutable owned source bytes, either one GGUF or the sum of
+    /// complete indexed Safetensors shards (including their file headers).
+    /// Querying this does not allocate or qualify a numerical model.
     pub fn source_len(&self) -> usize {
         self.source.total_bytes()
+    }
+
+    /// Borrow exact *owned* tensor names, not index/path claims. Useful
+    /// for detecting forbidden unexpected family-specific weights.
+    pub fn tensor_names(&self) -> impl Iterator<Item = &str> {
+        self.tensors.keys().map(String::as_str)
+    }
+
+    /// Original pinned index digest of this *owned* safetensors collection,
+    /// or None for an ordinary GGUF allocation. This is provenance only;
+    /// it never substitutes family numerical or tokenizer qualification.
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    pub fn verified_shard_index_sha256(&self) -> Option<&str> {
+        self.verified_shard_index_sha256.as_deref()
     }
 
     pub fn contains(&self, key: &str) -> bool {

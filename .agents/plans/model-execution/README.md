@@ -92,3 +92,41 @@ See the [model execution TODO](TODO.md),
 [SSD and memory](../memory-and-streaming/TODO.md),
 [CPU/GPU optimization](../cpu-gpu-optimization/TODO.md), and
 [model acquisition](../model-acquisition/TODO.md).
+
+## ME-P0 continuation — original Qwen3.8 text binding and CPU value path
+
+The original Qwen3.8 **ordinary text** tensor contract is now bound
+directly to the immutable `SourceWeights` from the accepted original
+index/shard transaction. This is a source/value preparation stage, NOT
+a complete original-model token decoder.
+
+- `crates/zerogravity-artifacts/src/model/qwen_owned.rs`: borrow the
+  original source with an independently expected config JSON SHA256
+  and exact verified original indexed-source SHA256. Reuse the existing
+  `QwenTextConfig` source-order tensor definitions. Required name,
+  output-first shape and F32/F16/BF16 encoding must all agree with
+  the immutable verified bytes. Missing/extra ordinary text tensors,
+  untied output head mismatches and wrong source hashes refuse.
+  Vision and MTP tensors remain separately unqualified.
+- `crates/zerogravity-cpu/src/original_hf.rs`: one
+  **[output,input]** source matrix adapter to the existing Rust
+  source-typed CPU `MatVecRegion` and optional completed accelerator
+  provider. Do not transpose/copy learned matrices or create a
+  second mathematical backend. Bound the original rows, finite
+  inputs and trusted physical completed outputs before dispatch.
+- `crates/zerogravity/src/original_qwen_cpu.rs`:
+  `QwenOriginalCpu::bind` exposes source-bound `embed`, `vector` and
+  `project` cold value primitives using that one owner and CPU math.
+  No new model SourceIdentity, session, token loop or resource issuer.
+
+Small synthetic **complete original hybrid** source tests and original
+F32/F16/BF16 projection/embedding integration tests prove the path;
+wrong tensor shapes, missing output heads, added learned-text roles,
+config/index digest disagreement and incompatible providers refuse.
+These tests DO NOT qualify trained 64-layer Qwen3.8-27B inference.
+
+**Remaining:** real learned weights/official tokenizer and reference
+framework, original Q/K→V grouped replications, complete GDN/attention/
+MLP forward schedule and BF16 rounding, full 248320-vocabulary logits,
+session/StateRoot, real >4GiB resident loading and SSD streaming. The
+existing 0.8B/2B trained GGUF oracles must remain exact.

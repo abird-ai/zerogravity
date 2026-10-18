@@ -8,28 +8,42 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-- [x] **ME-P0 LS-B01–B05, verified owned sharded-source allocation:**
-  implement `SourceWeights::prepare_verified_shards` in the existing
-  artifacts owner with exactly opened original Safetensors file
-  descriptors, caller-expected index SHA256 and whole-shard SHA256/length,
-  one original SafetensorsIndex parser and checked header name→shard,
-  dtype/shape/offset/payload binding. Preflight limits and reserve whole
-  captured file allocation plus a conservative metadata envelope via the
-  original caller-attested host `ResourceArbiter` before copying. Reparse
-  exact owned bytes, compare authenticated headers against preflight
-  (including same-length mutation) before issuing the single original
-  SourceIdentity. Arc owner lifetime pins all original slices and RAM
-  charge; default GGUF `SourceWeights::open` keeps the 4GiB cap and
-  original Qwen execution path.
-  10 source-only integration tests pass: positive F32/F16/BF16, complete
-  index closure, foreign tensor metadata rejection, wrong SHA/length,
-  missing/extra/duplicate/wrong shard, same-descriptor pathname
-  replacement, original inode mutation, verified copied immutability,
-  multiple admitted/shared original leases and exact resource rollback.
-  Sparse >5GiB header tests refuse before reads under both 4GiB
-  default and physically insufficient explicit >4GiB budgets.
-  **No actual >4GiB weight load, SSD streaming, trained original
-  Qwen27B/Gemma math, tokenizer or physical GPU support is claimed.**
+- [x] **ME-P0 original Qwen3.8 source/value binding (small original
+  format, not trained 27B):** bind caller-authenticated original
+  QwenTextConfig SHA256 and pinned indexed-source SHA256 on the *same*
+  immutable SourceWeights allocation. Check every ordinary-text
+  name and original [output,input] tensor shape/encoding, including
+  the untied output head; distinguish source extra vision/MTP from
+  unregistered text roles. Reuse the existing CPU source MatVecRegion
+  for HF packed F32/F16/BF16 output-first matrices with no transpose,
+  plus the existing embedding/parameter-vector decoder through a
+  source-bound QwenOriginalCpu façade. Small complete 4-layer hybrid
+  original-format integration tests and negative hash/shape/missing-
+  head/source-provider tests pass. Oversized HF source matrices
+  refuse before the optional accelerator is invoked (observed no-dispatch).
+  The complete frozen isolated
+  `CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=4 python3 scripts/native-gpu.py -- bash scripts/check.sh`
+  passes 1,103 Rust tests, 0 failures, 69 ignored across 238 suites,
+  plus 18 Python namespace fixtures, strict lint, installer/Nix
+  formatting and CPU numeric selftests.
+  Both independent Qwen3.5 0.8B/2B original trained
+  source-parity release routes pass AFTER the final safety guard:
+  cache/direct 16.70s and HF-import 22.88s, each full 248320-vocabulary
+  logits, all 42 StateRoot domains, two tokens, independent sessions
+  and lease/mutation/reclamation exact. Default and
+  acquisition/cache-CPU strict `cargo clippy --locked --offline
+  --all-targets -- -D warnings` checks also pass. The original
+  GPT-family GGUF CPU and session path is unchanged.
+  Does NOT run trained 27B, create a Qwen session, implement
+  grouped GDN permutations, or stream SSD.
+- [ ] **ME-P0 next numerical stage:** source-exact original Qwen
+  full attention, GDN/MLP, grouped Q/K→V replication, A_log/gate
+  transformation and BF16 intermediate numerical schedule using the
+  shared original TaskDriver/StateRoot. Qualify tiny independent
+  analytic operator/state gates before real approved trained Qwen3.8
+  27B original full-vocabulary reference. Measured original Qwen3.5
+  2B CPU/GPU end-to-end performance also remains open.
+
 - [ ] **ME-P0 next:** bind source-approved original Qwen3.8 27B
   tensor/index/config and tokenizer to the existing mathematical engine
   with authentic head/axis geometry, strict trained CPU full logits/
@@ -99,7 +113,13 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   model-execution-qualified yet.
 
 - [ ] Acquire/bind authorized original config/index/tokenizer/checkpoint identities and choose a capable admitted host. Large BF16 sources exceed current local RAM; current executable source limit stays 4 GiB.
-- [ ] Implement explicitly admitted verified owned shards, exact complete index/header/name/dtype/offset/shape/hash binding and retained source leases; no unsafe mutable-file mapping shortcut or second issuer.
+- [ ] Qualify real large (>4GiB) original trained shard payload on an
+  authorized capable host using the already verified owned-shard
+  implementation from 93a5622; independently measure resident
+  allocation/physical RAM pressure and immutable lease lifetime. Next,
+  develop the separately admitted SSD streaming extent architecture.
+  The bounded source-only synthetic tests do not establish real large
+  learned weight loading.
 - [ ] Qwen3.8 27B: original HF grouped-head ordering and Q/K replication 16→48, explicit converted-profile permutations, untied head and source-derived norm/RoPE geometry.
 - [ ] Gemma E2B/26B: shared GELU/multiply/scale/soft-cap, proportional RoPE, value norm/sliding/shared KV, E2B PLE/doubled FFN and 26B K=V/MoE branches; choose and qualify the exact reference-framework numerical schedule.
 - [ ] Qualify actual trained CPU operators/full vocabulary/state/nonzero replay, official tokenization/templates/reasoning/stop behavior, sessions, rollback/checkpoints and resource refusal.
@@ -120,6 +140,31 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 - [x] Qwen3.8 metadata/shard roles and CPU-free Gemma4 family contracts,14 Gemma tests and official metadata/config cases passed within metadata scope. No tokenizer, new learned weights, physical shard-header binding or trained inference follows.
 - [x] Preserve Qwen/Gemma source axes, metadata precision and routing/KV facts in the [model semantics reference](../../docs/MODEL_SEMANTICS_AND_COMPATIBILITY.md) and [Gemma technical contract](../../research/GEMMA4_FAMILY_CONTRACTS_2026-10-16.md). The executable-source4GiB cap remains.
+
+### 93a5622 — original verified immutable source shard owner
+
+- [x] **ME-P0 LS-B01–B05, verified owned sharded-source allocation:**
+  implement `SourceWeights::prepare_verified_shards` in the existing
+  artifacts owner with exactly opened original Safetensors file
+  descriptors, caller-expected index SHA256 and whole-shard SHA256/length,
+  one original SafetensorsIndex parser and checked header name→shard,
+  dtype/shape/offset/payload binding. Preflight limits and reserve whole
+  captured file allocation plus a conservative metadata envelope via the
+  original caller-attested host `ResourceArbiter` before copying. Reparse
+  exact owned bytes, compare authenticated headers against preflight
+  (including same-length mutation) before issuing the single original
+  SourceIdentity. Arc owner lifetime pins all original slices and RAM
+  charge; default GGUF `SourceWeights::open` keeps the 4GiB cap and
+  original Qwen execution path.
+  10 source-only integration tests pass: positive F32/F16/BF16, complete
+  index closure, foreign tensor metadata rejection, wrong SHA/length,
+  missing/extra/duplicate/wrong shard, same-descriptor pathname
+  replacement, original inode mutation, verified copied immutability,
+  multiple admitted/shared original leases and exact resource rollback.
+  Sparse >5GiB header tests refuse before reads under both 4GiB
+  default and physically insufficient explicit >4GiB budgets.
+  **No actual >4GiB weight load, SSD streaming, trained original
+  Qwen27B/Gemma math, tokenizer or physical GPU support is claimed.**
 
 ## Deferred — after Qwen/Gemma and Flash execution
 

@@ -9,7 +9,7 @@ use crate::{Error, Result};
 use rayon::prelude::*;
 use std::path::Path;
 use zerogravity_artifacts::SourceWeights;
-const MAX_MATRIX_ROWS: u64 = 1_000_000;
+pub(crate) const MAX_MATRIX_ROWS: u64 = 1_000_000;
 
 #[derive(Debug)]
 pub struct CpuWeights {
