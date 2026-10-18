@@ -253,3 +253,67 @@ the sole `forward_token`/`MathematicalBackend` and
 `SessionAuthority` state owner, and prove trained BF16/FLA GDN
 numerics and original full-vocabulary/StateRoot parity before real
 Qwen3.8 27B/Gemma/SSD serving.
+
+## ME-P0 — one full original Qwen FP32 diagnostic token, shared schedule
+
+The existing Qwen3.5 `forward_token` and the original indexed-HF
+source call the **same** `qwen35::run_layer_sequence` traversal
+in `crates/zerogravity-model-qwen35/src/forward.rs`. That single
+bounded, monomorphized iterator handles layer order and early
+failure: GGUF `MathematicalBackend` owns its accepted operator
+schedule and original HF delegates to source-bound GDN/full-
+attention/FFN CPU operators for its profile-specific mathematics.
+There is no separate model-load manager or public inference loop.
+
+`OriginalQwenStateBridge::coordinator_for_model` registers all
+typed `ConvDomain`, `RecurrentDomain` and `KvDomain` slots in
+one existing source-bound `TaskCoordinator`. The four-layer
+analytical source fixture has three GDN layers, one full-attention
+layer and seven distinct immutable state domains. The explicitly
+named `prepare_diagnostic_token_f32`:
+
+1. Validates every domain schema and model source identity before
+   numerical work; reads only one immutable root and one source-
+   qualified embedding.
+2. Uses the common Qwen layer traversal to stage the original
+   analytical GDN, attention and FFN values and complete causal
+   state for each layer, with the accepted FP32 residual operator.
+3. Enforces 8K tokens, 128 layers and 128MiB of total diagnostic
+   state, in addition to 64MiB per state domain. A missing or
+   malformed late-layer state aborts the entire proposal.
+4. Applies the source-bound final ordinary RMS and untied
+   `lm_head.weight` projection; requires complete finite logits
+   before returning an `OriginalPreparedToken`.
+5. Commits all state domains and logits through the existing
+   TaskCoordinator only after validation. Discarded, competing,
+   stale or foreign proposed tokens cannot advance the root.
+
+Tiny original Safetensors integration tests use a four-layer
+hybrid source with all-one F32/F16/BF16 tensor values. The final
+synthetic analytical logit is approximately **8**: four positive
+uniform hidden lanes normalize to ~2 under original zero-centered
+`(1+checkpoint_weight)` RMSNorm (checkpoint weight 1), and each
+untied output-head row sums them. This independently derived
+oracle checks more than simply uniform vocabulary results. The
+complete forward's first GDN state domain matches the separate
+one-layer bridge exactly. The shared GGUF loop test also proves
+layer-order preservation and fail-fast behavior.
+
+**Qualification boundary:** This is an FP32 **synthetic
+whole-model diagnostic**, not source-real trained 27B execution,
+not HF BF16/FLA numerical equivalence, not full per-op
+`MathematicalBackend` integration for original sources and not
+production `SessionAuthority`/GPU completion. We preserve the
+GGUF trained source regression independently.
+
+### Remaining production ownership gates
+
+- Qualify original HF/FLA intermediate BF16 casting, accumulation
+  and exact reference GDN/attention/FFN operators.
+- Compose source profiles in the existing full per-op
+  `MathematicalBackend` forward program and original
+  `SessionAuthority` without a second token/state runtime.
+- Verify trained checkpoint/official tokenizer, complete logits
+  and StateRoot, physical memory and device completion.
+- Admit original 27B host capacity and independently tested
+  SSD streaming before user-facing model execution.

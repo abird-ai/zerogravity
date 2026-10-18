@@ -721,3 +721,190 @@ mod original_coordinator_tests {
         assert!(bridge.prepare(3, &forged, &[1.0; 4]).is_err());
     }
 }
+
+#[cfg(feature = "model-qwen35")]
+mod original_full_model_tests {
+    use super::*;
+    use zerogravity::original_qwen_math::OriginalQwenLayerMath;
+    use zerogravity::original_qwen_state::OriginalQwenStateBridge;
+    use zerogravity::state::PreparedDomain;
+
+    #[test]
+    fn original_hf_four_layer_model_is_one_complete_source_root_and_full_vocab() {
+        let fixture = Fixture::new();
+        let (source, config, index, admission, key) = loaded(&fixture);
+        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = OriginalQwenLayerMath::new(&cpu);
+        let bridge = OriginalQwenStateBridge::new(&math);
+        let mut coordinator = bridge.coordinator_for_model(19).unwrap();
+        assert_eq!(
+            coordinator.source_identity(),
+            Some(source.source_identity())
+        );
+        assert_eq!(coordinator.root().domains.len(), 7); // 3 GDN*2 plus 1 KV
+        assert_eq!(coordinator.root().frontier, 0);
+        let root0 = coordinator.root().clone();
+
+        let discarded = bridge
+            .prepare_diagnostic_token_f32(&coordinator, 0)
+            .unwrap();
+        assert_eq!(discarded.logits().len(), 16);
+        assert_eq!(discarded.required_domains(), 7);
+        assert_eq!(discarded.proposed_frontier(), 1);
+        assert!(discarded.logits().iter().all(|v| v.is_finite()));
+        assert!(
+            discarded
+                .logits()
+                .iter()
+                .all(|v| *v == discarded.logits()[0])
+        );
+        // Independent synthetic all-ones analytical oracle: the
+        // positive uniform final residual RMS-normalizes to ~one per
+        // lane, but original Qwen ordinary RMS uses (1 + stored_weight).
+        // Stored norm weights are 1, so each lane becomes ~2 and the
+        // untied all-ones output row sums four lanes to approximately 8.
+        assert!((discarded.logits()[0] - 8.0).abs() < 0.01);
+        drop(discarded);
+        assert_eq!(coordinator.root(), &root0);
+        assert!(
+            bridge
+                .prepare_diagnostic_token_f32(&coordinator, 16)
+                .is_err()
+        );
+        assert_eq!(coordinator.root(), &root0);
+
+        let first = bridge
+            .prepare_diagnostic_token_f32(&coordinator, 0)
+            .unwrap();
+        let competing = bridge
+            .prepare_diagnostic_token_f32(&coordinator, 1)
+            .unwrap();
+        let logits = first.logits().to_vec();
+        let committed = first.publish(&mut coordinator).unwrap();
+        assert_eq!(
+            (committed.root_id, committed.sequence, committed.epoch),
+            (1, 1, 19)
+        );
+        assert_eq!(committed.payload.len(), 16 * 4);
+        assert_eq!(coordinator.root().frontier, 1);
+        assert_eq!(
+            coordinator.root().domains["qwen.original.kv.3"].bytes.len(),
+            32
+        );
+        for layer in 0..3 {
+            assert_eq!(
+                coordinator.root().domains[&format!("qwen.original.conv.{layer}")]
+                    .bytes
+                    .len(),
+                96
+            );
+            assert_eq!(
+                coordinator.root().domains[&format!("qwen.original.recurrent.{layer}")]
+                    .bytes
+                    .len(),
+                32
+            );
+        }
+        assert!(competing.publish(&mut coordinator).is_err());
+        assert_eq!(coordinator.root().id, 1);
+        let root1 = coordinator.root().clone();
+        let second = bridge
+            .prepare_diagnostic_token_f32(&coordinator, 1)
+            .unwrap();
+        assert_eq!(second.logits().len(), logits.len());
+        assert!(second.logits().iter().all(|v| v.is_finite()));
+        assert_eq!(coordinator.root(), &root1);
+        second.publish(&mut coordinator).unwrap();
+        assert_eq!(coordinator.root().id, 2);
+        assert_eq!(coordinator.root().frontier, 2);
+        assert_eq!(
+            coordinator.root().domains["qwen.original.kv.3"].bytes.len(),
+            64
+        );
+        assert_eq!(root1.id, 1);
+        assert_eq!(root1.domains["qwen.original.kv.3"].bytes.len(), 32);
+        assert!(admission.arbiter.snapshot(&key).unwrap().reserved > 0);
+    }
+
+    #[test]
+    fn full_model_first_gdn_matches_independent_one_layer_published_domain_bytes() {
+        let fixture = Fixture::new();
+        let (source, config, index, _, _) = loaded(&fixture);
+        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = OriginalQwenLayerMath::new(&cpu);
+        let bridge = OriginalQwenStateBridge::new(&math);
+        let mut full = bridge.coordinator_for_model(1).unwrap();
+        let mut partial = bridge.coordinator_for_layer(0, 1).unwrap();
+        let first = bridge.prepare_diagnostic_token_f32(&full, 0).unwrap();
+        let initial = math.embed_token(0).unwrap();
+        let only_layer0 = bridge.prepare(0, &partial, &initial).unwrap();
+        only_layer0.publish(&mut partial).unwrap();
+        first.publish(&mut full).unwrap();
+        for role in ["conv", "recurrent"] {
+            let name = format!("qwen.original.{role}.0");
+            assert_eq!(
+                full.root().domains[&name].bytes,
+                partial.root().domains[&name].bytes
+            );
+        }
+        assert_eq!(partial.root().domains.len(), 2);
+        assert_eq!(full.root().domains.len(), 7);
+    }
+
+    #[test]
+    fn full_token_rejects_wrong_source_session_and_missing_late_layer_before_publish() {
+        let fixture = Fixture::new();
+        let (source, config, index, _, _) = loaded(&fixture);
+        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = OriginalQwenLayerMath::new(&cpu);
+        let bridge = OriginalQwenStateBridge::new(&math);
+        let mut first = bridge.coordinator_for_model(8).unwrap();
+        let mut second = bridge.coordinator_for_model(8).unwrap();
+        let prepared = bridge.prepare_diagnostic_token_f32(&first, 0).unwrap();
+        assert_ne!(first.coordinator_id(), second.coordinator_id());
+        assert!(prepared.publish(&mut second).is_err());
+        assert_eq!(second.root().id, 0);
+        let prepared = bridge.prepare_diagnostic_token_f32(&first, 0).unwrap();
+        prepared.publish(&mut first).unwrap();
+        let retained = first.root().clone();
+        assert!(first.publish(1, 2, Vec::new(), Vec::new()).is_err());
+        assert_eq!(first.root(), &retained);
+        let malformed = bridge.coordinator_for_layer(0, 8).unwrap();
+        assert!(bridge.prepare_diagnostic_token_f32(&malformed, 0).is_err()); // only 2 of 7 domains
+        let fixture2 = Fixture::new();
+        let (s2, c2, i2, _, _) = loaded(&fixture2);
+        let cpu2 = QwenOriginalCpu::bind(&s2, &c2, &sha(&c2), &sha(&i2)).unwrap();
+        let math2 = OriginalQwenLayerMath::new(&cpu2);
+        let bridge2 = OriginalQwenStateBridge::new(&math2);
+        assert!(bridge2.prepare_diagnostic_token_f32(&first, 0).is_err());
+
+        // Intentionally fabricate an entire state root using the TRUSTED
+        // generic TaskCoordinator publisher with a malformed *late* KV
+        // domain. The original model binder must refuse it before it
+        // can prepare or publish a different root.
+        let mut damaged = bridge.coordinator_for_model(3).unwrap();
+        let current = damaged.root().clone();
+        let bogus = current
+            .domains
+            .iter()
+            .map(|(name, domain)| PreparedDomain {
+                name: name.clone(),
+                schema: domain.schema,
+                frontier: 1,
+                bytes: if name == "qwen.original.kv.3" {
+                    vec![1, 2, 3]
+                } else if name.contains(".conv.") {
+                    vec![0u8; 96]
+                } else {
+                    vec![0u8; 32]
+                },
+            })
+            .collect();
+        damaged
+            .publish_source_bound(source.source_identity(), 0, 1, bogus, Vec::new())
+            .unwrap();
+        let untouched = damaged.root().clone();
+        assert!(bridge.prepare_diagnostic_token_f32(&damaged, 0).is_err());
+        assert_eq!(damaged.root(), &untouched);
+    }
+}

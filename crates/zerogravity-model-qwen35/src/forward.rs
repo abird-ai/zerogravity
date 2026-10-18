@@ -9,6 +9,26 @@ use crate::accelerator::program::{
 use crate::model::LayerKind;
 use crate::{Error, Result};
 
+/// One family-neutral Qwen **layer traversal** shared by the existing
+/// GGUF CPU/recorded MathematicalBackend and source-verified original HF
+/// analytical execution. Layer mathematics remain profile-specific; this
+/// iterator never allocates a session, buffers a model or publishes a root.
+pub fn run_layer_sequence<V>(
+    layers: &[LayerKind],
+    mut residual: V,
+    mut evaluate_layer: impl FnMut(usize, LayerKind, V) -> Result<V>,
+) -> Result<V> {
+    if layers.is_empty() || layers.len() > 4096 {
+        return Err(Error::Limit(
+            "Qwen layer schedule exceeds qualified bounds".into(),
+        ));
+    }
+    for (index, &kind) in layers.iter().enumerate() {
+        residual = evaluate_layer(index, kind, residual)?;
+    }
+    Ok(residual)
+}
+
 fn tensor(model: &LoadedQwenModel, name: &str) -> Result<SourceTensor> {
     let info = model.tensor_info(name)?;
     if info.shape.len() != 2 {
@@ -59,13 +79,14 @@ pub(super) fn forward_token<B: MathematicalBackend>(
     input: ForwardInputs<B::Index>,
     need_logits: bool,
 ) -> Result<Option<B::Value>> {
-    let mut x = math.embed(tensor(model, "token_embd.weight")?, input.token)?;
+    let x = math.embed(tensor(model, "token_embd.weight")?, input.token)?;
     math.observe(usize::MAX, "embedding", &x)?;
-    for (i, layer) in model.layers.iter().enumerate() {
+    let x = run_layer_sequence(&model.geometry.layers, x, |i, kind, mut x| {
+        let layer = &model.layers[i];
         let name = layer_tensor(i, "attn_norm.weight");
         let normal = math.rms(&name, &x, vector(model, &name, &layer.attn_norm), model.eps)?;
         math.observe(i, "attention_input_norm", &normal)?;
-        let attn = match model.geometry.layers[i] {
+        let attn = match kind {
             LayerKind::LinearAttention => gdn_layer(model, math, i, &normal, layer)?,
             LayerKind::FullAttention => attention_layer(model, math, i, &normal, layer, input)?,
             LayerKind::SlidingAttention => {
@@ -96,7 +117,8 @@ pub(super) fn forward_token<B: MathematicalBackend>(
         x = math.add(&layer_tensor(i, "ffn_residual"), &x, &ff)?;
         math.assert_finite(i, &x)?;
         math.observe(i, "post_ffn_residual", &x)?;
-    }
+        Ok(x)
+    })?;
     // Private proposed metadata advances at the same point as the old CPU
     // schedule. Later final norm/vocabulary failures still abort the draft.
     math.advance_frontier()?;

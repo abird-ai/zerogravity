@@ -232,6 +232,29 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
         usize::try_from(self.geometry().hidden_size)
             .map_err(|_| Error::Limit("Qwen original hidden width exceeds host".into()))
     }
+    /// One verified immutable original embedding, not a generic raw token.
+    /// The caller's coordinator/session owns when the token is committed.
+    pub fn embed_token(&self, token: u32) -> Result<Vec<f32>> {
+        self.cpu.embed(token)
+    }
+    /// Compute final original text head logits with the same FP32 RMS and
+    /// source-typed GEMV kernels. This is NOT a trained BF16 reference.
+    pub fn final_logits(&self, residual: &[f32]) -> Result<Vec<f32>> {
+        self.hidden(residual)?;
+        let normalized = self.ordinary_norm(
+            residual,
+            &self.cpu.vector("model.language_model.norm.weight")?,
+        )?;
+        let logits = self.cpu.project("lm_head.weight", &normalized, None)?;
+        let vocab = usize::try_from(self.geometry().vocab_size)
+            .map_err(|_| Error::Limit("original Qwen vocabulary overflow".into()))?;
+        if logits.len() != vocab || logits.iter().any(|v| !v.is_finite()) {
+            return Err(Error::Malformed(
+                "original Qwen final head vocabulary/finite mismatch".into(),
+            ));
+        }
+        Ok(logits)
+    }
     fn prefix(i: usize) -> String {
         format!("model.language_model.layers.{i}")
     }

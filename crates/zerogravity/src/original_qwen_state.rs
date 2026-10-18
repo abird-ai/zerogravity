@@ -4,6 +4,7 @@
 //! are provisional FP32 diagnostics, not a persistent checkpoint format.
 
 use crate::accelerator::program::{ConvDomain, KvDomain, RecurrentDomain, StateSlot};
+use crate::accelerator::{BinaryOperation, BinaryRegion};
 use crate::model::LayerKind;
 use crate::original_qwen_math::{OriginalFullPrefix, OriginalGdnPrefix, OriginalQwenLayerMath};
 use crate::state::{CommittedOutput, PreparedDomain, StateRoot, TaskCoordinator};
@@ -15,6 +16,8 @@ pub const ORIGINAL_CONV_V1: u64 = 0x5157_3802;
 pub const ORIGINAL_RECURRENCE_V1: u64 = 0x5157_3803;
 const MAX_DOMAIN_BYTES: usize = 64 * 1024 * 1024;
 const MAX_DIAGNOSTIC_TOKENS: u64 = 8192;
+const MAX_AGGREGATE_STATE_BYTES: usize = 128 * 1024 * 1024;
+const MAX_QUALIFIED_LAYERS: usize = 128;
 fn named(slot: StateSlot) -> (String, u64) {
     match slot {
         StateSlot::Kv(KvDomain(i)) => (format!("qwen.original.kv.{i}"), ORIGINAL_KV_V1),
@@ -110,6 +113,32 @@ impl OriginalPreparedLayer<'_, '_, '_> {
     }
 }
 
+/// Complete analytical token candidate: all source-bound original
+/// layer state updates and final diagnostic logits are one immutable
+/// proposal. The same TaskCoordinator publication path is the ONLY
+/// way to commit the whole token, never partial individual layers.
+#[must_use = "an original Qwen token proposal is not a published state root"]
+pub struct OriginalPreparedToken<'m, 'b, 's> {
+    step: OriginalPreparedLayer<'m, 'b, 's>,
+}
+impl OriginalPreparedToken<'_, '_, '_> {
+    pub fn logits(&self) -> &[f32] {
+        self.step.output()
+    }
+    pub fn proposed_frontier(&self) -> u64 {
+        self.step.proposed_frontier()
+    }
+    pub fn base_root(&self) -> u64 {
+        self.step.base_root()
+    }
+    pub fn required_domains(&self) -> usize {
+        self.step.required_domains()
+    }
+    pub fn publish(self, coordinator: &mut TaskCoordinator) -> Result<CommittedOutput> {
+        self.step.publish(coordinator)
+    }
+}
+
 /// Pure source-specific domain/codec bridge. It borrows the original
 /// already validated Qwen numerics; it does not own TaskCoordinator or
 /// implement a separate source/session execution scheduler.
@@ -132,6 +161,156 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
             )),
         }
     }
+    /// Register ALL GDN convolution/recurrent and full-attention KV state
+    /// domains on the existing source-bound TaskCoordinator. This extends
+    /// the previous single-layer diagnostic; it never owns another session.
+    pub fn coordinator_for_model(&self, epoch: u64) -> Result<TaskCoordinator> {
+        let layers = &self.math.geometry().layers;
+        if layers.is_empty() || layers.len() > MAX_QUALIFIED_LAYERS {
+            return Err(Error::Limit("original Qwen diagnostic layer budget".into()));
+        }
+        let mut domains = Vec::new();
+        for layer in 0..layers.len() {
+            domains.extend(self.typed_domains(layer)?.into_iter().map(named));
+        }
+        TaskCoordinator::new_source_bound(epoch, self.math.source_identity(), domains)
+    }
+
+    /// Validate the COMPLETE state-domain schema, not a subset. A root
+    /// missing a late layer must refuse before computing any next token.
+    fn validate_model_owner(&self, coordinator: &TaskCoordinator) -> Result<()> {
+        if coordinator.source_identity() != Some(self.math.source_identity())
+            || coordinator.root().frontier >= MAX_DIAGNOSTIC_TOKENS
+        {
+            return Err(Error::State(
+                "foreign model root or exhausted original Qwen context".into(),
+            ));
+        }
+        let roles = &self.math.geometry().layers;
+        if roles.is_empty() || roles.len() > MAX_QUALIFIED_LAYERS {
+            return Err(Error::Limit(
+                "unsupported Qwen model diagnostic layer count".into(),
+            ));
+        }
+        let mut expected = 0usize;
+        for layer in 0..roles.len() {
+            for slot in self.typed_domains(layer)? {
+                let (name, schema) = named(slot);
+                if coordinator
+                    .root()
+                    .domains
+                    .get(&name)
+                    .is_none_or(|v| v.schema != schema)
+                {
+                    return Err(Error::State(
+                        "missing/mismatched original Qwen full-model domain".into(),
+                    ));
+                }
+                expected = expected
+                    .checked_add(1)
+                    .ok_or_else(|| Error::Limit("original model state domain count".into()))?;
+            }
+        }
+        if expected != coordinator.root().domains.len() {
+            return Err(Error::State(
+                "extra original Qwen model state domain".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Analytical FP32-only full-token DIAGNOSTIC. The source math shares
+    /// Qwen's single monomorphized layer traversal but is NOT trained BF16
+    /// mathematical-backend parity; it cannot enable public run/serve.
+    /// Every domain comes from one root and all next domains are staged
+    /// before atomic publication by the existing TaskCoordinator.
+    pub fn prepare_diagnostic_token_f32(
+        &self,
+        coordinator: &TaskCoordinator,
+        token: u32,
+    ) -> Result<OriginalPreparedToken<'m, 'b, 's>> {
+        self.validate_model_owner(coordinator)?;
+        let root = coordinator.root();
+        let next_frontier = root
+            .frontier
+            .checked_add(1)
+            .ok_or_else(|| Error::Limit("original Qwen next token frontier".into()))?;
+        // Model-source token index/embedding validation occurs before
+        // registering a single tentative state change.
+        let embedded = self.math.embed_token(token)?;
+        if embedded.len() != self.math.hidden_width()? {
+            return Err(Error::State("original Qwen embedding hidden width".into()));
+        }
+        let mut domains = Vec::<PreparedDomain>::new();
+        let mut staged_bytes = 0usize;
+        let last = crate::qwen35::run_layer_sequence(
+            &self.math.geometry().layers,
+            embedded,
+            |layer, _kind, residual| {
+                let (attention, mut proposed) =
+                    self.prepare_layer(layer, root, &residual, next_frontier)?;
+                for entry in &proposed {
+                    staged_bytes =
+                        staged_bytes.checked_add(entry.bytes.len()).ok_or_else(|| {
+                            Error::Limit("original Qwen total state staging overflow".into())
+                        })?;
+                    if staged_bytes > MAX_AGGREGATE_STATE_BYTES {
+                        return Err(Error::Limit(
+                            "original Qwen total state exceeds diagnostic bound".into(),
+                        ));
+                    }
+                }
+                domains.append(&mut proposed);
+                let after_attention = crate::qwen35::source_binary(BinaryRegion {
+                    source_identity: self.math.source_identity(),
+                    operation: "qwen.original.model.attention_residual",
+                    kind: BinaryOperation::Add,
+                    left: &residual,
+                    right: &attention,
+                })?;
+                self.math.propose_ffn(layer, &after_attention)
+            },
+        )?;
+        let logits = self.math.final_logits(&last)?;
+        let vocab = usize::try_from(self.math.geometry().vocab_size)
+            .map_err(|_| Error::Limit("original Qwen trained vocabulary width".into()))?;
+        if logits.len() != vocab {
+            return Err(Error::State(
+                "original Qwen model output head mismatch".into(),
+            ));
+        }
+        let expected_domains =
+            self.math
+                .geometry()
+                .layers
+                .iter()
+                .try_fold(0usize, |count, kind| {
+                    count
+                        .checked_add(if *kind == LayerKind::LinearAttention {
+                            2
+                        } else {
+                            1
+                        })
+                        .ok_or_else(|| Error::Limit("original Qwen model state count".into()))
+                })?;
+        if domains.len() != expected_domains {
+            return Err(Error::State(
+                "incomplete original Qwen full-model state proposal".into(),
+            ));
+        }
+        Ok(OriginalPreparedToken {
+            step: OriginalPreparedLayer {
+                math: self.math,
+                coordinator_id: coordinator.coordinator_id(),
+                epoch: coordinator.epoch,
+                base_root: root.id,
+                next_frontier,
+                domains,
+                output: logits,
+            },
+        })
+    }
+
     pub fn coordinator_for_layer(&self, layer: usize, epoch: u64) -> Result<TaskCoordinator> {
         TaskCoordinator::new_source_bound(
             epoch,
@@ -176,18 +355,16 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
         }
         Ok(entry.bytes.as_ref())
     }
-    pub fn prepare(
+    /// Prepare one state slot using an immutable committed ROOT, not a
+    /// second layer-specific coordinator. Shared by the legacy diagnostic
+    /// one-layer test and the full model's single traversal.
+    fn prepare_layer(
         &self,
         layer: usize,
-        coordinator: &TaskCoordinator,
+        root: &StateRoot,
         hidden: &[f32],
-    ) -> Result<OriginalPreparedLayer<'m, 'b, 's>> {
-        self.validate_owner(layer, coordinator)?;
-        let root = coordinator.root();
-        let next_frontier = root
-            .frontier
-            .checked_add(1)
-            .ok_or_else(|| Error::Limit("Qwen original frontier overflow".into()))?;
+        next_frontier: u64,
+    ) -> Result<(Vec<f32>, Vec<PreparedDomain>)> {
         let (output, domains) = match self.math.geometry().layers[layer] {
             LayerKind::FullAttention => {
                 // Preflight the next complete source KV slab BEFORE
@@ -323,6 +500,22 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
                 "Qwen layer output width or finite mismatch".into(),
             ));
         }
+        Ok((output, domains))
+    }
+
+    pub fn prepare(
+        &self,
+        layer: usize,
+        coordinator: &TaskCoordinator,
+        hidden: &[f32],
+    ) -> Result<OriginalPreparedLayer<'m, 'b, 's>> {
+        self.validate_owner(layer, coordinator)?;
+        let root = coordinator.root();
+        let next_frontier = root
+            .frontier
+            .checked_add(1)
+            .ok_or_else(|| Error::Limit("Qwen original frontier overflow".into()))?;
+        let (output, domains) = self.prepare_layer(layer, root, hidden, next_frontier)?;
         Ok(OriginalPreparedLayer {
             math: self.math,
             coordinator_id: coordinator.coordinator_id(),

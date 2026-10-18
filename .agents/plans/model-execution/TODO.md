@@ -8,32 +8,39 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-- [x] **ME-P0 source-bound original Qwen StateRoot admission
-  (one-layer diagnostic only):** the sole existing TaskCoordinator
-  now supports an opt-in original immutable source identity plus
-  a unique coordinator/session ID while retaining its generic
-  publication API. A stateless source-bound one-layer bridge maps
-  canonical ForwardPlan Conv/Recurrent/Kv StateSlots to versioned
-  GDN or full-attention StateRoot domain bytes, with exact model,
-  epoch/session, layer, root, schema and frontier verification.
-  Immutable source-pinned numerical proposals publish via the
-  existing TaskCoordinator only after complete finite-domain
-  preparation, 8K token/64MiB diagnostic caps and early next-KV
-  admission. Independent tests cover GDN two-domain and causal
-  attention KV commit, abandoned and stale competing steps,
-  previous immutable roots, corrupted/nonfinite state refusal,
-  source/session/schema mismatch and generic coordinator parity.
-  There is NO separate multi-layer token loop, model scheduler or
-  new state issuer; this is not yet trained BF16 reference parity.
-  Final isolated full scripts/check.sh passed 1,116 Rust tests,
-  0 failed, 69 intentionally ignored across 238 suites plus
-  18 Python namespace fixtures, release CLI, installer, shell/Nix
-  formatting and CPU comparator selftests. Strict default and
-  composed CPU/cache/Qwen/acquisition Clippy -D warnings passed;
-  independently repeated Qwen3.5 .8B/2B release cache/direct
-  17.11s and HF-import 22.27s retained exact 248320 logits,
-  42 StateRoot domains, two tokens and source lease behavior.
-  Offline Nix source-integrity passed before signing.
+- [x] **ME-P0 full original-HF model analytical forward:** extract
+  the one Qwen layer traversal from the existing GGUF forward_token,
+  preserving its complete MathematicalBackend operator order.
+  Use it also for original source-bound GDN/full-attention/FFN,
+  each layer's private Conv/Recurrent/Kv state and residual output,
+  and final RMSNorm/untied head. One opt-in TaskCoordinator
+  owns **all** model state domains, not one root per layer.
+  Validate all source identities/schema/finite bytes, 8K/128-layer/
+  128MiB diagnostic bounds and complete logits before atomic
+  publication. Tests: complete synthetic four-layer original
+  checkpoint with seven state domains/two tokens, matching
+  independent one-layer GDN, abandoned/competing/foreign session
+  and late-corrupted state refusal, derived final logit ~8, and
+  shared GGUF traversal ordering/fail-fast. The method is explicitly
+  named `prepare_diagnostic_token_f32`: this is **not** trained BF16/
+  FLA inference, production TaskDriver or an alternate runtime.
+  Complete isolated scripts/check.sh passed 1,119 Rust test
+  executions, 0 failed, 69 intentionally ignored across 238
+  suites, plus 18 Python namespace fixtures, release installer/CLI,
+  Nix/shell formatting and numeric comparator selftests.
+  Strict default and composed CPU/cache/Qwen/acquisition Clippy
+  -D warnings passed. Both independent original Qwen3.5 .8B/2B
+  trained-source release routes preserve exact 248320 full logits,
+  42 StateRoot domains, two tokens and source/session leases:
+  cache/direct 17.88s and HF-import 22.59s, both exit0.
+  Offline Nix source-integrity passed before the signed commit.
+- [ ] **Next trained reference gate:** qualify exact original HF BF16
+  rounding/FLA order and independent source-trained logits/StateRoot;
+  then bind the original profile to the existing per-op
+  MathematicalBackend/SessionAuthority, with full physical
+  device/SSD resource admission. No 27B weights, tokenizer or
+  GPU launches were authorized by this source-free slice.
+
 - [ ] **Following ME-P0 real trained integration:** fuse the
   accepted analytical original source operators into the ONE
   existing forward_token/MathematicalBackend and
@@ -247,6 +254,35 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   cache/direct 17.36s and HF-import 22.49s, each original complete
   248320 logits/42 StateRoot domains/two tokens/source leases.
   This diagnostic-only milestone is recorded in signed commit b11e58c.
+
+### 6329cff — source-bound Qwen one-layer TaskCoordinator
+
+- [x] **ME-P0 source-bound original Qwen StateRoot admission
+  (one-layer diagnostic only):** the sole existing TaskCoordinator
+  now supports an opt-in original immutable source identity plus
+  a unique coordinator/session ID while retaining its generic
+  publication API. A stateless source-bound one-layer bridge maps
+  canonical ForwardPlan Conv/Recurrent/Kv StateSlots to versioned
+  GDN or full-attention StateRoot domain bytes, with exact model,
+  epoch/session, layer, root, schema and frontier verification.
+  Immutable source-pinned numerical proposals publish via the
+  existing TaskCoordinator only after complete finite-domain
+  preparation, 8K token/64MiB diagnostic caps and early next-KV
+  admission. Independent tests cover GDN two-domain and causal
+  attention KV commit, abandoned and stale competing steps,
+  previous immutable roots, corrupted/nonfinite state refusal,
+  source/session/schema mismatch and generic coordinator parity.
+  There is NO separate multi-layer token loop, model scheduler or
+  new state issuer; this is not yet trained BF16 reference parity.
+  Final isolated full scripts/check.sh passed 1,116 Rust tests,
+  0 failed, 69 intentionally ignored across 238 suites plus
+  18 Python namespace fixtures, release CLI, installer, shell/Nix
+  formatting and CPU comparator selftests. Strict default and
+  composed CPU/cache/Qwen/acquisition Clippy -D warnings passed;
+  independently repeated Qwen3.5 .8B/2B release cache/direct
+  17.11s and HF-import 22.27s retained exact 248320 logits,
+  42 StateRoot domains, two tokens and source lease behavior.
+  Offline Nix source-integrity passed before signing.
 
 ## Deferred — after Qwen/Gemma and Flash execution
 
