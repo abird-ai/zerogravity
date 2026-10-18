@@ -8,37 +8,38 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-- [x] **ME-P0 explicit original BF16 dtype diagnostic:**
-  implement finite nearest-even BF16 rounding with signed-zero and
-  overflow refusal; introduce optional BF16 source stages into the
-  existing original Qwen source binder/CPU operators, without
-  mutating the default FP32 path. Cast after ordinary FP32
-  (1+gamma) RMSNorm, per-head Q/K norm, HF output-first
-  projection, SwiGLU, residual, RoPE, BF16 QK matmul *and*
-  scaling, post-FP32 softmax, attention value and gates.
-  GDN follows BF16 conv/SILU, FP32 A_log/softplus, BF16 beta,
-  FP32 recurrent state and BF16 core output, source gated RMS
-  casts before gamma and at gated output. StateRoot schema
-  variants disallow cross-dtype replay even for one allocation.
-  Two-token four-layer synthetic BF16 whole-model integration
-  plus source-independent NumPy BF16 bit-golden RMSNorm and
-  gated RMSNorm, FLA two-step recurrent output/FP32 state
-  oracle, sign/tie/overflows and F32 parity are required.
-  This is explicit BF16 **diagnostics** only: NOT trained
-  reference equivalence, a new model-run route or GPU/SSD.
-  Source-independent NumPy BF16 goldens match exact bit patterns
-  for ordinary/gated RMS and two-step GDN returned cores, with
-  FP32 recurrent state tested within 2e-7. The full isolated
-  scripts/check.sh gate passed 1,128 Rust test executions with
-  0 failures and 69 intentional ignores across 238 suite runs,
-  plus 18 Python fixtures, release installer/CLI and CPU numeric
-  comparators. Rerunning on the final implementation still
-  passes 1,128/0 across 238 suites. Both independent Qwen3.5
-  .8B and 2B trained release routes retain complete 248320
-  logits, all 42 StateRoot domains and source lease/mutation:
-  direct16.26s and HF-import21.78s on the final source.
-  Strict default/composed Clippy and Nix source-integrity pass;
-  production model run is not enabled.
+- [x] **ME-P0 pinned original numerical reference gate:**
+  extend one immutable source owner with canonical source-bundle
+  SHA256 over pinned index and all authenticated shard bytes.
+  Capture a bounded subset of original Qwen GDN, attention, FFN
+  and logits through shared PlanObservation, with opt-in 32MiB
+  private trace and a single selected GDN recurrent state layer.
+  Strict typed independently SHA256-pinned JSON comparisons bind
+  config/index/bundle, exact stage order/geometry/position/dtype,
+  detect first mismatched element, and distinguish truly bit-exact
+  BF16 output from bounded, tolerated FP32 state deviations.
+  Source-free adversarial tests verify same-index/different-weight
+  digest changes, duplicate/missing/reordered reference content,
+  bad token/source/dtype, selected GDN state and immutable roots.
+  Fix full-model BF16 residual result-cast omission by reusing
+  its source-typed existing residual binary operator.
+  This stage DOES NOT prove independence merely because a
+  reference JSON asserts trained-framework origin.
+  Complete isolated scripts/check.sh passed 1,135 Rust tests, 0 failures,
+  69 intentionally ignored across 238 suites plus 18 Python fixtures,
+  release CLI/installer and CPU numeric comparators. Strict default and
+  composed CPU/cache/Qwen/acquisition Clippy -D warnings pass.
+  Independent approved Qwen3.5 .8B/2B release cache/direct 17.45s and
+  HF-import 21.97s preserve exact full 248320 logits, all 42 StateRoot
+  domains, two-token independent sessions and source/lease correctness.
+  Offline Nix source-integrity passed with the checked trace files.
+  No trained Qwen3.8 reference or Torch/FLA runtime was accessed.
+- [ ] **Independent trained BF16/FLA checkpoint gate:** obtain
+  source-authorized original Qwen3.8 checkpoint and tokenizer
+  on a physically admitted host; capture true independent
+  Transformers/FLA layer-reference values and code revision with
+  pinned SHA256, and compare against this gate before enabling
+  real 27B full logits/StateRoot or serving.
 - [ ] **Next trained reference gate:** qualify exact original HF BF16
   rounding/FLA order and independent source-trained logits/StateRoot;
   then bind the original profile to the existing per-op
@@ -317,6 +318,40 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   42 StateRoot domains, two tokens and source/session leases:
   cache/direct 17.88s and HF-import 22.59s, both exit0.
   Offline Nix source-integrity passed before the signed commit.
+
+### aaf9ba6 — original Qwen BF16 source dtype diagnostics
+
+- [x] **ME-P0 explicit original BF16 dtype diagnostic:**
+  implement finite nearest-even BF16 rounding with signed-zero and
+  overflow refusal; introduce optional BF16 source stages into the
+  existing original Qwen source binder/CPU operators, without
+  mutating the default FP32 path. Cast after ordinary FP32
+  (1+gamma) RMSNorm, per-head Q/K norm, HF output-first
+  projection, SwiGLU, residual, RoPE, BF16 QK matmul *and*
+  scaling, post-FP32 softmax, attention value and gates.
+  GDN follows BF16 conv/SILU, FP32 A_log/softplus, BF16 beta,
+  FP32 recurrent state and BF16 core output, source gated RMS
+  casts before gamma and at gated output. StateRoot schema
+  variants disallow cross-dtype replay even for one allocation.
+  Two-token four-layer synthetic BF16 whole-model integration
+  plus source-independent NumPy BF16 bit-golden RMSNorm and
+  gated RMSNorm, FLA two-step recurrent output/FP32 state
+  oracle, sign/tie/overflows and F32 parity are required.
+  This is explicit BF16 **diagnostics** only: NOT trained
+  reference equivalence, a new model-run route or GPU/SSD.
+  Source-independent NumPy BF16 goldens match exact bit patterns
+  for ordinary/gated RMS and two-step GDN returned cores, with
+  FP32 recurrent state tested within 2e-7. The full isolated
+  scripts/check.sh gate passed 1,128 Rust test executions with
+  0 failures and 69 intentional ignores across 238 suite runs,
+  plus 18 Python fixtures, release installer/CLI and CPU numeric
+  comparators. Rerunning on the final implementation still
+  passes 1,128/0 across 238 suites. Both independent Qwen3.5
+  .8B and 2B trained release routes retain complete 248320
+  logits, all 42 StateRoot domains and source lease/mutation:
+  direct16.26s and HF-import21.78s on the final source.
+  Strict default/composed Clippy and Nix source-integrity pass;
+  production model run is not enabled.
 
 ## Deferred — after Qwen/Gemma and Flash execution
 

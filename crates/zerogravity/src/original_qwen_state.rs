@@ -4,10 +4,12 @@
 //! are provisional FP32 diagnostics, not a persistent checkpoint format.
 
 use crate::accelerator::program::{ConvDomain, KvDomain, RecurrentDomain, StateSlot};
-use crate::accelerator::{BinaryOperation, BinaryRegion};
 use crate::model::LayerKind;
 use crate::original_qwen_math::{OriginalFullPrefix, OriginalGdnPrefix, OriginalQwenLayerMath};
 use crate::original_qwen_precision::OriginalNumericalDType;
+use crate::original_qwen_trace::{
+    MODEL_LAYER, OriginalQwenTrace, OriginalTraceRecorder, TraceBinding,
+};
 use crate::state::{CommittedOutput, PreparedDomain, StateRoot, TaskCoordinator};
 use crate::{Error, Result};
 use std::sync::Arc;
@@ -127,8 +129,13 @@ impl OriginalPreparedLayer<'_, '_, '_> {
 #[must_use = "an original Qwen token proposal is not a published state root"]
 pub struct OriginalPreparedToken<'m, 'b, 's> {
     step: OriginalPreparedLayer<'m, 'b, 's>,
+    trace: Option<OriginalQwenTrace>,
 }
 impl OriginalPreparedToken<'_, '_, '_> {
+    /// Opt-in candidate trace: never exposed or persisted by normal decode.
+    pub fn trace(&self) -> Option<&OriginalQwenTrace> {
+        self.trace.as_ref()
+    }
     pub fn logits(&self) -> &[f32] {
         self.step.output()
     }
@@ -245,7 +252,7 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
                 "FP32 Qwen root requires FP32 source math".into(),
             ));
         }
-        self.prepare_token_with_dtype(coordinator, token)
+        self.prepare_token_with_dtype(coordinator, token, None)
     }
     /// BF16 source dtype-boundary experiment, NOT trained-HF parity.
     pub fn prepare_diagnostic_token_bf16(
@@ -258,12 +265,63 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
                 "BF16 diagnostic requires BF16-bound math".into(),
             ));
         }
-        self.prepare_token_with_dtype(coordinator, token)
+        self.prepare_token_with_dtype(coordinator, token, None)
+    }
+    /// Same mathematical/state path as normal diagnostics; exact layer
+    /// observations are captured privately and bounded (not streamed).
+    pub fn prepare_diagnostic_token_bf16_with_trace(
+        &self,
+        coordinator: &TaskCoordinator,
+        token: u32,
+    ) -> Result<OriginalPreparedToken<'m, 'b, 's>> {
+        if self.math.dtype() != OriginalNumericalDType::Bf16Diagnostic {
+            return Err(Error::Unsupported(
+                "BF16 trace requires BF16 source math".into(),
+            ));
+        }
+        self.prepare_token_with_dtype(coordinator, token, Some(Some(0)))
+    }
+    pub fn prepare_diagnostic_token_f32_with_trace(
+        &self,
+        coordinator: &TaskCoordinator,
+        token: u32,
+    ) -> Result<OriginalPreparedToken<'m, 'b, 's>> {
+        if self.math.dtype() != OriginalNumericalDType::F32 {
+            return Err(Error::Unsupported(
+                "FP32 trace requires FP32 source math".into(),
+            ));
+        }
+        self.prepare_token_with_dtype(coordinator, token, Some(Some(0)))
+    }
+    /// Capture all bounded operator stages but only the selected GDN
+    /// FP32 recurrent state. None omits those large state tensors.
+    /// A 27B checkpoint can have dozens of multi-MiB GDN states;
+    /// storing all would violate the diagnostic trace budget.
+    pub fn prepare_diagnostic_token_bf16_with_selected_trace(
+        &self,
+        coordinator: &TaskCoordinator,
+        token: u32,
+        gdn_state_layer: Option<usize>,
+    ) -> Result<OriginalPreparedToken<'m, 'b, 's>> {
+        if self.math.dtype() != OriginalNumericalDType::Bf16Diagnostic {
+            return Err(Error::Unsupported(
+                "BF16 selected trace requires BF16 source math".into(),
+            ));
+        }
+        if gdn_state_layer.is_some_and(|i| {
+            self.math.geometry().layers.get(i) != Some(&LayerKind::LinearAttention)
+        }) {
+            return Err(Error::Malformed(
+                "trace-selected GDN layer is not recurrent".into(),
+            ));
+        }
+        self.prepare_token_with_dtype(coordinator, token, Some(gdn_state_layer))
     }
     fn prepare_token_with_dtype(
         &self,
         coordinator: &TaskCoordinator,
         token: u32,
+        selected_gdn_state: Option<Option<usize>>,
     ) -> Result<OriginalPreparedToken<'m, 'b, 's>> {
         self.validate_model_owner(coordinator)?;
         let root = coordinator.root();
@@ -277,6 +335,12 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
         if embedded.len() != self.math.hidden_width()? {
             return Err(Error::State("original Qwen embedding hidden width".into()));
         }
+        let mut recorder = selected_gdn_state
+            .map(|layer| OriginalTraceRecorder::new(root.frontier as usize, layer))
+            .transpose()?;
+        if let Some(t) = recorder.as_mut() {
+            t.observe(MODEL_LAYER, "embedding", &embedded)?;
+        }
         let mut domains = Vec::<PreparedDomain>::new();
         let mut staged_bytes = 0usize;
         let last = crate::qwen35::run_layer_sequence(
@@ -284,7 +348,10 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
             embedded,
             |layer, _kind, residual| {
                 let (attention, mut proposed) =
-                    self.prepare_layer(layer, root, &residual, next_frontier)?;
+                    self.prepare_layer(layer, root, &residual, next_frontier, recorder.as_mut())?;
+                if let Some(t) = recorder.as_mut() {
+                    t.observe(layer, "attention_output", &attention)?;
+                }
                 for entry in &proposed {
                     staged_bytes =
                         staged_bytes.checked_add(entry.bytes.len()).ok_or_else(|| {
@@ -297,17 +364,23 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
                     }
                 }
                 domains.append(&mut proposed);
-                let after_attention = crate::qwen35::source_binary(BinaryRegion {
-                    source_identity: self.math.source_identity(),
-                    operation: "qwen.original.model.attention_residual",
-                    kind: BinaryOperation::Add,
-                    left: &residual,
-                    right: &attention,
-                })?;
-                self.math.propose_ffn(layer, &after_attention)
+                let after_attention = self.math.residual_add(&residual, &attention)?;
+                if let Some(t) = recorder.as_mut() {
+                    t.observe(layer, "post_attention_residual", &after_attention)?;
+                }
+                let result =
+                    self.math
+                        .propose_ffn_traced(layer, &after_attention, recorder.as_mut())?;
+                if let Some(t) = recorder.as_mut() {
+                    t.observe(layer, "post_ffn_residual", &result)?;
+                }
+                Ok(result)
             },
         )?;
         let logits = self.math.final_logits(&last)?;
+        if let Some(t) = recorder.as_mut() {
+            t.observe(MODEL_LAYER, "final_logits", &logits)?;
+        }
         let vocab = usize::try_from(self.math.geometry().vocab_size)
             .map_err(|_| Error::Limit("original Qwen trained vocabulary width".into()))?;
         if logits.len() != vocab {
@@ -334,7 +407,23 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
                 "incomplete original Qwen full-model state proposal".into(),
             ));
         }
+        let trace = recorder
+            .map(|t| {
+                t.finish(TraceBinding {
+                    source: self.math.source_identity(),
+                    coordinator_id: coordinator.coordinator_id(),
+                    root_id: root.id,
+                    epoch: coordinator.epoch,
+                    token,
+                    dtype: self.math.dtype(),
+                    config_sha256: self.math.config_sha256().to_owned(),
+                    index_sha256: self.math.index_sha256().to_owned(),
+                    bundle_sha256: self.math.bundle_sha256().to_owned(),
+                })
+            })
+            .transpose()?;
         Ok(OriginalPreparedToken {
+            trace,
             step: OriginalPreparedLayer {
                 math: self.math,
                 coordinator_id: coordinator.coordinator_id(),
@@ -402,6 +491,7 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
         root: &StateRoot,
         hidden: &[f32],
         next_frontier: u64,
+        mut trace: Option<&mut OriginalTraceRecorder>,
     ) -> Result<(Vec<f32>, Vec<PreparedDomain>)> {
         let (output, domains) = match self.math.geometry().layers[layer] {
             LayerKind::FullAttention => {
@@ -457,7 +547,12 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
                         values,
                     }
                 };
-                let proposed = self.math.propose_full_attention(layer, hidden, &prefix)?;
+                let proposed = self.math.propose_full_attention_traced(
+                    layer,
+                    hidden,
+                    &prefix,
+                    trace.as_deref_mut(),
+                )?;
                 if proposed.prefix.len() != usize::try_from(next_frontier).unwrap_or(usize::MAX)
                     || proposed.prefix.source_identity() != self.math.source_identity()
                     || proposed.prefix.layer() != layer
@@ -499,7 +594,9 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
                         recurrent: Arc::new(decode(rec, empty.recurrent().len())?),
                     }
                 };
-                let proposed = self.math.propose_gdn(layer, hidden, &prefix)?;
+                let proposed = self
+                    .math
+                    .propose_gdn_traced(layer, hidden, &prefix, trace)?;
                 if proposed.next.position() != usize::try_from(next_frontier).unwrap_or(usize::MAX)
                     || proposed.next.source_identity() != self.math.source_identity()
                     || proposed.next.layer() != layer
@@ -556,7 +653,7 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
             .frontier
             .checked_add(1)
             .ok_or_else(|| Error::Limit("Qwen original frontier overflow".into()))?;
-        let (output, domains) = self.prepare_layer(layer, root, hidden, next_frontier)?;
+        let (output, domains) = self.prepare_layer(layer, root, hidden, next_frontier, None)?;
         Ok(OriginalPreparedLayer {
             math: self.math,
             coordinator_id: coordinator.coordinator_id(),

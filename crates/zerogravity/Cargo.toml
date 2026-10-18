@@ -34,11 +34,10 @@ zerogravity-cpu = { path = "../zerogravity-cpu", optional = true }
 zerogravity-model-qwen35 = { path = "../zerogravity-model-qwen35", default-features = false, optional = true }
 zerogravity-model-gemma4 = { path = "../zerogravity-model-gemma4", default-features = false, optional = true }
 zerogravity-gpu = { path = "../zerogravity-gpu", default-features = false, optional = true }
-
-[dev-dependencies]
+# Authenticated diagnostic reference manifests; already locked/cached.
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
-sha2 = "=0.10.9" # Source-only original HF bridge fixture; cached and already transitively locked
+sha2 = "=0.10.9"
 
 [[example]]
 name = "diagnose_ffn"

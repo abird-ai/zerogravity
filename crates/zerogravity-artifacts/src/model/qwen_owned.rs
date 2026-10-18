@@ -107,6 +107,13 @@ impl<'a> QwenOriginalText<'a> {
     pub fn config_sha256(&self) -> &str {
         &self.expected_config_sha256
     }
+    /// SHA256 of exact owned original shard contents plus index, not merely
+    /// the index that maps tensor names to paths.
+    pub fn source_bundle_sha256(&self) -> &str {
+        self.source
+            .verified_bundle_sha256()
+            .expect("QwenOriginalText only binds verified source shards")
+    }
     pub fn verified_index_sha256(&self) -> &str {
         &self.verified_index_sha256
     }

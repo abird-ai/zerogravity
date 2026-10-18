@@ -48,6 +48,10 @@ pub struct SourceWeights {
     /// published only by the verified_shards cold transaction.
     #[cfg(all(feature = "cache", target_os = "linux"))]
     verified_shard_index_sha256: Option<String>,
+    /// Authenticated source bundle digest covers the pinned index SHA256 and
+    /// every exact owned shard basename, length and whole-file SHA256.
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    verified_bundle_sha256: Option<String>,
     #[cfg(all(feature = "cache", target_os = "linux"))]
     _memory: Option<GlobalResourceLease>,
 }
@@ -135,6 +139,8 @@ impl SourceWeights {
             #[cfg(all(feature = "cache", target_os = "linux"))]
             verified_shard_index_sha256: None,
             #[cfg(all(feature = "cache", target_os = "linux"))]
+            verified_bundle_sha256: None,
+            #[cfg(all(feature = "cache", target_os = "linux"))]
             _memory,
         })
     }
@@ -148,6 +154,7 @@ impl SourceWeights {
         tensors: HashMap<String, TensorInfo>,
         shards: HashMap<String, usize>,
         verified_index_sha256: String,
+        verified_bundle_sha256: String,
         memory: GlobalResourceLease,
     ) -> Result<Self> {
         // Only internal verified_shards may construct this source. The SHA
@@ -159,6 +166,7 @@ impl SourceWeights {
             shards,
             architecture: String::new(),
             verified_shard_index_sha256: Some(verified_index_sha256),
+            verified_bundle_sha256: Some(verified_bundle_sha256),
             _memory: Some(memory),
         })
     }
@@ -188,6 +196,14 @@ impl SourceWeights {
     #[cfg(all(feature = "cache", target_os = "linux"))]
     pub fn verified_shard_index_sha256(&self) -> Option<&str> {
         self.verified_shard_index_sha256.as_deref()
+    }
+
+    /// Exact authenticated source bundle digest, unlike an index-only hash.
+    /// The latter does not identify learned weight BYTES. Never substitute
+    /// this hash for an external numerical reference or model permit.
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    pub fn verified_bundle_sha256(&self) -> Option<&str> {
+        self.verified_bundle_sha256.as_deref()
     }
 
     pub fn contains(&self, key: &str) -> bool {

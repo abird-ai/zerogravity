@@ -18,6 +18,7 @@ use crate::accelerator::{
 use crate::model::{LayerKind, qwen::GdnOutputGate};
 use crate::original_qwen_cpu::QwenOriginalCpu;
 use crate::original_qwen_precision::OriginalNumericalDType;
+use crate::original_qwen_trace::OriginalTraceRecorder;
 use crate::{Error, Result};
 use std::sync::Arc;
 
@@ -236,6 +237,15 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
     pub fn dtype(&self) -> OriginalNumericalDType {
         self.dtype
     }
+    pub(crate) fn config_sha256(&self) -> &str {
+        self.cpu.binding().config_sha256()
+    }
+    pub(crate) fn index_sha256(&self) -> &str {
+        self.cpu.binding().verified_index_sha256()
+    }
+    pub(crate) fn bundle_sha256(&self) -> &str {
+        self.cpu.binding().source_bundle_sha256()
+    }
     fn round(&self, values: &[f32]) -> Result<Vec<f32>> {
         self.dtype.values(values)
     }
@@ -343,6 +353,14 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
     /// Norm and ordinary SwiGLU FFN of one original layer. This is a
     /// single-layer FP32 diagnostic proposal, NOT a multi-layer forward.
     pub fn propose_ffn(&self, layer: usize, post_attention_residual: &[f32]) -> Result<Vec<f32>> {
+        self.propose_ffn_traced(layer, post_attention_residual, None)
+    }
+    pub(crate) fn propose_ffn_traced(
+        &self,
+        layer: usize,
+        post_attention_residual: &[f32],
+        mut trace: Option<&mut OriginalTraceRecorder>,
+    ) -> Result<Vec<f32>> {
         self.hidden(post_attention_residual)?;
         let prefix = Self::prefix(layer);
         if layer >= self.cpu.binding().config().geometry().layers.len() {
@@ -358,6 +376,10 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
         )?;
         let gate = self.project(&format!("{prefix}.mlp.gate_proj.weight"), &norm)?;
         let up = self.project(&format!("{prefix}.mlp.up_proj.weight"), &norm)?;
+        if let Some(t) = trace.as_deref_mut() {
+            t.observe(layer, "ffn_gate", &gate)?;
+            t.observe(layer, "ffn_up", &up)?;
+        }
         if gate.len() != up.len()
             || gate.len() != self.cpu.binding().config().intermediate_size() as usize
         {
@@ -376,7 +398,13 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
         if fused.iter().any(|v| !v.is_finite()) {
             return Err(Error::Malformed("nonfinite original FFN SwiGLU".into()));
         }
+        if let Some(t) = trace.as_deref_mut() {
+            t.observe(layer, "ffn_fused", &fused)?;
+        }
         let down = self.project(&format!("{prefix}.mlp.down_proj.weight"), &fused)?;
+        if let Some(t) = trace {
+            t.observe(layer, "ffn_output", &down)?;
+        }
         if down.len() != post_attention_residual.len() {
             return Err(Error::Malformed("Qwen original FFN residual width".into()));
         }
@@ -408,6 +436,15 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
         layer: usize,
         input: &[f32],
         previous: &OriginalFullPrefix,
+    ) -> Result<OriginalFullAttentionProposal> {
+        self.propose_full_attention_traced(layer, input, previous, None)
+    }
+    pub(crate) fn propose_full_attention_traced(
+        &self,
+        layer: usize,
+        input: &[f32],
+        previous: &OriginalFullPrefix,
+        mut trace: Option<&mut OriginalTraceRecorder>,
     ) -> Result<OriginalFullAttentionProposal> {
         let prefix = self.layer(layer, LayerKind::FullAttention)?;
         self.hidden(input)?;
@@ -451,6 +488,10 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
         let value = self.project(&format!("{p}.v_proj.weight"), &normalized)?;
         let norm_query = self.ordinary_head_norm(&query, &format!("{p}.q_norm.weight"), qheads)?;
         let norm_key = self.ordinary_head_norm(&key, &format!("{p}.k_norm.weight"), kvheads)?;
+        if let Some(t) = trace.as_deref_mut() {
+            t.observe(layer, "attention_q_norm", &norm_query)?;
+            t.observe(layer, "attention_k_norm", &norm_key)?;
+        }
         let theta = cfg.rope_theta() as f32;
         let rotary = cfg.rotary_dimensions() as usize;
         if !theta.is_finite() || theta <= 0.0 {
@@ -505,6 +546,9 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
                     .collect::<Vec<f32>>(),
             )?
         };
+        if let Some(t) = trace.as_deref_mut() {
+            t.observe(layer, "attention_scores", &scores)?;
+        }
         let prob = crate::qwen35::source_attention_softmax(AttentionSoftmaxRegion {
             source_identity: self.source_identity(),
             operation: "qwen.original.full.softmax",
@@ -513,6 +557,9 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
             width: keys.len(),
         })?;
         let probabilities = self.round(&prob.probabilities)?;
+        if let Some(t) = trace.as_deref_mut() {
+            t.observe(layer, "attention_probs", &probabilities)?;
+        }
         let padded = keys
             .len()
             .checked_add(31)
@@ -530,6 +577,9 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
             padded_tokens: padded,
         })?;
         let attended = self.round(&attended)?;
+        if let Some(t) = trace {
+            t.observe(layer, "attention_value", &attended)?;
+        }
         let gated = if cfg.attention_output_gate() {
             self.round(&crate::qwen35::source_binary(BinaryRegion {
                 source_identity: self.source_identity(),
@@ -623,6 +673,15 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
         input: &[f32],
         previous: &OriginalGdnPrefix,
     ) -> Result<OriginalGdnProposal> {
+        self.propose_gdn_traced(layer, input, previous, None)
+    }
+    pub(crate) fn propose_gdn_traced(
+        &self,
+        layer: usize,
+        input: &[f32],
+        previous: &OriginalGdnPrefix,
+        mut trace: Option<&mut OriginalTraceRecorder>,
+    ) -> Result<OriginalGdnProposal> {
         let prefix = self.layer(layer, LayerKind::LinearAttention)?;
         self.hidden(input)?;
         if previous.source != self.source_identity()
@@ -696,6 +755,9 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
         let z = self.project(&format!("{p}.in_proj_z.weight"), &normalized)?;
         let alpha = self.project(&format!("{p}.in_proj_a.weight"), &normalized)?;
         let beta = self.project(&format!("{p}.in_proj_b.weight"), &normalized)?;
+        if let Some(t) = trace.as_deref_mut() {
+            t.observe(layer, "gdn_qkv", &raw)?;
+        }
         if raw.len() != qkv || z.len() != vtotal || alpha.len() != nv || beta.len() != nv {
             return Err(Error::Malformed(
                 "GDN original source projection width".into(),
@@ -719,6 +781,9 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
             .into_iter()
             .map(|v| self.dtype.round(crate::math::silu(v)))
             .collect::<Result<_>>()?;
+        if let Some(t) = trace.as_deref_mut() {
+            t.observe(layer, "gdn_conv_silu", &mixed)?;
+        }
         if mixed.iter().any(|v| !v.is_finite()) {
             return Err(Error::Malformed(
                 "nonfinite original GDN convolution activation".into(),
@@ -764,6 +829,9 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
             ));
         }
         let core = self.dtype.recurrent_output(&core)?;
+        if let Some(t) = trace {
+            t.observe(layer, "gdn_recurrent_fp32", &next_state)?;
+        }
         let weights = self.cpu.vector(&format!("{p}.norm.weight"))?;
         let fused =
             self.dtype

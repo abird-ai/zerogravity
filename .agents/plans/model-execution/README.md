@@ -375,3 +375,89 @@ torch GEMM accumulation/attention backend parity, performance,
 real trained 27B payloads, official tokenizer and production
 SessionAuthority/GPU/SSD execution. BF16 stage agreement is not a
 claim of original-model learned checkpoint numerical parity.
+
+
+## ME-P0 — pinned original-Qwen numerical reference observations
+
+**Source identity:** `verified_shards.rs` now calculates a canonical
+`source_bundle_sha256` over the independently verified index SHA256 and
+every owned shard's basename, file length and whole-file SHA256.
+Domain-separated SHA256 input: ASCII
+`zerogravity.original.source-bundle.v1` followed by NUL,
+the lowercase index hash, then basename-sorted
+[LE32 basename length, basename bytes, LE64 shard length,
+lowercase whole-shard hash]. Unlike index-only provenance,
+changing learned bytes changes the bundle digest. No new source
+issuer, loader or inference backend.
+
+**Reference contract:** `original_qwen_trace.rs` reuses the shared
+`PlanObservation` format. Explicit, source-bound diagnostics capture
+embedding, GDN projections/conv/recurrent, QK/softmax/value,
+FFN/residual and final logits with source, config/index/bundle SHA256,
+coordinator/root/epoch, token/frontier and FP32/BF16 dtype.
+Caps: 32 MiB, 2048 stage records, 1,048,576 values/stage.
+Only ONE caller-selected GDN FP32 recurrent-state layer (or none)
+is observed per token; capturing all 48 is too expensive.
+
+`OriginalReferenceTrace::from_pinned_json` accepts only a
+caller-SHA256-pinned, strictly typed versioned reference document.
+Unknown/duplicate fields, incomplete/reordered stages, forged
+source/config/bundle, dtype/token/frontier mismatch, nonfinite or
+non-BF16 output words, invalid tolerance and over-budget content
+refuse. First bad layer/stage/element and both IEEE words are
+reported. BF16 outputs require exact bits; FP32 recurrence tolerances
+are opt-in and bounded. `ReferenceComparison::exact()` means
+bit-for-bit equal; `accepted()` includes explicitly tolerated
+nonidentical FP32 values, counted by `tolerated_values`.
+Comparing a candidate never publishes session StateRoot.
+
+The exact typed JSON reference format is:
+
+~~~json
+{
+  "schema": "zerogravity.qwen.original-reference.v1",
+  "provenance": {
+    "kind": "trained-framework",
+    "framework_revision": "pinned-reference-revision",
+    "reference_code_sha256": "<64 lowercase hex chars>",
+    "config_sha256": "<64 lowercase hex chars>",
+    "index_sha256": "<64 lowercase hex chars>",
+    "bundle_sha256": "<64 lowercase hex chars>",
+    "token": 0,
+    "position": 0,
+    "gdn_state_layer": 0,
+    "dtype": "bf16"
+  },
+  "observations": [
+    {"layer": null, "stage": "embedding", "bits": ["3f800000"]},
+    {"layer": 0, "stage": "gdn_recurrent_fp32", "bits": ["3e4ccccd"]}
+  ]
+}
+~~~
+
+This is an **illustrative fragment**, not a complete valid matching
+capture. A real reference needs every ordered observation and full
+element array (including logits); each value is an exact 8-digit
+lowercase IEEE-f32 bit word. The entire reference JSON is separately
+pinned by its expected SHA256 at load time. The caller's
+`trained-framework` claim does NOT independently prove provenance;
+the actual external framework code/revision/source artifacts must be
+validated separately. Model traces and weight contents are sensitive:
+do not log/export them without source-owner authorization.
+
+**Qualified here:** pinned manifest/parser/comparison, source-bundle
+reordering invariant and same-index/different-weights difference;
+small source-free four-layer BF16 diagnostics and analytical final
+logit eight, first divergent stage/element, missing/reordered
+records, bad source/position/dtype, malformed/duplicate JSON,
+selected GDN state, bit-exact versus FP32-tolerated comparison,
+and BF16 stage bit assertions. The full forward now uses its
+existing source-aware BF16 residual cast, closing one previously
+unrounded attention residual.
+
+**Still open:** independently captured actual trained Qwen3.8 27B
+checkpoint/reference trace, official tokenizer, original HF/FLA
+operator and GEMM accumulation equivalence, complete trained
+full-vocabulary logits/StateRoot, production physical GPU and SSD
+streaming. No Qwen3.8 trained checkpoint, Torch/Transformers SDK or
+reference traces were available locally for this milestone.

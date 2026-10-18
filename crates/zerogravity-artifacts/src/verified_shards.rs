@@ -214,6 +214,24 @@ impl VerifiedShardPlan {
     /// write may reject but never change the accepted owned allocation.
     /// No trained model names/layouts are inferred from generic headers.
     pub fn materialize(self) -> Result<SourceWeights> {
+        // A reference must identify the *weights*, not merely the index.
+        // Canonical versioned domain-separated manifest, independent of
+        // caller shard order. SHA256 index + sorted basename/len/whole hash.
+        let mut digest = Sha256::new();
+        digest.update(b"zerogravity.original.source-bundle.v1\0");
+        digest.update(self.index_sha256.as_bytes());
+        let mut entries = self.shards.iter().collect::<Vec<_>>();
+        entries.sort_by(|a, b| a.basename.cmp(&b.basename));
+        for shard in entries {
+            let name = shard.basename.as_bytes();
+            let len = u32::try_from(name.len())
+                .map_err(|_| Error::Limit("source basename too long for manifest".into()))?;
+            digest.update(len.to_le_bytes());
+            digest.update(name);
+            digest.update(shard.expected_bytes.to_le_bytes());
+            digest.update(shard.expected_sha256.as_bytes());
+        }
+        let bundle_sha256 = format!("{:x}", digest.finalize());
         let mut allocations = Vec::new();
         allocations
             .try_reserve_exact(self.shards.len())
@@ -277,6 +295,7 @@ impl VerifiedShardPlan {
             tensors,
             bindings,
             self.index_sha256,
+            bundle_sha256,
             self.memory,
         )
     }

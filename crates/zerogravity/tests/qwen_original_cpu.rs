@@ -1022,3 +1022,397 @@ mod original_bf16_diagnostic_tests {
         );
     }
 }
+
+#[cfg(feature = "model-qwen35")]
+mod original_reference_trace_tests {
+    use super::*;
+    use serde_json::{Value, json};
+    use zerogravity::original_qwen_math::OriginalQwenLayerMath;
+    use zerogravity::original_qwen_state::OriginalQwenStateBridge;
+    use zerogravity::original_qwen_trace::{
+        OriginalQwenTrace, OriginalReferenceTrace, ReferenceOrigin, ReferenceTolerance,
+    };
+
+    // Only analytical fixture source; creating this from the same Rust
+    // output NEVER provides an independent trained framework reference.
+    fn synthetic_reference(trace: &OriginalQwenTrace) -> Vec<u8> {
+        let observed=trace.records().iter().map(|step|{
+            json!({
+                "layer":if step.layer==usize::MAX {None} else{Some(step.layer)},
+                "stage":step.stage,
+                "bits":step.values.iter().map(|x|format!("{:08x}",x.to_bits())).collect::<Vec<_>>()
+            })
+        }).collect::<Vec<_>>();
+        serde_json::to_vec(&json!({
+            "schema":"zerogravity.qwen.original-reference.v1",
+            "provenance":{
+                "kind":"analytical-fixture",
+                "framework_revision":"offline-numpy-analytical-source-only",
+                "reference_code_sha256":"a".repeat(64),
+                "config_sha256":trace.config_sha256(),
+                "index_sha256":trace.index_sha256(),
+                "bundle_sha256":trace.bundle_sha256(),
+                "token":trace.token(),
+                "position":trace.position(),
+                "gdn_state_layer":trace.gdn_state_layer(),
+                "dtype":if trace.dtype()==zerogravity::original_qwen_precision::OriginalNumericalDType::F32
+                    {"f32"}else{"bf16"}
+            },
+            "observations":observed,
+        })).unwrap()
+    }
+    fn pinned(json_bytes: &[u8]) -> OriginalReferenceTrace {
+        OriginalReferenceTrace::from_pinned_json(json_bytes, &sha(json_bytes)).unwrap()
+    }
+    #[test]
+    fn actual_qualifiable_reference_gate_records_bounded_source_specific_stages() {
+        let fixture = Fixture::new();
+        let (source, config, index, admission, key) = loaded(&fixture);
+        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = OriginalQwenLayerMath::bf16_diagnostic(&cpu);
+        let bridge = OriginalQwenStateBridge::new(&math);
+        let mut session = bridge.coordinator_for_model(122).unwrap();
+        let before = session.root().clone();
+        let prepared = bridge
+            .prepare_diagnostic_token_bf16_with_trace(&session, 0)
+            .unwrap();
+        let trace = prepared.trace().unwrap();
+        assert_eq!(trace.source_identity(), source.source_identity());
+        assert_eq!(trace.position(), 0);
+        assert_eq!(trace.epoch(), 122);
+        assert_eq!(trace.root_id(), 0);
+        assert_eq!(trace.coordinator_id(), session.coordinator_id());
+        assert_eq!(trace.config_sha256(), sha(&config));
+        assert_eq!(trace.index_sha256(), sha(&index));
+        assert_eq!(
+            trace.bundle_sha256(),
+            source.verified_bundle_sha256().unwrap()
+        );
+        assert!(trace.records().len() > 35);
+        assert_eq!(trace.records().first().unwrap().stage, "embedding");
+        assert_eq!(trace.records().last().unwrap().stage, "final_logits");
+        assert_eq!(trace.records().last().unwrap().values.len(), 16);
+        // Independent source analytical fixture: all source tensors are
+        // ones, ordinary final zero-centered gamma=(1+1)=2, and the
+        // 4-wide untied head sums these lanes to exactly BF16 eight.
+        assert_eq!(
+            trace.records().last().unwrap().values[0].to_bits(),
+            8.0f32.to_bits()
+        );
+        for name in [
+            "gdn_qkv",
+            "gdn_conv_silu",
+            "gdn_recurrent_fp32",
+            "attention_q_norm",
+            "attention_k_norm",
+            "attention_scores",
+            "attention_probs",
+            "attention_value",
+            "ffn_gate",
+            "ffn_up",
+            "ffn_fused",
+            "ffn_output",
+            "post_attention_residual",
+            "post_ffn_residual",
+        ] {
+            assert!(
+                trace.records().iter().any(|obs| obs.stage == name),
+                "missing full-source observation {name}"
+            );
+        }
+        // Comparison only, never publishes or modifies the root.
+        let reference = pinned(&synthetic_reference(trace));
+        assert_eq!(reference.origin(), ReferenceOrigin::AnalyticalFixture);
+        assert_eq!(
+            reference.framework_revision(),
+            "offline-numpy-analytical-source-only"
+        );
+        assert_eq!(reference.reference_code_sha256(), "a".repeat(64));
+        let compared = reference
+            .compare(trace, ReferenceTolerance::exact())
+            .unwrap();
+        assert!(compared.exact());
+        assert!(compared.compared_values > 90);
+        assert_eq!(compared.compared_stages, trace.records().len());
+        assert_eq!(session.root(), &before);
+        let logits = prepared.logits().to_vec();
+        prepared.publish(&mut session).unwrap();
+        assert_eq!(session.root().frontier, 1);
+        assert_eq!(session.root().id, 1);
+        let second = bridge
+            .prepare_diagnostic_token_bf16_with_trace(&session, 1)
+            .unwrap();
+        let second_trace = second.trace().unwrap();
+        assert_eq!(second_trace.position(), 1);
+        assert_eq!(second_trace.root_id(), 1);
+        assert_ne!(logits.len(), 0);
+        assert!(
+            reference
+                .compare(second_trace, ReferenceTolerance::exact())
+                .is_err()
+        );
+        assert!(admission.arbiter.snapshot(&key).unwrap().reserved > 0);
+    }
+
+    #[test]
+    fn first_value_or_stage_mismatch_and_wrong_source_identity_never_pass() {
+        let fixture = Fixture::new();
+        let (source, config, index, _, _) = loaded(&fixture);
+        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = OriginalQwenLayerMath::bf16_diagnostic(&cpu);
+        let bridge = OriginalQwenStateBridge::new(&math);
+        let session = bridge.coordinator_for_model(11).unwrap();
+        let candidate = bridge
+            .prepare_diagnostic_token_bf16_with_trace(&session, 0)
+            .unwrap();
+        let actual = candidate.trace().unwrap();
+        let reference = synthetic_reference(actual);
+        let mut mutated: Value = serde_json::from_slice(&reference).unwrap();
+        let steps = mutated["observations"].as_array_mut().unwrap();
+        let at = steps
+            .iter()
+            .position(|x| x["stage"] == "attention_probs")
+            .unwrap();
+        let word = steps[at]["bits"][0].as_str().unwrap().to_string();
+        let modified = format!("{:08x}", u32::from_str_radix(&word, 16).unwrap() ^ 0x10000);
+        steps[at]["bits"][0] = json!(modified);
+        let serialized = serde_json::to_vec(&mutated).unwrap();
+        let mismatch = pinned(&serialized)
+            .compare(actual, ReferenceTolerance::exact())
+            .unwrap();
+        assert!(!mismatch.exact());
+        let detail = mismatch.first_mismatch.unwrap();
+        assert_eq!(detail.stage, "attention_probs");
+        assert_eq!(detail.element, 0);
+        assert_ne!(detail.reference_bits, detail.actual_bits);
+        // Structural omission/extra stage cannot silently pass even if
+        // all remaining values are exactly equal.
+        let mut reordered: Value = serde_json::from_slice(&reference).unwrap();
+        reordered["observations"].as_array_mut().unwrap().swap(0, 1);
+        assert!(
+            pinned(&serde_json::to_vec(&reordered).unwrap())
+                .compare(actual, ReferenceTolerance::exact())
+                .is_err()
+        );
+        let mut missing: Value = serde_json::from_slice(&reference).unwrap();
+        missing["observations"].as_array_mut().unwrap().remove(0);
+        assert!(
+            pinned(&serde_json::to_vec(&missing).unwrap())
+                .compare(actual, ReferenceTolerance::exact())
+                .is_err()
+        );
+        for field in ["config_sha256", "index_sha256", "bundle_sha256"] {
+            let mut doc: Value = serde_json::from_slice(&reference).unwrap();
+            doc["provenance"][field] = json!("0".repeat(64));
+            assert!(
+                pinned(&serde_json::to_vec(&doc).unwrap())
+                    .compare(actual, ReferenceTolerance::exact())
+                    .is_err(),
+                "{field}"
+            );
+        }
+        let mut doc: Value = serde_json::from_slice(&reference).unwrap();
+        doc["provenance"]["dtype"] = json!("f32");
+        assert!(
+            pinned(&serde_json::to_vec(&doc).unwrap())
+                .compare(actual, ReferenceTolerance::exact())
+                .is_err()
+        );
+        let mut doc: Value = serde_json::from_slice(&reference).unwrap();
+        doc["provenance"]["token"] = json!(7);
+        assert!(
+            pinned(&serde_json::to_vec(&doc).unwrap())
+                .compare(actual, ReferenceTolerance::exact())
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn pinned_reference_schema_and_float_tolerance_are_strictly_bounded() {
+        let fixture = Fixture::new();
+        let (source, config, index, _, _) = loaded(&fixture);
+        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = OriginalQwenLayerMath::bf16_diagnostic(&cpu);
+        let bridge = OriginalQwenStateBridge::new(&math);
+        let session = bridge.coordinator_for_model(1).unwrap();
+        let candidate = bridge
+            .prepare_diagnostic_token_bf16_with_trace(&session, 0)
+            .unwrap();
+        let actual = candidate.trace().unwrap();
+        let original = synthetic_reference(actual);
+        assert!(OriginalReferenceTrace::from_pinned_json(&original, &"0".repeat(64)).is_err());
+        assert!(OriginalReferenceTrace::from_pinned_json(&original, "invalid").is_err());
+        let mut doc: Value = serde_json::from_slice(&original).unwrap();
+        doc["unregistered"] = json!(1);
+        let serial = serde_json::to_vec(&doc).unwrap();
+        assert!(OriginalReferenceTrace::from_pinned_json(&serial, &sha(&serial)).is_err());
+        for bad in [f32::NAN, f32::INFINITY, -1.0, 0.5] {
+            assert!(
+                pinned(&original)
+                    .compare(
+                        actual,
+                        ReferenceTolerance {
+                            fp32_abs: bad,
+                            fp32_rel: 0.0
+                        }
+                    )
+                    .is_err()
+            );
+        }
+        let mut doc: Value = serde_json::from_slice(&original).unwrap();
+        doc["observations"][0]["bits"][0] = json!("7f800000"); // infinity
+        let serial = serde_json::to_vec(&doc).unwrap();
+        assert!(OriginalReferenceTrace::from_pinned_json(&serial, &sha(&serial)).is_err());
+        let mut invalid_bf16: Value = serde_json::from_slice(&original).unwrap();
+        invalid_bf16["observations"][0]["bits"][0] = json!("3f800001");
+        let serial = serde_json::to_vec(&invalid_bf16).unwrap();
+        assert!(OriginalReferenceTrace::from_pinned_json(&serial, &sha(&serial)).is_err());
+
+        let serialized = String::from_utf8(original.clone()).unwrap();
+        let duplicate = serialized.replacen(
+            "\"schema\":",
+            "\"schema\":\"zerogravity.qwen.original-reference.v1\",\"schema\":",
+            1,
+        );
+        assert_ne!(duplicate, serialized);
+        assert!(
+            OriginalReferenceTrace::from_pinned_json(
+                duplicate.as_bytes(),
+                &sha(duplicate.as_bytes())
+            )
+            .is_err()
+        );
+
+        let mut doc: Value = serde_json::from_slice(&original).unwrap();
+        doc["provenance"]["reference_code_sha256"] = json!("unset");
+        let serial = serde_json::to_vec(&doc).unwrap();
+        assert!(OriginalReferenceTrace::from_pinned_json(&serial, &sha(&serial)).is_err());
+    }
+
+    #[test]
+    fn selected_recurrent_state_is_bounded_and_reference_pins_that_exact_choice() {
+        let fixture = Fixture::new();
+        let (source, config, index, _, _) = loaded(&fixture);
+        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = OriginalQwenLayerMath::bf16_diagnostic(&cpu);
+        let bridge = OriginalQwenStateBridge::new(&math);
+        let session = bridge.coordinator_for_model(17).unwrap();
+        let chosen = bridge
+            .prepare_diagnostic_token_bf16_with_selected_trace(&session, 0, Some(2))
+            .unwrap();
+        let trace = chosen.trace().unwrap();
+        assert_eq!(trace.gdn_state_layer(), Some(2));
+        let states = trace
+            .records()
+            .iter()
+            .filter(|stage| stage.stage == "gdn_recurrent_fp32")
+            .collect::<Vec<_>>();
+        assert_eq!(states.len(), 1);
+        assert_eq!(states[0].layer, 2);
+        assert!(
+            pinned(&synthetic_reference(trace))
+                .compare(trace, ReferenceTolerance::exact())
+                .unwrap()
+                .exact()
+        );
+        let none = bridge
+            .prepare_diagnostic_token_bf16_with_selected_trace(&session, 0, None)
+            .unwrap();
+        let without = none.trace().unwrap();
+        assert_eq!(without.gdn_state_layer(), None);
+        assert!(
+            !without
+                .records()
+                .iter()
+                .any(|r| r.stage == "gdn_recurrent_fp32")
+        );
+        assert!(
+            pinned(&synthetic_reference(trace))
+                .compare(without, ReferenceTolerance::exact())
+                .is_err()
+        );
+        assert!(
+            bridge
+                .prepare_diagnostic_token_bf16_with_selected_trace(&session, 0, Some(3))
+                .is_err()
+        ); // full attention, not a GDN layer
+        assert!(
+            bridge
+                .prepare_diagnostic_token_bf16_with_selected_trace(&session, 0, Some(usize::MAX))
+                .is_err()
+        );
+        // An observed trace is read-only. Neither variant publishes a root.
+        assert_eq!(session.root().id, 0);
+        assert_eq!(session.root().frontier, 0);
+    }
+    #[test]
+    fn tolerated_fp32_recurrent_values_are_accepted_but_never_labeled_bit_exact() {
+        let fixture = Fixture::new();
+        let (source, config, index, _, _) = loaded(&fixture);
+        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = OriginalQwenLayerMath::bf16_diagnostic(&cpu);
+        let bridge = OriginalQwenStateBridge::new(&math);
+        let session = bridge.coordinator_for_model(24).unwrap();
+        let candidate = bridge
+            .prepare_diagnostic_token_bf16_with_trace(&session, 0)
+            .unwrap();
+        let actual = candidate.trace().unwrap();
+        let mut ref_data: Value = serde_json::from_slice(&synthetic_reference(actual)).unwrap();
+        let records = ref_data["observations"].as_array_mut().unwrap();
+        let state = records
+            .iter_mut()
+            .find(|v| v["stage"] == "gdn_recurrent_fp32")
+            .unwrap();
+        let original = state["bits"][0].as_str().unwrap();
+        // Change exactly one f32 ULP; adding a tiny decimal may round
+        // back to the same float for larger recurrent-state values.
+        let raw = u32::from_str_radix(original, 16).unwrap();
+        state["bits"][0] = json!(format!("{:08x}", raw ^ 1));
+        let changed = serde_json::to_vec(&ref_data).unwrap();
+        let reference = pinned(&changed);
+        let strict = reference
+            .compare(actual, ReferenceTolerance::exact())
+            .unwrap();
+        assert!(!strict.accepted());
+        assert!(!strict.exact());
+        assert_eq!(strict.first_mismatch.unwrap().stage, "gdn_recurrent_fp32");
+        let within = reference
+            .compare(
+                actual,
+                ReferenceTolerance {
+                    fp32_abs: 0.001,
+                    fp32_rel: 0.0,
+                },
+            )
+            .unwrap();
+        assert!(within.accepted());
+        assert!(!within.exact());
+        assert_eq!(within.tolerated_values, 1);
+        assert_eq!(session.root().id, 0);
+        // BF16 tensor words are NEVER subject to loose FP32 tolerances.
+        let mut ref_data: Value = serde_json::from_slice(&synthetic_reference(actual)).unwrap();
+        let records = ref_data["observations"].as_array_mut().unwrap();
+        let stage = records
+            .iter_mut()
+            .find(|r| r["stage"] == "attention_probs")
+            .unwrap();
+        let old = stage["bits"][0].as_str().unwrap();
+        stage["bits"][0] = json!(format!(
+            "{:08x}",
+            u32::from_str_radix(old, 16).unwrap() ^ 0x10000
+        ));
+        let reference = pinned(&serde_json::to_vec(&ref_data).unwrap());
+        assert!(
+            !reference
+                .compare(
+                    actual,
+                    ReferenceTolerance {
+                        fp32_abs: 0.01,
+                        fp32_rel: 0.01
+                    }
+                )
+                .unwrap()
+                .accepted()
+        );
+    }
+}

@@ -541,3 +541,69 @@ fn exact_single_shard_f16_header_payload_and_borrowed_tensor_source() {
     drop(source);
     assert_eq!(admit.arbiter.snapshot(&key).unwrap().reserved, 0);
 }
+
+#[test]
+fn authenticated_bundle_digest_binds_actual_learned_bytes_and_is_order_independent() {
+    let fx = Two::new();
+    let (admit, key) = admission(128 * 1024 * 1024);
+    let old = fx
+        .prepare(&admit, 1024 * 1024)
+        .unwrap()
+        .materialize()
+        .unwrap();
+    let old_bundle = old.verified_bundle_sha256().unwrap().to_owned();
+    assert_eq!(old_bundle.len(), 64);
+    assert_eq!(
+        old.verified_shard_index_sha256(),
+        Some(sha(&fx.idx).as_str())
+    );
+
+    // Shard order does not change the canonical source-bundle content digest.
+    let mut reverse = fx.shards();
+    reverse.reverse();
+    let reordered = SourceWeights::prepare_verified_shards(
+        &fx.idx,
+        &sha(&fx.idx),
+        reverse,
+        limits(1024 * 1024),
+        &admit,
+    )
+    .unwrap()
+    .materialize()
+    .unwrap();
+    assert_eq!(
+        reordered.verified_bundle_sha256(),
+        Some(old_bundle.as_str())
+    );
+    assert_ne!(reordered.source_identity(), old.source_identity());
+
+    // Same source index, same names/headers/shapes, different actual BF16
+    // weight content: source bundle MUST change even though index doesn't.
+    let changed = safetensors("b", "BF16", &[2], &[0x00, 0x40, 0x80, 0x3f]);
+    assert_eq!(changed.len(), fx.second.len());
+    fs::write(fx.fx.path.join(B), &changed).unwrap();
+    let new = SourceWeights::prepare_verified_shards(
+        &fx.idx,
+        &sha(&fx.idx),
+        vec![
+            listed(B, artifact(&fx.fx.path.join(B), B), &changed),
+            listed(A, artifact(&fx.fx.path.join(A), A), &fx.first),
+        ],
+        limits(1024 * 1024),
+        &admit,
+    )
+    .unwrap()
+    .materialize()
+    .unwrap();
+    assert_eq!(
+        new.verified_shard_index_sha256(),
+        Some(sha(&fx.idx).as_str())
+    );
+    assert_ne!(new.verified_bundle_sha256(), Some(old_bundle.as_str()));
+    assert_eq!(old.vector("b").unwrap(), [1.0, 2.0]);
+    assert_eq!(new.vector("b").unwrap(), [2.0, 1.0]);
+    drop(new);
+    drop(reordered);
+    drop(old);
+    assert_eq!(admit.arbiter.snapshot(&key).unwrap().reserved, 0);
+}
