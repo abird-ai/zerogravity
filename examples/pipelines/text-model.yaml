@@ -1,0 +1,24 @@
+# Single model per process: original direct CLI remains a fast path.
+# This typed pipeline config is a structural scaffold; run/serve NOT IMPLEMENTED.
+
+schema: zerogravity.pipeline.v1
+model:
+  - id: model
+    target: qwen3.5-2b
+pipeline:
+  - name: chat
+    input: text
+    output: text
+    step:
+      - id: generate
+        kind: llm
+        model: model
+    link:
+      - from: input.value
+        to: generate.text
+      - from: generate.text
+        to: output.value
+route:
+  - path: "/v1/chat/completions"
+    pipeline: chat
+    protocol: openai-text

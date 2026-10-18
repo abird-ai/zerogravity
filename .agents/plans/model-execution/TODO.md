@@ -8,14 +8,32 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-- [ ] Qualify independently selected NanoJev-like calibrated decision
-  model sources under the same model/source/cache/residency authority.
-  Register finite choice/boolean/score or include/omit heads without
-  assuming a specific research checkpoint. Validate calibrated
-  probabilities and per-question source-bound state, batching, thresholds,
-  accepted/rejected context records and decision-fallback semantics
-  before enabling generic context-filter execution; pipeline check alone
-  provides only typed static intent.
+- [ ] **ACTIVE NEXT: ME-P0 Qwen3.5 2B then Qwen3.8 27B.**
+  Begin with original qualified Qwen3.5 .8B/2B CPU and resident GPU
+  source/state oracles, inspect release source ownership and exact
+  model-2B profiling on the permitted CPU/GPU devices. Keep tests
+  bounded to existing 8K context now; 16K/32K extensions remain
+  separate numerical gates. Qualify a stable single-model fast path,
+  original tokenizer/math/KV/recurrent/StateRoot and actual device
+  completion first. Then implement checked immutable source shard leases
+  above the present 4GiB executable-source gate and Qwen3.8 27B
+  complete trained CPU logits, including SSD streaming and quant-aware
+  physical placement. Do not fetch weights or launch held Renoir/gfx90c
+  hardware without the corresponding permission and source integrity.
+- [ ] **NEXT after Qwen: ME-P1 Gemma4 E2B→26B-A4B→31B**, independently
+  source-bind tensors/reference semantics, PLE/MoE/dense quantization
+  and trained CPU→GPU correctness before measured throughput
+  optimization. **ME-P2 Qwen3.8 Flash-Next** follows with separately
+  verified learned n-gram embedding/4B MTP heads, QSA/GDN/MoE and
+  explicit Q2/~3.5bpw/Q4 source quant choices (NOT guessed files),
+  speculative n-gram as a distinct runtime optimization. Other OSS,
+  ASR/TTS/image/video/decision execution and multi-model router remain
+  on their own deferred source-real gates.
+- [ ] Preserve direct one-model-per-process execution and one
+  shared-instance-many-pipelines as **one Rust fabric**; the accepted
+  YAML DAG/compiler and extension schemas add no inference backend.
+  Do not resume context snapshot/provider/multimodal/router design
+  work while ME-P0/P1 are open unless they genuinely block those models.
 
 - [ ] Enforce new owner priority: Qwen3.5 .8B regression, Qwen3.5
   2B highest-perf trained CPU/GPU, Qwen3.8 27B with SSD
@@ -71,3 +89,14 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 - [x] Qwen3.8 metadata/shard roles and CPU-free Gemma4 family contracts,14 Gemma tests and official metadata/config cases passed within metadata scope. No tokenizer, new learned weights, physical shard-header binding or trained inference follows.
 - [x] Preserve Qwen/Gemma source axes, metadata precision and routing/KV facts in the [model semantics reference](../../docs/MODEL_SEMANTICS_AND_COMPATIBILITY.md) and [Gemma technical contract](../../research/GEMMA4_FAMILY_CONTRACTS_2026-10-16.md). The executable-source4GiB cap remains.
+
+## Deferred — after Qwen/Gemma and Flash execution
+
+- [ ] Qualify independently selected NanoJev-like calibrated decision
+  model sources under the same model/source/cache/residency authority.
+  Register finite choice/boolean/score or include/omit heads without
+  assuming a specific research checkpoint. Validate calibrated
+  probabilities and per-question source-bound state, batching, thresholds,
+  accepted/rejected context records and decision-fallback semantics
+  before enabling generic context-filter execution; pipeline check alone
+  provides only typed static intent.

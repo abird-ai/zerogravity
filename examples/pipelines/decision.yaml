@@ -1,0 +1,15 @@
+# Skeleton: typed decision heads (NanoJev or future registered choice model).
+# No learned decision checkpoint, execution backend or calibration is implied.
+schema: zerogravity.pipeline.v1
+model:
+  - {id: gate, target: nanojev-decision}
+pipeline:
+  - name: classify
+    input: text
+    output: decision-verdict
+    step:
+      - {id: decide, kind: decision, model: gate}
+    link:
+      - {from: input.value, to: decide.text}
+      - {from: decide.verdict, to: output.value}
+route: []

@@ -1,0 +1,24 @@
+# Qwen Image 2.1 Diffusers assembly: prompt -> image stage placeholder.
+# Complete conditioner/solver/VAE, progressive frames and API NOT IMPLEMENTED.
+
+schema: zerogravity.pipeline.v1
+model:
+  - id: image
+    target: qwen-image-2.1
+pipeline:
+  - name: render
+    input: text
+    output: image-rgba
+    step:
+      - id: generate
+        kind: image-generate
+        model: image
+    link:
+      - from: input.value
+        to: generate.prompt
+      - from: generate.image
+        to: output.value
+route:
+  - path: "/v1/images/generations"
+    pipeline: render
+    protocol: sse

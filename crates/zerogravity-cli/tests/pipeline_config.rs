@@ -20,20 +20,28 @@ fn output(args: &[&str]) -> std::process::Output {
         .unwrap()
 }
 #[test]
-fn four_human_writable_toml_pipelines_are_validated_without_ever_becoming_servers() {
+fn eight_human_writable_yaml_pipelines_are_validated_without_ever_becoming_servers() {
     for (file, expected, route_count) in [
         (
-            "voice-assistant.toml",
+            "voice-assistant.yaml",
             "reused model bindings: 1",
             "declared routes: 2",
         ),
         (
-            "transcribe-diarize.toml",
+            "transcribe-diarize.yaml",
             "transcribe-speakers",
             "declared routes: 1",
         ),
-        ("text-model.toml", "chat", "declared routes: 1"),
-        ("image-generation.toml", "render", "declared routes: 1"),
+        ("text-model.yaml", "chat", "declared routes: 1"),
+        ("image-generation.yaml", "render", "declared routes: 1"),
+        (
+            "image-latent-assembly.yaml",
+            "solve -> decode",
+            "declared routes: 1",
+        ),
+        ("audio-codec.yaml", "encode -> decode", "declared routes: 0"),
+        ("video-stream.yaml", "generate", "declared routes: 1"),
+        ("decision.yaml", "decide", "declared routes: 0"),
     ] {
         let file = example(file);
         let path = file.to_str().unwrap();
@@ -119,26 +127,23 @@ fn equivalent_repeatable_flags_compile_one_typed_voice_chain_without_execution()
 }
 #[test]
 fn bad_input_schemas_port_types_cycles_and_api_exposure_fail_before_any_runtime() {
-    let baseline = std::fs::read_to_string(example("text-model.toml")).unwrap();
+    let baseline = std::fs::read_to_string(example("text-model.yaml")).unwrap();
     let cases = [
-        baseline.replace("schema = \"zerogravity.pipeline.v1\"", "schema = \"v2\""),
-        baseline.replace("output = \"text\"", "output = \"audio-pcm\""),
-        baseline.replace("to = \"generate.text\"", "to = \"generate.missing\""),
-        baseline.replace("to = \"output.value\"", "to = \"generate.text\""),
-        baseline.replace("id = \"generate\"", "id = \"input\""),
-        baseline.replace("protocol = \"openai-text\"", "protocol = \"webrtc\""),
-        baseline.replace("model = \"model\"", "model = \"missing\""),
-        baseline.replace(
-            "target = \"qwen3.5-2b\"",
-            "target = \"unregistered-future-model\"",
-        ),
-        baseline.replace("kind = \"llm\"", "kind = \"tts\""),
-        format!("{baseline}\nunknown_command = \"run-anything\"\n"),
+        baseline.replace("schema: zerogravity.pipeline.v1", "schema: v2"),
+        baseline.replace("output: text", "output: audio-pcm"),
+        baseline.replace("to: generate.text", "to: generate.missing"),
+        baseline.replace("to: output.value", "to: generate.text"),
+        baseline.replace("id: generate", "id: input"),
+        baseline.replace("protocol: openai-text", "protocol: webrtc"),
+        baseline.replace("model: model", "model: missing"),
+        baseline.replace("target: qwen3.5-2b", "target: unregistered-future-model"),
+        baseline.replace("kind: llm", "kind: tts"),
+        format!("{baseline}\nunknown_command: \"run-anything\"\n"),
     ];
     let base = std::env::temp_dir().join(format!("zg-pipeline-negative-{}", std::process::id()));
     std::fs::create_dir(&base).unwrap();
     for (i, contents) in cases.into_iter().enumerate() {
-        let path = base.join(format!("{i}.toml"));
+        let path = base.join(format!("{i}.yaml"));
         std::fs::write(&path, contents).unwrap();
         let check = output(&["pipeline", "check", "--config", path.to_str().unwrap()]);
         assert_eq!(
@@ -182,7 +187,7 @@ fn bad_input_schemas_port_types_cycles_and_api_exposure_fail_before_any_runtime(
 
 #[test]
 fn committed_same_session_chat_hints_are_opt_in_and_toggle_without_graph_mutation() {
-    let file = example("contextual-voice-assistant.toml");
+    let file = example("contextual-voice-assistant.yaml");
     let contents = std::fs::read_to_string(&file).unwrap();
     let result = output(&["pipeline", "check", "--config", file.to_str().unwrap()]);
     assert!(
@@ -196,11 +201,11 @@ fn committed_same_session_chat_hints_are_opt_in_and_toggle_without_graph_mutatio
     assert!(checked.contains("Committed chat context: 1 configured, 1 ENABLED"));
     assert!(checked.contains("context-aware ASR/translation"));
     assert!(checked.contains("NOT IMPLEMENTED"));
-    let tmp = std::env::temp_dir().join(format!("zg-context-toggle-{}.toml", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("zg-context-toggle-{}.yaml", std::process::id()));
     assert!(!tmp.exists());
-    // Same TOML and typed context links remain; disabled policy emits no
+    // Same YAML and typed context links remain; disabled policy emits no
     // snapshot, so no previous-turn context reaches ASR/translation.
-    let disabled = contents.replace("enabled = true", "enabled = false");
+    let disabled = contents.replace("enabled: true", "enabled: false");
     assert_ne!(disabled, contents);
     std::fs::write(&tmp, disabled).unwrap();
     let disabled_result = output(&["pipeline", "check", "--config", tmp.to_str().unwrap()]);
@@ -283,32 +288,29 @@ fn repeatable_context_flags_compile_identically_and_can_disable_hints() {
 
 #[test]
 fn bad_context_sources_bounds_spoofed_cycles_and_unknown_config_refuse() {
-    let original = std::fs::read_to_string(example("contextual-voice-assistant.toml")).unwrap();
+    let original = std::fs::read_to_string(example("contextual-voice-assistant.yaml")).unwrap();
     let bad = [
-        original.replace("max_bytes = 4096", "max_bytes = 0"),
-        original.replace("max_bytes = 4096", "max_bytes = 1048577"),
-        original.replace("from_model = \"assistant\"", "from_model = \"voice\""),
-        original.replace("from_model = \"assistant\"", "from_model = \"missing\""),
+        original.replace("max_bytes: 4096", "max_bytes: 0"),
+        original.replace("max_bytes: 4096", "max_bytes: 1048577"),
+        original.replace("from_model: assistant", "from_model: voice"),
+        original.replace("from_model: assistant", "from_model: missing"),
         original.replace(
-            "chat_context = { enabled = true, from_model = \"assistant\", max_bytes = 4096 }",
+            "    chat_context:\n      enabled: true\n      from_model: assistant\n      max_bytes: 4096\n",
             "",
         ),
-        original.replace("from = \"context.value\"", "from = \"reply.text\""),
-        original.replace("to = \"listen.context\"", "to = \"listen.audio\""),
-        original.replace("id = \"listen\"", "id = \"context\""),
-        original.replace("max_bytes = 4096", "max_bytes = -1"),
-        original.replace(
-            "max_bytes = 4096",
-            "max_bytes = 4096, allow_cross_session = true",
-        ),
-        original.replace("enabled = true", "enabled = \"yes\""),
+        original.replace("from: context.value", "from: reply.text"),
+        original.replace("to: listen.context", "to: listen.audio"),
+        original.replace("id: listen", "id: context"),
+        original.replace("max_bytes: 4096", "max_bytes: -1"),
+        original.replace("max_bytes: 4096", "max_bytes: 4096\n      allow_cross_session: true"),
+        original.replace("enabled: true", "enabled: \"yes\""),
     ];
     let temp =
         std::env::temp_dir().join(format!("zg-chat-context-negative-{}", std::process::id()));
     std::fs::create_dir(&temp).unwrap();
     for (i, bad) in bad.into_iter().enumerate() {
         assert_ne!(bad, original, "negative fixture did not change");
-        let file = temp.join(format!("{i}.toml"));
+        let file = temp.join(format!("{i}.yaml"));
         std::fs::write(&file, bad).unwrap();
         let result = output(&["pipeline", "check", "--config", file.to_str().unwrap()]);
         assert_eq!(
@@ -356,8 +358,8 @@ fn bad_context_sources_bounds_spoofed_cycles_and_unknown_config_refuse() {
 }
 
 #[test]
-fn ordered_context_filters_and_nanojev_decision_compile_from_human_toml_without_loading_models() {
-    let file = example("contextual-voice-filtered.toml");
+fn ordered_context_filters_and_nanojev_decision_compile_from_human_yaml_without_loading_models() {
+    let file = example("contextual-voice-filtered.yaml");
     let result = output(&["pipeline", "check", "--config", file.to_str().unwrap()]);
     assert!(
         result.status.success(),
@@ -490,31 +492,28 @@ fn context_sources_match_filters_and_decision_accepted_as_repeatable_flags() {
 
 #[test]
 fn decision_source_types_duplicates_malformed_filters_and_unqualified_targets_refuse() {
-    let base = std::fs::read_to_string(example("contextual-voice-filtered.toml")).unwrap();
+    let base = std::fs::read_to_string(example("contextual-voice-filtered.yaml")).unwrap();
     let cases = [
-        base.replace(r#"target = "nanojev-decision""#, r#"target = "qwen3.5-2b""#),
-        base.replace(r#"model = "gate""#, r#"model = "missing""#),
-        base.replace("sources = [", r#"sources = ["session/tool_result","#),
+        base.replace("target: nanojev-decision", "target: qwen3.5-2b"),
+        base.replace("model: gate", "model: missing"),
+        base.replace("- session/tool_result", "- session/user_message"),
         base.replace(
             "shared:team-support/assistant_message",
             "shared:../assistant_message",
         ),
-        base.replace("min_confidence_bps = 7500", "min_confidence_bps = 10001"),
-        base.replace(
-            r#"on_unavailable = "omit""#,
-            r#"on_unavailable = "elevate""#,
-        ),
-        base.replace(r#"field = "kind""#, r#"field = "regex_script""#),
-        base.replace(r#"values = ["tool_call"]"#, r#"values = ["bad_role"]"#),
-        base.replace(r#"kind = "decision""#, r#"kind = "arbitrary_code""#),
-        base.replace("sources = [", "sources = [] # invalid sources,"),
+        base.replace("min_confidence_bps: 7500", "min_confidence_bps: 10001"),
+        base.replace("on_unavailable: omit", "on_unavailable: elevate"),
+        base.replace("field: kind", "field: regex_script"),
+        base.replace("- tool_call", "- bad_role"),
+        base.replace("kind: decision", "kind: arbitrary_code"),
+        base.replace("      sources:\n", "      sources: []\n"),
     ];
     let temp = std::env::temp_dir().join(format!("zg-context-filters-{}", std::process::id()));
     assert!(!temp.exists());
     std::fs::create_dir(&temp).unwrap();
     for (i, config) in cases.iter().enumerate() {
         assert_ne!(*config, base);
-        let path = temp.join(format!("{i}.toml"));
+        let path = temp.join(format!("{i}.yaml"));
         std::fs::write(&path, config).unwrap();
         let output = output(&["pipeline", "check", "--config", path.to_str().unwrap()]);
         assert_eq!(
@@ -552,4 +551,110 @@ fn decision_source_types_duplicates_malformed_filters_and_unqualified_targets_re
         args.extend_from_slice(invalid);
         assert_eq!(output(&args).status.code(), Some(2));
     }
+}
+
+#[test]
+fn yaml_anchors_aliases_and_shallow_merges_are_structural_conveniences_only() {
+    let baseline = std::fs::read_to_string(example("text-model.yaml")).unwrap();
+    // YAML scalar aliases reuse an instance name; they do not construct or
+    // execute the model, just resolve to the normal typed component contract.
+    let scalar = baseline
+        .replace("id: model", "id: &shared_model_name model")
+        .replace("model: model", "model: *shared_model_name");
+    assert_ne!(scalar, baseline);
+    let merged = baseline.replace(
+        "  - id: model\n    target: qwen3.5-2b",
+        "  - <<: &shared_model_fields {target: qwen3.5-2b}\n    id: model",
+    );
+    assert_ne!(merged, baseline);
+    let dir = std::env::temp_dir().join(format!("zg-yaml-expressiveness-{}", std::process::id()));
+    assert!(!dir.exists());
+    std::fs::create_dir(&dir).unwrap();
+    for (n, text) in [scalar, merged].into_iter().enumerate() {
+        let file = dir.join(format!("{n}.yaml"));
+        std::fs::write(&file, text).unwrap();
+        let result = output(&["pipeline", "check", "--config", file.to_str().unwrap()]);
+        assert!(
+            result.status.success(),
+            "YAML case {n}: {:?}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&result.stdout)
+                .contains("Pipeline: chat; topological stages: generate")
+        );
+        let run = output(&["pipeline", "run", "--config", file.to_str().unwrap()]);
+        assert_eq!(run.status.code(), Some(2));
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn yaml_tags_duplicate_keys_multiple_documents_cycles_and_legacy_toml_refuse() {
+    let baseline = std::fs::read_to_string(example("text-model.yaml")).unwrap();
+    let errors = [
+        baseline.replace(
+            "target: qwen3.5-2b",
+            "target: !untrusted_constructor qwen3.5-2b",
+        ),
+        baseline.replace(
+            "schema: zerogravity.pipeline.v1",
+            "schema: &recursive [*recursive]",
+        ),
+        baseline.replace(
+            "schema: zerogravity.pipeline.v1",
+            "schema: zerogravity.pipeline.v1\nschema: v2",
+        ),
+        format!("{baseline}\n---\nschema: zerogravity.pipeline.v1\n"),
+        baseline.replace(
+            "  - id: model",
+            "  - <<: invalid-scalar-merge\n    id: model",
+        ),
+        "schema = \"zerogravity.pipeline.v1\"\n[[model]]\nid = \"qwen\"\n".into(),
+        format!("{baseline}\nunknown_schema_key: !exec [arbitrary, code]\n"),
+    ];
+    let dir = std::env::temp_dir().join(format!("zg-yaml-negative-{}", std::process::id()));
+    assert!(!dir.exists());
+    std::fs::create_dir(&dir).unwrap();
+    for (n, text) in errors.into_iter().enumerate() {
+        let file = dir.join(format!("{n}.yaml"));
+        std::fs::write(&file, text).unwrap();
+        let result = output(&["pipeline", "check", "--config", file.to_str().unwrap()]);
+        assert_eq!(
+            result.status.code(),
+            Some(2),
+            "YAML negative case {n}: {:?}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(!String::from_utf8_lossy(&result.stderr).contains("NEVER_ECHO_SECRET"));
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn yaml_alias_expansion_is_bounded_before_model_registration() {
+    // 512 scalar entries repeated through aliases exceed the AST node cap
+    // even though the human YAML file is tiny and no model is loaded.
+    let chunks = (0..512)
+        .map(|n| format!("item{n}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let aliases = std::iter::repeat_n("*words", 40)
+        .collect::<Vec<_>>()
+        .join(", ");
+    let bomb = format!(
+        "schema: zerogravity.pipeline.v1\nwords: &words [{chunks}]\nexpanded: [{aliases}]\n"
+    );
+    assert!(bomb.len() < 256 * 1024);
+    let dir = std::env::temp_dir().join(format!("zg-yaml-bounded-{}.yaml", std::process::id()));
+    assert!(!dir.exists());
+    std::fs::write(&dir, bomb).unwrap();
+    let result = output(&["pipeline", "check", "--config", dir.to_str().unwrap()]);
+    std::fs::remove_file(dir).unwrap();
+    assert_eq!(result.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("expanded YAML") || stderr.contains("invalid bounded pipeline YAML"),
+        "{stderr}"
+    );
 }

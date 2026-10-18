@@ -377,6 +377,56 @@ fn flags(args: &[String]) -> Result<Config> {
         routes,
     })
 }
+/// Bound the *resolved* YAML AST before typed deserialization. YAML
+/// anchors/aliases and shallow merge keys are useful for shared settings,
+/// but custom tags are not executable or trusted pipeline components.
+/// Every expanded scalar and map key is counted within this finite policy.
+fn check_yaml_shape(value: &serde_yaml::Value) -> Result<()> {
+    use serde_yaml::Value;
+    const MAX_NODES: usize = 16_384;
+    const MAX_DEPTH: usize = 32;
+    let mut stack = vec![(value, 0usize)];
+    let mut nodes = 0usize;
+    let mut scalar_bytes = 0usize;
+    while let Some((node, depth)) = stack.pop() {
+        nodes += 1;
+        if nodes > MAX_NODES || depth > MAX_DEPTH {
+            return Err(Error::Limit("expanded YAML pipeline size/depth".into()));
+        }
+        match node {
+            Value::Tagged(_) => {
+                return Err(Error::Unsupported(
+                    "YAML tags cannot select a pipeline component or executable constructor".into(),
+                ));
+            }
+            Value::Mapping(map) => {
+                for (key, value) in map {
+                    if !matches!(key, Value::String(s) if s.len() <= 128) {
+                        return Err(Error::Malformed(
+                            "YAML mapping keys must be bounded strings".into(),
+                        ));
+                    }
+                    stack.push((value, depth + 1));
+                    stack.push((key, depth + 1));
+                }
+            }
+            Value::Sequence(items) => {
+                stack.extend(items.iter().map(|item| (item, depth + 1)));
+            }
+            Value::String(text) => {
+                scalar_bytes = scalar_bytes
+                    .checked_add(text.len())
+                    .ok_or_else(|| Error::Limit("expanded YAML scalar bytes".into()))?;
+                if scalar_bytes > MAX_CONFIG_BYTES {
+                    return Err(Error::Limit("expanded YAML scalar bytes".into()));
+                }
+            }
+            Value::Null | Value::Bool(_) | Value::Number(_) => {}
+        }
+    }
+    Ok(())
+}
+
 fn load(path: &str) -> Result<Config> {
     let bytes = fs::metadata(path)?.len();
     if bytes == 0 || bytes > MAX_CONFIG_BYTES as u64 {
@@ -391,14 +441,24 @@ fn load(path: &str) -> Result<Config> {
     }
     let text = std::str::from_utf8(&bytes)
         .map_err(|_| Error::Malformed("pipeline config not UTF-8".into()))?;
-    let doc: Document = toml::from_str(text)
-        .map_err(|_| Error::Malformed("invalid bounded pipeline TOML schema".into()))?;
+    // No arbitrary code or custom YAML tags; even anchor/merge-expanded
+    // values undergo the same bounded type and source-graph verification.
+    let mut node: serde_yaml::Value = serde_yaml::from_str(text)
+        .map_err(|_| Error::Malformed("invalid bounded pipeline YAML schema".into()))?;
+    check_yaml_shape(&node)?;
+    // YAML merge keys are a source-level convenience, not dynamic inheritance
+    // across model registry, device capabilities or source authorization.
+    node.apply_merge()
+        .map_err(|_| Error::Malformed("invalid YAML mapping merge".into()))?;
+    check_yaml_shape(&node)?;
+    let doc: Document = serde_yaml::from_value(node)
+        .map_err(|_| Error::Malformed("invalid typed pipeline YAML schema".into()))?;
     doc.compile()
 }
 pub(super) fn run(args: &[String]) -> Result<()> {
     if args.len() == 1 && matches!(args[0].as_str(), "--help" | "help" | "-h") {
         println!(
-            "USAGE: zerogravity pipeline check --config CONFIG.toml
+            "USAGE: zerogravity pipeline check --config CONFIG.yaml
         zerogravity pipeline check --name NAME --input audio-pcm --output audio-pcm \\
          --model asr=nvidia-canary-qwen-2.5b --model llm=qwen3.5-2b \\
          --model tts=qwen3-tts-1.7b --model diar=speaker-diarization \\
@@ -408,11 +468,11 @@ pub(super) fn run(args: &[String]) -> Result<()> {
          --link input.value=speaker.audio --link speaker.speakers=text.speakers \\
          --link text.text=answer.text --link answer.text=talk.text \\
          --link talk.audio=output.value --route /v1/realtime=websocket --realtime
-       zerogravity pipeline check --config examples/pipelines/contextual-voice-assistant.toml
-       zerogravity pipeline run --config CONFIG.toml   (NOT IMPLEMENTED)
+       zerogravity pipeline check --config examples/pipelines/contextual-voice-assistant.yaml
+       zerogravity pipeline run --config CONFIG.yaml   (NOT IMPLEMENTED)
 
 OPTIONAL CHAT CONTEXT (off by default):
-    [pipeline.chat_context] enabled=true, from_model='assistant', max_bytes=4096
+    chat_context: {{enabled: true, from_model: assistant, max_bytes: 4096}}
     --chat-context-from assistant [--chat-context-max-bytes 4096]
     --chat-context-enabled false    (keeps optional typed ports; supplies no context)
     context.value -> stage.context only when chat_context policy exists

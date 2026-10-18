@@ -1,0 +1,18 @@
+# Skeleton: native audio codec/processor chain, no pretrained model required
+# for structural validation. Actual codec correctness and realtime PCM are
+# NOT IMPLEMENTED. No audio device is opened by `pipeline check`.
+schema: zerogravity.pipeline.v1
+model: []
+pipeline:
+  - name: audio-codec
+    input: audio-pcm
+    output: audio-pcm
+    realtime: true
+    step:
+      - {id: encode, kind: audio-tokenize}
+      - {id: decode, kind: audio-detokenize}
+    link:
+      - {from: input.value, to: encode.audio}
+      - {from: encode.tokens, to: decode.tokens}
+      - {from: decode.audio, to: output.value}
+route: []

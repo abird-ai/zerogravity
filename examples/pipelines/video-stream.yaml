@@ -1,0 +1,18 @@
+# Skeleton: future video model, emitted source-valid complete video frames.
+# Timeline clocks, synchronised audio and progressive transport remain
+# NOT IMPLEMENTED; no GPU/source/license is assumed.
+schema: zerogravity.pipeline.v1
+model:
+  - {id: video, target: wan-video}
+pipeline:
+  - name: video-preview
+    input: text
+    output: video-frames
+    realtime: true
+    step:
+      - {id: generate, kind: video-generate, model: video}
+    link:
+      - {from: input.value, to: generate.prompt}
+      - {from: generate.frames, to: output.value}
+route:
+  - {path: /v1/video/generations, protocol: sse, pipeline: video-preview}

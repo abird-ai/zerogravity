@@ -1,0 +1,19 @@
+# Skeleton: source-exact image transformer/solver + native VAE decode.
+# Selecting a model does NOT qualify the Diffusers assembly/solver, and
+# the typed latent-to-image stage is NOT IMPLEMENTED.
+schema: zerogravity.pipeline.v1
+model:
+  - {id: image, target: qwen-image-2.1}
+pipeline:
+  - name: render
+    input: text
+    output: image-rgba
+    step:
+      - {id: solve, kind: image-solve, model: image}
+      - {id: decode, kind: image-decode}
+    link:
+      - {from: input.value, to: solve.prompt}
+      - {from: solve.latents, to: decode.latents}
+      - {from: decode.image, to: output.value}
+route:
+  - {path: /v1/images/generations, protocol: sse, pipeline: render}

@@ -1,0 +1,68 @@
+# Duplex voice assistant: ASR, speakers, Qwen LLM, TTS.
+# The same LLM instance is reused by the second chat pipeline.
+# Router routes are declarations, not live listeners.
+
+schema: zerogravity.pipeline.v1
+model:
+  - id: recognizer
+    target: nvidia-canary-qwen-2.5b
+  - id: speakers
+    target: speaker-diarization
+  - id: &assistant_id assistant
+    target: qwen3.5-2b
+  - id: voice
+    target: qwen3-tts-1.7b
+pipeline:
+  - name: talk
+    input: audio-pcm
+    output: audio-pcm
+    realtime: true
+    step:
+      - id: listen
+        kind: asr
+        model: recognizer
+      - id: speaker
+        kind: diarization
+        model: speakers
+      - id: prompt
+        kind: speakers-text
+      - id: reply
+        kind: llm
+        model: *assistant_id
+      - id: speak
+        kind: tts
+        model: voice
+    link:
+      - from: input.value
+        to: listen.audio
+      - from: input.value
+        to: speaker.audio
+      - from: listen.transcript
+        to: speaker.transcript
+      - from: speaker.speakers
+        to: prompt.speakers
+      - from: prompt.text
+        to: reply.text
+      - from: reply.text
+        to: speak.text
+      - from: speak.audio
+        to: output.value
+  - name: chat
+    input: text
+    output: text
+    step:
+      - id: reply
+        kind: llm
+        model: *assistant_id
+    link:
+      - from: input.value
+        to: reply.text
+      - from: reply.text
+        to: output.value
+route:
+  - path: "/v1/realtime"
+    pipeline: talk
+    protocol: websocket
+  - path: "/v1/chat/completions"
+    pipeline: chat
+    protocol: openai-text

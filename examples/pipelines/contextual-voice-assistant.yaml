@@ -1,0 +1,85 @@
+# Voice assistant with opt-in previous committed chat context.
+# Context hints are separate typed inputs, not a same-turn LLM feedback loop.
+# Set chat_context.enabled: false to preserve the graph without retrieval.
+
+schema: zerogravity.pipeline.v1
+model:
+  - id: recognizer
+    target: nvidia-canary-qwen-2.5b
+  - id: speakers
+    target: speaker-diarization
+  - id: assistant
+    target: qwen3.5-2b
+  - id: voice
+    target: qwen3-tts-1.7b
+pipeline:
+  - name: talk
+    input: audio-pcm
+    output: audio-pcm
+    realtime: true
+    chat_context:
+      enabled: true
+      from_model: assistant
+      max_bytes: 4096
+    step:
+      - id: listen
+        kind: asr
+        model: recognizer
+      - id: speaker
+        kind: diarization
+        model: speakers
+      - id: translate
+        kind: translate
+        model: assistant
+      - id: prompt
+        kind: speakers-text
+      - id: reply
+        kind: llm
+        model: assistant
+      - id: speak
+        kind: tts
+        model: voice
+    link:
+      - from: input.value
+        to: listen.audio
+      - from: input.value
+        to: speaker.audio
+      - from: listen.transcript
+        to: speaker.transcript
+      - from: speaker.speakers
+        to: translate.speakers
+      - from: translate.speakers
+        to: prompt.speakers
+      - from: prompt.text
+        to: reply.text
+      - from: reply.text
+        to: speak.text
+      - from: context.value
+        to: listen.context
+      - from: context.value
+        to: speaker.context
+      - from: context.value
+        to: translate.context
+      - from: context.value
+        to: prompt.context
+      - from: speak.audio
+        to: output.value
+  - name: chat
+    input: text
+    output: text
+    step:
+      - id: reply
+        kind: llm
+        model: assistant
+    link:
+      - from: input.value
+        to: reply.text
+      - from: reply.text
+        to: output.value
+route:
+  - path: "/v1/realtime"
+    pipeline: talk
+    protocol: websocket
+  - path: "/v1/chat/completions"
+    pipeline: chat
+    protocol: openai-text

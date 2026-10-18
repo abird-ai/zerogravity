@@ -4,10 +4,12 @@ Co-authors: GPT-6
 # Zerogravity — one fabric, single-model and multi-model pipelines
 
 **Decision date:** 18 October 2026. This is the canonical product intent.
-**Implementation status:** source-neutral model-target and typed pipeline *shape
-validation* only. Neither multi-model execution, API serving, speech diarization,
-streaming audio/image, large-model SSD inference nor model-family stubs are claims
-of working numerical inference. Every unsupported operation must refuse visibly.
+**Implementation status:** source-neutral model registry, typed component
+extension schemas, canonical YAML/CLI graph compiler, immutable in-memory
+context-owner snapshots and source-grant filtering are implemented.
+Neither multi-model execution, API serving, speech diarization, streaming
+audio/image, large-model SSD inference nor other model-family registrations
+are claims of working numerical inference. Unsupported operations refuse.
 
 ## Product contract
 
@@ -22,11 +24,11 @@ of working numerical inference. Every unsupported operation must refuse visibly.
    different placement and residency policies. Many graph pipelines and API
    routes reuse those instances. Loading a new pipeline does not imply a new
    OS process, duplicate model allocation or a second Rust inference runtime.
-3. **Same configuration from TOML or repeatable flags:** provide a human-edited
-   TOML file with `[[model]]`, `[[pipeline]]`, typed `[[pipeline.step]]`
-   and `[[pipeline.link]]`, and `[[route]]`; or pass `--model`,
+3. **Same configuration from YAML or repeatable flags:** provide a human-edited
+   versioned YAML document with `model:`, `pipeline:` (including typed
+   `step:` / `link:` lists) and `route:`, or pass `--model`,
    `--step`, `--link` and `--route` repeatedly with input/output/name
-   flags. The two inputs lower into **one source-neutral graph**.
+   flags. Both inputs lower into **one source-neutral graph**.
    CLI overrides of an existing config must have an explicit merge/precedence
    contract before being enabled: today mixing them refuses.
 4. **One router publishes configured APIs:** an explicit route names a pipeline
@@ -52,7 +54,7 @@ replica count are never inferred from two component references.
 ```text
 CLI single-model run -------------------+
                                         |
-TOML / repeated pipeline flags --------+--> validate one typed graph
+YAML / repeated pipeline flags --------+--> validate one typed graph
                                                |
 Verified snapshot + model assembly catalog ----+--> one model residency manager
                                                |    GPU / RAM / SSD / peers
@@ -179,15 +181,13 @@ The compiler validates graph bounds, duplicate IDs, required ports,
 speaker/ASR/LLM/TTS model bindings, topological DAG, source-to-output
 productive connections, route names/types and unique path declarations.
 
-The human-facing quickstart configs are
-`examples/pipelines/text-model.toml`,
-`transcribe-diarize.toml`,
-`voice-assistant.toml`, `contextual-voice-assistant.toml`,
-`contextual-voice-filtered.toml`, `image-generation.toml`.
+The ten human-facing YAML quickstarts for text/voice/context,
+audio codecs, image assembly/video frames and decision filters are indexed
+in [the examples README](../../../examples/pipelines/README.md).
 
 ```sh
 # Only checks the pure graph; no file/source/model or socket is opened.
-zerogravity pipeline check --config examples/pipelines/voice-assistant.toml
+zerogravity pipeline check --config examples/pipelines/voice-assistant.yaml
 
 # Same structural graph can be written using repeated flags:
 zerogravity pipeline check --name chat --input text --output text \
@@ -196,18 +196,65 @@ zerogravity pipeline check --name chat --input text --output text \
   --route /v1/chat/completions=openai-text
 
 # Explicit refusal until real source/backend/stream/transport gates pass.
-zerogravity pipeline run --config examples/pipelines/voice-assistant.toml
+zerogravity pipeline run --config examples/pipelines/voice-assistant.yaml
 ```
 
-The config's `[[model]]` entries identify one shared instance per
-model ID. `[[pipeline.step]]` references those IDs; `[[route]]` binds
-an endpoint to one pipeline. Validation is bounded (256 KiB input,
-128 model entries, 64 pipelines, 128 stages/512 edges each and 128 routes).
-TOML is versioned, deny-unknown-fields and parsed without arbitrary code.
-CLI flags and TOML generate the same immutable *shape*; loading a model,
+The YAML `model:` entries identify one shared instance per model ID;
+`pipeline[].step` references those IDs, and `route:` declares an endpoint
+bound to one pipeline. Validation is bounded (256 KiB file, 128 model
+entries, 64 pipelines, 128 stages/512 edges each and 128 routes).
+YAML is versioned with `schema: zerogravity.pipeline.v1`, a single
+document, strict typed fields and no executable extensions. The loader
+supports scalar anchors/aliases and shallow `<<` mapping merges,
+but refuses custom tags, duplicate keys, recursive aliases, malformed
+merges, depth above 32, more than 16,384 expanded AST nodes and
+expanded scalar content above 256 KiB. CLI flags and YAML generate
+the same immutable *shape*; loading a model,
 accessing credentials, opening network ports, or making quality claims is
 not part of validation. Port clocks/formats, compatible codec transforms,
 auth and router SLOs require source-specific future contracts.
+
+### Typed extension registry and future media operator contracts
+
+The native `ComponentRegistry` in
+`crates/zerogravity-core/src/pipeline.rs` permits a host/agent to register
+a new **bounded immutable schema** for a custom stage and call
+`Config::validate_with_registry` without modifying the central DAG
+compiler or creating another serving process. The default CLI accepts
+only built-in contracts; it cannot load arbitrary user-provided Rust/Python
+code or infer a model executable from YAML. Each static extension
+declares its task binding, input/output ports, semantic value kinds,
+and optional input ports. Duplicate/malformed names, duplicate or
+missing ports, and forged context outputs refuse. Every new backend
+still needs independent source/codec/permission/trained-value/runtime
+qualification before it can execute.
+
+The current future-purpose stage descriptions (all **NOT IMPLEMENTED**)
+include `audio-feature-extract` (PCM→features),
+`audio-tokenize`/`audio-detokenize` (PCM↔codebook tokens),
+`image-solve` (prompt→source-typed latents),
+`image-decode` (latents→complete pixels),
+`video-generate` (prompt→complete video frame stream) and
+`decision` (text→typed verdict). They complement the earlier
+ASR, diarization, transcript conversion, context-filter/translation,
+LLM, TTS and image-generation scaffolds. The type registry contains
+`audio-features`, `audio-tokens`, `image-latents`, `video-frames`,
+and `decision-verdict` in addition to existing text/audio/image/context
+values. Typed descriptions are **not** codecs, working operators,
+scheduler jobs, API endpoints or streaming packet formats.
+
+Future implementations must add source-specific memory placement,
+modality clocks, completed audio codebook/frame boundaries, context
+grant/epoch handling, legal image pixel/tile publication, video
+presentation ordering, decision probability calibration and real
+ResourceArbiter admission. A registered structural port never
+authorizes a model download or creates an executable model instance.
+
+The canonical YAML quickstarts cover direct text, ASR+diarization,
+voice assistant, opt-in contextual voice, voice with tool/decision
+filtering, audio codec, image generation, latent/decoder assembly,
+video streaming intent and standalone decision models.
+See [all examples](../../../examples/pipelines/README.md).
 
 ### Required pipeline examples
 
@@ -246,37 +293,26 @@ answer-generation and a separately source-qualified translation stage.
 
 The context path is **OFF by default**. A human-editable config opts in:
 
-```toml
-[[pipeline]]
-name = "talk"
-input = "audio-pcm"
-output = "audio-pcm"
-realtime = true
-chat_context = { enabled = true, from_model = "assistant", max_bytes = 4096 }
-
-# Every context input is optional. Set enabled=false above to preserve
-# the same graph and deliver None to each context consumer.
-[[pipeline.link]]
-from = "context.value"
-to = "listen.context"
-
-[[pipeline.link]]
-from = "context.value"
-to = "speaker.context"
-
-[[pipeline.link]]
-from = "context.value"
-to = "translate.context"
-
-[[pipeline.link]]
-from = "context.value"
-to = "prompt.context"
+```yaml
+# Fragment of one entry under pipeline:; see full example for models/stages.
+pipeline:
+  - name: talk
+    input: audio-pcm
+    output: audio-pcm
+    realtime: true
+    chat_context: {enabled: true, from_model: assistant, max_bytes: 4096}
+    # Context is read-only; optional stage inputs get None when disabled.
+    link:
+      - {from: context.value, to: listen.context}
+      - {from: context.value, to: speaker.context}
+      - {from: context.value, to: translate.context}
+      - {from: context.value, to: prompt.context}
 ```
 
 The equivalent repeated CLI flags are `--chat-context-from assistant`
 (optionally `--chat-context-max-bytes 4096`) and
 `--chat-context-enabled false` to turn sharing off without removing
-edges. See `examples/pipelines/contextual-voice-assistant.toml`
+edges. See `examples/pipelines/contextual-voice-assistant.yaml`
 for the full typed ASR→speaker diarization→speaker-preserving translation→
 text conversion→shared Qwen response→TTS pipeline and a separate chat
 API in the **same process**.
@@ -328,43 +364,37 @@ source owner's grant. This way the default is conservative but nothing
 is hard-coded to refuse an application-owned prompt or an authorized
 cross-user resource.
 
-```toml
-# In a pipeline with a declared model "assistant":
-[pipeline.chat_context]
-enabled = true
-from_model = "assistant"
-max_bytes = 65536
-sources = [
-  "session/user_message",
-  "session/assistant_message",
-  "session/tool_call",
-  "session/tool_result",
-  "application/system_prompt",
-  "application/developer_prompt",
-  "shared:team-support/assistant_message",
-]
-
-# Keep only selected records. Exclude tool calls or their results separately.
-[[pipeline.chat_context.filter]]
-kind = "match"
-action = "exclude"
-field = "kind"
-values = ["tool_call"]
-
-[[pipeline.chat_context.filter]]
-kind = "match"
-action = "exclude"
-field = "tool_name"
-values = ["database.lookup", "filesystem.read"]
-
-# Add a typed decision-model stage only when it is useful.
-# "gate" is a separate declared model with target="nanojev-decision".
-[[pipeline.chat_context.filter]]
-kind = "decision"
-model = "gate"
-question = "Does this record help interpret the current utterance?"
-min_confidence_bps = 8000
-on_unavailable = "omit"
+```yaml
+# Fragment: config models include assistant and gate; see full example.
+pipeline:
+  - name: talk
+    chat_context:
+      enabled: true
+      from_model: assistant
+      max_bytes: 65536
+      sources:
+        - session/user_message
+        - session/assistant_message
+        - session/tool_call
+        - session/tool_result
+        - application/system_prompt
+        - application/developer_prompt
+        - shared:team-support/assistant_message
+      filter:
+        - kind: match
+          action: exclude
+          field: kind
+          values: [tool_result]
+        - kind: match
+          action: exclude
+          field: tool_name
+          values: [database.lookup, filesystem.read]
+        - kind: decision
+          model: gate
+          question: >-
+            Does this record help interpret the current utterance?
+          min_confidence_bps: 8000
+          on_unavailable: omit
 ```
 
 Equivalent repeated flags use

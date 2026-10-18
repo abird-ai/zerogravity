@@ -20,6 +20,11 @@ pub enum ValueKind {
     TimedTranscript,
     SpeakerTranscript,
     ImageRgba,
+    AudioFeatures,
+    AudioTokens,
+    ImageLatents,
+    VideoFrames,
+    DecisionVerdict,
     /// Bounded immutable, provenance-labelled context records from explicitly
     /// requested and authorized sources. The default is only prior
     /// same-session user/assistant turns; app prompts, tools and authorized
@@ -34,6 +39,11 @@ impl ValueKind {
             Self::TimedTranscript => "timed-transcript",
             Self::SpeakerTranscript => "speaker-transcript",
             Self::ImageRgba => "image-rgba",
+            Self::AudioFeatures => "audio-features",
+            Self::AudioTokens => "audio-tokens",
+            Self::ImageLatents => "image-latents",
+            Self::VideoFrames => "video-frames",
+            Self::DecisionVerdict => "decision-verdict",
             Self::CommittedChatContext => "committed-chat-context",
         }
     }
@@ -44,6 +54,11 @@ impl ValueKind {
             "timed-transcript" => Ok(Self::TimedTranscript),
             "speaker-transcript" => Ok(Self::SpeakerTranscript),
             "image-rgba" => Ok(Self::ImageRgba),
+            "audio-features" => Ok(Self::AudioFeatures),
+            "audio-tokens" => Ok(Self::AudioTokens),
+            "image-latents" => Ok(Self::ImageLatents),
+            "video-frames" => Ok(Self::VideoFrames),
+            "decision-verdict" => Ok(Self::DecisionVerdict),
             "committed-chat-context" => Err(Error::Unsupported(
                 "chat context is a trusted session snapshot, not a caller input".into(),
             )),
@@ -79,6 +94,8 @@ pub enum TaskBinding {
     Language,
     Speech,
     Image,
+    Multimodal,
+    Decision,
     None,
 }
 #[derive(Clone, Copy, Debug)]
@@ -89,8 +106,9 @@ pub struct ComponentContract {
     pub outputs: &'static [Port],
 }
 use ValueKind::{
-    AudioPcm as A, CommittedChatContext as C, ImageRgba as I, SpeakerTranscript as ST, Text as T,
-    TimedTranscript as TR,
+    AudioFeatures as AF, AudioPcm as A, AudioTokens as AT, CommittedChatContext as C,
+    DecisionVerdict as DV, ImageLatents as IL, ImageRgba as I, SpeakerTranscript as ST, Text as T,
+    TimedTranscript as TR, VideoFrames as VF,
 };
 pub const COMPONENTS: &[ComponentContract] = &[
     ComponentContract {
@@ -147,9 +165,119 @@ pub const COMPONENTS: &[ComponentContract] = &[
         inputs: &[port("prompt", T)],
         outputs: &[port("image", I)],
     },
+    // Future multi-component media scaffolds. They are typed structural
+    // operators only. There are no codecs, solvers or neural drivers here.
+    ComponentContract {
+        kind: "audio-feature-extract",
+        binding: TaskBinding::None,
+        inputs: &[port("audio", A)],
+        outputs: &[port("features", AF)],
+    },
+    ComponentContract {
+        kind: "audio-tokenize",
+        binding: TaskBinding::None,
+        inputs: &[port("audio", A)],
+        outputs: &[port("tokens", AT)],
+    },
+    ComponentContract {
+        kind: "audio-detokenize",
+        binding: TaskBinding::None,
+        inputs: &[port("tokens", AT)],
+        outputs: &[port("audio", A)],
+    },
+    ComponentContract {
+        kind: "image-solve",
+        binding: TaskBinding::Image,
+        inputs: &[port("prompt", T)],
+        outputs: &[port("latents", IL)],
+    },
+    ComponentContract {
+        kind: "image-decode",
+        binding: TaskBinding::None,
+        inputs: &[port("latents", IL)],
+        outputs: &[port("image", I)],
+    },
+    ComponentContract {
+        kind: "video-generate",
+        binding: TaskBinding::Multimodal,
+        inputs: &[port("prompt", T)],
+        outputs: &[port("frames", VF)],
+    },
+    ComponentContract {
+        kind: "decision",
+        binding: TaskBinding::Decision,
+        inputs: &[port("text", T)],
+        outputs: &[port("verdict", DV)],
+    },
 ];
 pub fn component(kind: &str) -> Option<&'static ComponentContract> {
     COMPONENTS.iter().find(|c| c.kind == kind)
+}
+
+/// Source-neutral extension registry for *typed contract descriptions*.
+/// It does not register executable model code, start a server, grant context
+/// access, load weights or allow unqualified new tensor/codec semantics.
+/// An application can add another statically defined port contract and then
+/// use Config::validate_with_registry. Separate model-specific TaskDrivers,
+/// source-bound implementations and scheduler admission remain required.
+#[derive(Default)]
+pub struct ComponentRegistry {
+    extensions: BTreeMap<&'static str, ComponentContract>,
+}
+impl ComponentRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn register(&mut self, descriptor: ComponentContract) -> Result<()> {
+        if !id_ok(descriptor.kind)
+            || component(descriptor.kind).is_some()
+            || self.extensions.contains_key(descriptor.kind)
+        {
+            return Err(Error::Malformed(
+                "duplicate or malformed component registration".into(),
+            ));
+        }
+        if descriptor.inputs.is_empty()
+            || descriptor.outputs.is_empty()
+            || descriptor.inputs.len() > 16
+            || descriptor.outputs.len() > 16
+        {
+            return Err(Error::Limit("component port count".into()));
+        }
+        let mut inputs = BTreeSet::new();
+        let mut outputs = BTreeSet::new();
+        for input in descriptor.inputs {
+            if !id_ok(input.name)
+                || !inputs.insert(input.name)
+                || input.value == ValueKind::CommittedChatContext && !input.optional
+            {
+                return Err(Error::Malformed(
+                    "invalid typed component input port".into(),
+                ));
+            }
+        }
+        for output in descriptor.outputs {
+            if !id_ok(output.name)
+                || !outputs.insert(output.name)
+                || output.optional
+                || output.value == ValueKind::CommittedChatContext
+            {
+                return Err(Error::Malformed(
+                    "invalid typed component output port".into(),
+                ));
+            }
+        }
+        if self.extensions.len() >= 256 {
+            return Err(Error::Limit("registered extension component count".into()));
+        }
+        self.extensions.insert(descriptor.kind, descriptor);
+        Ok(())
+    }
+
+    pub fn resolve(&self, kind: &str) -> Option<&ComponentContract> {
+        component(kind).or_else(|| self.extensions.get(kind))
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -290,6 +418,12 @@ impl Config {
     /// No network, disk or resource allocator access, no model admission and no
     /// runtime/API binding. Successful validation NEVER means executable.
     pub fn validate(&self) -> Result<VerifiedShape> {
+        self.validate_with_registry(&ComponentRegistry::default())
+    }
+
+    /// Validate under a caller-supplied finite component schema registry.
+    /// Validation is still pure; registration is not execution eligibility.
+    pub fn validate_with_registry(&self, registry: &ComponentRegistry) -> Result<VerifiedShape> {
         if self.models.len() > 128
             || self.pipelines.is_empty()
             || self.pipelines.len() > 64
@@ -394,7 +528,7 @@ impl Config {
                 {
                     return Err(invalid());
                 }
-                let contract = component(&stage.kind).ok_or_else(unsupported)?;
+                let contract = registry.resolve(&stage.kind).ok_or_else(unsupported)?;
                 if steps.insert(stage.id.as_str(), contract).is_some() {
                     return Err(invalid());
                 }
@@ -416,6 +550,8 @@ impl Config {
                             ),
                             TaskBinding::Speech => target.task == TaskKind::SpeechSynthesis,
                             TaskBinding::Image => target.task == TaskKind::ImageGeneration,
+                            TaskBinding::Multimodal => target.task == TaskKind::MultiModal,
+                            TaskBinding::Decision => target.task == TaskKind::Decision,
                             TaskBinding::None => false,
                         };
                         if !compatible {
@@ -817,5 +953,211 @@ mod context_tests {
         graph.pipelines[1].steps[0].id = "context".into();
         assert!(graph.validate().is_err()); // special source node is reserved
         assert!(ValueKind::parse("committed-chat-context").is_err());
+    }
+}
+
+#[cfg(test)]
+mod extension_tests {
+    use super::*;
+    fn graph(model: &str, target: &str, kind: &str, to: &str, output: ValueKind) -> Config {
+        Config {
+            models: vec![ModelInstance {
+                id: model.into(),
+                target: target.into(),
+                source: None,
+            }],
+            pipelines: vec![Pipeline {
+                name: "specification".into(),
+                input: T,
+                output,
+                realtime: false,
+                chat_context: None,
+                steps: vec![PipelineNode {
+                    id: "component".into(),
+                    kind: kind.into(),
+                    model: Some(model.into()),
+                }],
+                links: vec![
+                    PipelineEdge {
+                        from: "input.value".into(),
+                        to: "component.prompt".into(),
+                    },
+                    PipelineEdge {
+                        from: format!("component.{to}"),
+                        to: "output.value".into(),
+                    },
+                ],
+            }],
+            routes: vec![],
+        }
+    }
+    #[test]
+    fn future_image_video_and_typed_decision_components_validate_without_execution() {
+        for (model, target, kind, output_port, output_type) in [
+            ("image", "qwen-image-2.1", "image-solve", "latents", IL),
+            ("video", "wan-video", "video-generate", "frames", VF),
+        ] {
+            let config = graph(model, target, kind, output_port, output_type);
+            assert!(config.validate().is_ok());
+            assert!(
+                find(target)
+                    .unwrap()
+                    .require_source_bound_execution()
+                    .is_err()
+            );
+        }
+        let mut decision = graph("gate", "nanojev-decision", "decision", "verdict", DV);
+        decision.pipelines[0].links[0].to = "component.text".into();
+        assert!(decision.validate().is_ok());
+        assert!(
+            find("nanojev-decision")
+                .unwrap()
+                .require_source_bound_execution()
+                .is_err()
+        );
+        decision.models[0].target = "qwen3.5-2b".into();
+        assert!(decision.validate().is_err()); // no model-family coercion
+    }
+    #[test]
+    fn audio_codec_structure_requires_typed_token_intermediates() {
+        let mut config = graph("image", "qwen-image-2.1", "image-solve", "latents", IL);
+        config.models.clear();
+        config.pipelines[0].input = A;
+        config.pipelines[0].output = A;
+        config.pipelines[0].steps = vec![
+            PipelineNode {
+                id: "encode".into(),
+                kind: "audio-tokenize".into(),
+                model: None,
+            },
+            PipelineNode {
+                id: "decode".into(),
+                kind: "audio-detokenize".into(),
+                model: None,
+            },
+        ];
+        config.pipelines[0].links = vec![
+            PipelineEdge {
+                from: "input.value".into(),
+                to: "encode.audio".into(),
+            },
+            PipelineEdge {
+                from: "encode.tokens".into(),
+                to: "decode.tokens".into(),
+            },
+            PipelineEdge {
+                from: "decode.audio".into(),
+                to: "output.value".into(),
+            },
+        ];
+        assert_eq!(
+            config.validate().unwrap().ordered[0].1,
+            ["encode", "decode"]
+        );
+        config.pipelines[0].links[1].from = "input.value".into();
+        assert!(config.validate().is_err());
+    }
+    #[test]
+    fn safe_extension_registry_accepts_only_distinct_bounded_static_port_contracts() {
+        static INPUTS: &[Port] = &[port("text", T)];
+        static OUTPUTS: &[Port] = &[port("text", T)];
+        static BAD_CTX_OUTPUT: &[Port] = &[port("context", C)];
+        static BAD_CTX_INPUT: &[Port] = &[port("context", C)];
+        static BAD_OPTIONAL_OUTPUT: &[Port] = &[optional_port("value", T)];
+        static DUPLICATE_INPUT: &[Port] = &[port("text", T), port("text", T)];
+        let registered = ComponentContract {
+            kind: "my-normalizer",
+            binding: TaskBinding::None,
+            inputs: INPUTS,
+            outputs: OUTPUTS,
+        };
+        let mut registry = ComponentRegistry::new();
+        registry.register(registered).unwrap();
+        assert!(registry.register(registered).is_err());
+        assert!(
+            registry
+                .register(ComponentContract {
+                    kind: "llm",
+                    ..registered
+                })
+                .is_err()
+        );
+        assert!(
+            registry
+                .register(ComponentContract {
+                    kind: "unsafe..kind",
+                    ..registered
+                })
+                .is_err()
+        );
+        assert!(
+            registry
+                .register(ComponentContract {
+                    kind: "source-context",
+                    outputs: BAD_CTX_OUTPUT,
+                    ..registered
+                })
+                .is_err()
+        );
+        assert!(
+            registry
+                .register(ComponentContract {
+                    kind: "source-context-input",
+                    inputs: BAD_CTX_INPUT,
+                    ..registered
+                })
+                .is_err()
+        );
+        assert!(
+            registry
+                .register(ComponentContract {
+                    kind: "optional-output",
+                    outputs: BAD_OPTIONAL_OUTPUT,
+                    ..registered
+                })
+                .is_err()
+        );
+        assert!(
+            registry
+                .register(ComponentContract {
+                    kind: "duplicate-input",
+                    inputs: DUPLICATE_INPUT,
+                    ..registered
+                })
+                .is_err()
+        );
+        assert!(
+            registry
+                .register(ComponentContract {
+                    kind: "no-input",
+                    inputs: &[],
+                    ..registered
+                })
+                .is_err()
+        );
+        assert!(
+            registry
+                .register(ComponentContract {
+                    kind: "no-output",
+                    outputs: &[],
+                    ..registered
+                })
+                .is_err()
+        );
+        let mut config = graph("answer", "qwen3.5-2b", "my-normalizer", "text", T);
+        config.pipelines[0].links[0].to = "component.text".into();
+        config.pipelines[0].steps[0].model = None;
+        assert!(config.validate().is_err()); // not silently added to built-ins
+        assert_eq!(
+            config.validate_with_registry(&registry).unwrap().ordered[0].1,
+            ["component"]
+        );
+        // Registered type is a schema extension ONLY; no executable backend.
+        assert!(
+            find("qwen3.5-2b")
+                .unwrap()
+                .require_source_bound_execution()
+                .is_err()
+        );
     }
 }

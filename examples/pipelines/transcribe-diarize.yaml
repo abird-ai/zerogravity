@@ -1,0 +1,33 @@
+# Speech transcription + diarization, one typed graph in one process.
+# No trained speaker/ASR model or API listener is started by pipeline check.
+
+schema: zerogravity.pipeline.v1
+model:
+  - id: asr
+    target: nvidia-parakeet-tdt-1.1b
+  - id: speakers
+    target: speaker-diarization
+pipeline:
+  - name: transcribe-speakers
+    input: audio-pcm
+    output: speaker-transcript
+    step:
+      - id: asr
+        kind: asr
+        model: asr
+      - id: speakers
+        kind: diarization
+        model: speakers
+    link:
+      - from: input.value
+        to: asr.audio
+      - from: input.value
+        to: speakers.audio
+      - from: asr.transcript
+        to: speakers.transcript
+      - from: speakers.speakers
+        to: output.value
+route:
+  - path: "/v1/audio/transcriptions-with-speakers"
+    pipeline: transcribe-speakers
+    protocol: openai-asr

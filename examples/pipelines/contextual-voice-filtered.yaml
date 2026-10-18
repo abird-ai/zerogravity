@@ -1,0 +1,113 @@
+# Opt-in source-scoped conversation context for ASR/translation and diarization.
+# Tool calls/results, app-owned prompts, authorized shared records are selectable.
+# NanoJev-like decision model is a typed placeholder, NOT trained inference.
+# Source selectors REQUEST data; grants come from the trusted application.
+
+schema: zerogravity.pipeline.v1
+model:
+  - id: recognizer
+    target: nvidia-canary-qwen-2.5b
+  - id: speakers
+    target: speaker-diarization
+  - id: assistant
+    target: qwen3.5-2b
+  - id: voice
+    target: qwen3-tts-1.7b
+  - id: gate
+    target: nanojev-decision
+pipeline:
+  - name: talk
+    input: audio-pcm
+    output: audio-pcm
+    realtime: true
+    chat_context:
+      enabled: true
+      from_model: assistant
+      max_bytes: 4096
+      sources:
+        - session/user_message
+        - session/assistant_message
+        - session/tool_call
+        - session/tool_result
+        - application/system_prompt
+        - application/developer_prompt
+        - shared:team-support/assistant_message
+      filter:
+        - kind: match
+          action: exclude
+          field: kind
+          values:
+            - tool_call
+        - kind: match
+          action: exclude
+          field: kind
+          values:
+            - tool_result
+        - kind: decision
+          model: gate
+          question: >-
+            Does this context entry help understand the current audio?
+          min_confidence_bps: 7500
+          on_unavailable: omit
+    step:
+      - id: listen
+        kind: asr
+        model: recognizer
+      - id: speaker
+        kind: diarization
+        model: speakers
+      - id: translate
+        kind: translate
+        model: assistant
+      - id: prompt
+        kind: speakers-text
+      - id: reply
+        kind: llm
+        model: assistant
+      - id: speak
+        kind: tts
+        model: voice
+    link:
+      - from: input.value
+        to: listen.audio
+      - from: input.value
+        to: speaker.audio
+      - from: listen.transcript
+        to: speaker.transcript
+      - from: speaker.speakers
+        to: translate.speakers
+      - from: translate.speakers
+        to: prompt.speakers
+      - from: prompt.text
+        to: reply.text
+      - from: reply.text
+        to: speak.text
+      - from: context.value
+        to: listen.context
+      - from: context.value
+        to: speaker.context
+      - from: context.value
+        to: translate.context
+      - from: context.value
+        to: prompt.context
+      - from: speak.audio
+        to: output.value
+  - name: chat
+    input: text
+    output: text
+    step:
+      - id: reply
+        kind: llm
+        model: assistant
+    link:
+      - from: input.value
+        to: reply.text
+      - from: reply.text
+        to: output.value
+route:
+  - path: "/v1/realtime"
+    pipeline: talk
+    protocol: websocket
+  - path: "/v1/chat/completions"
+    pipeline: chat
+    protocol: openai-text
