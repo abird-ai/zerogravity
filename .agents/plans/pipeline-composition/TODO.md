@@ -24,13 +24,28 @@ their existing numeric/source/physical acceptance gates.
   runtime source owner must verify actual authorization, not a hard-coded
   block against application prompts or authorized sharing. No model
   inference/automatic context history access is claimed.
-- [ ] Implement actual source-grant checked snapshot builder and filter
-  executor with source provenance, revocable session/tenant/shared grants,
-  requested app prompts, per-stage authorization, dynamic decision model
-  with calibrated source-verified logits, stable record ordering and
-  cache/graph generation binding. Bounded snapshot/latency admission,
-  user-specific preferences, redacted observability and context quality
-  A/B real speech tests must pass before any router execution.
+- [x] Source-grant checked context owner/snapshot service: the Rust core
+  now holds committed immutable records and exact revocable session,
+  app-prompt and shared/cross-tenant source grants behind one trusted
+  `ContextOwner`; separately minted read-only `ContextReader` capabilities
+  cannot mutate grants or rebind to another principal. Per-session prior
+  turn check, bounded latest-whole window, provenance IDs/source labels,
+  source epoch retry/freshness validation, and filter-only exposure to
+  verified candidates are implemented. Decision adapter receives record
+  text only after source grant + previous filters; it returns a typed
+  include/omit verdict or explicit unavailable/error. Snapshot records
+  original-source attributes and decision audit (not raw text in audit).
+  This is an in-process source owner, not an external chat connector
+  or pretrained model executor. External source grants must be issued by
+  the trusted application before minting a read-only reader. Separate
+  tests prove that a policy selector alone cannot grant access.
+- [ ] Connect authenticated application/conversation history providers to
+  ContextOwner, with durable and revocable grants, owner-authenticated
+  tenant+application+session identity, event/graph epoch binding to the
+  existing TaskCoordinator and physical memory/residency admission. Wire
+  source-real calibrated NanoJev/other decision heads and streaming media
+  A/B tests before enabling an actual context-fed ASR/translation router.
+  Do not infer inference support from the in-memory source fixture.
 - [x] Audited all 6 old detached side worktrees against signed C3/C4/C5,
   v1 and pipeline acceptance commits; preserved earlier unfinished portable
   source patches under .agents/docs and copied nine side-only run artifacts
@@ -132,6 +147,23 @@ their existing numeric/source/physical acceptance gates.
   implementations are retroactively promoted.
 
 ## Tests and verification
+
+- [x] Source-authoritative snapshot tests pass: exact tenant/application/
+  session isolation, current-turn exclusion, cross-tenant shared grants,
+  same-application prompts, independent tool-result filtering,
+  authorized-only decision inputs, optimistic revoke during callbacks
+  without deadlock, stale/foreign reader refusal, erasure/record provenance,
+  bounded latest-whole 4MiB candidate and 1MiB output windows,
+  full-or-empty source behavior, decision error propagation and
+  secret-free decision audit. Full original scripts/check.sh frozen
+  isolated gate passed 1,058 Rust executions/0 failures/69 ignored/230
+  suite runs plus 18 Python namespace fixtures, strict lint, release
+  build/installer, Nix-format and CPU comparator selftests.
+  Independent release cache_prepare exact approved Qwen3.5 0.8B+2B
+  parity passes full vocab/42 StateRoot domains/2 token sessions/leases:
+  cache-direct17.36s and HF-import21.91s. Actual Nix offline
+  source-integrity passed with new Rust module, root README and
+  dependencies/lock unchanged; no live model/GPU/provider access.
 
 - [x] Frozen isolated updated-context-filter source-only check.sh
   passed 1,047 Rust executions, 0 failed, 69 intentionally ignored

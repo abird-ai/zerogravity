@@ -3,6 +3,7 @@
 
 pub mod accelerator;
 pub mod context_filter;
+pub mod context_snapshot;
 pub mod device_events;
 pub mod device_queue;
 pub mod pipeline;

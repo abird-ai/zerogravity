@@ -388,6 +388,74 @@ invoked by `pipeline check`; decision inference is a separate source
 and runtime acceptance gate. Arbitrary model-supplied code and unbounded
 prompts are not used as filters.
 
+### In-memory source owner and snapshot selection (implemented in core)
+
+`crates/zerogravity-core/src/context_snapshot.rs` now supplies an actual
+in-process source boundary, not merely a filter over arbitrary caller views:
+
+```text
+trusted application's authenticated source owner (ContextOwner)
+  ├── commit(tenant/session, source, committed_turn, tool_name, text)
+  ├── grant / revoke(exact reader session, exact source)
+  ├── erase(record_id)         # source version changes
+  └── reader(authenticated SessionScope)
+        └── capture(ChatContextPolicy, current_turn, DecisionAdapter)
+              [short lock: only source-requested AND owner-authorized records]
+              [release lock: ordered deterministic stages + typed decision]
+              [short lock: verify exact source/grant epoch]
+                → immutable original-order ContextSnapshot
+                  + record IDs, source and publisher provenance
+                  + included byte charge and truncation marker
+                  + decision metadata (record ID/stage/model/verdict; no text)
+```
+
+The local source owner implements **one exact tenant/session reader
+capability**, prior committed-turn eligibility for that session's messages,
+explicit app prompt grants for the same tenant and explicit
+`shared:resource` grants (including authorized cross-tenant readers).
+Selection never equates a config request with a grant. A reader cannot
+mint a different reader or mutate grants. Only a trusted host/application
+holding `ContextOwner` can publish, grant, revoke or erase data; a
+request's authenticated scope must be supplied by that trusted host.
+No checkpoint/plugin/user-supplied executable code is a source owner.
+
+The owner is **concurrency safe and optimistic**, not a per-token global
+lock: record selection copies bounded complete candidates while holding
+the short source lock, then runs filtering/decision callbacks *outside*
+the lock. It checks the original epoch again after decisions. Any
+intervening grant, revoke, erase or source commit refuses the entire
+snapshot. A later router must call `ContextReader::require_fresh`
+at its admission/publication boundary and bind the source epoch to the
+original session/TaskCoordinator state; previously delivered bytes
+cannot be recalled after a grant is revoked.
+
+Logical bounded-resource contracts: store up to 4096 immutable records
+and 16MiB logical retained bytes; stage at most the latest 1024 complete
+granted records/4MiB for filtering, with a configurable final output
+budget up to 1MiB. On output overflow the snapshot retains the
+contiguous **newest complete** selected records in original order,
+marks `truncated`, and never clips UTF-8 or fabricates half records.
+Source owner's explicit `erase` handles removal and invalidates older
+epochs. Physical allocator/RSS admission and persistent/remote source
+synchronization remain separate runtime ownership work.
+
+The `ContextDecisionAdapter` receives the original authorized record
+view and typed question/model/stage/record ID for one filter stage.
+For independently authored NanoJev-style decisions, the owner can
+supply a calibrated backend later. No backend silently runs now:
+`NoDecisionModel` returns unavailable, triggering the chosen
+omit/reject/keep-authorized policy. A hard adapter error propagates
+instead of being silently promoted to permissive fallback. Neither
+inference nor an API listener is started by snapshot capture.
+
+**What this does not establish:** there is no connected chat-history
+provider, automatic conversation permissions, cross-process grant
+persistence, source-real trained NanoJev checkpoint, ASR integration,
+live router streaming or physical GPU/SSD model. The local tests use
+a trusted in-memory fixture and source-free decision adapters. Adapter
+authorization, owner-authenticated durable providers, multi-model
+routing and ASR/decision fidelity remain separate acceptance gates.
+
 **Failure and audit contract:** actual runtime implementation should
 record the selected source version/grant, ordered filter steps, typed
 decision model version, confidence, and included record IDs without

@@ -8,6 +8,18 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
+- [ ] Connect accepted core `ContextOwner`/`ContextReader` snapshot
+  capability to the real router's authenticated session/turn frontier:
+  source-scoped application/shared grants, per-application and per-tenant
+  ownership, immutable complete context records, explicit ON/OFF context
+  selection, short-lock optimistic source epochs and cancel/revoke
+  invalidation. Recheck `require_fresh` at TaskCoordinator delivery and
+  bind source/graph generations to model/media StateRoot publication.
+  DecisionAdapter is a typed callback boundary, not trained NanoJev
+  logits or actual ASR context support. Cross-session/host source sync,
+  bounded CPU staging and QoS, media quality A/B and revocation/stream
+  cancellation remain open.
+
 - [ ] One router must snapshot each enabled, source-granted context
   stream at the declared turn/graph epoch before live ASR. Default only
   committed user/assistant session content; explicitly selected tool

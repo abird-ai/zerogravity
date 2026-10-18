@@ -242,15 +242,33 @@ impl ContextFilterPlan {
         }
         Ok(())
     }
-    /// Deterministic pass over already authorized records. All provenance and
-    /// texts stay borrowed; no source, network or inference capability exists.
-    /// Decisions are explicit per-stage/per-record evidence from a future
-    /// source-qualified, calibrated decision component. If none is supplied,
-    /// the configured unavailability policy applies.
+    /// Compatibility selector for already-authorized record sets. A caller
+    /// that needs to evaluate model decisions from record text should use
+    /// `select_authorized_with_record`, which supplies the exact candidate.
     pub fn select_authorized(
         &self,
         candidates: &[AuthorizedRecord<'_>],
         mut decision: impl FnMut(&str, &str, usize, usize) -> Option<DecisionVerdict>,
+    ) -> Result<Vec<usize>> {
+        self.select_authorized_with_record(candidates, |model, question, stage, index, _record| {
+            Ok(decision(model, question, stage, index))
+        })
+    }
+
+    /// Execute ordered deterministic filtering on trusted, source-granted
+    /// record VIEWS. A typed decision callback sees only survivors of earlier
+    /// stages and no unrequested/unauthorized data. Propagate adapter errors
+    /// rather than assuming an unknown model verdict or restoring a record.
+    pub fn select_authorized_with_record(
+        &self,
+        candidates: &[AuthorizedRecord<'_>],
+        mut decision: impl FnMut(
+            &str,
+            &str,
+            usize,
+            usize,
+            &AuthorizedRecord<'_>,
+        ) -> Result<Option<DecisionVerdict>>,
     ) -> Result<Vec<usize>> {
         self.validate()?;
         let sources: BTreeSet<_> = self.sources.iter().cloned().collect();
@@ -291,7 +309,7 @@ impl ContextFilterPlan {
                         min_confidence_bps,
                         unavailable,
                     } => {
-                        let verdict = decision(model, question, stage_index, index);
+                        let verdict = decision(model, question, stage_index, index, item)?;
                         keep = match verdict {
                             Some(v)
                                 if v.confidence_bps <= 10_000
