@@ -1,21 +1,42 @@
+# Git
+/worktrees/
+/.agents/runs/*
+!/.agents/runs/README.md
+
+# Nix
+result/
+result-*
+.direnv/
+
+# Common build and dep dirs
+/tmp/
+**/target/
+**/node_modules/
+**/dist/
+.venv
+
+# Misc
+crash.log
+**/__pycache__/
+/.continue/
+/.kilocode/
+/.vscode/
+/.claude/
+.codex
+.kilo/
+
+# Repo-specific
 # Rust
-/target/
 *.rs.bk
 /Cargo.toml.orig
-
-# Nix and direnv
 /result
-/result-*
-/.direnv/
 
 # Local secrets, tooling output and releases
 .env
 .env.*
 !.env.example
 *.log
-/dist/
 /artifacts/
 
 # Python developer test caches
-__pycache__/
 *.py[cod]
