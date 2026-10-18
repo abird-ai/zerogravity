@@ -8,40 +8,41 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-- [x] **ME-P0 original Qwen3.8 analytic one-layer operators:**
-  source-bound ordinary zero-centered RMS gamma (1+weight),
-  HF head-interleaved full Q/gate projection, per-head Q/K norm,
-  source-configured partial RoPE, 24Q/4KV grouped lookup,
-  QK/softmax/AV/sigmoid/out projection and candidate KV slabs under a
-  source-and-layer-bound immutable `OriginalFullPrefix`. Source GDN
-  four-tap causal conv and SiLU, exact 16→48 repeat_interleave of
-  original Q/K, per-head L2, stored A_log→-exp(A_log),
-  dt_bias/softplus/sigmoid beta through the existing coefficients and
-  recurrent step, output GDN gated norm/out projection. An immutable
-  `OriginalGdnPrefix` holds exact source/layer and private tentative
-  conv/recurrent state, never replacing SessionAuthority. Source FFN
-  post-attention RMSNorm, SwiGLU and residual reuse old math.
-  Small independently derived analytical checks include zero-centered
-  norms, 16→48 head signed-zero mapping, 24Q/4KV GQA six-query
-  grouping, ln2 decay beta0.5/gain0.5, full attention gates/partial
-  RoPE, GDN two-token private repeat/branch, source identity mismatch,
-  finite and dimensional errors. The original 8K diagnostic bound and
-  original default GGUF behavior remain. **No trained HF BF16 intermediate
-  rounding, full layer/model StateRoot, tokenization, actual 27B learned
-  weights or GPU/SSD support claimed.** Strict source-config-specific
-  numerical reference and official checkpoint tests remain open.
-  Final isolated `CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=4
-  python3 scripts/native-gpu.py -- bash scripts/check.sh`
-  passed 1,111 Rust test executions, 0 failures, 69 ignored across
-  238 suites, plus 18 Python namespace fixtures, release CLI/installer
-  and CPU numeric-comparator scripts; strict default and composed
-  CPU/cache/Qwen/acquisition Clippy `-D warnings` passed.
-  Actual offline Nix source-integrity passed. Two independently run
-  Qwen3.5 .8B and 2B trained-source release routes remain exact:
-  cache/direct 17.36s and HF-import 22.49s, each original complete
-  248320 logits/42 StateRoot domains/two tokens/source leases.
-  Signed commit of this source-only analytical slice is pending final
-  review.
+- [x] **ME-P0 source-bound original Qwen StateRoot admission
+  (one-layer diagnostic only):** the sole existing TaskCoordinator
+  now supports an opt-in original immutable source identity plus
+  a unique coordinator/session ID while retaining its generic
+  publication API. A stateless source-bound one-layer bridge maps
+  canonical ForwardPlan Conv/Recurrent/Kv StateSlots to versioned
+  GDN or full-attention StateRoot domain bytes, with exact model,
+  epoch/session, layer, root, schema and frontier verification.
+  Immutable source-pinned numerical proposals publish via the
+  existing TaskCoordinator only after complete finite-domain
+  preparation, 8K token/64MiB diagnostic caps and early next-KV
+  admission. Independent tests cover GDN two-domain and causal
+  attention KV commit, abandoned and stale competing steps,
+  previous immutable roots, corrupted/nonfinite state refusal,
+  source/session/schema mismatch and generic coordinator parity.
+  There is NO separate multi-layer token loop, model scheduler or
+  new state issuer; this is not yet trained BF16 reference parity.
+  Final isolated full scripts/check.sh passed 1,116 Rust tests,
+  0 failed, 69 intentionally ignored across 238 suites plus
+  18 Python namespace fixtures, release CLI, installer, shell/Nix
+  formatting and CPU comparator selftests. Strict default and
+  composed CPU/cache/Qwen/acquisition Clippy -D warnings passed;
+  independently repeated Qwen3.5 .8B/2B release cache/direct
+  17.11s and HF-import 22.27s retained exact 248320 logits,
+  42 StateRoot domains, two tokens and source lease behavior.
+  Offline Nix source-integrity passed before signing.
+- [ ] **Following ME-P0 real trained integration:** fuse the
+  accepted analytical original source operators into the ONE
+  existing forward_token/MathematicalBackend and
+  SessionAuthority execution schedule, qualify original HF BF16
+  intermediate casts and FLA GDN accuracy, source-trained exact
+  full logits and StateRoot, tokenizer, physical mutable-state
+  memory accounting, cancellation and device completion. No
+  SSD/physical inference claim follows from the diagnostic bridge.
+
 - [ ] **ME-P0 next after diagnostics:** wire the analytically verified
   Qwen original operators into the ONE existing forward-plan and
   TaskDriver/SessionAuthority (no second token loop or state issuer),
@@ -210,6 +211,42 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   GPT-family GGUF CPU and session path is unchanged.
   Does NOT run trained 27B, create a Qwen session, implement
   grouped GDN permutations, or stream SSD.
+
+### b11e58c — original source-bound Qwen analytical one-layer proposals
+
+- [x] **ME-P0 original Qwen3.8 analytic one-layer operators:**
+  source-bound ordinary zero-centered RMS gamma (1+weight),
+  HF head-interleaved full Q/gate projection, per-head Q/K norm,
+  source-configured partial RoPE, 24Q/4KV grouped lookup,
+  QK/softmax/AV/sigmoid/out projection and candidate KV slabs under a
+  source-and-layer-bound immutable `OriginalFullPrefix`. Source GDN
+  four-tap causal conv and SiLU, exact 16→48 repeat_interleave of
+  original Q/K, per-head L2, stored A_log→-exp(A_log),
+  dt_bias/softplus/sigmoid beta through the existing coefficients and
+  recurrent step, output GDN gated norm/out projection. An immutable
+  `OriginalGdnPrefix` holds exact source/layer and private tentative
+  conv/recurrent state, never replacing SessionAuthority. Source FFN
+  post-attention RMSNorm, SwiGLU and residual reuse old math.
+  Small independently derived analytical checks include zero-centered
+  norms, 16→48 head signed-zero mapping, 24Q/4KV GQA six-query
+  grouping, ln2 decay beta0.5/gain0.5, full attention gates/partial
+  RoPE, GDN two-token private repeat/branch, source identity mismatch,
+  finite and dimensional errors. The original 8K diagnostic bound and
+  original default GGUF behavior remain. **No trained HF BF16 intermediate
+  rounding, full layer/model StateRoot, tokenization, actual 27B learned
+  weights or GPU/SSD support claimed.** Strict source-config-specific
+  numerical reference and official checkpoint tests remain open.
+  Final isolated `CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=4
+  python3 scripts/native-gpu.py -- bash scripts/check.sh`
+  passed 1,111 Rust test executions, 0 failures, 69 ignored across
+  238 suites, plus 18 Python namespace fixtures, release CLI/installer
+  and CPU numeric-comparator scripts; strict default and composed
+  CPU/cache/Qwen/acquisition Clippy `-D warnings` passed.
+  Actual offline Nix source-integrity passed. Two independently run
+  Qwen3.5 .8B and 2B trained-source release routes remain exact:
+  cache/direct 17.36s and HF-import 22.49s, each original complete
+  248320 logits/42 StateRoot domains/two tokens/source leases.
+  This diagnostic-only milestone is recorded in signed commit b11e58c.
 
 ## Deferred — after Qwen/Gemma and Flash execution
 

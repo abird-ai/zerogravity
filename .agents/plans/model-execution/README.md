@@ -208,3 +208,48 @@ from tiny analytical tests.
 
 Upstream specification used for original tensor semantics:
 [Hugging Face Qwen3.5 modeling](https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen3_5/modeling_qwen3_5.py).
+
+## ME-P0 — original Qwen analytical layers and the existing TaskCoordinator
+
+The original `zerogravity-core::state::TaskCoordinator` now has an
+**opt-in immutable SourceIdentity binding** and a unique per-coordinator
+process-local ID. Its prior generic `new`/`publish` API is preserved.
+Source-bound coordinators require `publish_source_bound` and reject
+unbound or foreign source identities: this extends the *existing*
+publication authority without introducing a second scheduler/session.
+
+The stateless `crates/zerogravity/src/original_qwen_state.rs` maps the
+existing `ForwardPlan` state-slot vocabulary (`ConvDomain`,
+`RecurrentDomain`, `KvDomain`) to fixed, versioned diagnostic state
+domains for **one** original Qwen analytical layer at a time:
+
+- Validate source, coordinator ID, layer, epoch, causal root/frontier
+  and exact required domain schemas before reading a proposed step.
+- Reconstruct finite, complete CPU values from the existing immutable
+  `StateRoot` bytes, or an authentic zero-initialized first state.
+  Run the original source-bound GDN/full-attention proposal using
+  the already-qualified Qwen3.5 CPU mathematical operators.
+- Stage an entire GDN convolution plus recurrence, or complete causal
+  attention KV, as private `PreparedDomain` bytes. Reject
+  nonfinite/malformed data, and bound diagnostic operation to 8K
+  tokens and 64 MiB per-domain; check the *next* full KV budget
+  before allocating another history-sized buffer.
+- Commit exactly once using the original `TaskCoordinator` atomic
+  publisher, after all validation. Abandonment, competing root
+  attempts, stale epochs and foreign session/source identities cannot
+  advance the state. Prior COW immutable roots remain unchanged.
+
+Prepared proposals borrow the original verified Qwen source owner
+until commit/abandonment, so their model weight ownership and retained
+host ResourceArbiter lease cannot expire underneath publication.
+
+These are **one-layer FP32 analytical diagnostics**, not a full
+multi-layer token loop, compiled original 64-layer forward program,
+durable portable StateRoot, BF16 reference, device-ready completion
+or trained Qwen3.8 inference. Physical mutable state admission and
+real cancellation are distinct production execution gates.
+The **next** execution step is to integrate original HF operators into
+the sole `forward_token`/`MathematicalBackend` and
+`SessionAuthority` state owner, and prove trained BF16/FLA GDN
+numerics and original full-vocabulary/StateRoot parity before real
+Qwen3.8 27B/Gemma/SSD serving.

@@ -515,3 +515,209 @@ mod original_numerics {
         x / (1.0 + (-x).exp())
     }
 }
+
+#[cfg(feature = "model-qwen35")]
+mod original_coordinator_tests {
+    use super::*;
+    use zerogravity::accelerator::program::{ConvDomain, KvDomain, RecurrentDomain, StateSlot};
+    use zerogravity::original_qwen_math::OriginalQwenLayerMath;
+    use zerogravity::original_qwen_state::{
+        ORIGINAL_CONV_V1, ORIGINAL_KV_V1, ORIGINAL_RECURRENCE_V1, OriginalQwenStateBridge,
+    };
+    use zerogravity::state::{PreparedDomain, TaskCoordinator};
+
+    #[test]
+    fn source_approved_gdn_state_domains_publish_all_or_nothing_on_the_original_coordinator() {
+        let fixture = Fixture::new();
+        let (source, config, index, admission, key) = loaded(&fixture);
+        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = OriginalQwenLayerMath::new(&cpu);
+        let bridge = OriginalQwenStateBridge::new(&math);
+        assert_eq!(
+            bridge.typed_domains(0).unwrap(),
+            [
+                StateSlot::Conv(ConvDomain(0)),
+                StateSlot::Recurrent(RecurrentDomain(0))
+            ]
+        );
+        let mut coordinator = bridge.coordinator_for_layer(0, 77).unwrap();
+        assert_eq!(
+            coordinator.source_identity(),
+            Some(source.source_identity())
+        );
+        assert_eq!(coordinator.root().id, 0);
+        assert_eq!(coordinator.root().frontier, 0);
+        assert_eq!(coordinator.root().domains.len(), 2);
+        assert_eq!(
+            coordinator.root().domains["qwen.original.conv.0"].schema,
+            ORIGINAL_CONV_V1
+        );
+        assert_eq!(
+            coordinator.root().domains["qwen.original.recurrent.0"].schema,
+            ORIGINAL_RECURRENCE_V1
+        );
+        let before = coordinator.root().clone();
+        let first = bridge.prepare(0, &coordinator, &[1.0; 4]).unwrap();
+        assert_eq!(first.base_root(), 0);
+        assert_eq!(first.proposed_frontier(), 1);
+        assert_eq!(first.required_domains(), 2);
+        assert_eq!(first.output().len(), 4);
+        assert_eq!(coordinator.root(), &before); // tentative only
+        // Abandonment of a completed numerical draft publishes nothing.
+        drop(first);
+        assert_eq!(coordinator.root(), &before);
+        let first = bridge.prepare(0, &coordinator, &[1.0; 4]).unwrap();
+        let concurrent = bridge.prepare(0, &coordinator, &[2.0; 4]).unwrap();
+        let first_output = first.output().to_vec();
+        let committed = first.publish(&mut coordinator).unwrap();
+        assert_eq!(committed.epoch, 77);
+        assert_eq!(committed.sequence, 1);
+        assert_eq!(committed.root_id, 1);
+        assert_eq!(committed.payload.len(), 16);
+        assert_eq!(coordinator.root().frontier, 1);
+        assert_eq!(
+            coordinator.root().domains["qwen.original.conv.0"]
+                .bytes
+                .len(),
+            48 * 4 / 2
+        );
+        assert_eq!(
+            coordinator.root().domains["qwen.original.recurrent.0"]
+                .bytes
+                .len(),
+            8 * 4
+        );
+        assert!(concurrent.publish(&mut coordinator).is_err());
+        let saved = coordinator.root().clone();
+        assert_eq!(saved.id, 1);
+        let second = bridge.prepare(0, &coordinator, &[1.0; 4]).unwrap();
+        assert_eq!(second.proposed_frontier(), 2);
+        assert_eq!(second.output().len(), first_output.len());
+        assert_eq!(coordinator.root(), &saved);
+        second.publish(&mut coordinator).unwrap();
+        assert_eq!(coordinator.root().id, 2);
+        assert_eq!(coordinator.root().frontier, 2);
+        assert_eq!(saved.id, 1);
+        assert!(!saved.domains["qwen.original.recurrent.0"].bytes.is_empty());
+        assert!(admission.arbiter.snapshot(&key).unwrap().reserved > 0);
+    }
+
+    #[test]
+    fn full_attention_prefix_has_only_one_source_bound_kv_domain_and_replays_after_publish() {
+        let fixture = Fixture::new();
+        let (source, config, index, _, _) = loaded(&fixture);
+        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = OriginalQwenLayerMath::new(&cpu);
+        let bridge = OriginalQwenStateBridge::new(&math);
+        assert_eq!(
+            bridge.typed_domains(3).unwrap(),
+            [StateSlot::Kv(KvDomain(3))]
+        );
+        let mut coordinator = bridge.coordinator_for_layer(3, 19).unwrap();
+        assert_eq!(
+            coordinator.root().domains["qwen.original.kv.3"].schema,
+            ORIGINAL_KV_V1
+        );
+        let proposed = bridge.prepare(3, &coordinator, &[1.0; 4]).unwrap();
+        let first_out = proposed.output().to_vec();
+        assert!(first_out.iter().all(|x| x.is_finite()));
+        assert_eq!(coordinator.root().id, 0);
+        proposed.publish(&mut coordinator).unwrap();
+        assert_eq!(
+            coordinator.root().domains["qwen.original.kv.3"].bytes.len(),
+            8 * 4
+        );
+        let first_root = coordinator.root().clone();
+        let another = bridge.prepare(3, &coordinator, &[1.0; 4]).unwrap();
+        assert_eq!(another.proposed_frontier(), 2);
+        another.publish(&mut coordinator).unwrap();
+        assert_eq!(
+            coordinator.root().domains["qwen.original.kv.3"].bytes.len(),
+            2 * 8 * 4
+        );
+        assert_eq!(first_root.domains["qwen.original.kv.3"].bytes.len(), 8 * 4);
+        assert_eq!(coordinator.root().frontier, 2);
+        assert!(bridge.prepare(0, &coordinator, &[1.0; 4]).is_err()); // wrong layer domains
+    }
+
+    #[test]
+    fn foreign_source_session_schema_frontier_and_corruption_refuse_without_side_effects() {
+        let fixture = Fixture::new();
+        let (source, config, index, _, _) = loaded(&fixture);
+        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = OriginalQwenLayerMath::new(&cpu);
+        let bridge = OriginalQwenStateBridge::new(&math);
+        let mut own = bridge.coordinator_for_layer(0, 1).unwrap();
+        let mut another = bridge.coordinator_for_layer(0, 1).unwrap();
+        assert_ne!(own.coordinator_id(), another.coordinator_id());
+        let step = bridge.prepare(0, &own, &[1.0; 4]).unwrap();
+        assert!(step.publish(&mut another).is_err());
+        assert_eq!(another.root().id, 0);
+        let step = bridge.prepare(0, &own, &[1.0; 4]).unwrap();
+        let initial = own.root().clone();
+        assert!(own.publish(0, 1, vec![], vec![]).is_err());
+        assert_eq!(own.root(), &initial);
+        step.publish(&mut own).unwrap();
+        assert_eq!(own.root().id, 1);
+        let wrong = TaskCoordinator::new_source_bound(
+            0,
+            source.source_identity(),
+            [("qwen.original.conv.0".into(), ORIGINAL_CONV_V1)],
+        )
+        .unwrap();
+        assert!(bridge.prepare(0, &wrong, &[1.0; 4]).is_err());
+        let wrong_schema = TaskCoordinator::new_source_bound(
+            0,
+            source.source_identity(),
+            [
+                ("qwen.original.conv.0".into(), ORIGINAL_CONV_V1),
+                ("qwen.original.recurrent.0".into(), 8),
+            ],
+        )
+        .unwrap();
+        assert!(bridge.prepare(0, &wrong_schema, &[1.0; 4]).is_err());
+        let fixture_b = Fixture::new();
+        let (other_source, other_config, other_index, _, _) = loaded(&fixture_b);
+        let other_cpu = QwenOriginalCpu::bind(
+            &other_source,
+            &other_config,
+            &sha(&other_config),
+            &sha(&other_index),
+        )
+        .unwrap();
+        let other_math = OriginalQwenLayerMath::new(&other_cpu);
+        let other_bridge = OriginalQwenStateBridge::new(&other_math);
+        assert!(other_bridge.prepare(0, &own, &[1.0; 4]).is_err());
+        // Mutated owned state bytes in a trusted source-bound coordinator
+        // are still independently decoded before any new proposal.
+        let mut forged = bridge.coordinator_for_layer(3, 55).unwrap();
+        let wrong_stored = PreparedDomain {
+            name: "qwen.original.kv.3".into(),
+            schema: ORIGINAL_KV_V1,
+            bytes: vec![1, 2, 3],
+            frontier: 1,
+        };
+        forged
+            .publish_source_bound(source.source_identity(), 0, 1, vec![wrong_stored], vec![])
+            .unwrap();
+        let unchanged = forged.root().clone();
+        assert!(bridge.prepare(3, &forged, &[1.0; 4]).is_err());
+        assert_eq!(forged.root(), &unchanged);
+        let mut forged = bridge.coordinator_for_layer(3, 56).unwrap();
+        forged
+            .publish_source_bound(
+                source.source_identity(),
+                0,
+                1,
+                vec![PreparedDomain {
+                    name: "qwen.original.kv.3".into(),
+                    schema: ORIGINAL_KV_V1,
+                    bytes: f32::NAN.to_le_bytes().repeat(8),
+                    frontier: 1,
+                }],
+                vec![],
+            )
+            .unwrap();
+        assert!(bridge.prepare(3, &forged, &[1.0; 4]).is_err());
+    }
+}

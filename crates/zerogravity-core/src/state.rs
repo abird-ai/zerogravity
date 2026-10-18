@@ -3,9 +3,13 @@
 //! This is CPU reference state, not an async GPU/peer completion protocol.
 //! All prepared domains are private until the coordinator publishes one root.
 
+use crate::accelerator::SourceIdentity;
 use crate::{Error, Result};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static NEXT_COORDINATOR: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DomainVersion {
@@ -39,6 +43,12 @@ pub struct CommittedOutput {
 
 pub struct TaskCoordinator {
     pub epoch: u64,
+    /// Process-local identity for this logical owner, distinct from a source
+    /// allocation: two independent sessions can share ONE model source.
+    coordinator_id: u64,
+    /// Only source-qualified coordinators admit source-bound publications.
+    /// The original generic CPU coordination API remains unchanged.
+    source: Option<SourceIdentity>,
     root: StateRoot,
     output_sequence: u64,
 }
@@ -67,8 +77,13 @@ impl TaskCoordinator {
         if domains.is_empty() {
             return Err(Error::State("no required domains".into()));
         }
+        let coordinator_id = NEXT_COORDINATOR
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+            .map_err(|_| Error::Limit("task coordinator identity exhausted".into()))?;
         Ok(Self {
             epoch,
+            coordinator_id,
+            source: None,
             root: StateRoot {
                 id: 0,
                 frontier: 0,
@@ -78,14 +93,71 @@ impl TaskCoordinator {
         })
     }
 
+    /// A model-specific execution path must use this *same* TaskCoordinator,
+    /// with one owned immutable source identity. It is not a new scheduler
+    /// or session authority. The source-bound publication route rejects
+    /// all unbound/foreign sources before considering payloads.
+    pub fn new_source_bound(
+        epoch: u64,
+        source: SourceIdentity,
+        required_domains: impl IntoIterator<Item = (String, u64)>,
+    ) -> Result<Self> {
+        if !source.is_bound() {
+            return Err(Error::State("task coordinator source is unbound".into()));
+        }
+        let mut coordinator = Self::new(epoch, required_domains)?;
+        coordinator.source = Some(source);
+        Ok(coordinator)
+    }
+
+    pub fn coordinator_id(&self) -> u64 {
+        self.coordinator_id
+    }
+
+    pub fn source_identity(&self) -> Option<SourceIdentity> {
+        self.source
+    }
+
     pub fn root(&self) -> &StateRoot {
         &self.root
+    }
+
+    /// Source-bound publication for actual verified CPU proposals. The
+    /// trusted owner must still independently validate the full payload
+    /// and actual device completion before invoking this.
+    pub fn publish_source_bound(
+        &mut self,
+        source: SourceIdentity,
+        expected_root: u64,
+        candidate_frontier: u64,
+        prepared: Vec<PreparedDomain>,
+        payload: Vec<u8>,
+    ) -> Result<CommittedOutput> {
+        if !source.is_bound() || self.source != Some(source) {
+            return Err(Error::State("task publication changed model source".into()));
+        }
+        self.publish_prepared(expected_root, candidate_frontier, prepared, payload)
     }
 
     /// All-or-nothing logical root update. The prepared inputs must already be
     /// produced by a checked CPU worker (or later, a device Ready event bridge).
     /// No partial mutation occurs on any invalid candidate.
     pub fn publish(
+        &mut self,
+        expected_root: u64,
+        candidate_frontier: u64,
+        prepared: Vec<PreparedDomain>,
+        payload: Vec<u8>,
+    ) -> Result<CommittedOutput> {
+        if self.source.is_some() {
+            return Err(Error::State(
+                "source-bound coordinator requires source-bound publication".into(),
+            ));
+        }
+        self.publish_prepared(expected_root, candidate_frontier, prepared, payload)
+    }
+
+    fn publish_prepared(
         &mut self,
         expected_root: u64,
         candidate_frontier: u64,
@@ -228,5 +300,61 @@ mod tests {
         c.publish(0, 1, prepared(1), vec![]).unwrap();
         assert!(c.publish(0, 2, prepared(2), vec![]).is_err());
         assert_eq!(c.root().id, 1);
+    }
+}
+
+#[cfg(test)]
+mod bound_source_tests {
+    use super::*;
+
+    fn source() -> SourceIdentity {
+        SourceIdentity::for_new_allocation().unwrap()
+    }
+
+    fn payload(frontier: u64) -> Vec<PreparedDomain> {
+        vec![PreparedDomain {
+            name: "source.gdn.recurrent.0".into(),
+            schema: 0x51,
+            bytes: vec![frontier as u8],
+            frontier,
+        }]
+    }
+
+    #[test]
+    fn original_and_new_source_bound_routes_share_one_atomic_publication_owner() {
+        let a = source();
+        let b = source();
+        let mut c =
+            TaskCoordinator::new_source_bound(99, a, [("source.gdn.recurrent.0".into(), 0x51)])
+                .unwrap();
+        assert_eq!(c.source_identity(), Some(a));
+        assert_ne!(c.coordinator_id(), 0);
+        assert_eq!(c.root().id, 0);
+        let before = c.root().clone();
+        assert!(c.publish(0, 1, payload(1), vec![1]).is_err());
+        assert!(
+            c.publish_source_bound(b, 0, 1, payload(1), vec![1])
+                .is_err()
+        );
+        assert!(
+            c.publish_source_bound(SourceIdentity::unbound(), 0, 1, payload(1), vec![])
+                .is_err()
+        );
+        assert_eq!(c.root(), &before);
+        let next = c
+            .publish_source_bound(a, 0, 1, payload(1), vec![42])
+            .unwrap();
+        assert_eq!(next.payload, vec![42]);
+        assert_eq!(next.epoch, 99);
+        assert_eq!((next.root_id, next.sequence, c.root().frontier), (1, 1, 1));
+        assert!(c.publish_source_bound(a, 0, 2, payload(2), vec![]).is_err());
+        assert_eq!(c.root().id, 1);
+        assert!(
+            TaskCoordinator::new_source_bound(0, SourceIdentity::unbound(), [("x".into(), 1)])
+                .is_err()
+        );
+        let plain = TaskCoordinator::new(8, [("x".into(), 1)]).unwrap();
+        assert!(plain.source_identity().is_none());
+        assert_ne!(plain.coordinator_id(), c.coordinator_id());
     }
 }

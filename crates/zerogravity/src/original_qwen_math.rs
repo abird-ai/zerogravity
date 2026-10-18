@@ -25,11 +25,11 @@ use std::sync::Arc;
 /// constructor accepts untrusted raw convolution/recurrent arrays.
 #[derive(Clone)]
 pub struct OriginalGdnPrefix {
-    source: SourceIdentity,
-    layer: usize,
-    position: usize,
-    convolution: Arc<Vec<f32>>,
-    recurrent: Arc<Vec<f32>>,
+    pub(crate) source: SourceIdentity,
+    pub(crate) layer: usize,
+    pub(crate) position: usize,
+    pub(crate) convolution: Arc<Vec<f32>>,
+    pub(crate) recurrent: Arc<Vec<f32>>,
 }
 impl OriginalGdnPrefix {
     pub fn source_identity(&self) -> SourceIdentity {
@@ -64,10 +64,10 @@ pub struct OriginalGdnProposal {
 /// history. An Arc clone reuses immutable slabs, not source tensors.
 #[derive(Clone)]
 pub struct OriginalFullPrefix {
-    source: SourceIdentity,
-    layer: usize,
-    keys: Vec<Arc<[f32]>>,
-    values: Vec<Arc<[f32]>>,
+    pub(crate) source: SourceIdentity,
+    pub(crate) layer: usize,
+    pub(crate) keys: Vec<Arc<[f32]>>,
+    pub(crate) values: Vec<Arc<[f32]>>,
 }
 impl OriginalFullPrefix {
     pub fn len(&self) -> usize {
@@ -223,6 +223,14 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
     }
     pub fn source_identity(&self) -> SourceIdentity {
         self.cpu.binding().source_identity()
+    }
+    /// Existing source-qualified original model config, never mutable.
+    pub fn geometry(&self) -> &crate::model::ModelGeometry {
+        self.cpu.binding().config().geometry()
+    }
+    pub fn hidden_width(&self) -> Result<usize> {
+        usize::try_from(self.geometry().hidden_size)
+            .map_err(|_| Error::Limit("Qwen original hidden width exceeds host".into()))
     }
     fn prefix(i: usize) -> String {
         format!("model.language_model.layers.{i}")
