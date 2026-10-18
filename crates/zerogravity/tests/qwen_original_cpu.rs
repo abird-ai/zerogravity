@@ -908,3 +908,117 @@ mod original_full_model_tests {
         assert_eq!(damaged.root(), &untouched);
     }
 }
+
+#[cfg(feature = "model-qwen35")]
+mod original_bf16_diagnostic_tests {
+    use super::*;
+    use zerogravity::original_qwen_math::OriginalQwenLayerMath;
+    use zerogravity::original_qwen_precision::OriginalNumericalDType;
+    use zerogravity::original_qwen_state::{
+        ORIGINAL_CONV_V1, ORIGINAL_KV_V1, ORIGINAL_RECURRENCE_V1, OriginalQwenStateBridge,
+    };
+
+    fn bf16_representable(value: f32) -> bool {
+        value.is_finite() && (value.to_bits() & 0xffff) == 0
+    }
+    #[test]
+    fn bf16_full_model_uses_distinct_state_schema_and_no_cross_dtype_session_replay() {
+        let fixture = Fixture::new();
+        let (source, config, index, admission, key) = loaded(&fixture);
+        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let bf16 = OriginalQwenLayerMath::bf16_diagnostic(&cpu);
+        assert_eq!(bf16.dtype(), OriginalNumericalDType::Bf16Diagnostic);
+        let bridge = OriginalQwenStateBridge::new(&bf16);
+        let mut session = bridge.coordinator_for_model(777).unwrap();
+        assert_eq!(session.root().domains.len(), 7);
+        assert_eq!(
+            session.root().domains["qwen.original.conv.0"].schema,
+            ORIGINAL_CONV_V1 + 0x10
+        );
+        assert_eq!(
+            session.root().domains["qwen.original.recurrent.0"].schema,
+            ORIGINAL_RECURRENCE_V1 + 0x10
+        );
+        assert_eq!(
+            session.root().domains["qwen.original.kv.3"].schema,
+            ORIGINAL_KV_V1 + 0x10
+        );
+        assert!(bridge.prepare_diagnostic_token_f32(&session, 0).is_err());
+        let before = session.root().clone();
+        let first = bridge.prepare_diagnostic_token_bf16(&session, 0).unwrap();
+        assert_eq!(first.logits().len(), 16);
+        assert!(first.logits().iter().copied().all(bf16_representable));
+        assert_eq!(first.required_domains(), 7);
+        assert_eq!(session.root(), &before); // no publication yet
+        let concurrent = bridge.prepare_diagnostic_token_bf16(&session, 1).unwrap();
+        first.publish(&mut session).unwrap();
+        assert_eq!(session.root().id, 1);
+        assert_eq!(session.root().frontier, 1);
+        assert!(concurrent.publish(&mut session).is_err());
+        let committed = session.root().clone();
+        let second = bridge.prepare_diagnostic_token_bf16(&session, 1).unwrap();
+        assert!(second.logits().iter().copied().all(bf16_representable));
+        second.publish(&mut session).unwrap();
+        assert_eq!(session.root().id, 2);
+        assert_eq!(session.root().frontier, 2);
+        assert_eq!(committed.id, 1);
+        assert_eq!(committed.domains["qwen.original.kv.3"].bytes.len(), 32);
+        assert_eq!(session.root().domains["qwen.original.kv.3"].bytes.len(), 64);
+        assert!(admission.arbiter.snapshot(&key).unwrap().reserved > 0);
+        let f32 = OriginalQwenLayerMath::new(&cpu);
+        let bridge_f32 = OriginalQwenStateBridge::new(&f32);
+        let pure = bridge_f32.coordinator_for_model(777).unwrap();
+        assert_eq!(
+            pure.root().domains["qwen.original.kv.3"].schema,
+            ORIGINAL_KV_V1
+        );
+        assert!(
+            bridge_f32
+                .prepare_diagnostic_token_f32(&session, 0)
+                .is_err()
+        );
+        assert!(bridge.prepare_diagnostic_token_bf16(&pure, 0).is_err());
+        assert!(bridge_f32.prepare_diagnostic_token_bf16(&pure, 0).is_err());
+    }
+    #[test]
+    fn source_bf16_norm_ffn_attention_gdn_out_are_stage_quantized_not_a_final_logit_cast() {
+        let fixture = Fixture::new();
+        let (source, config, index, _, _) = loaded(&fixture);
+        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let source_f32 = OriginalQwenLayerMath::new(&cpu);
+        let source_bf16 = OriginalQwenLayerMath::bf16_diagnostic(&cpu);
+        let x = [0.10123456f32, f32::from_bits(0x3f80_8000), 1.019, 1.25];
+        let gamma = [0.0f32, 0.5, -0.2, 0.3];
+        let normalized = source_bf16.ordinary_norm(&x, &gamma).unwrap();
+        assert!(normalized.iter().copied().all(bf16_representable));
+        let raw = source_f32.ordinary_norm(&x, &gamma).unwrap();
+        assert_ne!(raw, normalized);
+        let stage_f32 = source_f32.propose_ffn(0, &x).unwrap();
+        let stage_bf16 = source_bf16.propose_ffn(0, &x).unwrap();
+        assert!(stage_bf16.iter().copied().all(bf16_representable));
+        assert_ne!(stage_f32, stage_bf16);
+        let a = source_bf16.empty_gdn_prefix(0).unwrap();
+        let gdn = source_bf16.propose_gdn(0, &x, &a).unwrap();
+        assert!(gdn.output.iter().copied().all(bf16_representable));
+        assert!(gdn.next.recurrent().iter().all(|v| v.is_finite()));
+        let empty = source_bf16.empty_full_prefix(3).unwrap();
+        let full = source_bf16.propose_full_attention(3, &x, &empty).unwrap();
+        assert!(full.output.iter().copied().all(bf16_representable));
+        assert!(
+            full.prefix
+                .last_key()
+                .unwrap()
+                .iter()
+                .copied()
+                .all(bf16_representable)
+        );
+        assert!(
+            full.prefix
+                .last_value()
+                .unwrap()
+                .iter()
+                .copied()
+                .all(bf16_representable)
+        );
+    }
+}

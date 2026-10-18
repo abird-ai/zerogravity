@@ -7,6 +7,7 @@ use crate::accelerator::program::{ConvDomain, KvDomain, RecurrentDomain, StateSl
 use crate::accelerator::{BinaryOperation, BinaryRegion};
 use crate::model::LayerKind;
 use crate::original_qwen_math::{OriginalFullPrefix, OriginalGdnPrefix, OriginalQwenLayerMath};
+use crate::original_qwen_precision::OriginalNumericalDType;
 use crate::state::{CommittedOutput, PreparedDomain, StateRoot, TaskCoordinator};
 use crate::{Error, Result};
 use std::sync::Arc;
@@ -18,16 +19,22 @@ const MAX_DOMAIN_BYTES: usize = 64 * 1024 * 1024;
 const MAX_DIAGNOSTIC_TOKENS: u64 = 8192;
 const MAX_AGGREGATE_STATE_BYTES: usize = 128 * 1024 * 1024;
 const MAX_QUALIFIED_LAYERS: usize = 128;
-fn named(slot: StateSlot) -> (String, u64) {
-    match slot {
+fn named(slot: StateSlot, dtype: OriginalNumericalDType) -> (String, u64) {
+    let offset = match dtype {
+        OriginalNumericalDType::F32 => 0,
+        OriginalNumericalDType::Bf16Diagnostic => 0x10,
+    };
+    let (name, schema) = match slot {
         StateSlot::Kv(KvDomain(i)) => (format!("qwen.original.kv.{i}"), ORIGINAL_KV_V1),
         StateSlot::Conv(ConvDomain(i)) => (format!("qwen.original.conv.{i}"), ORIGINAL_CONV_V1),
         StateSlot::Recurrent(RecurrentDomain(i)) => (
             format!("qwen.original.recurrent.{i}"),
             ORIGINAL_RECURRENCE_V1,
         ),
-    }
+    };
+    (name, schema + offset)
 }
+
 fn encode(values: &[f32]) -> Result<Vec<u8>> {
     let size = values
         .len()
@@ -171,7 +178,11 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
         }
         let mut domains = Vec::new();
         for layer in 0..layers.len() {
-            domains.extend(self.typed_domains(layer)?.into_iter().map(named));
+            domains.extend(
+                self.typed_domains(layer)?
+                    .into_iter()
+                    .map(|slot| named(slot, self.math.dtype())),
+            );
         }
         TaskCoordinator::new_source_bound(epoch, self.math.source_identity(), domains)
     }
@@ -195,7 +206,7 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
         let mut expected = 0usize;
         for layer in 0..roles.len() {
             for slot in self.typed_domains(layer)? {
-                let (name, schema) = named(slot);
+                let (name, schema) = named(slot, self.math.dtype());
                 if coordinator
                     .root()
                     .domains
@@ -225,6 +236,31 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
     /// Every domain comes from one root and all next domains are staged
     /// before atomic publication by the existing TaskCoordinator.
     pub fn prepare_diagnostic_token_f32(
+        &self,
+        coordinator: &TaskCoordinator,
+        token: u32,
+    ) -> Result<OriginalPreparedToken<'m, 'b, 's>> {
+        if self.math.dtype() != OriginalNumericalDType::F32 {
+            return Err(Error::Unsupported(
+                "FP32 Qwen root requires FP32 source math".into(),
+            ));
+        }
+        self.prepare_token_with_dtype(coordinator, token)
+    }
+    /// BF16 source dtype-boundary experiment, NOT trained-HF parity.
+    pub fn prepare_diagnostic_token_bf16(
+        &self,
+        coordinator: &TaskCoordinator,
+        token: u32,
+    ) -> Result<OriginalPreparedToken<'m, 'b, 's>> {
+        if self.math.dtype() != OriginalNumericalDType::Bf16Diagnostic {
+            return Err(Error::Unsupported(
+                "BF16 diagnostic requires BF16-bound math".into(),
+            ));
+        }
+        self.prepare_token_with_dtype(coordinator, token)
+    }
+    fn prepare_token_with_dtype(
         &self,
         coordinator: &TaskCoordinator,
         token: u32,
@@ -315,7 +351,9 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
         TaskCoordinator::new_source_bound(
             epoch,
             self.math.source_identity(),
-            self.typed_domains(layer)?.into_iter().map(named),
+            self.typed_domains(layer)?
+                .into_iter()
+                .map(|slot| named(slot, self.math.dtype())),
         )
     }
     fn validate_owner(&self, layer: usize, c: &TaskCoordinator) -> Result<()> {
@@ -331,7 +369,7 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
             return Err(Error::State("incomplete Qwen state domains".into()));
         }
         for slot in required {
-            let (name, schema) = named(slot);
+            let (name, schema) = named(slot, self.math.dtype());
             if c.root()
                 .domains
                 .get(&name)
@@ -344,8 +382,8 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
         }
         Ok(())
     }
-    fn existing(root: &StateRoot, slot: StateSlot) -> Result<&[u8]> {
-        let (name, schema) = named(slot);
+    fn existing<'r>(&self, root: &'r StateRoot, slot: StateSlot) -> Result<&'r [u8]> {
+        let (name, schema) = named(slot, self.math.dtype());
         let entry = root
             .domains
             .get(&name)
@@ -385,7 +423,7 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
                     ));
                 }
                 let empty = self.math.empty_full_prefix(layer)?;
-                let bytes = Self::existing(root, StateSlot::Kv(KvDomain(layer)))?;
+                let bytes = self.existing(root, StateSlot::Kv(KvDomain(layer)))?;
                 let prefix = if root.frontier == 0 {
                     if !bytes.is_empty() {
                         return Err(Error::State("nonempty initial Qwen KV".into()));
@@ -431,7 +469,7 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
                     collected.extend_from_slice(key);
                     collected.extend_from_slice(value);
                 }
-                let (name, schema) = named(StateSlot::Kv(KvDomain(layer)));
+                let (name, schema) = named(StateSlot::Kv(KvDomain(layer)), self.math.dtype());
                 (
                     proposed.output,
                     vec![PreparedDomain {
@@ -444,8 +482,8 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
             }
             LayerKind::LinearAttention => {
                 let empty = self.math.empty_gdn_prefix(layer)?;
-                let conv = Self::existing(root, StateSlot::Conv(ConvDomain(layer)))?;
-                let rec = Self::existing(root, StateSlot::Recurrent(RecurrentDomain(layer)))?;
+                let conv = self.existing(root, StateSlot::Conv(ConvDomain(layer)))?;
+                let rec = self.existing(root, StateSlot::Recurrent(RecurrentDomain(layer)))?;
                 let prefix = if root.frontier == 0 {
                     if !conv.is_empty() || !rec.is_empty() {
                         return Err(Error::State("nonempty initial Qwen GDN".into()));
@@ -468,8 +506,11 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
                 {
                     return Err(Error::State("Qwen private GDN frontier changed".into()));
                 }
-                let (cn, cs) = named(StateSlot::Conv(ConvDomain(layer)));
-                let (rn, rs) = named(StateSlot::Recurrent(RecurrentDomain(layer)));
+                let (cn, cs) = named(StateSlot::Conv(ConvDomain(layer)), self.math.dtype());
+                let (rn, rs) = named(
+                    StateSlot::Recurrent(RecurrentDomain(layer)),
+                    self.math.dtype(),
+                );
                 let domains = vec![
                     PreparedDomain {
                         name: cn,

@@ -317,3 +317,61 @@ GGUF trained source regression independently.
   and StateRoot, physical memory and device completion.
 - Admit original 27B host capacity and independently tested
   SSD streaming before user-facing model execution.
+
+## ME-P0 — original BF16 source-dtype diagnostic (not trained parity)
+
+The original Qwen math now offers two explicit source-bound modes:
+`OriginalQwenLayerMath::new` (unchanged FP32 diagnostics), and
+`bf16_diagnostic` (finite IEEE BF16 round-to-nearest-even after
+source-identified dtype boundaries). The existing
+`MathematicalBackend` layer traversal, `SourceIdentity`,
+`TensorSource`, CPU kernels and `TaskCoordinator` remain shared.
+There is **no BF16-specific token loop, model loader or state issuer**.
+
+Source boundary operator: `crates/zerogravity/src/original_qwen_precision.rs`.
+
+- IEEE BF16 quantization: finite f32 → nearest BF16 with ties-to-even,
+  preserving signed zero. Nonfinite inputs/rounded overflow refuse.
+- Ordinary zero-centered RMSNorm: promote BF16 input to FP32,
+  normalize and multiply `1 + gamma` in FP32, then round once
+  to input dtype. Independent Q/K head rows share this same operator.
+- Source projection/output and SwiGLU: BF16 result per projection,
+  SiLU, product, down-projection and residual. Untied vocabulary
+  head also rounds after projection.
+- Full attention: per-head interleaved Q/gate and K/V projections,
+  headwise norms, source RoPE, FP32 dot with BF16 matmul-output cast,
+  separate BF16 scale cast, FP32 softmax with BF16 return, value/GQA,
+  sigmoid gate and source output projection. Exact actual GPU
+  GEMM accumulation/RoPE cast scheduling remains unqualified.
+- GDN: original BF16 QKV/z/a/b projections, four-tap conv and
+  separate SiLU return casts, exact grouped Q/K16→V48 mapping.
+  `A_log.float().exp` and `softplus(a.float()+dt)` remain FP32;
+  beta is cast after sigmoid. The qualified existing recurrent
+  CPU operator updates private **FP32** state; its output alone
+  returns in BF16. Gated RMSNorm casts FP32 normalized core
+  before learned gamma and again at BF16 gated output.
+- Distinct immutable `StateRoot` schema versions for FP32 vs BF16
+  diagnostic contexts. Neither may prepare a token using the
+  other's root, even with the same original model allocation.
+
+Source references: the published
+[Qwen3.5 generated model code](https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen3_5/modeling_qwen3_5.py)
+and [modular GDN/FLA fallback](https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen3_5/modular_qwen3_5.py).
+No upstream SDK or weights are imported.
+
+Independent source-free Python NumPy scalar mathematical fixtures
+supply immutable BF16 bit patterns for zero-centered RMS and gated
+RMS, signed-zero/tie-to-even cases and the two-step GDN recurrent
+operator (BF16 output exact; unrounded FP32 state tolerance 2e-7).
+Rust integration runs two full synthetic four-layer BF16 diagnostic
+tokens on the existing TaskCoordinator; checks per-operation BF16
+representation, 7 domains, two causal frontiers, rollback and
+cross-dtype schema rejection. The GGUF 0.8B/2B trained full-logit/
+StateRoot regressions remain separate unchanged acceptance gates.
+
+**Still NOT IMPLEMENTED/QUALIFIED:** independent trained Qwen3.8-27B
+BF16/FLA reference logits, per-token exact Qwen CUDA/FLA rounding,
+torch GEMM accumulation/attention backend parity, performance,
+real trained 27B payloads, official tokenizer and production
+SessionAuthority/GPU/SSD execution. BF16 stage agreement is not a
+claim of original-model learned checkpoint numerical parity.

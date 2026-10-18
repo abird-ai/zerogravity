@@ -34,6 +34,13 @@ pub mod original_qwen_math;
     feature = "model-qwen35",
     target_os = "linux"
 ))]
+pub mod original_qwen_precision;
+#[cfg(all(
+    feature = "cpu",
+    feature = "cache",
+    feature = "model-qwen35",
+    target_os = "linux"
+))]
 pub mod original_qwen_state;
 #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
 pub use zerogravity_gpu as gpu;

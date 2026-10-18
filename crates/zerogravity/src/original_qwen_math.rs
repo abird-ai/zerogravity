@@ -17,6 +17,7 @@ use crate::accelerator::{
 };
 use crate::model::{LayerKind, qwen::GdnOutputGate};
 use crate::original_qwen_cpu::QwenOriginalCpu;
+use crate::original_qwen_precision::OriginalNumericalDType;
 use crate::{Error, Result};
 use std::sync::Arc;
 
@@ -216,10 +217,48 @@ pub fn original_gdn_coefficients(
 /// All functions work on private values and remain outside SessionAuthority.
 pub struct OriginalQwenLayerMath<'borrow, 'source> {
     cpu: &'borrow QwenOriginalCpu<'source>,
+    dtype: OriginalNumericalDType,
 }
 impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
     pub fn new(cpu: &'borrow QwenOriginalCpu<'source>) -> Self {
-        Self { cpu }
+        Self {
+            cpu,
+            dtype: OriginalNumericalDType::F32,
+        }
+    }
+    /// Explicit numerical dtype probe; does not qualify trained HF/FLA.
+    pub fn bf16_diagnostic(cpu: &'borrow QwenOriginalCpu<'source>) -> Self {
+        Self {
+            cpu,
+            dtype: OriginalNumericalDType::Bf16Diagnostic,
+        }
+    }
+    pub fn dtype(&self) -> OriginalNumericalDType {
+        self.dtype
+    }
+    fn round(&self, values: &[f32]) -> Result<Vec<f32>> {
+        self.dtype.values(values)
+    }
+    fn project(&self, name: &str, input: &[f32]) -> Result<Vec<f32>> {
+        if self.dtype == OriginalNumericalDType::F32 {
+            // Preserve the original FP32 diagnostic fast path exactly,
+            // without staging a duplicate activation vector.
+            return self.cpu.project(name, input, None);
+        }
+        let rounded_input = self.round(input)?;
+        self.round(&self.cpu.project(name, &rounded_input, None)?)
+    }
+    /// One authoritative source binary kernel; cast at the result's
+    /// original diagnostic dtype, not before the FP32 CPU addition.
+    pub fn residual_add(&self, left: &[f32], right: &[f32]) -> Result<Vec<f32>> {
+        let added = crate::qwen35::source_binary(BinaryRegion {
+            source_identity: self.source_identity(),
+            operation: "qwen.original.attention_residual",
+            kind: BinaryOperation::Add,
+            left,
+            right,
+        })?;
+        self.round(&added)
     }
     pub fn source_identity(&self) -> SourceIdentity {
         self.cpu.binding().source_identity()
@@ -235,7 +274,7 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
     /// One verified immutable original embedding, not a generic raw token.
     /// The caller's coordinator/session owns when the token is committed.
     pub fn embed_token(&self, token: u32) -> Result<Vec<f32>> {
-        self.cpu.embed(token)
+        self.round(&self.cpu.embed(token)?)
     }
     /// Compute final original text head logits with the same FP32 RMS and
     /// source-typed GEMV kernels. This is NOT a trained BF16 reference.
@@ -245,7 +284,7 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
             residual,
             &self.cpu.vector("model.language_model.norm.weight")?,
         )?;
-        let logits = self.cpu.project("lm_head.weight", &normalized, None)?;
+        let logits = self.project("lm_head.weight", &normalized)?;
         let vocab = usize::try_from(self.geometry().vocab_size)
             .map_err(|_| Error::Limit("original Qwen vocabulary overflow".into()))?;
         if logits.len() != vocab || logits.iter().any(|v| !v.is_finite()) {
@@ -288,16 +327,9 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
     /// unlike the separate GDN gated RMSNorm, which stores gamma directly.
     /// Uses the existing Qwen CPU norm arithmetic, not another RMS kernel.
     pub fn ordinary_norm(&self, input: &[f32], raw_gamma: &[f32]) -> Result<Vec<f32>> {
-        if input.len() != raw_gamma.len()
-            || raw_gamma
-                .iter()
-                .any(|x| !x.is_finite() || !(1.0 + x).is_finite())
-        {
-            return Err(Error::Malformed("Qwen original zero-centered norm".into()));
-        }
-        let gamma: Vec<f32> = raw_gamma.iter().map(|x| 1.0 + x).collect();
-        crate::qwen35::source_rms_normalize(input, &gamma, self.eps()?)
+        self.dtype.zero_centered_rms(input, raw_gamma, self.eps()?)
     }
+
     fn residual_norm(&self, i: usize, kind: LayerKind, x: &[f32]) -> Result<Vec<f32>> {
         self.hidden(x)?;
         let prefix = self.layer(i, kind)?;
@@ -324,36 +356,31 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
                 .cpu
                 .vector(&format!("{prefix}.post_attention_layernorm.weight"))?,
         )?;
-        let gate = self
-            .cpu
-            .project(&format!("{prefix}.mlp.gate_proj.weight"), &norm, None)?;
-        let up = self
-            .cpu
-            .project(&format!("{prefix}.mlp.up_proj.weight"), &norm, None)?;
+        let gate = self.project(&format!("{prefix}.mlp.gate_proj.weight"), &norm)?;
+        let up = self.project(&format!("{prefix}.mlp.up_proj.weight"), &norm)?;
         if gate.len() != up.len()
             || gate.len() != self.cpu.binding().config().intermediate_size() as usize
         {
             return Err(Error::Malformed("Qwen FFN gate/up geometry".into()));
         }
+        // PyTorch BF16: SiLU(gate_proj) -> multiply(up_proj),
+        // each tensor operation returns the activation dtype.
         let fused: Vec<f32> = gate
             .iter()
             .zip(&up)
-            .map(|(&g, &u)| crate::math::silu(g) * u)
-            .collect();
+            .map(|(&g, &u)| {
+                self.dtype
+                    .round(self.dtype.round(crate::math::silu(g))? * u)
+            })
+            .collect::<Result<_>>()?;
         if fused.iter().any(|v| !v.is_finite()) {
             return Err(Error::Malformed("nonfinite original FFN SwiGLU".into()));
         }
-        let down = self
-            .cpu
-            .project(&format!("{prefix}.mlp.down_proj.weight"), &fused, None)?;
+        let down = self.project(&format!("{prefix}.mlp.down_proj.weight"), &fused)?;
         if down.len() != post_attention_residual.len() {
             return Err(Error::Malformed("Qwen original FFN residual width".into()));
         }
-        let combined: Vec<f32> = post_attention_residual
-            .iter()
-            .zip(&down)
-            .map(|(&r, &v)| r + v)
-            .collect();
+        let combined = self.residual_add(post_attention_residual, &down)?;
         if combined.iter().any(|v| !v.is_finite()) {
             return Err(Error::Malformed("nonfinite original FFN residual".into()));
         }
@@ -412,9 +439,7 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
         }
         let normalized = self.residual_norm(layer, LayerKind::FullAttention, input)?;
         let p = format!("{prefix}.self_attn");
-        let raw_q = self
-            .cpu
-            .project(&format!("{p}.q_proj.weight"), &normalized, None)?;
+        let raw_q = self.project(&format!("{p}.q_proj.weight"), &normalized)?;
         let (query, gates) = if cfg.attention_output_gate() {
             split_interleaved_query_gate(&raw_q, qheads, d)?
         } else if raw_q.len() == qheads * d {
@@ -422,12 +447,8 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
         } else {
             return Err(Error::Malformed("Qwen plain query shape".into()));
         };
-        let key = self
-            .cpu
-            .project(&format!("{p}.k_proj.weight"), &normalized, None)?;
-        let value = self
-            .cpu
-            .project(&format!("{p}.v_proj.weight"), &normalized, None)?;
+        let key = self.project(&format!("{p}.k_proj.weight"), &normalized)?;
+        let value = self.project(&format!("{p}.v_proj.weight"), &normalized)?;
         let norm_query = self.ordinary_head_norm(&query, &format!("{p}.q_norm.weight"), qheads)?;
         let norm_key = self.ordinary_head_norm(&key, &format!("{p}.k_norm.weight"), kvheads)?;
         let theta = cfg.rope_theta() as f32;
@@ -448,27 +469,50 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
             position,
             theta_scale: theta.powf(-2.0 / rotary as f32),
         })?;
+        // Qwen rotary tensors return to the input dtype after FP32
+        // trigonometric evaluation. KV slices remain immutable BF16-
+        // representable values encoded in the shared private f32 root.
+        let rotated_query = self.round(&rotated.query)?;
+        let rotated_key = self.round(&rotated.key)?;
+        let rotated_value = self.round(&rotated.value)?;
         let mut keys = previous.keys.clone();
         let mut values = previous.values.clone();
-        keys.push(Arc::from(rotated.key.clone()));
-        values.push(Arc::from(rotated.value.clone()));
+        keys.push(Arc::from(rotated_key.clone()));
+        values.push(Arc::from(rotated_value.clone()));
         let qk = crate::qwen35::source_attention_qk(AttentionQkRegion {
             source_identity: self.source_identity(),
             operation: "qwen.original.full.qk",
-            query: &rotated.query,
+            query: &rotated_query,
             keys: &keys,
             head_width: d,
             query_heads: qheads,
             kv_heads: kvheads,
             scale: 1.0 / (d as f32).sqrt(),
         })?;
+        // Original eager attention: matmul returns the query dtype,
+        // THEN multiplication by source scale returns the query dtype.
+        // Softmax accumulates FP32 and casts probabilities back to
+        // query dtype. Do not fuse away the intermediate BF16 matmul
+        // boundary; that would change attention decisions.
+        let scores = if self.dtype == OriginalNumericalDType::F32 {
+            qk.scores.clone()
+        } else {
+            let dots = self.round(&qk.dots)?;
+            self.round(
+                &dots
+                    .iter()
+                    .map(|&v| v * (1.0 / (d as f32).sqrt()))
+                    .collect::<Vec<f32>>(),
+            )?
+        };
         let prob = crate::qwen35::source_attention_softmax(AttentionSoftmaxRegion {
             source_identity: self.source_identity(),
             operation: "qwen.original.full.softmax",
-            scores: &qk.scores,
+            scores: &scores,
             heads: qheads,
             width: keys.len(),
         })?;
+        let probabilities = self.round(&prob.probabilities)?;
         let padded = keys
             .len()
             .checked_add(31)
@@ -478,27 +522,26 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
         let attended = crate::qwen35::source_attention_value(AttentionValueRegion {
             source_identity: self.source_identity(),
             operation: "qwen.original.full.value",
-            probabilities: &prob.probabilities,
+            probabilities: &probabilities,
             values: &values,
             head_width: d,
             query_heads: qheads,
             kv_heads: kvheads,
             padded_tokens: padded,
         })?;
+        let attended = self.round(&attended)?;
         let gated = if cfg.attention_output_gate() {
-            crate::qwen35::source_binary(BinaryRegion {
+            self.round(&crate::qwen35::source_binary(BinaryRegion {
                 source_identity: self.source_identity(),
                 operation: "qwen.original.full.gated",
                 kind: BinaryOperation::SigmoidGate,
                 left: &attended,
                 right: &gates,
-            })?
+            })?)?
         } else {
             attended
         };
-        let output = self
-            .cpu
-            .project(&format!("{p}.o_proj.weight"), &gated, None)?;
+        let output = self.project(&format!("{p}.o_proj.weight"), &gated)?;
         if output.len() != input.len() || output.iter().any(|x| !x.is_finite()) {
             return Err(Error::Malformed(
                 "Qwen full-attention projected output".into(),
@@ -518,12 +561,8 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
         })
     }
     fn ordinary_head_norm(&self, data: &[f32], name: &str, heads: usize) -> Result<Vec<f32>> {
-        let raw = self.cpu.vector(name)?;
-        if raw.iter().any(|x| !x.is_finite() || !(1.0 + x).is_finite()) {
-            return Err(Error::Malformed("Qwen original head RMS weight".into()));
-        }
-        let gamma: Vec<f32> = raw.iter().map(|v| 1.0 + v).collect();
-        crate::qwen35::source_grouped_rms_normalize(data, &gamma, heads, self.eps()?)
+        self.dtype
+            .zero_centered_head_rms(data, &self.cpu.vector(name)?, heads, self.eps()?)
     }
     /// Mint an isolated zero-initialized original GDN proposal for one
     /// specific bound model source/layer; NEVER a committed SessionRoot.
@@ -653,18 +692,10 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
         }
         let normalized = self.residual_norm(layer, LayerKind::LinearAttention, input)?;
         let p = format!("{prefix}.linear_attn");
-        let raw = self
-            .cpu
-            .project(&format!("{p}.in_proj_qkv.weight"), &normalized, None)?;
-        let z = self
-            .cpu
-            .project(&format!("{p}.in_proj_z.weight"), &normalized, None)?;
-        let alpha = self
-            .cpu
-            .project(&format!("{p}.in_proj_a.weight"), &normalized, None)?;
-        let beta = self
-            .cpu
-            .project(&format!("{p}.in_proj_b.weight"), &normalized, None)?;
+        let raw = self.project(&format!("{p}.in_proj_qkv.weight"), &normalized)?;
+        let z = self.project(&format!("{p}.in_proj_z.weight"), &normalized)?;
+        let alpha = self.project(&format!("{p}.in_proj_a.weight"), &normalized)?;
+        let beta = self.project(&format!("{p}.in_proj_b.weight"), &normalized)?;
         if raw.len() != qkv || z.len() != vtotal || alpha.len() != nv || beta.len() != nv {
             return Err(Error::Malformed(
                 "GDN original source projection width".into(),
@@ -682,7 +713,12 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
         let mut next_conv = previous_conv.to_vec();
         let mut raw_conv = vec![0.0; qkv];
         crate::qwen35::source_gdn_conv_step(&raw, &conv_weights, &mut next_conv, &mut raw_conv)?;
-        let mixed: Vec<f32> = raw_conv.into_iter().map(crate::math::silu).collect();
+        // Original causal conv and SiLU each produce the input dtype.
+        let conv = self.round(&raw_conv)?;
+        let mixed: Vec<f32> = conv
+            .into_iter()
+            .map(|v| self.dtype.round(crate::math::silu(v)))
+            .collect::<Result<_>>()?;
         if mixed.iter().any(|v| !v.is_finite()) {
             return Err(Error::Malformed(
                 "nonfinite original GDN convolution activation".into(),
@@ -697,8 +733,13 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
             crate::qwen35::source_grouped_rms_normalize(&key, &l2_gamma, nv, 1e-6 / kd as f32)?;
         let a_log = self.cpu.vector(&format!("{p}.A_log"))?;
         let dt = self.cpu.vector(&format!("{p}.dt_bias"))?;
-        let ready =
+        let mut ready =
             original_gdn_coefficients(self.source_identity(), &alpha, &beta, &dt, &a_log, kd)?;
+        // Upstream beta=b.sigmoid() retains input BF16 dtype.
+        // Decay and softplus remain FP32, recurrent state stays FP32.
+        for coefficient in &mut ready.coefficients {
+            coefficient.beta = self.dtype.round(coefficient.beta)?;
+        }
         let mut next_state = previous_recurrent.to_vec();
         let mut core = vec![0.0; vtotal];
         for h in 0..nv {
@@ -713,26 +754,21 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
                 &mut core[start..start + vd],
             )?;
         }
-        let weights = self.cpu.vector(&format!("{p}.norm.weight"))?;
-        let normalized =
-            crate::qwen35::source_grouped_rms_normalize(&core, &weights, nv, self.eps()?)?;
-        let output_gate: Vec<f32> = match cfg.gdn_output_gate() {
-            GdnOutputGate::Silu => z.iter().map(|x| crate::math::silu(*x)).collect(),
-            GdnOutputGate::Sigmoid => z.iter().map(|x| 1.0 / (1.0 + (-x).exp())).collect(),
-        };
-        let fused: Vec<f32> = normalized
-            .iter()
-            .zip(output_gate)
-            .map(|(&v, z)| v * z)
-            .collect();
-        if fused.iter().any(|x| !x.is_finite()) {
-            return Err(Error::Malformed(
-                "nonfinite Qwen original GDN gated normalization".into(),
+        // FLA recurrent accumulator remains FP32; only its core output
+        // returns in the original query dtype. GDN gated RMS then casts
+        // norm before raw learned weight, applies SiLU(gate.float()),
+        // and returns input dtype. Never cast/rewrite recurrent state.
+        if cfg.gdn_output_gate() != GdnOutputGate::Silu {
+            return Err(Error::Unsupported(
+                "diagnostic gated RMS requires source-qualified GDN SiLU gate".into(),
             ));
         }
-        let output = self
-            .cpu
-            .project(&format!("{p}.out_proj.weight"), &fused, None)?;
+        let core = self.dtype.recurrent_output(&core)?;
+        let weights = self.cpu.vector(&format!("{p}.norm.weight"))?;
+        let fused =
+            self.dtype
+                .gated_rms(self.source_identity(), &core, &z, &weights, nv, self.eps()?)?;
+        let output = self.project(&format!("{p}.out_proj.weight"), &fused)?;
         if output.len() != input.len() || output.iter().any(|x| !x.is_finite()) {
             return Err(Error::Malformed(
                 "invalid Qwen original GDN projection output".into(),
