@@ -2,15 +2,15 @@
 
 ## Active
 
-- [~] P0 model-execution — @pvl — [details](model-execution/TODO.md)
-- [~] P1 model-acquisition — @pvl — [details](model-acquisition/TODO.md)
+- [~] P0 serving-and-speculation — @pvl — [details](serving-and-speculation/TODO.md)
+- [~] P1 memory-and-streaming — @pvl — [details](memory-and-streaming/TODO.md)
+- [~] P2 model-execution — @pvl — [details](model-execution/TODO.md)
+- [~] P2 model-acquisition — @pvl — [details](model-acquisition/TODO.md)
 
 ## Icebox
 
 - [ ] numerics-and-context — [details](numerics-and-context/TODO.md)
 - [ ] cpu-gpu-optimization — [details](cpu-gpu-optimization/TODO.md)
-- [ ] serving-and-speculation — [details](serving-and-speculation/TODO.md)
-- [ ] memory-and-streaming — [details](memory-and-streaming/TODO.md)
 - [ ] multimodal — [details](multimodal/TODO.md)
 - [ ] distributed-execution — [details](distributed-execution/TODO.md)
 - [ ] platform-and-release — [details](platform-and-release/TODO.md)

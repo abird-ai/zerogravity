@@ -10,6 +10,9 @@ default-run = "zerogravity"
 
 [features]
 default = ["cpu", "model-qwen35", "text"]
+# Opt-in native HTTP/1.1 OpenAI surface; CPU continuous interleaving
+# uses the existing model and state owners.
+serve = ["cpu", "model-qwen35", "text", "dep:httparse"]
 cpu = ["zerogravity/cpu"]
 model-qwen35 = ["zerogravity/model-qwen35"]
 text = ["model-qwen35", "zerogravity/text"]
@@ -31,6 +34,7 @@ serde_json = "=1.0.151"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_yaml = "=0.9.34"
 futures-lite = { version = "=2.6.1", optional = true }
+httparse = { version = "=1.10.1", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 signal-hook = { version = "=0.3.18", default-features = false, optional = true }

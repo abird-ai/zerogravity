@@ -32,14 +32,15 @@ fn help_is_available_offline() {
 }
 
 #[test]
-fn reserved_serve_is_not_a_fake_server() {
+fn serve_requires_an_explicit_feature_and_registered_model() {
     let output = binary().arg("serve").output().expect("run CLI");
     assert_eq!(output.status.code(), Some(2));
-    assert!(
-        String::from_utf8(output.stderr)
-            .expect("utf8")
-            .contains("not implemented")
-    );
+    let stderr = String::from_utf8(output.stderr).expect("utf8");
+    if cfg!(feature = "serve") {
+        assert!(stderr.contains("invalid_config"), "{stderr}");
+    } else {
+        assert!(stderr.contains("requires --features serve"), "{stderr}");
+    }
 }
 
 #[test]

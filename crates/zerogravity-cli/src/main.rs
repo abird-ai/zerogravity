@@ -39,6 +39,9 @@ mod cache_run;
 
 mod pipeline;
 
+#[cfg(feature = "serve")]
+mod serve;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum GpuBackend {
     VulkanAmd,
@@ -135,6 +138,7 @@ enum Command {
     Pull(Vec<String>),
     Models(Vec<String>),
     Pipeline(Vec<String>),
+    Serve(Vec<String>),
     CacheRun(Vec<String>),
     CacheManage(Vec<String>),
     NotImplemented(String),
@@ -272,7 +276,8 @@ where
                 "pipeline" => Command::Pipeline(args.map(|arg| arg.as_ref().to_owned()).collect()),
                 "cache" => Command::CacheManage(args.map(|arg| arg.as_ref().to_owned()).collect()),
                 "run-cache" => Command::CacheRun(args.map(|arg| arg.as_ref().to_owned()).collect()),
-                "serve" | "config" => Command::NotImplemented(first.as_ref().to_owned()),
+                "serve" => Command::Serve(args.map(|arg| arg.as_ref().to_owned()).collect()),
+                "config" => Command::NotImplemented(first.as_ref().to_owned()),
                 other => Command::Unknown(other.to_owned()),
             }
         }
@@ -289,7 +294,8 @@ fn usage() {
         feature = "cuda",
         feature = "hip",
         feature = "acquisition",
-        feature = "cache"
+        feature = "cache",
+        feature = "serve"
     )) {
         composed_usage();
         return;
@@ -370,12 +376,16 @@ fn composed_usage() {
     )) {
         println!("    zerogravity run-cache --help  (explicit offline verified cache model)");
     }
+    if cfg!(feature = "serve") {
+        println!("    zerogravity serve --help  (loopback OpenAI-compatible Qwen3.5 CPU router)");
+    }
     println!("\nCOMPILED CAPABILITIES:");
     println!("    source inspection: enabled");
     for (name, enabled) in [
         ("CPU", cfg!(feature = "cpu")),
         ("Qwen3.5", cfg!(feature = "model-qwen35")),
         ("text tokenizer", cfg!(feature = "text")),
+        ("OpenAI text HTTP (CPU)", cfg!(feature = "serve")),
         ("Vulkan", cfg!(feature = "vulkan")),
         ("CUDA", cfg!(feature = "cuda")),
         ("HIP/ROCm", cfg!(feature = "hip")),
@@ -396,11 +406,16 @@ fn composed_usage() {
     }
     println!("\nMODEL MATRIX: zerogravity models [list|inspect SLUG] (offline)");
     println!(
-        "PIPELINES: zerogravity pipeline [check|run] --config FILE.toml (run NOT IMPLEMENTED)"
+        "PIPELINES: zerogravity pipeline [check|run] --config FILE.yaml (run NOT IMPLEMENTED)"
     );
-    println!(
-        "\nFUTURE COMMANDS (NOT IMPLEMENTED):\n    serve       Shared model router and OpenAI-compatible API\n    config      Runtime configuration\n\nInference requires a compiled backend, model family and text tokenizer.\nEach run command selects its explicit backend; execution never falls back."
-    );
+    if cfg!(feature = "serve") {
+        println!("\nFUTURE COMMANDS (NOT IMPLEMENTED):\n    config      Runtime configuration");
+    } else {
+        println!(
+            "\nFUTURE COMMANDS (NOT IMPLEMENTED):\n    serve       HTTP router (requires serve feature)\n    config      Runtime configuration"
+        );
+    }
+    println!("\nEach run command selects its compiled backend; never a silent fallback.");
 }
 
 fn inspect(path: &Path) -> Result<()> {
@@ -927,6 +942,22 @@ fn run(command: Command) -> ExitCode {
                 ExitCode::from(2)
             }
         },
+        Command::Serve(args) => {
+            #[cfg(feature = "serve")]
+            let result = serve::run(&args);
+            #[cfg(not(feature = "serve"))]
+            let result: std::result::Result<(), String> = {
+                let _ = args;
+                Err("native HTTP serving requires --features serve".into())
+            };
+            match result {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("zerogravity serve: {error:?}");
+                    ExitCode::from(2)
+                }
+            }
+        }
         Command::Models(args) => match models(&args) {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
@@ -978,8 +1009,8 @@ mod tests {
     #[test]
     fn commands_remain_explicitly_unimplemented() {
         assert_eq!(
-            parse(["serve", "--port", "8080"]),
-            Command::NotImplemented("serve".into())
+            parse(["serve", "--listen", "127.0.0.1:8000"]),
+            Command::Serve(vec!["--listen".into(), "127.0.0.1:8000".into()])
         );
         assert_eq!(
             parse(["run", "model.gguf"]),

@@ -8,6 +8,36 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
+- [x] **First real OpenAI HTTP/CPU router milestone:** opt-in
+  `zerogravity serve` with original Qwen3.5 GGUF sources, alias reuse
+  (one resident immutable model/lease per canonical path), model list,
+  health/admission, text and chat greedy completions and SSE usage.
+  Bounded N CPU workers, independent source-specific StateRoots,
+  round-robin 32-token prefill / single decode quanta, finite
+  queue+active+connection admission, shared host ResourceArbiter
+  weight and per-session state envelopes. Loopback-only with
+  optional Bearer token; strict duplicate-key JSON and request
+  framing, unsupported sampling/roles/media refusal, cancellation,
+  SSE keepalives/deadlines and bounded backpressure. Real live 0.8B
+  multi-alias + two concurrent text requests, authenticated health,
+  host weight/state reservation release, unsupported parameter
+  refusal and streaming passed. Full frozen gate:
+  1,147 Rust passed/0 failed/69 ignored across 241 suites,
+  18 Python fixtures and release/installer/CPU comparator checks.
+  Both approved Qwen3.5 0.8B/2B original direct and HF-import
+  release parity tests passed exact full 248320 logits/all 42
+  StateRoot domains/two tokens/source lease and mutation.
+  Strict default and composed serve+SSD/cache Clippy pass.
+  The separate Nix offline source-integrity derivation is blocked:
+  pinned nixpkgs 7a0f122 is not cached and the connector cannot
+  fetch it with available SSL trust anchors; Nix formatting DID pass.
+  Not fused GPU continuous batching or full OpenAI/vLLM API parity.
+- [ ] **Next genuine multi-request GPU execution:** physically admitted
+  grouped prefill/decode over compatible source/position/shape and
+  actual GPU completion/quarantine, paged KV/prefix cache, source
+  generation+tenant/epoch admission, sampled decoding, and measured
+  committed-token p50/p95 latency/goodput versus pinned vLLM.
+
 - [ ] Connect accepted core `ContextOwner`/`ContextReader` snapshot
   capability to the real router's authenticated session/turn frontier:
   source-scoped application/shared grants, per-application and per-tenant
@@ -33,7 +63,7 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   typed decision models, credit/backpressure, stale ACKs and source-real
   accuracy/consent tests before live mode.
 
-- [ ] Make TOML/repeatable-flag compiled pipeline configs a first-class
+- [ ] Make YAML/repeatable-flag compiled pipeline configs a first-class
   source-bound router input: many model IDs, many typed component DAGs,
   many explicit protocol/route bindings within ONE process; one model
   can serve standalone chat and ASR→diarization→LLM→TTS. Preserve

@@ -1,0 +1,12 @@
+# Resident Qwen3.5 CPU routing. Paths relative to this YAML.
+listen: "127.0.0.1:8000"
+workers: 2
+active_per_worker: 2
+max_context: 512
+max_output: 64
+host_mib: 4096
+models:
+  - id: qwen3.5-0.8b
+    path: ../../target/models/qwen35-0.8b/model.gguf
+  - id: qwen-small
+    path: ../../target/models/qwen35-0.8b/model.gguf

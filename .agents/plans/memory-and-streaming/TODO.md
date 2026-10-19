@@ -8,6 +8,26 @@ Contracts: [unified residency/SSD](../../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_A
 
 ## Uncommitted
 
+- [x] **Verified source-only SSD extent foundation:** original opened
+  descriptor, SHA256-pinned complete chunk manifest, checked source
+  offsets and per-range hashes, 4MiB chunk/32MiB read bounds,
+  coalesced positional file IO and original ResourceArbiter
+  transfer-staging admission before allocating/reading. Exact
+  byte-window materialization returns immutable leased slices, never
+  unsafe borrowed mutable-file views. Tests cover exact reads,
+  truncation/hash mutation, path rename, rollback, insufficient
+  host memory and sparse >5GiB metadata-only source.
+  Six SSD-focused tests pass, and the entire isolated workspace
+  gate passes 1,147/0 across 241 Rust suites. The Nix filtered
+  source-integrity derivation cannot run offline because the
+  pinned nixpkgs flake input is missing (not a source test failure).
+  No trained resident-versus-SSD model, device copy or eviction yet.
+- [ ] **Next SSD source execution:** source-verified per-tensor
+  extent mapping and async I/O/readiness model integrated with
+  original CPU/GPU TensorSource and BufferLease, cancellation,
+  cache/eviction/ABA and independently trained full-logit/StateRoot
+  parity on real large weights.
+
 - [ ] Shared one-process pipeline residency: source-exact immutable
   model/component buffers, per-session private StateRoots, one
   ResourceArbiter (UMA/GPU/RAM/SSD and device queue), cross-model
