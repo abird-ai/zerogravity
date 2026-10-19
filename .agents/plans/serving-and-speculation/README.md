@@ -4,6 +4,16 @@ Owner: @pvl
 
 # Native serving and request scheduling
 
+Current P12 continuation: the diagnostic native CUDA ForwardPlan
+executes a complete model over B2/B4/B8 values, sharing immutable
+weights and preserving each request's state authority. Qwen3.5
+0.8B/2B B2/B4/B8 physically matched all248320 logits/all42 domains
+against independent CPU and B1. Exact acceptance scope and remaining
+work: [TODO.md](TODO.md), [FUSED_GPU_BATCHING.md](FUSED_GPU_BATCHING.md).
+HTTP still uses the accepted interleaved path; fused continuous
+serving and matched vLLM performance remain open. Earlier operator
+and serialized-cohort evidence below records their original scopes.
+
 ## Implemented: first OpenAI HTTP/CPU router slice
 
 - **One process:** optional `zerogravity serve` feature on original Qwen3.5 GGUF CPU only. Each canonical model path loads once under one immutable SourceIdentity and ResourceArbiter lease. Multiple aliases share original bytes/tokenizer; each request owns an independent StateRoot.
@@ -42,7 +52,7 @@ Set configured host budget responsibly based on physical RAM and other host/cgro
 
 ## Not implemented / next
 
-- vLLM-style fused continuous GPU batching, chunked cross-request GEMMs, paged KV/cache, GPU buffer completion/quarantine, cross-machine load balancing and any vLLM goodput parity claim.
+- vLLM-style fused continuous GPU serving, paged KV/cache, cross-machine load balancing and any vLLM goodput parity claim.
 - All sampling/grammar/reasoning/tool/audio/image/video/embedding/provider-specific API shapes beyond the above bounded subset; real pipeline/media execution, multi-tenant shared context, hot reload or persistent sessions.
 - Gemma4/Qwen3.8 trained execution, SSD model inference, exact trained 27B StateRoot or tokenizer support.
 
@@ -117,12 +127,11 @@ Detailed implementation/acceptance contract: [FUSED_GPU_BATCHING.md](FUSED_GPU_B
 
 ## Pending: P12/P16/P22 vLLM-equivalent fused GPU execution
 
-1. One source-bound batch-native `ForwardPlan` and
-   `ResidentProgram` for B>1. Preserve each lane's immutable
-   source, session/epoch/causal frontier and root publication.
-2. Native multi-row fused GPU projection, norm, RoPE, GDN,
-   attention and FFN kernels; one physical dispatch per stage
-   covers multiple lanes, not serial member dispatches.
+1. Extend native CUDA qualification to further profiles/backends
+   and GPU prefill; integrate per-row greedy token feedback.
+   Preserve each lane's source/session/epoch/frontier/root.
+2. Connect native full-model execution to finite fair serving;
+   source-compatible HTTP waves still run separate B1 graphs.
 3. Device-resident paged hybrid KV + GDN/COW state with
    actual buffer leases, safe cancellation/quarantine.
 4. Finite fair chunked prefill/decode and physical GPU/host/SSD

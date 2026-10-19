@@ -4,10 +4,11 @@ Owner: @pvl
 
 # P12 — native fused GPU batch acceptance
 
-**Accepted baseline:** original Qwen3.5 resident CUDA with independent
+**HTTP baseline:** original Qwen3.5 resident CUDA with independent
 OpenAI HTTP sessions, verified GPU completions, cancellation, and
 source-compatible scheduling waves. Each member still performs its
-OWN full-model GPU program. **Actual B>1 fused kernels: zero.**
+OWN full-model GPU program. **HTTP fused full-model batches: zero.**
+The separate native ForwardPlan diagnostic is tracked under P12-B3.
 
 ## Ownership boundaries
 
@@ -17,7 +18,8 @@ OWN full-model GPU program. **Actual B>1 fused kernels: zero.**
 - `zerogravity-gpu/src/resident_program.rs`: current
   `ResidentProgram::launch_impl` accepts one RuntimeParameters,
   one source-specific StateBinding cohort, and one device token.
-  PlanNode kernels currently execute one request at a time.
+  Its `resident_program/batch.rs` child lowers the SAME plan to
+  multi-row kernels; it introduces no model schedule or root owner.
 - `zerogravity-core/src/accelerator/program.rs`: the existing
   `ForwardPlan`/`PlanOperation` is the mathematical authority.
   Never fork Qwen into a separate batched mathematical runtime.
@@ -171,6 +173,102 @@ python3 scripts/native-gpu.py -- cargo run --locked --offline   -p zerogravity-g
 The original qualifier name is retained for compatibility,
 but now covers Q8_0, Q4_1, Q6_K and Q4_0.
 
+## P12-B3 — batch-native resident ForwardPlan
+
+Implementation: `35ebc5b`, 19 Oct 2026. RTX3060 Laptop CUDA;
+approved original 0.8B/2B mixed GGUF inputs only.
+
+`ResidentModel::prepare_logits_fused_cohort` lowers the original
+source-bound ForwardPlan in ONE traversal over CUDA B2/B4/B8.
+Embedding, native source-codec projections, dynamic activation
+quantization, norm, RoPE, convolution, GDN, attention and FFN
+operate on batch-shaped values. Original reduction/rounding and
+attention padding stay unchanged. Immutable tensors and numerical
+tables share the original source handles; warm forwards upload no
+model or activation values.
+
+- Independent session prior/candidate BufferLeases remain the state
+  owners. Admitted packed state is temporary scratch; KV gathers
+  and scatters preserve each private source/epoch/root payload.
+- One real completion validates device status and logits, then
+  creates exact ordered per-row Ready proofs. Existing cohort commit
+  checks ALL RootAttempts before publishing any row. Unknown
+  completion uses the existing physical fence/quarantine owner.
+- Copy/certificate work is chunked under the original bounded ABI,
+  including B8 vocabulary and lifted KV buffers. `dispatches` counts
+  actual launch sites; `fused_dispatches` conservatively counts only
+  native multi-row projection launches.
+
+Approved trained mixed GGUF inputs include Q4_0/Q8_0 (0.8B) and
+Q4_0/Q4_1/Q8_0/Q6_K (2B), alongside F32. These are the original files
+pinned by the cache-direct/HF-import parity fixtures, not new
+requantizations. Physical RTX3060 CUDA acceptance (two decode
+steps, distinct two-token prior histories; every row exact CPU AND
+independent B1):
+
+| Original source | B | Full logits/row | State domains/row | Batch launches | Separate B1 launches | Native projection launches |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Qwen3.5 0.8B | 2 | 248320 | 42 | 11442 | 22024 | 374 |
+| Qwen3.5 0.8B | 4 | 248320 | 42 | 11994 | 44048 | 374 |
+| Qwen3.5 0.8B | 8 | 248320 | 42 | 13076 | 88096 | 374 |
+| Qwen3.5 2B | 2 | 248320 | 42 | 10782 | 20704 | 374 |
+| Qwen3.5 2B | 4 | 248320 | 42 | 11334 | 41408 | 374 |
+| Qwen3.5 2B | 8 | 248320 | 42 | 12416 | 82816 | 374 |
+
+Both original models passed release B2 CPU-hydrated prefixes0/255/511
+with native decode at valid1/256/257/512: complete logits/all42 domains
+exact against CPU and independent B1, canonical future KV positive
+zero, exhausted512 refusal, unchanged roots and final reservation0.
+Crossing valid256→257 adds exactly144 fused versus288 separate B1
+launches, preserving source attention padding. This does NOT qualify
+full-prefix GPU prefill.
+
+Both release B2 abandonment tests dropped after an actual native
+full-model launch: completion stayed unknown; all1820 original
+0.8B handles and all1715 original2B handles were quarantined. Both
+original roots/all42 prior domains and KV tails stayed exact.
+Previously completed Ready, subsequent steps
+and a new same-card model were refused; the original4294967296-byte
+envelope stayed charged/fenced after user owners dropped. Diagnostic
+sync/readback did not constitute recovery or clear the quarantine.
+
+Verified gates: source-free GPU library51 passed/0 failed/3 ignored;
+strict default GPU, CUDA qualification and CUDA/Vulkan serving
+Clippy `-D warnings`; isolated `scripts/check.sh` exit0 with1147
+Rust passed/0 failed/69 ignored across241 suite runs,18 Python
+fixtures, release CLI/installer and Nix formatting. Both approved
+0.8B/2B original direct-cache and HF-import release parity routes
+passed complete logits/all42 domains, source/lease/mutation checks.
+`tools/serve-bench.py` and `tools/serve-compare.py` self-tests passed;
+the comparator's first private-namespace invocation had loopback
+down and was rerun successfully after guarded private lo setup.
+No local vLLM installation or supplied reference endpoint; no matched
+benchmark.
+Launch counts establish physical fusion, not optimized latency
+or throughput.
+
+Repeat with the already installed CUDA/CCCL/NVRTC environment:
+
+~~~bash
+CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=4 python3 scripts/native-gpu.py -- \
+  cargo run --locked --offline -p zerogravity-gpu-qualify \
+  --features qualification,cuda,hardware-abort-probe,portable-checkpoint -- \
+  resident-fused-cuda target/models/qwen35-0.8b/model.gguf 4096 5120 2
+~~~
+
+For release boundary/abandonment checks, use the same feature flags
+and caps with `--release`, replacing the subcommand/row argument by
+`resident-fused-boundary-cuda PATH 4096 5120` or
+`resident-fused-abort-cuda PATH 4096 5120`. Each uses B2; run abort
+in its OWN process because unknown completion intentionally retains
+that process's physical quarantine until exit.
+
+Same-frontier, full-logit diagnostic only. Additional trained
+quantization profiles, unequal prefixes, native per-row greedy/EOS
+feedback, paged hybrid KV, continuous HTTP integration and the
+matched vLLM performance gate remain open. `batch_mode=fused`
+continues to refuse; HTTP `gpu_fused_batches=0` remains accurate.
+
 ## P12-A — batch-native parameter, source and state bindings
 
 1. Introduce a typed `ResidentBatchStep` with finite row count
@@ -231,6 +329,6 @@ but now covers Q8_0, Q4_1, Q6_K and Q4_0.
   advertised GPU backend; until then return
   `unsupported_batch_mode` and `gpu_fused_batches=0`.
 
-Changing a scheduler counter to "fused" without one native
-multi-row GPU dispatch is forbidden. This file is pending
-implementation and tests, not a completed acceptance claim.
+Changing a scheduler counter to "fused" without native multi-row
+execution is forbidden. P12-C/P22 remain pending; the sections
+above delimit the physically accepted operator and model scopes.

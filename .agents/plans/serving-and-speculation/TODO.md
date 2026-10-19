@@ -8,33 +8,6 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
-- [x] **P12-B3 native full-model CUDA ForwardPlan:** one traversal
-  over B2/B4/B8, original shared source handles, admitted packed
-  scratch and private per-session prior/candidate leases. One actual
-  completion yields exact source/session/epoch/root-bound Ready
-  receipts; existing all-row checked commit remains the publisher.
-  Original trained0.8B/2B mixed GGUF profiles passed all248320
-  logits/all42 domains per row versus independent CPU AND B1 over
-  two decode steps, distinct histories, invalid/duplicate/foreign/
-  reordered rows, abandoned proposals, stale epoch/root rollback,
-  sibling continuation, no warm source/value uploads and reclamation.
-  Release B2 for BOTH models passed CPU-hydrated prefix0/255/511
-  decode at valid1/256/257/512, exact canonical KV tails, attention
-  padding dispatch delta and capacity refusal. Actual launch/drop
-  tests retained all1820/1715 original handles and the full4GiB
-  envelope behind the existing quarantine; prior roots/all42 domains
-  stayed exact, old Ready/next step/other model refused, no recovery.
-  Source-free GPU51 passed/0 failed/3 ignored; strict default GPU,
-  CUDA qualification and CUDA/Vulkan serve+cache Clippy passed.
-  Frozen isolated check.sh exit0:1147 Rust passed/0 failed/69 ignored
-  over241 suites,18 Python fixtures, release CLI/installer/Nixfmt.
-  Both approved original0.8B/2B direct-cache and HF-import RELEASE
-  full-logit/all42-domain parity routes passed; benchmark and
-  comparator self-tests passed after private loopback setup.
-  Same-frontier full-logit CUDA diagnostic only: no native row
-  greedy/EOS, unequal-prefix/paged state, GPU full-prefix prefill,
-  fused HTTP or vLLM performance acceptance. HTTP stays interleaved.
-
 - [ ] **P12 fused continuous GPU serving:** integrate accepted
   batch-native ForwardPlan with row-bound device greedy/EOS
   feedback, unequal frontiers, paged hybrid KV/recurrent cache,
@@ -96,6 +69,35 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 - [ ] Preserve zero untriaged frontier/disposition requirements before any full-parity claim; synthetic acceptance, fewer launches and competitor measurements do not establish local parity or speed.
 
 ## Committed
+
+### 35ebc5b — native full-model CUDA ForwardPlan
+
+- [x] **P12-B3 native full-model CUDA ForwardPlan:** one traversal
+  over B2/B4/B8, original shared source handles, admitted packed
+  scratch and private per-session prior/candidate leases. One actual
+  completion yields exact source/session/epoch/root-bound Ready
+  receipts; existing all-row checked commit remains the publisher.
+  Original trained0.8B/2B mixed GGUF profiles passed all248320
+  logits/all42 domains per row versus independent CPU AND B1 over
+  two decode steps, distinct histories, invalid/duplicate/foreign/
+  reordered rows, abandoned proposals, stale epoch/root rollback,
+  sibling continuation, no warm source/value uploads and reclamation.
+  Release B2 for BOTH models passed CPU-hydrated prefix0/255/511
+  decode at valid1/256/257/512, exact canonical KV tails, attention
+  padding dispatch delta and capacity refusal. Actual launch/drop
+  tests retained all1820/1715 original handles and the full4GiB
+  envelope behind the existing quarantine; prior roots/all42 domains
+  stayed exact, old Ready/next step/other model refused, no recovery.
+  Source-free GPU51 passed/0 failed/3 ignored; strict default GPU,
+  CUDA qualification and CUDA/Vulkan serve+cache Clippy passed.
+  Frozen isolated check.sh exit0:1147 Rust passed/0 failed/69 ignored
+  over241 suites,18 Python fixtures, release CLI/installer/Nixfmt.
+  Both approved original0.8B/2B direct-cache and HF-import RELEASE
+  full-logit/all42-domain parity routes passed; benchmark and
+  comparator self-tests passed after private loopback setup.
+  Same-frontier full-logit CUDA diagnostic only: no native row
+  greedy/EOS, unequal-prefix/paged state, GPU full-prefix prefill,
+  fused HTTP or vLLM performance acceptance. HTTP stays interleaved.
 
 ### 3ec431a — native quantized batch projections
 
