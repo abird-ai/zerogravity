@@ -8,57 +8,33 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
-- [x] **P12-B7 unequal-frontier native CUDA decode:** per-row positions,
-  RoPE/KV append/masking and packed attention softmax lower
-  the same full-model ForwardPlan. B2/B4/B8 retain independent original
-  authorities, roots, packets, leases and all-row Ready publication.
-  Native decode accepts unequal frontiers; prompt-tail grouping stays
-  strict and other prefill uses B1. Actual original0.8B/2B engine tests
-  passed all248320 logits/all42 domains versus independent CPU AND B1
-  at mixed positions255/256/0/31/32/1/510/511, host/device feedback,
-  B1 handoffs/refill, abandoned Ready, stale/foreign packets, capacity512,
-  inactive AV poison/signed-zero/subnormal cases and final reservation0.
-  This engine run preceded metadata/observability-only composition;
-  fresh composed worker/HTTP/pressure/abort suites passed separately.
-- [x] **P22 bounded publication/delivery observations:** opt-in
-  `--enable-per-request-metrics` plus `return_token_ids:true`; bounded
-  ASCII request IDs, at most512 non-EOS token records, exact-once IDs
-  independent of UTF-8 emission. Observe commit immediately after original
-  root publication, queue receive and socket-write completion separately;
-  retain the original observation through output-credit parking. GPU
-  producer frontiers and existing successful native publication sequence/
-  width bind each row without creating a new authority. Standard vLLM
-  scheduler-origin TTFT/queue fields stay unset; parsed-request timing is
-  named separately. Tools validate IDs, clocks, usage, frontiers/cohorts;
-  true client ITL requires one actual token per arrival. Grouped arrivals
-  remain unresolved; source-correct SLO goodput remains unset.
-- [x] **B7 physical composed serving acceptance:** eight release worker
-  cases and six release HTTP cases passed both models at B2/4/8, exact
-  CPU/B1 packets/all42 internally, CPU IDs/text/usage on wire, trained EOS,
-  limits, Ready cancellation/regroup, capacity1 parking, disconnect,
-  survivors/replay and final reservation/active/queued/failed0. New
-  unequal-arrival cases offer the short request AFTER the long request's
-  first actual ID and observe a shared native B2 publication at distinct
-  frontiers. Each model completed5 native cohorts/10rows/935 native
-  projection-dot launches/20 native sampler stages in that wire case.
-  Two fresh real-pressure cases passed prelaunch B8 refusal without
-  mutation, B4 progress under pressure and B8 after release. Four fresh
-  full-graph/sampler unknown-completion probes retained all original
-  handles in quarantine (1824/1719;1828/1723), unchanged prior roots/all42,
-  refused old Ready/further work/other model, retained4GiB and no recovery.
-  First abort invocation used a nonexistent package-named binary and
-  launched no GPU work; only the four probes were rerun successfully.
-- [x] **B7 verification:** complete isolated check1164 Rust passed/
-  0failed/69ignored over245 suite runs plus18Python/release/installer/Nix;
-  strict CPU/CUDA/Vulkan/qualification Clippy passed. Fresh source-free
-  release CLI35/GPU58 passed; focused composed CPU/Core/Model/facade/
-  serving185 passed/2ignored. Both approved original cache-direct and
-  HF-import release routes passed full248320/all42 for both models.
-  Independent launch audit reconciles the unequal0.8B HTTP counter exactly:
-  26 B1 state-only graphs*5489 +6 B1 greedy*5510 +5 nativeB2*5728
-  =204414 actual completed launches. This includes private certification
-  and state/packet copies, excludes cold initialization/maintenance, and
-  counts a native cohort once. No throughput claim follows from it.
+- [x] **P22 serialized owned provider lifecycle:** optional strict
+  `--provider-lifecycle` specs launch one fresh foreground process per
+  actual ABBA/BAAB sample, with literal loopback vacancy checks, bounded
+  startup/shutdown/logs, exact model readiness, finite optional warmup and
+  isolated receipts. `cold_process` means a fresh process without warmup;
+  it does not mean evicted OS/storage/device caches. `warmed_process`
+  adds one ordinary unmeasured request. Direct argv only; Podman binds
+  the first fresh CID and stops only that owned container via the same
+  local runtime prefix. Cleanup precedes evidence writes; receipt/log/
+  reader/process/endpoint failures block the next sample. Environment
+  names and redacted argv are recorded; private raw logs are capped/drained.
+  Existing already-running-endpoint comparison remains available.
+- [x] **Lifecycle acceptance:** source-free actual localhost ABBA/BAAB,
+  exclusive ownership, warm/cold, startup/model/hang/warmup/measurement
+  failures, TERM-to-KILL, CID overwrite/missing/stop failure and five
+  persistent receipt-I/O failures passed; all owned readers/processes/
+  endpoints retired before any next sample. Root independently passed
+  comparator/benchmark self-tests and pycompile. Two real GPU providers
+  also passed SERIAL startup, one warmup request and complete shutdown:
+  accepted B7 ZG mixed-GGUF CUDA, then immutable pinned vLLM0.31.0-cu129
+  original-HF BF16. Each returned GPU telemetry to baseline41MiB; live
+  samples1059/4203MiB are advisory samples, not peaks or reservations.
+  Those sources/quant/math are explicitly unmatched: this is lifecycle
+  qualification ONLY, not a benchmark or numerical/performance parity.
+  Complete isolated gate1202 Rust/0failed/69ignored/248 suites plus18Python,
+  strict CUDA/Vulkan/qualifier Clippy and both approved release parity
+  routes passed. Matched source-correct SLO goodput remains unset.
 
 - [ ] **P12 fused continuous GPU serving:** extend the accepted CUDA B2/B4/B8
   HTTP path with paged hybrid KV/recurrent cache, physically safe
@@ -122,6 +98,61 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 - [ ] Preserve zero untriaged frontier/disposition requirements before any full-parity claim; synthetic acceptance, fewer launches and competitor measurements do not establish local parity or speed.
 
 ## Committed
+
+### dbb5f4f — unequal native decode frontiers and bounded token observations
+
+- [x] **P12-B7 unequal-frontier native CUDA decode:** per-row positions,
+  RoPE/KV append/masking and packed attention softmax lower
+  the same full-model ForwardPlan. B2/B4/B8 retain independent original
+  authorities, roots, packets, leases and all-row Ready publication.
+  Native decode accepts unequal frontiers; prompt-tail grouping stays
+  strict and other prefill uses B1. Actual original0.8B/2B engine tests
+  passed all248320 logits/all42 domains versus independent CPU AND B1
+  at mixed positions255/256/0/31/32/1/510/511, host/device feedback,
+  B1 handoffs/refill, abandoned Ready, stale/foreign packets, capacity512,
+  inactive AV poison/signed-zero/subnormal cases and final reservation0.
+  This engine run preceded metadata/observability-only composition;
+  fresh composed worker/HTTP/pressure/abort suites passed separately.
+- [x] **P22 bounded publication/delivery observations:** opt-in
+  `--enable-per-request-metrics` plus `return_token_ids:true`; bounded
+  ASCII request IDs, at most512 non-EOS token records, exact-once IDs
+  independent of UTF-8 emission. Observe commit immediately after original
+  root publication, queue receive and socket-write completion separately;
+  retain the original observation through output-credit parking. GPU
+  producer frontiers and existing successful native publication sequence/
+  width bind each row without creating a new authority. Standard vLLM
+  scheduler-origin TTFT/queue fields stay unset; parsed-request timing is
+  named separately. Tools validate IDs, clocks, usage, frontiers/cohorts;
+  true client ITL requires one actual token per arrival. Grouped arrivals
+  remain unresolved; source-correct SLO goodput remains unset.
+- [x] **B7 physical composed serving acceptance:** eight release worker
+  cases and six release HTTP cases passed both models at B2/4/8, exact
+  CPU/B1 packets/all42 internally, CPU IDs/text/usage on wire, trained EOS,
+  limits, Ready cancellation/regroup, capacity1 parking, disconnect,
+  survivors/replay and final reservation/active/queued/failed0. New
+  unequal-arrival cases offer the short request AFTER the long request's
+  first actual ID and observe a shared native B2 publication at distinct
+  frontiers. Each model completed5 native cohorts/10rows/935 native
+  projection-dot launches/20 native sampler stages in that wire case.
+  Two fresh real-pressure cases passed prelaunch B8 refusal without
+  mutation, B4 progress under pressure and B8 after release. Four fresh
+  full-graph/sampler unknown-completion probes retained all original
+  handles in quarantine (1824/1719;1828/1723), unchanged prior roots/all42,
+  refused old Ready/further work/other model, retained4GiB and no recovery.
+  First abort invocation used a nonexistent package-named binary and
+  launched no GPU work; only the four probes were rerun successfully.
+- [x] **B7 verification:** complete isolated check1164 Rust passed/
+  0failed/69ignored over245 suite runs plus18Python/release/installer/Nix;
+  strict CPU/CUDA/Vulkan/qualification Clippy passed. Fresh source-free
+  release CLI35/GPU58 passed; focused composed CPU/Core/Model/facade/
+  serving185 passed/2ignored. Both approved original cache-direct and
+  HF-import release routes passed full248320/all42 for both models.
+  Independent launch audit reconciles the unequal0.8B HTTP counter exactly:
+  26 B1 state-only graphs*5489 +6 B1 greedy*5510 +5 nativeB2*5728
+  =204414 actual completed launches. This includes private certification
+  and state/packet copies, excludes cold initialization/maintenance, and
+  counts a native cohort once. No throughput claim follows from it.
+
 
 ### d9fa829 — native CUDA B4/B8 HTTP bands
 

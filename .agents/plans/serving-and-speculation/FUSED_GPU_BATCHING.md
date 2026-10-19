@@ -697,3 +697,17 @@ physical prefill/decode overlap and measured fairness, other trained
 profiles/backends, a common original-HF numerical profile and matched
 pinned-vLLM cold/warm workloads. Genuine vLLM startup/smoke is accepted;
 source-correct SLO goodput and vLLM-equivalent throughput are unqualified.
+
+
+## P22 owned process isolation
+
+The comparator can own a strict foreground provider lifecycle: one fresh
+process per ABBA/BAAB sample, explicit warmup policy, bounded logs/readiness/
+shutdown, loopback vacancy, immutable owned Podman CID and cleanup before
+receipt writes. Uncertain cleanup blocks the next provider. Real accepted
+ZG GGUF CUDA and pinned-vLLM original-HF BF16 startup/one warm request/
+shutdown passed sequentially; both returned device telemetry to41MiB.
+Live1059/4203MiB samples are neither peaks nor ResourceArbiter reservations.
+Sources/quant/arithmetic differ; this is no matched benchmark. Fresh-process
+coldness is separate from OS/storage/device cache conditions. The independent
+8K GGUF GDN issue also remains a required correctness gate for both models.

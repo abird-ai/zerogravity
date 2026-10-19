@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Paired, source-attested OpenAI serving comparison with vLLM.
 
-This script benchmarks two *already running* OpenAI chat endpoints.
+Default benchmarks two already-running OpenAI chat endpoints. Optional
+strict launch specs serialize owned foreground providers on limited hardware.
 It installs no SDK/models, does not infer model source identity from
 display names, and does not promote operator-stage timings to
 full-model/vLLM parity.
@@ -9,6 +10,7 @@ full-model/vLLM parity.
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 import hashlib
 import json
 import re
@@ -23,6 +25,7 @@ bench = BENCH["bench"]
 stream_one = BENCH["stream_one"]
 strict_json = BENCH["strict_json"]
 workload_records = BENCH["workload_records"]
+LIFECYCLE = runpy.run_path(str(Path(__file__).with_name("serve-lifecycle.py")))
 
 
 def valid_sha(value: str | None) -> bool:
@@ -53,6 +56,8 @@ def comparison(
     token_trace_paths: tuple[str | None, str | None] = (None, None),
     max_pending: int | None = None, launch_deadline_seconds: float | None = None,
     return_token_ids: bool = False,
+    provider_lifecycle: dict | None = None,
+    lifecycle_output_dir: str | None = None,
 ) -> dict:
     if zg.rstrip("/") == vllm.rstrip("/"):
         raise ValueError("comparator needs two distinct endpoints")
@@ -77,13 +82,25 @@ def comparison(
         "zerogravity": (zg, zg_model, zg_key),
         "vllm": (vllm, vllm_model, vllm_key),
     }
-    for url, model, key in endpoints.values():
-        preflight(url, model, key)
-        warm = stream_one(url, model, workload[0]["prompt"] if workload else prompt,
-                          workload[0]["max_tokens"] if workload else max_tokens, timeout, key,
-                          request_id="serve-compare-warmup", return_token_ids=return_token_ids)
-        if not warm.completed:
-            raise ValueError(f"warmup failed for {model}: {warm.error}")
+    lifecycle = (LIFECYCLE["LifecyclePlan"](provider_lifecycle,
+        {label:item[0] for label,item in endpoints.items()}, lifecycle_output_dir)
+        if provider_lifecycle is not None else None)
+    if lifecycle is not None:
+        for index,label in enumerate(["zerogravity", "vllm"]):
+            declared = lifecycle.spec["providers"][label]["declarations"]
+            if ((source_hashes[index] is not None and source_hashes[index] != declared["source_sha256"])
+                    or (tokenizer_hashes[index] is not None and tokenizer_hashes[index] != declared["tokenizer_sha256"])):
+                raise ValueError("lifecycle declarations disagree with explicit comparison source/tokenizer hashes")
+    if lifecycle_output_dir is not None and lifecycle is None:
+        raise ValueError("lifecycle output directory requires provider launch specs")
+    if lifecycle is None:
+        for url, model, key in endpoints.values():
+            preflight(url, model, key)
+            warm = stream_one(url, model, workload[0]["prompt"] if workload else prompt,
+                              workload[0]["max_tokens"] if workload else max_tokens, timeout, key,
+                              request_id="serve-compare-warmup", return_token_ids=return_token_ids)
+            if not warm.completed:
+                raise ValueError(f"warmup failed for {model}: {warm.error}")
 
     matched_source = (
         all(valid_sha(x) for x in source_hashes)
@@ -104,19 +121,34 @@ def comparison(
             for position, label in enumerate(order):
                 url, model, key = endpoints[label]
                 provider_index = 0 if label == "zerogravity" else 1
-                result = bench(
-                    url, model, prompt, requests, concurrency,
-                    max_tokens, timeout, key, workload=workload,
-                    ttft_slo_seconds=ttft_slo_seconds, chunk_slo_seconds=chunk_slo_seconds,
-                    itl_slo_seconds=itl_slo_seconds, snapshot_url=snapshot_urls[provider_index],
-                    token_trace_path=token_trace_paths[provider_index], max_pending=max_pending,
-                    launch_deadline_seconds=launch_deadline_seconds,
-                    return_token_ids=return_token_ids,
-                )
-                result["provider"] = label
-                result["repetition"] = rep
-                result["order_position"] = position
-                result["paired_order"] = "BAAB" if rep % 2 else "ABBA"
+                def measure():
+                    measured = bench(
+                        url, model, prompt, requests, concurrency,
+                        max_tokens, timeout, key, workload=workload,
+                        ttft_slo_seconds=ttft_slo_seconds, chunk_slo_seconds=chunk_slo_seconds,
+                        itl_slo_seconds=itl_slo_seconds, snapshot_url=snapshot_urls[provider_index],
+                        token_trace_path=token_trace_paths[provider_index], max_pending=max_pending,
+                        launch_deadline_seconds=launch_deadline_seconds,
+                        return_token_ids=return_token_ids,
+                    )
+                    measured.update(provider=label,repetition=rep,order_position=position,
+                        paired_order="BAAB" if rep % 2 else "ABBA")
+                    return measured
+                if lifecycle is None:
+                    result = measure()
+                else:
+                    with lifecycle.sample(label, lambda: preflight(url, model, key)) as owned:
+                        if lifecycle.spec["policy"] == "warmed_process":
+                            warm = stream_one(url, model, workload[0]["prompt"] if workload else prompt,
+                                workload[0]["max_tokens"] if workload else max_tokens, timeout, key,
+                                request_id="serve-compare-warmup", return_token_ids=return_token_ids)
+                            owned.record_warmup(asdict(warm))
+                            if not warm.completed:
+                                raise ValueError(f"owned provider warmup failed; inspect {owned.receipt_path}")
+                        result = measure()
+                        owned.record_measurement(result)
+                    result["provider_lifecycle_receipt"] = owned.receipt
+                    result["provider_lifecycle_receipt_path"] = str(owned.receipt_path)
                 rows.append(result)
 
     summaries = []
@@ -194,7 +226,7 @@ def comparison(
             "qualified_source_correct_slo_goodput_ratio": None,
             "vllm_equivalent": "NOT_ESTABLISHED",
         })
-    return {
+    report = {
         "schema": "zerogravity.serving.vllm-comparison.v2",
         "benchmark_input_sha256": hashlib.sha256(
             json.dumps(workload, sort_keys=True, separators=(",", ":")).encode()
@@ -210,7 +242,7 @@ def comparison(
         "provider_order_by_repetition": [
             ["vllm", "zerogravity", "zerogravity", "vllm"] if rep % 2 else
             ["zerogravity", "vllm", "vllm", "zerogravity"] for rep in range(repetitions)],
-        "warmups_per_endpoint": 1,
+        "warmups_per_endpoint": 1 if lifecycle is None else (2 * repetitions * len(concurrencies) if lifecycle.spec["policy"] == "warmed_process" else 0),
         "runs": rows,
         "summaries": summaries,
         "limitations": [
@@ -224,6 +256,9 @@ def comparison(
             "Confidence intervals are not estimated; retain raw paired runs for independent statistical analysis.",
         ],
     }
+    if lifecycle is not None:
+        report["provider_lifecycle"] = lifecycle.manifest
+    return report
 
 
 def self_test() -> None:
@@ -324,6 +359,7 @@ def self_test() -> None:
             server.server_close()
         for thread in threads:
             thread.join(timeout=3)
+    LIFECYCLE["self_test"](comparison)
 
 
 def main() -> None:
@@ -355,6 +391,8 @@ def main() -> None:
     parser.add_argument("--vllm-tokenizer-sha256")
     parser.add_argument("--zg-key-env",default="ZEROGRAVITY_API_KEY")
     parser.add_argument("--vllm-key-env",default="VLLM_API_KEY")
+    parser.add_argument("--provider-lifecycle", help="strict JSON owned foreground launch specs; one fresh process per ABBA/BAAB sample")
+    parser.add_argument("--lifecycle-output-dir", help="private per-run receipts/logs (default XDG_STATE_HOME/abird/zerogravity/serve-compare)")
     parser.add_argument("--self-test",action="store_true")
     args=parser.parse_args()
     if args.self_test:
@@ -383,6 +421,8 @@ def main() -> None:
             token_trace_paths=(args.zg_token_events, args.vllm_token_events),
             max_pending=args.max_pending, launch_deadline_seconds=args.launch_deadline,
             return_token_ids=args.return_token_ids,
+            provider_lifecycle=strict_json(args.provider_lifecycle) if args.provider_lifecycle else None,
+            lifecycle_output_dir=args.lifecycle_output_dir,
         )
     except (OSError,ValueError,KeyError) as err:
         parser.exit(2,f"Cannot compare endpoints: {err}\n")

@@ -222,3 +222,20 @@ separate commit/queue/socket-write observations. This does not establish
 standard scheduler-origin timing, true ITL for grouped client arrivals,
 source-correct SLO goodput or matched vLLM performance. Exact scope and
 remaining work: [FUSED_GPU_BATCHING.md](FUSED_GPU_BATCHING.md).
+
+
+## Serialized benchmark provider ownership
+
+`tools/serve-compare.py --provider-lifecycle SPEC.json` optionally starts and
+stops one fresh owned provider per ABBA/BAAB sample. The strict spec in
+[serve-lifecycle.py](../../../tools/serve-lifecycle.py) binds direct argv,
+source/runtime/tokenizer/profile/policy/cap declarations and finite deadlines.
+Use `--lifecycle-output-dir` to choose private logs/receipts. An existing
+listener or incomplete cleanup refuses the next launch.
+
+`warmed_process` performs one unmeasured request per fresh process;
+`cold_process` omits it. Neither policy evicts or attests OS/storage/device
+cache coldness. Real ZG and pinned-vLLM GPU startup/warmup/teardown passed
+serially and returned telemetry to baseline. Their source profiles remain
+unmatched; performance and independent long-context numerical acceptance
+remain open. See [numerics-and-context](../numerics-and-context/TODO.md).
