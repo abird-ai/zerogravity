@@ -1,9 +1,8 @@
 //! Finite, deterministic source-aware GPU request wave formation.
 //!
-//! A wave is scheduling, NOT a fused physical dispatch. ResidentModel's
-//! current one-token workspace is serialized. Later batch-native GPU
-//! lowering must consume the same checked members in ONE graph and prove
-//! per-request StateRoot/Ready parity before claiming fused batching.
+//! A wave is scheduler membership, not physical completion or memory credit.
+//! The GPU worker separately selects qualified native B2 or original B1
+//! execution and reports actual Ready/dispatch/root receipts.
 
 use super::engine::ServiceError;
 

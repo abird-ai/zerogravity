@@ -1,0 +1,704 @@
+//! Opt-in release CUDA serving proof over original source/session owners.
+use super::*;
+use zerogravity::accelerator::program::StateSlot;
+use zerogravity::gpu::ResidentSnapshot;
+use zerogravity::qwen35::QwenDenseCpu;
+use zerogravity::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter};
+
+type Domains = Vec<(StateSlot, Vec<f32>)>;
+
+fn exact(expected: &[f32], actual: &[f32]) {
+    assert_eq!(expected.len(), actual.len());
+    for (index, (expected, actual)) in expected.iter().zip(actual).enumerate() {
+        assert_eq!(
+            expected.to_bits(),
+            actual.to_bits(),
+            "source bits at {index}"
+        );
+    }
+}
+
+fn same_domains(expected: &Domains, actual: &Domains) {
+    assert_eq!(expected.len(), 42);
+    assert_eq!(actual.len(), 42);
+    let expected = expected
+        .iter()
+        .map(|(slot, values)| (*slot, values))
+        .collect::<BTreeMap<_, _>>();
+    let actual = actual
+        .iter()
+        .map(|(slot, values)| (*slot, values))
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(expected.len(), 42);
+    assert_eq!(actual.len(), 42);
+    for (slot, expected) in expected {
+        exact(
+            expected,
+            actual.get(&slot).expect("missing physical state slot"),
+        );
+    }
+}
+
+fn best(values: &[f32]) -> (u32, u32) {
+    assert_eq!(values.len(), 248_320);
+    assert!(values.iter().all(|value| value.is_finite()));
+    let index = (0..values.len())
+        .max_by(|a, b| values[*a].total_cmp(&values[*b]).then_with(|| b.cmp(a)))
+        .unwrap();
+    (index as u32, values[index].to_bits())
+}
+
+struct Fixture {
+    model: Arc<GpuModel>,
+    source: Arc<LoadedQwenModel>,
+    stats: Arc<WaveStats>,
+    key: PhysicalDeviceKey,
+}
+impl Fixture {
+    fn new(name: &str) -> Self {
+        if cfg!(debug_assertions) {
+            panic!("physical serving qualification requires --release");
+        }
+        preflight_cuda_toolkit(GpuBackend::Cuda).unwrap();
+        let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/models")
+            .join(name);
+        let source = LoadedQwenModel::open(
+            &directory.join("model.gguf"),
+            &directory.join("config.json"),
+        )
+        .unwrap();
+        let tokenizer =
+            Arc::new(QwenTokenizer::from_file(&directory.join("tokenizer.json")).unwrap());
+        let device = GpuBackend::Cuda.device().unwrap();
+        let client = device.client();
+        let properties = client.properties();
+        let pci = properties
+            .identity
+            .physical
+            .as_ref()
+            .and_then(|identity| identity.pci_address)
+            .expect("qualified NVIDIA PCI identity")
+            .to_string();
+        let key = PhysicalDeviceKey::new("pci", &pci).unwrap();
+        if let Ok(prior) = ResourceArbiter::process_shared().snapshot(&key) {
+            assert_eq!(prior.reserved, 0, "physical tests must run sequentially");
+            assert!(!prior.fenced);
+        }
+        let plan = source.forward_plan(GPU_CAPACITY, true, true).unwrap();
+        let resident = block_on(ResidentModel::load(
+            device,
+            source.clone(),
+            plan,
+            4096 * 1024 * 1024,
+            5120 * 1024 * 1024,
+        ))
+        .unwrap();
+        let model = Arc::new(GpuModel {
+            resident,
+            tokenizer,
+            group: 0,
+            hidden_width: source.geometry().hidden_size as usize,
+            native_b2: true,
+        });
+        Self {
+            model,
+            source,
+            stats: Arc::new(WaveStats::default()),
+            key,
+        }
+    }
+
+    fn lane(&self, input: &str, maximum: usize, capacity: usize) -> (GpuActive, Trace) {
+        let (sender, receiver) = mpsc::sync_channel(capacity);
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let lane = GpuActive::new(
+            Scheduled {
+                request: Request {
+                    model: "qualified".into(),
+                    input: input.into(),
+                    chat: false,
+                    max_tokens: maximum,
+                    stream: true,
+                },
+                events: sender,
+                cancelled,
+            },
+            Arc::clone(&self.model),
+            Arc::clone(&self.stats),
+        )
+        .unwrap();
+        (
+            lane,
+            Trace {
+                receiver,
+                text: String::new(),
+                done: Vec::new(),
+            },
+        )
+    }
+
+    fn close(self) {
+        assert_eq!(self.stats.active.load(Ordering::Acquire), 0);
+        assert_eq!(self.stats.failed.load(Ordering::Acquire), 0);
+        let charged = ResourceArbiter::process_shared()
+            .snapshot(&self.key)
+            .unwrap();
+        assert_eq!(charged.reserved, 4096 * 1024 * 1024);
+        assert!(!charged.fenced);
+        let key = self.key.clone();
+        drop(self);
+        let budget = ResourceArbiter::process_shared().snapshot(&key).unwrap();
+        assert_eq!(budget.reserved, 0);
+        assert!(!budget.fenced);
+    }
+}
+
+struct Trace {
+    receiver: mpsc::Receiver<ResponseEvent>,
+    text: String,
+    done: Vec<(String, usize, usize, &'static str)>,
+}
+impl Trace {
+    fn drain(&mut self) {
+        while let Ok(event) = self.receiver.try_recv() {
+            self.accept(event);
+        }
+    }
+    fn one_credit(&mut self) {
+        self.accept(self.receiver.recv_timeout(Duration::from_secs(1)).unwrap());
+    }
+    fn accept(&mut self, event: ResponseEvent) {
+        match event {
+            ResponseEvent::Text(text) => {
+                assert!(self.done.is_empty(), "text after terminal event");
+                self.text.push_str(&text);
+            }
+            ResponseEvent::Done {
+                output,
+                prompt_tokens,
+                completion_tokens,
+                finish_reason,
+            } => {
+                self.done
+                    .push((output, prompt_tokens, completion_tokens, finish_reason));
+            }
+            ResponseEvent::Error(error) => panic!("physical GPU worker error: {error:?}"),
+        }
+    }
+    fn verify(&mut self, reference: &Reference, tokenizer: &QwenTokenizer, maximum: usize) {
+        self.drain();
+        let selected = reference
+            .sequence
+            .iter()
+            .map(|&(id, _)| id)
+            .take(maximum)
+            .take_while(|id| *id != tokenizer.eos())
+            .collect::<Vec<_>>();
+        let stopped = selected.len() < maximum;
+        assert_eq!(
+            reference.sequence.len(),
+            selected.len() + usize::from(stopped),
+            "extra model forward after the terminal token"
+        );
+        if stopped {
+            assert_eq!(reference.sequence[selected.len()].0, tokenizer.eos());
+        }
+        let expected = tokenizer.decode(&selected, true).unwrap();
+        assert_eq!(self.text, expected, "duplicate/missing streamed text");
+        assert_eq!(
+            self.done,
+            vec![(
+                expected,
+                reference.prompt_tokens,
+                selected.len(),
+                if stopped { "stop" } else { "length" }
+            )]
+        );
+    }
+}
+
+struct Reference {
+    cpu: QwenDenseCpu,
+    gpu: ResidentSession,
+    packet: ResidentToken,
+    sequence: Vec<(u32, u32)>,
+    prompt_tokens: usize,
+}
+impl Reference {
+    fn new(fixture: &Fixture, lane: &GpuActive) -> Self {
+        assert_eq!(lane.cursor, lane.prompt.len());
+        let mut cpu = QwenDenseCpu::from_shared(Arc::clone(&fixture.source)).unwrap();
+        let selected = best(&cpu.prefill_transaction(&lane.prompt).unwrap());
+        let mut gpu = block_on(fixture.model.resident.session()).unwrap();
+        let read = block_on(gpu.forward_greedy(&lane.prompt)).unwrap();
+        assert!(read.logits.is_empty());
+        assert_eq!(read.bytes, 16);
+        let packet = read.device_token.unwrap();
+        assert_eq!((packet.id, packet.max_bits), selected);
+        let reference = Self {
+            cpu,
+            gpu,
+            packet,
+            sequence: vec![selected],
+            prompt_tokens: lane.prompt.len(),
+        };
+        reference.check(lane);
+        reference
+    }
+    fn sync(&mut self, lane: &GpuActive) {
+        let position = lane.session.binding().frontier() as usize;
+        while self.cpu.position() < position {
+            let selected = best(&self.cpu.forward(self.packet.id).unwrap());
+            let read = block_on(self.gpu.forward_device_token(&self.packet)).unwrap();
+            assert!(read.logits.is_empty());
+            assert_eq!(read.bytes, 16);
+            self.packet = read.device_token.unwrap();
+            assert_eq!((self.packet.id, self.packet.max_bits), selected);
+            self.sequence.push(selected);
+        }
+        assert_eq!(self.cpu.position(), position);
+        self.check(lane);
+    }
+    fn check(&self, lane: &GpuActive) {
+        let packet = lane.device_token.as_ref().expect("live worker packet");
+        assert_eq!((packet.id, packet.max_bits), *self.sequence.last().unwrap());
+        let expected = self.cpu.snapshot().domain_values();
+        same_domains(
+            &expected,
+            &block_on(lane.session.snapshot().read_domains()).unwrap(),
+        );
+        same_domains(
+            &expected,
+            &block_on(self.gpu.snapshot().read_domains()).unwrap(),
+        );
+    }
+    fn snapshot(&self, snapshot: &ResidentSnapshot) {
+        same_domains(
+            &self.cpu.snapshot().domain_values(),
+            &block_on(snapshot.read_domains()).unwrap(),
+        );
+    }
+}
+
+fn b1_prompt(lane: &mut GpuActive, stats: &WaveStats) {
+    while lane.cursor < lane.prompt.len() {
+        assert!(matches!(lane.step(stats).unwrap(), MemberStep::Forwarded));
+    }
+    assert!(lane.device_token.is_some());
+}
+
+/// The actual worker eligibility/wave/helper boundaries, without a detached thread.
+fn round(active: &mut VecDeque<GpuActive>, stats: &WaveStats) {
+    let mut parked = VecDeque::new();
+    let mut eligible = VecDeque::new();
+    for lane in active.drain(..) {
+        if let Some(lane) = eligible_member(lane, &mut parked, stats) {
+            eligible.push_back(lane);
+        }
+    }
+    if eligible.is_empty() {
+        active.extend(parked);
+        return;
+    }
+    let ready = eligible.iter().map(GpuActive::ready).collect::<Vec<_>>();
+    let waves = gpu_batch::form(
+        &ready,
+        Limits {
+            max_members: 2,
+            max_tokens: 64,
+            max_scratch: 256 * 1024 * 1024,
+        },
+    )
+    .unwrap();
+    let mut pending = eligible.into_iter().map(Some).collect::<Vec<_>>();
+    for wave in waves {
+        let members = wave
+            .indices
+            .into_iter()
+            .map(|index| pending[index].take().unwrap())
+            .collect::<Vec<_>>();
+        if members.iter().all(|lane| lane.cursor == lane.prompt.len()) {
+            advance_decode_cohort(members, active, stats);
+        } else if members.len() == 2
+            && members
+                .iter()
+                .all(|lane| lane.cursor + 1 == lane.prompt.len())
+        {
+            finish_prompt_cohort(members, active, stats, true);
+        } else {
+            for lane in members {
+                advance_member(lane, active, stats);
+            }
+        }
+    }
+    active.extend(parked);
+}
+
+fn update(active: &VecDeque<GpuActive>, references: &mut BTreeMap<u64, Reference>) {
+    for lane in active {
+        if lane.cursor == lane.prompt.len() {
+            let id = lane.session.binding().session().get();
+            if let Some(reference) = references.get_mut(&id) {
+                reference.sync(lane);
+            }
+        }
+    }
+}
+
+fn finish(
+    active: &mut VecDeque<GpuActive>,
+    fixture: &Fixture,
+    references: &mut BTreeMap<u64, Reference>,
+    traces: &mut [&mut Trace],
+) {
+    for _ in 0..64 {
+        if active.is_empty() {
+            break;
+        }
+        for trace in traces.iter_mut() {
+            trace.drain();
+        }
+        round(active, &fixture.stats);
+        update(active, references);
+    }
+    assert!(active.is_empty(), "bounded worker did not finish");
+}
+
+fn handoff_and_lengths(fixture: &Fixture) {
+    let (mut left, mut left_trace) = fixture.lane("a", 2, EVENTS_PER_REQUEST);
+    let (mut right, mut right_trace) = fixture.lane("b", 5, EVENTS_PER_REQUEST);
+    b1_prompt(&mut left, &fixture.stats);
+    b1_prompt(&mut right, &fixture.stats);
+    let left_id = left.session.binding().session().get();
+    let right_id = right.session.binding().session().get();
+    let mut references = BTreeMap::from([
+        (left_id, Reference::new(fixture, &left)),
+        (right_id, Reference::new(fixture, &right)),
+    ]);
+    let fused_before = fixture.stats.fused_batches.load(Ordering::Acquire);
+    let model_tokens = fixture.stats.model_tokens.load(Ordering::Acquire);
+    let committed = fixture.stats.committed_roots.load(Ordering::Acquire);
+    let sampler = fixture.stats.native_sampler.load(Ordering::Acquire);
+    let mut active = VecDeque::from([left, right]);
+    round(&mut active, &fixture.stats);
+    update(&active, &mut references);
+    assert!(
+        fixture.stats.fused_batches.load(Ordering::Acquire) > fused_before,
+        "B1-produced packets were not consumed by a native model cohort"
+    );
+    assert_eq!(
+        fixture.stats.model_tokens.load(Ordering::Acquire),
+        model_tokens + 2
+    );
+    assert_eq!(
+        fixture.stats.committed_roots.load(Ordering::Acquire),
+        committed + 2
+    );
+    assert_eq!(
+        fixture.stats.native_sampler.load(Ordering::Acquire),
+        sampler + 4
+    );
+    assert!(
+        active
+            .iter()
+            .all(|lane| lane.session.binding().frontier() == 2)
+    );
+    finish(
+        &mut active,
+        fixture,
+        &mut references,
+        &mut [&mut left_trace, &mut right_trace],
+    );
+    left_trace.verify(&references[&left_id], &fixture.model.tokenizer, 2);
+    right_trace.verify(&references[&right_id], &fixture.model.tokenizer, 5);
+    assert!(
+        references[&right_id].sequence.len() > references[&left_id].sequence.len(),
+        "fixture did not exercise unequal generation lengths/B1 survivor"
+    );
+    println!(
+        "P12_B5_B1_NATIVE_B1_HANDOFF_PASS full_packets_and_all42domains=exact \
+        unequal_lengths=2,5 event_text_usage_Done=exact"
+    );
+}
+
+fn cancel_before_feedback(fixture: &Fixture) {
+    let (mut left, mut left_trace) = fixture.lane("a", 4, EVENTS_PER_REQUEST);
+    let (mut right, mut right_trace) = fixture.lane("b", 3, EVENTS_PER_REQUEST);
+    b1_prompt(&mut left, &fixture.stats);
+    b1_prompt(&mut right, &fixture.stats);
+    let saved = left.session.snapshot();
+    let left_reference = Reference::new(fixture, &left);
+    let right_id = right.session.binding().session().get();
+    let mut references = BTreeMap::from([(right_id, Reference::new(fixture, &right))]);
+    left.cancelled.store(true, Ordering::Release);
+    let fused = fixture.stats.fused_batches.load(Ordering::Acquire);
+    let cancelled = fixture.stats.cancelled.load(Ordering::Acquire);
+    let mut active = VecDeque::from([left, right]);
+    round(&mut active, &fixture.stats);
+    update(&active, &mut references);
+    assert_eq!(fixture.stats.fused_batches.load(Ordering::Acquire), fused);
+    assert_eq!(
+        fixture.stats.cancelled.load(Ordering::Acquire),
+        cancelled + 1
+    );
+    left_reference.snapshot(&saved);
+    left_trace.drain();
+    assert!(left_trace.text.is_empty() && left_trace.done.is_empty());
+    finish(
+        &mut active,
+        fixture,
+        &mut references,
+        &mut [&mut right_trace],
+    );
+    right_trace.verify(&references[&right_id], &fixture.model.tokenizer, 3);
+    println!("P12_B5_CANCEL_BEFORE_FEEDBACK_PASS cancelled_prior=exact survivor_B1=exact");
+}
+
+fn cancel_after_ready(fixture: &Fixture) {
+    let (mut left, mut left_trace) = fixture.lane("a", 4, EVENTS_PER_REQUEST);
+    let (mut right, mut right_trace) = fixture.lane("b", 4, EVENTS_PER_REQUEST);
+    b1_prompt(&mut left, &fixture.stats);
+    b1_prompt(&mut right, &fixture.stats);
+    let saved = left.session.snapshot();
+    let left_reference = Reference::new(fixture, &left);
+    let right_id = right.session.binding().session().get();
+    let initial_right = right.session.binding();
+    let mut references = BTreeMap::from([(right_id, Reference::new(fixture, &right))]);
+    let cancel = Arc::clone(&left.cancelled);
+    AFTER_COHORT_READY.with(|hook| {
+        assert!(hook.borrow().is_none());
+        *hook.borrow_mut() = Some(Box::new(move || cancel.store(true, Ordering::Release)));
+    });
+    let discarded = fixture.stats.discarded_cohorts.load(Ordering::Acquire);
+    let committed = fixture.stats.committed_roots.load(Ordering::Acquire);
+    let model_tokens = fixture.stats.model_tokens.load(Ordering::Acquire);
+    let sampler = fixture.stats.native_sampler.load(Ordering::Acquire);
+    let mut active = VecDeque::from([left, right]);
+    round(&mut active, &fixture.stats);
+    AFTER_COHORT_READY
+        .with(|hook| assert!(hook.borrow().is_none(), "actual Ready hook not reached"));
+    assert_eq!(
+        fixture.stats.discarded_cohorts.load(Ordering::Acquire),
+        discarded + 1
+    );
+    assert_eq!(active.len(), 1);
+    let survivor = &active[0];
+    assert_eq!(
+        survivor.session.binding().root(),
+        initial_right.root() + 1,
+        "discarded native proposal published before B1 retry"
+    );
+    assert_eq!(
+        survivor.session.binding().frontier(),
+        initial_right.frontier() + 1
+    );
+    assert_eq!(
+        fixture.stats.committed_roots.load(Ordering::Acquire),
+        committed + 1
+    );
+    assert_eq!(
+        fixture.stats.model_tokens.load(Ordering::Acquire),
+        model_tokens + 3,
+        "two discarded physical rows plus one committed B1 retry"
+    );
+    assert_eq!(
+        fixture.stats.native_sampler.load(Ordering::Acquire),
+        sampler + 4
+    );
+    update(&active, &mut references);
+    left_reference.snapshot(&saved);
+    finish(
+        &mut active,
+        fixture,
+        &mut references,
+        &mut [&mut right_trace],
+    );
+    right_trace.verify(&references[&right_id], &fixture.model.tokenizer, 4);
+    left_trace.drain();
+    assert!(left_trace.done.is_empty());
+    println!(
+        "P12_B5_CANCEL_AFTER_READY_PASS discarded_whole_cohort=true \
+        actual_original_prior=exact survivor_retry_single_root=true text_usage_Done=no_duplicates"
+    );
+}
+
+fn credit_park(fixture: &Fixture) {
+    let (mut left, mut left_trace) = fixture.lane("a", 8, 1);
+    let (mut right, mut right_trace) = fixture.lane("b", 8, EVENTS_PER_REQUEST);
+    b1_prompt(&mut left, &fixture.stats);
+    b1_prompt(&mut right, &fixture.stats);
+    let left_id = left.session.binding().session().get();
+    let right_id = right.session.binding().session().get();
+    let mut references = BTreeMap::from([
+        (left_id, Reference::new(fixture, &left)),
+        (right_id, Reference::new(fixture, &right)),
+    ]);
+    let mut active = VecDeque::from([left, right]);
+    for _ in 0..12 {
+        round(&mut active, &fixture.stats);
+        update(&active, &mut references);
+        right_trace.drain();
+        if active.iter().any(|lane| {
+            lane.session.binding().session().get() == left_id && lane.blocked_since.is_some()
+        }) {
+            break;
+        }
+    }
+    let parked = active
+        .iter()
+        .find(|lane| lane.session.binding().session().get() == left_id)
+        .expect("slow source request finished without a credit boundary");
+    assert!(parked.blocked_since.is_some());
+    assert!(parked.packet_presented);
+    let binding = parked.session.binding();
+    let packet = parked
+        .device_token
+        .as_ref()
+        .map(|token| (token.id, token.max_bits));
+    for _ in 0..3 {
+        round(&mut active, &fixture.stats);
+        update(&active, &mut references);
+        right_trace.drain();
+        let parked = active
+            .iter()
+            .find(|lane| lane.session.binding().session().get() == left_id)
+            .unwrap();
+        assert_eq!(parked.session.binding(), binding);
+        assert_eq!(
+            parked
+                .device_token
+                .as_ref()
+                .map(|token| (token.id, token.max_bits)),
+            packet
+        );
+    }
+    left_trace.one_credit();
+    finish(
+        &mut active,
+        fixture,
+        &mut references,
+        &mut [&mut left_trace, &mut right_trace],
+    );
+    left_trace.verify(&references[&left_id], &fixture.model.tokenizer, 8);
+    right_trace.verify(&references[&right_id], &fixture.model.tokenizer, 8);
+    println!(
+        "P12_B5_REAL_CREDIT_PARK_PASS original_bounded_channel=1 \
+        parked_packet_root_unchanged=true recovered_text_usage_Done=exact"
+    );
+}
+
+fn find_source_eos(fixture: &Fixture) -> Option<String> {
+    let prefixes = [
+        "<|im_start|>user\nSay only OK.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nOK",
+        "<|im_start|>user\nWhat is 1+1? Give only the number.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n2",
+        "<|im_start|>user\nReply with nothing.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+        "<|im_start|>user\nSay only Done.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nDone",
+    ];
+    for input in prefixes {
+        let tokens = fixture.model.tokenizer.prompt_tokens(input, false).unwrap();
+        let mut cpu = QwenDenseCpu::from_shared(Arc::clone(&fixture.source)).unwrap();
+        let mut logits = cpu.prefill_transaction(&tokens).unwrap();
+        for _ in 0..8 {
+            let id = best(&logits).0;
+            if id == fixture.model.tokenizer.eos() {
+                return Some(input.into());
+            }
+            logits = cpu.forward(id).unwrap();
+        }
+    }
+    None
+}
+
+fn source_eos(fixture: &Fixture) {
+    let input = find_source_eos(fixture).expect(
+        "P12_B5_TRAINED_EOS_NOT_QUALIFIED: no actual original CPU-selected EOS \
+        in four source-real prefixes with at most eight greedy selections each",
+    );
+    let length = fixture
+        .model
+        .tokenizer
+        .prompt_tokens(&input, false)
+        .unwrap()
+        .len();
+    let sibling = " a".repeat(length);
+    assert_eq!(
+        fixture
+            .model
+            .tokenizer
+            .prompt_tokens(&sibling, false)
+            .unwrap()
+            .len(),
+        length
+    );
+    let (left, mut left_trace) = fixture.lane(&input, 9, EVENTS_PER_REQUEST);
+    let (right, mut right_trace) = fixture.lane(&sibling, 12, EVENTS_PER_REQUEST);
+    let left_id = left.session.binding().session().get();
+    let right_id = right.session.binding().session().get();
+    let mut active = VecDeque::from([left, right]);
+    let fused_before = fixture.stats.fused_batches.load(Ordering::Acquire);
+    for _ in 0..32 {
+        if active.iter().all(|lane| lane.cursor == lane.prompt.len()) {
+            break;
+        }
+        round(&mut active, &fixture.stats);
+    }
+    assert_eq!(active.len(), 2);
+    assert!(active.iter().all(|lane| lane.cursor == lane.prompt.len()));
+    assert_eq!(
+        fixture.stats.fused_batches.load(Ordering::Acquire),
+        fused_before + 1,
+        "actual final prompt tokens did not execute the native model cohort"
+    );
+    let mut references = active
+        .iter()
+        .map(|lane| {
+            (
+                lane.session.binding().session().get(),
+                Reference::new(fixture, lane),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    finish(
+        &mut active,
+        fixture,
+        &mut references,
+        &mut [&mut left_trace, &mut right_trace],
+    );
+    left_trace.verify(&references[&left_id], &fixture.model.tokenizer, 9);
+    right_trace.verify(&references[&right_id], &fixture.model.tokenizer, 12);
+    assert_eq!(left_trace.done[0].3, "stop");
+    println!(
+        "P12_B5_TRAINED_EOS_GPU_PASS actual_original_source_selected_EOS=true \
+        CPU_B1_packets_all42=exact stop_excludes_EOS_usage=true sibling_independent=true"
+    );
+}
+
+fn qualify(name: &str) {
+    let fixture = Fixture::new(name);
+    handoff_and_lengths(&fixture);
+    cancel_before_feedback(&fixture);
+    cancel_after_ready(&fixture);
+    credit_park(&fixture);
+    source_eos(&fixture);
+    assert!(fixture.stats.kernel_dispatches.load(Ordering::Acquire) > 0);
+    assert!(fixture.stats.native_projections.load(Ordering::Acquire) > 0);
+    assert!(fixture.stats.native_sampler.load(Ordering::Acquire) > 0);
+    fixture.close();
+    println!(
+        "P12_B5_NATIVE_WORKER_PHYSICAL_PASS source={name} final_active=0 final_reserved=0 \
+        original_GPU_authorities_CPU_B1_state=exact actual_HTTP_wire=separate_gate vLLM_performance=not_qualified"
+    );
+}
+
+#[test]
+#[ignore = "physical release CUDA; approved original .8B; isolated sequential GPU coordinator"]
+fn original_qwen08b_native_b2_worker() {
+    qualify("qwen35-0.8b");
+}
+
+#[test]
+#[ignore = "physical release CUDA; approved original 2B; isolated sequential GPU coordinator"]
+fn original_qwen2b_native_b2_worker() {
+    qualify("qwen35-2b");
+}

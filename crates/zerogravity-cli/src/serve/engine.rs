@@ -171,6 +171,13 @@ impl Drop for RequestEvents {
     }
 }
 /// Shared CPU/GPU presentation and backpressure semantics.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Presentation {
+    Ready,
+    Blocked,
+    Finished,
+}
+
 pub(super) struct GeneratedText {
     tokenizer: Arc<QwenTokenizer>,
     events: mpsc::SyncSender<ResponseEvent>,
@@ -179,6 +186,13 @@ pub(super) struct GeneratedText {
     stream: bool,
     generated: Vec<u32>,
     emitted: String,
+    // At most one Text delta and one terminal Done. Retry only unsent events;
+    // successfully queued output is never replayed after a GPU retry.
+    pending: VecDeque<ResponseEvent>,
+    pending_emitted: Option<String>,
+    terminal: bool,
+    finished: bool,
+    failure: Option<ServiceError>,
 }
 impl GeneratedText {
     pub(super) fn new(
@@ -196,78 +210,133 @@ impl GeneratedText {
             prompt_tokens,
             generated: Vec::new(),
             emitted: String::new(),
+            pending: VecDeque::with_capacity(2),
+            pending_emitted: None,
+            terminal: false,
+            finished: false,
+            failure: None,
         }
     }
-    /// Returns true once one admitted request has terminated; never
-    /// samples again after the final accepted token or an EOS.
+    /// CPU compatibility: bounded output refusal terminates this presenter.
     pub(super) fn accept(&mut self, id: u32) -> Result<bool, ServiceError> {
-        if id == self.tokenizer.eos() {
-            self.finish("stop")?;
-            return Ok(true);
+        match self.present(id)? {
+            Presentation::Ready => Ok(false),
+            Presentation::Finished => Ok(true),
+            Presentation::Blocked => Err(self.fail(ServiceError::new(
+                503,
+                "backpressure",
+                "client cannot accept streamed output",
+            ))),
         }
-        self.generated.push(id);
-        if self.stream {
-            let decoded = self
-                .tokenizer
-                .decode(&self.generated, true)
-                .map_err(ServiceError::inference)?;
-            if !decoded.starts_with(&self.emitted) {
-                return Err(ServiceError::new(
-                    500,
-                    "decoder_nonmonotonic",
-                    "incremental text prefix changed",
-                ));
+    }
+
+    #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
+    pub(super) fn generated_token_count(&self) -> usize {
+        self.generated.len()
+    }
+
+    /// Stage one already-committed token exactly once. The GPU owner resumes
+    /// blocked delivery before advancing this packet or presenting another.
+    pub(super) fn present(&mut self, id: u32) -> Result<Presentation, ServiceError> {
+        if let Some(error) = &self.failure {
+            return Err(error.clone());
+        }
+        if self.finished {
+            return Ok(Presentation::Finished);
+        }
+        if !self.pending.is_empty() || self.terminal {
+            return Err(ServiceError::new(
+                500,
+                "output_pending",
+                "resume staged output before presenting another token",
+            ));
+        }
+        let reason = if id == self.tokenizer.eos() {
+            Some("stop")
+        } else {
+            self.generated.push(id);
+            (self.generated.len() >= self.max_tokens).then_some("length")
+        };
+        if self.stream || reason.is_some() {
+            let decoded = match self.tokenizer.decode(&self.generated, true) {
+                Ok(decoded) => decoded,
+                Err(error) => return Err(self.fail(ServiceError::inference(error))),
+            };
+            if self.stream {
+                if !decoded.starts_with(&self.emitted) {
+                    return Err(self.fail(ServiceError::new(
+                        500,
+                        "decoder_nonmonotonic",
+                        "incremental text prefix changed",
+                    )));
+                }
+                // A nonterminal incomplete UTF-8 token remains private. Final
+                // decoding retains the original replacement/flush semantics.
+                if (reason.is_some() || !decoded.contains('�'))
+                    && decoded.len() > self.emitted.len()
+                {
+                    self.pending.push_back(ResponseEvent::Text(
+                        decoded[self.emitted.len()..].to_owned(),
+                    ));
+                    self.pending_emitted = Some(decoded.clone());
+                }
             }
-            if !decoded.contains('�') {
-                let delta = &decoded[self.emitted.len()..];
-                if !delta.is_empty() {
-                    self.events
-                        .try_send(ResponseEvent::Text(delta.to_owned()))
-                        .map_err(|e| match e {
-                            mpsc::TrySendError::Full(_) => ServiceError::new(
-                                503,
-                                "backpressure",
-                                "client cannot accept streamed output",
-                            ),
-                            mpsc::TrySendError::Disconnected(_) => {
-                                ServiceError::new(499, "cancelled", "client disconnected")
-                            }
-                        })?;
-                    self.emitted = decoded;
+            if let Some(reason) = reason {
+                self.terminal = true;
+                self.pending.push_back(ResponseEvent::Done {
+                    output: decoded,
+                    prompt_tokens: self.prompt_tokens,
+                    completion_tokens: self.generated.len(),
+                    finish_reason: reason,
+                });
+            }
+        }
+        self.resume()
+    }
+
+    /// Retry only unsent bounded events. A full channel has accepted none of
+    /// that event; disconnect never causes a new delivery attempt or token.
+    pub(super) fn resume(&mut self) -> Result<Presentation, ServiceError> {
+        if let Some(error) = &self.failure {
+            return Err(error.clone());
+        }
+        while let Some(event) = self.pending.pop_front() {
+            let text = matches!(&event, ResponseEvent::Text(_));
+            let done = matches!(&event, ResponseEvent::Done { .. });
+            match self.events.try_send(event) {
+                Ok(()) => {
+                    if text {
+                        self.emitted = self.pending_emitted.take().expect("staged text frontier");
+                    }
+                    if done {
+                        self.finished = true;
+                    }
+                }
+                Err(mpsc::TrySendError::Full(event)) => {
+                    self.pending.push_front(event);
+                    return Ok(Presentation::Blocked);
+                }
+                Err(mpsc::TrySendError::Disconnected(_)) => {
+                    return Err(self.fail(ServiceError::new(
+                        499,
+                        "cancelled",
+                        "client disconnected",
+                    )));
                 }
             }
         }
-        if self.generated.len() >= self.max_tokens {
-            self.finish("length")?;
-            return Ok(true);
-        }
-        Ok(false)
+        Ok(if self.finished {
+            Presentation::Finished
+        } else {
+            Presentation::Ready
+        })
     }
-    fn finish(&mut self, reason: &'static str) -> Result<(), ServiceError> {
-        let output = self
-            .tokenizer
-            .decode(&self.generated, true)
-            .map_err(ServiceError::inference)?;
-        if self.stream && !output.starts_with(&self.emitted) {
-            return Err(ServiceError::new(
-                500,
-                "decoder_nonmonotonic",
-                "final text differs from streamed prefix",
-            ));
-        }
-        if self.stream && output.len() > self.emitted.len() {
-            self.events
-                .try_send(ResponseEvent::Text(output[self.emitted.len()..].to_owned()))
-                .map_err(|_| ServiceError::new(499, "cancelled", "client closed output stream"))?;
-        }
-        self.events
-            .try_send(ResponseEvent::Done {
-                output,
-                prompt_tokens: self.prompt_tokens,
-                completion_tokens: self.generated.len(),
-                finish_reason: reason,
-            })
-            .map_err(|_| ServiceError::new(499, "cancelled", "client closed output stream"))
+
+    fn fail(&mut self, error: ServiceError) -> ServiceError {
+        self.pending.clear();
+        self.pending_emitted = None;
+        self.failure = Some(error.clone());
+        error
     }
 }
 
@@ -607,6 +676,231 @@ fn worker(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn output_tokenizer(byte_level: bool) -> Arc<QwenTokenizer> {
+        let decoder = if byte_level {
+            serde_json::json!({"type":"ByteLevel", "add_prefix_space":false,
+                "trim_offsets":true, "use_regex":true})
+        } else {
+            serde_json::json!({"type":"Fuse"})
+        };
+        let source = serde_json::json!({
+            "version":"1.0", "truncation":null, "padding":null,
+            "normalizer":null, "pre_tokenizer":null, "post_processor":null,
+            "added_tokens":[
+                {"id":0,"content":"<|im_start|>","single_word":false,
+                    "lstrip":false,"rstrip":false,"normalized":false,"special":true},
+                {"id":1,"content":"<|im_end|>","single_word":false,
+                    "lstrip":false,"rstrip":false,"normalized":false,"special":true}
+            ],
+            "decoder":decoder,
+            "model":{"type":"WordLevel","unk_token":"[UNK]","vocab":{
+                "<|im_start|>":0,"<|im_end|>":1,"A":2,"B":3,"Ã":4,"©":5,"[UNK]":6
+            }}
+        });
+        Arc::new(QwenTokenizer::from_bytes(&serde_json::to_vec(&source).unwrap()).unwrap())
+    }
+
+    fn text(event: ResponseEvent) -> String {
+        match event {
+            ResponseEvent::Text(value) => value,
+            _ => panic!("expected text event"),
+        }
+    }
+
+    fn done(event: ResponseEvent, expected: &str, tokens: usize, reason: &str) {
+        match event {
+            ResponseEvent::Done {
+                output,
+                prompt_tokens,
+                completion_tokens,
+                finish_reason,
+            } => {
+                assert_eq!(output, expected);
+                assert_eq!(prompt_tokens, 7);
+                assert_eq!(completion_tokens, tokens);
+                assert_eq!(finish_reason, reason);
+            }
+            _ => panic!("expected one terminal event"),
+        }
+    }
+
+    #[test]
+    fn blocked_text_then_terminal_done_resume_without_loss_or_duplicate_tokens() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        assert!(
+            sender
+                .try_send(ResponseEvent::Text("occupied".into()))
+                .is_ok()
+        );
+        let mut output = GeneratedText::new(output_tokenizer(false), sender, true, 2, 7);
+        assert_eq!(output.present(2).unwrap(), Presentation::Blocked);
+        assert_eq!(output.generated, [2]);
+        assert_eq!(output.present(3).unwrap_err().code, "output_pending");
+        assert_eq!(output.generated, [2]);
+        assert_eq!(output.resume().unwrap(), Presentation::Blocked);
+        assert_eq!(text(receiver.recv().unwrap()), "occupied");
+        assert_eq!(output.resume().unwrap(), Presentation::Ready);
+        assert_eq!(text(receiver.recv().unwrap()), "A");
+        assert_eq!(output.resume().unwrap(), Presentation::Ready);
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+
+        // Text enters the one-event channel; terminal Done remains private.
+        assert_eq!(output.present(3).unwrap(), Presentation::Blocked);
+        assert_eq!(output.emitted, "AB");
+        assert_eq!(output.generated, [2, 3]);
+        assert_eq!(output.pending.len(), 1);
+        assert_eq!(output.resume().unwrap(), Presentation::Blocked);
+        assert_eq!(text(receiver.recv().unwrap()), "B");
+        assert_eq!(output.resume().unwrap(), Presentation::Finished);
+        done(receiver.recv().unwrap(), "AB", 2, "length");
+        assert_eq!(output.resume().unwrap(), Presentation::Finished);
+        assert_eq!(output.present(2).unwrap(), Presentation::Finished);
+        assert_eq!(output.generated, [2, 3]);
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+    }
+
+    #[test]
+    fn terminal_token_stages_at_most_text_and_done_when_channel_is_full() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        assert!(
+            sender
+                .try_send(ResponseEvent::Text("occupied".into()))
+                .is_ok()
+        );
+        let mut output = GeneratedText::new(output_tokenizer(false), sender, true, 1, 7);
+        assert_eq!(output.present(2).unwrap(), Presentation::Blocked);
+        assert_eq!(output.pending.len(), 2);
+        assert_eq!(output.generated, [2]);
+        assert_eq!(text(receiver.recv().unwrap()), "occupied");
+        assert_eq!(output.resume().unwrap(), Presentation::Blocked);
+        assert_eq!(output.pending.len(), 1);
+        assert_eq!(output.emitted, "A");
+        assert_eq!(text(receiver.recv().unwrap()), "A");
+        assert_eq!(output.resume().unwrap(), Presentation::Finished);
+        done(receiver.recv().unwrap(), "A", 1, "length");
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+    }
+
+    #[test]
+    fn eos_during_backpressure_finishes_once_without_counting_the_eos() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        assert!(
+            sender
+                .try_send(ResponseEvent::Text("occupied".into()))
+                .is_ok()
+        );
+        let tokenizer = output_tokenizer(false);
+        let eos = tokenizer.eos();
+        let mut output = GeneratedText::new(tokenizer, sender, true, 2, 7);
+        assert_eq!(output.present(eos).unwrap(), Presentation::Blocked);
+        assert!(output.generated.is_empty());
+        assert_eq!(output.pending.len(), 1);
+        assert_eq!(output.resume().unwrap(), Presentation::Blocked);
+        assert_eq!(text(receiver.recv().unwrap()), "occupied");
+        assert_eq!(output.resume().unwrap(), Presentation::Finished);
+        done(receiver.recv().unwrap(), "", 0, "stop");
+        assert_eq!(output.present(eos).unwrap(), Presentation::Finished);
+        assert_eq!(output.resume().unwrap(), Presentation::Finished);
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+    }
+
+    #[test]
+    fn incomplete_utf8_waits_then_emits_the_original_complete_decode_once() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let mut output = GeneratedText::new(output_tokenizer(true), sender, true, 2, 7);
+        assert_eq!(output.present(4).unwrap(), Presentation::Ready);
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+        assert_eq!(output.present(5).unwrap(), Presentation::Blocked);
+        assert_eq!(text(receiver.recv().unwrap()), "é");
+        assert_eq!(output.resume().unwrap(), Presentation::Finished);
+        done(receiver.recv().unwrap(), "é", 2, "length");
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+    }
+
+    #[test]
+    fn final_incomplete_utf8_keeps_original_replacement_flush_semantics() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let mut output = GeneratedText::new(output_tokenizer(true), sender, true, 1, 7);
+        assert_eq!(output.present(4).unwrap(), Presentation::Blocked);
+        assert_eq!(text(receiver.recv().unwrap()), "�");
+        assert_eq!(output.resume().unwrap(), Presentation::Finished);
+        done(receiver.recv().unwrap(), "�", 1, "length");
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+    }
+
+    #[test]
+    fn cpu_wrapper_refuses_backpressure_and_does_not_resume_a_partial_terminal() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let mut output = GeneratedText::new(output_tokenizer(false), sender, true, 1, 7);
+        let error = output.accept(2).unwrap_err();
+        assert_eq!((error.status, error.code), (503, "backpressure"));
+        assert_eq!(text(receiver.recv().unwrap()), "A");
+        assert_eq!(output.resume().unwrap_err().code, "backpressure");
+        assert_eq!(output.accept(3).unwrap_err().code, "backpressure");
+        assert_eq!(output.generated, [2]);
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+    }
+
+    #[test]
+    fn disconnected_terminal_never_replays_text_or_accepts_another_token() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let mut output = GeneratedText::new(output_tokenizer(false), sender, true, 1, 7);
+        assert_eq!(output.present(2).unwrap(), Presentation::Blocked);
+        assert_eq!(text(receiver.recv().unwrap()), "A");
+        drop(receiver);
+        let error = output.resume().unwrap_err();
+        assert_eq!((error.status, error.code), (499, "cancelled"));
+        assert_eq!(output.resume().unwrap_err().code, "cancelled");
+        assert_eq!(output.present(3).unwrap_err().code, "cancelled");
+        assert_eq!(output.generated, [2]);
+        assert!(output.pending.is_empty());
+    }
+
+    #[test]
+    fn nonstreaming_cpu_accept_keeps_original_text_usage_and_eos_behavior() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let tokenizer = output_tokenizer(false);
+        let eos = tokenizer.eos();
+        let mut output = GeneratedText::new(tokenizer, sender, false, 2, 7);
+        assert!(!output.accept(2).unwrap());
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+        assert!(output.accept(eos).unwrap());
+        done(receiver.recv().unwrap(), "A", 1, "stop");
+        assert!(output.accept(3).unwrap());
+        assert_eq!(output.generated, [2]);
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+    }
 
     #[test]
     fn request_receiver_cancellation_drops_queued_session_without_inference() {

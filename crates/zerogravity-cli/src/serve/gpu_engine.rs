@@ -1,12 +1,11 @@
 //! Resident GPU OpenAI serving: one loaded model source, independent device
 //! StateRoots, one physical workspace and terminal completion per GPU step.
-//! This is true GPU inference, *not* fused cross-request GPU kernels.
-//! GPU steps are interleaved fairly; every completed greedy token originates
-//! from the device and is fed back under the original SessionAuthority.
+//! Opt-in CUDA B2 waves use the original native ForwardPlan; other work
+//! interleaves through B1. Device feedback retains each SessionAuthority.
 
 use super::engine::{
-    EVENTS_PER_REQUEST, GeneratedText, MAX_ACTIVE_PER_WORKER, QUEUED_PER_WORKER, Request,
-    RequestEvents, ResponseEvent, Scheduled, ServiceError,
+    EVENTS_PER_REQUEST, GeneratedText, MAX_ACTIVE_PER_WORKER, Presentation, QUEUED_PER_WORKER,
+    Request, RequestEvents, ResponseEvent, Scheduled, ServiceError,
 };
 use super::gpu_batch::{self, Limits, Phase, Ready};
 use crate::GpuBackend;
@@ -16,15 +15,26 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, mpsc};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use zerogravity::gpu::{
-    ResidentModel, ResidentSession, ResidentToken, resident_batch::ResidentBatchRows,
+    InferenceReadback, PreparedResidentCohort, ResidentModel, ResidentSession, ResidentToken,
+    resident_batch::ResidentBatchRows,
 };
 use zerogravity::qwen35::LoadedQwenModel;
 use zerogravity::tokenize::QwenTokenizer;
 
 const GPU_CAPACITY: usize = 512;
 const PREFILL_QUANTUM: usize = 32;
+const OUTPUT_STALL_LIMIT: Duration = Duration::from_secs(30);
+mod cohort;
+use cohort::{advance_decode_cohort, finish_prompt_cohort};
+#[cfg(all(test, feature = "cuda"))]
+mod qualification;
+#[cfg(test)]
+thread_local! {
+    static AFTER_COHORT_READY: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        const { std::cell::RefCell::new(None) };
+}
 pub(super) struct GpuProfile {
     pub workers: usize,
     pub active: usize,
@@ -32,6 +42,7 @@ pub(super) struct GpuProfile {
     pub output: usize,
     pub provider_mib: usize,
     pub device_mib: usize,
+    pub native_b2: bool,
 }
 
 /// CubeCL CUDA's C++ backend requires a toolkit INCLUDE root in addition
@@ -98,6 +109,7 @@ struct GpuModel {
     tokenizer: Arc<QwenTokenizer>,
     group: usize,
     hidden_width: usize,
+    native_b2: bool,
 }
 #[derive(Default)]
 struct WaveStats {
@@ -112,6 +124,16 @@ struct WaveStats {
     co_scheduled: AtomicU64,
     cohort_publications: AtomicU64,
     cohort_rows: AtomicU64,
+    kernel_dispatches: AtomicU64,
+    model_tokens: AtomicU64,
+    committed_roots: AtomicU64,
+    fused_batches: AtomicU64,
+    fused_rows: AtomicU64,
+    native_projections: AtomicU64,
+    native_sampler: AtomicU64,
+    discarded_cohorts: AtomicU64,
+    output_tokens: AtomicU64,
+    parked: AtomicUsize,
 }
 struct SessionCharge(Arc<WaveStats>);
 impl Drop for SessionCharge {
@@ -131,6 +153,17 @@ pub(super) struct GpuMetrics {
     pub co_scheduled: u64,
     pub cohort_publications: u64,
     pub cohort_rows: u64,
+    pub kernel_dispatches: u64,
+    pub model_tokens: u64,
+    pub committed_roots: u64,
+    pub fused_batches: u64,
+    pub fused_rows: u64,
+    pub native_projections: u64,
+    pub native_sampler: u64,
+    pub discarded_cohorts: u64,
+    pub output_tokens: u64,
+    pub parked: usize,
+    pub native_b2: bool,
 }
 pub(super) struct GpuRouter {
     models: Arc<BTreeMap<String, Arc<GpuModel>>>,
@@ -138,6 +171,7 @@ pub(super) struct GpuRouter {
     next_id: AtomicU64,
     stats: Arc<WaveStats>,
     pub(super) max_output: usize,
+    native_b2: bool,
 }
 impl GpuRouter {
     pub(super) fn validate_profile(
@@ -177,8 +211,16 @@ impl GpuRouter {
             output,
             provider_mib,
             device_mib,
+            native_b2,
         } = profile;
         Self::validate_profile(workers, active, context, output, provider_mib, device_mib)?;
+        if native_b2 && (backend != GpuBackend::Cuda || active < 2) {
+            return Err(ServiceError::new(
+                400,
+                "unsupported_batch_mode",
+                "fused serving requires CUDA and at least two active slots",
+            ));
+        }
         preflight_cuda_toolkit(backend)?;
         if declared.is_empty() || declared.len() > 16 {
             return Err(ServiceError::new(
@@ -241,6 +283,7 @@ impl GpuRouter {
                 tokenizer: Arc::new(tokenizer),
                 group: unique.len(),
                 hidden_width,
+                native_b2,
             });
             unique.insert(path, Arc::clone(&shared));
             models.insert(alias, shared);
@@ -252,7 +295,7 @@ impl GpuRouter {
         let worker_stats = Arc::clone(&stats);
         thread::Builder::new()
             .name("zg-resident-gpu".into())
-            .spawn(move || worker(receiver, sources, active, worker_stats))
+            .spawn(move || worker(receiver, sources, active, worker_stats, native_b2))
             .map_err(|e| ServiceError::new(500, "worker_spawn", e.to_string()))?;
         Ok(Self {
             models,
@@ -260,6 +303,7 @@ impl GpuRouter {
             next_id: AtomicU64::new(1),
             stats,
             max_output: output,
+            native_b2,
         })
     }
     pub(super) fn metrics(&self) -> GpuMetrics {
@@ -275,6 +319,17 @@ impl GpuRouter {
             co_scheduled: self.stats.co_scheduled.load(Ordering::Relaxed),
             cohort_publications: self.stats.cohort_publications.load(Ordering::Relaxed),
             cohort_rows: self.stats.cohort_rows.load(Ordering::Relaxed),
+            kernel_dispatches: self.stats.kernel_dispatches.load(Ordering::Relaxed),
+            model_tokens: self.stats.model_tokens.load(Ordering::Relaxed),
+            committed_roots: self.stats.committed_roots.load(Ordering::Relaxed),
+            fused_batches: self.stats.fused_batches.load(Ordering::Relaxed),
+            fused_rows: self.stats.fused_rows.load(Ordering::Relaxed),
+            native_projections: self.stats.native_projections.load(Ordering::Relaxed),
+            native_sampler: self.stats.native_sampler.load(Ordering::Relaxed),
+            discarded_cohorts: self.stats.discarded_cohorts.load(Ordering::Relaxed),
+            output_tokens: self.stats.output_tokens.load(Ordering::Relaxed),
+            parked: self.stats.parked.load(Ordering::Relaxed),
+            native_b2: self.native_b2,
         }
     }
     pub(super) fn model_ids(&self) -> impl Iterator<Item = &str> {
@@ -343,6 +398,9 @@ struct GpuActive {
     prompt: Vec<u32>,
     cursor: usize,
     device_token: Option<ResidentToken>,
+    native_b2: bool,
+    packet_presented: bool,
+    blocked_since: Option<Instant>,
 }
 impl GpuActive {
     fn new(
@@ -390,6 +448,9 @@ impl GpuActive {
             prompt,
             cursor: 0,
             device_token: None,
+            native_b2: model.native_b2,
+            packet_presented: false,
+            blocked_since: None,
         })
     }
     fn ready(&self) -> Ready {
@@ -403,7 +464,7 @@ impl GpuActive {
             },
             frontier: self.session.binding().frontier() as usize,
             tokens: if remaining > 0 {
-                remaining.min(PREFILL_QUANTUM)
+                self.prefill_count()
             } else {
                 1
             },
@@ -412,182 +473,182 @@ impl GpuActive {
             scratch_bytes: 32 * 1024 * 1024,
         }
     }
-    /// One GPU completion quantum, no host full-vocabulary logits.
-    /// Separate sessions take turns using the same resident physical graph.
-    /// Returns (finished, submitted_a_full_model_GPU_forward). A terminal
-    /// token was already produced by the previous device run, so response
-    /// completion alone must NOT inflate real GPU forward counters.
-    fn step(&mut self) -> Result<(bool, bool), ServiceError> {
+    fn prefill_count(&self) -> usize {
+        let remaining = self.prompt.len() - self.cursor;
+        if self.native_b2 && remaining > 1 {
+            (remaining - 1).min(PREFILL_QUANTUM)
+        } else {
+            remaining.min(PREFILL_QUANTUM)
+        }
+    }
+    /// Presentation precedes consumption. A Ready-cohort retry retains this
+    /// mark and the original packet; only a newly committed packet resets it.
+    fn present_decode(&mut self, stats: &WaveStats) -> Result<Presentation, ServiceError> {
+        let presented = if self.packet_presented {
+            self.output.resume()?
+        } else {
+            let token = self.device_token.as_ref().ok_or_else(|| {
+                ServiceError::new(
+                    500,
+                    "missing_device_token",
+                    "resident GPU feedback is missing",
+                )
+            })?;
+            let before = self.output.generated_token_count();
+            let status = self.output.present(token.id)?;
+            stats.output_tokens.fetch_add(
+                (self.output.generated_token_count() - before) as u64,
+                Ordering::Relaxed,
+            );
+            self.packet_presented = true;
+            status
+        };
+        if presented == Presentation::Blocked {
+            let since = self.blocked_since.get_or_insert_with(Instant::now);
+            if since.elapsed() >= OUTPUT_STALL_LIMIT {
+                return Err(ServiceError::new(
+                    503,
+                    "backpressure_timeout",
+                    "client output credit deadline expired",
+                ));
+            }
+        } else {
+            self.blocked_since = None;
+        }
+        Ok(presented)
+    }
+    fn install(&mut self, read: InferenceReadback) -> Result<(), ServiceError> {
+        let token = read.device_token.ok_or_else(|| {
+            ServiceError::new(
+                500,
+                "missing_device_token",
+                "GPU completion has no original greedy packet",
+            )
+        })?;
+        self.device_token = Some(token);
+        self.packet_presented = false;
+        self.blocked_since = None;
+        Ok(())
+    }
+    /// Original B1 source execution, including all unmatched native-wave rows.
+    fn step(&mut self, stats: &WaveStats) -> Result<MemberStep, ServiceError> {
         if self.cursor < self.prompt.len() {
-            let end = (self.cursor + PREFILL_QUANTUM).min(self.prompt.len());
-            if end < self.prompt.len() {
+            let end = self.cursor + self.prefill_count();
+            let read = if end < self.prompt.len() {
                 block_on(
                     self.session
                         .prefill_without_logits(&self.prompt[self.cursor..end], false),
                 )
-                .map_err(ServiceError::inference)?;
             } else {
-                let result = block_on(self.session.forward_greedy(&self.prompt[self.cursor..end]))
-                    .map_err(ServiceError::inference)?;
-                self.device_token = result.device_token;
-                if self.device_token.is_none() {
-                    return Err(ServiceError::new(
-                        500,
-                        "missing_device_token",
-                        "resident GPU returned no completed greedy feedback",
-                    ));
-                }
+                block_on(self.session.forward_greedy(&self.prompt[self.cursor..end]))
+            }
+            .map_err(ServiceError::inference)?;
+            stats.single_completion(&read);
+            if end == self.prompt.len() {
+                self.install(read)?;
             }
             self.cursor = end;
-            return Ok((false, true));
+            return Ok(MemberStep::Forwarded);
         }
-        let token = self.device_token.take().ok_or_else(|| {
+        match self.present_decode(stats)? {
+            Presentation::Finished => return Ok(MemberStep::Finished),
+            Presentation::Blocked => return Ok(MemberStep::Parked),
+            Presentation::Ready => {}
+        }
+        if self.cancelled.load(Ordering::Acquire) {
+            return Ok(MemberStep::Cancelled);
+        }
+        let token = self.device_token.as_ref().ok_or_else(|| {
             ServiceError::new(
                 500,
                 "missing_device_token",
                 "resident GPU feedback is missing",
             )
         })?;
-        if self.output.accept(token.id)? {
-            return Ok((true, false));
-        }
-        let result =
-            block_on(self.session.forward_device_token(&token)).map_err(ServiceError::inference)?;
-        self.device_token = result.device_token;
-        if self.device_token.is_none() {
-            return Err(ServiceError::new(
-                500,
-                "missing_device_token",
-                "GPU forward completed without a greedy device token",
-            ));
-        }
-        Ok((false, true))
+        let read =
+            block_on(self.session.forward_device_token(token)).map_err(ServiceError::inference)?;
+        stats.single_completion(&read);
+        self.install(read)?;
+        Ok(MemberStep::Forwarded)
     }
 }
-/// Original one-row execution path: kept for unequal prefill spans,
-/// device-feedback decode, cancellation fallback and all unsupported
-/// multi-row shapes. Never CPU inference fallback.
-fn advance_member(mut next: GpuActive, active: &mut VecDeque<GpuActive>, stats: &WaveStats) {
-    if next.cancelled.load(Ordering::Acquire) {
-        stats.cancelled.fetch_add(1, Ordering::Relaxed);
-        return;
+
+enum MemberStep {
+    Forwarded,
+    Finished,
+    Parked,
+    Cancelled,
+}
+impl WaveStats {
+    fn single_completion(&self, read: &InferenceReadback) {
+        self.gpu_forwards.fetch_add(1, Ordering::Relaxed);
+        self.kernel_dispatches
+            .fetch_add(read.dispatches as u64, Ordering::Relaxed);
+        self.model_tokens.fetch_add(
+            (read.state_only_steps + read.logit_steps) as u64,
+            Ordering::Relaxed,
+        );
+        self.committed_roots.fetch_add(1, Ordering::Relaxed);
     }
+    fn fail(&self, row: &GpuActive, error: ServiceError) {
+        if error.status == 499 && error.code == "cancelled" {
+            self.cancelled.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.failed.fetch_add(1, Ordering::Relaxed);
+        }
+        let _ = row.errors.try_send(ResponseEvent::Error(error));
+    }
+}
+fn advance_member(next: GpuActive, active: &mut VecDeque<GpuActive>, stats: &WaveStats) {
+    let Some(mut next) = eligible_member(next, active, stats) else {
+        return;
+    };
     stats.attempted.fetch_add(1, Ordering::Relaxed);
-    match next.step() {
-        Ok((finished, forwarded)) => {
+    match next.step(stats) {
+        Ok(MemberStep::Parked) => active.push_back(next),
+        Ok(MemberStep::Cancelled) => {
+            stats.cancelled.fetch_add(1, Ordering::Relaxed);
+        }
+        Ok(outcome) => {
             stats.completed.fetch_add(1, Ordering::Relaxed);
-            if forwarded {
-                stats.gpu_forwards.fetch_add(1, Ordering::Relaxed);
-            }
-            if !finished {
+            if matches!(outcome, MemberStep::Forwarded) {
                 active.push_back(next);
             }
         }
         Err(error) => {
-            stats.failed.fetch_add(1, Ordering::Relaxed);
-            let _ = next.errors.try_send(ResponseEvent::Error(error));
+            stats.fail(&next, error);
         }
     }
 }
-
-/// Exact same-source/phase/frontier one-token prefill end is eligible for
-/// the original ResidentModel's physical-ready cohort ROOT barrier.
-/// This does NOT invoke native B>1 forward kernels. Each source operator
-/// has its own GPU completion and every root is published together.
-fn finish_prompt_cohort(
-    members: Vec<GpuActive>,
-    active: &mut VecDeque<GpuActive>,
+/// Resume bounded output before building new GPU waves. Parked rows own
+/// no submitted command, queue slot or physical workspace guard.
+fn eligible_member(
+    mut row: GpuActive,
+    parked: &mut VecDeque<GpuActive>,
     stats: &WaveStats,
-) {
-    let Some(first) = members.first() else {
-        return;
-    };
-    let model = Arc::clone(&first.resident);
-    if members.iter().any(|m| !Arc::ptr_eq(&m.resident, &model)) {
-        for row in members {
-            stats.failed.fetch_add(1, Ordering::Relaxed);
-            let _ = row.errors.try_send(ResponseEvent::Error(ServiceError::new(
-                500,
-                "foreign_gpu_model",
-                "batch wave mixed resident model allocations",
-            )));
-        }
-        return;
+) -> Option<GpuActive> {
+    if row.cancelled.load(Ordering::Acquire) {
+        stats.cancelled.fetch_add(1, Ordering::Relaxed);
+        return None;
     }
-    // Count every entered wave member as an attempted execution.
-    // Publication may be canceled after these GPU forwards complete.
-    stats
-        .attempted
-        .fetch_add(members.len() as u64, Ordering::Relaxed);
-    let inputs = members
-        .iter()
-        .map(|m| (&m.session, m.prompt[m.cursor]))
-        .collect::<Vec<_>>();
-    let prepared = block_on(model.prepare_greedy_cohort(&inputs));
-    let mut members = members;
-    let cohort = match prepared {
-        Ok(v) => v,
-        Err(e) => {
-            let error = ServiceError::inference(e);
-            for row in members {
-                stats.failed.fetch_add(1, Ordering::Relaxed);
-                let _ = row.errors.try_send(ResponseEvent::Error(error.clone()));
-            }
-            return;
-        }
-    };
-    // A successfully returned cohort has REAL device Ready receipts for
-    // every row. They count as physical GPU work even when a client
-    // subsequently cancels and the logical StateRoots are discarded.
-    stats
-        .completed
-        .fetch_add(members.len() as u64, Ordering::Relaxed);
-    stats
-        .gpu_forwards
-        .fetch_add(members.len() as u64, Ordering::Relaxed);
-    if members.iter().any(|m| m.cancelled.load(Ordering::Acquire)) {
-        // All physical results were private. Discard them BEFORE touching
-        // any committed root; survivors resume the accepted B1 GPU path.
-        drop(cohort);
-        for row in members {
-            advance_member(row, active, stats);
-        }
-        return;
+    if row.cursor < row.prompt.len() {
+        return Some(row);
     }
-    let mut originals = members
-        .iter_mut()
-        .map(|m| &mut m.session)
-        .collect::<Vec<_>>();
-    let published = cohort.commit(&mut originals);
-    drop(originals);
-    match published {
-        Ok(receipts) => {
-            let count = members.len() as u64;
-            // Physical completion already counted after prepare;
-            // this counter means the logical cohort was COMMITTED.
-            stats.cohort_publications.fetch_add(1, Ordering::Relaxed);
-            stats.cohort_rows.fetch_add(count, Ordering::Relaxed);
-            for (mut row, receipt) in members.into_iter().zip(receipts) {
-                row.cursor += 1;
-                row.device_token = receipt.device_token;
-                if row.device_token.is_none() {
-                    stats.failed.fetch_add(1, Ordering::Relaxed);
-                    let _ = row.errors.try_send(ResponseEvent::Error(ServiceError::new(
-                        500,
-                        "missing_device_token",
-                        "completed original GPU cohort has no token feedback",
-                    )));
-                } else {
-                    active.push_back(row);
-                }
-            }
+    match row.present_decode(stats) {
+        Ok(Presentation::Ready) => Some(row),
+        Ok(Presentation::Blocked) => {
+            parked.push_back(row);
+            None
         }
-        Err(e) => {
-            let error = ServiceError::inference(e);
-            for row in members {
-                stats.failed.fetch_add(1, Ordering::Relaxed);
-                let _ = row.errors.try_send(ResponseEvent::Error(error.clone()));
-            }
+        Ok(Presentation::Finished) => {
+            stats.attempted.fetch_add(1, Ordering::Relaxed);
+            stats.completed.fetch_add(1, Ordering::Relaxed);
+            None
+        }
+        Err(error) => {
+            stats.attempted.fetch_add(1, Ordering::Relaxed);
+            stats.fail(&row, error);
+            None
         }
     }
 }
@@ -597,6 +658,7 @@ fn worker(
     models: Arc<BTreeMap<String, Arc<GpuModel>>>,
     active_limit: usize,
     stats: Arc<WaveStats>,
+    native_b2: bool,
 ) {
     let mut active = VecDeque::<GpuActive>::new();
     loop {
@@ -631,33 +693,45 @@ fn worker(
         if active.is_empty() {
             continue;
         }
-        // Form source/phase/frontier compatible scheduling waves. Existing
-        // ResidentModel still submits ONE physically completed graph per
-        // member: batches here are NOT fused GPU kernels.
-        let ready = active.iter().map(GpuActive::ready).collect::<Vec<_>>();
+        let mut eligible = VecDeque::new();
+        let mut parked = VecDeque::new();
+        for row in active.drain(..) {
+            if let Some(row) = eligible_member(row, &mut parked, &stats) {
+                eligible.push_back(row);
+            }
+        }
+        active = parked;
+        stats.parked.store(active.len(), Ordering::Relaxed);
+        if eligible.is_empty() {
+            // No locks/queue slot while waiting for bounded transport credit.
+            if !active.is_empty() {
+                thread::sleep(Duration::from_millis(2));
+            }
+            continue;
+        }
+        let ready = eligible.iter().map(GpuActive::ready).collect::<Vec<_>>();
         let waves = match gpu_batch::form(
             &ready,
             Limits {
-                max_members: active_limit,
+                max_members: if native_b2 { 2 } else { active_limit },
                 max_tokens: 64,
                 max_scratch: 256 * 1024 * 1024,
             },
         ) {
             Ok(groups) => groups,
             Err(error) => {
-                for failed in active.drain(..) {
+                for failed in eligible.drain(..) {
                     stats.failed.fetch_add(1, Ordering::Relaxed);
                     let _ = failed.errors.try_send(ResponseEvent::Error(error.clone()));
                 }
                 continue;
             }
         };
-        let mut pending = active.drain(..).map(Some).collect::<Vec<_>>();
+        let mut pending = eligible.drain(..).map(Some).collect::<Vec<_>>();
         for wave in waves {
             // Validate source/epoch/unique committed session roots BEFORE
             // issuing even the first physical GPU member. P12 source
-            // batch admission is shared with the future batch-native
-            // ResidentProgram; this serving path remains serialized.
+            // batch admission is shared by native B2 and original B1 paths.
             let admitted = wave
                 .indices
                 .iter()
@@ -701,9 +775,8 @@ fn worker(
                     .co_scheduled
                     .fetch_add(wave.indices.len() as u64, Ordering::Relaxed);
             }
-            // An exact one-token prompt tail can reuse the existing
-            // physical Ready cohort with ONE source-bound logical
-            // publication. Other phases remain single-row GPU execution.
+            // Exact prompt tails share the existing checked root publisher.
+            // Native mode uses B2 kernels; interleaved mode keeps B1 graphs.
             let batch_ready = wave.indices.len() > 1
                 && wave.indices.iter().all(|&i| {
                     pending[i].as_ref().is_some_and(|row| {
@@ -718,7 +791,23 @@ fn worker(
                     .iter()
                     .map(|&i| pending[i].take().expect("unique admitted wave row"))
                     .collect::<Vec<_>>();
-                finish_prompt_cohort(members, &mut active, &stats);
+                finish_prompt_cohort(members, &mut active, &stats, native_b2);
+                continue;
+            }
+            if native_b2
+                && wave.indices.len() == 2
+                && wave.indices.iter().all(|&i| {
+                    pending[i]
+                        .as_ref()
+                        .is_some_and(|row| row.cursor == row.prompt.len())
+                })
+            {
+                let members = wave
+                    .indices
+                    .iter()
+                    .map(|&i| pending[i].take().expect("unique admitted decode row"))
+                    .collect();
+                advance_decode_cohort(members, &mut active, &stats);
                 continue;
             }
             for index in wave.indices {
@@ -728,6 +817,13 @@ fn worker(
                 advance_member(next, &mut active, &stats);
             }
         }
+        stats.parked.store(
+            active
+                .iter()
+                .filter(|row| row.blocked_since.is_some())
+                .count(),
+            Ordering::Relaxed,
+        );
     }
 }
 

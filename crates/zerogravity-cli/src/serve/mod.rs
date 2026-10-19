@@ -52,10 +52,22 @@ impl Router {
                 let m = v.metrics();
                 serde_json::json!({"kind":"resident_gpu",
                     "physical_accounting":"ResidentService/ResourceArbiter",
-                    "batch_mode":"interleaved",
+                    "batch_mode":if m.native_b2 {"fused"} else {"interleaved"},
+                    "native_batch_rows_max":if m.native_b2 {2} else {1},
                     "gpu_step_attempts":m.attempted,
                     "completed_gpu_quanta":m.completed,
+                    "completed_quantum_unit":"request work, including terminal presentation",
                     "gpu_forward_steps_completed":m.gpu_forwards,
+                    "gpu_forward_calls_completed":m.gpu_forwards,
+                    "completed_model_token_steps":m.model_tokens,
+                    "completed_forward_kernel_dispatches":m.kernel_dispatches,
+                    "committed_gpu_roots":m.committed_roots,
+                    "native_projection_dispatches_completed":m.native_projections,
+                    "native_sampler_dispatches_completed":m.native_sampler,
+                    "gpu_fused_rows_completed":m.fused_rows,
+                    "discarded_ready_cohorts":m.discarded_cohorts,
+                    "accepted_output_tokens":m.output_tokens,
+                    "output_credit_parked_requests":m.parked,
                     "failed_gpu_quanta":m.failed,
                     "cancelled_requests":m.cancelled,
                     "queued_requests":m.queued,
@@ -64,7 +76,7 @@ impl Router {
                     "co_scheduled_members":m.co_scheduled,
                     "state_cohort_publications":m.cohort_publications,
                     "state_cohort_rows":m.cohort_rows,
-                    "gpu_fused_batches":0})
+                    "gpu_fused_batches":m.fused_batches})
             }
         }
     }
@@ -228,6 +240,18 @@ fn parse_usize(value: &str, flag: &str) -> Result<usize, ServiceError> {
         )
     })
 }
+fn validate_batch_mode(mode: &str, backend: &str, active: usize) -> Result<(), ServiceError> {
+    match mode {
+        "interleaved" => Ok(()),
+        "fused" if backend == "cuda" && active >= 2 => Ok(()),
+        _ => Err(ServiceError::new(
+            400,
+            "unsupported_batch_mode",
+            "use interleaved, or fused with CUDA and at least two active slots",
+        )),
+    }
+}
+
 pub fn run(args: &[String]) -> Result<(), ServiceError> {
     if args.len() == 1 && args[0] == "--help" {
         println!(
@@ -237,12 +261,13 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
              [--workers 2] [--active-per-worker 2] \
              [--max-context 1024] [--max-output 128] \
              [--host-mib 4096] [--provider-mib 2048] [--device-mib 4096] \
-             [--batch-mode interleaved]\n\
+             [--batch-mode interleaved|fused]\n\
              ENDPOINTS: GET /health, GET /v1/models, \
              POST /v1/chat/completions, POST /v1/completions.\n\
              Qwen3.5 greedy text CPU or resident GPU, no inference fallback. \
-             GPU: workers=1, context=512; source-compatible requests \
-             share scheduling waves but NOT fused device kernels. \
+             GPU: workers=1, context=512. Default interleaved; fused enables \
+             CUDA B2 matching-source/frontier prompt tails and decode \
+             with active>=2. Unmatched rows and other prefill use B1. \
              CUDA needs CUDA_PATH with runtime+CCCL headers. \
              Loopback only; optional ZEROGRAVITY_API_KEY."
         );
@@ -266,15 +291,11 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
             "HTTP service is loopback-only; expose through a TLS/auth reverse proxy",
         ));
     }
-    // No silent provider fallback; reject explicitly requested fusion
-    // until ONE actual grouped GPU graph has passed numerical/physical gates.
-    if options.batch_mode != "interleaved" {
-        return Err(ServiceError::new(
-            400,
-            "unsupported_batch_mode",
-            "cross-request fused GPU kernels are not yet qualified; use interleaved",
-        ));
-    }
+    validate_batch_mode(
+        &options.batch_mode,
+        &options.backend,
+        options.active_per_worker,
+    )?;
     let declared = options.models.into_iter().map(|m| (m.id, m.path)).collect();
     let backend = options.backend.as_str();
     let router = match backend {
@@ -312,6 +333,7 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
                         output: options.max_output,
                         provider_mib: options.provider_mib,
                         device_mib: options.device_mib,
+                        native_b2: options.batch_mode == "fused",
                     },
                 )?)
             }
@@ -346,6 +368,41 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn native_serving_mode_is_cuda_b2_only_before_model_or_device_lookup() {
+        for backend in ["cpu", "cuda", "vulkan-nvidia", "vulkan-amd", "rocm"] {
+            assert!(validate_batch_mode("interleaved", backend, 1).is_ok());
+            if backend != "cuda" {
+                let err = run(&[
+                    "--backend".into(),
+                    backend.into(),
+                    "--batch-mode".into(),
+                    "fused".into(),
+                    "--model".into(),
+                    "unqualified=missing.gguf".into(),
+                ])
+                .unwrap_err();
+                assert_eq!(err.code, "unsupported_batch_mode");
+            }
+        }
+        assert!(validate_batch_mode("fused", "cuda", 2).is_ok());
+        assert!(validate_batch_mode("fused", "cuda", 8).is_ok());
+        for mode in ["fused", "fused-b4", "unknown"] {
+            let err = run(&[
+                "--backend".into(),
+                "cuda".into(),
+                "--batch-mode".into(),
+                mode.into(),
+                "--active-per-worker".into(),
+                "1".into(),
+                "--model".into(),
+                "unqualified=missing.gguf".into(),
+            ])
+            .unwrap_err();
+            assert_eq!(err.code, "unsupported_batch_mode");
+        }
+    }
+
     #[test]
     fn serve_cli_is_bounded_and_configured_only_explicitly() {
         let cfg = YamlConfig::cli(&[
