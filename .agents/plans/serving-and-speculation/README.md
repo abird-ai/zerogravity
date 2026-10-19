@@ -113,6 +113,8 @@ Local Renoir/gfx90c AMD launch hold remains intact.
   adapters despite `vulkaninfo` seeing NVIDIA. No Vulkan physical
   acceptance, AMD launch or GPU reset performed.
 
+Detailed implementation/acceptance contract: [FUSED_GPU_BATCHING.md](FUSED_GPU_BATCHING.md).
+
 ## Pending: P12/P16/P22 vLLM-equivalent fused GPU execution
 
 1. One source-bound batch-native `ForwardPlan` and
@@ -132,3 +134,13 @@ Local Renoir/gfx90c AMD launch hold remains intact.
 
 Current GPU HTTP servicing is physically real and concurrent;
 source-compatible waves are scheduler co-location ONLY.
+
+
+## P12 first native fused CUDA operator
+
+A source-qualified F32 B2/4/8 multi-row projection now runs as ONE
+CUDA dispatch per batch, with all outputs bit-exact against accepted
+B1 GPU dot kernels (19 Oct 2026, RTX 3060). See the
+[P12 fused batching design](FUSED_GPU_BATCHING.md). This is only
+projection-level fusion; HTTP serving does not yet execute a
+multi-request full-model GPU graph.

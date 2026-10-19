@@ -11,6 +11,8 @@ mod attention_qk;
 mod attention_softmax;
 mod attention_value;
 mod backend;
+#[cfg(any(feature = "qualification", test))]
+mod batch_projection;
 mod device_activation;
 mod elementwise;
 mod embedding;
