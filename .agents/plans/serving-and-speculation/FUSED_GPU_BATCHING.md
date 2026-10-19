@@ -8,7 +8,7 @@ Owner: @pvl
 OpenAI HTTP sessions, verified GPU completions, cancellation, and
 source-compatible scheduling waves. Each member still performs its
 OWN full-model GPU program. **HTTP fused full-model batches: zero.**
-The separate native ForwardPlan diagnostic is tracked under P12-B3.
+The separate native ForwardPlan diagnostic is tracked under P12-B3/B4.
 
 ## Ownership boundaries
 
@@ -263,11 +263,125 @@ and caps with `--release`, replacing the subcommand/row argument by
 in its OWN process because unknown completion intentionally retains
 that process's physical quarantine until exit.
 
-Same-frontier, full-logit diagnostic only. Additional trained
+P12-B3 accepted a same-frontier, full-logit diagnostic. Additional trained
 quantization profiles, unequal prefixes, native per-row greedy/EOS
 feedback, paged hybrid KV, continuous HTTP integration and the
-matched vLLM performance gate remain open. `batch_mode=fused`
+matched vLLM performance gate were still open at that checkpoint;
+P12-B4 below supersedes the engine greedy/feedback gap. `batch_mode=fused`
 continues to refuse; HTTP `gpu_fused_batches=0` remains accurate.
+
+## P12-B4 — native greedy packets and device feedback
+
+Implementation: `54fd580`, 19 Oct 2026. RTX3060 Laptop CUDA;
+approved original0.8B/2B mixed GGUF profiles only.
+
+`prepare_greedy_fused_cohort` executes the same complete batch plan,
+then performs native per-row reduction over the original vocabulary.
+The original finite-bit ordering, lowest-ID tie rule and sticky graph
+status govern selection. For V248320, four native sampler stages
+cover every row; B original three-word copies transport the results
+into independent 12-byte packet leases. Status plus packets require
+4+12B readback bytes; full logits remain device-resident.
+
+Each private packet joins its row's candidate-state Ready outputs.
+Only the existing checked all-row commit stamps its producing
+RootBinding. `prepare_device_tokens_fused_cohort` requires that exact
+source/session/epoch/root/frontier and initialized original physical
+lease, then gathers packet first words in one GPU dispatch. Public
+host ID/max fields do not select embedding rows. Previous-root,
+foreign-row and restored-epoch packets must refuse before launch.
+The original flight pins input packets read-only and output packets
+for writing; unknown completion retains them with state and source
+handles behind the existing quarantine and charged physical envelope.
+
+Both approved original trained mixed-GGUF models passed RTX3060 CUDA
+B2/B4/B8 over six source steps: two host seed steps and four original
+GPU-packet feedback steps, following distinct two-token histories.
+Independent CPU and B1 GPU compare all248320 logits and all42 state
+domains. A separate native full-logit shadow verifies the complete
+vocabulary; compact greedy calls compare exact selected ID/max bits
+and all42 domains without transferring their complete logits.
+These counts cover the six committed greedy steps only:
+
+| Original source | B | D2H bytes/cohort | Total D2H bytes | Total physical launches |
+| --- | ---: | ---: | ---: | ---: |
+| Qwen3.5 0.8B | 2 | 28 | 168 | 34362 |
+| Qwen3.5 0.8B | 4 | 52 | 312 | 36030 |
+| Qwen3.5 0.8B | 8 | 100 | 600 | 39300 |
+| Qwen3.5 2B | 2 | 28 | 168 | 32382 |
+| Qwen3.5 2B | 4 | 52 | 312 | 34050 |
+| Qwen3.5 2B | 8 | 100 | 600 | 37320 |
+
+Each six-step run issued1122 actual native projection launches and24
+native sampler stages for the entire cohort. Per-row packet copies are
+included in total physical launches, separately from native stages.
+No warm model/value uploads; private packets, states and events
+reclaim, and the final physical reservation returns to0.
+
+Refusal probes cover swapped/duplicate packets, identical-ID packets
+from a foreign row, same-epoch old roots with fresh sibling packets,
+restored epochs, invalid host IDs, reordered commits and abandoned
+completed proposals. Changing public host ID/max metadata does not
+change device feedback. B1's actual greedy packet independently
+matches CPU/B1 full-logit selection and complete state at every step.
+
+Separate full-vocabulary native selector fixtures cover lowest-ID
+ties across tile boundaries, signed zero, subnormals, dense finite
+bits and a genuine tokenizer EOS ID as a private synthetic winner.
+One-row NaN and preexisting graph error status invalidate every row;
+aliased packet allocations refuse before launch. Invalid fixture
+records never become ResidentTokens or published roots. A trained
+model EOS input is source-exact; trained EOS generation/HTTP stop
+handling is not established by the synthetic winner fixture.
+
+Both release B2 feedback-abandonment probes dropped after actual
+model AND sampler launches. All1827 original0.8B handles and1722
+original2B handles, including incoming/outgoing packets, remained
+quarantined. Incoming packet bits, all42 independently computed CPU
+prior domains and canonical future KV zero tails stayed exact.
+The raw verifier matches unique StateSlots across CPU layer order
+and physical slot order; it rejects missing/duplicate domains and
+reads every original state lease's full byte range. Roots stayed unchanged;
+old completed Ready, further work and new same-card service admission refused.
+The original4294967296-byte envelope stayed charged/fenced after user
+owners dropped. Diagnostic sync/readback did not establish recovery.
+
+The full-logit B2 boundary regression passed again for both models:
+CPU-hydrated prefix0/255/511, native valid1/256/257/512, all248320
+logits/all42 domains exact against CPU and B1, positive-zero KV
+tails, exhausted512 refusal and final reservation0. This qualifies
+native decode from imported prefixes, not full-prefix GPU prefill.
+
+Verified gates: GPU library53 passed/0 failed/3 ignored; strict
+default GPU, CUDA qualification and CUDA/Vulkan serve+cache Clippy
+`-D warnings`; final isolated `scripts/check.sh` exit0 with1147 Rust
+passed/0 failed/69 ignored over241 suite runs,18 Python fixtures,
+release CLI/installer and Nix formatting. Both approved original
+0.8B/2B cache-direct and HF-import release routes passed complete
+logits/all42 domains/source leases/mutation checks. Benchmark and
+comparator self-tests passed. No vLLM executable/module is available
+in the checked environment; no matched serving benchmark or
+performance acceptance is claimed.
+
+Acceptance commands use the existing installed CUDA/CCCL/NVRTC
+environment and the same original model paths/caps as P12-B3:
+
+~~~bash
+CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=4 python3 scripts/native-gpu.py -- \
+  cargo run --release --locked --offline -p zerogravity-gpu-qualify \
+  --features qualification,cuda,hardware-abort-probe,portable-checkpoint -- \
+  resident-fused-greedy-cuda target/models/qwen35-0.8b/model.gguf 4096 5120 2
+~~~
+
+Use B2/B4/B8 for both approved original models. The separate-process
+`resident-fused-greedy-abort-cuda PATH 4096 5120` probe uses B2 and
+intentionally retains unknown-completion quarantine until exit.
+
+Greedy is an engine selection operation. Request EOS/stop policy,
+row retirement/refill, unequal frontiers, paged hybrid state and
+continuous HTTP integration retain their separate acceptance gates.
+Do not enable `batch_mode=fused` or infer serving throughput from
+these sampler/dispatch counts.
 
 ## P12-A — batch-native parameter, source and state bindings
 

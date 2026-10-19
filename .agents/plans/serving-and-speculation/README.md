@@ -10,6 +10,10 @@ weights and preserving each request's state authority. Qwen3.5
 0.8B/2B B2/B4/B8 physically matched all248320 logits/all42 domains
 against independent CPU and B1. Exact acceptance scope and remaining
 work: [TODO.md](TODO.md), [FUSED_GPU_BATCHING.md](FUSED_GPU_BATCHING.md).
+Native greedy selection now produces independent root-bound packets
+with 4+12B readback bytes per cohort. The next batch consumes their
+original GPU words. HTTP EOS/row retirement and continuous integration
+retain their own acceptance gates.
 HTTP still uses the accepted interleaved path; fused continuous
 serving and matched vLLM performance remain open. Earlier operator
 and serialized-cohort evidence below records their original scopes.
@@ -127,11 +131,14 @@ Detailed implementation/acceptance contract: [FUSED_GPU_BATCHING.md](FUSED_GPU_B
 
 ## Pending: P12/P16/P22 vLLM-equivalent fused GPU execution
 
-1. Extend native CUDA qualification to further profiles/backends
-   and GPU prefill; integrate per-row greedy token feedback.
+1. Extend native CUDA model/greedy qualification to further
+   profiles/backends and full-prefix GPU prefill.
    Preserve each lane's source/session/epoch/frontier/root.
 2. Connect native full-model execution to finite fair serving;
    source-compatible HTTP waves still run separate B1 graphs.
+   Retire stopped/canceled rows and park backpressured rows before
+   feedback; prove B1↔native packet handoff and no duplicate
+   committed token/SSE emission attempts.
 3. Device-resident paged hybrid KV + GDN/COW state with
    actual buffer leases, safe cancellation/quarantine.
 4. Finite fair chunked prefill/decode and physical GPU/host/SSD
