@@ -1,0 +1,17 @@
+# Real resident CUDA serving, one independent GPU StateRoot per request.
+# GPU work is co-scheduled, but cross-request kernels are NOT fused yet.
+# Configure CUDA_PATH to an installed toolkit include root before starting.
+listen: "127.0.0.1:8000"
+backend: cuda
+batch_mode: interleaved
+workers: 1
+active_per_worker: 2
+max_context: 512
+max_output: 32
+provider_mib: 2048
+device_mib: 4096
+models:
+  - id: qwen3.5-0.8b
+    path: ../../target/models/qwen35-0.8b/model.gguf
+  - id: qwen-small
+    path: ../../target/models/qwen35-0.8b/model.gguf

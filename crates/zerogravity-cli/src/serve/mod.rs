@@ -2,9 +2,72 @@
 //! Uses original Qwen CPU source and private independent model sessions.
 
 mod engine;
+#[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
+mod gpu_batch;
+#[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
+mod gpu_engine;
 mod http;
 
-use engine::{Router, ServiceError};
+#[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
+use crate::GpuBackend;
+use engine::{Request, RequestEvents, ServiceError};
+
+enum Router {
+    Cpu(engine::Router),
+    #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
+    Gpu(gpu_engine::GpuRouter),
+}
+impl Router {
+    fn request(&self, request: Request) -> Result<RequestEvents, ServiceError> {
+        match self {
+            Self::Cpu(v) => v.request(request),
+            #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
+            Self::Gpu(v) => v.request(request),
+        }
+    }
+    fn max_output(&self) -> usize {
+        match self {
+            Self::Cpu(v) => v.max_output,
+            #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
+            Self::Gpu(v) => v.max_output,
+        }
+    }
+    fn model_ids(&self) -> Box<dyn Iterator<Item = &str> + '_> {
+        match self {
+            Self::Cpu(v) => Box::new(v.model_ids()),
+            #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
+            Self::Gpu(v) => Box::new(v.model_ids()),
+        }
+    }
+    fn admission(&self) -> serde_json::Value {
+        match self {
+            Self::Cpu(v) => {
+                let (limit, reserved, remaining) = v.memory_snapshot().unwrap_or((0, 0, 0));
+                serde_json::json!({"kind":"configured_host_cpu",
+                    "host_limit_bytes":limit,"reserved_bytes":reserved,
+                    "remaining_bytes":remaining})
+            }
+            #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
+            Self::Gpu(v) => {
+                let m = v.metrics();
+                serde_json::json!({"kind":"resident_gpu",
+                    "physical_accounting":"ResidentService/ResourceArbiter",
+                    "batch_mode":"interleaved",
+                    "gpu_step_attempts":m.attempted,
+                    "completed_gpu_quanta":m.completed,
+                    "gpu_forward_steps_completed":m.gpu_forwards,
+                    "failed_gpu_quanta":m.failed,
+                    "cancelled_requests":m.cancelled,
+                    "queued_requests":m.queued,
+                    "active_sessions":m.active,
+                    "scheduling_groups":m.groups,
+                    "co_scheduled_members":m.co_scheduled,
+                    "gpu_fused_batches":0})
+            }
+        }
+    }
+}
+
 use serde::Deserialize;
 use std::net::{SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
@@ -26,6 +89,14 @@ struct YamlConfig {
     max_output: usize,
     #[serde(default = "default_host")]
     host_mib: usize,
+    #[serde(default = "default_backend")]
+    backend: String,
+    #[serde(default = "default_provider_mib")]
+    provider_mib: usize,
+    #[serde(default = "default_device_mib")]
+    device_mib: usize,
+    #[serde(default = "default_batch_mode")]
+    batch_mode: String,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -51,6 +122,18 @@ fn default_output() -> usize {
 fn default_host() -> usize {
     4096
 }
+fn default_backend() -> String {
+    "cpu".into()
+}
+fn default_provider_mib() -> usize {
+    2048
+}
+fn default_device_mib() -> usize {
+    4096
+}
+fn default_batch_mode() -> String {
+    "interleaved".into()
+}
 
 impl YamlConfig {
     fn cli(args: &[String]) -> Result<Self, ServiceError> {
@@ -62,6 +145,10 @@ impl YamlConfig {
             max_context: default_context(),
             max_output: default_output(),
             host_mib: default_host(),
+            backend: default_backend(),
+            provider_mib: default_provider_mib(),
+            device_mib: default_device_mib(),
+            batch_mode: default_batch_mode(),
         };
         if args.first().is_some_and(|x| x == "--config") {
             if args.len() != 2 {
@@ -114,6 +201,10 @@ impl YamlConfig {
                 "--max-context" => config.max_context = parse_usize(value, flag)?,
                 "--max-output" => config.max_output = parse_usize(value, flag)?,
                 "--host-mib" => config.host_mib = parse_usize(value, flag)?,
+                "--backend" => config.backend = value.clone(),
+                "--provider-mib" => config.provider_mib = parse_usize(value, flag)?,
+                "--device-mib" => config.device_mib = parse_usize(value, flag)?,
+                "--batch-mode" => config.batch_mode = value.clone(),
                 _ => {
                     return Err(ServiceError::new(
                         400,
@@ -138,7 +229,20 @@ fn parse_usize(value: &str, flag: &str) -> Result<usize, ServiceError> {
 pub fn run(args: &[String]) -> Result<(), ServiceError> {
     if args.len() == 1 && args[0] == "--help" {
         println!(
-            "USAGE: zerogravity serve [--config config.yaml] or [--model ID=MODEL.gguf ...] [--listen 127.0.0.1:8000] [--workers 2] [--active-per-worker 2] [--max-context 1024] [--max-output 128] [--host-mib 4096]\nEndpoints: GET /health, GET /v1/models, POST /v1/chat/completions, POST /v1/completions. Greedy Qwen3.5 CPU only. Loopback only; optional ZEROGRAVITY_API_KEY."
+            "USAGE: zerogravity serve --config config.yaml | \
+             --model ID=MODEL.gguf [--listen 127.0.0.1:8000] \
+             [--backend cpu|cuda|vulkan-nvidia|vulkan-amd|rocm] \
+             [--workers 2] [--active-per-worker 2] \
+             [--max-context 1024] [--max-output 128] \
+             [--host-mib 4096] [--provider-mib 2048] [--device-mib 4096] \
+             [--batch-mode interleaved]\n\
+             ENDPOINTS: GET /health, GET /v1/models, \
+             POST /v1/chat/completions, POST /v1/completions.\n\
+             Qwen3.5 greedy text CPU or resident GPU, no inference fallback. \
+             GPU: workers=1, context=512; source-compatible requests \
+             share scheduling waves but NOT fused device kernels. \
+             CUDA needs CUDA_PATH with runtime+CCCL headers. \
+             Loopback only; optional ZEROGRAVITY_API_KEY."
         );
         return Ok(());
     }
@@ -160,21 +264,78 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
             "HTTP service is loopback-only; expose through a TLS/auth reverse proxy",
         ));
     }
-    // Source preparation before listener advertises readiness; no
-    // implicit model downloads, CPU/GPU fallback or registry aliases.
-    let router = Arc::new(Router::new(
-        options.models.into_iter().map(|m| (m.id, m.path)).collect(),
-        options.workers,
-        options.active_per_worker,
-        options.max_context,
-        options.max_output,
-        options.host_mib,
-    )?);
+    // No silent provider fallback; reject explicitly requested fusion
+    // until ONE actual grouped GPU graph has passed numerical/physical gates.
+    if options.batch_mode != "interleaved" {
+        return Err(ServiceError::new(
+            400,
+            "unsupported_batch_mode",
+            "cross-request fused GPU kernels are not yet qualified; use interleaved",
+        ));
+    }
+    let declared = options.models.into_iter().map(|m| (m.id, m.path)).collect();
+    let backend = options.backend.as_str();
+    let router = match backend {
+        "cpu" => Router::Cpu(engine::Router::new(
+            declared,
+            options.workers,
+            options.active_per_worker,
+            options.max_context,
+            options.max_output,
+            options.host_mib,
+        )?),
+        "vulkan-nvidia" | "vulkan-amd" | "cuda" | "rocm" => {
+            #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
+            {
+                let selected = match backend {
+                    "vulkan-nvidia" => GpuBackend::VulkanNvidia,
+                    "vulkan-amd" => GpuBackend::VulkanAmd,
+                    "cuda" => GpuBackend::Cuda,
+                    _ => GpuBackend::Hip,
+                };
+                if !selected.compiled() {
+                    return Err(ServiceError::new(
+                        400,
+                        "backend_not_compiled",
+                        "selected GPU backend was not compiled into this binary",
+                    ));
+                }
+                Router::Gpu(gpu_engine::GpuRouter::new(
+                    declared,
+                    selected,
+                    gpu_engine::GpuProfile {
+                        workers: options.workers,
+                        active: options.active_per_worker,
+                        context: options.max_context,
+                        output: options.max_output,
+                        provider_mib: options.provider_mib,
+                        device_mib: options.device_mib,
+                    },
+                )?)
+            }
+            #[cfg(not(any(feature = "vulkan", feature = "cuda", feature = "hip")))]
+            {
+                return Err(ServiceError::new(
+                    400,
+                    "backend_not_compiled",
+                    "compile with --features serve,vulkan or serve,cuda or serve,hip",
+                ));
+            }
+        }
+        _ => {
+            return Err(ServiceError::new(
+                400,
+                "invalid_backend",
+                "backend must be cpu, vulkan-nvidia, vulkan-amd, cuda or rocm",
+            ));
+        }
+    };
+    let router = Arc::new(router);
     let listener = TcpListener::bind(address)
         .map_err(|e| ServiceError::new(500, "bind_failed", e.to_string()))?;
     eprintln!(
-        "zerogravity: serving native CPU Qwen on {address}, {} decode workers; max-context {}, max-output {}",
-        options.workers, options.max_context, options.max_output
+        "zerogravity: serving {:?} Qwen on {address}, {} worker(s); max-context {}, max-output {}",
+        backend, options.workers, options.max_context, options.max_output
     );
     http::serve(listener, router, key)
         .map_err(|e| ServiceError::new(500, "http_error", e.to_string()))
@@ -194,6 +355,7 @@ mod tests {
         .unwrap();
         assert_eq!(cfg.models.len(), 1);
         assert_eq!(cfg.workers, 3);
+        assert_eq!(cfg.backend, "cpu");
         assert!(YamlConfig::cli(&["--model".into(), "missing".into()]).is_err());
         assert!(YamlConfig::cli(&["--workers".into(), "no".into()]).is_err());
         assert!(
@@ -212,6 +374,14 @@ mod tests {
         assert_eq!(parsed.models[0].path, parsed.models[1].path);
         assert_eq!((parsed.workers, parsed.active_per_worker), (2, 2));
         assert_eq!(parsed.host_mib, 4096);
+        let gpu_config = include_str!("../../../../examples/serving/qwen-cuda.yaml");
+        let gpu: YamlConfig = serde_yaml::from_str(gpu_config).unwrap();
+        assert_eq!(gpu.backend, "cuda");
+        assert_eq!(gpu.batch_mode, "interleaved");
+        assert_eq!(gpu.max_context, 512);
+        assert_eq!((gpu.workers, gpu.active_per_worker), (1, 2));
+        assert_eq!((gpu.provider_mib, gpu.device_mib), (2048, 4096));
+        assert_eq!(gpu.models.len(), 2);
         assert!(
             serde_yaml::from_str::<YamlConfig>(
                 "listen: 127.0.0.1:8080\\nmodels: []\\nunknown_provider: yes"
@@ -226,5 +396,13 @@ mod tests {
         ])
         .unwrap_err();
         assert_eq!(err.code, "remote_bind_unsupported");
+        let unsupported = run(&["--batch-mode".into(), "fused".into()]).unwrap_err();
+        assert_eq!(unsupported.code, "unsupported_batch_mode");
+        // Refuse uncompiled GPU backend before initializing a device.
+        #[cfg(not(any(feature = "vulkan", feature = "cuda", feature = "hip")))]
+        {
+            let missing = run(&["--backend".into(), "cuda".into()]).unwrap_err();
+            assert_eq!(missing.code, "backend_not_compiled");
+        }
     }
 }

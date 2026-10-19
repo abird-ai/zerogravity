@@ -116,8 +116,11 @@ printf 'Running offline installer integrity fixture...\n'
 
 if command -v shellcheck >/dev/null 2>&1; then
   echo "Linting shell entry points..."
-  shellcheck install.sh scripts/build-release-artifacts.sh scripts/check.sh scripts/test-install.sh
+  shellcheck install.sh scripts/build-release-artifacts.sh scripts/check.sh scripts/test-install.sh scripts/cuda-nix-include-view.sh
 fi
+
+echo "Checking local OpenAI SSE benchmark contract..."
+python3 tools/serve-bench.py --self-test
 
 if command -v alejandra >/dev/null 2>&1; then
   echo "Checking Nix formatting..."

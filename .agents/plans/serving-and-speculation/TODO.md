@@ -8,35 +8,29 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
-- [x] **First real OpenAI HTTP/CPU router milestone:** opt-in
-  `zerogravity serve` with original Qwen3.5 GGUF sources, alias reuse
-  (one resident immutable model/lease per canonical path), model list,
-  health/admission, text and chat greedy completions and SSE usage.
-  Bounded N CPU workers, independent source-specific StateRoots,
-  round-robin 32-token prefill / single decode quanta, finite
-  queue+active+connection admission, shared host ResourceArbiter
-  weight and per-session state envelopes. Loopback-only with
-  optional Bearer token; strict duplicate-key JSON and request
-  framing, unsupported sampling/roles/media refusal, cancellation,
-  SSE keepalives/deadlines and bounded backpressure. Real live 0.8B
-  multi-alias + two concurrent text requests, authenticated health,
-  host weight/state reservation release, unsupported parameter
-  refusal and streaming passed. Full frozen gate:
-  1,147 Rust passed/0 failed/69 ignored across 241 suites,
-  18 Python fixtures and release/installer/CPU comparator checks.
-  Both approved Qwen3.5 0.8B/2B original direct and HF-import
-  release parity tests passed exact full 248320 logits/all 42
-  StateRoot domains/two tokens/source lease and mutation.
-  Strict default and composed serve+SSD/cache Clippy pass.
-  The separate Nix offline source-integrity derivation is blocked:
-  pinned nixpkgs 7a0f122 is not cached and the connector cannot
-  fetch it with available SSL trust anchors; Nix formatting DID pass.
-  Not fused GPU continuous batching or full OpenAI/vLLM API parity.
-- [ ] **Next genuine multi-request GPU execution:** physically admitted
-  grouped prefill/decode over compatible source/position/shape and
-  actual GPU completion/quarantine, paged KV/prefix cache, source
-  generation+tenant/epoch admission, sampled decoding, and measured
-  committed-token p50/p95 latency/goodput versus pinned vLLM.
+- [x] **P09 GPU OpenAI serving / finite batch-wave scheduler:**
+  opt-in CUDA/Vulkan/HIP resident model with independent physical
+  StateRoots and device-side greedy feedback; no CPU inference
+  fallback. Shared HTTP/SSE/greedy output, cancellation and
+  original completion/quarantine. Bounded one-GPU worker,
+  active/queue limits, source/phase/frontier wave grouping.
+  0 fused GPU batches (no batch-native kernels yet).
+  Typed GPU profile, CUDA/CCCL fail-fast preflight and reusable
+  Nix split-SDK include view. Metrics separate GPU forward API calls (not kernel launches),
+  successful quanta, attempted quanta, active/queued/canceled/error.
+  Physical RTX3060 Qwen0.8B CUDA: 2 concurrent aliases under one
+  model source, six completed quanta/four GPU forward API calls/zero errors,
+  canceled active session retired safely and new session succeeded.
+  SSE benchmark: 2/2 requests, 4 tokens, 20.02s debug wall,
+  0.1998 token/s (NOT optimized/vLLM parity).
+- [ ] **P12 actual fused continuous GPU batching:** batch-shaped
+  resident value/parameter/state bindings and per-row source/epoch/
+  root identities, multi-row native GEMM/attention/GDN operations,
+  paged hybrid KV/recurrent cache, physically safe stage overlap,
+  backpressure and fair scheduling. Prove exact full logits and
+  StateRoot for B1/2/4/8 and measured comparable p95 TTFT/ITL/
+  SLO-goodput versus pinned vLLM V1 on same source/hardware.
+  No fusion claim from wave grouping or total launch count.
 
 - [ ] Connect accepted core `ContextOwner`/`ContextReader` snapshot
   capability to the real router's authenticated session/turn frontier:
@@ -89,6 +83,33 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 - [ ] Preserve zero untriaged frontier/disposition requirements before any full-parity claim; synthetic acceptance, fewer launches and competitor measurements do not establish local parity or speed.
 
 ## Committed
+
+### 35b9093 — initial OpenAI CPU router and verified SSD extents
+
+- [x] **First real OpenAI HTTP/CPU router milestone:** opt-in
+  `zerogravity serve` with original Qwen3.5 GGUF sources, alias reuse
+  (one resident immutable model/lease per canonical path), model list,
+  health/admission, text and chat greedy completions and SSE usage.
+  Bounded N CPU workers, independent source-specific StateRoots,
+  round-robin 32-token prefill / single decode quanta, finite
+  queue+active+connection admission, shared host ResourceArbiter
+  weight and per-session state envelopes. Loopback-only with
+  optional Bearer token; strict duplicate-key JSON and request
+  framing, unsupported sampling/roles/media refusal, cancellation,
+  SSE keepalives/deadlines and bounded backpressure. Real live 0.8B
+  multi-alias + two concurrent text requests, authenticated health,
+  host weight/state reservation release, unsupported parameter
+  refusal and streaming passed. Full frozen gate:
+  1,147 Rust passed/0 failed/69 ignored across 241 suites,
+  18 Python fixtures and release/installer/CPU comparator checks.
+  Both approved Qwen3.5 0.8B/2B original direct and HF-import
+  release parity tests passed exact full 248320 logits/all 42
+  StateRoot domains/two tokens/source lease and mutation.
+  Strict default and composed serve+SSD/cache Clippy pass.
+  The separate Nix offline source-integrity derivation is blocked:
+  pinned nixpkgs 7a0f122 is not cached and the connector cannot
+  fetch it with available SSL trust anchors; Nix formatting DID pass.
+  Not fused GPU continuous batching or full OpenAI/vLLM API parity.
 
 ### 6d74f76
 

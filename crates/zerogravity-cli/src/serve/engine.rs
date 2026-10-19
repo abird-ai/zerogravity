@@ -16,10 +16,10 @@ use zerogravity::resource_arbiter::{
 };
 use zerogravity::tokenize::QwenTokenizer;
 
-const QUEUED_PER_WORKER: usize = 16;
-const EVENTS_PER_REQUEST: usize = 16;
+pub(super) const QUEUED_PER_WORKER: usize = 16;
+pub(super) const EVENTS_PER_REQUEST: usize = 16;
 const PREFILL_CHUNK: usize = 32;
-const MAX_ACTIVE_PER_WORKER: usize = 8;
+pub(super) const MAX_ACTIVE_PER_WORKER: usize = 8;
 
 #[derive(Clone)]
 struct HostPool {
@@ -116,7 +116,7 @@ impl ServiceError {
             message: message.into(),
         }
     }
-    fn inference(error: zerogravity::Error) -> Self {
+    pub(super) fn inference(error: zerogravity::Error) -> Self {
         Self::new(500, "inference_error", error.to_string())
     }
 }
@@ -150,15 +150,131 @@ pub struct RequestEvents {
     pub events: mpsc::Receiver<ResponseEvent>,
     cancelled: Arc<AtomicBool>,
 }
+impl RequestEvents {
+    pub(super) fn new(
+        id: u64,
+        model: String,
+        events: mpsc::Receiver<ResponseEvent>,
+        cancelled: Arc<AtomicBool>,
+    ) -> Self {
+        Self {
+            id,
+            model,
+            events,
+            cancelled,
+        }
+    }
+}
 impl Drop for RequestEvents {
     fn drop(&mut self) {
         self.cancelled.store(true, Ordering::Release);
     }
 }
-struct Scheduled {
-    request: Request,
+/// Shared CPU/GPU presentation and backpressure semantics.
+pub(super) struct GeneratedText {
+    tokenizer: Arc<QwenTokenizer>,
     events: mpsc::SyncSender<ResponseEvent>,
-    cancelled: Arc<AtomicBool>,
+    max_tokens: usize,
+    prompt_tokens: usize,
+    stream: bool,
+    generated: Vec<u32>,
+    emitted: String,
+}
+impl GeneratedText {
+    pub(super) fn new(
+        tokenizer: Arc<QwenTokenizer>,
+        events: mpsc::SyncSender<ResponseEvent>,
+        stream: bool,
+        max_tokens: usize,
+        prompt_tokens: usize,
+    ) -> Self {
+        Self {
+            tokenizer,
+            events,
+            stream,
+            max_tokens,
+            prompt_tokens,
+            generated: Vec::new(),
+            emitted: String::new(),
+        }
+    }
+    /// Returns true once one admitted request has terminated; never
+    /// samples again after the final accepted token or an EOS.
+    pub(super) fn accept(&mut self, id: u32) -> Result<bool, ServiceError> {
+        if id == self.tokenizer.eos() {
+            self.finish("stop")?;
+            return Ok(true);
+        }
+        self.generated.push(id);
+        if self.stream {
+            let decoded = self
+                .tokenizer
+                .decode(&self.generated, true)
+                .map_err(ServiceError::inference)?;
+            if !decoded.starts_with(&self.emitted) {
+                return Err(ServiceError::new(
+                    500,
+                    "decoder_nonmonotonic",
+                    "incremental text prefix changed",
+                ));
+            }
+            if !decoded.contains('�') {
+                let delta = &decoded[self.emitted.len()..];
+                if !delta.is_empty() {
+                    self.events
+                        .try_send(ResponseEvent::Text(delta.to_owned()))
+                        .map_err(|e| match e {
+                            mpsc::TrySendError::Full(_) => ServiceError::new(
+                                503,
+                                "backpressure",
+                                "client cannot accept streamed output",
+                            ),
+                            mpsc::TrySendError::Disconnected(_) => {
+                                ServiceError::new(499, "cancelled", "client disconnected")
+                            }
+                        })?;
+                    self.emitted = decoded;
+                }
+            }
+        }
+        if self.generated.len() >= self.max_tokens {
+            self.finish("length")?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+    fn finish(&mut self, reason: &'static str) -> Result<(), ServiceError> {
+        let output = self
+            .tokenizer
+            .decode(&self.generated, true)
+            .map_err(ServiceError::inference)?;
+        if self.stream && !output.starts_with(&self.emitted) {
+            return Err(ServiceError::new(
+                500,
+                "decoder_nonmonotonic",
+                "final text differs from streamed prefix",
+            ));
+        }
+        if self.stream && output.len() > self.emitted.len() {
+            self.events
+                .try_send(ResponseEvent::Text(output[self.emitted.len()..].to_owned()))
+                .map_err(|_| ServiceError::new(499, "cancelled", "client closed output stream"))?;
+        }
+        self.events
+            .try_send(ResponseEvent::Done {
+                output,
+                prompt_tokens: self.prompt_tokens,
+                completion_tokens: self.generated.len(),
+                finish_reason: reason,
+            })
+            .map_err(|_| ServiceError::new(499, "cancelled", "client closed output stream"))
+    }
+}
+
+pub(super) struct Scheduled {
+    pub(super) request: Request,
+    pub(super) events: mpsc::SyncSender<ResponseEvent>,
+    pub(super) cancelled: Arc<AtomicBool>,
 }
 pub struct Router {
     models: Arc<BTreeMap<String, Arc<Model>>>,
@@ -337,26 +453,17 @@ impl Router {
                     ServiceError::new(503, "worker_unavailable", "inference worker unavailable")
                 }
             })?;
-        Ok(RequestEvents {
-            id,
-            model: model_alias,
-            events: events_rx,
-            cancelled,
-        })
+        Ok(RequestEvents::new(id, model_alias, events_rx, cancelled))
     }
 }
 struct Active {
-    model: Arc<Model>,
     session: QwenDenseCpu,
     _state_charge: GlobalResourceLease,
     events: mpsc::SyncSender<ResponseEvent>,
     cancelled: Arc<AtomicBool>,
+    output: GeneratedText,
     prompt: Vec<u32>,
     prompt_pos: usize,
-    max_tokens: usize,
-    stream: bool,
-    generated: Vec<u32>,
-    emitted: String,
     logits: Vec<f32>,
 }
 impl Active {
@@ -393,18 +500,21 @@ impl Active {
             .weights
             .new_session()
             .map_err(ServiceError::inference)?;
+        let output = GeneratedText::new(
+            Arc::clone(&model.tokenizer),
+            scheduled.events.clone(),
+            scheduled.request.stream,
+            scheduled.request.max_tokens,
+            prompt.len(),
+        );
         Ok(Self {
-            model,
             session,
             _state_charge: state_charge,
             events: scheduled.events,
             cancelled: scheduled.cancelled,
+            output,
             prompt,
             prompt_pos: 0,
-            max_tokens: scheduled.request.max_tokens,
-            stream: scheduled.request.stream,
-            generated: Vec::new(),
-            emitted: String::new(),
             logits: Vec::new(),
         })
     }
@@ -433,79 +543,11 @@ impl Active {
             .max_by(|a, b| a.1.total_cmp(b.1).then_with(|| b.0.cmp(&a.0)))
             .ok_or_else(|| ServiceError::new(500, "empty_logits", "inference produced no logits"))?
             .0 as u32;
-        if id == self.model.tokenizer.eos() {
-            self.finish("stop")?;
-            return Ok(true);
-        }
-        self.generated.push(id);
-        if self.stream {
-            // Buffer incomplete UTF8 pieces. A previously emitted prefix
-            // is never rewritten; incompatible decoder output refuses.
-            let decoded = self
-                .model
-                .tokenizer
-                .decode(&self.generated, true)
-                .map_err(ServiceError::inference)?;
-            if !decoded.starts_with(&self.emitted) {
-                return Err(ServiceError::new(
-                    500,
-                    "decoder_nonmonotonic",
-                    "incremental text prefix changed",
-                ));
-            }
-            if !decoded.contains('\u{fffd}') {
-                let delta = &decoded[self.emitted.len()..];
-                if !delta.is_empty() {
-                    self.events
-                        .try_send(ResponseEvent::Text(delta.to_owned()))
-                        .map_err(|err| match err {
-                            mpsc::TrySendError::Full(_) => ServiceError::new(
-                                503,
-                                "backpressure",
-                                "client cannot accept streamed output",
-                            ),
-                            mpsc::TrySendError::Disconnected(_) => {
-                                ServiceError::new(499, "cancelled", "client disconnected")
-                            }
-                        })?;
-                    self.emitted = decoded;
-                }
-            }
-        }
-        if self.generated.len() >= self.max_tokens {
-            self.finish("length")?;
+        if self.output.accept(id)? {
             return Ok(true);
         }
         self.logits = self.session.forward(id).map_err(ServiceError::inference)?;
         Ok(false)
-    }
-    fn finish(&mut self, reason: &'static str) -> Result<(), ServiceError> {
-        let output = self
-            .model
-            .tokenizer
-            .decode(&self.generated, true)
-            .map_err(ServiceError::inference)?;
-        if self.stream && !output.starts_with(&self.emitted) {
-            return Err(ServiceError::new(
-                500,
-                "decoder_nonmonotonic",
-                "final text differs from streamed prefix",
-            ));
-        }
-        if self.stream && output.len() > self.emitted.len() {
-            self.events
-                .try_send(ResponseEvent::Text(output[self.emitted.len()..].to_owned()))
-                .map_err(|_| ServiceError::new(499, "cancelled", "client closed output stream"))?;
-        }
-        self.events
-            .try_send(ResponseEvent::Done {
-                output,
-                prompt_tokens: self.prompt.len(),
-                completion_tokens: self.generated.len(),
-                finish_reason: reason,
-            })
-            .map_err(|_| ServiceError::new(499, "cancelled", "client closed output stream"))?;
-        Ok(())
     }
 }
 fn worker(

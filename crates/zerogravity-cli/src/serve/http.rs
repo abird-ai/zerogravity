@@ -2,7 +2,8 @@
 //! Strictly local by default. Explicit plaintext HTTP only; use a trusted
 //! TLS/auth reverse proxy before non-loopback exposure.
 
-use super::engine::{Request, RequestEvents, ResponseEvent, Router, ServiceError};
+use super::Router;
+use super::engine::{Request, RequestEvents, ResponseEvent, ServiceError};
 use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 use serde_json::{Map, Value, json};
@@ -709,10 +710,12 @@ fn respond(
         }
     }
     if req.method == "GET" && req.path == "/health" {
-        let (limit, reserved, remaining) = router.memory_snapshot().unwrap_or((0, 0, 0));
-        write_json(stream, 200, &json!({"status":"ok",
-            "admission":{"host_limit_bytes":limit,"reserved_bytes":reserved,"remaining_bytes":remaining}}))
-            .map_err(|_| ServiceError::new(499, "client_closed", "cannot write response"))?;
+        write_json(
+            stream,
+            200,
+            &json!({"status":"ok","admission":router.admission()}),
+        )
+        .map_err(|_| ServiceError::new(499, "client_closed", "cannot write response"))?;
         return Ok(());
     }
     if req.method == "GET" && req.path == "/v1/models" {
@@ -738,7 +741,7 @@ fn respond(
             "JSON Content-Type required",
         ));
     }
-    let (task, include_usage) = parse_body(&req.body, chat, router.max_output)?;
+    let (task, include_usage) = parse_body(&req.body, chat, router.max_output())?;
     let stream_response = task.stream;
     let events = router.request(task)?;
     if stream_response {
