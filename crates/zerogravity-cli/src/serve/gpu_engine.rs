@@ -1,6 +1,6 @@
 //! Resident GPU OpenAI serving: one loaded model source, independent device
 //! StateRoots, one physical workspace and terminal completion per GPU step.
-//! Opt-in CUDA B2 waves use the original native ForwardPlan; other work
+//! Opt-in CUDA B2/B4/B8 waves use the original native ForwardPlan; other work
 //! interleaves through B1. Device feedback retains each SessionAuthority.
 
 use super::engine::{
@@ -42,7 +42,7 @@ pub(super) struct GpuProfile {
     pub output: usize,
     pub provider_mib: usize,
     pub device_mib: usize,
-    pub native_b2: bool,
+    pub native_rows: usize,
 }
 
 /// CubeCL CUDA's C++ backend requires a toolkit INCLUDE root in addition
@@ -109,7 +109,7 @@ struct GpuModel {
     tokenizer: Arc<QwenTokenizer>,
     group: usize,
     hidden_width: usize,
-    native_b2: bool,
+    native_rows: usize,
 }
 #[derive(Default)]
 struct WaveStats {
@@ -128,6 +128,8 @@ struct WaveStats {
     model_tokens: AtomicU64,
     committed_roots: AtomicU64,
     fused_batches: AtomicU64,
+    native_bands: [AtomicU64; 3],
+    native_admission_refusals: AtomicU64,
     fused_rows: AtomicU64,
     native_projections: AtomicU64,
     native_sampler: AtomicU64,
@@ -157,13 +159,15 @@ pub(super) struct GpuMetrics {
     pub model_tokens: u64,
     pub committed_roots: u64,
     pub fused_batches: u64,
+    pub native_bands: [u64; 3],
+    pub native_admission_refusals: u64,
     pub fused_rows: u64,
     pub native_projections: u64,
     pub native_sampler: u64,
     pub discarded_cohorts: u64,
     pub output_tokens: u64,
     pub parked: usize,
-    pub native_b2: bool,
+    pub native_rows: usize,
 }
 pub(super) struct GpuRouter {
     models: Arc<BTreeMap<String, Arc<GpuModel>>>,
@@ -171,7 +175,7 @@ pub(super) struct GpuRouter {
     next_id: AtomicU64,
     stats: Arc<WaveStats>,
     pub(super) max_output: usize,
-    native_b2: bool,
+    native_rows: usize,
 }
 impl GpuRouter {
     pub(super) fn validate_profile(
@@ -211,14 +215,18 @@ impl GpuRouter {
             output,
             provider_mib,
             device_mib,
-            native_b2,
+            native_rows,
         } = profile;
         Self::validate_profile(workers, active, context, output, provider_mib, device_mib)?;
-        if native_b2 && (backend != GpuBackend::Cuda || active < 2) {
+        if native_rows != 0
+            && (!matches!(native_rows, 2 | 4 | 8)
+                || backend != GpuBackend::Cuda
+                || active < native_rows)
+        {
             return Err(ServiceError::new(
                 400,
                 "unsupported_batch_mode",
-                "fused serving requires CUDA and at least two active slots",
+                "fused serving requires CUDA, rows=2/4/8 and active>=rows",
             ));
         }
         preflight_cuda_toolkit(backend)?;
@@ -283,7 +291,7 @@ impl GpuRouter {
                 tokenizer: Arc::new(tokenizer),
                 group: unique.len(),
                 hidden_width,
-                native_b2,
+                native_rows,
             });
             unique.insert(path, Arc::clone(&shared));
             models.insert(alias, shared);
@@ -295,7 +303,7 @@ impl GpuRouter {
         let worker_stats = Arc::clone(&stats);
         thread::Builder::new()
             .name("zg-resident-gpu".into())
-            .spawn(move || worker(receiver, sources, active, worker_stats, native_b2))
+            .spawn(move || worker(receiver, sources, active, worker_stats, native_rows))
             .map_err(|e| ServiceError::new(500, "worker_spawn", e.to_string()))?;
         Ok(Self {
             models,
@@ -303,7 +311,7 @@ impl GpuRouter {
             next_id: AtomicU64::new(1),
             stats,
             max_output: output,
-            native_b2,
+            native_rows,
         })
     }
     pub(super) fn metrics(&self) -> GpuMetrics {
@@ -323,13 +331,17 @@ impl GpuRouter {
             model_tokens: self.stats.model_tokens.load(Ordering::Relaxed),
             committed_roots: self.stats.committed_roots.load(Ordering::Relaxed),
             fused_batches: self.stats.fused_batches.load(Ordering::Relaxed),
+            native_bands: std::array::from_fn(|i| {
+                self.stats.native_bands[i].load(Ordering::Relaxed)
+            }),
+            native_admission_refusals: self.stats.native_admission_refusals.load(Ordering::Relaxed),
             fused_rows: self.stats.fused_rows.load(Ordering::Relaxed),
             native_projections: self.stats.native_projections.load(Ordering::Relaxed),
             native_sampler: self.stats.native_sampler.load(Ordering::Relaxed),
             discarded_cohorts: self.stats.discarded_cohorts.load(Ordering::Relaxed),
             output_tokens: self.stats.output_tokens.load(Ordering::Relaxed),
             parked: self.stats.parked.load(Ordering::Relaxed),
-            native_b2: self.native_b2,
+            native_rows: self.native_rows,
         }
     }
     pub(super) fn model_ids(&self) -> impl Iterator<Item = &str> {
@@ -398,7 +410,7 @@ struct GpuActive {
     prompt: Vec<u32>,
     cursor: usize,
     device_token: Option<ResidentToken>,
-    native_b2: bool,
+    native_rows: usize,
     packet_presented: bool,
     blocked_since: Option<Instant>,
 }
@@ -448,7 +460,7 @@ impl GpuActive {
             prompt,
             cursor: 0,
             device_token: None,
-            native_b2: model.native_b2,
+            native_rows: model.native_rows,
             packet_presented: false,
             blocked_since: None,
         })
@@ -475,7 +487,7 @@ impl GpuActive {
     }
     fn prefill_count(&self) -> usize {
         let remaining = self.prompt.len() - self.cursor;
-        if self.native_b2 && remaining > 1 {
+        if self.native_rows != 0 && remaining > 1 {
             (remaining - 1).min(PREFILL_QUANTUM)
         } else {
             remaining.min(PREFILL_QUANTUM)
@@ -658,10 +670,18 @@ fn worker(
     models: Arc<BTreeMap<String, Arc<GpuModel>>>,
     active_limit: usize,
     stats: Arc<WaveStats>,
-    native_b2: bool,
+    native_rows: usize,
 ) {
     let mut active = VecDeque::<GpuActive>::new();
     loop {
+        active.retain(|row| {
+            if row.cancelled.load(Ordering::Acquire) {
+                stats.cancelled.fetch_add(1, Ordering::Relaxed);
+                false
+            } else {
+                true
+            }
+        });
         while active.len() < active_limit {
             let next = if active.is_empty() {
                 match rx.recv_timeout(Duration::from_millis(25)) {
@@ -713,7 +733,11 @@ fn worker(
         let waves = match gpu_batch::form(
             &ready,
             Limits {
-                max_members: if native_b2 { 2 } else { active_limit },
+                max_members: if native_rows != 0 {
+                    native_rows
+                } else {
+                    active_limit
+                },
                 max_tokens: 64,
                 max_scratch: 256 * 1024 * 1024,
             },
@@ -731,7 +755,7 @@ fn worker(
         for wave in waves {
             // Validate source/epoch/unique committed session roots BEFORE
             // issuing even the first physical GPU member. P12 source
-            // batch admission is shared by native B2 and original B1 paths.
+            // batch admission is shared by native bands and original B1 paths.
             let admitted = wave
                 .indices
                 .iter()
@@ -776,7 +800,7 @@ fn worker(
                     .fetch_add(wave.indices.len() as u64, Ordering::Relaxed);
             }
             // Exact prompt tails share the existing checked root publisher.
-            // Native mode uses B2 kernels; interleaved mode keeps B1 graphs.
+            // Native mode uses multi-row kernels; interleaved mode keeps B1 graphs.
             let batch_ready = wave.indices.len() > 1
                 && wave.indices.iter().all(|&i| {
                     pending[i].as_ref().is_some_and(|row| {
@@ -791,11 +815,11 @@ fn worker(
                     .iter()
                     .map(|&i| pending[i].take().expect("unique admitted wave row"))
                     .collect::<Vec<_>>();
-                finish_prompt_cohort(members, &mut active, &stats, native_b2);
+                finish_prompt_cohort(members, &mut active, &stats, native_rows);
                 continue;
             }
-            if native_b2
-                && wave.indices.len() == 2
+            if native_rows != 0
+                && wave.indices.len() > 1
                 && wave.indices.iter().all(|&i| {
                     pending[i]
                         .as_ref()
@@ -807,7 +831,7 @@ fn worker(
                     .iter()
                     .map(|&i| pending[i].take().expect("unique admitted decode row"))
                     .collect();
-                advance_decode_cohort(members, &mut active, &stats);
+                advance_decode_cohort(members, &mut active, &stats, native_rows);
                 continue;
             }
             for index in wave.indices {

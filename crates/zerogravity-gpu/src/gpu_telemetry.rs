@@ -7,6 +7,24 @@
 use std::{fs, process::Command};
 use zerogravity_core::resource_arbiter::PhysicalDeviceKey;
 
+/// Allocator observations, not a free-memory or admission authority.
+pub(crate) fn allocator_report(client: &cubecl::client::Client, stage: &str) {
+    use cubecl_runtime::memory_management::MemoryScope;
+    let report = client.memory_report(MemoryScope::Device);
+    for stream in report.streams {
+        let usage = stream.usage();
+        println!(
+            "P12_COLD_ALLOCATOR stage={stage} stream={:?} live_allocations={} live_bytes={} padding_bytes={} reserved_bytes={} pools={}",
+            stream.stream,
+            usage.number_allocs,
+            usage.bytes_in_use,
+            usage.bytes_padding,
+            usage.bytes_reserved,
+            stream.pools.dynamic.len() + 2,
+        );
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct DriverMemory {
     pub used_vram_bytes: u64,

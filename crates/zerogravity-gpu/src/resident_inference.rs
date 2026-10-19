@@ -9,6 +9,9 @@ mod alias_qualification;
 mod checkpoint;
 #[cfg(all(feature = "portable-checkpoint", feature = "qualification"))]
 pub(crate) use checkpoint::qualify as qualify_checkpoint;
+#[cfg(all(test, feature = "qualification", feature = "cuda"))]
+#[path = "resident_inference/admission_qualification.rs"]
+mod admission_qualification;
 #[cfg(feature = "qualification")]
 #[path = "resident_inference/cohort_qualification.rs"]
 mod cohort_qualification;
@@ -325,6 +328,17 @@ impl ResidentModel {
         let mut slot = ticket.wait().await?;
         slot.begin_submission()?;
         let mut initialization = service.begin_initialization(0)?;
+        // Cold model admission may follow retired models on other streams.
+        // Drain completed deferred frees before allocating this envelope.
+        // Live/graph-pinned handles remain owned; errors use the same guard.
+        #[cfg(feature = "qualification")]
+        crate::gpu_telemetry::allocator_report(service.client(), "before_cold_cleanup");
+        service
+            .client()
+            .memory_cleanup()
+            .map_err(|e| Error::State(format!("resident cold allocator cleanup failed: {e}")))?;
+        #[cfg(feature = "qualification")]
+        crate::gpu_telemetry::allocator_report(service.client(), "after_cold_cleanup");
         let mut leases = Vec::new();
         let program = ResidentProgram::prepare_with_allocator(
             service.client(),
@@ -520,15 +534,26 @@ impl ResidentModel {
             drop(initialization.complete_sync().await?);
             slot.finish()?;
         } else {
-            for r in &self.states {
+            output = self.allocate_uninitialized_state()?;
+        }
+        Ok(output)
+    }
+    /// Caller holds the original allocation admission lock; no GPU command.
+    fn allocate_uninitialized_state(&self) -> Result<Vec<Domain>> {
+        self.service.ensure_usable()?;
+        if self.state_bytes > self.service.remaining_capacity()? {
+            return Err(Error::Limit("resident state admission exhausted".into()));
+        }
+        self.states
+            .iter()
+            .map(|r| {
                 let mut allocate = |n: usize| {
                     self.service
                         .allocate_uninitialized(n * 4, BufferRole::RecurrentState)
                 };
-                output.push(make_domain(r, &mut allocate)?);
-            }
-        }
-        Ok(output)
+                make_domain(r, &mut allocate)
+            })
+            .collect()
     }
     fn validate_domains(&self, domains: &[Domain], initialized: bool) -> Result<()> {
         if domains.len() != self.states.len() {

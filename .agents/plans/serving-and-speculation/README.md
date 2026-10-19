@@ -4,7 +4,7 @@ Owner: @pvl
 
 # Native serving and request scheduling
 
-Current P12: opt-in CUDA B2 HTTP prompt-tail/decode waves execute the
+Current P12-B6: opt-in CUDA B2/B4/B8 HTTP prompt-tail/decode waves execute the
 original native full-model ForwardPlan. Same-source/frontier eligible
 rows share immutable weights; each retains its own SessionAuthority,
 StateRoot, device packet and physical leases. Unmatched rows and
@@ -15,8 +15,8 @@ Approved original Qwen3.5 0.8B/2B passed real release JSON/SSE,
 trained EOS, unequal output limits, disconnect/survivor/replay and
 internal CPU/B1 exact packets/all42 state domains. The earlier native
 B2/B4/B8 engine diagnostics retain full248320-logit acceptance;
-HTTP currently dispatches native B2 only. Wider/unequal-frontier
-serving, full GPU prefill and matched vLLM performance remain open.
+HTTP now qualifies native B2/B4/B8. Unequal-frontier serving, paged
+state, full GPU prefill and matched vLLM performance remain open.
 Exact scopes: [TODO.md](TODO.md), [FUSED_GPU_BATCHING.md](FUSED_GPU_BATCHING.md).
 
 ## Implemented: first OpenAI HTTP/CPU router slice
@@ -57,11 +57,11 @@ Set configured host budget responsibly based on physical RAM and other host/cgro
 
 ## Not implemented / next
 
-- Wider/unequal-frontier native GPU serving, paged KV/cache, cross-machine load balancing and any vLLM goodput parity claim.
+- Unequal-frontier native GPU serving, paged KV/cache, cross-machine load balancing and any vLLM goodput parity claim.
 - All sampling/grammar/reasoning/tool/audio/image/video/embedding/provider-specific API shapes beyond the above bounded subset; real pipeline/media execution, multi-tenant shared context, hot reload or persistent sessions.
 - Gemma4/Qwen3.8 trained execution, SSD model inference, exact trained 27B StateRoot or tokenizer support.
 
-Next: widen the existing native serving path to B4/B8 and unequal frontiers. Preserve independent per-request StateRoots, finite occupancy and original BufferLease completion; benchmark p50/p95 TTFT/true ITL and committed SLO goodput against pinned vLLM under equivalent inputs.
+Next: add unequal frontiers and compatible refill to the existing native serving path. Preserve independent per-request StateRoots, finite occupancy and original BufferLease completion; benchmark p50/p95 TTFT/true ITL and committed SLO goodput against pinned vLLM under equivalent inputs.
 
 ## Resident GPU OpenAI serving — accepted CUDA slice
 
@@ -73,8 +73,9 @@ Next: widen the existing native serving path to B4/B8 and unequal frontiers. Pre
   original device path; the host handles tokenization and text.
 - One finite GPU worker, ≤8 active/16 queued. Default `interleaved`
   uses B1 graphs. Opt-in `--batch-mode fused` requires CUDA and
-  ≥2 active slots: matching-source/frontier prompt tails and decode
-  use actual B2 kernels. Other prefill uses ≤32-token B1 quanta;
+  active>=rows and `--batch-rows 2|4|8` (default2): matching-source/
+  frontier prompt tails and decode use actual native multi-row kernels.
+  Other prefill uses ≤32-token B1 quanta;
   unmatched rows use B1. No padding stopped or blocked requests.
 - Shared CPU/GPU output owner handles EOS, UTF-8, SSE, usage,
   backpressure/cancel. Credit-blocked GPU rows park before feedback
@@ -170,7 +171,7 @@ cargo run --release --locked --offline -p zerogravity-cli \
 
 ## Pending: P12/P16/P22
 
-1. Native HTTP B4/B8, unequal frontiers, dynamic compatible refill
+1. Unequal frontiers, dynamic compatible refill
    and full-prefix GPU prefill; qualify additional trained profiles
    and backends before advertising them.
 2. Device-resident paged hybrid KV + GDN/COW state, source-safe
@@ -180,8 +181,23 @@ cargo run --release --locked --offline -p zerogravity-cli \
 4. Actual p50/p95 TTFT/token ITL, committed SLO goodput, fairness,
    memory and dispatch measurements against a genuine pinned,
    source/quant/tokenizer/hardware-matched vLLM V1 environment.
-   No vLLM executable/module is installed in the checked environment.
+   Pinned vLLM0.31.0-cu129 V1 CUDA startup/compile/graphs and original
+   HF0.8B warm smoke pass in an isolated immutable derived runtime.
+   These runs do not establish a matched comparison or numerical parity.
 
 Earlier B0/B1/A1/B2 operator and serialized-cohort evidence is retained
 in [FUSED_GPU_BATCHING.md](FUSED_GPU_BATCHING.md); its historical
 limitations are superseded only by the later named acceptance scope.
+
+## Native CUDA B4/B8 — P12-B6
+
+Both original0.8B/2B qualify actual CUDA HTTP rows2/4/8, unpadded
+survivor regrouping, trained EOS and disconnect/replay. Internal worker
+and real lease-pressure tests preserve exact CPU/B1 packets/logits/all42
+and final reservation0. Only checked prelaunch capacity refusal retries
+smaller bands; other errors preserve the original fence/quarantine.
+Cold-load cleanup physically releases retired allocator pools.
+
+Use `--batch-rows 8 --active-per-worker 8` with the qualified CUDA command.
+Default rows2/interleaved mode remain unchanged. Exact acceptance and
+remaining scope: [FUSED_GPU_BATCHING.md](FUSED_GPU_BATCHING.md).

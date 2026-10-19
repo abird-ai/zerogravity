@@ -8,24 +8,35 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
-- [x] **P22 bounded benchmark accounting:** `serve-bench.py` records
-  offered arrivals, client backlog/overload, HTTP acceptance/rejections,
-  completion/timeout/cancel outcomes, tenant tails and the full offered
-  denominator. SSE chunk intervals remain explicit proxies. Optional
-  provider token traces require exact run/wire/provider IDs, complete
-  ordered token IDs/timestamps and terminal usage equality; malformed or
-  incomplete traces cannot qualify true ITL/SLO goodput. Raw loopback JSON
-  snapshots remain provider claims. `serve-compare.py` executes actual
-  alternating ABBA/BAAB orders, compares per-request text/usage/token IDs
-  and keeps caller source declarations separate from independent parity.
-  Both isolated self-tests/pycompile and full check.sh passed. Actual pinned
-  vLLM0.31.0-cu129 V1 CUDA startup and four-request warm smoke passed with
-  original HF0.8B; this is NOT a matched comparison. Common trained source
-  arithmetic, tokenizer/generation policy, caps and real token observations
-  remain open; qualified source-correct SLO goodput stays unset.
+- [x] **P12-B6 native CUDA B4/B8 serving:** finite unpadded8/4/2/1
+  bands, live EOS/length/cancel/credit survivor regrouping and actual
+  per-band Ready counters. Explicit `--batch-rows 2|4|8` (default2),
+  CUDA/active>=rows checks before model/device; default interleaved.
+  Checked physical capacity refusal is typed None BEFORE allocations or
+  submission; only that result permits smaller bands. Errors/unknown
+  completion retain original fence/quarantine. Real scratch leases prove
+  cold/warm B8 refusal leaves queue/uploads/allocations/roots/all42/idle
+  workspace untouched; B4 progresses under pressure, B8 after release,
+  full248320 CPU/B1 logits/packets/all42 exact, final reservation0.
+  Six same-process release worker cases (.8B/2B × B2/4/8) passed exact
+  CPU/B1 state, unequal output limits, handoffs, actual after-Ready cancel,
+  bounded capacity1 parking/resume and trained EOS. Initial combined run
+  failed CUDA OOM after old-stream cached pools accumulated; cold-load
+  cleanup now runs under original initialization/queue guards. Repetition
+  physically released completed idle pools (2.51GB/2.13GB→0), all6 pass.
+  Four release HTTP tests prove both models B2/B4/B8 JSON/SSE CPU text/
+  usage, trained EOS, one terminal, active disconnect, survivors and replay;
+  final active/queued/failed0. Source-free CLI26 and GPU53 passed;
+  strict CPU/CUDA/Vulkan/qualifier Clippy and full isolated check1148/0/
+  69ignored/245suites+18Python passed, both approved release cache-direct/
+  HF-import routes exact full logits/all42. Initial direct HTTP invocation
+  found a non-serve binary left by the full check; rebuilt explicit CUDA
+  server and repeated all4 successfully. Same-frontier serving only;
+  unequal-frontier/paged state, full-prefix native prefill and matched
+  vLLM source-correct performance remain open.
 
-- [ ] **P12 fused continuous GPU serving:** extend the accepted CUDA B2
-  HTTP path to B4/B8, unequal frontiers, dynamic compatible refill,
+- [ ] **P12 fused continuous GPU serving:** extend the accepted CUDA B2/B4/B8
+  HTTP path to unequal frontiers, dynamic compatible refill,
   paged hybrid KV/recurrent cache, physically safe overlap and fairness.
   Extend full-logit/StateRoot qualification to other advertised trained
   profiles/backends and full GPU prefill. Measure actual p50/p95 TTFT,
@@ -85,6 +96,24 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 - [ ] Preserve zero untriaged frontier/disposition requirements before any full-parity claim; synthetic acceptance, fewer launches and competitor measurements do not establish local parity or speed.
 
 ## Committed
+
+### 6bfcdbe — bounded offered-work benchmark accounting
+
+- [x] **P22 bounded benchmark accounting:** `serve-bench.py` records
+  offered arrivals, client backlog/overload, HTTP acceptance/rejections,
+  completion/timeout/cancel outcomes, tenant tails and the full offered
+  denominator. SSE chunk intervals remain explicit proxies. Optional
+  provider token traces require exact run/wire/provider IDs, complete
+  ordered token IDs/timestamps and terminal usage equality; malformed or
+  incomplete traces cannot qualify true ITL/SLO goodput. Raw loopback JSON
+  snapshots remain provider claims. `serve-compare.py` executes actual
+  alternating ABBA/BAAB orders, compares per-request text/usage/token IDs
+  and keeps caller source declarations separate from independent parity.
+  Both isolated self-tests/pycompile and full check.sh passed. Actual pinned
+  vLLM0.31.0-cu129 V1 CUDA startup and four-request warm smoke passed with
+  original HF0.8B; this is NOT a matched comparison. Common trained source
+  arithmetic, tokenizer/generation policy, caps and real token observations
+  remain open; qualified source-correct SLO goodput stays unset.
 
 ### 2677d8b — native CUDA B2 HTTP waves
 

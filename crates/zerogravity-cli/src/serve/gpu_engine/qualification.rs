@@ -56,6 +56,11 @@ struct Fixture {
 }
 impl Fixture {
     fn new(name: &str) -> Self {
+        Self::with_native_rows(name, 2)
+    }
+
+    fn with_native_rows(name: &str, native_rows: usize) -> Self {
+        assert!(matches!(native_rows, 2 | 4 | 8));
         if cfg!(debug_assertions) {
             panic!("physical serving qualification requires --release");
         }
@@ -99,7 +104,7 @@ impl Fixture {
             tokenizer,
             group: 0,
             hidden_width: source.geometry().hidden_size as usize,
-            native_b2: true,
+            native_rows,
         });
         Self {
             model,
@@ -301,11 +306,13 @@ fn round(active: &mut VecDeque<GpuActive>, stats: &WaveStats) {
         active.extend(parked);
         return;
     }
+    let native_rows = eligible[0].native_rows;
+    assert!(eligible.iter().all(|lane| lane.native_rows == native_rows));
     let ready = eligible.iter().map(GpuActive::ready).collect::<Vec<_>>();
     let waves = gpu_batch::form(
         &ready,
         Limits {
-            max_members: 2,
+            max_members: native_rows,
             max_tokens: 64,
             max_scratch: 256 * 1024 * 1024,
         },
@@ -319,13 +326,13 @@ fn round(active: &mut VecDeque<GpuActive>, stats: &WaveStats) {
             .map(|index| pending[index].take().unwrap())
             .collect::<Vec<_>>();
         if members.iter().all(|lane| lane.cursor == lane.prompt.len()) {
-            advance_decode_cohort(members, active, stats);
-        } else if members.len() == 2
+            advance_decode_cohort(members, active, stats, native_rows);
+        } else if members.len() > 1
             && members
                 .iter()
                 .all(|lane| lane.cursor + 1 == lane.prompt.len())
         {
-            finish_prompt_cohort(members, active, stats, true);
+            finish_prompt_cohort(members, active, stats, native_rows);
         } else {
             for lane in members {
                 advance_member(lane, active, stats);
@@ -691,6 +698,435 @@ fn qualify(name: &str) {
     );
 }
 
+struct Observed {
+    id: u64,
+    maximum: usize,
+    trace: Trace,
+}
+
+fn observed_lane(
+    fixture: &Fixture,
+    input: &str,
+    maximum: usize,
+    capacity: usize,
+    b1: bool,
+) -> (GpuActive, Observed) {
+    let (mut lane, trace) = fixture.lane(input, maximum, capacity);
+    if b1 {
+        b1_prompt(&mut lane, &fixture.stats);
+    }
+    let id = lane.session.binding().session().get();
+    (lane, Observed { id, maximum, trace })
+}
+
+fn reference_rows(fixture: &Fixture, active: &VecDeque<GpuActive>) -> BTreeMap<u64, Reference> {
+    let references = active
+        .iter()
+        .map(|lane| {
+            (
+                lane.session.binding().session().get(),
+                Reference::new(fixture, lane),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(references.len(), active.len(), "independent session IDs");
+    references
+}
+
+fn finish_observed(
+    active: &mut VecDeque<GpuActive>,
+    fixture: &Fixture,
+    references: &mut BTreeMap<u64, Reference>,
+    observed: &mut [Observed],
+) {
+    finish(
+        active,
+        fixture,
+        references,
+        &mut observed
+            .iter_mut()
+            .map(|row| &mut row.trace)
+            .collect::<Vec<_>>(),
+    );
+    for row in observed {
+        row.trace
+            .verify(&references[&row.id], &fixture.model.tokenizer, row.maximum);
+    }
+}
+
+fn band_counts(stats: &WaveStats) -> [u64; 3] {
+    stats
+        .native_bands
+        .each_ref()
+        .map(|count| count.load(Ordering::Acquire))
+}
+
+fn require_bands(stats: &WaveStats, before: [u64; 3], expected: &[usize]) {
+    let actual = band_counts(stats);
+    for (index, width) in [2, 4, 8].into_iter().enumerate() {
+        assert_eq!(
+            actual[index] - before[index],
+            expected.iter().filter(|&&band| band == width).count() as u64,
+            "actual completed native B{width} cohorts"
+        );
+    }
+}
+
+fn prior_roots(active: &VecDeque<GpuActive>) -> BTreeMap<u64, (u64, u64)> {
+    active
+        .iter()
+        .map(|lane| {
+            let binding = lane.session.binding();
+            (
+                binding.session().get(),
+                (binding.root(), binding.frontier()),
+            )
+        })
+        .collect()
+}
+
+fn require_single_transition(active: &VecDeque<GpuActive>, prior: &BTreeMap<u64, (u64, u64)>) {
+    for lane in active {
+        let binding = lane.session.binding();
+        let (root, frontier) = prior[&binding.session().get()];
+        assert_eq!(binding.root(), root + 1, "one original root publication");
+        assert_eq!(binding.frontier(), frontier + 1, "one consumed token");
+    }
+}
+
+fn survivor_bands(width: usize) -> &'static [usize] {
+    match width {
+        4 => &[2, 1],
+        8 => &[4, 2, 1],
+        _ => panic!("wide fixture requires B4/B8"),
+    }
+}
+
+fn wide_prompt_lengths(fixture: &Fixture) {
+    let width = fixture.model.native_rows;
+    let mut active = VecDeque::new();
+    let mut observed = Vec::new();
+    for (index, input) in ["a", "b", "c", "d", "e", "f", "g", "h"]
+        .into_iter()
+        .take(width)
+        .enumerate()
+    {
+        let (lane, trace) = observed_lane(fixture, input, index + 1, EVENTS_PER_REQUEST, false);
+        assert_eq!(lane.prompt.len(), 1, "equal-frontier original token inputs");
+        active.push_back(lane);
+        observed.push(trace);
+    }
+    assert_eq!(
+        active
+            .iter()
+            .map(|lane| lane.prompt[0])
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        width,
+        "distinct source input token IDs"
+    );
+    let prior = prior_roots(&active);
+    let bands = band_counts(&fixture.stats);
+    round(&mut active, &fixture.stats);
+    assert_eq!(active.len(), width);
+    require_bands(&fixture.stats, bands, &[width]);
+    require_single_transition(&active, &prior);
+    let mut references = reference_rows(fixture, &active);
+    assert!(
+        references
+            .values()
+            .all(|reference| { reference.sequence[0].0 != fixture.model.tokenizer.eos() })
+    );
+    let prior = prior_roots(&active);
+    let bands = band_counts(&fixture.stats);
+    let committed = fixture.stats.committed_roots.load(Ordering::Acquire);
+    let forwards = fixture.stats.gpu_forwards.load(Ordering::Acquire);
+    round(&mut active, &fixture.stats);
+    assert_eq!(
+        active.len(),
+        width - 1,
+        "maximum=1 row retires before feedback"
+    );
+    require_bands(&fixture.stats, bands, survivor_bands(width));
+    require_single_transition(&active, &prior);
+    assert_eq!(
+        fixture.stats.committed_roots.load(Ordering::Acquire),
+        committed + (width - 1) as u64
+    );
+    assert_eq!(
+        fixture.stats.gpu_forwards.load(Ordering::Acquire),
+        forwards + survivor_bands(width).len() as u64,
+        "native packet includes the exact B1 residual handoff"
+    );
+    update(&active, &mut references);
+    finish_observed(&mut active, fixture, &mut references, &mut observed);
+    println!(
+        "P12_WIDE_PROMPT_RETIRE_PASS rows={width} distinct_source_tokens_and_sessions=true \
+        maxima=1..{width} native_to_B1=true CPU_B1_packets_all42=exact text_usage_Done=once"
+    );
+}
+
+fn wide_b1_handoff(fixture: &Fixture) {
+    let width = fixture.model.native_rows;
+    let mut active = VecDeque::new();
+    let mut observed = Vec::new();
+    for _ in 0..width {
+        let (lane, trace) = observed_lane(fixture, "a", 3, EVENTS_PER_REQUEST, true);
+        active.push_back(lane);
+        observed.push(trace);
+    }
+    let mut references = reference_rows(fixture, &active);
+    let prior = prior_roots(&active);
+    let bands = band_counts(&fixture.stats);
+    round(&mut active, &fixture.stats);
+    assert_eq!(active.len(), width);
+    require_bands(&fixture.stats, bands, &[width]);
+    require_single_transition(&active, &prior);
+    update(&active, &mut references);
+    finish_observed(&mut active, fixture, &mut references, &mut observed);
+    println!("P12_WIDE_B1_NATIVE_HANDOFF_PASS rows={width} CPU_B1_packets_all42=exact");
+}
+
+fn wide_cancel_after_ready(fixture: &Fixture) {
+    let width = fixture.model.native_rows;
+    let mut active = VecDeque::new();
+    let mut observed = Vec::new();
+    for _ in 0..width {
+        let (lane, trace) = observed_lane(fixture, "a", 4, EVENTS_PER_REQUEST, true);
+        active.push_back(lane);
+        observed.push(trace);
+    }
+    let mut references = reference_rows(fixture, &active);
+    let cancelled_index = width / 2;
+    let mut cancelled = observed.remove(cancelled_index);
+    let cancelled_reference = references.remove(&cancelled.id).unwrap();
+    let saved = active[cancelled_index].session.snapshot();
+    let prior = prior_roots(&active);
+    let cancel = Arc::clone(&active[cancelled_index].cancelled);
+    AFTER_COHORT_READY.with(|hook| {
+        assert!(hook.borrow().is_none());
+        *hook.borrow_mut() = Some(Box::new(move || cancel.store(true, Ordering::Release)));
+    });
+    let bands = band_counts(&fixture.stats);
+    let discarded = fixture.stats.discarded_cohorts.load(Ordering::Acquire);
+    let committed = fixture.stats.committed_roots.load(Ordering::Acquire);
+    let model_tokens = fixture.stats.model_tokens.load(Ordering::Acquire);
+    let cancelled_before = fixture.stats.cancelled.load(Ordering::Acquire);
+    round(&mut active, &fixture.stats);
+    AFTER_COHORT_READY.with(|hook| assert!(hook.borrow().is_none(), "real Ready hook reached"));
+    assert_eq!(active.len(), width - 1);
+    assert!(
+        active
+            .iter()
+            .all(|lane| lane.session.binding().session().get() != cancelled.id)
+    );
+    let mut physical = vec![width];
+    physical.extend_from_slice(survivor_bands(width));
+    require_bands(&fixture.stats, bands, &physical);
+    require_single_transition(&active, &prior);
+    assert_eq!(
+        fixture.stats.discarded_cohorts.load(Ordering::Acquire),
+        discarded + 1
+    );
+    assert_eq!(
+        fixture.stats.cancelled.load(Ordering::Acquire),
+        cancelled_before + 1
+    );
+    assert_eq!(
+        fixture.stats.committed_roots.load(Ordering::Acquire),
+        committed + (width - 1) as u64
+    );
+    assert_eq!(
+        fixture.stats.model_tokens.load(Ordering::Acquire),
+        model_tokens + (2 * width - 1) as u64,
+        "whole discarded native cohort plus actual survivor forwards"
+    );
+    update(&active, &mut references);
+    cancelled_reference.snapshot(&saved);
+    cancelled.trace.drain();
+    assert!(cancelled.trace.done.is_empty());
+    let presented = fixture
+        .model
+        .tokenizer
+        .decode(&[cancelled_reference.sequence[0].0], true)
+        .unwrap();
+    let expected_text = if presented.contains('�') {
+        ""
+    } else {
+        &presented
+    };
+    assert_eq!(cancelled.trace.text, expected_text);
+    finish_observed(&mut active, fixture, &mut references, &mut observed);
+    cancelled_reference.snapshot(&saved);
+    cancelled.trace.drain();
+    assert!(cancelled.trace.done.is_empty());
+    assert_eq!(cancelled.trace.text, expected_text);
+    println!(
+        "P12_WIDE_READY_CANCEL_PASS rows={width} whole_candidate_discard=true \
+        survivors_regrouped=true original_roots_packets_all42=exact text_usage_Done=once"
+    );
+}
+
+fn wide_credit_park(fixture: &Fixture) {
+    let width = fixture.model.native_rows;
+    let mut active = VecDeque::new();
+    let mut observed = Vec::new();
+    for index in 0..width {
+        let (lane, trace) = observed_lane(
+            fixture,
+            if index == 0 { "a" } else { "b" },
+            8,
+            if index == 0 { 1 } else { EVENTS_PER_REQUEST },
+            true,
+        );
+        active.push_back(lane);
+        observed.push(trace);
+    }
+    let slow_id = observed[0].id;
+    let mut references = reference_rows(fixture, &active);
+    for _ in 0..12 {
+        round(&mut active, &fixture.stats);
+        update(&active, &mut references);
+        for row in observed.iter_mut().skip(1) {
+            row.trace.drain();
+        }
+        if active.iter().any(|lane| {
+            lane.session.binding().session().get() == slow_id && lane.blocked_since.is_some()
+        }) {
+            break;
+        }
+    }
+    assert_eq!(
+        active.len(),
+        width,
+        "healthy rows remain live at slow-reader park"
+    );
+    let slow = active
+        .iter()
+        .find(|lane| lane.session.binding().session().get() == slow_id)
+        .unwrap();
+    assert!(slow.blocked_since.is_some());
+    assert!(slow.packet_presented);
+    let binding = slow.session.binding();
+    let token = slow.device_token.as_ref().unwrap();
+    let packet = (token.id, token.max_bits);
+    for _ in 0..2 {
+        let prior = prior_roots(&active);
+        let bands = band_counts(&fixture.stats);
+        round(&mut active, &fixture.stats);
+        update(&active, &mut references);
+        require_bands(&fixture.stats, bands, survivor_bands(width));
+        let mut healthy = 0;
+        for lane in &active {
+            let current = lane.session.binding();
+            if current.session().get() != slow_id {
+                assert_eq!(current.root(), prior[&current.session().get()].0 + 1);
+                assert_eq!(current.frontier(), prior[&current.session().get()].1 + 1);
+                healthy += 1;
+            }
+        }
+        assert_eq!(healthy, width - 1, "every healthy survivor progresses");
+        let slow = active
+            .iter()
+            .find(|lane| lane.session.binding().session().get() == slow_id)
+            .unwrap();
+        assert_eq!(slow.session.binding(), binding);
+        assert!(slow.packet_presented && slow.blocked_since.is_some());
+        let token = slow.device_token.as_ref().unwrap();
+        assert_eq!((token.id, token.max_bits), packet);
+        for row in observed.iter_mut().skip(1) {
+            row.trace.drain();
+        }
+    }
+    observed[0].trace.one_credit();
+    finish_observed(&mut active, fixture, &mut references, &mut observed);
+    println!(
+        "P12_WIDE_REAL_CREDIT_PASS rows={width} channel_capacity=1 \
+        healthy_survivors_progress=true parked_packet_root_all42=exact resumed_events=once"
+    );
+}
+
+fn wide_source_eos(fixture: &Fixture) {
+    let width = fixture.model.native_rows;
+    let input =
+        find_source_eos(fixture).expect("wide cohort requires an actual trained-source EOS");
+    let length = fixture
+        .model
+        .tokenizer
+        .prompt_tokens(&input, false)
+        .unwrap()
+        .len();
+    let sibling = " a".repeat(length);
+    assert_eq!(
+        fixture
+            .model
+            .tokenizer
+            .prompt_tokens(&sibling, false)
+            .unwrap()
+            .len(),
+        length
+    );
+    let mut active = VecDeque::new();
+    let mut observed = Vec::new();
+    for index in 0..width {
+        let (lane, trace) = observed_lane(
+            fixture,
+            if index == 0 { &input } else { &sibling },
+            if index == 0 { 9 } else { 10 },
+            EVENTS_PER_REQUEST,
+            false,
+        );
+        active.push_back(lane);
+        observed.push(trace);
+    }
+    let bands = band_counts(&fixture.stats);
+    for _ in 0..32 {
+        if active.iter().all(|lane| lane.cursor == lane.prompt.len()) {
+            break;
+        }
+        round(&mut active, &fixture.stats);
+    }
+    assert_eq!(active.len(), width);
+    assert!(active.iter().all(|lane| lane.cursor == lane.prompt.len()));
+    require_bands(&fixture.stats, bands, &[width]);
+    let mut references = reference_rows(fixture, &active);
+    finish_observed(&mut active, fixture, &mut references, &mut observed);
+    assert_eq!(
+        observed[0].trace.done[0].3, "stop",
+        "trained EOS must retire its row"
+    );
+    println!(
+        "P12_WIDE_TRAINED_EOS_PASS rows={width} source_selected_EOS=true \
+        CPU_B1_packets_all42=exact EOS_excluded_usage=true terminal_Done=once"
+    );
+}
+
+fn qualify_wide(name: &str, native_rows: usize) {
+    let fixture = Fixture::with_native_rows(name, native_rows);
+    wide_prompt_lengths(&fixture);
+    wide_b1_handoff(&fixture);
+    wide_cancel_after_ready(&fixture);
+    wide_credit_park(&fixture);
+    wide_source_eos(&fixture);
+    assert!(fixture.stats.kernel_dispatches.load(Ordering::Acquire) > 0);
+    assert!(fixture.stats.native_projections.load(Ordering::Acquire) > 0);
+    assert!(fixture.stats.native_sampler.load(Ordering::Acquire) > 0);
+    assert!(band_counts(&fixture.stats)[if native_rows == 4 { 1 } else { 2 }] > 0);
+    assert_eq!(
+        fixture
+            .stats
+            .native_admission_refusals
+            .load(Ordering::Acquire),
+        0
+    );
+    fixture.close();
+    println!(
+        "P12_WIDE_NATIVE_WORKER_PHYSICAL_PASS source={name} rows={native_rows} \
+        original_authorities_CPU_B1_all42=exact final_active=0 final_reserved=0 \
+        actual_HTTP_wire=separate_gate vLLM_performance=not_qualified"
+    );
+}
+
 #[test]
 #[ignore = "physical release CUDA; approved original .8B; isolated sequential GPU coordinator"]
 fn original_qwen08b_native_b2_worker() {
@@ -701,4 +1137,28 @@ fn original_qwen08b_native_b2_worker() {
 #[ignore = "physical release CUDA; approved original 2B; isolated sequential GPU coordinator"]
 fn original_qwen2b_native_b2_worker() {
     qualify("qwen35-2b");
+}
+
+#[test]
+#[ignore = "physical release CUDA B4; approved original .8B; isolated sequential GPU coordinator"]
+fn original_qwen08b_native_b4_worker() {
+    qualify_wide("qwen35-0.8b", 4);
+}
+
+#[test]
+#[ignore = "physical release CUDA B8; approved original .8B; isolated sequential GPU coordinator"]
+fn original_qwen08b_native_b8_worker() {
+    qualify_wide("qwen35-0.8b", 8);
+}
+
+#[test]
+#[ignore = "physical release CUDA B4; approved original 2B; isolated sequential GPU coordinator"]
+fn original_qwen2b_native_b4_worker() {
+    qualify_wide("qwen35-2b", 4);
+}
+
+#[test]
+#[ignore = "physical release CUDA B8; approved original 2B; isolated sequential GPU coordinator"]
+fn original_qwen2b_native_b8_worker() {
+    qualify_wide("qwen35-2b", 8);
 }

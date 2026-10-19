@@ -1,7 +1,7 @@
 //! Finite, deterministic source-aware GPU request wave formation.
 //!
 //! A wave is scheduler membership, not physical completion or memory credit.
-//! The GPU worker separately selects qualified native B2 or original B1
+//! The GPU worker separately selects qualified native bands or original B1
 //! execution and reports actual Ready/dispatch/root receipts.
 
 use super::engine::ServiceError;
@@ -30,6 +30,31 @@ pub(super) struct Limits {
     pub max_tokens: usize,
     pub max_scratch: usize,
 }
+
+/// Contiguous, unpadded native bands; B1 carries an unmatched survivor.
+/// Ceiling 1 is the final prelaunch capacity fallback.
+pub(super) fn native_bands(count: usize, ceiling: usize) -> Result<Vec<usize>, ServiceError> {
+    if count > 64 || !matches!(ceiling, 1 | 2 | 4 | 8) {
+        return Err(ServiceError::new(
+            400,
+            "invalid_native_bands",
+            "native bands require at most 64 rows and ceiling 1/2/4/8",
+        ));
+    }
+    let mut remaining = count;
+    let mut bands = Vec::new();
+    for width in [8, 4, 2, 1] {
+        if width > ceiling {
+            continue;
+        }
+        while remaining >= width {
+            bands.push(width);
+            remaining -= width;
+        }
+    }
+    Ok(bands)
+}
+
 /// Every caller's ready work is included exactly once, using first-seen
 /// source/phase/frontier grouping and finite quota-split waves. No sorting
 /// across requests or silent dropping of a queue tail.
@@ -107,6 +132,53 @@ pub(super) fn form(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, Service
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_bands_cover_every_row_in_order_without_padding() {
+        for ceiling in [1, 2, 4, 8] {
+            for count in 0..=64 {
+                let bands = native_bands(count, ceiling).unwrap();
+                assert_eq!(bands.iter().sum::<usize>(), count);
+                assert!(bands.windows(2).all(|pair| pair[0] >= pair[1]));
+                let mut frontier = 0;
+                let mut rows = Vec::new();
+                for width in bands {
+                    assert!(matches!(width, 1 | 2 | 4 | 8));
+                    assert!(width <= ceiling);
+                    assert!(frontier + width <= count);
+                    for larger in [2, 4, 8] {
+                        assert!(larger <= width || larger > ceiling || larger > count - frontier);
+                    }
+                    rows.extend(frontier..frontier + width);
+                    frontier += width;
+                }
+                assert_eq!(rows, (0..count).collect::<Vec<_>>());
+            }
+        }
+    }
+
+    #[test]
+    fn native_bands_repartition_survivors_and_lower_capacity_ceilings() {
+        assert_eq!(native_bands(8, 8).unwrap(), [8]);
+        assert_eq!(native_bands(7, 8).unwrap(), [4, 2, 1]);
+        assert_eq!(native_bands(6, 8).unwrap(), [4, 2]);
+        assert_eq!(native_bands(5, 8).unwrap(), [4, 1]);
+        assert_eq!(native_bands(3, 4).unwrap(), [2, 1]);
+        assert_eq!(native_bands(8, 4).unwrap(), [4, 4]);
+        assert_eq!(native_bands(4, 2).unwrap(), [2, 2]);
+        assert_eq!(native_bands(2, 1).unwrap(), [1, 1]);
+    }
+
+    #[test]
+    fn native_bands_reject_unbounded_or_unsupported_shapes() {
+        for ceiling in [0, 3, 5, 6, 7, 9, usize::MAX] {
+            assert!(native_bands(8, ceiling).is_err());
+        }
+        for count in [65, usize::MAX] {
+            assert!(native_bands(count, 8).is_err());
+        }
+    }
+
     fn r(source: usize, phase: Phase, frontier: usize, tokens: usize) -> Ready {
         Ready {
             source,

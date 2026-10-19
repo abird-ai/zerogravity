@@ -4,16 +4,16 @@ Owner: @pvl
 
 # P12 — native fused GPU batch acceptance
 
-**Current HTTP acceptance — P12-B5:** opt-in `batch_mode=fused`
-uses the original full-model native CUDA B2 plan for compatible
-one-token prompt tails and device-feedback decode. Default mode
-is still `interleaved`; unmatched rows and other prefill use B1.
-Approved original Qwen3.5 0.8B/2B passed real release JSON/SSE,
+**Current HTTP acceptance — P12-B6:** opt-in `batch_mode=fused`
+uses the original full-model native CUDA B2/B4/B8 plan for compatible
+same-frontier prompt tails/decode. Explicit `--batch-rows 2|4|8`, default2;
+interleaved remains the default mode. Surviving rows regroup without padding.
+Both approved original Qwen3.5 models passed actual release JSON/SSE,
 trained EOS, cancellation and exact internal CPU/B1 state tests.
-Engine B2/B4/B8 full-logit/greedy diagnostics retain their B3/B4 scope.
-HTTP B4/B8, unequal-frontier/paged state, full GPU prefill and vLLM
-performance acceptance remain open. Earlier sections below record
-their original checkpoints; P12-B5 supersedes their HTTP refusal.
+Engine full248320-logit and compact packet/all42 evidence remains distinct
+from HTTP wire evidence. Unequal frontiers, paged state, full-prefix native
+prefill and matched vLLM performance remain open. Named later checkpoints
+supersede only the corresponding historical limitations below.
 
 ## Ownership boundaries
 
@@ -572,3 +572,57 @@ SDKs or vLLM packages were downloaded; no vLLM comparison is claimed.
 Changing a scheduler counter to "fused" without native multi-row
 execution is forbidden. P12-C/P22 remain pending; the sections
 above delimit the physically accepted operator and model scopes.
+
+## Native CUDA B4/B8 HTTP acceptance — P12-B6
+
+Actual RTX3060 release worker tests pass both original0.8B/2B × B2/4/8
+in one process: CPU/B1 exact compact packets/all42 domains, limits1..rows,
+B1/native handoffs, post-Ready cancellation/regroup, capacity1 output
+parking/recovery and actual trained EOS. All end at reservation0.
+
+Four actual HTTP tests pass JSON/SSE text/usage against the independent
+CPU oracle, real trained EOS, live disconnect, survivors/replay and one
+terminal. Each width4/8 wave uses actual queued source aliases and proves
+native completion before disconnect. Final active/queued/failed0:
+
+| Original model | Configured maximum rows | Completed cohorts B2/B4/B8 | Native projections | Native sampler stages |
+| --- | ---: | ---: | ---: | ---: |
+| 0.8B | 2 | 9/0/0 | 1683 | 36 |
+| 0.8B | 4 | 8/7/0 | 2805 | 60 |
+| 0.8B | 8 | 10/10/7 | 5049 | 108 |
+| 2B | 2 | 8/0/0 | 1496 | 32 |
+| 2B | 4 | 9/5/0 | 2618 | 56 |
+| 2B | 8 | 11/11/5 | 5049 | 108 |
+
+Counters include physically completed Ready cohorts discarded before
+publication. They are not delivered-token throughput. HTTP wire tests do
+not expose private StateRoot bytes; exact all42 evidence is internal.
+
+Actual lease pressure separately proves checked capacity refusal before
+submission/allocation, unchanged prior roots/packets/idle workspace,
+B4 progress under pressure and B8 after release, full248320 CPU/B1/native
+logits/packets/all42 exact. Only typed prelaunch None permits smaller
+bands; other errors preserve original completion/fence/quarantine.
+
+The first combined worker run exposed retained idle CUDA allocator pools
+and failed OOM. Cold model initialization now drains completed pools under
+the original queued guard; live/graph-pinned and quarantined owners remain
+retained. Actual telemetry showed retired2.51GB/2.13GB pools return to0;
+repeated same-process six-case worker suite passed. Telemetry is advisory,
+not the ResourceArbiter admission authority.
+
+Strict CPU/CUDA/Vulkan and qualifier Clippy pass. Final isolated gate:
+1148 Rust passed/0failed/69ignored over245 suites plus18Python, release,
+installer and Nix checks. Source-free CLI26/GPU53 pass. Both approved
+cache-direct/HF-import release routes retain full-logit/all42 parity.
+
+Genuine pinned vLLM0.31.0-cu129 V1 executes the original HF0.8B checkpoint
+on this card: weights, Torch compile, CUDA graphs, health and warm smoke.
+Its stock TorchCodec CUDA13 import issue was resolved by an isolated,
+reproducible CPU-TorchCodec wheel replacement; core inference package
+versions/RECORDs remain identical. Source arithmetic, tokenizer policy,
+caps, true token observations and matched performance remain unqualified.
+
+Example wider native configuration adds `--batch-rows 8` and
+`--active-per-worker 8` to the accepted CUDA command. This phase still
+requires equal causal frontiers; other prefill/unmatched work uses B1.

@@ -28,6 +28,13 @@ struct OwnedServer {
 
 impl OwnedServer {
     fn start(source: &Path) -> Proof<Self> {
+        Self::start_rows(source, 2)
+    }
+
+    fn start_rows(source: &Path, rows: usize) -> Proof<Self> {
+        if !matches!(rows, 2 | 4 | 8) {
+            return Err("physical HTTP server requires native rows2/4/8".into());
+        }
         for _ in 0..3 {
             let reserved = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
             let address = reserved.local_addr().map_err(|e| e.to_string())?;
@@ -42,12 +49,14 @@ impl OwnedServer {
                 .arg("cuda")
                 .arg("--batch-mode")
                 .arg("fused")
+                .arg("--batch-rows")
+                .arg(rows.to_string())
                 .arg("--listen")
                 .arg(address.to_string())
                 .arg("--workers")
                 .arg("1")
                 .arg("--active-per-worker")
-                .arg("4")
+                .arg(if rows == 2 { "4" } else { "8" })
                 .arg("--max-context")
                 .arg("512")
                 .arg("--max-output")
@@ -108,6 +117,7 @@ impl OwnedServer {
                 if let Ok(health) = server.health()
                     && health["status"] == "ok"
                     && health["admission"]["batch_mode"] == "fused"
+                    && health["admission"]["native_batch_rows_max"] == rows
                     && let Ok(models) = get_json(server.address, "/v1/models")
                     && models["data"].as_array().is_some_and(|models| {
                         models.len() == 2
@@ -150,7 +160,11 @@ impl OwnedServer {
     }
 
     fn wait_health(&self, predicate: impl Fn(&Value) -> bool) -> Proof<Value> {
-        let deadline = Instant::now() + REQUEST_LIMIT;
+        self.wait_health_for(REQUEST_LIMIT, predicate)
+    }
+
+    fn wait_health_for(&self, limit: Duration, predicate: impl Fn(&Value) -> bool) -> Proof<Value> {
+        let deadline = Instant::now() + limit;
         let mut last = Value::Null;
         while Instant::now() < deadline {
             if let Ok(health) = self.health() {
@@ -586,9 +600,18 @@ fn sse_completion(
 }
 
 fn disconnect_after_first_text(
+    response: Response,
+    alias: &str,
+    expected_prefix: &str,
+) -> Proof<()> {
+    disconnect_text_when(response, alias, expected_prefix, || Ok(()))
+}
+
+fn disconnect_text_when(
     mut response: Response,
     alias: &str,
     expected_prefix: &str,
+    before_disconnect: impl FnOnce() -> Proof<()>,
 ) -> Proof<()> {
     if response.status != 200 || !response.chunked {
         return Err("canceled request lacked real SSE response".into());
@@ -609,6 +632,7 @@ fn disconnect_after_first_text(
                 if !expected_prefix.starts_with(text) {
                     return Err("cancel target text differs from CPU prefix".into());
                 }
+                before_disconnect()?;
                 response.disconnect();
                 return Ok(());
             }
@@ -649,6 +673,66 @@ fn queued_pair(server: &OwnedServer, first: &Value, second: &Value) -> Proof<(Re
     let _ = gate.shutdown(Shutdown::Both);
     drop(gate);
     Ok((Response::read(first)?, Response::read(second)?))
+}
+
+/// Real queued requests, all written before reading any response. Cancel the
+/// observable GPU quantum's owner so active8 can admit all eight queued rows.
+fn queued_group(server: &OwnedServer, bodies: &[Value]) -> Proof<Vec<Response>> {
+    if !matches!(bodies.len(), 4 | 8) {
+        return Err("wide HTTP group requires four or eight real requests".into());
+    }
+    let before = server.health()?["admission"].clone();
+    let attempts = counter(&before, "gpu_step_attempts")?;
+    let tokens = counter(&before, "completed_model_token_steps")?;
+    let gate_body = payload(
+        &server.aliases[0],
+        &"A real GPU prefill gate. ".repeat(12),
+        8,
+        true,
+    );
+    let gate = open_request(server.address, "POST", "/v1/completions", Some(&gate_body))?;
+    server.wait_health(|health| {
+        health["active_sessions"] == 1
+            && health["gpu_step_attempts"]
+                .as_u64()
+                .is_some_and(|n| n > attempts)
+            && health["completed_model_token_steps"].as_u64() == Some(tokens)
+    })?;
+    let streams = bodies
+        .iter()
+        .map(|body| open_request(server.address, "POST", "/v1/completions", Some(body)))
+        .collect::<Proof<Vec<_>>>()?;
+    server.wait_health_for(Duration::from_secs(5), |health| {
+        health["queued_requests"] == bodies.len()
+            && health["completed_model_token_steps"].as_u64() == Some(tokens)
+    })?;
+    let _ = gate.shutdown(Shutdown::Both);
+    drop(gate);
+    streams.into_iter().map(Response::read).collect()
+}
+
+fn band_counter(health: &Value, width: usize) -> Proof<u64> {
+    counter(&health["gpu_fused_batches_by_rows"], &width.to_string())
+}
+
+fn physical_accounting(health: &Value) -> Proof<()> {
+    let b2 = band_counter(health, 2)?;
+    let b4 = band_counter(health, 4)?;
+    let b8 = band_counter(health, 8)?;
+    let batches = b2 + b4 + b8;
+    if counter(health, "failed_gpu_quanta")? != 0
+        || health["active_sessions"] != 0
+        || health["queued_requests"] != 0
+        || counter(health, "completed_forward_kernel_dispatches")? == 0
+        || counter(health, "native_projection_dispatches_completed")? == 0
+        || counter(health, "gpu_fused_batches")? != batches
+        || counter(health, "gpu_fused_rows_completed")? != 2 * b2 + 4 * b4 + 8 * b8
+        || counter(health, "native_sampler_dispatches_completed")? != 4 * batches
+        || counter(health, "native_admission_refusals")? != 0
+    {
+        return Err(format!("wide HTTP physical accounting differs: {health}"));
+    }
+    Ok(())
 }
 
 fn proof_cases(
@@ -759,6 +843,156 @@ fn proof_cases(
     Ok(())
 }
 
+fn validate_group(
+    responses: Vec<Response>,
+    bodies: &[Value],
+    oracle: &Oracle,
+    tokenizer: &QwenTokenizer,
+) -> Proof<()> {
+    if responses.len() != bodies.len() {
+        return Err("HTTP group lost a request/response".into());
+    }
+    for (response, body) in responses.into_iter().zip(bodies) {
+        let alias = body["model"].as_str().ok_or("group alias missing")?;
+        let maximum = body["max_tokens"].as_u64().ok_or("group maximum missing")? as usize;
+        let expected = oracle.expected(tokenizer, maximum)?;
+        if body["stream"] == true {
+            sse_completion(response, alias, &expected, oracle.prompt_tokens)?;
+        } else {
+            json_completion(response, alias, &expected, oracle.prompt_tokens)?;
+        }
+    }
+    Ok(())
+}
+
+fn wide_proof_cases(
+    server: &OwnedServer,
+    width: usize,
+    oracle: &Oracle,
+    eos: &Oracle,
+    tokenizer: &QwenTokenizer,
+) -> Proof<()> {
+    let initial = server.health()?["admission"].clone();
+    if initial["batch_mode"] != "fused" || initial["native_batch_rows_max"] != width {
+        return Err(format!("HTTP did not advertise native CUDA B{width}"));
+    }
+    if oracle.ids.len() != 8 || oracle.stopped {
+        return Err("wide retirement proof requires eight original nonterminal tokens".into());
+    }
+    let bodies = (0..width)
+        .map(|index| {
+            payload(
+                &server.aliases[index % 2],
+                &oracle.prompt,
+                (index + 2).min(8),
+                index % 2 == 1,
+            )
+        })
+        .collect::<Vec<_>>();
+    let responses = queued_group(server, &bodies)?;
+    validate_group(responses, &bodies, oracle, tokenizer)?;
+    let lengths = server.wait_health(|h| h["active_sessions"] == 0 && h["queued_requests"] == 0)?;
+    if band_counter(&lengths, width)? < band_counter(&initial, width)? + 2
+        || band_counter(&lengths, 2)? <= band_counter(&initial, 2)?
+        || (width == 8 && band_counter(&lengths, 4)? <= band_counter(&initial, 4)?)
+    {
+        return Err(format!(
+            "actual wide HTTP group lacks full-width and odd-survivor receipts: {lengths}"
+        ));
+    }
+    physical_accounting(&lengths)?;
+
+    let eos_expected = eos.expected(tokenizer, 8)?;
+    if !eos.stopped || eos_expected.2 != "stop" || eos_expected.1 >= 8 {
+        return Err("wide HTTP proof lacks original trained-EOS evidence".into());
+    }
+    let eos_bodies = (0..width)
+        .map(|index| payload(&server.aliases[index % 2], &eos.prompt, 8, index % 2 == 0))
+        .collect::<Vec<_>>();
+    let responses = queued_group(server, &eos_bodies)?;
+    validate_group(responses, &eos_bodies, eos, tokenizer)?;
+    let after_eos =
+        server.wait_health(|h| h["active_sessions"] == 0 && h["queued_requests"] == 0)?;
+    if band_counter(&after_eos, width)? <= band_counter(&lengths, width)? {
+        return Err("trained-EOS group did not physically execute its native width".into());
+    }
+    physical_accounting(&after_eos)?;
+
+    let expected8 = oracle.expected(tokenizer, 8)?;
+    let cancel_bodies = (0..width)
+        .map(|index| payload(&server.aliases[index % 2], &oracle.prompt, 8, true))
+        .collect::<Vec<_>>();
+    let mut responses = queued_group(server, &cancel_bodies)?;
+    let cancel = responses.remove(0);
+    let mut survivors = Vec::new();
+    for (index, response) in responses.into_iter().enumerate() {
+        let alias = server.aliases[(index + 1) % 2].clone();
+        let expected = expected8.clone();
+        let prompt_tokens = oracle.prompt_tokens;
+        survivors.push(thread::spawn(move || {
+            sse_completion(response, &alias, &expected, prompt_tokens)
+        }));
+    }
+    let disconnected = disconnect_text_when(cancel, &server.aliases[0], &expected8.0, || {
+        let live = server.health()?["admission"].clone();
+        let accepted = counter(&live, "accepted_output_tokens")?
+            - counter(&after_eos, "accepted_output_tokens")?;
+        if live["active_sessions"] != width
+            || live["queued_requests"] != 0
+            || band_counter(&live, width)? <= band_counter(&after_eos, width)?
+            || accepted >= (8 * width) as u64
+        {
+            return Err(format!(
+                "cancel target was not demonstrably live in the real wide cohort: {live}"
+            ));
+        }
+        Ok(())
+    });
+    let mut survivor_error = None;
+    for survivor in survivors {
+        let result = survivor
+            .join()
+            .map_err(|_| "wide HTTP survivor reader panicked".to_owned())
+            .and_then(|result| result);
+        if let Err(error) = result {
+            survivor_error.get_or_insert(error);
+        }
+    }
+    disconnected?;
+    if let Some(error) = survivor_error {
+        return Err(error);
+    }
+    let cancelled = counter(&after_eos, "cancelled_requests")?;
+    let after_cancel = server.wait_health(|h| {
+        h["active_sessions"] == 0
+            && h["queued_requests"] == 0
+            && h["cancelled_requests"]
+                .as_u64()
+                .is_some_and(|count| count >= cancelled + 2)
+    })?;
+    if band_counter(&after_cancel, width)? <= band_counter(&after_eos, width)? {
+        return Err("live canceled HTTP group never executed its native width".into());
+    }
+    let replay_body = payload(&server.aliases[0], &oracle.prompt, 8, true);
+    let replay = Response::read(open_request(
+        server.address,
+        "POST",
+        "/v1/completions",
+        Some(&replay_body),
+    )?)?;
+    sse_completion(replay, &server.aliases[0], &expected8, oracle.prompt_tokens)?;
+    let final_health =
+        server.wait_health(|h| h["active_sessions"] == 0 && h["queued_requests"] == 0)?;
+    physical_accounting(&final_health)?;
+    println!(
+        "P12_HTTP_CUDA_NATIVE_WIDE_PASS rows={width} actual_queued_aliases=shared \
+        JSON_SSE_text_usage=CPU_exact trained_EOS_JSON_SSE=stop_exact terminal_usage_DONE=once \
+        live_disconnect_survivors_replay=exact weighted_native_rows_and_sampler=exact \
+        all42_state=internal_gate vLLM_performance=not_qualified health={final_health}"
+    );
+    Ok(())
+}
+
 fn qualify(name: &str) -> Proof<()> {
     let _serial = GPU_HTTP_LOCK
         .lock()
@@ -810,6 +1044,61 @@ fn qualify(name: &str) -> Proof<()> {
     })
 }
 
+fn qualify_wide(name: &str) -> Proof<()> {
+    let _serial = GPU_HTTP_LOCK
+        .lock()
+        .map_err(|_| "physical HTTP test lock poisoned")?;
+    if cfg!(debug_assertions) {
+        return Err("physical HTTP proof requires cargo test --release".into());
+    }
+    let directory: PathBuf = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/models")
+        .join(name);
+    let model_path = directory.join("model.gguf");
+    for file in [
+        &model_path,
+        &directory.join("config.json"),
+        &directory.join("tokenizer.json"),
+    ] {
+        if !file.is_file() {
+            return Err(format!(
+                "approved original source missing: {}",
+                file.display()
+            ));
+        }
+    }
+    let source = LoadedQwenModel::open(&model_path, &directory.join("config.json"))
+        .map_err(|e| e.to_string())?;
+    let tokenizer =
+        QwenTokenizer::from_file(&directory.join("tokenizer.json")).map_err(|e| e.to_string())?;
+    let mut chosen = None;
+    for prompt in [
+        "The sequence is 1, 2, 3,",
+        "Continue counting: one, two, three,",
+        "A simple example is",
+    ] {
+        let oracle = Oracle::compute(&source, &tokenizer, prompt)?;
+        if oracle.ids.len() == 8 && !oracle.stopped && !oracle.expected(&tokenizer, 8)?.0.is_empty()
+        {
+            chosen = Some(oracle);
+            break;
+        }
+    }
+    let oracle =
+        chosen.ok_or("no bounded original prompt supplied eight nonterminal source tokens")?;
+    let eos = find_source_eos(&source, &tokenizer)?;
+    for width in [4, 8] {
+        let server = OwnedServer::start_rows(&model_path, width)?;
+        wide_proof_cases(&server, width, &oracle, &eos, &tokenizer).map_err(|error| {
+            format!(
+                "{name} B{width}: {error}\nowned HTTP server stderr:\n{}",
+                server.diagnostics()
+            )
+        })?;
+    }
+    Ok(())
+}
+
 #[test]
 #[ignore = "release physical CUDA HTTP; approved original .8B source; run serially"]
 fn original_qwen35_08b_native_b2_http_json_sse_disconnect_and_replay() -> Proof<()> {
@@ -820,4 +1109,16 @@ fn original_qwen35_08b_native_b2_http_json_sse_disconnect_and_replay() -> Proof<
 #[ignore = "release physical CUDA HTTP; approved original 2B source; run serially"]
 fn original_qwen35_2b_native_b2_http_json_sse_disconnect_and_replay() -> Proof<()> {
     qualify("qwen35-2b")
+}
+
+#[test]
+#[ignore = "release physical CUDA B4/B8 HTTP; approved original .8B source; run serially"]
+fn original_qwen35_08b_native_wide_http_json_sse_disconnect_and_replay() -> Proof<()> {
+    qualify_wide("qwen35-0.8b")
+}
+
+#[test]
+#[ignore = "release physical CUDA B4/B8 HTTP; approved original 2B source; run serially"]
+fn original_qwen35_2b_native_wide_http_json_sse_disconnect_and_replay() -> Proof<()> {
+    qualify_wide("qwen35-2b")
 }

@@ -52,8 +52,8 @@ impl Router {
                 let m = v.metrics();
                 serde_json::json!({"kind":"resident_gpu",
                     "physical_accounting":"ResidentService/ResourceArbiter",
-                    "batch_mode":if m.native_b2 {"fused"} else {"interleaved"},
-                    "native_batch_rows_max":if m.native_b2 {2} else {1},
+                    "batch_mode":if m.native_rows != 0 {"fused"} else {"interleaved"},
+                    "native_batch_rows_max":m.native_rows.max(1),
                     "gpu_step_attempts":m.attempted,
                     "completed_gpu_quanta":m.completed,
                     "completed_quantum_unit":"request work, including terminal presentation",
@@ -65,6 +65,8 @@ impl Router {
                     "native_projection_dispatches_completed":m.native_projections,
                     "native_sampler_dispatches_completed":m.native_sampler,
                     "gpu_fused_rows_completed":m.fused_rows,
+                    "gpu_fused_batches_by_rows":{"2":m.native_bands[0],"4":m.native_bands[1],"8":m.native_bands[2]},
+                    "native_admission_refusals":m.native_admission_refusals,
                     "discarded_ready_cohorts":m.discarded_cohorts,
                     "accepted_output_tokens":m.output_tokens,
                     "output_credit_parked_requests":m.parked,
@@ -111,6 +113,8 @@ struct YamlConfig {
     device_mib: usize,
     #[serde(default = "default_batch_mode")]
     batch_mode: String,
+    #[serde(default = "default_batch_rows")]
+    batch_rows: usize,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -145,6 +149,9 @@ fn default_provider_mib() -> usize {
 fn default_device_mib() -> usize {
     4096
 }
+fn default_batch_rows() -> usize {
+    2
+}
 fn default_batch_mode() -> String {
     "interleaved".into()
 }
@@ -163,6 +170,7 @@ impl YamlConfig {
             provider_mib: default_provider_mib(),
             device_mib: default_device_mib(),
             batch_mode: default_batch_mode(),
+            batch_rows: default_batch_rows(),
         };
         if args.first().is_some_and(|x| x == "--config") {
             if args.len() != 2 {
@@ -219,6 +227,7 @@ impl YamlConfig {
                 "--provider-mib" => config.provider_mib = parse_usize(value, flag)?,
                 "--device-mib" => config.device_mib = parse_usize(value, flag)?,
                 "--batch-mode" => config.batch_mode = value.clone(),
+                "--batch-rows" => config.batch_rows = parse_usize(value, flag)?,
                 _ => {
                     return Err(ServiceError::new(
                         400,
@@ -240,14 +249,19 @@ fn parse_usize(value: &str, flag: &str) -> Result<usize, ServiceError> {
         )
     })
 }
-fn validate_batch_mode(mode: &str, backend: &str, active: usize) -> Result<(), ServiceError> {
+fn validate_batch_mode(
+    mode: &str,
+    backend: &str,
+    active: usize,
+    rows: usize,
+) -> Result<(), ServiceError> {
     match mode {
         "interleaved" => Ok(()),
-        "fused" if backend == "cuda" && active >= 2 => Ok(()),
+        "fused" if backend == "cuda" && matches!(rows, 2 | 4 | 8) && active >= rows => Ok(()),
         _ => Err(ServiceError::new(
             400,
             "unsupported_batch_mode",
-            "use interleaved, or fused with CUDA and at least two active slots",
+            "use interleaved, or fused with CUDA, rows=2/4/8 and active>=rows",
         )),
     }
 }
@@ -261,13 +275,14 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
              [--workers 2] [--active-per-worker 2] \
              [--max-context 1024] [--max-output 128] \
              [--host-mib 4096] [--provider-mib 2048] [--device-mib 4096] \
-             [--batch-mode interleaved|fused]\n\
+             [--batch-mode interleaved|fused] [--batch-rows 2|4|8]\n\
              ENDPOINTS: GET /health, GET /v1/models, \
              POST /v1/chat/completions, POST /v1/completions.\n\
              Qwen3.5 greedy text CPU or resident GPU, no inference fallback. \
              GPU: workers=1, context=512. Default interleaved; fused enables \
-             CUDA B2 matching-source/frontier prompt tails and decode \
-             with active>=2. Unmatched rows and other prefill use B1. \
+             CUDA B2/B4/B8 matching-source/frontier prompt tails and decode \
+             with active>=rows. Default rows=2; survivors regroup without padding. \
+             Unmatched rows and other prefill use B1. \
              CUDA needs CUDA_PATH with runtime+CCCL headers. \
              Loopback only; optional ZEROGRAVITY_API_KEY."
         );
@@ -295,6 +310,7 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
         &options.batch_mode,
         &options.backend,
         options.active_per_worker,
+        options.batch_rows,
     )?;
     let declared = options.models.into_iter().map(|m| (m.id, m.path)).collect();
     let backend = options.backend.as_str();
@@ -333,7 +349,11 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
                         output: options.max_output,
                         provider_mib: options.provider_mib,
                         device_mib: options.device_mib,
-                        native_b2: options.batch_mode == "fused",
+                        native_rows: if options.batch_mode == "fused" {
+                            options.batch_rows
+                        } else {
+                            0
+                        },
                     },
                 )?)
             }
@@ -369,9 +389,9 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
 mod tests {
     use super::*;
     #[test]
-    fn native_serving_mode_is_cuda_b2_only_before_model_or_device_lookup() {
+    fn native_serving_mode_is_bounded_before_model_or_device_lookup() {
         for backend in ["cpu", "cuda", "vulkan-nvidia", "vulkan-amd", "rocm"] {
-            assert!(validate_batch_mode("interleaved", backend, 1).is_ok());
+            assert!(validate_batch_mode("interleaved", backend, 1, 2).is_ok());
             if backend != "cuda" {
                 let err = run(&[
                     "--backend".into(),
@@ -385,8 +405,13 @@ mod tests {
                 assert_eq!(err.code, "unsupported_batch_mode");
             }
         }
-        assert!(validate_batch_mode("fused", "cuda", 2).is_ok());
-        assert!(validate_batch_mode("fused", "cuda", 8).is_ok());
+        assert!(validate_batch_mode("fused", "cuda", 2, 2).is_ok());
+        assert!(validate_batch_mode("fused", "cuda", 4, 4).is_ok());
+        assert!(validate_batch_mode("fused", "cuda", 8, 8).is_ok());
+        for rows in [0, 1, 3, 5, 6, 7, 9, 16] {
+            assert!(validate_batch_mode("fused", "cuda", 8, rows).is_err());
+        }
+        assert!(validate_batch_mode("fused", "cuda", 4, 8).is_err());
         for mode in ["fused", "fused-b4", "unknown"] {
             let err = run(&[
                 "--backend".into(),

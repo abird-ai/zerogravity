@@ -20,6 +20,16 @@ impl ResidentModel {
         self.prepare_fused_mode(rows, None, Readout::Greedy).await
     }
 
+    /// None means only a checked capacity refusal before any GPU submission.
+    /// Errors, including unknown completion, must never select a smaller retry.
+    pub async fn prepare_greedy_fused_cohort_admitted(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, u32)],
+    ) -> Result<Option<PreparedResidentCohort>> {
+        self.prepare_fused_mode_admitted(rows, None, Readout::Greedy)
+            .await
+    }
+
     /// Read original packet words on the GPU under their exact producing roots.
     /// Public host ID/max metadata never selects the next source embedding row.
     pub async fn prepare_device_tokens_fused_cohort(
@@ -35,12 +45,37 @@ impl ResidentModel {
             .await
     }
 
+    /// Device packets retain their original producer and physical lease checks.
+    pub async fn prepare_device_tokens_fused_cohort_admitted(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, &ResidentToken)],
+    ) -> Result<Option<PreparedResidentCohort>> {
+        let sessions = rows
+            .iter()
+            .map(|(session, _)| (*session, 0))
+            .collect::<Vec<_>>();
+        let tokens = rows.iter().map(|(_, token)| *token).collect::<Vec<_>>();
+        self.prepare_fused_mode_admitted(&sessions, Some(&tokens), Readout::Greedy)
+            .await
+    }
+
     async fn prepare_fused_mode(
         self: &Arc<Self>,
         rows: &[(&ResidentSession, u32)],
         device_tokens: Option<&[&ResidentToken]>,
         readout: Readout,
     ) -> Result<PreparedResidentCohort> {
+        self.prepare_fused_mode_admitted(rows, device_tokens, readout)
+            .await?
+            .ok_or_else(|| Error::Limit("native resident batch admission exhausted".into()))
+    }
+
+    async fn prepare_fused_mode_admitted(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, u32)],
+        device_tokens: Option<&[&ResidentToken]>,
+        readout: Readout,
+    ) -> Result<Option<PreparedResidentCohort>> {
         if !self.native_batch {
             return Err(Error::Unsupported(
                 "native resident batch requires CUDA".into(),
@@ -48,6 +83,11 @@ impl ResidentModel {
         }
         let bases = rows.iter().map(|(s, _)| s.binding()).collect::<Vec<_>>();
         let roots = ResidentBatchRows::new(&bases, 1)?;
+        if !matches!(rows.len(), 2 | 4 | 8) {
+            return Err(Error::Unsupported(
+                "resident native batch rows must be 2/4/8".into(),
+            ));
+        }
         if roots.source() != self.service.source_identity() {
             return Err(Error::State("native resident batch source mismatch".into()));
         }
@@ -87,9 +127,60 @@ impl ResidentModel {
             self.validate_domains(&session.domains, true)?;
             attempts.push(session.authority.begin_advance(1)?);
         }
+        let staging_bytes = self
+            .state_bytes
+            .checked_mul(rows.len())
+            .ok_or_else(|| Error::Limit("native resident batch admission overflow".into()))?;
+        let packet_bytes = if matches!(readout, Readout::Greedy) {
+            rows.len() * 12
+        } else {
+            0
+        };
+        let allocation = self.allocation.lock().await;
+        // This lock follows any prior actual terminal completion. Account the
+        // complete candidate/packet/workspace footprint before retiring an idle
+        // band or allocating a single candidate. No scheduler byte credits.
+        {
+            let mut workspace = self.workspace.lock().await;
+            self.service.ensure_usable()?;
+            let same_band = workspace
+                .batch
+                .as_ref()
+                .is_some_and(|b| b.rows == rows.len());
+            let reclaimable = if same_band {
+                0
+            } else {
+                workspace
+                    .batch
+                    .as_ref()
+                    .map(|b| b.program.budget().owned_bytes())
+                    .transpose()?
+                    .unwrap_or(0)
+            };
+            let workspace_bytes = if same_band {
+                0
+            } else {
+                BatchProgram::preflight(&workspace.program, rows.len())?.owned_bytes()?
+            };
+            let required = staging_bytes
+                .checked_add(packet_bytes)
+                .and_then(|n| n.checked_add(workspace_bytes))
+                .ok_or_else(|| Error::Limit("native resident batch admission overflow".into()))?;
+            let available = self
+                .service
+                .remaining_capacity()?
+                .checked_add(reclaimable)
+                .ok_or_else(|| Error::Limit("native resident batch capacity overflow".into()))?;
+            if required > available || staging_bytes as u64 > self.service.budget().remaining()? {
+                return Ok(None);
+            }
+            if !same_band {
+                workspace.batch = None;
+            }
+        }
         let mut candidates = Vec::with_capacity(rows.len());
         for _ in rows {
-            candidates.push(self.allocate_state(false).await?);
+            candidates.push(self.allocate_uninitialized_state()?);
         }
         let bindings = rows
             .iter()
@@ -104,13 +195,8 @@ impl ResidentModel {
                 valid_tokens: position + 1,
             })
             .collect::<Vec<_>>();
-        let staging_bytes = self
-            .state_bytes
-            .checked_mul(rows.len())
-            .ok_or_else(|| Error::Limit("native resident batch admission overflow".into()))?;
         // State initialization uses allocation -> queue. Preserve that order
         // while admitting a cold batch workspace, before selecting a slot.
-        let allocation = self.allocation.lock().await;
         let packets = if matches!(readout, Readout::Greedy) {
             (0..rows.len())
                 .map(|_| self.service.allocate_uninitialized(12, BufferRole::Output))
@@ -473,13 +559,13 @@ impl ResidentModel {
                 },
             });
         }
-        Ok(PreparedResidentCohort {
+        Ok(Some(PreparedResidentCohort {
             model: Arc::clone(self),
             roots,
             prepared,
             dispatches: submitted.dispatches,
             fused_dispatches: submitted.fused_dispatches,
             native_greedy_dispatches,
-        })
+        }))
     }
 }
