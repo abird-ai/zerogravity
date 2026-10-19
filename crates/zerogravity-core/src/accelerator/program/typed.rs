@@ -46,6 +46,51 @@ pub enum ProjectionContract {
     TorchCpuBf16Avx2,
 }
 
+/// Qualified ordinary RMS only: raw(1+weight), FP32 stages, final BF16.
+/// Epsilon1e-6 and the four CPU reduction widths are part of this contract.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OrdinaryRmsContract {
+    TorchCpuBf16Avx2,
+}
+impl OrdinaryRmsContract {
+    pub fn validate(self, parameter: &SourceParameter, elements: usize) -> Result<usize> {
+        if !parameter.source.is_bound() || parameter.name.is_empty() {
+            return Err(Error::State("ordinary RMS parameter binding".into()));
+        }
+        let [raw_width] = parameter.shape.as_slice() else {
+            return Err(Error::Malformed("ordinary RMS raw parameter rank".into()));
+        };
+        let width = usize::try_from(*raw_width)
+            .map_err(|_| Error::Limit("ordinary RMS parameter width".into()))?;
+        if !matches!(width, 256 | 1024 | 2048 | 5120) {
+            return Err(Error::Unsupported(
+                "ordinary RMS qualified CPU width".into(),
+            ));
+        }
+        let bytes_per_element = match parameter.kind {
+            QuantKind::Bf16 => 2,
+            QuantKind::F32 => 4,
+            _ => {
+                return Err(Error::Unsupported(
+                    "ordinary RMS raw parameter dtype".into(),
+                ));
+            }
+        };
+        if parameter.bytes != width * bytes_per_element
+            || elements == 0
+            || !elements.is_multiple_of(width)
+        {
+            return Err(Error::Malformed(
+                "ordinary RMS parameter/input geometry".into(),
+            ));
+        }
+        if elements > 1_048_576 {
+            return Err(Error::Limit("ordinary RMS qualified element bound".into()));
+        }
+        Ok(width)
+    }
+}
+
 pub(super) fn validate_bf16_matrix(tensor: &SourceTensor) -> Result<()> {
     if tensor.kind != QuantKind::Bf16 || tensor.axes != MatrixAxes::OutputInput {
         return Err(Error::Unsupported(

@@ -486,3 +486,418 @@ fn spare_shard_capacity_and_unbounded_host_labels_refuse_before_admission() {
     assert!(matches!(fixture.plan(&long), Err(Error::State(_))));
     assert_eq!(reserved(&host), 0);
 }
+
+const PARAMETERS: &str = "parameters.safetensors";
+struct ParameterFixture {
+    path: PathBuf,
+    bytes: Vec<u8>,
+    index: Vec<u8>,
+    norm: Vec<u8>,
+    bias: Vec<u8>,
+    half: Vec<u8>,
+}
+impl ParameterFixture {
+    fn new() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let path = std::env::temp_dir().join(format!(
+            "zg-parameter-windows-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&path).unwrap();
+        let norm = (0..40u16)
+            .flat_map(|n| (0x3f00 + n).to_le_bytes())
+            .collect::<Vec<_>>();
+        let bias = [0x80000000u32, 0x3f000000, 0x3f800000, 0xbf800000, 1]
+            .into_iter()
+            .flat_map(u32::to_le_bytes)
+            .collect::<Vec<_>>();
+        let half = [0x3c00u16, 0xbc00, 0, 0x8000]
+            .into_iter()
+            .flat_map(u16::to_le_bytes)
+            .collect::<Vec<_>>();
+        let matrix = vec![0u8; 32];
+        let not_vector = vec![0u8; 8];
+        let mut header = serde_json::Map::new();
+        let mut weight_map = serde_json::Map::new();
+        let mut payload = Vec::new();
+        for (name, dtype, shape, raw) in [
+            ("norm", "BF16", vec![40u64], norm.as_slice()),
+            ("bias", "F32", vec![5], bias.as_slice()),
+            ("half", "F16", vec![4], half.as_slice()),
+            ("matrix", "F32", vec![2, 4], matrix.as_slice()),
+            ("not_vector", "BF16", vec![1, 4], not_vector.as_slice()),
+        ] {
+            let start = payload.len();
+            payload.extend_from_slice(raw);
+            header.insert(
+                name.into(),
+                json!({"dtype":dtype,"shape":shape,"data_offsets":[start,payload.len()]}),
+            );
+            weight_map.insert(name.into(), json!(PARAMETERS));
+        }
+        let header = serde_json::to_vec(&header).unwrap();
+        let mut bytes = (header.len() as u64).to_le_bytes().to_vec();
+        bytes.extend(header);
+        bytes.extend(&payload);
+        let index = serde_json::to_vec(
+            &json!({"metadata":{"total_size":payload.len()},"weight_map":weight_map}),
+        )
+        .unwrap();
+        fs::write(path.join(PARAMETERS), &bytes).unwrap();
+        Self {
+            path,
+            bytes,
+            index,
+            norm,
+            bias,
+            half,
+        }
+    }
+    fn artifact(&self) -> Artifact {
+        Artifact::from_file(
+            File::open(self.path.join(PARAMETERS)).unwrap(),
+            std::path::Path::new(PARAMETERS),
+        )
+        .unwrap()
+    }
+    fn plan(
+        &self,
+        admission: &TransferAdmission,
+    ) -> zerogravity_artifacts::Result<VerifiedWindowPlan> {
+        self.plan_with_artifact(self.artifact(), admission)
+    }
+    fn plan_with_artifact(
+        &self,
+        artifact: Artifact,
+        admission: &TransferAdmission,
+    ) -> zerogravity_artifacts::Result<VerifiedWindowPlan> {
+        self.plan_with_chunk_bytes(artifact, admission, 64)
+    }
+    fn plan_with_chunk_bytes(
+        &self,
+        artifact: Artifact,
+        admission: &TransferAdmission,
+        scan_chunk_bytes: usize,
+    ) -> zerogravity_artifacts::Result<VerifiedWindowPlan> {
+        let shard = ExpectedSourceShard::new(
+            PARAMETERS.into(),
+            artifact,
+            self.bytes.len() as u64,
+            sha(&self.bytes),
+        )?;
+        SourceWeights::prepare_verified_windows(
+            &self.index,
+            &sha(&self.index),
+            vec![shard],
+            WindowOpenLimits {
+                max_source_bytes: 1024 * 1024,
+                max_metadata_bytes: META,
+                max_shards: 1,
+                max_tensors: 5,
+                scan_chunk_bytes,
+            },
+            admission,
+        )
+    }
+}
+impl Drop for ParameterFixture {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+#[test]
+fn raw_rank1_parameter_kind_original_descriptor_and_contiguous_ranges_are_exact() {
+    use zerogravity_core::quant::QuantKind;
+    let fixture = ParameterFixture::new();
+    let host = admission(64 * 1024 * 1024, "host");
+    let source = fixture.plan(&host).unwrap().open().unwrap();
+    assert_eq!(reserved(&host), META);
+    for (name, kind, shape, raw) in [
+        (
+            "norm",
+            QuantKind::Bf16,
+            vec![40u64],
+            fixture.norm.as_slice(),
+        ),
+        ("bias", QuantKind::F32, vec![5], fixture.bias.as_slice()),
+        ("half", QuantKind::F16, vec![4], fixture.half.as_slice()),
+    ] {
+        let parameter = source.parameter(name).unwrap();
+        let descriptor = parameter.source_parameter();
+        assert_eq!(descriptor.source, source.source_identity());
+        assert_eq!(descriptor.name, name);
+        assert_eq!(descriptor.kind, kind);
+        assert_eq!(descriptor.shape, shape);
+        assert_eq!(descriptor.bytes, raw.len());
+        parameter.validate_source_parameter(&descriptor).unwrap();
+        assert_eq!(parameter.tensor().kind, kind);
+        assert_eq!(parameter.tensor().shape, shape);
+        let window = source
+            .read_parameter(&parameter, 0..parameter.elements())
+            .unwrap();
+        assert!(window.is_complete());
+        assert_eq!(window.element_range(), 0..parameter.elements());
+        assert_eq!(window.parameter().source_parameter(), descriptor);
+        assert_eq!(window.as_slice(), raw);
+        assert_eq!(window.source_offset(), parameter.tensor().byte_offset);
+        assert_eq!(window.shard_basename(), PARAMETERS);
+        assert_eq!(window.shard_sha256(), sha(&fixture.bytes));
+        assert_eq!(
+            window.verified_bundle_sha256(),
+            source.verified_bundle_sha256()
+        );
+        assert_eq!(window.extent_index_sha256().len(), 64);
+        assert_eq!(
+            reserved(&host),
+            META + window.charged_staging_bytes() as u64
+        );
+        drop(window);
+        assert_eq!(reserved(&host), META);
+    }
+    let parameter = source.parameter("norm").unwrap();
+    let partial = source.read_parameter(&parameter, 2..37).unwrap();
+    assert!(!partial.is_complete());
+    assert_eq!(partial.element_range(), 2..37);
+    assert_eq!(partial.as_slice(), &fixture.norm[4..74]);
+    assert_eq!(partial.source_offset(), parameter.tensor().byte_offset + 4);
+    // Original shape/bytes remain full even for a partial physical byte range.
+    assert_eq!(partial.parameter().source_parameter().shape, [40u64]);
+    assert_eq!(partial.parameter().source_parameter().bytes, 80);
+    let start = partial.source_offset() as usize;
+    let end = start + partial.as_slice().len();
+    let chunks = start / 64..=(end - 1) / 64;
+    let data = chunks
+        .clone()
+        .map(|index| 64.min(fixture.bytes.len() - index * 64))
+        .sum::<usize>();
+    let offsets = chunks.count() * std::mem::size_of::<(usize, std::ops::Range<usize>)>();
+    assert_eq!(partial.charged_staging_bytes(), data + offsets);
+    assert!(partial.charged_staging_bytes() > partial.as_slice().len());
+    assert_eq!(
+        host.arbiter.snapshot(&host.resource).unwrap().per_class[&AllocationClass::TransferStaging],
+        (data + offsets) as u64
+    );
+    drop((partial, parameter, source));
+    assert_eq!(reserved(&host), 0);
+}
+
+#[test]
+fn rank1_parameter_sealed_issuer_rejects_foreign_owner_changed_typed_metadata_and_bad_ranges() {
+    use zerogravity_core::accelerator::program::SourceParameter;
+    use zerogravity_core::quant::QuantKind;
+    let fixture = ParameterFixture::new();
+    let host = admission(64 * 1024 * 1024, "host");
+    let first = fixture.plan(&host).unwrap().open().unwrap();
+    let second = fixture.plan(&host).unwrap().open().unwrap();
+    let parameter = first.parameter("norm").unwrap();
+    let descriptor = parameter.source_parameter();
+    assert_ne!(first.source_identity(), second.source_identity());
+    assert!(matches!(
+        second.read_parameter(&parameter, 0..1),
+        Err(Error::State(_))
+    ));
+    for changed in [
+        second.parameter("norm").unwrap().source_parameter(),
+        SourceParameter {
+            name: "bias".into(),
+            ..descriptor.clone()
+        },
+        SourceParameter {
+            kind: QuantKind::F32,
+            ..descriptor.clone()
+        },
+        SourceParameter {
+            kind: QuantKind::Q4_0,
+            ..descriptor.clone()
+        },
+        SourceParameter {
+            shape: vec![1, 40],
+            ..descriptor.clone()
+        },
+        SourceParameter {
+            shape: vec![39],
+            ..descriptor.clone()
+        },
+        SourceParameter {
+            bytes: 79,
+            ..descriptor.clone()
+        },
+    ] {
+        assert!(matches!(
+            parameter.validate_source_parameter(&changed),
+            Err(Error::State(_))
+        ));
+    }
+    for range in [
+        0..0,
+        std::ops::Range { start: 3, end: 2 },
+        0..41,
+        usize::MAX..usize::MAX,
+    ] {
+        assert!(first.read_parameter(&parameter, range).is_err());
+    }
+    assert!(first.parameter("foreign").is_err());
+    assert!(first.parameter("matrix").is_err());
+    assert!(first.parameter("not_vector").is_err());
+    assert!(first.matrix("norm", MatrixAxes::OutputInput).is_err());
+    assert_eq!(reserved(&host), 2 * META);
+    assert!(!host.arbiter.snapshot(&host.resource).unwrap().fenced);
+    drop((parameter, first, second));
+    assert_eq!(reserved(&host), 0);
+}
+
+#[test]
+fn parameter_window_keeps_raw_bytes_and_metadata_live_after_all_caller_owners_drop() {
+    let fixture = ParameterFixture::new();
+    let host = admission(64 * 1024 * 1024, "host");
+    let source = fixture.plan(&host).unwrap().open().unwrap();
+    let parameter = source.parameter("norm").unwrap();
+    let identity = source.source_identity();
+    let window = source
+        .read_parameter(&parameter, 0..parameter.elements())
+        .unwrap();
+    let staging = window.charged_staging_bytes() as u64;
+    drop((source, parameter));
+    assert_eq!(reserved(&host), META + staging);
+    assert_eq!(window.parameter().source_identity(), identity);
+    assert_eq!(window.parameter().source_parameter().shape, [40u64]);
+    assert_eq!(window.as_slice(), fixture.norm);
+    drop(window);
+    assert_eq!(reserved(&host), 0);
+}
+
+#[test]
+fn parameter_actual_header_and_retained_fd_ignore_public_info_and_path_replacement() {
+    use zerogravity_core::quant::QuantKind;
+    let fixture = ParameterFixture::new();
+    let host = admission(64 * 1024 * 1024, "host");
+    let mut artifact = fixture.artifact();
+    let untrusted = artifact
+        .info
+        .tensors
+        .iter_mut()
+        .find(|tensor| tensor.name == "norm")
+        .unwrap();
+    untrusted.kind = QuantKind::F32;
+    untrusted.shape = vec![1, 40];
+    untrusted.byte_len = 1;
+    untrusted.byte_offset = 0;
+    let plan = fixture.plan_with_artifact(artifact, &host).unwrap();
+    fs::rename(
+        fixture.path.join(PARAMETERS),
+        fixture.path.join("original-retained"),
+    )
+    .unwrap();
+    fs::write(fixture.path.join(PARAMETERS), vec![0; fixture.bytes.len()]).unwrap();
+    let source = plan.open().unwrap();
+    let parameter = source.parameter("norm").unwrap();
+    assert_eq!(parameter.tensor().kind, QuantKind::Bf16);
+    assert_eq!(parameter.tensor().shape, [40u64]);
+    assert_eq!(parameter.source_parameter().bytes, 80);
+    let window = source.read_parameter(&parameter, 0..40).unwrap();
+    assert_eq!(window.as_slice(), fixture.norm);
+    drop((source, parameter, window));
+    assert_eq!(reserved(&host), 0);
+}
+
+#[test]
+fn changed_parameter_source_or_short_read_never_publishes_mutated_bytes() {
+    let fixture = ParameterFixture::new();
+    let host = admission(64 * 1024 * 1024, "host");
+    let source = fixture.plan(&host).unwrap().open().unwrap();
+    let parameter = source.parameter("norm").unwrap();
+    let before = source.read_parameter(&parameter, 0..40).unwrap();
+    let charge = reserved(&host);
+    let mut changed = fixture.bytes.clone();
+    changed[parameter.tensor().byte_offset as usize + 79] ^= 1;
+    fs::write(fixture.path.join(PARAMETERS), changed).unwrap();
+    assert!(source.read_parameter(&parameter, 20..40).is_err());
+    assert_eq!(reserved(&host), charge);
+    assert_eq!(before.as_slice(), fixture.norm);
+    File::create(fixture.path.join(PARAMETERS))
+        .unwrap()
+        .set_len(12)
+        .unwrap();
+    assert!(source.read_parameter(&parameter, 0..1).is_err());
+    assert_eq!(reserved(&host), charge);
+    assert!(!host.arbiter.snapshot(&host.resource).unwrap().fenced);
+    drop((source, parameter, before));
+    assert_eq!(reserved(&host), 0);
+}
+
+#[test]
+fn parameter_cancel_and_real_pool_exhaustion_preserve_prior_stage_and_release_all_charges() {
+    use zerogravity_core::resource_arbiter::AllocationRequest;
+    let fixture = ParameterFixture::new();
+    let host = admission(META + 4096, "host");
+    let source = fixture.plan(&host).unwrap().open().unwrap();
+    let parameter = source.parameter("norm").unwrap();
+    let cancelled = AtomicBool::new(true);
+    assert!(
+        source
+            .read_parameter_cancellable(&parameter, 0..40, &cancelled)
+            .is_err()
+    );
+    assert_eq!(reserved(&host), META);
+    let occupied = host
+        .arbiter
+        .admit(
+            &host.resource,
+            host.owner.clone(),
+            &[AllocationRequest {
+                kind: AllocationClass::Other,
+                bytes: 4096,
+            }],
+        )
+        .unwrap();
+    assert!(matches!(
+        source.read_parameter(&parameter, 0..40),
+        Err(Error::Limit(_))
+    ));
+    assert_eq!(reserved(&host), META + 4096);
+    drop(occupied);
+    cancelled.store(false, Ordering::Release);
+    let before = source
+        .read_parameter_cancellable(&parameter, 0..40, &cancelled)
+        .unwrap();
+    let charge = reserved(&host);
+    cancelled.store(true, Ordering::Release);
+    assert!(
+        source
+            .read_parameter_cancellable(&parameter, 0..40, &cancelled)
+            .is_err()
+    );
+    assert_eq!(reserved(&host), charge);
+    assert_eq!(before.as_slice(), fixture.norm);
+    drop((source, parameter, before));
+    assert_eq!(reserved(&host), 0);
+    assert!(!host.arbiter.snapshot(&host.resource).unwrap().fenced);
+}
+
+#[test]
+fn parameter_range_inherits_bounded_authenticated_chunk_count_before_staging() {
+    let fixture = ParameterFixture::new();
+    let host = admission(64 * 1024 * 1024, "host");
+    let source = fixture
+        .plan_with_chunk_bytes(fixture.artifact(), &host, 1)
+        .unwrap()
+        .open()
+        .unwrap();
+    let parameter = source.parameter("norm").unwrap();
+    assert!(matches!(
+        source.read_parameter(&parameter, 0..40),
+        Err(Error::Limit(_))
+    ));
+    assert_eq!(reserved(&host), META);
+    let small = source.read_parameter(&parameter, 1..2).unwrap();
+    assert_eq!(small.as_slice(), &fixture.norm[2..4]);
+    assert!(!small.is_complete());
+    assert_eq!(
+        small.charged_staging_bytes(),
+        2 + 2 * std::mem::size_of::<(usize, std::ops::Range<usize>)>()
+    );
+    drop((source, parameter, small));
+    assert_eq!(reserved(&host), 0);
+}

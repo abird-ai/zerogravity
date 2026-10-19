@@ -14,8 +14,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 mod typed;
 pub use typed::{
-    ActivationPrecision, EmbeddingContract, ProgramNumericalProfile, ProjectionContract,
-    SourceParameter,
+    ActivationPrecision, EmbeddingContract, OrdinaryRmsContract, ProgramNumericalProfile,
+    ProjectionContract, SourceParameter,
 };
 
 static NEXT_PLAN_BUILDER: AtomicU64 = AtomicU64::new(1);
@@ -270,6 +270,16 @@ pub trait MathematicalBackend {
             )),
         }
     }
+    fn ordinary_rms_profiled(
+        &mut self,
+        _parameter: SourceParameter,
+        _input: &Self::Value,
+        _contract: OrdinaryRmsContract,
+    ) -> Result<Self::Value> {
+        Err(Error::Unsupported(
+            "backend does not implement explicit ordinary RMS contract".into(),
+        ))
+    }
     fn embed(&mut self, tensor: SourceTensor, token: Self::Index) -> Result<Self::Value>;
     fn project(&mut self, tensor: SourceTensor, input: &Self::Value) -> Result<Self::Value>;
     fn view(&mut self, input: &Self::Value, view: TensorView) -> Result<Self::Value>;
@@ -442,6 +452,10 @@ pub enum PlanOperation {
     TypedProject {
         tensor: SourceTensor,
         contract: ProjectionContract,
+    },
+    TypedOrdinaryRms {
+        parameter: SourceParameter,
+        contract: OrdinaryRmsContract,
     },
     Embed {
         tensor: SourceTensor,
@@ -770,6 +784,22 @@ impl PlanBuilder {
                 }
                 Ok(ActivationPrecision::Bf16WidenedF32)
             }
+            PlanOperation::TypedOrdinaryRms {
+                parameter,
+                contract,
+            } => {
+                if self.profile != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+                    || parameter.source != self.source
+                    || inputs.len() != 1
+                    || inputs[0].precision != ActivationPrecision::Bf16WidenedF32
+                {
+                    return Err(Error::Unsupported(
+                        "ordinary RMS numerical profile/source/precision".into(),
+                    ));
+                }
+                contract.validate(parameter, inputs[0].elements)?;
+                Ok(ActivationPrecision::Bf16WidenedF32)
+            }
             PlanOperation::View(_) | PlanOperation::Contiguous => inputs
                 .first()
                 .map(|value| value.precision)
@@ -783,7 +813,9 @@ impl PlanBuilder {
                     .all(|input| input.precision == ActivationPrecision::F32)
                 && !matches!(
                     operation,
-                    PlanOperation::TypedEmbed { .. } | PlanOperation::TypedProject { .. }
+                    PlanOperation::TypedEmbed { .. }
+                        | PlanOperation::TypedProject { .. }
+                        | PlanOperation::TypedOrdinaryRms { .. }
                 ) =>
             {
                 Ok(ActivationPrecision::F32)
@@ -1030,6 +1062,24 @@ impl MathematicalBackend for PlanBuilder {
             PlanOperation::TypedProject { tensor, contract },
             &[*input],
             ValueShape::Vector(rows),
+            None,
+        )
+    }
+    fn ordinary_rms_profiled(
+        &mut self,
+        parameter: SourceParameter,
+        input: &PlanValue,
+        contract: OrdinaryRmsContract,
+    ) -> Result<PlanValue> {
+        let name = parameter.name.clone();
+        self.one(
+            &name,
+            PlanOperation::TypedOrdinaryRms {
+                parameter,
+                contract,
+            },
+            &[*input],
+            input.shape,
             None,
         )
     }

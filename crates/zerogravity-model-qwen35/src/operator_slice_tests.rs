@@ -64,7 +64,29 @@ struct Loaded {
     key: PhysicalDeviceKey,
 }
 fn source(fixture: &Fixture, tied: bool, mutate: impl FnOnce(&mut Value)) -> Loaded {
-    let cfg = config(tied);
+    source_with_options(fixture, tied, 4, false, mutate)
+}
+fn source_with_options(
+    fixture: &Fixture,
+    tied: bool,
+    hidden: usize,
+    norm_bf16: bool,
+    mutate: impl FnOnce(&mut Value),
+) -> Loaded {
+    source_with_geometry(fixture, tied, hidden, 16, norm_bf16, mutate)
+}
+fn source_with_geometry(
+    fixture: &Fixture,
+    tied: bool,
+    hidden: usize,
+    vocabulary: usize,
+    norm_bf16: bool,
+    mutate: impl FnOnce(&mut Value),
+) -> Loaded {
+    let mut cfg: Value = serde_json::from_slice(&config(tied)).unwrap();
+    cfg["text_config"]["hidden_size"] = json!(hidden);
+    cfg["text_config"]["vocab_size"] = json!(vocabulary);
+    let cfg = serde_json::to_vec(&cfg).unwrap();
     let specs = QwenTextConfig::from_json(&cfg)
         .unwrap()
         .tensor_specs()
@@ -73,7 +95,9 @@ fn source(fixture: &Fixture, tied: bool, mutate: impl FnOnce(&mut Value)) -> Loa
     let mut map = BTreeMap::new();
     let mut payload = Vec::new();
     for spec in specs {
-        let kind = if spec.shape.len() == 1 && !spec.name.ends_with("dt_bias") {
+        let kind = if norm_bf16 && spec.name.ends_with("input_layernorm.weight") {
+            "BF16"
+        } else if spec.shape.len() == 1 && !spec.name.ends_with("dt_bias") {
             "F32"
         } else {
             "BF16"
@@ -302,5 +326,269 @@ fn unaware_physical_provider_refuses_before_embedding_or_projection_callback() {
         .is_err()
     );
     assert!(!provider.0.load(Ordering::Relaxed));
+    assert_eq!(model.initialized_cpu_state_bytes(), 0);
+}
+
+#[test]
+fn typed_ordinary_rms_slice_uses_original_parameter_and_one_shared_backend() {
+    use crate::accelerator::program::{ActivationPrecision, OrdinaryRmsContract, PlanOperation};
+    use crate::original_binding::QwenParameterRole;
+    for raw_bf16 in [false, true] {
+        let fixture = Fixture::new();
+        let (model, admission, key) =
+            bind(source_with_options(&fixture, true, 256, raw_bf16, |_| {}));
+        let parameter = model
+            .parameter_descriptor(QwenParameterRole::InputNorm(0))
+            .unwrap();
+        let raw = model
+            .parameter_source(QwenParameterRole::InputNorm(0))
+            .unwrap();
+        let pointer = raw.packed_bytes.as_ptr();
+        let unchanged = raw.packed_bytes.to_vec();
+        let reserved = admission.arbiter.snapshot(&key).unwrap().reserved;
+        let slice = model.embedding_input_norm_projection_slice().unwrap();
+        assert_eq!(slice.plan().nodes().len(), 3);
+        let PlanOperation::TypedOrdinaryRms {
+            parameter: recorded,
+            contract,
+        } = &slice.plan().nodes()[1].operation
+        else {
+            panic!("missing raw source ordinary RMS node");
+        };
+        assert_eq!(recorded, &parameter);
+        assert_eq!(*contract, OrdinaryRmsContract::TorchCpuBf16Avx2);
+        assert!(slice.plan().constants().is_empty());
+        assert!(
+            slice.plan().required_domains().is_empty()
+                && slice.plan().proposed_domains().is_empty()
+        );
+        assert_eq!(slice.plan().frontier_delta(), 0);
+        assert!(slice.plan().logits().is_none());
+        assert!(
+            slice
+                .plan()
+                .precisions()
+                .iter()
+                .all(|p| *p == ActivationPrecision::Bf16WidenedF32)
+        );
+        let PlanOperation::TypedProject { tensor, .. } = &slice.plan().nodes()[2].operation else {
+            panic!("missing source GDN QKV projection");
+        };
+        assert_eq!(
+            tensor,
+            &model.matrix_descriptor(QwenMatrixRole::GdnQkv(0)).unwrap()
+        );
+        for token in [0, 11] {
+            let output = model
+                .execute_embedding_input_norm_projection_slice(token)
+                .unwrap();
+            assert_eq!(output.source_identity(), model.source_identity());
+            assert_eq!(
+                output.numerical_profile(),
+                model.program_numerical_profile()
+            );
+            assert_eq!(output.precision(), ActivationPrecision::Bf16WidenedF32);
+            assert_eq!(output.embedding(), &[1.0; 256]);
+            assert_eq!(
+                output.normalized(),
+                &[if raw_bf16 { 2.0 } else { 1.25 }; 256]
+            );
+            assert_eq!(
+                output.projected(),
+                &[if raw_bf16 { 512.0 } else { 320.0 }; 8]
+            );
+        }
+        let raw = model
+            .parameter_source(QwenParameterRole::InputNorm(0))
+            .unwrap();
+        assert_eq!(raw.packed_bytes.as_ptr(), pointer);
+        assert_eq!(raw.packed_bytes, unchanged);
+        assert_eq!(model.initialized_cpu_state_bytes(), 0);
+        assert_eq!(admission.arbiter.snapshot(&key).unwrap().reserved, reserved);
+        assert!(model.new_session().is_err());
+        assert!(model.forward_plan(256, true, false).is_err());
+        assert!(
+            model
+                .execute_embedding_input_norm_projection_slice(16)
+                .is_err()
+        );
+        drop((slice, model));
+        assert_eq!(admission.arbiter.snapshot(&key).unwrap().reserved, 0);
+    }
+}
+
+#[test]
+fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unaware_paths() {
+    use crate::accelerator::program::{
+        MathematicalBackend, OrdinaryRmsContract, ProjectionContract, TensorView,
+    };
+    use crate::original_binding::QwenParameterRole;
+    use zerogravity_core::quant::QuantKind;
+    let fixture = Fixture::new();
+    let (first, _, _) = bind(source_with_geometry(&fixture, true, 256, 512, true, |_| {}));
+    let second_fixture = Fixture::new();
+    let (second, _, _) = bind(source_with_options(
+        &second_fixture,
+        true,
+        256,
+        true,
+        |_| {},
+    ));
+    let mut math = crate::host_math::HostMath::for_operator_slice(&first, None);
+    let input = math
+        .embed_profiled(
+            first.matrix_descriptor(QwenMatrixRole::Embedding).unwrap(),
+            0,
+            EmbeddingContract::Bf16OutputInput,
+        )
+        .unwrap();
+    let parameter = first
+        .parameter_descriptor(QwenParameterRole::InputNorm(0))
+        .unwrap();
+    let contract = OrdinaryRmsContract::TorchCpuBf16Avx2;
+    let normalized = math
+        .ordinary_rms_profiled(parameter.clone(), &input, contract)
+        .unwrap();
+    assert_eq!(normalized.into_vec().unwrap(), [2.0; 256]);
+    for changed in [
+        second
+            .parameter_descriptor(QwenParameterRole::InputNorm(0))
+            .unwrap(),
+        crate::accelerator::program::SourceParameter {
+            name: "foreign.weight".into(),
+            ..parameter.clone()
+        },
+        crate::accelerator::program::SourceParameter {
+            kind: QuantKind::F32,
+            bytes: 1024,
+            ..parameter.clone()
+        },
+        crate::accelerator::program::SourceParameter {
+            shape: vec![1, 256],
+            ..parameter.clone()
+        },
+        crate::accelerator::program::SourceParameter {
+            bytes: 510,
+            ..parameter.clone()
+        },
+    ] {
+        assert!(
+            math.ordinary_rms_profiled(changed, &input, contract)
+                .is_err()
+        );
+    }
+    let backing = math
+        .project_profiled(
+            first.matrix_descriptor(QwenMatrixRole::Output).unwrap(),
+            &input,
+            ProjectionContract::TorchCpuBf16Avx2,
+        )
+        .unwrap();
+    assert_eq!(math.elements(&backing), 512);
+    let view = math
+        .view(
+            &backing,
+            TensorView {
+                offset: 0,
+                rows: 2,
+                width: 128,
+                row_stride: 256,
+            },
+        )
+        .unwrap();
+    assert_eq!(math.elements(&view), 256);
+    assert_eq!(
+        contract.validate(&parameter, math.elements(&view)).unwrap(),
+        256
+    );
+    assert!(matches!(
+        math.ordinary_rms_profiled(parameter.clone(), &view, contract),
+        Err(Error::State(message)) if message.contains("contiguous")
+    ));
+    let packed = math.contiguous(&view).unwrap();
+    let normalized = math
+        .ordinary_rms_profiled(parameter.clone(), &packed, contract)
+        .unwrap();
+    assert_eq!(normalized.into_vec().unwrap(), [2.0; 256]);
+    let mut foreign = crate::host_math::HostMath::for_operator_slice(&second, None);
+    assert!(
+        foreign
+            .ordinary_rms_profiled(
+                second
+                    .parameter_descriptor(QwenParameterRole::InputNorm(0))
+                    .unwrap(),
+                &input,
+                contract
+            )
+            .is_err()
+    );
+    struct Unaware(std::sync::atomic::AtomicBool);
+    impl crate::accelerator::MatVecKernel for Unaware {
+        fn try_execute(
+            &self,
+            _: crate::accelerator::MatVecRegion<'_>,
+        ) -> Result<crate::accelerator::RegionExecution> {
+            self.0.store(true, Ordering::Relaxed);
+            panic!("unaware provider must not receive ordinary RMS");
+        }
+        fn try_rms_norm(
+            &self,
+            _: crate::accelerator::RmsNormRegion<'_>,
+        ) -> Result<crate::accelerator::RegionExecution> {
+            self.0.store(true, Ordering::Relaxed);
+            panic!("ordinary contract cannot fall back to legacy RMS");
+        }
+    }
+    let provider = Unaware(std::sync::atomic::AtomicBool::new(false));
+    let mut unaware = crate::host_math::HostMath::for_operator_slice(&first, Some(&provider));
+    assert!(
+        unaware
+            .ordinary_rms_profiled(parameter, &input, contract)
+            .is_err()
+    );
+    assert!(!provider.0.load(Ordering::Relaxed));
+    assert_eq!(first.initialized_cpu_state_bytes(), 0);
+    assert_eq!(second.initialized_cpu_state_bytes(), 0);
+}
+
+#[test]
+fn typed_ordinary_rms_refuses_unqualified_source_epsilon_before_recording_or_execution() {
+    use crate::accelerator::program::{MathematicalBackend, OrdinaryRmsContract};
+    use crate::original_binding::QwenParameterRole;
+    let fixture = Fixture::new();
+    let mut loaded = source_with_options(&fixture, true, 256, true, |_| {});
+    let mut config: Value = serde_json::from_slice(&loaded.config).unwrap();
+    config["text_config"]["rms_norm_eps"] = json!(0.00001);
+    loaded.config = serde_json::to_vec(&config).unwrap();
+    let (model, _, _) = bind(loaded);
+    let projection = model
+        .execute_embedding_projection_slice(0, QwenMatrixRole::GdnQkv(0))
+        .unwrap();
+    assert_eq!(projection.embedding(), &[1.0; 256]);
+    assert_eq!(projection.projected(), &[256.0; 8]);
+    assert!(model.embedding_input_norm_projection_slice().is_err());
+    assert!(
+        model
+            .execute_embedding_input_norm_projection_slice(0)
+            .is_err()
+    );
+    let mut math = crate::host_math::HostMath::for_operator_slice(&model, None);
+    let embedding = math
+        .embed_profiled(
+            model.matrix_descriptor(QwenMatrixRole::Embedding).unwrap(),
+            0,
+            EmbeddingContract::Bf16OutputInput,
+        )
+        .unwrap();
+    assert!(
+        math.ordinary_rms_profiled(
+            model
+                .parameter_descriptor(QwenParameterRole::InputNorm(0))
+                .unwrap(),
+            &embedding,
+            OrdinaryRmsContract::TorchCpuBf16Avx2,
+        )
+        .is_err()
+    );
     assert_eq!(model.initialized_cpu_state_bytes(), 0);
 }

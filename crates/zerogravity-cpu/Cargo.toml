@@ -7,6 +7,9 @@ description = "Source-exact CPU operators and legacy source-weight adapter"
 publish = false
 license = "MIT"
 
+[features]
+cache = ["zerogravity-artifacts/cache"]
+
 [dependencies]
 zerogravity-core = { path = "../zerogravity-core" }
 zerogravity-artifacts = { path = "../zerogravity-artifacts" }

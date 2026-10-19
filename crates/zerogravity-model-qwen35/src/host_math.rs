@@ -6,8 +6,9 @@ use super::{
 };
 use crate::accelerator::program::{
     ActivationPrecision, AttentionGeometry, CoefficientValues, ConvDomain, EmbeddingContract,
-    KvDomain, MathematicalBackend, ProgramNumericalProfile, ProjectionContract, QkValues,
-    RecurrentDomain, RopeGeometry, RopeValues, SourceTensor, SourceVector, StateSlot, TensorView,
+    KvDomain, MathematicalBackend, OrdinaryRmsContract, ProgramNumericalProfile,
+    ProjectionContract, QkValues, RecurrentDomain, RopeGeometry, RopeValues, SourceParameter,
+    SourceTensor, SourceVector, StateSlot, TensorView,
 };
 use crate::accelerator::{
     AttentionQkRegion, AttentionSoftmaxRegion, AttentionValueRegion, BinaryOperation, BinaryRegion,
@@ -253,6 +254,44 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
             .collect::<Result<Vec<_>>>()?;
         HostValue::typed(
             values,
+            ActivationPrecision::Bf16WidenedF32,
+            self.source.source_identity(),
+            self.source.program_numerical_profile(),
+        )
+    }
+    fn ordinary_rms_profiled(
+        &mut self,
+        parameter: SourceParameter,
+        input: &HostValue,
+        contract: OrdinaryRmsContract,
+    ) -> Result<HostValue> {
+        if self.region_kernel.is_some() {
+            return Err(Error::Unsupported(
+                "physical provider does not declare typed ordinary RMS contract".into(),
+            ));
+        }
+        if self.source.program_numerical_profile()
+            != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+            || self.source.eps.to_bits() != 1e-6f32.to_bits()
+            || input.precision != ActivationPrecision::Bf16WidenedF32
+            || input.source != Some(self.source.source_identity())
+            || input.profile != Some(self.source.program_numerical_profile())
+        {
+            return Err(Error::Unsupported(
+                "host ordinary RMS numerical profile/epsilon/source/precision".into(),
+            ));
+        }
+        parameter.validate_source(self.source)?;
+        let width = contract.validate(&parameter, input.elements)?;
+        let raw = zerogravity_core::source::TensorSource::tensor(self.source, &parameter.name)?;
+        let output = zerogravity_cpu::original_hf::norm::ordinary_rms(
+            self.source.source_identity(),
+            raw,
+            input.as_slice()?,
+            width,
+        )?;
+        HostValue::typed(
+            output.output_bf16().to_vec(),
             ActivationPrecision::Bf16WidenedF32,
             self.source.source_identity(),
             self.source.program_numerical_profile(),

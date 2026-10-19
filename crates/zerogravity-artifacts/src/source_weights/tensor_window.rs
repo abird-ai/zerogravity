@@ -12,7 +12,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Seek, SeekFrom};
 use std::ops::Range;
 use std::sync::{Arc, atomic::AtomicBool};
-use zerogravity_core::accelerator::{SourceIdentity, program::MatrixAxes};
+use zerogravity_core::accelerator::{
+    SourceIdentity,
+    program::{MatrixAxes, SourceParameter},
+};
+use zerogravity_core::quant::QuantKind;
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, GlobalResourceLease};
 
 const METADATA_BASE: u64 = 8 * 1024 * 1024;
@@ -97,6 +101,25 @@ pub struct TensorWindow {
     staged: StagedSlice,
     rows: Range<usize>,
     matrix: VerifiedMatrix,
+}
+
+/// Sealed full original rank1 parameter; no matrix axes or adjusted values.
+#[derive(Clone)]
+pub struct VerifiedParameter {
+    location: Arc<TensorLocation>,
+    owner: Arc<SourceOwner>,
+    elements: usize,
+    element_bytes: usize,
+    bytes: usize,
+}
+
+/// Owned contiguous raw element range, retaining its full original descriptor.
+/// A partial range is never presented as a complete original tensor.
+pub struct ParameterWindow {
+    // Staged payload/offsets and their charge retire before source metadata.
+    staged: StagedSlice,
+    elements: Range<usize>,
+    parameter: VerifiedParameter,
 }
 
 impl SourceWeights {
@@ -343,6 +366,104 @@ impl VerifiedTensorSource {
     pub fn metadata_reserved_bytes(&self) -> u64 {
         self.0.metadata_bytes
     }
+    pub fn parameter(&self, name: &str) -> Result<VerifiedParameter> {
+        let location =
+            self.0.tensors.get(name).ok_or_else(|| {
+                Error::Malformed("original parameter window tensor missing".into())
+            })?;
+        let [elements] = location.info.shape.as_slice() else {
+            return Err(Error::Malformed(
+                "original parameter window requires raw rank1".into(),
+            ));
+        };
+        // No block codec interpretation or numerical execution eligibility.
+        if !matches!(
+            location.info.kind,
+            QuantKind::F32 | QuantKind::F16 | QuantKind::Bf16
+        ) {
+            return Err(Error::Unsupported(
+                "original parameter window raw dtype".into(),
+            ));
+        }
+        let elements = usize::try_from(*elements)
+            .map_err(|_| Error::Limit("parameter window element count overflow".into()))?;
+        let element_bytes = usize::try_from(location.info.kind.byte_len(1)?)
+            .map_err(|_| Error::Limit("parameter window element bytes overflow".into()))?;
+        let bytes = usize::try_from(location.info.byte_len)
+            .map_err(|_| Error::Limit("parameter window source length overflow".into()))?;
+        if elements == 0 || elements.checked_mul(element_bytes) != Some(bytes) {
+            return Err(Error::Malformed(
+                "original parameter window geometry".into(),
+            ));
+        }
+        Ok(VerifiedParameter {
+            location: location.clone(),
+            owner: self.0.clone(),
+            elements,
+            element_bytes,
+            bytes,
+        })
+    }
+    /// Original Safetensors rank1 is contiguous; arbitrary strides have no API.
+    pub fn read_parameter(
+        &self,
+        parameter: &VerifiedParameter,
+        elements: Range<usize>,
+    ) -> Result<ParameterWindow> {
+        self.read_parameter_inner(parameter, elements, None)
+    }
+    pub fn read_parameter_cancellable(
+        &self,
+        parameter: &VerifiedParameter,
+        elements: Range<usize>,
+        cancelled: &AtomicBool,
+    ) -> Result<ParameterWindow> {
+        self.read_parameter_inner(parameter, elements, Some(cancelled))
+    }
+    fn read_parameter_inner(
+        &self,
+        parameter: &VerifiedParameter,
+        elements: Range<usize>,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<ParameterWindow> {
+        if !Arc::ptr_eq(&self.0, &parameter.owner)
+            || parameter.source_identity() != self.source_identity()
+            || !self
+                .0
+                .tensors
+                .get(&parameter.location.info.name)
+                .is_some_and(|location| Arc::ptr_eq(location, &parameter.location))
+        {
+            return Err(Error::State(
+                "foreign original parameter window owner".into(),
+            ));
+        }
+        if elements.start >= elements.end || elements.end > parameter.elements {
+            return Err(Error::Malformed(
+                "original parameter window element range".into(),
+            ));
+        }
+        source_not_cancelled(cancelled)?;
+        let location = &parameter.location;
+        let start = (elements.start as u64)
+            .checked_mul(parameter.element_bytes as u64)
+            .and_then(|n| location.info.byte_offset.checked_add(n))
+            .ok_or_else(|| Error::Limit("parameter window source offset overflow".into()))?;
+        let bytes = (elements.end - elements.start)
+            .checked_mul(parameter.element_bytes)
+            .ok_or_else(|| Error::Limit("parameter window byte length overflow".into()))?;
+        let staged =
+            self.0.shards[location.shard]
+                .source
+                .read_window(start, bytes, &self.0.admission)?;
+        // Blocking authenticated IO has retired before cancelled staging drops.
+        source_not_cancelled(cancelled)?;
+        Ok(ParameterWindow {
+            staged,
+            elements,
+            parameter: parameter.clone(),
+        })
+    }
     pub fn matrix(&self, name: &str, axes: MatrixAxes) -> Result<VerifiedMatrix> {
         // This first factory accepts Safetensors only: its contiguous output
         // rows are the original [output,input] axes; never reinterpret GGUF.
@@ -429,6 +550,77 @@ impl VerifiedTensorSource {
             rows,
             staged,
         })
+    }
+}
+impl VerifiedParameter {
+    pub fn source_identity(&self) -> SourceIdentity {
+        self.owner.identity
+    }
+    pub fn tensor(&self) -> &TensorInfo {
+        &self.location.info
+    }
+    pub fn elements(&self) -> usize {
+        self.elements
+    }
+    /// Full original metadata; this caller-owned copy grants no byte access.
+    pub fn source_parameter(&self) -> SourceParameter {
+        SourceParameter {
+            source: self.source_identity(),
+            name: self.location.info.name.clone(),
+            kind: self.location.info.kind,
+            shape: self.location.info.shape.clone(),
+            bytes: self.bytes,
+        }
+    }
+    /// Bind typed metadata to this same sealed original issuer/name/geometry.
+    pub fn validate_source_parameter(&self, descriptor: &SourceParameter) -> Result<()> {
+        let actual = &self.location.info;
+        if descriptor.source != self.source_identity()
+            || descriptor.name != actual.name
+            || descriptor.kind != actual.kind
+            || descriptor.shape != actual.shape
+            || descriptor.bytes != self.bytes
+        {
+            return Err(Error::State(
+                "typed parameter differs from original sealed source".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+impl ParameterWindow {
+    pub fn parameter(&self) -> &VerifiedParameter {
+        &self.parameter
+    }
+    pub fn element_range(&self) -> Range<usize> {
+        self.elements.clone()
+    }
+    pub fn is_complete(&self) -> bool {
+        self.elements == (0..self.parameter.elements)
+    }
+    pub fn as_slice(&self) -> &[u8] {
+        self.staged.as_slice()
+    }
+    pub fn source_offset(&self) -> u64 {
+        self.staged.source_offset()
+    }
+    pub fn charged_staging_bytes(&self) -> usize {
+        self.staged.charged_bytes()
+    }
+    pub fn verified_bundle_sha256(&self) -> &str {
+        &self.parameter.owner.bundle_sha256
+    }
+    pub fn shard_basename(&self) -> &str {
+        &self.shard().basename
+    }
+    pub fn shard_sha256(&self) -> &str {
+        &self.shard().sha256
+    }
+    pub fn extent_index_sha256(&self) -> &str {
+        self.shard().source.index_sha256()
+    }
+    fn shard(&self) -> &WindowShard {
+        &self.parameter.owner.shards[self.parameter.location.shard]
     }
 }
 impl VerifiedMatrix {

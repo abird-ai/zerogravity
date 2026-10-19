@@ -8,6 +8,8 @@ pub mod norm;
 pub mod recurrent;
 pub mod reduction;
 pub mod transcendentals;
+#[cfg(all(feature = "cache", target_os = "linux"))]
+pub mod window_projection;
 
 use crate::accelerator::{MatVecKernel, MatVecRegion, RegionExecution, validate_completed};
 use crate::quant::QuantKind;

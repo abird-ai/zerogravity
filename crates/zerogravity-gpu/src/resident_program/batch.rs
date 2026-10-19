@@ -777,9 +777,11 @@ impl BatchProgram {
         let scratch = |i: usize| &self.inner.scratch[i];
         unsafe {
             match &node.operation {
-                PlanOperation::TypedEmbed { .. } | PlanOperation::TypedProject { .. } => Err(
-                    Error::Unsupported("resident batch has no qualified typed lowering".into()),
-                ),
+                PlanOperation::TypedEmbed { .. }
+                | PlanOperation::TypedProject { .. }
+                | PlanOperation::TypedOrdinaryRms { .. } => Err(Error::Unsupported(
+                    "resident batch has no qualified typed lowering".into(),
+                )),
                 PlanOperation::Embed { tensor, .. } => {
                     let t = &self.inner.tensors[&tensor.name];
                     let status = self.inner.node_status[index]

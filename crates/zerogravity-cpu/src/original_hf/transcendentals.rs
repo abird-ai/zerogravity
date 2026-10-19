@@ -39,6 +39,8 @@ mod softplus;
 pub use softplus::softplus_beta1_threshold20_f32_contiguous16;
 mod sigmoid;
 pub use sigmoid::sigmoid_bf16_widened_f32_contiguous_span;
+mod softmax;
+pub use softmax::softmax_f32_lastdim_avx2;
 
 use crate::accelerator::SourceIdentity;
 use crate::{Error, Result};

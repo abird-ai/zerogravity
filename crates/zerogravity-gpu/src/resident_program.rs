@@ -343,7 +343,9 @@ impl ResidentProgram {
             || plan.nodes().iter().any(|node| {
                 matches!(
                     node.operation,
-                    PlanOperation::TypedEmbed { .. } | PlanOperation::TypedProject { .. }
+                    PlanOperation::TypedEmbed { .. }
+                        | PlanOperation::TypedProject { .. }
+                        | PlanOperation::TypedOrdinaryRms { .. }
                 )
             })
         {
@@ -1423,9 +1425,11 @@ impl ResidentProgram {
         // bound every offset/count. Parent retains the complete original cohort.
         unsafe {
             match &node.operation {
-                PlanOperation::TypedEmbed { .. } | PlanOperation::TypedProject { .. } => Err(
-                    Error::Unsupported("resident typed operation has no qualified lowering".into()),
-                ),
+                PlanOperation::TypedEmbed { .. }
+                | PlanOperation::TypedProject { .. }
+                | PlanOperation::TypedOrdinaryRms { .. } => Err(Error::Unsupported(
+                    "resident typed operation has no qualified lowering".into(),
+                )),
                 PlanOperation::Embed { tensor, .. } => {
                     let t = &self.tensors[&tensor.name];
                     let status = self.node_status[index]

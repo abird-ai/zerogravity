@@ -656,7 +656,7 @@ fn dot_f32_source_reduction(row: &[u8], x: &[f32]) -> f32 {
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
-fn dot_bf16_cpu_avx2(row: &[u8], x: &[f32]) -> f32 {
+pub(crate) fn dot_bf16_cpu_avx2(row: &[u8], x: &[f32]) -> f32 {
     let weight = |i: usize| {
         let at = 2 * i;
         f32::from_bits(u32::from(u16::from_le_bytes([row[at], row[at + 1]])) << 16)

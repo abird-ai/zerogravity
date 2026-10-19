@@ -4,10 +4,11 @@
 use super::{CachedLayer, LoadedQwenModel, layer_tensor};
 use crate::accelerator::program::{
     AttentionGeometry, ConvDomain, ForwardInputs, ForwardPlan, KvDomain, MathematicalBackend,
-    PlanBuilder, RecurrentDomain, RopeGeometry, SourceVector, StateSlot, TensorView,
+    OrdinaryRmsContract, PlanBuilder, RecurrentDomain, RopeGeometry, SourceVector, StateSlot,
+    TensorView,
 };
 use crate::model::LayerKind;
-use crate::original_binding::QwenMatrixRole;
+use crate::original_binding::{QwenMatrixRole, QwenParameterRole};
 use crate::{Error, Result};
 
 /// One family-neutral Qwen **layer traversal** shared by the existing
@@ -79,6 +80,43 @@ pub(crate) fn embedding_projection_slice<B: MathematicalBackend>(
     }
     Ok((embedding, projected))
 }
+/// Pure original layer0 input prefix through this same backend/schedule seam.
+/// No layer loop, cache proposal, token advance or full-HF execution admission.
+pub(crate) fn embedding_input_norm_projection_slice<B: MathematicalBackend>(
+    model: &LoadedQwenModel,
+    math: &mut B,
+    token: B::Index,
+) -> Result<(B::Value, B::Value, B::Value)> {
+    use crate::accelerator::program::{ActivationPrecision, ProgramNumericalProfile};
+    if model.program_numerical_profile() != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+        || model.eps.to_bits() != 1e-6f32.to_bits()
+    {
+        return Err(Error::Unsupported(
+            "original ordinary RMS slice profile/epsilon".into(),
+        ));
+    }
+    let embedding = math.embed_profiled(
+        model.matrix_descriptor(QwenMatrixRole::Embedding)?,
+        token,
+        model.embedding_contract(),
+    )?;
+    let normalized = math.ordinary_rms_profiled(
+        model.parameter_descriptor(QwenParameterRole::InputNorm(0))?,
+        &embedding,
+        OrdinaryRmsContract::TorchCpuBf16Avx2,
+    )?;
+    let projected = project(model, math, QwenMatrixRole::GdnQkv(0), &normalized)?;
+    if [&embedding, &normalized, &projected]
+        .iter()
+        .any(|value| math.precision(value) != ActivationPrecision::Bf16WidenedF32)
+    {
+        return Err(Error::State(
+            "ordinary RMS slice activation precision".into(),
+        ));
+    }
+    Ok((embedding, normalized, projected))
+}
+
 fn expect_elements<B: MathematicalBackend>(
     math: &B,
     value: &B::Value,

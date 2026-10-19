@@ -78,6 +78,68 @@ impl LoadedQwenModel {
             projected: projected.into_vec()?,
         })
     }
+    /// Record embedding→raw InputNorm(0)→GdnQkv(0), without any state effects.
+    pub fn embedding_input_norm_projection_slice(&self) -> Result<RecordedOperatorSlice> {
+        self.require_operator_slice()?;
+        let mut builder = PlanBuilder::new_operator_slice(
+            self.source_identity(),
+            self.program_numerical_profile(),
+        )?;
+        let (_, _, output) = crate::forward::embedding_input_norm_projection_slice(
+            self,
+            &mut builder,
+            PlanBuilder::inputs().token,
+        )?;
+        builder.finish_operator_slice(output)
+    }
+    #[cfg(feature = "cpu")]
+    pub fn execute_embedding_input_norm_projection_slice(
+        &self,
+        token: u32,
+    ) -> Result<EmbeddingInputNormProjectionOutput> {
+        self.require_operator_slice()?;
+        let mut math = crate::host_math::HostMath::for_operator_slice(self, None);
+        let (embedding, normalized, projected) =
+            crate::forward::embedding_input_norm_projection_slice(self, &mut math, token as usize)?;
+        Ok(EmbeddingInputNormProjectionOutput {
+            source: self.source_identity(),
+            profile: self.program_numerical_profile(),
+            embedding: embedding.into_vec()?,
+            normalized: normalized.into_vec()?,
+            projected: projected.into_vec()?,
+        })
+    }
+}
+
+/// Private source-bound prefix values; no session, StateRoot or logits receipt.
+#[cfg(feature = "cpu")]
+pub struct EmbeddingInputNormProjectionOutput {
+    source: crate::accelerator::SourceIdentity,
+    profile: ProgramNumericalProfile,
+    embedding: Vec<f32>,
+    normalized: Vec<f32>,
+    projected: Vec<f32>,
+}
+#[cfg(feature = "cpu")]
+impl EmbeddingInputNormProjectionOutput {
+    pub fn source_identity(&self) -> crate::accelerator::SourceIdentity {
+        self.source
+    }
+    pub fn numerical_profile(&self) -> ProgramNumericalProfile {
+        self.profile
+    }
+    pub fn precision(&self) -> crate::accelerator::program::ActivationPrecision {
+        crate::accelerator::program::ActivationPrecision::Bf16WidenedF32
+    }
+    pub fn embedding(&self) -> &[f32] {
+        &self.embedding
+    }
+    pub fn normalized(&self) -> &[f32] {
+        &self.normalized
+    }
+    pub fn projected(&self) -> &[f32] {
+        &self.projected
+    }
 }
 
 /// Private source-bound operator results; no SessionAuthority or root receipt.

@@ -16,7 +16,8 @@ const MAX_CPU_SOURCE: u64 = 4 * 1024 * 1024 * 1024;
 mod tensor_window;
 #[cfg(all(feature = "cache", target_os = "linux"))]
 pub use tensor_window::{
-    TensorWindow, VerifiedMatrix, VerifiedTensorSource, VerifiedWindowPlan, WindowOpenLimits,
+    ParameterWindow, TensorWindow, VerifiedMatrix, VerifiedParameter, VerifiedTensorSource,
+    VerifiedWindowPlan, WindowOpenLimits,
 };
 
 /// One source identity, possibly backed by several independently verified
