@@ -66,7 +66,11 @@ pub fn run() {
     let resident_fused_mode = selected.strip_prefix("resident-fused-");
     let resident_fused_abort_mode = selected.strip_prefix("resident-fused-abort-");
     let resident_fused_boundary_mode = selected.strip_prefix("resident-fused-boundary-");
-    let resident_fused_mode = resident_fused_boundary_mode
+    let resident_fused_greedy_mode = selected.strip_prefix("resident-fused-greedy-");
+    let resident_fused_greedy_abort_mode = selected.strip_prefix("resident-fused-greedy-abort-");
+    let resident_fused_mode = resident_fused_greedy_abort_mode
+        .or(resident_fused_greedy_mode)
+        .or(resident_fused_boundary_mode)
         .or(resident_fused_abort_mode)
         .or(resident_fused_mode);
     let resident_run_mode = selected.strip_prefix("run-");
@@ -304,7 +308,29 @@ pub fn run() {
                 })
                 .unwrap_or(2);
             let qualification = async {
-                if resident_fused_boundary_mode.is_some() {
+                if resident_fused_greedy_abort_mode.is_some() {
+                    #[cfg(feature = "hardware-abort-probe")]
+                    return resident_inference::qualify_fused_greedy_abort(
+                        device,
+                        std::path::Path::new(&path),
+                        provider,
+                        cap,
+                    )
+                    .await;
+                    #[cfg(not(feature = "hardware-abort-probe"))]
+                    return Err(zerogravity_core::Error::Unsupported(
+                        "requires hardware-abort-probe".into(),
+                    ));
+                } else if resident_fused_greedy_mode.is_some() {
+                    resident_inference::qualify_fused_greedy(
+                        device,
+                        std::path::Path::new(&path),
+                        provider,
+                        cap,
+                        rows,
+                    )
+                    .await
+                } else if resident_fused_boundary_mode.is_some() {
                     #[cfg(feature = "portable-checkpoint")]
                     return resident_inference::qualify_fused_boundary(
                         device,

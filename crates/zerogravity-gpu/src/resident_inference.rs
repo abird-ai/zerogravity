@@ -14,8 +14,15 @@ pub(crate) use checkpoint::qualify as qualify_checkpoint;
 mod cohort_qualification;
 mod fused;
 #[cfg(feature = "qualification")]
+#[path = "resident_fused_greedy_qualification.rs"]
+mod fused_greedy_qualification;
+#[cfg(feature = "qualification")]
 #[path = "resident_fused_qualification.rs"]
 mod fused_qualification;
+#[cfg(feature = "qualification")]
+pub(crate) use fused_greedy_qualification::qualify as qualify_fused_greedy;
+#[cfg(all(feature = "qualification", feature = "hardware-abort-probe"))]
+pub(crate) use fused_greedy_qualification::qualify_abort as qualify_fused_greedy_abort;
 #[cfg(feature = "qualification")]
 pub(crate) use fused_qualification::qualify as qualify_fused;
 #[cfg(all(feature = "qualification", feature = "hardware-abort-probe"))]
@@ -157,6 +164,7 @@ pub struct PreparedResidentCohort {
     prepared: Vec<PreparedInference>,
     dispatches: usize,
     fused_dispatches: usize,
+    native_greedy_dispatches: usize,
 }
 impl PreparedResidentCohort {
     /// Actual physical launches for the complete cohort, counted once.
@@ -166,6 +174,10 @@ impl PreparedResidentCohort {
     /// Actual native multi-row projection launches; excludes other stages.
     pub fn fused_dispatches(&self) -> usize {
         self.fused_dispatches
+    }
+    /// Actual native multi-row sampler stages; excludes private packet copies.
+    pub fn native_greedy_dispatches(&self) -> usize {
+        self.native_greedy_dispatches
     }
     pub fn len(&self) -> usize {
         self.prepared.len()
@@ -474,6 +486,7 @@ impl ResidentModel {
             roots,
             dispatches: prepared.iter().map(|p| p.readback.dispatches).sum(),
             fused_dispatches: 0,
+            native_greedy_dispatches: 0,
             prepared,
         })
     }

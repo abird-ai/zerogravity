@@ -14,6 +14,7 @@ pub(crate) struct BatchProgram {
     rows: usize,
     nodes: Vec<PlanNode>,
     packed: Vec<StateBinding>,
+    greedy: [Handle; 3],
     owned: Vec<Handle>,
 }
 
@@ -54,8 +55,18 @@ impl BatchProgram {
             checked_sum(budget.scratch)?,
             budget.prior_state_bytes,
             budget.candidate_state_bytes,
+            checked_sum(Self::greedy_sizes(original, rows)?)?,
         ])?;
         Ok(budget)
+    }
+
+    fn greedy_sizes(original: &ResidentProgram, rows: usize) -> Result<[usize; 3]> {
+        let logits = original
+            .plan
+            .logits()
+            .ok_or_else(|| Error::Unsupported("native batch requires planned logits".into()))?;
+        let vocabulary = original.plan.values()[logits.0 as usize].capacity_elements()?;
+        crate::resident_batch_greedy::workspace_bytes(vocabulary, rows)
     }
 
     pub fn prepare(
@@ -95,6 +106,12 @@ impl BatchProgram {
             .collect::<Result<Vec<_>>>()?
             .try_into()
             .expect("fixed scratch slot count");
+        let greedy: [Handle; 3] = Self::greedy_sizes(original, rows)?
+            .into_iter()
+            .map(|size| allocator.empty(ResidentBufferRole::Workspace, size))
+            .collect::<Result<Vec<_>>>()?
+            .try_into()
+            .expect("fixed greedy workspace count");
         let node_status = original
             .plan
             .nodes()
@@ -200,6 +217,9 @@ impl BatchProgram {
         for handle in inner.owned_handles() {
             inner.owned_ranges.insert(BufferRange::new(&handle)?)?;
         }
+        for handle in &greedy {
+            inner.owned_ranges.insert(BufferRange::new(handle)?)?;
+        }
         for binding in &packed {
             for handle in binding
                 .prior
@@ -215,6 +235,7 @@ impl BatchProgram {
             rows,
             nodes,
             packed,
+            greedy,
             owned,
         })
     }
@@ -227,6 +248,21 @@ impl BatchProgram {
         self.rows
     }
 
+    pub fn greedy_workspace(&self) -> &[Handle; 3] {
+        &self.greedy
+    }
+
+    pub fn logits(&self) -> Option<DeviceBuffer> {
+        self.inner
+            .plan
+            .logits()
+            .map(|id| self.inner.values[id.0 as usize].clone())
+    }
+
+    pub fn status(&self) -> Handle {
+        self.inner.status.clone()
+    }
+
     pub fn owned_handles(&self) -> Vec<Handle> {
         self.owned.clone()
     }
@@ -236,6 +272,9 @@ impl BatchProgram {
         for binding in &self.packed {
             handles.extend(binding.prior.handles());
             handles.extend(binding.candidate.handles());
+        }
+        if output == ResidentOutput::Logits {
+            handles.extend(self.greedy.iter().cloned());
         }
         handles
     }
@@ -301,14 +340,79 @@ impl BatchProgram {
         bindings: &[Vec<StateBinding>],
         output: ResidentOutput,
     ) -> Result<ResidentSubmission> {
+        self.launch_impl(client, parameters, bindings, None, output)
+    }
+
+    /// Trusted owner checks each token's producer RootBinding and retains the
+    /// independent original packet leases before this physical preflight.
+    pub fn validate_device_tokens(
+        &self,
+        client: &Client,
+        parameters: &[RuntimeParameters],
+        bindings: &[Vec<StateBinding>],
+        tokens: &[DeviceBuffer],
+    ) -> Result<()> {
         self.validate_runtime(client, parameters, bindings)?;
+        if tokens.len() != self.rows {
+            return Err(Error::Malformed("native device-token row count".into()));
+        }
+        let mut ranges = Vec::with_capacity(tokens.len());
+        for token in tokens {
+            let range = token.check(client, 1)?;
+            if self.inner.owned_ranges.overlaps(&range)
+                || ranges
+                    .iter()
+                    .any(|prior: &BufferRange| range.overlaps(prior))
+            {
+                return Err(Error::State(
+                    "native device-token aliases program/another row".into(),
+                ));
+            }
+            for row in bindings {
+                for binding in row {
+                    for handle in binding.candidate.handles() {
+                        if range.overlaps(&BufferRange::new(&handle)?) {
+                            return Err(Error::State(
+                                "native device-token aliases proposed state".into(),
+                            ));
+                        }
+                    }
+                }
+            }
+            ranges.push(range);
+        }
+        Ok(())
+    }
+
+    /// One native gather reads the row-bound original device packets. It never
+    /// serializes their token IDs through host scalars or uploads a token.
+    pub fn launch_device_tokens(
+        &mut self,
+        client: &Client,
+        parameters: &[RuntimeParameters],
+        bindings: &[Vec<StateBinding>],
+        tokens: &[DeviceBuffer],
+        output: ResidentOutput,
+    ) -> Result<ResidentSubmission> {
+        self.launch_impl(client, parameters, bindings, Some(tokens), output)
+    }
+
+    fn launch_impl(
+        &mut self,
+        client: &Client,
+        parameters: &[RuntimeParameters],
+        bindings: &[Vec<StateBinding>],
+        device_tokens: Option<&[DeviceBuffer]>,
+        output: ResidentOutput,
+    ) -> Result<ResidentSubmission> {
+        if let Some(tokens) = device_tokens {
+            self.validate_device_tokens(client, parameters, bindings, tokens)?;
+        } else {
+            self.validate_runtime(client, parameters, bindings)?;
+        }
         let parameter = parameters[0];
         for binding in &mut self.packed {
             binding.prior_tokens = parameter.position;
-        }
-        let mut tokens = [0u32; 8];
-        for (token, parameter) in tokens.iter_mut().zip(parameters) {
-            *token = parameter.token;
         }
         unsafe {
             crate::program_kernels::clear_step_status::launch_unchecked(
@@ -317,21 +421,46 @@ impl BatchProgram {
                 threads(),
                 arg(&self.inner.status, 1),
             );
-            batch_tokens::launch_unchecked(
-                client,
-                grid(self.rows),
-                threads(),
-                arg(&self.inner.token, self.rows),
-                tokens[0],
-                tokens[1],
-                tokens[2],
-                tokens[3],
-                tokens[4],
-                tokens[5],
-                tokens[6],
-                tokens[7],
-                self.rows,
-            );
+            if let Some(tokens) = device_tokens {
+                // Inactive read-only arguments reuse row zero; compile-time
+                // row bounds prevent them from participating in the gather.
+                let packet = |row: usize| &tokens.get(row).unwrap_or(&tokens[0]).handle;
+                batch_device_tokens::launch_unchecked(
+                    client,
+                    grid(self.rows),
+                    threads(),
+                    arg(packet(0), 1),
+                    arg(packet(1), 1),
+                    arg(packet(2), 1),
+                    arg(packet(3), 1),
+                    arg(packet(4), 1),
+                    arg(packet(5), 1),
+                    arg(packet(6), 1),
+                    arg(packet(7), 1),
+                    arg(&self.inner.token, self.rows),
+                    self.rows,
+                );
+            } else {
+                let mut tokens = [0u32; 8];
+                for (token, parameter) in tokens.iter_mut().zip(parameters) {
+                    *token = parameter.token;
+                }
+                batch_tokens::launch_unchecked(
+                    client,
+                    grid(self.rows),
+                    threads(),
+                    arg(&self.inner.token, self.rows),
+                    tokens[0],
+                    tokens[1],
+                    tokens[2],
+                    tokens[3],
+                    tokens[4],
+                    tokens[5],
+                    tokens[6],
+                    tokens[7],
+                    self.rows,
+                );
+            }
         }
         let mut dispatches = 2 + self.transport_state(client, bindings, false);
         // Conservative subset: increment only at an actual native projection
@@ -1107,6 +1236,50 @@ impl BatchProgram {
             }
             Ok(if layout.signed_scale { 8 } else { 10 })
         }
+    }
+}
+
+#[cube(launch_unchecked)]
+fn batch_device_tokens(
+    t0: &[u32],
+    t1: &[u32],
+    t2: &[u32],
+    t3: &[u32],
+    t4: &[u32],
+    t5: &[u32],
+    t6: &[u32],
+    t7: &[u32],
+    output: &mut [u32],
+    #[comptime] rows: usize,
+) {
+    let i = ABSOLUTE_POS;
+    if i < rows {
+        let mut token = 0u32;
+        if i == 0usize {
+            token = t0[0];
+        }
+        if i == 1usize {
+            token = t1[0];
+        }
+        if i == 2usize {
+            token = t2[0];
+        }
+        if i == 3usize {
+            token = t3[0];
+        }
+        if i == 4usize {
+            token = t4[0];
+        }
+        if i == 5usize {
+            token = t5[0];
+        }
+        if i == 6usize {
+            token = t6[0];
+        }
+        if i == 7usize {
+            token = t7[0];
+        }
+        output[i] = token;
     }
 }
 

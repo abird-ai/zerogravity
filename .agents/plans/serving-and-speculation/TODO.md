@@ -8,10 +8,48 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
-- [ ] **P12 fused continuous GPU serving:** integrate accepted
-  batch-native ForwardPlan with row-bound device greedy/EOS
-  feedback, unequal frontiers, paged hybrid KV/recurrent cache,
-  physically safe overlap, backpressure and fair scheduling.
+- [x] **P12-B4 native CUDA greedy/device feedback:** same full-model
+  batch ForwardPlan plus four native vocabulary-reduction stages,
+  independent12-byte packets and one native device-input gather.
+  Original packet producer is stamped only at all-row checked commit;
+  exact source/session/epoch/root/frontier and physical lease bind
+  consumption. Mutable public host ID/max fields are non-authoritative.
+  Approved trained0.8B/2B mixed GGUF B2/B4/B8 RELEASE passed six
+  source steps/four GPU-feedback steps per row: CPU/B1/native
+  full-logit shadow all248320 logits and all42 domains exact;
+  compact greedy ID/max bits/all42 domains exact,28/52/100 bytes
+  per cohort, no warm value uploads and final reservation0.
+  Swapped/duplicate/identical-ID foreign packets, isolated same-epoch
+  old roots, restored epochs, invalid IDs, abandoned/reordered/stale
+  proposals refuse without publication. Full-vocabulary synthetic
+  ties/zero/subnormal/dense-bit/EOS winners and nonfinite/sticky-status
+  refusals passed; trained EOS input is exact, HTTP EOS stop unqualified.
+  Actual feedback launch/drop retained1827/1722 original handles,
+  including input/output packets, all42 CPU prior domains and future
+  KV zero tails exact; old Ready/further work/new service refused,
+  original4GiB envelope fenced/charged after owners drop, no recovery.
+  Both models repeated B2 imported-prefix valid1/256/257/512 boundary,
+  exhausted-capacity and reclamation proof; no GPU full-prefix claim.
+  GPU53 passed/0 failed/3 ignored; strict default/CUDA qualification
+  and CUDA/Vulkan serve+cache Clippy passed. Final isolated check.sh
+  exit0:1147 Rust passed/0 failed/69 ignored over241 suites,18 Python,
+  releaseCLI/installer/Nixfmt; both approved cache-direct/HF-import
+  release routes and benchmark/comparator self-tests passed.
+  HTTP remains interleaved; no fused-serving/vLLM throughput acceptance.
+
+- [ ] **P12 fused continuous GPU serving:** next P12-B5 wires
+  native CUDA B2 one-token prompt tails and decode through the
+  existing `gpu_engine.rs`/worker waves. Attempt each committed
+  packet emission at most once; retire EOS/length/canceled rows
+  and park backpressured rows BEFORE feedback. Pair compatible
+  eligible survivors and use B1 for unmatched rows. Preserve
+  all-row publication; abandoned/refused cohorts must retry survivors
+  without duplicate SSE text/usage/terminal events. Physically prove
+  B1-produced→native-consumed and native-produced→B1 packets,
+  genuine EOS, unequal request lengths, disconnect/backpressure,
+  exact output/state and resource reclamation before enabling HTTP
+  fused mode. Then extend serving to B4/B8, unequal frontiers,
+  paged hybrid KV/recurrent cache, physically safe overlap and fairness.
   Extend real full-logit/StateRoot qualification to advertised
   profiles/backends and full GPU prefill. Measure comparable p95
   TTFT/true ITL/SLO-goodput versus pinned vLLM V1 with equivalent

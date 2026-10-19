@@ -60,6 +60,7 @@ mod q4;
 mod q4_q8;
 mod residency;
 pub mod resident_batch;
+mod resident_batch_greedy;
 mod resident_bindings;
 mod resident_greedy;
 #[cfg(feature = "qualification")]

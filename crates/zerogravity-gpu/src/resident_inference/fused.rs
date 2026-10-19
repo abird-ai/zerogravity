@@ -8,6 +8,39 @@ impl ResidentModel {
         self: &Arc<Self>,
         rows: &[(&ResidentSession, u32)],
     ) -> Result<PreparedResidentCohort> {
+        self.prepare_fused_mode(rows, None, Readout::Logits).await
+    }
+
+    /// One native full-model batch and source-exact device greedy selection.
+    /// Each independent output packet gains its producer only at cohort commit.
+    pub async fn prepare_greedy_fused_cohort(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, u32)],
+    ) -> Result<PreparedResidentCohort> {
+        self.prepare_fused_mode(rows, None, Readout::Greedy).await
+    }
+
+    /// Read original packet words on the GPU under their exact producing roots.
+    /// Public host ID/max metadata never selects the next source embedding row.
+    pub async fn prepare_device_tokens_fused_cohort(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, &ResidentToken)],
+    ) -> Result<PreparedResidentCohort> {
+        let sessions = rows
+            .iter()
+            .map(|(session, _)| (*session, 0))
+            .collect::<Vec<_>>();
+        let tokens = rows.iter().map(|(_, token)| *token).collect::<Vec<_>>();
+        self.prepare_fused_mode(&sessions, Some(&tokens), Readout::Greedy)
+            .await
+    }
+
+    async fn prepare_fused_mode(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, u32)],
+        device_tokens: Option<&[&ResidentToken]>,
+        readout: Readout,
+    ) -> Result<PreparedResidentCohort> {
         if !self.native_batch {
             return Err(Error::Unsupported(
                 "native resident batch requires CUDA".into(),
@@ -17,6 +50,25 @@ impl ResidentModel {
         let roots = ResidentBatchRows::new(&bases, 1)?;
         if roots.source() != self.service.source_identity() {
             return Err(Error::State("native resident batch source mismatch".into()));
+        }
+        self.service.ensure_usable()?;
+        if let Some(tokens) = device_tokens {
+            if tokens.len() != rows.len() {
+                return Err(Error::State("native batch packet coverage".into()));
+            }
+            for ((session, _), token) in rows.iter().zip(tokens) {
+                if token.producer != Some(session.binding())
+                    || !Arc::ptr_eq(token.lease.service(), &self.service)
+                    || token.lease.source_identity() != self.service.source_identity()
+                    || token.lease.service_generation() != self.service.generation()
+                    || !token.lease.is_initialized()
+                    || token.lease.bytes() != 12
+                {
+                    return Err(Error::State(
+                        "stale/foreign native batch device token".into(),
+                    ));
+                }
+            }
         }
         let position = usize::try_from(roots.frontier())
             .map_err(|_| Error::Limit("native resident batch frontier overflow".into()))?;
@@ -59,6 +111,13 @@ impl ResidentModel {
         // State initialization uses allocation -> queue. Preserve that order
         // while admitting a cold batch workspace, before selecting a slot.
         let allocation = self.allocation.lock().await;
+        let packets = if matches!(readout, Readout::Greedy) {
+            (0..rows.len())
+                .map(|_| self.service.allocate_uninitialized(12, BufferRole::Output))
+                .collect::<Result<Vec<_>>>()?
+        } else {
+            Vec::new()
+        };
         let ticket = self.service.queue().submit(
             self.service.budget(),
             self.service.owner().clone(),
@@ -164,6 +223,39 @@ impl ResidentModel {
         batch
             .program
             .validate_runtime(self.service.client(), &parameters, &bindings)?;
+        let device_buffers = device_tokens.map(|tokens| {
+            tokens
+                .iter()
+                .map(|token| DeviceBuffer::new(token.lease.handle(), 1))
+                .collect::<Vec<_>>()
+        });
+        if let Some(tokens) = &device_buffers {
+            batch.program.validate_device_tokens(
+                self.service.client(),
+                &parameters,
+                &bindings,
+                tokens,
+            )?;
+        }
+        let packet_handles = packets
+            .iter()
+            .map(ResidentLease::handle)
+            .collect::<Vec<_>>();
+        if matches!(readout, Readout::Greedy) {
+            let logits = batch
+                .program
+                .logits()
+                .ok_or_else(|| Error::State("native batch missing logit geometry".into()))?;
+            crate::resident_batch_greedy::validate(
+                self.service.client(),
+                &logits.handle,
+                self.vocab as usize,
+                rows.len(),
+                batch.program.greedy_workspace(),
+                &packet_handles,
+                &batch.program.status(),
+            )?;
+        }
         let handles = batch.program.execution_handles(ResidentOutput::Logits);
         let mut accesses = workspace
             .leases
@@ -175,6 +267,19 @@ impl ResidentModel {
         for handle in handles {
             lease_for(&accesses, &handle)?;
         }
+        if let Some(tokens) = device_tokens {
+            accesses.extend(
+                tokens
+                    .iter()
+                    .map(|token| (token.lease.clone(), DeviceAccess::Read)),
+            );
+        }
+        accesses.extend(
+            packets
+                .iter()
+                .cloned()
+                .map(|lease| (lease, DeviceAccess::Write)),
+        );
         for ((session, _), candidate) in rows.iter().zip(&candidates) {
             self.validate_domains(candidate, false)?;
             accesses.extend(
@@ -196,12 +301,23 @@ impl ResidentModel {
         drop(allocation);
         slot.begin_submission()?;
         let flight = self.service.submit_cohort(&bases, &accesses)?;
-        let submitted = workspace.batch.as_mut().unwrap().program.launch(
-            self.service.client(),
-            &parameters,
-            &bindings,
-            ResidentOutput::Logits,
-        )?;
+        let program = &mut workspace.batch.as_mut().unwrap().program;
+        let mut submitted = if let Some(tokens) = &device_buffers {
+            program.launch_device_tokens(
+                self.service.client(),
+                &parameters,
+                &bindings,
+                tokens,
+                ResidentOutput::Logits,
+            )?
+        } else {
+            program.launch(
+                self.service.client(),
+                &parameters,
+                &bindings,
+                ResidentOutput::Logits,
+            )?
+        };
         let expected = workspace.program.plan().proposed_domains();
         if submitted.proposals.len() != expected.len() * rows.len()
             || submitted.fused_dispatches == 0
@@ -209,6 +325,24 @@ impl ResidentModel {
             return Err(Error::State(
                 "incomplete native batch effect/dispatch receipt".into(),
             ));
+        }
+        let mut native_greedy_dispatches = 0;
+        if matches!(readout, Readout::Greedy) {
+            let logits = submitted
+                .logits
+                .as_ref()
+                .ok_or_else(|| Error::State("native greedy missing logits".into()))?;
+            let receipt = crate::resident_batch_greedy::launch(
+                self.service.client(),
+                &logits.handle,
+                self.vocab as usize,
+                rows.len(),
+                workspace.batch.as_ref().unwrap().program.greedy_workspace(),
+                &packet_handles,
+                &submitted.status,
+            )?;
+            submitted.dispatches += receipt.dispatches;
+            native_greedy_dispatches = receipt.native_dispatches;
         }
         #[cfg(feature = "hardware-abort-probe")]
         if self
@@ -255,38 +389,60 @@ impl ResidentModel {
         if logits.elements != expected_logits {
             return Err(Error::State("native batch logit geometry".into()));
         }
-        let reads = vec![
-            lease_for(&accesses, &submitted.status)?.readback(0, 4)?,
-            lease_for(&accesses, &logits.handle)?.readback(0, expected_logits * 4)?,
-        ];
+        let mut reads = vec![lease_for(&accesses, &submitted.status)?.readback(0, 4)?];
+        if matches!(readout, Readout::Greedy) {
+            reads.extend(
+                packets
+                    .iter()
+                    .map(|packet| packet.readback(0, 12))
+                    .collect::<Result<Vec<_>>>()?,
+            );
+        } else {
+            reads.push(lease_for(&accesses, &logits.handle)?.readback(0, expected_logits * 4)?);
+        }
         let outputs = bases
             .iter()
             .copied()
             .zip(&candidates)
-            .map(|(base, domains)| {
-                (
-                    base,
-                    domains
-                        .iter()
-                        .flat_map(|d| d.leases.iter())
-                        .cloned()
-                        .collect::<Vec<_>>(),
-                )
+            .enumerate()
+            .map(|(row, (base, domains))| {
+                let mut outputs = domains
+                    .iter()
+                    .flat_map(|d| d.leases.iter())
+                    .cloned()
+                    .collect::<Vec<_>>();
+                outputs.extend(packets.get(row).cloned());
+                (base, outputs)
             })
             .collect::<Vec<_>>();
         let (ready, read) = flight
             .complete_cohort_with_readback(&outputs, &reads, |data| {
-                if !all_zero(&data[0]) || words(&data[1])?.iter().any(|x| !x.is_finite()) {
-                    return Err(Error::State(
-                        "native GPU batch status/logits refused".into(),
-                    ));
+                if !all_zero(&data[0]) {
+                    return Err(Error::State("native GPU batch status refused".into()));
+                }
+                if matches!(readout, Readout::Greedy) {
+                    for packet in &data[1..] {
+                        let id = u32::from_ne_bytes(packet[0..4].try_into().unwrap());
+                        let bits = u32::from_ne_bytes(packet[4..8].try_into().unwrap());
+                        let flags = u32::from_ne_bytes(packet[8..12].try_into().unwrap());
+                        if u64::from(id) >= self.vocab
+                            || flags != 0
+                            || !f32::from_bits(bits).is_finite()
+                        {
+                            return Err(Error::State("invalid native greedy packet".into()));
+                        }
+                    }
+                } else if words(&data[1])?.iter().any(|value| !value.is_finite()) {
+                    return Err(Error::State("nonfinite native GPU batch logits".into()));
                 }
                 Ok(())
             })
             .await?;
         slot.finish()?;
-        let logits = words(&read[1])?;
+        let greedy = matches!(readout, Readout::Greedy);
+        let logits = if greedy { Vec::new() } else { words(&read[1])? };
         let mut prepared = Vec::with_capacity(rows.len());
+        let mut packets = packets.into_iter();
         for (row, ((attempt, domains), ready)) in
             attempts.into_iter().zip(candidates).zip(ready).enumerate()
         {
@@ -297,11 +453,22 @@ impl ResidentModel {
                 readback: InferenceReadback {
                     // Shared physical work is counted once across the cohort.
                     dispatches: if row == 0 { submitted.dispatches } else { 0 },
-                    logits: logits[row * self.vocab as usize..(row + 1) * self.vocab as usize]
-                        .to_vec(),
+                    logits: if greedy {
+                        Vec::new()
+                    } else {
+                        logits[row * self.vocab as usize..(row + 1) * self.vocab as usize].to_vec()
+                    },
                     logit_steps: 1,
-                    bytes: self.vocab as usize * 4 + usize::from(row == 0) * 4,
-                    chunk_bytes: self.vocab as usize * 4 + usize::from(row == 0) * 4,
+                    bytes: if greedy { 12 } else { self.vocab as usize * 4 }
+                        + usize::from(row == 0) * 4,
+                    chunk_bytes: if greedy { 12 } else { self.vocab as usize * 4 }
+                        + usize::from(row == 0) * 4,
+                    device_token: packets.next().map(|lease| ResidentToken {
+                        lease,
+                        producer: None,
+                        id: u32::from_ne_bytes(read[row + 1][0..4].try_into().unwrap()),
+                        max_bits: u32::from_ne_bytes(read[row + 1][4..8].try_into().unwrap()),
+                    }),
                     ..Default::default()
                 },
             });
@@ -312,6 +479,7 @@ impl ResidentModel {
             prepared,
             dispatches: submitted.dispatches,
             fused_dispatches: submitted.fused_dispatches,
+            native_greedy_dispatches,
         })
     }
 }
