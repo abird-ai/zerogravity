@@ -131,6 +131,46 @@ The final arguments are provider cap MiB, device cap MiB and
 row count (2, 4 or 8). This is a diagnostic tool, **not** an
 HTTP fused-batching enablement.
 
+## P12-B2 — physically accepted quantized B>1 GPU projection
+
+19 Oct 2026, RTX 3060 CUDA, original GGUF packed codecs
+`Q4_0`, `Q4_1`, `Q8_0` and `Q6_K`. Every codec now has a
+native B2/4/8 GPU projection kernel sharing the EXACT
+original B1 dot operation. Source arithmetic includes
+signed nibble/6-bit correction, dynamic Q8 per-row codes,
+scales, Q4_1 offsets, ordered integer sum and original
+F32 accumulation/reduction. One shared immutable packed
+matrix; request-private activations.
+
+**Physical qualifier:** each codec × B2/4/8 matched all
+128/256/512 F32 output bits against the accepted B1 CUDA
+kernel, with exactly ONE multi-row projection launch.
+The GGUF matrices here are small deterministic *synthetic
+source fixtures*, not trained full-model parity. Q8/Q4
+64×64; Q6_K 64×256. In this qualification the input
+dynamic quantizer prepares each row through the original
+source code; actual resident batched GPU quant preparation,
+full-model ForwardPlan lowering and model-state publication
+remain pending.
+
+Source-free geometry refusals and default/CUDA Clippy
+`-D warnings` passed; isolated scripts/check.sh passed
+1,147 Rust tests/0 failures over 241 suites and both
+approved trained Qwen3.5 .8B/2B direct-cache and HF-import
+regressions retained full logits/all42 state domains.
+The existing OpenAI GPU serving batch mode remains
+`interleaved`; `gpu_fused_batches=0` is still correct.
+
+Physical command on a qualified CUDA host, with installed
+CUDA runtime, CCCL and NVRTC libraries already configured:
+
+~~~bash
+python3 scripts/native-gpu.py -- cargo run --locked --offline   -p zerogravity-gpu-qualify --features qualification,cuda --   batch-q8-projection-cuda
+~~~
+
+The original qualifier name is retained for compatibility,
+but now covers Q8_0, Q4_1, Q6_K and Q4_0.
+
 ## P12-A — batch-native parameter, source and state bindings
 
 1. Introduce a typed `ResidentBatchStep` with finite row count

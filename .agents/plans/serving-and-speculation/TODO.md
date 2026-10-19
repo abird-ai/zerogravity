@@ -8,6 +8,22 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
+- [x] **P12-B2 source-quantized native batch projections:**
+  Q4_0, Q4_1, Q8_0 and Q6_K source-exact B2/B4/B8
+  kernels call the SAME original B1 integer/F32 dot.
+  Each physical RTX3060 CUDA test used one native B>1
+  launch, bit-identical 128/256/512 F32 outputs versus
+  original per-row B1 GPU reference. Original row-specific
+  dynamic Q8 scales/offsets/codes, strict typed layouts,
+  source-free bad-geometry tests and no CPU dot fallback.
+  THESE are synthetic-source operator fixtures only.
+  Strict source-free and CUDA Clippy pass; frozen gate
+  1,147 Rust tests/0 failed over 241 suites, and trained
+  Qwen3.5 .8B/2B direct-cache/HF-import source parity
+  remains full logits/all42 StateRoot domains. Next:
+  batch-native resident ForwardPlan integration and
+  physical B2/4/8 trained full-model root parity.
+
 - [x] **P12-A1 source-bound resident GPU cohort:** ONE
   `ResidentModel` original-source method stages B2/B4/B8
   independently completed `ResidentReady` per-session proposals,

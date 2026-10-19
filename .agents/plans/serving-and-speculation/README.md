@@ -171,3 +171,15 @@ serving uses the same barrier for one-token final prefill tails;
 The full model graph remains serialized per member. HTTP
 `batch_mode=fused` remains disabled. See the
 [P12 acceptance plan](FUSED_GPU_BATCHING.md).
+
+
+## P12 native source-quantized B>1 CUDA projection
+
+The existing resident math now shares source-exact F32,
+Q4_0, Q4_1, Q8_0 and Q6_K B1/B2/4/8 projection dot
+kernels. Actual CUDA B2/4/8 tests on deterministic source
+fixtures are bit-exact with accepted B1 and use one
+physical multi-row launch per projection. Still
+**operator-level fusion**, not a whole-model GPU forward
+or vLLM-goodput qualification. See
+[P12 hardware acceptance](FUSED_GPU_BATCHING.md).

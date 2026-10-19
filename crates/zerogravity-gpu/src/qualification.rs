@@ -118,6 +118,7 @@ pub fn run() {
     let sessions_mode = selected.strip_prefix("model-sessions-");
     let benchmark_mode = selected.strip_prefix("model-bench-");
     let batch_projection_mode = selected.strip_prefix("batch-projection-");
+    let batch_q8_mode = selected.strip_prefix("batch-q8-projection-");
     let batch_elementwise_mode = selected.strip_prefix("batch-elementwise-");
     let batch_recurrent_mode = selected.strip_prefix("batch-recurrent-");
     let batch_kv_mode = selected.strip_prefix("batch-kv-");
@@ -135,6 +136,8 @@ pub fn run() {
     } else if let Some(backend) = batch_elementwise_mode {
         (backend, false, false, false)
     } else if let Some(backend) = batch_projection_mode {
+        (backend, false, false, false)
+    } else if let Some(backend) = batch_q8_mode {
         (backend, false, false, false)
     } else if let Some(backend) = resident_run_mode
         .or(resident_graph_mode)
@@ -241,6 +244,12 @@ pub fn run() {
     if batch_projection_mode.is_some() {
         batch_projection::qualify(device)
             .unwrap_or_else(|error| panic!("P12 physical B>1 F32 projection failed: {error}"));
+        return;
+    }
+    if batch_q8_mode.is_some() {
+        batch_quant_projection::qualify(device).unwrap_or_else(|error| {
+            panic!("P12 physical B>1 original Q8 projection failed: {error}")
+        });
         return;
     }
     if resident_graph_mode.is_some() {

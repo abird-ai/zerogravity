@@ -20,6 +20,10 @@ mod batch_kv;
 #[cfg(any(feature = "qualification", test))]
 mod batch_projection;
 #[cfg(any(feature = "qualification", test))]
+mod batch_quant_projection;
+#[cfg(feature = "qualification")]
+mod batch_quant_qualification;
+#[cfg(any(feature = "qualification", test))]
 mod batch_recurrent;
 mod device_activation;
 mod elementwise;
