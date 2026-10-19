@@ -35,6 +35,7 @@ mod checkpoint;
 #[cfg(feature = "diagnostic-cpu-checkpoint")]
 pub use checkpoint::QwenCheckpoint;
 mod forward;
+pub mod operator_slice;
 pub mod original_binding;
 pub use forward::run_layer_sequence;
 #[cfg(feature = "cpu")]

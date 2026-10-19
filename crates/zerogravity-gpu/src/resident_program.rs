@@ -330,8 +330,32 @@ pub(crate) struct ResidentSubmission {
 }
 
 impl ResidentProgram {
+    fn require_legacy_contract(plan: &ForwardPlan) -> Result<()> {
+        use zerogravity_core::accelerator::program::{
+            ActivationPrecision, ProgramNumericalProfile,
+        };
+        if plan.numerical_profile() != ProgramNumericalProfile::GgufSourceV1
+            || plan.is_operator_slice()
+            || plan
+                .precisions()
+                .iter()
+                .any(|precision| *precision != ActivationPrecision::F32)
+            || plan.nodes().iter().any(|node| {
+                matches!(
+                    node.operation,
+                    PlanOperation::TypedEmbed { .. } | PlanOperation::TypedProject { .. }
+                )
+            })
+        {
+            return Err(Error::Unsupported(
+                "resident backend has no qualified typed numerical contract".into(),
+            ));
+        }
+        Ok(())
+    }
     /// Pure metadata/source validation; no GPU allocation or live math.
     pub fn preflight(model: &dyn TensorSource, plan: &ForwardPlan) -> Result<ResidentPreflight> {
+        Self::require_legacy_contract(plan)?;
         if plan.source() != model.source_identity()
             || !plan.source().is_bound()
             || plan.frontier_delta() != 1
@@ -1398,6 +1422,9 @@ impl ResidentProgram {
         // bound every offset/count. Parent retains the complete original cohort.
         unsafe {
             match &node.operation {
+                PlanOperation::TypedEmbed { .. } | PlanOperation::TypedProject { .. } => Err(
+                    Error::Unsupported("resident typed operation has no qualified lowering".into()),
+                ),
                 PlanOperation::Embed { tensor, .. } => {
                     let t = &self.tensors[&tensor.name];
                     let status = self.node_status[index]
@@ -2632,3 +2659,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "resident_program/typed_refusal_tests.rs"]
+mod typed_refusal_tests;

@@ -5,7 +5,8 @@ use super::{
     LayerObservation, LayerState, QwenDenseCpu, QwenState, observe, source_gdn_recurrent_step,
 };
 use crate::accelerator::program::{
-    AttentionGeometry, CoefficientValues, ConvDomain, KvDomain, MathematicalBackend, QkValues,
+    ActivationPrecision, AttentionGeometry, CoefficientValues, ConvDomain, EmbeddingContract,
+    KvDomain, MathematicalBackend, ProgramNumericalProfile, ProjectionContract, QkValues,
     RecurrentDomain, RopeGeometry, RopeValues, SourceTensor, SourceVector, StateSlot, TensorView,
 };
 use crate::accelerator::{
@@ -24,6 +25,9 @@ pub(super) struct HostValue {
     data: Arc<Vec<f32>>,
     view: TensorView,
     elements: usize,
+    precision: ActivationPrecision,
+    source: Option<crate::accelerator::SourceIdentity>,
+    profile: Option<ProgramNumericalProfile>,
 }
 impl HostValue {
     fn new(values: Vec<f32>) -> Self {
@@ -32,9 +36,28 @@ impl HostValue {
             data: Arc::new(values),
             view: TensorView::vector(0, elements),
             elements,
+            precision: ActivationPrecision::F32,
+            source: None,
+            profile: None,
         }
     }
-    fn as_slice(&self) -> Result<&[f32]> {
+    fn typed(
+        values: Vec<f32>,
+        precision: ActivationPrecision,
+        source: crate::accelerator::SourceIdentity,
+        profile: ProgramNumericalProfile,
+    ) -> Result<Self> {
+        if !source.is_bound() {
+            return Err(Error::State("unbound typed host activation".into()));
+        }
+        precision.validate_values(&values)?;
+        let mut value = Self::new(values);
+        value.precision = precision;
+        value.source = Some(source);
+        value.profile = Some(profile);
+        Ok(value)
+    }
+    pub(super) fn as_slice(&self) -> Result<&[f32]> {
         if !self.view.is_contiguous() {
             return Err(Error::State(
                 "host operator requires explicit contiguous input".into(),
@@ -53,8 +76,10 @@ impl HostValue {
 }
 
 pub(super) struct HostMath<'engine, 'state, 'trace> {
-    engine: &'engine QwenDenseCpu,
-    state: &'state mut QwenState,
+    source: &'engine super::LoadedQwenModel,
+    engine: Option<&'engine QwenDenseCpu>,
+    state: Option<&'state mut QwenState>,
+    region_kernel: Option<&'engine dyn crate::accelerator::MatVecKernel>,
     trace: Option<&'trace mut Vec<LayerObservation>>,
     position: usize,
 }
@@ -66,17 +91,58 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
     ) -> Self {
         let position = state.position;
         Self {
-            engine,
-            state,
+            source: engine.model.as_ref(),
+            engine: Some(engine),
+            state: Some(state),
+            region_kernel: engine.kernel.as_deref(),
             trace,
             position,
         }
     }
+    pub fn for_operator_slice(
+        source: &'engine super::LoadedQwenModel,
+        kernel: Option<&'engine dyn crate::accelerator::MatVecKernel>,
+    ) -> Self {
+        Self {
+            source,
+            engine: None,
+            state: None,
+            region_kernel: kernel,
+            trace: None,
+            position: 0,
+        }
+    }
+    fn engine(&self) -> Result<&'engine QwenDenseCpu> {
+        self.engine
+            .ok_or_else(|| Error::Unsupported("operator slice has no session engine".into()))
+    }
+    fn state(&self) -> Result<&QwenState> {
+        self.state
+            .as_deref()
+            .ok_or_else(|| Error::State("operator slice has no session state".into()))
+    }
+    fn state_mut(&mut self) -> Result<&mut QwenState> {
+        self.state
+            .as_deref_mut()
+            .ok_or_else(|| Error::State("operator slice has no session state".into()))
+    }
+    fn legacy_precision(&self, values: &[&HostValue]) -> Result<()> {
+        if self.source.program_numerical_profile() != ProgramNumericalProfile::GgufSourceV1
+            || values
+                .iter()
+                .any(|value| value.precision != ActivationPrecision::F32)
+        {
+            return Err(Error::Unsupported(
+                "legacy host operation lacks explicit numerical contract".into(),
+            ));
+        }
+        Ok(())
+    }
     fn tensor(&self, tensor: &SourceTensor) -> Result<()> {
-        tensor.validate_source(self.engine.model.as_ref())
+        tensor.validate_source(self.source)
     }
     fn vector(&self, vector: SourceVector<'_>) -> Result<()> {
-        if vector.source != self.engine.weights.source_identity() {
+        if vector.source != self.source.source_identity() {
             return Err(Error::State(
                 "host forward static vector changed source".into(),
             ));
@@ -84,7 +150,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
         Ok(())
     }
     fn kv(&self, domain: KvDomain, tokens: usize) -> Result<HostKvView<'_>> {
-        match self.state.layers.get(domain.0) {
+        match self.state()?.layers.get(domain.0) {
             Some(LayerState::Full { keys, values })
                 if keys.len() == tokens && values.len() == tokens =>
             {
@@ -104,19 +170,109 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
     fn elements(&self, value: &HostValue) -> usize {
         value.elements
     }
+    fn precision(&self, value: &HostValue) -> ActivationPrecision {
+        value.precision
+    }
+    fn embed_profiled(
+        &mut self,
+        tensor: SourceTensor,
+        token: usize,
+        contract: EmbeddingContract,
+    ) -> Result<HostValue> {
+        if contract == EmbeddingContract::Source {
+            return self.embed(tensor, token);
+        }
+        if self.region_kernel.is_some() {
+            return Err(Error::Unsupported(
+                "physical provider does not declare typed CPU profile".into(),
+            ));
+        }
+        self.tensor(&tensor)?;
+        if self.source.program_numerical_profile()
+            != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+            || tensor.kind != zerogravity_core::quant::QuantKind::Bf16
+            || tensor.axes != crate::accelerator::program::MatrixAxes::OutputInput
+            || tensor
+                != self
+                    .source
+                    .matrix_descriptor(crate::original_binding::QwenMatrixRole::Embedding)?
+        {
+            return Err(Error::Unsupported(
+                "host typed embedding source/contract".into(),
+            ));
+        }
+        let token = u32::try_from(token)
+            .map_err(|_| Error::Malformed("typed embedding token domain".into()))?;
+        let values =
+            crate::weights::source_reference_embedding(self.source.embedding_source(token)?)?;
+        HostValue::typed(
+            values,
+            ActivationPrecision::Bf16WidenedF32,
+            self.source.source_identity(),
+            self.source.program_numerical_profile(),
+        )
+    }
+    fn project_profiled(
+        &mut self,
+        tensor: SourceTensor,
+        input: &HostValue,
+        contract: ProjectionContract,
+    ) -> Result<HostValue> {
+        if contract == ProjectionContract::Source {
+            return self.project(tensor, input);
+        }
+        if self.region_kernel.is_some() {
+            return Err(Error::Unsupported(
+                "physical provider does not declare typed CPU profile".into(),
+            ));
+        }
+        self.tensor(&tensor)?;
+        if self.source.program_numerical_profile()
+            != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+            || input.precision != ActivationPrecision::Bf16WidenedF32
+            || input.source != Some(self.source.source_identity())
+            || input.profile != Some(self.source.program_numerical_profile())
+            || tensor.kind != zerogravity_core::quant::QuantKind::Bf16
+            || tensor.axes != crate::accelerator::program::MatrixAxes::OutputInput
+        {
+            return Err(Error::Unsupported(
+                "host typed projection source/contract".into(),
+            ));
+        }
+        let values = zerogravity_cpu::original_hf::output_first_projection_with_profile(
+            self.source.source_identity(),
+            &tensor.name,
+            zerogravity_core::source::TensorSource::tensor(self.source, &tensor.name)?,
+            input.as_slice()?,
+            self.region_kernel,
+            crate::weights::SourceProjectionProfile::TorchCpuBf16Avx2,
+        )?;
+        let values = values
+            .into_iter()
+            .map(round_bf16)
+            .collect::<Result<Vec<_>>>()?;
+        HostValue::typed(
+            values,
+            ActivationPrecision::Bf16WidenedF32,
+            self.source.source_identity(),
+            self.source.program_numerical_profile(),
+        )
+    }
     fn embed(&mut self, tensor: SourceTensor, token: usize) -> Result<HostValue> {
+        self.legacy_precision(&[])?;
         self.tensor(&tensor)?;
         if tensor.name != "token_embd.weight" {
             return Err(Error::State("unexpected Qwen embedding role".into()));
         }
         let token = u32::try_from(token)
             .map_err(|_| Error::Malformed("embedding ID exceeds source token domain".into()))?;
-        Ok(HostValue::new(self.engine.embedding_region(token)?))
+        Ok(HostValue::new(self.engine()?.embedding_region(token)?))
     }
     fn project(&mut self, tensor: SourceTensor, input: &HostValue) -> Result<HostValue> {
+        self.legacy_precision(&[input])?;
         self.tensor(&tensor)?;
         Ok(HostValue::new(
-            self.engine.project(&tensor.name, input.as_slice()?)?,
+            self.engine()?.project(&tensor.name, input.as_slice()?)?,
         ))
     }
     fn view(&mut self, input: &HostValue, view: TensorView) -> Result<HostValue> {
@@ -137,6 +293,9 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
             data: input.data.clone(),
             view: TensorView { offset, ..view },
             elements,
+            precision: input.precision,
+            source: input.source,
+            profile: input.profile,
         })
     }
     fn contiguous(&mut self, input: &HostValue) -> Result<HostValue> {
@@ -148,7 +307,17 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
             let offset = input.view.offset + row * input.view.row_stride;
             values.extend_from_slice(&input.data[offset..offset + input.view.width]);
         }
-        Ok(HostValue::new(values))
+        match input.source {
+            Some(source) => HostValue::typed(
+                values,
+                input.precision,
+                source,
+                input
+                    .profile
+                    .ok_or_else(|| Error::State("typed host profile missing".into()))?,
+            ),
+            None => Ok(HostValue::new(values)),
+        }
     }
     fn rms(
         &mut self,
@@ -157,13 +326,14 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         gamma: SourceVector<'_>,
         eps: f32,
     ) -> Result<HostValue> {
+        self.legacy_precision(&[input])?;
         self.vector(gamma)?;
-        if eps.to_bits() != self.engine.eps.to_bits() {
+        if eps.to_bits() != self.engine()?.eps.to_bits() {
             return Err(Error::State(
                 "host residual RMS changed source epsilon".into(),
             ));
         }
-        Ok(HostValue::new(self.engine.normalize_region(
+        Ok(HostValue::new(self.engine()?.normalize_region(
             name,
             input.as_slice()?,
             gamma.values,
@@ -177,8 +347,9 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         groups: usize,
         eps: f32,
     ) -> Result<HostValue> {
+        self.legacy_precision(&[input])?;
         self.vector(gamma)?;
-        Ok(HostValue::new(self.engine.normalize_grouped_region(
+        Ok(HostValue::new(self.engine()?.normalize_grouped_region(
             name,
             input.as_slice()?,
             gamma.values,
@@ -192,21 +363,28 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         input: &HostValue,
         multiplier: Option<&HostValue>,
     ) -> Result<HostValue> {
+        self.legacy_precision(&[input])?;
+        if let Some(value) = multiplier {
+            self.legacy_precision(&[value])?;
+        }
         let multiplier = multiplier.map(HostValue::as_slice).transpose()?;
-        Ok(HostValue::new(self.engine.silu_region(
+        Ok(HostValue::new(self.engine()?.silu_region(
             name,
             input.as_slice()?,
             multiplier,
         )?))
     }
     fn add(&mut self, name: &str, left: &HostValue, right: &HostValue) -> Result<HostValue> {
-        Ok(HostValue::new(self.engine.binary_region(BinaryRegion {
-            source_identity: self.engine.weights.source_identity(),
-            operation: name,
-            kind: BinaryOperation::Add,
-            left: left.as_slice()?,
-            right: right.as_slice()?,
-        })?))
+        self.legacy_precision(&[left, right])?;
+        Ok(HostValue::new(self.engine()?.binary_region(
+            BinaryRegion {
+                source_identity: self.source.source_identity(),
+                operation: name,
+                kind: BinaryOperation::Add,
+                left: left.as_slice()?,
+                right: right.as_slice()?,
+            },
+        )?))
     }
     fn sigmoid_mul(
         &mut self,
@@ -214,13 +392,16 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         value: &HostValue,
         gate: &HostValue,
     ) -> Result<HostValue> {
-        Ok(HostValue::new(self.engine.binary_region(BinaryRegion {
-            source_identity: self.engine.weights.source_identity(),
-            operation: name,
-            kind: BinaryOperation::SigmoidGate,
-            left: value.as_slice()?,
-            right: gate.as_slice()?,
-        })?))
+        self.legacy_precision(&[value, gate])?;
+        Ok(HostValue::new(self.engine()?.binary_region(
+            BinaryRegion {
+                source_identity: self.source.source_identity(),
+                operation: name,
+                kind: BinaryOperation::SigmoidGate,
+                left: value.as_slice()?,
+                right: gate.as_slice()?,
+            },
+        )?))
     }
     fn conv_step(
         &mut self,
@@ -229,13 +410,16 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         input: &HostValue,
         weights: SourceVector<'_>,
     ) -> Result<HostValue> {
+        self.legacy_precision(&[input])?;
         self.vector(weights)?;
-        let Some(LayerState::Delta { conv, .. }) = self.state.layers.get_mut(domain.0) else {
+        let engine = self.engine()?;
+        let Some(LayerState::Delta { conv, .. }) = self.state_mut()?.layers.get_mut(domain.0)
+        else {
             return Err(Error::State("invalid private convolution domain".into()));
         };
         let input = input.as_slice()?;
         let mut output = vec![0.0; input.len()];
-        self.engine.gdn_conv_region(
+        engine.gdn_conv_region(
             name,
             input,
             weights.values,
@@ -253,17 +437,20 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         a: SourceVector<'_>,
         scale: f32,
     ) -> Result<CoefficientValues<HostValue>> {
+        self.legacy_precision(&[alpha, beta])?;
         self.vector(dt)?;
         self.vector(a)?;
-        let ready = self.engine.gdn_coefficient_region(GdnCoefficientRegion {
-            source_identity: self.engine.weights.source_identity(),
-            operation: name,
-            alpha: alpha.as_slice()?,
-            beta: beta.as_slice()?,
-            dt: dt.values,
-            a: a.values,
-            scale,
-        })?;
+        let ready = self
+            .engine()?
+            .gdn_coefficient_region(GdnCoefficientRegion {
+                source_identity: self.source.source_identity(),
+                operation: name,
+                alpha: alpha.as_slice()?,
+                beta: beta.as_slice()?,
+                dt: dt.values,
+                a: a.values,
+                scale,
+            })?;
         let packed = ready
             .coefficients
             .iter()
@@ -285,6 +472,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         coefficients: &HostValue,
         width: usize,
     ) -> Result<HostValue> {
+        self.legacy_precision(&[q, k, v, coefficients])?;
         let q = q.as_slice()?;
         let k = k.as_slice()?;
         let v = v.as_slice()?;
@@ -303,12 +491,15 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
                 scale: c[2],
             })
             .collect();
-        let Some(LayerState::Delta { state, .. }) = self.state.layers.get_mut(domain.0) else {
+        let engine = self.engine()?;
+        let source_identity = self.source.source_identity();
+        let Some(LayerState::Delta { state, .. }) = self.state_mut()?.layers.get_mut(domain.0)
+        else {
             return Err(Error::State("invalid private recurrent domain".into()));
         };
         let recurrent = Arc::make_mut(state).as_mut_slice();
-        let result = self.engine.gdn_recurrent_region(GdnRecurrentRegion {
-            source_identity: self.engine.weights.source_identity(),
+        let result = engine.gdn_recurrent_region(GdnRecurrentRegion {
+            source_identity,
             operation: name,
             width,
             q,
@@ -339,6 +530,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         Ok(HostValue::new(output))
     }
     fn validate_kv_prefix(&mut self, domain: KvDomain, position: usize) -> Result<()> {
+        self.legacy_precision(&[])?;
         self.kv(domain, position)?;
         Ok(())
     }
@@ -351,8 +543,9 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         position: usize,
         geometry: RopeGeometry,
     ) -> Result<RopeValues<HostValue>> {
-        let ready = self.engine.rope_kv_region(RopeKvRegion {
-            source_identity: self.engine.weights.source_identity(),
+        self.legacy_precision(&[q, k, v])?;
+        let ready = self.engine()?.rope_kv_region(RopeKvRegion {
+            source_identity: self.source.source_identity(),
             operation: name,
             query: q.as_slice()?,
             key: k.as_slice()?,
@@ -371,7 +564,9 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         })
     }
     fn append_kv(&mut self, domain: KvDomain, k: &HostValue, v: &HostValue) -> Result<()> {
-        let Some(LayerState::Full { keys, values }) = self.state.layers.get_mut(domain.0) else {
+        self.legacy_precision(&[k, v])?;
+        let Some(LayerState::Full { keys, values }) = self.state_mut()?.layers.get_mut(domain.0)
+        else {
             return Err(Error::State("invalid private KV domain".into()));
         };
         keys.push(Arc::from(k.as_slice()?));
@@ -387,9 +582,10 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         geometry: AttentionGeometry,
         scale: f32,
     ) -> Result<QkValues<HostValue>> {
+        self.legacy_precision(&[query])?;
         let (keys, _) = self.kv(domain, valid_tokens)?;
-        let ready = self.engine.attention_qk_region(AttentionQkRegion {
-            source_identity: self.engine.weights.source_identity(),
+        let ready = self.engine()?.attention_qk_region(AttentionQkRegion {
+            source_identity: self.source.source_identity(),
             operation: name,
             query: query.as_slice()?,
             keys,
@@ -410,10 +606,11 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         heads: usize,
         valid_tokens: usize,
     ) -> Result<HostValue> {
+        self.legacy_precision(&[scores])?;
         let ready = self
-            .engine
+            .engine()?
             .attention_softmax_region(AttentionSoftmaxRegion {
-                source_identity: self.engine.weights.source_identity(),
+                source_identity: self.source.source_identity(),
                 operation: name,
                 scores: scores.as_slice()?,
                 heads,
@@ -429,10 +626,11 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         valid_tokens: usize,
         geometry: AttentionGeometry,
     ) -> Result<HostValue> {
+        self.legacy_precision(&[probabilities])?;
         let (_, values) = self.kv(domain, valid_tokens)?;
-        Ok(HostValue::new(self.engine.attention_value_region(
+        Ok(HostValue::new(self.engine()?.attention_value_region(
             AttentionValueRegion {
-                source_identity: self.engine.weights.source_identity(),
+                source_identity: self.source.source_identity(),
                 operation: name,
                 probabilities: probabilities.as_slice()?,
                 values,
@@ -470,12 +668,16 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         domain: StateSlot,
     ) -> Result<()> {
         if self.trace.is_some() {
+            let state = self
+                .state
+                .as_deref()
+                .ok_or_else(|| Error::State("operator slice has no observed state".into()))?;
             let values = match domain {
-                StateSlot::Conv(ConvDomain(i)) => match self.state.layers.get(i) {
+                StateSlot::Conv(ConvDomain(i)) => match state.layers.get(i) {
                     Some(LayerState::Delta { conv, .. }) => conv.as_slice(),
                     _ => return Err(Error::State("invalid observed convolution domain".into())),
                 },
-                StateSlot::Recurrent(RecurrentDomain(i)) => match self.state.layers.get(i) {
+                StateSlot::Recurrent(RecurrentDomain(i)) => match state.layers.get(i) {
                     Some(LayerState::Delta { state, .. }) => state.as_slice(),
                     _ => return Err(Error::State("invalid observed recurrent domain".into())),
                 },
@@ -490,16 +692,87 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         Ok(())
     }
     fn advance_frontier(&mut self) -> Result<()> {
-        if self.state.position != self.position {
+        if self.state()?.position != self.position {
             return Err(Error::State(
                 "duplicate host proposed frontier advance".into(),
             ));
         }
-        self.state.position = self
-            .state
+        let next = self
+            .state()?
             .position
             .checked_add(1)
             .ok_or_else(|| Error::Limit("host proposed position overflow".into()))?;
+        self.state_mut()?.position = next;
         Ok(())
+    }
+}
+
+fn round_bf16(value: f32) -> Result<f32> {
+    if !value.is_finite() {
+        return Err(Error::Malformed("nonfinite typed projection output".into()));
+    }
+    let bits = value.to_bits();
+    let rounded = f32::from_bits(bits.wrapping_add(0x7fff + ((bits >> 16) & 1)) & 0xffff_0000);
+    if !rounded.is_finite() {
+        return Err(Error::Limit("typed BF16 projection output overflow".into()));
+    }
+    Ok(rounded)
+}
+
+#[cfg(test)]
+mod typed_value_tests {
+    use super::*;
+    #[test]
+    fn typed_values_require_explicit_source_precision_and_keep_profile() {
+        let source = crate::accelerator::SourceIdentity::for_new_allocation().unwrap();
+        let profile = ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1;
+        assert!(
+            HostValue::typed(
+                vec![1.0],
+                ActivationPrecision::Bf16WidenedF32,
+                crate::accelerator::SourceIdentity::unbound(),
+                profile
+            )
+            .is_err()
+        );
+        assert!(
+            HostValue::typed(
+                vec![1.0001],
+                ActivationPrecision::Bf16WidenedF32,
+                source,
+                profile
+            )
+            .is_err()
+        );
+        let typed = HostValue::typed(
+            vec![-0.0, 1.0],
+            ActivationPrecision::Bf16WidenedF32,
+            source,
+            profile,
+        )
+        .unwrap();
+        assert_eq!(typed.source, Some(source));
+        assert_eq!(typed.profile, Some(profile));
+        assert_eq!(typed.as_slice().unwrap()[0].to_bits(), (-0.0f32).to_bits());
+        let legacy = HostValue::new(vec![1.0]);
+        assert_eq!(legacy.precision, ActivationPrecision::F32);
+        assert_eq!(legacy.source, None);
+        assert_eq!(legacy.profile, None);
+    }
+    #[test]
+    fn projection_boundary_rounds_bf16_rne_and_refuses_finite_overflow() {
+        for (input, expected) in [
+            (0x3f80_8000, 0x3f80_0000),
+            (0x3f81_8000, 0x3f82_0000),
+            (0x8000_0000, 0x8000_0000),
+        ] {
+            assert_eq!(
+                round_bf16(f32::from_bits(input)).unwrap().to_bits(),
+                expected
+            );
+        }
+        for value in [f32::MAX, f32::NAN, f32::INFINITY] {
+            assert!(round_bf16(value).is_err());
+        }
     }
 }

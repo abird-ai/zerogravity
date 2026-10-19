@@ -64,7 +64,9 @@ struct Loaded {
     key: PhysicalDeviceKey,
 }
 fn source(fixture: &Fixture, tied: bool, mutate: impl FnOnce(&mut Value)) -> Loaded {
-    let cfg = config(tied);
+    source_with_config(fixture, config(tied), mutate)
+}
+fn source_with_config(fixture: &Fixture, cfg: Vec<u8>, mutate: impl FnOnce(&mut Value)) -> Loaded {
     let specs = QwenTextConfig::from_json(&cfg)
         .unwrap()
         .tensor_specs()
@@ -399,4 +401,271 @@ fn original_binding_refuses_changed_pins_profile_axes_and_non_bf16_matrix() {
             0
         );
     }
+}
+
+#[test]
+fn parameter_source_borrows_exact_role_dtype_shape_and_payload_without_learned_cache() {
+    let fixture = Fixture::new();
+    let (model, admission, key) = bind(source(&fixture, false, |_| {}));
+    let retained = admission.arbiter.snapshot(&key).unwrap().reserved;
+    for (role, name, kind, shape) in [
+        (
+            QwenParameterRole::GdnNorm(0),
+            "model.language_model.layers.0.linear_attn.norm.weight",
+            QuantKind::F32,
+            vec![2],
+        ),
+        (
+            QwenParameterRole::GdnA(0),
+            "model.language_model.layers.0.linear_attn.A_log",
+            QuantKind::F32,
+            vec![2],
+        ),
+        (
+            QwenParameterRole::GdnDt(0),
+            "model.language_model.layers.0.linear_attn.dt_bias",
+            QuantKind::F16,
+            vec![2],
+        ),
+        (
+            QwenParameterRole::GdnConvolution(0),
+            "model.language_model.layers.0.linear_attn.conv1d.weight",
+            QuantKind::Bf16,
+            vec![8, 1, 4],
+        ),
+    ] {
+        let descriptor = model.parameter_descriptor(role).unwrap();
+        assert_eq!(descriptor.name, name);
+        assert_eq!(descriptor.source, model.source_identity());
+        assert_eq!(descriptor.kind, kind);
+        assert_eq!(descriptor.shape, shape);
+        descriptor.validate_source(model.as_ref()).unwrap();
+        let raw = model.parameter_source(role).unwrap();
+        assert_eq!(raw.kind, kind);
+        assert_eq!(raw.shape, shape);
+        assert_eq!(raw.packed_bytes.len(), descriptor.bytes);
+        assert_eq!(raw.packed_bytes, model.tensor_bytes(name).unwrap());
+        assert_eq!(
+            raw.packed_bytes.as_ptr(),
+            model.tensor_bytes(name).unwrap().as_ptr()
+        );
+        assert_eq!(
+            raw.shape.as_ptr(),
+            model.tensor_info(name).unwrap().shape.as_ptr()
+        );
+        assert_eq!(admission.arbiter.snapshot(&key).unwrap().reserved, retained);
+    }
+    for absent in [
+        QwenParameterRole::GdnConvolution(3),
+        QwenParameterRole::GdnNorm(4),
+        QwenParameterRole::QueryNorm(0),
+    ] {
+        assert!(model.parameter_source(absent).is_err());
+    }
+    assert_eq!(model.initialized_cpu_state_bytes(), 0);
+    assert!(model.layers.is_empty() && model.final_norm.is_empty());
+    assert!(matches!(
+        model.forward_plan(256, false, false),
+        Err(Error::Unsupported(_))
+    ));
+    drop(model);
+    assert_eq!(admission.arbiter.snapshot(&key).unwrap().reserved, 0);
+}
+
+#[test]
+fn parameter_descriptor_rejects_foreign_source_and_changed_raw_metadata() {
+    let first = Fixture::new();
+    let second = Fixture::new();
+    let (model, host, key) = bind(source(&first, false, |_| {}));
+    let (foreign, foreign_host, foreign_key) = bind(source(&second, false, |_| {}));
+    let descriptor = model
+        .parameter_descriptor(QwenParameterRole::GdnNorm(0))
+        .unwrap();
+    assert_ne!(model.source_identity(), foreign.source_identity());
+    assert!(descriptor.validate_source(foreign.as_ref()).is_err());
+    for mutation in 0..5 {
+        let mut changed = descriptor.clone();
+        match mutation {
+            0 => changed.source = zerogravity_core::accelerator::SourceIdentity::unbound(),
+            1 => changed.name = "model.language_model.layers.0.input_layernorm.weight".into(),
+            2 => changed.kind = QuantKind::F16,
+            3 => changed.shape = vec![1, 2],
+            4 => changed.bytes -= 1,
+            _ => unreachable!(),
+        }
+        assert!(changed.validate_source(model.as_ref()).is_err());
+    }
+    let raw = model
+        .parameter_source(QwenParameterRole::GdnNorm(0))
+        .unwrap();
+    assert_eq!(raw.kind, QuantKind::F32);
+    assert_eq!(raw.shape, &[2]);
+    assert_eq!(raw.packed_bytes, &[0, 0, 128, 62, 0, 0, 128, 62]);
+    drop((model, foreign));
+    assert_eq!(host.arbiter.snapshot(&key).unwrap().reserved, 0);
+    assert_eq!(
+        foreign_host
+            .arbiter
+            .snapshot(&foreign_key)
+            .unwrap()
+            .reserved,
+        0
+    );
+}
+
+#[test]
+fn original_state_metadata_binds_published_frontier_and_distinct_raw_canonical_layouts() {
+    use zerogravity_core::accelerator::program::{
+        ConvDomain, KvDomain, RecurrentDomain, StateSlot,
+    };
+    use zerogravity_core::session_root::SessionAuthority;
+    let fixture = Fixture::new();
+    let mut cfg: Value = serde_json::from_slice(&config(false)).unwrap();
+    // Unequal key/value widths make a silent transpose visibly wrong.
+    cfg["text_config"]["linear_value_head_dim"] = json!(4);
+    let (model, host, key) = bind(source_with_config(
+        &fixture,
+        serde_json::to_vec(&cfg).unwrap(),
+        |_| {},
+    ));
+    let retained = host.arbiter.snapshot(&key).unwrap().reserved;
+    let mut authority = SessionAuthority::new(model.source_identity()).unwrap();
+    let initial = authority.binding();
+    let first = model.original_state_descriptors(initial).unwrap();
+    assert_eq!(first.len(), 7);
+    assert!(
+        first
+            .iter()
+            .all(|descriptor| descriptor.binding() == initial
+                && descriptor.phase() == OriginalStatePhase::InitialToken
+                && descriptor.original_cache().is_none())
+    );
+    let conv = first
+        .iter()
+        .find(|descriptor| descriptor.slot() == StateSlot::Conv(ConvDomain(0)))
+        .unwrap();
+    assert_eq!(conv.canonical().shape(), &[12, 3]);
+    assert_eq!(
+        conv.canonical().layout(),
+        OriginalStateLayout::ConvolutionChannelFrame
+    );
+    assert_eq!(
+        conv.canonical().encoding(),
+        OriginalStateEncoding::Bf16WidenedF32
+    );
+    assert_eq!(conv.canonical().bytes().unwrap(), 12 * 3 * 4);
+    let recurrence = first
+        .iter()
+        .find(|descriptor| descriptor.slot() == StateSlot::Recurrent(RecurrentDomain(0)))
+        .unwrap();
+    assert_eq!(recurrence.canonical().shape(), &[2, 4, 2]);
+    assert_eq!(
+        recurrence.canonical().layout(),
+        OriginalStateLayout::RecurrentHeadValueKey
+    );
+    assert_eq!(
+        recurrence.canonical().encoding(),
+        OriginalStateEncoding::F32
+    );
+    let kv = first
+        .iter()
+        .find(|descriptor| descriptor.slot() == StateSlot::Kv(KvDomain(3)))
+        .unwrap();
+    assert_eq!(kv.canonical().shape(), &[0, 1, 4]);
+    assert_eq!(kv.canonical().components(), 2);
+    assert_eq!(kv.canonical().bytes().unwrap(), 0);
+
+    // Synthetic logical publication only: no model/session buffer is created.
+    let attempt = authority.begin_advance(3).unwrap();
+    let committed = authority.prepare_publish(attempt).unwrap().commit();
+    let cached = model.original_state_descriptors(committed).unwrap();
+    assert!(
+        cached
+            .iter()
+            .all(|descriptor| descriptor.binding() == committed
+                && descriptor.phase() == OriginalStatePhase::CachedToken)
+    );
+    let conv = cached
+        .iter()
+        .find(|descriptor| descriptor.slot() == StateSlot::Conv(ConvDomain(0)))
+        .unwrap();
+    assert_eq!(conv.original_cache().unwrap().shape(), &[12, 4]);
+    assert_eq!(
+        conv.original_cache().unwrap().encoding(),
+        OriginalStateEncoding::Bf16
+    );
+    assert_eq!(conv.original_cache().unwrap().bytes().unwrap(), 12 * 4 * 2);
+    assert_eq!(conv.canonical().shape(), &[12, 3]);
+    let recurrence = cached
+        .iter()
+        .find(|descriptor| descriptor.slot() == StateSlot::Recurrent(RecurrentDomain(0)))
+        .unwrap();
+    assert_eq!(recurrence.original_cache().unwrap().shape(), &[2, 2, 4]);
+    assert_eq!(
+        recurrence.original_cache().unwrap().layout(),
+        OriginalStateLayout::RecurrentHeadKeyValue
+    );
+    assert_eq!(recurrence.canonical().shape(), &[2, 4, 2]);
+    let kv = cached
+        .iter()
+        .find(|descriptor| descriptor.slot() == StateSlot::Kv(KvDomain(3)))
+        .unwrap();
+    assert_eq!(kv.original_cache().unwrap().shape(), &[1, 3, 4]);
+    assert_eq!(
+        kv.original_cache().unwrap().layout(),
+        OriginalStateLayout::KvHeadTokenWidth
+    );
+    assert_eq!(kv.canonical().shape(), &[3, 1, 4]);
+    assert_eq!(
+        kv.canonical().layout(),
+        OriginalStateLayout::KvTokenHeadWidth
+    );
+    assert_eq!(
+        kv.canonical().encoding(),
+        OriginalStateEncoding::Bf16WidenedF32
+    );
+    assert_eq!(kv.original_cache().unwrap().components(), 2);
+    assert_eq!(kv.canonical().bytes().unwrap(), 3 * 4 * 2 * 4);
+    // Historical committed metadata remains descriptive, never an authority permit.
+    assert_eq!(model.original_state_descriptors(initial).unwrap(), first);
+    assert_eq!(authority.binding(), committed);
+    assert_eq!(model.initialized_cpu_state_bytes(), 0);
+    assert_eq!(host.arbiter.snapshot(&key).unwrap().reserved, retained);
+    #[cfg(feature = "cpu")]
+    assert!(matches!(model.new_session(), Err(Error::Unsupported(_))));
+    assert!(matches!(
+        model.forward_plan(256, false, false),
+        Err(Error::Unsupported(_))
+    ));
+    drop(model);
+    assert_eq!(host.arbiter.snapshot(&key).unwrap().reserved, 0);
+}
+
+#[test]
+fn original_state_metadata_refuses_foreign_root_and_source_context_overflow() {
+    use zerogravity_core::session_root::SessionAuthority;
+    let first = Fixture::new();
+    let second = Fixture::new();
+    let (model, host, key) = bind(source(&first, false, |_| {}));
+    let (other, other_host, other_key) = bind(source(&second, false, |_| {}));
+    let foreign = SessionAuthority::new(other.source_identity()).unwrap();
+    assert!(matches!(
+        model.original_state_descriptors(foreign.binding()),
+        Err(Error::State(_))
+    ));
+    let mut authority = SessionAuthority::new(model.source_identity()).unwrap();
+    let attempt = authority.begin_advance(1025).unwrap();
+    let binding = authority.prepare_publish(attempt).unwrap().commit();
+    assert!(matches!(
+        model.original_state_descriptors(binding),
+        Err(Error::Limit(_))
+    ));
+    assert_eq!(model.initialized_cpu_state_bytes(), 0);
+    assert!(matches!(
+        model.forward_plan(256, false, false),
+        Err(Error::Unsupported(_))
+    ));
+    drop((model, other));
+    assert_eq!(host.arbiter.snapshot(&key).unwrap().reserved, 0);
+    assert_eq!(other_host.arbiter.snapshot(&other_key).unwrap().reserved, 0);
 }

@@ -12,6 +12,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+mod typed;
+pub use typed::{
+    ActivationPrecision, EmbeddingContract, ProgramNumericalProfile, ProjectionContract,
+    SourceParameter,
+};
+
 static NEXT_PLAN_BUILDER: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -235,6 +241,35 @@ pub trait MathematicalBackend {
     type Value: Clone;
     type Index: Copy;
     fn elements(&self, value: &Self::Value) -> usize;
+    fn precision(&self, _value: &Self::Value) -> ActivationPrecision {
+        ActivationPrecision::F32
+    }
+    fn embed_profiled(
+        &mut self,
+        tensor: SourceTensor,
+        token: Self::Index,
+        contract: EmbeddingContract,
+    ) -> Result<Self::Value> {
+        match contract {
+            EmbeddingContract::Source => self.embed(tensor, token),
+            _ => Err(Error::Unsupported(
+                "backend does not implement explicit embedding contract".into(),
+            )),
+        }
+    }
+    fn project_profiled(
+        &mut self,
+        tensor: SourceTensor,
+        input: &Self::Value,
+        contract: ProjectionContract,
+    ) -> Result<Self::Value> {
+        match contract {
+            ProjectionContract::Source => self.project(tensor, input),
+            _ => Err(Error::Unsupported(
+                "backend does not implement explicit projection contract".into(),
+            )),
+        }
+    }
     fn embed(&mut self, tensor: SourceTensor, token: Self::Index) -> Result<Self::Value>;
     fn project(&mut self, tensor: SourceTensor, input: &Self::Value) -> Result<Self::Value>;
     fn view(&mut self, input: &Self::Value, view: TensorView) -> Result<Self::Value>;
@@ -369,6 +404,12 @@ pub struct PlanValue {
     owner: u64,
     elements: usize,
     contiguous: bool,
+    precision: ActivationPrecision,
+}
+impl PlanValue {
+    pub fn precision(self) -> ActivationPrecision {
+        self.precision
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StaticVectorId(pub u32);
@@ -393,6 +434,15 @@ pub struct StateEffect {
 /// Lowering may add explicit Pack/Copy instructions for qualified kernel ABIs.
 #[derive(Clone, Debug)]
 pub enum PlanOperation {
+    TypedEmbed {
+        tensor: SourceTensor,
+        token: ParameterRef,
+        contract: EmbeddingContract,
+    },
+    TypedProject {
+        tensor: SourceTensor,
+        contract: ProjectionContract,
+    },
     Embed {
         tensor: SourceTensor,
         token: ParameterRef,
@@ -472,6 +522,9 @@ pub struct PlanNode {
 #[derive(Clone, Debug)]
 pub struct ForwardPlan {
     source: SourceIdentity,
+    profile: ProgramNumericalProfile,
+    operator_slice: bool,
+    precisions: Vec<ActivationPrecision>,
     prefix_capacity: usize,
     nodes: Vec<PlanNode>,
     values: Vec<ValueShape>,
@@ -482,7 +535,30 @@ pub struct ForwardPlan {
     frontier_delta: usize,
     state_node_count: usize,
 }
+/// State-free fragment recorded by the same builder; no token/root advance.
+#[derive(Clone, Debug)]
+pub struct RecordedOperatorSlice {
+    plan: ForwardPlan,
+    output: ValueId,
+}
+impl RecordedOperatorSlice {
+    pub fn plan(&self) -> &ForwardPlan {
+        &self.plan
+    }
+    pub fn output(&self) -> ValueId {
+        self.output
+    }
+}
 impl ForwardPlan {
+    pub fn numerical_profile(&self) -> ProgramNumericalProfile {
+        self.profile
+    }
+    pub fn is_operator_slice(&self) -> bool {
+        self.operator_slice
+    }
+    pub fn precisions(&self) -> &[ActivationPrecision] {
+        &self.precisions
+    }
     pub fn source(&self) -> SourceIdentity {
         self.source
     }
@@ -520,6 +596,9 @@ impl ForwardPlan {
 
 pub struct PlanBuilder {
     owner: u64,
+    profile: ProgramNumericalProfile,
+    operator_slice: bool,
+    precisions: Vec<ActivationPrecision>,
     source: SourceIdentity,
     prefix_capacity: usize,
     nodes: Vec<PlanNode>,
@@ -538,11 +617,43 @@ impl PlanBuilder {
         required: Vec<StateSlot>,
         capture: bool,
     ) -> Result<Self> {
+        Self::new_inner(
+            source,
+            prefix_capacity,
+            required,
+            capture,
+            ProgramNumericalProfile::GgufSourceV1,
+            false,
+        )
+    }
+    pub fn new_with_profile(
+        source: SourceIdentity,
+        prefix_capacity: usize,
+        required: Vec<StateSlot>,
+        capture: bool,
+        profile: ProgramNumericalProfile,
+    ) -> Result<Self> {
+        Self::new_inner(source, prefix_capacity, required, capture, profile, false)
+    }
+    pub fn new_operator_slice(
+        source: SourceIdentity,
+        profile: ProgramNumericalProfile,
+    ) -> Result<Self> {
+        Self::new_inner(source, 1, Vec::new(), false, profile, true)
+    }
+    fn new_inner(
+        source: SourceIdentity,
+        prefix_capacity: usize,
+        required: Vec<StateSlot>,
+        capture: bool,
+        profile: ProgramNumericalProfile,
+        operator_slice: bool,
+    ) -> Result<Self> {
         let expected_count = required.len();
         let required: BTreeSet<_> = required.into_iter().collect();
         if !source.is_bound()
             || prefix_capacity == 0
-            || required.is_empty()
+            || required.is_empty() != operator_slice
             || required.len() != expected_count
         {
             return Err(Error::Malformed("invalid source-bound forward plan".into()));
@@ -552,6 +663,9 @@ impl PlanBuilder {
             .map_err(|_| Error::Limit("forward plan builder identity exhausted".into()))?;
         Ok(Self {
             owner,
+            profile,
+            operator_slice,
+            precisions: Vec::new(),
             source,
             prefix_capacity,
             nodes: Vec::new(),
@@ -581,6 +695,11 @@ impl PlanBuilder {
         Ok(())
     }
     fn constant(&mut self, vector: SourceVector<'_>) -> Result<StaticVectorId> {
+        if self.profile != ProgramNumericalProfile::GgufSourceV1 {
+            return Err(Error::Unsupported(
+                "profiled operators require raw source parameter descriptors".into(),
+            ));
+        }
         if vector.source != self.source
             || vector.name.is_empty()
             || vector.values.is_empty()
@@ -617,6 +736,63 @@ impl PlanBuilder {
         self.constant_names.insert(vector.name.into(), id);
         Ok(id)
     }
+    fn result_precision(
+        &self,
+        operation: &PlanOperation,
+        inputs: &[PlanValue],
+    ) -> Result<ActivationPrecision> {
+        match operation {
+            PlanOperation::TypedEmbed {
+                tensor,
+                contract: EmbeddingContract::Bf16OutputInput,
+                ..
+            } => {
+                typed::validate_bf16_matrix(tensor)?;
+                if self.profile != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1 {
+                    return Err(Error::Unsupported(
+                        "typed embedding numerical profile".into(),
+                    ));
+                }
+                Ok(ActivationPrecision::Bf16WidenedF32)
+            }
+            PlanOperation::TypedProject {
+                tensor,
+                contract: ProjectionContract::TorchCpuBf16Avx2,
+            } => {
+                typed::validate_bf16_matrix(tensor)?;
+                if self.profile != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+                    || inputs.len() != 1
+                    || inputs[0].precision != ActivationPrecision::Bf16WidenedF32
+                {
+                    return Err(Error::Unsupported(
+                        "typed projection numerical profile/precision".into(),
+                    ));
+                }
+                Ok(ActivationPrecision::Bf16WidenedF32)
+            }
+            PlanOperation::View(_) | PlanOperation::Contiguous => inputs
+                .first()
+                .map(|value| value.precision)
+                .ok_or_else(|| Error::State("missing typed view input".into())),
+            PlanOperation::Observe { .. } | PlanOperation::CheckFinite { .. } => {
+                Ok(ActivationPrecision::F32)
+            }
+            _ if self.profile == ProgramNumericalProfile::GgufSourceV1
+                && inputs
+                    .iter()
+                    .all(|input| input.precision == ActivationPrecision::F32)
+                && !matches!(
+                    operation,
+                    PlanOperation::TypedEmbed { .. } | PlanOperation::TypedProject { .. }
+                ) =>
+            {
+                Ok(ActivationPrecision::F32)
+            }
+            _ => Err(Error::Unsupported(
+                "operator lacks explicit numerical/activation contract".into(),
+            )),
+        }
+    }
     fn record(
         &mut self,
         name: &str,
@@ -629,6 +805,7 @@ impl PlanBuilder {
             if input.owner != self.owner
                 || self.values.get(input.id.0 as usize) != Some(&input.shape)
                 || input.elements != input.shape.capacity_elements()?
+                || self.precisions.get(input.id.0 as usize) != Some(&input.precision)
             {
                 return Err(Error::State(
                     "foreign or malformed forward-plan value".into(),
@@ -640,6 +817,7 @@ impl PlanBuilder {
                 ));
             }
         }
+        let precision = self.result_precision(&operation, inputs)?;
         let elements: Vec<_> = shapes
             .iter()
             .map(|shape| shape.capacity_elements())
@@ -663,12 +841,14 @@ impl PlanBuilder {
         for (&shape, elements) in shapes.iter().zip(elements) {
             let id = ValueId(self.values.len() as u32);
             self.values.push(shape);
+            self.precisions.push(precision);
             outputs.push(PlanValue {
                 id,
                 shape,
                 owner: self.owner,
                 elements,
                 contiguous: true,
+                precision,
             });
         }
         self.nodes.push(PlanNode {
@@ -726,8 +906,39 @@ impl PlanBuilder {
         };
         Ok(StateEffect { read, write })
     }
+    pub fn finish_operator_slice(self, output: PlanValue) -> Result<RecordedOperatorSlice> {
+        if !self.operator_slice
+            || !self.required.is_empty()
+            || !self.domains.is_empty()
+            || self.advanced.is_some()
+            || output.owner != self.owner
+            || self.values.get(output.id.0 as usize) != Some(&output.shape)
+            || self.precisions.get(output.id.0 as usize) != Some(&output.precision)
+        {
+            return Err(Error::State("invalid state-free operator slice".into()));
+        }
+        Ok(RecordedOperatorSlice {
+            output: output.id,
+            plan: ForwardPlan {
+                source: self.source,
+                profile: self.profile,
+                operator_slice: true,
+                precisions: self.precisions,
+                prefix_capacity: self.prefix_capacity,
+                nodes: self.nodes,
+                values: self.values,
+                constants: self.constants,
+                required_domains: Vec::new(),
+                proposed_domains: Vec::new(),
+                logits: None,
+                frontier_delta: 0,
+                state_node_count: 0,
+            },
+        })
+    }
     pub fn finish(self, logits: Option<PlanValue>) -> Result<ForwardPlan> {
-        if self.advanced.is_none()
+        if self.operator_slice
+            || self.advanced.is_none()
             || self.domains.len() != self.required.len()
             || self
                 .required
@@ -740,12 +951,16 @@ impl PlanBuilder {
         }
         if let Some(value) = logits
             && (value.owner != self.owner
-                || self.values.get(value.id.0 as usize) != Some(&value.shape))
+                || self.values.get(value.id.0 as usize) != Some(&value.shape)
+                || self.precisions.get(value.id.0 as usize) != Some(&value.precision))
         {
             return Err(Error::State("foreign forward-plan logits".into()));
         }
         Ok(ForwardPlan {
             source: self.source,
+            profile: self.profile,
+            operator_slice: false,
+            precisions: self.precisions,
             prefix_capacity: self.prefix_capacity,
             nodes: self.nodes,
             values: self.values,
@@ -765,6 +980,58 @@ impl MathematicalBackend for PlanBuilder {
     type Index = ParameterRef;
     fn elements(&self, value: &PlanValue) -> usize {
         value.elements
+    }
+    fn precision(&self, value: &PlanValue) -> ActivationPrecision {
+        value.precision
+    }
+    fn embed_profiled(
+        &mut self,
+        tensor: SourceTensor,
+        token: ParameterRef,
+        contract: EmbeddingContract,
+    ) -> Result<PlanValue> {
+        if contract == EmbeddingContract::Source {
+            return self.embed(tensor, token);
+        }
+        self.source_tensor(&tensor)?;
+        if token.0 != ParameterSlot::Token {
+            return Err(Error::Malformed("typed embedding token slot".into()));
+        }
+        let columns = tensor.columns;
+        self.one(
+            "embedding",
+            PlanOperation::TypedEmbed {
+                tensor,
+                token,
+                contract,
+            },
+            &[],
+            ValueShape::Vector(columns),
+            None,
+        )
+    }
+    fn project_profiled(
+        &mut self,
+        tensor: SourceTensor,
+        input: &PlanValue,
+        contract: ProjectionContract,
+    ) -> Result<PlanValue> {
+        if contract == ProjectionContract::Source {
+            return self.project(tensor, input);
+        }
+        self.source_tensor(&tensor)?;
+        if input.elements != tensor.columns {
+            return Err(Error::Malformed("typed projection width".into()));
+        }
+        let rows = tensor.rows;
+        let name = tensor.name.clone();
+        self.one(
+            &name,
+            PlanOperation::TypedProject { tensor, contract },
+            &[*input],
+            ValueShape::Vector(rows),
+            None,
+        )
     }
     fn embed(&mut self, tensor: SourceTensor, token: ParameterRef) -> Result<PlanValue> {
         self.source_tensor(&tensor)?;
@@ -1210,6 +1477,11 @@ impl MathematicalBackend for PlanBuilder {
         Ok(())
     }
     fn advance_frontier(&mut self) -> Result<()> {
+        if self.operator_slice {
+            return Err(Error::State(
+                "operator slice cannot advance a session frontier".into(),
+            ));
+        }
         if self.advanced.is_some() {
             return Err(Error::State(
                 "duplicate forward-plan frontier advance".into(),
@@ -2039,3 +2311,7 @@ impl std::fmt::Debug for PlanObservation {
             .finish()
     }
 }
+
+#[cfg(test)]
+#[path = "program/typed_tests.rs"]
+mod typed_tests;

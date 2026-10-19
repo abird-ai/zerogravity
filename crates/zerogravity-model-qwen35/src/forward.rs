@@ -43,7 +43,41 @@ fn project<B: MathematicalBackend>(
     role: QwenMatrixRole,
     input: &B::Value,
 ) -> Result<B::Value> {
-    math.project(model.matrix_descriptor(role)?, input)
+    math.project_profiled(
+        model.matrix_descriptor(role)?,
+        input,
+        model.projection_contract(),
+    )
+}
+
+/// Pure fragment of this same source-role schedule. It never touches state,
+/// normalizes a hidden activation or represents a complete Qwen layer/token.
+pub(crate) fn embedding_projection_slice<B: MathematicalBackend>(
+    model: &LoadedQwenModel,
+    math: &mut B,
+    token: B::Index,
+    role: QwenMatrixRole,
+) -> Result<(B::Value, B::Value)> {
+    let embedding = math.embed_profiled(
+        model.matrix_descriptor(QwenMatrixRole::Embedding)?,
+        token,
+        model.embedding_contract(),
+    )?;
+    let projected = project(model, math, role, &embedding)?;
+    let expected = match model.program_numerical_profile() {
+        crate::accelerator::program::ProgramNumericalProfile::GgufSourceV1 => {
+            crate::accelerator::program::ActivationPrecision::F32
+        }
+        crate::accelerator::program::ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1 => {
+            crate::accelerator::program::ActivationPrecision::Bf16WidenedF32
+        }
+    };
+    if math.precision(&embedding) != expected || math.precision(&projected) != expected {
+        return Err(Error::State(
+            "source operator slice activation precision".into(),
+        ));
+    }
+    Ok((embedding, projected))
 }
 fn expect_elements<B: MathematicalBackend>(
     math: &B,
@@ -64,9 +98,10 @@ pub(super) fn forward_token<B: MathematicalBackend>(
     need_logits: bool,
 ) -> Result<Option<B::Value>> {
     model.require_execution_profile()?;
-    let x = math.embed(
+    let x = math.embed_profiled(
         model.matrix_descriptor(QwenMatrixRole::Embedding)?,
         input.token,
+        model.embedding_contract(),
     )?;
     math.observe(usize::MAX, "embedding", &x)?;
     let x = run_layer_sequence(&model.geometry.layers, x, |i, kind, mut x| {

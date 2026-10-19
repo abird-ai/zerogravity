@@ -23,6 +23,7 @@ impl BatchProgram {
     /// New allocations only: the original source handles remain shared.
     /// External per-session prior/candidate allocations are reported separately.
     pub fn preflight(original: &ResidentProgram, rows: usize) -> Result<ResidentPreflight> {
+        ResidentProgram::require_legacy_contract(&original.plan)?;
         if !matches!(rows, 2 | 4 | 8) {
             return Err(Error::Unsupported(
                 "resident native batch rows must be 2/4/8".into(),
@@ -735,6 +736,9 @@ impl BatchProgram {
         let scratch = |i: usize| &self.inner.scratch[i];
         unsafe {
             match &node.operation {
+                PlanOperation::TypedEmbed { .. } | PlanOperation::TypedProject { .. } => Err(
+                    Error::Unsupported("resident batch has no qualified typed lowering".into()),
+                ),
                 PlanOperation::Embed { tensor, .. } => {
                     let t = &self.inner.tensors[&tensor.name];
                     let status = self.inner.node_status[index]

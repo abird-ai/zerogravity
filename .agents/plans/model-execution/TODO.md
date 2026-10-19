@@ -8,37 +8,37 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-- [x] **Closed pinned CPU original-HF operators:** source-bound BF16
-  four-tap convolution, FP32 width128 cached GDN, raw-F32-gamma gated RMS
-  prefix and contiguous vector SiLU. No model/session/initial-chunk permit;
-  default GGUF/scalar profiles stay unchanged. Convolution preserves four
-  independent FMA partials followed by direct adds and BF16 output. Cached
-  GDN uses direct query division by sqrt128, actual key-major FP32 state,
-  materialized key reductions and separate update multiply/add; observed
-  decay is an explicit input. RMS casts normalized core before raw original
-  F32 gamma, retaining the FP32 product. SiLU ports pinned SLEEF3.8 AVX2
-  exp/FMA/scaling and FP32 division with source attribution/license, only
-  finite exactly BF16-widened contiguous inputs with length divisible16.
-  Twenty-eight focused Rust tests pass including old projection/reducers.
-- [x] **Actual closed-operator Rust qualification:** untouched pinned
-  Torch2.13 public SiLU with observed SLEEF AVX2 provider supplies exact
-  outputs for ALL65280 finite BF16 inputs plus4096 actual source gates;
-  Rust matches every F32 bit. Full16-head cached replay matches262144
-  state words plus5*2048 normalized/scaled/core/output words. Gated RMS
-  prefix matches8256 words across both actual tokens/all16heads.
-  Convolution and composed vector-SiLU/BF16 match all6144 channels at
-  four actual causal positions (49152 output words). These are pure
-  operator replays of genuine source operands, not full-model/profile,
-  GPU/FLA or27B numerical acceptance. Initial chunk64, coefficient exp/
-  sigmoid/softplus, ordinary RMS and eager attention remain open.
-- [x] **Composed verification:** complete isolated check1202 Rust passed/
-  0failed/69ignored/248 suite runs plus18Python/release/installer/Nix.
-  Strict CUDA+HF-binding+portable, Vulkan serving and CUDA-qualification
-  Clippy passed; CPU-free original binding6 and CPU serving22 passed.
-  Both approved original0.8B/2B cache-direct/HF-import RELEASE routes
-  retain all248320 logits/all42 domains, source lifetime and reclamation.
-  Independent long-context GGUF GDN divergence remains a separate required
-  gate in [numerics-and-context](../numerics-and-context/TODO.md).
+- [x] **Typed original-source operator integration:** explicit program
+  profile and activation precision, BF16 OutputInput embedding/projection
+  contracts and raw SourceParameter metadata use the existing PlanBuilder
+  and HostMath. Private operator slices carry no domains, logits receipt
+  or frontier advance. Unknown physical providers and resident GPU plans
+  refuse before source reads/admission. Raw learned parameters stay borrowed
+  from the same owner; existing RootBinding descriptors distinguish initial/
+  cached phase, BF16 conv/KV and FP32 recurrent axis layouts. These metadata
+  views grant no freshness, state transport or publication capability.
+  Complete original-HF session/forward/checkpoint guards remain closed.
+- [x] **Genuine typed operator qualification:** pinned public Torch
+  F.embedding for original tokens11/353 followed directly by independent
+  GdnQkv(0), FfnGate(0) and tied Output projections matches every Rust bit,
+  including all248320 words of both output projections. Eight reference
+  payloads preserve518144 values; same loaded source, raw matrix pointers,
+  two-node recorder, zero initialized state and final source reservation0
+  are checked. No input normalization, complete layer/model logits or
+  GPU/27B inference is claimed by this pure operator composition.
+- [x] **Closed pinned FP32 vector softplus:** source beta1/threshold20,
+  finite general-F32 contiguous spans divisible16, explicit SLEEF3.8
+  compensated log1p/exp/FMA order and BSL notice. Actual32 original biased
+  alphas and28464 adversarial F32 values, reordered values and16/32/48/64
+  spans match public Torch bit for bit. No scalar-tail, MKL coefficient
+  exp, general profile or default GGUF arithmetic change.
+- [x] **Typed/softplus composed gate:** full isolated check1213 Rust
+  passed/0failed/69ignored/248 suite runs plus18Python, installer/release/Nix;
+  focused core/CPU/model158 passed/2ignored, CPU-free binding10 passed,
+  resident cold refusal2 passed. Strict composed CUDA+HF, CPU-free HF,
+  Vulkan serving and CUDA qualification Clippy pass. Both approved original
+  cache-direct/HF-import release routes pass (17.15s/23.12s), both original
+  models, full248320/all42, independent sessions/source lifetime/reclaim.
 
 - [ ] **Independent trained BF16/FLA checkpoint gate:** original
   Qwen3.8-27B@1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0 acquired
@@ -177,6 +177,40 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### cadcbd9 — closed pinned original-HF CPU operators
+
+- [x] **Closed pinned CPU original-HF operators:** source-bound BF16
+  four-tap convolution, FP32 width128 cached GDN, raw-F32-gamma gated RMS
+  prefix and contiguous vector SiLU. No model/session/initial-chunk permit;
+  default GGUF/scalar profiles stay unchanged. Convolution preserves four
+  independent FMA partials followed by direct adds and BF16 output. Cached
+  GDN uses direct query division by sqrt128, actual key-major FP32 state,
+  materialized key reductions and separate update multiply/add; observed
+  decay is an explicit input. RMS casts normalized core before raw original
+  F32 gamma, retaining the FP32 product. SiLU ports pinned SLEEF3.8 AVX2
+  exp/FMA/scaling and FP32 division with source attribution/license, only
+  finite exactly BF16-widened contiguous inputs with length divisible16.
+  Twenty-eight focused Rust tests pass including old projection/reducers.
+- [x] **Actual closed-operator Rust qualification:** untouched pinned
+  Torch2.13 public SiLU with observed SLEEF AVX2 provider supplies exact
+  outputs for ALL65280 finite BF16 inputs plus4096 actual source gates;
+  Rust matches every F32 bit. Full16-head cached replay matches262144
+  state words plus5*2048 normalized/scaled/core/output words. Gated RMS
+  prefix matches8256 words across both actual tokens/all16heads.
+  Convolution and composed vector-SiLU/BF16 match all6144 channels at
+  four actual causal positions (49152 output words). These are pure
+  operator replays of genuine source operands, not full-model/profile,
+  GPU/FLA or27B numerical acceptance. Initial chunk64, coefficient exp/
+  sigmoid/softplus, ordinary RMS and eager attention remain open.
+- [x] **Composed verification:** complete isolated check1202 Rust passed/
+  0failed/69ignored/248 suite runs plus18Python/release/installer/Nix.
+  Strict CUDA+HF-binding+portable, Vulkan serving and CUDA-qualification
+  Clippy passed; CPU-free original binding6 and CPU serving22 passed.
+  Both approved original0.8B/2B cache-direct/HF-import RELEASE routes
+  retain all248320 logits/all42 domains, source lifetime and reclamation.
+  Independent long-context GGUF GDN divergence remains a separate required
+  gate in [numerics-and-context](../numerics-and-context/TODO.md).
 
 ### 9815504 — original HF roles and closed CPU projection/reducers
 

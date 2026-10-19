@@ -35,6 +35,9 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 */
 
+mod softplus;
+pub use softplus::softplus_beta1_threshold20_f32_contiguous16;
+
 use crate::accelerator::SourceIdentity;
 use crate::{Error, Result};
 

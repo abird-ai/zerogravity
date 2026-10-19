@@ -2,9 +2,16 @@
 
 use crate::accelerator::program::{MatrixAxes, SourceTensor};
 use crate::{Error, Result};
-use zerogravity_core::accelerator::SourceIdentity;
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
 use zerogravity_core::quant::QuantKind;
-use zerogravity_core::source::TensorSource;
+
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+mod raw_state;
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+pub use raw_state::{
+    OriginalStateDescriptor, OriginalStateEncoding, OriginalStateLayout, OriginalStatePhase,
+    OriginalStateView,
+};
 
 /// Numerical semantics are independent of the packed source encoding.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -83,27 +90,7 @@ impl QwenParameterRole {
 }
 
 /// Metadata of the unchanged learned tensor, including its original dtype.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct QwenParameterDescriptor {
-    pub source: SourceIdentity,
-    pub name: String,
-    pub kind: QuantKind,
-    pub shape: Vec<u64>,
-    pub bytes: usize,
-}
-impl QwenParameterDescriptor {
-    fn from_source(source: &dyn TensorSource, name: &str) -> Result<Self> {
-        let tensor = source.tensor(name)?;
-        tensor.validate()?;
-        Ok(Self {
-            source: source.source_identity(),
-            name: name.into(),
-            kind: tensor.kind,
-            shape: tensor.shape.to_vec(),
-            bytes: tensor.packed_bytes.len(),
-        })
-    }
-}
+pub type QwenParameterDescriptor = zerogravity_core::accelerator::program::SourceParameter;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OriginalGdnGeometry {
@@ -304,6 +291,16 @@ impl crate::LoadedQwenModel {
             });
         }
         QwenParameterDescriptor::from_source(self, &role.gguf_name())
+    }
+    /// Borrow the original role's unchanged dtype, raw axes and learned bytes.
+    /// No conversion, numerical admission, learned cache or state allocation.
+    pub fn parameter_source(
+        &self,
+        role: QwenParameterRole,
+    ) -> Result<zerogravity_core::source::SourceTensorRef<'_>> {
+        let descriptor = self.parameter_descriptor(role)?;
+        descriptor.validate_source(&self.weights)?;
+        zerogravity_core::source::TensorSource::tensor(&self.weights, &descriptor.name)
     }
     #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
     pub fn original_binding(&self) -> Option<&OriginalQwenBinding> {
