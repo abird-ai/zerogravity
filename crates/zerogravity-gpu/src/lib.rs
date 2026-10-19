@@ -79,7 +79,7 @@ pub mod qualification;
 
 pub use cubecl::{Device, device::WgpuDeviceKind};
 pub use resident_inference::{
-    InferenceReadback, PreparedInference, ResidentModel, ResidentSession, ResidentSnapshot,
-    ResidentToken,
+    InferenceReadback, PreparedInference, PreparedResidentCohort, ResidentModel, ResidentSession,
+    ResidentSnapshot, ResidentToken,
 };
 pub use resident_provider::CubeResidentProvider;

@@ -10,11 +10,16 @@ mod checkpoint;
 #[cfg(all(feature = "portable-checkpoint", feature = "qualification"))]
 pub(crate) use checkpoint::qualify as qualify_checkpoint;
 #[cfg(feature = "qualification")]
+#[path = "resident_inference/cohort_qualification.rs"]
+mod cohort_qualification;
+#[cfg(feature = "qualification")]
 #[path = "resident_context_qualification.rs"]
 mod context_qualification;
 #[cfg(feature = "qualification")]
 #[path = "resident_prefill_qualification.rs"]
 mod prefill_qualification;
+#[cfg(feature = "qualification")]
+pub(crate) use cohort_qualification::qualify as qualify_cohort;
 #[cfg(feature = "qualification")]
 #[path = "resident_range_qualification.rs"]
 mod range_qualification;
@@ -22,6 +27,7 @@ mod range_qualification;
 #[path = "resident_view_qualification.rs"]
 mod view_qualification;
 use crate::backend::validate_provider;
+use crate::resident_batch::ResidentBatchRows;
 use crate::resident_leases::{ResidentLease, ResidentReady, ResidentService};
 use crate::resident_program::{
     AllocationInit, DeviceBuffer, ResidentBufferRole, ResidentOutput, ResidentPreflight,
@@ -121,6 +127,86 @@ pub struct PreparedInference {
     domains: Vec<Domain>,
     ready: ResidentReady,
     readback: InferenceReadback,
+}
+
+/// A bounded, source-identical cohort of independently device-ready model
+/// candidates. GPU forward execution is STILL serial per member; this is
+/// the first physical-state publication barrier for future batched kernels.
+/// A failed preparation/changed root must not publish ANY sibling row.
+#[must_use = "dropping a resident cohort discards every uncommitted root"]
+pub struct PreparedResidentCohort {
+    model: Arc<ResidentModel>,
+    roots: ResidentBatchRows,
+    prepared: Vec<PreparedInference>,
+}
+impl PreparedResidentCohort {
+    pub fn len(&self) -> usize {
+        self.prepared.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.prepared.is_empty()
+    }
+    pub fn source(&self) -> zerogravity_core::accelerator::SourceIdentity {
+        self.roots.source()
+    }
+    pub fn prior_frontier(&self) -> u64 {
+        self.roots.frontier()
+    }
+
+    /// After every per-row physical completion and cohort preflight,
+    /// acquire ONE original device fence/publication barrier. All
+    /// RootTransitions are reserved BEFORE any state buffer swap.
+    /// No new model/session authority, invented Ready or shadow token loop.
+    pub fn commit(
+        mut self,
+        sessions: &mut [&mut ResidentSession],
+    ) -> Result<Vec<InferenceReadback>> {
+        if sessions.len() != self.prepared.len() {
+            return Err(Error::Malformed("resident GPU cohort session count".into()));
+        }
+        let bindings = sessions.iter().map(|s| s.binding()).collect::<Vec<_>>();
+        self.roots.require_current(&bindings)?;
+        // Refuse foreign resident models even if a source identity was
+        // erroneously reused by some future model binder.
+        for (session, prepared) in sessions.iter().zip(&self.prepared) {
+            if !Arc::ptr_eq(&session.model, &self.model) {
+                return Err(Error::State(
+                    "foreign physical resident model in batch".into(),
+                ));
+            }
+            session.validate_prepared(prepared)?;
+        }
+        let service = Arc::clone(&self.model.service);
+        service.publish_if_usable(|| {
+            // Split these disjoint struct fields so all mutable logical
+            // authority guards can exist simultaneously with state slabs.
+            let (mut authorities, mut states): (Vec<_>, Vec<_>) = sessions
+                .iter_mut()
+                .map(|s| (&mut s.authority, &mut s.domains))
+                .unzip();
+            let transitions = authorities
+                .iter_mut()
+                .zip(&self.prepared)
+                .map(|(authority, prepared)| authority.prepare_publish(prepared.attempt.clone()))
+                .collect::<Result<Vec<_>>>()?;
+            // Everything above is fallible; everything below is infallible.
+            // Existing ResourceArbiter's with_unfenced keeps the atomic
+            // logical cohort publication fenced with respect to GPU poison.
+            for ((state, prepared), guard) in states
+                .iter_mut()
+                .zip(self.prepared.iter_mut())
+                .zip(transitions)
+            {
+                std::mem::swap(*state, &mut prepared.domains);
+                let root = guard.commit();
+                if let Some(token) = prepared.readback.device_token.as_mut() {
+                    token.producer = Some(root);
+                }
+            }
+            Ok(())
+        })?;
+        Ok(self.prepared.into_iter().map(|row| row.readback).collect())
+    }
 }
 
 fn words(bytes: &Bytes) -> Result<Vec<f32>> {
@@ -297,6 +383,69 @@ impl ResidentModel {
             domains,
         })
     }
+    /// Prepare a set of SAME-source, SAME-frontier sessions. One immutable
+    /// original ForwardPlan, weight owner and queue are reused; private
+    /// per-row state never aliases. Each GPU proposal is completed before
+    /// returning; this stage does NOT fuse their physical operator graphs.
+    /// Caller can drop the cohort for an all-row logical rollback.
+    pub async fn prepare_greedy_cohort(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, u32)],
+    ) -> Result<PreparedResidentCohort> {
+        self.prepare_cohort_mode(rows, Readout::Greedy).await
+    }
+
+    /// Diagnostic full-vocabulary cohort of the same original physical
+    /// execution. This uses the same source, session and commit barrier as
+    /// greedy serving, with explicit GPU logits only for qualification.
+    pub async fn prepare_logits_cohort(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, u32)],
+    ) -> Result<PreparedResidentCohort> {
+        self.prepare_cohort_mode(rows, Readout::Logits).await
+    }
+
+    async fn prepare_cohort_mode(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, u32)],
+        readout: Readout,
+    ) -> Result<PreparedResidentCohort> {
+        let bindings = rows
+            .iter()
+            .map(|(session, _)| session.binding())
+            .collect::<Vec<_>>();
+        let roots = ResidentBatchRows::new(&bindings, 1)?;
+        if roots.source() != self.service.source_identity() {
+            return Err(Error::State("GPU cohort model source changed".into()));
+        }
+        for (session, token) in rows {
+            if !Arc::ptr_eq(&session.model, self)
+                || u64::from(*token) >= self.vocab
+                || session.binding().frontier() >= self.capacity as u64
+            {
+                return Err(Error::State(
+                    "foreign or exhausted resident GPU batch row".into(),
+                ));
+            }
+        }
+        let mut prepared = Vec::with_capacity(rows.len());
+        for (session, token) in rows {
+            prepared.push(session.prepare_mode(&[*token], false, readout).await?);
+        }
+        // Do not publish ANY row if the requested greedy feedback cohort
+        // contains a missing/foreign physical output packet.
+        if matches!(readout, Readout::Greedy)
+            && prepared.iter().any(|p| p.readback.device_token.is_none())
+        {
+            return Err(Error::State("incomplete GPU cohort greedy packets".into()));
+        }
+        Ok(PreparedResidentCohort {
+            model: Arc::clone(self),
+            roots,
+            prepared,
+        })
+    }
+
     async fn allocate_state(&self, zero: bool) -> Result<Vec<Domain>> {
         let _admission = self.allocation.lock().await;
         self.service.ensure_usable()?;
@@ -926,8 +1075,15 @@ impl ResidentSession {
             readback,
         })
     }
-    pub fn commit(&mut self, mut prepared: PreparedInference) -> Result<InferenceReadback> {
+    /// Full already-Ready typed state/lease preflight shared by B1 and B>1
+    /// logical commit. Must not alter state or issue a new event.
+    fn validate_prepared(&self, prepared: &PreparedInference) -> Result<()> {
         self.model.service.ensure_usable()?;
+        if self.binding() != prepared.attempt.base() {
+            return Err(Error::State(
+                "resident root changed before state publication".into(),
+            ));
+        }
         if prepared.ready.expected_root() != prepared.attempt.base().root()
             || !Arc::ptr_eq(prepared.ready.service(), &self.model.service)
             || prepared.domains.len() != self.model.states.len()
@@ -954,6 +1110,11 @@ impl ResidentSession {
                 "resident promoted domain cohort mismatch".into(),
             ));
         }
+        Ok(())
+    }
+
+    pub fn commit(&mut self, mut prepared: PreparedInference) -> Result<InferenceReadback> {
+        self.validate_prepared(&prepared)?;
         let mut displaced = prepared.domains;
         let published = self.model.service.publish_if_usable(|| {
             let transition = self.authority.prepare_publish(prepared.attempt)?;

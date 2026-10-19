@@ -85,6 +85,52 @@ Ready/fence receipts, concurrent cancellation, paged hybrid KV,
 and source-real B2/4/8 complete full-vocabulary/StateRoot parity.
 Do not enable `batch_mode=fused` or claim vLLM parity yet.
 
+## P12-A1 — physically Ready resident multi-root publication
+
+19 Oct 2026, RTX 3060 CUDA, original pinned Qwen3.5 0.8B.
+`ResidentModel::prepare_logits_cohort` and `prepare_greedy_cohort`
+reuse the accepted ONE resident GPU forward program, independent
+original `ResidentSession` authorities and physical `ResidentReady`
+completions. Rows share identical source/frontier, unique trusted
+session IDs and valid tokens. The private `PreparedResidentCohort`
+publishes NO StateRoot until its checked `commit`.
+
+- Before publication, **all** source/service/epoch, Ready events,
+  proposed state-domain lease cohorts and RootAttempts are verified.
+  One `ResidentService::publish_if_usable` supplies a real
+  device-fence publication barrier. ALL original root transitions
+  are obtained before mutating any state. Abandoned/invalid/stale/
+  foreign rows do not publish partial siblings.
+- Physical CUDA Qwen3.5 B=2, B=4 and B=8 returned **exact complete
+  248,320 logits and all 42 StateRoot domains per session** versus
+  independent CPU sessions. B2 additionally passed dropped proposals,
+  invalid-token refusal, stale-root all-row rollback and a valid
+  surviving sibling continuation. B4/B8 returned private GPU state
+  leases to baseline after session drop.
+- The OpenAI CUDA worker uses this same cohort for source-compatible
+  one-token final prefill tails. Two actual simultaneous HTTP requests
+  on one resident model returned identical two-token responses and
+  one checked state-cohort publication across both sessions.
+  Health records `state_cohort_publications` and
+  `state_cohort_rows` separately from actual GPU forwards.
+
+**Limitation:** each row's complete model graph still launches
+SEPARATELY; no fused B>1 full-model GPU execution has been proved.
+`gpu_fused_batches=0` and refusal of `batch_mode=fused` are
+mandatory. Next: lower physically qualified B>1 kernels through
+the one resident ForwardPlan and per-row device buffers.
+
+Repeat on a qualified NVIDIA CUDA host, with installed CUDA
+toolkit/CCCL/NVRTC supplied and sufficient real memory:
+
+~~~bash
+python3 scripts/native-gpu.py -- cargo run --locked --offline   -p zerogravity-gpu-qualify --features qualification,cuda --   resident-cohort-cuda target/models/qwen35-0.8b/model.gguf   4096 5120 8
+~~~
+
+The final arguments are provider cap MiB, device cap MiB and
+row count (2, 4 or 8). This is a diagnostic tool, **not** an
+HTTP fused-batching enablement.
+
 ## P12-A — batch-native parameter, source and state bindings
 
 1. Introduce a typed `ResidentBatchStep` with finite row count

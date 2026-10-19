@@ -62,6 +62,8 @@ impl Router {
                     "active_sessions":m.active,
                     "scheduling_groups":m.groups,
                     "co_scheduled_members":m.co_scheduled,
+                    "state_cohort_publications":m.cohort_publications,
+                    "state_cohort_rows":m.cohort_rows,
                     "gpu_fused_batches":0})
             }
         }

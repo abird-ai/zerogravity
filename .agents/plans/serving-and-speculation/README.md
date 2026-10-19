@@ -155,3 +155,19 @@ tests and a pinned vLLM pairwise benchmark harness are included.
 This remains **operator-level fusion**; the resident full-model
 GPU program and HTTP fused batch mode are not yet enabled.
 See [P12 hardware qualification](FUSED_GPU_BATCHING.md).
+
+
+## P12 physically Ready resident-state cohort (19 Oct 2026)
+
+One `PreparedResidentCohort` now groups physically completed
+original GPU session proposals into a single source-bound
+publication barrier. Real CUDA B2/4/8 Qwen3.5 0.8B proved exact
+full logits and all42 state domains per independent session,
+stale/abandoned rollback and reclaimed state leases. Live OpenAI
+serving uses the same barrier for one-token final prefill tails;
+2 concurrent requests showed one state-cohort publication with
+0 failed GPU quanta.
+
+The full model graph remains serialized per member. HTTP
+`batch_mode=fused` remains disabled. See the
+[P12 acceptance plan](FUSED_GPU_BATCHING.md).

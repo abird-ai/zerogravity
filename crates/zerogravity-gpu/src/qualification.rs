@@ -62,6 +62,7 @@ pub fn run() {
     let abort_recurrent_mode = selected.strip_prefix("model-abort-recurrent-");
     #[cfg(feature = "hardware-abort-probe")]
     let abort_conv_mode = selected.strip_prefix("model-abort-conv-");
+    let resident_cohort_mode = selected.strip_prefix("resident-cohort-");
     let resident_run_mode = selected.strip_prefix("run-");
     let checkpoint_abort_mode = selected.strip_prefix("resident-checkpoint-abort-");
     let checkpoint_mode =
@@ -74,7 +75,8 @@ pub fn run() {
         .strip_prefix("resident-qualify-")
         .or(resident_abort_mode)
         .or(resident_context_mode)
-        .or(checkpoint_mode);
+        .or(checkpoint_mode)
+        .or(resident_cohort_mode);
     let quant_stress_mode = selected.strip_prefix("quant-stress-");
     let device_quant_mode = selected.strip_prefix("model-device-quant-");
     let operators_mode = selected.strip_prefix("model-operators-");
@@ -277,6 +279,26 @@ pub fn run() {
         let cap = device_mib
             .checked_mul(1024 * 1024)
             .expect("device cap overflow");
+        if resident_cohort_mode.is_some() {
+            let rows = args
+                .next()
+                .map(|v| {
+                    v.parse::<usize>()
+                        .expect("resident cohort rows must be 2,4,8")
+                })
+                .unwrap_or(2);
+            futures_lite::future::block_on(resident_inference::qualify_cohort(
+                device,
+                std::path::Path::new(&path),
+                provider,
+                cap,
+                rows,
+            ))
+            .unwrap_or_else(|e| {
+                panic!("resident cohort state publication qualification failed: {e}")
+            });
+            return;
+        }
         if let Some((file, model_sha, tokens_sha)) = checkpoint {
             #[cfg(feature = "portable-checkpoint")]
             futures_lite::future::block_on(resident_inference::qualify_checkpoint(

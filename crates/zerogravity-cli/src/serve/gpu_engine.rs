@@ -110,6 +110,8 @@ struct WaveStats {
     active: AtomicUsize,
     groups: AtomicU64,
     co_scheduled: AtomicU64,
+    cohort_publications: AtomicU64,
+    cohort_rows: AtomicU64,
 }
 struct SessionCharge(Arc<WaveStats>);
 impl Drop for SessionCharge {
@@ -127,6 +129,8 @@ pub(super) struct GpuMetrics {
     pub active: usize,
     pub groups: u64,
     pub co_scheduled: u64,
+    pub cohort_publications: u64,
+    pub cohort_rows: u64,
 }
 pub(super) struct GpuRouter {
     models: Arc<BTreeMap<String, Arc<GpuModel>>>,
@@ -269,6 +273,8 @@ impl GpuRouter {
             active: self.stats.active.load(Ordering::Acquire),
             groups: self.stats.groups.load(Ordering::Relaxed),
             co_scheduled: self.stats.co_scheduled.load(Ordering::Relaxed),
+            cohort_publications: self.stats.cohort_publications.load(Ordering::Relaxed),
+            cohort_rows: self.stats.cohort_rows.load(Ordering::Relaxed),
         }
     }
     pub(super) fn model_ids(&self) -> impl Iterator<Item = &str> {
@@ -327,6 +333,7 @@ impl GpuRouter {
 }
 struct GpuActive {
     _charge: SessionCharge,
+    resident: Arc<ResidentModel>,
     session: ResidentSession,
     group: usize,
     hidden_width: usize,
@@ -373,6 +380,7 @@ impl GpuActive {
         stats.active.fetch_add(1, Ordering::AcqRel);
         Ok(Self {
             _charge: SessionCharge(stats),
+            resident: Arc::clone(&model.resident),
             session,
             group: model.group,
             hidden_width: model.hidden_width,
@@ -456,6 +464,134 @@ impl GpuActive {
         Ok((false, true))
     }
 }
+/// Original one-row execution path: kept for unequal prefill spans,
+/// device-feedback decode, cancellation fallback and all unsupported
+/// multi-row shapes. Never CPU inference fallback.
+fn advance_member(mut next: GpuActive, active: &mut VecDeque<GpuActive>, stats: &WaveStats) {
+    if next.cancelled.load(Ordering::Acquire) {
+        stats.cancelled.fetch_add(1, Ordering::Relaxed);
+        return;
+    }
+    stats.attempted.fetch_add(1, Ordering::Relaxed);
+    match next.step() {
+        Ok((finished, forwarded)) => {
+            stats.completed.fetch_add(1, Ordering::Relaxed);
+            if forwarded {
+                stats.gpu_forwards.fetch_add(1, Ordering::Relaxed);
+            }
+            if !finished {
+                active.push_back(next);
+            }
+        }
+        Err(error) => {
+            stats.failed.fetch_add(1, Ordering::Relaxed);
+            let _ = next.errors.try_send(ResponseEvent::Error(error));
+        }
+    }
+}
+
+/// Exact same-source/phase/frontier one-token prefill end is eligible for
+/// the original ResidentModel's physical-ready cohort ROOT barrier.
+/// This does NOT invoke native B>1 forward kernels. Each source operator
+/// has its own GPU completion and every root is published together.
+fn finish_prompt_cohort(
+    members: Vec<GpuActive>,
+    active: &mut VecDeque<GpuActive>,
+    stats: &WaveStats,
+) {
+    let Some(first) = members.first() else {
+        return;
+    };
+    let model = Arc::clone(&first.resident);
+    if members.iter().any(|m| !Arc::ptr_eq(&m.resident, &model)) {
+        for row in members {
+            stats.failed.fetch_add(1, Ordering::Relaxed);
+            let _ = row.errors.try_send(ResponseEvent::Error(ServiceError::new(
+                500,
+                "foreign_gpu_model",
+                "batch wave mixed resident model allocations",
+            )));
+        }
+        return;
+    }
+    // Count every entered wave member as an attempted execution.
+    // Publication may be canceled after these GPU forwards complete.
+    stats
+        .attempted
+        .fetch_add(members.len() as u64, Ordering::Relaxed);
+    let inputs = members
+        .iter()
+        .map(|m| (&m.session, m.prompt[m.cursor]))
+        .collect::<Vec<_>>();
+    let prepared = block_on(model.prepare_greedy_cohort(&inputs));
+    let mut members = members;
+    let cohort = match prepared {
+        Ok(v) => v,
+        Err(e) => {
+            let error = ServiceError::inference(e);
+            for row in members {
+                stats.failed.fetch_add(1, Ordering::Relaxed);
+                let _ = row.errors.try_send(ResponseEvent::Error(error.clone()));
+            }
+            return;
+        }
+    };
+    // A successfully returned cohort has REAL device Ready receipts for
+    // every row. They count as physical GPU work even when a client
+    // subsequently cancels and the logical StateRoots are discarded.
+    stats
+        .completed
+        .fetch_add(members.len() as u64, Ordering::Relaxed);
+    stats
+        .gpu_forwards
+        .fetch_add(members.len() as u64, Ordering::Relaxed);
+    if members.iter().any(|m| m.cancelled.load(Ordering::Acquire)) {
+        // All physical results were private. Discard them BEFORE touching
+        // any committed root; survivors resume the accepted B1 GPU path.
+        drop(cohort);
+        for row in members {
+            advance_member(row, active, stats);
+        }
+        return;
+    }
+    let mut originals = members
+        .iter_mut()
+        .map(|m| &mut m.session)
+        .collect::<Vec<_>>();
+    let published = cohort.commit(&mut originals);
+    drop(originals);
+    match published {
+        Ok(receipts) => {
+            let count = members.len() as u64;
+            // Physical completion already counted after prepare;
+            // this counter means the logical cohort was COMMITTED.
+            stats.cohort_publications.fetch_add(1, Ordering::Relaxed);
+            stats.cohort_rows.fetch_add(count, Ordering::Relaxed);
+            for (mut row, receipt) in members.into_iter().zip(receipts) {
+                row.cursor += 1;
+                row.device_token = receipt.device_token;
+                if row.device_token.is_none() {
+                    stats.failed.fetch_add(1, Ordering::Relaxed);
+                    let _ = row.errors.try_send(ResponseEvent::Error(ServiceError::new(
+                        500,
+                        "missing_device_token",
+                        "completed original GPU cohort has no token feedback",
+                    )));
+                } else {
+                    active.push_back(row);
+                }
+            }
+        }
+        Err(e) => {
+            let error = ServiceError::inference(e);
+            for row in members {
+                stats.failed.fetch_add(1, Ordering::Relaxed);
+                let _ = row.errors.try_send(ResponseEvent::Error(error.clone()));
+            }
+        }
+    }
+}
+
 fn worker(
     rx: mpsc::Receiver<Scheduled>,
     models: Arc<BTreeMap<String, Arc<GpuModel>>>,
@@ -565,30 +701,31 @@ fn worker(
                     .co_scheduled
                     .fetch_add(wave.indices.len() as u64, Ordering::Relaxed);
             }
+            // An exact one-token prompt tail can reuse the existing
+            // physical Ready cohort with ONE source-bound logical
+            // publication. Other phases remain single-row GPU execution.
+            let batch_ready = wave.indices.len() > 1
+                && wave.indices.iter().all(|&i| {
+                    pending[i].as_ref().is_some_and(|row| {
+                        !row.cancelled.load(Ordering::Acquire)
+                            && row.cursor + 1 == row.prompt.len()
+                            && row.device_token.is_none()
+                    })
+                });
+            if batch_ready {
+                let members = wave
+                    .indices
+                    .iter()
+                    .map(|&i| pending[i].take().expect("unique admitted wave row"))
+                    .collect::<Vec<_>>();
+                finish_prompt_cohort(members, &mut active, &stats);
+                continue;
+            }
             for index in wave.indices {
-                let mut next = pending[index]
+                let next = pending[index]
                     .take()
                     .expect("GPU wave planner must cover unique ready slots");
-                if next.cancelled.load(Ordering::Acquire) {
-                    stats.cancelled.fetch_add(1, Ordering::Relaxed);
-                    continue;
-                }
-                stats.attempted.fetch_add(1, Ordering::Relaxed);
-                match next.step() {
-                    Ok((finished, forwarded)) => {
-                        stats.completed.fetch_add(1, Ordering::Relaxed);
-                        if forwarded {
-                            stats.gpu_forwards.fetch_add(1, Ordering::Relaxed);
-                        }
-                        if !finished {
-                            active.push_back(next);
-                        }
-                    }
-                    Err(error) => {
-                        stats.failed.fetch_add(1, Ordering::Relaxed);
-                        let _ = next.errors.try_send(ResponseEvent::Error(error));
-                    }
-                }
+                advance_member(next, &mut active, &stats);
             }
         }
     }

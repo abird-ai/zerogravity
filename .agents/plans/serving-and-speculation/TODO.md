@@ -8,6 +8,33 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
+- [x] **P12-A1 source-bound resident GPU cohort:** ONE
+  `ResidentModel` original-source method stages B2/B4/B8
+  independently completed `ResidentReady` per-session proposals,
+  checks all session RootAttempts and complete domain leases
+  before one `ResidentService` fence-guarded publication.
+  Invalid/foreign/abandoned/stale rows refuse all sibling
+  root changes. Physical RTX3060 CUDA Qwen3.5 B2/B4/B8 matched
+  full 248320 logits and all42 state domains per row against
+  independent CPU; B4/B8 memory returned to baseline.
+  Live OpenAI CUDA B2 short-prompt wave published two roots
+  in one checked cohort; four separate GPU full-model forwards,
+  six completed quanta, zero errors and `gpu_fused_batches=0`.
+  Real batch-native ForwardPlan kernels remain pending.
+  Acceptance: physical CUDA resident B2/B4/B8 exact all248320
+  logits and all42 StateRoot domains per independent session,
+  source/session state snapshots, abandoned/invalid/stale rollback,
+  one source upload and lease reclamation; HTTP B2 cohort
+  publication and active disconnect/survivor/replay pass.
+  Strict CPU/CUDA/Vulkan feature Clippy -D warnings; full
+  scripts/check.sh exit0: 1,147 Rust tests/0 failures/69 ignored
+  across 241 suites plus release CLI/installer, 18 Python fixtures
+  and Nix formatting; trained Qwen3.5 .8B/2B direct-cache and
+  HF-import release parity both pass exact full logits/all42 domains.
+  Separate offline Nix source-integrity cannot evaluate because
+  pinned nixpkgs is absent from the local store and connector SSL
+  CA path is unavailable. NOT a source-test failure.
+
 - [x] **P09 GPU OpenAI serving / finite batch-wave scheduler:**
   opt-in CUDA/Vulkan/HIP resident model with independent physical
   StateRoots and device-side greedy feedback; no CPU inference
