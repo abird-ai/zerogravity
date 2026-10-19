@@ -8,38 +8,31 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-- [x] **ME-P0 pinned original numerical reference gate:**
-  extend one immutable source owner with canonical source-bundle
-  SHA256 over pinned index and all authenticated shard bytes.
-  Capture a bounded subset of original Qwen GDN, attention, FFN
-  and logits through shared PlanObservation, with opt-in 32MiB
-  private trace and a single selected GDN recurrent state layer.
-  Strict typed independently SHA256-pinned JSON comparisons bind
-  config/index/bundle, exact stage order/geometry/position/dtype,
-  detect first mismatched element, and distinguish truly bit-exact
-  BF16 output from bounded, tolerated FP32 state deviations.
-  Source-free adversarial tests verify same-index/different-weight
-  digest changes, duplicate/missing/reordered reference content,
-  bad token/source/dtype, selected GDN state and immutable roots.
-  Fix full-model BF16 residual result-cast omission by reusing
-  its source-typed existing residual binary operator.
-  This stage DOES NOT prove independence merely because a
-  reference JSON asserts trained-framework origin.
-  Complete isolated scripts/check.sh passed 1,135 Rust tests, 0 failures,
-  69 intentionally ignored across 238 suites plus 18 Python fixtures,
-  release CLI/installer and CPU numeric comparators. Strict default and
-  composed CPU/cache/Qwen/acquisition Clippy -D warnings pass.
-  Independent approved Qwen3.5 .8B/2B release cache/direct 17.45s and
-  HF-import 21.97s preserve exact full 248320 logits, all 42 StateRoot
-  domains, two-token independent sessions and source/lease correctness.
-  Offline Nix source-integrity passed with the checked trace files.
-  No trained Qwen3.8 reference or Torch/FLA runtime was accessed.
-- [ ] **Independent trained BF16/FLA checkpoint gate:** obtain
-  source-authorized original Qwen3.8 checkpoint and tokenizer
-  on a physically admitted host; capture true independent
-  Transformers/FLA layer-reference values and code revision with
-  pinned SHA256, and compare against this gate before enabling
-  real 27B full logits/StateRoot or serving.
+- [x] **Original HF tied output head:** verified `tie_word_embeddings`
+  selects the original embedding or independent `lm_head` projection;
+  no alias tensor or fallback source. Source-free authenticated tied/untied
+  fixtures test opposite-sign independent heads, exact F32/BF16 diagnostic
+  logits, immutable source identity and final lease0. Full isolated gate:
+  1148 Rust passed/0 failed/69 ignored/245 suites,18 Python. Both approved
+  original0.8B/2B cache-direct/HF-import release routes retain exact full
+  logits/all42. This fixes the diagnostic head; no trained HF promotion.
+
+- [ ] **Independent trained BF16/FLA checkpoint gate:** original
+  Qwen3.8-27B@1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0 acquired
+  through the existing bounded Rust cache pipeline; independent31-file/
+  18-shard full hashes and1199-tensor header/index checks passed.
+  Source preparation only: no full27B RAM load or inference. Original
+  Qwen3.5-0.8B@2fc06364715b967f1860aea9cf38778875588b17 pinned
+  Transformers5.17/Torch2.13 CPU captures passed archive validation:
+  tokens11,353, full248320 logits/all42 domains, actual layer0 stages.
+  Keep official473-BF16 loader and source437-BF16+36-F32 profiles distinct;
+  first-token argmax321 vs198. Existing Rust BF16 diagnostic vs source-mixed
+  reference remains UNQUALIFIED: embeddings/direct layer0 norms exact;
+  first projection differs1/6144 then3/6144 BF16 values; full logits/all42
+  diverge. Resolve the independently identified CPU reduction and GDN
+  arithmetic, then original GPU/FLA/state/streaming gates before enabling
+  trained HF execution or27B serving. User authorizes required runtime/model
+  acquisition/testing; dated source-free slice restrictions below are history.
 - [ ] **Next trained reference gate:** qualify exact original HF BF16
   rounding/FLA order and independent source-trained logits/StateRoot;
   then bind the original profile to the existing per-op
@@ -159,6 +152,35 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### 1c0bb41 — pinned numerical reference seam
+
+- [x] **ME-P0 pinned original numerical reference gate:**
+  extend one immutable source owner with canonical source-bundle
+  SHA256 over pinned index and all authenticated shard bytes.
+  Capture a bounded subset of original Qwen GDN, attention, FFN
+  and logits through shared PlanObservation, with opt-in 32MiB
+  private trace and a single selected GDN recurrent state layer.
+  Strict typed independently SHA256-pinned JSON comparisons bind
+  config/index/bundle, exact stage order/geometry/position/dtype,
+  detect first mismatched element, and distinguish truly bit-exact
+  BF16 output from bounded, tolerated FP32 state deviations.
+  Source-free adversarial tests verify same-index/different-weight
+  digest changes, duplicate/missing/reordered reference content,
+  bad token/source/dtype, selected GDN state and immutable roots.
+  Fix full-model BF16 residual result-cast omission by reusing
+  its source-typed existing residual binary operator.
+  This stage DOES NOT prove independence merely because a
+  reference JSON asserts trained-framework origin.
+  Complete isolated scripts/check.sh passed 1,135 Rust tests, 0 failures,
+  69 intentionally ignored across 238 suites plus 18 Python fixtures,
+  release CLI/installer and CPU numeric comparators. Strict default and
+  composed CPU/cache/Qwen/acquisition Clippy -D warnings pass.
+  Independent approved Qwen3.5 .8B/2B release cache/direct 17.45s and
+  HF-import 21.97s preserve exact full 248320 logits, all 42 StateRoot
+  domains, two-token independent sessions and source/lease correctness.
+  Offline Nix source-integrity passed with the checked trace files.
+  No trained Qwen3.8 reference or Torch/FLA runtime was accessed.
 
 ### 6d74f76
 

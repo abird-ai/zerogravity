@@ -72,16 +72,21 @@ fn config() -> Vec<u8> {
     }))
     .unwrap()
 }
-fn loaded(
-    fixture: &Fixture,
-) -> (
+type LoadedFixture = (
     SourceWeights,
     Vec<u8>,
     Vec<u8>,
     TransferAdmission,
     PhysicalDeviceKey,
-) {
-    let cfg = config();
+);
+fn loaded(fixture: &Fixture) -> LoadedFixture {
+    loaded_configured(fixture, config(), |_, _| 1.0)
+}
+fn loaded_configured(
+    fixture: &Fixture,
+    cfg: Vec<u8>,
+    f32_value: impl Fn(&str, usize) -> f32,
+) -> LoadedFixture {
     let spec = QwenTextConfig::from_json(&cfg)
         .unwrap()
         .tensor_specs()
@@ -100,9 +105,9 @@ fn loaded(
         };
         let shape_count = t.shape.iter().product::<u64>() as usize;
         let start = payload.len();
-        for _ in 0..shape_count {
+        for element in 0..shape_count {
             match kind {
-                "F32" => payload.extend_from_slice(&1.0f32.to_le_bytes()),
+                "F32" => payload.extend_from_slice(&f32_value(&t.name, element).to_le_bytes()),
                 "F16" => payload.extend_from_slice(&0x3c00u16.to_le_bytes()),
                 "BF16" => payload.extend_from_slice(&0x3f80u16.to_le_bytes()),
                 _ => unreachable!(),
@@ -254,6 +259,57 @@ mod original_numerics {
             actual.is_finite() && (actual - expected).abs() <= tolerance,
             "actual {actual} differs from analytical {expected}"
         );
+    }
+
+    #[test]
+    fn final_logits_follow_verified_tied_or_untied_head_without_an_alias_tensor() {
+        for tied in [false, true] {
+            let fixture = Fixture::new();
+            let mut cfg: serde_json::Value = serde_json::from_slice(&config()).unwrap();
+            cfg["tie_word_embeddings"] = json!(tied);
+            cfg["text_config"]["tie_word_embeddings"] = json!(tied);
+            cfg["text_config"]["rms_norm_eps"] = json!(3.0);
+            let cfg = serde_json::to_vec(&cfg).unwrap();
+            let (source, cfg, index, admission, key) =
+                loaded_configured(&fixture, cfg, |name, element| match name {
+                    "model.language_model.embed_tokens.weight" => (element / 4 + 1) as f32,
+                    "lm_head.weight" => -((element / 4 + 1) as f32),
+                    "model.language_model.norm.weight" => 0.0,
+                    _ => 1.0,
+                });
+            assert_eq!(source.tensor("lm_head.weight").is_ok(), !tied);
+            let retained = admission.arbiter.snapshot(&key).unwrap().reserved;
+            let cpu = QwenOriginalCpu::bind(&source, &cfg, &sha(&cfg), &sha(&index)).unwrap();
+            assert_eq!(cpu.binding().source_identity(), source.source_identity());
+            assert_eq!(cpu.binding().config().tie_word_embeddings(), tied);
+            // Unit residual, eps3 and zero-centered gamma0 give exact norm0.5.
+            // Four equal row weights give +/-2*(row+1), all BF16-exact.
+            let sign = if tied { 1.0 } else { -1.0 };
+            let expected = (1..=16)
+                .map(|row| sign * 2.0 * row as f32)
+                .collect::<Vec<_>>();
+            for math in [
+                OriginalQwenLayerMath::new(&cpu),
+                OriginalQwenLayerMath::bf16_diagnostic(&cpu),
+            ] {
+                assert_eq!(math.source_identity(), source.source_identity());
+                let logits = math.final_logits(&[1.0; 4]).unwrap();
+                assert_eq!(
+                    logits
+                        .iter()
+                        .map(|value| value.to_bits())
+                        .collect::<Vec<_>>(),
+                    expected
+                        .iter()
+                        .map(|value| value.to_bits())
+                        .collect::<Vec<_>>()
+                );
+            }
+            drop(cpu);
+            assert_eq!(admission.arbiter.snapshot(&key).unwrap().reserved, retained);
+            drop(source);
+            assert_eq!(admission.arbiter.snapshot(&key).unwrap().reserved, 0);
+        }
     }
 
     #[test]

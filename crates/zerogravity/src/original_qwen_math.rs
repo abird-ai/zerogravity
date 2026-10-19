@@ -294,7 +294,12 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
             residual,
             &self.cpu.vector("model.language_model.norm.weight")?,
         )?;
-        let logits = self.project("lm_head.weight", &normalized)?;
+        let head = if self.cpu.binding().config().tie_word_embeddings() {
+            "model.language_model.embed_tokens.weight"
+        } else {
+            "lm_head.weight"
+        };
+        let logits = self.project(head, &normalized)?;
         let vocab = usize::try_from(self.geometry().vocab_size)
             .map_err(|_| Error::Limit("original Qwen vocabulary overflow".into()))?;
         if logits.len() != vocab || logits.iter().any(|v| !v.is_finite()) {
