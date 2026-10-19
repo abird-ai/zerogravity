@@ -145,6 +145,11 @@ pub(crate) fn copy_verified_file(
 }
 
 impl Artifact {
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    pub(crate) fn into_open_parts(self) -> (ArtifactInfo, File) {
+        (self.info, self.file)
+    }
+
     pub fn open(path: &Path) -> Result<Self> {
         Self::from_file(File::open(path)?, path)
     }

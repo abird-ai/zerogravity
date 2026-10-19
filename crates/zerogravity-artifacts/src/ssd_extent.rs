@@ -6,12 +6,13 @@
 
 use crate::cache::TransferAdmission;
 use crate::{Error, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::ops::Range;
 use std::os::unix::fs::FileExt;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, GlobalResourceLease};
 
 const SCHEMA: &str = "zerogravity.extents.v1";
@@ -27,7 +28,7 @@ fn digest_ok(s: &str) -> bool {
         && s.bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct ExtentManifest {
     schema: String,
@@ -36,7 +37,7 @@ struct ExtentManifest {
     whole_sha256: String,
     chunks: Vec<ExtentChunk>,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct ExtentChunk {
     offset: u64,
@@ -53,6 +54,7 @@ pub struct ExtentSource {
 pub struct StagedExtents {
     bytes: Vec<u8>,
     offsets: Vec<(usize, Range<usize>)>,
+    charged_bytes: usize,
     // Hold until any consuming device has an actual completion receipt.
     _lease: GlobalResourceLease,
 }
@@ -70,6 +72,11 @@ impl StagedExtents {
     pub fn count(&self) -> usize {
         self.offsets.len()
     }
+    /// Owned data plus retained offset-vector storage, excluding allocator
+    /// rounding and generic arbiter bookkeeping.
+    pub fn charged_bytes(&self) -> usize {
+        self.charged_bytes
+    }
 }
 /// Immutable, physical-admission-pinned tensor/window bytes.
 pub struct StagedSlice {
@@ -85,11 +92,92 @@ impl StagedSlice {
         self.source_offset
     }
     pub fn charged_bytes(&self) -> usize {
-        self.stage.len()
+        self.stage.charged_bytes()
     }
 }
 
 impl ExtentSource {
+    pub(crate) fn scan_chunk_count(file_bytes: u64, chunk_bytes: usize) -> Result<usize> {
+        if file_bytes == 0 || file_bytes > MAX_FILE || chunk_bytes == 0 || chunk_bytes > MAX_CHUNK {
+            return Err(Error::Limit("verified source scan geometry".into()));
+        }
+        let count = file_bytes.div_ceil(chunk_bytes as u64);
+        if count > MAX_CHUNKS as u64 {
+            return Err(Error::Limit("verified source scan chunk count".into()));
+        }
+        Ok(count as usize)
+    }
+
+    /// Internal source factory: all chunk hashes come from the same bounded
+    /// scan whose whole-file digest matches the independently pinned original.
+    pub(crate) fn scan_verified(
+        file: File,
+        expected_bytes: u64,
+        expected_sha256: &str,
+        chunk_bytes: usize,
+        admission: &TransferAdmission,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<Self> {
+        let count = Self::scan_chunk_count(expected_bytes, chunk_bytes)?;
+        if !digest_ok(expected_sha256) || file.metadata()?.len() != expected_bytes {
+            return Err(Error::Malformed(
+                "verified source descriptor length/digest".into(),
+            ));
+        }
+        source_not_cancelled(cancelled)?;
+        let buffer_bytes = (chunk_bytes as u64).min(expected_bytes) as usize;
+        let _staging = admission.arbiter.admit(
+            &admission.resource,
+            admission.owner.clone(),
+            &[AllocationRequest {
+                kind: AllocationClass::TransferStaging,
+                bytes: buffer_bytes as u64,
+            }],
+        )?;
+        let mut buffer = vec![0u8; buffer_bytes];
+        let mut chunks = Vec::with_capacity(count);
+        let mut whole = Sha256::new();
+        let mut offset = 0u64;
+        while offset < expected_bytes {
+            source_not_cancelled(cancelled)?;
+            let bytes = (buffer_bytes as u64).min(expected_bytes - offset) as usize;
+            file.read_exact_at(&mut buffer[..bytes], offset)?;
+            whole.update(&buffer[..bytes]);
+            chunks.push(ExtentChunk {
+                offset,
+                bytes,
+                sha256: format!("{:x}", Sha256::digest(&buffer[..bytes])),
+            });
+            offset += bytes as u64;
+        }
+        source_not_cancelled(cancelled)?;
+        if file.metadata()?.len() != expected_bytes
+            || format!("{:x}", whole.finalize()) != expected_sha256
+        {
+            return Err(Error::Malformed(
+                "original source whole-file SHA256 mismatch".into(),
+            ));
+        }
+        let manifest = ExtentManifest {
+            schema: SCHEMA.into(),
+            file_bytes: expected_bytes,
+            whole_sha256: expected_sha256.into(),
+            chunks,
+        };
+        let manifest_json = serde_json::to_vec(&manifest)
+            .map_err(|_| Error::State("verified extent manifest serialization".into()))?;
+        if manifest_json.len() > MAX_MANIFEST {
+            return Err(Error::Limit("verified extent manifest byte cap".into()));
+        }
+        Ok(Self {
+            file: Arc::new(file),
+            file_bytes: expected_bytes,
+            index_sha256: format!("{:x}", Sha256::digest(&manifest_json)),
+            claimed_whole_sha256: manifest.whole_sha256,
+            chunks: manifest.chunks,
+        })
+    }
+
     /// Manifest trust comes from caller-pinned independent SHA256.
     /// Requested ranges are verified before exposure, not at open time.
     pub fn from_open_file(
@@ -204,8 +292,12 @@ impl ExtentSource {
                 "SSD tensor window crosses too many chunks".into(),
             ));
         }
-        let indices = (first..=last).collect::<Vec<_>>();
-        let stage = self.read_verified(&indices, admission)?;
+        let selected = last - first + 1;
+        let mut indices = [0usize; MAX_READ_CHUNKS];
+        for (index, slot) in indices[..selected].iter_mut().enumerate() {
+            *slot = first + index;
+        }
+        let stage = self.read_verified(&indices[..selected], admission)?;
         let start = usize::try_from(offset - self.chunks[first].offset)
             .map_err(|_| Error::Limit("source local tile offset overflow".into()))?;
         let tail = start
@@ -249,16 +341,28 @@ impl ExtentSource {
                 ));
             }
         }
+        let offset_bytes = indices
+            .len()
+            .checked_mul(std::mem::size_of::<(usize, Range<usize>)>())
+            .ok_or_else(|| Error::Limit("SSD staged offset metadata overflow".into()))?;
+        let charged_bytes = count
+            .checked_add(offset_bytes)
+            .ok_or_else(|| Error::Limit("SSD staging total charge overflow".into()))?;
         let lease = admission.arbiter.admit(
             &admission.resource,
             admission.owner.clone(),
             &[AllocationRequest {
                 kind: AllocationClass::TransferStaging,
-                bytes: count as u64,
+                bytes: charged_bytes as u64,
             }],
         )?;
         let mut bytes = vec![0u8; count];
         let mut ranges = Vec::with_capacity(indices.len());
+        if bytes.capacity() != count || ranges.capacity() != indices.len() {
+            return Err(Error::State(
+                "SSD staging allocator capacity changed".into(),
+            ));
+        }
         let mut offset = 0usize;
         for index in indices {
             let expected = &self.chunks[*index];
@@ -293,7 +397,15 @@ impl ExtentSource {
         Ok(StagedExtents {
             bytes,
             offsets: ranges,
+            charged_bytes,
             _lease: lease,
         })
     }
+}
+
+pub(crate) fn source_not_cancelled(cancelled: Option<&AtomicBool>) -> Result<()> {
+    if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
+        return Err(Error::State("source window operation cancelled".into()));
+    }
+    Ok(())
 }

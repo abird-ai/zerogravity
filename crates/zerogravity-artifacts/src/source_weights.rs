@@ -12,6 +12,13 @@ use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest};
 
 const MAX_CPU_SOURCE: u64 = 4 * 1024 * 1024 * 1024;
 
+#[cfg(all(feature = "cache", target_os = "linux"))]
+mod tensor_window;
+#[cfg(all(feature = "cache", target_os = "linux"))]
+pub use tensor_window::{
+    TensorWindow, VerifiedMatrix, VerifiedTensorSource, VerifiedWindowPlan, WindowOpenLimits,
+};
+
 /// One source identity, possibly backed by several independently verified
 /// immutable allocations. GGUF keeps the original 4GiB policy.
 enum SourceStorage {

@@ -67,6 +67,10 @@ fn admission(bytes: u64) -> (TransferAdmission, PhysicalDeviceKey) {
     };
     (admission, key)
 }
+fn staging_charge(bytes: usize, extents: usize) -> u64 {
+    (bytes + extents * std::mem::size_of::<(usize, std::ops::Range<usize>)>()) as u64
+}
+
 #[test]
 fn exact_source_chunks_are_verified_coalesced_and_pinned_through_drop() {
     let fx = Fixture::new();
@@ -79,20 +83,29 @@ fn exact_source_chunks_are_verified_coalesced_and_pinned_through_drop() {
     assert_eq!(source.file_bytes(), raw.len() as u64);
     assert_eq!(source.index_sha256(), sha(&index));
     assert_eq!(source.claimed_whole_sha256(), sha(&raw));
-    let (admit, key) = admission(16 * 1024);
+    let (admit, key) = admission(2 * staging_charge(8192, 2));
     let first = source.read_verified(&[1, 2], &admit).unwrap();
     assert_eq!(first.count(), 2);
     assert_eq!(first.len(), 8192);
     assert_eq!(first.bytes_for(1).unwrap(), &raw[4096..8192]);
     assert_eq!(first.bytes_for(2).unwrap(), &raw[8192..12288]);
     assert!(first.bytes_for(0).is_none());
-    assert_eq!(admit.arbiter.snapshot(&key).unwrap().reserved, 8192);
+    assert_eq!(
+        admit.arbiter.snapshot(&key).unwrap().reserved,
+        staging_charge(8192, 2)
+    );
     let second = source.read_verified(&[0, 3], &admit).unwrap();
     assert_eq!(second.len(), 8192);
-    assert_eq!(admit.arbiter.snapshot(&key).unwrap().reserved, 16384);
+    assert_eq!(
+        admit.arbiter.snapshot(&key).unwrap().reserved,
+        2 * staging_charge(8192, 2)
+    );
     assert_eq!(second.bytes_for(3).unwrap(), &raw[12288..]);
     drop(second);
-    assert_eq!(admit.arbiter.snapshot(&key).unwrap().reserved, 8192);
+    assert_eq!(
+        admit.arbiter.snapshot(&key).unwrap().reserved,
+        staging_charge(8192, 2)
+    );
     drop(first);
     assert_eq!(admit.arbiter.snapshot(&key).unwrap().reserved, 0);
 }
@@ -144,7 +157,7 @@ fn mutation_short_io_and_physical_budget_fail_closed() {
         Err(Error::Limit(_))
     ));
     assert_eq!(small.arbiter.snapshot(&key).unwrap().reserved, 0);
-    let (large, key) = admission(8192);
+    let (large, key) = admission(staging_charge(8192, 2));
     for bad in [&[][..], &[0, 0][..], &[1, 0][..], &[4][..]] {
         assert!(source.read_verified(bad, &large).is_err());
         assert_eq!(large.arbiter.snapshot(&key).unwrap().reserved, 0);
@@ -168,10 +181,13 @@ fn pathname_replacement_keeps_opened_descriptor_identity() {
     let retained = fx.0.join("former");
     fs::rename(&path, &retained).unwrap();
     fs::write(&path, vec![99u8; 8192]).unwrap();
-    let (admit, key) = admission(8192);
+    let (admit, key) = admission(staging_charge(8192, 2));
     let staged = source.read_verified(&[0, 1], &admit).unwrap();
     assert_eq!(staged.bytes_for(0).unwrap(), &raw[..4096]);
-    assert_eq!(admit.arbiter.snapshot(&key).unwrap().reserved, 8192);
+    assert_eq!(
+        admit.arbiter.snapshot(&key).unwrap().reserved,
+        staging_charge(8192, 2)
+    );
     // Mutation of the original descriptor after a staged copy cannot
     // rewrite the still-referenced immutable bytes.
     fs::write(&retained, vec![0u8; 8192]).unwrap();
@@ -228,12 +244,44 @@ fn bounded_tensor_windows_copy_only_verified_requested_chunks() {
     let window = source.read_window(4096 - 16, 64, &admit).unwrap();
     assert_eq!(window.as_slice(), &raw[4096 - 16..4096 + 48]);
     assert_eq!(window.source_offset(), 4080);
-    assert_eq!(window.charged_bytes(), 8192);
-    assert_eq!(admit.arbiter.snapshot(&key).unwrap().reserved, 8192);
+    assert_eq!(window.charged_bytes() as u64, staging_charge(8192, 2));
+    assert_eq!(
+        admit.arbiter.snapshot(&key).unwrap().reserved,
+        staging_charge(8192, 2)
+    );
     assert!(source.read_window(0, 0, &admit).is_err());
     assert!(source.read_window(u64::MAX, 1, &admit).is_err());
     assert!(source.read_window(raw.len() as u64 - 1, 2, &admit).is_err());
-    assert!(source.read_window(1, 4 * 4096, &admit).is_err()); // requires >12K
+    assert!(source.read_window(0, 3 * 4096, &admit).is_err()); // requires >12K
     drop(window);
     assert_eq!(admit.arbiter.snapshot(&key).unwrap().reserved, 0);
+}
+
+#[test]
+fn tiny_chunk_offset_storage_is_charged_with_its_owned_data() {
+    let fixture = Fixture::new();
+    let raw = (0..64u8).collect::<Vec<_>>();
+    let path = fixture.write(&raw);
+    let index = manifest(&raw, 1);
+    let source =
+        ExtentSource::from_open_file(File::open(path).unwrap(), &index, &sha(&index)).unwrap();
+    let (short, short_key) = admission(2);
+    assert!(matches!(
+        source.read_window(0, 2, &short),
+        Err(Error::Limit(_))
+    ));
+    assert_eq!(short.arbiter.snapshot(&short_key).unwrap().reserved, 0);
+    let charged = staging_charge(2, 2);
+    let (host, key) = admission(charged);
+    let window = source.read_window(0, 2, &host).unwrap();
+    assert_eq!(window.as_slice(), &[0, 1]);
+    assert_eq!(window.charged_bytes() as u64, charged);
+    assert_eq!(host.arbiter.snapshot(&key).unwrap().reserved, charged);
+    assert!(matches!(
+        source.read_window(2, 1, &host),
+        Err(Error::Limit(_))
+    ));
+    drop(window);
+    assert_eq!(host.arbiter.snapshot(&key).unwrap().reserved, 0);
+    assert!(!host.arbiter.snapshot(&key).unwrap().fenced);
 }

@@ -46,6 +46,51 @@ pub struct ExpectedSourceShard {
     expected_sha256: String,
 }
 impl ExpectedSourceShard {
+    pub(crate) fn binding(&self) -> (&str, u64, &str) {
+        (&self.basename, self.expected_bytes, &self.expected_sha256)
+    }
+
+    pub(crate) fn carried_metadata_bytes(&self) -> Result<u64> {
+        let tensors = &self.opened.info.tensors;
+        let terms = [
+            self.basename.capacity() as u64,
+            self.expected_sha256.capacity() as u64,
+            (tensors.capacity() as u64)
+                .checked_mul(std::mem::size_of::<TensorInfo>() as u64)
+                .ok_or_else(|| Error::Limit("carried tensor metadata overflow".into()))?,
+            self.opened
+                .info
+                .architecture
+                .as_ref()
+                .map_or(0, |value| value.capacity() as u64),
+        ];
+        let mut bytes = terms.into_iter().try_fold(0u64, |total, n| {
+            total
+                .checked_add(n)
+                .ok_or_else(|| Error::Limit("carried metadata capacity overflow".into()))
+        })?;
+        for tensor in tensors {
+            bytes = bytes
+                .checked_add(tensor.name.capacity() as u64)
+                .and_then(|n| {
+                    (tensor.shape.capacity() as u64)
+                        .checked_mul(8)
+                        .and_then(|shape| n.checked_add(shape))
+                })
+                .ok_or_else(|| Error::Limit("carried source metadata overflow".into()))?;
+        }
+        Ok(bytes)
+    }
+
+    pub(crate) fn into_parts(self) -> (String, Artifact, u64, String) {
+        (
+            self.basename,
+            self.opened,
+            self.expected_bytes,
+            self.expected_sha256,
+        )
+    }
+
     pub fn new(
         basename: String,
         opened: Artifact,
@@ -217,21 +262,7 @@ impl VerifiedShardPlan {
         // A reference must identify the *weights*, not merely the index.
         // Canonical versioned domain-separated manifest, independent of
         // caller shard order. SHA256 index + sorted basename/len/whole hash.
-        let mut digest = Sha256::new();
-        digest.update(b"zerogravity.original.source-bundle.v1\0");
-        digest.update(self.index_sha256.as_bytes());
-        let mut entries = self.shards.iter().collect::<Vec<_>>();
-        entries.sort_by(|a, b| a.basename.cmp(&b.basename));
-        for shard in entries {
-            let name = shard.basename.as_bytes();
-            let len = u32::try_from(name.len())
-                .map_err(|_| Error::Limit("source basename too long for manifest".into()))?;
-            digest.update(len.to_le_bytes());
-            digest.update(name);
-            digest.update(shard.expected_bytes.to_le_bytes());
-            digest.update(shard.expected_sha256.as_bytes());
-        }
-        let bundle_sha256 = format!("{:x}", digest.finalize());
+        let bundle_sha256 = source_bundle_sha256(&self.index_sha256, &self.shards)?;
         let mut allocations = Vec::new();
         allocations
             .try_reserve_exact(self.shards.len())
@@ -299,4 +330,25 @@ impl VerifiedShardPlan {
             self.memory,
         )
     }
+}
+
+pub(crate) fn source_bundle_sha256(
+    index_sha256: &str,
+    shards: &[ExpectedSourceShard],
+) -> Result<String> {
+    let mut digest = Sha256::new();
+    digest.update(b"zerogravity.original.source-bundle.v1\0");
+    digest.update(index_sha256.as_bytes());
+    let mut entries = shards.iter().collect::<Vec<_>>();
+    entries.sort_by(|a, b| a.basename.cmp(&b.basename));
+    for shard in entries {
+        let name = shard.basename.as_bytes();
+        let len = u32::try_from(name.len())
+            .map_err(|_| Error::Limit("source basename too long for manifest".into()))?;
+        digest.update(len.to_le_bytes());
+        digest.update(name);
+        digest.update(shard.expected_bytes.to_le_bytes());
+        digest.update(shard.expected_sha256.as_bytes());
+    }
+    Ok(format!("{:x}", digest.finalize()))
 }
