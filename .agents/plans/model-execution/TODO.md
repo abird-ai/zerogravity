@@ -8,37 +8,29 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-- [x] **Typed original-source operator integration:** explicit program
-  profile and activation precision, BF16 OutputInput embedding/projection
-  contracts and raw SourceParameter metadata use the existing PlanBuilder
-  and HostMath. Private operator slices carry no domains, logits receipt
-  or frontier advance. Unknown physical providers and resident GPU plans
-  refuse before source reads/admission. Raw learned parameters stay borrowed
-  from the same owner; existing RootBinding descriptors distinguish initial/
-  cached phase, BF16 conv/KV and FP32 recurrent axis layouts. These metadata
-  views grant no freshness, state transport or publication capability.
-  Complete original-HF session/forward/checkpoint guards remain closed.
-- [x] **Genuine typed operator qualification:** pinned public Torch
-  F.embedding for original tokens11/353 followed directly by independent
-  GdnQkv(0), FfnGate(0) and tied Output projections matches every Rust bit,
-  including all248320 words of both output projections. Eight reference
-  payloads preserve518144 values; same loaded source, raw matrix pointers,
-  two-node recorder, zero initialized state and final source reservation0
-  are checked. No input normalization, complete layer/model logits or
-  GPU/27B inference is claimed by this pure operator composition.
-- [x] **Closed pinned FP32 vector softplus:** source beta1/threshold20,
-  finite general-F32 contiguous spans divisible16, explicit SLEEF3.8
-  compensated log1p/exp/FMA order and BSL notice. Actual32 original biased
-  alphas and28464 adversarial F32 values, reordered values and16/32/48/64
-  spans match public Torch bit for bit. No scalar-tail, MKL coefficient
-  exp, general profile or default GGUF arithmetic change.
-- [x] **Typed/softplus composed gate:** full isolated check1213 Rust
-  passed/0failed/69ignored/248 suite runs plus18Python, installer/release/Nix;
-  focused core/CPU/model158 passed/2ignored, CPU-free binding10 passed,
-  resident cold refusal2 passed. Strict composed CUDA+HF, CPU-free HF,
-  Vulkan serving and CUDA qualification Clippy pass. Both approved original
-  cache-direct/HF-import release routes pass (17.15s/23.12s), both original
-  models, full248320/all42, independent sessions/source lifetime/reclaim.
+- [x] **Closed pinned BF16 sigmoid:** explicit contiguous iterator spans,
+  vector32 prefix plus the original scalar tail, private SLEEF and licensed
+  Arm/glibc-FMA arithmetic. Genuine public Torch and Rust replay match all
+  326753 output words, including all65280 finite BF16 values in vector/scalar/
+  mixed call shapes and both actual original beta16 calls. No host exp,
+  fitted output table, numerical-profile enablement or GGUF math change.
+- [x] **Closed pinned ordinary RMS:** raw immutable rank1 BF16/F32 learned
+  weights, exact BF16 input, source four-Vec8 reduction/carry order at widths
+  256/1024/2048/5120, F32 division and runtime(1+raw weight), then final BF16
+  cast after the F32 product. Actual original .8B122 norm calls preserve98
+  prior full-logit/cache checks;32 public width/dtype fixtures cover the
+  larger geometries. Rust matches all154 cases/1694 full stage fields/
+  1680488 words exactly. Width fixtures do not qualify2B/27B inference.
+- [x] **Composed source-free gate:** complete isolated check1218 Rust passed,
+  0failed/69ignored/248 suite runs plus18Python, release/installer/Nix;
+  ordinary RMS7 focused tests and strict CPU Clippy pass. Independent source
+  review authenticates every6792 compact golden word from genuine public
+  archives. Strict final composed CUDA+HF, Vulkan serving and CUDA qualifier
+  Clippy pass; both approved cache-direct/HF-import release routes pass
+  (20.09s/24.88s), both original models, full248320/all42, independent sessions,
+  source leases and reclamation. Original-HF full session/forward/checkpoint
+  guards remain closed; coefficient exp, initial chunk64, attention and
+  physical model/state integration are still required.
 
 - [ ] **Independent trained BF16/FLA checkpoint gate:** original
   Qwen3.8-27B@1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0 acquired
@@ -177,6 +169,40 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### 2a32aff — typed source composition and vector softplus
+
+- [x] **Typed original-source operator integration:** explicit program
+  profile and activation precision, BF16 OutputInput embedding/projection
+  contracts and raw SourceParameter metadata use the existing PlanBuilder
+  and HostMath. Private operator slices carry no domains, logits receipt
+  or frontier advance. Unknown physical providers and resident GPU plans
+  refuse before source reads/admission. Raw learned parameters stay borrowed
+  from the same owner; existing RootBinding descriptors distinguish initial/
+  cached phase, BF16 conv/KV and FP32 recurrent axis layouts. These metadata
+  views grant no freshness, state transport or publication capability.
+  Complete original-HF session/forward/checkpoint guards remain closed.
+- [x] **Genuine typed operator qualification:** pinned public Torch
+  F.embedding for original tokens11/353 followed directly by independent
+  GdnQkv(0), FfnGate(0) and tied Output projections matches every Rust bit,
+  including all248320 words of both output projections. Eight reference
+  payloads preserve518144 values; same loaded source, raw matrix pointers,
+  two-node recorder, zero initialized state and final source reservation0
+  are checked. No input normalization, complete layer/model logits or
+  GPU/27B inference is claimed by this pure operator composition.
+- [x] **Closed pinned FP32 vector softplus:** source beta1/threshold20,
+  finite general-F32 contiguous spans divisible16, explicit SLEEF3.8
+  compensated log1p/exp/FMA order and BSL notice. Actual32 original biased
+  alphas and28464 adversarial F32 values, reordered values and16/32/48/64
+  spans match public Torch bit for bit. No scalar-tail, MKL coefficient
+  exp, general profile or default GGUF arithmetic change.
+- [x] **Typed/softplus composed gate:** full isolated check1213 Rust
+  passed/0failed/69ignored/248 suite runs plus18Python, installer/release/Nix;
+  focused core/CPU/model158 passed/2ignored, CPU-free binding10 passed,
+  resident cold refusal2 passed. Strict composed CUDA+HF, CPU-free HF,
+  Vulkan serving and CUDA qualification Clippy pass. Both approved original
+  cache-direct/HF-import release routes pass (17.15s/23.12s), both original
+  models, full248320/all42, independent sessions/source lifetime/reclaim.
 
 ### cadcbd9 — closed pinned original-HF CPU operators
 

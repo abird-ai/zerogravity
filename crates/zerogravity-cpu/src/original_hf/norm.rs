@@ -5,6 +5,10 @@
 //! normalized values to BF16 before multiplying original F32 gamma. This
 //! source-36-F32 profile enables neither a model nor CUDA/FLA execution.
 
+mod ordinary;
+
+pub use ordinary::{OrdinaryRms, ordinary_rms};
+
 use super::reduction::sum_inner_128;
 use crate::accelerator::SourceIdentity;
 use crate::quant::QuantKind;

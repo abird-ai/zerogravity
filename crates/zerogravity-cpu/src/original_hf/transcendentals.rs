@@ -37,6 +37,8 @@ DEALINGS IN THE SOFTWARE.
 
 mod softplus;
 pub use softplus::softplus_beta1_threshold20_f32_contiguous16;
+mod sigmoid;
+pub use sigmoid::sigmoid_bf16_widened_f32_contiguous_span;
 
 use crate::accelerator::SourceIdentity;
 use crate::{Error, Result};
