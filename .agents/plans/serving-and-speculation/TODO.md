@@ -8,6 +8,22 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
+- [x] **P22 bounded benchmark accounting:** `serve-bench.py` records
+  offered arrivals, client backlog/overload, HTTP acceptance/rejections,
+  completion/timeout/cancel outcomes, tenant tails and the full offered
+  denominator. SSE chunk intervals remain explicit proxies. Optional
+  provider token traces require exact run/wire/provider IDs, complete
+  ordered token IDs/timestamps and terminal usage equality; malformed or
+  incomplete traces cannot qualify true ITL/SLO goodput. Raw loopback JSON
+  snapshots remain provider claims. `serve-compare.py` executes actual
+  alternating ABBA/BAAB orders, compares per-request text/usage/token IDs
+  and keeps caller source declarations separate from independent parity.
+  Both isolated self-tests/pycompile and full check.sh passed. Actual pinned
+  vLLM0.31.0-cu129 V1 CUDA startup and four-request warm smoke passed with
+  original HF0.8B; this is NOT a matched comparison. Common trained source
+  arithmetic, tokenizer/generation policy, caps and real token observations
+  remain open; qualified source-correct SLO goodput stays unset.
+
 - [ ] **P12 fused continuous GPU serving:** extend the accepted CUDA B2
   HTTP path to B4/B8, unequal frontiers, dynamic compatible refill,
   paged hybrid KV/recurrent cache, physically safe overlap and fairness.
