@@ -234,6 +234,14 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
             dtype: OriginalNumericalDType::Bf16Diagnostic,
         }
     }
+    /// Pinned Torch CPU AVX2 BF16 projection probe; no trained-model permit.
+    /// Distinct from the original scalar BF16 diagnostic state/trace profile.
+    pub fn bf16_cpu_avx2_diagnostic(cpu: &'borrow QwenOriginalCpu<'source>) -> Self {
+        Self {
+            cpu,
+            dtype: OriginalNumericalDType::Bf16CpuAvx2Diagnostic,
+        }
+    }
     pub fn dtype(&self) -> OriginalNumericalDType {
         self.dtype
     }
@@ -256,7 +264,17 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
             return self.cpu.project(name, input, None);
         }
         let rounded_input = self.round(input)?;
-        self.round(&self.cpu.project(name, &rounded_input, None)?)
+        let profile = match self.dtype {
+            OriginalNumericalDType::Bf16CpuAvx2Diagnostic => {
+                crate::weights::SourceProjectionProfile::TorchCpuBf16Avx2
+            }
+            _ => crate::weights::SourceProjectionProfile::Source,
+        };
+        self.round(
+            &self
+                .cpu
+                .project_with_profile(name, &rounded_input, None, profile)?,
+        )
     }
     /// One authoritative source binary kernel; cast at the result's
     /// original diagnostic dtype, not before the FP32 CPU addition.
@@ -480,6 +498,9 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
             ));
         }
         let normalized = self.residual_norm(layer, LayerKind::FullAttention, input)?;
+        if let Some(t) = trace.as_deref_mut() {
+            t.observe(layer, "attention_input_norm", &normalized)?;
+        }
         let p = format!("{prefix}.self_attn");
         let raw_q = self.project(&format!("{p}.q_proj.weight"), &normalized)?;
         let (query, gates) = if cfg.attention_output_gate() {
@@ -755,6 +776,9 @@ impl<'borrow, 'source> OriginalQwenLayerMath<'borrow, 'source> {
             ));
         }
         let normalized = self.residual_norm(layer, LayerKind::LinearAttention, input)?;
+        if let Some(t) = trace.as_deref_mut() {
+            t.observe(layer, "attention_input_norm", &normalized)?;
+        }
         let p = format!("{prefix}.linear_attn");
         let raw = self.project(&format!("{p}.in_proj_qkv.weight"), &normalized)?;
         let z = self.project(&format!("{p}.in_proj_z.weight"), &normalized)?;

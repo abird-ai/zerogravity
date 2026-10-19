@@ -87,6 +87,22 @@ fn loaded_configured(
     cfg: Vec<u8>,
     f32_value: impl Fn(&str, usize) -> f32,
 ) -> LoadedFixture {
+    loaded_encoded(fixture, cfg, f32_value, |name, _rank| {
+        if name.ends_with("mlp.gate_proj.weight") {
+            "F16"
+        } else if name.ends_with("self_attn.q_proj.weight") {
+            "BF16"
+        } else {
+            "F32"
+        }
+    })
+}
+fn loaded_encoded(
+    fixture: &Fixture,
+    cfg: Vec<u8>,
+    f32_value: impl Fn(&str, usize) -> f32,
+    encoding: impl Fn(&str, usize) -> &'static str,
+) -> LoadedFixture {
     let spec = QwenTextConfig::from_json(&cfg)
         .unwrap()
         .tensor_specs()
@@ -96,13 +112,7 @@ fn loaded_configured(
     let mut payload = Vec::new();
     let mut map = BTreeMap::new();
     for t in &spec {
-        let kind = if t.name.ends_with("mlp.gate_proj.weight") {
-            "F16"
-        } else if t.name.ends_with("self_attn.q_proj.weight") {
-            "BF16"
-        } else {
-            "F32"
-        };
+        let kind = encoding(&t.name, t.shape.len());
         let shape_count = t.shape.iter().product::<u64>() as usize;
         let start = payload.len();
         for element in 0..shape_count {
@@ -1077,6 +1087,58 @@ mod original_bf16_diagnostic_tests {
                 .all(bf16_representable)
         );
     }
+
+    #[test]
+    fn cpu_avx2_profile_has_distinct_root_schema_and_abandoned_candidate_is_private() {
+        let fixture = Fixture::new();
+        let (source, cfg, index, _, _) = loaded_encoded(
+            &fixture,
+            config(),
+            |_, _| 1.0,
+            |_, rank| if rank == 2 { "BF16" } else { "F32" },
+        );
+        let cpu = QwenOriginalCpu::bind(&source, &cfg, &sha(&cfg), &sha(&index)).unwrap();
+        let legacy = OriginalQwenLayerMath::bf16_diagnostic(&cpu);
+        let selected = OriginalQwenLayerMath::bf16_cpu_avx2_diagnostic(&cpu);
+        assert_eq!(
+            selected.dtype(),
+            OriginalNumericalDType::Bf16CpuAvx2Diagnostic
+        );
+        assert_eq!(selected.dtype().reference_name(), "bf16-cpu-avx2");
+        let old_bridge = OriginalQwenStateBridge::new(&legacy);
+        let new_bridge = OriginalQwenStateBridge::new(&selected);
+        let old = old_bridge.coordinator_for_model(123).unwrap();
+        let mut new = new_bridge.coordinator_for_model(123).unwrap();
+        assert_eq!(
+            new.root().domains["qwen.original.conv.0"].schema,
+            ORIGINAL_CONV_V1 + 0x20
+        );
+        assert_eq!(
+            new.root().domains["qwen.original.recurrent.0"].schema,
+            ORIGINAL_RECURRENCE_V1 + 0x20
+        );
+        assert_eq!(
+            new.root().domains["qwen.original.kv.3"].schema,
+            ORIGINAL_KV_V1 + 0x20
+        );
+        assert!(new_bridge.prepare_diagnostic_token_bf16(&old, 0).is_err());
+        assert!(old_bridge.prepare_diagnostic_token_bf16(&new, 0).is_err());
+        let before = new.root().clone();
+        let candidate = new_bridge
+            .prepare_diagnostic_token_bf16_with_trace(&new, 0)
+            .unwrap();
+        assert_eq!(candidate.trace().unwrap().dtype(), selected.dtype());
+        assert!(candidate.logits().iter().copied().all(bf16_representable));
+        drop(candidate);
+        assert_eq!(new.root(), &before);
+        let candidate = new_bridge.prepare_diagnostic_token_bf16(&new, 0).unwrap();
+        let stale = new_bridge.prepare_diagnostic_token_bf16(&new, 1).unwrap();
+        candidate.publish(&mut new).unwrap();
+        let committed = new.root().clone();
+        assert!(stale.publish(&mut new).is_err());
+        assert_eq!(new.root(), &committed);
+        assert_eq!(new.root().frontier, 1);
+    }
 }
 
 #[cfg(feature = "model-qwen35")]
@@ -1111,14 +1173,72 @@ mod original_reference_trace_tests {
                 "token":trace.token(),
                 "position":trace.position(),
                 "gdn_state_layer":trace.gdn_state_layer(),
-                "dtype":if trace.dtype()==zerogravity::original_qwen_precision::OriginalNumericalDType::F32
-                    {"f32"}else{"bf16"}
+                "dtype":trace.dtype().reference_name()
             },
             "observations":observed,
-        })).unwrap()
+        }))
+        .unwrap()
     }
     fn pinned(json_bytes: &[u8]) -> OriginalReferenceTrace {
         OriginalReferenceTrace::from_pinned_json(json_bytes, &sha(json_bytes)).unwrap()
+    }
+    #[test]
+    fn reference_profile_labels_cannot_reinterpret_legacy_bf16_as_cpu_avx2() {
+        let fixture = Fixture::new();
+        let (source, cfg, index, _, _) = loaded(&fixture);
+        let cpu = QwenOriginalCpu::bind(&source, &cfg, &sha(&cfg), &sha(&index)).unwrap();
+        let math = OriginalQwenLayerMath::bf16_diagnostic(&cpu);
+        let bridge = OriginalQwenStateBridge::new(&math);
+        let session = bridge.coordinator_for_model(113).unwrap();
+        let candidate = bridge
+            .prepare_diagnostic_token_bf16_with_trace(&session, 0)
+            .unwrap();
+        let trace = candidate.trace().unwrap();
+        let mut document: Value = serde_json::from_slice(&synthetic_reference(trace)).unwrap();
+        document["provenance"]["dtype"] = json!("bf16-cpu-avx2");
+        let encoded = serde_json::to_vec(&document).unwrap();
+        assert!(
+            pinned(&encoded)
+                .compare(trace, ReferenceTolerance::exact())
+                .is_err()
+        );
+        document["observations"][0]["bits"][0] = json!("3f800001");
+        let encoded = serde_json::to_vec(&document).unwrap();
+        assert!(OriginalReferenceTrace::from_pinned_json(&encoded, &sha(&encoded)).is_err());
+    }
+    #[test]
+    fn explicit_cpu_avx2_trace_roundtrips_only_its_own_numerical_profile() {
+        let fixture = Fixture::new();
+        let (source, cfg, index, _, _) = loaded_encoded(
+            &fixture,
+            config(),
+            |_, _| 1.0,
+            |_, rank| if rank == 2 { "BF16" } else { "F32" },
+        );
+        let cpu = QwenOriginalCpu::bind(&source, &cfg, &sha(&cfg), &sha(&index)).unwrap();
+        let math = OriginalQwenLayerMath::bf16_cpu_avx2_diagnostic(&cpu);
+        let bridge = OriginalQwenStateBridge::new(&math);
+        let session = bridge.coordinator_for_model(114).unwrap();
+        let candidate = bridge
+            .prepare_diagnostic_token_bf16_with_trace(&session, 0)
+            .unwrap();
+        let trace = candidate.trace().unwrap();
+        let encoded = synthetic_reference(trace);
+        assert!(
+            pinned(&encoded)
+                .compare(trace, ReferenceTolerance::exact())
+                .unwrap()
+                .exact()
+        );
+        let mut document: Value = serde_json::from_slice(&encoded).unwrap();
+        assert_eq!(document["provenance"]["dtype"], json!("bf16-cpu-avx2"));
+        document["provenance"]["dtype"] = json!("bf16");
+        let mislabeled = serde_json::to_vec(&document).unwrap();
+        assert!(
+            pinned(&mislabeled)
+                .compare(trace, ReferenceTolerance::exact())
+                .is_err()
+        );
     }
     #[test]
     fn actual_qualifiable_reference_gate_records_bounded_source_specific_stages() {
@@ -1156,6 +1276,7 @@ mod original_reference_trace_tests {
             8.0f32.to_bits()
         );
         for name in [
+            "attention_input_norm",
             "gdn_qkv",
             "gdn_conv_silu",
             "gdn_recurrent_fp32",
@@ -1176,6 +1297,16 @@ mod original_reference_trace_tests {
                 "missing full-source observation {name}"
             );
         }
+        let norms = trace
+            .records()
+            .iter()
+            .filter(|obs| obs.stage == "attention_input_norm")
+            .collect::<Vec<_>>();
+        assert_eq!(
+            norms.iter().map(|obs| obs.layer).collect::<Vec<_>>(),
+            [0, 1, 2, 3]
+        );
+        assert_eq!(norms[0].values, [2.0; 4]);
         // Comparison only, never publishes or modifies the root.
         let reference = pinned(&synthetic_reference(trace));
         assert_eq!(reference.origin(), ReferenceOrigin::AnalyticalFixture);

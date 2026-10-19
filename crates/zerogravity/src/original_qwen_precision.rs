@@ -15,8 +15,21 @@ pub enum OriginalNumericalDType {
     F32,
     /// Explicit BF16 dtype-boundary probe, NOT trained-HF parity.
     Bf16Diagnostic,
+    /// BF16 dtype boundaries plus pinned Torch CPU AVX2 BF16 GEMV order.
+    /// Other operators and full trained HF/FLA parity remain unqualified.
+    Bf16CpuAvx2Diagnostic,
 }
 impl OriginalNumericalDType {
+    pub const fn is_bf16(self) -> bool {
+        !matches!(self, Self::F32)
+    }
+    pub const fn reference_name(self) -> &'static str {
+        match self {
+            Self::F32 => "f32",
+            Self::Bf16Diagnostic => "bf16",
+            Self::Bf16CpuAvx2Diagnostic => "bf16-cpu-avx2",
+        }
+    }
     /// Convert finite f32 to IEEE BF16 using round-to-nearest, ties-to-even.
     /// The returned f32 contains exactly representable BF16 bits.
     ///
@@ -95,8 +108,8 @@ impl OriginalNumericalDType {
     /// GDN GatedRMSNorm is *not* zero-centered: normalize FP32; cast
     /// core to its original BF16 dtype; multiply original raw learned gamma;
     /// then multiply SiLU(gate.float()) and cast to original dtype.
-    /// This is distinct from ordinary RMSNorm and directly matches the
-    /// published eager operator order, but not unqualified FLA kernels.
+    /// Diagnostic gamma multiplication currently casts to the input dtype.
+    /// Original F32-gamma promotion and trained FLA math remain unqualified.
     pub fn gated_rms(
         self,
         source: SourceIdentity,

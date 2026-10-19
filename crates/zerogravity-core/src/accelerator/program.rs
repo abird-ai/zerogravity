@@ -6,6 +6,7 @@
 
 use super::SourceIdentity;
 use crate::quant::QuantKind;
+use crate::source::{SourceTensorRef, TensorSource};
 use crate::{Error, Result};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -61,13 +62,97 @@ impl TensorView {
     }
 }
 
+/// Raw matrix header order; packed output rows are never transposed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MatrixAxes {
+    /// GGUF: [input width, output rows].
+    InputOutput,
+    /// Hugging Face: [output rows, input width].
+    OutputInput,
+}
+impl MatrixAxes {
+    fn shape(self, columns: usize, rows: usize) -> [u64; 2] {
+        match self {
+            Self::InputOutput => [columns as u64, rows as u64],
+            Self::OutputInput => [rows as u64, columns as u64],
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SourceTensor {
     pub source: SourceIdentity,
     pub name: String,
     pub kind: QuantKind,
+    pub axes: MatrixAxes,
     pub columns: usize,
     pub rows: usize,
+}
+impl SourceTensor {
+    /// Bind actual source metadata/bytes without copying or changing raw axes.
+    /// This descriptor grants no operator or trained-model eligibility.
+    pub fn from_source(source: &dyn TensorSource, name: &str, axes: MatrixAxes) -> Result<Self> {
+        let identity = source.source_identity();
+        if !identity.is_bound() || name.is_empty() {
+            return Err(Error::State("unbound forward source tensor".into()));
+        }
+        let actual = source.tensor(name)?;
+        actual.validate()?;
+        let [first, second] = actual.shape else {
+            return Err(Error::Malformed("forward source is not a matrix".into()));
+        };
+        let (columns, rows) = match axes {
+            MatrixAxes::InputOutput => (*first, *second),
+            MatrixAxes::OutputInput => (*second, *first),
+        };
+        let tensor = Self {
+            source: identity,
+            name: name.into(),
+            kind: actual.kind,
+            axes,
+            columns: usize::try_from(columns)
+                .map_err(|_| Error::Limit("forward matrix columns overflow".into()))?,
+            rows: usize::try_from(rows)
+                .map_err(|_| Error::Limit("forward matrix rows overflow".into()))?,
+        };
+        tensor.validate_ref(identity, actual)?;
+        Ok(tensor)
+    }
+
+    fn packed_bytes(&self) -> Result<u64> {
+        if !self.source.is_bound() || self.name.is_empty() || self.columns == 0 || self.rows == 0 {
+            return Err(Error::State("invalid forward source descriptor".into()));
+        }
+        self.kind
+            .byte_len(self.columns as u64)?
+            .checked_mul(self.rows as u64)
+            .ok_or_else(|| Error::Limit("forward matrix byte size overflow".into()))
+    }
+
+    fn validate_ref(&self, identity: SourceIdentity, actual: SourceTensorRef<'_>) -> Result<()> {
+        let bytes = self.packed_bytes()?;
+        actual.validate()?;
+        if self.source != identity
+            || actual.kind != self.kind
+            || actual.shape != self.axes.shape(self.columns, self.rows)
+            || actual.packed_bytes.len() as u64 != bytes
+        {
+            return Err(Error::State(
+                "forward tensor differs from immutable source".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Revalidate a plan descriptor against the same immutable source owner.
+    pub fn validate_source(&self, source: &dyn TensorSource) -> Result<()> {
+        self.packed_bytes()?;
+        let identity = source.source_identity();
+        if self.source != identity {
+            return Err(Error::State("forward tensor source mismatch".into()));
+        }
+        self.validate_ref(identity, source.tensor(&self.name)?)
+    }
 }
 #[derive(Clone, Copy, Debug)]
 pub struct SourceVector<'a> {
@@ -487,11 +572,8 @@ impl PlanBuilder {
         }
     }
     fn source_tensor(&self, tensor: &SourceTensor) -> Result<()> {
-        if tensor.source != self.source
-            || tensor.name.is_empty()
-            || tensor.columns == 0
-            || tensor.rows == 0
-        {
+        tensor.packed_bytes()?;
+        if tensor.source != self.source {
             return Err(Error::State(
                 "forward plan changed source tensor identity".into(),
             ));
@@ -1152,6 +1234,151 @@ impl MathematicalBackend for PlanBuilder {
 mod tests {
     use super::*;
 
+    struct MatrixSource {
+        identity: SourceIdentity,
+        kind: QuantKind,
+        shape: Vec<u64>,
+        packed: Vec<u8>,
+    }
+    impl TensorSource for MatrixSource {
+        fn source_identity(&self) -> SourceIdentity {
+            self.identity
+        }
+        fn tensor(&self, name: &str) -> Result<SourceTensorRef<'_>> {
+            if name != "matrix" {
+                return Err(Error::Malformed("unknown fixture tensor".into()));
+            }
+            Ok(SourceTensorRef {
+                kind: self.kind,
+                shape: &self.shape,
+                packed_bytes: &self.packed,
+            })
+        }
+    }
+    fn matrix_source(shape: &[u64]) -> MatrixSource {
+        MatrixSource {
+            identity: source(),
+            kind: QuantKind::F32,
+            shape: shape.into(),
+            packed: [1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0]
+                .into_iter()
+                .flat_map(f32::to_le_bytes)
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn explicit_matrix_axes_preserve_original_packed_rows_and_plan_shapes() {
+        for (axes, shape) in [
+            (MatrixAxes::InputOutput, [3, 2]),
+            (MatrixAxes::OutputInput, [2, 3]),
+        ] {
+            let original = matrix_source(&shape);
+            let before = original.packed.clone();
+            let tensor = SourceTensor::from_source(&original, "matrix", axes).unwrap();
+            assert_eq!((tensor.columns, tensor.rows, tensor.axes), (3, 2, axes));
+            tensor.validate_source(&original).unwrap();
+            assert_eq!(original.packed, before);
+            assert_eq!(original.shape, shape);
+            let mut plan = builder(vec![StateSlot::Kv(KvDomain(0))]);
+            let x = plan
+                .embed(tensor.clone(), ParameterRef(ParameterSlot::Token))
+                .unwrap();
+            assert_eq!(plan.elements(&x), 3);
+            let y = plan.project(tensor.clone(), &x).unwrap();
+            assert_eq!(plan.elements(&y), 2);
+            assert!(matches!(
+                &plan.nodes[1].operation,
+                PlanOperation::Project { tensor: recorded } if recorded == &tensor
+            ));
+        }
+    }
+
+    #[test]
+    fn source_matrix_binding_rejects_foreign_identity_axes_kind_and_bytes() {
+        let original = matrix_source(&[2, 3]);
+        let tensor =
+            SourceTensor::from_source(&original, "matrix", MatrixAxes::OutputInput).unwrap();
+        for changed in [
+            SourceTensor {
+                source: SourceIdentity::unbound(),
+                ..tensor.clone()
+            },
+            SourceTensor {
+                source: SourceIdentity::from_issued_id(114),
+                ..tensor.clone()
+            },
+            SourceTensor {
+                axes: MatrixAxes::InputOutput,
+                ..tensor.clone()
+            },
+            SourceTensor {
+                kind: QuantKind::F16,
+                ..tensor.clone()
+            },
+            SourceTensor {
+                columns: 2,
+                rows: 3,
+                ..tensor.clone()
+            },
+            SourceTensor {
+                name: "missing".into(),
+                ..tensor.clone()
+            },
+            SourceTensor {
+                rows: 0,
+                ..tensor.clone()
+            },
+            SourceTensor {
+                columns: usize::MAX,
+                rows: 2,
+                ..tensor.clone()
+            },
+        ] {
+            assert!(changed.validate_source(&original).is_err());
+        }
+        let mut foreign = matrix_source(&[2, 3]);
+        foreign.identity = SourceIdentity::from_issued_id(114);
+        assert!(tensor.validate_source(&foreign).is_err());
+        for count in [23, 25] {
+            let mut damaged = matrix_source(&[2, 3]);
+            damaged.packed.resize(count, 0);
+            assert!(tensor.validate_source(&damaged).is_err());
+            assert!(
+                SourceTensor::from_source(&damaged, "matrix", MatrixAxes::OutputInput).is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn source_matrix_constructor_refuses_bad_rank_overflow_and_cross_row_quant_blocks() {
+        for shape in [
+            vec![],
+            vec![6],
+            vec![1, 2, 3],
+            vec![0, 6],
+            vec![u64::MAX, 2],
+        ] {
+            let original = matrix_source(&shape);
+            assert!(
+                SourceTensor::from_source(&original, "matrix", MatrixAxes::OutputInput).is_err()
+            );
+        }
+        let mut original = matrix_source(&[16, 2]);
+        original.kind = QuantKind::Q8_0;
+        original.packed = vec![0; 34];
+        // Total source elements form one block, but output rows do not.
+        assert!(original.tensor("matrix").unwrap().validate().is_ok());
+        assert!(SourceTensor::from_source(&original, "matrix", MatrixAxes::InputOutput).is_err());
+        let mut unbound = matrix_source(&[3, 2]);
+        unbound.identity = SourceIdentity::unbound();
+        assert!(SourceTensor::from_source(&unbound, "matrix", MatrixAxes::InputOutput).is_err());
+        assert!(
+            SourceTensor::from_source(&matrix_source(&[3, 2]), "", MatrixAxes::InputOutput)
+                .is_err()
+        );
+    }
+
     fn source() -> SourceIdentity {
         SourceIdentity::from_issued_id(113)
     }
@@ -1160,6 +1387,7 @@ mod tests {
             source: source(),
             name: "token_embd.weight".into(),
             kind: QuantKind::F32,
+            axes: MatrixAxes::InputOutput,
             columns,
             rows: 4,
         }

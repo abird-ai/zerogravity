@@ -182,7 +182,7 @@ impl OriginalTraceRecorder {
         Ok(())
     }
     pub fn finish(self, binding: TraceBinding) -> Result<OriginalQwenTrace> {
-        if binding.dtype == OriginalNumericalDType::Bf16Diagnostic
+        if binding.dtype.is_bf16()
             && self.records.iter().any(|r| {
                 r.stage != "gdn_recurrent_fp32"
                     && r.values.iter().any(|v| v.to_bits() & 0xffff != 0)
@@ -356,6 +356,7 @@ impl OriginalReferenceTrace {
         let dtype = match p.dtype.as_str() {
             "f32" => OriginalNumericalDType::F32,
             "bf16" => OriginalNumericalDType::Bf16Diagnostic,
+            "bf16-cpu-avx2" => OriginalNumericalDType::Bf16CpuAvx2Diagnostic,
             _ => return Err(Error::Unsupported("original reference dtype".into())),
         };
         if p.gdn_state_layer.is_some_and(|i| i >= 128)
@@ -417,10 +418,7 @@ impl OriginalReferenceTrace {
                 }
                 let parsed = u32::from_str_radix(&bits, 16)
                     .map_err(|_| Error::Malformed("invalid IEEE reference word".into()))?;
-                if dtype == OriginalNumericalDType::Bf16Diagnostic
-                    && record.stage != "gdn_recurrent_fp32"
-                    && parsed & 0xffff != 0
-                {
+                if dtype.is_bf16() && record.stage != "gdn_recurrent_fp32" && parsed & 0xffff != 0 {
                     return Err(Error::Malformed(
                         "reference BF16 output stage contains non-BF16 bits".into(),
                     ));

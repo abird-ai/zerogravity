@@ -45,13 +45,30 @@ impl<'a> QwenOriginalCpu<'a> {
         input: &[f32],
         provider: Option<&dyn MatVecKernel>,
     ) -> Result<Vec<f32>> {
+        self.project_with_profile(
+            tensor_name,
+            input,
+            provider,
+            crate::weights::SourceProjectionProfile::Source,
+        )
+    }
+
+    /// Explicit numerical policy in the same original source/CPU operator.
+    pub fn project_with_profile(
+        &self,
+        tensor_name: &str,
+        input: &[f32],
+        provider: Option<&dyn MatVecKernel>,
+        profile: crate::weights::SourceProjectionProfile,
+    ) -> Result<Vec<f32>> {
         let tensor = self.bound.text_tensor(tensor_name)?;
-        crate::original_hf::output_first_projection(
+        crate::original_hf::output_first_projection_with_profile(
             self.bound.source_identity(),
             tensor_name,
             tensor,
             input,
             provider,
+            profile,
         )
     }
 

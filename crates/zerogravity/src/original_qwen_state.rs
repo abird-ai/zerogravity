@@ -25,6 +25,7 @@ fn named(slot: StateSlot, dtype: OriginalNumericalDType) -> (String, u64) {
     let offset = match dtype {
         OriginalNumericalDType::F32 => 0,
         OriginalNumericalDType::Bf16Diagnostic => 0x10,
+        OriginalNumericalDType::Bf16CpuAvx2Diagnostic => 0x20,
     };
     let (name, schema) = match slot {
         StateSlot::Kv(KvDomain(i)) => (format!("qwen.original.kv.{i}"), ORIGINAL_KV_V1),
@@ -260,7 +261,7 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
         coordinator: &TaskCoordinator,
         token: u32,
     ) -> Result<OriginalPreparedToken<'m, 'b, 's>> {
-        if self.math.dtype() != OriginalNumericalDType::Bf16Diagnostic {
+        if !self.math.dtype().is_bf16() {
             return Err(Error::Unsupported(
                 "BF16 diagnostic requires BF16-bound math".into(),
             ));
@@ -274,7 +275,7 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
         coordinator: &TaskCoordinator,
         token: u32,
     ) -> Result<OriginalPreparedToken<'m, 'b, 's>> {
-        if self.math.dtype() != OriginalNumericalDType::Bf16Diagnostic {
+        if !self.math.dtype().is_bf16() {
             return Err(Error::Unsupported(
                 "BF16 trace requires BF16 source math".into(),
             ));
@@ -303,7 +304,7 @@ impl<'m, 'b, 's> OriginalQwenStateBridge<'m, 'b, 's> {
         token: u32,
         gdn_state_layer: Option<usize>,
     ) -> Result<OriginalPreparedToken<'m, 'b, 's>> {
-        if self.math.dtype() != OriginalNumericalDType::Bf16Diagnostic {
+        if !self.math.dtype().is_bf16() {
             return Err(Error::Unsupported(
                 "BF16 selected trace requires BF16 source math".into(),
             ));

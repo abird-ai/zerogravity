@@ -35,6 +35,7 @@ mod checkpoint;
 #[cfg(feature = "diagnostic-cpu-checkpoint")]
 pub use checkpoint::QwenCheckpoint;
 mod forward;
+pub mod original_binding;
 pub use forward::run_layer_sequence;
 #[cfg(feature = "cpu")]
 mod host_math;
@@ -185,11 +186,15 @@ fn state_bytes(layers: &[LayerState]) -> usize {
 /// arbitrarily many independent sessions. It owns the original GGUF bytes,
 /// parsed tensor directory and small source layer constants ONCE. No task
 /// cursor, KV cache, mutable device buffer or session epoch lives here.
+/// An explicit original HF metadata binding retains the same source owner but
+/// refuses sessions/plans until its numerical operators qualify.
 ///
 /// A physical GPU cache keys its immutable weights to this source identity,
 /// so sessions of one loaded model may safely reuse an actual source buffer.
 pub struct LoadedQwenModel {
     weights: SourceWeights,
+    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+    original: Option<original_binding::OriginalQwenBinding>,
     geometry: ModelGeometry,
     layers: Vec<CachedLayer>,
     final_norm: Vec<f32>,
@@ -510,6 +515,8 @@ impl LoadedQwenModel {
         }
         Ok(Arc::new(Self {
             weights,
+            #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+            original: None,
             geometry: g,
             layers,
             final_norm,
@@ -533,6 +540,20 @@ impl LoadedQwenModel {
     }
     /// Borrow the source-bound embedding descriptor without decoding a row.
     pub fn embedding_source(&self, token: u32) -> Result<crate::accelerator::EmbeddingRegion<'_>> {
+        if self.numerical_profile() != original_binding::QwenNumericalProfile::GgufSourceV1 {
+            let tensor = self.matrix_descriptor(original_binding::QwenMatrixRole::Embedding)?;
+            let region = crate::accelerator::EmbeddingRegion {
+                source_identity: self.source_identity(),
+                tensor_name: "model.language_model.embed_tokens.weight",
+                kind: tensor.kind,
+                packed_weights: self.tensor_bytes(&tensor.name)?,
+                token,
+                width: tensor.columns,
+                vocabulary: tensor.rows,
+            };
+            region.validate()?;
+            return Ok(region);
+        }
         self.weights.embedding_region(token, "token_embd.weight")
     }
 
@@ -554,6 +575,7 @@ impl LoadedQwenModel {
 
     #[cfg(any(feature = "cpu", feature = "diagnostic-cpu-checkpoint"))]
     fn validate_numerical_state(&self, position: usize, layers: &[LayerState]) -> Result<()> {
+        self.require_execution_profile()?;
         if position > self.geometry.max_position_embeddings as usize
             || layers.len() != self.layers.len()
         {
@@ -621,6 +643,7 @@ impl QwenDenseCpu {
     /// Binds only the mutable session frontier. No original GGUF or cached
     /// source-layer bytes are copied when this method is called.
     pub fn from_shared(model: Arc<LoadedQwenModel>) -> Result<Self> {
+        model.require_execution_profile()?;
         let authority = SessionAuthority::new(model.source_identity())?;
         let binding = authority.binding();
         let layers = model.initial_layers().to_vec();

@@ -440,15 +440,7 @@ impl ResidentProgram {
                 } else {
                     None
                 };
-                let info = model.tensor(&tensor.name)?;
-                info.validate()?;
-                if info.kind != tensor.kind
-                    || info.shape != [tensor.columns as u64, tensor.rows as u64]
-                {
-                    return Err(Error::State(
-                        "resident tensor differs from immutable source".into(),
-                    ));
-                }
+                tensor.validate_source(model)?;
                 if matches!(node.operation, PlanOperation::Project { .. })
                     && projected.insert(tensor.name.clone())
                 {

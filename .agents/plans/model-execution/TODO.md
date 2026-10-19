@@ -8,14 +8,23 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-- [x] **Original HF tied output head:** verified `tie_word_embeddings`
-  selects the original embedding or independent `lm_head` projection;
-  no alias tensor or fallback source. Source-free authenticated tied/untied
-  fixtures test opposite-sign independent heads, exact F32/BF16 diagnostic
-  logits, immutable source identity and final lease0. Full isolated gate:
-  1148 Rust passed/0 failed/69 ignored/245 suites,18 Python. Both approved
-  original0.8B/2B cache-direct/HF-import release routes retain exact full
-  logits/all42. This fixes the diagnostic head; no trained HF promotion.
+- [x] **Original HF source roles and closed CPU profiles:** authentic rank/axes,
+  raw source dtype and tied/untied heads bind to the same loaded owner;
+  Safetensors output/input rows remain untransposed. Typed original-HF
+  metadata carries the actual config/index/bundle and independent state
+  geometry. Its execution/session/checkpoint-v1 entry points refuse before
+  allocation/backend/I/O; metadata is not an executable-model promotion.
+  Explicit Torch CPU AVX2 BF16 projection diagnostics retain the pinned
+  64-lane FMA/reduction order and separate state/trace schema; the original
+  scalar/GGUF profiles remain distinct. Actual original .8B layer0 QKV
+  is exact6144/6144 for each of tokens11,353. Closed FP32 width128 L2 and
+  key-axis reducers pass authentic compact bitwise goldens and adversarial
+  head/order/finite/overflow cases. Real attention-input norm observations
+  now cover both full and GDN layers. Focused composed suites185/0/2ignored,
+  CPU-free binding8/0, strict CPU/CUDA/Vulkan/qualifier Clippy and full
+  isolated check1164/0/69ignored/245suites+18Python passed. Both approved
+  original .8B/2B cache-direct/HF-import release routes remain exact full
+  logits/all42. Full original HF mathematics remains UNQUALIFIED.
 
 - [ ] **Independent trained BF16/FLA checkpoint gate:** original
   Qwen3.8-27B@1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0 acquired
@@ -26,11 +35,13 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   Transformers5.17/Torch2.13 CPU captures passed archive validation:
   tokens11,353, full248320 logits/all42 domains, actual layer0 stages.
   Keep official473-BF16 loader and source437-BF16+36-F32 profiles distinct;
-  first-token argmax321 vs198. Existing Rust BF16 diagnostic vs source-mixed
-  reference remains UNQUALIFIED: embeddings/direct layer0 norms exact;
-  first projection differs1/6144 then3/6144 BF16 values; full logits/all42
-  diverge. Resolve the independently identified CPU reduction and GDN
-  arithmetic, then original GPU/FLA/state/streaming gates before enabling
+  first-token argmax321 vs198. Explicit new CPU64 diagnostic vs source-mixed
+  reference remains UNQUALIFIED: embeddings/direct layer0 norms and both
+  QKV projections exact; layer0 convolution state exact,41/42 domains still
+  differ. Full248320 logits differ214245/214285 words, maxabs .22119140625/
+  .1875. First token exposes conv/SiLU signedzero; second exposes GDN state.
+  Complete pinned convolution, chunk64/cached recurrent, coefficients and
+  gated RMS arithmetic, then original GPU/FLA/state/streaming gates before enabling
   trained HF execution or27B serving. User authorizes required runtime/model
   acquisition/testing; dated source-free slice restrictions below are history.
 - [ ] **Next trained reference gate:** qualify exact original HF BF16
@@ -152,6 +163,17 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### f26232e — authentic tied original output heads
+
+- [x] **Original HF tied output head:** verified `tie_word_embeddings`
+  selects the original embedding or independent `lm_head` projection;
+  no alias tensor or fallback source. Source-free authenticated tied/untied
+  fixtures test opposite-sign independent heads, exact F32/BF16 diagnostic
+  logits, immutable source identity and final lease0. Full isolated gate:
+  1148 Rust passed/0 failed/69 ignored/245 suites,18 Python. Both approved
+  original0.8B/2B cache-direct/HF-import release routes retain exact full
+  logits/all42. This fixes the diagnostic head; no trained HF promotion.
 
 ### 1c0bb41 — pinned numerical reference seam
 

@@ -11,6 +11,8 @@ default = []
 cpu = ["dep:zerogravity-cpu"]
 text = ["dep:tokenizers"]
 diagnostic-gdn-trace = []
+# Source metadata only; original numerical execution remains refused.
+original-hf-binding = ["zerogravity-artifacts/cache"]
 diagnostic-cpu-checkpoint = ["zerogravity-core/diagnostic-cpu-checkpoint"]
 
 [dependencies]
@@ -21,3 +23,4 @@ tokenizers = { version = "=0.22.2", default-features = false, features = ["fancy
 
 [dev-dependencies]
 serde_json = "=1.0.151"
+sha2 = "=0.10.9"

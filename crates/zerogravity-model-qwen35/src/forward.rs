@@ -4,9 +4,10 @@
 use super::{CachedLayer, LoadedQwenModel, layer_tensor};
 use crate::accelerator::program::{
     AttentionGeometry, ConvDomain, ForwardInputs, ForwardPlan, KvDomain, MathematicalBackend,
-    PlanBuilder, RecurrentDomain, RopeGeometry, SourceTensor, SourceVector, StateSlot, TensorView,
+    PlanBuilder, RecurrentDomain, RopeGeometry, SourceVector, StateSlot, TensorView,
 };
 use crate::model::LayerKind;
+use crate::original_binding::QwenMatrixRole;
 use crate::{Error, Result};
 
 /// One family-neutral Qwen **layer traversal** shared by the existing
@@ -29,23 +30,6 @@ pub fn run_layer_sequence<V>(
     Ok(residual)
 }
 
-fn tensor(model: &LoadedQwenModel, name: &str) -> Result<SourceTensor> {
-    let info = model.tensor_info(name)?;
-    if info.shape.len() != 2 {
-        return Err(Error::Malformed(format!(
-            "forward source tensor {name} is not a matrix"
-        )));
-    }
-    Ok(SourceTensor {
-        source: model.source_identity(),
-        name: name.into(),
-        kind: info.kind,
-        columns: usize::try_from(info.shape[0])
-            .map_err(|_| Error::Limit("forward matrix columns overflow".into()))?,
-        rows: usize::try_from(info.shape[1])
-            .map_err(|_| Error::Limit("forward matrix rows overflow".into()))?,
-    })
-}
 fn vector<'a>(model: &LoadedQwenModel, name: &'a str, values: &'a [f32]) -> SourceVector<'a> {
     SourceVector {
         source: model.source_identity(),
@@ -56,10 +40,10 @@ fn vector<'a>(model: &LoadedQwenModel, name: &'a str, values: &'a [f32]) -> Sour
 fn project<B: MathematicalBackend>(
     model: &LoadedQwenModel,
     math: &mut B,
-    name: &str,
+    role: QwenMatrixRole,
     input: &B::Value,
 ) -> Result<B::Value> {
-    math.project(tensor(model, name)?, input)
+    math.project(model.matrix_descriptor(role)?, input)
 }
 fn expect_elements<B: MathematicalBackend>(
     math: &B,
@@ -79,7 +63,11 @@ pub(super) fn forward_token<B: MathematicalBackend>(
     input: ForwardInputs<B::Index>,
     need_logits: bool,
 ) -> Result<Option<B::Value>> {
-    let x = math.embed(tensor(model, "token_embd.weight")?, input.token)?;
+    model.require_execution_profile()?;
+    let x = math.embed(
+        model.matrix_descriptor(QwenMatrixRole::Embedding)?,
+        input.token,
+    )?;
     math.observe(usize::MAX, "embedding", &x)?;
     let x = run_layer_sequence(&model.geometry.layers, x, |i, kind, mut x| {
         let layer = &model.layers[i];
@@ -107,12 +95,12 @@ pub(super) fn forward_token<B: MathematicalBackend>(
         let name = layer_tensor(i, "post_attention_norm.weight");
         let norm = math.rms(&name, &x, vector(model, &name, &layer.ffn_norm), model.eps)?;
         math.observe(i, "ffn_input_norm", &norm)?;
-        let gate = project(model, math, &layer_tensor(i, "ffn_gate.weight"), &norm)?;
-        let up = project(model, math, &layer_tensor(i, "ffn_up.weight"), &norm)?;
+        let gate = project(model, math, QwenMatrixRole::FfnGate(i), &norm)?;
+        let up = project(model, math, QwenMatrixRole::FfnUp(i), &norm)?;
         expect_elements(math, &gate, layer.ffn_dim, "FFN projection mismatch")?;
         expect_elements(math, &up, layer.ffn_dim, "FFN projection mismatch")?;
         let fused = math.silu(&layer_tensor(i, "ffn_silu"), &gate, Some(&up))?;
-        let ff = project(model, math, &layer_tensor(i, "ffn_down.weight"), &fused)?;
+        let ff = project(model, math, QwenMatrixRole::FfnDown(i), &fused)?;
         math.observe(i, "ffn_output", &ff)?;
         x = math.add(&layer_tensor(i, "ffn_residual"), &x, &ff)?;
         math.assert_finite(i, &x)?;
@@ -128,7 +116,7 @@ pub(super) fn forward_token<B: MathematicalBackend>(
     let name = "output_norm.weight";
     let norm = math.rms(name, &x, vector(model, name, &model.final_norm), model.eps)?;
     math.observe(usize::MAX, "final_norm", &norm)?;
-    Ok(Some(project(model, math, "token_embd.weight", &norm)?))
+    Ok(Some(project(model, math, QwenMatrixRole::Output, &norm)?))
 }
 
 fn gdn_layer<B: MathematicalBackend>(
@@ -141,10 +129,10 @@ fn gdn_layer<B: MathematicalBackend>(
     let heads = model.geometry.recurrent_value_heads.unwrap() as usize;
     let d = layer.ssm_norm.as_ref().unwrap().len();
     let width = heads * d;
-    let qkv = project(model, math, &layer_tensor(i, "attn_qkv.weight"), x)?;
-    let z = project(model, math, &layer_tensor(i, "attn_gate.weight"), x)?;
-    let alpha = project(model, math, &layer_tensor(i, "ssm_alpha.weight"), x)?;
-    let beta = project(model, math, &layer_tensor(i, "ssm_beta.weight"), x)?;
+    let qkv = project(model, math, QwenMatrixRole::GdnQkv(i), x)?;
+    let z = project(model, math, QwenMatrixRole::GdnGate(i), x)?;
+    let alpha = project(model, math, QwenMatrixRole::GdnAlpha(i), x)?;
+    let beta = project(model, math, QwenMatrixRole::GdnBeta(i), x)?;
     expect_elements(math, &qkv, width * 3, "GDN projected dimensions mismatch")?;
     expect_elements(math, &z, width, "GDN projected dimensions mismatch")?;
     expect_elements(math, &alpha, heads, "GDN projected dimensions mismatch")?;
@@ -244,7 +232,7 @@ fn gdn_layer<B: MathematicalBackend>(
         math.observe(i, "gdn_core_output", &core)?;
         math.observe(i, "gdn_gated_output", &output)?;
     }
-    project(model, math, &layer_tensor(i, "ssm_out.weight"), &output)
+    project(model, math, QwenMatrixRole::GdnOutput(i), &output)
 }
 
 fn attention_layer<B: MathematicalBackend>(
@@ -258,9 +246,9 @@ fn attention_layer<B: MathematicalBackend>(
     let n_q = model.geometry.num_attention_heads as usize;
     let n_kv = model.geometry.num_key_value_heads as usize;
     let d = model.geometry.head_dim as usize;
-    let q_proj = project(model, math, &layer_tensor(i, "attn_q.weight"), x)?;
-    let k_proj = project(model, math, &layer_tensor(i, "attn_k.weight"), x)?;
-    let v_proj = project(model, math, &layer_tensor(i, "attn_v.weight"), x)?;
+    let q_proj = project(model, math, QwenMatrixRole::Query(i), x)?;
+    let k_proj = project(model, math, QwenMatrixRole::Key(i), x)?;
+    let v_proj = project(model, math, QwenMatrixRole::Value(i), x)?;
     #[cfg(feature = "diagnostic-gdn-trace")]
     {
         math.observe(i, "full_qg_raw", &q_proj)?;
@@ -367,7 +355,7 @@ fn attention_layer<B: MathematicalBackend>(
     let gated = math.sigmoid_mul(&layer_tensor(i, "attn_gate"), &result, &gates)?;
     #[cfg(feature = "diagnostic-gdn-trace")]
     math.observe(i, "full_gated", &gated)?;
-    project(model, math, &layer_tensor(i, "attn_output.weight"), &gated)
+    project(model, math, QwenMatrixRole::AttentionOutput(i), &gated)
 }
 
 impl LoadedQwenModel {
@@ -379,6 +367,7 @@ impl LoadedQwenModel {
         need_logits: bool,
         capture: bool,
     ) -> Result<ForwardPlan> {
+        self.require_execution_profile()?;
         if prefix_capacity == 0 || prefix_capacity > self.geometry.max_position_embeddings as usize
         {
             return Err(Error::Limit(
@@ -402,5 +391,62 @@ impl LoadedQwenModel {
             PlanBuilder::new(self.source_identity(), prefix_capacity, domains, capture)?;
         let output = forward_token(self, &mut builder, PlanBuilder::inputs(), need_logits)?;
         builder.finish(output)
+    }
+}
+
+#[cfg(all(test, feature = "cpu"))]
+mod matrix_axes_tests {
+    use super::*;
+    use crate::accelerator::program::{MatrixAxes, SourceTensor};
+    use crate::accelerator::{MatVecRegion, SourceIdentity};
+    use zerogravity_core::quant::QuantKind;
+    use zerogravity_core::source::{SourceTensorRef, TensorSource};
+
+    struct OriginalRows {
+        source: SourceIdentity,
+        shape: [u64; 2],
+        bytes: Vec<u8>,
+    }
+    impl TensorSource for OriginalRows {
+        fn source_identity(&self) -> SourceIdentity {
+            self.source
+        }
+        fn tensor(&self, _name: &str) -> Result<SourceTensorRef<'_>> {
+            Ok(SourceTensorRef {
+                kind: QuantKind::F32,
+                shape: &self.shape,
+                packed_bytes: &self.bytes,
+            })
+        }
+    }
+
+    #[test]
+    fn gguf_and_hf_raw_axes_use_identical_original_cpu_row_math() {
+        for (axes, shape) in [
+            (MatrixAxes::InputOutput, [3, 2]),
+            (MatrixAxes::OutputInput, [2, 3]),
+        ] {
+            let source = OriginalRows {
+                source: SourceIdentity::for_new_allocation().unwrap(),
+                shape,
+                bytes: [1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0]
+                    .into_iter()
+                    .flat_map(f32::to_le_bytes)
+                    .collect(),
+            };
+            let tensor = SourceTensor::from_source(&source, "matrix", axes).unwrap();
+            let actual = crate::weights::source_reference_projection(MatVecRegion {
+                source_identity: tensor.source,
+                tensor_name: &tensor.name,
+                kind: tensor.kind,
+                columns: tensor.columns,
+                rows: tensor.rows,
+                packed_weights: source.tensor("matrix").unwrap().packed_bytes,
+                activation: &[7.0, 8.0, 9.0],
+            })
+            .unwrap();
+            assert_eq!(actual, [50.0, 122.0]);
+            assert_eq!(source.shape, shape);
+        }
     }
 }

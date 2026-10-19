@@ -3,9 +3,13 @@
 //! learned matrix transpose or duplicate mathematical runtime is required.
 //! This does not enable complete trained Qwen3.8 inference.
 
+pub mod reduction;
+
 use crate::accelerator::{MatVecKernel, MatVecRegion, RegionExecution, validate_completed};
 use crate::quant::QuantKind;
-use crate::weights::{MAX_MATRIX_ROWS, source_reference_projection};
+use crate::weights::{
+    MAX_MATRIX_ROWS, SourceProjectionProfile, source_reference_projection_with_profile,
+};
 use crate::{Error, Result};
 use zerogravity_core::source::SourceTensorRef;
 
@@ -17,6 +21,25 @@ pub fn output_first_projection(
     tensor: SourceTensorRef<'_>,
     input: &[f32],
     provider: Option<&dyn MatVecKernel>,
+) -> Result<Vec<f32>> {
+    output_first_projection_with_profile(
+        source_id,
+        tensor_name,
+        tensor,
+        input,
+        provider,
+        SourceProjectionProfile::Source,
+    )
+}
+
+/// Closed CPU numerical profile; an unaware physical provider must refuse.
+pub fn output_first_projection_with_profile(
+    source_id: crate::accelerator::SourceIdentity,
+    tensor_name: &str,
+    tensor: SourceTensorRef<'_>,
+    input: &[f32],
+    provider: Option<&dyn MatVecKernel>,
+    profile: SourceProjectionProfile,
 ) -> Result<Vec<f32>> {
     tensor.validate()?;
     if !source_id.is_bound()
@@ -49,6 +72,11 @@ pub fn output_first_projection(
         activation: input,
     };
     if let Some(provider) = provider {
+        if profile != SourceProjectionProfile::Source {
+            return Err(Error::Unsupported(
+                "physical provider does not declare the CPU projection profile".into(),
+            ));
+        }
         match provider.try_execute(region)? {
             RegionExecution::Unsupported => {}
             RegionExecution::Completed(values) => {
@@ -57,13 +85,63 @@ pub fn output_first_projection(
             }
         }
     }
-    source_reference_projection(region)
+    source_reference_projection_with_profile(region, profile)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::accelerator::{MatVecKernel, RegionExecution, SourceIdentity};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    struct UnawareProvider(AtomicBool);
+    impl MatVecKernel for UnawareProvider {
+        fn try_execute(&self, region: MatVecRegion<'_>) -> Result<RegionExecution> {
+            self.0.store(true, Ordering::Relaxed);
+            Ok(RegionExecution::Completed(vec![77.0; region.rows]))
+        }
+    }
+    #[test]
+    fn explicit_cpu_profile_refuses_unaware_provider_without_invoking_it() {
+        let provider = UnawareProvider(AtomicBool::new(false));
+        let packed = 0x3f80u16.to_le_bytes();
+        let tensor = SourceTensorRef {
+            kind: QuantKind::Bf16,
+            shape: &[1, 1],
+            packed_bytes: &packed,
+        };
+        let source = source_id();
+        assert!(matches!(
+            output_first_projection_with_profile(
+                source,
+                "synthetic.weight",
+                tensor,
+                &[1.0],
+                Some(&provider),
+                SourceProjectionProfile::TorchCpuBf16Avx2,
+            ),
+            Err(Error::Unsupported(_))
+        ));
+        assert!(!provider.0.load(Ordering::Relaxed));
+        assert_eq!(
+            output_first_projection_with_profile(
+                source,
+                "synthetic.weight",
+                tensor,
+                &[1.0],
+                None,
+                SourceProjectionProfile::TorchCpuBf16Avx2,
+            )
+            .unwrap(),
+            [1.0]
+        );
+        assert_eq!(
+            output_first_projection(source, "synthetic.weight", tensor, &[1.0], Some(&provider))
+                .unwrap(),
+            [77.0]
+        );
+        assert!(provider.0.load(Ordering::Relaxed));
+    }
 
     fn source_id() -> SourceIdentity {
         SourceIdentity::for_new_allocation().unwrap()

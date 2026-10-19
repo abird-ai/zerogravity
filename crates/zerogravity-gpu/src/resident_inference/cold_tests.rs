@@ -5,7 +5,7 @@ use zerogravity_core::{
     accelerator::{
         SourceIdentity,
         program::{
-            AttentionGeometry, ConvDomain, KvDomain, MathematicalBackend, ParameterRef,
+            AttentionGeometry, ConvDomain, KvDomain, MathematicalBackend, MatrixAxes, ParameterRef,
             PlanBuilder, SourceTensor, SourceVector, TensorView,
         },
     },
@@ -73,6 +73,7 @@ fn plan(
                 source,
                 name: "embedding".into(),
                 kind: QuantKind::Q8_0,
+                axes: MatrixAxes::InputOutput,
                 columns: 32,
                 rows,
             },
@@ -154,6 +155,87 @@ fn cold_source_capacity_and_packed_shape_guards_precede_device_ownership() {
     source.shape = [32, 32];
     source.packed.pop();
     assert!(preflight_profile(&source, &valid).is_err());
+}
+
+struct OutputFirstSource {
+    identity: SourceIdentity,
+    kind: QuantKind,
+    embedding: Vec<u8>,
+    projection: Vec<u8>,
+}
+impl TensorSource for OutputFirstSource {
+    fn source_identity(&self) -> SourceIdentity {
+        self.identity
+    }
+    fn tensor(&self, name: &str) -> Result<SourceTensorRef<'_>> {
+        match name {
+            "embedding" => Ok(SourceTensorRef {
+                kind: QuantKind::Q8_0,
+                shape: &[32, 64],
+                packed_bytes: &self.embedding,
+            }),
+            "output-first" => Ok(SourceTensorRef {
+                kind: self.kind,
+                shape: &[64, 32],
+                packed_bytes: &self.projection,
+            }),
+            _ => Err(Error::Malformed("unknown axes fixture tensor".into())),
+        }
+    }
+}
+fn output_first_plan(source: &OutputFirstSource, axes: MatrixAxes) -> ForwardPlan {
+    let mut builder = PlanBuilder::new(
+        source.identity,
+        256,
+        vec![StateSlot::Conv(ConvDomain(0))],
+        false,
+    )
+    .unwrap();
+    let embedding =
+        SourceTensor::from_source(source, "embedding", MatrixAxes::InputOutput).unwrap();
+    let mut projection =
+        SourceTensor::from_source(source, "output-first", MatrixAxes::OutputInput).unwrap();
+    projection.axes = axes;
+    let input = builder
+        .embed(embedding, ParameterRef(ParameterSlot::Token))
+        .unwrap();
+    let hidden = builder
+        .conv_step(
+            "conv",
+            ConvDomain(0),
+            &input,
+            SourceVector {
+                source: source.identity,
+                name: "conv.weight",
+                values: &[0.0; 128],
+            },
+        )
+        .unwrap();
+    let output = builder.project(projection, &hidden).unwrap();
+    builder.advance_frontier().unwrap();
+    builder.finish(Some(output)).unwrap()
+}
+
+#[test]
+fn cold_output_first_descriptor_keeps_raw_shape_and_existing_codec_gates() {
+    let mut source = OutputFirstSource {
+        identity: SourceIdentity::for_new_allocation().unwrap(),
+        kind: QuantKind::F32,
+        embedding: vec![0; 64 * 34],
+        projection: vec![0; 64 * 32 * 4],
+    };
+    let valid = output_first_plan(&source, MatrixAxes::OutputInput);
+    assert_eq!(preflight_profile(&source, &valid).unwrap().1, 64);
+    let wrong = output_first_plan(&source, MatrixAxes::InputOutput);
+    assert!(preflight_profile(&source, &wrong).is_err());
+    // Axis metadata alone cannot enable an unimplemented native source codec.
+    source.kind = QuantKind::Bf16;
+    source.projection = vec![0; 64 * 32 * 2];
+    let unsupported = output_first_plan(&source, MatrixAxes::OutputInput);
+    assert!(matches!(
+        preflight_profile(&source, &unsupported),
+        Err(Error::Unsupported(_))
+    ));
 }
 
 #[test]
@@ -240,6 +322,7 @@ fn projection_storage_reuse_cannot_bypass_embedding_codec_validation() {
                     source: source.identity,
                     name: "embedding".into(),
                     kind: QuantKind::Q8_0,
+                    axes: MatrixAxes::InputOutput,
                     columns: 32,
                     rows: 32,
                 },
@@ -250,6 +333,7 @@ fn projection_storage_reuse_cannot_bypass_embedding_codec_validation() {
             source: source.identity,
             name: "projection-as-embedding".into(),
             kind,
+            axes: MatrixAxes::InputOutput,
             columns: 32,
             rows: 32,
         };
@@ -303,6 +387,7 @@ fn every_attention_state_reference_matches_the_appended_kv_slab() {
                     source: source.identity,
                     name: "embedding".into(),
                     kind: QuantKind::Q8_0,
+                    axes: MatrixAxes::InputOutput,
                     columns: 256,
                     rows: 32,
                 },

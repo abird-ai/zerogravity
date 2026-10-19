@@ -155,6 +155,7 @@ impl QwenCheckpoint {
 }
 
 fn checked_bytes(model: &LoadedQwenModel, position: usize) -> Result<usize> {
+    model.require_execution_profile()?;
     if u64::try_from(position)
         .ok()
         .is_none_or(|p| p > model.geometry.max_position_embeddings)
@@ -281,6 +282,7 @@ impl LoadedQwenModel {
         expected_model_sha256: [u8; 32],
         expected_tokens_sha256: [u8; 32],
     ) -> Result<QwenCheckpoint> {
+        self.require_execution_profile()?;
         let file = File::open(path)?;
         if file.metadata()?.len() > MAX_QWEN_STATE_BYTES as u64 + 1_048_576 {
             return Err(Error::Limit("checkpoint exceeds CPU state budget".into()));

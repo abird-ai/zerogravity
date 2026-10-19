@@ -73,16 +73,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
         }
     }
     fn tensor(&self, tensor: &SourceTensor) -> Result<()> {
-        let actual = self.engine.weights.tensor(&tensor.name)?;
-        if tensor.source != self.engine.weights.source_identity()
-            || tensor.kind != actual.kind
-            || actual.shape != [tensor.columns as u64, tensor.rows as u64]
-        {
-            return Err(Error::State(
-                "host forward source descriptor changed".into(),
-            ));
-        }
-        Ok(())
+        tensor.validate_source(self.engine.model.as_ref())
     }
     fn vector(&self, vector: SourceVector<'_>) -> Result<()> {
         if vector.source != self.engine.weights.source_identity() {
