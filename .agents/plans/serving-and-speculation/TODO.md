@@ -8,33 +8,39 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
-- [x] **P22 serialized owned provider lifecycle:** optional strict
-  `--provider-lifecycle` specs launch one fresh foreground process per
-  actual ABBA/BAAB sample, with literal loopback vacancy checks, bounded
-  startup/shutdown/logs, exact model readiness, finite optional warmup and
-  isolated receipts. `cold_process` means a fresh process without warmup;
-  it does not mean evicted OS/storage/device caches. `warmed_process`
-  adds one ordinary unmeasured request. Direct argv only; Podman binds
-  the first fresh CID and stops only that owned container via the same
-  local runtime prefix. Cleanup precedes evidence writes; receipt/log/
-  reader/process/endpoint failures block the next sample. Environment
-  names and redacted argv are recorded; private raw logs are capped/drained.
-  Existing already-running-endpoint comparison remains available.
-- [x] **Lifecycle acceptance:** source-free actual localhost ABBA/BAAB,
-  exclusive ownership, warm/cold, startup/model/hang/warmup/measurement
-  failures, TERM-to-KILL, CID overwrite/missing/stop failure and five
-  persistent receipt-I/O failures passed; all owned readers/processes/
-  endpoints retired before any next sample. Root independently passed
-  comparator/benchmark self-tests and pycompile. Two real GPU providers
-  also passed SERIAL startup, one warmup request and complete shutdown:
-  accepted B7 ZG mixed-GGUF CUDA, then immutable pinned vLLM0.31.0-cu129
-  original-HF BF16. Each returned GPU telemetry to baseline41MiB; live
-  samples1059/4203MiB are advisory samples, not peaks or reservations.
-  Those sources/quant/math are explicitly unmatched: this is lifecycle
-  qualification ONLY, not a benchmark or numerical/performance parity.
-  Complete isolated gate1202 Rust/0failed/69ignored/248 suites plus18Python,
-  strict CUDA/Vulkan/qualifier Clippy and both approved release parity
-  routes passed. Matched source-correct SLO goodput remains unset.
+- [x] **P12 block-local CUDA activation preparation:** one native32-lane
+  workgroup preserves source ordered finite/max/scale/rounding/code/sum
+  arithmetic for Q4_0/Q4_1/Q8_0/Q6_K projections. Original seven buffers,
+  composite/status stages, leases, queue and completion remain authoritative.
+  Cold checked bindings remove repeated warm handle/capability/alias setup;
+  only explicit non-CUDA selection retains the old lowering. CUDA errors
+  propagate. Projections use5 launches versus10 (Q6_K:8), before certification.
+- [x] **Current physical acceptance:**272 preparation cases/all7 buffers/
+  1,483,608 words exact; both original0.8B/2B complete B2/4/8 unequal-frontier
+  graphs pass all248320 logits/all42 domains versus independent CPU AND B1,
+  feedback/refill/abandoned Ready/stale packets/final reservation0. Two real
+  pressure cases pass prelaunch refusal, B4 progress and B8 after release.
+  Eight serving-worker and six HTTP cases pass both models B2/4/8, EOS,
+  credit/cancel/disconnect/replay and final0. Four fresh graph/sampler unknown
+  completions retain1824/1719 and1828/1723 handles, unchanged roots/all42,
+ 4GiB envelope, fence and no recovery. Complete isolated gate1218 Rust/0fail/
+ 69ignored/248 suites plus18Python/release/installer/Nix; strict CUDA/Vulkan/
+  qualifier and both original release parity routes pass.
+- [x] **Bounded same-engine0.8B warmed ABBA:**32 offers/32 completed/256
+  output tokens across four fresh serialized samples; all eight requests/sample
+  have individual token events and identical IDs/text/usage/finish reason.
+  Each sample executes eight B8 cohorts with zero refusal/failure/cancel.
+  Mean wave39.14206→33.163665s (-15.3%); dispatches2,072,360→1,722,640
+  (-16.9%). Mean of per-sample client ITL p95:0.3911→0.3933s, no tail
+  improvement established. Both miss the declared10s TTFT SLO; goodput0.
+  Source-correct SLO goodput remains unset. This is ZG versus ZG only.
+- [ ] **P12 performance acceptance:** finish same-Zerogravity release A/B
+  cold/warm ABBA/BAAB for both approved models with real native cohorts,
+  exact outputs, token events, memory and dispatch counts. An initial4GiB
+  device/4GiB provider attempt returned eight requests but no native work;
+  typed staging-capacity refusals correctly rejected the measurement. Repeat
+  with the accepted4GiB provider/5GiB device limits on BOTH providers.
+  Preserve failed evidence. No vLLM performance or source-correct SLO claim.
 
 - [ ] **P12 fused continuous GPU serving:** extend the accepted CUDA B2/B4/B8
   HTTP path with paged hybrid KV/recurrent cache, physically safe
@@ -98,6 +104,37 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 - [ ] Preserve zero untriaged frontier/disposition requirements before any full-parity claim; synthetic acceptance, fewer launches and competitor measurements do not establish local parity or speed.
 
 ## Committed
+
+### 1b599df — serialized owned benchmark provider lifecycle
+
+- [x] **P22 serialized owned provider lifecycle:** optional strict
+  `--provider-lifecycle` specs launch one fresh foreground process per
+  actual ABBA/BAAB sample, with literal loopback vacancy checks, bounded
+  startup/shutdown/logs, exact model readiness, finite optional warmup and
+  isolated receipts. `cold_process` means a fresh process without warmup;
+  it does not mean evicted OS/storage/device caches. `warmed_process`
+  adds one ordinary unmeasured request. Direct argv only; Podman binds
+  the first fresh CID and stops only that owned container via the same
+  local runtime prefix. Cleanup precedes evidence writes; receipt/log/
+  reader/process/endpoint failures block the next sample. Environment
+  names and redacted argv are recorded; private raw logs are capped/drained.
+  Existing already-running-endpoint comparison remains available.
+- [x] **Lifecycle acceptance:** source-free actual localhost ABBA/BAAB,
+  exclusive ownership, warm/cold, startup/model/hang/warmup/measurement
+  failures, TERM-to-KILL, CID overwrite/missing/stop failure and five
+  persistent receipt-I/O failures passed; all owned readers/processes/
+  endpoints retired before any next sample. Root independently passed
+  comparator/benchmark self-tests and pycompile. Two real GPU providers
+  also passed SERIAL startup, one warmup request and complete shutdown:
+  accepted B7 ZG mixed-GGUF CUDA, then immutable pinned vLLM0.31.0-cu129
+  original-HF BF16. Each returned GPU telemetry to baseline41MiB; live
+  samples1059/4203MiB are advisory samples, not peaks or reservations.
+  Those sources/quant/math are explicitly unmatched: this is lifecycle
+  qualification ONLY, not a benchmark or numerical/performance parity.
+  Complete isolated gate1202 Rust/0failed/69ignored/248 suites plus18Python,
+  strict CUDA/Vulkan/qualifier Clippy and both approved release parity
+  routes passed. Matched source-correct SLO goodput remains unset.
+
 
 ### dbb5f4f — unequal native decode frontiers and bounded token observations
 

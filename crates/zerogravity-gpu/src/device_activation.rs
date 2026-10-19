@@ -6,6 +6,7 @@
 //! by `handles` must be retained by the existing InFlightRegion BEFORE calling
 //! `launch_prepare`; both status arrays must join its actual readback cohort.
 use crate::activation_quant::{self, ActivationLayout, PARAMETER_WORDS};
+use crate::activation_quant_fused::{BlockBindings, PreparedBlocks};
 use cubecl::{client::Client, prelude::*, server::Handle};
 use zerogravity_artifacts::quant::QuantKind;
 use zerogravity_core::Error;
@@ -15,6 +16,7 @@ use zerogravity_core::Result;
 /// Source bytes and final GEMV output are separately owned by the caller.
 pub(crate) struct DeviceActivation {
     layout: ActivationLayout,
+    prepared_blocks: Option<PreparedBlocks>,
     pub input: Handle,
     pub weight_scales: Handle,
     pub biases: Handle,
@@ -132,14 +134,16 @@ impl DeviceActivation {
         biases: &[f32],
     ) -> Result<Self> {
         Self::validate_inputs(layout, input, weight_scales, biases)?;
+        crate::activation_quant_fused::ensure_selected_capability(client)?;
         // Resolve every checked byte calculation before the first allocation.
         Self::admission_bytes(layout)?;
         let parameters_bytes = layout.blocks * PARAMETER_WORDS * 4;
         let columns_bytes = layout.columns * 4;
         let composite_bytes = layout.composite_count * 4;
         let offsets_bytes = if layout.with_bias { composite_bytes } else { 4 };
-        Ok(Self {
+        let mut bound = Self {
             layout: *layout,
+            prepared_blocks: None,
             input: client.create_from_slice(f32::as_bytes(input)),
             weight_scales: client.create_from_slice(f32::as_bytes(weight_scales)),
             biases: if layout.with_bias {
@@ -154,7 +158,9 @@ impl DeviceActivation {
             offsets: client.empty(offsets_bytes),
             block_status: client.empty(layout.blocks * 4),
             row_status: client.empty(layout.rows * 4),
-        })
+        };
+        bound.prepared_blocks = bound.bind_blocks(client)?;
+        Ok(bound)
     }
 
     /// Bind already-resident input/static metadata and seven admitted scratch
@@ -210,8 +216,9 @@ impl DeviceActivation {
                 "resident activation binding service/size mismatch".into(),
             ));
         }
-        Ok(Self {
+        let mut bound = Self {
             layout: *layout,
+            prepared_blocks: None,
             input,
             weight_scales,
             biases,
@@ -222,7 +229,24 @@ impl DeviceActivation {
             offsets,
             block_status,
             row_status,
-        })
+        };
+        bound.prepared_blocks = bound.bind_blocks(client)?;
+        Ok(bound)
+    }
+
+    fn bind_blocks(&self, client: &Client) -> Result<Option<PreparedBlocks>> {
+        PreparedBlocks::for_cuda(
+            client,
+            &self.layout,
+            1,
+            &BlockBindings {
+                input: &self.input,
+                parameters: &self.parameters,
+                scaled: &self.scaled,
+                codes: &self.codes,
+                block_status: &self.block_status,
+            },
+        )
     }
 
     /// Retain all originals through existing physical completion/quarantine.
@@ -242,17 +266,19 @@ impl DeviceActivation {
         ]
     }
 
-    /// Submit seven ordered physical source kernels for 32-value blocks, or
-    /// five for Q8_K (whose unused sum remains the initialized +0). No readback
-    /// or CPU numerical work occurs between stages or before the GEMV consumer.
-    pub fn launch_prepare(&self, client: &Client, layout: &ActivationLayout) -> Result<()> {
-        Self::validate_layout(layout)?;
+    /// CUDA uses two cold-bound launches. Other explicitly selected backends
+    /// retain the original seven/five-stage source lowering. No error fallback.
+    pub fn launch_prepare(&self, client: &Client, layout: &ActivationLayout) -> Result<usize> {
         if layout.columns != self.layout.columns
             || layout.rows != self.layout.rows
+            || layout.block_width != self.layout.block_width
+            || layout.blocks != self.layout.blocks
+            || layout.composite_count != self.layout.composite_count
+            || layout.workspace_bytes != self.layout.workspace_bytes
             || layout.signed_scale != self.layout.signed_scale
             || layout.with_bias != self.layout.with_bias
             || self
-                .handles()
+                .handle_refs()
                 .iter()
                 .any(|h| h.service != client.service_id())
         {
@@ -268,66 +294,77 @@ impl DeviceActivation {
         } else {
             1
         };
+        let mut dispatches = 0;
         // SAFETY: all source layouts, element counts, grids and service IDs
         // are validated above. Each stage sees the preceding physical stores.
         // The enclosing region must retain all ten originals BEFORE this call.
         unsafe {
-            activation_quant::block_parameters::launch_unchecked(
-                client,
-                grid(layout.blocks),
-                threads,
-                BufferArg::from_raw_parts(self.input.clone(), layout.columns),
-                BufferArg::from_raw_parts(self.parameters.clone(), parameter_count),
-                BufferArg::from_raw_parts(self.block_status.clone(), layout.blocks),
-                layout.blocks,
-                layout.block_width,
-                layout.signed_scale,
-            );
-            activation_quant::block_scales::launch_unchecked(
-                client,
-                grid(layout.blocks),
-                threads,
-                BufferArg::from_raw_parts(self.parameters.clone(), parameter_count),
-                BufferArg::from_raw_parts(self.block_status.clone(), layout.blocks),
-                layout.blocks,
-                layout.signed_scale,
-            );
-            activation_quant::scaled_inputs::launch_unchecked(
-                client,
-                grid(layout.columns),
-                threads,
-                BufferArg::from_raw_parts(self.input.clone(), layout.columns),
-                BufferArg::from_raw_parts(self.parameters.clone(), parameter_count),
-                BufferArg::from_raw_parts(self.scaled.clone(), layout.columns),
-                layout.columns,
-                layout.block_width,
-            );
-            activation_quant::codes::launch_unchecked(
-                client,
-                grid(layout.columns),
-                threads,
-                BufferArg::from_raw_parts(self.scaled.clone(), layout.columns),
-                BufferArg::from_raw_parts(self.codes.clone(), layout.columns),
-                layout.columns,
-            );
-            if !layout.signed_scale {
-                activation_quant::sum_products::launch_unchecked(
+            if let Some(prepared) = &self.prepared_blocks {
+                dispatches += prepared.launch(client)?;
+            } else {
+                activation_quant::block_parameters::launch_unchecked(
                     client,
                     grid(layout.blocks),
                     threads,
-                    BufferArg::from_raw_parts(self.codes.clone(), layout.columns),
+                    BufferArg::from_raw_parts(self.input.clone(), layout.columns),
                     BufferArg::from_raw_parts(self.parameters.clone(), parameter_count),
+                    BufferArg::from_raw_parts(self.block_status.clone(), layout.blocks),
                     layout.blocks,
+                    layout.block_width,
+                    layout.signed_scale,
                 );
-                activation_quant::sum_halves::launch_unchecked(
+                dispatches += 1;
+                activation_quant::block_scales::launch_unchecked(
                     client,
                     grid(layout.blocks),
                     threads,
                     BufferArg::from_raw_parts(self.parameters.clone(), parameter_count),
                     BufferArg::from_raw_parts(self.block_status.clone(), layout.blocks),
                     layout.blocks,
-                    layout.with_bias,
+                    layout.signed_scale,
                 );
+                dispatches += 1;
+                activation_quant::scaled_inputs::launch_unchecked(
+                    client,
+                    grid(layout.columns),
+                    threads,
+                    BufferArg::from_raw_parts(self.input.clone(), layout.columns),
+                    BufferArg::from_raw_parts(self.parameters.clone(), parameter_count),
+                    BufferArg::from_raw_parts(self.scaled.clone(), layout.columns),
+                    layout.columns,
+                    layout.block_width,
+                );
+                dispatches += 1;
+                activation_quant::codes::launch_unchecked(
+                    client,
+                    grid(layout.columns),
+                    threads,
+                    BufferArg::from_raw_parts(self.scaled.clone(), layout.columns),
+                    BufferArg::from_raw_parts(self.codes.clone(), layout.columns),
+                    layout.columns,
+                );
+                dispatches += 1;
+                if !layout.signed_scale {
+                    activation_quant::sum_products::launch_unchecked(
+                        client,
+                        grid(layout.blocks),
+                        threads,
+                        BufferArg::from_raw_parts(self.codes.clone(), layout.columns),
+                        BufferArg::from_raw_parts(self.parameters.clone(), parameter_count),
+                        layout.blocks,
+                    );
+                    dispatches += 1;
+                    activation_quant::sum_halves::launch_unchecked(
+                        client,
+                        grid(layout.blocks),
+                        threads,
+                        BufferArg::from_raw_parts(self.parameters.clone(), parameter_count),
+                        BufferArg::from_raw_parts(self.block_status.clone(), layout.blocks),
+                        layout.blocks,
+                        layout.with_bias,
+                    );
+                    dispatches += 1;
+                }
             }
             activation_quant::composites::launch_unchecked(
                 client,
@@ -343,7 +380,23 @@ impl DeviceActivation {
                 layout.rows,
                 layout.with_bias,
             );
+            dispatches += 1;
         }
-        Ok(())
+        Ok(dispatches)
+    }
+
+    fn handle_refs(&self) -> [&Handle; 10] {
+        [
+            &self.input,
+            &self.weight_scales,
+            &self.biases,
+            &self.parameters,
+            &self.scaled,
+            &self.codes,
+            &self.scales,
+            &self.offsets,
+            &self.block_status,
+            &self.row_status,
+        ]
     }
 }

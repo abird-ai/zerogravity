@@ -711,3 +711,78 @@ Live1059/4203MiB samples are neither peaks nor ResourceArbiter reservations.
 Sources/quant/arithmetic differ; this is no matched benchmark. Fresh-process
 coldness is separate from OS/storage/device cache conditions. The independent
 8K GGUF GDN issue also remains a required correctness gate for both models.
+
+
+## P12 block-local source activation preparation
+
+The same B1/native projection path now binds original scratch views cold and
+prepares dynamic source Q8 blocks in one CUDA32-lane workgroup/block. Lane0
+retains the original finite check, ordered first signed maximum, exact source
+scale/division and half rounding. Lanes retain original scaled-word/code
+rounding and code-sum semantics. Composite scale, sticky status merges and
+final source dot remain separate. No new persistent device buffer, upload,
+lease, queue, publication or completion authority is introduced. Non-CUDA
+selection is explicit; CUDA errors cannot silently choose another lowering.
+
+Each Q4_0/Q4_1/Q8_0 projection uses5 actual launches versus10; Q6_K uses5
+versus8, before output certification. The actual pressure B8 graphs report
+5616/5472 total launches for0.8B/2B. These are kernel execution counts, never
+one count per full graph or a throughput inference.
+
+Physical CUDA acceptance on the RTX3060 Laptop:
+
+- 272 source-preparation cases: all7 buffers/1,483,608 words exact.
+- Both original models B2/4/8, unequal frontiers, full248320 logits/all42
+  domains exact against independent CPU AND B1; host/device feedback,
+  refill, abandoned Ready, stale/foreign packets and final reservation0.
+- Two pressure cases: real admitted leases, cold/warm prelaunch refusal,
+  B4 progress under pressure, B8 after release, exact full state and logits.
+- Eight worker and six actual HTTP cases pass B2/4/8, unequal arrivals,
+  trained EOS, credit parking, Ready cancellation, disconnect/survivors/replay
+  and final active/queued/failed/reserved0. Wire checks do not expose state;
+  the internal tests establish all42-domain equality.
+- Four fresh unknown-completion graph/sampler probes retain1824/1719 and
+ 1828/1723 original handles in quarantine, unchanged prior roots/all42 and
+  canonical future KV. Old Ready/further work/another model refuse; the
+ 4GiB envelope remains charged and no recovery occurs.
+
+Current complete isolated check:1218 Rust passed/0failed/69ignored over248
+suites plus18Python/release/installer/Nix. Strict CUDA/Vulkan/qualifier checks
+and both approved original cache-direct/HF-import release routes pass.
+Same-engine cold/warm release A/B measurement is still being qualified;
+source-correct SLO goodput and genuine matched vLLM performance stay open.
+The first A/B invocation used equal4GiB provider/device limits, leaving no
+unreserved global staging capacity. Its native refusals correctly prevented
+acceptance. Repeats use the already accepted physical HTTP limits4GiB/5GiB
+for BOTH providers, with the original numerical/native/no-refusal gates.
+
+Full-prefix native prefill, paged hybrid state, overlap/fairness, original-HF
+math and the independent two-model8K issue remain separate required gates.
+
+
+The first valid warmed0.8B ABBA measurement completed32/32 offered requests,
+256 output tokens, with identical per-request IDs/text/usage/finish reason
+across the two builds. Each sample executed8 native B8 cohorts with zero
+refusal/failure/cancellation. Four CPU affinity members, exact original GGUF/
+tokenizer, greedy generation/output8/context512 and4GiB provider/5GiB device
+limits were common; processes started/exited serially and returned to41MiB.
+
+| Mean over two samples/provider | Accepted B7 | Block preparation |
+| --- | ---: | ---: |
+| Eight-request wave seconds |39.14206|33.163665|
+| Per-sample TTFT p95 seconds |36.4701|30.5368|
+| Per-sample client token ITL p95 seconds |0.3911|0.3933|
+| Actual forward kernel dispatches/sample |2072360|1722640|
+
+This bounded wave improved15.3%; dispatches decreased16.9%. No client ITL-tail
+improvement is established. Both builds miss the declared10s TTFT SLO, hence
+observed delivery-SLO goodput0; source-correct goodput remains unset. Sampled
+GPU memory reached3045MiB in the first old/new pair;0.5s observations can miss
+peaks and are separate from admission. The two workload labels are not an
+authenticated tenant-isolation proof. More models/order/cold conditions and
+genuine equivalent-source vLLM comparisons remain required.
+
+The launch delta independently reconciles with the source traversal:368 B1
+state-only calls plus8 B8 greedy calls. Old counts5489/6551 become4559/5616;
+368*(5489-4559)+8*(6551-5616)=349720 fewer actual launches. Model-token steps
+432, committed roots80 and generated output tokens64 are different quantities.

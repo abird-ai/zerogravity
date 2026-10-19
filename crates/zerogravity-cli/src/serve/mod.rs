@@ -289,9 +289,9 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
              POST /v1/chat/completions, POST /v1/completions.\n\
              Qwen3.5 greedy text CPU or resident GPU, no inference fallback. \
              GPU: workers=1, context=512. Default interleaved; fused enables \
-             CUDA B2/B4/B8 matching-source/frontier prompt tails and decode \
+             CUDA B2/B4/B8 compatible prompt tails and independent decode frontiers \
              with active>=rows. Default rows=2; survivors regroup without padding. \
-             Unmatched rows and other prefill use B1. \
+             Prefill groups require equal frontiers; unmatched rows use B1. \
              CUDA needs CUDA_PATH with runtime+CCCL headers. \
              Opt-in metrics permit return_token_ids=true with bounded token IDs, \
              publication-observed times and separate HTTP delivery observations. \

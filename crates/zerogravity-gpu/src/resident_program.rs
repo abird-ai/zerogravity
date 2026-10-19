@@ -798,6 +798,7 @@ impl ResidentProgram {
     /// Check the complete resident shader profile before physical submission.
     pub fn ensure_capability(client: &Client) -> Result<()> {
         source_accumulation::ensure_capability(client, SourceAccumulation::WideF64)?;
+        crate::activation_quant_fused::ensure_selected_capability(client)?;
         for t in [
             cubecl::ir::ElemType::UInt(cubecl::ir::UIntKind::U64),
             cubecl::ir::ElemType::Int(cubecl::ir::IntKind::I64),
@@ -1474,7 +1475,7 @@ impl ResidentProgram {
                     let dynamic = self.projections[index]
                         .as_ref()
                         .expect("prepared quant projection binding");
-                    dynamic.launch_prepare(client, &l)?;
+                    let preparation_dispatches = dynamic.launch_prepare(client, &l)?;
                     crate::resident_bindings::merge_status::launch_unchecked(
                         client,
                         grid(l.blocks),
@@ -1547,7 +1548,7 @@ impl ResidentProgram {
                             ));
                         }
                     }
-                    Ok(if l.signed_scale { 8 } else { 10 })
+                    Ok(preparation_dispatches + 3)
                 }
                 PlanOperation::View(view) => {
                     self.copy::<true>(

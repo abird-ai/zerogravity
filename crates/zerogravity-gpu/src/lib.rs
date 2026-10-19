@@ -4,6 +4,7 @@
 //! source bindings and the already-recorded mathematical plan.
 
 mod activation_quant;
+mod activation_quant_fused;
 #[cfg(feature = "qualification")]
 mod activation_stress;
 mod async_bridge;

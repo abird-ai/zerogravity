@@ -6,6 +6,7 @@
 
 use super::*;
 use crate::activation_quant::{self, PARAMETER_WORDS};
+use crate::activation_quant_fused::{BlockBindings, PreparedBlocks};
 use crate::source_float::{round_source, widen_source};
 
 /// One original plan, shared immutable tensors, and a private B-shaped workspace.
@@ -16,6 +17,7 @@ pub(crate) struct BatchProgram {
     packed: Vec<StateBinding>,
     positions: Handle,
     greedy: [Handle; 3],
+    projection_blocks: Vec<Option<PreparedBlocks>>,
     owned: Vec<Handle>,
 }
 
@@ -79,6 +81,11 @@ impl BatchProgram {
     ) -> Result<Self> {
         let preflight = Self::preflight(original, rows)?;
         ResidentProgram::ensure_capability(client)?;
+        if !crate::activation_quant_fused::is_cuda_service(client) {
+            return Err(Error::Unsupported(
+                "native source batch requires CUDA lowering".into(),
+            ));
+        }
         let mut owned = Vec::new();
         let mut recorded =
             |role: ResidentBufferRole, n: usize, init: AllocationInit<'_>| -> Result<Handle> {
@@ -234,6 +241,39 @@ impl BatchProgram {
                 inner.owned_ranges.insert(BufferRange::new(&handle)?)?;
             }
         }
+        let projection_blocks = inner
+            .plan
+            .nodes()
+            .iter()
+            .enumerate()
+            .map(|(index, node)| {
+                let PlanOperation::Project { tensor } = &node.operation else {
+                    return Ok(None);
+                };
+                if tensor.kind == QuantKind::F32 {
+                    return Ok(None);
+                }
+                let layout = inner.tensors[&tensor.name]
+                    .layout
+                    .ok_or_else(|| Error::State("batch projection layout absent".into()))?;
+                let flags = &inner.node_status[index];
+                PreparedBlocks::prepare_cuda(
+                    client,
+                    &layout,
+                    rows,
+                    &BlockBindings {
+                        input: &inner.values[node.inputs[0].0 as usize].handle,
+                        parameters: &inner.scratch[0],
+                        scaled: &inner.scratch[1],
+                        codes: &inner.scratch[2],
+                        block_status: flags.block.as_ref().ok_or_else(|| {
+                            Error::State("batch projection block status absent".into())
+                        })?,
+                    },
+                )
+                .map(Some)
+            })
+            .collect::<Result<Vec<_>>>()?;
         Ok(Self {
             inner,
             rows,
@@ -241,6 +281,7 @@ impl BatchProgram {
             packed,
             positions,
             greedy,
+            projection_blocks,
             owned,
         })
     }
@@ -1272,63 +1313,12 @@ impl BatchProgram {
             let flags = &self.inner.node_status[index];
             let block_status = flags.block.as_ref().expect("quant block status");
             let row_status = flags.row.as_ref().expect("quant row status");
-            activation_quant::block_parameters::launch_unchecked(
-                client,
-                grid(blocks),
-                threads(),
-                arg(&input.handle, columns),
-                arg(s(0), params),
-                arg(block_status, blocks),
-                blocks,
-                layout.block_width,
-                layout.signed_scale,
-            );
-            activation_quant::block_scales::launch_unchecked(
-                client,
-                grid(blocks),
-                threads(),
-                arg(s(0), params),
-                arg(block_status, blocks),
-                blocks,
-                layout.signed_scale,
-            );
-            activation_quant::scaled_inputs::launch_unchecked(
-                client,
-                grid(columns),
-                threads(),
-                arg(&input.handle, columns),
-                arg(s(0), params),
-                arg(s(1), columns),
-                columns,
-                layout.block_width,
-            );
-            activation_quant::codes::launch_unchecked(
-                client,
-                grid(columns),
-                threads(),
-                arg(s(1), columns),
-                arg(s(2), columns),
-                columns,
-            );
-            if !layout.signed_scale {
-                activation_quant::sum_products::launch_unchecked(
-                    client,
-                    grid(blocks),
-                    threads(),
-                    arg(s(2), columns),
-                    arg(s(0), params),
-                    blocks,
-                );
-                activation_quant::sum_halves::launch_unchecked(
-                    client,
-                    grid(blocks),
-                    threads(),
-                    arg(s(0), params),
-                    arg(block_status, blocks),
-                    blocks,
-                    layout.with_bias,
-                );
-            }
+            let mut dispatches = self
+                .projection_blocks
+                .get(index)
+                .and_then(Option::as_ref)
+                .ok_or_else(|| Error::State("native projection cold binding absent".into()))?
+                .launch(client)?;
             batch_composites::launch_unchecked(
                 client,
                 grid(rows),
@@ -1351,6 +1341,7 @@ impl BatchProgram {
                 self.rows,
                 layout.with_bias,
             );
+            dispatches += 1;
             for (handle, count) in [(block_status, blocks), (row_status, rows)] {
                 crate::resident_bindings::merge_status::launch_unchecked(
                     client,
@@ -1360,6 +1351,7 @@ impl BatchProgram {
                     arg(&self.inner.status, 1),
                     count,
                 );
+                dispatches += 1;
             }
             match tensor.kind {
                 QuantKind::Q4_0 => crate::batch_quant_projection::q4_0_batched::launch_unchecked(
@@ -1423,7 +1415,8 @@ impl BatchProgram {
                 ),
                 _ => return Err(Error::Unsupported("native resident source codec".into())),
             }
-            Ok(if layout.signed_scale { 8 } else { 10 })
+            dispatches += 1;
+            Ok(dispatches)
         }
     }
 }
