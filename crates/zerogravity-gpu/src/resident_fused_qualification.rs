@@ -846,3 +846,7 @@ pub(crate) async fn qualify_boundary(
     );
     Ok(())
 }
+
+#[cfg(all(test, feature = "cuda"))]
+#[path = "resident_inference/prefix_qualification.rs"]
+mod prefix_qualification;

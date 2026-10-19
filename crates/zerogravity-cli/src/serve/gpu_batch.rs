@@ -59,19 +59,30 @@ pub(super) fn native_bands(count: usize, ceiling: usize) -> Result<Vec<usize>, S
 /// source/phase/frontier grouping and finite quota-split waves. No sorting
 /// across requests or silent dropping of a queue tail.
 pub(super) fn form(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, ServiceError> {
-    form_with_decode_frontiers(slots, bounds, false)
+    form_with_frontiers(slots, bounds, false, false)
 }
 
 /// Native decode binds every row's own causal position on the GPU. Prefill
 /// grouping remains exact-frontier until its separate input path is qualified.
 pub(super) fn form_decode(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, ServiceError> {
-    form_with_decode_frontiers(slots, bounds, true)
+    form_with_frontiers(slots, bounds, true, false)
 }
 
-fn form_with_decode_frontiers(
+/// Every native row consumes exactly one teacher/device token at its own
+/// committed frontier. Prompt readout barriers are partitioned by the owner.
+pub(super) fn form_native(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, ServiceError> {
+    if slots.iter().all(|row| row.phase == Phase::Decode) {
+        form_decode(slots, bounds)
+    } else {
+        form_with_frontiers(slots, bounds, true, true)
+    }
+}
+
+fn form_with_frontiers(
     slots: &[Ready],
     bounds: Limits,
     unequal_decode: bool,
+    unequal_prefill: bool,
 ) -> Result<Vec<Wave>, ServiceError> {
     if slots.is_empty()
         || slots.len() > 64
@@ -98,7 +109,7 @@ fn form_with_decode_frontiers(
             || ready.scratch_bytes == 0
             || ready.tokens > bounds.max_tokens
             || ready.scratch_bytes > bounds.max_scratch
-            || (ready.phase == Phase::Decode && ready.tokens != 1)
+            || ((ready.phase == Phase::Decode || unequal_prefill) && ready.tokens != 1)
         {
             return Err(ServiceError::new(
                 400,
@@ -106,7 +117,9 @@ fn form_with_decode_frontiers(
                 "GPU work is outside source/budget",
             ));
         }
-        let frontier = if unequal_decode && ready.phase == Phase::Decode {
+        let frontier = if (unequal_decode && ready.phase == Phase::Decode)
+            || (unequal_prefill && ready.phase == Phase::Prefill)
+        {
             None
         } else {
             Some(ready.frontier)
@@ -151,6 +164,41 @@ fn form_with_decode_frontiers(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_teacher_waves_bind_independent_frontiers_without_losing_phase_or_source() {
+        let ready = [
+            r(1, Phase::Prefill, 0, 1),
+            r(1, Phase::Decode, 12, 1),
+            r(1, Phase::Prefill, 7, 1),
+            r(2, Phase::Prefill, 7, 1),
+            r(1, Phase::Decode, 22, 1),
+            r(1, Phase::Prefill, 511, 1),
+        ];
+        let bounds = || Limits {
+            max_members: 4,
+            max_tokens: 4,
+            max_scratch: 4096,
+        };
+        let waves = form_native(&ready, bounds()).unwrap();
+        assert_eq!(
+            waves
+                .iter()
+                .map(|wave| wave.indices.clone())
+                .collect::<Vec<_>>(),
+            [vec![0, 2, 5], vec![1, 4], vec![3]]
+        );
+        assert_eq!(
+            waves.iter().map(|wave| wave.tokens).sum::<usize>(),
+            ready.len()
+        );
+        // Previously accepted planners retain their exact-frontier policies.
+        assert_eq!(form_decode(&ready, bounds()).unwrap().len(), 5);
+        assert_eq!(form(&ready, bounds()).unwrap().len(), 6);
+        for phase in [Phase::Prefill, Phase::Decode] {
+            assert!(form_native(&[r(1, phase, 0, 2)], bounds()).is_err());
+        }
+    }
 
     #[test]
     fn native_bands_cover_every_row_in_order_without_padding() {

@@ -34,7 +34,7 @@ fn regroup(
         .collect::<Vec<_>>();
     if native_rows == 0 {
         if phase == Phase::Prefill && eligible.len() > 1 {
-            execute(eligible, active, stats, phase, 0);
+            execute(eligible, active, stats, phase, 0, false);
         } else {
             for row in eligible {
                 advance_member(row, active, stats);
@@ -42,6 +42,27 @@ fn regroup(
         }
         return;
     }
+    if phase == Phase::Prefill {
+        // A teacher prefix has no generated output. Keep that readout barrier
+        // distinct from the last prompt token before choosing native widths.
+        let (prefix, tail): (Vec<_>, Vec<_>) = eligible
+            .into_iter()
+            .partition(|row| row.prompt.len().saturating_sub(row.cursor) > 1);
+        bands(prefix, active, stats, phase, native_rows, true);
+        bands(tail, active, stats, phase, native_rows, false);
+    } else {
+        bands(eligible, active, stats, phase, native_rows, false);
+    }
+}
+
+fn bands(
+    eligible: Vec<GpuActive>,
+    active: &mut VecDeque<GpuActive>,
+    stats: &WaveStats,
+    phase: Phase,
+    native_rows: usize,
+    state_only: bool,
+) {
     let bands = match gpu_batch::native_bands(eligible.len(), native_rows) {
         Ok(bands) => bands,
         Err(error) => {
@@ -57,7 +78,7 @@ fn regroup(
             advance_member(remaining.next().expect("planned native row"), active, stats);
         } else {
             let members = remaining.by_ref().take(width).collect();
-            execute(members, active, stats, phase, width);
+            execute(members, active, stats, phase, width, state_only);
         }
     }
 }
@@ -68,6 +89,7 @@ fn execute(
     stats: &WaveStats,
     phase: Phase,
     native_rows: usize,
+    state_only: bool,
 ) {
     if members
         .iter()
@@ -87,14 +109,17 @@ fn execute(
             !Arc::ptr_eq(&row.resident, &model)
                 || row.hidden_width != batch.row_elements()
                 || (phase == Phase::Prefill
-                    && (row.cursor + 1 != row.prompt.len() || row.device_token.is_some()))
+                    && (row.cursor >= row.prompt.len()
+                        || (row.prompt.len() - row.cursor > 1) != state_only
+                        || row.device_token.is_some()))
                 || (phase == Phase::Decode
                     && (row.cursor != row.prompt.len()
                         || !row.packet_presented
                         || row.device_token.is_none()
                         || row.blocked_since.is_some()))
-        }) || (native_rows != 0
-            && (!matches!(native_rows, 2 | 4 | 8) || members.len() != native_rows))
+        }) || (state_only && (phase != Phase::Prefill || native_rows == 0))
+            || (native_rows != 0
+                && (!matches!(native_rows, 2 | 4 | 8) || members.len() != native_rows))
         {
             return Err(zerogravity::Error::State(
                 "incompatible original GPU cohort".into(),
@@ -128,7 +153,9 @@ fn execute(
             .iter()
             .map(|row| (&row.session, row.prompt[row.cursor]))
             .collect::<Vec<_>>();
-        if native_rows != 0 {
+        if state_only {
+            block_on(model.prepare_state_fused_cohort_admitted(&inputs))
+        } else if native_rows != 0 {
             block_on(model.prepare_greedy_fused_cohort_admitted(&inputs))
         } else {
             block_on(model.prepare_greedy_cohort(&inputs)).map(Some)
@@ -153,8 +180,13 @@ fn execute(
             return;
         }
     };
-    let native = cohort.fused_dispatches() != 0 && cohort.native_greedy_dispatches() != 0;
-    record_completion(stats, &cohort, native);
+    let native = cohort.fused_dispatches() != 0
+        && if state_only {
+            cohort.native_greedy_dispatches() == 0
+        } else {
+            cohort.native_greedy_dispatches() != 0
+        };
+    record_completion(stats, &cohort, native, state_only);
     if native_rows != 0 && !native {
         drop(cohort);
         stats.discarded_cohorts.fetch_add(1, Ordering::Relaxed);
@@ -164,7 +196,7 @@ fn execute(
                 ServiceError::new(
                     500,
                     "missing_native_receipt",
-                    "GPU cohort lacks native model/sampler receipts",
+                    "GPU cohort lacks native model/readout receipts",
                 ),
             );
         }
@@ -216,9 +248,30 @@ fn execute(
                 if phase == Phase::Prefill {
                     row.cursor += 1;
                 }
-                match row.install(read, commit_observed_at, native_cohort) {
-                    Ok(()) => active.push_back(row),
-                    Err(error) => stats.fail(&row, error),
+                if state_only {
+                    // Prefix publication changes only the independent root.
+                    // No token packet, output presentation or usage is created.
+                    if read.state_only_steps != 1
+                        || read.logit_steps != 0
+                        || !read.logits.is_empty()
+                        || read.device_token.is_some()
+                    {
+                        stats.fail(
+                            &row,
+                            ServiceError::new(
+                                500,
+                                "invalid_prefix_readout",
+                                "state-only GPU completion produced a generated readout",
+                            ),
+                        );
+                    } else {
+                        active.push_back(row);
+                    }
+                } else {
+                    match row.install(read, commit_observed_at, native_cohort) {
+                        Ok(()) => active.push_back(row),
+                        Err(error) => stats.fail(&row, error),
+                    }
                 }
             }
         }
@@ -232,7 +285,12 @@ fn execute(
     }
 }
 
-fn record_completion(stats: &WaveStats, cohort: &PreparedResidentCohort, native: bool) {
+fn record_completion(
+    stats: &WaveStats,
+    cohort: &PreparedResidentCohort,
+    native: bool,
+    state_only: bool,
+) {
     let count = cohort.len() as u64;
     stats.completed.fetch_add(count, Ordering::Relaxed);
     stats
@@ -244,6 +302,16 @@ fn record_completion(stats: &WaveStats, cohort: &PreparedResidentCohort, native:
     stats.model_tokens.fetch_add(count, Ordering::Relaxed);
     if native {
         stats.fused_batches.fetch_add(1, Ordering::Relaxed);
+        if state_only {
+            stats
+                .fused_state_only_batches
+                .fetch_add(1, Ordering::Relaxed);
+            stats
+                .fused_state_only_rows
+                .fetch_add(count, Ordering::Relaxed);
+        } else {
+            stats.fused_greedy_batches.fetch_add(1, Ordering::Relaxed);
+        }
         stats.fused_rows.fetch_add(count, Ordering::Relaxed);
         stats
             .native_projections

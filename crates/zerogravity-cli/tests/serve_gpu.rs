@@ -748,7 +748,13 @@ fn physical_accounting(health: &Value) -> Proof<()> {
         || counter(health, "native_projection_dispatches_completed")? == 0
         || counter(health, "gpu_fused_batches")? != batches
         || counter(health, "gpu_fused_rows_completed")? != 2 * b2 + 4 * b4 + 8 * b8
-        || counter(health, "native_sampler_dispatches_completed")? != 4 * batches
+        || counter(health, "gpu_fused_state_only_batches")?
+            + counter(health, "gpu_fused_greedy_batches")?
+            != batches
+        || counter(health, "gpu_fused_state_only_rows")?
+            > counter(health, "gpu_fused_rows_completed")?
+        || counter(health, "native_sampler_dispatches_completed")?
+            != 4 * counter(health, "gpu_fused_greedy_batches")?
         || counter(health, "native_admission_refusals")? != 0
     {
         return Err(format!("wide HTTP physical accounting differs: {health}"));
@@ -851,8 +857,13 @@ fn proof_cases(
         || counter(&final_health, "native_sampler_dispatches_completed")? == 0
         || counter(&final_health, "gpu_fused_rows_completed")?
             != 2 * counter(&final_health, "gpu_fused_batches")?
+        || counter(&final_health, "gpu_fused_state_only_batches")?
+            + counter(&final_health, "gpu_fused_greedy_batches")?
+            != counter(&final_health, "gpu_fused_batches")?
+        || counter(&final_health, "gpu_fused_state_only_rows")?
+            != 2 * counter(&final_health, "gpu_fused_state_only_batches")?
         || counter(&final_health, "native_sampler_dispatches_completed")?
-            != 4 * counter(&final_health, "gpu_fused_batches")?
+            != 4 * counter(&final_health, "gpu_fused_greedy_batches")?
     {
         return Err(format!(
             "HTTP physical dispatch/error accounting differs: {final_health}"
@@ -1419,3 +1430,6 @@ fn original_qwen35_08b_native_unequal_arrival_token_observations_http() -> Proof
 fn original_qwen35_2b_native_unequal_arrival_token_observations_http() -> Proof<()> {
     qualify_unequal_arrival_metrics("qwen35-2b")
 }
+
+#[path = "serve_gpu/prefix.rs"]
+mod prefix;

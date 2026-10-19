@@ -8,39 +8,34 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
-- [x] **P12 block-local CUDA activation preparation:** one native32-lane
-  workgroup preserves source ordered finite/max/scale/rounding/code/sum
-  arithmetic for Q4_0/Q4_1/Q8_0/Q6_K projections. Original seven buffers,
-  composite/status stages, leases, queue and completion remain authoritative.
-  Cold checked bindings remove repeated warm handle/capability/alias setup;
-  only explicit non-CUDA selection retains the old lowering. CUDA errors
-  propagate. Projections use5 launches versus10 (Q6_K:8), before certification.
-- [x] **Current physical acceptance:**272 preparation cases/all7 buffers/
-  1,483,608 words exact; both original0.8B/2B complete B2/4/8 unequal-frontier
-  graphs pass all248320 logits/all42 domains versus independent CPU AND B1,
-  feedback/refill/abandoned Ready/stale packets/final reservation0. Two real
-  pressure cases pass prelaunch refusal, B4 progress and B8 after release.
-  Eight serving-worker and six HTTP cases pass both models B2/4/8, EOS,
-  credit/cancel/disconnect/replay and final0. Four fresh graph/sampler unknown
-  completions retain1824/1719 and1828/1723 handles, unchanged roots/all42,
- 4GiB envelope, fence and no recovery. Complete isolated gate1218 Rust/0fail/
- 69ignored/248 suites plus18Python/release/installer/Nix; strict CUDA/Vulkan/
-  qualifier and both original release parity routes pass.
-- [x] **Bounded same-engine0.8B warmed ABBA:**32 offers/32 completed/256
-  output tokens across four fresh serialized samples; all eight requests/sample
-  have individual token events and identical IDs/text/usage/finish reason.
-  Each sample executes eight B8 cohorts with zero refusal/failure/cancel.
-  Mean wave39.14206→33.163665s (-15.3%); dispatches2,072,360→1,722,640
-  (-16.9%). Mean of per-sample client ITL p95:0.3911→0.3933s, no tail
-  improvement established. Both miss the declared10s TTFT SLO; goodput0.
-  Source-correct SLO goodput remains unset. This is ZG versus ZG only.
-- [ ] **P12 performance acceptance:** finish same-Zerogravity release A/B
-  cold/warm ABBA/BAAB for both approved models with real native cohorts,
-  exact outputs, token events, memory and dispatch counts. An initial4GiB
-  device/4GiB provider attempt returned eight requests but no native work;
-  typed staging-capacity refusals correctly rejected the measurement. Repeat
-  with the accepted4GiB provider/5GiB device limits on BOTH providers.
-  Preserve failed evidence. No vLLM performance or source-correct SLO claim.
+- [x] **Bounded same-engine cold/warm comparison complete:** both original
+  models, warm ABBA(0.8B)/BAAB(2B) and cold-process ABBA,16 serialized samples,
+  128offers/128completed/1024 output tokens. Every sample has8 genuineB8
+  cohorts, zero refusals/errors/discards, and identical complete IDs/text/usage/
+  finish reason across providers. Provider4GiB/device5GiB on BOTH builds.
+  Mean warm waves improve15.3%/6.1%; cold13.8%/6.0%. Actual dispatches fall
+  16.9%/14.4%. No consistent ITL-tail improvement or10s TTFT-SLO success;
+  observed goodput0/source-correct goodput unset. Exact values/conditions in
+  FUSED_GPU_BATCHING. Initial equal4GiB attempt remains rejected evidence.
+- [x] **P12 native teacher-prefix serving:** same full-model BatchProgram
+  consumes one teacher token/request/wave with StateOnly readout, independent
+  causal positions and original all-root publisher. Both modelsB2/4/8 pass
+  per-teacher CPU+B1/all42/future full248320, trained EOS input, abandoned Ready,
+  stale/invalid rows and final0. Two physical pressure and two fresh unknown
+  completion cases pass; unknown retains1817/1712 handles and4GiB envelope,
+  unchanged roots/all42 and fence, without recovery. All14 worker and12 HTTP
+  scopes pass, including ragged prefix/tail partition, no prefix-generated IDs,
+  Ready cancellation/regroup, output-credit fairness and final active/queue0.
+  Three readout-phase health counters close against actual native bands and
+  four sampler stages/greedy cohort. Complete isolated check1241 Rust/0failed/
+ 70ignored/248suites+18Python/release/installer/Nix; strict CUDA/Vulkan/qualifier
+  and both approved original cache-direct/HF-import release parity routes pass.
+  Two test-fixture/assertion failures and one missing-CUDA_PATH prelaunch
+  refusal are preserved; no production arithmetic or acceptance limit changed.
+- [ ] **P12 prefix scheduling performance:** measure concurrent native prefix
+  throughput/TTFT and explicit B1 one-token scheduling cost against the accepted
+  max32-prefix implementation. Frozen binaries and reviewed finite A/B/B1
+  driver are ready; no prefix speedup or vLLM comparison is yet established.
 
 - [ ] **P12 fused continuous GPU serving:** extend the accepted CUDA B2/B4/B8
   HTTP path with paged hybrid KV/recurrent cache, physically safe
@@ -105,6 +100,34 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Committed
 
+### d0a6084 — source activation preparation and physical acceptance
+
+- [x] **P12 block-local CUDA activation preparation:** one native32-lane
+  workgroup preserves source ordered finite/max/scale/rounding/code/sum
+  arithmetic for Q4_0/Q4_1/Q8_0/Q6_K projections. Original seven buffers,
+  composite/status stages, leases, queue and completion remain authoritative.
+  Cold checked bindings remove repeated warm handle/capability/alias setup;
+  only explicit non-CUDA selection retains the old lowering. CUDA errors
+  propagate. Projections use5 launches versus10 (Q6_K:8), before certification.
+- [x] **Current physical acceptance:**272 preparation cases/all7 buffers/
+  1,483,608 words exact; both original0.8B/2B complete B2/4/8 unequal-frontier
+  graphs pass all248320 logits/all42 domains versus independent CPU AND B1,
+  feedback/refill/abandoned Ready/stale packets/final reservation0. Two real
+  pressure cases pass prelaunch refusal, B4 progress and B8 after release.
+  Eight serving-worker and six HTTP cases pass both models B2/4/8, EOS,
+  credit/cancel/disconnect/replay and final0. Four fresh graph/sampler unknown
+  completions retain1824/1719 and1828/1723 handles, unchanged roots/all42,
+ 4GiB envelope, fence and no recovery. Complete isolated gate1218 Rust/0fail/
+ 69ignored/248 suites plus18Python/release/installer/Nix; strict CUDA/Vulkan/
+  qualifier and both original release parity routes pass.
+- [x] **Bounded same-engine0.8B warmed ABBA:**32 offers/32 completed/256
+  output tokens across four fresh serialized samples; all eight requests/sample
+  have individual token events and identical IDs/text/usage/finish reason.
+  Each sample executes eight B8 cohorts with zero refusal/failure/cancel.
+  Mean wave39.14206→33.163665s (-15.3%); dispatches2,072,360→1,722,640
+  (-16.9%). Mean of per-sample client ITL p95:0.3911→0.3933s, no tail
+  improvement established. Both miss the declared10s TTFT SLO; goodput0.
+  Source-correct SLO goodput remains unset. This is ZG versus ZG only.
 ### 1b599df — serialized owned benchmark provider lifecycle
 
 - [x] **P22 serialized owned provider lifecycle:** optional strict

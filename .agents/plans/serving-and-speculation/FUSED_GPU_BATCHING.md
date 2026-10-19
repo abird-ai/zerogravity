@@ -4,17 +4,17 @@ Owner: @pvl
 
 # P12 — native fused GPU batch acceptance
 
-**Current HTTP acceptance — P12-B7:** opt-in `batch_mode=fused`
-uses the original full-model native CUDA B2/B4/B8 plan for compatible
-same-source decode at independent frontiers; prompt tails still require
-matching frontiers. Explicit `--batch-rows 2|4|8`, default2;
-interleaved remains the default mode. Surviving rows regroup without padding.
-Both approved original Qwen3.5 models passed actual release JSON/SSE,
-trained EOS, cancellation and exact internal CPU/B1 state tests.
-Engine full248320-logit and compact packet/all42 evidence remains distinct
-from HTTP wire evidence. Paged state, full-prefix native prefill, trained-HF
-arithmetic and matched vLLM performance remain open. Named later checkpoints
-supersede only the corresponding historical limitations below.
+**Current HTTP acceptance — P12-B8:** opt-in `batch_mode=fused`
+uses the original full-model native CUDA B2/B4/B8 plan for teacher prefixes,
+prompt tails and decode at independent causal frontiers. Prefix StateOnly and
+last-prompt-token greedy barriers are partitioned before native banding.
+Explicit `--batch-rows 2|4|8`, default2; interleaved remains the default mode.
+Surviving rows regroup without padding. Both approved original Qwen3.5 models
+pass actual release JSON/SSE, trained EOS, cancellation and exact internal
+CPU/B1 state tests. Engine full248320-logit/compact packet/all42 evidence is
+distinct from HTTP wire evidence. Paged state, simultaneous multi-token prefill,
+trained-HF arithmetic and matched vLLM performance remain open. Later named
+checkpoints supersede only their corresponding historical limitations below.
 
 ## Ownership boundaries
 
@@ -749,7 +749,7 @@ Physical CUDA acceptance on the RTX3060 Laptop:
 Current complete isolated check:1218 Rust passed/0failed/69ignored over248
 suites plus18Python/release/installer/Nix. Strict CUDA/Vulkan/qualifier checks
 and both approved original cache-direct/HF-import release routes pass.
-Same-engine cold/warm release A/B measurement is still being qualified;
+Same-engine cold/warm release A/B observations are now accepted below;
 source-correct SLO goodput and genuine matched vLLM performance stay open.
 The first A/B invocation used equal4GiB provider/device limits, leaving no
 unreserved global staging capacity. Its native refusals correctly prevented
@@ -779,10 +779,92 @@ improvement is established. Both builds miss the declared10s TTFT SLO, hence
 observed delivery-SLO goodput0; source-correct goodput remains unset. Sampled
 GPU memory reached3045MiB in the first old/new pair;0.5s observations can miss
 peaks and are separate from admission. The two workload labels are not an
-authenticated tenant-isolation proof. More models/order/cold conditions and
+authenticated tenant-isolation proof. The remaining model/order/cold observations are recorded below;
 genuine equivalent-source vLLM comparisons remain required.
 
 The launch delta independently reconciles with the source traversal:368 B1
 state-only calls plus8 B8 greedy calls. Old counts5489/6551 become4559/5616;
 368*(5489-4559)+8*(6551-5616)=349720 fewer actual launches. Model-token steps
 432, committed roots80 and generated output tokens64 are different quantities.
+
+
+## Completed bounded activation-preparation comparison
+
+Sixteen serialized samples cover both original models, warmed-process ABBA
+(0.8B), BAAB(2B), and cold-process ABBA(both). Each model/policy has32offers/
+32completed/256 committed output tokens, with identical full IDs/text/usage/
+finish reason across builds;8 genuineB8 cohorts/sample, zero refusal/failure/
+cancel/discard. Total128offers/128completed/1024 output tokens. Same source/
+tokenizer/greedy policy/context512/output8,4CPU affinity members,4GiB provider/
+5GiB device caps. Both providers stop and device telemetry returns41MiB before
+the next sample. Cold means fresh process/no request warmup; OS/storage/compiler
+caches are not evicted. Model readiness/startup is separate from request-wave
+time. The original invalid4GiB-device attempt is retained, never averaged in.
+
+Values below are means of the two per-provider sample summaries; the reported
+p95 values are means of sample p95s, not a pooled population percentile.
+
+| Model/process | Wave seconds old→new | Client TTFT p95 old→new(s) | Client token ITL p95 old→new(s) |
+| --- | ---: | ---: | ---: |
+|0.8B warm|39.14206→33.163665|36.4701→30.5368|0.3911→0.3933|
+|2B warm|45.81464→43.04175|39.0828→36.3616|0.9822→0.9736|
+|0.8B cold process|45.657195→39.34474|42.9849→36.7244|0.3944→0.3905|
+|2B cold process|51.963075→48.845175|45.3282→42.2650|0.9618→0.9515|
+
+Warm wave changes: -15.3%/-6.1%; cold -13.8%/-6.0%. Actual dispatches/sample
+are2072360→1722640(0.8B,-16.9%) and1949016→1668496(2B,-14.4%) for BOTH
+policies. No consistent token ITL-tail improvement is established. Every sample
+misses10s TTFT; observed delivery-SLO goodput0 and source-correct goodput unset.
+Memory observations sample maxima3045MiB(0.8B) and3509MiB(2B) on both builds;
+0.5s telemetry is not an exact allocator peak/admission proof. Two workload
+labels do not establish authenticated tenant fairness. These are small bounded
+ZG-versus-ZG observations, not a matched vLLM benchmark or a throughput-parity
+claim. Native full-prefix work and original-HF/CUDA numerical qualification
+remain the next performance prerequisites.
+
+
+## Native teacher-prefix serving — P12-B8
+
+The original BatchProgram now advances one teacher token per row with
+ResidentOutput::StateOnly, omitting output projection/sampling/logits and
+reading only shared4B status. All42 independent candidate state domains,
+physical leases, Ready events and checked atomic publication are unchanged.
+Each teacher advances its own cursor/root; it produces no generated ID,
+TokenText, terminal event, EOS decision or output usage. A trained EOS teacher
+is ordinary input. Prefix/tail partition precedes2/4/8/1 banding; unmatched B1
+native-mode rows also consume one teacher per wave. Interleaved scheduling
+retains its max32 prefix quantum. Capacity refusal occurs before launch;
+original errors propagate, and post-Ready cancellation discards the whole
+candidate cohort before survivors regroup.
+
+Both original sources pass release B2/B4/B8 teacher steps against independent
+CPU AND accepted B1 GPU: all42 domains after every teacher, then complete
+248320 future logits. Tests include unequal history, four teacher steps with
+trained EOS, invalid/stale/abandoned candidates and final reservation0.
+Two pressure tests prove actual B8 refusal/B4 progress/B8 after release;
+two fresh unknown-completion processes retain1817/1712 original handles,
+unchanged prior roots/all42,4GiB envelope and fence without recovery.
+All14 serving-worker and12 HTTP scopes pass. New prefix HTTP cases use
+ragged prompts, actual StateOnly cohort/row counters and exact source-bound
+SSE IDs/text/usage/frontiers; prefix roots cannot appear as generated IDs.
+Ragged B2 tails may finish through B1: genuine StateOnly fusion is required,
+while matching-tail/worker cases separately establish greedy fusion.
+
+Three health fields expose completed StateOnly batches/rows and greedy
+batches. Total native batches equal the two readout phases; width-weighted
+rows close independently; native sampler dispatches equal4*greedy batches.
+Completed discarded GPU work remains distinct from committed publication.
+
+Complete isolated check:1241 Rust passed/0failed/70ignored over248 suites,
+18 Python tests, release CLI/installer/Nix pass. Strict combined CUDA/HF/cache,
+qualification and Vulkan Clippy pass. Approved original cache-direct22.20s
+and HF-import29.94s release routes pass both models/fullV/all42/source/reclaim.
+Initial ragged-fixture and unrelated greedy-counter assertions were repaired
+only in tests; raw failed attempts remain preserved. A final launch missing
+CUDA_PATH refused before GPU execution; the identical frozen artifacts passed
+with the approved environment. No source math/tolerance change.
+
+Frozen production server b1846c3e was built from5350a4d plus this reviewed
+prefix overlay. Concurrent prefix throughput and the explicit B1 scheduling
+cost still require quiet finite A/B measurements. This is one native teacher
+per row/wave, not simultaneous multi-token prefill or matched vLLM performance.

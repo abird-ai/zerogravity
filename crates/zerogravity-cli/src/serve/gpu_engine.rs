@@ -130,6 +130,9 @@ struct WaveStats {
     model_tokens: AtomicU64,
     committed_roots: AtomicU64,
     fused_batches: AtomicU64,
+    fused_state_only_batches: AtomicU64,
+    fused_state_only_rows: AtomicU64,
+    fused_greedy_batches: AtomicU64,
     native_bands: [AtomicU64; 3],
     native_admission_refusals: AtomicU64,
     fused_rows: AtomicU64,
@@ -161,6 +164,9 @@ pub(super) struct GpuMetrics {
     pub model_tokens: u64,
     pub committed_roots: u64,
     pub fused_batches: u64,
+    pub fused_state_only_batches: u64,
+    pub fused_state_only_rows: u64,
+    pub fused_greedy_batches: u64,
     pub native_bands: [u64; 3],
     pub native_admission_refusals: u64,
     pub fused_rows: u64,
@@ -335,6 +341,9 @@ impl GpuRouter {
             model_tokens: self.stats.model_tokens.load(Ordering::Relaxed),
             committed_roots: self.stats.committed_roots.load(Ordering::Relaxed),
             fused_batches: self.stats.fused_batches.load(Ordering::Relaxed),
+            fused_state_only_batches: self.stats.fused_state_only_batches.load(Ordering::Relaxed),
+            fused_state_only_rows: self.stats.fused_state_only_rows.load(Ordering::Relaxed),
+            fused_greedy_batches: self.stats.fused_greedy_batches.load(Ordering::Relaxed),
             native_bands: std::array::from_fn(|i| {
                 self.stats.native_bands[i].load(Ordering::Relaxed)
             }),
@@ -497,8 +506,10 @@ impl GpuActive {
     }
     fn prefill_count(&self) -> usize {
         let remaining = self.prompt.len() - self.cursor;
-        if self.native_rows != 0 && remaining > 1 {
-            (remaining - 1).min(PREFILL_QUANTUM)
+        if self.native_rows != 0 {
+            // Native cohorts and unmatched B1 rows consume the same truthful
+            // one-token wave credit, then release the worker to other rows.
+            remaining.min(1)
         } else {
             remaining.min(PREFILL_QUANTUM)
         }
@@ -773,7 +784,7 @@ fn worker(
             max_scratch: 256 * 1024 * 1024,
         };
         let planned = if native_rows != 0 {
-            gpu_batch::form_decode(&ready, bounds)
+            gpu_batch::form_native(&ready, bounds)
         } else {
             gpu_batch::form(&ready, bounds)
         };
@@ -835,13 +846,14 @@ fn worker(
                     .co_scheduled
                     .fetch_add(wave.indices.len() as u64, Ordering::Relaxed);
             }
-            // Exact prompt tails share the existing checked root publisher.
-            // Native mode uses multi-row kernels; interleaved mode keeps B1 graphs.
+            // Prefix and tail readouts share the original checked publisher.
+            // The cohort owner partitions state-only and greedy barriers.
             let batch_ready = wave.indices.len() > 1
                 && wave.indices.iter().all(|&i| {
                     pending[i].as_ref().is_some_and(|row| {
                         !row.cancelled.load(Ordering::Acquire)
-                            && row.cursor + 1 == row.prompt.len()
+                            && row.cursor < row.prompt.len()
+                            && (native_rows != 0 || row.cursor + 1 == row.prompt.len())
                             && row.device_token.is_none()
                     })
                 });

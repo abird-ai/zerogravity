@@ -1300,3 +1300,6 @@ fn original_qwen08b_native_unequal_arrival_token_observations() {
 fn original_qwen2b_native_unequal_arrival_token_observations() {
     unequal_arrival_metrics("qwen35-2b");
 }
+
+#[path = "qualification/prefix.rs"]
+mod prefix;
