@@ -4,19 +4,20 @@ Owner: @pvl
 
 # Native serving and request scheduling
 
-Current P12 continuation: the diagnostic native CUDA ForwardPlan
-executes a complete model over B2/B4/B8 values, sharing immutable
-weights and preserving each request's state authority. Qwen3.5
-0.8B/2B B2/B4/B8 physically matched all248320 logits/all42 domains
-against independent CPU and B1. Exact acceptance scope and remaining
-work: [TODO.md](TODO.md), [FUSED_GPU_BATCHING.md](FUSED_GPU_BATCHING.md).
-Native greedy selection now produces independent root-bound packets
-with 4+12B readback bytes per cohort. The next batch consumes their
-original GPU words. HTTP EOS/row retirement and continuous integration
-retain their own acceptance gates.
-HTTP still uses the accepted interleaved path; fused continuous
-serving and matched vLLM performance remain open. Earlier operator
-and serialized-cohort evidence below records their original scopes.
+Current P12: opt-in CUDA B2 HTTP prompt-tail/decode waves execute the
+original native full-model ForwardPlan. Same-source/frontier eligible
+rows share immutable weights; each retains its own SessionAuthority,
+StateRoot, device packet and physical leases. Unmatched rows and
+multi-token prefill use the accepted B1 GPU path. Default batch mode
+remains `interleaved`.
+
+Approved original Qwen3.5 0.8B/2B passed real release JSON/SSE,
+trained EOS, unequal output limits, disconnect/survivor/replay and
+internal CPU/B1 exact packets/all42 state domains. The earlier native
+B2/B4/B8 engine diagnostics retain full248320-logit acceptance;
+HTTP currently dispatches native B2 only. Wider/unequal-frontier
+serving, full GPU prefill and matched vLLM performance remain open.
+Exact scopes: [TODO.md](TODO.md), [FUSED_GPU_BATCHING.md](FUSED_GPU_BATCHING.md).
 
 ## Implemented: first OpenAI HTTP/CPU router slice
 
@@ -56,11 +57,11 @@ Set configured host budget responsibly based on physical RAM and other host/cgro
 
 ## Not implemented / next
 
-- vLLM-style fused continuous GPU serving, paged KV/cache, cross-machine load balancing and any vLLM goodput parity claim.
+- Wider/unequal-frontier native GPU serving, paged KV/cache, cross-machine load balancing and any vLLM goodput parity claim.
 - All sampling/grammar/reasoning/tool/audio/image/video/embedding/provider-specific API shapes beyond the above bounded subset; real pipeline/media execution, multi-tenant shared context, hot reload or persistent sessions.
 - Gemma4/Qwen3.8 trained execution, SSD model inference, exact trained 27B StateRoot or tokenizer support.
 
-Next: group compatible model/source/request-position tasks under one `MathematicalBackend` and physically admitted GPU batch plan. Preserve independent per-request StateRoots, finite occupancy and original BufferLease completion; benchmark p50/p95 TTFT/ITL and committed goodput against pinned vLLM under equivalent inputs.
+Next: widen the existing native serving path to B4/B8 and unequal frontiers. Preserve independent per-request StateRoots, finite occupancy and original BufferLease completion; benchmark p50/p95 TTFT/true ITL and committed SLO goodput against pinned vLLM under equivalent inputs.
 
 ## Resident GPU OpenAI serving — accepted CUDA slice
 
@@ -70,14 +71,18 @@ Next: group compatible model/source/request-position tasks under one `Mathematic
 - Explicit `serve,cuda`, `serve,vulkan` or `serve,hip`. No CPU
   inference fallback. GPU greedy token feedback stays on the
   original device path; the host handles tokenization and text.
-- One finite GPU worker, ≤8 active/16 queued. Compatible
-  source/phase/frontier waves with ≤32-token prefill quanta and
-  per-request decode; each member still executes a SEPARATE
-  GPU program. `gpu_fused_batches=0`, not vLLM fusion.
+- One finite GPU worker, ≤8 active/16 queued. Default `interleaved`
+  uses B1 graphs. Opt-in `--batch-mode fused` requires CUDA and
+  ≥2 active slots: matching-source/frontier prompt tails and decode
+  use actual B2 kernels. Other prefill uses ≤32-token B1 quanta;
+  unmatched rows use B1. No padding stopped or blocked requests.
 - Shared CPU/GPU output owner handles EOS, UTF-8, SSE, usage,
-  backpressure/cancel. Health distinguishes attempted/completed
-  quanta, GPU forward API calls (not individual kernel launches),
-  queued/active/canceled/error work.
+  backpressure/cancel. Credit-blocked GPU rows park before feedback
+  with one retained packet; a 30s deadline bounds stalls. Ready-cohort
+  cancellation discards every candidate before retrying survivors.
+  Health distinguishes scheduler quanta, completed model-token work,
+  actual kernel dispatches, native cohorts, committed roots and
+  queued/active/canceled/error work; accepted output is not goodput.
 - CUDA fail-fast prerequisite: `CUDA_PATH` contains runtime
   headers and CCCL device headers. Split installed Nix packages
   can be staged using `scripts/cuda-nix-include-view.sh`:
@@ -105,7 +110,7 @@ Use your XDG cache root instead of HOME/.cache if configured.
 See the CPU YAML example for unchanged CPU serving.
 Local Renoir/gfx90c AMD launch hold remains intact.
 
-### Physical evidence: RTX 3060 Laptop / CUDA, 19 Oct 2026
+### Initial interleaved evidence: RTX 3060 Laptop / CUDA, 19 Oct 2026
 
 - Qwen3.5 0.8B: resident device model, HTTP 200, GPU-generated
   greedy token. Initial debug process readiness ~7.65s.
@@ -129,73 +134,54 @@ Local Renoir/gfx90c AMD launch hold remains intact.
 
 Detailed implementation/acceptance contract: [FUSED_GPU_BATCHING.md](FUSED_GPU_BATCHING.md).
 
-## Pending: P12/P16/P22 vLLM-equivalent fused GPU execution
+## Native CUDA B2 HTTP acceptance — P12-B5
 
-1. Extend native CUDA model/greedy qualification to further
-   profiles/backends and full-prefix GPU prefill.
-   Preserve each lane's source/session/epoch/frontier/root.
-2. Connect native full-model execution to finite fair serving;
-   source-compatible HTTP waves still run separate B1 graphs.
-   Retire stopped/canceled rows and park backpressured rows before
-   feedback; prove B1↔native packet handoff and no duplicate
-   committed token/SSE emission attempts.
-3. Device-resident paged hybrid KV + GDN/COW state with
-   actual buffer leases, safe cancellation/quarantine.
-4. Finite fair chunked prefill/decode and physical GPU/host/SSD
-   occupancy, no speculative phantom memory credit.
-5. Source-real CPU↔GPU full logits and StateRoot for B1/2/4/8;
-   real per-token TTFT/ITL/SLO goodput benchmark against pinned
-   equivalent vLLM V1 (same weights/quant/tokenizer/hardware).
-   No performance parity claim before these gates pass.
+Implementation: `2677d8b`.
 
-Current GPU HTTP servicing is physically real and concurrent;
-source-compatible waves are scheduler co-location ONLY.
+Release tests over BOTH approved original models prove native
+source-alias JSON/SSE, exact independent CPU text/usage, real trained
+EOS stop with EOS excluded from usage, one terminal/usage/Done,
+active disconnect, survivor and fresh replay. Internal real GPU
+worker tests additionally compare compact token ID/max bits and all42
+state domains against CPU and B1, B1↔native packet handoffs,
+unequal output limits, cancellation before feedback/after Ready,
+actual bounded-channel parking and final reservation0.
 
+| Original source | Completed native cohorts | Native projections | Native sampler stages | Discarded Ready cohorts | Final active/queued/failed |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Qwen3.5 0.8B | 9 | 1683 | 36 | 1 | 0/0/0 |
+| Qwen3.5 2B | 8 | 1496 | 32 | 1 | 0/0/0 |
 
-## P12 first native fused CUDA operator
+Cohort counts include actual completed work discarded before root
+publication. They do not measure delivered tokens or throughput.
+HTTP wire checks do not expose private StateRoot/lease contents;
+those exact checks belong to the internal worker qualification.
 
-A source-qualified F32 B2/4/8 multi-row projection now runs as ONE
-CUDA dispatch per batch, with all outputs bit-exact against accepted
-B1 GPU dot kernels (19 Oct 2026, RTX 3060). See the
-[P12 fused batching design](FUSED_GPU_BATCHING.md). This is only
-projection-level fusion; HTTP serving does not yet execute a
-multi-request full-model GPU graph.
+For the optional native mode, use the same qualified CUDA environment
+and resource caps, for example:
 
+~~~bash
+cargo run --release --locked --offline -p zerogravity-cli \
+  --features serve,cuda -- serve --backend cuda --batch-mode fused \
+  --model qwen3.5-0.8b=target/models/qwen35-0.8b/model.gguf \
+  --workers 1 --active-per-worker 4 --max-context 512 --max-output 8 \
+  --provider-mib 4096 --device-mib 5120 --listen 127.0.0.1:8000
+~~~
 
-## P12 native CUDA batched source operators (19 Oct 2026)
+## Pending: P12/P16/P22
 
-Physical B2/4/8 bit-exact acceptance now includes projection,
-RMSNorm/residual/SiLU, GDN recurrence/state, causal KV candidate
-append and grouped QK/softmax/AV. Source/root-bound row admission
-tests and a pinned vLLM pairwise benchmark harness are included.
-This remains **operator-level fusion**; the resident full-model
-GPU program and HTTP fused batch mode are not yet enabled.
-See [P12 hardware qualification](FUSED_GPU_BATCHING.md).
+1. Native HTTP B4/B8, unequal frontiers, dynamic compatible refill
+   and full-prefix GPU prefill; qualify additional trained profiles
+   and backends before advertising them.
+2. Device-resident paged hybrid KV + GDN/COW state, source-safe
+   prefix reuse, physical admission and cancellation/quarantine.
+3. Fair prefill/decode/media occupancy and safe overlap across
+   GPU/host/SSD; no phantom memory credit.
+4. Actual p50/p95 TTFT/token ITL, committed SLO goodput, fairness,
+   memory and dispatch measurements against a genuine pinned,
+   source/quant/tokenizer/hardware-matched vLLM V1 environment.
+   No vLLM executable/module is installed in the checked environment.
 
-
-## P12 physically Ready resident-state cohort (19 Oct 2026)
-
-One `PreparedResidentCohort` now groups physically completed
-original GPU session proposals into a single source-bound
-publication barrier. Real CUDA B2/4/8 Qwen3.5 0.8B proved exact
-full logits and all42 state domains per independent session,
-stale/abandoned rollback and reclaimed state leases. Live OpenAI
-serving uses the same barrier for one-token final prefill tails;
-2 concurrent requests showed one state-cohort publication with
-0 failed GPU quanta.
-
-The full model graph remains serialized per member. HTTP
-`batch_mode=fused` remains disabled. See the
-[P12 acceptance plan](FUSED_GPU_BATCHING.md).
-
-
-## P12 native source-quantized B>1 CUDA projection
-
-The existing resident math now shares source-exact F32,
-Q4_0, Q4_1, Q8_0 and Q6_K B1/B2/4/8 projection dot
-kernels. Actual CUDA B2/4/8 tests on deterministic source
-fixtures are bit-exact with accepted B1 and use one
-physical multi-row launch per projection. Still
-**operator-level fusion**, not a whole-model GPU forward
-or vLLM-goodput qualification. See
-[P12 hardware acceptance](FUSED_GPU_BATCHING.md).
+Earlier B0/B1/A1/B2 operator and serialized-cohort evidence is retained
+in [FUSED_GPU_BATCHING.md](FUSED_GPU_BATCHING.md); its historical
+limitations are superseded only by the later named acceptance scope.

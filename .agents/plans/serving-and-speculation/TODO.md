@@ -8,31 +8,6 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
-- [x] **P12-B5 native CUDA B2 HTTP:** existing worker dispatches the
-  original full-model native plan for compatible prompt tails/decode;
-  unmatched rows and other prefill remain B1. Independent session/root/
-  packet/physical leases and the all-row publisher remain authoritative.
-  Present each committed packet once, retire EOS/length/canceled rows,
-  park bounded output before feedback and retry discarded Ready cohorts
-  without repeated text/usage/terminal. Actual original0.8B/2B RELEASE
-  worker tests passed CPU/B1 compact ID/max/all42 parity, B1↔native
-  handoffs, output limits2/5, real trained EOS, pre-feedback/after-Ready
-  cancellation, capacity1 credit parking/recovery and final reservation0.
-  Actual owned CUDA HTTP alias JSON/SSE tests passed exact CPU text/usage,
-  trained EOS stop/EOS-excluded usage, one terminal/usage/Done, active
-  disconnect, survivor/replay and final active/queued/failed0. Native
-  completed cohorts9/8, projection launches1683/1496, sampler stages36/32;
-  one Ready cohort discarded per model. Opt-in fused is CUDA B2 only,
-  active≥2; default interleaved and non-CUDA refusals are preserved.
-  Strict CPU/CUDA/Vulkan serve+cache and CUDA-qualifier Clippy passed;
-  CPU serve14 and GPU53 tests passed (GPU3 intentionally ignored).
-  Full isolated check.sh exit0:1147 Rust passed/0 failed/69 ignored over
-  245 suite runs,18 Python, release/installer/Nix formatting. Both approved
-  cache-direct/HF-import RELEASE routes passed full logits/all42 for both
-  models. Real release serve-bench smoke4/4 requests16 usage tokens each,
-  eight actual native cohorts each; comparator self-test passed. No true
-  ITL/SLO/fairness or matched vLLM performance acceptance; vLLM absent.
-
 - [ ] **P12 fused continuous GPU serving:** extend the accepted CUDA B2
   HTTP path to B4/B8, unequal frontiers, dynamic compatible refill,
   paged hybrid KV/recurrent cache, physically safe overlap and fairness.
@@ -94,6 +69,33 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 - [ ] Preserve zero untriaged frontier/disposition requirements before any full-parity claim; synthetic acceptance, fewer launches and competitor measurements do not establish local parity or speed.
 
 ## Committed
+
+### 2677d8b — native CUDA B2 HTTP waves
+
+- [x] **P12-B5 native CUDA B2 HTTP:** existing worker dispatches the
+  original full-model native plan for compatible prompt tails/decode;
+  unmatched rows and other prefill remain B1. Independent session/root/
+  packet/physical leases and the all-row publisher remain authoritative.
+  Present each committed packet once, retire EOS/length/canceled rows,
+  park bounded output before feedback and retry discarded Ready cohorts
+  without repeated text/usage/terminal. Actual original0.8B/2B RELEASE
+  worker tests passed CPU/B1 compact ID/max/all42 parity, B1↔native
+  handoffs, output limits2/5, real trained EOS, pre-feedback/after-Ready
+  cancellation, capacity1 credit parking/recovery and final reservation0.
+  Actual owned CUDA HTTP alias JSON/SSE tests passed exact CPU text/usage,
+  trained EOS stop/EOS-excluded usage, one terminal/usage/Done, active
+  disconnect, survivor/replay and final active/queued/failed0. Native
+  completed cohorts9/8, projection launches1683/1496, sampler stages36/32;
+  one Ready cohort discarded per model. Opt-in fused is CUDA B2 only,
+  active≥2; default interleaved and non-CUDA refusals are preserved.
+  Strict CPU/CUDA/Vulkan serve+cache and CUDA-qualifier Clippy passed;
+  CPU serve14 and GPU53 tests passed (GPU3 intentionally ignored).
+  Full isolated check.sh exit0:1147 Rust passed/0 failed/69 ignored over
+  245 suite runs,18 Python, release/installer/Nix formatting. Both approved
+  cache-direct/HF-import RELEASE routes passed full logits/all42 for both
+  models. Real release serve-bench smoke4/4 requests16 usage tokens each,
+  eight actual native cohorts each; comparator self-test passed. No true
+  ITL/SLO/fairness or matched vLLM performance acceptance; vLLM absent.
 
 ### 54fd580 — native CUDA greedy/device feedback
 

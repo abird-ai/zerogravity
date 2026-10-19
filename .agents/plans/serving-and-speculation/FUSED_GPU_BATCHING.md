@@ -4,11 +4,16 @@ Owner: @pvl
 
 # P12 — native fused GPU batch acceptance
 
-**HTTP baseline:** original Qwen3.5 resident CUDA with independent
-OpenAI HTTP sessions, verified GPU completions, cancellation, and
-source-compatible scheduling waves. Each member still performs its
-OWN full-model GPU program. **HTTP fused full-model batches: zero.**
-The separate native ForwardPlan diagnostic is tracked under P12-B3/B4.
+**Current HTTP acceptance — P12-B5:** opt-in `batch_mode=fused`
+uses the original full-model native CUDA B2 plan for compatible
+one-token prompt tails and device-feedback decode. Default mode
+is still `interleaved`; unmatched rows and other prefill use B1.
+Approved original Qwen3.5 0.8B/2B passed real release JSON/SSE,
+trained EOS, cancellation and exact internal CPU/B1 state tests.
+Engine B2/B4/B8 full-logit/greedy diagnostics retain their B3/B4 scope.
+HTTP B4/B8, unequal-frontier/paged state, full GPU prefill and vLLM
+performance acceptance remain open. Earlier sections below record
+their original checkpoints; P12-B5 supersedes their HTTP refusal.
 
 ## Ownership boundaries
 
@@ -383,6 +388,127 @@ continuous HTTP integration retain their separate acceptance gates.
 Do not enable `batch_mode=fused` or infer serving throughput from
 these sampler/dispatch counts.
 
+## P12-B5 — native CUDA B2 HTTP waves
+
+Implementation: `2677d8b`, 19 Oct 2026, RTX3060 Laptop CUDA; the same two approved original
+mixed-GGUF sources as B3/B4. The existing GPU worker now feeds
+matching-source/phase/frontier pairs into the original native model
+and greedy methods. Each request retains its independent authority,
+root, KV/GDN leases, Ready receipt and producer-bound device packet.
+One all-row checked publisher remains the only cohort commit path.
+
+- Multi-token prefill remains B1 in ≤32-token quanta, preserving the
+  last prompt token for native B2 when a compatible sibling exists.
+  Unmatched rows use the original B1 GPU path; no CPU inference fallback.
+- A committed packet is presented once before feedback. EOS/length
+  rows retire, canceled rows drop and output-credit-blocked rows park
+  BEFORE wave formation. A parked row retains its original packet/root
+  and a bounded two-event pending output; it owns no submitted command,
+  queue slot or workspace guard. A 30s credit deadline bounds stalls.
+- Cancellation after actual Ready discards every private candidate
+  before publication. Survivors retry from original roots/packets,
+  retaining presentation progress; no repeated text, usage or terminal.
+- Fused mode requires CUDA and ≥2 active slots. CPU/Vulkan/HIP,
+  active1 and unknown modes refuse before model/device lookup.
+  Native mode currently dispatches pairs even with >2 active requests.
+  Default interleaved behavior remains available.
+
+Internal RELEASE worker tests for BOTH models physically proved:
+B1-produced→native-consumed and native-produced→B1 packet handoffs,
+unequal output limits2/5, cancellation before feedback and after Ready,
+a real capacity1 output channel parked across sibling progress, and
+recovery without duplicate events. Compact token ID/max bits and all42
+state domains matched independent original CPU AND B1 at each checked
+frontier. A bounded source-real CPU search found trained EOS; actual
+GPU replay proved native final-prompt execution, stop/EOS-excluded
+usage, all42 parity and an independent continuing sibling. No synthetic
+EOS fallback can pass. Final active0/reservation0, device unfenced.
+The separate B3/B4 diagnostics establish complete248320-logit parity;
+B5's HTTP wire checks establish exact decoded output and usage.
+
+Actual owned HTTP servers used two aliases of ONE resident source,
+real JSON/chunked SSE requests, distinct output limits, genuine EOS
+through both wire formats, active disconnect, survivor and fresh replay.
+Both tests passed with one terminal/usage/Done, final active/queued0
+and failed GPU quanta0. These cumulative counters include three canceled
+prefill gate requests and the disconnected target; they are not a latency
+benchmark:
+
+| Original source | Completed native B2 cohorts | Native projection launches | Native sampler stages | Discarded Ready cohorts | Total completed kernel launches |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Qwen3.5 0.8B | 9 | 1683 | 36 | 1 | 1155210 |
+| Qwen3.5 2B | 8 | 1496 | 32 | 1 | 1080879 |
+
+Health counter meanings:
+
+- `completed_forward_kernel_dispatches`: actual completed launches,
+  including private Ready cohorts later discarded, counted once/cohort.
+- `gpu_fused_batches`/`gpu_fused_rows_completed`: actual completed native
+  full-model cohorts/rows, not scheduler membership or committed output.
+  `native_projection_dispatches_completed` is the projection subset;
+  `native_sampler_dispatches_completed` counts the four native selector
+  stages, excluding private packet copies.
+- `completed_model_token_steps`: physically completed model work,
+  including discarded work; one B1 API call may prefill multiple tokens.
+  `gpu_forward_calls_completed` counts API calls; legacy
+  `gpu_forward_steps_completed` retains that meaning.
+- `committed_gpu_roots`/`state_cohort_publications`/`state_cohort_rows`:
+  actual root transitions and all-row logical publications.
+- `completed_gpu_quanta`: request work including terminal presentation;
+  `co_scheduled_members`: scheduler membership only.
+- `accepted_output_tokens`: staged committed-packet output, not transport
+  delivery, acknowledged committed goodput or an SLO metric.
+  `output_credit_parked_requests` exposes parked rows separately.
+
+Repeat physical worker tests with the installed CUDA/CCCL/NVRTC environment:
+
+~~~bash
+CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=4 python3 scripts/native-gpu.py -- \
+  cargo test --release --locked --offline -p zerogravity-cli \
+  --features serve,cuda,cache --bin zerogravity \
+  serve::gpu_engine::qualification:: -- --ignored --nocapture --test-threads=1
+~~~
+
+HTTP tests need loopback UP inside the private network namespace. Use
+`scripts/check.sh`'s guarded private-loopback setup in that SAME namespace
+before the following command; never change a host interface:
+
+~~~bash
+cargo test --release --locked --offline -p zerogravity-cli \
+  --features serve,cuda,cache --test serve_gpu \
+  -- --ignored --nocapture --test-threads=1
+~~~
+
+Verified B5 gates: strict CPU/CUDA/Vulkan serve+cache and CUDA-qualifier
+Clippy `-D warnings`; CPU serve14 passed, GPU53 passed/3 intentionally
+ignored. Full isolated `scripts/check.sh` exit0:1147 Rust passed/0 failed/
+69 ignored across245 suite runs,18 Python fixtures, release CLI/installer
+and Nix formatting. Both approved original0.8B/2B cache-direct and
+HF-import RELEASE routes retained full-vocabulary/all42/source-lease/
+mutation/reclamation parity. Root README bytes and source hashes remain
+unchanged; no AMD launches, device changes, recovery or publication.
+
+### Local release tool smoke; no matched performance acceptance
+
+`tools/serve-bench.py` ran against actual owned fused CUDA servers.
+One separate B1 warmup request preceded four measured requests at
+concurrency2/max4, using `Say hello.` through the chat route. New
+processes reused existing source/CUDA caches; native-plan/JIT work
+may occur in the measured run. This is a tiny correctness/tool smoke,
+not cold/warm performance qualification:
+
+| Original source | Offered/completed | Usage-reported tokens | TTFT p50/p95 seconds | SSE chunk p95 seconds | Sampled total-device peak MiB | Completed kernel delta | Native cohort delta |
+| --- | --- | ---: | --- | ---: | ---: | ---: | ---: |
+| Qwen3.5 0.8B | 4/4 | 16 | 1.771/10.851 | 0.294 | 1513 | 265376 | 8 |
+| Qwen3.5 2B | 4/4 | 16 | 2.083/6.823 | 0.396 | 2235 | 249616 | 8 |
+
+Memory samples include startup/warmup/measurement and are not exact peaks
+or ResourceArbiter reservations. SSE chunk intervals do NOT establish
+true token ITL. SLO goodput, fairness and performance remain unqualified.
+`tools/serve-compare.py --self-test` passed; no vLLM executable/module or
+matched external endpoint exists in the checked environment. No models,
+SDKs or vLLM packages were downloaded; no vLLM comparison is claimed.
+
 ## P12-A — batch-native parameter, source and state bindings
 
 1. Introduce a typed `ResidentBatchStep` with finite row count
@@ -438,10 +564,10 @@ these sampler/dispatch counts.
   peak/evictions and physical dispatch counts (not wave counts).
 - Compare warm/cold repeated ABBA/BAAB workloads with all
   rejected/canceled work included and uncertainty recorded.
-- Promote `batch_mode=fused` only after B>1 native physical
-  dispatch and source-exact Root/Ready acceptance on every
-  advertised GPU backend; until then return
-  `unsupported_batch_mode` and `gpu_fused_batches=0`.
+- Enable a backend/profile's fused path only after actual B>1 native
+  dispatch and source-exact Root/Ready acceptance. P12-B5 qualifies
+  CUDA B2 for the two approved sources; other backends refuse fused.
+  A fused flag or fewer launches does not establish vLLM performance.
 
 Changing a scheduler counter to "fused" without native multi-row
 execution is forbidden. P12-C/P22 remain pending; the sections
