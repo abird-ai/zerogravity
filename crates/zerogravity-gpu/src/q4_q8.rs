@@ -99,6 +99,39 @@ pub(crate) fn prepare_source(region: MatVecRegion<'_>) -> Result<PreparedQ4Q8> {
     })
 }
 
+/// Shared original Q4_0 integer dot + ordered F32 block reduction.
+#[cube]
+pub(crate) fn source_q4_q8_dot(
+    weights: &[u8],
+    scales: &[f32],
+    q8: &[i32],
+    row: usize,
+    scale_offset: usize,
+    code_offset: usize,
+    #[comptime] blocks_per_row: usize,
+    #[comptime] wide_accumulate: bool,
+) -> f32 {
+    let mut total = 0.0f32;
+    for block in 0..blocks_per_row {
+        let id = row * blocks_per_row + block;
+        let mut dot = 0i32;
+        for lane in 0..16usize {
+            let packed = u32::cast_from(weights[id * 16 + lane]);
+            let low = i32::cast_from(packed & 15u32) - 8i32;
+            let high = i32::cast_from(packed >> 4u32) - 8i32;
+            let index = code_offset + block * 32 + lane;
+            dot += low * q8[index] + high * q8[index + 16];
+        }
+        total = source_accumulation::source_mul_add(
+            f32::cast_from(dot),
+            scales[scale_offset + id],
+            total,
+            wide_accumulate,
+        );
+    }
+    total
+}
+/// Previously accepted B1 projection uses that SAME source math.
 #[cube(launch_unchecked)]
 pub(crate) fn source_q4_q8_gemv(
     weights: &[u8],
@@ -111,25 +144,16 @@ pub(crate) fn source_q4_q8_gemv(
 ) {
     let row = ABSOLUTE_POS;
     if row < rows {
-        let mut total = 0.0f32;
-        for block in 0..blocks_per_row {
-            let id = row * blocks_per_row + block;
-            let mut dot = 0i32;
-            for lane in 0..16usize {
-                let packed = u32::cast_from(weights[id * 16 + lane]);
-                let low = i32::cast_from(packed & 15u32) - 8i32;
-                let high = i32::cast_from(packed >> 4u32) - 8i32;
-                let index = block * 32 + lane;
-                dot += low * q8[index] + high * q8[index + 16];
-            }
-            total = source_accumulation::source_mul_add(
-                f32::cast_from(dot),
-                scales[id],
-                total,
-                wide_accumulate,
-            );
-        }
-        output[row] = total;
+        output[row] = source_q4_q8_dot(
+            weights,
+            scales,
+            q8,
+            row,
+            0usize,
+            0usize,
+            blocks_per_row,
+            wide_accumulate,
+        );
     }
 }
 

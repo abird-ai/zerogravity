@@ -45,6 +45,46 @@ token routing and per-session StateRoot batch execution remain open.
 Existing HTTP batch_mode=fused must continue to refuse and report
 gpu_fused_batches=0.
 
+## P12-B1 — physical CUDA batch operator acceptance
+
+19 Oct 2026, RTX 3060, source-qualified CUDA runtime and CCCL/NVRTC
+headers from existing local Nix packages. B=2,4,8 tests passed
+bit-for-bit against the original B1 GPU math for:
+
+- Shared projection (previous P12-B0).
+- RMSNorm, elementwise residual/SILU with B1-compatible arithmetic.
+- GDN recurrence, including output and complete candidate-state bits.
+- Immutable-origin KV candidate append (positions 0/7/31).
+- Grouped QK/softmax/AV attention (valid positions 1/17/32).
+
+One physical GPU operation dispatch covers all B lanes in each
+native batch. These are isolated kernel/operation qualifications,
+**not** a complete model-forward GPU batch. A source-bound
+`ResidentBatchRows` admission contract rejects duplicate/foreign
+sessions, stale frontier and overlapping row ownership without
+publishing state. The actual `ResidentProgram` still operates one
+session at a time and `gpu_fused_batches=0` is accurate for HTTP.
+
+Accepted checks: 49 GPU library tests, 46 passed/3 intentionally
+ignored; strict CUDA qualification Clippy `-D warnings`, frozen
+workspace 1,147 passed/0 failed/69 intentionally ignored across
+241 Rust suite runs, plus both approved trained Qwen3.5 0.8B/2B
+direct-cache and HF-import full-logit/42-domain parity routes.
+The physical tests were repeated after the lint-only refactor.
+
+An isolated vLLM comparator is now available at
+`tools/serve-compare.py`; its source-free self-test passed.
+**No vLLM runtime was installed** and no source-matched external
+vLLM endpoint was provided, so there is no legitimate P22 latency
+or throughput comparison.
+
+Remaining P12-critical work is batch-native *full-model*
+`ResidentProgram` lowering: all operator nodes, GGUF codec
+variants, coherent per-row session state publication, actual
+Ready/fence receipts, concurrent cancellation, paged hybrid KV,
+and source-real B2/4/8 complete full-vocabulary/StateRoot parity.
+Do not enable `batch_mode=fused` or claim vLLM parity yet.
+
 ## P12-A — batch-native parameter, source and state bindings
 
 1. Introduce a typed `ResidentBatchStep` with finite row count

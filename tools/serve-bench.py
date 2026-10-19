@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import hashlib
 import json
 import math
 import statistics
@@ -28,6 +29,7 @@ class Outcome:
     itls: list[float]
     tokens: int | None
     error: str | None
+    output_sha256: str | None = None
 
 
 def percentile(values: list[float], percentage: float) -> float | None:
@@ -58,6 +60,7 @@ def stream_one(url: str, model: str, prompt: str, max_tokens: int,
     count = None
     reason = None
     ended = False
+    output_hash = hashlib.sha256()
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             if response.status != 200:
@@ -76,6 +79,7 @@ def stream_one(url: str, model: str, prompt: str, max_tokens: int,
                     delta = choice.get("delta", {})
                     content = delta.get("content", "") if isinstance(delta, dict) else choice.get("text", "")
                     if content:
+                        output_hash.update(content.encode("utf-8"))
                         now = time.monotonic()
                         if ttft is None:
                             ttft = now - started
@@ -91,7 +95,8 @@ def stream_one(url: str, model: str, prompt: str, max_tokens: int,
                     count = usage["completion_tokens"]
         if not ended or reason is None:
             raise ValueError("missing SSE [DONE] or terminal choice")
-        return Outcome(True, reason, time.monotonic() - started, ttft, itls, count, None)
+        return Outcome(True, reason, time.monotonic() - started,
+                       ttft, itls, count, None, output_hash.hexdigest())
     except (urllib.error.URLError, OSError, ValueError, json.JSONDecodeError, TimeoutError) as exc:
         return Outcome(False, None, time.monotonic() - started, ttft, itls, count, type(exc).__name__)
 
@@ -130,6 +135,7 @@ def bench(url: str, model: str, prompt: str, count: int, concurrency: int,
         "completed_requests": len(completed),
         "unsuccessful_requests": count - len(completed),
         "errors": errors,
+        "output_sha256_by_request": [o.output_sha256 for o in outcomes],
         "wall_seconds": round(elapsed, 5),
         "latency_p50_seconds": percentile(latency, .50),
         "latency_p95_seconds": percentile(latency, .95),
@@ -175,6 +181,8 @@ def self_test() -> None:
         assert result["completed_requests"] == 4
         assert result["reported_tokens_per_offered_second"] is not None
         assert result["numerical_source_equivalence"] == "not_verified"
+        assert len(result["output_sha256_by_request"])==4
+        assert len(set(result["output_sha256_by_request"]))==1
         assert result["sse_chunk_interval_p95_seconds"] is None
         assert percentile([1., 2., 3., 4.], .95) == 4.
         print("SERVING_BENCH_SOURCE_FREE_SELF_TEST_PASS")

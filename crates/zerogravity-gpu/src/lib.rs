@@ -12,7 +12,15 @@ mod attention_softmax;
 mod attention_value;
 mod backend;
 #[cfg(any(feature = "qualification", test))]
+mod batch_attention;
+#[cfg(any(feature = "qualification", test))]
+mod batch_elementwise;
+#[cfg(any(feature = "qualification", test))]
+mod batch_kv;
+#[cfg(any(feature = "qualification", test))]
 mod batch_projection;
+#[cfg(any(feature = "qualification", test))]
+mod batch_recurrent;
 mod device_activation;
 mod elementwise;
 mod embedding;
@@ -49,6 +57,7 @@ mod program_kernels;
 mod q4;
 mod q4_q8;
 mod residency;
+pub mod resident_batch;
 mod resident_bindings;
 mod resident_greedy;
 #[cfg(feature = "qualification")]

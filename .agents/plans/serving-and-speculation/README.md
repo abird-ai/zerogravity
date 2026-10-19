@@ -144,3 +144,14 @@ B1 GPU dot kernels (19 Oct 2026, RTX 3060). See the
 [P12 fused batching design](FUSED_GPU_BATCHING.md). This is only
 projection-level fusion; HTTP serving does not yet execute a
 multi-request full-model GPU graph.
+
+
+## P12 native CUDA batched source operators (19 Oct 2026)
+
+Physical B2/4/8 bit-exact acceptance now includes projection,
+RMSNorm/residual/SiLU, GDN recurrence/state, causal KV candidate
+append and grouped QK/softmax/AV. Source/root-bound row admission
+tests and a pinned vLLM pairwise benchmark harness are included.
+This remains **operator-level fusion**; the resident full-model
+GPU program and HTTP fused batch mode are not yet enabled.
+See [P12 hardware qualification](FUSED_GPU_BATCHING.md).

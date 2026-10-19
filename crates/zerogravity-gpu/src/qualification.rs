@@ -116,11 +116,23 @@ pub fn run() {
     let sessions_mode = selected.strip_prefix("model-sessions-");
     let benchmark_mode = selected.strip_prefix("model-bench-");
     let batch_projection_mode = selected.strip_prefix("batch-projection-");
+    let batch_elementwise_mode = selected.strip_prefix("batch-elementwise-");
+    let batch_recurrent_mode = selected.strip_prefix("batch-recurrent-");
+    let batch_kv_mode = selected.strip_prefix("batch-kv-");
+    let batch_attention_mode = selected.strip_prefix("batch-attention-");
     let native_workers = selected.starts_with("model-workers-native-");
     let workers_mode = selected
         .strip_prefix("model-workers-native-")
         .or_else(|| selected.strip_prefix("model-workers-"));
-    let (name, q4_mode, model_mode, mixed_mode) = if let Some(backend) = batch_projection_mode {
+    let (name, q4_mode, model_mode, mixed_mode) = if let Some(backend) = batch_attention_mode {
+        (backend, false, false, false)
+    } else if let Some(backend) = batch_kv_mode {
+        (backend, false, false, false)
+    } else if let Some(backend) = batch_recurrent_mode {
+        (backend, false, false, false)
+    } else if let Some(backend) = batch_elementwise_mode {
+        (backend, false, false, false)
+    } else if let Some(backend) = batch_projection_mode {
         (backend, false, false, false)
     } else if let Some(backend) = resident_run_mode
         .or(resident_graph_mode)
@@ -204,6 +216,26 @@ pub fn run() {
             .expect("NVIDIA Vulkan adapter not available"),
         _ => panic!("unknown backend: {name}; choose cuda, rocm, vulkan-amd or vulkan-nvidia"),
     };
+    if batch_attention_mode.is_some() {
+        batch_attention::qualify(device)
+            .unwrap_or_else(|error| panic!("P12 physical B>1 attention failed: {error}"));
+        return;
+    }
+    if batch_kv_mode.is_some() {
+        batch_kv::qualify(device)
+            .unwrap_or_else(|error| panic!("P12 physical B>1 causal KV failed: {error}"));
+        return;
+    }
+    if batch_recurrent_mode.is_some() {
+        batch_recurrent::qualify(device)
+            .unwrap_or_else(|error| panic!("P12 physical B>1 recurrent update failed: {error}"));
+        return;
+    }
+    if batch_elementwise_mode.is_some() {
+        batch_elementwise::qualify(device)
+            .unwrap_or_else(|error| panic!("P12 physical B>1 source elementwise failed: {error}"));
+        return;
+    }
     if batch_projection_mode.is_some() {
         batch_projection::qualify(device)
             .unwrap_or_else(|error| panic!("P12 physical B>1 F32 projection failed: {error}"));

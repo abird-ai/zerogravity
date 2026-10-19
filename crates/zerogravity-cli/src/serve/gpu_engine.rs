@@ -17,7 +17,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::Duration;
-use zerogravity::gpu::{ResidentModel, ResidentSession, ResidentToken};
+use zerogravity::gpu::{
+    ResidentModel, ResidentSession, ResidentToken, resident_batch::ResidentBatchRows,
+};
 use zerogravity::qwen35::LoadedQwenModel;
 use zerogravity::tokenize::QwenTokenizer;
 
@@ -95,6 +97,7 @@ struct GpuModel {
     resident: Arc<ResidentModel>,
     tokenizer: Arc<QwenTokenizer>,
     group: usize,
+    hidden_width: usize,
 }
 #[derive(Default)]
 struct WaveStats {
@@ -214,6 +217,9 @@ impl GpuRouter {
                 .map_err(ServiceError::inference)?;
             let source = LoadedQwenModel::open(&path, &parent.join("config.json"))
                 .map_err(ServiceError::inference)?;
+            let hidden_width = usize::try_from(source.geometry().hidden_size).map_err(|_| {
+                ServiceError::new(400, "source_hidden", "invalid Qwen source hidden width")
+            })?;
             let plan = source
                 .forward_plan(GPU_CAPACITY, true, true)
                 .map_err(ServiceError::inference)?;
@@ -230,6 +236,7 @@ impl GpuRouter {
                 resident,
                 tokenizer: Arc::new(tokenizer),
                 group: unique.len(),
+                hidden_width,
             });
             unique.insert(path, Arc::clone(&shared));
             models.insert(alias, shared);
@@ -322,6 +329,7 @@ struct GpuActive {
     _charge: SessionCharge,
     session: ResidentSession,
     group: usize,
+    hidden_width: usize,
     cancelled: Arc<AtomicBool>,
     errors: mpsc::SyncSender<ResponseEvent>,
     output: GeneratedText,
@@ -367,6 +375,7 @@ impl GpuActive {
             _charge: SessionCharge(stats),
             session,
             group: model.group,
+            hidden_width: model.hidden_width,
             cancelled: job.cancelled,
             errors: job.events,
             output,
@@ -509,6 +518,47 @@ fn worker(
         };
         let mut pending = active.drain(..).map(Some).collect::<Vec<_>>();
         for wave in waves {
+            // Validate source/epoch/unique committed session roots BEFORE
+            // issuing even the first physical GPU member. P12 source
+            // batch admission is shared with the future batch-native
+            // ResidentProgram; this serving path remains serialized.
+            let admitted = wave
+                .indices
+                .iter()
+                .filter_map(|&i| pending[i].as_ref())
+                .filter(|row| !row.cancelled.load(Ordering::Acquire))
+                .collect::<Vec<_>>();
+            if let Some(first) = admitted.first() {
+                let roots = admitted
+                    .iter()
+                    .map(|row| row.session.binding())
+                    .collect::<Vec<_>>();
+                let verification = ResidentBatchRows::new(&roots, first.hidden_width);
+                let verification = verification.and_then(|cohort| {
+                    if admitted
+                        .iter()
+                        .any(|row| row.hidden_width != cohort.row_elements())
+                    {
+                        return Err(zerogravity::Error::State(
+                            "GPU model wave hidden widths differ".into(),
+                        ));
+                    }
+                    cohort.require_current(&roots)?;
+                    Ok(cohort)
+                });
+                if let Err(error) = verification {
+                    stats
+                        .failed
+                        .fetch_add(admitted.len() as u64, Ordering::Relaxed);
+                    let refusal = ServiceError::inference(error);
+                    for index in wave.indices {
+                        if let Some(row) = pending[index].take() {
+                            let _ = row.errors.try_send(ResponseEvent::Error(refusal.clone()));
+                        }
+                    }
+                    continue;
+                }
+            }
             stats.groups.fetch_add(1, Ordering::Relaxed);
             if wave.indices.len() > 1 {
                 stats
