@@ -1,79 +1,49 @@
 # Serving and speculation
 
 Provenance commit: `6d74f76`.
-Scope: P09/P15/P16/P20/P22.
+Scope: P09/P12/P15/P16/P20/P22.
 Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZATION_AND_GOODPUT_CONTRACT_2026-10-15.md),
 [36 serving gates](../../research/VLLM_PARITY_AND_COMBINATORY_SPECIALIZATION_ACCEPTANCE_2026-10-15.md),
 [Qwen parity and decoding](../../research/QWEN_BASICS_PARITY_AND_ADVANCED_DECODING_ROADMAP_2026-10-16.md).
 
 ## Uncommitted
 
-- [x] **P12-B2 source-quantized native batch projections:**
-  Q4_0, Q4_1, Q8_0 and Q6_K source-exact B2/B4/B8
-  kernels call the SAME original B1 integer/F32 dot.
-  Each physical RTX3060 CUDA test used one native B>1
-  launch, bit-identical 128/256/512 F32 outputs versus
-  original per-row B1 GPU reference. Original row-specific
-  dynamic Q8 scales/offsets/codes, strict typed layouts,
-  source-free bad-geometry tests and no CPU dot fallback.
-  THESE are synthetic-source operator fixtures only.
-  Strict source-free and CUDA Clippy pass; frozen gate
-  1,147 Rust tests/0 failed over 241 suites, and trained
-  Qwen3.5 .8B/2B direct-cache/HF-import source parity
-  remains full logits/all42 StateRoot domains. Next:
-  batch-native resident ForwardPlan integration and
-  physical B2/4/8 trained full-model root parity.
+- [x] **P12-B3 native full-model CUDA ForwardPlan:** one traversal
+  over B2/B4/B8, original shared source handles, admitted packed
+  scratch and private per-session prior/candidate leases. One actual
+  completion yields exact source/session/epoch/root-bound Ready
+  receipts; existing all-row checked commit remains the publisher.
+  Original trained0.8B/2B mixed GGUF profiles passed all248320
+  logits/all42 domains per row versus independent CPU AND B1 over
+  two decode steps, distinct histories, invalid/duplicate/foreign/
+  reordered rows, abandoned proposals, stale epoch/root rollback,
+  sibling continuation, no warm source/value uploads and reclamation.
+  Release B2 for BOTH models passed CPU-hydrated prefix0/255/511
+  decode at valid1/256/257/512, exact canonical KV tails, attention
+  padding dispatch delta and capacity refusal. Actual launch/drop
+  tests retained all1820/1715 original handles and the full4GiB
+  envelope behind the existing quarantine; prior roots/all42 domains
+  stayed exact, old Ready/next step/other model refused, no recovery.
+  Source-free GPU51 passed/0 failed/3 ignored; strict default GPU,
+  CUDA qualification and CUDA/Vulkan serve+cache Clippy passed.
+  Frozen isolated check.sh exit0:1147 Rust passed/0 failed/69 ignored
+  over241 suites,18 Python fixtures, release CLI/installer/Nixfmt.
+  Both approved original0.8B/2B direct-cache and HF-import RELEASE
+  full-logit/all42-domain parity routes passed; benchmark and
+  comparator self-tests passed after private loopback setup.
+  Same-frontier full-logit CUDA diagnostic only: no native row
+  greedy/EOS, unequal-prefix/paged state, GPU full-prefix prefill,
+  fused HTTP or vLLM performance acceptance. HTTP stays interleaved.
 
-- [x] **P12-A1 source-bound resident GPU cohort:** ONE
-  `ResidentModel` original-source method stages B2/B4/B8
-  independently completed `ResidentReady` per-session proposals,
-  checks all session RootAttempts and complete domain leases
-  before one `ResidentService` fence-guarded publication.
-  Invalid/foreign/abandoned/stale rows refuse all sibling
-  root changes. Physical RTX3060 CUDA Qwen3.5 B2/B4/B8 matched
-  full 248320 logits and all42 state domains per row against
-  independent CPU; B4/B8 memory returned to baseline.
-  Live OpenAI CUDA B2 short-prompt wave published two roots
-  in one checked cohort; four separate GPU full-model forwards,
-  six completed quanta, zero errors and `gpu_fused_batches=0`.
-  Real batch-native ForwardPlan kernels remain pending.
-  Acceptance: physical CUDA resident B2/B4/B8 exact all248320
-  logits and all42 StateRoot domains per independent session,
-  source/session state snapshots, abandoned/invalid/stale rollback,
-  one source upload and lease reclamation; HTTP B2 cohort
-  publication and active disconnect/survivor/replay pass.
-  Strict CPU/CUDA/Vulkan feature Clippy -D warnings; full
-  scripts/check.sh exit0: 1,147 Rust tests/0 failures/69 ignored
-  across 241 suites plus release CLI/installer, 18 Python fixtures
-  and Nix formatting; trained Qwen3.5 .8B/2B direct-cache and
-  HF-import release parity both pass exact full logits/all42 domains.
-  Separate offline Nix source-integrity cannot evaluate because
-  pinned nixpkgs is absent from the local store and connector SSL
-  CA path is unavailable. NOT a source-test failure.
-
-- [x] **P09 GPU OpenAI serving / finite batch-wave scheduler:**
-  opt-in CUDA/Vulkan/HIP resident model with independent physical
-  StateRoots and device-side greedy feedback; no CPU inference
-  fallback. Shared HTTP/SSE/greedy output, cancellation and
-  original completion/quarantine. Bounded one-GPU worker,
-  active/queue limits, source/phase/frontier wave grouping.
-  0 fused GPU batches (no batch-native kernels yet).
-  Typed GPU profile, CUDA/CCCL fail-fast preflight and reusable
-  Nix split-SDK include view. Metrics separate GPU forward API calls (not kernel launches),
-  successful quanta, attempted quanta, active/queued/canceled/error.
-  Physical RTX3060 Qwen0.8B CUDA: 2 concurrent aliases under one
-  model source, six completed quanta/four GPU forward API calls/zero errors,
-  canceled active session retired safely and new session succeeded.
-  SSE benchmark: 2/2 requests, 4 tokens, 20.02s debug wall,
-  0.1998 token/s (NOT optimized/vLLM parity).
-- [ ] **P12 actual fused continuous GPU batching:** batch-shaped
-  resident value/parameter/state bindings and per-row source/epoch/
-  root identities, multi-row native GEMM/attention/GDN operations,
-  paged hybrid KV/recurrent cache, physically safe stage overlap,
-  backpressure and fair scheduling. Prove exact full logits and
-  StateRoot for B1/2/4/8 and measured comparable p95 TTFT/ITL/
-  SLO-goodput versus pinned vLLM V1 on same source/hardware.
-  No fusion claim from wave grouping or total launch count.
+- [ ] **P12 fused continuous GPU serving:** integrate accepted
+  batch-native ForwardPlan with row-bound device greedy/EOS
+  feedback, unequal frontiers, paged hybrid KV/recurrent cache,
+  physically safe overlap, backpressure and fair scheduling.
+  Extend real full-logit/StateRoot qualification to advertised
+  profiles/backends and full GPU prefill. Measure comparable p95
+  TTFT/true ITL/SLO-goodput versus pinned vLLM V1 with equivalent
+  source/quant/tokenizer/hardware. HTTP stays interleaved until
+  its own acceptance; fewer launches do not prove performance.
 
 - [ ] Connect accepted core `ContextOwner`/`ContextReader` snapshot
   capability to the real router's authenticated session/turn frontier:
@@ -126,6 +96,71 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 - [ ] Preserve zero untriaged frontier/disposition requirements before any full-parity claim; synthetic acceptance, fewer launches and competitor measurements do not establish local parity or speed.
 
 ## Committed
+
+### 3ec431a — native quantized batch projections
+
+- [x] **P12-B2 source-quantized native batch projections:**
+  Q4_0, Q4_1, Q8_0 and Q6_K source-exact B2/B4/B8
+  kernels call the SAME original B1 integer/F32 dot.
+  Each physical RTX3060 CUDA test used one native B>1
+  launch, bit-identical 128/256/512 F32 outputs versus
+  original per-row B1 GPU reference. Original row-specific
+  dynamic Q8 scales/offsets/codes, strict typed layouts,
+  source-free bad-geometry tests and no CPU dot fallback.
+  THESE are synthetic-source operator fixtures only.
+  Strict source-free and CUDA Clippy pass; frozen gate
+  1,147 Rust tests/0 failed over 241 suites, and trained
+  Qwen3.5 .8B/2B direct-cache/HF-import source parity
+  remains full logits/all42 StateRoot domains. Next:
+  batch-native resident ForwardPlan integration and
+  physical B2/4/8 trained full-model root parity.
+
+### 08be9c6 — resident cohort publication
+
+- [x] **P12-A1 source-bound resident GPU cohort:** ONE
+  `ResidentModel` original-source method stages B2/B4/B8
+  independently completed `ResidentReady` per-session proposals,
+  checks all session RootAttempts and complete domain leases
+  before one `ResidentService` fence-guarded publication.
+  Invalid/foreign/abandoned/stale rows refuse all sibling
+  root changes. Physical RTX3060 CUDA Qwen3.5 B2/B4/B8 matched
+  full 248320 logits and all42 state domains per row against
+  independent CPU; B4/B8 memory returned to baseline.
+  Live OpenAI CUDA B2 short-prompt wave published two roots
+  in one checked cohort; four separate GPU full-model forwards,
+  six completed quanta, zero errors and `gpu_fused_batches=0`.
+  Real batch-native ForwardPlan kernels remain pending.
+  Acceptance: physical CUDA resident B2/B4/B8 exact all248320
+  logits and all42 StateRoot domains per independent session,
+  source/session state snapshots, abandoned/invalid/stale rollback,
+  one source upload and lease reclamation; HTTP B2 cohort
+  publication and active disconnect/survivor/replay pass.
+  Strict CPU/CUDA/Vulkan feature Clippy -D warnings; full
+  scripts/check.sh exit0: 1,147 Rust tests/0 failures/69 ignored
+  across 241 suites plus release CLI/installer, 18 Python fixtures
+  and Nix formatting; trained Qwen3.5 .8B/2B direct-cache and
+  HF-import release parity both pass exact full logits/all42 domains.
+  Separate offline Nix source-integrity cannot evaluate because
+  pinned nixpkgs is absent from the local store and connector SSL
+  CA path is unavailable. NOT a source-test failure.
+
+### 9790fa2 — resident GPU OpenAI serving
+
+- [x] **P09 GPU OpenAI serving / finite batch-wave scheduler:**
+  opt-in CUDA/Vulkan/HIP resident model with independent physical
+  StateRoots and device-side greedy feedback; no CPU inference
+  fallback. Shared HTTP/SSE/greedy output, cancellation and
+  original completion/quarantine. Bounded one-GPU worker,
+  active/queue limits, source/phase/frontier wave grouping.
+  0 fused GPU batches (no batch-native kernels yet).
+  Typed GPU profile, CUDA/CCCL fail-fast preflight and reusable
+  Nix split-SDK include view. Metrics separate GPU forward API calls (not kernel launches),
+  successful quanta, attempted quanta, active/queued/canceled/error.
+  Physical RTX3060 Qwen0.8B CUDA: 2 concurrent aliases under one
+  model source, six completed quanta/four GPU forward API calls/zero errors,
+  canceled active session retired safely and new session succeeded.
+  SSE benchmark: 2/2 requests, 4 tokens, 20.02s debug wall,
+  0.1998 token/s (NOT optimized/vLLM parity).
 
 ### 35b9093 — initial OpenAI CPU router and verified SSD extents
 

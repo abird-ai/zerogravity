@@ -12,6 +12,16 @@ pub(crate) use checkpoint::qualify as qualify_checkpoint;
 #[cfg(feature = "qualification")]
 #[path = "resident_inference/cohort_qualification.rs"]
 mod cohort_qualification;
+mod fused;
+#[cfg(feature = "qualification")]
+#[path = "resident_fused_qualification.rs"]
+mod fused_qualification;
+#[cfg(feature = "qualification")]
+pub(crate) use fused_qualification::qualify as qualify_fused;
+#[cfg(all(feature = "qualification", feature = "hardware-abort-probe"))]
+pub(crate) use fused_qualification::qualify_abort as qualify_fused_abort;
+#[cfg(all(feature = "qualification", feature = "portable-checkpoint"))]
+pub(crate) use fused_qualification::qualify_boundary as qualify_fused_boundary;
 #[cfg(feature = "qualification")]
 #[path = "resident_context_qualification.rs"]
 mod context_qualification;
@@ -30,8 +40,9 @@ use crate::backend::validate_provider;
 use crate::resident_batch::ResidentBatchRows;
 use crate::resident_leases::{ResidentLease, ResidentReady, ResidentService};
 use crate::resident_program::{
-    AllocationInit, DeviceBuffer, ResidentBufferRole, ResidentOutput, ResidentPreflight,
-    ResidentProgram, RuntimeParameters, StateBinding, StateBuffers, StateLayout, StateRequirement,
+    AllocationInit, BatchProgram, DeviceBuffer, ResidentBufferRole, ResidentOutput,
+    ResidentPreflight, ResidentProgram, RuntimeParameters, StateBinding, StateBuffers, StateLayout,
+    StateRequirement,
 };
 use async_lock::Mutex;
 use cubecl::{Device, bytes::Bytes, server::Handle};
@@ -57,6 +68,12 @@ struct Workspace {
     leases: Vec<(ResidentLease, DeviceAccess)>,
     state_accesses: Vec<(ResidentLease, DeviceAccess)>,
     logit_accesses: Vec<(ResidentLease, DeviceAccess)>,
+    batch: Option<BatchWorkspace>,
+}
+struct BatchWorkspace {
+    program: BatchProgram,
+    leases: Vec<(ResidentLease, DeviceAccess)>,
+    rows: usize,
 }
 /// Shared immutable source and serialized physical workspace, independent roots.
 pub struct ResidentModel {
@@ -67,6 +84,7 @@ pub struct ResidentModel {
     state_bytes: usize,
     capacity: usize,
     vocab: u64,
+    native_batch: bool,
     #[cfg(feature = "hardware-abort-probe")]
     abort_after_launch: std::sync::atomic::AtomicUsize,
     #[cfg(feature = "hardware-abort-probe")]
@@ -129,17 +147,26 @@ pub struct PreparedInference {
     readback: InferenceReadback,
 }
 
-/// A bounded, source-identical cohort of independently device-ready model
-/// candidates. GPU forward execution is STILL serial per member; this is
-/// the first physical-state publication barrier for future batched kernels.
-/// A failed preparation/changed root must not publish ANY sibling row.
+/// Source-identical private candidates under one logical publication barrier.
+/// Serial and native-batch preparation retain distinct launch receipts.
+/// A failed preparation/changed root cannot publish any sibling row.
 #[must_use = "dropping a resident cohort discards every uncommitted root"]
 pub struct PreparedResidentCohort {
     model: Arc<ResidentModel>,
     roots: ResidentBatchRows,
     prepared: Vec<PreparedInference>,
+    dispatches: usize,
+    fused_dispatches: usize,
 }
 impl PreparedResidentCohort {
+    /// Actual physical launches for the complete cohort, counted once.
+    pub fn dispatches(&self) -> usize {
+        self.dispatches
+    }
+    /// Actual native multi-row projection launches; excludes other stages.
+    pub fn fused_dispatches(&self) -> usize {
+        self.fused_dispatches
+    }
     pub fn len(&self) -> usize {
         self.prepared.len()
     }
@@ -246,6 +273,7 @@ impl ResidentModel {
         device_cap: u64,
     ) -> Result<Arc<Self>> {
         validate_provider(&device)?;
+        let native_batch = matches!(device, Device::Cuda(_));
         let (capacity, vocab, preflight) = preflight_profile(model.as_ref(), &plan)?;
         if preflight.source != model.source_identity() {
             return Err(Error::State("resident preflight source mismatch".into()));
@@ -356,6 +384,7 @@ impl ResidentModel {
             state_bytes: preflight.prior_state_bytes,
             capacity,
             vocab,
+            native_batch,
             #[cfg(feature = "hardware-abort-probe")]
             abort_after_launch: std::sync::atomic::AtomicUsize::new(0),
             #[cfg(feature = "hardware-abort-probe")]
@@ -366,6 +395,7 @@ impl ResidentModel {
                 leases,
                 state_accesses,
                 logit_accesses,
+                batch: None,
             }),
             allocation: Mutex::new(()),
         }))
@@ -442,6 +472,8 @@ impl ResidentModel {
         Ok(PreparedResidentCohort {
             model: Arc::clone(self),
             roots,
+            dispatches: prepared.iter().map(|p| p.readback.dispatches).sum(),
+            fused_dispatches: 0,
             prepared,
         })
     }
@@ -1085,6 +1117,10 @@ impl ResidentSession {
             ));
         }
         if prepared.ready.expected_root() != prepared.attempt.base().root()
+            || prepared
+                .ready
+                .root_binding()
+                .is_some_and(|binding| binding != prepared.attempt.base())
             || !Arc::ptr_eq(prepared.ready.service(), &self.model.service)
             || prepared.domains.len() != self.model.states.len()
             || prepared.ready.event_ids().len() != 1

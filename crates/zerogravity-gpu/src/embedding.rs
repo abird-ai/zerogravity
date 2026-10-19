@@ -72,7 +72,7 @@ impl EmbeddingLayout {
 /// Integer-only IEEE binary16 expansion, identical to quant::f16_to_f32.
 /// Half subnormals become normal binary32 values; both zero signs survive.
 #[cube]
-fn half_to_float(bits: u32) -> f32 {
+pub(crate) fn half_to_float(bits: u32) -> f32 {
     let sign = (bits & 0x8000u32) << 16u32;
     let exponent = (bits >> 10u32) & 31u32;
     let mantissa = bits & 0x03ffu32;
@@ -96,7 +96,7 @@ fn half_to_float(bits: u32) -> f32 {
 }
 
 #[cube]
-fn signed_byte(byte: u8) -> i32 {
+pub(crate) fn signed_byte(byte: u8) -> i32 {
     let value = u32::cast_from(byte);
     let mut signed = i32::cast_from(value);
     if value >= 128u32 {

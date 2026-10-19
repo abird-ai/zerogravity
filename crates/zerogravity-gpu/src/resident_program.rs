@@ -37,6 +37,9 @@ use zerogravity_model_qwen35::LoadedQwenModel;
 
 const SCRATCH_SLOTS: usize = 12;
 
+mod batch;
+pub(crate) use batch::BatchProgram;
+
 #[cfg(feature = "qualification")]
 #[path = "resident_projection_qualification.rs"]
 mod projection_qualification;
@@ -315,6 +318,8 @@ pub(crate) struct ResidentSubmission {
     pub quant_status: Vec<(Handle, usize, Handle, usize)>,
     pub embedding_status: Vec<(Handle, usize)>,
     pub dispatches: usize,
+    /// Conservative subset: actual native multi-row projection launches.
+    pub fused_dispatches: usize,
 }
 
 impl ResidentProgram {
@@ -1306,6 +1311,7 @@ impl ResidentProgram {
             quant_status,
             embedding_status,
             dispatches,
+            fused_dispatches: 0,
         })
     }
     #[allow(clippy::too_many_arguments)] // Explicit typed source/destination ranges.

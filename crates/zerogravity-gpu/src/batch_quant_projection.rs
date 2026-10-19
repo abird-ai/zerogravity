@@ -5,17 +5,23 @@
 //! its own dynamic input codes and composite Q8 scales. The accepted B1
 //! kernel and this B>1 kernel call the SAME source dot operation.
 //!
-//! This is operator qualification only: no second model execution graph,
-//! no session state publication or vLLM throughput claim.
+//! The original resident ForwardPlan owns execution; this module owns no
+//! model schedule, session publication or vLLM throughput claim.
 
 use cubecl::prelude::*;
+#[cfg(any(feature = "qualification", test))]
 use zerogravity_core::{Error, Result};
 
+#[cfg(any(feature = "qualification", test))]
 const MAX_BATCH: usize = 8;
+#[cfg(any(feature = "qualification", test))]
 const MAX_ROWS: usize = 8192;
+#[cfg(any(feature = "qualification", test))]
 const MAX_COLUMNS: usize = 8192;
+#[cfg(any(feature = "qualification", test))]
 const MAX_WEIGHTS: usize = 32 * 1024 * 1024;
 
+#[cfg(any(feature = "qualification", test))]
 pub(crate) fn validate(
     rows: usize,
     cols: usize,
@@ -188,6 +194,7 @@ pub(crate) fn q4_0_batched(
         );
     }
 }
+#[cfg(any(feature = "qualification", test))]
 pub(crate) fn validate_q4_0(
     rows: usize,
     cols: usize,
@@ -235,6 +242,7 @@ pub(crate) fn validate_q4_0(
 }
 
 /// All buffers for one original typed GGUF B>1 projection.
+#[cfg(any(feature = "qualification", test))]
 #[derive(Clone, Copy)]
 pub(crate) struct MixedBatchStorage {
     pub packed_bytes: usize,
@@ -243,6 +251,7 @@ pub(crate) struct MixedBatchStorage {
     pub code_words: usize,
     pub output_words: usize,
 }
+#[cfg(any(feature = "qualification", test))]
 pub(crate) fn validate_mixed(
     kind: zerogravity_artifacts::quant::QuantKind,
     rows: usize,

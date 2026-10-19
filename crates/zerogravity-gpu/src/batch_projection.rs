@@ -9,16 +9,22 @@
 #[cfg(feature = "qualification")]
 use crate::source_accumulation;
 use cubecl::prelude::*;
+#[cfg(any(feature = "qualification", test))]
 use zerogravity_core::{Error, Result};
 
+#[cfg(any(feature = "qualification", test))]
 const MAX_ROWS: usize = 8192;
+#[cfg(any(feature = "qualification", test))]
 const MAX_COLS: usize = 8192;
+#[cfg(any(feature = "qualification", test))]
 const MAX_BATCH: usize = 8;
+#[cfg(any(feature = "qualification", test))]
 const MAX_WEIGHT_ELEMENTS: usize = 16 * 1024 * 1024;
 
 /// Validate a contiguous f32 source matrix and explicit [B,C] input,
 /// [B,R] output without allowing implicit broadcasts or aliasing.
 /// The physical binder also independently validates handle ownership.
+#[cfg(any(feature = "qualification", test))]
 pub(crate) fn validate(
     rows: usize,
     cols: usize,

@@ -16,6 +16,7 @@ use zerogravity_core::device_events::{
     BufferLeaseId, BufferRole, DeviceAccess, DeviceEventId, DeviceEventLedger,
 };
 use zerogravity_core::resource_arbiter::{PhysicalDeviceKey, ResourceOwner};
+use zerogravity_core::session_root::RootBinding;
 
 static NEXT_SERVICE_GENERATION: AtomicU64 = AtomicU64::new(1);
 
@@ -266,6 +267,26 @@ impl ResidentService {
         expected_root: u64,
         accesses: &[(ResidentLease, DeviceAccess)],
     ) -> Result<ResidentSubmission<'a>> {
+        self.submit_bound(expected_root, None, accesses)
+    }
+
+    /// One physical event pins every row's actual buffers. Preserve complete
+    /// source/session/epoch/root bindings before any kernel can be launched.
+    pub fn submit_cohort<'a>(
+        self: &'a Arc<Self>,
+        roots: &[RootBinding],
+        accesses: &[(ResidentLease, DeviceAccess)],
+    ) -> Result<ResidentSubmission<'a>> {
+        let cohort = ResidentCohortRoots::new(self.source, roots)?;
+        self.submit_bound(roots[0].root(), Some(cohort), accesses)
+    }
+
+    fn submit_bound<'a>(
+        self: &'a Arc<Self>,
+        expected_root: u64,
+        cohort: Option<ResidentCohortRoots>,
+        accesses: &[(ResidentLease, DeviceAccess)],
+    ) -> Result<ResidentSubmission<'a>> {
         self.ensure_usable()?;
         let mut unique = BTreeSet::new();
         for (lease, access) in accesses {
@@ -306,10 +327,49 @@ impl ResidentService {
             service: self,
             event,
             expected_root,
+            cohort,
             accesses: accesses.to_vec(),
             work: Some(work),
             armed: true,
         })
+    }
+}
+
+/// Immutable metadata for one submitted cohort; never a publication authority.
+struct ResidentCohortRoots {
+    bindings: Vec<RootBinding>,
+}
+impl ResidentCohortRoots {
+    fn new(source: SourceIdentity, bindings: &[RootBinding]) -> Result<Self> {
+        if !source.is_bound() || !matches!(bindings.len(), 2 | 4 | 8) {
+            return Err(Error::Limit(
+                "resident completion cohort source/size".into(),
+            ));
+        }
+        let frontier = bindings[0].frontier();
+        let mut sessions = BTreeSet::new();
+        for binding in bindings {
+            if binding.source() != source
+                || binding.frontier() != frontier
+                || !sessions.insert(binding.session())
+            {
+                return Err(Error::State(
+                    "resident completion cohort source/frontier/session mismatch".into(),
+                ));
+            }
+        }
+        Ok(Self {
+            bindings: bindings.to_vec(),
+        })
+    }
+
+    fn require_exact(&self, bindings: impl Iterator<Item = RootBinding>) -> Result<()> {
+        if self.bindings.iter().copied().ne(bindings) {
+            return Err(Error::State(
+                "resident completion cohort roots changed or reordered".into(),
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -442,6 +502,7 @@ pub(crate) struct ResidentSubmission<'a> {
     service: &'a Arc<ResidentService>,
     event: DeviceEventId,
     expected_root: u64,
+    cohort: Option<ResidentCohortRoots>,
     accesses: Vec<(ResidentLease, DeviceAccess)>,
     work: Option<PhysicalWork<'a>>,
     armed: bool,
@@ -496,6 +557,7 @@ impl ResidentSubmission<'_> {
             service: self.service.clone(),
             events: vec![self.event],
             expected_root: self.expected_root,
+            root_binding: None,
             outputs: outputs.to_vec(),
         })
     }
@@ -510,9 +572,52 @@ impl ResidentSubmission<'_> {
     where
         F: FnOnce(&[Bytes]) -> Result<()>,
     {
+        if self.cohort.is_some() {
+            return Err(Error::State(
+                "resident cohort requires all-row completion".into(),
+            ));
+        }
         self.check_outputs(outputs)?;
         let bytes = self.readback_checked(cohort, validate).await?;
         let ready = self.finish_ready(outputs)?;
+        Ok((ready, bytes))
+    }
+
+    /// Split a single trusted physical completion into exact original row
+    /// proofs. No row can promote a foreign, shared or non-written output.
+    pub async fn complete_cohort_with_readback<F>(
+        self,
+        rows: &[(RootBinding, Vec<ResidentLease>)],
+        cohort: &[ResidentReadback],
+        validate: F,
+    ) -> Result<(Vec<ResidentReady>, Vec<Bytes>)>
+    where
+        F: FnOnce(&[Bytes]) -> Result<()>,
+    {
+        self.cohort
+            .as_ref()
+            .ok_or_else(|| Error::State("resident submission has no bound cohort".into()))?
+            .require_exact(rows.iter().map(|(root, _)| *root))?;
+        if rows.iter().any(|(_, outputs)| outputs.is_empty()) {
+            return Err(Error::State("resident cohort row has no outputs".into()));
+        }
+        let outputs = rows
+            .iter()
+            .flat_map(|(_, outputs)| outputs.iter().cloned())
+            .collect::<Vec<_>>();
+        self.check_outputs(&outputs)?;
+        let bytes = self.readback_checked(cohort, validate).await?;
+        let completion = self.finish_ready(&outputs)?;
+        let ready = rows
+            .iter()
+            .map(|(binding, outputs)| ResidentReady {
+                service: completion.service.clone(),
+                events: completion.events.clone(),
+                expected_root: binding.root(),
+                root_binding: Some(*binding),
+                outputs: outputs.clone(),
+            })
+            .collect();
         Ok((ready, bytes))
     }
     async fn readback_checked<F>(
@@ -559,10 +664,11 @@ impl ResidentSubmission<'_> {
     where
         F: FnOnce(&[Bytes]) -> Result<()>,
     {
-        if self
-            .accesses
-            .iter()
-            .any(|(lease, access)| *access != DeviceAccess::Read || !lease.is_initialized())
+        if self.cohort.is_some()
+            || self
+                .accesses
+                .iter()
+                .any(|(lease, access)| *access != DeviceAccess::Read || !lease.is_initialized())
         {
             return Err(Error::State(
                 "read-only completion requires initialized Reads".into(),
@@ -598,6 +704,7 @@ pub(crate) struct ResidentReady {
     service: Arc<ResidentService>,
     events: Vec<DeviceEventId>,
     expected_root: u64,
+    root_binding: Option<RootBinding>,
     outputs: Vec<ResidentLease>,
 }
 impl ResidentReady {
@@ -609,6 +716,9 @@ impl ResidentReady {
     }
     pub fn expected_root(&self) -> u64 {
         self.expected_root
+    }
+    pub fn root_binding(&self) -> Option<RootBinding> {
+        self.root_binding
     }
     pub fn outputs(&self) -> &[ResidentLease] {
         &self.outputs
@@ -708,6 +818,7 @@ impl ResidentInitialization<'_> {
             service: self.service.clone(),
             events: self.events.clone(),
             expected_root: self.expected_root,
+            root_binding: None,
             outputs: self.leases.clone(),
         })
     }
@@ -723,5 +834,84 @@ impl Drop for ResidentInitialization<'_> {
             self.service.fence_and_retain(&self.leases);
             drop(self.work.take());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zerogravity_core::session_root::SessionAuthority;
+
+    fn sessions(source: SourceIdentity, count: usize) -> Vec<SessionAuthority> {
+        (0..count)
+            .map(|_| SessionAuthority::new(source).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn completion_cohort_accepts_only_finite_native_row_counts() {
+        let source = SourceIdentity::for_new_allocation().unwrap();
+        let owners = sessions(source, 9);
+        let bindings = owners
+            .iter()
+            .map(SessionAuthority::binding)
+            .collect::<Vec<_>>();
+        for count in [2, 4, 8] {
+            let cohort = ResidentCohortRoots::new(source, &bindings[..count]).unwrap();
+            cohort
+                .require_exact(bindings[..count].iter().copied())
+                .unwrap();
+        }
+        for count in [0, 1, 3, 5, 6, 7, 9] {
+            assert!(ResidentCohortRoots::new(source, &bindings[..count]).is_err());
+        }
+        assert!(ResidentCohortRoots::new(SourceIdentity::unbound(), &bindings[..2]).is_err());
+    }
+
+    #[test]
+    fn completion_cohort_rejects_foreign_duplicate_and_differing_frontier() {
+        let source = SourceIdentity::for_new_allocation().unwrap();
+        let mut owners = sessions(source, 2);
+        let foreign = SessionAuthority::new(SourceIdentity::for_new_allocation().unwrap()).unwrap();
+        let initial = owners[0].binding();
+        assert!(ResidentCohortRoots::new(source, &[initial, initial]).is_err());
+        assert!(ResidentCohortRoots::new(source, &[initial, foreign.binding()]).is_err());
+        let advance = owners[1].begin_advance(1).unwrap();
+        owners[1].prepare_publish(advance).unwrap().commit();
+        assert!(ResidentCohortRoots::new(source, &[initial, owners[1].binding()]).is_err());
+        assert_eq!(owners[0].binding(), initial);
+    }
+
+    #[test]
+    fn completion_cohort_preserves_independent_root_epochs_and_exact_order() {
+        let source = SourceIdentity::for_new_allocation().unwrap();
+        let mut owners = sessions(source, 2);
+        let advance = owners[0].begin_advance(1).unwrap();
+        owners[0].prepare_publish(advance).unwrap().commit();
+        let advance = owners[1].begin_advance(5).unwrap();
+        owners[1].prepare_publish(advance).unwrap().commit();
+        let reset = owners[1].begin_reset().unwrap();
+        owners[1].prepare_publish(reset).unwrap().commit();
+        let advance = owners[1].begin_advance(1).unwrap();
+        owners[1].prepare_publish(advance).unwrap().commit();
+        let bindings = [owners[0].binding(), owners[1].binding()];
+        assert_ne!(bindings[0].root(), bindings[1].root());
+        assert_ne!(bindings[0].session_epoch(), bindings[1].session_epoch());
+        assert_eq!(bindings[0].frontier(), bindings[1].frontier());
+        let cohort = ResidentCohortRoots::new(source, &bindings).unwrap();
+        cohort.require_exact(bindings.into_iter()).unwrap();
+        assert!(cohort.require_exact(bindings.into_iter().rev()).is_err());
+        assert!(cohort.require_exact(bindings[..1].iter().copied()).is_err());
+        assert!(cohort.require_exact([bindings[0]; 2].into_iter()).is_err());
+        let replace = owners[1].begin_validated_replacement(1).unwrap();
+        owners[1].prepare_publish(replace).unwrap().commit();
+        assert_eq!(owners[1].binding().frontier(), bindings[1].frontier());
+        assert!(
+            cohort
+                .require_exact([bindings[0], owners[1].binding()].into_iter())
+                .is_err()
+        );
+        // Capture and validation never publish any root themselves.
+        assert_eq!(owners[0].binding(), bindings[0]);
     }
 }

@@ -17,9 +17,7 @@ mod batch_attention;
 mod batch_elementwise;
 #[cfg(any(feature = "qualification", test))]
 mod batch_kv;
-#[cfg(any(feature = "qualification", test))]
 mod batch_projection;
-#[cfg(any(feature = "qualification", test))]
 mod batch_quant_projection;
 #[cfg(feature = "qualification")]
 mod batch_quant_qualification;

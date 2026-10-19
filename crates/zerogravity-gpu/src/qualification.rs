@@ -63,6 +63,12 @@ pub fn run() {
     #[cfg(feature = "hardware-abort-probe")]
     let abort_conv_mode = selected.strip_prefix("model-abort-conv-");
     let resident_cohort_mode = selected.strip_prefix("resident-cohort-");
+    let resident_fused_mode = selected.strip_prefix("resident-fused-");
+    let resident_fused_abort_mode = selected.strip_prefix("resident-fused-abort-");
+    let resident_fused_boundary_mode = selected.strip_prefix("resident-fused-boundary-");
+    let resident_fused_mode = resident_fused_boundary_mode
+        .or(resident_fused_abort_mode)
+        .or(resident_fused_mode);
     let resident_run_mode = selected.strip_prefix("run-");
     let checkpoint_abort_mode = selected.strip_prefix("resident-checkpoint-abort-");
     let checkpoint_mode =
@@ -77,6 +83,7 @@ pub fn run() {
         .or(resident_context_mode)
         .or(checkpoint_mode)
         .or(resident_cohort_mode);
+    let resident_graph_mode = resident_graph_mode.or(resident_fused_mode);
     let quant_stress_mode = selected.strip_prefix("quant-stress-");
     let device_quant_mode = selected.strip_prefix("model-device-quant-");
     let operators_mode = selected.strip_prefix("model-operators-");
@@ -288,7 +295,7 @@ pub fn run() {
         let cap = device_mib
             .checked_mul(1024 * 1024)
             .expect("device cap overflow");
-        if resident_cohort_mode.is_some() {
+        if resident_cohort_mode.is_some() || resident_fused_mode.is_some() {
             let rows = args
                 .next()
                 .map(|v| {
@@ -296,14 +303,54 @@ pub fn run() {
                         .expect("resident cohort rows must be 2,4,8")
                 })
                 .unwrap_or(2);
-            futures_lite::future::block_on(resident_inference::qualify_cohort(
-                device,
-                std::path::Path::new(&path),
-                provider,
-                cap,
-                rows,
-            ))
-            .unwrap_or_else(|e| {
+            let qualification = async {
+                if resident_fused_boundary_mode.is_some() {
+                    #[cfg(feature = "portable-checkpoint")]
+                    return resident_inference::qualify_fused_boundary(
+                        device,
+                        std::path::Path::new(&path),
+                        provider,
+                        cap,
+                    )
+                    .await;
+                    #[cfg(not(feature = "portable-checkpoint"))]
+                    return Err(zerogravity_core::Error::Unsupported(
+                        "requires portable-checkpoint".into(),
+                    ));
+                } else if resident_fused_abort_mode.is_some() {
+                    #[cfg(feature = "hardware-abort-probe")]
+                    return resident_inference::qualify_fused_abort(
+                        device,
+                        std::path::Path::new(&path),
+                        provider,
+                        cap,
+                    )
+                    .await;
+                    #[cfg(not(feature = "hardware-abort-probe"))]
+                    return Err(zerogravity_core::Error::Unsupported(
+                        "requires hardware-abort-probe".into(),
+                    ));
+                } else if resident_fused_mode.is_some() {
+                    resident_inference::qualify_fused(
+                        device,
+                        std::path::Path::new(&path),
+                        provider,
+                        cap,
+                        rows,
+                    )
+                    .await
+                } else {
+                    resident_inference::qualify_cohort(
+                        device,
+                        std::path::Path::new(&path),
+                        provider,
+                        cap,
+                        rows,
+                    )
+                    .await
+                }
+            };
+            futures_lite::future::block_on(qualification).unwrap_or_else(|e| {
                 panic!("resident cohort state publication qualification failed: {e}")
             });
             return;
