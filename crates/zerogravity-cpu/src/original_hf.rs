@@ -3,7 +3,11 @@
 //! learned matrix transpose or duplicate mathematical runtime is required.
 //! This does not enable complete trained Qwen3.8 inference.
 
+pub mod conv;
+pub mod norm;
+pub mod recurrent;
 pub mod reduction;
+pub mod transcendentals;
 
 use crate::accelerator::{MatVecKernel, MatVecRegion, RegionExecution, validate_completed};
 use crate::quant::QuantKind;

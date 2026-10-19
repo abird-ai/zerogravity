@@ -7,7 +7,16 @@ Contracts: [numerical/source profile](../../docs/NUMERICS_QUALITY_AND_BENCHMARKS
 
 ## Uncommitted
 
-- [ ] Resolve independent original-source CPU 8K GDN numerical divergence without loosening tolerances or changing the declared source arithmetic.
+- [ ] **Required three-model correctness gate (owner,20 Oct):** resolve
+  independent original-source CPU8K GDN divergence for BOTH original
+  Qwen3.5 models without loosening tolerances or changing declared source
+  arithmetic. This is required alongside original Qwen3.8-27B correctness,
+  matched serving/model benchmarks and shared-engine performance work.
+  Short-context CPU/B1/native exactness and closed original-HF operator
+  proofs do not close this independent GGUF long-context issue. Recover
+  exact raw teacher prefixes and pinned native arithmetic/chunk settings,
+  locate the first state/stage discrepancy, then rerun independent long
+  context and the accepted short corpus after any implementation fix.
 - [ ] Extend genuine resident GPU context/corpus qualification beyond the currently accepted 512 consumed tokens, including capacity/window/padding/replay boundaries.
 - [ ] Run genuine whole-model 16K/32K CPU/GPU gates only after prerequisites; functional 8K success is not independent long-context numerical closure.
 - [ ] Keep internal full-logit/all-state/trace bit parity distinct from independent native-source stage/top20 comparisons, including the known 2B 56 signed-zero distinctions.

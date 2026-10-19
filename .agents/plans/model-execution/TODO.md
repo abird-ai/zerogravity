@@ -8,23 +8,37 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-- [x] **Original HF source roles and closed CPU profiles:** authentic rank/axes,
-  raw source dtype and tied/untied heads bind to the same loaded owner;
-  Safetensors output/input rows remain untransposed. Typed original-HF
-  metadata carries the actual config/index/bundle and independent state
-  geometry. Its execution/session/checkpoint-v1 entry points refuse before
-  allocation/backend/I/O; metadata is not an executable-model promotion.
-  Explicit Torch CPU AVX2 BF16 projection diagnostics retain the pinned
-  64-lane FMA/reduction order and separate state/trace schema; the original
-  scalar/GGUF profiles remain distinct. Actual original .8B layer0 QKV
-  is exact6144/6144 for each of tokens11,353. Closed FP32 width128 L2 and
-  key-axis reducers pass authentic compact bitwise goldens and adversarial
-  head/order/finite/overflow cases. Real attention-input norm observations
-  now cover both full and GDN layers. Focused composed suites185/0/2ignored,
-  CPU-free binding8/0, strict CPU/CUDA/Vulkan/qualifier Clippy and full
-  isolated check1164/0/69ignored/245suites+18Python passed. Both approved
-  original .8B/2B cache-direct/HF-import release routes remain exact full
-  logits/all42. Full original HF mathematics remains UNQUALIFIED.
+- [x] **Closed pinned CPU original-HF operators:** source-bound BF16
+  four-tap convolution, FP32 width128 cached GDN, raw-F32-gamma gated RMS
+  prefix and contiguous vector SiLU. No model/session/initial-chunk permit;
+  default GGUF/scalar profiles stay unchanged. Convolution preserves four
+  independent FMA partials followed by direct adds and BF16 output. Cached
+  GDN uses direct query division by sqrt128, actual key-major FP32 state,
+  materialized key reductions and separate update multiply/add; observed
+  decay is an explicit input. RMS casts normalized core before raw original
+  F32 gamma, retaining the FP32 product. SiLU ports pinned SLEEF3.8 AVX2
+  exp/FMA/scaling and FP32 division with source attribution/license, only
+  finite exactly BF16-widened contiguous inputs with length divisible16.
+  Twenty-eight focused Rust tests pass including old projection/reducers.
+- [x] **Actual closed-operator Rust qualification:** untouched pinned
+  Torch2.13 public SiLU with observed SLEEF AVX2 provider supplies exact
+  outputs for ALL65280 finite BF16 inputs plus4096 actual source gates;
+  Rust matches every F32 bit. Full16-head cached replay matches262144
+  state words plus5*2048 normalized/scaled/core/output words. Gated RMS
+  prefix matches8256 words across both actual tokens/all16heads.
+  Convolution and composed vector-SiLU/BF16 match all6144 channels at
+  four actual causal positions (49152 output words). These are pure
+  operator replays of genuine source operands, not full-model/profile,
+  GPU/FLA or27B numerical acceptance. Initial chunk64, coefficient exp/
+  sigmoid/softplus, ordinary RMS and eager attention remain open.
+- [x] **Composed verification:** complete isolated check1202 Rust passed/
+  0failed/69ignored/248 suite runs plus18Python/release/installer/Nix.
+  Strict CUDA+HF-binding+portable, Vulkan serving and CUDA-qualification
+  Clippy passed; CPU-free original binding6 and CPU serving22 passed.
+  Both approved original0.8B/2B cache-direct/HF-import RELEASE routes
+  retain all248320 logits/all42 domains, source lifetime and reclamation.
+  Independent long-context GGUF GDN divergence remains a separate required
+  gate in [numerics-and-context](../numerics-and-context/TODO.md).
 
 - [ ] **Independent trained BF16/FLA checkpoint gate:** original
   Qwen3.8-27B@1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0 acquired
@@ -163,6 +177,27 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### 9815504 — original HF roles and closed CPU projection/reducers
+
+- [x] **Original HF source roles and closed CPU profiles:** authentic rank/axes,
+  raw source dtype and tied/untied heads bind to the same loaded owner;
+  Safetensors output/input rows remain untransposed. Typed original-HF
+  metadata carries the actual config/index/bundle and independent state
+  geometry. Its execution/session/checkpoint-v1 entry points refuse before
+  allocation/backend/I/O; metadata is not an executable-model promotion.
+  Explicit Torch CPU AVX2 BF16 projection diagnostics retain the pinned
+  64-lane FMA/reduction order and separate state/trace schema; the original
+  scalar/GGUF profiles remain distinct. Actual original .8B layer0 QKV
+  is exact6144/6144 for each of tokens11,353. Closed FP32 width128 L2 and
+  key-axis reducers pass authentic compact bitwise goldens and adversarial
+  head/order/finite/overflow cases. Real attention-input norm observations
+  now cover both full and GDN layers. Focused composed suites185/0/2ignored,
+  CPU-free binding8/0, strict CPU/CUDA/Vulkan/qualifier Clippy and full
+  isolated check1164/0/69ignored/245suites+18Python passed. Both approved
+  original .8B/2B cache-direct/HF-import release routes remain exact full
+  logits/all42. Full original HF mathematics remains UNQUALIFIED.
+
 
 ### f26232e — authentic tied original output heads
 

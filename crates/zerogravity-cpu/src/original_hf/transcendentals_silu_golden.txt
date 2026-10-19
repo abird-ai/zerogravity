@@ -1,0 +1,38 @@
+# Untouched original .8B Qwen3.5 layer0 gated RMS; raw FP32 SiLU outputs.
+# Torch2.13 cf30153c4c131c8164ee7798e5022d810682e2cb, SLEEF3.8 AVX2/FMA.
+# Model revision2fc06364715b967f1860aea9cf38778875588b17; source36-F32-restored.
+# Input/output F32 bit words; first16 scalar-libm mismatches per token11/353.
+# step0 archiveSHA256 9128f76dd6e1a2a0c1b2d3f69b4e99a4fe4d2b5670b2cac5ca010805e4fe3610
+bece0000 be251bd6
+3ea00000 3e38cc6b
+3e1b0000 3da6b568
+bf8f0000 be8d045f
+be390000 bda8557a
+beef0000 be383586
+befa0000 be3e2637
+c0740000 bda8c5c3
+bf540000 be80e9e6
+bf430000 be7840cd
+bebf0000 be1bc811
+be8d0000 bdf369da
+beef0000 be383586
+bed70000 be2a829f
+bf8c0000 be8c82dc
+be010000 bd71c53e
+# step1 archiveSHA256 445568eac8909b9af6232929c35435677d793ac4ef0ec78d49fd5466c53ad023
+bfbb0000 be8cddc8
+c0510000 bdf5ea08
+bfe40000 be8376b9
+bf760000 be8821b9
+3e9d0000 3e34e26a
+bf940000 be8db1e0
+beef0000 be383586
+beef0000 be383586
+bfe00000 be84a67a
+bf760000 be8821b9
+bf850000 be8b072f
+be8d0000 bdf369da
+3d9f0000 3d252b45
+bf8f0000 be8d045f
+bf8f0000 be8d045f
+bfb60000 be8d7ff0
