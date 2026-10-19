@@ -40,6 +40,7 @@ class Outcome:
     provider_response_id: str | None = None
     chunk_times: list[float] = field(default_factory=list)
     provider_error_code: str | None = None
+    token_observation: dict | None = None
 
 
 def percentile(values: list[float], percentage: float) -> float | None:
@@ -107,13 +108,116 @@ def workload_records(value: object, max_tokens: int) -> list[dict]:
     return result
 
 
+def wire_token_observation(groups: list[dict], extension: object, aggregate: object,
+                           wire_id: str | None, provider_id: str | None,
+                           count: int | None, maximum: int) -> dict:
+    """Validate token IDs and distinct clock domains; never derive IDs from text."""
+    if (type(maximum) is not int or not 1 <= maximum <= 512
+            or (count is not None and (type(count) is not int or not 0 <= count <= maximum))):
+        raise ValueError("invalid token-ID usage/capacity")
+    identities, arrivals = [], []
+    for group in groups:
+        ids, at = group.get("token_ids"), group.get("client_received_at_seconds")
+        if (not isinstance(ids, list) or not ids or len(ids) > maximum
+                or not number(at, 0, 600) or (arrivals and at < arrivals[-1])
+                or any(type(token) is not int or not 0 <= token <= 0xFFFFFFFF for token in ids)):
+            raise ValueError("invalid bounded token-ID delivery group")
+        identities.extend(ids)
+        arrivals.append(at)
+    if len(identities) > maximum or len(identities) > 512:
+        raise ValueError("token-ID observations exceed requested capacity")
+    if count is not None and groups and len(identities) != count:
+        raise ValueError("actual token-ID count differs from terminal usage")
+    # Pinned vLLM _base_request_id honors X-Request-ID, then uses this prefix.
+    valid_bindings = all(isinstance(identity, str)
+        and re.fullmatch(r"[A-Za-z0-9_.:-]{1,256}", identity) is not None
+        for identity in [wire_id, provider_id])
+    bound = valid_bindings and provider_id in {f"chatcmpl-{wire_id}", f"cmpl-{wire_id}"}
+    commit_times, records = [], []
+    last_received, last_written, last_gpu, last_cohort = None, None, None, None
+    commit_status = "absent"
+    if extension is not None:
+        if (not valid_bindings or not isinstance(extension, dict)
+                or extension.get("schema") != "zerogravity.serving.request-token-metrics.v1"
+                or extension.get("clock") != "request_monotonic_seconds"
+                or extension.get("wire_request_id") != wire_id
+                or extension.get("provider_response_id") != provider_id
+                or extension.get("complete") is not True
+                or type(extension.get("completion_tokens")) is not int
+                or extension.get("completion_tokens") != count
+                or not isinstance(extension.get("tokens"), list)
+                or len(extension["tokens"]) != count or count is None or count > 512):
+            raise ValueError("provider token metadata binding/count/clock mismatch")
+        bound = True
+        for index, token in enumerate(extension["tokens"]):
+            if (not isinstance(token, dict) or type(token.get("index")) is not int
+                    or token["index"] != index or index >= len(identities)
+                    or type(token.get("token_id")) is not int or token["token_id"] != identities[index]):
+                raise ValueError("provider token metadata differs from delivered token IDs/order")
+            committed, received, written = (token.get("commit_observed_at_seconds"),
+                token.get("output_received_at_seconds"), token.get("http_write_completed_at_seconds"))
+            if (not number(committed, 0, 600) or not number(received, committed, 600)
+                    or (written is not None and not number(written, received, 600))
+                    or (commit_times and committed < commit_times[-1])
+                    or (last_received is not None and received < last_received)
+                    or (last_written is not None and received < last_written)
+                    or (last_written is not None and written is not None and written < last_written)):
+                raise ValueError("provider token metadata clock/order mismatch")
+            last_received = received
+            if written is not None:
+                last_written = written
+            gpu = token.get("gpu")
+            if gpu is not None:
+                if (not isinstance(gpu, dict) or type(gpu.get("producer_frontier")) is not int
+                        or not 1 <= gpu["producer_frontier"] <= 0xFFFFFFFFFFFFFFFF
+                        or (index and (last_gpu is None or gpu["producer_frontier"] != last_gpu + 1))):
+                    raise ValueError("invalid/nonconsecutive GPU producer frontier")
+                last_gpu = gpu["producer_frontier"]
+                cohort = gpu.get("native_cohort")
+                if cohort is not None:
+                    if (not isinstance(cohort, dict) or type(cohort.get("publication_sequence")) is not int
+                            or not 1 <= cohort["publication_sequence"] <= 0xFFFFFFFFFFFFFFFF
+                            or type(cohort.get("width")) is not int or cohort["width"] not in {2,4,8}
+                            or (last_cohort is not None and cohort["publication_sequence"] <= last_cohort)):
+                        raise ValueError("invalid/repeated native cohort publication observation")
+                    last_cohort = cohort["publication_sequence"]
+            elif last_gpu is not None:
+                raise ValueError("GPU producer observation disappeared within one request")
+            commit_times.append(committed)
+            records.append(token)
+        commit_status = "provider_bound_complete_commit_observations"
+    complete_ids = bound and count is not None and len(identities) == count
+    individual = complete_ids and all(len(group["token_ids"]) == 1 for group in groups)
+    if aggregate is not None:
+        if not isinstance(aggregate, dict):
+            raise ValueError("invalid provider aggregate metrics")
+        for key in ["time_to_first_token_ms", "generation_time_ms", "queue_time_ms", "mean_itl_ms", "tokens_per_second"]:
+            value = aggregate.get(key)
+            if value is not None and not number(value, 0, 1e12):
+                raise ValueError("nonfinite/invalid provider aggregate metric")
+    return {"status": "provider_bound_complete_ids" if complete_ids else "incomplete_or_unbound_ids",
+        "token_ids": identities, "client_delivery_groups": groups,
+        "client_delivery_status": "individual_token_ids_observed" if individual else "unresolved_token_groups_or_binding",
+        "client_first_token_seconds": arrivals[0] if individual and arrivals else None,
+        "client_token_delivery_intervals_seconds": [b-a for a,b in zip(arrivals, arrivals[1:])] if individual else None,
+        "provider_commit_observation_status": commit_status,
+        "provider_commit_observation_intervals_seconds": [b-a for a,b in zip(commit_times, commit_times[1:])] if commit_status != "absent" else None,
+        "provider_first_commit_observed_seconds": commit_times[0] if commit_times else None,
+        "provider_token_records": records, "provider_aggregate_metrics": aggregate,
+        "semantics": "client parsed actual token-ID events; coalesced multi-ID groups have unresolved individual delivery; provider commit observations and mean ITL are distinct clocks/scopes; no independent physical/numerical proof"}
+
+
 def stream_one(url: str, model: str, prompt: str, max_tokens: int,
-               timeout: float, key: str | None, *, request_id: str | None = None) -> Outcome:
-    body = json.dumps({
+               timeout: float, key: str | None, *, request_id: str | None = None,
+               return_token_ids: bool = False) -> Outcome:
+    payload = {
         "model": model, "messages": [{"role": "user", "content": prompt}],
         "temperature": 0, "top_p": 1, "n": 1, "stream": True,
         "stream_options": {"include_usage": True}, "max_tokens": max_tokens,
-    }, separators=(",", ":")).encode()
+    }
+    if return_token_ids:
+        payload["return_token_ids"] = True
+    body = json.dumps(payload, separators=(",", ":")).encode()
     headers = {"Content-Type": "application/json"}
     if key:
         headers["Authorization"] = f"Bearer {key}"
@@ -125,18 +229,27 @@ def stream_one(url: str, model: str, prompt: str, max_tokens: int,
     ttft, previous, count, reason, status, provider_id, provider_code = (None,) * 7
     intervals, chunk_times = [], []
     ended, accepted, terminals, usages = False, False, 0, 0
+    groups, extension, aggregate, observation = [], None, None, None
+    data_events = 0
     output_hash = hashlib.sha256()
 
     def outcome(completed, classification, error):
+        observed = observation
+        if return_token_ids and observed is None:
+            observed = {"status":"incomplete_response", "token_ids":[token for group in groups for token in group["token_ids"]],
+                "client_delivery_groups":groups, "provider_aggregate_metrics":aggregate,
+                "provider_commit_observation_status":"not_established"}
         return Outcome(completed, reason, time.monotonic() - started, ttft,
                        intervals, count, error, output_hash.hexdigest() if completed else None,
-                       classification, status, accepted, provider_id, chunk_times, provider_code)
+                       classification, status, accepted, provider_id, chunk_times, provider_code, observed)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             status, accepted = response.status, response.status == 200
             if not accepted:
                 raise ValueError(f"HTTP {status}")
             for line in response:
+                if len(line) > 1024 * 1024:
+                    raise ValueError("SSE line exceeds 1 MiB")
                 if time.monotonic() - started > timeout:
                     raise TimeoutError("request deadline")
                 if not line.startswith(b"data: "):
@@ -145,6 +258,9 @@ def stream_one(url: str, model: str, prompt: str, max_tokens: int,
                 if text == b"[DONE]":
                     ended = True
                     break
+                data_events += 1
+                if data_events > 2048:
+                    raise ValueError("too many bounded SSE data events")
                 parsed = json.loads(text)
                 if not isinstance(parsed, dict):
                     raise ValueError("SSE event is not an object")
@@ -162,18 +278,35 @@ def stream_one(url: str, model: str, prompt: str, max_tokens: int,
                         raise ValueError("SSE response ID changed")
                     provider_id = current
                 choices = parsed.get("choices", [])
+                now = time.monotonic() - started
+                if parsed.get("zerogravity_token_metrics") is not None:
+                    if extension is not None:
+                        raise ValueError("duplicate final token metadata")
+                    extension = parsed["zerogravity_token_metrics"]
+                if parsed.get("metrics") is not None:
+                    if aggregate is not None:
+                        raise ValueError("duplicate final provider aggregate metrics")
+                    aggregate = parsed["metrics"]
                 if not isinstance(choices, list):
                     raise ValueError("invalid SSE choices")
                 for choice in choices:
                     if not isinstance(choice, dict) or terminals:
                         raise ValueError("invalid/post-terminal SSE choice")
+                    if return_token_ids and choice.get("token_ids") is not None:
+                        ids = choice["token_ids"]
+                        if (type(choice.get("index")) is not int or choice["index"] != 0 or not isinstance(ids, list) or len(ids) > max_tokens
+                                or any(type(token) is not int or not 0 <= token <= 0xFFFFFFFF for token in ids)):
+                            raise ValueError("invalid actual token IDs/choice")
+                        if ids:
+                            groups.append(dict(token_ids=ids, client_received_at_seconds=now))
+                            if sum(len(group["token_ids"]) for group in groups) > max_tokens:
+                                raise ValueError("too many actual token IDs")
                     delta = choice.get("delta")
                     content = delta.get("content", "") if isinstance(delta, dict) else choice.get("text", "")
                     if content:
                         if not isinstance(content, str):
                             raise ValueError("SSE content is not text")
                         output_hash.update(content.encode())
-                        now = time.monotonic() - started
                         if ttft is None:
                             ttft = now
                         if previous is not None:
@@ -196,6 +329,8 @@ def stream_one(url: str, model: str, prompt: str, max_tokens: int,
                     count = value
         if not ended or terminals != 1:
             raise ValueError("missing/duplicate SSE terminal choice or DONE")
+        if return_token_ids:
+            observation = wire_token_observation(groups, extension, aggregate, request_id, provider_id, count, max_tokens)
         return outcome(True, "completed", None)
     except urllib.error.HTTPError as exc:
         status = exc.code
@@ -305,7 +440,8 @@ def bench(url: str, model: str, prompt: str, count: int, concurrency: int,
           itl_slo_seconds: float | None = None, token_trace: object = None,
           token_trace_path: str | None = None, snapshot_url: str | None = None,
           run_id: str | None = None, max_pending: int | None = None,
-          launch_deadline_seconds: float | None = None) -> dict:
+          launch_deadline_seconds: float | None = None,
+          return_token_ids: bool = False) -> dict:
     if not 1 <= count <= 1024 or not 1 <= concurrency <= min(64, count):
         raise ValueError("bounded requests/concurrency required (1..1024, 1..64)")
     if not 1 <= max_tokens <= 512 or not number(timeout, 1, 600):
@@ -354,7 +490,8 @@ def bench(url: str, model: str, prompt: str, count: int, concurrency: int,
                     http_attempted=out.classification not in {"client_overload", "launch_deadline"},
                     finish_reason=out.finish_reason, provider_response_id=out.provider_response_id,
                     provider_error_code=out.provider_error_code, usage_reported_completion_tokens=out.tokens,
-                    error=out.error, output_sha256=out.output_sha256)
+                    error=out.error, output_sha256=out.output_sha256,
+                    wire_token_observation=out.token_observation)
 
     def execute(item, submitted, planned):
         dispatched = time.monotonic() - began
@@ -363,7 +500,8 @@ def bench(url: str, model: str, prompt: str, count: int, concurrency: int,
         if planned is not None and launch_deadline_seconds is not None and dispatched - planned >= launch_deadline_seconds:
             out = Outcome(False, None, 0, None, [], None, "launch_deadline", classification="launch_deadline")
         else:
-            out = stream_one(url, model, item["prompt"], item["max_tokens"], timeout, key, request_id=wire_id)
+            out = stream_one(url, model, item["prompt"], item["max_tokens"], timeout, key, request_id=wire_id,
+                             return_token_ids=return_token_ids)
         return make_record(item, out, offered, submitted, dispatched, wire_id)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
@@ -420,6 +558,22 @@ def bench(url: str, model: str, prompt: str, count: int, concurrency: int,
             true_slo.append(row)
     slo_configured = ttft_slo_seconds is not None and itl_slo_seconds is not None
     trace_tokens = sum(r["usage_reported_completion_tokens"] for r in true_slo)
+    individual_rows, commit_rows, delivery_slo = [], [], []
+    for row in completed:
+        observed = row["wire_token_observation"] or {}
+        individual = observed.get("client_delivery_status") == "individual_token_ids_observed"
+        commit = observed.get("provider_commit_observation_status") == "provider_bound_complete_commit_observations"
+        first = observed.get("client_first_token_seconds")
+        row["client_token_ttft_seconds"] = row["client_backlog_seconds"] + first if first is not None else None
+        row["client_token_itl_slo_met"] = (all(x <= itl_slo_seconds for x in observed["client_token_delivery_intervals_seconds"])
+            if individual and itl_slo_seconds is not None else None)
+        if individual:
+            individual_rows.append(row)
+            if (ttft_slo_seconds is not None and row["client_token_ttft_seconds"] is not None
+                    and row["client_token_ttft_seconds"] <= ttft_slo_seconds and row["client_token_itl_slo_met"] is True):
+                delivery_slo.append(row)
+        if commit:
+            commit_rows.append(row)
     fairness = []
     for tenant in sorted({r["tenant"] for r in records}):
         rows = [r for r in records if r["tenant"] == tenant]
@@ -462,6 +616,18 @@ def bench(url: str, model: str, prompt: str, count: int, concurrency: int,
                       "requests_meeting_both": len(proxy),
                       "usage_tokens_meeting_both": sum(r["usage_reported_completion_tokens"] or 0 for r in proxy)},
         "provider_token_trace": trace,
+        "wire_token_metrics": {"requested":return_token_ids,
+            "completed_requests_with_individual_token_delivery":len(individual_rows),
+            "completed_requests_with_provider_commit_observations":len(commit_rows),
+            "client_token_ttft_p50_seconds":percentile([r["client_token_ttft_seconds"] for r in individual_rows if r["client_token_ttft_seconds"] is not None], .50),
+            "client_token_ttft_p95_seconds":percentile([r["client_token_ttft_seconds"] for r in individual_rows if r["client_token_ttft_seconds"] is not None], .95),
+            "client_token_delivery_itl_p50_seconds":percentile([x for r in individual_rows for x in r["wire_token_observation"]["client_token_delivery_intervals_seconds"]], .50),
+            "client_token_delivery_itl_p95_seconds":percentile([x for r in individual_rows for x in r["wire_token_observation"]["client_token_delivery_intervals_seconds"]], .95),
+            "provider_commit_observed_itl_p95_seconds":percentile([x for r in commit_rows for x in r["wire_token_observation"]["provider_commit_observation_intervals_seconds"]], .95),
+            "client_token_delivery_slo_requests":len(delivery_slo) if slo_configured else None,
+            "client_token_delivery_slo_usage_tokens_per_offered_second":sum(r["usage_reported_completion_tokens"] for r in delivery_slo) / elapsed if slo_configured and elapsed > 0 else None,
+            "qualified_source_correct_slo_goodput":None,
+            "semantics":"actual single-ID delivery events, not content chunks; server aggregate mean ITL and provider commit observations remain separate; unresolved/coalesced/absent IDs cannot establish individual token ITL"},
         "provider_reported_true_token_itl_p95_seconds": percentile(trace["intervals_seconds"], .95) if trace_ready else None,
         "provider_trace_slo": {"ttft_limit_seconds": ttft_slo_seconds, "token_itl_limit_seconds": itl_slo_seconds,
             "status": "provider_bound_complete" if trace_ready and slo_configured else "not_established",
@@ -478,6 +644,71 @@ def bench(url: str, model: str, prompt: str, count: int, concurrency: int,
 
 def self_test() -> None:
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    import copy
+    groups = [dict(token_ids=[4],client_received_at_seconds=.1),dict(token_ids=[5],client_received_at_seconds=.3)]
+    metadata = dict(schema="zerogravity.serving.request-token-metrics.v1", clock="request_monotonic_seconds",
+        wire_request_id="run:request",provider_response_id="chatcmpl-zg-1",complete=True,completion_tokens=2,
+        tokens=[dict(index=i,token_id=4+i,commit_observed_at_seconds=.01+i*.01,
+            output_received_at_seconds=.04+i*.1,http_write_completed_at_seconds=.1+i*.2) for i in range(2)])
+    observed = wire_token_observation(groups,metadata,{"mean_itl_ms":99},"run:request","chatcmpl-zg-1",2,2)
+    assert observed["status"] == "provider_bound_complete_ids"
+    assert abs(observed["client_token_delivery_intervals_seconds"][0]-.2) < 1e-9
+    assert abs(observed["provider_commit_observation_intervals_seconds"][0]-.01) < 1e-9
+    assert observed["provider_aggregate_metrics"]["mean_itl_ms"] == 99
+    gpu_metadata = copy.deepcopy(metadata)
+    for index,record in enumerate(gpu_metadata["tokens"]):
+        record["gpu"] = dict(producer_frontier=7+index,
+            native_cohort=dict(publication_sequence=2+index,width=2))
+    gpu_observed = wire_token_observation(groups,gpu_metadata,None,"run:request","chatcmpl-zg-1",2,2)
+    assert gpu_observed["provider_token_records"][1]["gpu"]["producer_frontier"] == 8
+    for field,value in [("producer_frontier",7),("producer_frontier",True),("native_cohort",dict(publication_sequence=2,width=2)),("native_cohort",dict(publication_sequence=3,width=True)),("native_cohort",dict(publication_sequence=3,width=3))]:
+        bad = copy.deepcopy(gpu_metadata);bad["tokens"][1]["gpu"][field]=value
+        try:
+            wire_token_observation(groups,bad,None,"run:request","chatcmpl-zg-1",2,2)
+            raise AssertionError("invalid/repeated GPU producer observation accepted")
+        except ValueError:
+            pass
+    for count in [True,-1,3,1.5]:
+        try:
+            wire_token_observation(groups,None,None,"run:request","chatcmpl-run:request",count,2)
+            raise AssertionError("invalid token usage accepted")
+        except ValueError:
+            pass
+    coalesced = wire_token_observation([dict(token_ids=[4,5],client_received_at_seconds=.3)],metadata,None,"run:request","chatcmpl-zg-1",2,2)
+    assert coalesced["client_token_delivery_intervals_seconds"] is None
+    assert coalesced["client_delivery_status"] == "unresolved_token_groups_or_binding"
+    vllm = wire_token_observation(groups,None,{"mean_itl_ms":99},"run:request","chatcmpl-run:request",2,2)
+    assert vllm["client_delivery_status"] == "individual_token_ids_observed"
+    assert vllm["provider_commit_observation_intervals_seconds"] is None
+    missing = wire_token_observation([],None,None,"run:request","chatcmpl-run:request",2,2)
+    assert missing["client_token_delivery_intervals_seconds"] is None
+    for field,value in [("wire_request_id","foreign"),("provider_response_id","foreign"),("completion_tokens",1),("clock","wallclock")]:
+        bad = copy.deepcopy(metadata); bad[field]=value
+        try:
+            wire_token_observation(groups,bad,None,"run:request","chatcmpl-zg-1",2,2)
+            raise AssertionError("foreign/incomplete metadata accepted")
+        except ValueError:
+            pass
+    for wire,provider in [(None,None),("", ""),("run:request",None),(None,"chatcmpl-zg-1")]:
+        bad = copy.deepcopy(metadata); bad["wire_request_id"]=wire;bad["provider_response_id"]=provider
+        try:
+            wire_token_observation(groups,bad,None,wire,provider,2,2)
+            raise AssertionError("null/empty identity promoted to bound evidence")
+        except ValueError:
+            pass
+    for field,value in [("index",0),("token_id",6),("commit_observed_at_seconds",-.1),("output_received_at_seconds",.001),("output_received_at_seconds",.03),("output_received_at_seconds",.05),("http_write_completed_at_seconds",.001)]:
+        bad = copy.deepcopy(metadata); bad["tokens"][1][field]=value
+        try:
+            wire_token_observation(groups,bad,None,"run:request","chatcmpl-zg-1",2,2)
+            raise AssertionError("invalid token record accepted")
+        except ValueError:
+            pass
+    for invalid_id in [-1,0x100000000,True,1.5]:
+        try:
+            wire_token_observation([dict(token_ids=[invalid_id],client_received_at_seconds=.1)],None,None,"r","chatcmpl-r",1,1)
+            raise AssertionError("invalid token ID accepted")
+        except ValueError:
+            pass
 
     class Provider(BaseHTTPRequestHandler):
         def do_POST(self):
@@ -493,14 +724,32 @@ def self_test() -> None:
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Connection", "close")
             self.end_headers()
-            for chunk in [
+            chunks = [
                 {"id": self.headers.get("X-Request-ID"), "choices": [{"index": 0, "delta": {"content": "hello"}, "finish_reason": None}]},
                 {"choices": [{"index": 0, "delta": {"content": "!"}, "finish_reason": None}]},
                 {"choices": [{"index": 0, "delta": {}, "finish_reason": "length"}]},
                 {"choices": [], "usage": {"completion_tokens": 2}},
-            ]:
-                self.wfile.write(b"data: " + json.dumps(chunk).encode() + b"\n\n")
-            self.wfile.write(b"data: [DONE]\n\n")
+            ]
+            if body.get("return_token_ids"):
+                wire = self.headers["X-Request-ID"]
+                provider = f"chatcmpl-{wire}"
+                for chunk in chunks:
+                    chunk["id"] = provider
+                chunks[0]["choices"][0]["delta"]["content"] = ""
+                chunks[1]["choices"][0]["delta"]["content"] = "é"
+                chunks[0]["choices"][0]["token_ids"] = [4]
+                chunks[1]["choices"][0]["token_ids"] = [5]
+                if prompt == "boolindex":
+                    chunks[0]["choices"][0]["index"] = False
+                chunks[3]["metrics"] = {"mean_itl_ms":99}
+            try:
+                for chunk in chunks:
+                    self.wfile.write(b"data: " + json.dumps(chunk).encode() + b"\n\n")
+                self.wfile.write(b"data: [DONE]\n\n")
+            except (BrokenPipeError, ConnectionResetError):
+                # The invalid-index fixture deliberately closes its stream early.
+                if prompt != "boolindex":
+                    raise
             self.close_connection = True
 
         def log_message(self, *_args):
@@ -518,6 +767,16 @@ def self_test() -> None:
         assert result["proxy_slo"]["requests_meeting_both"] == 4
         assert result["provider_trace_slo"]["status"] == "not_established"
         assert result["provider_reported_true_token_itl_p95_seconds"] is None
+        actual_ids = bench(endpoint,"fixture","wire",1,1,2,8,None,return_token_ids=True,
+            ttft_slo_seconds=8,itl_slo_seconds=8)
+        assert actual_ids["wire_token_metrics"]["completed_requests_with_individual_token_delivery"] == 1
+        assert actual_ids["wire_token_metrics"]["completed_requests_with_provider_commit_observations"] == 0
+        assert actual_ids["requests"][0]["wire_token_observation"]["token_ids"] == [4,5]
+        assert actual_ids["wire_token_metrics"]["client_token_delivery_slo_requests"] == 1
+        assert actual_ids["wire_token_metrics"]["qualified_source_correct_slo_goodput"] is None
+        assert actual_ids["requests"][0]["client_token_ttft_seconds"] <= actual_ids["requests"][0]["ttft_seconds"]
+        bad_index = bench(endpoint,"fixture","boolindex",1,1,2,8,None,return_token_ids=True)
+        assert bad_index["completed_requests"] == 0 and bad_index["classifications"]["protocol_error"] == 1
         work = [dict(request_id=f"r{i}", prompt=p, arrival_seconds=0, tenant=f"tenant-{i % 2}")
                 for i, p in enumerate(["hello", "reject429", "reject503", "cancel499"])]
         mixed = bench(endpoint, "fixture", "unused", 4, 2, 2, 8, None, workload=work)
@@ -590,6 +849,7 @@ def main() -> None:
     parser.add_argument("--chunk-slo", type=float, help="SSE chunk proxy; never token ITL")
     parser.add_argument("--itl-slo", type=float, help="requires complete provider token trace")
     parser.add_argument("--token-events", help="provider token-trace.v1 JSON; read after requests complete")
+    parser.add_argument("--return-token-ids", action="store_true", help="request actual token IDs; validate individual delivery and optional provider commit observations")
     parser.add_argument("--provider-snapshot-url", help="raw before/after literal loopback HTTP JSON")
     parser.add_argument("--run-id", help="trace binding; default unique random run")
     parser.add_argument("--max-pending", type=int)
@@ -610,7 +870,8 @@ def main() -> None:
             args.concurrency, args.max_tokens, args.timeout, os.environ.get(args.api_key_env), workload=work,
             ttft_slo_seconds=args.ttft_slo, chunk_slo_seconds=args.chunk_slo, itl_slo_seconds=args.itl_slo,
             token_trace_path=args.token_events, snapshot_url=args.provider_snapshot_url, run_id=args.run_id,
-            max_pending=args.max_pending, launch_deadline_seconds=args.launch_deadline)
+            max_pending=args.max_pending, launch_deadline_seconds=args.launch_deadline,
+            return_token_ids=args.return_token_ids)
     except (OSError, ValueError, TypeError, KeyError) as exc:
         parser.exit(2, f"Cannot benchmark: {exc}\n")
     print(json.dumps(result, indent=2, sort_keys=True))

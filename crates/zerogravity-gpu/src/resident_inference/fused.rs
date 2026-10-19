@@ -110,9 +110,14 @@ impl ResidentModel {
                 }
             }
         }
-        let position = usize::try_from(roots.frontier())
-            .map_err(|_| Error::Limit("native resident batch frontier overflow".into()))?;
-        if position >= self.capacity {
+        let positions = roots
+            .frontiers()
+            .map(|frontier| {
+                usize::try_from(frontier)
+                    .map_err(|_| Error::Limit("native resident batch frontier overflow".into()))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        if positions.iter().any(|&position| position >= self.capacity) {
             return Err(Error::Limit(
                 "native resident batch capacity exhausted".into(),
             ));
@@ -185,11 +190,15 @@ impl ResidentModel {
         let bindings = rows
             .iter()
             .zip(&candidates)
-            .map(|((session, _), candidate)| bind_domains(&session.domains, candidate, position))
+            .zip(&positions)
+            .map(|(((session, _), candidate), &position)| {
+                bind_domains(&session.domains, candidate, position)
+            })
             .collect::<Result<Vec<_>>>()?;
         let parameters = rows
             .iter()
-            .map(|(_, token)| RuntimeParameters {
+            .zip(&positions)
+            .map(|((_, token), &position)| RuntimeParameters {
                 token: *token,
                 position,
                 valid_tokens: position + 1,

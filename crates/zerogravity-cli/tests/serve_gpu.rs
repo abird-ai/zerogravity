@@ -32,6 +32,10 @@ impl OwnedServer {
     }
 
     fn start_rows(source: &Path, rows: usize) -> Proof<Self> {
+        Self::start_configured(source, rows, false)
+    }
+
+    fn start_configured(source: &Path, rows: usize, metrics: bool) -> Proof<Self> {
         if !matches!(rows, 2 | 4 | 8) {
             return Err("physical HTTP server requires native rows2/4/8".into());
         }
@@ -43,8 +47,12 @@ impl OwnedServer {
                 format!("http-b-{}", address.port()),
             ];
             drop(reserved);
-            let mut child = Command::new(env!("CARGO_BIN_EXE_zerogravity"))
-                .arg("serve")
+            let mut command = Command::new(env!("CARGO_BIN_EXE_zerogravity"));
+            command.arg("serve");
+            if metrics {
+                command.arg("--enable-per-request-metrics");
+            }
+            let mut child = command
                 .arg("--backend")
                 .arg("cuda")
                 .arg("--batch-mode")
@@ -327,6 +335,16 @@ fn open_request(
     path: &str,
     body: Option<&Value>,
 ) -> Proof<TcpStream> {
+    open_bound_request(address, method, path, body, None)
+}
+
+fn open_bound_request(
+    address: SocketAddr,
+    method: &str,
+    path: &str,
+    body: Option<&Value>,
+    wire_id: Option<&str>,
+) -> Proof<TcpStream> {
     let mut stream =
         TcpStream::connect_timeout(&address, Duration::from_secs(2)).map_err(|e| e.to_string())?;
     stream
@@ -340,8 +358,11 @@ fn open_request(
         .transpose()
         .map_err(|e| e.to_string())?
         .unwrap_or_default();
+    let identity = wire_id
+        .map(|id| format!("X-Request-ID: {id}\r\n"))
+        .unwrap_or_default();
     let head = format!(
-        "{method} {path} HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+        "{method} {path} HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\nContent-Type: application/json\r\n{identity}Content-Length: {}\r\n\r\n",
         body.len()
     );
     stream
@@ -1121,4 +1142,280 @@ fn original_qwen35_08b_native_wide_http_json_sse_disconnect_and_replay() -> Proo
 #[ignore = "release physical CUDA B4/B8 HTTP; approved original 2B source; run serially"]
 fn original_qwen35_2b_native_wide_http_json_sse_disconnect_and_replay() -> Proof<()> {
     qualify_wide("qwen35-2b")
+}
+
+fn observed_sse_completion(
+    mut response: Response,
+    alias: &str,
+    expected: &(String, usize, &'static str),
+    expected_ids: &[u32],
+    prompt: usize,
+    wire_id: &str,
+    first: Option<std::sync::mpsc::SyncSender<()>>,
+) -> Proof<Vec<Value>> {
+    if response.status != 200 || !response.chunked {
+        return Err("observed SSE did not use HTTP200 chunked transport".into());
+    }
+    let mut frames = Frames::default();
+    let (mut text, mut ids, mut provider_id) = (String::new(), Vec::<u32>::new(), None::<String>);
+    let (mut terminal, mut usage, mut done, mut total) = (0, 0, 0, 0);
+    let mut first = first;
+    let mut metadata = None;
+    while let Some(chunk) = response.chunk()? {
+        total += chunk.len();
+        if total > BODY_LIMIT {
+            return Err("observed SSE response exceeds bound".into());
+        }
+        for frame in frames.feed(&chunk)? {
+            if frame == "[DONE]" {
+                if terminal != 1 || usage != 1 || done != 0 {
+                    return Err("observed SSE DONE order/count".into());
+                }
+                done += 1;
+                continue;
+            }
+            if done != 0 {
+                return Err("observed SSE data followed DONE".into());
+            }
+            let event: Value = serde_json::from_str(&frame).map_err(|e| e.to_string())?;
+            if event.get("error").is_some() || event["model"] != alias {
+                return Err(format!("observed SSE foreign/error event: {event}"));
+            }
+            let current = event["id"]
+                .as_str()
+                .filter(|id| !id.is_empty())
+                .ok_or("observed SSE id missing")?;
+            if provider_id.as_deref().is_some_and(|id| id != current) {
+                return Err("observed SSE response changed identity".into());
+            }
+            provider_id.get_or_insert_with(|| current.into());
+            if !event["usage"].is_null() {
+                if terminal != 1 || usage != 0 {
+                    return Err("observed SSE duplicate/early usage".into());
+                }
+                usage += 1;
+                validate_usage(&event["usage"], prompt, expected.1)?;
+                metadata = Some(event["zerogravity_token_metrics"].clone());
+            }
+            for choice in event["choices"]
+                .as_array()
+                .ok_or("observed SSE choices missing")?
+            {
+                if choice["index"].as_u64() != Some(0) {
+                    return Err("observed SSE foreign choice index".into());
+                }
+                if let Some(reason) = choice["finish_reason"].as_str() {
+                    terminal += 1;
+                    if choice["text"] != ""
+                        || reason != expected.2
+                        || !choice["token_ids"].is_null()
+                    {
+                        return Err("observed SSE terminal differs/repeats IDs".into());
+                    }
+                } else {
+                    if terminal != 0 {
+                        return Err("observed SSE text after terminal".into());
+                    }
+                    text.push_str(choice["text"].as_str().ok_or("observed SSE text missing")?);
+                    let token_ids = choice["token_ids"]
+                        .as_array()
+                        .filter(|ids| ids.len() == 1)
+                        .ok_or("individual actual token ID required")?;
+                    let token = token_ids[0]
+                        .as_u64()
+                        .and_then(|id| u32::try_from(id).ok())
+                        .ok_or("observed SSE invalid token ID")?;
+                    ids.push(token);
+                    if ids.len() > 512 {
+                        return Err("observed SSE token bound".into());
+                    }
+                    if let Some(notify) = first.take() {
+                        notify.send(()).map_err(|e| e.to_string())?;
+                    }
+                }
+            }
+        }
+    }
+    if !frames.bytes.is_empty()
+        || text != expected.0
+        || ids != expected_ids
+        || terminal != 1
+        || usage != 1
+        || done != 1
+    {
+        return Err(format!(
+            "observed SSE text/IDs/terminal mismatch: ids={ids:?}, expected={expected_ids:?}, terminal={terminal} usage={usage} done={done}"
+        ));
+    }
+    let metadata = metadata.ok_or("observed terminal metadata missing")?;
+    if metadata["schema"] != "zerogravity.serving.request-token-metrics.v1"
+        || metadata["wire_request_id"] != wire_id
+        || metadata["provider_response_id"].as_str() != provider_id.as_deref()
+        || metadata["complete"] != true
+        || metadata["completion_tokens"] != ids.len()
+        || metadata["clock"] != "request_monotonic_seconds"
+    {
+        return Err(format!("observed metadata binding differs: {metadata}"));
+    }
+    let records = metadata["tokens"]
+        .as_array()
+        .ok_or("observed token records missing")?;
+    if records.len() != ids.len() {
+        return Err("observed token/usage count differs".into());
+    }
+    let (mut previous_commit, mut previous_write) = (0.0, 0.0);
+    for (index, (record, id)) in records.iter().zip(&ids).enumerate() {
+        let commit = record["commit_observed_at_seconds"]
+            .as_f64()
+            .ok_or("commit clock missing")?;
+        let received = record["output_received_at_seconds"]
+            .as_f64()
+            .ok_or("receive clock missing")?;
+        let written = record["http_write_completed_at_seconds"]
+            .as_f64()
+            .ok_or("write clock missing")?;
+        if record["index"] != index
+            || record["token_id"] != *id
+            || !commit.is_finite()
+            || !received.is_finite()
+            || !written.is_finite()
+            || commit < previous_commit
+            || received < commit
+            || received < previous_write
+            || written < received
+            || record["gpu"]["producer_frontier"] != prompt + index
+        {
+            return Err(format!(
+                "observed record order/frontier/clock differs: {record}"
+            ));
+        }
+        previous_commit = commit;
+        previous_write = written;
+    }
+    Ok(records.clone())
+}
+
+fn qualify_unequal_arrival_metrics(name: &str) -> Proof<()> {
+    let _serial = GPU_HTTP_LOCK
+        .lock()
+        .map_err(|_| "physical HTTP lock poisoned")?;
+    if cfg!(debug_assertions) {
+        return Err("physical HTTP proof requires --release".into());
+    }
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/models")
+        .join(name);
+    let model_path = directory.join("model.gguf");
+    let source = LoadedQwenModel::open(&model_path, &directory.join("config.json"))
+        .map_err(|e| e.to_string())?;
+    let tokenizer =
+        QwenTokenizer::from_file(&directory.join("tokenizer.json")).map_err(|e| e.to_string())?;
+    let short = Oracle::compute(&source, &tokenizer, "a")?;
+    if short.ids.len() != 8 || short.stopped {
+        return Err("short unequal-arrival source prompt needs eight non-EOS outputs".into());
+    }
+    let mut chosen = None;
+    for prompt in [
+        "The sequence is 1, 2, 3, 4, 5, 6, 7, 8,",
+        "Continue counting the following sequence of whole numbers: one, two, three, four, five,",
+    ] {
+        let oracle = Oracle::compute(&source, &tokenizer, prompt)?;
+        if oracle.prompt_tokens > short.prompt_tokens + 8
+            && oracle.ids.len() == 8
+            && !oracle.stopped
+        {
+            chosen = Some(oracle);
+            break;
+        }
+    }
+    let long=chosen.ok_or("long unequal-arrival source prompt needs distinct token frontier and eight non-EOS outputs")?;
+    let server = OwnedServer::start_configured(&model_path, 2, true)?;
+    if server.health()?["per_request_metrics_enabled"] != true {
+        return Err("actual metrics server flag not enabled".into());
+    }
+    let mut first_body = payload(&server.aliases[0], &long.prompt, 8, true);
+    first_body["return_token_ids"] = json!(true);
+    let first_response = Response::read(open_bound_request(
+        server.address,
+        "POST",
+        "/v1/completions",
+        Some(&first_body),
+        Some("unequal:first"),
+    )?)?;
+    let first_expected = long.expected(&tokenizer, 8)?;
+    let first_alias = server.aliases[0].clone();
+    let first_ids = long.ids.clone();
+    let first_prompt = long.prompt_tokens;
+    let (notify, arrival) = std::sync::mpsc::sync_channel(1);
+    let first = thread::spawn(move || {
+        observed_sse_completion(
+            first_response,
+            &first_alias,
+            &first_expected,
+            &first_ids,
+            first_prompt,
+            "unequal:first",
+            Some(notify),
+        )
+    });
+    // B is offered only after an actual ID from A is received; both sockets
+    // are continuously drained while B prefills and the cohort progresses.
+    arrival
+        .recv_timeout(REQUEST_LIMIT)
+        .map_err(|e| format!("first actual token arrival: {e}"))?;
+    let mut second_body = payload(&server.aliases[1], &short.prompt, 8, true);
+    second_body["return_token_ids"] = json!(true);
+    let second_response = Response::read(open_bound_request(
+        server.address,
+        "POST",
+        "/v1/completions",
+        Some(&second_body),
+        Some("unequal:second"),
+    )?)?;
+    let second_records = observed_sse_completion(
+        second_response,
+        &server.aliases[1],
+        &short.expected(&tokenizer, 8)?,
+        &short.ids,
+        short.prompt_tokens,
+        "unequal:second",
+        None,
+    )?;
+    let first_records = first
+        .join()
+        .map_err(|_| "first observed SSE reader panicked")??;
+    let paired = first_records.iter().any(|a| {
+        second_records.iter().any(|b| {
+            let ca = &a["gpu"]["native_cohort"];
+            let cb = &b["gpu"]["native_cohort"];
+            ca["publication_sequence"]
+                .as_u64()
+                .is_some_and(|sequence| sequence > 0)
+                && ca == cb
+                && ca["width"] == 2
+                && a["gpu"]["producer_frontier"] != b["gpu"]["producer_frontier"]
+        })
+    });
+    if !paired {
+        return Err(format!(
+            "actual HTTP unequal arrival never shared an observed native cohort: first={first_records:?},second={second_records:?}"
+        ));
+    }
+    let health = server.wait_health(|h| h["active_sessions"] == 0 && h["queued_requests"] == 0)?;
+    physical_accounting(&health)?;
+    println!(
+        "P12_UNEQUAL_ARRIVAL_HTTP_PASS source={name} different_source_prompt_lengths=true B_arrival_after_A_actual_ID=true both_sockets_drained=true native_membership_frontiers=observed CPU_ID_text_usage=exact terminal_usage_DONE=once health={health}"
+    );
+    Ok(())
+}
+
+#[test]
+#[ignore = "release physical CUDA unequal-arrival metrics HTTP; approved .8B source; serial"]
+fn original_qwen35_08b_native_unequal_arrival_token_observations_http() -> Proof<()> {
+    qualify_unequal_arrival_metrics("qwen35-0.8b")
+}
+#[test]
+#[ignore = "release physical CUDA unequal-arrival metrics HTTP; approved 2B source; serial"]
+fn original_qwen35_2b_native_unequal_arrival_token_observations_http() -> Proof<()> {
+    qualify_unequal_arrival_metrics("qwen35-2b")
 }

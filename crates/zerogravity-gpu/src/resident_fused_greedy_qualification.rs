@@ -88,7 +88,7 @@ async fn feedback(
 
 fn private_receipt(candidate: &PreparedResidentCohort, count: usize, frontier: u64) -> Result<()> {
     if candidate.len() != count
-        || candidate.prior_frontier() != frontier
+        || candidate.prior_frontier() != Some(frontier)
         || candidate.fused_dispatches() == 0
         || candidate.native_greedy_dispatches() != SAMPLER_DISPATCHES
         || candidate.dispatches() <= candidate.native_greedy_dispatches()

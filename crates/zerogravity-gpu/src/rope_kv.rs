@@ -22,6 +22,49 @@ pub(crate) fn angle_step(
 }
 
 #[cube(launch_unchecked)]
+pub(crate) fn angle_step_rows(
+    angles: &mut [f32],
+    positions: &[u32],
+    theta_scale: f32,
+    #[comptime] half: usize,
+    #[comptime] batch: usize,
+    #[comptime] stage: usize,
+) {
+    let row = ABSOLUTE_POS;
+    if row < batch {
+        let at = row * half + stage;
+        if stage == 0usize {
+            angles[at] = f32::cast_from(positions[row]);
+        } else {
+            angles[at] = round_source(
+                widen_source(angles[at - 1]) * widen_source(theta_scale),
+                0u32,
+            );
+        }
+    }
+}
+
+#[cube]
+fn trig_index(
+    head: usize,
+    lane: usize,
+    #[comptime] half: usize,
+    #[comptime] heads: usize,
+    #[comptime] query_heads: usize,
+    #[comptime] batch: usize,
+) -> usize {
+    let mut row = 0usize;
+    if batch > 1usize {
+        if head < batch * query_heads {
+            row = head / query_heads;
+        } else {
+            row = (head - batch * query_heads) / (heads / batch - query_heads);
+        }
+    }
+    (row * half + lane) * 2
+}
+
+#[cube(launch_unchecked)]
 pub(crate) fn rope_products(
     input: &[f32],
     trig: &[f32],
@@ -29,13 +72,16 @@ pub(crate) fn rope_products(
     #[comptime] width: usize,
     #[comptime] half: usize,
     #[comptime] heads: usize,
+    #[comptime] query_heads: usize,
+    #[comptime] batch: usize,
 ) {
     let p = ABSOLUTE_POS;
     if p < heads * half {
         let lane = p % half;
         let b = input[(p / half) * width + lane + half];
-        let sin = trig[lane * 2];
-        let cos = trig[lane * 2 + 1];
+        let t = trig_index(p / half, lane, half, heads, query_heads, batch);
+        let sin = trig[t];
+        let cos = trig[t + 1];
         products[p * 2] = round_source(
             widen_source(b) * widen_source(sin),
             (u32::reinterpret(b) ^ u32::reinterpret(sin)) & 0x80000000u32,
@@ -58,6 +104,8 @@ pub(crate) fn rope_sums(
     #[comptime] half: usize,
     #[comptime] heads: usize,
     #[comptime] count: usize,
+    #[comptime] query_heads: usize,
+    #[comptime] batch: usize,
 ) {
     let p = ABSOLUTE_POS;
     if p < count {
@@ -68,11 +116,12 @@ pub(crate) fn rope_sums(
             let pair = lane % half;
             let a = input[head * width + pair];
             let r = (head * half + pair) * 2;
-            let mut b = trig[pair * 2 + 1];
+            let t = trig_index(head, pair, half, heads, query_heads, batch);
+            let mut b = trig[t + 1];
             let mut c = f32::reinterpret(u32::reinterpret(products[r]) ^ 0x80000000u32);
             let mut index = r;
             if lane >= half {
-                b = trig[pair * 2];
+                b = trig[t];
                 c = products[r + 1];
                 index = r + 1;
             }
@@ -99,16 +148,19 @@ pub(crate) fn rope_subtract(
     #[comptime] width: usize,
     #[comptime] half: usize,
     #[comptime] heads: usize,
+    #[comptime] query_heads: usize,
+    #[comptime] batch: usize,
 ) {
     let p = ABSOLUTE_POS;
     if p < heads * half * 2 {
         let pair = p / 2;
         let lane = pair % half;
         let a = input[(pair / half) * width + lane];
-        let mut b = trig[lane * 2 + 1];
+        let t = trig_index(pair / half, lane, half, heads, query_heads, batch);
+        let mut b = trig[t + 1];
         let mut c = -widen_source(products[p]);
         if p % 2 == 1usize {
-            b = trig[lane * 2];
+            b = trig[t];
             c = widen_source(products[p]);
         }
         let product = widen_source(a) * widen_source(b);
@@ -131,6 +183,8 @@ pub(crate) fn rope_apply(
     #[comptime] width: usize,
     #[comptime] half: usize,
     #[comptime] heads: usize,
+    #[comptime] query_heads: usize,
+    #[comptime] batch: usize,
 ) {
     let p = ABSOLUTE_POS;
     if p < heads * half * 2 {
@@ -138,11 +192,12 @@ pub(crate) fn rope_apply(
         let lane = pair % half;
         let head = pair / half;
         let a = input[head * width + lane];
-        let mut b = trig[lane * 2 + 1];
+        let t = trig_index(head, lane, half, heads, query_heads, batch);
+        let mut b = trig[t + 1];
         let mut c = -widen_source(products[p]);
         let mut index = head * width + lane;
         if p % 2 == 1usize {
-            b = trig[lane * 2];
+            b = trig[t];
             c = widen_source(products[p]);
             index += half;
         }

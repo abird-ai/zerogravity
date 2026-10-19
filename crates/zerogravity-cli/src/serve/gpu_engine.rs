@@ -4,8 +4,9 @@
 //! interleaves through B1. Device feedback retains each SessionAuthority.
 
 use super::engine::{
-    EVENTS_PER_REQUEST, GeneratedText, MAX_ACTIVE_PER_WORKER, Presentation, QUEUED_PER_WORKER,
-    Request, RequestEvents, ResponseEvent, Scheduled, ServiceError,
+    EVENTS_PER_REQUEST, GeneratedText, GpuTokenObservation, MAX_ACTIVE_PER_WORKER,
+    NativeCohortObservation, Presentation, QUEUED_PER_WORKER, Request, RequestEvents,
+    ResponseEvent, Scheduled, ServiceError,
 };
 use super::gpu_batch::{self, Limits, Phase, Ready};
 use crate::GpuBackend;
@@ -109,6 +110,7 @@ struct GpuModel {
     tokenizer: Arc<QwenTokenizer>,
     group: usize,
     hidden_width: usize,
+    vocabulary_size: u64,
     native_rows: usize,
 }
 #[derive(Default)]
@@ -274,6 +276,7 @@ impl GpuRouter {
             let hidden_width = usize::try_from(source.geometry().hidden_size).map_err(|_| {
                 ServiceError::new(400, "source_hidden", "invalid Qwen source hidden width")
             })?;
+            let vocabulary_size = source.geometry().vocab_size;
             let plan = source
                 .forward_plan(GPU_CAPACITY, true, true)
                 .map_err(ServiceError::inference)?;
@@ -291,6 +294,7 @@ impl GpuRouter {
                 tokenizer: Arc::new(tokenizer),
                 group: unique.len(),
                 hidden_width,
+                vocabulary_size,
                 native_rows,
             });
             unique.insert(path, Arc::clone(&shared));
@@ -367,6 +371,7 @@ impl GpuRouter {
             ));
         }
         let model = request.model.clone();
+        let token_metrics = request.token_metrics.clone();
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         if id == u64::MAX {
             return Err(ServiceError::new(
@@ -395,7 +400,7 @@ impl GpuRouter {
                     }
                 }
             })?;
-        Ok(RequestEvents::new(id, model, rx, cancelled))
+        Ok(RequestEvents::new(id, model, rx, cancelled).observed(token_metrics))
     }
 }
 struct GpuActive {
@@ -410,6 +415,8 @@ struct GpuActive {
     prompt: Vec<u32>,
     cursor: usize,
     device_token: Option<ResidentToken>,
+    token_commit_observed_at: Option<Instant>,
+    token_gpu_observation: Option<GpuTokenObservation>,
     native_rows: usize,
     packet_presented: bool,
     blocked_since: Option<Instant>,
@@ -443,7 +450,8 @@ impl GpuActive {
             job.request.stream,
             job.request.max_tokens,
             prompt.len(),
-        );
+        )
+        .observed(job.request.token_metrics.clone(), model.vocabulary_size);
         // ResidentSession allocates independent, physical source-bound GPU
         // state. Neither its tensor source nor its StateRoot is CPU fallback.
         let session = block_on(model.resident.session()).map_err(ServiceError::inference)?;
@@ -460,6 +468,8 @@ impl GpuActive {
             prompt,
             cursor: 0,
             device_token: None,
+            token_commit_observed_at: None,
+            token_gpu_observation: None,
             native_rows: model.native_rows,
             packet_presented: false,
             blocked_since: None,
@@ -507,7 +517,16 @@ impl GpuActive {
                 )
             })?;
             let before = self.output.generated_token_count();
-            let status = self.output.present(token.id)?;
+            let committed = self.token_commit_observed_at.ok_or_else(|| {
+                ServiceError::new(
+                    500,
+                    "missing_commit_observation",
+                    "resident packet has no publication observation",
+                )
+            })?;
+            let status =
+                self.output
+                    .present_observed(token.id, committed, self.token_gpu_observation)?;
             stats.output_tokens.fetch_add(
                 (self.output.generated_token_count() - before) as u64,
                 Ordering::Relaxed,
@@ -529,7 +548,12 @@ impl GpuActive {
         }
         Ok(presented)
     }
-    fn install(&mut self, read: InferenceReadback) -> Result<(), ServiceError> {
+    fn install(
+        &mut self,
+        read: InferenceReadback,
+        commit_observed_at: Instant,
+        native_cohort: Option<NativeCohortObservation>,
+    ) -> Result<(), ServiceError> {
         let token = read.device_token.ok_or_else(|| {
             ServiceError::new(
                 500,
@@ -537,7 +561,14 @@ impl GpuActive {
                 "GPU completion has no original greedy packet",
             )
         })?;
+        // install follows successful original publication; this is the exact
+        // packet-producing committed binding, including a B1 retry.
+        self.token_gpu_observation = Some(GpuTokenObservation {
+            producer_frontier: self.session.binding().frontier(),
+            native_cohort,
+        });
         self.device_token = Some(token);
+        self.token_commit_observed_at = Some(commit_observed_at);
         self.packet_presented = false;
         self.blocked_since = None;
         Ok(())
@@ -555,9 +586,10 @@ impl GpuActive {
                 block_on(self.session.forward_greedy(&self.prompt[self.cursor..end]))
             }
             .map_err(ServiceError::inference)?;
+            let committed = Instant::now();
             stats.single_completion(&read);
             if end == self.prompt.len() {
-                self.install(read)?;
+                self.install(read, committed, None)?;
             }
             self.cursor = end;
             return Ok(MemberStep::Forwarded);
@@ -579,8 +611,9 @@ impl GpuActive {
         })?;
         let read =
             block_on(self.session.forward_device_token(token)).map_err(ServiceError::inference)?;
+        let committed = Instant::now();
         stats.single_completion(&read);
-        self.install(read)?;
+        self.install(read, committed, None)?;
         Ok(MemberStep::Forwarded)
     }
 }
@@ -730,18 +763,21 @@ fn worker(
             continue;
         }
         let ready = eligible.iter().map(GpuActive::ready).collect::<Vec<_>>();
-        let waves = match gpu_batch::form(
-            &ready,
-            Limits {
-                max_members: if native_rows != 0 {
-                    native_rows
-                } else {
-                    active_limit
-                },
-                max_tokens: 64,
-                max_scratch: 256 * 1024 * 1024,
+        let bounds = Limits {
+            max_members: if native_rows != 0 {
+                native_rows
+            } else {
+                active_limit
             },
-        ) {
+            max_tokens: 64,
+            max_scratch: 256 * 1024 * 1024,
+        };
+        let planned = if native_rows != 0 {
+            gpu_batch::form_decode(&ready, bounds)
+        } else {
+            gpu_batch::form(&ready, bounds)
+        };
+        let waves = match planned {
             Ok(groups) => groups,
             Err(error) => {
                 for failed in eligible.drain(..) {

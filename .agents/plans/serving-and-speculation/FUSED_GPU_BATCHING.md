@@ -4,15 +4,16 @@ Owner: @pvl
 
 # P12 — native fused GPU batch acceptance
 
-**Current HTTP acceptance — P12-B6:** opt-in `batch_mode=fused`
+**Current HTTP acceptance — P12-B7:** opt-in `batch_mode=fused`
 uses the original full-model native CUDA B2/B4/B8 plan for compatible
-same-frontier prompt tails/decode. Explicit `--batch-rows 2|4|8`, default2;
+same-source decode at independent frontiers; prompt tails still require
+matching frontiers. Explicit `--batch-rows 2|4|8`, default2;
 interleaved remains the default mode. Surviving rows regroup without padding.
 Both approved original Qwen3.5 models passed actual release JSON/SSE,
 trained EOS, cancellation and exact internal CPU/B1 state tests.
 Engine full248320-logit and compact packet/all42 evidence remains distinct
-from HTTP wire evidence. Unequal frontiers, paged state, full-prefix native
-prefill and matched vLLM performance remain open. Named later checkpoints
+from HTTP wire evidence. Paged state, full-prefix native prefill, trained-HF
+arithmetic and matched vLLM performance remain open. Named later checkpoints
 supersede only the corresponding historical limitations below.
 
 ## Ownership boundaries
@@ -445,7 +446,8 @@ Health counter meanings:
   including private Ready cohorts later discarded, counted once/cohort.
 - `gpu_fused_batches`/`gpu_fused_rows_completed`: actual completed native
   full-model cohorts/rows, not scheduler membership or committed output.
-  `native_projection_dispatches_completed` is the projection subset;
+  `native_projection_dispatches_completed` counts projection-dot launches,
+  excluding their activation-quantization, staging and status kernels;
   `native_sampler_dispatches_completed` counts the four native selector
   stages, excluding private packet copies.
 - `completed_model_token_steps`: physically completed model work,
@@ -567,6 +569,7 @@ SDKs or vLLM packages were downloaded; no vLLM comparison is claimed.
 - Enable a backend/profile's fused path only after actual B>1 native
   dispatch and source-exact Root/Ready acceptance. P12-B5 qualifies
   CUDA B2 for the two approved sources; other backends refuse fused.
+  P12-B6/B7 additionally qualify CUDA B4/B8 and unequal decode frontiers.
   A fused flag or fewer launches does not establish vLLM performance.
 
 Changing a scheduler counter to "fused" without native multi-row
@@ -626,3 +629,71 @@ caps, true token observations and matched performance remain unqualified.
 Example wider native configuration adds `--batch-rows 8` and
 `--active-per-worker 8` to the accepted CUDA command. This phase still
 requires equal causal frontiers; other prefill/unmatched work uses B1.
+
+## Unequal-frontier native CUDA decode — P12-B7
+
+Both approved original0.8B/2B models pass B2/B4/B8 complete ForwardPlan
+execution at independent row positions255/256/0/31/32/1/510/511. Native
+RoPE/KV append, masking, packed softmax and value reduction retain each
+session's own causal prefix. Inactive attention-value lanes preserve bits
+without arithmetic on poisoned, signed-zero or subnormal future values.
+Independent CPU AND B1 comparisons cover all248320 logits/all42 state
+domains, device feedback, B1 handoffs/refill, stale/foreign packets,
+abandoned Ready, capacity512 and final reservation0. No separate model
+graph is executed per row. Full-prefix native prefill remains open.
+
+Fresh composed release tests:8 worker cases and6 actual HTTP cases pass
+both models B2/4/8, trained EOS, limits, cancellation/credit parking,
+disconnect/survivors/replay and one terminal/usage/Done. The new arrival
+cases offer a short request only after the long request's first actual
+ID, then observe one successful native publication sequence shared by
+rows at different producer frontiers. Each model records5 native B2
+cohorts/10 rows,935 native projection launches and20 native sampler
+stages. Internal tests retain exact CPU/B1 packets/all42; wire checks
+compare exact CPU IDs/text/usage and bounded observation clocks.
+
+Opt-in `--enable-per-request-metrics` and `return_token_ids:true` expose
+at most512 once-only non-EOS IDs, independent of UTF-8 chunk emission.
+Commit-observed, output-queue-received and socket-write-completed clocks
+have distinct names. The commit observation follows original root
+publication and survives credit parking; GPU frontiers and existing
+successful cohort sequence/width identify the physical producer.
+No metric creates a session authority or changes default responses.
+Standard vLLM scheduler-origin TTFT/queue/rate fields stay unset where
+that origin is unavailable. Benchmark true client ITL requires one actual
+ID per observed arrival; grouped arrivals are unresolved. Provider mean
+ITL and SSE chunk intervals remain separate from true client token ITL.
+
+Independent source audit reconciles the0.8B unequal-arrival HTTP launch
+count exactly:26 B1 state-only graphs*5489 +6 B1 greedy*5510 +5 nativeB2
+cohorts*5728 =204414. The counter includes actual private certification,
+state gather/scatter and packet-copy launches, excludes cold model
+initialization/maintenance and counts each native cohort once. A native
+projection uses10 actual launches including activation preparation and
+the dot, before output certification, for this mixed Q4_0/Q8_0 source.
+The935 projection-dot launches are the named subset of those kernels.
+These costs remain real
+optimization work; fewer model traversals do not establish performance.
+
+Fresh pressure cases pass typed prelaunch B8 refusal with unchanged
+allocations/queue/roots/all42, B4 progress under pressure and B8 after
+release. Four actual full-graph/sampler completion-failure probes retain
+1824/1719 and1828/1723 original handles in quarantine; prior roots/all42
+and future KV zero tails stay exact, old Ready/further work/other model
+refuse and the4GiB envelope remains charged. No recovery performed.
+An initial wrong executable-name invocation launched no abort work;
+corrected invocations passed without repeating accepted pressure tests.
+
+Complete isolated gate:1164 Rust passed/0failed/69ignored/245 suites,
+18Python, release/installer/Nix. Strict CPU/CUDA/Vulkan/qualification
+Clippy passes; fresh release CLI35/GPU58 source-free tests pass. Both
+approved original cache-direct/HF-import release routes remain exact
+full248320/all42 for both models. The earlier full-logit ragged engine
+binary predates metadata/observability composition; fresh worker/HTTP/
+pressure/abort acceptance above covers the composed implementation.
+
+P12-C/P22 remain open: paged hybrid state, full-prefix native prefill,
+physical prefill/decode overlap and measured fairness, other trained
+profiles/backends, a common original-HF numerical profile and matched
+pinned-vLLM cold/warm workloads. Genuine vLLM startup/smoke is accepted;
+source-correct SLO goodput and vLLM-equivalent throughput are unqualified.

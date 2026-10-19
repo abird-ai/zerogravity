@@ -20,13 +20,14 @@ const MAX_PREFIX: u64 = 512;
 pub struct ResidentBatchRows {
     source: SourceIdentity,
     bindings: Vec<RootBinding>,
-    frontier: u64,
+    frontier: Option<u64>,
     row_elements: usize,
     activation_bytes: usize,
 }
 impl ResidentBatchRows {
     /// Register one *committed* root per independent session, with an exact
-    /// common source/frontier and an explicit dense activation row width.
+    /// common source and an explicit dense activation row width. Each row
+    /// retains its own committed causal frontier.
     pub fn new(bindings: &[RootBinding], row_elements: usize) -> Result<Self> {
         let source = bindings
             .first()
@@ -39,24 +40,24 @@ impl ResidentBatchRows {
         {
             return Err(Error::Limit("resident GPU batch size/source/rows".into()));
         }
-        let frontier = bindings[0].frontier();
-        if frontier >= MAX_PREFIX {
-            return Err(Error::Limit(
-                "resident batch model context exhausted".into(),
-            ));
-        }
         let mut seen = BTreeSet::new();
         for binding in bindings {
-            if binding.source() != source
-                || binding.frontier() != frontier
-                || !seen.insert(binding.session().get())
-            {
+            if binding.frontier() >= MAX_PREFIX {
+                return Err(Error::Limit(
+                    "resident batch model context exhausted".into(),
+                ));
+            }
+            if binding.source() != source || !seen.insert(binding.session().get()) {
                 return Err(Error::State(
-                    "resident batch has foreign source, differing frontier, or duplicate session"
-                        .into(),
+                    "resident batch has foreign source or duplicate session".into(),
                 ));
             }
         }
+        let first = bindings[0].frontier();
+        let frontier = bindings
+            .iter()
+            .all(|binding| binding.frontier() == first)
+            .then_some(first);
         let total = bindings
             .len()
             .checked_mul(row_elements)
@@ -76,8 +77,12 @@ impl ResidentBatchRows {
     pub fn source(&self) -> SourceIdentity {
         self.source
     }
-    pub fn frontier(&self) -> u64 {
+    /// None when the exact per-row frontiers differ.
+    pub fn frontier(&self) -> Option<u64> {
         self.frontier
+    }
+    pub fn frontiers(&self) -> impl ExactSizeIterator<Item = u64> + '_ {
+        self.bindings.iter().map(|binding| binding.frontier())
     }
     pub fn len(&self) -> usize {
         self.bindings.len()
@@ -146,7 +151,7 @@ mod tests {
             rows.require_current(&[right.binding(), left.binding()])
                 .is_err()
         );
-        assert_eq!(rows.frontier(), 0);
+        assert_eq!(rows.frontier(), Some(0));
         // Capture holds only *committed* prior roots, never candidate roots.
     }
     #[test]
@@ -166,16 +171,57 @@ mod tests {
         assert_eq!(other.binding().root(), 0);
     }
     #[test]
-    fn same_source_different_frontier_and_exhausted_capacity_refuse() {
+    fn differing_frontiers_preserve_exact_roots_and_exhausted_capacity_refuses() {
         let id = source();
         let a = SessionAuthority::new(id).unwrap();
         let mut b = SessionAuthority::new(id).unwrap();
         let attempt = b.begin_advance(1).unwrap();
         b.prepare_publish(attempt).unwrap().commit();
-        assert!(ResidentBatchRows::new(&[a.binding(), b.binding()], 32).is_err());
+        let original = [a.binding(), b.binding()];
+        let rows = ResidentBatchRows::new(&original, 32).unwrap();
+        assert_eq!(rows.frontier(), None);
+        assert_eq!(rows.frontiers().collect::<Vec<_>>(), [0, 1]);
+        rows.require_current(&original).unwrap();
+        assert!(rows.require_current(&[original[1], original[0]]).is_err());
         let mut c = SessionAuthority::new(id).unwrap();
         let advance = c.begin_advance(512).unwrap();
         c.prepare_publish(advance).unwrap().commit();
         assert!(ResidentBatchRows::new(&[c.binding()], 32).is_err());
+        assert!(ResidentBatchRows::new(&[a.binding(), c.binding()], 32).is_err());
+    }
+
+    #[test]
+    fn mixed_native_widths_keep_every_frontier_and_checked_dense_offsets() {
+        let id = source();
+        let positions = [255, 256, 0, 31, 32, 1, 510, 511];
+        let mut owners = (0..8)
+            .map(|_| SessionAuthority::new(id).unwrap())
+            .collect::<Vec<_>>();
+        for (owner, position) in owners.iter_mut().zip(positions) {
+            if position != 0 {
+                let attempt = owner.begin_advance(position).unwrap();
+                owner.prepare_publish(attempt).unwrap().commit();
+            }
+        }
+        let bindings = owners
+            .iter()
+            .map(SessionAuthority::binding)
+            .collect::<Vec<_>>();
+        for width in [2, 4, 8] {
+            let elements = MAX_ELEMENTS / width;
+            let rows = ResidentBatchRows::new(&bindings[..width], elements).unwrap();
+            assert_eq!(rows.frontier(), None);
+            assert_eq!(rows.frontiers().collect::<Vec<_>>(), positions[..width]);
+            assert_eq!(rows.activation_bytes(), MAX_ELEMENTS * 4);
+            for row in 0..width {
+                assert_eq!(rows.row_byte_offset(row).unwrap(), row * elements * 4);
+            }
+            assert!(rows.row_byte_offset(width).is_err());
+            assert!(ResidentBatchRows::new(&bindings[..width], elements + 1).is_err());
+            let mut reordered = bindings[..width].to_vec();
+            reordered.rotate_left(1);
+            assert!(rows.require_current(&reordered).is_err());
+            rows.require_current(&bindings[..width]).unwrap();
+        }
     }
 }

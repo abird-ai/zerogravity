@@ -17,7 +17,70 @@ pub(crate) fn accumulate(
     #[comptime] kvheads: usize,
     #[comptime] stage: usize,
 ) {
+    accumulate_at(
+        input,
+        previous,
+        lanes,
+        sums,
+        subtracted,
+        ABSOLUTE_POS,
+        block,
+        width,
+        tokens,
+        qheads,
+        kvheads,
+        stage,
+    );
+}
+
+/// Finished rows carry lane bits across ping-pong buffers without another FMA.
+#[cube(launch_unchecked)]
+pub(crate) fn accumulate_rows(
+    input: &[f32],
+    previous: &[f32],
+    lanes: &mut [f32],
+    sums: &mut [f64],
+    subtracted: &mut [f64],
+    positions: &[u32],
+    block: u32,
+    #[comptime] width: usize,
+    #[comptime] tokens: usize,
+    #[comptime] qheads: usize,
+    #[comptime] kvheads: usize,
+    #[comptime] batch: usize,
+    #[comptime] padding: usize,
+    #[comptime] stage: usize,
+) {
     let at = ABSOLUTE_POS;
+    if at < qheads * width * 32 {
+        let row = (at / 32 / width) / (qheads / batch);
+        let padded = (positions[row] as usize + padding) / padding * padding;
+        if block as usize * 32 < padded {
+            accumulate_at(
+                input, previous, lanes, sums, subtracted, at, block, width, tokens, qheads,
+                kvheads, stage,
+            );
+        } else if stage == 0usize {
+            lanes[at] = f32::reinterpret(u32::reinterpret(previous[at]));
+        }
+    }
+}
+
+#[cube]
+fn accumulate_at(
+    input: &[f32],
+    previous: &[f32],
+    lanes: &mut [f32],
+    sums: &mut [f64],
+    subtracted: &mut [f64],
+    at: usize,
+    block: u32,
+    #[comptime] width: usize,
+    #[comptime] tokens: usize,
+    #[comptime] qheads: usize,
+    #[comptime] kvheads: usize,
+    #[comptime] stage: usize,
+) {
     if at < qheads * width * 32 {
         let column = at / 32;
         let head = column / width;

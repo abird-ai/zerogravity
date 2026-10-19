@@ -115,7 +115,7 @@ async fn prepare(
 
 fn receipt(candidate: &PreparedResidentCohort, rows: usize, frontier: u64) -> Result<()> {
     if candidate.len() != rows
-        || candidate.prior_frontier() != frontier
+        || candidate.prior_frontier() != Some(frontier)
         || candidate.dispatches() == 0
         || candidate.fused_dispatches() == 0
         || candidate.fused_dispatches() > candidate.dispatches()

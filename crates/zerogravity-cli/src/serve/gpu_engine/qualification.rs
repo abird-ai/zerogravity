@@ -104,6 +104,7 @@ impl Fixture {
             tokenizer,
             group: 0,
             hidden_width: source.geometry().hidden_size as usize,
+            vocabulary_size: source.geometry().vocab_size,
             native_rows,
         });
         Self {
@@ -115,6 +116,16 @@ impl Fixture {
     }
 
     fn lane(&self, input: &str, maximum: usize, capacity: usize) -> (GpuActive, Trace) {
+        self.lane_configured(input, maximum, capacity, false)
+    }
+
+    fn lane_configured(
+        &self,
+        input: &str,
+        maximum: usize,
+        capacity: usize,
+        observations: bool,
+    ) -> (GpuActive, Trace) {
         let (sender, receiver) = mpsc::sync_channel(capacity);
         let cancelled = Arc::new(AtomicBool::new(false));
         let lane = GpuActive::new(
@@ -125,6 +136,12 @@ impl Fixture {
                     chat: false,
                     max_tokens: maximum,
                     stream: true,
+                    token_metrics: observations.then(|| {
+                        super::super::engine::TokenMetricsRequest {
+                            started: Instant::now(),
+                            wire_request_id: Some("worker:unequal".into()),
+                        }
+                    }),
                 },
                 events: sender,
                 cancelled,
@@ -139,6 +156,7 @@ impl Fixture {
                 receiver,
                 text: String::new(),
                 done: Vec::new(),
+                tokens: observations.then(Vec::new),
             },
         )
     }
@@ -163,6 +181,7 @@ struct Trace {
     receiver: mpsc::Receiver<ResponseEvent>,
     text: String,
     done: Vec<(String, usize, usize, &'static str)>,
+    tokens: Option<Vec<super::super::engine::TokenObservation>>,
 }
 impl Trace {
     fn drain(&mut self) {
@@ -175,6 +194,16 @@ impl Trace {
     }
     fn accept(&mut self, event: ResponseEvent) {
         match event {
+            ResponseEvent::TokenText { text, token } => {
+                assert!(self.done.is_empty(), "token after terminal event");
+                let tokens = self
+                    .tokens
+                    .as_mut()
+                    .expect("unrequested token observations in default profile");
+                assert_eq!(token.index, tokens.len());
+                tokens.push(token);
+                self.text.push_str(&text);
+            }
             ResponseEvent::Text(text) => {
                 assert!(self.done.is_empty(), "text after terminal event");
                 self.text.push_str(&text);
@@ -208,6 +237,21 @@ impl Trace {
         );
         if stopped {
             assert_eq!(reference.sequence[selected.len()].0, tokenizer.eos());
+        }
+        if let Some(tokens) = &self.tokens {
+            assert_eq!(tokens.len(), selected.len());
+            for (index, (token, expected)) in tokens.iter().zip(&selected).enumerate() {
+                assert_eq!(token.index, index);
+                assert_eq!(token.id, *expected);
+                let gpu = token.gpu.expect("actual GPU producer binding");
+                assert_eq!(
+                    gpu.producer_frontier,
+                    (reference.prompt_tokens + index) as u64
+                );
+                if index > 0 {
+                    assert!(token.commit_observed_at >= tokens[index - 1].commit_observed_at);
+                }
+            }
         }
         let expected = tokenizer.decode(&selected, true).unwrap();
         assert_eq!(self.text, expected, "duplicate/missing streamed text");
@@ -309,7 +353,7 @@ fn round(active: &mut VecDeque<GpuActive>, stats: &WaveStats) {
     let native_rows = eligible[0].native_rows;
     assert!(eligible.iter().all(|lane| lane.native_rows == native_rows));
     let ready = eligible.iter().map(GpuActive::ready).collect::<Vec<_>>();
-    let waves = gpu_batch::form(
+    let waves = gpu_batch::form_decode(
         &ready,
         Limits {
             max_members: native_rows,
@@ -1161,4 +1205,98 @@ fn original_qwen2b_native_b4_worker() {
 #[ignore = "physical release CUDA B8; approved original 2B; isolated sequential GPU coordinator"]
 fn original_qwen2b_native_b8_worker() {
     qualify_wide("qwen35-2b", 8);
+}
+
+fn unequal_arrival_metrics(name: &str) {
+    let fixture = Fixture::new(name);
+    // The first request has genuinely more source tokens and is already
+    // decoding before the second request is created.
+    let (mut first, mut first_trace) = fixture.lane_configured("a b c d e f g h", 8, 1, true);
+    b1_prompt(&mut first, &fixture.stats);
+    let first_id = first.session.binding().session().get();
+    let mut first_reference = Reference::new(&fixture, &first);
+    assert_ne!(
+        first.device_token.as_ref().unwrap().id,
+        fixture.model.tokenizer.eos()
+    );
+    assert!(matches!(
+        first.step(&fixture.stats).unwrap(),
+        MemberStep::Forwarded
+    ));
+    first_reference.sync(&first);
+    assert!(matches!(
+        first.step(&fixture.stats).unwrap(),
+        MemberStep::Parked
+    ));
+    assert!(first.packet_presented && first.blocked_since.is_some());
+    let parked = first.session.binding();
+
+    let (mut second, mut second_trace) = fixture.lane_configured("b", 6, EVENTS_PER_REQUEST, true);
+    b1_prompt(&mut second, &fixture.stats);
+    let second_id = second.session.binding().session().get();
+    assert_ne!(first.prompt.len(), second.prompt.len());
+    assert_ne!(parked.frontier(), second.session.binding().frontier());
+    let second_reference = Reference::new(&fixture, &second);
+    assert_ne!(
+        second.device_token.as_ref().unwrap().id,
+        fixture.model.tokenizer.eos()
+    );
+    let mut references =
+        BTreeMap::from([(first_id, first_reference), (second_id, second_reference)]);
+    first_trace.one_credit();
+    let mut active = VecDeque::from([first, second]);
+    let prior = prior_roots(&active);
+    let bands = band_counts(&fixture.stats);
+    round(&mut active, &fixture.stats);
+    require_bands(&fixture.stats, bands, &[2]);
+    require_single_transition(&active, &prior);
+    update(&active, &mut references);
+    assert_eq!(active.len(), 2);
+    let produced = active
+        .iter()
+        .map(|lane| lane.token_gpu_observation.unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(produced[0].native_cohort, produced[1].native_cohort);
+    assert_eq!(produced[0].native_cohort.unwrap().width, 2);
+    assert_ne!(produced[0].producer_frontier, produced[1].producer_frontier);
+    finish(
+        &mut active,
+        &fixture,
+        &mut references,
+        &mut [&mut first_trace, &mut second_trace],
+    );
+    first_trace.verify(&references[&first_id], &fixture.model.tokenizer, 8);
+    second_trace.verify(&references[&second_id], &fixture.model.tokenizer, 6);
+    let first_tokens = first_trace.tokens.as_ref().unwrap();
+    let second_tokens = second_trace.tokens.as_ref().unwrap();
+    assert!(
+        first_tokens
+            .iter()
+            .any(|left| second_tokens.iter().any(|right| {
+                let (a, b) = (left.gpu.unwrap(), right.gpu.unwrap());
+                a.native_cohort.is_some()
+                    && a.native_cohort == b.native_cohort
+                    && a.producer_frontier != b.producer_frontier
+            })),
+        "wire observations must retain actual unequal-frontier native membership"
+    );
+    drop(references);
+    drop(first_trace);
+    drop(second_trace);
+    fixture.close();
+    println!(
+        "P12_UNEQUAL_ARRIVAL_WORKER_PASS source={name} actual_GPU_prefill=true bounded_credit_park=true native_membership_frontiers=observed CPU_B1_packets_all42=exact final_reserved=0"
+    );
+}
+
+#[test]
+#[ignore = "release physical CUDA unequal-frontier worker; approved .8B source; serial"]
+fn original_qwen08b_native_unequal_arrival_token_observations() {
+    unequal_arrival_metrics("qwen35-0.8b");
+}
+
+#[test]
+#[ignore = "release physical CUDA unequal-frontier worker; approved 2B source; serial"]
+fn original_qwen2b_native_unequal_arrival_token_observations() {
+    unequal_arrival_metrics("qwen35-2b");
 }

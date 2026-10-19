@@ -47,7 +47,7 @@ pub(crate) async fn qualify(
         .prepare_logits_cohort(&[(&left, inputs[0]), (&right, inputs[1])])
         .await?;
     if abandoned.len() != 2
-        || abandoned.prior_frontier() != 0
+        || abandoned.prior_frontier() != Some(0)
         || abandoned.source() != resident.service.source_identity()
         || [left.binding(), right.binding()] != roots
     {

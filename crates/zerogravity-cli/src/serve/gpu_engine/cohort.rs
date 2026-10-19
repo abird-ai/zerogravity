@@ -193,18 +193,30 @@ fn execute(
         .map(|row| &mut row.session)
         .collect::<Vec<_>>();
     let published = cohort.commit(&mut originals);
+    let commit_observed_at = Instant::now();
     drop(originals);
     match published {
         Ok(receipts) => {
             let count = members.len() as u64;
-            stats.cohort_publications.fetch_add(1, Ordering::Relaxed);
+            let publication_sequence = stats
+                .cohort_publications
+                .fetch_add(1, Ordering::Relaxed)
+                .checked_add(1);
+            let native_cohort = if native {
+                publication_sequence.map(|publication_sequence| NativeCohortObservation {
+                    publication_sequence,
+                    width: members.len(),
+                })
+            } else {
+                None
+            };
             stats.cohort_rows.fetch_add(count, Ordering::Relaxed);
             stats.committed_roots.fetch_add(count, Ordering::Relaxed);
             for (mut row, read) in members.into_iter().zip(receipts) {
                 if phase == Phase::Prefill {
                     row.cursor += 1;
                 }
-                match row.install(read) {
+                match row.install(read, commit_observed_at, native_cohort) {
                     Ok(()) => active.push_back(row),
                     Err(error) => stats.fail(&row, error),
                 }

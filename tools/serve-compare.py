@@ -52,6 +52,7 @@ def comparison(
     snapshot_urls: tuple[str | None, str | None] = (None, None),
     token_trace_paths: tuple[str | None, str | None] = (None, None),
     max_pending: int | None = None, launch_deadline_seconds: float | None = None,
+    return_token_ids: bool = False,
 ) -> dict:
     if zg.rstrip("/") == vllm.rstrip("/"):
         raise ValueError("comparator needs two distinct endpoints")
@@ -79,7 +80,8 @@ def comparison(
     for url, model, key in endpoints.values():
         preflight(url, model, key)
         warm = stream_one(url, model, workload[0]["prompt"] if workload else prompt,
-                          workload[0]["max_tokens"] if workload else max_tokens, timeout, key)
+                          workload[0]["max_tokens"] if workload else max_tokens, timeout, key,
+                          request_id="serve-compare-warmup", return_token_ids=return_token_ids)
         if not warm.completed:
             raise ValueError(f"warmup failed for {model}: {warm.error}")
 
@@ -109,6 +111,7 @@ def comparison(
                     itl_slo_seconds=itl_slo_seconds, snapshot_url=snapshot_urls[provider_index],
                     token_trace_path=token_trace_paths[provider_index], max_pending=max_pending,
                     launch_deadline_seconds=launch_deadline_seconds,
+                    return_token_ids=return_token_ids,
                 )
                 result["provider"] = label
                 result["repetition"] = rep
@@ -144,7 +147,15 @@ def comparison(
             return {identity: evidence["token_ids"] for identity, evidence in
                     sample["provider_token_trace"]["requests"].items()}
         exact_tokens = (trace_complete and all(token_signature(r) == token_signature(group[0]) for r in group))
-        comparable = successful and exact_text and exact_usage and matched_source and matched_tokenizer
+        wire_ids_complete = successful and all(
+            row.get("wire_token_observation") is not None
+            and row["wire_token_observation"]["status"] == "provider_bound_complete_ids"
+            for sample in group for row in sample["requests"])
+        def wire_signature(sample):
+            return {row["request_id"]: row["wire_token_observation"]["token_ids"] for row in sample["requests"]}
+        wire_ids_match = wire_ids_complete and all(wire_signature(sample) == wire_signature(group[0]) for sample in group)
+        comparable = (successful and exact_text and exact_usage and matched_source and matched_tokenizer
+                      and (not return_token_ids or wire_ids_match))
         medians = {
             label: statistics.median(
                 r["reported_tokens_per_offered_second"] for r in samples
@@ -160,6 +171,13 @@ def comparison(
             "exact_output_text_sha256_matched": bool(exact_text),
             "exact_usage_and_finish_matched": bool(exact_usage),
             "provider_bound_output_token_ids_matched": bool(exact_tokens) if trace_complete else None,
+            "response_bound_output_token_ids_matched": bool(wire_ids_match) if wire_ids_complete else None,
+            "response_token_ids_complete": wire_ids_complete,
+            "client_token_delivery_itl_p95_seconds_median_by_provider": {
+                label: statistics.median(sample["wire_token_metrics"]["client_token_delivery_itl_p95_seconds"] for sample in samples)
+                if all(sample["wire_token_metrics"]["completed_requests_with_individual_token_delivery"] == requests
+                    and sample["wire_token_metrics"]["client_token_delivery_itl_p95_seconds"] is not None for sample in samples) else None
+                for label,samples in per.items()},
             "source_sha256_declared_identical": bool(matched_source),
             "tokenizer_sha256_declared_identical": bool(matched_tokenizer),
             "comparable_with_caller_supplied_source_attestation": bool(comparable),
@@ -234,11 +252,18 @@ def self_test() -> None:
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.end_headers()
-            for doc in [
+            docs = [
                 {"choices": [{"index": 0, "delta": {"content": "yes" if prompt == "Hi." else prompt}, "finish_reason": None}]},
                 {"choices": [{"index": 0, "delta": {}, "finish_reason": "length"}]},
                 {"choices": [], "usage": {"completion_tokens": 1}},
-            ]:
+            ]
+            if body.get("return_token_ids"):
+                provider_id = "chatcmpl-" + self.headers["X-Request-ID"]
+                for doc in docs:
+                    doc["id"] = provider_id
+                docs[0]["choices"][0]["token_ids"] = [10]
+                docs[-1]["metrics"] = {"mean_itl_ms":None}
+            for doc in docs:
                 self.wfile.write(b"data: " + json.dumps(doc).encode() + b"\n\n")
             self.wfile.write(b"data: [DONE]\n\n")
 
@@ -276,6 +301,11 @@ def self_test() -> None:
                       dict(request_id="right", prompt="Right", arrival_seconds=0)])
         assert varied["summaries"][0]["exact_output_text_sha256_matched"]
         assert len(set(varied["runs"][0]["output_sha256_by_request"])) == 2
+        observed = comparison(a,b,"fixture","fixture","Hi.",1,[1],1,None,None,
+            ("a"*64,"a"*64),("b"*64,"b"*64),1,10,return_token_ids=True)
+        assert observed["summaries"][0]["response_bound_output_token_ids_matched"] is True
+        assert observed["summaries"][0]["independent_source_numeric_state_equivalence"] == "NOT_ESTABLISHED"
+        assert all(sample["wire_token_metrics"]["completed_requests_with_provider_commit_observations"] == 0 for sample in observed["runs"])
         different = comparison(
             a,b,"fixture","fixture","Hi.",1,[1],1,None,None,
             (None,None),(None,None),1,10
@@ -316,6 +346,7 @@ def main() -> None:
     parser.add_argument("--vllm-provider-snapshot-url")
     parser.add_argument("--zg-token-events")
     parser.add_argument("--vllm-token-events")
+    parser.add_argument("--return-token-ids", action="store_true", help="request and validate actual token IDs from both endpoints; coalesced ID groups do not establish individual delivery ITL")
     parser.add_argument("--max-pending", type=int)
     parser.add_argument("--launch-deadline", type=float)
     parser.add_argument("--zg-source-sha256")
@@ -351,6 +382,7 @@ def main() -> None:
             snapshot_urls=(args.zg_provider_snapshot_url, args.vllm_provider_snapshot_url),
             token_trace_paths=(args.zg_token_events, args.vllm_token_events),
             max_pending=args.max_pending, launch_deadline_seconds=args.launch_deadline,
+            return_token_ids=args.return_token_ids,
         )
     except (OSError,ValueError,KeyError) as err:
         parser.exit(2,f"Cannot compare endpoints: {err}\n")

@@ -3,7 +3,8 @@
 //! TLS/auth reverse proxy before non-loopback exposure.
 
 use super::Router;
-use super::engine::{Request, RequestEvents, ResponseEvent, ServiceError};
+use super::engine::{Request, RequestEvents, ResponseEvent, ServiceError, TokenMetricsRequest};
+use super::token_metrics::{TokenMetrics, validate_wire_id};
 use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 use serde_json::{Map, Value, json};
@@ -312,6 +313,7 @@ fn parse_body(body: &[u8], chat: bool, max_output: usize) -> Result<(Request, bo
             "n",
             "frequency_penalty",
             "presence_penalty",
+            "return_token_ids",
         ],
     )?;
     let model = map
@@ -326,6 +328,20 @@ fn parse_body(body: &[u8], chat: bool, max_output: usize) -> Result<(Request, bo
                 400,
                 "invalid_stream",
                 "stream must be boolean",
+            ));
+        }
+    };
+    let token_metrics = match map.get("return_token_ids") {
+        None | Some(Value::Null) | Some(Value::Bool(false)) => None,
+        Some(Value::Bool(true)) => Some(TokenMetricsRequest {
+            started: Instant::now(),
+            wire_request_id: None,
+        }),
+        _ => {
+            return Err(ServiceError::new(
+                400,
+                "invalid_return_token_ids",
+                "return_token_ids must be boolean",
             ));
         }
     };
@@ -495,6 +511,7 @@ fn parse_body(body: &[u8], chat: bool, max_output: usize) -> Result<(Request, bo
             chat: false,
             max_tokens,
             stream,
+            token_metrics,
         },
         include_usage,
     ))
@@ -573,9 +590,18 @@ fn stream_events(
     chat: bool,
     include_usage: bool,
 ) -> std::io::Result<()> {
+    let id = format!("chatcmpl-zg-{}", req.id);
+    let mut metrics = req
+        .token_metrics
+        .clone()
+        .map(|request| TokenMetrics::new(request, id.clone()));
+    let request_header = metrics
+        .as_ref()
+        .map(|m| format!("X-Request-ID: {}\r\n", m.wire_request_id()))
+        .unwrap_or_default();
     write!(
         stream,
-        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache, no-transform\r\nTransfer-Encoding: chunked\r\nX-Accel-Buffering: no\r\nConnection: close\r\n\r\n"
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache, no-transform\r\nTransfer-Encoding: chunked\r\nX-Accel-Buffering: no\r\n{request_header}Connection: close\r\n\r\n"
     )?;
     let created = epoch();
     let kind = if chat {
@@ -583,7 +609,6 @@ fn stream_events(
     } else {
         "text_completion"
     };
-    let id = format!("chatcmpl-zg-{}", req.id);
     if chat {
         sse(
             stream,
@@ -606,6 +631,34 @@ fn stream_events(
             break;
         }
         match req.events.recv_timeout(Duration::from_millis(500)) {
+            Ok(ResponseEvent::TokenText { text, token }) => {
+                let token_id = token.id;
+                let Some(observations) = metrics.as_mut() else {
+                    sse(
+                        stream,
+                        &error_json(&ServiceError::new(
+                            500,
+                            "unexpected_token_observation",
+                            "unrequested token observation",
+                        )),
+                    )?;
+                    break;
+                };
+                if let Err(error) = observations.record(token) {
+                    sse(stream, &error_json(&error))?;
+                    break;
+                }
+                let choice = if chat {
+                    json!({"index":0,"delta":{"content":text},"token_ids":[token_id],"finish_reason":null})
+                } else {
+                    json!({"index":0,"text":text,"token_ids":[token_id],"finish_reason":null})
+                };
+                sse(
+                    stream,
+                    &json!({"id":id,"object":kind,"created":created,"model":req.model,"choices":[choice]}),
+                )?;
+                observations.mark_written();
+            }
             Ok(ResponseEvent::Text(text)) => {
                 let choice = if chat {
                     json!({"index":0,"delta":{"content":text},"finish_reason":null})
@@ -624,6 +677,17 @@ fn stream_events(
                 finish_reason,
                 ..
             }) => {
+                let observed = if let Some(observations) = metrics.as_mut() {
+                    match observations.finish(completion_tokens) {
+                        Ok(value) => Some(value),
+                        Err(error) => {
+                            sse(stream, &error_json(&error))?;
+                            break;
+                        }
+                    }
+                } else {
+                    None
+                };
                 let choice = if chat {
                     json!({"index":0,"delta":{},"finish_reason":finish_reason})
                 } else {
@@ -634,15 +698,16 @@ fn stream_events(
                     &json!({"id":id,"object":kind,"created":created,
                     "model":req.model,"choices":[choice]}),
                 )?;
-                if include_usage {
-                    sse(
-                        stream,
-                        &json!({"id":id,"object":kind,"created":created,
+                if include_usage || observed.is_some() {
+                    let mut usage = json!({"id":id,"object":kind,"created":created,
                         "model":req.model,"choices":[],
-                        "usage":{"prompt_tokens":prompt_tokens,
-                           "completion_tokens":completion_tokens,
-                           "total_tokens":prompt_tokens+completion_tokens}}),
-                    )?;
+                        "usage":{"prompt_tokens":prompt_tokens,"completion_tokens":completion_tokens,
+                            "total_tokens":prompt_tokens+completion_tokens}});
+                    if let Some((aggregate, records)) = observed {
+                        usage["metrics"] = aggregate;
+                        usage["zerogravity_token_metrics"] = records;
+                    }
+                    sse(stream, &usage)?;
                 }
                 break;
             }
@@ -688,6 +753,7 @@ fn respond(
     req: HttpRequest,
     router: &Router,
     api_key: Option<&str>,
+    enable_per_request_metrics: bool,
 ) -> Result<(), ServiceError> {
     if let Some(expected) = api_key {
         let got = req
@@ -713,7 +779,7 @@ fn respond(
         write_json(
             stream,
             200,
-            &json!({"status":"ok","admission":router.admission()}),
+            &json!({"status":"ok","admission":router.admission(),"per_request_metrics_enabled":enable_per_request_metrics}),
         )
         .map_err(|_| ServiceError::new(499, "client_closed", "cannot write response"))?;
         return Ok(());
@@ -741,7 +807,12 @@ fn respond(
             "JSON Content-Type required",
         ));
     }
-    let (task, include_usage) = parse_body(&req.body, chat, router.max_output())?;
+    let (mut task, include_usage) = parse_body(&req.body, chat, router.max_output())?;
+    bind_token_metrics(
+        &mut task,
+        req.header("x-request-id"),
+        enable_per_request_metrics,
+    )?;
     let stream_response = task.stream;
     let events = router.request(task)?;
     if stream_response {
@@ -752,6 +823,10 @@ fn respond(
         // A disconnected non-stream client must cancel its model session,
         // even if no response token has yet been emitted.
         let started = Instant::now();
+        let mut metrics = events
+            .token_metrics
+            .clone()
+            .map(|request| TokenMetrics::new(request, format!("chatcmpl-zg-{}", events.id)));
         loop {
             if started.elapsed() > RESPONSE_TIMEOUT {
                 return Err(ServiceError::new(
@@ -761,6 +836,18 @@ fn respond(
                 ));
             }
             match events.events.recv_timeout(Duration::from_millis(250)) {
+                Ok(ResponseEvent::TokenText { token, .. }) => {
+                    metrics
+                        .as_mut()
+                        .ok_or_else(|| {
+                            ServiceError::new(
+                                500,
+                                "unexpected_token_observation",
+                                "unrequested token observation",
+                            )
+                        })?
+                        .record(token)?;
+                }
                 Ok(ResponseEvent::Text(_)) => {} // nonstream never sends deltas
                 Ok(ResponseEvent::Done {
                     output,
@@ -768,7 +855,7 @@ fn respond(
                     completion_tokens,
                     finish_reason,
                 }) => {
-                    let json = completion_response(
+                    let mut json = completion_response(
                         events.id,
                         &events.model,
                         chat,
@@ -777,6 +864,12 @@ fn respond(
                         completion_tokens,
                         finish_reason,
                     );
+                    if let Some(observations) = metrics.as_mut() {
+                        let (aggregate, records) = observations.finish(completion_tokens)?;
+                        json["choices"][0]["token_ids"] = json!(observations.token_ids());
+                        json["metrics"] = aggregate;
+                        json["zerogravity_token_metrics"] = records;
+                    }
                     write_json(stream, 200, &json).map_err(|_| {
                         ServiceError::new(499, "client_closed", "cannot write response")
                     })?;
@@ -802,6 +895,26 @@ fn respond(
     }
     Ok(())
 }
+fn bind_token_metrics(
+    task: &mut Request,
+    wire_id: Option<&str>,
+    enabled: bool,
+) -> Result<(), ServiceError> {
+    if let Some(observations) = task.token_metrics.as_mut() {
+        if !enabled {
+            return Err(ServiceError::new(
+                400,
+                "token_metrics_disabled",
+                "return_token_ids requires --enable-per-request-metrics",
+            ));
+        }
+        if let Some(wire_id) = wire_id {
+            validate_wire_id(wire_id)?;
+            observations.wire_request_id = Some(wire_id.to_owned());
+        }
+    }
+    Ok(())
+}
 struct ActiveGuard(Arc<AtomicUsize>);
 impl Drop for ActiveGuard {
     fn drop(&mut self) {
@@ -812,6 +925,7 @@ pub fn serve(
     listener: TcpListener,
     router: Arc<Router>,
     api_key: Option<String>,
+    enable_per_request_metrics: bool,
 ) -> std::io::Result<()> {
     let current = Arc::new(AtomicUsize::new(0));
     for stream in listener.incoming() {
@@ -839,9 +953,15 @@ pub fn serve(
                 let _guard = ActiveGuard(concurrent);
                 let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
                 let _ = stream.set_write_timeout(Some(Duration::from_secs(30)));
-                match read_request(&mut stream)
-                    .and_then(|req| respond(&mut stream, req, &router, api_key.as_deref()))
-                {
+                match read_request(&mut stream).and_then(|req| {
+                    respond(
+                        &mut stream,
+                        req,
+                        &router,
+                        api_key.as_deref(),
+                        enable_per_request_metrics,
+                    )
+                }) {
                     Ok(()) => {}
                     Err(error) if error.status == 499 => {}
                     Err(error) => {
@@ -917,5 +1037,125 @@ mod tests {
         ] {
             assert!(parse_headers(invalid).is_err());
         }
+    }
+
+    #[test]
+    fn token_metadata_requires_explicit_server_request_and_bounded_wire_id() {
+        let body = br#"{"model":"qwen","prompt":"Hi","return_token_ids":true}"#;
+        let (mut request, _) = parse_body(body, false, 4).unwrap();
+        assert_eq!(
+            bind_token_metrics(&mut request, Some("run:request-0"), false)
+                .unwrap_err()
+                .code,
+            "token_metrics_disabled"
+        );
+        assert!(bind_token_metrics(&mut request, Some("unsafe\r\nheader"), true).is_err());
+        bind_token_metrics(&mut request, Some("run:request-0"), true).unwrap();
+        assert_eq!(
+            request.token_metrics.unwrap().wire_request_id.as_deref(),
+            Some("run:request-0")
+        );
+        assert!(
+            parse_body(
+                br#"{"model":"qwen","prompt":"Hi","return_token_ids":1}"#,
+                false,
+                4
+            )
+            .is_err()
+        );
+        let (plain, _) = parse_body(br#"{"model":"qwen","prompt":"Hi"}"#, false, 4).unwrap();
+        assert!(plain.token_metrics.is_none());
+        let plain_json = completion_response(1, "qwen", true, "A", 1, 1, "length");
+        assert!(plain_json.get("metrics").is_none());
+        assert!(plain_json["choices"][0].get("token_ids").is_none());
+    }
+
+    #[test]
+    fn actual_stream_writer_binds_token_ids_and_separate_delivery_observations() {
+        use super::super::engine::TokenObservation;
+        use std::sync::atomic::AtomicBool;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let started = Instant::now() - Duration::from_secs(1);
+        let (sender, receiver) = mpsc::sync_channel(4);
+        for (index, id, text) in [(0, 4, ""), (1, 5, "é")] {
+            sender
+                .send(ResponseEvent::TokenText {
+                    text: text.into(),
+                    token: TokenObservation {
+                        index,
+                        id,
+                        commit_observed_at: started + Duration::from_millis(10 + index as u64),
+                        gpu: None,
+                    },
+                })
+                .unwrap_or_else(|_| panic!("live fixture channel"));
+        }
+        sender
+            .send(ResponseEvent::Done {
+                output: "é".into(),
+                prompt_tokens: 3,
+                completion_tokens: 2,
+                finish_reason: "length",
+            })
+            .unwrap_or_else(|_| panic!("live fixture channel"));
+        let request =
+            RequestEvents::new(7, "qwen".into(), receiver, Arc::new(AtomicBool::new(false)))
+                .observed(Some(TokenMetricsRequest {
+                    started,
+                    wire_request_id: Some("run:request-0".into()),
+                }));
+        let writer = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream_events(&mut stream, request, true, false).unwrap();
+        });
+        let mut client = TcpStream::connect(address).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut raw = String::new();
+        client.read_to_string(&mut raw).unwrap();
+        writer.join().unwrap();
+        assert!(raw.contains("X-Request-ID: run:request-0\r\n"));
+        let events = raw
+            .lines()
+            .filter_map(|line| line.strip_prefix("data: "))
+            .filter(|line| *line != "[DONE]")
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        let ids = events
+            .iter()
+            .flat_map(|event| event["choices"].as_array().unwrap())
+            .flat_map(|choice| choice["token_ids"].as_array().into_iter().flatten())
+            .map(|id| id.as_u64().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, [4, 5]);
+        let usage = events
+            .iter()
+            .filter(|event| event.get("usage").is_some())
+            .collect::<Vec<_>>();
+        assert_eq!(usage.len(), 1);
+        let metrics = &usage[0]["zerogravity_token_metrics"];
+        assert_eq!(metrics["provider_response_id"], "chatcmpl-zg-7");
+        assert_eq!(metrics["wire_request_id"], "run:request-0");
+        assert_eq!(metrics["completion_tokens"], 2);
+        assert_eq!(metrics["tokens"][0]["token_id"], 4);
+        assert_eq!(metrics["tokens"][1]["token_id"], 5);
+        assert!(
+            metrics["tokens"][0]["http_write_completed_at_seconds"]
+                .as_f64()
+                .unwrap()
+                >= metrics["tokens"][0]["commit_observed_at_seconds"]
+                    .as_f64()
+                    .unwrap()
+        );
+        assert_eq!(
+            events
+                .iter()
+                .flat_map(|event| event["choices"].as_array().unwrap())
+                .filter(|choice| !choice["finish_reason"].is_null())
+                .count(),
+            1
+        );
     }
 }

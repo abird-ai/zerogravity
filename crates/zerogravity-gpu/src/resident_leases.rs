@@ -346,15 +346,11 @@ impl ResidentCohortRoots {
                 "resident completion cohort source/size".into(),
             ));
         }
-        let frontier = bindings[0].frontier();
         let mut sessions = BTreeSet::new();
         for binding in bindings {
-            if binding.source() != source
-                || binding.frontier() != frontier
-                || !sessions.insert(binding.session())
-            {
+            if binding.source() != source || !sessions.insert(binding.session()) {
                 return Err(Error::State(
-                    "resident completion cohort source/frontier/session mismatch".into(),
+                    "resident completion cohort source/session mismatch".into(),
                 ));
             }
         }
@@ -869,7 +865,7 @@ mod tests {
     }
 
     #[test]
-    fn completion_cohort_rejects_foreign_duplicate_and_differing_frontier() {
+    fn completion_cohort_rejects_foreign_duplicate_and_binds_differing_frontiers() {
         let source = SourceIdentity::for_new_allocation().unwrap();
         let mut owners = sessions(source, 2);
         let foreign = SessionAuthority::new(SourceIdentity::for_new_allocation().unwrap()).unwrap();
@@ -878,7 +874,10 @@ mod tests {
         assert!(ResidentCohortRoots::new(source, &[initial, foreign.binding()]).is_err());
         let advance = owners[1].begin_advance(1).unwrap();
         owners[1].prepare_publish(advance).unwrap().commit();
-        assert!(ResidentCohortRoots::new(source, &[initial, owners[1].binding()]).is_err());
+        let bindings = [initial, owners[1].binding()];
+        let cohort = ResidentCohortRoots::new(source, &bindings).unwrap();
+        cohort.require_exact(bindings.into_iter()).unwrap();
+        assert!(cohort.require_exact(bindings.into_iter().rev()).is_err());
         assert_eq!(owners[0].binding(), initial);
     }
 

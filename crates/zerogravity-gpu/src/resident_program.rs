@@ -27,8 +27,8 @@ use zerogravity_core::Result;
 use zerogravity_core::accelerator::{
     MatVecRegion, SourceIdentity,
     program::{
-        ForwardPlan, PlanNode, PlanOperation, SourceTensor, StateSlot, StateVersion, TensorView,
-        ValueId,
+        ForwardPlan, PlanNode, PlanOperation, RopeGeometry, SourceTensor, StateSlot, StateVersion,
+        TensorView, ValueId,
     },
 };
 use zerogravity_core::source::TensorSource;
@@ -218,6 +218,13 @@ pub(crate) struct RuntimeParameters {
     pub token: u32,
     pub position: usize,
     pub valid_tokens: usize,
+}
+enum CausalMask<'a> {
+    Uniform(usize),
+    Rows {
+        positions: &'a Handle,
+        heads_per_row: usize,
+    },
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ResidentOutput {
@@ -1855,6 +1862,8 @@ impl ResidentProgram {
                         g.width,
                         half,
                         h,
+                        g.query_heads,
+                        1,
                     );
                     crate::rope_kv::rope_sums::launch_unchecked(
                         client,
@@ -1869,6 +1878,8 @@ impl ResidentProgram {
                         half,
                         h,
                         count,
+                        g.query_heads,
+                        1,
                     );
                     crate::rope_kv::rope_subtract::launch_unchecked(
                         client,
@@ -1882,6 +1893,8 @@ impl ResidentProgram {
                         g.width,
                         half,
                         h,
+                        g.query_heads,
+                        1,
                     );
                     crate::rope_kv::rope_apply::launch_unchecked(
                         client,
@@ -1896,6 +1909,8 @@ impl ResidentProgram {
                         g.width,
                         half,
                         h,
+                        g.query_heads,
+                        1,
                     );
                     for (i, offset) in [(0, 0), (1, q), (2, q + k)] {
                         self.copy::<false>(
@@ -2211,6 +2226,18 @@ impl ResidentProgram {
         cap: usize,
         valid: usize,
     ) -> Result<usize> {
+        self.softmax_masked(client, input, output, h, cap, CausalMask::Uniform(valid))
+    }
+
+    fn softmax_masked(
+        &self,
+        client: &Client,
+        input: &DeviceBuffer,
+        output: &DeviceBuffer,
+        h: usize,
+        cap: usize,
+        mask: CausalMask<'_>,
+    ) -> Result<usize> {
         use crate::attention_softmax as sm;
         let n = h * cap;
         let groups = cap.div_ceil(8);
@@ -2278,15 +2305,34 @@ impl ResidentProgram {
                 arg(s(7), n),
                 n,
             );
-            crate::resident_bindings::zero_future::launch_unchecked(
-                client,
-                grid(n),
-                threads(),
-                arg(s(7), n),
-                valid as u32,
-                h,
-                cap,
-            );
+            match mask {
+                CausalMask::Uniform(valid) => {
+                    crate::resident_bindings::zero_future::launch_unchecked(
+                        client,
+                        grid(n),
+                        threads(),
+                        arg(s(7), n),
+                        valid as u32,
+                        h,
+                        cap,
+                    );
+                }
+                CausalMask::Rows {
+                    positions,
+                    heads_per_row,
+                } => {
+                    crate::resident_bindings::zero_future_rows::launch_unchecked(
+                        client,
+                        grid(n),
+                        threads(),
+                        arg(s(7), n),
+                        arg(positions, h / heads_per_row),
+                        heads_per_row,
+                        h / heads_per_row,
+                        cap,
+                    );
+                }
+            }
             for level in 0..3 {
                 let (source, destination, source_len, destination_len) = if level == 0 {
                     (s(7), s(5), n, h * groups * 4)

@@ -4,10 +4,11 @@ Owner: @pvl
 
 # Native serving and request scheduling
 
-Current P12-B6: opt-in CUDA B2/B4/B8 HTTP prompt-tail/decode waves execute the
-original native full-model ForwardPlan. Same-source/frontier eligible
+Current P12-B7: opt-in CUDA B2/B4/B8 HTTP prompt-tail/decode waves execute the
+original native full-model ForwardPlan. Same-source eligible decode
 rows share immutable weights; each retains its own SessionAuthority,
-StateRoot, device packet and physical leases. Unmatched rows and
+StateRoot, causal frontier, device packet and physical leases. Unequal
+decode frontiers use native row-specific RoPE/KV/attention. Unmatched rows and
 multi-token prefill use the accepted B1 GPU path. Default batch mode
 remains `interleaved`.
 
@@ -15,8 +16,11 @@ Approved original Qwen3.5 0.8B/2B passed real release JSON/SSE,
 trained EOS, unequal output limits, disconnect/survivor/replay and
 internal CPU/B1 exact packets/all42 state domains. The earlier native
 B2/B4/B8 engine diagnostics retain full248320-logit acceptance;
-HTTP now qualifies native B2/B4/B8. Unequal-frontier serving, paged
-state, full GPU prefill and matched vLLM performance remain open.
+HTTP qualifies native B2/B4/B8, including actual later-arriving requests
+sharing a native cohort at different frontiers. Opt-in bounded token-ID,
+publication and delivery observations preserve distinct clock boundaries.
+Paged state, full-prefix native GPU prefill, original-HF numerical
+compatibility and matched vLLM performance remain open.
 Exact scopes: [TODO.md](TODO.md), [FUSED_GPU_BATCHING.md](FUSED_GPU_BATCHING.md).
 
 ## Implemented: first OpenAI HTTP/CPU router slice
@@ -57,11 +61,11 @@ Set configured host budget responsibly based on physical RAM and other host/cgro
 
 ## Not implemented / next
 
-- Unequal-frontier native GPU serving, paged KV/cache, cross-machine load balancing and any vLLM goodput parity claim.
+- Paged KV/cache, full-prefix native GPU prefill, cross-machine load balancing and any vLLM goodput parity claim.
 - All sampling/grammar/reasoning/tool/audio/image/video/embedding/provider-specific API shapes beyond the above bounded subset; real pipeline/media execution, multi-tenant shared context, hot reload or persistent sessions.
 - Gemma4/Qwen3.8 trained execution, SSD model inference, exact trained 27B StateRoot or tokenizer support.
 
-Next: add unequal frontiers and compatible refill to the existing native serving path. Preserve independent per-request StateRoots, finite occupancy and original BufferLease completion; benchmark p50/p95 TTFT/true ITL and committed SLO goodput against pinned vLLM under equivalent inputs.
+Next: qualify original-HF arithmetic in the same engine and bounded source streaming, then run matched pinned-vLLM workloads. Preserve independent per-request StateRoots, finite occupancy and original BufferLease completion; measure p50/p95 TTFT/true ITL, committed SLO goodput, fairness, memory and actual dispatch counts. Paged hybrid state and physical prefill/decode overlap remain open.
 
 ## Resident GPU OpenAI serving — accepted CUDA slice
 
@@ -73,8 +77,9 @@ Next: add unequal frontiers and compatible refill to the existing native serving
   original device path; the host handles tokenization and text.
 - One finite GPU worker, ≤8 active/16 queued. Default `interleaved`
   uses B1 graphs. Opt-in `--batch-mode fused` requires CUDA and
-  active>=rows and `--batch-rows 2|4|8` (default2): matching-source/
-  frontier prompt tails and decode use actual native multi-row kernels.
+  active>=rows and `--batch-rows 2|4|8` (default2): matching-source
+  decode rows use actual native multi-row kernels at independent frontiers.
+  Prompt-tail grouping still requires matching frontiers.
   Other prefill uses ≤32-token B1 quanta;
   unmatched rows use B1. No padding stopped or blocked requests.
 - Shared CPU/GPU output owner handles EOS, UTF-8, SSE, usage,
@@ -201,3 +206,19 @@ Cold-load cleanup physically releases retired allocator pools.
 Use `--batch-rows 8 --active-per-worker 8` with the qualified CUDA command.
 Default rows2/interleaved mode remain unchanged. Exact acceptance and
 remaining scope: [FUSED_GPU_BATCHING.md](FUSED_GPU_BATCHING.md).
+
+## Unequal decode frontiers and token observations — P12-B7
+
+Both approved original0.8B/2B sources pass full248320-logit/all42-state
+CPU/B1/native comparisons at B2/4/8 and mixed frontiers through511.
+Eight fresh release worker and six actual HTTP tests cover both models,
+including a later-arriving short request joining native decode at a
+separate frontier. Pressure and actual unknown-completion quarantine
+probes also pass. Prefill tails still require matching frontiers.
+
+`--enable-per-request-metrics` plus `return_token_ids:true` opts into
+bounded token IDs, producer frontier/native publication membership and
+separate commit/queue/socket-write observations. This does not establish
+standard scheduler-origin timing, true ITL for grouped client arrivals,
+source-correct SLO goodput or matched vLLM performance. Exact scope and
+remaining work: [FUSED_GPU_BATCHING.md](FUSED_GPU_BATCHING.md).

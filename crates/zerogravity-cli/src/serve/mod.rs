@@ -7,6 +7,7 @@ mod gpu_batch;
 #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
 mod gpu_engine;
 mod http;
+mod token_metrics;
 
 #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
 use crate::GpuBackend;
@@ -115,6 +116,8 @@ struct YamlConfig {
     batch_mode: String,
     #[serde(default = "default_batch_rows")]
     batch_rows: usize,
+    #[serde(default)]
+    enable_per_request_metrics: bool,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -171,6 +174,7 @@ impl YamlConfig {
             device_mib: default_device_mib(),
             batch_mode: default_batch_mode(),
             batch_rows: default_batch_rows(),
+            enable_per_request_metrics: false,
         };
         if args.first().is_some_and(|x| x == "--config") {
             if args.len() != 2 {
@@ -204,6 +208,10 @@ impl YamlConfig {
         }
         let mut it = args.iter();
         while let Some(flag) = it.next() {
+            if flag == "--enable-per-request-metrics" {
+                config.enable_per_request_metrics = true;
+                continue;
+            }
             let value = it.next().ok_or_else(|| {
                 ServiceError::new(400, "invalid_flag", format!("{flag} requires a value"))
             })?;
@@ -275,7 +283,8 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
              [--workers 2] [--active-per-worker 2] \
              [--max-context 1024] [--max-output 128] \
              [--host-mib 4096] [--provider-mib 2048] [--device-mib 4096] \
-             [--batch-mode interleaved|fused] [--batch-rows 2|4|8]\n\
+             [--batch-mode interleaved|fused] [--batch-rows 2|4|8] \
+             [--enable-per-request-metrics]\n\
              ENDPOINTS: GET /health, GET /v1/models, \
              POST /v1/chat/completions, POST /v1/completions.\n\
              Qwen3.5 greedy text CPU or resident GPU, no inference fallback. \
@@ -284,6 +293,8 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
              with active>=rows. Default rows=2; survivors regroup without padding. \
              Unmatched rows and other prefill use B1. \
              CUDA needs CUDA_PATH with runtime+CCCL headers. \
+             Opt-in metrics permit return_token_ids=true with bounded token IDs, \
+             publication-observed times and separate HTTP delivery observations. \
              Loopback only; optional ZEROGRAVITY_API_KEY."
         );
         return Ok(());
@@ -381,7 +392,7 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
         "zerogravity: serving {:?} Qwen on {address}, {} worker(s); max-context {}, max-output {}",
         backend, options.workers, options.max_context, options.max_output
     );
-    http::serve(listener, router, key)
+    http::serve(listener, router, key, options.enable_per_request_metrics)
         .map_err(|e| ServiceError::new(500, "http_error", e.to_string()))
 }
 
@@ -440,6 +451,14 @@ mod tests {
         assert_eq!(cfg.models.len(), 1);
         assert_eq!(cfg.workers, 3);
         assert_eq!(cfg.backend, "cpu");
+        assert!(!cfg.enable_per_request_metrics);
+        let observed = YamlConfig::cli(&[
+            "--enable-per-request-metrics".into(),
+            "--model".into(),
+            "a=weights.gguf".into(),
+        ])
+        .unwrap();
+        assert!(observed.enable_per_request_metrics);
         assert!(YamlConfig::cli(&["--model".into(), "missing".into()]).is_err());
         assert!(YamlConfig::cli(&["--workers".into(), "no".into()]).is_err());
         assert!(

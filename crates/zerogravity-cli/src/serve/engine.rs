@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, mpsc};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use zerogravity::prepare::PreparedQwen;
 use zerogravity::qwen35::{LoadedQwenModel, QwenDenseCpu, StateSpec};
 use zerogravity::resource_arbiter::{
@@ -18,6 +18,7 @@ use zerogravity::tokenize::QwenTokenizer;
 
 pub(super) const QUEUED_PER_WORKER: usize = 16;
 pub(super) const EVENTS_PER_REQUEST: usize = 16;
+pub(super) const MAX_TOKEN_OBSERVATIONS: usize = 512;
 const PREFILL_CHUNK: usize = 32;
 pub(super) const MAX_ACTIVE_PER_WORKER: usize = 8;
 
@@ -133,9 +134,37 @@ pub struct Request {
     pub chat: bool,
     pub max_tokens: usize,
     pub stream: bool,
+    pub token_metrics: Option<TokenMetricsRequest>,
+}
+/// Per-request clock/label only; never an authorization or publication owner.
+#[derive(Clone)]
+pub struct TokenMetricsRequest {
+    pub started: Instant,
+    pub wire_request_id: Option<String>,
+}
+pub struct TokenObservation {
+    pub index: usize,
+    pub id: u32,
+    /// Observed immediately after the original source-root publication.
+    pub commit_observed_at: Instant,
+    pub gpu: Option<GpuTokenObservation>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct NativeCohortObservation {
+    pub publication_sequence: u64,
+    pub width: usize,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct GpuTokenObservation {
+    pub producer_frontier: u64,
+    pub native_cohort: Option<NativeCohortObservation>,
 }
 pub enum ResponseEvent {
     Text(String),
+    TokenText {
+        text: String,
+        token: TokenObservation,
+    },
     Done {
         output: String,
         prompt_tokens: usize,
@@ -148,6 +177,7 @@ pub struct RequestEvents {
     pub id: u64,
     pub model: String,
     pub events: mpsc::Receiver<ResponseEvent>,
+    pub token_metrics: Option<TokenMetricsRequest>,
     cancelled: Arc<AtomicBool>,
 }
 impl RequestEvents {
@@ -161,8 +191,13 @@ impl RequestEvents {
             id,
             model,
             events,
+            token_metrics: None,
             cancelled,
         }
+    }
+    pub(super) fn observed(mut self, metrics: Option<TokenMetricsRequest>) -> Self {
+        self.token_metrics = metrics;
+        self
     }
 }
 impl Drop for RequestEvents {
@@ -193,6 +228,9 @@ pub(super) struct GeneratedText {
     terminal: bool,
     finished: bool,
     failure: Option<ServiceError>,
+    token_metrics: Option<TokenMetricsRequest>,
+    vocabulary_size: u64,
+    last_commit_observed: Option<Instant>,
 }
 impl GeneratedText {
     pub(super) fn new(
@@ -215,11 +253,31 @@ impl GeneratedText {
             terminal: false,
             finished: false,
             failure: None,
+            token_metrics: None,
+            vocabulary_size: 0,
+            last_commit_observed: None,
         }
     }
+    pub(super) fn observed(
+        mut self,
+        metrics: Option<TokenMetricsRequest>,
+        vocabulary: u64,
+    ) -> Self {
+        self.token_metrics = metrics;
+        self.vocabulary_size = vocabulary;
+        self
+    }
     /// CPU compatibility: bounded output refusal terminates this presenter.
+    #[cfg(test)]
     pub(super) fn accept(&mut self, id: u32) -> Result<bool, ServiceError> {
-        match self.present(id)? {
+        self.accept_committed(id, Instant::now())
+    }
+    pub(super) fn accept_committed(
+        &mut self,
+        id: u32,
+        committed: Instant,
+    ) -> Result<bool, ServiceError> {
+        match self.present_committed(id, committed)? {
             Presentation::Ready => Ok(false),
             Presentation::Finished => Ok(true),
             Presentation::Blocked => Err(self.fail(ServiceError::new(
@@ -237,7 +295,23 @@ impl GeneratedText {
 
     /// Stage one already-committed token exactly once. The GPU owner resumes
     /// blocked delivery before advancing this packet or presenting another.
+    #[cfg(test)]
     pub(super) fn present(&mut self, id: u32) -> Result<Presentation, ServiceError> {
+        self.present_committed(id, Instant::now())
+    }
+    pub(super) fn present_committed(
+        &mut self,
+        id: u32,
+        commit_observed_at: Instant,
+    ) -> Result<Presentation, ServiceError> {
+        self.present_observed(id, commit_observed_at, None)
+    }
+    pub(super) fn present_observed(
+        &mut self,
+        id: u32,
+        commit_observed_at: Instant,
+        gpu: Option<GpuTokenObservation>,
+    ) -> Result<Presentation, ServiceError> {
         if let Some(error) = &self.failure {
             return Err(error.clone());
         }
@@ -251,12 +325,37 @@ impl GeneratedText {
                 "resume staged output before presenting another token",
             ));
         }
+        if let Some(metrics) = &self.token_metrics
+            && (u64::from(id) >= self.vocabulary_size
+                || self.generated.len() >= MAX_TOKEN_OBSERVATIONS
+                || commit_observed_at < metrics.started
+                || commit_observed_at > Instant::now()
+                || self
+                    .last_commit_observed
+                    .is_some_and(|last| commit_observed_at < last))
+        {
+            return Err(self.fail(ServiceError::new(
+                500,
+                "invalid_token_observation",
+                "invalid token ID, clock or bounded token observation",
+            )));
+        }
+        let token = (self.token_metrics.is_some() && id != self.tokenizer.eos()).then_some(
+            TokenObservation {
+                index: self.generated.len(),
+                id,
+                commit_observed_at,
+                gpu,
+            },
+        );
+        self.last_commit_observed = Some(commit_observed_at);
         let reason = if id == self.tokenizer.eos() {
             Some("stop")
         } else {
             self.generated.push(id);
             (self.generated.len() >= self.max_tokens).then_some("length")
         };
+        let mut token = token;
         if self.stream || reason.is_some() {
             let decoded = match self.tokenizer.decode(&self.generated, true) {
                 Ok(decoded) => decoded,
@@ -275,11 +374,19 @@ impl GeneratedText {
                 if (reason.is_some() || !decoded.contains('�'))
                     && decoded.len() > self.emitted.len()
                 {
-                    self.pending.push_back(ResponseEvent::Text(
-                        decoded[self.emitted.len()..].to_owned(),
-                    ));
+                    let text = decoded[self.emitted.len()..].to_owned();
+                    self.pending.push_back(match token.take() {
+                        Some(token) => ResponseEvent::TokenText { text, token },
+                        None => ResponseEvent::Text(text),
+                    });
                     self.pending_emitted = Some(decoded.clone());
                 }
+            }
+            if let Some(token) = token.take() {
+                self.pending.push_back(ResponseEvent::TokenText {
+                    text: String::new(),
+                    token,
+                });
             }
             if let Some(reason) = reason {
                 self.terminal = true;
@@ -291,6 +398,12 @@ impl GeneratedText {
                 });
             }
         }
+        if let Some(token) = token {
+            self.pending.push_back(ResponseEvent::TokenText {
+                text: String::new(),
+                token,
+            });
+        }
         self.resume()
     }
 
@@ -301,7 +414,8 @@ impl GeneratedText {
             return Err(error.clone());
         }
         while let Some(event) = self.pending.pop_front() {
-            let text = matches!(&event, ResponseEvent::Text(_));
+            let text = matches!(&event, ResponseEvent::Text(_))
+                || matches!(&event, ResponseEvent::TokenText { text, .. } if !text.is_empty());
             let done = matches!(&event, ResponseEvent::Done { .. });
             match self.events.try_send(event) {
                 Ok(()) => {
@@ -494,6 +608,7 @@ impl Router {
             ));
         }
         let model_alias = request.model.clone();
+        let token_metrics = request.token_metrics.clone();
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         if id == u64::MAX {
             return Err(ServiceError::new(
@@ -522,7 +637,7 @@ impl Router {
                     ServiceError::new(503, "worker_unavailable", "inference worker unavailable")
                 }
             })?;
-        Ok(RequestEvents::new(id, model_alias, events_rx, cancelled))
+        Ok(RequestEvents::new(id, model_alias, events_rx, cancelled).observed(token_metrics))
     }
 }
 struct Active {
@@ -534,6 +649,7 @@ struct Active {
     prompt: Vec<u32>,
     prompt_pos: usize,
     logits: Vec<f32>,
+    logits_commit_observed_at: Instant,
 }
 impl Active {
     fn new(
@@ -575,6 +691,10 @@ impl Active {
             scheduled.request.stream,
             scheduled.request.max_tokens,
             prompt.len(),
+        )
+        .observed(
+            scheduled.request.token_metrics.clone(),
+            model.weights.geometry().vocab_size,
         );
         Ok(Self {
             session,
@@ -585,6 +705,7 @@ impl Active {
             prompt,
             prompt_pos: 0,
             logits: Vec::new(),
+            logits_commit_observed_at: Instant::now(),
         })
     }
     /// One cooperative service quantum: one bounded prefill chunk or
@@ -601,6 +722,7 @@ impl Active {
                     .session
                     .prefill_transaction(&self.prompt[self.prompt_pos..end])
                     .map_err(ServiceError::inference)?;
+                self.logits_commit_observed_at = Instant::now();
             }
             self.prompt_pos = end;
             return Ok(false);
@@ -612,10 +734,14 @@ impl Active {
             .max_by(|a, b| a.1.total_cmp(b.1).then_with(|| b.0.cmp(&a.0)))
             .ok_or_else(|| ServiceError::new(500, "empty_logits", "inference produced no logits"))?
             .0 as u32;
-        if self.output.accept(id)? {
+        if self
+            .output
+            .accept_committed(id, self.logits_commit_observed_at)?
+        {
             return Ok(true);
         }
         self.logits = self.session.forward(id).map_err(ServiceError::inference)?;
+        self.logits_commit_observed_at = Instant::now();
         Ok(false)
     }
 }
@@ -910,6 +1036,7 @@ mod tests {
             id: 7,
             model: "source-owned".into(),
             events: receiver,
+            token_metrics: None,
             cancelled: Arc::clone(&cancelled),
         };
         assert!(!cancelled.load(Ordering::Acquire));
@@ -925,5 +1052,119 @@ mod tests {
             };
             assert_eq!(failure.code, "invalid_host_budget");
         }
+    }
+
+    #[test]
+    fn observed_utf8_tokens_keep_independent_ids_through_credit_retries() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let started = Instant::now() - Duration::from_secs(1);
+        let mut output = GeneratedText::new(output_tokenizer(true), sender, true, 2, 7).observed(
+            Some(TokenMetricsRequest {
+                started,
+                wire_request_id: Some("run:byte-pair".into()),
+            }),
+            7,
+        );
+        assert_eq!(
+            output.present_committed(4, started).unwrap(),
+            Presentation::Ready
+        );
+        assert_eq!(
+            output
+                .present_committed(5, started + Duration::from_millis(1))
+                .unwrap(),
+            Presentation::Blocked
+        );
+        assert_eq!(output.generated, [4, 5]);
+        assert_eq!(output.present(2).unwrap_err().code, "output_pending");
+        match receiver.recv().unwrap() {
+            ResponseEvent::TokenText { text, token } => {
+                assert!(text.is_empty());
+                assert_eq!((token.index, token.id), (0, 4));
+                assert_eq!(token.commit_observed_at, started);
+            }
+            _ => panic!("missing independent first byte token"),
+        }
+        assert_eq!(output.resume().unwrap(), Presentation::Blocked);
+        match receiver.recv().unwrap() {
+            ResponseEvent::TokenText { text, token } => {
+                assert_eq!(text, "é");
+                assert_eq!((token.index, token.id), (1, 5));
+            }
+            _ => panic!("missing second token and coalesced UTF8"),
+        }
+        assert_eq!(output.resume().unwrap(), Presentation::Finished);
+        done(receiver.recv().unwrap(), "é", 2, "length");
+        assert_eq!(output.resume().unwrap(), Presentation::Finished);
+        assert!(receiver.try_recv().is_err());
+    }
+
+    #[test]
+    fn observed_eos_has_no_output_id_and_invalid_id_or_clock_never_appends() {
+        let started = Instant::now() - Duration::from_secs(1);
+        let (sender, receiver) = mpsc::sync_channel(2);
+        let tokenizer = output_tokenizer(false);
+        let eos = tokenizer.eos();
+        let mut eos_output = GeneratedText::new(tokenizer, sender, true, 2, 7).observed(
+            Some(TokenMetricsRequest {
+                started,
+                wire_request_id: None,
+            }),
+            7,
+        );
+        assert_eq!(
+            eos_output.present_committed(eos, started).unwrap(),
+            Presentation::Finished
+        );
+        done(receiver.recv().unwrap(), "", 0, "stop");
+        assert!(receiver.try_recv().is_err());
+        for (id, when) in [
+            (u32::MAX, started),
+            (2, started - Duration::from_millis(1)),
+            (2, Instant::now() + Duration::from_secs(1)),
+        ] {
+            let (sender, receiver) = mpsc::sync_channel(2);
+            let mut output = GeneratedText::new(output_tokenizer(false), sender, true, 2, 7)
+                .observed(
+                    Some(TokenMetricsRequest {
+                        started,
+                        wire_request_id: None,
+                    }),
+                    7,
+                );
+            assert_eq!(
+                output.present_committed(id, when).unwrap_err().code,
+                "invalid_token_observation"
+            );
+            assert!(output.generated.is_empty());
+            assert!(receiver.try_recv().is_err());
+        }
+        let (sender, receiver) = mpsc::sync_channel(2);
+        let mut output = GeneratedText::new(output_tokenizer(false), sender, true, 3, 7).observed(
+            Some(TokenMetricsRequest {
+                started,
+                wire_request_id: None,
+            }),
+            7,
+        );
+        assert_eq!(
+            output
+                .present_committed(2, started + Duration::from_millis(20))
+                .unwrap(),
+            Presentation::Ready
+        );
+        assert!(matches!(
+            receiver.recv().unwrap(),
+            ResponseEvent::TokenText { .. }
+        ));
+        assert_eq!(
+            output
+                .present_committed(3, started + Duration::from_millis(10))
+                .unwrap_err()
+                .code,
+            "invalid_token_observation"
+        );
+        assert_eq!(output.generated, [2]);
+        assert!(receiver.try_recv().is_err());
     }
 }

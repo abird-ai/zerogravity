@@ -109,6 +109,61 @@ pub(crate) fn zero_future(
     }
 }
 
+#[cube(launch_unchecked)]
+pub(crate) fn masked_scores_rows(
+    input: &[u32],
+    output: &mut [u32],
+    positions: &[u32],
+    #[comptime] heads: usize,
+    #[comptime] batch: usize,
+    #[comptime] capacity: usize,
+) {
+    let i = ABSOLUTE_POS;
+    if i < batch * heads * capacity {
+        let row = i / (heads * capacity);
+        let mut bits = 0xff800000u32;
+        if i % capacity <= positions[row] as usize {
+            bits = input[batch * heads * capacity + i];
+        }
+        output[i] = bits;
+    }
+}
+
+#[cube(launch_unchecked)]
+pub(crate) fn zero_future_rows(
+    values: &mut [u32],
+    positions: &[u32],
+    #[comptime] heads: usize,
+    #[comptime] batch: usize,
+    #[comptime] capacity: usize,
+) {
+    let i = ABSOLUTE_POS;
+    if i < batch * heads * capacity {
+        let row = i / (heads * capacity);
+        if i % capacity > positions[row] as usize {
+            values[i] = 0u32;
+        }
+    }
+}
+
+#[cube(launch_unchecked)]
+pub(crate) fn certify_causal_rows(
+    input: &[u32],
+    status: &[Atomic<u32>],
+    positions: &[u32],
+    #[comptime] heads: usize,
+    #[comptime] batch: usize,
+    #[comptime] capacity: usize,
+) {
+    let i = ABSOLUTE_POS;
+    if i < batch * heads * capacity {
+        let row = i / (heads * capacity);
+        if i % capacity <= positions[row] as usize && (input[i] & 0x7f800000u32) == 0x7f800000u32 {
+            status[0].fetch_or(2u32);
+        }
+    }
+}
+
 /// Preserve each diagnostic status array and carry any refusal into the
 /// attempt certificate consumed by downstream compact output selection.
 #[cube(launch_unchecked)]

@@ -22,6 +22,14 @@ mod fused_greedy_qualification;
 #[cfg(feature = "qualification")]
 #[path = "resident_fused_qualification.rs"]
 mod fused_qualification;
+#[cfg(all(
+    test,
+    feature = "qualification",
+    feature = "portable-checkpoint",
+    feature = "cuda"
+))]
+#[path = "resident_inference/ragged_qualification.rs"]
+mod ragged_qualification;
 #[cfg(feature = "qualification")]
 pub(crate) use fused_greedy_qualification::qualify as qualify_fused_greedy;
 #[cfg(all(feature = "qualification", feature = "hardware-abort-probe"))]
@@ -174,7 +182,8 @@ impl PreparedResidentCohort {
     pub fn dispatches(&self) -> usize {
         self.dispatches
     }
-    /// Actual native multi-row projection launches; excludes other stages.
+    /// Native projection-dot launches; excludes activation quantization,
+    /// parameter staging and certification. `dispatches` includes those stages.
     pub fn fused_dispatches(&self) -> usize {
         self.fused_dispatches
     }
@@ -191,8 +200,12 @@ impl PreparedResidentCohort {
     pub fn source(&self) -> zerogravity_core::accelerator::SourceIdentity {
         self.roots.source()
     }
-    pub fn prior_frontier(&self) -> u64 {
+    /// Common prior frontier, when every row has the same position.
+    pub fn prior_frontier(&self) -> Option<u64> {
         self.roots.frontier()
+    }
+    pub fn prior_frontiers(&self) -> impl ExactSizeIterator<Item = u64> + '_ {
+        self.roots.frontiers()
     }
 
     /// After every per-row physical completion and cohort preflight,

@@ -2142,6 +2142,8 @@ impl CubeResidentProvider {
                 region.head_width,
                 half,
                 heads,
+                region.query_heads,
+                1,
             );
             crate::rope_kv::rope_sums::launch_unchecked(
                 &client,
@@ -2156,6 +2158,8 @@ impl CubeResidentProvider {
                 half,
                 heads,
                 channels,
+                region.query_heads,
+                1,
             );
             crate::rope_kv::rope_subtract::launch_unchecked(
                 &client,
@@ -2169,6 +2173,8 @@ impl CubeResidentProvider {
                 region.head_width,
                 half,
                 heads,
+                region.query_heads,
+                1,
             );
             crate::rope_kv::rope_apply::launch_unchecked(
                 &client,
@@ -2183,6 +2189,8 @@ impl CubeResidentProvider {
                 region.head_width,
                 half,
                 heads,
+                region.query_heads,
+                1,
             );
         }
         #[cfg(feature = "hardware-abort-probe")]

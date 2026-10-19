@@ -59,6 +59,20 @@ pub(super) fn native_bands(count: usize, ceiling: usize) -> Result<Vec<usize>, S
 /// source/phase/frontier grouping and finite quota-split waves. No sorting
 /// across requests or silent dropping of a queue tail.
 pub(super) fn form(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, ServiceError> {
+    form_with_decode_frontiers(slots, bounds, false)
+}
+
+/// Native decode binds every row's own causal position on the GPU. Prefill
+/// grouping remains exact-frontier until its separate input path is qualified.
+pub(super) fn form_decode(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, ServiceError> {
+    form_with_decode_frontiers(slots, bounds, true)
+}
+
+fn form_with_decode_frontiers(
+    slots: &[Ready],
+    bounds: Limits,
+    unequal_decode: bool,
+) -> Result<Vec<Wave>, ServiceError> {
     if slots.is_empty()
         || slots.len() > 64
         || bounds.max_members == 0
@@ -75,7 +89,7 @@ pub(super) fn form(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, Service
         ));
     }
     let mut waves = Vec::<Wave>::new();
-    let mut heads = Vec::<(usize, Phase, usize)>::new();
+    let mut heads = Vec::<(usize, Phase, Option<usize>)>::new();
     for (index, ready) in slots.iter().enumerate() {
         if ready.frontier > 512
             || (ready.phase == Phase::Prefill && ready.frontier >= 512)
@@ -92,7 +106,12 @@ pub(super) fn form(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, Service
                 "GPU work is outside source/budget",
             ));
         }
-        let key = (ready.source, ready.phase, ready.frontier);
+        let frontier = if unequal_decode && ready.phase == Phase::Decode {
+            None
+        } else {
+            Some(ready.frontier)
+        };
+        let key = (ready.source, ready.phase, frontier);
         let mut chosen = None;
         // A compatible wave can accept at most N requests/T tokens/B bytes.
         for (wave_idx, head) in heads.iter().enumerate() {
@@ -290,6 +309,47 @@ mod tests {
                 }
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn decode_refill_keeps_source_and_phase_but_preserves_each_frontier() {
+        let ready = [
+            r(1, Phase::Decode, 255, 1),
+            r(2, Phase::Decode, 0, 1),
+            r(1, Phase::Decode, 0, 1),
+            r(1, Phase::Prefill, 7, 1),
+            r(1, Phase::Prefill, 8, 1),
+            r(1, Phase::Decode, 256, 1),
+            r(1, Phase::Decode, 511, 1),
+        ];
+        let waves = form_decode(
+            &ready,
+            Limits {
+                max_members: 4,
+                max_tokens: 64,
+                max_scratch: 4096,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            waves
+                .iter()
+                .map(|wave| wave.indices.clone())
+                .collect::<Vec<_>>(),
+            [vec![0, 2, 5, 6], vec![1], vec![3], vec![4]]
+        );
+        assert_eq!(
+            waves[0]
+                .indices
+                .iter()
+                .map(|&index| ready[index].frontier)
+                .collect::<Vec<_>>(),
+            [255, 0, 256, 511]
+        );
+        assert_eq!(
+            waves.iter().map(|wave| wave.tokens).sum::<usize>(),
+            ready.len()
         );
     }
 }

@@ -14,6 +14,7 @@ pub(crate) struct BatchProgram {
     rows: usize,
     nodes: Vec<PlanNode>,
     packed: Vec<StateBinding>,
+    positions: Handle,
     greedy: [Handle; 3],
     owned: Vec<Handle>,
 }
@@ -42,7 +43,7 @@ impl BatchProgram {
         budget.source_bytes = 0;
         budget.value_bytes = scale(budget.value_bytes)?;
         budget.status_bytes = checked_sum([scale(budget.status_bytes - 4)?, 4])?;
-        budget.parameter_bytes = bytes(rows, 4)?;
+        budget.parameter_bytes = bytes(rows, 8)?;
         budget.prior_state_bytes = scale(budget.prior_state_bytes)?;
         budget.candidate_state_bytes = scale(budget.candidate_state_bytes)?;
         for size in &mut budget.scratch {
@@ -197,6 +198,7 @@ impl BatchProgram {
                 _ => {}
             }
         }
+        let positions = allocator.empty(ResidentBufferRole::Parameter, bytes(rows, 4)?)?;
         let mut inner = ResidentProgram {
             _source_owner: Arc::clone(&original._source_owner),
             plan: original.plan.clone(),
@@ -220,6 +222,7 @@ impl BatchProgram {
         for handle in &greedy {
             inner.owned_ranges.insert(BufferRange::new(handle)?)?;
         }
+        inner.owned_ranges.insert(BufferRange::new(&positions)?)?;
         for binding in &packed {
             for handle in binding
                 .prior
@@ -235,6 +238,7 @@ impl BatchProgram {
             rows,
             nodes,
             packed,
+            positions,
             greedy,
             owned,
         })
@@ -269,6 +273,7 @@ impl BatchProgram {
 
     pub fn execution_handles(&self, output: ResidentOutput) -> Vec<Handle> {
         let mut handles = self.inner.execution_handles(output);
+        handles.push(self.positions.clone());
         for binding in &self.packed {
             handles.extend(binding.prior.handles());
             handles.extend(binding.candidate.handles());
@@ -288,16 +293,9 @@ impl BatchProgram {
         if parameters.len() != self.rows || bindings.len() != self.rows {
             return Err(Error::Malformed("resident batch row count changed".into()));
         }
-        let first = parameters[0];
         let mut priors = Vec::new();
         let mut candidates = Vec::new();
         for (parameter, binding) in parameters.iter().zip(bindings) {
-            if parameter.position != first.position || parameter.valid_tokens != first.valid_tokens
-            {
-                return Err(Error::State(
-                    "native batch rows require one causal frontier".into(),
-                ));
-            }
             self.inner.validate_runtime(client, *parameter, binding)?;
             for node in self.inner.plan.nodes() {
                 if let PlanOperation::Embed { tensor, .. } = &node.operation
@@ -410,10 +408,6 @@ impl BatchProgram {
         } else {
             self.validate_runtime(client, parameters, bindings)?;
         }
-        let parameter = parameters[0];
-        for binding in &mut self.packed {
-            binding.prior_tokens = parameter.position;
-        }
         unsafe {
             crate::program_kernels::clear_step_status::launch_unchecked(
                 client,
@@ -461,14 +455,33 @@ impl BatchProgram {
                     self.rows,
                 );
             }
+            let mut positions = [0u32; 8];
+            for (position, parameter) in positions.iter_mut().zip(parameters) {
+                *position = parameter.position as u32;
+            }
+            batch_tokens::launch_unchecked(
+                client,
+                grid(self.rows),
+                threads(),
+                arg(&self.positions, self.rows),
+                positions[0],
+                positions[1],
+                positions[2],
+                positions[3],
+                positions[4],
+                positions[5],
+                positions[6],
+                positions[7],
+                self.rows,
+            );
         }
-        let mut dispatches = 2 + self.transport_state(client, bindings, false);
-        // Conservative subset: increment only at an actual native projection
-        // launch site. Other B-shaped stages and transport are not counted.
+        let mut dispatches = 3 + self.transport_state(client, bindings, false);
+        // One actual native projection-dot launch per Project. Activation
+        // preparation/status stages remain in the total dispatch count only.
         let mut fused_dispatches = 0;
         let count = output.nodes(&self.inner.plan).len();
         for (index, node) in self.nodes[..count].iter().enumerate() {
-            dispatches += self.launch_node(client, index, node, parameter)?;
+            dispatches += self.launch_node(client, index, node, parameters)?;
             if matches!(node.operation, PlanOperation::Project { .. }) {
                 fused_dispatches += 1;
             }
@@ -481,14 +494,15 @@ impl BatchProgram {
                     && out_index == 1
                 {
                     unsafe {
-                        crate::resident_bindings::certify_causal::launch_unchecked(
+                        crate::resident_bindings::certify_causal_rows::launch_unchecked(
                             client,
                             grid(value.elements),
                             threads(),
                             arg(&value.handle, value.elements),
                             arg(&self.inner.status, 1),
-                            parameter.valid_tokens as u32,
-                            geometry.query_heads,
+                            arg(&self.positions, self.rows),
+                            geometry.query_heads / self.rows,
+                            self.rows,
                             self.inner.plan.prefix_capacity(),
                         );
                     }
@@ -713,8 +727,9 @@ impl BatchProgram {
         client: &Client,
         index: usize,
         node: &PlanNode,
-        p: RuntimeParameters,
+        parameters: &[RuntimeParameters],
     ) -> Result<usize> {
+        let p = parameters[0];
         let input = |i: usize| &self.inner.values[node.inputs[i].0 as usize];
         let output = |i: usize| &self.inner.values[node.outputs[i].0 as usize];
         let scratch = |i: usize| &self.inner.scratch[i];
@@ -867,6 +882,30 @@ impl BatchProgram {
                     );
                     Ok(12)
                 }
+                PlanOperation::Rope { geometry, .. } => self.rope(client, node, *geometry),
+                PlanOperation::AppendKv => {
+                    let effect = node.state.expect("KV append effect");
+                    let (previous_k, previous_v) = self.kv(effect.read);
+                    let (candidate_k, candidate_v) = self.kv(effect.write);
+                    let cap = self.inner.plan.prefix_capacity();
+                    let slab = input(0).elements / self.rows;
+                    append_kv_rows::launch_unchecked(
+                        client,
+                        grid(self.rows * slab * cap),
+                        threads(),
+                        arg(&previous_k.handle, self.rows * slab * cap),
+                        arg(&previous_v.handle, self.rows * slab * cap),
+                        arg(&input(0).handle, self.rows * slab),
+                        arg(&input(1).handle, self.rows * slab),
+                        arg(&candidate_k.handle, self.rows * slab * cap),
+                        arg(&candidate_v.handle, self.rows * slab * cap),
+                        arg(&self.positions, self.rows),
+                        slab,
+                        cap,
+                        self.rows,
+                    );
+                    Ok(1)
+                }
                 PlanOperation::AttentionQk {
                     state,
                     geometry,
@@ -951,18 +990,30 @@ impl BatchProgram {
                         0,
                         columns,
                     );
-                    crate::resident_bindings::masked_scores::launch_unchecked(
+                    crate::resident_bindings::masked_scores_rows::launch_unchecked(
                         client,
                         grid(columns),
                         threads(),
                         arg(scratch(5), columns * 2),
                         arg(&output(1).handle, columns),
-                        p.valid_tokens as u32,
-                        geometry.query_heads,
+                        arg(&self.positions, self.rows),
+                        geometry.query_heads / self.rows,
+                        self.rows,
                         cap,
                     );
                     Ok(count + 1)
                 }
+                PlanOperation::AttentionSoftmax { heads, .. } => self.inner.softmax_masked(
+                    client,
+                    input(0),
+                    output(0),
+                    *heads,
+                    self.inner.plan.prefix_capacity(),
+                    CausalMask::Rows {
+                        positions: &self.positions,
+                        heads_per_row: *heads / self.rows,
+                    },
+                ),
                 PlanOperation::AttentionValue {
                     state,
                     geometry,
@@ -996,7 +1047,11 @@ impl BatchProgram {
                     );
                     // Preserve the original source's padded FMA count, including
                     // its signed-zero behavior beyond the active prefix.
-                    let blocks = p.valid_tokens.div_ceil(*padding) * padding / 32;
+                    let blocks = parameters
+                        .iter()
+                        .map(|parameter| parameter.valid_tokens.div_ceil(*padding) * padding / 32)
+                        .max()
+                        .expect("validated native rows");
                     for block in 0..blocks {
                         let (previous, lanes) = if block % 2 == 0 {
                             (scratch(2), scratch(1))
@@ -1004,7 +1059,7 @@ impl BatchProgram {
                             (scratch(1), scratch(2))
                         };
                         for stage in 0..3 {
-                            crate::attention_value::accumulate::launch_unchecked(
+                            crate::attention_value::accumulate_rows::launch_unchecked(
                                 client,
                                 grid(columns * 32),
                                 threads(),
@@ -1013,11 +1068,14 @@ impl BatchProgram {
                                 arg(lanes, columns * 32),
                                 arg(scratch(3), columns * 32),
                                 arg(scratch(4), columns * 32),
+                                arg(&self.positions, self.rows),
                                 block as u32,
                                 geometry.width,
                                 cap,
                                 geometry.query_heads,
                                 geometry.kv_heads,
+                                self.rows,
+                                *padding,
                                 stage,
                             );
                             count += 1;
@@ -1045,6 +1103,133 @@ impl BatchProgram {
                 _ => self.inner.launch_node(client, index, node, p, &self.packed),
             }
         }
+    }
+
+    fn rope(&self, client: &Client, node: &PlanNode, geometry: RopeGeometry) -> Result<usize> {
+        let input = |i: usize| &self.inner.values[node.inputs[i].0 as usize];
+        let output = |i: usize| &self.inner.values[node.outputs[i].0 as usize];
+        let scratch = |i: usize| &self.inner.scratch[i];
+        let g = geometry.attention;
+        let heads = g.query_heads + g.kv_heads;
+        let half = geometry.rotate / 2;
+        let q = input(0).elements;
+        let k = input(1).elements;
+        let count = q + k + input(2).elements;
+        let mut dispatches = 0;
+        for (i, offset) in [(0, 0), (1, q), (2, q + k)] {
+            dispatches += self.copy_dense(
+                client,
+                &input(i).handle,
+                input(i).elements,
+                0,
+                scratch(0),
+                count,
+                offset,
+                input(i).elements,
+            );
+        }
+        unsafe {
+            for stage in 0..half {
+                crate::rope_kv::angle_step_rows::launch_unchecked(
+                    client,
+                    grid(self.rows),
+                    threads(),
+                    arg(scratch(1), self.rows * half),
+                    arg(&self.positions, self.rows),
+                    geometry.theta_scale,
+                    half,
+                    self.rows,
+                    stage,
+                );
+                dispatches += 1;
+            }
+            crate::source_trig::sincos_angles::launch_unchecked(
+                client,
+                grid(self.rows * half),
+                threads(),
+                arg(scratch(1), self.rows * half),
+                arg(
+                    &self.inner.trig_tables,
+                    crate::source_trig::TRIG_TABLES.len(),
+                ),
+                arg(scratch(2), self.rows * half * 2),
+                self.rows * half,
+            );
+            crate::rope_kv::rope_products::launch_unchecked(
+                client,
+                grid(heads * half),
+                threads(),
+                arg(scratch(0), count),
+                arg(scratch(2), self.rows * half * 2),
+                arg(scratch(3), heads * half * 2),
+                g.width,
+                half,
+                heads,
+                g.query_heads / self.rows,
+                self.rows,
+            );
+            crate::rope_kv::rope_sums::launch_unchecked(
+                client,
+                grid(count),
+                threads(),
+                arg(scratch(0), count),
+                arg(scratch(2), self.rows * half * 2),
+                arg(scratch(3), heads * half * 2),
+                arg(scratch(4), heads * half * 2),
+                arg(scratch(6), count),
+                g.width,
+                half,
+                heads,
+                count,
+                g.query_heads / self.rows,
+                self.rows,
+            );
+            crate::rope_kv::rope_subtract::launch_unchecked(
+                client,
+                grid(heads * half * 2),
+                threads(),
+                arg(scratch(0), count),
+                arg(scratch(2), self.rows * half * 2),
+                arg(scratch(3), heads * half * 2),
+                arg(scratch(4), heads * half * 2),
+                arg(scratch(5), heads * half * 2),
+                g.width,
+                half,
+                heads,
+                g.query_heads / self.rows,
+                self.rows,
+            );
+            crate::rope_kv::rope_apply::launch_unchecked(
+                client,
+                grid(heads * half * 2),
+                threads(),
+                arg(scratch(0), count),
+                arg(scratch(2), self.rows * half * 2),
+                arg(scratch(3), heads * half * 2),
+                arg(scratch(4), heads * half * 2),
+                arg(scratch(5), heads * half * 2),
+                arg(scratch(6), count),
+                g.width,
+                half,
+                heads,
+                g.query_heads / self.rows,
+                self.rows,
+            );
+            dispatches += 5;
+        }
+        for (i, offset) in [(0, 0), (1, q), (2, q + k)] {
+            dispatches += self.copy_dense(
+                client,
+                scratch(6),
+                count,
+                offset,
+                &output(i).handle,
+                output(i).elements,
+                0,
+                output(i).elements,
+            );
+        }
+        Ok(dispatches)
     }
 
     fn project(
@@ -1346,6 +1531,39 @@ fn batch_view(
         if (bits & 0x7f800000u32) == 0x7f800000u32 {
             status[0].fetch_or(2u32);
         }
+    }
+}
+
+/// Every row appends at its own position and writes canonical future KV zeros.
+#[cube(launch_unchecked)]
+fn append_kv_rows(
+    previous_k: &[u32],
+    previous_v: &[u32],
+    k: &[u32],
+    v: &[u32],
+    candidate_k: &mut [u32],
+    candidate_v: &mut [u32],
+    positions: &[u32],
+    #[comptime] slab: usize,
+    #[comptime] capacity: usize,
+    #[comptime] batch: usize,
+) {
+    let i = ABSOLUTE_POS;
+    if i < capacity * batch * slab {
+        let token = i / (batch * slab);
+        let row = (i / slab) % batch;
+        let position = positions[row] as usize;
+        let mut key = 0u32;
+        let mut value = 0u32;
+        if token < position {
+            key = previous_k[i];
+            value = previous_v[i];
+        } else if token == position {
+            key = k[row * slab + i % slab];
+            value = v[row * slab + i % slab];
+        }
+        candidate_k[i] = key;
+        candidate_v[i] = value;
     }
 }
 

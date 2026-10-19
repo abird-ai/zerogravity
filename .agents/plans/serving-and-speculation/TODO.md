@@ -8,36 +8,62 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
-- [x] **P12-B6 native CUDA B4/B8 serving:** finite unpadded8/4/2/1
-  bands, live EOS/length/cancel/credit survivor regrouping and actual
-  per-band Ready counters. Explicit `--batch-rows 2|4|8` (default2),
-  CUDA/active>=rows checks before model/device; default interleaved.
-  Checked physical capacity refusal is typed None BEFORE allocations or
-  submission; only that result permits smaller bands. Errors/unknown
-  completion retain original fence/quarantine. Real scratch leases prove
-  cold/warm B8 refusal leaves queue/uploads/allocations/roots/all42/idle
-  workspace untouched; B4 progresses under pressure, B8 after release,
-  full248320 CPU/B1 logits/packets/all42 exact, final reservation0.
-  Six same-process release worker cases (.8B/2B × B2/4/8) passed exact
-  CPU/B1 state, unequal output limits, handoffs, actual after-Ready cancel,
-  bounded capacity1 parking/resume and trained EOS. Initial combined run
-  failed CUDA OOM after old-stream cached pools accumulated; cold-load
-  cleanup now runs under original initialization/queue guards. Repetition
-  physically released completed idle pools (2.51GB/2.13GB→0), all6 pass.
-  Four release HTTP tests prove both models B2/B4/B8 JSON/SSE CPU text/
-  usage, trained EOS, one terminal, active disconnect, survivors and replay;
-  final active/queued/failed0. Source-free CLI26 and GPU53 passed;
-  strict CPU/CUDA/Vulkan/qualifier Clippy and full isolated check1148/0/
-  69ignored/245suites+18Python passed, both approved release cache-direct/
-  HF-import routes exact full logits/all42. Initial direct HTTP invocation
-  found a non-serve binary left by the full check; rebuilt explicit CUDA
-  server and repeated all4 successfully. Same-frontier serving only;
-  unequal-frontier/paged state, full-prefix native prefill and matched
-  vLLM source-correct performance remain open.
+- [x] **P12-B7 unequal-frontier native CUDA decode:** per-row positions,
+  RoPE/KV append/masking and packed attention softmax lower
+  the same full-model ForwardPlan. B2/B4/B8 retain independent original
+  authorities, roots, packets, leases and all-row Ready publication.
+  Native decode accepts unequal frontiers; prompt-tail grouping stays
+  strict and other prefill uses B1. Actual original0.8B/2B engine tests
+  passed all248320 logits/all42 domains versus independent CPU AND B1
+  at mixed positions255/256/0/31/32/1/510/511, host/device feedback,
+  B1 handoffs/refill, abandoned Ready, stale/foreign packets, capacity512,
+  inactive AV poison/signed-zero/subnormal cases and final reservation0.
+  This engine run preceded metadata/observability-only composition;
+  fresh composed worker/HTTP/pressure/abort suites passed separately.
+- [x] **P22 bounded publication/delivery observations:** opt-in
+  `--enable-per-request-metrics` plus `return_token_ids:true`; bounded
+  ASCII request IDs, at most512 non-EOS token records, exact-once IDs
+  independent of UTF-8 emission. Observe commit immediately after original
+  root publication, queue receive and socket-write completion separately;
+  retain the original observation through output-credit parking. GPU
+  producer frontiers and existing successful native publication sequence/
+  width bind each row without creating a new authority. Standard vLLM
+  scheduler-origin TTFT/queue fields stay unset; parsed-request timing is
+  named separately. Tools validate IDs, clocks, usage, frontiers/cohorts;
+  true client ITL requires one actual token per arrival. Grouped arrivals
+  remain unresolved; source-correct SLO goodput remains unset.
+- [x] **B7 physical composed serving acceptance:** eight release worker
+  cases and six release HTTP cases passed both models at B2/4/8, exact
+  CPU/B1 packets/all42 internally, CPU IDs/text/usage on wire, trained EOS,
+  limits, Ready cancellation/regroup, capacity1 parking, disconnect,
+  survivors/replay and final reservation/active/queued/failed0. New
+  unequal-arrival cases offer the short request AFTER the long request's
+  first actual ID and observe a shared native B2 publication at distinct
+  frontiers. Each model completed5 native cohorts/10rows/935 native
+  projection-dot launches/20 native sampler stages in that wire case.
+  Two fresh real-pressure cases passed prelaunch B8 refusal without
+  mutation, B4 progress under pressure and B8 after release. Four fresh
+  full-graph/sampler unknown-completion probes retained all original
+  handles in quarantine (1824/1719;1828/1723), unchanged prior roots/all42,
+  refused old Ready/further work/other model, retained4GiB and no recovery.
+  First abort invocation used a nonexistent package-named binary and
+  launched no GPU work; only the four probes were rerun successfully.
+- [x] **B7 verification:** complete isolated check1164 Rust passed/
+  0failed/69ignored over245 suite runs plus18Python/release/installer/Nix;
+  strict CPU/CUDA/Vulkan/qualification Clippy passed. Fresh source-free
+  release CLI35/GPU58 passed; focused composed CPU/Core/Model/facade/
+  serving185 passed/2ignored. Both approved original cache-direct and
+  HF-import release routes passed full248320/all42 for both models.
+  Independent launch audit reconciles the unequal0.8B HTTP counter exactly:
+  26 B1 state-only graphs*5489 +6 B1 greedy*5510 +5 nativeB2*5728
+  =204414 actual completed launches. This includes private certification
+  and state/packet copies, excludes cold initialization/maintenance, and
+  counts a native cohort once. No throughput claim follows from it.
 
 - [ ] **P12 fused continuous GPU serving:** extend the accepted CUDA B2/B4/B8
-  HTTP path to unequal frontiers, dynamic compatible refill,
-  paged hybrid KV/recurrent cache, physically safe overlap and fairness.
+  HTTP path with paged hybrid KV/recurrent cache, physically safe
+  prefill/decode overlap and fairness. Unequal decode frontiers and
+  compatible refill are accepted within the B7 source/context scope.
   Extend full-logit/StateRoot qualification to other advertised trained
   profiles/backends and full GPU prefill. Measure actual p50/p95 TTFT,
   true token ITL, committed SLO-goodput, fairness, memory and physical
@@ -96,6 +122,35 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 - [ ] Preserve zero untriaged frontier/disposition requirements before any full-parity claim; synthetic acceptance, fewer launches and competitor measurements do not establish local parity or speed.
 
 ## Committed
+
+### d9fa829 — native CUDA B4/B8 HTTP bands
+
+- [x] **P12-B6 native CUDA B4/B8 serving:** finite unpadded8/4/2/1
+  bands, live EOS/length/cancel/credit survivor regrouping and actual
+  per-band Ready counters. Explicit `--batch-rows 2|4|8` (default2),
+  CUDA/active>=rows checks before model/device; default interleaved.
+  Checked physical capacity refusal is typed None BEFORE allocations or
+  submission; only that result permits smaller bands. Errors/unknown
+  completion retain original fence/quarantine. Real scratch leases prove
+  cold/warm B8 refusal leaves queue/uploads/allocations/roots/all42/idle
+  workspace untouched; B4 progresses under pressure, B8 after release,
+  full248320 CPU/B1 logits/packets/all42 exact, final reservation0.
+  Six same-process release worker cases (.8B/2B × B2/4/8) passed exact
+  CPU/B1 state, unequal output limits, handoffs, actual after-Ready cancel,
+  bounded capacity1 parking/resume and trained EOS. Initial combined run
+  failed CUDA OOM after old-stream cached pools accumulated; cold-load
+  cleanup now runs under original initialization/queue guards. Repetition
+  physically released completed idle pools (2.51GB/2.13GB→0), all6 pass.
+  Four release HTTP tests prove both models B2/B4/B8 JSON/SSE CPU text/
+  usage, trained EOS, one terminal, active disconnect, survivors and replay;
+  final active/queued/failed0. Source-free CLI26 and GPU53 passed;
+  strict CPU/CUDA/Vulkan/qualifier Clippy and full isolated check1148/0/
+  69ignored/245suites+18Python passed, both approved release cache-direct/
+  HF-import routes exact full logits/all42. Initial direct HTTP invocation
+  found a non-serve binary left by the full check; rebuilt explicit CUDA
+  server and repeated all4 successfully. Same-frontier serving only;
+  unequal-frontier/paged state, full-prefix native prefill and matched
+  vLLM source-correct performance remain open.
 
 ### 6bfcdbe — bounded offered-work benchmark accounting
 
