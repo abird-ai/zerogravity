@@ -11,8 +11,8 @@ default = []
 cpu = ["dep:zerogravity-cpu"]
 text = ["dep:tokenizers"]
 diagnostic-gdn-trace = []
-# Source metadata only; original numerical execution remains refused.
-original-hf-binding = ["zerogravity-artifacts/cache"]
+# Source metadata/closed private operators; complete original forward stays refused.
+original-hf-binding = ["zerogravity-artifacts/cache", "zerogravity-cpu?/cache"]
 diagnostic-cpu-checkpoint = ["zerogravity-core/diagnostic-cpu-checkpoint"]
 
 [dependencies]

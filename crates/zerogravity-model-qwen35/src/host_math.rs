@@ -14,8 +14,61 @@ use crate::accelerator::{
     AttentionQkRegion, AttentionSoftmaxRegion, AttentionValueRegion, BinaryOperation, BinaryRegion,
     GdnCoefficientRegion, GdnCoefficients, GdnRecurrentExecution, GdnRecurrentRegion, RopeKvRegion,
 };
+use crate::operator_slice::OperatorSliceSource;
 use crate::{Error, Result};
 use std::sync::Arc;
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+use zerogravity_artifacts::source_weights::WindowWorkspace;
+
+struct HostStorage {
+    values: Vec<f32>,
+    // Payload drops before its actual same-source host reservation.
+    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+    workspace: Option<Arc<WindowWorkspace>>,
+}
+impl std::ops::Deref for HostStorage {
+    type Target = Vec<f32>;
+    fn deref(&self) -> &Self::Target {
+        &self.values
+    }
+}
+
+enum HostSource<'a> {
+    Loaded(&'a super::LoadedQwenModel),
+    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+    Windows(&'a crate::original_binding::OriginalWindowOperators),
+}
+impl HostSource<'_> {
+    fn metadata(&self) -> &dyn OperatorSliceSource {
+        match self {
+            Self::Loaded(source) => *source,
+            #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+            Self::Windows(source) => *source,
+        }
+    }
+    fn source_identity(&self) -> crate::accelerator::SourceIdentity {
+        self.metadata().source_identity()
+    }
+    fn program_numerical_profile(&self) -> ProgramNumericalProfile {
+        self.metadata().program_numerical_profile()
+    }
+    fn rms_epsilon(&self) -> f32 {
+        self.metadata().rms_epsilon()
+    }
+    fn matrix_descriptor(
+        &self,
+        role: crate::original_binding::QwenMatrixRole,
+    ) -> Result<SourceTensor> {
+        self.metadata().matrix_descriptor(role)
+    }
+    fn validate_tensor(&self, tensor: &SourceTensor) -> Result<()> {
+        match self {
+            Self::Loaded(source) => tensor.validate_source(*source),
+            #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+            Self::Windows(source) => source.validate_matrix(tensor),
+        }
+    }
+}
 
 type HostKvView<'a> = (&'a [Arc<[f32]>], &'a [Arc<[f32]>]);
 
@@ -23,7 +76,7 @@ type HostKvView<'a> = (&'a [Arc<[f32]>], &'a [Arc<[f32]>]);
 /// strided view is packed explicitly by contiguous(), never by hidden math.
 #[derive(Clone)]
 pub(super) struct HostValue {
-    data: Arc<Vec<f32>>,
+    data: Arc<HostStorage>,
     view: TensorView,
     elements: usize,
     precision: ActivationPrecision,
@@ -34,7 +87,11 @@ impl HostValue {
     fn new(values: Vec<f32>) -> Self {
         let elements = values.len();
         Self {
-            data: Arc::new(values),
+            data: Arc::new(HostStorage {
+                values,
+                #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+                workspace: None,
+            }),
             view: TensorView::vector(0, elements),
             elements,
             precision: ActivationPrecision::F32,
@@ -58,6 +115,13 @@ impl HostValue {
         value.profile = Some(profile);
         Ok(value)
     }
+    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+    fn retain_workspace(mut self, workspace: Option<Arc<WindowWorkspace>>) -> Result<Self> {
+        Arc::get_mut(&mut self.data)
+            .ok_or_else(|| Error::State("new host backing unexpectedly shared".into()))?
+            .workspace = workspace;
+        Ok(self)
+    }
     pub(super) fn as_slice(&self) -> Result<&[f32]> {
         if !self.view.is_contiguous() {
             return Err(Error::State(
@@ -69,20 +133,31 @@ impl HostValue {
             .ok_or_else(|| Error::State("invalid private host tensor view".into()))
     }
     pub fn into_vec(self) -> Result<Vec<f32>> {
+        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        if self.data.workspace.is_some() {
+            return Err(Error::Unsupported(
+                "leased window values require borrowed output access".into(),
+            ));
+        }
         if self.view.offset == 0 && self.view.is_contiguous() && self.elements == self.data.len() {
-            return Ok(Arc::try_unwrap(self.data).unwrap_or_else(|data| data.as_ref().clone()));
+            return Ok(match Arc::try_unwrap(self.data) {
+                Ok(data) => data.values,
+                Err(data) => data.values.clone(),
+            });
         }
         Ok(self.as_slice()?.to_vec())
     }
 }
 
 pub(super) struct HostMath<'engine, 'state, 'trace> {
-    source: &'engine super::LoadedQwenModel,
+    source: HostSource<'engine>,
     engine: Option<&'engine QwenDenseCpu>,
     state: Option<&'state mut QwenState>,
     region_kernel: Option<&'engine dyn crate::accelerator::MatVecKernel>,
     trace: Option<&'trace mut Vec<LayerObservation>>,
     position: usize,
+    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+    cancelled: Option<&'engine std::sync::atomic::AtomicBool>,
 }
 impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
     pub fn new(
@@ -92,12 +167,14 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
     ) -> Self {
         let position = state.position;
         Self {
-            source: engine.model.as_ref(),
+            source: HostSource::Loaded(engine.model.as_ref()),
             engine: Some(engine),
             state: Some(state),
             region_kernel: engine.kernel.as_deref(),
             trace,
             position,
+            #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+            cancelled: None,
         }
     }
     pub fn for_operator_slice(
@@ -105,13 +182,56 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
         kernel: Option<&'engine dyn crate::accelerator::MatVecKernel>,
     ) -> Self {
         Self {
-            source,
+            source: HostSource::Loaded(source),
             engine: None,
             state: None,
             region_kernel: kernel,
             trace: None,
             position: 0,
+            #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+            cancelled: None,
         }
+    }
+    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+    pub fn for_window_operator_slice(
+        source: &'engine crate::original_binding::OriginalWindowOperators,
+        cancelled: Option<&'engine std::sync::atomic::AtomicBool>,
+        kernel: Option<&'engine dyn crate::accelerator::MatVecKernel>,
+    ) -> Self {
+        Self {
+            source: HostSource::Windows(source),
+            engine: None,
+            state: None,
+            region_kernel: kernel,
+            trace: None,
+            position: 0,
+            cancelled,
+        }
+    }
+    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+    fn prepare_output(&self, input: Option<&HostValue>) -> Result<Option<Arc<WindowWorkspace>>> {
+        let HostSource::Windows(source) = &self.source else {
+            return Ok(None);
+        };
+        if self
+            .cancelled
+            .is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Acquire))
+        {
+            return Err(Error::State(
+                "window host operation cancelled before admission".into(),
+            ));
+        }
+        if let Some(input) = input {
+            let prior = input.data.workspace.as_ref().ok_or_else(|| {
+                Error::State("window activation has no retained physical backing".into())
+            })?;
+            if !source.source().same_issuer(prior.source()) {
+                return Err(Error::State(
+                    "window activation belongs to another source issuer".into(),
+                ));
+            }
+        }
+        Ok(Some(Arc::new(source.workspace()?)))
     }
     fn engine(&self) -> Result<&'engine QwenDenseCpu> {
         self.engine
@@ -140,7 +260,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
         Ok(())
     }
     fn tensor(&self, tensor: &SourceTensor) -> Result<()> {
-        tensor.validate_source(self.source)
+        self.source.validate_tensor(tensor)
     }
     fn vector(&self, vector: SourceVector<'_>) -> Result<()> {
         if vector.source != self.source.source_identity() {
@@ -204,14 +324,24 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         }
         let token = u32::try_from(token)
             .map_err(|_| Error::Malformed("typed embedding token domain".into()))?;
-        let values =
-            crate::weights::source_reference_embedding(self.source.embedding_source(token)?)?;
-        HostValue::typed(
+        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        let workspace = self.prepare_output(None)?;
+        let values = match &self.source {
+            HostSource::Loaded(source) => {
+                crate::weights::source_reference_embedding(source.embedding_source(token)?)?
+            }
+            #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+            HostSource::Windows(source) => source.embed(&tensor, token as usize, self.cancelled)?,
+        };
+        let output = HostValue::typed(
             values,
             ActivationPrecision::Bf16WidenedF32,
             self.source.source_identity(),
             self.source.program_numerical_profile(),
-        )
+        )?;
+        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        let output = output.retain_workspace(workspace)?;
+        Ok(output)
     }
     fn project_profiled(
         &mut self,
@@ -240,24 +370,37 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
                 "host typed projection source/contract".into(),
             ));
         }
-        let values = zerogravity_cpu::original_hf::output_first_projection_with_profile(
-            self.source.source_identity(),
-            &tensor.name,
-            zerogravity_core::source::TensorSource::tensor(self.source, &tensor.name)?,
-            input.as_slice()?,
-            self.region_kernel,
-            crate::weights::SourceProjectionProfile::TorchCpuBf16Avx2,
-        )?;
+        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        let workspace = self.prepare_output(Some(input))?;
+        let values = match &self.source {
+            HostSource::Loaded(source) => {
+                zerogravity_cpu::original_hf::output_first_projection_with_profile(
+                    self.source.source_identity(),
+                    &tensor.name,
+                    zerogravity_core::source::TensorSource::tensor(*source, &tensor.name)?,
+                    input.as_slice()?,
+                    self.region_kernel,
+                    crate::weights::SourceProjectionProfile::TorchCpuBf16Avx2,
+                )?
+            }
+            #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+            HostSource::Windows(source) => {
+                source.project(&tensor, input.as_slice()?, self.cancelled)?
+            }
+        };
         let values = values
             .into_iter()
             .map(round_bf16)
             .collect::<Result<Vec<_>>>()?;
-        HostValue::typed(
+        let output = HostValue::typed(
             values,
             ActivationPrecision::Bf16WidenedF32,
             self.source.source_identity(),
             self.source.program_numerical_profile(),
-        )
+        )?;
+        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        let output = output.retain_workspace(workspace)?;
+        Ok(output)
     }
     fn ordinary_rms_profiled(
         &mut self,
@@ -272,7 +415,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         }
         if self.source.program_numerical_profile()
             != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
-            || self.source.eps.to_bits() != 1e-6f32.to_bits()
+            || self.source.rms_epsilon().to_bits() != 1e-6f32.to_bits()
             || input.precision != ActivationPrecision::Bf16WidenedF32
             || input.source != Some(self.source.source_identity())
             || input.profile != Some(self.source.program_numerical_profile())
@@ -281,21 +424,35 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
                 "host ordinary RMS numerical profile/epsilon/source/precision".into(),
             ));
         }
-        parameter.validate_source(self.source)?;
         let width = contract.validate(&parameter, input.elements)?;
-        let raw = zerogravity_core::source::TensorSource::tensor(self.source, &parameter.name)?;
-        let output = zerogravity_cpu::original_hf::norm::ordinary_rms(
-            self.source.source_identity(),
-            raw,
-            input.as_slice()?,
-            width,
-        )?;
-        HostValue::typed(
-            output.output_bf16().to_vec(),
+        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        let workspace = self.prepare_output(Some(input))?;
+        let values = match &self.source {
+            HostSource::Loaded(source) => {
+                parameter.validate_source(*source)?;
+                let raw = zerogravity_core::source::TensorSource::tensor(*source, &parameter.name)?;
+                let output = zerogravity_cpu::original_hf::norm::ordinary_rms(
+                    self.source.source_identity(),
+                    raw,
+                    input.as_slice()?,
+                    width,
+                )?;
+                output.output_bf16().to_vec()
+            }
+            #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+            HostSource::Windows(source) => {
+                source.normalize(&parameter, input.as_slice()?, self.cancelled)?
+            }
+        };
+        let output = HostValue::typed(
+            values,
             ActivationPrecision::Bf16WidenedF32,
             self.source.source_identity(),
             self.source.program_numerical_profile(),
-        )
+        )?;
+        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        let output = output.retain_workspace(workspace)?;
+        Ok(output)
     }
     fn embed(&mut self, tensor: SourceTensor, token: usize) -> Result<HostValue> {
         self.legacy_precision(&[])?;
@@ -341,12 +498,14 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         if input.view.is_contiguous() {
             return Ok(input.clone());
         }
+        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        let workspace = self.prepare_output(Some(input))?;
         let mut values = Vec::with_capacity(input.elements);
         for row in 0..input.view.rows {
             let offset = input.view.offset + row * input.view.row_stride;
             values.extend_from_slice(&input.data[offset..offset + input.view.width]);
         }
-        match input.source {
+        let output = match input.source {
             Some(source) => HostValue::typed(
                 values,
                 input.precision,
@@ -356,7 +515,10 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
                     .ok_or_else(|| Error::State("typed host profile missing".into()))?,
             ),
             None => Ok(HostValue::new(values)),
-        }
+        }?;
+        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        let output = output.retain_workspace(workspace)?;
+        Ok(output)
     }
     fn rms(
         &mut self,

@@ -17,7 +17,7 @@ mod tensor_window;
 #[cfg(all(feature = "cache", target_os = "linux"))]
 pub use tensor_window::{
     ParameterWindow, TensorWindow, VerifiedMatrix, VerifiedParameter, VerifiedTensorSource,
-    VerifiedWindowPlan, WindowOpenLimits,
+    VerifiedWindowPlan, WindowOpenLimits, WindowWorkspace,
 };
 
 /// One source identity, possibly backed by several independently verified

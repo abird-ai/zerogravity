@@ -8,37 +8,27 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-- [x] **Typed ordinary RMS in the shared schedule:** the same PlanBuilder/
-  HostMath embedding→raw InputNorm(0)→GdnQkv(0) fragment preserves source
-  parameter identity, BF16 precision, epsilon1e-6 and explicit packing.
-  Fresh MAIN replay matches all16384 genuine original0.8B reference words,
-  two tokens11/353, with final source reservation0. Unaware providers and
-  GPU plans refuse before callbacks/source admission; full HF session,
-  forward and checkpoint guards remain closed.
-- [x] **Sealed rank1 parameter windows:** BF16/F16/F32 raw ranges retain
-  original full descriptors, issuer, opened source and actual staging charge;
-  source/cancel/corruption/capacity/drop tests pass. Partial ranges never
-  become complete TensorSource views. This is transport, not27B inference.
-- [x] **Closed original BF16 row-window projection:** authentic original
-  full-matrix descriptors and complete input columns reuse the accepted
-  CPU64 dot without changing its arithmetic. Output-row partition, width5120,
-  foreign source/range/dtype/nonfinite/cancel/provider and lease tests pass.
-  No partial matrix/provider substitution or final BF16 cast; caller must
-  admit private output/scratch. Same-HostMath27B integration remains open.
-- [x] **Closed pinned F32 softmax:** source Vec8 maximum/sum order, unchanged
-  SLEEF exponential and F32 reciprocal/multiply, width1..512. Genuine public
-  full3599-case replay matches1838736 output words and3 refusals; authenticated
-  default72-case golden preserves11280 expected words/3 refusals. NaN/+Inf/
-  all-masked rows refuse. No legacy GGUF or full HF attention enablement.
-- [x] **Composed acceptance:** focused core9/artifact16/CPU47/model6 pass,
-  compact default5 pass; full isolated gate1241 Rust/0failed/70ignored/248
-  suite runs plus18Python/release/installer/Nix passes. Strict composed CUDA+
-  HF+CPUcache, Vulkan serving and CUDA qualifier pass; CPU-free HF binding8
-  and GPU cold refusal2 pass. Both original cache-direct/HF-import RELEASE
-  routes pass(18.88s/24.75s), full248320/all42 and final source reclamation.
-  Full27B Rust reference comparison, streamed model state and CUDA/FLA remain
-  open. Compilation/type and Clippy-only first failures were fixed; no
-  mathematical tolerance or full-profile guard changed.
+- [x] **Shared source-window HostMath fragment:** original27B851-role
+  namespace and same PlanBuilder/HostMath embedding→ordinary RMS→full-column
+  projection now execute genuine trained bytes without source materialization.
+  Both tokens11/353 match all40,960 independent BF16-widened reference words,
+  including full5120-wide embedding/norm and10240-row QKV. All18 shards/
+ 55,563,006,776B are verified through retained FDs. All80 authentic128-row
+  windows preserve5120 input columns; maximum real QKV staging charge8,388,656B
+  and raw norm staging4,194,328B are measured, not inferred from requested bytes.
+  Each output retains admitted64KiB Output+960KiB Scratch and source issuer
+  through last drop. Real stage-triggered mid-cancel, pre-cancel, pool pressure,
+  foreign-source/config/index/token refusal and retained output comparisons pass;
+  final reservations0/unfenced. Actual92.74s includes90.79s source scan;
+ 18,736KiB observed RSS is not physical free-RAM admission evidence.
+  Fresh MAIN-linked original0.8B three-operator regression also matches all
+ 16,384 words/final source0. Focused17 artifact/1CPU/5model, strict CPU/CUDA/
+  Vulkan/qualifier Clippy and full isolated1243 Rust/0failed/70ignored/248suites
+  plus18Python/release/installer/Nix pass. Both approved original cache-direct
+ 17.22s/HF-import22.74s release routes pass fullV/all42/reclamation for both
+  models. Only four pointless borrowed-value test drops needed repair. This is three pure state-free operators,
+  frontier delta0: full112-domain27B logits/StateRoot and streamed inference
+  remain unqualified.
 
 - [ ] **Independent trained BF16/FLA checkpoint gate:** original
   Qwen3.8-27B@1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0 acquired
@@ -48,8 +38,15 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   Qwen3.5-2B@15852e8c16360a2fea060d615a32b45270f8a8fc is now acquired
   by the same bounded Rust pipeline; independent official Git/LFS full12-file
   hashes,632 headers/320 text shapes,596BF16+36F32 tensors pass. Its4.548GB
-  shard remains above the default4GiB complete-source guard; no2B HF numerical
-  execution is implied. Original Qwen3.5-0.8B@2fc06364715b967f1860aea9cf38778875588b17 pinned
+  shard remains above the default4GiB complete-source guard. Genuine pinned
+  official CPU two-profile reference capture now passes archive and owned
+  cleanup validation: tokens11/353, four full248320 logits,168 canonical
+  domains and60 actual intermediates. Official BF16 loading has617 BF16
+  parameters; restoring only36 original F32 tensors gives581 BF16+36 F32.
+  The profiles differ in47/49 raw tensors per step despite identical argmax;
+  neither establishes Rust2B HF numerical qualification. First capture's
+  cleanup-name bug is preserved; the repaired fresh run proves actual nonce
+  container absence and process reap. Original Qwen3.5-0.8B@2fc06364715b967f1860aea9cf38778875588b17 pinned
   Transformers5.17/Torch2.13 CPU captures passed archive validation:
   tokens11,353, full248320 logits/all42 domains, actual layer0 stages.
   Keep official473-BF16 loader and source437-BF16+36-F32 profiles distinct;
@@ -181,6 +178,41 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### 5350a4d — typed ordinary math and source windows
+
+- [x] **Typed ordinary RMS in the shared schedule:** the same PlanBuilder/
+  HostMath embedding→raw InputNorm(0)→GdnQkv(0) fragment preserves source
+  parameter identity, BF16 precision, epsilon1e-6 and explicit packing.
+  Fresh MAIN replay matches all16384 genuine original0.8B reference words,
+  two tokens11/353, with final source reservation0. Unaware providers and
+  GPU plans refuse before callbacks/source admission; full HF session,
+  forward and checkpoint guards remain closed.
+- [x] **Sealed rank1 parameter windows:** BF16/F16/F32 raw ranges retain
+  original full descriptors, issuer, opened source and actual staging charge;
+  source/cancel/corruption/capacity/drop tests pass. Partial ranges never
+  become complete TensorSource views. This is transport, not27B inference.
+- [x] **Closed original BF16 row-window projection:** authentic original
+  full-matrix descriptors and complete input columns reuse the accepted
+  CPU64 dot without changing its arithmetic. Output-row partition, width5120,
+  foreign source/range/dtype/nonfinite/cancel/provider and lease tests pass.
+  No partial matrix/provider substitution or final BF16 cast; caller must
+  admit private output/scratch. Same-HostMath27B integration remains open.
+- [x] **Closed pinned F32 softmax:** source Vec8 maximum/sum order, unchanged
+  SLEEF exponential and F32 reciprocal/multiply, width1..512. Genuine public
+  full3599-case replay matches1838736 output words and3 refusals; authenticated
+  default72-case golden preserves11280 expected words/3 refusals. NaN/+Inf/
+  all-masked rows refuse. No legacy GGUF or full HF attention enablement.
+- [x] **Composed acceptance:** focused core9/artifact16/CPU47/model6 pass,
+  compact default5 pass; full isolated gate1241 Rust/0failed/70ignored/248
+  suite runs plus18Python/release/installer/Nix passes. Strict composed CUDA+
+  HF+CPUcache, Vulkan serving and CUDA qualifier pass; CPU-free HF binding8
+  and GPU cold refusal2 pass. Both original cache-direct/HF-import RELEASE
+  routes pass(18.88s/24.75s), full248320/all42 and final source reclamation.
+  Full27B Rust reference comparison, streamed model state and CUDA/FLA remain
+  open. Compilation/type and Clippy-only first failures were fixed; no
+  mathematical tolerance or full-profile guard changed.
+
 
 ### c5eb1f8 — closed pinned sigmoid and ordinary RMS
 

@@ -7,6 +7,64 @@ Contracts: [numerical/source profile](../../docs/NUMERICS_QUALITY_AND_BENCHMARKS
 
 ## Uncommitted
 
+- [x] Fresh mixed/Unicode teacher prefix: both original GGUF models at
+  512/1024/2048/4096, pinned native AR1/F32 KV/FA off versus Rust: all730
+  selected actual stage records/full248320 logits and independently decoded
+  all42 active causal state domains bit-exact. Each4K state comparison covers
+  30,216,192 words. Fresh native8K captures/55,382,016-word state exports are
+  complete. BOTH fresh8K comparisons now pass all730/full248320 and all42
+  active causal domains,55,382,016 words/model with zero differences;
+  Rust6K captures alone are not independent6K comparisons. Historical8K raw
+  corpus was not recovered; this fresh corpus does not establish its replay.
+- [x] Unchanged0.8B first64 bulk-versus-AR1 capture narrows the first observed
+  result gap to layer3 attention AV, position2 (530/2048 words), before the
+  previously observed layer4 GDN gap. All131072 probability operands and
+  1,064,960 causal V comparisons are exact;114432 future probabilities are
+  positive zero. Earlier captured layers0–2/GDN states match. Plain/observed
+  whole state and next AR1 full-vocabulary guards prove capture transparency.
+- [x] Genuine public ggml AV replay:65 defaults/262144 words match their own
+  captures. Public reference-control bulk differs57823 words from default
+  bulk and matches all64 default AR1 outputs exactly. Transparent exported
+  entry observation preserves all130 default/control outputs (524288 words)
+  in both runs and records576 real calls:bulk64 takes64 true returns,
+  AR1 takes512 false returns, reference control takes none. Exact opaque ABI,
+  pinned DSO origin and bounded owned cleanup pass independent review.
+  Internal compiled kernel/full-runtime cause is unqualified; no production
+  arithmetic, source profile or tolerance changed.
+- [x] Unchanged2B first64 bulk/AR1 capture: plain/observed whole post-state
+  and next AR1 full248320/whole-state guards pass. All28 original physical
+  learned operands remain unchanged after both modes; eight opaque CPU_REPACK
+  payloads are transport-only, with no codec equivalence claim. The first
+  observed result gap is layer0 F32 alpha projection, position0 (13/16 words).
+  All960 preceding compared rows and131072 actual alpha-input words match;
+  its full F32[2048,16] weight equals the original131072 GGUF bytes. Beta
+  projection also differs before GDN. No production fix or tolerance change
+  is inferred from this capture.
+- [x] Genuine2B public alpha replay:65 defaults/2048 output words match their
+  own original captures. Public reference-control bulk matches all64 default
+  AR1 outputs exactly; reference AR1 outputs are unchanged. Transparent
+  exported-entry observation preserves all130 default/control outputs,
+ 4096 words/run;520 calls comprise8 bulk true,512 AR1 false and zero control
+  calls. Original inputs/full raw F32 weights, source/DSO identity and bounded
+  owned cleanup pass. This narrows native batch-dependent arithmetic before
+  GDN; internal compiled route/full-runtime cause and historical issue closure
+  remain open. Rust/source arithmetic and numerical limits are unchanged.
+
+- [x] Actual compiled-route observation for BOTH unchanged public replays:
+  all130 default/control outputs, operand checks, exported-entry traces and
+  complete before/after mapped-file sets/hashes remain exact. Each dataset
+  records132 first named entries across392 stops. Default bulk enters the
+  pinned tinyBLAS F32 outer/full/tail families; the other129 scopes enter
+  ggml_vec_dot_f32. Static source/code pins identify one Vec8 partial/output
+  versus four Vec8 partials/reduction, respectively. Only first named entries
+  were observed, not every hit/instruction or private numerical arguments.
+  Five actual owned-SID/pidfd/subreaper failure fixtures and actual debugger/
+  inferior/group/EOF cleanup pass. First default-scheduler guard failure is
+  preserved; additive explicit scheduler-locking off retains original math.
+  This strengthens the fresh first64 batch-dependent arithmetic explanation;
+  it does not recover the lost historical corpus, qualify full host-runtime
+  closure or change production source math/tolerances.
+
 - [ ] **Required three-model correctness gate (owner,20 Oct):** resolve
   independent original-source CPU8K GDN divergence for BOTH original
   Qwen3.5 models without loosening tolerances or changing declared source

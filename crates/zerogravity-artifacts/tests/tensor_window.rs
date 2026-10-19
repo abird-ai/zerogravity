@@ -901,3 +901,46 @@ fn parameter_range_inherits_bounded_authenticated_chunk_count_before_staging() {
     drop((source, parameter, small));
     assert_eq!(reserved(&host), 0);
 }
+
+#[test]
+fn sealed_headers_and_same_owner_workspace_retain_metadata_and_refuse_exhaustion() {
+    let fixture = Fixture::new();
+    let host = admission(32 * 1024 * 1024, "host");
+    let source = fixture.plan(&host).unwrap().open().unwrap();
+    assert!(source.same_issuer(&source.clone()));
+    let other = fixture
+        .plan(&admission(32 * 1024 * 1024, "host"))
+        .unwrap()
+        .open()
+        .unwrap();
+    assert!(!source.same_issuer(&other));
+    assert_eq!(source.tensor_info("matrix").unwrap().shape, [4, 4]);
+    assert_eq!(source.tensor_names().count(), 2);
+    assert!(source.tensor_info("foreign").is_err());
+    for bytes in [0, 32 * 1024 * 1024 + 1] {
+        assert!(source.reserve_workspace(bytes).is_err());
+    }
+    assert!(source.reserve_operator_buffers(0, 4).is_err());
+    let retained = source.reserve_operator_buffers(4096, 8192).unwrap();
+    assert_eq!(retained.bytes(), 12288);
+    assert!(retained.source().same_issuer(&source));
+    assert_eq!(reserved(&host), META + 12288);
+    assert_eq!(
+        host.arbiter.snapshot(&host.resource).unwrap().per_class[&AllocationClass::Output],
+        4096
+    );
+    let pressure = source
+        .reserve_workspace((32 * 1024 * 1024 - META - 12288) as usize)
+        .unwrap();
+    assert!(source.reserve_workspace(1).is_err());
+    drop(pressure);
+    drop(source);
+    assert_eq!(reserved(&host), META + 12288);
+    assert_eq!(
+        retained.source().tensor_info("bf16").unwrap().kind,
+        zerogravity_artifacts::quant::QuantKind::Bf16
+    );
+    drop(retained);
+    assert_eq!(reserved(&host), 0);
+    assert!(!host.arbiter.snapshot(&host.resource).unwrap().fenced);
+}

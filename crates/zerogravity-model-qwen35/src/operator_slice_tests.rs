@@ -592,3 +592,6 @@ fn typed_ordinary_rms_refuses_unqualified_source_epsilon_before_recording_or_exe
     );
     assert_eq!(model.initialized_cpu_state_bytes(), 0);
 }
+
+#[path = "operator_slice_window_tests.rs"]
+mod windows;

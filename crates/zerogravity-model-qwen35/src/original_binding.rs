@@ -1,4 +1,4 @@
-//! Original HF source roles in the existing loaded owner; execution stays closed.
+//! Original HF source roles; complete model/session execution stays closed.
 
 use crate::accelerator::program::{MatrixAxes, SourceTensor};
 use crate::{Error, Result};
@@ -101,7 +101,23 @@ pub struct OriginalGdnGeometry {
     pub convolution_kernel: usize,
 }
 
-/// Owned small metadata only. Original learned payload remains in SourceWeights.
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+mod window;
+#[cfg(all(feature = "original-hf-binding", target_os = "linux", feature = "cpu"))]
+pub use window::WindowOperatorOutput;
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+pub use window::{OriginalWindowOperators, WindowOperatorPlan};
+
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+struct BindingPins<'a> {
+    config: &'a str,
+    index: &'a str,
+    bundle: &'a str,
+    text: usize,
+    other: usize,
+}
+
+/// Small metadata only; learned payload remains in its original verified owner.
 #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
 pub struct OriginalQwenBinding {
     config: zerogravity_artifacts::model::qwen::QwenTextConfig,
@@ -122,14 +138,39 @@ impl OriginalQwenBinding {
         config_sha256: &str,
         index_sha256: &str,
     ) -> Result<Self> {
-        use QwenMatrixRole as M;
-        use QwenParameterRole as P;
         use zerogravity_artifacts::model::qwen_owned::QwenOriginalText;
         let checked = QwenOriginalText::bind(source, config_json, config_sha256, index_sha256)?;
+        Self::bind_resolved(
+            config_json,
+            BindingPins {
+                config: checked.config_sha256(),
+                index: checked.verified_index_sha256(),
+                bundle: checked.source_bundle_sha256(),
+                text: checked.text_tensor_count(),
+                other: checked.other_tensor_count(),
+            },
+            |name| {
+                checked.text_tensor(name)?;
+                SourceTensor::from_source(source, name, MatrixAxes::OutputInput)
+            },
+            |name| {
+                checked.text_tensor(name)?;
+                QwenParameterDescriptor::from_source(source, name)
+            },
+        )
+    }
+    fn bind_resolved(
+        config_json: &[u8],
+        pins: BindingPins<'_>,
+        mut resolve_matrix: impl FnMut(&str) -> Result<SourceTensor>,
+        mut resolve_parameter: impl FnMut(&str) -> Result<QwenParameterDescriptor>,
+    ) -> Result<Self> {
+        use QwenMatrixRole as M;
+        use QwenParameterRole as P;
+        let config = zerogravity_artifacts::model::qwen::QwenTextConfig::from_json(config_json)?;
         let mut matrices = std::collections::BTreeMap::new();
         let mut matrix = |role, name: String| -> Result<()> {
-            checked.text_tensor(&name)?;
-            let tensor = SourceTensor::from_source(source, &name, MatrixAxes::OutputInput)?;
+            let tensor = resolve_matrix(&name)?;
             if tensor.kind != QuantKind::Bf16 {
                 return Err(Error::Unsupported(
                     "original HF CPU BF16 target requires original BF16 matrices".into(),
@@ -144,7 +185,7 @@ impl OriginalQwenBinding {
         )?;
         matrix(
             M::Output,
-            if checked.config().tie_word_embeddings() {
+            if config.tie_word_embeddings() {
                 "model.language_model.embed_tokens.weight"
             } else {
                 "lm_head.weight"
@@ -153,12 +194,11 @@ impl OriginalQwenBinding {
         )?;
         let mut parameters = std::collections::BTreeMap::new();
         let mut parameter = |role, name: String| -> Result<()> {
-            checked.text_tensor(&name)?;
-            parameters.insert(role, QwenParameterDescriptor::from_source(source, &name)?);
+            parameters.insert(role, resolve_parameter(&name)?);
             Ok(())
         };
         parameter(P::FinalNorm, "model.language_model.norm.weight".into())?;
-        for (i, kind) in checked.config().geometry().layers.iter().enumerate() {
+        for (i, kind) in config.geometry().layers.iter().enumerate() {
             let prefix = format!("model.language_model.layers.{i}");
             parameter(P::InputNorm(i), format!("{prefix}.input_layernorm.weight"))?;
             parameter(
@@ -211,7 +251,6 @@ impl OriginalQwenBinding {
                 }
             }
         }
-        let config = zerogravity_artifacts::model::qwen::QwenTextConfig::from_json(config_json)?;
         let size = |n| {
             usize::try_from(n).map_err(|_| Error::Limit("original HF geometry overflow".into()))
         };
@@ -227,11 +266,11 @@ impl OriginalQwenBinding {
             matrices,
             parameters,
             gdn,
-            config_sha256: checked.config_sha256().into(),
-            index_sha256: checked.verified_index_sha256().into(),
-            bundle_sha256: checked.source_bundle_sha256().into(),
-            text_tensors: checked.text_tensor_count(),
-            other_tensors: checked.other_tensor_count(),
+            config_sha256: pins.config.into(),
+            index_sha256: pins.index.into(),
+            bundle_sha256: pins.bundle.into(),
+            text_tensors: pins.text,
+            other_tensors: pins.other,
         })
     }
     pub fn config(&self) -> &zerogravity_artifacts::model::qwen::QwenTextConfig {

@@ -350,9 +350,98 @@ impl VerifiedWindowPlan {
     }
 }
 
+/// Finite same-source host workspace charge; no execution or free-RAM permit.
+/// Payload owners must retain this until their actual allocations are dropped.
+pub struct WindowWorkspace {
+    _lease: GlobalResourceLease,
+    source: VerifiedTensorSource,
+    bytes: usize,
+}
+impl WindowWorkspace {
+    pub fn bytes(&self) -> usize {
+        self.bytes
+    }
+    pub fn source(&self) -> &VerifiedTensorSource {
+        &self.source
+    }
+}
+
 impl VerifiedTensorSource {
     pub fn source_identity(&self) -> SourceIdentity {
         self.0.identity
+    }
+    /// Immutable authenticated headers only; never a partial TensorSource.
+    pub fn tensor_info(&self, name: &str) -> Result<&TensorInfo> {
+        self.0
+            .tensors
+            .get(name)
+            .map(|location| &location.info)
+            .ok_or_else(|| Error::Malformed("verified window tensor header missing".into()))
+    }
+    pub fn tensor_names(&self) -> impl Iterator<Item = &str> {
+        self.0.tensors.keys().map(String::as_str)
+    }
+    pub fn same_issuer(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+    /// Reserve before allocating private operator buffers. Uses the original
+    /// admitted host domain/owner; no alternate pool, GPU event or model permit.
+    pub fn reserve_workspace(&self, bytes: usize) -> Result<WindowWorkspace> {
+        if bytes == 0 || bytes > 32 * 1024 * 1024 {
+            return Err(Error::Limit("verified source workspace bound".into()));
+        }
+        self.admit_workspace(
+            bytes,
+            &[AllocationRequest {
+                kind: AllocationClass::Scratch,
+                bytes: bytes as u64,
+            }],
+        )
+    }
+    /// Conservative private output + scratch envelope, under this same owner.
+    pub fn reserve_operator_buffers(
+        &self,
+        output_bytes: usize,
+        scratch_bytes: usize,
+    ) -> Result<WindowWorkspace> {
+        let bytes = output_bytes
+            .checked_add(scratch_bytes)
+            .filter(|n| *n > 0 && *n <= 32 * 1024 * 1024)
+            .ok_or_else(|| Error::Limit("verified source operator buffer bound".into()))?;
+        if output_bytes == 0 || scratch_bytes == 0 {
+            return Err(Error::Limit(
+                "operator output/scratch must both be admitted".into(),
+            ));
+        }
+        self.admit_workspace(
+            bytes,
+            &[
+                AllocationRequest {
+                    kind: AllocationClass::Output,
+                    bytes: output_bytes as u64,
+                },
+                AllocationRequest {
+                    kind: AllocationClass::Scratch,
+                    bytes: scratch_bytes as u64,
+                },
+            ],
+        )
+    }
+    fn admit_workspace(
+        &self,
+        bytes: usize,
+        requests: &[AllocationRequest],
+    ) -> Result<WindowWorkspace> {
+        let lease = self.0.admission.arbiter.admit(
+            &self.0.admission.resource,
+            self.0.admission.owner.clone(),
+            requests,
+        )?;
+        Ok(WindowWorkspace {
+            _lease: lease,
+            source: self.clone(),
+            bytes,
+        })
     }
     pub fn source_bytes(&self) -> u64 {
         self.0.source_bytes

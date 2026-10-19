@@ -8,6 +8,7 @@ use crate::accelerator::program::{
     TensorView,
 };
 use crate::model::LayerKind;
+use crate::operator_slice::OperatorSliceSource;
 use crate::original_binding::{QwenMatrixRole, QwenParameterRole};
 use crate::{Error, Result};
 
@@ -39,7 +40,7 @@ fn vector<'a>(model: &LoadedQwenModel, name: &'a str, values: &'a [f32]) -> Sour
     }
 }
 fn project<B: MathematicalBackend>(
-    model: &LoadedQwenModel,
+    model: &impl OperatorSliceSource,
     math: &mut B,
     role: QwenMatrixRole,
     input: &B::Value,
@@ -54,7 +55,7 @@ fn project<B: MathematicalBackend>(
 /// Pure fragment of this same source-role schedule. It never touches state,
 /// normalizes a hidden activation or represents a complete Qwen layer/token.
 pub(crate) fn embedding_projection_slice<B: MathematicalBackend>(
-    model: &LoadedQwenModel,
+    model: &impl OperatorSliceSource,
     math: &mut B,
     token: B::Index,
     role: QwenMatrixRole,
@@ -83,13 +84,13 @@ pub(crate) fn embedding_projection_slice<B: MathematicalBackend>(
 /// Pure original layer0 input prefix through this same backend/schedule seam.
 /// No layer loop, cache proposal, token advance or full-HF execution admission.
 pub(crate) fn embedding_input_norm_projection_slice<B: MathematicalBackend>(
-    model: &LoadedQwenModel,
+    model: &impl OperatorSliceSource,
     math: &mut B,
     token: B::Index,
 ) -> Result<(B::Value, B::Value, B::Value)> {
     use crate::accelerator::program::{ActivationPrecision, ProgramNumericalProfile};
     if model.program_numerical_profile() != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
-        || model.eps.to_bits() != 1e-6f32.to_bits()
+        || model.rms_epsilon().to_bits() != 1e-6f32.to_bits()
     {
         return Err(Error::Unsupported(
             "original ordinary RMS slice profile/epsilon".into(),

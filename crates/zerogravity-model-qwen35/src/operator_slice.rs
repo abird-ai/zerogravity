@@ -6,6 +6,52 @@ use crate::accelerator::program::{
 use crate::original_binding::{QwenMatrixRole, QwenNumericalProfile};
 use crate::{Error, LoadedQwenModel, Result};
 
+/// Pure role metadata only; never a layer/token/session execution capability.
+pub(crate) trait OperatorSliceSource {
+    fn source_identity(&self) -> crate::accelerator::SourceIdentity;
+    fn program_numerical_profile(&self) -> ProgramNumericalProfile;
+    fn rms_epsilon(&self) -> f32;
+    fn matrix_descriptor(
+        &self,
+        role: QwenMatrixRole,
+    ) -> Result<crate::accelerator::program::SourceTensor>;
+    fn parameter_descriptor(
+        &self,
+        role: crate::original_binding::QwenParameterRole,
+    ) -> Result<crate::accelerator::program::SourceParameter>;
+    fn embedding_contract(&self) -> EmbeddingContract;
+    fn projection_contract(&self) -> ProjectionContract;
+}
+impl OperatorSliceSource for LoadedQwenModel {
+    fn source_identity(&self) -> crate::accelerator::SourceIdentity {
+        LoadedQwenModel::source_identity(self)
+    }
+    fn program_numerical_profile(&self) -> ProgramNumericalProfile {
+        LoadedQwenModel::program_numerical_profile(self)
+    }
+    fn rms_epsilon(&self) -> f32 {
+        self.eps
+    }
+    fn matrix_descriptor(
+        &self,
+        role: QwenMatrixRole,
+    ) -> Result<crate::accelerator::program::SourceTensor> {
+        LoadedQwenModel::matrix_descriptor(self, role)
+    }
+    fn parameter_descriptor(
+        &self,
+        role: crate::original_binding::QwenParameterRole,
+    ) -> Result<crate::accelerator::program::SourceParameter> {
+        LoadedQwenModel::parameter_descriptor(self, role)
+    }
+    fn embedding_contract(&self) -> EmbeddingContract {
+        LoadedQwenModel::embedding_contract(self)
+    }
+    fn projection_contract(&self) -> ProjectionContract {
+        LoadedQwenModel::projection_contract(self)
+    }
+}
+
 impl LoadedQwenModel {
     /// Numerical contract only; the full execution/session guard is separate.
     pub fn program_numerical_profile(&self) -> ProgramNumericalProfile {

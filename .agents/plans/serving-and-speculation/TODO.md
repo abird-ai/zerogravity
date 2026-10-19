@@ -8,30 +8,6 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
-- [x] **Bounded same-engine cold/warm comparison complete:** both original
-  models, warm ABBA(0.8B)/BAAB(2B) and cold-process ABBA,16 serialized samples,
-  128offers/128completed/1024 output tokens. Every sample has8 genuineB8
-  cohorts, zero refusals/errors/discards, and identical complete IDs/text/usage/
-  finish reason across providers. Provider4GiB/device5GiB on BOTH builds.
-  Mean warm waves improve15.3%/6.1%; cold13.8%/6.0%. Actual dispatches fall
-  16.9%/14.4%. No consistent ITL-tail improvement or10s TTFT-SLO success;
-  observed goodput0/source-correct goodput unset. Exact values/conditions in
-  FUSED_GPU_BATCHING. Initial equal4GiB attempt remains rejected evidence.
-- [x] **P12 native teacher-prefix serving:** same full-model BatchProgram
-  consumes one teacher token/request/wave with StateOnly readout, independent
-  causal positions and original all-root publisher. Both modelsB2/4/8 pass
-  per-teacher CPU+B1/all42/future full248320, trained EOS input, abandoned Ready,
-  stale/invalid rows and final0. Two physical pressure and two fresh unknown
-  completion cases pass; unknown retains1817/1712 handles and4GiB envelope,
-  unchanged roots/all42 and fence, without recovery. All14 worker and12 HTTP
-  scopes pass, including ragged prefix/tail partition, no prefix-generated IDs,
-  Ready cancellation/regroup, output-credit fairness and final active/queue0.
-  Three readout-phase health counters close against actual native bands and
-  four sampler stages/greedy cohort. Complete isolated check1241 Rust/0failed/
- 70ignored/248suites+18Python/release/installer/Nix; strict CUDA/Vulkan/qualifier
-  and both approved original cache-direct/HF-import release parity routes pass.
-  Two test-fixture/assertion failures and one missing-CUDA_PATH prelaunch
-  refusal are preserved; no production arithmetic or acceptance limit changed.
 - [ ] **P12 prefix scheduling performance:** measure concurrent native prefix
   throughput/TTFT and explicit B1 one-token scheduling cost against the accepted
   max32-prefix implementation. Frozen binaries and reviewed finite A/B/B1
@@ -99,6 +75,34 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 - [ ] Preserve zero untriaged frontier/disposition requirements before any full-parity claim; synthetic acceptance, fewer launches and competitor measurements do not establish local parity or speed.
 
 ## Committed
+
+### f788929 — native teacher-prefix serving
+
+- [x] **Bounded same-engine cold/warm comparison complete:** both original
+  models, warm ABBA(0.8B)/BAAB(2B) and cold-process ABBA,16 serialized samples,
+  128offers/128completed/1024 output tokens. Every sample has8 genuineB8
+  cohorts, zero refusals/errors/discards, and identical complete IDs/text/usage/
+  finish reason across providers. Provider4GiB/device5GiB on BOTH builds.
+  Mean warm waves improve15.3%/6.1%; cold13.8%/6.0%. Actual dispatches fall
+  16.9%/14.4%. No consistent ITL-tail improvement or10s TTFT-SLO success;
+  observed goodput0/source-correct goodput unset. Exact values/conditions in
+  FUSED_GPU_BATCHING. Initial equal4GiB attempt remains rejected evidence.
+- [x] **P12 native teacher-prefix serving:** same full-model BatchProgram
+  consumes one teacher token/request/wave with StateOnly readout, independent
+  causal positions and original all-root publisher. Both modelsB2/4/8 pass
+  per-teacher CPU+B1/all42/future full248320, trained EOS input, abandoned Ready,
+  stale/invalid rows and final0. Two physical pressure and two fresh unknown
+  completion cases pass; unknown retains1817/1712 handles and4GiB envelope,
+  unchanged roots/all42 and fence, without recovery. All14 worker and12 HTTP
+  scopes pass, including ragged prefix/tail partition, no prefix-generated IDs,
+  Ready cancellation/regroup, output-credit fairness and final active/queue0.
+  Three readout-phase health counters close against actual native bands and
+  four sampler stages/greedy cohort. Complete isolated check1241 Rust/0failed/
+ 70ignored/248suites+18Python/release/installer/Nix; strict CUDA/Vulkan/qualifier
+  and both approved original cache-direct/HF-import release parity routes pass.
+  Two test-fixture/assertion failures and one missing-CUDA_PATH prelaunch
+  refusal are preserved; no production arithmetic or acceptance limit changed.
+
 
 ### d0a6084 — source activation preparation and physical acceptance
 
