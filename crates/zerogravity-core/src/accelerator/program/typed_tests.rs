@@ -525,3 +525,24 @@ fn ordinary_rms_requires_explicit_packing_for_valid_geometry_strided_input() {
     );
     assert_eq!(slice.plan().frontier_delta(), 0);
 }
+
+#[test]
+fn unaware_backend_causal_conv_refuses_before_any_callback() {
+    let mut backend = UnawareBackend;
+    let parameter = SourceParameter {
+        source: SourceIdentity::for_new_allocation().unwrap(),
+        name: "actual.conv.weight".into(),
+        kind: QuantKind::Bf16,
+        shape: vec![32, 1, 4],
+        bytes: 256,
+    };
+    assert!(matches!(
+        backend.causal_conv_silu_profiled(
+            parameter,
+            &vec![0.0; 32],
+            &vec![0.0; 96],
+            CausalConvSiluContract::TorchCpuBf16Avx2
+        ),
+        Err(Error::Unsupported(_))
+    ));
+}

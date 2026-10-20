@@ -608,3 +608,45 @@ mod matrix_axes_tests {
         }
     }
 }
+
+/// Pure original window only; proposed history is not a StateEffect.
+pub(crate) fn gdn_convolution_silu_slice<B: MathematicalBackend>(
+    source: &impl OperatorSliceSource,
+    math: &mut B,
+    layer: usize,
+    input: &B::Value,
+    history: &B::Value,
+) -> Result<crate::accelerator::program::CausalConvValues<B::Value>> {
+    use crate::accelerator::program::{ActivationPrecision, CausalConvSiluContract};
+    let (parameter, channels) = crate::operator_slice::gdn_conv::convolution_role(source, layer)?;
+    if math.elements(input) != channels
+        || math.elements(history) != channels * 3
+        || [input, history]
+            .iter()
+            .any(|v| math.precision(v) != ActivationPrecision::Bf16WidenedF32)
+    {
+        return Err(Error::State(
+            "original convolution slice geometry/precision".into(),
+        ));
+    }
+    let values = math.causal_conv_silu_profiled(
+        parameter,
+        input,
+        history,
+        CausalConvSiluContract::TorchCpuBf16Avx2,
+    )?;
+    for (value, elements) in [
+        (&values.raw, channels),
+        (&values.activated, channels),
+        (&values.next_history, channels * 3),
+    ] {
+        if math.elements(value) != elements
+            || math.precision(value) != ActivationPrecision::Bf16WidenedF32
+        {
+            return Err(Error::State(
+                "original convolution region result geometry/precision".into(),
+            ));
+        }
+    }
+    Ok(values)
+}

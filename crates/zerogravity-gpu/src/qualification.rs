@@ -949,3 +949,60 @@ fn print_help() {
         "zerogravity-gpu-probe — explicit GPU qualification tool\n\nUse resident-qualify-BACKEND MODEL for source/physical qualification.\nUse resident-context-BACKEND MODEL PROMPT IDS for genuine512 qualification.\nUse rope-angles-cuda MODEL for physical angle differential qualification.\nUse rope-angles-model-cuda MODEL [PROVIDER_MiB DEVICE_MiB ROWS] for existing CPU/B1/native model gates.\nBACKEND: vulkan-amd, vulkan-nvidia, cuda or rocm when enabled.\nGPU text generation is provided by the zerogravity CLI run-BACKEND command.\nFault and checkpoint commands require their explicit diagnostic features."
     );
 }
+
+/// ROOT-authenticated CPU-reference inputs/outputs; closed operator only.
+#[cfg(all(feature = "cuda", target_os = "linux"))]
+pub async fn qualify_cpu_profile_bf16_window(
+    device: cubecl::Device,
+    source: zerogravity_artifacts::source_weights::VerifiedTensorSource,
+    descriptor: zerogravity_core::accelerator::program::SourceTensor,
+    rows: std::ops::Range<usize>,
+    inputs: [Vec<u8>; 2],
+    public_outputs: [Vec<u8>; 2],
+    device_cap: u64,
+) -> zerogravity_core::Result<()> {
+    crate::cpu_bf16_projection::qualification::qualify_window(
+        device,
+        source,
+        descriptor,
+        rows,
+        inputs,
+        public_outputs,
+        device_cap,
+    )
+    .await
+}
+
+/// Separate fresh process only. Actual unknown completion must stay fenced.
+#[cfg(all(feature = "cuda", target_os = "linux"))]
+pub async fn qualify_cpu_profile_bf16_abandon(
+    device: cubecl::Device,
+    source: zerogravity_artifacts::source_weights::VerifiedTensorSource,
+    descriptor: zerogravity_core::accelerator::program::SourceTensor,
+    rows: std::ops::Range<usize>,
+    input: Vec<u8>,
+    device_cap: u64,
+) -> zerogravity_core::Result<()> {
+    crate::cpu_bf16_projection::qualification::qualify_abandon(
+        device, source, descriptor, rows, input, device_cap,
+    )
+    .await
+}
+
+/// Explicitly SYNTHETIC generic operator fixtures; no trained source/model claim.
+#[cfg(all(feature = "cuda", target_os = "linux"))]
+pub use crate::cpu_bf16_projection::adversary::{
+    ADVERSARY_WIDTHS as CPU_BF16_ADVERSARY_WIDTHS, AdversaryKind as CpuBf16AdversaryKind,
+    SYNTHETIC_ROWS as CPU_BF16_SYNTHETIC_ROWS, bad_geometry_name as cpu_bf16_bad_geometry_name,
+};
+
+/// Root-only same-kernel guarded proof or ONE deliberate nonfinite status case.
+#[cfg(all(feature = "cuda", target_os = "linux"))]
+pub async fn qualify_cpu_profile_bf16_adversaries(
+    device: cubecl::Device,
+    source: zerogravity_artifacts::source_weights::VerifiedTensorSource,
+    device_cap: u64,
+    fault: Option<(CpuBf16AdversaryKind, usize)>,
+) -> zerogravity_core::Result<()> {
+    crate::cpu_bf16_projection::adversary::qualify(device, source, device_cap, fault).await
+}

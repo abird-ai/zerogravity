@@ -8,6 +8,41 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
+- [x] **Native CUDA CPU-profile BF16 projection:** both original Qwen3.5
+  sources, layer3 q/k/v windows and teachers11/353, B1/independent B1/B2/4/8:
+  163840 raw F32 accumulation words match the accepted CPU64 operator and
+  163840 rounded BF16 words match authentic public archives exactly.
+  Same sealed full-source windows, original CUDA queue/service/leases/Ready;
+  pressure, pre-cancel, source/axis refusals, final physical0 and fresh actual
+  abandoned-flight source/completion/fence retention pass. Synthetic328
+  case/band pairs cover source widths64..8192, signed zero, subnormals, RNE,
+  FMA/reduction order and canaries; eight fresh FP32/BF16 overflow flights
+  withhold Ready and retain original quarantine. Strict Clippy/five focused
+  tests and independent trained/synthetic raw-byte validators pass. This is
+  the explicit CPU-target profile, not vLLM CUDA arithmetic, full HF/GDN,
+  model StateRoot or a throughput claim. Original failed build/import checks
+  and their additive harness corrections remain preserved.
+- [x] **Original GDN convolution/SiLU fragment:** both authentic HF sources,
+  layer0 teachers11/353, initial padding and cached-tail inputs: all122880
+  BF16 words across raw convolution, activated output and canonical next3
+  history match independent public Torch operators exactly. Public outputs
+  first reproduce original activated/K4 archives. Same ForwardPlan/HostMath,
+  sealed raw BF16[C,1,4] SourceParameter and externally authenticated inputs;
+  actual pressure/pre-cancel/wrong-role, retained output after callers drop,
+  full parameter stage accounting and final physical0 pass. Core10/artifact2/
+  model48 tests and strict CPU/CUDA/Vulkan checks pass; trained replay has
+  independent all12-file signed-bit validation. Standalone JSON-macro syntax
+  failure is preserved; fresh ROOTV7 changes only harness parentheses.
+  Full HF/session/checkpoint guards remain closed. Initial FLA chunk64,
+  cached recurrent state, coefficients/gated norm and full logits/StateRoot
+  remain required before enabling original2B/27B inference.
+- [x] **Composed BF16/conv phase:** complete isolated1251 Rust tests,
+  zero failures/70 ignored/248 suites,18 Python tests, release/installer/Nix
+  checks pass. Composed strict CUDA/qualifier/Vulkan and CPU-free binding8/
+  GPU cold-refusal2 tests pass. Both approved original release cache-direct
+  and HF-import routes reproduce full248320/all42 for both models and retain
+  original source/lease/mutation/reclamation guarantees.
+
 - [ ] **Independent trained BF16/FLA checkpoint gate:** original
   Qwen3.8-27B@1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0 acquired
   through the existing bounded Rust cache pipeline; independent31-file/

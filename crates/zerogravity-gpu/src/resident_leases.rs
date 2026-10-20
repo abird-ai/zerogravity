@@ -814,6 +814,15 @@ pub(crate) struct ResidentInitialization<'a> {
     armed: bool,
 }
 impl ResidentInitialization<'_> {
+    #[cfg(all(feature = "qualification", feature = "cuda"))]
+    pub(crate) fn retain_completion_owner(
+        &mut self,
+        owner: crate::physical_quarantine::CompletionOwner,
+    ) -> Result<()> {
+        // Attach first: refusal must retain owners of previously queued work.
+        self.completion_owners.push(owner);
+        self.service.ensure_usable()
+    }
     pub fn allocate_empty(&mut self, bytes: usize, role: BufferRole) -> Result<ResidentLease> {
         self.service.ensure_usable()?;
         let allocation_generation = issue(&self.service.next_allocation)?;

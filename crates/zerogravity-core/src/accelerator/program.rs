@@ -12,6 +12,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+mod gdn_conv;
+pub use gdn_conv::{CausalConvSiluContract, CausalConvValues};
 mod typed;
 pub use typed::{
     ActivationPrecision, EmbeddingContract, OrdinaryRmsContract, ProgramNumericalProfile,
@@ -280,6 +282,18 @@ pub trait MathematicalBackend {
             "backend does not implement explicit ordinary RMS contract".into(),
         ))
     }
+    /// Pure original convolution window; no state owner or implicit fallback.
+    fn causal_conv_silu_profiled(
+        &mut self,
+        _parameter: SourceParameter,
+        _input: &Self::Value,
+        _history: &Self::Value,
+        _contract: CausalConvSiluContract,
+    ) -> Result<CausalConvValues<Self::Value>> {
+        Err(Error::Unsupported(
+            "backend does not implement explicit causal convolution SiLU contract".into(),
+        ))
+    }
     fn embed(&mut self, tensor: SourceTensor, token: Self::Index) -> Result<Self::Value>;
     fn project(&mut self, tensor: SourceTensor, input: &Self::Value) -> Result<Self::Value>;
     fn view(&mut self, input: &Self::Value, view: TensorView) -> Result<Self::Value>;
@@ -452,6 +466,10 @@ pub enum PlanOperation {
     TypedProject {
         tensor: SourceTensor,
         contract: ProjectionContract,
+    },
+    TypedCausalConvSilu {
+        parameter: SourceParameter,
+        contract: CausalConvSiluContract,
     },
     TypedOrdinaryRms {
         parameter: SourceParameter,
@@ -800,6 +818,10 @@ impl PlanBuilder {
                 contract.validate(parameter, inputs[0].elements)?;
                 Ok(ActivationPrecision::Bf16WidenedF32)
             }
+            PlanOperation::TypedCausalConvSilu {
+                parameter,
+                contract,
+            } => gdn_conv::result_precision(self, parameter, *contract, inputs),
             PlanOperation::View(_) | PlanOperation::Contiguous => inputs
                 .first()
                 .map(|value| value.precision)
@@ -816,6 +838,7 @@ impl PlanBuilder {
                     PlanOperation::TypedEmbed { .. }
                         | PlanOperation::TypedProject { .. }
                         | PlanOperation::TypedOrdinaryRms { .. }
+                        | PlanOperation::TypedCausalConvSilu { .. }
                 ) =>
             {
                 Ok(ActivationPrecision::F32)
@@ -1082,6 +1105,15 @@ impl MathematicalBackend for PlanBuilder {
             input.shape,
             None,
         )
+    }
+    fn causal_conv_silu_profiled(
+        &mut self,
+        parameter: SourceParameter,
+        input: &PlanValue,
+        history: &PlanValue,
+        contract: CausalConvSiluContract,
+    ) -> Result<CausalConvValues<PlanValue>> {
+        gdn_conv::record(self, parameter, input, history, contract)
     }
     fn embed(&mut self, tensor: SourceTensor, token: ParameterRef) -> Result<PlanValue> {
         self.source_tensor(&tensor)?;

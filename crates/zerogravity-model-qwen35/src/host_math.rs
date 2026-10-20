@@ -508,6 +508,25 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         let output = output.retain_workspace(workspace)?;
         Ok(output)
     }
+    fn causal_conv_silu_profiled(
+        &mut self,
+        parameter: SourceParameter,
+        input: &HostValue,
+        history: &HostValue,
+        contract: crate::accelerator::program::CausalConvSiluContract,
+    ) -> Result<crate::accelerator::program::CausalConvValues<HostValue>> {
+        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        {
+            self.execute_causal_conv_silu(parameter, input, history, contract)
+        }
+        #[cfg(not(all(feature = "original-hf-binding", target_os = "linux")))]
+        {
+            let _ = (parameter, input, history, contract);
+            Err(Error::Unsupported(
+                "causal convolution requires leased original windows".into(),
+            ))
+        }
+    }
     fn embed(&mut self, tensor: SourceTensor, token: usize) -> Result<HostValue> {
         self.legacy_precision(&[])?;
         self.tensor(&tensor)?;
@@ -1031,3 +1050,6 @@ mod typed_value_tests {
         }
     }
 }
+
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+mod gdn_conv;

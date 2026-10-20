@@ -944,3 +944,6 @@ fn sealed_headers_and_same_owner_workspace_retain_metadata_and_refuse_exhaustion
     assert_eq!(reserved(&host), 0);
     assert!(!host.arbiter.snapshot(&host.resource).unwrap().fenced);
 }
+
+#[path = "tensor_window/conv4.rs"]
+mod conv4;

@@ -103,7 +103,7 @@ pub struct TensorWindow {
     matrix: VerifiedMatrix,
 }
 
-/// Sealed full original rank1 parameter; no matrix axes or adjusted values.
+/// Sealed full original rank1 or closed conv4 parameter; no adjusted values.
 #[derive(Clone)]
 pub struct VerifiedParameter {
     location: Arc<TensorLocation>,
@@ -493,7 +493,7 @@ impl VerifiedTensorSource {
             bytes,
         })
     }
-    /// Original Safetensors rank1 is contiguous; arbitrary strides have no API.
+    /// Original parameter elements are contiguous; arbitrary strides have no API.
     pub fn read_parameter(
         &self,
         parameter: &VerifiedParameter,
@@ -802,3 +802,5 @@ impl Seek for VerifiedReader<'_> {
         Ok(self.position)
     }
 }
+
+mod conv_parameter;

@@ -231,3 +231,6 @@ mod tests;
 /// Pure attention projections/QK norms; no rotary/cache/session admission.
 #[path = "attention_slice.rs"]
 pub mod attention;
+
+#[path = "gdn_conv_slice.rs"]
+pub mod gdn_conv;

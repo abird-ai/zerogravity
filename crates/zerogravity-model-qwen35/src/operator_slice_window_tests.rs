@@ -379,3 +379,6 @@ fn unaware_provider_never_gets_partial_source_or_legacy_norm_fallback() {
 
 #[path = "attention_slice_tests.rs"]
 mod attention;
+
+#[path = "gdn_conv_window_tests.rs"]
+mod gdn_conv;

@@ -348,6 +348,7 @@ impl ResidentProgram {
                     PlanOperation::TypedEmbed { .. }
                         | PlanOperation::TypedProject { .. }
                         | PlanOperation::TypedOrdinaryRms { .. }
+                        | PlanOperation::TypedCausalConvSilu { .. }
                 )
             })
         {
@@ -1429,7 +1430,8 @@ impl ResidentProgram {
             match &node.operation {
                 PlanOperation::TypedEmbed { .. }
                 | PlanOperation::TypedProject { .. }
-                | PlanOperation::TypedOrdinaryRms { .. } => Err(Error::Unsupported(
+                | PlanOperation::TypedOrdinaryRms { .. }
+                | PlanOperation::TypedCausalConvSilu { .. } => Err(Error::Unsupported(
                     "resident typed operation has no qualified lowering".into(),
                 )),
                 PlanOperation::Embed { tensor, .. } => {

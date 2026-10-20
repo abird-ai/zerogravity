@@ -22,21 +22,19 @@ Contracts: [numerical/source profile](../../docs/NUMERICS_QUALITY_AND_BENCHMARKS
 - [ ] Keep internal full-logit/all-state/trace bit parity distinct from independent native-source stage/top20 comparisons, including the known 2B 56 signed-zero distinctions.
 - [ ] Broaden prompts/tokenizers/precision profiles and sampling quality only with independent oracles, exact history and explicit qualified ranges.
 
-- [x] **Fresh0.8B whole-runtime reference control:** original8192-ID corpus,
-  CPU8/F32 KV/FA off, batch/ubatch64 and public CPU use_ref control pass all730
-  selected records/full248320 logits and all42 active causal domains,
-  55,382,016 state words, zero bit differences including signed zero versus
-  accepted Rust. Actual630 public CPU calls bind630 inner plans with use_ref
-  true and exact TLS ownership; two BLAS lifecycle contexts execute no math.
-  Original source/build/provider/observation and owned cleanup guards pass.
-  This qualifies the explicit reference-control schedule, not default bulk
-  arithmetic, historical corpus recovery or production arithmetic changes.
-- [ ] **2B whole-runtime control continuation:** the same V6 control correctly
-  refuses actual BLAS compute before delegation (exit125, no accepted capture).
-  Source/build/provider and owned cleanup binding pass. Preserve this failure;
-  investigate genuine public scheduling controls without bypassing compute
-  guards or substituting unobserved arithmetic. Earlier AR1 all8K exactness
-  remains accepted; required two-model long-context closure stays open.
+- [x] **Fresh2B whole-runtime reference control:** original8192-ID corpus,
+  CPU8/F32 KV/FA off, batch/ubatch64, public use_ref and distinct CPU_Mapped
+  intermediate placement pass all730 selected records/full248320 logits and
+  all42 active causal domains,55,382,016 state words, zero bit differences
+  versus accepted Rust. Plain/observed control runs preserve all730/fullV
+  and whole serialized prior/post-state. Original CPU/BLAS providers remain
+  live in their original order; no BLAS math is delegated. Actual public
+  graph placement, buffer types, CPU plan/TLS route, source/build/invocation
+  and owned process/group/EOF cleanup checks pass. V6/V7 pre-delegation
+  exit125 failures remain preserved. This qualifies a declared reference
+  control, not default bulk arithmetic or historical corpus recovery; the
+  broader required numerical gate stays open. No production math or tolerance
+  changed. Source freeze6f349a12; exact native state export38f96ba1.
 
 - [ ] Diagnose identical teacher-forced prefixes512/1024/2048/4096/8192 against pinned llama.cpp0.6.0/build11429 `d812350`, CPU/F32 KV and Flash Attention off. Fix the physical microbatch/chunk/arithmetic schedule and compare per-head GDN state, gain/beta, quantization and AR-versus-bulk recurrence; distinguish replay correctness from arithmetic.
 - [ ] Compare native ubatch1/64/256/512 only within bounded feasible runs; the historical full ubatch1 capture did not finish. Use raw token IDs to avoid incomplete UTF-8 HTTP rows. Recheck short corpus, layers, state and actual8K after any fix; retain original functional0.45 shared-top20-logprob/0.05 top-token-probability limits and strict source-bit operator gates.
@@ -51,6 +49,18 @@ Contracts: [numerical/source profile](../../docs/NUMERICS_QUALITY_AND_BENCHMARKS
   disable, source arithmetic or tolerance change.
 
 ## Committed
+
+### 9a19901 — original reference-control schedule
+
+- [x] **Fresh0.8B whole-runtime reference control:** original8192-ID corpus,
+  CPU8/F32 KV/FA off, batch/ubatch64 and public CPU use_ref control pass all730
+  selected records/full248320 logits and all42 active causal domains,
+  55,382,016 state words, zero bit differences including signed zero versus
+  accepted Rust. Actual630 public CPU calls bind630 inner plans with use_ref
+  true and exact TLS ownership; two BLAS lifecycle contexts execute no math.
+  Original source/build/provider/observation and owned cleanup guards pass.
+  This qualifies the explicit reference-control schedule, not default bulk
+  arithmetic, historical corpus recovery or production arithmetic changes.
 
 ### bfe62df — independent source and reference-path qualification
 

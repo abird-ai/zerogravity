@@ -24,6 +24,8 @@ mod batch_quant_projection;
 mod batch_quant_qualification;
 #[cfg(any(feature = "qualification", test))]
 mod batch_recurrent;
+#[cfg(all(feature = "qualification", feature = "cuda", target_os = "linux"))]
+mod cpu_bf16_projection;
 mod device_activation;
 mod elementwise;
 mod embedding;

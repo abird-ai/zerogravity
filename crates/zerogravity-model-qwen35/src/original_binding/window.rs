@@ -415,3 +415,6 @@ impl WindowOperatorOutput {
         self.projected.as_slice()
     }
 }
+
+#[cfg(feature = "cpu")]
+mod gdn_conv;

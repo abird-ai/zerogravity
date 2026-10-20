@@ -8,16 +8,26 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
-- [x] **Private full-model CUDA graph qualification:** both original models
-  B2/4/8, StateOnly teacher prefixes (including genuine EOS input), future full
-  logits and outside-body greedy sampling match independent CPU/B1/native
-  full248320/all42 state. All six normal cases and18 fresh unknown-completion
-  cases pass actual replay, stale/Ready/pressure refusal and reclamation or
-  original quarantine. RoPE launch reduction additionally passes both models'
-  170 ordered-angle cases and full native B2/4/8 normal/greedy comparisons.
-  Physical32-case result87b85eff. Composed strict CUDA/Vulkan, complete
-  isolated1243-test phase, both original release routes,14 worker and12 HTTP
-  CUDA regressions pass; composed result e76248e8.
+- [x] **Genuine projector and stock0.8B loader prerequisite:** unchanged
+  pinned llama converter produces source-audited BF16 visual projectors for
+  both original models; independent complete tensor-byte checks pass.
+  Stock pinned vLLM V1/official GGUF plugin loads original0.8B language-only
+  weights; all320 backbone roles validate. Plain/observed B1 teacher runs
+  preserve both full vocabularies,496640 native BF16 logit words, exactly.
+  Native dtype and separate F32 observer representation are explicit; no
+  sampler-cast, all42, cross-engine arithmetic or performance qualification.
+  Owned process/group/container/EOF cleanup passes. Both projectors are
+  genuine source conversions, not dummy parameters or a modified engine.
+- [ ] **Stock2B loader and matched benchmark:** first actual2B loader reaches
+  model initialization but its observer refuses335 tensors versus the assumed
+  320. Original GGUF contains15 extra MTP tensors; the additive audit binds
+  all335 descriptors, exact stock exclusions and all320 backbone roles.
+  All19 diagnostic fixtures pass; fresh plain capture completes, observed
+  capture and paired validation remain pending. Preserve the failed attempt.
+  Then run unconstrained OpenAI workloads with
+  actual common prompt IDs/stop policy, equivalent hardware/resources and
+  cold/warm conditions via canonical tools. No vLLM speed result is accepted.
+
 - [ ] **Production CUDA graph admission:** close every same-card constructor,
   transport, allocation, external event/storage and final-drop path through
   original queue/completion ownership; admit graph metadata/driver resources.
@@ -27,32 +37,10 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   also pass in an isolated harness. Prepaid retirement and complete integration
   remain separate work, with participation unproven.
 
-- [x] **Genuine GGUF baseline build prerequisite:** official out-of-tree
-  vLLM GGUF plugin e2b8ad532b8b builds unchanged against pinned vLLM0.31/
-  Torch2.13/CUDA12.9; wheel af9de736,129 RECORD entries/111 packaged Python
-  files and full151-source pre/post pins validate. Owned container/group/EOF
-  cleanup passes; no GPU/model ran. Stock text loading with a genuine visual
-  projector and language-model-only mode, activation/cast/reduction profiles,
-  numerical quality and matched benchmarks remain unqualified. Lack of an
-  in-tree GGUF registry does not exclude this official plugin route.
-
 - [ ] **P12 prefix scheduling performance:** measure concurrent native prefix
   cold-process throughput/TTFT against the accepted max32-prefix implementation.
   Warm observations below cover both models plus explicit B1 scheduling cost;
   genuine equivalent-source vLLM comparison remains open.
-
-- [x] **Bounded native-prefix warm comparison:** 0.8B strict B8 ABBA and 2B
-  natural concurrency8 BAAB, each plus B1,16 serialized samples/72offers/
-  72completed/576 output tokens. Exact full IDs/text/usage/finish and cleanup.
-  Mean concurrent waves32.301205→18.33249s(0.8B,-43.2%) and
-  42.19858→28.457115s(2B,-32.6%); actual forward dispatches
-  1722640→302160(-82.5%) and1668496→294384(-82.4%). B1 means
-  4.43954→4.42998s/5.60352→5.652635s, unchanged kernel counts.
-  Both concurrent workloads still miss10s TTFT; no consistent ITL-tail gain,
-  source-correct goodput unset. Original strict2B B8 attempt failed its
-  declared scheduling guard and remains unqualified; fresh naturalC8 protocol
-  permits actual2/4/8+B1, and both successful new samples happened to use54B8.
-  Conditions/limits and observed memory in FUSED_GPU_BATCHING; no vLLM claim.
 
 - [ ] **P12 fused continuous GPU serving:** extend the accepted CUDA B2/B4/B8
   HTTP path with paged hybrid KV/recurrent cache, physically safe
@@ -116,6 +104,41 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 - [ ] Preserve zero untriaged frontier/disposition requirements before any full-parity claim; synthetic acceptance, fewer launches and competitor measurements do not establish local parity or speed.
 
 ## Committed
+
+### 9a19901 — batched graph and baseline qualification
+
+- [x] **Private full-model CUDA graph qualification:** both original models
+  B2/4/8, StateOnly teacher prefixes (including genuine EOS input), future full
+  logits and outside-body greedy sampling match independent CPU/B1/native
+  full248320/all42 state. All six normal cases and18 fresh unknown-completion
+  cases pass actual replay, stale/Ready/pressure refusal and reclamation or
+  original quarantine. RoPE launch reduction additionally passes both models'
+  170 ordered-angle cases and full native B2/4/8 normal/greedy comparisons.
+  Physical32-case result87b85eff. Composed strict CUDA/Vulkan, complete
+  isolated1243-test phase, both original release routes,14 worker and12 HTTP
+  CUDA regressions pass; composed result e76248e8.
+
+- [x] **Genuine GGUF baseline build prerequisite:** official out-of-tree
+  vLLM GGUF plugin e2b8ad532b8b builds unchanged against pinned vLLM0.31/
+  Torch2.13/CUDA12.9; wheel af9de736,129 RECORD entries/111 packaged Python
+  files and full151-source pre/post pins validate. Owned container/group/EOF
+  cleanup passes; no GPU/model ran. Stock text loading with a genuine visual
+  projector and language-model-only mode, activation/cast/reduction profiles,
+  numerical quality and matched benchmarks remain unqualified. Lack of an
+  in-tree GGUF registry does not exclude this official plugin route.
+
+- [x] **Bounded native-prefix warm comparison:** 0.8B strict B8 ABBA and 2B
+  natural concurrency8 BAAB, each plus B1,16 serialized samples/72offers/
+  72completed/576 output tokens. Exact full IDs/text/usage/finish and cleanup.
+  Mean concurrent waves32.301205→18.33249s(0.8B,-43.2%) and
+  42.19858→28.457115s(2B,-32.6%); actual forward dispatches
+  1722640→302160(-82.5%) and1668496→294384(-82.4%). B1 means
+  4.43954→4.42998s/5.60352→5.652635s, unchanged kernel counts.
+  Both concurrent workloads still miss10s TTFT; no consistent ITL-tail gain,
+  source-correct goodput unset. Original strict2B B8 attempt failed its
+  declared scheduling guard and remains unqualified; fresh naturalC8 protocol
+  permits actual2/4/8+B1, and both successful new samples happened to use54B8.
+  Conditions/limits and observed memory in FUSED_GPU_BATCHING; no vLLM claim.
 
 ### f788929 — native teacher-prefix serving
 
