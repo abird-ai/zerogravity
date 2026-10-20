@@ -72,6 +72,7 @@ mod resident_inference;
 mod resident_leases;
 mod resident_program;
 mod resident_provider;
+mod resident_state_transport;
 mod rms_norm;
 mod rope_angles;
 mod rope_kv;

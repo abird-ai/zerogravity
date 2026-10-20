@@ -7,7 +7,30 @@
 use super::*;
 use crate::activation_quant::{self, PARAMETER_WORDS};
 use crate::activation_quant_fused::{BlockBindings, PreparedBlocks};
+use crate::resident_state_transport::{
+    Direction, PreparedCertifiedScatter, PreparedTransport, Row, Shape,
+};
+
+enum PreparedStateTransport {
+    Opaque(PreparedTransport),
+    Certified(PreparedCertifiedScatter),
+}
+impl PreparedStateTransport {
+    fn launch(&self, client: &Client) -> Result<usize> {
+        match self {
+            Self::Opaque(transport) => transport.launch(client),
+            Self::Certified(transport) => transport.launch(client),
+        }
+    }
+}
 use crate::source_float::{round_source, widen_source};
+
+fn transport_shape(layout: StateLayout) -> Shape {
+    match layout {
+        StateLayout::Vector { elements } => Shape::Vector { words: elements },
+        StateLayout::Kv { slab, capacity } => Shape::Kv { slab, capacity },
+    }
+}
 
 /// One original plan, shared immutable tensors, and a private B-shaped workspace.
 pub(crate) struct BatchProgram {
@@ -36,6 +59,8 @@ pub(crate) struct BatchBodyReceipt {
 mod graph;
 #[cfg(all(feature = "qualification", feature = "cuda"))]
 pub(crate) use graph::{BatchGraphProfile, BatchGraphReplay};
+#[cfg(all(test, feature = "qualification", feature = "cuda"))]
+mod state_transport_qualification;
 
 impl BatchProgram {
     /// New allocations only: the original source handles remain shared.
@@ -58,6 +83,7 @@ impl BatchProgram {
         }
         for state in &budget.states {
             bytes(scale(state.bytes / 4)?, 4)?;
+            crate::resident_state_transport::geometry(transport_shape(state.layout), rows)?;
         }
         budget.source_bytes = 0;
         budget.value_bytes = scale(budget.value_bytes)?;
@@ -101,6 +127,13 @@ impl BatchProgram {
             return Err(Error::Unsupported(
                 "native source batch requires CUDA lowering".into(),
             ));
+        }
+        for state in &preflight.states {
+            crate::resident_state_transport::ensure_certified_capability(
+                client,
+                transport_shape(state.layout),
+                rows,
+            )?;
         }
         let mut owned = Vec::new();
         let mut recorded =
@@ -388,6 +421,10 @@ impl BatchProgram {
                 ));
             }
         }
+        // Both directions and every domain are checked before the enclosing
+        // original physical submission begins. No allocation/upload occurs.
+        self.prepare_state_transports(client, bindings, false)?;
+        self.prepare_state_transports(client, bindings, true)?;
         Ok(())
     }
 
@@ -470,7 +507,7 @@ impl BatchProgram {
         } else {
             self.validate_runtime(client, parameters, bindings)?;
         }
-        let prefix_dispatches = self.launch_inputs(client, parameters, bindings, device_tokens);
+        let prefix_dispatches = self.launch_inputs(client, parameters, bindings, device_tokens)?;
         let body = self.launch_body(client, parameters, output)?;
         self.launch_outputs(client, bindings, output, prefix_dispatches, body)
     }
@@ -481,7 +518,7 @@ impl BatchProgram {
         parameters: &[RuntimeParameters],
         bindings: &[Vec<StateBinding>],
         device_tokens: Option<&[DeviceBuffer]>,
-    ) -> usize {
+    ) -> Result<usize> {
         unsafe {
             crate::program_kernels::clear_step_status::launch_unchecked(
                 client,
@@ -549,7 +586,7 @@ impl BatchProgram {
                 self.rows,
             );
         }
-        3 + self.transport_state(client, bindings, false)
+        Ok(3 + self.transport_state(client, bindings, false)?)
     }
 
     /// Original nodes and their certifications, in unchanged source order.
@@ -614,7 +651,7 @@ impl BatchProgram {
         let mut dispatches = prefix_dispatches + body.dispatches;
         let fused_dispatches = body.fused_dispatches;
         let count = output.nodes(&self.inner.plan).len();
-        dispatches += self.transport_state(client, bindings, true);
+        dispatches += self.transport_state(client, bindings, true)?;
         let mut proposals = Vec::new();
         for row in bindings {
             for version in self.inner.plan.proposed_domains() {
@@ -622,9 +659,8 @@ impl BatchProgram {
                     .iter()
                     .find(|b| b.slot == version.slot)
                     .expect("validated domain");
-                for value in binding.candidate.buffers() {
-                    dispatches += self.certify(client, &value.handle, value.elements);
-                }
+                // Typed scatter copied and certified EVERY original candidate
+                // word in the same launches; keep the exact all-domain proposal.
                 proposals.push((*version, binding.candidate.clone()));
             }
         }
@@ -677,82 +713,138 @@ impl BatchProgram {
         })
     }
 
+    fn prepare_state_transports(
+        &self,
+        client: &Client,
+        bindings: &[Vec<StateBinding>],
+        scatter: bool,
+    ) -> Result<Vec<PreparedStateTransport>> {
+        if bindings.len() != self.rows || self.packed.is_empty() || self.packed.len() > 256 {
+            return Err(Error::State("state transport domain/row coverage".into()));
+        }
+        let mut prepared = Vec::with_capacity(self.packed.len());
+        for packed in &self.packed {
+            let dense = if scatter {
+                &packed.candidate
+            } else {
+                &packed.prior
+            };
+            let private = bindings
+                .iter()
+                .map(|row| {
+                    let binding = row
+                        .iter()
+                        .find(|binding| binding.slot == packed.slot)
+                        .ok_or_else(|| {
+                            Error::State("state transport original domain absent".into())
+                        })?;
+                    Ok(if scatter {
+                        &binding.candidate
+                    } else {
+                        &binding.prior
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            match dense {
+                StateBuffers::Vector(dense) => {
+                    let words = dense.elements / self.rows;
+                    if words.checked_mul(self.rows) != Some(dense.elements) {
+                        return Err(Error::State("state transport dense vector geometry".into()));
+                    }
+                    let rows = private
+                        .iter()
+                        .map(|value| match value {
+                            StateBuffers::Vector(value) if value.elements == words => Ok(Row {
+                                first: &value.handle,
+                                second: None,
+                            }),
+                            _ => Err(Error::State("state transport vector row changed".into())),
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    prepared.push(if scatter {
+                        PreparedStateTransport::Certified(PreparedCertifiedScatter::prepare(
+                            client,
+                            &rows,
+                            &dense.handle,
+                            None,
+                            Shape::Vector { words },
+                            &self.inner.status,
+                        )?)
+                    } else {
+                        PreparedStateTransport::Opaque(PreparedTransport::prepare(
+                            client,
+                            &rows,
+                            &dense.handle,
+                            None,
+                            Shape::Vector { words },
+                            Direction::Gather,
+                        )?)
+                    });
+                }
+                StateBuffers::Kv { keys, values } => {
+                    let capacity = self.inner.plan.prefix_capacity();
+                    let stride = self
+                        .rows
+                        .checked_mul(capacity)
+                        .filter(|&n| n != 0)
+                        .ok_or_else(|| Error::Limit("state transport KV stride".into()))?;
+                    let slab = keys.elements / stride;
+                    let words = slab
+                        .checked_mul(capacity)
+                        .ok_or_else(|| Error::Limit("state transport KV row words".into()))?;
+                    if slab.checked_mul(stride) != Some(keys.elements)
+                        || keys.elements != values.elements
+                    {
+                        return Err(Error::State("state transport dense KV geometry".into()));
+                    }
+                    let rows = private
+                        .iter()
+                        .map(|value| match value {
+                            StateBuffers::Kv { keys, values }
+                                if keys.elements == words && values.elements == words =>
+                            {
+                                Ok(Row {
+                                    first: &keys.handle,
+                                    second: Some(&values.handle),
+                                })
+                            }
+                            _ => Err(Error::State("state transport KV row changed".into())),
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    prepared.push(if scatter {
+                        PreparedStateTransport::Certified(PreparedCertifiedScatter::prepare(
+                            client,
+                            &rows,
+                            &keys.handle,
+                            Some(&values.handle),
+                            Shape::Kv { slab, capacity },
+                            &self.inner.status,
+                        )?)
+                    } else {
+                        PreparedStateTransport::Opaque(PreparedTransport::prepare(
+                            client,
+                            &rows,
+                            &keys.handle,
+                            Some(&values.handle),
+                            Shape::Kv { slab, capacity },
+                            Direction::Gather,
+                        )?)
+                    });
+                }
+            }
+        }
+        Ok(prepared)
+    }
+
     fn transport_state(
         &self,
         client: &Client,
         bindings: &[Vec<StateBinding>],
         scatter: bool,
-    ) -> usize {
-        let mut count = 0;
-        for (row, bindings) in bindings.iter().enumerate() {
-            for packed in &self.packed {
-                let binding = bindings
-                    .iter()
-                    .find(|b| b.slot == packed.slot)
-                    .expect("validated domain");
-                let (private, dense) = if scatter {
-                    (&binding.candidate, &packed.candidate)
-                } else {
-                    (&binding.prior, &packed.prior)
-                };
-                match (private, dense) {
-                    (StateBuffers::Vector(private), StateBuffers::Vector(dense)) => {
-                        if scatter {
-                            count += self.copy_dense(
-                                client,
-                                &dense.handle,
-                                dense.elements,
-                                row * private.elements,
-                                &private.handle,
-                                private.elements,
-                                0,
-                                private.elements,
-                            );
-                        } else {
-                            count += self.copy_dense(
-                                client,
-                                &private.handle,
-                                private.elements,
-                                0,
-                                &dense.handle,
-                                dense.elements,
-                                row * private.elements,
-                                private.elements,
-                            );
-                        }
-                    }
-                    (
-                        StateBuffers::Kv { keys, values },
-                        StateBuffers::Kv {
-                            keys: dense_k,
-                            values: dense_v,
-                        },
-                    ) => {
-                        let capacity = self.inner.plan.prefix_capacity();
-                        let slab = keys.elements / capacity;
-                        unsafe {
-                            transport_kv::launch_unchecked(
-                                client,
-                                grid(keys.elements),
-                                threads(),
-                                arg(&keys.handle, keys.elements),
-                                arg(&values.handle, values.elements),
-                                arg(&dense_k.handle, dense_k.elements),
-                                arg(&dense_v.handle, dense_v.elements),
-                                row,
-                                slab,
-                                capacity,
-                                self.rows,
-                                scatter,
-                            );
-                        }
-                        count += 1;
-                    }
-                    _ => unreachable!("validated state layout"),
-                }
-            }
-        }
-        count
+    ) -> Result<usize> {
+        self.prepare_state_transports(client, bindings, scatter)?
+            .iter()
+            .try_fold(0, |count, transport| Ok(count + transport.launch(client)?))
     }
 
     fn certify(&self, client: &Client, source: &Handle, elements: usize) -> usize {
@@ -1639,6 +1731,7 @@ fn append_kv_rows(
 }
 
 /// Private [T,H,D] handles ↔ physically packed [T,B,H,D] workspace.
+#[cfg(all(test, feature = "qualification", feature = "cuda"))]
 #[cube(launch_unchecked)]
 fn transport_kv(
     private_k: &mut [u32],

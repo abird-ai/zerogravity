@@ -114,7 +114,7 @@ impl BatchProgram {
         {
             return Err(Error::State("stale/unpinned graph body receipt".into()));
         }
-        let prefix = self.launch_inputs(client, parameters, bindings, None);
+        let prefix = self.launch_inputs(client, parameters, bindings, None)?;
         // SAFETY: enclosing physical flight retains original graph and every
         // source/workspace lease; same pinned stream/workspace lock orders IO.
         unsafe { graph.replay() }

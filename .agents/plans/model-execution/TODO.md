@@ -8,46 +8,34 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-- [x] **Native CUDA CPU-profile BF16 projection:** both original Qwen3.5
-  sources, layer3 q/k/v windows and teachers11/353, B1/independent B1/B2/4/8:
-  163840 raw F32 accumulation words match the accepted CPU64 operator and
-  163840 rounded BF16 words match authentic public archives exactly.
-  Same sealed full-source windows, original CUDA queue/service/leases/Ready;
-  pressure, pre-cancel, source/axis refusals, final physical0 and fresh actual
-  abandoned-flight source/completion/fence retention pass. Synthetic328
-  case/band pairs cover source widths64..8192, signed zero, subnormals, RNE,
-  FMA/reduction order and canaries; eight fresh FP32/BF16 overflow flights
-  withhold Ready and retain original quarantine. Strict Clippy/five focused
-  tests and independent trained/synthetic raw-byte validators pass. This is
-  the explicit CPU-target profile, not vLLM CUDA arithmetic, full HF/GDN,
-  model StateRoot or a throughput claim. Original failed build/import checks
-  and their additive harness corrections remain preserved.
-- [x] **Original GDN convolution/SiLU fragment:** both authentic HF sources,
-  layer0 teachers11/353, initial padding and cached-tail inputs: all122880
-  BF16 words across raw convolution, activated output and canonical next3
-  history match independent public Torch operators exactly. Public outputs
-  first reproduce original activated/K4 archives. Same ForwardPlan/HostMath,
-  sealed raw BF16[C,1,4] SourceParameter and externally authenticated inputs;
-  actual pressure/pre-cancel/wrong-role, retained output after callers drop,
-  full parameter stage accounting and final physical0 pass. Core10/artifact2/
-  model48 tests and strict CPU/CUDA/Vulkan checks pass; trained replay has
-  independent all12-file signed-bit validation. Standalone JSON-macro syntax
-  failure is preserved; fresh ROOTV7 changes only harness parentheses.
-  Full HF/session/checkpoint guards remain closed. Initial FLA chunk64,
-  cached recurrent state, coefficients/gated norm and full logits/StateRoot
-  remain required before enabling original2B/27B inference.
-- [x] **Composed BF16/conv phase:** complete isolated1251 Rust tests,
-  zero failures/70 ignored/248 suites,18 Python tests, release/installer/Nix
-  checks pass. Composed strict CUDA/qualifier/Vulkan and CPU-free binding8/
-  GPU cold-refusal2 tests pass. Both approved original release cache-direct
-  and HF-import routes reproduce full248320/all42 for both models and retain
-  original source/lease/mutation/reclamation guarantees.
-
 - [ ] **Independent trained BF16/FLA checkpoint gate:** original
   Qwen3.8-27B@1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0 acquired
   through the existing bounded Rust cache pipeline; independent31-file/
   18-shard full hashes and1199-tensor header/index checks passed.
-  Source preparation only: no full27B RAM load or inference. Original
+  Whole-model27B execution remains unqualified; bounded trained operator
+  qualifications below do not establish full logits or112 StateRoot domains.
+  Genuine original layer0 GDN reference now validates initial chunk64 and true
+  cached continuation for teachers11/353,48 value heads and original BF16
+  parameters. Plain/observed complete outputs, convolution/recurrent state,
+  raw source readsets, full before/after source hashes and original owned
+  retirement match. The serializer's V2 stride failure remains preserved;
+  V3 raw-bit transport passes12 real PyTorch layouts. This is an independent
+  public target. An isolated native composition now passes the authentic H48
+  cached slice:804960 input and798720 output words, including the complete
+  recurrent state, match independently before/after callers drop. The distinct
+  BF16-gamma gated RMS slice also passes61632 intermediate,12288 final and
+  24576 retained input words. Source hashes, original ownership, cancellation,
+  real pressure and final reservations0 pass; strict/release builds and237
+  focused tests pass. These operator changes remain isolated from MAIN;
+  initial chunk64, native exp, complete GDN,112-domain state and full inference
+  remain unqualified. A separate genuine public reference passes32 pure
+  operator cases over16 roles,881856 raw BF16 input/output words, including
+  complete248320-row head and17408-column down projection. External probes
+  for other roles do not establish trained producers or full-model parity;
+  native wide-role replay remains unexecuted.
+  Six actual bounded native-provider startup/lifetime cases pass with the
+  provider unloaded. Physical provider allocation/math admission remains open.
+  Original
   Qwen3.5-2B@15852e8c16360a2fea060d615a32b45270f8a8fc is now acquired
   by the same bounded Rust pipeline; independent official Git/LFS full12-file
   hashes,632 headers/320 text shapes,596BF16+36F32 tensors pass. Its4.548GB
@@ -76,8 +64,9 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   rounding/FLA order and independent source-trained logits/StateRoot;
   then bind the original profile to the existing per-op
   MathematicalBackend/SessionAuthority, with full physical
-  device/SSD resource admission. No 27B weights, tokenizer or
-  GPU launches were authorized by this source-free slice.
+  device/SSD resource admission. Earlier source-free slices establish no
+  full27B logits,112-domain state, native provider admission or GPU support;
+  current owner authorization covers the required acquisition and testing.
 
 - [ ] **Following ME-P0 real trained integration:** fuse the
   accepted analytical original source operators into the ONE
@@ -191,6 +180,43 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### fff1842 — trained BF16 operator qualification
+
+- [x] **Native CUDA CPU-profile BF16 projection:** both original Qwen3.5
+  sources, layer3 q/k/v windows and teachers11/353, B1/independent B1/B2/4/8:
+  163840 raw F32 accumulation words match the accepted CPU64 operator and
+  163840 rounded BF16 words match authentic public archives exactly.
+  Same sealed full-source windows, original CUDA queue/service/leases/Ready;
+  pressure, pre-cancel, source/axis refusals, final physical0 and fresh actual
+  abandoned-flight source/completion/fence retention pass. Synthetic328
+  case/band pairs cover source widths64..8192, signed zero, subnormals, RNE,
+  FMA/reduction order and canaries; eight fresh FP32/BF16 overflow flights
+  withhold Ready and retain original quarantine. Strict Clippy/five focused
+  tests and independent trained/synthetic raw-byte validators pass. This is
+  the explicit CPU-target profile, not vLLM CUDA arithmetic, full HF/GDN,
+  model StateRoot or a throughput claim. Original failed build/import checks
+  and their additive harness corrections remain preserved.
+- [x] **Original GDN convolution/SiLU fragment:** both authentic HF sources,
+  layer0 teachers11/353, initial padding and cached-tail inputs: all122880
+  BF16 words across raw convolution, activated output and canonical next3
+  history match independent public Torch operators exactly. Public outputs
+  first reproduce original activated/K4 archives. Same ForwardPlan/HostMath,
+  sealed raw BF16[C,1,4] SourceParameter and externally authenticated inputs;
+  actual pressure/pre-cancel/wrong-role, retained output after callers drop,
+  full parameter stage accounting and final physical0 pass. Core10/artifact2/
+  model48 tests and strict CPU/CUDA/Vulkan checks pass; trained replay has
+  independent all12-file signed-bit validation. Standalone JSON-macro syntax
+  failure is preserved; fresh ROOTV7 changes only harness parentheses.
+  Full HF/session/checkpoint guards remain closed. Initial FLA chunk64,
+  cached recurrent state, coefficients/gated norm and full logits/StateRoot
+  remain required before enabling original2B/27B inference.
+- [x] **Composed BF16/conv phase:** complete isolated1251 Rust tests,
+  zero failures/70 ignored/248 suites,18 Python tests, release/installer/Nix
+  checks pass. Composed strict CUDA/qualifier/Vulkan and CPU-free binding8/
+  GPU cold-refusal2 tests pass. Both approved original release cache-direct
+  and HF-import routes reproduce full248320/all42 for both models and retain
+  original source/lease/mutation/reclamation guarantees.
 
 ### fe2a342 — original attention and reference operators
 

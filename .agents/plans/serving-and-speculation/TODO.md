@@ -8,25 +8,36 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
-- [x] **Genuine projector and stock0.8B loader prerequisite:** unchanged
-  pinned llama converter produces source-audited BF16 visual projectors for
-  both original models; independent complete tensor-byte checks pass.
-  Stock pinned vLLM V1/official GGUF plugin loads original0.8B language-only
-  weights; all320 backbone roles validate. Plain/observed B1 teacher runs
-  preserve both full vocabularies,496640 native BF16 logit words, exactly.
-  Native dtype and separate F32 observer representation are explicit; no
-  sampler-cast, all42, cross-engine arithmetic or performance qualification.
-  Owned process/group/container/EOF cleanup passes. Both projectors are
-  genuine source conversions, not dummy parameters or a modified engine.
-- [ ] **Stock2B loader and matched benchmark:** first actual2B loader reaches
-  model initialization but its observer refuses335 tensors versus the assumed
-  320. Original GGUF contains15 extra MTP tensors; the additive audit binds
-  all335 descriptors, exact stock exclusions and all320 backbone roles.
-  All19 diagnostic fixtures pass; fresh plain capture completes, observed
-  capture and paired validation remain pending. Preserve the failed attempt.
-  Then run unconstrained OpenAI workloads with
-  actual common prompt IDs/stop policy, equivalent hardware/resources and
-  cold/warm conditions via canonical tools. No vLLM speed result is accepted.
+- [ ] **Stock2B loader and matched benchmark:** genuine pinned stock2B
+  V4 plain/observed loader and independent comparison now pass: all335
+  stored tensors inventoried, exact15 MTP exclusions and320 backbone roles;
+  both complete vocabularies,496640 native BF16 logit words, remain exact.
+  Source/runtime and owned process/group/container/EOF cleanup pass; retain
+  the original V3 observer refusal. Both model loaders are prerequisites,
+  not cross-engine/full42/default-graph or throughput qualification.
+  Actual0.8B eager HTTP policy passes for both providers: identical47 prompt
+  IDs, original Rust tokenizer, effective greedy/EOS settings, observed
+  cgroup12GiB/swap0/CPU4 caps and authenticated GPU process membership.
+  Original owned cleanup closes. Podman unresolved HPIDs establish no
+  ownership; every sampled GPU PID must match the numeric owned subset.
+  Generated IDs differ under the declared activation/cast profiles. Actual
+  0.8B full-output quality covers seven prompts; quality equivalence remains
+  unqualified. First unprofiled eager/cold-process/solo comparison completes
+  all eight ABBA/BAAB samples: four requests/32 raw tokens per provider.
+  Median TTFT13.400s native versus1.561s stock; stock is faster here.
+  Cold-process means first request after readiness, not storage-cache cold
+  or complete startup latency. Both providers are internally stable, but
+  cross-engine IDs/text/usage differ. One stock sample coalesces delivery;
+  individual-token ITL and source-correct SLO-goodput remain unqualified.
+  The2B eager/cold-process/solo run also completes all eight samples:
+  four requests/32 tokens per provider, identical raw IDs/output hashes/
+  usage/finish on that one prompt. Median TTFT14.540s native versus1.562s
+  stock; all samples have individual token delivery, native ITL p95
+  0.186–0.199s versus stock0.026–0.030s. Seven-prompt2B quality remains
+  unqualified despite five matching full texts; this prompt establishes no
+  numerical equivalence. Finish default-route, warm/concurrent workloads
+  and physical counts;
+  this bounded observation does not establish numerical or serving parity.
 
 - [ ] **Production CUDA graph admission:** close every same-card constructor,
   transport, allocation, external event/storage and final-drop path through
@@ -52,6 +63,30 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   dispatch counts against genuine pinned vLLM V1 with equivalent
   source/quant/tokenizer/hardware, cold/warm conditions and caps.
   Local release smoke and fewer launches do not qualify performance.
+  Separate native0.8B B2 CUPTI diagnostic records64328 actual kernels and
+  64328 successful direct launch calls, zero dropped records and exact source
+  counter delta; plain/observed complete outputs and owned retirement match.
+  This qualifies that native workload's counting method only. vLLM hardware
+  activity, matched counts and unprofiled timing remain open.
+
+- [x] **Row-native state transport and scatter certification:** exact U32
+  vector/KV transport and persistent finite/status certification preserve the
+  original all42 preflight, leases, flight, Ready and atomic publication.
+  All46 physical model/owner/private-graph/failure cases,10 operator/failure
+  cases, complete isolated1251-test gate, strict checks and both approved
+  original release parity routes pass. Fresh14 worker/12 HTTP regressions
+  pass with exact frozen source/build and original owner/EOF retirement.
+  Native-only unprofiled before/after runs complete32 fresh ABBA/BAAB
+  processes,144/144 measured offers,1152 output tokens and32 ordinary B1
+  warmups. Full IDs/text/usage/finish match exactly; all144 requests have
+  individual-ID delivery/1008 actual intervals. C8 uses54 actual B8 cohorts
+  per sample,432 independent steps/roots. Median raw token rates improve
+  2.2506→2.28945/s(0.8B,+1.73%) and1.6268→1.6543/s(2B,+1.69%);
+  C1 is nearly unchanged. Four samples/label, finite bursts, ordinary B1
+  warmup and point memory samples establish no confidence-certified win,
+  fully warm B8 scope, source-correct goodput or vLLM parity. Source dispatch
+  counts292116→239952/284340→232176 are not hardware enumeration. All owned
+  process/group/container/EOF retirement and independent ROOT/peer reviews pass.
 
 - [ ] Connect accepted core `ContextOwner`/`ContextReader` snapshot
   capability to the real router's authenticated session/turn frontier:
@@ -104,6 +139,19 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 - [ ] Preserve zero untriaged frontier/disposition requirements before any full-parity claim; synthetic acceptance, fewer launches and competitor measurements do not establish local parity or speed.
 
 ## Committed
+
+### fff1842 — stock baseline prerequisites
+
+- [x] **Genuine projector and stock0.8B loader prerequisite:** unchanged
+  pinned llama converter produces source-audited BF16 visual projectors for
+  both original models; independent complete tensor-byte checks pass.
+  Stock pinned vLLM V1/official GGUF plugin loads original0.8B language-only
+  weights; all320 backbone roles validate. Plain/observed B1 teacher runs
+  preserve both full vocabularies,496640 native BF16 logit words, exactly.
+  Native dtype and separate F32 observer representation are explicit; no
+  sampler-cast, all42, cross-engine arithmetic or performance qualification.
+  Owned process/group/container/EOF cleanup passes. Both projectors are
+  genuine source conversions, not dummy parameters or a modified engine.
 
 ### 9a19901 — batched graph and baseline qualification
 
