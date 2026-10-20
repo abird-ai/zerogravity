@@ -8,27 +8,57 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-- [x] **Shared source-window HostMath fragment:** original27B851-role
-  namespace and same PlanBuilder/HostMath embedding→ordinary RMS→full-column
-  projection now execute genuine trained bytes without source materialization.
-  Both tokens11/353 match all40,960 independent BF16-widened reference words,
-  including full5120-wide embedding/norm and10240-row QKV. All18 shards/
- 55,563,006,776B are verified through retained FDs. All80 authentic128-row
-  windows preserve5120 input columns; maximum real QKV staging charge8,388,656B
-  and raw norm staging4,194,328B are measured, not inferred from requested bytes.
-  Each output retains admitted64KiB Output+960KiB Scratch and source issuer
-  through last drop. Real stage-triggered mid-cancel, pre-cancel, pool pressure,
-  foreign-source/config/index/token refusal and retained output comparisons pass;
-  final reservations0/unfenced. Actual92.74s includes90.79s source scan;
- 18,736KiB observed RSS is not physical free-RAM admission evidence.
-  Fresh MAIN-linked original0.8B three-operator regression also matches all
- 16,384 words/final source0. Focused17 artifact/1CPU/5model, strict CPU/CUDA/
-  Vulkan/qualifier Clippy and full isolated1243 Rust/0failed/70ignored/248suites
-  plus18Python/release/installer/Nix pass. Both approved original cache-direct
- 17.22s/HF-import22.74s release routes pass fullV/all42/reclamation for both
-  models. Only four pointless borrowed-value test drops needed repair. This is three pure state-free operators,
-  frontier delta0: full112-domain27B logits/StateRoot and streamed inference
-  remain unqualified.
+- [x] **Original CPU attention fragment:** both authenticated sources at
+  layer3, teachers11/353, source-36-F32-restored profile: all47104 raw BF16
+  words across seven projection/view/QK-norm outputs match authentic original
+  captures, including signed zero. Same HostMath/ForwardPlan and sealed source
+  windows; real source-pool pressure, pre/mid-cancel, foreign input/provider,
+  retained output after callers drop and final reservations0 pass. Explicit
+  external hidden inputs establish no preceding producer or StateRoot.
+  Focused16 tests, strict CPU/CUDA/Vulkan, both approved original release
+  routes and complete isolated1243-test phase pass. Fresh helper strict build,
+  full source scans and owned process/group/EOF cleanup also pass.
+  Earlier metadata-list and omitted second4MiB binding-accounting failures
+  remain preserved; corrections change only the replay harness. RoPE, KV,
+  attention BMM/softmax, GDN/FLA, full-HF logits/StateRoot and27B stay open.
+
+- [x] **Authentic vLLM projection operands:** read-only extraction from the
+  accepted four-call eager-B1 capture preserves all original full496640-logit,
+  320-source-audit, provider and cleanup guards. Six raw BF16 files,36992 bytes,
+  bind actual teacher11/353 inputs/results, public GEMM pointers/settings and
+  learned QKVZ(qkv,z)/BA(b,a) row hashes. Ten transport tests and independent
+  rederivation pass; result f0981e62. No new model/GPU execution or dtype cast.
+  Native BF16 arithmetic, opaque provider allocation admission and full-HF
+  execution remain unqualified.
+
+- [x] **Original2B paired attention observation:** fresh plain/observed CPU
+  captures preserve all196 raw tensors/four full248320 logits/168 canonical
+  domains/60 prior intermediates against the accepted two-profile reference.
+  Observed capture adds216 genuine BF16 tensors across six attention layers,
+  nine stages and teachers11/353 in both original loader profiles,688128 bytes.
+  Exact signed-bit/shape/stride/source checks, unchanged archive validator,
+  all632 source/617 loaded parameter audits and owned group/container/EOF
+  cleanup pass. Ten parser fixtures pass. Diagnostic elapsed44.56s/42.01s;
+  no benchmark or physical RAM admission claim. Result e45e1903 qualifies
+  transparent reference-stage availability, not Rust attention output,
+  full HF execution/StateRoot, GPU/FLA, long context or trained27B.
+
+- [x] **Genuine pinned vLLM V1 eager B1 public GEMM observation:** four
+  unchanged original0.8B layer0 QKVZ/BA projections at teachers11/353 use
+  cublasGemmEx, BF16 A/B/C, FP32 compute, requested DEFAULT_TENSOR_OP,
+  default math/host pointers/atomics disallowed, alpha1/beta0 and explicit
+  8519680-byte workspace. Actual full tensor/workspace allocation extents,
+  original provider versions/mapped SHA and loaded320 source roles before/
+  after pass; plain/observed all496640 logit words are exact. Strict observer
+  build and all three owned process/container/group/EOF cleanups pass.
+  Original header-build and generic resolver failures remain preserved;
+  additive exact already-loaded provider binding has no alternative lookup
+  or math fallback. Prior resolver failure cause remains unproven.
+  This records public requests, not hidden selected kernels, all42 state,
+  wider/default graphs, Zerogravity GPU math/profile or matched performance.
+  Qualifier result55d68c7a; explicit workspace alone does not qualify opaque
+  library allocation admission. Pinned default vLLM loader/quant registries
+  have no GGUF entry; original BF16 remains the matched-source route.
 
 - [ ] **Independent trained BF16/FLA checkpoint gate:** original
   Qwen3.8-27B@1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0 acquired
@@ -178,6 +208,31 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### bfe62df — leased source-window execution
+
+- [x] **Shared source-window HostMath fragment:** original27B851-role
+  namespace and same PlanBuilder/HostMath embedding→ordinary RMS→full-column
+  projection now execute genuine trained bytes without source materialization.
+  Both tokens11/353 match all40,960 independent BF16-widened reference words,
+  including full5120-wide embedding/norm and10240-row QKV. All18 shards/
+ 55,563,006,776B are verified through retained FDs. All80 authentic128-row
+  windows preserve5120 input columns; maximum real QKV staging charge8,388,656B
+  and raw norm staging4,194,328B are measured, not inferred from requested bytes.
+  Each output retains admitted64KiB Output+960KiB Scratch and source issuer
+  through last drop. Real stage-triggered mid-cancel, pre-cancel, pool pressure,
+  foreign-source/config/index/token refusal and retained output comparisons pass;
+  final reservations0/unfenced. Actual92.74s includes90.79s source scan;
+ 18,736KiB observed RSS is not physical free-RAM admission evidence.
+  Fresh MAIN-linked original0.8B three-operator regression also matches all
+ 16,384 words/final source0. Focused17 artifact/1CPU/5model, strict CPU/CUDA/
+  Vulkan/qualifier Clippy and full isolated1243 Rust/0failed/70ignored/248suites
+  plus18Python/release/installer/Nix pass. Both approved original cache-direct
+ 17.22s/HF-import22.74s release routes pass fullV/all42/reclamation for both
+  models. Only four pointless borrowed-value test drops needed repair. This is three pure state-free operators,
+  frontier delta0: full112-domain27B logits/StateRoot and streamed inference
+  remain unqualified.
+
 
 ### 5350a4d — typed ordinary math and source windows
 

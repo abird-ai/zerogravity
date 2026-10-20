@@ -233,6 +233,60 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
         }
         Ok(Some(Arc::new(source.workspace()?)))
     }
+    /// Explicit operator input transport, never a model producer or root.
+    pub(super) fn import_attention_input(
+        &self,
+        input: crate::operator_slice::attention::AttentionSliceInput<'_>,
+        hidden: usize,
+    ) -> Result<HostValue> {
+        input.validate()?;
+        if self.region_kernel.is_some() {
+            return Err(Error::Unsupported(
+                "typed attention CPU input provider".into(),
+            ));
+        }
+        if input.source_identity() != self.source.source_identity()
+            || input.numerical_profile() != self.source.program_numerical_profile()
+            || self.source.metadata().geometry().hidden_size != hidden as u64
+            || input.bytes().len()
+                != hidden
+                    .checked_mul(2)
+                    .ok_or_else(|| Error::Limit("attention private input width".into()))?
+        {
+            return Err(Error::State(
+                "attention input source/profile/full hidden width".into(),
+            ));
+        }
+        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        let workspace = self.prepare_output(None)?;
+        let mut values = Vec::new();
+        values
+            .try_reserve_exact(hidden)
+            .map_err(|_| Error::Limit("private attention input transport".into()))?;
+        values.extend(
+            input.bytes().chunks_exact(2).map(|word| {
+                f32::from_bits(u32::from(u16::from_le_bytes([word[0], word[1]])) << 16)
+            }),
+        );
+        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        if self
+            .cancelled
+            .is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Acquire))
+        {
+            return Err(Error::State(
+                "attention input cancelled after transport".into(),
+            ));
+        }
+        let output = HostValue::typed(
+            values,
+            input.precision(),
+            input.source_identity(),
+            input.numerical_profile(),
+        )?;
+        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        let output = output.retain_workspace(workspace)?;
+        Ok(output)
+    }
     fn engine(&self) -> Result<&'engine QwenDenseCpu> {
         self.engine
             .ok_or_else(|| Error::Unsupported("operator slice has no session engine".into()))

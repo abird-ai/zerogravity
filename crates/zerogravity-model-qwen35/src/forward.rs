@@ -118,6 +118,90 @@ pub(crate) fn embedding_input_norm_projection_slice<B: MathematicalBackend>(
     Ok((embedding, normalized, projected))
 }
 
+/// Pure prefix of the existing attention role schedule, before rotary/state.
+pub(crate) fn attention_projection_norm_slice<B: MathematicalBackend>(
+    model: &impl OperatorSliceSource,
+    math: &mut B,
+    layer: usize,
+    input: &B::Value,
+) -> Result<crate::operator_slice::attention::AttentionProjectionValues<B::Value>> {
+    use crate::accelerator::program::ActivationPrecision;
+    use crate::operator_slice::attention::{AttentionProjectionValues, attention_roles};
+    let roles = attention_roles(model, layer)?;
+    if math.elements(input) != roles.hidden
+        || math.precision(input) != ActivationPrecision::Bf16WidenedF32
+    {
+        return Err(Error::Malformed(
+            "attention slice typed full hidden input".into(),
+        ));
+    }
+    let query_gate_projection =
+        math.project_profiled(roles.query, input, model.projection_contract())?;
+    let key_projection = math.project_profiled(roles.key, input, model.projection_contract())?;
+    let value_projection =
+        math.project_profiled(roles.value, input, model.projection_contract())?;
+    for (value, elements) in [
+        (&query_gate_projection, roles.query_heads * roles.width * 2),
+        (&key_projection, roles.kv_heads * roles.width),
+        (&value_projection, roles.kv_heads * roles.width),
+    ] {
+        expect_elements(math, value, elements, "attention slice projected geometry")?;
+    }
+    let query_view = math.view(
+        &query_gate_projection,
+        TensorView {
+            offset: 0,
+            rows: roles.query_heads,
+            width: roles.width,
+            row_stride: roles.width * 2,
+        },
+    )?;
+    let query = math.contiguous(&query_view)?;
+    let gate_view = math.view(
+        &query_gate_projection,
+        TensorView {
+            offset: roles.width,
+            rows: roles.query_heads,
+            width: roles.width,
+            row_stride: roles.width * 2,
+        },
+    )?;
+    let gate = math.contiguous(&gate_view)?;
+    let normalized_query = math.ordinary_rms_profiled(
+        roles.query_norm,
+        &query,
+        OrdinaryRmsContract::TorchCpuBf16Avx2,
+    )?;
+    let normalized_key = math.ordinary_rms_profiled(
+        roles.key_norm,
+        &key_projection,
+        OrdinaryRmsContract::TorchCpuBf16Avx2,
+    )?;
+    if [
+        &query_gate_projection,
+        &key_projection,
+        &value_projection,
+        &query,
+        &gate,
+        &normalized_query,
+        &normalized_key,
+    ]
+    .iter()
+    .any(|value| math.precision(value) != ActivationPrecision::Bf16WidenedF32)
+    {
+        return Err(Error::State("attention slice output precision".into()));
+    }
+    Ok(AttentionProjectionValues {
+        query_gate_projection,
+        key_projection,
+        value_projection,
+        query,
+        gate,
+        normalized_query,
+        normalized_key,
+    })
+}
+
 fn expect_elements<B: MathematicalBackend>(
     math: &B,
     value: &B::Value,

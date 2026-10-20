@@ -87,6 +87,15 @@ fn source_with_geometry(
     cfg["text_config"]["hidden_size"] = json!(hidden);
     cfg["text_config"]["vocab_size"] = json!(vocabulary);
     let cfg = serde_json::to_vec(&cfg).unwrap();
+    source_with_config(fixture, cfg, norm_bf16, |_, _, bits| bits, mutate)
+}
+fn source_with_config(
+    fixture: &Fixture,
+    cfg: Vec<u8>,
+    norm_bf16: bool,
+    bf16_word: impl Fn(&str, usize, u16) -> u16,
+    mutate: impl FnOnce(&mut Value),
+) -> Loaded {
     let specs = QwenTextConfig::from_json(&cfg)
         .unwrap()
         .tensor_specs()
@@ -103,7 +112,7 @@ fn source_with_geometry(
             "BF16"
         };
         let start = payload.len();
-        for _ in 0..spec.shape.iter().product::<u64>() {
+        for element in 0..spec.shape.iter().product::<u64>() {
             match kind {
                 "F32" => payload.extend_from_slice(&0.25f32.to_le_bytes()),
                 "F16" => payload.extend_from_slice(&0x3400u16.to_le_bytes()),
@@ -113,7 +122,9 @@ fn source_with_geometry(
                     } else {
                         0x3f80
                     };
-                    payload.extend_from_slice(&bits.to_le_bytes());
+                    payload.extend_from_slice(
+                        &bf16_word(&spec.name, element as usize, bits).to_le_bytes(),
+                    );
                 }
                 _ => unreachable!(),
             }

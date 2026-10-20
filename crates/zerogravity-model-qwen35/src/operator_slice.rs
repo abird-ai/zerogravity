@@ -8,6 +8,7 @@ use crate::{Error, LoadedQwenModel, Result};
 
 /// Pure role metadata only; never a layer/token/session execution capability.
 pub(crate) trait OperatorSliceSource {
+    fn geometry(&self) -> &crate::model::ModelGeometry;
     fn source_identity(&self) -> crate::accelerator::SourceIdentity;
     fn program_numerical_profile(&self) -> ProgramNumericalProfile;
     fn rms_epsilon(&self) -> f32;
@@ -23,6 +24,9 @@ pub(crate) trait OperatorSliceSource {
     fn projection_contract(&self) -> ProjectionContract;
 }
 impl OperatorSliceSource for LoadedQwenModel {
+    fn geometry(&self) -> &crate::model::ModelGeometry {
+        LoadedQwenModel::geometry(self)
+    }
     fn source_identity(&self) -> crate::accelerator::SourceIdentity {
         LoadedQwenModel::source_identity(self)
     }
@@ -223,3 +227,7 @@ impl EmbeddingProjectionOutput {
 ))]
 #[path = "operator_slice_tests.rs"]
 mod tests;
+
+/// Pure attention projections/QK norms; no rotary/cache/session admission.
+#[path = "attention_slice.rs"]
+pub mod attention;

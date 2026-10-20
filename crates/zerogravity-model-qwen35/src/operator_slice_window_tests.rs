@@ -376,3 +376,6 @@ fn unaware_provider_never_gets_partial_source_or_legacy_norm_fallback() {
     drop(source);
     assert_eq!(reserved(&admission), 0);
 }
+
+#[path = "attention_slice_tests.rs"]
+mod attention;

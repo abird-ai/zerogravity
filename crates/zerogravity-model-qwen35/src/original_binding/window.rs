@@ -194,7 +194,34 @@ impl OriginalWindowOperators {
         cancelled: Option<&AtomicBool>,
     ) -> Result<Vec<f32>> {
         if *parameter != self.parameter_descriptor(QwenParameterRole::InputNorm(0))? {
-            return Err(Error::State("window ordinary RMS original role".into()));
+            let mut valid = false;
+            for (layer, kind) in self.geometry().layers.iter().enumerate() {
+                if *kind != crate::model::LayerKind::FullAttention {
+                    continue;
+                }
+                if *parameter != self.parameter_descriptor(QwenParameterRole::QueryNorm(layer))?
+                    && *parameter != self.parameter_descriptor(QwenParameterRole::KeyNorm(layer))?
+                {
+                    continue;
+                }
+                let roles = crate::operator_slice::attention::attention_roles(self, layer)?;
+                let elements = if *parameter == roles.query_norm {
+                    Some(roles.query_heads * roles.width)
+                } else if *parameter == roles.key_norm {
+                    Some(roles.kv_heads * roles.width)
+                } else {
+                    None
+                };
+                if elements == Some(input.len()) {
+                    valid = true;
+                    break;
+                }
+            }
+            if !valid {
+                return Err(Error::State(
+                    "window ordinary RMS original role/heads".into(),
+                ));
+            }
         }
         check_cancel(cancelled)?;
         let raw = self.source().parameter(&parameter.name)?;
@@ -234,9 +261,31 @@ impl OriginalWindowOperators {
     ) -> Result<Vec<f32>> {
         self.validate_matrix(tensor)?;
         if *tensor != self.matrix_descriptor(QwenMatrixRole::GdnQkv(0))? {
-            return Err(Error::Unsupported(
-                "closed original window projection role".into(),
-            ));
+            let mut valid = false;
+            for (layer, kind) in self.geometry().layers.iter().enumerate() {
+                if *kind != crate::model::LayerKind::FullAttention {
+                    continue;
+                }
+                if ![
+                    self.matrix_descriptor(QwenMatrixRole::Query(layer))?,
+                    self.matrix_descriptor(QwenMatrixRole::Key(layer))?,
+                    self.matrix_descriptor(QwenMatrixRole::Value(layer))?,
+                ]
+                .contains(tensor)
+                {
+                    continue;
+                }
+                let roles = crate::operator_slice::attention::attention_roles(self, layer)?;
+                if [&roles.query, &roles.key, &roles.value].contains(&tensor) {
+                    valid = true;
+                    break;
+                }
+            }
+            if !valid {
+                return Err(Error::Unsupported(
+                    "closed original window projection role".into(),
+                ));
+            }
         }
         check_cancel(cancelled)?;
         if input.len() != tensor.columns {
@@ -285,6 +334,9 @@ impl OriginalWindowOperators {
     }
 }
 impl OperatorSliceSource for OriginalWindowOperators {
+    fn geometry(&self) -> &crate::model::ModelGeometry {
+        self.binding.config.geometry()
+    }
     fn source_identity(&self) -> crate::accelerator::SourceIdentity {
         self.checked.source_identity()
     }
