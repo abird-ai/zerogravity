@@ -851,5 +851,9 @@ name = "cubecl-cpp"
 version = "0.11.0"
 
 [[patch.unused]]
+name = "cubecl-cuda"
+version = "0.11.0"
+
+[[patch.unused]]
 name = "cubecl-ir"
 version = "0.11.0"

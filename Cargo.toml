@@ -20,6 +20,7 @@ version = "0.1.0"
 [patch.crates-io]
 cubecl-ir = { path = "crates/zerogravity-gpu/vendor/cubecl-ir" }
 cubecl-cpp = { path = "crates/zerogravity-gpu/vendor/cubecl-cpp" }
+cubecl-cuda = { path = "crates/zerogravity-gpu/vendor/cubecl-cuda" }
 
 [profile.release]
 lto = "thin"
