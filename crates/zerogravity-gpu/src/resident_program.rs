@@ -39,6 +39,8 @@ const SCRATCH_SLOTS: usize = 12;
 
 mod batch;
 pub(crate) use batch::BatchProgram;
+#[cfg(all(feature = "qualification", feature = "cuda"))]
+pub(crate) use batch::{BatchBodyReceipt, BatchGraphProfile, BatchGraphReplay};
 
 #[cfg(feature = "qualification")]
 #[path = "resident_projection_qualification.rs"]
@@ -1853,6 +1855,13 @@ impl ResidentProgram {
                     let k = input(1).elements;
                     let v = input(2).elements;
                     let count = q + k + v;
+                    let ordered_angles = crate::rope_angles::PreparedAngles::single_for_cuda(
+                        client,
+                        s(1),
+                        p.position as f32,
+                        geometry.theta_scale,
+                        half,
+                    )?;
                     for (i, offset) in [(0, 0), (1, q), (2, q + k)] {
                         self.copy::<false>(
                             client,
@@ -1864,17 +1873,22 @@ impl ResidentProgram {
                             offset,
                         );
                     }
-                    for stage in 0..half {
-                        crate::rope_kv::angle_step::launch_unchecked(
-                            client,
-                            grid(1),
-                            threads(),
-                            arg(s(1), half),
-                            p.position as f32,
-                            geometry.theta_scale,
-                            stage,
-                        );
-                    }
+                    let angle_dispatches = if let Some(angles) = ordered_angles {
+                        angles.launch(client)?
+                    } else {
+                        for stage in 0..half {
+                            crate::rope_kv::angle_step::launch_unchecked(
+                                client,
+                                grid(1),
+                                threads(),
+                                arg(s(1), half),
+                                p.position as f32,
+                                geometry.theta_scale,
+                                stage,
+                            );
+                        }
+                        half
+                    };
                     crate::source_trig::sincos_angles::launch_unchecked(
                         client,
                         grid(half),
@@ -1955,7 +1969,7 @@ impl ResidentProgram {
                             0,
                         );
                     }
-                    Ok(half + 11)
+                    Ok(angle_dispatches + 11)
                 }
                 PlanOperation::AppendKv => {
                     let effect = node.state.expect("KV append effect");

@@ -1,6 +1,34 @@
 //! Native multi-row lowering, with original per-session logical/physical owners.
 use super::*;
 
+pub(super) enum FusedExecution {
+    Native,
+    #[cfg(all(feature = "qualification", feature = "cuda"))]
+    Graph(Arc<super::graph::CapturedResidentGraph>),
+}
+
+#[cfg(all(feature = "qualification", feature = "cuda"))]
+fn graph_readout(
+    rows: usize,
+    output: ResidentOutput,
+    readout: Readout,
+    device_tokens: bool,
+) -> Result<()> {
+    if !matches!(rows, 2 | 4 | 8)
+        || device_tokens
+        || !matches!(
+            (output, readout),
+            (ResidentOutput::StateOnly, Readout::None)
+                | (ResidentOutput::Logits, Readout::Logits | Readout::Greedy)
+        )
+    {
+        return Err(Error::Unsupported(
+            "graph requires native host-token band and matching typed body/readout".into(),
+        ));
+    }
+    Ok(())
+}
+
 impl ResidentModel {
     /// Diagnostic native CUDA batch. Every original ForwardPlan node executes
     /// over all rows; only the existing cohort commit may publish their roots.
@@ -95,6 +123,25 @@ impl ResidentModel {
         device_tokens: Option<&[&ResidentToken]>,
         readout: Readout,
     ) -> Result<Option<PreparedResidentCohort>> {
+        self.prepare_fused_execution(rows, device_tokens, readout, FusedExecution::Native)
+            .await
+    }
+
+    pub(super) async fn prepare_fused_execution(
+        self: &Arc<Self>,
+        rows: &[(&ResidentSession, u32)],
+        device_tokens: Option<&[&ResidentToken]>,
+        readout: Readout,
+        execution: FusedExecution,
+    ) -> Result<Option<PreparedResidentCohort>> {
+        #[cfg(not(all(feature = "qualification", feature = "cuda")))]
+        let _ = &execution;
+        #[cfg(all(feature = "qualification", feature = "cuda"))]
+        if let FusedExecution::Graph(graph) = &execution {
+            // Refuse mismatched body/readout or device feedback before roots,
+            // attempts, candidates, packet/workspace admission or queue work.
+            graph_readout(rows.len(), graph.output(), readout, device_tokens.is_some())?;
+        }
         let output = if matches!(readout, Readout::None) {
             ResidentOutput::StateOnly
         } else {
@@ -146,6 +193,10 @@ impl ResidentModel {
                 "native resident batch capacity exhausted".into(),
             ));
         }
+        #[cfg(all(feature = "qualification", feature = "cuda"))]
+        if let FusedExecution::Graph(graph) = &execution {
+            graph.validate(self, rows.len(), &positions, readout)?;
+        }
         let mut attempts = Vec::with_capacity(rows.len());
         for (session, token) in rows {
             if !Arc::ptr_eq(&session.model, self) || u64::from(*token) >= self.vocab {
@@ -176,6 +227,36 @@ impl ResidentModel {
                 .batch
                 .as_ref()
                 .is_some_and(|b| b.rows == rows.len());
+            #[cfg(all(feature = "qualification", feature = "cuda"))]
+            if !same_band
+                && workspace
+                    .batch
+                    .as_ref()
+                    .is_some_and(|b| b.program.graph_pinned())
+            {
+                return Err(Error::State(
+                    "graph workspace must retire before band replacement".into(),
+                ));
+            }
+            #[cfg(all(feature = "qualification", feature = "cuda"))]
+            if let FusedExecution::Graph(graph) = &execution {
+                let batch = workspace
+                    .batch
+                    .as_ref()
+                    .ok_or_else(|| Error::State("graph workspace absent".into()))?;
+                // Graph-only cold metadata. Native retains its accepted
+                // parameter construction after private candidate binding.
+                let parameters = rows
+                    .iter()
+                    .zip(&positions)
+                    .map(|((_, token), &position)| RuntimeParameters {
+                        token: *token,
+                        position,
+                        valid_tokens: position + 1,
+                    })
+                    .collect::<Vec<_>>();
+                graph.validate_program(&batch.program, &parameters)?;
+            }
             let reclaimable = if same_band {
                 0
             } else {
@@ -253,6 +334,14 @@ impl ResidentModel {
             .as_ref()
             .is_some_and(|b| b.rows != rows.len())
         {
+            #[cfg(all(feature = "qualification", feature = "cuda"))]
+            if workspace
+                .batch
+                .as_ref()
+                .is_some_and(|b| b.program.graph_pinned())
+            {
+                return Err(Error::State("graph workspace cannot be reclaimed".into()));
+            }
             // The shared workspace lock follows the actual terminal event.
             // A different row band may retire the previous idle workspace.
             workspace.batch = None;
@@ -420,17 +509,32 @@ impl ResidentModel {
         drop(allocation);
         slot.begin_submission()?;
         let flight = self.service.submit_cohort(&bases, &accesses)?;
+        #[cfg(all(feature = "qualification", feature = "cuda"))]
+        let flight = {
+            let mut flight = flight;
+            if let FusedExecution::Graph(graph) = &execution {
+                let owner: crate::physical_quarantine::CompletionOwner = graph.clone();
+                flight.retain_completion_owner(owner)?;
+            }
+            flight
+        };
         let program = &mut workspace.batch.as_mut().unwrap().program;
-        let mut submitted = if let Some(tokens) = &device_buffers {
-            program.launch_device_tokens(
-                self.service.client(),
-                &parameters,
-                &bindings,
-                tokens,
-                output,
-            )?
-        } else {
-            program.launch(self.service.client(), &parameters, &bindings, output)?
+        let mut submitted = match &execution {
+            #[cfg(all(feature = "qualification", feature = "cuda"))]
+            FusedExecution::Graph(graph) => graph.launch(program, &parameters, &bindings)?,
+            FusedExecution::Native => {
+                if let Some(tokens) = &device_buffers {
+                    program.launch_device_tokens(
+                        self.service.client(),
+                        &parameters,
+                        &bindings,
+                        tokens,
+                        output,
+                    )?
+                } else {
+                    program.launch(self.service.client(), &parameters, &bindings, output)?
+                }
+            }
         };
         let expected = workspace.program.plan().proposed_domains();
         if submitted.proposals.len() != expected.len() * rows.len()
@@ -605,5 +709,32 @@ impl ResidentModel {
             fused_dispatches: submitted.fused_dispatches,
             native_greedy_dispatches,
         }))
+    }
+}
+
+#[cfg(all(test, feature = "qualification", feature = "cuda"))]
+mod graph_readout_tests {
+    use super::*;
+
+    #[test]
+    fn native_host_bands_require_matching_typed_readout() {
+        for rows in [2, 4, 8] {
+            graph_readout(rows, ResidentOutput::StateOnly, Readout::None, false).unwrap();
+            for readout in [Readout::Logits, Readout::Greedy] {
+                graph_readout(rows, ResidentOutput::Logits, readout, false).unwrap();
+                assert!(graph_readout(rows, ResidentOutput::StateOnly, readout, false).is_err());
+            }
+            assert!(graph_readout(rows, ResidentOutput::Logits, Readout::None, false).is_err());
+            for output in [ResidentOutput::StateOnly, ResidentOutput::Logits] {
+                for readout in [Readout::None, Readout::Logits, Readout::Greedy] {
+                    assert!(graph_readout(rows, output, readout, true).is_err());
+                }
+            }
+        }
+        for rows in [0, 1, 3, 5, 7, 16] {
+            assert!(graph_readout(rows, ResidentOutput::StateOnly, Readout::None, false).is_err());
+            assert!(graph_readout(rows, ResidentOutput::Logits, Readout::Logits, false).is_err());
+            assert!(graph_readout(rows, ResidentOutput::Logits, Readout::Greedy, false).is_err());
+        }
     }
 }

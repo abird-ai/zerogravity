@@ -29,6 +29,8 @@ fn issue(counter: &AtomicU64) -> Result<u64> {
 /// One prepaid envelope. Every snapshot/lease holds this same service Arc.
 pub(crate) struct ResidentService {
     client: Client,
+    #[cfg(all(feature = "qualification", feature = "cuda"))]
+    pinned_cuda_queue: Option<Arc<cubecl::cuda::OwnedCudaQueue>>,
     budget: PhysicalServiceBudget,
     queue: Arc<PhysicalQueue>,
     ledger: Mutex<DeviceEventLedger>,
@@ -50,13 +52,55 @@ impl ResidentService {
         provider_cap: usize,
         device_cap: u64,
     ) -> Result<Arc<Self>> {
+        Self::validate_owner(source, &owner)?;
+        let generation = issue(&NEXT_SERVICE_GENERATION)?;
+        let client = device.client();
+        Self::from_client(client, source, owner, provider_cap, device_cap, generation).map(Arc::new)
+    }
+
+    fn validate_owner(source: SourceIdentity, owner: &ResourceOwner) -> Result<()> {
         if !source.is_bound() || owner.model.is_empty() || owner.session.is_empty() {
             return Err(Error::State(
                 "resident service requires bound source/owner".into(),
             ));
         }
+        Ok(())
+    }
+
+    /// Qualifier-only cold constructor. Pin before any own clone, allocation,
+    /// transfer or submission. Global capture still requires process isolation.
+    #[cfg(all(feature = "qualification", feature = "cuda"))]
+    pub fn new_pinned_cuda(
+        device: Device,
+        source: SourceIdentity,
+        owner: ResourceOwner,
+        provider_cap: usize,
+        device_cap: u64,
+    ) -> Result<Arc<Self>> {
+        Self::validate_owner(source, &owner)?;
+        if !matches!(device, Device::Cuda(_)) {
+            return Err(Error::State("pinned resident queue requires CUDA".into()));
+        }
         let generation = issue(&NEXT_SERVICE_GENERATION)?;
         let client = device.client();
+        // SAFETY: this is the fresh original client, moved before its first
+        // clone, allocation, transfer, submission or stream override.
+        let (client, pinned) = unsafe { cubecl::cuda::OwnedCudaQueue::pin_cold(client) }
+            .map_err(|e| Error::State(format!("pin original CUDA queue: {e}")))?;
+        let mut service =
+            Self::from_client(client, source, owner, provider_cap, device_cap, generation)?;
+        service.pinned_cuda_queue = Some(Arc::new(pinned));
+        Ok(Arc::new(service))
+    }
+
+    fn from_client(
+        client: Client,
+        source: SourceIdentity,
+        owner: ResourceOwner,
+        provider_cap: usize,
+        device_cap: u64,
+        generation: u64,
+    ) -> Result<Self> {
         crate::physical_quarantine::ensure_service_safe(&client)?;
         let budget = PhysicalServiceBudget::attach(
             &client,
@@ -66,8 +110,10 @@ impl ResidentService {
             owner.clone(),
         )?;
         let queue = queue_for(budget.physical_key())?;
-        Ok(Arc::new(Self {
+        Ok(Self {
             client,
+            #[cfg(all(feature = "qualification", feature = "cuda"))]
+            pinned_cuda_queue: None,
             budget,
             queue,
             ledger: Mutex::new(DeviceEventLedger::new(generation, provider_cap)?),
@@ -79,11 +125,18 @@ impl ResidentService {
             cap: provider_cap,
             poisoned: AtomicBool::new(false),
             retained_forever: AtomicBool::new(false),
-        }))
+        })
     }
 
     pub fn client(&self) -> &Client {
         &self.client
+    }
+    #[cfg(all(feature = "qualification", feature = "cuda"))]
+    pub fn pinned_cuda_queue(&self) -> Result<&Arc<cubecl::cuda::OwnedCudaQueue>> {
+        self.ensure_usable()?;
+        self.pinned_cuda_queue
+            .as_ref()
+            .ok_or_else(|| Error::State("resident client was not pinned cold".into()))
     }
     pub fn budget(&self) -> &PhysicalServiceBudget {
         &self.budget
@@ -169,6 +222,14 @@ impl ResidentService {
     // quarantine owns actual handles; this keepalive owns their coarse charge
     // and poisoned ledger. It introduces no second resource/fence authority.
     fn fence_and_retain(self: &Arc<Self>, leases: &[ResidentLease]) {
+        self.fence_and_retain_owners(leases, Vec::new());
+    }
+
+    pub(crate) fn fence_and_retain_owners(
+        self: &Arc<Self>,
+        leases: &[ResidentLease],
+        owners: Vec<crate::physical_quarantine::CompletionOwner>,
+    ) {
         self.poisoned.store(true, Ordering::Release);
         // If no active PhysicalWork owns the envelope, create/drop one before
         // quarantining handles so an unexpected release failure also fences it.
@@ -186,7 +247,11 @@ impl ResidentService {
                 }
             })
             .collect::<Vec<_>>();
-        crate::physical_quarantine::quarantine_uncertain(self.client.clone(), handles);
+        crate::physical_quarantine::quarantine_uncertain_with_owners(
+            self.client.clone(),
+            handles,
+            owners,
+        );
         if !self.retained_forever.swap(true, Ordering::AcqRel) {
             std::mem::forget(self.clone());
         }
@@ -241,6 +306,7 @@ impl ResidentService {
             events: Vec::new(),
             leases: Vec::new(),
             uploaded: BTreeSet::new(),
+            completion_owners: Vec::new(),
             work: Some(work),
             armed: true,
         })
@@ -331,6 +397,7 @@ impl ResidentService {
             accesses: accesses.to_vec(),
             work: Some(work),
             armed: true,
+            completion_owners: Vec::new(),
         })
     }
 }
@@ -502,8 +569,19 @@ pub(crate) struct ResidentSubmission<'a> {
     accesses: Vec<(ResidentLease, DeviceAccess)>,
     work: Option<PhysicalWork<'a>>,
     armed: bool,
+    completion_owners: Vec<crate::physical_quarantine::CompletionOwner>,
 }
 impl ResidentSubmission<'_> {
+    #[cfg(all(feature = "qualification", feature = "cuda"))]
+    pub(crate) fn retain_completion_owner(
+        &mut self,
+        owner: crate::physical_quarantine::CompletionOwner,
+    ) -> Result<()> {
+        // Attach first: even refusal on an already fenced service must not
+        // drop an executable/source owner of previously enqueued work.
+        self.completion_owners.push(owner);
+        self.service.ensure_usable()
+    }
     #[cfg(feature = "hardware-abort-probe")]
     pub fn handles(&self) -> Vec<Handle> {
         self.accesses.iter().map(|(l, _)| l.handle()).collect()
@@ -681,12 +759,13 @@ impl Drop for ResidentSubmission<'_> {
             if let Ok(mut ledger) = self.service.ledger.lock() {
                 let _ = ledger.report_completion_unknown(self.event);
             }
-            self.service.fence_and_retain(
+            self.service.fence_and_retain_owners(
                 &self
                     .accesses
                     .iter()
                     .map(|(l, _)| l.clone())
                     .collect::<Vec<_>>(),
+                std::mem::take(&mut self.completion_owners),
             );
             drop(self.work.take());
         }
@@ -730,6 +809,7 @@ pub(crate) struct ResidentInitialization<'a> {
     events: Vec<DeviceEventId>,
     leases: Vec<ResidentLease>,
     uploaded: BTreeSet<BufferLeaseId>,
+    completion_owners: Vec<crate::physical_quarantine::CompletionOwner>,
     work: Option<PhysicalWork<'a>>,
     armed: bool,
 }
@@ -827,7 +907,8 @@ impl Drop for ResidentInitialization<'_> {
                     let _ = ledger.report_completion_unknown(*event);
                 }
             }
-            self.service.fence_and_retain(&self.leases);
+            self.service
+                .fence_and_retain_owners(&self.leases, std::mem::take(&mut self.completion_owners));
             drop(self.work.take());
         }
     }

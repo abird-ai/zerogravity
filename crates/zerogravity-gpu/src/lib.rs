@@ -71,6 +71,7 @@ mod resident_leases;
 mod resident_program;
 mod resident_provider;
 mod rms_norm;
+mod rope_angles;
 mod rope_kv;
 mod silu;
 mod source_accumulation;

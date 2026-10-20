@@ -5,10 +5,12 @@ extern crate alloc;
 pub mod compiler;
 mod compute;
 mod device;
+mod owned_command;
 mod runtime;
 
 pub use compiler::{CudaCompilationOptions, CudaCompiler, CudaRepresentation};
 pub use device::*;
+pub use owned_command::OwnedCudaQueue;
 pub use runtime::*;
 
 pub mod install {

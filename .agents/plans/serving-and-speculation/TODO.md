@@ -8,10 +8,51 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
+- [x] **Private full-model CUDA graph qualification:** both original models
+  B2/4/8, StateOnly teacher prefixes (including genuine EOS input), future full
+  logits and outside-body greedy sampling match independent CPU/B1/native
+  full248320/all42 state. All six normal cases and18 fresh unknown-completion
+  cases pass actual replay, stale/Ready/pressure refusal and reclamation or
+  original quarantine. RoPE launch reduction additionally passes both models'
+  170 ordered-angle cases and full native B2/4/8 normal/greedy comparisons.
+  Physical32-case result87b85eff. Composed strict CUDA/Vulkan, complete
+  isolated1243-test phase, both original release routes,14 worker and12 HTTP
+  CUDA regressions pass; composed result e76248e8.
+- [ ] **Production CUDA graph admission:** close every same-card constructor,
+  transport, allocation, external event/storage and final-drop path through
+  original queue/completion ownership; admit graph metadata/driver resources.
+  Private graph replay does not enable production graph selection. Test-only
+  host protocol14 cases/three ownership negatives pass. Separate original
+  transport14 cases/two intended ownership failures, strict Clippy and no_std
+  also pass in an isolated harness. Prepaid retirement and complete integration
+  remain separate work, with participation unproven.
+
+- [x] **Genuine GGUF baseline build prerequisite:** official out-of-tree
+  vLLM GGUF plugin e2b8ad532b8b builds unchanged against pinned vLLM0.31/
+  Torch2.13/CUDA12.9; wheel af9de736,129 RECORD entries/111 packaged Python
+  files and full151-source pre/post pins validate. Owned container/group/EOF
+  cleanup passes; no GPU/model ran. Stock text loading with a genuine visual
+  projector and language-model-only mode, activation/cast/reduction profiles,
+  numerical quality and matched benchmarks remain unqualified. Lack of an
+  in-tree GGUF registry does not exclude this official plugin route.
+
 - [ ] **P12 prefix scheduling performance:** measure concurrent native prefix
-  throughput/TTFT and explicit B1 one-token scheduling cost against the accepted
-  max32-prefix implementation. Frozen binaries and reviewed finite A/B/B1
-  driver are ready; no prefix speedup or vLLM comparison is yet established.
+  cold-process throughput/TTFT against the accepted max32-prefix implementation.
+  Warm observations below cover both models plus explicit B1 scheduling cost;
+  genuine equivalent-source vLLM comparison remains open.
+
+- [x] **Bounded native-prefix warm comparison:** 0.8B strict B8 ABBA and 2B
+  natural concurrency8 BAAB, each plus B1,16 serialized samples/72offers/
+  72completed/576 output tokens. Exact full IDs/text/usage/finish and cleanup.
+  Mean concurrent waves32.301205→18.33249s(0.8B,-43.2%) and
+  42.19858→28.457115s(2B,-32.6%); actual forward dispatches
+  1722640→302160(-82.5%) and1668496→294384(-82.4%). B1 means
+  4.43954→4.42998s/5.60352→5.652635s, unchanged kernel counts.
+  Both concurrent workloads still miss10s TTFT; no consistent ITL-tail gain,
+  source-correct goodput unset. Original strict2B B8 attempt failed its
+  declared scheduling guard and remains unqualified; fresh naturalC8 protocol
+  permits actual2/4/8+B1, and both successful new samples happened to use54B8.
+  Conditions/limits and observed memory in FUSED_GPU_BATCHING; no vLLM claim.
 
 - [ ] **P12 fused continuous GPU serving:** extend the accepted CUDA B2/B4/B8
   HTTP path with paged hybrid KV/recurrent cache, physically safe

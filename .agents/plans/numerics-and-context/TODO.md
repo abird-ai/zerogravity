@@ -7,6 +7,53 @@ Contracts: [numerical/source profile](../../docs/NUMERICS_QUALITY_AND_BENCHMARKS
 
 ## Uncommitted
 
+- [ ] **Required three-model correctness gate (owner,20 Oct):** resolve
+  independent original-source CPU8K GDN divergence for BOTH original
+  Qwen3.5 models without loosening tolerances or changing declared source
+  arithmetic. This is required alongside original Qwen3.8-27B correctness,
+  matched serving/model benchmarks and shared-engine performance work.
+  Short-context CPU/B1/native exactness and closed original-HF operator
+  proofs do not close this independent GGUF long-context issue. Recover
+  exact raw teacher prefixes and pinned native arithmetic/chunk settings,
+  locate the first state/stage discrepancy, then rerun independent long
+  context and the accepted short corpus after any implementation fix.
+- [ ] Extend genuine resident GPU context/corpus qualification beyond the currently accepted 512 consumed tokens, including capacity/window/padding/replay boundaries.
+- [ ] Run genuine whole-model 16K/32K CPU/GPU gates only after prerequisites; functional 8K success is not independent long-context numerical closure.
+- [ ] Keep internal full-logit/all-state/trace bit parity distinct from independent native-source stage/top20 comparisons, including the known 2B 56 signed-zero distinctions.
+- [ ] Broaden prompts/tokenizers/precision profiles and sampling quality only with independent oracles, exact history and explicit qualified ranges.
+
+- [x] **Fresh0.8B whole-runtime reference control:** original8192-ID corpus,
+  CPU8/F32 KV/FA off, batch/ubatch64 and public CPU use_ref control pass all730
+  selected records/full248320 logits and all42 active causal domains,
+  55,382,016 state words, zero bit differences including signed zero versus
+  accepted Rust. Actual630 public CPU calls bind630 inner plans with use_ref
+  true and exact TLS ownership; two BLAS lifecycle contexts execute no math.
+  Original source/build/provider/observation and owned cleanup guards pass.
+  This qualifies the explicit reference-control schedule, not default bulk
+  arithmetic, historical corpus recovery or production arithmetic changes.
+- [ ] **2B whole-runtime control continuation:** the same V6 control correctly
+  refuses actual BLAS compute before delegation (exit125, no accepted capture).
+  Source/build/provider and owned cleanup binding pass. Preserve this failure;
+  investigate genuine public scheduling controls without bypassing compute
+  guards or substituting unobserved arithmetic. Earlier AR1 all8K exactness
+  remains accepted; required two-model long-context closure stays open.
+
+- [ ] Diagnose identical teacher-forced prefixes512/1024/2048/4096/8192 against pinned llama.cpp0.6.0/build11429 `d812350`, CPU/F32 KV and Flash Attention off. Fix the physical microbatch/chunk/arithmetic schedule and compare per-head GDN state, gain/beta, quantization and AR-versus-bulk recurrence; distinguish replay correctness from arithmetic.
+- [ ] Compare native ubatch1/64/256/512 only within bounded feasible runs; the historical full ubatch1 capture did not finish. Use raw token IDs to avoid incomplete UTF-8 HTTP rows. Recheck short corpus, layers, state and actual8K after any fix; retain original functional0.45 shared-top20-logprob/0.05 top-token-probability limits and strict source-bit operator gates.
+
+- [x] **Full-runtime reference-control prerequisite:** actual public metadata
+  identifies the rejected constructor as pinned BLAS (ACCEL), before CPU
+  initialization. The diagnostic keeps its original pre-setter exit125 and
+  produces no numerical capture. Strict build, exact source/build/invocation
+  binding and owned process/group/EOF cleanup pass. This diagnoses a control
+  harness refusal; it does not explain or close the long-context arithmetic
+  divergence. Guarded public compute-route coverage remains pending; no BLAS
+  disable, source arithmetic or tolerance change.
+
+## Committed
+
+### bfe62df — independent source and reference-path qualification
+
 - [x] Fresh mixed/Unicode teacher prefix: both original GGUF models at
   512/1024/2048/4096, pinned native AR1/F32 KV/FA off versus Rust: all730
   selected actual stage records/full248320 logits and independently decoded
@@ -65,25 +112,6 @@ Contracts: [numerical/source profile](../../docs/NUMERICS_QUALITY_AND_BENCHMARKS
   it does not recover the lost historical corpus, qualify full host-runtime
   closure or change production source math/tolerances.
 
-- [ ] **Required three-model correctness gate (owner,20 Oct):** resolve
-  independent original-source CPU8K GDN divergence for BOTH original
-  Qwen3.5 models without loosening tolerances or changing declared source
-  arithmetic. This is required alongside original Qwen3.8-27B correctness,
-  matched serving/model benchmarks and shared-engine performance work.
-  Short-context CPU/B1/native exactness and closed original-HF operator
-  proofs do not close this independent GGUF long-context issue. Recover
-  exact raw teacher prefixes and pinned native arithmetic/chunk settings,
-  locate the first state/stage discrepancy, then rerun independent long
-  context and the accepted short corpus after any implementation fix.
-- [ ] Extend genuine resident GPU context/corpus qualification beyond the currently accepted 512 consumed tokens, including capacity/window/padding/replay boundaries.
-- [ ] Run genuine whole-model 16K/32K CPU/GPU gates only after prerequisites; functional 8K success is not independent long-context numerical closure.
-- [ ] Keep internal full-logit/all-state/trace bit parity distinct from independent native-source stage/top20 comparisons, including the known 2B 56 signed-zero distinctions.
-- [ ] Broaden prompts/tokenizers/precision profiles and sampling quality only with independent oracles, exact history and explicit qualified ranges.
-
-- [ ] Diagnose identical teacher-forced prefixes512/1024/2048/4096/8192 against pinned llama.cpp0.6.0/build11429 `d812350`, CPU/F32 KV and Flash Attention off. Fix the physical microbatch/chunk/arithmetic schedule and compare per-head GDN state, gain/beta, quantization and AR-versus-bulk recurrence; distinguish replay correctness from arithmetic.
-- [ ] Compare native ubatch1/64/256/512 only within bounded feasible runs; the historical full ubatch1 capture did not finish. Use raw token IDs to avoid incomplete UTF-8 HTTP rows. Recheck short corpus, layers, state and actual8K after any fix; retain original functional0.45 shared-top20-logprob/0.05 top-token-probability limits and strict source-bit operator gates.
-
-## Committed
 
 ### 6d74f76
 

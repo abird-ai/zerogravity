@@ -62,6 +62,13 @@ pub fn run() {
     let abort_recurrent_mode = selected.strip_prefix("model-abort-recurrent-");
     #[cfg(feature = "hardware-abort-probe")]
     let abort_conv_mode = selected.strip_prefix("model-abort-conv-");
+    let cuda_graph_wide_abort_mode = selected.strip_prefix("resident-cuda-graph-wide-abort-");
+    let cuda_graph_wide_mode =
+        cuda_graph_wide_abort_mode.or_else(|| selected.strip_prefix("resident-cuda-graph-wide-"));
+    let cuda_graph_abort_mode = selected.strip_prefix("resident-cuda-graph-abort-");
+    let cuda_graph_mode = cuda_graph_wide_mode
+        .or(cuda_graph_abort_mode)
+        .or_else(|| selected.strip_prefix("resident-cuda-graph-"));
     let resident_cohort_mode = selected.strip_prefix("resident-cohort-");
     let resident_fused_mode = selected.strip_prefix("resident-fused-");
     let resident_fused_abort_mode = selected.strip_prefix("resident-fused-abort-");
@@ -87,7 +94,9 @@ pub fn run() {
         .or(resident_context_mode)
         .or(checkpoint_mode)
         .or(resident_cohort_mode);
-    let resident_graph_mode = resident_graph_mode.or(resident_fused_mode);
+    let resident_graph_mode = resident_graph_mode
+        .or(resident_fused_mode)
+        .or(cuda_graph_mode);
     let quant_stress_mode = selected.strip_prefix("quant-stress-");
     let device_quant_mode = selected.strip_prefix("model-device-quant-");
     let operators_mode = selected.strip_prefix("model-operators-");
@@ -98,6 +107,9 @@ pub fn run() {
     let softmax_mode = selected.strip_prefix("model-softmax-");
     let qk_stress_mode = selected.strip_prefix("qk-stress-");
     let qk_mode = selected.strip_prefix("model-qk-");
+    let ordered_rope_model_mode = selected.strip_prefix("rope-angles-model-");
+    let ordered_rope_mode =
+        ordered_rope_model_mode.or_else(|| selected.strip_prefix("rope-angles-"));
     let rope_stress_mode = selected.strip_prefix("rope-stress-");
     let rope_mode = selected.strip_prefix("model-rope-");
     let coefficient_stress_mode = selected.strip_prefix("coefficient-stress-");
@@ -138,7 +150,9 @@ pub fn run() {
     let workers_mode = selected
         .strip_prefix("model-workers-native-")
         .or_else(|| selected.strip_prefix("model-workers-"));
-    let (name, q4_mode, model_mode, mixed_mode) = if let Some(backend) = batch_attention_mode {
+    let (name, q4_mode, model_mode, mixed_mode) = if let Some(backend) = ordered_rope_mode {
+        (backend, false, false, false)
+    } else if let Some(backend) = batch_attention_mode {
         (backend, false, false, false)
     } else if let Some(backend) = batch_kv_mode {
         (backend, false, false, false)
@@ -232,6 +246,52 @@ pub fn run() {
             .expect("NVIDIA Vulkan adapter not available"),
         _ => panic!("unknown backend: {name}; choose cuda, rocm, vulkan-amd or vulkan-nvidia"),
     };
+    if ordered_rope_mode.is_some() {
+        let path = args.next().expect("ordered RoPE requires original GGUF");
+        let provider_mib = args
+            .next()
+            .map(|s| s.parse::<usize>().expect("provider MiB"))
+            .unwrap_or(4096);
+        let device_mib = args
+            .next()
+            .map(|s| s.parse::<u64>().expect("physical device MiB"))
+            .unwrap_or(5120);
+        let rows = args
+            .next()
+            .map(|s| s.parse::<usize>().expect("rows2/4/8"))
+            .unwrap_or(2);
+        let provider = provider_mib
+            .checked_mul(1024 * 1024)
+            .expect("provider cap overflow");
+        let cap = device_mib
+            .checked_mul(1024 * 1024)
+            .expect("device cap overflow");
+        #[cfg(feature = "cuda")]
+        let result = futures_lite::future::block_on(async {
+            if ordered_rope_model_mode.is_some() {
+                rope_angles::qualification::qualify_model(
+                    device,
+                    std::path::Path::new(&path),
+                    provider,
+                    cap,
+                    rows,
+                )
+                .await
+            } else {
+                rope_angles::qualification::qualify_angles(device, std::path::Path::new(&path))
+                    .await
+            }
+        });
+        #[cfg(not(feature = "cuda"))]
+        let result: zerogravity_core::Result<()> = {
+            let _ = (device, path, provider, cap, rows);
+            Err(zerogravity_core::Error::Unsupported(
+                "ordered RoPE requires CUDA".into(),
+            ))
+        };
+        result.unwrap_or_else(|e| panic!("ordered source RoPE qualification failed: {e}"));
+        return;
+    }
     if batch_attention_mode.is_some() {
         batch_attention::qualify(device)
             .unwrap_or_else(|error| panic!("P12 physical B>1 attention failed: {error}"));
@@ -299,6 +359,81 @@ pub fn run() {
         let cap = device_mib
             .checked_mul(1024 * 1024)
             .expect("device cap overflow");
+        if cuda_graph_wide_mode.is_some() {
+            let rows = args
+                .next()
+                .map(|s| s.parse::<usize>().expect("wide graph rows2/4/8"))
+                .unwrap_or(2);
+            #[cfg(not(feature = "cuda"))]
+            let _ = &rows;
+            let mode = args.next().unwrap_or_else(|| "state".into());
+            #[cfg(not(all(feature = "cuda", feature = "hardware-abort-probe")))]
+            let _ = &mode;
+            let qualification = async {
+                if cuda_graph_wide_abort_mode.is_some() {
+                    #[cfg(all(feature = "cuda", feature = "hardware-abort-probe"))]
+                    return resident_inference::qualify_graph_wide_abort(
+                        device,
+                        std::path::Path::new(&path),
+                        provider,
+                        cap,
+                        rows,
+                        &mode,
+                    )
+                    .await;
+                    #[cfg(not(all(feature = "cuda", feature = "hardware-abort-probe")))]
+                    return Err::<(), _>(zerogravity_core::Error::Unsupported(
+                        "requires CUDA/hardware-abort-probe".into(),
+                    ));
+                }
+                #[cfg(feature = "cuda")]
+                return resident_inference::qualify_graph_wide(
+                    device,
+                    std::path::Path::new(&path),
+                    provider,
+                    cap,
+                    rows,
+                )
+                .await;
+                #[cfg(not(feature = "cuda"))]
+                return Err::<(), _>(zerogravity_core::Error::Unsupported("requires CUDA".into()));
+            };
+            futures_lite::future::block_on(qualification).unwrap_or_else(|e| {
+                panic!("resident NEXT wide CUDA graph qualification failed: {e}")
+            });
+            return;
+        }
+        if cuda_graph_mode.is_some() {
+            let qualification = async {
+                if cuda_graph_abort_mode.is_some() {
+                    #[cfg(all(feature = "cuda", feature = "hardware-abort-probe"))]
+                    return resident_inference::qualify_graph_abort(
+                        device,
+                        std::path::Path::new(&path),
+                        provider,
+                        cap,
+                    )
+                    .await;
+                    #[cfg(not(all(feature = "cuda", feature = "hardware-abort-probe")))]
+                    return Err::<(), _>(zerogravity_core::Error::Unsupported(
+                        "requires CUDA/hardware-abort-probe".into(),
+                    ));
+                }
+                #[cfg(feature = "cuda")]
+                return resident_inference::qualify_graph(
+                    device,
+                    std::path::Path::new(&path),
+                    provider,
+                    cap,
+                )
+                .await;
+                #[cfg(not(feature = "cuda"))]
+                return Err::<(), _>(zerogravity_core::Error::Unsupported("requires CUDA".into()));
+            };
+            futures_lite::future::block_on(qualification)
+                .unwrap_or_else(|e| panic!("resident CUDA graph qualification failed: {e}"));
+            return;
+        }
         if resident_cohort_mode.is_some() || resident_fused_mode.is_some() {
             let rows = args
                 .next()
@@ -811,6 +946,6 @@ pub fn run() {
 
 fn print_help() {
     println!(
-        "zerogravity-gpu-probe — explicit GPU qualification tool\n\nUse resident-qualify-BACKEND MODEL for source/physical qualification.\nUse resident-context-BACKEND MODEL PROMPT IDS for genuine512 qualification.\nBACKEND: vulkan-amd, vulkan-nvidia, cuda or rocm when enabled.\nGPU text generation is provided by the zerogravity CLI run-BACKEND command.\nFault and checkpoint commands require their explicit diagnostic features."
+        "zerogravity-gpu-probe — explicit GPU qualification tool\n\nUse resident-qualify-BACKEND MODEL for source/physical qualification.\nUse resident-context-BACKEND MODEL PROMPT IDS for genuine512 qualification.\nUse rope-angles-cuda MODEL for physical angle differential qualification.\nUse rope-angles-model-cuda MODEL [PROVIDER_MiB DEVICE_MiB ROWS] for existing CPU/B1/native model gates.\nBACKEND: vulkan-amd, vulkan-nvidia, cuda or rocm when enabled.\nGPU text generation is provided by the zerogravity CLI run-BACKEND command.\nFault and checkpoint commands require their explicit diagnostic features."
     );
 }

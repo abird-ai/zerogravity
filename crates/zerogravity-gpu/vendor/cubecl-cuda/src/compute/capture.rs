@@ -102,7 +102,13 @@ unsafe fn instantiate_recording(
             cudarc::driver::sys::cuGraphDestroy(graph);
             return Err(doomed);
         }
-        let alloc_nodes = count_memory_nodes(graph);
+        let alloc_nodes = match count_memory_nodes(graph) {
+            Ok(count) => count,
+            Err(error) => {
+                cudarc::driver::sys::cuGraphDestroy(graph);
+                return Err(error);
+            }
+        };
         if alloc_nodes > 0 {
             cudarc::driver::sys::cuGraphDestroy(graph);
             return Err(ServerError::graph_state(format!(
@@ -132,7 +138,7 @@ unsafe fn instantiate_recording(
 /// # Safety
 ///
 /// `graph` must be a valid, not-yet-destroyed `CUgraph`.
-unsafe fn count_memory_nodes(graph: CUgraph) -> usize {
+unsafe fn count_memory_nodes(graph: CUgraph) -> Result<usize, ServerError> {
     let mut num_nodes: usize = 0;
     // SAFETY: `graph` is a valid `CUgraph` per this function's contract. A null
     // node array asks the driver for the node count only, written to
@@ -140,42 +146,76 @@ unsafe fn count_memory_nodes(graph: CUgraph) -> usize {
     let counted = unsafe {
         cudarc::driver::sys::cuGraphGetNodes(graph, std::ptr::null_mut(), &mut num_nodes)
     };
-    if let Err(err) = checked("cuGraphGetNodes", counted) {
-        log::warn!("{err} while counting the graph's nodes; skipping the memory-node check");
-        return 0;
+    checked("cuGraphGetNodes(count)", counted)?;
+    // Finite diagnostic control-plane bound, independently of tensor budgets.
+    if num_nodes > 1_048_576 {
+        return Err(ServerError::graph_state(
+            "capture graph exceeds node-query bound",
+        ));
     }
-    let mut nodes: Vec<CUgraphNode> = vec![std::ptr::null_mut(); num_nodes];
+    let mut nodes = Vec::<CUgraphNode>::new();
+    nodes.try_reserve_exact(num_nodes).map_err(|error| {
+        ServerError::graph_state(format!("capture node-query allocation failed: {error}"))
+    })?;
+    nodes.resize(num_nodes, std::ptr::null_mut());
     let mut num_read = num_nodes;
     // SAFETY: `graph` is valid per this function's contract, and `nodes` has
     // room for `num_read` entries — the count the call above reported.
     let read =
         unsafe { cudarc::driver::sys::cuGraphGetNodes(graph, nodes.as_mut_ptr(), &mut num_read) };
-    if let Err(err) = checked("cuGraphGetNodes", read) {
-        log::warn!(
-            "{err} while reading the graph's {num_nodes} node(s); \
-             skipping the memory-node check"
-        );
-        return 0;
+    checked("cuGraphGetNodes(read)", read)?;
+    if num_read != num_nodes {
+        return Err(ServerError::graph_state(
+            "capture graph node population changed during query",
+        ));
     }
-    nodes
-        .iter()
-        .take(num_read)
-        .filter(|node| {
-            let mut ty = cudarc::driver::sys::CUgraphNodeType::CU_GRAPH_NODE_TYPE_KERNEL;
-            // SAFETY: `node` is one of the handles the driver just wrote into
-            // `nodes`, so it is a valid node of the still-live `graph`.
-            let queried = unsafe { cudarc::driver::sys::cuGraphNodeGetType(**node, &mut ty) };
-            if let Err(err) = checked("cuGraphNodeGetType", queried) {
-                log::warn!("{err}; treating the node as not a memory node");
-                return false;
-            }
-            matches!(
-                ty,
+    count_memory_types(nodes.iter().map(|node| {
+        let mut ty = cudarc::driver::sys::CUgraphNodeType::CU_GRAPH_NODE_TYPE_KERNEL;
+        // SAFETY: `node` is one of the handles the driver just wrote into
+        // `nodes`, so it is a valid node of the still-live `graph`.
+        let queried = unsafe { cudarc::driver::sys::cuGraphNodeGetType(*node, &mut ty) };
+        checked("cuGraphNodeGetType", queried)?;
+        Ok(ty)
+    }))
+}
+
+fn count_memory_types(
+    types: impl IntoIterator<Item = Result<cudarc::driver::sys::CUgraphNodeType, ServerError>>,
+) -> Result<usize, ServerError> {
+    types.into_iter().try_fold(0, |count, kind| {
+        Ok(count
+            + usize::from(matches!(
+                kind?,
                 cudarc::driver::sys::CUgraphNodeType::CU_GRAPH_NODE_TYPE_MEM_ALLOC
                     | cudarc::driver::sys::CUgraphNodeType::CU_GRAPH_NODE_TYPE_MEM_FREE
-            )
-        })
-        .count()
+            )))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cudarc::driver::sys::CUgraphNodeType as Kind;
+
+    #[test]
+    fn unknown_node_type_never_seals_an_allocation_free_graph() {
+        let error = || Err(ServerError::graph_state("injected node-query failure"));
+        assert!(count_memory_types([error(), Ok(Kind::CU_GRAPH_NODE_TYPE_KERNEL)]).is_err());
+        assert!(count_memory_types([Ok(Kind::CU_GRAPH_NODE_TYPE_KERNEL), error()]).is_err());
+        assert_eq!(
+            count_memory_types([Ok(Kind::CU_GRAPH_NODE_TYPE_KERNEL)]).unwrap(),
+            0
+        );
+        assert_eq!(
+            count_memory_types([
+                Ok(Kind::CU_GRAPH_NODE_TYPE_MEM_ALLOC),
+                Ok(Kind::CU_GRAPH_NODE_TYPE_KERNEL),
+                Ok(Kind::CU_GRAPH_NODE_TYPE_MEM_FREE),
+            ])
+            .unwrap(),
+            2
+        );
+    }
 }
 
 /// `Ok` when the CUDA driver says the call to `op` succeeded.

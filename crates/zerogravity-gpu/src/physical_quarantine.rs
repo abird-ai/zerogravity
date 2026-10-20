@@ -15,7 +15,7 @@
 //! This module does not implement a CUDA/ROCm/Vulkan physical recovery path.
 
 use cubecl::{client::Client, server::Handle};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use zerogravity_core::Error;
 use zerogravity_core::Result;
 
@@ -24,7 +24,11 @@ use zerogravity_core::Result;
 struct PhysicalQuarantine {
     client: Client,
     handles: Vec<Handle>,
+    _owners: Vec<CompletionOwner>,
 }
+
+/// Trusted in-flight executable/native owner, never a Ready or root permit.
+pub(crate) type CompletionOwner = Arc<dyn std::any::Any + Send + Sync>;
 
 /// Exact same owned-value retention policy can be exercised on host-only
 /// DropSpy objects; production stores cloned CubeCL physical handles.
@@ -83,12 +87,35 @@ pub fn ensure_service_safe(client: &Client) -> Result<()> {
 /// A poisoned global mutex still owns its entries; recover its guard to
 /// conservatively add more keepalives without losing physical resources.
 pub fn quarantine_uncertain(client: Client, handles: Vec<Handle>) {
-    if handles.is_empty() {
+    quarantine_uncertain_with_owners(client, handles, Vec::new());
+}
+
+pub(crate) fn quarantine_uncertain_with_owners(
+    client: Client,
+    handles: Vec<Handle>,
+    owners: Vec<CompletionOwner>,
+) {
+    if handles.is_empty() && owners.is_empty() {
         return;
     }
     // Retain every handle even in the presence of a mistaken mixed-service
     // submission. The global fence covers every involved service.
-    registry().retain(PhysicalQuarantine { client, handles });
+    registry().retain(PhysicalQuarantine {
+        client,
+        handles,
+        _owners: owners,
+    });
+}
+
+#[cfg(all(feature = "qualification", feature = "cuda"))]
+pub(crate) fn quarantined_completion_owners_for(client: &Client) -> Result<usize> {
+    registry().with_items(|records| {
+        records
+            .iter()
+            .filter(|record| record.client.service_id() == client.service_id())
+            .map(|record| record._owners.len())
+            .sum()
+    })
 }
 
 /// Debug/diagnostic only: number of physically retained handle references,
@@ -138,5 +165,19 @@ mod tests {
         );
         drop(quarantine);
         assert_eq!(drops.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn executable_owner_is_not_destroyed_by_request_cancellation() {
+        let drops = Arc::new(AtomicUsize::new(0));
+        let owner: super::CompletionOwner = Arc::new(DropCount(drops.clone()));
+        let table = Quarantine::new();
+        let request = owner.clone();
+        table.retain(vec![owner]);
+        drop(request);
+        assert_eq!(drops.load(Ordering::SeqCst), 0);
+        assert_eq!(table.with_items(|records| records[0].len()).unwrap(), 1);
+        drop(table);
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
     }
 }

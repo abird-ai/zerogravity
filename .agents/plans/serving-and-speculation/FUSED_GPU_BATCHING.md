@@ -865,6 +865,95 @@ CUDA_PATH refused before GPU execution; the identical frozen artifacts passed
 with the approved environment. No source math/tolerance change.
 
 Frozen production server b1846c3e was built from5350a4d plus this reviewed
-prefix overlay. Concurrent prefix throughput and the explicit B1 scheduling
-cost still require quiet finite A/B measurements. This is one native teacher
+prefix overlay. This is one native teacher
 per row/wave, not simultaneous multi-token prefill or matched vLLM performance.
+
+## Bounded native-prefix warm observations
+
+Quiet serialized release measurements compare frozen b1846c3e with accepted
+activation-preparation server a896a455 (actual c5eb1f8 plus reviewed overlay,
+landed d0a6084). Same original GGUF/tokenizer, greedy policy, context512,
+output8, four CPU affinity members, provider4GiB/device5GiB and fresh owned
+process per sample with one request warmup. OS/storage/compiler caches remain
+warm; request time excludes startup/warmup. All16 samples close against exact
+IDs/text/usage/finish/frontiers, actual provider counters and owned process/
+endpoint/reader cleanup, followed by idle device observations. Total72offers/
+72completed/576 measured output tokens; warmup work is separate.
+
+0.8B uses strict B8 ABBA plus B1; report bd3a77d4. Its concurrent samples have
+46 native StateOnly B8 passes and8 greedy B8 passes,432 model-token steps and
+432 independent root publications versus368 B1 teacher steps plus8 B8 greedy
+passes/80 root publications. Dispatches1722640→302160(-82.5%).
+
+The first2B strict-B8 attempt failed its predeclared scheduling guard after
+actual mixed2/4/8+B1 work; report5da6dc90 remains unqualified and excluded.
+A separately reviewed naturalC8 protocol accepts whatever2/4/8+B1 scheduling
+actually occurs and authenticates every output packet/cohort; no forcedB8
+condition or invented StateOnly membership. Its BAAB plus B1 report f6869712
+passes. Both measured new concurrent samples happened to use46 StateOnly B8
+and8 greedy B8 passes,432 steps/roots and294384 dispatches versus368 B1
+teacher steps plus8 B8 greedy passes/80 roots and1668496 dispatches(-82.4%).
+
+Each value below is the mean of two per-provider summaries; p95 means sample
+p95s, not pooled population percentiles. These are small bounded observations.
+
+| Model/workload | Wave seconds old→new | Client TTFT p95 old→new(s) | Actual ID-delivery ITL p95 old→new(s) |
+| --- | ---: | ---: | ---: |
+|0.8B B8|32.301205→18.33249|29.6884→15.7265|0.3851→0.3832|
+|2B naturalC8|42.19858→28.457115|35.6887→21.9980|0.9380→0.9312|
+|0.8B B1|4.43954→4.42998|3.8142→3.7957|0.1043→0.1007|
+|2B B1|5.60352→5.652635|4.5128→4.5488|0.1651→0.1679|
+
+Concurrent mean waves decrease43.2%/32.6%; B1 changes-0.2%/+0.9%, with
+unchanged246314/238538 dispatches. No consistent ITL-tail gain is established.
+Concurrent samples still miss10s TTFT (delivery-SLO goodput0); all B1 samples
+meet declared10s TTFT/2s delivery-ITL limits. Qualified source-correct goodput
+remains unset. B1 new one-teacher scheduling makes54 calls/roots versus old10,
+while preserving54 model steps and8 generated tokens. This exposes its host
+scheduling cost; finite noisy samples do not establish no-regression broadly.
+
+Sampled GPU maxima old→new3045→3043MiB(0.8B),3509→3507MiB(2B);
+owned RSS maxima1654288→1650324KiB and2719732→2719836KiB. Sampling can
+miss allocator peaks and does not establish physical RAM admission. Two
+workload labels do not establish authenticated tenant fairness. Cold-process
+prefix measurements, original-HF/CUDA numerical qualification and genuine
+matched vLLM V1 benchmarks remain open. No vLLM speed/parity claim.
+
+## Private CUDA graph and ordered RoPE qualification
+
+20 Oct 2026, original RTX3060/CUDA, original0.8B/2B GGUF sources.
+Production graph selection remains unavailable.
+
+- One ordered native angle kernel replaces the previous per-angle launches,
+  preserving F32/F64 recurrence and exact signed bits. Each model passes170
+  physical cases/28296 words, B1/2/4/8, half-width1..32 and positions through32768;
+  trained RoPE stress passes separately. Full native B2/4/8 normal and greedy
+  decoding matches independent CPU/B1 full248320 logits and all42 domains.
+  This removes186 launch sites per complete cohort; no speed measurement follows.
+- The original actor captures the native full-model body with original buffer
+  owners. Typed graph keys bind source/program generation, band/capacity,
+  AV-padding profile and StateOnly versus Logits body. Greedy sampling stays
+  outside the captured Logits body. Host-supplied teacher input is qualified;
+  device-feedback graph replay is refused before admission.
+- Six normal cases cover both models×B2/4/8 at capacity512/AV-padding256, unequal
+  histories, two StateOnly teachers including genuine EOS input, independently
+  checked future full logits and outside-body greedy output. CPU/B1/normal native
+  comparisons cover all42 domains; pressure, abandoned Ready, stale epoch and
+  final reservation0 pass. Recorded body launch sites: StateOnly4323/4335/4347
+  (0.8B) and4179/4191/4203 (2B); Logits4334/4346/4359 and4190/4202/4215.
+- Eighteen fresh unknown-completion processes cover both models×three bands×
+  StateOnly/Logits/Greedy. Each actually enqueues a graph, retains executable
+  and original4GiB envelope, leaves roots unchanged and refuses later work.
+  No post-abort readback, driver destruction or trusted recovery is attempted.
+  The32-case physical result87b85eff also includes native B4/B8 regressions.
+- Physical global capture exclusion and graph/driver metadata admission remain
+  UNQUALIFIED. Original queue host-protocol14 cases and three intended ownership
+  compile failures pass only in an isolated checkout. Optional transport and
+  prepaid nonblocking retirement integration must cover every constructor,
+  allocation, event/storage and final Drop before production admission.
+
+Combined strict CUDA/Vulkan, complete isolated1243-test phase, both original
+release parity routes,14 worker and12 HTTP CUDA regressions pass; composed
+result e76248e8. Body counters record source launch sites, not driver-enumerated
+graph nodes. Production graph admission, trained-HF/27B execution, matched vLLM
+throughput and performance acceptance remain open.

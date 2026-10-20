@@ -22,6 +22,24 @@ mod fused_greedy_qualification;
 #[cfg(feature = "qualification")]
 #[path = "resident_fused_qualification.rs"]
 mod fused_qualification;
+#[cfg(all(feature = "qualification", feature = "cuda"))]
+mod graph;
+#[cfg(all(feature = "qualification", feature = "cuda"))]
+pub(crate) use graph::qualify as qualify_graph;
+#[cfg(all(
+    feature = "qualification",
+    feature = "cuda",
+    feature = "hardware-abort-probe"
+))]
+pub(crate) use graph::qualify_abort as qualify_graph_abort;
+#[cfg(all(feature = "qualification", feature = "cuda"))]
+pub(crate) use graph::qualify_wide as qualify_graph_wide;
+#[cfg(all(
+    feature = "qualification",
+    feature = "cuda",
+    feature = "hardware-abort-probe"
+))]
+pub(crate) use graph::qualify_wide_abort as qualify_graph_wide_abort;
 #[cfg(all(
     test,
     feature = "qualification",
@@ -300,6 +318,17 @@ impl ResidentModel {
         provider_cap: usize,
         device_cap: u64,
     ) -> Result<Arc<Self>> {
+        Self::load_inner(device, model, plan, provider_cap, device_cap, false).await
+    }
+
+    async fn load_inner(
+        device: Device,
+        model: Arc<dyn TensorSource>,
+        plan: ForwardPlan,
+        provider_cap: usize,
+        device_cap: u64,
+        pinned_graph: bool,
+    ) -> Result<Arc<Self>> {
         validate_provider(&device)?;
         let native_batch = matches!(device, Device::Cuda(_));
         let (capacity, vocab, preflight) = preflight_profile(model.as_ref(), &plan)?;
@@ -318,17 +347,42 @@ impl ResidentModel {
                 "complete resident graph does not fit provider cap".into(),
             ));
         }
-        ResidentProgram::ensure_capability(&device.client())?;
-        let service = ResidentService::new(
-            device,
-            model.source_identity(),
-            ResourceOwner {
-                model: format!("qwen-source-{:?}", model.source_identity()),
-                session: "resident-program".into(),
-            },
-            provider_cap,
-            device_cap,
-        )?;
+        if !pinned_graph {
+            ResidentProgram::ensure_capability(&device.client())?;
+        }
+        let owner = ResourceOwner {
+            model: format!("qwen-source-{:?}", model.source_identity()),
+            session: "resident-program".into(),
+        };
+        let service = if pinned_graph {
+            #[cfg(all(feature = "qualification", feature = "cuda"))]
+            {
+                ResidentService::new_pinned_cuda(
+                    device,
+                    model.source_identity(),
+                    owner,
+                    provider_cap,
+                    device_cap,
+                )?
+            }
+            #[cfg(not(all(feature = "qualification", feature = "cuda")))]
+            {
+                return Err(Error::Unsupported(
+                    "graph qualifier requires CUDA/qualification".into(),
+                ));
+            }
+        } else {
+            ResidentService::new(
+                device,
+                model.source_identity(),
+                owner,
+                provider_cap,
+                device_cap,
+            )?
+        };
+        if pinned_graph {
+            ResidentProgram::ensure_capability(service.client())?;
+        }
         let ticket = service.queue().submit(
             service.budget(),
             service.owner().clone(),

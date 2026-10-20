@@ -1656,6 +1656,14 @@ impl MatVecKernel for CaptureRope {
     }
 }
 pub fn rope_stress(device: Device, path: &Path) -> Result<(), String> {
+    rope_stress_with_device_cap(device, path, OPERATOR_CAP)
+}
+
+pub(crate) fn rope_stress_with_device_cap(
+    device: Device,
+    path: &Path,
+    device_cap: u64,
+) -> Result<(), String> {
     let model = LoadedQwenModel::open(
         path,
         &path.parent().ok_or("model directory")?.join("config.json"),
@@ -1680,7 +1688,7 @@ pub fn rope_stress(device: Device, path: &Path) -> Result<(), String> {
         ["rope.stress".into()],
         MAX_SELECTED_ROWS,
         8 * 1024 * 1024,
-        OPERATOR_CAP,
+        device_cap,
         ResourceOwner::new("rope-stress", "source").map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;

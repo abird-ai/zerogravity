@@ -19,7 +19,23 @@ pub(crate) struct BatchProgram {
     greedy: [Handle; 3],
     projection_blocks: Vec<Option<PreparedBlocks>>,
     owned: Vec<Handle>,
+    #[cfg(all(feature = "qualification", feature = "cuda"))]
+    graph_generation: u64,
+    #[cfg(all(feature = "qualification", feature = "cuda"))]
+    graph_pin: Arc<()>,
 }
+
+/// Physical kernel launch sites in the existing node body, not graph enqueues.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct BatchBodyReceipt {
+    pub dispatches: usize,
+    pub fused_dispatches: usize,
+}
+
+#[cfg(all(feature = "qualification", feature = "cuda"))]
+mod graph;
+#[cfg(all(feature = "qualification", feature = "cuda"))]
+pub(crate) use graph::{BatchGraphProfile, BatchGraphReplay};
 
 impl BatchProgram {
     /// New allocations only: the original source handles remain shared.
@@ -283,6 +299,10 @@ impl BatchProgram {
             greedy,
             projection_blocks,
             owned,
+            #[cfg(all(feature = "qualification", feature = "cuda"))]
+            graph_generation: graph::next_generation()?,
+            #[cfg(all(feature = "qualification", feature = "cuda"))]
+            graph_pin: Arc::new(()),
         })
     }
 
@@ -450,6 +470,18 @@ impl BatchProgram {
         } else {
             self.validate_runtime(client, parameters, bindings)?;
         }
+        let prefix_dispatches = self.launch_inputs(client, parameters, bindings, device_tokens);
+        let body = self.launch_body(client, parameters, output)?;
+        self.launch_outputs(client, bindings, output, prefix_dispatches, body)
+    }
+
+    fn launch_inputs(
+        &self,
+        client: &Client,
+        parameters: &[RuntimeParameters],
+        bindings: &[Vec<StateBinding>],
+        device_tokens: Option<&[DeviceBuffer]>,
+    ) -> usize {
         unsafe {
             crate::program_kernels::clear_step_status::launch_unchecked(
                 client,
@@ -517,7 +549,17 @@ impl BatchProgram {
                 self.rows,
             );
         }
-        let mut dispatches = 3 + self.transport_state(client, bindings, false);
+        3 + self.transport_state(client, bindings, false)
+    }
+
+    /// Original nodes and their certifications, in unchanged source order.
+    pub(crate) fn launch_body(
+        &self,
+        client: &Client,
+        parameters: &[RuntimeParameters],
+        output: ResidentOutput,
+    ) -> Result<BatchBodyReceipt> {
+        let mut dispatches = 0;
         // One actual native projection-dot launch per Project. Activation
         // preparation/status stages remain in the total dispatch count only.
         let mut fused_dispatches = 0;
@@ -555,6 +597,23 @@ impl BatchProgram {
                 dispatches += 1;
             }
         }
+        Ok(BatchBodyReceipt {
+            dispatches,
+            fused_dispatches,
+        })
+    }
+
+    fn launch_outputs(
+        &self,
+        client: &Client,
+        bindings: &[Vec<StateBinding>],
+        output: ResidentOutput,
+        prefix_dispatches: usize,
+        body: BatchBodyReceipt,
+    ) -> Result<ResidentSubmission> {
+        let mut dispatches = prefix_dispatches + body.dispatches;
+        let fused_dispatches = body.fused_dispatches;
+        let count = output.nodes(&self.inner.plan).len();
         dispatches += self.transport_state(client, bindings, true);
         let mut proposals = Vec::new();
         for row in bindings {
@@ -1162,6 +1221,14 @@ impl BatchProgram {
         let q = input(0).elements;
         let k = input(1).elements;
         let count = q + k + input(2).elements;
+        let ordered_angles = crate::rope_angles::PreparedAngles::rows_for_cuda(
+            client,
+            scratch(1),
+            &self.positions,
+            geometry.theta_scale,
+            half,
+            self.rows,
+        )?;
         let mut dispatches = 0;
         for (i, offset) in [(0, 0), (1, q), (2, q + k)] {
             dispatches += self.copy_dense(
@@ -1176,20 +1243,24 @@ impl BatchProgram {
             );
         }
         unsafe {
-            for stage in 0..half {
-                crate::rope_kv::angle_step_rows::launch_unchecked(
-                    client,
-                    grid(self.rows),
-                    threads(),
-                    arg(scratch(1), self.rows * half),
-                    arg(&self.positions, self.rows),
-                    geometry.theta_scale,
-                    half,
-                    self.rows,
-                    stage,
-                );
-                dispatches += 1;
-            }
+            dispatches += if let Some(angles) = ordered_angles {
+                angles.launch(client)?
+            } else {
+                for stage in 0..half {
+                    crate::rope_kv::angle_step_rows::launch_unchecked(
+                        client,
+                        grid(self.rows),
+                        threads(),
+                        arg(scratch(1), self.rows * half),
+                        arg(&self.positions, self.rows),
+                        geometry.theta_scale,
+                        half,
+                        self.rows,
+                        stage,
+                    );
+                }
+                half
+            };
             crate::source_trig::sincos_angles::launch_unchecked(
                 client,
                 grid(self.rows * half),

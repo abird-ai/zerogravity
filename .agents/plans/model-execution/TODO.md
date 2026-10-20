@@ -8,58 +8,6 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-- [x] **Original CPU attention fragment:** both authenticated sources at
-  layer3, teachers11/353, source-36-F32-restored profile: all47104 raw BF16
-  words across seven projection/view/QK-norm outputs match authentic original
-  captures, including signed zero. Same HostMath/ForwardPlan and sealed source
-  windows; real source-pool pressure, pre/mid-cancel, foreign input/provider,
-  retained output after callers drop and final reservations0 pass. Explicit
-  external hidden inputs establish no preceding producer or StateRoot.
-  Focused16 tests, strict CPU/CUDA/Vulkan, both approved original release
-  routes and complete isolated1243-test phase pass. Fresh helper strict build,
-  full source scans and owned process/group/EOF cleanup also pass.
-  Earlier metadata-list and omitted second4MiB binding-accounting failures
-  remain preserved; corrections change only the replay harness. RoPE, KV,
-  attention BMM/softmax, GDN/FLA, full-HF logits/StateRoot and27B stay open.
-
-- [x] **Authentic vLLM projection operands:** read-only extraction from the
-  accepted four-call eager-B1 capture preserves all original full496640-logit,
-  320-source-audit, provider and cleanup guards. Six raw BF16 files,36992 bytes,
-  bind actual teacher11/353 inputs/results, public GEMM pointers/settings and
-  learned QKVZ(qkv,z)/BA(b,a) row hashes. Ten transport tests and independent
-  rederivation pass; result f0981e62. No new model/GPU execution or dtype cast.
-  Native BF16 arithmetic, opaque provider allocation admission and full-HF
-  execution remain unqualified.
-
-- [x] **Original2B paired attention observation:** fresh plain/observed CPU
-  captures preserve all196 raw tensors/four full248320 logits/168 canonical
-  domains/60 prior intermediates against the accepted two-profile reference.
-  Observed capture adds216 genuine BF16 tensors across six attention layers,
-  nine stages and teachers11/353 in both original loader profiles,688128 bytes.
-  Exact signed-bit/shape/stride/source checks, unchanged archive validator,
-  all632 source/617 loaded parameter audits and owned group/container/EOF
-  cleanup pass. Ten parser fixtures pass. Diagnostic elapsed44.56s/42.01s;
-  no benchmark or physical RAM admission claim. Result e45e1903 qualifies
-  transparent reference-stage availability, not Rust attention output,
-  full HF execution/StateRoot, GPU/FLA, long context or trained27B.
-
-- [x] **Genuine pinned vLLM V1 eager B1 public GEMM observation:** four
-  unchanged original0.8B layer0 QKVZ/BA projections at teachers11/353 use
-  cublasGemmEx, BF16 A/B/C, FP32 compute, requested DEFAULT_TENSOR_OP,
-  default math/host pointers/atomics disallowed, alpha1/beta0 and explicit
-  8519680-byte workspace. Actual full tensor/workspace allocation extents,
-  original provider versions/mapped SHA and loaded320 source roles before/
-  after pass; plain/observed all496640 logit words are exact. Strict observer
-  build and all three owned process/container/group/EOF cleanups pass.
-  Original header-build and generic resolver failures remain preserved;
-  additive exact already-loaded provider binding has no alternative lookup
-  or math fallback. Prior resolver failure cause remains unproven.
-  This records public requests, not hidden selected kernels, all42 state,
-  wider/default graphs, Zerogravity GPU math/profile or matched performance.
-  Qualifier result55d68c7a; explicit workspace alone does not qualify opaque
-  library allocation admission. Pinned default vLLM loader/quant registries
-  have no GGUF entry; original BF16 remains the matched-source route.
-
 - [ ] **Independent trained BF16/FLA checkpoint gate:** original
   Qwen3.8-27B@1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0 acquired
   through the existing bounded Rust cache pipeline; independent31-file/
@@ -208,6 +156,60 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### fe2a342 — original attention and reference operators
+
+- [x] **Original CPU attention fragment:** both authenticated sources at
+  layer3, teachers11/353, source-36-F32-restored profile: all47104 raw BF16
+  words across seven projection/view/QK-norm outputs match authentic original
+  captures, including signed zero. Same HostMath/ForwardPlan and sealed source
+  windows; real source-pool pressure, pre/mid-cancel, foreign input/provider,
+  retained output after callers drop and final reservations0 pass. Explicit
+  external hidden inputs establish no preceding producer or StateRoot.
+  Focused16 tests, strict CPU/CUDA/Vulkan, both approved original release
+  routes and complete isolated1243-test phase pass. Fresh helper strict build,
+  full source scans and owned process/group/EOF cleanup also pass.
+  Earlier metadata-list and omitted second4MiB binding-accounting failures
+  remain preserved; corrections change only the replay harness. RoPE, KV,
+  attention BMM/softmax, GDN/FLA, full-HF logits/StateRoot and27B stay open.
+
+- [x] **Authentic vLLM projection operands:** read-only extraction from the
+  accepted four-call eager-B1 capture preserves all original full496640-logit,
+  320-source-audit, provider and cleanup guards. Six raw BF16 files,36992 bytes,
+  bind actual teacher11/353 inputs/results, public GEMM pointers/settings and
+  learned QKVZ(qkv,z)/BA(b,a) row hashes. Ten transport tests and independent
+  rederivation pass; result f0981e62. No new model/GPU execution or dtype cast.
+  Native BF16 arithmetic, opaque provider allocation admission and full-HF
+  execution remain unqualified.
+
+- [x] **Original2B paired attention observation:** fresh plain/observed CPU
+  captures preserve all196 raw tensors/four full248320 logits/168 canonical
+  domains/60 prior intermediates against the accepted two-profile reference.
+  Observed capture adds216 genuine BF16 tensors across six attention layers,
+  nine stages and teachers11/353 in both original loader profiles,688128 bytes.
+  Exact signed-bit/shape/stride/source checks, unchanged archive validator,
+  all632 source/617 loaded parameter audits and owned group/container/EOF
+  cleanup pass. Ten parser fixtures pass. Diagnostic elapsed44.56s/42.01s;
+  no benchmark or physical RAM admission claim. Result e45e1903 qualifies
+  transparent reference-stage availability, not Rust attention output,
+  full HF execution/StateRoot, GPU/FLA, long context or trained27B.
+
+- [x] **Genuine pinned vLLM V1 eager B1 public GEMM observation:** four
+  unchanged original0.8B layer0 QKVZ/BA projections at teachers11/353 use
+  cublasGemmEx, BF16 A/B/C, FP32 compute, requested DEFAULT_TENSOR_OP,
+  default math/host pointers/atomics disallowed, alpha1/beta0 and explicit
+  8519680-byte workspace. Actual full tensor/workspace allocation extents,
+  original provider versions/mapped SHA and loaded320 source roles before/
+  after pass; plain/observed all496640 logit words are exact. Strict observer
+  build and all three owned process/container/group/EOF cleanups pass.
+  Original header-build and generic resolver failures remain preserved;
+  additive exact already-loaded provider binding has no alternative lookup
+  or math fallback. Prior resolver failure cause remains unproven.
+  This records public requests, not hidden selected kernels, all42 state,
+  wider/default graphs, Zerogravity GPU math/profile or matched performance.
+  Qualifier result55d68c7a; explicit workspace alone does not qualify opaque
+  library allocation admission. Pinned default vLLM loader/quant registries
+  have no GGUF entry; original BF16 remains the matched-source route.
 
 ### bfe62df — leased source-window execution
 
