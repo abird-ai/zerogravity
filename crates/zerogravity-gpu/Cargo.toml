@@ -1,0 +1,32 @@
+[package]
+name = "zerogravity-gpu"
+version.workspace = true
+edition = "2024"
+rust-version = "1.95"
+publish = false
+license = "MIT"
+description = "Source-exact resident GPU execution and physical ownership"
+
+[features]
+default = []
+vulkan = ["cubecl/vulkan"]
+cuda = ["cubecl/cuda", "cubecl/cuda-cpp"]
+hip = ["cubecl/hip", "cubecl/hip-cpp"]
+all = ["vulkan", "cuda", "hip"]
+qualification = ["dep:zerogravity-cpu", "dep:zerogravity-model-qwen35", "zerogravity-model-qwen35/cpu", "zerogravity-model-qwen35/text"]
+hardware-abort-probe = ["qualification"]
+portable-checkpoint = ["dep:zerogravity-model-qwen35", "zerogravity-model-qwen35/diagnostic-cpu-checkpoint"]
+diagnostic-gdn-trace = ["qualification", "zerogravity-model-qwen35/diagnostic-gdn-trace"]
+
+[dependencies]
+zerogravity-core = { path = "../zerogravity-core" }
+zerogravity-artifacts = { path = "../zerogravity-artifacts" }
+zerogravity-cpu = { path = "../zerogravity-cpu", optional = true }
+zerogravity-model-qwen35 = { path = "../zerogravity-model-qwen35", default-features = false, optional = true }
+cubecl = { version = "=0.11.0", default-features = false, features = ["std", "stdlib"] }
+cubecl-common = "=0.11.0"
+cubecl-core = "=0.11.0"
+cubecl-runtime = "=0.11.0"
+cubecl-server = "=0.11.0"
+futures-lite = "=2.6.1"
+async-lock = "=3.4.2"
