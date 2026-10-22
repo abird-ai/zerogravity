@@ -5450,6 +5450,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "zerogravity"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "zerogravity-artifacts",
+ "zerogravity-core",
+ "zerogravity-cpu",
+ "zerogravity-gpu",
+ "zerogravity-model-gemma4",
+ "zerogravity-model-qwen35",
+]
+
+[[package]]
 name = "zerogravity-artifacts"
 version = "0.1.0"
 dependencies = [

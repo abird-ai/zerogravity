@@ -1,0 +1,67 @@
+[package]
+name = "zerogravity"
+version.workspace = true
+edition = "2024"
+rust-version = "1.95"
+description = "Rust-native composable AI execution fabric"
+publish = false
+license = "MIT"
+
+# Source artifacts and third-party dependencies retain their own licenses.
+[features]
+default = ["cpu", "model-qwen35", "text"]
+cpu = ["dep:zerogravity-cpu", "zerogravity-model-qwen35?/cpu"]
+model-qwen35 = ["dep:zerogravity-model-qwen35"]
+# Source contracts only; selecting this feature does not enable Gemma inference.
+model-gemma4 = ["dep:zerogravity-model-gemma4"]
+text = ["model-qwen35", "zerogravity-model-qwen35/text"]
+vulkan = ["dep:zerogravity-gpu", "zerogravity-gpu/vulkan"]
+cuda = ["dep:zerogravity-gpu", "zerogravity-gpu/cuda"]
+hip = ["dep:zerogravity-gpu", "zerogravity-gpu/hip"]
+all-models = ["model-qwen35", "model-gemma4"]
+all-backends = ["cpu", "vulkan", "cuda", "hip"]
+all = ["all-models", "all-backends", "text"]
+diagnostic-gdn-trace = ["model-qwen35", "zerogravity-model-qwen35/diagnostic-gdn-trace"]
+diagnostic-cpu-checkpoint = ["model-qwen35", "zerogravity-model-qwen35/diagnostic-cpu-checkpoint"]
+
+[dependencies]
+zerogravity-core = { path = "../zerogravity-core" }
+zerogravity-artifacts = { path = "../zerogravity-artifacts" }
+zerogravity-cpu = { path = "../zerogravity-cpu", optional = true }
+zerogravity-model-qwen35 = { path = "../zerogravity-model-qwen35", default-features = false, optional = true }
+zerogravity-model-gemma4 = { path = "../zerogravity-model-gemma4", default-features = false, optional = true }
+zerogravity-gpu = { path = "../zerogravity-gpu", default-features = false, optional = true }
+
+[dev-dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+
+[[example]]
+name = "diagnose_ffn"
+path = "examples/diagnose_ffn.rs"
+required-features = ["cpu", "model-qwen35"]
+
+[[example]]
+name = "trace_tokens"
+path = "examples/trace_tokens.rs"
+required-features = ["cpu", "model-qwen35"]
+
+[[example]]
+name = "diagnose_gdn_conv"
+path = "examples/diagnose_gdn_conv.rs"
+required-features = ["cpu", "model-qwen35"]
+
+[[example]]
+name = "diagnose_silu"
+path = "examples/diagnose_silu.rs"
+required-features = ["cpu", "model-qwen35"]
+
+[[example]]
+name = "diagnose_rope"
+path = "examples/diagnose_rope.rs"
+required-features = ["cpu", "model-qwen35"]
+
+[[example]]
+name = "cpu_context_step"
+path = "examples/cpu_context_step.rs"
+required-features = ["cpu", "model-qwen35", "text", "diagnostic-cpu-checkpoint"]
