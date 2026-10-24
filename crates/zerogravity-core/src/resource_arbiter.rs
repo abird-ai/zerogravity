@@ -15,6 +15,10 @@ use crate::{Error, Result};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, OnceLock};
 
+mod host_workspace;
+mod partition;
+pub use host_workspace::HostWorkspace;
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PhysicalDeviceKey {
     /// Explicit backend/service namespace; must correspond to one physical
@@ -125,6 +129,11 @@ impl ResourceArbiter {
     pub fn process_shared() -> Self {
         static SHARED: OnceLock<ResourceArbiter> = OnceLock::new();
         SHARED.get_or_init(Self::new).clone()
+    }
+
+    /// Inspect the original owner identity; no reservation or budget mutation.
+    pub fn is_process_shared(&self) -> bool {
+        Arc::ptr_eq(&self.shared, &Self::process_shared().shared)
     }
 
     pub fn new() -> Self {
@@ -475,6 +484,35 @@ impl GlobalResourceLease {
             shared: self.shared.clone(),
         }
     }
+    /// Verify a detached charge without exposing its original arbiter/key.
+    pub fn bytes_in_domain(
+        &self,
+        arbiter: &ResourceArbiter,
+        key: &PhysicalDeviceKey,
+    ) -> Result<u64> {
+        if self.released || !Arc::ptr_eq(&self.shared, &arbiter.shared) || &self.device != key {
+            return Err(Error::State(
+                "detached reservation belongs to another admission domain".into(),
+            ));
+        }
+        self.reserved_bytes()
+    }
+    /// Current charge of this retained lease, including an unknown reservation.
+    pub fn reserved_bytes(&self) -> Result<u64> {
+        if self.released {
+            return Err(Error::State("detached reservation released".into()));
+        }
+        let state = self
+            .shared
+            .lock()
+            .map_err(|_| Error::State("resource arbiter mutex poisoned".into()))?;
+        let reservation = state
+            .budgets
+            .get(&self.device)
+            .and_then(|b| b.reservations.get(&self.id))
+            .ok_or_else(|| Error::State("detached reservation absent".into()))?;
+        Ok(reservation.bytes)
+    }
     pub fn mark_submitted(&self) -> Result<()> {
         // A retained physical allocation can be resubmitted after genuine
         // Ready while remaining globally charged to its original owner.
@@ -528,6 +566,30 @@ mod tests {
         AllocationRequest { kind, bytes }
     }
 
+    #[test]
+    fn compiler_context_detached_lease_requires_same_arbiter_and_key() {
+        let a = ResourceArbiter::new();
+        let b = ResourceArbiter::new();
+        let first = device("detached-a");
+        let other = device("detached-b");
+        for arb in [&a, &b] {
+            arb.register(first.clone(), 64).unwrap();
+        }
+        a.register(other.clone(), 64).unwrap();
+        let lease = a
+            .admit(
+                &first,
+                owner("detached"),
+                &[req(AllocationClass::Scratch, 32)],
+            )
+            .unwrap();
+        assert_eq!(lease.bytes_in_domain(&a, &first).unwrap(), 32);
+        assert!(lease.bytes_in_domain(&a, &other).is_err());
+        assert!(lease.bytes_in_domain(&b, &first).is_err());
+        assert_eq!(a.snapshot(&first).unwrap().reserved, 32);
+        drop(lease);
+        assert_eq!(a.snapshot(&first).unwrap().reserved, 0);
+    }
     #[test]
     fn physical_budget_enforces_cross_model_shared_admission() {
         let a = ResourceArbiter::new();
