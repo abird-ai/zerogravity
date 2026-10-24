@@ -17,10 +17,15 @@ cpu = ["zerogravity/cpu"]
 model-qwen35 = ["zerogravity/model-qwen35"]
 text = ["model-qwen35", "zerogravity/text"]
 cache = ["zerogravity/cache"]
+gemma4-cpu-candidate = ["cpu", "cache", "zerogravity/model-gemma4-cpu-candidate", "dep:signal-hook"]
+gemma4-hip-resident-candidate = ["gemma4-cpu-candidate", "hip", "zerogravity/gemma4-hip-qualification"]
 acquisition = ["cache", "zerogravity/acquisition", "dep:signal-hook", "dep:rustix"]
 diagnostic-acquisition = ["acquisition", "zerogravity/diagnostic-acquisition"]
 vulkan = ["zerogravity/vulkan", "dep:futures-lite"]
-cuda = ["zerogravity/cuda", "dep:futures-lite"]
+cuda = ["zerogravity/cuda", "dep:futures-lite", "dep:nvml-wrapper"]
+canonical47-serving = ["serve", "cuda", "cache", "zerogravity/canonical47-serving"]
+short-hf-run = ["cuda", "cache", "model-qwen35", "text", "zerogravity/short-hf-serving"]
+short-hf-serving = ["canonical47-serving", "zerogravity/short-hf-serving"]
 hip = ["zerogravity/hip", "dep:futures-lite"]
 all-models = ["model-qwen35"]
 all-backends = ["cpu", "vulkan", "cuda", "hip"]
@@ -37,9 +42,13 @@ futures-lite = { version = "=2.6.1", optional = true }
 httparse = { version = "=1.10.1", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+nvml-wrapper = { version = "=0.13.0", optional = true }
 signal-hook = { version = "=0.3.18", default-features = false, optional = true }
 rustix = { version = "=1.1.5", default-features = false, features = ["fs"], optional = true }
 
 [[bin]]
 name = "zerogravity"
 path = "src/main.rs"
+
+[dev-dependencies]
+sha2 = "=0.10.9"
