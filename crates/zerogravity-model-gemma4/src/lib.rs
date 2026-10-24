@@ -6,6 +6,7 @@ pub use zerogravity_core::{Error, Result};
 pub mod config;
 pub mod moe;
 pub mod variant_26b;
+pub mod variant_31b;
 pub use config::{AttentionKind, Gemma4Config, Gemma4LayerSpec, Gemma4Variant, RotaryKind};
 pub mod tensors;
 pub use tensors::Gemma4TensorSpec;

@@ -1,5 +1,5 @@
-//! Immutable admission of the two explicitly requested Gemma 4 text variants.
-use crate::{Error, Result, moe::MoeGeometry, variant_26b};
+//! Immutable admission of the explicitly registered Gemma 4 text variants.
+use crate::{Error, Result, moe::MoeGeometry, variant_26b, variant_31b};
 use serde_json::Value;
 
 const MAX_CONFIG_BYTES: usize = 1024 * 1024;
@@ -8,6 +8,7 @@ const MAX_CONFIG_BYTES: usize = 1024 * 1024;
 pub enum Gemma4Variant {
     E2b,
     Moe26bA4b,
+    Dense31b,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AttentionKind {
@@ -114,19 +115,22 @@ impl Gemma4Config {
             ));
         }
         let enabled = boolean(cfg, "enable_moe_block")?;
-        let variant = if enabled {
-            Gemma4Variant::Moe26bA4b
-        } else {
-            Gemma4Variant::E2b
+        let hidden_size = integer(cfg, "hidden_size")?;
+        let variant = match (enabled, hidden_size) {
+            (true, _) => Gemma4Variant::Moe26bA4b,
+            (false, 5376) => Gemma4Variant::Dense31b,
+            (false, _) => Gemma4Variant::E2b,
         };
         let moe = if enabled {
             Some(variant_26b::validate_config(&root)?)
         } else {
             None
         };
-        let hidden_size = integer(cfg, "hidden_size")?;
+        if variant == Gemma4Variant::Dense31b {
+            variant_31b::validate_config(&root)?;
+        }
         let layer_count = integer(cfg, "num_hidden_layers")?;
-        if !enabled {
+        if variant == Gemma4Variant::E2b {
             for (name, expected) in [
                 ("hidden_size", 1536),
                 ("num_hidden_layers", 35),
@@ -231,7 +235,7 @@ impl Gemma4Config {
         exact_float(local_rope, "rope_theta", 10000.0)?;
         exact_float(global_rope, "rope_theta", 1000000.0)?;
         exact_float(global_rope, "partial_rotary_factor", 0.25)?;
-        let interval = if enabled { 6 } else { 5 };
+        let interval = if variant == Gemma4Variant::E2b { 5 } else { 6 };
         let mut layers = Vec::with_capacity(layer_count);
         for (i, kind) in layer_types.iter().enumerate() {
             let full = (i + 1) % interval == 0;
@@ -273,7 +277,7 @@ impl Gemma4Config {
                 query_heads,
                 kv_heads,
                 kv_source_layer,
-                feed_forward_width: if i >= unshared && !enabled {
+                feed_forward_width: if i >= unshared && variant == Gemma4Variant::E2b {
                     intermediate_size * 2
                 } else {
                     intermediate_size
