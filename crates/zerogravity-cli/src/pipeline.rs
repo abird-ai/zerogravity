@@ -17,24 +17,31 @@ const MAX_CONFIG_BYTES: usize = 256 * 1024;
 const SCHEMA: &str = "zerogravity.pipeline.v1";
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Document {
-    schema: String,
+pub(super) struct Document {
+    pub(super) schema: String,
     #[serde(default)]
-    model: Vec<ModelDoc>,
-    pipeline: Vec<PipelineDoc>,
+    pub(super) model: Vec<ModelDoc>,
     #[serde(default)]
-    route: Vec<RouteDoc>,
+    pub(super) pipeline: Vec<PipelineDoc>,
+    #[serde(default)]
+    pub(super) route: Vec<RouteDoc>,
+    #[serde(default)]
+    pub(super) run: Option<crate::run_cli::RunDoc>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ModelDoc {
-    id: String,
-    target: String,
-    source: Option<String>,
+pub(super) struct ModelDoc {
+    pub(super) id: String,
+    pub(super) target: String,
+    pub(super) source: Option<String>,
+    pub(super) model_config: Option<String>,
+    pub(super) tokenizer: Option<String>,
+    pub(super) snapshot: Option<String>,
+    pub(super) native_artifacts: Option<String>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PipelineDoc {
+pub(super) struct PipelineDoc {
     name: String,
     input: String,
     output: String,
@@ -137,28 +144,54 @@ struct LinkDoc {
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RouteDoc {
+pub(super) struct RouteDoc {
     path: String,
     protocol: String,
     pipeline: String,
 }
 impl Document {
-    fn compile(self) -> Result<Config> {
-        if self.schema != SCHEMA {
+    pub(super) fn compile(self) -> Result<Config> {
+        if !matches!(self.schema.as_str(), SCHEMA | "zerogravity.pipeline.v2") {
             return Err(Error::Unsupported(
                 "pipeline schema version unavailable".into(),
+            ));
+        }
+        if self.schema == SCHEMA
+            && (self.run.is_some()
+                || self.model.iter().any(|m| {
+                    m.model_config.is_some()
+                        || m.tokenizer.is_some()
+                        || m.snapshot.is_some()
+                        || m.native_artifacts.is_some()
+                }))
+        {
+            return Err(Error::Malformed(
+                "run/source-sidecar fields require zerogravity.pipeline.v2".into(),
             ));
         }
         Ok(Config {
             models: self
                 .model
                 .into_iter()
-                .map(|m| ModelInstance {
-                    id: m.id,
-                    target: m.target,
-                    source: m.source,
+                .map(|m| {
+                    // Only a direct CLI source may infer its target from parsed
+                    // source geometry; a declared table states it now.
+                    if m.target.is_empty() {
+                        return Err(Error::Malformed(
+                            "declared model target must be nonempty".into(),
+                        ));
+                    }
+                    Ok(ModelInstance {
+                        id: m.id,
+                        target: m.target,
+                        source: m.source,
+                        model_config: m.model_config,
+                        tokenizer: m.tokenizer,
+                        snapshot: m.snapshot,
+                        native_artifacts: m.native_artifacts,
+                    })
                 })
-                .collect(),
+                .collect::<Result<Vec<_>>>()?,
             pipelines: self
                 .pipeline
                 .into_iter()
@@ -211,7 +244,7 @@ fn assignment(input: &str) -> Result<(&str, &str)> {
     }
     Ok((a, b))
 }
-fn flags(args: &[String]) -> Result<Config> {
+pub(super) fn flags(args: &[String]) -> Result<Config> {
     if args.len() > 1024 {
         return Err(Error::Limit("pipeline flag count".into()));
     }
@@ -303,10 +336,19 @@ fn flags(args: &[String]) -> Result<Config> {
                 let (target, source) = right
                     .split_once('@')
                     .map_or((right, None), |(a, b)| (a, Some(b)));
+                if target.is_empty() {
+                    return Err(Error::Malformed(
+                        "declared model target must be nonempty".into(),
+                    ));
+                }
                 models.push(ModelInstance {
                     id: id.into(),
                     target: target.into(),
                     source: source.map(str::to_owned),
+                    model_config: None,
+                    tokenizer: None,
+                    snapshot: None,
+                    native_artifacts: None,
                 });
             }
             "--step" => {
@@ -381,7 +423,7 @@ fn flags(args: &[String]) -> Result<Config> {
 /// anchors/aliases and shallow merge keys are useful for shared settings,
 /// but custom tags are not executable or trusted pipeline components.
 /// Every expanded scalar and map key is counted within this finite policy.
-fn check_yaml_shape(value: &serde_yaml::Value) -> Result<()> {
+pub(super) fn check_yaml_shape(value: &serde_yaml::Value) -> Result<()> {
     use serde_yaml::Value;
     const MAX_NODES: usize = 16_384;
     const MAX_DEPTH: usize = 32;
@@ -427,13 +469,17 @@ fn check_yaml_shape(value: &serde_yaml::Value) -> Result<()> {
     Ok(())
 }
 
-fn load(path: &str) -> Result<Config> {
+pub(super) fn load_document(path: &str) -> Result<Document> {
     let bytes = fs::metadata(path)?.len();
     if bytes == 0 || bytes > MAX_CONFIG_BYTES as u64 {
         return Err(Error::Limit("pipeline config size limit".into()));
     }
     // Recheck after read: the source can change between metadata and read.
-    let bytes = fs::read(path)?;
+    let mut bytes = Vec::new();
+    use std::io::Read;
+    fs::File::open(path)?
+        .take(MAX_CONFIG_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)?;
     if bytes.is_empty() || bytes.len() > MAX_CONFIG_BYTES {
         return Err(Error::Limit(
             "pipeline config changed or exceeds size".into(),
@@ -451,10 +497,26 @@ fn load(path: &str) -> Result<Config> {
     node.apply_merge()
         .map_err(|_| Error::Malformed("invalid YAML mapping merge".into()))?;
     check_yaml_shape(&node)?;
+    if node.get("schema").and_then(serde_yaml::Value::as_str) == Some("zerogravity.pipeline.v2") {
+        fn no_null(v: &serde_yaml::Value) -> bool {
+            match v {
+                serde_yaml::Value::Null => false,
+                serde_yaml::Value::Sequence(s) => s.iter().all(no_null),
+                serde_yaml::Value::Mapping(m) => m.iter().all(|(k, v)| no_null(k) && no_null(v)),
+                _ => true,
+            }
+        }
+        if !no_null(&node) {
+            return Err(Error::Malformed(
+                "pipeline.v2 does not accept null fields; omit optional values".into(),
+            ));
+        }
+    }
     let doc: Document = serde_yaml::from_value(node)
         .map_err(|_| Error::Malformed("invalid typed pipeline YAML schema".into()))?;
-    doc.compile()
+    Ok(doc)
 }
+
 pub(super) fn run(args: &[String]) -> Result<()> {
     if args.len() == 1 && matches!(args[0].as_str(), "--help" | "help" | "-h") {
         println!(
@@ -498,12 +560,23 @@ Single-model resident inference continues through zerogravity run MODEL.gguf."
     if operation != "check" && operation != "run" {
         return Err(invalid());
     }
-    let config = match &args[1..] {
-        [flag, file] if flag == "--config" => load(file)?,
+    let (config, entrypoint) = match &args[1..] {
+        [flag, file] if flag == "--config" => {
+            let doc = load_document(file)?;
+            let entrypoint = doc
+                .run
+                .as_ref()
+                .and_then(|r| r.entrypoint.as_ref())
+                .map(crate::run_cli::EntryDoc::typed);
+            (doc.compile()?, entrypoint)
+        }
         rest if rest.iter().any(|x| x == "--config") => return Err(invalid()),
-        rest => flags(rest)?,
+        rest => (flags(rest)?, None),
     };
-    let valid = config.validate()?;
+    let valid = match entrypoint {
+        Some(entry) => config.validate_entrypoint(&entry)?,
+        None => config.validate()?,
+    };
     if operation == "run" {
         return Err(Error::Unsupported(
             "compiled multi-model pipeline execution NOT IMPLEMENTED; no source or device was opened".into()

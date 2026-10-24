@@ -37,7 +37,11 @@ mod cache_manage;
 ))]
 mod cache_run;
 
+#[cfg(all(feature = "gemma4-cpu-candidate", target_os = "linux"))]
+mod gemma4_cpu;
+
 mod pipeline;
+mod run_cli;
 
 #[cfg(feature = "serve")]
 mod serve;
@@ -327,7 +331,7 @@ FUTURE COMMANDS (NOT IMPLEMENTED):
 
 Only qualified text-only dense Qwen3.5 is implemented; CPU is the first
 reference backend. Trained MTP, vision, Gemma, GPU, and HTTP are NOT IMPLEMENTED.
-Use --config and --tokenizer to override colocated config/tokenizer files. See docs/ENGINEERING_SPECIFICATION.md."
+Use --model-config and --tokenizer for colocated sidecars; --config selects pipeline YAML. See docs/ENGINEERING_SPECIFICATION.md."
     );
 }
 
@@ -415,7 +419,9 @@ fn composed_usage() {
             "\nFUTURE COMMANDS (NOT IMPLEMENTED):\n    serve       HTTP router (requires serve feature)\n    config      Runtime configuration"
         );
     }
-    println!("\nEach run command selects its compiled backend; never a silent fallback.");
+    println!(
+        "\nRun routing: zerogravity run --help; inventory: zerogravity devices list [--json].\nForced backends never fall back. Generic GPU routing refuses missing cold costs/physical binding."
+    );
 }
 
 fn inspect(path: &Path) -> Result<()> {
@@ -504,6 +510,7 @@ fn inspect(path: &Path) -> Result<()> {
 
 #[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
 struct InferenceOptions {
+    context: usize,
     prompt: Option<String>,
     max_tokens: usize,
     raw: bool,
@@ -542,6 +549,7 @@ fn infer_prepared(model: &str, prepared: PreparedQwen, options: InferenceOptions
         max_tokens,
         raw,
         config: _,
+        context,
         tokenizer: _,
         audit_jsonl,
         audit_layers_jsonl,
@@ -571,7 +579,11 @@ fn infer_prepared(model: &str, prepared: PreparedQwen, options: InferenceOptions
             "prompt tokenization empty".into(),
         ));
     }
-    if tokens.len() > 32_768 {
+    if tokens
+        .len()
+        .checked_add(max_tokens - 1)
+        .is_none_or(|n| n > context.min(model_source.geometry().max_position_embeddings as usize))
+    {
         return Err(zerogravity::Error::Limit(
             "CPU validation maximum is 32768 input tokens; actual throughput is not guaranteed"
                 .into(),
@@ -711,6 +723,7 @@ fn cpu_options(command: Command) -> (String, InferenceOptions) {
     (
         model,
         InferenceOptions {
+            context: 32_768,
             prompt,
             max_tokens,
             raw,
@@ -737,7 +750,7 @@ fn execute_cpu(command: Command) -> Result<()> {
     feature = "text",
     target_os = "linux"
 ))]
-fn execute_cache(args: Vec<String>) -> Result<()> {
+fn execute_qwen_cache(args: Vec<String>) -> Result<()> {
     cache_run::run(args)
 }
 
@@ -748,10 +761,18 @@ fn execute_cache(args: Vec<String>) -> Result<()> {
     feature = "text",
     target_os = "linux"
 )))]
-fn execute_cache(_: Vec<String>) -> Result<()> {
+fn execute_qwen_cache(_: Vec<String>) -> Result<()> {
     Err(zerogravity::Error::Unsupported(
         "run-cache requires Linux and compiled cache, cpu, model-qwen35 and text features".into(),
     ))
+}
+
+fn execute_cache(args: Vec<String>) -> Result<()> {
+    #[cfg(all(feature = "gemma4-cpu-candidate", target_os = "linux"))]
+    if gemma4_cpu::selected(&args) {
+        return gemma4_cpu::run(&args);
+    }
+    execute_qwen_cache(args)
 }
 
 #[cfg(not(all(feature = "cpu", feature = "model-qwen35", feature = "text")))]
@@ -986,6 +1007,25 @@ fn main() -> ExitCode {
     let args = env::args_os()
         .skip(1)
         .map(|value| value.to_string_lossy().into_owned());
+    let args = args.collect::<Vec<_>>();
+    let result = match args.first().map(String::as_str) {
+        Some("run") => Some(run_cli::run(args[1..].to_vec(), None)),
+        Some(
+            alias @ ("run-cpu" | "run-cuda" | "run-rocm" | "run-vulkan" | "run-vulkan-amd"
+            | "run-vulkan-nvidia"),
+        ) => Some(run_cli::run(args[1..].to_vec(), Some(alias))),
+        Some("devices") => Some(run_cli::devices(&args[1..])),
+        _ => None,
+    };
+    if let Some(result) = result {
+        return match result {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("zerogravity run: {error}");
+                ExitCode::from(2)
+            }
+        };
+    }
     run(parse(args))
 }
 
