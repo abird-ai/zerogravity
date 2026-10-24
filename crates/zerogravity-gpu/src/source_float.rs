@@ -15,7 +15,7 @@ pub(crate) fn widen_source(x: f32) -> f64 {
     result
 }
 
-/// Nearest-even subnormal packing, kept as bits until physical storage.
+/// Nearest-even subnormal packing; explicit sign settles exact zero only.
 #[cube]
 pub(crate) fn round_source(x: f64, sign: u32) -> f32 {
     let mut result = f32::cast_from(x);
@@ -26,7 +26,14 @@ pub(crate) fn round_source(x: f64, sign: u32) -> f32 {
         if remainder > 0.5f64 || (remainder == 0.5f64 && (bits & 1u32) != 0u32) {
             bits += 1u32;
         }
-        result = f32::reinterpret(bits | sign);
+        let mut packed_sign = sign;
+        if x != 0.0f64 {
+            packed_sign = 0u32;
+            if x < 0.0f64 {
+                packed_sign = 0x80000000u32;
+            }
+        }
+        result = f32::reinterpret(bits | packed_sign);
     }
     result
 }
@@ -98,3 +105,13 @@ pub(crate) fn correct_fma(sum: f64, error: f64, candidate: f32) -> f32 {
     }
     output
 }
+
+#[cfg(all(
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    ),
+    feature = "hip",
+    target_os = "linux"
+))]
+pub(crate) mod qualification;
