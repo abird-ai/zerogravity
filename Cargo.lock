@@ -5651,12 +5651,15 @@ dependencies = [
  "cubecl",
  "cubecl-common",
  "cubecl-core",
+ "cubecl-cuda",
  "cubecl-runtime",
  "cubecl-server",
  "futures-lite",
+ "sha2",
  "zerogravity-artifacts",
  "zerogravity-core",
  "zerogravity-cpu",
+ "zerogravity-model-gemma4",
  "zerogravity-model-qwen35",
 ]
 
