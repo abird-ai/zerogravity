@@ -8,6 +8,342 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
+### Current parity and post-parity optimization order — 23 Oct
+
+- Current MAIN/ISO410: continuous34+dynamic2-key KV and compiler-lifetime7
+  assembled; source/strict/ownership checks and optimized release5 pass. Actual
+  finite B4/lifecycle/retirement/3fault and both-model N1 matrices/faults pass.
+  Source6 shared input geometry fixes the old equal-frontier refusal; grouped
+  strict/2401frontier checks and optimized release6 pass. Affected finite B4/
+  lifecycle/zero-retirement/3fault cases pass. Genuine mixed N1→B4 reaches math
+  but differs from same-prior N1 at SSA9/layer0 post-attention residual; earliest
+  divergence was unresolved there. Fixture-only diagnostic7 now finds first
+  difference at QKVZ2, with identical embedding/InputRMS and all48prior planes
+  perrow. Subsequent original same-prior B4 comparison passed below; the old
+  cross-width N1 diagnostic remains unchanged. All original owner/group/EOF
+  closures verified. Native mixed/refill/fullstate and stock API evidence below
+  are distinct from the separate genuine HTTP mixed/refill result below; fullgate
+  remains open.
+- Fixture-only source8 exported all15 genuine transitions/35events/1,648,529,280B
+  including cancel/refill/permutation/N1 bridge. Healthy source/native retirement
+  and final host/device0 verified; this is explicitly unqualified numerical data.
+  Original same-prior reference3 PASS: all15transitions/30plain+observed calls,
+  full42prior+candidate/fullV/24sums/natural bits/control exact, including first
+  mixed B4/refill/N1bridge/permutation. All320loadedroles unchanged; final source/
+  engine/process/container/group/EOF closure healthy. Explicit state-initialized
+  comparison, not an independently generated original public trajectory. Earlier
+  adapter failures and N1 cross-width diagnostic remain preserved. Fresh API8
+  PASS24offers192tokens/provider/source/owner closure. Wave uses B4 prefill and
+  cached B4; ragged remains N1. Separate actual event-driven HTTPv2 CLOSED0:
+  5genuine N1prefills, A→cachedB4[50,48,48,48], completedA then replacementE in
+  B4[51,51,51,48] through[54,54,54,51]; all5offers36natural tokens match actual
+  same-cap original stock.5B4publications/20rows,21GPUcalls/36roots/peak4;
+  original source/process/container/group/one-reap/fullEOF closes. Explicit
+  A4+BCD/E8 correctness case; stock serial reference reused after v1's missing
+  metadata run_id failure, no retag/performance/general cancellation grant.
+  Quiet C1/C4 CLOSED0: ZG66.7151/17.5611 vsstock37.3407/49.0326tok/s; all32offers/
+  256tokens and four original owners exact. Singlepass preliminary; C4 regresses,
+  C8 held. Finite genuine HTTP proof now passed. Separate direct diagnostic4
+  establishes79first-use trips consuming3.10167–3.10218s of its3.72236s instrumented
+  wave;185total trips/1480spans, all8/64/clock/source/owners exact, later/second
+  wave0compiler spans. No quiet-run fraction or new speed claim. Shared admitted
+  cold readiness/context accounting is next, preserving original caps and real
+  model/root owners; no fake warmup or unpriced cache. Fullgate
+  remains last; latest accepted gate16 covers preceding316 only.
+- Latest measured finiteB4 source400v4: all8actual calls/fullV/all42states/
+  all24boundaries/24dual sums/32outputs and lifecycle PASS; submitted conv/lastFA/
+  head unknown retention PASS. Matched API24offers192tokens/provider exact;
+  wave8 uses16realB4 flights, ragged remains N1. Same-flight B4 record retirement
+  correction now passes fresh actual healthy zero-retirement, lifecycle and all3
+  unknown cuts. Fresh API24offers192tokens/provider/source/owner closures PASS.
+  Quiet C1 ZG67.2592/stock37.1156tok/s; **C4 ZG11.7555/stock49.4752**, regression.
+  All32offers256tokens exact; C8 held until corrected C4 superiority. First-use
+  compile specialization is source-confirmed; no measured compiler fraction.
+  Continuous33 canonical47 N1→mixedcached47..53/refill/cancel and dynamic2-key KV
+  successor advance in isolated checks; actual continuous qualification pending.
+  Wider prompts N1. Final fullgate pending, no accepted B4/performance promotion.
+- Residual shared binding Sol8 integrated MAIN/ISO316selected paths; bounded40
+  analyzed-site cache with real per-invocation provenance and original late
+  physical/state authority. Retained witness/site metadata is charged; GPU551/
+  provider+default strict PASS. Original release and both models' complete
+  source/state/fault/API plus forced-streamed2B faults PASS. Fresh .8B C1/C4/C8
+  ZG67.2018/63.8830/60.9713 vsstock37.6230/50.4311/61.6415tok/s
+  (+78.62%/+26.67%/−1.09%); all48offers384tokens exact, six original source/
+  owner/group/container/full-EOF closures healthy. Singlepass; C8 superiority
+  remains unmet. Final isolated gate16 PASS1752Rust/0failed/89ignored/269suites/
+  allscriptchecks;316sourcepaths/rootREADME unchanged. Native remains N1; genuine
+  BF16 batching precedes further N1 microtuning.
+- Previous prepared-recipe release1:314selected source paths; shared source/
+  topology semantics with genuine per-invocation provenance, retained host
+  charges and warm binding outside cacheMutex. Both models' complete actual
+  source/state/fault/API and forced-streamed2B faults PASS. Quiet .8B C1/C4/C8
+  ZG64.8742/63.5759/60.7789 vsstock37.9990/49.3562/62.3861tok/s
+  (+70.73%/+28.81%/−2.58%);48offers384tokens exact, all6owner/source/group/
+  container/EOF closures healthy. Singlepass; C8 superiority remains unmet.
+  Full assembled gate15 LAST PASS1752Rust/0failed/89ignored/269suites/allchecks
+  after four qualification-only27B example corrections;314sourcepaths/rootREADME
+  unchanged. Native remains N1; true B4/B8 and wider parity remain open.
+- Previous accepted source checkpoint: shared native/context ownership+Conv4,
+  301selected paths; required release both models' complete physical/state/fault/
+  API scopes and forced-streamed2B faults PASS. Full isolated gate14 LAST PASS
+  1747Rust/0failed/88ignored/269suites/allscriptchecks; source/rootREADME unchanged.
+  Its timings remain storage/rings release2. Actual x2 native3+transport12
+  pass only their four-kernel/BF16-transport scopes. Canonical47B4 source discovery
+  and immutable fullargument capture2 now accepted:7872complete native launches,
+  4344records/1262868896B plain-observed exact/all24/all42/fullV/natural. Exact
+  finite54tuple catalogue uses two independently healthy original FAimage
+  variants; failedcapture1 stays unaccepted, no normalization/receipt retag.
+  All original source/owner closures pass; this is expected/native metadata only.
+  Genuine188/376-token prefill and same-root
+  decode must be qualified before wider batching or performance claims.
+- Previous frozen storage/rings release2,287 selected source paths: both actual
+  301finite+40natural/fullV/all42states/all5fault matrices and matchedAPI24offers/
+  192tokens perprovider exact. Forced-streamed2B headunknown/headcancel verifies
+  actual ring lifetime/quarantine. Fresh .8B C1/C4/C8 ZG62.3484/60.7822/57.4249
+  vsstock38.0862/49.9539/61.8017tok/s (+63.70%/+21.68%/−7.08%).2BC1
+  ZG43.3738/stock37.6126tok/s (+15.32%); full resident head uses explicit native
+  4608MiB vsstockrequest4096+KV512/no harddevicecap, host4096/device5120 unchanged.
+  All original timing/source/group/EOF closures closed; singlepass/no confidence
+  claim. C8 still needs genuine BF16 batching. Strict/core/GPU/provider checks
+  pass; full isolated gate12 PASS1734Rust/0failed/88ignored/266suites/allscriptchecks,
+  287selected sourcepaths/rootREADME unchanged. Astra handles architecture only;
+  shared integration, model/native ownership and batching implementation use
+  Sol HIGH in independent lanes. [Current measurements](../cpu-gpu-optimization/SHORT_HF_RESULTS.md).
+- Previous frozenpair9: shared prepared keys/cold copy definitions/source metadata
+  reuse,260MAIN/ISO sourcepaths, strict focused checks/release PASS. Original
+ 301edge+40natural/all5fault/matchedAPI checks exact, unchanged device counters/
+  fault scalars, cold metadata +1400B within old bound. Quiet C1ZG61.5227/
+  stock38.5419(+59.63%),C4ZG62.4174/stock49.6312(+25.76%),C8ZG62.5204/
+  stock61.2769(+2.03%)tok/s. All48offers384tokens exact/all6 originalowners/
+  source/EOFclosures reconciled. Singlepass only, small C8 margin unreplicated;
+  no complete parity/stable-win claim. Full isolated gate11 PASS1724Rust/
+  0failed/88ignored/266suites/allscriptchecks,260sourcepaths/rootREADME unchanged.
+ 2B actual301edges+40natural/all5faults/matchedAPI24offers192tokens each PASS.
+  Quiet2BC1 ZG0.5298/stock37.0680tok/s (stock69.97x),16offers128tokens exact/
+  both originalowner/source/EOFclosures reconciled. Further2B bands held for
+  shared storage/streaming repair: source shows1.017GB head/970uploads+actual
+  streamwaits perforward. No full attribution, fit or general parity claim.
+- Latest owner sequence: shared-engine reuse first; superior matched .8B C1
+  AND C4, thenC8; after allthree superior,2B. Qwen27B/Gemma integration stays
+  parallel; their GPU qualification/benchmarks run on pvl-x2 ROCm/HIP. Vulkan
+  parity with CUDA is also required. Backend availability grants no HF permit.
+- Previous common196path optimization checkpoint: full isolated gate6b
+  PASS1713Rust/0failed/88ignored/266suites and scripted checks; new frozenpair6
+  real matrix40/all5faults and matchedAPI24offers192tokens perprovider exact,
+  independent roots/active8/source/ownedclosure PASS. Quiet pair6 singlepass
+  C1 ZG52.0304 vsstock37.1838tok/s(+39.93%), C4 51.6654 vs47.0443(+9.82%)
+  opened C8: ZG52.6333 vsstock61.0984(-13.85%). All48offers384tokens exact,
+  allsix original owners/full-source closures healthy. Actual peaks1/4/8,
+  batchrowsmax1/zero fused rows; no repeated confidence/stable-tail claim.
+  No2B promotion; remaining C8 gap is the next optimization unit. The frozen
+  independent Gemma matrix resumed after C8 final closure under its original
+  deadline. Backend admission changes are outside this frozen binary; latest
+  source checkpoint follows below.
+- Previous MAIN202source checkpoint adds the tested backend admission/CLI value-
+  routing fixes; isolated gate7 PASS1715Rust/0failed/88ignored/266suites plus
+  scriptchecks, exact source/rootREADME unchanged. No new timed binary or HIP/
+  Vulkan physical support follows. C8 finite-check cohort successor and portable
+  backend source/transport work continue in isolated worktrees.
+- Latest accepted MAIN/ISO210selected changed-source unit: frozenpair7 actual
+  301deviceedge+40natural calls/allfivefaults/matchedAPI24offers192tokens per
+  provider PASS, fullsource/originalgroup/container/EOFclosure. All40 calls
+  observe83finitecertificate enqueues vs327previous; exact math unchanged.
+  Full isolated gate8b PASS1715Rust/0failed/88ignored/266suites/allscriptchecks;
+  one test-module declaration formatting-only gate8failure preserved/fixed.
+  Quiet matched .8B C1ZG55.0931/stock38.5359(+42.97%),C4ZG53.1955/stock49.3781
+  (+7.73%),C8ZG53.4094/stock63.9834(-16.53%)tok/s. All48offers384tokens exact,
+  all6 originalsource/ownerclosures healthy. Singlepass/no confidence claim;
+  N1math/zero fusedrows and C8superiority unmet. No2B timing. Next source unit
+  investigates shared submission/replay vs genuineHFmultirow execution.
+  Newer reviewed portable matrix11 plus exact allocator-range correction are
+  integrated MAIN/ISO after timed source closure. All12 actual HIP/Vulkan
+  transport modes pass with independent ROOT owner/source/binary/EOF checks;
+  no arithmetic/model/serving grant. Actor6 merged; frozen pair8 release and
+  actual301+40/all5fault/API pass, every dispatch/finite/fault scalar equals
+  pair7. Corrected assembled gate10 PASS1715Rust/0failed/88ignored/266suites/
+  allscriptchecks, source/rootREADME unchanged. Quiet pair8 C1ZG60.8262/
+  stock38.2050(+59.21%),C4ZG60.9697/stock50.6970(+20.26%),C8ZG60.4256/
+  stock63.2563(−4.47%)tok/s, all48offers384tokens exact/all6 original owners/
+  finalsource closure. ROOT reconciled actual records. Preliminary singlepass,
+  C8superiority unmet/no2B promotion; current actor causal diagnostic next.
+  The tiny portable6mode foundation passed separately; neither foundation nor
+  transport compilation grants HF/backend/model/serving/performance parity.
+- Expanded short-HF runtime converged into MAIN, preserving orderedSiLU/PTX
+  work. Both actual native matrices PASS: .8B/2B ×47/57/62/67/72 ×8 natural
+  calls, exact24 boundaries/42 state domains/fullV/feedback and independent
+  roots, refusal/stale/cancel/survivor/final physical0 checks. Genuine67/72
+  two-chunk prefill is covered; all327 independent observations remain open.
+  Matched .8B HTTP preflight PASS: active8, both populations, all24 responses'
+  eight IDs/text/usage/finish exact against stock. All five .8B cached fault
+  scopes PASS for each model. Prior MAIN isolated checkpoint check.sh PASS:
+  1531 Rust passes/0failed/81ignored/260suites plus18 namespace fixtures and
+  complete scripted release/installer/lint/qualification checks. Matched2B HTTP
+  now PASS all24 responses/full8 IDs/text/usage/finish/active8/owned closure.
+  Owner23Oct reprioritized after quick .8B canonical C1/C4 baseline: optimize
+  .8B to beat vLLM first; no2B timing, C8 canceled and full128arms deferred.
+  Quick C1 output tok/s ZG0.9557 vsstock38.5021; C4 ZG0.9511 vsstock49.6408.
+  All32 offers completed correctly, one warmed-process pass/configuration.
+  No confidence claim. Timed owners retired; separate untimed profiling and
+  admitted head-residency optimization now active, Qwen/Gemma parallel.
+  Test durations are not serving measurements.
+- Both new stock-only seq8 quality preflights pass. Stock2B sampled peak5443MiB
+  exceeds native's5120MiB physical cap; original stock protocol does not enforce
+  that hard device cap. Preserve resource asymmetry in results; no stock5GiB fit
+  or equal-resource performance claim. No2B timed arm has executed.
+- Previous finite checkpoint22Oct: original .8B canonical47+7 matches all24 boundaries,
+  all42 state domains/fullV/actual feedback in the qualified native scope.
+  Existing HTTP observes real active2, cancellation and healthy survivor.
+  That accepted checkpoint converged MAIN/ROOT; fresh MAIN six SiLU/two original GGUF B2
+  workers/canonical HTTP, strictClippy/fullgate and vendor104 guards PASS.
+  Full all327 oracle/original GDN tuple, broader two-model/ragged active8 and
+  matched performance remain open. [Current numerics](../numerics-and-context/TODO.md)
+  supersedes dated partial-layer milestones below.
+- Owner reconfirms binding/publication continuation, then matched vLLM timing
+  after parity. Parallel recursive primitive/pipeline/profile design is authorized;
+  no new framework blocks the current original-engine correctness units.
+- [ ] Profile and fix the .8B gap first, then beat the same matched vLLM C1/C4
+  baseline without changing source/quality/caps. Broader2B/C8/ragged/repeated
+  timing deferred by explicit owner priority; no unnecessary baseline sweep.
+  Resident-head candidate passes all40 actual numerical calls/unchanged limits
+  and all five fault scopes after narrow verifier recognizer repair. Quiet
+  host phase diagnostic8requests/64forwards exact: binding3.629112s/enqueue
+  3.021396s, nestedHead0.005158s/zeroH2D/zero checkpoints; original owned closure
+  clean. Follow-on host unit passes fresh40+all5faults/14metadata guards/API24
+  per-provider exact; strict GPU Clippy PASS. Fresh unprofiled canonical wave8:
+  C1 native9.7748 vsstock38.0061 tok/s (6.54748s vs1.68394s); C4 native9.7972
+  vsstock49.1130 (6.53247s vs1.30312s). All32 offers/256tokens exact, actual
+  peaks1/4, batchmax1, all original owners/source/EOF close. Preliminary one
+  pass only; still3.89x/5.01x slower, no certified win. Combined CPU+phase
+  diagnostic finds memcmp70.66% of532 user-cycle samples/0lost; actual process
+  6.72user+0.66system over6.77396wall. Nested bind3.074109s/enqueue2.945825s,
+  complete/readback0.149683s; Head64launches/zeroH2D/checkpoints. CPU fractions
+  are not GPU or wall fractions. Investigate deep GDN static-source identity
+  comparisons at their shared metadata owner; do not weaken equality/authority.
+  Exact static-source equality now preserves all field/content semantics while
+  bypassing same-pointer+length text scans. Metadata10/strictGPU Clippy/joint
+  release PASS; frozen pair4 passes fresh actual matrix40/all5faults and matched
+  API24/24 per provider, exact output/state/owner closure. Fresh unprofiled pair4:
+  C1 ZG40.4089 vsstock37.0951 tok/s (1.58381s vs1.72530s), native+8.93%;
+  C4 ZG39.2740 vsstock48.2272 (1.62958s vs1.32705s), native18.57% lower.
+  All32/32 offers/256tokens exact, original owners/source/EOF closed. One
+  preliminary pass, no confidence/tail/fullparity claim. Actual HF batchmax1;
+  source-safe B4 integration is under separate investigation, not yet a causal
+  percentage attribution. Subsequent pair5 residentembedding reuse passes
+  fresh40calls/allfivefaults/matchedAPI24offers192tokens perprovider. Quiet
+  C1 ZG48.9151 vsstock38.8841tok/s (+25.80%); C4 ZG49.9998 vsstock50.4721
+  (-0.94%), all32offers/256tokens exact/allfour owners/sourceclosed. Native
+ 64roots=forwards=outputs/432steps perarm/peak1|4/batchmax1. Singlepass only,
+  no C4win/confidence claim. Periodic146path MAIN↔ROOT convergence preserves
+  parents/freshmtimes; assembled gate5 PASS1645Rust/0failed/86ignored/265suites
+  plus complete scripted checks. Later common preparation/cache work requires
+  its own assembled gate and fresh physical/API checks. Models parallel.
+- [ ] Remaining .8B C4 optimization: source-safe HF physical coalescing/batching.
+  Current CLI rejects native_rows, HFloaded batchNone/native_batchfalse and
+  worker excludes originalHF; existing B2/B4/B8 BatchProgram requires GGUF F32.
+  Reuse root-cohort validation/publication, not incompatible math admission.
+  Unchanged N1 completioncohort needs genuine private lanes or registered
+  cohort epochs/status taps; shared RMS/value/readback reuse must await actual
+  completion. True BF16 B4 needs its own typed arithmetic/source/state lowering.
+  Existing genuine47/57/62/67 B1 prefills then four distinct cached frontiers
+  provide strong mixed-row/current-root oracles without another capture; test
+  row permutations/all24boundaries/all42state/fullV/F32/feedback/fault closure.
+  This is source planning; no B4 implementation or causal gap percentage claim.
+- [ ] After source/state/natural-serving parity, execute established short
+  C1/C2/C4/C8 comparisons with unchanged source/profile/EOS/caps and original
+  lifecycle controls. Then apply measured substantial generic improvements and
+  rerun those profiles before long contexts and dense27B. Research alone adds
+  no throughput/TTFT/goodput result.
+- [ ] After the already authorized matched benchmarks complete, implement
+  graceful cancellation plus explicit forced/immediate cancellation with bounded
+  escalation deadlines. Add hooks for detecting stalled progress, repeated model
+  loops and runaway CPU work; allow the supervisor to break them cleanly. Define
+  request/session/model scope, cooperative drain versus forced termination,
+  timeout policy and observability. Release GPU/native/source resources only
+  after confirmed completion/termination; keep unknown work fenced/quarantined.
+  Cover disconnect, stuck execution, timeout/escalation and healthy-survivor
+  recovery with real physical tests. Owner directive22Oct: defer this extension
+  until after benchmarks; it must not delay the active parity/benchmark path.
+- [ ] Compose stable leased rows/diff metadata, compact readout, qualified
+  production graph regions, exact fusion and true temporal prefill inside the
+  existing worker. Price extra graph pools/padding, output backpressure and
+  prefill/decode fairness; unknown capture/launch completion cannot eager-fallback
+  through a fenced service.
+- [ ] Extend full-state branch verification before any proposer: prefix0..K,
+  target correction, all recurrent/conv/KV/indexer/draft/RNG/grammar domains,
+  EOS/stop and canceled/stale epochs. Compare n-gram/Recall/suffix, compatible
+  trained MTP/block drafters and K=0 using useful complete-cycle work, not assumed
+  acceptance or source kernel counts. Keep explicit sampler/distribution profiles.
+- [ ] Retain profile/shape/layout/source/context-grant compatibility at every
+  batch/prefix/graph/proposal boundary; dynamic policy chooses only already
+  qualified compatible variants. The user-facing profile combines pipelines,
+  while original roots, physical admission and actual completion authorize work.
+
+Research/priorities: [mechanism comparison](../../research/engine-optimization-comparison-2026-10-21/README.md),
+[optimization tasks](../cpu-gpu-optimization/TODO.md),
+[recursive composition](../pipeline-composition/TODO.md).
+
+### Batching and paged-state follow-up — 21 Oct design only
+
+Implementation and acceptance detail: [batching/paged state](BATCHING_AND_PAGED_STATE.md).
+Existing GGUF CUDA B2/B4/B8, refill and one-teacher-token prefix waves are
+accepted only in their recorded scope; the inspected HTTP path remains
+context512/active<=8. The following work is pending, not new qualification
+or a change to the active correctness/benchmark/27B order.
+
+- [ ] Integrate both accepted GGUF/reference and newly qualified vLLM numerical
+  profiles through the same session/worker/HTTP path. Bind profile/phase/schema
+  to compiled plans and cache compatibility; reject incompatible state reuse.
+- [ ] Implement original-plan paged KV append and block-table QK/softmax/AV,
+  preserving each profile's masks, positions, dtype/reductions and ownership.
+  Qualify independent B1/B2/B4/B8, page boundaries and full logits/state;
+  allocator/hybrid prefix/COW dependencies live in the
+  [memory plan](../memory-and-streaming/TODO.md).
+- [ ] Extend bounded refill/regroup into fair aged chunked prefill/decode
+  scheduling; qualify actual multi-token temporal prefill separately from
+  request batching. Admit any physical GPU overlap only after event/lease,
+  cancellation/unknown-completion and independent-root tests.
+- [ ] Run profile-matched batching/paging/prefix-hit/overlap ablations and genuine
+  pinned-vLLM comparisons: established short C1/2/4/8 first, then qualified long
+  contexts. Record quality/full-state acceptance, true ITL/TTFT tails, committed
+  SLO-goodput, offered/rejected/canceled work, fairness, actual dispatch/copy
+  counts and physical memory/fragmentation. Preserve old-profile regressions;
+  code presence or fewer launches cannot close serving/performance parity.
+
+### Resumed correctness-first continuation — 21 Oct
+
+- Latest owner order: .8B/2B genuine vLLM whole-model/source/state parity,
+  then benchmarks, then qwen:27b. Actual timing is held until parity closes.
+- All4 original short-profile policy/quality preflights complete, including2B
+  ragged. Original owners/cgroups/cleanup validate; IDs/text/usage still differ.
+  Numerical equivalence and functional-quality parity remain unqualified.
+- ROOT executed12 runner fault tests and5 aggregation fault tests: PASS.
+  Timed C1/2/4/8 matrix remains unexecuted; no new concurrent speed,
+  SLO-goodput or hardware-count claim. Existing87e1 GGUF profile inputs do not
+  establish equivalence with the new HF CUDA correctness profile.
+- Native MLP and activation leaves pass565248/247296BF16 words. Complete
+  connectedlayer0 fivephases now PASS4071072BF16+2171024F32 exact with actual
+  computedcache and separatecarriedresidual/sourceWunchanged/host0. Leaf
+  cancel/pressure/unknown and4whole-blockfaults pass. Whole-model/
+  all42state/serving parity remain open; timings held and27B not started.
+- [ROOT checklist](../../runs/numerics-and-context-upstream-cuda-root-20261020/TODO.md).
+  Rebind any future benchmark to its actual accepted source/profile/binary;
+  preserve paused SiLU work. No new unit merged or committed.
+
+- [ ] **P12 ordered SiLU integration:** private CUDA B1/B2/B4/B8 operator
+  passes204 physical old-GPU/CPU differential cases,171562710 exact bit
+  comparisons and five fresh failure/abandonment processes. All17 intermediate
+  checkpoints, status, canaries and original lease/quarantine ownership pass.
+  Independent source review and candidate CUDA/Vulkan/default strict checks
+  plus two row-partition tests pass. Candidate library, qualifier, server,
+  worker and HTTP release artifacts compile; the exact-source diagnostic
+  file-transport unit passes. Paused at the owner's request before starting
+  the prepared60-case physical matrix. Full-model integration remains unaccepted:
+  complete PTX/loaded-code witnesses, model/StateRoot/serving regressions, both
+  original release parity routes, isolated full gate and fresh timing/count
+  comparisons remain pending. Existing truncated PTX dump filenames overwrite
+  specializations; retain that failed evidence and qualify a collision-safe
+  diagnostic before claiming complete instruction coverage.
+
 - [ ] **Stock2B loader and matched benchmark:** genuine pinned stock2B
   V4 plain/observed loader and independent comparison now pass: all335
   stored tensors inventoried, exact15 MTP exclusions and320 backbone roles;
@@ -66,27 +402,16 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
   Separate native0.8B B2 CUPTI diagnostic records64328 actual kernels and
   64328 successful direct launch calls, zero dropped records and exact source
   counter delta; plain/observed complete outputs and owned retirement match.
-  This qualifies that native workload's counting method only. vLLM hardware
-  activity, matched counts and unprofiled timing remain open.
-
-- [x] **Row-native state transport and scatter certification:** exact U32
-  vector/KV transport and persistent finite/status certification preserve the
-  original all42 preflight, leases, flight, Ready and atomic publication.
-  All46 physical model/owner/private-graph/failure cases,10 operator/failure
-  cases, complete isolated1251-test gate, strict checks and both approved
-  original release parity routes pass. Fresh14 worker/12 HTTP regressions
-  pass with exact frozen source/build and original owner/EOF retirement.
-  Native-only unprofiled before/after runs complete32 fresh ABBA/BAAB
-  processes,144/144 measured offers,1152 output tokens and32 ordinary B1
-  warmups. Full IDs/text/usage/finish match exactly; all144 requests have
-  individual-ID delivery/1008 actual intervals. C8 uses54 actual B8 cohorts
-  per sample,432 independent steps/roots. Median raw token rates improve
-  2.2506→2.28945/s(0.8B,+1.73%) and1.6268→1.6543/s(2B,+1.69%);
-  C1 is nearly unchanged. Four samples/label, finite bursts, ordinary B1
-  warmup and point memory samples establish no confidence-certified win,
-  fully warm B8 scope, source-correct goodput or vLLM parity. Source dispatch
-  counts292116→239952/284340→232176 are not hardware enumeration. All owned
-  process/group/container/EOF retirement and independent ROOT/peer reviews pass.
+  A fresh accepted-baseline0.8B canonical C1 diagnostic also validates all
+  four native/stock plain/observed processes:236270 actual native kernels
+  and direct launches equal the source delta, zero dropped records/errors;
+  exact provider-internal outputs and original owned retirement pass.
+  Stock public profiler records9318 kernel activities/8810 host launches,
+  but its losslessness/all-process coverage remains unverified. Independent
+  validators and ROOT/peer metadata reviews pass. These observations qualify
+  the native windows only; complete matched hardware counts, profiler device
+  allocation admission, source-correct goodput and profiled timing remain
+  unqualified. Equivalent default-route/warm/concurrent vLLM timing stays open.
 
 - [ ] Connect accepted core `ContextOwner`/`ContextReader` snapshot
   capability to the real router's authenticated session/turn frontier:
@@ -139,6 +464,60 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 - [ ] Preserve zero untriaged frontier/disposition requirements before any full-parity claim; synthetic acceptance, fewer launches and competitor measurements do not establish local parity or speed.
 
 ## Committed
+
+### `9999adb1a66d` — source-routed continuous BF16 cohort serving
+
+Related source commits: `45570bdb3d7f` (serve-wave-planning), `e6b07efdbb2d` (serve-source-routing), `bc66207ce9c5` (facade-short-hf-loader), `08fc5935e124` (facade-short-hf-cohort-suite).
+Aggregate source21 qualification applies to the assembled tree; no per-commit
+build or general model/backend grant. Historical failures keep their source scope.
+
+- [x] **MAIN convergence regression checkpoint,22Oct:** preserve orderedSiLU
+  and collision-safe PTX dump while integrating the finite HF worker route.
+  Fresh MAIN six SiLU modes/two original GGUF B2 workers/canonical HF47 HTTP,
+  strictClippy/complete isolated checkgate and vendor104 guards PASS. Actual
+  HTTP active2/cancel/survivor/400 and owned retirement are verified; wider
+  HF two-model/ragged active8 and matched performance remain open.
+
+#### Current parity and post-parity optimization order — 23 Oct
+
+- [x] Execute quick .8B C1/C4 canonical overview on both CUDA engines; preliminary
+  results above. C8 naturally retired before its cancellation lookup, retained
+  separately; no2B timing started. All owners/groups/EOF/source closure complete.
+
+#### Resumed correctness-first continuation — 21 Oct
+
+- [x] **Finite original-HF cached worker route:** existing fair worker and CLI
+  serve canonical .8B47+7 using real current-root/greedy feedback; generic bounded
+  atomic-prefill scheduling charges47 within unchanged64-token waves. Actual
+  active2 chat/rawSSE returns three complete8-ID chains, disconnect cancellation
+  increments1 and fresh survivor succeeds; max9/wrongprompt400 preserve GPU
+  counters and quiescent active0/queued0. Native source/state/normal retirement,
+  submitted uncertainty/quarantine, independent reviews and complete isolated
+  checkgate pass. HTTP foreground server uses owned SIGTERM/group/EOF cleanup,
+  not observed in-process finalzero. Fixed source/prompt/active2 scope now in
+  MAIN and ROOT; general two-model/C4/C8 and performance remain open. Broader
+  short-HF parity precedes matched benchmarks; cancellation extension stays after.
+
+### fb68d8f — exact state transport and certification
+
+- [x] **Row-native state transport and scatter certification:** exact U32
+  vector/KV transport and persistent finite/status certification preserve the
+  original all42 preflight, leases, flight, Ready and atomic publication.
+  All46 physical model/owner/private-graph/failure cases,10 operator/failure
+  cases, complete isolated1251-test gate, strict checks and both approved
+  original release parity routes pass. Fresh14 worker/12 HTTP regressions
+  pass with exact frozen source/build and original owner/EOF retirement.
+  Native-only unprofiled before/after runs complete32 fresh ABBA/BAAB
+  processes,144/144 measured offers,1152 output tokens and32 ordinary B1
+  warmups. Full IDs/text/usage/finish match exactly; all144 requests have
+  individual-ID delivery/1008 actual intervals. C8 uses54 actual B8 cohorts
+  per sample,432 independent steps/roots. Median raw token rates improve
+  2.2506→2.28945/s(0.8B,+1.73%) and1.6268→1.6543/s(2B,+1.69%);
+  C1 is nearly unchanged. Four samples/label, finite bursts, ordinary B1
+  warmup and point memory samples establish no confidence-certified win,
+  fully warm B8 scope, source-correct goodput or vLLM parity. Source dispatch
+  counts292116→239952/284340→232176 are not hardware enumeration. All owned
+  process/group/container/EOF retirement and independent ROOT/peer reviews pass.
 
 ### fff1842 — stock baseline prerequisites
 
