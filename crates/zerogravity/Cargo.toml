@@ -17,6 +17,8 @@ model-gemma4 = ["dep:zerogravity-model-gemma4"]
 # Analytic source/text reference; no tokenizer, trained model or native permit.
 model-gemma4-text-reference = ["model-gemma4", "zerogravity-model-gemma4/text-reference"]
 model-gemma4-cpu-candidate = ["cpu", "cache", "model-gemma4", "zerogravity-model-gemma4/text-tokenizer"]
+# Explicit full-source HIP diagnostic; no default inference eligibility.
+gemma4-hip-qualification = ["model-gemma4-cpu-candidate", "hip", "zerogravity-gpu/gemma-bf16-qualification"]
 qwen27b-hip-qualification = ["cpu", "cache", "model-qwen35", "hip", "zerogravity-gpu/qwen-source-qualification"]
 text = ["model-qwen35", "zerogravity-model-qwen35/text"]
 cache = ["zerogravity-artifacts/cache"]
@@ -84,6 +86,11 @@ path = "examples/gemma4_cpu_matrix.rs"
 required-features = ["model-gemma4-cpu-candidate"]
 
 [[example]]
+name = "gemma4_hip_matrix"
+path = "examples/gemma4_hip_matrix.rs"
+required-features = ["gemma4-hip-qualification"]
+
+[[example]]
 name = "qwen27b_hip_matrix"
 path = "examples/qwen27b_hip_matrix.rs"
 required-features = ["qwen27b-hip-qualification"]
@@ -92,6 +99,11 @@ required-features = ["qwen27b-hip-qualification"]
 name = "qwen27b_hip_final_owner"
 path = "examples/qwen27b_hip_final_owner.rs"
 required-features = ["qwen27b-hip-qualification", "zerogravity-gpu/hardware-abort-probe"]
+
+[[example]]
+name = "gemma4_hip_final_owner"
+path = "examples/gemma4_hip_final_owner.rs"
+required-features = ["gemma4-hip-qualification", "zerogravity-gpu/hardware-abort-probe"]
 
 [[example]]
 name = "qwen27b_hip_natural"
