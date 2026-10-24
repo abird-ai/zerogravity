@@ -18,6 +18,8 @@ pub use zerogravity_core::run_policy;
 pub use zerogravity_core::targets;
 pub use zerogravity_core::{Error, Result, accelerator, session_root};
 pub use zerogravity_core::{device_events, device_queue, resource_arbiter, state};
+#[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
+pub mod canonical47;
 #[cfg(feature = "cpu")]
 pub use zerogravity_cpu::{math, original_hf, weights};
 #[cfg(all(feature = "cpu", feature = "cache", target_os = "linux"))]

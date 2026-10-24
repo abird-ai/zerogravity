@@ -20,6 +20,7 @@ acquisition = ["cache", "zerogravity-artifacts/acquisition"]
 diagnostic-acquisition = ["acquisition", "zerogravity-artifacts/diagnostic-acquisition"]
 vulkan = ["dep:zerogravity-gpu", "zerogravity-gpu/vulkan"]
 cuda = ["dep:zerogravity-gpu", "zerogravity-gpu/cuda"]
+canonical47-serving = ["cuda", "cache", "text", "zerogravity-gpu/vllm-cuda-qualification", "zerogravity-model-qwen35/original-hf-binding", "dep:rustix"]
 hip = ["dep:zerogravity-gpu", "zerogravity-gpu/hip"]
 all-models = ["model-qwen35", "model-gemma4"]
 all-backends = ["cpu", "vulkan", "cuda", "hip"]
@@ -38,6 +39,9 @@ zerogravity-gpu = { path = "../zerogravity-gpu", default-features = false, optio
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 sha2 = "=0.10.9"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "=1.1.5", default-features = false, features = ["fs"], optional = true }
 
 [[example]]
 name = "diagnose_ffn"
