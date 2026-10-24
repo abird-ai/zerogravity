@@ -19,3 +19,11 @@ zerogravity-artifacts = { path = "../zerogravity-artifacts", optional = true }
 sha2 = { version = "=0.10.9", optional = true }
 tokenizers = { version = "=0.22.2", default-features = false, features = ["fancy-regex"], optional = true }
 serde = { version = "=1.0.229", features = ["derive"], optional = true }
+
+[[example]]
+name = "gemma4_e2b_text"
+required-features = ["text-reference"]
+
+[[example]]
+name = "gemma4_tokenizer"
+required-features = ["text-tokenizer"]
