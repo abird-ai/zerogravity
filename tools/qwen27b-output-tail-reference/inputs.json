@@ -1,0 +1,115 @@
+{
+  "schema": "zg.original27b-final-tail-inputs.v1",
+  "repository": "Qwen/Qwen3.8-27B",
+  "revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+  "snapshot": "98cea13c169310196c4d8a113765f8fe58ab7a7961f0d1be69212c70dba8015e",
+  "source_directory": "/home/pvl/.cache/abird/zerogravity/models/snapshots/98cea13c169310196c4d8a113765f8fe58ab7a7961f0d1be69212c70dba8015e/files",
+  "config_sha256": "191e0af232104ed8b65258cf3fb2b842e288008baca7633c11b82a1ac7203aab",
+  "index_sha256": "77042094076611b69791a610065f28b7013b8c621795fa86ddccc8bac7d1b9df",
+  "selected_shards": [
+    "model-00016-of-00018.safetensors",
+    "model-00017-of-00018.safetensors",
+    "model-00018-of-00018.safetensors"
+  ],
+  "roles": [
+    {
+      "role": "ffn_norm",
+      "name": "model.language_model.layers.63.post_attention_layernorm.weight",
+      "shape": [
+        5120
+      ],
+      "shard": "model-00017-of-00018.safetensors",
+      "dtype": "BF16"
+    },
+    {
+      "role": "gate",
+      "name": "model.language_model.layers.63.mlp.gate_proj.weight",
+      "shape": [
+        17408,
+        5120
+      ],
+      "shard": "model-00017-of-00018.safetensors",
+      "dtype": "BF16"
+    },
+    {
+      "role": "up",
+      "name": "model.language_model.layers.63.mlp.up_proj.weight",
+      "shape": [
+        17408,
+        5120
+      ],
+      "shard": "model-00017-of-00018.safetensors",
+      "dtype": "BF16"
+    },
+    {
+      "role": "down",
+      "name": "model.language_model.layers.63.mlp.down_proj.weight",
+      "shape": [
+        5120,
+        17408
+      ],
+      "shard": "model-00017-of-00018.safetensors",
+      "dtype": "BF16"
+    },
+    {
+      "role": "final_norm",
+      "name": "model.language_model.norm.weight",
+      "shape": [
+        5120
+      ],
+      "shard": "model-00016-of-00018.safetensors",
+      "dtype": "BF16"
+    },
+    {
+      "role": "head",
+      "name": "lm_head.weight",
+      "shape": [
+        248320,
+        5120
+      ],
+      "shard": "model-00018-of-00018.safetensors",
+      "dtype": "BF16"
+    }
+  ],
+  "probes": [
+    {
+      "cohort": 0,
+      "row": 0,
+      "seed": 11
+    },
+    {
+      "cohort": 1,
+      "row": 0,
+      "seed": 353
+    },
+    {
+      "cohort": 1,
+      "row": 1,
+      "seed": 977
+    },
+    {
+      "cohort": 1,
+      "row": 2,
+      "seed": 42
+    }
+  ],
+  "scope": {
+    "external_boundary_only": true,
+    "input_trained_full_model_producer_qualified": false,
+    "whole_model_qualified": false,
+    "state_root_qualified": false,
+    "gpu_qualified": false,
+    "serving_qualified": false,
+    "performance_qualified": false
+  },
+  "torch_call_shape": [
+    1,
+    5120
+  ],
+  "repetitions": 2,
+  "archive_cap": 8388608,
+  "record_cap": 2097152,
+  "host_limit": 134217728,
+  "metadata_limit": 67108864,
+  "scan_chunk_bytes": 4194304
+}
