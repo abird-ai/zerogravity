@@ -955,6 +955,7 @@ dependencies = [
  "half",
  "log",
  "serde",
+ "sha2",
 ]
 
 [[package]]

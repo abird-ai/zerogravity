@@ -34,6 +34,9 @@ resolver = "2"
 [features]
 llvm = ["dep:cubecl-llvm"]
 cpp = []
+owned-cublas-allocator = []
+owned-cubin = []
+precompiled-shared = []
 default = [
     "llvm",
     "std",
@@ -154,6 +157,9 @@ features = [
 ]
 default-features = false
 
+[dependencies.sha2]
+version = "=0.10.9"
+
 [dependencies.tracing]
 version = "^0.1.43"
 features = ["attributes"]
@@ -167,6 +173,11 @@ features = ["export_tests"]
 [dev-dependencies.cubecl-std]
 version = "0.11.0"
 features = ["export_tests"]
+
+[dev-dependencies.cubecl-server]
+version = "0.11.0"
+features = ["storage-bytes"]
+default-features = false
 
 [dev-dependencies.paste]
 version = "1"

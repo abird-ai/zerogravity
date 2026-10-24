@@ -7,12 +7,44 @@ mod compute;
 mod device;
 mod observation;
 pub use observation::{CudaDeviceMetadata, observe_cuda_devices};
+#[cfg(all(
+    feature = "owned-cublas-allocator",
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu"
+))]
+mod owned_blas_allocator;
 mod owned_command;
+#[cfg(all(
+    feature = "owned-cublas-allocator",
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu"
+))]
+pub use owned_blas_allocator::{BlasAllocationSnapshot, OwnedBlasAllocationPool};
 mod runtime;
 
 pub use compiler::{CudaCompilationOptions, CudaCompiler, CudaRepresentation};
 pub use device::*;
 pub use owned_command::OwnedCudaQueue;
+#[cfg(target_os = "linux")]
+pub use owned_command::Vllm08WeightLayout;
+#[cfg(target_os = "linux")]
+pub use owned_command::{
+    Bf16BlasSourceIdentity, Bf16BlasSources, Bf16GemmApi, Bf16GemmBindings, Bf16GemmInspection,
+    ObservedBf16Gemm,
+};
+#[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+pub use owned_command::{
+    Bf16VocabularyHead, CubinBinding, CubinIo, CubinKernelManifest, CubinLaunchAttributes,
+    CubinParameter, CubinPointerFixup, CubinProvider, CubinWorkspaceClear, CubinWorkspaceView,
+    OwnedCudaBinding, OwnedCudaKernel, OwnedCudaModuleSet, OwnedCudaTransferRetirement,
+    VerifiedCubin, VocabularyHeadSelection,
+};
+#[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+pub use owned_command::{
+    CapturedBf16CubinRecord, PinnedBf16Cubin, PinnedBf16CubinDerivation, PinnedCapturedBf16Cubin,
+};
 pub use runtime::*;
 
 pub mod install {
@@ -65,6 +97,19 @@ pub mod install {
         None
     }
 }
+
+#[cfg(all(
+    feature = "owned-cublas-allocator",
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu"
+))]
+pub use owned_command::OwnedBf16BlasProvider;
+
+#[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+pub use owned_command::{Bf16MatrixLayout, ShortHfEmbeddingWidth};
+
+pub use compute::context::{CompilerContextUsage, CudaCompilerContextPolicy};
 
 #[cfg(test)]
 #[allow(unexpected_cfgs)]

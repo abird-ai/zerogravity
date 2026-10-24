@@ -1,0 +1,161 @@
+//! Exact compiled factory cohort: 15 images,18 entries,38 owners,35 ABIs.
+pub(super) const RECORDS: &[([u8; 32], [u8; 32])] = &[
+    (
+        hex("02cd5eee5a1f93addca2135cde7dfd71b05e499547e227a43806ee953eb2fa99"),
+        hex("d9de581fc1883887393db01770d551940a2be7e9cf9f42209f67fe8a1d63dda5"),
+    ),
+    (
+        hex("074807d671d9156ccc56b5a8cbe82f1ba8fae21c8169e674b31b4b8603ba42ec"),
+        hex("18c8b2716a67f906413a7f6999ed704d77b471dc7287bca774a63119d94c47bd"),
+    ),
+    (
+        hex("074807d671d9156ccc56b5a8cbe82f1ba8fae21c8169e674b31b4b8603ba42ec"),
+        hex("5b1ab8c97835d7f72ee88641c7651b921301f4c64f2646426c7768aeccc377ee"),
+    ),
+    (
+        hex("074807d671d9156ccc56b5a8cbe82f1ba8fae21c8169e674b31b4b8603ba42ec"),
+        hex("92d7a366663a5b47ffa2c9a496d0bfc5b3b08047a059448754d25591592d9dff"),
+    ),
+    (
+        hex("074807d671d9156ccc56b5a8cbe82f1ba8fae21c8169e674b31b4b8603ba42ec"),
+        hex("c688c3c56911c6313280fceb5481b09238f277812ae2c2d194487a85f13796df"),
+    ),
+    (
+        hex("0781fbbcae3a3f26cf97205af806e6e9001413827e66e298d4a0743cde067035"),
+        hex("1f64614804fd4348edfdbfbfb675b175b3cac8e3c2d4a2094afeaa5c39c62a79"),
+    ),
+    (
+        hex("0781fbbcae3a3f26cf97205af806e6e9001413827e66e298d4a0743cde067035"),
+        hex("f15fab025664a6bf9d9d3283ce0d4587f951db238eb266345c615f23d7798459"),
+    ),
+    (
+        hex("08c00ee67fa7452b5370a7b2fc2b611afdbe219b5343cebf935aeef6e872ef8b"),
+        hex("737bdd35f637e6d3b4a74eac72349fb0a08be9d53d56b0a8582ee0bfd2899bf7"),
+    ),
+    (
+        hex("08c00ee67fa7452b5370a7b2fc2b611afdbe219b5343cebf935aeef6e872ef8b"),
+        hex("cc6c05db356a92bfec063e79359c6b8674dc88937b345ff468202617f91b82d2"),
+    ),
+    (
+        hex("66c2e61f0cc1d1bf90eeb8ea3245e2849b0c49466c486c8d1daa219166afdc30"),
+        hex("3285ef42855c321b0cba17a8babf42b14f64e98a3fc7738e3c9988641b97f877"),
+    ),
+    (
+        hex("6ab9468c2d21b9b24c66fbb4380efca47a9057ddcc6adb4eb83997460986a83e"),
+        hex("4b677586ffedb0ce2c90f28e9694579d915782797d8987e34cffa442c51114cd"),
+    ),
+    (
+        hex("7ec9414283b09942de90011eb5bdbaeb63b352cd0dc500f2c7ba3854f660fadf"),
+        hex("494d183797b1e09ce086cbb24d5d7c0177cf6c0ef2db833157ca630f75c7663b"),
+    ),
+    (
+        hex("7ec9414283b09942de90011eb5bdbaeb63b352cd0dc500f2c7ba3854f660fadf"),
+        hex("91fa8db25757d75aeeb8f83fef372375d90af37b5360fb3f8162cc19b5bc7a0f"),
+    ),
+    (
+        hex("9049ad21c964126fe32a394f6e5335e9ec0901cb031559db3cab0e63d93b4664"),
+        hex("545cd3db4643420ad2568e7188283d02ab30395314a9e91965ab3c58bf9e3d78"),
+    ),
+    (
+        hex("9049ad21c964126fe32a394f6e5335e9ec0901cb031559db3cab0e63d93b4664"),
+        hex("be91b95609fa619300decdc4b90338bf8c0d03a01b01e004cd1fa4b9ec1e9359"),
+    ),
+    (
+        hex("915016a9eaee3a391e29bbfcf00ee8de82e4da53c4865d080c04505d0d736345"),
+        hex("37bd8ce8a642922fc392c8c0f9004b073e7992ee96e181eb42b324076926ddc9"),
+    ),
+    (
+        hex("915016a9eaee3a391e29bbfcf00ee8de82e4da53c4865d080c04505d0d736345"),
+        hex("764ba48c9ece60998125ccd787dd6f5eec237b179182bec2acc4f6b06616f8d0"),
+    ),
+    (
+        hex("915016a9eaee3a391e29bbfcf00ee8de82e4da53c4865d080c04505d0d736345"),
+        hex("c2fc0454b3b7cb64fb305f990e5f7387b0538d63f1d91b18b2f35e2fb3265621"),
+    ),
+    (
+        hex("915016a9eaee3a391e29bbfcf00ee8de82e4da53c4865d080c04505d0d736345"),
+        hex("d83cb5b87c31d02f1fb141f452a3d18bc41b885102e6bcb2aa4297221887e8f1"),
+    ),
+    (
+        hex("915016a9eaee3a391e29bbfcf00ee8de82e4da53c4865d080c04505d0d736345"),
+        hex("dd14f9fc6a0d590e195be3995886bd42ce2af59e676f767a00ead48de339d395"),
+    ),
+    (
+        hex("915016a9eaee3a391e29bbfcf00ee8de82e4da53c4865d080c04505d0d736345"),
+        hex("f4d2a4f45cc3f396806e47708802c36dbdeba92e6e40e215c09f2f680821c736"),
+    ),
+    (
+        hex("915016a9eaee3a391e29bbfcf00ee8de82e4da53c4865d080c04505d0d736345"),
+        hex("feac72022ef1b980adeda0bd635c046d3989b3718b11e8649d92989db5d5ad10"),
+    ),
+    (
+        hex("9277f5b0fa8d3a02004e2c8f02c1991c0bef281b8aa8aebab886797daa13502a"),
+        hex("13a4caa7d091f43882d733a9e795768a297b00c9faf0509b1442edbc8be09d0d"),
+    ),
+    (
+        hex("9277f5b0fa8d3a02004e2c8f02c1991c0bef281b8aa8aebab886797daa13502a"),
+        hex("46d1e24320b8a42180fbdc6a0cd5bbda2e65d22ae5474bd867b0dadd68b0c207"),
+    ),
+    (
+        hex("94fc9c63d0562b88395c3d5001397aa1a3a3f572450a00db627750b817c7de56"),
+        hex("6887754e4c6b7ca266d06fb143d5fc1035a799d49379af2282bc6896d0063fda"),
+    ),
+    (
+        hex("94fc9c63d0562b88395c3d5001397aa1a3a3f572450a00db627750b817c7de56"),
+        hex("e2f3cd4ce6b76cc18354618b706543a49cf9af2b2d2bee2acad7c04e9394145f"),
+    ),
+    (
+        hex("94fc9c63d0562b88395c3d5001397aa1a3a3f572450a00db627750b817c7de56"),
+        hex("eb2842731a0c76a14a034f78d6c6dbcc26a6da02370db6a4264ba440e064faee"),
+    ),
+    (
+        hex("94fc9c63d0562b88395c3d5001397aa1a3a3f572450a00db627750b817c7de56"),
+        hex("fbf3622a9be90850f1db1edc5370b1101062e13e35b76f398984a560a90b57c3"),
+    ),
+    (
+        hex("b0ddb21d5b657acf1bb6cfaaff3444be7db85d98135048d3b220e5e3ce46420d"),
+        hex("8dbca83d0d7e227f0cbff2766488454e25b4563a3ed70154ed8f6ca3061229b8"),
+    ),
+    (
+        hex("b0ddb21d5b657acf1bb6cfaaff3444be7db85d98135048d3b220e5e3ce46420d"),
+        hex("bc4a70439ee9f39307c59846c75decd14dd9814bc2c4177061b190a698fc6404"),
+    ),
+    (
+        hex("b4c2cb3cdcf9d456d5a0c905e468d9fe01a79df46544c8f447b0471ae2b4f6d1"),
+        hex("65ca085a20baf3f2f051be59a3dc85efc19950059dd712d97d1d742510e65cbe"),
+    ),
+    (
+        hex("c1ca8db71001178d04f1b83d7c55883107fa122927e10d41020672678fff2c86"),
+        hex("2563e38cd4babfed75121450f37891cd0c7e0927ee892a8705a114e2ad1f4eff"),
+    ),
+    (
+        hex("c1ca8db71001178d04f1b83d7c55883107fa122927e10d41020672678fff2c86"),
+        hex("ee9f00526c75f1306ccb294e0e89e42f27bf3a97de382df4941780a8732d86f7"),
+    ),
+    (
+        hex("c3361a22db27ce017fec90a46f66c508cad5d668d606070b214b0351b3cf9588"),
+        hex("3d899eecf256921c6f8749416ea54fc4d20ac238d2f6e301941963c6a987789e"),
+    ),
+    (
+        hex("c3361a22db27ce017fec90a46f66c508cad5d668d606070b214b0351b3cf9588"),
+        hex("6514b7d9ca3c1c9b123f5712c7e68e6e0792e1b814185ddd112c8d71d59f7778"),
+    ),
+];
+const fn hex(s: &str) -> [u8; 32] {
+    assert!(s.len() == 64);
+    let mut out = [0; 32];
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < 32 {
+        out[i] = (nibble(bytes[2 * i]) << 4) | nibble(bytes[2 * i + 1]);
+        i += 1;
+    }
+    out
+}
+const fn nibble(c: u8) -> u8 {
+    match c {
+        b'0'..=b'9' => c - b'0',
+        b'a'..=b'f' => c - b'a' + 10,
+        _ => panic!("compiled SHA256 literal"),
+    }
+}

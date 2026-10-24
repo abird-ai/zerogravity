@@ -38,6 +38,17 @@ use cudarc::driver::sys::{
 };
 use std::{collections::HashMap, ffi::c_void, sync::Arc};
 
+#[cfg(target_os = "linux")]
+mod bf16_gemm;
+
+#[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+mod cubin;
+#[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+mod embedding_rows;
+#[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+mod source_upload;
+mod weight_upload;
+
 /// Stage `words` into a device buffer, reusing a cached one when a launch has
 /// already staged these exact info words. The info is read-only metadata (no
 /// tensor pointers), so sharing it across launches — even of different kernels
@@ -75,6 +86,15 @@ fn info_buffer(command: &mut Command<'_>, words: &[u64]) -> Result<Handle, Serve
 
 #[derive(Debug)]
 pub struct CudaServer {
+    #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+    cubin_set: Option<cubin::CubinModuleSet>,
+    #[cfg(all(
+        feature = "owned-cublas-allocator",
+        target_os = "linux",
+        target_arch = "x86_64",
+        target_env = "gnu"
+    ))]
+    blas_provider: Option<bf16_provider::BlasProvider>,
     ctx: CudaContext,
     device_id: DeviceId,
     streams: MultiStream<CudaStreamBackend>,
@@ -576,6 +596,8 @@ impl CudaServer {
 
         Self {
             ctx,
+            #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+            cubin_set: None,
             device_id,
             streams: MultiStream::new(
                 utilities.logger.clone(),
@@ -594,6 +616,13 @@ impl CudaServer {
             collectives: Collectives::new(device_id),
             graphs: Captures::default(),
             pending_allocation_modes: HashMap::new(),
+            #[cfg(all(
+                feature = "owned-cublas-allocator",
+                target_os = "linux",
+                target_arch = "x86_64",
+                target_env = "gnu"
+            ))]
+            blas_provider: None,
         }
     }
 
@@ -606,10 +635,10 @@ impl CudaServer {
         self.command(stream_id, [].into_iter())
     }
 
-    fn unsafe_set_current(&self) {
+    fn unsafe_set_current(&self) -> Result<(), ServerError> {
         // TODO: Should check if on the same thread before calling it, since now we don't switch
         // thread except for device memory transfer.
-        self.ctx.unsafe_set_current().unwrap();
+        self.ctx.unsafe_set_current()
     }
 
     fn command<'a>(
@@ -617,7 +646,7 @@ impl CudaServer {
         stream_id: StreamId,
         handles: impl Iterator<Item = &'a BufferBinding>,
     ) -> Result<Command<'_>, ServerError> {
-        self.unsafe_set_current();
+        self.unsafe_set_current()?;
         let mut streams = self.streams.resolve(stream_id, handles)?;
         if let Some(mode) = self.pending_allocation_modes.remove(&stream_id) {
             streams.current().device_memory().mode(mode);
@@ -777,7 +806,7 @@ impl CudaServer {
         stream_id: StreamId,
         entry_point: &'static str,
     ) -> Result<cudarc::driver::sys::CUstream, ServerError> {
-        self.unsafe_set_current();
+        self.unsafe_set_current()?;
         let mut streams = self.streams.resolve(stream_id, [].into_iter())?;
         let stream = streams.current();
 
@@ -1365,5 +1394,51 @@ impl ServerStorage for CudaServer {
         self.streams.ensure_written([&binding].into_iter())?;
         let mut command = self.command(stream_id, [&binding].into_iter())?;
         Ok(command.managed_resource(binding)?)
+    }
+}
+
+#[cfg(all(
+    feature = "owned-cublas-allocator",
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu"
+))]
+mod bf16_provider;
+
+impl CudaServer {
+    pub(crate) fn owned_compiler_context_usage(
+        &self,
+    ) -> Option<super::context::CompilerContextUsage> {
+        self.ctx.compiler_context_usage()
+    }
+    pub(crate) fn owned_compiler_context_owner(
+        &self,
+    ) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
+        self.ctx.compiler_context_owner()
+    }
+    pub(crate) fn install_owned_compiler_context(
+        &mut self,
+        owner: Arc<dyn std::any::Any + Send + Sync>,
+        adopted: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), ServerError> {
+        self.ctx
+            .install_compiler_context(owner, adopted)
+            .map_err(|e| ServerError::Launch(e.into()))
+    }
+    pub(crate) fn prepare_owned_kernel(
+        &mut self,
+        kernel: Box<dyn CubeKernel>,
+    ) -> Result<(), ServerError> {
+        self.ctx.unsafe_set_current()?;
+        self.ctx
+            .require_compiler_context()
+            .map_err(|e| ServerError::Launch(e.into()))?;
+        let key = kernel.id();
+        if !self.ctx.is_loaded(&key) {
+            self.ctx
+                .compile_kernel(&key, kernel, self.streams.logger.clone())
+                .map_err(ServerError::Launch)?;
+        }
+        Ok(())
     }
 }

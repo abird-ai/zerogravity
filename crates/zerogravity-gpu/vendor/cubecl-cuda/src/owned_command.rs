@@ -6,6 +6,37 @@ use cubecl_common::{device::ServiceId, device_handle::DeviceHandle};
 use cubecl_core::{client::Client, server::ServerError};
 use cubecl_environment::stream::StreamId;
 
+mod compiler;
+#[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+pub(crate) mod embedding_rows;
+#[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+pub(crate) mod source_upload;
+pub(crate) mod weight_upload;
+#[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+pub use weight_upload::OwnedCudaTransferRetirement;
+pub use weight_upload::Vllm08WeightLayout;
+
+#[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+pub(crate) mod cubin;
+#[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+pub use cubin::{
+    Bf16VocabularyHead, CubinBinding, CubinIo, CubinKernelManifest, CubinLaunchAttributes,
+    CubinParameter, CubinPointerFixup, CubinProvider, CubinWorkspaceClear, CubinWorkspaceView,
+    OwnedCudaBinding, OwnedCudaKernel, OwnedCudaModuleSet, VerifiedCubin, VocabularyHeadSelection,
+};
+
+#[cfg(target_os = "linux")]
+mod bf16_gemm;
+#[cfg(target_os = "linux")]
+pub use bf16_gemm::{
+    Bf16BlasSourceIdentity, Bf16BlasSources, Bf16GemmApi, Bf16GemmBindings, Bf16GemmInspection,
+    ObservedBf16Gemm,
+};
+#[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+pub use bf16_gemm::{
+    CapturedBf16CubinRecord, PinnedBf16Cubin, PinnedBf16CubinDerivation, PinnedCapturedBf16Cubin,
+};
+
 /// Retains the original CUDA actor and the stream selected before client use.
 /// This token does not establish process-wide or device-wide capture isolation.
 pub struct OwnedCudaQueue {
@@ -59,3 +90,14 @@ impl OwnedCudaQueue {
         self.stream
     }
 }
+
+#[cfg(all(
+    feature = "owned-cublas-allocator",
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu"
+))]
+pub use bf16_gemm::OwnedBf16BlasProvider;
+
+#[cfg(all(feature = "owned-cubin", target_os = "linux"))]
+pub use embedding_rows::{Bf16MatrixLayout, ShortHfEmbeddingWidth};
