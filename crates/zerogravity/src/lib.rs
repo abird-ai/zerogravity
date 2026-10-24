@@ -14,6 +14,7 @@ pub use zerogravity_artifacts::{artifact, model, quant, sharded};
 pub use zerogravity_core::context_filter;
 pub use zerogravity_core::context_snapshot;
 pub use zerogravity_core::pipeline;
+pub use zerogravity_core::run_policy;
 pub use zerogravity_core::targets;
 pub use zerogravity_core::{Error, Result, accelerator, session_root};
 pub use zerogravity_core::{device_events, device_queue, resource_arbiter, state};
