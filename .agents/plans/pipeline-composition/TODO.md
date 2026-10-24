@@ -1,6 +1,7 @@
 # TODO — Single-process model and pipeline composition
 
-Status: pipeline architecture/scaffolds complete; execution deferred to owner plans
+Status: existing scaffolds accepted; recursive primitive/pipeline/profile design active;
+execution deferred to owner plans
 Provenance: 4bf624e (original scaffolds); ac44e83/f28a62c (context source/filter)
 Design: [README.md](README.md)
 Owners: model-acquisition, model-execution, serving-and-speculation, multimodal,
@@ -8,6 +9,396 @@ memory-and-streaming. All model/source/media execution remains subject to
 their existing numeric/source/physical acceptance gates.
 
 ## Uncommitted
+
+### Shared HIP / model composition checkpoint — 24 Oct
+
+- [ ] Natural independent-reference and explicit Gemma row-hit/transfer scopes;
+  no public serving, current source21 x2, general-fit or performance grant.
+
+### Model optimization reconciliation — 24 Oct
+
+Input: [Qwen27/Gemma4 audit](../../runs/model-execution-qwen-gemma-vllm-audit-20261024/REPORT.md),
+20Qwen/20Gemma/15shared source comparisons. Neither family has full applicable
+vLLM optimization coverage; source113 remains distinct from qualified execution.
+
+- [ ] Map each applicable strategy to existing primitive→model operation→family→
+  model/profile owners: shared matrix storage/layout, compact outputs, prepared
+  recipes, temporal work, pages/COW/prefix, graph ownership and target verifier
+  once; Qwen GDN/state and Gemma PLE/KV-sharing/liveness select eligibility.
+  No second registry/IR/runtime or per-token feature search. Reuse map/callers,
+  source/math/backend/phase limits and complete costs precede profile selection.
+- [ ] Preserve distinct numerical strategies: source113 CPU-order BF16 versus
+  BLAS/TensorCore/split-K, packed casts and explicit lossy codecs. A common
+  operation does not share its source permit, arithmetic grant or StateRoot.
+  Genuine N1→B4 cross-width diagnostic first differs at QKVZ2; GdnOut7 has a
+  separate projection difference even with exact input. Original same-prior B4
+  comparison now passes all15transitions/30plain+observed/fullstate/fullV/24sums/
+  natural bits, with genuine HTTP N1→mixedB4/refill separately exact. Explicit
+  compositional proof, not an independently generated original public trajectory
+  or universal N1/B4 bit equality. Preserve distinct strategies/source permits;
+  no production reference imports, weakened limits or cross-width grant.
+  [Astra contract review](../../runs/architecture-astra-cross-width-contract-20261024/DESIGN.md).
+- [ ] Use temporal/ragged pipeline liveness for Gemma E2B/E4B shared-tail fast
+  prefill; retain requested prompt logits/taps and every future KV dependency.
+  It is inapplicable to12B/26B/31B. Request B4 is not temporal prefill.
+- [ ] Adopt source-bound phase selection for2B cachedB4 through the existing
+  family/native adapter: one selector governs geometry/storage/inventory,
+  native/GDN/RMS definitions, readiness, input admission and scheduler. Genuine
+  N1prefill/partialfallback; unsupported2BinitialB4 refused before preparation.
+  Derive width4 root18 from actual8current+4candidate+2Pending+2snapshot+
+  2displaced, preserving sole retained capacity and physical readers. Exact
+  selected-phase costs within existing4608MiBprovider+512backend/4GiBHOST;
+  authentic2B native/RMS/catalog and same-prior numerical proof required.
+  Guarded source13 adoption now includes the shared model foundation and2B
+  specialization together. Authentic CPU inventory/reopen reports root18,
+  fullhead1,017,118,720B, provider upper4,767,472,640B and HOST4,080,276,698B;
+  remaining64,365,568B/214,690,598B respectively. These are complete source-derived
+  bounds, not themselves GPU evidence. Optimized13 CLOSED0; original19physical
+  scopes and genuine2B15transition trajectory/export/healthyretirement PASS.
+  Original2B SAMEPRIOR30plain+observed/8112sections/fullstate/fullV/natural bits
+  now exact; first newcached fault fails an unchanged compound retention check,
+  last2faults unrun. Fixture-only14 logs full actual snapshots without relaxed
+  checks; API/HTTP/timing/full assembled acceptance remain held.
+  [Astra architecture verdict](../../runs/model-execution-astra-phase-profiles-review-20261024/REVIEW.md).
+
+### Owner additions — 23 Oct, Astra high architecture review
+
+Contract: [shared execution architecture](SHARED_EXECUTION_ARCHITECTURE.md).
+User permits breaking pre0.1 API corrections now, while preserving the original
+source/state/admission/flight/publication spine and previous design intent.
+New model integrations must compose the established .8B/2B mechanisms: engine
+primitives → shared model operations → family primitives → model specialization.
+Lift reusable behavior before copying it; retain specialized implementations only
+for concrete source/numerical/kernel requirements. Review actual reuse and callers,
+not only matching API names; no parallel allocator/dispatcher/publication spine.
+
+- [ ] Implement the [Astra next-native redesign](../../runs/architecture-astra-next-native-review-20261023/DESIGN.md)
+  through Sol HIGH: source-neutral physical owner plus source-bound services,
+  same envelope/queue/ledger/fence, exact model sub-admissions and independent
+  source/close/reload lifetimes. No per-model bootstrap/cap increase or source
+  equality weakening. Source work isolated while frozen single-source Gemma
+  actual qualification and binder316 checks continue.
+  Physical13 now integrated MAIN/ISO345 with guarded original parents/modes/
+  README; logical564/provider+default strict PASS, Astra architecture accepts/no
+  concrete must-fix. Original local required release/full both-model CUDA/state/
+  fault/API checks PASS; x2 native3/portable6/rawtransport12 and corrected shared4
+  HIP/Vulkan healthy/unknown PASS. Fixture Oracle shadow aliases corrected only;
+  production unchanged in345v3. Interrupted original controller and missing
+  local13 closure preserved separately from successful fresh replay. Final gate
+  pending after coherent contributions; measured release remains316.
+- [ ] Extend the original HIP actor's bounded prepared-set lifecycle for multiple
+  independently source-bound models on one physical owner. Current actor
+  deliberately refuses a second live set/legacy/graph; shared admission alone
+  does not grant simultaneous Gemma/Qwen native execution. Preserve exact source/
+  arithmetic/specialization identities, original envelope/global fence and actual
+  per-set module/flight retirement. No learned payload sharing by code identity.
+  [Astra selected seam](../../runs/architecture-astra-shared-native-20261023/DESIGN.md):
+  nonzero never-reused logical StreamId through all compile/cache/IO/driver joins,
+  immutable source-service Client including internal enqueue paths, maxphysical
+  streams1 retained. Cold32/64/32GiB provider/device/host remains a candidate;
+  derive quotas from complete costs before bootstrap. The earlier two12GiB
+  draft must not force Gemma's resident projections back to streamed storage.
+  Current candidate Qwen12GiB/Gemma16GiB plus one4GiBcontext fits the32GiB
+  provider envelope arithmetically; complete host/init/scoped-key peaks remain
+  to qualify. Qwen9,917,743,073B is model-only; Gemma13,174,234,632B plus the
+  shared context gives27,386,945,001B before new metadata. No duplicate context
+  subtraction, live cap growth or optimistic compiler-host release. Sol HIGH
+  implements; actual multi-set remains open.
+  [Concrete ABI review](../../runs/architecture-astra-residency-and-set-key-20261023/DESIGN.md):
+  private scoped key nests the FULL original KernelId; bounded full-Eq routing
+  reaches actual driver lookup despite Command dropping logical StreamId.
+  Fixed SingleCompat/Scoped mode preserves original callers without fallback
+  mixing. Per-set source/module/admission and global unknown fence remain.
+  [Astra HIGH draft-source/API review](../../runs/pipeline-composition-astra-hip-multiset-review-20261024/REPORT.md)
+  approves the bounded direction: shared-only Qwen reload after actual final
+  reader/native/service retirement; exact pinned-client preflight with a cold
+  Arc/Weak identity, without cache backedges. Sol implements both corrections.
+  Cold full-Eq routes and actual family consumers were inspected; completed
+  fixes, full costs, checks and two-source physical lifecycle remain unqualified.
+  ROOT reviewed the complete scoped-source delta and compiler successor: Shared
+  retains up to three admitted8GiB compiler leases on the original persistent
+  context (two initial sets plus one reload), including cancelled attempts; model
+  unload gives no compiler-cache credit. Reserve before queue submission so a
+  fourth ordinary refusal cannot fence a healthy sibling. SingleCompat keeps its
+  existing policy. Conditional complete HOST upper33,668,886,252B includes two
+  scoped-metadata maxima and128MiB fixture allowance, leaving690,852,116B under
+  fixed32GiB; actual costs/fit and two-source lifecycle remain open. Grouped
+  GPU-free successor checks run separately; no physical or performance grant.
+  [Compiler lifetime correction](../../runs/pipeline-composition-hip-multiset-sol-high-20261024/compiler-successor-v2/REVIEW.md).
+  Frozenv4 whole7stage CPU unit now PASS: all3strict,171resident/12core/7compiler
+  tests and2actual-type source-expression controls. Actual compiled scoped metadata
+  is observed per set and joined exactly, not inferred as a residual. Corrected
+  fullHOST upper34,205,757,164B includes separate512MiB supervisor, leaving
+  153,981,204B under32GiB; startup checks actual coldplan+fixture+controller.
+  ROOT complete source/control/owner review; isolated x2 optimizedbuild active,
+  genuine same-actor healthy reload/globalunknown cases still pending.
+- [ ] Record Qwen27B's one family traversal through the existing backend/plan
+  with explicit MKL arithmetic revision,112logical domains/128ordinary planes/
+  fullConv4, before native/multi-model serving. Current scalar-exp/H16/short-HF
+  binders refuse; accepted CPU INITIAL1→cached1 proof cannot grant their reuse.
+
+- [ ] Qualify the integrated `TextCallGeometry` extraction and actual Gemma
+  consumer. It separates source-bound call metadata from model geometry and
+  finite numerical/backend eligibility; six copied-core tests pass only.
+- [ ] Move remaining closed family builders/geometry out of core after generic
+  semantic consumers migrate. Separate family, numerical and implementation
+  identity; retain explicit rounding/reduction contracts and actual shape gates.
+- [ ] Use one prepared-model serving adapter for validation/session/accepted
+  step/committed output/cancel, retaining the original router/workers/roots.
+- [ ] Implement sealed NativeCohort in the SAME node loop: authentic perrow
+  record/runtime/prior/candidate/borrowedphase joins through validation, View/
+  storage/finite certification and terminal grouped proposals, original physical
+  cohort flight/Ready and single all-or-none publisher. Physical188/376 is an
+  explicit request axis, not temporal tokens. Call-local body and enforcedmax8
+  sessions preserve22root bound. Actual canonical47B4 source discovery passes;
+  complete native arguments and genuine Rust188prefill→same-rootB4 remain open.
+- [ ] Share immutable recipe/topology/SSA/storage/native candidates inside the
+  existing record API; bind small source-issued invocation/root/phase data late.
+  Current percall record charge4MiB must not multiply into permanent Bplan
+  rebuild/hash overhead. No new template IR or firstrow provenance shortcut.
+  Sol18 now integrated MAIN/ISO314selected source paths; Astra HIGH completed
+  architecture-only review and accepted with no must-fix. Source/profile/shape
+  cache40 retains original host charges; topology/source semantics Arc-shared,
+  actual operation/provenance remains invocation-local; warm bind outsideMutex.
+  Per-call record bound512KiB, conservative fullcache160MiB. Core201/Qwen87/
+  GPU549/default+provider strict PASS. Original source/site/native validation and
+  wrapper allocations remain. Both models' complete actual CUDA/state/fault/API
+  plus streamed2B faults PASS; .8B quiet C1+70.73%/C4+28.81%/C8−2.58%, singlepass.
+  Full assembled gate15 LAST PASS1752Rust/0failed/89ignored/269suites/allchecks;
+  314sourcepaths/rootREADME unchanged. No zero allocation/general pipeline claim.
+  [Architecture review](../../runs/architecture-astra-prepared-review-20261023/DESIGN.md).
+  Residual Sol8 binder now integrated MAIN/ISO316: concrete existing ColdModel
+  cache40, genuine invocation validation outside lock, original retained
+  witness/site charges512KiB each +64KiB owner. GPU551/provider+default strict
+  pass; original joint release and both models' full real source/state/fault/API
+  plus streamed2B faults PASS. Quiet .8B C1+78.62%/C4+26.67%/C8−1.09%, singlepass;
+  six original owner closures healthy. Final isolated gate16 PASS1752Rust/0failed/
+  89ignored/269suites/allchecks;316sourcepaths/rootREADME unchanged. Astra
+  next-native pass is architecture/planning only; Sol HIGH applies the redesign.
+- [ ] Before Gemma HIP merge: retain authentic source/snapshot lifecycle through
+  native unknown/retirement; unsafe lowlevel boundary with one validated safe
+  facade caller, no safe Any-owner proof. Keep fixed hardware/context/compiler/
+  module policy in shared backend preparation. Sol44v5 implements these Astra
+  corrections and complete source/state/lifetime qualifier in donor; reachable
+  strict/source tests pass. Original frozen MAIN314+44 on x2 now passes full
+  seven-case/all35/state/fullV/natural/lifetime matrix and fresh actual unknown
+  retention. Guarded Gemma44 integrated MAIN/ISO343; successor shared physical
+  owner/serving/performance stay unqualified. Prior316 final gate16 passed;
+  next assembled gate follows coherent successor/affected physical checks.
+- [ ] Demonstrate one forced ordinary versus optimized region/profile slice
+  with joint liveness/observers and device-resident typed stage edges. Build on
+  existing region metadata and physical lowering, without a universal framework.
+- [ ] Later multidevice/MoE reuse: source/range/codec identity separate from
+  physical slot/generation/placement; pin queued/captured/inflight readers,
+  charge migration old+new/staging, preserve fairness and complete root shards.
+  Backend tuples qualify CUDA/HIP/Vulkan separately. No current sparse,
+  distributed or media execution claim follows from this review.
+
+### Owner additions — 21 Oct, resident stages and fusion
+
+Contract: [resident values and cross-stage lowering](REGIONS_AND_PROFILES.md#resident-values-and-cross-stage-lowering--owner21-oct).
+Design only; all implementation and acceptance below remain pending.
+
+23Oct shared-engine allocation/boundary design: [pool, layout and transfer APIs](../cpu-gpu-optimization/SHARED_MEMORY_AND_BOUNDARIES.md).
+Profiles select finite prepared storage/transfer policies through the existing
+engine; model or nested-pipeline boundaries do not create allocator ownership,
+copies or waits. Shared adoption remains in optimization/memory plans.
+
+- [ ] Carry eligible stage outputs through typed leased device bindings with
+  source/profile/root, owner/device/context/generation/range, layout/extents,
+  access and actual producer dependencies. Stage boundaries alone introduce no
+  host return, serialization, allocation, payload copy or synchronization.
+- [ ] Prepare cross-stage resident handoff, device chains/graphs, exact fused
+  regions and explicit bridges through existing ports/providers; force the
+  accepted decomposition for comparison. Resolve finite compatible candidates
+  outside the hot loop; no new interpreter, tensor runtime or execution IR.
+- [ ] Plan joint placement/layout/liveness and admitted scratch/graph/staging
+  across eligible producers and all consumers. Qualify caller-owned native
+  component buffers and stream hooks; expose hidden pools/copies/waits and
+  retain cases where a copy or smaller region improves complete-task cost.
+- [ ] Keep qualified intermediates, model state and compact generation feedback
+  on device. Use real event dependencies and bounded control/status transfers;
+  preserve sampler/grammar, context grants, independent model publication,
+  cancellation/fairness and output-credit boundaries. Require typed trained/
+  codec bridges between models; graph composition does not erase host decisions.
+- [ ] Explain and attribute each required materialization/copy/readback/wait and
+  graph split. Compare forced ordinary, resident-chain, graph and fused paths
+  under the same numerical/approximation contract, source and output consumers.
+- [ ] Prove zero intermediate H2D/D2H payload traffic and no stage-only host wait
+  on a qualified compatible fixture; test incompatible bridges/refusals,
+  tails/ragged/multiple-consumer/debug/alias, cancel/backpressure/reload and
+  unknown completion. Separately qualify trained complete-task results and
+  actual physical peak/tails; start NVIDIA, then Strix Halo, without assuming UMA
+  implies zero-copy. Appropriate real-source/physical and full check.sh gates.
+
+### Owner additions — 21 Oct, approximation/components/shared policy
+
+Contract: [profile policy and native component reuse](PROFILE_POLICY_AND_COMPONENT_REUSE.md).
+These are pending implementation/acceptance tasks, not new runtime support.
+
+- [ ] Support explicitly approximate profiles beyond derived weight precision:
+  declared methods/ranges, changed semantics, held-out quality limits and
+  permitted adaptive choices; separate variant correctness from original-model
+  fidelity. Bind effective variant/state formats into cache/snapshot/graph keys.
+- [ ] Permit interchangeable allocator/pool, provider, codec, scheduling,
+  residency and transfer implementations under the original ownership spine.
+  Define replacement boundaries and old-allocation retirement; test old/new
+  coexistence, failure, graph readers, cancellation and unknown completion.
+  Replace/rebuild unsuitable modules when real implementations justify it.
+- [ ] Resolve one shared versioned configuration visible to participating
+  modules, with explicit local overrides, bounded operational observations and
+  explainable choices. Existing coordination admits joint batch/graph/draft/
+  prefetch cost; test conflicts, stale observations and reload boundaries.
+- [ ] Apply audited MIT/Apache static-native reuse first to every implementation
+  and harness; otherwise directly port the smallest useful implementation and
+  fixtures, establish faithful behavior, then integrate through our contracts.
+  Preserve upstream notices; no Python/PyTorch production runtime is implied.
+- [ ] Consolidate profile/phase/backend equivalence acceptance: solo/concurrent,
+  B1/batched reorder/refill, draft off/on/every keep, fresh/restored/COW,
+  ordinary/graph/fused and contiguous/paged. State required bitwise/error/
+  distribution/changed-semantic relation; reject incompatible combinations.
+- [ ] Exercise the first useful region/profile with one reused or ported
+  component and the native correctness harness; preserve the baseline, complete
+  state/physical gates and measured complete-request results. New abstractions
+  must not delay current parity or require a second execution stack.
+
+### Recursive composition and profiles — owner request21 Oct, design first
+
+Independent [mechanism research](../../research/engine-optimization-comparison-2026-10-21/README.md)
+is complete; parallel design runs without blocking active source parity/binding.
+Existing YAML/DAG validation does not establish nested executable pipelines.
+Proposed contract: [recursive regions and profiles](REGIONS_AND_PROFILES.md).
+
+- [ ] Define primitive semantics separately from their kernel implementations;
+  typed ports/shapes/source/numerical policy and declared state/read/write effects.
+- [ ] Define a pipeline node that may reference a bounded subpipeline: one
+  inference's operator/kernel regions and compound multimodal task stages use
+  consistent composition laws while retaining their distinct value/frontier types.
+- [ ] Define immutable profiles combining named pipelines and permitted source/
+  arithmetic/workload/placement strategies. Separate defaults/preferences from
+  non-overridable source, authorization, physical and completion requirements.
+  A saved profile is not a live SourceIdentity, Ready or allocation permit.
+- [ ] Compile hierarchical views into existing semantic/physical plans; legal
+  flatten/in-line/out-line, exact region replacement, prepared shape selection,
+  graph replay and optional fused kernels. Preserve two enduring representations,
+  no new interpreter/runtime/model loop/allocator or per-token plan search.
+- [ ] Specify child-region effects/exports, alias/liveness after fusion, late
+  source/root/epoch/generation binding, cancellation, backpressure and completion.
+  Inner mathematical regions prepare; original session writer publishes once.
+  Compound task boundaries must not imply global rollback of already committed
+  model/media stages or allow recursive independent publishers.
+- [ ] Profile examples: resident interactive, concurrent throughput, long/shared
+  prefix, memory-bounded dense27B; future sparse/derived-precision/media/distributed.
+  Mark prerequisites, conflicts, unsupported/fallback and actual qualification.
+- [ ] Compare minimal efficient kernel paths with ordinary decomposition and
+  captured schedules; retain cases where fusion loses occupancy or overlap.
+  Distinguish semantic nodes, submissions and actual device kernel invocations.
+- [ ] After parity and matched baseline, measure source-only preparation
+  (e.g. exact gamma widening/shift) and legal normalization-region fusion as
+  early candidates; preserve casts, original model ownership and admitted bytes.
+  Compare complete-request cost and actual dispatches before promotion.
+- [ ] Review extension drills for a new primitive/model/provider/task without
+  unrelated scheduler/API changes; define exact-source/all-state/physical and
+  complete-request performance gates before implementing these abstractions.
+
+
+## Committed
+
+### `eb49fa0e945b` — source programs and shared native composition
+
+Related source commits: `3e89f1919993` (gpu-resident-native-scc), `752642361cb4` (facade-shared-hip-lifecycle).
+Aggregate source21 qualification applies to the assembled tree; no per-commit
+build or general model/backend grant. Historical failures keep their source scope.
+
+#### Shared HIP / model composition checkpoint — 24 Oct
+
+- [x] Source20 local full gate/build, original CUDA23 physical cases and fresh
+  full2B composition pass; these do not qualify current x2 shared execution.
+
+- [x] ROOT reviewed current1650-source x2 payload and transport corrections:
+  distinct packaged/hydrated closures, final local closure check and relocated
+  bootstrap receipt import;15 grouped CPU controls pass. Original namespace1
+  failed closed after hydration/import, before build/model work; preserved.
+
+- [x] Fresh namespace2 source20 bootstrap/offline build and authenticated binary
+  binding pass. Known shared reload and Qwen final-reader unknown close PASS;
+  source20 scope, original limits and owner remain explicit.
+
+- [x] Gemma feedback unknown closes PASS. ROOT independently reruns original
+  typed validation for build and all3cases; exact source20 artifact51808f9e…,
+  separate packaged/hydrated pins,70helddataFDs and both owner layers close.
+  Scoped math/state/lifetime only; public serving, natural27B trajectory, current
+  source21 x2 artifact, general fit and speed remain unqualified.
+
+- [x] Original v7 known reload run CLOSED_FAILED1 with both groups reaped/gone,
+  full EOF, all70 held source files and binary/control unchanged. Pi bounded
+  read-only collection found aggregate fixture mismatch: original four-Qwen-call
+  after() reused by a declared three-call shared scenario. All three Qwen
+  per-call original comparisons were exact; original failure remains failed.
+
+- [x] Observed Gemma scope is one full diagnostic plus three ordinary exact
+  packet/fullKV calls. Retirement/reload/fourth-preparation refusal and final
+  native/ledger events were observed, not a fresh accepted joint pass.
+
+- [x] Pi corrects only shared-fixture original-oracle scope with exact declared
+  proposal/record membership and negative controls; original full4 after()
+  remains unchanged. Both original unknown cases remain unstarted.
+
+- [x] Astra integration design: one HIP loader parameterized by original owner
+  and readout, preserving existing shared teacher117; contextual Qwen natural13
+  and Gemma reuse7 merge, no duplicate loader/allocator/source authority. See
+  `.agents/runs/pipeline-composition-astra-three-unit-integration-20261024/TODO.md`.
+
+- [x] ROOT independently reviewed contextual38-path composition, six Pi review
+  dispositions and Astra design review; merged into main source19 preserving
+  source18 CLI fixes and README. Combined strict and artifacts28/GPUCPU244/
+  compiler7/core12/Qwen-oracle5/Gemma-oracle1 pass; final example cfg checks and
+  complete main gate run separately. Source integration, not runtime acceptance.
+
+- [x] Corrected source20 actual shared lifecycle and both unknown scopes pass
+  with ROOT typed/source/state/owner review; fixed HOST/device limits and
+  original failed scopes remain unchanged.
+
+#### Model optimization reconciliation — 24 Oct
+
+- [x] Before eager preparation, close actual context/compiler
+  host/device admission and partial-failure retention on original owners.
+  Compiler-lifetime7 provides raw-program cleanup/attestation; current12 adds
+  actual512MiB DEVICE/384MiB HOST detached context owners on original domains,
+  immutable environment, cumulative bounds, pooled RMS source definitions and
+  same-actor compile-only exact recipes. Actual19/source/fault/retirement/API/
+  genuineHTTP pass; livecompiler deltas0 in C1/C4/C8. Currentfullgate18 PASS.
+  Finite SM86/profile scope, no arbitrary compiler allocation theorem, graph
+  replay or other-backend grant. [Astra design](../../runs/architecture-astra-compiler-readiness-20261024/DESIGN.md).
+
+#### Owner additions — 23 Oct, Astra high architecture review
+
+- [x] Finish the assembled pool/ring/workspace/head implementation and physical
+  checks first; apply the shared layers through existing objects, without a
+  second dispatcher/IR/completion authority. Frozen storage/rings release2:
+  both actual40natural/all5fault/API matrices exact; fresh short benchmarks and
+  full isolated gate12 PASS1734Rust/0failed/allscriptchecks,287sourcepaths and
+  rootREADME unchanged. C8 superiority and broader parity remain open.
+
+- [x] Extract a source-sealed matrix/head operation from the Qwen Head254
+  adapter: common source windows/residency/retirement and current lease binding;
+  family owns tensor roles/tie, traversal/value IDs and exact arithmetic. Sol8
+  integrated MAIN/ISO290sourcepaths, including exact issuer/member/expert-range
+  correction. Strict/GPU544/real-source negative/default+CUDA+HIP+Vulkan builds
+  pass; joint release and both models' complete actual CUDA/state/fault/API
+  checks PASS. Full isolated gate13 PASS1737Rust/0failed/allscriptchecks.
+  Affected HIP/Vulkan transport12 pass on the native/context successor; no
+  portable head arithmetic or arbitrary family/backend qualification follows.
+
+#### Recursive composition and profiles — owner request21 Oct, design first
+
+- [x] Independent design plus coordinator source review: three conceptual layers,
+  two enduring execution representations, exact effect/numeric/lifetime rules,
+  staged compound-task commits, finite profile matrix and extension drills.
+  Independent second source/coverage review passes after shared-traversal and
+  content-recipe/live-source-owner corrections; actual producer completion join
+  clarified. [Review](../../research/engine-optimization-comparison-2026-10-21/composition-review.md).
+  No source/runtime/performance acceptance.
 
 - [x] Canonical YAML schema `zerogravity.pipeline.v1` replaces TOML
   for the single-process/multi-model CLI config. Repeatable model/step/link/
@@ -20,6 +411,7 @@ their existing numeric/source/physical acceptance gates.
   `pipeline check` only validates graph structure; `pipeline run` still
   refuses. A maintained YAML parser replacement is a separate dependency
   review, since the already-cached `serde_yaml 0.9.34` is deprecated.
+
 - [x] Add finite native `ComponentRegistry` with independently registered
   immutable typed port contracts, pure `Config::validate_with_registry`,
   duplicate/invalid/forged-context port refusal and source-neutral future
@@ -28,6 +420,7 @@ their existing numeric/source/physical acceptance gates.
   NOT IMPLEMENTED for runtime use until separately qualified.
   No per-model binary/process, runtime scheduler, GPU, transport, extra
   licensed source or user code loaded.
+
 - [x] Frozen source-neutral architecture/YAML acceptance passed:
   `CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=4 python3 scripts/native-gpu.py -- bash scripts/check.sh`
   exit0, 1,073 Rust executions/0 failures/69 ignored/230 suites
@@ -45,8 +438,6 @@ their existing numeric/source/physical acceptance gates.
   inference, source-real decoded shards and production APIs remain
   in the deferred owner plans. Sign exactly reviewed source/examples/docs;
   no push, no device launch, no model download.
-
-## Committed
 
 - [x] Prior accepted source and family contracts remain in
   model-acquisition, model-execution, multimodal, serving, memory and
@@ -297,3 +688,8 @@ availability and does not keep pipeline development on the critical path.
 - [ ] Trained and streaming multi-model parity, real media correctness,
   device completion, SLO/fairness and zero-copy lease gates are owned by
   the model-execution/serving/multimodal/memory TODOs above.
+
+### 24 Oct — parallel implementation checkpoint
+
+- [x] Current2B cached trajectory original15-transition/30-call same-prior math exact; fixture15 actual conv/lastFA/head unknown-work cuts PASS. Source13 successful physics/math retained with explicit actual producer identities and unchanged serving bytes; original failed batch remains FAILED, no current serving/performance grant.
+- [!] HIPv4 first healthy57492 refused before child/model/GPU at old-Q import receipt schema; actual source/binary/owner closure preserved, no inference result. Controlv5 real metadata-only preflight accepted both actual receipt schemas but independent review found missing finalizer import alarm_until; distinct control-only successor required before fresh actual serial cases. No source rebuild/import/copy/download needed.
