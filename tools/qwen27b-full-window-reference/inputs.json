@@ -1,0 +1,34 @@
+{
+  "schema": "zg.original27b-full-window-inputs.v1",
+  "repository": "Qwen/Qwen3.8-27B",
+  "revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+  "snapshot": "98cea13c169310196c4d8a113765f8fe58ab7a7961f0d1be69212c70dba8015e",
+  "source_directory": "/home/pvl/.cache/abird/zerogravity/models/snapshots/98cea13c169310196c4d8a113765f8fe58ab7a7961f0d1be69212c70dba8015e/files",
+  "config_sha256": "191e0af232104ed8b65258cf3fb2b842e288008baca7633c11b82a1ac7203aab",
+  "index_sha256": "77042094076611b69791a610065f28b7013b8c621795fa86ddccc8bac7d1b9df",
+  "parameter_mode": "raw-source-assign-no-cast",
+  "teachers": [
+    11,
+    353
+  ],
+  "repetitions": 2,
+  "source_scan_bytes": 1048576,
+  "mapping_cap": 3221225472,
+  "record_cap": 4194304,
+  "archive_cap": 1073741824,
+  "expected_records": 1040,
+  "expected_raw_bytes": 934776928,
+  "cache_utils_sha256": "702144bb44553f6339ea1bf23c8205a708bb5f8c7c09cb3a2db484182646743c",
+  "scope": {
+    "original_full_text_forward": true,
+    "all_851_text_source_roles": true,
+    "full_hf_conv4": true,
+    "mixed_source_parameters_preserved": true,
+    "teacher_forcing_only": true,
+    "natural_feedback_qualified": false,
+    "rust_numerical_parity_qualified": false,
+    "state_root_native_serving_performance_qualified": false,
+    "all_bf16_loader_equivalence_qualified": false,
+    "mkl_exp_producer_qualified": false
+  }
+}
