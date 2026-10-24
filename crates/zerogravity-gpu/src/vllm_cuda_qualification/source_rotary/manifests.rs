@@ -1,0 +1,148 @@
+//! Closed original full1M cache factory; no runtime native literals.
+use super::super::cubin_manifests::ProjectionImage;
+use cubecl::cuda::{
+    CubinBinding, CubinIo, CubinKernelManifest, CubinLaunchAttributes, CubinParameter,
+    CubinPointerFixup,
+};
+#[repr(usize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum RotaryOutput {
+    Range32,
+    Scaled32,
+    PowBase,
+    Pow32,
+    Reciprocal32,
+    InvFreq32,
+    Range1048576,
+    Frequencies,
+    Cos,
+    Sin,
+    Cat,
+    Cache,
+}
+impl RotaryOutput {
+    pub const ALL: [Self; 12] = [
+        Self::Range32,
+        Self::Scaled32,
+        Self::PowBase,
+        Self::Pow32,
+        Self::Reciprocal32,
+        Self::InvFreq32,
+        Self::Range1048576,
+        Self::Frequencies,
+        Self::Cos,
+        Self::Sin,
+        Self::Cat,
+        Self::Cache,
+    ];
+    pub const fn bytes(self) -> usize {
+        match self {
+            Self::Range32 => 128,
+            Self::Scaled32 => 128,
+            Self::PowBase => 8,
+            Self::Pow32 => 128,
+            Self::Reciprocal32 => 128,
+            Self::InvFreq32 => 128,
+            Self::Range1048576 => 4194304,
+            Self::Frequencies => 134217728,
+            Self::Cos => 134217728,
+            Self::Sin => 134217728,
+            Self::Cat => 268435456,
+            Self::Cache => 134217728,
+        }
+    }
+    pub const fn prefix_bytes(self) -> usize {
+        match self {
+            Self::Range32 => 128,
+            Self::Scaled32 => 128,
+            Self::PowBase => 8,
+            Self::Pow32 => 128,
+            Self::Reciprocal32 => 128,
+            Self::InvFreq32 => 128,
+            Self::Range1048576 => 268,
+            Self::Frequencies => 8576,
+            Self::Cos => 8576,
+            Self::Sin => 8576,
+            Self::Cat => 17152,
+            Self::Cache => 8576,
+        }
+    }
+}
+pub(super) struct RotaryLaunch {
+    pub(super) image: ProjectionImage,
+    pub(super) roles: &'static [RotaryOutput],
+    pub(super) manifest: CubinKernelManifest,
+}
+pub(super) fn launches() -> Vec<RotaryLaunch> {
+    vec![
+// Original scope0, actual packet SHA92e1f5f1b1df31e82c11e5bbfe9e7ca1dde4b7b6922a5f43a0d8ea1d7f28e8a5.
+RotaryLaunch {image:ProjectionImage::RotaryArangeSm86,roles:&[RotaryOutput::Range32],manifest:CubinKernelManifest{entry:"_ZN50_GLOBAL__N__2fa45684_17_RangeFactories_cu_38772b0829elementwise_kernel_with_indexIiZZZN2at6native15arange_cuda_outERKN3c106ScalarES6_S6_RNS1_6TensorEENKUlvE_clEvENKUlvE5_clEvEUllE_EEvT_T0_PN15function_traitsISD_E11result_typeE".into(),binary_sm:86,grid:[1, 1, 1],block:[64, 1, 1],dynamic_shared_bytes:0,attributes:CubinLaunchAttributes::None,bindings:vec![CubinBinding{bytes:128,alignment:16,io:CubinIo::Write}],parameters:vec![CubinParameter{offset:0,template:[32,0,0,0].to_vec()},CubinParameter{offset:8,template:[0,0,0,0,0,0,0,64,0,0,0,0,0,0,0,0].to_vec()},CubinParameter{offset:24,template:[0,0,0,0,0,0,0,0].to_vec()}],fixups:vec![CubinPointerFixup{parameter:2,byte_offset:0,binding:0,binding_offset:0,extent:128,alignment:16,io:CubinIo::Write}] } },
+// Original scope1, actual packet SHAf60a6719d830ff34506b077ce219208d2cc6bda4559a33428cb322153ed1ee49.
+RotaryLaunch {image:ProjectionImage::RotaryDivideSm86,roles:&[RotaryOutput::Scaled32,RotaryOutput::Range32],manifest:CubinKernelManifest{entry:"_ZN2at6native29vectorized_elementwise_kernelILi4ENS0_13BUnaryFunctorIfffNS0_15binary_internal10MulFunctorIfEEEESt5arrayIPcLm2EEEEviT0_T1_".into(),binary_sm:86,grid:[1, 1, 1],block:[128, 1, 1],dynamic_shared_bytes:0,attributes:CubinLaunchAttributes::None,bindings:vec![CubinBinding{bytes:128,alignment:16,io:CubinIo::Write},CubinBinding{bytes:128,alignment:16,io:CubinIo::Read}],parameters:vec![CubinParameter{offset:0,template:[32,0,0,0].to_vec()},CubinParameter{offset:4,template:[0,0,0,0,0,0,128,60].to_vec()},CubinParameter{offset:16,template:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0].to_vec()}],fixups:vec![CubinPointerFixup{parameter:2,byte_offset:0,binding:0,binding_offset:0,extent:128,alignment:16,io:CubinIo::Write},CubinPointerFixup{parameter:2,byte_offset:8,binding:1,binding_offset:0,extent:128,alignment:16,io:CubinIo::Read}] } },
+// Original scope2, actual packet SHAd86dc331648eb43790cceaa50a07878d6c73090c48fa5f450c1dd38c48a8b7a2.
+RotaryLaunch {image:ProjectionImage::RotaryFillSm86,roles:&[RotaryOutput::PowBase],manifest:CubinKernelManifest{entry:"_ZN2at6native29vectorized_elementwise_kernelILi2ENS0_11FillFunctorIlEESt5arrayIPcLm1EEEEviT0_T1_".into(),binary_sm:86,grid:[1, 1, 1],block:[128, 1, 1],dynamic_shared_bytes:0,attributes:CubinLaunchAttributes::None,bindings:vec![CubinBinding{bytes:8,alignment:16,io:CubinIo::Write}],parameters:vec![CubinParameter{offset:0,template:[1,0,0,0].to_vec()},CubinParameter{offset:8,template:[128,150,152,0,0,0,0,0].to_vec()},CubinParameter{offset:16,template:[0,0,0,0,0,0,0,0].to_vec()}],fixups:vec![CubinPointerFixup{parameter:2,byte_offset:0,binding:0,binding_offset:0,extent:8,alignment:16,io:CubinIo::Write}] } },
+// Original scope2, actual packet SHA83073f54284de19a5b3d079222d86c28e34ed7b81b6d2bc56c130cc3e0fd4cff.
+RotaryLaunch {image:ProjectionImage::RotaryPowSm86,roles:&[RotaryOutput::Pow32,RotaryOutput::PowBase,RotaryOutput::Scaled32],manifest:CubinKernelManifest{entry:"_ZN2at6native18elementwise_kernelILi128ELi4EZNS0_15gpu_kernel_implIZZZNS0_51_GLOBAL__N__7b48bba2_12_PowKernel_cu_ba09f646_2350424pow_tensor_tensor_kernelERNS_18TensorIteratorBaseEENKUlvE_clEvENKUlvE5_clEvEUlffE_EEvS5_RKT_EUliE_EEviT1_".into(),binary_sm:86,grid:[1, 1, 1],block:[128, 1, 1],dynamic_shared_bytes:0,attributes:CubinLaunchAttributes::None,bindings:vec![CubinBinding{bytes:128,alignment:16,io:CubinIo::Write},CubinBinding{bytes:8,alignment:16,io:CubinIo::Read},CubinBinding{bytes:128,alignment:16,io:CubinIo::Read}],parameters:vec![CubinParameter{offset:0,template:[32,0,0,0].to_vec()},CubinParameter{offset:8,template:[1,0,0,0,32,0,0,0,1,0,0,0,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6,4,6,0,0,0,0,0,0,0,0,0,0,0,0,0].to_vec()}],fixups:vec![CubinPointerFixup{parameter:1,byte_offset:608,binding:0,binding_offset:0,extent:128,alignment:16,io:CubinIo::Write},CubinPointerFixup{parameter:1,byte_offset:616,binding:1,binding_offset:0,extent:8,alignment:16,io:CubinIo::Read},CubinPointerFixup{parameter:1,byte_offset:624,binding:2,binding_offset:0,extent:128,alignment:16,io:CubinIo::Read}] } },
+// Original scope3, actual packet SHAb6249f6caaa62fa0079d99555cf6bfbf437ec8672299a7a01468b8b1a59d3523.
+RotaryLaunch {image:ProjectionImage::RotaryReciprocalSm86,roles:&[RotaryOutput::Reciprocal32,RotaryOutput::Pow32],manifest:CubinKernelManifest{entry:"_ZN2at6native29vectorized_elementwise_kernelILi4EZZZNS0_22reciprocal_kernel_cudaERNS_18TensorIteratorBaseEENKUlvE_clEvENKUlvE0_clEvEUlfE_St5arrayIPcLm2EEEEviT0_T1_".into(),binary_sm:86,grid:[1, 1, 1],block:[128, 1, 1],dynamic_shared_bytes:0,attributes:CubinLaunchAttributes::None,bindings:vec![CubinBinding{bytes:128,alignment:16,io:CubinIo::Write},CubinBinding{bytes:128,alignment:16,io:CubinIo::Read}],parameters:vec![CubinParameter{offset:0,template:[32,0,0,0].to_vec()},CubinParameter{offset:4,template:[0].to_vec()},CubinParameter{offset:8,template:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0].to_vec()}],fixups:vec![CubinPointerFixup{parameter:2,byte_offset:0,binding:0,binding_offset:0,extent:128,alignment:16,io:CubinIo::Write},CubinPointerFixup{parameter:2,byte_offset:8,binding:1,binding_offset:0,extent:128,alignment:16,io:CubinIo::Read}] } },
+// Original scope4, actual packet SHAc8ff589cc93e11ac13d10fc8e433bc675adb25942c09f72ceb71f50dc1ddd046.
+RotaryLaunch {image:ProjectionImage::AttentionMultiplySm86,roles:&[RotaryOutput::InvFreq32,RotaryOutput::Reciprocal32],manifest:CubinKernelManifest{entry:"_ZN2at6native29vectorized_elementwise_kernelILi4ENS0_13AUnaryFunctorIfffNS0_15binary_internal10MulFunctorIfEEEESt5arrayIPcLm2EEEEviT0_T1_".into(),binary_sm:86,grid:[1, 1, 1],block:[128, 1, 1],dynamic_shared_bytes:0,attributes:CubinLaunchAttributes::None,bindings:vec![CubinBinding{bytes:128,alignment:16,io:CubinIo::Write},CubinBinding{bytes:128,alignment:16,io:CubinIo::Read}],parameters:vec![CubinParameter{offset:0,template:[32,0,0,0].to_vec()},CubinParameter{offset:4,template:[0,0,0,0,0,0,128,63].to_vec()},CubinParameter{offset:16,template:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0].to_vec()}],fixups:vec![CubinPointerFixup{parameter:2,byte_offset:0,binding:0,binding_offset:0,extent:128,alignment:16,io:CubinIo::Write},CubinPointerFixup{parameter:2,byte_offset:8,binding:1,binding_offset:0,extent:128,alignment:16,io:CubinIo::Read}] } },
+// Original scope5, actual packet SHAeac1acf85b96edd2ef7ac520596aedd716b00c2bd1f20c87ea0d8d099c40203d.
+RotaryLaunch {image:ProjectionImage::RotaryArangeSm86,roles:&[RotaryOutput::Range1048576],manifest:CubinKernelManifest{entry:"_ZN50_GLOBAL__N__2fa45684_17_RangeFactories_cu_38772b0829elementwise_kernel_with_indexIiZZZN2at6native15arange_cuda_outERKN3c106ScalarES6_S6_RNS1_6TensorEENKUlvE_clEvENKUlvE5_clEvEUllE_EEvT_T0_PN15function_traitsISD_E11result_typeE".into(),binary_sm:86,grid:[16384, 1, 1],block:[64, 1, 1],dynamic_shared_bytes:0,attributes:CubinLaunchAttributes::None,bindings:vec![CubinBinding{bytes:4194304,alignment:16,io:CubinIo::Write}],parameters:vec![CubinParameter{offset:0,template:[0,0,16,0].to_vec()},CubinParameter{offset:8,template:[0,0,0,0,0,0,128,63,0,0,0,0,0,0,0,0].to_vec()},CubinParameter{offset:24,template:[0,0,0,0,0,0,0,0].to_vec()}],fixups:vec![CubinPointerFixup{parameter:2,byte_offset:0,binding:0,binding_offset:0,extent:4194304,alignment:16,io:CubinIo::Write}] } },
+// Original scope10, actual packet SHA9484ac4b0c8c84ffd8e819f707c9741a310e4b911465f712c06e114e6cbc38a7.
+RotaryLaunch {image:ProjectionImage::AttentionMultiplySm86,roles:&[RotaryOutput::Frequencies,RotaryOutput::Range1048576,RotaryOutput::InvFreq32],manifest:CubinKernelManifest{entry:"_ZN2at6native18elementwise_kernelILi128ELi2EZNS0_22gpu_kernel_impl_nocastINS0_13BinaryFunctorIfffNS0_15binary_internal10MulFunctorIfEEEEEEvRNS_18TensorIteratorBaseERKT_EUliE_EEviT1_".into(),binary_sm:86,grid:[131072, 1, 1],block:[128, 1, 1],dynamic_shared_bytes:0,attributes:CubinLaunchAttributes::None,bindings:vec![CubinBinding{bytes:134217728,alignment:16,io:CubinIo::Write},CubinBinding{bytes:4194304,alignment:16,io:CubinIo::Read},CubinBinding{bytes:128,alignment:16,io:CubinIo::Read}],parameters:vec![CubinParameter{offset:0,template:[0,0,0,2].to_vec()},CubinParameter{offset:8,template:[2,0,0,0,32,0,0,0,1,0,0,0,5,0,0,0,0,0,16,0,1,0,0,0,20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,4,0,0,0,128,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0].to_vec()}],fixups:vec![CubinPointerFixup{parameter:1,byte_offset:608,binding:0,binding_offset:0,extent:134217728,alignment:16,io:CubinIo::Write},CubinPointerFixup{parameter:1,byte_offset:616,binding:1,binding_offset:0,extent:4194304,alignment:16,io:CubinIo::Read},CubinPointerFixup{parameter:1,byte_offset:624,binding:2,binding_offset:0,extent:128,alignment:16,io:CubinIo::Read}] } },
+// Original scope11, actual packet SHA530a572b032ba376cac5d91067d41845f1025cffad52cc7d4296165f78a19698.
+RotaryLaunch {image:ProjectionImage::RotaryCosSm86,roles:&[RotaryOutput::Cos,RotaryOutput::Frequencies],manifest:CubinKernelManifest{entry:"_ZN2at6native29vectorized_elementwise_kernelILi4EZZZNS0_15cos_kernel_cudaERNS_18TensorIteratorBaseEENKUlvE0_clEvENKUlvE0_clEvEUlfE_St5arrayIPcLm2EEEEviT0_T1_".into(),binary_sm:86,grid:[32768, 1, 1],block:[128, 1, 1],dynamic_shared_bytes:0,attributes:CubinLaunchAttributes::None,bindings:vec![CubinBinding{bytes:134217728,alignment:16,io:CubinIo::Write},CubinBinding{bytes:134217728,alignment:16,io:CubinIo::Read}],parameters:vec![CubinParameter{offset:0,template:[0,0,0,2].to_vec()},CubinParameter{offset:4,template:[0].to_vec()},CubinParameter{offset:8,template:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0].to_vec()}],fixups:vec![CubinPointerFixup{parameter:2,byte_offset:0,binding:0,binding_offset:0,extent:134217728,alignment:16,io:CubinIo::Write},CubinPointerFixup{parameter:2,byte_offset:8,binding:1,binding_offset:0,extent:134217728,alignment:16,io:CubinIo::Read}] } },
+// Original scope12, actual packet SHAbd59fc8d55d9f1b582d37650fad4a2a395d4dde989bdf5bd6733058e85ba9f8c.
+RotaryLaunch {image:ProjectionImage::RotarySinSm86,roles:&[RotaryOutput::Sin,RotaryOutput::Frequencies],manifest:CubinKernelManifest{entry:"_ZN2at6native29vectorized_elementwise_kernelILi4EZZZNS0_15sin_kernel_cudaERNS_18TensorIteratorBaseEENKUlvE0_clEvENKUlvE0_clEvEUlfE_St5arrayIPcLm2EEEEviT0_T1_".into(),binary_sm:86,grid:[32768, 1, 1],block:[128, 1, 1],dynamic_shared_bytes:0,attributes:CubinLaunchAttributes::None,bindings:vec![CubinBinding{bytes:134217728,alignment:16,io:CubinIo::Write},CubinBinding{bytes:134217728,alignment:16,io:CubinIo::Read}],parameters:vec![CubinParameter{offset:0,template:[0,0,0,2].to_vec()},CubinParameter{offset:4,template:[0].to_vec()},CubinParameter{offset:8,template:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0].to_vec()}],fixups:vec![CubinPointerFixup{parameter:2,byte_offset:0,binding:0,binding_offset:0,extent:134217728,alignment:16,io:CubinIo::Write},CubinPointerFixup{parameter:2,byte_offset:8,binding:1,binding_offset:0,extent:134217728,alignment:16,io:CubinIo::Read}] } },
+// Original scope13, actual packet SHAe20b3c1695a395e75e2c125c76bd9815bfeebafd6626ea9057faa4ac06b59805.
+RotaryLaunch {image:ProjectionImage::RotaryCatSm86,roles:&[RotaryOutput::Cat,RotaryOutput::Cos,RotaryOutput::Sin],manifest:CubinKernelManifest{entry:"_ZN2at6native40_GLOBAL__N__f1f992fe_8_Shape_cu_49f7391c30CatArrayBatchedCopy_vectorizedINS1_10OpaqueTypeILj4EEEjLi2ELi128ELi1ELi16ELi4EEEvPcNS1_25CatArrInputTensorMetadataIT_T0_XT2_EXT3_EEENS1_16TensorSizeStrideIS8_Lj4EEEiS8_".into(),binary_sm:86,grid:[960, 2, 1],block:[128, 1, 1],dynamic_shared_bytes:0,attributes:CubinLaunchAttributes::None,bindings:vec![CubinBinding{bytes:268435456,alignment:16,io:CubinIo::Write},CubinBinding{bytes:134217728,alignment:16,io:CubinIo::Read},CubinBinding{bytes:134217728,alignment:16,io:CubinIo::Read}],parameters:vec![CubinParameter{offset:0,template:[0,0,0,0,0,0,0,0].to_vec()},CubinParameter{offset:8,template:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,32,0,0,0,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0].to_vec()},CubinParameter{offset:2728,template:[0,0,16,0,16,0,0,0,0,0,0,0,0,0,0,0,16,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0].to_vec()},CubinParameter{offset:2760,template:[1,0,0,0].to_vec()},CubinParameter{offset:2764,template:[1,0,0,0].to_vec()}],fixups:vec![CubinPointerFixup{parameter:0,byte_offset:0,binding:0,binding_offset:0,extent:268435456,alignment:16,io:CubinIo::Write},CubinPointerFixup{parameter:1,byte_offset:0,binding:1,binding_offset:0,extent:134217728,alignment:16,io:CubinIo::Read},CubinPointerFixup{parameter:1,byte_offset:8,binding:2,binding_offset:0,extent:134217728,alignment:16,io:CubinIo::Read}] } },
+// Original scope14, actual packet SHA3f22f2166ea137942514b0e95264c47aee882d2a56c25dcc6366102711fe5931.
+RotaryLaunch {image:ProjectionImage::RotaryBf16CastSm86,roles:&[RotaryOutput::Cache,RotaryOutput::Cat],manifest:CubinKernelManifest{entry:"_ZN2at6native29vectorized_elementwise_kernelILi4EZNS0_25bfloat16_copy_kernel_cudaERNS_18TensorIteratorBaseEEUlfE_St5arrayIPcLm2EEEEviT0_T1_".into(),binary_sm:86,grid:[65536, 1, 1],block:[128, 1, 1],dynamic_shared_bytes:0,attributes:CubinLaunchAttributes::None,bindings:vec![CubinBinding{bytes:134217728,alignment:16,io:CubinIo::Write},CubinBinding{bytes:268435456,alignment:16,io:CubinIo::Read}],parameters:vec![CubinParameter{offset:0,template:[0,0,0,4].to_vec()},CubinParameter{offset:4,template:[0].to_vec()},CubinParameter{offset:8,template:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0].to_vec()}],fixups:vec![CubinPointerFixup{parameter:2,byte_offset:0,binding:0,binding_offset:0,extent:134217728,alignment:16,io:CubinIo::Write},CubinPointerFixup{parameter:2,byte_offset:8,binding:1,binding_offset:0,extent:268435456,alignment:16,io:CubinIo::Read}] } },
+]
+}
+pub(super) fn required_images() -> std::collections::BTreeSet<ProjectionImage> {
+    launches().iter().map(|l| l.image).collect()
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn all_source_factories_have_exact_complete_abis_and_full_extents() {
+        let all = launches();
+        assert_eq!(all.len(), 12);
+        assert_eq!(required_images().len(), 10);
+        assert_eq!(
+            RotaryOutput::ALL.iter().map(|r| r.bytes()).sum::<usize>(),
+            809501320
+        );
+        for m in all {
+            assert_eq!(m.manifest.binary_sm, 86);
+            assert!(
+                m.manifest
+                    .grid
+                    .iter()
+                    .chain(&m.manifest.block)
+                    .all(|&n| n > 0)
+            );
+            assert_eq!(m.roles.len(), m.manifest.bindings.len());
+            for (r, b) in m.roles.iter().zip(m.manifest.bindings.iter()) {
+                assert_eq!(r.bytes() as u64, b.bytes);
+            }
+        }
+    }
+    #[test]
+    fn full_cache_and_each_original_defined_prefix_stay_distinct() {
+        assert_eq!(RotaryOutput::Cache.bytes(), 134217728);
+        assert_eq!(RotaryOutput::Cache.prefix_bytes(), 8576);
+        assert_eq!(
+            RotaryOutput::ALL
+                .iter()
+                .map(|r| r.prefix_bytes())
+                .sum::<usize>(),
+            52372
+        );
+        assert_eq!(RotaryOutput::Cat.bytes(), 268435456);
+        assert_eq!(RotaryOutput::Range1048576.bytes(), 4194304);
+    }
+}
