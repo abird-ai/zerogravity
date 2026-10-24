@@ -5,6 +5,9 @@
 
 use crate::{Error, Result};
 
+pub mod haswell_bulk_f32;
+pub mod zen_blas_q8_f32;
+
 fn check(condition: bool, message: &str) -> Result<()> {
     if condition {
         Ok(())
