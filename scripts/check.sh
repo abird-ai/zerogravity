@@ -15,7 +15,7 @@ cpu_packages=(
   -p zerogravity-core -p zerogravity-artifacts -p zerogravity-cpu
   -p zerogravity-model-qwen35 -p zerogravity-model-gemma4 -p zerogravity -p zerogravity-cli
 )
-cpu_features='zerogravity-cli/cpu,zerogravity-cli/model-qwen35,zerogravity-cli/text,zerogravity-cli/diagnostic-cpu-checkpoint,zerogravity-cli/diagnostic-gdn-trace,zerogravity/model-gemma4'
+cpu_features='zerogravity-cli/cpu,zerogravity-cli/model-qwen35,zerogravity-cli/text,zerogravity-cli/diagnostic-cpu-checkpoint,zerogravity-cli/diagnostic-gdn-trace,zerogravity-model-qwen35/original-hf-binding,zerogravity/model-gemma4-text-reference,zerogravity-model-gemma4/text-tokenizer,zerogravity-cli/gemma4-cpu-candidate'
 cpu_args=(--locked --offline --no-default-features "${cpu_packages[@]}" --features "$cpu_features")
 
 echo "Checking workspace owners and default CPU dependency isolation..."
@@ -61,6 +61,10 @@ cargo clippy --locked --offline -p zerogravity-artifacts --no-default-features -
 cargo test --locked --offline -p zerogravity-artifacts --no-default-features --features cache,diagnostic-cache --all-targets
 
 if [[ "$(uname -s)" == Linux ]]; then
+  echo "Checking model-source reference contracts without model loads..."
+  python3 -B -m unittest discover -s tools/gemma4-tokenizer-reference -p test_contract.py
+  python3 -B -m unittest discover -s tools/gemma4-e2b-ordinary-reference -p test_contract.py
+  python3 -B -m unittest discover -s tools/qwen27b-initial-core-reference -p test_contract.py
   echo "Checking explicit HTTP-free cache loading and shared CPU preparation..."
   cargo clippy --locked --offline -p zerogravity-cli --no-default-features --features cache --all-targets -- -D warnings
   cargo test --locked --offline -p zerogravity-cli --no-default-features --features cache --all-targets
