@@ -140,7 +140,7 @@ fn cold_source_capacity_and_packed_shape_guards_precede_device_ownership() {
     assert!(
         preflight_profile(&source, &plan(foreign, 256, 32, ParameterSlot::Token, true)).is_err()
     );
-    for capacity in [1, 255, 257, 768] {
+    for capacity in [1, 255, 257] {
         assert!(
             preflight_profile(
                 &source,
@@ -150,6 +150,22 @@ fn cold_source_capacity_and_packed_shape_guards_precede_device_ownership() {
         );
     }
     assert_eq!(source.reads.load(Ordering::Relaxed), 0);
+    for capacity in [768, 1024] {
+        let candidate = Source::new();
+        let result = preflight_profile(
+            &candidate,
+            &plan(candidate.identity, capacity, 32, ParameterSlot::Token, true),
+        );
+        assert_eq!(
+            result.is_ok(),
+            cfg!(all(feature = "qualification", feature = "cuda")),
+            "capacity={capacity}: {:?}",
+            result.as_ref().err()
+        );
+        if !cfg!(all(feature = "qualification", feature = "cuda")) {
+            assert_eq!(candidate.reads.load(Ordering::Relaxed), 0);
+        }
+    }
     source.shape = [31, 32];
     assert!(preflight_profile(&source, &valid).is_err());
     source.shape = [32, 32];
@@ -251,11 +267,12 @@ fn raw_device_provider_guards_never_initialize_a_runtime() {
             cfg!(feature = "vulkan"),
         ),
     ] {
-        match (validate_provider(&device), enabled) {
+        match (crate::backend::validate_build_provider(&device), enabled) {
             (Ok(()), true) | (Err(Error::Unsupported(_)), false) => {}
             (result, _) => panic!("unexpected provider guard result: {result:?}"),
         }
-        if !enabled {
+        // The raw HIP value also refuses missing libraries before a client.
+        if !enabled || (matches!(device, Device::Hip(_)) && validate_provider(&device).is_err()) {
             assert_public_load_refuses(device);
         }
     }

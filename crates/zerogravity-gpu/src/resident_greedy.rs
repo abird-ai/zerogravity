@@ -8,6 +8,10 @@ use zerogravity_core::Error;
 use zerogravity_core::Result;
 
 const TILE: usize = 256;
+#[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+mod prepared;
+#[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+pub(crate) use prepared::numeric_zero_kernels;
 
 /// Peak bytes in the two disjoint ping-pong allocations. The second buffer
 /// only needs the second stage's record count. An unused buffer remains a
@@ -59,6 +63,65 @@ pub(crate) fn launch(
     private_packet: &Handle,
     status: &Handle,
 ) -> Result<usize> {
+    launch_ordered(
+        client,
+        logits,
+        vocabulary,
+        partial0,
+        partial1,
+        private_packet,
+        status,
+        false,
+    )
+}
+
+#[cfg(all(
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    ),
+    target_os = "linux"
+))]
+pub(crate) fn launch_numeric_zero(
+    client: &Client,
+    logits: &Handle,
+    vocabulary: usize,
+    partial0: &Handle,
+    partial1: &Handle,
+    private_packet: &Handle,
+    status: &Handle,
+) -> Result<usize> {
+    launch_ordered(
+        client,
+        logits,
+        vocabulary,
+        partial0,
+        partial1,
+        private_packet,
+        status,
+        true,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn launch_ordered(
+    client: &Client,
+    logits: &Handle,
+    vocabulary: usize,
+    partial0: &Handle,
+    partial1: &Handle,
+    private_packet: &Handle,
+    status: &Handle,
+    numeric_zero_ties: bool,
+) -> Result<usize> {
+    #[cfg(not(all(
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification"
+        ),
+        target_os = "linux"
+    )))]
+    let _ = numeric_zero_ties;
     let sizes = workspace_bytes(vocabulary)?;
     let logits_bytes = vocabulary
         .checked_mul(4)
@@ -104,6 +167,47 @@ pub(crate) fn launch(
     // capacities, common physical service and distinct allocations above.
     // Existing step status is accumulated, never reset between graph/sampler.
     unsafe {
+        #[cfg(all(
+            any(
+                feature = "gemma-bf16-qualification",
+                feature = "qwen-source-qualification"
+            ),
+            target_os = "linux"
+        ))]
+        if numeric_zero_ties {
+            program_kernels::argmax_logits_numeric_zero::launch_unchecked(
+                client,
+                grid(count),
+                threads,
+                BufferArg::from_raw_parts(logits.clone(), vocabulary),
+                BufferArg::from_raw_parts(partial0.clone(), words[0]),
+                BufferArg::from_raw_parts(status.clone(), 1),
+                0,
+                0,
+                vocabulary,
+                TILE,
+            );
+        } else {
+            program_kernels::argmax_logits::launch_unchecked(
+                client,
+                grid(count),
+                threads,
+                BufferArg::from_raw_parts(logits.clone(), vocabulary),
+                BufferArg::from_raw_parts(partial0.clone(), words[0]),
+                BufferArg::from_raw_parts(status.clone(), 1),
+                0,
+                0,
+                vocabulary,
+                TILE,
+            );
+        }
+        #[cfg(not(all(
+            any(
+                feature = "gemma-bf16-qualification",
+                feature = "qwen-source-qualification"
+            ),
+            target_os = "linux"
+        )))]
         program_kernels::argmax_logits::launch_unchecked(
             client,
             grid(count),
@@ -119,6 +223,49 @@ pub(crate) fn launch(
         while count > 1 {
             let next = count.div_ceil(TILE);
             let destination = 1 - current;
+            #[cfg(all(
+                any(
+                    feature = "gemma-bf16-qualification",
+                    feature = "qwen-source-qualification"
+                ),
+                target_os = "linux"
+            ))]
+            if numeric_zero_ties {
+                program_kernels::argmax_partials_numeric_zero::launch_unchecked(
+                    client,
+                    grid(next),
+                    threads,
+                    BufferArg::from_raw_parts(partials[current].clone(), words[current]),
+                    BufferArg::from_raw_parts(partials[destination].clone(), words[destination]),
+                    BufferArg::from_raw_parts(status.clone(), 1),
+                    0,
+                    0,
+                    count,
+                    vocabulary,
+                    TILE,
+                );
+            } else {
+                program_kernels::argmax_partials::launch_unchecked(
+                    client,
+                    grid(next),
+                    threads,
+                    BufferArg::from_raw_parts(partials[current].clone(), words[current]),
+                    BufferArg::from_raw_parts(partials[destination].clone(), words[destination]),
+                    BufferArg::from_raw_parts(status.clone(), 1),
+                    0,
+                    0,
+                    count,
+                    vocabulary,
+                    TILE,
+                );
+            }
+            #[cfg(not(all(
+                any(
+                    feature = "gemma-bf16-qualification",
+                    feature = "qwen-source-qualification"
+                ),
+                target_os = "linux"
+            )))]
             program_kernels::argmax_partials::launch_unchecked(
                 client,
                 grid(next),
@@ -148,4 +295,17 @@ pub(crate) fn launch(
         );
     }
     Ok(dispatches + 1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn source_vocabularies_have_exact_disjoint_sampler_workspace() {
+        assert_eq!(workspace_bytes(248320).unwrap(), [970 * 12, 4 * 12]);
+        assert_eq!(workspace_bytes(262144).unwrap(), [1024 * 12, 4 * 12]);
+        assert_eq!(workspace_bytes(1).unwrap(), [12, 4]);
+        assert!(workspace_bytes(0).is_err());
+        assert!(workspace_bytes(program_kernels::MAX_WORD_OPS + 1).is_err());
+    }
 }

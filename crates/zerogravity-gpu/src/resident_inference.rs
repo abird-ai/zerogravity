@@ -1,12 +1,32 @@
 //! Physical execution of the engine's one recorded schedule and immutable roots.
 //! Arithmetic and layer ordering belong to ForwardPlan; this owner only binds
 //! leases, private state, actual completion and the common logical authority.
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub(crate) mod native_fragment;
+#[cfg(all(
+    test,
+    feature = "qualification",
+    any(feature = "hip", feature = "vulkan")
+))]
+#[path = "resident_inference/portable_qualification.rs"]
+mod portable_qualification;
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub use native_fragment::{
+    VllmGdnFragmentFault, VllmGdnFragmentFaultOutcome, VllmGdnFragmentReadback,
+    VllmGdnFragmentReceipt, VllmGdnSequenceFault, VllmGdnSequenceFaultOutcome,
+    VllmGdnSequenceReceipt, VllmGdnSequenceRestoreReceipt, qualify_vllm_gdn_fragment,
+    qualify_vllm_gdn_fragment_fault, qualify_vllm_gdn_mlp_fragment,
+    qualify_vllm_gdn_mlp_fragment_fault, qualify_vllm_gdn_sequence,
+    qualify_vllm_gdn_sequence_fault, qualify_vllm_gdn_sequence_restore_refusal,
+};
 #[cfg(feature = "qualification")]
 #[path = "resident_alias_qualification.rs"]
 mod alias_qualification;
 #[cfg(feature = "portable-checkpoint")]
 #[path = "resident_checkpoint.rs"]
 mod checkpoint;
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub(crate) mod gdn_state;
 #[cfg(all(feature = "portable-checkpoint", feature = "qualification"))]
 pub(crate) use checkpoint::qualify as qualify_checkpoint;
 #[cfg(all(test, feature = "qualification", feature = "cuda"))]
@@ -74,11 +94,13 @@ mod range_qualification;
 mod view_qualification;
 use crate::backend::validate_provider;
 use crate::resident_batch::ResidentBatchRows;
-use crate::resident_leases::{ResidentLease, ResidentReady, ResidentService};
+use crate::resident_leases::{
+    ResidentLease, ResidentPhysical, ResidentReady, ResidentService, ResidentSource,
+};
 use crate::resident_program::{
-    AllocationInit, BatchProgram, DeviceBuffer, ResidentBufferRole, ResidentOutput,
-    ResidentPreflight, ResidentProgram, RuntimeParameters, StateBinding, StateBuffers, StateLayout,
-    StateRequirement,
+    AllocationInit, BatchProgram, DeviceBuffer, ResidentBufferLayout, ResidentBufferRole,
+    ResidentOutput, ResidentPhysicalType, ResidentPreflight, ResidentProgram, RuntimeParameters,
+    StateBinding, StateBuffers, StateLayout, StateRequirement,
 };
 use async_lock::Mutex;
 use cubecl::{Device, bytes::Bytes, server::Handle};
@@ -98,13 +120,15 @@ use zerogravity_core::source::TensorSource;
 #[cfg(any(feature = "qualification", feature = "portable-checkpoint"))]
 use zerogravity_model_qwen35::LoadedQwenModel;
 
+mod state_pool;
 struct Workspace {
+    greedy: Option<[Handle; 2]>,
+    batch: Option<BatchWorkspace>,
     program: ResidentProgram,
-    greedy: [Handle; 2],
+    // Raw aliases/programs drop before final leases trigger source cleanup.
     leases: Vec<(ResidentLease, DeviceAccess)>,
     state_accesses: Vec<(ResidentLease, DeviceAccess)>,
     logit_accesses: Vec<(ResidentLease, DeviceAccess)>,
-    batch: Option<BatchWorkspace>,
 }
 struct BatchWorkspace {
     program: BatchProgram,
@@ -114,6 +138,8 @@ struct BatchWorkspace {
 /// Shared immutable source and serialized physical workspace, independent roots.
 pub struct ResidentModel {
     service: Arc<ResidentService>,
+    // Pool/raw handles retire before the prepared program/native admission.
+    state_pool: std::sync::OnceLock<state_pool::PooledStates>,
     workspace: Mutex<Workspace>,
     allocation: Mutex<()>,
     states: Vec<StateRequirement>,
@@ -141,9 +167,10 @@ pub struct ResidentSnapshot {
     domains: Vec<Domain>,
 }
 pub struct ResidentSession {
-    model: Arc<ResidentModel>,
     authority: SessionAuthority,
     domains: Vec<Domain>,
+    // Last model/native owner must outlive this session's actual root handles.
+    model: Arc<ResidentModel>,
 }
 #[derive(Default)]
 pub struct InferenceReadback {
@@ -169,6 +196,20 @@ enum Readout {
     None,
     Logits,
     Greedy,
+}
+#[cfg(all(
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    ),
+    target_os = "linux"
+))]
+struct SourceSteps<'a, 'o> {
+    _observer_lifetime: std::marker::PhantomData<&'o ()>,
+    #[cfg(feature = "gemma-bf16-qualification")]
+    gemma: Option<gemma_text::GemmaStep<'a, 'o>>,
+    #[cfg(feature = "qwen-source-qualification")]
+    qwen: Option<qwen_source::QwenStep<'a, 'o>>,
 }
 struct StepInput<'a> {
     token: u32,
@@ -234,52 +275,62 @@ impl PreparedResidentCohort {
         mut self,
         sessions: &mut [&mut ResidentSession],
     ) -> Result<Vec<InferenceReadback>> {
-        if sessions.len() != self.prepared.len() {
-            return Err(Error::Malformed("resident GPU cohort session count".into()));
-        }
-        let bindings = sessions.iter().map(|s| s.binding()).collect::<Vec<_>>();
-        self.roots.require_current(&bindings)?;
-        // Refuse foreign resident models even if a source identity was
-        // erroneously reused by some future model binder.
-        for (session, prepared) in sessions.iter().zip(&self.prepared) {
-            if !Arc::ptr_eq(&session.model, &self.model) {
-                return Err(Error::State(
-                    "foreign physical resident model in batch".into(),
-                ));
-            }
-            session.validate_prepared(prepared)?;
-        }
-        let service = Arc::clone(&self.model.service);
-        service.publish_if_usable(|| {
-            // Split these disjoint struct fields so all mutable logical
-            // authority guards can exist simultaneously with state slabs.
-            let (mut authorities, mut states): (Vec<_>, Vec<_>) = sessions
-                .iter_mut()
-                .map(|s| (&mut s.authority, &mut s.domains))
-                .unzip();
-            let transitions = authorities
-                .iter_mut()
-                .zip(&self.prepared)
-                .map(|(authority, prepared)| authority.prepare_publish(prepared.attempt.clone()))
-                .collect::<Result<Vec<_>>>()?;
-            // Everything above is fallible; everything below is infallible.
-            // Existing ResourceArbiter's with_unfenced keeps the atomic
-            // logical cohort publication fenced with respect to GPU poison.
-            for ((state, prepared), guard) in states
-                .iter_mut()
-                .zip(self.prepared.iter_mut())
-                .zip(transitions)
-            {
-                std::mem::swap(*state, &mut prepared.domains);
-                let root = guard.commit();
-                if let Some(token) = prepared.readback.device_token.as_mut() {
-                    token.producer = Some(root);
-                }
-            }
-            Ok(())
-        })?;
+        publish_prepared_cohort(&self.model, &self.roots, sessions, &mut self.prepared)?;
         Ok(self.prepared.into_iter().map(|row| row.readback).collect())
     }
+}
+
+// Codec-independent publication only. PreparedInference still carries the
+// genuine original Ready/state/attempt; no batch math or allocation authority.
+fn publish_prepared_cohort(
+    model: &Arc<ResidentModel>,
+    roots: &ResidentBatchRows,
+    sessions: &mut [&mut ResidentSession],
+    prepared: &mut [PreparedInference],
+) -> Result<()> {
+    if sessions.len() != prepared.len() {
+        return Err(Error::Malformed("resident GPU cohort session count".into()));
+    }
+    let bindings = sessions.iter().map(|s| s.binding()).collect::<Vec<_>>();
+    roots.require_current(&bindings)?;
+    // Refuse foreign resident models even if a source identity was
+    // erroneously reused by some future model binder.
+    for (session, prepared) in sessions.iter().zip(prepared.iter()) {
+        if !Arc::ptr_eq(&session.model, model) {
+            return Err(Error::State(
+                "foreign physical resident model in batch".into(),
+            ));
+        }
+        session.validate_prepared(prepared)?;
+    }
+    let service = Arc::clone(&model.service);
+    service.publish_if_usable(|| {
+        // Split these disjoint struct fields so all mutable logical
+        // authority guards can exist simultaneously with state slabs.
+        let (mut authorities, mut states): (Vec<_>, Vec<_>) = sessions
+            .iter_mut()
+            .map(|s| (&mut s.authority, &mut s.domains))
+            .unzip();
+        let transitions = authorities
+            .iter_mut()
+            .zip(prepared.iter())
+            .map(|(authority, prepared)| authority.prepare_publish(prepared.attempt.clone()))
+            .collect::<Result<Vec<_>>>()?;
+        // Everything above is fallible; everything below is infallible.
+        // Existing ResourceArbiter's with_unfenced keeps the atomic
+        // logical cohort publication fenced with respect to GPU poison.
+        for ((state, prepared), guard) in
+            states.iter_mut().zip(prepared.iter_mut()).zip(transitions)
+        {
+            std::mem::swap(*state, &mut prepared.domains);
+            let root = guard.commit();
+            if let Some(token) = prepared.readback.device_token.as_mut() {
+                token.producer = Some(root);
+            }
+        }
+        Ok(())
+    })?;
+    Ok(())
 }
 
 fn words(bytes: &Bytes) -> Result<Vec<f32>> {
@@ -329,6 +380,43 @@ impl ResidentModel {
         device_cap: u64,
         pinned_graph: bool,
     ) -> Result<Arc<Self>> {
+        Self::load_attached(
+            device,
+            model,
+            plan,
+            provider_cap,
+            device_cap,
+            pinned_graph,
+            None,
+        )
+        .await
+    }
+
+    /// Load into the original physical envelope with an explicit model quota.
+    pub async fn load_shared(
+        physical: Arc<ResidentPhysical>,
+        model: Arc<dyn TensorSource>,
+        plan: ForwardPlan,
+        model_cap: usize,
+    ) -> Result<Arc<Self>> {
+        let device = physical.device();
+        Self::load_attached(device, model, plan, model_cap, 0, false, Some(physical)).await
+    }
+
+    pub fn physical_owner(&self) -> Arc<ResidentPhysical> {
+        self.service.physical_owner().clone()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn load_attached(
+        device: Device,
+        model: Arc<dyn TensorSource>,
+        plan: ForwardPlan,
+        provider_cap: usize,
+        device_cap: u64,
+        pinned_graph: bool,
+        physical: Option<Arc<ResidentPhysical>>,
+    ) -> Result<Arc<Self>> {
         validate_provider(&device)?;
         let native_batch = matches!(device, Device::Cuda(_));
         let (capacity, vocab, preflight) = preflight_profile(model.as_ref(), &plan)?;
@@ -354,16 +442,12 @@ impl ResidentModel {
             model: format!("qwen-source-{:?}", model.source_identity()),
             session: "resident-program".into(),
         };
-        let service = if pinned_graph {
+        let physical = if let Some(physical) = physical {
+            physical
+        } else if pinned_graph {
             #[cfg(all(feature = "qualification", feature = "cuda"))]
             {
-                ResidentService::new_pinned_cuda(
-                    device,
-                    model.source_identity(),
-                    owner,
-                    provider_cap,
-                    device_cap,
-                )?
+                ResidentPhysical::new_pinned_cuda(device, provider_cap, device_cap)?
             }
             #[cfg(not(all(feature = "qualification", feature = "cuda")))]
             {
@@ -372,14 +456,10 @@ impl ResidentModel {
                 ));
             }
         } else {
-            ResidentService::new(
-                device,
-                model.source_identity(),
-                owner,
-                provider_cap,
-                device_cap,
-            )?
+            ResidentPhysical::new(device, provider_cap, device_cap)?
         };
+        let service =
+            physical.attach_model(ResidentSource::Tensor(model.clone()), owner, provider_cap)?;
         if pinned_graph {
             ResidentProgram::ensure_capability(service.client())?;
         }
@@ -478,13 +558,14 @@ impl ResidentModel {
             capacity,
             vocab,
             native_batch,
+            state_pool: std::sync::OnceLock::new(),
             #[cfg(feature = "hardware-abort-probe")]
             abort_after_launch: std::sync::atomic::AtomicUsize::new(0),
             #[cfg(feature = "hardware-abort-probe")]
             launch_seen: std::sync::atomic::AtomicUsize::new(0),
             workspace: Mutex::new(Workspace {
                 program,
-                greedy,
+                greedy: Some(greedy),
                 leases,
                 state_accesses,
                 logit_accesses,
@@ -498,8 +579,22 @@ impl ResidentModel {
         &self.service
     }
     pub async fn session(self: &Arc<Self>) -> Result<ResidentSession> {
+        self.session_with(|_| Ok(())).await
+    }
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    async fn session_retaining(
+        self: &Arc<Self>,
+        owner: crate::physical_quarantine::CompletionOwner,
+    ) -> Result<ResidentSession> {
+        self.session_with(|initialization| initialization.retain_completion_owner(owner))
+            .await
+    }
+    async fn session_with<F>(self: &Arc<Self>, retain: F) -> Result<ResidentSession>
+    where
+        F: FnOnce(&mut crate::resident_leases::ResidentInitialization<'_>) -> Result<()>,
+    {
         let authority = SessionAuthority::new(self.service.source_identity())?;
-        let domains = self.allocate_state(true).await?;
+        let domains = self.allocate_state_with(true, retain).await?;
         Ok(ResidentSession {
             model: self.clone(),
             authority,
@@ -573,6 +668,36 @@ impl ResidentModel {
     }
 
     async fn allocate_state(&self, zero: bool) -> Result<Vec<Domain>> {
+        self.allocate_state_with(zero, |_| Ok(())).await
+    }
+    async fn allocate_state_with<F>(&self, zero: bool, retain: F) -> Result<Vec<Domain>>
+    where
+        F: FnOnce(&mut crate::resident_leases::ResidentInitialization<'_>) -> Result<()>,
+    {
+        if let Some(storage) = self.state_pool.get() {
+            #[cfg(all(feature = "qualification", target_os = "linux"))]
+            let host = if zero {
+                let bytes = self
+                    .state_bytes
+                    .checked_mul(3)
+                    .ok_or_else(|| Error::Limit("resident root initialization host peak".into()))?;
+                storage
+                    .source
+                    .as_ref()
+                    .map(|source| source.reserve_backend_workspace(bytes).map(Arc::new))
+                    .transpose()?
+            } else {
+                None
+            };
+            return state_pool::allocate_pooled_state(self, &storage.pool, zero, None, |init| {
+                #[cfg(all(feature = "qualification", target_os = "linux"))]
+                if let Some(host) = host {
+                    init.retain_completion_owner(host)?;
+                }
+                retain(init)
+            })
+            .await;
+        }
         let _admission = self.allocation.lock().await;
         self.service.ensure_usable()?;
         if self.state_bytes > self.service.remaining_capacity()? {
@@ -592,10 +717,10 @@ impl ResidentModel {
             let mut slot = ticket.wait().await?;
             slot.begin_submission()?;
             let mut initialization = self.service.begin_initialization(0)?;
+            retain(&mut initialization)?;
             for r in &self.states {
-                let mut allocate = |n: usize| {
-                    initialization.upload_bytes(&vec![0u8; n * 4], BufferRole::RecurrentState)
-                };
+                let mut allocate =
+                    |n: usize| initialization.upload_zeroed(n * 4, BufferRole::RecurrentState);
                 output.push(make_domain(r, &mut allocate)?);
             }
             drop(initialization.complete_sync().await?);
@@ -607,6 +732,36 @@ impl ResidentModel {
     }
     /// Caller holds the original allocation admission lock; no GPU command.
     fn allocate_uninitialized_state(&self) -> Result<Vec<Domain>> {
+        if let Some(storage) = self.state_pool.get() {
+            let leases = storage.pool.checkout()?;
+            let mut next = leases.iter();
+            let domains = self
+                .states
+                .iter()
+                .map(|requirement| {
+                    make_domain(requirement, &mut |n| {
+                        let lease = next
+                            .next()
+                            .ok_or_else(|| Error::State("resident root plane missing".into()))?;
+                        if lease.bytes() != n * 4
+                            || lease.is_initialized()
+                            || lease.role() != BufferRole::RecurrentState
+                            || !Arc::ptr_eq(lease.service(), &self.service)
+                        {
+                            return Err(Error::State(
+                                "resident root original plane/source differs".into(),
+                            ));
+                        }
+                        Ok(lease.clone())
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            if next.next().is_some() {
+                return Err(Error::State("resident root extra plane".into()));
+            }
+            self.validate_domains(&domains, false)?;
+            return Ok(domains);
+        }
         self.service.ensure_usable()?;
         if self.state_bytes > self.service.remaining_capacity()? {
             return Err(Error::Limit("resident state admission exhausted".into()));
@@ -662,6 +817,49 @@ impl ResidentModel {
         candidate: Vec<Domain>,
         input: StepInput<'_>,
     ) -> Result<(Vec<Domain>, ResidentReady, InferenceReadback)> {
+        self.execute_inner(
+            base,
+            position,
+            prior,
+            candidate,
+            input,
+            #[cfg(all(
+                any(
+                    feature = "gemma-bf16-qualification",
+                    feature = "qwen-source-qualification"
+                ),
+                target_os = "linux"
+            ))]
+            SourceSteps {
+                _observer_lifetime: std::marker::PhantomData,
+                #[cfg(feature = "gemma-bf16-qualification")]
+                gemma: None,
+                #[cfg(feature = "qwen-source-qualification")]
+                qwen: None,
+            },
+        )
+        .await
+    }
+    async fn execute_inner(
+        &self,
+        base: RootBinding,
+        position: usize,
+        prior: &[Domain],
+        candidate: Vec<Domain>,
+        input: StepInput<'_>,
+        #[cfg(all(
+            any(
+                feature = "gemma-bf16-qualification",
+                feature = "qwen-source-qualification"
+            ),
+            target_os = "linux"
+        ))]
+        sources: SourceSteps<'_, '_>,
+    ) -> Result<(Vec<Domain>, ResidentReady, InferenceReadback)> {
+        #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+        let gemma = sources.gemma;
+        #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+        let mut qwen = sources.qwen;
         self.service.ensure_usable()?;
         if base.source() != self.service.source_identity() || position >= self.capacity {
             return Err(Error::State("resident source/frontier mismatch".into()));
@@ -694,6 +892,19 @@ impl ResidentModel {
         )?;
         let mut slot = ticket.wait().await?;
         let mut workspace = self.workspace.lock().await;
+        #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+        if let Some(step) = &qwen {
+            if device.is_some() || matches!(readout, Readout::None) || step.call.rows() != 1 {
+                return Err(Error::Unsupported(
+                    "source-bound one-row logits/greedy call".into(),
+                ));
+            }
+            // Two immutable semantic phase records share this existing serialized
+            // workspace/queue. No new actor or family traversal is selected here.
+            workspace.program = step.body.bind()?;
+            workspace.state_accesses = step.body.accesses().to_vec();
+            workspace.logit_accesses = workspace.state_accesses.clone();
+        }
         let parameters = RuntimeParameters {
             token,
             position,
@@ -717,8 +928,23 @@ impl ResidentModel {
             }
             accesses.push((token.lease.clone(), DeviceAccess::Read));
         }
+        #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+        if let Some(feedback) = qwen.as_ref().and_then(|step| step.feedback) {
+            if feedback.producer != Some(base)
+                || feedback.id != token
+                || !Arc::ptr_eq(feedback.lease.service(), &self.service)
+                || !feedback.lease.is_initialized()
+            {
+                return Err(Error::State(
+                    "Qwen original current feedback/input mismatch".into(),
+                ));
+            }
+            accesses.push((feedback.lease.clone(), DeviceAccess::Read));
+        }
         let packet = if matches!(readout, Readout::Greedy) {
-            for handle in &workspace.greedy {
+            for handle in workspace.greedy.as_ref().ok_or_else(|| {
+                Error::Unsupported("native fragment has no model greedy workspace".into())
+            })? {
                 accesses.push((
                     lease_for(&workspace.leases, handle)?.clone(),
                     DeviceAccess::Write,
@@ -751,8 +977,39 @@ impl ResidentModel {
             );
         }
         slot.begin_submission()?;
-        let flight = self.service.submit(base.root(), &accesses)?;
-        let mut submitted = if let Some(token) = device {
+        #[allow(unused_mut)] // Gemma checkpoints borrow this original armed flight.
+        let mut flight = self.service.submit(base.root(), &accesses)?;
+        #[allow(unused_mut)] // Source adapters are feature-gated; both use this flight.
+        let mut source_submitted: Option<crate::resident_program::ResidentSubmission> = None;
+        #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+        if let Some(step) = gemma.as_ref() {
+            source_submitted = Some(workspace.program.launch_gemma_text(
+                &mut flight,
+                step.call,
+                base,
+                step.row,
+                &bindings,
+                step.observer,
+                step.cancelled,
+            )?);
+        }
+        #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+        if let Some(step) = qwen.as_mut() {
+            if source_submitted.is_some() {
+                return Err(Error::State("two source execution adapters".into()));
+            }
+            source_submitted = Some(workspace.program.launch_qwen_source(
+                &mut flight,
+                step.call,
+                base,
+                &bindings,
+                step.observer,
+                step.cancelled,
+            )?);
+        }
+        let mut submitted = if let Some(source) = source_submitted {
+            source
+        } else if let Some(token) = device {
             workspace.program.launch_device_token(
                 self.service.client(),
                 parameters,
@@ -791,15 +1048,140 @@ impl ResidentModel {
                 .logits
                 .as_ref()
                 .ok_or_else(|| Error::State("missing greedy logits".into()))?;
-            submitted.dispatches += crate::resident_greedy::launch(
-                self.service.client(),
-                &logits.handle,
-                self.vocab as usize,
-                &workspace.greedy[0],
-                &workspace.greedy[1],
-                &packet.handle(),
-                &submitted.status,
-            )?;
+            let numeric_zero_ties = false;
+            #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+            let numeric_zero_ties = numeric_zero_ties || workspace.program.is_gemma_text();
+            #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+            let numeric_zero_ties = numeric_zero_ties || workspace.program.is_qwen_source();
+            let greedy = workspace
+                .greedy
+                .as_ref()
+                .ok_or_else(|| Error::Unsupported("source has no model greedy workspace".into()))?;
+            #[cfg(all(
+                any(
+                    feature = "gemma-bf16-qualification",
+                    feature = "qwen-source-qualification"
+                ),
+                target_os = "linux"
+            ))]
+            let source_dispatches = if numeric_zero_ties {
+                Some(crate::resident_greedy::launch_numeric_zero(
+                    self.service.client(),
+                    &logits.handle,
+                    self.vocab as usize,
+                    &greedy[0],
+                    &greedy[1],
+                    &packet.handle(),
+                    &submitted.status,
+                )?)
+            } else {
+                None
+            };
+            #[cfg(not(all(
+                any(
+                    feature = "gemma-bf16-qualification",
+                    feature = "qwen-source-qualification"
+                ),
+                target_os = "linux"
+            )))]
+            let source_dispatches: Option<usize> = {
+                let _ = numeric_zero_ties;
+                None
+            };
+            submitted.dispatches += if let Some(n) = source_dispatches {
+                n
+            } else {
+                crate::resident_greedy::launch(
+                    self.service.client(),
+                    &logits.handle,
+                    self.vocab as usize,
+                    &greedy[0],
+                    &greedy[1],
+                    &packet.handle(),
+                    &submitted.status,
+                )?
+            };
+        }
+
+        #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+        if let Some(step) = gemma.as_ref() {
+            let row = step.call.row(step.row)?;
+            let observer = step.observer.borrow_mut().take();
+            if let Some(observer) = observer {
+                let result: Result<()> = async {
+                    for (is_prior, domains, active) in [
+                        (true, prior, base.frontier() as usize),
+                        (false, candidate.as_slice(), row.valid_tokens()),
+                    ] {
+                        if is_prior && (step.row != 0 || active == 0)
+                            || !is_prior && !row.needs_logits()
+                        {
+                            continue;
+                        }
+                        for domain in domains {
+                            let StateSlot::Kv(slot) = domain.slot else {
+                                return Err(Error::State(
+                                    "Gemma actual state has a foreign domain".into(),
+                                ));
+                            };
+                            for (plane, lease) in domain.leases.iter().enumerate() {
+                                workspace
+                                    .program
+                                    .checkpoint_gemma_kv(
+                                        &mut flight,
+                                        lease,
+                                        is_prior,
+                                        slot,
+                                        plane == 1,
+                                        active,
+                                        &mut *observer,
+                                    )
+                                    .await?;
+                            }
+                        }
+                    }
+                    Ok(())
+                }
+                .await;
+                *step.observer.borrow_mut() = Some(observer);
+                result?;
+            }
+            gemma_text::check_cancel(step.cancelled)?;
+        }
+        #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+        if let Some(step) = qwen.as_ref() {
+            let observer = step.observer.borrow_mut().take();
+            if let Some(observer) = observer {
+                let result: Result<()> = async {
+                    for (prior, domains, active) in [
+                        (true, prior, position),
+                        (false, candidate.as_slice(), position + 1),
+                    ] {
+                        for domain in domains {
+                            for (plane, lease) in domain.leases.iter().enumerate() {
+                                workspace
+                                    .program
+                                    .checkpoint_qwen_state(
+                                        &mut flight,
+                                        lease,
+                                        position,
+                                        domain.slot,
+                                        plane,
+                                        prior,
+                                        active,
+                                        &mut *observer,
+                                    )
+                                    .await?;
+                            }
+                        }
+                    }
+                    Ok(())
+                }
+                .await;
+                *step.observer.borrow_mut() = Some(observer);
+                result?;
+            }
+            qwen_source::check_cancel(step.cancelled)?;
         }
         #[cfg(feature = "hardware-abort-probe")]
         if self
@@ -813,7 +1195,16 @@ impl ResidentModel {
         {
             self.launch_seen
                 .store(flight.handles().len(), std::sync::atomic::Ordering::Release);
-            std::future::pending::<()>().await;
+            // Owned probes may resume by clearing the observed launch count.
+            // Terminal unknown probes leave it set and drop this actual flight.
+            std::future::poll_fn(|_| {
+                if self.launch_seen.load(std::sync::atomic::Ordering::Acquire) == 0 {
+                    std::task::Poll::Ready(())
+                } else {
+                    std::task::Poll::Pending
+                }
+            })
+            .await;
         }
         let mut cohort = Vec::new();
         let add = |cohort: &mut Vec<_>, handle: &Handle, count: usize| -> Result<()> {
@@ -832,17 +1223,38 @@ impl ResidentModel {
             }
         }
         let statuses = cohort.len();
+        let observe_qwen_logits = false;
+        #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+        let observe_qwen_logits = observe_qwen_logits
+            || qwen.as_ref().is_some_and(|step| {
+                matches!(readout, Readout::Greedy) && step.observer.borrow().is_some()
+            });
         match readout {
             Readout::Logits => {
                 let logits = submitted
                     .logits
                     .as_ref()
                     .ok_or_else(|| Error::State("missing resident logits".into()))?;
-                add(&mut cohort, &logits.handle, logits.elements)?;
+                let lease = lease_for(&accesses, &logits.handle)?;
+                cohort.push(logits.readback(
+                    lease,
+                    ResidentBufferLayout::new(ResidentPhysicalType::F32, logits.elements)?,
+                )?);
             }
             Readout::Greedy => {
                 let p = packet.as_ref().unwrap();
                 cohort.push(p.readback(0, 12)?);
+                if observe_qwen_logits {
+                    let logits = submitted
+                        .logits
+                        .as_ref()
+                        .ok_or_else(|| Error::State("observed source logits absent".into()))?;
+                    let lease = lease_for(&accesses, &logits.handle)?;
+                    cohort.push(logits.readback(
+                        lease,
+                        ResidentBufferLayout::new(ResidentPhysicalType::F32, logits.elements)?,
+                    )?);
+                }
             }
             Readout::None => {
                 if submitted.logits.is_some() {
@@ -869,6 +1281,10 @@ impl ResidentModel {
                 match &node.operation {
                     PlanOperation::Observe { layer, stage } => {
                         let value = &workspace.program.values()[node.inputs[0].0 as usize];
+                        value.require_layout(ResidentBufferLayout::new(
+                            ResidentPhysicalType::F32,
+                            value.elements,
+                        )?)?;
                         add(&mut cohort, &value.handle, value.elements)?;
                         observation_keys.push((*layer, *stage, value.elements));
                     }
@@ -907,6 +1323,11 @@ impl ResidentModel {
                 {
                     return Err(Error::State("nonfinite resident logits".into()));
                 }
+                if observe_qwen_logits
+                    && !words(&values[statuses + 1])?.iter().all(|x| x.is_finite())
+                {
+                    return Err(Error::State("nonfinite observed source logits".into()));
+                }
                 if matches!(readout, Readout::Greedy) {
                     let packet = &values[statuses];
                     let id = u32::from_ne_bytes(packet[0..4].try_into().unwrap());
@@ -922,6 +1343,8 @@ impl ResidentModel {
         let mut result = InferenceReadback {
             logits: if matches!(readout, Readout::Logits) {
                 words(&read[statuses])?
+            } else if observe_qwen_logits {
+                words(&read[statuses + 1])?
             } else {
                 Vec::new()
             },
@@ -995,15 +1418,30 @@ fn make_domain(
     let (leases, buffers) = match r.layout {
         StateLayout::Vector { elements } => {
             let l = allocate(elements)?;
-            let b = DeviceBuffer::new(l.handle(), elements);
+            let b = DeviceBuffer::from_lease(
+                l.clone(),
+                ResidentBufferLayout::new(ResidentPhysicalType::F32, elements)?,
+                BufferRole::RecurrentState,
+                DeviceAccess::Write,
+            )?;
             (vec![l], StateBuffers::Vector(b))
         }
         StateLayout::Kv { slab, capacity } => {
             let k = allocate(slab * capacity)?;
             let v = allocate(slab * capacity)?;
             let b = StateBuffers::Kv {
-                keys: DeviceBuffer::new(k.handle(), slab * capacity),
-                values: DeviceBuffer::new(v.handle(), slab * capacity),
+                keys: DeviceBuffer::from_lease(
+                    k.clone(),
+                    ResidentBufferLayout::new(ResidentPhysicalType::F32, slab * capacity)?,
+                    BufferRole::RecurrentState,
+                    DeviceAccess::Write,
+                )?,
+                values: DeviceBuffer::from_lease(
+                    v.clone(),
+                    ResidentBufferLayout::new(ResidentPhysicalType::F32, slab * capacity)?,
+                    BufferRole::RecurrentState,
+                    DeviceAccess::Write,
+                )?,
             };
             (vec![k, v], b)
         }
@@ -1142,6 +1580,29 @@ impl ResidentSession {
         diagnostic: bool,
         readout: Readout,
     ) -> Result<PreparedInference> {
+        self.prepare_mode_inner(
+            tokens,
+            diagnostic,
+            readout,
+            #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+            None,
+            #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+            None,
+        )
+        .await
+    }
+    async fn prepare_mode_inner<'o>(
+        &self,
+        tokens: &[u32],
+        diagnostic: bool,
+        readout: Readout,
+        #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))] gemma: Option<
+            gemma_text::GemmaOptions<'_, 'o>,
+        >,
+        #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))] qwen: Option<
+            qwen_source::QwenOptions<'_, 'o>,
+        >,
+    ) -> Result<PreparedInference> {
         let count =
             u64::try_from(tokens.len()).map_err(|_| Error::Limit("resident token count".into()))?;
         let attempt = self.authority.begin_advance(count)?;
@@ -1161,6 +1622,50 @@ impl ResidentSession {
                 "resident chunk contains invalid source token".into(),
             ));
         }
+        #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+        let (_call_admission, call) = if let Some(options) = &gemma {
+            gemma_text::check_cancel(options.cancelled)?;
+            if options.source.source_identity() != base.source() {
+                return Err(Error::State("Gemma original call source differs".into()));
+            }
+            (
+                Some(options.source.reserve_workspace(65536)?),
+                Some(zerogravity_core::accelerator::program::Bf16TextCall::bind(
+                    zerogravity_core::accelerator::program::TextCallGeometry::new(
+                        base.source(),
+                        usize::try_from(self.model.vocab)
+                            .map_err(|_| Error::Limit("Gemma source vocabulary extent".into()))?,
+                        self.model.capacity,
+                    )?,
+                    attempt.clone(),
+                    Arc::from(tokens),
+                )?),
+            )
+        } else {
+            (None, None)
+        };
+        #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+        let (_qwen_call_admission, qwen_call) = if let Some(options) = &qwen {
+            qwen_source::check_cancel(options.cancelled)?;
+            if tokens.len() != 1 || base.frontier() > 1 {
+                return Err(Error::Unsupported("finite source teacher row".into()));
+            }
+            let body = &options.bodies[base.frontier() as usize];
+            if body.recorded().plan().source() != base.source() {
+                return Err(Error::State("source call owner differs".into()));
+            }
+            (
+                Some(
+                    body.recorded()
+                        .source()
+                        .source()
+                        .reserve_workspace(16 * 1024 * 1024)?,
+                ),
+                Some(body.recorded().bind_call(attempt.clone(), tokens[0])?),
+            )
+        } else {
+            (None, None)
+        };
         // Reserve the complete private ping-pong peak before the first launch.
         let mut pool = vec![self.model.allocate_state(false).await?];
         if tokens.len() > 1 {
@@ -1175,7 +1680,7 @@ impl ResidentSession {
         for (i, token) in tokens.iter().enumerate() {
             let (next, ready, readback) = self
                 .model
-                .execute(
+                .execute_inner(
                     base,
                     base.frontier() as usize + i,
                     &domains,
@@ -1189,6 +1694,31 @@ impl ResidentSession {
                             readout
                         },
                         diagnostic: diagnostic && i + 1 == tokens.len(),
+                    },
+                    #[cfg(all(
+                        any(
+                            feature = "gemma-bf16-qualification",
+                            feature = "qwen-source-qualification"
+                        ),
+                        target_os = "linux"
+                    ))]
+                    SourceSteps {
+                        _observer_lifetime: std::marker::PhantomData,
+                        #[cfg(feature = "gemma-bf16-qualification")]
+                        gemma: gemma.as_ref().map(|options| gemma_text::GemmaStep {
+                            call: call.as_ref().unwrap(),
+                            row: i,
+                            observer: options.observer,
+                            cancelled: options.cancelled,
+                        }),
+                        #[cfg(feature = "qwen-source-qualification")]
+                        qwen: qwen.as_ref().map(|options| qwen_source::QwenStep {
+                            body: &options.bodies[base.frontier() as usize],
+                            call: qwen_call.as_ref().unwrap(),
+                            observer: options.observer,
+                            feedback: options.feedback,
+                            cancelled: options.cancelled,
+                        }),
                     },
                 )
                 .await?;
@@ -1361,7 +1891,7 @@ mod qualification;
 #[cfg(feature = "qualification")]
 use qualification::{compare_domains, exact};
 #[cfg(feature = "qualification")]
-pub(crate) use qualification::{qualify, qualify_context};
+pub(crate) use qualification::{qualify, qualify_bounded_context, qualify_context};
 #[cfg(all(feature = "qualification", feature = "hardware-abort-probe"))]
 pub(crate) use qualification::{qualify_abort, qualify_context_abort};
 
@@ -1425,3 +1955,107 @@ fn preflight_profile(
 #[cfg(test)]
 #[path = "resident_inference/cold_tests.rs"]
 mod cold_tests;
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub use native_fragment::{
+    Vllm08DomainReadback, Vllm08ModelFault, Vllm08ModelFaultOutcome, Vllm08ModelInputs,
+    Vllm08ModelReadback, Vllm08ModelReceipt, qualify_vllm08_model, qualify_vllm08_model_fault,
+};
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub(crate) mod text_positions;
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub use native_fragment::{
+    Vllm08NaturalFault, Vllm08NaturalFaultExecution, Vllm08NaturalFaultOutcome,
+    Vllm08NaturalReceipt, Vllm08NaturalReuseFault, Vllm08NaturalReuseFaultExecution,
+    Vllm08NaturalReuseFaultOutcome, Vllm08NaturalReuseReceipt, Vllm08NaturalReuseRound,
+    qualify_vllm08_natural_fault, qualify_vllm08_natural_model, qualify_vllm08_natural_reuse,
+    qualify_vllm08_natural_reuse_fault,
+};
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub use native_fragment::qualify_vllm08_natural_reuse_pressure;
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub use native_fragment::{
+    Qwen2bGdnComponentFault, Qwen2bGdnComponentFaultOutcome, Qwen2bGdnComponentReadback,
+    Qwen2bGdnComponentReceipt, qualify_qwen2b_gdn_component,
+    qualify_qwen2b_gdn_component_arithmetic, qualify_qwen2b_gdn_component_fault,
+};
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub use native_fragment::{
+    Canonical47GdnComponentFault, Canonical47GdnComponentFaultOutcome,
+    Canonical47GdnComponentReadback, Canonical47GdnComponentReceipt,
+    qualify_canonical47_gdn_component, qualify_canonical47_gdn_component_fault,
+};
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub use native_fragment::{
+    PostAttentionArithmetic, PostAttentionComponentFault, PostAttentionComponentFaultOutcome,
+    PostAttentionComponentReadback, PostAttentionComponentReceipt,
+    qualify_post_attention_component, qualify_post_attention_component_fault,
+    qualify_qwen2b_post_attention_component_arithmetic,
+};
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub use native_fragment::{
+    MlpComponentFault, MlpComponentFaultOutcome, MlpComponentReadback, MlpComponentReceipt,
+    qualify_mlp_component, qualify_mlp_component_fault,
+};
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub use native_fragment::{
+    Canonical47ModelPrefixFault, Canonical47ModelPrefixFaultOutcome,
+    Canonical47ModelPrefixReadback, Canonical47ModelPrefixReceipt,
+    Canonical47QkKvQualificationInputs, qualify_canonical47_model_fa_prefix,
+    qualify_canonical47_model_fa_prefix_fault, qualify_canonical47_model_kv_prefix,
+    qualify_canonical47_model_kv_prefix_fault, qualify_canonical47_model_layer3_prefix,
+    qualify_canonical47_model_layer3_prefix_fault, qualify_canonical47_model_prefix,
+    qualify_canonical47_model_prefix_fault, qualify_canonical47_model_qkv_prefix,
+    qualify_canonical47_model_qkv_prefix_fault,
+};
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub use native_fragment::{
+    Canonical47FullModelFault, Canonical47FullModelFaultOutcome, Canonical47FullModelReadback,
+    Canonical47FullModelReceipt, qualify_canonical47_full_model,
+    qualify_canonical47_full_model_fault,
+};
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub use native_fragment::{
+    Qwen2bMlpComponentFault, Qwen2bMlpComponentFaultOutcome, Qwen2bMlpComponentReceipt,
+    Qwen2bMlpComponentSource, qualify_qwen2b_mlp_component, qualify_qwen2b_mlp_component_fault,
+};
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub use native_fragment::{
+    Canonical47CallReceipt, Canonical47CloseReceipt, Canonical47EmptySnapshot,
+    Canonical47LifecycleProfile, Canonical47Loaded, Canonical47LoadedObservation,
+    Canonical47LoadedSnapshot, Canonical47NaturalFault, Canonical47NaturalFaultOutcome,
+    Canonical47NaturalReadback, Canonical47Pending, Canonical47Session,
+    canonical47_natural_host_bound, prepare_canonical47_natural,
+    prepare_canonical47_natural_with_profile,
+};
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+mod rms_scratch;
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub(crate) use rms_scratch::RmsScratchRegistration;
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub use native_fragment::{
+    ShortHfCallReceipt, ShortHfCloseReceipt, ShortHfCohortFault, ShortHfCohortFaultOutcome,
+    ShortHfCohortFaultRetention, ShortHfCohortPreparation, ShortHfCohortReadback,
+    ShortHfCohortReceipt, ShortHfCohortRowReceipt, ShortHfEmptySnapshot, ShortHfFault,
+    ShortHfFaultOutcome, ShortHfLoaded, ShortHfLoadedObservation, ShortHfLoadedSnapshot,
+    ShortHfPending, ShortHfPendingCohort, ShortHfQualificationInputs, ShortHfReadback,
+    ShortHfResourceInventory, ShortHfSession, prepare_short_hf, prepare_short_hf_b4,
+};
+
+#[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+pub(crate) mod gemma_text;
+
+#[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+pub(crate) mod qwen_source;

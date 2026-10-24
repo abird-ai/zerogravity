@@ -118,7 +118,11 @@ async fn cold_suffix(resident: &Arc<ResidentModel>) -> Result<(usize, usize)> {
             "H17 output suffix has no physical values".into(),
         ));
     }
-    for handle in &workspace.greedy {
+    for handle in workspace
+        .greedy
+        .as_ref()
+        .ok_or_else(|| Error::State("H17 model greedy workspace absent".into()))?
+    {
         let lease = lease_for(&workspace.leases, handle)?;
         if lease.is_initialized() || selected.contains(&lease.id()) {
             return Err(Error::State(
@@ -153,9 +157,17 @@ pub(super) async fn qualify(
             "H17 source/state-domain qualification binding".into(),
         ));
     }
-    let expected_savings = match model.tensor_info("token_embd.weight")?.kind {
-        zerogravity_artifacts::quant::QuantKind::Q8_0 => 17,
-        zerogravity_artifacts::quant::QuantKind::Q6K => 15,
+    let vocabulary_kind = model.tensor_info("token_embd.weight")?.kind;
+    let cuda_blocks = crate::activation_quant_fused::is_cuda_service(resident.service.client());
+    // CUDA block prepare1 + composites1 reduces this exact suffix to12.
+    let expected_savings = match (vocabulary_kind, cuda_blocks) {
+        (
+            zerogravity_artifacts::quant::QuantKind::Q8_0
+            | zerogravity_artifacts::quant::QuantKind::Q6K,
+            true,
+        ) => 12,
+        (zerogravity_artifacts::quant::QuantKind::Q8_0, false) => 17,
+        (zerogravity_artifacts::quant::QuantKind::Q6K, false) => 15,
         _ => {
             return Err(Error::Unsupported(
                 "H17 vocabulary source codec is not qualified".into(),
@@ -240,9 +252,13 @@ pub(super) async fn qualify(
         || actual.logit_steps != 1
         || actual.device_token.is_some()
     {
-        return Err(Error::State(
-            "H17 physical vocabulary suffix dispatch saving differs".into(),
-        ));
+        return Err(Error::State(format!(
+            "H17 physical vocabulary suffix dispatch saving differs: codec={vocabulary_kind:?} cuda_blocks={cuda_blocks} full={full_dispatches} state={state_dispatches} observed={:?} expected={expected_savings} state_only_steps={} logit_steps={} device_token={}",
+            full_dispatches.checked_sub(state_dispatches),
+            actual.state_only_steps,
+            actual.logit_steps,
+            actual.device_token.is_some()
+        )));
     }
     {
         let workspace = resident.workspace.lock().await;

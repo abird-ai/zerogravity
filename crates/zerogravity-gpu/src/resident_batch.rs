@@ -23,12 +23,26 @@ pub struct ResidentBatchRows {
     frontier: Option<u64>,
     row_elements: usize,
     activation_bytes: usize,
+    word_bytes: usize,
 }
 impl ResidentBatchRows {
     /// Register one *committed* root per independent session, with an exact
     /// common source and an explicit dense activation row width. Each row
     /// retains its own committed causal frontier.
     pub fn new(bindings: &[RootBinding], row_elements: usize) -> Result<Self> {
+        Self::new_layout(bindings, row_elements, 4)
+    }
+    /// Exact packed BF16 row metadata. Numerical/profile and physical lowering
+    /// still require the actual prepared source operation; this grants neither.
+    #[cfg(any(test, all(feature = "vllm-cuda-qualification", target_os = "linux")))]
+    pub(crate) fn bf16(bindings: &[RootBinding], row_elements: usize) -> Result<Self> {
+        Self::new_layout(bindings, row_elements, 2)
+    }
+    fn new_layout(
+        bindings: &[RootBinding],
+        row_elements: usize,
+        word_bytes: usize,
+    ) -> Result<Self> {
         let source = bindings
             .first()
             .ok_or_else(|| Error::Malformed("empty resident batch".into()))?
@@ -64,7 +78,7 @@ impl ResidentBatchRows {
             .filter(|n| *n <= MAX_ELEMENTS)
             .ok_or_else(|| Error::Limit("resident batch dense activation count".into()))?;
         let activation_bytes = total
-            .checked_mul(4)
+            .checked_mul(word_bytes)
             .ok_or_else(|| Error::Limit("resident batch activation byte count".into()))?;
         Ok(Self {
             source,
@@ -72,6 +86,7 @@ impl ResidentBatchRows {
             frontier,
             row_elements,
             activation_bytes,
+            word_bytes,
         })
     }
     pub fn source(&self) -> SourceIdentity {
@@ -102,8 +117,13 @@ impl ResidentBatchRows {
         }
         index
             .checked_mul(self.row_elements)
-            .and_then(|n| n.checked_mul(4))
+            .and_then(|n| n.checked_mul(self.word_bytes))
             .ok_or_else(|| Error::Limit("batch row offset overflow".into()))
+    }
+    /// Physical row codec only; never a numerical contract or execution permit.
+    #[cfg(any(test, all(feature = "vllm-cuda-qualification", target_os = "linux")))]
+    pub(crate) fn word_bytes(&self) -> usize {
+        self.word_bytes
     }
     /// After an asynchronous GPU completion, the trusted resident owner
     /// revalidates every original root BEFORE independently publishing
@@ -154,6 +174,33 @@ mod tests {
         assert_eq!(rows.frontier(), Some(0));
         // Capture holds only *committed* prior roots, never candidate roots.
     }
+    #[test]
+    fn bf16_rows_preserve_independent_roots_and_exact_two_byte_extents() {
+        let id = source();
+        let owners = (0..8)
+            .map(|_| SessionAuthority::new(id).unwrap())
+            .collect::<Vec<_>>();
+        let roots = owners
+            .iter()
+            .map(SessionAuthority::binding)
+            .collect::<Vec<_>>();
+        for width in [1, 2, 4, 8] {
+            let bf16 = ResidentBatchRows::bf16(&roots[..width], 2048).unwrap();
+            let f32 = ResidentBatchRows::new(&roots[..width], 2048).unwrap();
+            assert_eq!(bf16.activation_bytes(), width * 2048 * 2);
+            assert_eq!(bf16.word_bytes(), 2);
+            assert_eq!(f32.word_bytes(), 4);
+            assert_eq!(f32.activation_bytes(), bf16.activation_bytes() * 2);
+            for row in 0..width {
+                assert_eq!(bf16.row_byte_offset(row).unwrap(), row * 4096);
+            }
+            bf16.require_current(&roots[..width]).unwrap();
+            assert!(bf16.row_byte_offset(width).is_err());
+        }
+        assert!(ResidentBatchRows::bf16(&[roots[0], roots[0]], 2048).is_err());
+        assert!(ResidentBatchRows::bf16(&roots, usize::MAX).is_err());
+    }
+
     #[test]
     fn foreign_and_duplicate_lanes_refuse_without_any_session_mutation() {
         let a = source();

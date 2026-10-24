@@ -142,12 +142,16 @@ pub(super) async fn qualify(resident: &Arc<ResidentModel>) -> Result<()> {
         .ok_or_else(|| bad("no large activation fixture"))?
         .handle
         .clone();
+    let greedy = workspace
+        .greedy
+        .as_ref()
+        .ok_or_else(|| bad("model greedy workspace absent"))?;
     let scratch = workspace
         .leases
         .iter()
         .filter(|(_, a)| *a == DeviceAccess::Write)
         .filter(|(l, _)| !values.iter().any(|v| same_handle(&l.handle(), &v.handle)))
-        .filter(|(l, _)| !workspace.greedy.iter().any(|h| same_handle(&l.handle(), h)))
+        .filter(|(l, _)| !greedy.iter().any(|h| same_handle(&l.handle(), h)))
         .max_by_key(|(l, _)| l.bytes())
         .filter(|(l, _)| l.bytes() >= needed)
         .map(|(l, _)| l.handle())

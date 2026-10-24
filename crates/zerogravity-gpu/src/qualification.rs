@@ -3,6 +3,27 @@ use crate::*;
 
 use cubecl::{Device, device::WgpuDeviceKind, prelude::*};
 
+/// Internal original-GGUF B1 bit/state diagnostic; no serving or vLLM permit.
+/// Caller authenticates complete raw teacher IDs before this qualification seam.
+pub async fn qualify_bounded_resident_context(
+    device: Device,
+    path: &std::path::Path,
+    teacher_ids: Vec<u32>,
+    capacity: usize,
+    provider_cap: usize,
+    device_cap: u64,
+) -> zerogravity_core::Result<()> {
+    resident_inference::qualify_bounded_context(
+        device,
+        path,
+        teacher_ids,
+        capacity,
+        provider_cap,
+        device_cap,
+    )
+    .await
+}
+
 #[cube(launch_unchecked)]
 fn multiply_by_two(input: &[f32], output: &mut [f32]) {
     if ABSOLUTE_POS < input.len() {
@@ -1006,3 +1027,21 @@ pub async fn qualify_cpu_profile_bf16_adversaries(
 ) -> zerogravity_core::Result<()> {
     crate::cpu_bf16_projection::adversary::qualify(device, source, device_cap, fault).await
 }
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub use crate::resident_inference::{
+    Qwen2bGdnComponentFault, Qwen2bGdnComponentFaultOutcome, Qwen2bGdnComponentReadback,
+    Qwen2bGdnComponentReceipt, qualify_qwen2b_gdn_component, qualify_qwen2b_gdn_component_fault,
+};
+
+#[cfg(target_os = "linux")]
+pub use crate::resident_leases::resident_matrix::qualification::{
+    MatrixTransportMode, MatrixTransportOutcome, qualify_bf16_matrix_cross_provider,
+    qualify_bf16_matrix_transport,
+};
+
+#[cfg(target_os = "linux")]
+pub use crate::resident_program::typed_slice::qualification::{
+    CompletedSlice, SliceFault, SliceOutcome, qualify_portable_bf16_slice,
+    qualify_portable_bf16_slice_cross_provider,
+};

@@ -70,6 +70,15 @@ pub(crate) fn finite_sortable_key(bits: u32) -> u32 {
     key
 }
 
+#[cube]
+fn finite_numeric_sortable_key(bits: u32) -> u32 {
+    let mut key = finite_sortable_key(bits);
+    if (bits & 0x7fffffffu32) == 0u32 {
+        key = 0x80000000u32;
+    }
+    key
+}
+
 /// Exactly one initialized status word is required for every helper. Dispatch
 /// before all step writers, then keep its handle/epoch private to the attempt.
 #[cube(launch_unchecked)]
@@ -161,8 +170,8 @@ pub(crate) fn certify_finite_strided(
 /// Stage one: one record [original token ID, original max bits, status] per
 /// tile. Nonfinite logits always fail the attempt, even if not the maximum.
 #[allow(clippy::manual_range_contains)] // CubeCL cannot expand RangeInclusive::contains.
-#[cube(launch_unchecked)]
-pub(crate) fn argmax_logits(
+#[cube]
+fn argmax_logits_ordered(
     source: &[u32],
     partials: &mut [u32],
     status: &[Atomic<u32>],
@@ -170,6 +179,7 @@ pub(crate) fn argmax_logits(
     destination_offset: u32,
     #[comptime] count: usize,
     #[comptime] tile: usize,
+    #[comptime] numeric_zero_ties: bool,
 ) {
     let group = ABSOLUTE_POS;
     if count == 0usize || count > MAX_WORD_OPS || tile < 32usize || tile > 1024usize {
@@ -191,7 +201,10 @@ pub(crate) fn argmax_logits(
                     if (bits & 0x7f800000u32) == 0x7f800000u32 {
                         flags |= NONFINITE_VALUE;
                     } else {
-                        let key = finite_sortable_key(bits);
+                        let mut key = finite_sortable_key(bits);
+                        if comptime!(numeric_zero_ties) {
+                            key = finite_numeric_sortable_key(bits);
+                        }
                         let token = u32::cast_from(id);
                         if !found || key > best_key || (key == best_key && token < best_id) {
                             found = true;
@@ -226,8 +239,8 @@ pub(crate) fn argmax_logits(
 /// Later stages reduce exactly the same records, preserving source IDs/bits.
 /// Use disjoint ping-pong buffers and dispatch until the output has one record.
 #[allow(clippy::manual_range_contains)] // CubeCL cannot expand RangeInclusive::contains.
-#[cube(launch_unchecked)]
-pub(crate) fn argmax_partials(
+#[cube]
+fn argmax_partials_ordered(
     source: &[u32],
     partials: &mut [u32],
     status: &[Atomic<u32>],
@@ -236,6 +249,7 @@ pub(crate) fn argmax_partials(
     #[comptime] count: usize,
     #[comptime] vocabulary: usize,
     #[comptime] tile: usize,
+    #[comptime] numeric_zero_ties: bool,
 ) {
     let group = ABSOLUTE_POS;
     if count == 0usize
@@ -268,7 +282,10 @@ pub(crate) fn argmax_partials(
                     } else if (bits & 0x7f800000u32) == 0x7f800000u32 {
                         flags |= NONFINITE_VALUE;
                     } else {
-                        let key = finite_sortable_key(bits);
+                        let mut key = finite_sortable_key(bits);
+                        if comptime!(numeric_zero_ties) {
+                            key = finite_numeric_sortable_key(bits);
+                        }
                         if !found || key > best_key || (key == best_key && token < best_id) {
                             found = true;
                             best_id = token;
@@ -347,9 +364,142 @@ pub(crate) fn finish_argmax(
     }
 }
 
+#[cube(launch_unchecked)]
+pub(crate) fn argmax_logits(
+    source: &[u32],
+    partials: &mut [u32],
+    status: &[Atomic<u32>],
+    source_offset: u32,
+    destination_offset: u32,
+    #[comptime] count: usize,
+    #[comptime] tile: usize,
+) {
+    argmax_logits_ordered(
+        source,
+        partials,
+        status,
+        source_offset,
+        destination_offset,
+        count,
+        tile,
+        false,
+    );
+}
+
+#[cfg(all(
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    ),
+    target_os = "linux"
+))]
+#[cube(launch_unchecked)]
+pub(crate) fn argmax_logits_numeric_zero(
+    source: &[u32],
+    partials: &mut [u32],
+    status: &[Atomic<u32>],
+    source_offset: u32,
+    destination_offset: u32,
+    #[comptime] count: usize,
+    #[comptime] tile: usize,
+) {
+    argmax_logits_ordered(
+        source,
+        partials,
+        status,
+        source_offset,
+        destination_offset,
+        count,
+        tile,
+        true,
+    );
+}
+
+#[cube(launch_unchecked)]
+pub(crate) fn argmax_partials(
+    source: &[u32],
+    partials: &mut [u32],
+    status: &[Atomic<u32>],
+    source_offset: u32,
+    destination_offset: u32,
+    #[comptime] count: usize,
+    #[comptime] vocabulary: usize,
+    #[comptime] tile: usize,
+) {
+    argmax_partials_ordered(
+        source,
+        partials,
+        status,
+        source_offset,
+        destination_offset,
+        count,
+        vocabulary,
+        tile,
+        false,
+    );
+}
+
+#[cfg(all(
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    ),
+    target_os = "linux"
+))]
+#[cube(launch_unchecked)]
+pub(crate) fn argmax_partials_numeric_zero(
+    source: &[u32],
+    partials: &mut [u32],
+    status: &[Atomic<u32>],
+    source_offset: u32,
+    destination_offset: u32,
+    #[comptime] count: usize,
+    #[comptime] vocabulary: usize,
+    #[comptime] tile: usize,
+) {
+    argmax_partials_ordered(
+        source,
+        partials,
+        status,
+        source_offset,
+        destination_offset,
+        count,
+        vocabulary,
+        tile,
+        true,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn numeric_source_key_ties_zeros_without_flushing_subnormal_order() {
+        assert_eq!(
+            finite_numeric_sortable_key(0),
+            finite_numeric_sortable_key(0x80000000)
+        );
+        assert!(finite_numeric_sortable_key(0x00010000) > finite_numeric_sortable_key(0));
+        assert!(finite_numeric_sortable_key(0x80010000) < finite_numeric_sortable_key(0));
+        for a in [
+            0, 0x80000000, 0x00010000, 0x80010000, 0x3f800000, 0xbf800000, 0x7f7f0000, 0xff7f0000,
+        ] {
+            for b in [
+                0, 0x80000000, 0x00010000, 0x80010000, 0x3f800000, 0xbf800000, 0x7f7f0000,
+                0xff7f0000,
+            ] {
+                let actual = finite_numeric_sortable_key(a) > finite_numeric_sortable_key(b);
+                assert_eq!(
+                    actual,
+                    zerogravity_core::accelerator::program::Bf16TextGreedy::prefer((1, a), (2, b))
+                        .unwrap()
+                        && finite_numeric_sortable_key(a) != finite_numeric_sortable_key(b)
+                );
+            }
+        }
+        assert!(finite_sortable_key(0) > finite_sortable_key(0x80000000));
+    }
 
     #[test]
     fn finite_integer_key_matches_native_total_order_including_both_zero_signs() {
@@ -403,3 +553,66 @@ mod tests {
         assert!(argmax_partial_count(1024, 0).is_err());
     }
 }
+
+/// Packed BF16 transport through u32 storage: no numeric BF16 feature/cast.
+/// Even invalid IDs/bounds initialize every output word before status refusal.
+#[cfg(all(feature = "qualification", target_os = "linux"))]
+#[cube(launch_unchecked)]
+pub(crate) fn gather_bf16_matrix_words(
+    source: &[u32],
+    ids: &[u32],
+    output: &mut [u32],
+    status: &mut [u32],
+    rows: u32,
+    row_words: u32,
+) {
+    let i = ABSOLUTE_POS;
+    // Independent status writers initialize every real status slot,including
+    // malformed device bounds. No lane-zero race or status-clear epoch.
+    if i < status.len() {
+        let mut flags = 1u32;
+        if row_words > 0u32 && i < ids.len() && ids.len() == status.len() {
+            let width = usize::cast_from(row_words);
+            let id = ids[i];
+            if id < rows
+                && source.len() >= width
+                && output.len() >= width
+                && output.len().is_multiple_of(width)
+                && output.len() / width == ids.len()
+                && usize::cast_from(id) <= (source.len() - width) / width
+            {
+                flags = 0u32;
+            }
+        }
+        status[i] = flags;
+    }
+    if i < output.len() {
+        let mut bits = 0u32;
+        if row_words > 0u32 {
+            let width = usize::cast_from(row_words);
+            let r = i / width;
+            let lane = i % width;
+            if r < ids.len() && r < status.len() {
+                let id = ids[r];
+                // Division proves multiplication cannot wrap before indexing.
+                if id < rows
+                    && source.len() >= width
+                    && usize::cast_from(id) <= (source.len() - width) / width
+                {
+                    bits = source[usize::cast_from(id) * width + lane];
+                }
+            }
+        }
+        output[i] = bits;
+    }
+}
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[path = "program_kernels/cohort_copy.rs"]
+pub(crate) mod cohort_copy;
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[path = "program_kernels/readiness.rs"]
+mod readiness;
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub(crate) use readiness::{prepare_short_hf_code, prepare_state_certificates};

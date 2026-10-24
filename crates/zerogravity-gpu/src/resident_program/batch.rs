@@ -34,7 +34,6 @@ fn transport_shape(layout: StateLayout) -> Shape {
 
 /// One original plan, shared immutable tensors, and a private B-shaped workspace.
 pub(crate) struct BatchProgram {
-    inner: ResidentProgram,
     rows: usize,
     nodes: Vec<PlanNode>,
     packed: Vec<StateBinding>,
@@ -46,6 +45,8 @@ pub(crate) struct BatchProgram {
     graph_generation: u64,
     #[cfg(all(feature = "qualification", feature = "cuda"))]
     graph_pin: Arc<()>,
+    // All raw batch aliases precede the original program/native owner.
+    inner: ResidentProgram,
 }
 
 /// Physical kernel launch sites in the existing node body, not graph enqueues.
@@ -177,7 +178,7 @@ impl BatchProgram {
             .map(|node| {
                 let (blocks, outputs) = match &node.operation {
                     PlanOperation::Embed { tensor, .. } => (rows * tensor.columns, 0),
-                    PlanOperation::Project { tensor } => original.tensors[&tensor.name]
+                    PlanOperation::Project { tensor } => original.legacy()?.tensors[&tensor.name]
                         .layout
                         .map_or((0, 0), |l| (rows * l.blocks, rows * l.rows)),
                     _ => (0, 0),
@@ -223,6 +224,7 @@ impl BatchProgram {
             });
         }
         let tensors = original
+            .legacy()?
             .tensors
             .iter()
             .map(|(name, tensor)| {
@@ -257,21 +259,22 @@ impl BatchProgram {
         }
         let positions = allocator.empty(ResidentBufferRole::Parameter, bytes(rows, 4)?)?;
         let mut inner = ResidentProgram {
-            _source_owner: Arc::clone(&original._source_owner),
+            _source_owner: original._source_owner.clone(),
             plan: original.plan.clone(),
             preflight,
-            tensors,
-            constants: original.constants.clone(),
             values,
-            scratch,
             status: allocator.empty(ResidentBufferRole::Status, 4)?,
-            node_status,
-            // Quantized batch input preparation below binds existing originals.
-            projections: Vec::new(),
-            token: allocator.empty(ResidentBufferRole::Parameter, bytes(rows, 4)?)?,
-            exp_tables: original.exp_tables.clone(),
-            trig_tables: original.trig_tables.clone(),
             owned_ranges: OwnedRanges::new(client.service_id()),
+            body: ResidentProgramBody::Legacy(Box::new(LegacyProgram {
+                tensors,
+                constants: original.legacy()?.constants.clone(),
+                scratch,
+                node_status,
+                projections: Vec::new(),
+                token: allocator.empty(ResidentBufferRole::Parameter, bytes(rows, 4)?)?,
+                exp_tables: original.legacy()?.exp_tables.clone(),
+                trig_tables: original.legacy()?.trig_tables.clone(),
+            })),
         };
         for handle in inner.owned_handles() {
             inner.owned_ranges.insert(BufferRange::new(&handle)?)?;
@@ -302,19 +305,19 @@ impl BatchProgram {
                 if tensor.kind == QuantKind::F32 {
                     return Ok(None);
                 }
-                let layout = inner.tensors[&tensor.name]
+                let layout = inner.legacy()?.tensors[&tensor.name]
                     .layout
                     .ok_or_else(|| Error::State("batch projection layout absent".into()))?;
-                let flags = &inner.node_status[index];
+                let flags = &inner.legacy()?.node_status[index];
                 PreparedBlocks::prepare_cuda(
                     client,
                     &layout,
                     rows,
                     &BlockBindings {
                         input: &inner.values[node.inputs[0].0 as usize].handle,
-                        parameters: &inner.scratch[0],
-                        scaled: &inner.scratch[1],
-                        codes: &inner.scratch[2],
+                        parameters: &inner.legacy()?.scratch[0],
+                        scaled: &inner.legacy()?.scratch[1],
+                        codes: &inner.legacy()?.scratch[2],
                         block_status: flags.block.as_ref().ok_or_else(|| {
                             Error::State("batch projection block status absent".into())
                         })?,
@@ -323,6 +326,8 @@ impl BatchProgram {
                 .map(Some)
             })
             .collect::<Result<Vec<_>>>()?;
+        #[cfg(feature = "cuda")]
+        inner.preflight_silu(client, rows)?;
         Ok(Self {
             inner,
             rows,
@@ -388,10 +393,13 @@ impl BatchProgram {
         if parameters.len() != self.rows || bindings.len() != self.rows {
             return Err(Error::Malformed("resident batch row count changed".into()));
         }
+        #[cfg(feature = "cuda")]
+        self.inner.preflight_silu(client, self.rows)?;
         let mut priors = Vec::new();
         let mut candidates = Vec::new();
         for (parameter, binding) in parameters.iter().zip(bindings) {
-            self.inner.validate_runtime(client, *parameter, binding)?;
+            self.inner
+                .validate_state_runtime(client, *parameter, binding)?;
             for node in self.inner.plan.nodes() {
                 if let PlanOperation::Embed { tensor, .. } = &node.operation
                     && parameter.token as usize >= tensor.rows
@@ -542,7 +550,7 @@ impl BatchProgram {
                     arg(packet(5), 1),
                     arg(packet(6), 1),
                     arg(packet(7), 1),
-                    arg(&self.inner.token, self.rows),
+                    arg(&self.inner.legacy()?.token, self.rows),
                     self.rows,
                 );
             } else {
@@ -554,7 +562,7 @@ impl BatchProgram {
                     client,
                     grid(self.rows),
                     threads(),
-                    arg(&self.inner.token, self.rows),
+                    arg(&self.inner.legacy()?.token, self.rows),
                     tokens[0],
                     tokens[1],
                     tokens[2],
@@ -669,15 +677,15 @@ impl BatchProgram {
         for (index, node) in self.nodes[..count].iter().enumerate() {
             match &node.operation {
                 PlanOperation::Project { tensor } => {
-                    if let Some(layout) = self.inner.tensors[&tensor.name].layout {
+                    if let Some(layout) = self.inner.legacy()?.tensors[&tensor.name].layout {
                         quant_status.push((
-                            self.inner.node_status[index]
+                            self.inner.legacy()?.node_status[index]
                                 .block
                                 .as_ref()
                                 .expect("quant status")
                                 .clone(),
                             self.rows * layout.blocks,
-                            self.inner.node_status[index]
+                            self.inner.legacy()?.node_status[index]
                                 .row
                                 .as_ref()
                                 .expect("quant row status")
@@ -687,7 +695,7 @@ impl BatchProgram {
                     }
                 }
                 PlanOperation::Embed { tensor, .. } => embedding_status.push((
-                    self.inner.node_status[index]
+                    self.inner.legacy()?.node_status[index]
                         .block
                         .as_ref()
                         .expect("embedding status")
@@ -705,6 +713,8 @@ impl BatchProgram {
                 .filter(|_| output == ResidentOutput::Logits)
                 .map(|id| self.inner.values[id.0 as usize].clone()),
             proposals,
+            #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+            cohort_proposals: None,
             status: self.inner.status.clone(),
             quant_status,
             embedding_status,
@@ -925,18 +935,38 @@ impl BatchProgram {
         let p = parameters[0];
         let input = |i: usize| &self.inner.values[node.inputs[i].0 as usize];
         let output = |i: usize| &self.inner.values[node.outputs[i].0 as usize];
-        let scratch = |i: usize| &self.inner.scratch[i];
+        let legacy = self.inner.legacy()?;
+        let scratch = |i: usize| &legacy.scratch[i];
         unsafe {
             match &node.operation {
-                PlanOperation::TypedEmbed { .. }
+                PlanOperation::TypedBulkF32Input { .. }
+                | PlanOperation::TypedBulkF32Matmul { .. }
+                | PlanOperation::TypedZenSsmOutInput { .. }
+                | PlanOperation::TypedZenSsmOutProjection { .. }
+                | PlanOperation::TypedGgufPrefixEmbedding { .. }
+                | PlanOperation::TypedGgufPrefixRms { .. }
+                | PlanOperation::TypedGgufGdnInput { .. }
+                | PlanOperation::TypedGgufGdnProjection { .. }
+                | PlanOperation::TypedGgufGdnConvSilu { .. }
+                | PlanOperation::TypedGgufGdnQk { .. }
+                | PlanOperation::TypedEmbed { .. }
                 | PlanOperation::TypedProject { .. }
                 | PlanOperation::TypedOrdinaryRms { .. }
+                | PlanOperation::TypedVllmBf16Embedding { .. }
+                | PlanOperation::TypedVllmInputRms { .. }
+                | PlanOperation::TypedVllmGdnConv { .. }
+                | PlanOperation::TypedVllmGdnRecurrent { .. }
+                | PlanOperation::TypedVllmStateCarry
+                | PlanOperation::TypedVllm08 { .. }
+                | PlanOperation::TypedVllmGdnProjection { .. }
+                | PlanOperation::TypedVllmSiluAndMul { .. }
+                | PlanOperation::TypedResidualRms { .. }
                 | PlanOperation::TypedCausalConvSilu { .. } => Err(Error::Unsupported(
                     "resident batch has no qualified typed lowering".into(),
                 )),
                 PlanOperation::Embed { tensor, .. } => {
-                    let t = &self.inner.tensors[&tensor.name];
-                    let status = self.inner.node_status[index]
+                    let t = &self.inner.legacy()?.tensors[&tensor.name];
+                    let status = self.inner.legacy()?.node_status[index]
                         .block
                         .as_ref()
                         .expect("embedding status");
@@ -946,7 +976,7 @@ impl BatchProgram {
                         grid(elements),
                         threads(),
                         arg(&t.packed, t.elements),
-                        arg(&self.inner.token, self.rows),
+                        arg(&self.inner.legacy()?.token, self.rows),
                         arg(&output(0).handle, elements),
                         arg(status, elements),
                         tensor.rows,
@@ -1003,7 +1033,7 @@ impl BatchProgram {
                         threads(),
                         arg(&input(0).handle, elements),
                         arg(
-                            &self.inner.constants[weights.0 as usize],
+                            &self.inner.legacy()?.constants[weights.0 as usize],
                             elements / self.rows * 4,
                         ),
                         arg(&prior.handle, elements * 3),
@@ -1045,8 +1075,14 @@ impl BatchProgram {
                         threads(),
                         arg(&input(0).handle, heads),
                         arg(&input(1).handle, heads),
-                        arg(&self.inner.constants[dt.0 as usize], heads / self.rows),
-                        arg(&self.inner.constants[a.0 as usize], heads / self.rows),
+                        arg(
+                            &self.inner.legacy()?.constants[dt.0 as usize],
+                            heads / self.rows,
+                        ),
+                        arg(
+                            &self.inner.legacy()?.constants[a.0 as usize],
+                            heads / self.rows,
+                        ),
                         arg(scratch(0), heads * 4),
                         heads / self.rows,
                         self.rows,
@@ -1058,7 +1094,7 @@ impl BatchProgram {
                             threads(),
                             arg(scratch(0), heads * 4),
                             arg(
-                                &self.inner.exp_tables,
+                                &self.inner.legacy()?.exp_tables,
                                 crate::source_transcendentals::TABLES.len(),
                             ),
                             arg(scratch(1), heads * 6),
@@ -1299,7 +1335,15 @@ impl BatchProgram {
                 }
                 // Original source kernels, accumulation order, physical rounding
                 // boundaries and attention padding remain the authority.
-                _ => self.inner.launch_node(client, index, node, p, &self.packed),
+                PlanOperation::Silu { .. } => self.inner.launch_silu(client, node, self.rows),
+                _ => self.inner.launch_node(
+                    client,
+                    index,
+                    node,
+                    p,
+                    &self.packed,
+                    &NativeExecution::new(None),
+                ),
             }
         }
     }
@@ -1307,7 +1351,8 @@ impl BatchProgram {
     fn rope(&self, client: &Client, node: &PlanNode, geometry: RopeGeometry) -> Result<usize> {
         let input = |i: usize| &self.inner.values[node.inputs[i].0 as usize];
         let output = |i: usize| &self.inner.values[node.outputs[i].0 as usize];
-        let scratch = |i: usize| &self.inner.scratch[i];
+        let legacy = self.inner.legacy()?;
+        let scratch = |i: usize| &legacy.scratch[i];
         let g = geometry.attention;
         let heads = g.query_heads + g.kv_heads;
         let half = geometry.rotate / 2;
@@ -1360,7 +1405,7 @@ impl BatchProgram {
                 threads(),
                 arg(scratch(1), self.rows * half),
                 arg(
-                    &self.inner.trig_tables,
+                    &self.inner.legacy()?.trig_tables,
                     crate::source_trig::TRIG_TABLES.len(),
                 ),
                 arg(scratch(2), self.rows * half * 2),
@@ -1451,7 +1496,7 @@ impl BatchProgram {
         input: &DeviceBuffer,
         output: &DeviceBuffer,
     ) -> Result<usize> {
-        let t = &self.inner.tensors[&tensor.name];
+        let t = &self.inner.legacy()?.tensors[&tensor.name];
         unsafe {
             if tensor.kind == QuantKind::F32 {
                 crate::batch_projection::f32_source_batched_projection::launch_unchecked(
@@ -1475,8 +1520,9 @@ impl BatchProgram {
             let composite = self.rows * layout.composite_count;
             let params = blocks * PARAMETER_WORDS;
             let offsets = if layout.with_bias { composite } else { 1 };
-            let s = |i: usize| &self.inner.scratch[i];
-            let flags = &self.inner.node_status[index];
+            let legacy = self.inner.legacy()?;
+            let s = |i: usize| &legacy.scratch[i];
+            let flags = &self.inner.legacy()?.node_status[index];
             let block_status = flags.block.as_ref().expect("quant block status");
             let row_status = flags.row.as_ref().expect("quant row status");
             let mut dispatches = self

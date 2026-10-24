@@ -4,7 +4,7 @@
 use crate::physical_queue::{PhysicalQueue, queue_for};
 use crate::physical_service::{PhysicalServiceBudget, PhysicalWork};
 use cubecl::{Device, bytes::Bytes, client::Client, server::Handle};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicU64, Ordering},
@@ -18,7 +18,89 @@ use zerogravity_core::device_events::{
 use zerogravity_core::resource_arbiter::{PhysicalDeviceKey, ResourceOwner};
 use zerogravity_core::session_root::RootBinding;
 
+pub(crate) mod backing_pool;
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+mod enqueue;
+#[cfg(all(
+    any(
+        feature = "qwen-source-qualification",
+        feature = "gemma-bf16-qualification"
+    ),
+    feature = "hardware-abort-probe"
+))]
+pub(crate) mod final_owner_probe;
+mod foreign_provider;
+#[cfg(any(
+    test,
+    feature = "vllm-cuda-qualification",
+    all(feature = "qualification", feature = "hip")
+))]
+mod native_cache;
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub(crate) use enqueue::{
+    ENQUEUE_PROFILE_ADMISSION_BYTES, EnqueuePlacement, enqueue_profile_enabled,
+    profile_head_enqueue,
+};
+#[cfg(all(feature = "qualification", feature = "hip"))]
+pub(crate) use native_cache::NativeCacheBudget;
+#[cfg(all(
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    ),
+    target_os = "linux"
+))]
+pub(crate) mod frame_checkpoint;
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+mod model_upload;
+#[cfg(all(feature = "qualification", target_os = "linux"))]
+pub(crate) mod resident_matrix;
+#[cfg(all(
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    ),
+    target_os = "linux"
+))]
+pub(crate) mod source_page;
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+mod source_upload;
+#[cfg(any(
+    feature = "vllm-cuda-qualification",
+    all(feature = "qualification", feature = "hip")
+))]
+pub(crate) use foreign_provider::ForeignProviderCharge;
+use foreign_provider::ResidentLedger;
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub(crate) use model_upload::{
+    ModelWeight, PendingModelWeight, Qwen2bMlpComputeReadCut, Qwen2bMlpSourceVerification,
+    Qwen2bMlpWeightCohort, Qwen2bMlpWeights,
+};
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub use model_upload::{Qwen2bMlpWeightMode, Qwen2bMlpWeightOutcome, qualify_qwen2b_mlp_weights};
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub(crate) use resident_matrix::ResidentMatrix;
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub(crate) use source_upload::{
+    TIED_BYTES, TIED_ROW_BYTES, TIED_WINDOW_BYTES, TIED_WINDOWS, TiedUploadAttempt, TiedUploadCut,
+    TiedWeight,
+};
+
 static NEXT_SERVICE_GENERATION: AtomicU64 = AtomicU64::new(1);
+#[cfg(all(feature = "qualification", feature = "hip"))]
+static HIP_NATIVE_CONTEXT_CONSTRUCTED: AtomicBool = AtomicBool::new(false);
+
+fn access_positions(
+    ids: impl IntoIterator<Item = BufferLeaseId>,
+) -> Result<BTreeMap<BufferLeaseId, usize>> {
+    let mut positions = BTreeMap::new();
+    for (index, id) in ids.into_iter().enumerate() {
+        if positions.insert(id, index).is_some() {
+            return Err(Error::State("duplicate resident access identity".into()));
+        }
+    }
+    Ok(positions)
+}
 
 fn issue(counter: &AtomicU64) -> Result<u64> {
     counter
@@ -26,25 +108,56 @@ fn issue(counter: &AtomicU64) -> Result<u64> {
         .map_err(|_| Error::Limit("resident generation exhausted".into()))
 }
 
-/// One prepaid envelope. Every snapshot/lease holds this same service Arc.
+mod physical;
+use physical::ModelAdmission;
+pub use physical::ResidentPhysical;
+pub(crate) use physical::ResidentSource;
+/// Source-specific model admission over one original physical owner.
 pub(crate) struct ResidentService {
-    client: Client,
-    #[cfg(all(feature = "qualification", feature = "cuda"))]
-    pinned_cuda_queue: Option<Arc<cubecl::cuda::OwnedCudaQueue>>,
+    physical: Arc<ResidentPhysical>,
+    // Source view of the SAME actor; internal field accesses never fall through
+    // Deref to the neutral physical control Client.
+    client: Arc<Client>,
     budget: PhysicalServiceBudget,
-    queue: Arc<PhysicalQueue>,
-    ledger: Mutex<DeviceEventLedger>,
+    admission: Arc<ModelAdmission>,
     source: SourceIdentity,
     owner: ResourceOwner,
     generation: u64,
-    next_allocation: AtomicU64,
     uploaded_value_bytes: AtomicU64,
     cap: usize,
-    poisoned: AtomicBool,
     retained_forever: AtomicBool,
+}
+impl Drop for ResidentService {
+    fn drop(&mut self) {
+        // Final source reader only; never synchronize per hot logical lease.
+        // Both original admission and physical envelope remain fields until
+        // the actual backend drop queue/unused-page cleanup has completed.
+        let known = self.ensure_usable().is_ok()
+            && std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.client().memory_cleanup()
+            }))
+            .is_ok_and(|r| r.is_ok());
+        if !known {
+            self.poisoned.store(true, Ordering::Release);
+            self.budget.fence_flag().store(true, Ordering::Release);
+            self.budget.retained_envelope().fence_unknown();
+            crate::physical_quarantine::quarantine_uncertain_with_owners(
+                self.client().clone(),
+                Vec::new(),
+                vec![self.physical.clone(), self.admission.clone()],
+            );
+        }
+    }
+}
+impl std::ops::Deref for ResidentService {
+    type Target = ResidentPhysical;
+    fn deref(&self) -> &Self::Target {
+        &self.physical
+    }
 }
 
 impl ResidentService {
+    #[cfg(any(test, feature = "qualification"))]
     pub fn new(
         device: Device,
         source: SourceIdentity,
@@ -53,9 +166,34 @@ impl ResidentService {
         device_cap: u64,
     ) -> Result<Arc<Self>> {
         Self::validate_owner(source, &owner)?;
-        let generation = issue(&NEXT_SERVICE_GENERATION)?;
-        let client = device.client();
-        Self::from_client(client, source, owner, provider_cap, device_cap, generation).map(Arc::new)
+        ResidentPhysical::new(device, provider_cap, device_cap)?
+            .attach_inner(source, owner, provider_cap, None)
+            .map(Arc::new)
+    }
+    #[cfg(all(test, feature = "qualification", feature = "hip"))]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_with_native_context(
+        device: Device,
+        source: SourceIdentity,
+        owner: ResourceOwner,
+        provider_cap: usize,
+        device_cap: u64,
+        policy: Arc<str>,
+        context_bytes: u64,
+    ) -> Result<(Arc<Self>, Arc<crate::physical_service::NativeContextBudget>)> {
+        Self::validate_owner(source, &owner)?;
+        let (physical, context) = ResidentPhysical::new_with_native_context(
+            device,
+            provider_cap,
+            device_cap,
+            policy,
+            context_bytes,
+        )?;
+        let cap = physical.available_model_capacity()?;
+        Ok((
+            Arc::new(physical.attach_inner(source, owner, cap, None)?),
+            context,
+        ))
     }
 
     fn validate_owner(source: SourceIdentity, owner: &ResourceOwner) -> Result<()> {
@@ -78,54 +216,67 @@ impl ResidentService {
         device_cap: u64,
     ) -> Result<Arc<Self>> {
         Self::validate_owner(source, &owner)?;
-        if !matches!(device, Device::Cuda(_)) {
-            return Err(Error::State("pinned resident queue requires CUDA".into()));
-        }
-        let generation = issue(&NEXT_SERVICE_GENERATION)?;
-        let client = device.client();
-        // SAFETY: this is the fresh original client, moved before its first
-        // clone, allocation, transfer, submission or stream override.
-        let (client, pinned) = unsafe { cubecl::cuda::OwnedCudaQueue::pin_cold(client) }
-            .map_err(|e| Error::State(format!("pin original CUDA queue: {e}")))?;
-        let mut service =
-            Self::from_client(client, source, owner, provider_cap, device_cap, generation)?;
-        service.pinned_cuda_queue = Some(Arc::new(pinned));
-        Ok(Arc::new(service))
+        ResidentPhysical::new_pinned_cuda(device, provider_cap, device_cap)?
+            .attach_inner(source, owner, provider_cap, None)
+            .map(Arc::new)
     }
-
-    fn from_client(
-        client: Client,
-        source: SourceIdentity,
-        owner: ResourceOwner,
-        provider_cap: usize,
-        device_cap: u64,
-        generation: u64,
-    ) -> Result<Self> {
-        crate::physical_quarantine::ensure_service_safe(&client)?;
-        let budget = PhysicalServiceBudget::attach(
-            &client,
-            device_cap,
-            u64::try_from(provider_cap)
-                .map_err(|_| Error::Limit("resident cap overflow".into()))?,
-            owner.clone(),
-        )?;
-        let queue = queue_for(budget.physical_key())?;
-        Ok(Self {
-            client,
-            #[cfg(all(feature = "qualification", feature = "cuda"))]
-            pinned_cuda_queue: None,
-            budget,
-            queue,
-            ledger: Mutex::new(DeviceEventLedger::new(generation, provider_cap)?),
-            source,
-            owner,
-            generation,
-            next_allocation: AtomicU64::new(1),
-            uploaded_value_bytes: AtomicU64::new(0),
-            cap: provider_cap,
-            poisoned: AtomicBool::new(false),
-            retained_forever: AtomicBool::new(false),
-        })
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    pub(crate) fn admit_cuda_compiler_context(
+        &self,
+        source: &zerogravity_artifacts::source_weights::VerifiedTensorSource,
+    ) -> Result<Arc<crate::physical_service::CudaCompilerContextBudget>> {
+        use crate::physical_service::CudaCompilerContextBudget;
+        let queue = self.pinned_cuda_queue()?;
+        let actor_error = |e| Error::State(format!("original CUDA compiler admission: {e}"));
+        if let Some(owner) = queue
+            .compiler_context_owner::<CudaCompilerContextBudget>()
+            .map_err(actor_error)?
+        {
+            owner.require(self.budget())?;
+            owner.require_host(source)?;
+            return Ok(owner);
+        }
+        let owner = CudaCompilerContextBudget::admit(self.budget(), source)?;
+        // The local Arc survives submission/result loss. A known pre-effect
+        // refusal releases; adoption or an unknown actor outcome retains/fences.
+        match unsafe { queue.install_compiler_context(owner.clone(), owner.adoption_flag()) } {
+            Ok(()) => {
+                owner.mark_adopted();
+                Ok(owner)
+            }
+            Err(error) => {
+                match queue.compiler_context_owner::<CudaCompilerContextBudget>() {
+                    Ok(Some(installed)) if Arc::ptr_eq(&owner, &installed) => owner.mark_adopted(),
+                    Ok(None) => {}
+                    _ => owner.fence_unknown(),
+                }
+                Err(actor_error(error))
+            }
+        }
+    }
+    /// Read-only original actor/lease observation, also valid after model close
+    /// or a physical fence. It grants no work or healthy completion authority.
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    pub(crate) fn observe_cuda_compiler_context(
+        &self,
+    ) -> Result<(u64, u64, cubecl::cuda::CompilerContextUsage)> {
+        let queue = self
+            .pinned_cuda_queue
+            .as_ref()
+            .ok_or_else(|| Error::State("CUDA compiler observation has no pinned actor".into()))?;
+        let owner = queue
+            .compiler_context_owner::<crate::physical_service::CudaCompilerContextBudget>()
+            .map_err(|e| Error::State(format!("original compiler observation: {e}")))?
+            .ok_or_else(|| Error::State("CUDA compiler observation owner absent".into()))?;
+        let (host, device) = owner.observed_reservations(self.budget())?;
+        let usage = queue
+            .compiler_context_usage()
+            .map_err(|e| Error::State(format!("original compiler usage: {e}")))?
+            .ok_or_else(|| Error::State("CUDA compiler observation usage absent".into()))?;
+        Ok((host, device, usage))
+    }
+    pub(crate) fn physical_owner(&self) -> &Arc<ResidentPhysical> {
+        &self.physical
     }
 
     pub fn client(&self) -> &Client {
@@ -162,6 +313,11 @@ impl ResidentService {
     pub fn uploaded_value_bytes(&self) -> u64 {
         self.uploaded_value_bytes.load(Ordering::Acquire)
     }
+    #[cfg(all(feature = "qualification", target_os = "linux"))]
+    pub(crate) fn record_value_upload(&self, bytes: usize) {
+        self.uploaded_value_bytes
+            .fetch_add(bytes as u64, Ordering::AcqRel);
+    }
     pub fn physical_key(&self) -> PhysicalDeviceKey {
         self.budget.physical_key()
     }
@@ -173,8 +329,8 @@ impl ResidentService {
     pub fn resident_bytes(&self) -> Result<usize> {
         self.ledger
             .lock()
-            .map(|l| l.resident_bytes())
-            .map_err(|_| Error::State("resident lease ledger poisoned".into()))
+            .map_err(|_| Error::State("resident lease ledger poisoned".into()))?
+            .model_bytes(self.generation)
     }
     pub fn remaining_capacity(&self) -> Result<usize> {
         self.cap
@@ -185,10 +341,12 @@ impl ResidentService {
     pub fn pending_events(&self) -> Result<usize> {
         self.ledger
             .lock()
-            .map(|l| l.pending_events())
+            .map(|l| l.model_events(self.generation))
             .map_err(|_| Error::State("resident event ledger poisoned".into()))
     }
     pub fn ensure_usable(&self) -> Result<()> {
+        self.admission
+            .require_binding(self.source, &self.owner, self.generation, self.cap)?;
         if self.poisoned.load(Ordering::Acquire) || self.budget.fence_flag().load(Ordering::Acquire)
         {
             return Err(Error::State("resident service fenced".into()));
@@ -206,6 +364,7 @@ impl ResidentService {
         zerogravity_core::resource_arbiter::ResourceArbiter::process_shared().with_unfenced(
             &self.physical_key(),
             || {
+                self.admission.ensure_open()?;
                 if self.poisoned.load(Ordering::Acquire)
                     || self.budget.fence_flag().load(Ordering::Acquire)
                 {
@@ -248,7 +407,7 @@ impl ResidentService {
             })
             .collect::<Vec<_>>();
         crate::physical_quarantine::quarantine_uncertain_with_owners(
-            self.client.clone(),
+            self.client().clone(),
             handles,
             owners,
         );
@@ -270,7 +429,7 @@ impl ResidentService {
             .ledger
             .lock()
             .map_err(|_| Error::State("resident lease ledger poisoned".into()))?
-            .admit(bytes, role)?;
+            .admit_for(self.generation, bytes, role)?;
         let mut admission = PendingAdmission {
             service: self.clone(),
             id,
@@ -281,10 +440,14 @@ impl ResidentService {
             service: self.clone(),
             id,
             handle: Some(handle),
+            _backing: None,
+            pool_use: None,
+            workspace: None,
             bytes,
             role,
             allocation_generation,
             initialized: AtomicBool::new(false),
+            workspace_written_epoch: AtomicU64::new(0),
             quarantined: AtomicBool::new(false),
         }));
         admission.armed = false;
@@ -306,6 +469,12 @@ impl ResidentService {
             events: Vec::new(),
             leases: Vec::new(),
             uploaded: BTreeSet::new(),
+            #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+            source_uploads: Vec::new(),
+            #[cfg(all(feature = "qualification", target_os = "linux"))]
+            matrix_source_uploads: Vec::new(),
+            #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+            model_source_uploads: Vec::new(),
             completion_owners: Vec::new(),
             work: Some(work),
             armed: true,
@@ -354,14 +523,30 @@ impl ResidentService {
         accesses: &[(ResidentLease, DeviceAccess)],
     ) -> Result<ResidentSubmission<'a>> {
         self.ensure_usable()?;
-        let mut unique = BTreeSet::new();
+        let access_index = access_positions(accesses.iter().map(|(lease, _)| lease.id()))?;
+        let mut workspace_runs = BTreeMap::<usize, Arc<backing_pool::ResidentWorkspaceRun>>::new();
         for (lease, access) in accesses {
             self.check_lease(lease)?;
-            if !unique.insert(lease.id())
-                || (*access == DeviceAccess::Read && !lease.is_initialized())
-                || (*access == DeviceAccess::Write
-                    && lease.0.role == BufferRole::ImmutableWeights
-                    && lease.is_initialized())
+            if let Some(workspace) = &lease.0.workspace {
+                if let Some(run) = workspace_runs.get(&workspace.key()) {
+                    workspace.require_run(run)?;
+                } else {
+                    workspace_runs.insert(workspace.key(), workspace.active_run()?);
+                }
+            }
+            if *access == DeviceAccess::Read {
+                lease.require_completed_read(
+                    lease
+                        .0
+                        .workspace
+                        .as_ref()
+                        .and_then(|w| workspace_runs.get(&w.key()))
+                        .map(Arc::as_ref),
+                )?;
+            }
+            if *access == DeviceAccess::Write
+                && lease.0.role == BufferRole::ImmutableWeights
+                && lease.is_initialized()
             {
                 return Err(Error::State(
                     "duplicate/uninitialized/immutable resident access".into(),
@@ -395,9 +580,15 @@ impl ResidentService {
             expected_root,
             cohort,
             accesses: accesses.to_vec(),
+            access_index,
             work: Some(work),
             armed: true,
-            completion_owners: Vec::new(),
+            completion_owners: workspace_runs
+                .values()
+                .cloned()
+                .map(|run| run as crate::physical_quarantine::CompletionOwner)
+                .collect(),
+            workspace_runs,
         })
     }
 }
@@ -461,11 +652,15 @@ struct LeaseInner {
     // Rust drops fields in declaration order after Drop: release the physical
     // handle BEFORE the final service Arc can release its prepaid envelope.
     handle: Option<Handle>,
+    _backing: Option<Arc<backing_pool::BackingPlane>>,
+    pool_use: Option<Arc<backing_pool::PoolUse>>,
+    workspace: Option<backing_pool::WorkspaceMembership>,
     id: BufferLeaseId,
     bytes: usize,
     role: BufferRole,
     allocation_generation: u64,
     initialized: AtomicBool,
+    workspace_written_epoch: AtomicU64,
     quarantined: AtomicBool,
     service: Arc<ResidentService>,
 }
@@ -476,7 +671,23 @@ impl LeaseInner {
 }
 impl Drop for LeaseInner {
     fn drop(&mut self) {
-        let released = if self.service.ensure_usable().is_ok() {
+        #[cfg(all(
+            any(
+                feature = "qwen-source-qualification",
+                feature = "gemma-bf16-qualification"
+            ),
+            feature = "hardware-abort-probe"
+        ))]
+        let refused = final_owner_probe::refuse_release(self.service.generation, self.id);
+        #[cfg(not(all(
+            any(
+                feature = "qwen-source-qualification",
+                feature = "gemma-bf16-qualification"
+            ),
+            feature = "hardware-abort-probe"
+        )))]
+        let refused = false;
+        let released = if !refused && self.service.ensure_usable().is_ok() {
             self.service.ledger.lock().ok().is_some_and(|mut ledger| {
                 if ledger.release_lease(self.id).is_ok() {
                     // Keep admission locked until the original handle has
@@ -491,10 +702,13 @@ impl Drop for LeaseInner {
             false
         };
         if !released {
+            if let Some(pool_use) = &self.pool_use {
+                pool_use.poison();
+            }
             self.service.fence_and_retain(&[]);
             if !self.quarantined.swap(true, Ordering::AcqRel) {
                 crate::physical_quarantine::quarantine_uncertain(
-                    self.service.client.clone(),
+                    self.service.client().clone(),
                     vec![self.handle().clone()],
                 );
             }
@@ -505,11 +719,51 @@ impl Drop for LeaseInner {
 #[derive(Clone)]
 pub(crate) struct ResidentLease(Arc<LeaseInner>);
 impl ResidentLease {
+    fn require_completed_read(
+        &self,
+        run: Option<&backing_pool::ResidentWorkspaceRun>,
+    ) -> Result<()> {
+        if !self.is_initialized() {
+            return Err(Error::State(
+                "resident read before physical initialization".into(),
+            ));
+        }
+        if let Some(workspace) = &self.0.workspace {
+            let run =
+                run.ok_or_else(|| Error::State("resident workspace read owner absent".into()))?;
+            workspace.require_run(run)?;
+            let epoch = run.epoch();
+            if self.0.workspace_written_epoch.load(Ordering::Acquire) != epoch {
+                return Err(Error::State(
+                    "resident workspace read from a prior activation".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+    fn record_completed_write(
+        &self,
+        run: Option<&backing_pool::ResidentWorkspaceRun>,
+    ) -> Result<()> {
+        if let Some(workspace) = &self.0.workspace {
+            let run =
+                run.ok_or_else(|| Error::State("resident workspace write owner absent".into()))?;
+            workspace.require_run(run)?;
+            self.0
+                .workspace_written_epoch
+                .store(run.epoch(), Ordering::Release);
+        }
+        self.0.initialized.store(true, Ordering::Release);
+        Ok(())
+    }
     pub fn id(&self) -> BufferLeaseId {
         self.0.id
     }
     pub fn bytes(&self) -> usize {
         self.0.bytes
+    }
+    pub(crate) fn role(&self) -> BufferRole {
+        self.0.role
     }
     pub fn handle(&self) -> Handle {
         self.0.handle().clone()
@@ -549,6 +803,14 @@ pub(crate) struct ResidentReadback {
     bytes: usize,
 }
 impl ResidentReadback {
+    #[cfg(feature = "vllm-cuda-qualification")]
+    pub(crate) fn lease_id(&self) -> BufferLeaseId {
+        self.lease.id()
+    }
+    #[cfg(feature = "vllm-cuda-qualification")]
+    pub(crate) fn offset(&self) -> usize {
+        self.offset
+    }
     fn handle(&self) -> Handle {
         self.lease
             .handle()
@@ -560,6 +822,11 @@ impl ResidentReadback {
     }
 }
 
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+enum SourceCompletionMode<'a> {
+    Compute(&'a [ResidentLease]),
+    Retirement,
+}
 #[must_use]
 pub(crate) struct ResidentSubmission<'a> {
     service: &'a Arc<ResidentService>,
@@ -567,12 +834,46 @@ pub(crate) struct ResidentSubmission<'a> {
     expected_root: u64,
     cohort: Option<ResidentCohortRoots>,
     accesses: Vec<(ResidentLease, DeviceAccess)>,
+    // Positions in the original retained cohort; never substitutes its owners.
+    access_index: BTreeMap<BufferLeaseId, usize>,
     work: Option<PhysicalWork<'a>>,
     armed: bool,
     completion_owners: Vec<crate::physical_quarantine::CompletionOwner>,
+    workspace_runs: BTreeMap<usize, Arc<backing_pool::ResidentWorkspaceRun>>,
 }
 impl ResidentSubmission<'_> {
-    #[cfg(all(feature = "qualification", feature = "cuda"))]
+    /// Exact current-flight membership. Read accepts a retained Write; Write
+    /// requires that same actual allocation's submitted Write authority.
+    pub(crate) fn require_accesses<'a>(
+        &self,
+        required: impl IntoIterator<Item = (&'a ResidentLease, DeviceAccess)>,
+    ) -> Result<()> {
+        if !self.armed || self.work.is_none() {
+            return Err(Error::State(
+                "resident access needs original armed flight".into(),
+            ));
+        }
+        self.service.ensure_usable()?;
+        for (lease, access) in required {
+            self.service.check_lease(lease)?;
+            let actual = self
+                .access_index
+                .get(&lease.id())
+                .and_then(|&i| self.accesses.get(i));
+            if !actual.is_some_and(|(actual, submitted)| {
+                Arc::ptr_eq(&actual.0, &lease.0)
+                    && actual.allocation_generation() == lease.allocation_generation()
+                    && actual.bytes() == lease.bytes()
+                    && (access == DeviceAccess::Read || *submitted == DeviceAccess::Write)
+            }) {
+                return Err(Error::State(
+                    "original flight missing exact resident lease/access".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+    #[cfg(feature = "qualification")]
     pub(crate) fn retain_completion_owner(
         &mut self,
         owner: crate::physical_quarantine::CompletionOwner,
@@ -593,11 +894,14 @@ impl ResidentSubmission<'_> {
         let mut unique = BTreeSet::new();
         for output in outputs {
             self.service.check_lease(output)?;
-            if !unique.insert(output.id())
-                || !self
-                    .accesses
-                    .iter()
-                    .any(|(l, a)| l.id() == output.id() && *a == DeviceAccess::Write)
+            // Scratch views are scoped to the original workspace activation.
+            // Exported roots/packets use independent storage, never these views.
+            if output.0.workspace.is_some()
+                || !unique.insert(output.id())
+                || !self.access_index.get(&output.id()).is_some_and(|&index| {
+                    let (lease, access) = &self.accesses[index];
+                    Arc::ptr_eq(&lease.0, &output.0) && *access == DeviceAccess::Write
+                })
             {
                 return Err(Error::State(
                     "resident promotion requires unique submitted writes".into(),
@@ -623,7 +927,14 @@ impl ResidentSubmission<'_> {
             .complete()?;
         for (lease, access) in &self.accesses {
             if *access == DeviceAccess::Write {
-                lease.0.initialized.store(true, Ordering::Release);
+                lease.record_completed_write(
+                    lease
+                        .0
+                        .workspace
+                        .as_ref()
+                        .and_then(|w| self.workspace_runs.get(&w.key()))
+                        .map(Arc::as_ref),
+                )?;
             }
         }
         self.armed = false;
@@ -653,6 +964,69 @@ impl ResidentSubmission<'_> {
         }
         self.check_outputs(outputs)?;
         let bytes = self.readback_checked(cohort, validate).await?;
+        let ready = self.finish_ready(outputs)?;
+        Ok((ready, bytes))
+    }
+
+    /// Exact finite source plan installed on THIS armed flight before enqueue.
+    /// Serial source verification and the trusted validator precede originalReady.
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    async fn complete_with_readback_and_source_verification<F>(
+        self,
+        mode: SourceCompletionMode<'_>,
+        cohort: &[ResidentReadback],
+        plan: &Arc<Qwen2bMlpSourceVerification>,
+        cancelled: Option<&AtomicBool>,
+        validate: F,
+    ) -> Result<(ResidentReady, Vec<Bytes>)>
+    where
+        F: FnOnce(&[Bytes]) -> Result<()>,
+    {
+        if self.cohort.is_some() {
+            return Err(Error::State(
+                "finite2B source completion is one original flight".into(),
+            ));
+        }
+        let check_cancel = || -> Result<()> {
+            if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
+                Err(Error::State(
+                    "original full-model learned upload cancelled".into(),
+                ))
+            } else {
+                Ok(())
+            }
+        };
+        check_cancel()?;
+        let outputs =
+            match mode {
+                SourceCompletionMode::Compute(outputs) => {
+                    self.check_outputs(outputs)?;
+                    outputs
+                }
+                SourceCompletionMode::Retirement => {
+                    if self.accesses.iter().any(|(lease, access)| {
+                        *access != DeviceAccess::Read || !lease.is_initialized()
+                    }) {
+                        return Err(Error::State(
+                            "source retirement requires existing initialized Reads".into(),
+                        ));
+                    }
+                    &[]
+                }
+            };
+        let total = cohort
+            .iter()
+            .try_fold(0usize, |sum, read| sum.checked_add(read.bytes()))
+            .ok_or_else(|| Error::Limit("finite source-completion cohort overflow".into()))?;
+        if total > 128 * 1024 * 1024 {
+            return Err(Error::Limit("finite source-completion128MiB cohort".into()));
+        }
+        plan.require_installed(&self)?;
+        let bytes = self.readback_checked(cohort, |_| Ok(())).await?;
+        plan.verify(&self, cancelled).await?;
+        check_cancel()?;
+        validate(&bytes)?;
+        check_cancel()?;
         let ready = self.finish_ready(outputs)?;
         Ok((ready, bytes))
     }
@@ -707,12 +1081,7 @@ impl ResidentSubmission<'_> {
                 "resident completion requires physical readback".into(),
             ));
         }
-        for item in cohort {
-            self.service.check_lease(&item.lease)?;
-            if !self.accesses.iter().any(|(l, _)| l.id() == item.lease.id()) {
-                return Err(Error::State("readback lease absent from submission".into()));
-            }
-        }
+        self.require_accesses(cohort.iter().map(|item| (&item.lease, DeviceAccess::Read)))?;
         let bytes = self
             .service
             .client
@@ -809,12 +1178,27 @@ pub(crate) struct ResidentInitialization<'a> {
     events: Vec<DeviceEventId>,
     leases: Vec<ResidentLease>,
     uploaded: BTreeSet<BufferLeaseId>,
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    source_uploads: Vec<Arc<source_upload::UploadOwner>>,
+    #[cfg(all(feature = "qualification", target_os = "linux"))]
+    matrix_source_uploads: Vec<Arc<resident_matrix::upload::UploadOwner>>,
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    model_source_uploads: Vec<Arc<model_upload::ModelUploadOwner>>,
     completion_owners: Vec<crate::physical_quarantine::CompletionOwner>,
     work: Option<PhysicalWork<'a>>,
     armed: bool,
 }
 impl ResidentInitialization<'_> {
-    #[cfg(all(feature = "qualification", feature = "cuda"))]
+    #[cfg(feature = "qualification")]
+    pub(crate) fn require_service(&self, service: &Arc<ResidentService>) -> Result<()> {
+        if !Arc::ptr_eq(self.service, service) {
+            return Err(Error::State(
+                "native original initialization service differs".into(),
+            ));
+        }
+        service.ensure_usable()
+    }
+    #[cfg(feature = "qualification")]
     pub(crate) fn retain_completion_owner(
         &mut self,
         owner: crate::physical_quarantine::CompletionOwner,
@@ -832,7 +1216,7 @@ impl ResidentInitialization<'_> {
                 .ledger
                 .lock()
                 .map_err(|_| Error::State("resident initialization ledger poisoned".into()))?;
-            let id = ledger.admit(bytes, role)?;
+            let id = ledger.admit_for(self.service.generation, bytes, role)?;
             match ledger.submit(self.expected_root, &[(id, DeviceAccess::Write)]) {
                 Ok(event) => (id, event),
                 Err(error) => {
@@ -846,16 +1230,69 @@ impl ResidentInitialization<'_> {
         let handle = self.service.client.empty(bytes);
         let lease = ResidentLease(Arc::new(LeaseInner {
             handle: Some(handle),
+            _backing: None,
+            pool_use: None,
+            workspace: None,
             id,
             bytes,
             role,
             allocation_generation,
             initialized: AtomicBool::new(false),
+            workspace_written_epoch: AtomicU64::new(0),
             quarantined: AtomicBool::new(false),
             service: self.service.clone(),
         }));
         self.leases.push(lease.clone());
         Ok(lease)
+    }
+    /// Move zeroes directly; backend staging needs no caller slice clone.
+    pub(crate) fn upload_zeroed(
+        &mut self,
+        bytes: usize,
+        role: BufferRole,
+    ) -> Result<ResidentLease> {
+        let lease = self.allocate_empty(bytes, role)?;
+        self.upload_zeroed_into(&lease)?;
+        Ok(lease)
+    }
+    /// Fresh leases retain their allocation Write; pooled leases register one.
+    pub(crate) fn upload_zeroed_into(&mut self, lease: &ResidentLease) -> Result<()> {
+        self.service.ensure_usable()?;
+        self.service.check_lease(lease)?;
+        if lease.is_initialized() || self.uploaded.contains(&lease.id()) {
+            return Err(Error::State(
+                "resident zero destination already written".into(),
+            ));
+        }
+        if let Some(held) = self.leases.iter().find(|held| held.id() == lease.id()) {
+            if !Arc::ptr_eq(&held.0, &lease.0) {
+                return Err(Error::State(
+                    "resident zero destination alias differs".into(),
+                ));
+            }
+        } else {
+            if let Some(workspace) = &lease.0.workspace {
+                self.completion_owners.push(workspace.active_run()?);
+            }
+            let event = self
+                .service
+                .ledger
+                .lock()
+                .map_err(|_| Error::State("resident initialization ledger poisoned".into()))?
+                .submit(self.expected_root, &[(lease.id(), DeviceAccess::Write)])?;
+            self.events.push(event);
+            self.leases.push(lease.clone());
+        }
+        // Both the exact event and destination owner precede allocation/H2D.
+        self.service.client.write(
+            &lease.handle(),
+            Bytes::from_bytes_vec(vec![0u8; lease.bytes()]),
+        );
+        self.service
+            .uploaded_value_bytes
+            .fetch_add(lease.bytes() as u64, Ordering::AcqRel);
+        self.uploaded.insert(lease.id());
+        Ok(())
     }
     pub fn upload_bytes(&mut self, bytes: &[u8], role: BufferRole) -> Result<ResidentLease> {
         let lease = self.allocate_empty(bytes.len(), role)?;
@@ -870,6 +1307,18 @@ impl ResidentInitialization<'_> {
         Ok(lease)
     }
     pub async fn complete_sync(mut self) -> Result<ResidentReady> {
+        #[cfg(all(feature = "qualification", target_os = "linux"))]
+        for upload in &self.matrix_source_uploads {
+            upload.require_complete()?;
+        }
+        #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+        for upload in &self.source_uploads {
+            upload.require_complete()?;
+        }
+        #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+        for upload in &self.model_source_uploads {
+            upload.require_complete()?;
+        }
         if self.events.is_empty() {
             return Err(Error::State("empty resident initialization".into()));
         }
@@ -895,7 +1344,13 @@ impl ResidentInitialization<'_> {
             .complete()?;
         for lease in &self.leases {
             if self.uploaded.contains(&lease.id()) {
-                lease.0.initialized.store(true, Ordering::Release);
+                let run = lease
+                    .0
+                    .workspace
+                    .as_ref()
+                    .map(|w| w.active_run())
+                    .transpose()?;
+                lease.record_completed_write(run.as_deref())?;
             }
         }
         self.armed = false;
@@ -904,7 +1359,14 @@ impl ResidentInitialization<'_> {
             events: self.events.clone(),
             expected_root: self.expected_root,
             root_binding: None,
-            outputs: self.leases.clone(),
+            // Initializers may write private workspace views, but Ready must
+            // not export raw cloneable aliases beyond their activation.
+            outputs: self
+                .leases
+                .iter()
+                .filter(|l| l.0.workspace.is_none())
+                .cloned()
+                .collect(),
         })
     }
 }
@@ -927,6 +1389,19 @@ impl Drop for ResidentInitialization<'_> {
 mod tests {
     use super::*;
     use zerogravity_core::session_root::SessionAuthority;
+
+    #[test]
+    fn access_index_keeps_original_cohort_positions_and_refuses_duplicate_ids() {
+        let mut ledger = DeviceEventLedger::new(1, 64).unwrap();
+        let a = ledger.admit(4, BufferRole::Activation).unwrap();
+        let b = ledger.admit(4, BufferRole::Scratch).unwrap();
+        let absent = ledger.admit(4, BufferRole::Output).unwrap();
+        let positions = access_positions([b, a]).unwrap();
+        assert_eq!(positions[&b], 0);
+        assert_eq!(positions[&a], 1);
+        assert!(!positions.contains_key(&absent));
+        assert!(access_positions([a, b, a]).is_err());
+    }
 
     fn sessions(source: SourceIdentity, count: usize) -> Vec<SessionAuthority> {
         (0..count)
@@ -1004,3 +1479,9 @@ mod tests {
         assert_eq!(owners[0].binding(), bindings[0]);
     }
 }
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+mod qwen2b_projection;
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+mod rms_scratch;

@@ -37,8 +37,19 @@ use zerogravity_model_qwen35::LoadedQwenModel;
 
 const SCRATCH_SLOTS: usize = 12;
 
+fn supported_prefix_capacity(capacity: usize) -> bool {
+    matches!(capacity, 256 | 512)
+        || (cfg!(all(feature = "qualification", feature = "cuda"))
+            && matches!(capacity, 768 | 1024))
+}
+
+mod physical_layout;
+pub use physical_layout::{ResidentBufferLayout, ResidentPhysicalType};
+
 mod batch;
 pub(crate) use batch::BatchProgram;
+#[cfg(all(feature = "qualification", target_os = "linux"))]
+pub(crate) mod typed_slice;
 #[cfg(all(feature = "qualification", feature = "cuda"))]
 pub(crate) use batch::{BatchBodyReceipt, BatchGraphProfile, BatchGraphReplay};
 
@@ -49,13 +60,13 @@ mod projection_qualification;
 /// Allocation coordinates only. Original handles and admitted leases remain
 /// the lifetime owners; this copyable metadata never pins or promotes memory.
 #[derive(Clone, Debug)]
-struct BufferRange {
+pub(crate) struct BufferRange {
     service: ServiceId,
     memory: ManagedMemoryId,
     bytes: Range<u64>,
 }
 impl BufferRange {
-    fn new(handle: &Handle) -> Result<Self> {
+    pub(crate) fn new(handle: &Handle) -> Result<Self> {
         let start = handle.offset_start.unwrap_or(0);
         let end = handle.size().checked_sub(handle.offset_end.unwrap_or(0));
         let end = end
@@ -67,11 +78,18 @@ impl BufferRange {
             bytes: start..end,
         })
     }
-    fn overlaps(&self, other: &Self) -> bool {
+    pub(crate) fn overlaps(&self, other: &Self) -> bool {
         self.service == other.service
             && self.memory == other.memory
             && self.bytes.start < other.bytes.end
             && other.bytes.start < self.bytes.end
+    }
+    #[cfg(all(feature = "qualification", target_os = "linux"))]
+    pub(crate) fn require_exact_len(&self, bytes: usize) -> Result<()> {
+        if self.bytes.end - self.bytes.start != bytes as u64 {
+            return Err(Error::State("resident exact logical buffer length".into()));
+        }
+        Ok(())
     }
 }
 
@@ -163,20 +181,138 @@ fn contiguous_aliases(plan: &ForwardPlan) -> Result<Vec<Option<ValueId>>> {
     Ok(aliases)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) struct DeviceBuffer {
     pub handle: Handle,
     pub elements: usize,
+    physical: ResidentBufferLayout,
+    // Typed external binding retains its ORIGINAL admitted lease. Workspace
+    // allocations instead remain in the enclosing existing owner/lease list.
+    lease: Option<crate::resident_leases::ResidentLease>,
+}
+impl std::fmt::Debug for DeviceBuffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeviceBuffer")
+            .field("handle", &self.handle)
+            .field("elements", &self.elements)
+            .field("physical", &self.physical)
+            .field(
+                "lease_id",
+                &self
+                    .lease
+                    .as_ref()
+                    .map(crate::resident_leases::ResidentLease::id),
+            )
+            .finish()
+    }
 }
 impl DeviceBuffer {
+    /// Existing four-byte ABI (including opaque original token/control words).
+    /// Logical activation precision never selects physical storage here.
     pub fn new(handle: Handle, elements: usize) -> Self {
-        Self { handle, elements }
+        Self {
+            handle,
+            elements,
+            physical: ResidentBufferLayout::legacy_f32(elements),
+            lease: None,
+        }
     }
+    pub(crate) fn from_lease(
+        lease: crate::resident_leases::ResidentLease,
+        physical: ResidentBufferLayout,
+        role: zerogravity_core::device_events::BufferRole,
+        access: zerogravity_core::device_events::DeviceAccess,
+    ) -> Result<Self> {
+        let value = Self {
+            handle: lease.handle(),
+            elements: physical.elements(),
+            physical,
+            lease: Some(lease),
+        };
+        value.validate_lease(value.lease.as_ref().unwrap(), role, access)?;
+        Ok(value)
+    }
+    #[cfg(all(
+        feature = "qwen-source-qualification",
+        feature = "hardware-abort-probe",
+        target_os = "linux"
+    ))]
+    pub(crate) fn final_owner_original_lease(
+        &self,
+    ) -> Option<&crate::resident_leases::ResidentLease> {
+        self.lease.as_ref()
+    }
+    /// Original admitted lease only; public handle metadata cannot retarget it.
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    pub(crate) fn original_lease(&self) -> Result<&crate::resident_leases::ResidentLease> {
+        let lease = self.lease.as_ref().ok_or_else(|| {
+            Error::State("typed resident value has no original lease owner".into())
+        })?;
+        self.validate_lease(
+            lease,
+            lease.role(),
+            zerogravity_core::device_events::DeviceAccess::Read,
+        )?;
+        Ok(lease)
+    }
+    pub(crate) fn require_layout(&self, expected: ResidentBufferLayout) -> Result<()> {
+        self.physical.require(expected)?;
+        if self.elements != self.physical.elements() {
+            return Err(Error::State(
+                "resident physical descriptor element count changed".into(),
+            ));
+        }
+        Ok(())
+    }
+    fn validate_lease(
+        &self,
+        lease: &crate::resident_leases::ResidentLease,
+        role: zerogravity_core::device_events::BufferRole,
+        access: zerogravity_core::device_events::DeviceAccess,
+    ) -> Result<()> {
+        self.physical.validate_role(role, access)?;
+        let expected = BufferRange::new(&lease.handle())?;
+        let actual = BufferRange::new(&self.handle)?;
+        if lease.role() != role
+            || lease.bytes() != self.physical.bytes()?
+            || expected.service != actual.service
+            || expected.memory != actual.memory
+            || expected.bytes != actual.bytes
+        {
+            return Err(Error::State(
+                "resident typed original lease/source/role/range differs".into(),
+            ));
+        }
+        self.physical
+            .validate_region(actual.bytes.start, actual.bytes.end - actual.bytes.start)?;
+        Ok(())
+    }
+    /// Raw descriptor only. Actual completion/readback ownership stays external.
+    pub(crate) fn readback(
+        &self,
+        lease: &crate::resident_leases::ResidentLease,
+        expected: ResidentBufferLayout,
+    ) -> Result<crate::resident_leases::ResidentReadback> {
+        use zerogravity_core::device_events::DeviceAccess;
+        self.require_layout(expected)?;
+        self.validate_lease(lease, lease.role(), DeviceAccess::Read)?;
+        if let Some(original) = &self.lease
+            && (original.id() != lease.id() || !Arc::ptr_eq(original.service(), lease.service()))
+        {
+            return Err(Error::State(
+                "resident typed readback original lease differs".into(),
+            ));
+        }
+        lease.readback(0, self.physical.bytes()?)
+    }
+    /// Existing shaders/state/control consumers retain exact original F32-word
+    /// minimum-range validation; a BF16 tag can never enter that ABI.
     fn check(&self, client: &Client, expected: usize) -> Result<BufferRange> {
+        self.require_layout(ResidentBufferLayout::legacy_f32(expected))?;
         let range = BufferRange::new(&self.handle)?;
         if self.elements != expected
             || range.service != client.service_id()
-            || range.bytes.end - range.bytes.start < bytes(expected, 4)? as u64
+            || range.bytes.end - range.bytes.start < self.physical.bytes()? as u64
         {
             return Err(Error::State(
                 "resident program binding size/service mismatch".into(),
@@ -215,6 +351,67 @@ pub(crate) struct StateBinding {
     /// Committed prefix length; meaningful for paired KV only.
     pub prior_tokens: usize,
 }
+struct NativeExecution<'a> {
+    #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+    qwen: Option<&'a dyn qwen_source::Execution>,
+    #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+    gemma: Option<&'a dyn gemma_text::Execution>,
+    cancelled: Option<&'a std::sync::atomic::AtomicBool>,
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    phase: Option<&'a crate::resident_inference::native_fragment::PrefixPhaseEnqueue<'a>>,
+}
+impl<'a> NativeExecution<'a> {
+    fn new(cancelled: Option<&'a std::sync::atomic::AtomicBool>) -> Self {
+        Self {
+            cancelled,
+            #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+            phase: None,
+            #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+            gemma: None,
+            #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+            qwen: None,
+        }
+    }
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    fn with_phase(
+        mut self,
+        phase: &'a crate::resident_inference::native_fragment::PrefixPhaseEnqueue<'a>,
+    ) -> Self {
+        self.phase = Some(phase);
+        self
+    }
+    #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+    fn with_gemma(mut self, execution: &'a dyn gemma_text::Execution) -> Self {
+        self.gemma = Some(execution);
+        self
+    }
+    #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+    fn with_qwen(mut self, execution: &'a dyn qwen_source::Execution) -> Self {
+        self.qwen = Some(execution);
+        self
+    }
+}
+enum CurrentExecution<'a> {
+    Single {
+        parameters: RuntimeParameters,
+        states: &'a [StateBinding],
+    },
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    Cohort {
+        permits: &'a [crate::resident_inference::native_fragment::PrefixPhaseEnqueue<'a>],
+    },
+}
+impl CurrentExecution<'_> {
+    fn single(&self) -> Result<(RuntimeParameters, &[StateBinding])> {
+        match self {
+            Self::Single { parameters, states } => Ok((*parameters, states)),
+            #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+            Self::Cohort { .. } => Err(Error::State(
+                "cohort cannot borrow first-row runtime/state authority".into(),
+            )),
+        }
+    }
+}
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RuntimeParameters {
     pub token: u32,
@@ -245,6 +442,26 @@ impl ResidentOutput {
 pub(crate) enum StateLayout {
     Vector { elements: usize },
     Kv { slab: usize, capacity: usize },
+}
+#[cfg(any(
+    feature = "vllm-cuda-qualification",
+    feature = "gemma-bf16-qualification",
+    feature = "qwen-source-qualification"
+))]
+impl StateLayout {
+    /// Actual plane count and F32 word extent per plane. A KV domain is two
+    /// planes of one checked `slab*capacity` extent; total requirement bytes/4
+    /// covers both and is never a plane extent.
+    pub(crate) fn planes(&self) -> Result<(usize, usize)> {
+        match *self {
+            Self::Vector { elements } => Ok((1usize, elements)),
+            Self::Kv { slab, capacity } => Ok((
+                2usize,
+                slab.checked_mul(capacity)
+                    .ok_or_else(|| Error::Limit("resident state KV plane extent".into()))?,
+            )),
+        }
+    }
 }
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct StateRequirement {
@@ -299,29 +516,95 @@ struct NodeStatus {
     row: Option<Handle>,
 }
 
-pub(crate) struct ResidentProgram {
-    // The immutable original allocation remains alive for every resident handle.
-    _source_owner: Arc<dyn TensorSource>,
-    plan: ForwardPlan,
-    preflight: ResidentPreflight,
+#[derive(Clone)]
+enum ResidentProgramSource {
+    Owned(Arc<dyn TensorSource>),
+    #[cfg(all(feature = "qualification", target_os = "linux"))]
+    TypedWindows(zerogravity_artifacts::source_weights::VerifiedTensorSource),
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    Windows(Arc<zerogravity_model_qwen35::original_binding::OriginalWindowModelSource>),
+}
+impl ResidentProgramSource {
+    fn source_identity(&self) -> SourceIdentity {
+        match self {
+            Self::Owned(source) => source.source_identity(),
+            #[cfg(all(feature = "qualification", target_os = "linux"))]
+            Self::TypedWindows(source) => source.source_identity(),
+            #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+            Self::Windows(source) => source.source_identity(),
+        }
+    }
+}
+struct LegacyProgram {
     tensors: BTreeMap<String, ResidentTensor>,
     constants: Vec<Handle>,
-    values: Vec<DeviceBuffer>,
     scratch: [Handle; SCRATCH_SLOTS],
-    status: Handle,
     node_status: Vec<NodeStatus>,
-    // Immutable per-operation views of existing originals. Preparation neither
-    // allocates memory nor initializes values/statuses skipped by state-only.
     projections: Vec<Option<Box<DeviceActivation>>>,
     token: Handle,
     exp_tables: Handle,
     trig_tables: Handle,
-    owned_ranges: OwnedRanges,
 }
+enum ResidentProgramBody {
+    #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+    QwenSource(Arc<qwen_source::QwenSourceBody>),
+    Legacy(Box<LegacyProgram>),
+    #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+    GemmaText(Arc<gemma_text::GemmaTextBody>),
+    #[cfg(all(feature = "qualification", target_os = "linux"))]
+    TypedSlice(Arc<typed_slice::TypedBody>),
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    Native(Arc<native::NativeProgram>),
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    NativeFull(Arc<native_full::FullModelProgram>),
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    NativeCohort(Arc<native_cohort::FullModelCohort>),
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    Qwen2bComponent(Arc<qwen2b_component::ComponentProgram>),
+}
+pub(crate) struct ResidentProgram {
+    _source_owner: ResidentProgramSource,
+    plan: ForwardPlan,
+    preflight: ResidentPreflight,
+    values: Vec<DeviceBuffer>,
+    status: Handle,
+    owned_ranges: OwnedRanges,
+    body: ResidentProgramBody,
+}
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub(crate) mod canonical47_binding;
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub(crate) mod native;
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub(crate) mod native_cohort;
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub(crate) mod native_full;
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub(crate) mod natural_binding;
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub(crate) mod qwen2b_component;
+
+#[cfg(all(
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    ),
+    target_os = "linux"
+))]
+pub(crate) mod bf16_projection;
+#[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+pub(crate) mod gemma_text;
+
+#[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+pub(crate) mod qwen_source;
+
 #[derive(Clone, Debug)]
 pub(crate) struct ResidentSubmission {
     pub logits: Option<DeviceBuffer>,
     pub proposals: Vec<(StateVersion, StateBuffers)>,
+    /// Present only for sealed real request cohorts; never projected through one plan.
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    pub cohort_proposals: Option<Vec<Vec<(StateVersion, StateBuffers)>>>,
     pub status: Handle,
     /// Every dynamic-quant status pair, in plan order. Zero is success.
     pub quant_status: Vec<(Handle, usize, Handle, usize)>,
@@ -332,6 +615,81 @@ pub(crate) struct ResidentSubmission {
 }
 
 impl ResidentProgram {
+    pub(crate) fn is_gemma_text(&self) -> bool {
+        #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+        {
+            matches!(self.body, ResidentProgramBody::GemmaText(_))
+        }
+        #[cfg(not(all(feature = "gemma-bf16-qualification", target_os = "linux")))]
+        {
+            false
+        }
+    }
+    fn is_typed_slice(&self) -> bool {
+        #[cfg(all(feature = "qualification", target_os = "linux"))]
+        {
+            matches!(self.body, ResidentProgramBody::TypedSlice(_))
+        }
+        #[cfg(not(all(feature = "qualification", target_os = "linux")))]
+        {
+            false
+        }
+    }
+    fn is_source_window_body(&self) -> bool {
+        #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+        if self.is_qwen_source() {
+            return true;
+        }
+        self.is_gemma_text()
+    }
+    fn legacy(&self) -> Result<&LegacyProgram> {
+        match &self.body {
+            ResidentProgramBody::Legacy(body) => Ok(body),
+            #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+            ResidentProgramBody::QwenSource(_) => Err(Error::Unsupported(
+                "source native body cannot enter legacy execution".into(),
+            )),
+            #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+            ResidentProgramBody::GemmaText(_) => Err(Error::Unsupported(
+                "Gemma text cannot enter legacy execution".into(),
+            )),
+            #[cfg(all(feature = "qualification", target_os = "linux"))]
+            ResidentProgramBody::TypedSlice(_) => Err(Error::Unsupported(
+                "typed slice cannot enter legacy execution".into(),
+            )),
+            #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+            ResidentProgramBody::Native(_)
+            | ResidentProgramBody::NativeFull(_)
+            | ResidentProgramBody::NativeCohort(_)
+            | ResidentProgramBody::Qwen2bComponent(_) => Err(Error::Unsupported(
+                "native fragment cannot use legacy F32 program".into(),
+            )),
+        }
+    }
+    fn legacy_mut(&mut self) -> Result<&mut LegacyProgram> {
+        match &mut self.body {
+            ResidentProgramBody::Legacy(body) => Ok(body),
+            #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+            ResidentProgramBody::QwenSource(_) => Err(Error::Unsupported(
+                "source native body cannot enter legacy execution".into(),
+            )),
+            #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+            ResidentProgramBody::GemmaText(_) => Err(Error::Unsupported(
+                "Gemma text cannot enter legacy execution".into(),
+            )),
+            #[cfg(all(feature = "qualification", target_os = "linux"))]
+            ResidentProgramBody::TypedSlice(_) => Err(Error::Unsupported(
+                "typed slice cannot enter legacy execution".into(),
+            )),
+            #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+            ResidentProgramBody::Native(_)
+            | ResidentProgramBody::NativeFull(_)
+            | ResidentProgramBody::NativeCohort(_)
+            | ResidentProgramBody::Qwen2bComponent(_) => Err(Error::Unsupported(
+                "native fragment cannot use legacy F32 program".into(),
+            )),
+        }
+    }
     fn require_legacy_contract(plan: &ForwardPlan) -> Result<()> {
         use zerogravity_core::accelerator::program::{
             ActivationPrecision, ProgramNumericalProfile,
@@ -345,9 +703,32 @@ impl ResidentProgram {
             || plan.nodes().iter().any(|node| {
                 matches!(
                     node.operation,
-                    PlanOperation::TypedEmbed { .. }
+                    PlanOperation::TextMoe { .. }
+                        | PlanOperation::TextElementwise(_)
+                        | PlanOperation::TextRotary { .. }
+                        | PlanOperation::TextWindowQk { .. }
+                        | PlanOperation::TypedBulkF32Input { .. }
+                        | PlanOperation::TypedBulkF32Matmul { .. }
+                        | PlanOperation::TypedZenSsmOutInput { .. }
+                        | PlanOperation::TypedZenSsmOutProjection { .. }
+                        | PlanOperation::TypedGgufPrefixEmbedding { .. }
+                        | PlanOperation::TypedGgufPrefixRms { .. }
+                        | PlanOperation::TypedGgufGdnInput { .. }
+                        | PlanOperation::TypedGgufGdnProjection { .. }
+                        | PlanOperation::TypedGgufGdnConvSilu { .. }
+                        | PlanOperation::TypedGgufGdnQk { .. }
+                        | PlanOperation::TypedEmbed { .. }
                         | PlanOperation::TypedProject { .. }
                         | PlanOperation::TypedOrdinaryRms { .. }
+                        | PlanOperation::TypedVllmBf16Embedding { .. }
+                        | PlanOperation::TypedVllmInputRms { .. }
+                        | PlanOperation::TypedVllmGdnConv { .. }
+                        | PlanOperation::TypedVllmGdnRecurrent { .. }
+                        | PlanOperation::TypedVllmStateCarry
+                        | PlanOperation::TypedVllm08 { .. }
+                        | PlanOperation::TypedVllmGdnProjection { .. }
+                        | PlanOperation::TypedVllmSiluAndMul { .. }
+                        | PlanOperation::TypedResidualRms { .. }
                         | PlanOperation::TypedCausalConvSilu { .. }
                 )
             })
@@ -364,9 +745,7 @@ impl ResidentProgram {
         if plan.source() != model.source_identity()
             || !plan.source().is_bound()
             || plan.frontier_delta() != 1
-            || plan.prefix_capacity() == 0
-            || plan.prefix_capacity() > 512
-            || !plan.prefix_capacity().is_multiple_of(256)
+            || !supported_prefix_capacity(plan.prefix_capacity())
         {
             return Err(Error::Unsupported(
                 "resident plan source/capacity/frontier unsupported".into(),
@@ -783,7 +1162,10 @@ impl ResidentProgram {
                 .iter()
                 .zip(&aliases)
                 .filter(|(_, alias)| alias.is_none())
-                .map(|(s, _)| s.capacity_elements().and_then(|n| bytes(n, 4)))
+                .map(|(s, _)| {
+                    s.capacity_elements()
+                        .and_then(|n| ResidentBufferLayout::legacy_f32(n).bytes())
+                })
                 .collect::<Result<Vec<_>>>()?,
         )?;
         Ok(ResidentPreflight {
@@ -929,10 +1311,10 @@ impl ResidentProgram {
                 // allocation and byte range. No second lease or upload exists.
                 values[original.0 as usize].clone()
             } else {
-                DeviceBuffer {
-                    handle: allocation.empty(ResidentBufferRole::Value, bytes(n, 4)?)?,
-                    elements: n,
-                }
+                allocation.empty_layout(
+                    ResidentBufferRole::Value,
+                    ResidentBufferLayout::legacy_f32(n),
+                )?
             });
         }
         let scratch: [Handle; SCRATCH_SLOTS] = (0..SCRATCH_SLOTS)
@@ -976,28 +1358,30 @@ impl ResidentProgram {
             })
             .collect::<Result<Vec<_>>>()?;
         let mut program = Self {
-            _source_owner: model,
+            _source_owner: ResidentProgramSource::Owned(model),
             plan,
             preflight,
-            tensors,
-            constants,
             values,
-            scratch,
-            node_status,
-            projections: Vec::new(),
             status: allocation.empty(ResidentBufferRole::Status, 4)?,
-            token: allocation.empty(ResidentBufferRole::Parameter, 4)?,
-            exp_tables: allocation.upload(
-                ResidentBufferRole::Source,
-                f64::as_bytes(&crate::source_transcendentals::TABLES),
-            )?,
-            trig_tables: allocation.upload(
-                ResidentBufferRole::Source,
-                f64::as_bytes(&crate::source_trig::TRIG_TABLES),
-            )?,
             owned_ranges: OwnedRanges::new(client.service_id()),
+            body: ResidentProgramBody::Legacy(Box::new(LegacyProgram {
+                tensors,
+                constants,
+                scratch,
+                node_status,
+                projections: Vec::new(),
+                token: allocation.empty(ResidentBufferRole::Parameter, 4)?,
+                exp_tables: allocation.upload(
+                    ResidentBufferRole::Source,
+                    f64::as_bytes(&crate::source_transcendentals::TABLES),
+                )?,
+                trig_tables: allocation.upload(
+                    ResidentBufferRole::Source,
+                    f64::as_bytes(&crate::source_trig::TRIG_TABLES),
+                )?,
+            })),
         };
-        program.projections = program
+        let projections = program
             .plan
             .nodes()
             .iter()
@@ -1009,6 +1393,9 @@ impl ResidentProgram {
                 _ => Ok(None),
             })
             .collect::<Result<Vec<_>>>()?;
+        program.legacy_mut()?.projections = projections;
+        #[cfg(feature = "cuda")]
+        program.preflight_silu(client, 1)?;
         for handle in program.owned_handles() {
             program.owned_ranges.insert(BufferRange::new(&handle)?)?;
         }
@@ -1024,11 +1411,12 @@ impl ResidentProgram {
         index: usize,
         tensor: &SourceTensor,
     ) -> Result<DeviceActivation> {
-        let t = &self.tensors[&tensor.name];
+        let legacy = self.legacy()?;
+        let t = &legacy.tensors[&tensor.name];
         let layout = t
             .layout
             .ok_or_else(|| Error::State("resident quant projection layout absent".into()))?;
-        let flags = &self.node_status[index];
+        let flags = &legacy.node_status[index];
         let input = self.plan.nodes()[index].inputs[0];
         DeviceActivation::from_bound(
             client,
@@ -1037,11 +1425,11 @@ impl ResidentProgram {
             t.scales.clone(),
             t.biases.clone(),
             [
-                self.scratch[0].clone(),
-                self.scratch[1].clone(),
-                self.scratch[2].clone(),
-                self.scratch[3].clone(),
-                self.scratch[4].clone(),
+                legacy.scratch[0].clone(),
+                legacy.scratch[1].clone(),
+                legacy.scratch[2].clone(),
+                legacy.scratch[3].clone(),
+                legacy.scratch[4].clone(),
                 flags.block.as_ref().expect("quant block status").clone(),
                 flags.row.as_ref().expect("quant row status").clone(),
             ],
@@ -1057,7 +1445,7 @@ impl ResidentProgram {
         &self.values
     }
     pub fn source_identity(&self) -> SourceIdentity {
-        self.plan.source()
+        self._source_owner.source_identity()
     }
     /// No handles are created after this cohort is retained. Includes all
     /// original source, static, intermediate, status and external state handles.
@@ -1069,18 +1457,51 @@ impl ResidentProgram {
     /// statuses are absent so their uninitialized storage cannot become Ready.
     /// This is cold binding metadata, not a second allocation or program.
     pub fn execution_handles(&self, output: ResidentOutput) -> Vec<Handle> {
+        #[cfg(all(feature = "qualification", target_os = "linux"))]
+        if let ResidentProgramBody::TypedSlice(body) = &self.body {
+            return body.accesses().iter().map(|(l, _)| l.handle()).collect();
+        }
+        #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+        if let ResidentProgramBody::GemmaText(body) = &self.body {
+            return body.accesses().iter().map(|(l, _)| l.handle()).collect();
+        }
+        #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+        match &self.body {
+            ResidentProgramBody::Native(native) => {
+                return native.handles(&self.values, &self.status);
+            }
+            ResidentProgramBody::NativeFull(native) => {
+                return native.handles().expect("sealed full24 phase accesses");
+            }
+            ResidentProgramBody::NativeCohort(body) => {
+                return body
+                    .accesses()
+                    .iter()
+                    .map(|(lease, _)| lease.handle())
+                    .collect();
+            }
+            ResidentProgramBody::Qwen2bComponent(body) => {
+                return body.handles().expect("sealed source2B component accesses");
+            }
+            _ => {}
+        }
+        #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+        if let ResidentProgramBody::QwenSource(body) = &self.body {
+            return body.accesses().iter().map(|(l, _)| l.handle()).collect();
+        }
+        let legacy = self.legacy().expect("legacy program body checked");
         let nodes = output.nodes(&self.plan);
         let mut handles = vec![
             self.status.clone(),
-            self.token.clone(),
-            self.exp_tables.clone(),
-            self.trig_tables.clone(),
+            legacy.token.clone(),
+            legacy.exp_tables.clone(),
+            legacy.trig_tables.clone(),
         ];
-        for t in self.tensors.values() {
+        for t in legacy.tensors.values() {
             handles.extend([t.packed.clone(), t.scales.clone(), t.biases.clone()]);
         }
-        handles.extend(self.constants.iter().cloned());
-        handles.extend(self.scratch.iter().cloned());
+        handles.extend(legacy.constants.iter().cloned());
+        handles.extend(legacy.scratch.iter().cloned());
         // SSA aliases retain the same original handle. The enclosing owner
         // selects each admitted lease once; all alias producers precede it in
         // this same closed prefix, including during state-only prefill.
@@ -1090,7 +1511,7 @@ impl ResidentProgram {
                 .flat_map(|n| &n.outputs)
                 .map(|id| self.values[id.0 as usize].handle.clone()),
         );
-        for s in &self.node_status[..nodes.len()] {
+        for s in &legacy.node_status[..nodes.len()] {
             handles.extend(s.block.iter().cloned());
             handles.extend(s.row.iter().cloned());
         }
@@ -1111,17 +1532,62 @@ impl ResidentProgram {
         p: RuntimeParameters,
         bindings: &[StateBinding],
     ) -> Result<()> {
+        // Native BF16 bodies retain their own source/phase checks. Ordered
+        // source SiLU belongs only to the original legacy F32 body.
+        #[cfg(feature = "cuda")]
+        if matches!(&self.body, ResidentProgramBody::Legacy(_)) {
+            self.preflight_silu(client, 1)?;
+        }
+        #[cfg(all(feature = "qualification", target_os = "linux"))]
+        if let ResidentProgramBody::TypedSlice(body) = &self.body {
+            return body.validate_runtime(client, p, bindings);
+        }
+        #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+        if let ResidentProgramBody::GemmaText(body) = &self.body {
+            body.validate_runtime(client, p)?;
+        }
+        #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+        if let ResidentProgramBody::QwenSource(body) = &self.body {
+            body.validate_runtime(client, p)?;
+        }
+        self.validate_state_runtime(client, p, bindings)
+    }
+    fn validate_state_runtime(
+        &self,
+        client: &Client,
+        p: RuntimeParameters,
+        bindings: &[StateBinding],
+    ) -> Result<()> {
         if self.owned_ranges.service != client.service_id() {
             return Err(Error::State(
                 "resident program used with another physical service".into(),
             ));
         }
-        if p.valid_tokens
-            != p.position
-                .checked_add(1)
-                .ok_or_else(|| Error::Limit("resident position overflow".into()))?
-            || p.valid_tokens > self.plan.prefix_capacity()
-            || p.position > 32768
+        #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+        let native = match &self.body {
+            ResidentProgramBody::Native(native) => {
+                native.validate_runtime(p)?;
+                true
+            }
+            ResidentProgramBody::NativeFull(native) => {
+                native.validate_runtime(p)?;
+                true
+            }
+            ResidentProgramBody::Qwen2bComponent(body) => {
+                body.validate_runtime(p)?;
+                true
+            }
+            _ => false,
+        };
+        #[cfg(not(all(feature = "vllm-cuda-qualification", target_os = "linux")))]
+        let native = false;
+        if !native
+            && (p.valid_tokens
+                != p.position
+                    .checked_add(1)
+                    .ok_or_else(|| Error::Limit("resident position overflow".into()))?
+                || p.valid_tokens > self.plan.prefix_capacity()
+                || p.position > 32768)
         {
             return Err(Error::Limit(
                 "resident runtime prefix exceeds prepared capacity".into(),
@@ -1190,7 +1656,17 @@ impl ResidentProgram {
         bindings: &[StateBinding],
         output: ResidentOutput,
     ) -> Result<ResidentSubmission> {
-        self.launch_impl(client, p, bindings, None, output)
+        self.legacy()?;
+        self.launch_impl(
+            client,
+            CurrentExecution::Single {
+                parameters: p,
+                states: bindings,
+            },
+            None,
+            output,
+            NativeExecution::new(None),
+        )
     }
 
     /// Direct device-token binding (for example the first word of the compact
@@ -1203,18 +1679,137 @@ impl ResidentProgram {
         token: &DeviceBuffer,
         output: ResidentOutput,
     ) -> Result<ResidentSubmission> {
+        self.legacy()?;
         token.check(client, 1)?;
-        self.launch_impl(client, p, bindings, Some(token), output)
+        self.launch_impl(
+            client,
+            CurrentExecution::Single {
+                parameters: p,
+                states: bindings,
+            },
+            Some(token),
+            output,
+            NativeExecution::new(None),
+        )
     }
-    fn launch_impl(
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    pub(crate) fn launch_fragment(
         &mut self,
         client: &Client,
         p: RuntimeParameters,
         bindings: &[StateBinding],
+        cancelled: Option<&std::sync::atomic::AtomicBool>,
+    ) -> Result<ResidentSubmission> {
+        if !matches!(self.body, ResidentProgramBody::Native(_))
+            || self.plan.vllm_gdn_fragment().is_none()
+        {
+            return Err(Error::Unsupported(
+                "not an unpublishable native fragment".into(),
+            ));
+        }
+        self.launch_impl(
+            client,
+            CurrentExecution::Single {
+                parameters: p,
+                states: bindings,
+            },
+            None,
+            ResidentOutput::StateOnly,
+            NativeExecution::new(cancelled),
+        )
+    }
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    pub(crate) fn launch_attempt_fragment(
+        &mut self,
+        client: &Client,
+        p: RuntimeParameters,
+        bindings: &[StateBinding],
+        permit: &crate::resident_inference::native_fragment::PrefixPhaseEnqueue<'_>,
+        cancelled: Option<&std::sync::atomic::AtomicBool>,
+    ) -> Result<ResidentSubmission> {
+        match &self.body {
+            ResidentProgramBody::Native(body) => body.require_attempt(permit)?,
+            ResidentProgramBody::NativeFull(body) => body.require_attempt(permit)?,
+            ResidentProgramBody::Qwen2bComponent(body) => body.require_attempt(permit)?,
+            _ => return Err(Error::Unsupported("original native body required".into())),
+        }
+        self.launch_impl(
+            client,
+            CurrentExecution::Single {
+                parameters: p,
+                states: bindings,
+            },
+            None,
+            ResidentOutput::StateOnly,
+            NativeExecution::new(cancelled).with_phase(permit),
+        )
+    }
+    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    pub(crate) fn launch_cohort<'a>(
+        &mut self,
+        client: &Client,
+        permits: &'a [crate::resident_inference::native_fragment::PrefixPhaseEnqueue<'a>],
+        cancelled: Option<&std::sync::atomic::AtomicBool>,
+    ) -> Result<ResidentSubmission> {
+        self.launch_impl(
+            client,
+            CurrentExecution::Cohort { permits },
+            None,
+            ResidentOutput::StateOnly,
+            NativeExecution::new(cancelled),
+        )
+    }
+    fn launch_impl(
+        &mut self,
+        client: &Client,
+        current: CurrentExecution<'_>,
         token: Option<&DeviceBuffer>,
         output: ResidentOutput,
+        execution: NativeExecution<'_>,
     ) -> Result<ResidentSubmission> {
-        self.validate_runtime(client, p, bindings)?;
+        let cancelled = execution.cancelled;
+        match &current {
+            CurrentExecution::Single { parameters, states } => {
+                #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+                if matches!(self.body, ResidentProgramBody::NativeCohort(_)) {
+                    return Err(Error::State(
+                        "cohort requires every original row permit".into(),
+                    ));
+                }
+                self.validate_runtime(client, *parameters, states)?;
+            }
+            #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+            CurrentExecution::Cohort { permits } => {
+                let ResidentProgramBody::NativeCohort(body) = &self.body else {
+                    return Err(Error::State(
+                        "cohort current execution requires sealed cohort body".into(),
+                    ));
+                };
+                if body.status().service().client().service_id() != client.service_id() {
+                    return Err(Error::State("cohort physical client differs".into()));
+                }
+                body.begin_launch(permits, cancelled)?;
+            }
+        }
+        #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+        match &self.body {
+            ResidentProgramBody::Native(native) => {
+                native.begin_launch(cancelled, execution.phase)?
+            }
+            ResidentProgramBody::NativeFull(native) => {
+                native.begin_launch(cancelled, execution.phase)?
+            }
+            ResidentProgramBody::Qwen2bComponent(body) => {
+                body.begin_launch(cancelled, execution.phase)?
+            }
+            _ => {}
+        }
+        #[cfg(not(all(feature = "vllm-cuda-qualification", target_os = "linux")))]
+        let _ = cancelled;
+        #[cfg(all(feature = "qualification", target_os = "linux"))]
+        if let ResidentProgramBody::TypedSlice(body) = &self.body {
+            body.begin()?;
+        }
         let mut dispatches = 0;
         unsafe {
             crate::program_kernels::clear_step_status::launch_unchecked(
@@ -1223,39 +1818,93 @@ impl ResidentProgram {
                 threads(),
                 arg(&self.status, 1),
             );
-            if let Some(token) = token {
-                self.copy::<false>(
-                    client,
-                    &token.handle,
-                    1,
-                    &self.token,
-                    1,
-                    TensorView::vector(0, 1),
-                    0,
-                );
-            } else {
-                crate::resident_bindings::write_token::launch_unchecked(
-                    client,
-                    grid(1),
-                    threads(),
-                    arg(&self.token, 1),
-                    p.token,
-                );
+            if self.plan.vllm_gdn_fragment().is_none()
+                && !self.is_typed_slice()
+                && !self.is_source_window_body()
+            {
+                let legacy = self.legacy()?;
+                if let Some(token) = token {
+                    self.copy::<false>(
+                        client,
+                        &token.handle,
+                        1,
+                        &legacy.token,
+                        1,
+                        TensorView::vector(0, 1),
+                        0,
+                    );
+                } else {
+                    crate::resident_bindings::write_token::launch_unchecked(
+                        client,
+                        grid(1),
+                        threads(),
+                        arg(&legacy.token, 1),
+                        current.single()?.0.token,
+                    );
+                }
             }
         }
-        dispatches += 2;
-        let nodes = output.nodes(&self.plan);
+        dispatches += 1 + usize::from(
+            self.plan.vllm_gdn_fragment().is_none()
+                && !self.is_typed_slice()
+                && !self.is_source_window_body(),
+        );
+        #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+        let nodes = match &self.body {
+            ResidentProgramBody::Qwen2bComponent(body) => body.recipe().nodes(),
+            ResidentProgramBody::NativeFull(body) => body.execution_nodes()?,
+            ResidentProgramBody::NativeCohort(body) => body.nodes(),
+            #[cfg(all(feature = "qualification", target_os = "linux"))]
+            ResidentProgramBody::TypedSlice(_) => self.plan.nodes(),
+            _ => output.nodes(&self.plan),
+        };
+        #[cfg(not(all(feature = "vllm-cuda-qualification", target_os = "linux")))]
+        let nodes = if self.is_typed_slice() {
+            self.plan.nodes()
+        } else {
+            output.nodes(&self.plan)
+        };
         for (index, node) in nodes.iter().enumerate() {
-            dispatches += self.launch_node(client, index, node, p, bindings)?;
+            dispatches += match &current {
+                CurrentExecution::Single { parameters, states } => {
+                    self.launch_node(client, index, node, *parameters, states, &execution)?
+                }
+                #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+                CurrentExecution::Cohort { permits } => {
+                    let ResidentProgramBody::NativeCohort(body) = &self.body else {
+                        unreachable!("validated cohort body")
+                    };
+                    body.enqueue(index, node, permits, cancelled)?
+                }
+            };
             // A preflight-validated View fully writes its dense destination and
             // certifies every copied word in the same kernel. All other output
             // certificates (including Contiguous aliases) remain separate.
             if matches!(node.operation, PlanOperation::View(_)) {
+                #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+                if let ResidentProgramBody::QwenSource(body) = &self.body {
+                    body.finish_node(index, node)?;
+                }
+                #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+                match &self.body {
+                    ResidentProgramBody::NativeFull(body) => {
+                        body.finish_value_storage_node(index)?
+                    }
+                    ResidentProgramBody::NativeCohort(body) => {
+                        body.finish_value_storage_node(index)?
+                    }
+                    _ => {}
+                }
+                #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+                if let ResidentProgramBody::GemmaText(body) = &self.body {
+                    body.finish_node(index, node)?;
+                }
                 continue;
             }
             for (out_index, id) in node.outputs.iter().enumerate() {
                 let value = &self.values[id.0 as usize];
-                if let PlanOperation::AttentionQk { geometry, .. } = &node.operation
+                if let PlanOperation::AttentionQk { geometry, .. }
+                | PlanOperation::TextWindowQk { geometry, .. } = &node.operation
                     && out_index == 1
                 {
                     unsafe {
@@ -1265,16 +1914,108 @@ impl ResidentProgram {
                             threads(),
                             arg(&value.handle, value.elements),
                             arg(&self.status, 1),
-                            p.valid_tokens as u32,
+                            current.single()?.0.valid_tokens as u32,
                             geometry.query_heads,
                             self.plan.prefix_capacity(),
                         );
                     }
                 } else {
+                    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+                    match &self.body {
+                        ResidentProgramBody::Native(native) => {
+                            native.certify(value, &self.status)?
+                        }
+                        ResidentProgramBody::NativeFull(native) => {
+                            // Counts actual launches; retained finite cohorts
+                            // run at the terminal original-flight boundary.
+                            let n = native.certify(value, &self.status)?;
+                            dispatches += n;
+                            continue;
+                        }
+                        ResidentProgramBody::NativeCohort(body) => {
+                            dispatches += body.certify(value, &self.status)?;
+                            continue;
+                        }
+                        ResidentProgramBody::Qwen2bComponent(body) => {
+                            body.certify(value, &self.status)?
+                        }
+                        _ => self.certify(client, &value.handle, value.elements),
+                    }
+                    #[cfg(not(all(feature = "vllm-cuda-qualification", target_os = "linux")))]
                     self.certify(client, &value.handle, value.elements);
                 }
                 dispatches += 1;
             }
+            #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+            match &self.body {
+                ResidentProgramBody::NativeFull(body) => body.finish_value_storage_node(index)?,
+                ResidentProgramBody::NativeCohort(body) => body.finish_value_storage_node(index)?,
+                _ => {}
+            }
+            #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+            if let ResidentProgramBody::GemmaText(body) = &self.body {
+                body.finish_node(index, node)?;
+            }
+            #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+            if let ResidentProgramBody::QwenSource(body) = &self.body {
+                body.finish_node(index, node)?;
+            }
+        }
+        #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+        {
+            if let ResidentProgramBody::NativeFull(body) = &self.body {
+                dispatches += body.flush_certificates(cancelled)?;
+            }
+            let carries = match &self.body {
+                ResidentProgramBody::Qwen2bComponent(body) => {
+                    body.finish_nodes()?;
+                    body.recipe().carries().collect::<Vec<_>>()
+                }
+                ResidentProgramBody::NativeFull(body) => body.canonical47_prefix_carries()?,
+                _ => Vec::new(),
+            };
+            // Same original canonical copies for every untouched domain.
+            for slot in carries {
+                let binding = current
+                    .single()?
+                    .1
+                    .iter()
+                    .find(|b| b.slot == slot)
+                    .ok_or_else(|| {
+                        Error::State("original finite prefix carry binding absent".into())
+                    })?;
+                for (prior, candidate) in binding
+                    .prior
+                    .buffers()
+                    .into_iter()
+                    .zip(binding.candidate.buffers())
+                {
+                    prior.check(client, prior.elements)?;
+                    candidate.check(client, prior.elements)?;
+                    self.copy::<false>(
+                        client,
+                        &prior.handle,
+                        prior.elements,
+                        &candidate.handle,
+                        candidate.elements,
+                        TensorView::vector(0, prior.elements),
+                        0,
+                    );
+                    dispatches += 1;
+                }
+            }
+        }
+        #[cfg(all(feature = "qualification", target_os = "linux"))]
+        if let ResidentProgramBody::TypedSlice(body) = &self.body {
+            body.require_finished()?;
+        }
+        #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+        if let ResidentProgramBody::GemmaText(body) = &self.body {
+            body.require_finished(output)?;
+        }
+        #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+        if let ResidentProgramBody::QwenSource(body) = &self.body {
+            body.require_finished()?;
         }
         let logits = self
             .plan
@@ -1286,34 +2027,75 @@ impl ResidentProgram {
             dispatches += 1;
         }
         // Certify all private proposals without moving a state scalar to host.
-        for b in bindings {
-            for value in b.candidate.buffers() {
-                self.certify(client, &value.handle, value.elements);
-                dispatches += 1;
+        let candidate_rows: Vec<&[StateBinding]> = match &current {
+            CurrentExecution::Single { states, .. } => vec![states],
+            #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+            CurrentExecution::Cohort { .. } => {
+                let ResidentProgramBody::NativeCohort(body) = &self.body else {
+                    unreachable!("validated cohort body")
+                };
+                body.state_bindings().collect()
+            }
+        };
+        for row in candidate_rows {
+            for binding in row {
+                for value in binding.candidate.buffers() {
+                    self.certify(client, &value.handle, value.elements);
+                    dispatches += 1;
+                }
             }
         }
-        let mut proposals = Vec::new();
-        for version in self.plan.proposed_domains() {
-            let b = bindings
-                .iter()
-                .find(|b| b.slot == version.slot)
-                .expect("validated state binding");
-            proposals.push((*version, b.candidate.clone()));
+        #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+        if let ResidentProgramBody::NativeFull(native) = &self.body {
+            dispatches += native.enqueue_output(cancelled)?;
         }
+        #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+        if let ResidentProgramBody::NativeCohort(body) = &self.body {
+            dispatches += body.enqueue_output(cancelled)?;
+        }
+        let proposals = match &current {
+            CurrentExecution::Single { states, .. } => {
+                let mut proposals = Vec::new();
+                for version in self.plan.proposed_domains() {
+                    let binding = states
+                        .iter()
+                        .find(|binding| binding.slot == version.slot)
+                        .expect("validated state binding");
+                    proposals.push((*version, binding.candidate.clone()));
+                }
+                proposals
+            }
+            #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+            CurrentExecution::Cohort { .. } => Vec::new(),
+        };
+        #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+        let cohort_proposals = match &current {
+            CurrentExecution::Single { .. } => None,
+            CurrentExecution::Cohort { .. } => {
+                let ResidentProgramBody::NativeCohort(body) = &self.body else {
+                    unreachable!("validated cohort body")
+                };
+                Some(body.proposals()?)
+            }
+        };
         let mut quant_status = Vec::new();
         let mut embedding_status = Vec::new();
         for (i, node) in nodes.iter().enumerate() {
+            if self.is_source_window_body() {
+                break;
+            }
             match &node.operation {
                 PlanOperation::Project { tensor } => {
-                    if let Some(l) = self.tensors[&tensor.name].layout {
+                    let legacy = self.legacy()?;
+                    if let Some(l) = legacy.tensors[&tensor.name].layout {
                         quant_status.push((
-                            self.node_status[i]
+                            self.legacy()?.node_status[i]
                                 .block
                                 .as_ref()
                                 .expect("allocated block status")
                                 .clone(),
                             l.blocks,
-                            self.node_status[i]
+                            self.legacy()?.node_status[i]
                                 .row
                                 .as_ref()
                                 .expect("allocated row status")
@@ -1323,7 +2105,7 @@ impl ResidentProgram {
                     }
                 }
                 PlanOperation::Embed { tensor, .. } => embedding_status.push((
-                    self.node_status[i]
+                    self.legacy()?.node_status[i]
                         .block
                         .as_ref()
                         .expect("allocated embedding status")
@@ -1336,11 +2118,28 @@ impl ResidentProgram {
         Ok(ResidentSubmission {
             logits: logits.map(|v| self.values[v.0 as usize].clone()),
             proposals,
+            #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+            cohort_proposals,
             status: self.status.clone(),
             quant_status,
             embedding_status,
             dispatches,
-            fused_dispatches: 0,
+            fused_dispatches: {
+                #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+                {
+                    match &self.body {
+                        ResidentProgramBody::Native(native) => native.native_launches(),
+                        ResidentProgramBody::NativeFull(native) => native.native_launches(),
+                        ResidentProgramBody::NativeCohort(body) => body.native_launches(),
+                        ResidentProgramBody::Qwen2bComponent(body) => body.native_launches(),
+                        _ => 0,
+                    }
+                }
+                #[cfg(not(all(feature = "vllm-cuda-qualification", target_os = "linux")))]
+                {
+                    0
+                }
+            },
         })
     }
     #[allow(clippy::too_many_arguments)] // Explicit typed source/destination ranges.
@@ -1396,10 +2195,92 @@ impl ResidentProgram {
         node: &PlanNode,
         p: RuntimeParameters,
         bindings: &[StateBinding],
+        execution: &NativeExecution<'_>,
     ) -> Result<usize> {
+        let cancelled = execution.cancelled;
+        #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+        if let ResidentProgramBody::QwenSource(body) = &self.body {
+            if cancelled.is_some_and(|f| f.load(std::sync::atomic::Ordering::Acquire)) {
+                return Err(Error::State("source native call cancelled".into()));
+            }
+            return body.enqueue(
+                index,
+                node,
+                p,
+                bindings,
+                execution
+                    .qwen
+                    .ok_or_else(|| Error::State("source original armed execution absent".into()))?,
+            );
+        }
+        #[cfg(all(feature = "qualification", target_os = "linux"))]
+        if let ResidentProgramBody::TypedSlice(body) = &self.body {
+            return body.enqueue(index, node, cancelled);
+        }
+        #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
+        if let ResidentProgramBody::GemmaText(body) = &self.body {
+            return body.enqueue(
+                index,
+                node,
+                p,
+                bindings,
+                execution.gemma.ok_or_else(|| {
+                    Error::State("Gemma original armed execution context absent".into())
+                })?,
+                cancelled,
+            );
+        }
+        if cancelled.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Acquire)) {
+            return Err(Error::State("resident native fragment cancelled".into()));
+        }
+        #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+        if let ResidentProgramBody::NativeFull(native) = &self.body {
+            return native.enqueue(index, node, cancelled, execution.phase);
+        }
+        #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+        if let ResidentProgramBody::Qwen2bComponent(body) = &self.body {
+            return body.enqueue(index, node, cancelled, execution.phase);
+        }
+        #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+        if let ResidentProgramBody::Native(native) = &self.body {
+            if matches!(node.operation, PlanOperation::TypedVllmStateCarry) {
+                let effect = node
+                    .state
+                    .ok_or_else(|| Error::State("native carry state effect absent".into()))?;
+                let binding = bindings
+                    .iter()
+                    .find(|b| b.slot == effect.read.slot)
+                    .ok_or_else(|| Error::State("native carry original state absent".into()))?;
+                let mut count = 0;
+                for (prior, candidate) in binding
+                    .prior
+                    .buffers()
+                    .into_iter()
+                    .zip(binding.candidate.buffers())
+                {
+                    prior.check(client, prior.elements)?;
+                    candidate.check(client, prior.elements)?;
+                    self.copy::<false>(
+                        client,
+                        &prior.handle,
+                        prior.elements,
+                        &candidate.handle,
+                        candidate.elements,
+                        TensorView::vector(0, prior.elements),
+                        0,
+                    );
+                    count += 1;
+                }
+                return Ok(count);
+            }
+            return native.enqueue(index, node, cancelled, execution.phase);
+        }
+        let legacy = self.legacy()?;
+        #[cfg(not(all(feature = "vllm-cuda-qualification", target_os = "linux")))]
+        let _ = cancelled;
         let input = |i: usize| &self.values[node.inputs[i].0 as usize];
         let output = |i: usize| &self.values[node.outputs[i].0 as usize];
-        let s = |i: usize| &self.scratch[i];
+        let s = |i: usize| &legacy.scratch[i];
         let state = |version: StateVersion| -> &StateBuffers {
             let b = bindings
                 .iter()
@@ -1428,15 +2309,43 @@ impl ResidentProgram {
         // bound every offset/count. Parent retains the complete original cohort.
         unsafe {
             match &node.operation {
-                PlanOperation::TypedEmbed { .. }
+                PlanOperation::TypedSourceStateRead { .. }
+                | PlanOperation::TypedSourceStateWrite { .. }
+                | PlanOperation::TypedTorchGdn { .. }
+                | PlanOperation::TypedTorchFullConvolution
+                | PlanOperation::TypedTorchAttention { .. }
+                | PlanOperation::TextMoe { .. }
+                | PlanOperation::TextElementwise(_)
+                | PlanOperation::TextRotary { .. }
+                | PlanOperation::TextWindowQk { .. }
+                | PlanOperation::TypedBulkF32Input { .. }
+                | PlanOperation::TypedBulkF32Matmul { .. }
+                | PlanOperation::TypedZenSsmOutInput { .. }
+                | PlanOperation::TypedZenSsmOutProjection { .. }
+                | PlanOperation::TypedGgufPrefixEmbedding { .. }
+                | PlanOperation::TypedGgufPrefixRms { .. }
+                | PlanOperation::TypedGgufGdnInput { .. }
+                | PlanOperation::TypedGgufGdnProjection { .. }
+                | PlanOperation::TypedGgufGdnConvSilu { .. }
+                | PlanOperation::TypedGgufGdnQk { .. }
+                | PlanOperation::TypedEmbed { .. }
                 | PlanOperation::TypedProject { .. }
                 | PlanOperation::TypedOrdinaryRms { .. }
+                | PlanOperation::TypedVllmBf16Embedding { .. }
+                | PlanOperation::TypedVllmInputRms { .. }
+                | PlanOperation::TypedVllmGdnConv { .. }
+                | PlanOperation::TypedVllmGdnRecurrent { .. }
+                | PlanOperation::TypedVllmStateCarry
+                | PlanOperation::TypedVllm08 { .. }
+                | PlanOperation::TypedVllmGdnProjection { .. }
+                | PlanOperation::TypedVllmSiluAndMul { .. }
+                | PlanOperation::TypedResidualRms { .. }
                 | PlanOperation::TypedCausalConvSilu { .. } => Err(Error::Unsupported(
                     "resident typed operation has no qualified lowering".into(),
                 )),
                 PlanOperation::Embed { tensor, .. } => {
-                    let t = &self.tensors[&tensor.name];
-                    let status = self.node_status[index]
+                    let t = &legacy.tensors[&tensor.name];
+                    let status = legacy.node_status[index]
                         .block
                         .as_ref()
                         .expect("embedding status");
@@ -1445,7 +2354,7 @@ impl ResidentProgram {
                         grid(tensor.columns),
                         threads(),
                         arg(&t.packed, t.elements),
-                        arg(&self.token, 1),
+                        arg(&legacy.token, 1),
                         arg(&output(0).handle, tensor.columns),
                         arg(status, tensor.columns),
                         tensor.rows,
@@ -1463,7 +2372,7 @@ impl ResidentProgram {
                     Ok(2)
                 }
                 PlanOperation::Project { tensor } => {
-                    let t = &self.tensors[&tensor.name];
+                    let t = &legacy.tensors[&tensor.name];
                     let out = output(0);
                     if tensor.kind == QuantKind::F32 {
                         crate::mixed_ops::f32_ggml_dot_gemv::launch_unchecked(
@@ -1480,7 +2389,7 @@ impl ResidentProgram {
                         return Ok(1);
                     }
                     let l = t.layout.expect("quant layout");
-                    let dynamic = self.projections[index]
+                    let dynamic = legacy.projections[index]
                         .as_ref()
                         .expect("prepared quant projection binding");
                     let preparation_dispatches = dynamic.launch_prepare(client, &l)?;
@@ -1608,7 +2517,7 @@ impl ResidentProgram {
                         grid(n),
                         threads(),
                         arg(&input(0).handle, n),
-                        arg(&self.constants[gamma.0 as usize], width),
+                        arg(&legacy.constants[gamma.0 as usize], width),
                         arg(s(1), groups * 2),
                         arg(&output(0).handle, n),
                         width,
@@ -1616,42 +2525,7 @@ impl ResidentProgram {
                     );
                     Ok(4)
                 }
-                PlanOperation::Silu { multiplied } => {
-                    let n = input(0).elements;
-                    crate::resident_bindings::certify_interval::launch_unchecked(
-                        client,
-                        grid(n),
-                        threads(),
-                        arg(&input(0).handle, n),
-                        arg(&self.status, 1),
-                        -256.0,
-                        256.0,
-                        n,
-                    );
-                    for stage in 0..12 {
-                        crate::silu::silu_step::launch_unchecked(
-                            client,
-                            grid(n),
-                            threads(),
-                            arg(&input(0).handle, n),
-                            arg(s(0), n * crate::silu::SCRATCH),
-                            arg(&output(0).handle, n),
-                            n,
-                            stage,
-                        );
-                    }
-                    if *multiplied {
-                        crate::silu::silu_gate::launch_unchecked(
-                            client,
-                            grid(n),
-                            threads(),
-                            arg(&input(1).handle, n),
-                            arg(&output(0).handle, n),
-                            n,
-                        );
-                    }
-                    Ok(13 + usize::from(*multiplied))
-                }
+                PlanOperation::Silu { .. } => self.launch_silu(client, node, 1),
                 PlanOperation::Add => {
                     let n = input(0).elements;
                     crate::elementwise::residual_add::launch_unchecked(
@@ -1675,7 +2549,7 @@ impl ResidentProgram {
                             arg(&input(1).handle, n),
                             arg(&input(0).handle, n),
                             arg(
-                                &self.exp_tables,
+                                &legacy.exp_tables,
                                 crate::source_transcendentals::TABLES.len(),
                             ),
                             arg(s(0), n * crate::elementwise::SIGMOID_SCRATCH),
@@ -1695,7 +2569,7 @@ impl ResidentProgram {
                         grid(n),
                         threads(),
                         arg(&input(0).handle, n),
-                        arg(&self.constants[weights.0 as usize], n * 4),
+                        arg(&legacy.constants[weights.0 as usize], n * 4),
                         arg(&vector(effect.read).handle, n * 3),
                         arg(s(0), n * 4),
                         arg(&vector(effect.write).handle, n * 3),
@@ -1734,8 +2608,8 @@ impl ResidentProgram {
                         threads(),
                         arg(&input(0).handle, h),
                         arg(&input(1).handle, h),
-                        arg(&self.constants[dt.0 as usize], h),
-                        arg(&self.constants[a.0 as usize], h),
+                        arg(&legacy.constants[dt.0 as usize], h),
+                        arg(&legacy.constants[a.0 as usize], h),
                         arg(s(0), h * 4),
                         h,
                     );
@@ -1746,7 +2620,7 @@ impl ResidentProgram {
                             threads(),
                             arg(s(0), h * 4),
                             arg(
-                                &self.exp_tables,
+                                &legacy.exp_tables,
                                 crate::source_transcendentals::TABLES.len(),
                             ),
                             arg(s(1), h * 6),
@@ -1896,7 +2770,7 @@ impl ResidentProgram {
                         grid(half),
                         threads(),
                         arg(s(1), half),
-                        arg(&self.trig_tables, crate::source_trig::TRIG_TABLES.len()),
+                        arg(&legacy.trig_tables, crate::source_trig::TRIG_TABLES.len()),
                         arg(s(2), half * 2),
                         half,
                     );
@@ -2289,7 +3163,8 @@ impl ResidentProgram {
         use crate::attention_softmax as sm;
         let n = h * cap;
         let groups = cap.div_ceil(8);
-        let s = |i: usize| &self.scratch[i];
+        let legacy = self.legacy()?;
+        let s = |i: usize| &legacy.scratch[i];
         // The original finite valid prefix is followed by -Inf scores. Maxima
         // and source polynomial stages therefore preserve all valid bits; the
         // padded exponentials become canonical +0 before the original tree.
@@ -2487,6 +3362,34 @@ impl<F: FnMut(ResidentBufferRole, usize, AllocationInit<'_>) -> Result<Handle>>
         let handle = (self.allocate)(role, bytes, AllocationInit::Empty)?;
         self.check(handle, bytes)
     }
+    fn empty_layout(
+        &mut self,
+        role: ResidentBufferRole,
+        layout: ResidentBufferLayout,
+    ) -> Result<DeviceBuffer> {
+        use zerogravity_core::device_events::{BufferRole, DeviceAccess};
+        let semantic = match role {
+            ResidentBufferRole::Value => BufferRole::Activation,
+            ResidentBufferRole::Workspace => BufferRole::Scratch,
+            _ => {
+                return Err(Error::Unsupported(
+                    "typed physical allocation requires Value/Workspace role".into(),
+                ));
+            }
+        };
+        layout.validate_role(semantic, DeviceAccess::Write)?;
+        let handle = self.empty(role, layout.bytes()?)?;
+        if layout.kind() == ResidentPhysicalType::Bf16 {
+            let range = BufferRange::new(&handle)?;
+            layout.validate_region(range.bytes.start, range.bytes.end - range.bytes.start)?;
+        }
+        Ok(DeviceBuffer {
+            handle,
+            elements: layout.elements(),
+            physical: layout,
+            lease: None,
+        })
+    }
     fn upload(&mut self, role: ResidentBufferRole, bytes: &[u8]) -> Result<Handle> {
         let handle = (self.allocate)(role, bytes.len(), AllocationInit::Upload(bytes))?;
         self.check(handle, bytes.len())
@@ -2498,6 +3401,37 @@ mod tests {
     use super::*;
     #[cfg(feature = "qualification")]
     use std::path::Path;
+
+    #[test]
+    fn only_original_and_opt_in_diagnostic_context_capacities() {
+        for capacity in [256, 512] {
+            assert!(supported_prefix_capacity(capacity));
+        }
+        for capacity in [768, 1024] {
+            assert_eq!(
+                supported_prefix_capacity(capacity),
+                cfg!(all(feature = "qualification", feature = "cuda"))
+            );
+        }
+        for capacity in [
+            0,
+            1,
+            255,
+            257,
+            511,
+            513,
+            767,
+            769,
+            1023,
+            1025,
+            2048,
+            4096,
+            8192,
+            usize::MAX,
+        ] {
+            assert!(!supported_prefix_capacity(capacity));
+        }
+    }
 
     #[test]
     fn prepared_ranges_match_independent_byte_coverage_with_gaps_and_aliases() {
@@ -2673,9 +3607,19 @@ mod tests {
                     );
                 }
             }
-            for cap in [1, 255, 257, 768] {
+            for cap in [1, 255, 257] {
                 let plan = model.forward_plan(cap, true, false).unwrap();
                 assert!(ResidentProgram::preflight(model.as_ref(), &plan).is_err());
+            }
+            for cap in [768, 1024] {
+                let plan = model.forward_plan(cap, true, false).unwrap();
+                let result = ResidentProgram::preflight(model.as_ref(), &plan);
+                assert_eq!(
+                    result.is_ok(),
+                    cfg!(all(feature = "qualification", feature = "cuda")),
+                    "capacity={cap}: {:?}",
+                    result.as_ref().err()
+                );
             }
         }
     }
@@ -2684,3 +3628,18 @@ mod tests {
 #[cfg(test)]
 #[path = "resident_program/typed_refusal_tests.rs"]
 mod typed_refusal_tests;
+
+#[cfg(test)]
+#[path = "resident_program/bulk_f32_tests.rs"]
+mod bulk_f32_tests;
+#[cfg(test)]
+#[path = "resident_program/vllm_native_tests.rs"]
+mod vllm_native_tests;
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub(crate) mod bf16_greedy;
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub(crate) mod text_positions;
+
+mod silu;

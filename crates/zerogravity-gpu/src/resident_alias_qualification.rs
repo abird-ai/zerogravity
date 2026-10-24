@@ -39,7 +39,11 @@ pub(super) async fn qualify(resident: &Arc<ResidentModel>) -> Result<()> {
         }
         ledger_bytes = add(ledger_bytes, lease.bytes())?;
     }
-    let greedy_bytes = workspace.greedy.iter().try_fold(0, |n, handle| {
+    let greedy = workspace
+        .greedy
+        .as_ref()
+        .ok_or_else(|| fail("model greedy workspace absent"))?;
+    let greedy_bytes = greedy.iter().try_fold(0, |n, handle| {
         add(n, lease_for(&workspace.leases, handle)?.bytes())
     })?;
     if ledger_bytes != add(program.budget().owned_bytes()?, greedy_bytes)? {

@@ -1,6 +1,25 @@
 //! Source/physical diagnostics, compiled only by explicit qualification.
 use super::*;
 
+pub(crate) async fn qualify_bounded_context(
+    device: Device,
+    path: &Path,
+    teacher_ids: Vec<u32>,
+    capacity: usize,
+    provider_cap: usize,
+    device_cap: u64,
+) -> Result<()> {
+    context_qualification::qualify_bounded(
+        device,
+        path,
+        teacher_ids,
+        capacity,
+        provider_cap,
+        device_cap,
+    )
+    .await
+}
+
 pub(crate) async fn qualify_context(
     device: Device,
     path: &Path,

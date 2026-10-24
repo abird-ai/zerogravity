@@ -36,9 +36,10 @@ fn legacy(
     index: usize,
     tensor: &SourceTensor,
 ) -> Result<DeviceActivation> {
-    let t = &program.tensors[&tensor.name];
+    let bindings = program.legacy()?;
+    let t = &bindings.tensors[&tensor.name];
     let node = &program.plan.nodes()[index];
-    let flags = &program.node_status[index];
+    let flags = &bindings.node_status[index];
     DeviceActivation::from_bound(
         client,
         &t.layout.ok_or_else(|| failure("legacy quant layout"))?,
@@ -46,11 +47,11 @@ fn legacy(
         t.scales.clone(),
         t.biases.clone(),
         [
-            program.scratch[0].clone(),
-            program.scratch[1].clone(),
-            program.scratch[2].clone(),
-            program.scratch[3].clone(),
-            program.scratch[4].clone(),
+            bindings.scratch[0].clone(),
+            bindings.scratch[1].clone(),
+            bindings.scratch[2].clone(),
+            bindings.scratch[3].clone(),
+            bindings.scratch[4].clone(),
             flags
                 .block
                 .as_ref()
@@ -117,7 +118,8 @@ impl ResidentProgram {
     /// Compare all ten cached handle coordinates to H22 and explicit typed-node
     /// ownership. Timing covers host construction/lookup only, never inference.
     pub(crate) fn qualify_projection_bindings(&self, client: &Client) -> Result<()> {
-        if self.projections.len() != self.plan.nodes().len()
+        let bindings = self.legacy()?;
+        if bindings.projections.len() != self.plan.nodes().len()
             || self.plan.source() != self._source_owner.source_identity()
             || self.preflight.source != self.plan.source()
         {
@@ -135,27 +137,27 @@ impl ResidentProgram {
                 PlanOperation::Project { tensor } if tensor.kind != QuantKind::F32 => tensor,
                 operation => {
                     f32_nodes += usize::from(matches!(operation, PlanOperation::Project { .. }));
-                    if self.projections[index].is_some() {
+                    if bindings.projections[index].is_some() {
                         return Err(failure("nonquantized operation has a binding"));
                     }
                     continue;
                 }
             };
-            let cached = self.projections[index]
+            let cached = bindings.projections[index]
                 .as_ref()
                 .ok_or_else(|| failure("quantized operation has no binding"))?;
             let reconstructed = legacy(self, client, index, tensor)?;
-            let t = &self.tensors[&tensor.name];
-            let flags = &self.node_status[index];
+            let t = &bindings.tensors[&tensor.name];
+            let flags = &bindings.node_status[index];
             let explicit = [
                 self.values[node.inputs[0].0 as usize].handle.clone(),
                 t.scales.clone(),
                 t.biases.clone(),
-                self.scratch[0].clone(),
-                self.scratch[1].clone(),
-                self.scratch[2].clone(),
-                self.scratch[3].clone(),
-                self.scratch[4].clone(),
+                bindings.scratch[0].clone(),
+                bindings.scratch[1].clone(),
+                bindings.scratch[2].clone(),
+                bindings.scratch[3].clone(),
+                bindings.scratch[4].clone(),
                 flags
                     .block
                     .as_ref()
@@ -217,7 +219,7 @@ impl ResidentProgram {
             )?;
             quantized.push((index, tensor));
         }
-        let cached_count = self.projections.iter().filter(|p| p.is_some()).count();
+        let cached_count = bindings.projections.iter().filter(|p| p.is_some()).count();
         if quantized.is_empty()
             || cached_count != quantized.len()
             || statuses.len() != cached_count * 2
@@ -225,7 +227,7 @@ impl ResidentProgram {
         {
             return Err(failure("quantized/status/coordinate totals differ"));
         }
-        let vector_bytes = std::mem::size_of_val(self.projections.as_slice());
+        let vector_bytes = std::mem::size_of_val(bindings.projections.as_slice());
         let binding_bytes = std::mem::size_of::<DeviceActivation>()
             .checked_mul(cached_count)
             .ok_or_else(|| Error::Limit("H23 host cache footprint overflow".into()))?;
@@ -234,14 +236,14 @@ impl ResidentProgram {
             .ok_or_else(|| Error::Limit("H23 host cache footprint overflow".into()))?;
         for &(index, tensor) in &quantized {
             black_box(legacy(self, client, index, tensor)?);
-            black_box(&self.projections[index]);
+            black_box(&bindings.projections[index]);
         }
         let measure = |cached: bool| -> Result<u128> {
             let start = Instant::now();
             for _ in 0..100 {
                 for &(index, tensor) in &quantized {
                     if cached {
-                        let binding = black_box(self).projections[black_box(index)]
+                        let binding = black_box(bindings).projections[black_box(index)]
                             .as_deref()
                             .ok_or_else(|| failure("cache changed during host measurement"))?;
                         black_box(binding);
@@ -270,11 +272,11 @@ impl ResidentProgram {
         }
         println!(
             "H23_PREPARED_PROJECTION_BINDINGS_PASS node_slots={} quantized_operations={cached_count} f32_operations={f32_nodes} unique_quant_source_tensors={} repeated_source_operations={repeated_sources} exact_handle_coordinate_checks={handle_checks} unique_per_operation_statuses={} malformed_constructor_refusals={negative_cases} host_cache_element_bytes={} host_vector_element_bytes={vector_bytes} host_binding_payload_bytes={binding_bytes} logical_host_cache_bytes={host_cache_bytes} host_vec_header_bytes={} allocator_bookkeeping=unmeasured no_gpu_allocations_or_uploads=true host_binding_only=true full_binding_loops_per_round=100 rounds=5 alternating_order=true legacy_round_ns={legacy_ns:?} cached_round_ns={cached_ns:?} timing_threshold=none model_throughput_claim=none launch_prepare_validation=unchanged",
-            self.projections.len(),
+            bindings.projections.len(),
             sources.len(),
             statuses.len(),
             std::mem::size_of::<Option<Box<DeviceActivation>>>(),
-            std::mem::size_of_val(&self.projections)
+            std::mem::size_of_val(&bindings.projections)
         );
         Ok(())
     }
