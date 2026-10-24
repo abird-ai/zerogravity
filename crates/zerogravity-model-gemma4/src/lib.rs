@@ -10,3 +10,5 @@ pub mod variant_31b;
 pub use config::{AttentionKind, Gemma4Config, Gemma4LayerSpec, Gemma4Variant, RotaryKind};
 pub mod tensors;
 pub use tensors::Gemma4TensorSpec;
+#[cfg(all(feature = "text-reference", target_os = "linux"))]
+pub mod text;

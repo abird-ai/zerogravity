@@ -5670,8 +5670,13 @@ dependencies = [
 name = "zerogravity-model-gemma4"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "serde_json",
+ "sha2",
+ "tokenizers",
+ "zerogravity-artifacts",
  "zerogravity-core",
+ "zerogravity-cpu",
 ]
 
 [[package]]
