@@ -286,6 +286,10 @@ pub struct ModelInstance {
     pub target: String,
     /// Not fetched, opened or granted authority by graph validation.
     pub source: Option<String>,
+    pub model_config: Option<String>,
+    pub tokenizer: Option<String>,
+    pub snapshot: Option<String>,
+    pub native_artifacts: Option<String>,
 }
 #[derive(Clone, Debug)]
 pub struct PipelineNode {
@@ -415,6 +419,58 @@ fn checked_value(
         .ok_or_else(unsupported)
 }
 impl Config {
+    /// Validate a direct request as the same canonical single-model region,
+    /// while still checking every declared graph/route and instance reference.
+    pub fn validate_entrypoint(
+        &self,
+        entry: &crate::run_policy::Entrypoint,
+    ) -> Result<VerifiedShape> {
+        match entry {
+            crate::run_policy::Entrypoint::Pipeline(name) => {
+                if !self.pipelines.iter().any(|p| p.name == *name) {
+                    return Err(Error::Malformed(
+                        "selected pipeline entrypoint is absent".into(),
+                    ));
+                }
+                self.validate()
+            }
+            crate::run_policy::Entrypoint::Model(id) => {
+                if !self.models.iter().any(|m| m.id == *id) {
+                    return Err(Error::Malformed(
+                        "selected model entrypoint is absent".into(),
+                    ));
+                }
+                let mut graph = self.clone();
+                let mut name = "run-direct-entry".to_string();
+                while graph.pipelines.iter().any(|p| p.name == name) {
+                    name.push('x');
+                }
+                graph.pipelines.push(Pipeline {
+                    name,
+                    input: ValueKind::Text,
+                    output: ValueKind::Text,
+                    realtime: false,
+                    chat_context: None,
+                    steps: vec![PipelineNode {
+                        id: "generate".into(),
+                        kind: "llm".into(),
+                        model: Some(id.clone()),
+                    }],
+                    links: vec![
+                        PipelineEdge {
+                            from: "input.value".into(),
+                            to: "generate.text".into(),
+                        },
+                        PipelineEdge {
+                            from: "generate.text".into(),
+                            to: "output.value".into(),
+                        },
+                    ],
+                });
+                graph.validate()
+            }
+        }
+    }
     /// No network, disk or resource allocator access, no model admission and no
     /// runtime/API binding. Successful validation NEVER means executable.
     pub fn validate(&self) -> Result<VerifiedShape> {
@@ -435,10 +491,11 @@ impl Config {
         for model in &self.models {
             if !id_ok(&model.id)
                 || !field_ok(&model.target)
-                || model
-                    .source
-                    .as_ref()
-                    .is_some_and(|p| !field_ok(p) || p.contains("://"))
+                || model.source.as_ref().is_some_and(|p| {
+                    !field_ok(p) || crate::run_policy::SourceSelector::parse(p).is_err()
+                })
+                || model.model_config.as_ref().is_some_and(|p| !field_ok(p))
+                || model.tokenizer.as_ref().is_some_and(|p| !field_ok(p))
                 || models.insert(model.id.as_str(), model).is_some()
             {
                 return Err(invalid());
@@ -737,6 +794,10 @@ mod tests {
                 id: "llm".into(),
                 target: "qwen3.5-2b".into(),
                 source: None,
+                model_config: None,
+                tokenizer: None,
+                snapshot: None,
+                native_artifacts: None,
             }],
             pipelines: vec![Pipeline {
                 name: "chat".into(),
@@ -840,6 +901,10 @@ mod context_tests {
                 id: "assistant".into(),
                 target: "qwen3.5-2b".into(),
                 source: None,
+                model_config: None,
+                tokenizer: None,
+                snapshot: None,
+                native_artifacts: None,
             }],
             pipelines: vec![
                 Pipeline {
@@ -965,6 +1030,10 @@ mod extension_tests {
                 id: model.into(),
                 target: target.into(),
                 source: None,
+                model_config: None,
+                tokenizer: None,
+                snapshot: None,
+                native_artifacts: None,
             }],
             pipelines: vec![Pipeline {
                 name: "specification".into(),

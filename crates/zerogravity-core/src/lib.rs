@@ -6,6 +6,7 @@ pub mod context_filter;
 pub mod context_snapshot;
 pub mod device_events;
 pub mod device_queue;
+pub mod optimization;
 pub mod pipeline;
 pub mod quant;
 pub mod resource_arbiter;
@@ -52,3 +53,5 @@ impl From<io::Error> for Error {
         Self::Io(value)
     }
 }
+
+pub mod run_policy;
