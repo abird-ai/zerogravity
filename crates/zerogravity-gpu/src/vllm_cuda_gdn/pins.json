@@ -1,0 +1,977 @@
+{
+  "source": "vLLM0.31.0 db9527a46873454610df6dbedf79a36d6bf1a7f6; actual SM86 Triton3.7.1",
+  "assets": [
+    {
+      "file": "conv_prefill_one.cu",
+      "bytes": 23106,
+      "sha256": "52744daafac1aa856972d970a6b6319db213014678ab10ff2f128edf74d337ec",
+      "original_ptx_sha256": "7e9600b09ee757c1d786657d7edfa5b3629cb5b1b00480de1fdb5a761e4a0a5c",
+      "kernel_hash": "a905e193ffad4e19f2ea2339d393c4fb25ec37cbe234b699801ce89438f30c41",
+      "entry": "zg_vllm_a905e193ffad4e19",
+      "threads": 128,
+      "shared": 0
+    },
+    {
+      "file": "prep_one.cu",
+      "bytes": 28046,
+      "sha256": "c9246f36bc4471d2a8c7bf8cdce62a345e5ef85cbad8da4a63cd2236f9288297",
+      "original_ptx_sha256": "ca887254afcfa3b02b6a604ac3670ef4cca3cc72e05826c1fc9e1256cd85909e",
+      "kernel_hash": "6914e331960248b3617517b19da274a86f4d07735b515b3295a7a2ecfe925c8c",
+      "entry": "zg_vllm_6914e331960248b3",
+      "threads": 128,
+      "shared": 0
+    },
+    {
+      "file": "cumsum.cu",
+      "bytes": 6005,
+      "sha256": "05415f4a695ec9676911bdc0d9d78f161d632d2f4a11ff9228cac3d9c9341ed1",
+      "original_ptx_sha256": "9ee24bac2a541a6feab663f2509ba00e112be3cfab4a50a532fe58a101f2eae7",
+      "kernel_hash": "a2ad2ccfa6e953f54feaea98d798f250adb4642c8d1685d7539cdf9e8828a004",
+      "entry": "zg_vllm_a2ad2ccfa6e953f5",
+      "threads": 128,
+      "shared": 8
+    },
+    {
+      "file": "kkt.cu",
+      "bytes": 60771,
+      "sha256": "26ec3a53b6e0ecdc231f8a979f295b13eedcc3699a346d39dab7d662f11b34a8",
+      "original_ptx_sha256": "e8ba065941c5dbf148d98ee28eba369a987d176c264ce8e05e9cb697498bad44",
+      "kernel_hash": "79e779d50e66d22448d91d54e8cb57a802bb270937f459bd2d89f0f29fb72123",
+      "entry": "zg_vllm_79e779d50e66d224",
+      "threads": 128,
+      "shared": 8192
+    },
+    {
+      "file": "solve.cu",
+      "bytes": 98296,
+      "sha256": "31d29c35e5c15a324fff302b4ccd47f0d1ba2c67d706f00e6498d48192639c86",
+      "original_ptx_sha256": "fcae68be445ab7ec2b7dcc127d3d4c0851340ce3d237be00e909b4391e67c135",
+      "kernel_hash": "116d2ffe705b66433d245e6123845e4dfa3f5b0f8584fa05debe9a42aae23323",
+      "entry": "zg_vllm_116d2ffe705b6643",
+      "threads": 128,
+      "shared": 10240
+    },
+    {
+      "file": "recompute.cu",
+      "bytes": 68892,
+      "sha256": "60968a002c972723ad36de68657af554c645a0cd78c3531a73599c44d3f38f1f",
+      "original_ptx_sha256": "5731fd146617cf5b6cc13f28b2622c31135df4a35907567ffba83ff9b0b10c9a",
+      "kernel_hash": "a73872840c0a9697327a0de7f2e6cef7e256cab92b5fb8edc7c3ec983ebd52ef",
+      "entry": "zg_vllm_a73872840c0a9697",
+      "threads": 256,
+      "shared": 40960
+    },
+    {
+      "file": "state_h.cu",
+      "bytes": 163058,
+      "sha256": "3cb1cb2217e4205adb4ab26e0dacdf3d7255034fc74dcc4a282c51600b139e00",
+      "original_ptx_sha256": "e191a9ba73a5a661175f81e823457c920c7792166e3f37e80a74fec1fcca1d1c",
+      "kernel_hash": "444aa643ee60a35aaea49d0f71063a33a36ffa8b2b8d9ac1b20d436c980bc785",
+      "entry": "zg_vllm_444aa643ee60a35a",
+      "threads": 128,
+      "shared": 49412
+    },
+    {
+      "file": "output.cu",
+      "bytes": 77976,
+      "sha256": "ac7f0f31786647aab58a25505ccd4240b8d5d2c6e0dc6ecf3a0dcdbb5e5ae259",
+      "original_ptx_sha256": "284a22e9904079006d593e67082d6d898cd35becf07e7aebf8086ec9c070df0e",
+      "kernel_hash": "81c9eabf9b9a78e0b89cc6a056e7335d09c189e3bee0a570192ff848c16ef4b4",
+      "entry": "zg_vllm_81c9eabf9b9a78e0",
+      "threads": 128,
+      "shared": 12288
+    },
+    {
+      "file": "gated_one.cu",
+      "bytes": 8671,
+      "sha256": "24c671049caca8667b69f8804edaf1243c2e6ac9e0df2647ebfe0ba4c270c844",
+      "original_ptx_sha256": "a97d127b124f14d226c2b24cff907e8c7aa260545e41743f84581acf6d510bbb",
+      "kernel_hash": "c15586587b4a279e610fa906ee2a154778c00245c13c8a0b210472ad00b88536",
+      "entry": "zg_vllm_c15586587b4a279e",
+      "threads": 32,
+      "shared": 0
+    },
+    {
+      "file": "conv_decode.cu",
+      "bytes": 13120,
+      "sha256": "84c13d6fa1786b0b9cea70fc09ed0acb9a04b1b78980a80f90ca46cdd51603b0",
+      "original_ptx_sha256": "a1e81ca0dfff5c4f241061a3baddcc25e7407ad42a2f99f039703199fa5469aa",
+      "kernel_hash": "c8f85203ea21f242f266b2f882ca413b6519c145218d3bc653e84631d9acc65a",
+      "entry": "zg_vllm_c8f85203ea21f242",
+      "threads": 128,
+      "shared": 0
+    },
+    {
+      "file": "decode.cu",
+      "bytes": 137352,
+      "sha256": "7e8adeda8bfb71d047a26ecab014bba67679f9e96da792aa50ca580aaae0c4d5",
+      "original_ptx_sha256": "e15170544e78ee3ab6b19670b4cc80e9a74db549314bb57f8a897ac855283fd5",
+      "kernel_hash": "ebe262b1b494d65e9b1d7acbe8c8dbc86902bd36cdb5bbe94f15425b2a726837",
+      "entry": "zg_vllm_ebe262b1b494d65e",
+      "threads": 32,
+      "shared": 64
+    },
+    {
+      "file": "conv_prefill_many.cu",
+      "bytes": 23106,
+      "sha256": "3e2cea093945ec8ea673afcfbcfbfae408793b25446e99f4d35028b0b879781f",
+      "original_ptx_sha256": "7e9600b09ee757c1d786657d7edfa5b3629cb5b1b00480de1fdb5a761e4a0a5c",
+      "kernel_hash": "a905e193ffad4e19f2ea2339d393c4fb25ec37cbe234b699801ce89438f30c41",
+      "entry": "zg_vllm_a905e193ffad4e19",
+      "threads": 128,
+      "shared": 0
+    },
+    {
+      "file": "prep_64.cu",
+      "bytes": 28011,
+      "sha256": "6de2f1121a5dd970425c788d6a04a56868869853bd6d698daf290049f3a0ebb1",
+      "original_ptx_sha256": "26138ddbd8249c06511453384e6877aef58ad39d23eb9d8733b3eb8369e2467a",
+      "kernel_hash": "2671a92b80f9dc47598a912670350a725a773f79ece25b5fd0f1fd26decefa9d",
+      "entry": "zg_vllm_2671a92b80f9dc47",
+      "threads": 128,
+      "shared": 0
+    },
+    {
+      "file": "gated_64.cu",
+      "bytes": 25146,
+      "sha256": "9faa8c3417ab4e74ed3c53409dc844dd125faf8318ad0c7e69b507a9590ce8b3",
+      "original_ptx_sha256": "3900a7b7b673b1b398d39a8bb7d3e4ab4d87ea8798e9a2214be7c5b9d29beeea",
+      "kernel_hash": "820c1a61c99ce5796c490bbd73674611eea84590da52a6a19f3aa9a5f0b620a2",
+      "entry": "zg_vllm_820c1a61c99ce579",
+      "threads": 32,
+      "shared": 0
+    },
+    {
+      "file": "prep_two.cu",
+      "bytes": 28140,
+      "sha256": "bed99d0478a5156ee99d68e9f782d6b69569ec0d4fca6a966e2d0d765c60cddb",
+      "original_ptx_sha256": "22dd4697695aa897b26a5ed794164c6dcc204ef11429d5d37786b240d12e6670",
+      "kernel_hash": "78ff2ff19f5099b9e9ec12daac53cfc5cedb0fa7224d4984c1e2dabca9e8cdfc",
+      "entry": "zg_vllm_78ff2ff19f5099b9",
+      "threads": 128,
+      "shared": 0
+    },
+    {
+      "file": "gated_two.cu",
+      "bytes": 8671,
+      "sha256": "aa2eefbb231b0de529cbca3daf350b2d2024c4935c8e8b491a2c6cf9bdf434dd",
+      "original_ptx_sha256": "a97d127b124f14d226c2b24cff907e8c7aa260545e41743f84581acf6d510bbb",
+      "kernel_hash": "c15586587b4a279e610fa906ee2a154778c00245c13c8a0b210472ad00b88536",
+      "entry": "zg_vllm_c15586587b4a279e",
+      "threads": 32,
+      "shared": 0
+    }
+  ],
+  "phases": [
+    {
+      "phase": "InitialOne",
+      "stage": "Conv",
+      "file": "conv_prefill_one.cu",
+      "grid": [
+        1,
+        24,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 9,
+          "name": "num_cache_lines",
+          "type": "i32",
+          "bits": 329
+        },
+        {
+          "parameter": 10,
+          "name": "stride_x_token",
+          "type": "i64",
+          "bits": 8192
+        },
+        {
+          "parameter": 11,
+          "name": "stride_o_token",
+          "type": "i64",
+          "bits": 8192
+        }
+      ]
+    },
+    {
+      "phase": "InitialOne",
+      "stage": "Prep",
+      "file": "prep_one.cu",
+      "grid": [
+        1,
+        32,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 10,
+          "name": "stride_x_tok",
+          "type": "i32",
+          "bits": 8192
+        },
+        {
+          "parameter": 11,
+          "name": "stride_a_tok",
+          "type": "i32",
+          "bits": 32
+        },
+        {
+          "parameter": 12,
+          "name": "stride_b_tok",
+          "type": "i32",
+          "bits": 32
+        },
+        {
+          "parameter": 13,
+          "name": "stride_q_tok",
+          "type": "i32",
+          "bits": 2048
+        },
+        {
+          "parameter": 14,
+          "name": "stride_k_tok",
+          "type": "i32",
+          "bits": 2048
+        },
+        {
+          "parameter": 15,
+          "name": "stride_v_tok",
+          "type": "i32",
+          "bits": 2048
+        }
+      ]
+    },
+    {
+      "phase": "InitialOne",
+      "stage": "Cumsum",
+      "file": "cumsum.cu",
+      "grid": [
+        1,
+        16,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 4,
+          "name": "T",
+          "type": "i32",
+          "bits": 1
+        }
+      ]
+    },
+    {
+      "phase": "InitialOne",
+      "stage": "Kkt",
+      "file": "kkt.cu",
+      "grid": [
+        1,
+        16,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 6,
+          "name": "T",
+          "type": "i32",
+          "bits": 1
+        }
+      ]
+    },
+    {
+      "phase": "InitialOne",
+      "stage": "Solve",
+      "file": "solve.cu",
+      "grid": [
+        1,
+        16,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 4,
+          "name": "T",
+          "type": "i32",
+          "bits": 1
+        }
+      ]
+    },
+    {
+      "phase": "InitialOne",
+      "stage": "Recompute",
+      "file": "recompute.cu",
+      "grid": [
+        1,
+        16,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 9,
+          "name": "T",
+          "type": "i32",
+          "bits": 1
+        }
+      ]
+    },
+    {
+      "phase": "InitialOne",
+      "stage": "H",
+      "file": "state_h.cu",
+      "grid": [
+        2,
+        16,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 10,
+          "name": "T",
+          "type": "i32",
+          "bits": 1
+        }
+      ]
+    },
+    {
+      "phase": "InitialOne",
+      "stage": "Output",
+      "file": "output.cu",
+      "grid": [
+        4,
+        1,
+        16
+      ],
+      "scalars": [
+        {
+          "parameter": 8,
+          "name": "scale",
+          "type": "fp32",
+          "bits": 1035273459
+        },
+        {
+          "parameter": 9,
+          "name": "T",
+          "type": "i32",
+          "bits": 1
+        }
+      ]
+    },
+    {
+      "phase": "InitialOne",
+      "stage": "Gated",
+      "file": "gated_one.cu",
+      "grid": [
+        16,
+        1,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 5,
+          "name": "stride_x_row",
+          "type": "i32",
+          "bits": 128
+        },
+        {
+          "parameter": 6,
+          "name": "stride_y_row",
+          "type": "i32",
+          "bits": 128
+        },
+        {
+          "parameter": 7,
+          "name": "stride_z_row",
+          "type": "i32",
+          "bits": 128
+        },
+        {
+          "parameter": 8,
+          "name": "M",
+          "type": "i32",
+          "bits": 16
+        },
+        {
+          "parameter": 9,
+          "name": "eps",
+          "type": "fp32",
+          "bits": 897988541
+        }
+      ]
+    },
+    {
+      "phase": "Initial64",
+      "stage": "Conv",
+      "file": "conv_prefill_many.cu",
+      "grid": [
+        8,
+        24,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 9,
+          "name": "num_cache_lines",
+          "type": "i32",
+          "bits": 329
+        },
+        {
+          "parameter": 10,
+          "name": "stride_x_token",
+          "type": "i64",
+          "bits": 8192
+        },
+        {
+          "parameter": 11,
+          "name": "stride_o_token",
+          "type": "i64",
+          "bits": 6144
+        }
+      ]
+    },
+    {
+      "phase": "Initial64",
+      "stage": "Prep",
+      "file": "prep_64.cu",
+      "grid": [
+        4,
+        32,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 10,
+          "name": "stride_x_tok",
+          "type": "i32",
+          "bits": 6144
+        },
+        {
+          "parameter": 11,
+          "name": "stride_a_tok",
+          "type": "i32",
+          "bits": 16
+        },
+        {
+          "parameter": 12,
+          "name": "stride_b_tok",
+          "type": "i32",
+          "bits": 16
+        },
+        {
+          "parameter": 13,
+          "name": "stride_q_tok",
+          "type": "i32",
+          "bits": 2048
+        },
+        {
+          "parameter": 14,
+          "name": "stride_k_tok",
+          "type": "i32",
+          "bits": 2048
+        },
+        {
+          "parameter": 15,
+          "name": "stride_v_tok",
+          "type": "i32",
+          "bits": 2048
+        },
+        {
+          "parameter": 16,
+          "name": "L",
+          "type": "i32",
+          "bits": 64
+        }
+      ]
+    },
+    {
+      "phase": "Initial64",
+      "stage": "Cumsum",
+      "file": "cumsum.cu",
+      "grid": [
+        1,
+        16,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 4,
+          "name": "T",
+          "type": "i32",
+          "bits": 64
+        }
+      ]
+    },
+    {
+      "phase": "Initial64",
+      "stage": "Kkt",
+      "file": "kkt.cu",
+      "grid": [
+        1,
+        16,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 6,
+          "name": "T",
+          "type": "i32",
+          "bits": 64
+        }
+      ]
+    },
+    {
+      "phase": "Initial64",
+      "stage": "Solve",
+      "file": "solve.cu",
+      "grid": [
+        1,
+        16,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 4,
+          "name": "T",
+          "type": "i32",
+          "bits": 64
+        }
+      ]
+    },
+    {
+      "phase": "Initial64",
+      "stage": "Recompute",
+      "file": "recompute.cu",
+      "grid": [
+        1,
+        16,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 9,
+          "name": "T",
+          "type": "i32",
+          "bits": 64
+        }
+      ]
+    },
+    {
+      "phase": "Initial64",
+      "stage": "H",
+      "file": "state_h.cu",
+      "grid": [
+        2,
+        16,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 10,
+          "name": "T",
+          "type": "i32",
+          "bits": 64
+        }
+      ]
+    },
+    {
+      "phase": "Initial64",
+      "stage": "Output",
+      "file": "output.cu",
+      "grid": [
+        4,
+        1,
+        16
+      ],
+      "scalars": [
+        {
+          "parameter": 8,
+          "name": "scale",
+          "type": "fp32",
+          "bits": 1035273459
+        },
+        {
+          "parameter": 9,
+          "name": "T",
+          "type": "i32",
+          "bits": 64
+        }
+      ]
+    },
+    {
+      "phase": "Initial64",
+      "stage": "Gated",
+      "file": "gated_64.cu",
+      "grid": [
+        256,
+        1,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 5,
+          "name": "stride_x_row",
+          "type": "i32",
+          "bits": 128
+        },
+        {
+          "parameter": 6,
+          "name": "stride_y_row",
+          "type": "i32",
+          "bits": 128
+        },
+        {
+          "parameter": 7,
+          "name": "stride_z_row",
+          "type": "i32",
+          "bits": 128
+        },
+        {
+          "parameter": 8,
+          "name": "M",
+          "type": "i32",
+          "bits": 1024
+        },
+        {
+          "parameter": 9,
+          "name": "eps",
+          "type": "fp32",
+          "bits": 897988541
+        }
+      ]
+    },
+    {
+      "phase": "ContinuedTwo",
+      "stage": "Conv",
+      "file": "conv_prefill_many.cu",
+      "grid": [
+        1,
+        24,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 9,
+          "name": "num_cache_lines",
+          "type": "i32",
+          "bits": 329
+        },
+        {
+          "parameter": 10,
+          "name": "stride_x_token",
+          "type": "i64",
+          "bits": 8192
+        },
+        {
+          "parameter": 11,
+          "name": "stride_o_token",
+          "type": "i64",
+          "bits": 6144
+        }
+      ]
+    },
+    {
+      "phase": "ContinuedTwo",
+      "stage": "Prep",
+      "file": "prep_two.cu",
+      "grid": [
+        1,
+        32,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 10,
+          "name": "stride_x_tok",
+          "type": "i32",
+          "bits": 6144
+        },
+        {
+          "parameter": 11,
+          "name": "stride_a_tok",
+          "type": "i32",
+          "bits": 16
+        },
+        {
+          "parameter": 12,
+          "name": "stride_b_tok",
+          "type": "i32",
+          "bits": 16
+        },
+        {
+          "parameter": 13,
+          "name": "stride_q_tok",
+          "type": "i32",
+          "bits": 2048
+        },
+        {
+          "parameter": 14,
+          "name": "stride_k_tok",
+          "type": "i32",
+          "bits": 2048
+        },
+        {
+          "parameter": 15,
+          "name": "stride_v_tok",
+          "type": "i32",
+          "bits": 2048
+        },
+        {
+          "parameter": 16,
+          "name": "L",
+          "type": "i32",
+          "bits": 2
+        }
+      ]
+    },
+    {
+      "phase": "ContinuedTwo",
+      "stage": "Cumsum",
+      "file": "cumsum.cu",
+      "grid": [
+        1,
+        16,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 4,
+          "name": "T",
+          "type": "i32",
+          "bits": 2
+        }
+      ]
+    },
+    {
+      "phase": "ContinuedTwo",
+      "stage": "Kkt",
+      "file": "kkt.cu",
+      "grid": [
+        1,
+        16,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 6,
+          "name": "T",
+          "type": "i32",
+          "bits": 2
+        }
+      ]
+    },
+    {
+      "phase": "ContinuedTwo",
+      "stage": "Solve",
+      "file": "solve.cu",
+      "grid": [
+        1,
+        16,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 4,
+          "name": "T",
+          "type": "i32",
+          "bits": 2
+        }
+      ]
+    },
+    {
+      "phase": "ContinuedTwo",
+      "stage": "Recompute",
+      "file": "recompute.cu",
+      "grid": [
+        1,
+        16,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 9,
+          "name": "T",
+          "type": "i32",
+          "bits": 2
+        }
+      ]
+    },
+    {
+      "phase": "ContinuedTwo",
+      "stage": "H",
+      "file": "state_h.cu",
+      "grid": [
+        2,
+        16,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 10,
+          "name": "T",
+          "type": "i32",
+          "bits": 2
+        }
+      ]
+    },
+    {
+      "phase": "ContinuedTwo",
+      "stage": "Output",
+      "file": "output.cu",
+      "grid": [
+        4,
+        1,
+        16
+      ],
+      "scalars": [
+        {
+          "parameter": 8,
+          "name": "scale",
+          "type": "fp32",
+          "bits": 1035273459
+        },
+        {
+          "parameter": 9,
+          "name": "T",
+          "type": "i32",
+          "bits": 2
+        }
+      ]
+    },
+    {
+      "phase": "ContinuedTwo",
+      "stage": "Gated",
+      "file": "gated_two.cu",
+      "grid": [
+        32,
+        1,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 5,
+          "name": "stride_x_row",
+          "type": "i32",
+          "bits": 128
+        },
+        {
+          "parameter": 6,
+          "name": "stride_y_row",
+          "type": "i32",
+          "bits": 128
+        },
+        {
+          "parameter": 7,
+          "name": "stride_z_row",
+          "type": "i32",
+          "bits": 128
+        },
+        {
+          "parameter": 8,
+          "name": "M",
+          "type": "i32",
+          "bits": 32
+        },
+        {
+          "parameter": 9,
+          "name": "eps",
+          "type": "fp32",
+          "bits": 897988541
+        }
+      ]
+    },
+    {
+      "phase": "CachedDecode",
+      "stage": "Conv",
+      "file": "conv_decode.cu",
+      "grid": [
+        1,
+        24,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 5,
+          "name": "batch",
+          "type": "i32",
+          "bits": 1
+        },
+        {
+          "parameter": 6,
+          "name": "num_cache_lines",
+          "type": "i32",
+          "bits": 329
+        },
+        {
+          "parameter": 7,
+          "name": "stride_x_token",
+          "type": "i64",
+          "bits": 1
+        },
+        {
+          "parameter": 8,
+          "name": "stride_o_token",
+          "type": "i64",
+          "bits": 1
+        }
+      ]
+    },
+    {
+      "phase": "CachedDecode",
+      "stage": "Decode",
+      "file": "decode.cu",
+      "grid": [
+        4,
+        16,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 9,
+          "name": "scale",
+          "type": "fp32",
+          "bits": 1035273459
+        }
+      ]
+    },
+    {
+      "phase": "CachedDecode",
+      "stage": "Gated",
+      "file": "gated_one.cu",
+      "grid": [
+        16,
+        1,
+        1
+      ],
+      "scalars": [
+        {
+          "parameter": 5,
+          "name": "stride_x_row",
+          "type": "i32",
+          "bits": 128
+        },
+        {
+          "parameter": 6,
+          "name": "stride_y_row",
+          "type": "i32",
+          "bits": 128
+        },
+        {
+          "parameter": 7,
+          "name": "stride_z_row",
+          "type": "i32",
+          "bits": 128
+        },
+        {
+          "parameter": 8,
+          "name": "M",
+          "type": "i32",
+          "bits": 16
+        },
+        {
+          "parameter": 9,
+          "name": "eps",
+          "type": "fp32",
+          "bits": 897988541
+        }
+      ]
+    }
+  ]
+}

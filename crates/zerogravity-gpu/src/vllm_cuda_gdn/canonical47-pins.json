@@ -1,0 +1,2546 @@
+{
+  "status": "SOURCE_FIXED_INITIAL47_ASSETS_ONLY_NOT_EXECUTED",
+  "phase": "Initial47",
+  "actual_original_rows": 47,
+  "actual_original_base": 0,
+  "actual_original_cache_slot": 1,
+  "actual_original_has_initial": false,
+  "renderer": {
+    "path": "/home/pvl/spaces/abird/src/zerogravity-worktrees/root-lowest-f32-20261020/.agents/runs/numerics-and-context-upstream-cuda-root-20261020/render_ptx.py",
+    "bytes": 10858,
+    "sha256": "7ce5b591b6b0bee036f903bed53f962d1b702ea9df58a71643e22ceee8ba28b2"
+  },
+  "report": {
+    "path": "/home/pvl/spaces/abird/src/zerogravity/.agents/runs/numerics-and-context-upstream-cuda-root-20261020/root-canonical47-natural-all42-1/observed/worker-report.json",
+    "bytes": 2236789,
+    "sha256": "cff257b996e8db0c92d83544cb55896af16e9e9001f35e43b9c766de23b8863c"
+  },
+  "parent_variant_freeze": {
+    "path": "/home/pvl/spaces/abird/src/zerogravity-worktrees/root-lowest-f32-20261020/.agents/runs/numerics-and-context-owned-gdn-variants-20261021/FROZEN.json",
+    "bytes": 368,
+    "sha256": "b309cf032b6e1aba535c804ede345bb3402d97b2d2a01f4f788a88118ecaec13"
+  },
+  "parent_decision_freeze": {
+    "path": "/home/pvl/spaces/abird/src/zerogravity-worktrees/root-lowest-f32-20261020/.agents/runs/numerics-and-context-canonical47-owned-gdn-decision-20261021/FROZEN.json",
+    "bytes": 256,
+    "sha256": "64b52513e446f27aaba8b5d1750af56d5155a7859bf8e28f5d797771702d017d"
+  },
+  "assets": [
+    {
+      "stage": "Conv",
+      "kernel": "_causal_conv1d_fwd_kernel",
+      "entry": "zg_vllm_a905e193ffad4e19",
+      "threads": 128,
+      "shared": 0,
+      "grid": [
+        6,
+        24,
+        1
+      ],
+      "PTX": {
+        "path": "/home/pvl/spaces/abird/src/zerogravity/.agents/runs/numerics-and-context-upstream-cuda-root-20261020/root-canonical47-natural-all42-1/observed/kernels/a905e193ffad4e19f2ea2339d393c4fb25ec37cbe234b699801ce89438f30c41.ptx",
+        "bytes": 26590,
+        "sha256": "7e9600b09ee757c1d786657d7edfa5b3629cb5b1b00480de1fdb5a761e4a0a5c"
+      },
+      "PTX_sha256": "7e9600b09ee757c1d786657d7edfa5b3629cb5b1b00480de1fdb5a761e4a0a5c",
+      "source_sha256": "6ceb12f8941d066442f435794e1a44f8704fd6cbdca06b460fd28e7cb0fb1306",
+      "source_bytes": 23106,
+      "source_file": "canonical47_conv.cu",
+      "target": "crates/zerogravity-gpu/src/vllm_cuda_gdn/canonical47_conv.cu",
+      "reuse_exact_existing_source": false,
+      "compared_existing": {
+        "path": "/home/pvl/spaces/abird/src/zerogravity-worktrees/root-lowest-f32-20261020/crates/zerogravity-gpu/src/vllm_cuda_gdn/conv_prefill_many.cu",
+        "bytes": 23106,
+        "sha256": "3e2cea093945ec8ea673afcfbcfbfae408793b25446e99f4d35028b0b879781f"
+      },
+      "signature": {
+        "BLOCK_M": "constexpr",
+        "BLOCK_N": "constexpr",
+        "HAS_BIAS": "constexpr",
+        "HAS_NULL_BLOCK": "constexpr",
+        "IS_APC_ENABLED": "constexpr",
+        "KERNEL_WIDTH": "constexpr",
+        "NP2_STATELEN": "constexpr",
+        "SILU_ACTIVATION": "constexpr",
+        "batch_ptr": "*i32",
+        "bias_ptr": "constexpr",
+        "block_idx_first_scheduled_token": "constexpr",
+        "block_idx_last_scheduled_token": "constexpr",
+        "cache_indices_ptr": "*i32",
+        "dim": "constexpr",
+        "has_initial_states_ptr": "*u1",
+        "initial_state_idx": "constexpr",
+        "initial_states_ptr": "*bf16",
+        "launch_pdl": "constexpr",
+        "null_block_id": "constexpr",
+        "num_cache_lines": "i32",
+        "num_computed_tokens": "constexpr",
+        "o_ptr": "*bf16",
+        "pad_slot_id": "constexpr",
+        "query_start_loc_ptr": "*i32",
+        "stride_block_m": "constexpr",
+        "stride_cache_indices": "constexpr",
+        "stride_istate_dim": "constexpr",
+        "stride_istate_seq": "constexpr",
+        "stride_istate_token": "constexpr",
+        "stride_o_dim": "constexpr",
+        "stride_o_token": "i64",
+        "stride_w_dim": "constexpr",
+        "stride_w_width": "constexpr",
+        "stride_x_dim": "constexpr",
+        "stride_x_token": "i64",
+        "token_chunk_offset_ptr": "*i32",
+        "w_ptr": "*bf16",
+        "x_ptr": "*bf16"
+      },
+      "arg_names": [
+        "x_ptr",
+        "w_ptr",
+        "bias_ptr",
+        "initial_states_ptr",
+        "cache_indices_ptr",
+        "has_initial_states_ptr",
+        "query_start_loc_ptr",
+        "batch_ptr",
+        "token_chunk_offset_ptr",
+        "block_idx_first_scheduled_token",
+        "block_idx_last_scheduled_token",
+        "initial_state_idx",
+        "num_computed_tokens",
+        "o_ptr",
+        "dim",
+        "num_cache_lines",
+        "stride_x_dim",
+        "stride_x_token",
+        "stride_w_dim",
+        "stride_w_width",
+        "stride_istate_seq",
+        "stride_istate_dim",
+        "stride_istate_token",
+        "stride_cache_indices",
+        "stride_o_dim",
+        "stride_o_token",
+        "stride_block_m",
+        "pad_slot_id",
+        "null_block_id",
+        "HAS_BIAS",
+        "KERNEL_WIDTH",
+        "SILU_ACTIVATION",
+        "IS_APC_ENABLED",
+        "HAS_NULL_BLOCK",
+        "NP2_STATELEN",
+        "BLOCK_M",
+        "BLOCK_N",
+        "launch_pdl"
+      ],
+      "constants": {
+        "(10,)": "None",
+        "(11,)": "None",
+        "(12,)": "None",
+        "(14,)": "6144",
+        "(16,)": "1",
+        "(18,)": "4",
+        "(19,)": "1",
+        "(2,)": "None",
+        "(20,)": "557056",
+        "(21,)": "1",
+        "(22,)": "6144",
+        "(23,)": "1",
+        "(24,)": "1",
+        "(26,)": "0",
+        "(27,)": "-1",
+        "(28,)": "0",
+        "(29,)": "False",
+        "(30,)": "4",
+        "(31,)": "True",
+        "(32,)": "False",
+        "(33,)": "True",
+        "(34,)": "4",
+        "(35,)": "8",
+        "(36,)": "256",
+        "(37,)": "False",
+        "(9,)": "None"
+      },
+      "scalars": [
+        {
+          "parameter": 9,
+          "name": "num_cache_lines",
+          "type": "i32",
+          "bits": 497
+        },
+        {
+          "parameter": 10,
+          "name": "stride_x_token",
+          "type": "i64",
+          "bits": 8192
+        },
+        {
+          "parameter": 11,
+          "name": "stride_o_token",
+          "type": "i64",
+          "bits": 6144
+        }
+      ],
+      "bindings": [
+        {
+          "parameter": 0,
+          "arg_index": 0,
+          "name": "x_ptr",
+          "type": "*bf16",
+          "owned_role": "PackedQkvz",
+          "observed_geometry": {
+            "shape": [
+              6144,
+              47
+            ],
+            "stride": [
+              1,
+              8192
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 577536,
+            "storage_bytes": 770048,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 1,
+          "arg_index": 1,
+          "name": "w_ptr",
+          "type": "*bf16",
+          "owned_role": "ConvWeights",
+          "observed_geometry": {
+            "shape": [
+              6144,
+              4
+            ],
+            "stride": [
+              4,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 49152,
+            "storage_bytes": 49152,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 2,
+          "arg_index": 3,
+          "name": "initial_states_ptr",
+          "type": "*bf16",
+          "owned_role": "CacheArena",
+          "observed_geometry": {
+            "shape": [
+              497,
+              6144,
+              3
+            ],
+            "stride": [
+              557056,
+              1,
+              6144
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 18321408,
+            "storage_bytes": 3322281984,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 3,
+          "arg_index": 4,
+          "name": "cache_indices_ptr",
+          "type": "*i32",
+          "owned_role": "CacheIndices",
+          "observed_geometry": {
+            "shape": [
+              1
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.int32",
+            "device": "cuda:0",
+            "logical_bytes": 4,
+            "storage_bytes": 4,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 4,
+          "arg_index": 5,
+          "name": "has_initial_states_ptr",
+          "type": "*u1",
+          "owned_role": "HasInitial",
+          "observed_geometry": {
+            "shape": [
+              1
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.bool",
+            "device": "cuda:0",
+            "logical_bytes": 1,
+            "storage_bytes": 1,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 5,
+          "arg_index": 6,
+          "name": "query_start_loc_ptr",
+          "type": "*i32",
+          "owned_role": "QueryStarts",
+          "observed_geometry": {
+            "shape": [
+              2
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.int32",
+            "device": "cuda:0",
+            "logical_bytes": 8,
+            "storage_bytes": 8,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 6,
+          "arg_index": 7,
+          "name": "batch_ptr",
+          "type": "*i32",
+          "owned_role": "ConvBatch",
+          "observed_geometry": {
+            "shape": [
+              2048
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.int32",
+            "device": "cuda:0",
+            "logical_bytes": 8192,
+            "storage_bytes": 8192,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 7,
+          "arg_index": 8,
+          "name": "token_chunk_offset_ptr",
+          "type": "*i32",
+          "owned_role": "ConvChunkOffsets",
+          "observed_geometry": {
+            "shape": [
+              2048
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.int32",
+            "device": "cuda:0",
+            "logical_bytes": 8192,
+            "storage_bytes": 8192,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 8,
+          "arg_index": 13,
+          "name": "o_ptr",
+          "type": "*bf16",
+          "owned_role": "ConvOutput",
+          "observed_geometry": {
+            "shape": [
+              6144,
+              47
+            ],
+            "stride": [
+              1,
+              6144
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 577536,
+            "storage_bytes": 577536,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        }
+      ]
+    },
+    {
+      "stage": "Prep",
+      "kernel": "_fused_post_conv_kernel",
+      "entry": "zg_vllm_78ff2ff19f5099b9",
+      "threads": 128,
+      "shared": 0,
+      "grid": [
+        3,
+        32,
+        1
+      ],
+      "PTX": {
+        "path": "/home/pvl/spaces/abird/src/zerogravity/.agents/runs/numerics-and-context-upstream-cuda-root-20261020/root-canonical47-natural-all42-1/observed/kernels/78ff2ff19f5099b9e9ec12daac53cfc5cedb0fa7224d4984c1e2dabca9e8cdfc.ptx",
+        "bytes": 39056,
+        "sha256": "22dd4697695aa897b26a5ed794164c6dcc204ef11429d5d37786b240d12e6670"
+      },
+      "PTX_sha256": "22dd4697695aa897b26a5ed794164c6dcc204ef11429d5d37786b240d12e6670",
+      "source_sha256": "1d2730a9fd52f49c3f4628bbfea15cbfb2b5969fef06357fb4b8a1d516a8f694",
+      "source_bytes": 28141,
+      "source_file": "canonical47_prep.cu",
+      "target": "crates/zerogravity-gpu/src/vllm_cuda_gdn/canonical47_prep.cu",
+      "reuse_exact_existing_source": false,
+      "compared_existing": {
+        "path": "/home/pvl/spaces/abird/src/zerogravity-worktrees/root-lowest-f32-20261020/crates/zerogravity-gpu/src/vllm_cuda_gdn/prep_two.cu",
+        "bytes": 28140,
+        "sha256": "bed99d0478a5156ee99d68e9f782d6b69569ec0d4fca6a966e2d0d765c60cddb"
+      },
+      "signature": {
+        "APPLY_L2NORM": "constexpr",
+        "A_log_ptr": "*fp32",
+        "BK": "constexpr",
+        "BLOCK_T": "constexpr",
+        "BV": "constexpr",
+        "H": "constexpr",
+        "HV": "constexpr",
+        "K": "constexpr",
+        "L": "i32",
+        "L2NORM_EPS": "constexpr",
+        "OUTPUT_G_EXP": "constexpr",
+        "SOFTPLUS_THRESHOLD": "constexpr",
+        "V": "constexpr",
+        "a_ptr": "*bf16",
+        "b_ptr": "*bf16",
+        "beta_ptr": "*fp32",
+        "dt_bias_ptr": "*bf16",
+        "g_ptr": "*fp32",
+        "k_ptr": "*bf16",
+        "mixed_qkv_ptr": "*bf16",
+        "q_ptr": "*bf16",
+        "stride_a_tok": "i32",
+        "stride_b_tok": "i32",
+        "stride_k_tok": "i32",
+        "stride_q_tok": "i32",
+        "stride_v_tok": "i32",
+        "stride_x_tok": "i32",
+        "v_ptr": "*bf16"
+      },
+      "arg_names": [
+        "mixed_qkv_ptr",
+        "a_ptr",
+        "b_ptr",
+        "A_log_ptr",
+        "dt_bias_ptr",
+        "q_ptr",
+        "k_ptr",
+        "v_ptr",
+        "g_ptr",
+        "beta_ptr",
+        "stride_x_tok",
+        "stride_a_tok",
+        "stride_b_tok",
+        "stride_q_tok",
+        "stride_k_tok",
+        "stride_v_tok",
+        "L",
+        "H",
+        "HV",
+        "K",
+        "V",
+        "APPLY_L2NORM",
+        "L2NORM_EPS",
+        "OUTPUT_G_EXP",
+        "SOFTPLUS_THRESHOLD",
+        "BLOCK_T",
+        "BK",
+        "BV"
+      ],
+      "constants": {
+        "(17,)": "16",
+        "(18,)": "16",
+        "(19,)": "128",
+        "(20,)": "128",
+        "(21,)": "True",
+        "(22,)": "1e-06",
+        "(23,)": "False",
+        "(24,)": "20.0",
+        "(25,)": "16",
+        "(26,)": "128",
+        "(27,)": "128"
+      },
+      "scalars": [
+        {
+          "parameter": 10,
+          "name": "stride_x_tok",
+          "type": "i32",
+          "bits": 6144
+        },
+        {
+          "parameter": 11,
+          "name": "stride_a_tok",
+          "type": "i32",
+          "bits": 16
+        },
+        {
+          "parameter": 12,
+          "name": "stride_b_tok",
+          "type": "i32",
+          "bits": 16
+        },
+        {
+          "parameter": 13,
+          "name": "stride_q_tok",
+          "type": "i32",
+          "bits": 2048
+        },
+        {
+          "parameter": 14,
+          "name": "stride_k_tok",
+          "type": "i32",
+          "bits": 2048
+        },
+        {
+          "parameter": 15,
+          "name": "stride_v_tok",
+          "type": "i32",
+          "bits": 2048
+        },
+        {
+          "parameter": 16,
+          "name": "L",
+          "type": "i32",
+          "bits": 47
+        }
+      ],
+      "bindings": [
+        {
+          "parameter": 0,
+          "arg_index": 0,
+          "name": "mixed_qkv_ptr",
+          "type": "*bf16",
+          "owned_role": "ConvOutput",
+          "observed_geometry": {
+            "shape": [
+              47,
+              6144
+            ],
+            "stride": [
+              6144,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 577536,
+            "storage_bytes": 577536,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 1,
+          "arg_index": 1,
+          "name": "a_ptr",
+          "type": "*bf16",
+          "owned_role": "AContiguous",
+          "observed_geometry": {
+            "shape": [
+              47,
+              16
+            ],
+            "stride": [
+              16,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 1504,
+            "storage_bytes": 1504,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 2,
+          "arg_index": 2,
+          "name": "b_ptr",
+          "type": "*bf16",
+          "owned_role": "BContiguous",
+          "observed_geometry": {
+            "shape": [
+              47,
+              16
+            ],
+            "stride": [
+              16,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 1504,
+            "storage_bytes": 1504,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 3,
+          "arg_index": 3,
+          "name": "A_log_ptr",
+          "type": "*fp32",
+          "owned_role": "ALog",
+          "observed_geometry": {
+            "shape": [
+              16
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.float32",
+            "device": "cuda:0",
+            "logical_bytes": 64,
+            "storage_bytes": 64,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 4,
+          "arg_index": 4,
+          "name": "dt_bias_ptr",
+          "type": "*bf16",
+          "owned_role": "DtBias",
+          "observed_geometry": {
+            "shape": [
+              16
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 32,
+            "storage_bytes": 32,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 5,
+          "arg_index": 5,
+          "name": "q_ptr",
+          "type": "*bf16",
+          "owned_role": "Q",
+          "observed_geometry": {
+            "shape": [
+              47,
+              16,
+              128
+            ],
+            "stride": [
+              2048,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 6,
+          "arg_index": 6,
+          "name": "k_ptr",
+          "type": "*bf16",
+          "owned_role": "K",
+          "observed_geometry": {
+            "shape": [
+              47,
+              16,
+              128
+            ],
+            "stride": [
+              2048,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 7,
+          "arg_index": 7,
+          "name": "v_ptr",
+          "type": "*bf16",
+          "owned_role": "V",
+          "observed_geometry": {
+            "shape": [
+              47,
+              16,
+              128
+            ],
+            "stride": [
+              2048,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 8,
+          "arg_index": 8,
+          "name": "g_ptr",
+          "type": "*fp32",
+          "owned_role": "GRaw",
+          "observed_geometry": {
+            "shape": [
+              47,
+              16
+            ],
+            "stride": [
+              16,
+              1
+            ],
+            "dtype": "torch.float32",
+            "device": "cuda:0",
+            "logical_bytes": 3008,
+            "storage_bytes": 3008,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 9,
+          "arg_index": 9,
+          "name": "beta_ptr",
+          "type": "*fp32",
+          "owned_role": "Beta",
+          "observed_geometry": {
+            "shape": [
+              47,
+              16
+            ],
+            "stride": [
+              16,
+              1
+            ],
+            "dtype": "torch.float32",
+            "device": "cuda:0",
+            "logical_bytes": 3008,
+            "storage_bytes": 3008,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        }
+      ]
+    },
+    {
+      "stage": "Cumsum",
+      "kernel": "chunk_local_cumsum_scalar_kernel",
+      "entry": "zg_vllm_82a622be2630db81",
+      "threads": 64,
+      "shared": 8,
+      "grid": [
+        1,
+        16,
+        1
+      ],
+      "PTX": {
+        "path": "/home/pvl/spaces/abird/src/zerogravity/.agents/runs/numerics-and-context-upstream-cuda-root-20261020/root-canonical47-natural-all42-1/observed/kernels/82a622be2630db8129852ba1607867d7ef7acb801eaddbae04470d9b78bf1303.ptx",
+        "bytes": 14034,
+        "sha256": "b4c97f73509b35ae7f3281b5621b44ca354e08b65a496575e95670537a0783ab"
+      },
+      "PTX_sha256": "b4c97f73509b35ae7f3281b5621b44ca354e08b65a496575e95670537a0783ab",
+      "source_sha256": "174d4ecbb26b847119e7173a0485603fdec1955ae48fd066e3fea01b0469426e",
+      "source_bytes": 5789,
+      "source_file": "canonical47_cumsum.cu",
+      "target": "crates/zerogravity-gpu/src/vllm_cuda_gdn/canonical47_cumsum.cu",
+      "reuse_exact_existing_source": false,
+      "compared_existing": {
+        "path": "/home/pvl/spaces/abird/src/zerogravity-worktrees/root-lowest-f32-20261020/crates/zerogravity-gpu/src/vllm_cuda_gdn/cumsum.cu",
+        "bytes": 6005,
+        "sha256": "05415f4a695ec9676911bdc0d9d78f161d632d2f4a11ff9228cac3d9c9341ed1"
+      },
+      "signature": {
+        "B": "constexpr",
+        "BT": "constexpr",
+        "H": "constexpr",
+        "HEAD_FIRST": "constexpr",
+        "IS_VARLEN": "constexpr",
+        "REVERSE": "constexpr",
+        "T": "i32",
+        "chunk_indices": "*i32",
+        "cu_seqlens": "*i32",
+        "o": "*fp32",
+        "s": "*fp32"
+      },
+      "arg_names": [
+        "s",
+        "o",
+        "cu_seqlens",
+        "chunk_indices",
+        "T",
+        "B",
+        "H",
+        "BT",
+        "REVERSE",
+        "IS_VARLEN",
+        "HEAD_FIRST"
+      ],
+      "constants": {
+        "(10,)": "False",
+        "(5,)": "1",
+        "(6,)": "16",
+        "(7,)": "64",
+        "(8,)": "False",
+        "(9,)": "True"
+      },
+      "scalars": [
+        {
+          "parameter": 4,
+          "name": "T",
+          "type": "i32",
+          "bits": 47
+        }
+      ],
+      "bindings": [
+        {
+          "parameter": 0,
+          "arg_index": 0,
+          "name": "s",
+          "type": "*fp32",
+          "owned_role": "GRaw",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16
+            ],
+            "stride": [
+              752,
+              16,
+              1
+            ],
+            "dtype": "torch.float32",
+            "device": "cuda:0",
+            "logical_bytes": 3008,
+            "storage_bytes": 3008,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 1,
+          "arg_index": 1,
+          "name": "o",
+          "type": "*fp32",
+          "owned_role": "GCumulative",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16
+            ],
+            "stride": [
+              752,
+              16,
+              1
+            ],
+            "dtype": "torch.float32",
+            "device": "cuda:0",
+            "logical_bytes": 3008,
+            "storage_bytes": 3008,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 2,
+          "arg_index": 2,
+          "name": "cu_seqlens",
+          "type": "*i32",
+          "owned_role": "QueryStarts",
+          "observed_geometry": {
+            "shape": [
+              2
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.int32",
+            "device": "cuda:0",
+            "logical_bytes": 8,
+            "storage_bytes": 8,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 3,
+          "arg_index": 3,
+          "name": "chunk_indices",
+          "type": "*i32",
+          "owned_role": "ChunkIndices",
+          "observed_geometry": {
+            "shape": [
+              1,
+              2
+            ],
+            "stride": [
+              2,
+              1
+            ],
+            "dtype": "torch.int32",
+            "device": "cuda:0",
+            "logical_bytes": 8,
+            "storage_bytes": 8,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        }
+      ]
+    },
+    {
+      "stage": "Kkt",
+      "kernel": "chunk_scaled_dot_kkt_fwd_kernel",
+      "entry": "zg_vllm_6d24f41cda7920aa",
+      "threads": 256,
+      "shared": 16384,
+      "grid": [
+        1,
+        16,
+        1
+      ],
+      "PTX": {
+        "path": "/home/pvl/spaces/abird/src/zerogravity/.agents/runs/numerics-and-context-upstream-cuda-root-20261020/root-canonical47-natural-all42-1/observed/kernels/6d24f41cda7920aa9fce0e52d7646622bfdc8f3d458a7024041f8c5faca37736.ptx",
+        "bytes": 29687,
+        "sha256": "d65e28bad710a3e78a38583d14ec26a8c838eb75e8becc0da40a9a6c17da7639"
+      },
+      "PTX_sha256": "d65e28bad710a3e78a38583d14ec26a8c838eb75e8becc0da40a9a6c17da7639",
+      "source_sha256": "ea7aad8b37fb84f9762506d1e4ac8dc909e3f7dcec6b7e6aeeac9cf0361ee289",
+      "source_bytes": 39537,
+      "source_file": "canonical47_kkt.cu",
+      "target": "crates/zerogravity-gpu/src/vllm_cuda_gdn/canonical47_kkt.cu",
+      "reuse_exact_existing_source": false,
+      "compared_existing": {
+        "path": "/home/pvl/spaces/abird/src/zerogravity-worktrees/root-lowest-f32-20261020/crates/zerogravity-gpu/src/vllm_cuda_gdn/kkt.cu",
+        "bytes": 60771,
+        "sha256": "26ec3a53b6e0ecdc231f8a979f295b13eedcc3699a346d39dab7d662f11b34a8"
+      },
+      "signature": {
+        "A": "*fp32",
+        "BK": "constexpr",
+        "BT": "constexpr",
+        "CAST_DOT_TO_K_DTYPE": "constexpr",
+        "H": "constexpr",
+        "Hg": "constexpr",
+        "IS_VARLEN": "constexpr",
+        "K": "constexpr",
+        "T": "i32",
+        "USE_G": "constexpr",
+        "beta": "*fp32",
+        "chunk_indices": "*i32",
+        "cu_seqlens": "*i32",
+        "g": "*fp32",
+        "k": "*bf16"
+      },
+      "arg_names": [
+        "k",
+        "beta",
+        "g",
+        "A",
+        "cu_seqlens",
+        "chunk_indices",
+        "T",
+        "H",
+        "Hg",
+        "K",
+        "BT",
+        "BK",
+        "IS_VARLEN",
+        "USE_G",
+        "CAST_DOT_TO_K_DTYPE"
+      ],
+      "constants": {
+        "(10,)": "64",
+        "(11,)": "32",
+        "(12,)": "True",
+        "(13,)": "True",
+        "(14,)": "False",
+        "(7,)": "16",
+        "(8,)": "16",
+        "(9,)": "128"
+      },
+      "scalars": [
+        {
+          "parameter": 6,
+          "name": "T",
+          "type": "i32",
+          "bits": 47
+        }
+      ],
+      "bindings": [
+        {
+          "parameter": 0,
+          "arg_index": 0,
+          "name": "k",
+          "type": "*bf16",
+          "owned_role": "K",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16,
+              128
+            ],
+            "stride": [
+              96256,
+              2048,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 1,
+          "arg_index": 1,
+          "name": "beta",
+          "type": "*fp32",
+          "owned_role": "Beta",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16
+            ],
+            "stride": [
+              752,
+              16,
+              1
+            ],
+            "dtype": "torch.float32",
+            "device": "cuda:0",
+            "logical_bytes": 3008,
+            "storage_bytes": 3008,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 2,
+          "arg_index": 2,
+          "name": "g",
+          "type": "*fp32",
+          "owned_role": "GCumulative",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16
+            ],
+            "stride": [
+              752,
+              16,
+              1
+            ],
+            "dtype": "torch.float32",
+            "device": "cuda:0",
+            "logical_bytes": 3008,
+            "storage_bytes": 3008,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 3,
+          "arg_index": 3,
+          "name": "A",
+          "type": "*fp32",
+          "owned_role": "Kkt",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16,
+              64
+            ],
+            "stride": [
+              48128,
+              1024,
+              64,
+              1
+            ],
+            "dtype": "torch.float32",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 4,
+          "arg_index": 4,
+          "name": "cu_seqlens",
+          "type": "*i32",
+          "owned_role": "QueryStarts",
+          "observed_geometry": {
+            "shape": [
+              2
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.int32",
+            "device": "cuda:0",
+            "logical_bytes": 8,
+            "storage_bytes": 8,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 5,
+          "arg_index": 5,
+          "name": "chunk_indices",
+          "type": "*i32",
+          "owned_role": "ChunkIndices",
+          "observed_geometry": {
+            "shape": [
+              1,
+              2
+            ],
+            "stride": [
+              2,
+              1
+            ],
+            "dtype": "torch.int32",
+            "device": "cuda:0",
+            "logical_bytes": 8,
+            "storage_bytes": 8,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        }
+      ]
+    },
+    {
+      "stage": "Solve",
+      "kernel": "merge_16x16_to_64x64_inverse_kernel",
+      "entry": "zg_vllm_116d2ffe705b6643",
+      "threads": 128,
+      "shared": 10240,
+      "grid": [
+        1,
+        16,
+        1
+      ],
+      "PTX": {
+        "path": "/home/pvl/spaces/abird/src/zerogravity/.agents/runs/numerics-and-context-upstream-cuda-root-20261020/root-canonical47-natural-all42-1/observed/kernels/116d2ffe705b66433d245e6123845e4dfa3f5b0f8584fa05debe9a42aae23323.ptx",
+        "bytes": 80526,
+        "sha256": "fcae68be445ab7ec2b7dcc127d3d4c0851340ce3d237be00e909b4391e67c135"
+      },
+      "PTX_sha256": "fcae68be445ab7ec2b7dcc127d3d4c0851340ce3d237be00e909b4391e67c135",
+      "source_sha256": "31d29c35e5c15a324fff302b4ccd47f0d1ba2c67d706f00e6498d48192639c86",
+      "source_bytes": 98296,
+      "source_file": "solve.cu",
+      "target": "crates/zerogravity-gpu/src/vllm_cuda_gdn/solve.cu",
+      "reuse_exact_existing_source": true,
+      "compared_existing": {
+        "path": "/home/pvl/spaces/abird/src/zerogravity-worktrees/root-lowest-f32-20261020/crates/zerogravity-gpu/src/vllm_cuda_gdn/solve.cu",
+        "bytes": 98296,
+        "sha256": "31d29c35e5c15a324fff302b4ccd47f0d1ba2c67d706f00e6498d48192639c86"
+      },
+      "signature": {
+        "A": "*fp32",
+        "Ai": "*bf16",
+        "BT": "constexpr",
+        "DOT_PRECISION": "constexpr",
+        "H": "constexpr",
+        "IS_VARLEN": "constexpr",
+        "T": "i32",
+        "USE_TMA": "constexpr",
+        "chunk_indices": "*i32",
+        "cu_seqlens": "*i32"
+      },
+      "arg_names": [
+        "A",
+        "Ai",
+        "cu_seqlens",
+        "chunk_indices",
+        "T",
+        "H",
+        "BT",
+        "USE_TMA",
+        "IS_VARLEN",
+        "DOT_PRECISION"
+      ],
+      "constants": {
+        "(5,)": "16",
+        "(6,)": "64",
+        "(7,)": "False",
+        "(8,)": "True",
+        "(9,)": "ieee"
+      },
+      "scalars": [
+        {
+          "parameter": 4,
+          "name": "T",
+          "type": "i32",
+          "bits": 47
+        }
+      ],
+      "bindings": [
+        {
+          "parameter": 0,
+          "arg_index": 0,
+          "name": "A",
+          "type": "*fp32",
+          "owned_role": "Kkt",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16,
+              64
+            ],
+            "stride": [
+              48128,
+              1024,
+              64,
+              1
+            ],
+            "dtype": "torch.float32",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 1,
+          "arg_index": 1,
+          "name": "Ai",
+          "type": "*bf16",
+          "owned_role": "Inverse",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16,
+              64
+            ],
+            "stride": [
+              48128,
+              1024,
+              64,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 96256,
+            "storage_bytes": 96256,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 2,
+          "arg_index": 2,
+          "name": "cu_seqlens",
+          "type": "*i32",
+          "owned_role": "QueryStarts",
+          "observed_geometry": {
+            "shape": [
+              2
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.int32",
+            "device": "cuda:0",
+            "logical_bytes": 8,
+            "storage_bytes": 8,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 3,
+          "arg_index": 3,
+          "name": "chunk_indices",
+          "type": "*i32",
+          "owned_role": "ChunkIndices",
+          "observed_geometry": {
+            "shape": [
+              1,
+              2
+            ],
+            "stride": [
+              2,
+              1
+            ],
+            "dtype": "torch.int32",
+            "device": "cuda:0",
+            "logical_bytes": 8,
+            "storage_bytes": 8,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        }
+      ]
+    },
+    {
+      "stage": "Recompute",
+      "kernel": "recompute_w_u_fwd_kernel",
+      "entry": "zg_vllm_a73872840c0a9697",
+      "threads": 256,
+      "shared": 40960,
+      "grid": [
+        1,
+        16,
+        1
+      ],
+      "PTX": {
+        "path": "/home/pvl/spaces/abird/src/zerogravity/.agents/runs/numerics-and-context-upstream-cuda-root-20261020/root-canonical47-natural-all42-1/observed/kernels/a73872840c0a9697327a0de7f2e6cef7e256cab92b5fb8edc7c3ec983ebd52ef.ptx",
+        "bytes": 50546,
+        "sha256": "5731fd146617cf5b6cc13f28b2622c31135df4a35907567ffba83ff9b0b10c9a"
+      },
+      "PTX_sha256": "5731fd146617cf5b6cc13f28b2622c31135df4a35907567ffba83ff9b0b10c9a",
+      "source_sha256": "60968a002c972723ad36de68657af554c645a0cd78c3531a73599c44d3f38f1f",
+      "source_bytes": 68892,
+      "source_file": "recompute.cu",
+      "target": "crates/zerogravity-gpu/src/vllm_cuda_gdn/recompute.cu",
+      "reuse_exact_existing_source": true,
+      "compared_existing": {
+        "path": "/home/pvl/spaces/abird/src/zerogravity-worktrees/root-lowest-f32-20261020/crates/zerogravity-gpu/src/vllm_cuda_gdn/recompute.cu",
+        "bytes": 68892,
+        "sha256": "60968a002c972723ad36de68657af554c645a0cd78c3531a73599c44d3f38f1f"
+      },
+      "signature": {
+        "A": "*bf16",
+        "BK": "constexpr",
+        "BT": "constexpr",
+        "BV": "constexpr",
+        "H": "constexpr",
+        "Hg": "constexpr",
+        "IS_VARLEN": "constexpr",
+        "K": "constexpr",
+        "T": "i32",
+        "V": "constexpr",
+        "beta": "*fp32",
+        "chunk_indices": "*i32",
+        "cu_seqlens": "*i32",
+        "g": "*fp32",
+        "k": "*bf16",
+        "u": "*bf16",
+        "v": "*bf16",
+        "w": "*bf16"
+      },
+      "arg_names": [
+        "k",
+        "v",
+        "beta",
+        "w",
+        "u",
+        "A",
+        "g",
+        "cu_seqlens",
+        "chunk_indices",
+        "T",
+        "H",
+        "Hg",
+        "K",
+        "V",
+        "BT",
+        "BK",
+        "BV",
+        "IS_VARLEN"
+      ],
+      "constants": {
+        "(10,)": "16",
+        "(11,)": "16",
+        "(12,)": "128",
+        "(13,)": "128",
+        "(14,)": "64",
+        "(15,)": "64",
+        "(16,)": "64",
+        "(17,)": "True"
+      },
+      "scalars": [
+        {
+          "parameter": 9,
+          "name": "T",
+          "type": "i32",
+          "bits": 47
+        }
+      ],
+      "bindings": [
+        {
+          "parameter": 0,
+          "arg_index": 0,
+          "name": "k",
+          "type": "*bf16",
+          "owned_role": "K",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16,
+              128
+            ],
+            "stride": [
+              96256,
+              2048,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 1,
+          "arg_index": 1,
+          "name": "v",
+          "type": "*bf16",
+          "owned_role": "V",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16,
+              128
+            ],
+            "stride": [
+              96256,
+              2048,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 2,
+          "arg_index": 2,
+          "name": "beta",
+          "type": "*fp32",
+          "owned_role": "Beta",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16
+            ],
+            "stride": [
+              752,
+              16,
+              1
+            ],
+            "dtype": "torch.float32",
+            "device": "cuda:0",
+            "logical_bytes": 3008,
+            "storage_bytes": 3008,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 3,
+          "arg_index": 3,
+          "name": "w",
+          "type": "*bf16",
+          "owned_role": "W",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16,
+              128
+            ],
+            "stride": [
+              96256,
+              2048,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 4,
+          "arg_index": 4,
+          "name": "u",
+          "type": "*bf16",
+          "owned_role": "U",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16,
+              128
+            ],
+            "stride": [
+              96256,
+              2048,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 5,
+          "arg_index": 5,
+          "name": "A",
+          "type": "*bf16",
+          "owned_role": "Inverse",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16,
+              64
+            ],
+            "stride": [
+              48128,
+              1024,
+              64,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 96256,
+            "storage_bytes": 96256,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 6,
+          "arg_index": 6,
+          "name": "g",
+          "type": "*fp32",
+          "owned_role": "GCumulative",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16
+            ],
+            "stride": [
+              752,
+              16,
+              1
+            ],
+            "dtype": "torch.float32",
+            "device": "cuda:0",
+            "logical_bytes": 3008,
+            "storage_bytes": 3008,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 7,
+          "arg_index": 7,
+          "name": "cu_seqlens",
+          "type": "*i32",
+          "owned_role": "QueryStarts",
+          "observed_geometry": {
+            "shape": [
+              2
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.int32",
+            "device": "cuda:0",
+            "logical_bytes": 8,
+            "storage_bytes": 8,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 8,
+          "arg_index": 8,
+          "name": "chunk_indices",
+          "type": "*i32",
+          "owned_role": "ChunkIndices",
+          "observed_geometry": {
+            "shape": [
+              1,
+              2
+            ],
+            "stride": [
+              2,
+              1
+            ],
+            "dtype": "torch.int32",
+            "device": "cuda:0",
+            "logical_bytes": 8,
+            "storage_bytes": 8,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        }
+      ]
+    },
+    {
+      "stage": "H",
+      "kernel": "chunk_gated_delta_rule_fwd_kernel_h_blockdim64",
+      "entry": "zg_vllm_9f97b7023b619918",
+      "threads": 128,
+      "shared": 41220,
+      "grid": [
+        4,
+        16,
+        1
+      ],
+      "PTX": {
+        "path": "/home/pvl/spaces/abird/src/zerogravity/.agents/runs/numerics-and-context-upstream-cuda-root-20261020/root-canonical47-natural-all42-1/observed/kernels/9f97b7023b619918e97438a914f90b19a3643803209b45a3b8353c3040fb9f9d.ptx",
+        "bytes": 75031,
+        "sha256": "2c05861ae7051b9f267b683d7a411686edb18d8ab34598c6f9dac9c8e39dcb38"
+      },
+      "PTX_sha256": "2c05861ae7051b9f267b683d7a411686edb18d8ab34598c6f9dac9c8e39dcb38",
+      "source_sha256": "5cf745e1c3da74002c4a7db331ac4900a0a5f82fcfbec5c13fb0cdf770c25ea0",
+      "source_bytes": 102888,
+      "source_file": "canonical47_h.cu",
+      "target": "crates/zerogravity-gpu/src/vllm_cuda_gdn/canonical47_h.cu",
+      "reuse_exact_existing_source": false,
+      "compared_existing": {
+        "path": "/home/pvl/spaces/abird/src/zerogravity-worktrees/root-lowest-f32-20261020/crates/zerogravity-gpu/src/vllm_cuda_gdn/state_h.cu",
+        "bytes": 163058,
+        "sha256": "3cb1cb2217e4205adb4ab26e0dacdf3d7255034fc74dcc4a282c51600b139e00"
+      },
+      "signature": {
+        "BT": "constexpr",
+        "BV": "constexpr",
+        "H": "constexpr",
+        "Hg": "constexpr",
+        "IS_VARLEN": "constexpr",
+        "K": "constexpr",
+        "SAVE_NEW_VALUE": "constexpr",
+        "STORE_FINAL_STATE": "constexpr",
+        "T": "i32",
+        "USE_EXP2": "constexpr",
+        "USE_G": "constexpr",
+        "USE_GK": "constexpr",
+        "USE_INITIAL_STATE": "constexpr",
+        "V": "constexpr",
+        "chunk_offsets": "*i64",
+        "cu_seqlens": "*i32",
+        "g": "*fp32",
+        "gk": "constexpr",
+        "h": "*bf16",
+        "h0": "*fp32",
+        "ht": "*fp32",
+        "k": "*bf16",
+        "v": "*bf16",
+        "v_new": "*bf16",
+        "w": "*bf16"
+      },
+      "arg_names": [
+        "k",
+        "v",
+        "w",
+        "v_new",
+        "g",
+        "gk",
+        "h",
+        "h0",
+        "ht",
+        "cu_seqlens",
+        "chunk_offsets",
+        "T",
+        "H",
+        "Hg",
+        "K",
+        "V",
+        "BT",
+        "BV",
+        "USE_G",
+        "USE_GK",
+        "USE_INITIAL_STATE",
+        "STORE_FINAL_STATE",
+        "SAVE_NEW_VALUE",
+        "IS_VARLEN",
+        "USE_EXP2"
+      ],
+      "constants": {
+        "(12,)": "16",
+        "(13,)": "16",
+        "(14,)": "128",
+        "(15,)": "128",
+        "(16,)": "64",
+        "(17,)": "32",
+        "(18,)": "True",
+        "(19,)": "False",
+        "(20,)": "True",
+        "(21,)": "True",
+        "(22,)": "True",
+        "(23,)": "True",
+        "(24,)": "False",
+        "(5,)": "None"
+      },
+      "scalars": [
+        {
+          "parameter": 10,
+          "name": "T",
+          "type": "i32",
+          "bits": 47
+        }
+      ],
+      "bindings": [
+        {
+          "parameter": 0,
+          "arg_index": 0,
+          "name": "k",
+          "type": "*bf16",
+          "owned_role": "K",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16,
+              128
+            ],
+            "stride": [
+              96256,
+              2048,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 1,
+          "arg_index": 1,
+          "name": "v",
+          "type": "*bf16",
+          "owned_role": "U",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16,
+              128
+            ],
+            "stride": [
+              96256,
+              2048,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 2,
+          "arg_index": 2,
+          "name": "w",
+          "type": "*bf16",
+          "owned_role": "W",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16,
+              128
+            ],
+            "stride": [
+              96256,
+              2048,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 3,
+          "arg_index": 3,
+          "name": "v_new",
+          "type": "*bf16",
+          "owned_role": "VNew",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16,
+              128
+            ],
+            "stride": [
+              96256,
+              2048,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 4,
+          "arg_index": 4,
+          "name": "g",
+          "type": "*fp32",
+          "owned_role": "GCumulative",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16
+            ],
+            "stride": [
+              752,
+              16,
+              1
+            ],
+            "dtype": "torch.float32",
+            "device": "cuda:0",
+            "logical_bytes": 3008,
+            "storage_bytes": 3008,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 5,
+          "arg_index": 6,
+          "name": "h",
+          "type": "*bf16",
+          "owned_role": "HChunks",
+          "observed_geometry": {
+            "shape": [
+              1,
+              1,
+              16,
+              128,
+              128
+            ],
+            "stride": [
+              262144,
+              262144,
+              16384,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 524288,
+            "storage_bytes": 524288,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 6,
+          "arg_index": 7,
+          "name": "h0",
+          "type": "*fp32",
+          "owned_role": "InitialState",
+          "observed_geometry": {
+            "shape": [
+              1,
+              16,
+              128,
+              128
+            ],
+            "stride": [
+              262144,
+              16384,
+              128,
+              1
+            ],
+            "dtype": "torch.float32",
+            "device": "cuda:0",
+            "logical_bytes": 1048576,
+            "storage_bytes": 1048576,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 7,
+          "arg_index": 8,
+          "name": "ht",
+          "type": "*fp32",
+          "owned_role": "FinalState",
+          "observed_geometry": {
+            "shape": [
+              1,
+              16,
+              128,
+              128
+            ],
+            "stride": [
+              262144,
+              16384,
+              128,
+              1
+            ],
+            "dtype": "torch.float32",
+            "device": "cuda:0",
+            "logical_bytes": 1048576,
+            "storage_bytes": 1048576,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 8,
+          "arg_index": 9,
+          "name": "cu_seqlens",
+          "type": "*i32",
+          "owned_role": "QueryStarts",
+          "observed_geometry": {
+            "shape": [
+              2
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.int32",
+            "device": "cuda:0",
+            "logical_bytes": 8,
+            "storage_bytes": 8,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 9,
+          "arg_index": 10,
+          "name": "chunk_offsets",
+          "type": "*i64",
+          "owned_role": "ChunkOffsets",
+          "observed_geometry": {
+            "shape": [
+              2
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.int64",
+            "device": "cuda:0",
+            "logical_bytes": 16,
+            "storage_bytes": 16,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        }
+      ]
+    },
+    {
+      "stage": "Output",
+      "kernel": "chunk_fwd_kernel_o",
+      "entry": "zg_vllm_81c9eabf9b9a78e0",
+      "threads": 128,
+      "shared": 12288,
+      "grid": [
+        4,
+        1,
+        16
+      ],
+      "PTX": {
+        "path": "/home/pvl/spaces/abird/src/zerogravity/.agents/runs/numerics-and-context-upstream-cuda-root-20261020/root-canonical47-natural-all42-1/observed/kernels/81c9eabf9b9a78e0b89cc6a056e7335d09c189e3bee0a570192ff848c16ef4b4.ptx",
+        "bytes": 52735,
+        "sha256": "284a22e9904079006d593e67082d6d898cd35becf07e7aebf8086ec9c070df0e"
+      },
+      "PTX_sha256": "284a22e9904079006d593e67082d6d898cd35becf07e7aebf8086ec9c070df0e",
+      "source_sha256": "ac7f0f31786647aab58a25505ccd4240b8d5d2c6e0dc6ecf3a0dcdbb5e5ae259",
+      "source_bytes": 77976,
+      "source_file": "output.cu",
+      "target": "crates/zerogravity-gpu/src/vllm_cuda_gdn/output.cu",
+      "reuse_exact_existing_source": true,
+      "compared_existing": {
+        "path": "/home/pvl/spaces/abird/src/zerogravity-worktrees/root-lowest-f32-20261020/crates/zerogravity-gpu/src/vllm_cuda_gdn/output.cu",
+        "bytes": 77976,
+        "sha256": "ac7f0f31786647aab58a25505ccd4240b8d5d2c6e0dc6ecf3a0dcdbb5e5ae259"
+      },
+      "signature": {
+        "BK": "constexpr",
+        "BT": "constexpr",
+        "BV": "constexpr",
+        "H": "constexpr",
+        "Hg": "constexpr",
+        "IS_VARLEN": "constexpr",
+        "K": "constexpr",
+        "T": "i32",
+        "USE_G": "constexpr",
+        "V": "constexpr",
+        "chunk_indices": "*i32",
+        "cu_seqlens": "*i32",
+        "g": "*fp32",
+        "h": "*bf16",
+        "k": "*bf16",
+        "o": "*bf16",
+        "q": "*bf16",
+        "scale": "fp32",
+        "v": "*bf16"
+      },
+      "arg_names": [
+        "q",
+        "k",
+        "v",
+        "h",
+        "g",
+        "o",
+        "cu_seqlens",
+        "chunk_indices",
+        "scale",
+        "T",
+        "H",
+        "Hg",
+        "K",
+        "V",
+        "BT",
+        "BK",
+        "BV",
+        "USE_G",
+        "IS_VARLEN"
+      ],
+      "constants": {
+        "(10,)": "16",
+        "(11,)": "16",
+        "(12,)": "128",
+        "(13,)": "128",
+        "(14,)": "64",
+        "(15,)": "32",
+        "(16,)": "32",
+        "(17,)": "True",
+        "(18,)": "True"
+      },
+      "scalars": [
+        {
+          "parameter": 8,
+          "name": "scale",
+          "type": "fp32",
+          "bits": 1035273459
+        },
+        {
+          "parameter": 9,
+          "name": "T",
+          "type": "i32",
+          "bits": 47
+        }
+      ],
+      "bindings": [
+        {
+          "parameter": 0,
+          "arg_index": 0,
+          "name": "q",
+          "type": "*bf16",
+          "owned_role": "Q",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16,
+              128
+            ],
+            "stride": [
+              96256,
+              2048,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 1,
+          "arg_index": 1,
+          "name": "k",
+          "type": "*bf16",
+          "owned_role": "K",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16,
+              128
+            ],
+            "stride": [
+              96256,
+              2048,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 2,
+          "arg_index": 2,
+          "name": "v",
+          "type": "*bf16",
+          "owned_role": "VNew",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16,
+              128
+            ],
+            "stride": [
+              96256,
+              2048,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 3,
+          "arg_index": 3,
+          "name": "h",
+          "type": "*bf16",
+          "owned_role": "HChunks",
+          "observed_geometry": {
+            "shape": [
+              1,
+              1,
+              16,
+              128,
+              128
+            ],
+            "stride": [
+              262144,
+              262144,
+              16384,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 524288,
+            "storage_bytes": 524288,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 4,
+          "arg_index": 4,
+          "name": "g",
+          "type": "*fp32",
+          "owned_role": "GCumulative",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16
+            ],
+            "stride": [
+              752,
+              16,
+              1
+            ],
+            "dtype": "torch.float32",
+            "device": "cuda:0",
+            "logical_bytes": 3008,
+            "storage_bytes": 3008,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 5,
+          "arg_index": 5,
+          "name": "o",
+          "type": "*bf16",
+          "owned_role": "Core",
+          "observed_geometry": {
+            "shape": [
+              1,
+              47,
+              16,
+              128
+            ],
+            "stride": [
+              96256,
+              2048,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 6,
+          "arg_index": 6,
+          "name": "cu_seqlens",
+          "type": "*i32",
+          "owned_role": "QueryStarts",
+          "observed_geometry": {
+            "shape": [
+              2
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.int32",
+            "device": "cuda:0",
+            "logical_bytes": 8,
+            "storage_bytes": 8,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 7,
+          "arg_index": 7,
+          "name": "chunk_indices",
+          "type": "*i32",
+          "owned_role": "ChunkIndices",
+          "observed_geometry": {
+            "shape": [
+              1,
+              2
+            ],
+            "stride": [
+              2,
+              1
+            ],
+            "dtype": "torch.int32",
+            "device": "cuda:0",
+            "logical_bytes": 8,
+            "storage_bytes": 8,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        }
+      ]
+    },
+    {
+      "stage": "Gated",
+      "kernel": "layer_norm_fwd_kernel",
+      "entry": "zg_vllm_820c1a61c99ce579",
+      "threads": 32,
+      "shared": 0,
+      "grid": [
+        188,
+        1,
+        1
+      ],
+      "PTX": {
+        "path": "/home/pvl/spaces/abird/src/zerogravity/.agents/runs/numerics-and-context-upstream-cuda-root-20261020/root-canonical47-natural-all42-1/observed/kernels/820c1a61c99ce5796c490bbd73674611eea84590da52a6a19f3aa9a5f0b620a2.ptx",
+        "bytes": 28820,
+        "sha256": "3900a7b7b673b1b398d39a8bb7d3e4ab4d87ea8798e9a2214be7c5b9d29beeea"
+      },
+      "PTX_sha256": "3900a7b7b673b1b398d39a8bb7d3e4ab4d87ea8798e9a2214be7c5b9d29beeea",
+      "source_sha256": "4915a95ebfff02c5e24b7aeeed10bfa7b88c9dbdcfbe91148d219bf3981f4d2a",
+      "source_bytes": 25145,
+      "source_file": "canonical47_gated.cu",
+      "target": "crates/zerogravity-gpu/src/vllm_cuda_gdn/canonical47_gated.cu",
+      "reuse_exact_existing_source": false,
+      "compared_existing": {
+        "path": "/home/pvl/spaces/abird/src/zerogravity-worktrees/root-lowest-f32-20261020/crates/zerogravity-gpu/src/vllm_cuda_gdn/gated_64.cu",
+        "bytes": 25146,
+        "sha256": "9faa8c3417ab4e74ed3c53409dc844dd125faf8318ad0c7e69b507a9590ce8b3"
+      },
+      "signature": {
+        "ACTIVATION": "constexpr",
+        "B": "constexpr",
+        "BLOCK_N": "constexpr",
+        "HAS_BIAS": "constexpr",
+        "HAS_Z": "constexpr",
+        "IS_RMS_NORM": "constexpr",
+        "M": "i32",
+        "Mean": "constexpr",
+        "N": "constexpr",
+        "NORM_BEFORE_GATE": "constexpr",
+        "ROWS_PER_BLOCK": "constexpr",
+        "Rstd": "*fp32",
+        "W": "*bf16",
+        "X": "*bf16",
+        "Y": "*bf16",
+        "Z": "*bf16",
+        "eps": "fp32",
+        "stride_x_row": "i32",
+        "stride_y_row": "i32",
+        "stride_z_row": "i32"
+      },
+      "arg_names": [
+        "X",
+        "Y",
+        "W",
+        "B",
+        "Z",
+        "Mean",
+        "Rstd",
+        "stride_x_row",
+        "stride_y_row",
+        "stride_z_row",
+        "M",
+        "N",
+        "eps",
+        "BLOCK_N",
+        "ROWS_PER_BLOCK",
+        "HAS_BIAS",
+        "HAS_Z",
+        "NORM_BEFORE_GATE",
+        "IS_RMS_NORM",
+        "ACTIVATION"
+      ],
+      "constants": {
+        "(11,)": "128",
+        "(13,)": "128",
+        "(14,)": "4",
+        "(15,)": "False",
+        "(16,)": "True",
+        "(17,)": "True",
+        "(18,)": "True",
+        "(19,)": "silu",
+        "(3,)": "None",
+        "(5,)": "None"
+      },
+      "scalars": [
+        {
+          "parameter": 5,
+          "name": "stride_x_row",
+          "type": "i32",
+          "bits": 128
+        },
+        {
+          "parameter": 6,
+          "name": "stride_y_row",
+          "type": "i32",
+          "bits": 128
+        },
+        {
+          "parameter": 7,
+          "name": "stride_z_row",
+          "type": "i32",
+          "bits": 128
+        },
+        {
+          "parameter": 8,
+          "name": "M",
+          "type": "i32",
+          "bits": 752
+        },
+        {
+          "parameter": 9,
+          "name": "eps",
+          "type": "fp32",
+          "bits": 897988541
+        }
+      ],
+      "bindings": [
+        {
+          "parameter": 0,
+          "arg_index": 0,
+          "name": "X",
+          "type": "*bf16",
+          "owned_role": "Core",
+          "observed_geometry": {
+            "shape": [
+              752,
+              128
+            ],
+            "stride": [
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 1,
+          "arg_index": 1,
+          "name": "Y",
+          "type": "*bf16",
+          "owned_role": "Gated",
+          "observed_geometry": {
+            "shape": [
+              752,
+              128
+            ],
+            "stride": [
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 2,
+          "arg_index": 2,
+          "name": "W",
+          "type": "*bf16",
+          "owned_role": "GatedGamma",
+          "observed_geometry": {
+            "shape": [
+              128
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 256,
+            "storage_bytes": 256,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 3,
+          "arg_index": 4,
+          "name": "Z",
+          "type": "*bf16",
+          "owned_role": "ZCompact",
+          "observed_geometry": {
+            "shape": [
+              752,
+              128
+            ],
+            "stride": [
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16",
+            "device": "cuda:0",
+            "logical_bytes": 192512,
+            "storage_bytes": 192512,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        },
+        {
+          "parameter": 4,
+          "arg_index": 6,
+          "name": "Rstd",
+          "type": "*fp32",
+          "owned_role": "Rstd",
+          "observed_geometry": {
+            "shape": [
+              752
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.float32",
+            "device": "cuda:0",
+            "logical_bytes": 3008,
+            "storage_bytes": 3008,
+            "storage_offset": 0
+          },
+          "reference_address_used_as_runtime_operand": false
+        }
+      ]
+    }
+  ],
+  "original_private_driver_ABI_used": false,
+  "math_or_runtime_qualified": false
+}
