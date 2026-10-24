@@ -1,0 +1,266 @@
+{
+  "file": ".agents/docs/FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-20.md",
+  "parts": [
+    {
+      "part": 1,
+      "title": "Current takeover and instruction precedence",
+      "origin": ".agents/docs/handoff-2026-10-20/CURRENT_TAKEOVER.md",
+      "start_line": 78,
+      "end_line": 334,
+      "bytes": 14132,
+      "sha256": "b5474dd39f8eeb4048f8763b85e0d6dc8520bb4bc627d9b2099d36dc89c056f9"
+    },
+    {
+      "part": 2,
+      "title": "Live workspace, worktrees and complete reachable commit history",
+      "origin": ".agents/docs/handoff-2026-10-20/WORKSPACE_SNAPSHOT.md",
+      "start_line": 344,
+      "end_line": 1176,
+      "bytes": 48474,
+      "sha256": "e95bf0c74f82f1fd132df7c13ed97e4160efa297931c3ef286ab6d47cb5c622f"
+    },
+    {
+      "part": 3,
+      "title": "Numerical and model continuation",
+      "origin": ".agents/docs/handoff-2026-10-20/NUMERICAL_AND_MODEL_CONTINUATION.md",
+      "start_line": 1186,
+      "end_line": 2050,
+      "bytes": 57037,
+      "sha256": "7bb2be8f8e84af5df9b82d5c7e746bfb384fb9ee479f3db26df5c6333afef03a"
+    },
+    {
+      "part": 4,
+      "title": "Pinned vLLM GDN arithmetic investigation",
+      "origin": ".agents/docs/handoff-2026-10-20/GDN_VLLM_ARITHMETIC_AUDIT.md",
+      "start_line": 2060,
+      "end_line": 2367,
+      "bytes": 22053,
+      "sha256": "ff86ab3a9e26478640a15f1a0b498902ae5aca4b14894840c1df6cb5f09bda17"
+    },
+    {
+      "part": 5,
+      "title": "Serving, measured performance and paused GPU work",
+      "origin": ".agents/docs/handoff-2026-10-20/SERVING_PERFORMANCE_AND_PAUSED_GPU_WORK.md",
+      "start_line": 2377,
+      "end_line": 3260,
+      "bytes": 60379,
+      "sha256": "4ebaa3e70bcb1fcdad24650e8a4d449597bab087abea579c439bf039cc92996a"
+    },
+    {
+      "part": 6,
+      "title": "Original design lineage and historical coverage",
+      "origin": ".agents/docs/handoff-2026-10-20/HISTORY_DESIGN_AND_COVERAGE_AUDIT.md",
+      "start_line": 3270,
+      "end_line": 3492,
+      "bytes": 18346,
+      "sha256": "5d9f8bb5408983133225a425e30a0eb85980ed68fec49449e55e60848bc26ef0"
+    },
+    {
+      "part": 7,
+      "title": "Complete reviewed correctness-first and vLLM performance plan",
+      "origin": ".agents/plans/numerics-and-context/CORRECTNESS_FIRST_VLLM_PLAN_2026-10-20.md",
+      "start_line": 3502,
+      "end_line": 4139,
+      "bytes": 45470,
+      "sha256": "31a2f1280da6a5df2662c9c8747fc8d795a91a8ab87a1904c33b30dfe88de9f7"
+    },
+    {
+      "part": 8,
+      "title": "Complete ROOT implementation journal (dated entries)",
+      "origin": ".agents/runs/serving-and-speculation-parity-root-2026-10-19/TODO.md",
+      "start_line": 4149,
+      "end_line": 4857,
+      "bytes": 120546,
+      "sha256": "42e961f462de77f84a032f7dd930a6bcb6a6b9b757ea5735981c8edb38f54c01"
+    },
+    {
+      "part": 9,
+      "title": "Complete October 19 handoff including original October 17 history",
+      "origin": ".agents/docs/FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-19.md",
+      "start_line": 4867,
+      "end_line": 10642,
+      "bytes": 602982,
+      "sha256": "8510266441c84e1588373d42ab2d43a6831c8e7cac001d8911ca76ffde305492"
+    },
+    {
+      "part": 10,
+      "title": "Current AGENTS instructions",
+      "origin": "AGENTS.md",
+      "start_line": 10652,
+      "end_line": 10761,
+      "bytes": 5949,
+      "sha256": "86a2089819974a901bedf812ec6e911c2fb4a9b7fa73cc189ed56390771e3402"
+    },
+    {
+      "part": 11,
+      "title": "Current plan layout rules",
+      "origin": ".agents/plans/README.md",
+      "start_line": 10771,
+      "end_line": 10875,
+      "bytes": 3099,
+      "sha256": "a7c38b5a54b7cabb1ee71b7e542fd0fc5b8e1a1f227e54f3a879acaa7b4d0804"
+    },
+    {
+      "part": 12,
+      "title": "Current plan queue",
+      "origin": ".agents/plans/TODO.md",
+      "start_line": 10885,
+      "end_line": 10907,
+      "bytes": 920,
+      "sha256": "08328d17f8e331e910897c117f4f5a2a60f86681386d3857c28d9c84284c4a1d"
+    },
+    {
+      "part": 13,
+      "title": "Full plan snapshot: .agents/plans/archive/history/accepted-baseline/TODO.md",
+      "origin": ".agents/plans/archive/history/accepted-baseline/TODO.md",
+      "start_line": 10917,
+      "end_line": 10954,
+      "bytes": 3128,
+      "sha256": "968831b1b3183e027222842127791b88509781adce2e08432acf0cc1eaef0a51"
+    },
+    {
+      "part": 14,
+      "title": "Full plan snapshot: .agents/plans/archive/history/handoff-cleanup/TODO.md",
+      "origin": ".agents/plans/archive/history/handoff-cleanup/TODO.md",
+      "start_line": 10964,
+      "end_line": 11020,
+      "bytes": 3564,
+      "sha256": "0d92b720ff0ece86e003d4235dde95683eae408bbf2def229d2839459130433e"
+    },
+    {
+      "part": 15,
+      "title": "Full plan snapshot: .agents/plans/archive/history/historical-records/TODO.md",
+      "origin": ".agents/plans/archive/history/historical-records/TODO.md",
+      "start_line": 11030,
+      "end_line": 11124,
+      "bytes": 10493,
+      "sha256": "2ac60f20d2823af7d309c7867a3cb2cb64469dc42d6f82c011a834b655c3ecda"
+    },
+    {
+      "part": 16,
+      "title": "Full plan snapshot: .agents/plans/cpu-gpu-optimization/TODO.md",
+      "origin": ".agents/plans/cpu-gpu-optimization/TODO.md",
+      "start_line": 11134,
+      "end_line": 11184,
+      "bytes": 5349,
+      "sha256": "c49fa766463002fc5f0b13aee9ce841dcc8acd597fa5f1c5eec336dd351e23d0"
+    },
+    {
+      "part": 17,
+      "title": "Full plan snapshot: .agents/plans/distributed-execution/TODO.md",
+      "origin": ".agents/plans/distributed-execution/TODO.md",
+      "start_line": 11194,
+      "end_line": 11216,
+      "bytes": 1782,
+      "sha256": "21b25cbb3b8dc97a88e83fc7cc930da2a35b50983c05a815819a0941d0f038da"
+    },
+    {
+      "part": 18,
+      "title": "Full plan snapshot: .agents/plans/memory-and-streaming/TODO.md",
+      "origin": ".agents/plans/memory-and-streaming/TODO.md",
+      "start_line": 11226,
+      "end_line": 11336,
+      "bytes": 8082,
+      "sha256": "0d0990395ef44a98e3b643e5d6612e8849164cd7a69aee18e1f987155c5d2c42"
+    },
+    {
+      "part": 19,
+      "title": "Full plan snapshot: .agents/plans/model-acquisition/TODO.md",
+      "origin": ".agents/plans/model-acquisition/TODO.md",
+      "start_line": 11346,
+      "end_line": 11679,
+      "bytes": 44908,
+      "sha256": "3da582c91a039efe72223ce09bcdacb1844de60ec14ed8a3a19d23d51d494b1f"
+    },
+    {
+      "part": 20,
+      "title": "Full plan snapshot: .agents/plans/model-acquisition/archive/through-a774ded/TODO.md",
+      "origin": ".agents/plans/model-acquisition/archive/through-a774ded/TODO.md",
+      "start_line": 11689,
+      "end_line": 11808,
+      "bytes": 37926,
+      "sha256": "4a178da79a9bc842b39d797f3a8141b28525e5a97cba3a11ba304c8edab27667"
+    },
+    {
+      "part": 21,
+      "title": "Full plan snapshot: .agents/plans/model-acquisition/archive/through-fce1353/TODO.md",
+      "origin": ".agents/plans/model-acquisition/archive/through-fce1353/TODO.md",
+      "start_line": 11818,
+      "end_line": 12035,
+      "bytes": 58744,
+      "sha256": "e0750281ddc39d99dac3e44542be9087d3fa18b305c0afa39c3785a502032d61"
+    },
+    {
+      "part": 22,
+      "title": "Full plan snapshot: .agents/plans/model-execution/TODO.md",
+      "origin": ".agents/plans/model-execution/TODO.md",
+      "start_line": 12045,
+      "end_line": 12739,
+      "bytes": 45355,
+      "sha256": "ec941d609bf1e5c0eca326e32f2e2a5f0c207b92b50d0ed1cd3173512f6be98a"
+    },
+    {
+      "part": 23,
+      "title": "Full plan snapshot: .agents/plans/multimodal/TODO.md",
+      "origin": ".agents/plans/multimodal/TODO.md",
+      "start_line": 12749,
+      "end_line": 12821,
+      "bytes": 7625,
+      "sha256": "774818e6addf486ea8f64ca8a9c43dfb700c04c8c80954da99eae51cf04ae208"
+    },
+    {
+      "part": 24,
+      "title": "Full plan snapshot: .agents/plans/numerics-and-context/TODO.md",
+      "origin": ".agents/plans/numerics-and-context/TODO.md",
+      "start_line": 12831,
+      "end_line": 12972,
+      "bytes": 10220,
+      "sha256": "f73cde3e405495eb3e33f7045d093fea51c797979bcaf82f462302d5fa17d4d7"
+    },
+    {
+      "part": 25,
+      "title": "Full plan snapshot: .agents/plans/pipeline-composition/TODO.md",
+      "origin": ".agents/plans/pipeline-composition/TODO.md",
+      "start_line": 12982,
+      "end_line": 13280,
+      "bytes": 17912,
+      "sha256": "771bbe4580bd690e88a1ca9930df458f66fcf5e647597621ab6022733af9f72c"
+    },
+    {
+      "part": 26,
+      "title": "Full plan snapshot: .agents/plans/platform-and-release/TODO.md",
+      "origin": ".agents/plans/platform-and-release/TODO.md",
+      "start_line": 13290,
+      "end_line": 13328,
+      "bytes": 3497,
+      "sha256": "121c75ca2c48de4b00620d1c4b4ebadb2f1851b7275b93bee8e4997b67f2c7b4"
+    },
+    {
+      "part": 27,
+      "title": "Full plan snapshot: .agents/plans/serving-and-speculation/TODO.md",
+      "origin": ".agents/plans/serving-and-speculation/TODO.md",
+      "start_line": 13338,
+      "end_line": 13923,
+      "bytes": 38407,
+      "sha256": "eec2f868421e5fedff223da60e43e8ade2b5b63e46a90fbd83ed3b43cd7b9fa3"
+    },
+    {
+      "part": 28,
+      "title": "Complete current fused GPU batching design/evidence",
+      "origin": ".agents/plans/serving-and-speculation/FUSED_GPU_BATCHING.md",
+      "start_line": 13933,
+      "end_line": 14891,
+      "bytes": 53671,
+      "sha256": "68b8f1707452914384170b5fa6fb5271617ed83fac3be18b73ea8f5837e76977"
+    },
+    {
+      "part": 29,
+      "title": "Complete copy-ready starting prompt",
+      "origin": ".agents/plans/NEXT_AGENT_PROMPT_2026-10-20.md",
+      "start_line": 14901,
+      "end_line": 15021,
+      "bytes": 6658,
+      "sha256": "c0979aedbfb6fd9b88134fac6b80567ab3997d2e0e7f469c8cecc1ad49067918"
+    }
+  ]
+}
