@@ -65,6 +65,9 @@ pub use zerogravity_model_qwen35::model_catalog;
 #[cfg(feature = "text")]
 pub use zerogravity_model_qwen35::tokenize;
 
+#[cfg(all(feature = "model-gemma4-cpu-candidate", target_os = "linux"))]
+pub mod gemma4_cpu;
+
 #[cfg(all(feature = "model-qwen35", feature = "text"))]
 pub mod prepare;
 
