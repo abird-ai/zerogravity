@@ -9,6 +9,54 @@ Contracts: [A2/A3 specification](../MODEL_ACQUISITION_IMPLEMENTATION_SPEC.md),
 
 ## Committed
 
+### `a3716fd0de50` — cached locator and authenticated source access
+
+Related source commits: `77c48b315fee` (artifacts-verified-access).
+Aggregate source21 qualification applies to the assembled tree; no per-commit
+build or general model/backend grant. Historical failures keep their source scope.
+
+- [x] Complete owner-authorized managed HF Gemma4 E2B acquisition at
+  3e22461f65e89153144f8adb70e3b8c2cc9845a7 (10,278,848,001 selected bytes).
+  Canonical managed transaction exit0:8files/10,278,848,001B, snapshot
+  ba32b7693d0f7dcbdf4f00f94d13bd61c838e2d7a927f1879817cd5e74fca8b1.
+  Checkpoint10,246,621,918B SHA256
+  2db5482b20d746879bb3ef79b5203e9075a2e2b98f54ec7c2f281c1477ddc550.
+  Owner-approved existing canonical cache64→96GiB quota applied durably23Oct;
+  exact policy-only change under original activity→publication exclusive locks,
+  all models/refs/staging/lock inodes preserved. Stopped sibling partials
+  remain preserved; no alternate-root workaround.
+  Quiesce acquisition/hash IO before timed serving arms. Acquisition grants
+  no trained inference/native/serving qualification.
+
+- [x] Complete the observed public Qwen3.8+Gemma4 source metadata
+  filenames in original pinned same-folder closure. 2026-10-18 actual
+  tokenless HF --dry-run returned Qwen3.8-27B commit
+  1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0,
+  18 shards/55,586,113,293 selected bytes; Gemma4 26B-A4B-it commit
+  4d7ae4984b7db7de8f8457170b3f1a419ee76d52,
+  2 shards/51,644,338,194 selected bytes. A third tokenless
+  HF --dry-run resolves Gemma4 E2B-it commit
+  3e22461f65e89153144f8adb70e3b8c2cc9845a7,
+  1 unsharded safetensors/10,278,848,001 selected bytes. The actual
+  observed Qwen video_preprocessor_config.json and crc32.txt (opaque
+  non-trust data) required two additive optional companion filenames.
+  Both present in real result; no credentials, tensor weights, cache
+  refs, SDK, model execution or GPU touched. Synthetic HF/GH model/quant/filter and
+  offline exact closure tests cover both additional filenames.
+  Final exact source cutover gates pass: isolated check.sh 988 Rust
+  executions/0fail/69ignored/222 suites plus18 namespace fixtures and full
+  strict production/diagnostic lint, CPU/release/installer/Nix-format/
+  reference self-tests. Actual offline Nix source-integrity and local
+  docs links pass; unchanged root README, Cargo.lock/dependency manifests.
+  Separate original release source/cached model regressions both pass:
+  cache/direct16.88s and HF-import21.72s, each both approved Qwen3.5
+  checkpoints/all248320 logits/all42 state domains/two nonzero tokens/
+  independent sessions/lease/mutation/reclaim bit-exact. This remains
+  tokenless live metadata-only Hub resolution; there is no trained-source
+  byte acquisition, inference, 8K drift closure, model-format or physical
+  GPU qualification. Sign only the two additive Rust paths and relevant
+  plan documentation; no push, tag or user-cache/device mutation.
+
 Completed phases through signed `fce1353` and their passed checks are in
 [the completed checklist](archive/through-fce1353/TODO.md).
 
@@ -267,35 +315,6 @@ Completed phases from `e0073a5` through signed `a774ded` are in
   Current --bundle is a user-selected subset and cannot claim a
   complete model/codec assembly, support auto-loading, or run without
   newly qualified source parser and license checks.
-
-- [x] Complete the observed public Qwen3.8+Gemma4 source metadata
-  filenames in original pinned same-folder closure. 2026-10-18 actual
-  tokenless HF --dry-run returned Qwen3.8-27B commit
-  1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0,
-  18 shards/55,586,113,293 selected bytes; Gemma4 26B-A4B-it commit
-  4d7ae4984b7db7de8f8457170b3f1a419ee76d52,
-  2 shards/51,644,338,194 selected bytes. A third tokenless
-  HF --dry-run resolves Gemma4 E2B-it commit
-  3e22461f65e89153144f8adb70e3b8c2cc9845a7,
-  1 unsharded safetensors/10,278,848,001 selected bytes. The actual
-  observed Qwen video_preprocessor_config.json and crc32.txt (opaque
-  non-trust data) required two additive optional companion filenames.
-  Both present in real result; no credentials, tensor weights, cache
-  refs, SDK, model execution or GPU touched. Synthetic HF/GH model/quant/filter and
-  offline exact closure tests cover both additional filenames.
-  Final exact source cutover gates pass: isolated check.sh 988 Rust
-  executions/0fail/69ignored/222 suites plus18 namespace fixtures and full
-  strict production/diagnostic lint, CPU/release/installer/Nix-format/
-  reference self-tests. Actual offline Nix source-integrity and local
-  docs links pass; unchanged root README, Cargo.lock/dependency manifests.
-  Separate original release source/cached model regressions both pass:
-  cache/direct16.88s and HF-import21.72s, each both approved Qwen3.5
-  checkpoints/all248320 logits/all42 state domains/two nonzero tokens/
-  independent sessions/lease/mutation/reclaim bit-exact. This remains
-  tokenless live metadata-only Hub resolution; there is no trained-source
-  byte acquisition, inference, 8K drift closure, model-format or physical
-  GPU qualification. Sign only the two additive Rust paths and relevant
-  plan documentation; no push, tag or user-cache/device mutation.
 
 - [ ] Extend cloud profiles beyond the narrow qualified AWS FULL_OBJECT SHA256 object route: broader S3 partitions/compatible vendors/credentials/checksum algorithms, Azure latest/SAS/managed chains and per-object digest-map prefixes. Keep explicit version, caller-SHA and conditional FirstSeen contracts distinct; never infer immutable versions or trusted raw hashes from unqualified validators or multipart COMPOSITE checksums.
 - [ ] Extend ModelScope only through separately qualified alias authority and redirect/CDN/mirror/credential profiles. Selected missing sizes now use exact pinned HEAD; no alias-to-commit authority was established from revision echoes, timestamps or file last-modified IDs. The current profile does not close broader parity or independently prove server revision/membership behavior.
