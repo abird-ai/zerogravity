@@ -1,0 +1,42 @@
+{
+  "schema": "zg.gemma4-e2b.ordinary-request.v1",
+  "max_output": 8,
+  "add_special_tokens": true,
+  "cases": [
+    {
+      "name": "one",
+      "text": "One",
+      "rows": 1
+    },
+    {
+      "name": "two",
+      "text": "One plus",
+      "rows": 2
+    },
+    {
+      "name": "three",
+      "text": "One plus one",
+      "rows": 3
+    },
+    {
+      "name": "four",
+      "text": "One plus one is",
+      "rows": 4
+    },
+    {
+      "name": "thirty-two",
+      "text": "One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One",
+      "rows": 32
+    },
+    {
+      "name": "fifty-seven",
+      "text": "One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One One",
+      "rows": 57
+    },
+    {
+      "name": "unicode",
+      "text": "你好，世界",
+      "rows": 3
+    }
+  ]
+}
