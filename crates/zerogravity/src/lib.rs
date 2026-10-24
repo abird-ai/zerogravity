@@ -71,6 +71,9 @@ pub mod gemma4_cpu;
 #[cfg(all(feature = "model-qwen35", feature = "text"))]
 pub mod prepare;
 
+#[cfg(all(feature = "qwen27b-hip-qualification", target_os = "linux"))]
+pub mod qwen27b_gpu;
+
 #[cfg(test)]
 mod tests {
     #[test]
