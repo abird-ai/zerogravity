@@ -1,0 +1,305 @@
+{
+  "schema": "zg.gemma4-e2b.tokenizer-cases.v2",
+  "cases": [
+    {
+      "name": "learned-prompt",
+      "text": "One plus one is"
+    },
+    {
+      "name": "empty",
+      "text": ""
+    },
+    {
+      "name": "spaces",
+      "text": "   "
+    },
+    {
+      "name": "leading",
+      "text": " hello"
+    },
+    {
+      "name": "trailing",
+      "text": "hello "
+    },
+    {
+      "name": "double-space",
+      "text": "a  b"
+    },
+    {
+      "name": "tab",
+      "text": "a\tb"
+    },
+    {
+      "name": "line",
+      "text": "a\nb"
+    },
+    {
+      "name": "crlf",
+      "text": "a\r\nb"
+    },
+    {
+      "name": "nbsp",
+      "text": "a b"
+    },
+    {
+      "name": "narrow-space",
+      "text": "a b"
+    },
+    {
+      "name": "combining",
+      "text": "é"
+    },
+    {
+      "name": "precomposed",
+      "text": "é"
+    },
+    {
+      "name": "cjk",
+      "text": "你好，世界"
+    },
+    {
+      "name": "arabic",
+      "text": "مرحبا بالعالم"
+    },
+    {
+      "name": "emoji",
+      "text": "👩‍💻🙂"
+    },
+    {
+      "name": "metaspace",
+      "text": "a▁b"
+    },
+    {
+      "name": "nul",
+      "text": "a\u0000b"
+    },
+    {
+      "name": "control",
+      "text": "\u0001\u001f"
+    },
+    {
+      "name": "foreign-template",
+      "text": "<|im_start|>user\nhello"
+    },
+    {
+      "name": "adjacent-special",
+      "text": "<bos><eos><pad>"
+    },
+    {
+      "name": "literal-turn",
+      "text": "x<|turn>user\nhello<turn|>"
+    },
+    {
+      "name": "special-0",
+      "text": "<pad>"
+    },
+    {
+      "name": "special-1",
+      "text": "<eos>"
+    },
+    {
+      "name": "special-2",
+      "text": "<bos>"
+    },
+    {
+      "name": "special-3",
+      "text": "<unk>"
+    },
+    {
+      "name": "special-4",
+      "text": "<mask>"
+    },
+    {
+      "name": "special-46",
+      "text": "<|tool>"
+    },
+    {
+      "name": "special-47",
+      "text": "<tool|>"
+    },
+    {
+      "name": "special-48",
+      "text": "<|tool_call>"
+    },
+    {
+      "name": "special-49",
+      "text": "<tool_call|>"
+    },
+    {
+      "name": "special-50",
+      "text": "<|tool_response>"
+    },
+    {
+      "name": "special-51",
+      "text": "<tool_response|>"
+    },
+    {
+      "name": "special-52",
+      "text": "<|\"|>"
+    },
+    {
+      "name": "special-98",
+      "text": "<|think|>"
+    },
+    {
+      "name": "special-100",
+      "text": "<|channel>"
+    },
+    {
+      "name": "special-101",
+      "text": "<channel|>"
+    },
+    {
+      "name": "special-105",
+      "text": "<|turn>"
+    },
+    {
+      "name": "special-106",
+      "text": "<turn|>"
+    },
+    {
+      "name": "special-255999",
+      "text": "<|image>"
+    },
+    {
+      "name": "special-256000",
+      "text": "<|audio>"
+    },
+    {
+      "name": "special-258880",
+      "text": "<|image|>"
+    },
+    {
+      "name": "special-258881",
+      "text": "<|audio|>"
+    },
+    {
+      "name": "special-258882",
+      "text": "<image|>"
+    },
+    {
+      "name": "special-258883",
+      "text": "<audio|>"
+    },
+    {
+      "name": "special-258884",
+      "text": "<|video|>"
+    }
+  ],
+  "decode_tokens": [
+    {
+      "name": "single-invalid",
+      "tokens": [
+        "<0xFF>"
+      ]
+    },
+    {
+      "name": "incomplete-two",
+      "tokens": [
+        "<0xC3>"
+      ]
+    },
+    {
+      "name": "incomplete-three",
+      "tokens": [
+        "<0xE2>",
+        "<0x82>"
+      ]
+    },
+    {
+      "name": "incomplete-four",
+      "tokens": [
+        "<0xF0>",
+        "<0x9F>",
+        "<0x92>"
+      ]
+    },
+    {
+      "name": "isolated-continuation",
+      "tokens": [
+        "<0x80>"
+      ]
+    },
+    {
+      "name": "bad-continuation",
+      "tokens": [
+        "<0xC3>",
+        "<0x28>"
+      ]
+    },
+    {
+      "name": "overlong",
+      "tokens": [
+        "<0xC0>",
+        "<0xAF>"
+      ]
+    },
+    {
+      "name": "surrogate",
+      "tokens": [
+        "<0xED>",
+        "<0xA0>",
+        "<0x80>"
+      ]
+    },
+    {
+      "name": "above-unicode-max",
+      "tokens": [
+        "<0xF4>",
+        "<0x90>",
+        "<0x80>",
+        "<0x80>"
+      ]
+    },
+    {
+      "name": "valid-multibyte",
+      "tokens": [
+        "<0xE2>",
+        "<0x82>",
+        "<0xAC>"
+      ]
+    },
+    {
+      "name": "special-splits-bytes",
+      "tokens": [
+        "<0xC3>",
+        "<bos>",
+        "<0xA9>"
+      ]
+    },
+    {
+      "name": "special-boundary",
+      "tokens": [
+        "<eos>",
+        "<0xFF>",
+        "<|turn>",
+        "<0xC3>"
+      ]
+    },
+    {
+      "name": "nul-controls",
+      "tokens": [
+        "<0x00>",
+        "<0x01>",
+        "<0x1F>",
+        "<0x7F>"
+      ]
+    },
+    {
+      "name": "valid-then-invalid",
+      "tokens": [
+        "<0xC3>",
+        "<0xA9>",
+        "<0xFF>"
+      ]
+    },
+    {
+      "name": "byte-whitespace",
+      "tokens": [
+        "<0x20>",
+        "<0x09>",
+        "<0x0A>"
+      ]
+    }
+  ]
+}
