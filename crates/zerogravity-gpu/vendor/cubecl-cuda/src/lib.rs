@@ -5,6 +5,8 @@ extern crate alloc;
 pub mod compiler;
 mod compute;
 mod device;
+mod observation;
+pub use observation::{CudaDeviceMetadata, observe_cuda_devices};
 mod owned_command;
 mod runtime;
 
