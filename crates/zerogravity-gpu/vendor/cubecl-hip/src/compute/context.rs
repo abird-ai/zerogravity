@@ -45,6 +45,9 @@ pub(crate) struct HipContext {
     /// An environment switch drops these, and nothing unloads the modules they
     /// name: see [`HipContext::is_loaded`].
     modules: CompilationCache<KernelId, HipCompiledKernel>,
+    pub(crate) native: crate::prepared_native::NativeSets,
+    pub(crate) native_context: Option<crate::prepared_native::PersistentNativeOwner>,
+    pub(crate) legacy_loaded: usize,
     pub profiler: EventProfiler,
     pub compilation_options: HipCompilationOptions,
     pub properties: DeviceProperties,
@@ -60,7 +63,8 @@ pub(crate) struct HipContext {
 
 #[derive(Debug)]
 pub struct HipCompiledKernel {
-    _module: cubecl_hip_sys::hipModule_t,
+    pub(crate) module: cubecl_hip_sys::hipModule_t,
+    _native: Option<crate::prepared_native::LoadedNativeOwner>,
     func: cubecl_hip_sys::hipFunction_t,
     cube_dim: CubeDim,
     shared_mem_bytes: usize,
@@ -70,6 +74,14 @@ pub struct HipCompiledKernel {
     /// the answer existed, which the launch path reads as every buffer both
     /// read and written.
     io: Option<Arc<[BufferIOAttr]>>,
+}
+
+impl HipCompiledKernel {
+    pub(crate) fn mark_native_unloaded(&mut self) {
+        if let Some(owner) = self._native.as_mut() {
+            owner.mark_unloaded();
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -117,6 +129,9 @@ impl HipContext {
 
         Self {
             modules: CompilationCache::mirroring(&compilation_cache),
+            native: crate::prepared_native::NativeSets::default(),
+            native_context: None,
+            legacy_loaded: 0,
             profiler: EventProfiler::default(),
             compilation_options,
             compilation_cache,
@@ -137,7 +152,23 @@ impl HipContext {
     /// grows its resident modules without bound — see
     /// [`cubecl_environment::environment::activate`].
     pub fn is_loaded(&mut self, kernel_id: &KernelId) -> bool {
+        if self.native.active() {
+            return self
+                .native
+                .prepared(kernel_id)
+                .is_some_and(|p| !p.failed && !p.retired && p.kernels.contains_key(kernel_id));
+        }
         self.modules.contains(kernel_id)
+    }
+
+    fn loaded(&mut self, kernel_id: &KernelId) -> Option<&HipCompiledKernel> {
+        if self.native.active() {
+            let p = self.native.prepared(kernel_id)?;
+            return (p.sealed && !p.failed && !p.retired && p.admission.require_usable().is_ok())
+                .then(|| p.kernels.get(kernel_id))
+                .flatten();
+        }
+        self.modules.get(kernel_id)
     }
 
     fn try_load_cached(
@@ -174,6 +205,18 @@ impl HipContext {
         cube_kernel: Box<dyn CubeKernel>,
         logger: Arc<ServerLogger>,
     ) -> Result<(), LaunchError> {
+        if self.native.active()
+            && self.native.prepared(kernel_id).is_none_or(|p| {
+                p.sealed || p.failed || p.retired || p.admission.require_usable().is_err()
+            })
+        {
+            return Err(CompilationError::Generic {
+                reason: "HIP prepared native set is sealed/failed/retired; no fallback compilation"
+                    .into(),
+                backtrace: BackTrace::capture(),
+            }
+            .into());
+        }
         let mut recording = CompilationRecording::new(kernel_id);
         let key = match self.try_load_cached(kernel_id)? {
             Ok(()) => {
@@ -339,7 +382,11 @@ impl HipContext {
             None
         };
 
-        let code = compile_to_binary(&jitc_kernel.source)?;
+        let compiler_owner = self
+            .native
+            .prepared(kernel_id)
+            .map(|p| (p._preparation.clone(), p.admission.clone()));
+        let code = compile_to_binary(&jitc_kernel.source, compiler_owner)?;
 
         let io = jitc_kernel.io.take();
         // A precompiled kernel has no representation to read the size from:
@@ -394,37 +441,81 @@ impl HipContext {
         io: Option<Arc<[BufferIOAttr]>>,
     ) -> Result<(), CompilationError> {
         let func_name = CString::new(entrypoint_name.clone()).unwrap();
+        if self.native.active() && self.native.prepared(&kernel_id).is_none() {
+            return Err(CompilationError::Generic {
+                reason: "HIP native module load missing exact original set route".into(),
+                backtrace: BackTrace::capture(),
+            });
+        }
+        let native = if let Some(prepared) = self.native.prepared_mut(&kernel_id) {
+            let inventory = crate::prepared_native::code_inventory(code).map_err(|e| {
+                CompilationError::Generic {
+                    reason: e.to_string(),
+                    backtrace: BackTrace::capture(),
+                }
+            })?;
+            let owner = prepared
+                .admission
+                .reserve_module(inventory, code)
+                .map_err(|e| CompilationError::Generic {
+                    reason: e.to_string(),
+                    backtrace: BackTrace::capture(),
+                })?;
+            prepared.inventory =
+                prepared
+                    .inventory
+                    .add(inventory)
+                    .map_err(|e| CompilationError::Generic {
+                        reason: e.to_string(),
+                        backtrace: BackTrace::capture(),
+                    })?;
+            Some(crate::prepared_native::LoadedNativeOwner::new(code, owner))
+        } else {
+            None
+        };
 
-        // Create the HIP module
         let mut module: cubecl_hip_sys::hipModule_t = std::ptr::null_mut();
-        // SAFETY: `code` contains a valid compiled binary obtained from `hiprtcGetCode`.
-        // `module` receives the loaded module handle on success.
-        unsafe {
-            let codeptr = code.as_ptr();
-            let status = cubecl_hip_sys::hipModuleLoadData(&mut module, codeptr as *const _);
-            checked("hipModuleLoadData", status)?;
-        }
-        // Retrieve the HIP module function
         let mut func: cubecl_hip_sys::hipFunction_t = std::ptr::null_mut();
-        // SAFETY: `module` is a valid loaded module from `hipModuleLoadData` above.
-        // `func_name` is a null-terminated `CString` matching the kernel entry point.
-        unsafe {
-            let status =
-                cubecl_hip_sys::hipModuleGetFunction(&mut func, module, func_name.as_ptr());
-            checked("hipModuleGetFunction", status)?;
+        // SAFETY: actual HIP code object; this call remains on its original actor.
+        let load = unsafe {
+            checked(
+                "hipModuleLoadData",
+                cubecl_hip_sys::hipModuleLoadData(&mut module, code.as_ptr().cast()),
+            )
+        };
+        let result = load.and_then(|()| {
+            // SAFETY: successful original module load and NUL-terminated entry.
+            unsafe {
+                checked(
+                    "hipModuleGetFunction",
+                    cubecl_hip_sys::hipModuleGetFunction(&mut func, module, func_name.as_ptr()),
+                )
+            }
+        });
+        let loaded = HipCompiledKernel {
+            module,
+            func,
+            cube_dim,
+            shared_mem_bytes,
+            io,
+            _native: native,
+        };
+        if let Some(prepared) = self.native.prepared_mut(&kernel_id) {
+            // Retain even failed loads, including a null returned handle: HIP may
+            // have consumed opaque allocations that no successful unload proves.
+            prepared.kernels.insert(kernel_id, loaded);
+            if result.is_err() {
+                self.native.fence_all();
+            }
+        } else {
+            if let Err(error) = result {
+                return Err(error.into());
+            }
+            self.legacy_loaded += 1;
+            self.modules.insert(kernel_id, loaded);
+            return Ok(());
         }
-
-        // register module
-        self.modules.insert(
-            kernel_id.clone(),
-            HipCompiledKernel {
-                _module: module,
-                func,
-                cube_dim,
-                shared_mem_bytes,
-                io,
-            },
-        );
+        result?;
 
         Ok(())
     }
@@ -434,9 +525,7 @@ impl HipContext {
     /// answer, which the launch path reads as every buffer both read and
     /// written.
     pub fn kernel_io(&mut self, kernel_id: &KernelId) -> Option<Arc<[BufferIOAttr]>> {
-        self.modules
-            .get(kernel_id)
-            .and_then(|kernel| kernel.io.clone())
+        self.loaded(kernel_id).and_then(|kernel| kernel.io.clone())
     }
 
     /// Executes a task on the given stream.
@@ -447,12 +536,32 @@ impl HipContext {
         dispatch_count: (u32, u32, u32),
         resources: &[GpuResource],
     ) -> Result<(), LaunchError> {
+        if let Some(prepared) = self.native.prepared(&kernel_id) {
+            if !prepared.sealed || prepared.failed {
+                return Err(LaunchError::Unknown {
+                    reason: "HIP native set is unsealed or failed before launch".into(),
+                    backtrace: BackTrace::capture(),
+                });
+            }
+            prepared
+                .admission
+                .require_usable()
+                .map_err(|error| LaunchError::Unknown {
+                    reason: format!("HIP native original admission before launch: {error}"),
+                    backtrace: BackTrace::capture(),
+                })?;
+        }
         let mut bindings = resources
             .iter()
             .map(|memory| memory.binding)
             .collect::<Vec<_>>();
 
-        let kernel = self.modules.get(&kernel_id).unwrap();
+        let kernel = self
+            .loaded(&kernel_id)
+            .ok_or_else(|| LaunchError::Unknown {
+                reason: "HIP prepared kernel unavailable/failed/retired".into(),
+                backtrace: BackTrace::capture(),
+            })?;
         let cube_dim = kernel.cube_dim;
 
         // SAFETY: `kernel.func` is a valid function handle from a loaded module.
@@ -476,12 +585,16 @@ impl HipContext {
                 std::ptr::null_mut(),
             );
 
-            // Out of memory is told apart from the rest because the caller
-            // can act on it — reclaim and relaunch — where nothing else here
-            // is worth retrying.
+            if status != 0 {
+                // Actual submission failure is unknown for the SAME physical actor.
+                self.native.fence_all();
+            }
             match checked("hipModuleLaunchKernel", status) {
                 Ok(()) => Ok(()),
-                Err(_) if status == cubecl_hip_sys::hipError_t_hipErrorOutOfMemory => {
+                Err(_)
+                    if status == cubecl_hip_sys::hipError_t_hipErrorOutOfMemory
+                        && !self.native.active() =>
+                {
                     Err(LaunchError::OutOfMemory {
                         reason: format!("out of memory launching kernel {kernel_id:?}"),
                         backtrace: BackTrace::capture(),
@@ -513,22 +626,47 @@ impl HipContext {
     }
 }
 
-/// A HIP RTC program, destroyed on drop.
-///
-/// The handle owns the source, the compilation log and the compiled code
-/// inside the RTC runtime, none of which the caller needs once the binary has
-/// been copied out. A guard rather than a call at the end because every step
-/// of the compilation below returns early on failure, and each one of those
-/// paths used to leak the program.
-struct RtcProgram(cubecl_hip_sys::hiprtcProgram);
-
+/// RTC owner keeps actual preparation admission through checked destruction.
+struct RtcProgram {
+    handle: cubecl_hip_sys::hiprtcProgram,
+    owner: Option<(
+        crate::prepared_native::NativeRetention,
+        Arc<dyn crate::prepared_native::HipNativeAdmission>,
+    )>,
+}
+impl RtcProgram {
+    fn retain_unknown(&mut self) {
+        if let Some((preparation, admission)) = self.owner.take() {
+            admission.fence_unknown();
+            std::mem::forget(preparation);
+            std::mem::forget(admission);
+        }
+    }
+    fn destroy(&mut self) -> Result<(), CompilationError> {
+        if self.handle.is_null() {
+            return Ok(());
+        }
+        // SAFETY: this guard alone owns the original RTC handle. Failure does
+        // not prove destruction; retain its charged preparation for process life.
+        let result = unsafe {
+            checked(
+                "hiprtcDestroyProgram",
+                cubecl_hip_sys::hiprtcDestroyProgram(&mut self.handle),
+            )
+        };
+        if let Err(error) = result {
+            self.retain_unknown();
+            // No second destruction attempt after an indeterminate result.
+            self.handle = std::ptr::null_mut();
+            return Err(error.into());
+        }
+        self.handle = std::ptr::null_mut();
+        Ok(())
+    }
+}
 impl Drop for RtcProgram {
     fn drop(&mut self) {
-        // SAFETY: created by `hiprtcCreateProgram` below and destroyed exactly
-        // once here, after the compiled code has been copied out.
-        unsafe {
-            cubecl_hip_sys::hiprtcDestroyProgram(&mut self.0 as *mut _);
-        }
+        let _ = self.destroy();
     }
 }
 
@@ -538,7 +676,13 @@ impl Drop for RtcProgram {
 ///
 /// [`CompilationError::Generic`] carrying the compiler's own log, and the
 /// source that produced it, so a kernel the driver refuses says why.
-fn compile_to_binary(source: &str) -> Result<Vec<i8>, CompilationError> {
+fn compile_to_binary(
+    source: &str,
+    owner: Option<(
+        crate::prepared_native::NativeRetention,
+        Arc<dyn crate::prepared_native::HipNativeAdmission>,
+    )>,
+) -> Result<Vec<i8>, CompilationError> {
     let source = CString::new(source).map_err(|err| CompilationError::Generic {
         reason: format!("The generated source is not a valid C string: {err}"),
         backtrace: BackTrace::capture(),
@@ -546,7 +690,7 @@ fn compile_to_binary(source: &str) -> Result<Vec<i8>, CompilationError> {
 
     // SAFETY: `source` is null-terminated and outlives the call. The returned
     // handle is valid on success and owned by the guard from here on.
-    let program = unsafe {
+    let mut program = unsafe {
         let mut program: cubecl_hip_sys::hiprtcProgram = std::ptr::null_mut();
         let status = cubecl_hip_sys::hiprtcCreateProgram(
             &mut program,
@@ -556,8 +700,16 @@ fn compile_to_binary(source: &str) -> Result<Vec<i8>, CompilationError> {
             std::ptr::null_mut(),
             std::ptr::null_mut(),
         );
-        checked("hiprtcCreateProgram", status)?;
-        RtcProgram(program)
+        let mut program = RtcProgram {
+            handle: program,
+            owner,
+        };
+        if let Err(error) = checked("hiprtcCreateProgram", status) {
+            // Even a null failed result cannot prove no opaque allocation.
+            program.retain_unknown();
+            return Err(error.into());
+        }
+        program
     };
 
     let include_path = get_hip_include_path().map_err(|err| CompilationError::Generic {
@@ -578,10 +730,14 @@ fn compile_to_binary(source: &str) -> Result<Vec<i8>, CompilationError> {
         optimization_level.as_ptr(),
     ];
 
-    // SAFETY: `program.0` is the handle created above, and `options` holds
+    // SAFETY: `program.handle` is the handle created above, and `options` holds
     // null-terminated pointers that outlive the call.
     let status = unsafe {
-        cubecl_hip_sys::hiprtcCompileProgram(program.0, options.len() as i32, options.as_mut_ptr())
+        cubecl_hip_sys::hiprtcCompileProgram(
+            program.handle,
+            options.len() as i32,
+            options.as_mut_ptr(),
+        )
     };
     if checked("hiprtcCompileProgram", status).is_err() {
         return Err(CompilationError::Generic {
@@ -594,15 +750,16 @@ fn compile_to_binary(source: &str) -> Result<Vec<i8>, CompilationError> {
         });
     }
 
-    // SAFETY: `program.0` compiled successfully above, so it has code to
+    // SAFETY: `program.handle` compiled successfully above, so it has code to
     // report the size of and to copy out into a buffer of exactly that size.
     unsafe {
         let mut code_size: usize = 0;
-        let status = cubecl_hip_sys::hiprtcGetCodeSize(program.0, &mut code_size);
+        let status = cubecl_hip_sys::hiprtcGetCodeSize(program.handle, &mut code_size);
         checked("hiprtcGetCodeSize", status)?;
         let mut code = vec![0; code_size];
-        let status = cubecl_hip_sys::hiprtcGetCode(program.0, code.as_mut_ptr());
+        let status = cubecl_hip_sys::hiprtcGetCode(program.handle, code.as_mut_ptr());
         checked("hiprtcGetCode", status)?;
+        program.destroy()?;
         Ok(code)
     }
 }
@@ -614,12 +771,12 @@ fn compile_to_binary(source: &str) -> Result<Vec<i8>, CompilationError> {
 /// second one would leave the caller with nothing.
 fn compilation_log(program: &RtcProgram) -> String {
     let mut message = "[Compilation Error] ".to_string();
-    // SAFETY: `program.0` is a valid handle; the log buffer is sized by the
+    // SAFETY: `program.handle` is a valid handle; the log buffer is sized by the
     // call that reports its length, and read back as a C string.
     let log = unsafe {
         let mut log_size: usize = 0;
         let status =
-            cubecl_hip_sys::hiprtcGetProgramLogSize(program.0, &mut log_size as *mut usize);
+            cubecl_hip_sys::hiprtcGetProgramLogSize(program.handle, &mut log_size as *mut usize);
         if let Err(err) = checked("hiprtcGetProgramLogSize", status) {
             return message + &format!("\n the log's length is unavailable: {err}");
         }
@@ -627,7 +784,7 @@ fn compilation_log(program: &RtcProgram) -> String {
             return message + "\n No compilation logs found!";
         }
         let mut log_buffer = vec![0; log_size];
-        let status = cubecl_hip_sys::hiprtcGetProgramLog(program.0, log_buffer.as_mut_ptr());
+        let status = cubecl_hip_sys::hiprtcGetProgramLog(program.handle, log_buffer.as_mut_ptr());
         if let Err(err) = checked("hiprtcGetProgramLog", status) {
             return message + &format!("\n the log itself is unavailable: {err}");
         }

@@ -2,7 +2,10 @@ use crate::compute::status::checked;
 use cubecl_core::server::IoError;
 use cubecl_environment::backtrace::BackTrace;
 use cubecl_server::storage::{ComputeStorage, StorageHandle, StorageId, StorageUtilization};
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::{Arc, OnceLock},
+};
 
 use crate::AMD_MAX_BINDINGS;
 
@@ -17,6 +20,7 @@ pub struct GpuStorage {
     allocated: u64,
     deallocations: Vec<StorageId>,
     ptr_bindings: PtrBindings,
+    free_unknown: Arc<OnceLock<cubecl_server::driver::DriverError>>,
 }
 
 /// A GPU memory resource allocated for HIP using [`GpuStorage`].
@@ -28,6 +32,14 @@ pub struct GpuResource {
     pub binding: cubecl_hip_sys::hipDeviceptr_t,
     /// The size of the resource.
     pub size: u64,
+    retirement: Arc<OnceLock<cubecl_server::driver::DriverError>>,
+}
+impl GpuResource {
+    pub(crate) fn require_known_retirement(
+        &self,
+    ) -> Result<(), cubecl_server::driver::DriverError> {
+        self.retirement.get().cloned().map_or(Ok(()), Err)
+    }
 }
 
 impl GpuStorage {
@@ -43,6 +55,7 @@ impl GpuStorage {
             allocated: 0,
             deallocations: Vec::new(),
             ptr_bindings: PtrBindings::new(),
+            free_unknown: Arc::new(OnceLock::new()),
         }
     }
 
@@ -50,17 +63,43 @@ impl GpuStorage {
     ///
     /// This method processes all pending deallocations by freeing the associated GPU memory.
     pub fn perform_deallocations(&mut self) {
-        for id in self.deallocations.drain(..) {
-            if let Some((ptr, size)) = self.memory.remove(&id) {
-                self.allocated -= size;
-                // SAFETY: `ptr` was obtained from a prior `hipMalloc` call and
-                // has not been freed yet. `hipFree` synchronizes the device, so
-                // in-flight work never sees the page disappear.
-                let status = unsafe { cubecl_hip_sys::hipFree(ptr) };
-                // Logged, not reported: this runs on a deallocation path with
-                // no caller left to hand an error to.
-                if let Err(err) = checked("hipFree", status) {
-                    log::warn!("releasing a device page failed: {err}");
+        self.retire_deallocations(|ptr| {
+            // SAFETY: original allocation, never previously freed or retried.
+            checked("hipFree", unsafe { cubecl_hip_sys::hipFree(ptr) })
+        });
+    }
+    pub(crate) fn require_known_retirement(
+        &self,
+    ) -> Result<(), cubecl_server::driver::DriverError> {
+        match self.free_unknown.get() {
+            Some(error) => Err(error.clone()),
+            None => Ok(()),
+        }
+    }
+    fn retire_deallocations(
+        &mut self,
+        mut free: impl FnMut(
+            cubecl_hip_sys::hipDeviceptr_t,
+        ) -> Result<(), cubecl_server::driver::DriverError>,
+    ) {
+        if self.free_unknown.get().is_some() {
+            return;
+        }
+        let mut pending = std::mem::take(&mut self.deallocations).into_iter();
+        while let Some(id) = pending.next() {
+            if let Some((ptr, size)) = self.memory.get(&id).copied() {
+                match free(ptr) {
+                    Ok(()) => {
+                        self.memory.remove(&id);
+                        self.allocated -= size;
+                    }
+                    Err(error) => {
+                        // Uncertain free may have succeeded. Never retry this ptr,
+                        // reuse it or erase its original allocation/accounting.
+                        let _ = self.free_unknown.set(error);
+                        self.deallocations.extend(pending);
+                        return;
+                    }
                 }
             }
         }
@@ -116,6 +155,7 @@ impl ComputeStorage for GpuStorage {
     }
 
     fn get(&mut self, handle: &StorageHandle) -> Result<Self::Resource, IoError> {
+        self.require_known_retirement()?;
         let (ptr, _) =
             *self
                 .memory
@@ -134,6 +174,7 @@ impl ComputeStorage for GpuStorage {
             *ptr as cubecl_hip_sys::hipDeviceptr_t,
             std::ptr::from_ref(ptr) as *mut std::ffi::c_void,
             size,
+            self.free_unknown.clone(),
         ))
     }
 
@@ -142,6 +183,7 @@ impl ComputeStorage for GpuStorage {
         tracing::instrument(level = "trace", skip(self, size))
     )]
     fn alloc(&mut self, size: u64) -> Result<StorageHandle, IoError> {
+        self.require_known_retirement()?;
         let id = StorageId::new();
         // Plain (synchronous) `hipMalloc` on purpose: `hipMallocAsync` draws
         // from the driver's async mempool, which on ROCm never returns freed
@@ -194,5 +236,56 @@ unsafe impl Send for GpuResource {}
 impl core::fmt::Debug for GpuStorage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("GpuStorage".to_string().as_str())
+    }
+}
+
+#[cfg(test)]
+mod retirement_tests {
+    use super::*;
+    use cubecl_server::driver::DriverError;
+    #[test]
+    fn failed_free_keeps_pointer_charge_and_never_retries_or_reuses() {
+        let mut storage = GpuStorage::new(256);
+        let a = StorageId::new();
+        let b = StorageId::new();
+        storage.memory.insert(a, (std::ptr::dangling_mut(), 256));
+        storage.memory.insert(b, (std::ptr::dangling_mut(), 512));
+        storage.allocated = 768;
+        storage.deallocations.extend([a, b]);
+        let resolved = GpuResource::new(
+            std::ptr::dangling_mut(),
+            std::ptr::dangling_mut(),
+            256,
+            storage.free_unknown.clone(),
+        );
+        assert!(resolved.require_known_retirement().is_ok());
+        let mut calls = 0;
+        storage.retire_deallocations(|_| {
+            calls += 1;
+            Err(DriverError::new("test-unknown-free", 999))
+        });
+        assert_eq!(calls, 1);
+        assert!(resolved.require_known_retirement().is_err());
+        assert_eq!(storage.allocated, 768);
+        assert_eq!(storage.memory.len(), 2);
+        assert!(storage.require_known_retirement().is_err());
+        storage.retire_deallocations(|_| panic!("unknown free must not retry"));
+        assert!(storage.alloc(256).is_err());
+        assert_eq!(storage.memory.len(), 2);
+    }
+    #[test]
+    fn successful_frees_debit_only_the_actual_retired_pages() {
+        let mut storage = GpuStorage::new(256);
+        let a = StorageId::new();
+        let b = StorageId::new();
+        storage.memory.insert(a, (std::ptr::dangling_mut(), 256));
+        storage.memory.insert(b, (std::ptr::dangling_mut(), 512));
+        storage.allocated = 768;
+        storage.deallocations.push(a);
+        storage.retire_deallocations(|_| Ok(()));
+        assert_eq!(storage.allocated, 512);
+        assert_eq!(storage.memory.len(), 1);
+        assert!(storage.memory.contains_key(&b));
+        assert!(storage.require_known_retirement().is_ok());
     }
 }

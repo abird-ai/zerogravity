@@ -84,6 +84,7 @@ impl Driver for Hip {
         bytes: &mut Bytes,
         stream: &Stream,
     ) -> Result<(), IoError> {
+        resource.require_known_retirement()?;
         let Some(pitch) = layout.pitch else {
             // SAFETY: the source is contiguous, so one linear copy of exactly
             // the bytes the destination was sized for.
@@ -135,6 +136,7 @@ impl Driver for Hip {
         data: &[u8],
         stream: &Stream,
     ) -> Result<(), IoError> {
+        resource.require_known_retirement()?;
         let ptr = data as *const _ as *mut _;
 
         let Some(pitch) = layout.pitch else {
@@ -192,6 +194,8 @@ impl Driver for Hip {
         target: &GpuResource,
         queue: <Stream as DeviceStream>::Signal,
     ) -> Result<(), IoError> {
+        source.require_known_retirement()?;
+        target.require_known_retirement()?;
         debug_assert_eq!(source.size, target.size);
         // SAFETY: the caller guarantees two live, same-sized, disjoint device
         // allocations left alone until the stream is synchronized.
@@ -208,6 +212,13 @@ impl Driver for Hip {
         count: (u32, u32, u32),
         args: &mut [GpuResource],
     ) -> Result<(), LaunchError> {
+        stream
+            .memory_management_gpu
+            .storage()
+            .require_known_retirement()?;
+        for arg in args.iter() {
+            arg.require_known_retirement()?;
+        }
         ctx.execute_task(stream, kernel, count, args)
     }
 }

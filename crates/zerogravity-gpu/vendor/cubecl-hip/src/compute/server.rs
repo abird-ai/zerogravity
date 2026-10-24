@@ -45,6 +45,7 @@ pub struct HipServer {
     utilities: Arc<ServerUtilities>,
     /// The graphs this server has captured — see [`Captures`].
     graphs: Captures,
+    native_graph_seen: bool,
     /// Allocation modes set on streams that did not exist yet, applied when the stream is
     /// created rather than creating it only to hold the mode.
     pending_allocation_modes: HashMap<StreamId, MemoryAllocationMode>,
@@ -99,6 +100,9 @@ impl Server for HipServer {
         descriptors: Vec<CopyDescriptor>,
         stream_id: StreamId,
     ) -> DynFut<Result<Vec<Bytes>, ServerError>> {
+        if let Err(error) = self.require_known_storage_retirement() {
+            return Box::pin(async move { Err(error) });
+        }
         // The bytes are only as good as the work that wrote them.
         if let Err(err) = self
             .streams
@@ -146,7 +150,22 @@ impl Server for HipServer {
         stream_id: StreamId,
         launch_mode: LaunchMode,
     ) {
-        let kernel_id = kernel.id();
+        let kernel_id = match self.ctx.native.launch_key(stream_id, &kernel.id()) {
+            Ok(key) => key,
+            Err(error) => {
+                let mut written = self.write_set();
+                written.extend(bindings.buffers_written(None).cloned());
+                failed_writing(self, stream_id, written, error);
+                return;
+            }
+        };
+        if let Err(error) = self.require_known_storage_retirement() {
+            let io = self.ctx.kernel_io(&kernel_id);
+            let mut written = self.write_set();
+            written.extend(bindings.buffers_written(io.as_deref()).cloned());
+            failed_writing(self, stream_id, written, error);
+            return;
+        }
         if self.compile_failed(&kernel_id, kernel, &bindings, stream_id, launch_mode) {
             return;
         }
@@ -203,8 +222,10 @@ impl Server for HipServer {
     fn check(
         &mut self,
         handles: Vec<BufferBinding>,
-        _stream_id: StreamId,
+        stream_id: StreamId,
     ) -> Result<(), ServerError> {
+        self.ctx.native.require_stream(stream_id)?;
+        self.require_known_storage_retirement()?;
         self.streams.ensure_written(handles.iter())
     }
 
@@ -214,16 +235,30 @@ impl Server for HipServer {
         let mut command = self.command_no_inputs(stream_id)?;
         command.flush_drops();
         command.stream().memory_management_gpu.storage().flush();
-
-        Ok(())
+        drop(command);
+        self.require_known_storage_retirement()
     }
 
     fn graph_prepare(&mut self, stream_id: StreamId) -> Result<(), ServerError> {
+        self.require_known_storage_retirement()?;
+        if self.ctx.native.active() {
+            return Err(crate::prepared_native::failure(
+                "HIP prepared native cache does not permit graph capture",
+            ));
+        }
+        self.native_graph_seen = true;
         let mut command = self.command_no_inputs(stream_id)?;
         Window::on(&mut command).prepare(stream_id)
     }
 
     fn begin_capture(&mut self, stream_id: StreamId) -> Result<(), ServerError> {
+        self.require_known_storage_retirement()?;
+        if self.ctx.native.active() {
+            return Err(crate::prepared_native::failure(
+                "HIP prepared native cache does not permit graph capture",
+            ));
+        }
+        self.native_graph_seen = true;
         let mut command = self.command_no_inputs(stream_id)?;
         Window::on(&mut command).begin()
     }
@@ -251,6 +286,7 @@ impl Server for HipServer {
     }
 
     fn replay(&mut self, graph: GraphId, stream_id: StreamId) -> Result<(), ServerError> {
+        self.require_known_storage_retirement()?;
         // A replay writes the buffers its recorded launches were given, so it
         // takes the same scope over that write set and settles it: a failed
         // enqueue leaves them carrying the failure, and the next replay that
@@ -269,6 +305,10 @@ impl Server for HipServer {
     }
 
     fn graph_destroy(&mut self, graph: GraphId, stream_id: StreamId) {
+        // Unknown retirement retains the original graph and its real handles.
+        if self.require_known_storage_retirement().is_err() {
+            return;
+        }
         // No-op for an unknown id (e.g. a double release), and nothing to sync
         // for either.
         if !self.graphs.contains(graph) {
@@ -305,6 +345,9 @@ impl Server for HipServer {
         handles: Vec<BufferBinding>,
         stream_id: StreamId,
     ) -> DynFut<Result<(), ServerError>> {
+        if let Err(error) = self.require_known_storage_retirement() {
+            return Box::pin(async move { Err(error) });
+        }
         // The claim check a read would have made, without the read; claims
         // are set at enqueue time, so they are already in place. A fault the
         // barrier itself reveals comes back through the fence below.
@@ -362,10 +405,18 @@ impl Server for HipServer {
     }
 
     fn memory_cleanup(&mut self, stream_id: StreamId) -> Result<(), ServerError> {
-        self.command_no_inputs(stream_id)?.memory_cleanup()
+        // Retired clients/default control may drain known deferred handles only;
+        // this does not permit allocation, IO, compilation or native launch.
+        self.command_control(stream_id, [].into_iter())?
+            .memory_cleanup()?;
+        self.require_known_storage_retirement()
     }
 
     fn allocation_mode(&mut self, mode: MemoryAllocationMode, stream_id: StreamId) {
+        if let Err(error) = self.ctx.native.require_stream(stream_id) {
+            self.profile_failure(&error);
+            return;
+        }
         match self.streams.try_stream_mut(&stream_id) {
             Some(stream) => stream.device_memory().mode(mode),
             None => {
@@ -394,6 +445,9 @@ impl WriteScoped for HipServer {
             .map(|stream| &mut stream.capturing)
     }
 }
+
+#[path = "server/prepared_native.rs"]
+mod prepared_native;
 
 impl HipServer {
     /// Create a new hip server.
@@ -425,10 +479,28 @@ impl HipServer {
             ),
             utilities: Arc::new(utilities),
             graphs: Captures::default(),
+            native_graph_seen: false,
             pending_allocation_modes: HashMap::new(),
         }
     }
 
+    fn require_known_storage_retirement(&mut self) -> Result<(), ServerError> {
+        let streams = self.streams.stream_ids().collect::<Vec<_>>();
+        for id in streams {
+            let stream = self.streams.try_stream_mut(&id).ok_or_else(|| {
+                ServerError::graph_state("HIP actual retirement stream disappeared")
+            })?;
+            if let Err(error) = stream
+                .memory_management_gpu
+                .storage()
+                .require_known_retirement()
+            {
+                self.ctx.native.fence_all();
+                return Err(error.into());
+            }
+        }
+        Ok(())
+    }
     fn command_no_inputs(&mut self, stream_id: StreamId) -> Result<Command<'_>, ServerError> {
         self.command(stream_id, [].into_iter())
     }
@@ -438,6 +510,16 @@ impl HipServer {
         stream_id: StreamId,
         handles: impl Iterator<Item = &'a BufferBinding>,
     ) -> Result<Command<'_>, ServerError> {
+        self.ctx.native.require_stream(stream_id)?;
+        self.command_control(stream_id, handles)
+    }
+
+    fn command_control<'a>(
+        &mut self,
+        stream_id: StreamId,
+        handles: impl Iterator<Item = &'a BufferBinding>,
+    ) -> Result<Command<'_>, ServerError> {
+        self.require_known_storage_retirement()?;
         let mut streams = self.streams.resolve(stream_id, handles)?;
         if let Some(mode) = self.pending_allocation_modes.remove(&stream_id) {
             streams.current().device_memory().mode(mode);
@@ -510,6 +592,8 @@ impl HipServer {
         stream_id: StreamId,
         entry_point: &'static str,
     ) -> Result<cubecl_hip_sys::hipStream_t, ServerError> {
+        self.ctx.native.require_stream(stream_id)?;
+        self.require_known_storage_retirement()?;
         let mut streams = self.streams.resolve(stream_id, [].into_iter())?;
         let stream = streams.current();
 
@@ -643,6 +727,7 @@ impl ServerStorage for HipServer {
         binding: BufferBinding,
         stream_id: StreamId,
     ) -> Result<ManagedResource<GpuResource>, ServerError> {
+        self.require_known_storage_retirement()?;
         // The same claim check a read makes: a buffer a failed launch never
         // filled reports the failure rather than handing back a pointer to
         // whatever was there before.
