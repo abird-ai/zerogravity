@@ -142,6 +142,192 @@ fn reserved(admission: &TransferAdmission) -> u64 {
 }
 
 #[test]
+fn shared_small_window_reuse_spends_only_prepaid_capacity_and_keeps_source_alive() {
+    use zerogravity_core::resource_arbiter::AllocationRequest;
+    let f = Fixture::new();
+    let host = admission(META + 4096, "host");
+    let source = f.plan(&host).unwrap().open().unwrap();
+    let matrix = source.matrix("matrix", MatrixAxes::OutputInput).unwrap();
+    let first = source.read_rows(&matrix, 1..3).unwrap();
+    let expected = first.as_slice().to_vec();
+    drop(first);
+    assert_eq!(reserved(&host), META);
+    let occupied = host
+        .arbiter
+        .admit(
+            &host.resource,
+            host.owner.clone(),
+            &[AllocationRequest {
+                kind: AllocationClass::Scratch,
+                bytes: 4096,
+            }],
+        )
+        .unwrap();
+    let hot = source.read_rows(&matrix, 1..3).unwrap();
+    assert_eq!(hot.as_slice(), expected);
+    assert_eq!(reserved(&host), META + 4096);
+    assert!(matches!(
+        source.read_rows(&matrix, 0..1),
+        Err(Error::Limit(_))
+    ));
+    assert!(
+        source
+            .read_rows_cancellable(&matrix, 1..3, &AtomicBool::new(true))
+            .is_err()
+    );
+    let stats = source.window_cache_stats().unwrap();
+    assert_eq!(stats.hits, 1);
+    assert!(stats.live_payload_bytes > 0 && stats.live_payload_bytes <= stats.budget_bytes);
+    drop((source, matrix, occupied));
+    assert_eq!(reserved(&host), META);
+    assert_eq!(hot.as_slice(), expected);
+    drop(hot);
+    assert_eq!(reserved(&host), 0);
+}
+
+#[test]
+fn disabled_reuse_keeps_original_staging_charges_and_bytes() {
+    let f = Fixture::new();
+    let host = admission(64 * 1024 * 1024, "host");
+    let source = f
+        .plan(&host)
+        .unwrap()
+        .without_window_cache()
+        .open()
+        .unwrap();
+    let matrix = source.matrix("matrix", MatrixAxes::OutputInput).unwrap();
+    let first = source.read_rows(&matrix, 1..3).unwrap();
+    let one = reserved(&host);
+    let second = source.read_rows(&matrix, 1..3).unwrap();
+    assert_eq!(first.as_slice(), second.as_slice());
+    assert!(one > META && reserved(&host) > one);
+    let stats = source.window_cache_stats().unwrap();
+    assert_eq!(stats.budget_bytes, 0);
+    assert_eq!(stats.live_payload_bytes, 0);
+    assert_eq!(stats.hits, 0);
+    drop((first, second, matrix, source));
+    assert_eq!(reserved(&host), 0);
+}
+
+#[test]
+fn warm_reuse_preserves_held_source_when_path_is_replaced() {
+    let f = Fixture::new();
+    let host = admission(64 * 1024 * 1024, "host");
+    let source = f.plan(&host).unwrap().open().unwrap();
+    let matrix = source.matrix("matrix", MatrixAxes::OutputInput).unwrap();
+    let original = source.read_rows(&matrix, 0..1).unwrap().as_slice().to_vec();
+    let retained = f.path.join("original-held");
+    fs::rename(f.path.join(A), &retained).unwrap();
+    fs::write(f.path.join(A), vec![0xff; f.first.len()]).unwrap();
+    let held = source.read_rows(&matrix, 0..1).unwrap();
+    assert_eq!(held.as_slice(), original);
+    assert_eq!(source.window_cache_stats().unwrap().entries, 0);
+    fs::write(retained, vec![0; f.first.len()]).unwrap();
+    assert!(source.read_rows(&matrix, 0..1).is_err());
+    assert_eq!(held.as_slice(), original);
+    drop((held, matrix, source));
+    assert_eq!(reserved(&host), 0);
+}
+
+#[test]
+fn warm_cache_never_masks_source_mutation_or_foreign_issuer() {
+    use std::io::{Seek, SeekFrom, Write};
+    let f = Fixture::new();
+    let host = admission(64 * 1024 * 1024, "host");
+    let source = f.plan(&host).unwrap().open().unwrap();
+    let other = f.plan(&host).unwrap().open().unwrap();
+    let matrix = source.matrix("matrix", MatrixAxes::OutputInput).unwrap();
+    drop(source.read_rows(&matrix, 0..1).unwrap());
+    let before = source.read_rows(&matrix, 0..1).unwrap();
+    assert!(matches!(
+        other.read_rows(&matrix, 0..1),
+        Err(Error::State(_))
+    ));
+    let mut changed = fs::OpenOptions::new()
+        .write(true)
+        .open(f.path.join(A))
+        .unwrap();
+    changed
+        .seek(SeekFrom::Start(matrix.tensor().byte_offset))
+        .unwrap();
+    changed.write_all(&[0xff]).unwrap();
+    changed.sync_all().unwrap();
+    assert!(source.read_rows(&matrix, 0..1).is_err());
+    assert_eq!(
+        before.as_slice(),
+        (1..=4)
+            .flat_map(|n| (n as f32).to_le_bytes())
+            .collect::<Vec<_>>()
+    );
+    drop((before, matrix, other, source));
+    assert_eq!(reserved(&host), 0);
+}
+
+#[test]
+fn split_output_and_scratch_keep_classes_and_release_only_completed_scratch() {
+    let f = Fixture::new();
+    let host = admission(64 * 1024 * 1024, "host");
+    let source = f.plan(&host).unwrap().open().unwrap();
+    let before = host.arbiter.snapshot(&host.resource).unwrap();
+    let (output, scratch) = source.reserve_operator_buffers_split(512, 2048).unwrap();
+    assert!(source.same_issuer(output.source()));
+    assert!(source.same_issuer(scratch.as_ref().unwrap().source()));
+    let during = host.arbiter.snapshot(&host.resource).unwrap();
+    for (class, added) in [
+        (AllocationClass::Output, 512),
+        (AllocationClass::Scratch, 2048),
+    ] {
+        assert_eq!(
+            during.per_class.get(&class).copied().unwrap_or(0),
+            before.per_class.get(&class).copied().unwrap_or(0) + added
+        );
+    }
+    let output = std::sync::Arc::new(output);
+    let retained = output.clone();
+    drop(scratch);
+    assert_eq!(reserved(&host), before.reserved + 512);
+    drop(output);
+    assert_eq!(reserved(&host), before.reserved + 512);
+    drop(retained);
+    assert_eq!(reserved(&host), before.reserved);
+    let (zero_output, absent_scratch) = source.reserve_operator_buffers_split(8, 0).unwrap();
+    assert!(absent_scratch.is_none());
+    assert_eq!(reserved(&host), before.reserved + 8);
+    drop(zero_output);
+    drop(source);
+    assert_eq!(reserved(&host), 0);
+}
+
+#[test]
+fn split_second_admission_failure_unwinds_first_and_cannot_expand_envelope() {
+    let f = Fixture::new();
+    let host = admission(64 * 1024 * 1024, "host");
+    let source = f.plan(&host).unwrap().open().unwrap();
+    let mut pressure = Vec::new();
+    loop {
+        let left = host.arbiter.snapshot(&host.resource).unwrap().remaining;
+        if left <= 1024 {
+            break;
+        }
+        pressure.push(
+            source
+                .reserve_workspace((left - 1024).min(32 * 1024 * 1024) as usize)
+                .unwrap(),
+        );
+    }
+    let before = reserved(&host);
+    assert!(source.reserve_operator_buffers_split(512, 2048).is_err());
+    assert_eq!(reserved(&host), before);
+    for (out, scratch) in [(0, 1), (32 * 1024 * 1024, 1), (usize::MAX, 1)] {
+        assert!(source.reserve_operator_buffers_split(out, scratch).is_err());
+        assert_eq!(reserved(&host), before);
+    }
+    drop(pressure);
+    drop(source);
+    assert_eq!(reserved(&host), 0);
+}
+
+#[test]
 fn original_index_whole_hash_header_axes_dtype_and_bundle_are_exact() {
     let fixture = Fixture::new();
     let host = admission(64 * 1024 * 1024, "host");
@@ -396,7 +582,13 @@ fn metadata_scan_and_window_capacity_refusals_are_real_and_do_not_fence() {
     assert!(matches!(plan.open(), Err(Error::Limit(_))));
     assert_eq!(reserved(&no_scan), 0);
     let host = admission(META + 256, "host");
-    let source = fixture.plan(&host).unwrap().open().unwrap();
+    // Exercise actual staging pressure; cached views share prepaid bytes.
+    let source = fixture
+        .plan(&host)
+        .unwrap()
+        .without_window_cache()
+        .open()
+        .unwrap();
     let matrix = source.matrix("matrix", MatrixAxes::OutputInput).unwrap();
     let mut windows = Vec::new();
     while let Ok(window) = source.read_rows(&matrix, 0..4) {
@@ -947,3 +1139,107 @@ fn sealed_headers_and_same_owner_workspace_retain_metadata_and_refuse_exhaustion
 
 #[path = "tensor_window/conv4.rs"]
 mod conv4;
+
+#[test]
+fn successful_source_owner_retains_its_actual_authenticated_staging_chunk_geometry() {
+    let fixture = ParameterFixture::new();
+    let host = admission(64 * 1024 * 1024, "host");
+    let first = fixture
+        .plan_with_chunk_bytes(fixture.artifact(), &host, 64)
+        .unwrap()
+        .open()
+        .unwrap();
+    let second = fixture
+        .plan_with_chunk_bytes(fixture.artifact(), &host, 1)
+        .unwrap()
+        .open()
+        .unwrap();
+    assert_eq!(first.staging_chunk_bytes(), 64);
+    assert_eq!(second.staging_chunk_bytes(), 1);
+    assert_eq!(first.clone().staging_chunk_bytes(), 64);
+    assert!(!first.same_issuer(&second));
+    let parameter = second.parameter("norm").unwrap();
+    let window = second.read_parameter(&parameter, 1..2).unwrap();
+    assert_eq!(
+        window.charged_staging_bytes(),
+        2 * (1 + std::mem::size_of::<(usize, std::ops::Range<usize>)>())
+    );
+    drop((first, second, parameter, window));
+    assert_eq!(reserved(&host), 0);
+}
+
+#[test]
+fn workspace_limit_observes_same_original_host_owner_without_new_credit() {
+    for bytes in [64 * 1024 * 1024, 4096 * 1024 * 1024u64] {
+        let fixture = Fixture::new();
+        let host = admission(bytes, "host");
+        let source = fixture.plan(&host).unwrap().open().unwrap();
+        let charged = reserved(&host);
+        assert_eq!(source.workspace_limit_bytes().unwrap(), bytes);
+        assert_eq!(reserved(&host), charged);
+        let retained = source.clone();
+        drop(source);
+        assert_eq!(retained.workspace_limit_bytes().unwrap(), bytes);
+        assert_eq!(reserved(&host), charged);
+        drop(retained);
+        assert_eq!(reserved(&host), 0);
+    }
+}
+
+#[test]
+fn compiler_context_detached_host_lease_retains_only_original_domain_charge() {
+    let f = Fixture::new();
+    let arbiter = ResourceArbiter::process_shared();
+    let key = PhysicalDeviceKey::new("host", f.path.to_str().unwrap()).unwrap();
+    let other_key = PhysicalDeviceKey::new("host", &format!("{}-other", f.path.display())).unwrap();
+    let limit = 64 * 1024 * 1024;
+    for k in [&key, &other_key] {
+        arbiter.register(k.clone(), limit).unwrap();
+    }
+    let host = TransferAdmission {
+        arbiter: arbiter.clone(),
+        resource: key.clone(),
+        owner: ResourceOwner::new("detached-fixture", "source").unwrap(),
+    };
+    let other = TransferAdmission {
+        arbiter: arbiter.clone(),
+        resource: other_key.clone(),
+        owner: host.owner.clone(),
+    };
+    let source = f.plan(&host).unwrap().open().unwrap();
+    let alternate = f.plan(&other).unwrap().open().unwrap();
+    let owner = || ResourceOwner::new("backend/test", "detached").unwrap();
+    assert!(
+        source
+            .reserve_detached_host_workspace(limit + 1, owner(), 4096)
+            .is_err()
+    );
+    assert!(
+        source
+            .reserve_detached_host_workspace(limit, owner(), 0)
+            .is_err()
+    );
+    let lease = source
+        .reserve_detached_host_workspace(limit, owner(), 4096)
+        .unwrap();
+    assert_eq!(
+        source.detached_host_workspace_bytes(&lease, limit).unwrap(),
+        4096
+    );
+    assert!(
+        alternate
+            .detached_host_workspace_bytes(&lease, limit)
+            .is_err()
+    );
+    let isolated = f.plan(&admission(limit, "host")).unwrap().open().unwrap();
+    assert!(
+        isolated
+            .reserve_detached_host_workspace(limit, owner(), 4096)
+            .is_err()
+    );
+    drop((source, alternate, isolated));
+    assert_eq!(arbiter.snapshot(&key).unwrap().reserved, 4096);
+    assert_eq!(arbiter.snapshot(&other_key).unwrap().reserved, 0);
+    drop(lease);
+    assert_eq!(arbiter.snapshot(&key).unwrap().reserved, 0);
+}

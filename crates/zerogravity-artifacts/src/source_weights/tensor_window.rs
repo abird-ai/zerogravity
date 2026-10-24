@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Seek, SeekFrom};
 use std::ops::Range;
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::{Arc, Mutex, atomic::AtomicBool};
 use zerogravity_core::accelerator::{
     SourceIdentity,
     program::{MatrixAxes, SourceParameter},
@@ -21,6 +21,9 @@ use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, Glo
 
 const METADATA_BASE: u64 = 8 * 1024 * 1024;
 const MAX_METADATA: u64 = 128 * 1024 * 1024;
+mod backend_workspace;
+mod cache;
+pub use cache::WindowCacheStats;
 
 #[derive(Clone, Copy, Debug)]
 pub struct WindowOpenLimits {
@@ -54,6 +57,7 @@ pub struct VerifiedWindowPlan {
     metadata_baseline: u64,
     source_bytes: u64,
     admission: TransferAdmission,
+    reuse_windows: bool,
     // Last field: owned index/descriptors drop before their metadata charge.
     metadata: GlobalResourceLease,
 }
@@ -76,6 +80,9 @@ struct SourceOwner {
     shards: Vec<WindowShard>,
     admission: TransferAdmission,
     metadata_bytes: u64,
+    staging_chunk_bytes: usize,
+    cached_window_max_bytes: usize,
+    windows: Mutex<cache::Cache>,
     _metadata: GlobalResourceLease,
 }
 
@@ -94,11 +101,12 @@ pub struct VerifiedMatrix {
     columns: usize,
     rows: usize,
     row_bytes: usize,
+    first_row: usize,
 }
 
 /// Owned immutable bytes plus the original source and real host staging lease.
 pub struct TensorWindow {
-    staged: StagedSlice,
+    staged: cache::Storage,
     rows: Range<usize>,
     matrix: VerifiedMatrix,
 }
@@ -117,7 +125,7 @@ pub struct VerifiedParameter {
 /// A partial range is never presented as a complete original tensor.
 pub struct ParameterWindow {
     // Staged payload/offsets and their charge retire before source metadata.
-    staged: StagedSlice,
+    staged: cache::Storage,
     elements: Range<usize>,
     parameter: VerifiedParameter,
 }
@@ -244,12 +252,18 @@ impl SourceWeights {
             metadata_baseline,
             source_bytes,
             admission: admission.clone(),
+            reuse_windows: true,
             metadata,
         })
     }
 }
 
 impl VerifiedWindowPlan {
+    /// Keep authenticated staging reads without retaining small windows.
+    pub fn without_window_cache(mut self) -> Self {
+        self.reuse_windows = false;
+        self
+    }
     pub fn source_bytes(&self) -> u64 {
         self.source_bytes
     }
@@ -336,6 +350,17 @@ impl VerifiedWindowPlan {
         }
         source_not_cancelled(cancelled)?;
         let identity = SourceIdentity::for_new_allocation()?;
+        let cache_bytes = if self.reuse_windows {
+            zerogravity_core::optimization::prepaid_window_cache_bytes(
+                self.limits.max_metadata_bytes,
+                metadata_used,
+            )
+        } else {
+            0
+        };
+        let windows = cache::Cache::new(cache_bytes)?;
+        let cached_window_max_bytes = windows.max_window_bytes();
+        let windows = Mutex::new(windows);
         Ok(VerifiedTensorSource(Arc::new(SourceOwner {
             identity,
             index_sha256: self.index_sha256,
@@ -345,6 +370,9 @@ impl VerifiedWindowPlan {
             shards,
             admission: self.admission,
             metadata_bytes: self.limits.max_metadata_bytes,
+            staging_chunk_bytes: self.limits.scan_chunk_bytes,
+            cached_window_max_bytes,
+            windows,
             _metadata: self.metadata,
         })))
     }
@@ -358,6 +386,12 @@ pub struct WindowWorkspace {
     bytes: usize,
 }
 impl WindowWorkspace {
+    /// Transfer the same host charge and original source owner to shared engine
+    /// metadata. No second reservation or source authenticity claim.
+    pub fn into_host_workspace(self) -> Result<zerogravity_core::resource_arbiter::HostWorkspace> {
+        self._lease
+            .into_host_workspace(self.source.source_identity(), Arc::new(self.source))
+    }
     pub fn bytes(&self) -> usize {
         self.bytes
     }
@@ -367,6 +401,56 @@ impl WindowWorkspace {
 }
 
 impl VerifiedTensorSource {
+    pub fn window_cache_stats(&self) -> Result<WindowCacheStats> {
+        Ok(self
+            .0
+            .windows
+            .lock()
+            .map_err(|_| Error::State("source window cache poisoned".into()))?
+            .stats())
+    }
+    fn read_window(&self, shard: usize, offset: u64, bytes: usize) -> Result<cache::Storage> {
+        let source = &self.0.shards[shard].source;
+        if bytes == 0 || bytes > self.0.cached_window_max_bytes {
+            return source
+                .read_window(offset, bytes, &self.0.admission)
+                .map(cache::Storage::Staged);
+        }
+        let key = cache::Key(shard, offset, bytes);
+        let unchanged = source.cache_stamp_unchanged()?;
+        let cached = {
+            let mut windows = self
+                .0
+                .windows
+                .lock()
+                .map_err(|_| Error::State("source window cache poisoned".into()))?;
+            if unchanged {
+                windows.get(key)
+            } else {
+                // A rename/unlink may change ctime without changing this held
+                // source. Never remint trust: use the original verified reads.
+                windows.invalidate_shard(shard);
+                None
+            }
+        };
+        let result = if let Some(cached) = cached {
+            if !source.cache_stamp_unchanged()? {
+                return Err(Error::Malformed("source changed during cached read".into()));
+            }
+            cached
+        } else {
+            let staged = source.read_window(offset, bytes, &self.0.admission)?;
+            if unchanged && source.cache_stamp_unchanged()? {
+                self.0
+                    .windows
+                    .lock()
+                    .map_err(|_| Error::State("source window cache poisoned".into()))?
+                    .insert(key, staged.as_slice());
+            }
+            cache::Storage::Staged(staged)
+        };
+        Ok(result)
+    }
     pub fn source_identity(&self) -> SourceIdentity {
         self.0.identity
     }
@@ -383,6 +467,24 @@ impl VerifiedTensorSource {
     }
     pub fn same_issuer(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
+    }
+    /// Observe the original host domain limit; creates no admission or model permit.
+    pub fn workspace_limit_bytes(&self) -> Result<u64> {
+        Ok(self
+            .0
+            .admission
+            .arbiter
+            .snapshot(&self.0.admission.resource)?
+            .limit)
+    }
+    /// Actual current reservations on the SAME admitted host domain.
+    pub fn workspace_reserved_bytes(&self) -> Result<u64> {
+        Ok(self
+            .0
+            .admission
+            .arbiter
+            .snapshot(&self.0.admission.resource)?
+            .reserved)
     }
     /// Reserve before allocating private operator buffers. Uses the original
     /// admitted host domain/owner; no alternate pool, GPU event or model permit.
@@ -427,6 +529,38 @@ impl VerifiedTensorSource {
             ],
         )
     }
+    /// Same bounded envelope, with independently owned output/scratch lifetimes.
+    /// Both reservations precede payload allocation. Zero scratch is for
+    /// operations such as zero-fill which allocate no transient numeric buffer.
+    pub fn reserve_operator_buffers_split(
+        &self,
+        output_bytes: usize,
+        scratch_bytes: usize,
+    ) -> Result<(WindowWorkspace, Option<WindowWorkspace>)> {
+        output_bytes
+            .checked_add(scratch_bytes)
+            .filter(|n| output_bytes > 0 && *n <= 32 * 1024 * 1024)
+            .ok_or_else(|| Error::Limit("verified split operator buffer bound".into()))?;
+        let output = self.admit_workspace(
+            output_bytes,
+            &[AllocationRequest {
+                kind: AllocationClass::Output,
+                bytes: output_bytes as u64,
+            }],
+        )?;
+        let scratch = if scratch_bytes == 0 {
+            None
+        } else {
+            Some(self.admit_workspace(
+                scratch_bytes,
+                &[AllocationRequest {
+                    kind: AllocationClass::Scratch,
+                    bytes: scratch_bytes as u64,
+                }],
+            )?)
+        };
+        Ok((output, scratch))
+    }
     fn admit_workspace(
         &self,
         bytes: usize,
@@ -451,6 +585,10 @@ impl VerifiedTensorSource {
     }
     pub fn verified_bundle_sha256(&self) -> &str {
         &self.0.bundle_sha256
+    }
+    /// Immutable authenticated scan geometry, never a capacity/Ready permit.
+    pub fn staging_chunk_bytes(&self) -> usize {
+        self.0.staging_chunk_bytes
     }
     pub fn metadata_reserved_bytes(&self) -> u64 {
         self.0.metadata_bytes
@@ -541,10 +679,7 @@ impl VerifiedTensorSource {
         let bytes = (elements.end - elements.start)
             .checked_mul(parameter.element_bytes)
             .ok_or_else(|| Error::Limit("parameter window byte length overflow".into()))?;
-        let staged =
-            self.0.shards[location.shard]
-                .source
-                .read_window(start, bytes, &self.0.admission)?;
+        let staged = self.read_window(location.shard, start, bytes)?;
         // Blocking authenticated IO has retired before cancelled staging drops.
         source_not_cancelled(cancelled)?;
         Ok(ParameterWindow {
@@ -592,7 +727,86 @@ impl VerifiedTensorSource {
             columns,
             rows,
             row_bytes,
+            first_row: 0,
         })
+    }
+    /// One contiguous original [expert,output,input] plane; no axis reinterpretation.
+    pub fn expert_matrix(&self, name: &str, expert: usize) -> Result<VerifiedMatrix> {
+        let location = self
+            .0
+            .tensors
+            .get(name)
+            .ok_or_else(|| Error::Malformed("original expert tensor missing".into()))?;
+        let [experts, rows, columns] = location.info.shape.as_slice() else {
+            return Err(Error::Malformed(
+                "original expert matrix requires rank3".into(),
+            ));
+        };
+        if !matches!(location.info.kind, QuantKind::Bf16 | QuantKind::F32) {
+            return Err(Error::Unsupported(
+                "original expert raw BF16/F32 only".into(),
+            ));
+        }
+        let experts = usize::try_from(*experts).map_err(|_| Error::Limit("expert count".into()))?;
+        let rows = usize::try_from(*rows).map_err(|_| Error::Limit("expert rows".into()))?;
+        let columns =
+            usize::try_from(*columns).map_err(|_| Error::Limit("expert columns".into()))?;
+        let row_bytes = usize::try_from(location.info.kind.byte_len(columns as u64)?)
+            .map_err(|_| Error::Limit("expert row bytes".into()))?;
+        if expert >= experts
+            || rows == 0
+            || columns == 0
+            || (experts as u64)
+                .checked_mul(rows as u64)
+                .and_then(|n| n.checked_mul(row_bytes as u64))
+                != Some(location.info.byte_len)
+        {
+            return Err(Error::Malformed("expert plane actual shape/extent".into()));
+        }
+        let first_row = expert
+            .checked_mul(rows)
+            .ok_or_else(|| Error::Limit("expert offset".into()))?;
+        Ok(VerifiedMatrix {
+            location: location.clone(),
+            owner: self.0.clone(),
+            axes: MatrixAxes::OutputInput,
+            columns,
+            rows,
+            row_bytes,
+            first_row,
+        })
+    }
+    /// Exact sealed issuer/member/range, including a genuine expert plane.
+    /// Metadata validation only; never materializes bytes or grants completion.
+    pub fn require_matrix_binding(&self, matrix: &VerifiedMatrix) -> Result<()> {
+        if !Arc::ptr_eq(&self.0, &matrix.owner)
+            || !self
+                .0
+                .tensors
+                .get(&matrix.location.info.name)
+                .is_some_and(|location| Arc::ptr_eq(location, &matrix.location))
+            || matrix.source_identity() != self.source_identity()
+        {
+            return Err(Error::State(
+                "foreign original tensor matrix binding".into(),
+            ));
+        }
+        matrix.byte_range()?;
+        Ok(())
+    }
+    /// Reusing materialized immutable rows still checks the original held shard.
+    /// Metadata only; no byte access, cache grant or completion authority.
+    pub fn require_current_matrix(&self, matrix: &VerifiedMatrix) -> Result<()> {
+        self.require_matrix_binding(matrix)?;
+        if !self.0.shards[matrix.location.shard]
+            .source
+            .cache_stamp_unchanged()?
+        {
+            return Err(Error::Malformed(
+                "cached matrix original source changed".into(),
+            ));
+        }
+        Ok(())
     }
     pub fn read_rows(&self, matrix: &VerifiedMatrix, rows: Range<usize>) -> Result<TensorWindow> {
         self.read_rows_inner(matrix, rows, None)
@@ -611,27 +825,21 @@ impl VerifiedTensorSource {
         rows: Range<usize>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<TensorWindow> {
-        if !Arc::ptr_eq(&self.0, &matrix.owner)
-            || matrix.source_identity() != self.source_identity()
-        {
-            return Err(Error::State("foreign original tensor window owner".into()));
-        }
+        self.require_matrix_binding(matrix)?;
         if rows.start >= rows.end || rows.end > matrix.rows {
             return Err(Error::Malformed("original tensor window row range".into()));
         }
         source_not_cancelled(cancelled)?;
         let location = &matrix.location;
         let start = (rows.start as u64)
-            .checked_mul(matrix.row_bytes as u64)
+            .checked_add(matrix.first_row as u64)
+            .and_then(|row| row.checked_mul(matrix.row_bytes as u64))
             .and_then(|n| location.info.byte_offset.checked_add(n))
             .ok_or_else(|| Error::Limit("original tensor window byte offset overflow".into()))?;
         let bytes = (rows.end - rows.start)
             .checked_mul(matrix.row_bytes)
             .ok_or_else(|| Error::Limit("original tensor window length overflow".into()))?;
-        let staged =
-            self.0.shards[location.shard]
-                .source
-                .read_window(start, bytes, &self.0.admission)?;
+        let staged = self.read_window(location.shard, start, bytes)?;
         // Blocking IO has retired before cancellation may release its staging.
         source_not_cancelled(cancelled)?;
         Ok(TensorWindow {
@@ -665,7 +873,7 @@ impl VerifiedParameter {
     pub fn validate_source_parameter(&self, descriptor: &SourceParameter) -> Result<()> {
         let actual = &self.location.info;
         if descriptor.source != self.source_identity()
-            || descriptor.name != actual.name
+            || !zerogravity_core::source::exact_text_eq(&descriptor.name, &actual.name)
             || descriptor.kind != actual.kind
             || descriptor.shape != actual.shape
             || descriptor.bytes != self.bytes
@@ -713,6 +921,41 @@ impl ParameterWindow {
     }
 }
 impl VerifiedMatrix {
+    /// Same sealed issuer, actual shard-backed tensor and exact original rows.
+    /// Equal geometry or source labels alone do not identify matrix contents.
+    pub fn same_binding(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.owner, &other.owner)
+            && Arc::ptr_eq(&self.location, &other.location)
+            && self.axes == other.axes
+            && self.columns == other.columns
+            && self.rows == other.rows
+            && self.row_bytes == other.row_bytes
+            && self.first_row == other.first_row
+    }
+    /// Actual contiguous authenticated operand range, not the containing expert tensor.
+    pub fn byte_range(&self) -> Result<Range<u64>> {
+        let start = (self.first_row as u64)
+            .checked_mul(self.row_bytes as u64)
+            .and_then(|n| self.location.info.byte_offset.checked_add(n))
+            .ok_or_else(|| Error::Limit("verified matrix exact source start".into()))?;
+        let end = (self.rows as u64)
+            .checked_mul(self.row_bytes as u64)
+            .and_then(|n| start.checked_add(n))
+            .ok_or_else(|| Error::Limit("verified matrix exact source end".into()))?;
+        if start >= end
+            || self
+                .location
+                .info
+                .byte_offset
+                .checked_add(self.location.info.byte_len)
+                .is_none_or(|limit| end > limit)
+        {
+            return Err(Error::State(
+                "verified matrix outside actual member range".into(),
+            ));
+        }
+        Ok(start..end)
+    }
     pub fn source_identity(&self) -> SourceIdentity {
         self.owner.identity
     }

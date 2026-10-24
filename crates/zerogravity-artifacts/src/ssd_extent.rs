@@ -11,6 +11,7 @@ use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::ops::Range;
 use std::os::unix::fs::FileExt;
+use std::os::unix::fs::MetadataExt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, GlobalResourceLease};
@@ -44,8 +45,30 @@ struct ExtentChunk {
     bytes: usize,
     sha256: String,
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct SourceStamp([u64; 7]);
+impl SourceStamp {
+    fn read(file: &File) -> Result<Self> {
+        let m = file.metadata()?;
+        if !m.is_file() {
+            return Err(Error::Malformed(
+                "regular immutable source descriptor".into(),
+            ));
+        }
+        Ok(Self([
+            m.dev(),
+            m.ino(),
+            m.len(),
+            m.mtime() as u64,
+            m.mtime_nsec() as u64,
+            m.ctime() as u64,
+            m.ctime_nsec() as u64,
+        ]))
+    }
+}
 pub struct ExtentSource {
     file: Arc<File>,
+    stamp: SourceStamp,
     file_bytes: u64,
     index_sha256: String,
     claimed_whole_sha256: String,
@@ -119,6 +142,7 @@ impl ExtentSource {
         cancelled: Option<&AtomicBool>,
     ) -> Result<Self> {
         let count = Self::scan_chunk_count(expected_bytes, chunk_bytes)?;
+        let stamp = SourceStamp::read(&file)?;
         if !digest_ok(expected_sha256) || file.metadata()?.len() != expected_bytes {
             return Err(Error::Malformed(
                 "verified source descriptor length/digest".into(),
@@ -151,7 +175,8 @@ impl ExtentSource {
             offset += bytes as u64;
         }
         source_not_cancelled(cancelled)?;
-        if file.metadata()?.len() != expected_bytes
+        if SourceStamp::read(&file)? != stamp
+            || file.metadata()?.len() != expected_bytes
             || format!("{:x}", whole.finalize()) != expected_sha256
         {
             return Err(Error::Malformed(
@@ -171,6 +196,7 @@ impl ExtentSource {
         }
         Ok(Self {
             file: Arc::new(file),
+            stamp,
             file_bytes: expected_bytes,
             index_sha256: format!("{:x}", Sha256::digest(&manifest_json)),
             claimed_whole_sha256: manifest.whole_sha256,
@@ -185,6 +211,7 @@ impl ExtentSource {
         manifest_json: &[u8],
         expected_manifest_sha256: &str,
     ) -> Result<Self> {
+        let stamp = SourceStamp::read(&file)?;
         if !digest_ok(expected_manifest_sha256)
             || manifest_json.is_empty()
             || manifest_json.len() > MAX_MANIFEST
@@ -237,6 +264,7 @@ impl ExtentSource {
         }
         Ok(Self {
             file: Arc::new(file),
+            stamp,
             file_bytes: manifest.file_bytes,
             index_sha256: expected_manifest_sha256.into(),
             claimed_whole_sha256: manifest.whole_sha256,
@@ -254,6 +282,9 @@ impl ExtentSource {
     }
     pub fn file_bytes(&self) -> u64 {
         self.file_bytes
+    }
+    pub(crate) fn cache_stamp_unchanged(&self) -> Result<bool> {
+        Ok(SourceStamp::read(&self.file)? == self.stamp)
     }
 
     /// Sorted unique source indices; adjacent chunks coalesce into one

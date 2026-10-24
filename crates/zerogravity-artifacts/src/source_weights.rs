@@ -17,7 +17,7 @@ mod tensor_window;
 #[cfg(all(feature = "cache", target_os = "linux"))]
 pub use tensor_window::{
     ParameterWindow, TensorWindow, VerifiedMatrix, VerifiedParameter, VerifiedTensorSource,
-    VerifiedWindowPlan, WindowOpenLimits, WindowWorkspace,
+    VerifiedWindowPlan, WindowCacheStats, WindowOpenLimits, WindowWorkspace,
 };
 
 /// One source identity, possibly backed by several independently verified
@@ -78,11 +78,32 @@ impl std::fmt::Debug for SourceWeights {
 
 impl SourceWeights {
     pub fn open(path: &Path) -> Result<Self> {
-        let parsed = Artifact::open(path)?;
+        Self::from_inspected_artifact(Artifact::open(path)?)
+    }
+
+    /// Materialize the original inspected descriptor. A routing metadata view
+    /// is not trusted if its tensor table changed before the owned copy.
+    pub fn from_inspected_artifact(parsed: Artifact) -> Result<Self> {
         Self::validate_artifact(&parsed)?;
+        let expected = parsed.info.tensors.clone();
+        let architecture = parsed.info.architecture.clone();
         // Materialize through the SAME opened file descriptor and reparse
         // tensor metadata from those exact bytes.
         let (info, source) = parsed.into_bounded_source(MAX_CPU_SOURCE)?;
+        if info.architecture != architecture
+            || info.tensors.len() != expected.len()
+            || info.tensors.iter().zip(&expected).any(|(a, b)| {
+                a.name != b.name
+                    || a.shape != b.shape
+                    || a.kind != b.kind
+                    || a.byte_offset != b.byte_offset
+                    || a.byte_len != b.byte_len
+            })
+        {
+            return Err(Error::State(
+                "inspected source tensor metadata changed before materialization".into(),
+            ));
+        }
         Self::from_owned_source(info, source, None)
     }
 
@@ -340,3 +361,6 @@ impl zerogravity_core::source::TensorSource for SourceWeights {
         Ok(tensor)
     }
 }
+
+#[cfg(all(feature = "cache", target_os = "linux"))]
+mod parameter_binding;
