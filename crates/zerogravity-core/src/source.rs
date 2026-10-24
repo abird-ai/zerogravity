@@ -13,6 +13,17 @@ pub trait TensorSource: Send + Sync {
     fn tensor(&self, name: &str) -> Result<SourceTensorRef<'_>>;
 }
 
+/// Exact immutable content equality; shared storage avoids rereading bytes.
+/// Different allocations still compare every byte. This is no source permit.
+pub fn exact_text_eq(left: &str, right: &str) -> bool {
+    left.len() == right.len() && (std::ptr::eq(left.as_ptr(), right.as_ptr()) || left == right)
+}
+pub fn exact_text_slice_eq(left: &[&str], right: &[&str]) -> bool {
+    left.len() == right.len()
+        && (std::ptr::eq(left.as_ptr(), right.as_ptr())
+            || left.iter().zip(right).all(|(a, b)| exact_text_eq(a, b)))
+}
+
 impl SourceTensorRef<'_> {
     pub fn validate(&self) -> Result<()> {
         let elements = self
@@ -35,6 +46,19 @@ impl SourceTensorRef<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exact_source_comparison_preserves_different_storage_and_boundaries() {
+        let a = String::from("complete source");
+        let b = a.clone();
+        assert!(exact_text_eq(&a, &a));
+        assert!(exact_text_eq(&a, &b));
+        assert!(!exact_text_eq(&a, "complete sourcf"));
+        assert!(!exact_text_eq(&a, "complete source!"));
+        assert!(exact_text_slice_eq(&[&a], &[&b]));
+        assert!(!exact_text_slice_eq(&["ab", "c"], &["a", "bc"]));
+        assert!(!exact_text_slice_eq(&[&a], &[]));
+    }
 
     #[test]
     fn borrowed_source_geometry_rejects_overflow_truncation_and_empty_axes() {

@@ -1,6 +1,88 @@
 use super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+#[test]
+fn explicit_cpu_pointwise_preserves_legacy_refusal_and_builder_ownership() {
+    let source = SourceIdentity::for_new_allocation().unwrap();
+    let span = |builder: &mut PlanBuilder, elements| {
+        builder
+            .embed_profiled(
+                SourceTensor {
+                    source,
+                    name: format!("pointwise.span{elements}"),
+                    kind: QuantKind::Bf16,
+                    rows: 1,
+                    columns: elements,
+                    axes: MatrixAxes::OutputInput,
+                },
+                PlanBuilder::inputs().token,
+                EmbeddingContract::Bf16OutputInput,
+            )
+            .unwrap()
+    };
+    let mut first = builder(source);
+    let input = span(&mut first, 16);
+    assert!(first.silu("legacy", &input, Some(&input)).is_err());
+    assert!(first.add("legacy", &input, &input).is_err());
+    let product = first
+        .torch_cpu_bf16_silu_mul("staged", &input, &input)
+        .unwrap();
+    let sum = first
+        .torch_cpu_bf16_add("residual", &product, &input)
+        .unwrap();
+    assert_eq!(sum.precision(), ActivationPrecision::Bf16WidenedF32);
+    let mut second = builder(source);
+    let foreign = span(&mut second, 16);
+    assert!(first.torch_cpu_bf16_add("foreign", &sum, &foreign).is_err());
+    let short = span(&mut first, 8);
+    assert!(
+        first
+            .torch_cpu_bf16_silu_mul("scalar", &short, &short)
+            .is_err()
+    );
+    assert!(first.torch_cpu_bf16_add("shape", &sum, &short).is_err());
+    let wide = span(&mut first, 17424);
+    assert!(first.torch_cpu_bf16_silu_mul("wide", &wide, &wide).is_err());
+    let maximum = span(&mut first, 17408);
+    assert!(
+        first
+            .torch_cpu_bf16_silu_mul("maximum", &maximum, &maximum)
+            .is_ok()
+    );
+    let larger = span(&mut first, 32);
+    let strided = first
+        .view(
+            &larger,
+            TensorView {
+                offset: 0,
+                rows: 2,
+                width: 8,
+                row_stride: 16,
+            },
+        )
+        .unwrap();
+    assert!(
+        first
+            .torch_cpu_bf16_silu_mul("strided", &strided, &strided)
+            .is_err()
+    );
+    let mut other_profile = PlanBuilder::new_operator_slice(
+        source,
+        ProgramNumericalProfile::Vllm031CudaSm86Bf16SourceV1,
+    )
+    .unwrap();
+    assert!(
+        other_profile
+            .torch_cpu_bf16_add("no_vllm", &sum, &sum)
+            .is_err()
+    );
+    assert!(
+        other_profile
+            .torch_cpu_bf16_silu_mul("no_vllm", &sum, &sum)
+            .is_err()
+    );
+}
+
 struct Original {
     source: SourceIdentity,
     rows: [u64; 2],
@@ -437,7 +519,7 @@ macro_rules! unaware_callbacks {
         }
     )+};
 }
-struct UnawareBackend;
+pub(super) struct UnawareBackend;
 #[allow(clippy::too_many_arguments)]
 impl MathematicalBackend for UnawareBackend {
     type Value = Vec<f32>;
@@ -475,6 +557,15 @@ fn unaware_backend_refuses_new_contract_without_legacy_or_metadata_callbacks() {
     let source = NormSource::new();
     let parameter = SourceParameter::from_source(&source, "input.norm").unwrap();
     let mut unaware = UnawareBackend;
+    let span = vec![1.0; 16];
+    assert!(matches!(
+        unaware.torch_cpu_bf16_silu_mul("staged", &span, &span),
+        Err(Error::Unsupported(_))
+    ));
+    assert!(matches!(
+        unaware.torch_cpu_bf16_add("residual", &span, &span),
+        Err(Error::Unsupported(_))
+    ));
     assert!(matches!(
         unaware.ordinary_rms_profiled(
             parameter,
@@ -546,3 +637,14 @@ fn unaware_backend_causal_conv_refuses_before_any_callback() {
         Err(Error::Unsupported(_))
     ));
 }
+
+#[path = "residual_rms/default_backend_tests.rs"]
+mod residual_rms_defaults;
+#[path = "vllm_native/default_tests.rs"]
+mod vllm_native_defaults;
+
+#[path = "vllm_gdn/default_tests.rs"]
+mod vllm_gdn_defaults;
+
+#[path = "vllm_model/default_tests.rs"]
+mod vllm_model_defaults;
