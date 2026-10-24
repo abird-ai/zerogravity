@@ -3,8 +3,11 @@
 //! learned matrix transpose or duplicate mathematical runtime is required.
 //! This does not enable complete trained Qwen3.8 inference.
 
+pub mod attention;
 pub mod conv;
+pub mod gdn;
 pub mod norm;
+pub mod pv;
 pub mod recurrent;
 pub mod reduction;
 pub mod transcendentals;

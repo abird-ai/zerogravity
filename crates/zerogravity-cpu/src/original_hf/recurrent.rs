@@ -13,6 +13,35 @@ use crate::{Error, Result};
 const WIDTH: usize = 128;
 const MAX_ELEMENTS: usize = 1_048_576;
 
+// Fallible collect has no exact lower size hint. Keep the caller's admitted
+// output extent for every head count, including non-power-of-two H48.
+pub(super) fn collect_exact_output(
+    count: usize,
+    values: impl IntoIterator<Item = Result<f32>>,
+) -> Result<Vec<f32>> {
+    if count == 0 || count > MAX_ELEMENTS {
+        return Err(Error::Limit("CPU GDN output element bound".into()));
+    }
+    let mut out = Vec::new();
+    out.try_reserve_exact(count)
+        .map_err(|_| Error::Limit("CPU GDN admitted output allocation".into()))?;
+    if out.capacity() != count {
+        return Err(Error::Limit("CPU GDN exact output capacity".into()));
+    }
+    for value in values {
+        if out.len() == count {
+            return Err(Error::Malformed(
+                "CPU GDN output exceeds declared extent".into(),
+            ));
+        }
+        out.push(value?);
+    }
+    if out.len() != count {
+        return Err(Error::Malformed("CPU GDN incomplete output extent".into()));
+    }
+    Ok(out)
+}
+
 /// BF16 inputs widened exactly to F32; one cached token, batch1, repeated heads.
 /// Query/key/value are `[head,128]`, beta/decay `[head]`, and previous state is
 /// FP32 `[head,key128,value128]`. No implicit head repeat/layout conversion.
@@ -191,10 +220,10 @@ pub fn cached_step_128(input: CachedGdn128Inputs<'_>) -> Result<CachedGdn128Comp
         })
         .collect::<Vec<_>>();
     let core_f32 = sum_key_128(input.source, &products, input.heads)?;
-    let output_bf16 = core_f32
-        .iter()
-        .map(|&v| bf16_output(v))
-        .collect::<Result<Vec<_>>>()?;
+    let output_bf16 = collect_exact_output(
+        input.heads * WIDTH,
+        core_f32.iter().map(|&v| bf16_output(v)),
+    )?;
     Ok(CachedGdn128Completed {
         state,
         core_f32,

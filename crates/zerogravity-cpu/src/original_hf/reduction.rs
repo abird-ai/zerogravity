@@ -68,6 +68,36 @@ pub fn sum_inner_128(source: SourceIdentity, input: &[f32]) -> Result<Vec<f32>> 
     finite(output)
 }
 
+/// Active Initial1 contraction for the original padded64 FP32 QK GEMM.
+/// Actual original MKL SGEMM_BATCH(T,N); one FP32 FMA per K element.
+/// Learned layer9 compares all48 QK and6144 raw-core words exactly from
+/// computed operands. Caller seals empty phase/layout and admits storage;
+/// no cached/full-model/native qualification follows.
+pub fn padded64_qk_fma128(source: SourceIdentity, query: &[f32], key: &[f32]) -> Result<Vec<f32>> {
+    validate(source, query)?;
+    validate(source, key)?;
+    if query.len() != key.len() || query.len() > 48 * WIDTH {
+        return Err(Error::Malformed(
+            "padded64 F32 QK active row/head extent".into(),
+        ));
+    }
+    let rows = query.len() / WIDTH;
+    let mut out = Vec::new();
+    out.try_reserve_exact(rows)
+        .map_err(|_| Error::Limit("padded64 QK output".into()))?;
+    if out.capacity() != rows {
+        return Err(Error::Limit("padded64 QK exact output capacity".into()));
+    }
+    for (q, k) in query.chunks_exact(WIDTH).zip(key.chunks_exact(WIDTH)) {
+        let mut sum = 0.0f32;
+        for (&a, &b) in q.iter().zip(k) {
+            sum = a.mul_add(b, sum);
+        }
+        out.push(sum);
+    }
+    finite(out)
+}
+
 /// Actual eager L2 order: materialized FP32 squares, source FP32 sum, +eps,
 /// FP32 sqrt then divide1, and FP32 input*inverse. No mean/gamma rewrite.
 pub fn l2_norm_128(source: SourceIdentity, input: &[f32], eps: f32) -> Result<Vec<f32>> {
@@ -140,6 +170,37 @@ mod tests {
         for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
             assert_eq!(actual.to_bits(), expected.to_bits(), "word {index}");
         }
+    }
+
+    #[test]
+    fn padded_qk_retains_actual_fma_and_rejects_other_layouts() {
+        let source = source();
+        let mut q = vec![0.0; 48 * 128];
+        let mut k = q.clone();
+        for (q, k) in q.chunks_exact_mut(128).zip(k.chunks_exact_mut(128)) {
+            q[0] = -0.0625;
+            q[1] = f32::from_bits(0x3f800001) * 0.0625;
+            k[0] = 0.0625;
+            k[1] = f32::from_bits(0x3f7ffffe) * 0.0625;
+        }
+        // Approved original Torch SGEMM_BATCH(T,N), padded64/48 heads:
+        // analytic cancellation fixture6 returned a4800000 in all48 heads.
+        let result = padded64_qk_fma128(source, &q, &k).unwrap();
+        assert_eq!(result.capacity(), 48);
+        assert!(result.iter().all(|x| x.to_bits() == 0xa4800000));
+        let products = q.iter().zip(&k).map(|(a, b)| a * b).collect::<Vec<_>>();
+        assert!(
+            sum_inner_128(source, &products)
+                .unwrap()
+                .iter()
+                .all(|x| x.to_bits() == 0)
+        );
+        assert!(padded64_qk_fma128(SourceIdentity::unbound(), &q, &k).is_err());
+        assert!(padded64_qk_fma128(source, &q[..127], &k[..127]).is_err());
+        assert!(padded64_qk_fma128(source, &q, &k[..128]).is_err());
+        assert!(padded64_qk_fma128(source, &vec![0.0; 49 * 128], &vec![0.0; 49 * 128]).is_err());
+        q[0] = f32::NAN;
+        assert!(padded64_qk_fma128(source, &q, &k).is_err());
     }
 
     #[test]

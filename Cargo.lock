@@ -5636,6 +5636,8 @@ version = "0.1.0"
 dependencies = [
  "rayon",
  "serde",
+ "serde_json",
+ "sha2",
  "zerogravity-artifacts",
  "zerogravity-core",
 ]
