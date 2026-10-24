@@ -83,6 +83,70 @@ No mandatory run receipts, source snapshots, per-file hashes, archives or
 generated handoffs. Actual model/content hashes and numerical acceptance limits
 remain part of the implementation wherever needed.
 
+## Execution cadence
+
+- Work in substantial end-to-end units with a concrete user-visible outcome.
+  Bindings, readers, helpers and individual layers are usually internal steps,
+  not separate acceptance phases or coordination cycles. Isolate a component
+  when a concrete failure needs diagnosis, then return to the larger unit.
+- Use subagents for substantial independent implementation, investigation and
+  review. A correction or validation blocker in one task must not stop unrelated
+  ready work; advance other models, backends or features in parallel where safe.
+- Respect the user's agent roles and model settings. Architecture/design agents
+  review and propose redesigns; the requested implementation agents apply them.
+  Keep those roles explicit when delegating and handing off work.
+- Current delegation: Sol xhigh coordinates, plans, reviews and merges. Use
+  Astra high for complex architecture, mathematical reasoning and design review.
+  Use CLI Pi with `--model deepseek-v4.1-flash:1017` for implementation and
+  execution; Pi can also provide preliminary reviews. Do not silently substitute
+  a different implementation model.
+- Launch Pi with explicit `--thinking xhigh`; return only its concise final
+  report. Keep reasoning, intermediate messages, tool calls/results and
+  diagnostics in run-local logs; never feed raw event/session streams into the
+  coordinator context. Review changed source and verification evidence separately.
+- Set `PYTHONDONTWRITEBYTECODE=1` for Pi processes and use `python3 -B` for
+  read-only preflight: imports must not add bytecode to sealed source packages.
+- Run focused Pi tasks generously in parallel, including tens of independent
+  lanes when useful. Optimize time to the larger outcome, not agent count;
+  declare file/device ownership and coordinate shared build/GPU capacity.
+  Give implementers concrete plans, invariants, checks and completion criteria.
+  The coordinator independently inspects code, results and failures before
+  accepting or merging; an agent's report alone is not evidence of correctness.
+- When fixes become circular or repeated fix/test cycles stall a task, assign
+  focused root-cause work in a separate worktree and keep other work moving.
+  Coordinate shared GPU, compiler and memory use so concurrent jobs do not
+  invalidate results or contend needlessly.
+- Use separate worktrees for independent changes or overlapping investigations.
+  Declare ownership and interfaces, preserve existing work, and keep the main
+  agent responsible for reconciliation and integration.
+- Integrate completed, contained changes promptly, even within a larger unit.
+  Reconcile active worktrees at periodic useful checkpoints to limit drift and
+  catch interface conflicts early; do not wait for every parallel task to finish.
+- Batch related implementations and parallel contributions before validation.
+  Bindings, readers, helpers and individual changes do not each require a test,
+  review, physical-regression or acceptance cycle.
+- During implementation, use compilation or narrow diagnostics when needed to
+  resolve a concrete blocker. Avoid routine validation after every change.
+- Validate the assembled batch with the required numerical/source/state,
+  physical ownership/fault and serving checks. Gather failures, fix related
+  failures together and rerun affected coverage; keep evidence scopes distinct.
+- Run the complete `scripts/check.sh` gate last, before accepting the final
+  tested batch. Avoid repeated full gates while adjacent planned implementations
+  remain. Repeat broad checks only for relevant changes, failures or unresolved
+  concerns; preserve all required real-source and physical validation.
+- Reuse applicable accepted evidence for unchanged paths. Avoid redundant
+  baseline runs and per-helper freeze, receipt or release administration.
+- Keep active tool-session jobs with the initiating agent until completion.
+  A session ID alone is not an ownership transfer. Verify live supervision and
+  result retrieval before ending the old owner; otherwise keep its turn active.
+- Inspect every case's semantic and cleanup results before reporting a batch
+  pass. Successful cleanup or the last passing case cannot establish earlier
+  results; preserve interrupted and failed scopes separately.
+- Continue already authorized substeps without requiring another user prompt.
+  Report completed end-to-end behavior, the concrete blocker and the next larger
+  milestone; test counts and receipts do not substitute for working behavior or
+  measured performance.
+
 ## Implementation boundaries
 
 Preserve one Rust mathematical engine, immutable source identity, independent

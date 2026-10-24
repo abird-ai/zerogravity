@@ -98,6 +98,33 @@ Parallel agents keep scratch under `.agents/runs/<plan>-<agent>/TODO.md` and
 append back only when finished. The coordinator reconciles the queue line and
 the plan's committed groups.
 
+Pi implementation/execution/review launches use
+`--provider ollama-cloud --model deepseek-v4.1-flash:1017 --thinking xhigh`.
+Return only the concise final report. Redirect intermediate messages, reasoning,
+tool calls/results and diagnostics to run-local logs; never import raw event or
+session streams into coordinator context. The coordinator separately reviews
+changed source and concrete verification evidence before accepting work.
+Prefer `--print --mode text`: installed Pi emits only the final assistant text,
+excluding thinking/tool events, and reports truncated/error completions as
+failures. Keep stdout/stderr local; forward only the final report. JSON event
+mode is private diagnostic storage, never coordinator input.
+
+Implementation Pi runs start in their actual candidate directory, with MAIN and
+other worktrees mounted read-only; candidate and owned run are writable. A
+prompt or shell `cd` is insufficient isolation: a24Oct worker edited MAIN and
+the original physical source guard correctly refused the batch. Preserve stray
+edits before restoring a verified baseline. Keep Pi provider credentials/settings
+in a private temporary config when locks need writes; never expose their values
+or change global configuration. No GPU devices in preparation-only namespaces.
+Retain the current user ID in this outer namespace; do not force UID0/GID0
+and drop all capabilities, which prevents the mandatory nested native-gpu
+user/network mapping. The current-user readonly boundary passes that wrapper.
+An isolation setup failure stops checks; direct execution cannot replace it.
+Search with `rg` in named source directories; bound exploratory searches and
+exclude `target`, weights, raw tensors and Pi event/session streams. Do not run
+recursive `grep` across the repository: a24Oct executor spent over312CPUseconds
+there before benchmark launch. Read explicit reviewed paths before searching.
+
 ## Closeout
 
 All tests `[x]` and `## Uncommitted` empty → move the queue line to `## Closed`
