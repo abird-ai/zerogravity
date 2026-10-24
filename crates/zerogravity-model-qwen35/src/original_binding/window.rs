@@ -1,4 +1,4 @@
-//! Three pure original operators over one sealed source, never a model/session.
+//! Pure original operators over one sealed source, never a model/session.
 use super::*;
 use crate::accelerator::program::{
     EmbeddingContract, PlanBuilder, ProgramNumericalProfile, ProjectionContract,
@@ -121,11 +121,20 @@ impl OriginalWindowOperators {
         Ok(())
     }
     #[cfg(feature = "cpu")]
-    pub(crate) fn workspace(&self) -> Result<WindowWorkspace> {
-        // Covers private output, existing RMS diagnostic frame, raw/final
-        // projection arrays and one128-row accumulator. No learned cache.
-        self.source()
-            .reserve_operator_buffers(64 * 1024, 960 * 1024)
+    pub(crate) fn workspace(
+        &self,
+        output_elements: usize,
+        scratch_elements: usize,
+    ) -> Result<WindowWorkspace> {
+        let bytes = |n: usize| {
+            n.checked_mul(std::mem::size_of::<f32>())
+                .filter(|&n| n > 0)
+                .ok_or_else(|| Error::Limit("window operator buffer bytes".into()))
+        };
+        self.source().reserve_operator_buffers(
+            bytes(output_elements)?.max(64 * 1024),
+            bytes(scratch_elements)?.max(960 * 1024),
+        )
     }
     #[cfg(feature = "cpu")]
     pub fn execute(
@@ -193,36 +202,7 @@ impl OriginalWindowOperators {
         input: &[f32],
         cancelled: Option<&AtomicBool>,
     ) -> Result<Vec<f32>> {
-        if *parameter != self.parameter_descriptor(QwenParameterRole::InputNorm(0))? {
-            let mut valid = false;
-            for (layer, kind) in self.geometry().layers.iter().enumerate() {
-                if *kind != crate::model::LayerKind::FullAttention {
-                    continue;
-                }
-                if *parameter != self.parameter_descriptor(QwenParameterRole::QueryNorm(layer))?
-                    && *parameter != self.parameter_descriptor(QwenParameterRole::KeyNorm(layer))?
-                {
-                    continue;
-                }
-                let roles = crate::operator_slice::attention::attention_roles(self, layer)?;
-                let elements = if *parameter == roles.query_norm {
-                    Some(roles.query_heads * roles.width)
-                } else if *parameter == roles.key_norm {
-                    Some(roles.kv_heads * roles.width)
-                } else {
-                    None
-                };
-                if elements == Some(input.len()) {
-                    valid = true;
-                    break;
-                }
-            }
-            if !valid {
-                return Err(Error::State(
-                    "window ordinary RMS original role/heads".into(),
-                ));
-            }
-        }
+        self.validate_ordinary_parameter(parameter, input.len())?;
         check_cancel(cancelled)?;
         let raw = self.source().parameter(&parameter.name)?;
         raw.validate_source_parameter(parameter)?;
@@ -259,34 +239,7 @@ impl OriginalWindowOperators {
         input: &[f32],
         cancelled: Option<&AtomicBool>,
     ) -> Result<Vec<f32>> {
-        self.validate_matrix(tensor)?;
-        if *tensor != self.matrix_descriptor(QwenMatrixRole::GdnQkv(0))? {
-            let mut valid = false;
-            for (layer, kind) in self.geometry().layers.iter().enumerate() {
-                if *kind != crate::model::LayerKind::FullAttention {
-                    continue;
-                }
-                if ![
-                    self.matrix_descriptor(QwenMatrixRole::Query(layer))?,
-                    self.matrix_descriptor(QwenMatrixRole::Key(layer))?,
-                    self.matrix_descriptor(QwenMatrixRole::Value(layer))?,
-                ]
-                .contains(tensor)
-                {
-                    continue;
-                }
-                let roles = crate::operator_slice::attention::attention_roles(self, layer)?;
-                if [&roles.query, &roles.key, &roles.value].contains(&tensor) {
-                    valid = true;
-                    break;
-                }
-            }
-            if !valid {
-                return Err(Error::Unsupported(
-                    "closed original window projection role".into(),
-                ));
-            }
-        }
+        self.validate_projection_matrix(tensor)?;
         check_cancel(cancelled)?;
         if input.len() != tensor.columns {
             return Err(Error::Malformed(
@@ -418,3 +371,12 @@ impl WindowOperatorOutput {
 
 #[cfg(feature = "cpu")]
 mod gdn_conv;
+
+#[cfg(feature = "cpu")]
+pub(crate) mod full_cpu;
+mod pure;
+
+#[cfg(feature = "cpu")]
+mod record_full;
+#[cfg(feature = "cpu")]
+pub use record_full::RecordedWindowToken;

@@ -372,14 +372,18 @@ fn exact_role_provider_and_foreign_issuer_refusals_have_no_partial_output() {
             .is_err()
     );
     assert!(
-        math.project_profiled(
-            operators
-                .matrix_descriptor(QwenMatrixRole::FfnGate(3))
+        operators
+            .execute_projection_slice(
+                QwenMatrixRole::Embedding,
+                crate::operator_slice::pure::PureSliceInput::from_bf16_bytes(
+                    source.source_identity(),
+                    ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
+                    &bytes,
+                )
                 .unwrap(),
-            &imported,
-            ProjectionContract::TorchCpuBf16Avx2
-        )
-        .is_err()
+                None,
+            )
+            .is_err()
     );
     assert!(
         math.ordinary_rms_profiled(

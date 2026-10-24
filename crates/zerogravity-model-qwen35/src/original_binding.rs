@@ -103,10 +103,21 @@ pub struct OriginalGdnGeometry {
 
 #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
 mod window;
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+mod window_model;
 #[cfg(all(feature = "original-hf-binding", target_os = "linux", feature = "cpu"))]
 pub use window::WindowOperatorOutput;
+#[cfg(all(feature = "original-hf-binding", target_os = "linux", feature = "cpu"))]
+pub(crate) use window::full_cpu::{DiagnosticLayerState, InitialCoreTape, WindowDiagnosticTrace};
+#[cfg(all(feature = "original-hf-binding", target_os = "linux", feature = "cpu"))]
+pub use window::full_cpu::{
+    InitialCoreStage, OriginalWindowDiagnosticSession, WindowDiagnosticBoundary,
+    WindowDiagnosticLayer9Stage, WindowDiagnosticOutput, WindowDiagnosticReadback,
+};
 #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
 pub use window::{OriginalWindowOperators, WindowOperatorPlan};
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+pub use window_model::{BoundFullModelSource, BoundShortHfCall, OriginalWindowModelSource};
 
 #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
 struct BindingPins<'a> {
@@ -162,105 +173,15 @@ impl OriginalQwenBinding {
     fn bind_resolved(
         config_json: &[u8],
         pins: BindingPins<'_>,
-        mut resolve_matrix: impl FnMut(&str) -> Result<SourceTensor>,
-        mut resolve_parameter: impl FnMut(&str) -> Result<QwenParameterDescriptor>,
+        resolve_matrix: impl FnMut(&str) -> Result<SourceTensor>,
+        resolve_parameter: impl FnMut(&str) -> Result<QwenParameterDescriptor>,
     ) -> Result<Self> {
-        use QwenMatrixRole as M;
-        use QwenParameterRole as P;
         let config = zerogravity_artifacts::model::qwen::QwenTextConfig::from_json(config_json)?;
-        let mut matrices = std::collections::BTreeMap::new();
-        let mut matrix = |role, name: String| -> Result<()> {
-            let tensor = resolve_matrix(&name)?;
-            if tensor.kind != QuantKind::Bf16 {
-                return Err(Error::Unsupported(
-                    "original HF CPU BF16 target requires original BF16 matrices".into(),
-                ));
-            }
-            matrices.insert(role, tensor);
-            Ok(())
-        };
-        matrix(
-            M::Embedding,
-            "model.language_model.embed_tokens.weight".into(),
-        )?;
-        matrix(
-            M::Output,
-            if config.tie_word_embeddings() {
-                "model.language_model.embed_tokens.weight"
-            } else {
-                "lm_head.weight"
-            }
-            .into(),
-        )?;
-        let mut parameters = std::collections::BTreeMap::new();
-        let mut parameter = |role, name: String| -> Result<()> {
-            parameters.insert(role, resolve_parameter(&name)?);
-            Ok(())
-        };
-        parameter(P::FinalNorm, "model.language_model.norm.weight".into())?;
-        for (i, kind) in config.geometry().layers.iter().enumerate() {
-            let prefix = format!("model.language_model.layers.{i}");
-            parameter(P::InputNorm(i), format!("{prefix}.input_layernorm.weight"))?;
-            parameter(
-                P::FfnNorm(i),
-                format!("{prefix}.post_attention_layernorm.weight"),
-            )?;
-            for (role, suffix) in [
-                (M::FfnGate(i), "gate_proj"),
-                (M::FfnUp(i), "up_proj"),
-                (M::FfnDown(i), "down_proj"),
-            ] {
-                matrix(role, format!("{prefix}.mlp.{suffix}.weight"))?;
-            }
-            match kind {
-                crate::model::LayerKind::LinearAttention => {
-                    let prefix = format!("{prefix}.linear_attn");
-                    for (role, suffix) in [
-                        (M::GdnQkv(i), "in_proj_qkv"),
-                        (M::GdnGate(i), "in_proj_z"),
-                        (M::GdnAlpha(i), "in_proj_a"),
-                        (M::GdnBeta(i), "in_proj_b"),
-                        (M::GdnOutput(i), "out_proj"),
-                    ] {
-                        matrix(role, format!("{prefix}.{suffix}.weight"))?;
-                    }
-                    for (role, suffix) in [
-                        (P::GdnConvolution(i), "conv1d.weight"),
-                        (P::GdnNorm(i), "norm.weight"),
-                        (P::GdnA(i), "A_log"),
-                        (P::GdnDt(i), "dt_bias"),
-                    ] {
-                        parameter(role, format!("{prefix}.{suffix}"))?;
-                    }
-                }
-                crate::model::LayerKind::FullAttention => {
-                    let prefix = format!("{prefix}.self_attn");
-                    for (role, suffix) in [
-                        (M::Query(i), "q_proj"),
-                        (M::Key(i), "k_proj"),
-                        (M::Value(i), "v_proj"),
-                        (M::AttentionOutput(i), "o_proj"),
-                    ] {
-                        matrix(role, format!("{prefix}.{suffix}.weight"))?;
-                    }
-                    parameter(P::QueryNorm(i), format!("{prefix}.q_norm.weight"))?;
-                    parameter(P::KeyNorm(i), format!("{prefix}.k_norm.weight"))?;
-                }
-                crate::model::LayerKind::SlidingAttention => {
-                    return Err(Error::Unsupported("original Qwen sliding binding".into()));
-                }
-            }
-        }
-        let size = |n| {
-            usize::try_from(n).map_err(|_| Error::Limit("original HF geometry overflow".into()))
-        };
-        let gdn = OriginalGdnGeometry {
-            key_heads: size(config.geometry().recurrent_key_heads.unwrap_or(0))?,
-            value_heads: size(config.geometry().recurrent_value_heads.unwrap_or(0))?,
-            key_width: size(config.linear_key_head_dim())?,
-            value_width: size(config.linear_value_head_dim())?,
-            convolution_kernel: size(config.linear_conv_kernel_dim())?,
-        };
+        let ResolvedQwenRoles {
+            matrices,
+            parameters,
+            gdn,
+        } = resolve_qwen_roles(&config, resolve_matrix, resolve_parameter)?;
         Ok(Self {
             config,
             matrices,
@@ -294,6 +215,132 @@ impl OriginalQwenBinding {
     pub fn other_tensor_count(&self) -> usize {
         self.other_tensors
     }
+}
+
+/// Shared indexed source roles only. Both ownership routes use this ONE recipe.
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+struct ResolvedQwenRoles {
+    matrices: std::collections::BTreeMap<QwenMatrixRole, SourceTensor>,
+    parameters: std::collections::BTreeMap<QwenParameterRole, QwenParameterDescriptor>,
+    gdn: OriginalGdnGeometry,
+}
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+fn resolve_qwen_roles(
+    config: &zerogravity_artifacts::model::qwen::QwenTextConfig,
+    mut resolve_matrix: impl FnMut(&str) -> Result<SourceTensor>,
+    mut resolve_parameter: impl FnMut(&str) -> Result<QwenParameterDescriptor>,
+) -> Result<ResolvedQwenRoles> {
+    use QwenMatrixRole as M;
+    use QwenParameterRole as P;
+    let mut matrices = std::collections::BTreeMap::new();
+    let mut matrix = |role, name: String| -> Result<()> {
+        let tensor = resolve_matrix(&name)?;
+        if tensor.kind != QuantKind::Bf16 {
+            return Err(Error::Unsupported(
+                "original HF CPU BF16 target requires original BF16 matrices".into(),
+            ));
+        }
+        matrices.insert(role, tensor);
+        Ok(())
+    };
+    matrix(
+        M::Embedding,
+        "model.language_model.embed_tokens.weight".into(),
+    )?;
+    matrix(
+        M::Output,
+        if config.tie_word_embeddings() {
+            "model.language_model.embed_tokens.weight"
+        } else {
+            "lm_head.weight"
+        }
+        .into(),
+    )?;
+    let mut parameters = std::collections::BTreeMap::new();
+    let mut parameter = |role, name: String| -> Result<()> {
+        parameters.insert(role, resolve_parameter(&name)?);
+        Ok(())
+    };
+    parameter(P::FinalNorm, "model.language_model.norm.weight".into())?;
+    for (i, kind) in config.geometry().layers.iter().enumerate() {
+        let prefix = format!("model.language_model.layers.{i}");
+        parameter(P::InputNorm(i), format!("{prefix}.input_layernorm.weight"))?;
+        parameter(
+            P::FfnNorm(i),
+            format!("{prefix}.post_attention_layernorm.weight"),
+        )?;
+        for (role, suffix) in [
+            (M::FfnGate(i), "gate_proj"),
+            (M::FfnUp(i), "up_proj"),
+            (M::FfnDown(i), "down_proj"),
+        ] {
+            matrix(role, format!("{prefix}.mlp.{suffix}.weight"))?;
+        }
+        match kind {
+            crate::model::LayerKind::LinearAttention => {
+                let prefix = format!("{prefix}.linear_attn");
+                for (role, suffix) in [
+                    (M::GdnQkv(i), "in_proj_qkv"),
+                    (M::GdnGate(i), "in_proj_z"),
+                    (M::GdnAlpha(i), "in_proj_a"),
+                    (M::GdnBeta(i), "in_proj_b"),
+                    (M::GdnOutput(i), "out_proj"),
+                ] {
+                    matrix(role, format!("{prefix}.{suffix}.weight"))?;
+                }
+                for (role, suffix) in [
+                    (P::GdnConvolution(i), "conv1d.weight"),
+                    (P::GdnNorm(i), "norm.weight"),
+                    (P::GdnA(i), "A_log"),
+                    (P::GdnDt(i), "dt_bias"),
+                ] {
+                    parameter(role, format!("{prefix}.{suffix}"))?;
+                }
+            }
+            crate::model::LayerKind::FullAttention => {
+                let prefix = format!("{prefix}.self_attn");
+                for (role, suffix) in [
+                    (M::Query(i), "q_proj"),
+                    (M::Key(i), "k_proj"),
+                    (M::Value(i), "v_proj"),
+                    (M::AttentionOutput(i), "o_proj"),
+                ] {
+                    matrix(role, format!("{prefix}.{suffix}.weight"))?;
+                }
+                parameter(P::QueryNorm(i), format!("{prefix}.q_norm.weight"))?;
+                parameter(P::KeyNorm(i), format!("{prefix}.k_norm.weight"))?;
+            }
+            crate::model::LayerKind::SlidingAttention => {
+                return Err(Error::Unsupported("original Qwen sliding binding".into()));
+            }
+        }
+    }
+    let size =
+        |n| usize::try_from(n).map_err(|_| Error::Limit("original HF geometry overflow".into()));
+    let gdn = OriginalGdnGeometry {
+        key_heads: size(config.geometry().recurrent_key_heads.unwrap_or(0))?,
+        value_heads: size(config.geometry().recurrent_value_heads.unwrap_or(0))?,
+        key_width: size(config.linear_key_head_dim())?,
+        value_width: size(config.linear_value_head_dim())?,
+        convolution_kernel: size(config.linear_conv_kernel_dim())?,
+    };
+    Ok(ResolvedQwenRoles {
+        matrices,
+        parameters,
+        gdn,
+    })
+}
+
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+fn original_state_specs(
+    geometry: &crate::model::ModelGeometry,
+    g: OriginalGdnGeometry,
+) -> Result<Vec<crate::StateSpec>> {
+    crate::hybrid_decoder::state_specs(
+        geometry,
+        g,
+        crate::hybrid_decoder::ConvolutionRetention::OperatorHistory,
+    )
 }
 
 impl crate::LoadedQwenModel {
@@ -362,45 +409,7 @@ impl crate::LoadedQwenModel {
         let original =
             OriginalQwenBinding::bind(&weights, config_json, config_sha256, index_sha256)?;
         let geometry = crate::model::ModelGeometry::from_json(config_json)?;
-        let g = original.gdn;
-        let overflow = || Error::Limit("original HF state geometry overflow".into());
-        let key = g.key_heads.checked_mul(g.key_width).ok_or_else(overflow)?;
-        let value = g
-            .value_heads
-            .checked_mul(g.value_width)
-            .ok_or_else(overflow)?;
-        let channels = key
-            .checked_mul(2)
-            .and_then(|x| x.checked_add(value))
-            .ok_or_else(overflow)?;
-        let conv = channels
-            .checked_mul(g.convolution_kernel.checked_sub(1).ok_or_else(overflow)?)
-            .ok_or_else(overflow)?;
-        let state = g
-            .value_heads
-            .checked_mul(g.key_width)
-            .and_then(|x| x.checked_mul(g.value_width))
-            .ok_or_else(overflow)?;
-        let kv_width = usize::try_from(
-            geometry
-                .num_key_value_heads
-                .checked_mul(geometry.head_dim)
-                .ok_or_else(overflow)?,
-        )
-        .map_err(|_| overflow())?;
-        let state_specs = geometry
-            .layers
-            .iter()
-            .map(|kind| match kind {
-                crate::model::LayerKind::LinearAttention => {
-                    Ok(crate::StateSpec::Delta { conv, state })
-                }
-                crate::model::LayerKind::FullAttention => Ok(crate::StateSpec::Full { kv_width }),
-                crate::model::LayerKind::SlidingAttention => {
-                    Err(Error::Unsupported("original Qwen sliding state".into()))
-                }
-            })
-            .collect::<Result<Vec<_>>>()?;
+        let state_specs = original_state_specs(&geometry, original.gdn)?;
         let eps = original.config.rms_norm_eps() as f32;
         Ok(std::sync::Arc::new(Self {
             weights,
@@ -420,3 +429,6 @@ impl crate::LoadedQwenModel {
 #[cfg(all(test, feature = "original-hf-binding", target_os = "linux"))]
 #[path = "original_binding_tests.rs"]
 mod tests;
+
+#[cfg(all(feature = "original-hf-binding", target_os = "linux", feature = "cpu"))]
+pub use window::RecordedWindowToken;

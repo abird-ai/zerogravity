@@ -35,6 +35,10 @@ mod checkpoint;
 #[cfg(feature = "diagnostic-cpu-checkpoint")]
 pub use checkpoint::QwenCheckpoint;
 mod forward;
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+pub mod hybrid_decoder;
+mod model_source;
+pub use model_source::QwenModelMetadata;
 pub mod operator_slice;
 pub mod original_binding;
 pub use forward::run_layer_sequence;
@@ -296,6 +300,21 @@ pub fn source_grouped_rms_normalize(
         output.extend(source_rms_normalize(group, weights, eps)?);
     }
     Ok(output)
+}
+
+/// Shared GGUF SiLU fallback, preserving source rounding and multiply order.
+#[cfg(feature = "cpu")]
+pub fn source_silu(region: SiluRegion<'_>) -> Result<Vec<f32>> {
+    region.validate()?;
+    Ok(region
+        .input
+        .iter()
+        .enumerate()
+        .map(|(i, &x)| {
+            let y = silu(x);
+            region.multiplier.map_or(y, |m| m[i] * y)
+        })
+        .collect())
 }
 
 /// Original Qwen GGUF CPU causal GDN convolution and three-frame history
@@ -904,14 +923,7 @@ impl QwenDenseCpu {
                 RegionExecution::Unsupported => {}
             }
         }
-        Ok(input
-            .iter()
-            .enumerate()
-            .map(|(i, &x)| {
-                let y = silu(x);
-                multiplier.map_or(y, |m| m[i] * y)
-            })
-            .collect())
+        source_silu(region)
     }
 
     fn gdn_conv_region(

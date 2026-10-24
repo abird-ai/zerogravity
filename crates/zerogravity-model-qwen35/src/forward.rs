@@ -52,6 +52,233 @@ fn project<B: MathematicalBackend>(
     )
 }
 
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+pub(crate) fn pure_projection_slice<B: MathematicalBackend>(
+    source: &impl OperatorSliceSource,
+    math: &mut B,
+    role: QwenMatrixRole,
+    input: &B::Value,
+) -> Result<B::Value> {
+    use crate::accelerator::program::{ActivationPrecision, ProgramNumericalProfile};
+    let tensor = source.matrix_descriptor(role)?;
+    if source.program_numerical_profile() != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+        || math.precision(input) != ActivationPrecision::Bf16WidenedF32
+        || math.elements(input) != tensor.columns
+    {
+        return Err(Error::State(
+            "pure projection source profile/input geometry".into(),
+        ));
+    }
+    let rows = tensor.rows;
+    let output = math.project_profiled(tensor, input, source.projection_contract())?;
+    if math.elements(&output) != rows
+        || math.precision(&output) != ActivationPrecision::Bf16WidenedF32
+    {
+        return Err(Error::State("pure projection complete typed output".into()));
+    }
+    Ok(output)
+}
+
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+pub(crate) fn pure_ordinary_rms_slice<B: MathematicalBackend>(
+    source: &impl OperatorSliceSource,
+    math: &mut B,
+    role: QwenParameterRole,
+    input: &B::Value,
+) -> Result<B::Value> {
+    use crate::accelerator::program::{ActivationPrecision, ProgramNumericalProfile};
+    if source.program_numerical_profile() != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+        || source.rms_epsilon().to_bits() != 1e-6f32.to_bits()
+        || math.precision(input) != ActivationPrecision::Bf16WidenedF32
+    {
+        return Err(Error::State(
+            "pure ordinary RMS source profile/precision".into(),
+        ));
+    }
+    let elements = math.elements(input);
+    let hidden = usize::try_from(source.geometry().hidden_size)
+        .map_err(|_| Error::Limit("pure ordinary RMS hidden width".into()))?;
+    if elements != hidden {
+        return Err(Error::Malformed(
+            "pure ordinary RMS exact hidden input".into(),
+        ));
+    }
+    let output = math.ordinary_rms_profiled(
+        source.parameter_descriptor(role)?,
+        input,
+        OrdinaryRmsContract::TorchCpuBf16Avx2,
+    )?;
+    if math.elements(&output) != elements
+        || math.precision(&output) != ActivationPrecision::Bf16WidenedF32
+    {
+        return Err(Error::State(
+            "pure ordinary RMS complete typed output".into(),
+        ));
+    }
+    Ok(output)
+}
+
+/// Final decoder FFN and complete head on the caller's post-attention value.
+/// Same backend/schedule; no layer traversal, state issuer or hidden producer.
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+pub(crate) fn output_tail_slice<B: MathematicalBackend>(
+    source: &crate::original_binding::OriginalWindowOperators,
+    math: &mut B,
+    input: &B::Value,
+) -> Result<crate::operator_slice::output_tail::OutputTailValues<B::Value>> {
+    use crate::operator_slice::output_tail::OutputTailValues;
+    let layer = source.output_tail_layer()?;
+    let SourceFfnValues {
+        normalized_ffn,
+        gate,
+        up,
+        gated,
+        branch,
+        residual,
+    } = source_ffn_layer(source, math, layer, input)?;
+    let normalized =
+        pure_ordinary_rms_slice(source, math, QwenParameterRole::FinalNorm, &residual)?;
+    let logits = pure_projection_slice(source, math, QwenMatrixRole::Output, &normalized)?;
+    Ok(OutputTailValues {
+        normalized_ffn,
+        gate,
+        up,
+        gated,
+        branch,
+        residual,
+        normalized,
+        logits,
+    })
+}
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+struct SourceFfnValues<V> {
+    normalized_ffn: V,
+    gate: V,
+    up: V,
+    gated: V,
+    branch: V,
+    residual: V,
+}
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+fn source_ffn_layer<B: MathematicalBackend>(
+    source: &crate::original_binding::OriginalWindowOperators,
+    math: &mut B,
+    layer: usize,
+    input: &B::Value,
+) -> Result<SourceFfnValues<B::Value>> {
+    let normalized_ffn =
+        pure_ordinary_rms_slice(source, math, QwenParameterRole::FfnNorm(layer), input)?;
+    let gate = pure_projection_slice(
+        source,
+        math,
+        QwenMatrixRole::FfnGate(layer),
+        &normalized_ffn,
+    )?;
+    let up = pure_projection_slice(source, math, QwenMatrixRole::FfnUp(layer), &normalized_ffn)?;
+    let gated = math.torch_cpu_bf16_silu_mul("original.output_tail.silu_mul", &gate, &up)?;
+    let branch = pure_projection_slice(source, math, QwenMatrixRole::FfnDown(layer), &gated)?;
+    let residual = math.torch_cpu_bf16_add("original.output_tail.residual", input, &branch)?;
+    Ok(SourceFfnValues {
+        normalized_ffn,
+        gate,
+        up,
+        gated,
+        branch,
+        residual,
+    })
+}
+
+/// Diagnostic CPU adapter over the same recordable source traversal.
+#[cfg(all(feature = "original-hf-binding", target_os = "linux", feature = "cpu"))]
+pub(crate) fn window_diagnostic_token(
+    source: &crate::original_binding::OriginalWindowOperators,
+    math: &mut crate::host_math::HostMath<'_, '_, '_>,
+    states: &mut [crate::original_binding::DiagnosticLayerState],
+    token: u32,
+    position: usize,
+    trace: Option<crate::original_binding::WindowDiagnosticTrace<'_>>,
+) -> Result<crate::host_math::HostValue> {
+    window_source_token(source, math, states, token as usize, position, trace)
+}
+
+/// One original family traversal; state producers belong to the backend.
+#[cfg(all(feature = "original-hf-binding", target_os = "linux", feature = "cpu"))]
+pub(crate) fn window_source_token<B: MathematicalBackend>(
+    source: &crate::original_binding::OriginalWindowOperators,
+    math: &mut B,
+    states: &mut [crate::original_binding::DiagnosticLayerState<B::Value>],
+    token: B::Index,
+    position: usize,
+    trace: Option<crate::original_binding::WindowDiagnosticTrace<'_, B::Value>>,
+) -> Result<B::Value> {
+    if position >= 64 || states.len() != source.geometry().layers.len() {
+        return Err(Error::State("diagnostic full actual state/position".into()));
+    }
+    let prefix = trace.as_ref().is_some_and(|t| t.prefix);
+    let layers = &source.geometry().layers[..if prefix {
+        10
+    } else {
+        source.geometry().layers.len()
+    }];
+    let mut adapter = SourceDecoder {
+        source,
+        math,
+        states,
+        token: Some(token),
+        position,
+        trace,
+        prefix,
+        evolved: None,
+    };
+    crate::hybrid_decoder::compose(layers, &mut adapter)
+}
+
+/// One final source-bound attention block followed by the existing output tail.
+/// KV is an explicit immutable diagnostic prefix, never an engine StateRoot.
+#[cfg(all(feature = "original-hf-binding", target_os = "linux", feature = "cpu"))]
+pub(crate) fn attention_output_tail_slice<B: MathematicalBackend>(
+    source: &crate::original_binding::OriginalWindowOperators,
+    math: &mut B,
+    input: &B::Value,
+    prior: Option<(&B::Value, &B::Value)>,
+    position: usize,
+) -> Result<crate::operator_slice::attention_tail::AttentionTailValues<B::Value>> {
+    use crate::accelerator::program::TorchCpuAttentionInputs;
+    use crate::operator_slice::attention_tail::AttentionTailValues;
+    let s = source.attention_tail_spec()?;
+    let normalized_input =
+        pure_ordinary_rms_slice(source, math, QwenParameterRole::InputNorm(s.layer), input)?;
+    let projections = attention_projection_norm_slice(source, math, s.layer, &normalized_input)?;
+    let attention = math.torch_cpu_bf16_attention(
+        "original.final_attention",
+        TorchCpuAttentionInputs {
+            query: &projections.normalized_query,
+            key: &projections.normalized_key,
+            value: &projections.value_projection,
+            gate: &projections.gate,
+            prior,
+            geometry: s.geometry,
+            position,
+        },
+    )?;
+    let branch = pure_projection_slice(
+        source,
+        math,
+        QwenMatrixRole::AttentionOutput(s.layer),
+        &attention.gated,
+    )?;
+    let residual = math.torch_cpu_bf16_add("original.final_attention.residual", input, &branch)?;
+    let tail = output_tail_slice(source, math, &residual)?;
+    Ok(AttentionTailValues {
+        normalized_input,
+        projections,
+        attention,
+        branch,
+        residual,
+        tail,
+    })
+}
+
 /// Pure fragment of this same source-role schedule. It never touches state,
 /// normalizes a hidden activation or represents a complete Qwen layer/token.
 pub(crate) fn embedding_projection_slice<B: MathematicalBackend>(
@@ -60,12 +287,6 @@ pub(crate) fn embedding_projection_slice<B: MathematicalBackend>(
     token: B::Index,
     role: QwenMatrixRole,
 ) -> Result<(B::Value, B::Value)> {
-    let embedding = math.embed_profiled(
-        model.matrix_descriptor(QwenMatrixRole::Embedding)?,
-        token,
-        model.embedding_contract(),
-    )?;
-    let projected = project(model, math, role, &embedding)?;
     let expected = match model.program_numerical_profile() {
         crate::accelerator::program::ProgramNumericalProfile::GgufSourceV1 => {
             crate::accelerator::program::ActivationPrecision::F32
@@ -73,7 +294,29 @@ pub(crate) fn embedding_projection_slice<B: MathematicalBackend>(
         crate::accelerator::program::ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1 => {
             crate::accelerator::program::ActivationPrecision::Bf16WidenedF32
         }
+        crate::accelerator::program::ProgramNumericalProfile::Vllm031CudaSm86Bf16SourceV1 => {
+            return Err(Error::Unsupported(
+                "existing embedding/projection slice has no vLLM CUDA contract".into(),
+            ));
+        }
+        crate::accelerator::program::ProgramNumericalProfile::AnalyticF32TextV1 => {
+            return Err(Error::Unsupported(
+                "Qwen slice has no analytic F32 text contract".into(),
+            ));
+        }
+        crate::accelerator::program::ProgramNumericalProfile::Gemma4E2bBf16TextCandidateV1 => {
+            return Err(Error::Unsupported(
+                "Qwen slice has no Gemma BF16 text contract".into(),
+            ));
+        }
     };
+    let embedding = math.embed_profiled(
+        model.matrix_descriptor(QwenMatrixRole::Embedding)?,
+        token,
+        model.embedding_contract(),
+    )?;
+    let projected = project(model, math, role, &embedding)?;
+
     if math.precision(&embedding) != expected || math.precision(&projected) != expected {
         return Err(Error::State(
             "source operator slice activation precision".into(),
@@ -214,20 +457,24 @@ fn expect_elements<B: MathematicalBackend>(
     Ok(())
 }
 
-pub(super) fn forward_token<B: MathematicalBackend>(
-    model: &LoadedQwenModel,
+pub(super) fn forward_token<'a, B: MathematicalBackend>(
+    model: impl Into<crate::QwenModelMetadata<'a>>,
     math: &mut B,
     input: ForwardInputs<B::Index>,
     need_logits: bool,
 ) -> Result<Option<B::Value>> {
-    model.require_execution_profile()?;
+    let source = model.into();
+    source.require_execution_profile()?;
+    // Legacy learned-cache/packed-source math remains the unchanged GGUF route.
+    // Verified windows never fabricate this interface or select a CPU fallback.
+    let model = source.legacy_loaded()?;
     let x = math.embed_profiled(
         model.matrix_descriptor(QwenMatrixRole::Embedding)?,
         input.token,
         model.embedding_contract(),
     )?;
     math.observe(usize::MAX, "embedding", &x)?;
-    let x = run_layer_sequence(&model.geometry.layers, x, |i, kind, mut x| {
+    let x = run_layer_sequence(&source.geometry().layers, x, |i, kind, mut x| {
         let layer = &model.layers[i];
         let name = layer_tensor(i, "attn_norm.weight");
         let normal = math.rms(&name, &x, vector(model, &name, &layer.attn_norm), model.eps)?;
@@ -649,4 +896,391 @@ pub(crate) fn gdn_convolution_silu_slice<B: MathematicalBackend>(
         }
     }
     Ok(values)
+}
+
+#[cfg(all(feature = "cpu", target_os = "linux", target_arch = "x86_64"))]
+#[path = "forward/bulk_f32.rs"]
+mod bulk_f32;
+#[cfg(all(feature = "cpu", target_os = "linux", target_arch = "x86_64"))]
+pub(crate) use bulk_f32::bulk_f32_slice;
+
+#[cfg(all(feature = "cpu", target_os = "linux", target_arch = "x86_64"))]
+#[path = "forward/zen_ssm_out.rs"]
+mod zen_ssm_out;
+#[cfg(all(feature = "cpu", target_os = "linux", target_arch = "x86_64"))]
+pub(crate) use zen_ssm_out::zen_ssm_out_slice;
+
+#[cfg(all(feature = "cpu", target_os = "linux", target_arch = "x86_64"))]
+pub(crate) fn gguf_prefix_slice<M: MathematicalBackend>(
+    math: &mut M,
+    descriptor: &crate::accelerator::program::GgufPrefixDescriptor,
+) -> Result<(M::Value, M::Value)> {
+    let embedding = math.gguf_prefix_embedding(descriptor)?;
+    let normalized = math.gguf_prefix_rms(descriptor, &embedding)?;
+    Ok((embedding, normalized))
+}
+
+#[cfg(all(feature = "cpu", target_os = "linux", target_arch = "x86_64"))]
+pub(crate) fn gguf_gdn_upstream_slice<M: MathematicalBackend>(
+    math: &mut M,
+    descriptor: &crate::accelerator::program::GgufGdnUpstreamDescriptor,
+) -> Result<crate::accelerator::program::GgufGdnUpstreamValues<M::Value>> {
+    use crate::accelerator::program::{GgufGdnProjection, GgufGdnUpstreamValues};
+    let input = math.gguf_gdn_input(descriptor)?;
+    let qkv = math.gguf_gdn_project(descriptor, GgufGdnProjection::Qkv, &input)?;
+    let z = math.gguf_gdn_project(descriptor, GgufGdnProjection::Z, &input)?;
+    let convolution = math.gguf_gdn_conv_silu(descriptor, &qkv)?;
+    let operands = math.gguf_gdn_qk(descriptor, &convolution)?;
+    Ok(GgufGdnUpstreamValues {
+        qkv,
+        z,
+        convolution,
+        operands,
+    })
+}
+
+#[cfg(all(feature = "original-hf-binding", target_os = "linux", feature = "cpu"))]
+struct SourceDecoder<'a, 't, B: MathematicalBackend> {
+    source: &'a crate::original_binding::OriginalWindowOperators,
+    math: &'a mut B,
+    states: &'a mut [crate::original_binding::DiagnosticLayerState<B::Value>],
+    token: Option<B::Index>,
+    position: usize,
+    trace: Option<crate::original_binding::WindowDiagnosticTrace<'t, B::Value>>,
+    prefix: bool,
+    evolved: Option<(
+        usize,
+        crate::original_binding::DiagnosticLayerState<B::Value>,
+    )>,
+}
+#[cfg(all(feature = "original-hf-binding", target_os = "linux", feature = "cpu"))]
+impl<B: MathematicalBackend> SourceDecoder<'_, '_, B> {
+    fn observe(
+        &mut self,
+        layer: usize,
+        stage: crate::original_binding::WindowDiagnosticLayer9Stage,
+        value: &B::Value,
+    ) {
+        if layer == 9
+            && let Some(trace) = self.trace.as_mut()
+            && trace.layer9
+        {
+            trace.boundaries.push((
+                crate::original_binding::WindowDiagnosticBoundary::Layer9(stage),
+                value.clone(),
+            ));
+        }
+    }
+}
+#[cfg(all(feature = "original-hf-binding", target_os = "linux", feature = "cpu"))]
+impl<B: MathematicalBackend> crate::hybrid_decoder::HybridDecoder for SourceDecoder<'_, '_, B> {
+    type Value = B::Value;
+    type GdnInputs = [B::Value; 4];
+    type AttentionInputs = crate::operator_slice::attention::AttentionProjectionValues<B::Value>;
+    type FfnInputs = [B::Value; 2];
+    fn embedding(&mut self) -> Result<B::Value> {
+        let token = self
+            .token
+            .take()
+            .ok_or_else(|| Error::State("source embedding invoked twice".into()))?;
+        let x = self.math.embed_profiled(
+            self.source.matrix_descriptor(QwenMatrixRole::Embedding)?,
+            token,
+            self.source.embedding_contract(),
+        )?;
+        self.math.observe(0, "embedding", &x)?;
+        if let Some(t) = self.trace.as_mut() {
+            t.boundaries.push((
+                crate::original_binding::WindowDiagnosticBoundary::Embedding,
+                x.clone(),
+            ));
+        }
+        Ok(x)
+    }
+    fn input_norm(
+        &mut self,
+        layer: usize,
+        branch: B::Value,
+        residual: Option<B::Value>,
+    ) -> Result<(B::Value, B::Value)> {
+        if residual.is_some() {
+            return Err(Error::State(
+                "source Torch residual must materialize at original BF16 boundary".into(),
+            ));
+        }
+        let normal = pure_ordinary_rms_slice(
+            self.source,
+            self.math,
+            QwenParameterRole::InputNorm(layer),
+            &branch,
+        )?;
+        self.observe(
+            layer,
+            crate::original_binding::WindowDiagnosticLayer9Stage::InputNorm,
+            &normal,
+        );
+        Ok((normal, branch))
+    }
+    fn gdn_inputs(&mut self, layer: usize, normal: &B::Value) -> Result<Self::GdnInputs> {
+        use crate::original_binding::WindowDiagnosticLayer9Stage as S;
+        let roles = crate::hybrid_decoder::ProjectionGroup::GdnInput.roles(layer);
+        let coefficients = crate::hybrid_decoder::ProjectionGroup::GdnCoefficients.roles(layer);
+        let qkv = pure_projection_slice(self.source, self.math, roles[0], normal)?;
+        let gate = pure_projection_slice(self.source, self.math, roles[1], normal)?;
+        let alpha = pure_projection_slice(self.source, self.math, coefficients[1], normal)?;
+        let beta = pure_projection_slice(self.source, self.math, coefficients[0], normal)?;
+        self.observe(layer, S::Qkv, &qkv);
+        self.observe(layer, S::Z, &gate);
+        self.observe(layer, S::B, &beta);
+        self.observe(layer, S::A, &alpha);
+        Ok([qkv, gate, alpha, beta])
+    }
+    fn gdn_evolve(
+        &mut self,
+        layer: usize,
+        [qkv, gate, alpha, beta]: Self::GdnInputs,
+    ) -> Result<B::Value> {
+        use crate::accelerator::program::{TorchCpuGdnInputs, TorchCpuGdnPhase};
+        use crate::original_binding::{DiagnosticLayerState, WindowDiagnosticLayer9Stage as S};
+        let DiagnosticLayerState::Gdn {
+            history,
+            full_history,
+            state,
+        } = &self.states[layer]
+        else {
+            return Err(Error::State(
+                "diagnostic source GDN state domain mismatch".into(),
+            ));
+        };
+        let proposed_full = full_history
+            .as_ref()
+            .map(|full| {
+                self.math
+                    .torch_cpu_full_convolution_cache(full, history, &qkv)
+            })
+            .transpose()?;
+        let core = self.math.torch_cpu_bf16_gdn(
+            &self.source.gdn_contract(layer)?,
+            TorchCpuGdnInputs {
+                qkv: &qkv,
+                gate: &gate,
+                alpha: &alpha,
+                beta: &beta,
+                history,
+                state,
+                phase: if self.position == 0 {
+                    TorchCpuGdnPhase::InitialOne
+                } else {
+                    TorchCpuGdnPhase::CachedOne
+                },
+            },
+        )?;
+        self.observe(layer, S::Core, &core.core);
+        self.observe(layer, S::NormGate, &gate);
+        self.observe(layer, S::Gated, &core.gated);
+        self.evolved = Some((
+            layer,
+            DiagnosticLayerState::Gdn {
+                history: core.history,
+                full_history: proposed_full,
+                state: core.state,
+            },
+        ));
+        Ok(core.gated)
+    }
+    fn attention_inputs(
+        &mut self,
+        layer: usize,
+        normal: &B::Value,
+    ) -> Result<Self::AttentionInputs> {
+        // Preserve prior geometry refusal before the original projected producers.
+        let r = crate::operator_slice::attention::attention_roles(self.source, layer)?;
+        let crate::original_binding::DiagnosticLayerState::Attention { keys, values } =
+            &self.states[layer]
+        else {
+            return Err(Error::State(
+                "diagnostic source attention state domain mismatch".into(),
+            ));
+        };
+        match (keys.as_ref(), values.as_ref()) {
+            (None, None) if self.position == 0 => {}
+            (Some(k), Some(v))
+                if self.math.elements(k) == self.position * r.kv_heads * r.width
+                    && self.math.elements(v) == self.math.elements(k) => {}
+            _ => {
+                return Err(Error::State(
+                    "diagnostic exact source KV producer/frontier".into(),
+                ));
+            }
+        }
+        attention_projection_norm_slice(self.source, self.math, layer, normal)
+    }
+    fn attention_evolve(&mut self, layer: usize, p: Self::AttentionInputs) -> Result<B::Value> {
+        use crate::accelerator::program::{TorchCpuAttentionGeometry, TorchCpuAttentionInputs};
+        use crate::original_binding::DiagnosticLayerState;
+        let r = crate::operator_slice::attention::attention_roles(self.source, layer)?;
+        let DiagnosticLayerState::Attention { keys, values } = &self.states[layer] else {
+            return Err(Error::State(
+                "diagnostic source attention state domain mismatch".into(),
+            ));
+        };
+        let prior = keys.as_ref().zip(values.as_ref());
+        let c = self.source.binding().config();
+        let a = self.math.torch_cpu_bf16_attention(
+            "original.model.attention",
+            TorchCpuAttentionInputs {
+                query: &p.normalized_query,
+                key: &p.normalized_key,
+                value: &p.value_projection,
+                gate: &p.gate,
+                prior,
+                position: self.position,
+                geometry: TorchCpuAttentionGeometry {
+                    query_heads: r.query_heads,
+                    kv_heads: r.kv_heads,
+                    width: r.width,
+                    rotary: c.rotary_dimensions() as usize,
+                    theta: c.rope_theta() as f32,
+                },
+            },
+        )?;
+        self.evolved = Some((
+            layer,
+            DiagnosticLayerState::Attention {
+                keys: Some(a.keys),
+                values: Some(a.values),
+            },
+        ));
+        Ok(a.gated)
+    }
+    fn attention_output(
+        &mut self,
+        layer: usize,
+        kind: LayerKind,
+        value: B::Value,
+    ) -> Result<B::Value> {
+        let role = if kind == LayerKind::FullAttention {
+            QwenMatrixRole::AttentionOutput(layer)
+        } else {
+            QwenMatrixRole::GdnOutput(layer)
+        };
+        let branch = pure_projection_slice(self.source, self.math, role, &value)?;
+        if kind == LayerKind::LinearAttention {
+            self.observe(
+                layer,
+                crate::original_binding::WindowDiagnosticLayer9Stage::GdnOut,
+                &branch,
+            );
+        }
+        let (actual, state) = self
+            .evolved
+            .take()
+            .ok_or_else(|| Error::State("source layer state producer absent".into()))?;
+        if actual != layer {
+            return Err(Error::State("source layer state producer identity".into()));
+        }
+        self.states[layer] = state;
+        Ok(branch)
+    }
+    fn post_attention_norm(
+        &mut self,
+        layer: usize,
+        branch: B::Value,
+        carried: B::Value,
+    ) -> Result<(B::Value, B::Value)> {
+        use crate::original_binding::WindowDiagnosticLayer9Stage as S;
+        let residual =
+            self.math
+                .torch_cpu_bf16_add("original.model.attention.residual", &carried, &branch)?;
+        self.observe(layer, S::PostAttention, &residual);
+        let normal = pure_ordinary_rms_slice(
+            self.source,
+            self.math,
+            QwenParameterRole::FfnNorm(layer),
+            &residual,
+        )?;
+        self.observe(layer, S::PostNorm, &normal);
+        Ok((normal, residual))
+    }
+    fn ffn_inputs(&mut self, layer: usize, normal: &B::Value) -> Result<Self::FfnInputs> {
+        use crate::original_binding::WindowDiagnosticLayer9Stage as S;
+        let roles = crate::hybrid_decoder::ProjectionGroup::FfnInput.roles(layer);
+        let gate = pure_projection_slice(self.source, self.math, roles[0], normal)?;
+        let up = pure_projection_slice(self.source, self.math, roles[1], normal)?;
+        self.observe(layer, S::FfnGate, &gate);
+        self.observe(layer, S::FfnUp, &up);
+        Ok([gate, up])
+    }
+    fn ffn_activate(&mut self, layer: usize, [gate, up]: Self::FfnInputs) -> Result<B::Value> {
+        let gated =
+            self.math
+                .torch_cpu_bf16_silu_mul("original.output_tail.silu_mul", &gate, &up)?;
+        self.observe(
+            layer,
+            crate::original_binding::WindowDiagnosticLayer9Stage::FfnGated,
+            &gated,
+        );
+        Ok(gated)
+    }
+    fn ffn_output(&mut self, layer: usize, value: B::Value) -> Result<B::Value> {
+        let branch = pure_projection_slice(
+            self.source,
+            self.math,
+            QwenMatrixRole::FfnDown(layer),
+            &value,
+        )?;
+        self.observe(
+            layer,
+            crate::original_binding::WindowDiagnosticLayer9Stage::FfnDown,
+            &branch,
+        );
+        Ok(branch)
+    }
+    fn finish_layer(
+        &mut self,
+        layer: usize,
+        branch: B::Value,
+        carried: B::Value,
+    ) -> Result<(B::Value, Option<B::Value>)> {
+        let out =
+            self.math
+                .torch_cpu_bf16_add("original.output_tail.residual", &carried, &branch)?;
+        self.math.assert_finite(layer, &out)?;
+        self.math.observe(layer, "layer_output", &out)?;
+        if let Some(t) = self.trace.as_mut() {
+            t.boundaries.push((
+                crate::original_binding::WindowDiagnosticBoundary::Layer(layer),
+                out.clone(),
+            ));
+        }
+        Ok((out, None))
+    }
+    fn finish_model(&mut self, branch: B::Value, residual: Option<B::Value>) -> Result<B::Value> {
+        if residual.is_some() || self.evolved.is_some() {
+            return Err(Error::State(
+                "source decoder has unpublished adapter state".into(),
+            ));
+        }
+        if self.prefix {
+            return Ok(branch);
+        }
+        let normalized = pure_ordinary_rms_slice(
+            self.source,
+            self.math,
+            QwenParameterRole::FinalNorm,
+            &branch,
+        )?;
+        self.math.observe(
+            self.source.geometry().layers.len() - 1,
+            "final_norm",
+            &normalized,
+        )?;
+        if let Some(t) = self.trace.as_mut() {
+            t.boundaries.push((
+                crate::original_binding::WindowDiagnosticBoundary::FinalNorm,
+                normalized.clone(),
+            ));
+        }
+        pure_projection_slice(self.source, self.math, QwenMatrixRole::Output, &normalized)
+    }
 }

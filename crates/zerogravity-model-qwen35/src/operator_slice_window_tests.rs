@@ -5,6 +5,7 @@ use crate::accelerator::program::{
 };
 use crate::operator_slice::OperatorSliceSource;
 use crate::original_binding::{OriginalWindowOperators, QwenParameterRole};
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowOpenLimits};
 
@@ -382,3 +383,183 @@ mod attention;
 
 #[path = "gdn_conv_window_tests.rs"]
 mod gdn_conv;
+
+#[path = "operator_slice_window_roles_tests.rs"]
+mod pure_roles;
+
+#[path = "attention_tail_window_tests.rs"]
+mod attention_tail;
+#[path = "full_window_cpu_tests.rs"]
+mod full_window_cpu;
+#[path = "output_tail_window_tests.rs"]
+mod output_tail;
+
+#[test]
+fn window_model_metadata_retains_one_original_issuer_and_stays_execution_closed() {
+    use crate::original_binding::OriginalWindowModelSource;
+    use zerogravity_artifacts::model::qwen_owned::QwenOriginalWindowText;
+    let fixture = Fixture::new();
+    let loaded = source_with_options(&fixture, true, 256, true, |_| {});
+    let (source, admission) = windows(&fixture, &loaded);
+    let owner = Arc::new(
+        QwenOriginalWindowText::bind(
+            source.clone(),
+            &loaded.config,
+            &digest(&loaded.config),
+            &loaded.index_sha256,
+        )
+        .unwrap(),
+    );
+    let weak = Arc::downgrade(&owner);
+    let model = OriginalWindowModelSource::from_owner(owner.clone()).unwrap();
+    assert!(Arc::ptr_eq(model.owner(), &owner));
+    assert!(model.source().same_issuer(&source));
+    assert_ne!(
+        loaded.source.source_identity(),
+        model.source_identity(),
+        "equal source bytes do not mint the same issuer"
+    );
+    let view = crate::QwenModelMetadata::VerifiedWindows(&model);
+    assert!(Arc::ptr_eq(view.original_window_owner().unwrap(), &owner));
+    assert_eq!(view.source_identity(), source.source_identity());
+    assert_eq!(view.geometry().layers.len(), view.state_specs().len());
+    assert_eq!(
+        view.program_numerical_profile(),
+        crate::accelerator::program::ProgramNumericalProfile::Vllm031CudaSm86Bf16SourceV1
+    );
+    assert!(matches!(
+        view.require_execution_profile(),
+        Err(Error::Unsupported(_))
+    ));
+    assert!(matches!(view.legacy_loaded(), Err(Error::Unsupported(_))));
+    for layer in 0..3 {
+        let matrix = view
+            .matrix_descriptor(QwenMatrixRole::GdnQkv(layer))
+            .unwrap();
+        let gamma = view
+            .parameter_descriptor(QwenParameterRole::InputNorm(layer))
+            .unwrap();
+        assert_eq!(matrix.source, source.source_identity());
+        assert_eq!(gamma.source, source.source_identity());
+        model
+            .validate_matrix(QwenMatrixRole::GdnQkv(layer), &matrix)
+            .unwrap();
+        model
+            .validate_parameter(QwenParameterRole::InputNorm(layer), &gamma)
+            .unwrap();
+    }
+    drop(owner);
+    drop(source);
+    assert!(weak.upgrade().is_some());
+    assert!(reserved(&admission) > 0);
+    drop(model);
+    assert!(weak.upgrade().is_none());
+    assert_eq!(reserved(&admission), 0);
+}
+
+#[test]
+fn equal_original_window_files_cannot_cross_model_role_issuers() {
+    use crate::original_binding::OriginalWindowModelSource;
+    use zerogravity_artifacts::model::qwen_owned::QwenOriginalWindowText;
+    let fixture = Fixture::new();
+    let loaded = source_with_options(&fixture, true, 256, true, |_| {});
+    let (first, a) = windows(&fixture, &loaded);
+    let (second, b) = windows(&fixture, &loaded);
+    assert_eq!(
+        first.verified_bundle_sha256(),
+        second.verified_bundle_sha256()
+    );
+    assert!(!first.same_issuer(&second));
+    let bind = |source| {
+        OriginalWindowModelSource::from_owner(Arc::new(
+            QwenOriginalWindowText::bind(
+                source,
+                &loaded.config,
+                &digest(&loaded.config),
+                &loaded.index_sha256,
+            )
+            .unwrap(),
+        ))
+        .unwrap()
+    };
+    let first = bind(first);
+    let second = bind(second);
+    let matrix = first.matrix_descriptor(QwenMatrixRole::FfnGate(1)).unwrap();
+    let gamma = first
+        .parameter_descriptor(QwenParameterRole::FfnNorm(2))
+        .unwrap();
+    assert!(
+        second
+            .validate_matrix(QwenMatrixRole::FfnGate(1), &matrix)
+            .is_err()
+    );
+    assert!(
+        second
+            .validate_parameter(QwenParameterRole::FfnNorm(2), &gamma)
+            .is_err()
+    );
+    let mut wrong = matrix.clone();
+    wrong.name = second
+        .matrix_descriptor(QwenMatrixRole::FfnUp(1))
+        .unwrap()
+        .name;
+    assert!(
+        first
+            .validate_matrix(QwenMatrixRole::FfnGate(1), &wrong)
+            .is_err()
+    );
+    let mut wrong = gamma.clone();
+    wrong.bytes -= 1;
+    assert!(
+        first
+            .validate_parameter(QwenParameterRole::FfnNorm(2), &wrong)
+            .is_err()
+    );
+    drop(first);
+    drop(second);
+    assert_eq!(reserved(&a), 0);
+    assert_eq!(reserved(&b), 0);
+}
+
+#[test]
+fn window_model_role_metadata_pressure_refuses_before_new_payload_allocation() {
+    use crate::original_binding::OriginalWindowModelSource;
+    use zerogravity_artifacts::model::qwen_owned::QwenOriginalWindowText;
+    use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest};
+    let fixture = Fixture::new();
+    let loaded = source_with_options(&fixture, true, 256, true, |_| {});
+    let (source, admission) = windows(&fixture, &loaded);
+    let owner = Arc::new(
+        QwenOriginalWindowText::bind(
+            source.clone(),
+            &loaded.config,
+            &digest(&loaded.config),
+            &loaded.index_sha256,
+        )
+        .unwrap(),
+    );
+    let before = reserved(&admission);
+    let remaining = 128 * 1024 * 1024 - before;
+    let hold = admission
+        .arbiter
+        .admit(
+            &admission.resource,
+            admission.owner.clone(),
+            &[AllocationRequest {
+                kind: AllocationClass::Scratch,
+                bytes: remaining,
+            }],
+        )
+        .unwrap();
+    let full = reserved(&admission);
+    assert!(matches!(
+        OriginalWindowModelSource::from_owner(owner.clone()),
+        Err(Error::Limit(_))
+    ));
+    assert_eq!(reserved(&admission), full);
+    drop(hold);
+    assert_eq!(reserved(&admission), before);
+    drop(owner);
+    drop(source);
+    assert_eq!(reserved(&admission), 0);
+}

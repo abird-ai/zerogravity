@@ -234,3 +234,16 @@ pub mod attention;
 
 #[path = "gdn_conv_slice.rs"]
 pub mod gdn_conv;
+
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+pub mod pure;
+
+#[cfg(all(feature = "original-hf-binding", target_os = "linux", feature = "cpu"))]
+pub mod attention_tail;
+#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+pub mod output_tail;
+
+/// Explicit external/source F32 temporal matrix, no model/state eligibility.
+#[cfg(all(feature = "cpu", target_os = "linux", target_arch = "x86_64"))]
+#[path = "bulk_f32_slice.rs"]
+pub mod bulk_f32;
