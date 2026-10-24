@@ -1,0 +1,662 @@
+[
+  {
+    "left": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        1,
+        64,
+        128
+      ],
+      "stride": [
+        393216,
+        8192,
+        8192,
+        128,
+        1
+      ]
+    },
+    "operation": "aten.matmul.default",
+    "output": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        1,
+        64,
+        64
+      ],
+      "stride": [
+        196608,
+        4096,
+        4096,
+        64,
+        1
+      ]
+    },
+    "repeat": 0,
+    "right": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        1,
+        128,
+        64
+      ],
+      "stride": [
+        393216,
+        8192,
+        8192,
+        1,
+        128
+      ]
+    },
+    "source_matmul": 0
+  },
+  {
+    "left": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        1,
+        64,
+        128
+      ],
+      "stride": [
+        393216,
+        8192,
+        8192,
+        128,
+        1
+      ]
+    },
+    "operation": "aten.matmul.default",
+    "output": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        1,
+        64,
+        64
+      ],
+      "stride": [
+        196608,
+        4096,
+        4096,
+        64,
+        1
+      ]
+    },
+    "repeat": 0,
+    "right": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        1,
+        128,
+        64
+      ],
+      "stride": [
+        393216,
+        8192,
+        8192,
+        1,
+        128
+      ]
+    },
+    "source_matmul": 1
+  },
+  {
+    "left": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        64,
+        128
+      ],
+      "stride": [
+        393216,
+        8192,
+        1,
+        64
+      ]
+    },
+    "operation": "aten.matmul.default",
+    "output": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        64,
+        128
+      ],
+      "stride": [
+        393216,
+        8192,
+        128,
+        1
+      ]
+    },
+    "repeat": 0,
+    "right": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        128,
+        128
+      ],
+      "stride": [
+        786432,
+        16384,
+        128,
+        1
+      ]
+    },
+    "source_matmul": 2
+  },
+  {
+    "left": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        64,
+        128
+      ],
+      "stride": [
+        393216,
+        8192,
+        128,
+        1
+      ]
+    },
+    "operation": "aten.matmul.default",
+    "output": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        64,
+        128
+      ],
+      "stride": [
+        393216,
+        8192,
+        128,
+        1
+      ]
+    },
+    "repeat": 0,
+    "right": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        128,
+        128
+      ],
+      "stride": [
+        786432,
+        16384,
+        128,
+        1
+      ]
+    },
+    "source_matmul": 3
+  },
+  {
+    "left": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        64,
+        64
+      ],
+      "stride": [
+        196608,
+        4096,
+        64,
+        1
+      ]
+    },
+    "operation": "aten.matmul.default",
+    "output": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        64,
+        128
+      ],
+      "stride": [
+        393216,
+        8192,
+        128,
+        1
+      ]
+    },
+    "repeat": 0,
+    "right": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        64,
+        128
+      ],
+      "stride": [
+        393216,
+        8192,
+        1,
+        64
+      ]
+    },
+    "source_matmul": 4
+  },
+  {
+    "left": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        128,
+        64
+      ],
+      "stride": [
+        393216,
+        8192,
+        1,
+        128
+      ]
+    },
+    "operation": "aten.matmul.default",
+    "output": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        128,
+        128
+      ],
+      "stride": [
+        786432,
+        16384,
+        128,
+        1
+      ]
+    },
+    "repeat": 0,
+    "right": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        64,
+        128
+      ],
+      "stride": [
+        393216,
+        8192,
+        1,
+        64
+      ]
+    },
+    "source_matmul": 5
+  },
+  {
+    "left": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        1,
+        64,
+        128
+      ],
+      "stride": [
+        393216,
+        8192,
+        8192,
+        128,
+        1
+      ]
+    },
+    "operation": "aten.matmul.default",
+    "output": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        1,
+        64,
+        64
+      ],
+      "stride": [
+        196608,
+        4096,
+        4096,
+        64,
+        1
+      ]
+    },
+    "repeat": 1,
+    "right": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        1,
+        128,
+        64
+      ],
+      "stride": [
+        393216,
+        8192,
+        8192,
+        1,
+        128
+      ]
+    },
+    "source_matmul": 0
+  },
+  {
+    "left": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        1,
+        64,
+        128
+      ],
+      "stride": [
+        393216,
+        8192,
+        8192,
+        128,
+        1
+      ]
+    },
+    "operation": "aten.matmul.default",
+    "output": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        1,
+        64,
+        64
+      ],
+      "stride": [
+        196608,
+        4096,
+        4096,
+        64,
+        1
+      ]
+    },
+    "repeat": 1,
+    "right": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        1,
+        128,
+        64
+      ],
+      "stride": [
+        393216,
+        8192,
+        8192,
+        1,
+        128
+      ]
+    },
+    "source_matmul": 1
+  },
+  {
+    "left": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        64,
+        128
+      ],
+      "stride": [
+        393216,
+        8192,
+        1,
+        64
+      ]
+    },
+    "operation": "aten.matmul.default",
+    "output": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        64,
+        128
+      ],
+      "stride": [
+        393216,
+        8192,
+        128,
+        1
+      ]
+    },
+    "repeat": 1,
+    "right": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        128,
+        128
+      ],
+      "stride": [
+        786432,
+        16384,
+        128,
+        1
+      ]
+    },
+    "source_matmul": 2
+  },
+  {
+    "left": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        64,
+        128
+      ],
+      "stride": [
+        393216,
+        8192,
+        128,
+        1
+      ]
+    },
+    "operation": "aten.matmul.default",
+    "output": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        64,
+        128
+      ],
+      "stride": [
+        393216,
+        8192,
+        128,
+        1
+      ]
+    },
+    "repeat": 1,
+    "right": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        128,
+        128
+      ],
+      "stride": [
+        786432,
+        16384,
+        128,
+        1
+      ]
+    },
+    "source_matmul": 3
+  },
+  {
+    "left": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        64,
+        64
+      ],
+      "stride": [
+        196608,
+        4096,
+        64,
+        1
+      ]
+    },
+    "operation": "aten.matmul.default",
+    "output": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        64,
+        128
+      ],
+      "stride": [
+        393216,
+        8192,
+        128,
+        1
+      ]
+    },
+    "repeat": 1,
+    "right": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        64,
+        128
+      ],
+      "stride": [
+        393216,
+        8192,
+        1,
+        64
+      ]
+    },
+    "source_matmul": 4
+  },
+  {
+    "left": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        128,
+        64
+      ],
+      "stride": [
+        393216,
+        8192,
+        1,
+        128
+      ]
+    },
+    "operation": "aten.matmul.default",
+    "output": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        128,
+        128
+      ],
+      "stride": [
+        786432,
+        16384,
+        128,
+        1
+      ]
+    },
+    "repeat": 1,
+    "right": {
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        48,
+        64,
+        128
+      ],
+      "stride": [
+        393216,
+        8192,
+        1,
+        64
+      ]
+    },
+    "source_matmul": 5
+  }
+]
