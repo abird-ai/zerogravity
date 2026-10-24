@@ -17,6 +17,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BufferLeaseId(u64);
+
+mod backing;
+pub use backing::DeviceBackingId;
+use backing::{BackingAllocation, BackingRange};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DeviceEventId {
     epoch: u64,
@@ -55,6 +59,7 @@ struct Lease {
     readers: usize,
     writer: bool,
     fenced: bool,
+    backing: Option<BackingRange>,
 }
 struct Event {
     expected_root: u64,
@@ -69,6 +74,8 @@ pub struct DeviceEventLedger {
     budget_bytes: usize,
     resident_bytes: usize,
     next_lease: u64,
+    next_backing: u64,
+    backings: BTreeMap<DeviceBackingId, BackingAllocation>,
     next_event: u64,
     leases: BTreeMap<BufferLeaseId, Lease>,
     events: BTreeMap<DeviceEventId, Event>,
@@ -84,6 +91,8 @@ impl DeviceEventLedger {
             budget_bytes,
             resident_bytes: 0,
             next_lease: 1,
+            next_backing: 1,
+            backings: BTreeMap::new(),
             next_event: 1,
             leases: BTreeMap::new(),
             events: BTreeMap::new(),
@@ -115,6 +124,7 @@ impl DeviceEventLedger {
                 readers: 0,
                 writer: false,
                 fenced: false,
+                backing: None,
             },
         );
         self.resident_bytes += bytes;
@@ -133,9 +143,9 @@ impl DeviceEventLedger {
                 "device submission requires buffer leases".into(),
             ));
         }
-        let mut unique = BTreeSet::new();
+        let mut unique = BTreeMap::new();
         for &(id, access) in accesses {
-            if !unique.insert(id) {
+            if unique.insert(id, access).is_some() {
                 return Err(Error::State(
                     "duplicate buffer lease in one device event".into(),
                 ));
@@ -149,6 +159,7 @@ impl DeviceEventLedger {
                 return Err(Error::State("device lease not safely available".into()));
             }
         }
+        self.require_backing_accesses(accesses, &unique)?;
         let next = self
             .next_event
             .checked_add(1)
@@ -245,10 +256,14 @@ impl DeviceEventLedger {
             .accesses
             .clone();
         for &(lease_id, _) in &refs {
-            self.leases
-                .get_mut(&lease_id)
-                .expect("tracked lease")
-                .fenced = true;
+            let lease = self.leases.get_mut(&lease_id).expect("tracked lease");
+            lease.fenced = true;
+            if let Some(range) = lease.backing {
+                self.backings
+                    .get_mut(&range.id)
+                    .expect("tracked backing")
+                    .fenced = true;
+            }
         }
         self.events.get_mut(&id).expect("observed event").phase = EventPhase::CompletionUnknown;
         Ok(())
@@ -319,8 +334,17 @@ impl DeviceEventLedger {
             ));
         }
         let bytes = lease.bytes;
+        let backing = lease.backing;
         self.leases.remove(&id);
-        self.resident_bytes -= bytes;
+        if let Some(range) = backing {
+            self.backings
+                .get_mut(&range.id)
+                .expect("tracked backing")
+                .views
+                .remove(&id);
+        } else {
+            self.resident_bytes -= bytes;
+        }
         Ok(())
     }
 
