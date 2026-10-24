@@ -8,6 +8,259 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
+Current24Oct: CLI and shared model units are integrated; Pi implements/executes,
+Sol coordinates/reviews/merges, Astra designs/reviews architecture and math.
+Local source21 shared state-certificate preparation passes the complete1793 CPU
+gate, combined strict, five readiness contracts and optimized release build.
+Current physical23/full2Bmath and both .8B/2B API/HTTP pass ROOT review;
+current .8B/2B C1/C4/C8 singlepass rate AND wall wins are accepted. These
+finite scopes do not grant fullmatrix/generalparity. Source20 x2's complete
+shared HIP unit passes below. Independent Qwen natural feedback and learned
+Gemma PLE hit/transfer coverage remain open; next whole-unit design proceeds in
+parallel with local .8B→2B benchmark work. Latest order: C16 both alongside
+signed commits, then separate Pi Qwen27B/Gemma4/backend/queue lanes; C32/C64
+follow the shared optional-count-limit queue implementation and acceptance.
+
+### Current shared source20 hardware checkpoint — 24 Oct
+
+- [~] Qwen natural2-position independent original comparison and Gemma learned
+  PLE row-hit/H2D/full-state scope, retaining existing quotas/owners. ROOT reviewed
+  Astra's complete next-unit design; two isolated Pi implementation/controller
+  preparation lanes active, no GPU/reference execution before review. Qwen old
+  teacher capture requires independently verified original fullV/prior/source
+  join; otherwise fresh natural reference. Gemma reuses its genuine natural
+  matrix and adds an actual-hit full35/fullV comparison plus final-owner scopes.
+  No new public
+  serving, source21 x2 artifact, general-fit or speed grant from source20 fixture.
+- [ ] Gemma PLE twofixture source draft and prepared controller need corrective
+  review before merge/physical work. ROOT finds diagnosticD2H exactly1B gate
+  instead of positive and regressed dataFD/bounds. Original valid source20
+  math/lifetime results unchanged; new all-hit/final-reader scope unexecuted.
+
+
+### Qwen27B and Gemma4 optimization audit — 24 Oct
+
+- [ ] Close isolated source113 as one checked model unit, then actual x2 source/
+  state/fault/lifetime qualification: Qwen full64/all112, Gemma resident20/all35/
+  fullV/all15KV and observer-free natural feedback. Grouped isolated CPU/strict
+  checks PASS:5strict configurations,907CPU library tests/2comparators,46explicitly
+  ignored cases. Exact source113/P1/P2 and original400v4 base remain unchanged;
+  contextual410 continuous/compiler reconciliation is reviewed and affected
+  strict/166boundary/7compiler-owner checks pass with all jobs closed;21physical
+  cases explicitly ignored. Later RMS3/source6 excluded. Gemma's finite actual
+  Resident20 and Qwen full64/armed-producer fault results follow below; Qwen's
+  final Pending/Snapshot reader fault coverage is now closed on frozen469 below.
+  Keep current C8 assembly separate.
+- [ ] Reconcile frozen models113/P1 hooks and Gemma final-feedback fix with current
+  shared CUDA readiness source, preserve arithmetic/backend boundaries, perform
+  affected assembled checks and final complete gate before model merge acceptance.
+- [ ] Qwen27: qualify natural and temporal decode/prefill, residency/admitted
+  prefetch, packed projections, eligible optimized GEMM/attention/recurrent GDN,
+  hybrid prefix checkpoints and serving through shared engine primitives.
+  Current native route requires streamed weights and finite teacherfrontiers0/1;
+  shared64-lane CPU-order BF16 dot is not TensorCore/BLAS. Preserve source/cast/
+  reduction profiles rather than inheriting small-model CUDA permits.
+- [ ] Gemma E2B final-reader ownership: source466 review finds Session/Snapshot
+  drop `loaded` before final committed feedback's independent12-byte Output
+  lease. Native/modules/managed-source guard can retire before a true final
+  feedback release refusal. Pending already has safe ordering. Isolated Sol
+  fix+fixture unit authorized: place `loaded` after inner+feedback; Session/
+  Snapshot × healthy/exact final Output-lease refusal, Weak-only diagnostics and
+  original actual service/native/source/quarantine owners. Preserve frozen466,
+  completed Qwen P1 and readiness sources. Frozen469 ten-path fix+fixture passes
+  grouped6control/4probe/all-target strict checks; independent Sol review and ROOT
+  complete source/control/cost/archive review pass. ROOT authorized one bounded
+  fresh admin/offlinebuild/four-case unit. Admin33537/offline GPU-free build73520
+  CLOSED0; first Session-known28952 FAILED_CLOSED at semantic verifier's exact
+  `device_with_six_roots_bytes` formula after native child exited0. Actual groups/
+  one-reap/fullEOF/source35FD/cache-parent closure healthy. ROOT and independent
+  Sol identify verifier-only omission: greedy12336B+six256B alignment guards
+  missing from both exact expected totals; production sums/caps are correct.
+  Corrected local verifier6controls PASS; new saved Session-known revalidation
+  PASS without GPU replay, original FAILED receipts unchanged. ROOT reviewed
+  full225line local collector delta/17pins and authorized remaining3 serial
+  native cases, exact-known-error-only/source35/cache/binary/originalowner
+  closure required. All4actual scopes now close with corrected local acceptance;
+  ROOT independently verifies every report/source/cache/original+reader owner.
+  Known:184→0modules/sourcecloseOK/model0/context4GiBdevice+2GiBhost. Fault:
+  actual12Bfinalreader refusal precedes native retirement,184modules/617handles
+  retained/full20GiBfenced/sourceclose refused. Every full35/30planes/fullV/
+  one natural commit; original failed remote collectors and SSH1 remain explicit.
+  No Session replay/Rust rebuild/serving or performance grant. Existing source466
+  cache reused with only actual publication/activity locks writable; no second
+  10GB import. Current11+118path isolated combined8package/alltarget strict and
+  189CPU PASS/33explicitphysicalignored; original source/owner/EOF closures pass,
+  first controller-only compilerfile cap failure preserved. Current12 differs
+  only by test-fixture rustfmt outside118. ROOT now adopted models118 plus the
+  source-bound2B cachedB4 unit together:173selected/172effective/46new paths,
+  fresh mtimes, original README/lock and all unrelated source preserved. Current13
+  has1629full files/492selected; combined strict/20sharedCPU/5ABI-source controls/
+  authentic2B CPU inventory/reopen pass. Original excluded-vendor Cargo refusals
+  remain failed, not executed vendor-test evidence. Optimized13 CLOSED0 and all
+  original19physical scopes/healthy2Btrajectory PASS; original2B same-prior30calls/
+  8112sections/fullstate/fullV exact. New2B fault global-vs-flight count mismatch
+  is diagnosed; fixture-only15 correction builds, preserving every graph/source/
+  fence guard. Current assembled phase and final
+  assembled gate still required. Prior.8B measured checkpoint remains source11/12.
+  [Combined assembly results](../../runs/model-execution-current11-assembled-checks-sol-high-20261024/REPORT.md).
+  [Four-case report](../../runs/model-execution-gemma-final-feedback-verifier-v2-sol-high-20261024/REPORT.md).
+  [Independent source evidence](../../runs/model-execution-gemma-final-owner-review-sol-high-20261024/REVIEW.md).
+- [ ] Gemma E2B/E4B: dependency-based shared-tail fast prefill, PLE row reuse,
+  optimized packed projections and eligible attention, physical SWA reclamation.
+  E2B15owners/20shared tail exists; E4B needs24/18 and a new functional route.
+  Optional vLLM fast prefill is off by default, not a universal baseline feature.
+- [ ] Add functional Gemma E4B and12B routes;12B uses Unified geometry/MM mapping,
+  no PLE/shared tail. Extend source/profile contracts before learned qualification.
+- [ ] Gemma26B-A4B: learned router/grouped experts/dense+expert composition, then
+  admitted expert sharing/hotsets/EP. Gemma31B is dense; qualify its learned dense
+  path separately. Reuse the existing single raw K projection for configured
+  K=V layers, preserving distinct K/V transforms and state. Select the exact
+  optimized-router tie/reduction/scale profile; full-softmax fallback is not an
+  identical floating-point schedule. Geometry/analytic contracts alone do not
+  implement either learned route.
+- [ ] Both families: shared continuous serving/temporal work, paged KV/COW,
+  full-domain compatible prefix intersection and graph/capture ownership after
+  actual source qualification. Shared target verifier/all-prefix rollback before
+  Qwen trained MTP or Gemma assistant/KV sharing/sparse draft vocabulary.
+- [ ] Later explicit codec/distributed/MM/LoRA profiles: do not substitute lossy
+  FP8/FP4/KV codecs for original BF16 or assume source/hardware eligibility.
+  CUDA-only fusion and CDNA/gfx12 AITER are not unconditional gfx1151 gaps;
+  current ROCm Triton speculative GDN needs actual eligibility checks. Generic
+  MXFP4 registry falls back for dense Linear; DBO rejects relevant hybrid/MM routes.
+
+### Current model/backend checkpoint — 23 Oct
+
+- Owner clarification: Qwen27B/Gemma4 must reuse the established .8B/2B code
+  wherever applicable. Lift common allocation/residency/transfer/native ownership,
+  model operations and family behavior to their existing shared layers; compose
+  those primitives in each model. Before merging, inspect callers and a concrete
+  reuse map, remove parallel implementations, and justify remaining specialization
+  by actual source layout, numerical contract or necessary optimized kernel path.
+  Distinct arithmetic/backend eligibility must not be merged by superficial
+  operator similarity. Sol HIGH implements; ROOT reviews/reconciles whole units.
+  Actual audit found duplicated family orchestration in27B. Sol extracts one
+  substantive HybridDecoder composition consumed by BOTH small-model and27B
+  recorders, with shared role groups/bindings/state schema. Packed-vllm delayed
+  residual versus separate Torch/BF16 arithmetic remain explicit adapters.
+  [Astra initial review](../../runs/architecture-astra-qwen-pool-review-20261023/TODO.md)
+  accepts the design; settled source/caller reuse and actual checks remain open.
+- Shared physical successor now integrated MAIN/ISO345v3. Required local release
+  and both small models' original full source/state/fault/API matrices PASS;
+  x2 native3/portable6/rawtransport12 plus corrected shared4 HIP/Vulkan healthy/
+  unknown PASS in finite scopes. Healthy source retirement and unknown source
+  retention were rerun after fixture-only Oracle lifetime correction; production
+  ownership unchanged. Original interrupted-controller/missing local13 proof
+  remains explicit; fresh13 replay passed. No new learned large-model/performance
+  grant. Qwen27B reachable native+managed facade compiles with Gemma; complete
+  single-source qualifier/strict validation in progress. Next Gemma residency
+  and multiple-native-set work follows Astra architecture-only review and Sol
+  HIGH implementation; final assembled gate remains pending.
+- Gemma optimized residency unit active in isolated Sol HIGH assembly, following
+  [Astra architecture-only design](../../runs/architecture-astra-residency-and-set-key-20261023/DESIGN.md):
+  reuse shared authenticated matrices/row transport, cold-select repeated full
+  projections and tied embedding/head, widen output-row launches without changing
+  full-K arithmetic, normal observer=None before D2H construction, original
+  private packet/Ready/state publication. Complete source-shaped cold host/device
+  inventory precedes fixed profile selection. PLE selected-row transport remains
+  explicit. Implementation/actual numerical/serving/performance acceptance open.
+- Shared native/context+Qwen opt-in Conv4 integrated301selected paths. Both small
+  Qwen models' required release full physical/state/fault/API scopes and explicit
+  streamed2B faults PASS; full isolated gate14 LAST PASS1747Rust/0failed/allchecks.
+  Original x2 native3+HIP/Vulkan transport12 also pass their finite scopes only.
+  Conv4 transport is not learned27B numerical closure.
+- Astra HIGH architecture/design only; Sol HIGH owns implementation. Gemma44v5
+  now guarded/fresh-mtime integrated MAIN/ISO343selected paths. Unsafe lowlevel
+  source-retention contract has one validated safe facade; source-neutral finite
+  HIP policy, full seven-cell/state/lifetime qualifier and shared round probe
+  use the original engine/source/flight/publication owners. All parents/donors/
+  modes/rootREADME preserved. Original CPU128MiB profile unchanged.
+  Actual frozen MAIN314+44 executable on x2 PASS:7source-tokenized prompt cases,
+  55completed comparisons/52commits/150rows/all35block boundaries/full262144V/
+  all15KV final+prior pairs,46,858,240derived compared words/zero mismatches;
+  real private feedback/decoded output, independent sessions/pressure/cancel/
+  Ready discard/refusal/restore/reset/source close PASS. Actual shared-round16
+  signed-subnormal/tie/cancellation cases and186native modules pass. Fresh
+  unknown process:1completed producer/0roots/full16GiB fenced/source-close
+  refused; original owners retain until process retirement. Healthy model close
+  retains contextdevice4GiB/host2GiB until process exit. Both original local+
+  remote source35/group/one-reap/fullEOF closures pass; sampled shared memory is
+  not an isolated peak/bound. Three fresh-process ELF hashes differ explicitly.
+  [Complete actual checkpoint](../../../../zerogravity-worktrees/gemma4-portable-gpu-whole35-20261023/.agents/runs/model-execution-native-sol-high-20261023/GEMMA_APPLY-v5-2.md).
+  Single1MiB synchronous source transport is a correctness baseline; no serving/
+  performance/general HIP permit. Binder316 and the new shared physical-owner
+  split were not executed by that proof. Next assembled gate/affected physical
+  checks follow the coherent successor; gate16 accepted preceding316 only.
+- Qwen27B actual original MKL dispatch identified SSE EXHAynn. Sol's shared Rust
+  explicit normal-domain128split-table/non-FMA profile matches the authenticated
+  connected H48 cached producer, including both exp calls and all786432state
+  words bitexact; legacy2/48decay +5539state negative control preserved. Five
+  reviewed paths integrated MAIN/ISO302selected paths with fresh mtimes; CPU/Qwen
+  strict and existing operator tests pass. No learned
+  model/native/serving/performance grant from this fixture closure. Subsequent
+  actual full64 replay3 now PASS: two independent sessions each one INITIAL
+  token ID11 then one cached token ID353, all1040original records/240896000float words bitexact, all112
+  state domains/fullV/ALL4Conv frames,12position words. Source/archive/owned
+  closures, precancel/actualpressure/output-retention/finalhost0/unfenced pass.
+  Generic profile/wholemodel/native/serving/performance flags remain false;
+  natural feedback, wider contexts and GPU qualification still open. Four
+  qualification-example corrections now integrated MAIN/ISO with fresh mtimes,
+  preserving exact immutable replay evidence. Full assembled gate15 LAST PASS:
+  1752Rust/0failed/89ignored/269suites/allscriptchecks,314sourcepaths/rootREADME
+  unchanged.
+  Prepared-recipe successor also passes both small models' full CUDA/state/
+  fault/API scopes. Latest prepared-binding release1 quiet .8B C1+78.62%/
+  C4+26.67%/C8−1.09% remains singlepass; final gate16 PASS1752Rust/0failed/
+  89ignored/269suites/allchecks accepted316before Gemma integration.
+
+### Parallel model work — contained integration, 22 Oct
+
+- [ ] Continue Qwen27B/Gemma source/runtime integration independently; merge
+  contained completed units promptly. Use pvl-x2 Radeon8060S/gfx1151 ROCm/HIP
+  for their GPU qualification/benchmarks; preserve exact HF source identities,
+  source-derived complete allocations and full logits/state/cancellation gates.
+  Existing remote Ollama GGUF inputs are not approved-HF equivalents. Current
+  Vulkan/CUDA parity work is a separate implementation/qualification obligation.
+- [ ] Gemma follow-on: qualify tokenizer/ordinary learned route and broader
+  prompt/cached geometry plus learned cancellation/state lifecycle through the
+  same engine; selected diagnostic exactness alone grants no public route.
+- [ ] Independent follow-on units continue while short-HF validation runs:
+  Qwen authentic H48/128 GDN producer and full64/112-domain schedule, plus Gemma
+  family source-bound CPU completion. Preserve actual source geometry and exact
+  numerical limits; unavailable learned arithmetic must not use legacy fallback.
+- [ ] Gemma trained Rust execution requires exact learned BF16 arithmetic and
+  independent source/state comparison. Payload/tokenizer/original CPU oracle
+  now exist; native/serving/performance acceptance remains separate.
+
+
+### Source-specific optimization backlog — 21 Oct, deferred behind current order
+
+Source details and limits: [independent comparison](../../research/engine-optimization-comparison-2026-10-21/README.md).
+These are future operators/strategies in the same engine, not payload approval
+or model support. Qwen parity/short benchmark/long→dense27B→Gemma remains binding.
+
+- [ ] Dense27B: bind full trained source/state through bounded row/layer windows;
+  amortize immutable reads across compatible prompt/request rows, account
+  activation spill and genuine upload readiness. MTP metadata/tensors alone
+  do not qualify target or drafter runtime; expert hotsets do not sparsify it.
+- [ ] Gemma4 variants: source-real PLE, normalization/logit caps, SWA/global
+  attention, configured K=V/cross-layer sharing, head256/512 and26B-A4B routing.
+  Check graph padding cannot route experts or advance roots. Matching trained
+  assistants may share target KV/embedding only under actual architecture maps;
+  first qualify target execution and complete branch/precision ownership.
+- [ ] Later sparse Qwen: stable finite top-k/tie/block ordering, source-selected
+  expert grouping, hyperconnections and deterministic learned PLE lookup lane;
+  runtime n-gram proposals are a separate stage. Source-dependent sparse masks
+  and reduction/cast profiles cannot be grafted onto ordinary dense attention.
+- [ ] Later DeepSeek: exact CSA/HCA/MLA/indexer/compressor/mHC/YOCO/Engram and
+  checkpoint-matched DSpark/Markov/confidence contracts; typed dependency/liveness
+  proof may eliminate dead prompt work only after every future state read is
+  covered. Truncated bounded replay and perturbed sampling are explicit changed
+  profiles, not exact defaults. Existing payload acquisition hold persists.
+- [ ] Later GLM: distinguish KDA from GDN, MLA/DSA index/open-tail state, mHC and
+  own trained MTP/taps. CPU/GPU placement, cached-expert group order and FP16
+  prefill must have declared arithmetic; geometry or source names do not prove
+  interchangeability. Existing payload/device holds persist.
+
 - [ ] **Independent trained BF16/FLA checkpoint gate:** original
   Qwen3.8-27B@1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0 acquired
   through the existing bounded Rust cache pipeline; independent31-file/
@@ -30,9 +283,12 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   initial chunk64, native exp, complete GDN,112-domain state and full inference
   remain unqualified. A separate genuine public reference passes32 pure
   operator cases over16 roles,881856 raw BF16 input/output words, including
-  complete248320-row head and17408-column down projection. External probes
-  for other roles do not establish trained producers or full-model parity;
-  native wide-role replay remains unexecuted.
+  complete248320-row head and17408-column down projection. The isolated
+  native wide-role replay now matches all881856 words exactly; real pressure,
+  pre-cancel, retained head/source after caller drop and final reservations0
+  pass. Strict/release builds and17 source/relocation fixtures pass. External
+  probes for other roles do not establish trained producers or full-model
+  parity; these changes also remain isolated from MAIN.
   Six actual bounded native-provider startup/lifetime cases pass with the
   provider unloaded. Physical provider allocation/math admission remains open.
   Original
@@ -126,8 +382,9 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 - [ ] Preserve direct one-model-per-process execution and one
   shared-instance-many-pipelines as **one Rust fabric**; the accepted
   YAML DAG/compiler and extension schemas add no inference backend.
-  Do not resume context snapshot/provider/multimodal/router design
-  work while ME-P0/P1 are open unless they genuinely block those models.
+  Latest21Oct owner request authorizes parallel recursive pipeline/profile
+  design after independent engine research. It must not delay ME-P0/P1 or
+  imply new trained context/media/router execution.
 
 - [ ] Enforce new owner priority: Qwen3.5 .8B regression, Qwen3.5
   2B highest-perf trained CPU/GPU, Qwen3.8 27B with SSD
@@ -180,6 +437,436 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### `225fc5e1a520` — shared family sources and finite learned-model diagnostics
+
+Related source commits: `bebfeaf2d817` (gemma4-text-reference), `9af407bf3ff5` (qwen35-27b-window-replays), `2058dcb1ea3f` (facade-qwen27b-hip-source), `71f496b190dc` (facade-gemma4-hip-drivers), `752642361cb4` (facade-shared-hip-lifecycle).
+Aggregate source21 qualification applies to the assembled tree; no per-commit
+build or general model/backend grant. Historical failures keep their source scope.
+
+#### Current shared source20 hardware checkpoint — 24 Oct
+
+- [x] ROOT accepts the actual x2 offline build/binary binding and complete
+  finite known3Q/4G reload plus two unknown1Q/1G lifecycle cases. Revalidated
+  original typed receipts, exact1650 source,70dataFD, artifact51808f9e…,
+  global fence, both process-group/reap/EOF layers; all earlier failures kept.
+  [Actual scope](../../runs/source20-x2-actual-namespace2-pi-20261024/REPORT.md).
+
+- [x] ROOT authenticates original Qwen teacher receipt/manifest and independently
+  scans allfour248320V BF16 records. Both original call0 select220, while held
+  call1 consumes353; compositional natural continuation refuses correctly.
+  Fresh natural reference producer/validator/controller preparation required,
+  never relabel teacher call1. ROOT+Astra reject correction draft: signedzero
+  stillwrong, fresh package table stale, scopes/staging incomplete; replacement
+  controller has invented caps/reap-before-signals. No merge/physical grant.
+  [Coherent corrective design](../../runs/model-execution-astra-qwen-natural-capture-correction-20261024/DESIGN.md).
+
+#### Qwen27B and Gemma4 optimization audit — 24 Oct
+
+- [x] Separate parallel read-only audit of actual vLLM0.31 benchmark sources,
+  stable0.32 and frozen current upstream;20Qwen/20Gemma/15shared comparisons.
+  [Report, exact model matrix and source links](../../runs/model-execution-qwen-gemma-vllm-audit-20261024/REPORT.md).
+  Neither family currently has all applicable vLLM optimizations. Source dispatch,
+  planning inventory and source113 assembly do not grant physical/serving/perf.
+
+- [x] Independent full Gemma4 series review: G01–G20 × E2B/E4B/Unified12B/
+  26B-A4B/31B, plus shared S01–S15 eligibility. Existing raw K=V projection
+  reuse is already in the family schedule; final normalized/rotated KV stays
+  distinct. Pinned optimized Triton MoE routing and Torch fallback have different
+  reduction schedules. Current E2B GPU12,288-column limit does not admit12B/
+  31B down projections; extend source-bound profiles/inventory, not inherited
+  limits or permits. Variant KV owner/PLE costs and MAIN versus frozen118
+  boundaries are explicit. No new runtime/performance qualification.
+  [Complete matrix, corrections and reuse map](../../runs/model-execution-gemma-series-audit-review-sol-high-20261024/REPORT.md).
+
+- [x] Source466 x2 readiness/control unit reviewed and executed through actual
+  packs/builds/GPU-free imports; Gemma Resident20 healthy+fresh unknown PASS.
+  Old namespaces/controls immutable; source466 excludes later RMS3/source6.
+  [Commands, costs and limitations](../../../../zerogravity-worktrees/model-source410-checks-sol-high-20261024/.agents/runs/model-execution-x2-readiness-sol-high-20261024/READINESS.md).
+
+- [x] Fresh Gemma source466 source-only pack reviewed:32,286,720B archive
+  `28fcd32410715277668534efc14ce18aadf998b0fd5bbde6e759480ad482226d`,
+  sourceclosure`b404cb9a831b896d5a179a07a08b27f9fe0ccf3ce9f8e2d5ec2f7839f5d19330`.
+  All1576regular tar members' bytes/SHA, selected466 source/modes,11controls and
+  13protected guards exact; source/tar owners closed. Local prep grants no fit.
+
+- [x] Gemma fresh source upload/bootstrap/build and complete original P2/source
+  closure PASS; actual binary/source identities retained below and in run results.
+
+- [x] Qwen genuine local data/source preparation closed:35member data archive
+  56,521,973,760B`8109be7cd03b1232569f312fac75496ee6dfa6da6ccffad13e30d8ec63b09036`,
+  source32,276,480B`39ae07bde9a08afc0e8203b09762c4682e93aae934841620e2802dbb4ffdc2c8`.
+  Original held source reads/copy hashes stable; all1575source tar members exact,
+  selected466modes/10controls/13protected guards exact; shared1562source records
+  match Gemma. No downloaded weights or data-derived expected outputs.
+
+- [x] Both original fresh admin/bootstrap/build units CLOSED0; preparation/build
+  alone do not establish GPU fit. Actual model scopes remain separate below.
+
+- [x] Both source466 fresh x2 builds passed with actual held artifacts/source and
+  complete original owner/EOF closure. Gemma readonly35FD authentication and
+  genuine GPU-free new96GiB CacheStore import passed:8payloads10,278,848,001B,
+  snapshot`ba32b7693d0f7dcbdf4f00f94d13bd61c838e2d7a927f1879817cd5e74fca8b1`.
+  Installed user/PID/net/bwrap readonly35data+binaryFD namespace executed; old
+  source/cache unchanged. Subsequent actual GPU dev-bind/Resident20 scope passed
+  below; no whole-family or serving/performance grant.
+
+- [x] Gemma E2B frozen466 actual x2 HIP Resident20 healthy+fresh unknown CLOSED0.
+  All55diagnostic calls/all35blocks/full262144V/all15KV exact,52commits150rows;
+  50normal observer=None calls/50commits145rows preserve actual state/private
+  feedback with zero optional producer/KV D2H and repeated selected-weight H2D.
+  PLE selected-row H2D remains2,598,400B; explicit state snapshots separate.
+  Healthy model/source/native close retains honest4GiBdevice/2GiBhost context
+  until process retirement. Freshunknown1producer/0roots/full20GiB fenced/source
+  close refused and original owners retained until process retirement. Actual
+  184native modules independently priced; complete device17,469,201,928B under
+  unchanged20GiB profile.16physical round cases pass; all source/data/binary/
+  original groups/one-reap/fullEOF closures pass. Shared sampledVRAM is not an
+  isolated peak; seven fresh ELF hashes differ explicitly. No serving/speed or
+  current late-RMS/source8 grant.
+  [Complete actual scope](../../../../zerogravity-worktrees/model-source410-checks-sol-high-20261024/.agents/runs/model-execution-x2-readiness-sol-high-20261024/execute-source466-v1/PHYSICAL-SETUP-RESULT.md).
+
+- [x] Qwen466 actual original receive+GPU-free new96GiB CacheStore import CLOSED0:
+  31payloads55,586,113,293B, snapshot`98cea13c169310196c4d8a113765f8fe58ab7a7961f0d1be69212c70dba8015e`.
+  Same held binary1fec59d5/sourcea9d86cb4; all35dataFD/fullSHA/source and original
+  local/remote owner/EOF closures stable. No model/GPU call from import.
+
+- [x] Qwen466 original x2 healthy sixfull64/all112/two teacher-session matrix,
+  then dependent freshunknown authorized. Healthy localSSH18683 CLOSED1 after
+  wireless route loss; original local group/reap/EOF closed but remote GPU is NOT
+  retired by that receipt. Subsequent configured strict-hostkey Tailscale read-only
+  collection confirms original remote healthy PASS/1097.656s: sixfull64calls,
+  fourcomparisons/commits/two independent teacher sessions,240,896,000floatwords/
+  12positions/zero mismatches, fullV/all112domains128planes/Conv4/priors/finals.
+  Ready discard/latecancel/pressure/restore/reset/lastoutput/sourceclose pass;
+  117actual native modules/16physical round cases pass. Remote original supervisor/
+  child absent, group/one-reap/fullEOF/source/data closure healthy. Local original
+  transport failure stays FAILED_CLOSED255, not an end-to-end collector pass.
+  Freshunknown88524 CLOSED0 through reviewed LOCAL-only configured Tailscale
+  transport derivative:1actual producer/0roots/full16GiB fenced/sourceclose
+  refused, original source/native/armedflight retained until process retirement.
+  Both original local+remote owner/source/group/one-reap/fullEOF closures pass.
+  No healthy replay/recovery. Mandatory native-gpu user/net and held
+  binaryFD; supervisor-held35dataFD SHA/lifetime. Gemma's nested readonly-host/PID/
+  dev-bind/dataFD namespace is not present in this original Qwen GPU controller;
+  import's private GPU-free bwrap is separate. P1 final-owner Pending/Snapshot
+  actual HIP fault coverage remains open regardless of finite matrix outcome.
+  [Complete physical scopes and transport distinction](../../../../zerogravity-worktrees/model-source410-checks-sol-high-20261024/.agents/runs/model-execution-x2-readiness-sol-high-20261024/execute-source466-v1/QWEN-PHYSICAL-RESULT.md).
+
+- [x] Frozen469 alias-v2 actual P1 final Pending/Snapshot reader retirement:
+  all4 fresh HIP cases PASS; ROOT independently checked every actual report and
+  original local/remote group/reap/fullEOF/source/binary/35FD/cache-parent closure.
+  Internal aliases3/3/2/2, commits0/0/1/1, Candidate1/model1/workspace-target0;
+  exactly one true original lease release precedes one native retirement.
+  Known:117native modules retire/model0/sourcecloseOK/context4GiBdevice+2GiBhost.
+  Fault:117modules/1602handles/service/source retained/full16GiBfenced and
+  sourceclose refused until actual process retirement. Each real64layers/
+  128proposedplanes/full248320V; unchanged numerical matrix reused, no replay/
+  old-order negative/natural-temporal/serving/speed grant. Original failed469
+  incomplete internal alias census remains failed; exact equality preserved in
+  repair. Genuine own P1 cache reused with actual locks, no second55GB import.
+  [Four-case results](../../../../zerogravity-worktrees/qwen-final-owner-alias-sol-high-20261024/.agents/runs/model-execution-qwen-final-owner-alias-sol-high-20261024/REPORT.md).
+
+#### Current model/backend checkpoint — 23 Oct
+
+- [x] **Original27B final63 tail, external boundary only:** pinned public CPU
+  reference and the existing Rust `OriginalWindowOperators::execute_output_tail`
+  agree exactly on all2,609,152 BF16 words: four external post-attention probes,
+  independent1+3 rows, two repeats, nine complete streams including248320 head.
+  Actual31-file/18-shard full source identities, held reference FDs, pre-cancel,
+  real exhausted-host refusal, output retained after caller drops and final
+  host0/unfenced pass. Nine Python fixtures, Rust example3/strict Clippy and
+  complete isolated scripts/check.sh pass. Expected pin is sealed after actual
+  independent validation; no expected bytes supply computed stages. Scope ends
+  at this tail: full64-layer producer,112-domain StateRoot, GPU/serving and
+  performance remain open. Source now integrated in MAIN and ROOT; fresh MAIN
+  full checkgate passes. The external-tail numerical proof remains the original
+  ROOT replay above; no fresh full27B execution follows from source convergence.
+
+#### Parallel model work — contained integration, 22 Oct
+
+- [x] Completed combined40-path CPU donor integrated into ROOT ISO with fresh
+  bytes: Qwen27B final63 attention→existing output tail plus Gemma4 genuine
+  26B-A4B MoE through the same mathematical backend/source-window/session paths.
+  Reciprocal source review, combined CPU libraries/replays and strict all-target
+  Clippy pass in isolation. Learned Qwen rotary/BMM parity remains unqualified
+  (reference pinNone); Gemma learned checkpoint/oracle not yet qualified.
+  Source readiness does not establish trained/native/serving/performance support.
+  This and the follow-on CPU batch now converge into MAIN; final assembled
+  isolated MAIN gate PASS1531 Rust/0failed/81ignored/260suites plus18 namespace
+  fixtures and complete scripted release/installer/lint/qualification checks.
+
+- [x] Follow-on CPU model source batch integrated into ROOT ISO: Gemma31B
+  exact60-layer/60-owner analytic schedule and21504-column windows (113isolated
+  CPU tests/strictClippy PASS); Qwen27B original64-layer traversal/shared H48
+  GDN hook/private SessionAuthority diagnostic (176/82/74libraries+6replays,
+  strictClippy PASS). Existing public trained/native routes remain refused.
+  Qwen initial-one is not originalchunk64; minimal Conv history3 is distinct
+  from original HF4. Real retired H48 exp differs2/48 and recurrent state
+  5539/786432 words; generic f64 exp also fails. Preserve fatal exact comparison,
+  no tolerance/correction or complete112-domain/full64 numerical claim.
+
+- [x] Complete owner-authorized managed HF Gemma4 E2B pull at pinned
+  3e22461f65e89153144f8adb70e3b8c2cc9845a7. Tokenizer/config sidecars are
+  acquired and verified. Owner-approved canonical cache64→96GiB applied,
+  preserving models; full8file/10,278,848,001B managed checkpoint closure
+  published and acquisition hashes verified. Offline full closure verified;
+  authentic263,952B header/2,011BF16 tensors and derived index prepared, all600
+  text members match registered geometry. Acquisition grants no Rust/native or
+  serving qualification; original learned reference/replay results follow below.
+
+- [x] Gemma E2B original learned CPU reference executed and independently
+  validated: full checkpoint, BF16/eager, prompt4 then two natural continuations,
+  two independent cache cohorts,93 records/full262144 logits/all15KV owners and
+  exact consumed priors. Original8-file source and owned lifetime close healthy
+  under12GiB/4CPU. Strict Rust AnalyticF32TextV1 replay completes the full35-block
+  first call, rejects logits[0] (`c1ce0000` vs `c1ce9ba0`), publishes no root,
+  retains unchanged source and releases reservations to0. Neither numerical
+  parity nor native/serving/performance support follows from this failure.
+
+- [x] Gemma BF16 whole35-block candidate and producer-boundary tracing merged
+  into ROOT ISO (20 paths); default analytic arithmetic and trained refusals
+  preserved. Source-defined embedding/PLE scales, direct-gamma RMS, rotary,
+  projection/BMM, residual and final casts use the same ReferenceText engine.
+  CPU tests/strict Clippy pass. Fresh original reference2 passes all natural
+  calls, fullV/all15KV/repeats/priors/source/lifetime,1981 producer records.
+  Strict whole35 replay rejects first original-order boundary at layer0,
+  position0,ffn.gelu[416]: source -0 (80000000), candidate b4240000.
+  Root/frontier remain0, final reservations0; this is not learned parity.
+
+- [x] Resolve Gemma candidate transcendental arithmetic at its source:
+  faithful pinned BF16 AVX2 GELU/tanh schedule, same full-range formula and
+  source saturation; no expected operands or input correction table. CPU batch
+  passes; strict whole35 replay against unchanged healthy reference2 closes the
+  selected producer prefix through810 complete records, then rejects layer12,
+  position0,ple.post_norm[880] (3b830000 vs3b820000). Same1981 observations,
+  root/frontier0, unchanged source/final0 and original owned closure. Seven
+  source paths now converge MAIN/ISO. Pinned ATen pow(-.5) selects1/sqrt;
+  candidate general powf differs. Shared source-shaped RMS correction is now
+  merged MAIN/ISO; CPU batch/strict Clippy PASS. Actual whole35 replay matches
+  all1981 selected initial producer records and initial+first cached fullV/all15
+  KV pairs, commits greedy886→2915/frontiers4→5. Second cached call fatally
+  differs logit0 (c1b00000 vs c1b10000); prior root2/frontier5 unchanged, source
+  and actual owned closure healthy/final0. Its KV comparison was not reached.
+  Detailed cached producers were not captured, so initial matches do not
+  establish cached arithmetic. Extend all-call diagnostic comparison/tracing
+  within existing caps, then compare a fresh independent producer reference.
+  This was the intermediate diagnostic limit; later PV closure below supersedes
+  its selected three-call failure. General trained/native/serving stays refused.
+
+- [x] Qwen27B original full64 producer executed healthy: teachers11→353 with
+  two independent cache cohorts, all851 raw source roles/67modules,1040 records/
+  934,776,928B, authentic Conv4/FP32 recurrent/head-majorKV. All851 observed source roles
+  are BF16, no source casts. All31 whole source
+  identities/mapped bytes unchanged, owned exit0/group/container/EOF close.
+  Eleven additive producer tools plus contained observed-exp causal test merged
+  into ROOT ISO; source-free Python protocol8+4 fixtures PASS. Independent fresh
+  original archive/source validation PASS all1040 records/exact repeats/priors/
+  fullV/all112 domains and source/lifetime. Rust parity remains false.
+
+- [x] Qwen original full64 archive connected to the existing Rust diagnostic,
+  explicit HF Conv4→minimal3 mapping and complete available-record comparison.
+  INITIAL1 earliest producer divergence and correction remain tracked below.
+
+- [x] Separate cached Qwen GDN exponential correction, finite original profile:
+  actual original SSE HA dispatch reconstructed with mathematically derived
+  split128table/separateF32 operations; both A_log→A and logdecay→decay computed.
+  Authenticated H48 connected producer/all786432state words bitexact; legacy
+  2/48decay and5539state negative control preserved. Actual full64 replay3 closes
+  initial+cached/2independent sessions/all1040records/240896000words including
+  all4Conv/completeKV/fullV, source/ownership healthy. No golden operands or
+  looser limit. Numerical primitive's explicit finite normal domain remains;
+  general mode/tails/natural/long/native/serving/performance stay unqualified.
+
+- [x] Qwen full64 Rust replay/source-owned scratch unit merged into ROOT ISO
+  (13 paths): same traversal/SessionAuthority, explicit Conv4→minimal3 and
+  head-major→token-major mappings, expected-only completed-boundary observer.
+  H48 transient scratch retires after synchronous compute; output/state retains
+  original ownership. Whole-replay host envelope768MiB, derived upper651296768B;
+  old128MiB leaf limits unchanged. CPU105 checks/strict Clippy pass. ROOT sealed
+  only the expected-target reference pin after validating actual retired raw
+  archive/manifest/invocation/source. No kernel operand or runtime permission.
+
+- [x] Recover the first learned Rust replay's pre-boundary GDN output capacity
+  refusal with bounded exact output allocation below; no raised caps. Initial
+  refusal opened no expected archive and kept root/final0/source/owned closure
+  healthy. Subsequent full64 replays now reach complete numerical comparison;
+  startup-only namespace/affinity refusals establish no numerical result.
+
+- [x] Qwen bounded GDN output correction integrated MAIN/ISO: declare/reserve
+  exact output before fallible collection, retain capacity and element bounds,
+  reject short/excess/original errors. Covers activated/gated and analogous
+  cached recurrent BF16 output, unchanged arithmetic/caps. H48 reproducer
+  confirms prior capacity8192/len6144; related CPU47+whole-window5 and strict
+  Clippy pass. Corrected learned replay5 completes the actual64-layer proposal,
+  then strictly rejects layer9 output word13 (3cc80000 vs3cc60000). Embedding,
+  layers0..8 and first13 words of layer9 match,51213 words in this reader order;
+  no post-state/internal-stage comparison was reached, no cached call ran.
+  Source before/after/full expected SHA/EOF, pre-cancel/real pressure and actual
+  owned closure pass; root unchanged/commits0/final host0/unfenced. Observed
+  boundary reservation517760000B is not an exact peak. No causal attribution
+  to older cached exp results. Next same completed callback must compare all
+  available state/boundary/fullV records before refusing, with bounded summaries.
+
+- [x] Complete Qwen proposal comparison source merged MAIN/ISO;9 fixtures and
+  strict Clippy PASS. Actual learned6 compares all196 initial records/39842304
+  float words plus3 position metadata words. All20 Conv3/H/KV tensors through
+  layer9 exact; first differing state is layer10 Conv after known layer9 output
+  divergence. First bad layer9 output differs381/5120 words. FullV differs
+  197638/248320; no commit/root unchanged/final host0/unfenced and full source/
+  expected/owned closure pass. No hidden earlier state mismatch was found.
+
+- [x] Qwen layer9 causal diagnostic source merged MAIN/ISO (20 paths): opt-in
+  fifteen borrowed producers from the same full64 Rust traversal, completed
+  full-proposal and48-record prefix comparison before numerical refusal. No
+  arithmetic/default/native change; conservative upper664928256B under same
+  768MiB cap. Python6/session6/example10/strict Clippy PASS. Original full64 pin
+  unchanged; separate prefix pinNone until independent actual validation.
+
+- [x] Original64-object prefix independently validated: two fresh initial
+  caches/135 used roles/18 logical domains/96records/52355504B, all66 overlaps
+  byte-exact to unchanged accepted full64 original. Stop after layer9 source
+  unload; source whole checks/31FDs/actual process+container+group/reap/EOF close.
+  ROOT checked artifacts and sealed distinct expected-only prefix receipt
+  14593B SHA4caffb384f0a67b20bb3a81aded8fc151b4bfd949659aab28cb2d5bf7a02b657.
+  Old full64 pin unchanged; no original final/head/full-model claim.
+
+- [x] Actual full64 layer9 causal replay closes with strict numerical refusal:
+  input/InputNorm/QKV/Z/B/A exact; first error GDN core2/6144 BF16 words,
+  word806 actualb6d60000 vsoriginalb6d70000. NormGate exact, gated2→Out32→
+  postresidual3/postnorm3→MLP divergences→381/5120 output differences. All20
+  layer0..9 state tensors exact; first state error layer10Conv downstream.
+  Full196-record comparison reproduces learned6. Root unchanged/commits0,
+  source/31FDs/expected/actual owned closure healthy, finalhost0/unfenced.
+  Observed boundary530355200B<derived664928256B<768MiB is not a peak.
+
+- [x] Correct Qwen INITIAL1 GDN core at its source. Genuine original pads to64
+  BEFORE intra-chunk F32 matmul; current product+sum_inner128 is not a proven
+  equivalent reduction. Actual MKL SGEMM_BATCH(T,N)/four-thread dispatch and
+  learned inner producers identify sequential FP32 FMA as the correction.
+  Shared primitive and same-iterator diagnostics integrated; complete initial
+  full64 replay passes below. Cached MKL exponential remains separate/open.
+
+- [x] Qwen actual inner-prefix causal comparison closes: convolution/activation/
+  Q/K/normalizedQ/K/scaledQ/betaV all exact; first mismatch QK36/48 F32 values,
+  then4549/6144 rawcore and2 BF16core words. FMA candidate using only genuinely
+  computed Rust scaledQ/K/betaV matches all48 QK and6144 rawcore words exactly.
+  Original116-record capture joins all96 oldprefix+66full records; ROOT reviewed
+  expected-only SHA9355c45eef22726c25710faaaf897777fa6f9ab47f7dec9780262289a7873c48
+  and12 actual marked MKL dispatch intervals. Actual unpublishedprefix callback1/
+  commits0/rootunchanged, source31FD/ownedclosure/final0/unfenced. Report
+  SHA51b5d18f6209b2f2472e034814a593cbbce8baf522e2ec79e9e1e3c0b454851f.
+  Shared INITIAL1 sequential-FMA primitive now wired and30 reviewed source
+  paths merged MAIN/ISO. Actual full64 replay: two independent INITIAL1
+  teacher11 proposals,196 records/39,842,304float words each; all79,684,608
+  words exact including fullV and mapped state. Two callbacks/commits, actual
+  pre-cancel/pressure/retained-output/source31FD/owned closure/finalhost0 pass.
+  Replay204551B SHA34c81e5118c8df4ad275ff0833e372cbf70eca54def149f76c14476626e1465b.
+  Complete Conv4 equivalence, cached353/MKLexp, natural/native/serving/performance
+  remain unqualified. MAIN gate5 PASS1645Rust/0failed/86ignored/265suites;
+  later common cache/backend drafts are outside this gate.
+
+- [x] Gemma all-call diagnostics integrated MAIN/ISO (10 paths):3965 producers/
+  22598144B within unchanged caps, complete numeric scans before refusal. Fresh
+  original v2 capture/independent validators PASS; ordinary fullV/KV raw and all
+  1981 initial producer records equal immutable reference2. Gemma19/example5/
+  Python11/strict Clippy PASS. Actual Rust calls0/1 match all1981+992 producers,
+  fullV/all15KV; call2 compares all992 producers/all31 fullV+KV records. Earliest
+  actual mismatch is layer9/position5 attention.pv[2421] (head4/channel373), one
+  4096-element PV word:3d460000 vs3d470000, with exact observed six-term inputs.
+  Callback rejects despite matching greedy886; root2/frontier5 unchanged,
+  source/owned closure healthy/final0. No full three-call parity promotion.
+
+- [x] Gemma source-shaped BF16 PV correction merged MAIN/ISO (5 paths): pinned
+  GEMM-NN four FP32 partials/tail/final order, source small-BMM branch and full
+  masked-prefill contraction from actual RootAttempt call geometry. Default
+  analytic/QK/GEMV, source identity, caps and native eligibility unchanged.
+  PV4/reference11/Gemma19/example5/strict Clippy PASS. One learned whole35 replay
+  against unchanged healthy v2 matches all3965 selected producers and all93
+  fullV/KV records across three natural calls886→2915→886; roots1/2/3,
+  frontiers4/5/6, source unchanged/final_reserved0 and actual owned closure.
+  Report SHA199ca15df9d6d02017b2fb3fff94bcaeb1bd4dbc6a669bd4f5850486bc3fee6f.
+  Scope: authentic4-token prompt plus two natural cached calls only; general
+  trained/native/serving/performance support remains unqualified.
+
+- [x] Gemma selected learned lifecycle source5 paths merged MAIN/ISO; existing
+  completion callback handles late refusal/cancel with no new engine hook.
+  Two actual sessions, pre-cancel/layer9 observer refusal/completed refusal/
+  post-comparison cancel/same-root retry/natural survivor; full producer/fullV/
+  all15KV comparison and actual root/KV/reservation invariants. Gemma20/example6/
+  strict Clippy/release PASS. Same128MiB+8MiB limits; one actual learned run active.
+
+- [x] Actual Gemma learned lifecyclePASS: two natural sessions886→2915→886,
+  roots1/2/3/frontiers4/5/6. Pre-cancel/actuallayer9PV refusal have0completed
+  callbacks; completed refusal+latecancel each compare992producers/fullV/all15
+  KV then preserve root1/allKV hashes/reserved79441036B. Retry+survivor pass;
+  all8callbacks/9914producers/248completed records exact. Source/actual owned
+  closure/finalreserved0 healthy; selectedCPU only, generalflagsfalse.
+
+- [x] Assembled108-path MAIN isolated fullcheckgate4PASS:1560Rust/0failed/
+  82ignored/261suites,18Python namespace checks, complete scriptClippy/release/
+  installer/lint/qualification/shell/Nix. Model learned runs above are separate
+  real-source checks; neither test durations nor Qwen refusal grant support.
+
+- [x] Gemma bounded tokenizer/text preparation source merged MAIN/ISO:
+  approved32,169,626B tokenizer uses BPE262144 vocab/514906 merge pairs,
+  bytefallback/fuse_unk, Replace spaces→▁/Split and identity single-sequence
+  postprocessor; no implicit BOS. Reuse tokenizers0.22.2 algorithms via bounded
+  typed streaming construction; full generic JSON graph is not a fit proof.
+  Actual original/Rust comparison passes46 text and15 byte/control decode
+  cases in both special-token modes. Requested GlobalAlloc construction peak
+  94099192B/retained57113812B, notRSS; original source/owner closure and final0
+  pass. Construction116MiB+8MiB control plus4MiB caller fits128MiB admission.
+  Source review fixes serialize allocating operations nonblockingly, retire
+  provenance before admission and verify final source stamps after hashing.
+  Tokenize→drop leaves only64KiB IDs/provenance before model load. Focused
+  Gemma24/featureexample7/legacyexample6/strictClippy/Python6 PASS. Opt-in
+  --plain-text wiring uses actual tokenizer IDs and the same learned35-block
+  engine. One actual replay PASS: all3965 producers and93 fullV/KV records exact,
+  natural886→2915→886, roots1/2/3/frontiers4/5/6, unchanged source/final0 and
+  heldbinary/process/group/reap/EOF closure. Report SHA
+  716ee16ec29e1b80855055c873254f2421e57029a1766bb9bbf4abd569998354.
+  Final assembled gate pending; default CPU gate now includes optionaltokenizer
+  feature and six source-only Python contract tests.
+  No chat/multimodal/generaltrained/native/serving/performance promotion.
+
+- [x] Gemma ordinary plainCPU31-path candidate integrated MAIN/ISO: managed
+  held SnapshotLease/source windows, bounded selected-ID decoder reusing source
+  decoder algorithms without retained BPE graph, private same-session greedy
+  feedback/EOS[1,106,50], explicit CLI profile. Derive whole128MiB coexistence;
+  whole derived108773100B fits128MiB; bounded decoder61 actual cases in both
+  special-token modes exact, original source/final0/owned closure healthy.
+  Full assembled gate6b PASS1713Rust/0failed/88ignored/266suites plus scripted
+  checks, including candidate CLI feature. This is source/decoder acceptance;
+  broader ordinary runtime qualification remains open below.
+
+- [x] Complete frozen actual seven-cell Gemma ordinary matrix: genuine plain
+  M1/2/3/4/32/57 plus UnicodeM3, natural extent64/fullV/all15KV/consumedpriors,
+  source/cancel/refusal/retry/sibling checks. Original captures and lossless
+  BF16 archives within unchanged caps. Actual Rust PASS50natural committed
+  calls +2completed rejected proposals,52 fullV/all15KV comparisons and10710
+  actual35-block row-boundary events,0mismatchedwords. Pre-cancel/refusal/late-
+  cancel/retry/independent survivor/pressure pass. Sourceafter true, prepared
+  3670016B→caller3145728B→final0. Report255906B SHA
+  cef7dd0dddc18710caff6e6a23c6b8046c401507e635b8acd68a8745b62ace1e;
+  ROOT independently checked numerical counts/frontier64/report/source/owned
+  closure. Frozen binary unchanged/FDclosed, groupabsent/reaped/EOF/cleanup[];
+  same original7200s deadline including bounded855.9s pause, no recapture or
+  expected operands. Finite ordinary CPU candidate scope only; generic trained,
+  chat/native/HTTP/performance flags remain false.
+
+- [x] CLI dispatch successor integrated MAIN/ISO: option-position scan preserves
+  existing Qwen --prompt '--source-profile' and every existing value flag/alias,
+  while selecting the explicit Gemma profile. Eight matching-feature CLI tests
+  and strict Clippy PASS; both original parsers and frozen matrix unchanged.
+  Assembled isolated gate7 PASS1715Rust/0failed/88ignored/266suites plus scripted
+  checks; actual Gemma matrix retains its immutable earlier binary scope.
+
+- [x] Qwen27B CPU source-window output tail integrated into ROOT worktree: final FFN norm → gate/up → staged BF16 SiLU/multiply → down → residual → final norm → full vocabulary, through existing MathematicalBackend/HostMath. Fourteen owned paths merged with fresh mtimes after exact parent checks; integrated model67/core17 tests PASS. Explicit post-attention input remains the boundary; no trained whole27B/112-domain/serving parity claim. [Scope and checks](../../../../zerogravity-worktrees/root-lowest-f32-20261020/.agents/runs/model-execution-qwen27b-root-integration-20261022/TODO.md).
+
+- [x] Complete isolated CPU integration gate now covers Qwen27B + Gemma: scripts/check.sh PASS,1490 Rust test passes/0failed/80ignored across257 suites,18Python checks, strictClippy/release/installer/shell/Nix PASS,0warnings. Full trained inference/native/serving/performance qualifications remain open.
+
+- [x] Gemma E2B source-bound AnalyticF32TextV1 CPU reference integrated: one generic full35-layer schedule,15KV owners/shared consumers,PLE/proportional rotary/sliding attention/finalnorm/tied full vocabulary and original SessionAuthority transactions. Eighteen owned paths contextually merged with fresh mtimes, preserving27B. Tiny genuine source-window fixtures/nonzero synthetic continuation/rollback and complete CPU integration gate PASS. [Scope and checks](../../../../zerogravity-worktrees/root-lowest-f32-20261020/.agents/runs/model-execution-gemma4-root-integration-20261022/TODO.md).
 
 ### fff1842 — trained BF16 operator qualification
 
