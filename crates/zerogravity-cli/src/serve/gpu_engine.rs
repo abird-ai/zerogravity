@@ -6,7 +6,7 @@
 use super::engine::{
     EVENTS_PER_REQUEST, GeneratedText, GpuTokenObservation, MAX_ACTIVE_PER_WORKER,
     NativeCohortObservation, Presentation, QUEUED_PER_WORKER, Request, RequestEvents,
-    ResponseEvent, Scheduled, ServiceError,
+    ResponseEvent, Scheduled, ServiceError, TextTokenizer,
 };
 use super::gpu_batch::{self, Limits, Phase, Ready};
 use crate::GpuBackend;
@@ -28,6 +28,12 @@ const GPU_CAPACITY: usize = 512;
 const PREFILL_QUANTUM: usize = 32;
 const OUTPUT_STALL_LIMIT: Duration = Duration::from_secs(30);
 mod cohort;
+mod route;
+use route::{ModelEngine, RequestEngine};
+#[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
+mod canonical;
+#[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+mod short_hf;
 use cohort::{advance_decode_cohort, finish_prompt_cohort};
 #[cfg(all(test, feature = "cuda"))]
 mod qualification;
@@ -106,8 +112,8 @@ fn preflight_cuda_toolkit(backend: GpuBackend) -> Result<(), ServiceError> {
 
 /// This is one host route to an already resident GPU source/graph.
 struct GpuModel {
-    resident: Arc<ResidentModel>,
-    tokenizer: Arc<QwenTokenizer>,
+    engine: ModelEngine,
+    tokenizer: TextTokenizer,
     group: usize,
     hidden_width: usize,
     vocabulary_size: u64,
@@ -122,6 +128,7 @@ struct WaveStats {
     cancelled: AtomicU64,
     queued: AtomicUsize,
     active: AtomicUsize,
+    peak_active: AtomicUsize,
     groups: AtomicU64,
     co_scheduled: AtomicU64,
     cohort_publications: AtomicU64,
@@ -142,6 +149,13 @@ struct WaveStats {
     output_tokens: AtomicU64,
     parked: AtomicUsize,
 }
+impl WaveStats {
+    fn admit_session(self: &Arc<Self>) -> SessionCharge {
+        let active = self.active.fetch_add(1, Ordering::AcqRel) + 1;
+        self.peak_active.fetch_max(active, Ordering::AcqRel);
+        SessionCharge(self.clone())
+    }
+}
 struct SessionCharge(Arc<WaveStats>);
 impl Drop for SessionCharge {
     fn drop(&mut self) {
@@ -156,6 +170,11 @@ pub(super) struct GpuMetrics {
     pub cancelled: u64,
     pub queued: usize,
     pub active: usize,
+    pub peak_active: usize,
+    pub active_limit: usize,
+    pub canonical_resources: Option<serde_json::Value>,
+    pub hf_source: Option<serde_json::Value>,
+    pub hf_resources: Option<serde_json::Value>,
     pub groups: u64,
     pub co_scheduled: u64,
     pub cohort_publications: u64,
@@ -184,6 +203,7 @@ pub(super) struct GpuRouter {
     stats: Arc<WaveStats>,
     pub(super) max_output: usize,
     native_rows: usize,
+    active_limit: usize,
 }
 impl GpuRouter {
     pub(super) fn validate_profile(
@@ -296,8 +316,8 @@ impl GpuRouter {
             ))
             .map_err(ServiceError::inference)?;
             let shared = Arc::new(GpuModel {
-                resident,
-                tokenizer: Arc::new(tokenizer),
+                engine: ModelEngine::Gguf(resident),
+                tokenizer: TextTokenizer::Shared(Arc::new(tokenizer)),
                 group: unique.len(),
                 hidden_width,
                 vocabulary_size,
@@ -306,6 +326,14 @@ impl GpuRouter {
             unique.insert(path, Arc::clone(&shared));
             models.insert(alias, shared);
         }
+        Self::start(models, active, output, native_rows)
+    }
+    fn start(
+        models: BTreeMap<String, Arc<GpuModel>>,
+        active: usize,
+        output: usize,
+        native_rows: usize,
+    ) -> Result<Self, ServiceError> {
         let models = Arc::new(models);
         let (sender, receiver) = mpsc::sync_channel(QUEUED_PER_WORKER);
         let sources = Arc::clone(&models);
@@ -322,9 +350,12 @@ impl GpuRouter {
             stats,
             max_output: output,
             native_rows,
+            active_limit: active,
         })
     }
     pub(super) fn metrics(&self) -> GpuMetrics {
+        #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+        let hf_health = short_hf::health(&self.models);
         GpuMetrics {
             attempted: self.stats.attempted.load(Ordering::Relaxed),
             completed: self.stats.completed.load(Ordering::Relaxed),
@@ -333,6 +364,20 @@ impl GpuRouter {
             cancelled: self.stats.cancelled.load(Ordering::Relaxed),
             queued: self.stats.queued.load(Ordering::Acquire),
             active: self.stats.active.load(Ordering::Acquire),
+            peak_active: self.stats.peak_active.load(Ordering::Acquire),
+            active_limit: self.active_limit,
+            #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
+            canonical_resources: canonical::resources(&self.models),
+            #[cfg(not(all(feature = "canonical47-serving", target_os = "linux")))]
+            canonical_resources: None,
+            #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+            hf_source: hf_health.as_ref().map(|h| h.0.clone()),
+            #[cfg(not(all(feature = "short-hf-serving", target_os = "linux")))]
+            hf_source: None,
+            #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+            hf_resources: hf_health.map(|h| h.1),
+            #[cfg(not(all(feature = "short-hf-serving", target_os = "linux")))]
+            hf_resources: None,
             groups: self.stats.groups.load(Ordering::Relaxed),
             co_scheduled: self.stats.co_scheduled.load(Ordering::Relaxed),
             cohort_publications: self.stats.cohort_publications.load(Ordering::Relaxed),
@@ -379,6 +424,10 @@ impl GpuRouter {
                 "GPU request bounds",
             ));
         }
+        #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
+        self.models[&request.model]
+            .engine
+            .validate_request(&self.models[&request.model].tokenizer, &request)?;
         let model = request.model.clone();
         let token_metrics = request.token_metrics.clone();
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
@@ -414,8 +463,7 @@ impl GpuRouter {
 }
 struct GpuActive {
     _charge: SessionCharge,
-    resident: Arc<ResidentModel>,
-    session: ResidentSession,
+    engine: RequestEngine,
     group: usize,
     hidden_width: usize,
     cancelled: Arc<AtomicBool>,
@@ -453,8 +501,8 @@ impl GpuActive {
                 "resident GPU profile admits at most 512 consumed tokens",
             ));
         }
-        let output = GeneratedText::new(
-            Arc::clone(&model.tokenizer),
+        let output = GeneratedText::new_owned(
+            model.tokenizer.clone(),
             job.events.clone(),
             job.request.stream,
             job.request.max_tokens,
@@ -463,12 +511,11 @@ impl GpuActive {
         .observed(job.request.token_metrics.clone(), model.vocabulary_size);
         // ResidentSession allocates independent, physical source-bound GPU
         // state. Neither its tensor source nor its StateRoot is CPU fallback.
-        let session = block_on(model.resident.session()).map_err(ServiceError::inference)?;
-        stats.active.fetch_add(1, Ordering::AcqRel);
+        let engine = model.engine.session(&job.cancelled)?;
+        let charge = stats.admit_session();
         Ok(Self {
-            _charge: SessionCharge(stats),
-            resident: Arc::clone(&model.resident),
-            session,
+            _charge: charge,
+            engine,
             group: model.group,
             hidden_width: model.hidden_width,
             cancelled: job.cancelled,
@@ -493,7 +540,7 @@ impl GpuActive {
             } else {
                 Phase::Decode
             },
-            frontier: self.session.binding().frontier() as usize,
+            frontier: self.engine.binding().frontier() as usize,
             tokens: if remaining > 0 {
                 self.prefill_count()
             } else {
@@ -506,6 +553,9 @@ impl GpuActive {
     }
     fn prefill_count(&self) -> usize {
         let remaining = self.prompt.len() - self.cursor;
+        if self.engine.is_original_hf() {
+            return remaining;
+        }
         if self.native_rows != 0 {
             // Native cohorts and unmatched B1 rows consume the same truthful
             // one-token wave credit, then release the worker to other rows.
@@ -520,13 +570,7 @@ impl GpuActive {
         let presented = if self.packet_presented {
             self.output.resume()?
         } else {
-            let token = self.device_token.as_ref().ok_or_else(|| {
-                ServiceError::new(
-                    500,
-                    "missing_device_token",
-                    "resident GPU feedback is missing",
-                )
-            })?;
+            let token_id = self.engine.presentation_id(self.device_token.as_ref())?;
             let before = self.output.generated_token_count();
             let committed = self.token_commit_observed_at.ok_or_else(|| {
                 ServiceError::new(
@@ -537,7 +581,7 @@ impl GpuActive {
             })?;
             let status =
                 self.output
-                    .present_observed(token.id, committed, self.token_gpu_observation)?;
+                    .present_observed(token_id, committed, self.token_gpu_observation)?;
             stats.output_tokens.fetch_add(
                 (self.output.generated_token_count() - before) as u64,
                 Ordering::Relaxed,
@@ -575,7 +619,8 @@ impl GpuActive {
         // install follows successful original publication; this is the exact
         // packet-producing committed binding, including a B1 retry.
         self.token_gpu_observation = Some(GpuTokenObservation {
-            producer_frontier: self.session.binding().frontier(),
+            producer_frontier: self.engine.binding().frontier(),
+            producer_root: None,
             native_cohort,
         });
         self.device_token = Some(token);
@@ -586,15 +631,30 @@ impl GpuActive {
     }
     /// Original B1 source execution, including all unmatched native-wave rows.
     fn step(&mut self, stats: &WaveStats) -> Result<MemberStep, ServiceError> {
+        #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+        if self.engine.is_short_hf() {
+            return self.step_short_hf(stats);
+        }
+        #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
+        if self.engine.is_canonical() {
+            return self.step_canonical(stats);
+        }
         if self.cursor < self.prompt.len() {
             let end = self.cursor + self.prefill_count();
             let read = if end < self.prompt.len() {
                 block_on(
-                    self.session
+                    self.engine
+                        .legacy_mut()
+                        .expect("legacy step selected")
                         .prefill_without_logits(&self.prompt[self.cursor..end], false),
                 )
             } else {
-                block_on(self.session.forward_greedy(&self.prompt[self.cursor..end]))
+                block_on(
+                    self.engine
+                        .legacy_mut()
+                        .expect("legacy step selected")
+                        .forward_greedy(&self.prompt[self.cursor..end]),
+                )
             }
             .map_err(ServiceError::inference)?;
             let committed = Instant::now();
@@ -620,8 +680,13 @@ impl GpuActive {
                 "resident GPU feedback is missing",
             )
         })?;
-        let read =
-            block_on(self.session.forward_device_token(token)).map_err(ServiceError::inference)?;
+        let read = block_on(
+            self.engine
+                .legacy_mut()
+                .expect("legacy step selected")
+                .forward_device_token(token),
+        )
+        .map_err(ServiceError::inference)?;
         let committed = Instant::now();
         stats.single_completion(&read);
         self.install(read, committed, None)?;
@@ -731,7 +796,13 @@ fn worker(
                 match rx.recv_timeout(Duration::from_millis(25)) {
                     Ok(v) => Some(v),
                     Err(mpsc::RecvTimeoutError::Timeout) => break,
-                    Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
+                        canonical::retire_sources(&models, &stats);
+                        #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+                        short_hf::retire_sources(&models, &stats);
+                        return;
+                    }
                 }
             } else {
                 rx.try_recv().ok()
@@ -749,7 +820,11 @@ fn worker(
             match GpuActive::new(job, Arc::clone(model), Arc::clone(&stats)) {
                 Ok(session) => active.push_back(session),
                 Err(e) => {
-                    stats.failed.fetch_add(1, Ordering::Relaxed);
+                    if e.status == 499 && e.code == "cancelled" {
+                        stats.cancelled.fetch_add(1, Ordering::Relaxed);
+                    } else {
+                        stats.failed.fetch_add(1, Ordering::Relaxed);
+                    }
                     let _ = errors.try_send(ResponseEvent::Error(e));
                 }
             }
@@ -780,11 +855,28 @@ fn worker(
             } else {
                 active_limit
             },
-            max_tokens: 64,
+            max_tokens: if eligible.iter().all(|row| row.engine.is_short_hf()) {
+                72 * native_rows.max(1)
+            } else {
+                64
+            },
             max_scratch: 256 * 1024 * 1024,
         };
-        let planned = if native_rows != 0 {
+        let planned = if native_rows != 0 && eligible.iter().all(|row| row.engine.is_short_hf()) {
+            // Every admitted ready row gets one original fair quantum/round.
+            // Actual native eligibility is checked separately for each member.
+            gpu_batch::form_cached_with_prefill_quantum(&ready, bounds, 72)
+        } else if native_rows != 0 {
             gpu_batch::form_native(&ready, bounds)
+        } else if eligible.iter().all(|row| row.engine.is_original_hf()) {
+            // Pure source preflight already sealed the complete prompt. Charge
+            // its actual atomic length; two47-token requests need two64-token waves.
+            let quantum = eligible
+                .iter()
+                .map(|row| row.prompt.len())
+                .max()
+                .expect("nonempty eligible source wave");
+            gpu_batch::form_with_prefill_quantum(&ready, bounds, quantum)
         } else {
             gpu_batch::form(&ready, bounds)
         };
@@ -812,7 +904,7 @@ fn worker(
             if let Some(first) = admitted.first() {
                 let roots = admitted
                     .iter()
-                    .map(|row| row.session.binding())
+                    .map(|row| row.engine.binding())
                     .collect::<Vec<_>>();
                 let verification = ResidentBatchRows::new(&roots, first.hidden_width);
                 let verification = verification.and_then(|cohort| {
@@ -846,12 +938,29 @@ fn worker(
                     .co_scheduled
                     .fetch_add(wave.indices.len() as u64, Ordering::Relaxed);
             }
+            #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+            if native_rows == 4
+                && wave.indices.iter().all(|&index| {
+                    pending[index]
+                        .as_ref()
+                        .is_some_and(|row| row.engine.is_short_hf())
+                })
+            {
+                let members = wave
+                    .indices
+                    .iter()
+                    .map(|&index| pending[index].take().expect("unique original HF wave"))
+                    .collect();
+                short_hf::advance_cohort(members, &mut active, &stats);
+                continue;
+            }
             // Prefix and tail readouts share the original checked publisher.
             // The cohort owner partitions state-only and greedy barriers.
             let batch_ready = wave.indices.len() > 1
                 && wave.indices.iter().all(|&i| {
                     pending[i].as_ref().is_some_and(|row| {
                         !row.cancelled.load(Ordering::Acquire)
+                            && !row.engine.is_original_hf()
                             && row.cursor < row.prompt.len()
                             && (native_rows != 0 || row.cursor + 1 == row.prompt.len())
                             && row.device_token.is_none()
@@ -902,6 +1011,27 @@ fn worker(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn admitted_session_high_water_survives_warmup_and_completed_drops() {
+        let stats = Arc::new(WaveStats::default());
+        let warmup = stats.admit_session();
+        assert_eq!(stats.active.load(Ordering::Acquire), 1);
+        drop(warmup);
+        assert_eq!(stats.active.load(Ordering::Acquire), 0);
+        assert_eq!(stats.peak_active.load(Ordering::Acquire), 1);
+        let mut sessions = (0..8).map(|_| stats.admit_session()).collect::<Vec<_>>();
+        assert_eq!(stats.active.load(Ordering::Acquire), 8);
+        assert_eq!(stats.peak_active.load(Ordering::Acquire), 8);
+        sessions.truncate(2);
+        assert_eq!(stats.active.load(Ordering::Acquire), 2);
+        let next = stats.admit_session();
+        assert_eq!(stats.peak_active.load(Ordering::Acquire), 8);
+        drop(next);
+        drop(sessions);
+        assert_eq!(stats.active.load(Ordering::Acquire), 0);
+        assert_eq!(stats.peak_active.load(Ordering::Acquire), 8);
+    }
+
     #[test]
     fn cuda_requires_runtime_and_cccl_headers_before_device_startup() {
         use std::sync::atomic::{AtomicU64, Ordering};

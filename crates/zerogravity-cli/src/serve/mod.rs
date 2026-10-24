@@ -78,6 +78,11 @@ impl Router {
                     "cancelled_requests":m.cancelled,
                     "queued_requests":m.queued,
                     "active_sessions":m.active,
+                    "peak_active_sessions":m.peak_active,
+                    "active_sessions_limit":m.active_limit,
+                    "canonical47_resources":m.canonical_resources,
+                    "hf_source":m.hf_source,"hf_resources":m.hf_resources,
+                    "queued_requests_limit":engine::QUEUED_PER_WORKER,
                     "scheduling_groups":m.groups,
                     "co_scheduled_members":m.co_scheduled,
                     "state_cohort_publications":m.cohort_publications,
@@ -111,6 +116,10 @@ struct YamlConfig {
     host_mib: usize,
     #[serde(default = "default_backend")]
     backend: String,
+    #[serde(default = "default_source_profile")]
+    source_profile: String,
+    #[serde(default)]
+    native_artifacts: Option<PathBuf>,
     #[serde(default = "default_provider_mib")]
     provider_mib: usize,
     #[serde(default = "default_device_mib")]
@@ -119,6 +128,8 @@ struct YamlConfig {
     batch_mode: String,
     #[serde(default = "default_batch_rows")]
     batch_rows: usize,
+    #[serde(default)]
+    native_batch_rows: usize,
     #[serde(default)]
     enable_per_request_metrics: bool,
 }
@@ -145,6 +156,9 @@ fn default_output() -> usize {
 }
 fn default_host() -> usize {
     4096
+}
+fn default_source_profile() -> String {
+    "gguf".into()
 }
 fn default_backend() -> String {
     "cpu".into()
@@ -173,10 +187,13 @@ impl YamlConfig {
             max_output: default_output(),
             host_mib: default_host(),
             backend: default_backend(),
+            source_profile: default_source_profile(),
+            native_artifacts: None,
             provider_mib: default_provider_mib(),
             device_mib: default_device_mib(),
             batch_mode: default_batch_mode(),
             batch_rows: default_batch_rows(),
+            native_batch_rows: 0,
             enable_per_request_metrics: false,
         };
         if args.first().is_some_and(|x| x == "--config") {
@@ -207,6 +224,17 @@ impl YamlConfig {
                     model.path = base.join(&model.path);
                 }
             }
+            if let Some(native) = &mut parsed.native_artifacts
+                && native.is_relative()
+            {
+                *native = std::fs::canonicalize(base.join(&*native)).map_err(|_| {
+                    ServiceError::new(
+                        400,
+                        "native_artifacts_missing",
+                        "cannot resolve native artifacts directory",
+                    )
+                })?;
+            }
             return Ok(parsed);
         }
         let mut it = args.iter();
@@ -235,10 +263,13 @@ impl YamlConfig {
                 "--max-output" => config.max_output = parse_usize(value, flag)?,
                 "--host-mib" => config.host_mib = parse_usize(value, flag)?,
                 "--backend" => config.backend = value.clone(),
+                "--source-profile" => config.source_profile = value.clone(),
+                "--native-artifacts" => config.native_artifacts = Some(PathBuf::from(value)),
                 "--provider-mib" => config.provider_mib = parse_usize(value, flag)?,
                 "--device-mib" => config.device_mib = parse_usize(value, flag)?,
                 "--batch-mode" => config.batch_mode = value.clone(),
                 "--batch-rows" => config.batch_rows = parse_usize(value, flag)?,
+                "--native-batch-rows" => config.native_batch_rows = parse_usize(value, flag)?,
                 _ => {
                     return Err(ServiceError::new(
                         400,
@@ -277,12 +308,100 @@ fn validate_batch_mode(
     }
 }
 
+fn canonical47_owner_profile(active: usize, host: usize, provider: usize) -> bool {
+    matches!(
+        (provider, host, active),
+        (2304, 3072..=16384, 1..=2) | (4096, 4096, 1..=8)
+    )
+}
+
+fn validate_source_profile(options: &YamlConfig) -> Result<(), ServiceError> {
+    if options.native_batch_rows != 0
+        && (options.source_profile != "short-hf-bf16"
+            || options.backend != "cuda"
+            || options.batch_mode != "interleaved"
+            || options.native_batch_rows != 4
+            || options.active_per_worker < 4)
+    {
+        return Err(ServiceError::new(
+            400,
+            "unsupported_native_batch_profile",
+            "native-batch-rows=4 requires short-hf-bf16/CUDA/interleaved/active>=4; default0",
+        ));
+    }
+    match options.source_profile.as_str() {
+        "gguf" if options.native_artifacts.is_none() => Ok(()),
+        "canonical47-bf16" => {
+            if options.backend != "cuda"
+                || options.workers != 1
+                || options.max_context != 512
+                || !(1..=8).contains(&options.max_output)
+                || options.batch_mode != "interleaved"
+                || options.device_mib != 5120
+                || !canonical47_owner_profile(
+                    options.active_per_worker,
+                    options.host_mib,
+                    options.provider_mib,
+                )
+            {
+                return Err(ServiceError::new(
+                    400,
+                    "unsupported_canonical47_profile",
+                    "canonical47 requires CUDA/1worker/context512/maxoutput1..8/interleaved/device5120 and finite2 or exact4GiB active8 owner profile",
+                ));
+            }
+            if !cfg!(all(feature = "canonical47-serving", target_os = "linux")) {
+                return Err(ServiceError::new(
+                    400,
+                    "backend_not_compiled",
+                    "compile Linux canonical47-serving for original HF native serving",
+                ));
+            }
+            Ok(())
+        }
+        "short-hf-bf16" => {
+            if options.backend != "cuda"
+                || options.workers != 1
+                || options.max_context != 512
+                || !(1..=8).contains(&options.max_output)
+                || !(1..=8).contains(&options.active_per_worker)
+                || options.batch_mode != "interleaved"
+                || options.host_mib != 4096
+                || options.provider_mib == 0
+                || options.provider_mib > options.device_mib
+                || options.device_mib != 5120
+                || options.native_artifacts.is_none()
+            {
+                return Err(ServiceError::new(
+                    400,
+                    "unsupported_short_hf_profile",
+                    "short-HF requires CUDA/1worker/context512/maxoutput1..8/active1..8/interleaved/4096host/provider1..5120/5120device and actual native-artifacts",
+                ));
+            }
+            if !cfg!(all(feature = "short-hf-serving", target_os = "linux")) {
+                return Err(ServiceError::new(
+                    400,
+                    "backend_not_compiled",
+                    "compile Linux short-hf-serving",
+                ));
+            }
+            Ok(())
+        }
+        _ => Err(ServiceError::new(
+            400,
+            "unsupported_source_profile",
+            "source-profile is gguf, canonical47-bf16 or short-hf-bf16; native-artifacts is HF-only",
+        )),
+    }
+}
+
 pub fn run(args: &[String]) -> Result<(), ServiceError> {
     if args.len() == 1 && args[0] == "--help" {
         println!(
             "USAGE: zerogravity serve --config config.yaml | \
              --model ID=MODEL.gguf [--listen 127.0.0.1:8000] \
              [--backend cpu|cuda|vulkan-nvidia|vulkan-amd|rocm] \
+             [--source-profile gguf|canonical47-bf16|short-hf-bf16] [--native-artifacts DIR] \
              [--workers 2] [--active-per-worker 2] \
              [--max-context 1024] [--max-output 128] \
              [--host-mib 4096] [--provider-mib 2048] [--device-mib 4096] \
@@ -326,6 +445,7 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
         options.active_per_worker,
         options.batch_rows,
     )?;
+    validate_source_profile(&options)?;
     let declared = options.models.into_iter().map(|m| (m.id, m.path)).collect();
     let backend = options.backend.as_str();
     let router = match backend {
@@ -353,23 +473,62 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
                         "selected GPU backend was not compiled into this binary",
                     ));
                 }
-                Router::Gpu(gpu_engine::GpuRouter::new(
-                    declared,
-                    selected,
-                    gpu_engine::GpuProfile {
-                        workers: options.workers,
-                        active: options.active_per_worker,
-                        context: options.max_context,
-                        output: options.max_output,
-                        provider_mib: options.provider_mib,
-                        device_mib: options.device_mib,
-                        native_rows: if options.batch_mode == "fused" {
-                            options.batch_rows
-                        } else {
-                            0
-                        },
+                let profile = gpu_engine::GpuProfile {
+                    workers: options.workers,
+                    active: options.active_per_worker,
+                    context: options.max_context,
+                    output: options.max_output,
+                    provider_mib: options.provider_mib,
+                    device_mib: options.device_mib,
+                    native_rows: if options.source_profile == "short-hf-bf16" {
+                        options.native_batch_rows
+                    } else if options.batch_mode == "fused" {
+                        options.batch_rows
+                    } else {
+                        0
                     },
-                )?)
+                };
+                if options.source_profile == "canonical47-bf16" {
+                    #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
+                    {
+                        Router::Gpu(gpu_engine::GpuRouter::new_canonical(
+                            declared,
+                            selected,
+                            profile,
+                            options.host_mib,
+                            options.native_artifacts.as_deref(),
+                        )?)
+                    }
+                    #[cfg(not(all(feature = "canonical47-serving", target_os = "linux")))]
+                    {
+                        return Err(ServiceError::new(
+                            400,
+                            "backend_not_compiled",
+                            "canonical47-serving feature required",
+                        ));
+                    }
+                } else if options.source_profile == "short-hf-bf16" {
+                    #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+                    {
+                        Router::Gpu(gpu_engine::GpuRouter::new_short_hf(
+                            declared,
+                            selected,
+                            profile,
+                            options.host_mib,
+                            options.native_artifacts.as_deref(),
+                        )?)
+                    }
+                    #[cfg(not(all(feature = "short-hf-serving", target_os = "linux")))]
+                    {
+                        return Err(ServiceError::new(
+                            400,
+                            "backend_not_compiled",
+                            "short-hf-serving feature required",
+                        ));
+                    }
+                } else {
+                    Router::Gpu(gpu_engine::GpuRouter::new(declared, selected, profile)?)
+                }
             }
             #[cfg(not(any(feature = "vulkan", feature = "cuda", feature = "hip")))]
             {
@@ -401,7 +560,88 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn canonical_eight_profile_needs_all_three_exact_owner_settings() {
+        for active in 1..=8 {
+            assert!(super::canonical47_owner_profile(active, 4096, 4096));
+        }
+        for (active, host, provider) in [
+            (0, 4096, 4096),
+            (9, 4096, 4096),
+            (8, 3072, 4096),
+            (8, 4095, 4096),
+            (8, 4097, 4096),
+            (8, 4096, 2304),
+            (8, 4096, 4095),
+            (8, 4096, 4097),
+            (3, 4096, 2304),
+        ] {
+            assert!(!super::canonical47_owner_profile(active, host, provider));
+        }
+        assert!(super::canonical47_owner_profile(1, 3072, 2304));
+        assert!(super::canonical47_owner_profile(2, 16384, 2304));
+    }
+
     use super::*;
+    #[test]
+    fn source_profile_defaults_and_finite_hf_flags_are_cold() {
+        let old = YamlConfig::cli(&[]).unwrap();
+        assert_eq!(old.source_profile, "gguf");
+        assert!(old.native_artifacts.is_none());
+        assert!(validate_source_profile(&old).is_ok());
+        let args = [
+            "--source-profile",
+            "canonical47-bf16",
+            "--native-artifacts",
+            "/bundle",
+            "--backend",
+            "cuda",
+            "--workers",
+            "1",
+            "--active-per-worker",
+            "2",
+            "--max-context",
+            "512",
+            "--max-output",
+            "8",
+            "--provider-mib",
+            "2304",
+            "--device-mib",
+            "5120",
+            "--host-mib",
+            "3072",
+        ]
+        .map(str::to_owned);
+        let mut cfg = YamlConfig::cli(&args).unwrap();
+        if cfg!(all(feature = "canonical47-serving", target_os = "linux")) {
+            assert!(validate_source_profile(&cfg).is_ok());
+        } else {
+            assert_eq!(
+                validate_source_profile(&cfg).unwrap_err().code,
+                "backend_not_compiled"
+            );
+        }
+        cfg.active_per_worker = 3;
+        assert_eq!(
+            validate_source_profile(&cfg).unwrap_err().code,
+            "unsupported_canonical47_profile"
+        );
+        cfg.active_per_worker = 1;
+        cfg.max_output = 9;
+        assert!(validate_source_profile(&cfg).is_err());
+        cfg.max_output = 8;
+        cfg.max_context = 513;
+        assert!(validate_source_profile(&cfg).is_err());
+        cfg.max_context = 512;
+        cfg.batch_mode = "fused".into();
+        assert!(validate_source_profile(&cfg).is_err());
+        cfg.source_profile = "gguf".into();
+        assert_eq!(
+            validate_source_profile(&cfg).unwrap_err().code,
+            "unsupported_source_profile"
+        );
+    }
+
     #[test]
     fn native_serving_mode_is_bounded_before_model_or_device_lookup() {
         for backend in ["cpu", "cuda", "vulkan-nvidia", "vulkan-amd", "rocm"] {
@@ -439,6 +679,77 @@ mod tests {
             ])
             .unwrap_err();
             assert_eq!(err.code, "unsupported_batch_mode");
+        }
+    }
+
+    #[test]
+    fn short_hf_native_four_opt_in_is_reachable_and_bounded_before_source_load() {
+        let args = [
+            "--model",
+            "original=/not-opened",
+            "--source-profile",
+            "short-hf-bf16",
+            "--backend",
+            "cuda",
+            "--workers",
+            "1",
+            "--active-per-worker",
+            "8",
+            "--max-context",
+            "512",
+            "--max-output",
+            "8",
+            "--host-mib",
+            "4096",
+            "--provider-mib",
+            "4096",
+            "--device-mib",
+            "5120",
+            "--batch-mode",
+            "interleaved",
+            "--native-artifacts",
+            "/not-opened-native",
+            "--native-batch-rows",
+            "4",
+        ]
+        .map(str::to_owned);
+        let mut cfg = YamlConfig::cli(&args).unwrap();
+        assert_eq!(cfg.native_batch_rows, 4);
+        let expect_supported = |cfg: &YamlConfig| {
+            if cfg!(all(feature = "short-hf-serving", target_os = "linux")) {
+                assert!(validate_source_profile(cfg).is_ok());
+            } else {
+                assert_eq!(
+                    validate_source_profile(cfg).unwrap_err().code,
+                    "backend_not_compiled"
+                );
+            }
+        };
+        expect_supported(&cfg);
+        cfg.native_batch_rows = 0;
+        expect_supported(&cfg);
+        for width in [1, 2, 8] {
+            cfg.native_batch_rows = width;
+            assert_eq!(
+                validate_source_profile(&cfg).unwrap_err().code,
+                "unsupported_native_batch_profile"
+            );
+        }
+        cfg.native_batch_rows = 4;
+        cfg.active_per_worker = 3;
+        assert!(validate_source_profile(&cfg).is_err());
+        cfg.active_per_worker = 8;
+        cfg.batch_mode = "fused".into();
+        assert!(validate_source_profile(&cfg).is_err());
+        cfg.batch_mode = "interleaved".into();
+        for backend in ["cpu", "rocm", "vulkan-nvidia"] {
+            cfg.backend = backend.into();
+            assert!(validate_source_profile(&cfg).is_err());
+        }
+        cfg.backend = "cuda".into();
+        for source in ["gguf", "canonical47-bf16"] {
+            cfg.source_profile = source.into();
+            assert!(validate_source_profile(&cfg).is_err());
         }
     }
 

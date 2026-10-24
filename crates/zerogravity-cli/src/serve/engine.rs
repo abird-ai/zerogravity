@@ -154,9 +154,29 @@ pub struct NativeCohortObservation {
     pub publication_sequence: u64,
     pub width: usize,
 }
+/// Diagnostic values copied only after the original successful publication.
+/// They cannot mint a root, attempt, Ready or feedback token.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct GpuRootObservation {
+    pub session_id: u64,
+    pub root: u64,
+    pub session_epoch: u64,
+}
+impl GpuRootObservation {
+    #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+    pub fn committed(binding: zerogravity::session_root::RootBinding) -> Self {
+        Self {
+            session_id: binding.session().get(),
+            root: binding.root(),
+            session_epoch: binding.session_epoch(),
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct GpuTokenObservation {
     pub producer_frontier: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub producer_root: Option<GpuRootObservation>,
     pub native_cohort: Option<NativeCohortObservation>,
 }
 pub enum ResponseEvent {
@@ -213,8 +233,30 @@ pub(super) enum Presentation {
     Finished,
 }
 
+/// Parsed tokenizer and its source admission have one retained owner.
+#[derive(Clone)]
+pub(super) enum TextTokenizer {
+    Shared(Arc<QwenTokenizer>),
+    #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
+    Canonical(Arc<zerogravity::canonical47::Canonical47Model>),
+    #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+    ShortHf(Arc<zerogravity::short_hf::ShortHfModel>),
+}
+impl std::ops::Deref for TextTokenizer {
+    type Target = QwenTokenizer;
+    fn deref(&self) -> &QwenTokenizer {
+        match self {
+            Self::Shared(tokenizer) => tokenizer,
+            #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
+            Self::Canonical(model) => model.tokenizer(),
+            #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+            Self::ShortHf(model) => model.tokenizer(),
+        }
+    }
+}
+
 pub(super) struct GeneratedText {
-    tokenizer: Arc<QwenTokenizer>,
+    tokenizer: TextTokenizer,
     events: mpsc::SyncSender<ResponseEvent>,
     max_tokens: usize,
     prompt_tokens: usize,
@@ -235,6 +277,21 @@ pub(super) struct GeneratedText {
 impl GeneratedText {
     pub(super) fn new(
         tokenizer: Arc<QwenTokenizer>,
+        events: mpsc::SyncSender<ResponseEvent>,
+        stream: bool,
+        max_tokens: usize,
+        prompt_tokens: usize,
+    ) -> Self {
+        Self::new_owned(
+            TextTokenizer::Shared(tokenizer),
+            events,
+            stream,
+            max_tokens,
+            prompt_tokens,
+        )
+    }
+    pub(super) fn new_owned(
+        tokenizer: TextTokenizer,
         events: mpsc::SyncSender<ResponseEvent>,
         stream: bool,
         max_tokens: usize,

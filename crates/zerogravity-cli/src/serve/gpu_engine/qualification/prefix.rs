@@ -11,7 +11,15 @@ impl PrefixOracle {
     fn new(fixture: &Fixture) -> Self {
         Self {
             cpu: QwenDenseCpu::from_shared(Arc::clone(&fixture.source)).unwrap(),
-            gpu: block_on(fixture.model.resident.session()).unwrap(),
+            gpu: block_on(
+                fixture
+                    .model
+                    .engine
+                    .legacy_model()
+                    .expect("legacy qualification")
+                    .session(),
+            )
+            .unwrap(),
             consumed: 0,
             packet: None,
         }
@@ -34,9 +42,16 @@ impl PrefixOracle {
         );
         same_domains(
             &self.cpu.snapshot().domain_values(),
-            &block_on(lane.session.snapshot().read_domains()).unwrap(),
+            &block_on(
+                lane.engine
+                    .legacy()
+                    .expect("legacy qualification")
+                    .snapshot()
+                    .read_domains(),
+            )
+            .unwrap(),
         );
-        assert_eq!(lane.session.binding().frontier(), self.consumed as u64);
+        assert_eq!(lane.engine.binding().frontier(), self.consumed as u64);
         if self.consumed < lane.prompt.len() {
             assert!(lane.device_token.is_none());
             assert!(lane.token_commit_observed_at.is_none());
@@ -159,7 +174,7 @@ fn ragged_prefixes(fixture: &Fixture) {
             // Genuine source EOS as a teacher token cannot end generation.
             lane.prompt[1] = fixture.model.tokenizer.eos();
         }
-        let id = lane.session.binding().session().get();
+        let id = lane.engine.binding().session().get();
         traces.insert(id, trace);
         prefix.insert(id, PrefixOracle::new(fixture));
         active.push_back(lane);
@@ -203,7 +218,7 @@ fn ragged_prefixes(fixture: &Fixture) {
         width as u64
     );
     for lane in &active {
-        let id = lane.session.binding().session().get();
+        let id = lane.engine.binding().session().get();
         prefix.get_mut(&id).unwrap().observe(lane);
         no_prefix_events(&traces[&id]);
     }
@@ -211,7 +226,7 @@ fn ragged_prefixes(fixture: &Fixture) {
         // The real worker admits at most8 active requests. Retire a cancelled
         // teacher row before creating its arrival replacement.
         let cancelled = active.pop_back().unwrap();
-        let id = cancelled.session.binding().session().get();
+        let id = cancelled.engine.binding().session().get();
         cancelled.cancelled.store(true, Ordering::Release);
         assert!(eligible_member(cancelled, &mut VecDeque::new(), &fixture.stats).is_none());
         drop(prefix.remove(&id).unwrap());
@@ -225,7 +240,7 @@ fn ragged_prefixes(fixture: &Fixture) {
         true,
     );
     assert!(arrival.prompt.len() > 2);
-    let arrival_id = arrival.session.binding().session().get();
+    let arrival_id = arrival.engine.binding().session().get();
     traces.insert(arrival_id, trace);
     prefix.insert(arrival_id, PrefixOracle::new(fixture));
     active.push_front(arrival);
@@ -235,7 +250,7 @@ fn ragged_prefixes(fixture: &Fixture) {
         }
         teacher_round(&mut active, &fixture.stats);
         for lane in &active {
-            let id = lane.session.binding().session().get();
+            let id = lane.engine.binding().session().get();
             if let Some(oracle) = prefix.get_mut(&id) {
                 oracle.observe(lane);
                 if lane.cursor == lane.prompt.len() {
@@ -291,9 +306,13 @@ fn traces_row_index(references: &BTreeMap<u64, Reference>, id: u64, arrival: u64
 fn cancel_after_prefix_ready(fixture: &Fixture) {
     let (left, left_trace) = fixture.lane_configured(PROMPTS[0], 2, EVENTS_PER_REQUEST, true);
     let (right, mut right_trace) = fixture.lane_configured(PROMPTS[1], 2, EVENTS_PER_REQUEST, true);
-    let left_saved = left.session.snapshot();
-    let left_root = left.session.binding();
-    let right_root = right.session.binding();
+    let left_saved = left
+        .engine
+        .legacy()
+        .expect("legacy qualification")
+        .snapshot();
+    let left_root = left.engine.binding();
+    let right_root = right.engine.binding();
     let flag = Arc::clone(&left.cancelled);
     let fired = Arc::new(AtomicBool::new(false));
     let seen = Arc::clone(&fired);
@@ -316,8 +335,8 @@ fn cancel_after_prefix_ready(fixture: &Fixture) {
     );
     assert_eq!(active.len(), 1);
     let mut survivor = active.pop_front().unwrap();
-    assert_eq!(survivor.session.binding().session(), right_root.session());
-    assert_eq!(survivor.session.binding().root(), right_root.root() + 1);
+    assert_eq!(survivor.engine.binding().session(), right_root.session());
+    assert_eq!(survivor.engine.binding().root(), right_root.root() + 1);
     assert_eq!(survivor.cursor, 1);
     assert_eq!(left_root.frontier(), 0);
     let empty = QwenDenseCpu::from_shared(Arc::clone(&fixture.source)).unwrap();
@@ -356,7 +375,7 @@ fn cancel_after_prefix_ready(fixture: &Fixture) {
         reference.observe(&survivor);
         no_prefix_events(&right_trace);
     }
-    let id = survivor.session.binding().session().get();
+    let id = survivor.engine.binding().session().get();
     let mut references = BTreeMap::from([(id, reference.into_reference(&survivor))]);
     let mut active = VecDeque::from([survivor]);
     finish(
@@ -376,7 +395,7 @@ fn cancel_after_prefix_ready(fixture: &Fixture) {
 fn parked_decode_does_not_block_prefix(fixture: &Fixture) {
     let (mut decode, mut decode_trace) = fixture.lane_configured("a", 4, 1, true);
     b1_prompt(&mut decode, &fixture.stats);
-    let decode_id = decode.session.binding().session().get();
+    let decode_id = decode.engine.binding().session().get();
     let mut reference = Reference::new(fixture, &decode);
     assert_ne!(reference.packet.id, fixture.model.tokenizer.eos());
     assert!(matches!(
@@ -389,15 +408,19 @@ fn parked_decode_does_not_block_prefix(fixture: &Fixture) {
         decode.step(&fixture.stats).unwrap(),
         MemberStep::Parked
     ));
-    let parked_root = decode.session.binding();
-    let parked_snapshot = decode.session.snapshot();
+    let parked_root = decode.engine.binding();
+    let parked_snapshot = decode
+        .engine
+        .legacy()
+        .expect("legacy qualification")
+        .snapshot();
     let (left, left_trace) = fixture.lane_configured(PROMPTS[0], 2, EVENTS_PER_REQUEST, true);
     let (right, right_trace) = fixture.lane_configured(PROMPTS[1], 2, EVENTS_PER_REQUEST, true);
     let (cancelled, cancelled_trace) =
         fixture.lane_configured(PROMPTS[2], 2, EVENTS_PER_REQUEST, true);
     cancelled.cancelled.store(true, Ordering::Release);
-    let left_id = left.session.binding().session().get();
-    let right_id = right.session.binding().session().get();
+    let left_id = left.engine.binding().session().get();
+    let right_id = right.engine.binding().session().get();
     let mut prefix = BTreeMap::from([
         (left_id, PrefixOracle::new(fixture)),
         (right_id, PrefixOracle::new(fixture)),
@@ -420,13 +443,13 @@ fn parked_decode_does_not_block_prefix(fixture: &Fixture) {
     );
     let parked = active
         .iter()
-        .find(|lane| lane.session.binding().session().get() == decode_id)
+        .find(|lane| lane.engine.binding().session().get() == decode_id)
         .unwrap();
-    assert_eq!(parked.session.binding(), parked_root);
+    assert_eq!(parked.engine.binding(), parked_root);
     assert!(parked.packet_presented && parked.blocked_since.is_some());
     references[&decode_id].snapshot(&parked_snapshot);
     for lane in &active {
-        let id = lane.session.binding().session().get();
+        let id = lane.engine.binding().session().get();
         if let Some(oracle) = prefix.get_mut(&id) {
             oracle.observe(lane);
         }
@@ -445,7 +468,7 @@ fn parked_decode_does_not_block_prefix(fixture: &Fixture) {
         }
         teacher_round(&mut active, &fixture.stats);
         for lane in &active {
-            let id = lane.session.binding().session().get();
+            let id = lane.engine.binding().session().get();
             if let Some(oracle) = prefix.get_mut(&id) {
                 oracle.observe(lane);
                 if lane.cursor == lane.prompt.len() {

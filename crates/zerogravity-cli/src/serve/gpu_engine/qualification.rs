@@ -100,8 +100,8 @@ impl Fixture {
         ))
         .unwrap();
         let model = Arc::new(GpuModel {
-            resident,
-            tokenizer,
+            engine: ModelEngine::Gguf(resident),
+            tokenizer: TextTokenizer::Shared(tokenizer),
             group: 0,
             hidden_width: source.geometry().hidden_size as usize,
             vocabulary_size: source.geometry().vocab_size,
@@ -279,7 +279,15 @@ impl Reference {
         assert_eq!(lane.cursor, lane.prompt.len());
         let mut cpu = QwenDenseCpu::from_shared(Arc::clone(&fixture.source)).unwrap();
         let selected = best(&cpu.prefill_transaction(&lane.prompt).unwrap());
-        let mut gpu = block_on(fixture.model.resident.session()).unwrap();
+        let mut gpu = block_on(
+            fixture
+                .model
+                .engine
+                .legacy_model()
+                .expect("legacy qualification")
+                .session(),
+        )
+        .unwrap();
         let read = block_on(gpu.forward_greedy(&lane.prompt)).unwrap();
         assert!(read.logits.is_empty());
         assert_eq!(read.bytes, 16);
@@ -296,7 +304,7 @@ impl Reference {
         reference
     }
     fn sync(&mut self, lane: &GpuActive) {
-        let position = lane.session.binding().frontier() as usize;
+        let position = lane.engine.binding().frontier() as usize;
         while self.cpu.position() < position {
             let selected = best(&self.cpu.forward(self.packet.id).unwrap());
             let read = block_on(self.gpu.forward_device_token(&self.packet)).unwrap();
@@ -315,7 +323,14 @@ impl Reference {
         let expected = self.cpu.snapshot().domain_values();
         same_domains(
             &expected,
-            &block_on(lane.session.snapshot().read_domains()).unwrap(),
+            &block_on(
+                lane.engine
+                    .legacy()
+                    .expect("legacy qualification")
+                    .snapshot()
+                    .read_domains(),
+            )
+            .unwrap(),
         );
         same_domains(
             &expected,
@@ -389,7 +404,7 @@ fn round(active: &mut VecDeque<GpuActive>, stats: &WaveStats) {
 fn update(active: &VecDeque<GpuActive>, references: &mut BTreeMap<u64, Reference>) {
     for lane in active {
         if lane.cursor == lane.prompt.len() {
-            let id = lane.session.binding().session().get();
+            let id = lane.engine.binding().session().get();
             if let Some(reference) = references.get_mut(&id) {
                 reference.sync(lane);
             }
@@ -421,8 +436,8 @@ fn handoff_and_lengths(fixture: &Fixture) {
     let (mut right, mut right_trace) = fixture.lane("b", 5, EVENTS_PER_REQUEST);
     b1_prompt(&mut left, &fixture.stats);
     b1_prompt(&mut right, &fixture.stats);
-    let left_id = left.session.binding().session().get();
-    let right_id = right.session.binding().session().get();
+    let left_id = left.engine.binding().session().get();
+    let right_id = right.engine.binding().session().get();
     let mut references = BTreeMap::from([
         (left_id, Reference::new(fixture, &left)),
         (right_id, Reference::new(fixture, &right)),
@@ -453,7 +468,7 @@ fn handoff_and_lengths(fixture: &Fixture) {
     assert!(
         active
             .iter()
-            .all(|lane| lane.session.binding().frontier() == 2)
+            .all(|lane| lane.engine.binding().frontier() == 2)
     );
     finish(
         &mut active,
@@ -478,9 +493,13 @@ fn cancel_before_feedback(fixture: &Fixture) {
     let (mut right, mut right_trace) = fixture.lane("b", 3, EVENTS_PER_REQUEST);
     b1_prompt(&mut left, &fixture.stats);
     b1_prompt(&mut right, &fixture.stats);
-    let saved = left.session.snapshot();
+    let saved = left
+        .engine
+        .legacy()
+        .expect("legacy qualification")
+        .snapshot();
     let left_reference = Reference::new(fixture, &left);
-    let right_id = right.session.binding().session().get();
+    let right_id = right.engine.binding().session().get();
     let mut references = BTreeMap::from([(right_id, Reference::new(fixture, &right))]);
     left.cancelled.store(true, Ordering::Release);
     let fused = fixture.stats.fused_batches.load(Ordering::Acquire);
@@ -511,10 +530,14 @@ fn cancel_after_ready(fixture: &Fixture) {
     let (mut right, mut right_trace) = fixture.lane("b", 4, EVENTS_PER_REQUEST);
     b1_prompt(&mut left, &fixture.stats);
     b1_prompt(&mut right, &fixture.stats);
-    let saved = left.session.snapshot();
+    let saved = left
+        .engine
+        .legacy()
+        .expect("legacy qualification")
+        .snapshot();
     let left_reference = Reference::new(fixture, &left);
-    let right_id = right.session.binding().session().get();
-    let initial_right = right.session.binding();
+    let right_id = right.engine.binding().session().get();
+    let initial_right = right.engine.binding();
     let mut references = BTreeMap::from([(right_id, Reference::new(fixture, &right))]);
     let cancel = Arc::clone(&left.cancelled);
     AFTER_COHORT_READY.with(|hook| {
@@ -536,12 +559,12 @@ fn cancel_after_ready(fixture: &Fixture) {
     assert_eq!(active.len(), 1);
     let survivor = &active[0];
     assert_eq!(
-        survivor.session.binding().root(),
+        survivor.engine.binding().root(),
         initial_right.root() + 1,
         "discarded native proposal published before B1 retry"
     );
     assert_eq!(
-        survivor.session.binding().frontier(),
+        survivor.engine.binding().frontier(),
         initial_right.frontier() + 1
     );
     assert_eq!(
@@ -579,8 +602,8 @@ fn credit_park(fixture: &Fixture) {
     let (mut right, mut right_trace) = fixture.lane("b", 8, EVENTS_PER_REQUEST);
     b1_prompt(&mut left, &fixture.stats);
     b1_prompt(&mut right, &fixture.stats);
-    let left_id = left.session.binding().session().get();
-    let right_id = right.session.binding().session().get();
+    let left_id = left.engine.binding().session().get();
+    let right_id = right.engine.binding().session().get();
     let mut references = BTreeMap::from([
         (left_id, Reference::new(fixture, &left)),
         (right_id, Reference::new(fixture, &right)),
@@ -591,18 +614,18 @@ fn credit_park(fixture: &Fixture) {
         update(&active, &mut references);
         right_trace.drain();
         if active.iter().any(|lane| {
-            lane.session.binding().session().get() == left_id && lane.blocked_since.is_some()
+            lane.engine.binding().session().get() == left_id && lane.blocked_since.is_some()
         }) {
             break;
         }
     }
     let parked = active
         .iter()
-        .find(|lane| lane.session.binding().session().get() == left_id)
+        .find(|lane| lane.engine.binding().session().get() == left_id)
         .expect("slow source request finished without a credit boundary");
     assert!(parked.blocked_since.is_some());
     assert!(parked.packet_presented);
-    let binding = parked.session.binding();
+    let binding = parked.engine.binding();
     let packet = parked
         .device_token
         .as_ref()
@@ -613,9 +636,9 @@ fn credit_park(fixture: &Fixture) {
         right_trace.drain();
         let parked = active
             .iter()
-            .find(|lane| lane.session.binding().session().get() == left_id)
+            .find(|lane| lane.engine.binding().session().get() == left_id)
             .unwrap();
-        assert_eq!(parked.session.binding(), binding);
+        assert_eq!(parked.engine.binding(), binding);
         assert_eq!(
             parked
                 .device_token
@@ -684,8 +707,8 @@ fn source_eos(fixture: &Fixture) {
     );
     let (left, mut left_trace) = fixture.lane(&input, 9, EVENTS_PER_REQUEST);
     let (right, mut right_trace) = fixture.lane(&sibling, 12, EVENTS_PER_REQUEST);
-    let left_id = left.session.binding().session().get();
-    let right_id = right.session.binding().session().get();
+    let left_id = left.engine.binding().session().get();
+    let right_id = right.engine.binding().session().get();
     let mut active = VecDeque::from([left, right]);
     let fused_before = fixture.stats.fused_batches.load(Ordering::Acquire);
     for _ in 0..32 {
@@ -705,7 +728,7 @@ fn source_eos(fixture: &Fixture) {
         .iter()
         .map(|lane| {
             (
-                lane.session.binding().session().get(),
+                lane.engine.binding().session().get(),
                 Reference::new(fixture, lane),
             )
         })
@@ -759,7 +782,7 @@ fn observed_lane(
     if b1 {
         b1_prompt(&mut lane, &fixture.stats);
     }
-    let id = lane.session.binding().session().get();
+    let id = lane.engine.binding().session().get();
     (lane, Observed { id, maximum, trace })
 }
 
@@ -768,7 +791,7 @@ fn reference_rows(fixture: &Fixture, active: &VecDeque<GpuActive>) -> BTreeMap<u
         .iter()
         .map(|lane| {
             (
-                lane.session.binding().session().get(),
+                lane.engine.binding().session().get(),
                 Reference::new(fixture, lane),
             )
         })
@@ -820,7 +843,7 @@ fn prior_roots(active: &VecDeque<GpuActive>) -> BTreeMap<u64, (u64, u64)> {
     active
         .iter()
         .map(|lane| {
-            let binding = lane.session.binding();
+            let binding = lane.engine.binding();
             (
                 binding.session().get(),
                 (binding.root(), binding.frontier()),
@@ -831,7 +854,7 @@ fn prior_roots(active: &VecDeque<GpuActive>) -> BTreeMap<u64, (u64, u64)> {
 
 fn require_single_transition(active: &VecDeque<GpuActive>, prior: &BTreeMap<u64, (u64, u64)>) {
     for lane in active {
-        let binding = lane.session.binding();
+        let binding = lane.engine.binding();
         let (root, frontier) = prior[&binding.session().get()];
         assert_eq!(binding.root(), root + 1, "one original root publication");
         assert_eq!(binding.frontier(), frontier + 1, "one consumed token");
@@ -944,7 +967,11 @@ fn wide_cancel_after_ready(fixture: &Fixture) {
     let cancelled_index = width / 2;
     let mut cancelled = observed.remove(cancelled_index);
     let cancelled_reference = references.remove(&cancelled.id).unwrap();
-    let saved = active[cancelled_index].session.snapshot();
+    let saved = active[cancelled_index]
+        .engine
+        .legacy()
+        .expect("legacy qualification")
+        .snapshot();
     let prior = prior_roots(&active);
     let cancel = Arc::clone(&active[cancelled_index].cancelled);
     AFTER_COHORT_READY.with(|hook| {
@@ -962,7 +989,7 @@ fn wide_cancel_after_ready(fixture: &Fixture) {
     assert!(
         active
             .iter()
-            .all(|lane| lane.session.binding().session().get() != cancelled.id)
+            .all(|lane| lane.engine.binding().session().get() != cancelled.id)
     );
     let mut physical = vec![width];
     physical.extend_from_slice(survivor_bands(width));
@@ -1035,7 +1062,7 @@ fn wide_credit_park(fixture: &Fixture) {
             row.trace.drain();
         }
         if active.iter().any(|lane| {
-            lane.session.binding().session().get() == slow_id && lane.blocked_since.is_some()
+            lane.engine.binding().session().get() == slow_id && lane.blocked_since.is_some()
         }) {
             break;
         }
@@ -1047,11 +1074,11 @@ fn wide_credit_park(fixture: &Fixture) {
     );
     let slow = active
         .iter()
-        .find(|lane| lane.session.binding().session().get() == slow_id)
+        .find(|lane| lane.engine.binding().session().get() == slow_id)
         .unwrap();
     assert!(slow.blocked_since.is_some());
     assert!(slow.packet_presented);
-    let binding = slow.session.binding();
+    let binding = slow.engine.binding();
     let token = slow.device_token.as_ref().unwrap();
     let packet = (token.id, token.max_bits);
     for _ in 0..2 {
@@ -1062,7 +1089,7 @@ fn wide_credit_park(fixture: &Fixture) {
         require_bands(&fixture.stats, bands, survivor_bands(width));
         let mut healthy = 0;
         for lane in &active {
-            let current = lane.session.binding();
+            let current = lane.engine.binding();
             if current.session().get() != slow_id {
                 assert_eq!(current.root(), prior[&current.session().get()].0 + 1);
                 assert_eq!(current.frontier(), prior[&current.session().get()].1 + 1);
@@ -1072,9 +1099,9 @@ fn wide_credit_park(fixture: &Fixture) {
         assert_eq!(healthy, width - 1, "every healthy survivor progresses");
         let slow = active
             .iter()
-            .find(|lane| lane.session.binding().session().get() == slow_id)
+            .find(|lane| lane.engine.binding().session().get() == slow_id)
             .unwrap();
-        assert_eq!(slow.session.binding(), binding);
+        assert_eq!(slow.engine.binding(), binding);
         assert!(slow.packet_presented && slow.blocked_since.is_some());
         let token = slow.device_token.as_ref().unwrap();
         assert_eq!((token.id, token.max_bits), packet);
@@ -1213,7 +1240,7 @@ fn unequal_arrival_metrics(name: &str) {
     // decoding before the second request is created.
     let (mut first, mut first_trace) = fixture.lane_configured("a b c d e f g h", 8, 1, true);
     b1_prompt(&mut first, &fixture.stats);
-    let first_id = first.session.binding().session().get();
+    let first_id = first.engine.binding().session().get();
     let mut first_reference = Reference::new(&fixture, &first);
     assert_ne!(
         first.device_token.as_ref().unwrap().id,
@@ -1229,13 +1256,13 @@ fn unequal_arrival_metrics(name: &str) {
         MemberStep::Parked
     ));
     assert!(first.packet_presented && first.blocked_since.is_some());
-    let parked = first.session.binding();
+    let parked = first.engine.binding();
 
     let (mut second, mut second_trace) = fixture.lane_configured("b", 6, EVENTS_PER_REQUEST, true);
     b1_prompt(&mut second, &fixture.stats);
-    let second_id = second.session.binding().session().get();
+    let second_id = second.engine.binding().session().get();
     assert_ne!(first.prompt.len(), second.prompt.len());
-    assert_ne!(parked.frontier(), second.session.binding().frontier());
+    assert_ne!(parked.frontier(), second.engine.binding().frontier());
     let second_reference = Reference::new(&fixture, &second);
     assert_ne!(
         second.device_token.as_ref().unwrap().id,

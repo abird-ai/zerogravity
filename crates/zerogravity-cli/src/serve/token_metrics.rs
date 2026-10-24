@@ -63,6 +63,9 @@ impl TokenMetrics {
             || token.commit_observed_at > received
             || token.gpu.is_some_and(|gpu| {
                 gpu.producer_frontier == 0
+                    || gpu
+                        .producer_root
+                        .is_some_and(|root| root.session_id == 0 || root.root == 0)
                     || gpu.native_cohort.is_some_and(|cohort| {
                         cohort.publication_sequence == 0 || !matches!(cohort.width, 2 | 4 | 8)
                     })
@@ -93,6 +96,15 @@ impl TokenMetrics {
             && match (last.gpu, token.gpu) {
                 (Some(a), Some(b)) => {
                     a.producer_frontier.checked_add(1) != Some(b.producer_frontier)
+                        || match (a.producer_root, b.producer_root) {
+                            (Some(a), Some(b)) => {
+                                a.session_id != b.session_id
+                                    || a.session_epoch != b.session_epoch
+                                    || a.root.checked_add(1) != Some(b.root)
+                            }
+                            (None, None) => false,
+                            _ => true,
+                        }
                 }
                 (None, None) => false,
                 _ => true,
@@ -328,6 +340,7 @@ mod tests {
                     commit_observed_at: started,
                     gpu: Some(GpuTokenObservation {
                         producer_frontier: 11 + index as u64,
+                        producer_root: None,
                         native_cohort,
                     }),
                 })
@@ -342,6 +355,7 @@ mod tests {
                     commit_observed_at: started,
                     gpu: Some(GpuTokenObservation {
                         producer_frontier: 12,
+                        producer_root: None,
                         native_cohort: None
                     })
                 })
@@ -358,10 +372,12 @@ mod tests {
         for gpu in [
             GpuTokenObservation {
                 producer_frontier: 0,
+                producer_root: None,
                 native_cohort: None,
             },
             GpuTokenObservation {
                 producer_frontier: 1,
+                producer_root: None,
                 native_cohort: Some(NativeCohortObservation {
                     publication_sequence: 0,
                     width: 2,
@@ -369,6 +385,7 @@ mod tests {
             },
             GpuTokenObservation {
                 producer_frontier: 1,
+                producer_root: None,
                 native_cohort: Some(NativeCohortObservation {
                     publication_sequence: 1,
                     width: 3,

@@ -33,7 +33,10 @@ fn regroup(
         .filter_map(|row| eligible_member(row, active, stats))
         .collect::<Vec<_>>();
     if native_rows == 0 {
-        if phase == Phase::Prefill && eligible.len() > 1 {
+        if phase == Phase::Prefill
+            && eligible.len() > 1
+            && eligible.iter().all(|row| !row.engine.is_canonical())
+        {
             execute(eligible, active, stats, phase, 0, false);
         } else {
             for row in eligible {
@@ -99,14 +102,21 @@ fn execute(
         return;
     }
     let Some(first) = members.first() else { return };
-    let model = Arc::clone(&first.resident);
+    let Some(model) = first.engine.legacy_model().cloned() else {
+        for row in members {
+            advance_member(row, active, stats);
+        }
+        return;
+    };
     let roots = members
         .iter()
-        .map(|row| row.session.binding())
+        .map(|row| row.engine.binding())
         .collect::<Vec<_>>();
     let valid = ResidentBatchRows::new(&roots, first.hidden_width).and_then(|batch| {
         if members.iter().any(|row| {
-            !Arc::ptr_eq(&row.resident, &model)
+            !row.engine
+                .legacy_model()
+                .is_some_and(|resident| Arc::ptr_eq(resident, &model))
                 || row.hidden_width != batch.row_elements()
                 || (phase == Phase::Prefill
                     && (row.cursor >= row.prompt.len()
@@ -142,7 +152,7 @@ fn execute(
             .iter()
             .map(|row| {
                 (
-                    &row.session,
+                    row.engine.legacy().expect("validated legacy cohort"),
                     row.device_token.as_ref().expect("validated packet"),
                 )
             })
@@ -151,7 +161,12 @@ fn execute(
     } else {
         let inputs = members
             .iter()
-            .map(|row| (&row.session, row.prompt[row.cursor]))
+            .map(|row| {
+                (
+                    row.engine.legacy().expect("validated legacy cohort"),
+                    row.prompt[row.cursor],
+                )
+            })
             .collect::<Vec<_>>();
         if state_only {
             block_on(model.prepare_state_fused_cohort_admitted(&inputs))
@@ -222,7 +237,7 @@ fn execute(
     }
     let mut originals = members
         .iter_mut()
-        .map(|row| &mut row.session)
+        .map(|row| row.engine.legacy_mut().expect("validated legacy cohort"))
         .collect::<Vec<_>>();
     let published = cohort.commit(&mut originals);
     let commit_observed_at = Instant::now();
