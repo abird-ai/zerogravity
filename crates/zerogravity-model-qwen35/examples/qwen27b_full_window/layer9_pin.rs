@@ -1,0 +1,7 @@
+use super::super::super::reference_pin::Pin;
+// Distinct ROOT-verified prefix expectation; no Rust/math authority.
+pub(super) const ACTUAL_REFERENCE: Option<Pin> = Some(Pin {
+    path: "/home/pvl/spaces/abird/src/zerogravity-worktrees/qwen27b-attention-tail-20261022/.agents/runs/model-execution-qwen27b-layer9-causal-source-20261023/accepted-original-layer9-prefix-1.json",
+    bytes: 14593,
+    sha256: "4caffb384f0a67b20bb3a81aded8fc151b4bfd949659aab28cb2d5bf7a02b657",
+});

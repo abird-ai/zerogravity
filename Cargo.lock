@@ -5683,7 +5683,7 @@ dependencies = [
 name = "zerogravity-model-qwen35"
 version = "0.1.0"
 dependencies = [
- "serde_json",
+ "libc", "serde_json",
  "sha2",
  "tokenizers",
  "zerogravity-artifacts",

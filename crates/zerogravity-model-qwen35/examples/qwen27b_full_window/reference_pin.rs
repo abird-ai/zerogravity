@@ -1,0 +1,11 @@
+pub(super) struct Pin {
+    pub path: &'static str,
+    pub bytes: u64,
+    pub sha256: &'static str,
+}
+// Accepted original-only reference. This grants no Rust/math/native eligibility.
+pub(super) const ACTUAL_REFERENCE: Option<Pin> = Some(Pin {
+    path: "/home/pvl/spaces/abird/src/zerogravity-worktrees/qwen27b-attention-tail-20261022/.agents/runs/model-execution-qwen27b-full-reference-source-20261023/accepted-original-full-window-1.json",
+    bytes: 13214,
+    sha256: "2a81216ede102c8b0c22c082332f62f38bf0bb2f326298e519f34ed20fc3e3d7",
+});

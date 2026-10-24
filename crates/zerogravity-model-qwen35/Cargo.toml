@@ -24,3 +24,19 @@ tokenizers = { version = "=0.22.2", default-features = false, features = ["fancy
 [dev-dependencies]
 serde_json = "=1.0.151"
 sha2 = "=0.10.9"
+libc = "=0.2.190"
+
+[[example]]
+name = "qwen27b_output_tail"
+path = "examples/qwen27b_output_tail.rs"
+required-features = ["cpu", "original-hf-binding"]
+
+[[example]]
+name = "qwen27b_attention_tail"
+path = "examples/qwen27b_attention_tail.rs"
+required-features = ["cpu", "original-hf-binding"]
+
+[[example]]
+name = "qwen27b_full_window"
+path = "examples/qwen27b_full_window.rs"
+required-features = ["cpu", "original-hf-binding"]
