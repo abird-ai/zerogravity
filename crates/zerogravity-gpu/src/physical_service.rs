@@ -60,15 +60,28 @@ fn checked_caps(reported: Option<u64>, operator: u64, provider: u64) -> Result<(
     Ok(())
 }
 
+#[cfg(any(test, all(feature = "qualification", feature = "hip")))]
+mod native_context;
+#[cfg(all(feature = "qualification", feature = "hip"))]
+pub(crate) use native_context::NativeContextBudget;
+
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+mod cuda_compiler_context;
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub(crate) use cuda_compiler_context::{
+    CUDA_COMPILER_DEVICE_BYTES, CUDA_COMPILER_HOST_BYTES, CudaCompilerContextBudget,
+};
+
 pub struct PhysicalServiceBudget {
     client: Client,
     key: PhysicalDeviceKey,
     total_limit: u64,
     provider_cap: u64,
     owner_model: String,
+    model_closed: Option<Arc<AtomicBool>>,
     // Conservatively charges the whole provider cap once, not again at each
     // source weight / activation / output suballocation.
-    lease: GlobalResourceLease,
+    lease: Arc<GlobalResourceLease>,
     fence_flag: Arc<AtomicBool>,
 }
 
@@ -102,7 +115,8 @@ impl PhysicalServiceBudget {
             total_limit: operator_device_cap,
             provider_cap,
             owner_model: owner.model.clone(),
-            lease,
+            model_closed: None,
+            lease: Arc::new(lease),
             fence_flag: Arc::new(AtomicBool::new(false)),
         })
     }
@@ -110,6 +124,15 @@ impl PhysicalServiceBudget {
     /// This verification also catches a provider accidentally switching
     /// CubeCL services after its physical envelope was admitted.
     pub fn begin<'a>(&'a self, client: &Client) -> Result<PhysicalWork<'a>> {
+        if self
+            .model_closed
+            .as_ref()
+            .is_some_and(|closed| closed.load(Ordering::Acquire))
+        {
+            return Err(Error::State(
+                "source model admission closed before physical work".into(),
+            ));
+        }
         if client.service_id() != self.client.service_id()
             || physical_key(client.properties().identity.physical.as_ref())? != self.key
             || client
@@ -139,7 +162,13 @@ impl PhysicalServiceBudget {
     /// Proof of pre-existing physical charge for this model and card. The
     /// noncloneable owning lease remains inside this live service object.
     pub fn prepaid_bytes_for(&self, key: &PhysicalDeviceKey, owner: &ResourceOwner) -> Result<u64> {
-        if key != &self.key || owner.model != self.owner_model {
+        if key != &self.key
+            || owner.model != self.owner_model
+            || self
+                .model_closed
+                .as_ref()
+                .is_some_and(|closed| closed.load(Ordering::Acquire))
+        {
             return Err(Error::State(
                 "GPU queued work belongs to another model or physical card".into(),
             ));
@@ -150,6 +179,72 @@ impl PhysicalServiceBudget {
         Ok(self.provider_cap)
     }
 
+    /// Partition while exclusively owned, before local admission/submission.
+    /// The backend policy supplies this fixed context allowance; model adapters
+    /// cannot construct the persistent proof or grow it during execution.
+    #[cfg(all(feature = "qualification", feature = "hip"))]
+    pub(crate) fn partition_native_context(
+        &mut self,
+        policy: Arc<str>,
+        bytes: u64,
+    ) -> Result<Arc<NativeContextBudget>> {
+        let remainder = self
+            .provider_cap
+            .checked_sub(bytes)
+            .filter(|n| *n != 0)
+            .ok_or_else(|| Error::Limit("native context must leave model capacity".into()))?;
+        let lease = Arc::get_mut(&mut self.lease).ok_or_else(|| {
+            Error::State("native context partition requires exclusive envelope".into())
+        })?;
+        let context = NativeContextBudget::partition(
+            lease,
+            self.key.clone(),
+            self.client.service_id(),
+            self.fence_flag.clone(),
+            policy,
+            bytes,
+        )?;
+        self.provider_cap = remainder;
+        Ok(context)
+    }
+
+    pub(crate) fn provider_capacity(&self) -> u64 {
+        self.provider_cap
+    }
+
+    /// Same original physical envelope, detached from Client/actor lifetime.
+    pub(crate) fn retained_envelope(&self) -> Arc<GlobalResourceLease> {
+        self.lease.clone()
+    }
+
+    // Called only after the original resident ledger registered this model quota.
+    pub(crate) fn source_binding(
+        &self,
+        owner: ResourceOwner,
+        cap: u64,
+        closed: Arc<AtomicBool>,
+    ) -> Result<Self> {
+        if cap == 0 || cap > self.provider_cap || owner.model.is_empty() || owner.session.is_empty()
+        {
+            return Err(Error::Limit(
+                "source view exceeds original physical envelope".into(),
+            ));
+        }
+        self.prepaid_bytes_for(
+            &self.key,
+            &ResourceOwner::new(&self.owner_model, "physical-owner")?,
+        )?;
+        Ok(Self {
+            client: self.client.clone(),
+            key: self.key.clone(),
+            total_limit: self.total_limit,
+            provider_cap: cap,
+            owner_model: owner.model,
+            model_closed: Some(closed),
+            lease: self.lease.clone(),
+            fence_flag: self.fence_flag.clone(),
+        })
+    }
     pub fn remaining(&self) -> Result<u64> {
         Ok(ResourceArbiter::process_shared()
             .snapshot(&self.key)?
@@ -191,6 +286,28 @@ impl Drop for PhysicalWork<'_> {
             }
         }
     }
+}
+
+/// Intentional execution bootstrap only. Unlike device inventory this creates
+/// the original runtime Client/primary context. Existing finite profiles retain
+/// their documented pre-admission context gap; this grants no memory budget.
+#[cfg(feature = "cuda")]
+pub fn initialize_cuda_physical_identity(device: &cubecl::Device) -> Result<PhysicalDeviceKey> {
+    if !matches!(device, cubecl::Device::Cuda(_)) {
+        return Err(Error::Unsupported(
+            "CUDA identity bootstrap requires CUDA device".into(),
+        ));
+    }
+    crate::backend::validate_provider(device)?;
+    let client = device.client();
+    physical_key(client.properties().identity.physical.as_ref())
+}
+
+/// Read-only SDK metadata refusal before intentional CUDA Client bootstrap.
+#[cfg(feature = "cuda")]
+pub fn validate_cuda_compiler_environment() -> Result<()> {
+    cubecl::cuda::CudaCompilerContextPolicy::validate_sdk_configuration()
+        .map_err(|s| Error::Unsupported(s.into()))
 }
 
 #[cfg(test)]
