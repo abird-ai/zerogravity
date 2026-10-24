@@ -92,20 +92,7 @@ fn object_id(id: &str) -> Result<()> {
     Ok(())
 }
 pub(super) fn repository(repository: &str) -> Result<()> {
-    let parts: Vec<_> = repository.split('/').collect();
-    if parts.len() != 2
-        || parts.iter().any(|p| {
-            p.is_empty()
-                || p.len() > 100
-                || p.starts_with('.')
-                || !p
-                    .bytes()
-                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'-'))
-        })
-    {
-        return Err(malformed());
-    }
-    Ok(())
+    crate::cache::provenance::validate_repository("github", repository)
 }
 fn component(value: &str) -> String {
     let mut result = String::new();

@@ -732,21 +732,7 @@ fn metadata_checked(
 }
 
 pub(super) fn validate_repo(repo: &str) -> Result<()> {
-    let parts: Vec<_> = repo.split('/').collect();
-    if parts.is_empty()
-        || parts.len() > 2
-        || parts.iter().any(|p| {
-            p.is_empty()
-                || *p == "."
-                || *p == ".."
-                || !p
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b"_-.".contains(&b))
-        })
-    {
-        return Err(Error::Malformed("invalid HF repository identifier".into()));
-    }
-    Ok(())
+    crate::cache::provenance::validate_repository("huggingface", repo)
 }
 
 fn make_url(base: &Url, parts: &[&str]) -> Result<Url> {

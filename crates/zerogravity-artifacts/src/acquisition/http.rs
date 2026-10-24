@@ -1599,17 +1599,7 @@ pub(super) fn parse_provider_origin(value: &str) -> Result<Url> {
 }
 
 pub(super) fn parse_url(value: &str, loopback: bool) -> Result<Url> {
-    if value.len() > 16 * 1024 {
-        return Err(Error::Limit("HTTP URL limit".into()));
-    }
-    let parsed = Url::parse(value).map_err(|_| Error::Malformed("invalid HTTPS URL".into()))?;
-    if !parsed.username().is_empty()
-        || parsed.password().is_some()
-        || parsed.fragment().is_some()
-        || parsed.host_str().is_none()
-    {
-        return Err(Error::Malformed("invalid HTTPS authority".into()));
-    }
+    let parsed = parse_url_syntax(value)?;
     if loopback {
         if !matches!(parsed.scheme(), "http" | "https")
             || !matches!(parsed.host(), Some(url::Host::Ipv4(ip)) if ip.is_loopback())
@@ -1621,6 +1611,30 @@ pub(super) fn parse_url(value: &str, loopback: bool) -> Result<Url> {
         }
     } else if parsed.scheme() != "https" {
         return Err(Error::Unsupported("HTTPS required".into()));
+    }
+    Ok(parsed)
+}
+
+// Locator syntax only; this grants no request capability or network access.
+pub(super) fn parse_cached_url(value: &str) -> Result<Url> {
+    let parsed = parse_url_syntax(value)?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(Error::Unsupported("HTTP or HTTPS locator required".into()));
+    }
+    Ok(parsed)
+}
+
+fn parse_url_syntax(value: &str) -> Result<Url> {
+    if value.len() > 16 * 1024 {
+        return Err(Error::Limit("HTTP URL limit".into()));
+    }
+    let parsed = Url::parse(value).map_err(|_| Error::Malformed("invalid HTTPS URL".into()))?;
+    if !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.fragment().is_some()
+        || parsed.host_str().is_none()
+    {
+        return Err(Error::Malformed("invalid HTTPS authority".into()));
     }
     Ok(parsed)
 }

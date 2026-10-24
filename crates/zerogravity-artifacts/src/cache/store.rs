@@ -21,6 +21,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, GlobalResourceLease};
 
+#[path = "store/metadata.rs"]
+mod metadata;
+pub use metadata::{CacheMetadata, SnapshotMetadata};
+
 const UNIT: u64 = 4096;
 const MAX_NODES: usize = 131_072;
 const CONTROL_LIMIT: usize = 4096;

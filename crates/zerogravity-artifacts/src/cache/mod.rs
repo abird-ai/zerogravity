@@ -10,6 +10,7 @@ pub mod import_hf;
 mod leases;
 pub mod manifest;
 pub mod paths;
+pub mod provenance;
 mod store;
 
 pub use leases::SnapshotLease;
@@ -17,8 +18,8 @@ pub use manifest::{
     CacheLimits, DigestProvenance, FileRole, Manifest, ManifestEntry, ManifestSource,
 };
 pub use store::{
-    CacheStore, CacheTransaction, DiscoveredEntry, DiscoveredObject, DiscoveredTransaction,
-    PartialObject,
+    CacheMetadata, CacheStore, CacheTransaction, DiscoveredEntry, DiscoveredObject,
+    DiscoveredTransaction, PartialObject, SnapshotMetadata,
 };
 
 /// An established length or an explicit reservation bound. A bound is never

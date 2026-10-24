@@ -52,12 +52,27 @@ impl HttpsObjectSpec {
                 "HTTPS object requires a bare origin".into(),
             ));
         }
-        let origin = parsed.origin().ascii_serialization();
+        Self::from_normalized_origin(
+            parsed.origin().ascii_serialization(),
+            path.as_ref(),
+            role,
+            bytes,
+            sha256.as_ref(),
+        )
+    }
+
+    // Same historical tuple as new(), including diagnostic HTTP contracts.
+    // This helper performs no network authorization or request construction.
+    fn from_normalized_origin(
+        origin: String,
+        path: &str,
+        role: FileRole,
+        bytes: u64,
+        sha256: &str,
+    ) -> Result<Self> {
         if origin.len() > MAX_ORIGIN_BYTES {
             return Err(Error::Limit("HTTPS object normalized origin limit".into()));
         }
-        let path = path.as_ref();
-        let sha256 = sha256.as_ref();
         validate_relative_path(path)?;
         validate_digest(sha256)?;
         let path = path.to_owned();
@@ -92,6 +107,30 @@ impl HttpsObjectSpec {
             sha256,
             source,
         })
+    }
+
+    /// Validate a transient locator without opening cache or contacting origin.
+    pub fn validate_cached_locator(url: &str) -> Result<()> {
+        parse_object_locator(url, true).map(|_| ())
+    }
+
+    /// Reconstruct an already cached immutable contract from a transient
+    /// locator. No request or URL path/query persistence occurs.
+    pub fn cached_locator(
+        url: &str,
+        path: &str,
+        role: FileRole,
+        bytes: u64,
+        sha256: &str,
+    ) -> Result<Self> {
+        let parsed = parse_object_locator(url, true)?;
+        Self::from_normalized_origin(
+            parsed.origin().ascii_serialization(),
+            path,
+            role,
+            bytes,
+            sha256,
+        )
     }
 
     /// Normalized origin for explicit credential scoping. No download path,
@@ -281,6 +320,9 @@ fn check_cancel(cancel: &AtomicBool) -> Result<()> {
 }
 
 fn parse_object_url(value: &str) -> Result<Url> {
+    parse_object_locator(value, false)
+}
+fn parse_object_locator(value: &str, cached: bool) -> Result<Url> {
     if value.len() > MAX_URL_BYTES {
         return Err(Error::Limit("HTTPS object URL limit".into()));
     }
@@ -295,6 +337,9 @@ fn parse_object_url(value: &str) -> Result<Url> {
     // that spelling, so inspecting parsed username alone would miss it.
     if authority.contains('@') {
         return Err(Error::Malformed("HTTPS object userinfo refused".into()));
+    }
+    if cached {
+        return http::parse_cached_url(value);
     }
     let diagnostic_http = cfg!(feature = "diagnostic-acquisition")
         && value
@@ -598,6 +643,64 @@ mod tests {
                 &AtomicBool::new(false)
             )
             .is_err()
+        );
+        released(&admission);
+    }
+
+    #[test]
+    fn cached_locators_preserve_contract_without_authorizing_http() {
+        let locator = "http://example.test/transient/model.yaml?token=secret";
+        let cached = HttpsObjectSpec::cached_locator(
+            locator,
+            PATH,
+            FileRole::Auxiliary,
+            DATA.len() as u64,
+            &hash(DATA),
+        )
+        .unwrap();
+        assert_eq!(cached.origin(), "http://example.test");
+        let alternate = HttpsObjectSpec::cached_locator(
+            "http://example.test/another?token=other",
+            PATH,
+            FileRole::Auxiliary,
+            DATA.len() as u64,
+            &hash(DATA),
+        )
+        .unwrap();
+        assert_eq!(cached.source(), alternate.source());
+        for different in ["https://example.test", "http://different.test"] {
+            let other = HttpsObjectSpec::cached_locator(
+                different,
+                PATH,
+                FileRole::Auxiliary,
+                DATA.len() as u64,
+                &hash(DATA),
+            )
+            .unwrap();
+            assert_ne!(cached.source(), other.source());
+        }
+        for invalid in [
+            "ftp://example.test/a",
+            "http://user@example.test/a",
+            "http://@example.test/a",
+            "http://example.test/a#fragment",
+            "http:///",
+            "http://example.test/\\a",
+            " http://example.test",
+        ] {
+            assert!(HttpsObjectSpec::validate_cached_locator(invalid).is_err());
+        }
+        assert!(parse_object_url(locator).is_err());
+        let admission = memory(128 * 1024 * 1024);
+        assert!(
+            cached
+                .prepare(
+                    locator,
+                    &PullLimits::default(),
+                    &admission,
+                    &AtomicBool::new(false)
+                )
+                .is_err()
         );
         released(&admission);
     }
