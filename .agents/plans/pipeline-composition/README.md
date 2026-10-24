@@ -3,6 +3,18 @@ Co-authors: GPT-6
 
 # Zerogravity — one fabric, single-model and multi-model pipelines
 
+**21 Oct design extension:** [recursive regions and profiles](REGIONS_AND_PROFILES.md)
+specifies primitives, nested mathematical/task pipelines and orthogonal resolved
+profiles. It extends the existing composition contract; recursive execution,
+profile selection and its optimized regions remain unimplemented/unqualified.
+Current source parity and benchmark work proceed independently.
+
+**23 Oct architecture review:** [shared execution boundaries](SHARED_EXECUTION_ARCHITECTURE.md)
+reconciles the existing designs with current source. Keep one semantic plan and
+one prepared physical plan. Extract reusable operations and family recipes before
+adding more model-specific dispatch. The first call-geometry/Gemma consumer
+extraction is source-integrated; assembled validation remains pending.
+
 **Decision date:** 18 October 2026. This is the canonical product intent.
 **Implementation status:** source-neutral model registry, typed component
 extension schemas, canonical YAML/CLI graph compiler, immutable in-memory
