@@ -133,7 +133,7 @@ fn validate(
 // Source multi_row_sum size=width/32, four Vec8 groups, level_step16.
 // Size<=160 never reaches the next256-iteration carry. Preserve remaining
 // zero levels, ordered group/lane finish, and final StoreAccumulate(+0).
-fn sum_row(row: &[f32]) -> f32 {
+pub(crate) fn sum_row(row: &[f32]) -> f32 {
     let mut subtotal = [[0.0f32; 8]; 4];
     let mut carry = [[0.0f32; 8]; 4];
     for (iteration, values) in row.chunks_exact(32).enumerate() {
@@ -209,7 +209,7 @@ pub fn ordinary_rms(
         .collect::<Vec<_>>();
     let inverse_f32 = denominator_f32
         .iter()
-        .map(|value| 1.0f32 / value.sqrt())
+        .map(|&value| super::reciprocal_sqrt_f32(value))
         .collect::<Vec<_>>();
     finite(&mean_f32)?;
     finite(&denominator_f32)?;

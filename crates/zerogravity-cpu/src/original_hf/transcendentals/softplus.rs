@@ -39,66 +39,7 @@ use super::{MAX_ELEMENTS, SPAN, sleef_exp_finite_lane};
 use crate::accelerator::SourceIdentity;
 use crate::{Error, Result};
 
-#[derive(Clone, Copy)]
-struct Compensated {
-    high: f32,
-    low: f32,
-}
-
-impl Compensated {
-    // Source dfadd_vf2_vf_vf; operand order is part of this closed algorithm.
-    fn sum(left: f32, right: f32) -> Self {
-        let high = left + right;
-        Self {
-            high,
-            low: (left - high) + right,
-        }
-    }
-
-    fn add_pair(self, other: Self) -> Self {
-        let high = self.high + other.high;
-        Self {
-            high,
-            low: (((self.high - high) + other.high) + self.low) + other.low,
-        }
-    }
-
-    fn add_scalar(self, other: f32) -> Self {
-        let high = self.high + other;
-        Self {
-            high,
-            low: ((self.high - high) + other) + self.low,
-        }
-    }
-
-    fn multiply_scalar(self, other: f32) -> Self {
-        let high = self.high * other;
-        Self {
-            high,
-            low: self.low.mul_add(other, self.high.mul_add(other, -high)),
-        }
-    }
-
-    fn scale(self, other: f32) -> Self {
-        Self {
-            high: self.high * other,
-            low: self.low * other,
-        }
-    }
-
-    fn divide(self, denominator: Self) -> Self {
-        // Source dfdiv FMA_SP path, including both numerator components.
-        let reciprocal = 1.0f32 / denominator.high;
-        let high = self.high * reciprocal;
-        let residual = reciprocal.mul_add(self.high, -high);
-        let correction =
-            (-denominator.low).mul_add(reciprocal, (-denominator.high).mul_add(reciprocal, 1.0));
-        Self {
-            high,
-            low: high.mul_add(correction, self.low.mul_add(reciprocal, residual)),
-        }
-    }
-}
+use super::compensated::Compensated;
 
 // Only the nonlinear softplus branch calls this lane: exp(x), x<=20, is
 // nonnegative and below2^30. dp1 is normal, and SLEEF's very-large-log and

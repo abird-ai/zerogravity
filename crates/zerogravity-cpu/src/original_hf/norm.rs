@@ -7,6 +7,7 @@
 
 mod ordinary;
 
+pub(crate) use ordinary::sum_row;
 pub use ordinary::{OrdinaryRms, ordinary_rms};
 
 use super::reduction::sum_inner_128;
@@ -92,7 +93,7 @@ fn validate(
     Ok(gamma)
 }
 
-fn round_bf16(value: f32) -> Result<f32> {
+pub(crate) fn round_bf16(value: f32) -> Result<f32> {
     if !value.is_finite() {
         return Err(Error::Malformed("nonfinite pinned head RMS value".into()));
     }
@@ -103,6 +104,12 @@ fn round_bf16(value: f32) -> Result<f32> {
         return Err(Error::Limit("pinned head RMS BF16 overflow".into()));
     }
     Ok(rounded)
+}
+
+/// ATen PowKernel special-cases scalar-0.5 to rsqrt_kernel: sqrt then1/div.
+/// Same scalar/Vec8 FP32 operation, without libm pow, under the caller's source seal.
+pub(crate) fn reciprocal_sqrt_f32(value: f32) -> f32 {
+    1.0f32 / value.sqrt()
 }
 
 /// Original contiguous `[head,128]` BF16 core and rank1 F32 source gamma128.
@@ -125,7 +132,7 @@ pub fn head_rms_128(
     for (row, sum) in core.chunks_exact(WIDTH).zip(sums) {
         let row_mean = sum / WIDTH as f32;
         let denominator = row_mean + EPSILON;
-        let row_inverse = 1.0f32 / denominator.sqrt();
+        let row_inverse = reciprocal_sqrt_f32(denominator);
         if !denominator.is_finite() || !row_inverse.is_finite() {
             return Err(Error::Malformed("nonfinite pinned head RMS inverse".into()));
         }
@@ -341,5 +348,19 @@ mod tests {
             exact(result.weighted_fp32(), &weighted);
         }
         assert_eq!(cursor, bytes.len());
+    }
+}
+
+#[cfg(test)]
+mod reciprocal_sqrt_tests {
+    use super::*;
+    #[test]
+    fn pow_negative_half_uses_sqrt_then_division_rounding() {
+        let epsilon = 1e-6f32;
+        assert_eq!(reciprocal_sqrt_f32(epsilon).to_bits(), 0x4479ffff);
+        assert_eq!(epsilon.powf(-0.5).to_bits(), 0x447a0000);
+        assert_eq!(reciprocal_sqrt_f32(1.0), 1.0);
+        assert_eq!(reciprocal_sqrt_f32(4.0), 0.5);
+        assert_eq!(reciprocal_sqrt_f32(f32::INFINITY).to_bits(), 0);
     }
 }
