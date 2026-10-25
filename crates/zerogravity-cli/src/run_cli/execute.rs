@@ -131,9 +131,15 @@ fn gguf(
     }
     let explanation = serde_json::json!({"schema":"zerogravity.run.decision.v1","source":selected.source_label,"target":selected.model_target,"backend":request.backend.label(),"selected":decision.as_ref().map(|d|&d.0),"context":request.task.context,"resolved_device_policy":format!("{:?}",request.devices),"resolved_headroom":format!("{:?}",request.headroom),"numerical":request.numerical,"max_tokens":request.task.max_tokens,"raw":request.task.raw,"prompt_bytes":request.task.prompt.as_ref().map(String::len),"prefill_chunk":request.task.prefill_chunk,"planning_bytes":selected.planning_bytes,"planning_scope":"conservative CPU source/state/temporary planning; original source and logical-state admissions remain independent; no OS hard RAM guarantee","availability_observed_unix_ms":inventory.observed_unix_ms,"excluded":exclusions,"speculation":"off (no qualified measured speculative route)","source_verified":false,"model_execution_qualified_by_metadata":false,"provenance":request.provenance.iter().map(|(k,v)|(k,format!("{v:?}"))).collect::<BTreeMap<_,_>>()});
     if request.diagnostics.dry_run {
+        // Ordering invariant: no register/admit/stdin read/audit-file open
+        // may precede this return; NVML init and cuDevice enumeration stay
+        // permitted (bounded read-only observation).
+        let mut trace = explanation.clone();
+        trace["dry_run"] = serde_json::json!(true);
+        trace["reservation"] = serde_json::json!("none");
         println!(
             "{}",
-            serde_json::to_string_pretty(&explanation).map_err(|e| Error::State(e.to_string()))?
+            serde_json::to_string_pretty(&trace).map_err(|e| Error::State(e.to_string()))?
         );
         return if decision.is_some() {
             Ok(())

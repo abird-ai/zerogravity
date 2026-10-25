@@ -169,11 +169,7 @@ pub(super) fn parse(args: &[String], alias: Option<&str>) -> Result<Arguments> {
         ));
     }
     if let Some(v) = a.positional.take() {
-        if !SourceSelector::has_provider_scheme(&v)
-            && Path::new(&v)
-                .extension()
-                .is_some_and(|e| e == "yaml" || e == "yml")
-        {
+        if SourceSelector::implies_run_document(&v)? {
             a.config = Some(v)
         } else {
             a.model = Some(v)

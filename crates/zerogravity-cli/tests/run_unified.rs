@@ -72,8 +72,8 @@ fn gguf() -> Vec<u8> {
     header.extend(payload);
     header
 }
-fn fixture() -> Fixture {
-    let root = std::env::temp_dir().join(format!("zg-unified-{}", std::process::id()));
+fn fixture_named(tag: &str) -> Fixture {
+    let root = std::env::temp_dir().join(format!("zg-unified-{tag}-{}", std::process::id()));
     assert!(!root.exists());
     std::fs::create_dir(&root).unwrap();
     std::fs::write(root.join("model.gguf"), gguf()).unwrap();
@@ -81,6 +81,23 @@ fn fixture() -> Fixture {
     std::fs::write(root.join("tokenizer.json"),serde_json::to_vec(&json!({"version":"1.0","truncation":null,"padding":null,"added_tokens":[{"id":1,"content":"<|im_start|>","single_word":false,"lstrip":false,"rstrip":false,"normalized":false,"special":true},{"id":2,"content":"<|im_end|>","single_word":false,"lstrip":false,"rstrip":false,"normalized":false,"special":true}],"normalizer":null,"pre_tokenizer":{"type":"Whitespace"},"post_processor":null,"decoder":null,"model":{"type":"WordLevel","vocab":{"a":0,"<|im_start|>":1,"<|im_end|>":2,"[UNK]":3},"unk_token":"[UNK]"}})).unwrap()).unwrap();
     Fixture(root)
 }
+fn fixture() -> Fixture {
+    fixture_named("main")
+}
+/// Deterministic direct-CPU run flags shared by every scenario in this file.
+const COMMON: [&str; 11] = [
+    "--prompt",
+    "a",
+    "--raw",
+    "--max-tokens",
+    "1",
+    "--context",
+    "8",
+    "--headroom",
+    "0",
+    "--device",
+    "cpu:0",
+];
 fn run(root: &Path, args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_zerogravity"))
         .args(args)
@@ -338,6 +355,7 @@ fn cached(root: &Path, common: &[&str], baseline: &[u8]) {
             );
         }
         let locks = std::fs::read_dir(cache.join("locks")).unwrap().count();
+        let tree = cache_tree(&cache);
         let dry = run(
             root,
             &[
@@ -356,6 +374,8 @@ fn cached(root: &Path, common: &[&str], baseline: &[u8]) {
             std::fs::read_dir(cache.join("locks")).unwrap().count(),
             locks
         );
+        // The complete cache tree stays byte-identical across a dry-run.
+        assert_eq!(cache_tree(&cache), tree);
     }
     #[cfg(not(feature = "acquisition"))]
     {
@@ -373,4 +393,357 @@ fn cached(root: &Path, common: &[&str], baseline: &[u8]) {
                 .contains("requires compiled acquisition contract parser")
         );
     }
+}
+
+/// Deterministic content identity of the whole cache tree; dry-runs must
+/// leave it byte-identical.
+#[cfg(all(feature = "cache", target_os = "linux"))]
+fn cache_tree(root: &Path) -> std::collections::BTreeMap<String, String> {
+    use sha2::{Digest, Sha256};
+    let mut tree = std::collections::BTreeMap::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                let bytes = std::fs::read(&path).unwrap();
+                tree.insert(
+                    path.strip_prefix(root)
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned(),
+                    format!("{:x}", Sha256::digest(&bytes)),
+                );
+            }
+        }
+    }
+    tree
+}
+
+#[cfg(all(feature = "cache", target_os = "linux"))]
+fn cache_store(
+    root: &Path,
+) -> (
+    zerogravity::cache::CacheStore,
+    zerogravity::cache::TransferAdmission,
+) {
+    use zerogravity::cache::*;
+    use zerogravity::resource_arbiter::*;
+    let cache = root.join("cache/abird/zerogravity/models");
+    let store = CacheStore::open(CacheOptions::new(Some(cache), 16 * 1024u64.pow(3))).unwrap();
+    let arbiter = ResourceArbiter::new();
+    let resource = PhysicalDeviceKey::new("host", "test-cache").unwrap();
+    arbiter
+        .register(resource.clone(), 128 * 1024 * 1024)
+        .unwrap();
+    let memory = TransferAdmission {
+        arbiter,
+        resource,
+        owner: ResourceOwner::new("fixture", "import").unwrap(),
+    };
+    (store, memory)
+}
+
+/// Commit one snapshot built from the fixture components plus optional extra
+/// role-typed files; weights/config/tokenizer stay exactly one each so
+/// select-level ambiguity, never the role error, is what surfaces.
+#[cfg(all(feature = "cache", target_os = "linux"))]
+fn commit_snapshot(
+    root: &Path,
+    store: &zerogravity::cache::CacheStore,
+    memory: &zerogravity::cache::TransferAdmission,
+    source: zerogravity::cache::ManifestSource,
+    extra: &[(&str, zerogravity::cache::FileRole)],
+    reference: Option<&str>,
+) -> String {
+    use sha2::{Digest, Sha256};
+    use std::sync::{Arc, atomic::AtomicBool};
+    use zerogravity::cache::*;
+    let mut components = vec![
+        ("model.gguf".to_string(), FileRole::Weights),
+        ("config.json".to_string(), FileRole::Config),
+        ("tokenizer.json".to_string(), FileRole::Tokenizer),
+    ];
+    for (name, role) in extra {
+        components.push((name.to_string(), *role));
+    }
+    let entries = components
+        .iter()
+        .map(|(name, role)| {
+            let raw = std::fs::read(root.join(name)).unwrap();
+            ManifestEntry::new(
+                name,
+                format!("{:x}", Sha256::digest(&raw)),
+                raw.len() as u64,
+                *role,
+            )
+            .unwrap()
+        })
+        .collect();
+    let manifest = Manifest::new(source, entries, &CacheLimits::default()).unwrap();
+    let digest = manifest.digest().unwrap();
+    let mut tx = store
+        .begin(manifest, memory, Arc::new(AtomicBool::new(false)))
+        .unwrap();
+    for (name, _) in &components {
+        tx.import_object(name, &mut std::fs::File::open(root.join(name)).unwrap())
+            .unwrap();
+    }
+    tx.commit(reference).unwrap();
+    digest
+}
+
+#[test]
+fn run_dry_run_decision_trace_and_forced_refusal_stay_read_only() {
+    let f = fixture_named("dry-trace");
+    let yaml = "schema: zerogravity.pipeline.v2\nmodel:\n  - id: tiny\n    target: qwen3.5-0.8b\n    source: ./model.gguf\nrun:\n  entrypoint: {model: tiny}\n  backend: cpu\n  device: [cpu:0]\n  headroom: '0'\n  task: {prompt: a, raw: true, max_tokens: 1, context: 8}\n";
+    std::fs::write(f.0.join("run.yaml"), yaml).unwrap();
+    let dry = run(
+        &f.0,
+        &[
+            &[
+                "run",
+                "run.yaml",
+                "--dry-run",
+                "--audit-logits-jsonl",
+                "not-created",
+            ][..],
+            &COMMON,
+        ]
+        .concat(),
+    );
+    assert!(
+        dry.status.success(),
+        "{}",
+        String::from_utf8_lossy(&dry.stderr)
+    );
+    assert!(!f.0.join("not-created").exists());
+    assert!(!f.0.join("cache").exists());
+    let trace: serde_json::Value =
+        serde_json::from_slice(&dry.stdout).expect("decision trace JSON");
+    assert_eq!(trace["schema"], "zerogravity.run.decision.v1");
+    assert_eq!(trace["selected"], "cpu:0");
+    assert!(trace["planning_bytes"].as_u64().is_some_and(|n| n > 0));
+    assert_eq!(trace["dry_run"], true);
+    assert_eq!(trace["reservation"], "none");
+    assert!(
+        trace["provenance"]
+            .as_object()
+            .is_some_and(|m| !m.is_empty())
+    );
+
+    // A forced refusal still prints the full exclusion trace before failing.
+    let refused = run(
+        &f.0,
+        &["run", "run.yaml", "--dry-run", "--headroom", "100GiB"],
+    );
+    assert_eq!(refused.status.code(), Some(2));
+    assert!(!f.0.join("not-created").exists());
+    let refused_trace: serde_json::Value =
+        serde_json::from_slice(&refused.stdout).expect("refusal trace JSON");
+    assert_eq!(refused_trace["schema"], "zerogravity.run.decision.v1");
+    assert_eq!(refused_trace["selected"], serde_json::Value::Null);
+    assert_eq!(refused_trace["dry_run"], true);
+    assert_eq!(refused_trace["reservation"], "none");
+    assert!(
+        refused_trace["excluded"]
+            .as_array()
+            .is_some_and(|a| !a.is_empty())
+    );
+    assert!(
+        refused_trace["excluded"].as_array().is_some_and(|a| {
+            a.iter().any(|e| {
+                e.as_str().is_some_and(|s| {
+                    s.contains("insufficient currently observed memory after routing headroom")
+                })
+            })
+        }),
+        "{refused_trace}"
+    );
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        stderr.contains("unsupported: no eligible local device; see dry-run exclusions"),
+        "{stderr}"
+    );
+    assert!(!f.0.join("cache").exists());
+}
+
+#[cfg(all(feature = "cache", target_os = "linux"))]
+#[test]
+fn positional_yaml_named_catalog_reference_runs_end_to_end() {
+    let f = fixture_named("yaml-ref");
+    let baseline = passed(run(&f.0, &[&["run", "./model.gguf"][..], &COMMON].concat()));
+    let (store, memory) = cache_store(&f.0);
+    let reference = "huggingface/fixture/tiny/v1.yaml";
+    let digest = commit_snapshot(
+        &f.0,
+        &store,
+        &memory,
+        zerogravity::cache::ManifestSource::new("huggingface", "fixture/tiny", "v1.yaml").unwrap(),
+        &[],
+        Some(reference),
+    );
+    // A `.yaml`-final catalog revision is a model source in every spelling;
+    // scheme precedence beats the local run-document suffix classification.
+    assert_eq!(
+        passed(run(&f.0, &[&["run", reference][..], &COMMON].concat())),
+        baseline
+    );
+    assert_eq!(
+        passed(run(
+            &f.0,
+            &[&["run", "hf:fixture/tiny@v1.yaml"][..], &COMMON].concat()
+        )),
+        baseline
+    );
+    assert_eq!(
+        passed(run(
+            &f.0,
+            &[
+                &[
+                    "run",
+                    "catalog:huggingface/fixture/tiny/v1.yaml",
+                    "--snapshot",
+                    &digest
+                ][..],
+                &COMMON
+            ]
+            .concat()
+        )),
+        baseline
+    );
+}
+
+#[cfg(all(feature = "cache", target_os = "linux"))]
+#[test]
+fn provider_variant_ambiguity_refuses_exactly_without_silent_pick() {
+    let f = fixture_named("ambiguity");
+    let baseline = passed(run(&f.0, &[&["run", "./model.gguf"][..], &COMMON].concat()));
+    let (store, memory) = cache_store(&f.0);
+    let cache = f.0.join("cache/abird/zerogravity/models");
+    std::fs::write(f.0.join("index.bin"), b"index-fixture").unwrap();
+    let source =
+        zerogravity::cache::ManifestSource::new("huggingface", "fixture/tiny", "v1.yaml").unwrap();
+    // One acquired variant: provider selection without --snapshot runs.
+    let first = commit_snapshot(
+        &f.0,
+        &store,
+        &memory,
+        source.clone(),
+        &[],
+        Some("huggingface/fixture/tiny/v1.yaml"),
+    );
+    assert_eq!(
+        passed(run(
+            &f.0,
+            &[&["run", "hf:fixture/tiny@v1.yaml"][..], &COMMON].concat()
+        )),
+        baseline
+    );
+    // Zero acquired variants: exact acquisition guidance, cache unchanged.
+    let tree = cache_tree(&cache);
+    let refused = run(
+        &f.0,
+        &[&["run", "hf:other/source@v9"][..], &COMMON].concat(),
+    );
+    assert_eq!(refused.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains(
+            "provider source is not acquired; use models/pull then an explicit --snapshot or catalog reference"
+        ),
+        "{}",
+        String::from_utf8_lossy(&refused.stderr)
+    );
+    assert_eq!(cache_tree(&cache), tree);
+    // A second snapshot of the same provider identity with a distinct
+    // manifest digest makes the provider selector ambiguous; no silent pick.
+    let second = commit_snapshot(
+        &f.0,
+        &store,
+        &memory,
+        source,
+        &[("index.bin", zerogravity::cache::FileRole::Index)],
+        None,
+    );
+    assert_ne!(first, second);
+    let tree = cache_tree(&cache);
+    let refused = run(
+        &f.0,
+        &[&["run", "hf:fixture/tiny@v1.yaml"][..], &COMMON].concat(),
+    );
+    assert_eq!(refused.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains(
+            "provider source matches 2 acquired snapshots; an explicit --snapshot or catalog reference is required"
+        ),
+        "{}",
+        String::from_utf8_lossy(&refused.stderr)
+    );
+    assert_eq!(cache_tree(&cache), tree);
+    // Each explicit snapshot disambiguates to the same baseline output.
+    for digest in [&first, &second] {
+        assert_eq!(
+            passed(run(
+                &f.0,
+                &[
+                    &["run", "hf:fixture/tiny@v1.yaml", "--snapshot", digest][..],
+                    &COMMON
+                ]
+                .concat()
+            )),
+            baseline
+        );
+    }
+    // The 1:1 catalog reference stays exact by construction.
+    assert_eq!(
+        passed(run(
+            &f.0,
+            &[
+                &["run", "catalog:huggingface/fixture/tiny/v1.yaml"][..],
+                &COMMON
+            ]
+            .concat()
+        )),
+        baseline
+    );
+    // A missing catalog reference name reports acquisition guidance, not a
+    // raw filesystem error.
+    let refused = run(
+        &f.0,
+        &[&["run", "huggingface/fixture/tiny/absent"][..], &COMMON].concat(),
+    );
+    assert_eq!(refused.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains(
+            "catalog reference huggingface/fixture/tiny/absent is not acquired; use models/pull then run the printed reference"
+        ),
+        "{}",
+        String::from_utf8_lossy(&refused.stderr)
+    );
+    // A snapshot that does not match the requested identity keeps its error.
+    let third = commit_snapshot(
+        &f.0,
+        &store,
+        &memory,
+        zerogravity::cache::ManifestSource::new("github", "fixture/tiny", "v1").unwrap(),
+        &[],
+        None,
+    );
+    let refused = run(
+        &f.0,
+        &[
+            &["run", "hf:fixture/tiny@v1.yaml", "--snapshot", &third][..],
+            &COMMON,
+        ]
+        .concat(),
+    );
+    assert_eq!(refused.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&refused.stderr)
+            .contains("explicit snapshot does not match requested provider/content identity"),
+        "{}",
+        String::from_utf8_lossy(&refused.stderr)
+    );
 }

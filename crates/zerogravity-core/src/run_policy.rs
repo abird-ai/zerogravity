@@ -99,6 +99,23 @@ impl SourceSelector {
             Ok(Self::Catalog(s.into()))
         }
     }
+    /// Positional run-document classification shared by the run frontend.
+    /// Only a local filesystem path whose final component is .yaml/.yml
+    /// selects a run document; provider/catalog/URL schemes are sources
+    /// regardless of any file-extension spelling. Invalid selectors fail
+    /// here with their exact selector errors, before any config load.
+    pub fn implies_run_document(s: &str) -> Result<bool> {
+        Ok(matches!(
+            Self::parse(s)?,
+            Self::Local(p)
+                if p.extension().is_some_and(|e| e == "yaml" || e == "yml")
+        ))
+    }
+    /// Narrow provider-scheme prefix test only; NOT the run-document
+    /// classification authority. Positional model/config classification
+    /// derives from the full shared selector (`implies_run_document`) so
+    /// pull-shaped catalog namespaces and unavailable schemes never load
+    /// as run documents.
     pub fn has_provider_scheme(s: &str) -> bool {
         ["hf:", "gh:", "catalog:", "http:", "https:"]
             .iter()

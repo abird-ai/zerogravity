@@ -104,8 +104,18 @@ impl CacheMetadata {
                             Err(e) => Some(Err(e)),
                         })
                         .collect::<Result<Vec<_>>>()?;
-                    if candidates.len() != 1 {
-                        return Err(Error::Unsupported("provider cache selection absent or ambiguous; use models/pull then an explicit --snapshot".into()));
+                    match candidates.len() {
+                        0 => {
+                            return Err(Error::Unsupported(
+                                "provider source is not acquired; use models/pull then an explicit --snapshot or catalog reference".into(),
+                            ));
+                        }
+                        1 => {}
+                        n => {
+                            return Err(Error::Unsupported(format!(
+                                "provider source matches {n} acquired snapshots; an explicit --snapshot or catalog reference is required"
+                            )));
+                        }
                     }
                     candidates.remove(0)
                 }
@@ -159,9 +169,19 @@ impl CacheMetadata {
         })
     }
     pub fn reference(&self, name: &str) -> Result<SnapshotMetadata> {
-        let reference: Reference =
-            serde_json::from_slice(&self.read(&reference_key(name)?, CONTROL_LIMIT * 2)?)
-                .map_err(|_| Error::Malformed("invalid cache selection reference".into()))?;
+        let raw = match self.read(&reference_key(name)?, CONTROL_LIMIT * 2) {
+            Ok(raw) => raw,
+            // Only a missing reference record is absent-acquisition guidance;
+            // every other read failure stays an original I/O error.
+            Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err(Error::Unsupported(format!(
+                    "catalog reference {name} is not acquired; use models/pull then run the printed reference"
+                )));
+            }
+            Err(error) => return Err(error),
+        };
+        let reference: Reference = serde_json::from_slice(&raw)
+            .map_err(|_| Error::Malformed("invalid cache selection reference".into()))?;
         if reference.schema != "zerogravity.cache.reference.v1" || reference.name != name {
             return Err(Error::Malformed(
                 "cache selection reference identity".into(),

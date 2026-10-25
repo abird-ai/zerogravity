@@ -21,6 +21,14 @@ mod source;
 pub(crate) fn short_hf_host_available(host_bytes: u64, headroom: &Headroom) -> Result<()> {
     devices::host_available(host_bytes, headroom)
 }
+/// Transactional pre-Client card admission shared by the direct run and
+/// serving short-HF frontends; one seam, never forked. Serve wiring needs
+/// its own device-identity qualification first (see the plan TODO).
+#[cfg(all(
+    any(feature = "short-hf-serving", feature = "short-hf-run"),
+    target_os = "linux"
+))]
+pub(crate) use short_hf::admit_pre_client_card;
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct RunDoc {

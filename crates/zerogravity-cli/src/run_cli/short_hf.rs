@@ -11,6 +11,207 @@ pub(super) fn selected(model: &zerogravity::pipeline::ModelInstance) -> bool {
             })
             .unwrap_or(false)
 }
+/// Finite route scalars the card proposal and refusal trace need; separated
+/// from `ShortHfRouteMetadata` so the pure proposal is unit-testable without
+/// a real source directory.
+#[cfg(all(
+    any(feature = "short-hf-serving", feature = "short-hf-run"),
+    target_os = "linux"
+))]
+pub(super) struct FiniteRouteProfile {
+    /// Selected finite CUDA HOST requirement (meta.host_bytes).
+    pub host_bytes: usize,
+    /// Original provider bytes (meta.provider_bytes).
+    pub provider_bytes: usize,
+}
+
+/// Pure finite-card proposal over one inventory snapshot. Returns the first
+/// allowed source-qualified sm86 CUDA card plus ordered exclusion reasons
+/// for every other scanned device. A host-fit failure suppresses every
+/// proposal (the route still needs the original HOST admission) while the
+/// card scan continues, so one trace can hold both host and card reasons.
+/// No arbiter mutation, no Client, no I/O beyond the caller-supplied
+/// snapshot state.
+#[cfg(all(
+    any(feature = "short-hf-serving", feature = "short-hf-run"),
+    target_os = "linux"
+))]
+pub(super) fn select_sm86_card(
+    request: &Request,
+    profile: &FiniteRouteProfile,
+    inventory: &devices::Inventory,
+    arbiter: &zerogravity::resource_arbiter::ResourceArbiter,
+) -> Result<(Option<devices::Observation>, Vec<String>)> {
+    use zerogravity::resource_arbiter::PhysicalDeviceKey;
+    let allowed = devices::allowed(request, inventory)?;
+    let mut exclusions = Vec::new();
+    let host = inventory
+        .devices
+        .iter()
+        .find(|d| d.id == "cpu:0")
+        .ok_or_else(|| Error::State("current HOST observation absent".into()))?;
+    let margin = host
+        .ceiling
+        .map(|c| request.headroom.bytes(c, true))
+        .transpose()?
+        .ok_or_else(|| Error::State("HOST ceiling unknown".into()))?;
+    if host
+        .available
+        .and_then(|a| a.checked_sub(margin))
+        .is_none_or(|a| a < profile.host_bytes as u64)
+    {
+        exclusions.push(format!(
+            "host: finite HF original HOST{}MiB plus current routing headroom does not fit",
+            profile.host_bytes / (1024 * 1024)
+        ));
+    }
+    let host_unfit = exclusions.iter().any(|e| e.starts_with("host:"));
+    let device_growth = (profile.provider_bytes as u64)
+        .checked_add(512 * 1024 * 1024)
+        .ok_or_else(|| Error::Limit("finite HF profile overflow".into()))?;
+    for d in &allowed {
+        if d.class != "gpu" {
+            continue;
+        }
+        if let Some(reason) = &d.exclusion {
+            exclusions.push(format!("{}: {reason}", d.id));
+            continue;
+        }
+        if d.vendor != "nvidia" || d.cuda_ordinal.is_none() || d.cuda_cc != Some((8, 6)) {
+            exclusions.push(format!(
+                "{}: finite short-HF route requires qualified sm86 NVIDIA CUDA card",
+                d.id
+            ));
+            continue;
+        }
+        let Some((capacity, available)) = d.ceiling.zip(d.available) else {
+            exclusions.push(format!(
+                "{}: current capacity/free observation unavailable",
+                d.id
+            ));
+            continue;
+        };
+        let margin = request.headroom.bytes(capacity, false)?;
+        if capacity < 5120 * 1024 * 1024 {
+            exclusions.push(format!(
+                "{}: card capacity below the 5120MiB operator cap",
+                d.id
+            ));
+            continue;
+        }
+        if available
+            .checked_sub(margin)
+            .is_none_or(|a| a < device_growth)
+        {
+            exclusions.push(format!(
+                "{}: insufficient current free memory after routing headroom",
+                d.id
+            ));
+            continue;
+        }
+        let key = PhysicalDeviceKey::new(
+            "pci",
+            d.id.strip_prefix("pci:")
+                .ok_or_else(|| bad("finite GPU requires full PCI identity"))?,
+        )?;
+        if let Ok(s) = arbiter.snapshot(&key)
+            && (s.fenced || s.limit != 5120 * 1024 * 1024 || s.reserved != 0)
+        {
+            exclusions.push(format!(
+                "{}: card already serves an in-process route reservation",
+                d.id
+            ));
+            continue;
+        }
+        if host_unfit {
+            continue;
+        }
+        return Ok((Some(d.clone()), exclusions));
+    }
+    Ok((None, exclusions))
+}
+
+/// Exact refusal when nothing proposes; a host-fit failure keeps today's
+/// host limit, otherwise the no-card limit stays verbatim.
+#[cfg(all(
+    any(feature = "short-hf-serving", feature = "short-hf-run"),
+    target_os = "linux"
+))]
+pub(super) fn no_route_refusal(profile: &FiniteRouteProfile, exclusions: &[String]) -> Error {
+    if exclusions.iter().any(|e| e.starts_with("host:")) {
+        Error::Limit(format!(
+            "finite HF original HOST{}MiB plus current routing headroom does not fit",
+            profile.host_bytes / (1024 * 1024)
+        ))
+    } else {
+        Error::Limit("no allowed source-qualified sm86 CUDA card fits original provider+512MiB backend and current free-memory headroom; no split/backend/source fallback".into())
+    }
+}
+
+/// Dry-run status fields shared with the generic decision trace: a dry-run
+/// proposal is never a reservation.
+#[cfg(all(
+    any(feature = "short-hf-serving", feature = "short-hf-run"),
+    target_os = "linux"
+))]
+pub(super) fn dry_run_trace_status(trace: &mut serde_json::Value) {
+    trace["dry_run"] = serde_json::json!(true);
+    trace["reservation"] = serde_json::json!("none");
+}
+
+/// A dry-run holds nothing; the finite adapter keeps reporting the explicit
+/// pre-Client gap until a route actually boots a Client.
+#[cfg(all(
+    any(feature = "short-hf-serving", feature = "short-hf-run"),
+    target_os = "linux"
+))]
+pub(super) fn dry_run_admission_trace(trace: &mut serde_json::Value) {
+    trace["pre_client_admission_gap"] = serde_json::json!(true);
+}
+
+/// Executing --explain trace: the transactional seam (below) replaced the
+/// open pre-Client gap; the boundary stays advisory exactly as before.
+#[cfg(all(
+    any(feature = "short-hf-serving", feature = "short-hf-run"),
+    target_os = "linux"
+))]
+pub(super) fn executing_admission_trace(trace: &mut serde_json::Value) {
+    trace["pre_client_admission"] =
+        serde_json::json!("transactional card hold before Client; released at verified identity");
+    trace["advisory_boundary"] = serde_json::json!(
+        "other processes and driver allocations; post-release pre-backend window"
+    );
+}
+
+/// Transactional pre-Client card admission for the finite CUDA route.
+/// `register_matching` pins the immutable 5 GiB operator cap, then ONE
+/// mutex-guarded `admit` reserves the entire finite card budget so a
+/// concurrent in-process route cannot double-admit this card while the
+/// primary context is bootstrapped. Hold the lease until
+/// `initialize_cuda_physical_identity` reports the verified physical key,
+/// then drop it; the native backend/compiler-context reservation owns the
+/// ledger from its own admission onward. This is NOT an OS hard memory
+/// guarantee: other processes and driver allocations stay advisory.
+#[cfg(all(
+    any(feature = "short-hf-serving", feature = "short-hf-run"),
+    target_os = "linux"
+))]
+pub(crate) fn admit_pre_client_card(
+    arbiter: &zerogravity::resource_arbiter::ResourceArbiter,
+    physical: &zerogravity::resource_arbiter::PhysicalDeviceKey,
+) -> Result<zerogravity::resource_arbiter::GlobalResourceLease> {
+    use zerogravity::resource_arbiter::{AllocationClass, AllocationRequest, ResourceOwner};
+    arbiter.register_matching(physical.clone(), 5120 * 1024 * 1024)?;
+    arbiter.admit(
+        physical,
+        ResourceOwner::new("short-hf-run", "pre-client-card")?,
+        &[AllocationRequest {
+            kind: AllocationClass::ProviderEnvelope,
+            bytes: 5120 * 1024 * 1024,
+        }],
+    )
+}
+
 #[cfg(all(
     any(feature = "short-hf-serving", feature = "short-hf-run"),
     target_os = "linux"
@@ -390,65 +591,10 @@ pub(super) fn run(
         return Err(bad("declared target differs from exact HF source profile"));
     }
     request.graph.validate_entrypoint(&request.entrypoint)?;
-    let device_growth = (meta.provider_bytes as u64)
-        .checked_add(512 * 1024 * 1024)
-        .ok_or_else(|| Error::Limit("finite HF profile overflow".into()))?;
     let arbiter = ResourceArbiter::process_shared();
-    let choose = |observed: &devices::Inventory| -> Result<devices::Observation> {
-        let allowed = devices::allowed(&request, observed)?;
-        let host = observed
-            .devices
-            .iter()
-            .find(|d| d.id == "cpu:0")
-            .ok_or_else(|| Error::State("current HOST observation absent".into()))?;
-        let margin = host
-            .ceiling
-            .map(|c| request.headroom.bytes(c, true))
-            .transpose()?
-            .ok_or_else(|| Error::State("HOST ceiling unknown".into()))?;
-        if host
-            .available
-            .and_then(|a| a.checked_sub(margin))
-            .is_none_or(|a| a < meta.host_bytes as u64)
-        {
-            return Err(Error::Limit(format!(
-                "finite HF original HOST{}MiB plus current routing headroom does not fit",
-                meta.host_bytes / (1024 * 1024)
-            )));
-        }
-        for d in allowed {
-            if d.class != "gpu"
-                || d.vendor != "nvidia"
-                || d.cuda_ordinal.is_none()
-                || d.cuda_cc != Some((8, 6))
-                || d.exclusion.is_some()
-            {
-                continue;
-            }
-            let Some((capacity, available)) = d.ceiling.zip(d.available) else {
-                continue;
-            };
-            let margin = request.headroom.bytes(capacity, false)?;
-            if capacity < 5120 * 1024 * 1024
-                || available
-                    .checked_sub(margin)
-                    .is_none_or(|a| a < device_growth)
-            {
-                continue;
-            }
-            let key = PhysicalDeviceKey::new(
-                "pci",
-                d.id.strip_prefix("pci:")
-                    .ok_or_else(|| bad("finite GPU requires full PCI identity"))?,
-            )?;
-            if let Ok(s) = arbiter.snapshot(&key)
-                && (s.fenced || s.limit != 5120 * 1024 * 1024 || s.reserved != 0)
-            {
-                continue;
-            }
-            return Ok(d);
-        }
-        Err(Error::Limit("no allowed source-qualified sm86 CUDA card fits original provider+512MiB backend and current free-memory headroom; no split/backend/source fallback".into()))
+    let profile = FiniteRouteProfile {
+        host_bytes: meta.host_bytes,
+        provider_bytes: meta.provider_bytes,
     };
     let inventory = if devices::fresh(&inventory).is_err() {
         devices::discover()?
@@ -456,21 +602,35 @@ pub(super) fn run(
         inventory
     };
     devices::fresh(&inventory)?;
-    let chosen = choose(&inventory)?;
-    let explain = serde_json::json!({"schema":"zerogravity.run.short-hf.decision.v1","source_repository":meta.repository,"source_revision":meta.revision,"source_manifest_sha256":meta.manifest_sha256,"target":target,"device":chosen.id,"cuda_ordinal":chosen.cuda_ordinal,"context":512,"max_tokens":request.task.max_tokens,"provider_bytes":meta.provider_bytes,"backend_device_bytes":512*1024*1024u64,"backend_host_bytes":384*1024*1024u64,"physical_operator_cap_bytes":5120*1024*1024u64,"source_host_cap_bytes":meta.host_bytes,"cold_native_source_runtime_authentication":"pending original loader","prompt_eligibility":"pending original tokenizer; finite47/57/62/67/72 rows, natural output only","pre_client_admission_gap":true,"hard_os_admission":false,"source_verified":false,"performance_qualified":false,"observed_unix_ms":inventory.observed_unix_ms,"headroom":format!("{:?}",request.headroom),"devices":format!("{:?}",request.devices),"provenance":request.provenance.iter().map(|(k,v)|(k,format!("{v:?}"))).collect::<BTreeMap<_,_>>()});
+    let (proposed, exclusions) = select_sm86_card(&request, &profile, &inventory, &arbiter)?;
+    let decision = serde_json::json!({"schema":"zerogravity.run.short-hf.decision.v1","source_repository":meta.repository,"source_revision":meta.revision,"source_manifest_sha256":meta.manifest_sha256,"target":target,"device":proposed.as_ref().map(|d|d.id.clone()),"cuda_ordinal":proposed.as_ref().and_then(|d|d.cuda_ordinal),"context":512,"max_tokens":request.task.max_tokens,"provider_bytes":meta.provider_bytes,"backend_device_bytes":512*1024*1024u64,"backend_host_bytes":384*1024*1024u64,"physical_operator_cap_bytes":5120*1024*1024u64,"source_host_cap_bytes":meta.host_bytes,"cold_native_source_runtime_authentication":"pending original loader","prompt_eligibility":"pending original tokenizer; finite47/57/62/67/72 rows, natural output only","excluded":exclusions,"hard_os_admission":false,"source_verified":false,"performance_qualified":false,"observed_unix_ms":inventory.observed_unix_ms,"headroom":format!("{:?}",request.headroom),"devices":format!("{:?}",request.devices),"provenance":request.provenance.iter().map(|(k,v)|(k,format!("{v:?}"))).collect::<BTreeMap<_,_>>()});
     if request.diagnostics.dry_run {
+        // Ordering invariant: no register/register_matching/admit/stdin read/
+        // audit-file open may precede this return; NVML init and cuDevice
+        // enumeration stay permitted (bounded read-only observation).
+        let mut trace = decision.clone();
+        dry_run_trace_status(&mut trace);
+        dry_run_admission_trace(&mut trace);
         println!(
             "{}",
-            serde_json::to_string_pretty(&explain).map_err(|e| Error::State(e.to_string()))?
+            serde_json::to_string_pretty(&trace).map_err(|e| Error::State(e.to_string()))?
         );
-        return Ok(());
+        return match proposed {
+            Some(_) => Ok(()),
+            None => Err(no_route_refusal(&profile, &exclusions)),
+        };
     }
     if request.diagnostics.explain {
+        let mut trace = decision.clone();
+        executing_admission_trace(&mut trace);
         eprintln!(
             "{}",
-            serde_json::to_string(&explain).map_err(|e| Error::State(e.to_string()))?
+            serde_json::to_string(&trace).map_err(|e| Error::State(e.to_string()))?
         );
     }
+    let Some(chosen) = proposed else {
+        return Err(no_route_refusal(&profile, &exclusions));
+    };
     zerogravity::gpu::validate_cuda_compiler_environment()?;
     let host = original::host_admission_mib(
         meta.host_bytes / (1024 * 1024),
@@ -620,7 +780,10 @@ pub(super) fn run(
     }
     let refreshed = devices::discover()?;
     devices::fresh(&refreshed)?;
-    let fresh = choose(&refreshed)?;
+    let (fresh, fresh_exclusions) = select_sm86_card(&request, &profile, &refreshed, &arbiter)?;
+    let Some(fresh) = fresh else {
+        return Err(no_route_refusal(&profile, &fresh_exclusions));
+    };
     if fresh.id != chosen.id || fresh.cuda_ordinal != chosen.cuda_ordinal {
         return Err(Error::State(
             "selected CUDA physical binding/availability changed before bootstrap".into(),
@@ -633,16 +796,22 @@ pub(super) fn run(
             .strip_prefix("pci:")
             .ok_or_else(|| bad("selected PCI identity"))?,
     )?;
-    arbiter.register_matching(physical.clone(), 5120 * 1024 * 1024)?;
+    // Transactional check-and-admit BEFORE intentional Client bootstrap: the
+    // whole finite card budget is held while the primary context is created,
+    // so concurrent in-process routes cannot double-admit this card. Dropped
+    // at verified identity, before `original::load`, so the exact rotary/close
+    // equations stay untouched; the native backend reservation then owns the
+    // ledger from its own admission onward. Called through the one shared
+    // `run_cli` seam binding; the serving frontend uses the same seam.
+    let pre_client = super::admit_pre_client_card(&arbiter, &physical)?;
     let device = zerogravity::gpu::Device::cuda(
         fresh
             .cuda_ordinal
             .ok_or_else(|| bad("CUDA ordinal unavailable"))?,
     )
     .map_err(|e| Error::Unsupported(e.to_string()))?;
-    // Intentional original runtime bootstrap. Registration above is not a
-    // reservation: the existing pre-Client admission gap remains explicit.
     let actual = zerogravity::gpu::initialize_cuda_physical_identity(&device)?;
+    drop(pre_client);
     if actual != physical {
         return Err(Error::State("runtime CUDA Client differs from selected physical card; no source/compiler work started".into()));
     }
