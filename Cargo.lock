@@ -1273,8 +1273,6 @@ dependencies = [
 [[package]]
 name = "cubecl-wgpu"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b8c6f4eb4af39ed3bbb3e4126373d8132cbe018e669172d8d4f1c775b828497"
 dependencies = [
  "ash",
  "bytemuck",
@@ -5655,6 +5653,7 @@ dependencies = [
  "cubecl-common",
  "cubecl-core",
  "cubecl-cuda",
+ "cubecl-hip",
  "cubecl-runtime",
  "cubecl-server",
  "futures-lite",
@@ -5690,7 +5689,9 @@ dependencies = [
 name = "zerogravity-model-qwen35"
 version = "0.1.0"
 dependencies = [
- "libc", "serde_json",
+ "libc",
+ "regex-automata",
+ "serde_json",
  "sha2",
  "tokenizers",
  "zerogravity-artifacts",
