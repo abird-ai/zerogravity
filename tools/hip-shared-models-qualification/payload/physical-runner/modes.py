@@ -6,7 +6,8 @@ from pins import parsed, pin, relative, require
 
 MANIFEST = 'assembled-source.json'
 CONTROL = 'control.json'
-BASE = 'resume-all-five-hip-20261025-2'
+IGNORE = ('.git', '.agents', 'target')  # matches the manifest's excluded directory names
+BASE = 'resume-all-five-hip-20261025-3'
 REQUIRED_CONFIG = ('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml',
                    'scripts/check.sh', 'scripts/native-gpu.py', 'README.md')
 # Match runner/bootstrap.extract_archive: 64 MiB/member, 192 MiB complete source.
@@ -55,7 +56,10 @@ def check_source(base):
     seen = set()
     source = base/'source'
     for path in source.rglob('*'):
-        rel = path.relative_to(source).as_posix()
+        rel = path.relative_to(source)
+        if any(part in IGNORE for part in rel.parts):
+            continue
+        rel = rel.as_posix()
         require(not path.is_symlink(), 'no source symlink: '+rel)
         if path.is_dir():
             continue

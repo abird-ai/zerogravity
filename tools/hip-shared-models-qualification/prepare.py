@@ -11,7 +11,7 @@ import tarfile
 import time
 import tomllib
 
-BASE = 'resume-all-five-hip-20261025-2'
+BASE = 'resume-all-five-hip-20261025-3'
 PREDECESSOR_BASES = (
     'hip-multiset-source12-20261024-4',
     'hip-multiset-controls-v5-20261024-1',

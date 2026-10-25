@@ -16,7 +16,7 @@ from bootstrap_receipt import parse_closed_bootstrap
 PYTHON = '/nix/store/jy00n3jp5xj8s40n1fbldmkcr5n7avxc-python3-3.13.15/bin/python3'
 OWNER_SHA = '53ee4270b6ba663b1acd4d64476fa7903937533510b45147a3b8c1038b16344d'
 CACHE_SHA = '42ac6bf6f82e61adfe1cff7c565076361f222c51792f02df09337ff1779a791a'
-BASE = 'resume-all-five-hip-20261025-2'
+BASE = 'resume-all-five-hip-20261025-3'
 PREDECESSOR_BASES = ('hip-multiset-source12-20261024-4', 'hip-multiset-controls-v5-20261024-1',
                      'hip-multiset-controls-v6-20261024-1', 'hip-multiset-controls-v7-20261024-1',
                      'hip-multiset-source20-20261024-2')

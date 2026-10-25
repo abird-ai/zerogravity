@@ -6,7 +6,7 @@ from pathlib import Path
 import os
 import sys
 
-BASE = 'resume-all-five-hip-20261025-2'
+BASE = 'resume-all-five-hip-20261025-3'
 ARTIFACT = 'release/examples/hip_shared_models'
 
 
