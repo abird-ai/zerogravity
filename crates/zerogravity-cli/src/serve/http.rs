@@ -4,20 +4,53 @@
 
 use super::Router;
 use super::engine::{Request, RequestEvents, ResponseEvent, ServiceError, TokenMetricsRequest};
+use super::event_channel::mpsc;
+use super::pending::{self, ServingCharge};
 use super::token_metrics::{TokenMetrics, validate_wire_id};
 use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 use serde_json::{Map, Value, json};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use zerogravity::json_allocation::{ValueConstruction, census_json, census_scratch_peak};
 
 const MAX_HEADERS: usize = 8 * 1024;
 const MAX_BODY: usize = 1024 * 1024;
 const MAX_CONNECTIONS: usize = 64;
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(180);
+// One `read` into a stack slice. A header-boundary scan can retain at most one
+// such chunk after the accepted header bytes.
+const HEADER_READ_CHUNK: usize = 4096;
+// The raw header Vec starts at 4096 and doubles. The largest accepted header
+// plus one coalesced read chunk is 12 KiB, so the retained capacity is 16 KiB;
+// the last growth keeps the old 8 KiB backing while allocating the new 16 KiB.
+const RAW_HEADER_CAPACITY: usize = 2 * MAX_HEADERS;
+const RAW_HEADER_GROWTH: usize = MAX_HEADERS + RAW_HEADER_CAPACITY;
+const _: () = assert!(RAW_HEADER_CAPACITY >= MAX_HEADERS + HEADER_READ_CHUNK);
+// Header/body/tree/route owners reserve exactly four ingress charges; the
+// vector's own four-slot allocation is part of the envelope charged before it
+// exists.
+const HTTP_INGRESS_ENVELOPE: u64 =
+    (4 * std::mem::size_of::<ServingCharge>() + 4 * std::mem::size_of::<usize>()) as u64;
+// `httparse` retains at most 32 headers. A `Vec<(String, String)>` grows
+// 4 -> 8 -> 16 -> 32, so the last push keeps 48 entry slots live.
+const MAX_PARSED_HEADERS: usize = 32;
+const HEADER_VEC_GROWTH: usize =
+    (MAX_PARSED_HEADERS + MAX_PARSED_HEADERS / 2) * std::mem::size_of::<(String, String)>();
+// Raw header growth, parsed String copies and the header Vec's doubling peak
+// are phased: the 24 KiB raw growth peak happens before parsing, while the
+// retained 16 KiB raw capacity, every parsed String copy (method/path plus
+// header names/values are slices of the same accepted header, so their sum is
+// bounded by MAX_HEADERS) and the header Vec's final doubling are live together
+// through `read_body`. The exact body backing is charged separately before that
+// read. Use the larger simultaneous owner total; the const assertion proves it
+// also covers the earlier growth peak.
+const HEADER_RETAINED_OWNERS: usize = RAW_HEADER_CAPACITY + MAX_HEADERS + HEADER_VEC_GROWTH;
+const _: () = assert!(HEADER_RETAINED_OWNERS >= RAW_HEADER_GROWTH);
+const HTTP_HEADER_ENVELOPE: u64 = HEADER_RETAINED_OWNERS as u64 + HTTP_INGRESS_ENVELOPE;
 // JSON Value alone silently overwrites duplicate object keys. Reject
 // them recursively before applying route, sampling and role policies.
 struct StrictValue(Value);
@@ -84,7 +117,10 @@ struct HttpRequest {
     method: String,
     path: String,
     headers: Vec<(String, String)>,
-    body: Vec<u8>,
+    body: Box<[u8]>,
+    // Header/body/route/tree owners travel with the request so the queue
+    // carries the actual credit instead of a fabricated residual.
+    ingress: Vec<ServingCharge>,
 }
 impl HttpRequest {
     fn header(&self, name: &str) -> Option<&str> {
@@ -201,15 +237,35 @@ fn parse_headers(raw: &[u8]) -> Result<(HttpRequest, usize, usize), ServiceError
             method,
             path,
             headers,
-            body: Vec::new(),
+            body: Vec::new().into_boxed_slice(),
+            ingress: Vec::with_capacity(4),
         },
         consumed,
         size,
     ))
 }
-fn read_request(stream: &mut TcpStream) -> Result<HttpRequest, ServiceError> {
-    let mut raw = Vec::with_capacity(4096);
-    let mut slice = [0u8; 4096];
+trait IngressCharge {
+    fn charge_http_ingress(&self, session: &str, bytes: u64)
+    -> Result<ServingCharge, ServiceError>;
+}
+impl IngressCharge for Router {
+    fn charge_http_ingress(
+        &self,
+        session: &str,
+        bytes: u64,
+    ) -> Result<ServingCharge, ServiceError> {
+        Router::charge_ingress(self, session, bytes)
+    }
+}
+fn read_request<R: IngressCharge>(
+    stream: &mut TcpStream,
+    router: &R,
+) -> Result<HttpRequest, ServiceError> {
+    // Header scratch and parsed-header owners are admitted before the first
+    // header buffer exists; the charge is retained on the returned request.
+    let header_charge = router.charge_http_ingress("http-headers", HTTP_HEADER_ENVELOPE)?;
+    let mut raw = Vec::with_capacity(HEADER_READ_CHUNK);
+    let mut slice = [0u8; HEADER_READ_CHUNK];
     let boundary = loop {
         let n = stream
             .read(&mut slice)
@@ -249,16 +305,36 @@ fn read_request(stream: &mut TcpStream) -> Result<HttpRequest, ServiceError> {
             "unexpected header framing",
         ));
     }
-    req.body.extend_from_slice(&raw[boundary..]);
-    if req.body.len() > body_len {
+    // The body backing is charged at its exact final length before it is
+    // allocated, and the header charge moves onto the request with it.
+    let body_charge = router.charge_http_ingress("http-body", body_len as u64)?;
+    req.ingress.push(header_charge);
+    req.ingress.push(body_charge);
+    // Exact-capacity backing: `into_vec` keeps the same allocation. Clear only
+    // the logical length so coalesced and split reads fill the precharged body
+    // without ever growing it; true excess is refused before any append.
+    req.body = read_body(stream, body_len, &raw[boundary..], &mut slice)?;
+    drop(raw);
+    Ok(req)
+}
+fn read_body(
+    stream: &mut TcpStream,
+    body_len: usize,
+    coalesced: &[u8],
+    slice: &mut [u8],
+) -> Result<Box<[u8]>, ServiceError> {
+    if coalesced.len() > body_len {
         return Err(ServiceError::new(
             400,
             "pipelining_unsupported",
             "one HTTP request per connection",
         ));
     }
-    while req.body.len() < body_len {
-        let left = (body_len - req.body.len()).min(slice.len());
+    let mut body = pending::allocate_bytes(body_len)?.into_vec();
+    body.clear();
+    body.extend_from_slice(coalesced);
+    while body.len() < body_len {
+        let left = (body_len - body.len()).min(slice.len());
         let n = stream
             .read(&mut slice[..left])
             .map_err(|_| ServiceError::new(400, "read_failed", "incomplete JSON body"))?;
@@ -269,9 +345,9 @@ fn read_request(stream: &mut TcpStream) -> Result<HttpRequest, ServiceError> {
                 "short Content-Length",
             ));
         }
-        req.body.extend_from_slice(&slice[..n]);
+        body.extend_from_slice(&slice[..n]);
     }
-    Ok(req)
+    Ok(body.into_boxed_slice())
 }
 fn allowed_keys(map: &Map<String, Value>, allowed: &[&str]) -> Result<(), ServiceError> {
     for key in map.keys() {
@@ -285,8 +361,52 @@ fn allowed_keys(map: &Map<String, Value>, allowed: &[&str]) -> Result<(), Servic
     }
     Ok(())
 }
-fn parse_body(body: &[u8], chat: bool, max_output: usize) -> Result<(Request, bool), ServiceError> {
-    let value = serde_json::from_slice::<StrictValue>(body)
+fn parse_body(
+    body: &[u8],
+    chat: bool,
+    router: Option<&Router>,
+    ingress: &mut Vec<ServingCharge>,
+) -> Result<(Request, bool), ServiceError> {
+    // Census scratch is admitted before the census allocates it, the extra
+    // construction peak is admitted before the direct `StrictValue`
+    // constructor sees the bytes, and the retained tree bound is held on the
+    // ingress owner through route extraction and the queue. Scratch is
+    // released as soon as parsing returns.
+    let mut census_scratch: Option<ServingCharge> = None;
+    let mut parse_scratch: Option<ServingCharge> = None;
+    let mut allocation = None;
+    if let Some(router) = router {
+        let scratch = census_scratch_peak(body.len()).map_err(|_| {
+            ServiceError::new(400, "invalid_json", "JSON census rejected the body length")
+        })?;
+        census_scratch =
+            Some(router.charge_ingress(
+                "http-json-census",
+                u64::try_from(scratch).map_err(|_| {
+                    ServiceError::new(400, "size_overflow", "census scratch overflow")
+                })?,
+            )?);
+        let census = census_json(body, ValueConstruction::DirectValueTree)
+            .map_err(|_| ServiceError::new(400, "invalid_json", "JSON census rejected the body"))?;
+        let extra = u64::try_from(census.parse_extra_peak())
+            .map_err(|_| ServiceError::new(400, "size_overflow", "tree bound overflow"))?;
+        if extra > 0 {
+            parse_scratch = Some(router.charge_ingress("http-json-parse", extra)?);
+        }
+        ingress.push(
+            router.charge_ingress(
+                "http-json-tree",
+                u64::try_from(census.tree_heap_upper())
+                    .map_err(|_| ServiceError::new(400, "size_overflow", "tree bound overflow"))?,
+            )?,
+        );
+        allocation = Some(census);
+    }
+    let input_bytes = match allocation.as_ref() {
+        Some(allocation) => allocation.input(),
+        None => body,
+    };
+    let value = serde_json::from_slice::<StrictValue>(input_bytes)
         .map_err(|_| {
             ServiceError::new(
                 400,
@@ -295,6 +415,8 @@ fn parse_body(body: &[u8], chat: bool, max_output: usize) -> Result<(Request, bo
             )
         })?
         .0;
+    drop(parse_scratch);
+    drop(census_scratch);
     let map = value
         .as_object()
         .ok_or_else(|| ServiceError::new(400, "invalid_request", "expected JSON object"))?;
@@ -387,7 +509,10 @@ fn parse_body(body: &[u8], chat: bool, max_output: usize) -> Result<(Request, bo
                     "max_tokens must be positive integer",
                 )
             })?,
-        (None, None) => max_output.min(32),
+        (None, None) => match router {
+            Some(router) => 32.min(router.max_output()),
+            None => 32,
+        },
     };
     let include_usage = match map.get("stream_options") {
         None => false,
@@ -420,6 +545,19 @@ fn parse_body(body: &[u8], chat: bool, max_output: usize) -> Result<(Request, bo
             "stream_options requires stream=true",
         ));
     }
+    // Output copies are admitted at their exact final sizes before they are
+    // allocated, while the census tree charge is still held.
+    let mut charge_route = |bytes: usize| -> Result<(), ServiceError> {
+        if let Some(router) = router {
+            let charge = router.charge_ingress(
+                "http-route",
+                u64::try_from(bytes)
+                    .map_err(|_| ServiceError::new(400, "size_overflow", "route copy overflow"))?,
+            )?;
+            ingress.push(charge);
+        }
+        Ok(())
+    };
     let input = if chat {
         let messages = map
             .get("messages")
@@ -434,7 +572,9 @@ fn parse_body(body: &[u8], chat: bool, max_output: usize) -> Result<(Request, bo
                 "messages must contain 1..128 entries",
             ));
         }
-        let mut prompt = String::new();
+        // Pass one validates and measures the exact framed prompt without
+        // allocating; the framed sizes mirror the push calls below.
+        let mut prompt_bytes = 0usize;
         for message in messages {
             let entry = message.as_object().ok_or_else(|| {
                 ServiceError::new(400, "invalid_messages", "each message must be an object")
@@ -471,18 +611,40 @@ fn parse_body(body: &[u8], chat: bool, max_output: usize) -> Result<(Request, bo
                     "literal Qwen role delimiters are unsupported",
                 ));
             }
-            if content.len() > MAX_BODY
-                || prompt
-                    .len()
-                    .checked_add(content.len() + 128)
-                    .is_none_or(|n| n > MAX_BODY)
-            {
-                return Err(ServiceError::new(
-                    413,
-                    "input_too_large",
-                    "chat prompt too large",
-                ));
-            }
+            prompt_bytes = prompt_bytes
+                .checked_add("<|im_start|>".len() + "<|im_end|>\n".len())
+                .and_then(|n| n.checked_add(role.len()))
+                .and_then(|n| n.checked_add(1))
+                .and_then(|n| n.checked_add(content.len()))
+                .filter(|n| *n <= MAX_BODY)
+                .ok_or_else(|| {
+                    ServiceError::new(413, "input_too_large", "chat prompt too large")
+                })?;
+        }
+        let capacity = prompt_bytes
+            .checked_add("<|im_start|>assistant\n".len())
+            .filter(|n| *n <= MAX_BODY)
+            .ok_or_else(|| ServiceError::new(413, "input_too_large", "chat prompt too large"))?;
+        charge_route(model.len().saturating_add(capacity))?;
+        let mut prompt = String::with_capacity(capacity);
+        for message in messages {
+            let entry = message.as_object().ok_or_else(|| {
+                ServiceError::new(400, "invalid_messages", "each message must be an object")
+            })?;
+            let role = entry
+                .get("role")
+                .and_then(Value::as_str)
+                .ok_or_else(|| ServiceError::new(400, "invalid_messages", "role is required"))?;
+            let content = entry
+                .get("content")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    ServiceError::new(
+                        400,
+                        "unsupported_content",
+                        "only string message content supported",
+                    )
+                })?;
             prompt.push_str("<|im_start|>");
             prompt.push_str(role);
             prompt.push('\n');
@@ -492,10 +654,14 @@ fn parse_body(body: &[u8], chat: bool, max_output: usize) -> Result<(Request, bo
         prompt.push_str("<|im_start|>assistant\n");
         prompt
     } else {
-        map.get("prompt")
+        let prompt = map
+            .get("prompt")
             .and_then(Value::as_str)
-            .ok_or_else(|| ServiceError::new(400, "invalid_prompt", "prompt must be text"))?
-            .to_owned()
+            .ok_or_else(|| ServiceError::new(400, "invalid_prompt", "prompt must be text"))?;
+        charge_route(model.len().saturating_add(prompt.len()))?;
+        let mut owned = String::with_capacity(prompt.len());
+        owned.push_str(prompt);
+        owned
     };
     if input.len() > MAX_BODY {
         return Err(ServiceError::new(
@@ -508,6 +674,9 @@ fn parse_body(body: &[u8], chat: bool, max_output: usize) -> Result<(Request, bo
         Request {
             model: model.to_owned(),
             input,
+            // The chat turn and assistant prefix are already framed into
+            // `input` above; asking the tokenizer to frame again would double
+            // wrap the prompt. `chat` still selects the response shape.
             chat: false,
             max_tokens,
             stream,
@@ -750,7 +919,7 @@ fn stream_events(
 }
 fn respond(
     stream: &mut TcpStream,
-    req: HttpRequest,
+    mut req: HttpRequest,
     router: &Router,
     api_key: Option<&str>,
     enable_per_request_metrics: bool,
@@ -807,14 +976,15 @@ fn respond(
             "JSON Content-Type required",
         ));
     }
-    let (mut task, include_usage) = parse_body(&req.body, chat, router.max_output())?;
+    let (mut task, include_usage) = parse_body(&req.body, chat, Some(router), &mut req.ingress)?;
     bind_token_metrics(
         &mut task,
         req.header("x-request-id"),
         enable_per_request_metrics,
     )?;
     let stream_response = task.stream;
-    let events = router.request(task)?;
+    let ingress = std::mem::take(&mut req.ingress);
+    let events = router.request_admitted(task, ingress)?;
     if stream_response {
         stream_events(stream, events, chat, include_usage).map_err(|_| {
             ServiceError::new(499, "client_closed", "streaming client disconnected")
@@ -915,10 +1085,47 @@ fn bind_token_metrics(
     }
     Ok(())
 }
-struct ActiveGuard(Arc<AtomicUsize>);
-impl Drop for ActiveGuard {
+struct ConnectionSlot {
+    concurrent: Arc<AtomicUsize>,
+    _charge: ServingCharge,
+}
+impl Drop for ConnectionSlot {
     fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::AcqRel);
+        self.concurrent.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+/// Inline capture bound for one connection handler. The join handle and the
+/// connection charge live in the accept-loop slot, not in the closure, and
+/// the captured `api_key` heap text is priced separately by its capacity.
+struct ConnectionCaptures {
+    stream: TcpStream,
+    router: Arc<Router>,
+    api_key: Option<String>,
+    enable_per_request_metrics: bool,
+}
+
+impl ConnectionCaptures {
+    /// Consume the exact admitted struct so the start closure captures only
+    /// this priced value; the admitted `Layout::for_value` of the same value is
+    /// the captured width and cannot drift from a field mirror.
+    fn run(mut self) {
+        let _ = self.stream.set_read_timeout(Some(Duration::from_secs(10)));
+        let _ = self.stream.set_write_timeout(Some(Duration::from_secs(30)));
+        match read_request(&mut self.stream, self.router.as_ref()).and_then(|req| {
+            respond(
+                &mut self.stream,
+                req,
+                &self.router,
+                self.api_key.as_deref(),
+                self.enable_per_request_metrics,
+            )
+        }) {
+            Ok(()) => {}
+            Err(error) if error.status == 499 => {}
+            Err(error) => {
+                let _ = write_json(&mut self.stream, error.status, &error_json(&error));
+            }
+        }
     }
 }
 pub fn serve(
@@ -927,9 +1134,54 @@ pub fn serve(
     api_key: Option<String>,
     enable_per_request_metrics: bool,
 ) -> std::io::Result<()> {
+    // The bounded entry table and its shared connection counter are allocated
+    // and charged once, before any connection thread exists. The slot tuple
+    // owns the join handle and the connection charge in the accept loop, not
+    // in the handler closure.
+    let table_bytes = u64::try_from(MAX_CONNECTIONS)
+        .ok()
+        .and_then(|n| {
+            n.checked_mul(
+                std::mem::size_of::<(std::thread::JoinHandle<()>, ConnectionSlot)>() as u64,
+            )
+        })
+        .and_then(|n| {
+            n.checked_add(
+                (2 * std::mem::size_of::<usize>()
+                    + std::mem::size_of::<std::sync::atomic::AtomicUsize>()) as u64,
+            )
+        })
+        .ok_or_else(|| std::io::Error::other("connection table bound overflow"))?;
+    let _table_charge = router
+        .charge_ingress("http-connection", table_bytes)
+        .map_err(|error| std::io::Error::other(error.message))?;
     let current = Arc::new(AtomicUsize::new(0));
+    let mut connections: Vec<(std::thread::JoinHandle<()>, ConnectionSlot)> =
+        Vec::with_capacity(MAX_CONNECTIONS);
     for stream in listener.incoming() {
-        let mut stream = stream?;
+        // Join completed handlers before releasing their connection slot and
+        // charge. `is_finished` is only a cheap reap trigger; ownership ends
+        // at `join`, not at thread completion.
+        let mut index = 0;
+        while index < connections.len() {
+            if connections[index].0.is_finished() {
+                let (handle, slot) = connections.swap_remove(index);
+                let _ = handle.join();
+                drop(slot);
+            } else {
+                index += 1;
+            }
+        }
+        let mut stream = match stream {
+            Ok(stream) => stream,
+            Err(error) => {
+                for (handle, slot) in connections.drain(..) {
+                    let _ = handle.join();
+                    drop(slot);
+                }
+                return Err(error);
+            }
+        };
         let count = current.fetch_add(1, Ordering::AcqRel);
         if count >= MAX_CONNECTIONS {
             current.fetch_sub(1, Ordering::AcqRel);
@@ -944,31 +1196,69 @@ pub fn serve(
             );
             continue;
         }
-        let concurrent = Arc::clone(&current);
-        let router = Arc::clone(&router);
-        let api_key = api_key.clone();
-        std::thread::Builder::new()
+        // Native thread stacks, guards, TLS and the OS mapping are external
+        // unquantified headroom: the builder keeps std's default stack=None.
+        // The pinned std control row covers the name, capture closure and
+        // runtime handler-map entry; the captured API-key text and the
+        // accept-loop table/slot are charged separately. The capture is built
+        // first so the admitted layout is the actual spawned closure.
+        let captures = ConnectionCaptures {
+            stream,
+            router: Arc::clone(&router),
+            api_key: api_key.clone(),
+            enable_per_request_metrics,
+        };
+        let connection_bytes = zerogravity::resource_arbiter::rust_thread_control_bytes(
+            std::alloc::Layout::for_value(&captures),
+            Some(("zg-http".len(), "zg-http".len())),
+        )
+        .map_err(|error| ServiceError::new(400, "size_overflow", error.to_string()))
+        .and_then(|bytes| {
+            bytes
+                .checked_add(
+                    captures
+                        .api_key
+                        .as_ref()
+                        .map_or(0, |key| key.capacity() as u64),
+                )
+                .ok_or_else(|| ServiceError::new(400, "size_overflow", "connection bound overflow"))
+        });
+        let connection_charge = match connection_bytes
+            .and_then(|bytes| router.charge_ingress("http-connection", bytes))
+        {
+            Ok(charge) => charge,
+            Err(error) => {
+                current.fetch_sub(1, Ordering::AcqRel);
+                let mut stream = captures.stream;
+                let _ = write_json(&mut stream, error.status, &error_json(&error));
+                continue;
+            }
+        };
+        let slot = ConnectionSlot {
+            concurrent: Arc::clone(&current),
+            _charge: connection_charge,
+        };
+        let spawned = std::thread::Builder::new()
             .name("zg-http".into())
-            .spawn(move || {
-                let _guard = ActiveGuard(concurrent);
-                let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
-                let _ = stream.set_write_timeout(Some(Duration::from_secs(30)));
-                match read_request(&mut stream).and_then(|req| {
-                    respond(
-                        &mut stream,
-                        req,
-                        &router,
-                        api_key.as_deref(),
-                        enable_per_request_metrics,
-                    )
-                }) {
-                    Ok(()) => {}
-                    Err(error) if error.status == 499 => {}
-                    Err(error) => {
-                        let _ = write_json(&mut stream, error.status, &error_json(&error));
-                    }
+            .spawn(move || captures.run());
+        match spawned {
+            Ok(handle) => connections.push((handle, slot)),
+            Err(error) => {
+                // The thread never ran; drop the slot/charge now, then join
+                // every already-running connection before leaving the accept
+                // loop.
+                drop(slot);
+                for (handle, slot) in connections.drain(..) {
+                    let _ = handle.join();
+                    drop(slot);
                 }
-            })?;
+                return Err(error);
+            }
+        }
+    }
+    for (handle, slot) in connections.drain(..) {
+        let _ = handle.join();
+        drop(slot);
     }
     Ok(())
 }
@@ -976,10 +1266,19 @@ pub fn serve(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tcp_pair() -> (TcpStream, TcpStream) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let client = TcpStream::connect(address).unwrap();
+        let (server, _) = listener.accept().unwrap();
+        (client, server)
+    }
+
     #[test]
     fn openai_text_and_chat_validation_is_fail_closed() {
         fn parsed(src: &str, chat: bool) -> Result<(Request, bool), ServiceError> {
-            parse_body(src.as_bytes(), chat, 128)
+            parse_body(src.as_bytes(), chat, None, &mut Vec::new())
         }
         let valid = r#"{"model":"qwen","messages":[{"role":"system","content":"Brief."},{"role":"user","content":"Hi"}],"max_tokens":4,"stream":true,"stream_options":{"include_usage":true},"temperature":0,"top_p":1}"#;
         let (request, usage) = parsed(valid, true).unwrap();
@@ -987,7 +1286,35 @@ mod tests {
         assert!(request.stream);
         assert_eq!(request.max_tokens, 4);
         assert_eq!(request.model, "qwen");
-        assert!(request.input.contains("<|im_start|>user\nHi<|im_end|>"));
+        // The HTTP frontend frames the chat turns once; the routed request
+        // must not ask the tokenizer to frame the same bytes a second time.
+        assert!(!request.chat);
+        assert_eq!(
+            request.input,
+            "<|im_start|>system\nBrief.<|im_end|>\n<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n"
+        );
+        // The framed chat route and an explicit text request carrying the same
+        // bytes reach the tokenizer with identical input and `chat` flag, so
+        // both produce the same prompt IDs.
+        fn framed_chat_and_text_routes_agree() {
+            let chat = parse_body(
+                br#"{"model":"qwen","messages":[{"role":"user","content":"Hi"}]}"#,
+                true,
+                None,
+                &mut Vec::new(),
+            )
+            .unwrap()
+            .0;
+            // JSON escapes: the explicit text route carries exactly the bytes
+            // chat framing emits, newlines included.
+            let framed = "<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n";
+            let text_body = serde_json::json!({"model": "qwen", "prompt": framed}).to_string();
+            let text = parse_body(text_body.as_bytes(), false, None, &mut Vec::new())
+                .unwrap()
+                .0;
+            assert_eq!(chat.input, text.input);
+            assert_eq!(chat.chat, text.chat);
+        }
         for bad in [
             r#"{"model":"qwen","prompt":"Hi","temperature":1}"#,
             r#"{"model":"qwen","prompt":"Hi","top_p":0.5}"#,
@@ -1020,6 +1347,7 @@ mod tests {
         let (plain, _) =
             parsed(r#"{"model":"qwen","prompt":"Hello","max_tokens":8}"#, false).unwrap();
         assert!(!plain.chat && !plain.stream && plain.input == "Hello");
+        framed_chat_and_text_routes_agree();
     }
 
     #[test]
@@ -1039,10 +1367,159 @@ mod tests {
         }
     }
 
+    struct TestIngress(pending::ServingHost);
+    impl IngressCharge for TestIngress {
+        fn charge_http_ingress(
+            &self,
+            session: &str,
+            bytes: u64,
+        ) -> Result<ServingCharge, ServiceError> {
+            self.0.charge(
+                "http-test",
+                session,
+                zerogravity::resource_arbiter::AllocationClass::Scratch,
+                bytes,
+            )
+        }
+    }
+    fn test_ingress() -> TestIngress {
+        TestIngress(pending::ServingHost::isolated(256).unwrap())
+    }
+    fn post_head(body_len: usize) -> String {
+        format!(
+            "POST /v1/completions HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {body_len}\r\n\r\n"
+        )
+    }
+
+    #[test]
+    fn header_envelope_covers_raw_growth_parsed_copies_and_retained_ingress() {
+        assert_eq!(RAW_HEADER_CAPACITY, 16 * 1024);
+        assert_eq!(RAW_HEADER_GROWTH, 24 * 1024);
+        assert_eq!(
+            HEADER_VEC_GROWTH,
+            48 * std::mem::size_of::<(String, String)>()
+        );
+        assert_eq!(
+            HEADER_RETAINED_OWNERS,
+            RAW_HEADER_CAPACITY + MAX_HEADERS + HEADER_VEC_GROWTH
+        );
+        const { assert!(HEADER_RETAINED_OWNERS >= RAW_HEADER_GROWTH) };
+        assert_eq!(
+            HTTP_HEADER_ENVELOPE,
+            HEADER_RETAINED_OWNERS as u64 + HTTP_INGRESS_ENVELOPE
+        );
+    }
+
+    #[test]
+    fn actual_tcp_post_accepts_coalesced_and_split_exact_length() {
+        let body: &[u8] = br#"{"model":"qwen","prompt":"Hello","max_tokens":2}"#;
+        let head = post_head(body.len());
+
+        // Coalesced: header and body arrive in one live-socket write. The
+        // header owners remain charged while the body backing is live.
+        let (mut client, mut server) = tcp_pair();
+        let mut request = head.clone().into_bytes();
+        request.extend_from_slice(body);
+        client.write_all(&request).unwrap();
+        let ingress = test_ingress();
+        let parsed = read_request(&mut server, &ingress).unwrap();
+        assert_eq!(&*parsed.body, body);
+        assert!(ingress.0.serving_bytes() >= HTTP_HEADER_ENVELOPE + (body.len() as u64));
+
+        // Split/delayed: the body arrives after the header with a gap.
+        let (mut client, mut server) = tcp_pair();
+        let writer = std::thread::spawn(move || {
+            client.write_all(head.as_bytes()).unwrap();
+            client.write_all(&body[..3]).unwrap();
+            std::thread::sleep(Duration::from_millis(25));
+            client.write_all(&body[3..]).unwrap();
+        });
+        let parsed = read_request(&mut server, &test_ingress()).unwrap();
+        writer.join().unwrap();
+        assert_eq!(&*parsed.body, body);
+    }
+
+    #[test]
+    fn actual_tcp_post_refuses_excess_before_growth_and_reports_short_eof() {
+        let body = b"0123456789";
+        let mut slice = [0u8; HEADER_READ_CHUNK];
+
+        // Deterministic excess check at the exact-capacity fill seam.
+        let (_client, mut server) = tcp_pair();
+        let mut excess = body.to_vec();
+        excess.push(b'X');
+        let error = read_body(&mut server, body.len(), &excess, &mut slice).unwrap_err();
+        assert_eq!((error.status, error.code), (400, "pipelining_unsupported"));
+
+        // Live caller: short body plus write shutdown is an incomplete POST.
+        let (mut client, mut server) = tcp_pair();
+        let head = post_head(body.len());
+        client.write_all(head.as_bytes()).unwrap();
+        client.write_all(&body[..4]).unwrap();
+        client.shutdown(std::net::Shutdown::Write).unwrap();
+        let error = read_request(&mut server, &test_ingress())
+            .err()
+            .expect("incomplete POST is refused");
+        assert_eq!((error.status, error.code), (400, "incomplete_body"));
+    }
+
+    fn framed_stream_response(chat: bool, id: u64) -> Value {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let host = pending::ServingHost::isolated(512).unwrap();
+        let (sender, receiver) = mpsc::try_sync_channel(&host, "test", "event", 4).unwrap();
+        sender
+            .try_send(ResponseEvent::Text("A".into()))
+            .unwrap_or_else(|_| panic!("live fixture channel"));
+        sender
+            .try_send(ResponseEvent::Done {
+                output: "A".into(),
+                prompt_tokens: 1,
+                completion_tokens: 1,
+                finish_reason: "length",
+            })
+            .unwrap_or_else(|_| panic!("live fixture channel"));
+        let request = RequestEvents::new(
+            id,
+            "qwen".into(),
+            receiver,
+            pending::CancelToken::standalone(),
+            None,
+            None,
+        );
+        let writer = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream_events(&mut stream, request, chat, false).unwrap();
+        });
+        let mut client = TcpStream::connect(address).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut raw = String::new();
+        client.read_to_string(&mut raw).unwrap();
+        writer.join().unwrap();
+        raw.lines()
+            .find_map(|line| {
+                let data = line.strip_prefix("data: ")?;
+                (data != "[DONE]").then(|| serde_json::from_str::<Value>(data).unwrap())
+            })
+            .expect("one framed event")
+    }
+
+    #[test]
+    fn actual_tcp_text_and_chat_frames_share_the_same_request_id() {
+        let text = framed_stream_response(false, 42);
+        let chat = framed_stream_response(true, 42);
+        assert_eq!(text["id"], chat["id"]);
+        assert_eq!(text["id"], "chatcmpl-zg-42");
+        assert_eq!(text["object"], "text_completion");
+        assert_eq!(chat["object"], "chat.completion.chunk");
+    }
+
     #[test]
     fn token_metadata_requires_explicit_server_request_and_bounded_wire_id() {
         let body = br#"{"model":"qwen","prompt":"Hi","return_token_ids":true}"#;
-        let (mut request, _) = parse_body(body, false, 4).unwrap();
+        let (mut request, _) = parse_body(body, false, None, &mut Vec::new()).unwrap();
         assert_eq!(
             bind_token_metrics(&mut request, Some("run:request-0"), false)
                 .unwrap_err()
@@ -1059,11 +1536,18 @@ mod tests {
             parse_body(
                 br#"{"model":"qwen","prompt":"Hi","return_token_ids":1}"#,
                 false,
-                4
+                None,
+                &mut Vec::new()
             )
             .is_err()
         );
-        let (plain, _) = parse_body(br#"{"model":"qwen","prompt":"Hi"}"#, false, 4).unwrap();
+        let (plain, _) = parse_body(
+            br#"{"model":"qwen","prompt":"Hi"}"#,
+            false,
+            None,
+            &mut Vec::new(),
+        )
+        .unwrap();
         assert!(plain.token_metrics.is_none());
         let plain_json = completion_response(1, "qwen", true, "A", 1, 1, "length");
         assert!(plain_json.get("metrics").is_none());
@@ -1073,14 +1557,14 @@ mod tests {
     #[test]
     fn actual_stream_writer_binds_token_ids_and_separate_delivery_observations() {
         use super::super::engine::TokenObservation;
-        use std::sync::atomic::AtomicBool;
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let started = Instant::now() - Duration::from_secs(1);
-        let (sender, receiver) = mpsc::sync_channel(4);
+        let host = pending::ServingHost::isolated(512).unwrap();
+        let (sender, receiver) = mpsc::try_sync_channel(&host, "test", "event", 4).unwrap();
         for (index, id, text) in [(0, 4, ""), (1, 5, "é")] {
             sender
-                .send(ResponseEvent::TokenText {
+                .try_send(ResponseEvent::TokenText {
                     text: text.into(),
                     token: TokenObservation {
                         index,
@@ -1092,19 +1576,21 @@ mod tests {
                 .unwrap_or_else(|_| panic!("live fixture channel"));
         }
         sender
-            .send(ResponseEvent::Done {
+            .try_send(ResponseEvent::Done {
                 output: "é".into(),
                 prompt_tokens: 3,
                 completion_tokens: 2,
                 finish_reason: "length",
             })
             .unwrap_or_else(|_| panic!("live fixture channel"));
-        let request =
-            RequestEvents::new(7, "qwen".into(), receiver, Arc::new(AtomicBool::new(false)))
-                .observed(Some(TokenMetricsRequest {
-                    started,
-                    wire_request_id: Some("run:request-0".into()),
-                }));
+        let cancel = pending::CancelToken::standalone();
+        let cancel_flag = Arc::clone(cancel.flag());
+        let request = RequestEvents::new(7, "qwen".into(), receiver, cancel, None, None).observed(
+            Some(TokenMetricsRequest {
+                started,
+                wire_request_id: Some("run:request-0".into()),
+            }),
+        );
         let writer = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             stream_events(&mut stream, request, true, false).unwrap();
@@ -1116,6 +1602,7 @@ mod tests {
         let mut raw = String::new();
         client.read_to_string(&mut raw).unwrap();
         writer.join().unwrap();
+        assert!(cancel_flag.load(Ordering::Acquire));
         assert!(raw.contains("X-Request-ID: run:request-0\r\n"));
         let events = raw
             .lines()

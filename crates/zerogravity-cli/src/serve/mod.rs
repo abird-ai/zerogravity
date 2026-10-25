@@ -2,11 +2,13 @@
 //! Uses original Qwen CPU source and private independent model sessions.
 
 mod engine;
+mod event_channel;
 #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
 mod gpu_batch;
 #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
 mod gpu_engine;
 mod http;
+mod pending;
 mod token_metrics;
 
 #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
@@ -19,11 +21,15 @@ enum Router {
     Gpu(gpu_engine::GpuRouter),
 }
 impl Router {
-    fn request(&self, request: Request) -> Result<RequestEvents, ServiceError> {
+    fn request_admitted(
+        &self,
+        request: Request,
+        ingress: Vec<pending::ServingCharge>,
+    ) -> Result<RequestEvents, ServiceError> {
         match self {
-            Self::Cpu(v) => v.request(request),
+            Self::Cpu(v) => v.request_admitted(request, ingress),
             #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
-            Self::Gpu(v) => v.request(request),
+            Self::Gpu(v) => v.request_admitted(request, ingress),
         }
     }
     fn max_output(&self) -> usize {
@@ -31,6 +37,17 @@ impl Router {
             Self::Cpu(v) => v.max_output,
             #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
             Self::Gpu(v) => v.max_output,
+        }
+    }
+    fn charge_ingress(
+        &self,
+        session: &str,
+        bytes: u64,
+    ) -> Result<pending::ServingCharge, ServiceError> {
+        match self {
+            Self::Cpu(v) => v.charge_ingress(session, bytes),
+            #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
+            Self::Gpu(v) => v.charge_ingress(session, bytes),
         }
     }
     fn model_ids(&self) -> Box<dyn Iterator<Item = &str> + '_> {
@@ -43,15 +60,33 @@ impl Router {
     fn admission(&self) -> serde_json::Value {
         match self {
             Self::Cpu(v) => {
-                let (limit, reserved, remaining) = v.memory_snapshot().unwrap_or((0, 0, 0));
+                let (limit, reserved, remaining, serving) =
+                    v.memory_snapshot().unwrap_or((0, 0, 0, 0));
+                let model = reserved.checked_sub(serving);
+                let queue = v.queue_snapshot();
                 serde_json::json!({"kind":"configured_host_cpu",
-                    "host_limit_bytes":limit,"reserved_bytes":reserved,
-                    "remaining_bytes":remaining})
+                    "host_limit_bytes":limit,
+                    "total_host_limit_bytes":limit,
+                    "total_host_reserved_bytes":reserved,
+                    "reserved_bytes":reserved,
+                    "remaining_bytes":remaining,
+                    "model_host_reserved_bytes":model,
+                    "backend_host_reserved_bytes":0,
+                    "serving_host_reserved_bytes":serving,
+                    "queued_requests":queue.pending,
+                    "pending_admission_in_progress":queue.in_progress,
+                    "pending_queue_capacity":queue.capacity,
+                    "pending_queue_charged_bytes":queue.backing_bytes,
+                    "pending_queue_consumers":queue.consumers,
+                    "queued_requests_limit":queue.limit,
+                    "active_sessions":v.active_sessions(),
+                    "peak_active_sessions":v.peak_active_sessions(),
+                    "active_sessions_limit":v.active_limit()})
             }
             #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
             Self::Gpu(v) => {
                 let m = v.metrics();
-                serde_json::json!({"kind":"resident_gpu",
+                let mut value = serde_json::json!({"kind":"resident_gpu",
                     "physical_accounting":"ResidentService/ResourceArbiter",
                     "batch_mode":if m.native_rows != 0 {"fused"} else {"interleaved"},
                     "native_batch_rows_max":m.native_rows.max(1),
@@ -75,25 +110,39 @@ impl Router {
                     "accepted_output_tokens":m.output_tokens,
                     "output_credit_parked_requests":m.parked,
                     "failed_gpu_quanta":m.failed,
-                    "cancelled_requests":m.cancelled,
-                    "queued_requests":m.queued,
+                    "cancelled_requests":m.cancelled});
+                let tail = serde_json::json!({
                     "active_sessions":m.active,
                     "peak_active_sessions":m.peak_active,
                     "active_sessions_limit":m.active_limit,
                     "canonical47_resources":m.canonical_resources,
                     "hf_source":m.hf_source,"hf_resources":m.hf_resources,
-                    "queued_requests_limit":engine::QUEUED_PER_WORKER,
+                    "queued_requests":m.queue.pending,
+                    "pending_admission_in_progress":m.queue.in_progress,
+                    "pending_queue_capacity":m.queue.capacity,
+                    "pending_queue_charged_bytes":m.queue.backing_bytes,
+                    "pending_queue_consumers":m.queue.consumers,
+                    "queued_requests_limit":m.queue.limit,
+                    "total_host_limit_bytes":m.host.map(|h|h.0),
+                    "total_host_reserved_bytes":m.host.map(|h|h.1),
+                    "model_host_reserved_bytes":m.host.map(|h|h.2),
+                    "backend_host_reserved_bytes":m.host.map(|h|h.3),
+                    "serving_host_reserved_bytes":m.host.map(|h|h.4),
                     "scheduling_groups":m.groups,
                     "co_scheduled_members":m.co_scheduled,
                     "state_cohort_publications":m.cohort_publications,
                     "state_cohort_rows":m.cohort_rows,
-                    "gpu_fused_batches":m.fused_batches})
+                    "gpu_fused_batches":m.fused_batches});
+                if let (Some(target), Some(source)) = (value.as_object_mut(), tail.as_object()) {
+                    target.extend(source.iter().map(|(key, item)| (key.clone(), item.clone())));
+                }
+                value
             }
         }
     }
 }
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::net::{SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -130,9 +179,37 @@ struct YamlConfig {
     batch_rows: usize,
     #[serde(default)]
     native_batch_rows: usize,
+    #[serde(default, deserialize_with = "yaml_pending_limit")]
+    max_pending_requests: Option<usize>,
     #[serde(default)]
     enable_per_request_metrics: bool,
 }
+fn yaml_pending_limit<'de, D>(deserializer: D) -> Result<Option<usize>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<serde_yaml::Value>::deserialize(deserializer)?;
+    match value {
+        None | Some(serde_yaml::Value::Null) => Ok(None),
+        Some(serde_yaml::Value::Number(number)) => number
+            .as_u64()
+            .and_then(|value| usize::try_from(value).ok())
+            .map(Some)
+            .ok_or_else(|| serde::de::Error::custom("max_pending_requests out of range")),
+        Some(serde_yaml::Value::String(value))
+            if value.eq_ignore_ascii_case("none") || value.eq_ignore_ascii_case("null") =>
+        {
+            Ok(None)
+        }
+        Some(serde_yaml::Value::String(value)) => value.parse::<usize>().map(Some).map_err(|_| {
+            serde::de::Error::custom("max_pending_requests must be a positive count or none")
+        }),
+        Some(_) => Err(serde::de::Error::custom(
+            "max_pending_requests must be an integer or none",
+        )),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct YamlModel {
@@ -194,6 +271,7 @@ impl YamlConfig {
             batch_mode: default_batch_mode(),
             batch_rows: default_batch_rows(),
             native_batch_rows: 0,
+            max_pending_requests: None,
             enable_per_request_metrics: false,
         };
         if args.first().is_some_and(|x| x == "--config") {
@@ -270,6 +348,9 @@ impl YamlConfig {
                 "--batch-mode" => config.batch_mode = value.clone(),
                 "--batch-rows" => config.batch_rows = parse_usize(value, flag)?,
                 "--native-batch-rows" => config.native_batch_rows = parse_usize(value, flag)?,
+                "--max-pending-requests" => {
+                    config.max_pending_requests = parse_optional_usize(value, flag)?
+                }
                 _ => {
                     return Err(ServiceError::new(
                         400,
@@ -281,6 +362,12 @@ impl YamlConfig {
         }
         Ok(config)
     }
+}
+fn parse_optional_usize(value: &str, flag: &str) -> Result<Option<usize>, ServiceError> {
+    if value.eq_ignore_ascii_case("none") || value.eq_ignore_ascii_case("null") {
+        return Ok(None);
+    }
+    parse_usize(value, flag).map(Some)
 }
 fn parse_usize(value: &str, flag: &str) -> Result<usize, ServiceError> {
     value.parse::<usize>().map_err(|_| {
@@ -313,6 +400,10 @@ fn canonical47_owner_profile(active: usize, host: usize, provider: usize) -> boo
         (provider, host, active),
         (2304, 3072..=16384, 1..=2) | (4096, 4096, 1..=8)
     )
+}
+
+fn short_hf_host_profile(host_mib: usize) -> bool {
+    matches!(host_mib, 4096 | 8192)
 }
 
 fn validate_source_profile(options: &YamlConfig) -> Result<(), ServiceError> {
@@ -366,7 +457,7 @@ fn validate_source_profile(options: &YamlConfig) -> Result<(), ServiceError> {
                 || !(1..=8).contains(&options.max_output)
                 || !(1..=8).contains(&options.active_per_worker)
                 || options.batch_mode != "interleaved"
-                || options.host_mib != 4096
+                || !short_hf_host_profile(options.host_mib)
                 || options.provider_mib == 0
                 || options.provider_mib > options.device_mib
                 || options.device_mib != 5120
@@ -375,7 +466,7 @@ fn validate_source_profile(options: &YamlConfig) -> Result<(), ServiceError> {
                 return Err(ServiceError::new(
                     400,
                     "unsupported_short_hf_profile",
-                    "short-HF requires CUDA/1worker/context512/maxoutput1..8/active1..8/interleaved/4096host/provider1..5120/5120device and actual native-artifacts",
+                    "short-HF requires CUDA/1worker/context512/maxoutput1..8/active1..8/interleaved/4096or8192host/provider1..5120/5120device and actual native-artifacts",
                 ));
             }
             if !cfg!(all(feature = "short-hf-serving", target_os = "linux")) {
@@ -404,8 +495,9 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
              [--source-profile gguf|canonical47-bf16|short-hf-bf16] [--native-artifacts DIR] \
              [--workers 2] [--active-per-worker 2] \
              [--max-context 1024] [--max-output 128] \
-             [--host-mib 4096] [--provider-mib 2048] [--device-mib 4096] \
+             [--host-mib 4096|8192] [--provider-mib 2048] [--device-mib 4096] \
              [--batch-mode interleaved|fused] [--batch-rows 2|4|8] \
+             [--max-pending-requests N|none] \
              [--enable-per-request-metrics]\n\
              ENDPOINTS: GET /health, GET /v1/models, \
              POST /v1/chat/completions, POST /v1/completions.\n\
@@ -439,6 +531,13 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
             "HTTP service is loopback-only; expose through a TLS/auth reverse proxy",
         ));
     }
+    if options.max_pending_requests == Some(0) {
+        return Err(ServiceError::new(
+            400,
+            "invalid_pending_limit",
+            "--max-pending-requests must be a positive count or none",
+        ));
+    }
     validate_batch_mode(
         &options.batch_mode,
         &options.backend,
@@ -456,6 +555,7 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
             options.max_context,
             options.max_output,
             options.host_mib,
+            options.max_pending_requests,
         )?),
         "vulkan-nvidia" | "vulkan-amd" | "cuda" | "rocm" => {
             #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
@@ -487,6 +587,8 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
                     } else {
                         0
                     },
+                    host_mib: options.host_mib,
+                    max_pending: options.max_pending_requests,
                 };
                 if options.source_profile == "canonical47-bf16" {
                     #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
@@ -775,6 +877,38 @@ mod tests {
         assert!(observed.enable_per_request_metrics);
         assert!(YamlConfig::cli(&["--model".into(), "missing".into()]).is_err());
         assert!(YamlConfig::cli(&["--workers".into(), "no".into()]).is_err());
+        assert_eq!(
+            YamlConfig::cli(&["--max-pending-requests".into(), "none".into()])
+                .unwrap()
+                .max_pending_requests,
+            None
+        );
+        assert_eq!(
+            YamlConfig::cli(&["--max-pending-requests".into(), "12".into()])
+                .unwrap()
+                .max_pending_requests,
+            Some(12)
+        );
+        assert!(YamlConfig::cli(&["--max-pending-requests".into(), "0".into()]).is_ok());
+        assert!(YamlConfig::cli(&["--max-pending-requests".into(), "nope".into()]).is_err());
+        let null_pending: YamlConfig =
+            serde_yaml::from_str("listen: 127.0.0.1:8000\nmodels: []\nmax_pending_requests: null")
+                .unwrap();
+        assert_eq!(null_pending.max_pending_requests, None);
+        let none_pending: YamlConfig =
+            serde_yaml::from_str("listen: 127.0.0.1:8000\nmodels: []\nmax_pending_requests: none")
+                .unwrap();
+        assert_eq!(none_pending.max_pending_requests, None);
+        let counted_pending: YamlConfig =
+            serde_yaml::from_str("listen: 127.0.0.1:8000\nmodels: []\nmax_pending_requests: 7")
+                .unwrap();
+        assert_eq!(counted_pending.max_pending_requests, Some(7));
+        assert!(
+            serde_yaml::from_str::<YamlConfig>(
+                "listen: 127.0.0.1:8000\nmodels: []\nmax_pending_requests: -1",
+            )
+            .is_err()
+        );
         assert!(
             YamlConfig::cli(&[
                 "--config".into(),

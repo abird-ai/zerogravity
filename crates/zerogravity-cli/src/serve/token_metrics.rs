@@ -9,7 +9,7 @@ use std::time::Instant;
 
 pub(super) fn validate_wire_id(value: &str) -> Result<(), ServiceError> {
     if value.is_empty()
-        || value.len() > 256
+        || value.len() > MAX_WIRE_ID_BYTES
         || !value
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"._:-".contains(&b))
@@ -21,6 +21,252 @@ pub(super) fn validate_wire_id(value: &str) -> Result<(), ServiceError> {
         ));
     }
     Ok(())
+}
+
+// Fixed semantic strings written once per metrics response. Their lengths are
+// part of the charged response envelope below.
+const SCHEMA: &str = "zerogravity.serving.request-token-metrics.v1";
+const CLOCK: &str = "request_monotonic_seconds";
+const COMMIT_SEMANTICS: &str = "observer immediately after existing source-root publication; not a GPU event clock or independent numerical proof";
+const DELIVERY_SEMANTICS: &str = "successful HTTP token-event write/flush to socket; not client receipt; absent for nonstream responses";
+const AGGREGATE_SEMANTICS: &str = "generation/mean ITL use provider commit-observed intervals; scheduled-start TTFT, queue time and scheduled throughput are unavailable; request-origin first commit is separate";
+const GPU_SEMANTICS: &str = "optional exact committed producer frontier; native cohort sequence/width from the existing successful atomic-publication counter; absent native cohort for B1/interleaved; observation is not independent state or mathematics proof";
+
+/// Largest JSON number/identifier text this module can emit (`u64` decimal,
+/// `f64` shortest-round-trip and a JSON `null`).
+const JSON_SCALAR_TEXT: u64 = 32;
+const MAX_WIRE_ID_BYTES: usize = 256;
+const PROVIDER_RESPONSE_ID_BOUND: u64 = "chatcmpl-zg-".len() as u64 + 20;
+/// Heap text owned by the six fixed semantic strings in the full Value tree.
+/// All six are source literals with no JSON quote, backslash or control byte,
+/// so their serialized length equals their source length.
+const FIXED_LITERALS: u64 = (SCHEMA.len()
+    + CLOCK.len()
+    + COMMIT_SEMANTICS.len()
+    + DELIVERY_SEMANTICS.len()
+    + AGGREGATE_SEMANTICS.len()
+    + GPU_SEMANTICS.len()) as u64;
+/// Response-level provider ID Strings. The nonstream path can overlap a
+/// `format!` owner, the `TokenMetrics` holder and Value-tree copies; the
+/// streaming path keeps the format owner, its `TokenMetrics` clone, the SSE
+/// framed copy and a Value copy. Six bounded texts cover the 2x format/SSE
+/// growth and the clone/tree owners without claiming an exact phase peak.
+const PROVIDER_ID_STRINGS: u64 = 6 * PROVIDER_RESPONSE_ID_BOUND;
+/// Wire ID Strings: the request-event owner, the `TokenMetrics` clone and the
+/// full Value-tree copy. `validate_wire_id` restricts every byte to unescaped
+/// ASCII, so each allocation is bounded by `MAX_WIRE_ID_BYTES`.
+const WIRE_ID_STRINGS: u64 = 3 * MAX_WIRE_ID_BYTES as u64;
+/// The streaming writer formats the bounded `X-Request-ID` line into a fresh
+/// String; the same String growth bound applies to that response-level owner.
+const WIRE_HEADER_OWNER: u64 = 2 * ("X-Request-ID: ".len() as u64 + MAX_WIRE_ID_BYTES as u64 + 2);
+/// SSE framing around one serialized `Value` copy.
+const SSE_COPY_OVERHEAD: u64 = ("data: ".len() + 2) as u64;
+
+/// One `serde_json::Map<String, Value>` leaf node, priced from the pinned std
+/// layout rather than a per-field guess: `BTreeMap` allocates the full 11-key
+/// leaf (16-byte header, 11 inline key `String` headers, 11 inline `Value`
+/// slots), so only the key text is variable. `producer_root` (3 keys, 27 text
+/// bytes) is therefore exactly 659 B.
+const MAP_LEAF: u64 =
+    (16 + 11 * (std::mem::size_of::<String>() + std::mem::size_of::<Value>())) as u64;
+const _: () = assert!(std::mem::size_of::<Value>() == 32);
+const _: () = assert!(std::mem::size_of::<String>() == 24);
+const _: () = assert!(MAP_LEAF == 632);
+
+/// A split root embeds the 11-slot leaf data plus 12 child edges. A 12-field
+/// map therefore owns one internal node and two leaves, not one leaf.
+const MAP_INTERNAL: u64 = MAP_LEAF + 12 * std::mem::size_of::<usize>() as u64;
+const _: () = assert!(MAP_INTERNAL == 728);
+
+fn map_nodes(fields: u64) -> u64 {
+    debug_assert!(fields <= 2 * 11 + 1);
+    if fields <= 11 {
+        MAP_LEAF
+    } else {
+        MAP_INTERNAL + 2 * MAP_LEAF
+    }
+}
+
+/// Old+new backing bound for one serialization buffer. The retained capacity
+/// starts at `minimum_capacity`; at the final reallocation the old capacity is
+/// at most the final text length and the new one at most twice that length.
+fn output_buffer_peak(text: u64, minimum_capacity: u64) -> u64 {
+    if text <= minimum_capacity {
+        minimum_capacity
+    } else {
+        text.saturating_mul(3)
+    }
+}
+
+/// One JSON object plus its key text.
+fn json_object<I>(keys: I) -> u64
+where
+    I: IntoIterator<Item = u64>,
+{
+    let mut fields = 0u64;
+    let mut total = 0u64;
+    for key in keys {
+        fields += 1;
+        total += key;
+    }
+    total + map_nodes(fields)
+}
+
+/// `serde_json::Value::Array` of `len` values: pinned `Vec` doubling holds the
+/// old backing during regrowth.
+fn json_array(len: u64, element: u64) -> u64 {
+    2 * len * element
+}
+
+/// Serialized text of one object field: key quotes, colon, comma and a scalar.
+fn json_scalar_text(key: &str, value: u64) -> u64 {
+    key.len() as u64 + 4 + value
+}
+
+/// Serialized text of one object field: key quotes, colon, comma, string quotes
+/// and the already-unescaped string body.
+fn json_string_text(key: &str, value: u64) -> u64 {
+    key.len() as u64 + 6 + value
+}
+
+/// Serialized text of one object field: key quotes, colon, comma and the scalar.
+fn json_member(key: u64) -> u64 {
+    key + 4 + JSON_SCALAR_TEXT
+}
+
+/// Per-record envelope for the typed metric owner and its serialized JSON
+/// twin. The combined response buffer contains every record, so charge three
+/// times each record's serialized text (old + new backing at the final
+/// growth). The response-level wrapper is priced separately by
+/// `response_envelope`; the additive sum bounds the one combined buffer.
+pub(super) fn record_envelope() -> u64 {
+    let producer_root = json_object([
+        "session_id".len() as u64,
+        "session_epoch".len() as u64,
+        "root".len() as u64,
+    ]);
+    let native_cohort = json_object(["publication_sequence".len() as u64, "width".len() as u64]);
+    let gpu = json_object([
+        "producer_frontier".len() as u64,
+        "producer_root".len() as u64,
+        "native_cohort".len() as u64,
+    ]) + producer_root
+        + native_cohort;
+    let record_keys = [
+        "index".len() as u64,
+        "token_id".len() as u64,
+        "commit_observed_at_seconds".len() as u64,
+        "output_received_at_seconds".len() as u64,
+        "http_write_completed_at_seconds".len() as u64,
+        "gpu".len() as u64,
+    ];
+    let tree = json_object(record_keys) + gpu;
+    let serialized = json_member("index".len() as u64)
+        + json_member("token_id".len() as u64)
+        + json_member("commit_observed_at_seconds".len() as u64)
+        + json_member("output_received_at_seconds".len() as u64)
+        + json_member("http_write_completed_at_seconds".len() as u64)
+        + json_member("gpu".len() as u64)
+        + json_member("producer_frontier".len() as u64)
+        + json_member("producer_root".len() as u64)
+        + json_member("session_id".len() as u64)
+        + json_member("session_epoch".len() as u64)
+        + json_member("root".len() as u64)
+        + json_member("native_cohort".len() as u64)
+        + json_member("publication_sequence".len() as u64)
+        + json_member("width".len() as u64)
+        + 32; // object/array punctuation
+    // Typed record, its Value tree, and the record text's share of the one
+    // combined serializer/SSE buffer (old + new backing at final growth).
+    (std::mem::size_of::<Record>() as u64) + tree + 3 * serialized
+}
+
+/// Once-per-response growth overlap of the bounded `Vec<Record>`. The final
+/// record backing is already charged once per emitted token by
+/// `record_envelope`; only the old backing live during the last doubling is
+/// added here.
+pub(super) fn records_growth() -> u64 {
+    (MAX_TOKEN_OBSERVATIONS as u64 / 2) * std::mem::size_of::<Record>() as u64
+}
+
+/// Response-level JSON objects written once: both aggregate/full metric
+/// objects, their field keys, the fixed semantic String heaps and serialized
+/// text, the bounded provider/wire identifier owners, and the serializer or
+/// SSE output buffer.
+pub(super) fn response_envelope() -> u64 {
+    let aggregate_keys = [
+        "time_to_first_token_ms",
+        "generation_time_ms",
+        "queue_time_ms",
+        "mean_itl_ms",
+        "tokens_per_second",
+    ];
+    let full_keys = [
+        "schema",
+        "provider_response_id",
+        "wire_request_id",
+        "clock",
+        "complete",
+        "completion_tokens",
+        "first_commit_observed_from_parsed_request_seconds",
+        "commit_semantics",
+        "delivery_semantics",
+        "aggregate_semantics",
+        "gpu_semantics",
+        "tokens",
+    ];
+    let aggregate = json_object(aggregate_keys.iter().map(|key| key.len() as u64));
+    let full = json_object(full_keys.iter().map(|key| key.len() as u64));
+    let tokens = json_array(
+        MAX_TOKEN_OBSERVATIONS as u64,
+        std::mem::size_of::<Value>() as u64,
+    );
+    // Serialized text, including fixed values and bounded identifiers. Each
+    // number/null uses the same bounded scalar text as `json_member`; every
+    // string field includes both quote pairs and the field comma.
+    let aggregate_text = aggregate_keys
+        .iter()
+        .map(|key| json_scalar_text(key, JSON_SCALAR_TEXT))
+        .sum::<u64>()
+        + 2;
+    let full_text = json_string_text("schema", SCHEMA.len() as u64)
+        + json_string_text("provider_response_id", PROVIDER_RESPONSE_ID_BOUND)
+        + json_string_text("wire_request_id", MAX_WIRE_ID_BYTES as u64)
+        + json_string_text("clock", CLOCK.len() as u64)
+        + json_scalar_text("complete", 4)
+        + json_scalar_text("completion_tokens", JSON_SCALAR_TEXT)
+        + json_scalar_text(
+            "first_commit_observed_from_parsed_request_seconds",
+            JSON_SCALAR_TEXT,
+        )
+        + json_string_text("commit_semantics", COMMIT_SEMANTICS.len() as u64)
+        + json_string_text("delivery_semantics", DELIVERY_SEMANTICS.len() as u64)
+        + json_string_text("aggregate_semantics", AGGREGATE_SEMANTICS.len() as u64)
+        + json_string_text("gpu_semantics", GPU_SEMANTICS.len() as u64)
+        + json_scalar_text("tokens", 0)
+        + 2;
+    // Per-record text is already charged by `record_envelope`; only the array
+    // brackets/commas are response-level here.
+    let tokens_text = MAX_TOKEN_OBSERVATIONS as u64 + 2;
+    // The two parent keys that place these objects in the completion/usage
+    // response are source-derived punctuation on the serializer copy.
+    let parent_keys_text =
+        json_scalar_text("metrics", 0) + json_scalar_text("zerogravity_token_metrics", 0);
+    let text = aggregate_text + full_text + tokens_text + parent_keys_text;
+    // `write_json` uses one `to_vec` buffer; the SSE caller builds one
+    // `format!` String copy. They are alternate response paths, so price the
+    // larger actual old+new backing peak instead of assuming two exact text
+    // buffers.
+    let output_buffer =
+        output_buffer_peak(text, 128).max(output_buffer_peak(text + SSE_COPY_OVERHEAD, 8));
+    // Value-tree owners, response-level String owners, then the serializer or
+    // SSE copy buffer.
+    (aggregate + full + tokens)
+        + FIXED_LITERALS
+        + PROVIDER_ID_STRINGS
+        + WIRE_ID_STRINGS
+        + WIRE_HEADER_OWNER
+        + output_buffer
 }
 
 #[derive(Serialize)]
@@ -158,13 +404,13 @@ impl TokenMetrics {
         // not measure. Leave that field null; request-origin timing is below.
         let aggregate = json!({"time_to_first_token_ms":null, "generation_time_ms":generation.map(|x| x * 1000.0),
             "queue_time_ms":null, "mean_itl_ms":mean.map(|x| x * 1000.0), "tokens_per_second":null});
-        let full = json!({"schema":"zerogravity.serving.request-token-metrics.v1", "provider_response_id":self.provider_response_id,
-            "wire_request_id":self.wire_request_id(), "clock":"request_monotonic_seconds", "complete":true, "completion_tokens":count,
+        let full = json!({"schema":SCHEMA, "provider_response_id":self.provider_response_id,
+            "wire_request_id":self.wire_request_id(), "clock":CLOCK, "complete":true, "completion_tokens":count,
             "first_commit_observed_from_parsed_request_seconds":first,
-            "commit_semantics":"observer immediately after existing source-root publication; not a GPU event clock or independent numerical proof",
-            "delivery_semantics":"successful HTTP token-event write/flush to socket; not client receipt; absent for nonstream responses",
-            "aggregate_semantics":"generation/mean ITL use provider commit-observed intervals; scheduled-start TTFT, queue time and scheduled throughput are unavailable; request-origin first commit is separate",
-            "gpu_semantics":"optional exact committed producer frontier; native cohort sequence/width from the existing successful atomic-publication counter; absent native cohort for B1/interleaved; observation is not independent state or mathematics proof",
+            "commit_semantics":COMMIT_SEMANTICS,
+            "delivery_semantics":DELIVERY_SEMANTICS,
+            "aggregate_semantics":AGGREGATE_SEMANTICS,
+            "gpu_semantics":GPU_SEMANTICS,
             "tokens":self.records});
         Ok((aggregate, full))
     }
@@ -411,5 +657,90 @@ mod tests {
             );
             assert!(invalid.records.is_empty());
         }
+    }
+
+    #[test]
+    fn response_envelope_prices_the_split_twelve_field_root() {
+        let aggregate = json_object(
+            [
+                "time_to_first_token_ms",
+                "generation_time_ms",
+                "queue_time_ms",
+                "mean_itl_ms",
+                "tokens_per_second",
+            ]
+            .iter()
+            .map(|key| key.len() as u64),
+        );
+        let full = json_object(
+            [
+                "schema",
+                "provider_response_id",
+                "wire_request_id",
+                "clock",
+                "complete",
+                "completion_tokens",
+                "first_commit_observed_from_parsed_request_seconds",
+                "commit_semantics",
+                "delivery_semantics",
+                "aggregate_semantics",
+                "gpu_semantics",
+                "tokens",
+            ]
+            .iter()
+            .map(|key| key.len() as u64),
+        );
+        assert_eq!(MAP_LEAF, 632);
+        assert_eq!(MAP_INTERNAL, 728);
+        assert_eq!(map_nodes(12), MAP_INTERNAL + 2 * MAP_LEAF);
+        assert!(full >= MAP_INTERNAL + 2 * MAP_LEAF);
+        let tokens = json_array(
+            MAX_TOKEN_OBSERVATIONS as u64,
+            std::mem::size_of::<Value>() as u64,
+        );
+        assert!(
+            response_envelope()
+                >= aggregate
+                    + full
+                    + tokens
+                    + FIXED_LITERALS
+                    + PROVIDER_ID_STRINGS
+                    + WIRE_ID_STRINGS
+                    + WIRE_HEADER_OWNER
+        );
+        // Four leaves: record, gpu, producer_root and native_cohort.
+        assert!(record_envelope() >= std::mem::size_of::<Record>() as u64 + 4 * MAP_LEAF);
+        assert!(
+            records_growth()
+                >= (MAX_TOKEN_OBSERVATIONS as u64 / 2) * std::mem::size_of::<Record>() as u64
+        );
+    }
+
+    #[test]
+    fn response_envelope_prices_literal_and_id_heaps_punctuation_and_output_growth() {
+        assert_eq!(json_scalar_text("x", 1), 1 + 4 + 1);
+        assert_eq!(json_string_text("x", 1), 1 + 6 + 1);
+        assert_eq!(output_buffer_peak(128, 128), 128);
+        assert_eq!(output_buffer_peak(129, 128), 3 * 129);
+        assert_eq!(output_buffer_peak(8, 8), 8);
+        assert_eq!(output_buffer_peak(9, 8), 3 * 9);
+        const { assert!(FIXED_LITERALS > 0) };
+        const { assert!(PROVIDER_ID_STRINGS >= PROVIDER_RESPONSE_ID_BOUND) };
+        const { assert!(WIRE_ID_STRINGS >= MAX_WIRE_ID_BYTES as u64) };
+        const { assert!(WIRE_HEADER_OWNER > MAX_WIRE_ID_BYTES as u64) };
+        // The fixed semantic strings and the validated wire-ID alphabet need
+        // no JSON escaping beyond the two quote bytes already priced.
+        for literal in [
+            SCHEMA,
+            CLOCK,
+            COMMIT_SEMANTICS,
+            DELIVERY_SEMANTICS,
+            AGGREGATE_SEMANTICS,
+            GPU_SEMANTICS,
+        ] {
+            assert!(!literal.bytes().any(|b| b == b'"' || b == b'\\' || b < 0x20));
+        }
+        assert!(validate_wire_id("chatcmpl-zg-0").is_ok());
+        assert!(validate_wire_id("run-1:request_2.3").is_ok());
     }
 }

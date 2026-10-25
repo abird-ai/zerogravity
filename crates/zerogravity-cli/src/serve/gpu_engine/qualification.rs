@@ -1,4 +1,5 @@
 //! Opt-in release CUDA serving proof over original source/session owners.
+use super::super::pending::CancelToken;
 use super::*;
 use zerogravity::accelerator::program::StateSlot;
 use zerogravity::gpu::ResidentSnapshot;
@@ -53,6 +54,7 @@ struct Fixture {
     source: Arc<LoadedQwenModel>,
     stats: Arc<WaveStats>,
     key: PhysicalDeviceKey,
+    _host: ServingHost,
 }
 impl Fixture {
     fn new(name: &str) -> Self {
@@ -73,8 +75,35 @@ impl Fixture {
             &directory.join("config.json"),
         )
         .unwrap();
-        let tokenizer =
-            Arc::new(QwenTokenizer::from_file(&directory.join("tokenizer.json")).unwrap());
+        // The physical fixture uses the same configured host authority and
+        // approved read/bootstrap/constructor/retained(R+G+V)/verify sequence
+        // as production; no ad-hoc tokenizer owner is substituted here.
+        let host = ServingHost::new(4096).unwrap();
+        let admitted = host.transfer_admission("qualification", name).unwrap();
+        let bootstrap =
+            zerogravity::tokenize_admission::approve_arbiter(&admitted, "bootstrap").unwrap();
+        let retained = bootstrap
+            .retain_arbiter(&admitted, "retained-inventory")
+            .unwrap();
+        let tokenizer_copy = host
+            .charge(
+                "qualification",
+                "tokenizer-source-copy",
+                AllocationClass::Scratch,
+                zerogravity::tokenize::APPROVED_TOKENIZER_BYTES,
+            )
+            .unwrap();
+        let tokenizer_bytes = read_approved_tokenizer(&directory.join("tokenizer.json")).unwrap();
+        let tokenizer = {
+            let _constructor = bootstrap
+                .constructor_of_arbiter(&admitted, "tokenizer-constructor", &tokenizer_bytes)
+                .unwrap();
+            QwenTokenizer::from_approved_bytes(&tokenizer_bytes).unwrap()
+        };
+        drop(tokenizer_bytes);
+        drop(tokenizer_copy);
+        bootstrap.verify(&tokenizer).unwrap();
+        let tokenizer = Arc::new(tokenizer);
         let device = GpuBackend::Cuda.device().unwrap();
         let client = device.client();
         let properties = client.properties();
@@ -99,6 +128,7 @@ impl Fixture {
             5120 * 1024 * 1024,
         ))
         .unwrap();
+        let max_token_bytes = tokenizer.max_token_bytes().unwrap();
         let model = Arc::new(GpuModel {
             engine: ModelEngine::Gguf(resident),
             tokenizer: TextTokenizer::Shared(tokenizer),
@@ -106,12 +136,16 @@ impl Fixture {
             hidden_width: source.geometry().hidden_size as usize,
             vocabulary_size: source.geometry().vocab_size,
             native_rows,
+            max_token_bytes,
+            _inventory: Some(retained),
+            readers: Arc::new(AtomicUsize::new(0)),
         });
         Self {
             model,
             source,
             stats: Arc::new(WaveStats::default()),
             key,
+            _host: host,
         }
     }
 
@@ -130,21 +164,29 @@ impl Fixture {
         let cancelled = Arc::new(AtomicBool::new(false));
         let lane = GpuActive::new(
             Scheduled {
-                request: Request {
-                    model: "qualified".into(),
-                    input: input.into(),
-                    chat: false,
-                    max_tokens: maximum,
-                    stream: true,
-                    token_metrics: observations.then(|| {
-                        super::super::engine::TokenMetricsRequest {
-                            started: Instant::now(),
-                            wire_request_id: Some("worker:unequal".into()),
-                        }
+                payload: Some(RequestLease {
+                    request: Request {
+                        model: "qualified".into(),
+                        input: input.into(),
+                        chat: false,
+                        max_tokens: maximum,
+                        stream: true,
+                        token_metrics: None,
+                    },
+                    _charges: Arc::new(Vec::new()),
+                }),
+                metrics: MetricsLease {
+                    metrics: observations.then(|| super::super::engine::TokenMetricsRequest {
+                        started: Instant::now(),
+                        wire_request_id: Some("worker:unequal".into()),
                     }),
+                    _charges: None,
                 },
                 events: sender,
-                cancelled,
+                cancelled: Arc::clone(&cancelled),
+                cancel: CancelToken::from_flag(Arc::clone(&cancelled)),
+                prompt_charge: None,
+                transport: None,
             },
             Arc::clone(&self.model),
             Arc::clone(&self.stats),

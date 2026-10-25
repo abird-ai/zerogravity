@@ -2,10 +2,7 @@
 use super::*;
 use zerogravity::canonical47 as source;
 use zerogravity::gpu::vllm_cuda_qualification::Canonical47CallReceipt;
-use zerogravity::{
-    cache::TransferAdmission,
-    resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, ResourceOwner},
-};
+use zerogravity::resource_arbiter::ResourceArbiter;
 
 pub(super) fn validate_profile(
     backend: GpuBackend,
@@ -36,32 +33,6 @@ pub(super) fn validate_profile(
             "use finite2 provider2304/host>=3072 or active8 exact4096/4096MiB",
         )),
     }
-}
-fn host(host_mib: usize) -> Result<TransferAdmission, ServiceError> {
-    let arbiter = ResourceArbiter::process_shared();
-    // Same configured host ledger used by the existing CPU router.
-    let resource =
-        PhysicalDeviceKey::new("host", "zerogravity-serve-cpu").map_err(ServiceError::inference)?;
-    let bytes = (host_mib as u64) * 1024 * 1024;
-    match arbiter.snapshot(&resource) {
-        Ok(s) if s.limit == bytes => {}
-        Ok(_) => {
-            return Err(ServiceError::new(
-                409,
-                "host_budget_conflict",
-                "existing configured host limit differs",
-            ));
-        }
-        Err(_) => arbiter
-            .register(resource.clone(), bytes)
-            .map_err(ServiceError::inference)?,
-    }
-    Ok(TransferAdmission {
-        arbiter,
-        resource,
-        owner: ResourceOwner::new("canonical47-serving", "original-source-loader")
-            .map_err(ServiceError::inference)?,
-    })
 }
 impl GpuRouter {
     pub(in crate::serve) fn new_canonical(
@@ -110,7 +81,12 @@ impl GpuRouter {
         }
         let bundle = source::native_artifact_root(bundle).map_err(ServiceError::inference)?;
         preflight_cuda_toolkit(backend)?;
-        let admitted = host(host_mib)?;
+        // Borrow the already configured serving host ledger instead of
+        // registering a second, ad-hoc host domain for the source loader. The
+        // loader retains R + G + V for its actual source tokenizer.
+        let serving_host = ServingHost::new(host_mib)?;
+        let admitted =
+            serving_host.transfer_admission("canonical47-serving", "original-source-loader")?;
         let loaded = block_on(source::load_with_profile(
             backend.device().map_err(ServiceError::inference)?,
             directory.as_deref().expect("nonempty source set"),
@@ -120,6 +96,10 @@ impl GpuRouter {
             None,
         ))
         .map_err(ServiceError::inference)?;
+        let max_token_bytes = loaded
+            .tokenizer()
+            .max_token_bytes()
+            .map_err(ServiceError::inference)?;
         let model = Arc::new(GpuModel {
             tokenizer: TextTokenizer::Canonical(loaded.clone()),
             engine: ModelEngine::Canonical(loaded),
@@ -127,22 +107,34 @@ impl GpuRouter {
             hidden_width: 1024,
             vocabulary_size: 248320,
             native_rows: 0,
+            max_token_bytes,
+            _inventory: None,
+            readers: Arc::new(AtomicUsize::new(0)),
         });
         let models = aliases.into_keys().map(|id| (id, model.clone())).collect();
-        Self::start(models, profile.active, profile.output, 0)
+        Self::start(
+            models,
+            profile.active,
+            profile.output,
+            0,
+            serving_host,
+            profile.max_pending,
+        )
     }
 }
-pub(super) fn resources(models: &BTreeMap<String, Arc<GpuModel>>) -> Option<serde_json::Value> {
+pub(super) fn resources(
+    models: &BTreeMap<String, Arc<GpuModel>>,
+    host_snapshot: (u64, u64, u64, u64),
+) -> Option<serde_json::Value> {
     let model = models.values().find_map(|model| match &model.engine {
         ModelEngine::Canonical(source) => Some(source),
         _ => None,
     })?;
     let observed = model.resident().observation().snapshot().ok()?;
     let arbiter = ResourceArbiter::process_shared();
-    let host = arbiter
-        .snapshot(&PhysicalDeviceKey::new("host", "zerogravity-serve-cpu").ok()?)
-        .ok()?;
     let physical = arbiter.snapshot(&observed.physical_key).ok()?;
+    let (host_limit, host_reserved) = (host_snapshot.0, host_snapshot.1);
+    let serving_host_bytes = host_snapshot.3;
     Some(serde_json::json!({
         "lifecycle_profile":format!("{:?}",model.resident().lifecycle_profile()),
         "loaded_session_limit":model.resident().lifecycle_profile().session_limit(),
@@ -150,7 +142,11 @@ pub(super) fn resources(models: &BTreeMap<String, Arc<GpuModel>>) -> Option<serd
         "resident_bytes":observed.resident_bytes,
         "pending_events":observed.pending_events,
         "usable":observed.usable,
-        "host_limit_bytes":host.limit,"host_reserved_bytes":host.reserved,
+        "host_limit_bytes":host_limit,"host_reserved_bytes":host_reserved,
+        "total_host_limit_bytes":host_limit,"total_host_reserved_bytes":host_reserved,
+        "serving_host_reserved_bytes":serving_host_bytes,
+        "backend_host_reserved_bytes":0,
+        "model_host_reserved_bytes":host_reserved.checked_sub(serving_host_bytes),
         "device_limit_bytes":physical.limit,"physical_reserved_bytes":physical.reserved,
     }))
 }
@@ -253,8 +249,19 @@ impl GpuActive {
     }
 }
 pub(super) fn retire_sources(models: &BTreeMap<String, Arc<GpuModel>>, stats: &WaveStats) {
+    // A model alias may share one resident source group. Any live reader in
+    // the group keeps retirement closed, even if this particular alias has
+    // already released its reader count.
+    let busy: std::collections::BTreeSet<_> = models
+        .values()
+        .filter(|model| model.readers.load(Ordering::Acquire) != 0)
+        .map(|model| model.group)
+        .collect();
     let mut groups = std::collections::BTreeSet::new();
     for model in models.values() {
+        if busy.contains(&model.group) {
+            continue;
+        }
         if groups.insert(model.group)
             && let ModelEngine::Canonical(source) = &model.engine
             && let Err(error) = block_on(source.resident().clone().close(None))
@@ -277,6 +284,8 @@ mod active8_tests {
             provider_mib,
             device_mib: 5120,
             native_rows: 0,
+            host_mib: 4096,
+            max_pending: None,
         }
     }
     #[test]
@@ -307,15 +316,14 @@ mod active8_tests {
         assert!(validate_profile(GpuBackend::Cuda, &wrong, 4096).is_err());
     }
     #[test]
-    fn worker_queue_has_real_sixteen_item_backpressure() {
-        assert_eq!(QUEUED_PER_WORKER, 16);
+    fn shared_pending_queue_is_not_compiled_at_sixteen() {
         assert_eq!(MAX_ACTIVE_PER_WORKER, 8);
-        let (tx, rx) = mpsc::sync_channel(QUEUED_PER_WORKER);
-        for n in 0..16 {
-            tx.try_send(n).unwrap();
+        let queue = PendingQueue::new(ServingHost::isolated(512).unwrap(), None).unwrap();
+        let _worker = queue.worker().unwrap();
+        for n in 0..17 {
+            queue.enqueue(queue.reserve().unwrap(), n).unwrap();
         }
-        assert!(matches!(tx.try_send(16), Err(mpsc::TrySendError::Full(16))));
-        assert_eq!(rx.try_recv().unwrap(), 0);
-        tx.try_send(16).unwrap();
+        assert_eq!(queue.snapshot().pending, 17);
+        assert!(matches!(queue.try_pop(|_| false), Pop::Item(0)));
     }
 }

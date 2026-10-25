@@ -4,17 +4,22 @@
 //! interleaves through B1. Device feedback retains each SessionAuthority.
 
 use super::engine::{
-    EVENTS_PER_REQUEST, GeneratedText, GpuTokenObservation, MAX_ACTIVE_PER_WORKER,
-    NativeCohortObservation, Presentation, QUEUED_PER_WORKER, Request, RequestEvents,
-    ResponseEvent, Scheduled, ServiceError, TextTokenizer,
+    EVENTS_PER_REQUEST, GeneratedText, GpuTokenObservation, MAX_ACTIVE_PER_WORKER, MetricsLease,
+    NativeCohortObservation, Presentation, Request, RequestEvents, RequestLease, ResponseEvent,
+    Scheduled, ServiceError, TextTokenizer, output_transport_bound, read_approved_tokenizer,
+    vecdeque_backing_bytes, workers_charge,
 };
+use super::event_channel::mpsc;
 use super::gpu_batch::{self, Limits, Phase, Ready};
+use super::pending::{
+    self, PendingQueue, Pop, QueueSnapshot, ServingCharge, ServingHost, WorkerQueue,
+};
 use crate::GpuBackend;
 use futures_lite::future::block_on;
 use std::collections::{BTreeMap, VecDeque};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 use zerogravity::gpu::{
@@ -22,6 +27,7 @@ use zerogravity::gpu::{
     resident_batch::ResidentBatchRows,
 };
 use zerogravity::qwen35::LoadedQwenModel;
+use zerogravity::resource_arbiter::AllocationClass;
 use zerogravity::tokenize::QwenTokenizer;
 
 const GPU_CAPACITY: usize = 512;
@@ -50,6 +56,8 @@ pub(super) struct GpuProfile {
     pub provider_mib: usize,
     pub device_mib: usize,
     pub native_rows: usize,
+    pub host_mib: usize,
+    pub max_pending: Option<usize>,
 }
 
 /// CubeCL CUDA's C++ backend requires a toolkit INCLUDE root in addition
@@ -118,6 +126,10 @@ struct GpuModel {
     hidden_width: usize,
     vocabulary_size: u64,
     native_rows: usize,
+    max_token_bytes: usize,
+    /// Retained `R + G + V` source credit owned by the model that holds it.
+    _inventory: Option<zerogravity::tokenize_admission::Retained>,
+    readers: Arc<AtomicUsize>,
 }
 #[derive(Default)]
 struct WaveStats {
@@ -126,7 +138,6 @@ struct WaveStats {
     gpu_forwards: AtomicU64,
     failed: AtomicU64,
     cancelled: AtomicU64,
-    queued: AtomicUsize,
     active: AtomicUsize,
     peak_active: AtomicUsize,
     groups: AtomicU64,
@@ -168,7 +179,8 @@ pub(super) struct GpuMetrics {
     pub gpu_forwards: u64,
     pub failed: u64,
     pub cancelled: u64,
-    pub queued: usize,
+    pub queue: QueueSnapshot,
+    pub host: Option<(u64, u64, Option<u64>, u64, u64)>,
     pub active: usize,
     pub peak_active: usize,
     pub active_limit: usize,
@@ -198,12 +210,17 @@ pub(super) struct GpuMetrics {
 }
 pub(super) struct GpuRouter {
     models: Arc<BTreeMap<String, Arc<GpuModel>>>,
-    sender: mpsc::SyncSender<Scheduled>,
+    queue: PendingQueue<Scheduled>,
+    host: ServingHost,
     next_id: AtomicU64,
     stats: Arc<WaveStats>,
     pub(super) max_output: usize,
     native_rows: usize,
     active_limit: usize,
+    worker: Option<thread::JoinHandle<()>>,
+    // Worker handle/consumer/closure inventory; released after the join
+    // handle. Native stack/TLS/OS mapping is external unquantified headroom.
+    _worker_charge: ServingCharge,
 }
 impl GpuRouter {
     pub(super) fn validate_profile(
@@ -244,7 +261,23 @@ impl GpuRouter {
             provider_mib,
             device_mib,
             native_rows,
+            host_mib,
+            max_pending,
         } = profile;
+        if !(256..=1_048_576).contains(&host_mib) {
+            return Err(ServiceError::new(
+                400,
+                "invalid_host_budget",
+                "host-mib must be 256..=1048576",
+            ));
+        }
+        if max_pending == Some(0) {
+            return Err(ServiceError::new(
+                400,
+                "invalid_config",
+                "max-pending-requests must be a positive count or none",
+            ));
+        }
         Self::validate_profile(workers, active, context, output, provider_mib, device_mib)?;
         if native_rows != 0
             && (!matches!(native_rows, 2 | 4 | 8)
@@ -271,6 +304,10 @@ impl GpuRouter {
             ServiceError::new(400, "provider_budget", "GPU provider cap overflow")
         })?;
         let device_cap = (device_mib as u64) * 1024 * 1024;
+        // The host ledger exists before any source is parsed so the
+        // process-global tokenizer bootstrap, the retained inventory and the
+        // cold constructor are admitted ahead of the work they price.
+        let host = ServingHost::new(host_mib)?;
         let mut models = BTreeMap::new();
         let mut unique = BTreeMap::<PathBuf, Arc<GpuModel>>::new();
         for (alias, path) in declared {
@@ -295,8 +332,41 @@ impl GpuRouter {
                 continue;
             }
             let parent = path.parent().unwrap_or(Path::new("."));
-            let tokenizer = QwenTokenizer::from_file(&parent.join("tokenizer.json"))
-                .map_err(ServiceError::inference)?;
+            // One process-global tokenizer owner, admitted before any source
+            // parse: ByteLevel statics, retained inventory, cold constructor.
+            let tokenizer_admission = host.transfer_admission(&alias, "tokenizer-source")?;
+            let bootstrap = zerogravity::tokenize_admission::approve_arbiter(
+                &tokenizer_admission,
+                "bootstrap",
+            )?;
+            let inventory_charge =
+                bootstrap.retain_arbiter(&tokenizer_admission, "retained-inventory")?;
+            // Approved source identity (12,807,982 B + SHA-256), the bounded
+            // BPE-cache serving profile and the census of the exact bytes.
+            // Price the capped held copy before allocating it; the no-follow
+            // reader enforces extent/EOF/stamp and the parser checks SHA-256
+            // on these same bytes before any JSON is parsed.
+            let tokenizer_copy = host.charge(
+                &alias,
+                "tokenizer-source-copy",
+                AllocationClass::Scratch,
+                zerogravity::tokenize::APPROVED_TOKENIZER_BYTES,
+            )?;
+            let tokenizer_bytes = read_approved_tokenizer(&parent.join("tokenizer.json"))?;
+            let tokenizer = {
+                let _constructor = bootstrap.constructor_of_arbiter(
+                    &tokenizer_admission,
+                    "tokenizer-constructor",
+                    &tokenizer_bytes,
+                )?;
+                QwenTokenizer::from_approved_bytes(&tokenizer_bytes)
+                    .map_err(ServiceError::inference)?
+            };
+            // Release the held bytes before their source-copy charge, then
+            // validate the parsed inventory against the admitted plan.
+            drop(tokenizer_bytes);
+            drop(tokenizer_copy);
+            bootstrap.verify(&tokenizer)?;
             let source = LoadedQwenModel::open(&path, &parent.join("config.json"))
                 .map_err(ServiceError::inference)?;
             let hidden_width = usize::try_from(source.geometry().hidden_size).map_err(|_| {
@@ -315,6 +385,9 @@ impl GpuRouter {
                 device_cap,
             ))
             .map_err(ServiceError::inference)?;
+            let max_token_bytes = tokenizer
+                .max_token_bytes()
+                .map_err(ServiceError::inference)?;
             let shared = Arc::new(GpuModel {
                 engine: ModelEngine::Gguf(resident),
                 tokenizer: TextTokenizer::Shared(Arc::new(tokenizer)),
@@ -322,52 +395,119 @@ impl GpuRouter {
                 hidden_width,
                 vocabulary_size,
                 native_rows,
+                max_token_bytes,
+                _inventory: Some(inventory_charge),
+                readers: Arc::new(AtomicUsize::new(0)),
             });
             unique.insert(path, Arc::clone(&shared));
             models.insert(alias, shared);
         }
-        Self::start(models, active, output, native_rows)
+        Self::start(models, active, output, native_rows, host, max_pending)
     }
     fn start(
         models: BTreeMap<String, Arc<GpuModel>>,
         active: usize,
         output: usize,
         native_rows: usize,
+        host: ServingHost,
+        max_pending: Option<usize>,
     ) -> Result<Self, ServiceError> {
         let models = Arc::new(models);
-        let (sender, receiver) = mpsc::sync_channel(QUEUED_PER_WORKER);
+        let queue = PendingQueue::new(host.clone(), max_pending)?;
         let sources = Arc::clone(&models);
         let stats = Arc::new(WaveStats::default());
         let worker_stats = Arc::clone(&stats);
-        thread::Builder::new()
-            .name("zg-resident-gpu".into())
-            .spawn(move || worker(receiver, sources, active, worker_stats, native_rows))
-            .map_err(|e| ServiceError::new(500, "worker_spawn", e.to_string()))?;
+        // Charge the resident worker's application-owned handle/consumer/
+        // closure inventory and its three bounded container rows before the
+        // consumer handle, join handle or thread exists; the router retains it
+        // until join. The builder keeps std's default stack=None.
+        let container_rows = pending::checked_sum(&[
+            vecdeque_backing_bytes::<GpuActive>(active)?,
+            vecdeque_backing_bytes::<GpuActive>(active)?,
+            vecdeque_backing_bytes::<GpuActive>(active)?,
+        ])?;
+        let worker_charge = workers_charge(
+            &host,
+            1,
+            std::alloc::Layout::new::<GpuWorkerCaptures>(),
+            Some(("zg-resident-gpu".len(), "zg-resident-gpu".len())),
+            container_rows,
+        )?;
+        let receiver = match queue.worker() {
+            Ok(receiver) => receiver,
+            Err(error) => {
+                queue.close();
+                return Err(error);
+            }
+        };
+        let builder = thread::Builder::new().name("zg-resident-gpu".into());
+        let captures = GpuWorkerCaptures {
+            queue: receiver,
+            models: sources,
+            active_limit: active,
+            stats: worker_stats,
+            native_rows,
+        };
+        let worker = builder.spawn(move || captures.run()).map_err(|error| {
+            queue.close();
+            ServiceError::new(500, "worker_spawn", error.to_string())
+        })?;
         Ok(Self {
             models,
-            sender,
+            queue,
+            host,
             next_id: AtomicU64::new(1),
             stats,
             max_output: output,
             native_rows,
             active_limit: active,
+            worker: Some(worker),
+            _worker_charge: worker_charge,
         })
     }
     pub(super) fn metrics(&self) -> GpuMetrics {
+        let queue = self.queue.snapshot();
+        let host_snapshot = self.host.snapshot().unwrap_or((0, 0, 0, 0));
+        let (limit, reserved, _remaining, serving) = host_snapshot;
         #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
-        let hf_health = short_hf::health(&self.models);
+        let hf_health = short_hf::health(&self.models, host_snapshot);
+        #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+        let backend = hf_health
+            .as_ref()
+            .and_then(|(_, resources)| resources.get("backend_host_reserved_bytes"))
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        #[cfg(not(all(feature = "short-hf-serving", target_os = "linux")))]
+        let backend = 0;
+        #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+        let host = if short_hf::models_present(&self.models) && hf_health.is_none() {
+            None
+        } else {
+            Some({
+                let model = reserved
+                    .checked_sub(backend)
+                    .and_then(|bytes| bytes.checked_sub(serving));
+                (limit, reserved, model, backend, serving)
+            })
+        };
+        #[cfg(not(all(feature = "short-hf-serving", target_os = "linux")))]
+        let host = Some({
+            let model = reserved.checked_sub(serving);
+            (limit, reserved, model, backend, serving)
+        });
         GpuMetrics {
             attempted: self.stats.attempted.load(Ordering::Relaxed),
             completed: self.stats.completed.load(Ordering::Relaxed),
             gpu_forwards: self.stats.gpu_forwards.load(Ordering::Relaxed),
             failed: self.stats.failed.load(Ordering::Relaxed),
             cancelled: self.stats.cancelled.load(Ordering::Relaxed),
-            queued: self.stats.queued.load(Ordering::Acquire),
+            queue,
+            host,
             active: self.stats.active.load(Ordering::Acquire),
             peak_active: self.stats.peak_active.load(Ordering::Acquire),
             active_limit: self.active_limit,
             #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
-            canonical_resources: canonical::resources(&self.models),
+            canonical_resources: canonical::resources(&self.models, host_snapshot),
             #[cfg(not(all(feature = "canonical47-serving", target_os = "linux")))]
             canonical_resources: None,
             #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
@@ -405,14 +545,34 @@ impl GpuRouter {
     pub(super) fn model_ids(&self) -> impl Iterator<Item = &str> {
         self.models.keys().map(String::as_str)
     }
+    pub(super) fn charge_ingress(
+        &self,
+        session: &str,
+        bytes: u64,
+    ) -> Result<ServingCharge, ServiceError> {
+        self.host
+            .charge("http-ingress", session, AllocationClass::Scratch, bytes)
+    }
+    #[allow(dead_code)]
     pub(super) fn request(&self, request: Request) -> Result<RequestEvents, ServiceError> {
-        if !self.models.contains_key(&request.model) {
-            return Err(ServiceError::new(
-                404,
-                "model_not_found",
-                "unregistered GPU model",
-            ));
-        }
+        self.request_with(request, None)
+    }
+    pub(super) fn request_admitted(
+        &self,
+        request: Request,
+        ingress: Vec<ServingCharge>,
+    ) -> Result<RequestEvents, ServiceError> {
+        self.request_with(request, Some(ingress))
+    }
+    fn request_with(
+        &self,
+        mut request: Request,
+        ingress: Option<Vec<ServingCharge>>,
+    ) -> Result<RequestEvents, ServiceError> {
+        let model =
+            self.models.get(&request.model).cloned().ok_or_else(|| {
+                ServiceError::new(404, "model_not_found", "unregistered GPU model")
+            })?;
         if request.input.is_empty()
             || request.input.len() > 1024 * 1024
             || request.max_tokens == 0
@@ -424,12 +584,6 @@ impl GpuRouter {
                 "GPU request bounds",
             ));
         }
-        #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
-        self.models[&request.model]
-            .engine
-            .validate_request(&self.models[&request.model].tokenizer, &request)?;
-        let model = request.model.clone();
-        let token_metrics = request.token_metrics.clone();
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         if id == u64::MAX {
             return Err(ServiceError::new(
@@ -438,31 +592,136 @@ impl GpuRouter {
                 "request IDs exhausted",
             ));
         }
-        let cancelled = Arc::new(AtomicBool::new(false));
-        let (tx, rx) = mpsc::sync_channel(EVENTS_PER_REQUEST);
-        self.stats.queued.fetch_add(1, Ordering::AcqRel);
-        self.sender
-            .try_send(Scheduled {
+        let ticket = self.queue.reserve()?;
+        let prompt_bound = model
+            .tokenizer
+            .prompt_token_bound(request.input.len(), request.chat);
+        let prompt_scratch = model
+            .tokenizer
+            .admitted_prompt_scratch_bound(request.input.len(), request.chat)
+            .map_err(|error| ServiceError::new(400, "size_overflow", error.to_string()))?;
+        let prompt_bytes = pending::checked_sum(&[
+            pending::vec_bytes::<u32>(prompt_bound)?,
+            prompt_scratch,
+            // The presenter decodes the whole committed prefix, so a full
+            // `max_tokens` prefix's adapter scratch stays live at each commit.
+            u64::try_from(model.tokenizer.decode_scratch_bound(request.max_tokens)).map_err(
+                |_| ServiceError::new(400, "size_overflow", "decode scratch bound overflow"),
+            )?,
+        ])?;
+        let prompt_charge = self.host.charge(
+            &request.model,
+            "prompt-tokens",
+            AllocationClass::RecurrentState,
+            prompt_bytes,
+        )?;
+        // Canonical/short-HF validation runs only after count/host admission.
+        #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
+        model.engine.validate_request(&model.tokenizer, &request)?;
+        let request_bytes = pending::checked_sum(&[
+            pending::heap_strings(&[&request.model, &request.input])?,
+            request
+                .token_metrics
+                .as_ref()
+                .and_then(|m| m.wire_request_id.as_ref())
+                .map_or(Ok(0), |id| pending::heap_strings(&[id]))?,
+        ])?;
+        let charges = Arc::new(match ingress {
+            Some(ingress) => ingress,
+            None => vec![self.host.charge(
+                &request.model,
+                "request-copy",
+                AllocationClass::Scratch,
+                request_bytes,
+            )?],
+        });
+        let event_copy_bytes = pending::checked_sum(&[
+            pending::heap_strings(&[&request.model])?,
+            request
+                .token_metrics
+                .as_ref()
+                .and_then(|m| m.wire_request_id.as_ref())
+                .map_or(Ok(0), |id| pending::heap_strings(&[id]))?,
+        ])?;
+        let event_copy_charge = self.host.charge(
+            &request.model,
+            "event-copy",
+            AllocationClass::Scratch,
+            event_copy_bytes,
+        )?;
+        let model_alias = request.model.clone();
+        let token_metrics = request.token_metrics.clone();
+        let transport = Arc::new(self.host.charge(
+            &model_alias,
+            "event-transport",
+            AllocationClass::Output,
+            output_transport_bound(request.max_tokens, model.max_token_bytes)?,
+        )?);
+        let (events_tx, events_rx) = mpsc::try_sync_channel(
+            &self.host,
+            &model_alias,
+            "event-channel",
+            EVENTS_PER_REQUEST,
+        )?;
+        let cancel_charge = self.host.charge(
+            &model_alias,
+            "cancel-token",
+            AllocationClass::Scratch,
+            super::event_channel::cancel_bytes()?,
+        )?;
+        let cancel = self.queue.cancel_token(Some(Arc::new(cancel_charge)));
+        let cancelled = Arc::clone(cancel.flag());
+        let metrics = MetricsLease {
+            metrics: request.token_metrics.take(),
+            _charges: token_metrics.is_some().then(|| Arc::clone(&charges)),
+        };
+        let scheduled = Scheduled {
+            payload: Some(RequestLease {
                 request,
-                events: tx,
-                cancelled: Arc::clone(&cancelled),
-            })
-            .map_err(|err| {
-                self.stats.queued.fetch_sub(1, Ordering::AcqRel);
-                match err {
-                    mpsc::TrySendError::Full(_) => {
-                        ServiceError::new(429, "queue_full", "GPU queue at capacity")
-                    }
-                    mpsc::TrySendError::Disconnected(_) => {
-                        ServiceError::new(503, "worker_unavailable", "GPU executor unavailable")
-                    }
-                }
-            })?;
-        Ok(RequestEvents::new(id, model, rx, cancelled).observed(token_metrics))
+                _charges: charges,
+            }),
+            metrics,
+            events: events_tx,
+            cancelled,
+            cancel: cancel.clone(),
+            prompt_charge: Some(prompt_charge),
+            transport: Some(Arc::clone(&transport)),
+        };
+        if let Err((error, _)) = self.queue.enqueue(ticket, scheduled) {
+            return Err(error);
+        }
+        Ok(RequestEvents::new(
+            id,
+            model_alias,
+            events_rx,
+            cancel,
+            Some(event_copy_charge),
+            Some(transport),
+        )
+        .observed(token_metrics))
+    }
+}
+impl Drop for GpuRouter {
+    fn drop(&mut self) {
+        self.queue.close();
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
+struct SourceReaders(Arc<AtomicUsize>);
+impl SourceReaders {
+    fn enter(readers: &Arc<AtomicUsize>) -> Self {
+        readers.fetch_add(1, Ordering::AcqRel);
+        Self(Arc::clone(readers))
+    }
+}
+impl Drop for SourceReaders {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
     }
 }
 struct GpuActive {
-    _charge: SessionCharge,
     engine: RequestEngine,
     group: usize,
     hidden_width: usize,
@@ -477,6 +736,14 @@ struct GpuActive {
     native_rows: usize,
     packet_presented: bool,
     blocked_since: Option<Instant>,
+    _charge: SessionCharge,
+    _prompt_charge: Option<ServingCharge>,
+    _transport: Option<Arc<ServingCharge>>,
+    // Dropped after the engine/session so source retirement cannot race a live
+    // resident/session reference.
+    _readers: SourceReaders,
+    // Keeps the cancel atomic's charged control alive with the flag.
+    _cancel: super::pending::CancelToken,
 }
 impl GpuActive {
     fn new(
@@ -484,15 +751,32 @@ impl GpuActive {
         model: Arc<GpuModel>,
         stats: Arc<WaveStats>,
     ) -> Result<Self, ServiceError> {
+        let Scheduled {
+            payload,
+            metrics,
+            events,
+            cancelled,
+            cancel,
+            prompt_charge,
+            transport,
+        } = job;
+        let lease = payload.ok_or_else(|| {
+            ServiceError::new(
+                500,
+                "scheduled_payload",
+                "scheduled request lost its payload",
+            )
+        })?;
+        let request = &lease.request;
         let prompt = model
             .tokenizer
-            .prompt_tokens(&job.request.input, job.request.chat)
+            .prompt_tokens(&request.input, request.chat)
             .map_err(ServiceError::inference)?;
         if prompt.is_empty()
             || prompt.len() > GPU_CAPACITY
             || prompt
                 .len()
-                .checked_add(job.request.max_tokens - 1)
+                .checked_add(request.max_tokens - 1)
                 .is_none_or(|total| total > GPU_CAPACITY)
         {
             return Err(ServiceError::new(
@@ -503,23 +787,29 @@ impl GpuActive {
         }
         let output = GeneratedText::new_owned(
             model.tokenizer.clone(),
-            job.events.clone(),
-            job.request.stream,
-            job.request.max_tokens,
+            events.clone(),
+            request.stream,
+            request.max_tokens,
             prompt.len(),
         )
-        .observed(job.request.token_metrics.clone(), model.vocabulary_size);
+        .observed_charged(metrics.metrics, model.vocabulary_size, metrics._charges);
         // ResidentSession allocates independent, physical source-bound GPU
         // state. Neither its tensor source nor its StateRoot is CPU fallback.
-        let engine = model.engine.session(&job.cancelled)?;
+        let readers = SourceReaders::enter(&model.readers);
+        let engine = model.engine.session(&cancelled)?;
+        drop(lease);
         let charge = stats.admit_session();
         Ok(Self {
             _charge: charge,
+            _prompt_charge: prompt_charge,
+            _transport: transport,
+            _readers: readers,
+            _cancel: cancel,
             engine,
             group: model.group,
             hidden_width: model.hidden_width,
-            cancelled: job.cancelled,
-            errors: job.events,
+            cancelled,
+            errors: events,
             output,
             prompt,
             cursor: 0,
@@ -774,15 +1064,53 @@ fn eligible_member(
     }
 }
 
+fn retire_if_drained(models: &BTreeMap<String, Arc<GpuModel>>, stats: &WaveStats) {
+    #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
+    canonical::retire_sources(models, stats);
+    #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+    short_hf::retire_sources(models, stats);
+}
+struct GpuWorkerCaptures {
+    queue: WorkerQueue<Scheduled>,
+    models: Arc<BTreeMap<String, Arc<GpuModel>>>,
+    active_limit: usize,
+    stats: Arc<WaveStats>,
+    native_rows: usize,
+}
+
+impl GpuWorkerCaptures {
+    /// Consume the exact admitted struct so the start closure captures only
+    /// this priced value; the admitted `Layout::new::<GpuWorkerCaptures>()`
+    /// cannot drift from the spawn capture.
+    fn run(self) {
+        worker(
+            self.queue,
+            self.models,
+            self.active_limit,
+            self.stats,
+            self.native_rows,
+        )
+    }
+}
 fn worker(
-    rx: mpsc::Receiver<Scheduled>,
+    queue: WorkerQueue<Scheduled>,
     models: Arc<BTreeMap<String, Arc<GpuModel>>>,
     active_limit: usize,
     stats: Arc<WaveStats>,
     native_rows: usize,
 ) {
-    let mut active = VecDeque::<GpuActive>::new();
+    // Three container rows are charged before spawn: active sessions, the
+    // current eligible set, and the parked set. Swapping the drained active
+    // queue with parked reuses both allocations instead of growing either.
+    let mut active = VecDeque::<GpuActive>::with_capacity(active_limit);
+    let mut eligible = VecDeque::<GpuActive>::with_capacity(active_limit);
+    let mut parked = VecDeque::<GpuActive>::with_capacity(active_limit);
+    let mut closing = false;
+    let cancelled = |job: &Scheduled| job.cancel.is_cancelled();
     loop {
+        // Reclaim cancelled queued payloads even when every active or parked
+        // slot prevents promotion. The hint keeps idle rounds cheap.
+        let _ = queue.sweep(cancelled);
         active.retain(|row| {
             if row.cancelled.load(Ordering::Acquire) {
                 stats.cancelled.fetch_add(1, Ordering::Relaxed);
@@ -791,55 +1119,71 @@ fn worker(
                 true
             }
         });
-        while active.len() < active_limit {
-            let next = if active.is_empty() {
-                match rx.recv_timeout(Duration::from_millis(25)) {
-                    Ok(v) => Some(v),
-                    Err(mpsc::RecvTimeoutError::Timeout) => break,
-                    Err(mpsc::RecvTimeoutError::Disconnected) => {
-                        #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
-                        canonical::retire_sources(&models, &stats);
-                        #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
-                        short_hf::retire_sources(&models, &stats);
-                        return;
+        if !closing {
+            while active.len() < active_limit {
+                let next = if active.is_empty() {
+                    match queue.pop_wait(Duration::from_millis(25), cancelled) {
+                        Pop::Item(job) => Some(job),
+                        Pop::Empty => break,
+                        Pop::Closed => {
+                            closing = true;
+                            break;
+                        }
                     }
+                } else {
+                    match queue.try_pop(cancelled) {
+                        Pop::Item(job) => Some(job),
+                        Pop::Empty => None,
+                        Pop::Closed => {
+                            closing = true;
+                            break;
+                        }
+                    }
+                };
+                let Some(job) = next else { break };
+                if job.cancelled.load(Ordering::Acquire) {
+                    stats.cancelled.fetch_add(1, Ordering::Relaxed);
+                    continue;
                 }
-            } else {
-                rx.try_recv().ok()
-            };
-            let Some(job) = next else { break };
-            stats.queued.fetch_sub(1, Ordering::AcqRel);
-            if job.cancelled.load(Ordering::Acquire) {
-                stats.cancelled.fetch_add(1, Ordering::Relaxed);
-                continue;
-            }
-            let Some(model) = models.get(&job.request.model) else {
-                continue;
-            };
-            let errors = job.events.clone();
-            match GpuActive::new(job, Arc::clone(model), Arc::clone(&stats)) {
-                Ok(session) => active.push_back(session),
-                Err(e) => {
-                    if e.status == 499 && e.code == "cancelled" {
-                        stats.cancelled.fetch_add(1, Ordering::Relaxed);
-                    } else {
-                        stats.failed.fetch_add(1, Ordering::Relaxed);
+                let request = job
+                    .payload
+                    .as_ref()
+                    .expect("scheduled payload")
+                    .request
+                    .model
+                    .clone();
+                let Some(model) = models.get(&request) else {
+                    continue;
+                };
+                let errors = job.events.clone();
+                match GpuActive::new(job, Arc::clone(model), Arc::clone(&stats)) {
+                    Ok(session) => active.push_back(session),
+                    Err(e) => {
+                        if e.status == 499 && e.code == "cancelled" {
+                            stats.cancelled.fetch_add(1, Ordering::Relaxed);
+                        } else {
+                            stats.failed.fetch_add(1, Ordering::Relaxed);
+                        }
+                        let _ = errors.try_send(ResponseEvent::Error(e));
                     }
-                    let _ = errors.try_send(ResponseEvent::Error(e));
                 }
             }
         }
         if active.is_empty() {
+            if closing {
+                retire_if_drained(&models, &stats);
+                return;
+            }
             continue;
         }
-        let mut eligible = VecDeque::new();
-        let mut parked = VecDeque::new();
+        eligible.clear();
+        parked.clear();
         for row in active.drain(..) {
             if let Some(row) = eligible_member(row, &mut parked, &stats) {
                 eligible.push_back(row);
             }
         }
-        active = parked;
+        std::mem::swap(&mut active, &mut parked);
         stats.parked.store(active.len(), Ordering::Relaxed);
         if eligible.is_empty() {
             // No locks/queue slot while waiting for bounded transport credit.
