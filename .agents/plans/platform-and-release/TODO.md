@@ -11,8 +11,10 @@ Contracts: [P00–P23 roadmap](../IMPLEMENTATION_ROADMAP.md),
 
 - [ ] Owner23Oct: bring Vulkan execution to CUDA feature/correctness parity;
   use ROCm/HIP for AMD including pvl-x2 gfx1151. Vulkan source catalogue
-  landed in `19ff059`; V10 physical cases and real registry/offline build/
-  backend/SSH checks remain pending. Reuse existing physical
+  landed in `19ff059`; the real offline build PASSED on x2 25Oct (v-build,
+  1,006.6s, three artifacts) and v-admin/v-bootstrap closures are green;
+  V cases are blocked on the v-resident validator/producer field fix
+  (PM handoff §2.3) — no Vulkan parity or performance claim yet. Reuse existing physical
   identity/arbiter/service/queue/quarantine. Separate compiled, available and
   qualified source/layout/math capabilities; refuse before allocation/launch
   when unsupported. Preserve gfx90c launch hold and source/SDK acquisition rules.

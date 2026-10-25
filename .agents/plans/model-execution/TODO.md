@@ -29,6 +29,25 @@ reference roots while current checks use them. Broken source or a draft
 controller is not a merge checkpoint; preserve pending physical scopes honestly.
 
 
+### H/G/V physical checkpoint — 25 Oct pass 3
+
+- [~] Three passes executed on pvl-x2 (full evidence:
+  ../../runs/resume-all-hgv-checkpoint-execution-sol-20261025/LOG.md).
+  Root causes of passes 1-2 fixed and verified on hardware
+  (`06b89da` E0308, `c217c35` V parents, `e6ab074` census,
+  `3941a3c` Gemma envelope). Pass 3: builds/admins/binds all PASS;
+  h-known-qwen-reload + h-qwen-final-reader-unknown PASS (full
+  semantic closures); three real failures preserved
+  (h-gemma-feedback-unknown: session-state identity/policy/fence
+  assert + `scope closes only between completed proposals`;
+  g-resident: parity row-upload fixture contract vs legitimate PLE
+  row dedup; v-resident: adapter validator requires a false-permit
+  field the producer never emits — physical case itself passed);
+  19 cases stopped as dependents. Fix sites pinned in
+  [the PM handoff](../docs/FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-25-PM.md) §2;
+  pass-4 procedure §2 there. No product defect established
+  (qualification-gated paths).
+
 ### Current shared source20 hardware checkpoint — 24 Oct
 
 - [~] Qwen natural2-position independent original comparison and Gemma learned
