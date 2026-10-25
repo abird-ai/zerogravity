@@ -8,6 +8,7 @@
 //! publication ownership enters this primitive. B4 only: rows==4; no B8
 //! inference (a naive eight-row KV export ABI would need 58 bindings).
 use super::checked_span;
+mod abi;
 use crate::vllm_ptx_inline::PinnedKernel;
 use cubecl::{client::Client, server::Handle};
 use cubecl_runtime::kernel::BufferIOAttr;
@@ -143,32 +144,19 @@ fn require_shared_kv_cache(rows: &[TypedRow<'_>]) -> Result<()> {
 /// One grouped GDN state-copy definition per kind (byte-identical per-row
 /// equations; row selected by blockIdx.y). Import kinds: 0 conv, 2 H.
 pub(crate) fn gdn_definition(kind: usize) -> Result<PinnedKernel> {
-    let (elements, input_width, output_width, input_type, output_type) = match kind {
-        0 => (CONV_ELEMENTS, 4, 2, "unsigned int", "unsigned short"),
-        1 => (CONV_ELEMENTS, 2, 4, "unsigned short", "unsigned int"),
-        2 | 3 => (RECURRENT_ELEMENTS, 4, 4, "unsigned int", "unsigned int"),
+    let (elements, input_type, output_type) = match kind {
+        0 => (CONV_ELEMENTS, "unsigned int", "unsigned short"),
+        1 => (CONV_ELEMENTS, "unsigned short", "unsigned int"),
+        2 | 3 => (RECURRENT_ELEMENTS, "unsigned int", "unsigned int"),
         _ => return Err(Error::Unsupported("typed transport GDN kind".into())),
     };
-    let entry: &'static str = [
-        "zg_cohort_conv_in_rows",
-        "zg_cohort_conv_out_rows",
-        "zg_cohort_h_in_rows",
-        "zg_cohort_h_out_rows",
-    ][kind];
+    let abi = abi::gdn(kind)?;
+    let entry = abi.entry;
     let text: Arc<str> = format!(
         "// cubecl.cuda.dynamic_shared_bytes=0\n#define ZG_ENTRY {entry}\n#define ZG_COPY {kind}\n#define ZG_ELEMENTS {elements}u\n#define ZG_INPUT {input_type}\n#define ZG_OUTPUT {output_type}\n{STATE_SOURCE}",
     )
     .into();
-    use BufferIOAttr::{ReadOnly as R, ReadWrite as RW, WriteOnly as W};
-    let mut bindings = Vec::with_capacity(2 * ROWS + 1);
-    for _ in 0..ROWS {
-        bindings.push((elements * input_width, R));
-    }
-    for _ in 0..ROWS {
-        bindings.push((elements * output_width, W));
-    }
-    bindings.push((4, RW));
-    PinnedKernel::new(entry, text, GROUPED_THREADS, bindings.into())
+    PinnedKernel::new(entry, text, GROUPED_THREADS, abi::metadata(&abi))
 }
 
 /// One grouped KV transport definition per direction, built against the real
@@ -176,42 +164,14 @@ pub(crate) fn gdn_definition(kind: usize) -> Result<PinnedKernel> {
 /// per-row control views + status); export = 30 (adds 4 candidate K + 4
 /// candidate V). Both hold under the existing 32-binding PinnedKernel guard.
 pub(crate) fn kv_definition(incoming: bool) -> Result<PinnedKernel> {
-    let entry: &'static str = if incoming {
-        "zg_cohort_kv_in_rows"
-    } else {
-        "zg_cohort_kv_out_rows"
-    };
+    let abi = abi::kv(incoming)?;
+    let entry = abi.entry;
     let text: Arc<str> = format!(
         "// cubecl.cuda.dynamic_shared_bytes=0\n#define ZG_ENTRY {entry}\n#define ZG_IN {}\n{KV_SOURCE}",
         usize::from(incoming),
     )
     .into();
-    use BufferIOAttr::{ReadOnly as R, ReadWrite as RW, WriteOnly as W};
-    let mut bindings = Vec::with_capacity(if incoming { 22 } else { 30 });
-    for _ in 0..ROWS {
-        bindings.push((KV_CANONICAL_BYTES, R)); // prior K lanes
-    }
-    for _ in 0..ROWS {
-        bindings.push((KV_CANONICAL_BYTES, R)); // prior V lanes
-    }
-    bindings.push((KV_CACHE_BYTES, if incoming { RW } else { R }));
-    if !incoming {
-        for _ in 0..ROWS {
-            bindings.push((KV_CANONICAL_BYTES, W)); // candidate K lanes
-        }
-        for _ in 0..ROWS {
-            bindings.push((KV_CANONICAL_BYTES, W)); // candidate V lanes
-        }
-    }
-    // CUDA parameter list is row-major: base0,end0,block0, then row1.
-    // Grouping by field would swap 8-byte bases and 4-byte controls.
-    for _ in 0..ROWS {
-        for bytes in [8, 4, 4] {
-            bindings.push((bytes, R));
-        }
-    }
-    bindings.push((4, RW));
-    PinnedKernel::new(entry, text, GROUPED_THREADS, bindings.into())
+    PinnedKernel::new(entry, text, GROUPED_THREADS, abi::metadata(&abi))
 }
 
 /// Per-family extents for the kernel's per-row (source, destination) pairs.
@@ -243,10 +203,31 @@ impl PreparedTypedTransport {
                 "typed transport actual B4 rows/grouped grid only".into(),
             ));
         }
-        let kv = layout == TypedLayout::Kv;
-        let mut handles = Vec::with_capacity(if kv { 31 } else { 9 });
-        let mut ranges = Vec::with_capacity(if kv { 31 } else { 9 });
-        let mut push = |handle: &Handle, bytes: usize| -> Result<()> {
+        // One typed ABI determines both the PinnedKernel metadata and the
+        // ordered checked original handles; no second role/width loop.
+        for row in rows {
+            row.require_combination(layout, direction)?;
+        }
+        let args = if layout == TypedLayout::Kv {
+            require_shared_kv_cache(rows)?;
+            abi::kv(direction == TypedDirection::Import)?
+        } else {
+            let kind = match (layout, direction) {
+                (TypedLayout::Conv, TypedDirection::Import) => 0,
+                (TypedLayout::Conv, TypedDirection::Export) => 1,
+                (TypedLayout::RecurrentH, TypedDirection::Import) => 2,
+                (TypedLayout::RecurrentH, TypedDirection::Export) => 3,
+                _ => return Err(Error::Unsupported("typed transport family".into())),
+            };
+            abi::gdn(kind)?
+        };
+        // The source entry, complete argument metadata and actual bound values
+        // must describe the *same* native variant, before any GPU launch.
+        kernel.require_typed_abi(args.entry, args.iter().map(|arg| (arg.bytes, arg.access)))?;
+        let mut handles = Vec::with_capacity(args.len());
+        let mut ranges = Vec::with_capacity(args.len());
+        for arg in args.iter() {
+            let handle = arg.handle(rows, status)?;
             if handle.service != client.service_id() {
                 return Err(Error::State(
                     "typed transport foreign physical service".into(),
@@ -256,7 +237,7 @@ impl PreparedTypedTransport {
                 handle.size(),
                 handle.offset_start.unwrap_or(0),
                 handle.offset_end.unwrap_or(0),
-                bytes / 4,
+                arg.bytes / 4,
             )?;
             let range = crate::resident_program::BufferRange::new(handle)?;
             if ranges
@@ -269,84 +250,7 @@ impl PreparedTypedTransport {
             }
             ranges.push(range);
             handles.push(handle.clone());
-            Ok(())
-        };
-        for row in rows {
-            row.require_combination(layout, direction)?;
         }
-        if kv {
-            // All rows share exactly ONE native KV cache binding. Earlier
-            // versions silently ignored rows[1..].native, allowing a caller
-            // to present a different cache from the one the kernel reads.
-            require_shared_kv_cache(rows)?;
-            let incoming = direction == TypedDirection::Import;
-            for row in rows {
-                push(
-                    row.prior.expect("validated combination"),
-                    KV_CANONICAL_BYTES,
-                )?;
-            }
-            for row in rows {
-                push(
-                    if incoming {
-                        row.second
-                    } else {
-                        row.second_prior
-                    }
-                    .expect("validated combination"),
-                    KV_CANONICAL_BYTES,
-                )?;
-            }
-            push(rows[0].native, KV_CACHE_BYTES)?;
-            if !incoming {
-                for row in rows {
-                    push(
-                        row.candidate.expect("validated combination"),
-                        KV_CANONICAL_BYTES,
-                    )?;
-                }
-                for row in rows {
-                    push(
-                        row.second.expect("validated combination"),
-                        KV_CANONICAL_BYTES,
-                    )?;
-                }
-            }
-            // Keep the pointer order identical to the CUDA signature:
-            // (base,end,block) for each row, not four bases followed by ends.
-            for row in rows {
-                for (control, bytes) in [8, 4, 4].into_iter().enumerate() {
-                    push(row.controls.expect("validated combination")[control], bytes)?;
-                }
-            }
-        } else {
-            let (source_bytes, destination_bytes) = gdn_extents(layout, direction)?;
-            let import = direction == TypedDirection::Import;
-            // Kernel order: 4 per-row sources, then 4 per-row destinations.
-            // Import reads the canonical prior planes into the native views;
-            // export reads the native views into the candidate planes.
-            for row in rows {
-                push(
-                    if import { row.prior } else { Some(row.native) }
-                        .expect("validated combination"),
-                    source_bytes,
-                )?;
-            }
-            for row in rows {
-                push(
-                    if import {
-                        row.native
-                    } else {
-                        row.candidate.expect("validated combination")
-                    },
-                    destination_bytes,
-                )?;
-            }
-        }
-        // Both CUDA families declare status LAST. Keep the original ABI
-        // ordering for the grouped kernel and independently check its service,
-        // alignment, and disjointness like every other binding.
-        push(status, 4)?;
         // The cold kernel's ABI must match this family's binding order; the
         // `PinnedKernel::prepare` validation re-checks service/alignment/
         // extent against the real generated ABI and the <=32-binding guard.
@@ -400,6 +304,36 @@ mod tests {
         // A naive eight-row KV export would need 2*8 prior + cache + 2*8
         // candidate + 3*8 control + status = 74 bindings; `prepare` refuses
         // any row population other than the admitted four.
+        Ok(())
+    }
+
+    #[test]
+    fn wrong_native_variant_refuses_even_when_byte_extents_match() -> Result<()> {
+        let h_import = gdn_definition(2)?;
+        let h_export = abi::gdn(3)?;
+        assert!(
+            h_import
+                .require_typed_abi(
+                    h_export.entry,
+                    h_export.iter().map(|arg| (arg.bytes, arg.access))
+                )
+                .is_err()
+        );
+        let true_import = abi::gdn(2)?;
+        h_import.require_typed_abi(
+            true_import.entry,
+            true_import.iter().map(|arg| (arg.bytes, arg.access)),
+        )?;
+        let kv_in = kv_definition(true)?;
+        let kv_export = abi::kv(false)?;
+        assert!(
+            kv_in
+                .require_typed_abi(
+                    kv_export.entry,
+                    kv_export.iter().map(|arg| (arg.bytes, arg.access))
+                )
+                .is_err()
+        );
         Ok(())
     }
 

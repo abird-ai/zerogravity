@@ -108,6 +108,26 @@ impl PinnedKernel {
         self.bindings.iter().map(|(bytes, _)| *bytes).collect()
     }
 
+    /// Reject a wrong closed native kernel even when its pointer widths happen
+    /// to match another family's ABI (e.g. GDN H import/export). No heap work.
+    pub(crate) fn require_typed_abi(
+        &self,
+        entry: &str,
+        expected: impl ExactSizeIterator<Item = (usize, BufferIOAttr)>,
+    ) -> Result<()> {
+        if self.key.entry != entry
+            || self.bindings.len() != expected.len()
+            || !self
+                .bindings
+                .iter()
+                .zip(expected)
+                .all(|(actual, want)| *actual == want)
+        {
+            return Err(Error::State("pinned CUDA source/typed ABI differs".into()));
+        }
+        Ok(())
+    }
+
     /// Retained heap owners only; enclosing definitions price their inline
     /// structs separately. Source includes the exact CUDA entry suffix.
     pub(crate) fn retained_metadata_bytes(&self) -> Result<usize> {
