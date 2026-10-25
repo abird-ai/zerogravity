@@ -119,6 +119,27 @@ impl TypedRow<'_> {
     }
 }
 
+/// Exactly one physical KV cache and stream may back the four logical rows.
+/// Compare the verified allocation identity AND its complete byte view; an
+/// overlapping or shorter slice is not the same binding.
+fn require_shared_kv_cache(rows: &[TypedRow<'_>]) -> Result<()> {
+    let first = rows
+        .first()
+        .ok_or_else(|| Error::Malformed("grouped KV requires rows".into()))?
+        .native;
+    let identity = crate::resident_program::BufferRange::new(first)?;
+    for row in &rows[1..] {
+        if row.native.stream != first.stream
+            || crate::resident_program::BufferRange::new(row.native)? != identity
+        {
+            return Err(Error::State(
+                "grouped KV rows have different native cache views".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// One grouped GDN state-copy definition per kind (byte-identical per-row
 /// equations; row selected by blockIdx.y). Import kinds: 0 conv, 2 H.
 pub(crate) fn gdn_definition(kind: usize) -> Result<PinnedKernel> {
@@ -254,6 +275,10 @@ impl PreparedTypedTransport {
             row.require_combination(layout, direction)?;
         }
         if kv {
+            // All rows share exactly ONE native KV cache binding. Earlier
+            // versions silently ignored rows[1..].native, allowing a caller
+            // to present a different cache from the one the kernel reads.
+            require_shared_kv_cache(rows)?;
             let incoming = direction == TypedDirection::Import;
             for row in rows {
                 push(
@@ -426,6 +451,39 @@ mod tests {
         // live prefix of the largest admitted base (53).
         assert_eq!(512 * 512, 262_144);
         assert_eq!((53 * 512) as u32, 27_136);
+    }
+
+    #[test]
+    fn grouped_kv_refuses_unshared_native_cache_even_with_equal_extents() -> Result<()> {
+        use cubecl_common::device::{DeviceId, ServiceId};
+        use cubecl_core::environment::stream::StreamId;
+        let service = ServiceId::of::<()>(DeviceId::new(0, 0));
+        let stream = StreamId::current();
+        let native = Handle::new(service, stream, KV_CACHE_BYTES as u64);
+        let mut handles = vec![native.clone(); ROWS];
+        fn rows(handles: &[Handle]) -> Vec<TypedRow<'_>> {
+            handles
+                .iter()
+                .map(|native| TypedRow {
+                    prior: None,
+                    candidate: None,
+                    native,
+                    second: None,
+                    second_prior: None,
+                    controls: None,
+                })
+                .collect()
+        }
+        require_shared_kv_cache(&rows(&handles))?;
+        handles[3] = Handle::new(service, stream, KV_CACHE_BYTES as u64);
+        assert!(require_shared_kv_cache(&rows(&handles)).is_err());
+        handles[3] = native.clone().offset_end(4);
+        assert!(require_shared_kv_cache(&rows(&handles)).is_err());
+        let mut different_stream = native.clone();
+        different_stream.stream = StreamId::allocate();
+        handles[3] = different_stream;
+        assert!(require_shared_kv_cache(&rows(&handles)).is_err());
+        Ok(())
     }
 
     #[test]

@@ -12,7 +12,7 @@ use crate::resident_state_transport::typed::{
     TypedRow,
 };
 use cubecl::{Device, server::Handle};
-use std::{cell::RefCell, collections::BTreeSet};
+use std::collections::BTreeSet;
 use zerogravity_core::{
     Error, Result,
     accelerator::SourceIdentity,
@@ -152,6 +152,25 @@ pub(crate) async fn qualify(
             "grouped transport release CUDA qualification only".into(),
         ));
     }
+    // Qualify each implementation against its own untouched source/canary
+    // fixture. Reusing the per-row flight's outputs could mask a grouped
+    // kernel that omitted a write entirely.
+    let reference = qualify_mode(device.clone(), host, owner.clone(), false).await?;
+    let grouped = qualify_mode(device, host, owner, true).await?;
+    if reference.0 != grouped.0 || reference.1 != grouped.1 || reference.2 <= grouped.2 {
+        return Err(Error::State(
+            "grouped transport independent flight census".into(),
+        ));
+    }
+    Ok(grouped.0 + grouped.1 + grouped.2)
+}
+
+async fn qualify_mode(
+    device: Device,
+    host: &PhysicalDeviceKey,
+    owner: ResourceOwner,
+    grouped: bool,
+) -> Result<(usize, usize, usize)> {
     let arbiter = ResourceArbiter::process_shared();
     let host_ticket = arbiter.admit(
         host,
@@ -566,98 +585,94 @@ pub(crate) async fn qualify(
     let counts = (fixture.gdn.len(), fixture.kv.len(), fixture.observed.len());
     drop(init.complete_sync().await?);
     init_slot.finish()?;
-    // ---- Two flights: per-row oracle, then grouped; both must match the
-    // host model exactly (=> grouped is bit-equal to the four per-row runs).
-    let mut grouped_launches = 0;
-    for grouped in [false, true] {
-        let ticket = service.queue().submit(
-            service.budget(),
-            service.owner().clone(),
-            &[AllocationRequest {
-                kind: AllocationClass::Scratch,
-                bytes: payload,
-            }],
-            None,
-        )?;
-        let mut slot = ticket.wait().await?;
-        slot.begin_submission()?;
-        let accesses = fixture
-            .observed
-            .iter()
-            .map(|lease| {
-                (
-                    lease.clone(),
-                    if written.contains(&lease.id()) {
-                        DeviceAccess::Write
-                    } else {
-                        DeviceAccess::Read
-                    },
-                )
-            })
-            .collect::<Vec<_>>();
-        let outputs = accesses
-            .iter()
-            .filter(|(_, access)| *access == DeviceAccess::Write)
-            .map(|(lease, _)| lease.clone())
-            .collect::<Vec<_>>();
-        if outputs.len() != written.len() {
-            return Err(Error::State(
-                "grouped transport physical write census".into(),
-            ));
+    // One original, independently initialized physical flight per mode.
+    // Both modes compare every byte to the same deterministic host oracle.
+    let ticket = service.queue().submit(
+        service.budget(),
+        service.owner().clone(),
+        &[AllocationRequest {
+            kind: AllocationClass::Scratch,
+            bytes: payload,
+        }],
+        None,
+    )?;
+    let mut slot = ticket.wait().await?;
+    slot.begin_submission()?;
+    let accesses = fixture
+        .observed
+        .iter()
+        .map(|lease| {
+            (
+                lease.clone(),
+                if written.contains(&lease.id()) {
+                    DeviceAccess::Write
+                } else {
+                    DeviceAccess::Read
+                },
+            )
+        })
+        .collect::<Vec<_>>();
+    let outputs = accesses
+        .iter()
+        .filter(|(_, access)| *access == DeviceAccess::Write)
+        .map(|(lease, _)| lease.clone())
+        .collect::<Vec<_>>();
+    if outputs.len() != written.len() {
+        return Err(Error::State(
+            "grouped transport physical write census".into(),
+        ));
+    }
+    let flight = service.submit(0, &accesses)?;
+    let mut launches = 0;
+    for case in &fixture.gdn {
+        launches += launch_gdn(&service, case, grouped)?;
+    }
+    for case in &fixture.kv {
+        launches += launch_kv(&service, case, grouped)?;
+    }
+    if grouped {
+        if launches != fixture.gdn.len() + fixture.kv.len() * 2 {
+            return Err(Error::State("grouped transport launch population".into()));
         }
-        let flight = service.submit(0, &accesses)?;
-        let mut launches = 0;
-        for case in &fixture.gdn {
-            launches += launch_gdn(&service, case, grouped)?;
-        }
-        for case in &fixture.kv {
-            launches += launch_kv(&service, case, grouped)?;
-        }
-        if grouped {
-            grouped_launches = launches;
-        } else if launches != fixture.gdn.len() * 4 + fixture.kv.len() * 8 {
-            return Err(Error::State("per-row oracle launch population".into()));
-        }
-        let reads = fixture
-            .observed
-            .iter()
-            .map(|lease| lease.readback(0, lease.bytes()))
-            .collect::<Result<Vec<_>>>()?;
-        let expected: Vec<Vec<u32>> = fixture.expected.clone();
-        let seen = RefCell::new(Vec::new());
-        let (ready, raw) = flight
-            .complete_with_readback(&outputs, &reads, |data| {
-                if data.len() != fixture.observed.len() {
+    } else if launches != fixture.gdn.len() * 4 + fixture.kv.len() * 8 {
+        return Err(Error::State("per-row oracle launch population".into()));
+    }
+    let reads = fixture
+        .observed
+        .iter()
+        .map(|lease| lease.readback(0, lease.bytes()))
+        .collect::<Result<Vec<_>>>()?;
+    let expected = &fixture.expected;
+    let (ready, raw) = flight
+        .complete_with_readback(&outputs, &reads, |data| {
+            if data.len() != fixture.observed.len() {
+                return Err(Error::State(
+                    "grouped transport whole readback coverage".into(),
+                ));
+            }
+            for (index, bytes) in data.iter().enumerate() {
+                if bytes.len() != expected[index].len() * 4 {
                     return Err(Error::State(
-                        "grouped transport whole readback coverage".into(),
+                        "grouped transport readback byte extent".into(),
                     ));
                 }
-                for (index, bytes) in data.iter().enumerate() {
-                    if bytes.len() != expected[index].len() * 4 {
-                        return Err(Error::State(
-                            "grouped transport readback byte extent".into(),
-                        ));
+                for (word, raw) in bytes.chunks_exact(4).enumerate() {
+                    let want = expected[index][word].to_le_bytes();
+                    if raw != want {
+                        return Err(Error::State(format!(
+                            "grouped transport word differs lease={index} word={word}"
+                        )));
                     }
-                    for (word, raw) in bytes.chunks_exact(4).enumerate() {
-                        let want = expected[index][word].to_le_bytes();
-                        if raw != want {
-                            return Err(Error::State(format!(
-                                "grouped transport word differs lease={index} word={word}"
-                            )));
-                        }
-                    }
-                    seen.borrow_mut().push(bytes.to_vec());
                 }
-                Ok(())
-            })
-            .await?;
-        drop(seen);
-        drop(raw);
-        drop(ready);
-        slot.finish()?;
-    }
-    // Both readback flights are complete. Release every original and observed
-    // lease before asserting true device retirement (not only queue silence).
+            }
+            Ok(())
+        })
+        .await?;
+    drop(raw);
+    drop(ready);
+    slot.finish()?;
+    // The readback completed. Release every original and observed lease
+    // before asserting physical device retirement, not merely queue silence.
     drop(fixture);
     drop((
         conv_cache, sources, candidates, status_in, status_out, h_cache, h0, ht,
@@ -683,7 +698,7 @@ pub(crate) async fn qualify(
             "grouped transport final original physical reservation".into(),
         ));
     }
-    Ok(counts.0 + counts.1 + grouped_launches)
+    Ok((counts.0, counts.1, launches))
 }
 
 fn launch_gdn(service: &ResidentService, case: &GdnCase, grouped: bool) -> Result<usize> {

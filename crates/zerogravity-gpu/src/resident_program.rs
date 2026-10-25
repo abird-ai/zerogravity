@@ -59,7 +59,7 @@ mod projection_qualification;
 
 /// Allocation coordinates only. Original handles and admitted leases remain
 /// the lifetime owners; this copyable metadata never pins or promotes memory.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct BufferRange {
     service: ServiceId,
     memory: ManagedMemoryId,
