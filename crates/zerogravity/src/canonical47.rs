@@ -2,7 +2,7 @@
 //! No downloader, expected archive, alternate evaluator or eligibility inference.
 use crate::gpu::vllm_cuda_qualification as native;
 use crate::qwen35::{original_binding::OriginalWindowModelSource, tokenize::QwenTokenizer};
-use crate::resource_arbiter::GlobalResourceLease;
+use crate::resource_arbiter::{GlobalResourceLease, lease_inventory_bytes};
 use crate::{Error, Result};
 pub use native::Canonical47LifecycleProfile;
 use native::{Canonical47Loaded, prepare_canonical47_natural_with_profile};
@@ -31,6 +31,7 @@ const LOADER_BYTES: usize = 128 * MIB;
 pub struct Canonical47Model {
     resident: Arc<Canonical47Loaded>,
     tokenizer: Arc<QwenTokenizer>,
+    _tokenizer: crate::tokenize_admission::Retained,
     _loader: GlobalResourceLease,
 }
 impl Canonical47Model {
@@ -107,18 +108,28 @@ pub async fn load_with_profile(
     }
     require_host_profile(host, profile)?;
     // Source opening has its original64MiB metadata +1MiB scan admissions.
-    // This independent128MiB envelope precedes manifest/tokenizer parsing.
+    // This independent128MiB envelope precedes manifest/tokenizer parsing and
+    // carries C's checked lease-inventory overhead in the same reservation.
+    let inventory = lease_inventory_bytes(&host.owner.model, &host.owner.session, 2)?;
     let loader = host.arbiter.admit(
         &host.resource,
         host.owner.clone(),
-        &[crate::resource_arbiter::AllocationRequest {
-            kind: crate::resource_arbiter::AllocationClass::Scratch,
-            bytes: LOADER_BYTES as u64,
-        }],
+        &[
+            crate::resource_arbiter::AllocationRequest {
+                kind: crate::resource_arbiter::AllocationClass::Scratch,
+                bytes: LOADER_BYTES as u64,
+            },
+            crate::resource_arbiter::AllocationRequest {
+                kind: crate::resource_arbiter::AllocationClass::Other,
+                bytes: inventory,
+            },
+        ],
     )?;
     let source = source::open(hf_directory, host, cancelled)?;
     let bundle = manifest::Bundle::open(artifact_directory, cancelled)?;
-    let tokenizer = Arc::new(source::tokenizer(hf_directory, cancelled)?);
+    let bootstrap = crate::tokenize_admission::approve_arbiter(host, "canonical47-inventory")?;
+    let retained = bootstrap.retain_arbiter(host, "canonical47-inventory")?;
+    let tokenizer = Arc::new(source::tokenizer(hf_directory, host, cancelled)?);
     let bound = source.bind_full_model_source()?;
     let rotary = native::qualify_source_rotary_cubins(
         device.clone(),
@@ -156,6 +167,7 @@ pub async fn load_with_profile(
     Ok(Arc::new(Canonical47Model {
         resident,
         tokenizer,
+        _tokenizer: retained,
         _loader: loader,
     }))
 }

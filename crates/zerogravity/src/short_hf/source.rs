@@ -77,6 +77,8 @@ pub(super) fn open(
     cancelled: Option<&AtomicBool>,
 ) -> Result<Opened> {
     not_cancelled(cancelled)?;
+    // ByteLevel bootstrap + cold constructor precede every source parse.
+    let bootstrap = crate::tokenize_admission::approve_arbiter(host, "short-hf-tokenizer")?;
     let dir = Directory::open(directory)?;
     let config = dir.bounded("config.json", 4096, cancelled)?;
     let spec = select(&config)?;
@@ -127,7 +129,15 @@ pub(super) fn open(
                 return Err(Error::State("held selected config changed".into()));
             }
             "model.safetensors.index.json" => index = Some(raw),
-            "tokenizer.json" => tokenizer = Some(QwenTokenizer::from_bytes(&raw)?),
+            "tokenizer.json" => {
+                // Authenticate the exact held bytes and charge the census tree
+                // plus static constructor rows before parsing this member.
+                let _constructor =
+                    bootstrap.constructor_of_arbiter(host, "short-hf-constructor", &raw)?;
+                // The bounded member read already checked this exact extent and
+                // SHA-256; recheck the approved identity before parsing.
+                tokenizer = Some(QwenTokenizer::from_approved_bytes(&raw)?);
+            }
             _ => {}
         }
     }
@@ -184,7 +194,12 @@ pub(super) fn open(
     }
     Ok(Opened {
         source,
-        tokenizer: tokenizer.ok_or_else(|| Error::Malformed("original tokenizer absent".into()))?,
+        tokenizer: {
+            let tokenizer =
+                tokenizer.ok_or_else(|| Error::Malformed("original tokenizer absent".into()))?;
+            bootstrap.verify(&tokenizer)?;
+            tokenizer
+        },
         metadata: ShortHfSourceMetadata {
             family: spec.family,
             repository: spec.repository,
@@ -216,6 +231,7 @@ pub(super) fn route_metadata(directory: &Path) -> Result<super::ShortHfRouteMeta
         } else {
             4608 * MIB
         },
+        host_bytes: 8192 * MIB,
         profile: if spec.family == "0.8b" {
             zerogravity_core::accelerator::program::FullModelProfile::Qwen08
         } else {
@@ -223,7 +239,26 @@ pub(super) fn route_metadata(directory: &Path) -> Result<super::ShortHfRouteMeta
         },
     })
 }
-pub(super) fn route_tokenizer(directory: &Path) -> Result<QwenTokenizer> {
+/// Borrowed route tokenizer with its own `R + G + V + inventory` lease. No
+/// owning escape: callers can tokenize, but cannot detach the tokenizer from
+/// the charge that prices its retained Split/BPE and request capacity.
+pub struct ShortHfRouteTokenizer {
+    tokenizer: QwenTokenizer,
+    // Declared after the tokenizer so the lease outlives its owner.
+    _retained: crate::tokenize_admission::Retained,
+}
+impl ShortHfRouteTokenizer {
+    pub fn tokenizer(&self) -> &QwenTokenizer {
+        &self.tokenizer
+    }
+}
+
+pub(super) fn route_tokenizer(
+    directory: &Path,
+    host: &TransferAdmission,
+) -> Result<ShortHfRouteTokenizer> {
+    let bootstrap = crate::tokenize_admission::approve_arbiter(host, "short-hf-route")?;
+    let retained = bootstrap.retain_arbiter(host, "short-hf-route-inventory")?;
     let dir = Directory::open(directory)?;
     let config = dir.bounded("config.json", 4096, None)?;
     let spec = select(&config)?;
@@ -239,5 +274,16 @@ pub(super) fn route_tokenizer(directory: &Path) -> Result<QwenTokenizer> {
         })
         .ok_or_else(|| Error::State("compiled tokenizer absent".into()))?;
     let (name, bytes, sha) = member(row, spec.family == "0.8b")?;
-    QwenTokenizer::from_bytes(&dir.read(name, bytes, Some(&digest(sha)), None)?)
+    let raw = dir.read(name, bytes, Some(&digest(sha)), None)?;
+    // The census runs on the exact immutable bytes before they are parsed.
+    let tokenizer = {
+        let _constructor =
+            bootstrap.constructor_of_arbiter(host, "short-hf-route-constructor", &raw)?;
+        QwenTokenizer::from_approved_bytes(&raw)?
+    };
+    bootstrap.verify(&tokenizer)?;
+    Ok(ShortHfRouteTokenizer {
+        tokenizer,
+        _retained: retained,
+    })
 }

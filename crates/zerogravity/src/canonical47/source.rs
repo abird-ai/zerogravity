@@ -57,7 +57,14 @@ pub(super) fn open(
     let _bound = model.bind_full_model_source()?;
     Ok(model)
 }
-pub(super) fn tokenizer(directory: &Path, cancelled: Option<&AtomicBool>) -> Result<QwenTokenizer> {
+pub(super) fn tokenizer(
+    directory: &Path,
+    host: &TransferAdmission,
+    cancelled: Option<&AtomicBool>,
+) -> Result<QwenTokenizer> {
+    // The process-global ByteLevel statics and the cold constructor are
+    // admitted before the 12.8 MiB approved source is parsed.
+    let bootstrap = crate::tokenize_admission::approve_arbiter(host, "canonical47-tokenizer")?;
     let dir = Directory::open(directory)?;
     let raw = dir.read(
         "tokenizer.json",
@@ -65,7 +72,14 @@ pub(super) fn tokenizer(directory: &Path, cancelled: Option<&AtomicBool>) -> Res
         Some(&digest(TOKENIZER)),
         cancelled,
     )?;
-    let tokenizer = QwenTokenizer::from_bytes(&raw)?;
+    let tokenizer = {
+        let _constructor =
+            bootstrap.constructor_of_arbiter(host, "canonical47-constructor", &raw)?;
+        // The held extent and SHA-256 above are the approved source; this
+        // rechecks that exact identity before the parser sees the bytes.
+        QwenTokenizer::from_approved_bytes(&raw)?
+    };
+    bootstrap.verify(&tokenizer)?;
     not_cancelled(cancelled)?;
     Ok(tokenizer)
 }

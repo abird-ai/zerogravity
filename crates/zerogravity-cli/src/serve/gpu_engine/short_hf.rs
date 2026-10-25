@@ -4,11 +4,8 @@ use super::*;
 mod cohort;
 pub(super) use cohort::advance_cohort;
 use zerogravity::gpu::vllm_cuda_qualification::ShortHfCallReceipt;
+use zerogravity::resource_arbiter::ResourceArbiter;
 use zerogravity::short_hf as source;
-use zerogravity::{
-    cache::TransferAdmission,
-    resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, ResourceOwner},
-};
 
 fn validate_profile(
     backend: GpuBackend,
@@ -26,41 +23,17 @@ fn validate_profile(
         || p.provider_mib == 0
         || p.provider_mib > p.device_mib
         || p.device_mib != 5120
-        || host_mib != 4096
+        || p.host_mib != host_mib
+        || !super::super::short_hf_host_profile(host_mib)
         || bundle.is_none()
     {
         return Err(ServiceError::new(
             400,
             "unsupported_short_hf_profile",
-            "short-HF requires CUDA/1worker/context512/output1..8/active1..8/native0or4/4096host/provider1..5120/5120device/native-artifacts",
+            "short-HF requires CUDA/1worker/context512/output1..8/active1..8/native0or4/4096or8192host/provider1..5120/5120device/native-artifacts",
         ));
     }
     Ok(())
-}
-fn host() -> Result<TransferAdmission, ServiceError> {
-    let arbiter = ResourceArbiter::process_shared();
-    let resource =
-        PhysicalDeviceKey::new("host", "zerogravity-serve-cpu").map_err(ServiceError::inference)?;
-    let bytes = 4096 * 1024 * 1024u64;
-    match arbiter.snapshot(&resource) {
-        Ok(s) if s.limit == bytes => {}
-        Ok(_) => {
-            return Err(ServiceError::new(
-                409,
-                "host_budget_conflict",
-                "existing configured host limit differs",
-            ));
-        }
-        Err(_) => arbiter
-            .register(resource.clone(), bytes)
-            .map_err(ServiceError::inference)?,
-    }
-    Ok(TransferAdmission {
-        arbiter,
-        resource,
-        owner: ResourceOwner::new("short-hf-serving", "original-source-loader")
-            .map_err(ServiceError::inference)?,
-    })
 }
 impl GpuRouter {
     pub(in crate::serve) fn new_short_hf(
@@ -71,6 +44,11 @@ impl GpuRouter {
         bundle: Option<&Path>,
     ) -> Result<Self, ServiceError> {
         validate_profile(backend, &profile, host_mib, bundle)?;
+        crate::run_cli::short_hf_host_available(
+            (host_mib * 1024 * 1024) as u64,
+            &zerogravity::run_policy::Headroom::Default,
+        )
+        .map_err(ServiceError::inference)?;
         if declared.is_empty() || declared.len() > 16 {
             return Err(ServiceError::new(
                 400,
@@ -115,7 +93,12 @@ impl GpuRouter {
             )
         })?;
         preflight_cuda_toolkit(backend)?;
-        let admitted = host()?;
+        // Borrow the configured serving host ledger; do not register another
+        // host domain for the original source loader. The loader retains
+        // R + G + V for its actual source tokenizer.
+        let serving_host = ServingHost::new(host_mib)?;
+        let admitted =
+            serving_host.transfer_admission("short-hf-serving", "original-source-loader")?;
         let device = backend.device().map_err(ServiceError::inference)?;
         let directory = directory
             .as_deref()
@@ -139,17 +122,37 @@ impl GpuRouter {
             hidden_width: meta.hidden_width,
             vocabulary_size: meta.vocabulary_size,
             tokenizer: TextTokenizer::ShortHf(loaded.clone()),
-            engine: ModelEngine::ShortHf(loaded),
+            engine: ModelEngine::ShortHf(loaded.clone()),
             group: 0,
             native_rows: profile.native_rows,
+            max_token_bytes: loaded
+                .tokenizer()
+                .max_token_bytes()
+                .map_err(ServiceError::inference)?,
+            _inventory: None,
+            readers: Arc::new(AtomicUsize::new(0)),
         });
         let models = aliases.into_keys().map(|id| (id, model.clone())).collect();
-        Self::start(models, profile.active, profile.output, profile.native_rows)
+        Self::start(
+            models,
+            profile.active,
+            profile.output,
+            profile.native_rows,
+            serving_host,
+            profile.max_pending,
+        )
     }
+}
+
+pub(super) fn models_present(models: &BTreeMap<String, Arc<GpuModel>>) -> bool {
+    models
+        .values()
+        .any(|model| matches!(&model.engine, ModelEngine::ShortHf(_)))
 }
 
 pub(super) fn health(
     models: &BTreeMap<String, Arc<GpuModel>>,
+    host_snapshot: (u64, u64, u64, u64),
 ) -> Option<(serde_json::Value, serde_json::Value)> {
     let model = models.values().find_map(|m| match &m.engine {
         ModelEngine::ShortHf(s) => Some(s),
@@ -158,10 +161,9 @@ pub(super) fn health(
     let meta = model.source_metadata();
     let observed = model.resident().observation().snapshot().ok()?;
     let arbiter = ResourceArbiter::process_shared();
-    let host = arbiter
-        .snapshot(&PhysicalDeviceKey::new("host", "zerogravity-serve-cpu").ok()?)
-        .ok()?;
     let physical = arbiter.snapshot(&observed.physical_key).ok()?;
+    let (host_limit, host_reserved) = (host_snapshot.0, host_snapshot.1);
+    let serving_host_bytes = host_snapshot.3;
     Some((
         serde_json::json!({
             "schema":"zerogravity.short-hf.serving-source.v1","model":meta.family,
@@ -172,11 +174,15 @@ pub(super) fn health(
         serde_json::json!({
             "provider_capacity_bytes":observed.provider_capacity_bytes,"resident_bytes":observed.resident_bytes,
             "pending_events":observed.pending_events,"usable":observed.usable,
-            "host_limit_bytes":host.limit,"host_reserved_bytes":host.reserved,
+            "host_limit_bytes":host_limit,"host_reserved_bytes":host_reserved,
+            "total_host_limit_bytes":host_limit,"total_host_reserved_bytes":host_reserved,
+            "serving_host_reserved_bytes":serving_host_bytes,
             "device_limit_bytes":physical.limit,"physical_reserved_bytes":physical.reserved,
             "backend_host_reserved_bytes":observed.backend_host_reserved_bytes,
             "backend_device_reserved_bytes":observed.backend_device_reserved_bytes,
-            "model_host_reserved_bytes":host.reserved.checked_sub(observed.backend_host_reserved_bytes),
+            "model_host_reserved_bytes":host_reserved
+                .checked_sub(observed.backend_host_reserved_bytes)
+                .and_then(|bytes| bytes.checked_sub(serving_host_bytes)),
             "model_device_reserved_bytes":physical.reserved.checked_sub(observed.backend_device_reserved_bytes),
             "readiness_candidate_requests":model.resident().readiness_candidates(),
             "startup_readiness_compiler_attempts":model.resident().readiness_usage().attempts,
@@ -298,8 +304,19 @@ impl GpuActive {
     }
 }
 pub(super) fn retire_sources(models: &BTreeMap<String, Arc<GpuModel>>, stats: &WaveStats) {
+    // A model alias may share one resident source group. Any live reader in
+    // the group keeps retirement closed, even if this particular alias has
+    // already released its reader count.
+    let busy: std::collections::BTreeSet<_> = models
+        .values()
+        .filter(|m| m.readers.load(Ordering::Acquire) != 0)
+        .map(|m| m.group)
+        .collect();
     let mut groups = std::collections::BTreeSet::new();
     for m in models.values() {
+        if busy.contains(&m.group) {
+            continue;
+        }
         if groups.insert(m.group)
             && let ModelEngine::ShortHf(source) = &m.engine
             && let Err(error) = block_on(source.resident().clone().close(None))
@@ -322,10 +339,23 @@ mod tests {
             provider_mib: 4096,
             device_mib: 5120,
             native_rows: 0,
+            host_mib: 4096,
+            max_pending: None,
         }
     }
     #[test]
     fn route_rejects_budget_fusion_and_context_before_source_device_or_native_load() {
+        let mut eight = profile();
+        eight.host_mib = 8192;
+        assert!(
+            validate_profile(
+                GpuBackend::Cuda,
+                &eight,
+                8192,
+                Some(Path::new("/actual-bundle"))
+            )
+            .is_ok()
+        );
         assert!(
             validate_profile(
                 GpuBackend::Cuda,
@@ -334,6 +364,35 @@ mod tests {
                 Some(Path::new("/actual-bundle"))
             )
             .is_ok()
+        );
+        // Selected profile and configured ledger must agree before any RAM,
+        // source or Client work.
+        assert!(
+            validate_profile(
+                GpuBackend::Cuda,
+                &profile(),
+                8192,
+                Some(Path::new("/actual-bundle"))
+            )
+            .is_err()
+        );
+        assert!(
+            validate_profile(
+                GpuBackend::Cuda,
+                &eight,
+                4096,
+                Some(Path::new("/actual-bundle"))
+            )
+            .is_err()
+        );
+        assert!(
+            validate_profile(
+                GpuBackend::Cuda,
+                &profile(),
+                5120,
+                Some(Path::new("/actual-bundle"))
+            )
+            .is_err()
         );
         let mut opted_in = profile();
         opted_in.native_rows = 4;
