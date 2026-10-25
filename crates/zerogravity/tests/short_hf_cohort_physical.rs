@@ -677,3 +677,26 @@ fn original_cohort_complete_consumer_surface() -> Result<()> {
     );
     Ok(())
 }
+
+#[test]
+#[ignore = "explicit grouped-transport release CUDA qualification; ROOT-owned isolated process; no perf claim"]
+fn actual_grouped_state_transport_oracle() -> Result<()> {
+    ensure(
+        !cfg!(debug_assertions),
+        "release grouped transport scope only",
+    )?;
+    let arbiter = ResourceArbiter::process_shared();
+    let resource = PhysicalDeviceKey::new("host", "zerogravity-serve-cpu")?;
+    arbiter.register(resource.clone(), (4096 * MIB) as u64)?;
+    let owner = ResourceOwner::new("short-hf-cohort-physical", "grouped-transport")?;
+    let device =
+        zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA device: {e}")))?;
+    let cases = block_on(native::qualify_grouped_state_transport(
+        device, &resource, owner,
+    ))?;
+    ensure(cases > 0, "grouped transport case count")?;
+    println!(
+        "GROUPED_TRANSPORT_PHYSICAL_PASS cases={cases} per_row_vs_grouped=true canaries=true status_sticky=true guards=true future_padding=true"
+    );
+    Ok(())
+}

@@ -7,7 +7,7 @@ pub(crate) struct Phases {
     rows: usize,
     started: Option<Instant>,
     last: Option<Instant>,
-    phases: [(&'static str, u64); 9],
+    phases: [(&'static str, u64); 16],
     len: usize,
     succeeded: bool,
 }
@@ -23,7 +23,7 @@ impl Phases {
             rows,
             started,
             last: started,
-            phases: [("", 0); 9],
+            phases: [("", 0); 16],
             len: 0,
             succeeded: false,
         }

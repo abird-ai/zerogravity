@@ -245,10 +245,18 @@ impl FullModelProgram {
             envelopes.push(NodeStorageAccess::bind(&self.values, node_index, &actual)?);
         }
         self.values.seal_storage_accesses(envelopes)?;
-        let certification = super::super::native::CertificationRun::bind(
-            self.certificates.clone(),
-            self.values.clone(),
-        )?;
+        // Sealed N1 binding: same proof issuer/candidates/eligibility checks in
+        // the same order; the chronology witness keeps the bounded cursor.
+        let certification = {
+            let leases =
+                super::super::native::certification::FiniteCohortLeases::for_values(&self.values)?;
+            super::super::native::CertificationRun::bind(
+                self.certificates.clone(),
+                leases,
+                super::super::native::certification::ProducerWitness::Values(self.values.clone()),
+                None,
+            )?
+        };
         self.bound
             .set(BoundPhase {
                 gdn_arithmetic: arithmetic,

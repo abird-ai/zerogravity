@@ -25,6 +25,17 @@ pub async fn qualify_bf16_finite_cohorts(
     crate::resident_program::native::qualify_finite_cohorts(device, host, owner).await
 }
 
+/// Model-free grouped-vs-per-row transport qualification; the per-row
+/// kernels are the independent bit oracle. No model or publisher exists.
+#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+pub async fn qualify_grouped_state_transport(
+    device: Device,
+    host: &zerogravity_core::resource_arbiter::PhysicalDeviceKey,
+    owner: ResourceOwner,
+) -> Result<usize> {
+    crate::resident_program::native_cohort::qualify_grouped_transport(device, host, owner).await
+}
+
 #[cfg(target_os = "linux")]
 pub use crate::resident_leases::{
     Qwen2bMlpWeightMode, Qwen2bMlpWeightOutcome, qualify_qwen2b_mlp_weights,

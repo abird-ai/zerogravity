@@ -21,6 +21,10 @@ pub struct ShortHfCohortReceipt {
     pub sampler_dispatches: usize,
     pub dispatches: usize,
     pub readback_bytes: usize,
+    /// Shared finite-certification metrics, counted once: deferred members,
+    /// enabled cohorts, immediate/cohort enqueues and cold metadata upper.
+    /// Individual rows keep [0; 5] (no copied launch count per row).
+    pub finite_certification: [usize; 5],
     pub rows: Vec<ShortHfCohortRowReceipt>,
 }
 
@@ -114,6 +118,11 @@ impl ShortHfPendingCohort {
                 "HF cohort exact publication row count".into(),
             ));
         }
+        let mut wall = super::super::performance::Phases::new(
+            "b4_publication",
+            sessions.first().map_or(0, |s| s.binding().frontier()),
+            sessions.len(),
+        );
         self.inputs
             .require_current(&sessions.iter().map(|s| &**s).collect::<Vec<_>>())?;
         // Recheck ALL actual roots and packet identities before cancellation can
@@ -122,6 +131,7 @@ impl ShortHfPendingCohort {
         for (session, row) in sessions.iter().zip(&self.prepared) {
             tokens.push(row.require_completed_for(&session.original)?);
         }
+        wall.mark("root_revalidation");
         if cancelled.iter().any(|c| c.load(Ordering::Acquire)) {
             return Ok(None);
         }
@@ -157,6 +167,7 @@ impl ShortHfPendingCohort {
             &mut originals,
             &mut inferences,
         )?;
+        wall.mark("publish");
         drop(originals);
         // The only publisher above reserved every transition before any swap.
         // No fallible work or device command follows publication.
@@ -179,6 +190,7 @@ impl ShortHfPendingCohort {
             drop(inference);
         }
         drop(_reservation);
+        wall.succeed();
         Ok(Some(receipt))
     }
 }

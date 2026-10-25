@@ -380,6 +380,10 @@ pub(super) struct CohortGdnCode {
     nodes: [usize; 2],
     stages: Box<[Stage]>,
     accesses: Vec<(ResidentLease, DeviceAccess)>,
+    // Explicit two-node census split; the binder union never gets assigned to
+    // one guessed producer node.
+    conv_accesses: Vec<(ResidentLease, DeviceAccess)>,
+    recurrent_accesses: Vec<(ResidentLease, DeviceAccess)>,
     _metadata: WindowWorkspace,
 }
 impl CohortGdnCode {
@@ -487,11 +491,14 @@ impl CohortGdnCode {
             }
         }
         let mut accesses = Vec::new();
+        let mut conv_accesses = Vec::new();
+        let mut recurrent_accesses = Vec::new();
         let stages = storage
             .library
             .definitions
             .iter()
-            .map(|definition| {
+            .enumerate()
+            .map(|(stage_index, definition)| {
                 let handles = definition
                     .stage
                     .bindings
@@ -510,14 +517,19 @@ impl CohortGdnCode {
                         if lease.bytes() != role.bytes(initial) + offset {
                             return Err(Error::State("B4 exact source pointer footprint".into()));
                         }
-                        accesses.push((
-                            lease.clone(),
-                            if access == BufferIOAttr::ReadOnly {
-                                DeviceAccess::Read
-                            } else {
-                                DeviceAccess::Write
-                            },
-                        ));
+                        let census = if access == BufferIOAttr::ReadOnly {
+                            (lease.clone(), DeviceAccess::Read)
+                        } else {
+                            (lease.clone(), DeviceAccess::Write)
+                        };
+                        accesses.push(census.clone());
+                        // Stage 0 belongs to the Conv node; the remaining
+                        // stages run inside the Recurrent node.
+                        if stage_index == 0 {
+                            conv_accesses.push(census);
+                        } else {
+                            recurrent_accesses.push(census);
+                        }
                         Ok(lease.handle().offset_start(offset as u64))
                     })
                     .collect::<Result<Vec<_>>>()?;
@@ -536,6 +548,14 @@ impl CohortGdnCode {
             (storage.lease(Role::NormInput)?.clone(), DeviceAccess::Write),
             (storage.status.clone(), DeviceAccess::Write),
         ]);
+        // The exact prefill/cached layer-norm D2D witness runs inside the
+        // Recurrent node, right before its layer_norm stage.
+        recurrent_accesses.extend([
+            (storage.lease(Role::RawO)?.clone(), DeviceAccess::Read),
+            (storage.lease(Role::NormInput)?.clone(), DeviceAccess::Write),
+            (storage.status.clone(), DeviceAccess::Write),
+        ]);
+        conv_accesses.push((storage.status.clone(), DeviceAccess::Write));
         accesses.extend(transport.accesses());
         for part in [
             Partition::BeforeConvolution,
@@ -544,6 +564,15 @@ impl CohortGdnCode {
         ] {
             accesses.extend(packing.accesses(part));
         }
+        // Conv node: transport kinds 0/1 + Before/AfterConvolution packing.
+        conv_accesses.extend(transport.partition_accesses(0));
+        conv_accesses.extend(transport.partition_accesses(1));
+        conv_accesses.extend(packing.accesses(Partition::BeforeConvolution));
+        conv_accesses.extend(packing.accesses(Partition::AfterConvolution));
+        // Recurrent node: transport kinds 2/3 + BeforeRecurrent packing.
+        recurrent_accesses.extend(transport.partition_accesses(2));
+        recurrent_accesses.extend(transport.partition_accesses(3));
+        recurrent_accesses.extend(packing.accesses(Partition::BeforeRecurrent));
         let metadata = inputs[0]
             .source()
             .source()
@@ -560,17 +589,20 @@ impl CohortGdnCode {
             nodes,
             stages: stages.into_boxed_slice(),
             accesses,
+            conv_accesses,
+            recurrent_accesses,
             _metadata: metadata,
         }))
     }
     /// Original node cursor calls once for Conv and once for Recurrent. Every
     /// source/phase/state authority is checked for all rows before commands.
+    /// Returns (native launches, copies, grouped transport launches).
     pub(super) fn enqueue(
         &self,
         node: usize,
         permits: &[PrefixPhaseEnqueue<'_>],
         effects: &[StateEffect],
-    ) -> Result<(usize, usize)> {
+    ) -> Result<(usize, usize, usize)> {
         if permits.len() != 4 || effects.len() != 4 || !self.nodes.contains(&node) {
             return Err(Error::State(
                 "B4 GDN original node/permit/effect population".into(),
@@ -582,6 +614,7 @@ impl CohortGdnCode {
         }
         let mut native = 0;
         let mut copies = 0;
+        let mut grouped = 0;
         if node == self.nodes[0] {
             // State transport itself validates all actual root effects before
             // its first copy; no sibling row has placeholder authority.
@@ -589,7 +622,9 @@ impl CohortGdnCode {
             copies += self
                 .packing
                 .enqueue(node, Partition::BeforeConvolution, permits)?;
-            copies += self.transport.enqueue(0, permits, effects)?;
+            let (launches, transports) = self.transport.enqueue(0, permits, effects)?;
+            copies += launches;
+            grouped += transports;
             self.stages[0]
                 .launch
                 .launch_on(self.values.service().client())?;
@@ -597,13 +632,17 @@ impl CohortGdnCode {
             copies += self
                 .packing
                 .enqueue(node, Partition::AfterConvolution, permits)?;
-            copies += self.transport.enqueue(1, permits, effects)?;
+            let (launches, transports) = self.transport.enqueue(1, permits, effects)?;
+            copies += launches;
+            grouped += transports;
         } else {
             self.transport.require_partition(2, permits, effects)?;
             copies += self
                 .packing
                 .enqueue(node, Partition::BeforeRecurrent, permits)?;
-            copies += self.transport.enqueue(2, permits, effects)?;
+            let (launches, transports) = self.transport.enqueue(2, permits, effects)?;
+            copies += launches;
+            grouped += transports;
             for stage in &self.stages[1..] {
                 if stage.source.name == "layer_norm_fwd_kernel" {
                     let from = self.storage.lease(Role::RawO)?;
@@ -634,11 +673,22 @@ impl CohortGdnCode {
                 stage.launch.launch_on(self.values.service().client())?;
                 native += 1;
             }
-            copies += self.transport.enqueue(3, permits, effects)?;
+            let (launches, transports) = self.transport.enqueue(3, permits, effects)?;
+            copies += launches;
+            grouped += transports;
         }
-        Ok((native, copies))
+        Ok((native, copies, grouped))
     }
     pub(super) fn accesses(&self) -> &[(ResidentLease, DeviceAccess)] {
         &self.accesses
+    }
+    /// Explicit two-node census split: [(conv node, its accesses), (recurrent
+    /// node, its accesses)]. Ambiguous binder-union leases stay attributed to
+    /// their actual stage/partition side, never to a guessed producer.
+    pub(super) fn node_accesses(&self) -> [(usize, Vec<(ResidentLease, DeviceAccess)>); 2] {
+        [
+            (self.nodes[0], self.conv_accesses.clone()),
+            (self.nodes[1], self.recurrent_accesses.clone()),
+        ]
     }
 }

@@ -9,6 +9,7 @@ use std::ops::Range;
 use zerogravity_core::{Error, Result};
 
 mod certified;
+pub(crate) mod typed;
 pub(crate) use certified::{PreparedCertifiedScatter, ensure_certified_capability};
 
 const MAX_ROW_WORDS: usize = 1_000_000;

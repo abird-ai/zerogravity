@@ -34,6 +34,10 @@ pub struct ShortHfCohortFaultRetention {
     pub projection_launches: usize,
     pub device_copies: usize,
     pub sampler_dispatches: usize,
+    /// Grouped typed-transport launches submitted up to the cut cursor
+    /// (GDN kinds 0..4 + KV import/export); positive evidence that the
+    /// grouped transports ran only up to the submitted node.
+    pub grouped_transport_launches: usize,
     pub retained_actual_leases: usize,
     pub quarantined_handles: usize,
     pub quarantined_owners: usize,
@@ -93,6 +97,7 @@ impl ShortHfCohortFaultOutcome {
             projection_launches,
             device_copies,
             sampler_dispatches,
+            grouped_transport_launches: body.grouped_transport_launches(),
             retained_actual_leases: body.accesses().len(),
             quarantined_handles: crate::physical_quarantine::quarantined_handles_for(
                 service.client(),

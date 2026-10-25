@@ -97,6 +97,12 @@ impl PinnedKernel {
     // Charged once per new(), shared by all prepared/current/driver copies.
     pub(crate) const KEY_METADATA_BYTES: usize = PreparedKernelKey::<SourceKey>::ALLOCATION_BYTES;
 
+    /// Exact pointer-parameter count of this kernel's ABI, in binding order.
+    #[cfg(test)]
+    pub(crate) fn binding_count(&self) -> usize {
+        self.bindings.len()
+    }
+
     /// Retained heap owners only; enclosing definitions price their inline
     /// structs separately. Source includes the exact CUDA entry suffix.
     pub(crate) fn retained_metadata_bytes(&self) -> Result<usize> {

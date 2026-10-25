@@ -20,8 +20,8 @@ pub(crate) mod workspace;
 use epoch::Cursor;
 
 const METADATA_BYTES: usize = 1024 * 1024;
-const MAX_NODE_ACCESSES: usize = 128;
-const MAX_TOTAL_ACCESSES: usize = 4096;
+pub(crate) const MAX_NODE_ACCESSES: usize = 128;
+pub(crate) const MAX_TOTAL_ACCESSES: usize = 4096;
 pub(crate) const FINITE_CODE_GROUP_WIDTH: usize = 8;
 
 /// Immutable group boundaries. Runtime exclusions never repack surviving values
@@ -630,6 +630,35 @@ impl RetainedFiniteProof {
     pub(crate) fn members(&self) -> &[(ValueId, usize)] {
         &self.members
     }
+    /// Sealed census-envelope constructor: per-value lease owners, dedicated
+    /// flags, SSA producers and the complete per-node write census. Same
+    /// eligibility equation as the N1 lowerer proof: a value defers only when
+    /// its lease has exactly one owner and its only census write is by its own
+    /// SSA producer node. Missing/hidden writers exclude, never group.
+    pub(crate) fn from_envelope(
+        record: Arc<RecordedVllm08Model>,
+        owners: &[BufferLeaseId],
+        dedicated: &[bool],
+        producers: &[usize],
+        writes: &[(usize, BufferLeaseId)],
+    ) -> Result<Self> {
+        if owners.len() != dedicated.len() || dedicated.len() != producers.len() {
+            return Err(Error::State("finite cohort census envelope shape".into()));
+        }
+        let members =
+            retained_finite_candidates(owners, dedicated, producers, writes)
+                .into_iter()
+                .map(|(value, producer)| {
+                    Ok((
+                        ValueId(u32::try_from(value).map_err(|_| {
+                            Error::Limit("finite cohort value index overflow".into())
+                        })?),
+                        producer,
+                    ))
+                })
+                .collect::<Result<Vec<_>>>()?;
+        Ok(Self { record, members })
+    }
 }
 
 fn retained_finite_candidates<K: Copy + Ord>(
@@ -850,27 +879,13 @@ impl ModelValues {
                     .map(move |(lease, _)| (n.node, lease.id()))
             })
             .collect::<Vec<_>>();
-        let members = retained_finite_candidates(
+        RetainedFiniteProof::from_envelope(
+            self.record.clone(),
             &owners,
             &s.recipe.finite_dedicated,
             &s.recipe.producers,
             &writes,
         )
-        .into_iter()
-        .map(|(value, producer)| {
-            Ok((
-                ValueId(
-                    u32::try_from(value)
-                        .map_err(|_| Error::Limit("finite cohort value index overflow".into()))?,
-                ),
-                producer,
-            ))
-        })
-        .collect::<Result<Vec<_>>>()?;
-        Ok(RetainedFiniteProof {
-            record: self.record.clone(),
-            members,
-        })
     }
 
     /// Original registered run, after every actual node/epoch and before Ready.

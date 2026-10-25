@@ -1963,8 +1963,17 @@ impl ResidentProgram {
         }
         #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
         {
-            if let ResidentProgramBody::NativeFull(body) = &self.body {
-                dispatches += body.flush_certificates(cancelled)?;
+            match &self.body {
+                // Grouped certificates flush at the existing terminal point,
+                // before the unchanged 4x48 candidate F32 loop, sampler and
+                // proposals. Same point for both native bodies.
+                ResidentProgramBody::NativeFull(body) => {
+                    dispatches += body.flush_certificates(cancelled)?;
+                }
+                ResidentProgramBody::NativeCohort(body) => {
+                    dispatches += body.flush_certificates(cancelled)?;
+                }
+                _ => {}
             }
             let carries = match &self.body {
                 ResidentProgramBody::Qwen2bComponent(body) => {

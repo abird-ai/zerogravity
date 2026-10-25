@@ -18,6 +18,7 @@ pub(super) struct AttentionOwners {
     pub(super) cache: ResidentLease,
     pub(super) status: ResidentLease,
     pub(super) controls: Arc<CohortAttentionControls>,
+    pub(super) transport: Arc<super::CohortTransportLibrary>,
 }
 pub(super) struct CohortAttention {
     inputs: Box<[Arc<ShortHfCallInput>]>,
@@ -165,6 +166,7 @@ impl CohortAttention {
             cache,
             status,
             controls,
+            transport,
         } = owners;
         values.require_inputs(inputs)?;
         crate::vllm_cuda_qualification::cohort_native::require_input_shape(inputs)?;
@@ -208,6 +210,7 @@ impl CohortAttention {
             cache.clone(),
             status,
             controls.clone(),
+            transport,
             init,
         )?;
         let mut roles = BTreeMap::from([
@@ -297,15 +300,15 @@ impl CohortAttention {
         node: usize,
         permits: &[PrefixPhaseEnqueue<'_>],
         effects: &[StateEffect],
-    ) -> Result<usize> {
+    ) -> Result<(usize, usize)> {
         if node != self.nodes[2] {
-            return Ok(0);
+            return Ok((0, 0));
         }
         self.require_current(permits)?;
         if node == self.nodes[2] {
             self.transport.before_append(permits, effects)
         } else {
-            Ok(0)
+            Ok((0, 0))
         }
     }
     pub(super) fn after(
@@ -313,16 +316,27 @@ impl CohortAttention {
         node: usize,
         permits: &[PrefixPhaseEnqueue<'_>],
         effects: &[StateEffect],
-    ) -> Result<usize> {
+    ) -> Result<(usize, usize)> {
         if node != self.nodes[2] {
-            return Ok(0);
+            return Ok((0, 0));
         }
         self.require_current(permits)?;
         if node == self.nodes[2] {
             self.transport.after_append(permits, effects)
         } else {
-            Ok(0)
+            Ok((0, 0))
         }
+    }
+    /// The KV-append source node owning both grouped transport directions.
+    pub(super) fn kv_append_node(&self) -> usize {
+        self.nodes[2]
+    }
+    /// Both grouped KV transport directions' census attribution (import and
+    /// export both execute at the KvAppend source node).
+    pub(super) fn kv_transport_accesses(&self) -> Vec<(ResidentLease, DeviceAccess)> {
+        let mut accesses = self.transport.direction_accesses(true);
+        accesses.extend(self.transport.direction_accesses(false));
+        accesses
     }
     fn require_current(&self, permits: &[PrefixPhaseEnqueue<'_>]) -> Result<()> {
         if permits.len() != 4 {

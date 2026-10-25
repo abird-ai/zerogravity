@@ -1,14 +1,27 @@
 //! Same BF16 exponent test; only proved retained ranges may share a launch.
 use super::*;
 use crate::vllm_cuda_qualification::model_values::{ModelValues, bounded::FINITE_CODE_GROUP_WIDTH};
+use std::sync::Weak;
 use std::sync::atomic::AtomicU8;
 use zerogravity_core::accelerator::program::ValueId;
 
 const WIDTH: usize = FINITE_CODE_GROUP_WIDTH;
+/// Cold metadata bound. B4 envelope arithmetic (derived, not silently
+/// raised): at most ceil(327/8)=41 candidate groups, each contributing at
+/// most the 4096-byte generated source, 9 Handle clones (8 members +
+/// status), the member chunk, one kernel key and 512 bytes of Vec slack.
+/// The whole sum stays under 256 KiB for every cubecl Handle layout; the
+/// runtime check refuses beyond.
 const METADATA_LIMIT: usize = 256 * 1024;
+/// Per-run ledger bound. B4 arithmetic (derived): at most 327 pending entries
+/// priced at 128 bytes of BTree node slack, 41 masks at 32 bytes and one run
+/// struct: 327*128 + 41*32 + size_of::<CertificationRun>() <= 128 KiB.
 const LEDGER_LIMIT: usize = 128 * 1024;
 mod qualification;
 pub(crate) use qualification::qualify;
+
+/// One cold candidate group: kernel, grid and immutable member ValueIds.
+type ColdCohortGroup = (PinnedKernel, u32, Arc<[ValueId]>);
 
 struct Cohort {
     members: Vec<(ValueId, usize)>,
@@ -23,11 +36,219 @@ struct Pending {
     group: usize,
     bit: u8,
 }
+
+/// Sealed, bounded retained-range binding. Concrete leases/status/service plus
+/// the immutable candidate membership and the eligible sole-producer members;
+/// no caller-supplied `all_retained=true` proof exists here.
+pub(in crate::resident_program) struct FiniteCohortLeases {
+    service: Arc<ResidentService>,
+    status: ResidentLease,
+    candidates: Box<[Box<[ValueId]>]>,
+    leases: BTreeMap<u32, ResidentLease>,
+    /// Eligible member lease ids -> (lease, SSA producer node); once-only.
+    eligible: BTreeMap<zerogravity_core::device_events::BufferLeaseId, (ResidentLease, usize)>,
+}
+
+impl FiniteCohortLeases {
+    fn lease(&self, value: ValueId) -> Result<&ResidentLease> {
+        self.leases
+            .get(&value.0)
+            .ok_or_else(|| Error::State("finite cohort candidate lease absent".into()))
+    }
+    fn eligible_values(&self) -> BTreeMap<u32, usize> {
+        self.leases
+            .iter()
+            .filter_map(|(id, lease)| {
+                self.eligible
+                    .get(&lease.id())
+                    .map(|(_, producer)| (*id, *producer))
+            })
+            .collect()
+    }
+    /// N1 sealed binding from the current bounded `ModelValues` issuer:
+    /// candidate groups from the immutable dedicated geometry, eligible
+    /// members from the complete sealed lowerer census. Refusal order is the
+    /// original: proof issuer first, then group preparation.
+    pub(in crate::resident_program) fn for_values(values: &Arc<ModelValues>) -> Result<Self> {
+        let proof = values.retained_finite_proof()?;
+        if !Arc::ptr_eq(proof.record(), values.record()) || proof.members().len() > 512 {
+            return Err(Error::State("finite cohort current source issuer".into()));
+        }
+        let candidates = values
+            .finite_code_groups()?
+            .into_iter()
+            .map(|group| group.into_boxed_slice())
+            .collect::<Vec<_>>();
+        let mut leases = BTreeMap::new();
+        for value in candidates.iter().flatten() {
+            leases.insert(value.0, values.lease(*value)?.clone());
+        }
+        let mut eligible = BTreeMap::new();
+        for &(value, producer) in proof.members() {
+            let lease = values.lease(value)?;
+            if eligible
+                .insert(lease.id(), (lease.clone(), producer))
+                .is_some()
+            {
+                return Err(Error::State(
+                    "finite cohort duplicate eligible owner".into(),
+                ));
+            }
+        }
+        Ok(Self {
+            service: values.service().clone(),
+            status: values.status().clone(),
+            candidates: candidates.into(),
+            leases,
+            eligible,
+        })
+    }
+    /// B4 sealed binding from the call-local cohort value leases, the cold
+    /// candidate membership and the census-derived sole-producer proof.
+    pub(in crate::resident_program) fn for_cohort(
+        values: &Arc<crate::resident_program::native_cohort::values::CohortValues>,
+        status: ResidentLease,
+        candidates: Box<[Box<[ValueId]>]>,
+        proof: &crate::vllm_cuda_qualification::model_values::bounded::RetainedFiniteProof,
+    ) -> Result<Self> {
+        if proof.members().len() > 512 {
+            return Err(Error::State("finite cohort current source issuer".into()));
+        }
+        let service = values.service().clone();
+        let mut leases = BTreeMap::new();
+        for value in candidates.iter().flatten() {
+            leases.insert(value.0, values.lease(*value)?.clone());
+        }
+        let mut eligible = BTreeMap::new();
+        for &(value, producer) in proof.members() {
+            let lease = values.lease(value)?;
+            if eligible
+                .insert(lease.id(), (lease.clone(), producer))
+                .is_some()
+            {
+                return Err(Error::State(
+                    "finite cohort duplicate eligible owner".into(),
+                ));
+            }
+        }
+        Ok(Self {
+            service,
+            status,
+            candidates,
+            leases,
+            eligible,
+        })
+    }
+}
+
+/// Chronology witness (concrete enum, no trait objects). ONE definition of the
+/// producer/flush storage semantics for both native bodies.
+pub(in crate::resident_program) enum ProducerWitness {
+    /// N1: the bounded storage cursor of the current record.
+    Values(Arc<ModelValues>),
+    /// B4: the call-local cohort node/storage cursors. The run is owned by the
+    /// body; this Weak back-reference creates no Arc cycle.
+    Cohort(Weak<crate::resident_program::native_cohort::FullModelCohort>),
+}
+impl ProducerWitness {
+    /// The deferred observation happens exactly while the original loop is
+    /// inside the producer node; no earlier or replayed observation passes.
+    fn require_storage_node(&self, node: usize) -> Result<()> {
+        match self {
+            Self::Values(values) => values.require_storage_node(node),
+            Self::Cohort(body) => {
+                let body = body
+                    .upgrade()
+                    .ok_or_else(|| Error::State("B4 finite cohort body absent".into()))?;
+                if body.producer_cursor_active(node) {
+                    Ok(())
+                } else {
+                    Err(Error::State(
+                        "B4 finite cohort producer is not the active original node".into(),
+                    ))
+                }
+            }
+        }
+    }
+    fn require_finished_storage(&self) -> Result<()> {
+        match self {
+            Self::Values(values) => values.require_finished_storage(),
+            Self::Cohort(body) => {
+                let body = body
+                    .upgrade()
+                    .ok_or_else(|| Error::State("B4 finite cohort body absent".into()))?;
+                if body.storage_cursor_finished() {
+                    Ok(())
+                } else {
+                    Err(Error::State(
+                        "B4 finite cohort whole actual traversal absent".into(),
+                    ))
+                }
+            }
+        }
+    }
+}
+
+/// Cold per-geometry grouped finite definitions: immutable membership, kernel
+/// and grid derived once from the candidate element counts. Per-call bind maps
+/// the membership onto current certificates/handles; group masks never
+/// specialize kernel keys at runtime.
+pub(in crate::resident_program) struct FiniteCohortGroups {
+    groups: Arc<[ColdCohortGroup]>,
+    metadata_upper_bytes: usize,
+}
+impl FiniteCohortGroups {
+    pub(in crate::resident_program) fn groups(&self) -> &[ColdCohortGroup] {
+        &self.groups
+    }
+    /// Cold constructor over the immutable candidate element counts.
+    pub(in crate::resident_program) fn prepare(elements: &[u32]) -> Result<Self> {
+        let dedicated = vec![true; elements.len()];
+        let candidates =
+            crate::vllm_cuda_qualification::model_values::bounded::finite_code_groups(&dedicated)?;
+        let mut groups = Vec::with_capacity(candidates.len());
+        let mut bytes = groups.capacity()
+            * (std::mem::size_of::<PinnedKernel>() + 4 + std::mem::size_of::<Arc<[ValueId]>>())
+            + std::mem::size_of::<Self>();
+        for candidate in &candidates {
+            let sizes = candidate
+                .iter()
+                .map(|value| {
+                    elements
+                        .get(value.0 as usize)
+                        .copied()
+                        .ok_or_else(|| Error::State("finite cohort cold member extent".into()))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let (kernel, grid) = definition(&sizes)?;
+            bytes = bytes
+                .checked_add(
+                    kernel.retained_metadata_bytes()?
+                        + candidate.len() * std::mem::size_of::<ValueId>()
+                        + 512,
+                )
+                .ok_or_else(|| Error::Limit("finite cohort cold metadata overflow".into()))?;
+            if bytes > METADATA_LIMIT {
+                return Err(Error::Limit("finite cohort cold metadata bound".into()));
+            }
+            groups.push((kernel, grid, candidate.clone().into()));
+        }
+        Ok(Self {
+            groups: groups.into(),
+            metadata_upper_bytes: bytes,
+        })
+    }
+    pub(in crate::resident_program) fn metadata_upper_bytes(&self) -> usize {
+        self.metadata_upper_bytes
+    }
+}
+
 /// Current source record and producer observations. No initialized/Ready state.
 pub(in crate::resident_program) struct CertificationRun {
     certificates: Arc<CertificateSet>,
     cohorts: Arc<CohortSet>,
-    values: Arc<ModelValues>,
+    leases: FiniteCohortLeases,
+    witness: ProducerWitness,
     pending: BTreeMap<usize, Pending>,
     observed: Vec<AtomicU8>,
     masks: Vec<u8>,
@@ -109,15 +330,30 @@ fn complete_group(members: &[(ValueId, usize)], eligible: &BTreeMap<u32, usize>)
 }
 
 impl CohortSet {
-    fn prepare(certificates: &CertificateSet, values: &ModelValues) -> Result<Self> {
-        let candidates = values.finite_code_groups()?;
-        let mut groups = Vec::with_capacity(candidates.len());
+    fn prepare_inner(
+        certificates: &CertificateSet,
+        leases: &FiniteCohortLeases,
+        cold: Option<&Arc<FiniteCohortGroups>>,
+    ) -> Result<Self> {
+        if let Some(cold) = cold
+            && cold.groups.len() != leases.candidates.len()
+        {
+            return Err(Error::State("finite cohort cold membership differs".into()));
+        }
+        for (index, candidate) in leases.candidates.iter().enumerate() {
+            if let Some(cold) = cold
+                && cold.groups[index].2.as_ref() != candidate.as_ref()
+            {
+                return Err(Error::State("finite cohort cold membership differs".into()));
+            }
+        }
+        let mut groups = Vec::with_capacity(leases.candidates.len());
         let mut bytes =
             groups.capacity() * std::mem::size_of::<Cohort>() + std::mem::size_of::<Self>();
-        for candidate in candidates {
+        for candidate in leases.candidates.iter() {
             let mut members = Vec::with_capacity(candidate.len());
             for value in candidate {
-                let lease = values.lease(value)?;
+                let lease = leases.lease(*value)?;
                 let index = *certificates
                     .by_lease
                     .get(&lease.id())
@@ -126,10 +362,10 @@ impl CohortSet {
                     certificates,
                     index,
                     &lease.handle(),
-                    &values.status().handle(),
-                    values.status(),
+                    &leases.status.handle(),
+                    &leases.status,
                 )?;
-                members.push((value, index));
+                members.push((*value, index));
             }
             let chunk = members.as_slice();
             let mut handles = Vec::with_capacity(chunk.len() + 1);
@@ -144,10 +380,10 @@ impl CohortSet {
                 sizes.push(n);
                 handles.push(handle);
             }
-            handles.push(values.status().handle());
+            handles.push(leases.status.handle());
             let (text, grid) = source(&sizes)?;
-            // Body's original4MiB metadata owner covers this bounded cold
-            // payload and every current ledger; no device allocation is added.
+            // Body's original metadata owner covers this bounded cold payload
+            // and every current ledger; no device allocation is added.
             bytes = bytes
                 .checked_add(
                     text.len()
@@ -160,13 +396,19 @@ impl CohortSet {
             if bytes > METADATA_LIMIT {
                 return Err(Error::Limit("finite cohort cold metadata bound".into()));
             }
-            let (kernel, actual_grid) = definition(&sizes)?;
-            if grid != actual_grid {
-                return Err(Error::State("finite definition grid differs".into()));
-            }
+            let kernel = match cold {
+                Some(cold) => {
+                    let (kernel, cold_grid, _) = &cold.groups[groups.len()];
+                    if *cold_grid != grid {
+                        return Err(Error::State("finite definition grid differs".into()));
+                    }
+                    kernel.clone()
+                }
+                None => definition(&sizes)?.0,
+            };
             groups.push(Cohort {
                 members: chunk.to_vec(),
-                launch: kernel.prepare(values.service().client(), [grid, 1, 1], handles)?,
+                launch: kernel.prepare(leases.service.client(), [grid, 1, 1], handles)?,
             });
         }
         Ok(Self {
@@ -179,22 +421,20 @@ impl CohortSet {
 impl CertificationRun {
     pub(in crate::resident_program) fn bind(
         certificates: Arc<CertificateSet>,
-        values: Arc<ModelValues>,
+        leases: FiniteCohortLeases,
+        witness: ProducerWitness,
+        cold: Option<Arc<FiniteCohortGroups>>,
     ) -> Result<Self> {
-        let proof = values.retained_finite_proof()?;
-        if !Arc::ptr_eq(proof.record(), values.record()) || proof.members().len() > 512 {
-            return Err(Error::State("finite cohort current source issuer".into()));
-        }
+        let eligible = leases.eligible_values();
         if certificates.cohorts.get().is_none() {
-            let prepared = Arc::new(CohortSet::prepare(&certificates, &values)?);
+            let prepared = Arc::new(CohortSet::prepare_inner(
+                &certificates,
+                &leases,
+                cold.as_ref(),
+            )?);
             let _ = certificates.cohorts.set(prepared);
         }
         let cohorts = certificates.cohorts.get().unwrap().clone();
-        let eligible = proof
-            .members()
-            .iter()
-            .map(|&(value, node)| (value.0, node))
-            .collect::<BTreeMap<_, _>>();
         let mut pending = BTreeMap::new();
         let mut masks = vec![0; cohorts.groups.len()];
         for (group, c) in cohorts.groups.iter().enumerate() {
@@ -202,14 +442,14 @@ impl CertificationRun {
             if complete_group(&c.members, &eligible) {
                 let handles = c.launch.handles();
                 if handles.len() != c.members.len() + 1
-                    || !same_range(handles.last().unwrap(), &values.status().handle())
+                    || !same_range(handles.last().unwrap(), &leases.status.handle())
                 {
                     return Err(Error::State(
                         "finite cohort original stored status range".into(),
                     ));
                 }
                 for (bit, &(value, index)) in c.members.iter().enumerate() {
-                    if !same_range(&handles[bit], &values.lease(value)?.handle()) {
+                    if !same_range(&handles[bit], &leases.lease(value)?.handle()) {
                         return Err(Error::State(
                             "finite cohort original stored value range".into(),
                         ));
@@ -217,9 +457,9 @@ impl CertificationRun {
                     require_certificate_range(
                         &certificates,
                         index,
-                        &values.lease(value)?.handle(),
-                        &values.status().handle(),
-                        values.status(),
+                        &leases.lease(value)?.handle(),
+                        &leases.status.handle(),
+                        &leases.status,
                     )?;
                     let mask = 1u8 << bit;
                     if pending
@@ -250,7 +490,8 @@ impl CertificationRun {
         Ok(Self {
             certificates,
             cohorts,
-            values,
+            leases,
+            witness,
             pending,
             observed: (0..masks.len()).map(|_| AtomicU8::new(0)).collect(),
             masks,
@@ -281,10 +522,10 @@ impl CertificationRun {
             index,
             value,
             status,
-            self.values.status(),
+            &self.leases.status,
         )?;
         if let Some(p) = self.pending.get(&index) {
-            self.values.require_storage_node(node)?;
+            self.witness.require_storage_node(node)?;
             observe(&self.observed[p.group], p.bit, p.producer, node)?;
             Ok(0)
         } else {
@@ -294,7 +535,7 @@ impl CertificationRun {
         }
     }
     pub(in crate::resident_program) fn flush(&self, cancel: Option<&AtomicBool>) -> Result<usize> {
-        self.values.require_finished_storage()?;
+        self.witness.require_finished_storage()?;
         begin_flush(&self.observed, &self.masks, &self.started)?;
         let mut launches = 0;
         for (index, c) in self.cohorts.groups.iter().enumerate() {
@@ -302,7 +543,7 @@ impl CertificationRun {
                 continue;
             }
             cancelled(cancel)?;
-            self.values.service().ensure_usable()?;
+            self.leases.service.ensure_usable()?;
             c.launch.launch()?;
             self.group_launches.fetch_add(1, Ordering::Release);
             launches += 1;

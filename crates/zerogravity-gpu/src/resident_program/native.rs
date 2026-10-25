@@ -1157,6 +1157,38 @@ pub(super) fn prepare_certificates(
         cohorts: OnceLock::new(),
     })
 }
+/// B4 cold-path certificate binder: same per-value immediate launches as
+/// `prepare_certificates`, consuming the immutable cold definitions instead
+/// of rebuilding 327 `finite_definition` keys per call. A cold/current extent
+/// mismatch is refused by the launch binding, never silently re-keyed;
+/// `prepare_certificates` itself stays byte-identical for the N1 paths.
+pub(super) fn prepare_certificates_cold(
+    service: &Arc<ResidentService>,
+    values: &[DeviceBuffer],
+    status: &ResidentLease,
+    definitions: &[PinnedKernel],
+) -> Result<CertificateSet> {
+    if definitions.len() != values.len() {
+        return Err(Error::State("B4 cold finite value population".into()));
+    }
+    let mut certificates = Vec::with_capacity(values.len());
+    let mut by_lease = BTreeMap::new();
+    for (value, kernel) in values.iter().zip(definitions) {
+        let n = value.elements;
+        let handles = vec![value.original_lease()?.handle(), status.handle()];
+        let grid = [(n as u32).div_ceil(128), 1, 1];
+        let launch = kernel.prepare(service.client(), grid, handles)?;
+        by_lease
+            .entry(value.original_lease()?.id())
+            .or_insert(certificates.len());
+        certificates.push(Certificate { launch });
+    }
+    Ok(CertificateSet {
+        entries: certificates,
+        by_lease,
+        cohorts: OnceLock::new(),
+    })
+}
 pub(super) fn certify_original(
     certificates: &CertificateSet,
     value: &DeviceBuffer,

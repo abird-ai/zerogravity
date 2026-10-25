@@ -249,4 +249,10 @@ impl CohortEmbedding {
         );
         accesses
     }
+    /// Node-0 census attribution: the same per-node access list the flight
+    /// union carries for node 0 (tied table read, source-issued IDs read,
+    /// the embedding value write and the status).
+    pub(super) fn node_accesses(&self) -> Vec<(ResidentLease, DeviceAccess)> {
+        self.accesses()
+    }
 }

@@ -1,10 +1,17 @@
 //! Actual independent canonical GDN planes ↔ one B4 private native cache.
 //! Reuses original exact integer permutations, no model arithmetic/Root mint.
+//! The per-row kernels stay compiled cold as the independent bit oracle and
+//! admission fallback keys; the grouped row-dispatch variant performs the
+//! actual per-call transport as ONE launch per partition.
 use super::super::*;
 use crate::resident_inference::native_fragment::{
     PrefixPhaseEnqueue, model_state::BoundModelState, short_hf::ShortHfCallInput,
 };
 use crate::resident_leases::{ResidentInitialization, ResidentLease, ResidentService};
+use crate::resident_state_transport::typed::{
+    CONV_ELEMENTS, PreparedTypedTransport, RECURRENT_ELEMENTS, TypedDirection, TypedLayout,
+    TypedRow,
+};
 use crate::vllm_ptx_inline::PinnedKernel;
 use cubecl_runtime::kernel::BufferIOAttr;
 use zerogravity_artifacts::source_weights::WindowWorkspace;
@@ -16,15 +23,13 @@ const CONV: usize = 6144 * 3;
 const RECURRENT: usize = 16 * 128 * 128;
 const SLOT_BYTES: usize = 278_528 * 4;
 const CACHE_BYTES: usize = 17 * SLOT_BYTES;
-struct Copy {
-    kernel: PinnedKernel,
-    grid: [u32; 3],
-    handles: Vec<Handle>,
-}
+
+/// One actual row's per-kind transport planes: (source, destination) in the
+/// original per-row kernel order. Identical addresses to the per-row kernels.
 struct Row {
     input: Arc<ShortHfCallInput>,
     state: Arc<BoundModelState>,
-    copies: [Copy; 4],
+    planes: [(Handle, Handle); 4],
 }
 pub(super) struct CohortGdnState {
     service: Arc<ResidentService>,
@@ -32,6 +37,10 @@ pub(super) struct CohortGdnState {
     status: ResidentLease,
     rows: Box<[Row]>,
     prefill_h: Option<(ResidentLease, ResidentLease)>,
+    // Cold per-row (bit oracle/fallback) and grouped definitions, cloned from
+    // the shared CohortTransportLibrary; grids keep the original equations.
+    grouped: Arc<[PinnedKernel; 4]>,
+    grids: [[u32; 3]; 4],
     _metadata: Arc<WindowWorkspace>,
 }
 fn plane(cache: &ResidentLease, offset: usize, bytes: usize) -> Result<Handle> {
@@ -44,26 +53,40 @@ fn plane(cache: &ResidentLease, offset: usize, bytes: usize) -> Result<Handle> {
         .offset_start(offset as u64)
         .offset_end((cache.bytes() - end) as u64))
 }
-pub(super) fn definitions() -> Result<Vec<(PinnedKernel, [u32; 3])>> {
-    (0..4usize).map(|kind| -> Result<(PinnedKernel, [u32; 3])> {
-            let (elements, input_width, output_width, input_type, output_type) = match kind {
-                0 => (CONV, 4, 2, "unsigned int", "unsigned short"),
-                1 => (CONV, 2, 4, "unsigned short", "unsigned int"),
-                _ => (RECURRENT, 4, 4, "unsigned int", "unsigned int"),
-            };
-            let entry = ["zg_cohort_conv_in", "zg_cohort_conv_out", "zg_cohort_h_in", "zg_cohort_h_out"][kind];
-            let text: Arc<str> = format!(
-                "// cubecl.cuda.dynamic_shared_bytes=0\n#define ZG_ENTRY {entry}\n#define ZG_COPY {kind}\n#define ZG_ELEMENTS {elements}u\n#define ZG_INPUT {input_type}\n#define ZG_OUTPUT {output_type}\n{SOURCE}",
-            ).into();
-            let kernel = PinnedKernel::new(entry, text, 128, Arc::from([
-                (elements * input_width, BufferIOAttr::ReadOnly),
-                (elements * output_width, BufferIOAttr::WriteOnly),
-                (4, BufferIOAttr::ReadWrite),
-            ]))?;
-            Ok((kernel, [(elements as u32).div_ceil(128), 1, 1]))
-        }).collect::<Result<Vec<_>>>()
+/// Original per-row kernel: exact state transport between one row's canonical
+/// plane and its native view. Kept as the independent qualification oracle and
+/// admission fallback key; unchanged source/ABI/key.
+pub(super) fn definition(kind: usize) -> Result<PinnedKernel> {
+    let (elements, input_width, output_width, input_type, output_type) = match kind {
+        0 => (CONV, 4, 2, "unsigned int", "unsigned short"),
+        1 => (CONV, 2, 4, "unsigned short", "unsigned int"),
+        2 | 3 => (RECURRENT, 4, 4, "unsigned int", "unsigned int"),
+        _ => return Err(Error::Unsupported("cohort GDN transport kind".into())),
+    };
+    let entry = [
+        "zg_cohort_conv_in",
+        "zg_cohort_conv_out",
+        "zg_cohort_h_in",
+        "zg_cohort_h_out",
+    ][kind];
+    let text: std::sync::Arc<str> = format!(
+        "// cubecl.cuda.dynamic_shared_bytes=0\n#define ZG_ENTRY {entry}\n#define ZG_COPY {kind}\n#define ZG_ELEMENTS {elements}u\n#define ZG_INPUT {input_type}\n#define ZG_OUTPUT {output_type}\n{SOURCE}",
+    )
+    .into();
+    PinnedKernel::new(
+        entry,
+        text,
+        128,
+        std::sync::Arc::from([
+            (elements * input_width, BufferIOAttr::ReadOnly),
+            (elements * output_width, BufferIOAttr::WriteOnly),
+            (4, BufferIOAttr::ReadWrite),
+        ]),
+    )
 }
 impl CohortGdnState {
+    #[allow(clippy::too_many_arguments)] // Cold transport definitions are one
+    // additional immutable argument over the original admission sequence.
     pub(super) fn prepare(
         service: Arc<ResidentService>,
         inputs: &[Arc<ShortHfCallInput>],
@@ -71,6 +94,7 @@ impl CohortGdnState {
         cache: ResidentLease,
         status: ResidentLease,
         prefill_h: Option<(ResidentLease, ResidentLease)>,
+        transport: Arc<super::CohortTransportLibrary>,
         init: &mut ResidentInitialization<'_>,
     ) -> Result<Arc<Self>> {
         init.require_service(&service)?;
@@ -110,8 +134,6 @@ impl CohortGdnState {
             .require_record(inputs[0].source(), inputs[0].record())?;
         let metadata = Arc::new(source.source().reserve_workspace(512 * 1024)?);
         init.retain_completion_owner(metadata.clone())?;
-        // Only four immutable source/ABI definitions, shared across real rows.
-        let definitions = definitions()?;
         let layer = states[0].layer().index();
         let mut rows = Vec::with_capacity(4);
         for (row, (input, state)) in inputs.iter().zip(states).enumerate() {
@@ -154,33 +176,30 @@ impl CohortGdnState {
                 let native = plane(&cache, offset + CONV * 2, RECURRENT * 4)?;
                 (native.clone(), native)
             };
-            let mut copies = Vec::with_capacity(4);
-            for (kind, (from, to)) in [
+            // Per-kind (source, destination) planes: identical addresses and
+            // extents the four original per-row kernels consumed/produced.
+            let planes = [
                 (leases[0].0.handle(), conv.clone()),
                 (conv, leases[1].0.handle()),
                 (leases[2].0.handle(), h_read),
                 (h_write, leases[3].0.handle()),
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                let (kernel, grid) = &definitions[kind];
-                let handles = vec![from, to, status.handle()];
-                kernel.validate(service.client(), *grid, &handles)?;
-                copies.push(Copy {
-                    kernel: kernel.clone(),
-                    grid: *grid,
-                    handles,
-                });
-            }
-            let copies: [Copy; 4] = copies
-                .try_into()
-                .map_err(|_| Error::State("cohort GDN exact4 transport partitions".into()))?;
+            ];
             rows.push(Row {
                 input: input.clone(),
                 state: state.clone(),
-                copies,
+                planes,
             });
+        }
+        // Grouped grids keep the original per-row block equations; the row
+        // axis moves to blockIdx.y (four actual rows).
+        let mut grids = [[1, 1, 1]; 4];
+        for (kind, grid) in grids.iter_mut().enumerate() {
+            let elements = if kind < 2 {
+                CONV_ELEMENTS
+            } else {
+                RECURRENT_ELEMENTS
+            };
+            *grid = [(elements as u32).div_ceil(128), 4, 1];
         }
         let result = Arc::new(Self {
             service,
@@ -188,6 +207,8 @@ impl CohortGdnState {
             status,
             rows: rows.into_boxed_slice(),
             prefill_h,
+            grouped: transport.gdn_state_grouped.clone(),
+            grids,
             _metadata: metadata,
         });
         init.retain_completion_owner(result.clone())?;
@@ -245,19 +266,92 @@ impl CohortGdnState {
         }
         Ok(())
     }
+    /// ONE grouped launch across all four actual rows, replacing the four
+    /// per-row copies with identical planes, equations, guards and status
+    /// epoch. Returns (launches, grouped launches).
     pub(super) fn enqueue(
         &self,
         kind: usize,
         permits: &[PrefixPhaseEnqueue<'_>],
         effects: &[StateEffect],
-    ) -> Result<usize> {
+    ) -> Result<(usize, usize)> {
         self.require_partition(kind, permits, effects)?;
+        let layout = if kind < 2 {
+            TypedLayout::Conv
+        } else {
+            TypedLayout::RecurrentH
+        };
+        let direction = if kind.is_multiple_of(2) {
+            TypedDirection::Import
+        } else {
+            TypedDirection::Export
+        };
+        let rows = self
+            .rows
+            .iter()
+            .map(|row| {
+                let (source, destination) = &row.planes[kind];
+                if kind.is_multiple_of(2) {
+                    TypedRow {
+                        prior: Some(source),
+                        candidate: None,
+                        native: destination,
+                        second: None,
+                        second_prior: None,
+                        controls: None,
+                    }
+                } else {
+                    TypedRow {
+                        prior: None,
+                        candidate: Some(destination),
+                        native: source,
+                        second: None,
+                        second_prior: None,
+                        controls: None,
+                    }
+                }
+            })
+            .collect::<Vec<_>>();
+        PreparedTypedTransport::prepare(
+            self.service.client(),
+            &self.grouped[kind],
+            &rows,
+            &self.status.handle(),
+            layout,
+            direction,
+            self.grids[kind],
+        )?
+        .launch(self.service.client())?;
+        Ok((1, 1))
+    }
+    /// Per-kind census attribution: canonical prior/candidate plane leases,
+    /// the native-side owner and the shared status lease.
+    pub(super) fn partition_accesses(&self, kind: usize) -> Vec<(ResidentLease, DeviceAccess)> {
+        let mut accesses: Vec<(ResidentLease, DeviceAccess)> = Vec::with_capacity(6);
         for row in &self.rows {
-            let copy = &row.copies[kind];
-            copy.kernel
-                .launch(self.service.client(), copy.grid, &copy.handles)?;
+            let leases = row.state.leases();
+            let (lease, access) = match kind {
+                0 => (leases[0].0.clone(), DeviceAccess::Read),
+                1 => (leases[1].0.clone(), DeviceAccess::Write),
+                2 => (leases[2].0.clone(), DeviceAccess::Read),
+                _ => (leases[3].0.clone(), DeviceAccess::Write),
+            };
+            accesses.push((lease, access));
         }
-        Ok(self.rows.len())
+        match (kind, &self.prefill_h) {
+            (0, _) => accesses.push((self.cache.clone(), DeviceAccess::Write)),
+            (1, _) => accesses.push((self.cache.clone(), DeviceAccess::Read)),
+            (2, Some((initial, _))) => {
+                accesses.push((initial.clone(), DeviceAccess::Write));
+            }
+            (2, None) => accesses.push((self.cache.clone(), DeviceAccess::Write)),
+            (_, Some((_, final_state))) => {
+                accesses.push((final_state.clone(), DeviceAccess::Read));
+            }
+            (_, None) => accesses.push((self.cache.clone(), DeviceAccess::Read)),
+        }
+        accesses.push((self.status.clone(), DeviceAccess::Write));
+        accesses
     }
     pub(super) fn accesses(&self) -> Vec<(ResidentLease, DeviceAccess)> {
         self.rows

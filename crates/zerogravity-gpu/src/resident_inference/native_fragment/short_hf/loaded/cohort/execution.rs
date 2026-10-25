@@ -168,6 +168,11 @@ impl ShortHfLoaded {
         mut validate: Option<Validation<'_>>,
         probe: Option<Arc<super::faults::Probe>>,
     ) -> Result<ShortHfCohortPreparation> {
+        let mut wall = super::super::performance::Phases::new(
+            "b4_cohort",
+            inputs.rows().first().map_or(0, |r| r.base()) as u64,
+            inputs.rows().len(),
+        );
         let cold = self.cohort.as_ref().ok_or_else(|| {
             Error::Unsupported("explicit B4 source/shape admission required".into())
         })?;
@@ -183,6 +188,7 @@ impl ShortHfLoaded {
             ));
         }
         inputs.require_current(sessions)?;
+        wall.mark("input_binding");
         let shape = crate::vllm_cuda_qualification::cohort_native::input_geometry(inputs.rows())?;
         if shape.profile != self.cold.source.model_profile() || !cold.phases.contains(shape.initial)
         {
@@ -202,6 +208,7 @@ impl ShortHfLoaded {
         else {
             return Ok(ShortHfCohortPreparation::Capacity);
         };
+        wall.mark("states_prepare");
         let ticket = self.service().queue().submit(
             self.service().budget(),
             self.service().owner().clone(),
@@ -212,7 +219,9 @@ impl ShortHfLoaded {
             None,
         )?;
         let mut slot = ticket.wait().await?;
+        wall.mark("ticket_wait");
         let workspace = self.model.workspace.lock().await;
+        wall.mark("workspace_wait");
         states.require_current(sessions)?;
         // Fresh candidate writes are known-complete, roots/source remain exact,
         // and no body/workspace command has launched. Do not catch generic errors.
@@ -271,7 +280,9 @@ impl ShortHfLoaded {
             &mut init,
             None,
         )?;
+        wall.mark("body_prepare");
         drop(init.complete_sync().await?);
+        wall.mark("init_completion");
         let mut program = ResidentProgram::from_cohort_body(body.clone())?;
         let records = inputs
             .rows()
@@ -311,6 +322,7 @@ impl ShortHfLoaded {
                 "B4 whole readback exceeds actual source admission".into(),
             ));
         }
+        wall.mark("readback_setup");
         let packets = body.packets().to_vec();
         let outputs = sessions
             .iter()
@@ -345,6 +357,7 @@ impl ShortHfLoaded {
             probe.bind(&body)?;
         }
         let mut flight = self.service().submit_cohort(&roots, body.accesses())?;
+        wall.mark("submit");
         flight.retain_completion_owner(body.clone())?;
         flight.retain_completion_owner(self.cold.clone())?;
         flight.retain_completion_owner(cold.clone())?;
@@ -353,6 +366,7 @@ impl ShortHfLoaded {
         // Submitted serving quanta drain to known completion. Cancellation is
         // checked atomically for all rows by the unchanged publisher afterward.
         let submitted = program.launch_cohort(self.service().client(), &permits, None)?;
+        wall.mark("enqueue");
         if submitted.logits.is_some()
             || !submitted.proposals.is_empty()
             || submitted
@@ -413,6 +427,7 @@ impl ShortHfLoaded {
                 Ok(())
             })
             .await?;
+        wall.mark("complete_readback");
         body.require_current(&permits)?;
         drop(permits);
         slot.finish()?;
@@ -476,8 +491,11 @@ impl ShortHfLoaded {
             sampler_dispatches: body.sampler_dispatches(),
             dispatches: submitted.dispatches,
             readback_bytes,
+            // Shared physical certification work, counted once.
+            finite_certification: body.finite_certification_metrics(),
             rows: Vec::new(),
         };
+        wall.succeed();
         drop(raw);
         drop(submitted);
         drop(program);

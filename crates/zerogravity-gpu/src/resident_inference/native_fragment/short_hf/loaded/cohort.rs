@@ -474,8 +474,13 @@ impl ColdCohort {
         // Only complete_sync's real upload event may initialize this cache.
         // Per-layer state transport still supplies each actual current root.
         let status = init.upload_bytes(&[0u8; 4], BufferRole::Scratch)?;
-        let library =
-            CohortLibrary::prepare(cold.native.clone(), service.clone(), &mut init, cancel)?;
+        let library = CohortLibrary::prepare(
+            cold.native.clone(),
+            scopes,
+            service.clone(),
+            &mut init,
+            cancel,
+        )?;
         let result = Arc::new(Self {
             capacity: DecodeCohortCapacity::new(),
             phases: crate::vllm_cuda_qualification::cohort_native::CohortPhases::for_profile(

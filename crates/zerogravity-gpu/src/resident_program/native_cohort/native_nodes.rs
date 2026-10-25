@@ -16,6 +16,9 @@ pub(super) struct CohortNativeNodes {
     attention: BTreeMap<usize, Arc<CohortAttention>>,
     nodes: BTreeMap<usize, CohortNativeSite>,
 }
+/// Per-node census: source node -> concrete access list.
+type CohortNodeCensus = Vec<(usize, Vec<(ResidentLease, DeviceAccess)>)>;
+
 impl CohortNativeNodes {
     pub(super) fn bind(
         inputs: &[Arc<ShortHfCallInput>],
@@ -163,24 +166,46 @@ impl CohortNativeNodes {
         permits: &[PrefixPhaseEnqueue<'_>],
         effects: &[StateEffect],
         cancelled: Option<&AtomicBool>,
-    ) -> Result<(usize, usize, usize)> {
+    ) -> Result<(usize, usize, usize, usize)> {
         self.values.service().ensure_usable()?;
         let native = self
             .nodes
             .get(&node)
             .ok_or_else(|| Error::State("B4 actual native node absent".into()))?;
         let mut copies = 0;
+        let mut grouped = 0;
         // Each adapter ignores unrelated node indices; KV copies validate all
         // per-row current state/effects before touching a shared native page.
         for attention in self.attention.values() {
-            copies += attention.before(node, permits, effects)?;
+            let (launches, transports) = attention.before(node, permits, effects)?;
+            copies += launches;
+            grouped += transports;
         }
         let (n, c, z) = native.enqueue(node, permits, cancelled)?;
         copies += c;
         for attention in self.attention.values() {
-            copies += attention.after(node, permits, effects)?;
+            let (launches, transports) = attention.after(node, permits, effects)?;
+            copies += launches;
+            grouped += transports;
         }
-        Ok((n, copies, z))
+        Ok((n, copies, z, grouped))
+    }
+    /// Per-node census over the 169 native sites plus the attention grouped KV
+    /// transport attribution at each layer's KvAppend source node.
+    pub(super) fn census(&self) -> Result<CohortNodeCensus> {
+        let mut result = Vec::with_capacity(self.nodes.len());
+        for (&node, site) in &self.nodes {
+            result.push((node, site.accesses().to_vec()));
+        }
+        for attention in self.attention.values() {
+            let node = attention.kv_append_node();
+            let entry = result
+                .iter_mut()
+                .find(|(at, _)| *at == node)
+                .ok_or_else(|| Error::State("B4 census KV-append native site absent".into()))?;
+            entry.1.extend(attention.kv_transport_accesses());
+        }
+        Ok(result)
     }
     pub(super) fn accesses(&self) -> Vec<(ResidentLease, DeviceAccess)> {
         self.nodes

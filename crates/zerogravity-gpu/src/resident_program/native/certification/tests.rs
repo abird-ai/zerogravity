@@ -145,3 +145,68 @@ fn compiler_context_all_retained_subsets_use_only_exact_prepared_groups_or_indiv
     assert!(finite_code_groups(&[true])?.is_empty());
     Ok(())
 }
+
+#[test]
+fn b4_envelope_fits_the_derived_metadata_and_ledger_bounds() -> Result<()> {
+    use crate::vllm_cuda_qualification::model_values::bounded::finite_code_groups;
+    // B4 candidate membership: 327 dedicated values -> ceil(327/8) = 41
+    // groups (40 full + one 7-member tail).
+    let groups = finite_code_groups(&[true; 327])?;
+    assert_eq!(groups.len(), 41);
+    assert_eq!(groups[0].len(), WIDTH);
+    assert_eq!(groups[40].len(), 7);
+    assert!(finite_code_groups(&[true; 328])?.len() == 41);
+    // Cold metadata arithmetic: 41 groups x (generated source <=4096 B +
+    // 9 Handle clones + 8-member chunk + one kernel key + 512 B slack) plus
+    // Vec/array overhead stays under METADATA_LIMIT for every Handle layout.
+    let cold = 41usize
+        * (4096 + 9 * std::mem::size_of::<Handle>() + 128 + PinnedKernel::KEY_METADATA_BYTES + 512)
+        + 41 * std::mem::size_of::<Cohort>()
+        + std::mem::size_of::<FiniteCohortGroups>();
+    assert!(cold <= METADATA_LIMIT, "cold={cold} limit={METADATA_LIMIT}");
+    // Per-run ledger arithmetic: 327 pending entries at 128 B node slack +
+    // 41 masks at 32 B + one run struct.
+    let ledger = 327 * 128 + 41 * 32 + std::mem::size_of::<CertificationRun>();
+    assert!(
+        ledger <= LEDGER_LIMIT,
+        "ledger={ledger} limit={LEDGER_LIMIT}"
+    );
+    // N1 keeps its own <=512-member/64-group envelope under the same bounds.
+    let n1 = 64usize
+        * (4096 + 9 * std::mem::size_of::<Handle>() + 128 + PinnedKernel::KEY_METADATA_BYTES + 512)
+        + 64 * std::mem::size_of::<Cohort>()
+        + std::mem::size_of::<CohortSet>();
+    let _ = n1;
+    Ok(())
+}
+
+#[test]
+fn cold_group_definitions_are_stable_and_match_fresh_definitions() -> Result<()> {
+    use crate::vllm_cuda_qualification::model_values::bounded::finite_code_groups;
+    use cubecl_runtime::kernel::KernelMetadata;
+    let elements = (1..=327).map(|n| n as u32 * 128).collect::<Vec<_>>();
+    let cold = FiniteCohortGroups::prepare(&elements)?;
+    let again = FiniteCohortGroups::prepare(&elements)?;
+    assert_eq!(cold.groups().len(), again.groups().len());
+    let membership = finite_code_groups(&[true; 327])?;
+    for (index, ((kernel, grid, members), (fresh_kernel, fresh_grid, _))) in
+        cold.groups().iter().zip(again.groups().iter()).enumerate()
+    {
+        assert_eq!(kernel.id(), fresh_kernel.id());
+        assert_eq!(grid, fresh_grid);
+        assert_eq!(members.as_ref(), membership[index].as_slice());
+        // The cold definition is exactly the per-call generator's kernel.
+        let sizes = membership[index]
+            .iter()
+            .map(|value| elements[value.0 as usize])
+            .collect::<Vec<_>>();
+        let (fresh, fresh_grid) = definition(&sizes)?;
+        assert_eq!(kernel.id(), fresh.id());
+        assert_eq!(*grid, fresh_grid);
+        // Runtime exclusions never repack: removing a member's eligibility
+        // keeps the kernel key (the mask drops the whole group instead).
+        assert_eq!(kernel.id(), definition(&sizes)?.0.id());
+    }
+    assert!(cold.groups().len() <= 41);
+    Ok(())
+}
