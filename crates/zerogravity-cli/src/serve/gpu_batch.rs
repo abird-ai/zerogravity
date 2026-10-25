@@ -192,8 +192,10 @@ fn form_with_frontiers(
     let mut waves = Vec::<Wave>::new();
     let mut heads = Vec::<(usize, Phase, Option<usize>)>::new();
     for (index, ready) in slots.iter().enumerate() {
-        if ready.frontier > 512
-            || (ready.phase == Phase::Prefill && ready.frontier >= 512)
+        if ready
+            .frontier
+            .checked_add(ready.tokens)
+            .is_none_or(|end| end > 512)
             || ready.tokens == 0
             || ready.tokens > prefill_quantum
             || ready.scratch_bytes == 0
@@ -648,6 +650,22 @@ mod tests {
             );
             assert!(wave.tokens <= 128 && wave.scratch_bytes <= 2048);
         }
+    }
+
+    #[test]
+    fn every_phase_refuses_to_schedule_past_the_512_token_context() {
+        for phase in [Phase::Prefill, Phase::Decode] {
+            let last = r(1, phase, 511, 1);
+            assert!(form_native(&[last], atomic_bounds(64)).is_ok());
+            for frontier in [512, usize::MAX] {
+                let invalid = r(1, phase, frontier, 1);
+                assert!(form_native(&[invalid], atomic_bounds(64)).is_err());
+                assert!(form_with_prefill_quantum(&[invalid], atomic_bounds(64), 47).is_err());
+            }
+        }
+        let invalid_decode = [r(1, Phase::Decode, 512, 1)];
+        assert!(form(&invalid_decode, atomic_bounds(64)).is_err());
+        assert!(form_decode(&invalid_decode, atomic_bounds(64)).is_err());
     }
 
     #[test]

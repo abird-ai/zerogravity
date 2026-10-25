@@ -9,7 +9,7 @@ use super::engine::ServiceError;
 use AllocationClass::Scratch;
 use std::alloc::Layout;
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant};
 use zerogravity::resource_arbiter::{
@@ -354,7 +354,7 @@ struct Control {
     state: Mutex<ControlState>,
     ready: Arc<Condvar>,
     max_pending: Option<usize>,
-    cancelled_hint: AtomicUsize,
+    cancelled_hint: AtomicBool,
     _charge: ServingCharge,
 }
 
@@ -406,7 +406,9 @@ impl CancelToken {
     pub(super) fn cancel(&self) {
         self.flag.store(true, Ordering::Release);
         if let Some(control) = self.control.as_ref().and_then(Weak::upgrade) {
-            control.cancelled_hint.fetch_add(1, Ordering::AcqRel);
+            // A wake hint is a flag, not a counter; saturation/overflow
+            // must never cause a cancelled request to become invisible.
+            control.cancelled_hint.store(true, Ordering::Release);
             control.ready.notify_all();
         }
     }
@@ -698,7 +700,7 @@ impl<T> PendingQueue<T> {
                 }),
                 ready: Arc::new(Condvar::new()),
                 max_pending,
-                cancelled_hint: AtomicUsize::new(0),
+                cancelled_hint: AtomicBool::new(false),
                 _charge: charge,
             }),
             payload: Arc::new(Mutex::new(Payload { ring: None })),
@@ -806,11 +808,14 @@ impl<T> PendingQueue<T> {
     /// happens at cancellation time. If the spare is briefly busy, the hint is
     /// restored so a later worker round retries rather than losing the sweep.
     pub(super) fn sweep<F: Fn(&T) -> bool>(&self, cancelled: F) -> Result<usize, ServiceError> {
-        if self.control.cancelled_hint.swap(0, Ordering::AcqRel) == 0 {
+        if !self.control.cancelled_hint.swap(false, Ordering::AcqRel) {
             return Ok(0);
         }
         let mut state = self.control.state.lock().expect("pending queue control");
         if state.pending == 0 {
+            // Cancellation may precede publication of its reserved ticket.
+            // Keep the hint until a nonempty sweep observes that item.
+            self.restore_cancel_hint();
             return Ok(0);
         }
         let mut payload = self.payload.lock().expect("pending queue payload");
@@ -876,7 +881,7 @@ impl<T> PendingQueue<T> {
     }
 
     fn restore_cancel_hint(&self) {
-        self.control.cancelled_hint.fetch_add(1, Ordering::AcqRel);
+        self.control.cancelled_hint.store(true, Ordering::Release);
     }
 
     pub(super) fn try_pop<F: Fn(&T) -> bool>(&self, cancelled: F) -> Pop<T> {
@@ -975,6 +980,24 @@ mod tests {
             token.cancel();
         }
         (token, vec![0; 8])
+    }
+
+    #[test]
+    fn cancelled_reserved_ticket_survives_an_empty_sweep_until_publication() {
+        let admission = host(512);
+        let queue = PendingQueue::<(CancelToken, usize)>::new(admission.clone(), None).unwrap();
+        let worker = queue.worker().unwrap();
+        let ticket = queue.reserve().unwrap();
+        let cancel = queue.cancel_token(None);
+        cancel.cancel();
+        // The job is admitted, but it is not in the queue yet.
+        assert_eq!(queue.sweep(|entry| entry.0.is_cancelled()).unwrap(), 0);
+        queue.enqueue(ticket, (cancel, 7)).unwrap();
+        assert_eq!(queue.snapshot().pending, 1);
+        assert_eq!(queue.sweep(|entry| entry.0.is_cancelled()).unwrap(), 1);
+        assert_eq!(queue.snapshot().pending, 0);
+        drop((worker, queue));
+        assert_eq!(admission.serving_bytes(), 0);
     }
 
     #[test]
