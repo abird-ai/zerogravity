@@ -602,13 +602,13 @@ def main():
             semantic.check_seams(scratch)
             good = json.dumps(matrix_result()).encode()
             semantic.strict_report(good)
-            for name, payload in (
+            for name, bad_json in (
                 ('duplicate report member', b'{"schema":"a","schema":"b"}'),
                 ('non-finite constant', b'{"schema":"a","x":NaN}'),
                 ('array report', b'[1]'),
                 ('trailing text', b'{"schema":"a"}x'),
                 ('unbounded report', b'{"schema":"'+(4*MIB)*b'a'+b'"}')):
-                expect_fail(lambda payload=payload: semantic.strict_report(payload), name)
+                expect_fail(lambda bad_json=bad_json: semantic.strict_report(bad_json), name)
             # planned_work.gemma_calls is the mode's actual prepare count, derived
             # from the accepted fixture semantics rather than a fixed 1.
             calls = physical_run.PLANNED_CALLS

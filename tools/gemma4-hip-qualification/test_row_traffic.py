@@ -1,4 +1,5 @@
 """Regression: ordinary PLE parity must account for already-resident rows."""
+import ast
 import sys
 import unittest
 from pathlib import Path
@@ -34,6 +35,19 @@ class OrdinaryRowReuse(unittest.TestCase):
         event['ple_row_h2d'] += ROW_BYTES
         with self.assertRaisesRegex(ValueError, 'row bytes'):
             ordinary_page_traffic(event, [4906] * 57)
+
+
+class ControlSourceScoping(unittest.TestCase):
+    def test_seams_must_not_shadow_outer_prepared_payload_path(self):
+        # This control was accidentally skipped by an UnboundLocalError after
+        # the negative JSON cases bound `payload` as a local byte string.
+        source = (Path(__file__).parent / 'control-checks.py').read_text()
+        functions = [node for node in ast.walk(ast.parse(source))
+                     if isinstance(node, ast.FunctionDef) and node.name == 'seams']
+        self.assertEqual(len(functions), 1)
+        assigned = {node.id for node in ast.walk(functions[0])
+                    if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del))}
+        self.assertNotIn('payload', assigned, 'source control payload path shadowed')
 
 
 if __name__ == '__main__':
