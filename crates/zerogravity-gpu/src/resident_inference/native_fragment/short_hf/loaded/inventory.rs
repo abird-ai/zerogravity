@@ -100,15 +100,30 @@ impl ShortHfResourceInventory {
         source: &BoundFullModelSource,
         inputs: &crate::vllm_cuda_qualification::Mlp47QualificationInputs,
     ) -> Result<Self> {
+        Self::inspect(true, source, inputs)
+    }
+    /// Cost-only inspection of the original N1 source-owned cold analysis.
+    /// The caller must bind the matching N1 native image cohort.
+    pub fn inspect_n1(
+        source: &BoundFullModelSource,
+        inputs: &crate::vllm_cuda_qualification::Mlp47QualificationInputs,
+    ) -> Result<Self> {
+        Self::inspect(false, source, inputs)
+    }
+    fn inspect(
+        cohort_b4: bool,
+        source: &BoundFullModelSource,
+        inputs: &crate::vllm_cuda_qualification::Mlp47QualificationInputs,
+    ) -> Result<Self> {
         if source.source().bind_full_model_source()?.model_profile() != source.model_profile() {
             return Err(Error::State(
-                "B4 inventory sealed source/profile differs".into(),
+                "short-HF inventory sealed source/profile differs".into(),
             ));
         }
         let verified = source.source().source();
         let required = crate::vllm_cuda_qualification::short_hf_required_images_for_cohort(
             source.model_profile(),
-            true,
+            cohort_b4,
         )?;
         if inputs.projections.device_cap != 5120 * MIB as u64
             || inputs.projections.images.len() != required.len()
@@ -131,7 +146,7 @@ impl ShortHfResourceInventory {
             })
         {
             return Err(Error::State(
-                "B4 inventory actual source/image owners and original caps".into(),
+                "short-HF inventory actual source/image owners and original caps".into(),
             ));
         }
         // Exact retained MetadataOwner footprint in original source_rotary.rs:
@@ -142,7 +157,7 @@ impl ShortHfResourceInventory {
         let _owner_metadata = verified.reserve_workspace(2 * MIB)?;
         let (_bindings, scopes) = super::cold_source_scopes(source)?;
         let (_, inventory) = Self::select_profile(
-            true,
+            cohort_b4,
             source,
             &scopes,
             crate::vllm_cuda_qualification::short_hf_head::HeadMode::environment_preference()?,
@@ -486,10 +501,14 @@ mod tests {
             super::super::cohort::ColdCohort::initialization_host_bytes()?,
         ])?;
         // Accepted316 .8B bound is a regression anchor, not model/runtime evidence.
-        let upper = sum([3_608_137_747, delta, 16 * MIB])?; // actual retained qualifier index
+        let anchored = 3_608_137_747usize;
+        let upper = sum([anchored, delta, 16 * MIB])?; // actual retained qualifier index
         println!(
             "B4_SOURCE_HOST_BOUND readback_delta={readback_delta} geometry={geometry} library={library} body={body} rows={current_rows} delta={delta} anchored_upper={upper}"
         );
+        // Historical accepted .8B cohort regression bound (anchor + delta +
+        // retained qualifier index), NOT current full-host fit and NOT the
+        // current4GiB refusal; any refusal stays as diagnosis.
         require_fit(
             0,
             upper,
@@ -498,6 +517,28 @@ mod tests {
                 device_bytes: (4096 * MIB) as u64,
             },
         )?;
+        Ok(())
+    }
+    #[test]
+    fn n1_fourteen_roots_are_distinct_from_b4_bounds() -> Result<()> {
+        assert_eq!(ROOTS, 14);
+        for profile in [FullModelProfile::Qwen08, FullModelProfile::Qwen2B] {
+            let phases = CohortPhases::for_profile(profile);
+            let b4 = super::super::cohort::DecodeCohortRootBound::derive(
+                8,
+                if phases.contains(true) { 8 } else { 4 },
+            )?
+            .total;
+            assert_eq!(
+                b4,
+                if profile == FullModelProfile::Qwen08 {
+                    22
+                } else {
+                    18
+                }
+            );
+            assert_ne!(b4, ROOTS);
+        }
         Ok(())
     }
     #[test]

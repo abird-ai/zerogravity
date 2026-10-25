@@ -4,8 +4,10 @@
 #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
 pub(crate) mod native_fragment;
 #[cfg(all(
-    test,
-    feature = "qualification",
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    ),
     any(feature = "hip", feature = "vulkan")
 ))]
 #[path = "resident_inference/portable_qualification.rs"]
@@ -19,6 +21,16 @@ pub use native_fragment::{
     qualify_vllm_gdn_mlp_fragment_fault, qualify_vllm_gdn_sequence,
     qualify_vllm_gdn_sequence_fault, qualify_vllm_gdn_sequence_restore_refusal,
 };
+#[cfg(all(
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    ),
+    feature = "hip",
+    feature = "vulkan",
+    feature = "hardware-abort-probe"
+))]
+pub use portable_qualification::{SamePciPeerReceipt, same_pci_peer};
 #[cfg(feature = "qualification")]
 #[path = "resident_alias_qualification.rs"]
 mod alias_qualification;
@@ -1591,6 +1603,19 @@ impl ResidentSession {
         )
         .await
     }
+    // `'o` exists only for the Linux source-option adapters. Keep it when
+    // either qualified parameter is compiled; otherwise narrow-clippy-allow
+    // the genuinely absent use instead of changing the signature or body.
+    #[cfg_attr(
+        not(all(
+            target_os = "linux",
+            any(
+                feature = "gemma-bf16-qualification",
+                feature = "qwen-source-qualification"
+            )
+        )),
+        allow(clippy::extra_unused_lifetimes)
+    )]
     async fn prepare_mode_inner<'o>(
         &self,
         tokens: &[u32],

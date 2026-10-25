@@ -372,6 +372,34 @@ fn now_ms() -> Result<u128> {
         .map_err(|_| bad("system clock before epoch"))?
         .as_millis())
 }
+
+/// Host-only current availability/headroom check for the short-HF HOST policy.
+/// Reuses the same `/proc`/cgroup observation; no GPU discovery or second pool.
+#[cfg(all(
+    any(feature = "short-hf-serving", feature = "short-hf-run"),
+    target_os = "linux"
+))]
+pub(super) fn host_available(host_bytes: u64, headroom: &Headroom) -> Result<()> {
+    let host = host();
+    let ceiling = host
+        .ceiling
+        .ok_or_else(|| Error::State("HOST ceiling unknown".into()))?;
+    let available = host
+        .available
+        .ok_or_else(|| Error::Limit("HOST current availability unavailable".into()))?;
+    let margin = headroom.bytes(ceiling, true)?;
+    let usable = available
+        .checked_sub(margin)
+        .ok_or_else(|| Error::Limit("HOST availability below configured headroom".into()))?;
+    if usable < host_bytes {
+        return Err(Error::Limit(format!(
+            "short-HF HOST{}MiB plus {} bytes headroom exceeds current {usable} usable bytes",
+            host_bytes / (1024 * 1024),
+            margin
+        )));
+    }
+    Ok(())
+}
 #[cfg(any(
     all(feature = "cpu", feature = "model-qwen35", feature = "text"),
     all(

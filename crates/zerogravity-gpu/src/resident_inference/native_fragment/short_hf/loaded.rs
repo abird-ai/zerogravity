@@ -25,6 +25,11 @@ pub(super) mod performance;
 mod source_check;
 mod workspace;
 const MIB: usize = 1024 * 1024;
+/// Explicit short-HF HOST policy. The source's own workspace limit remains
+/// authoritative; CPU and other models keep their existing limits.
+fn supported_host_limit(bytes: u64) -> bool {
+    bytes == 4096 * MIB as u64 || bytes == 8192 * MIB as u64
+}
 const N1_PROMPT_GEOMETRIES: usize = 5;
 pub(crate) mod cohort;
 mod inventory;
@@ -752,12 +757,13 @@ async fn prepare_short_hf_profile(
 ) -> Result<Arc<ShortHfLoaded>> {
     request_not_cancelled(cancelled)?;
     validate_provider(&device)?;
+    let source_host_limit = source.source().source().workspace_limit_bytes()?;
     if source.source().source().staging_chunk_bytes() != MIB
-        || source.source().source().workspace_limit_bytes()? != 4096 * MIB as u64
+        || !supported_host_limit(source_host_limit)
         || inputs.native.projections.device_cap != 5120 * MIB as u64
     {
         return Err(Error::Limit(
-            "short HF original1MiB source /4GiB host /5GiB device bounds".into(),
+            "short HF original1MiB source /supported4or8GiB host /5GiB device bounds".into(),
         ));
     }
     let ShortHfQualificationInputs {

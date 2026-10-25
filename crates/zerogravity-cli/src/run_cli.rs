@@ -12,6 +12,15 @@ mod execute;
 mod short_hf;
 #[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
 mod source;
+
+/// Narrow HOST-only precheck shared by direct and serving short-HF frontends.
+#[cfg(all(
+    any(feature = "short-hf-serving", feature = "short-hf-run"),
+    target_os = "linux"
+))]
+pub(crate) fn short_hf_host_available(host_bytes: u64, headroom: &Headroom) -> Result<()> {
+    devices::host_available(host_bytes, headroom)
+}
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct RunDoc {

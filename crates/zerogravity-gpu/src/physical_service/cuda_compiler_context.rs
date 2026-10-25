@@ -8,11 +8,16 @@ pub(crate) const CUDA_COMPILER_DEVICE_BYTES: u64 =
     cubecl::cuda::CudaCompilerContextPolicy::DEVICE_BYTES;
 pub(crate) const CUDA_COMPILER_POLICY: &str = "cuda-compiler-context-v1";
 
+fn backend_host_fits(limit: u64) -> bool {
+    CUDA_COMPILER_HOST_BYTES <= limit
+}
+
 /// No Client/physical service/model/source/cache backedge. The CUDA actor owns
 /// this after installation; original process exit is its destruction boundary.
 pub(crate) struct CudaCompilerContextBudget {
     host: Arc<GlobalResourceLease>,
     device: Arc<GlobalResourceLease>,
+    host_limit: u64,
     physical: PhysicalDeviceKey,
     service: ServiceId,
     fence: Arc<AtomicBool>,
@@ -34,9 +39,17 @@ impl CudaCompilerContextBudget {
                 "CUDA model+backend context exceeds original5GiB physical cap".into(),
             ));
         }
-        // Same actual source-issued host key; no system-ram/serving alias.
+        // Capture the actual finite source-issued workspace limit. No generic
+        // 4/8 GiB whitelist: the source domain decides its own finite cap, and
+        // the detached 384MiB backend reservation must fit inside it.
+        let host_limit = source.workspace_limit_bytes()?;
+        if !backend_host_fits(host_limit) {
+            return Err(Error::Limit(
+                "CUDA compiler HOST context exceeds the captured source workspace limit".into(),
+            ));
+        }
         let host = source.reserve_detached_host_workspace(
-            4096 * 1024 * 1024,
+            host_limit,
             ResourceOwner::new("backend/cuda", CUDA_COMPILER_POLICY)?,
             CUDA_COMPILER_HOST_BYTES,
         )?;
@@ -51,6 +64,7 @@ impl CudaCompilerContextBudget {
         Ok(Arc::new(Self {
             host: Arc::new(host),
             device: Arc::new(device),
+            host_limit,
             physical: original.key.clone(),
             service: original.client.service_id(),
             fence: original.fence_flag.clone(),
@@ -72,7 +86,14 @@ impl CudaCompilerContextBudget {
         &self,
         source: &zerogravity_artifacts::source_weights::VerifiedTensorSource,
     ) -> Result<u64> {
-        let bytes = source.detached_host_workspace_bytes(&self.host, 4096 * 1024 * 1024)?;
+        // Same captured source domain and limit that issued this detached
+        // reservation. A later source/limit change cannot redirect the charge.
+        if !backend_host_fits(self.host_limit) {
+            return Err(Error::Limit(
+                "CUDA compiler HOST context captured an insufficient source workspace limit".into(),
+            ));
+        }
+        let bytes = source.detached_host_workspace_bytes(&self.host, self.host_limit)?;
         if bytes != CUDA_COMPILER_HOST_BYTES {
             return Err(Error::State(
                 "CUDA retained HOST context extent differs".into(),
@@ -206,6 +227,7 @@ mod tests {
         let owner = Arc::new(CudaCompilerContextBudget {
             host: lease(&host, AllocationClass::Scratch),
             device: lease(&device, AllocationClass::ProviderEnvelope),
+            host_limit: 4096 * 1024 * 1024,
             physical: device.clone(),
             service: ServiceId::of::<SelfContainedTest>(cubecl_common::device::DeviceId::new(0, 0)),
             fence: Arc::new(AtomicBool::new(false)),
@@ -214,6 +236,16 @@ mod tests {
         (arbiter, host, device, owner)
     }
     struct SelfContainedTest;
+    #[test]
+    fn generic_backend_captures_an_actual_finite_source_limit_not_a_4or8_whitelist() {
+        assert_eq!(CUDA_COMPILER_HOST_BYTES, 384 * 1024 * 1024);
+        assert_eq!(CUDA_COMPILER_DEVICE_BYTES, 512 * 1024 * 1024);
+        assert!(backend_host_fits(384 * 1024 * 1024));
+        assert!(backend_host_fits(512 * 1024 * 1024));
+        assert!(backend_host_fits(4096 * 1024 * 1024));
+        assert!(backend_host_fits(5120 * 1024 * 1024));
+        assert!(!backend_host_fits(384 * 1024 * 1024 - 1));
+    }
     #[test]
     fn compiler_context_known_preinstall_refusal_releases_both_reservations() {
         let (arbiter, host, device, owner) = fixture();
