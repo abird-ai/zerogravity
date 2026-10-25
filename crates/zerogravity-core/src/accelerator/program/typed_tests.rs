@@ -640,11 +640,11 @@ fn unaware_backend_causal_conv_refuses_before_any_callback() {
 
 #[path = "residual_rms/default_backend_tests.rs"]
 mod residual_rms_defaults;
-#[path = "vllm_native/default_tests.rs"]
+#[path = "family_qwen35/vllm_native/default_tests.rs"]
 mod vllm_native_defaults;
 
 #[path = "vllm_gdn/default_tests.rs"]
 mod vllm_gdn_defaults;
 
-#[path = "vllm_model/default_tests.rs"]
+#[path = "family_qwen35/vllm_model/default_tests.rs"]
 mod vllm_model_defaults;

@@ -659,4 +659,5 @@ pub(super) fn record_activation(
 }
 
 #[cfg(test)]
+#[path = "vllm_native/tests.rs"]
 mod tests;

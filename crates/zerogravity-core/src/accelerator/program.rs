@@ -20,15 +20,22 @@ mod vllm_gdn;
 pub use vllm_gdn::{
     RecordedVllmGdnFragment, VllmGdnConv, VllmGdnConvValues, VllmGdnRecurrent, VllmInputRms,
 };
+// Exact Qwen3.5 family recipes live in one source directory, not in shared
+// tensor/ForwardPlan primitives. Retain original Rust module paths: type IDs,
+// compiled kernel identity and existing consumers must not change on a move.
+#[path = "program/family_qwen35/full_model_profile.rs"]
 mod full_model_profile;
 pub use full_model_profile::FullModelProfile;
+#[path = "program/family_qwen35/short_hf.rs"]
 mod short_hf;
 pub use short_hf::{ShortHfCall, ShortHfSpan, ShortHfWorkload};
+#[path = "program/family_qwen35/vllm_model.rs"]
 mod vllm_model;
 pub use vllm_model::{
     RecordedVllm08Model, Vllm08Call, Vllm08Kind, Vllm08Layer, Vllm08Operator, Vllm08Origin,
     Vllm08Projection, Vllm08RmsSite,
 };
+#[path = "program/family_qwen35/vllm_native.rs"]
 mod vllm_native;
 pub use vllm_native::{
     VllmBf16Invocation, VllmBf16Mode, VllmBf16Phase, VllmGdnProjection, VllmGdnProjectionKind,

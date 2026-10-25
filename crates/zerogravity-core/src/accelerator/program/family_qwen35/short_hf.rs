@@ -185,4 +185,5 @@ impl ShortHfCall {
 }
 
 #[cfg(test)]
+#[path = "short_hf/tests.rs"]
 mod tests;

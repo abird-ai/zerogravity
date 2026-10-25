@@ -1193,6 +1193,7 @@ fn verify_recipe(
 }
 
 #[cfg(test)]
+#[path = "vllm_model/tests.rs"]
 mod tests;
 
 #[cfg(test)]
@@ -1204,4 +1205,5 @@ mod profile_tests;
 mod span_tests;
 
 #[cfg(test)]
+#[path = "vllm_model/prepared_tests.rs"]
 mod prepared_tests;
