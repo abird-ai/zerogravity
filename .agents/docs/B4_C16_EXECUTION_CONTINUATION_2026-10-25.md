@@ -20,7 +20,7 @@ Source parent: `9e67b74000bc085a844d8844d954d82f8e196493` (`main`). Audit interv
 | Full CPU workspace gate | **PASS rc0** post-correction | `final-cpu-gate.{rc,stdout.log,stderr.log,started,finished}` |
 | Original 4344-record B4 CPU archived consumer preflight | **INCOMPLETE**: hard timeout 75s and 101s; no test assertion recorded | `physical/b4-original-cpu-preflight-fast-{1,2}/` |
 | Original optimized A2 release build | **INCOMPLETE**: prior canonical build timed out after 1700s; this continuation used *unoptimized release* for diagnostic tests | Original `resume-all-takeover-b4-gpu-c16-glm-20261025/LOG.md`; local A2 attempts |
-| 24 model-dependent B4/N1 scopes, fresh matched .8B and 2B C16 | **NOT RUN / NOT CERTIFIED** | B4 original 26-case gate not yet green |
+| 23 model-dependent B4/N1 scopes, fresh matched .8B and 2B C16 | **NOT RUN / NOT CERTIFIED** | B4 original 26-case gate not yet green (2 independent scopes pass; CPU archived preflight times out) |
 
 Physical execution used original `scripts/native-gpu.py` isolation; inherited installed CUDA 12.9 include-view `.agents/runs/p12-full-fusion-root-2026-10-19/cuda-view` and a Nix CUDA 12.9 NVRTC library with RTX3060 driver library. No CUDA SDK/image/model download. RTX3060 returned to idle **41 MiB** after both passing cases.
 
