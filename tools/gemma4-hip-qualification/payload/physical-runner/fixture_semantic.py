@@ -157,6 +157,18 @@ def row_traffic(value, label, rows=None, uploads=None, hits=None, diagnostic=Fal
     return up, hit
 
 
+def ordinary_page_traffic(event, input_ids):
+    up, hit = row_traffic(event, 'ordinary parity', rows=len(input_ids), parity=True)
+    # The 58-slot source page is shared across calls. Its starting population
+    # is not cold: previous full35 proposals, including cancelled ones, can
+    # leave rows cached. Only reuse within an uninterrupted same-row run is
+    # independent of that prior population.
+    consecutive_hits = sum(a == b for a, b in zip(input_ids, input_ids[1:]))
+    require(hit >= consecutive_hits and up <= len(input_ids)-consecutive_hits,
+            'ordinary parity preserves completed contiguous row reuse')
+    return up, hit
+
+
 def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -550,9 +562,7 @@ def matrix(mode, result, log, expected=None):
                     and event.get('producer_kv_d2h') == 0
                     and event.get('resident_weight_bytes') == RESIDENT_BYTES,
                     'exact (case,call)/frontier/selected ordinary parity')
-            up, _ = row_traffic(event, 'ordinary parity', rows=len(call['input_ids']),
-                                parity=True)
-            require(up == len(call['input_ids']), 'ordinary parity uploads its whole row page')
+            ordinary_page_traffic(event, call['input_ids'])
             require((cell['name'], call['call']) not in seen, 'no duplicate ordinary call')
             seen.add((cell['name'], call['call']))
     require(len(seen) == total_calls, 'complete ordinary call population')

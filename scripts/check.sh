@@ -65,6 +65,9 @@ if [[ "$(uname -s)" == Linux ]]; then
   python3 -B -m unittest discover -s tools/gemma4-tokenizer-reference -p test_contract.py
   python3 -B -m unittest discover -s tools/gemma4-e2b-ordinary-reference -p test_contract.py
   python3 -B -m unittest discover -s tools/qwen27b-initial-core-reference -p test_contract.py
+  echo "Checking source-only HIP row-cache and Vulkan report contracts..."
+  python3 -B -m unittest discover -s tools/gemma4-hip-qualification -p test_row_traffic.py
+  python3 -B -m unittest discover -s tools/vulkan-gemma-qualification -p test_report_contract.py
   echo "Checking explicit HTTP-free cache loading and shared CPU preparation..."
   cargo clippy --locked --offline -p zerogravity-cli --no-default-features --features cache --all-targets -- -D warnings
   cargo test --locked --offline -p zerogravity-cli --no-default-features --features cache --all-targets

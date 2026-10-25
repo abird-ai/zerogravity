@@ -315,7 +315,7 @@ impl SourcePageProbeWitness {
     pub(crate) fn page_allocation_id(&self) -> u64 {
         self.page_allocation_id
     }
-    pub(crate) fn capture(&self, event: u64, serial: u64, owner: &Arc<PageRunOwner>) -> Result<()> {
+    fn capture(&self, event: u64, serial: u64, owner: &Arc<PageRunOwner>) -> Result<()> {
         let slot = ProbeSlot {
             event,
             serial,

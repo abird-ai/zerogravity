@@ -1,5 +1,7 @@
 # ZeroGravity — Full Comprehensive Agent Handoff — 2026-10-25 (afternoon)
 
+> **Successor audit (later 2026-10-25):** Read [`POST_4BF3673_AUDIT_AND_RESUME_2026-10-25.md`](POST_4BF3673_AUDIT_AND_RESUME_2026-10-25.md) **first**. It independently found and fixed CUDA-only feature leakage into HIP/Vulkan builds, the invalid H Gemma-feedback-refusal oracle, a G warmed-row-cache fixture assumption, and V false-permit fields missing from *four* report variants. It documents new regressions and fixes, a subsequently **complete fresh CPU-gate rc0** and cross-backend compile gate rc0, unchanged hardware blockers, and required rebinding. The source/pin/physical claims below describe the **prior snapshot**, not the successor's changed tree.
+
 Author: takeover session `01a170a7` (main agent), assembled at session
 wind-down per user directive. Supersedes
 `FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-25.md` (morning) for

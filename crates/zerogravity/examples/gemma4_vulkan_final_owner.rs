@@ -236,6 +236,7 @@ fn run() -> Proof<()> {
                 "host_reserved":host.reserved,"host_fenced":host.fenced,
                 "context_retirement":"unknown:actual partial modules/admissions/source retained;PCI fenced to process exit",
                 "numerical_replay_performed":false,"old_order_physical_negative_performed":false,
+                "trained_native_serving_or_performance_qualified":false,
                 "trained_native_natural_serving_or_performance_qualified":false
             }),
         )?;
@@ -333,7 +334,8 @@ fn run() -> Proof<()> {
             "host_reserved":host.reserved,"host_fenced":host.fenced,"diagnostic_host_reserved":32*1024*1024,"expected_persistent_context_host":PERSISTENT_CONTEXT_HOST,"persistent_compiler_host":PERSISTENT_COMPILER_HOST,"expected_persistent_host_baseline":PERSISTENT_HOST_BASELINE,
             "context_retirement":"known:model0/persistentdevice4GiBhost2GiB;fault:originalprovider/source/native retained to process exit",
             "numerical_replay_performed":false,"old_order_physical_negative_performed":false,
-            "trained_native_natural_serving_or_performance_qualified":false
+            "trained_native_serving_or_performance_qualified":false,
+                "trained_native_natural_serving_or_performance_qualified":false
         }),
     )?;
     result?;

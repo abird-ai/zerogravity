@@ -381,6 +381,26 @@ struct Counts {
     g_instrumented: usize,
     g_commits: usize,
 }
+// A fault must refuse a fresh, otherwise eligible Qwen call *before* any
+// producer callback. The committed teacher session is ineligible even without
+// a fault, so it cannot establish this property.
+#[derive(Default)]
+struct RefusedQwenObserver {
+    frames: usize,
+}
+impl zerogravity_gpu::QwenSourceObserver for RefusedQwenObserver {
+    fn completed(
+        &mut self,
+        _: zerogravity_gpu::QwenSourceFrame,
+        _: &[u8],
+    ) -> zerogravity::Result<()> {
+        self.frames += 1;
+        Err(zerogravity::Error::State(
+            "unexpected Qwen producer after global fence".into(),
+        ))
+    }
+}
+
 fn qstep(
     s: &mut Qwen27bSourceGpuSession,
     expected: &mut qexpected::Expected,
@@ -825,26 +845,33 @@ fn run() -> Proof<()> {
             drop((g_session, g));
         } else if a[0] == "gemma-feedback-unknown" {
             qstep(&mut q_session, &mut qe, 0, 0, &mut counts, &mut events)?;
+            // A second original session has an empty root and no committed
+            // teacher feedback. Unlike q_session, it has no independent
+            // pre-fault reason to reject its first teacher proposal.
+            let probe_session = block_on(q.session())?;
+            let before = probe_session.binding();
+            need(
+                before.frontier() == 0,
+                "fresh Qwen refusal probe starts at root0",
+            )?;
             gstep(&mut g_session, &mut ge, false, &mut counts, &mut events)?;
             drop(g);
             let receipt = g_session.qualify_final_feedback_drop(true)?;
             events.push(json!({"kind":"actual-gemma-final-feedback-fault","receipt":receipt_json!(receipt),"native":native(&shared)?}));
-            let before = q_session.binding();
             let before_scope = qe.summary();
+            let mut observer = RefusedQwenObserver::default();
+            let refused = block_on(probe_session.prepare_teacher(&mut observer, None));
             need(
-                qe.in_progress() == (0, 0),
-                "no Qwen producer progress before refused declaration",
-            )?;
-            qe.begin(0, 1)?;
-            let refused = block_on(q_session.prepare_teacher(&mut qe, None));
-            need(
-                refused.is_err()
-                    && q_session.binding() == before
+                refused.as_ref().err().is_some_and(|e| {
+                    !e.to_string()
+                        .contains("unexpected Qwen producer after global fence")
+                }) && observer.frames == 0
+                    && probe_session.binding() == before
                     && qe.summary() == before_scope
                     && qe.in_progress() == (0, 0),
-                "global unknown refuses actual sibling cached proposal/publication without progress",
+                "global unknown refuses an eligible Qwen proposal before its first producer",
             )?;
-            drop(refused);
+            drop((refused, probe_session));
             need(
                 q_source.clone().close(None).is_err() && g_source.clone().close(None).is_err(),
                 "both authentic sources retained after shared unknown",
