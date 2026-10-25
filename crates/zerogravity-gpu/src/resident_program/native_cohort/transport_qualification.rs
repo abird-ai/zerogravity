@@ -12,7 +12,7 @@ use crate::resident_state_transport::typed::{
     TypedRow,
 };
 use cubecl::{Device, server::Handle};
-use std::cell::RefCell;
+use std::{cell::RefCell, collections::BTreeSet};
 use zerogravity_core::{
     Error, Result,
     accelerator::SourceIdentity,
@@ -53,6 +53,19 @@ fn kv_word(row: usize, word: usize) -> u32 {
 }
 fn poison_word(word: usize) -> u32 {
     0xa5a5_0000 | (word as u32 & 0x0000_ffff)
+}
+
+// Native K/V and convolution cache pointers are BF16 (u16) views, while
+// the complete readback oracle is U32. Preserve the untouched neighboring
+// halfword and the original byte-order of the readback words.
+fn write_native_bf16(words: &mut [u32], half_index: usize, value: u16) {
+    let shift = (half_index % 2) * 16;
+    let slot = &mut words[half_index / 2];
+    *slot = (*slot & !(0xffff << shift)) | (u32::from(value) << shift);
+}
+
+fn read_native_bf16(words: &[u32], half_index: usize) -> u16 {
+    (words[half_index / 2] >> ((half_index % 2) * 16)) as u16
 }
 
 struct Fixture {
@@ -199,9 +212,15 @@ pub(crate) async fn qualify(
     // other byte (H views, unused slots) stays poison.
     let mut conv_cache_expected = cache_words.clone();
     for row in 0..4 {
-        let offset = (1 + 4 * row) * SLOT_BYTES / 4;
-        for w in 0..CONV {
-            conv_cache_expected[offset + w] = conv_word(row, w) >> 16;
+        let half_start = (1 + 4 * row) * SLOT_BYTES / 2;
+        for native_index in 0..CONV {
+            let channel = native_index % 6144;
+            let frame = native_index / 6144;
+            write_native_bf16(
+                &mut conv_cache_expected,
+                half_start + native_index,
+                (conv_word(row, channel * 3 + frame) >> 16) as u16,
+            );
         }
     }
     observe(
@@ -413,17 +432,26 @@ pub(crate) async fn qualify(
                     continue;
                 }
                 let native = block * 557_056 + head * 512 + position * 1024 + lane;
-                expected_cache[native] = kv_word(row, index) >> 16;
-                expected_cache[native + 256] = kv_word(row + 4, index) >> 16;
+                write_native_bf16(
+                    &mut expected_cache,
+                    native,
+                    (kv_word(row, index) >> 16) as u16,
+                );
+                write_native_bf16(
+                    &mut expected_cache,
+                    native + 256,
+                    (kv_word(row + 4, index) >> 16) as u16,
+                );
             }
             if !guard_ok {
                 expected_status |= 1;
             }
         }
         // Export reads the POST-import cache; compute candidates exactly.
-        let mut expected_k = vec![0x5a5a_5a5a; CANONICAL_WORDS];
-        let mut expected_v = vec![0x5a5a_5a5a; CANONICAL_WORDS];
+        let mut expected_candidates = Vec::with_capacity(4);
         for (row, &base) in bases.iter().enumerate() {
+            let mut expected_k = vec![0x5a5a_5a5a; CANONICAL_WORDS];
+            let mut expected_v = vec![0x5a5a_5a5a; CANONICAL_WORDS];
             let end = base + 1 + usize::from(violation && row == 2) * 512;
             let block = 4 + 4 * row;
             let guard_ok = base < end && end <= 512;
@@ -437,11 +465,18 @@ pub(crate) async fn qualify(
                 let native = block * 557_056 + head * 512 + position * 1024 + lane;
                 let (k, v) = if position < end {
                     (
-                        (expected_cache[native] & 0xffff) << 16,
-                        (expected_cache[native + 256] & 0xffff) << 16,
+                        u32::from(read_native_bf16(&expected_cache, native)) << 16,
+                        u32::from(read_native_bf16(&expected_cache, native + 256)) << 16,
                     )
                 } else {
-                    (kv_word(row, index), kv_word(row + 4, index))
+                    (
+                        if index >= base * 512 {
+                            0xffff_ffff
+                        } else {
+                            kv_word(row, index)
+                        },
+                        kv_word(row + 4, index),
+                    )
                 };
                 if position < end
                     && (k & 0x7f80_0000 == 0x7f80_0000 || v & 0x7f80_0000 == 0x7f80_0000)
@@ -451,6 +486,7 @@ pub(crate) async fn qualify(
                 expected_k[index] = k;
                 expected_v[index] = v;
             }
+            expected_candidates.push((expected_k, expected_v));
         }
         observe(&mut fixture, cache.clone(), expected_cache);
         observe(
@@ -490,6 +526,7 @@ pub(crate) async fn qualify(
             );
         }
         for row in 0..4 {
+            let (expected_k, expected_v) = &expected_candidates[row];
             observe(&mut fixture, candidate_k[row].clone(), expected_k.clone());
             observe(&mut fixture, candidate_v[row].clone(), expected_v.clone());
         }
@@ -506,6 +543,25 @@ pub(crate) async fn qualify(
             table: table_lease,
             status,
         });
+    }
+    // An original flight may read immutable controls and prior canonical
+    // planes but only actual kernel destinations qualify as Ready outputs.
+    // In particular, read-only source/canary snapshots are observed, never
+    // presented as device writes or promoted as a new StateRoot packet.
+    let mut written = BTreeSet::new();
+    for case in &fixture.gdn {
+        written.insert(case.status.id());
+        if case.kind.is_multiple_of(2) {
+            written.insert(case.cache.id());
+        } else {
+            written.extend(case.planes.iter().map(ResidentLease::id));
+        }
+    }
+    for case in &fixture.kv {
+        written.insert(case.cache.id());
+        written.insert(case.status.id());
+        written.extend(case.candidate_k.iter().map(ResidentLease::id));
+        written.extend(case.candidate_v.iter().map(ResidentLease::id));
     }
     let counts = (fixture.gdn.len(), fixture.kv.len(), fixture.observed.len());
     drop(init.complete_sync().await?);
@@ -528,8 +584,27 @@ pub(crate) async fn qualify(
         let accesses = fixture
             .observed
             .iter()
-            .map(|lease| (lease.clone(), DeviceAccess::Write))
+            .map(|lease| {
+                (
+                    lease.clone(),
+                    if written.contains(&lease.id()) {
+                        DeviceAccess::Write
+                    } else {
+                        DeviceAccess::Read
+                    },
+                )
+            })
             .collect::<Vec<_>>();
+        let outputs = accesses
+            .iter()
+            .filter(|(_, access)| *access == DeviceAccess::Write)
+            .map(|(lease, _)| lease.clone())
+            .collect::<Vec<_>>();
+        if outputs.len() != written.len() {
+            return Err(Error::State(
+                "grouped transport physical write census".into(),
+            ));
+        }
         let flight = service.submit(0, &accesses)?;
         let mut launches = 0;
         for case in &fixture.gdn {
@@ -540,7 +615,7 @@ pub(crate) async fn qualify(
         }
         if grouped {
             grouped_launches = launches;
-        } else if launches != fixture.gdn.len() * 4 + fixture.kv.len() * 7 {
+        } else if launches != fixture.gdn.len() * 4 + fixture.kv.len() * 8 {
             return Err(Error::State("per-row oracle launch population".into()));
         }
         let reads = fixture
@@ -551,7 +626,7 @@ pub(crate) async fn qualify(
         let expected: Vec<Vec<u32>> = fixture.expected.clone();
         let seen = RefCell::new(Vec::new());
         let (ready, raw) = flight
-            .complete_with_readback(&fixture.observed, &reads, |data| {
+            .complete_with_readback(&outputs, &reads, |data| {
                 if data.len() != fixture.observed.len() {
                     return Err(Error::State(
                         "grouped transport whole readback coverage".into(),
@@ -581,6 +656,26 @@ pub(crate) async fn qualify(
         drop(ready);
         slot.finish()?;
     }
+    // Both readback flights are complete. Release every original and observed
+    // lease before asserting true device retirement (not only queue silence).
+    drop(fixture);
+    drop((
+        conv_cache, sources, candidates, status_in, status_out, h_cache, h0, ht,
+    ));
+    let resident = service.resident_bytes()?;
+    let events = service.pending_events()?;
+    if resident != 0 || events != 0 {
+        return Err(Error::State(format!(
+            "grouped transport retained lease/event bytes={resident} pending={events}"
+        )));
+    }
+    service
+        .client()
+        .memory_cleanup()
+        .map_err(|e| Error::State(format!("grouped transport pool retirement: {e}")))?;
+    // The service owns its original physical provider envelope until Drop.
+    // Check its live zero-byte/event ledger before Drop, then check final0.
+    drop(service);
     drop(host_ticket);
     let final_state = arbiter.snapshot(&key)?;
     if final_state.fenced || final_state.reserved != 0 {
@@ -588,15 +683,6 @@ pub(crate) async fn qualify(
             "grouped transport final original physical reservation".into(),
         ));
     }
-    if service.resident_bytes()? != 0 || service.pending_events()? != 0 {
-        return Err(Error::State(
-            "grouped transport retained lease/event".into(),
-        ));
-    }
-    service
-        .client()
-        .memory_cleanup()
-        .map_err(|e| Error::State(format!("grouped transport pool retirement: {e}")))?;
     Ok(counts.0 + counts.1 + grouped_launches)
 }
 
@@ -796,4 +882,57 @@ fn launch_kv(service: &ResidentService, case: &KvCase, grouped: bool) -> Result<
         }
     }
     Ok(launches)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn packed_native_bf16_preserves_neighboring_half_and_u32_canaries() {
+        let mut words = [0x1234_5678u32, 0xa5a5_5a5a];
+        write_native_bf16(&mut words, 0, 0x7fc1);
+        assert_eq!(words, [0x1234_7fc1, 0xa5a5_5a5a]);
+        write_native_bf16(&mut words, 1, 0x8000);
+        assert_eq!(words, [0x8000_7fc1, 0xa5a5_5a5a]);
+        write_native_bf16(&mut words, 2, 0x0001);
+        assert_eq!(words, [0x8000_7fc1, 0xa5a5_0001]);
+        assert_eq!(read_native_bf16(&words, 0), 0x7fc1);
+        assert_eq!(read_native_bf16(&words, 1), 0x8000);
+        assert_eq!(read_native_bf16(&words, 2), 0x0001);
+        assert_eq!(read_native_bf16(&words, 3), 0xa5a5);
+    }
+
+    #[test]
+    fn conv_native_uses_bf16_halves_and_frame_channel_transposition() {
+        let mut words = vec![0xa5a5_5a5a; CONV_NATIVE_BYTES / 4 + 1];
+        for native_index in 0..CONV {
+            let channel = native_index % 6144;
+            let frame = native_index / 6144;
+            write_native_bf16(
+                &mut words,
+                native_index,
+                (conv_word(0, channel * 3 + frame) >> 16) as u16,
+            );
+        }
+        for native_index in [0, 1, 6143, 6144, 12288, CONV - 1] {
+            let channel = native_index % 6144;
+            let frame = native_index / 6144;
+            assert_eq!(
+                read_native_bf16(&words, native_index),
+                (conv_word(0, channel * 3 + frame) >> 16) as u16,
+            );
+        }
+        assert_eq!(words[CONV_NATIVE_BYTES / 4], 0xa5a5_5a5a);
+    }
+
+    #[test]
+    fn kv_native_halfword_bounds_cover_last_cache_block() {
+        let mut words = vec![0x1234_5678; KV_CACHE_BYTES / 4];
+        let index = 16 * 557_056 + 512 + 511 * 1024 + 256 + 255;
+        write_native_bf16(&mut words, index, 0xff80);
+        assert_eq!(read_native_bf16(&words, index), 0xff80);
+        assert_eq!(words.len(), KV_CACHE_BYTES / 4);
+        assert!(index / 2 < words.len());
+    }
 }

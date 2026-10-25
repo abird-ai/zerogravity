@@ -103,6 +103,11 @@ impl PinnedKernel {
         self.bindings.len()
     }
 
+    #[cfg(test)]
+    pub(crate) fn binding_sizes(&self) -> Vec<usize> {
+        self.bindings.iter().map(|(bytes, _)| *bytes).collect()
+    }
+
     /// Retained heap owners only; enclosing definitions price their inline
     /// structs separately. Source includes the exact CUDA entry suffix.
     pub(crate) fn retained_metadata_bytes(&self) -> Result<usize> {

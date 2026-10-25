@@ -182,9 +182,11 @@ pub(crate) fn kv_definition(incoming: bool) -> Result<PinnedKernel> {
             bindings.push((KV_CANONICAL_BYTES, W)); // candidate V lanes
         }
     }
-    for bytes in [8, 4, 4] {
-        for _ in 0..ROWS {
-            bindings.push((bytes, R)); // per-row base/end/block views
+    // CUDA parameter list is row-major: base0,end0,block0, then row1.
+    // Grouping by field would swap 8-byte bases and 4-byte controls.
+    for _ in 0..ROWS {
+        for bytes in [8, 4, 4] {
+            bindings.push((bytes, R));
         }
     }
     bindings.push((4, RW));
@@ -251,7 +253,6 @@ impl PreparedTypedTransport {
         for row in rows {
             row.require_combination(layout, direction)?;
         }
-        push(status, 4)?;
         if kv {
             let incoming = direction == TypedDirection::Import;
             for row in rows {
@@ -286,12 +287,11 @@ impl PreparedTypedTransport {
                     )?;
                 }
             }
-            for control in 0..3 {
-                for row in rows {
-                    push(
-                        row.controls.expect("validated combination")[control],
-                        [8, 4, 4][control],
-                    )?;
+            // Keep the pointer order identical to the CUDA signature:
+            // (base,end,block) for each row, not four bases followed by ends.
+            for row in rows {
+                for (control, bytes) in [8, 4, 4].into_iter().enumerate() {
+                    push(row.controls.expect("validated combination")[control], bytes)?;
                 }
             }
         } else {
@@ -318,6 +318,10 @@ impl PreparedTypedTransport {
                 )?;
             }
         }
+        // Both CUDA families declare status LAST. Keep the original ABI
+        // ordering for the grouped kernel and independently check its service,
+        // alignment, and disjointness like every other binding.
+        push(status, 4)?;
         // The cold kernel's ABI must match this family's binding order; the
         // `PinnedKernel::prepare` validation re-checks service/alignment/
         // extent against the real generated ABI and the <=32-binding guard.
@@ -353,6 +357,20 @@ mod tests {
         // per-row control views is 22; export adds 8 candidate lanes = 30.
         assert_eq!(incoming.binding_count(), 22);
         assert_eq!(outgoing.binding_count(), 30);
+        // The CUDA source declares base/end/block *per row*. Guard against
+        // accidentally grouping fields by width and swapping pointer types.
+        let controls: Vec<usize> = (0..ROWS).flat_map(|_| [8, 4, 4]).collect();
+        let mut import_sizes = vec![KV_CANONICAL_BYTES; 8];
+        import_sizes.push(KV_CACHE_BYTES);
+        import_sizes.extend(&controls);
+        import_sizes.push(4);
+        assert_eq!(incoming.binding_sizes(), import_sizes);
+        let mut export_sizes = vec![KV_CANONICAL_BYTES; 8];
+        export_sizes.push(KV_CACHE_BYTES);
+        export_sizes.extend(vec![KV_CANONICAL_BYTES; 8]);
+        export_sizes.extend(&controls);
+        export_sizes.push(4);
+        assert_eq!(outgoing.binding_sizes(), export_sizes);
         assert_ne!(incoming.id(), outgoing.id());
         // A naive eight-row KV export would need 2*8 prior + cache + 2*8
         // candidate + 3*8 control + status = 74 bindings; `prepare` refuses
