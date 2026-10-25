@@ -14,6 +14,55 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
 
 ## Uncommitted
 
+### Current B4 takeover — 25 Oct
+
+- [ ] Current B4 → fresh optimized matched C16 (.8B +2B) → x2 original27B,
+  latest owner order; no C2. Base `d0fff261`, all246 signatures verified;
+  README unchanged. All current lanes: GPT-6.1 Sol xhigh, owner override.
+  [Owned run](../../runs/b4-takeover-codex-20261025/TODO.md).
+- Current l5 route legitimately reads all23 original model members and approved
+  CUDA/source-reference inputs; no grant change/download. Original relay denial
+  remains historical. A3 source1772 digest
+  `3e336ffdc40efa93a46bd6d86584b016365b8d087e8ce39d72a7b4e667856fea`.
+  Canonical opt3/thinLTO/codegen1 build CLOSED0; fmt,3transport+7typed pass.
+  CLI `871e9fed…7117`, N1 `1679b955…8c3b`, B4 `00c6d4d7…7875`;
+  exact CompilerArtifact/frozen alias lineage retained. Full isolated
+  `scripts/check.sh` CLOSED0 (1890 passing Rust executions,89 ignored; source/
+  installer/script gates pass), original TERM/KILL/single-reap/group/EOF closure,
+  source/README stable. Serving-SDK qualification remains separate.
+- Reviewed fixture fixes release completed access/readback/output aliases;
+  retain every historical case plus finite/sticky/isolated-status/guard controls.
+  Current grouped oracle physically PASS58grouped/232per-row, all12 independent
+  mode closures resident0/events0/arbiter0/unfenced. CPU4344 + finite301 PASS.
+- HOST fixtures use already declared8GiB and independently priced permanent
+  tokenizer baseline, exact ledger/class/reservation closure; GPU quotas and
+  mathematical predicates unchanged. A2 baseline B4 and N1 both FAIL101 under
+  HOST4; actual B4 HOST5481465815B >4294967296B. Preserve both failures;
+  historical queue cost is a distinct domain. A2 source1771 is separate.
+- All original26 executed on A3:24 physical/CPU passes, case6 diagnostic2B
+  export0 (unqualified), case5 continuous N1/B4 comparison FAIL101. All26
+  process owners closed with actual EOF/TERM/KILL/single-reap/group absence.
+  Case5 first projection differs; reported producer9 bytes differ and error
+  retirement retains2469431001B/pending1/rootsets9/unusable. In-process close
+  FAILED; process closure does not erase it. Exact original23 projection passes;
+  this is explicitly NOT all26 green or complete continuous qualification.
+- Separate actual .8B15-transition/35-event export CLOSED0, healthy source/model
+  retirement resident0/events0/rootsets0. Both-family full original30 comparisons
+  now CLOSED0: each15transitions/35events/4344current+8112original sections,
+  576unrounded sums/fullstate/fullV/natural feedback exact, no ID normalization.
+  This is width/schedule-specific composition, not an independent original
+  public trajectory. Case5 error is deliberately fenced before Ready; no unsafe
+  retirement patch. Exact26 remains false.
+- SDK qualification seam OPEN: physical proofs used overlay NVRTC7c67c6b5…,
+  while unchanged original serving recipe pins Nix12.9.86 NVRTC4b8c4db1…;
+  builtins also differ. Runtime compiles through NVRTC; matching version labels,
+  counters or final tokens do not prove full-tuple equivalence. Serving-SDK
+  physical/math replay preparation underway, with exact frozen A3 binary aliases
+  and original owners; no substitution/retag. Full source gate passes; serving
+  and C16 held. Original runtime P16 and matched provider P4 remain distinct;
+  no current speedup claim. Local x2 known_hosts now has ED25519 entries through
+  this route; remote identity remains unproven, no SSH executed. UD6 cause unknown.
+
 ### Current source checkpoint — 24 Oct
 
 - [~] User extends both-model sequence to C16, thenC32 andC64; NO C2. Implement

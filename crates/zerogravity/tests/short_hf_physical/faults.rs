@@ -180,14 +180,7 @@ pub(super) fn run() -> Result<()> {
     let prompts = env("ZG_SHORT_HF_PROMPTS")?;
     let public = oracle::json(&prompts, MIB)?;
     let ids = fixture_prompt(&public, 47)?;
-    let arbiter = ResourceArbiter::process_shared();
-    let resource = PhysicalDeviceKey::new("host", "zerogravity-serve-cpu")?;
-    arbiter.register(resource.clone(), (4096 * MIB) as u64)?;
-    let host = TransferAdmission {
-        arbiter,
-        resource,
-        owner: ResourceOwner::new("short-hf-physical", "cached-fault")?,
-    };
+    let host = FixtureHost::new(ResourceOwner::new("short-hf-physical", "cached-fault")?)?;
     let device =
         zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA device: {e}")))?;
     let model = block_on(short_hf::load(
@@ -268,12 +261,13 @@ pub(super) fn run() -> Result<()> {
                 .per_class
                 .get(&AllocationClass::ProviderEnvelope)
                 == Some(&expected_physical)
-            && host_before.limit == (short_hf::HOST_MIB * MIB) as u64
+            && host_before.limit == fixture_host::declared_limit(&host)?
             && host_before.active_models.contains("backend/cuda")
             && host_before.active_models.contains(&host.owner.model)
             && host_before.reserved > healthy.backend_host_reserved_bytes,
         "original model/provider plus actual detached backend HOST/DEVICE owners",
     )?;
+    host.require_retained(healthy.backend_host_reserved_bytes)?;
     // probe_cached requires sole Loaded ownership. No external service/source
     // observer may supply the retained-resource proof after the real error.
     drop(observation);
@@ -293,6 +287,7 @@ pub(super) fn run() -> Result<()> {
     counters(&outcome, mode, family, resident)?;
     let physical = host.arbiter.snapshot(&physical_key)?;
     let retained_host = host.arbiter.snapshot(&host.resource)?;
+    host.require_retained(healthy.backend_host_reserved_bytes)?;
     ensure(
         physical.fenced
             && physical.reserved == outcome.physical_reserved_bytes

@@ -9,15 +9,11 @@ const PROMPT: [u32; 47] = [
     3665, 25, 220, 16, 11, 220, 17, 11, 220, 18, 11, 220, 19, 11, 220, 20, 11, 220, 21, 11, 220,
     22, 11, 220, 23, 11, 248046, 198, 248045, 74455, 198,
 ];
-fn host() -> Result<TransferAdmission> {
-    let arbiter = ResourceArbiter::process_shared();
-    let resource = PhysicalDeviceKey::new("host", "zerogravity-serve-cpu")?;
-    arbiter.register(resource.clone(), (4096 * MIB) as u64)?;
-    Ok(TransferAdmission {
-        arbiter,
-        resource,
-        owner: ResourceOwner::new("short-hf-2b-b4-physical", "genuine-n1-cached-transition")?,
-    })
+fn host() -> Result<FixtureHost> {
+    FixtureHost::new(ResourceOwner::new(
+        "short-hf-2b-b4-physical",
+        "genuine-n1-cached-transition",
+    )?)
 }
 fn load(host: &TransferAdmission) -> Result<Arc<short_hf::ShortHfModel>> {
     let device =
@@ -40,7 +36,7 @@ fn load(host: &TransferAdmission) -> Result<Arc<short_hf::ShortHfModel>> {
             && model.resident().resources().root_count == 18,
         "exact prepared2B cached-only source/phase/root authority",
     )?;
-    conservation(model.resident())?;
+    conservation(model.resident(), host)?;
     println!(
         "SHORT_HF_2B_CACHED_RESOURCE_SOURCE_BOUND {:?} debug={} initial_b4_qualified=false performance_qualified=false",
         model.resident().resources(),
@@ -50,7 +46,7 @@ fn load(host: &TransferAdmission) -> Result<Arc<short_hf::ShortHfModel>> {
 }
 fn closed(
     model: Arc<short_hf::ShortHfModel>,
-    host: &TransferAdmission,
+    host: &FixtureHost,
     result: Result<()>,
 ) -> Result<()> {
     if let Err(error) = &result {
@@ -72,19 +68,11 @@ fn closed(
         "actual2B model/source/native/root retirement",
     )?;
     let device = host.arbiter.snapshot(&retired.physical_key)?;
-    let cpu = host.arbiter.snapshot(&host.resource)?;
     ensure(
         retired.backend_device_reserved_bytes == (512 * MIB) as u64
             && retired.backend_host_reserved_bytes == (384 * MIB) as u64
             && device.reserved == retired.backend_device_reserved_bytes
-            && cpu.reserved == retired.backend_host_reserved_bytes
             && device
-                .active_models
-                .iter()
-                .map(String::as_str)
-                .collect::<Vec<_>>()
-                == ["backend/cuda"]
-            && cpu
                 .active_models
                 .iter()
                 .map(String::as_str)
@@ -92,6 +80,7 @@ fn closed(
                 == ["backend/cuda"],
         "only actual admitted original CUDA context remains after2B source closure",
     )?;
+    host.require_final(retired.backend_host_reserved_bytes)?;
     close?;
     result
 }
@@ -233,7 +222,7 @@ fn actual_short_hf_2b_cohort_cached_fault() -> Result<()> {
     ensure(
         healthy.backend_host_reserved_bytes == (384 * MIB) as u64
             && host_retained.reserved > healthy.backend_host_reserved_bytes
-            && host_retained.reserved <= (4096 * MIB) as u64
+            && host_retained.reserved <= fixture_host::declared_limit(&host)?
             && host_retained.active_models.contains(&host.owner.model)
             && host_retained
                 .active_models
@@ -241,6 +230,7 @@ fn actual_short_hf_2b_cohort_cached_fault() -> Result<()> {
                 .any(|owner| owner == "backend/cuda"),
         "actual original HOST source owner and detached backend both remain",
     )?;
+    host.require_retained(healthy.backend_host_reserved_bytes)?;
     println!(
         "SHORT_HF_2B_B4_CACHED_FAULT_PASS fault={fault:?} actual_retention={retained:?} host={host_retained:?} published=0 recovery_qualified=false performance_qualified=false"
     );

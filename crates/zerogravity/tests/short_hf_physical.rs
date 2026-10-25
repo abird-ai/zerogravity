@@ -22,6 +22,9 @@ const MIB: usize = 1024 * 1024;
 mod compare;
 #[path = "short_hf_physical/faults.rs"]
 mod faults;
+#[path = "short_hf_physical/host.rs"]
+mod fixture_host;
+use fixture_host::FixtureHost;
 #[path = "short_hf_physical/oracle.rs"]
 mod oracle;
 fn fail(message: impl Into<String>) -> Error {
@@ -297,14 +300,7 @@ fn actual_short_hf_full_matrix() -> Result<()> {
     let reference = env("ZG_SHORT_HF_REFERENCE")?;
     let prompts = env("ZG_SHORT_HF_PROMPTS")?;
     let public = oracle::json(&prompts, MIB)?;
-    let arbiter = ResourceArbiter::process_shared();
-    let resource = PhysicalDeviceKey::new("host", "zerogravity-serve-cpu")?;
-    arbiter.register(resource.clone(), (4096 * MIB) as u64)?;
-    let host = TransferAdmission {
-        arbiter,
-        resource,
-        owner: ResourceOwner::new("short-hf-physical", "whole-matrix")?,
-    };
+    let host = FixtureHost::new(ResourceOwner::new("short-hf-physical", "whole-matrix")?)?;
     let device =
         zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA device: {e}")))?;
     let model = block_on(short_hf::load(
@@ -324,6 +320,8 @@ fn actual_short_hf_full_matrix() -> Result<()> {
     ensure(
         observed.provider_capacity_bytes == short_hf::PROVIDER_MIB * MIB
             && observed.resident_bytes <= short_hf::PROVIDER_MIB * MIB
+            && model.resident().resources().host_upper_bytes as u64
+                <= fixture_host::declared_limit(&host)?
             && observed.usable
             && observed.pending_events == 0,
         "actual configured provider load",
@@ -369,7 +367,6 @@ fn actual_short_hf_full_matrix() -> Result<()> {
         retired.backend_device_reserved_bytes == (512 * MIB) as u64
             && retired.backend_host_reserved_bytes == (384 * MIB) as u64
             && physical_retired == retired.backend_device_reserved_bytes
-            && host_retired == retired.backend_host_reserved_bytes
             && host
                 .arbiter
                 .snapshot(&retired.physical_key)?
@@ -377,17 +374,10 @@ fn actual_short_hf_full_matrix() -> Result<()> {
                 .iter()
                 .map(String::as_str)
                 .collect::<Vec<_>>()
-                == ["backend/cuda"]
-            && host
-                .arbiter
-                .snapshot(&host.resource)?
-                .active_models
-                .iter()
-                .map(String::as_str)
-                .collect::<Vec<_>>()
                 == ["backend/cuda"],
         "actual final host/provider/physical conservation",
     )?;
+    host.require_final(retired.backend_host_reserved_bytes)?;
     closed?;
     result?;
     println!(

@@ -269,11 +269,12 @@ async fn step(
         .host_existing_bytes
         .checked_add(resources.host_retained_additional_bytes)
         .ok_or_else(|| fail("source steady host overflow"))?;
+    let host_limit = fixture_host::declared_limit(host)?;
     ensure(
         steady
             .checked_add(320 * MIB + 16 * MIB)
-            .is_some_and(|v| v <= 4096 * MIB),
-        "source steady + expected320MiB + original metadata16MiB fits unchanged host cap",
+            .is_some_and(|v| v as u64 <= host_limit),
+        "source steady + expected320MiB + original metadata16MiB fits declared HOST",
     )?;
     let before = host.arbiter.snapshot(&host.resource)?.reserved;
     let _expected = host.arbiter.admit(
@@ -286,7 +287,7 @@ async fn step(
     )?;
     let admitted = host.arbiter.snapshot(&host.resource)?.reserved;
     ensure(
-        admitted >= before + (320 * MIB) as u64 && admitted <= (4096 * MIB) as u64,
+        admitted == before + (320 * MIB) as u64 && admitted <= host_limit,
         "actual host ledger admitted expected arena BEFORE every capture clone",
     )?;
     println!(
@@ -354,7 +355,7 @@ async fn step(
             "actual same-root mixed frontier publication/lineage",
         )?;
     }
-    conservation(loaded)?;
+    conservation(loaded, host)?;
     println!(
         "SHORT_HF_B4_SAME_PRIOR_PASS frontiers={:?} requests=4 all24=exact dual_sums=24 all42_prior_candidate=exact fullV=exact natural=exact",
         roots.iter().map(|r| r.frontier()).collect::<Vec<_>>()
@@ -414,7 +415,7 @@ pub(super) async fn matrix(
     )?;
     step(loaded, &mut sessions, host).await?;
     drop(sessions);
-    conservation(loaded)
+    conservation(loaded, host)
 }
 
 // Diagnostic proposals may publish their OWN computed state/feedback here only.
@@ -453,6 +454,7 @@ async fn diagnostic_n1(
 }
 async fn diagnostic_b4(
     loaded: &Arc<native::ShortHfLoaded>,
+    host: &TransferAdmission,
     sessions: &mut [native::ShortHfSession],
     prompt: &[u32],
     histories: &mut [export::History; 4],
@@ -502,7 +504,7 @@ async fn diagnostic_b4(
     for (history, row) in histories.iter_mut().zip(&receipt.rows) {
         history.commit(row.root, row.selected_id, row.max_bits, 4)?;
     }
-    conservation(loaded)
+    conservation(loaded, host)
 }
 pub(super) async fn diagnostic_trajectory(
     model: &Arc<short_hf::ShortHfModel>,
@@ -532,7 +534,15 @@ pub(super) async fn diagnostic_trajectory_with_prompt(
         }
         sessions.push(session);
     }
-    diagnostic_b4(loaded, &mut sessions, prompt, &mut histories, &mut trace).await?;
+    diagnostic_b4(
+        loaded,
+        host,
+        &mut sessions,
+        prompt,
+        &mut histories,
+        &mut trace,
+    )
+    .await?;
     let before = sessions.iter().map(|s| s.binding()).collect::<Vec<_>>();
     let flags = [const { AtomicBool::new(false) }; 4];
     flags[1].store(true, Ordering::Release);
@@ -567,7 +577,15 @@ pub(super) async fn diagnostic_trajectory_with_prompt(
     )
     .await?;
     sessions.push(replacement);
-    diagnostic_b4(loaded, &mut sessions, prompt, &mut histories, &mut trace).await?;
+    diagnostic_b4(
+        loaded,
+        host,
+        &mut sessions,
+        prompt,
+        &mut histories,
+        &mut trace,
+    )
+    .await?;
     let before = sessions.iter().map(|s| s.binding()).collect::<Vec<_>>();
     let partial_flags = [const { AtomicBool::new(false) }; 3];
     ensure(
@@ -600,12 +618,20 @@ pub(super) async fn diagnostic_trajectory_with_prompt(
     let after = sessions.iter().map(|s| s.binding()).collect::<Vec<_>>();
     trace.event(serde_json::json!({"kind":"permutation","order":[2,1,0,3],
         "roots_before":export::Trace::roots(&before),"roots_after":export::Trace::roots(&after)}))?;
-    diagnostic_b4(loaded, &mut sessions, prompt, &mut histories, &mut trace).await?;
+    diagnostic_b4(
+        loaded,
+        host,
+        &mut sessions,
+        prompt,
+        &mut histories,
+        &mut trace,
+    )
+    .await?;
     let final_roots = sessions.iter().map(|s| s.binding()).collect::<Vec<_>>();
     trace.event(
         serde_json::json!({"kind":"final-roots","roots":export::Trace::roots(&final_roots)}),
     )?;
     drop(sessions);
-    conservation(loaded)?;
+    conservation(loaded, host)?;
     trace.finish()
 }

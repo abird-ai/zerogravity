@@ -270,6 +270,7 @@ impl Export {
         model: &short_hf::ShortHfModel,
         host: &TransferAdmission,
     ) -> Result<Option<Self>> {
+        let host_limit = fixture_host::declared_limit(host)?;
         // Before JSON, hashes, file buffers or archive metadata; no payload clone.
         ensure(
             model
@@ -277,8 +278,8 @@ impl Export {
                 .resources()
                 .host_upper_bytes
                 .checked_add(METADATA_CAP)
-                .is_some_and(|n| n <= 4096 * MIB),
-            "export metadata fits original physical host ceiling",
+                .is_some_and(|n| n as u64 <= host_limit),
+            "export metadata fits declared original HOST domain",
         )?;
         let charge = host.arbiter.admit(
             &host.resource,

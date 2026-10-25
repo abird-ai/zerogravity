@@ -55,6 +55,18 @@ fn poison_word(word: usize) -> u32 {
     0xa5a5_0000 | (word as u32 & 0x0000_ffff)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FixtureKind {
+    Historical,
+    Finite(usize),
+    IsolatedStatus,
+}
+
+fn finite_word(row: usize, word: usize) -> u32 {
+    // Exact widened BF16, finite at every row/position.
+    ((0x0080 + (word.wrapping_mul(73).wrapping_add(row * 151) % 0x7e80)) as u32) << 16
+}
+
 // Native K/V and convolution cache pointers are BF16 (u16) views, while
 // the complete readback oracle is U32. Preserve the untouched neighboring
 // halfword and the original byte-order of the readback words.
@@ -95,7 +107,7 @@ struct KvCase {
     positions: ResidentLease,
     seq_used: ResidentLease,
     table: ResidentLease,
-    status: ResidentLease,
+    statuses: [ResidentLease; 2],
 }
 
 fn plane(cache: &ResidentLease, offset: usize, bytes: usize) -> Handle {
@@ -155,14 +167,31 @@ pub(crate) async fn qualify(
     // Qualify each implementation against its own untouched source/canary
     // fixture. Reusing the per-row flight's outputs could mask a grouped
     // kernel that omitted a write entirely.
-    let reference = qualify_mode(device.clone(), host, owner.clone(), false).await?;
-    let grouped = qualify_mode(device, host, owner, true).await?;
-    if reference.0 != grouped.0 || reference.1 != grouped.1 || reference.2 <= grouped.2 {
-        return Err(Error::State(
-            "grouped transport independent flight census".into(),
-        ));
+    let mut grouped_launches = 0;
+    for kind in [
+        FixtureKind::Historical,
+        FixtureKind::Finite(0),
+        FixtureKind::Finite(1),
+        FixtureKind::Finite(2),
+        FixtureKind::Finite(3),
+        FixtureKind::IsolatedStatus,
+    ] {
+        let reference = qualify_mode(device.clone(), host, owner.clone(), false, kind).await?;
+        let grouped = qualify_mode(device.clone(), host, owner.clone(), true, kind).await?;
+        if reference.0 != grouped.0
+            || reference.1 != grouped.1
+            || reference.2 != grouped.2
+            || reference.3 != grouped.3 * 4
+        {
+            return Err(Error::State(
+                "grouped transport independent flight census".into(),
+            ));
+        }
+        grouped_launches += grouped.3;
     }
-    Ok(grouped.0 + grouped.1 + grouped.2)
+    // The caller's `cases` marker counts actual grouped transport launches;
+    // fixture containers and observed leases are separate census units.
+    Ok(grouped_launches)
 }
 
 async fn qualify_mode(
@@ -170,7 +199,8 @@ async fn qualify_mode(
     host: &PhysicalDeviceKey,
     owner: ResourceOwner,
     grouped: bool,
-) -> Result<(usize, usize, usize)> {
+    kind: FixtureKind,
+) -> Result<(usize, usize, usize, usize)> {
     let arbiter = ResourceArbiter::process_shared();
     let host_ticket = arbiter.admit(
         host,
@@ -213,6 +243,17 @@ async fn qualify_mode(
         fixture.expected.push(expected);
         index
     };
+    let conv_value = |row: usize, word: usize| match kind {
+        FixtureKind::Historical => conv_word(row, word),
+        FixtureKind::IsolatedStatus if row == 2 && word == 17 => 0x7f80_0000,
+        _ => finite_word(row, word),
+    };
+    let h_value = |row: usize, word: usize| match kind {
+        FixtureKind::Historical => h_word(row, word),
+        FixtureKind::IsolatedStatus if row == 2 && word == 17 => 0x7f80_0000,
+        _ => finite_word(row + 1, word.wrapping_mul(31)),
+    };
+    let sticky = u32::from(kind == FixtureKind::IsolatedStatus) * 16;
     // ---- GDN conv chain (kinds 0/1, cached native side) ----
     let cache_words = (0..KV_CACHE_BYTES / 4).map(poison_word).collect::<Vec<_>>();
     let conv_cache = upload_words(&mut init, &cache_words)?;
@@ -221,12 +262,19 @@ async fn qualify_mode(
     for row in 0..4 {
         sources.push(upload_words(
             &mut init,
-            &(0..CONV).map(|w| conv_word(row, w)).collect::<Vec<_>>(),
+            &(0..CONV).map(|w| conv_value(row, w)).collect::<Vec<_>>(),
         )?);
         candidates.push(upload_words(&mut init, &vec![0x5a5a_5a5a; CONV])?);
     }
-    let status_in = upload_words(&mut init, &[0])?;
-    let status_out = upload_words(&mut init, &[2])?;
+    let status_in = upload_words(&mut init, &[sticky])?;
+    let status_out = upload_words(
+        &mut init,
+        &[if kind == FixtureKind::Historical {
+            2
+        } else {
+            sticky
+        }],
+    )?;
     // Expected cache words: conv views = widened>>16 of the sources; every
     // other byte (H views, unused slots) stays poison.
     let mut conv_cache_expected = cache_words.clone();
@@ -238,28 +286,33 @@ async fn qualify_mode(
             write_native_bf16(
                 &mut conv_cache_expected,
                 half_start + native_index,
-                (conv_word(row, channel * 3 + frame) >> 16) as u16,
+                (conv_value(row, channel * 3 + frame) >> 16) as u16,
             );
         }
     }
+    observe(&mut fixture, conv_cache.clone(), conv_cache_expected);
+    let conv_error = !matches!(kind, FixtureKind::Finite(_));
     observe(
         &mut fixture,
-        conv_cache.clone(),
-        conv_cache_expected.clone(),
+        status_in.clone(),
+        vec![sticky | u32::from(conv_error)],
     );
-    observe(&mut fixture, status_in.clone(), vec![1]);
-    observe(&mut fixture, status_out.clone(), vec![2]);
+    observe(
+        &mut fixture,
+        status_out.clone(),
+        vec![sticky | (u32::from(conv_error) * 2)],
+    );
     for (row, source) in sources.iter().enumerate() {
         observe(
             &mut fixture,
             source.clone(),
-            (0..CONV).map(|w| conv_word(row, w)).collect(),
+            (0..CONV).map(|w| conv_value(row, w)).collect(),
         );
     }
     for (row, candidate) in candidates.iter().enumerate() {
         let expected = (0..CONV)
             .map(|w| {
-                let bits = conv_word(row, w) >> 16;
+                let bits = conv_value(row, w) >> 16;
                 bits << 16
             })
             .collect::<Vec<_>>();
@@ -285,7 +338,7 @@ async fn qualify_mode(
     let ht = upload_words(
         &mut init,
         &(0..4 * RECURRENT)
-            .map(|w| h_word(w / RECURRENT, w % RECURRENT))
+            .map(|w| h_value(w / RECURRENT, w % RECURRENT))
             .collect::<Vec<_>>(),
     )?;
     for prefill in [false, true] {
@@ -294,12 +347,26 @@ async fn qualify_mode(
         for row in 0..4 {
             sources.push(upload_words(
                 &mut init,
-                &(0..RECURRENT).map(|w| h_word(row, w)).collect::<Vec<_>>(),
+                &(0..RECURRENT).map(|w| h_value(row, w)).collect::<Vec<_>>(),
             )?);
             destinations.push(upload_words(&mut init, &vec![0x5a5a_5a5a; RECURRENT])?);
         }
-        let status_in = upload_words(&mut init, &[4])?;
-        let status_out = upload_words(&mut init, &[8])?;
+        let status_in = upload_words(
+            &mut init,
+            &[if kind == FixtureKind::Historical {
+                4
+            } else {
+                sticky
+            }],
+        )?;
+        let status_out = upload_words(
+            &mut init,
+            &[if kind == FixtureKind::Historical {
+                8
+            } else {
+                sticky
+            }],
+        )?;
         // Expected native side (cached: H views; prefill: H0/Ht staging) and
         // expected export candidates follow the exact U32 transpose.
         let native = |row: usize, w: usize| -> u32 {
@@ -307,7 +374,7 @@ async fn qualify_mode(
             let major = (w / 128) % 128;
             let minor = w % 128;
             // Import writes source[head*16384 + minor*128 + major] at [w].
-            h_word(row, head * 16384 + minor * 128 + major)
+            h_value(row, head * 16384 + minor * 128 + major)
         };
         if !prefill {
             let mut expected_cache = cache_words.clone();
@@ -330,17 +397,26 @@ async fn qualify_mode(
                 &mut fixture,
                 ht.clone(),
                 (0..4 * RECURRENT)
-                    .map(|w| h_word(w / RECURRENT, w % RECURRENT))
+                    .map(|w| h_value(w / RECURRENT, w % RECURRENT))
                     .collect(),
             );
         }
-        observe(&mut fixture, status_in.clone(), vec![4]);
-        observe(&mut fixture, status_out.clone(), vec![8]);
+        let h_error = !matches!(kind, FixtureKind::Finite(_));
+        observe(
+            &mut fixture,
+            status_in.clone(),
+            vec![sticky | (u32::from(h_error) * 4)],
+        );
+        observe(
+            &mut fixture,
+            status_out.clone(),
+            vec![sticky | (u32::from(h_error) * 8)],
+        );
         for (row, source) in sources.iter().enumerate() {
             observe(
                 &mut fixture,
                 source.clone(),
-                (0..RECURRENT).map(|w| h_word(row, w)).collect(),
+                (0..RECURRENT).map(|w| h_value(row, w)).collect(),
             );
         }
         for (row, destination) in destinations.iter().enumerate() {
@@ -351,9 +427,9 @@ async fn qualify_mode(
                 // Export reads the native side at [head*16384 + minor*128 +
                 // major]; transposing twice yields the original word at w.
                 if prefill {
-                    h_word(row, head * 16384 + minor * 128 + major)
+                    h_value(row, head * 16384 + minor * 128 + major)
                 } else {
-                    h_word(row, w)
+                    h_value(row, w)
                 }
             };
             let expected = (0..RECURRENT).map(export).collect::<Vec<_>>();
@@ -374,17 +450,71 @@ async fn qualify_mode(
             status: status_out.clone(),
         });
     }
+    drop(cache_words);
     // ---- KV fixtures ----
-    for (bases, violation) in [([47, 49, 51, 53], false), ([47, 48, 49, 50], true)] {
-        let cache_words = (0..KV_CACHE_BYTES / 4)
+    // Historical: retain both original special-value/control populations.
+    // Finite: clean, then negative base, base=end, end513 and block0/5/17;
+    // each rejection has one bad row and finite data. Isolated: one import low16
+    // error, then one export nonfinite in the appended native position.
+    // At most two KV fixtures per flight: expected arrays and complete D2H
+    // working copies must also fit the unchanged host 512MiB admission.
+    let variants = match kind {
+        FixtureKind::Finite(batch) => batch * 2..(batch * 2 + 2).min(7),
+        _ => 0..2,
+    };
+    for variant in variants {
+        let violation = kind == FixtureKind::Historical && variant == 1;
+        let bases = if violation {
+            [47, 48, 49, 50]
+        } else {
+            [47, 49, 51, 53]
+        };
+        let mut control_bases = bases.map(|base| base as i64);
+        let mut ends = bases.map(|base| (base + 1) as i32);
+        let mut blocks = [4i32, 8, 12, 16];
+        if violation {
+            ends[2] += 512;
+        } else if matches!(kind, FixtureKind::Finite(_)) {
+            match variant {
+                1 => control_bases[2] = -1,
+                2 => control_bases[2] = i64::from(ends[2]),
+                3 => ends[2] = 513,
+                4 => blocks[2] = 0,
+                5 => blocks[2] = 5,
+                6 => blocks[2] = 17,
+                _ => {}
+            }
+        }
+        let kv_value = |row: usize, word: usize| {
+            if kind == FixtureKind::Historical {
+                kv_word(row, word)
+            } else if kind == FixtureKind::IsolatedStatus
+                && variant == 0
+                && row == 2
+                && word == bases[2] * 512 - 1
+            {
+                finite_word(row + 2, word.wrapping_mul(131)) | 1
+            } else {
+                finite_word(row + 2, word.wrapping_mul(131))
+            }
+        };
+        let mut cache_words = (0..KV_CACHE_BYTES / 4)
             .map(|w| {
-                if w % 9973 == 7 {
+                if kind != FixtureKind::Historical {
+                    (finite_word(8, w * 2) >> 16) | (finite_word(9, w * 2 + 1) & 0xffff_0000)
+                } else if w % 9973 == 7 {
                     0x7f80_0000
                 } else {
                     0x3f00_0000 | (w as u32 & 0x007f_ffff)
                 }
             })
             .collect::<Vec<_>>();
+        if kind == FixtureKind::IsolatedStatus && variant == 1 {
+            // Import stops before base: this one append-side Inf reaches
+            // export without setting the import status bit.
+            let native = 12 * 557_056 + bases[2] * 1024 + 17;
+            write_native_bf16(&mut cache_words, native, 0x7f80);
+        }
         let cache = upload_words(&mut init, &cache_words)?;
         let mut prior_k = Vec::new();
         let mut prior_v = Vec::new();
@@ -392,7 +522,7 @@ async fn qualify_mode(
         let mut candidate_v = Vec::new();
         for (row, &base) in bases.iter().enumerate() {
             let mut words = (0..CANONICAL_WORDS)
-                .map(|w| kv_word(row, w))
+                .map(|w| kv_value(row, w))
                 .collect::<Vec<_>>();
             for word in &mut words[base * 512..] {
                 *word = 0xffff_ffff;
@@ -401,7 +531,7 @@ async fn qualify_mode(
             prior_v.push(upload_words(
                 &mut init,
                 &(0..CANONICAL_WORDS)
-                    .map(|w| kv_word(row + 4, w))
+                    .map(|w| kv_value(row + 4, w))
                     .collect::<Vec<_>>(),
             )?);
             candidate_k.push(upload_words(
@@ -417,53 +547,74 @@ async fn qualify_mode(
         let mut seq_used = vec![0i32; 16];
         let mut table = vec![0i32; 16];
         for row in 0..4 {
-            let end = bases[row] + 1 + usize::from(violation && row == 2) * 512;
-            positions[row * 2] = bases[row] as i32;
-            positions[row * 2 + 1] = 0;
-            seq_used[row] = end as i32;
-            table[row * 4] = (4 + 4 * row) as i32;
+            let raw = control_bases[row] as u64;
+            positions[row * 2] = raw as i32;
+            positions[row * 2 + 1] = (raw >> 32) as i32;
+            seq_used[row] = ends[row];
+            table[row * 4] = blocks[row];
         }
         let positions_lease = upload_i32(&mut init, &positions)?;
         let seq_lease = upload_i32(&mut init, &seq_used)?;
         let table_lease = upload_i32(&mut init, &table)?;
-        let status = upload_words(&mut init, &[0])?;
+        let initial_status = if kind == FixtureKind::IsolatedStatus
+            || (matches!(kind, FixtureKind::Finite(_)) && variant != 0)
+        {
+            16
+        } else {
+            0
+        };
+        let status_in = upload_words(&mut init, &[initial_status])?;
+        // Preserve the historical shared epoch. New controls observe each
+        // direction independently, so neither OR can mask the other.
+        let status_out = if kind == FixtureKind::Historical {
+            status_in.clone()
+        } else {
+            upload_words(&mut init, &[initial_status])?
+        };
         // Expected: import writes the cache's live prefix (k>>16 at native
         // offsets), export writes candidates (native<<16 live / prior padding),
         // the guard-violation row copies nothing and ORs status.
         let mut expected_cache = cache_words.clone();
-        let mut expected_status = 0u32;
+        let mut expected_status = [initial_status; 2];
+        let guard_ok = |row: usize| {
+            let base = control_bases[row];
+            let end = i64::from(ends[row]);
+            let block = i64::from(blocks[row]);
+            if base < 0 || base >= end || end > 512 || !(4..=16).contains(&block) || block % 4 != 0
+            {
+                return false;
+            }
+            let highest = block as u64 * 557_056 + 512 + (end as u64 - 1) * 1024 + 256 + 255;
+            (highest + 1) * 2 <= KV_CACHE_BYTES as u64
+        };
         for (row, &base) in bases.iter().enumerate() {
-            let end = base + 1 + usize::from(violation && row == 2) * 512;
-            let block = 4 + 4 * row;
-            let guard_ok = base < end && end <= 512;
+            if !guard_ok(row) {
+                expected_status[0] |= 1;
+                continue;
+            }
+            let block = blocks[row] as usize;
             for index in 0..base * 512 {
                 let position = index / 512;
                 let head = (index % 512) / 256;
                 let lane = index % 256;
-                if kv_word(row, index) & 0xffff != 0
-                    || kv_word(row + 4, index) & 0xffff != 0
-                    || kv_word(row, index) & 0x7f80_0000 == 0x7f80_0000
-                    || kv_word(row + 4, index) & 0x7f80_0000 == 0x7f80_0000
+                if kv_value(row, index) & 0xffff != 0
+                    || kv_value(row + 4, index) & 0xffff != 0
+                    || kv_value(row, index) & 0x7f80_0000 == 0x7f80_0000
+                    || kv_value(row + 4, index) & 0x7f80_0000 == 0x7f80_0000
                 {
-                    expected_status |= 1;
-                }
-                if !guard_ok {
-                    continue;
+                    expected_status[0] |= 1;
                 }
                 let native = block * 557_056 + head * 512 + position * 1024 + lane;
                 write_native_bf16(
                     &mut expected_cache,
                     native,
-                    (kv_word(row, index) >> 16) as u16,
+                    (kv_value(row, index) >> 16) as u16,
                 );
                 write_native_bf16(
                     &mut expected_cache,
                     native + 256,
-                    (kv_word(row + 4, index) >> 16) as u16,
+                    (kv_value(row + 4, index) >> 16) as u16,
                 );
-            }
-            if !guard_ok {
-                expected_status |= 1;
             }
         }
         // Export reads the POST-import cache; compute candidates exactly.
@@ -471,13 +622,14 @@ async fn qualify_mode(
         for (row, &base) in bases.iter().enumerate() {
             let mut expected_k = vec![0x5a5a_5a5a; CANONICAL_WORDS];
             let mut expected_v = vec![0x5a5a_5a5a; CANONICAL_WORDS];
-            let end = base + 1 + usize::from(violation && row == 2) * 512;
-            let block = 4 + 4 * row;
-            let guard_ok = base < end && end <= 512;
+            let end = ends[row] as usize;
+            let block = blocks[row] as usize;
+            if !guard_ok(row) {
+                expected_status[1] |= 1;
+                expected_candidates.push((expected_k, expected_v));
+                continue;
+            }
             for index in 0..512 * 512 {
-                if !guard_ok {
-                    continue;
-                }
                 let position = index / 512;
                 let head = (index % 512) / 256;
                 let lane = index % 256;
@@ -492,15 +644,15 @@ async fn qualify_mode(
                         if index >= base * 512 {
                             0xffff_ffff
                         } else {
-                            kv_word(row, index)
+                            kv_value(row, index)
                         },
-                        kv_word(row + 4, index),
+                        kv_value(row + 4, index),
                     )
                 };
                 if position < end
                     && (k & 0x7f80_0000 == 0x7f80_0000 || v & 0x7f80_0000 == 0x7f80_0000)
                 {
-                    expected_status |= 2;
+                    expected_status[1] |= 2;
                 }
                 expected_k[index] = k;
                 expected_v[index] = v;
@@ -533,7 +685,7 @@ async fn qualify_mode(
                         if w >= base * 512 {
                             0xffff_ffff
                         } else {
-                            kv_word(row, w)
+                            kv_value(row, w)
                         }
                     })
                     .collect(),
@@ -541,7 +693,7 @@ async fn qualify_mode(
             observe(
                 &mut fixture,
                 prior_v[row].clone(),
-                (0..CANONICAL_WORDS).map(|w| kv_word(row + 4, w)).collect(),
+                (0..CANONICAL_WORDS).map(|w| kv_value(row + 4, w)).collect(),
             );
         }
         for row in 0..4 {
@@ -549,7 +701,16 @@ async fn qualify_mode(
             observe(&mut fixture, candidate_k[row].clone(), expected_k.clone());
             observe(&mut fixture, candidate_v[row].clone(), expected_v.clone());
         }
-        observe(&mut fixture, status.clone(), vec![expected_status]);
+        if kind == FixtureKind::Historical {
+            observe(
+                &mut fixture,
+                status_in.clone(),
+                vec![expected_status[0] | expected_status[1]],
+            );
+        } else {
+            observe(&mut fixture, status_in.clone(), vec![expected_status[0]]);
+            observe(&mut fixture, status_out.clone(), vec![expected_status[1]]);
+        }
         fixture.kv.push(KvCase {
             bases,
             prior_k,
@@ -560,7 +721,7 @@ async fn qualify_mode(
             positions: positions_lease,
             seq_used: seq_lease,
             table: table_lease,
-            status,
+            statuses: [status_in, status_out],
         });
     }
     // An original flight may read immutable controls and prior canonical
@@ -578,11 +739,37 @@ async fn qualify_mode(
     }
     for case in &fixture.kv {
         written.insert(case.cache.id());
-        written.insert(case.status.id());
+        written.extend(case.statuses.iter().map(ResidentLease::id));
         written.extend(case.candidate_k.iter().map(ResidentLease::id));
         written.extend(case.candidate_v.iter().map(ResidentLease::id));
     }
     let counts = (fixture.gdn.len(), fixture.kv.len(), fixture.observed.len());
+    let resident_bytes = fixture
+        .observed
+        .iter()
+        .map(ResidentLease::bytes)
+        .sum::<usize>();
+    let expected_bytes = fixture
+        .expected
+        .iter()
+        .map(|words| words.len() * 4)
+        .sum::<usize>();
+    // Expected words + two full readback working copies; cache/upload oracle
+    // scratch, eight candidate planes and 16MiB metadata slack. Initialization
+    // completes before readback; its byte buffers cannot overlap that phase.
+    let host_upper = expected_bytes
+        + 2 * resident_bytes
+        + 3 * KV_CACHE_BYTES
+        + 8 * KV_CANONICAL_BYTES
+        + 16 * 1024 * 1024;
+    if resident_bytes as u64 > payload
+        || host_upper > CAP
+        || fixture.expected.len() != fixture.observed.len()
+    {
+        return Err(Error::State(
+            "grouped transport fixture host/payload/readback census".into(),
+        ));
+    }
     drop(init.complete_sync().await?);
     init_slot.finish()?;
     // One original, independently initialized physical flight per mode.
@@ -634,8 +821,15 @@ async fn qualify_mode(
         if launches != fixture.gdn.len() + fixture.kv.len() * 2 {
             return Err(Error::State("grouped transport launch population".into()));
         }
-    } else if launches != fixture.gdn.len() * 4 + fixture.kv.len() * 8 {
-        return Err(Error::State("per-row oracle launch population".into()));
+    } else {
+        let kv_launches = fixture
+            .kv
+            .iter()
+            .map(|case| 4 + case.bases.iter().filter(|&&base| base != 0).count())
+            .sum::<usize>();
+        if launches != fixture.gdn.len() * 4 + kv_launches {
+            return Err(Error::State("per-row oracle launch population".into()));
+        }
     }
     let reads = fixture
         .observed
@@ -660,7 +854,7 @@ async fn qualify_mode(
                     let want = expected[index][word].to_le_bytes();
                     if raw != want {
                         return Err(Error::State(format!(
-                            "grouped transport word differs lease={index} word={word}"
+                            "grouped transport word differs population={kind:?} grouped={grouped} lease={index} word={word}"
                         )));
                     }
                 }
@@ -671,6 +865,9 @@ async fn qualify_mode(
     drop(raw);
     drop(ready);
     slot.finish()?;
+    // Flight-local strong clones outlive complete_with_readback; release them
+    // at the completed boundary so the ledger can reach zero below.
+    drop((reads, outputs, accesses));
     // The readback completed. Release every original and observed lease
     // before asserting physical device retirement, not merely queue silence.
     drop(fixture);
@@ -698,7 +895,11 @@ async fn qualify_mode(
             "grouped transport final original physical reservation".into(),
         ));
     }
-    Ok((counts.0, counts.1, launches))
+    eprintln!(
+        "GROUPED_TRANSPORT_MODE_PASS population={kind:?} grouped={grouped} gdn={} kv={} observed={} launches={launches} resident_bytes={resident} pending_events={events} arbiter_reserved={} arbiter_fenced={}",
+        counts.0, counts.1, counts.2, final_state.reserved, final_state.fenced
+    );
+    Ok((counts.0, counts.1, counts.2, launches))
 }
 
 fn launch_gdn(service: &ResidentService, case: &GdnCase, grouped: bool) -> Result<usize> {
@@ -789,6 +990,7 @@ fn launch_gdn(service: &ResidentService, case: &GdnCase, grouped: bool) -> Resul
 fn launch_kv(service: &ResidentService, case: &KvCase, grouped: bool) -> Result<usize> {
     let mut launches = 0;
     for incoming in [true, false] {
+        let status = &case.statuses[usize::from(!incoming)];
         let views = |row: usize| -> [Handle; 3] {
             [
                 case.positions
@@ -828,7 +1030,7 @@ fn launch_kv(service: &ResidentService, case: &KvCase, grouped: bool) -> Result<
                     ]);
                 }
                 handles.extend(views(row));
-                handles.push(case.status.handle());
+                handles.push(status.handle());
                 kernel.launch(
                     service.client(),
                     [(count as u32).div_ceil(128), 1, 1],
@@ -883,7 +1085,7 @@ fn launch_kv(service: &ResidentService, case: &KvCase, grouped: bool) -> Result<
                 service.client(),
                 &typed::kv_definition(incoming)?,
                 &rows,
-                &case.status.handle(),
+                &status.handle(),
                 TypedLayout::Kv,
                 if incoming {
                     TypedDirection::Import

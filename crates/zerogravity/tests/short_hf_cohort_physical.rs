@@ -21,6 +21,9 @@ use zerogravity::{
     short_hf,
 };
 const MIB: usize = 1024 * 1024;
+#[path = "short_hf_physical/host.rs"]
+mod fixture_host;
+use fixture_host::FixtureHost;
 #[path = "short_hf_cohort_physical/cached2b.rs"]
 mod cached2b;
 #[path = "short_hf_cohort_physical/compare.rs"]
@@ -61,7 +64,7 @@ fn block_on<F: Future>(future: F) -> F::Output {
         }
     }
 }
-fn conservation(loaded: &Arc<native::ShortHfLoaded>) -> Result<()> {
+fn conservation(loaded: &Arc<native::ShortHfLoaded>, host: &TransferAdmission) -> Result<()> {
     let s = loaded.observation().snapshot()?;
     let r = loaded.resources();
     let root = r.root_initialization_host_bytes / 3;
@@ -71,7 +74,7 @@ fn conservation(loaded: &Arc<native::ShortHfLoaded>) -> Result<()> {
     };
     ensure(
         r.root_count == roots
-            && r.host_upper_bytes <= 4096 * MIB
+            && r.host_upper_bytes as u64 <= fixture_host::declared_limit(host)?
             && r.provider_upper_bytes <= provider_mib * MIB
             && s.usable
             && s.pending_events == 0
@@ -159,16 +162,20 @@ async fn matrix(
                 "same genuine roots advance exactly once with committed native feedback lineage",
             )?;
         }
-        conservation(loaded)?;
+        conservation(loaded, host)?;
         println!(
             "SHORT_HF_B4_COMMIT_PASS call={call} requests=4 nodes=255 projection_packets={} sampler_dispatches={} readback_bytes={}",
             receipt.native_projection_launches, receipt.sampler_dispatches, receipt.readback_bytes
         );
     }
     drop(sessions);
-    conservation(loaded)
+    conservation(loaded, host)
 }
-async fn lifecycle(model: &Arc<short_hf::ShortHfModel>, original: &oracle::Original) -> Result<()> {
+async fn lifecycle(
+    model: &Arc<short_hf::ShortHfModel>,
+    host: &TransferAdmission,
+    original: &oracle::Original,
+) -> Result<()> {
     let loaded = model.resident();
     let ids = original.prompt()?;
     let mut sessions = Vec::new();
@@ -272,7 +279,7 @@ async fn lifecycle(model: &Arc<short_hf::ShortHfModel>, original: &oracle::Origi
         "one stale sibling fatally refuses all-row publication without partial swaps",
     )?;
     drop(sessions);
-    conservation(loaded)?;
+    conservation(loaded, host)?;
     println!(
         "SHORT_HF_B4_LIFECYCLE_PASS sessions=8 ninth_refused=true completed_pending_capacity=true precancel=true latecancel_all_none=true stale_all_none=true lineage_only_commit=true roots_bound=22"
     );
@@ -281,14 +288,10 @@ async fn lifecycle(model: &Arc<short_hf::ShortHfModel>, original: &oracle::Origi
 #[test]
 #[ignore = "explicit original approved source/native packets; ROOT-owned isolated required-release CUDA process; no perf claim"]
 fn actual_short_hf_canonical47_cohort() -> Result<()> {
-    let arbiter = ResourceArbiter::process_shared();
-    let resource = PhysicalDeviceKey::new("host", "zerogravity-serve-cpu")?;
-    arbiter.register(resource.clone(), (4096 * MIB) as u64)?;
-    let host = TransferAdmission {
-        arbiter,
-        resource,
-        owner: ResourceOwner::new("short-hf-b4-physical", "same-root-whole-cohort")?,
-    };
+    let host = FixtureHost::new(ResourceOwner::new(
+        "short-hf-b4-physical",
+        "same-root-whole-cohort",
+    )?)?;
     let original = oracle::Original::open(&env("ZG_SHORT_HF_COHORT_REFERENCE")?, &host)?;
     original.preflight()?;
     let device =
@@ -313,7 +316,7 @@ fn actual_short_hf_canonical47_cohort() -> Result<()> {
     let observation = model.resident().observation();
     let result = block_on(async {
         matrix(&model, &host, &original).await?;
-        lifecycle(&model, &original).await
+        lifecycle(&model, &host, &original).await
     });
     if let Err(error) = &result {
         eprintln!("SHORT_HF_B4_FAILURE {error:?}");
@@ -336,8 +339,6 @@ fn actual_short_hf_canonical47_cohort() -> Result<()> {
             && retired.backend_host_reserved_bytes == (384 * MIB) as u64
             && host.arbiter.snapshot(&retired.physical_key)?.reserved
                 == retired.backend_device_reserved_bytes
-            && host.arbiter.snapshot(&host.resource)?.reserved
-                == retired.backend_host_reserved_bytes
             && host
                 .arbiter
                 .snapshot(&retired.physical_key)?
@@ -345,17 +346,10 @@ fn actual_short_hf_canonical47_cohort() -> Result<()> {
                 .iter()
                 .map(String::as_str)
                 .collect::<Vec<_>>()
-                == ["backend/cuda"]
-            && host
-                .arbiter
-                .snapshot(&host.resource)?
-                .active_models
-                .iter()
-                .map(String::as_str)
-                .collect::<Vec<_>>()
                 == ["backend/cuda"],
         "actual final B4 host/provider/device conservation",
     )?;
+    host.require_final(retired.backend_host_reserved_bytes)?;
     closed?;
     result?;
     println!(
@@ -367,14 +361,10 @@ fn actual_short_hf_canonical47_cohort() -> Result<()> {
 #[test]
 #[ignore = "explicit genuine N1 same-prior continuous B4; ROOT-owned isolated required-release CUDA process; no perf claim"]
 fn actual_short_hf_continuous_cached_cohort() -> Result<()> {
-    let arbiter = ResourceArbiter::process_shared();
-    let resource = PhysicalDeviceKey::new("host", "zerogravity-serve-cpu")?;
-    arbiter.register(resource.clone(), (4096 * MIB) as u64)?;
-    let host = TransferAdmission {
-        arbiter,
-        resource,
-        owner: ResourceOwner::new("short-hf-b4-physical", "same-root-whole-cohort")?,
-    };
+    let host = FixtureHost::new(ResourceOwner::new(
+        "short-hf-b4-physical",
+        "same-root-whole-cohort",
+    )?)?;
     let original = oracle::Original::open(&env("ZG_SHORT_HF_COHORT_REFERENCE")?, &host)?;
     original.preflight()?;
     let device =
@@ -421,8 +411,6 @@ fn actual_short_hf_continuous_cached_cohort() -> Result<()> {
             && retired.backend_host_reserved_bytes == (384 * MIB) as u64
             && host.arbiter.snapshot(&retired.physical_key)?.reserved
                 == retired.backend_device_reserved_bytes
-            && host.arbiter.snapshot(&host.resource)?.reserved
-                == retired.backend_host_reserved_bytes
             && host
                 .arbiter
                 .snapshot(&retired.physical_key)?
@@ -430,17 +418,10 @@ fn actual_short_hf_continuous_cached_cohort() -> Result<()> {
                 .iter()
                 .map(String::as_str)
                 .collect::<Vec<_>>()
-                == ["backend/cuda"]
-            && host
-                .arbiter
-                .snapshot(&host.resource)?
-                .active_models
-                .iter()
-                .map(String::as_str)
-                .collect::<Vec<_>>()
                 == ["backend/cuda"],
         "actual final B4 host/provider/device conservation",
     )?;
+    host.require_final(retired.backend_host_reserved_bytes)?;
     closed?;
     result?;
     println!(
@@ -453,14 +434,10 @@ fn actual_short_hf_continuous_cached_cohort() -> Result<()> {
 #[ignore = "DIAGNOSTIC ONLY: exports own unqualified trajectory; never numerical acceptance or serving eligibility"]
 fn diagnostic_short_hf_compositional_trajectory() -> Result<()> {
     drop(env("ZG_SHORT_HF_SAME_PRIOR_EXPORT")?);
-    let arbiter = ResourceArbiter::process_shared();
-    let resource = PhysicalDeviceKey::new("host", "zerogravity-serve-cpu")?;
-    arbiter.register(resource.clone(), (4096 * MIB) as u64)?;
-    let host = TransferAdmission {
-        arbiter,
-        resource,
-        owner: ResourceOwner::new("short-hf-b4-physical", "same-root-whole-cohort")?,
-    };
+    let host = FixtureHost::new(ResourceOwner::new(
+        "short-hf-b4-physical",
+        "same-root-whole-cohort",
+    )?)?;
     let original = oracle::Original::open(&env("ZG_SHORT_HF_COHORT_REFERENCE")?, &host)?;
     original.preflight()?;
     let device =
@@ -508,8 +485,6 @@ fn diagnostic_short_hf_compositional_trajectory() -> Result<()> {
             && retired.backend_host_reserved_bytes == (384 * MIB) as u64
             && host.arbiter.snapshot(&retired.physical_key)?.reserved
                 == retired.backend_device_reserved_bytes
-            && host.arbiter.snapshot(&host.resource)?.reserved
-                == retired.backend_host_reserved_bytes
             && host
                 .arbiter
                 .snapshot(&retired.physical_key)?
@@ -517,17 +492,10 @@ fn diagnostic_short_hf_compositional_trajectory() -> Result<()> {
                 .iter()
                 .map(String::as_str)
                 .collect::<Vec<_>>()
-                == ["backend/cuda"]
-            && host
-                .arbiter
-                .snapshot(&host.resource)?
-                .active_models
-                .iter()
-                .map(String::as_str)
-                .collect::<Vec<_>>()
                 == ["backend/cuda"],
         "actual final B4 host/provider/device conservation",
     )?;
+    host.require_final(retired.backend_host_reserved_bytes)?;
     closed?;
     result?;
     println!(
@@ -549,14 +517,10 @@ fn actual_short_hf_cohort_cached_fault() -> Result<()> {
             ));
         }
     };
-    let arbiter = ResourceArbiter::process_shared();
-    let resource = PhysicalDeviceKey::new("host", "zerogravity-serve-cpu")?;
-    arbiter.register(resource.clone(), (4096 * MIB) as u64)?;
-    let host = TransferAdmission {
-        arbiter,
-        resource,
-        owner: ResourceOwner::new("short-hf-b4-physical", "cached-unknown")?,
-    };
+    let host = FixtureHost::new(ResourceOwner::new(
+        "short-hf-b4-physical",
+        "cached-unknown",
+    )?)?;
     let original = oracle::Original::open(&env("ZG_SHORT_HF_COHORT_REFERENCE")?, &host)?;
     original.preflight()?;
     let device =
@@ -647,10 +611,7 @@ fn actual_short_hf_cohort_cached_fault() -> Result<()> {
             && retained.resident_bytes <= 4096 * MIB,
         "all actual prior/candidate/source/native/epoch owners remain quarantined; no Ready or feedback",
     )?;
-    ensure(
-        host.arbiter.snapshot(&host.resource)?.reserved > 0,
-        "unknown host source/readback reservations remain retained",
-    )?;
+    host.require_retained((384 * MIB) as u64)?;
     println!(
         "SHORT_HF_B4_CACHED_FAULT_PASS fault={fault:?} actual_retention={retained:?} published=0 recovery_qualified=false performance_qualified=false"
     );
@@ -696,7 +657,7 @@ fn actual_grouped_state_transport_oracle() -> Result<()> {
     ))?;
     ensure(cases > 0, "grouped transport case count")?;
     println!(
-        "GROUPED_TRANSPORT_PHYSICAL_PASS cases={cases} per_row_vs_grouped=true canaries=true status_sticky=true guards=true future_padding=true"
+        "GROUPED_TRANSPORT_PHYSICAL_PASS cases={cases} case_unit=grouped_launches per_row_vs_grouped=true canaries=true status_sticky=true guards=true future_padding=true"
     );
     Ok(())
 }
