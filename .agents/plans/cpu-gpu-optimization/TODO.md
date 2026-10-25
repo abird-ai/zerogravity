@@ -681,12 +681,14 @@ Implementation remains behind the ordered parity/baseline prerequisites above.
   driver launch, physical-fit or inference qualification follows from metadata.
 - [x] Retire the five active Qwen27B/Gemma4/HIP/Vulkan/queue lane trees at the
   reviewed checkpoint; their units are integrated (`8f01635`..`68e13a8`).
-  Before more CUDA timing,
-  implement shared prepared B4 certification/state transport per
-  [Astra design](../../runs/cpu-gpu-optimization-astra-c16-shared-gap-20261024/DESIGN.md).
-  Keep existing arithmetic, caps and independent roots. Up to22.13% fewer
-  software dispatches is a theoretical ceiling, not a wall speedup claim.
-  C32/C64 follow genuine shared queue acceptance and fresh matched C16.
+  DONE25Oct: prepared-B4 certification/state transport implemented per
+  [Astra design](../../runs/cpu-gpu-optimization-astra-c16-shared-gap-20261024/DESIGN.md)
+  and merged in `d3d21a3` (existing arithmetic, caps and independent roots
+  kept; 22.13% remains a software-dispatch ceiling, not a wall-speedup
+  claim). Unit green: 594 gpu lib tests + 17 new (real ABI counts 9/22/30,
+  all ≤32). PENDING: the B4 physical GPU round (ignored matrices +
+  actual_grouped_state_transport_oracle) and the fresh matched C16 for
+  both models on the checkpoint tree; C32/C64 follow acceptance.
   DONE25Oct: five trees and branches retired after evidence preservation
   (zerogravity-worktrees/.preserved-lanes-20261025/); OLD-OIDs recorded there.
 
