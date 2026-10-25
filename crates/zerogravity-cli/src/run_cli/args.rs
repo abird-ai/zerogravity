@@ -73,9 +73,6 @@ pub(super) fn parse(args: &[String], alias: Option<&str>) -> Result<Arguments> {
             "-p" => "--prompt",
             "-n" => "--max-tokens",
             "-d" => "--device",
-            // User-facing shorthand; both spellings share one typed backend
-            // value, one precedence rule and one qualification decision.
-            "--on" => "--backend",
             other => other,
         };
         let repeat = matches!(

@@ -19,13 +19,13 @@ Exact Qwen3.5 `full_model_profile`, `short_hf`, `vllm_model` and `vllm_native` s
 
 ### One model/device selection policy, simpler spelling
 
-Existing `zerogravity run MODEL` stays canonical; `--on auto|cpu|cuda|rocm|vulkan` is a spelling of **the same** typed `--backend` value, checked for repeated/contradictory flags. `-d cpu` or `--device local/cpu` normalizes to `cpu:0`; GPU selection still needs an enumerated index or a physical PCI identity, no ambiguous GPU magic. `devices list` shows human-readable total/available MiB or `unknown`, and explicitly labels inventory as observation, **never model execution qualification**. Help leads with two concise run forms; advanced flags remain available. Existing source/cache identity, config provenance, pre-client admission, forced GPU refusal and `--dry-run` stay on the original `run_policy`/CLI path. No downloader, routing engine or silent CPU fallback added.
+Existing `zerogravity run MODEL` stays canonical. A single `-d`/`--device` controls normal hardware selection: omitted for automatic selection, `-d cpu` to select CPU, and `-d gpu:0` or `-d pci:...` to constrain the GPU. The redundant `--on` alias was removed in a follow-up review. `--backend` is retained only as an advanced override when specifying the execution technology (e.g. CUDA versus Vulkan on the same physical GPU), using the same typed qualified routing policy. `-d cpu` or `--device local/cpu` normalizes to `cpu:0`; GPU selection still needs an enumerated index or a physical PCI identity, no ambiguous GPU magic. `devices list` shows human-readable total/available MiB or `unknown`, and explicitly labels inventory as observation, **never model execution qualification**. Help leads with two concise run forms; advanced flags remain available. Existing source/cache identity, config provenance, pre-client admission, forced GPU refusal and `--dry-run` stay on the original `run_policy`/CLI path. No downloader, routing engine or silent CPU fallback added.
 
 Example commands:
 ```sh
 zerogravity run ./model.gguf --prompt 'Hello'
-zerogravity run ./model.gguf --on cpu -d cpu --prompt 'Hello'
-zerogravity run ./model.gguf --on cuda --device pci:0000:01:00.0 --explain
+zerogravity run ./model.gguf -d cpu --prompt 'Hello'
+zerogravity run ./model.gguf -d pci:0000:01:00.0 --backend cuda --explain
 zerogravity run ./config.yaml --dry-run
 zerogravity devices list
 ```

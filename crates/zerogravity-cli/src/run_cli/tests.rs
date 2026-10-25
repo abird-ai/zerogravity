@@ -3,34 +3,39 @@ fn words(s: &[&str]) -> Vec<String> {
     s.iter().map(|s| s.to_string()).collect()
 }
 #[test]
-fn concise_model_device_flags_share_one_qualified_policy() {
+fn device_only_route_shares_exact_qualified_policy_with_advanced_flags() {
     let cmd = |flags: &[&str]| parse(&words(flags), None).expect("typed run arguments");
-    let concise = cmd(&["qwen.gguf", "--on", "cpu", "-d", "cpu"]);
-    let advanced = cmd(&["qwen.gguf", "--backend", "cpu", "--device", "cpu:0"]);
-    assert_eq!(concise.backend, advanced.backend);
+    let device_only = cmd(&["qwen.gguf", "-d", "cpu"]);
+    let advanced = cmd(&["qwen.gguf", "--backend", "auto", "--device", "cpu:0"]);
+    assert_eq!(device_only.backend, None);
+    assert_eq!(advanced.backend, Some(Backend::Auto));
     assert_eq!(
-        Devices::parse(concise.devices.as_ref().unwrap()).unwrap(),
+        Devices::parse(device_only.devices.as_ref().unwrap()).unwrap(),
         Devices::parse(advanced.devices.as_ref().unwrap()).unwrap(),
     );
     assert_eq!(
         DeviceRef::parse("local/cpu").unwrap(),
         DeviceRef::parse("cpu:0").unwrap(),
     );
-    assert_eq!(
-        cmd(&["qwen.gguf", "--on=auto"]).backend,
-        Some(Backend::Auto)
-    );
     assert_eq!(cmd(&["qwen.gguf"]).backend, None);
+    let specific_gpu = cmd(&["qwen.gguf", "-d", "gpu:0"]);
+    assert_eq!(specific_gpu.backend, None);
+    assert!(matches!(
+        Devices::parse(specific_gpu.devices.as_ref().unwrap()),
+        Ok(Devices::Ordered(_))
+    ));
+    assert_eq!(
+        cmd(&["qwen.gguf", "--backend", "cuda", "-d", "gpu:0"]).backend,
+        Some(Backend::Cuda)
+    );
     assert!(
         parse(
-            &words(&["qwen.gguf", "--on", "cpu", "--backend", "cuda"]),
+            &words(&["qwen.gguf", "--backend", "cuda", "-d", "cpu"]),
             None
         )
         .is_err()
     );
-    assert!(parse(&words(&["qwen.gguf", "--on", "gpu"]), None).is_err());
-    assert!(parse(&words(&["qwen.gguf", "--on", "cuda", "-d", "cpu"]), None).is_err());
-    assert!(parse(&words(&["qwen.gguf", "--on", "cpu", "--on", "cpu"]), None).is_ok());
+    assert!(parse(&words(&["qwen.gguf", "--on", "cpu"]), None).is_err());
 }
 
 #[test]
