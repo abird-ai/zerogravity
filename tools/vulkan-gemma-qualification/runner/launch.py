@@ -15,7 +15,7 @@ from sigterm_cancellation import SigtermCancellation
 
 PYTHON = '/nix/store/jy00n3jp5xj8s40n1fbldmkcr5n7avxc-python3-3.13.15/bin/python3'
 OWNER_SHA = '53ee4270b6ba663b1acd4d64476fa7903937533510b45147a3b8c1038b16344d'
-BASE = 'resume-all-five-vulkan-20261025-1'
+BASE = 'resume-all-five-vulkan-20261025-2'
 MODES = ('build', 'resident', 'resident-unknown', 'resident-row-unknown',
          'session-known', 'session-release-fault', 'snapshot-known',
          'snapshot-release-fault', 'partial-native',

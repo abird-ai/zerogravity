@@ -4,8 +4,8 @@
   "unit": "<absolute fresh run directory>",
   "payload": "<unit>/payload",
   "archive": "<unit>/payload.tar",
-  "remote_base": "/home/pvl/.cache/abird/zerogravity/qualification/resume-all-five-gemma4-20261025-1",
-  "remote_output_root": "/home/pvl/.local/state/abird/zerogravity/resume-all-five-gemma4-20261025-1",
+  "remote_base": "/home/pvl/.cache/abird/zerogravity/qualification/resume-all-five-gemma4-20261025-2",
+  "remote_output_root": "/home/pvl/.local/state/abird/zerogravity/resume-all-five-gemma4-20261025-2",
   "commands": [
     {
       "name": "prepare-complete-root-assembly",

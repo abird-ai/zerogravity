@@ -45,7 +45,7 @@ LOADER = LIBC + '/ld-linux-x86-64.so.2'
 LIBRARY_PATH = ':'.join((LIBC, VULKAN, HIP + '/lib'))
 OWNER_SHA = '53ee4270b6ba663b1acd4d64476fa7903937533510b45147a3b8c1038b16344d'
 GIB = 1024 ** 3
-BASE = 'resume-all-five-vulkan-20261025-1'
+BASE = 'resume-all-five-vulkan-20261025-2'
 MODES = ('resident', 'resident-unknown', 'resident-row-unknown',
          'session-known', 'session-release-fault',
          'snapshot-known', 'snapshot-release-fault', 'partial-native',

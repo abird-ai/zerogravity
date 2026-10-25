@@ -6,7 +6,7 @@ from pins import parsed, pin, relative, require
 
 MANIFEST = 'assembled-source.json'
 CONTROL = 'control.json'
-BASE = 'resume-all-five-hip-20261025-1'
+BASE = 'resume-all-five-hip-20261025-2'
 REQUIRED_CONFIG = ('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml',
                    'scripts/check.sh', 'scripts/native-gpu.py', 'README.md')
 # Match runner/bootstrap.extract_archive: 64 MiB/member, 192 MiB complete source.

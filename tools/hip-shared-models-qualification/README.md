@@ -1,6 +1,6 @@
 # H — shared Qwen35/Gemma4 HIP source qualification
 
-Fresh `resume-all-five-hip-20261025-1` controller unit for the current complete
+Fresh `resume-all-five-hip-20261025-2` controller unit for the current complete
 ROOT-assembled all-five source closure. It is a source/template namespace only:
 `prepare.py` emits the source payload, archive, control and source closure into an
 explicit fresh run directory. No generated payload, archive, control, closure,

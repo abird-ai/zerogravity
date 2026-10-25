@@ -13,7 +13,7 @@ sys.dont_write_bytecode = True
 from pins import alarm_until, check_closure, parsed, pin, require
 from sigterm_cancellation import SigtermCancellation
 
-BASE = 'resume-all-five-vulkan-20261025-1'
+BASE = 'resume-all-five-vulkan-20261025-2'
 WORK_SECONDS = 120
 FINAL_SECONDS = 60
 RECEIPT_SECONDS = 5

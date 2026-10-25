@@ -11,7 +11,7 @@ import tarfile
 import time
 import tomllib
 
-BASE = 'resume-all-five-gemma4-20261025-1'
+BASE = 'resume-all-five-gemma4-20261025-2'
 OWNER_SHA = '53ee4270b6ba663b1acd4d64476fa7903937533510b45147a3b8c1038b16344d'
 CANCEL_SHA = '00d1efc11b302527ae8baa24ee76af0333c02946872db84f5f1d5e9d5e1ba128'
 # Immutable historical provenance only; never a current file list or authority.

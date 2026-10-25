@@ -19,7 +19,7 @@ sys.dont_write_bytecode = True
 from pins import Held, alarm_until, check_closure, pin, require, stamp
 from sigterm_cancellation import SigtermCancellation
 
-BASE = 'resume-all-five-vulkan-20261025-1'
+BASE = 'resume-all-five-vulkan-20261025-2'
 OWNER = Path(__file__).resolve().parent.parent
 MANIFEST_LIMIT = 16 * 1024**2
 SOURCE_MEMBER_LIMIT = 64 * 1024**2
@@ -454,7 +454,7 @@ def main():
     require(not args.base.is_relative_to(args.payload)
             and not args.output.is_relative_to(args.payload),
             'fresh output/base outside the source root')
-    args.output.mkdir(mode=0o700)
+    args.output.mkdir(parents=True, mode=0o700)
     summary = {'status': 'UNQUALIFIED', 'errors': [], 'steps': []}
     summary['local_work_seconds'] = WORK_SECONDS
     summary['local_finalization_seconds'] = FINAL_SECONDS

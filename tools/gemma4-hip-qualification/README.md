@@ -44,13 +44,13 @@ python3 -B tools/gemma4-hip-qualification/prepare.py \
 
 python3 -B "$RUN/payload/runner/admin.py" \
   --payload "$RUN/payload" --archive "$RUN/payload.tar" \
-  --remote-base /home/pvl/.cache/abird/zerogravity/qualification/resume-all-five-gemma4-20261025-1 \
+  --remote-base /home/pvl/.cache/abird/zerogravity/qualification/resume-all-five-gemma4-20261025-2 \
   --output "$RUN/admin-1"
 
 python3 -B "$RUN/payload/runner/launch.py" \
   --payload "$RUN/payload" \
-  --remote-base /home/pvl/.cache/abird/zerogravity/qualification/resume-all-five-gemma4-20261025-1 \
-  --remote-output /home/pvl/.local/state/abird/zerogravity/resume-all-five-gemma4-20261025-1/build-1 \
+  --remote-base /home/pvl/.cache/abird/zerogravity/qualification/resume-all-five-gemma4-20261025-2 \
+  --remote-output /home/pvl/.local/state/abird/zerogravity/resume-all-five-gemma4-20261025-2/build-1 \
   --output "$RUN/build-1" --mode build
 
 python3 -B tools/gemma4-hip-qualification/bind-build.py \
@@ -115,7 +115,7 @@ settled pattern; no new framework or helper module:
   and the current remote BASE join with the original wire fields are unchanged.
 - Source20/21 manifests and pins are immutable **historical provenance only**.
   They are never the current file list, replacement authority or a fixed count.
-- Current remote BASE `resume-all-five-gemma4-20261025-1` and the original wire
+- Current remote BASE `resume-all-five-gemma4-20261025-2` and the original wire
   labels stay intentionally unchanged. The old `gemma4-ple-source21-20261024-1`
   name remains historical provenance only. Existing remote prepared state at that
   historical base was not inspected: ROOT must resolve any old prepared-closure
@@ -151,6 +151,6 @@ Still pending, owned by ROOT's single guarded executor:
   qualification.
 - Resolution of any old prepared-closure collision at the historical
   `gemma4-ple-source21-20261024-1` base before any reuse. Successor execution
-  uses the fresh `resume-all-five-gemma4-20261025-1` namespace.
+  uses the fresh `resume-all-five-gemma4-20261025-2` namespace.
 
 No GPU, model, network, cache or remote state was touched by these CPU controls.

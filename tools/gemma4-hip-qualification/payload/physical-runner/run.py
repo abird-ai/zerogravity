@@ -34,7 +34,7 @@ LIBRARY_PATH = ':'.join((LIBC, '/nix/store/vjdqsn0bz2llabfqa746zfgk4kmswba5-vulk
 OWNER_SHA = '53ee4270b6ba663b1acd4d64476fa7903937533510b45147a3b8c1038b16344d'
 GIB = 1024**3
 MIB = 1024**2
-BASE = 'resume-all-five-gemma4-20261025-1'
+BASE = 'resume-all-five-gemma4-20261025-2'
 ARTIFACTS = {
     'gemma4_hip_matrix': 'release/examples/gemma4_hip_matrix',
     'gemma4_hip_final_owner': 'release/examples/gemma4_hip_final_owner',

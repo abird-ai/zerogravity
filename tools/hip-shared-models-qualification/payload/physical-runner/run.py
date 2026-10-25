@@ -36,11 +36,12 @@ LIMITS = {'build': (3600,3600,32*GIB), 'known-qwen-reload':(7200,7200,64*GIB),
           'source-page-query-unknown':(1800,1800,64*GIB),
           'source-page-wait-unknown':(1800,1800,64*GIB),
           'source-page-destroy-unknown':(1800,1800,64*GIB)}
-FINAL_BASE = 'resume-all-five-hip-20261025-1'
+FINAL_BASE = 'resume-all-five-hip-20261025-2'
 # Never written by this unit; only asserted to be distinct from its own base.
 PREDECESSOR_BASES = ('hip-multiset-source12-20261024-4', 'hip-multiset-controls-v5-20261024-1',
                      'hip-multiset-controls-v6-20261024-1', 'hip-multiset-controls-v7-20261024-1',
-                     'hip-multiset-source20-20261024-2')
+                     'hip-multiset-source20-20261024-2',
+                     'resume-all-five-hip-20261025-1')
 assert FINAL_BASE not in PREDECESSOR_BASES
 CARGO_ARGV = [CARGO+'/cargo', 'build', '-p', 'zerogravity', '--example', 'hip_shared_models',
               '--release', '--features', 'qwen27b-hip-qualification,gemma4-hip-qualification,zerogravity-gpu/hardware-abort-probe',
