@@ -9,9 +9,6 @@ Contracts: [P00–P23 roadmap](../IMPLEMENTATION_ROADMAP.md),
 
 ## Uncommitted
 
-- [ ] Retire the five active lane units' trees and branches; their source is
-  integrated (`8f01635`..`68e13a8`, full CPU gate rc0 25Oct). Keep three donor
-  drafts until their work is recovered; preserve lane-unique evidence first.
 - [ ] Owner23Oct: bring Vulkan execution to CUDA feature/correctness parity;
   use ROCm/HIP for AMD including pvl-x2 gfx1151. Vulkan source catalogue
   landed in `19ff059`; V10 physical cases and real registry/offline build/
@@ -68,6 +65,13 @@ Contracts: [P00–P23 roadmap](../IMPLEMENTATION_ROADMAP.md),
   ordinary reference files at their existing paths. Cumulative30 local branches
   removed; six registered trees/heads remain (main plus five active candidates).
   Main HEAD/index/rootREADME and all13 other resolved refs unchanged.
+
+- [x] Retire the five active lane units' trees and branches; their source is
+  integrated (`8f01635`..`68e13a8`, full CPU gate rc0 25Oct). Keep three donor
+  drafts until their work is recovered; preserve lane-unique evidence first.
+  DONE25Oct: trees and branches retired; unique evidence preserved under
+  zerogravity-worktrees/.preserved-lanes-20261025/ (SHA256SUMS + RECORDS.md);
+  OLD-OIDs recorded; donor/reference trees kept.
 
 
 

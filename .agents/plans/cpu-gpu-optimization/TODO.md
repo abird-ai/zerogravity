@@ -37,15 +37,6 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
   First.8B timing overlaps audit scan; one repeat105.7331vs96.6544tok/s has an
   extra sampler and remains diagnostic, not quiet/best evidence. No third rerun.
   [Scope review](../../runs/resume-all-parallel-source-supervision-sol-20261024/C16_FINAL_SCOPE_REVIEW.json).
-- [ ] Retire the five active Qwen27B/Gemma4/HIP/Vulkan/queue lane trees at the
-  reviewed checkpoint; their units are integrated (`8f01635`..`68e13a8`).
-  Before more CUDA timing,
-  implement shared prepared B4 certification/state transport per
-  [Astra design](../../runs/cpu-gpu-optimization-astra-c16-shared-gap-20261024/DESIGN.md).
-  Keep existing arithmetic, caps and independent roots. Up to22.13% fewer
-  software dispatches is a theoretical ceiling, not a wall speedup claim.
-  C32/C64 follow genuine shared queue acceptance and fresh matched C16.
-
 Historical source13 checkpoint (superseded by source20 above): ROOT adopted models118 plus source-bound2B
 cachedB4 as one guarded173path unit (172effective/46new), fresh mtimes and
 README/lock preserved. Full1629/selected492 source equality verified MAIN/ISO/
@@ -680,6 +671,17 @@ Implementation remains behind the ordered parity/baseline prerequisites above.
   present, all eight proposed QUAL/STATE leaves absent, AMD PCI/render/KFD
   paths observed; original process/group/EOF closure healthy. No payload hashes,
   driver launch, physical-fit or inference qualification follows from metadata.
+- [x] Retire the five active Qwen27B/Gemma4/HIP/Vulkan/queue lane trees at the
+  reviewed checkpoint; their units are integrated (`8f01635`..`68e13a8`).
+  Before more CUDA timing,
+  implement shared prepared B4 certification/state transport per
+  [Astra design](../../runs/cpu-gpu-optimization-astra-c16-shared-gap-20261024/DESIGN.md).
+  Keep existing arithmetic, caps and independent roots. Up to22.13% fewer
+  software dispatches is a theoretical ceiling, not a wall speedup claim.
+  C32/C64 follow genuine shared queue acceptance and fresh matched C16.
+  DONE25Oct: five trees and branches retired after evidence preservation
+  (zerogravity-worktrees/.preserved-lanes-20261025/); OLD-OIDs recorded there.
+
 
 
 ### `3e89f1919993` — shared resident execution and current finite checkpoints
