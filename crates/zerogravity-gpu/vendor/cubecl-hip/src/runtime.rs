@@ -53,6 +53,31 @@ use std::{
 
 static AMD_WMMA: OnceLock<Option<AmdWmma>> = OnceLock::new();
 
+/// Ask the driver for the selected adapter's PCI identity without creating a
+/// client, context or queue. The ordinal is the same one `Device::Hip` uses.
+pub fn preflight_physical(device: AmdDevice) -> Option<PhysicalDevice> {
+    let mut bus_id = [0u8; 32];
+    // SAFETY: the driver writes a bounded C string and its length is passed.
+    let status = unsafe {
+        cubecl_hip_sys::hipDeviceGetPCIBusId(
+            bus_id.as_mut_ptr().cast(),
+            bus_id.len() as c_int,
+            device.index as c_int,
+        )
+    };
+    checked("hipDeviceGetPCIBusId", status).ok()?;
+    let pci_address = CStr::from_bytes_until_nul(&bus_id)
+        .ok()?
+        .to_str()
+        .ok()?
+        .parse()
+        .ok()?;
+    let mut physical = PhysicalDevice::default();
+    physical.pci_address = Some(pci_address);
+    physical.vendor = Some(PciVendor::Amd);
+    Some(physical)
+}
+
 /// The values that control how a HIP Runtime will perform its calculations.
 #[derive(Default)]
 pub struct RuntimeOptions {

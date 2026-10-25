@@ -111,7 +111,7 @@ pub(crate) fn correct_fma(sum: f64, error: f64, candidate: f32) -> f32 {
         feature = "gemma-bf16-qualification",
         feature = "qwen-source-qualification"
     ),
-    feature = "hip",
+    any(feature = "hip", feature = "vulkan"),
     target_os = "linux"
 ))]
 pub(crate) mod qualification;

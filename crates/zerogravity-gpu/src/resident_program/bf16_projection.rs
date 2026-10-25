@@ -25,6 +25,7 @@ pub(crate) struct PreparedBf16Projection {
     matrix: VerifiedMatrix,
     storage: Bf16ProjectionStorage,
     rows_per_launch: usize,
+    launch_row_cap: Option<usize>,
     resident: OnceLock<Arc<ResidentMatrix>>,
 }
 pub(crate) struct Bf16ProjectionBindings<'a> {
@@ -39,11 +40,28 @@ pub(crate) struct Bf16ProjectionBindings<'a> {
     pub zero: &'a ResidentLease,
 }
 impl PreparedBf16Projection {
+    #[cfg(any(feature = "qwen-source-qualification", test))]
     pub(crate) fn new(
         source: VerifiedTensorSource,
         matrix: VerifiedMatrix,
         storage: Bf16ProjectionStorage,
     ) -> Result<Arc<Self>> {
+        Self::new_with_launch_row_cap(source, matrix, storage, None)
+    }
+    /// An immutable selected launch-row bound. Vulkan chooses at most 8192 rows
+    /// per dispatch because the grid is a device limit, not an allocation
+    /// limit; the head 262144-row embedding is therefore 32 exact full-K tiles.
+    pub(crate) fn new_with_launch_row_cap(
+        source: VerifiedTensorSource,
+        matrix: VerifiedMatrix,
+        storage: Bf16ProjectionStorage,
+        launch_row_cap: Option<usize>,
+    ) -> Result<Arc<Self>> {
+        if launch_row_cap.is_some_and(|n| n == 0 || n > 8192) {
+            return Err(Error::Limit(
+                "BF16 selected launch-row bound exceeds 8192".into(),
+            ));
+        }
         let authenticated = Bf16MatrixSource::new(source.clone(), matrix)?;
         let matrix = authenticated.matrix().clone();
         let rows = matrix.rows();
@@ -70,11 +88,14 @@ impl PreparedBf16Projection {
             Bf16ProjectionStorage::Streamed => source_page::PAGE_BYTES / row_bytes,
             Bf16ProjectionStorage::Resident => rows,
         };
+        let rows_per_launch =
+            launch_row_cap.map_or(rows_per_launch, |cap| rows_per_launch.min(cap).min(rows));
         Ok(Arc::new(Self {
             source,
             matrix,
             storage,
             rows_per_launch,
+            launch_row_cap,
             resident: OnceLock::new(),
         }))
     }
@@ -100,12 +121,31 @@ impl PreparedBf16Projection {
     }
     pub(crate) fn require_capability(&self, service: &Arc<ResidentService>) -> Result<()> {
         service.ensure_usable()?;
+        // Every Vulkan view starts at a row multiple of the source row extent,
+        // so a non-multiple row cannot use the effective offset alignment.
+        let row_bytes = self
+            .matrix
+            .columns()
+            .checked_mul(2)
+            .and_then(|bytes| u64::try_from(bytes).ok())
+            .ok_or_else(|| Error::Limit("BF16 prepared launch-row byte extent".into()))?;
+        let launch_rows = u64::try_from(self.max_launch_rows())
+            .map_err(|_| Error::Limit("BF16 prepared launch-row width".into()))?;
+        let launch_bytes = launch_rows
+            .checked_mul(row_bytes)
+            .ok_or_else(|| Error::Limit("BF16 prepared launch-row binding extent".into()))?;
+        let alignment = service.client().properties().memory.alignment;
+        if self.launch_row_cap.is_some() && (alignment == 0 || !row_bytes.is_multiple_of(alignment))
+        {
+            return Err(Error::Unsupported(
+                "BF16 selected Vulkan launch-row binding alignment".into(),
+            ));
+        }
         if service.source_identity() != self.source.source_identity()
             || self.max_launch_rows()
                 > service.client().properties().hardware.max_cube_count.0 as usize
             || self.storage == Bf16ProjectionStorage::Resident
-                && (self.matrix.byte_range()?.end - self.matrix.byte_range()?.start)
-                    > service.client().properties().memory.max_page_size
+                && launch_bytes > service.client().properties().memory.max_page_size
         {
             return Err(Error::Unsupported(
                 "BF16 prepared source/full-row grid/binding capability".into(),

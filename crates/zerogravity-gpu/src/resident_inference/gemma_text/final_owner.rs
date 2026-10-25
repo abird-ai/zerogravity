@@ -1,6 +1,6 @@
 //! Final committed Output packet; observers retain only Weak/value IDs.
 use super::*;
-use crate::backend::hip_native_policy::{FinalNativeObservation, FinalNativeProbe};
+use crate::backend::final_native::{FinalNativeObservation, FinalNativeProbe};
 use crate::resident_leases::{ResidentService, final_owner_probe};
 use std::sync::Weak;
 
@@ -28,6 +28,8 @@ pub struct GemmaFinalOwnerReceipt {
     pub native_modules_after: usize,
     pub original_service_retained_after: bool,
     pub quarantined_handles_after: usize,
+    /// Root frontier of the actual committed feedback packet.
+    pub source_frontier: usize,
 }
 struct Boundary {
     wrapper: &'static str,
@@ -40,6 +42,7 @@ struct Boundary {
     inventory: FinalNativeObservation,
     candidate_owners: usize,
     model_owners: usize,
+    frontier: usize,
 }
 impl Boundary {
     fn before(
@@ -103,6 +106,8 @@ impl Boundary {
         // The final wrapper has exactly one feedback field. The original probe
         // requires exact total Arc count1, rejecting ANY surviving Ready/token.
         let reader = final_owner_probe::arm(selected, 1, fault)?;
+        let frontier = usize::try_from(binding.frontier())
+            .map_err(|_| Error::Limit("Gemma final root frontier overflow".into()))?;
         Ok(Self {
             wrapper,
             fault,
@@ -114,6 +119,7 @@ impl Boundary {
             inventory,
             candidate_owners,
             model_owners,
+            frontier,
         })
     }
     fn after(self) -> Result<GemmaFinalOwnerReceipt> {
@@ -174,6 +180,7 @@ impl Boundary {
             native_modules_after: native.modules,
             original_service_retained_after: service_retained,
             quarantined_handles_after: quarantined,
+            source_frontier: self.frontier,
         })
     }
 }

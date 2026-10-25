@@ -30,7 +30,7 @@ impl NativeCacheBudget {
             ForeignProviderCharge::reserve(self.clone(), bytes)
         })
     }
-    #[cfg(all(feature = "qualification", feature = "hip"))]
+    #[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
     pub(crate) fn require_usable(&self) -> Result<()> {
         self.arbiter.with_unfenced(&self.physical, || {
             self.admission.ensure_open()?;
@@ -41,13 +41,13 @@ impl NativeCacheBudget {
             }
         })
     }
-    #[cfg(all(feature = "qualification", feature = "hip"))]
+    #[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
     pub(crate) fn fence_unknown(self: &Arc<Self>) {
         self.foreign_release_failed();
     }
     #[cfg(any(
         feature = "vllm-cuda-qualification",
-        all(feature = "qualification", feature = "hip")
+        all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
     ))]
     pub(crate) fn require_service(&self, service: &Arc<ResidentService>) -> Result<()> {
         if !Arc::ptr_eq(&self.admission, &service.admission)
@@ -84,7 +84,7 @@ impl ForeignProviderOwner for NativeCacheBudget {
 }
 #[cfg(any(
     feature = "vllm-cuda-qualification",
-    all(feature = "qualification", feature = "hip")
+    all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
 ))]
 impl ResidentService {
     pub(crate) fn native_cache_budget(self: &Arc<Self>) -> Result<Arc<NativeCacheBudget>> {

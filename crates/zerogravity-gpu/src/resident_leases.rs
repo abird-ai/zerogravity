@@ -33,7 +33,7 @@ mod foreign_provider;
 #[cfg(any(
     test,
     feature = "vllm-cuda-qualification",
-    all(feature = "qualification", feature = "hip")
+    all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
 ))]
 mod native_cache;
 #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
@@ -41,7 +41,7 @@ pub(crate) use enqueue::{
     ENQUEUE_PROFILE_ADMISSION_BYTES, EnqueuePlacement, enqueue_profile_enabled,
     profile_head_enqueue,
 };
-#[cfg(all(feature = "qualification", feature = "hip"))]
+#[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
 pub(crate) use native_cache::NativeCacheBudget;
 #[cfg(all(
     any(
@@ -67,7 +67,8 @@ pub(crate) mod source_page;
 mod source_upload;
 #[cfg(any(
     feature = "vllm-cuda-qualification",
-    all(feature = "qualification", feature = "hip")
+    feature = "qwen-source-qualification",
+    all(feature = "gemma-bf16-qualification", feature = "hip")
 ))]
 pub(crate) use foreign_provider::ForeignProviderCharge;
 use foreign_provider::ResidentLedger;
@@ -87,8 +88,8 @@ pub(crate) use source_upload::{
 };
 
 static NEXT_SERVICE_GENERATION: AtomicU64 = AtomicU64::new(1);
-#[cfg(all(feature = "qualification", feature = "hip"))]
-static HIP_NATIVE_CONTEXT_CONSTRUCTED: AtomicBool = AtomicBool::new(false);
+#[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
+static NATIVE_CONTEXT_CONSTRUCTED: AtomicBool = AtomicBool::new(false);
 
 fn access_positions(
     ids: impl IntoIterator<Item = BufferLeaseId>,

@@ -1,6 +1,6 @@
 //! Candidate binding around the original ResidentModel/SessionAuthority owners.
 use super::*;
-#[cfg(all(feature = "qualification", feature = "hip"))]
+#[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
 use crate::resident_program::gemma_text::{
     GemmaTextBody, GemmaTextHostOwners, GemmaTextNativeOwners, GemmaTextStorage,
 };
@@ -10,11 +10,89 @@ use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_core::accelerator::program::Bf16TextCall;
 use zerogravity_model_gemma4::text::OriginalGemma4Text;
 
-#[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+#[cfg(all(
+    feature = "gemma-bf16-qualification",
+    any(feature = "hip", feature = "vulkan"),
+    feature = "hardware-abort-probe"
+))]
 mod final_owner;
-#[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+#[cfg(all(
+    feature = "gemma-bf16-qualification",
+    any(feature = "hip", feature = "vulkan"),
+    feature = "hardware-abort-probe"
+))]
 pub use final_owner::GemmaFinalOwnerReceipt;
+#[cfg(all(
+    feature = "gemma-bf16-qualification",
+    feature = "vulkan",
+    feature = "hip",
+    feature = "hardware-abort-probe",
+    target_os = "linux"
+))]
+mod same_pci;
+#[cfg(all(
+    feature = "gemma-bf16-qualification",
+    feature = "vulkan",
+    feature = "hip",
+    feature = "hardware-abort-probe",
+    target_os = "linux"
+))]
+pub use same_pci::{GemmaVulkanNativeRetention, LearnedSamePciPeerReceipt};
 
+#[cfg(all(
+    feature = "qualification",
+    target_os = "linux",
+    any(
+        feature = "hip",
+        all(feature = "vulkan", feature = "gemma-bf16-qualification")
+    )
+))]
+enum GemmaNativeTarget {
+    #[cfg(feature = "hip")]
+    Hip(crate::backend::hip_native_policy::HipColdOwner),
+    #[cfg(all(
+        feature = "vulkan",
+        feature = "gemma-bf16-qualification",
+        target_os = "linux"
+    ))]
+    Vulkan(Device),
+}
+#[cfg(all(
+    feature = "qualification",
+    target_os = "linux",
+    any(
+        feature = "hip",
+        all(feature = "vulkan", feature = "gemma-bf16-qualification")
+    )
+))]
+impl GemmaNativeTarget {
+    fn device(&self) -> Device {
+        match self {
+            #[cfg(feature = "hip")]
+            Self::Hip(owner) => owner.device(),
+            #[cfg(all(
+                feature = "vulkan",
+                feature = "gemma-bf16-qualification",
+                target_os = "linux"
+            ))]
+            Self::Vulkan(device) => device.clone(),
+        }
+    }
+    fn host_bytes(&self) -> u64 {
+        match self {
+            #[cfg(feature = "hip")]
+            Self::Hip(owner) => owner.host_bytes(),
+            #[cfg(all(
+                feature = "vulkan",
+                feature = "gemma-bf16-qualification",
+                target_os = "linux"
+            ))]
+            Self::Vulkan(_) => {
+                crate::backend::vulkan_native_policy::SINGLE_SOURCE_QUALIFICATION_HOST_BYTES
+            }
+        }
+    }
+}
 pub(super) struct GemmaOptions<'a, 'o> {
     pub source: &'a VerifiedTensorSource,
     pub observer: &'a std::cell::RefCell<Option<&'o mut dyn GemmaTextObserver>>,
@@ -87,7 +165,7 @@ impl Gemma4Bf16GpuCandidate {
     /// lifecycle/close guard bound to this exact `source`. That owner must remain
     /// live through every prepared native, initialization, flight and quarantine
     /// owner. An arbitrary Arc is not proof. Use the validated safe facade.
-    #[cfg(all(feature = "qualification", feature = "hip"))]
+    #[cfg(all(feature = "qualification", feature = "hip", target_os = "linux"))]
     pub async unsafe fn load_hip_qualification(
         device: Device,
         source: Arc<OriginalGemma4Text>,
@@ -97,8 +175,10 @@ impl Gemma4Bf16GpuCandidate {
         storage: GemmaTextStorage,
         cancelled: Option<&AtomicBool>,
     ) -> Result<(Arc<Self>, Gemma4Bf16GpuSession)> {
-        Self::load_hip_owner(
-            crate::backend::hip_native_policy::HipColdOwner::Single(device),
+        Self::load_owner(
+            GemmaNativeTarget::Hip(crate::backend::hip_native_policy::HipColdOwner::Single(
+                device,
+            )),
             source,
             source_owner,
             ids,
@@ -113,7 +193,8 @@ impl Gemma4Bf16GpuCandidate {
     #[cfg(all(
         feature = "qualification",
         feature = "hip",
-        feature = "qwen-source-qualification"
+        feature = "qwen-source-qualification",
+        target_os = "linux"
     ))]
     pub async unsafe fn load_shared_hip_qualification(
         shared: Arc<crate::backend::hip_native_policy::SharedHipNative>,
@@ -123,8 +204,10 @@ impl Gemma4Bf16GpuCandidate {
         host: GemmaTextHostOwners,
         cancelled: Option<&AtomicBool>,
     ) -> Result<(Arc<Self>, Gemma4Bf16GpuSession)> {
-        Self::load_hip_owner(
-            crate::backend::hip_native_policy::HipColdOwner::Shared(shared),
+        Self::load_owner(
+            GemmaNativeTarget::Hip(crate::backend::hip_native_policy::HipColdOwner::Shared(
+                shared,
+            )),
             source,
             source_owner,
             ids,
@@ -134,10 +217,20 @@ impl Gemma4Bf16GpuCandidate {
         )
         .await
     }
-    #[cfg(all(feature = "qualification", feature = "hip"))]
+    /// One source->inventory->initialization->ResidentModel->six-root->session
+    /// body for both original native backends. Vulkan chooses only the target;
+    /// it never inherits a HIP fingerprint or policy.
+    #[cfg(all(
+        feature = "qualification",
+        target_os = "linux",
+        any(
+            feature = "hip",
+            all(feature = "vulkan", feature = "gemma-bf16-qualification")
+        )
+    ))]
     #[allow(clippy::too_many_arguments)]
-    async fn load_hip_owner(
-        owner: crate::backend::hip_native_policy::HipColdOwner,
+    async fn load_owner(
+        target: GemmaNativeTarget,
         source: Arc<OriginalGemma4Text>,
         source_owner: Arc<dyn std::any::Any + Send + Sync>,
         ids: Arc<[u32]>,
@@ -145,34 +238,63 @@ impl Gemma4Bf16GpuCandidate {
         storage: GemmaTextStorage,
         cancelled: Option<&AtomicBool>,
     ) -> Result<(Arc<Self>, Gemma4Bf16GpuSession)> {
-        let device = owner.device();
+        let device = target.device();
         check_cancel(cancelled)?;
         validate_provider(&device)?;
         source
             .source()
-            .require_process_host_workspace(owner.host_bytes())?;
+            .require_process_host_workspace(target.host_bytes())?;
         let authority = SessionAuthority::new(source.source_identity())?;
         let attempt = authority.begin_advance(ids.len() as u64)?;
         let recorded = Arc::new(source.record_bf16_text_call(attempt, ids.clone(), cancelled)?);
         // Checked complete source-shaped peak precedes context/client/compiler or H2D.
-        let cold_inventory = match &owner {
-            crate::backend::hip_native_policy::HipColdOwner::Single(_) => {
+        let cold_inventory = match &target {
+            #[cfg(feature = "hip")]
+            GemmaNativeTarget::Hip(crate::backend::hip_native_policy::HipColdOwner::Single(_)) => {
                 GemmaTextBody::cold_resource_inventory(&recorded, &host, storage)?
             }
-            #[cfg(feature = "qwen-source-qualification")]
-            crate::backend::hip_native_policy::HipColdOwner::Shared(_) => {
+            #[cfg(all(feature = "hip", feature = "qwen-source-qualification"))]
+            GemmaNativeTarget::Hip(crate::backend::hip_native_policy::HipColdOwner::Shared(_)) => {
                 GemmaTextBody::scoped_cold_resource_inventory(&recorded, &host)?
+            }
+            #[cfg(all(
+                feature = "vulkan",
+                feature = "gemma-bf16-qualification",
+                target_os = "linux"
+            ))]
+            GemmaNativeTarget::Vulkan(_) => {
+                GemmaTextBody::cold_resource_inventory(&recorded, &host, storage)?
             }
         };
         eprintln!("GEMMA_COLD_RESOURCE_INVENTORY storage={storage:?} {cold_inventory:?}");
-        let (service, native) = GemmaTextNativeOwners::prepare_hip_qualification(
-            owner,
-            &recorded,
-            source_owner.clone(),
-            storage,
-            &cold_inventory,
-        )
-        .await?;
+        let (service, native) = match target {
+            #[cfg(feature = "hip")]
+            GemmaNativeTarget::Hip(owner) => {
+                GemmaTextNativeOwners::prepare_hip_qualification(
+                    owner,
+                    &recorded,
+                    source_owner.clone(),
+                    storage,
+                    &cold_inventory,
+                )
+                .await?
+            }
+            #[cfg(all(
+                feature = "vulkan",
+                feature = "gemma-bf16-qualification",
+                target_os = "linux"
+            ))]
+            GemmaNativeTarget::Vulkan(device) => {
+                GemmaTextNativeOwners::prepare_vulkan_qualification(
+                    device,
+                    &recorded,
+                    source_owner.clone(),
+                    storage,
+                    &cold_inventory,
+                )
+                .await?
+            }
+        };
         let inventory = GemmaTextBody::resource_inventory(&recorded, &host, &native, storage)?;
         if inventory.device_with_six_roots_bytes > service.capacity() {
             return Err(Error::Limit(
@@ -275,12 +397,81 @@ impl Gemma4Bf16GpuCandidate {
         };
         Ok((loaded, session))
     }
-    #[cfg(all(feature = "qualification", feature = "hip"))]
+    #[cfg(all(
+        feature = "qualification",
+        target_os = "linux",
+        any(
+            feature = "hip",
+            all(feature = "vulkan", feature = "gemma-bf16-qualification")
+        )
+    ))]
     pub fn qualification_host_bytes() -> u64 {
-        crate::backend::hip_native_policy::GEMMA_QUALIFICATION_HOST_BYTES
+        #[cfg(feature = "hip")]
+        {
+            return crate::backend::hip_native_policy::SINGLE_SOURCE_QUALIFICATION_HOST_BYTES;
+        }
+        #[cfg(not(feature = "hip"))]
+        {
+            crate::backend::vulkan_native_policy::SINGLE_SOURCE_QUALIFICATION_HOST_BYTES
+        }
     }
     pub async fn traffic(&self) -> Result<crate::resident_program::gemma_text::GemmaTextTraffic> {
         self.model.workspace.lock().await.program.gemma_traffic()
+    }
+    /// Exact x2 Vulkan/SPIR-V qualification only. The source owner obligations
+    /// and single-stream process rule are the same as the original HIP route.
+    ///
+    /// # Safety
+    /// `source_owner` must retain the authentic managed SnapshotLease and source
+    /// lifecycle/close guard bound to this exact `source`.
+    #[cfg(all(
+        feature = "gemma-bf16-qualification",
+        feature = "vulkan",
+        target_os = "linux"
+    ))]
+    pub async unsafe fn load_vulkan_qualification(
+        device: Device,
+        source: Arc<OriginalGemma4Text>,
+        source_owner: Arc<dyn std::any::Any + Send + Sync>,
+        ids: Arc<[u32]>,
+        host: GemmaTextHostOwners,
+        storage: GemmaTextStorage,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<(Arc<Self>, Gemma4Bf16GpuSession)> {
+        let storage = match storage {
+            GemmaTextStorage::ResidentProjections => GemmaTextStorage::ResidentProjectionsVulkan,
+            GemmaTextStorage::Streamed => {
+                return Err(Error::Unsupported(
+                    "Gemma Vulkan shared/multi-set reload requires resident projections".into(),
+                ));
+            }
+            GemmaTextStorage::ResidentProjectionsVulkan => storage,
+        };
+        Self::load_owner(
+            GemmaNativeTarget::Vulkan(device),
+            source,
+            source_owner,
+            ids,
+            host,
+            storage,
+            cancelled,
+        )
+        .await
+    }
+    #[cfg(all(
+        feature = "gemma-bf16-qualification",
+        feature = "vulkan",
+        target_os = "linux"
+    ))]
+    pub fn vulkan_native_identity(
+        &self,
+    ) -> Result<crate::backend::vulkan_native_policy::VulkanSourceSetIdentity> {
+        self.model
+            .workspace
+            .try_lock()
+            .ok_or_else(|| Error::State("Gemma workspace busy during native observation".into()))?
+            .program
+            .gemma_vulkan_native_identity(&self.model.service)
     }
     #[cfg(all(feature = "hip", feature = "qwen-source-qualification"))]
     pub fn native_identity(

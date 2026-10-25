@@ -19,9 +19,11 @@ model-gemma4-text-reference = ["model-gemma4", "zerogravity-model-gemma4/text-re
 model-gemma4-cpu-candidate = ["cpu", "cache", "model-gemma4", "zerogravity-model-gemma4/text-tokenizer"]
 # Explicit full-source HIP diagnostic; no default inference eligibility.
 gemma4-hip-qualification = ["model-gemma4-cpu-candidate", "hip", "zerogravity-gpu/gemma-bf16-qualification"]
+gemma4-vulkan-qualification = ["model-gemma4-cpu-candidate", "vulkan", "zerogravity-gpu/gemma-bf16-qualification"]
+gemma4-vulkan-peer-qualification = ["gemma4-vulkan-qualification", "hip", "zerogravity-gpu/hardware-abort-probe"]
 qwen27b-hip-qualification = ["cpu", "cache", "model-qwen35", "hip", "zerogravity-gpu/qwen-source-qualification"]
 text = ["model-qwen35", "zerogravity-model-qwen35/text"]
-cache = ["zerogravity-artifacts/cache"]
+cache = ["zerogravity-artifacts/cache", "zerogravity-cpu?/cache"]
 acquisition = ["cache", "zerogravity-artifacts/acquisition"]
 diagnostic-acquisition = ["acquisition", "zerogravity-artifacts/diagnostic-acquisition"]
 vulkan = ["dep:zerogravity-gpu", "zerogravity-gpu/vulkan"]
@@ -89,6 +91,21 @@ required-features = ["model-gemma4-cpu-candidate"]
 name = "gemma4_hip_matrix"
 path = "examples/gemma4_hip_matrix.rs"
 required-features = ["gemma4-hip-qualification"]
+
+[[example]]
+name = "gemma4_vulkan_matrix"
+path = "examples/gemma4_vulkan_matrix.rs"
+required-features = ["gemma4-vulkan-qualification"]
+
+[[example]]
+name = "gemma4_vulkan_same_pci_peer"
+path = "examples/gemma4_vulkan_same_pci_peer.rs"
+required-features = ["gemma4-vulkan-peer-qualification"]
+
+[[example]]
+name = "gemma4_vulkan_final_owner"
+path = "examples/gemma4_vulkan_final_owner.rs"
+required-features = ["gemma4-vulkan-qualification", "zerogravity-gpu/hardware-abort-probe"]
 
 [[example]]
 name = "qwen27b_hip_matrix"

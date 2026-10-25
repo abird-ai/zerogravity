@@ -16,6 +16,7 @@ exclude = [
     "crates/zerogravity-gpu/vendor/cubecl-cpp",
     "crates/zerogravity-gpu/vendor/cubecl-cuda",
     "crates/zerogravity-gpu/vendor/cubecl-hip",
+    "crates/zerogravity-gpu/vendor/cubecl-wgpu",
 ]
 resolver = "3"
 
@@ -27,6 +28,7 @@ cubecl-ir = { path = "crates/zerogravity-gpu/vendor/cubecl-ir" }
 cubecl-cpp = { path = "crates/zerogravity-gpu/vendor/cubecl-cpp" }
 cubecl-cuda = { path = "crates/zerogravity-gpu/vendor/cubecl-cuda" }
 cubecl-hip = { path = "crates/zerogravity-gpu/vendor/cubecl-hip" }
+cubecl-wgpu = { path = "crates/zerogravity-gpu/vendor/cubecl-wgpu" }
 
 [profile.release]
 lto = "thin"

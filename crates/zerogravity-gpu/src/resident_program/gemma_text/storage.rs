@@ -9,6 +9,20 @@ pub enum GemmaTextStorage {
     Streamed,
     /// All repeated projections, including the exact tied embedding/head operand.
     ResidentProjections,
+    /// Same resident exact source selection, but each Vulkan dispatch is bounded
+    /// by the actual grid limit (at most 8192 selected rows).
+    ResidentProjectionsVulkan,
+}
+impl GemmaTextStorage {
+    pub(super) fn is_resident(self) -> bool {
+        matches!(
+            self,
+            Self::ResidentProjections | Self::ResidentProjectionsVulkan
+        )
+    }
+    pub(super) fn is_vulkan(self) -> bool {
+        self == Self::ResidentProjectionsVulkan
+    }
 }
 pub(super) struct Selection {
     pub matrices: Vec<VerifiedMatrix>,
@@ -50,7 +64,7 @@ impl Selection {
                 }
             }
         }
-        if storage == GemmaTextStorage::ResidentProjections {
+        if storage.is_resident() {
             // Only an EXACT authenticated binding may reuse projection residency.
             // The family established the tie; equal shapes/names are insufficient.
             for (index, node) in recorded.plan().nodes().iter().enumerate() {
@@ -60,7 +74,7 @@ impl Selection {
                 }
             }
         }
-        let cached_row_bytes = if storage == GemmaTextStorage::ResidentProjections {
+        let cached_row_bytes = if storage.is_resident() {
             recorded
                 .plan()
                 .nodes()
@@ -95,13 +109,17 @@ impl Selection {
         let operands = matrices
             .iter()
             .map(|m| {
-                PreparedBf16Projection::new(
+                PreparedBf16Projection::new_with_launch_row_cap(
                     source.clone(),
                     m.clone(),
                     match storage {
                         GemmaTextStorage::Streamed => Bf16ProjectionStorage::Streamed,
-                        GemmaTextStorage::ResidentProjections => Bf16ProjectionStorage::Resident,
+                        GemmaTextStorage::ResidentProjections
+                        | GemmaTextStorage::ResidentProjectionsVulkan => {
+                            Bf16ProjectionStorage::Resident
+                        }
                     },
+                    storage.is_vulkan().then_some(8192),
                 )
             })
             .collect::<Result<Vec<_>>>()?;
@@ -116,18 +134,37 @@ impl Selection {
         )?;
         let largest_binding = matrices
             .iter()
-            .map(|m| m.tensor().byte_len as usize)
+            .map(|m| {
+                if storage.is_vulkan() {
+                    m.rows()
+                        .min(8192)
+                        .checked_mul(m.columns())
+                        .and_then(|n| n.checked_mul(2))
+                        .ok_or_else(|| Error::Limit("Vulkan projection tile extent".into()))
+                } else {
+                    Ok(m.tensor().byte_len as usize)
+                }
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
             .max()
             .unwrap_or(0);
         let projection_rows = match storage {
             GemmaTextStorage::Streamed => 2048,
-            GemmaTextStorage::ResidentProjections => matrices
-                .iter()
-                .map(VerifiedMatrix::rows)
-                .max()
-                .ok_or_else(|| {
-                    Error::State("Gemma resident selection has no projections".into())
-                })?,
+            GemmaTextStorage::ResidentProjections | GemmaTextStorage::ResidentProjectionsVulkan => {
+                let rows = matrices
+                    .iter()
+                    .map(VerifiedMatrix::rows)
+                    .max()
+                    .ok_or_else(|| {
+                        Error::State("Gemma resident selection has no projections".into())
+                    })?;
+                if storage.is_vulkan() {
+                    rows.min(8192)
+                } else {
+                    rows
+                }
+            }
         };
         if projection_rows == 0
             || projection_rows > 262144

@@ -3,11 +3,14 @@ use super::*;
 impl GemmaTextNativeOwners {
     pub(in crate::resident_program::gemma_text) fn profile(
         storage: GemmaTextStorage,
-    ) -> crate::backend::hip_native_policy::GemmaColdProfile {
+    ) -> Result<crate::backend::hip_native_policy::GemmaColdProfile> {
         use crate::backend::hip_native_policy::GemmaColdProfile;
         match storage {
-            GemmaTextStorage::Streamed => GemmaColdProfile::Streamed16,
-            GemmaTextStorage::ResidentProjections => GemmaColdProfile::Resident20,
+            GemmaTextStorage::Streamed => Ok(GemmaColdProfile::Streamed16),
+            GemmaTextStorage::ResidentProjections => Ok(GemmaColdProfile::Resident20),
+            GemmaTextStorage::ResidentProjectionsVulkan => Err(Error::Unsupported(
+                "HIP cold policy cannot adopt a Vulkan launch-row selection".into(),
+            )),
         }
     }
 
@@ -24,7 +27,7 @@ impl GemmaTextNativeOwners {
                     device,
                     recorded.source().source(),
                     source_owner,
-                    Self::profile(storage),
+                    Self::profile(storage)?,
                 )?
             }
             #[cfg(feature = "qwen-source-qualification")]
@@ -45,10 +48,16 @@ impl GemmaTextNativeOwners {
             service: service.client().service_id(),
             host_bytes: prepared.host_bytes(),
             device_bytes: prepared.device_bytes(),
-            context_host_bytes: Self::profile(storage).cost().context_host,
-            context_device_bytes: Self::profile(storage).cost().context_device,
+            context_host_bytes: Self::profile(storage)?.cost().context_host,
+            context_device_bytes: Self::profile(storage)?.cost().context_device,
             _owners: vec![prepared.clone()],
             hip: Some(prepared),
+            #[cfg(all(
+                feature = "gemma-bf16-qualification",
+                feature = "vulkan",
+                target_os = "linux"
+            ))]
+            vulkan: None,
         });
         Ok((service, owners))
     }

@@ -11,12 +11,13 @@ pub(crate) struct NativeContextBudget {
     bytes: u64,
 }
 impl NativeContextBudget {
-    #[cfg(any(test, feature = "hip"))]
+    #[cfg(any(test, feature = "hip", feature = "vulkan"))]
     pub(super) fn partition(
         original: &mut GlobalResourceLease,
         physical: PhysicalDeviceKey,
         service: ServiceId,
         fence: Arc<AtomicBool>,
+        backend: &'static str,
         policy: Arc<str>,
         bytes: u64,
     ) -> Result<Arc<Self>> {
@@ -24,7 +25,7 @@ impl NativeContextBudget {
             return Err(Error::State("native context policy/fence".into()));
         }
         let child = original.partition_reserved(
-            ResourceOwner::new("backend/hip", &format!("context/{policy}"))?,
+            ResourceOwner::new(backend, &format!("context/{policy}"))?,
             &[AllocationRequest {
                 kind: AllocationClass::ProviderEnvelope,
                 bytes,
@@ -39,7 +40,7 @@ impl NativeContextBudget {
             bytes,
         }))
     }
-    #[cfg(all(feature = "qualification", feature = "hip"))]
+    #[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
     pub(crate) fn require(
         &self,
         physical: &PhysicalDeviceKey,
@@ -61,7 +62,7 @@ impl NativeContextBudget {
     pub(crate) fn bytes(&self) -> u64 {
         self.bytes
     }
-    #[cfg(all(feature = "qualification", feature = "hip"))]
+    #[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
     pub(crate) fn fence_unknown(&self) {
         self.envelope.fence_unknown();
         self.fence.store(true, Ordering::Release);
@@ -102,6 +103,7 @@ mod tests {
             key.clone(),
             ServiceId::of::<()>(DeviceId::new(0, 0)),
             Arc::new(AtomicBool::new(false)),
+            "backend/hip",
             Arc::from("host-fixture"),
             32,
         )

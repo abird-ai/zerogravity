@@ -1,10 +1,12 @@
 # CubeCL native target and compiler dependency support
 
-These four crates are the published CubeCL 0.11.0 sources with narrow local
-capability-table and optional compiler dependency patches. Cargo can use them through
-ordinary `[patch.crates-io]` entries. The global Cargo registry is unchanged.
+These five crates are the published CubeCL 0.11.0 sources. Four carry narrow
+local capability-table and optional compiler dependency patches; `cubecl-wgpu`
+additionally carries the local sealed Vulkan/SPIR-V native-catalogue
+implementation described below. Cargo can use them through ordinary
+`[patch.crates-io]` entries. The global Cargo registry is unchanged.
 
-All four packages identify upstream commit
+All five packages identify upstream commit
 `52c5086d3c5e73e56b3ee4cb711bdda495a360f0` in their published
 `.cargo_vcs_info.json`, from <https://github.com/tracel-ai/cubecl>:
 
@@ -14,6 +16,7 @@ All four packages identify upstream commit
 | `cubecl-cpp` 0.11.0 | `crates/cubecl-cpp` | `1983253e91442adcff6a72ac30d9003fe44446dd0bca7d7bb41d39834da99e0b` |
 | `cubecl-cuda` 0.11.0 | `crates/cubecl-cuda` | `0f10277e142dfaf556d24875cf5b347322892b7d7a0650f85b7590bae95e6a86` |
 | `cubecl-hip` 0.11.0 | `crates/cubecl-hip` | `d3cf95f0ff97999ab1bbbad2f91aacd81c73642dc0be41bc46dce41fcdd5b424` |
+| `cubecl-wgpu` 0.11.0 | `crates/cubecl-wgpu` | `2b8c6f4eb4af39ed3bbb3e4126373d8132cbe018e669172d8d4f1c775b828497` |
 | `cubecl` 0.11.0 (license texts only) | `crates/cubecl` | `b423fd1c34d0f034556c4e662c815e814ffd48b5b85f05341b04dcc14276b73f` |
 
 The archives already existed in the local Cargo cache. Their SHA-256 digests were
@@ -22,8 +25,11 @@ source. No source or SDK was downloaded. The published `.crate` digests in the
 table above pin the exact upstream archives, and the files edited by Zerogravity
 are listed below.
 
-Each package retains its complete `src/`, published normalized `Cargo.toml` and
-`README.md`. The CPP and CUDA packages also retain their required `build.rs`. Upstream lock
+`cubecl-wgpu` retains its complete `build.rs`, published normalized
+`Cargo.toml` and `README.md`; its manifest matches the registry copy byte for
+byte. Its `src/` is the published tree plus the local catalogue changes listed
+below. Each other package retains its complete `src/`, published normalized
+`Cargo.toml` and `README.md`. The CPP and CUDA packages also retain their required `build.rs`. Upstream lock
 files, the unused original manifests, registry markers and VCS metadata are
 omitted. The IR archive's `LICENSE-APACHE` and `LICENSE-MIT` contain literal
 `../../LICENSE-APACHE` and `../../LICENSE-MIT` path placeholders. Those upstream
@@ -33,6 +39,24 @@ bytes remain unchanged in that package. This directory contains the actual
 same upstream commit. The CPP archive declares the same `MIT OR Apache-2.0`
 license but does not package license texts. The shared license provenance is
 recorded in this directory. Existing source notices are preserved.
+
+The local `cubecl-wgpu` changes are:
+
+- `src/compute/native.rs`: add the sealed source-owned catalogue, its bounded
+  inventory, admission trait, actual-environment observation and
+  drain-before-retirement set. Unknown preparation or retirement retains the
+  partial/full modules and owners to the process boundary.
+- `src/compute/server.rs`: preserve each compiled SPIR-V source and its actual
+  binding/IO descriptors beside the pipeline; add the cold catalogue
+  preparation, live check, environment and retirement paths.
+- `src/backend/base.rs`: carry the actual cached SPIR-V source into the same
+  pipeline entry.
+- `src/backend/vulkan.rs`: keep the effective storage-buffer/binding bound when
+  it is smaller than the device-local heap, instead of replacing it with the
+  heap size.
+- `src/runtime.rs`: capture that effective bound before backend substitution and
+  pass it to the server.
+- `src/compute/mod.rs`: expose the sealed catalogue internally.
 
 The three AMD capability-table changes are:
 
@@ -50,7 +74,8 @@ instructions. Unknown targets retain the existing refusal behavior. Source
 vendoring and capability tests alone do not qualify native kernel execution or
 numerical parity; the repository's physical qualification remains required.
 
-The CUDA and HIP packages each change exactly four upstream files:
+The CUDA package changes exactly four upstream files. HIP changes the same
+runtime/compiler/context files plus its crate export:
 
 - `Cargo.toml`: make `cubecl-llvm` optional behind `llvm`, retain that feature in
   upstream defaults, and use weak `pliron-dump` forwarding so diagnostics do not
@@ -63,6 +88,11 @@ The CUDA and HIP packages each change exactly four upstream files:
 - `src/compute/context.rs`: gate LLVM-only artifact loading and preserve the
   existing CPP cache namespace. Focused host tests cover compiler selection and
   CPP cache keys.
+- `src/lib.rs` (HIP only): re-export the actual driver PCI preflight beside
+  `HipRuntime`, so the selected ordinal-0 adapter identity is available before
+  any client/context/queue effect. `src/runtime.rs` adds
+  `preflight_physical(AmdDevice)` using `hipDeviceGetPCIBusId`; it does not
+  enumerate another adapter, create a client or compile a kernel.
 
 Zerogravity selects CubeCL with global defaults disabled, explicitly preserves
 its existing std/stdlib and core/server features, and selects `cuda-cpp` or
@@ -81,10 +111,10 @@ consumer compatibility and physical qualification are separate acceptance gates.
 
 ## Workspace and external consumer patch contract
 
-The production workspace excludes these four vendor packages from its member
+The production workspace excludes these five vendor packages from its member
 list and selects them through its root patch table and one effective lockfile.
 Cargo does not propagate workspace patches through library dependencies. An
-external unpublished path consumer must declare the same four verified patches
+external unpublished path consumer must declare the same five verified patches
 in its own root manifest, in addition to its selected GPU dependency:
 
 ```toml
@@ -96,6 +126,7 @@ cubecl-ir = { path = "/path/to/zerogravity/crates/zerogravity-gpu/vendor/cubecl-
 cubecl-cpp = { path = "/path/to/zerogravity/crates/zerogravity-gpu/vendor/cubecl-cpp" }
 cubecl-cuda = { path = "/path/to/zerogravity/crates/zerogravity-gpu/vendor/cubecl-cuda" }
 cubecl-hip = { path = "/path/to/zerogravity/crates/zerogravity-gpu/vendor/cubecl-hip" }
+cubecl-wgpu = { path = "/path/to/zerogravity/crates/zerogravity-gpu/vendor/cubecl-wgpu" }
 ```
 
 Choose `hip` or `vulkan` as appropriate. The bounded external link qualification

@@ -212,7 +212,7 @@ impl ResidentLedger {
     #[cfg(any(
         test,
         feature = "vllm-cuda-qualification",
-        all(feature = "qualification", feature = "hip")
+        all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
     ))]
     fn reserve_foreign_for(&mut self, model: u64, bytes: usize) -> Result<()> {
         self.check_request(model, bytes)?;
@@ -223,7 +223,7 @@ impl ResidentLedger {
     #[cfg(any(
         test,
         feature = "vllm-cuda-qualification",
-        all(feature = "qualification", feature = "hip")
+        all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
     ))]
     fn release_foreign_for(&mut self, model: u64, bytes: usize) -> Result<()> {
         let used = self
@@ -251,7 +251,7 @@ impl Deref for ResidentLedger {
 #[cfg(any(
     test,
     feature = "vllm-cuda-qualification",
-    all(feature = "qualification", feature = "hip")
+    all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
 ))]
 pub(crate) trait ForeignProviderOwner: Send + Sync {
     fn foreign_ledger(&self) -> &Mutex<ResidentLedger>;
@@ -263,7 +263,7 @@ pub(crate) trait ForeignProviderOwner: Send + Sync {
 #[cfg(any(
     test,
     feature = "vllm-cuda-qualification",
-    all(feature = "qualification", feature = "hip")
+    all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
 ))]
 pub(crate) struct ForeignProviderCharge<
     O: ForeignProviderOwner = super::native_cache::NativeCacheBudget,
@@ -274,7 +274,7 @@ pub(crate) struct ForeignProviderCharge<
 #[cfg(any(
     test,
     feature = "vllm-cuda-qualification",
-    all(feature = "qualification", feature = "hip")
+    all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
 ))]
 impl<O: ForeignProviderOwner> ForeignProviderCharge<O> {
     pub(super) fn reserve(owner: Arc<O>, bytes: usize) -> Result<Arc<Self>> {
@@ -298,7 +298,7 @@ impl ForeignProviderCharge<super::native_cache::NativeCacheBudget> {
 #[cfg(any(
     test,
     feature = "vllm-cuda-qualification",
-    all(feature = "qualification", feature = "hip")
+    all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
 ))]
 impl<O: ForeignProviderOwner> Drop for ForeignProviderCharge<O> {
     fn drop(&mut self) {

@@ -1,4 +1,5 @@
 //! Opt-in physical source/one-state/completion probe; no learned-model permit.
+#![allow(dead_code)]
 use super::*;
 #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
 #[path = "portable_qualification/shared_physical.rs"]
@@ -28,10 +29,10 @@ use zerogravity_core::{
 
 const WIDTH: usize = 32;
 const VOCAB: usize = 32;
-const HOST: u64 = 2 * 1024 * 1024;
+const HOST: u64 = 16 * 1024 * 1024 * 1024;
 const SOURCE_HOST: u64 = 1024 * 1024;
 const PROVIDER: usize = 64 * 1024 * 1024;
-const DEVICE: u64 = 256 * 1024 * 1024;
+const DEVICE: u64 = 64 * 1024 * 1024 * 1024;
 const PCI: &str = "0000:c6:00.0";
 
 struct Source {
@@ -616,7 +617,37 @@ async fn unknown(backend: Backend) -> Result<()> {
 }
 
 #[cfg(all(feature = "hip", feature = "vulkan", feature = "hardware-abort-probe"))]
-async fn cross_provider_unknown(submitter: Backend, peer: Backend) -> Result<()> {
+#[derive(Clone, Copy, Debug)]
+pub struct SamePciPeerReceipt {
+    pub same_process: bool,
+    pub same_pci: bool,
+    pub same_arbiter: bool,
+    pub contexts_pre_admitted: bool,
+    pub submitted_fault: bool,
+    pub opposite_api_refused: bool,
+    pub original_source_retained: bool,
+    pub original_native_retained: bool,
+    pub original_handle_retained: bool,
+    pub physical_fenced: bool,
+    pub physical_limit: u64,
+    pub physical_reserved: u64,
+    pub direction: &'static str,
+}
+
+/// Finite same-process peer: both providers are admitted before the submitter
+/// launches a real unknown, then peer work must refuse against the shared fence.
+#[cfg(all(feature = "hip", feature = "vulkan", feature = "hardware-abort-probe"))]
+pub fn same_pci_peer(direction: &str) -> Result<SamePciPeerReceipt> {
+    let (submitter, peer) = match direction {
+        "vulkan-then-hip" => (Backend::Vulkan, Backend::Hip),
+        "hip-then-vulkan" => (Backend::Hip, Backend::Vulkan),
+        _ => return Err(Error::Malformed("same-PCI peer direction".into())),
+    };
+    futures_lite::future::block_on(cross_provider_unknown(submitter, peer))
+}
+
+#[cfg(all(feature = "hip", feature = "vulkan", feature = "hardware-abort-probe"))]
+async fn cross_provider_unknown(submitter: Backend, peer: Backend) -> Result<SamePciPeerReceipt> {
     let (source, model) = load(submitter).await?;
     let (peer_source, peer_model) = load(peer).await?;
     let physical = model.service.physical_key();
@@ -729,11 +760,11 @@ async fn cross_provider_unknown(submitter: Backend, peer: Backend) -> Result<()>
         .ok_or_else(|| Error::State("portable peer quarantine absent".into()))?;
     // Original LeaseInner Drop conservatively quarantines its OWN handles
     // after the shared physical fence, even for the completed peer service.
-    if crate::physical_quarantine::quarantined_handles_for(service.client())?
-        < quarantine + retained
-        || crate::physical_quarantine::quarantined_handles_for(peer_service.client())?
-            <= peer_quarantine
-    {
+    let native_retained = crate::physical_quarantine::quarantined_handles_for(service.client())?
+        >= quarantine + retained
+        && crate::physical_quarantine::quarantined_handles_for(peer_service.client())?
+            > peer_quarantine;
+    if !native_retained {
         return Err(Error::State(
             "portable each-provider actual handle retention".into(),
         ));
@@ -755,7 +786,26 @@ async fn cross_provider_unknown(submitter: Backend, peer: Backend) -> Result<()>
         "PORTABLE_CROSS_PROVIDER_PASS submitter={submitter:?} peer={peer:?} pci={PCI} physical_cap={DEVICE} shared_queue=true actual_retained_handles={retained} peer_work_refused=true new_service_refused=true roots_unchanged=true both_provider_envelopes_retained={} host_source_retained=true learned=false bf16_hf=false perf=false; process retirement required",
         2 * PROVIDER
     );
-    Ok(())
+    Ok(SamePciPeerReceipt {
+        same_process: true,
+        same_pci: true,
+        same_arbiter: true,
+        contexts_pre_admitted: true,
+        submitted_fault: retained > 0,
+        opposite_api_refused: true,
+        original_source_retained: source_weak.strong_count() > 0
+            && peer_source_weak.strong_count() > 0,
+        original_native_retained: native_retained,
+        original_handle_retained: native_retained,
+        physical_fenced: budget.fenced,
+        physical_limit: budget.limit,
+        physical_reserved: budget.reserved,
+        direction: match (submitter, peer) {
+            (Backend::Vulkan, Backend::Hip) => "vulkan-then-hip",
+            (Backend::Hip, Backend::Vulkan) => "hip-then-vulkan",
+            _ => return Err(Error::State("same-PCI peer direction join".into())),
+        },
+    })
 }
 
 #[test]
@@ -836,6 +886,7 @@ fn physical_vulkan_pvl_x2_unknown() -> Result<()> {
 #[ignore = "pvl-x2 actual HIP submission fences same-PCI Vulkan; ONE fresh owned process"]
 fn physical_hip_fences_vulkan_pvl_x2() -> Result<()> {
     futures_lite::future::block_on(cross_provider_unknown(Backend::Hip, Backend::Vulkan))
+        .map(|_| ())
 }
 
 #[cfg(all(feature = "hip", feature = "vulkan", feature = "hardware-abort-probe"))]
@@ -843,4 +894,5 @@ fn physical_hip_fences_vulkan_pvl_x2() -> Result<()> {
 #[ignore = "pvl-x2 actual Vulkan submission fences same-PCI HIP; ONE fresh owned process"]
 fn physical_vulkan_fences_hip_pvl_x2() -> Result<()> {
     futures_lite::future::block_on(cross_provider_unknown(Backend::Vulkan, Backend::Hip))
+        .map(|_| ())
 }

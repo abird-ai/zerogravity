@@ -27,7 +27,7 @@ use zerogravity_core::resource_arbiter::{
 
 /// PCI across CUDA/HIP/Vulkan on Linux, LUID on Windows and registry ID on
 /// macOS. Reject anonymous/software devices and ambiguous adapter names.
-fn physical_key(physical: Option<&PhysicalDevice>) -> Result<PhysicalDeviceKey> {
+pub(crate) fn physical_key(physical: Option<&PhysicalDevice>) -> Result<PhysicalDeviceKey> {
     let identity = physical.ok_or_else(|| {
         Error::State("CubeCL backend has no reported physical device identity".into())
     })?;
@@ -60,9 +60,12 @@ fn checked_caps(reported: Option<u64>, operator: u64, provider: u64) -> Result<(
     Ok(())
 }
 
-#[cfg(any(test, all(feature = "qualification", feature = "hip")))]
+#[cfg(any(
+    test,
+    all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
+))]
 mod native_context;
-#[cfg(all(feature = "qualification", feature = "hip"))]
+#[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
 pub(crate) use native_context::NativeContextBudget;
 
 #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
@@ -85,7 +88,126 @@ pub struct PhysicalServiceBudget {
     fence_flag: Arc<AtomicBool>,
 }
 
+/// Physical device admission taken before any context or device exists. It
+/// carries the one original lease into `PhysicalServiceBudget` without a
+/// second charge.
+#[cfg(all(
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    ),
+    feature = "vulkan",
+    target_os = "linux"
+))]
+pub(crate) struct PreAdmittedDevice {
+    key: PhysicalDeviceKey,
+    reported_max: u64,
+    lease: Arc<GlobalResourceLease>,
+    fence_flag: Arc<AtomicBool>,
+}
+
+#[cfg(all(
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    ),
+    feature = "vulkan",
+    target_os = "linux"
+))]
+impl PreAdmittedDevice {
+    /// Bootstrap uncertainty: retain the charge and fence the card instead of
+    /// crediting an admission whose context may have been constructed.
+    pub(crate) fn fence_and_retain(&self) {
+        self.lease.fence_unknown();
+        self.fence_flag.store(true, Ordering::Release);
+        std::mem::forget(self.lease.clone());
+        std::mem::forget(self.fence_flag.clone());
+    }
+}
+
 impl PhysicalServiceBudget {
+    /// Admit the selected adapter's actual identity/device-local capacity
+    /// before `device.client()` or native context construction.
+    #[cfg(all(
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification"
+        ),
+        feature = "vulkan",
+        target_os = "linux"
+    ))]
+    pub(crate) fn preadmit_device(
+        key: PhysicalDeviceKey,
+        reported_max: u64,
+        operator_device_cap: u64,
+        provider_cap: u64,
+        owner: ResourceOwner,
+    ) -> Result<PreAdmittedDevice> {
+        checked_caps(Some(reported_max), operator_device_cap, provider_cap)?;
+        let arbiter = ResourceArbiter::process_shared();
+        arbiter.register_matching(key.clone(), operator_device_cap)?;
+        let lease = arbiter.admit(
+            &key,
+            owner,
+            &[AllocationRequest {
+                kind: AllocationClass::ProviderEnvelope,
+                bytes: provider_cap,
+            }],
+        )?;
+        Ok(PreAdmittedDevice {
+            key,
+            reported_max,
+            lease: Arc::new(lease),
+            fence_flag: Arc::new(AtomicBool::new(false)),
+        })
+    }
+
+    /// Attach the already-admitted physical charge to the actual client. The
+    /// client's selected identity and capacity must match the preflight; no
+    /// second arbiter admission is made.
+    #[cfg(all(
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification"
+        ),
+        feature = "vulkan",
+        target_os = "linux"
+    ))]
+    pub(crate) fn attach_preadmitted(
+        client: &Client,
+        pre: &PreAdmittedDevice,
+        operator_device_cap: u64,
+        provider_cap: u64,
+        owner: ResourceOwner,
+    ) -> Result<Self> {
+        let properties = client.properties();
+        let key = physical_key(properties.identity.physical.as_ref())?;
+        if key != pre.key
+            || properties
+                .memory
+                .max_memory()
+                .is_none_or(|n| n < pre.reported_max || n < operator_device_cap)
+            || operator_device_cap == 0
+            || provider_cap == 0
+            || provider_cap > operator_device_cap
+        {
+            return Err(Error::State(
+                "pre-admitted physical identity/capacity changed before context".into(),
+            ));
+        }
+        crate::physical_quarantine::ensure_service_safe(client)?;
+        Ok(Self {
+            client: client.clone(),
+            key: pre.key.clone(),
+            total_limit: operator_device_cap,
+            provider_cap,
+            owner_model: owner.model.clone(),
+            model_closed: None,
+            lease: pre.lease.clone(),
+            fence_flag: pre.fence_flag.clone(),
+        })
+    }
+
     pub fn attach(
         client: &Client,
         operator_device_cap: u64,
@@ -182,9 +304,10 @@ impl PhysicalServiceBudget {
     /// Partition while exclusively owned, before local admission/submission.
     /// The backend policy supplies this fixed context allowance; model adapters
     /// cannot construct the persistent proof or grow it during execution.
-    #[cfg(all(feature = "qualification", feature = "hip"))]
+    #[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
     pub(crate) fn partition_native_context(
         &mut self,
+        backend: &'static str,
         policy: Arc<str>,
         bytes: u64,
     ) -> Result<Arc<NativeContextBudget>> {
@@ -201,6 +324,7 @@ impl PhysicalServiceBudget {
             self.key.clone(),
             self.client.service_id(),
             self.fence_flag.clone(),
+            backend,
             policy,
             bytes,
         )?;

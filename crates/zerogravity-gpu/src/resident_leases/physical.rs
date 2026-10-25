@@ -44,7 +44,7 @@ pub struct ResidentPhysical {
     pub(super) next_allocation: AtomicU64,
     pub(super) poisoned: AtomicBool,
     generation: u64,
-    #[cfg(all(feature = "qualification", feature = "hip"))]
+    #[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
     _native_context: Option<Arc<crate::physical_service::NativeContextBudget>>,
 }
 /// Detached quota/source owner: no Client, physical owner, service or cache Arc.
@@ -185,6 +185,45 @@ impl ResidentPhysical {
             provider_cap as u64,
             ResourceOwner::new("backend/physical", "original-owner")?,
         )?;
+        Self::from_budget(device, client, provider_cap, provider, budget)
+    }
+    #[cfg(all(
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification"
+        ),
+        feature = "vulkan",
+        target_os = "linux"
+    ))]
+    fn from_client_preadmitted(
+        device: Device,
+        provider_cap: usize,
+        device_cap: u64,
+        pre: &crate::physical_service::PreAdmittedDevice,
+    ) -> Result<Self> {
+        crate::backend::validate_provider(&device)?;
+        let provider = crate::backend::Provider::selected(&device)?;
+        let client = device.client();
+        crate::physical_quarantine::ensure_service_safe(&client)?;
+        let budget = PhysicalServiceBudget::attach_preadmitted(
+            &client,
+            pre,
+            device_cap,
+            provider_cap as u64,
+            ResourceOwner::new("backend/physical", "original-owner")?,
+        )?;
+        Self::from_budget(device, client, provider_cap, provider, budget)
+    }
+    fn from_budget(
+        device: Device,
+        client: Client,
+        provider_cap: usize,
+        provider: crate::backend::Provider,
+        budget: PhysicalServiceBudget,
+    ) -> Result<Self> {
+        let _ = provider_cap;
+        #[cfg(not(feature = "qualification"))]
+        let _ = provider;
         let generation = issue(&NEXT_SERVICE_GENERATION)?;
         let queue = queue_for(budget.physical_key())?;
         Ok(Self {
@@ -204,7 +243,7 @@ impl ResidentPhysical {
             next_allocation: AtomicU64::new(1),
             poisoned: AtomicBool::new(false),
             generation,
-            #[cfg(all(feature = "qualification", feature = "hip"))]
+            #[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
             _native_context: None,
         })
     }
@@ -320,7 +359,7 @@ impl ResidentPhysical {
     pub fn generation(&self) -> u64 {
         self.generation
     }
-    #[cfg(all(feature = "qualification", feature = "hip"))]
+    #[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
     pub(crate) fn new_with_native_context(
         device: Device,
         provider_cap: usize,
@@ -328,26 +367,110 @@ impl ResidentPhysical {
         policy: Arc<str>,
         context_bytes: u64,
     ) -> Result<(Arc<Self>, Arc<crate::physical_service::NativeContextBudget>)> {
-        if !matches!(device, Device::Hip(_))
-            || policy.is_empty()
-            || context_bytes == 0
-            || context_bytes >= provider_cap as u64
-        {
+        let backend = match &device {
+            Device::Hip(_) => "backend/hip",
+            #[cfg(feature = "vulkan")]
+            Device::Wgpu(wgpu) if wgpu.backend == cubecl::device::WgpuBackend::Vulkan => {
+                "backend/vulkan"
+            }
+            _ => {
+                return Err(Error::Limit(
+                    "native physical context policy/device/extent before bootstrap".into(),
+                ));
+            }
+        };
+        if policy.is_empty() || context_bytes == 0 || context_bytes >= provider_cap as u64 {
             return Err(Error::Limit(
                 "native physical context policy/device/extent before bootstrap".into(),
             ));
         }
         crate::backend::validate_provider(&device)?;
-        HIP_NATIVE_CONTEXT_CONSTRUCTED
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .map_err(|_| {
-                Error::State("HIP physical context constructor already attempted".into())
-            })?;
-        let mut physical = Self::new(device, provider_cap, device_cap)?;
+        #[cfg(all(
+            any(
+                feature = "gemma-bf16-qualification",
+                feature = "qwen-source-qualification"
+            ),
+            feature = "vulkan",
+            target_os = "linux"
+        ))]
+        let mut physical = {
+            if matches!(&device, Device::Wgpu(wgpu) if wgpu.backend == cubecl::device::WgpuBackend::Vulkan)
+            {
+                let preflight =
+                    crate::backend::vulkan_native_policy::preflight_vulkan_device(&device)?;
+                let pre = PhysicalServiceBudget::preadmit_device(
+                    preflight.key().clone(),
+                    preflight.max_memory(),
+                    device_cap,
+                    provider_cap as u64,
+                    ResourceOwner::new("backend/physical", "original-owner")?,
+                )?;
+                NATIVE_CONTEXT_CONSTRUCTED
+                    .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                    .map_err(|_| {
+                        let name = if backend == "backend/hip" {
+                            "HIP"
+                        } else {
+                            "Vulkan"
+                        };
+                        Error::State(format!(
+                            "{name} physical context constructor already attempted"
+                        ))
+                    })?;
+                if let Err(error) = preflight.register(&device) {
+                    pre.fence_and_retain();
+                    return Err(error);
+                }
+                match Self::from_client_preadmitted(device, provider_cap, device_cap, &pre) {
+                    Ok(physical) => Arc::new(physical),
+                    Err(error) => {
+                        pre.fence_and_retain();
+                        return Err(error);
+                    }
+                }
+            } else {
+                NATIVE_CONTEXT_CONSTRUCTED
+                    .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                    .map_err(|_| {
+                        let name = if backend == "backend/hip" {
+                            "HIP"
+                        } else {
+                            "Vulkan"
+                        };
+                        Error::State(format!(
+                            "{name} physical context constructor already attempted"
+                        ))
+                    })?;
+                Self::new(device, provider_cap, device_cap)?
+            }
+        };
+        #[cfg(not(all(
+            any(
+                feature = "gemma-bf16-qualification",
+                feature = "qwen-source-qualification"
+            ),
+            feature = "vulkan",
+            target_os = "linux"
+        )))]
+        let mut physical = {
+            NATIVE_CONTEXT_CONSTRUCTED
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .map_err(|_| {
+                    let name = if backend == "backend/hip" {
+                        "HIP"
+                    } else {
+                        "Vulkan"
+                    };
+                    Error::State(format!(
+                        "{name} physical context constructor already attempted"
+                    ))
+                })?;
+            Self::new(device, provider_cap, device_cap)?
+        };
         let original = Arc::get_mut(&mut physical).expect("cold physical owner exclusive");
         let context = original
             .budget
-            .partition_native_context(policy, context_bytes)?;
+            .partition_native_context(backend, policy, context_bytes)?;
         original._native_context = Some(context.clone());
         let remainder = usize::try_from(original.budget.provider_capacity())
             .map_err(|_| Error::Limit("physical context remainder overflow".into()))?;

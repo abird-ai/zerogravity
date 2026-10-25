@@ -62,6 +62,12 @@ impl Gemma4CpuContext {
     pub fn new_hip_qualification() -> Result<Arc<Self>> {
         Self::with_host_limit(zerogravity_gpu::Gemma4Bf16GpuCandidate::qualification_host_bytes())
     }
+    /// Same fixed 16GiB host envelope and source-bound qualification context,
+    /// selected for the original Vulkan/SPIR-V route. This is not a HIP retag.
+    #[cfg(feature = "gemma4-vulkan-qualification")]
+    pub fn new_vulkan_qualification() -> Result<Arc<Self>> {
+        Self::with_host_limit(zerogravity_gpu::Gemma4Bf16GpuCandidate::qualification_host_bytes())
+    }
     #[cfg(all(
         feature = "gemma4-hip-qualification",
         feature = "qwen27b-hip-qualification"
@@ -135,9 +141,15 @@ pub struct Gemma4CpuLoaded {
     life: Mutex<Life>,
     active: AtomicBool,
 }
-#[cfg(feature = "gemma4-hip-qualification")]
+#[cfg(any(
+    feature = "gemma4-hip-qualification",
+    feature = "gemma4-vulkan-qualification"
+))]
 struct GpuSourceRetention(Arc<Gemma4CpuLoaded>);
-#[cfg(feature = "gemma4-hip-qualification")]
+#[cfg(any(
+    feature = "gemma4-hip-qualification",
+    feature = "gemma4-vulkan-qualification"
+))]
 impl Drop for GpuSourceRetention {
     fn drop(&mut self) {
         match self.0.life.lock() {
@@ -146,10 +158,19 @@ impl Drop for GpuSourceRetention {
         }
     }
 }
-#[cfg(feature = "gemma4-hip-qualification")]
+#[cfg(any(
+    feature = "gemma4-hip-qualification",
+    feature = "gemma4-vulkan-qualification"
+))]
 enum GpuTarget {
-    Single(zerogravity_gpu::Device, zerogravity_gpu::GemmaTextStorage),
-    #[cfg(feature = "qwen27b-hip-qualification")]
+    #[cfg(feature = "gemma4-hip-qualification")]
+    Hip(zerogravity_gpu::Device, zerogravity_gpu::GemmaTextStorage),
+    #[cfg(feature = "gemma4-vulkan-qualification")]
+    Vulkan(zerogravity_gpu::Device, zerogravity_gpu::GemmaTextStorage),
+    #[cfg(all(
+        feature = "gemma4-hip-qualification",
+        feature = "qwen27b-hip-qualification"
+    ))]
     Shared(Arc<zerogravity_gpu::SharedHipNative>),
 }
 impl Gemma4CpuLoaded {
@@ -188,7 +209,24 @@ impl Gemma4CpuLoaded {
         Arc<zerogravity_gpu::Gemma4Bf16GpuCandidate>,
         zerogravity_gpu::Gemma4Bf16GpuSession,
     )> {
-        self.load_native(GpuTarget::Single(device, storage), input, host, cancelled)
+        self.load_native(GpuTarget::Hip(device, storage), input, host, cancelled)
+            .await
+    }
+    /// Exact original Vulkan/SPIR-V qualification through the same retained
+    /// source, inventory, initialization, model and session body as HIP.
+    #[cfg(feature = "gemma4-vulkan-qualification")]
+    pub async fn load_vulkan_qualification(
+        self: &Arc<Self>,
+        device: zerogravity_gpu::Device,
+        input: Gemma4CpuInput,
+        host: zerogravity_gpu::GemmaTextHostOwners,
+        storage: zerogravity_gpu::GemmaTextStorage,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<(
+        Arc<zerogravity_gpu::Gemma4Bf16GpuCandidate>,
+        zerogravity_gpu::Gemma4Bf16GpuSession,
+    )> {
+        self.load_native(GpuTarget::Vulkan(device, storage), input, host, cancelled)
             .await
     }
     #[cfg(all(
@@ -231,7 +269,10 @@ impl Gemma4CpuLoaded {
         }
         Ok(())
     }
-    #[cfg(feature = "gemma4-hip-qualification")]
+    #[cfg(any(
+        feature = "gemma4-hip-qualification",
+        feature = "gemma4-vulkan-qualification"
+    ))]
     async fn load_native(
         self: &Arc<Self>,
         target: GpuTarget,
@@ -244,7 +285,7 @@ impl Gemma4CpuLoaded {
     )> {
         if !Arc::ptr_eq(&input.ticket.0, &self.context) {
             return Err(Error::State(
-                "Gemma HIP input belongs to another managed context".into(),
+                "Gemma native input belongs to another managed context".into(),
             ));
         }
         input.prepared.require_model(&self.model)?;
@@ -252,10 +293,10 @@ impl Gemma4CpuLoaded {
             let mut life = self
                 .life
                 .lock()
-                .map_err(|_| Error::State("Gemma HIP source lifecycle".into()))?;
+                .map_err(|_| Error::State("Gemma native source lifecycle".into()))?;
             if life.closed || life.sessions >= MAX_SESSIONS {
                 return Err(Error::State(
-                    "Gemma HIP requires retained open source capacity".into(),
+                    "Gemma native requires retained open source capacity".into(),
                 ));
             }
             life.sessions += 1;
@@ -266,7 +307,8 @@ impl Gemma4CpuLoaded {
         // and lifecycle count; candidate/native/flight/quarantine retain it.
         unsafe {
             match target {
-                GpuTarget::Single(device, storage) => {
+                #[cfg(feature = "gemma4-hip-qualification")]
+                GpuTarget::Hip(device, storage) => {
                     zerogravity_gpu::Gemma4Bf16GpuCandidate::load_hip_qualification(
                         device,
                         self.model.clone(),
@@ -278,7 +320,23 @@ impl Gemma4CpuLoaded {
                     )
                     .await
                 }
-                #[cfg(feature = "qwen27b-hip-qualification")]
+                #[cfg(feature = "gemma4-vulkan-qualification")]
+                GpuTarget::Vulkan(device, storage) => {
+                    zerogravity_gpu::Gemma4Bf16GpuCandidate::load_vulkan_qualification(
+                        device,
+                        self.model.clone(),
+                        retained,
+                        Arc::from(input.ids()),
+                        host,
+                        storage,
+                        cancelled,
+                    )
+                    .await
+                }
+                #[cfg(all(
+                    feature = "gemma4-hip-qualification",
+                    feature = "qwen27b-hip-qualification"
+                ))]
                 GpuTarget::Shared(shared) => {
                     zerogravity_gpu::Gemma4Bf16GpuCandidate::load_shared_hip_qualification(
                         shared,
