@@ -14,12 +14,16 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
 
 ## Uncommitted
 
-### Current B4 takeover — 25 Oct
+### Current B4 takeover — 25–26 Oct
 
 - [ ] Current B4 → fresh optimized matched C16 (.8B +2B) → x2 original27B,
   latest owner order; no C2. Base `d0fff261`, all246 signatures verified;
   README unchanged. All current lanes: GPT-6.1 Sol xhigh, owner override.
   [Owned run](../../runs/b4-takeover-codex-20261025/TODO.md).
+  [Final evidence index](../../runs/b4-takeover-codex-20261025/FINAL_REPORT.md).
+
+#### a857d45 — validated fixture repairs
+
 - Current l5 route legitimately reads all23 original model members and approved
   CUDA/source-reference inputs; no grant change/download. Original relay denial
   remains historical. A3 source1772 digest
@@ -53,15 +57,138 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
   This is width/schedule-specific composition, not an independent original
   public trajectory. Case5 error is deliberately fenced before Ready; no unsafe
   retirement patch. Exact26 remains false.
-- SDK qualification seam OPEN: physical proofs used overlay NVRTC7c67c6b5…,
+
+#### SDK replay and serving — unchanged a857d45 runtime
+
+- Initial SDK qualification seam: physical proofs used overlay NVRTC7c67c6b5…,
   while unchanged original serving recipe pins Nix12.9.86 NVRTC4b8c4db1…;
   builtins also differ. Runtime compiles through NVRTC; matching version labels,
   counters or final tokens do not prove full-tuple equivalence. Serving-SDK
   physical/math replay preparation underway, with exact frozen A3 binary aliases
-  and original owners; no substitution/retag. Full source gate passes; serving
-  and C16 held. Original runtime P16 and matched provider P4 remain distinct;
-  no current speedup claim. Local x2 known_hosts now has ED25519 entries through
-  this route; remote identity remains unproven, no SSH executed. UD6 cause unknown.
+  and original owners; no substitution/retag. First Nix grouped test native0
+  passes all12modes/58grouped232per-row; SDK identity observer REFUSES
+  Btrfs maps-device0:36 versus stat-device0:38 (inode matches). Outer1,
+  adapter0/test0, complete original owner closure. Preserve source55edcd92
+  and this rejected attempt. Reviewed V2 retains held DSO/directory FDs,
+  read-only Btrfs mount/filesystem identity, kernel VMA link/inode and stable
+  namespaces/root. Root28 metadata controls and isolated CPU probe pass; no
+  permission changes or blind device-check waiver. Fresh V2 case10 also native0/
+  adapter0/outer1: all required actual DSOs witnessed, healthy process closure
+  and postchecks, but two `/proc` observation errors (ENOENT/EINVAL) remain
+  latched. V2 sources473156b3 and rejected receipts are immutable. Focused CPU
+  lifecycle investigation must establish the observation stages before another
+  adapter/replay; no missing identity or interrupted snapshot is accepted.
+  CPU probes subsequently reproduced terminal and live VMA races; V3 stages
+  snapshots transactionally and requires original WNOWAIT proof for terminal
+  exceptions. Its41 controls/10 CPU lifecycles pass, but actual case10 again
+  native0/adapter0/outer1:54 complete snapshots precede a libcuda VMA error and
+  four child-root errors classified live. Source/post/FD closure passes; SDK
+  remains unqualified. Preserve V3 `dc912480`, driver `f1f00a50` and actual
+  root observation `426cfb77`. Review bounded live identity measurement and
+  exact loader retention before another adapter; do not guess teardown cause.
+  V4 explicitly bounds identity to one simultaneous live snapshot, with all SDK
+  supply FDs held and checked through original cleanup. Source review and51
+  controls pass; actual case10 still native0/adapter0/outer1: two earlier VMA-link
+  ENOENT errors prevent establishment despite52 successful snapshots. Preserve
+  sources `f289996d`, driver `4ba87ed6`, root observation `87638c6a`; SDK remains
+  false. Investigate acquisition-time topology changes with independent source
+  review and CPU evidence before another physical attempt. No retrospective
+  classification or qualification of the rejected V4 run.
+  V5 `f79a08a2` validates a separately witnessed acquisition discard, with no
+  mappings/count credit, then requires a fresh stable simultaneous3 checkpoint.
+  Held SDK/DIRFD SHA/identity checks and original process ownership continue
+  through cleanup. ROOT+independent review,61 controls and actual integrated CPU
+  lifecycle pass; all four older SDK attempts remain false. Fresh Nix-SDK exact26
+  now executed:24 physical/CPU passes, case6 diagnostic export0, case5 native101
+  with numerical and in-process retirement failure. All26 SDK/source/process
+  closures pass; exact original23 projection passes. Separate .8B export0 and
+  both full original30 comparisons pass on this tuple:15transitions/35events,
+  4344current+8112original sections/576unrounded sums/allstate/fullV/own roots,
+  no identifier normalization. Original26 and complete continuous certification
+  remain false. Fresh both-model matched API/HTTP checks precede any C16 release;
+  no current timing result or speedup claim.
+  First API08 refuses the old23-key health schema against current Rust26 fields;
+  actual outer1, original container/process/group/log closure healthy, no warmup.
+  API2B stopped before provider launch (outer-15); both remain unqualified.
+  External HTTPv6 strict current-schema adapter preserves raw observations,
+  HOST model+backend+serving conservation, DEVICE, compiler/readiness and source
+  initialization predicates. ROOT38HTTP+18C16 source controls pass; independent
+  review clean. Separate source review confirms direct case1 genuine .8B
+  initial4, both-family five-frontier N1 and original30 cached composition cover
+  the declared finite request recipes; no original26/fullcontinuous grant.
+  Fresh v6 .8B API CLOSED0:24requests/192tokens per provider exact, cold/whole/
+  workload compiler0, both original owners/source/postproof closures healthy.
+  API2B also CLOSED0 with the same24requests/192tokens per provider, compiler0
+  and complete original owner/source/postproof closure. Fresh HTTP08 CLOSED0:
+  actual N1→mixed cached4/refill, all5requests/36tokens fresh-stock exact,
+  cold/whole/workload compiler0 and original owner/source/postproof closure.
+  HTTP2B also CLOSED0 with the same five-request/36-token chronology, fresh
+  stock equality, compiler0 and complete owner/source/postproof closure.
+  ROOT released the exact reviewed finite-profile C16 commands for both models.
+  Both fresh quiet SAME-ATTEMPT stock→ZG C16 populations now CLOSED; original
+  rate AND wall predicates unchanged. Original26/complete continuous remain false.
+  First controller refuses coordinator's overlapping output layout before any
+  provider/timing; original record retained. Corrected disjoint sibling outputs
+  pass the original guard for both models; source/profiles/qualification unchanged.
+  A3 cudarc bindings select `cuda-13040`; fallback-latest is enabled, but the
+  original selection cause is not independently captured. This is a separate
+  identity from observed NVRTC12.9 and driver595.91.07. No ABI change
+  or general compatibility grant follows from passing physical scopes.
+  Full source gate passes. Fresh v6 serving API/HTTP pass for both models;
+  original runtime P16 and matched provider P4 remain distinct.
+
+#### Closed C16 measurements and remaining work — 26 Oct
+
+- Actual corrected C16 ROOT64250 CLOSED1/full stdout+stderr EOF retrieved;
+  .8B controller0,2B controller1. All four original provider owners/container/
+  process-group/single-reap/full-log closures healthy; full original30 source
+  proofs revalidated after each provider group. Each arm completed16 offers/
+  128tokens,0errors, client peak16/native peak8, all native compiler intervals0.
+  A3 opt3/thinLTO/codegen1 source1772 and frozen CLI871e9fed…7117 unchanged.
+  No C2/C32/C64, extra samplers, predicate waiver or asynchronous completion.
+- .8B stock98.2827tok/s,1.30237s; ZG111.1738tok/s,1.15135s. Original rate AND
+  wall pass. Four genuine INITIAL4 publications +28cached B4 publications,
+  16 independent initial roots/128committed rows/864physical model token steps.
+- 2B stock96.8627tok/s,1.32146s; ZG84.1017tok/s,1.52197s. Original rate refusal
+  retained; pair-index/final remain INCOMPLETE/false despite both measured arms
+  and healthy cleanup.16 genuine N1 initializations +28cached B4 publications,
+  128committed rows/864physical steps. No2B performance pass or both-model win.
+  Single measured wave/model, no confidence-certified performance claim.
+  [Both closed review](../../runs/b4-takeover-codex-20261025/matched-c16-v6/root-both-closed-review.json);
+  actual-results SHA58ec6b242aac7cb4c3f07c41b29af32ffdb78b91b98e98680aa5c58dc769df79.
+- Strict x2 SSH now actually verifies existing alias/address ED25519
+  `SHA256:acPQLnW/MfwchrrYkM/TB9eVeTWrnaA5efNPrEJZ2U0`, via prescribed
+  100.100.1.1/tailscale0 route; known_hosts bytes unchanged. NativeUID1000,
+  machine8280a2085c2247e4bb49a5ac1bcd1582/boot40a8634b-bd7c-4cb0-b127-d0fde2a4f37d.
+  Current kernel7.2.10/AMD MAX+395; CPU-visible33263382528B total,
+  15343521792B available <16GiB gate; sysfs VRAM103079215104B is separate.
+  Disk1769526714368B available. All31 exact Q27 members+source parent and exact
+  image store/runroot absent. Existing host Nix Python3.13 metadata/RX verified,
+  SHA85ee2b9c…a4a5, not executed; prescribed/PATH python3 absent. No device open,
+  inference, downloads, store/recovery/privilege changes or memory repartition.
+  [Current resource review](../../runs/b4-takeover-codex-20261025/x2-current-preflight/root-resource-review.json).
+- UD6 local UID1000 journal query CLOSED0/fullEOF:16 records authenticate both
+  old CIDs as local l5 .8B C16 quiet-repeat owners, same boot, source21/image
+  configf57d77…, not x2/Q27. Recovered original native receipt OWNERS_CLOSED/
+  cleanup_errors[]/exit137 and GPU payload PID3452550; source/nonce/CID joins
+  preserved. Stop-command context and foreground TERM/KILL flags do not record
+  the payload's delivered fatal signal or OOM chain. Cause remains UNKNOWN;
+  earlier empty kernel query proves neither OOM nor absence. No repeat query,
+  guessed host identity or capture. UD6 hold remains.
+- Q27 frozen original9 revalidated; current owner-readback caller54641525 differs
+  from frozen ae75a695. Unchanged validator calls source_open(plan,pins), while
+  repaired caller requires state: independent validation ABI blocker. Preserve
+  both authorities; next repair must be explicit owner-layer source, retaining
+  all math/inputs/helper/resource/gates, with focused lifecycle/validator checks.
+  Additional isolated natural-window source fixture CLOSED0:11tests pass,
+  all source pins stable. It does not exercise this caller/validator ABI or
+  establish capture/inference. Full runtime source gate remains the A3 result.
+- Next: diagnose original26 case5 numerical/error-retirement failure without
+  relaxing comparisons; review2B dispatch cost with phase evidence before any
+  optimization; resolve UD6 from actual causal owner evidence, establish the
+  already-authorized exact x2 image+31 model files, verify a genuine CPU/RAM/
+  GPU-owner window and all G1–G6 gates, then supervise original natural27B
+  capture+independent validation. Capture remains unstarted; no short substitute.
 
 ### Current source checkpoint — 24 Oct
 
