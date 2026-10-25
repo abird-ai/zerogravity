@@ -237,15 +237,26 @@ blocked).
    release-binary pin from the checkpoint tree, old runs untouched; quiet
    window). Local RTX3060 is free. Log dir:
    `.agents/runs/resume-all-takeover-b4-gpu-c16-glm-20261025/`.
-2. **Qwen27B x2 capture** — agent `251d5839-6bb8-466` yielded its slot to
-   the HGV main lane mid-preflight (its progress/resume point is in its run
-   dir). GPU capture is blocked until HGV physical work completes; the x2
-   preflight (host identity, disk headroom for 55.6GB, store state, UD6
-   exit-137 store history) can continue any time after the HGV lane is idle.
-   The x2 remote bases `resume-all-five-{hip,gemma4,vulkan}-20261025-{2,3}`
-   hold pass evidence — the capture lane must use its OWN distinct namespace
-   (`qwen27b-natural-capture-20261025-1`) and never touch the qualification
-   bases.
+2. **Qwen27B x2 capture** — agent `251d5839-6bb8-466` yielded its slot
+   mid-preflight (progress/resume point in
+   `.agents/runs/resume-all-takeover-qwen27b-x2-capture-glm-20261025/{TODO.md,LOG.md}`).
+   NO x2 access, download, store write, container or GPU work has run yet —
+   all work so far was read-only record review on pvl-l5. Gathered:
+   (a) UD6 evidence: two foreign `ContainerExitCode` rows in the l5 store db
+   (exit 0 @ 2026-10-24 18:54:17; exit 137 SIGKILL @ 18:54:51; no matching
+   run dir; OOM/timeout-compatible, not yet interpretable); (b) the base
+   image digest IS recorded — `docker.io/vllm/vllm-openai@sha256:b18abb2df97b…21e66ac12f`
+   — plus the derived capture image identity (f57d77f5…/eec72f47…, torchcodec
+   CPU wheel `de8e58e5…`, recipe `fac9b745…`) and all 31 weight pins in
+   source-pin.json, so "no substitute image" is resolved; (c) OPEN DECISION
+   at resume: establish the derived image on x2 by rebuild (config ID embeds
+   a timestamp — identity determinism unproven) vs l5 `podman save` → x2
+   `podman load` (preserves the content-addressed identity exactly) — pick
+   the verifiable route and record it truthfully. Resume order is the 6-step
+   list in that TODO.md (x2 strict-SSH preflight is network/disk-only while
+   any HGV physical work runs; GPU capture only in a confirmed GPU-free
+   window; own namespace `qwen27b-natural-capture-20261025-1`; never touch
+   the qualification bases `resume-all-five-{hip,gemma4,vulkan}-20261025-*`).
 3. HGV executor agent (`0767e210-aa87-412`) completed pass 3 and reported;
    reuse its prompt pattern for pass 4.
 4. Gemma4 PLE regeneration (post-merge): the corrective review
