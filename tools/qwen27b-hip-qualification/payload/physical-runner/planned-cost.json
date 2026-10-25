@@ -1,0 +1,50 @@
+{
+  "schema": "zg.hip-source20-natural-x2-planned-cost.v1",
+  "base": "hip-multiset-natural-x2-20261024-1",
+  "frozen_source": {
+    "base_manifest": {
+      "bytes": 370334,
+      "sha256": "30a79602c1812a921c61424da989f5b41aeb3a2bf3f06d2e38c28782320c02b2"
+    },
+    "base_files": 1650,
+    "base_bytes": 30842821,
+    "overlay_paths": 3,
+    "overlay_is_candidate_natural_only": true,
+    "new_manifest_is_the_build_authority": true
+  },
+  "build": {
+    "example": "qwen27b_hip_natural",
+    "features": [
+      "qwen27b-hip-qualification",
+      "zerogravity-gpu/hardware-abort-probe"
+    ],
+    "cargo_offline_locked": true,
+    "compiler_generations_total_admitted": 3,
+    "compiler_host_each": 8589934592,
+    "extra_retired_compiler_host": 8589934592,
+    "cold_process_host_before_metadata": 33530474220,
+    "scoped_metadata_two_set_conservative_upper": 4194304,
+    "reused_registry_cache": true,
+    "new_quota_or_cache_credit_requested": false,
+    "address_space_bytes": 34359738368
+  },
+  "natural_case": {
+    "qwen_only": true,
+    "gemma_executed": false,
+    "shared_two_source_budget": false,
+    "provider_bytes": 17179869184,
+    "host_budget_bytes": 17179869184,
+    "physical_domain_bytes": 34359738368,
+    "worker_address_space_bytes": 68719476736,
+    "worker_cpu_seconds": 7200,
+    "supervisor_alarm_seconds": 7800,
+    "held_original_data_fds": 70,
+    "held_natural_reference_fds": 5,
+    "cache_lock_subtrees": 2,
+    "import_or_model_download": false,
+    "reference_transport_through_controller": false,
+    "finalization_seconds": 900,
+    "work_allowance_seconds": 600,
+    "address_space_is_not_the_q_only_reservation": true
+  }
+}
