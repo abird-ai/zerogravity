@@ -51,7 +51,7 @@ use crate::Error;
 use crate::Result;
 use std::path::PathBuf;
 use std::time::Duration;
-use zerogravity_core::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, ResourceOwner};
+pub use zerogravity_core::resource_arbiter::TransferAdmission;
 
 #[derive(Clone, Debug)]
 pub struct CacheOptions {
@@ -72,15 +72,6 @@ impl CacheOptions {
             buffer_bytes: 64 * 1024,
         }
     }
-}
-
-/// Borrow an existing, caller-registered resource domain. The cache never
-/// creates an arbiter, registers a physical key, or submits a GPU operation.
-#[derive(Clone)]
-pub struct TransferAdmission {
-    pub arbiter: ResourceArbiter,
-    pub resource: PhysicalDeviceKey,
-    pub owner: ResourceOwner,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

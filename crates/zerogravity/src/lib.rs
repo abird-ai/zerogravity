@@ -10,7 +10,7 @@
 pub use zerogravity_artifacts::acquisition;
 #[cfg(all(feature = "cache", target_os = "linux"))]
 pub use zerogravity_artifacts::cache;
-pub use zerogravity_artifacts::{artifact, model, quant, sharded};
+pub use zerogravity_artifacts::{artifact, json_allocation, model, quant, sharded};
 pub use zerogravity_core::context_filter;
 pub use zerogravity_core::context_snapshot;
 pub use zerogravity_core::pipeline;
@@ -22,7 +22,11 @@ pub use zerogravity_core::{device_events, device_queue, resource_arbiter, state}
 pub mod canonical47;
 #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
 pub mod short_hf;
-#[cfg(feature = "cpu")]
+#[cfg(all(feature = "cpu", feature = "cache"))]
+pub use zerogravity_cpu::{
+    RAYON_PROJECTION_INJECTOR_BYTES, admit_global_rayon, math, original_hf, weights,
+};
+#[cfg(all(feature = "cpu", not(feature = "cache")))]
 pub use zerogravity_cpu::{math, original_hf, weights};
 #[cfg(all(feature = "cpu", feature = "cache", target_os = "linux"))]
 pub mod original_qwen_cpu;
@@ -70,6 +74,11 @@ pub mod gemma4_cpu;
 
 #[cfg(all(feature = "model-qwen35", feature = "text"))]
 pub mod prepare;
+
+/// Process-global tokenizer bootstrap and cold-constructor admission shared by
+/// the CPU, GGUF, canonical47 and short-HF source owners.
+#[cfg(all(feature = "text", feature = "cache"))]
+pub mod tokenize_admission;
 
 #[cfg(all(feature = "qwen27b-hip-qualification", target_os = "linux"))]
 pub mod qwen27b_gpu;

@@ -111,6 +111,9 @@ impl SourceCpu<'_> {
             ));
         }
         let mut result = vec![0.0f32; rows];
+        // Bounded Rayon split: <= MAX_MATRIX_ROWS rows, depth <= 20, no
+        // nested Rayon and no per-worker deque growth beyond the splitter.
+        crate::record_generic_rayon();
         result
             .par_iter_mut()
             .zip(bytes.par_chunks_exact(row_len))
@@ -268,6 +271,9 @@ pub fn source_reference_projection_with_profile(
     // diagnostic. All dot_row primitives below are shared with CPU Qwen.
     let activation = QuantizedActivation::prepare(region.kind, region.activation)?;
     let mut output = vec![0f32; region.rows];
+    // Bounded Rayon split: <= MAX_MATRIX_ROWS rows, depth <= 20, no nested
+    // Rayon and no per-worker deque growth beyond the splitter.
+    crate::record_generic_rayon();
     output
         .par_iter_mut()
         .zip(region.packed_weights.par_chunks_exact(row_bytes))

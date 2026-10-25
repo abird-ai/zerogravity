@@ -1,5 +1,6 @@
 pub use zerogravity_core::{Error, Result, accelerator};
 pub mod artifact;
+pub mod json_allocation;
 pub mod model;
 pub mod quant;
 pub mod sharded;

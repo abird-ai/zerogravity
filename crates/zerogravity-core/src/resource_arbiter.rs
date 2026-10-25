@@ -80,6 +80,16 @@ impl ResourceOwner {
     }
 }
 
+/// Borrow an existing, caller-registered resource domain. Never creates an
+/// arbiter, registers a physical key, or submits a GPU operation; the borrowing
+/// owner performs the only admission in its own domain.
+#[derive(Clone)]
+pub struct TransferAdmission {
+    pub arbiter: ResourceArbiter,
+    pub resource: PhysicalDeviceKey,
+    pub owner: ResourceOwner,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LeasePhase {
     Reserved,
@@ -104,6 +114,367 @@ struct ArbiterState {
     next_id: u64,
     budgets: BTreeMap<PhysicalDeviceKey, DeviceBudget>,
 }
+
+/// One `BTreeMap<u64, Reservation>` node upper bound from the actual std
+/// layout: a 16-byte header (parent pointer + length/height), 11 key slots, 12
+/// edges and the inline value slots (leaf 1072 B, internal 1168 B). A live
+/// lease owns at most one internal node.
+const RESERVATION_BTREE_KEYS: usize = 11;
+const RESERVATION_BTREE_EDGES: usize = 12;
+const RESERVATION_NODE_HEADER: usize = 16;
+const RESERVATION_SIZE: usize = std::mem::size_of::<Reservation>();
+const RESERVATION_NODE_UPPER: usize = RESERVATION_NODE_HEADER
+    + RESERVATION_BTREE_EDGES * std::mem::size_of::<usize>()
+    + RESERVATION_BTREE_KEYS * (std::mem::size_of::<u64>() + RESERVATION_SIZE);
+const _: () = assert!(RESERVATION_SIZE == 88);
+const _: () = assert!(RESERVATION_NODE_UPPER == 1168);
+
+/// Non-payload inventory of one live reservation, priced from the private
+/// typed layout instead of a hand-counted pointer guess. The `Vec` copy is
+/// exact because `admit` builds it from the caller slice; the owner `String`
+/// payload is the only variable part. Every conversion, sum and product is
+/// checked so a huge `allocations` count can never wrap into a small bound.
+/// This is admission-control storage only; the caller still passes the actual
+/// payload bytes to `admit`, and the helper never reserves recursively.
+pub fn lease_inventory_bytes(alias: &str, session: &str, allocations: usize) -> Result<u64> {
+    let overflow = || Error::Limit("lease inventory overflow".into());
+    let fixed = u64::try_from(RESERVATION_SIZE)
+        .ok()
+        .and_then(|size| {
+            u64::try_from(RESERVATION_NODE_UPPER)
+                .ok()
+                .and_then(|node| size.checked_add(node))
+        })
+        .ok_or_else(overflow)?;
+    let alias = u64::try_from(alias.len()).map_err(|_| overflow())?;
+    let session = u64::try_from(session.len()).map_err(|_| overflow())?;
+    let allocations = u64::try_from(allocations).map_err(|_| overflow())?;
+    let request =
+        u64::try_from(std::mem::size_of::<AllocationRequest>()).map_err(|_| overflow())?;
+    let vector = allocations.checked_mul(request).ok_or_else(overflow)?;
+    fixed
+        .checked_add(alias)
+        .and_then(|total| total.checked_add(session))
+        .and_then(|total| total.checked_add(vector))
+        .ok_or_else(overflow)
+}
+
+/// Actual admission inventory for one lease, from the values `admit` consumes.
+///
+/// [`lease_inventory_bytes`] prices the reservation node, the owner `String`
+/// lengths and the `Vec` copy. `admit` additionally CLONES `key.backend`/
+/// `key.device` into the lease (each clone allocates exactly its length), and a
+/// by-value [`ResourceOwner`] can carry `String` spare capacity that the lease
+/// then keeps alive. Both are real, so both are priced here. The inline
+/// `GlobalResourceLease` value belongs to the caller's own struct and is NOT
+/// added again. Every term is checked.
+pub fn lease_actual_inventory_bytes(
+    key: &PhysicalDeviceKey,
+    owner: &ResourceOwner,
+    allocations: usize,
+) -> Result<u64> {
+    let overflow = || Error::Limit("lease inventory overflow".into());
+    let base = lease_inventory_bytes(&owner.model, &owner.session, allocations)?;
+    let payload = |text: &String| u64::try_from(text.len()).map_err(|_| overflow());
+    let spare = |text: &String| {
+        u64::try_from(text.capacity().saturating_sub(text.len())).map_err(|_| overflow())
+    };
+    let key_payload = payload(&key.backend)?
+        .checked_add(payload(&key.device)?)
+        .ok_or_else(overflow)?;
+    let spare_payload = spare(&owner.model)?
+        .checked_add(spare(&owner.session)?)
+        .ok_or_else(overflow)?;
+    base.checked_add(key_payload)
+        .and_then(|total| total.checked_add(spare_payload))
+        .ok_or_else(overflow)
+}
+
+/// Pinned Rust 1.95 thread-control heap rows for one spawned thread.
+///
+/// Source geometry: `Thread`s private `Inner{name,id,parker}`, the lifecycle
+/// `Packet`/`ThreadInit`/`rust_start` boxes, the inline spawn-hook value, the
+/// runtime handler-map node and its process-retained map root. These are
+/// application/runtime control allocations only; native stacks, guards,
+/// alternate signal stacks, TLS, glibc caches, allocator arenas and OS
+/// mappings stay external unquantified headroom.
+///
+/// Scope: the rows are pinned Rust 1.95 `target_os = "linux"` with 64-bit
+/// pointers (the `AtomicU32` Parker and the `MAP_NODE` node width). Other
+/// targets get the same checked arithmetic from their own `Layout`s; no other
+/// OS or pointer width carries a numeric proof.
+mod thread_control {
+    use super::{
+        AllocationClass, AllocationRequest, Error, GlobalResourceLease, PhysicalDeviceKey,
+        ResourceArbiter, ResourceOwner, Result,
+    };
+    use std::alloc::Layout;
+    use std::sync::Mutex;
+
+    /// One `BTreeMap<usize, ThreadInfo>` internal node for the pinned B=6 tree.
+    const MAP_NODE: u64 = 640;
+    /// Process-retained runtime handler-map root allowance, admitted once.
+    pub const ROOT_BYTES: u64 = MAP_NODE;
+
+    static ROOT: Mutex<Option<GlobalResourceLease>> = Mutex::new(None);
+
+    fn overflow() -> Error {
+        Error::Limit("thread control inventory overflow".into())
+    }
+
+    fn round(size: u64, align: u64) -> Result<u64> {
+        size.checked_add(align - 1)
+            .map(|value| value / align * align)
+            .ok_or_else(overflow)
+    }
+
+    /// `L(fields)`: alignment is the maximum field alignment and size is the
+    /// checked sum of each field rounded to it. Bounds field reordering and
+    /// padding without assuming tuple layout equivalence.
+    fn row(fields: &[(u64, u64)]) -> Result<(u64, u64)> {
+        let align = fields.iter().map(|field| field.1).max().unwrap_or(1);
+        let mut total = 0u64;
+        for field in fields {
+            total = total
+                .checked_add(round(field.0, align)?)
+                .ok_or_else(overflow)?;
+        }
+        Ok((total, align))
+    }
+
+    /// `A(X)=round_a(round_a(2*sizeof(usize))+size(X))`, `a=max(align(X),8)`:
+    /// one `Arc` allocation including its two reference counts.
+    fn arc(payload: (u64, u64)) -> Result<(u64, u64)> {
+        let align = payload.1.max(core::mem::align_of::<usize>() as u64);
+        let base = round(2 * core::mem::size_of::<usize>() as u64, align)?;
+        let size = round(base.checked_add(payload.0).ok_or_else(overflow)?, align)?;
+        Ok((size, align))
+    }
+
+    fn of<T>() -> (u64, u64) {
+        (
+            core::mem::size_of::<T>() as u64,
+            core::mem::align_of::<T>() as u64,
+        )
+    }
+
+    fn named_bytes(name: Option<(usize, usize)>) -> Result<u64> {
+        let Some((capacity, len)) = name else {
+            return Ok(0);
+        };
+        if len > capacity {
+            return Err(Error::Malformed(
+                "thread name length exceeds its bounded capacity".into(),
+            ));
+        }
+        let capacity = u64::try_from(capacity).map_err(|_| overflow())?;
+        let len = u64::try_from(len).map_err(|_| overflow())?;
+        // Input/backing growth, CString shrink/copy and the handler's own
+        // copied `Box<str>` name.
+        let growth = capacity
+            .checked_mul(2)
+            .ok_or_else(overflow)?
+            .max(len.checked_add(1).ok_or_else(overflow)?)
+            .max(8);
+        capacity
+            .checked_add(growth)
+            .and_then(|total| total.checked_add(len + 1))
+            .and_then(|total| total.checked_add(len))
+            .ok_or_else(overflow)
+    }
+
+    /// Checked application thread-control row for one spawn whose capture
+    /// closure has `capture`'s layout and whose bounded name is
+    /// `name = Some((capacity, len))`. `START` includes the capture, so callers
+    /// must not charge a separate capture width.
+    pub fn rust_thread_control_bytes(capture: Layout, name: Option<(usize, usize)>) -> Result<u64> {
+        // `NAME_INLINE=L(usize,CString)`; the explicit Option discriminant is
+        // covered, no private niche assumption.
+        let name_inline = row(&[of::<usize>(), of::<std::ffi::CString>()])?;
+        // `INNER=L(NAME_INLINE,ThreadId,AtomicU32)`, minimum alignment 8. The
+        // Parker is the pinned Linux futex `AtomicU32`, not a pointer stand-in.
+        let inner = row(&[
+            name_inline,
+            of::<std::thread::ThreadId>(),
+            of::<std::sync::atomic::AtomicU32>(),
+            (0, 8),
+        ])?;
+        let thread = arc(inner)?;
+        // `PACKET` uses the public `Option`/`Result` layout, not a guessed width.
+        let packet = arc(row(&[
+            of::<Option<std::sync::Arc<()>>>(),
+            of::<Option<std::thread::Result<()>>>(),
+        ])?)?;
+        let init = row(&[
+            of::<std::thread::Thread>(),
+            of::<Box<dyn FnOnce() + Send>>(),
+        ])?;
+        let hooks = row(&[
+            of::<Option<std::sync::Arc<()>>>(),
+            of::<Vec<Box<dyn FnOnce() + Send>>>(),
+        ])?;
+        let start = row(&[
+            (capture.size() as u64, capture.align() as u64),
+            hooks,
+            of::<std::sync::Arc<()>>(),
+        ])?;
+        let named = named_bytes(name)?;
+        thread
+            .0
+            .checked_add(packet.0)
+            .and_then(|total| total.checked_add(init.0))
+            .and_then(|total| total.checked_add(start.0))
+            .and_then(|total| total.checked_add(named))
+            // Two map nodes per live thread: the leaf and split overlap.
+            .and_then(|total| total.checked_add(2 * MAP_NODE))
+            .ok_or_else(overflow)
+    }
+
+    /// `A(AtomicBool)`: the initializer's one-per-attempt control allocation.
+    pub fn thread_attempt_flag_bytes() -> Result<u64> {
+        Ok(arc(of::<std::sync::atomic::AtomicBool>())?.0)
+    }
+
+    /// Admit the single process-retained thread-control root allowance in the
+    /// caller's existing arbiter/key domain. Reuse verifies the same domain and
+    /// actual charge, so a second router neither admits nor multiplies it.
+    pub fn admit_thread_control_root(
+        arbiter: &ResourceArbiter,
+        key: &PhysicalDeviceKey,
+        owner: ResourceOwner,
+    ) -> Result<u64> {
+        admit_root_once(&ROOT, arbiter, key, owner)
+    }
+
+    /// The production admission above, over an explicit root slot so a test can
+    /// hold its own fresh slot instead of clearing the process root.
+    fn admit_root_once(
+        root: &Mutex<Option<GlobalResourceLease>>,
+        arbiter: &ResourceArbiter,
+        key: &PhysicalDeviceKey,
+        owner: ResourceOwner,
+    ) -> Result<u64> {
+        let mut root = root
+            .lock()
+            .map_err(|_| Error::State("thread-control root lock poisoned".into()))?;
+        if let Some(lease) = root.as_ref() {
+            return lease.bytes_in_domain(arbiter, key);
+        }
+        let metadata = super::lease_actual_inventory_bytes(key, &owner, 1)?;
+        let bytes = ROOT_BYTES.checked_add(metadata).ok_or_else(overflow)?;
+        let lease = arbiter.admit(
+            key,
+            owner,
+            &[AllocationRequest {
+                kind: AllocationClass::Other,
+                bytes,
+            }],
+        )?;
+        let bytes = lease.reserved_bytes()?;
+        *root = Some(lease);
+        Ok(bytes)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+        #[test]
+        fn pinned_control_rows_match_the_linux_x86_64_geometry() {
+            // THREAD 56 + PACKET 48 + INIT 24 + START 40 + N 0 + MAP 1280.
+            assert_eq!(
+                rust_thread_control_bytes(Layout::new::<()>(), None).unwrap(),
+                1_448
+            );
+            assert_eq!(thread_attempt_flag_bytes().unwrap(), 24);
+            let named = rust_thread_control_bytes(Layout::new::<()>(), Some((7, 7))).unwrap();
+            assert_eq!(named - 1_448, 7 + 14 + 8 + 7);
+            assert!(rust_thread_control_bytes(Layout::new::<()>(), Some((3, 4))).is_err());
+        }
+
+        #[test]
+        fn root_prices_the_cloned_key_and_owner_spare_capacity() {
+            let root = Mutex::new(None);
+            let arbiter = ResourceArbiter::new();
+            // Long domain strings plus an owner that carries spare capacity:
+            // the base typed subtotal ALONE fits, the actual admission does not.
+            let key = PhysicalDeviceKey {
+                backend: "host-with-a-deliberately-long-backend-name".into(),
+                device: "root-spare-capacity".into(),
+            };
+            // `String::clone` allocates exactly `len`, so every attempt gets a
+            // freshly constructed owner that really carries spare capacity.
+            let owner = || {
+                let mut model = String::with_capacity(96);
+                model.push_str("model");
+                let mut session = String::with_capacity(96);
+                session.push_str("session");
+                ResourceOwner { model, session }
+            };
+            let base =
+                super::super::lease_inventory_bytes(&owner().model, &owner().session, 1).unwrap();
+            let actual = super::super::lease_actual_inventory_bytes(&key, &owner(), 1).unwrap();
+            assert!(actual > base, "key clone and spare capacity are real");
+            let first = owner();
+            let expected_delta = (key.backend.len() + key.device.len() + first.model.capacity()
+                - first.model.len()
+                + first.session.capacity()
+                - first.session.len()) as u64;
+            assert_eq!(actual - base, expected_delta);
+            arbiter.register(key.clone(), ROOT_BYTES + base).unwrap();
+            let refused = admit_root_once(&root, &arbiter, &key, owner());
+            assert!(matches!(refused, Err(Error::Limit(_))), "{refused:?}");
+            assert!(root.lock().unwrap().is_none());
+            assert_eq!(arbiter.snapshot(&key).unwrap().reserved, 0);
+
+            // The exact composed inventory admits once and reuses unchanged.
+            let exact = ResourceArbiter::new();
+            exact.register(key.clone(), ROOT_BYTES + actual).unwrap();
+            let admitted = admit_root_once(&root, &exact, &key, owner()).unwrap();
+            assert_eq!(admitted, ROOT_BYTES + actual);
+            assert_eq!(exact.snapshot(&key).unwrap().reserved, admitted);
+            assert_eq!(
+                admit_root_once(&root, &exact, &key, owner()).unwrap(),
+                admitted
+            );
+            assert_eq!(exact.snapshot(&key).unwrap().reserved, admitted);
+        }
+
+        #[test]
+        fn root_is_admitted_once_in_the_original_domain() {
+            // A fresh slot keeps the process root intact and makes every step
+            // a real assertion instead of tolerating an already-primed Err.
+            let root = Mutex::new(None);
+            let arbiter = ResourceArbiter::new();
+            let key = PhysicalDeviceKey::new("host", "root-once").unwrap();
+            arbiter.register(key.clone(), 1_000_000).unwrap();
+            let owner = ResourceOwner::new("model", "session").unwrap();
+            let first = admit_root_once(&root, &arbiter, &key, owner.clone()).unwrap();
+            let metadata =
+                crate::resource_arbiter::lease_actual_inventory_bytes(&key, &owner, 1).unwrap();
+            assert_eq!(first, ROOT_BYTES + metadata);
+            assert_eq!(arbiter.snapshot(&key).unwrap().reserved, first);
+            // Same original domain reuses the retained lease: no new charge.
+            assert_eq!(
+                admit_root_once(&root, &arbiter, &key, owner.clone()).unwrap(),
+                first
+            );
+            assert_eq!(arbiter.snapshot(&key).unwrap().reserved, first);
+            // A different domain is refused, not silently re-rooted.
+            let other = ResourceArbiter::new();
+            let other_key = PhysicalDeviceKey::new("host", "root-once-other").unwrap();
+            other.register(other_key.clone(), 1_000_000).unwrap();
+            assert!(admit_root_once(&root, &other, &other_key, owner).is_err());
+            assert_eq!(other.snapshot(&other_key).unwrap().reserved, 0);
+        }
+    }
+}
+
+pub use thread_control::{
+    ROOT_BYTES as THREAD_CONTROL_ROOT_BYTES, admit_thread_control_root, rust_thread_control_bytes,
+    thread_attempt_flag_bytes,
+};
 
 #[derive(Clone)]
 pub struct ResourceArbiter {
@@ -564,6 +935,31 @@ mod tests {
     }
     fn req(kind: AllocationClass, bytes: u64) -> AllocationRequest {
         AllocationRequest { kind, bytes }
+    }
+
+    #[test]
+    fn lease_inventory_is_checked_and_prices_the_typed_layout() {
+        let fixed = u64::try_from(RESERVATION_SIZE).unwrap()
+            + u64::try_from(RESERVATION_NODE_UPPER).unwrap();
+        assert_eq!(lease_inventory_bytes("m", "s", 0).unwrap(), fixed + 2);
+        let request = u64::try_from(std::mem::size_of::<AllocationRequest>()).unwrap();
+        assert_eq!(
+            lease_inventory_bytes("mo", "se", 2).unwrap(),
+            fixed + 4 + 2 * request
+        );
+        assert!(lease_inventory_bytes("m", "s", usize::MAX).is_err());
+        // The inventory is control-only and charged exactly once per lease;
+        // it never recursively admits storage to account for itself.
+        let a = ResourceArbiter::new();
+        let gpu = device("inventory");
+        a.register(gpu.clone(), 1_000_000).unwrap();
+        let cost = lease_inventory_bytes("owner", "session", 1).unwrap();
+        let lease = a
+            .admit(&gpu, owner("owner"), &[req(AllocationClass::Scratch, cost)])
+            .unwrap();
+        assert_eq!(a.snapshot(&gpu).unwrap().reserved, cost);
+        lease.release().unwrap();
+        assert_eq!(a.snapshot(&gpu).unwrap().reserved, 0);
     }
 
     #[test]
