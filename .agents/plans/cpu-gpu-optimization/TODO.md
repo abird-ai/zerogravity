@@ -17,22 +17,34 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
 ### Current source checkpoint — 24 Oct
 
 - [~] User extends both-model sequence to C16, thenC32 andC64; NO C2. Implement
-  genuine populations and honest active8/B4 observations. Latest order: C16
-  both on frozen21 alongside signed logical commits, then four separate Pi
-  implementation lanes for Qwen27B, Gemma4, Vulkan/ROCm/HIP and shared queue.
+  genuine populations and honest active8/B4 observations. Latest user direction:
+  resume all parallel tracks now. The78 signed logical commits are complete;
+  C16 correction, Qwen27B, Gemma4, Vulkan, HIP and shared queue have independent
+  Pi lanes. ROOT coordinates builds/physical ownership and quiet timings.
   Default pending count unlimited, optional configured cap, actual HOST
   admission unchanged. C32/C64 follow queue acceptance. C16 correction and
   grouped controls run separately from product source; old drafts preserved.
   Audit/store latest and best verified matching historical C1/C4/C8 plus new
   bands, with source/profile and stock arm from SAMEattempt, no cherry-picking.
-- [ ] Source20 .8B API refuses cold→first-use compiler predicate; HTTP/quiet/C8
-  unstarted. Startup446→postwarm448 (+13233key/source,+4739PTX); later wave and
-  ragged intervals0. Source/owner closure healthy. Cold/whole raw snapshots lost
-  on refusal; separate actual capture identifies the two missing state recipes.
-  Current21 prepares these under the existing shared owner; actual success open.
-  Preserve this real failure and source15 failure; no warmed substitution.
-- [ ] Complete C16 both, signed commits and later C32/C64 within the user order.
-  Historical .8B results and current implementation status remain distinct.
+- Historical source20 first-use refusal remains failed:446→448 attempts after
+  readiness. Source21 fixes the two observed state recipes and passes actual
+  both-model API/HTTP/C1/C4/C8 with cold/whole compiler0; see Committed above.
+  Preserve original failed20/source15 artifacts; no warmed substitution.
+- [~] C16 both executed on frozen21. Clean2B: ZG78.7859tok/s,1.62466s;
+  vLLM95.9974tok/s,1.33337s. Each16offers/16completed/128tokens/0errors,
+  original semantic/source/owner closure healthy, actual active8/B4 and compiler0.
+  Rate refusal is a measured performance loss, not numerical/cleanup failure.
+  First.8B timing overlaps audit scan; one repeat105.7331vs96.6544tok/s has an
+  extra sampler and remains diagnostic, not quiet/best evidence. No third rerun.
+  [Scope review](../../runs/resume-all-parallel-source-supervision-sol-20261024/C16_FINAL_SCOPE_REVIEW.json).
+- [ ] Retire the five active Qwen27B/Gemma4/HIP/Vulkan/queue lane trees at the
+  reviewed checkpoint; their units are integrated (`8f01635`..`68e13a8`).
+  Before more CUDA timing,
+  implement shared prepared B4 certification/state transport per
+  [Astra design](../../runs/cpu-gpu-optimization-astra-c16-shared-gap-20261024/DESIGN.md).
+  Keep existing arithmetic, caps and independent roots. Up to22.13% fewer
+  software dispatches is a theoretical ceiling, not a wall speedup claim.
+  C32/C64 follow genuine shared queue acceptance and fresh matched C16.
 
 Historical source13 checkpoint (superseded by source20 above): ROOT adopted models118 plus source-bound2B
 cachedB4 as one guarded173path unit (172effective/46new), fresh mtimes and
@@ -583,6 +595,92 @@ Implementation remains behind the ordered parity/baseline prerequisites above.
 - [ ] Resolve applicable SYK-011..016 source/derived-quality/LLVM/SLO/pressure/steering choices from the [specialization reference](../../research/EXTREME_MODEL_SPECIALIZATION_INTEGRATION_AND_ACCEPTANCE_2026-10-15.md) before that slice; proposed SYK-002..010 are not frozen user approvals. Preserve negative candidates and the default disabled steering policy.
 
 ## Committed
+
+### `5d40cf5` — shared pending queue and ingress credit
+
+- [~] Shared queue checkpoint preserves application-owned HOST admission,
+  unlimited default pending count and optional cap. Final batch corrects
+  tokenizer construction, original Rayon reuse, HTTP framing/serialization
+  and worker/last-reader ownership. HTTP handles and connection credit survive
+  through join; original default thread stacks remain runtime-selected.
+  Platform stacks/TLS/caches and OS/driver headroom remain separate, unquantified
+  scope: application reservations are not process RSS or a full-process fit.
+  [Contract decision](../../runs/resume-all-queue-production-bound-astra-review-20261024/MERGE_SCOPE_DECISION.md).
+  CPU functional acceptance is complete; the final full CPU gate passed
+  rc0 25Oct on the committed tree; assembled GPU/physical checks remain
+  pending.
+- [x] Optimized25Oct CPU population/cap/cancellation/HOST continuation passes
+  under unchanged4096MiB,2workers×4active and unrestricted P16 affinity.
+  All16/32/64 requests are offered before draining; actual greedy output,
+  unique Done and final serving/worker/queue closure assertions pass. Seven
+  ledger tests and three functional cases pass;1024MiB retained-stage refusal
+  remains distinct from optional queue-cap429. Actual release CPU/serve build
+  and strict checks pass. Captured successful child output does not expose
+  exact peak/backing traces; this is CPU correctness, not GPU C16/32/64 timing.
+  [Execution](../../runs/resume-all-tokenizer-vm-cpu-continuation-prep-pi-20261025/).
+- Earlier optimized25Oct population control fails at offer12/16 under unchanged
+  HOST4096MiB/active8: each pending request retains about240MB temporary tokenizer
+  credit. Source review separates about224MB fixed VM scratch from about17MB
+  cache growth; fixing cache growth alone is insufficient. No16/32/64 completion
+  accepted at that failed attempt. Shared repair reserves serialized fixed scratch once per actual
+  tokenizer in its typed Retained owner; the private mutex and synchronous
+  single-string call graph establish concurrency1. Original run used affinity4;
+  acceptance must cover unrestricted production P16, without narrowing affinity.
+  Remove duplicate CPU/GPU request charges, preserve all prompt/output/state
+  owners. The repaired CPU population batch passes above; GPU acceptance remains.
+  [Reviewed design](../../runs/resume-all-queue-production-bound-astra-review-20261024/TOKENIZER_GROWTH_CREDIT_PLAN.md).
+
+### `52f76a0` — short-HF tokenizer credit and HOST8
+
+- [x] Explicit tokenizer text-feature coverage now passes: actual optimized
+  `--features text` build/strict,14 bounds tests and one actual-plan test at P16.
+  The minimal `super::plan(16)` test-only repair leaves production math unchanged.
+  Earlier zero-test/default-feature and101 attempts remain failed/unaccepted.
+  Actual current rows: R1,147,648,523/G17,054,684/V224,000,144B, plus actual
+  lease inventory; the older supplied R was136B higher. No passing CPU replay.
+  [Execution](../../runs/resume-all-tokenizer-text-fixed-coverage-pi-20261025/).
+- [~] Direct short-HF route lifetime correction: preliminary tokenizer drops
+  before model loading, but its static retained-credit vector never releases.
+  Return tokenizer plus its actual lease; validate the exact legitimate
+  process-global bootstrap baseline through route/model closure. No VM9/H14
+  source overlap. Closed11-path source draft has the typed owner; ROOT/Astra
+  required collected corrections for request payload/credit lifetimes,
+  unconditional original close, exact bootstrap/backend baselines and tests.
+  Those source repairs landed in `52f76a0`; the affected optimized/strict
+  batch and the final full CPU gate passed rc0 25Oct; real source-cost/
+  lifetime and GPU serving/ownership checks remain pending.
+- [~] CUDA B4 HOST requirement needs correction before fresh acceptance.
+  Source-derived P16 lower bound4,341,525,623B already exceeds4GiB by46,558,327B
+  before bootstrap/native/other metadata; old source21 HOST fits omit the new
+  R+G+V credit. Cost-only inventory currently bypasses that owner too. Preserve
+  all real charges, GPU caps and CPU4096MiB population controls; review honest
+  configured HOST requirements versus real owner/phase savings. Explicit
+  short-HF8192MiB policy landed in `52f76a0`; CPU/default4096 and legacy4GiB,
+  provider/physical and H/G/V caps remain unchanged. Real RAM/cgroup availability,
+  current source cost including R+G+V, N1/B4 and serving checks must pass. No new
+  CUDA fit, physical or performance result is established.
+
+### 25Oct assembly and evidence records — `docs(plans)` (this commit)
+
+- [x] Old-worktree cleanup:52 registered trees +5 redundant extracts removed;
+  historical source/notes/evidence archived and independently rechecked.
+  Separately removed30 obsolete merged branches; main and five active heads
+  remain. Two historical registrations retired after exact metadata backup;
+  their ordinary reference files remain at the required paths. Six registered
+  trees remain: main and five active lanes. Main/rootREADME preserved.
+  [Details](../../runs/resume-all-parallel-root-20261024/WORKTREE_CLEANUP.md).
+- [~] Five-lane source is assembled in MAIN; the final affected batch completes
+  portable core admission, actual spawn-capture ownership and direct-lease
+  metadata. Original private-network HTTP checks now execute without a fallback.
+  The final source freeze/full CPU gate passed rc0 25Oct and the five-lane
+  batch landed as signed commits (`8f01635`..`68e13a8`); assembled GPU/
+  physical checks, H6/G8/V10 cases and lane-tree retirement remain pending;
+  no new benchmark yet.
+- [x] Read-only `pvl-x2` metadata check25Oct: existing data/cache/SDK paths
+  present, all eight proposed QUAL/STATE leaves absent, AMD PCI/render/KFD
+  paths observed; original process/group/EOF closure healthy. No payload hashes,
+  driver launch, physical-fit or inference qualification follows from metadata.
+
 
 ### `3e89f1919993` — shared resident execution and current finite checkpoints
 

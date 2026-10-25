@@ -36,12 +36,36 @@ Failed20/compiler intervals remain preserved.
 [current queue](TODO.md).
 
 Latest user bands: C1/C4/C8, then C16/C32/C64 for both models; no C2 requested.
-Finish C16 on frozen source21 alongside signed logical commits. After commits,
-resume four Pi lanes: Qwen27B, Gemma4, Vulkan/ROCm/HIP and shared pending queue.
-Queue count defaults to unlimited, with an optional configured cap and actual
-HOST admission; C32/C64 follow its acceptance. Higher bands require genuine
+The78 signed logical commits are complete; five isolated Pi lanes are active:
+Qwen27B, Gemma4, Vulkan, HIP and the shared pending queue. Finish their current
+tested units, reconcile and integrate into main, then retire completed trees.
+The queue target is unlimited pending count with an optional configured cap and
+actual HOST admission; C32/C64 follow its acceptance. Higher bands require genuine
 offered populations and honest nativecapacity/kernelwidth. Best historical results remain distinct from
 latest and keep their own matched stock arm/source/profile.
+
+## C16 source21 — completed experiments, distinct timing scopes
+
+| Model/scope | ZG tok/s | vLLM tok/s | ZG/vLLM wall seconds | Disposition |
+|---|---:|---:|---|---|
+| 2B, original measurement |78.7859|95.9974|1.62466 / 1.33337|Measured loss; retain |
+| .8B, first measurement |102.0478|81.4600|1.25431 / 1.57132|Audit scan overlaps both arms; nonquiet |
+| .8B, one repeat |105.7331|96.6544|1.21060 / 1.32431|Extra sampler; diagnostic only |
+
+Each arm completed16offers/128tokens with0errors and original source/semantic/
+owner closure. Native remains active8/B4, not B16; compiler deltas0. The2B
+timed windows followed the known audit-scan termination. Its qualification
+driver refuses the rate loss after both arms complete; numerical/cleanup
+success does not convert it to a speed win. The .8B repeat added332 GPU/listener
+samples across both arms, changing observation scope; neither .8B attempt is an
+accepted quiet/best C16 result. No further unchanged rerun is scheduled.
+
+[Original C16 timeline and rates](../../runs/resume-all-c16-executor-pi-20261024/C16_TIMELINE_AND_RAW_SUMMARY.json),
+[final observation-scope review](../../runs/resume-all-parallel-source-supervision-sol-20261024/C16_FINAL_SCOPE_REVIEW.json).
+After five-tree integration, implement shared prepared B4 validation/state-copy
+submissions per [Astra design](../../runs/cpu-gpu-optimization-astra-c16-shared-gap-20261024/DESIGN.md),
+then run a fresh matched comparison. Fewer software enqueues alone do not prove
+wall improvement. C32/C64 remain unexecuted.
 
 ## Highest verified retained pairs
 
@@ -57,7 +81,9 @@ this is a historical record, not a repeated-run ranking or confidence claim.
 | 2B | C1 |45.0305|37.7431|21|
 | 2B | C4 |80.8278|50.2514|21|
 | 2B | C8 |80.7265|62.4442|21|
-| Both | C16/C32/C64 |pending|pending|unexecuted|
+| 2B | C16 |78.7859|95.9974|21; single measured loss|
+| .8B | C16 |excluded|excluded|nonquiet/extra-sampler diagnostics above|
+| Both | C32/C64 |pending|pending|unexecuted|
 
 The .8B C1 retained maximum is about67.8tok/s; no verified70tok/s C1 appears
 in this bounded set. Historical C4/C8 exceeded100tok/s. Source11 C1 differs

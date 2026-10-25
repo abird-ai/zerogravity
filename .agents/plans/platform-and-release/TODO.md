@@ -9,8 +9,13 @@ Contracts: [P00–P23 roadmap](../IMPLEMENTATION_ROADMAP.md),
 
 ## Uncommitted
 
+- [ ] Retire the five active lane units' trees and branches; their source is
+  integrated (`8f01635`..`68e13a8`, full CPU gate rc0 25Oct). Keep three donor
+  drafts until their work is recovered; preserve lane-unique evidence first.
 - [ ] Owner23Oct: bring Vulkan execution to CUDA feature/correctness parity;
-  use ROCm/HIP for AMD including pvl-x2 gfx1151. Reuse existing physical
+  use ROCm/HIP for AMD including pvl-x2 gfx1151. Vulkan source catalogue
+  landed in `19ff059`; V10 physical cases and real registry/offline build/
+  backend/SSH checks remain pending. Reuse existing physical
   identity/arbiter/service/queue/quarantine. Separate compiled, available and
   qualified source/layout/math capabilities; refuse before allocation/launch
   when unsupported. Preserve gfx90c launch hold and source/SDK acquisition rules.
@@ -40,6 +45,31 @@ Contracts: [P00–P23 roadmap](../IMPLEMENTATION_ROADMAP.md),
 - [ ] Preserve one GPU-library service/queue/quarantine owner and cold generic-plan admission through packaging changes; verify actual final downstream links, not only compiler/type checks.
 
 ## Committed
+
+### 25Oct evidence records — `docs(plans)` (this commit)
+
+- [x] User-requested obsolete worktree cleanup:43 registered +5 redundant
+  extracted trees retired after source/evidence preservation; branch refs and
+  active/reference/build trees retained. ROOT reverified all44 new archives and
+  four preexisting extract archives; main/rootREADME unchanged.
+  [Recovery and remaining live scope](../../runs/resume-all-parallel-root-20261024/WORKTREE_CLEANUP.md).
+
+- [x] Retire nine more obsolete trees: all source/evidence and Git metadata
+  preserved; ROOT compared all18 TAR archives against actual source before
+  removal. Two large transport archives retained by same-inode hardlinks,
+  without duplicate copy/rehash. Eight registrations remain: main, five active
+  candidates and two reference roots still consumed by current checks.
+- [x] Remove29 obsolete merged local branches in one atomic old-OID transaction.
+  ROOT verified actual ancestry/ownership and exact final refs; packed refs,
+  all29 reflogs and recreation commands preserved. Seven protected heads remain;
+  main/source/index/config/README, active/reference trees and remotes preserved.
+- [x] Retire two historical Git registrations and their remaining merged local
+  branch25Oct. Verified recovery copies and renamed originals; preserve all
+  ordinary reference files at their existing paths. Cumulative30 local branches
+  removed; six registered trees/heads remain (main plus five active candidates).
+  Main HEAD/index/rootREADME and all13 other resolved refs unchanged.
+
+
 
 ### `ef9cffd413df` — assembled feature gates and platform scope
 

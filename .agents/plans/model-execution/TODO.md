@@ -17,9 +17,17 @@ current .8B/2B C1/C4/C8 singlepass rate AND wall wins are accepted. These
 finite scopes do not grant fullmatrix/generalparity. Source20 x2's complete
 shared HIP unit passes below. Independent Qwen natural feedback and learned
 Gemma PLE hit/transfer coverage remain open; next whole-unit design proceeds in
-parallel with local .8B→2B benchmark work. Latest order: C16 both alongside
-signed commits, then separate Pi Qwen27B/Gemma4/backend/queue lanes; C32/C64
-follow the shared optional-count-limit queue implementation and acceptance.
+parallel with local .8B→2B benchmark work. All78 signed commits are complete.
+Latest user direction resumes all tracks now: separate Pi Qwen27B/Gemma4/
+Vulkan/HIP/queue lanes alongside external C16 correction. C32/C64 follow shared
+queue acceptance; physical jobs and quiet timings retain coordinated ownership.
+
+Latest owner merge direction: complete the current Qwen27B/Gemma4/HIP/Vulkan/
+queue units to a tested, mergeable checkpoint, assemble and reconcile shared
+source, then integrate into main and retire completed worktrees. Keep original
+reference roots while current checks use them. Broken source or a draft
+controller is not a merge checkpoint; preserve pending physical scopes honestly.
+
 
 ### Current shared source20 hardware checkpoint — 24 Oct
 
@@ -437,6 +445,28 @@ or model support. Qwen parity/short benchmark/long→dense27B→Gemma remains bi
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### `29a98c1` — HIP source-page events and witness (25Oct assembly)
+
+25Oct integration: accepted H14 pending-event source plus final sticky witness
+error projection is now copied into MAIN with fresh mtimes. ROOT independently
+matched all14 files/524,658B and modes; README/index preserved. New diagnostic
+bound2,640,926B consumes the existing128MiB fixture allowance; conditional cold
+host33,530,474,220B is unchanged. Enabled-HIP typing and actual H6/G8/V10 physical
+cases remain pending. V's fixed SSH adapter is source-reviewed only. CPU queue
+16/32/64, cap/cancellation/HOST and actual P16 tokenizer checks pass separately;
+they do not qualify GPU models or performance. The collected CUDA direct-route
+ownership/host-cost repair landed in `52f76a0`/`efd7a34`; the final full CPU
+gate passed rc0 25Oct and the five-lane batch landed as signed commits
+(`8f01635`..`68e13a8`). Five-tree retirement remains pending.
+
+- H14 accepted source is the transferred state behind this commit;
+  enabled-HIP typing and the actual H6/G8/V10 physical cases remain open in
+  Uncommitted scopes. Vulkan lane source landed in `19ff059` (final five-fix
+  strict-SSH adapter source-reviewed; V10 physical pending); Qwen27B audit
+  corrections folded into `e8db111`; Gemma4 examples/tools into `332038e`;
+  queue serving into `5d40cf5`/`52f76a0`.
+
 
 ### `225fc5e1a520` — shared family sources and finite learned-model diagnostics
 
