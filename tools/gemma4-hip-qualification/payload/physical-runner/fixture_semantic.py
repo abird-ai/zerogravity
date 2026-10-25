@@ -521,7 +521,7 @@ def matrix(mode, result, log, expected=None):
             and result['storage'] == 'ResidentProjections'
             and 'PLE selected row page only' in result['source_page_policy'],
             'seven-cell resident exact scope')
-    require(result['physical_reserved'] == 20*GIB
+    require(result['physical_reserved'] == 4*GIB
             and result['host_reserved'] == 2*GIB + 32*MIB
             and result['physical_fenced'] is False and result['host_fenced'] is False,
             'report phase retains 32MiB harness over persistent baselines')

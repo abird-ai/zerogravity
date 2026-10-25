@@ -161,7 +161,7 @@ def matrix_result():
             'status':'PASS_EXACT_DIAGNOSTIC_MATRIX','exact':True,
             'managed_source_closed':True,'source_close_error':None,
             'storage':'ResidentProjections','source_page_policy':'PLE selected row page only',
-            'physical_reserved':20*GIB,'host_reserved':2*GIB+32*MIB,
+            'physical_reserved':4*GIB,'host_reserved':2*GIB+32*MIB,
             'physical_fenced':False,'host_fenced':False,'events':events,
             'inventory':inventory_text(True),'failure':None,
             'trained_native_serving_or_performance_qualified':False,
@@ -422,6 +422,7 @@ def main():
                 ('inventory fake constants', lambda r: r.__setitem__('inventory',r['inventory'].replace('value_slots: 24','value_slots: 2'))),
                 ('wrong storage', lambda r: r.__setitem__('storage','StreamingRows')),
                 ('fenced healthy', lambda r: r.__setitem__('physical_fenced',True)),
+                ('healthy report retains provider envelope', lambda r: r.__setitem__('physical_reserved',20*GIB)),
                 ('invented failure', lambda r: r.__setitem__('failure','x'))):
                 bad = copy.deepcopy(base); mutate(bad)
                 expect_fail(lambda bad=bad: semantic.validate_fixture('resident',bad,log,expected_source), name)
