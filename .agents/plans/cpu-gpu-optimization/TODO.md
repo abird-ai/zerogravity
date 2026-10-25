@@ -598,8 +598,12 @@ Implementation remains behind the ordered parity/baseline prerequisites above.
   scope: application reservations are not process RSS or a full-process fit.
   [Contract decision](../../runs/resume-all-queue-production-bound-astra-review-20261024/MERGE_SCOPE_DECISION.md).
   CPU functional acceptance is complete; the final full CPU gate passed
-  rc0 25Oct on the committed tree; assembled GPU/physical checks remain
-  pending.
+  rc0 25Oct on the committed tree. Assembled GPU checks PASSED 25Oct
+  (22/22 rc0: builds/stricts, cuda_compiler_context 4/4, loaded/inventory
+  4/4, CLI baseline/serve-short_hf, host-profile umbrella, four ignored
+  route cases alone, five actual source-cost cases) —
+  [execution](../../runs/resume-all-takeover-queue-gpu-glm-20261025/LOG.md).
+  Physical device scopes (CLI direct route, serving) remain open.
 - [x] Optimized25Oct CPU population/cap/cancellation/HOST continuation passes
   under unchanged4096MiB,2workers×4active and unrestricted P16 affinity.
   All16/32/64 requests are offered before draining; actual greedy output,
@@ -647,9 +651,13 @@ Implementation remains behind the ordered parity/baseline prerequisites above.
   all real charges, GPU caps and CPU4096MiB population controls; review honest
   configured HOST requirements versus real owner/phase savings. Explicit
   short-HF8192MiB policy landed in `52f76a0`; CPU/default4096 and legacy4GiB,
-  provider/physical and H/G/V caps remain unchanged. Real RAM/cgroup availability,
-  current source cost including R+G+V, N1/B4 and serving checks must pass. No new
-  CUDA fit, physical or performance result is established.
+  provider/physical and H/G/V caps remain unchanged. Measured 25Oct
+  (application-owned configured-domain accounting at 8192MiB, gpu_executed
+  false, no process-RSS or device claim): N1 .8B host_upper 4,075,700,811B,
+  N1 2B 4,111,001,099B, B4 2B 4,741,293,239B, B4 .8B 4,736,259,779B — all
+  fit 8GiB; legacy 4GiB refusal tied to authenticated host cost (excess
+  446,325,943B, provider within cap). Real RAM/cgroup availability and
+  device/serving execution checks remain open.
 
 ### 25Oct assembly and evidence records — `docs(plans)` (this commit)
 
