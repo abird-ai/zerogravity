@@ -3,6 +3,58 @@ fn words(s: &[&str]) -> Vec<String> {
     s.iter().map(|s| s.to_string()).collect()
 }
 #[test]
+fn concise_model_device_flags_share_one_qualified_policy() {
+    let cmd = |flags: &[&str]| parse(&words(flags), None).expect("typed run arguments");
+    let concise = cmd(&["qwen.gguf", "--on", "cpu", "-d", "cpu"]);
+    let advanced = cmd(&["qwen.gguf", "--backend", "cpu", "--device", "cpu:0"]);
+    assert_eq!(concise.backend, advanced.backend);
+    assert_eq!(
+        Devices::parse(concise.devices.as_ref().unwrap()).unwrap(),
+        Devices::parse(advanced.devices.as_ref().unwrap()).unwrap(),
+    );
+    assert_eq!(
+        DeviceRef::parse("local/cpu").unwrap(),
+        DeviceRef::parse("cpu:0").unwrap(),
+    );
+    assert_eq!(
+        cmd(&["qwen.gguf", "--on=auto"]).backend,
+        Some(Backend::Auto)
+    );
+    assert_eq!(cmd(&["qwen.gguf"]).backend, None);
+    assert!(
+        parse(
+            &words(&["qwen.gguf", "--on", "cpu", "--backend", "cuda"]),
+            None
+        )
+        .is_err()
+    );
+    assert!(parse(&words(&["qwen.gguf", "--on", "gpu"]), None).is_err());
+    assert!(parse(&words(&["qwen.gguf", "--on", "cuda", "-d", "cpu"]), None).is_err());
+    assert!(parse(&words(&["qwen.gguf", "--on", "cpu", "--on", "cpu"]), None).is_ok());
+}
+
+#[test]
+fn device_inventory_display_keeps_observation_separate_from_eligibility() {
+    let inventory = devices::Observation {
+        id: "pci:0000:01:00.0".into(),
+        class: "gpu".into(),
+        vendor: "nvidia".into(),
+        ceiling: Some(6 * 1024 * 1024 * 1024),
+        available: None,
+        backends: vec!["cuda".into()],
+        exclusion: None,
+        provenance: "fixture".into(),
+        cuda_ordinal: Some(0),
+        cuda_cc: Some((8, 6)),
+    };
+    let shown = devices::display(&inventory);
+    assert!(shown.contains("total=6144 MiB"), "{shown}");
+    assert!(shown.contains("available=unknown"), "{shown}");
+    assert!(shown.contains("(inventory only)"), "{shown}");
+    assert!(!shown.contains("qualified") && !shown.contains("ready"));
+}
+
+#[test]
 fn source_and_alias_policy_before_effects() {
     for s in [
         "hf:org/file.yaml",

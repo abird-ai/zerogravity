@@ -162,6 +162,9 @@ pub struct DeviceRef {
 impl DeviceRef {
     pub fn parse(s: &str) -> Result<Self> {
         let (host, selector) = s.split_once('/').unwrap_or(("local", s));
+        // CPU has exactly one local device. Keep GPUs physical/explicit:
+        // an unqualified "gpu" shortcut would hide device identity.
+        let selector = if selector == "cpu" { "cpu:0" } else { selector };
         if host.is_empty()
             || host.len() > 128
             || !host
