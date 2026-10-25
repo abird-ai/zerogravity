@@ -2,6 +2,21 @@
 use super::*;
 use serde::Serialize;
 use std::io::Read;
+
+#[cfg(target_os = "linux")]
+mod dev;
+
+pub(super) fn device_node_identity(path: &str) -> Result<String> {
+    #[cfg(target_os = "linux")]
+    {
+        dev::resolve(path)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = path;
+        Err(Error::Unsupported("/dev device nodes require Linux".into()))
+    }
+}
 #[derive(Clone, Debug, Serialize)]
 pub(super) struct Observation {
     pub id: String,
@@ -334,6 +349,12 @@ pub(super) fn allowed(request: &Request, inventory: &Inventory) -> Result<Vec<Ob
                 } else if let Some(pci) = d.selector.strip_prefix("pci:") {
                     let id = format!("pci:{}", normalize_pci(pci)?);
                     inventory.devices.iter().find(|d| d.id == id)
+                } else if d.selector.starts_with("/dev/") {
+                    // A char device is a selector, never a new allocator/route.
+                    // Resolve through kernel metadata and reuse the original PCI
+                    // observation, exclusion, device hold and backend checks.
+                    let id = device_node_identity(&d.selector)?;
+                    inventory.devices.iter().find(|item| item.id == id)
                 } else {
                     inventory.devices.iter().find(|item| item.id == d.selector)
                 }

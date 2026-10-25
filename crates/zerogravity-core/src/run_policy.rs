@@ -161,7 +161,14 @@ pub struct DeviceRef {
 }
 impl DeviceRef {
     pub fn parse(s: &str) -> Result<Self> {
-        let (host, selector) = s.split_once('/').unwrap_or(("local", s));
+        // Absolute device nodes select the local physical GPU. Keep the path
+        // literal until host inventory binds its character-device identity to
+        // the existing PCI resource domain (no device open or fallback here).
+        let (host, selector) = if s.starts_with("/dev/") {
+            ("local", s)
+        } else {
+            s.split_once('/').unwrap_or(("local", s))
+        };
         // CPU has exactly one local device. Keep GPUs physical/explicit:
         // an unqualified "gpu" shortcut would hide device identity.
         let selector = if selector == "cpu" { "cpu:0" } else { selector };
@@ -176,7 +183,18 @@ impl DeviceRef {
         {
             return Err(Error::Malformed("invalid bounded device reference".into()));
         }
-        if !["cpu:", "gpu:", "npu:", "pci:", "luid:", "registry:"]
+        let local_node = selector.starts_with("/dev/")
+            && selector
+                .split('/')
+                .skip(1)
+                .all(|component| !component.is_empty() && component != "." && component != "..");
+        if selector.starts_with("/dev/") {
+            if !local_node {
+                return Err(Error::Malformed(
+                    "device node path must be absolute and normalized".into(),
+                ));
+            }
+        } else if !["cpu:", "gpu:", "npu:", "pci:", "luid:", "registry:"]
             .iter()
             .any(|prefix| selector.starts_with(prefix) && selector.len() > prefix.len())
         {

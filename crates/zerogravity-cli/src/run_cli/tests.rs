@@ -39,6 +39,86 @@ fn device_only_route_shares_exact_qualified_policy_with_advanced_flags() {
 }
 
 #[test]
+fn absolute_dev_node_selectors_use_the_same_device_policy_as_pci() {
+    for node in [
+        "/dev/dri/renderD128",
+        "/dev/dri/card0",
+        "/dev/dri/by-path/pci-0000:01:00.0-render",
+        "/dev/nvidia0",
+    ] {
+        let reference = DeviceRef::parse(node).unwrap();
+        assert_eq!(reference.host, "local");
+        assert_eq!(reference.selector, node);
+        assert_eq!(
+            Devices::parse(&[node.into()]).unwrap(),
+            Devices::Ordered(vec![reference.clone()]),
+        );
+        assert!(reference.label().ends_with(node));
+        assert!(parse(&words(&["missing.gguf", "-d", node]), None).is_ok());
+        assert!(
+            parse(
+                &words(&["missing.gguf", "--backend", "cpu", "-d", node]),
+                None
+            )
+            .is_err()
+        );
+    }
+    for bad in [
+        "/dev/",
+        "/dev/dri/../kfd",
+        "/dev/dri/./renderD128",
+        "/dev/dri//renderD128",
+        "/dev/dri/renderD128/",
+        "/tmp/renderD128",
+    ] {
+        assert!(DeviceRef::parse(bad).is_err(), "{bad}");
+    }
+    assert!(Devices::parse(&words(&["cpu", "/dev/dri/renderD128"])).is_err());
+    assert!(Devices::parse(&words(&["/dev/dri/renderD128", "cpu"])).is_ok());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn dev_path_and_pci_alias_use_one_observed_gpu_and_refuse_foreign_backend() {
+    let inventory = devices::discover().unwrap();
+    for node in ["/dev/dri/renderD128", "/dev/dri/renderD129", "/dev/nvidia0"] {
+        if !Path::new(node).exists() {
+            continue;
+        }
+        let physical_id = devices::device_node_identity(node).unwrap();
+        let policy = |selector: &str, backend: Option<&str>| {
+            let mut args = words(&["missing.gguf", "-d", selector]);
+            if let Some(backend) = backend {
+                args.extend(words(&["--backend", backend]));
+            }
+            let parsed = parse(&args, None).unwrap();
+            config::resolve(parsed, Path::new("/"), None, None).unwrap()
+        };
+        let by_path = devices::allowed(&policy(node, None), &inventory).unwrap();
+        let by_pci = devices::allowed(&policy(&physical_id, None), &inventory).unwrap();
+        assert_eq!(by_path.len(), 1);
+        assert_eq!(by_path[0].id, physical_id);
+        assert_eq!(by_path[0].id, by_pci[0].id);
+        // Alias selection retains original vendor, capacities, CUDA ordinal,
+        // exclusions and backend permits. It never invents an eligible card.
+        assert_eq!(
+            serde_json::to_value(&by_path[0]).unwrap(),
+            serde_json::to_value(&by_pci[0]).unwrap()
+        );
+        let foreign = if by_path[0].vendor == "nvidia" {
+            "rocm"
+        } else {
+            "cuda"
+        };
+        assert!(devices::allowed(&policy(node, Some(foreign)), &inventory).is_err());
+        let pair = words(&["missing.gguf", "-d", node, "-d", &physical_id]);
+        let duplicate =
+            config::resolve(parse(&pair, None).unwrap(), Path::new("/"), None, None).unwrap();
+        assert_eq!(devices::allowed(&duplicate, &inventory).unwrap().len(), 1);
+    }
+}
+
+#[test]
 fn device_inventory_display_keeps_observation_separate_from_eligibility() {
     let inventory = devices::Observation {
         id: "pci:0000:01:00.0".into(),
