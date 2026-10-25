@@ -3,7 +3,8 @@ use crate::physical_service::NativeContextBudget;
 use crate::resident_leases::{ForeignProviderCharge, NativeCacheBudget, ResidentService};
 use cubecl::client::Client;
 use cubecl::hip::{
-    HipNativeAdmission, HipNativeInventory, NativeRetention, PreparedHipNative, RegisteredHipNative,
+    HipNativeAdmission, HipNativeInventory, NativeRetention, PreparedHipNative,
+    RegisteredHipNative, SourcePageAuthority,
 };
 use cubecl::{Device, server::ServerError};
 use cubecl_common::device::ServiceId;
@@ -506,6 +507,8 @@ pub struct HipSourceSetIdentity {
 /// for actual all-stream completion/unload. Context remains a distinct baseline.
 pub(crate) struct PreparedSourceNative {
     source: SourceIdentity,
+    /// Weak live service; per-operation authority, never a bare generation.
+    service: std::sync::Weak<ResidentService>,
     prepared: Arc<PreparedHipNative>,
     host_bytes: usize,
     device_bytes: usize,
@@ -567,6 +570,41 @@ impl FinalNativeProbe {
         })
     }
 }
+/// The original resident service is the only source of live generation/fence
+/// authority for a source page. It is not the native SET key and it is not the
+/// page-allocation identity.
+struct ResidentPageAuthority {
+    service: std::sync::Weak<ResidentService>,
+    source: SourceIdentity,
+}
+impl SourcePageAuthority for ResidentPageAuthority {
+    fn generation(&self) -> u64 {
+        self.service
+            .upgrade()
+            .map_or(0, |service| service.generation())
+    }
+    fn require_usable(&self) -> std::result::Result<(), ServerError> {
+        let Some(service) = self.service.upgrade() else {
+            return Err(ServerError::graph_state(
+                "HIP source page original service retired",
+            ));
+        };
+        if service.source_identity() != self.source {
+            return Err(ServerError::graph_state(
+                "HIP source page original source differs",
+            ));
+        }
+        service.ensure_usable().map_err(server)
+    }
+    fn fence_unknown(&self) {
+        // Existing physical fence only: poison the original service and its
+        // prepaid envelope. Page/event/window owners stay with the caller's
+        // quarantine; nothing is released or reused on this path.
+        if let Some(service) = self.service.upgrade() {
+            service.fence_and_retain_owners(&[], Vec::new());
+        }
+    }
+}
 impl PreparedSourceNative {
     #[cfg(all(
         any(
@@ -596,6 +634,25 @@ impl PreparedSourceNative {
     }
     pub(crate) fn device_bytes(&self) -> usize {
         self.device_bytes
+    }
+    /// Shared source-page transport on the original actor, if this set owns a
+    /// scoped logical stream and is still live. The retained weak service is the
+    /// per-operation generation/fence authority, never a bare generation value.
+    pub(crate) fn source_page_actor(
+        &self,
+        service: &ResidentService,
+    ) -> Option<cubecl::hip::HipSourcePageActor> {
+        if self
+            .require_live(service.client(), service.source_identity())
+            .is_err()
+        {
+            return None;
+        }
+        let authority: Arc<dyn SourcePageAuthority> = Arc::new(ResidentPageAuthority {
+            service: self.service.clone(),
+            source: self.source,
+        });
+        self.prepared.source_page_actor(authority)
     }
     pub(crate) fn require_live(&self, client: &Client, source: SourceIdentity) -> Result<()> {
         if source != self.source {
@@ -735,8 +792,10 @@ impl ColdNativePreparation {
             prepared.inventory()
         );
         slot.finish()?;
+        let service_ref = Arc::downgrade(&service);
         let owner = Arc::new(PreparedSourceNative {
             source: source.source_identity(),
+            service: service_ref,
             prepared,
             host_bytes,
             device_bytes,

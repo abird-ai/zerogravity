@@ -11,12 +11,13 @@ description = "Source-exact resident GPU execution and physical ownership"
 default = []
 vulkan = ["cubecl/vulkan"]
 cuda = ["cubecl/cuda", "cubecl/cuda-cpp"]
-hip = ["cubecl/hip", "cubecl/hip-cpp"]
+hip = ["cubecl/hip", "cubecl/hip-cpp", "dep:cubecl-hip"]
 all = ["vulkan", "cuda", "hip"]
 qualification = ["zerogravity-artifacts/cache", "zerogravity-cpu/cache", "dep:zerogravity-cpu", "dep:zerogravity-model-qwen35", "zerogravity-model-qwen35/cpu", "zerogravity-model-qwen35/text"]
-hardware-abort-probe = ["qualification"]
+hardware-abort-probe = ["qualification", "cubecl-hip?/source-page-event-probe"]
+source-page-event-probe = ["hip", "hardware-abort-probe"]
 gemma-bf16-qualification = ["qualification", "dep:sha2", "dep:zerogravity-model-gemma4", "zerogravity-model-gemma4/text-reference"]
-qwen-source-qualification = ["qualification", "hip", "dep:sha2", "zerogravity-model-qwen35/original-hf-binding"]
+qwen-source-qualification = ["qualification", "hip", "dep:sha2", "zerogravity-model-qwen35/original-hf-binding", "dep:cubecl-hip"]
 portable-checkpoint = ["dep:zerogravity-model-qwen35", "zerogravity-model-qwen35/diagnostic-cpu-checkpoint"]
 diagnostic-gdn-trace = ["qualification", "zerogravity-model-qwen35/diagnostic-gdn-trace"]
 vllm-cuda-qualification = ["zerogravity-model-qwen35/original-hf-binding", "qualification", "cuda", "dep:cubecl-cuda", "cubecl-cuda/owned-cubin", "cubecl-cuda/precompiled-shared"]
@@ -34,6 +35,7 @@ cubecl-core = "=0.11.0"
 cubecl-runtime = "=0.11.0"
 cubecl-server = "=0.11.0"
 cubecl-cuda = { version = "=0.11.0", default-features = false, optional = true }
+cubecl-hip = { version = "=0.11.0", default-features = false, optional = true }
 futures-lite = "=2.6.1"
 async-lock = "=3.4.2"
 

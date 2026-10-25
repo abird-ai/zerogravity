@@ -52,6 +52,10 @@ pub struct Qwen27bSourceGpuSession {
     natural: natural::Progress,
     // All actual root/feedback readers precede native/source retirement.
     loaded: Arc<Qwen27bSourceGpuCandidate>,
+    #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+    probe_issued: AtomicBool,
+    #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+    probe_armed: AtomicBool,
     _permit: async_lock::SemaphoreGuardArc,
 }
 pub struct Qwen27bSourceGpuPending {
@@ -66,6 +70,36 @@ pub struct Qwen27bSourceGpuOutput {
     _loaded: Arc<Qwen27bSourceGpuCandidate>,
     _host: WindowWorkspace,
 }
+/// Typed final retention disposition of one source output. It is joined to the
+/// actual shared-final native observation; an unknown disposition retains the
+/// source context/metadata/native inventory and proves no released-HOST extent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QwenSourceRetentionMode {
+    /// Published root: the actual final native/source owners retire.
+    Known,
+    /// Refused publication: the actual native/source owners remain retained.
+    Unknown,
+}
+impl QwenSourceRetentionMode {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Known => "known",
+            Self::Unknown => "unknown",
+        }
+    }
+    pub fn retains_source(self) -> bool {
+        matches!(self, Self::Unknown)
+    }
+    /// Join to the actual shared-final observation: retained flag, live module
+    /// count and retained module HOST bytes must agree with the typed mode.
+    pub fn agrees_with_final(self, retained: bool, modules: usize, host_bytes: usize) -> bool {
+        if self.retains_source() {
+            retained && modules > 0 && host_bytes > 0
+        } else {
+            !retained && modules == 0 && host_bytes == 0
+        }
+    }
+}
 pub struct Qwen27bSourceGpuSnapshot {
     // Actual root readers retire while the original source/native owner is live.
     inner: ResidentSnapshot,
@@ -74,12 +108,94 @@ pub struct Qwen27bSourceGpuSnapshot {
     loaded: Arc<Qwen27bSourceGpuCandidate>,
     _permit: async_lock::SemaphoreGuardArc,
 }
+/// Weak/value-only original-owner observation: no strong candidate/service
+/// keepalive and no second state owner. Equivalent to the final-reader facts
+/// for cached-unknown, where no final wrapper exists.
+#[cfg(feature = "hardware-abort-probe")]
+#[derive(Clone, Copy, Debug)]
+pub struct QwenRetentionObservation {
+    pub native_admission_retained: bool,
+    pub native_modules: usize,
+    pub native_code_bytes: usize,
+    pub native_host_bytes: usize,
+    pub native_device_bytes: usize,
+    pub original_service_retained: bool,
+    pub quarantined_handles: usize,
+}
+#[cfg(feature = "hardware-abort-probe")]
+impl QwenRetentionObservation {
+    /// Typed join of this actual weak final-owner observation to the source
+    /// disposition: `known` must prove no retained native owner, an
+    /// unknown/fault publication must prove retained modules and HOST bytes.
+    pub fn retention_agrees(&self, known: bool) -> bool {
+        let mode = if known {
+            QwenSourceRetentionMode::Known
+        } else {
+            QwenSourceRetentionMode::Unknown
+        };
+        mode.agrees_with_final(
+            self.native_admission_retained,
+            self.native_modules,
+            self.native_host_bytes,
+        )
+    }
+}
+#[cfg(feature = "hardware-abort-probe")]
+pub struct QwenRetentionWitness {
+    native: crate::backend::hip_native_policy::FinalNativeProbe,
+    service: std::sync::Weak<ResidentService>,
+}
+#[cfg(feature = "hardware-abort-probe")]
+impl QwenRetentionWitness {
+    pub fn observe(&self) -> Result<QwenRetentionObservation> {
+        let native = self.native.observe()?;
+        let (original_service_retained, quarantined_handles) = match self.service.upgrade() {
+            Some(service) => (
+                true,
+                crate::physical_quarantine::quarantined_handles_for(service.client())?,
+            ),
+            None => (false, 0),
+        };
+        Ok(QwenRetentionObservation {
+            native_admission_retained: native.retained,
+            native_modules: native.modules,
+            native_code_bytes: native.code_bytes,
+            native_host_bytes: native.host_bytes,
+            native_device_bytes: native.device_bytes,
+            original_service_retained,
+            quarantined_handles,
+        })
+    }
+}
+impl Qwen27bSourceGpuCandidate {
+    #[cfg(feature = "hardware-abort-probe")]
+    pub fn retention_witness(&self) -> QwenRetentionWitness {
+        QwenRetentionWitness {
+            native: self.bodies[0].final_owner_native_probe(),
+            service: Arc::downgrade(&self.model.service),
+        }
+    }
+}
+impl Qwen27bSourceGpuSnapshot {
+    /// Narrow existing qualification reader; no second state owner or reader.
+    pub async fn read_domains(&self) -> Result<Vec<(StateSlot, Vec<f32>)>> {
+        self.inner.read_domains().await
+    }
+}
 impl Qwen27bSourceGpuOutput {
     pub fn logits(&self) -> &[f32] {
         &self.readback.logits
     }
     pub fn dispatches(&self) -> usize {
         self.readback.dispatches
+    }
+    /// A committed output published a known root; no native retention is claimed.
+    pub fn retention(&self) -> &'static str {
+        QwenSourceRetentionMode::Known.name()
+    }
+    /// Companion of `retention` without leaking the crate-private typed mode.
+    pub fn retains_source(&self) -> bool {
+        QwenSourceRetentionMode::Known.retains_source()
     }
 }
 impl Qwen27bSourceGpuPending {
@@ -355,6 +471,10 @@ impl Qwen27bSourceGpuCandidate {
             inner,
             feedback: None,
             natural: natural::Progress::default(),
+            #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+            probe_issued: AtomicBool::new(false),
+            #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+            probe_armed: AtomicBool::new(false),
             _permit: permit,
         })
     }
@@ -368,6 +488,32 @@ impl Qwen27bSourceGpuCandidate {
 impl Qwen27bSourceGpuSession {
     pub fn binding(&self) -> RootBinding {
         self.inner.binding()
+    }
+    /// Arm exactly one probe on the first actual source body at frontier zero.
+    /// The existing call lock serializes this with every prepare/commit; a
+    /// previously issued session or a second arm is refused.
+    #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+    pub async fn arm_source_page_event_probe(
+        &mut self,
+        mode: cubecl::hip::SourcePageEventProbeMode,
+    ) -> Result<crate::resident_leases::source_page::SourcePageProbeParts> {
+        let loaded = self.loaded.clone();
+        let _call = loaded.call_lock.lock().await;
+        if self.probe_armed.load(Ordering::Acquire) {
+            return Err(Error::State("source page probe already armed".into()));
+        }
+        if self.probe_issued.load(Ordering::Acquire)
+            || self.feedback.is_some()
+            || self.natural.calls != 0
+            || self.inner.binding().frontier() != 0
+        {
+            return Err(Error::State(
+                "source page probe session already issued".into(),
+            ));
+        }
+        let parts = loaded.bodies[0].arm_source_page_event_probe(mode)?;
+        self.probe_armed.store(true, Ordering::Release);
+        Ok(parts)
     }
     pub fn snapshot(&self) -> Result<Qwen27bSourceGpuSnapshot> {
         let permit = self
@@ -421,6 +567,8 @@ impl Qwen27bSourceGpuSession {
         observer: &mut dyn QwenSourceObserver,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Qwen27bSourceGpuPending> {
+        #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+        self.probe_issued.store(true, Ordering::Release);
         check_cancel(cancelled)?;
         if self.feedback.is_some() || self.natural.calls != 0 {
             return Err(Error::State(

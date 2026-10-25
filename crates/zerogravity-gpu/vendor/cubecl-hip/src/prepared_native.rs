@@ -32,6 +32,18 @@ pub(crate) fn failure(message: impl Into<String>) -> ServerError {
     ServerError::graph_state(message.into())
 }
 
+/// Original authority for a scoped source page. Every page upload/record,
+/// mark query/wait/destroy checks the actual live service/source generation
+/// and physical fence through this owner; the page itself never mints it.
+pub trait SourcePageAuthority: Send + Sync + 'static {
+    fn generation(&self) -> u64;
+    fn require_usable(&self) -> Result<(), ServerError>;
+    /// Unknown transfer/event state: fence the original physical service without
+    /// releasing or reusing any owner. Called from the original actor path and
+    /// from a refused event destroy; it never mints recovery authority.
+    fn fence_unknown(&self);
+}
+
 /// Trusted engine adapter. Returned owners must retain the actual source/service,
 /// host admission and original physical envelope. No caller byte totals enter
 /// preparation; each module request is derived by this backend from actual code.
@@ -231,6 +243,23 @@ impl PreparedHipNative {
     pub fn scoped_logical_stream(&self) -> Option<u64> {
         // Registration assigns this exact never-reused key to the pinned stream.
         self.view.as_ref().map(|_| self.key)
+    }
+    /// Original actor view for the shared source page. Returns `None` for an
+    /// unscoped native set, which has no authenticated logical stream. The
+    /// caller supplies the actual live source/service authority; the SET key is
+    /// never used as the page-allocation identity.
+    pub fn source_page_actor(
+        &self,
+        authority: Arc<dyn SourcePageAuthority>,
+    ) -> Option<crate::HipSourcePageActor> {
+        let key = self.scoped_logical_stream()?;
+        Some(crate::HipSourcePageActor::new(
+            self.actor.clone(),
+            self.actor.service_id(),
+            cubecl_environment::stream::StreamId { value: key },
+            key,
+            authority,
+        ))
     }
     pub fn service_id(&self) -> ServiceId {
         self.actor.service_id()

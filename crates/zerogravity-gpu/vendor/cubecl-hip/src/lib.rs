@@ -9,13 +9,18 @@ pub mod device;
 mod prepared_native;
 pub mod runtime;
 pub use compiler::{HipCompilationOptions, HipCompiler, HipRepresentation};
+pub use compute::{HipSourcePageActor, OwnedHipTransferRetirement};
+#[cfg(feature = "source-page-event-probe")]
+pub use compute::{
+    SourcePageEventProbeMode, SourcePageEventProbeSnapshot, SourcePageEventProbeState,
+};
 pub use device::*;
 pub use prepared_native::{
     HipNativeAdmission, HipNativeEnvironment, HipNativeInventory, HipScopedObservation,
     HipScopedSetObservation, NativeRetention, PreparedHipNative, RegisteredHipNative,
-    scoped_metadata_bytes,
+    SourcePageAuthority, scoped_metadata_bytes,
 };
-pub use runtime::HipRuntime;
+pub use runtime::{HipRuntime, preflight_physical};
 
 /// Whether both dynamic HIP runtime and RTC libraries can be loaded. Does not
 /// enumerate devices, create a client, compile or launch a kernel. Set SDK

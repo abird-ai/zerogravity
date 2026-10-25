@@ -236,6 +236,53 @@ fn trimmed(lease: &ResidentLease, offset: usize, n: usize) -> Result<Handle> {
         .offset_start(offset as u64)
         .offset_end((lease.bytes() - offset - n) as u64))
 }
+struct ColdNativeCost {
+    provider: usize,
+    host: usize,
+    native_host: usize,
+    native_device: usize,
+    context_host: usize,
+    context_device: usize,
+}
+#[cfg(all(
+    feature = "qualification",
+    target_os = "linux",
+    any(feature = "hip", feature = "vulkan")
+))]
+fn cold_native_cost(storage: GemmaTextStorage) -> Result<ColdNativeCost> {
+    #[cfg(feature = "hip")]
+    if !storage.is_vulkan() {
+        let cost = GemmaTextNativeOwners::profile(storage)?.cost();
+        return Ok(ColdNativeCost {
+            provider: cost.provider,
+            host: cost.host,
+            native_host: cost.native_host,
+            native_device: cost.native_device,
+            context_host: cost.context_host,
+            context_device: cost.context_device,
+        });
+    }
+    #[cfg(all(
+        feature = "gemma-bf16-qualification",
+        feature = "vulkan",
+        target_os = "linux"
+    ))]
+    {
+        let cost = GemmaTextNativeOwners::vulkan_profile(storage).cost();
+        return Ok(ColdNativeCost {
+            provider: cost.provider,
+            host: cost.host,
+            native_host: cost.native_host,
+            native_device: cost.native_device,
+            context_host: cost.context_host,
+            context_device: cost.context_device,
+        });
+    }
+    #[allow(unreachable_code)]
+    Err(Error::Unsupported(
+        "Gemma cold policy has no compiled native backend".into(),
+    ))
+}
 impl GemmaTextBody {
     pub(crate) fn require_capability(client: &Client) -> Result<()> {
         use cubecl::ir::{ElemType, FloatKind, IntKind, UIntKind};
@@ -270,13 +317,17 @@ impl GemmaTextBody {
         }
         Ok(())
     }
-    #[cfg(all(feature = "qualification", feature = "hip"))]
+    #[cfg(all(
+        feature = "qualification",
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan")
+    ))]
     pub(crate) fn cold_resource_inventory(
         recorded: &Gemma4Bf16TextPlan,
         host: &GemmaTextHostOwners,
         storage: GemmaTextStorage,
     ) -> Result<GemmaTextResourceInventory> {
-        let cost = GemmaTextNativeOwners::profile(storage).cost();
+        let cost = cold_native_cost(storage)?;
         let layout = layout::Layout::derive_cost(
             recorded,
             &math::scratch_layout(),
@@ -304,7 +355,7 @@ impl GemmaTextBody {
         recorded: &Gemma4Bf16TextPlan,
         host: &GemmaTextHostOwners,
     ) -> Result<GemmaTextResourceInventory> {
-        let cost = GemmaTextNativeOwners::profile(GemmaTextStorage::ResidentProjections).cost();
+        let cost = GemmaTextNativeOwners::profile(GemmaTextStorage::ResidentProjections)?.cost();
         let native_host = cost
             .native_host
             .checked_add(crate::backend::hip_native_policy::scoped_metadata_upper_bytes()?)
@@ -378,8 +429,20 @@ impl GemmaTextBody {
         }
         let metadata =
             source.reserve_workspace(4 * 1024 * 1024 + layout::LOWERER_METADATA_BYTES)?;
-        let page =
-            source_page::ResidentSourcePage::allocate(source.clone(), service.clone(), init)?;
+        #[cfg(feature = "hip")]
+        let actor = native.source_page_actor(&service);
+        #[cfg(not(feature = "hip"))]
+        let actor: Option<source_page::PageActor> = None;
+        let page = match actor {
+            #[cfg(feature = "hip")]
+            Some(actor) => source_page::ResidentSourcePage::allocate_observed(
+                source.clone(),
+                service.clone(),
+                init,
+                Some(actor),
+            )?,
+            _ => source_page::ResidentSourcePage::allocate(source.clone(), service.clone(), init)?,
+        };
         let frame = ResidentFrameCheckpoint::new(source)?;
         let slots = layout
             .slots
@@ -864,6 +927,7 @@ impl GemmaTextBody {
         if !execution.observing() {
             return Ok(());
         }
+        self.page.drain()?;
         let observation = self
             .observations
             .get(&index)
@@ -1331,7 +1395,7 @@ impl ResidentProgram {
             call,
             cancelled: flag,
         };
-        self.launch_impl(
+        let submission = self.launch_impl(
             body.service.client(),
             CurrentExecution::Single {
                 parameters,
@@ -1344,24 +1408,43 @@ impl ResidentProgram {
                 ResidentOutput::StateOnly
             },
             NativeExecution::new(flag).with_gemma(&execution),
-        )
+        )?;
+        body.page.finish()?;
+        Ok(submission)
     }
 }
 
 #[cfg(all(
     feature = "qualification",
-    feature = "hip",
+    any(feature = "hip", feature = "vulkan"),
     feature = "hardware-abort-probe"
 ))]
 impl ResidentProgram {
     pub(crate) fn gemma_final_owner_native_probe(
         &self,
-    ) -> Result<crate::backend::hip_native_policy::FinalNativeProbe> {
+    ) -> Result<crate::backend::final_native::FinalNativeProbe> {
         match &self.body {
             ResidentProgramBody::GemmaText(body) => body._native.final_owner_probe(),
             _ => Err(Error::State(
                 "Gemma original program/native owner differs".into(),
             )),
+        }
+    }
+}
+
+#[cfg(all(
+    feature = "gemma-bf16-qualification",
+    feature = "vulkan",
+    target_os = "linux"
+))]
+impl ResidentProgram {
+    pub(crate) fn gemma_vulkan_native_identity(
+        &self,
+        service: &ResidentService,
+    ) -> Result<crate::backend::vulkan_native_policy::VulkanSourceSetIdentity> {
+        match &self.body {
+            ResidentProgramBody::GemmaText(body) => body._native.vulkan_identity(service),
+            _ => Err(Error::State("Gemma original Vulkan body absent".into())),
         }
     }
 }

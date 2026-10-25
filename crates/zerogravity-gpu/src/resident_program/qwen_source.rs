@@ -154,6 +154,19 @@ impl QwenSourceBody {
     ) -> crate::backend::hip_native_policy::FinalNativeProbe {
         self._native.final_owner_probe()
     }
+    #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+    pub(crate) fn arm_source_page_event_probe(
+        &self,
+        mode: cubecl::hip::SourcePageEventProbeMode,
+    ) -> Result<source_page::SourcePageProbeParts> {
+        self.page.arm_source_page_event_probe(mode)
+    }
+    #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+    pub(crate) fn source_page_event_probe(
+        &self,
+    ) -> Result<(cubecl::hip::SourcePageEventProbeSnapshot, bool, bool)> {
+        self.page.source_page_event_probe()
+    }
     pub(crate) fn prepare(
         recorded: Arc<RecordedWindowToken>,
         service: Arc<ResidentService>,
@@ -205,8 +218,17 @@ impl QwenSourceBody {
                 projections.insert(tensor.name.clone(), operand);
             }
         }
-        let page =
-            source_page::ResidentSourcePage::allocate(source.clone(), service.clone(), init)?;
+        let page = match native.source_page_actor(&service) {
+            Some(actor) => source_page::ResidentSourcePage::allocate_observed(
+                source.clone(),
+                service.clone(),
+                init,
+                Some(actor),
+            )?,
+            None => {
+                source_page::ResidentSourcePage::allocate(source.clone(), service.clone(), init)?
+            }
+        };
         let frame = ResidentFrameCheckpoint::new(source.clone())?;
         let slots = layout
             .slots
@@ -976,6 +998,7 @@ impl Execution for ArmedExecution<'_, '_, '_> {
         let Some(observer) = observer.as_deref_mut() else {
             return Ok(());
         };
+        body.page.drain()?;
         let position = self.call.row(0)?.position();
         for offset in (0..words).step_by(source_page::PAGE_BYTES / 4) {
             let n = (words - offset).min(source_page::PAGE_BYTES / 4);
@@ -1047,7 +1070,7 @@ impl ResidentProgram {
             call,
             cancelled,
         };
-        self.launch_impl(
+        let submission = self.launch_impl(
             body.service.client(),
             CurrentExecution::Single {
                 parameters: p,
@@ -1056,7 +1079,11 @@ impl ResidentProgram {
             None,
             ResidentOutput::Logits,
             NativeExecution::new(cancelled).with_qwen(&execution),
-        )
+        )?;
+        // All ordinary windows are queued; Ready may only be published after
+        // the original actor proved each retired page/window completed.
+        body.page.finish()?;
+        Ok(submission)
     }
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn checkpoint_qwen_state(
@@ -1073,6 +1100,7 @@ impl ResidentProgram {
         let ResidentProgramBody::QwenSource(body) = &self.body else {
             return Err(Error::State("Qwen source checkpoint body absent".into()));
         };
+        body.page.drain()?;
         let words = if matches!(slot, StateSlot::Kv(_)) {
             active * 1024
         } else {
@@ -1223,7 +1251,7 @@ fn inventory_charges(
         32 * 1024 * 1024,
         16 * 1024 * 1024, // session, Pending, current call
         2 * (64 * 1024 + 4096),
-        12 * source_page::PAGE_BYTES,
+        source_page::transport_host_bytes(source)?,
         3 * parameter_upload,
         native_host,
         2 * 1024 * 1024 * 1024, // separate persistent context host
@@ -1238,7 +1266,9 @@ fn inventory_charges(
         value_slots: a.slots.len() + b.slots.len(),
         parameter_bytes: layout::sum([a.parameter_bytes, b.parameter_bytes])?,
         math_scratch_bytes: layout::sum(a.math.iter().chain(&b.math).copied())?,
-        source_transport_bytes: 2 * source_page::PAGE_BYTES,
+        source_transport_bytes: source_page::PAGE_BYTES
+            .checked_mul(2)
+            .ok_or_else(|| Error::Limit("Qwen initial and cached source pages".into()))?,
         owned_device_bytes: owned,
         greedy_workspace_bytes,
         feedback_peak_bytes,

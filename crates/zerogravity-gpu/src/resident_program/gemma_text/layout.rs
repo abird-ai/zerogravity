@@ -246,10 +246,11 @@ impl Layout {
                 .checked_mul(64 * 1024)
                 .ok_or_else(|| Error::Limit("Gemma retained authentic uploader controls".into()))?
         };
-        // Window owns payload+integrity chunk; Bytes+backend bounce are separate.
-        // The existing family baseline already prices3 pages; this additional
-        // chunk keeps source-shaped authentication scratch explicit, conservatively.
-        let integrity_chunk = recorded.source().source().staging_chunk_bytes();
+        // Ordinary transfers retain at most two source windows on the single
+        // original page; the shared cached Arc adds no second payload. Keep the
+        // existing three-page family baseline when actual chunks fit inside it.
+        let transport_host = source_page::transport_host_bytes(recorded.source().source())?
+            .max(3 * source_page::PAGE_BYTES);
         let root_planes = states
             .values()
             .map(|r| match r.layout {
@@ -269,7 +270,7 @@ impl Layout {
             native_host,
             context_host,
             resident_control,
-            integrity_chunk,
+            transport_host,
             root_pool_metadata,
             root_initialization_host,
             host.additional_frame_bytes,
@@ -300,7 +301,7 @@ impl Layout {
                 source_page_bytes: source_page::PAGE_BYTES,
                 selected_row_cache_capacity: selection.cached_row_capacity,
                 selected_row_cache_row_bytes: selection.cached_row_bytes,
-                source_transport_host_bytes: sum([3 * source_page::PAGE_BYTES, integrity_chunk])?,
+                source_transport_host_bytes: transport_host,
                 value_slot_bytes: storage.total_bytes(),
                 value_slots: slots.len(),
                 source_gamma_bytes: sum(gammas.iter().copied())?,

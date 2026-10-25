@@ -1,0 +1,222 @@
+[
+  {
+    "name": "admin-fresh-upload-and-h-bootstrap",
+    "kind": "local",
+    "argv": [
+      "python3",
+      "-B",
+      "<unit>/payload/runner/admin.py",
+      "--payload",
+      "<unit>/payload",
+      "--archive",
+      "<unit>/source-payload.tar",
+      "--remote-base",
+      "<REMOTE_BASE>",
+      "--output",
+      "<unit>/admin-1"
+    ],
+    "effects": "mkdir + 3 bounded scp + one native-gpu hydration; no model/GPU/cargo"
+  },
+  {
+    "name": "h-build-one-shared-artifact",
+    "kind": "remote-through-local-owner",
+    "argv": [
+      "python3",
+      "-B",
+      "<unit>/payload/runner/launch.py",
+      "--payload",
+      "<unit>/payload",
+      "--remote-base",
+      "<REMOTE_BASE>",
+      "--remote-output",
+      "<STATE>/build-1",
+      "--output",
+      "<unit>/build-1",
+      "--mode",
+      "build"
+    ],
+    "remote_argv": [
+      "<PYTHON>",
+      "-B",
+      "<REMOTE_BASE>/physical-runner/run.py",
+      "--base",
+      "<REMOTE_BASE>",
+      "--output",
+      "<STATE>/build-1",
+      "--mode",
+      "build",
+      "--control-sha",
+      "<CONTROL_SHA>"
+    ],
+    "effects": "one actual cargo build of release/examples/hip_shared_models; writes build-receipt.json+model-binary.json"
+  },
+  {
+    "name": "bind-actual-new-h-build",
+    "kind": "local",
+    "argv": [
+      "python3",
+      "-B",
+      "<tool>/bind-build.py",
+      "--payload",
+      "<unit>/payload",
+      "--build-dir",
+      "<unit>/build-1",
+      "--output",
+      "<unit>/BINDING.json"
+    ],
+    "effects": "reads the closed build and complete prepared manifest only; physical modes refuse without this pin"
+  },
+  {
+    "name": "known-qwen-reload",
+    "kind": "remote-through-local-owner",
+    "argv": [
+      "python3",
+      "-B",
+      "<unit>/payload/runner/launch.py",
+      "--payload",
+      "<unit>/payload",
+      "--remote-base",
+      "<REMOTE_BASE>",
+      "--remote-output",
+      "<STATE>/known-qwen-reload-1",
+      "--output",
+      "<unit>/known-qwen-reload-1",
+      "--mode",
+      "known-qwen-reload",
+      "--binding",
+      "<unit>/BINDING.json"
+    ],
+    "remote_argv": [
+      "<PYTHON>",
+      "-B",
+      "<REMOTE_BASE>/physical-runner/run.py",
+      "--base",
+      "<REMOTE_BASE>",
+      "--output",
+      "<STATE>/known-qwen-reload-1",
+      "--mode",
+      "known-qwen-reload",
+      "--control-sha",
+      "<CONTROL_SHA>",
+      "--binary-sha",
+      "<BINARY_SHA>",
+      "--binary-bytes",
+      "<BINARY_BYTES>",
+      "--build-receipt-sha",
+      "<BUILD_RECEIPT_SHA>",
+      "--build-receipt-bytes",
+      "<BUILD_RECEIPT_BYTES>"
+    ],
+    "effects": "one healthy/known physical Qwen full64 + Gemma full35 lifecycle case on the actual new H binary"
+  },
+  {
+    "name": "qwen-final-reader-unknown",
+    "kind": "remote-through-local-owner",
+    "argv": [
+      "python3",
+      "-B",
+      "<unit>/payload/runner/launch.py",
+      "--payload",
+      "<unit>/payload",
+      "--remote-base",
+      "<REMOTE_BASE>",
+      "--remote-output",
+      "<STATE>/qwen-final-reader-unknown-1",
+      "--output",
+      "<unit>/qwen-final-reader-unknown-1",
+      "--mode",
+      "qwen-final-reader-unknown",
+      "--binding",
+      "<unit>/BINDING.json"
+    ],
+    "effects": "one original Qwen final-reader unknown lifecycle case; same binding and budgets"
+  },
+  {
+    "name": "gemma-feedback-unknown",
+    "kind": "remote-through-local-owner",
+    "argv": [
+      "python3",
+      "-B",
+      "<unit>/payload/runner/launch.py",
+      "--payload",
+      "<unit>/payload",
+      "--remote-base",
+      "<REMOTE_BASE>",
+      "--remote-output",
+      "<STATE>/gemma-feedback-unknown-1",
+      "--output",
+      "<unit>/gemma-feedback-unknown-1",
+      "--mode",
+      "gemma-feedback-unknown",
+      "--binding",
+      "<unit>/BINDING.json"
+    ],
+    "effects": "one original Gemma feedback unknown lifecycle case; same binding and budgets"
+  },
+  {
+    "name": "source-page-query-unknown",
+    "kind": "remote-through-local-owner",
+    "argv": [
+      "python3",
+      "-B",
+      "<unit>/payload/runner/launch.py",
+      "--payload",
+      "<unit>/payload",
+      "--remote-base",
+      "<REMOTE_BASE>",
+      "--remote-output",
+      "<STATE>/source-page-query-unknown-1",
+      "--output",
+      "<unit>/source-page-query-unknown-1",
+      "--mode",
+      "source-page-query-unknown",
+      "--binding",
+      "<unit>/BINDING.json"
+    ],
+    "effects": "one injected policy-unknown at the first actual source-page event query; actual Qwen calls 0 and actual Gemma counts preserved; no raw driver-error claim"
+  },
+  {
+    "name": "source-page-wait-unknown",
+    "kind": "remote-through-local-owner",
+    "argv": [
+      "python3",
+      "-B",
+      "<unit>/payload/runner/launch.py",
+      "--payload",
+      "<unit>/payload",
+      "--remote-base",
+      "<REMOTE_BASE>",
+      "--remote-output",
+      "<STATE>/source-page-wait-unknown-1",
+      "--output",
+      "<unit>/source-page-wait-unknown-1",
+      "--mode",
+      "source-page-wait-unknown",
+      "--binding",
+      "<unit>/BINDING.json"
+    ],
+    "effects": "one injected policy-unknown after raw synchronize and before retirement/publication; actual Qwen calls 0 and actual Gemma counts preserved"
+  },
+  {
+    "name": "source-page-destroy-unknown",
+    "kind": "remote-through-local-owner",
+    "argv": [
+      "python3",
+      "-B",
+      "<unit>/payload/runner/launch.py",
+      "--payload",
+      "<unit>/payload",
+      "--remote-base",
+      "<REMOTE_BASE>",
+      "--remote-output",
+      "<STATE>/source-page-destroy-unknown-1",
+      "--output",
+      "<unit>/source-page-destroy-unknown-1",
+      "--mode",
+      "source-page-destroy-unknown",
+      "--binding",
+      "<unit>/BINDING.json"
+    ],
+    "effects": "one injected policy-unknown before actual hipEventDestroy; ordinary retirement may already have released the window; actual Qwen calls 0 and actual Gemma counts preserved"
+  }
+]

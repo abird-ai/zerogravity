@@ -49,6 +49,7 @@ pliron-dump = [
     "cubecl-llvm?/pliron-dump",
 ]
 rocwmma = []
+source-page-event-probe = []
 std = [
     "cubecl-server/std",
     "cubecl-common/std",

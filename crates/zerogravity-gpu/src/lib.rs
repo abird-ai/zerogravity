@@ -161,6 +161,8 @@ mod ordered_silu;
 #[cfg(all(test, feature = "qualification", feature = "hip", target_os = "linux"))]
 mod hip_native_qualification;
 
+#[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+pub use cubecl::hip::{SourcePageEventProbeMode, SourcePageEventProbeSnapshot};
 #[cfg(all(
     feature = "qwen-source-qualification",
     feature = "hardware-abort-probe",
@@ -172,18 +174,56 @@ pub use resident_inference::qwen_source::{
     Qwen27bNaturalCall, Qwen27bNaturalPending, Qwen27bSourceGpuCandidate, Qwen27bSourceGpuOutput,
     Qwen27bSourceGpuPending, Qwen27bSourceGpuSession, Qwen27bSourceGpuSnapshot,
 };
+#[cfg(all(
+    feature = "hip",
+    feature = "hardware-abort-probe",
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    ),
+    target_os = "linux"
+))]
+pub use resident_leases::source_page::SourcePageProbeParts;
 #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
 pub use resident_program::qwen_source::{
     QwenSourceFrame, QwenSourceFrameKind, QwenSourceObserver, QwenSourceResourceInventory,
 };
 
 #[cfg(all(
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    ),
+    feature = "vulkan",
+    feature = "hardware-abort-probe",
+    target_os = "linux"
+))]
+pub use backend::vulkan_native_policy::retained_partial_native_modules;
+#[cfg(all(
     feature = "gemma-bf16-qualification",
-    feature = "hip",
+    any(feature = "hip", feature = "vulkan"),
     feature = "hardware-abort-probe",
     target_os = "linux"
 ))]
 pub use resident_inference::gemma_text::GemmaFinalOwnerReceipt;
+#[cfg(all(
+    feature = "gemma-bf16-qualification",
+    feature = "vulkan",
+    feature = "hip",
+    feature = "hardware-abort-probe",
+    target_os = "linux"
+))]
+pub use resident_inference::gemma_text::{GemmaVulkanNativeRetention, LearnedSamePciPeerReceipt};
+#[cfg(all(
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    ),
+    feature = "hip",
+    feature = "vulkan",
+    feature = "hardware-abort-probe"
+))]
+pub use resident_inference::{SamePciPeerReceipt, same_pci_peer};
 
 #[cfg(all(
     feature = "hip",

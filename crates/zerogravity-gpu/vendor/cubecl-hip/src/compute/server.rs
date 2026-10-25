@@ -449,6 +449,14 @@ impl WriteScoped for HipServer {
 #[path = "server/prepared_native.rs"]
 mod prepared_native;
 
+#[path = "server/source_page.rs"]
+pub(crate) mod source_page;
+pub use source_page::{HipSourcePageActor, OwnedHipTransferRetirement};
+#[cfg(feature = "source-page-event-probe")]
+pub use source_page::{
+    SourcePageEventProbeMode, SourcePageEventProbeSnapshot, SourcePageEventProbeState,
+};
+
 impl HipServer {
     /// Create a new hip server.
     pub(crate) fn new(
