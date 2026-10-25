@@ -1,0 +1,291 @@
+{
+  "schema": "zg.gemma-ple-source21-command-plan.v1",
+  "tool": "<absolute controller directory>",
+  "unit": "<absolute fresh run directory>",
+  "payload": "<unit>/payload",
+  "archive": "<unit>/payload.tar",
+  "remote_base": "/home/pvl/.cache/abird/zerogravity/qualification/resume-all-five-gemma4-20261025-1",
+  "remote_output_root": "/home/pvl/.local/state/abird/zerogravity/resume-all-five-gemma4-20261025-1",
+  "commands": [
+    {
+      "name": "prepare-complete-root-assembly",
+      "argv": [
+        "<python>",
+        "-B",
+        "<tool>/prepare.py",
+        "--source-root",
+        "<source_root>",
+        "--source-manifest",
+        "<source_manifest>",
+        "--payload",
+        "<unit>/payload",
+        "--archive",
+        "<unit>/payload.tar"
+      ]
+    },
+    {
+      "name": "admin-fresh-upload-and-bootstrap",
+      "argv": [
+        "<python>",
+        "-B",
+        "<unit>/payload/runner/admin.py",
+        "--payload",
+        "<unit>/payload",
+        "--archive",
+        "<unit>/payload.tar",
+        "--remote-base",
+        "<remote_base>",
+        "--output",
+        "<unit>/admin-1"
+      ]
+    },
+    {
+      "name": "assembled-source-two-artifact-build",
+      "argv": [
+        "<python>",
+        "-B",
+        "<unit>/payload/runner/launch.py",
+        "--payload",
+        "<unit>/payload",
+        "--remote-base",
+        "<remote_base>",
+        "--remote-output",
+        "<remote_output_root>/build-1",
+        "--output",
+        "<unit>/build-1",
+        "--mode",
+        "build"
+      ]
+    },
+    {
+      "name": "bind-actual-new-assembled-source-build",
+      "argv": [
+        "<python>",
+        "-B",
+        "<tool>/bind-build.py",
+        "--payload",
+        "<unit>/payload",
+        "--build-dir",
+        "<unit>/build-1",
+        "--output",
+        "<unit>/binding-1.json"
+      ]
+    },
+    {
+      "name": "resident",
+      "argv": [
+        "<python>",
+        "-B",
+        "<unit>/payload/runner/launch.py",
+        "--payload",
+        "<unit>/payload",
+        "--remote-base",
+        "<remote_base>",
+        "--remote-output",
+        "<remote_output_root>/m1",
+        "--output",
+        "<unit>/m1",
+        "--mode",
+        "resident",
+        "--binding",
+        "<unit>/binding-1.json"
+      ]
+    },
+    {
+      "name": "resident-row-unknown",
+      "argv": [
+        "<python>",
+        "-B",
+        "<unit>/payload/runner/launch.py",
+        "--payload",
+        "<unit>/payload",
+        "--remote-base",
+        "<remote_base>",
+        "--remote-output",
+        "<remote_output_root>/u1",
+        "--output",
+        "<unit>/u1",
+        "--mode",
+        "resident-row-unknown",
+        "--binding",
+        "<unit>/binding-1.json"
+      ]
+    },
+    {
+      "name": "unknown",
+      "argv": [
+        "<python>",
+        "-B",
+        "<unit>/payload/runner/launch.py",
+        "--payload",
+        "<unit>/payload",
+        "--remote-base",
+        "<remote_base>",
+        "--remote-output",
+        "<remote_output_root>/u2",
+        "--output",
+        "<unit>/u2",
+        "--mode",
+        "unknown",
+        "--binding",
+        "<unit>/binding-1.json"
+      ]
+    },
+    {
+      "name": "resident-unknown",
+      "argv": [
+        "<python>",
+        "-B",
+        "<unit>/payload/runner/launch.py",
+        "--payload",
+        "<unit>/payload",
+        "--remote-base",
+        "<remote_base>",
+        "--remote-output",
+        "<remote_output_root>/u3",
+        "--output",
+        "<unit>/u3",
+        "--mode",
+        "resident-unknown",
+        "--binding",
+        "<unit>/binding-1.json"
+      ]
+    },
+    {
+      "name": "session-known",
+      "argv": [
+        "<python>",
+        "-B",
+        "<unit>/payload/runner/launch.py",
+        "--payload",
+        "<unit>/payload",
+        "--remote-base",
+        "<remote_base>",
+        "--remote-output",
+        "<remote_output_root>/f1",
+        "--output",
+        "<unit>/f1",
+        "--mode",
+        "session-known",
+        "--binding",
+        "<unit>/binding-1.json"
+      ]
+    },
+    {
+      "name": "session-release-fault",
+      "argv": [
+        "<python>",
+        "-B",
+        "<unit>/payload/runner/launch.py",
+        "--payload",
+        "<unit>/payload",
+        "--remote-base",
+        "<remote_base>",
+        "--remote-output",
+        "<remote_output_root>/f2",
+        "--output",
+        "<unit>/f2",
+        "--mode",
+        "session-release-fault",
+        "--binding",
+        "<unit>/binding-1.json"
+      ]
+    },
+    {
+      "name": "snapshot-known",
+      "argv": [
+        "<python>",
+        "-B",
+        "<unit>/payload/runner/launch.py",
+        "--payload",
+        "<unit>/payload",
+        "--remote-base",
+        "<remote_base>",
+        "--remote-output",
+        "<remote_output_root>/f3",
+        "--output",
+        "<unit>/f3",
+        "--mode",
+        "snapshot-known",
+        "--binding",
+        "<unit>/binding-1.json"
+      ]
+    },
+    {
+      "name": "snapshot-release-fault",
+      "argv": [
+        "<python>",
+        "-B",
+        "<unit>/payload/runner/launch.py",
+        "--payload",
+        "<unit>/payload",
+        "--remote-base",
+        "<remote_base>",
+        "--remote-output",
+        "<remote_output_root>/f4",
+        "--output",
+        "<unit>/f4",
+        "--mode",
+        "snapshot-release-fault",
+        "--binding",
+        "<unit>/binding-1.json"
+      ]
+    },
+    {
+      "name": "pure-controls-native-gpu-wrapper",
+      "argv": [
+        "<python>",
+        "-B",
+        "<unit>/payload/source/scripts/native-gpu.py",
+        "--",
+        "<python>",
+        "-B",
+        "<tool>/control-checks.py",
+        "--payload",
+        "<unit>/payload",
+        "--archive",
+        "<unit>/payload.tar",
+        "--output",
+        "<unit>/control"
+      ],
+      "capture": "<unit>/control-wrapper.log (stdout+stderr)"
+    },
+    {
+      "name": "wrapper-boundary",
+      "argv": [
+        "<python>",
+        "-B",
+        "<tool>/check-boundary.py",
+        "--wrapper-log",
+        "<unit>/control-wrapper.log",
+        "--source",
+        "<unit>/payload/source",
+        "--payload",
+        "<unit>/payload",
+        "--output",
+        "<unit>/control"
+      ]
+    }
+  ],
+  "exact_selected_artifact": {
+    "resident": "gemma4_hip_matrix",
+    "resident-row-unknown": "gemma4_hip_matrix",
+    "unknown": "gemma4_hip_matrix",
+    "resident-unknown": "gemma4_hip_matrix",
+    "session-known": "gemma4_hip_final_owner",
+    "session-release-fault": "gemma4_hip_final_owner",
+    "snapshot-known": "gemma4_hip_final_owner",
+    "snapshot-release-fault": "gemma4_hip_final_owner"
+  },
+  "limits_seconds": {
+    "build": 3600,
+    "resident": 7200,
+    "resident-row-unknown": 1800,
+    "unknown": 1800,
+    "resident-unknown": 1800,
+    "session-known": 7200,
+    "session-release-fault": 1800,
+    "snapshot-known": 7200,
+    "snapshot-release-fault": 1800
+  }
+}

@@ -17,10 +17,10 @@ use std::{
 use zerogravity::{
     Error,
     cache::{CacheOptions, CacheStore},
-    gemma4_cpu::{Gemma4CpuContext, Gemma4CpuLoaded},
+    gemma4_cpu::{Gemma4CpuContext, Gemma4CpuInput, Gemma4CpuLoaded},
     resource_arbiter::{PhysicalDeviceKey, ResourceArbiter},
 };
-use zerogravity_gpu::{Device, Gemma4Bf16GpuSession, GemmaTextHostOwners};
+use zerogravity_gpu::{Device, Gemma4Bf16GpuCandidate, Gemma4Bf16GpuSession, GemmaTextHostOwners};
 struct ThreadWake(thread::Thread);
 impl Wake for ThreadWake {
     fn wake(self: Arc<Self>) {
@@ -42,7 +42,89 @@ fn block_on<F: Future>(future: F) -> F::Output {
     }
 }
 fn binding(root: zerogravity::session_root::RootBinding) -> Value {
-    json!({"session":root.session().get(),"root":root.root(),"frontier":root.frontier()})
+    json!({"session":root.session().get(),"root":root.root(),"root_epoch":root.session_epoch(),"frontier":root.frontier(),"source_bound":root.source().is_bound()})
+}
+/// Completed-callback counters for one proposal: prior prefixes, final planes.
+#[derive(Default)]
+struct Observation {
+    frontier: usize,
+    prior: usize,
+    final_planes: [bool; 30],
+}
+impl Observation {
+    fn planes(&self) -> usize {
+        self.final_planes.iter().filter(|v| **v).count()
+    }
+}
+struct Tracing<'a> {
+    inner: &'a mut Expected,
+    observed: &'a mut Observation,
+}
+impl zerogravity_gpu::GemmaTextObserver for Tracing<'_> {
+    fn completed_producer(
+        &mut self,
+        p: usize,
+        o: &zerogravity::gemma4::text::Gemma4Bf16Observation,
+        b: &[u8],
+    ) -> zerogravity::Result<()> {
+        zerogravity_gpu::GemmaTextObserver::completed_producer(self.inner, p, o, b)
+    }
+    fn completed_kv(
+        &mut self,
+        prior: bool,
+        d: zerogravity::accelerator::program::KvDomain,
+        v: bool,
+        active: usize,
+        b: &[u8],
+    ) -> zerogravity::Result<()> {
+        zerogravity_gpu::GemmaTextObserver::completed_kv(self.inner, prior, d, v, active, b)?;
+        if prior && active > 0 {
+            self.observed.prior += 1;
+        } else if !prior && active == self.observed.frontier {
+            self.observed.final_planes[d.0 * 2 + usize::from(v)] = true;
+        }
+        Ok(())
+    }
+}
+/// One diagnostic proposal against the immutable expected cell. The original
+/// expected report owns call/exact/mismatched/boundary/frontier/packet fields;
+/// only the diagnostic-only counters are added here.
+fn compared(
+    e: &mut Expected,
+    call: usize,
+    actual: &zerogravity_gpu::InferenceReadback,
+    before: zerogravity::session_root::RootBinding,
+    observed: &Observation,
+    phase: &str,
+    schedule: usize,
+    sequence: usize,
+) -> Proof<Value> {
+    let name = e.cell.request.name.clone();
+    let call_ids = e.cell.calls[call].input_ids.clone();
+    let base = e.cell.calls[call].base;
+    let max_bits = actual
+        .device_token
+        .as_ref()
+        .ok_or("actual completed private packet")?
+        .max_bits;
+    let mut report = e.completed(actual, before)?;
+    let object = report
+        .as_object_mut()
+        .ok_or("actual completed proposal report")?;
+    object.insert("case".into(), json!(name));
+    object.insert("phase".into(), json!(phase));
+    object.insert("call".into(), json!(call));
+    object.insert("schedule".into(), json!(schedule));
+    object.insert("sequence".into(), json!(sequence));
+    object.insert("input_ids".into(), json!(call_ids));
+    object.insert("base".into(), json!(base));
+    object.insert("source_bound".into(), json!(true));
+    object.insert("unique_order".into(), json!(true));
+    object.insert("prior_kv_comparisons".into(), json!(observed.prior));
+    object.insert("final_kv_planes".into(), json!(observed.planes()));
+    object.insert("full_vocab_words".into(), json!(262144));
+    object.insert("max_bits".into(), json!(max_bits));
+    Ok(report)
 }
 fn completed(
     s: &mut Gemma4Bf16GpuSession,
@@ -50,16 +132,55 @@ fn completed(
     call: usize,
     events: &mut Vec<Value>,
 ) -> Proof<bool> {
+    let base = e.cell.calls[call].base;
+    let frontier = e.cell.calls[call].frontier;
+    let selected = e.cell.calls[call].selected_id;
+    let eos = e.cell.calls[call].eos;
+    let name = e.cell.request.name.clone();
+    let call_ids = e.cell.calls[call].input_ids.clone();
     e.begin(call);
     let before = s.binding();
-    let pending = if call == 0 {
-        block_on(s.prepare_prompt(8, Some(e), None))?
-    } else {
-        block_on(s.prepare_next(Some(e), None))?
+    let mut observed = Observation {
+        frontier,
+        ..Observation::default()
     };
-    let comparison = e.completed(pending.readback(), before)?;
+    let pending = {
+        let mut tracing = Tracing {
+            inner: &mut *e,
+            observed: &mut observed,
+        };
+        if call == 0 {
+            block_on(s.prepare_prompt(8, Some(&mut tracing), None))?
+        } else {
+            block_on(s.prepare_next(Some(&mut tracing), None))?
+        }
+    };
+    need(
+        pending.readback().device_token.is_some()
+            && observed.planes() == 30
+            && (observed.prior > 0 || base == 0),
+        "actual completed proposal observed all15 domains",
+    )?;
+    let sequence = events
+        .iter()
+        .filter(|v| v["kind"].as_str() == Some("actual-completed-proposal"))
+        .count();
+    let comparison = compared(
+        e,
+        call,
+        pending.readback(),
+        before,
+        &observed,
+        "proposal",
+        call,
+        sequence,
+    )?;
     let exact = comparison["exact"] == true;
-    events.push(json!({"kind":"actual-completed-proposal","before":binding(before),"comparison":comparison}));
+    events.push(
+        json!({"kind":"actual-completed-proposal","case":name,"phase":"proposal",
+                       "call":call,"input_ids":call_ids,"before":binding(before),
+                       "comparison":comparison}),
+    );
     if !exact {
         drop(pending);
         need(
@@ -68,17 +189,20 @@ fn completed(
         )?;
         return Ok(false);
     }
+    need(
+        s.binding() == before,
+        "exact completed Ready has not published root/private feedback",
+    )?;
     let receipt = s.commit(pending)?;
-    let c = &e.cell.calls[call];
     need(
         receipt.root == s.binding()
             && receipt.root.root() == before.root() + 1
-            && receipt.root.frontier() == c.frontier as u64
-            && receipt.selected_id == c.selected_id
-            && receipt.eos == c.eos,
+            && receipt.root.frontier() == frontier as u64
+            && receipt.selected_id == selected
+            && receipt.eos == eos,
         "complete source/state/private packet join before publication",
     )?;
-    events.push(json!({"kind":"actual-committed-call","case":e.cell.request.name,"call":call,"selected_id":receipt.selected_id,"eos":receipt.eos,"root":binding(receipt.root)}));
+    events.push(json!({"kind":"actual-committed-call","case":name,"call":call,"selected_id":receipt.selected_id,"eos":receipt.eos,"root":binding(receipt.root)}));
     Ok(true)
 }
 fn trajectory(
@@ -86,8 +210,9 @@ fn trajectory(
     e: &mut Expected,
     start: usize,
     events: &mut Vec<Value>,
-    decoder: &zerogravity::gemma4_cpu::Gemma4CpuInput,
+    decoder: &Gemma4CpuInput,
 ) -> Proof<bool> {
+    let name = e.cell.request.name.clone();
     for call in start..e.cell.calls.len() {
         if !completed(s, e, call, events)? {
             e.after()?;
@@ -104,9 +229,9 @@ fn trajectory(
             .iter()
             .rev()
             .find(|v| {
-                v["kind"] == "actual-committed-call"
-                    && v["case"] == e.cell.request.name
-                    && v["call"] == call
+                v["kind"].as_str() == Some("actual-committed-call")
+                    && v["case"].as_str() == Some(name.as_str())
+                    && v["call"].as_u64() == Some(call as u64)
             })
             .ok_or("actual committed output record")?;
         if event["eos"] != true {
@@ -116,8 +241,7 @@ fn trajectory(
         }
     }
     let text = decoder.decode_output(&generated, true, None)?;
-    events.push(json!({"kind":"source-ID-decoded-output","case":e.cell.request.name,"ids":generated,"text":text.as_str(),"sequence_decode_only":true}));
-    drop(text);
+    events.push(json!({"kind":"source-ID-decoded-output","case":name,"ids":generated,"text":text.as_str(),"sequence_decode_only":true}));
     e.after()?;
     Ok(true)
 }
@@ -142,6 +266,8 @@ impl zerogravity_gpu::GemmaTextObserver for BorrowedObserver<'_, '_> {
         zerogravity_gpu::GemmaTextObserver::completed_kv(&mut **self.0.borrow_mut(), p, d, v, a, b)
     }
 }
+/// Pre-cancel, completed-Ready Drop and post-completion refusal/late-cancel on
+/// the ORIGINAL session: no publication, no root or private-feedback change.
 fn cancelled_and_discarded(
     s: &mut Gemma4Bf16GpuSession,
     e: &mut Expected,
@@ -152,23 +278,25 @@ fn cancelled_and_discarded(
     let flag = AtomicBool::new(true);
     e.begin(0);
     need(
-        matches!(block_on(s.prepare_prompt(8,Some(e),Some(&flag))),Err(Error::State(why))if why=="Gemma source-bound GPU call cancelled")
+        matches!(block_on(s.prepare_prompt(8,Some(&mut *e),Some(&flag))),Err(Error::State(why))if why=="Gemma source-bound GPU call cancelled")
             && s.binding() == before,
         "pre-cancel has no root/private feedback change",
     )?;
     events.push(json!({"kind":"pre-cancel","root":binding(before)}));
     e.begin(0);
-    let pending = block_on(s.prepare_prompt(8, Some(e), None))?;
-    let comparison = e.completed(pending.readback(), before)?;
-    let exact = comparison["exact"] == true;
+    let pending = block_on(s.prepare_prompt(8, Some(&mut *e), None))?;
+    need(
+        s.binding() == before,
+        "completed Ready has not published root/private feedback",
+    )?;
+    let report = e.completed(pending.readback(), before).ok();
+    let exact = report.as_ref().is_some_and(|r| r["exact"] == true);
     drop(pending);
     need(
         s.binding() == before,
         "actual Ready pending Drop cannot publish root/private feedback",
     )?;
-    events.push(
-        json!({"kind":"completed-Ready-drop","comparison":comparison,"root":binding(before)}),
-    );
+    events.push(json!({"kind":"completed-Ready-drop","exact":exact,"comparison":report,"root":binding(before)}));
     if !exact {
         return Ok(false);
     }
@@ -177,12 +305,12 @@ fn cancelled_and_discarded(
         e.begin(0);
         let observed = std::cell::RefCell::new(&mut *e);
         let mut observer = BorrowedObserver(&observed);
-        let mut comparison = None;
+        let mut comparison: Option<Value> = None;
         let mut exact = false;
         let result = block_on(
             s.infer_prompt(8, Some(&mut observer), Some(&flag), |actual| {
                 let report = observed
-                    .borrow()
+                    .borrow_mut()
                     .completed(actual, before)
                     .map_err(|e| Error::State(e.to_string()))?;
                 exact = report["exact"] == true;
@@ -204,7 +332,12 @@ fn cancelled_and_discarded(
             s.binding() == before && loaded.clone().close(None).is_err(),
             "actual completed refusal/cancel preserves original root and authentic managed-source guard",
         )?;
-        events.push(json!({"kind":if cancel{"actual-completed-late-cancel"}else{"actual-completed-refusal"},"comparison":comparison,"root":binding(before),"error":result.as_ref().err().map(ToString::to_string)}));
+        let kind = if cancel {
+            "actual-completed-late-cancel"
+        } else {
+            "actual-completed-refusal"
+        };
+        events.push(json!({"kind":kind,"comparison":comparison,"root":binding(before),"error":result.as_ref().err().map(ToString::to_string)}));
         if !exact {
             return Ok(false);
         }
@@ -250,6 +383,223 @@ impl zerogravity_gpu::GemmaTextObserver for UnknownObserver {
         Ok(())
     }
 }
+/// Resident PLE row page evidence for every real call of every real case, plus
+/// three full traversals of one prompt: ordinary, instrumented all-hit and
+/// ordinary observer-free hit. Every completed counter precedes its snapshot.
+fn resident_rows(
+    candidate: &Arc<Gemma4Bf16GpuCandidate>,
+    matrix: &Matrix,
+    loaded: &Arc<Gemma4CpuLoaded>,
+    ids: &[Arc<[u32]>],
+    events: &mut Vec<Value>,
+) -> Proof<bool> {
+    for (index, input_ids) in ids.iter().enumerate() {
+        let mut session = block_on(candidate.session(input_ids.clone()))?;
+        let expected = matrix.cell(index, loaded.source_identity())?;
+        for (call, reference) in expected.cell.calls.iter().enumerate() {
+            let before = session.binding();
+            let traffic = block_on(candidate.traffic())?;
+            let pending = if call == 0 {
+                block_on(session.prepare_prompt(8, None, None))?
+            } else {
+                block_on(session.prepare_next(None, None))?
+            };
+            expected.normal_packet(call, pending.readback(), before)?;
+            let packet = pending
+                .readback()
+                .device_token
+                .as_ref()
+                .ok_or("normal actual private packet")?;
+            let (actual_id, actual_bits) = (packet.id, packet.max_bits);
+            let after = block_on(candidate.traffic())?;
+            let uploads = after
+                .selected_row_uploads
+                .checked_sub(traffic.selected_row_uploads)
+                .ok_or("normal selected row upload underflow")?;
+            let reuses = after
+                .selected_row_reuses
+                .checked_sub(traffic.selected_row_reuses)
+                .ok_or("normal selected row reuse underflow")?;
+            let avoided = after
+                .selected_row_avoided_upload_bytes
+                .checked_sub(traffic.selected_row_avoided_upload_bytes)
+                .ok_or("normal selected row avoided underflow")?;
+            let total_value_h2d = after
+                .value_upload_bytes
+                .checked_sub(traffic.value_upload_bytes)
+                .ok_or("normal value upload underflow")?;
+            need(
+                after.producer_readback_bytes == traffic.producer_readback_bytes
+                    && after.kv_diagnostic_readback_bytes == traffic.kv_diagnostic_readback_bytes
+                    && uploads
+                        .checked_add(reuses)
+                        .ok_or("normal row counter overflow")?
+                        == reference.input_ids.len() as u64
+                    && total_value_h2d
+                        == uploads
+                            .checked_mul(17_920)
+                            .ok_or("normal row upload bytes overflow")?
+                    && avoided
+                        == reuses
+                            .checked_mul(17_920)
+                            .ok_or("normal row avoided bytes overflow")?
+                    && after.resident_weight_bytes == 4_558_946_304,
+                "normal no producer/KV D2H or repeated selected weight H2D; PLE row only",
+            )?;
+            need(
+                session.binding() == before,
+                "ordinary completed Ready has not published root/private feedback",
+            )?;
+            let receipt = session.commit(pending)?;
+            need(
+                receipt.root == session.binding()
+                    && receipt.root.frontier() == reference.frontier as u64
+                    && receipt.selected_id == reference.selected_id
+                    && receipt.eos == reference.eos,
+                "normal original authority/private feedback parity",
+            )?;
+            let snapshot = session.snapshot()?;
+            expected.normal_state(call, &block_on(snapshot.read_domains())?)?;
+            drop(snapshot);
+            events.push(json!({"kind":"resident-normal-parity","case":expected.cell.request.name,"phase":"proposal","call":call,"schedule":call,"input_ids":reference.input_ids,"base":before.frontier(),"frontier":receipt.root.frontier(),"selected_id":receipt.selected_id,"actual_selected_id":actual_id,"actual_max_bits":format!("{:08x}",actual_bits),"max_bits":actual_bits,"observer":false,"source_bound":true,"state_domains_exact":true,"producer_kv_d2h":0,"resident_weight_bytes":after.resident_weight_bytes,"ple_row_h2d":uploads.checked_mul(17_920).ok_or("normal row upload bytes overflow")?,"value_upload_total":total_value_h2d,"ple_row_uploads":uploads,"ple_row_reuses":reuses,"ple_row_avoided_h2d":avoided}));
+        }
+        expected.after()?;
+    }
+    // A short authentic prompt fits the existing page without eviction; its
+    // next two full traversals must consume only completed source rows.
+    let index = ids
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, ids)| ids.len())
+        .map(|(i, _)| i)
+        .ok_or("actual source prompt set")?;
+    need(
+        ids[index].len() <= candidate.inventory().selected_row_cache_capacity,
+        "actual repeated prompt fits existing page rows",
+    )?;
+    for repeat in 0..3 {
+        let mut session = block_on(candidate.session(ids[index].clone()))?;
+        let mut expected = matrix.cell(index, loaded.source_identity())?;
+        let before = session.binding();
+        let traffic = block_on(candidate.traffic())?;
+        let diagnostic = repeat == 1;
+        let mut observed = Observation {
+            frontier: expected.cell.calls[0].frontier,
+            ..Observation::default()
+        };
+        let pending = if diagnostic {
+            expected.begin(0);
+            let mut tracing = Tracing {
+                inner: &mut expected,
+                observed: &mut observed,
+            };
+            block_on(session.prepare_prompt(8, Some(&mut tracing), None))?
+        } else {
+            block_on(session.prepare_prompt(8, None, None))?
+        };
+        let after = block_on(candidate.traffic())?;
+        let hits = after
+            .selected_row_reuses
+            .checked_sub(traffic.selected_row_reuses)
+            .ok_or("warm selected row reuse underflow")?;
+        let misses = after
+            .selected_row_uploads
+            .checked_sub(traffic.selected_row_uploads)
+            .ok_or("warm selected row upload underflow")?;
+        let avoided = after
+            .selected_row_avoided_upload_bytes
+            .checked_sub(traffic.selected_row_avoided_upload_bytes)
+            .ok_or("warm selected row avoided underflow")?;
+        let total_value_h2d = after
+            .value_upload_bytes
+            .checked_sub(traffic.value_upload_bytes)
+            .ok_or("warm value upload underflow")?;
+        let producer_d2h = after
+            .producer_readback_bytes
+            .checked_sub(traffic.producer_readback_bytes)
+            .ok_or("warm producer readback underflow")?;
+        let kv_diag_d2h = after
+            .kv_diagnostic_readback_bytes
+            .checked_sub(traffic.kv_diagnostic_readback_bytes)
+            .ok_or("warm KV readback underflow")?;
+        need(
+            hits.checked_add(misses)
+                .ok_or("warm row counter overflow")?
+                == ids[index].len() as u64
+                && total_value_h2d
+                    == misses
+                        .checked_mul(17_920)
+                        .ok_or("warm row upload bytes overflow")?
+                && avoided
+                    == hits
+                        .checked_mul(17_920)
+                        .ok_or("warm row avoided bytes overflow")?,
+            "real producer-side source row traffic conservation",
+        )?;
+        if repeat > 0 {
+            need(
+                misses == 0 && hits == ids[index].len() as u64,
+                "completed immutable PLE rows actually reused without H2D",
+            )?;
+        }
+        let comparison = if diagnostic {
+            need(
+                total_value_h2d == 0
+                    && producer_d2h > 0
+                    && producer_d2h % 4 == 0
+                    && producer_d2h <= 64 * 1024 * 1024
+                    && kv_diag_d2h > 0
+                    && kv_diag_d2h % 4 == 0
+                    && kv_diag_d2h <= 64 * 1024 * 1024,
+                "diagnostic hit reads bounded actual producer/fullKV D2H only",
+            )?;
+            let sequence = events
+                .iter()
+                .filter(|v| v["kind"].as_str() == Some("actual-completed-proposal"))
+                .count();
+            let report = compared(
+                &mut expected,
+                0,
+                pending.readback(),
+                before,
+                &observed,
+                "proposal",
+                repeat,
+                sequence,
+            )?;
+            need(
+                report["exact"] == true
+                    && report["final_kv_planes"] == 30
+                    && report["full_vocab_words"] == 262144,
+                "actual warmed PLE hit full35/fullV/all15KV exact before commit",
+            )?;
+            Some(report)
+        } else {
+            expected.normal_packet(0, pending.readback(), before)?;
+            need(
+                total_value_h2d == 0 && producer_d2h == 0 && kv_diag_d2h == 0,
+                "ordinary completed hit has no optional producer/KV D2H",
+            )?;
+            None
+        };
+        need(
+            session.binding() == before,
+            "warmed hit Ready has not published root/private feedback",
+        )?;
+        let receipt = session.commit(pending)?;
+        need(
+            receipt.selected_id == expected.cell.calls[0].selected_id
+                && receipt.root.frontier() == expected.cell.calls[0].frontier as u64,
+            "full genuine prompt natural selection/root unchanged",
+        )?;
+        let snapshot = session.snapshot()?;
+        expected.normal_state(0, &block_on(snapshot.read_domains())?)?;
+        drop(snapshot);
+        events.push(json!({"kind":"resident-ple-row-reuse","case":expected.cell.request.name,"phase":"proposal","call":0,"schedule":repeat,"repeat":repeat,"input_ids":expected.cell.calls[0].input_ids,"base":before.frontier(),"frontier":receipt.root.frontier(),"observer":diagnostic,"actual_rows":ids[index].len(),"uploads":misses,"reuses":hits,"ple_row_h2d":misses.checked_mul(17_920).ok_or("warm row upload bytes overflow")?,"value_upload_total":total_value_h2d,"avoided_h2d":avoided,"producer_d2h":producer_d2h,"kv_diagnostic_d2h":kv_diag_d2h,"resident_weight_bytes":after.resident_weight_bytes,"source_bound":true,"state_domains_exact":true,"full_kv_exact":true,"selected_id":receipt.selected_id,"max_bits":receipt.max_bits,"actual_max_bits":format!("{:08x}",receipt.max_bits),"comparison":comparison}));
+        expected.after()?;
+    }
+    Ok(true)
+}
 pub fn run() -> Proof<()> {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     if args.len() == 2 && args[0] == "--import-source" {
@@ -264,7 +614,7 @@ pub fn run() -> Proof<()> {
                 )),
         "usage: gemma4_hip_matrix EXPECTED_INVOCATION FRESH_REPORT [unknown|resident|resident-unknown|resident-row-unknown] | --import-source ABS_STAGE",
     )?;
-    let mode = args.get(2).map(String::as_str).unwrap_or("streamed");
+    let mode = args.get(2).map(String::as_str).unwrap_or("unknown");
     let unknown = matches!(
         mode,
         "unknown" | "resident-unknown" | "resident-row-unknown"
@@ -316,9 +666,8 @@ pub fn run() -> Proof<()> {
     }
     let decoder = context.prepare_text(&snapshot, "One", None)?;
     let loaded = Gemma4CpuLoaded::open(snapshot.clone(), context.clone(), None)?;
-    let device = Device::Hip(Default::default());
     let (candidate, mut a) = block_on(loaded.load_hip_qualification(
-        device,
+        Device::Hip(Default::default()),
         inputs[0].take().ok_or("genuine first prepared text")?,
         GemmaTextHostOwners {
             additional_recorded_calls: 7,
@@ -331,12 +680,97 @@ pub fn run() -> Proof<()> {
         !candidate.trained_model_qualified(),
         "explicit candidate scope without model/serving permit",
     )?;
-    let inventory = format!("{:?}", candidate.inventory());
+    // Actual source-issued cold inventory: resident/streamed geometry and each
+    // owned device/host owner equation must hold before any inference.
+    let cold = candidate.inventory();
+    let complete_source_bytes = cold.complete_source_bytes as u64;
+    // Storage policy changes only the owned page/resident binding and the
+    // projection scratch rows: immutable tables, value slots, gamma and math
+    // scratch are plan-owned and identical for both policies.
+    let (resident_owner, projection_scratch, projection_rows, largest_binding) = if resident {
+        (
+            4_558_946_304usize,
+            2_121_728usize,
+            262_144usize,
+            805_306_368usize,
+        )
+    } else {
+        (0usize, 40_960usize, 2_048usize, 1_048_576usize)
+    };
+    let owned_sum = cold
+        .source_page_bytes
+        .checked_add(resident_owner)
+        .and_then(|v| v.checked_add(cold.value_slot_bytes))
+        .and_then(|v| v.checked_add(cold.source_gamma_bytes))
+        .and_then(|v| v.checked_add(cold.math_scratch_bytes))
+        .and_then(|v| v.checked_add(projection_scratch))
+        .and_then(|v| v.checked_add(cold.status_and_packet_bytes))
+        .and_then(|v| v.checked_add(2_048))
+        .ok_or("actual owned cold device owner sum")?;
+    need(
+        cold.unique_source_matrices == 278
+            && complete_source_bytes == 9_256_566_784
+            && cold.single_root_payload_bytes == 2_359_296
+            && cold.six_root_device_bytes == cold.single_root_payload_bytes * 6
+            && cold.root_initialization_host_bytes == cold.single_root_payload_bytes * 3
+            && cold.source_page_bytes == 1_048_576
+            && cold.value_slots == 24
+            && cold.value_slot_bytes == 2_502_656
+            && cold.source_gamma_bytes == 1_146_880
+            && cold.math_scratch_bytes == 114_688
+            && cold.projection_scratch_bytes == projection_scratch
+            && cold.projection_max_rows == projection_rows
+            && cold.resident_matrix_bytes == resident_owner
+            && cold.largest_binding_bytes == largest_binding
+            && cold.status_and_packet_bytes == 2_560
+            && cold.original_greedy_workspace_bytes == 12_336
+            && cold.root_pool_metadata_bytes == 256_000
+            && cold.owned_device_bytes == owned_sum
+            && cold.device_with_six_roots_bytes
+                == cold.owned_device_bytes
+                    + cold.six_root_device_bytes
+                    + cold.original_greedy_workspace_bytes
+                    + 6 * 256
+                    + cold.native_device_bytes
+            && cold.complete_physical_device_bytes
+                == cold.device_with_six_roots_bytes + cold.persistent_context_device_bytes
+            && cold.persistent_context_device_bytes == 4 * 1024 * 1024 * 1024
+            && cold.persistent_context_host_bytes == 2 * 1024 * 1024 * 1024
+            && cold.native_device_bytes >= 8 * 1024 * 1024 * 1024
+            && cold.native_device_bytes <= 9 * 1024 * 1024 * 1024
+            && cold.native_host_bytes >= 8 * 1024 * 1024 * 1024
+            && cold.native_host_bytes <= 10 * 1024 * 1024 * 1024 + 2 * 1024 * 1024
+            && cold.host_upper_bytes > cold.native_host_bytes
+            && cold.host_upper_bytes > 2 * 1024 * 1024 * 1024
+            && cold.host_upper_bytes <= 16 * 1024 * 1024 * 1024
+            && cold.complete_physical_device_bytes as u64 <= provider,
+        "actual source-issued cold device/host owner equations and caps",
+    )?;
+    need(
+        if resident {
+            cold.resident_matrices == 277
+                && cold.resident_upload_windows == 4_516
+                && cold.resident_control_host_bytes == 18_153_472
+                && cold.selected_row_cache_capacity == 58
+                && cold.selected_row_cache_row_bytes == 17_920
+        } else {
+            // Streamed owns no resident binding/page window at all.
+            cold.resident_matrices == 0
+                && cold.resident_upload_windows == 0
+                && cold.resident_control_host_bytes == 0
+                && cold.selected_row_cache_capacity == 0
+                && cold.selected_row_cache_row_bytes == 0
+        },
+        "mode-exact cold source resident/streamed geometry",
+    )?;
+    let inventory = format!("{cold:?}");
     let mut events = Vec::with_capacity(128);
     let mut exact = true;
     if unknown {
         let cached_row_fault = mode == "resident-row-unknown";
         if cached_row_fault {
+            // A genuine cached PLE row needs one completed warm publication
+            // first; the armed refusal then happens on that same hit row.
             need(
                 ids[0].len() <= candidate.inventory().selected_row_cache_capacity,
                 "authentic warm prompt fits source row page",
@@ -345,7 +779,15 @@ pub fn run() -> Proof<()> {
             let before = a.binding();
             let pending = block_on(a.prepare_prompt(8, None, None))?;
             expected.normal_packet(0, pending.readback(), before)?;
-            a.commit(pending)?;
+            need(
+                a.binding() == before,
+                "warm row Ready has not published root/private feedback",
+            )?;
+            let warm = a.commit(pending)?;
+            need(
+                warm.root.frontier() == expected.cell.calls[0].frontier as u64,
+                "warm PLE row publication before armed refusal",
+            )?;
             let snapshot = a.snapshot()?;
             expected.normal_state(0, &block_on(snapshot.read_domains())?)?;
             drop(snapshot);
@@ -370,34 +812,79 @@ pub fn run() -> Proof<()> {
             "one actual submitted/completed producer refusal before Ready/root",
         )?;
         let after = block_on(candidate.traffic())?;
-        if cached_row_fault {
-            need(
-                after.selected_row_reuses - traffic.selected_row_reuses == 1
-                    && after.selected_row_avoided_upload_bytes
-                        - traffic.selected_row_avoided_upload_bytes
-                        == 17920
-                    && after.value_upload_bytes == traffic.value_upload_bytes,
-                "actual cached PLE consumer completed before refusal; no new H2D or publication",
-            )?;
-        }
-        drop((a, candidate, inputs, ids, decoder));
+        let row_uploads = after
+            .selected_row_uploads
+            .checked_sub(traffic.selected_row_uploads)
+            .ok_or("selected row upload counter underflow")?;
+        let row_reuses = after
+            .selected_row_reuses
+            .checked_sub(traffic.selected_row_reuses)
+            .ok_or("selected row reuse counter underflow")?;
+        let avoided = after
+            .selected_row_avoided_upload_bytes
+            .checked_sub(traffic.selected_row_avoided_upload_bytes)
+            .ok_or("selected row avoided counter underflow")?;
+        // Whole-service value H2D, distinct from the PLE selected-row counter.
+        let total_value_h2d = after
+            .value_upload_bytes
+            .checked_sub(traffic.value_upload_bytes)
+            .ok_or("value upload counter underflow")?;
+        let row_h2d = row_uploads
+            .checked_mul(17_920)
+            .ok_or("selected row upload bytes overflow")?;
+        need(
+            match (cached_row_fault, resident) {
+                // Completed cached PLE consumer before refusal: one genuine
+                // reuse, its avoided row bytes, no H2D and no publication.
+                (true, _) => {
+                    row_reuses == 1
+                        && avoided == 17_920
+                        && row_uploads == 0
+                        && row_h2d == 0
+                        && total_value_h2d == 0
+                }
+                // Fresh resident unknown faults after its actual PLE row upload.
+                (false, true) => {
+                    row_reuses == 0
+                        && avoided == 0
+                        && row_uploads == ids[0].len() as u64
+                        && row_uploads <= 64
+                        && row_h2d == 17_920 * row_uploads
+                        && total_value_h2d == row_h2d
+                }
+                // Fresh streamed unknown reaches block.output through streamed
+                // embedding/first-block projections: total service H2D is
+                // positive, source-byte bounded, and never PLE-row traffic.
+                (false, false) => {
+                    row_reuses == 0
+                        && avoided == 0
+                        && row_uploads == 0
+                        && row_h2d == 0
+                        && total_value_h2d > 0
+                        && total_value_h2d <= complete_source_bytes
+                }
+            },
+            "actual cached hit, fresh resident PLE row upload or bounded streamed first-block H2D",
+        )?;
+        // The original envelope, source, cache and native owners stay retained
+        // and charged: the live session refuses a managed source close.
         let close = loaded.clone().close(None);
-        drop(loaded);
-        drop(snapshot);
-        drop(store);
-        drop(context);
         let arbiter = ResourceArbiter::process_shared();
         let physical = arbiter.snapshot(&PhysicalDeviceKey::new("pci", "0000:c6:00.0")?)?;
         let host = arbiter.snapshot(&PhysicalDeviceKey::new("host", "system-ram")?)?;
         write_new(
             &report,
-            &json!({"schema":"zg.gemma4-e2b-original-hip-unknown.v1","status":"ACTUAL_UNKNOWN_RETAINED","completed_producers":observer.completed,"cached_row_fault":cached_row_fault,"warmup_calls":usize::from(cached_row_fault),"selected_row_reuses":after.selected_row_reuses-traffic.selected_row_reuses,"selected_row_avoided_h2d":after.selected_row_avoided_upload_bytes-traffic.selected_row_avoided_upload_bytes,"published_roots":0,"source_close_refused":close.is_err(),"physical_reserved":physical.reserved,"host_reserved":host.reserved,"diagnostic_host_reserved":32u64*1024*1024,"physical_fenced":physical.fenced,"context_retirement":"process lifetime; source/native/flight owners intentionally retained","trained_native_serving_or_performance_qualified":false}),
+            &json!({"schema":"zg.gemma4-e2b-original-hip-unknown.v1","status":"ACTUAL_UNKNOWN_RETAINED","completed_producers":observer.completed,"cached_row_fault":cached_row_fault,"warmup_calls":usize::from(cached_row_fault),"warmup_commits":usize::from(cached_row_fault),"faulted_call_commits":0,"selected_row_uploads":row_uploads,"selected_row_reuses":row_reuses,"selected_row_avoided_h2d":avoided,"selected_row_h2d":row_h2d,"total_value_upload_h2d":total_value_h2d,"complete_source_bytes":complete_source_bytes,"published_roots":0,"inventory":inventory,"source_close_refused":close.is_err(),"source_close_error":close.as_ref().err().map(ToString::to_string),"physical_reserved":physical.reserved,"host_reserved":host.reserved,"diagnostic_host_reserved":32u64*1024*1024,"physical_fenced":physical.fenced,"host_fenced":host.fenced,"context_retirement":"process lifetime; source/native/flight owners intentionally retained","trained_native_serving_or_performance_qualified":false}),
         )?;
+        // Coarse retained HOST envelope, not a per-owner retained-byte proof:
+        // the original envelope/source/cache/native owners stay charged/fenced.
         need(
             close.is_err()
                 && physical.fenced
                 && physical.reserved == provider
-                && host.reserved > 2 * 1024 * 1024 * 1024,
+                && host.reserved >= 2 * 1024 * 1024 * 1024 + 32 * 1024 * 1024
+                && host.reserved <= 16 * 1024 * 1024 * 1024
+                && !host.fenced,
             "unknown same original envelope/source/cache owners retained and fenced",
         )?;
         println!(
@@ -405,8 +892,13 @@ pub fn run() -> Proof<()> {
         );
         return Ok(());
     }
-    let result = (|| -> Proof<()> {
-        let mut b = block_on(candidate.session(ids[1].clone()))?;
+    let mut b = block_on(candidate.session(ids[1].clone()))?;
+    let untouched = b.binding();
+    let mut ea = matrix.cell(0, loaded.source_identity())?;
+    let mut eb = matrix.cell(1, loaded.source_identity())?;
+    // Case0 then case1 keep the original two-session population; further cases
+    // are admitted only after both are dropped.
+    let mut result: Proof<()> = (|| -> Proof<()> {
         need(
             a.binding().session() != b.binding().session(),
             "two independent real SessionAuthority owners",
@@ -422,17 +914,15 @@ pub fn run() -> Proof<()> {
             loaded.clone().close(None).is_err(),
             "GPU/native owners retain authentic SnapshotLease/managed lifecycle",
         )?;
-        let mut ea = matrix.cell(0, loaded.source_identity())?;
-        let mut eb = matrix.cell(1, loaded.source_identity())?;
         need(
-            ids[0].as_ref() == ea.cell.prompt_ids && ids[1].as_ref() == eb.cell.prompt_ids,
+            &ids[0][..] == ea.cell.prompt_ids.as_slice()
+                && &ids[1][..] == eb.cell.prompt_ids.as_slice(),
             "source-computed token IDs compared only",
         )?;
         exact &= cancelled_and_discarded(&mut a, &mut ea, &loaded, &mut events)?;
         if !exact {
             return Ok(());
         }
-        let untouched = b.binding();
         exact &= completed(&mut a, &mut ea, 0, &mut events)?;
         need(
             b.binding() == untouched,
@@ -442,10 +932,35 @@ pub fn run() -> Proof<()> {
             return Ok(());
         }
         let snapshot_a = a.snapshot()?;
-        let before_b = a.binding();
+        if ea.cell.calls.len() > 1 {
+            exact &= completed(&mut a, &mut ea, 1, &mut events)?;
+            if !exact {
+                return Ok(());
+            }
+            // Original snapshot state after call0; restoring it must replay
+            // exactly one further call from the same completed prefix.
+            block_on(a.restore(&snapshot_a))?;
+            need(
+                a.binding().frontier() == ea.cell.calls[0].frontier as u64,
+                "source-independent state restore frontier",
+            )?;
+            exact &= completed(&mut a, &mut ea, 1, &mut events)?;
+            if !exact {
+                return Ok(());
+            }
+            exact &= trajectory(&mut a, &mut ea, 2, &mut events, &decoder)?;
+        } else {
+            exact &= trajectory(&mut a, &mut ea, 1, &mut events, &decoder)?;
+        }
+        if !exact {
+            return Ok(());
+        }
+        // Independent second real session: its own first completed proposal
+        // must not move the first session's published root.
+        let a_before_b = a.binding();
         exact &= completed(&mut b, &mut eb, 0, &mut events)?;
         need(
-            a.binding() == before_b,
+            a.binding() == a_before_b,
             "independent session root isolation",
         )?;
         if !exact {
@@ -455,149 +970,66 @@ pub fn run() -> Proof<()> {
             block_on(b.restore(&snapshot_a)).is_err(),
             "foreign-session snapshot refused before publication",
         )?;
-        if ea.cell.calls.len() > 1 {
-            exact &= completed(&mut a, &mut ea, 1, &mut events)?;
-            if !exact {
-                return Ok(());
-            }
-            block_on(a.restore(&snapshot_a))?;
-            need(
-                a.binding().frontier() == ea.cell.calls[0].frontier as u64,
-                "source-independent state restore frontier",
-            )?;
-            exact &= trajectory(&mut a, &mut ea, 1, &mut events, &decoder)?;
-        } else {
-            exact &= trajectory(&mut a, &mut ea, 1, &mut events, &decoder)?;
-        }
+        exact &= trajectory(&mut b, &mut eb, 1, &mut events, &decoder)?;
         drop(snapshot_a);
         if !exact {
             return Ok(());
         }
-        exact &= trajectory(&mut b, &mut eb, 1, &mut events, &decoder)?;
-        if !exact {
-            return Ok(());
-        }
-        block_on(a.reset())?;
-        need(
-            a.binding().frontier() == 0 && !a.stopped(),
-            "reset publishes empty original state and clears private feedback",
-        )?;
-        exact &= completed(&mut a, &mut ea, 0, &mut events)?;
         ea.after()?;
         eb.after()?;
-        drop((a, b, ea, eb));
-        if !exact {
-            return Ok(());
-        }
-        for (i, input_ids) in ids.iter().enumerate().skip(2) {
-            let mut session = block_on(candidate.session(input_ids.clone()))?;
-            let mut expected = matrix.cell(i, loaded.source_identity())?;
-            need(
-                input_ids.as_ref() == expected.cell.prompt_ids,
-                "genuine text token IDs compared only",
-            )?;
-            exact &= trajectory(&mut session, &mut expected, 0, &mut events, &decoder)?;
-            if !exact {
-                break;
-            }
-        }
-        if resident && exact {
-            for (index, input_ids) in ids.iter().enumerate() {
-                let mut session = block_on(candidate.session(input_ids.clone()))?;
-                let expected = matrix.cell(index, loaded.source_identity())?;
-                for (call, reference) in expected.cell.calls.iter().enumerate() {
-                    let before = session.binding();
-                    let traffic = block_on(candidate.traffic())?;
-                    let pending = if call == 0 {
-                        block_on(session.prepare_prompt(8, None, None))?
-                    } else {
-                        block_on(session.prepare_next(None, None))?
-                    };
-                    expected.normal_packet(call, pending.readback(), before)?;
-                    let after = block_on(candidate.traffic())?;
-                    need(
-                        after.producer_readback_bytes == traffic.producer_readback_bytes
-                            && after.kv_diagnostic_readback_bytes
-                                == traffic.kv_diagnostic_readback_bytes
-                            && (after.selected_row_uploads - traffic.selected_row_uploads)
-                                + (after.selected_row_reuses - traffic.selected_row_reuses)
-                                == reference.input_ids.len() as u64
-                            && after.value_upload_bytes - traffic.value_upload_bytes
-                                == (after.selected_row_uploads - traffic.selected_row_uploads)
-                                    * 17920
-                            && after.selected_row_avoided_upload_bytes
-                                - traffic.selected_row_avoided_upload_bytes
-                                == (after.selected_row_reuses - traffic.selected_row_reuses)
-                                    * 17920
-                            && after.resident_weight_bytes == 4_558_946_304,
-                        "normal no producer/KV D2H or repeated selected weight H2D; PLE row only",
-                    )?;
-                    let receipt = session.commit(pending)?;
-                    need(
-                        receipt.root.frontier() == reference.frontier as u64
-                            && receipt.selected_id == reference.selected_id
-                            && receipt.eos == reference.eos,
-                        "normal original authority/private feedback parity",
-                    )?;
-                    let snapshot = session.snapshot()?;
-                    expected.normal_state(call, &block_on(snapshot.read_domains())?)?;
-                    drop(snapshot);
-                    events.push(json!({"kind":"resident-normal-parity","case":expected.cell.request.name,"call":call,"frontier":reference.frontier,"selected_id":receipt.selected_id,"observer":false,"producer_kv_d2h":0,"selected_weight_h2d":0,"ple_row_h2d":after.value_upload_bytes-traffic.value_upload_bytes,"ple_row_uploads":after.selected_row_uploads-traffic.selected_row_uploads,"ple_row_reuses":after.selected_row_reuses-traffic.selected_row_reuses,"ple_row_avoided_h2d":after.selected_row_avoided_upload_bytes-traffic.selected_row_avoided_upload_bytes}));
-                }
-                expected.after()?;
-            }
-            // Two real fresh-session prompts, no teacher IDs or output imports.
-            // A short authentic prompt fits the existing page without eviction;
-            // its second full traversal must consume only completed source rows.
-            let index = ids
-                .iter()
-                .enumerate()
-                .min_by_key(|(_, ids)| ids.len())
-                .map(|(i, _)| i)
-                .ok_or("actual source prompt set")?;
-            need(
-                ids[index].len() <= candidate.inventory().selected_row_cache_capacity,
-                "actual repeated prompt fits existing page rows",
-            )?;
-            for repeat in 0..2 {
-                let mut session = block_on(candidate.session(ids[index].clone()))?;
-                let expected = matrix.cell(index, loaded.source_identity())?;
-                let before = session.binding();
-                let traffic = block_on(candidate.traffic())?;
-                let pending = block_on(session.prepare_prompt(8, None, None))?;
-                expected.normal_packet(0, pending.readback(), before)?;
-                let after = block_on(candidate.traffic())?;
-                let hits = after.selected_row_reuses - traffic.selected_row_reuses;
-                let misses = after.selected_row_uploads - traffic.selected_row_uploads;
-                need(
-                    hits + misses == ids[index].len() as u64
-                        && after.value_upload_bytes - traffic.value_upload_bytes == misses * 17920
-                        && after.selected_row_avoided_upload_bytes
-                            - traffic.selected_row_avoided_upload_bytes
-                            == hits * 17920,
-                    "real producer-side source row traffic conservation",
-                )?;
-                if repeat == 1 {
-                    need(
-                        misses == 0 && hits == ids[index].len() as u64,
-                        "completed immutable PLE rows actually reused without H2D",
-                    )?;
-                }
-                let receipt = session.commit(pending)?;
-                need(
-                    receipt.selected_id == expected.cell.calls[0].selected_id
-                        && receipt.root.frontier() == expected.cell.calls[0].frontier as u64,
-                    "full genuine prompt natural selection/root unchanged",
-                )?;
-                let snapshot = session.snapshot()?;
-                expected.normal_state(0, &block_on(snapshot.read_domains())?)?;
-                drop(snapshot);
-                events.push(json!({"kind":"resident-ple-row-reuse","repeat":repeat,"actual_rows":ids[index].len(),"uploads":misses,"reuses":hits,"ple_row_h2d":after.value_upload_bytes-traffic.value_upload_bytes,"avoided_h2d":after.selected_row_avoided_upload_bytes-traffic.selected_row_avoided_upload_bytes,"full_kv_exact":true,"selected_id":receipt.selected_id}));
-                expected.after()?;
-            }
-        }
         Ok(())
     })();
+    // The second permit is released before the remaining genuine texts.
+    drop(b);
+    if result.is_ok() && exact {
+        result = (|| -> Proof<()> {
+            for (i, input_ids) in ids.iter().enumerate().skip(2) {
+                let mut session = block_on(candidate.session(input_ids.clone()))?;
+                let mut expected = matrix.cell(i, loaded.source_identity())?;
+                need(
+                    &input_ids[..] == expected.cell.prompt_ids.as_slice(),
+                    "genuine text token IDs compared only",
+                )?;
+                exact &= trajectory(&mut session, &mut expected, 0, &mut events, &decoder)?;
+                if !exact {
+                    return Ok(());
+                }
+            }
+            // Reset publishes empty original state and clears private feedback.
+            // The following completed call0 is a genuine root-relative
+            // comparison on the same original authority; it is deliberately not
+            // appended to the two-cell proposal schedule the expected cells define.
+            block_on(a.reset())?;
+            let reset_binding = a.binding();
+            need(
+                reset_binding.frontier() == 0 && reset_binding.root() > 0 && !a.stopped(),
+                "reset publishes empty original state and clears private feedback",
+            )?;
+            exact &= completed(&mut a, &mut ea, 0, &mut events)?;
+            if !exact {
+                return Ok(());
+            }
+            need(
+                a.binding().root() == reset_binding.root() + 1
+                    && a.binding().session_epoch() == reset_binding.session_epoch(),
+                "post-reset genuine root advance from the same empty-state epoch",
+            )?;
+            ea.after()?;
+            Ok(())
+        })();
+    }
+    // Both real session owners are dropped before the page-coverage pass: the
+    // original two-session permit is not widened and no root is recreated.
+    drop(a);
+    if resident && result.is_ok() && exact {
+        match resident_rows(&candidate, &matrix, &loaded, &ids, &mut events) {
+            Ok(ok) => exact = ok,
+            Err(error) => {
+                exact = false;
+                result = Err(error);
+            }
+        }
+    }
     drop(candidate);
     drop(decoder);
     drop(inputs);
@@ -614,15 +1046,28 @@ pub fn run() -> Proof<()> {
     let host = arbiter.snapshot(&PhysicalDeviceKey::new("host", "system-ram")?)?;
     let failure = result.as_ref().err().map(ToString::to_string);
     let source_closed = close.is_ok();
+    let status = if result.is_ok() && exact && source_closed {
+        "PASS_EXACT_DIAGNOSTIC_MATRIX"
+    } else {
+        "REFUSED_UNQUALIFIED"
+    };
     write_new(
         &report,
-        &json!({"schema":"zg.gemma4-e2b-original-hip-complete-qualification.v1","status":if result.is_ok()&&exact&&source_closed{"PASS_EXACT_DIAGNOSTIC_MATRIX"}else{"REFUSED_UNQUALIFIED"},"failure":failure,"exact":result.is_ok()&&exact,"events":events,"inventory":inventory,"managed_source_closed":source_closed,"source_close_error":close.as_ref().err().map(ToString::to_string),"physical_reserved":physical.reserved,"host_reserved":host.reserved,"diagnostic_host_reserved":32u64*1024*1024,"physical_fenced":physical.fenced,"host_fenced":host.fenced,"expected_persistent_context_device":4u64*1024*1024*1024,"expected_persistent_context_host":2u64*1024*1024*1024,"context_retirement":"process lifetime; model0 differs from global0","storage":format!("{storage:?}"),"source_page_policy":if resident {"all277 repeated projections resident; tied embedding shares exact allocation; PLE selected row page only; ordinary observerNone"}else{"one admitted1MiB page; synchronous same-flight copy/consume/completion before reuse"},"trained_native_serving_or_performance_qualified":false}),
+        &json!({"schema":"zg.gemma4-e2b-original-hip-complete-qualification.v1","status":status,"failure":failure,"exact":result.is_ok()&&exact,"events":events,"inventory":inventory,"managed_source_closed":source_closed,"source_close_error":close.as_ref().err().map(ToString::to_string),"physical_reserved":physical.reserved,"host_reserved":host.reserved,"diagnostic_host_reserved":32u64*1024*1024,"physical_fenced":physical.fenced,"host_fenced":host.fenced,"expected_persistent_context_device":4u64*1024*1024*1024,"expected_persistent_context_host":2u64*1024*1024*1024,"context_retirement":"process lifetime; model0 differs from global0","storage":format!("{storage:?}"),"source_page_policy":"all277 repeated projections resident; tied embedding shares exact allocation; PLE selected row page only; ordinary observerNone","trained_native_serving_or_performance_qualified":false}),
     )?;
     result?;
     need(exact, "fatal complete Gemma numerical mismatch")?;
     close?;
-    drop(events);
     drop(matrix);
+    // Healthy report phase: model reservations released, the diagnostic
+    // harness frame still held, the separate context baseline truthful.
+    need(
+        physical.reserved == 4 * 1024 * 1024 * 1024
+            && host.reserved == 2 * 1024 * 1024 * 1024 + 32 * 1024 * 1024
+            && !physical.fenced
+            && !host.fenced,
+        "report-phase DEVICE4GiB/HOST2GiB+32MiB with held harness frame",
+    )?;
     drop(harness);
     let final_host = ResourceArbiter::process_shared()
         .snapshot(&PhysicalDeviceKey::new("host", "system-ram")?)?;
@@ -633,6 +1078,7 @@ pub fn run() -> Proof<()> {
             && !host.fenced,
         "actual model reservations released; honest separate persistent context baseline retained",
     )?;
+    println!("GEMMA_FINAL_HOST_RETIRED reserved={}", final_host.reserved);
     println!(
         "GEMMA_COMPLETE_SOURCE_MATRIX_PASS cases=7 full35=true all_boundary_KV_fullV_words=exact source_guard=actual native_modules=actual_unloaded model_reservations=0 context_baseline=retained_until_process_exit serving_performance=false"
     );
