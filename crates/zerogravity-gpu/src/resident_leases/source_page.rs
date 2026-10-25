@@ -609,7 +609,7 @@ impl ResidentSourcePage {
             source: self.source.source_identity(),
             state,
             witness: Arc::new(SourcePageProbeWitness::new(
-                page_allocation_id,
+                page_allocation_id.value as u64,
                 self.source.source_identity(),
             )),
         };
