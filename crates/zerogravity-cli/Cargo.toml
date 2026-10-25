@@ -1,0 +1,32 @@
+[package]
+name = "zerogravity-cli"
+version.workspace = true
+edition = "2024"
+rust-version = "1.95"
+description = "Explicit CPU and resident GPU text frontend for Zerogravity"
+publish = false
+license = "MIT"
+default-run = "zerogravity"
+
+[features]
+default = ["cpu", "model-qwen35", "text"]
+cpu = ["zerogravity/cpu"]
+model-qwen35 = ["zerogravity/model-qwen35"]
+text = ["model-qwen35", "zerogravity/text"]
+vulkan = ["zerogravity/vulkan", "dep:futures-lite"]
+cuda = ["zerogravity/cuda", "dep:futures-lite"]
+hip = ["zerogravity/hip", "dep:futures-lite"]
+all-models = ["model-qwen35"]
+all-backends = ["cpu", "vulkan", "cuda", "hip"]
+all = ["all-models", "all-backends", "text"]
+diagnostic-gdn-trace = ["zerogravity/diagnostic-gdn-trace"]
+diagnostic-cpu-checkpoint = ["zerogravity/diagnostic-cpu-checkpoint"]
+
+[dependencies]
+zerogravity = { path = "../zerogravity", default-features = false }
+serde_json = "=1.0.151"
+futures-lite = { version = "=2.6.1", optional = true }
+
+[[bin]]
+name = "zerogravity"
+path = "src/main.rs"

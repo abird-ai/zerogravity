@@ -5475,6 +5475,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "zerogravity-cli"
+version = "0.1.0"
+dependencies = [
+ "futures-lite",
+ "serde_json",
+ "zerogravity",
+]
+
+[[package]]
 name = "zerogravity-core"
 version = "0.1.0"
 dependencies = [

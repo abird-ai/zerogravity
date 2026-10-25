@@ -7,8 +7,9 @@ members = [
     "crates/zerogravity-model-gemma4",
     "crates/zerogravity-gpu",
     "crates/zerogravity",
+    "crates/zerogravity-cli",
 ]
-default-members = ["crates/zerogravity"]
+default-members = ["crates/zerogravity", "crates/zerogravity-cli"]
 exclude = [
     "crates/zerogravity-gpu/vendor/cubecl-ir",
     "crates/zerogravity-gpu/vendor/cubecl-cpp",
