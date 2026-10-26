@@ -67,19 +67,21 @@ pub(super) fn select(
     phase: GdnPhase,
     stage: GdnStage,
 ) -> Result<assets::Asset> {
+    if recipe.input_tokens() != phase.tokens()
+        || recipe.is_decode() != (phase == GdnPhase::CachedDecode)
+    {
+        return Err(Error::Unsupported(
+            "exact recorded GDN recipe/phase/count".into(),
+        ));
+    }
     if matches!(phase, GdnPhase::TextPrefill(_))
         && matches!(
             stage,
-            GdnStage::Conv | GdnStage::Prep | GdnStage::Cumsum | GdnStage::Solve
+            GdnStage::Conv | GdnStage::Prep | GdnStage::Cumsum | GdnStage::Solve | GdnStage::Gated
         )
     {
-        if recipe.input_tokens() != phase.tokens() || recipe.is_decode() {
-            return Err(Error::Unsupported(
-                "exact recorded GDN recipe/phase/count".into(),
-            ));
-        }
-        return if stage == GdnStage::Conv {
-            Ok(parameterized_conv::prepare(
+        return match stage {
+            GdnStage::Conv => Ok(parameterized_conv::prepare(
                 phase,
                 GdnCacheSlot::One,
                 SourceConvGeometry {
@@ -89,16 +91,27 @@ pub(super) fn select(
                     kernel: 4,
                 },
             )?
-            .asset)
-        } else {
-            Ok(parameterized_prefill::prepare(phase, GdnCacheSlot::One, stage)?.asset)
+            .asset),
+            GdnStage::Gated => Ok(parameterized_gated::prepare(phase, GdnCacheSlot::One)?.asset),
+            _ => Ok(parameterized_prefill::prepare(phase, GdnCacheSlot::One, stage)?.asset),
+        };
+    }
+    if phase == GdnPhase::CachedDecode {
+        return match stage {
+            GdnStage::Conv | GdnStage::Decode => {
+                Ok(parameterized_cached::prepare(phase, GdnCacheSlot::One, stage)?.asset)
+            }
+            GdnStage::Gated => Ok(parameterized_gated::prepare(phase, GdnCacheSlot::One)?.asset),
+            _ => Err(Error::Unsupported("original cached GDN stage".into())),
         };
     }
     observed::select(recipe, phase, stage)
 }
 
 mod observed;
+mod parameterized_cached;
 mod parameterized_conv;
+mod parameterized_gated;
 mod parameterized_prefill;
 pub(super) fn observed_catalogue() -> &'static [&'static str] {
     observed::CATALOGUE
@@ -242,30 +255,57 @@ impl TextGdnCode {
             return Err(Error::State("text GDN phase changed".into()));
         }
         let family = arithmetic::GdnArithmeticFamily::Text(self.geometry.recipe);
-        if matches!(phase, GdnPhase::TextPrefill(_))
+        let parameterized = matches!(phase, GdnPhase::TextPrefill(_))
             && matches!(
                 stage,
-                GdnStage::Conv | GdnStage::Prep | GdnStage::Cumsum | GdnStage::Solve
+                GdnStage::Conv
+                    | GdnStage::Prep
+                    | GdnStage::Cumsum
+                    | GdnStage::Solve
+                    | GdnStage::Gated
             )
-        {
-            let (asset, scalars) = if stage == GdnStage::Conv {
-                let definition =
-                    parameterized_conv::prepare(phase, self.geometry.slot, self.conv_geometry)?;
-                (definition.asset, definition.scalars)
-            } else {
-                let definition = parameterized_prefill::prepare(phase, self.geometry.slot, stage)?;
-                (definition.asset, definition.scalars)
-            };
-            kernel_from_asset_with_scalars(phase, stage, true, asset, family, scalars)
-        } else {
-            kernel_from_asset(
+            || phase == GdnPhase::CachedDecode;
+        if !parameterized {
+            return kernel_from_asset(
                 phase,
                 stage,
                 true,
                 select(self.geometry.recipe, phase, stage)?,
                 family,
-            )
+            );
         }
+        let (asset, scalars) = match (phase, stage) {
+            (GdnPhase::TextPrefill(_), GdnStage::Conv) => {
+                let definition =
+                    parameterized_conv::prepare(phase, self.geometry.slot, self.conv_geometry)?;
+                (definition.asset, definition.scalars)
+            }
+            (GdnPhase::TextPrefill(_), GdnStage::Gated)
+            | (GdnPhase::CachedDecode, GdnStage::Gated) => {
+                let definition = parameterized_gated::prepare(phase, self.geometry.slot)?;
+                (definition.asset, definition.scalars)
+            }
+            (GdnPhase::TextPrefill(_), _) => {
+                let definition = parameterized_prefill::prepare(phase, self.geometry.slot, stage)?;
+                (definition.asset, definition.scalars)
+            }
+            (GdnPhase::CachedDecode, GdnStage::Conv | GdnStage::Decode) => {
+                let definition = parameterized_cached::prepare(phase, self.geometry.slot, stage)?;
+                (definition.asset, definition.scalars)
+            }
+            _ => return Err(Error::Unsupported("parameterized text GDN stage".into())),
+        };
+        let spec = kernel_from_asset_with_scalars(phase, stage, true, asset, family, scalars)?;
+        match stage {
+            GdnStage::Gated => {
+                parameterized_gated::require_bindings(phase, scalars, &spec.bindings)?
+            }
+            GdnStage::Conv | GdnStage::Decode if phase == GdnPhase::CachedDecode => {
+                parameterized_cached::require_bindings(phase, stage, scalars, &spec.bindings)?
+            }
+            _ => {}
+        }
+        Ok(spec)
     }
     pub(crate) fn inputs(&self, cache: ResidentLease) -> GdnInputs {
         let p = self.parameters.text_leases();

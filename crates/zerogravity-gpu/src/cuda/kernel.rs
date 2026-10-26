@@ -54,6 +54,8 @@ const STATIC_SCALAR_ALIGNMENT: usize = 8;
 pub(crate) enum StaticScalarType {
     U32,
     U64,
+    /// Raw IEEE-754 payload; never converted through a host `f32`.
+    F32Bits,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -129,6 +131,7 @@ impl StaticScalarSchema {
 pub(crate) enum StaticScalarValue {
     U32(u64),
     U64(u64),
+    F32Bits(u32),
 }
 
 /// Immutable fixed metadata words. This is inline host data, never a device
@@ -161,6 +164,7 @@ impl StaticScalarBlock {
                     *bits
                 }
                 (StaticScalarType::U64, StaticScalarValue::U64(bits)) => *bits,
+                (StaticScalarType::F32Bits, StaticScalarValue::F32Bits(bits)) => u64::from(*bits),
                 (StaticScalarType::U32, StaticScalarValue::U32(_)) => {
                     return Err(Error::Limit("closed CUDA u32 scalar overflow".into()));
                 }
@@ -718,6 +722,18 @@ mod tests {
                     StaticScalarValue::U32(u32::MAX as u64 + 1),
                     StaticScalarValue::U64(2),
                 ]
+            )
+            .is_err()
+        );
+        let f32_bits = StaticScalarBlock::new(
+            StaticScalarSchema::new(&[(StaticScalarType::F32Bits, 0)], 8, 8)?,
+            &[StaticScalarValue::F32Bits(1.0_f32.to_bits())],
+        )?;
+        assert_eq!(f32_bits.words(), [1.0_f32.to_bits() as u64]);
+        assert!(
+            StaticScalarBlock::new(
+                f32_bits.schema(),
+                &[StaticScalarValue::U32(1.0_f32.to_bits() as u64)]
             )
             .is_err()
         );

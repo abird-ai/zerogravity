@@ -849,6 +849,281 @@ fn parameterized_prefill_code_identity_is_new_stable_and_not_a_fixture_selector(
 }
 
 #[test]
+fn parameterized_gated_has_exact_bits_extents_packets_and_new_identity() -> Result<()> {
+    use cubecl::server::Handle;
+    use cubecl_common::device::{DeviceId, ServiceId};
+    use cubecl_core::environment::stream::StreamId;
+    use cubecl_runtime::kernel::KernelMetadata;
+
+    struct HostPacketTest;
+    let service = ServiceId::of::<HostPacketTest>(DeviceId::new(0, 0));
+    let stream = StreamId::current();
+    for rows in [47, 48, 49, 50, 57, 62, 67, 72] {
+        let phase = GdnPhase::TextPrefill(rows);
+        let definition = parameterized_gated::prepare(phase, GdnCacheSlot::One)?;
+        assert_eq!(definition.asset.entry, parameterized_gated::PREFILL_ENTRY);
+        assert_eq!(definition.asset.source, parameterized_gated::PREFILL_SOURCE);
+        assert_eq!(definition.asset.grid, [(rows * 4) as u32, 1, 1]);
+        assert_eq!(
+            definition.scalars.words(),
+            [128, 128, 128, (rows * 16) as u64, 897_988_541]
+        );
+        assert_eq!(definition.scalars.schema().byte_size(), 40);
+        assert_eq!(
+            definition.scalars.packed_bytes(),
+            [128_u64, 128, 128, (rows * 16) as u64, 897_988_541]
+                .into_iter()
+                .flat_map(u64::to_le_bytes)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    let phase = GdnPhase::TextPrefill(47);
+    let recipe = GdnKernelRecipe::fixture(0, 47, false)?;
+    let definition = parameterized_gated::prepare(phase, GdnCacheSlot::One)?;
+    let scalars = definition.scalars;
+    let spec = kernel_from_asset_with_scalars(
+        phase,
+        GdnStage::Gated,
+        true,
+        definition.asset,
+        arithmetic::GdnArithmeticFamily::Text(recipe),
+        scalars,
+    )?;
+    parameterized_gated::require_bindings(phase, scalars, &spec.bindings)?;
+    let handles = spec
+        .bindings
+        .iter()
+        .map(|binding| Handle::new(service, stream, binding.physical_bytes as u64))
+        .collect::<Vec<_>>();
+    let packet = spec.kernel.host_launch_arguments(&handles, scalars)?;
+    assert_eq!(packet.resources.len(), 5);
+    assert_eq!(packet.info.data, [128, 128, 128, 752, 897_988_541]);
+    assert_eq!(packet.info.dynamic_metadata_offset, 5);
+    assert_ne!(
+        spec.kernel.id(),
+        PinnedKernel::new(
+            "zg_vllm_820c1a61c99ce579",
+            Arc::from(include_str!("qwen08_47/gated.cu")),
+            32,
+            spec.bindings
+                .iter()
+                .map(|binding| (binding.physical_bytes, binding.io))
+                .collect::<Vec<_>>()
+                .into(),
+        )?
+        .id()
+    );
+    Ok(())
+}
+
+#[test]
+fn parameterized_gated_refuses_wrong_layout_phase_slot_and_overflow() -> Result<()> {
+    let phase = GdnPhase::TextPrefill(48);
+    let retained = parameterized_gated::GatedLayout {
+        x_bytes: 48 * 2048 * 2,
+        y_bytes: 48 * 2048 * 2,
+        weight_bytes: 128 * 2,
+        z_bytes: 48 * 2048 * 2,
+        rstd_bytes: 48 * 16 * 4,
+    };
+    assert!(parameterized_gated::prepare_with_layout(phase, GdnCacheSlot::One, retained).is_ok());
+    for bad in [
+        parameterized_gated::GatedLayout {
+            x_bytes: retained.x_bytes - 2,
+            ..retained
+        },
+        parameterized_gated::GatedLayout {
+            y_bytes: retained.y_bytes + 2,
+            ..retained
+        },
+        parameterized_gated::GatedLayout {
+            weight_bytes: retained.weight_bytes - 2,
+            ..retained
+        },
+        parameterized_gated::GatedLayout {
+            z_bytes: retained.z_bytes - 2,
+            ..retained
+        },
+        parameterized_gated::GatedLayout {
+            rstd_bytes: retained.rstd_bytes + 4,
+            ..retained
+        },
+    ] {
+        assert!(parameterized_gated::prepare_with_layout(phase, GdnCacheSlot::One, bad).is_err());
+    }
+    assert!(parameterized_gated::prepare(GdnPhase::TextPrefill(0), GdnCacheSlot::One).is_err());
+    assert!(
+        parameterized_gated::prepare(
+            GdnPhase::TextPrefill(i32::MAX as usize / 16 + 1),
+            GdnCacheSlot::One,
+        )
+        .is_err()
+    );
+    assert!(
+        parameterized_gated::prepare(GdnPhase::TextPrefill(usize::MAX), GdnCacheSlot::One).is_err()
+    );
+    assert!(parameterized_gated::prepare(phase, GdnCacheSlot::Four).is_err());
+    assert!(parameterized_gated::prepare(GdnPhase::InitialOne, GdnCacheSlot::One).is_err());
+    Ok(())
+}
+
+#[test]
+fn parameterized_cached_uses_retained_five_slot_layout_exact_abis_and_aliases() -> Result<()> {
+    use cubecl::server::Handle;
+    use cubecl_common::device::{DeviceId, ServiceId};
+    use cubecl_core::environment::stream::StreamId;
+    use cubecl_runtime::server::KernelResource;
+
+    struct HostPacketTest;
+    let phase = GdnPhase::CachedDecode;
+    let slot = GdnCacheSlot::One;
+    let recipe = GdnKernelRecipe::fixture(0, 1, true)?;
+    let service = ServiceId::of::<HostPacketTest>(DeviceId::new(0, 0));
+    let stream = StreamId::current();
+    for stage in [GdnStage::Conv, GdnStage::Decode, GdnStage::Gated] {
+        let (asset, scalars) = if stage == GdnStage::Gated {
+            let definition = parameterized_gated::prepare(phase, slot)?;
+            (definition.asset, definition.scalars)
+        } else {
+            let definition = parameterized_cached::prepare(phase, slot, stage)?;
+            (definition.asset, definition.scalars)
+        };
+        let spec = kernel_from_asset_with_scalars(
+            phase,
+            stage,
+            true,
+            asset,
+            arithmetic::GdnArithmeticFamily::Text(recipe),
+            scalars,
+        )?;
+        if stage == GdnStage::Gated {
+            parameterized_gated::require_bindings(phase, scalars, &spec.bindings)?;
+            assert_eq!(scalars.words(), [128, 128, 128, 16, 897_988_541]);
+        } else {
+            parameterized_cached::require_bindings(phase, stage, scalars, &spec.bindings)?;
+            let expected: &[u64] = if stage == GdnStage::Conv {
+                &[1, 5, 1, 1]
+            } else {
+                &[1_035_273_459]
+            };
+            assert_eq!(scalars.words(), expected);
+        }
+        let handles = spec
+            .bindings
+            .iter()
+            .map(|binding| Handle::new(service, stream, binding.physical_bytes as u64))
+            .collect::<Vec<_>>();
+        let packet = spec.kernel.host_launch_arguments(&handles, scalars)?;
+        assert_eq!(packet.info.data, scalars.words());
+        assert_eq!(packet.info.dynamic_metadata_offset, packet.info.data.len());
+        assert_eq!(packet.resources.len(), spec.bindings.len());
+        assert!(
+            packet
+                .resources
+                .iter()
+                .all(|resource| matches!(resource, KernelResource::Buffer(_)))
+        );
+        assert!(
+            spec.kernel
+                .host_launch_arguments(&handles[..handles.len() - 1], scalars)
+                .is_err()
+        );
+        assert_ne!(
+            select(recipe, phase, stage)?.entry,
+            observed::select(recipe, phase, stage)?.entry
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn parameterized_cached_refuses_bad_indices_pitch_offsets_extents_and_stages() -> Result<()> {
+    let phase = GdnPhase::CachedDecode;
+    let slot = GdnCacheSlot::One;
+    let retained = parameterized_cached::CachedLayout {
+        arena_bytes: CACHE_SLOTS * CACHE_SLOT_BYTES,
+        slot_pitch: CACHE_SLOT_BYTES,
+        conv_offset: 0,
+        conv_bytes: CONV_STATE_BYTES,
+        recurrent_offset: CONV_STATE_BYTES,
+        recurrent_bytes: RECURRENT_STATE_BYTES,
+        cache_index_bytes: 1_i32.to_le_bytes(),
+    };
+    for stage in [GdnStage::Conv, GdnStage::Decode] {
+        assert!(parameterized_cached::prepare_with_layout(phase, slot, stage, retained).is_ok());
+        let slot_four = parameterized_cached::CachedLayout {
+            cache_index_bytes: 4_i32.to_le_bytes(),
+            ..retained
+        };
+        let slot_four_definition =
+            parameterized_cached::prepare_with_layout(phase, GdnCacheSlot::Four, stage, slot_four)?;
+        if stage == GdnStage::Conv {
+            assert_eq!(slot_four_definition.scalars.words(), [1, 5, 1, 1]);
+        }
+        for bad in [
+            parameterized_cached::CachedLayout {
+                arena_bytes: retained.arena_bytes - retained.slot_pitch,
+                ..retained
+            },
+            parameterized_cached::CachedLayout {
+                slot_pitch: retained.slot_pitch - 4,
+                ..retained
+            },
+            parameterized_cached::CachedLayout {
+                conv_offset: 4,
+                ..retained
+            },
+            parameterized_cached::CachedLayout {
+                conv_bytes: retained.conv_bytes + 4,
+                ..retained
+            },
+            parameterized_cached::CachedLayout {
+                recurrent_offset: retained.recurrent_offset - 4,
+                ..retained
+            },
+            parameterized_cached::CachedLayout {
+                recurrent_bytes: retained.recurrent_bytes + 4,
+                ..retained
+            },
+            parameterized_cached::CachedLayout {
+                cache_index_bytes: 4_i32.to_le_bytes(),
+                ..retained
+            },
+            parameterized_cached::CachedLayout {
+                cache_index_bytes: (-1_i32).to_le_bytes(),
+                ..retained
+            },
+            parameterized_cached::CachedLayout {
+                cache_index_bytes: 5_i32.to_le_bytes(),
+                ..retained
+            },
+            parameterized_cached::CachedLayout {
+                arena_bytes: usize::MAX,
+                ..retained
+            },
+            parameterized_cached::CachedLayout {
+                slot_pitch: usize::MAX,
+                ..retained
+            },
+            parameterized_cached::CachedLayout {
+                conv_offset: usize::MAX,
+                ..retained
+            },
+            parameterized_cached::CachedLayout {
+                recurrent_offset: usize::MAX,
+                ..retained
+            },
+        ] {
+            assert!(parameterized_cached::prepare_with_layout(phase, slot, stage, bad).is_err());
+        }
+    }
+    assert!(parameterized_cached::prepare(phase, slot, GdnStage::Gated).is_err());
+    assert!(parameterized_cached::prepare(GdnPhase::TextPrefill(1), slot, GdnStage::Conv).is_err());
+    Ok(())
+}
+
+#[test]
 fn pooled_private_lease_ownership_never_implies_a_retained_layer_observation() {
     for role in [
         GdnBuffer::Q,
