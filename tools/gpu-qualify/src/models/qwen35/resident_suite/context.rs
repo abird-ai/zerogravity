@@ -3,7 +3,6 @@
 use super::*;
 
 #[cfg(test)]
-#[path = "resident_context_qualification/tests.rs"]
 mod tests;
 
 const CONTEXT: usize = 512;
@@ -192,8 +191,9 @@ fn chunk(read: &InferenceReadback, tokens: usize) -> Result<()> {
     Ok(())
 }
 fn quiet(resident: &Arc<ResidentModel>, uploads: u64) -> Result<()> {
-    resident.service.ensure_usable()?;
-    if resident.service.pending_events()? != 0 || resident.service.uploaded_value_bytes() != uploads
+    resident.qualification().ensure_usable()?;
+    if resident.qualification().pending_events()? != 0
+        || resident.qualification().uploaded_value_bytes() != uploads
     {
         return Err(Error::State(
             "H18 completed context leaked events or uploaded warm values".into(),
@@ -287,14 +287,14 @@ async fn qualify_tokens(
     }
     let resident =
         load_qualified(device, model.clone(), capacity, provider_cap, device_cap).await?;
-    range_qualification::qualify(&resident).await?;
-    view_qualification::qualify(&resident).await?;
-    alias_qualification::qualify(&resident).await?;
-    let model_only_bytes = resident.service.resident_bytes()?;
+    resident.qualify_ranges().await?;
+    resident.qualify_views().await?;
+    resident.qualify_aliases().await?;
+    let model_only_bytes = resident.qualification().resident_bytes()?;
     let mut cpu = zerogravity_model_qwen35::QwenDenseCpu::from_shared(model)?;
     let mut session = resident.session().await?;
     #[allow(unused_mut)]
-    let mut uploads = resident.service.uploaded_value_bytes();
+    let mut uploads = resident.qualification().uploaded_value_bytes();
     let mut saved_replay = None;
     let mut saved_last = None;
     let mut final_logits = Vec::new();
@@ -363,11 +363,11 @@ async fn qualify_tokens(
             checkpoint::qualify_frontier(&session, &cpu, tokens.get(end).copied()).await?;
             // The sibling's explicit checkpoint transfers are diagnostic setup,
             // separate from the continuing graph's zero-upload warm execution.
-            uploads = resident.service.uploaded_value_bytes();
+            uploads = resident.qualification().uploaded_value_bytes();
         }
         previous = end;
     }
-    alias_qualification::qualify(&resident).await?;
+    resident.qualify_aliases().await?;
     let (saved_replay, cpu_replay) =
         saved_replay.ok_or_else(|| Error::State("H18 missing immutable replay snapshot".into()))?;
     let (saved_last, cpu_last) =
@@ -378,11 +378,11 @@ async fn qualify_tokens(
     )?;
     compare_domains(&cpu_last.domain_values(), &saved_last.read_domains().await?)?;
     let unchanged = session.binding();
-    let admitted = resident.service.resident_bytes()?;
+    let admitted = resident.qualification().resident_bytes()?;
     for bad in [&tokens[..1], &[u32::MAX][..], &[][..]] {
         if session.prepare(bad, false).await.is_ok()
             || session.binding() != unchanged
-            || resident.service.resident_bytes()? != admitted
+            || resident.qualification().resident_bytes()? != admitted
         {
             return Err(Error::State(
                 "H18 capacity/invalid/empty prepare changed root or admission".into(),
@@ -396,7 +396,7 @@ async fn qualify_tokens(
 
     let before = session.binding();
     session.restore(&saved_replay)?;
-    restoration(before, session.binding(), saved_replay.binding)?;
+    restoration(before, session.binding(), saved_replay.binding())?;
     cpu.restore(&cpu_replay)?;
     let replay = &tokens[spec.replay_start..spec.replay_end];
     let (expected, expected_trace) = cpu.prefill_transaction_with_layer_trace(replay)?;
@@ -404,20 +404,26 @@ async fn qualify_tokens(
     let prepared = session.prepare(replay, true).await?;
     if session.binding() != before
         || before.frontier() != spec.replay_start as u64
-        || prepared.ready.expected_root() != before.root()
+        || prepared.qualification_expected_root() != before.root()
     {
         return Err(Error::State(
             "H18 private cross-boundary Ready changed visible root".into(),
         ));
     }
-    chunk(&prepared.readback, replay.len())?;
+    chunk(&prepared.qualification_readback(), replay.len())?;
     exact(
         &expected,
-        &prepared.readback.logits,
+        &prepared.qualification_readback().logits,
         "H18 private cross-boundary replay logits",
     )?;
-    compare_domains(&cpu.snapshot().domain_values(), &prepared.readback.domains)?;
-    compared_trace += trace(&expected_trace, &prepared.readback.observations)?;
+    compare_domains(
+        &cpu.snapshot().domain_values(),
+        &prepared.qualification_readback().domains,
+    )?;
+    compared_trace += trace(
+        &expected_trace,
+        &prepared.qualification_readback().observations,
+    )?;
     compare_domains(
         &cpu_replay.domain_values(),
         &saved_replay.read_domains().await?,
@@ -429,7 +435,7 @@ async fn qualify_tokens(
     drop(actual);
     let before = session.binding();
     if capacity != CONTEXT {
-        let admitted = resident.service.resident_bytes()?;
+        let admitted = resident.qualification().resident_bytes()?;
         let abandoned = session
             .prepare(&tokens[spec.replay_end..spec.replay_end + 1], false)
             .await?;
@@ -439,7 +445,7 @@ async fn qualify_tokens(
             ));
         }
         drop(abandoned);
-        if session.binding() != before || resident.service.resident_bytes()? != admitted {
+        if session.binding() != before || resident.qualification().resident_bytes()? != admitted {
             return Err(Error::State(
                 "H18 abandoned Ready changed root or retained private admission".into(),
             ));
@@ -464,7 +470,7 @@ async fn qualify_tokens(
     }
     session.restore(&saved_replay)?;
     let restored = session.binding();
-    restoration(before, restored, saved_replay.binding)?;
+    restoration(before, restored, saved_replay.binding())?;
     if session.commit(stale).is_ok() || session.binding() != restored {
         return Err(Error::State(
             "H18 stale cross-boundary actual Ready published after restore".into(),
@@ -492,7 +498,7 @@ async fn qualify_tokens(
 
     let before = session.binding();
     session.restore(&saved_last)?;
-    restoration(before, session.binding(), saved_last.binding)?;
+    restoration(before, session.binding(), saved_last.binding())?;
     cpu.restore(&cpu_last)?;
     let expected = cpu.forward(tokens[capacity - 1])?;
     exact(
@@ -536,10 +542,10 @@ async fn qualify_tokens(
         &session.snapshot().read_domains().await?,
     )?;
     let unchanged = session.binding();
-    let admitted = resident.service.resident_bytes()?;
+    let admitted = resident.qualification().resident_bytes()?;
     if session.forward_device_token(&packet).await.is_ok()
         || session.binding() != unchanged
-        || resident.service.resident_bytes()? != admitted
+        || resident.qualification().resident_bytes()? != admitted
     {
         return Err(Error::State(
             "H18 device token consumed beyond capacity or changed admission".into(),
@@ -551,16 +557,16 @@ async fn qualify_tokens(
     );
     let surviving = session.snapshot();
     let expected_surviving = cpu.snapshot().domain_values();
-    let key = resident.service.physical_key();
-    let weak = Arc::downgrade(resident.service());
-    let charged = resident.service.capacity() as u64;
+    let key = resident.qualification().physical_key();
+    let weak = resident.qualification_witness();
+    let charged = resident.qualification().capacity() as u64;
     drop(greedy);
     drop(packet);
     drop(saved_replay);
     drop(saved_last);
     drop(session);
     quiet(&resident, uploads)?;
-    if resident.service.resident_bytes()? != model_only_bytes + resident.state_bytes {
+    if resident.qualification().resident_bytes()? != model_only_bytes + resident.state_bytes() {
         return Err(Error::State(
             "H18 retired context retained unexpected state admission".into(),
         ));

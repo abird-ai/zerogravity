@@ -1,4 +1,5 @@
 //! Original source factories before learned-W loading; no Root/model permit.
+use super::RetainedSource;
 use super::projection_cubin::resident::{AdmittedImages, NativeRetentionWitness, PreparedImages};
 use super::projection_cubin::{native_error, not_cancelled};
 use super::{CubinQualificationInputs, finite_bf16};
@@ -15,11 +16,8 @@ use zerogravity_core::{
     device_events::{BufferRole, DeviceAccess},
     resource_arbiter::{AllocationClass, AllocationRequest, ResourceArbiter, ResourceOwner},
 };
-use zerogravity_model_qwen35::config::{Family, LayerKind};
-use zerogravity_model_qwen35::source::binding::OriginalWindowModelSource;
 mod manifests;
 pub use manifests::RotaryOutput;
-const CONFIG_SHA: &str = "b90b86f35c8e6925ef74ee04d0e758f0a845c83a42089ad82bbaa948de9b4204";
 const MANAGED_BYTES: usize = 809501320;
 const NATIVE_BYTES: usize = 64 * 1024 * 1024;
 const CAP: usize = 896 * 1024 * 1024;
@@ -27,34 +25,6 @@ const CAP: usize = 896 * 1024 * 1024;
 pub(super) fn required_images()
 -> std::collections::BTreeSet<super::cubin_manifests::ProjectionImage> {
     manifests::required_images()
-}
-fn require_source(source: &OriginalWindowModelSource) -> Result<()> {
-    let c = source.owner().config();
-    let g = c.geometry();
-    if source.owner().config_sha256() != CONFIG_SHA
-        || g.family != Family::QwenHybrid
-        || g.hidden_size != 1024
-        || g.head_dim != 256
-        || g.vocab_size != 248320
-        || g.max_position_embeddings != 262144
-        || g.num_attention_heads != 8
-        || g.num_key_value_heads != 2
-        || g.layers.len() != 24
-        || c.rotary_dimensions() != 64
-        || c.rope_theta() != 10_000_000.0
-        || g.layers.iter().enumerate().any(|(i, k)| {
-            *k != if i % 4 == 3 {
-                LayerKind::FullAttention
-            } else {
-                LayerKind::LinearAttention
-            }
-        })
-    {
-        return Err(Error::Unsupported(
-            "closed original .8B unscaled MRotary source/config".into(),
-        ));
-    }
-    Ok(())
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PrefixProfile {
@@ -70,42 +40,6 @@ impl PrefixProfile {
     }
     fn bytes(self) -> usize {
         self.rows() * 128
-    }
-    fn require_source(self, source: &Arc<OriginalWindowModelSource>) -> Result<()> {
-        if self == Self::FixedPrompt {
-            return require_source(source);
-        }
-        // The existing original-source binder authenticates each approved model's
-        // config/index/shards/roles; geometry alone never issues a source identity.
-        let bound = source.bind_full_model_source()?;
-        let c = source.owner().config();
-        let g = c.geometry();
-        if !matches!(
-            bound.model_profile(),
-            zerogravity_model_qwen35::plan::QwenSourceProfile::Qwen08
-                | zerogravity_model_qwen35::plan::QwenSourceProfile::Qwen2B
-        ) || g.family != Family::QwenHybrid
-            || g.head_dim != 256
-            || g.vocab_size != 248320
-            || g.max_position_embeddings != 262144
-            || g.num_attention_heads != 8
-            || g.num_key_value_heads != 2
-            || g.layers.len() != 24
-            || c.rotary_dimensions() != 64
-            || c.rope_theta() != 10_000_000.0
-            || g.layers.iter().enumerate().any(|(i, k)| {
-                *k != if i % 4 == 3 {
-                    LayerKind::FullAttention
-                } else {
-                    LayerKind::LinearAttention
-                }
-            })
-        {
-            return Err(Error::Unsupported(
-                "text original unscaled MRotary source/config".into(),
-            ));
-        }
-        Ok(())
     }
     fn prefix_bytes(self, role: RotaryOutput) -> usize {
         if self == Self::FixedPrompt {
@@ -206,7 +140,7 @@ impl RotaryOutcome {
 }
 struct MetadataOwner {
     profile: PrefixProfile,
-    source: Arc<OriginalWindowModelSource>,
+    source: Arc<RetainedSource>,
     _metadata: WindowWorkspace,
     _readback: WindowWorkspace,
     _prefix: WindowWorkspace,
@@ -218,7 +152,6 @@ pub(crate) struct SourceRotaryPrefix {
 }
 impl SourceRotaryPrefix {
     pub(crate) fn require_source(&self, source: &VerifiedTensorSource) -> Result<()> {
-        self.owner.profile.require_source(&self.owner.source)?;
         if self.bytes.len() != self.owner.profile.bytes()
             || !self.owner.source.source().same_issuer(source)
             || self.owner.source.source_identity() != source.source_identity()
@@ -393,7 +326,7 @@ fn check_snapshot_zero(
 /// No captured inv_freq/frequencies/cos/sin/cache can enter device preparation.
 pub async fn qualify_source_rotary_cubins<F>(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
+    source: Arc<RetainedSource>,
     device_cap: u64,
     inputs: Option<CubinQualificationInputs>,
     mode: RotaryMode,
@@ -419,7 +352,7 @@ where
 /// Same original native source constructor; authentic .8B/2B and positions0..79.
 pub async fn qualify_text_rotary_cubins<F>(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
+    source: Arc<RetainedSource>,
     device_cap: u64,
     inputs: Option<CubinQualificationInputs>,
     mode: RotaryMode,
@@ -445,7 +378,7 @@ where
 #[expect(clippy::too_many_arguments)]
 async fn qualify_rotary_inner<F>(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
+    source: Arc<RetainedSource>,
     device_cap: u64,
     inputs: Option<CubinQualificationInputs>,
     mode: RotaryMode,
@@ -457,7 +390,6 @@ where
     F: FnOnce(&[(RotaryOutput, &[u8])]) -> Result<()>,
 {
     not_cancelled(cancelled)?;
-    profile.require_source(&source)?;
     if cfg!(debug_assertions) || !matches!(device, Device::Cuda(_)) {
         return Err(Error::Unsupported(
             "release original CUDA source rotary producer".into(),
@@ -606,7 +538,7 @@ where
     let native_witness = programs.witness()?;
     let programs_weak = Arc::downgrade(&programs);
     let owner_weak = Arc::downgrade(&owner);
-    let source_weak = Arc::downgrade(&owner.metadata.source);
+    let source_weak = owner.metadata.source.weak_owner();
     let service_weak = Arc::downgrade(&service);
     let local_cancel = AtomicBool::new(false);
     let ticket = service.queue().submit(

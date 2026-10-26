@@ -4,10 +4,11 @@ use super::*;
 
 pub async fn qualify_vocabulary_head_cubins(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
+    source: Arc<RetainedSource>,
     fixtures: VocabularyHeadFixtures,
     inputs: CubinQualificationInputs,
     cancelled: Option<&AtomicBool>,
+    prepare_tied: impl FnOnce() -> Result<Arc<TiedWeightSource>>,
 ) -> Result<VocabularyHeadComparison> {
     match inner(
         device,
@@ -17,6 +18,8 @@ pub async fn qualify_vocabulary_head_cubins(
         Scope::CapturedSelected,
         Mode::Compare,
         cancelled,
+        || Err(Error::State("captured head has no final RMS source".into())),
+        prepare_tied,
     )
     .await?
     {
@@ -26,10 +29,12 @@ pub async fn qualify_vocabulary_head_cubins(
 }
 pub async fn qualify_final_norm_head_cubins(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
+    source: Arc<RetainedSource>,
     fixtures: VocabularyHeadFixtures,
     inputs: CubinQualificationInputs,
     cancelled: Option<&AtomicBool>,
+    prepare_final: impl FnOnce() -> Result<BoundFinalRmsSource>,
+    prepare_tied: impl FnOnce() -> Result<Arc<TiedWeightSource>>,
 ) -> Result<VocabularyHeadComparison> {
     match inner(
         device,
@@ -39,6 +44,8 @@ pub async fn qualify_final_norm_head_cubins(
         Scope::ComputedFinalNorm,
         Mode::Compare,
         cancelled,
+        prepare_final,
+        prepare_tied,
     )
     .await?
     {
@@ -113,14 +120,17 @@ fn validate_comparison(job: &Job, fixture: &VocabularyHeadFixture, raw: &[Bytes]
     }
     Ok(())
 }
+#[expect(clippy::too_many_arguments)]
 pub(super) async fn inner(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
+    source: Arc<RetainedSource>,
     fixtures: VocabularyHeadFixtures,
     inputs: CubinQualificationInputs,
     scope: Scope,
     mode: Mode,
     cancelled: Option<&AtomicBool>,
+    prepare_final: impl FnOnce() -> Result<BoundFinalRmsSource>,
+    prepare_tied: impl FnOnce() -> Result<Arc<TiedWeightSource>>,
 ) -> Result<Outcome> {
     not_cancelled(cancelled)?;
     if cfg!(debug_assertions) || !matches!(device, Device::Cuda(_)) {
@@ -137,15 +147,11 @@ pub(super) async fn inner(
     )?;
     // Actual final source/config binding refuses before any CUDA service.
     let final_binding = if scope == Scope::ComputedFinalNorm {
-        let prepared = source.prepare_final_rms_source()?;
-        Some(BoundFinalRmsSource::bind(
-            prepared.source().clone(),
-            prepared.parameter().clone(),
-            prepared.geometry(),
-            prepared.numerical_contract(),
-            prepared.metadata(),
-        )?)
+        let binding = prepare_final()?;
+        binding.require_source(source.source())?;
+        Some(binding)
     } else {
+        drop(prepare_final);
         None
     };
     let owner = Arc::new(HeadOwner {
@@ -163,7 +169,7 @@ pub(super) async fn inner(
     let key = service.physical_key();
     if mode == Mode::Fault(VocabularyHeadFault::Pressure) {
         let witness = faults::pressure(&service)?;
-        drop((final_binding, owner, inputs, service));
+        drop((prepare_tied, final_binding, owner, inputs, service));
         return faults::pressure_retired(witness, scope).map(Outcome::Fault);
     }
     let queue = service.pinned_cuda_queue()?.clone();
@@ -267,10 +273,21 @@ pub(super) async fn inner(
     for phase in &phases {
         init.retain_completion_owner(phase.clone())?;
     }
+    // Family tied-role authentication remains after all original phase setup.
+    let tied = prepare_tied()?;
+    if !tied.source().same_issuer(owner.source.source())
+        || !Arc::ptr_eq(tied.owner(), owner.source.owner())
+    {
+        return Err(Error::State(
+            "head factory changed original source owner".into(),
+        ));
+    }
+    let head_output = tied.output().clone();
+    drop(tied);
     let pending = init
         .upload_tied_bf16(
             owner.source.source().clone(),
-            owner.source.tied_output_descriptor()?,
+            head_output.clone(),
             cancelled,
         )
         .await?;
@@ -394,7 +411,7 @@ pub(super) async fn inner(
     // Actual full unchanged-W comparisons remain finite. Retire/unload under
     // the LAST original initialized-W Read guard, never an empty fake guard.
     let readback_admission = Arc::new(owner.source.source().reserve_workspace(32 * 1024 * 1024)?);
-    let descriptor = owner.source.tied_output_descriptor()?;
+    let descriptor = head_output.clone();
     let matrix = owner
         .source
         .source()

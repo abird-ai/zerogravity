@@ -1,4 +1,5 @@
 //! Finite original47 solve variants. Explicit captured operands, no model permit.
+use crate::cuda::native::RetainedSource;
 use crate::resident_leases::{ResidentInitialization, ResidentLease, ResidentService};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{
@@ -8,8 +9,6 @@ use std::sync::{
 use zerogravity_artifacts::source_weights::WindowWorkspace;
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 use zerogravity_core::{Error, Result};
-use zerogravity_model_qwen35::plan::QwenSourceProfile;
-use zerogravity_model_qwen35::source::binding::{BoundFullModelSource, OriginalWindowModelSource};
 
 mod faults;
 mod qualification;
@@ -160,18 +159,14 @@ fn validate_unwritten_ai(raw: &[u8]) -> Result<()> {
     Ok(())
 }
 struct LeafOwner {
-    bound: BoundFullModelSource,
+    bound: Arc<RetainedSource>,
     fixture: FixedPromptSolveFixture,
     _readback_and_code: WindowWorkspace,
 }
 impl LeafOwner {
-    fn new(
-        model: Arc<OriginalWindowModelSource>,
-        fixture: FixedPromptSolveFixture,
-    ) -> Result<Arc<Self>> {
-        let bound = model.bind_full_model_source()?;
-        if bound.model_profile() != QwenSourceProfile::Qwen08
-            || model.source().staging_chunk_bytes() != MIB
+    fn new(model: Arc<RetainedSource>, fixture: FixedPromptSolveFixture) -> Result<Arc<Self>> {
+        let bound = model.clone();
+        if model.source().staging_chunk_bytes() != MIB
             || !fixture.admission.source().same_issuer(model.source())
             || fixture.admission.bytes() != FIXTURE_ADMISSION
             || fixture.capacity().is_none_or(|n| n > MIB)

@@ -66,6 +66,8 @@ mod gdn;
 pub use gdn::{GdnKernelCapture, PreparedGdnParameters};
 mod native;
 mod positions;
+mod qualification;
+pub use qualification::PreparedQualificationSource;
 mod rms;
 pub use native::ReferenceKernelCapture;
 pub use rms::{PreparedFinalRmsSource, PreparedRmsSource};

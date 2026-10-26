@@ -1,7 +1,23 @@
 //! Explicit CLI composition; implementation and physical owners stay in GPU.
 // Previous entrypoint: zerogravity_gpu::qualification::run.
+use crate::models::qwen35::resident_suite::*;
 use zerogravity_gpu::qualification::*;
 use zerogravity_gpu::{Device, WgpuDeviceKind};
+
+#[cfg(feature = "hardware-abort-probe")]
+use crate::models::qwen35::physical_abort::{
+    run as qualify_abandon, run_coefficients as qualify_abandon_coefficients,
+    run_conv as qualify_abandon_conv, run_device_quant as qualify_abandon_device_quant,
+    run_grouped_norm as qualify_abandon_grouped_norm,
+    run_invalid_quant as qualify_abandon_invalid_quant, run_l2 as qualify_abandon_l2,
+    run_norm as qualify_abandon_norm, run_qk as qualify_abandon_qk,
+    run_recurrent as qualify_abandon_recurrent, run_remaining as qualify_abandon_remaining,
+    run_rope as qualify_abandon_rope, run_silu as qualify_abandon_silu,
+    run_softmax as qualify_abandon_softmax, run_value as qualify_abandon_value,
+};
+
+#[cfg(feature = "cuda")]
+use crate::models::qwen35::angles::qualify_angles as qualify_rope_angles;
 
 pub fn run() {
     let mut args = std::env::args().skip(1);

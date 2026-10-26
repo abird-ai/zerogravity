@@ -15,9 +15,9 @@ struct FinalRmsOwner {
     _metadata: Arc<WindowWorkspace>,
 }
 #[derive(Clone)]
-pub(crate) struct BoundFinalRmsSource(Arc<FinalRmsOwner>);
+pub struct BoundFinalRmsSource(Arc<FinalRmsOwner>);
 impl BoundFinalRmsSource {
-    pub(crate) fn bind(
+    pub fn bind(
         source: VerifiedTensorSource,
         parameter: SourceParameter,
         geometry: SourceRmsGeometry,

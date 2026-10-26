@@ -12,7 +12,6 @@ use crate::resident_provider::CubeResidentProvider;
 use cubecl::Device;
 use std::{
     future::{Future, pending},
-    path::Path,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -29,7 +28,6 @@ use zerogravity_core::accelerator::{
     RmsNormRegion, RopeKvExecution, RopeKvRegion, SiluRegion,
 };
 use zerogravity_core::resource_arbiter::{ResourceArbiter, ResourceOwner};
-use zerogravity_model_qwen35::QwenDenseCpu;
 
 static ARM_ONE_SUBMISSION: AtomicBool = AtomicBool::new(false);
 static ACTUAL_LAUNCH_RETURNED: AtomicBool = AtomicBool::new(false);
@@ -45,7 +43,7 @@ pub async fn after_physical_launch() {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum AbortOperator {
+pub enum AbortOperator {
     SourceMatVec,
     SourceDeviceQuant,
     RmsNorm,
@@ -280,84 +278,10 @@ impl MatVecKernel for AbortRegion {
     }
 }
 
-pub fn run(device: Device, model: &Path) -> std::result::Result<(), String> {
-    run_kind(device, model, AbortOperator::SourceMatVec)
-}
-
-pub fn run_norm(device: Device, model: &Path) -> std::result::Result<(), String> {
-    run_kind(device, model, AbortOperator::RmsNorm)
-}
-
-pub fn run_grouped_norm(device: Device, model: &Path) -> std::result::Result<(), String> {
-    run_kind(device, model, AbortOperator::GroupedRmsNorm)
-}
-
-pub fn run_l2(device: Device, model: &Path) -> std::result::Result<(), String> {
-    run_kind(device, model, AbortOperator::GdnL2)
-}
-
-pub fn run_conv(device: Device, model: &Path) -> std::result::Result<(), String> {
-    run_kind(device, model, AbortOperator::GdnConv)
-}
-
-pub fn run_recurrent(device: Device, model: &Path) -> std::result::Result<(), String> {
-    run_kind(device, model, AbortOperator::GdnRecurrent)
-}
-
-pub fn run_silu(device: Device, model: &Path, gated: bool) -> std::result::Result<(), String> {
-    run_kind(
-        device,
-        model,
-        if gated {
-            AbortOperator::SiluGate
-        } else {
-            AbortOperator::Silu
-        },
-    )
-}
-
-pub fn run_coefficients(device: Device, model: &Path) -> std::result::Result<(), String> {
-    run_kind(device, model, AbortOperator::GdnCoefficients)
-}
-
-pub fn run_device_quant(device: Device, model: &Path) -> std::result::Result<(), String> {
-    run_kind(device, model, AbortOperator::SourceDeviceQuant)
-}
-
-pub fn run_remaining(device: Device, model: &Path, kind: &str) -> std::result::Result<(), String> {
-    run_kind(
-        device,
-        model,
-        match kind {
-            "embedding" => AbortOperator::Embedding,
-            "residual" => AbortOperator::ResidualAdd,
-            "attention-gate" => AbortOperator::AttentionGate,
-            "ffn" => AbortOperator::FfnSilu,
-            _ => return Err("unknown remaining abort kind".into()),
-        },
-    )
-}
-
-pub fn run_value(device: Device, model: &Path) -> std::result::Result<(), String> {
-    run_kind(device, model, AbortOperator::AttentionValue)
-}
-
-pub fn run_softmax(device: Device, model: &Path) -> std::result::Result<(), String> {
-    run_kind(device, model, AbortOperator::AttentionSoftmax)
-}
-
-pub fn run_qk(device: Device, model: &Path) -> std::result::Result<(), String> {
-    run_kind(device, model, AbortOperator::AttentionQk)
-}
-
-pub fn run_rope(device: Device, model: &Path) -> std::result::Result<(), String> {
-    run_kind(device, model, AbortOperator::RopeKv)
-}
-
-fn run_kind(
+pub fn qualify_abort_operator<R, V: FnOnce() -> bool>(
     device: Device,
-    model: &Path,
     operator: AbortOperator,
+    exercise: impl FnOnce(Arc<dyn MatVecKernel>) -> std::result::Result<(R, V), String>,
 ) -> std::result::Result<(), String> {
     let provider_cap = if operator == AbortOperator::Embedding {
         512 * 1024 * 1024
@@ -370,7 +294,6 @@ fn run_kind(
         512 * 1024 * 1024
     };
     let client = device.client();
-    let directory = model.parent().ok_or("GGUF checkpoint has no directory")?;
     let provider = Arc::new(
         CubeResidentProvider::new(
             device.clone(),
@@ -398,44 +321,7 @@ fn run_kind(
         provider: provider.clone(),
         operator,
     });
-    let mut qwen =
-        QwenDenseCpu::open(model, &directory.join("config.json")).map_err(|e| e.to_string())?;
-    if matches!(
-        operator,
-        AbortOperator::SourceDeviceQuant
-            | AbortOperator::GdnRecurrent
-            | AbortOperator::GdnL2
-            | AbortOperator::GdnCoefficients
-            | AbortOperator::RopeKv
-            | AbortOperator::AttentionQk
-            | AbortOperator::AttentionSoftmax
-            | AbortOperator::AttentionValue
-            | AbortOperator::Embedding
-            | AbortOperator::ResidualAdd
-            | AbortOperator::AttentionGate
-            | AbortOperator::FfnSilu
-            | AbortOperator::Silu
-            | AbortOperator::SiluGate
-    ) {
-        qwen.prefill_transaction(&[11]).map_err(|e| e.to_string())?;
-    }
-    qwen = qwen.with_kernel(kernel);
-    let root = qwen.root_id();
-    let position = qwen.position();
-    let fingerprint = qwen.state_fingerprint();
-    ARM_ONE_SUBMISSION.store(true, Ordering::SeqCst);
-    if qwen.prefill_transaction(&[353u32]).is_ok() {
-        return Err("abandoned real GPU command falsely completed Qwen prefill".into());
-    }
-    if !ACTUAL_LAUNCH_RETURNED.load(Ordering::SeqCst)
-        || qwen.root_id() != root
-        || qwen.position() != position
-        || qwen.state_fingerprint() != fingerprint
-    {
-        return Err(
-            "physical abort either missed GPU dispatch or changed unpublished StateRoot".into(),
-        );
-    }
+    let (reference_owner, verify_retained_root) = exercise(kernel)?;
     let after = ResourceArbiter::process_shared()
         .snapshot(&card)
         .map_err(|e| e.to_string())?;
@@ -496,8 +382,7 @@ fn run_kind(
     {
         return Err("unknown physical GPU work admitted another model".into());
     }
-    let root_snapshot = qwen.snapshot();
-    drop(qwen);
+    drop(reference_owner);
     drop(provider);
     let final_state = ResourceArbiter::process_shared()
         .snapshot(&card)
@@ -533,8 +418,7 @@ fn run_kind(
     if !after_quiescence.fenced
         || after_quiescence.reserved != original.reserved
         || retained < handles_after_teardown
-        || root_snapshot.fingerprint() != fingerprint
-        || root_snapshot.position() != position
+        || !verify_retained_root()
         || queue_after.completed != 0
         || queue_after.active
         || queue_after.queued != 0
@@ -550,7 +434,10 @@ fn run_kind(
 
 /// Diagnostic finite-input overflow must be rejected by REAL device status,
 /// rather than accepted because the host input and shape are well formed.
-pub fn run_invalid_quant(device: Device, model: &Path) -> std::result::Result<(), String> {
+pub fn qualify_invalid_quant<R>(
+    device: Device,
+    exercise: impl FnOnce(Arc<dyn MatVecKernel>) -> std::result::Result<(R, String), String>,
+) -> std::result::Result<(), String> {
     struct InvalidQuant(Arc<CubeResidentProvider>);
     impl MatVecKernel for InvalidQuant {
         fn try_execute(&self, r: MatVecRegion<'_>) -> Result<RegionExecution> {
@@ -578,20 +465,8 @@ pub fn run_invalid_quant(device: Device, model: &Path) -> std::result::Result<()
         .with_device_activation_quantization(true),
     );
     let key = provider.physical_key();
-    let mut qwen = QwenDenseCpu::open(
-        model,
-        &model.parent().ok_or("model parent")?.join("config.json"),
-    )
-    .map_err(|e| e.to_string())?;
-    qwen.prefill_transaction(&[11]).map_err(|e| e.to_string())?;
-    let before = (qwen.root_id(), qwen.position(), qwen.state_fingerprint());
-    qwen = qwen.with_kernel(Arc::new(InvalidQuant(provider.clone())));
-    let error = qwen
-        .prefill_transaction(&[353])
-        .expect_err("invalid device scale must reject")
-        .to_string();
+    let (reference_owner, error) = exercise(Arc::new(InvalidQuant(provider.clone())))?;
     if !error.contains("device quantization block status")
-        || before != (qwen.root_id(), qwen.position(), qwen.state_fingerprint())
         || provider
             .worker_stats()
             .map_err(|e| e.to_string())?
@@ -625,7 +500,7 @@ pub fn run_invalid_quant(device: Device, model: &Path) -> std::result::Result<()
     {
         return Err("invalid quant failed physical fence".into());
     }
-    drop(qwen);
+    drop(reference_owner);
     drop(provider);
     futures_lite::future::block_on(client.sync())
         .map_err(|e| format!("invalid quant cleanup failed: {e}"))?;
@@ -645,4 +520,12 @@ pub fn run_invalid_quant(device: Device, model: &Path) -> std::result::Result<()
         after.reserved
     );
     Ok(())
+}
+
+/// Arms only the original post-launch pause; it cannot confirm completion.
+pub fn arm_physical_abort() {
+    ARM_ONE_SUBMISSION.store(true, Ordering::SeqCst);
+}
+pub fn physical_launch_returned() -> bool {
+    ACTUAL_LAUNCH_RETURNED.load(Ordering::SeqCst)
 }

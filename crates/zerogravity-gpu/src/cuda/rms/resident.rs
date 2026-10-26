@@ -342,6 +342,14 @@ pub(crate) struct RmsPrepared {
     text: Option<Arc<text::EmbeddingRows>>,
 }
 impl RmsPrepared {
+    #[cfg(target_os = "linux")]
+    pub(crate) fn leaf_source(&self) -> Result<&super::leaf_source::RmsLeafSource> {
+        self.owner
+            ._leaf
+            .as_ref()
+            .ok_or_else(|| Error::State("prepared RMS leaf source absent".into()))
+    }
+
     /// Actual model-prepared embedding/RMS operands; no role names or reissuer.
     #[cfg(all(feature = "cuda-native", target_os = "linux"))]
     pub(crate) async fn prepare_bound(

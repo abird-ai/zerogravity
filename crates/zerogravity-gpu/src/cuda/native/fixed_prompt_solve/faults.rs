@@ -5,7 +5,6 @@ use cubecl::Device;
 use std::sync::Weak;
 use zerogravity_core::device_events::BufferLeaseId;
 use zerogravity_core::resource_arbiter::{ResourceArbiter, ResourceOwner};
-use zerogravity_model_qwen35::plan::QwenSourceProfile;
 pub(super) const UNKNOWN: &str = "deliberate original47 solve leaf unknown after actual solve";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FixedPromptSolveFault {
@@ -34,7 +33,7 @@ pub struct FixedPromptSolveFaultOutcome {
     pub readback_calls: usize,
 }
 pub(super) struct Probe {
-    model: Weak<OriginalWindowModelSource>,
+    model: Weak<dyn std::any::Any + Send + Sync>,
     prepared: Weak<Prepared>,
     service: Weak<ResidentService>,
     ids: Vec<BufferLeaseId>,
@@ -45,7 +44,7 @@ pub(super) struct Probe {
 impl Probe {
     pub(super) fn new(prepared: &Arc<Prepared>) -> Result<Self> {
         Ok(Self {
-            model: Arc::downgrade(prepared.owner.bound.source()),
+            model: prepared.owner.bound.weak_owner(),
             prepared: Arc::downgrade(prepared),
             service: Arc::downgrade(&prepared.service),
             ids: prepared.leases().iter().map(ResidentLease::id).collect(),
@@ -99,7 +98,7 @@ impl Probe {
             || prepared.jobs[0].accesses.len() != 10
             || handles != 10
             || owners < 1
-            || !Arc::ptr_eq(&model, prepared.owner.bound.source())
+            || !Arc::ptr_eq(&model, prepared.owner.bound.owner())
             || !Arc::ptr_eq(&service, &prepared.service)
             || service.resident_bytes()? != self.resident
             || service.uploaded_value_bytes() != INPUT_BYTES as u64
@@ -136,7 +135,7 @@ impl Probe {
 }
 pub async fn qualify_fixed_prompt_solve_fault(
     device: Device,
-    model: Arc<OriginalWindowModelSource>,
+    model: Arc<RetainedSource>,
     fixture: Option<FixedPromptSolveFixture>,
     fault: FixedPromptSolveFault,
     device_cap: u64,
@@ -154,11 +153,9 @@ pub async fn qualify_fixed_prompt_solve_fault(
                 "fixed-prompt solve pressure has no fixture/H2D prerequisite".into(),
             ));
         }
-        let weak = Arc::downgrade(&model);
-        let bound = model.bind_full_model_source()?;
-        if bound.model_profile() != QwenSourceProfile::Qwen08
-            || model.source().staging_chunk_bytes() != MIB
-        {
+        let weak = model.weak_owner();
+        let bound = model.clone();
+        if model.source().staging_chunk_bytes() != MIB {
             return Err(Error::Unsupported(
                 "closed .8B source/1MiB fixed-prompt solve pressure".into(),
             ));

@@ -47,14 +47,17 @@ pub struct VocabularyHeadFaultOutcome {
     pub physical_fenced: bool,
     pub host_final_zero_established: bool,
 }
+#[expect(clippy::too_many_arguments)]
 pub async fn qualify_vocabulary_head_fault(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
+    source: Arc<RetainedSource>,
     fixtures: VocabularyHeadFixtures,
     inputs: CubinQualificationInputs,
     scope: VocabularyHeadScope,
     fault: VocabularyHeadFault,
     cancelled: Option<&AtomicBool>,
+    prepare_final: impl FnOnce() -> Result<BoundFinalRmsSource>,
+    prepare_tied: impl FnOnce() -> Result<Arc<TiedWeightSource>>,
 ) -> Result<VocabularyHeadFaultOutcome> {
     match qualify::inner(
         device,
@@ -64,6 +67,8 @@ pub async fn qualify_vocabulary_head_fault(
         scope,
         Mode::Fault(fault),
         cancelled,
+        prepare_final,
+        prepare_tied,
     )
     .await?
     {
@@ -163,7 +168,7 @@ fn readbacks(job: &Job) -> Vec<ReadbackIdentity> {
 }
 pub(super) struct UnknownWitness {
     owner: Weak<HeadOwner>,
-    source: Weak<OriginalWindowModelSource>,
+    source: Weak<dyn std::any::Any + Send + Sync>,
     job: Weak<Job>,
     weight: Weak<TiedWeight>,
     programs: Weak<HeadPrograms>,
@@ -259,7 +264,7 @@ impl UnknownWitness {
         }
         Ok(Self {
             owner: Arc::downgrade(owner),
-            source: Arc::downgrade(&owner.source),
+            source: owner.source.weak_owner(),
             job: Arc::downgrade(job),
             weight: Arc::downgrade(weight),
             programs: Arc::downgrade(programs),
@@ -302,8 +307,8 @@ impl UnknownWitness {
             service.ok_or_else(|| Error::State("head unknown lost original service".into()))?;
         if flags.iter().any(|alive| !*alive)
             || (self.scope == Scope::ComputedFinalNorm) != fused.is_some()
-            || !Arc::ptr_eq(&source, &owner.source)
-            || !weight.source().same_issuer(source.source())
+            || !Arc::ptr_eq(&source, owner.source.owner())
+            || !weight.source().same_issuer(owner.source.source())
             || !Arc::ptr_eq(weight.lease().service(), &service)
             || readbacks(&job) != self.descriptors
             || job

@@ -428,7 +428,7 @@ enum CausalMask<'a> {
     },
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ResidentOutput {
+pub enum ResidentOutput {
     StateOnly,
     Logits,
 }

@@ -9,6 +9,10 @@ command -v python3 >/dev/null 2>&1 || { echo "Python 3 is required for workspace
 echo "Checking Rust formatting..."
 cargo fmt --all -- --check
 
+echo "Checking architecture boundaries and production dependency graph..."
+python3 -B scripts/check-architecture.py
+python3 -B scripts/test-check-architecture.py
+
 # Explicit CPU owners keep optional GPU compilers and qualification tools out
 # of default CI. Cargo's --all-features would also enable diagnostic GPU paths.
 cpu_packages=(

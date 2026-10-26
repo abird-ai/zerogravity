@@ -8,7 +8,7 @@ use zerogravity_core::resource_arbiter::{
 
 pub async fn qualify_fixed_prompt_solve_leaves(
     device: Device,
-    model: Arc<OriginalWindowModelSource>,
+    model: Arc<RetainedSource>,
     fixture: FixedPromptSolveFixture,
     device_cap: u64,
     validate: impl FnMut(FixedPromptSolveReadback<'_>) -> Result<()>,
@@ -36,7 +36,7 @@ pub(super) struct RunHooks<'a, F> {
 }
 pub(super) async fn run(
     device: Device,
-    model: Arc<OriginalWindowModelSource>,
+    model: Arc<RetainedSource>,
     fixture: FixedPromptSolveFixture,
     device_cap: u64,
     hooks: RunHooks<'_, impl FnMut(FixedPromptSolveReadback<'_>) -> Result<()>>,
@@ -57,7 +57,7 @@ pub(super) async fn run(
     }
     let service = ResidentService::new_pinned_cuda(
         device,
-        owner.bound.source().source_identity(),
+        owner.bound.source_identity(),
         ResourceOwner::new("fixed-prompt-source", "finite-original-solve-leaves")?,
         PROVIDER,
         device_cap,

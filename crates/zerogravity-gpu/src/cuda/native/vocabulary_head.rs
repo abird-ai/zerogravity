@@ -1,6 +1,7 @@
 //! Original tied-W native head leaf; both scopes use one original lifecycle.
 use super::cubin_manifests::ProjectionImage;
 use super::projection_cubin::{CubinQualificationInputs, native_error, not_cancelled};
+use crate::cuda::native::{RetainedSource, TiedWeightSource};
 use crate::cuda::rms::{BoundFinalRmsSource, FusedRmsPrepared};
 use crate::resident_leases::{
     ResidentLease, ResidentReadback, ResidentService, TIED_BYTES, TIED_WINDOW_BYTES, TIED_WINDOWS,
@@ -17,7 +18,6 @@ use zerogravity_core::{
     device_events::{BufferLeaseId, BufferRole, DeviceAccess},
     resource_arbiter::{AllocationClass, AllocationRequest, ResourceArbiter, ResourceOwner},
 };
-use zerogravity_model_qwen35::source::binding::OriginalWindowModelSource;
 mod faults;
 mod qualify;
 mod resident;
@@ -130,7 +130,7 @@ pub(super) enum Outcome {
 }
 struct HeadOwner {
     cohort: VocabularyHeadFixtures,
-    source: Arc<OriginalWindowModelSource>,
+    source: Arc<RetainedSource>,
     _metadata: WindowWorkspace,
 }
 struct PhaseJob {
@@ -238,7 +238,7 @@ fn validate_record(
     Ok(())
 }
 fn validate_fixtures(
-    source: &OriginalWindowModelSource,
+    source: &RetainedSource,
     cohort: &VocabularyHeadFixtures,
     scope: Scope,
     mode: Mode,

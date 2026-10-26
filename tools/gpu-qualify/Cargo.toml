@@ -14,7 +14,7 @@ cuda = ["zerogravity-gpu/cuda"]
 hip = ["zerogravity-gpu/hip"]
 hardware-abort-probe = ["qualification", "zerogravity-gpu/hardware-abort-probe"]
 portable-checkpoint = ["qualification", "zerogravity-gpu/portable-checkpoint", "zerogravity-model-qwen35/diagnostic-cpu-checkpoint"]
-diagnostic-gdn-trace = ["qualification", "zerogravity-gpu/diagnostic-gdn-trace", "zerogravity-model-qwen35/diagnostic-gdn-trace"]
+diagnostic-gdn-trace = ["qualification", "zerogravity-model-qwen35/diagnostic-gdn-trace"]
 
 [dependencies]
 zerogravity-gpu = { path = "../../crates/zerogravity-gpu", default-features = false }

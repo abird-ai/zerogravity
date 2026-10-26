@@ -7,31 +7,9 @@ use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 use zerogravity_core::resource_arbiter::{
     AllocationClass, AllocationRequest, ResourceArbiter, ResourceOwner,
 };
-use zerogravity_model_qwen35::{
-    plan::QwenSourceProfile,
-    source::binding::{OriginalWindowModelSource, PreparedRmsSource},
-};
-
-pub(super) fn bind_source(
-    model: Arc<OriginalWindowModelSource>,
-) -> Result<(RmsLeafSource, Arc<PreparedRmsSource>)> {
-    let prepared = Arc::new(model.prepare_rms_source(QwenSourceProfile::Qwen2B)?);
-    let source = RmsLeafSource::bind(
-        prepared.source().clone(),
-        prepared.embedding().clone(),
-        prepared.input_gamma().clone(),
-        prepared.final_gamma().clone(),
-        prepared.geometry(),
-        prepared.numerical_contract(),
-        prepared.metadata(),
-    )?;
-    Ok((source, prepared))
-}
-
 const PROVIDER: usize = 128 * 1024 * 1024;
 struct Inputs {
     source: RmsLeafSource,
-    _prepared_source: Arc<PreparedRmsSource>,
     teachers: [Vec<u32>; 5],
     leaves: [Qwen2bDualRmsLeaf; 5],
     _payload: WindowWorkspace,
@@ -40,14 +18,14 @@ struct Inputs {
 impl Inputs {
     fn new(
         source: RmsLeafSource,
-        prepared_source: Arc<PreparedRmsSource>,
         teachers: [Vec<u32>; 5],
         leaves: [Qwen2bDualRmsLeaf; 5],
+        validate_ids: impl Fn(&[u32]) -> Result<()>,
     ) -> Result<Arc<Self>> {
         let metadata = source.source().reserve_workspace(64 * 1024)?;
         let mut bytes = 64 * 1024usize;
         for ((ids, leaf), count) in teachers.iter().zip(&leaves).zip(COUNTS) {
-            prepared_source.require_ids(ids)?;
+            validate_ids(ids)?;
             validate_fixture(ids, leaf, count)?;
             bytes = bytes
                 .checked_add(
@@ -62,7 +40,6 @@ impl Inputs {
         let payload = source.source().reserve_workspace(bytes)?;
         Ok(Arc::new(Self {
             source,
-            _prepared_source: prepared_source,
             teachers,
             leaves,
             _payload: payload,
@@ -245,19 +222,20 @@ async fn dual_leaf(
 /// Ten bounded leaf calls, each with a genuine original physical completion.
 /// Ordinary inputs are ORIGINAL source rows/gamma; final dual inputs explicitly
 /// remain observed leaves. No StateRoot/PreparedInference/model support follows.
+#[expect(clippy::too_many_arguments)]
 pub async fn qualify_qwen2b_rms(
     device: Device,
-    model: Arc<OriginalWindowModelSource>,
+    source: RmsLeafSource,
     teachers: [Vec<u32>; 5],
     leaves: [Qwen2bDualRmsLeaf; 5],
     device_cap: u64,
     mut validate: impl FnMut(Qwen2bRmsReadback<'_>) -> Result<()>,
     cancelled: Option<&AtomicBool>,
+    validate_ids: impl Fn(&[u32]) -> Result<()>,
 ) -> Result<Qwen2bRmsReceipt> {
     // True pre-cancel wins before source metadata, service or provider work.
     not_cancelled(cancelled)?;
-    let (source, prepared_source) = bind_source(model)?;
-    let owner = Inputs::new(source, prepared_source, teachers, leaves)?;
+    let owner = Inputs::new(source, teachers, leaves, validate_ids)?;
     if cfg!(debug_assertions) || !matches!(device, Device::Cuda(_)) {
         return Err(Error::Unsupported(
             "release original CUDA required for2B RMS diagnostic".into(),

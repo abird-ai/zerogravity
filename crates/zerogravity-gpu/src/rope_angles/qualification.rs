@@ -2,13 +2,12 @@
 use super::*;
 use crate::resident_leases::{ResidentLease, ResidentService};
 use cubecl::Device;
-use std::{path::Path, sync::Arc};
+use std::sync::Arc;
 use zerogravity_core::accelerator::program::PlanOperation;
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 use zerogravity_core::resource_arbiter::{
     AllocationClass, AllocationRequest, ResourceArbiter, ResourceOwner,
 };
-use zerogravity_model_qwen35::LoadedQwenModel;
 
 const PAD: usize = 4;
 const SENTINEL: u32 = 0xa5a55a5a;
@@ -398,13 +397,11 @@ async fn compare_case(service: &Arc<ResidentService>, fixture: &Fixture) -> Resu
     Ok(result)
 }
 
-pub async fn qualify_angles(device: Device, path: &Path) -> Result<()> {
-    qualify_angles_with_device_cap(device, path, 5120 * 1024 * 1024).await
-}
-
-pub async fn qualify_angles_with_device_cap(
+pub async fn qualify_angles_with_plan(
     device: Device,
-    path: &Path,
+    model: Arc<dyn zerogravity_core::source::TensorSource>,
+    plan: zerogravity_core::accelerator::program::ForwardPlan,
+    source_path: &std::path::Path,
     device_cap: u64,
 ) -> Result<()> {
     if cfg!(debug_assertions) {
@@ -417,11 +414,11 @@ pub async fn qualify_angles_with_device_cap(
             "ordered angle qualifier requires CUDA".into(),
         ));
     }
-    let parent = path
-        .parent()
-        .ok_or_else(|| Error::Malformed("angle model directory".into()))?;
-    let model = LoadedQwenModel::open(path, &parent.join("config.json"))?;
-    let plan = model.forward_plan(512, true, false)?;
+    if plan.source() != model.source_identity() {
+        return Err(Error::State(
+            "angle source/recorded plan identity differs".into(),
+        ));
+    }
     let geometry = plan
         .nodes()
         .iter()
@@ -468,7 +465,7 @@ pub async fn qualify_angles_with_device_cap(
     }
     println!(
         "CUDA_ORDERED_ROPE_ANGLES_PASS source={} theta_bits={:08x} cases={} batches=1,2,4,8 half=1..32 trained_max_position=32768 compared_words={} old_row_or_single_dispatches={} independent_scalar_dispatches={} candidate_dispatches={} exact_signed_bits=1 guard_words=unchanged original_leases_and_Ready=1 warm_value_uploads=0 final_reserved=0 published_roots=0 fullmodel_performance=not_qualified",
-        path.display(),
+        source_path.display(),
         geometry[0].theta_scale.to_bits(),
         cases.len(),
         totals.words,

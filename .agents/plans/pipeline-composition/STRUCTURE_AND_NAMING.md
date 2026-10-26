@@ -86,6 +86,16 @@ Add a crate only when it enforces an actual dependency or build boundary.
 Use the [format implementation map](FORMATS.md) for Q1/Q2/Q3/Q4/Q6/Q8/NVFP4
 homes, separate BF16 precision, exact implemented variants and remaining work.
 
+Qualification follows the same dependency direction. Model/tool code opens the
+model, interprets its configuration, records its plan and computes references.
+GPU diagnostics receive authenticated source/plan bindings and explicit expected
+values; the original physical owner still submits, fences, retires and publishes.
+Checkpoint codecs stay with the model; GPU state import validates the common
+source, frontier and domains before its original physical transaction.
+Normal/build dependencies, including optional features and inactive target
+tables, must remain model-free in the GPU crate. Model-backed unit fixtures may
+use dev dependencies; they grant no runtime model capability.
+
 ## Model template
 
 Use the same small structure in each existing model crate; create only modules

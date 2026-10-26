@@ -195,7 +195,7 @@ async fn load_profile(
     let capture = native::TextKernelCapture::bind(bound.native_kernel_capture().recipe_sha256())?;
     let templates = Arc::new(templates::Templates::prepare(bound)?);
     let scopes = templates.physical_scopes()?;
-    let rotary = native::qualify_text_rotary_cubins(
+    let rotary = qualification::qualify_text_rotary_cubins(
         device.clone(),
         opened.source.clone(),
         (DEVICE_MIB * MIB) as u64,

@@ -8,18 +8,12 @@ use std::sync::{
     Mutex as HostMutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-mod qualification;
-mod wider;
-pub use qualification::qualify;
-#[cfg(feature = "hardware-abort-probe")]
-pub use qualification::qualify_abort;
-pub use wider::qualify as qualify_wide;
-#[cfg(feature = "hardware-abort-probe")]
-pub use wider::qualify_abort as qualify_wide_abort;
+pub(super) mod qualification;
+pub(super) mod wider;
 
 /// A source launch-site count, not a driver graph-node enumeration or timing.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct GraphCaptureReceipt {
+pub struct GraphCaptureReceipt {
     pub warm_dispatches: [usize; 2],
     pub captured_kernels: usize,
     pub projection_dots: usize,
@@ -28,7 +22,7 @@ pub(crate) struct GraphCaptureReceipt {
     pub owned_lease_vector_bytes: usize,
 }
 
-pub(super) struct CapturedResidentGraph {
+pub struct CapturedResidentGraph {
     service: Arc<ResidentService>,
     profile: BatchGraphProfile,
     stream: u64,
@@ -70,11 +64,11 @@ impl Drop for CapturedResidentGraph {
 }
 
 impl CapturedResidentGraph {
-    pub(super) fn output(&self) -> ResidentOutput {
+    pub fn output(&self) -> ResidentOutput {
         self.profile.output
     }
 
-    pub(super) fn validate(
+    pub fn validate(
         &self,
         model: &ResidentModel,
         count: usize,
@@ -144,17 +138,17 @@ impl CapturedResidentGraph {
             },
         )
     }
-    pub(super) fn receipt(&self) -> GraphCaptureReceipt {
+    pub fn receipt(&self) -> GraphCaptureReceipt {
         self.receipt
     }
-    pub(super) fn replay_enqueues(&self) -> usize {
+    pub fn replay_enqueues(&self) -> usize {
         self.replay_enqueues.load(Ordering::Acquire)
     }
 
     /// Consumes the caller's sole graph handle. Both terminal barriers use the
     /// original physical queue and initialized Read leases. No graph destroy
     /// is posted until all prior replays have a trusted terminal readback.
-    pub(super) async fn retire(self: Arc<Self>, root: u64) -> Result<()> {
+    pub async fn retire(self: Arc<Self>, root: u64) -> Result<()> {
         if Arc::strong_count(&self) != 1 || self.retired.load(Ordering::Acquire) {
             return Err(Error::State(
                 "resident graph retirement requires exclusive live owner".into(),
@@ -277,7 +271,7 @@ impl Drop for CaptureWindow {
 impl ResidentModel {
     /// Caller MUST establish process-wide cold same-card isolation. The local
     /// allocation/queue/workspace order cannot exclude another model's Client.
-    pub(super) async fn capture_logits_b2(
+    pub async fn capture_logits_b2(
         self: &Arc<Self>,
         rows: &[(&ResidentSession, u32)],
     ) -> Result<Arc<CapturedResidentGraph>> {
@@ -289,7 +283,7 @@ impl ResidentModel {
         self.capture_body(rows, ResidentOutput::Logits).await
     }
 
-    pub(super) async fn capture_body(
+    pub async fn capture_body(
         self: &Arc<Self>,
         rows: &[(&ResidentSession, u32)],
         output: ResidentOutput,
@@ -488,7 +482,7 @@ impl ResidentModel {
         Ok(graph)
     }
 
-    pub(super) async fn prepare_graph_logits(
+    pub async fn prepare_graph_logits(
         self: &Arc<Self>,
         rows: &[(&ResidentSession, u32)],
         graph: &Arc<CapturedResidentGraph>,
@@ -497,7 +491,7 @@ impl ResidentModel {
             .await
     }
 
-    pub(super) async fn prepare_graph_readout(
+    pub async fn prepare_graph_readout(
         self: &Arc<Self>,
         rows: &[(&ResidentSession, u32)],
         graph: &Arc<CapturedResidentGraph>,
@@ -511,5 +505,17 @@ impl ResidentModel {
         )
         .await?
         .ok_or_else(|| Error::Limit("graph cohort admission exhausted".into()))
+    }
+}
+
+impl CapturedResidentGraph {
+    pub fn qualification_generation(&self) -> u64 {
+        self.profile.generation
+    }
+    pub fn qualification_set_generation(&mut self, generation: u64) {
+        self.profile.generation = generation;
+    }
+    pub fn qualification_rows(&self) -> usize {
+        self.profile.rows
     }
 }

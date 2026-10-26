@@ -30,22 +30,22 @@ pub use native_fragment::{
     feature = "hardware-abort-probe"
 ))]
 pub use portable_qualification::{SamePciPeerReceipt, same_pci_peer};
+#[cfg(all(test, feature = "qualification", feature = "cuda"))]
+#[path = "resident_inference/admission_qualification.rs"]
+mod admission_qualification;
 #[cfg(feature = "qualification")]
 #[path = "resident_alias_qualification.rs"]
 mod alias_qualification;
 #[cfg(feature = "portable-checkpoint")]
 #[path = "resident_checkpoint.rs"]
 mod checkpoint;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
-pub(crate) mod gdn_state;
-#[cfg(all(feature = "portable-checkpoint", feature = "qualification"))]
-pub use checkpoint::qualify as qualify_checkpoint;
-#[cfg(all(test, feature = "qualification", feature = "cuda"))]
-#[path = "resident_inference/admission_qualification.rs"]
-mod admission_qualification;
-#[cfg(feature = "qualification")]
-#[path = "resident_inference/cohort_qualification.rs"]
-mod cohort_qualification;
+#[cfg(all(
+    feature = "portable-checkpoint",
+    feature = "qualification",
+    feature = "hardware-abort-probe"
+))]
+#[path = "resident_checkpoint_abort.rs"]
+mod checkpoint_abort;
 mod fused;
 #[cfg(feature = "qualification")]
 #[path = "resident_fused_greedy_qualification.rs"]
@@ -53,24 +53,11 @@ mod fused_greedy_qualification;
 #[cfg(feature = "qualification")]
 #[path = "resident_fused_qualification.rs"]
 mod fused_qualification;
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+pub(crate) mod gdn_state;
 #[cfg(all(feature = "qualification", feature = "cuda"))]
 mod graph;
-#[cfg(all(feature = "qualification", feature = "cuda"))]
-pub use graph::qualify as qualify_graph;
-#[cfg(all(
-    feature = "qualification",
-    feature = "cuda",
-    feature = "hardware-abort-probe"
-))]
-pub use graph::qualify_abort as qualify_graph_abort;
-#[cfg(all(feature = "qualification", feature = "cuda"))]
-pub use graph::qualify_wide as qualify_graph_wide;
-#[cfg(all(
-    feature = "qualification",
-    feature = "cuda",
-    feature = "hardware-abort-probe"
-))]
-pub use graph::qualify_wide_abort as qualify_graph_wide_abort;
+
 #[cfg(all(
     test,
     feature = "qualification",
@@ -79,24 +66,11 @@ pub use graph::qualify_wide_abort as qualify_graph_wide_abort;
 ))]
 #[path = "resident_inference/ragged_qualification.rs"]
 mod ragged_qualification;
-#[cfg(feature = "qualification")]
-pub use fused_greedy_qualification::qualify as qualify_fused_greedy;
-#[cfg(all(feature = "qualification", feature = "hardware-abort-probe"))]
-pub use fused_greedy_qualification::qualify_abort as qualify_fused_greedy_abort;
-#[cfg(feature = "qualification")]
-pub use fused_qualification::qualify as qualify_fused;
-#[cfg(all(feature = "qualification", feature = "hardware-abort-probe"))]
-pub use fused_qualification::qualify_abort as qualify_fused_abort;
-#[cfg(all(feature = "qualification", feature = "portable-checkpoint"))]
-pub use fused_qualification::qualify_boundary as qualify_fused_boundary;
-#[cfg(feature = "qualification")]
-#[path = "resident_context_qualification.rs"]
-mod context_qualification;
+
 #[cfg(feature = "qualification")]
 #[path = "resident_prefill_qualification.rs"]
 mod prefill_qualification;
-#[cfg(feature = "qualification")]
-pub use cohort_qualification::qualify as qualify_cohort;
+
 #[cfg(feature = "qualification")]
 #[path = "resident_range_qualification.rs"]
 mod range_qualification;
@@ -115,7 +89,7 @@ use crate::resident_program::{
 };
 use async_lock::Mutex;
 use cubecl::{Device, bytes::Bytes, server::Handle};
-#[cfg(feature = "qualification")]
+#[cfg(all(test, feature = "qualification"))]
 use std::path::Path;
 use std::sync::Arc;
 use zerogravity_core::Error;
@@ -128,7 +102,7 @@ use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, ResourceOwner};
 use zerogravity_core::session_root::{RootAttempt, RootBinding, SessionAuthority};
 use zerogravity_core::source::TensorSource;
-#[cfg(any(feature = "qualification", feature = "portable-checkpoint"))]
+#[cfg(all(test, feature = "qualification"))]
 use zerogravity_model_qwen35::LoadedQwenModel;
 
 mod state_pool;
@@ -203,7 +177,7 @@ pub struct ResidentToken {
     pub max_bits: u32,
 }
 #[derive(Clone, Copy)]
-enum Readout {
+pub enum Readout {
     None,
     Logits,
     Greedy,
@@ -1912,22 +1886,6 @@ impl ResidentSession {
 mod qualification;
 #[cfg(feature = "qualification")]
 use qualification::{compare_domains, exact};
-#[cfg(feature = "qualification")]
-pub use qualification::{qualify, qualify_bounded_context, qualify_context};
-#[cfg(all(feature = "qualification", feature = "hardware-abort-probe"))]
-pub use qualification::{qualify_abort, qualify_context_abort};
-
-#[cfg(feature = "qualification")]
-async fn load_qualified(
-    device: Device,
-    model: Arc<LoadedQwenModel>,
-    capacity: usize,
-    provider_cap: usize,
-    device_cap: u64,
-) -> Result<Arc<ResidentModel>> {
-    let plan = model.forward_plan(capacity, true, true)?;
-    ResidentModel::load(device, model, plan, provider_cap, device_cap).await
-}
 
 /// Cold token-consuming profile geometry. No device/client/admission is touched.
 fn validate_profile_plan(plan: &ForwardPlan) -> Result<(usize, u64)> {
@@ -2085,3 +2043,39 @@ pub(crate) mod bf16_text;
 
 #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
 pub(crate) mod bf16_text_source;
+
+#[cfg(feature = "qualification")]
+pub mod diagnostics;
+
+#[cfg(all(test, feature = "qualification"))]
+async fn load_qualified(
+    device: Device,
+    model: Arc<LoadedQwenModel>,
+    capacity: usize,
+    provider_cap: usize,
+    device_cap: u64,
+) -> Result<Arc<ResidentModel>> {
+    let plan = model.forward_plan(capacity, true, true)?;
+    ResidentModel::load(device, model, plan, provider_cap, device_cap).await
+}
+#[cfg(all(test, feature = "portable-checkpoint"))]
+trait CheckpointFixture {
+    async fn import_checkpoint(
+        &mut self,
+        checkpoint: &zerogravity_model_qwen35::QwenCheckpoint,
+    ) -> Result<()>;
+}
+#[cfg(all(test, feature = "portable-checkpoint"))]
+impl CheckpointFixture for ResidentSession {
+    async fn import_checkpoint(
+        &mut self,
+        checkpoint: &zerogravity_model_qwen35::QwenCheckpoint,
+    ) -> Result<()> {
+        self.import_state_domains(
+            checkpoint.source_identity(),
+            checkpoint.position(),
+            &checkpoint.domain_values(),
+        )
+        .await
+    }
+}

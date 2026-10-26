@@ -257,7 +257,7 @@ pub(crate) use layer_binding::BoundRmsSource;
 #[cfg(all(feature = "cuda-native", target_os = "linux"))]
 mod final_binding;
 #[cfg(all(feature = "cuda-native", target_os = "linux"))]
-pub(crate) use final_binding::BoundFinalRmsSource;
+pub use final_binding::BoundFinalRmsSource;
 
 mod model_binding;
 pub(crate) use model_binding::BoundModelRmsSource;

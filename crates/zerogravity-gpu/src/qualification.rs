@@ -1,28 +1,6 @@
 //! Explicit physical/source qualification entry point. No production frontend.
-use crate::*;
 
 use cubecl::{Device, prelude::*};
-
-/// Internal original-GGUF B1 bit/state diagnostic; no serving or vLLM permit.
-/// Caller authenticates complete raw teacher IDs before this qualification seam.
-pub async fn qualify_bounded_resident_context(
-    device: Device,
-    path: &std::path::Path,
-    teacher_ids: Vec<u32>,
-    capacity: usize,
-    provider_cap: usize,
-    device_cap: u64,
-) -> zerogravity_core::Result<()> {
-    resident_inference::qualify_bounded_context(
-        device,
-        path,
-        teacher_ids,
-        capacity,
-        provider_cap,
-        device_cap,
-    )
-    .await
-}
 
 #[cube(launch_unchecked)]
 fn multiply_by_two(input: &[f32], output: &mut [f32]) {
@@ -65,38 +43,18 @@ pub use crate::batch_projection::qualify as qualify_batched_projection;
 pub use crate::batch_recurrent::qualify as qualify_batched_recurrent;
 pub use crate::gpu_telemetry::{read as read_driver_memory, report as report_driver_memory};
 #[cfg(feature = "hardware-abort-probe")]
-pub use crate::physical_abort_probe::{
-    run as qualify_abandon, run_coefficients as qualify_abandon_coefficients,
-    run_conv as qualify_abandon_conv, run_device_quant as qualify_abandon_device_quant,
-    run_grouped_norm as qualify_abandon_grouped_norm,
-    run_invalid_quant as qualify_abandon_invalid_quant, run_l2 as qualify_abandon_l2,
-    run_norm as qualify_abandon_norm, run_qk as qualify_abandon_qk,
-    run_recurrent as qualify_abandon_recurrent, run_remaining as qualify_abandon_remaining,
-    run_rope as qualify_abandon_rope, run_silu as qualify_abandon_silu,
-    run_softmax as qualify_abandon_softmax, run_value as qualify_abandon_value,
-};
+pub mod physical_abort {
+    pub use crate::physical_abort_probe::{
+        AbortOperator, arm_physical_abort, physical_launch_returned, qualify_abort_operator,
+        qualify_invalid_quant,
+    };
+}
 pub use crate::quantization::batch_projection::qualify as qualify_quantized_projection_batch;
 pub use crate::quantization::projection::CubeMixedProvider;
 pub use crate::quantization::q4_0::{CubeQ4Q8Provider, qualification::run as qualify_q4_0_fixture};
-pub use crate::resident_inference::{
-    qualify as qualify_resident, qualify_cohort, qualify_context, qualify_fused,
-    qualify_fused_greedy,
-};
-#[cfg(feature = "hardware-abort-probe")]
-pub use crate::resident_inference::{
-    qualify_abort, qualify_context_abort, qualify_fused_abort, qualify_fused_greedy_abort,
-};
-#[cfg(feature = "portable-checkpoint")]
-pub use crate::resident_inference::{qualify_checkpoint, qualify_fused_boundary};
+pub use crate::resident_inference::diagnostics as resident;
 #[cfg(feature = "cuda")]
-pub use crate::resident_inference::{qualify_graph, qualify_graph_wide};
-#[cfg(all(feature = "cuda", feature = "hardware-abort-probe"))]
-pub use crate::resident_inference::{qualify_graph_abort, qualify_graph_wide_abort};
-#[cfg(feature = "cuda")]
-pub use crate::rope_angles::qualification::{
-    qualify_angles as qualify_rope_angles,
-    qualify_angles_with_device_cap as qualify_rope_angles_with_device_cap,
-};
+pub use crate::rope_angles::qualification::qualify_angles_with_plan;
 pub use crate::source_accumulation::SourceAccumulation;
 
 /// ROOT-authenticated CPU-reference inputs/outputs; closed operator only.

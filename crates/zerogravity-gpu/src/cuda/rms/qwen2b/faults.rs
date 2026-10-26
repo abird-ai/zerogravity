@@ -1,5 +1,6 @@
 //! Deliberate diagnostic cuts; original armed flight is the quarantine owner.
 use super::*;
+use crate::cuda::rms::RmsLeafSource;
 use crate::resident_leases::ResidentService;
 use cubecl::Device;
 use std::sync::Weak;
@@ -7,7 +8,6 @@ use zerogravity_core::device_events::{BufferLeaseId, BufferRole, DeviceAccess};
 use zerogravity_core::resource_arbiter::{
     AllocationClass, AllocationRequest, ResourceArbiter, ResourceOwner,
 };
-use zerogravity_model_qwen35::source::binding::OriginalWindowModelSource;
 
 const PROVIDER: usize = 128 * 1024 * 1024;
 const UNKNOWN: &str = "deliberate original2B RMS unknown after actual Mean";
@@ -36,7 +36,7 @@ pub struct Qwen2bRmsFaultOutcome {
     pub readback_calls: usize,
 }
 struct Probe {
-    model: Weak<OriginalWindowModelSource>,
+    model: Weak<dyn std::any::Any + Send + Sync>,
     service: Weak<ResidentService>,
     prepared: Weak<RmsPrepared>,
     ids: [BufferLeaseId; 12],
@@ -46,16 +46,15 @@ struct Probe {
 }
 async fn cut(
     device: Device,
-    model: Arc<OriginalWindowModelSource>,
+    source: RmsLeafSource,
     fault: Qwen2bRmsFault,
     device_cap: u64,
     probe: &mut Option<Probe>,
     cancelled: Option<&AtomicBool>,
 ) -> Result<()> {
     not_cancelled(cancelled)?;
-    let model_weak = Arc::downgrade(&model);
-    let (source, prepared_source) = qualification::bind_source(model)?;
-    prepared_source.require_ids(&[11])?;
+    let model_weak = source.retained_source()?.weak_owner();
+    let retained_source = source.completion_owner();
     let service = ResidentService::new_pinned_cuda(
         device,
         source.source().source_identity(),
@@ -98,7 +97,7 @@ async fn cut(
     let mut flight = service.submit(1, prepared.accesses())?;
     // The same positive-path owner retains actual source/windows/specs/leases.
     flight.retain_completion_owner(prepared.completion_owner())?;
-    flight.retain_completion_owner(prepared_source.clone())?;
+    flight.retain_completion_owner(retained_source)?;
     *probe = Some(before);
     let actual = prepared.enqueue_2b_through_mean()?;
     probe.as_mut().unwrap().stages = actual;
@@ -120,13 +119,11 @@ fn intended(fault: Qwen2bRmsFault, result: &Result<()>) -> bool {
 }
 async fn pressure(
     device: Device,
-    model: Arc<OriginalWindowModelSource>,
+    source: RmsLeafSource,
     device_cap: u64,
     cancelled: Option<&AtomicBool>,
 ) -> Result<Qwen2bRmsFaultOutcome> {
-    let weak = Arc::downgrade(&model);
-    let (source, prepared_source) = qualification::bind_source(model)?;
-    prepared_source.require_ids(&[11])?;
+    let weak = source.retained_source()?.weak_owner();
     let service = ResidentService::new_pinned_cuda(
         device,
         source.source().source_identity(),
@@ -147,7 +144,7 @@ async fn pressure(
             "2B original cap+1 refusal before handles/H2D/math".into(),
         ));
     }
-    drop((refusal, source, prepared_source, service));
+    drop((refusal, source, service));
     let physical = ResourceArbiter::process_shared().snapshot(&key)?;
     if weak.upgrade().is_some() || physical.reserved != 0 || physical.fenced {
         return Err(Error::State(
@@ -175,7 +172,7 @@ async fn pressure(
 /// Never completes, reads, recovers or unloads after an uncertain cut.
 pub async fn qualify_qwen2b_rms_fault(
     device: Device,
-    model: Arc<OriginalWindowModelSource>,
+    source: RmsLeafSource,
     fault: Qwen2bRmsFault,
     device_cap: u64,
     cancelled: Option<&AtomicBool>,
@@ -187,10 +184,10 @@ pub async fn qualify_qwen2b_rms_fault(
         ));
     }
     if fault == Qwen2bRmsFault::Pressure {
-        return pressure(device, model, device_cap, cancelled).await;
+        return pressure(device, source, device_cap, cancelled).await;
     }
     let mut probe = None;
-    let result = cut(device, model, fault, device_cap, &mut probe, cancelled).await;
+    let result = cut(device, source, fault, device_cap, &mut probe, cancelled).await;
     if !intended(fault, &result) {
         return match result {
             Err(error) => Err(error),
@@ -219,6 +216,7 @@ pub async fn qualify_qwen2b_rms_fault(
         .outputs()
         .iter()
         .all(|lease| !lease.is_initialized());
+    let actual_source = prepared.leaf_source()?;
     if probe.stages != 5
         || actual_ids != probe.ids
         || service.resident_bytes()? != probe.resident
@@ -231,10 +229,11 @@ pub async fn qualify_qwen2b_rms_fault(
         || physical.reserved != PROVIDER as u64
         || service.ensure_usable().is_ok()
         || !writes_unpromoted
-        || source.source_identity() != service.source_identity()
+        || !Arc::ptr_eq(&source, prepared.leaf_source()?.retained_source()?.owner())
+        || prepared.leaf_source()?.source().source_identity() != service.source_identity()
         || prepared.accesses().iter().any(|(lease, access)| {
             !Arc::ptr_eq(lease.service(), &service)
-                || lease.source_identity() != source.source_identity()
+                || lease.source_identity() != actual_source.source().source_identity()
                 || (*access == DeviceAccess::Read && !lease.is_initialized())
         })
     {

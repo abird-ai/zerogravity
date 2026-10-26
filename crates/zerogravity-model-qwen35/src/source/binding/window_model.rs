@@ -158,5 +158,5 @@ mod prepare;
 pub use prepare::{
     ComponentImplementation, ComponentKernelCapture, ComponentOutput, GdnKernelCapture,
     PreparedComponent, PreparedFinalRmsSource, PreparedGdnParameters, PreparedPlan,
-    PreparedRmsSource, ReferenceKernelCapture,
+    PreparedQualificationSource, PreparedRmsSource, ReferenceKernelCapture,
 };

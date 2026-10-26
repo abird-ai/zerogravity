@@ -1,5 +1,6 @@
 //! Real immutable W transport/source proof; no MLP kernel or computed activation.
 use super::*;
+use crate::cuda::native::RetainedSource;
 use crate::resident_leases::{
     Qwen2bMlpSourceVerification as SourceVerification, Qwen2bMlpWeightCohort as Cohort,
     Qwen2bMlpWeights as Weights,
@@ -11,7 +12,6 @@ use zerogravity_core::device_events::BufferLeaseId;
 use zerogravity_core::resource_arbiter::{
     AllocationClass, AllocationRequest, ResourceArbiter, ResourceOwner,
 };
-use zerogravity_model_qwen35::source::binding::{BoundFullModelSource, OriginalWindowModelSource};
 const MIB: usize = 1024 * 1024;
 const BYTES: usize = 75_497_472;
 const LEADING: usize = 16_384;
@@ -112,7 +112,7 @@ impl ReadProbe {
 }
 struct ColdOwners {
     cohort: Arc<Cohort>,
-    source: BoundFullModelSource,
+    source: Arc<RetainedSource>,
     record_admission: Arc<WindowWorkspace>,
     _metadata: WindowWorkspace,
 }
@@ -125,7 +125,7 @@ struct Prepared {
 struct Inputs {
     // Stack-only move. Record drops before its caller's actual admission.
     recipe: Arc<ComponentRecipe>,
-    source: BoundFullModelSource,
+    source: Arc<RetainedSource>,
     record_admission: Arc<WindowWorkspace>,
 }
 impl Prepared {
@@ -151,7 +151,7 @@ impl Prepared {
     }
 }
 struct Probe {
-    source: Weak<OriginalWindowModelSource>,
+    source: Weak<dyn std::any::Any + Send + Sync>,
     prepared: Weak<Prepared>,
     plan: Weak<SourceVerification>,
     service: Weak<ResidentService>,
@@ -162,7 +162,7 @@ struct Probe {
 impl Probe {
     fn new(prepared: &Arc<Prepared>, plan: &Arc<Qwen2bMlpSourceVerification>) -> Self {
         Self {
-            source: Arc::downgrade(prepared.owner.source.source()),
+            source: prepared.owner.source.weak_owner(),
             prepared: Arc::downgrade(prepared),
             plan: Arc::downgrade(plan),
             service: Arc::downgrade(&prepared.weights.service),
@@ -234,14 +234,14 @@ impl Probe {
             || ids[0] == ids[1]
             || reads != self.reads
             || reads.len() != 2
-            || !Arc::ptr_eq(&source, prepared.owner.source.source())
+            || !Arc::ptr_eq(&source, prepared.owner.source.owner())
             || !Arc::ptr_eq(&plan.weights, &prepared.weights)
             || !Arc::ptr_eq(&service, &prepared.weights.service)
             || !prepared
                 .owner
                 .record_admission
                 .source()
-                .same_issuer(source.source())
+                .same_issuer(prepared.owner.source.source())
             || prepared.owner.record_admission.bytes() != 32 * MIB
             || prepared
                 .weights
@@ -357,11 +357,38 @@ fn outcome(
         native_mlp_qualified: false,
     }
 }
+impl ComponentRecipe {
+    /// Same original source/ticket/packing checks as the physical W probe.
+    /// Used before a model-owned legacy-upload refusal; no device is created.
+    pub fn mlp_weight_rows(
+        self: &Arc<Self>,
+        source: &zerogravity_artifacts::source_weights::VerifiedTensorSource,
+        record_admission: &Arc<WindowWorkspace>,
+    ) -> Result<usize> {
+        if record_admission.bytes() != 32 * MIB || !record_admission.source().same_issuer(source) {
+            return Err(Error::State(
+                "same source32MiB record allocation admission required".into(),
+            ));
+        }
+        if !self.source().same_issuer(source)
+            || self
+                .bindings()
+                .source_record_admission()
+                .is_none_or(|ticket| !Arc::ptr_eq(ticket, record_admission))
+        {
+            return Err(Error::State(
+                "same original component record admission required".into(),
+            ));
+        }
+        let cohort = Cohort::bind(self)?;
+        Ok(cohort.bindings().call().rows().len())
+    }
+}
 /// Existing source/record/ticket may preexist. True flag precedes ALL new qualifier work.
 /// Helper reserves SAME source32MiB before recording, not a detached surrogate admission.
 pub async fn qualify_qwen2b_mlp_weights(
     device: Device,
-    source: BoundFullModelSource,
+    source: Arc<RetainedSource>,
     recipe: Arc<ComponentRecipe>,
     record_admission: Arc<WindowWorkspace>,
     mode: Qwen2bMlpWeightMode,
@@ -412,16 +439,13 @@ async fn run(
         || !inputs
             .record_admission
             .source()
-            .same_issuer(inputs.source.source().source())
+            .same_issuer(inputs.source.source())
     {
         return Err(Error::State(
             "same source32MiB record allocation admission required".into(),
         ));
     }
-    if !inputs
-        .recipe
-        .source()
-        .same_issuer(inputs.source.source().source())
+    if !inputs.recipe.source().same_issuer(inputs.source.source())
         || inputs
             .recipe
             .bindings()
@@ -437,18 +461,8 @@ async fn run(
     let cohort = Cohort::bind(&inputs.recipe)?;
     let rows = cohort.bindings().call().rows().len();
     if mode == Qwen2bMlpWeightMode::LegacyUploadRefusal {
-        let result = source.source().require_small_model_source();
-        if !matches!(result,Err(Error::Unsupported(ref why)) if why=="closed original .8B24 source/config/rotary geometry")
-        {
-            return Err(Error::State(
-                "legacy .8B upload did not reject exact actual2B source geometry".into(),
-            ));
-        }
-        return Ok(outcome(
-            mode,
-            rows,
-            "LEGACY_08_UPLOAD_REJECTED_ACTUAL_2B_SOURCE",
-            Snapshot::default(),
+        return Err(Error::Unsupported(
+            "legacy family upload refusal belongs to model/application qualification".into(),
         ));
     }
     if cohort.arithmetic() != Qwen2bGdnArithmetic::OwnedSolve4Recompute3 {

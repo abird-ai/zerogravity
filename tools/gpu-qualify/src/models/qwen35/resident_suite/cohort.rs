@@ -40,7 +40,7 @@ pub async fn qualify(
         cpus[0].prefill_transaction(&[inputs[0]])?,
         cpus[1].prefill_transaction(&[inputs[1]])?,
     ];
-    let uploaded = resident.service.uploaded_value_bytes();
+    let uploaded = resident.qualification().uploaded_value_bytes();
     // The already completed private state must not become a root merely
     // because the model source has executed physical GPU work.
     let abandoned = resident
@@ -48,7 +48,7 @@ pub async fn qualify(
         .await?;
     if abandoned.len() != 2
         || abandoned.prior_frontier() != Some(0)
-        || abandoned.source() != resident.service.source_identity()
+        || abandoned.source() != resident.qualification().source_identity()
         || [left.binding(), right.binding()] != roots
     {
         return Err(Error::State(
@@ -109,8 +109,8 @@ pub async fn qualify(
             &session.snapshot().read_domains().await?,
         )?;
     }
-    if resident.service.uploaded_value_bytes() != uploaded
-        || resident.service.pending_events()? != 0
+    if resident.qualification().uploaded_value_bytes() != uploaded
+        || resident.qualification().pending_events()? != 0
     {
         return Err(Error::State(
             "warm GPU cohort uploaded source/reused pending event".into(),
@@ -144,7 +144,7 @@ pub async fn qualify(
         &reference_right.snapshot().domain_values(),
         &right.snapshot().read_domains().await?,
     )?;
-    if resident.service.pending_events()? != 0 {
+    if resident.qualification().pending_events()? != 0 {
         return Err(Error::State(
             "physical resident cohort left device event pending".into(),
         ));
@@ -154,7 +154,7 @@ pub async fn qualify(
     drop(left);
     drop(right);
     if count > 2 {
-        let original_usage = resident.service.resident_bytes()?;
+        let original_usage = resident.qualification().resident_bytes()?;
         let ids = [11u32, 353, 17, 42, 55, 78, 101, 135];
         let mut sessions = Vec::with_capacity(count);
         let mut references = Vec::with_capacity(count);
@@ -212,7 +212,7 @@ pub async fn qualify(
             }
         }
         drop(sessions);
-        if resident.service.resident_bytes()? != original_usage {
+        if resident.qualification().resident_bytes()? != original_usage {
             return Err(Error::State(
                 "multirow resident session lease not released".into(),
             ));

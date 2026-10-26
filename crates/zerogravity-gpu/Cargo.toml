@@ -13,21 +13,19 @@ vulkan = ["cubecl/vulkan"]
 cuda = ["cubecl/cuda", "cubecl/cuda-cpp"]
 hip = ["cubecl/hip", "cubecl/hip-cpp", "dep:cubecl-hip"]
 all = ["vulkan", "cuda", "hip"]
-qualification = ["zerogravity-artifacts/cache", "zerogravity-cpu/cache", "dep:zerogravity-cpu", "dep:zerogravity-model-qwen35", "zerogravity-model-qwen35/cpu", "zerogravity-model-qwen35/text"]
+qualification = ["zerogravity-artifacts/cache", "zerogravity-cpu/cache", "dep:zerogravity-cpu"]
 hardware-abort-probe = ["qualification", "cubecl-hip?/source-page-event-probe"]
 source-page-event-probe = ["hip", "hardware-abort-probe"]
 gemma-bf16-qualification = ["qualification", "dep:sha2"]
-qwen-source-qualification = ["qualification", "hip", "dep:sha2", "zerogravity-model-qwen35/source-binding", "dep:cubecl-hip"]
-portable-checkpoint = ["dep:zerogravity-model-qwen35", "zerogravity-model-qwen35/diagnostic-cpu-checkpoint"]
-diagnostic-gdn-trace = ["qualification", "zerogravity-model-qwen35/diagnostic-gdn-trace"]
-cuda-native = ["zerogravity-model-qwen35/source-binding", "qualification", "cuda", "dep:cubecl-cuda", "cubecl-cuda/owned-cubin", "cubecl-cuda/precompiled-shared"]
+qwen-source-qualification = ["qualification", "hip", "dep:sha2", "dep:cubecl-hip"]
+portable-checkpoint = ["zerogravity-core/diagnostic-cpu-checkpoint"]
+cuda-native = ["qualification", "cuda", "dep:cubecl-cuda", "cubecl-cuda/owned-cubin", "cubecl-cuda/precompiled-shared"]
 cuda-cublas = ["cuda-native", "cubecl-cuda/owned-cublas-allocator"]
 
 [dependencies]
 zerogravity-core = { path = "../zerogravity-core" }
 zerogravity-artifacts = { path = "../zerogravity-artifacts" }
 zerogravity-cpu = { path = "../zerogravity-cpu", optional = true }
-zerogravity-model-qwen35 = { path = "../zerogravity-model-qwen35", default-features = false, optional = true }
 cubecl = { version = "=0.11.0", default-features = false, features = ["std", "stdlib"] }
 cubecl-common = "=0.11.0"
 cubecl-core = "=0.11.0"
@@ -42,3 +40,5 @@ sha2 = { version = "=0.10.9", optional = true }
 
 [dev-dependencies]
 sha2 = "=0.10.9"
+# Source fixtures only; qualification drivers own runtime model composition.
+zerogravity-model-qwen35 = { path = "../zerogravity-model-qwen35", default-features = false, features = ["cpu", "text", "source-binding", "diagnostic-cpu-checkpoint"] }

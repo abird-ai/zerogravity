@@ -1,4 +1,5 @@
 //! Full original-table transfer/coverage proof, without a head/native engine.
+use super::{RetainedSource, TiedWeightSource};
 use crate::physical_quarantine::{quarantined_completion_owners_for, quarantined_handles_for};
 use crate::resident_leases::{
     ResidentService, TIED_BYTES, TIED_ROW_BYTES, TIED_WINDOW_BYTES, TIED_WINDOWS,
@@ -14,7 +15,6 @@ use zerogravity_core::resource_arbiter::{
     AllocationClass, AllocationRequest, ResourceArbiter, ResourceOwner,
 };
 use zerogravity_core::{Error, Result};
-use zerogravity_model_qwen35::source::binding::OriginalWindowModelSource;
 
 // Full485MiB source +27MiB bounded local headroom. No native64MiB is used here.
 const PROVIDER_CAP: usize = 512 * 1024 * 1024;
@@ -64,10 +64,11 @@ fn cancelled(flag: Option<&AtomicBool>) -> Result<()> {
 /// This qualifies the full original upload only, not logits or StateRoot.
 pub async fn qualify_tied_weight_upload(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
+    source: Arc<RetainedSource>,
     device_cap: u64,
     mode: TiedWeightUploadMode,
     cancel: Option<&AtomicBool>,
+    prepare_source: impl FnOnce() -> Result<Arc<TiedWeightSource>>,
 ) -> Result<TiedWeightUploadOutcome> {
     cancelled(cancel)?;
     let service = ResidentService::new_pinned_cuda(
@@ -111,6 +112,7 @@ pub async fn qualify_tied_weight_upload(
                 "tied upload pressure created buffers/copies/events/quarantine".into(),
             ));
         }
+        drop(prepare_source);
         drop(source);
         drop(service);
         let snapshot = ResourceArbiter::process_shared().snapshot(&key)?;
@@ -161,14 +163,19 @@ pub async fn qualify_tied_weight_upload(
     slot.begin_submission()?;
     let mut init = service.begin_initialization(0)?;
     init.retain_completion_owner(source.clone())?;
+    // Original tied-role authentication point, after service/pressure/admission.
+    let tied = prepare_source()?;
+    if !tied.source().same_issuer(source.source()) || !Arc::ptr_eq(tied.owner(), source.owner()) {
+        return Err(Error::State(
+            "tied upload factory changed original source owner".into(),
+        ));
+    }
+    drop(source);
+    let source = tied;
     let attempt = if mode == TiedWeightUploadMode::Complete {
         TiedUploadAttempt::Complete(
-            init.upload_tied_bf16(
-                source.source().clone(),
-                source.tied_output_descriptor()?,
-                cancel,
-            )
-            .await?,
+            init.upload_tied_bf16(source.source().clone(), source.output().clone(), cancel)
+                .await?,
         )
     } else {
         let cut = match mode {
@@ -181,7 +188,7 @@ pub async fn qualify_tied_weight_upload(
         };
         init.upload_tied_bf16_inner(
             source.source().clone(),
-            source.tied_output_descriptor()?,
+            source.output().clone(),
             cut,
             cancel,
         )
@@ -247,8 +254,7 @@ pub async fn qualify_tied_weight_upload(
     // One bounded D2H at a time, independently compared with freshly verified
     // source bytes. The admission owner also rides every original read flight.
     let readback_admission = Arc::new(source.source().reserve_workspace(32 * 1024 * 1024)?);
-    let descriptor = source
-        .matrix_descriptor(zerogravity_model_qwen35::source::binding::QwenMatrixRole::Output)?;
+    let descriptor = source.output();
     let matrix = source.source().matrix(&descriptor.name, descriptor.axes)?;
     let mut compared = 0usize;
     for index in 0..TIED_WINDOWS {

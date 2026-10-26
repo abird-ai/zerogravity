@@ -1,6 +1,8 @@
 //! Actual CPU/file/GPU state transfers; CPU execution is a diagnostic oracle.
 use super::*;
 use std::path::PathBuf;
+#[cfg(feature = "hardware-abort-probe")]
+use zerogravity_gpu::qualification::resident::abort_upload;
 
 const PREFIX: [u32; 3] = [11, 353, 17];
 
@@ -56,7 +58,7 @@ pub async fn qualify(
         device_cap,
     )
     .await?;
-    let baseline = resident.service.resident_bytes()?;
+    let baseline = resident.qualification().resident_bytes()?;
     let mut session = resident.session().await?;
     let old_packet = session
         .forward_greedy(&[42, 77])
@@ -72,13 +74,14 @@ pub async fn qualify(
     if abort {
         return abort_upload(
             device,
-            source,
+            source.source_identity(),
             resident,
             session,
             prior,
             prior_values,
             stale_ready,
-            &checkpoint,
+            checkpoint.position(),
+            &checkpoint.domain_values(),
             device_cap,
         )
         .await;
@@ -91,8 +94,8 @@ pub async fn qualify(
     }
 
     // Rejected payloads never enter the physical initialization path.
-    let bytes_before = resident.service.resident_bytes()?;
-    let uploads_before = resident.service.uploaded_value_bytes();
+    let bytes_before = resident.qualification().resident_bytes()?;
+    let uploads_before = resident.qualification().uploaded_value_bytes();
     let foreign_source = LoadedQwenModel::open(path, &path.parent().unwrap().join("config.json"))?;
     let foreign = foreign_source.load_checkpoint(file, model_sha, tokens_sha)?;
     drop(foreign_source);
@@ -103,7 +106,7 @@ pub async fn qualify(
     for (slot, values) in &mut beyond {
         if matches!(slot, StateSlot::Kv(_)) {
             let requirement = resident
-                .states
+                .state_requirements()
                 .iter()
                 .find(|r| r.slot == *slot)
                 .ok_or_else(|| Error::State("checkpoint KV fixture coverage".into()))?;
@@ -148,8 +151,8 @@ pub async fn qualify(
     }
     std::fs::remove_file(corrupt_file)?;
     if session.binding() != binding
-        || resident.service.resident_bytes()? != bytes_before
-        || resident.service.uploaded_value_bytes() != uploads_before
+        || resident.qualification().resident_bytes()? != bytes_before
+        || resident.qualification().uploaded_value_bytes() != uploads_before
     {
         return Err(Error::State(
             "rejected checkpoint mutated root/admission/uploads".into(),
@@ -157,15 +160,15 @@ pub async fn qualify(
     }
     compare_domains(&prior_values, &prior.read_domains().await?)?;
 
-    let filler = resident.service.allocate_uninitialized(
-        resident.service.remaining_capacity()? - resident.state_bytes + 1,
+    let filler = resident.qualification().allocate_uninitialized(
+        resident.qualification().remaining_capacity()? - resident.state_bytes() + 1,
         BufferRole::Scratch,
     )?;
-    let charged = resident.service.resident_bytes()?;
+    let charged = resident.qualification().resident_bytes()?;
     if session.import_checkpoint(&checkpoint).await.is_ok()
         || session.binding() != binding
-        || resident.service.resident_bytes()? != charged
-        || resident.service.uploaded_value_bytes() != uploads_before
+        || resident.qualification().resident_bytes()? != charged
+        || resident.qualification().uploaded_value_bytes() != uploads_before
     {
         return Err(Error::State(
             "checkpoint admission refusal was not atomic".into(),
@@ -179,8 +182,9 @@ pub async fn qualify(
         || imported.frontier() != 3
         || imported.root() != binding.root() + 1
         || imported.session_epoch() != binding.session_epoch() + 1
-        || resident.service.uploaded_value_bytes() - uploads_before != resident.state_bytes as u64
-        || resident.service.pending_events()? != 0
+        || resident.qualification().uploaded_value_bytes() - uploads_before
+            != resident.state_bytes() as u64
+        || resident.qualification().pending_events()? != 0
     {
         return Err(Error::State(
             "checkpoint import publication/physical completion differs".into(),
@@ -208,7 +212,7 @@ pub async fn qualify(
     let mut resumed = source.new_session()?;
     resumed.restore_cpu_checkpoint(&output, model_sha, tokens_sha)?;
     compare_domains(&expected, &resumed.snapshot().domain_values())?;
-    let uploads = resident.service.uploaded_value_bytes();
+    let uploads = resident.qualification().uploaded_value_bytes();
     let mut elements = 0;
     for token in [42, 19, 77] {
         let (logits, draft, trace) = resumed.next_logits_with_layer_trace(token)?;
@@ -227,7 +231,8 @@ pub async fn qualify(
         }
         resumed.commit(draft)?;
     }
-    if resident.service.uploaded_value_bytes() != uploads || resident.service.pending_events()? != 0
+    if resident.qualification().uploaded_value_bytes() != uploads
+        || resident.qualification().pending_events()? != 0
     {
         return Err(Error::State(
             "warm checkpoint replay uploaded values or left pending events".into(),
@@ -235,10 +240,10 @@ pub async fn qualify(
     }
     drop(prior);
     drop(session);
-    if resident.service.resident_bytes()? != baseline {
+    if resident.qualification().resident_bytes()? != baseline {
         return Err(Error::State("checkpoint session leaked admission".into()));
     }
-    let key = resident.service.physical_key();
+    let key = resident.qualification().physical_key();
     drop(resident);
     let budget =
         zerogravity_core::resource_arbiter::ResourceArbiter::process_shared().snapshot(&key)?;
@@ -254,129 +259,67 @@ pub async fn qualify(
     Ok(())
 }
 
-#[cfg(feature = "hardware-abort-probe")]
-#[allow(clippy::too_many_arguments)]
-async fn abort_upload(
-    device: Device,
-    source: Arc<LoadedQwenModel>,
-    resident: Arc<ResidentModel>,
-    mut session: ResidentSession,
-    prior: ResidentSnapshot,
-    expected: Vec<(StateSlot, Vec<f32>)>,
-    stale_ready: PreparedInference,
-    checkpoint: &QwenCheckpoint,
-    device_cap: u64,
+pub(super) async fn qualify_frontier(
+    session: &ResidentSession,
+    cpu: &zerogravity_model_qwen35::QwenDenseCpu,
+    next: Option<u32>,
 ) -> Result<()> {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    let seen = AtomicBool::new(false);
+    let resident = session.qualification_model();
     let binding = session.binding();
-    let uploads = resident.service.uploaded_value_bytes();
-    let client = device.client();
-    let mut future = Box::pin(session.import_checkpoint_inner(checkpoint, Some(&seen)));
-    loop {
-        if futures_lite::future::poll_once(future.as_mut())
-            .await
-            .is_some()
-        {
-            return Err(Error::State("upload abort completed unexpectedly".into()));
-        }
-        if seen.load(Ordering::Acquire) {
-            break;
-        }
-        futures_lite::future::yield_now().await;
+    let baseline = resident.qualification().resident_bytes()?;
+    let uploads = resident.qualification().uploaded_value_bytes();
+    let exported = session.checkpoint(cpu.loaded_model()).await?;
+    compare_domains(&cpu.snapshot().domain_values(), &exported.domain_values())?;
+    let mut restored_cpu = cpu.loaded_model().new_session()?;
+    restored_cpu.restore_checkpoint(&exported)?;
+    if resident.qualification().uploaded_value_bytes() != uploads {
+        return Err(Error::State("checkpoint export uploaded values".into()));
     }
-    drop(future);
-    let handles = resident
-        .states
-        .iter()
-        .map(|r| match r.layout {
-            StateLayout::Vector { .. } => 1,
-            StateLayout::Kv { .. } => 2,
-        })
-        .sum::<usize>();
-    let quarantined = crate::physical_quarantine::quarantined_handles_for(&client)?;
-    if resident.service.uploaded_value_bytes() - uploads != resident.state_bytes as u64
-        || quarantined != handles
-        || session.binding() != binding
-        || resident.service.ensure_usable().is_ok()
-        || session.commit(stale_ready).is_ok()
-    {
+    let mut sibling = resident.session().await?;
+    if resident.qualification().uploaded_value_bytes() != uploads + resident.state_bytes() as u64 {
         return Err(Error::State(
-            "checkpoint upload cancellation lost root/handles/fence".into(),
+            "checkpoint sibling initialization upload count".into(),
         ));
     }
-    if ResidentService::new(
-        device,
-        source.source_identity(),
-        ResourceOwner::new("other-model", "checkpoint-abort")?,
-        1024 * 1024,
-        device_cap,
-    )
-    .is_ok()
-    {
+    sibling.import_checkpoint(&cpu.checkpoint()?).await?;
+    let transferred = uploads + 2 * resident.state_bytes() as u64;
+    if resident.qualification().uploaded_value_bytes() != transferred {
         return Err(Error::State(
-            "checkpoint abort allowed another model".into(),
+            "checkpoint sibling import upload count".into(),
         ));
     }
-    // Diagnostic quiescence/readback ONLY. Never clear fences or report Ready.
-    client
-        .sync()
-        .await
-        .map_err(|e| Error::State(format!("checkpoint abort sync: {e}")))?;
-    for (domain, (slot, values)) in prior.domains.iter().zip(&expected) {
-        if domain.slot != *slot {
-            return Err(Error::State("checkpoint abort domain order".into()));
-        }
-        let read = client
-            .read_async(domain.leases.iter().map(ResidentLease::handle).collect())
-            .await
-            .map_err(|e| Error::State(format!("checkpoint abort readback: {e}")))?;
-        if read.len() != domain.leases.len()
-            || read
-                .iter()
-                .zip(&domain.leases)
-                .any(|(b, l)| b.len() != l.bytes())
-        {
-            return Err(Error::State(
-                "checkpoint abort short physical readback".into(),
-            ));
-        }
-        let mut flat = Vec::new();
-        for (data, lease) in read.iter().zip(&domain.leases) {
-            let words = words(data)?;
-            let active = if matches!(domain.buffers, StateBuffers::Kv { .. }) {
-                lease.bytes() / 4 / prior.capacity * binding.frontier() as usize
-            } else {
-                words.len()
-            };
-            if words[active..].iter().any(|x| x.to_bits() != 0) {
-                return Err(Error::State(
-                    "checkpoint abort prior KV tail changed".into(),
-                ));
-            }
-            flat.extend_from_slice(&words[..active]);
-        }
-        exact(values, &flat, "checkpoint abort prior physical bits")?;
-    }
-    let key = resident.service.physical_key();
-    let weak = Arc::downgrade(resident.service());
-    let cap = resident.service.capacity() as u64;
-    drop(prior);
-    drop(session);
-    drop(resident);
-    let kept = weak
-        .upgrade()
-        .ok_or_else(|| Error::State("checkpoint quarantine lost service".into()))?;
-    let budget =
-        zerogravity_core::resource_arbiter::ResourceArbiter::process_shared().snapshot(&key)?;
-    if budget.reserved != cap || !budget.fenced || kept.physical_remaining()? != device_cap - cap {
+    compare_domains(
+        &exported.domain_values(),
+        &sibling.snapshot().read_domains().await?,
+    )?;
+    if let Some(token) = next {
+        let (expected, draft) = restored_cpu.next_logits(token)?;
+        let actual = sibling.forward(&[token], true).await?;
+        exact(
+            &expected,
+            &actual.logits,
+            "context checkpoint resumed logits",
+        )?;
+        compare_domains(&draft.domain_values(), &actual.domains)?;
+    } else if sibling.prepare(&[11], false).await.is_ok() {
         return Err(Error::State(
-            "checkpoint quarantine lost full envelope".into(),
+            "full-capacity imported checkpoint advanced".into(),
+        ));
+    }
+    drop(sibling);
+    if session.binding() != binding
+        || resident.qualification().resident_bytes()? != baseline
+        || resident.qualification().pending_events()? != 0
+        || resident.qualification().uploaded_value_bytes() != transferred
+    {
+        return Err(Error::State(
+            "context checkpoint changed continuing root/admission".into(),
         ));
     }
     println!(
-        "H21_CHECKPOINT_UPLOAD_ABORT_PASS actual_h2d_submitted=true frontier={} root_unchanged=true prior_physical_bits=exact canonical_kv_tail=exact original_handles={handles} quarantined_handles={quarantined} stale_ready=refused other_model=refused retained_envelope_bytes={cap} trusted_recovery=false",
-        binding.frontier()
+        "H21_CONTEXT_CHECKPOINT_PASS frontier={} all42_physical_domains=bit_exact cpu_gpu_cpu=exact resumed_next_token={} canonical_kv_tail=exact continuing_root_unchanged=true admission_recovered=true",
+        binding.frontier(),
+        next.is_some()
     );
     Ok(())
 }

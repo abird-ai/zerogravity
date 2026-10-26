@@ -8,7 +8,7 @@ use zerogravity_core::resource_arbiter::{
 
 pub async fn qualify_solve2b_owned_leaves(
     device: Device,
-    model: Arc<OriginalWindowModelSource>,
+    model: Arc<RetainedSource>,
     fixture: Solve2bFixture,
     device_cap: u64,
     validate: impl FnMut(Solve2bReadback<'_>) -> Result<()>,
@@ -36,7 +36,7 @@ pub(super) struct RunHooks<'a, F> {
 }
 pub(super) async fn run(
     device: Device,
-    model: Arc<OriginalWindowModelSource>,
+    model: Arc<RetainedSource>,
     fixture: Solve2bFixture,
     device_cap: u64,
     hooks: RunHooks<'_, impl FnMut(Solve2bReadback<'_>) -> Result<()>>,
@@ -57,7 +57,7 @@ pub(super) async fn run(
     }
     let service = ResidentService::new_pinned_cuda(
         device,
-        owner.bound.source().source_identity(),
+        owner.bound.source_identity(),
         ResourceOwner::new("qwen2b-source", "finite-owned-solve4-recompute3-leaf")?,
         PROVIDER,
         device_cap,

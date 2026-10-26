@@ -1,13 +1,12 @@
 //! Explicit authentic normalized input leaf; no actual model producer claim.
 use super::*;
+use crate::cuda::native::RetainedSource;
 use crate::physical_quarantine::CompletionOwner;
 use crate::resident_leases::ResidentReadback;
 use cubecl::Device;
 use zerogravity_core::resource_arbiter::{
     AllocationClass, AllocationRequest, ResourceArbiter, ResourceOwner,
 };
-use zerogravity_model_qwen35::plan::QwenSourceProfile;
-use zerogravity_model_qwen35::source::binding::BoundFullModelSource;
 
 const MIB: usize = 1024 * 1024;
 pub struct Qwen2bProjectionFixture {
@@ -15,6 +14,17 @@ pub struct Qwen2bProjectionFixture {
     pub normalized: Vec<u8>,
     /// SAME source: admit before constructing this recipe/Vec payload cohort.
     pub admission: WindowWorkspace,
+}
+impl Qwen2bProjectionFixture {
+    /// Original release/device and static native memory contract, before family policy.
+    pub fn preflight_route(device: &Device) -> Result<()> {
+        if cfg!(debug_assertions) || !matches!(device, Device::Cuda(_)) {
+            return Err(Error::Unsupported(
+                "release original CUDA2B projection leaf".into(),
+            ));
+        }
+        Ok(())
+    }
 }
 /// Borrowed only within the original trusted actual-completion callback.
 pub struct Qwen2bProjectionReadback<'a> {
@@ -37,7 +47,7 @@ pub struct Qwen2bProjectionReceipt {
 pub(super) struct SourceOwner {
     records: Vec<Arc<SourceBindings>>,
     fixtures: Vec<Qwen2bProjectionFixture>,
-    pub(super) bound: BoundFullModelSource,
+    pub(super) bound: Arc<RetainedSource>,
     // Each source TensorWindow has its own actual complete-chunk ticket.
     _fixture_host: WindowWorkspace,
     _readback_host: [WindowWorkspace; 2],
@@ -53,11 +63,8 @@ pub(super) struct PreparedJobs {
     pub(super) jobs: Vec<Arc<Job>>,
     pub(super) workspace: ResidentLease,
 }
-fn validate(bound: &BoundFullModelSource, fixtures: &[Qwen2bProjectionFixture]) -> Result<()> {
-    if bound.model_profile() != QwenSourceProfile::Qwen2B
-        || fixtures.len() != 5
-        || bound.source().source().staging_chunk_bytes() != MIB
-    {
+fn validate(bound: &Arc<RetainedSource>, fixtures: &[Qwen2bProjectionFixture]) -> Result<()> {
+    if fixtures.len() != 5 || bound.source().staging_chunk_bytes() != MIB {
         return Err(Error::Unsupported(
             "closed original2B five-call projection leaf".into(),
         ));
@@ -73,10 +80,7 @@ fn validate(bound: &BoundFullModelSource, fixtures: &[Qwen2bProjectionFixture]) 
     ]) {
         let call = fixture.record.call();
         let payload_capacity = fixture.normalized.capacity();
-        if !fixture
-            .admission
-            .source()
-            .same_issuer(bound.source().source())
+        if !fixture.admission.source().same_issuer(bound.source())
             || fixture.admission.bytes() < 4 * MIB + payload_capacity
             || fixture.admission.bytes() > 6 * MIB
         {
@@ -84,8 +88,8 @@ fn validate(bound: &BoundFullModelSource, fixtures: &[Qwen2bProjectionFixture]) 
                 "original2B admitted source recipe/payload owner".into(),
             ));
         }
-        if !fixture.record.source().same_issuer(bound.source().source())
-            || call.source() != bound.source().source_identity()
+        if !fixture.record.source().same_issuer(bound.source())
+            || call.source() != bound.source_identity()
             || crate::cuda::gdn::GdnPhase::for_reference_call(call)? != phase
             || call.rows().base() != base
             || call.rows().len() != rows
@@ -95,7 +99,7 @@ fn validate(bound: &BoundFullModelSource, fixtures: &[Qwen2bProjectionFixture]) 
             ));
         }
         for operator in descriptors(&fixture.record)? {
-            require_source(bound.source().source(), &operator)?;
+            require_source(bound.source(), &operator)?;
         }
         {
             let (raw, bytes) = (&fixture.normalized, rows * 4096);
@@ -120,7 +124,7 @@ fn validate(bound: &BoundFullModelSource, fixtures: &[Qwen2bProjectionFixture]) 
 /// The callback may read independent expected bytes only after real completion.
 pub async fn qualify_qwen2b_projections<F>(
     device: Device,
-    bound: BoundFullModelSource,
+    bound: Arc<RetainedSource>,
     fixtures: Vec<Qwen2bProjectionFixture>,
     inputs: CubinQualificationInputs,
     validate_actual: F,
@@ -151,7 +155,7 @@ pub(super) struct RunHooks<'a, F> {
 }
 pub(super) async fn run<F>(
     device: Device,
-    bound: BoundFullModelSource,
+    bound: Arc<RetainedSource>,
     fixtures: Vec<Qwen2bProjectionFixture>,
     inputs: CubinQualificationInputs,
     cancelled: Option<&AtomicBool>,
@@ -166,28 +170,24 @@ where
         mut validate_actual,
     } = hooks;
     not_cancelled(cancelled)?;
-    if cfg!(debug_assertions) || !matches!(device, Device::Cuda(_)) {
-        return Err(Error::Unsupported(
-            "release original CUDA2B projection leaf".into(),
-        ));
-    }
+    Qwen2bProjectionFixture::preflight_route(&device)?;
     validate(&bound, &fixtures)?;
     if fixtures.capacity() > 8 || inputs.images.capacity() > 8 {
         return Err(Error::Limit(
             "original2B fixture/image control capacity".into(),
         ));
     }
-    let fixture_host = bound.source().source().reserve_workspace(6 * MIB)?;
+    let fixture_host = bound.source().reserve_workspace(6 * MIB)?;
     let readback_host = [
-        bound.source().source().reserve_workspace(32 * MIB)?,
-        bound.source().source().reserve_workspace(32 * MIB)?,
+        bound.source().reserve_workspace(32 * MIB)?,
+        bound.source().reserve_workspace(32 * MIB)?,
     ];
     let records = fixtures
         .iter()
         .map(|fixture| fixture.record.clone())
         .collect::<Vec<_>>();
     let required = required_images(&records)?;
-    validate_image_set(bound.source().source(), &required, &inputs.images)?;
+    validate_image_set(bound.source(), &required, &inputs.images)?;
     let owner = Arc::new(SourceOwner {
         records,
         fixtures,
@@ -197,7 +197,7 @@ where
     });
     let service = ResidentService::new_pinned_cuda(
         device,
-        owner.bound.source().source_identity(),
+        owner.bound.source_identity(),
         ResourceOwner::new("qwen2b-cuda-cubin", "original-QKVZ-BA-leaf")?,
         128 * MIB,
         inputs.device_cap,
@@ -223,7 +223,7 @@ where
     init.retain_completion_owner(owner.clone())?;
     init.retain_completion_owner(admitted.completion_owner())?;
     let pending = PendingProjectionWeights::upload(
-        owner.bound.source().source().clone(),
+        owner.bound.source().clone(),
         &owner.records[0],
         &service,
         &mut init,

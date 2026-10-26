@@ -98,15 +98,15 @@ their existing numeric/source/physical acceptance gates.
   consume all six reviewed stashes after verifying their archived snapshot IDs.
   No pending side diff remains. [Disposition/evidence](../../runs/stash-recovery-20261026/root/REPORT.md).
 
-## Uncommitted
-
-### Shared GDN convolution — 26 Oct
+## fe17625 — Shared GDN convolution
 
 - [x] Move the scalar four-tap GDN convolution and original bit/history/refusal
   test into CPU operations; migrate model, GPU fixture and tool callers.
   Original expression/test bodies remain exact after symbol migration.
   Assembled full `scripts/check.sh` and CUDA/source/tool suites pass;
   [coverage](../../runs/gpu-model-boundary-20261026/root/validation.json).
+
+## Uncommitted
 
 ### Model containment and naming — 26 Oct
 
@@ -116,9 +116,18 @@ new .8B48–50/long-context/CPU-HIP-Vulkan work; full27B/Gemma model suites waiv
 for this refactor, not marked passed. Existing engine/ownership/numerical gates
 and local gfx90c hold remain.
 
-- [ ] Move remaining Qwen qualification policy/fixtures to model/tool owners;
-  remove `zerogravity-gpu`→`zerogravity-model-qwen35` manifest dependency and
-  enable the existing strict package-DAG checker. Do not add an allowlist.
+- [x] Move Qwen source/reference/checkpoint orchestration to model/application/
+  tool owners; remove every GPU normal/build/optional model dependency and
+  feature forward. Preserve same-Arc issuer witnesses, refusal order, physical
+  leases/fences and one StateRoot publisher. Genuine model-backed unit fixtures
+  retain a dev-only model dependency; runtime qualification has none.
+- [x] Enable the unchanged strict architecture checker and its14 fixtures in
+  `scripts/check.sh`, without an allowlist. CUDA production/all-targets, tool,
+  HIP and Vulkan feature builds pass. CUDA source597pass/41explicit physical
+  ignores, tool2pass; full gate0 (1914Rust test executions,87explicit ignores).
+  All owners closed/EOF/reaped; source1859 and README stable. No model/device
+  execution, physical qualification or optimized performance claim.
+  [Source/binary/SDK coverage](../../runs/gpu-model-boundary-20261026/root/validation.json).
 - [ ] Extend source-bound .8B qualification to fresh47–50-token prompts, genuine
   long contexts and original BF16 CPU/HIP/Vulkan routes. Existing cached
   frontiers48–50 and source fixtures do not establish those capabilities.

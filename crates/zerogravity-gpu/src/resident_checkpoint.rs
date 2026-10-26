@@ -1,123 +1,45 @@
-//! Opt-in committed numerical checkpoint bridge. No model execution lives here.
+//! Physical import of source-bound numerical state domains; codec stays with the model.
 use super::*;
-use zerogravity_model_qwen35::QwenCheckpoint;
-
-#[path = "resident_checkpoint_qualification.rs"]
-#[cfg(feature = "qualification")]
-mod qualification;
-#[cfg(feature = "qualification")]
-pub use qualification::qualify;
-
-/// Separate diagnostic sibling: the continuing session never imports/reuploads
-/// its own state. Exercises genuine context payloads around the padding boundary.
-#[cfg(feature = "qualification")]
-pub(super) async fn qualify_frontier(
-    session: &ResidentSession,
-    cpu: &zerogravity_model_qwen35::QwenDenseCpu,
-    next: Option<u32>,
-) -> Result<()> {
-    let binding = session.binding();
-    let baseline = session.model.service.resident_bytes()?;
-    let uploads = session.model.service.uploaded_value_bytes();
-    let exported = session.checkpoint(cpu.loaded_model()).await?;
-    compare_domains(&cpu.snapshot().domain_values(), &exported.domain_values())?;
-    let mut restored_cpu = cpu.loaded_model().new_session()?;
-    restored_cpu.restore_checkpoint(&exported)?;
-    if session.model.service.uploaded_value_bytes() != uploads {
-        return Err(Error::State("checkpoint export uploaded values".into()));
-    }
-    let mut sibling = session.model.session().await?;
-    if session.model.service.uploaded_value_bytes() != uploads + session.model.state_bytes as u64 {
-        return Err(Error::State(
-            "checkpoint sibling initialization upload count".into(),
-        ));
-    }
-    sibling.import_checkpoint(&cpu.checkpoint()?).await?;
-    let transferred = uploads + 2 * session.model.state_bytes as u64;
-    if session.model.service.uploaded_value_bytes() != transferred {
-        return Err(Error::State(
-            "checkpoint sibling import upload count".into(),
-        ));
-    }
-    compare_domains(
-        &exported.domain_values(),
-        &sibling.snapshot().read_domains().await?,
-    )?;
-    if let Some(token) = next {
-        let (expected, draft) = restored_cpu.next_logits(token)?;
-        let actual = sibling.forward(&[token], true).await?;
-        exact(
-            &expected,
-            &actual.logits,
-            "context checkpoint resumed logits",
-        )?;
-        compare_domains(&draft.domain_values(), &actual.domains)?;
-    } else if sibling.prepare(&[11], false).await.is_ok() {
-        return Err(Error::State(
-            "full-capacity imported checkpoint advanced".into(),
-        ));
-    }
-    drop(sibling);
-    if session.binding() != binding
-        || session.model.service.resident_bytes()? != baseline
-        || session.model.service.pending_events()? != 0
-        || session.model.service.uploaded_value_bytes() != transferred
-    {
-        return Err(Error::State(
-            "context checkpoint changed continuing root/admission".into(),
-        ));
-    }
-    println!(
-        "H21_CONTEXT_CHECKPOINT_PASS frontier={} all42_physical_domains=bit_exact cpu_gpu_cpu=exact resumed_next_token={} canonical_kv_tail=exact continuing_root_unchanged=true admission_recovered=true",
-        binding.frontier(),
-        next.is_some()
-    );
-    Ok(())
-}
 
 impl ResidentSession {
-    /// Export only a published immutable snapshot, after physical readback.
-    pub async fn checkpoint(&self, source: &LoadedQwenModel) -> Result<QwenCheckpoint> {
-        if source.source_identity() != self.binding().source() {
-            return Err(Error::State(
-                "checkpoint codec belongs to another loaded source".into(),
-            ));
-        }
-        let snapshot = self.snapshot();
-        let domains = snapshot.read_domains().await?;
-        source.checkpoint_from_domains(snapshot.binding.frontier() as usize, &domains)
-    }
-
-    pub async fn import_checkpoint(&mut self, checkpoint: &QwenCheckpoint) -> Result<()> {
-        self.import_checkpoint_inner(
-            checkpoint,
+    pub async fn import_state_domains(
+        &mut self,
+        source: zerogravity_core::accelerator::SourceIdentity,
+        position: usize,
+        domains: &[(StateSlot, Vec<f32>)],
+    ) -> Result<()> {
+        self.import_state_domains_inner(
+            source,
+            position,
+            domains,
             #[cfg(feature = "hardware-abort-probe")]
             None,
         )
         .await
     }
 
-    async fn import_checkpoint_inner(
+    pub(super) async fn import_state_domains_inner(
         &mut self,
-        checkpoint: &QwenCheckpoint,
+        source: zerogravity_core::accelerator::SourceIdentity,
+        position: usize,
+        domains: &[(StateSlot, Vec<f32>)],
         #[cfg(feature = "hardware-abort-probe")] pause_uploaded: Option<
             &std::sync::atomic::AtomicBool,
         >,
     ) -> Result<()> {
         self.model.service.ensure_usable()?;
         self.authority.preflight_replacement()?;
-        // Payload fields are private to the root codec. Check its local source
-        // binding and this physical capacity BEFORE allocation, queue or upload.
-        if checkpoint.source_identity() != self.binding().source() {
+        // Validate caller-bound domains before allocation, queue or upload.
+        if source != self.binding().source() {
             return Err(Error::State(
                 "checkpoint belongs to another loaded source".into(),
             ));
         }
-        if checkpoint.position() > self.model.capacity {
+        if position > self.model.capacity {
             return Err(Error::Limit("checkpoint exceeds resident capacity".into()));
         }
-        let packed = pack(&self.model.states, self.model.capacity, checkpoint)?;
-        let attempt = self.authority.begin_import(checkpoint.position() as u64)?;
+        let packed = pack(&self.model.states, self.model.capacity, position, domains)?;
+        let attempt = self.authority.begin_import(position as u64)?;
         let _admission = self.model.allocation.lock().await;
         if self.model.state_bytes > self.model.service.remaining_capacity()? {
             return Err(Error::Limit(
@@ -200,12 +122,16 @@ impl ResidentSession {
 fn pack(
     requirements: &[StateRequirement],
     capacity: usize,
-    checkpoint: &QwenCheckpoint,
+    position: usize,
+    domain_values: &[(StateSlot, Vec<f32>)],
 ) -> Result<Vec<Vec<Vec<u8>>>> {
-    let domains = checkpoint
-        .domain_values()
-        .into_iter()
+    let domains = domain_values
+        .iter()
+        .map(|(slot, values)| (*slot, values))
         .collect::<std::collections::BTreeMap<_, _>>();
+    if domains.len() != domain_values.len() {
+        return Err(Error::State("checkpoint duplicate state domain".into()));
+    }
     if requirements.len() != domains.len() {
         return Err(Error::State("checkpoint state domain count".into()));
     }
@@ -236,7 +162,7 @@ fn pack(
                 }
                 StateLayout::Kv { slab, capacity: n } if n == capacity => {
                     let active = slab
-                        .checked_mul(checkpoint.position())
+                        .checked_mul(position)
                         .ok_or_else(|| Error::Limit("checkpoint active KV size".into()))?;
                     if active.checked_mul(2) != Some(values.len()) {
                         return Err(Error::State("checkpoint active KV geometry".into()));
@@ -253,4 +179,96 @@ fn pack(
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zerogravity_core::accelerator::program::{ConvDomain, KvDomain};
+
+    fn requirements() -> [StateRequirement; 2] {
+        [
+            StateRequirement {
+                slot: StateSlot::Conv(ConvDomain(0)),
+                layout: StateLayout::Vector { elements: 2 },
+                bytes: 8,
+            },
+            StateRequirement {
+                slot: StateSlot::Kv(KvDomain(0)),
+                layout: StateLayout::Kv {
+                    slab: 2,
+                    capacity: 4,
+                },
+                bytes: 64,
+            },
+        ]
+    }
+    fn domains() -> Vec<(StateSlot, Vec<f32>)> {
+        vec![
+            (
+                StateSlot::Conv(ConvDomain(0)),
+                vec![-0.0, f32::from_bits(1)],
+            ),
+            (
+                StateSlot::Kv(KvDomain(0)),
+                vec![-0.0, 1.25, -2.5, f32::from_bits(1)],
+            ),
+        ]
+    }
+    fn bits(bytes: &[u8]) -> Vec<u32> {
+        bytes
+            .chunks_exact(4)
+            .map(|v| u32::from_ne_bytes(v.try_into().unwrap()))
+            .collect()
+    }
+    #[test]
+    fn state_import_preserves_active_bits_and_canonical_zero_padding() {
+        let packed = pack(&requirements(), 4, 1, &domains()).unwrap();
+        assert_eq!(bits(&packed[0][0]), [0x8000_0000, 1]);
+        assert_eq!(
+            bits(&packed[1][0]),
+            [0x8000_0000, 1.25f32.to_bits(), 0, 0, 0, 0, 0, 0]
+        );
+        assert_eq!(
+            bits(&packed[1][1]),
+            [(-2.5f32).to_bits(), 1, 0, 0, 0, 0, 0, 0]
+        );
+        let mut empty = domains();
+        empty[1].1.clear();
+        let packed = pack(&requirements(), 4, 0, &empty).unwrap();
+        assert!(packed[1].iter().flatten().all(|v| *v == 0));
+    }
+    #[test]
+    fn state_import_rejects_duplicate_missing_foreign_and_invalid_domains() {
+        let requirement = requirements();
+        let good = domains();
+        assert!(pack(&requirement, 4, 1, &[good[0].clone(), good[0].clone()]).is_err());
+        assert!(pack(&requirement, 4, 1, &good[..1]).is_err());
+        let mut foreign = good.clone();
+        foreign[0].0 = StateSlot::Conv(ConvDomain(1));
+        assert!(pack(&requirement, 4, 1, &foreign).is_err());
+        for (slot, values) in [
+            (0, vec![0.0]),
+            (0, vec![f32::NAN, 0.0]),
+            (0, vec![f32::INFINITY, 0.0]),
+            (1, vec![0.0; 3]),
+            (1, vec![0.0; 5]),
+            (1, vec![0.0, 0.0, f32::NEG_INFINITY, 0.0]),
+        ] {
+            let mut bad = good.clone();
+            bad[slot].1 = values;
+            assert!(
+                pack(&requirement, 4, 1, &bad).is_err(),
+                "invalid domain {slot}"
+            );
+        }
+        assert!(pack(&requirement, 3, 1, &good).is_err());
+        assert!(pack(&requirement, 4, 2, &good).is_err());
+        let mut overflow = requirement;
+        overflow[1].layout = StateLayout::Kv {
+            slab: usize::MAX,
+            capacity: 4,
+        };
+        assert!(pack(&overflow, 4, 2, &good).is_err());
+    }
 }

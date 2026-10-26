@@ -2,12 +2,11 @@
 use super::super::projection_cubin::resident::NativeRetentionWitness;
 use super::qualification::{PreparedJobs, Qwen2bProjectionFixture, SourceOwner};
 use super::*;
+use crate::cuda::native::RetainedSource;
 use cubecl::Device;
 use std::sync::Weak;
 use zerogravity_core::device_events::BufferLeaseId;
 use zerogravity_core::resource_arbiter::{ResourceArbiter, ResourceOwner};
-use zerogravity_model_qwen35::plan::QwenSourceProfile;
-use zerogravity_model_qwen35::source::binding::{BoundFullModelSource, OriginalWindowModelSource};
 const MIB: usize = 1024 * 1024;
 pub(super) const UNKNOWN: &str = "deliberate original2B projection unknown after actual QKVZ";
 
@@ -51,7 +50,7 @@ fn lease_ids(jobs: &PreparedJobs, weights: &ProjectionWeights) -> Vec<BufferLeas
         .collect()
 }
 pub(super) struct Probe {
-    source: Weak<OriginalWindowModelSource>,
+    source: Weak<dyn std::any::Any + Send + Sync>,
     owner: Weak<SourceOwner>,
     jobs: Weak<PreparedJobs>,
     programs: Weak<ProjectionPrograms>,
@@ -80,7 +79,7 @@ impl Probe {
             .collect::<Vec<_>>();
         let native_graph = programs.images.retention_witness(&kernels)?;
         Ok(Self {
-            source: Arc::downgrade(owner.bound.source()),
+            source: owner.bound.weak_owner(),
             owner: Arc::downgrade(owner),
             jobs: Arc::downgrade(jobs),
             programs: Arc::downgrade(programs),
@@ -190,20 +189,15 @@ impl Probe {
 }
 async fn pressure(
     device: Device,
-    bound: BoundFullModelSource,
+    bound: Arc<RetainedSource>,
     device_cap: u64,
     cancelled: Option<&AtomicBool>,
 ) -> Result<Qwen2bProjectionFaultOutcome> {
     not_cancelled(cancelled)?;
-    if bound.model_profile() != QwenSourceProfile::Qwen2B {
-        return Err(Error::Unsupported(
-            "authentic2B source required before native pressure".into(),
-        ));
-    }
-    let source = Arc::downgrade(bound.source());
+    let source = bound.weak_owner();
     let service = ResidentService::new_pinned_cuda(
         device,
-        bound.source().source_identity(),
+        bound.source_identity(),
         ResourceOwner::new("qwen2b-cuda-cubin", "original-projection-pressure")?,
         128 * MIB,
         device_cap,
@@ -251,7 +245,7 @@ async fn pressure(
 }
 pub async fn qualify_qwen2b_projection_fault(
     device: Device,
-    bound: BoundFullModelSource,
+    bound: Arc<RetainedSource>,
     fixtures: Vec<Qwen2bProjectionFixture>,
     inputs: CubinQualificationInputs,
     fault: Qwen2bProjectionFault,

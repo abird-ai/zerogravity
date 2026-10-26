@@ -7,31 +7,9 @@ use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 use zerogravity_core::resource_arbiter::{
     AllocationClass, AllocationRequest, ResourceArbiter, ResourceOwner,
 };
-use zerogravity_model_qwen35::{
-    plan::QwenSourceProfile,
-    source::binding::{OriginalWindowModelSource, PreparedRmsSource},
-};
-
-pub(super) fn bind_source(
-    model: Arc<OriginalWindowModelSource>,
-) -> Result<(RmsLeafSource, Arc<PreparedRmsSource>)> {
-    let prepared = Arc::new(model.prepare_rms_source(QwenSourceProfile::Qwen08)?);
-    let source = RmsLeafSource::bind(
-        prepared.source().clone(),
-        prepared.embedding().clone(),
-        prepared.input_gamma().clone(),
-        prepared.final_gamma().clone(),
-        prepared.geometry(),
-        prepared.numerical_contract(),
-        prepared.metadata(),
-    )?;
-    Ok((source, prepared))
-}
-
 const PROVIDER: usize = 128 * 1024 * 1024;
 struct Inputs {
     source: RmsLeafSource,
-    _prepared_source: Arc<PreparedRmsSource>,
     teachers: [u32; COUNT],
     leaf: FixedPromptDualRmsLeaf,
     _payload: Option<WindowWorkspace>,
@@ -40,15 +18,14 @@ struct Inputs {
 impl Inputs {
     fn new(
         source: RmsLeafSource,
-        prepared_source: Arc<PreparedRmsSource>,
         teachers: [u32; COUNT],
         leaf: FixedPromptDualRmsLeaf,
+        validate_ids: impl Fn(&[u32]) -> Result<()>,
     ) -> Result<Arc<Self>> {
-        prepared_source.require_ids(&teachers)?;
+        validate_ids(&teachers)?;
         let metadata = source.source().reserve_workspace(64 * 1024)?;
         let mut owner = Self {
             source,
-            _prepared_source: prepared_source,
             teachers,
             leaf,
             _payload: None,
@@ -215,18 +192,19 @@ async fn dual_leaf(
 
 /// Original source embedding/input gamma, then explicit final dual LEAF.
 /// Expected words may be opened only in `validate`, after actual completion.
+#[expect(clippy::too_many_arguments)]
 pub async fn qualify_fixed_prompt_rms(
     device: Device,
-    model: Arc<OriginalWindowModelSource>,
+    source: RmsLeafSource,
     teachers: [u32; COUNT],
     leaf: FixedPromptDualRmsLeaf,
     device_cap: u64,
     mut validate: impl FnMut(FixedPromptRmsReadback<'_>) -> Result<()>,
     cancelled: Option<&AtomicBool>,
+    validate_ids: impl Fn(&[u32]) -> Result<()>,
 ) -> Result<FixedPromptRmsReceipt> {
     not_cancelled(cancelled)?;
-    let (source, prepared_source) = bind_source(model)?;
-    let owner = Inputs::new(source, prepared_source, teachers, leaf)?;
+    let owner = Inputs::new(source, teachers, leaf, validate_ids)?;
     if cfg!(debug_assertions) || !matches!(device, Device::Cuda(_)) {
         return Err(Error::Unsupported(
             "release original CUDA required for fixed_prompt RMS leaf".into(),

@@ -16,10 +16,17 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
+mod leaves;
 mod natural;
+pub use leaves::*;
 mod reuse;
+mod source;
 pub use natural::qualify_natural_model;
 pub use reuse::qualify_natural_reuse;
+pub use source::{
+    prepare_leaf_source, prepare_rms_leaf_source, prepare_rotary_source,
+    prepare_tied_weight_source, qualify_qwen2b_mlp_weights,
+};
 
 /// Consume the original model plans once for forced/fault GPU diagnostics.
 pub fn source_scopes(

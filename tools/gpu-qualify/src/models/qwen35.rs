@@ -7,6 +7,15 @@ pub mod mixed;
 pub mod operators;
 pub mod q4;
 pub mod resident;
+#[cfg(feature = "cuda")]
 pub mod rope;
 pub mod sessions;
 pub mod workers;
+
+pub mod resident_suite;
+
+#[cfg(feature = "hardware-abort-probe")]
+pub mod physical_abort;
+
+#[cfg(feature = "cuda")]
+pub mod angles;

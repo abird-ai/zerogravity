@@ -14,6 +14,7 @@ struct LeafOwner {
     embedding: SourceTensor,
     input_gamma: SourceParameter,
     final_binding: BoundFinalRmsSource,
+    retained: Option<Arc<crate::cuda::native::RetainedSource>>,
 }
 #[derive(Clone)]
 pub struct RmsLeafSource(Arc<LeafOwner>);
@@ -61,7 +62,37 @@ impl RmsLeafSource {
             embedding,
             input_gamma,
             final_binding,
+            retained: None,
         })))
+    }
+    /// Retain original cold metadata without importing its family into the backend.
+    pub fn retain_source(
+        mut self,
+        retained: Arc<crate::cuda::native::RetainedSource>,
+    ) -> Result<Self> {
+        if !self.source().same_issuer(retained.source()) {
+            return Err(Error::State(
+                "RMS retained original source issuer differs".into(),
+            ));
+        }
+        let source = Arc::get_mut(&mut self.0)
+            .ok_or_else(|| Error::State("unique cold RMS leaf source required".into()))?;
+        if source.retained.is_some() {
+            return Err(Error::State(
+                "RMS cold source owner already retained".into(),
+            ));
+        }
+        source.retained = Some(retained);
+        Ok(self)
+    }
+    pub(crate) fn retained_source(&self) -> Result<&Arc<crate::cuda::native::RetainedSource>> {
+        self.0
+            .retained
+            .as_ref()
+            .ok_or_else(|| Error::State("RMS original cold source owner absent".into()))
+    }
+    pub(crate) fn completion_owner(&self) -> crate::physical_quarantine::CompletionOwner {
+        self.0.clone()
     }
     pub fn source(&self) -> &VerifiedTensorSource {
         &self.0.source

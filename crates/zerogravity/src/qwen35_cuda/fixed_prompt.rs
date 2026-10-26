@@ -144,7 +144,7 @@ pub async fn load_with_profile(
     let retained = bootstrap.retain_arbiter(host, "fixed-prompt-inventory")?;
     let tokenizer = Arc::new(source::tokenizer(hf_directory, host, cancelled)?);
     let templates = Arc::new(bindings::Templates::prepare(source.clone())?);
-    let rotary = native::qualify_source_rotary_cubins(
+    let rotary = super::qualification::qualify_source_rotary_cubins(
         device.clone(),
         source.clone(),
         (DEVICE_MIB * MIB) as u64,

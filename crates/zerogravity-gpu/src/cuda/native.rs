@@ -14,6 +14,11 @@ use zerogravity_core::resource_arbiter::{
 };
 use zerogravity_core::{Error, Result};
 
+#[cfg(target_os = "linux")]
+mod retained_source;
+#[cfg(target_os = "linux")]
+pub use retained_source::{RetainedSource, TiedWeightSource};
+
 const PROVIDER_CAP: usize = 128 * 1024 * 1024;
 
 /// Synthetic predicate/range qualification only; no model or publisher exists.
