@@ -62,6 +62,7 @@ cargo test --locked --offline -p zerogravity-artifacts --no-default-features --f
 
 if [[ "$(uname -s)" == Linux ]]; then
   echo "Checking model-source reference contracts without model loads..."
+  python3 -B -m unittest discover -s tools/model-correctness -p 'test_*.py'
   python3 -B -m unittest discover -s tools/gemma4-tokenizer-reference -p test_contract.py
   python3 -B -m unittest discover -s tools/gemma4-e2b-ordinary-reference -p test_contract.py
   python3 -B -m unittest discover -s tools/qwen27b-initial-core-reference -p test_contract.py
@@ -144,6 +145,7 @@ for path in sorted(Path('scripts').glob('*.py')):
 PYCOMPILE
   python3 scripts/compare-qwen-layers.py --self-test
   python3 scripts/cpu-qualification-gate.py --self-test
+  python3 -B scripts/test-cpu-qualification-gate.py
   python3 scripts/compare-attention-value.py --self-test
   python3 scripts/test-numeric-resume.py
   python3 scripts/test-native-gpu.py

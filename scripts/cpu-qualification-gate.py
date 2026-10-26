@@ -17,6 +17,8 @@ Missing evidence always fails the selected gate.
 """
 import argparse
 import json
+import math
+from numbers import Real
 from pathlib import Path
 import sys
 
@@ -24,11 +26,31 @@ MODELS = {
     "qwen35-0.8b": "57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf",
     "qwen35-2b": "91c102fc9a86de80e427057ee938e1e34fcaf3bba956b7296e252406e05f36f6",
 }
-PHASE1_CONTEXT_COUNTS = (128,512,1024,4096,8192)
+PHASE1_CONTEXT_COUNTS = (128,512,1024,2048,4096,8192)
 DEFERRED_CONTEXT_COUNTS = (16384,32768)
 CONTEXT_COUNTS = PHASE1_CONTEXT_COUNTS + DEFERRED_CONTEXT_COUNTS
 REQUIRED_PROMPTS = 8
 REQUIRED_TOKENS = 32
+
+
+def unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key!r}")
+        result[key] = value
+    return result
+
+
+def finite_json_float(text):
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError(f"JSON number overflows finite range: {text}")
+    return value
+
+
+def reject_json_constant(text):
+    raise ValueError(f"nonfinite JSON constant: {text}")
 
 
 def read_json(path, observations):
@@ -36,31 +58,69 @@ def read_json(path, observations):
         observations.append(f"missing evidence: {path}")
         return None
     try:
-        return json.loads(path.read_text())
-    except (OSError, ValueError) as e:
+        record = json.loads(path.read_text(), object_pairs_hook=unique_json_object,
+                            parse_float=finite_json_float, parse_constant=reject_json_constant)
+        if not isinstance(record, dict):
+            observations.append(f"invalid JSON evidence {path}: expected an object")
+            return None
+        return record
+    except (OSError, ValueError, RecursionError) as e:
         observations.append(f"invalid JSON evidence {path}: {e}")
         return None
 
 
+def integer_in_range(value, minimum=0, maximum=None):
+    return (type(value) is int and value >= minimum
+            and (maximum is None or value <= maximum))
+
+
+def real_in_range(value, minimum=0, maximum=None):
+    if isinstance(value, bool) or not isinstance(value, Real):
+        return False
+    try:
+        return (math.isfinite(value) and value >= minimum
+                and (maximum is None or value <= maximum))
+    except OverflowError:
+        return False
+
+
+def digest_matches(value, expected):
+    return isinstance(value, str) and value.lower() == expected
+
+
 def numeric_ok(record, model, expected_sha, problems):
     if not isinstance(record, dict):
+        problems.append(f"{model}: numerical report must be an object")
         return False
-    if record.get("sha256","").lower() != expected_sha:
+    if not digest_matches(record.get("sha256"), expected_sha):
         problems.append(f"{model}: numerical report checkpoint digest mismatch")
         return False
     cases=record.get("cases",[])
     if not isinstance(cases,list) or len(cases)!=REQUIRED_PROMPTS:
         problems.append(f"{model}: incomplete numerical corpus; need 8 prompts")
         return False
-    if record.get("start_case") not in (0,None):
+    if record.get("start_case") is not None and not integer_in_range(record["start_case"], 0, 0):
         problems.append(f"{model}: report does not start at corpus first prompt")
         return False
-    if not record.get("passed"):
+    if record.get("passed") is not True:
         problems.append(f"{model}: numerical strict gate recorded FAIL")
         return False
     for i,case in enumerate(cases):
-        if not isinstance(case,dict) or case.get("tokens")!=REQUIRED_TOKENS or not case.get("pass"):
+        if (not isinstance(case,dict)
+                or not integer_in_range(case.get("tokens"), REQUIRED_TOKENS, REQUIRED_TOKENS)
+                or case.get("pass") is not True):
             problems.append(f"{model}: numerical case {i} is incomplete or failed")
+            return False
+        counts = ("hard_top1_mismatches", "missing_reference_top5_steps",
+                  "unverified_fragment_positions")
+        if (any(not integer_in_range(case.get(field), 0, REQUIRED_TOKENS) for field in counts)
+                or not integer_in_range(case.get("minimum_top20_overlap"), 0, 20)):
+            problems.append(f"{model}: numerical case {i} has invalid counts/coverage")
+            return False
+        if (not real_in_range(case.get("max_shared_logprob_absolute_error"))
+                or not real_in_range(case.get("max_top1_probability_absolute_error"), 0, 1)
+                or not real_in_range(case.get("max_truncated_union_top20_mass_l1"), 0, 2)):
+            problems.append(f"{model}: numerical case {i} has invalid/nonfinite errors")
             return False
         if case.get("hard_top1_mismatches",1) or case.get("missing_reference_top5_steps",1):
             problems.append(f"{model}: numerical case {i} has hard choice/top5 mismatches")
@@ -94,11 +154,12 @@ def numeric_ok(record, model, expected_sha, problems):
 
 def context_ok(record,model,expected_sha,n,problems):
     if not isinstance(record,dict):
+        problems.append(f"{model}:{n}: context report must be an object")
         return False
-    if record.get("source_sha256","").lower()!=expected_sha:
+    if not digest_matches(record.get("source_sha256"), expected_sha):
         problems.append(f"{model}:{n}: wrong source SHA256 in context report")
         return False
-    if record.get("actual_reference_prompt_tokens")!=n:
+    if not integer_in_range(record.get("actual_reference_prompt_tokens"), n, n):
         problems.append(f"{model}:{n}: full-model context not actually {n} tokens")
         return False
     if record.get("qualified_length_type")!="real full-model CPU token-sequential prefill":
@@ -107,11 +168,14 @@ def context_ok(record,model,expected_sha,n,problems):
     if record.get("pass") is not True or record.get("next_token_exact") is not True:
         problems.append(f"{model}:{n}: independent next token mismatch / gate failed")
         return False
+    if (not integer_in_range(record.get("top20_shared_ids"), 0, 20)
+            or not real_in_range(record.get("max_shared_logprob_error"))):
+        problems.append(f"{model}:{n}: invalid/nonfinite top20 error/coverage")
+        return False
     if record.get("top20_shared_ids",0)<14 or record.get("max_shared_logprob_error",999)>0.45:
         problems.append(f"{model}:{n}: numerical top20 error/coverage rejected")
         return False
-    if not (isinstance(record.get("rust_published_roots"),int)
-            and 1<=record["rust_published_roots"]<=n):
+    if not integer_in_range(record.get("rust_published_roots"), 1, n):
         problems.append(f"{model}:{n}: missing/bad committed CPU StateRoot evidence")
         return False
     return True
@@ -119,21 +183,23 @@ def context_ok(record,model,expected_sha,n,problems):
 
 def layer_ok(record,model,expected_sha,problems):
     if not isinstance(record,dict):
+        problems.append(f"{model}: layer report must be an object")
         return False
-    if record.get("checkpoint_sha256","").lower()!=expected_sha:
+    if not digest_matches(record.get("checkpoint_sha256"), expected_sha):
         problems.append(f"{model}: independent layer evidence checkpoint mismatch")
         return False
     reference=record.get("independent_reference_provenance","")
     if not isinstance(reference,str) or len(reference.strip())<16:
         problems.append(f"{model}: no independently documented per-layer oracle provenance")
         return False
-    if not record.get("passed") or record.get("failed_stages",1)!=0:
+    if (record.get("passed") is not True
+            or not integer_in_range(record.get("failed_stages"), 0, 0)):
         problems.append(f"{model}: independent per-layer comparison failed")
         return False
-    if record.get("stage_count",0)<146:
+    if not integer_in_range(record.get("stage_count"), 146):
         problems.append(f"{model}: too few observed trained model layer stages")
         return False
-    if record.get("all_element_count",0)<146*1024:
+    if not integer_in_range(record.get("all_element_count"), 146*1024):
         problems.append(f"{model}: incomplete layer vector coverage")
         return False
     return True
@@ -149,18 +215,18 @@ def check(folder,scope="extended"):
     for model,sha in MODELS.items():
         prefix=folder/model
         num=read_json(prefix/"numeric-32.json",problems)
-        if numeric_ok(num,model,sha,problems):
+        if num is not None and numeric_ok(num,model,sha,problems):
             passed.append(f"{model}:numeric-32")
         for length in required_contexts:
             rec=read_json(prefix/f"context-{length}.json",problems)
-            if context_ok(rec,model,sha,length,problems):
+            if rec is not None and context_ok(rec,model,sha,length,problems):
                 passed.append(f"{model}:context-{length}")
         layer=read_json(prefix/"independent-layers.json",problems)
-        if layer_ok(layer,model,sha,problems):
+        if layer is not None and layer_ok(layer,model,sha,problems):
             passed.append(f"{model}:independent-layers")
         state=read_json(prefix/"state-invariants.json",problems)
         if state is not None:
-            if state.get("checkpoint_sha256","").lower()==sha \
+            if digest_matches(state.get("checkpoint_sha256"), sha) \
                     and state.get("passed") is True \
                     and state.get("cross_session_rejection") is True \
                     and state.get("atomic_rollback") is True \
@@ -206,7 +272,7 @@ def self_test():
         assert len(report["unmet_gates"])>=20,"required gates missing"
         phase1=check(Path(root),scope="phase1")
         assert not phase1["ready_for_gpu"],"empty evidence wrongly cleared Phase 1"
-        assert len(phase1["unmet_gates"])==16,"Phase 1 must need exactly sixteen gates"
+        assert len(phase1["unmet_gates"])==18,"Phase 1 must need exactly eighteen gates"
         assert len(phase1["deferred_gates"])==4,"16K/32K must be explicitly deferred"
         assert not phase1["extended_context_qualified"]
         path=Path(root)/"qwen35-2b"
@@ -255,7 +321,7 @@ def self_test():
             (folder/"state-invariants.json").write_text(json.dumps(state))
         phase1=check(Path(root),scope="phase1")
         extended=check(Path(root),scope="extended")
-        assert phase1["ready_for_gpu"] and len(phase1["completed_gates"])==16
+        assert phase1["ready_for_gpu"] and len(phase1["completed_gates"])==18
         assert not phase1["extended_context_qualified"]
         assert len(phase1["deferred_gates"])==4
         assert not extended["ready_for_gpu"] and len(extended["unmet_gates"])==4
