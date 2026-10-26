@@ -116,7 +116,7 @@ fn observed_source_tuples_are_distinct_and_never_open_legacy_factories() -> Resu
                 assert!(kernel_with_typed_outputs(g.phase, stage).is_err());
                 assert!(assets::select_qwen2b(g.phase, stage).is_err());
                 {
-                    let actual = select(g.recipe, g.phase, stage)?;
+                    let actual = select(g.recipe, g.config, g.phase, stage)?;
                     let expected = (actual.grid, actual.source);
                     let spec = kernel_from_asset(
                         g.phase,
@@ -165,7 +165,14 @@ fn observed_source_tuples_are_distinct_and_never_open_legacy_factories() -> Resu
                 1,
                 true,
             )?;
-            let actual = select(recipe, phase, stage)?;
+            let actual = select(
+                recipe,
+                matches!(phase, GdnPhase::TextPrefill(_))
+                    .then(|| recipe.historical_prefill_config())
+                    .transpose()?,
+                phase,
+                stage,
+            )?;
             let expected = actual.grid;
             let spec = kernel_from_asset(
                 phase,
@@ -658,6 +665,75 @@ fn parameterized_prefill_host_packets_keep_pointers_then_only_preps_packed_block
 }
 
 #[test]
+fn configured_prefill_host_packets_keep_exact_pointer_and_scalar_abis() -> Result<()> {
+    use cubecl::server::Handle;
+    use cubecl_common::device::{DeviceId, ServiceId};
+    use cubecl_core::environment::stream::StreamId;
+    use cubecl_runtime::server::KernelResource;
+
+    struct HostPacketTest;
+    let service = ServiceId::of::<HostPacketTest>(DeviceId::new(0, 0));
+    let stream = StreamId::current();
+    for catalogue in 0..2 {
+        for tokens in [47, 57, 62, 67, 72] {
+            let phase = GdnPhase::TextPrefill(tokens);
+            let recipe = GdnKernelRecipe::fixture(catalogue, tokens, false)?;
+            let config = recipe.historical_prefill_config()?;
+            for stage in [
+                GdnStage::Kkt,
+                GdnStage::Recompute,
+                GdnStage::H,
+                GdnStage::Output,
+            ] {
+                let definition = parameterized_prefill_variants::prepare(
+                    config,
+                    phase,
+                    GdnCacheSlot::One,
+                    stage,
+                )?;
+                let scalars = definition.scalars;
+                let spec = kernel_from_asset_with_scalars(
+                    phase,
+                    stage,
+                    true,
+                    definition.asset,
+                    arithmetic::GdnArithmeticFamily::Text(recipe),
+                    scalars,
+                )?;
+                let handles = spec
+                    .bindings
+                    .iter()
+                    .map(|binding| Handle::new(service, stream, binding.physical_bytes as u64))
+                    .collect::<Vec<_>>();
+                let packet = spec.kernel.host_launch_arguments(&handles, scalars)?;
+                assert_eq!(packet.resources.len(), spec.bindings.len());
+                assert!(
+                    packet
+                        .resources
+                        .iter()
+                        .all(|resource| matches!(resource, KernelResource::Buffer(_)))
+                );
+                assert_eq!(
+                    packet.info.data,
+                    if stage == GdnStage::Output {
+                        vec![1_035_273_459]
+                    } else {
+                        Vec::new()
+                    }
+                );
+                assert_eq!(packet.info.dynamic_metadata_offset, packet.info.data.len());
+                assert!(
+                    spec.kernel
+                        .host_launch_arguments(&handles[..handles.len() - 1], scalars)
+                        .is_err()
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn parameterized_prefill_refuses_bad_phase_slot_extents_controls_and_integer_ranges() -> Result<()>
 {
     let phase = GdnPhase::TextPrefill(48);
@@ -804,7 +880,13 @@ fn parameterized_prefill_code_identity_is_new_stable_and_not_a_fixture_selector(
             assert_eq!(spec.kernel.id(), spec.kernel.clone().id());
             ids.insert((stage as u8, rows), spec.kernel.id());
             assert_ne!(
-                select(recipe, phase, stage)?.entry,
+                select(
+                    recipe,
+                    Some(recipe.historical_prefill_config()?),
+                    phase,
+                    stage,
+                )?
+                .entry,
                 observed::select(recipe, phase, stage)?.entry
             );
         }
@@ -823,7 +905,15 @@ fn parameterized_prefill_code_identity_is_new_stable_and_not_a_fixture_selector(
         ids[&(GdnStage::Solve as u8, 47)]
     );
     let recipe47 = GdnKernelRecipe::fixture(0, 47, false)?;
-    assert!(select(recipe47, GdnPhase::TextPrefill(48), GdnStage::Prep).is_err());
+    assert!(
+        select(
+            recipe47,
+            Some(recipe47.historical_prefill_config()?),
+            GdnPhase::TextPrefill(48),
+            GdnStage::Prep,
+        )
+        .is_err()
+    );
     assert!(
         parameterized_prefill::prepare(
             GdnPhase::TextPrefill(48),
@@ -1030,7 +1120,7 @@ fn parameterized_cached_uses_retained_five_slot_layout_exact_abis_and_aliases() 
                 .is_err()
         );
         assert_ne!(
-            select(recipe, phase, stage)?.entry,
+            select(recipe, None, phase, stage)?.entry,
             observed::select(recipe, phase, stage)?.entry
         );
     }

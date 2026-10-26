@@ -259,7 +259,14 @@ impl StageArithmetic {
                 stage,
                 asset,
                 bindings,
-                &super::text::select(recipe, phase, stage)?,
+                &super::text::select(
+                    recipe,
+                    matches!(phase, GdnPhase::TextPrefill(_))
+                        .then(|| recipe.historical_prefill_config())
+                        .transpose()?,
+                    phase,
+                    stage,
+                )?,
                 GdnFamilyIdentity::text(recipe),
             ),
         }

@@ -29,7 +29,7 @@ fn layout(geometry: TextGdnGeometry) -> Result<BTreeMap<GdnBuffer, usize>> {
             geometry.phase,
             stage,
             true,
-            select(geometry.recipe, geometry.phase, stage)?,
+            select(geometry.recipe, geometry.config, geometry.phase, stage)?,
             arithmetic::GdnArithmeticFamily::Text(geometry.recipe),
         )?;
         roles.extend(spec.bindings.into_iter().map(|b| b.role));
@@ -322,10 +322,12 @@ mod tests {
     #[test]
     fn selected_geometry_never_allocates_source_or_public_roles_in_private_pool() -> Result<()> {
         for prompt_tokens in [47, 57, 62, 67, 72] {
+            let recipe = GdnKernelRecipe::fixture(0, prompt_tokens, false)?;
             let g = TextGdnGeometry {
-                recipe: GdnKernelRecipe::fixture(0, prompt_tokens, false)?,
+                recipe,
                 phase: GdnPhase::TextPrefill(prompt_tokens),
                 slot: GdnCacheSlot::One,
+                config: Some(recipe.historical_prefill_config()?),
             };
             let actual = layout(g)?;
             assert!(

@@ -4,6 +4,9 @@ use crate::cuda::native::{
     model_gdn::ModelGdnParameters, model_values::ModelValues, text_model::TextModelBinding,
 };
 use crate::resident_leases::{ResidentLease, ResidentService};
+pub use config::{
+    GdnKernelConfig, GdnKktKernel, GdnOutputKernel, GdnRecomputeKernel, GdnStateKernel,
+};
 pub use observed::GdnKernelRecipe;
 use zerogravity_core::accelerator::program::{
     PlanOperation, SourceCall, SourceCallMode, SourceConvGeometry, SourceOperatorKind,
@@ -14,6 +17,7 @@ pub(crate) struct TextGdnGeometry {
     pub(crate) phase: GdnPhase,
     pub(crate) slot: GdnCacheSlot,
     pub(crate) recipe: GdnKernelRecipe,
+    pub(crate) config: Option<GdnKernelConfig>,
 }
 impl TextGdnGeometry {
     pub(crate) fn for_call(call: &SourceCall, recipe: GdnKernelRecipe) -> Result<Self> {
@@ -24,19 +28,23 @@ impl TextGdnGeometry {
                 "actual GDN source call versus exact reference recipe".into(),
             ));
         }
+        let phase = match call.mode() {
+            SourceCallMode::Prefill => GdnPhase::TextPrefill(call.rows().len()),
+            SourceCallMode::Decode => GdnPhase::CachedDecode,
+        };
         Ok(Self {
-            phase: match call.mode() {
-                SourceCallMode::Prefill => GdnPhase::TextPrefill(call.rows().len()),
-                SourceCallMode::Decode => GdnPhase::CachedDecode,
-            },
+            phase,
             slot: GdnCacheSlot::One,
             recipe,
+            config: matches!(phase, GdnPhase::TextPrefill(_))
+                .then(|| recipe.historical_prefill_config())
+                .transpose()?,
         })
     }
     pub(crate) fn require_catalog(self) -> Result<()> {
         self.slot.validate(self.phase)?;
         for &stage in self.phase.stages() {
-            select(self.recipe, self.phase, stage)?;
+            select(self.recipe, self.config, self.phase, stage)?;
         }
         Ok(())
     }
@@ -45,7 +53,7 @@ impl TextGdnGeometry {
         self.phase.stages().iter().try_fold(
             256usize * 1024 + 6 * PinnedKernel::KEY_METADATA_BYTES,
             |sum, &stage| {
-                let source = select(self.recipe, self.phase, stage)?.source;
+                let source = select(self.recipe, self.config, self.phase, stage)?.source;
                 sum.checked_add(
                     source
                         .len()
@@ -59,11 +67,12 @@ impl TextGdnGeometry {
     }
 }
 
-/// Checked parameterized stages are prepared before the legacy finite selector.
-/// The whole call remains admitted by its exact recipe while unconverted stages
-/// still require retained numerical configurations.
+/// Checked parameterized stages are prepared from an explicit coherent config.
+/// The exact historical recipe remains only the whole-call admission boundary;
+/// no executable prefill stage reaches the retained fixture selector.
 pub(super) fn select(
     recipe: GdnKernelRecipe,
+    config: Option<GdnKernelConfig>,
     phase: GdnPhase,
     stage: GdnStage,
 ) -> Result<assets::Asset> {
@@ -74,12 +83,8 @@ pub(super) fn select(
             "exact recorded GDN recipe/phase/count".into(),
         ));
     }
-    if matches!(phase, GdnPhase::TextPrefill(_))
-        && matches!(
-            stage,
-            GdnStage::Conv | GdnStage::Prep | GdnStage::Cumsum | GdnStage::Solve | GdnStage::Gated
-        )
-    {
+    if matches!(phase, GdnPhase::TextPrefill(_)) {
+        let config = GdnKernelConfig::require(config)?;
         return match stage {
             GdnStage::Conv => Ok(parameterized_conv::prepare(
                 phase,
@@ -93,7 +98,14 @@ pub(super) fn select(
             )?
             .asset),
             GdnStage::Gated => Ok(parameterized_gated::prepare(phase, GdnCacheSlot::One)?.asset),
-            _ => Ok(parameterized_prefill::prepare(phase, GdnCacheSlot::One, stage)?.asset),
+            GdnStage::Prep | GdnStage::Cumsum | GdnStage::Solve => {
+                Ok(parameterized_prefill::prepare(phase, GdnCacheSlot::One, stage)?.asset)
+            }
+            GdnStage::Kkt | GdnStage::Recompute | GdnStage::H | GdnStage::Output => Ok(
+                parameterized_prefill_variants::prepare(config, phase, GdnCacheSlot::One, stage)?
+                    .asset,
+            ),
+            _ => Err(Error::Unsupported("configured prefill GDN stage".into())),
         };
     }
     if phase == GdnPhase::CachedDecode {
@@ -105,14 +117,16 @@ pub(super) fn select(
             _ => Err(Error::Unsupported("original cached GDN stage".into())),
         };
     }
-    observed::select(recipe, phase, stage)
+    Err(Error::Unsupported("configured text GDN stage".into()))
 }
 
+mod config;
 mod observed;
 mod parameterized_cached;
 mod parameterized_conv;
 mod parameterized_gated;
 mod parameterized_prefill;
+mod parameterized_prefill_variants;
 pub(super) fn observed_catalogue() -> &'static [&'static str] {
     observed::CATALOGUE
 }
@@ -261,7 +275,11 @@ impl TextGdnCode {
                 GdnStage::Conv
                     | GdnStage::Prep
                     | GdnStage::Cumsum
+                    | GdnStage::Kkt
                     | GdnStage::Solve
+                    | GdnStage::Recompute
+                    | GdnStage::H
+                    | GdnStage::Output
                     | GdnStage::Gated
             )
             || phase == GdnPhase::CachedDecode;
@@ -270,7 +288,7 @@ impl TextGdnCode {
                 phase,
                 stage,
                 true,
-                select(self.geometry.recipe, phase, stage)?,
+                select(self.geometry.recipe, self.geometry.config, phase, stage)?,
                 family,
             );
         }
@@ -286,7 +304,20 @@ impl TextGdnCode {
                 (definition.asset, definition.scalars)
             }
             (GdnPhase::TextPrefill(_), _) => {
-                let definition = parameterized_prefill::prepare(phase, self.geometry.slot, stage)?;
+                let definition = match stage {
+                    GdnStage::Prep | GdnStage::Cumsum | GdnStage::Solve => {
+                        parameterized_prefill::prepare(phase, self.geometry.slot, stage)?
+                    }
+                    GdnStage::Kkt | GdnStage::Recompute | GdnStage::H | GdnStage::Output => {
+                        parameterized_prefill_variants::prepare(
+                            GdnKernelConfig::require(self.geometry.config)?,
+                            phase,
+                            self.geometry.slot,
+                            stage,
+                        )?
+                    }
+                    _ => return Err(Error::Unsupported("configured prefill GDN stage".into())),
+                };
                 (definition.asset, definition.scalars)
             }
             (GdnPhase::CachedDecode, GdnStage::Conv | GdnStage::Decode) => {

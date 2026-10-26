@@ -1,4 +1,5 @@
 use super::{CAPTURES, GdnKernelRecipe};
+use crate::cuda::gdn::{GdnCacheSlot, GdnPhase, GdnStage};
 use zerogravity_core::{Error, Result};
 
 fn specialize_packed_conv(cache_lines: u32) -> String {
@@ -403,4 +404,263 @@ impl GdnKernelRecipe {
             })?;
         Self::bind(CAPTURES[cell].recipe_sha256, input_tokens, is_decode)
     }
+}
+
+fn reverse_configured_prefill_source(
+    source: &str,
+    wrapper_entry: &str,
+    legacy: &str,
+    output: bool,
+) -> String {
+    let legacy_entry = legacy
+        .split(" void ")
+        .nth(1)
+        .and_then(|tail| tail.split('(').next())
+        .expect("retained CUDA entry");
+    let mut result = source
+        .replace(
+            "// Backend-owned parameterized wrapper. Original PTX SHA256:",
+            "// Original PTX SHA256:",
+        )
+        .replace(wrapper_entry, legacy_entry);
+    if output {
+        result = result
+            .replace(
+                "struct alignas(8) ZgGdnOutputScalarWords {\n    unsigned long long words[1];\n};\nstatic_assert(sizeof(ZgGdnOutputScalarWords) == 8, \"GDN Output scalar ABI\");\nstatic_assert(alignof(ZgGdnOutputScalarWords) == 8, \"GDN Output scalar alignment\");\n",
+                "",
+            )
+            .replace(", ZgGdnOutputScalarWords zg_scalars)", ")")
+            .replace(
+                "\\tmov.b32 %%zg_orig_r23, %9;\\n",
+                "\\tmov.b32 %%zg_orig_r23, 1035273459;\\n",
+            )
+            .replace(
+                "\\tmov.b32 %%zg_orig_r13, %9;\\n",
+                "\\tmov.b32 %%zg_orig_r13, 1035273459;\\n",
+            )
+            .replace(
+                ", \"r\"(static_cast<unsigned int>(zg_scalars.words[0])) : \"memory\");",
+                " : \"memory\");",
+            );
+    }
+    result
+}
+
+#[test]
+fn configured_prefill_reverses_all_40_historical_stage_tuples() -> Result<()> {
+    const LEGACY: [[&str; 4]; 10] = [
+        [
+            include_str!("../qwen08_47/kkt.cu"),
+            include_str!("../qwen08_47/recompute.cu"),
+            include_str!("../qwen08_47/h.cu"),
+            include_str!("../qwen08_47/output.cu"),
+        ],
+        [
+            include_str!("../qwen08_57/kkt.cu"),
+            include_str!("../qwen08_57/recompute.cu"),
+            include_str!("../qwen08_57/h.cu"),
+            include_str!("../qwen08_57/output.cu"),
+        ],
+        [
+            include_str!("../qwen08_62/kkt.cu"),
+            include_str!("../qwen08_62/recompute.cu"),
+            include_str!("../qwen08_62/h.cu"),
+            include_str!("../qwen08_62/output.cu"),
+        ],
+        [
+            include_str!("../qwen08_67/kkt.cu"),
+            include_str!("../qwen08_67/recompute.cu"),
+            include_str!("../qwen08_67/h.cu"),
+            include_str!("../qwen08_67/output.cu"),
+        ],
+        [
+            include_str!("../qwen08_72/kkt.cu"),
+            include_str!("../qwen08_72/recompute.cu"),
+            include_str!("../qwen08_72/h.cu"),
+            include_str!("../qwen08_72/output.cu"),
+        ],
+        [
+            include_str!("../qwen2b_47/kkt.cu"),
+            include_str!("../qwen2b_47/recompute.cu"),
+            include_str!("../qwen2b_47/h.cu"),
+            include_str!("../qwen2b_47/output.cu"),
+        ],
+        [
+            include_str!("../qwen2b_57/kkt.cu"),
+            include_str!("../qwen2b_57/recompute.cu"),
+            include_str!("../qwen2b_57/h.cu"),
+            include_str!("../qwen2b_57/output.cu"),
+        ],
+        [
+            include_str!("../qwen2b_62/kkt.cu"),
+            include_str!("../qwen2b_62/recompute.cu"),
+            include_str!("../qwen2b_62/h.cu"),
+            include_str!("../qwen2b_62/output.cu"),
+        ],
+        [
+            include_str!("../qwen2b_67/kkt.cu"),
+            include_str!("../qwen2b_67/recompute.cu"),
+            include_str!("../qwen2b_67/h.cu"),
+            include_str!("../qwen2b_67/output.cu"),
+        ],
+        [
+            include_str!("../qwen2b_72/kkt.cu"),
+            include_str!("../qwen2b_72/recompute.cu"),
+            include_str!("../qwen2b_72/h.cu"),
+            include_str!("../qwen2b_72/output.cu"),
+        ],
+    ];
+    let stages = [
+        GdnStage::Kkt,
+        GdnStage::Recompute,
+        GdnStage::H,
+        GdnStage::Output,
+    ];
+    for (index, legacy_stages) in LEGACY.into_iter().enumerate() {
+        let catalogue = index / 5;
+        let tokens = [47, 57, 62, 67, 72][index % 5];
+        let recipe = GdnKernelRecipe::fixture(catalogue, tokens, false)?;
+        let config = recipe.historical_prefill_config()?;
+        for ((stage, legacy), output) in stages
+            .into_iter()
+            .zip(legacy_stages)
+            .zip([false, false, false, true])
+        {
+            let definition = super::super::parameterized_prefill_variants::prepare(
+                config,
+                GdnPhase::TextPrefill(tokens),
+                GdnCacheSlot::One,
+                stage,
+            )?;
+            assert_eq!(
+                reverse_configured_prefill_source(
+                    definition.asset.source,
+                    definition.asset.entry,
+                    legacy,
+                    output,
+                ),
+                legacy
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn closed_config_matrix_accepts_only_six_observed_combinations() -> Result<()> {
+    use super::super::{
+        GdnKktKernel::*, GdnOutputKernel::*, GdnRecomputeKernel::*, GdnStateKernel::*,
+    };
+    let mut accepted = std::collections::HashSet::new();
+    for kkt in [Bk32W4S3, Bk32W8S3, Bk64W8S4] {
+        for recompute in [Bk64Bv64W8S3, Bk64Bv64W8S4] {
+            for state in [Bv32W4S2, Bv64W4S2] {
+                for output in [Bk32Bv32W4S2, Bk32Bv32W4S3] {
+                    if let Ok(config) =
+                        super::super::GdnKernelConfig::from_stages(kkt, recompute, state, output)
+                    {
+                        accepted.insert(config);
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(accepted.len(), 6);
+    assert!(super::super::GdnKernelConfig::require(None).is_err());
+    let recipe = GdnKernelRecipe::fixture(0, 47, false)?;
+    let config = recipe.historical_prefill_config()?;
+    assert!(super::super::select(recipe, None, GdnPhase::TextPrefill(47), GdnStage::Kkt,).is_err());
+    for (phase, slot, stage) in [
+        (GdnPhase::CachedDecode, GdnCacheSlot::One, GdnStage::Kkt),
+        (GdnPhase::TextPrefill(47), GdnCacheSlot::Four, GdnStage::H),
+        (
+            GdnPhase::TextPrefill(usize::MAX),
+            GdnCacheSlot::One,
+            GdnStage::Output,
+        ),
+        (GdnPhase::TextPrefill(47), GdnCacheSlot::One, GdnStage::Prep),
+    ] {
+        assert!(
+            super::super::parameterized_prefill_variants::prepare(config, phase, slot, stage,)
+                .is_err()
+        );
+    }
+    for catalogue in 0..2 {
+        for tokens in [47, 57, 62, 67, 72] {
+            assert!(accepted.contains(
+                &GdnKernelRecipe::fixture(catalogue, tokens, false)?.historical_prefill_config()?
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn configured_prefill_grids_packets_bodies_and_source_identities_are_exact() -> Result<()> {
+    use sha2::{Digest, Sha256};
+    let expected_hashes = [
+        "4b1a50a04d0effdc0bd38a0bb53e81166c941f524af8883f29fccb9d2cdc6d0e",
+        "cd489f565f7e2f71ad7eed01891e00dc1a1aa3408b8cf9c1ec093a3179c37c38",
+        "0629f1a69856881bfde645d6fed4608c998312670690b77656ffae9585aea073",
+        "318bcce6d3e3a7d9fbc95b09c9750667948c651b218c66f2f7920b99bda10be4",
+        "eeeaf889d03c3a6d3b5a2a4827fa5f46c690be23a52b17ef5cd0a4078fc22817",
+        "fe0ca1ceeb40451c5b1a98baad1570c4b29ee0511c63c699a7220560c24477f9",
+        "7aea70c2a560b602c59a66124a2e0ad4749a58389bed28a4c39b6b138af30fd2",
+        "fb8b6cc12c03370277fea413edc544ffa96d214d19e5f2dd05f3de2e5d238f6a",
+        "a8f03bdada74703b25aa338b696b329cef9a1431045781ba43e415f7b39ca80a",
+    ];
+    let sources = [
+        include_str!("../kkt_bk32_w4_s3.cu"),
+        include_str!("../kkt_bk32_w8_s3.cu"),
+        include_str!("../kkt_bk64_w8_s4.cu"),
+        include_str!("../recompute_bk64_bv64_w8_s3.cu"),
+        include_str!("../recompute_bk64_bv64_w8_s4.cu"),
+        include_str!("../h_bv32_w4_s2.cu"),
+        include_str!("../h_bv64_w4_s2.cu"),
+        include_str!("../output_bk32_bv32_w4_s2.cu"),
+        include_str!("../output_bk32_bv32_w4_s3.cu"),
+    ];
+    for (source, expected) in sources.into_iter().zip(expected_hashes) {
+        assert_eq!(format!("{:x}", Sha256::digest(source.as_bytes())), expected);
+    }
+
+    for catalogue in 0..2 {
+        for tokens in [47, 57, 62, 67, 72] {
+            let recipe = GdnKernelRecipe::fixture(catalogue, tokens, false)?;
+            let config = recipe.historical_prefill_config()?;
+            for stage in [
+                GdnStage::Kkt,
+                GdnStage::Recompute,
+                GdnStage::H,
+                GdnStage::Output,
+            ] {
+                let new = super::super::parameterized_prefill_variants::prepare(
+                    config,
+                    GdnPhase::TextPrefill(tokens),
+                    GdnCacheSlot::One,
+                    stage,
+                )?;
+                let old = super::select(recipe, GdnPhase::TextPrefill(tokens), stage)?;
+                assert_eq!(
+                    (
+                        new.asset.threads,
+                        new.asset.grid,
+                        new.asset.shared,
+                        new.asset.ptx_sha256
+                    ),
+                    (old.threads, old.grid, old.shared, old.ptx_sha256)
+                );
+                if stage == GdnStage::Output {
+                    assert_eq!(new.scalars.words(), &[1_035_273_459]);
+                    assert_eq!(new.scalars.schema().byte_size(), 8);
+                } else {
+                    assert!(new.scalars.words().is_empty());
+                    assert!(!new.asset.source.contains("ScalarWords"));
+                }
+                assert!(!new.asset.source.contains("void zg_vllm_"));
+                assert_ne!(new.asset.entry, old.entry);
+            }
+        }
+    }
+    Ok(())
 }

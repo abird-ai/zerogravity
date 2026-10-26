@@ -114,6 +114,30 @@ impl GdnKernelRecipe {
     pub(crate) fn catalogue_sha256(self) -> &'static str {
         CAPTURES[self.cell].catalogue_sha256
     }
+    /// Qualification-only migration from a retained prefill recipe to the
+    /// coherent backend implementation contract observed for that call.
+    pub(crate) fn historical_prefill_config(self) -> Result<GdnKernelConfig> {
+        use GdnKktKernel::{Bk32W4S3, Bk32W8S3, Bk64W8S4};
+        use GdnOutputKernel::{Bk32Bv32W4S2, Bk32Bv32W4S3};
+        use GdnRecomputeKernel::{Bk64Bv64W8S3, Bk64Bv64W8S4};
+        use GdnStateKernel::{Bv32W4S2, Bv64W4S2};
+
+        let stages = match self.cell {
+            0 | 7 => (Bk32W8S3, Bk64Bv64W8S4, Bv64W4S2, Bk32Bv32W4S2),
+            1 | 2 => (Bk32W8S3, Bk64Bv64W8S4, Bv64W4S2, Bk32Bv32W4S3),
+            3 => (Bk64W8S4, Bk64Bv64W8S3, Bv32W4S2, Bk32Bv32W4S3),
+            4 | 8 | 9 => (Bk32W8S3, Bk64Bv64W8S4, Bv32W4S2, Bk32Bv32W4S2),
+            6 => (Bk32W4S3, Bk64Bv64W8S4, Bv64W4S2, Bk32Bv32W4S3),
+            10 => (Bk32W4S3, Bk64Bv64W8S4, Bv32W4S2, Bk32Bv32W4S3),
+            _ => {
+                return Err(Error::Unsupported(
+                    "cached GDN recipe has no prefill kernel config".into(),
+                ));
+            }
+        };
+        GdnKernelConfig::from_stages(stages.0, stages.1, stages.2, stages.3)
+    }
+    #[cfg(test)]
     fn require_phase(self, phase: GdnPhase) -> Result<()> {
         if phase.tokens() != self.input_tokens()
             || !matches!(
@@ -129,6 +153,7 @@ impl GdnKernelRecipe {
     }
 }
 
+#[cfg(test)]
 pub(super) fn select(
     recipe: GdnKernelRecipe,
     phase: GdnPhase,
