@@ -135,18 +135,16 @@ pub(super) fn select(
     stage: GdnStage,
 ) -> Result<assets::Asset> {
     recipe.require_phase(phase)?;
+    if stage == GdnStage::Conv && matches!(phase, GdnPhase::TextPrefill(_)) {
+        return Err(Error::Unsupported(
+            "legacy specialized text Conv is qualification-only".into(),
+        ));
+    }
     match (recipe.cell, phase) {
         (0, GdnPhase::TextPrefill(47)) => {
             use GdnStage::*;
             Ok(match stage {
-                Conv => assets::Asset {
-                    entry: "zg_vllm_a905e193ffad4e19",
-                    source: include_str!("qwen08_47/conv.cu"),
-                    threads: 128,
-                    grid: [6, 24, 1],
-                    shared: 0,
-                    ptx_sha256: "7e9600b09ee757c1d786657d7edfa5b3629cb5b1b00480de1fdb5a761e4a0a5c",
-                },
+                Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
                     source: include_str!("qwen08_47/prep.cu"),
@@ -217,14 +215,7 @@ pub(super) fn select(
         (1, GdnPhase::TextPrefill(57)) => {
             use GdnStage::*;
             Ok(match stage {
-                Conv => assets::Asset {
-                    entry: "zg_vllm_a905e193ffad4e19",
-                    source: include_str!("qwen08_57/conv.cu"),
-                    threads: 128,
-                    grid: [8, 24, 1],
-                    shared: 0,
-                    ptx_sha256: "7e9600b09ee757c1d786657d7edfa5b3629cb5b1b00480de1fdb5a761e4a0a5c",
-                },
+                Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
                     source: include_str!("qwen08_57/prep.cu"),
@@ -295,14 +286,7 @@ pub(super) fn select(
         (2, GdnPhase::TextPrefill(62)) => {
             use GdnStage::*;
             Ok(match stage {
-                Conv => assets::Asset {
-                    entry: "zg_vllm_a905e193ffad4e19",
-                    source: include_str!("qwen08_62/conv.cu"),
-                    threads: 128,
-                    grid: [8, 24, 1],
-                    shared: 0,
-                    ptx_sha256: "7e9600b09ee757c1d786657d7edfa5b3629cb5b1b00480de1fdb5a761e4a0a5c",
-                },
+                Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
                     source: include_str!("qwen08_62/prep.cu"),
@@ -373,14 +357,7 @@ pub(super) fn select(
         (3, GdnPhase::TextPrefill(67)) => {
             use GdnStage::*;
             Ok(match stage {
-                Conv => assets::Asset {
-                    entry: "zg_vllm_a905e193ffad4e19",
-                    source: include_str!("qwen08_67/conv.cu"),
-                    threads: 128,
-                    grid: [9, 24, 1],
-                    shared: 0,
-                    ptx_sha256: "7e9600b09ee757c1d786657d7edfa5b3629cb5b1b00480de1fdb5a761e4a0a5c",
-                },
+                Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
                     source: include_str!("qwen08_67/prep.cu"),
@@ -451,14 +428,7 @@ pub(super) fn select(
         (4, GdnPhase::TextPrefill(72)) => {
             use GdnStage::*;
             Ok(match stage {
-                Conv => assets::Asset {
-                    entry: "zg_vllm_a905e193ffad4e19",
-                    source: include_str!("qwen08_72/conv.cu"),
-                    threads: 128,
-                    grid: [9, 24, 1],
-                    shared: 0,
-                    ptx_sha256: "7e9600b09ee757c1d786657d7edfa5b3629cb5b1b00480de1fdb5a761e4a0a5c",
-                },
+                Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
                     source: include_str!("qwen08_72/prep.cu"),
@@ -559,14 +529,7 @@ pub(super) fn select(
         (6, GdnPhase::TextPrefill(47)) => {
             use GdnStage::*;
             Ok(match stage {
-                Conv => assets::Asset {
-                    entry: "zg_vllm_a905e193ffad4e19",
-                    source: include_str!("qwen2b_47/conv.cu"),
-                    threads: 128,
-                    grid: [6, 24, 1],
-                    shared: 0,
-                    ptx_sha256: "7e9600b09ee757c1d786657d7edfa5b3629cb5b1b00480de1fdb5a761e4a0a5c",
-                },
+                Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
                     source: include_str!("qwen2b_47/prep.cu"),
@@ -637,14 +600,7 @@ pub(super) fn select(
         (7, GdnPhase::TextPrefill(57)) => {
             use GdnStage::*;
             Ok(match stage {
-                Conv => assets::Asset {
-                    entry: "zg_vllm_a905e193ffad4e19",
-                    source: include_str!("qwen2b_57/conv.cu"),
-                    threads: 128,
-                    grid: [8, 24, 1],
-                    shared: 0,
-                    ptx_sha256: "7e9600b09ee757c1d786657d7edfa5b3629cb5b1b00480de1fdb5a761e4a0a5c",
-                },
+                Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
                     source: include_str!("qwen2b_57/prep.cu"),
@@ -715,14 +671,7 @@ pub(super) fn select(
         (8, GdnPhase::TextPrefill(62)) => {
             use GdnStage::*;
             Ok(match stage {
-                Conv => assets::Asset {
-                    entry: "zg_vllm_a905e193ffad4e19",
-                    source: include_str!("qwen2b_62/conv.cu"),
-                    threads: 128,
-                    grid: [8, 24, 1],
-                    shared: 0,
-                    ptx_sha256: "7e9600b09ee757c1d786657d7edfa5b3629cb5b1b00480de1fdb5a761e4a0a5c",
-                },
+                Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
                     source: include_str!("qwen2b_62/prep.cu"),
@@ -793,14 +742,7 @@ pub(super) fn select(
         (9, GdnPhase::TextPrefill(67)) => {
             use GdnStage::*;
             Ok(match stage {
-                Conv => assets::Asset {
-                    entry: "zg_vllm_a905e193ffad4e19",
-                    source: include_str!("qwen2b_67/conv.cu"),
-                    threads: 128,
-                    grid: [9, 24, 1],
-                    shared: 0,
-                    ptx_sha256: "7e9600b09ee757c1d786657d7edfa5b3629cb5b1b00480de1fdb5a761e4a0a5c",
-                },
+                Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
                     source: include_str!("qwen2b_67/prep.cu"),
@@ -871,14 +813,7 @@ pub(super) fn select(
         (10, GdnPhase::TextPrefill(72)) => {
             use GdnStage::*;
             Ok(match stage {
-                Conv => assets::Asset {
-                    entry: "zg_vllm_a905e193ffad4e19",
-                    source: include_str!("qwen2b_72/conv.cu"),
-                    threads: 128,
-                    grid: [9, 24, 1],
-                    shared: 0,
-                    ptx_sha256: "7e9600b09ee757c1d786657d7edfa5b3629cb5b1b00480de1fdb5a761e4a0a5c",
-                },
+                Conv => unreachable!("prefill Conv intercepted above"),
                 Prep => assets::Asset {
                     entry: "zg_vllm_78ff2ff19f5099b9",
                     source: include_str!("qwen2b_72/prep.cu"),
@@ -984,7 +919,8 @@ pub(super) fn select(
 
 pub(super) const CATALOGUE: &[&str] = &[
     include_str!("observed.rs"),
-    include_str!("qwen08_47/conv.cu"),
+    include_str!("parameterized_conv.rs"),
+    include_str!("conv_parameterized.cu"),
     include_str!("qwen08_47/prep.cu"),
     include_str!("qwen08_47/cumsum.cu"),
     include_str!("qwen08_47/kkt.cu"),
@@ -993,7 +929,6 @@ pub(super) const CATALOGUE: &[&str] = &[
     include_str!("qwen08_47/h.cu"),
     include_str!("qwen08_47/output.cu"),
     include_str!("qwen08_47/gated.cu"),
-    include_str!("qwen08_57/conv.cu"),
     include_str!("qwen08_57/prep.cu"),
     include_str!("qwen08_57/cumsum.cu"),
     include_str!("qwen08_57/kkt.cu"),
@@ -1002,7 +937,6 @@ pub(super) const CATALOGUE: &[&str] = &[
     include_str!("qwen08_57/h.cu"),
     include_str!("qwen08_57/output.cu"),
     include_str!("qwen08_57/gated.cu"),
-    include_str!("qwen08_62/conv.cu"),
     include_str!("qwen08_62/prep.cu"),
     include_str!("qwen08_62/cumsum.cu"),
     include_str!("qwen08_62/kkt.cu"),
@@ -1011,7 +945,6 @@ pub(super) const CATALOGUE: &[&str] = &[
     include_str!("qwen08_62/h.cu"),
     include_str!("qwen08_62/output.cu"),
     include_str!("qwen08_62/gated.cu"),
-    include_str!("qwen08_67/conv.cu"),
     include_str!("qwen08_67/prep.cu"),
     include_str!("qwen08_67/cumsum.cu"),
     include_str!("qwen08_67/kkt.cu"),
@@ -1020,7 +953,6 @@ pub(super) const CATALOGUE: &[&str] = &[
     include_str!("qwen08_67/h.cu"),
     include_str!("qwen08_67/output.cu"),
     include_str!("qwen08_67/gated.cu"),
-    include_str!("qwen08_72/conv.cu"),
     include_str!("qwen08_72/prep.cu"),
     include_str!("qwen08_72/cumsum.cu"),
     include_str!("qwen08_72/kkt.cu"),
@@ -1032,7 +964,6 @@ pub(super) const CATALOGUE: &[&str] = &[
     include_str!("qwen08_cached/conv.cu"),
     include_str!("qwen08_cached/decode.cu"),
     include_str!("qwen08_cached/gated.cu"),
-    include_str!("qwen2b_47/conv.cu"),
     include_str!("qwen2b_47/prep.cu"),
     include_str!("qwen2b_47/cumsum.cu"),
     include_str!("qwen2b_47/kkt.cu"),
@@ -1041,7 +972,6 @@ pub(super) const CATALOGUE: &[&str] = &[
     include_str!("qwen2b_47/h.cu"),
     include_str!("qwen2b_47/output.cu"),
     include_str!("qwen2b_47/gated.cu"),
-    include_str!("qwen2b_57/conv.cu"),
     include_str!("qwen2b_57/prep.cu"),
     include_str!("qwen2b_57/cumsum.cu"),
     include_str!("qwen2b_57/kkt.cu"),
@@ -1050,7 +980,6 @@ pub(super) const CATALOGUE: &[&str] = &[
     include_str!("qwen2b_57/h.cu"),
     include_str!("qwen2b_57/output.cu"),
     include_str!("qwen2b_57/gated.cu"),
-    include_str!("qwen2b_62/conv.cu"),
     include_str!("qwen2b_62/prep.cu"),
     include_str!("qwen2b_62/cumsum.cu"),
     include_str!("qwen2b_62/kkt.cu"),
@@ -1059,7 +988,6 @@ pub(super) const CATALOGUE: &[&str] = &[
     include_str!("qwen2b_62/h.cu"),
     include_str!("qwen2b_62/output.cu"),
     include_str!("qwen2b_62/gated.cu"),
-    include_str!("qwen2b_67/conv.cu"),
     include_str!("qwen2b_67/prep.cu"),
     include_str!("qwen2b_67/cumsum.cu"),
     include_str!("qwen2b_67/kkt.cu"),
@@ -1068,7 +996,6 @@ pub(super) const CATALOGUE: &[&str] = &[
     include_str!("qwen2b_67/h.cu"),
     include_str!("qwen2b_67/output.cu"),
     include_str!("qwen2b_67/gated.cu"),
-    include_str!("qwen2b_72/conv.cu"),
     include_str!("qwen2b_72/prep.cu"),
     include_str!("qwen2b_72/cumsum.cu"),
     include_str!("qwen2b_72/kkt.cu"),

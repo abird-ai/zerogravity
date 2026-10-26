@@ -5,7 +5,9 @@ use crate::cuda::native::{
 };
 use crate::resident_leases::{ResidentLease, ResidentService};
 pub use observed::GdnKernelRecipe;
-use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode};
+use zerogravity_core::accelerator::program::{
+    PlanOperation, SourceCall, SourceCallMode, SourceConvGeometry, SourceOperatorKind,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct TextGdnGeometry {
@@ -57,17 +59,36 @@ impl TextGdnGeometry {
     }
 }
 
-/// Source/config/scalars are from the actual observed original per-cell run.
-/// Missing tuples refuse; accepted owned legacy profiles keep their old selectors.
+/// Prefill Conv is one checked parameterized body. Remaining finite stages keep
+/// their observed numerical configurations until separately parameterized.
 pub(super) fn select(
     recipe: GdnKernelRecipe,
     phase: GdnPhase,
     stage: GdnStage,
 ) -> Result<assets::Asset> {
+    if stage == GdnStage::Conv && matches!(phase, GdnPhase::TextPrefill(_)) {
+        if recipe.input_tokens() != phase.tokens() || recipe.is_decode() {
+            return Err(Error::Unsupported(
+                "exact recorded GDN recipe/phase/count".into(),
+            ));
+        }
+        return Ok(parameterized_conv::prepare(
+            phase,
+            GdnCacheSlot::One,
+            SourceConvGeometry {
+                qkv_channels: 6144,
+                z_channels: 2048,
+                coefficient_channels: 32,
+                kernel: 4,
+            },
+        )?
+        .asset);
+    }
     observed::select(recipe, phase, stage)
 }
 
 mod observed;
+mod parameterized_conv;
 pub(super) fn observed_catalogue() -> &'static [&'static str] {
     observed::CATALOGUE
 }
@@ -80,13 +101,17 @@ pub(crate) struct TextGdnCode {
     parameters: Arc<ModelGdnParameters>,
     layer: usize,
     geometry: TextGdnGeometry,
+    conv_geometry: SourceConvGeometry,
     workspace: Arc<TextGdnWorkspace>,
     operands: [ResidentLease; 5],
     _metadata: zerogravity_artifacts::source_weights::WindowWorkspace,
 }
 impl TextGdnCode {
     pub(super) fn require_same_recipe(&self, old: &Self) -> Result<()> {
-        if self.geometry != old.geometry || self.layer != old.layer {
+        if self.geometry != old.geometry
+            || self.conv_geometry != old.conv_geometry
+            || self.layer != old.layer
+        {
             return Err(Error::State(
                 "GDN immutable kernel geometry/site changed".into(),
             ));
@@ -108,6 +133,31 @@ impl TextGdnCode {
         geometry.require_catalog()?;
         workspace.require_scope(&scope, &values)?;
         let site = scope.gdn_site(layer)?;
+        let node = scope
+            .record()
+            .plan()
+            .nodes()
+            .get(site.nodes[0])
+            .ok_or_else(|| Error::State("text GDN convolution source node absent".into()))?;
+        let PlanOperation::SourceOperator { descriptor, .. } = &node.operation else {
+            return Err(Error::State(
+                "text GDN convolution source operator absent".into(),
+            ));
+        };
+        let SourceOperatorKind::CausalConvSplit {
+            geometry: conv_geometry,
+            ..
+        } = descriptor.kind()
+        else {
+            return Err(Error::State(
+                "text GDN convolution source geometry absent".into(),
+            ));
+        };
+        if descriptor.call() != scope.call() {
+            return Err(Error::State(
+                "text GDN convolution source call differs".into(),
+            ));
+        }
         parameters.require_text(&scope, layer)?;
         let operands = site
             .operands
@@ -123,6 +173,7 @@ impl TextGdnCode {
             parameters,
             layer,
             geometry,
+            conv_geometry,
             workspace,
             operands,
             _metadata: metadata,
@@ -179,13 +230,27 @@ impl TextGdnCode {
         if phase != self.geometry.phase {
             return Err(Error::State("text GDN phase changed".into()));
         }
-        kernel_from_asset(
-            phase,
-            stage,
-            true,
-            select(self.geometry.recipe, phase, stage)?,
-            arithmetic::GdnArithmeticFamily::Text(self.geometry.recipe),
-        )
+        let family = arithmetic::GdnArithmeticFamily::Text(self.geometry.recipe);
+        if stage == GdnStage::Conv && matches!(phase, GdnPhase::TextPrefill(_)) {
+            let definition =
+                parameterized_conv::prepare(phase, self.geometry.slot, self.conv_geometry)?;
+            kernel_from_asset_with_scalars(
+                phase,
+                stage,
+                true,
+                definition.asset,
+                family,
+                definition.scalars,
+            )
+        } else {
+            kernel_from_asset(
+                phase,
+                stage,
+                true,
+                select(self.geometry.recipe, phase, stage)?,
+                family,
+            )
+        }
     }
     pub(crate) fn inputs(&self, cache: ResidentLease) -> GdnInputs {
         let p = self.parameters.text_leases();

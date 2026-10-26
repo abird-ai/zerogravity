@@ -200,6 +200,174 @@ fn observed_source_tuples_are_distinct_and_never_open_legacy_factories() -> Resu
 }
 
 #[test]
+fn parameterized_conv_uses_source_extents_dynamic_grid_and_one_packed_abi() -> Result<()> {
+    use zerogravity_core::accelerator::program::SourceConvGeometry;
+
+    let geometry = SourceConvGeometry {
+        qkv_channels: 6144,
+        z_channels: 2048,
+        coefficient_channels: 32,
+        kernel: 4,
+    };
+    let mut code_identity = None;
+    for rows in [47, 48, 49, 50, 57, 62, 67, 72] {
+        let definition =
+            parameterized_conv::prepare(GdnPhase::TextPrefill(rows), GdnCacheSlot::One, geometry)?;
+        assert_eq!(definition.asset.entry, parameterized_conv::ENTRY);
+        assert_eq!(definition.asset.source, parameterized_conv::SOURCE);
+        assert_eq!(definition.asset.grid, [rows.div_ceil(8) as u32, 24, 1]);
+        assert_eq!(definition.scalars.words(), [5, 8192, 6144]);
+        assert_eq!(definition.scalars.schema().byte_size(), 24);
+        assert_eq!(
+            definition.scalars.packed_bytes(),
+            [
+                5_u64.to_le_bytes(),
+                8192_u64.to_le_bytes(),
+                6144_u64.to_le_bytes(),
+            ]
+            .concat()
+        );
+        code_identity.get_or_insert((definition.asset.entry, definition.asset.source));
+        assert_eq!(
+            code_identity,
+            Some((definition.asset.entry, definition.asset.source))
+        );
+    }
+    assert!(parameterized_conv::SOURCE.contains("ZgGdnConvScalarWords zg_scalars"));
+    assert!(
+        parameterized_conv::SOURCE
+            .contains("\"r\"(static_cast<unsigned int>(zg_scalars.words[0]))")
+    );
+    assert!(parameterized_conv::SOURCE.contains("\"l\"(zg_scalars.words[1])"));
+    assert!(parameterized_conv::SOURCE.contains("\"l\"(zg_scalars.words[2])"));
+    assert!(!parameterized_conv::SOURCE.contains("zg_scalar9"));
+    assert!(!parameterized_conv::SOURCE.contains("zg_vllm_a905e193ffad4e19"));
+    assert!(!parameterized_conv::SOURCE.contains(" 492;"));
+    assert!(!parameterized_conv::SOURCE.contains(" 157;"));
+    Ok(())
+}
+
+#[test]
+fn parameterized_conv_scalar_values_are_part_of_arithmetic_not_code_identity() -> Result<()> {
+    use crate::cuda::kernel::{StaticScalarBlock, StaticScalarValue};
+    use cubecl_runtime::kernel::KernelMetadata;
+    use zerogravity_core::accelerator::program::SourceConvGeometry;
+
+    let phase = GdnPhase::TextPrefill(47);
+    let geometry = SourceConvGeometry {
+        qkv_channels: 6144,
+        z_channels: 2048,
+        coefficient_channels: 32,
+        kernel: 4,
+    };
+    let recipe = GdnKernelRecipe::fixture(0, 47, false)?;
+    let definition = parameterized_conv::prepare(phase, GdnCacheSlot::One, geometry)?;
+    let changed = StaticScalarBlock::new(
+        definition.scalars.schema(),
+        &[
+            StaticScalarValue::U32(4),
+            StaticScalarValue::U64(8192),
+            StaticScalarValue::U64(6144),
+        ],
+    )?;
+    let actual = kernel_from_asset_with_scalars(
+        phase,
+        GdnStage::Conv,
+        true,
+        definition.asset,
+        arithmetic::GdnArithmeticFamily::Text(recipe),
+        definition.scalars,
+    )?;
+    let changed_definition = parameterized_conv::prepare(phase, GdnCacheSlot::One, geometry)?;
+    let changed = kernel_from_asset_with_scalars(
+        phase,
+        GdnStage::Conv,
+        true,
+        changed_definition.asset,
+        arithmetic::GdnArithmeticFamily::Text(recipe),
+        changed,
+    )?;
+    assert_eq!(actual.kernel.id(), changed.kernel.id());
+    assert_ne!(actual.arithmetic, changed.arithmetic);
+    assert_ne!(actual.bindings, changed.bindings);
+    Ok(())
+}
+
+#[test]
+fn parameterized_conv_refuses_wrong_source_layout_controls_and_overflow() -> Result<()> {
+    use zerogravity_core::accelerator::program::SourceConvGeometry;
+
+    let phase = GdnPhase::TextPrefill(48);
+    let geometry = SourceConvGeometry {
+        qkv_channels: 6144,
+        z_channels: 2048,
+        coefficient_channels: 32,
+        kernel: 4,
+    };
+    let retained = parameterized_conv::ConvLayout {
+        cache_arena_bytes: GdnBuffer::CacheArena.bytes(phase),
+        input_bytes: GdnBuffer::PackedQkvz.bytes(phase),
+        output_bytes: GdnBuffer::ConvOutput.bytes(phase),
+        conv_batch_bytes: GdnBuffer::ConvBatch.bytes(phase),
+        conv_chunk_offsets_bytes: GdnBuffer::ConvChunkOffsets.bytes(phase),
+        cache_indices_bytes: GdnBuffer::CacheIndices.bytes(phase),
+        has_initial_bytes: GdnBuffer::HasInitial.bytes(phase),
+        query_starts_bytes: GdnBuffer::QueryStarts.bytes(phase),
+    };
+    let mut bad = retained;
+    bad.cache_arena_bytes -= GdnBuffer::CacheArena.bytes(phase) / CACHE_SLOTS;
+    assert!(
+        parameterized_conv::prepare_with_layout(phase, GdnCacheSlot::One, geometry, bad).is_err()
+    );
+    bad = retained;
+    bad.input_bytes -= 2;
+    assert!(
+        parameterized_conv::prepare_with_layout(phase, GdnCacheSlot::One, geometry, bad).is_err()
+    );
+    bad = retained;
+    bad.output_bytes += 2;
+    assert!(
+        parameterized_conv::prepare_with_layout(phase, GdnCacheSlot::One, geometry, bad).is_err()
+    );
+    bad = retained;
+    bad.conv_batch_bytes = 4;
+    bad.conv_chunk_offsets_bytes = 4;
+    assert!(
+        parameterized_conv::prepare_with_layout(phase, GdnCacheSlot::One, geometry, bad).is_err()
+    );
+    let mut wrong_geometry = geometry;
+    wrong_geometry.z_channels = 2047;
+    assert!(
+        parameterized_conv::prepare_with_layout(
+            phase,
+            GdnCacheSlot::One,
+            wrong_geometry,
+            retained,
+        )
+        .is_err()
+    );
+    assert!(
+        parameterized_conv::prepare_with_layout(
+            GdnPhase::TextPrefill(usize::MAX),
+            GdnCacheSlot::One,
+            geometry,
+            retained,
+        )
+        .is_err()
+    );
+    assert!(
+        parameterized_conv::prepare_with_layout(
+            GdnPhase::CachedDecode,
+            GdnCacheSlot::One,
+            geometry,
+            retained,
+        )
+        .is_err()
+    );
+    Ok(())
+}
+
+#[test]
 fn pooled_private_lease_ownership_never_implies_a_retained_layer_observation() {
     for role in [
         GdnBuffer::Q,

@@ -1,7 +1,7 @@
 //! Private SM86 .8B layer0 qualification; original generated instructions.
 //! Runtime storage comes from the original resident owner, never a trace.
 // Former names: VllmGdnPhase, short_hf, canonical47. Native ABI/source pins unchanged.
-use crate::cuda::kernel::PinnedKernel;
+use crate::cuda::kernel::{PinnedKernel, StaticScalarBlock};
 use cubecl_runtime::kernel::BufferIOAttr;
 #[cfg(test)]
 use std::collections::BTreeMap;
@@ -214,6 +214,9 @@ pub(crate) struct BindingSpec {
     pub offset: usize,
     pub physical_bytes: usize,
     pub io: BufferIOAttr,
+    // Repeated in each pointer descriptor so existing StageArithmetic equality
+    // retains the exact immutable by-value launch identity.
+    pub static_scalars: StaticScalarBlock,
 }
 #[derive(Clone)]
 pub(crate) struct LaunchSpec {
@@ -228,6 +231,7 @@ fn binding(phase: GdnPhase, role: GdnBuffer, io: BufferIOAttr) -> BindingSpec {
         offset: 0,
         physical_bytes: role.bytes(phase),
         io,
+        static_scalars: StaticScalarBlock::empty(),
     }
 }
 fn view(role: GdnBuffer, offset: usize, bytes: usize, io: BufferIOAttr) -> BindingSpec {
@@ -236,6 +240,7 @@ fn view(role: GdnBuffer, offset: usize, bytes: usize, io: BufferIOAttr) -> Bindi
         offset,
         physical_bytes: bytes,
         io,
+        static_scalars: StaticScalarBlock::empty(),
     }
 }
 
@@ -295,6 +300,23 @@ fn kernel_from_asset(
     typed_outputs: bool,
     asset: assets::Asset,
     family: arithmetic::GdnArithmeticFamily,
+) -> Result<LaunchSpec> {
+    kernel_from_asset_with_scalars(
+        phase,
+        stage,
+        typed_outputs,
+        asset,
+        family,
+        StaticScalarBlock::empty(),
+    )
+}
+fn kernel_from_asset_with_scalars(
+    phase: GdnPhase,
+    stage: GdnStage,
+    typed_outputs: bool,
+    asset: assets::Asset,
+    family: arithmetic::GdnArithmeticFamily,
+    static_scalars: StaticScalarBlock,
 ) -> Result<LaunchSpec> {
     use BufferIOAttr::{ReadOnly as R, ReadWrite as RW, WriteOnly as Write};
     use GdnBuffer::*;
@@ -445,7 +467,8 @@ fn kernel_from_asset(
             }
         }
     }
-    for value in &bindings {
+    for value in &mut bindings {
+        value.static_scalars = static_scalars;
         if value.physical_bytes == 0
             || value
                 .offset
@@ -466,7 +489,7 @@ fn kernel_from_asset(
     }
     let arithmetic =
         arithmetic::StageArithmetic::for_family(family, phase, stage, &asset, &bindings)?;
-    let kernel = PinnedKernel::new(
+    let kernel = PinnedKernel::new_with_static_scalars(
         asset.entry,
         Arc::from(asset.source),
         asset.threads,
@@ -475,6 +498,7 @@ fn kernel_from_asset(
             .map(|value| (value.physical_bytes, value.io))
             .collect::<Vec<_>>()
             .into(),
+        static_scalars,
     )?;
     Ok(LaunchSpec {
         arithmetic,

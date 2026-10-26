@@ -10,7 +10,7 @@ use cubecl::{
 use cubecl_runtime::{
     id::KernelId,
     kernel::{BufferIOAttr, CubeKernel, KernelDefinition, KernelMetadata, PrecompiledSource},
-    server::KernelArguments,
+    server::{KernelArguments, MetadataBindingInfo},
 };
 use std::{
     fmt,
@@ -47,6 +47,160 @@ impl fmt::Debug for SourceKey {
     }
 }
 
+const MAX_STATIC_SCALARS: usize = 8;
+const STATIC_SCALAR_ALIGNMENT: usize = 8;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum StaticScalarType {
+    U32,
+    U64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct StaticScalarField {
+    ty: StaticScalarType,
+    offset: u8,
+}
+
+/// Closed trailing by-value ABI. Every typed value occupies one aligned u64
+/// word; explicit offsets keep padding and order in the compiled cache key.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct StaticScalarSchema {
+    fields: [StaticScalarField; MAX_STATIC_SCALARS],
+    count: u8,
+    byte_size: u8,
+    alignment: u8,
+}
+impl StaticScalarSchema {
+    pub(crate) const fn empty() -> Self {
+        Self {
+            fields: [StaticScalarField {
+                ty: StaticScalarType::U64,
+                offset: 0,
+            }; MAX_STATIC_SCALARS],
+            count: 0,
+            byte_size: 0,
+            alignment: STATIC_SCALAR_ALIGNMENT as u8,
+        }
+    }
+
+    pub(crate) fn new(
+        fields: &[(StaticScalarType, usize)],
+        byte_size: usize,
+        alignment: usize,
+    ) -> Result<Self> {
+        if fields.is_empty()
+            || fields.len() > MAX_STATIC_SCALARS
+            || alignment != STATIC_SCALAR_ALIGNMENT
+            || byte_size
+                != fields
+                    .len()
+                    .checked_mul(STATIC_SCALAR_ALIGNMENT)
+                    .unwrap_or(usize::MAX)
+            || byte_size > u8::MAX as usize
+            || fields
+                .iter()
+                .enumerate()
+                .any(|(index, (_, offset))| *offset != index * STATIC_SCALAR_ALIGNMENT)
+        {
+            return Err(Error::Unsupported(
+                "closed CUDA static scalar ABI padding/count".into(),
+            ));
+        }
+        let mut result = Self::empty();
+        for (target, &(ty, offset)) in result.fields.iter_mut().zip(fields) {
+            *target = StaticScalarField {
+                ty,
+                offset: offset as u8,
+            };
+        }
+        result.count = fields.len() as u8;
+        result.byte_size = byte_size as u8;
+        Ok(result)
+    }
+
+    fn fields(self) -> impl ExactSizeIterator<Item = StaticScalarField> {
+        self.fields.into_iter().take(self.count as usize)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn byte_size(self) -> usize {
+        self.byte_size as usize
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StaticScalarValue {
+    U32(u64),
+    U64(u64),
+}
+
+/// Immutable fixed metadata words. This is inline host data, never a device
+/// buffer or dynamic metadata tail.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct StaticScalarBlock {
+    schema: StaticScalarSchema,
+    words: [u64; MAX_STATIC_SCALARS],
+}
+impl StaticScalarBlock {
+    pub(crate) const fn empty() -> Self {
+        Self {
+            schema: StaticScalarSchema::empty(),
+            words: [0; MAX_STATIC_SCALARS],
+        }
+    }
+
+    pub(crate) fn new(schema: StaticScalarSchema, values: &[StaticScalarValue]) -> Result<Self> {
+        if values.len() != schema.count as usize {
+            return Err(Error::State(
+                "closed CUDA static scalar count differs".into(),
+            ));
+        }
+        let mut words = [0; MAX_STATIC_SCALARS];
+        for ((field, value), target) in schema.fields().zip(values).zip(words.iter_mut()) {
+            *target = match (field.ty, value) {
+                (StaticScalarType::U32, StaticScalarValue::U32(bits))
+                    if *bits <= u32::MAX as u64 =>
+                {
+                    *bits
+                }
+                (StaticScalarType::U64, StaticScalarValue::U64(bits)) => *bits,
+                (StaticScalarType::U32, StaticScalarValue::U32(_)) => {
+                    return Err(Error::Limit("closed CUDA u32 scalar overflow".into()));
+                }
+                _ => {
+                    return Err(Error::State(
+                        "closed CUDA static scalar type/order differs".into(),
+                    ));
+                }
+            };
+        }
+        Ok(Self { schema, words })
+    }
+
+    pub(crate) fn schema(self) -> StaticScalarSchema {
+        self.schema
+    }
+
+    pub(crate) fn words(&self) -> &[u64] {
+        &self.words[..self.schema.count as usize]
+    }
+
+    fn binding_info(&self) -> MetadataBindingInfo {
+        let words = self.words().to_vec();
+        let word_count = words.len();
+        MetadataBindingInfo::new(words, word_count)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn packed_bytes(&self) -> Vec<u8> {
+        self.words()
+            .iter()
+            .flat_map(|word| word.to_le_bytes())
+            .collect()
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct PinnedKernel {
     key: PreparedKernelKey<SourceKey>,
@@ -54,6 +208,7 @@ pub(crate) struct PinnedKernel {
     shared_bytes: usize,
     // Exact physical sizes and access, in CUDA pointer-parameter order.
     bindings: Arc<[(usize, BufferIOAttr)]>,
+    static_scalars: StaticScalarBlock,
 }
 
 /// One immutable, validated launch binding. Owning stages retain the original
@@ -64,6 +219,7 @@ pub(crate) struct PreparedPinnedLaunch {
     client: Client,
     grid: [u32; 3],
     handles: Arc<[Handle]>,
+    static_scalars: StaticScalarBlock,
 }
 impl PreparedPinnedLaunch {
     #[cfg(all(feature = "cuda-native", target_os = "linux"))]
@@ -75,7 +231,7 @@ impl PreparedPinnedLaunch {
     }
     pub(crate) fn launch(&self) -> Result<()> {
         self.kernel
-            .launch_bound(&self.client, self.grid, &self.handles)
+            .launch_bound(&self.client, self.grid, &self.handles, self.static_scalars)
     }
     pub(crate) fn launch_on(&self, client: &Client) -> Result<()> {
         if client.service_id() != self.client.service_id() {
@@ -83,7 +239,8 @@ impl PreparedPinnedLaunch {
                 "prepared kernel original client differs".into(),
             ));
         }
-        self.kernel.launch_bound(client, self.grid, &self.handles)
+        self.kernel
+            .launch_bound(client, self.grid, &self.handles, self.static_scalars)
     }
 }
 impl PinnedKernel {
@@ -159,6 +316,7 @@ impl PinnedKernel {
             client: client.clone(),
             grid,
             handles: handles.into(),
+            static_scalars: self.static_scalars,
         })
     }
     /// Inputs are internal generated constants. This is not a public code loader.
@@ -167,6 +325,16 @@ impl PinnedKernel {
         source: Arc<str>,
         threads: u32,
         bindings: Arc<[(usize, BufferIOAttr)]>,
+    ) -> Result<Self> {
+        Self::new_with_static_scalars(entry, source, threads, bindings, StaticScalarBlock::empty())
+    }
+
+    pub(crate) fn new_with_static_scalars(
+        entry: &'static str,
+        source: Arc<str>,
+        threads: u32,
+        bindings: Arc<[(usize, BufferIOAttr)]>,
+        static_scalars: StaticScalarBlock,
     ) -> Result<Self> {
         let shared_bytes = match source.strip_prefix("// cubecl.cuda.dynamic_shared_bytes=") {
             Some(rest) => rest
@@ -205,6 +373,7 @@ impl PinnedKernel {
             threads,
             shared_bytes,
             bindings,
+            static_scalars,
         })
     }
 
@@ -250,13 +419,25 @@ impl PinnedKernel {
     /// This method allocates no device storage and never declares completion.
     pub(crate) fn launch(&self, client: &Client, grid: [u32; 3], handles: &[Handle]) -> Result<()> {
         self.validate(client, grid, handles)?;
-        self.launch_bound(client, grid, handles)
+        self.launch_bound(client, grid, handles, self.static_scalars)
     }
-    fn launch_bound(&self, client: &Client, grid: [u32; 3], handles: &[Handle]) -> Result<()> {
+    fn launch_bound(
+        &self,
+        client: &Client,
+        grid: [u32; 3],
+        handles: &[Handle],
+        static_scalars: StaticScalarBlock,
+    ) -> Result<()> {
+        if static_scalars.schema() != self.static_scalars.schema() {
+            return Err(Error::State(
+                "prepared CUDA static scalar schema changed".into(),
+            ));
+        }
         let mut args = KernelArguments::new();
         for (handle, (_, access)) in handles.iter().zip(self.bindings.iter()) {
             args = args.with_buffer_io(handle.clone().binding(), *access);
         }
+        args = args.with_info(static_scalars.binding_info());
         client.launch(
             Box::new(self.clone()),
             CubeCount::Static(grid[0], grid[1], grid[2]),
@@ -271,7 +452,11 @@ impl KernelMetadata for PinnedKernel {
             .cube_dim((self.threads, 1, 1).into())
             .address_type(AddressType::U64)
             .mode(ExecutionMode::Unchecked)
-            .info((self.key.clone(), self.bindings.clone()))
+            .info((
+                self.key.clone(),
+                self.bindings.clone(),
+                self.static_scalars.schema(),
+            ))
     }
     fn address_type(&self) -> ElemType {
         AddressType::U64.unsigned_type()
@@ -409,6 +594,126 @@ mod tests {
             std::mem::size_of::<PinnedKernel>(),
         );
     }
+    #[test]
+    fn static_scalar_schema_and_words_have_separate_immutable_identities() -> Result<()> {
+        let schema = StaticScalarSchema::new(
+            &[
+                (StaticScalarType::U32, 0),
+                (StaticScalarType::U64, 8),
+                (StaticScalarType::U64, 16),
+            ],
+            24,
+            8,
+        )?;
+        let block = StaticScalarBlock::new(
+            schema,
+            &[
+                StaticScalarValue::U32(5),
+                StaticScalarValue::U64(8192),
+                StaticScalarValue::U64(6144),
+            ],
+        )?;
+        assert_eq!(schema.byte_size(), 24);
+        assert_eq!(block.words(), [5, 8192, 6144]);
+        assert_eq!(
+            block.packed_bytes(),
+            [
+                5_u64.to_le_bytes(),
+                8192_u64.to_le_bytes(),
+                6144_u64.to_le_bytes(),
+            ]
+            .concat()
+        );
+        let info = block.binding_info();
+        assert_eq!(info.data, [5, 8192, 6144]);
+        assert_eq!(info.dynamic_metadata_offset, info.data.len());
+
+        let scalar_kernel = |block| {
+            PinnedKernel::new_with_static_scalars(
+                "fixed",
+                Arc::from("one"),
+                32,
+                Arc::from([(4, BufferIOAttr::ReadWrite)]),
+                block,
+            )
+            .unwrap()
+        };
+        let changed = StaticScalarBlock::new(
+            schema,
+            &[
+                StaticScalarValue::U32(6),
+                StaticScalarValue::U64(8192),
+                StaticScalarValue::U64(6144),
+            ],
+        )?;
+        // Values identify prepared arithmetic, not compiled code/cache.
+        assert_eq!(scalar_kernel(block).id(), scalar_kernel(changed).id());
+        assert_ne!(block, changed);
+        assert_ne!(scalar_kernel(block).id(), kernel("one").id());
+
+        let reordered = StaticScalarSchema::new(
+            &[
+                (StaticScalarType::U64, 0),
+                (StaticScalarType::U32, 8),
+                (StaticScalarType::U64, 16),
+            ],
+            24,
+            8,
+        )?;
+        let reordered_block = StaticScalarBlock::new(
+            reordered,
+            &[
+                StaticScalarValue::U64(5),
+                StaticScalarValue::U32(8192),
+                StaticScalarValue::U64(6144),
+            ],
+        )?;
+        assert_ne!(
+            scalar_kernel(block).id(),
+            scalar_kernel(reordered_block).id()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn malformed_static_scalar_abi_refuses_count_type_padding_and_overflow() -> Result<()> {
+        let schema = StaticScalarSchema::new(
+            &[(StaticScalarType::U32, 0), (StaticScalarType::U64, 8)],
+            16,
+            8,
+        )?;
+        assert!(StaticScalarBlock::new(schema, &[StaticScalarValue::U32(1)]).is_err());
+        assert!(
+            StaticScalarBlock::new(
+                schema,
+                &[StaticScalarValue::U64(1), StaticScalarValue::U32(2)]
+            )
+            .is_err()
+        );
+        assert!(
+            StaticScalarBlock::new(
+                schema,
+                &[
+                    StaticScalarValue::U32(u32::MAX as u64 + 1),
+                    StaticScalarValue::U64(2),
+                ]
+            )
+            .is_err()
+        );
+        assert!(StaticScalarSchema::new(&[(StaticScalarType::U32, 0)], 16, 8).is_err());
+        assert!(StaticScalarSchema::new(&[(StaticScalarType::U32, 8)], 8, 8).is_err());
+        assert!(StaticScalarSchema::new(&[(StaticScalarType::U32, 0)], 8, 4).is_err());
+        assert!(
+            StaticScalarSchema::new(
+                &[(StaticScalarType::U64, 0); MAX_STATIC_SCALARS + 1],
+                usize::MAX,
+                8,
+            )
+            .is_err()
+        );
+        Ok(())
+    }
+
     #[test]
     fn incomplete_source_and_launch_contracts_refuse_before_device_access() {
         for (entry, source, threads, bytes) in [
