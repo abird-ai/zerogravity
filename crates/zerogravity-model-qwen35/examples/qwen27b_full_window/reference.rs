@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use zerogravity_core::accelerator::program::{ConvDomain, KvDomain, RecurrentDomain, StateSlot};
-use zerogravity_model_qwen35::original_binding::{
+use zerogravity_model_qwen35::source::binding::{
     WindowDiagnosticBoundary as B, WindowDiagnosticReadback,
 };
 

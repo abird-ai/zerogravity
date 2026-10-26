@@ -203,7 +203,7 @@ impl ReferenceTextSource for Fixture {
             .get(&tensor.name)
             .ok_or_else(|| Error::State("fixture expert data missing".into()))?;
         let size = tensor.rows * tensor.columns;
-        zerogravity_cpu::math::matvec(
+        zerogravity_cpu::ops::matvec(
             &data[expert * size..(expert + 1) * size],
             tensor.rows,
             tensor.columns,
@@ -267,7 +267,7 @@ impl ReferenceTextSource for Fixture {
                 .ok_or_else(|| Error::State("fixture cancellation flag missing".into()))?
                 .store(true, Ordering::Release);
         }
-        zerogravity_cpu::math::matvec(
+        zerogravity_cpu::ops::matvec(
             self.rows
                 .get(&tensor.name)
                 .ok_or_else(|| Error::State("fixture no payload".into()))?,
@@ -602,7 +602,7 @@ fn analytic_ops_are_not_an_implicit_legacy_or_torch_profile_fallback() {
     for profile in [
         ProgramNumericalProfile::GgufSourceV1,
         ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1,
-        ProgramNumericalProfile::Vllm031CudaSm86Bf16SourceV1,
+        ProgramNumericalProfile::SourceCudaSm86Bf16V1,
     ] {
         let mut builder = PlanBuilder::new_operator_slice(fixture.source, profile).unwrap();
         let input = builder.embed(

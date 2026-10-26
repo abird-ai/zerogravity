@@ -1,35 +1,25 @@
 //! Authentic whole-text recording and bounded source tiles; no GPU execution.
 use super::*;
 use zerogravity_artifacts::source_weights::{TensorWindow, VerifiedMatrix};
-use zerogravity_core::accelerator::program::TextCallGeometry;
+use zerogravity_core::accelerator::program::{
+    SourceNorm, TextCallGeometry, TextCallPolicy, TextObservation, TextPlanBindings,
+    TextPlanInventory,
+};
 use zerogravity_core::session_root::RootAttempt;
 
 mod inventory;
 mod rows;
-pub use inventory::{Gemma4Bf16Inventory, Gemma4Bf16Observation};
 #[cfg(test)]
 mod tests;
 
 const METADATA: usize = 4 * 1024 * 1024;
 const PAGE: usize = 1024 * 1024;
 
-#[derive(Clone, Debug)]
-pub enum Gemma4Bf16NormSource {
-    /// Original checkpoint parameter, without Qwen's1+weight transformation.
-    Direct(SourceParameter),
-    /// Model-defined unit value normalization; no checkpoint gamma exists.
-    Unit { width: usize },
-}
-
+// Former metadata types: Gemma4Bf16NormSource/Inventory/Observation.
 pub struct Gemma4Bf16TextPlan {
     model: Arc<OriginalGemma4Text>,
-    plan: ForwardPlan,
-    call: Bf16TextCall,
-    norms: BTreeMap<usize, Gemma4Bf16NormSource>,
-    scalars: BTreeMap<usize, SourceParameter>,
+    bindings: Arc<TextPlanBindings>,
     tiles: BTreeMap<String, Gemma4SourceTiles>,
-    inventory: Gemma4Bf16Inventory,
-    _metadata: WindowWorkspace,
 }
 impl OriginalGemma4Text {
     /// The same family traversal and real attempt, never a model/Ready permit.
@@ -42,7 +32,7 @@ impl OriginalGemma4Text {
         cancelled_check(cancelled)?;
         require_geometry(self)?;
         let geometry = TextCallGeometry::new(self.source_identity(), self.geometry.vocab, 64)?;
-        let call = Bf16TextCall::bind(geometry, attempt, ids)?;
+        let call = crate::plan::bind_bf16_text_call(geometry, attempt, ids)?;
         let metadata = self.source.source().reserve_workspace(METADATA)?;
         let weights = ArithmeticWeights {
             base: self.as_ref(),
@@ -70,17 +60,25 @@ impl OriginalGemma4Text {
                 Gemma4SourceTiles::new(self.source().clone(), matrix)?,
             );
         }
-        let inventory = Gemma4Bf16Inventory::derive(self, &plan, &call, &tiles)?;
+        let inventory = inventory::derive(self, &plan, &call, &tiles)?;
         cancelled_check(cancelled)?;
-        Ok(Gemma4Bf16TextPlan {
-            model: self.clone(),
+        // Existing E2B end-token policy, now family-owned data.
+        let bindings = Arc::new(TextPlanBindings::new(
             plan,
             call,
             norms,
             scalars,
-            tiles,
             inventory,
-            _metadata: metadata,
+            TextCallPolicy {
+                cached_rows: 1,
+                end_tokens: Arc::from([1, 106, 50]),
+            },
+            metadata.into_host_workspace()?,
+        )?);
+        Ok(Gemma4Bf16TextPlan {
+            model: self.clone(),
+            bindings,
+            tiles,
         })
     }
 }
@@ -104,7 +102,7 @@ fn require_geometry(model: &OriginalGemma4Text) -> Result<()> {
     Ok(())
 }
 fn record(weights: &impl Weights) -> Result<ForwardPlan> {
-    let mut builder = PlanBuilder::new_with_profile(
+    let mut builder = crate::plan::bf16_text_builder(
         weights.source_identity(),
         64,
         weights
@@ -114,7 +112,6 @@ fn record(weights: &impl Weights) -> Result<ForwardPlan> {
             .map(StateSlot::Kv)
             .collect(),
         true,
-        ProgramNumericalProfile::Gemma4E2bBf16TextCandidateV1,
     )?;
     let output = forward(weights, &mut builder, PlanBuilder::inputs(), true)?;
     let plan = builder.finish(output)?;
@@ -134,7 +131,7 @@ fn bind_parameters(
     model: &OriginalGemma4Text,
     plan: &ForwardPlan,
 ) -> Result<(
-    BTreeMap<usize, Gemma4Bf16NormSource>,
+    BTreeMap<usize, SourceNorm>,
     BTreeMap<usize, SourceParameter>,
 )> {
     let mut norms = BTreeMap::new();
@@ -161,7 +158,7 @@ fn bind_parameters(
                         "Gemma BF16 norm raw source words differ".into(),
                     ));
                 }
-                Gemma4Bf16NormSource::Direct(parameter.descriptor.clone())
+                SourceNorm::Direct(parameter.descriptor.clone())
             } else if matches!(vector.values.len(), 256 | 512)
                 && vector.name == format!("gemma4.pure_value_rms.{}", vector.values.len())
                 && vector
@@ -169,7 +166,7 @@ fn bind_parameters(
                     .iter()
                     .all(|v| v.to_bits() == 1.0f32.to_bits())
             {
-                Gemma4Bf16NormSource::Unit {
+                SourceNorm::Unit {
                     width: vector.values.len(),
                 }
             } else {
@@ -197,25 +194,32 @@ fn bind_parameters(
     Ok((norms, scalars))
 }
 impl Gemma4Bf16TextPlan {
+    pub fn bindings(&self) -> &Arc<TextPlanBindings> {
+        &self.bindings
+    }
     pub fn plan(&self) -> &ForwardPlan {
-        &self.plan
+        self.bindings.plan()
     }
     pub fn call(&self) -> &Bf16TextCall {
-        &self.call
+        self.bindings.call()
     }
     pub fn source(&self) -> &Arc<OriginalGemma4Text> {
         &self.model
     }
-    pub fn inventory(&self) -> &Gemma4Bf16Inventory {
-        &self.inventory
+    pub fn inventory(&self) -> &TextPlanInventory {
+        self.bindings.inventory()
     }
-    pub fn normalization_source(&self, node: usize) -> Result<&Gemma4Bf16NormSource> {
-        self.norms
-            .get(&node)
-            .ok_or_else(|| Error::State("Gemma actual normalization node absent".into()))
+    pub fn normalization_source(&self, node: usize) -> Result<&SourceNorm> {
+        self.bindings.normalization_source(node)
     }
     pub fn scalar_source(&self, node: usize) -> Option<&SourceParameter> {
-        self.scalars.get(&node)
+        self.bindings.scalar_source(node)
+    }
+    pub fn observations(&self) -> Result<Vec<TextObservation>> {
+        Ok(self.bindings.observations().to_vec())
+    }
+    pub fn observations_for_row(&self, index: usize) -> Result<Vec<TextObservation>> {
+        self.bindings.observations_for_row(index)
     }
     pub fn matrix_tiles(&self, role: Gemma4MatrixRole) -> Result<&Gemma4SourceTiles> {
         let descriptor = self.model.matrix_descriptor(role)?;
@@ -237,14 +241,14 @@ impl Gemma4Bf16TextPlan {
             ));
         }
         self.matrix_tiles(role)?
-            .selected_row(self.call.row(index)?.token())
+            .selected_row(self.call().row(index)?.token())
     }
     pub fn projection_tiles(
         &self,
         node: usize,
         index: usize,
     ) -> Result<(&Gemma4SourceTiles, Bf16TextProjectionGeometry)> {
-        let row = self.call.row(index)?;
+        let row = self.call().row(index)?;
         self.projection_tiles_for_row(node, &row)
     }
     /// Reuse this immutable recorded traversal with a fresh actual source/root
@@ -254,7 +258,7 @@ impl Gemma4Bf16TextPlan {
         node: usize,
         row: &Bf16TextRow<'_>,
     ) -> Result<(&Gemma4SourceTiles, Bf16TextProjectionGeometry)> {
-        if node >= self.plan.state_nodes().len() && !row.needs_logits() {
+        if node >= self.plan().state_nodes().len() && !row.needs_logits() {
             return Err(Error::State(
                 "Gemma state-only prompt row has no final output producer".into(),
             ));
@@ -262,7 +266,7 @@ impl Gemma4Bf16TextPlan {
         let Some(PlanNode {
             operation: PlanOperation::Project { tensor },
             ..
-        }) = self.plan.nodes().get(node)
+        }) = self.plan().nodes().get(node)
         else {
             return Err(Error::State(
                 "Gemma actual projection source node absent".into(),

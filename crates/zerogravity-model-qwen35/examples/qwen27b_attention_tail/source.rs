@@ -6,7 +6,7 @@ use zerogravity_artifacts::{
     cache::TransferAdmission,
     source_weights::{ExpectedSourceShard, SourceWeights, WindowOpenLimits},
 };
-use zerogravity_model_qwen35::original_binding::{OriginalWindowOperators, QwenNumericalProfile};
+use zerogravity_model_qwen35::source::binding::{OriginalWindowOperators, QwenNumericalProfile};
 pub(super) const CONFIG: &str = "191e0af232104ed8b65258cf3fb2b842e288008baca7633c11b82a1ac7203aab";
 pub(super) const INDEX: &str = "77042094076611b69791a610065f28b7013b8c621795fa86ddccc8bac7d1b9df";
 pub(super) const SNAPSHOT: &str =

@@ -1,10 +1,10 @@
 //! Original selected Q6_K rows → source GGUF RMS → raw effective gamma.
+use super::source_bindings::{PrefixBinding, PrefixContract};
 use super::*;
 use crate::accelerator::SourceIdentity;
-use crate::accelerator::program::{GgufPrefixContract, GgufPrefixDescriptor};
 
 pub(crate) struct GgufPrefixOwner {
-    pub(crate) descriptor: GgufPrefixDescriptor,
+    pub(crate) descriptor: PrefixBinding,
     pub(crate) model: Arc<LoadedQwenModel>,
     pub(crate) admission: BulkF32HostAdmission,
     _metadata: GlobalResourceLease,
@@ -23,11 +23,11 @@ impl GgufPrefixSlice {
         cancelled: Option<&AtomicBool>,
     ) -> Result<Self> {
         not_cancelled(cancelled)?;
-        zerogravity_cpu::math::haswell_bulk_f32::verify_environment()?;
+        zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
         if model.numerical_profile() != QwenNumericalProfile::GgufSourceV1
             || model.geometry().hidden_size != 2048
             || model.geometry().vocab_size != 248320
-            || model.geometry().layers.first() != Some(&crate::model::LayerKind::LinearAttention)
+            || model.geometry().layers.first() != Some(&crate::config::LayerKind::LinearAttention)
             || model.layers[0].attn_norm.len() != 2048
             || model.layers[0].attn_norm.iter().any(|v| !v.is_finite())
             || base != 0
@@ -53,10 +53,10 @@ impl GgufPrefixSlice {
             model.geometry().vocab_size,
             ids,
         )?;
-        let descriptor = GgufPrefixDescriptor::new(
+        let descriptor = PrefixBinding::new(
             span,
             model.as_ref(),
-            GgufPrefixContract::GgufSource2BFirst64V1,
+            PrefixContract::First64GgmlF32V1,
             model.eps,
         )?;
         not_cancelled(cancelled)?;
@@ -69,7 +69,7 @@ impl GgufPrefixSlice {
             }),
         })
     }
-    pub fn descriptor(&self) -> &GgufPrefixDescriptor {
+    pub fn descriptor(&self) -> &PrefixBinding {
         &self.owner.descriptor
     }
     pub fn record(&self) -> Result<RecordedOperatorSlice> {
@@ -97,7 +97,7 @@ impl GgufPrefixSlice {
         let mut math = crate::host_math::HostMath::for_gguf_prefix_slice(self, cancelled);
         let (embedding, normalized) =
             crate::forward::gguf_prefix_slice(&mut math, self.descriptor())?;
-        zerogravity_cpu::math::haswell_bulk_f32::verify_environment()?;
+        zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
         not_cancelled(cancelled)?;
         Ok(GgufPrefixOutput {
             embedding,
@@ -129,7 +129,7 @@ impl GgufPrefixOutput {
     pub fn source(&self) -> SourceIdentity {
         self.owner.descriptor.source()
     }
-    pub fn descriptor(&self) -> &GgufPrefixDescriptor {
+    pub fn descriptor(&self) -> &PrefixBinding {
         &self.owner.descriptor
     }
     pub(crate) fn same_producer(&self, other: &Self) -> bool {

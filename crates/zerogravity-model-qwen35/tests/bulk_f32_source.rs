@@ -1,7 +1,7 @@
 //! SAME engine operator slice only; no model forward, StateRoot or GPU permit.
 #![cfg(all(
     feature = "cpu",
-    feature = "original-hf-binding",
+    feature = "source-binding",
     target_os = "linux",
     target_arch = "x86_64"
 ))]
@@ -26,7 +26,7 @@ use zerogravity_core::resource_arbiter::{
 use zerogravity_model_qwen35::operator_slice::bulk_f32::{
     BulkF32HostAdmission, BulkF32Slice, ExternalBulkF32,
 };
-use zerogravity_model_qwen35::{LoadedQwenModel, original_binding::QwenMatrixRole};
+use zerogravity_model_qwen35::{LoadedQwenModel, source::binding::QwenMatrixRole};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const LIMIT: u64 = 4 * 1024 * 1024 * 1024;
@@ -391,7 +391,7 @@ fn replay(
 }
 
 #[test]
-#[ignore = "requires original approved models/captures via ZG_REFERENCE_ROOT; cpu,original-hf-binding"]
+#[ignore = "requires original approved models/captures via ZG_REFERENCE_ROOT; cpu,source-binding"]
 fn captured_bulk_slices_match_complete_default_outputs_and_retain_source() -> Result<()> {
     let root = PathBuf::from(std::env::var_os("ZG_REFERENCE_ROOT").expect("set ZG_REFERENCE_ROOT"));
     assert!(root.is_absolute() && root.is_dir());

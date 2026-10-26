@@ -10,6 +10,7 @@ struct TeacherSpanData {
     source: SourceIdentity,
     base: usize,
     capacity: usize,
+    vocabulary: u64,
     ids: Arc<[u32]>,
 }
 impl PartialEq for TeacherSpan {
@@ -44,6 +45,7 @@ impl TeacherSpan {
             source,
             base,
             capacity,
+            vocabulary,
             ids: Arc::from(ids),
         })))
     }
@@ -52,6 +54,9 @@ impl TeacherSpan {
     }
     pub fn base(&self) -> usize {
         self.0.base
+    }
+    pub fn vocabulary(&self) -> u64 {
+        self.0.vocabulary
     }
     pub fn capacity(&self) -> usize {
         self.0.capacity
@@ -171,6 +176,76 @@ pub enum BulkF32Side {
     Left,
     Right,
 }
+/// Mathematical retained RMS origin only; runtime backing stays with its source owner.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RetainedRmsRows {
+    span: TeacherSpan,
+    layout: BulkF32Layout,
+    norm: SourceParameter,
+    epsilon_bits: u32,
+    contract: SourceNumericalContract,
+}
+impl RetainedRmsRows {
+    pub fn new(
+        span: TeacherSpan,
+        layout: BulkF32Layout,
+        norm: SourceParameter,
+        epsilon: f32,
+        contract: SourceNumericalContract,
+    ) -> Result<Self> {
+        let value = Self {
+            span,
+            layout,
+            norm,
+            epsilon_bits: epsilon.to_bits(),
+            contract,
+        };
+        value.validate()?;
+        Ok(value)
+    }
+    /// Allocation-free join to the model owner's retained mathematical metadata.
+    pub fn matches_rms(
+        &self,
+        span: &TeacherSpan,
+        layout: BulkF32Layout,
+        norm: &SourceParameter,
+        epsilon: f32,
+        contract: SourceNumericalContract,
+    ) -> bool {
+        self.span == *span
+            && self.layout == layout
+            && self.norm == *norm
+            && self.epsilon_bits == epsilon.to_bits()
+            && self.contract == contract
+    }
+    pub fn span(&self) -> &TeacherSpan {
+        &self.span
+    }
+    pub fn layout(&self) -> BulkF32Layout {
+        self.layout
+    }
+    pub fn validate(&self) -> Result<()> {
+        let shape = self.layout.shape();
+        let width = shape[0];
+        let epsilon = f32::from_bits(self.epsilon_bits);
+        if self.contract != SourceNumericalContract::GgmlSourceF32V1
+            || !self.layout.is_dense()
+            || shape != [width, self.span.len(), 1, 1]
+            || self.norm.source != self.span.source()
+            || self.norm.name.is_empty()
+            || self.norm.kind != QuantKind::F32
+            || self.norm.shape != [width as u64]
+            || width.checked_mul(4) != Some(self.norm.bytes)
+            || !epsilon.is_finite()
+            || epsilon <= 0.0
+        {
+            return Err(Error::State(
+                "retained RMS original source/span/layout/math contract".into(),
+            ));
+        }
+        self.layout.validate()
+    }
+}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BulkF32Origin {
     /// Caller-supplied pure operator input, explicitly NOT a model/state producer.
@@ -178,7 +253,7 @@ pub enum BulkF32Origin {
     /// Exact whole original raw learned matrix, no dequantization/retag/cache.
     SourceMatrix(SourceTensor),
     /// Actual backing must retain this same normalized prefix issuer.
-    RetainedNormalized { prefix: Box<GgufPrefixDescriptor> },
+    RetainedNormalized { binding: RetainedRmsRows },
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BulkF32Operand {
@@ -206,15 +281,13 @@ impl BulkF32Operand {
         value.validate()?;
         Ok(value)
     }
-    pub fn retained_normalized(prefix: GgufPrefixDescriptor) -> Result<Self> {
-        prefix.validate()?;
+    pub fn retained_normalized(binding: RetainedRmsRows) -> Result<Self> {
+        binding.validate()?;
         let value = Self {
-            span: prefix.span().clone(),
+            span: binding.span().clone(),
             side: BulkF32Side::Right,
-            layout: prefix.layout(),
-            origin: BulkF32Origin::RetainedNormalized {
-                prefix: Box::new(prefix),
-            },
+            layout: binding.layout(),
+            origin: BulkF32Origin::RetainedNormalized { binding },
         };
         value.validate()?;
         Ok(value)
@@ -255,7 +328,7 @@ impl BulkF32Operand {
         match &self.origin {
             BulkF32Origin::ExternalObserved { name } => name,
             BulkF32Origin::SourceMatrix(tensor) => &tensor.name,
-            BulkF32Origin::RetainedNormalized { .. } => "produced-gguf-inputnorm",
+            BulkF32Origin::RetainedNormalized { .. } => "source.normalized_rows",
         }
     }
     pub fn validate(&self) -> Result<()> {
@@ -276,11 +349,11 @@ impl BulkF32Operand {
         {
             return Err(Error::State("bulk whole learned descriptor/axes".into()));
         }
-        if let BulkF32Origin::RetainedNormalized { prefix } = &self.origin {
-            prefix.validate()?;
+        if let BulkF32Origin::RetainedNormalized { binding } = &self.origin {
+            binding.validate()?;
             if self.side != BulkF32Side::Right
-                || prefix.span() != &self.span
-                || prefix.layout() != self.layout
+                || binding.span() != &self.span
+                || binding.layout() != self.layout
             {
                 return Err(Error::State(
                     "bulk retained normalized issuer/layout".into(),

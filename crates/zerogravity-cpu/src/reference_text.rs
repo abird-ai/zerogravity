@@ -537,7 +537,7 @@ impl MathematicalBackend for ReferenceTextMath<'_> {
                 .map_err(|_| Error::Limit("text RMS output".into()))?;
             for row in x.chunks_exact(gamma.values.len()) {
                 self.check()?;
-                out.extend(crate::math::rms_norm(row, gamma.values, eps)?);
+                out.extend(crate::ops::rms_norm(row, gamma.values, eps)?);
             }
             Ok(out)
         })
@@ -592,7 +592,7 @@ impl MathematicalBackend for ReferenceTextMath<'_> {
                 count,
                 false,
                 || {
-                    crate::original_hf::transcendentals::gelu_tanh_bf16_widened_f32_contiguous16(
+                    crate::numerics::torch_cpu::transcendentals::gelu_tanh_bf16_widened_f32_contiguous16(
                         self.source.source_identity(),
                         values[0],
                     )
@@ -617,7 +617,7 @@ impl MathematicalBackend for ReferenceTextMath<'_> {
                     .map(|i| match operation {
                         TextElementwise::Scale(scale) => values[0][i] * scale,
                         TextElementwise::ScaleBf16Scalar(_) => values[0][i] * bf16_scalar,
-                        TextElementwise::GeluTanh => crate::math::gelu_tanh(values[0][i]),
+                        TextElementwise::GeluTanh => crate::ops::gelu_tanh(values[0][i]),
                         TextElementwise::Multiply => values[0][i] * values[1][i],
                         TextElementwise::TanhSoftcap(cap)
                             if self.arithmetic == ReferenceTextArithmetic::Bf16EagerCandidate =>
@@ -790,7 +790,7 @@ impl MathematicalBackend for ReferenceTextMath<'_> {
             false,
             || {
                 if self.arithmetic == ReferenceTextArithmetic::Bf16EagerCandidate {
-                    return crate::original_hf::transcendentals::softmax_f32_lastdim_avx2(
+                    return crate::numerics::torch_cpu::transcendentals::softmax_f32_lastdim_avx2(
                         self.source.source_identity(),
                         x,
                         valid,
@@ -809,7 +809,7 @@ impl MathematicalBackend for ReferenceTextMath<'_> {
                         return Err(Error::Malformed("text leading causal/window mask".into()));
                     }
                     out.resize(out.len() + first, 0.0);
-                    out.extend(crate::math::softmax(&row[first..])?);
+                    out.extend(crate::ops::softmax(&row[first..])?);
                 }
                 Ok(out)
             },
@@ -849,7 +849,7 @@ impl MathematicalBackend for ReferenceTextMath<'_> {
             let (query_rows, contraction) = self.bf16_attention_call.ok_or_else(|| {
                 Error::State("candidate PV requires actual current-call contraction".into())
             })?;
-            Some(crate::original_hf::pv::Bf16PvGeometry {
+            Some(crate::numerics::torch_cpu::pv::Bf16PvGeometry {
                 query_rows,
                 contraction,
                 output_width: g.width,
@@ -868,12 +868,13 @@ impl MathematicalBackend for ReferenceTextMath<'_> {
                         for pair in rows {
                             column.push(self.input(&pair.1)?[vh * g.width + lane]);
                         }
-                        out[h * g.width + lane] = crate::original_hf::pv::bf16_pv_f32_accumulator(
-                            self.source.source_identity(),
-                            &p[h * valid..(h + 1) * valid],
-                            &column,
-                            pv_geometry.expect("validated candidate PV geometry"),
-                        )?;
+                        out[h * g.width + lane] =
+                            crate::numerics::torch_cpu::pv::bf16_pv_f32_accumulator(
+                                self.source.source_identity(),
+                                &p[h * valid..(h + 1) * valid],
+                                &column,
+                                pv_geometry.expect("validated candidate PV geometry"),
+                            )?;
                         continue;
                     }
                     let mut sum = 0.0f64;

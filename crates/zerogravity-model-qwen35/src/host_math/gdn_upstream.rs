@@ -1,12 +1,12 @@
 //! Source arithmetic under HostMath; all intermediate owners remain private.
 use super::bulk_f32::BulkBacking;
 use super::*;
-use crate::accelerator::program::{GgufGdnProjection, GgufGdnUpstreamDescriptor};
 use crate::accelerator::{MatVecRegion, SiluRegion};
+use crate::operator_slice::bulk_f32::source_bindings::{GdnProjection, GdnUpstreamBinding};
 use crate::operator_slice::bulk_f32::{GgufGdnUpstreamOwner, GgufGdnUpstreamSlice, not_cancelled};
 use std::sync::atomic::AtomicBool;
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, GlobalResourceLease};
-use zerogravity_cpu::math::haswell_bulk_f32::verify_environment;
+use zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment;
 
 const CHANNELS: usize = 6144;
 const TEACHERS: usize = 64;
@@ -16,7 +16,7 @@ pub(super) struct UpstreamProjection {
     _output: GlobalResourceLease,
     _input: HostValue,
     owner: Arc<GgufGdnUpstreamOwner>,
-    projection: GgufGdnProjection,
+    projection: GdnProjection,
 }
 pub(super) struct UpstreamConvolution {
     raw: Vec<f32>,
@@ -92,10 +92,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
         math.gguf_gdn_upstream_call = Some(UpstreamCall { slice, cancelled });
         math
     }
-    fn upstream_call(
-        &self,
-        descriptor: &GgufGdnUpstreamDescriptor,
-    ) -> Result<&UpstreamCall<'engine>> {
+    fn upstream_call(&self, descriptor: &GdnUpstreamBinding) -> Result<&UpstreamCall<'engine>> {
         let call = self
             .gguf_gdn_upstream_call
             .as_ref()
@@ -120,7 +117,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
     }
     pub(super) fn import_gguf_gdn_input(
         &self,
-        descriptor: &GgufGdnUpstreamDescriptor,
+        descriptor: &GdnUpstreamBinding,
     ) -> Result<HostValue> {
         let call = self.upstream_call(descriptor)?;
         HostValue::from_bulk(
@@ -133,8 +130,8 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
     }
     pub(super) fn execute_gguf_gdn_projection(
         &self,
-        descriptor: &GgufGdnUpstreamDescriptor,
-        projection: GgufGdnProjection,
+        descriptor: &GdnUpstreamBinding,
+        projection: GdnProjection,
         input: &HostValue,
     ) -> Result<HostValue> {
         let call = self.upstream_call(descriptor)?;
@@ -156,7 +153,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
         for activation in input.as_slice()?.chunks_exact(2048) {
             not_cancelled(call.cancelled)?;
             verify_environment()?;
-            let row = zerogravity_cpu::weights::source_reference_projection(MatVecRegion {
+            let row = zerogravity_cpu::source::source_reference_projection(MatVecRegion {
                 source_identity: descriptor.source(),
                 tensor_name: &tensor.name,
                 kind: tensor.kind,
@@ -191,13 +188,13 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
     }
     pub(super) fn execute_gguf_gdn_convolution(
         &self,
-        descriptor: &GgufGdnUpstreamDescriptor,
+        descriptor: &GdnUpstreamBinding,
         input: &HostValue,
     ) -> Result<HostValue> {
         let call = self.upstream_call(descriptor)?;
         let owner = &call.slice.owner;
         if !full(input, owner, WORDS)
-            || !matches!(input.data.bulk.as_ref(), Some(BulkBacking::GgufGdnProjection { completed }) if Arc::ptr_eq(&completed.owner, owner) && completed.projection == GgufGdnProjection::Qkv)
+            || !matches!(input.data.bulk.as_ref(), Some(BulkBacking::GgufGdnProjection { completed }) if Arc::ptr_eq(&completed.owner, owner) && completed.projection == GdnProjection::Qkv)
         {
             return Err(Error::State("GGUF upstream exact QKV backing".into()));
         }
@@ -270,7 +267,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
     }
     pub(super) fn execute_gguf_gdn_qk(
         &self,
-        descriptor: &GgufGdnUpstreamDescriptor,
+        descriptor: &GdnUpstreamBinding,
         input: &HostValue,
     ) -> Result<HostValue> {
         let call = self.upstream_call(descriptor)?;
@@ -346,5 +343,56 @@ impl HostValue {
             }
             _ => Err(Error::State("GGUF convolution history producer".into())),
         }
+    }
+}
+
+impl HostMath<'_, '_, '_> {
+    pub(super) fn execute_source_f32(
+        &self,
+        actual: &crate::accelerator::program::SourceOperator,
+        inputs: &[HostValue],
+    ) -> Result<HostValue> {
+        actual.validate()?;
+        if inputs.len() != actual.input_elements()?.len() {
+            return Err(Error::Malformed("source F32 host exact arity".into()));
+        }
+        if let Some(call) = &self.gguf_prefix_call {
+            let d = &call.slice.owner.descriptor;
+            if *actual == d.embedding_operator()? {
+                return self.execute_gguf_prefix_embedding(d);
+            }
+            if *actual == d.rms_operator()? {
+                return self.execute_gguf_prefix_rms(d, &inputs[0]);
+            }
+        }
+        if let Some(call) = &self.gguf_gdn_upstream_call {
+            let d = &call.slice.owner.descriptor;
+            if *actual == d.input_operator()? {
+                return self.import_gguf_gdn_input(d);
+            }
+            for projection in [GdnProjection::Qkv, GdnProjection::Z] {
+                if *actual == d.projection_operator(projection)? {
+                    return self.execute_gguf_gdn_projection(d, projection, &inputs[0]);
+                }
+            }
+            if *actual == d.convolution_operator()? {
+                return self.execute_gguf_gdn_convolution(d, &inputs[0]);
+            }
+            if *actual == d.qk_operator()? {
+                return self.execute_gguf_gdn_qk(d, &inputs[0]);
+            }
+        }
+        if let Some(call) = &self.zen_ssm_out_call {
+            let d = &call.slice.owner.descriptor;
+            if *actual == d.input_operator()? {
+                return self.import_zen_ssm_out(d);
+            }
+            if *actual == d.projection_operator()? {
+                return self.execute_zen_ssm_out(d, &inputs[0]);
+            }
+        }
+        Err(Error::Unsupported(
+            "source F32 lacks original retained family binding".into(),
+        ))
     }
 }

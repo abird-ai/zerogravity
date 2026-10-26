@@ -1,6 +1,6 @@
 //! Distinct initial prefix expectation; never an operand or full-model permit.
 use super::*;
-use zerogravity_model_qwen35::original_binding::WindowDiagnosticLayer9Stage as S;
+use zerogravity_model_qwen35::source::binding::WindowDiagnosticLayer9Stage as S;
 #[path = "layer9_pin.rs"]
 mod pin;
 const STAGES: [(&str, usize, Option<S>); 16] = [

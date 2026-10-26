@@ -1,11 +1,11 @@
 //! Closed GGUF operators under the same HostMath; no session construction.
 use super::bulk_f32::BulkBacking;
 use super::*;
-use crate::accelerator::program::GgufPrefixDescriptor;
+use crate::operator_slice::bulk_f32::source_bindings::PrefixBinding;
 use crate::operator_slice::bulk_f32::{GgufPrefixOwner, GgufPrefixSlice, not_cancelled};
 use std::sync::atomic::AtomicBool;
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, GlobalResourceLease};
-use zerogravity_cpu::math::haswell_bulk_f32::verify_environment;
+use zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment;
 
 const WORDS: usize = 2048 * 64;
 pub(super) struct PrefixEmbedding {
@@ -31,7 +31,7 @@ impl PrefixRms {
     }
 }
 pub(super) struct GgufPrefixCall<'a> {
-    slice: &'a GgufPrefixSlice,
+    pub(super) slice: &'a GgufPrefixSlice,
     cancelled: Option<&'a AtomicBool>,
 }
 fn reserve(words: usize) -> Result<Vec<f32>> {
@@ -61,7 +61,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
         math.gguf_prefix_call = Some(GgufPrefixCall { slice, cancelled });
         math
     }
-    fn prefix_call(&self, descriptor: &GgufPrefixDescriptor) -> Result<&GgufPrefixCall<'engine>> {
+    fn prefix_call(&self, descriptor: &PrefixBinding) -> Result<&GgufPrefixCall<'engine>> {
         let call = self
             .gguf_prefix_call
             .as_ref()
@@ -86,7 +86,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
     }
     pub(super) fn execute_gguf_prefix_embedding(
         &self,
-        descriptor: &GgufPrefixDescriptor,
+        descriptor: &PrefixBinding,
     ) -> Result<HostValue> {
         let call = self.prefix_call(descriptor)?;
         let owner = &call.slice.owner;
@@ -114,7 +114,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
         for &id in descriptor.span().ids() {
             not_cancelled(call.cancelled)?;
             verify_environment()?;
-            let decoded = row(zerogravity_cpu::weights::source_reference_embedding(
+            let decoded = row(zerogravity_cpu::source::source_reference_embedding(
                 owner.model.embedding_source(id)?,
             )?)?;
             values.extend_from_slice(&decoded);
@@ -136,7 +136,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
     }
     pub(super) fn execute_gguf_prefix_rms(
         &self,
-        descriptor: &GgufPrefixDescriptor,
+        descriptor: &PrefixBinding,
         input: &HostValue,
     ) -> Result<HostValue> {
         let call = self.prefix_call(descriptor)?;

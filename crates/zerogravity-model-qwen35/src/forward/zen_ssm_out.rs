@@ -1,11 +1,15 @@
-//! Same generic mathematical seam; one retained producer and one projection.
+//! One actual retained producer through the common source operator seam.
 use crate::Result;
-use crate::accelerator::program::{MathematicalBackend, ZenSsmOutDescriptor};
-
+use crate::accelerator::program::MathematicalBackend;
+use crate::operator_slice::bulk_f32::source_bindings::{GdnOutputBinding, one};
 pub(crate) fn zen_ssm_out_slice<M: MathematicalBackend>(
     math: &mut M,
-    descriptor: &ZenSsmOutDescriptor,
+    descriptor: &GdnOutputBinding,
 ) -> Result<M::Value> {
-    let input = math.zen_ssm_out_input(descriptor)?;
-    math.zen_ssm_out_project(descriptor, &input)
+    let input = one(math, descriptor.input_operator(), &[])?;
+    one(
+        math,
+        descriptor.projection_operator(),
+        std::slice::from_ref(&input),
+    )
 }

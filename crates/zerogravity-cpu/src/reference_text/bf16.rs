@@ -1,7 +1,7 @@
 //! Candidate eager BF16 cast schedule; not a claim about Torch GEMM/BMM/libm parity.
 use super::*;
 pub(super) fn round(x: f32) -> Result<f32> {
-    crate::original_hf::norm::round_bf16(x)
+    crate::numerics::torch_cpu::norm::round_bf16(x)
 }
 pub(super) fn rms(x: &[f32], gamma: &[f32], eps: f32) -> Result<Vec<f32>> {
     if !matches!(gamma.len(), 256 | 512 | 1536)
@@ -19,8 +19,8 @@ pub(super) fn rms(x: &[f32], gamma: &[f32], eps: f32) -> Result<Vec<f32>> {
     for row in x.chunks_exact(gamma.len()) {
         let squares = row.iter().map(|v| v * v).collect::<Vec<_>>();
         // Reuse existing CPU cascade sum; add neither1 to gamma nor an intermediate BF16 cast.
-        let mean = crate::original_hf::norm::sum_row(&squares) / gamma.len() as f32;
-        let inverse = crate::original_hf::norm::reciprocal_sqrt_f32(mean + eps);
+        let mean = crate::numerics::torch_cpu::norm::sum_row(&squares) / gamma.len() as f32;
+        let inverse = crate::numerics::torch_cpu::norm::reciprocal_sqrt_f32(mean + eps);
         for (v, g) in row.iter().zip(gamma) {
             out.push((v * inverse) * g);
         }
@@ -30,10 +30,8 @@ pub(super) fn rms(x: &[f32], gamma: &[f32], eps: f32) -> Result<Vec<f32>> {
 pub(super) fn softcap(x: f32, cap: f32) -> f32 {
     // Three original ATen results, each stored BF16. Nonfinite values are rejected by produce.
     let divide = round(x / cap).unwrap_or(f32::NAN);
-    let tanh = round(crate::original_hf::transcendentals::tanh_finite_lane(
-        divide,
-    ))
-    .unwrap_or(f32::NAN);
+    let tanh = round(crate::numerics::torch_cpu::transcendentals::tanh_finite_lane(divide))
+        .unwrap_or(f32::NAN);
     tanh * cap
 }
 pub(super) fn dot(x: &[f32], y: &[f32]) -> Result<f32> {
@@ -52,7 +50,7 @@ pub(super) fn dot(x: &[f32], y: &[f32]) -> Result<f32> {
     for v in y {
         bytes.extend_from_slice(&((v.to_bits() >> 16) as u16).to_le_bytes());
     }
-    Ok(crate::weights::dot_bf16_cpu_avx2(&bytes, x))
+    Ok(crate::source::dot_bf16_cpu_avx2(&bytes, x))
 }
 pub(super) fn rotary(x: &[f32], position: usize, g: TextRotary) -> Result<Vec<f32>> {
     g.validate(x.len())?;

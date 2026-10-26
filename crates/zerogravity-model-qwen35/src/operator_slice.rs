@@ -3,12 +3,12 @@ use crate::accelerator::program::{
     EmbeddingContract, PlanBuilder, ProgramNumericalProfile, ProjectionContract,
     RecordedOperatorSlice,
 };
-use crate::original_binding::{QwenMatrixRole, QwenNumericalProfile};
+use crate::source::binding::{QwenMatrixRole, QwenNumericalProfile};
 use crate::{Error, LoadedQwenModel, Result};
 
 /// Pure role metadata only; never a layer/token/session execution capability.
 pub(crate) trait OperatorSliceSource {
-    fn geometry(&self) -> &crate::model::ModelGeometry;
+    fn geometry(&self) -> &crate::config::ModelGeometry;
     fn source_identity(&self) -> crate::accelerator::SourceIdentity;
     fn program_numerical_profile(&self) -> ProgramNumericalProfile;
     fn rms_epsilon(&self) -> f32;
@@ -18,13 +18,13 @@ pub(crate) trait OperatorSliceSource {
     ) -> Result<crate::accelerator::program::SourceTensor>;
     fn parameter_descriptor(
         &self,
-        role: crate::original_binding::QwenParameterRole,
+        role: crate::source::binding::QwenParameterRole,
     ) -> Result<crate::accelerator::program::SourceParameter>;
     fn embedding_contract(&self) -> EmbeddingContract;
     fn projection_contract(&self) -> ProjectionContract;
 }
 impl OperatorSliceSource for LoadedQwenModel {
-    fn geometry(&self) -> &crate::model::ModelGeometry {
+    fn geometry(&self) -> &crate::config::ModelGeometry {
         LoadedQwenModel::geometry(self)
     }
     fn source_identity(&self) -> crate::accelerator::SourceIdentity {
@@ -44,7 +44,7 @@ impl OperatorSliceSource for LoadedQwenModel {
     }
     fn parameter_descriptor(
         &self,
-        role: crate::original_binding::QwenParameterRole,
+        role: crate::source::binding::QwenParameterRole,
     ) -> Result<crate::accelerator::program::SourceParameter> {
         LoadedQwenModel::parameter_descriptor(self, role)
     }
@@ -219,12 +219,7 @@ impl EmbeddingProjectionOutput {
     }
 }
 
-#[cfg(all(
-    test,
-    feature = "cpu",
-    feature = "original-hf-binding",
-    target_os = "linux"
-))]
+#[cfg(all(test, feature = "cpu", feature = "source-binding", target_os = "linux"))]
 #[path = "operator_slice_tests.rs"]
 mod tests;
 
@@ -235,12 +230,12 @@ pub mod attention;
 #[path = "gdn_conv_slice.rs"]
 pub mod gdn_conv;
 
-#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
 pub mod pure;
 
-#[cfg(all(feature = "original-hf-binding", target_os = "linux", feature = "cpu"))]
+#[cfg(all(feature = "source-binding", target_os = "linux", feature = "cpu"))]
 pub mod attention_tail;
-#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
 pub mod output_tail;
 
 /// Explicit external/source F32 temporal matrix, no model/state eligibility.

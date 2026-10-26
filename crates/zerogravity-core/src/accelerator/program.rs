@@ -14,38 +14,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 mod gdn_conv;
 pub use gdn_conv::{CausalConvSiluContract, CausalConvValues};
-mod gdn_prefix_binding;
-pub use gdn_prefix_binding::{GdnPrefixLayer, GdnPrefixRmsBinding, GdnPrefixRmsSite};
-mod vllm_gdn;
-pub use vllm_gdn::{
-    RecordedVllmGdnFragment, VllmGdnConv, VllmGdnConvValues, VllmGdnRecurrent, VllmInputRms,
-};
-// Exact Qwen3.5 family recipes live in one source directory, not in shared
-// tensor/ForwardPlan primitives. Retain original Rust module paths: type IDs,
-// compiled kernel identity and existing consumers must not change on a move.
-#[path = "program/family_qwen35/full_model_profile.rs"]
-mod full_model_profile;
-pub use full_model_profile::FullModelProfile;
-#[path = "program/family_qwen35/short_hf.rs"]
-mod short_hf;
-pub use short_hf::{ShortHfCall, ShortHfSpan, ShortHfWorkload};
-#[path = "program/family_qwen35/vllm_model.rs"]
-mod vllm_model;
-pub use vllm_model::{
-    RecordedVllm08Model, Vllm08Call, Vllm08Kind, Vllm08Layer, Vllm08Operator, Vllm08Origin,
-    Vllm08Projection, Vllm08RmsSite,
-};
-#[path = "program/family_qwen35/vllm_native.rs"]
-mod vllm_native;
-pub use vllm_native::{
-    VllmBf16Invocation, VllmBf16Mode, VllmBf16Phase, VllmGdnProjection, VllmGdnProjectionKind,
-    VllmNativeProjectionContract, VllmSiluAndMul, VllmSiluAndMulContract, VllmValueOrigin,
-    VllmValueProvenance,
-};
-mod residual_rms;
-pub use residual_rms::{
-    ResidualRmsContract, ResidualRmsValues, VllmBf16Embedding, VllmBf16Teachers,
-};
 mod cpu_attention;
 mod cpu_gdn;
 pub use cpu_gdn::{TorchCpuGdnContract, TorchCpuGdnInputs, TorchCpuGdnPhase, TorchCpuGdnValues};
@@ -58,7 +26,8 @@ pub use text_call::TextCallGeometry;
 mod bf16_text;
 mod text;
 pub use bf16_text::{
-    Bf16TextCall, Bf16TextGreedy, Bf16TextProjectionGeometry, Bf16TextPvGeometry, Bf16TextRow,
+    Bf16TextAttentionContract, Bf16TextCall, Bf16TextContract, Bf16TextGreedy,
+    Bf16TextProjectionGeometry, Bf16TextPvGeometry, Bf16TextRmsContract, Bf16TextRow,
 };
 mod text_moe;
 pub use cpu_attention::{
@@ -72,6 +41,19 @@ pub use typed::{
     ProjectionContract, SourceParameter,
 };
 
+mod text_bindings;
+mod text_step;
+pub use text_bindings::{
+    SourceNorm, TextCallPolicy, TextObservation, TextPlanBindings, TextPlanInventory,
+};
+pub use text_step::TextStepBindings;
+mod source_program;
+pub use source_program::{
+    SourceAttentionMask, SourceCall, SourceCallMode, SourceConvGeometry, SourceGamma,
+    SourceGdnContract, SourceGdnGeometry, SourceGroupedQkGeometry, SourceNumericalContract,
+    SourceOperator, SourceOperatorKind, SourceOperatorSemantics, SourceQkRotaryGeometry,
+    SourceRetainedOrigin, SourceRmsGeometry, SourceRows, SourceStateAccess, SourceValueProvenance,
+};
 mod value_storage;
 pub use value_storage::{
     ValueLifetime, ValueStorageBinding, ValueStorageFormat, ValueStorageLayout, ValueStorageLimits,
@@ -82,16 +64,8 @@ pub use value_storage::{
 mod bulk_f32;
 pub use bulk_f32::{
     BulkF32Contract, BulkF32Layout, BulkF32Matrix, BulkF32Operand, BulkF32Origin, BulkF32Side,
-    TeacherSpan,
+    RetainedRmsRows, TeacherSpan,
 };
-mod gguf_gdn_upstream;
-pub use gguf_gdn_upstream::{
-    GgufGdnProjection, GgufGdnUpstreamContract, GgufGdnUpstreamDescriptor, GgufGdnUpstreamValues,
-};
-mod gguf_prefix;
-pub use gguf_prefix::{GgufPrefixContract, GgufPrefixDescriptor};
-mod zen_ssm_out;
-pub use zen_ssm_out::{ZenSsmOutContract, ZenSsmOutDescriptor};
 
 static NEXT_PLAN_BUILDER: AtomicU64 = AtomicU64::new(1);
 
@@ -200,7 +174,7 @@ impl SourceTensor {
         Ok(tensor)
     }
 
-    fn packed_bytes(&self) -> Result<u64> {
+    pub fn packed_bytes(&self) -> Result<u64> {
         if !self.source.is_bound() || self.name.is_empty() || self.columns == 0 || self.rows == 0 {
             return Err(Error::State("invalid forward source descriptor".into()));
         }
@@ -260,7 +234,7 @@ pub struct ForwardInputs<I> {
     pub position: I,
     pub valid_tokens: I,
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AttentionGeometry {
     pub width: usize,
     pub query_heads: usize,
@@ -441,80 +415,13 @@ pub trait MathematicalBackend {
             "backend has no bounded CPU eager BF16 attention".into(),
         ))
     }
-    fn vllm_bf16_source_embedding(
+    fn source_operator(
         &mut self,
-        _descriptor: &VllmBf16Embedding,
-    ) -> Result<Self::Value> {
-        Err(Error::Unsupported(
-            "backend has no reserved vLLM BF16 source-row embedding".into(),
-        ))
-    }
-    fn vllm08_operator(
-        &mut self,
-        _descriptor: &Vllm08Operator,
+        _descriptor: &SourceOperator,
         _inputs: &[Self::Value],
     ) -> Result<Vec<Self::Value>> {
         Err(Error::Unsupported(
-            "backend has no closed original full24 operator".into(),
-        ))
-    }
-    fn vllm_gdn_project(
-        &mut self,
-        _descriptor: &VllmGdnProjection,
-        _input: &Self::Value,
-    ) -> Result<Self::Value> {
-        Err(Error::Unsupported(
-            "backend has no closed vLLM native source projection".into(),
-        ))
-    }
-    fn vllm_silu_and_mul(
-        &mut self,
-        _descriptor: &VllmSiluAndMul,
-        _input: &Self::Value,
-    ) -> Result<Self::Value> {
-        Err(Error::Unsupported(
-            "backend has no closed vLLM BF16 SiLU/multiply".into(),
-        ))
-    }
-    fn vllm_input_rms(
-        &mut self,
-        _descriptor: &VllmInputRms,
-        _input: &Self::Value,
-    ) -> Result<Self::Value> {
-        Err(Error::Unsupported(
-            "backend has no vLLM source input RMS".into(),
-        ))
-    }
-    fn vllm_gdn_conv(
-        &mut self,
-        _descriptor: &VllmGdnConv,
-        _qkvz: &Self::Value,
-        _ba: &Self::Value,
-    ) -> Result<VllmGdnConvValues<Self::Value>> {
-        Err(Error::Unsupported(
-            "backend has no original-root vLLM GDN Conv".into(),
-        ))
-    }
-    fn vllm_gdn_recurrent(
-        &mut self,
-        _descriptor: &VllmGdnRecurrent,
-        _activated: &Self::Value,
-        _z: &Self::Value,
-        _ba: &Self::Value,
-    ) -> Result<Self::Value> {
-        Err(Error::Unsupported(
-            "backend has no original-root vLLM GDN recurrent/gated".into(),
-        ))
-    }
-    fn residual_rms_profiled(
-        &mut self,
-        _parameter: SourceParameter,
-        _branch: &Self::Value,
-        _residual: &Self::Value,
-        _contract: ResidualRmsContract,
-    ) -> Result<ResidualRmsValues<Self::Value>> {
-        Err(Error::Unsupported(
-            "backend has no reserved vLLM residual RMS contract".into(),
+            "backend has no exact source-operator contract".into(),
         ))
     }
     fn ordinary_rms_profiled(
@@ -552,65 +459,6 @@ pub trait MathematicalBackend {
     ) -> Result<Self::Value> {
         Err(Error::Unsupported(
             "backend has no closed Haswell bulk F32 matrix contract".into(),
-        ))
-    }
-    fn gguf_gdn_input(&mut self, _descriptor: &GgufGdnUpstreamDescriptor) -> Result<Self::Value> {
-        Err(Error::Unsupported(
-            "backend has no retained GGUF upstream input".into(),
-        ))
-    }
-    fn gguf_gdn_project(
-        &mut self,
-        _descriptor: &GgufGdnUpstreamDescriptor,
-        _projection: GgufGdnProjection,
-        _input: &Self::Value,
-    ) -> Result<Self::Value> {
-        Err(Error::Unsupported(
-            "backend has no original Q4 upstream projection".into(),
-        ))
-    }
-    fn gguf_gdn_conv_silu(
-        &mut self,
-        _descriptor: &GgufGdnUpstreamDescriptor,
-        _input: &Self::Value,
-    ) -> Result<Self::Value> {
-        Err(Error::Unsupported(
-            "backend has no GGUF upstream convolution".into(),
-        ))
-    }
-    fn gguf_gdn_qk(
-        &mut self,
-        _descriptor: &GgufGdnUpstreamDescriptor,
-        _input: &Self::Value,
-    ) -> Result<Self::Value> {
-        Err(Error::Unsupported("backend has no GGUF upstream QK".into()))
-    }
-    fn gguf_prefix_embedding(&mut self, _descriptor: &GgufPrefixDescriptor) -> Result<Self::Value> {
-        Err(Error::Unsupported(
-            "backend has no closed GGUF prefix embedding contract".into(),
-        ))
-    }
-    fn gguf_prefix_rms(
-        &mut self,
-        _descriptor: &GgufPrefixDescriptor,
-        _input: &Self::Value,
-    ) -> Result<Self::Value> {
-        Err(Error::Unsupported(
-            "backend has no closed GGUF prefix RMS contract".into(),
-        ))
-    }
-    fn zen_ssm_out_input(&mut self, _descriptor: &ZenSsmOutDescriptor) -> Result<Self::Value> {
-        Err(Error::Unsupported(
-            "backend has no retained-gated Zen input contract".into(),
-        ))
-    }
-    fn zen_ssm_out_project(
-        &mut self,
-        _descriptor: &ZenSsmOutDescriptor,
-        _input: &Self::Value,
-    ) -> Result<Self::Value> {
-        Err(Error::Unsupported(
-            "backend has no closed Zen Q8 ssm_out contract".into(),
         ))
     }
     fn embed(&mut self, tensor: SourceTensor, token: Self::Index) -> Result<Self::Value>;
@@ -750,6 +598,9 @@ pub struct PlanValue {
     precision: ActivationPrecision,
 }
 impl PlanValue {
+    pub fn elements(self) -> usize {
+        self.elements
+    }
     pub fn precision(self) -> ActivationPrecision {
         self.precision
     }
@@ -773,10 +624,14 @@ pub struct StateEffect {
     pub write: StateVersion,
 }
 
-/// Per-op source semantics, NOT backend launches or a second Qwen schedule.
+/// Per-op source semantics, not backend launches or a second model schedule.
 /// Lowering may add explicit Pack/Copy instructions for qualified kernel ABIs.
 #[derive(Clone, Debug)]
 pub enum PlanOperation {
+    SourceOperator {
+        descriptor: Box<SourceOperator>,
+        state: Option<StateVersion>,
+    },
     TextMoe {
         contract: Box<TextMoeContract>,
         router_scale: StaticVectorId,
@@ -792,35 +647,6 @@ pub enum PlanOperation {
         geometry: AttentionGeometry,
         valid_tokens: ParameterRef,
         window: Option<usize>,
-    },
-    TypedVllm08 {
-        descriptor: Box<Vllm08Operator>,
-        state: Option<StateVersion>,
-    },
-    TypedGgufGdnInput {
-        descriptor: Box<GgufGdnUpstreamDescriptor>,
-    },
-    TypedGgufGdnProjection {
-        descriptor: Box<GgufGdnUpstreamDescriptor>,
-        projection: GgufGdnProjection,
-    },
-    TypedGgufGdnConvSilu {
-        descriptor: Box<GgufGdnUpstreamDescriptor>,
-    },
-    TypedGgufGdnQk {
-        descriptor: Box<GgufGdnUpstreamDescriptor>,
-    },
-    TypedGgufPrefixEmbedding {
-        descriptor: Box<GgufPrefixDescriptor>,
-    },
-    TypedGgufPrefixRms {
-        descriptor: Box<GgufPrefixDescriptor>,
-    },
-    TypedZenSsmOutInput {
-        descriptor: Box<ZenSsmOutDescriptor>,
-    },
-    TypedZenSsmOutProjection {
-        descriptor: Box<ZenSsmOutDescriptor>,
     },
     TypedBulkF32Input {
         operand: BulkF32Operand,
@@ -856,29 +682,6 @@ pub enum PlanOperation {
     TypedCausalConvSilu {
         parameter: SourceParameter,
         contract: CausalConvSiluContract,
-    },
-    TypedVllmInputRms {
-        descriptor: Box<VllmInputRms>,
-    },
-    TypedVllmGdnConv {
-        descriptor: Box<VllmGdnConv>,
-    },
-    TypedVllmGdnRecurrent {
-        descriptor: Box<VllmGdnRecurrent>,
-    },
-    TypedVllmStateCarry,
-    TypedVllmGdnProjection {
-        descriptor: Box<VllmGdnProjection>,
-    },
-    TypedVllmSiluAndMul {
-        descriptor: Box<VllmSiluAndMul>,
-    },
-    TypedVllmBf16Embedding {
-        descriptor: Box<VllmBf16Embedding>,
-    },
-    TypedResidualRms {
-        parameter: SourceParameter,
-        contract: ResidualRmsContract,
     },
     TypedOrdinaryRms {
         parameter: SourceParameter,
@@ -984,6 +787,11 @@ impl PlanNode {
         }
     }
 }
+impl PlanNode {
+    pub fn shares_topology(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.topology, &other.topology)
+    }
+}
 impl std::ops::Deref for PlanNode {
     type Target = PlanNodeTopology;
     fn deref(&self) -> &Self::Target {
@@ -997,10 +805,11 @@ impl std::ops::DerefMut for PlanNode {
 }
 #[derive(Clone, Debug)]
 pub struct ForwardPlan {
-    vllm_fragment: Option<VllmBf16Invocation>,
-    vllm_provenance: Vec<Option<VllmValueProvenance>>,
+    source_call: Option<SourceCall>,
+    source_provenance: Vec<Option<SourceValueProvenance>>,
     nodes: Vec<PlanNode>,
     semantics: Arc<ForwardPlanSemantics>,
+    binding_metadata: Option<Arc<PreparedPlanMetadata>>,
 }
 /// Source, numerical and storage geometry; no invocation or root authority.
 #[derive(Clone, Debug)]
@@ -1009,6 +818,7 @@ pub struct ForwardPlanSemantics {
     source: SourceIdentity,
     profile: ProgramNumericalProfile,
     standalone_exp: Option<StandaloneExpProfile>,
+    bf16_text: Option<Arc<Bf16TextContract>>,
     operator_slice: bool,
     precisions: Vec<ActivationPrecision>,
     prefix_capacity: usize,
@@ -1043,11 +853,14 @@ impl std::ops::DerefMut for ForwardPlan {
 /// State-free fragment recorded by the same builder; no token/root advance.
 #[derive(Clone, Debug)]
 pub struct RecordedOperatorSlice {
-    plan: ForwardPlan,
+    plan: Arc<ForwardPlan>,
     output: ValueId,
 }
 impl RecordedOperatorSlice {
     pub fn plan(&self) -> &ForwardPlan {
+        &self.plan
+    }
+    pub fn shared_plan(&self) -> &Arc<ForwardPlan> {
         &self.plan
     }
     pub fn output(&self) -> ValueId {
@@ -1062,25 +875,15 @@ impl ForwardPlan {
     pub fn standalone_exp_profile(&self) -> Option<StandaloneExpProfile> {
         self.standalone_exp
     }
-    pub fn vllm_gdn_fragment(&self) -> Option<&VllmBf16Invocation> {
-        self.vllm_fragment.as_ref()
+    /// Explicit mathematical limits; model/source eligibility stays with its owner.
+    pub fn bf16_text_contract(&self) -> Option<&Bf16TextContract> {
+        self.bf16_text.as_deref()
     }
     pub fn is_operator_slice(&self) -> bool {
         self.operator_slice
     }
     pub fn precisions(&self) -> &[ActivationPrecision] {
         &self.precisions
-    }
-    pub fn vllm_value_provenance(&self, id: ValueId) -> Result<Option<&VllmValueProvenance>> {
-        if self.values.get(id.0 as usize).is_none() {
-            return Err(Error::State(
-                "foreign plan value ID for vLLM provenance".into(),
-            ));
-        }
-        self.vllm_provenance
-            .get(id.0 as usize)
-            .map(Option::as_ref)
-            .ok_or_else(|| Error::State("plan vLLM provenance coverage".into()))
     }
     pub fn source(&self) -> SourceIdentity {
         self.source
@@ -1118,15 +921,14 @@ impl ForwardPlan {
 }
 
 pub struct PlanBuilder {
-    vllm_model: Option<Vllm08Call>,
-    vllm08_kv_cohorts: BTreeMap<usize, usize>,
+    source_call: Option<SourceCall>,
+    source_provenance: Vec<Option<SourceValueProvenance>>,
     owner: u64,
     profile: ProgramNumericalProfile,
     standalone_exp: Option<StandaloneExpProfile>,
+    bf16_text: Option<Arc<Bf16TextContract>>,
     operator_slice: bool,
-    vllm_fragment: Option<VllmBf16Invocation>,
     precisions: Vec<ActivationPrecision>,
-    vllm_provenance: Vec<Option<VllmValueProvenance>>,
     source: SourceIdentity,
     prefix_capacity: usize,
     nodes: Vec<PlanNode>,
@@ -1161,7 +963,34 @@ impl PlanBuilder {
         capture: bool,
         profile: ProgramNumericalProfile,
     ) -> Result<Self> {
+        if profile == ProgramNumericalProfile::DirectGammaBf16TextCandidateV1 {
+            return Err(Error::Unsupported(
+                "BF16 text requires an explicit mathematical contract".into(),
+            ));
+        }
         Self::new_inner(source, prefix_capacity, required, capture, profile, false)
+    }
+    /// Direct-gamma BF16 mathematical recording, without model/native eligibility.
+    /// The model owner supplies and separately authenticates its finite policy.
+    pub fn new_bf16_text(
+        source: SourceIdentity,
+        prefix_capacity: usize,
+        required: Vec<StateSlot>,
+        capture: bool,
+        contract: Bf16TextContract,
+    ) -> Result<Self> {
+        contract.validate()?;
+        contract.validate_builder(prefix_capacity, &required.iter().copied().collect(), false)?;
+        let mut builder = Self::new_inner(
+            source,
+            prefix_capacity,
+            required,
+            capture,
+            ProgramNumericalProfile::DirectGammaBf16TextCandidateV1,
+            false,
+        )?;
+        builder.bf16_text = Some(Arc::new(contract));
+        Ok(builder)
     }
     /// Source arithmetic metadata only; no native/model eligibility.
     pub fn new_torch_source(
@@ -1185,6 +1014,11 @@ impl PlanBuilder {
         source: SourceIdentity,
         profile: ProgramNumericalProfile,
     ) -> Result<Self> {
+        if profile == ProgramNumericalProfile::DirectGammaBf16TextCandidateV1 {
+            return Err(Error::Unsupported(
+                "BF16 text requires a complete explicit contract".into(),
+            ));
+        }
         Self::new_inner(source, 1, Vec::new(), false, profile, true)
     }
     fn new_inner(
@@ -1197,9 +1031,6 @@ impl PlanBuilder {
     ) -> Result<Self> {
         let expected_count = required.len();
         let required: BTreeSet<_> = required.into_iter().collect();
-        if profile == ProgramNumericalProfile::Gemma4E2bBf16TextCandidateV1 {
-            bf16_text::validate_builder(prefix_capacity, &required, operator_slice)?;
-        }
         if !source.is_bound()
             || prefix_capacity == 0
             || required.is_empty() != operator_slice
@@ -1212,14 +1043,13 @@ impl PlanBuilder {
             .map_err(|_| Error::Limit("forward plan builder identity exhausted".into()))?;
         Ok(Self {
             owner,
-            vllm_model: None,
-            vllm08_kv_cohorts: BTreeMap::new(),
+            source_call: None,
+            source_provenance: Vec::new(),
             profile,
             standalone_exp: None,
+            bf16_text: None,
             operator_slice,
-            vllm_fragment: None,
             precisions: Vec::new(),
-            vllm_provenance: Vec::new(),
             source,
             prefix_capacity,
             nodes: Vec::new(),
@@ -1239,22 +1069,6 @@ impl PlanBuilder {
             valid_tokens: ParameterRef(ParameterSlot::ValidTokens),
         }
     }
-    /// Immutable tag of a value issued by THIS builder. No caller tag setter.
-    pub fn vllm_value_provenance(&self, value: &PlanValue) -> Result<Option<&VllmValueProvenance>> {
-        if value.owner != self.owner
-            || self.values.get(value.id.0 as usize) != Some(&value.shape)
-            || value.elements != value.shape.capacity_elements()?
-            || self.precisions.get(value.id.0 as usize) != Some(&value.precision)
-        {
-            return Err(Error::State(
-                "foreign value cannot supply vLLM provenance".into(),
-            ));
-        }
-        self.vllm_provenance
-            .get(value.id.0 as usize)
-            .map(Option::as_ref)
-            .ok_or_else(|| Error::State("builder vLLM provenance coverage".into()))
-    }
     fn source_tensor(&self, tensor: &SourceTensor) -> Result<()> {
         tensor.packed_bytes()?;
         if tensor.source != self.source {
@@ -1265,8 +1079,8 @@ impl PlanBuilder {
         Ok(())
     }
     fn constant(&mut self, vector: SourceVector<'_>) -> Result<StaticVectorId> {
-        if self.profile == ProgramNumericalProfile::Gemma4E2bBf16TextCandidateV1 {
-            bf16_text::validate_constant(&vector)?;
+        if let Some(contract) = &self.bf16_text {
+            contract.validate_constant(&vector)?;
         } else if !matches!(
             self.profile,
             ProgramNumericalProfile::GgufSourceV1 | ProgramNumericalProfile::AnalyticF32TextV1
@@ -1316,36 +1130,12 @@ impl PlanBuilder {
         operation: &PlanOperation,
         inputs: &[PlanValue],
     ) -> Result<ActivationPrecision> {
-        if self.profile == ProgramNumericalProfile::Gemma4E2bBf16TextCandidateV1 {
-            return bf16_text::precision(self, operation, inputs);
+        if let Some(contract) = &self.bf16_text {
+            return bf16_text::precision(self, contract, operation, inputs);
         }
         match operation {
-            PlanOperation::TypedVllm08 { descriptor, .. } => {
-                vllm_model::precision(self, descriptor, inputs)
-            }
-            PlanOperation::TypedGgufGdnInput { descriptor } => {
-                gguf_gdn_upstream::input_precision(self, descriptor)
-            }
-            PlanOperation::TypedGgufGdnProjection { descriptor, .. } => {
-                gguf_gdn_upstream::projection_precision(self, descriptor, inputs)
-            }
-            PlanOperation::TypedGgufGdnConvSilu { descriptor } => {
-                gguf_gdn_upstream::convolution_precision(self, descriptor, inputs)
-            }
-            PlanOperation::TypedGgufGdnQk { descriptor } => {
-                gguf_gdn_upstream::qk_precision(self, descriptor, inputs)
-            }
-            PlanOperation::TypedGgufPrefixEmbedding { descriptor } => {
-                gguf_prefix::embedding_precision(self, descriptor)
-            }
-            PlanOperation::TypedGgufPrefixRms { descriptor } => {
-                gguf_prefix::rms_precision(self, descriptor, inputs)
-            }
-            PlanOperation::TypedZenSsmOutInput { descriptor } => {
-                zen_ssm_out::input_precision(self, descriptor)
-            }
-            PlanOperation::TypedZenSsmOutProjection { descriptor } => {
-                zen_ssm_out::projection_precision(self, descriptor, inputs)
+            PlanOperation::SourceOperator { descriptor, .. } => {
+                source_program::precision(self, descriptor, inputs)
             }
             PlanOperation::TypedBulkF32Input { operand } => {
                 bulk_f32::input_precision(self, operand)
@@ -1353,33 +1143,6 @@ impl PlanBuilder {
             PlanOperation::TypedBulkF32Matmul { matrix } => {
                 bulk_f32::matrix_precision(self, matrix, inputs)
             }
-            PlanOperation::TypedVllmInputRms { descriptor } => {
-                vllm_gdn::input_rms_precision(self, descriptor, inputs)
-            }
-            PlanOperation::TypedVllmGdnConv { descriptor } => {
-                vllm_gdn::conv_precision(self, descriptor, inputs)
-            }
-            PlanOperation::TypedVllmGdnRecurrent { descriptor } => {
-                vllm_gdn::recurrent_precision(self, descriptor, inputs)
-            }
-            PlanOperation::TypedVllmStateCarry
-                if self.vllm_fragment.is_some() && inputs.is_empty() =>
-            {
-                Ok(ActivationPrecision::F32)
-            }
-            PlanOperation::TypedVllmGdnProjection { descriptor } => {
-                vllm_native::projection_precision(self, descriptor, inputs)
-            }
-            PlanOperation::TypedVllmSiluAndMul { descriptor } => {
-                vllm_native::activation_precision(self, descriptor, inputs)
-            }
-            PlanOperation::TypedVllmBf16Embedding { descriptor } => {
-                residual_rms::embedding_precision(self, descriptor)
-            }
-            PlanOperation::TypedResidualRms {
-                parameter,
-                contract,
-            } => residual_rms::result_precision(self, parameter, *contract, inputs),
             PlanOperation::TypedEmbed {
                 tensor,
                 contract: EmbeddingContract::Bf16OutputInput,
@@ -1492,28 +1255,12 @@ impl PlanBuilder {
                     .all(|input| input.precision == ActivationPrecision::F32)
                 && !matches!(
                     operation,
-                    PlanOperation::TypedGgufGdnInput { .. }
-                        | PlanOperation::TypedGgufGdnProjection { .. }
-                        | PlanOperation::TypedGgufGdnConvSilu { .. }
-                        | PlanOperation::TypedGgufGdnQk { .. }
-                        | PlanOperation::TypedGgufPrefixEmbedding { .. }
-                        | PlanOperation::TypedGgufPrefixRms { .. }
-                        | PlanOperation::TypedZenSsmOutInput { .. }
-                        | PlanOperation::TypedZenSsmOutProjection { .. }
+                    PlanOperation::SourceOperator { .. }
                         | PlanOperation::TypedBulkF32Input { .. }
                         | PlanOperation::TypedBulkF32Matmul { .. }
                         | PlanOperation::TypedEmbed { .. }
                         | PlanOperation::TypedProject { .. }
                         | PlanOperation::TypedOrdinaryRms { .. }
-                        | PlanOperation::TypedVllm08 { .. }
-                        | PlanOperation::TypedVllmBf16Embedding { .. }
-                        | PlanOperation::TypedVllmInputRms { .. }
-                        | PlanOperation::TypedVllmGdnConv { .. }
-                        | PlanOperation::TypedVllmGdnRecurrent { .. }
-                        | PlanOperation::TypedVllmStateCarry
-                        | PlanOperation::TypedVllmGdnProjection { .. }
-                        | PlanOperation::TypedVllmSiluAndMul { .. }
-                        | PlanOperation::TypedResidualRms { .. }
                         | PlanOperation::TypedCausalConvSilu { .. }
                         | PlanOperation::TypedSourceStateRead { .. }
                         | PlanOperation::TypedSourceStateWrite { .. }
@@ -1537,30 +1284,21 @@ impl PlanBuilder {
         shapes: &[ValueShape],
         state: Option<StateEffect>,
     ) -> Result<Vec<PlanValue>> {
-        if !matches!(
-            operation,
-            PlanOperation::TypedBulkF32Matmul { .. }
-                | PlanOperation::TypedZenSsmOutProjection { .. }
-                | PlanOperation::TypedGgufPrefixRms { .. }
-                | PlanOperation::TypedGgufGdnProjection { .. }
-                | PlanOperation::TypedGgufGdnConvSilu { .. }
-                | PlanOperation::TypedGgufGdnQk { .. }
-        ) && inputs.iter().any(|input| {
+        if inputs.iter().any(|input| {
             self.nodes.iter().any(|node| {
                 node.outputs.contains(&input.id)
-                    && matches!(
-                        node.operation,
-                        PlanOperation::TypedGgufGdnInput { .. }
-                            | PlanOperation::TypedGgufGdnProjection { .. }
-                            | PlanOperation::TypedGgufGdnConvSilu { .. }
-                            | PlanOperation::TypedGgufGdnQk { .. }
-                            | PlanOperation::TypedGgufPrefixEmbedding { .. }
-                            | PlanOperation::TypedGgufPrefixRms { .. }
-                            | PlanOperation::TypedZenSsmOutInput { .. }
-                            | PlanOperation::TypedZenSsmOutProjection { .. }
-                            | PlanOperation::TypedBulkF32Input { .. }
-                            | PlanOperation::TypedBulkF32Matmul { .. }
-                    )
+                    && match &node.operation {
+                        PlanOperation::TypedBulkF32Input { .. }
+                        | PlanOperation::TypedBulkF32Matmul { .. } => {
+                            !matches!(operation, PlanOperation::TypedBulkF32Matmul { .. })
+                        }
+                        PlanOperation::SourceOperator { descriptor, .. }
+                            if descriptor.numerical_contract().is_f32() =>
+                        {
+                            !matches!(operation, PlanOperation::SourceOperator { .. })
+                        }
+                        _ => false,
+                    }
             })
         }) {
             return Err(Error::Unsupported(
@@ -1585,8 +1323,8 @@ impl PlanBuilder {
         }
         let precision = self.result_precision(&operation, inputs)?;
         // Validate EVERY output tag before mutating values or state.
-        let vllm_provenance = (0..shapes.len())
-            .map(|index| vllm_native::result_provenance(self, &operation, inputs, index))
+        let source_provenance = (0..shapes.len())
+            .map(|index| source_program::provenance(self, &operation, inputs, index))
             .collect::<Result<Vec<_>>>()?;
         let elements: Vec<_> = shapes
             .iter()
@@ -1608,9 +1346,7 @@ impl PlanBuilder {
             return Err(Error::State("stale forward-plan state effect".into()));
         }
         let mut outputs = Vec::with_capacity(shapes.len());
-        for (output_index, ((&shape, elements), tag)) in
-            shapes.iter().zip(elements).zip(vllm_provenance).enumerate()
-        {
+        for (output_index, (&shape, elements)) in shapes.iter().zip(elements).enumerate() {
             let precision =
                 if matches!(&operation, PlanOperation::TypedTorchGdn { .. }) && output_index == 3 {
                     ActivationPrecision::F32
@@ -1620,7 +1356,8 @@ impl PlanBuilder {
             let id = ValueId(self.values.len() as u32);
             self.values.push(shape);
             self.precisions.push(precision);
-            self.vllm_provenance.push(tag);
+            self.source_provenance
+                .push(source_provenance[output_index].clone());
             outputs.push(PlanValue {
                 id,
                 shape,
@@ -1698,15 +1435,17 @@ impl PlanBuilder {
         }
         Ok(RecordedOperatorSlice {
             output: output.id,
-            plan: ForwardPlan {
-                vllm_fragment: None,
-                vllm_provenance: self.vllm_provenance,
+            plan: Arc::new(ForwardPlan {
+                binding_metadata: None,
+                source_call: self.source_call,
+                source_provenance: self.source_provenance,
                 nodes: self.nodes,
                 semantics: Arc::new(ForwardPlanSemantics {
                     metadata: None,
                     source: self.source,
                     profile: self.profile,
                     standalone_exp: self.standalone_exp,
+                    bf16_text: self.bf16_text,
                     operator_slice: true,
                     precisions: self.precisions,
                     prefix_capacity: self.prefix_capacity,
@@ -1718,12 +1457,12 @@ impl PlanBuilder {
                     frontier_delta: 0,
                     state_node_count: 0,
                 }),
-            },
+            }),
         })
     }
     pub fn finish(self, logits: Option<PlanValue>) -> Result<ForwardPlan> {
         if self.operator_slice
-            || self.vllm_fragment.is_some()
+            || self.source_call.is_some()
             || self.advanced.is_none()
             || self.domains.len() != self.required.len()
             || self
@@ -1743,14 +1482,16 @@ impl PlanBuilder {
             return Err(Error::State("foreign forward-plan logits".into()));
         }
         Ok(ForwardPlan {
-            vllm_fragment: None,
-            vllm_provenance: self.vllm_provenance,
+            binding_metadata: None,
+            source_call: self.source_call,
+            source_provenance: self.source_provenance,
             nodes: self.nodes,
             semantics: Arc::new(ForwardPlanSemantics {
                 metadata: None,
                 source: self.source,
                 profile: self.profile,
                 standalone_exp: self.standalone_exp,
+                bf16_text: self.bf16_text,
                 operator_slice: false,
                 precisions: self.precisions,
                 prefix_capacity: self.prefix_capacity,
@@ -1768,6 +1509,14 @@ impl PlanBuilder {
 
 #[allow(clippy::too_many_arguments)] // Source closed-op inputs stay explicit.
 impl MathematicalBackend for PlanBuilder {
+    fn source_operator(
+        &mut self,
+        descriptor: &SourceOperator,
+        inputs: &[PlanValue],
+    ) -> Result<Vec<PlanValue>> {
+        source_program::record(self, descriptor, inputs)
+    }
+
     type Value = PlanValue;
     type Index = ParameterRef;
     fn torch_cpu_full_convolution_cache(
@@ -1797,31 +1546,6 @@ impl MathematicalBackend for PlanBuilder {
         input: TorchCpuAttentionInputs<'_, PlanValue>,
     ) -> Result<TorchCpuAttentionValues<PlanValue>> {
         cpu_attention::record(self, name, input)
-    }
-    fn gguf_gdn_input(&mut self, descriptor: &GgufGdnUpstreamDescriptor) -> Result<PlanValue> {
-        gguf_gdn_upstream::record_input(self, descriptor)
-    }
-    fn gguf_gdn_project(
-        &mut self,
-        descriptor: &GgufGdnUpstreamDescriptor,
-        projection: GgufGdnProjection,
-        input: &PlanValue,
-    ) -> Result<PlanValue> {
-        gguf_gdn_upstream::record_projection(self, descriptor, projection, input)
-    }
-    fn gguf_gdn_conv_silu(
-        &mut self,
-        descriptor: &GgufGdnUpstreamDescriptor,
-        input: &PlanValue,
-    ) -> Result<PlanValue> {
-        gguf_gdn_upstream::record_convolution(self, descriptor, input)
-    }
-    fn gguf_gdn_qk(
-        &mut self,
-        descriptor: &GgufGdnUpstreamDescriptor,
-        input: &PlanValue,
-    ) -> Result<PlanValue> {
-        gguf_gdn_upstream::record_qk(self, descriptor, input)
     }
     fn text_moe(
         &mut self,
@@ -1859,26 +1583,6 @@ impl MathematicalBackend for PlanBuilder {
     ) -> Result<QkValues<PlanValue>> {
         text::record_qk(self, name, domain, query, valid_tokens, geometry, window)
     }
-    fn gguf_prefix_embedding(&mut self, descriptor: &GgufPrefixDescriptor) -> Result<PlanValue> {
-        gguf_prefix::record_embedding(self, descriptor)
-    }
-    fn gguf_prefix_rms(
-        &mut self,
-        descriptor: &GgufPrefixDescriptor,
-        input: &PlanValue,
-    ) -> Result<PlanValue> {
-        gguf_prefix::record_rms(self, descriptor, input)
-    }
-    fn zen_ssm_out_input(&mut self, descriptor: &ZenSsmOutDescriptor) -> Result<PlanValue> {
-        zen_ssm_out::record_input(self, descriptor)
-    }
-    fn zen_ssm_out_project(
-        &mut self,
-        descriptor: &ZenSsmOutDescriptor,
-        input: &PlanValue,
-    ) -> Result<PlanValue> {
-        zen_ssm_out::record_projection(self, descriptor, input)
-    }
     fn bulk_f32_input(&mut self, operand: &BulkF32Operand) -> Result<PlanValue> {
         bulk_f32::record_input(self, operand)
     }
@@ -1895,59 +1599,6 @@ impl MathematicalBackend for PlanBuilder {
     }
     fn precision(&self, value: &PlanValue) -> ActivationPrecision {
         value.precision
-    }
-    fn vllm_bf16_source_embedding(&mut self, descriptor: &VllmBf16Embedding) -> Result<PlanValue> {
-        residual_rms::record_embedding(self, descriptor)
-    }
-    fn vllm08_operator(
-        &mut self,
-        descriptor: &Vllm08Operator,
-        inputs: &[PlanValue],
-    ) -> Result<Vec<PlanValue>> {
-        vllm_model::record(self, descriptor, inputs)
-    }
-    fn vllm_gdn_project(
-        &mut self,
-        descriptor: &VllmGdnProjection,
-        input: &PlanValue,
-    ) -> Result<PlanValue> {
-        vllm_native::record_projection(self, descriptor, input)
-    }
-    fn vllm_silu_and_mul(
-        &mut self,
-        descriptor: &VllmSiluAndMul,
-        input: &PlanValue,
-    ) -> Result<PlanValue> {
-        vllm_native::record_activation(self, descriptor, input)
-    }
-    fn vllm_input_rms(&mut self, d: &VllmInputRms, input: &PlanValue) -> Result<PlanValue> {
-        vllm_gdn::record_input_rms(self, d, input)
-    }
-    fn vllm_gdn_conv(
-        &mut self,
-        d: &VllmGdnConv,
-        qkvz: &PlanValue,
-        ba: &PlanValue,
-    ) -> Result<VllmGdnConvValues<PlanValue>> {
-        vllm_gdn::record_conv(self, d, qkvz, ba)
-    }
-    fn vllm_gdn_recurrent(
-        &mut self,
-        d: &VllmGdnRecurrent,
-        activated: &PlanValue,
-        z: &PlanValue,
-        ba: &PlanValue,
-    ) -> Result<PlanValue> {
-        vllm_gdn::record_recurrent(self, d, activated, z, ba)
-    }
-    fn residual_rms_profiled(
-        &mut self,
-        parameter: SourceParameter,
-        branch: &PlanValue,
-        residual: &PlanValue,
-        contract: ResidualRmsContract,
-    ) -> Result<ResidualRmsValues<PlanValue>> {
-        residual_rms::record(self, parameter, branch, residual, contract)
     }
     fn embed_profiled(
         &mut self,
@@ -2509,7 +2160,7 @@ impl MathematicalBackend for PlanBuilder {
         Ok(())
     }
     fn advance_frontier(&mut self) -> Result<()> {
-        if self.vllm_fragment.is_some() {
+        if self.source_call.is_some() {
             return Err(Error::Unsupported(
                 "qualification fragment cannot advance a model frontier".into(),
             ));

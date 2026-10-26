@@ -5661,7 +5661,6 @@ dependencies = [
  "zerogravity-artifacts",
  "zerogravity-core",
  "zerogravity-cpu",
- "zerogravity-model-gemma4",
  "zerogravity-model-qwen35",
 ]
 
@@ -5669,7 +5668,12 @@ dependencies = [
 name = "zerogravity-gpu-qualify"
 version = "0.1.0"
 dependencies = [
+ "futures-lite",
+ "zerogravity-artifacts",
+ "zerogravity-core",
+ "zerogravity-cpu",
  "zerogravity-gpu",
+ "zerogravity-model-qwen35",
 ]
 
 [[package]]
@@ -5683,6 +5687,7 @@ dependencies = [
  "zerogravity-artifacts",
  "zerogravity-core",
  "zerogravity-cpu",
+ "zerogravity-gpu",
 ]
 
 [[package]]
@@ -5691,6 +5696,7 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "regex-automata",
+ "serde",
  "serde_json",
  "sha2",
  "tokenizers",

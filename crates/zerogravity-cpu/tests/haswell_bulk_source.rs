@@ -10,7 +10,7 @@ use zerogravity_core::accelerator::SourceIdentity;
 use zerogravity_core::resource_arbiter::{
     AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
 };
-use zerogravity_cpu::math::haswell_bulk_f32::{
+use zerogravity_cpu::numerics::haswell_bulk_f32::{
     BulkF32Admission, BulkF32Profile, BulkF32Request, F32View, execute,
 };
 

@@ -27,7 +27,7 @@ pub(super) fn evaluate(
             .ok_or_else(|| Error::Limit("analytic sparse scratch".into()))?;
         let _scratch = math.source.reserve_output(scratch)?;
         let unit = vec![1.0; h];
-        let mut routing = crate::math::rms_norm(router, &unit, c.epsilon)?;
+        let mut routing = crate::ops::rms_norm(router, &unit, c.epsilon)?;
         let root = (h as f32).sqrt().recip();
         for (x, scale) in routing.iter_mut().zip(input.router_scale.values) {
             *x = (*x * scale) * root;
@@ -36,8 +36,8 @@ pub(super) fn evaluate(
         if logits.len() != experts {
             return Err(Error::State("analytic router whole expert logits".into()));
         }
-        let probabilities = crate::math::softmax(&logits)?;
-        let selected = crate::math::top_k(&probabilities, c.selected)?;
+        let probabilities = crate::ops::softmax(&logits)?;
+        let selected = crate::ops::top_k(&probabilities, c.selected)?;
         // Ranked selected weights, then ascending expert dispatch as the HF source.
         let sum = selected.iter().map(|i| probabilities[*i]).sum::<f32>();
         if !sum.is_finite() || sum <= 0.0 {
@@ -57,7 +57,7 @@ pub(super) fn evaluate(
                 return Err(Error::Malformed("analytic expert gate/up output".into()));
             }
             let activation = (0..width)
-                .map(|i| crate::math::gelu_tanh(gate_up[i]) * gate_up[width + i])
+                .map(|i| crate::ops::gelu_tanh(gate_up[i]) * gate_up[width + i])
                 .collect::<Vec<_>>();
             let down = math
                 .source

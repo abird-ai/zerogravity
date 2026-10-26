@@ -1,9 +1,9 @@
 //! Computed bulk GDN gate → exact original Q8_0/OpenBLAS ssm_out cut.
+use super::source_bindings::{GdnOutputBinding, GdnOutputContract};
 use super::*;
-use crate::accelerator::program::{ZenSsmOutContract, ZenSsmOutDescriptor};
 
 pub(crate) struct ZenSsmOutOwner {
-    pub(crate) descriptor: ZenSsmOutDescriptor,
+    pub(crate) descriptor: GdnOutputBinding,
     pub(crate) gated: BulkGdnGatedOutput,
     pub(crate) model: Arc<LoadedQwenModel>,
     pub(crate) admission: BulkF32HostAdmission,
@@ -38,11 +38,11 @@ impl BulkGdnSsmOutSlice {
                 bytes: META,
             }],
         )?;
-        let descriptor = ZenSsmOutDescriptor::new(
+        let descriptor = GdnOutputBinding::new(
             coefficients.span().clone(),
             model.as_ref(),
             "blk.0.ssm_out.weight",
-            ZenSsmOutContract::OpenBlas033Zen16SsmOutV1,
+            GdnOutputContract::OpenBlas033Zen16F32V1,
         )?;
         not_cancelled(cancelled)?;
         Ok(Self {
@@ -55,7 +55,7 @@ impl BulkGdnSsmOutSlice {
             }),
         })
     }
-    pub fn descriptor(&self) -> &ZenSsmOutDescriptor {
+    pub fn descriptor(&self) -> &GdnOutputBinding {
         &self.owner.descriptor
     }
     pub fn record(&self) -> Result<RecordedOperatorSlice> {
@@ -100,7 +100,7 @@ impl BulkGdnSsmOutOutput {
     pub fn values(&self) -> Result<&[f32]> {
         self.value.as_slice()
     }
-    pub fn descriptor(&self) -> &ZenSsmOutDescriptor {
+    pub fn descriptor(&self) -> &GdnOutputBinding {
         &self.owner.descriptor
     }
     pub fn producer(&self) -> &BulkGdnGatedOutput {

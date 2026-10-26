@@ -66,19 +66,17 @@ fn explicit_cpu_pointwise_preserves_legacy_refusal_and_builder_ownership() {
             .torch_cpu_bf16_silu_mul("strided", &strided, &strided)
             .is_err()
     );
-    let mut other_profile = PlanBuilder::new_operator_slice(
-        source,
-        ProgramNumericalProfile::Vllm031CudaSm86Bf16SourceV1,
-    )
-    .unwrap();
+    let mut other_profile =
+        PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::SourceCudaSm86Bf16V1)
+            .unwrap();
     assert!(
         other_profile
-            .torch_cpu_bf16_add("no_vllm", &sum, &sum)
+            .torch_cpu_bf16_add("wrong_source_profile", &sum, &sum)
             .is_err()
     );
     assert!(
         other_profile
-            .torch_cpu_bf16_silu_mul("no_vllm", &sum, &sum)
+            .torch_cpu_bf16_silu_mul("wrong_source_profile", &sum, &sum)
             .is_err()
     );
 }
@@ -638,13 +636,36 @@ fn unaware_backend_causal_conv_refuses_before_any_callback() {
     ));
 }
 
-#[path = "residual_rms/default_backend_tests.rs"]
-mod residual_rms_defaults;
-#[path = "family_qwen35/vllm_native/default_tests.rs"]
-mod vllm_native_defaults;
-
-#[path = "vllm_gdn/default_tests.rs"]
-mod vllm_gdn_defaults;
-
-#[path = "family_qwen35/vllm_model/default_tests.rs"]
-mod vllm_model_defaults;
+#[test]
+fn source_operator_requires_explicit_backend_implementation() {
+    let source = SourceIdentity::for_new_allocation().unwrap();
+    let call = SourceCall::new(
+        SourceRows::new(
+            TextCallGeometry::new(source, 17, 8).unwrap(),
+            0,
+            std::sync::Arc::from([1, 2]),
+        )
+        .unwrap(),
+        SourceCallMode::Prefill,
+    )
+    .unwrap();
+    let descriptor = SourceOperator::new(
+        call,
+        SourceOperatorKind::EmbeddingRows,
+        SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        vec![SourceTensor {
+            source,
+            name: "actual.embedding".into(),
+            kind: QuantKind::Bf16,
+            axes: MatrixAxes::OutputInput,
+            columns: 16,
+            rows: 17,
+        }],
+        vec![],
+    )
+    .unwrap();
+    assert!(matches!(
+        UnawareBackend.source_operator(&descriptor, &[]),
+        Err(Error::Unsupported(_))
+    ));
+}

@@ -85,7 +85,7 @@ impl BulkGdnGatedSlice {
         cancelled: Option<&AtomicBool>,
     ) -> Result<Self> {
         not_cancelled(cancelled)?;
-        zerogravity_cpu::math::haswell_bulk_f32::verify_environment()?;
+        zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
         let coefficients = recurrent.coefficients();
         if recurrent
             .upstream()
@@ -131,7 +131,7 @@ impl BulkGdnGatedSlice {
 
     pub fn execute(&self, cancelled: Option<&AtomicBool>) -> Result<BulkGdnGatedOutput> {
         not_cancelled(cancelled)?;
-        zerogravity_cpu::math::haswell_bulk_f32::verify_environment()?;
+        zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
         let input = &self.inputs;
         let coefficients = input.recurrent.coefficients();
         let admission = coefficients.admission();
@@ -187,7 +187,7 @@ impl BulkGdnGatedSlice {
         {
             return Err(Error::Limit("bulk GDN gated result capacity".into()));
         }
-        zerogravity_cpu::math::haswell_bulk_f32::verify_environment()?;
+        zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
         not_cancelled(cancelled)?;
         Ok(BulkGdnGatedOutput {
             completed: Arc::new(Completed {

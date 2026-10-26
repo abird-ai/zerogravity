@@ -83,7 +83,7 @@ fn complete35_uses_same_forward_all15_states_and_explicit_bf16_contract() {
     let p = record(&f).unwrap();
     assert_eq!(
         p.numerical_profile(),
-        ProgramNumericalProfile::Gemma4E2bBf16TextCandidateV1
+        ProgramNumericalProfile::DirectGammaBf16TextCandidateV1
     );
     assert_eq!(p.frontier_delta(), 1);
     assert_eq!(
@@ -158,7 +158,7 @@ fn complete35_uses_same_forward_all15_states_and_explicit_bf16_contract() {
     assert!(!p.nodes().iter().any(|n| matches!(
         n.operation,
         PlanOperation::TypedOrdinaryRms { .. }
-            | PlanOperation::TypedVllm08 { .. }
+            | PlanOperation::SourceOperator { .. }
             | PlanOperation::TextMoe { .. }
     )));
 }
@@ -167,13 +167,13 @@ fn observations_have_one_bounded_frame_and_actual_row_extents() {
     let f = Metadata::e2b();
     let p = record(&f).unwrap();
     let authority = SessionAuthority::new(f.source).unwrap();
-    let call = Bf16TextCall::bind(
+    let call = crate::plan::bind_bf16_text_call(
         TextCallGeometry::new(f.source, f.geometry().vocab, 64).unwrap(),
         authority.begin_advance(4).unwrap(),
         Arc::from([4906, 2915, 886, 563]),
     )
     .unwrap();
-    let frames = inventory::observations(&p).unwrap();
+    let frames = TextObservation::for_plan(&p, PAGE).unwrap();
     assert_eq!(
         frames.iter().filter(|f| f.stage == "block.output").count(),
         35

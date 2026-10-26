@@ -102,7 +102,7 @@ impl WindowReferenceTextSource {
         input: &[f32],
         matrix: &zerogravity_artifacts::source_weights::VerifiedMatrix,
         cancelled: Option<&AtomicBool>,
-        profile: crate::weights::SourceProjectionProfile,
+        profile: crate::source::SourceProjectionProfile,
     ) -> Result<Vec<f32>> {
         let row_bytes = usize::try_from(tensor.kind.byte_len(tensor.columns as u64)?)
             .map_err(|_| Error::Limit("text source row bytes".into()))?;
@@ -137,7 +137,7 @@ impl WindowReferenceTextSource {
                 ));
             }
             let shape = [rows.len() as u64, tensor.columns as u64];
-            let part = crate::original_hf::output_first_projection_with_profile(
+            let part = crate::source::projection::output_first_projection_with_profile(
                 tensor.source,
                 &tensor.name,
                 SourceTensorRef {
@@ -232,7 +232,7 @@ impl ReferenceTextSource for WindowReferenceTextSource {
             input,
             &matrix,
             cancelled,
-            crate::weights::SourceProjectionProfile::Source,
+            crate::source::SourceProjectionProfile::Source,
         )
     }
 
@@ -290,7 +290,7 @@ impl ReferenceTextSource for WindowReferenceTextSource {
             input,
             &matrix,
             cancelled,
-            crate::weights::SourceProjectionProfile::TorchCpuBf16Avx2,
+            crate::source::SourceProjectionProfile::TorchCpuBf16Avx2,
         )
     }
     fn project(
@@ -312,7 +312,7 @@ impl ReferenceTextSource for WindowReferenceTextSource {
             input,
             &matrix,
             cancelled,
-            crate::weights::SourceProjectionProfile::Source,
+            crate::source::SourceProjectionProfile::Source,
         )
     }
 }

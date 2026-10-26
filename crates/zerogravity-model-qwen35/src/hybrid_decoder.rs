@@ -1,6 +1,6 @@
 //! One Qwen-family composition; adapters retain exact source arithmetic/SSA.
 //! No backend, root authority, storage, native selector or second instruction IR.
-use crate::{Error, Result, model::LayerKind};
+use crate::{Error, Result, config::LayerKind};
 
 /// A packed vLLM projection and separate source-Torch projections have distinct
 /// value representations. The family ordering is shared; adapters choose only
@@ -102,8 +102,8 @@ pub enum ProjectionGroup {
     Head,
 }
 impl ProjectionGroup {
-    pub fn roles(self, layer: usize) -> Vec<crate::original_binding::QwenMatrixRole> {
-        use crate::original_binding::QwenMatrixRole as M;
+    pub fn roles(self, layer: usize) -> Vec<crate::source::binding::QwenMatrixRole> {
+        use crate::source::binding::QwenMatrixRole as M;
         match self {
             Self::GdnInput => vec![M::GdnQkv(layer), M::GdnGate(layer)],
             Self::GdnCoefficients => vec![M::GdnBeta(layer), M::GdnAlpha(layer)],
@@ -127,8 +127,8 @@ pub enum ParameterGroup {
     AttentionNorm,
 }
 impl ParameterGroup {
-    pub fn roles(self, layer: usize) -> Vec<crate::original_binding::QwenParameterRole> {
-        use crate::original_binding::QwenParameterRole as P;
+    pub fn roles(self, layer: usize) -> Vec<crate::source::binding::QwenParameterRole> {
+        use crate::source::binding::QwenParameterRole as P;
         match self {
             Self::InputNorm => vec![P::InputNorm(layer)],
             Self::FfnNorm => vec![P::FfnNorm(layer)],
@@ -154,8 +154,8 @@ pub(crate) enum ConvolutionRetention {
 }
 /// Same original .8B/2B source schema with an explicit retained-cache choice.
 pub(crate) fn state_specs(
-    geometry: &crate::model::ModelGeometry,
-    g: crate::original_binding::OriginalGdnGeometry,
+    geometry: &crate::config::ModelGeometry,
+    g: crate::source::binding::OriginalGdnGeometry,
     retention: ConvolutionRetention,
 ) -> Result<Vec<crate::StateSpec>> {
     let overflow = || Error::Limit("Qwen family state geometry overflow".into());
@@ -205,7 +205,7 @@ pub(crate) fn state_specs(
 }
 #[cfg(feature = "cpu")]
 pub(crate) fn state_domains(
-    geometry: &crate::model::ModelGeometry,
+    geometry: &crate::config::ModelGeometry,
 ) -> Result<Vec<crate::accelerator::program::StateSlot>> {
     let kinds = geometry
         .layers

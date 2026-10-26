@@ -189,8 +189,8 @@ impl HostMath<'_, '_, '_> {
             tape.require_source(source)?;
             tape.capture(stage, values)
         };
-        let done = zerogravity_cpu::original_hf::gdn::step_observed_with_exp_profile(
-            zerogravity_cpu::original_hf::gdn::GdnInputs {
+        let done = zerogravity_cpu::numerics::torch_cpu::gdn::step_observed_with_exp_profile(
+            zerogravity_cpu::numerics::torch_cpu::gdn::GdnInputs {
                 source: source.source_identity(),
                 key_heads: c.key_heads,
                 value_heads: c.value_heads,
@@ -202,7 +202,7 @@ impl HostMath<'_, '_, '_> {
                 state: input.state.as_slice()?,
                 phase: input.phase,
             },
-            zerogravity_cpu::original_hf::gdn::GdnParameters {
+            zerogravity_cpu::numerics::torch_cpu::gdn::GdnParameters {
                 convolution: tensor(0),
                 convolution_name: &c.convolution.name,
                 a_log: tensor(1),

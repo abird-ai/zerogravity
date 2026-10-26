@@ -2,9 +2,6 @@
 use super::*;
 use crate::session_root::{RootAttempt, RootBinding};
 
-pub const BF16_TEXT_CAPACITY: usize = 64;
-pub const BF16_TEXT_VOCABULARY: usize = 262144;
-
 /// Actual original logical call, including masked prefill contraction extent.
 #[derive(Clone, Debug)]
 pub struct Bf16TextCall {
@@ -17,11 +14,6 @@ impl Bf16TextCall {
     /// recorded profile and its source-owned lowerer.
     pub fn bind(geometry: TextCallGeometry, attempt: RootAttempt, ids: Arc<[u32]>) -> Result<Self> {
         geometry.validate_call(&attempt, &ids)?;
-        if attempt.base().frontier() != 0 && ids.len() != 1 {
-            return Err(Error::Unsupported(
-                "BF16 text candidate cached call requires one row".into(),
-            ));
-        }
         Ok(Self {
             geometry,
             attempt,
@@ -130,13 +122,15 @@ pub struct Bf16TextPvGeometry {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Bf16TextGreedy;
 impl Bf16TextGreedy {
-    pub fn prefer(candidate: (u32, u32), prior: (u32, u32)) -> Result<bool> {
+    pub fn prefer(vocabulary: usize, candidate: (u32, u32), prior: (u32, u32)) -> Result<bool> {
         let (id, bits) = candidate;
         let (old_id, old_bits) = prior;
         let value = f32::from_bits(bits);
         let old = f32::from_bits(old_bits);
-        if id as usize >= BF16_TEXT_VOCABULARY
-            || old_id as usize >= BF16_TEXT_VOCABULARY
+        if vocabulary == 0
+            || vocabulary as u128 > u32::MAX as u128 + 1
+            || id as usize >= vocabulary
+            || old_id as usize >= vocabulary
             || !value.is_finite()
             || !old.is_finite()
             || bits & 0xffff != 0
@@ -159,39 +153,122 @@ impl Bf16TextGreedy {
     }
 }
 
-pub(super) fn validate_builder(
-    capacity: usize,
-    required: &BTreeSet<StateSlot>,
-    slice: bool,
-) -> Result<()> {
-    if slice
-        || capacity > BF16_TEXT_CAPACITY
-        || required
-            .iter()
-            .copied()
-            .ne((0..15).map(|i| StateSlot::Kv(KvDomain(i))))
-    {
-        return Err(Error::Unsupported(
-            "BF16 text complete15-domain bounded plan".into(),
-        ));
-    }
-    Ok(())
+/// Finite mathematical limits supplied by the model's source-owned recipe.
+/// Public geometry is metadata, never authenticated model/native eligibility.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Bf16TextContract {
+    pub capacity: usize,
+    pub vocabulary: usize,
+    pub required_domains: Vec<StateSlot>,
+    pub constant_widths: Vec<usize>,
+    pub projection_columns: Vec<usize>,
+    pub rms: Vec<Bf16TextRmsContract>,
+    pub rotary: Vec<TextRotary>,
+    pub attention: Vec<Bf16TextAttentionContract>,
 }
-pub(super) fn validate_constant(vector: &SourceVector<'_>) -> Result<()> {
-    if !matches!(vector.values.len(), 256 | 512 | 1536)
-        || vector
-            .values
-            .iter()
-            .any(|v| !v.is_finite() || v.to_bits() & 0xffff != 0)
-    {
-        return Err(Error::Unsupported(
-            "BF16 text direct source gamma width/precision".into(),
-        ));
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Bf16TextRmsContract {
+    pub width: usize,
+    pub groups: usize,
+    pub epsilon: f32,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Bf16TextAttentionContract {
+    pub width: usize,
+    pub query_heads: usize,
+    pub kv_heads: usize,
+    pub window: Option<usize>,
+}
+impl Bf16TextAttentionContract {
+    fn matches(self, geometry: AttentionGeometry) -> bool {
+        self.width == geometry.width
+            && self.query_heads == geometry.query_heads
+            && self.kv_heads == geometry.kv_heads
     }
-    Ok(())
+}
+impl Bf16TextContract {
+    pub fn validate(&self) -> Result<()> {
+        if self.capacity == 0
+            || self.vocabulary == 0
+            || self.vocabulary as u128 > u32::MAX as u128 + 1
+            || self.required_domains.is_empty()
+            || self
+                .required_domains
+                .iter()
+                .copied()
+                .collect::<BTreeSet<_>>()
+                .len()
+                != self.required_domains.len()
+            || self.constant_widths.is_empty()
+            || self.constant_widths.contains(&0)
+            || self.projection_columns.is_empty()
+            || self.projection_columns.contains(&0)
+            || self.rms.is_empty()
+            || self.rotary.is_empty()
+            || self.attention.is_empty()
+        {
+            return Err(Error::Malformed(
+                "BF16 text finite mathematical contract".into(),
+            ));
+        }
+        for rms in &self.rms {
+            if rms.width == 0
+                || rms.groups == 0
+                || rms.width.checked_mul(rms.groups).is_none()
+                || !rms.epsilon.is_finite()
+                || rms.epsilon <= 0.0
+                || !self.constant_widths.contains(&rms.width)
+            {
+                return Err(Error::Malformed("BF16 text direct RMS geometry".into()));
+            }
+        }
+        for rotary in &self.rotary {
+            rotary.validate(rotary.head_width)?;
+        }
+        for attention in &self.attention {
+            AttentionGeometry {
+                width: attention.width,
+                query_heads: attention.query_heads,
+                kv_heads: attention.kv_heads,
+            }
+            .validate()?;
+            if attention.window == Some(0) {
+                return Err(Error::Malformed("BF16 text attention window".into()));
+            }
+        }
+        Ok(())
+    }
+    pub(super) fn validate_builder(
+        &self,
+        capacity: usize,
+        required: &BTreeSet<StateSlot>,
+        slice: bool,
+    ) -> Result<()> {
+        if slice
+            || capacity > self.capacity
+            || *required != self.required_domains.iter().copied().collect()
+        {
+            return Err(Error::Unsupported("BF16 text complete bounded plan".into()));
+        }
+        Ok(())
+    }
+    pub(super) fn validate_constant(&self, vector: &SourceVector<'_>) -> Result<()> {
+        if !self.constant_widths.contains(&vector.values.len())
+            || vector
+                .values
+                .iter()
+                .any(|v| !v.is_finite() || v.to_bits() & 0xffff != 0)
+        {
+            return Err(Error::Unsupported(
+                "BF16 text direct source gamma width/precision".into(),
+            ));
+        }
+        Ok(())
+    }
 }
 pub(super) fn precision(
     builder: &PlanBuilder,
+    contract: &Bf16TextContract,
     operation: &PlanOperation,
     inputs: &[PlanValue],
 ) -> Result<ActivationPrecision> {
@@ -211,8 +288,8 @@ pub(super) fn precision(
             typed::validate_bf16_matrix(tensor)?;
             if inputs.len() != 1
                 || inputs[0].elements != tensor.columns
-                || !matches!(tensor.columns, 256 | 1536 | 2048 | 4096 | 6144 | 12288)
-                || tensor.rows > BF16_TEXT_VOCABULARY
+                || !contract.projection_columns.contains(&tensor.columns)
+                || tensor.rows > contract.vocabulary
             {
                 return Err(Error::Unsupported(
                     "BF16 text full source projection extent".into(),
@@ -227,11 +304,11 @@ pub(super) fn precision(
                 .ok_or_else(|| Error::State("BF16 text source gamma absent".into()))?;
             if inputs.len() != 1
                 || g.source != builder.source
-                || eps.to_bits() != 1e-6f32.to_bits()
-                || !matches!(
-                    (g.values.len(), *groups),
-                    (256 | 512 | 1536, 1) | (256 | 512, 8) | (256, 35)
-                )
+                || !contract.rms.iter().any(|rms| {
+                    rms.width == g.values.len()
+                        && rms.groups == *groups
+                        && rms.epsilon.to_bits() == eps.to_bits()
+                })
                 || g.values.len().checked_mul(*groups) != Some(inputs[0].elements)
             {
                 return Err(Error::Unsupported(
@@ -249,16 +326,11 @@ pub(super) fn precision(
         }
         PlanOperation::TextRotary { geometry, .. } => {
             if inputs.len() != 1
-                || !matches!(
-                    (geometry.head_width, geometry.rotated_pairs),
-                    (256, 128) | (512, 64)
-                )
-                || geometry.theta.to_bits()
-                    != if geometry.head_width == 256 {
-                        10000.0f32.to_bits()
-                    } else {
-                        1000000.0f32.to_bits()
-                    }
+                || !contract.rotary.iter().any(|rotary| {
+                    rotary.head_width == geometry.head_width
+                        && rotary.rotated_pairs == geometry.rotated_pairs
+                        && rotary.theta.to_bits() == geometry.theta.to_bits()
+                })
             {
                 return Err(Error::Unsupported("BF16 text source rotary extent".into()));
             }
@@ -268,9 +340,10 @@ pub(super) fn precision(
         PlanOperation::TextWindowQk {
             geometry, window, ..
         } => {
-            if geometry.query_heads != 8
-                || geometry.kv_heads != 1
-                || !matches!((geometry.width, window), (256, Some(512)) | (512, None))
+            if !contract
+                .attention
+                .iter()
+                .any(|attention| attention.matches(*geometry) && attention.window == *window)
             {
                 return Err(Error::Unsupported(
                     "BF16 text unit-scale grouped attention".into(),
@@ -278,11 +351,19 @@ pub(super) fn precision(
             }
             Ok(Bf16)
         }
-        PlanOperation::AttentionSoftmax { heads: 8, .. } => Ok(Bf16),
+        PlanOperation::AttentionSoftmax { heads, .. }
+            if contract
+                .attention
+                .iter()
+                .any(|attention| attention.query_heads == *heads) =>
+        {
+            Ok(Bf16)
+        }
         PlanOperation::AttentionValue { geometry, .. } => {
-            if geometry.query_heads != 8
-                || geometry.kv_heads != 1
-                || !matches!(geometry.width, 256 | 512)
+            if !contract
+                .attention
+                .iter()
+                .any(|attention| attention.matches(*geometry))
             {
                 return Err(Error::Unsupported("BF16 text PV grouped attention".into()));
             }

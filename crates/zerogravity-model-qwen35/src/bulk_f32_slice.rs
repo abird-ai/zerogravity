@@ -3,7 +3,7 @@ use crate::accelerator::program::{
     BulkF32Contract, BulkF32Layout, BulkF32Matrix, BulkF32Operand, BulkF32Origin, BulkF32Side,
     PlanBuilder, ProgramNumericalProfile, RecordedOperatorSlice, TeacherSpan,
 };
-use crate::original_binding::{QwenMatrixRole, QwenNumericalProfile};
+use crate::source::binding::{QwenMatrixRole, QwenNumericalProfile};
 use crate::{Error, LoadedQwenModel, Result};
 use std::sync::{
     Arc,
@@ -13,6 +13,9 @@ use zerogravity_core::resource_arbiter::{
     AllocationClass, AllocationRequest, GlobalResourceLease, PhysicalDeviceKey, ResourceArbiter,
     ResourceOwner,
 };
+
+#[path = "bulk_f32_slice/source_bindings.rs"]
+pub mod source_bindings;
 
 const META: u64 = 16384;
 
@@ -86,7 +89,7 @@ impl BulkInputs {
                 RightInput::External(values) => Ok(values),
                 RightInput::ProducedPrefix(prefix) => {
                     if !Arc::ptr_eq(prefix.model(), &self.owner.model)
-                        || !matches!(self.owner.matrix.right().origin(), BulkF32Origin::RetainedNormalized { prefix: descriptor } if descriptor.as_ref() == prefix.descriptor())
+                        || !matches!(self.owner.matrix.right().origin(), BulkF32Origin::RetainedNormalized { binding } if prefix.descriptor().require_retained_rows(binding).is_ok())
                         || prefix.span() != self.owner.matrix.right().span()
                     {
                         return Err(Error::State(
@@ -356,7 +359,7 @@ impl BulkF32Slice {
         cancelled: Option<&AtomicBool>,
     ) -> Result<Self> {
         not_cancelled(cancelled)?;
-        zerogravity_cpu::math::haswell_bulk_f32::verify_environment()?;
+        zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
         let model = prefix.model().clone();
         let admission = prefix.admission().clone();
         let metadata = admission.arbiter.admit(
@@ -370,7 +373,7 @@ impl BulkF32Slice {
         let tensor = model.matrix_descriptor(role)?;
         let left =
             BulkF32Operand::source_matrix(prefix.span().clone(), model.as_ref(), &tensor.name)?;
-        let right = BulkF32Operand::retained_normalized(prefix.descriptor().clone())?;
+        let right = BulkF32Operand::retained_normalized(prefix.descriptor().retained_rows()?)?;
         let matrix = BulkF32Matrix::new(left, right, BulkF32Contract::HaswellTinyBlasF32V1)?;
         let owner = Arc::new(BulkOwner {
             model,

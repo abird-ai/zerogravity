@@ -5,7 +5,7 @@ use crate::operator_slice::gdn_conv::GdnConvSliceInput;
 
 const SCRATCH: usize = 960 * 1024;
 impl HostMath<'_, '_, '_> {
-    fn conv_windows(&self) -> Result<&crate::original_binding::OriginalWindowOperators> {
+    fn conv_windows(&self) -> Result<&crate::source::binding::OriginalWindowOperators> {
         if self.region_kernel.is_some()
             || self.engine.is_some()
             || self.state.is_some()
@@ -124,7 +124,7 @@ impl HostMath<'_, '_, '_> {
         );
         let completed = source.convolve(&parameter, activation, prior, self.cancelled)?;
         let silu =
-            zerogravity_cpu::original_hf::transcendentals::silu_bf16_widened_f32_contiguous16(
+            zerogravity_cpu::numerics::torch_cpu::transcendentals::silu_bf16_widened_f32_contiguous16(
                 source.source_identity(),
                 &completed.raw_bf16,
             )?;

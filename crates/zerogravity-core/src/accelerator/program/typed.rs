@@ -33,12 +33,12 @@ pub enum ProgramNumericalProfile {
     #[default]
     GgufSourceV1,
     TorchCpuBf16Avx2MixedSourceV1,
-    /// Reserved observed SM86 contract; no backend or model eligibility.
-    Vllm031CudaSm86Bf16SourceV1,
+    /// Prior name: Vllm031CudaSm86Bf16SourceV1. Arithmetic unchanged; no eligibility.
+    SourceCudaSm86Bf16V1,
     /// Bounded mathematical text reference; no trained/framework parity grant.
     AnalyticF32TextV1,
-    /// Bounded direct-gamma Gemma text recording; no backend/model qualification.
-    Gemma4E2bBf16TextCandidateV1,
+    /// Prior name: Gemma4E2bBf16TextCandidateV1. Direct gamma; no qualification.
+    DirectGammaBf16TextCandidateV1,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

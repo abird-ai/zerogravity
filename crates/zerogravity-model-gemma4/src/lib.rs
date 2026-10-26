@@ -12,3 +12,9 @@ pub mod tensors;
 pub use tensors::Gemma4TensorSpec;
 #[cfg(all(feature = "text-reference", target_os = "linux"))]
 pub mod text;
+
+#[cfg(all(feature = "text-reference", target_os = "linux"))]
+pub mod plan;
+
+#[cfg(all(feature = "execution", target_os = "linux"))]
+pub mod execution;

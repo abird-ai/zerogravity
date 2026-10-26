@@ -5,10 +5,10 @@ use crate::operator_slice::bulk_f32::{
     BulkF32Slice, BulkInputs, BulkOwner, ZenSsmOutOwner, not_cancelled,
 };
 use std::sync::atomic::AtomicBool;
-use zerogravity_cpu::math::haswell_bulk_f32::{
+use zerogravity_cpu::numerics::haswell_bulk_f32::{
     BulkF32Admission, BulkF32Completed, BulkF32Profile, BulkF32Request, F32View,
 };
-use zerogravity_cpu::math::zen_blas_q8_f32::ZenQ8F32Completed;
+use zerogravity_cpu::numerics::zen_blas_q8_f32::ZenQ8F32Completed;
 
 pub(super) struct BulkCall<'a> {
     slice: &'a BulkF32Slice,
@@ -80,7 +80,7 @@ impl BulkBacking {
     }
 }
 fn fp_environment() -> Result<()> {
-    zerogravity_cpu::math::haswell_bulk_f32::verify_environment()
+    zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()
 }
 fn request_view<'a>(
     source: crate::accelerator::SourceIdentity,
@@ -202,7 +202,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
         }
         // Unchanged source-derived primitive reserves actual result+scratch
         // BEFORE its Vec allocation. No old MatVec/provider fallback exists.
-        let completed = zerogravity_cpu::math::haswell_bulk_f32::execute(
+        let completed = zerogravity_cpu::numerics::haswell_bulk_f32::execute(
             BulkF32Request {
                 profile: BulkF32Profile::GgmlD812350HaswellTinyBlas,
                 source: matrix.source(),
@@ -250,7 +250,7 @@ impl HostValue {
         Ok(Self {
             data: Arc::new(HostStorage {
                 values: Vec::new(),
-                #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+                #[cfg(all(feature = "source-binding", target_os = "linux"))]
                 workspace: None,
                 bulk: Some(backing),
             }),

@@ -11,8 +11,14 @@ default = []
 text-reference = ["dep:zerogravity-cpu", "dep:zerogravity-artifacts", "dep:sha2", "zerogravity-cpu/cache", "zerogravity-artifacts/cache"]
 text-tokenizer = ["text-reference", "dep:tokenizers", "dep:serde"]
 
+execution = ["text-tokenizer"]
+hip-qualification = ["execution", "dep:zerogravity-gpu", "zerogravity-gpu/hip", "zerogravity-gpu/gemma-bf16-qualification"]
+vulkan-qualification = ["execution", "dep:zerogravity-gpu", "zerogravity-gpu/vulkan", "zerogravity-gpu/gemma-bf16-qualification"]
+shared-hip-qualification = ["hip-qualification", "zerogravity-gpu/qwen-source-qualification"]
+
 [dependencies]
 zerogravity-core = { path = "../zerogravity-core" }
+zerogravity-gpu = { path = "../zerogravity-gpu", optional = true, default-features = false }
 serde_json = "=1.0.151"
 zerogravity-cpu = { path = "../zerogravity-cpu", optional = true }
 zerogravity-artifacts = { path = "../zerogravity-artifacts", optional = true }

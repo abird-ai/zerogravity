@@ -222,7 +222,7 @@ fn output_tail_pointwise_keeps_bf16_stage_casts_and_cancellation() {
         .import_pure_input(input(&operators, &bytes), 16)
         .unwrap();
     let primitive =
-        zerogravity_cpu::original_hf::transcendentals::silu_bf16_widened_f32_contiguous16(
+        zerogravity_cpu::numerics::torch_cpu::transcendentals::silu_bf16_widened_f32_contiguous16(
             source.source_identity(),
             &gates,
         )

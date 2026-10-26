@@ -91,6 +91,17 @@ struct SourceOwner {
 #[derive(Clone)]
 pub struct VerifiedTensorSource(Arc<SourceOwner>);
 
+/// Observes the actual backing owner without keeping source descriptors alive.
+pub struct SourceOwnerWitness(std::sync::Weak<SourceOwner>);
+impl SourceOwnerWitness {
+    pub fn retained(&self) -> bool {
+        self.0.strong_count() != 0
+    }
+    pub fn same_issuer(&self, source: &VerifiedTensorSource) -> bool {
+        self.0.ptr_eq(&Arc::downgrade(&source.0))
+    }
+}
+
 /// Exact matrix geometry from authenticated original Safetensors headers.
 /// A descriptor cannot be rebound to another source, name, codec or axes.
 #[derive(Clone)]
@@ -389,8 +400,16 @@ impl WindowWorkspace {
     /// Transfer the same host charge and original source owner to shared engine
     /// metadata. No second reservation or source authenticity claim.
     pub fn into_host_workspace(self) -> Result<zerogravity_core::resource_arbiter::HostWorkspace> {
-        self._lease
-            .into_host_workspace(self.source.source_identity(), Arc::new(self.source))
+        let identity = self.source.source_identity();
+        self._lease.into_host_workspace(identity, self.source.0)
+    }
+    /// Same observation charge; the probe itself must not keep backing alive.
+    pub fn into_observation_workspace(
+        self,
+    ) -> Result<zerogravity_core::resource_arbiter::HostWorkspace> {
+        let identity = self.source.source_identity();
+        let witness = self.source.weak_owner();
+        self._lease.into_host_workspace(identity, Arc::new(witness))
     }
     pub fn bytes(&self) -> usize {
         self.bytes
@@ -401,6 +420,9 @@ impl WindowWorkspace {
 }
 
 impl VerifiedTensorSource {
+    pub fn weak_owner(&self) -> SourceOwnerWitness {
+        SourceOwnerWitness(Arc::downgrade(&self.0))
+    }
     pub fn window_cache_stats(&self) -> Result<WindowCacheStats> {
         Ok(self
             .0

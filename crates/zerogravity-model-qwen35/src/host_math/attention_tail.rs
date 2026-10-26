@@ -43,7 +43,7 @@ impl HostMath<'_, '_, '_> {
         }
         let count = 3 * q + kv + 2 * tokens * kv + 3 * input.geometry.query_heads * tokens;
         let workspace = self.prepare_output(Some(input.query), count, 8192)?;
-        let values = zerogravity_cpu::original_hf::attention::eager_bf16(
+        let values = zerogravity_cpu::numerics::torch_cpu::attention::eager_bf16(
             self.source.source_identity(),
             TorchCpuAttentionInputs {
                 query: input.query.as_slice()?,

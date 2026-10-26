@@ -39,7 +39,7 @@ impl BulkGdnRecurrentSlice {
         cancelled: Option<&AtomicBool>,
     ) -> Result<Self> {
         not_cancelled(cancelled)?;
-        zerogravity_cpu::math::haswell_bulk_f32::verify_environment()?;
+        zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
         let words = coefficients.span().len() * STEP;
         if coefficients.contract()
             != BulkGdnCoefficientContract::HaswellTinyBlasF32GgufCoefficientsV1
@@ -113,7 +113,7 @@ impl BulkGdnRecurrentSlice {
         cancelled: Option<&AtomicBool>,
     ) -> Result<Self> {
         not_cancelled(cancelled)?;
-        zerogravity_cpu::math::haswell_bulk_f32::verify_environment()?;
+        zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
         if coefficients.contract()
             != BulkGdnCoefficientContract::HaswellTinyBlasF32GgufCoefficientsV1
             || coefficients.span().base() != 0
@@ -156,7 +156,7 @@ impl BulkGdnRecurrentSlice {
 
     pub fn execute(&self, cancelled: Option<&AtomicBool>) -> Result<BulkGdnRecurrentOutput> {
         not_cancelled(cancelled)?;
-        zerogravity_cpu::math::haswell_bulk_f32::verify_environment()?;
+        zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
         let inputs = &self.inputs;
         let admission = inputs.coefficients.admission();
         let query = match &inputs.upstream {
@@ -216,7 +216,7 @@ impl BulkGdnRecurrentSlice {
                 )?;
             }
         }
-        zerogravity_cpu::math::haswell_bulk_f32::verify_environment()?;
+        zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
         not_cancelled(cancelled)?;
         Ok(BulkGdnRecurrentOutput {
             completed: Arc::new(Completed {

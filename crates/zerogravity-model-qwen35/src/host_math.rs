@@ -17,7 +17,7 @@ use crate::accelerator::{
 use crate::operator_slice::OperatorSliceSource;
 use crate::{Error, Result};
 use std::sync::Arc;
-#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
 use zerogravity_artifacts::source_weights::WindowWorkspace;
 
 struct HostStorage {
@@ -25,7 +25,7 @@ struct HostStorage {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     bulk: Option<bulk_f32::BulkBacking>,
     // Payload drops before its actual same-source host reservation.
-    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+    #[cfg(all(feature = "source-binding", target_os = "linux"))]
     workspace: Option<Arc<WindowWorkspace>>,
 }
 impl std::ops::Deref for HostStorage {
@@ -37,14 +37,14 @@ impl std::ops::Deref for HostStorage {
 
 enum HostSource<'a> {
     Loaded(&'a super::LoadedQwenModel),
-    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
-    Windows(&'a crate::original_binding::OriginalWindowOperators),
+    #[cfg(all(feature = "source-binding", target_os = "linux"))]
+    Windows(&'a crate::source::binding::OriginalWindowOperators),
 }
 impl HostSource<'_> {
     fn metadata(&self) -> &dyn OperatorSliceSource {
         match self {
             Self::Loaded(source) => *source,
-            #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+            #[cfg(all(feature = "source-binding", target_os = "linux"))]
             Self::Windows(source) => *source,
         }
     }
@@ -59,14 +59,14 @@ impl HostSource<'_> {
     }
     fn matrix_descriptor(
         &self,
-        role: crate::original_binding::QwenMatrixRole,
+        role: crate::source::binding::QwenMatrixRole,
     ) -> Result<SourceTensor> {
         self.metadata().matrix_descriptor(role)
     }
     fn validate_tensor(&self, tensor: &SourceTensor) -> Result<()> {
         match self {
             Self::Loaded(source) => tensor.validate_source(*source),
-            #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+            #[cfg(all(feature = "source-binding", target_os = "linux"))]
             Self::Windows(source) => source.validate_matrix(tensor),
         }
     }
@@ -93,7 +93,7 @@ impl HostValue {
                 values,
                 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
                 bulk: None,
-                #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+                #[cfg(all(feature = "source-binding", target_os = "linux"))]
                 workspace: None,
             }),
             view: TensorView::vector(0, elements),
@@ -119,7 +119,7 @@ impl HostValue {
         value.profile = Some(profile);
         Ok(value)
     }
-    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+    #[cfg(all(feature = "source-binding", target_os = "linux"))]
     fn retain_workspace(mut self, workspace: Option<Arc<WindowWorkspace>>) -> Result<Self> {
         Arc::get_mut(&mut self.data)
             .ok_or_else(|| Error::State("new host backing unexpectedly shared".into()))?
@@ -163,7 +163,7 @@ impl HostValue {
                 "leased bulk result has no Vec escape".into(),
             ));
         }
-        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        #[cfg(all(feature = "source-binding", target_os = "linux"))]
         if self.data.workspace.is_some() {
             return Err(Error::Unsupported(
                 "leased window values require borrowed output access".into(),
@@ -194,10 +194,10 @@ pub(super) struct HostMath<'engine, 'state, 'trace> {
     region_kernel: Option<&'engine dyn crate::accelerator::MatVecKernel>,
     trace: Option<&'trace mut Vec<LayerObservation>>,
     position: usize,
-    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+    #[cfg(all(feature = "source-binding", target_os = "linux"))]
     pub(crate) initial_core_tape:
-        Option<Arc<std::sync::Mutex<crate::original_binding::InitialCoreTape>>>,
-    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        Option<Arc<std::sync::Mutex<crate::source::binding::InitialCoreTape>>>,
+    #[cfg(all(feature = "source-binding", target_os = "linux"))]
     cancelled: Option<&'engine std::sync::atomic::AtomicBool>,
 }
 impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
@@ -222,9 +222,9 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
             region_kernel: engine.kernel.as_deref(),
             trace,
             position,
-            #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+            #[cfg(all(feature = "source-binding", target_os = "linux"))]
             cancelled: None,
-            #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+            #[cfg(all(feature = "source-binding", target_os = "linux"))]
             initial_core_tape: None,
         }
     }
@@ -247,15 +247,15 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
             region_kernel: kernel,
             trace: None,
             position: 0,
-            #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+            #[cfg(all(feature = "source-binding", target_os = "linux"))]
             cancelled: None,
-            #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+            #[cfg(all(feature = "source-binding", target_os = "linux"))]
             initial_core_tape: None,
         }
     }
-    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+    #[cfg(all(feature = "source-binding", target_os = "linux"))]
     pub fn for_window_operator_slice(
-        source: &'engine crate::original_binding::OriginalWindowOperators,
+        source: &'engine crate::source::binding::OriginalWindowOperators,
         cancelled: Option<&'engine std::sync::atomic::AtomicBool>,
         kernel: Option<&'engine dyn crate::accelerator::MatVecKernel>,
     ) -> Self {
@@ -278,7 +278,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
             initial_core_tape: None,
         }
     }
-    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+    #[cfg(all(feature = "source-binding", target_os = "linux"))]
     fn prepare_output(
         &self,
         input: Option<&HostValue>,
@@ -334,7 +334,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
                 "attention input source/profile/full hidden width".into(),
             ));
         }
-        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        #[cfg(all(feature = "source-binding", target_os = "linux"))]
         let workspace = self.prepare_output(None, hidden, 1)?;
         let mut values = Vec::new();
         values
@@ -345,7 +345,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
                 f32::from_bits(u32::from(u16::from_le_bytes([word[0], word[1]])) << 16)
             }),
         );
-        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        #[cfg(all(feature = "source-binding", target_os = "linux"))]
         if self
             .cancelled
             .is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Acquire))
@@ -360,7 +360,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
             input.source_identity(),
             input.numerical_profile(),
         )?;
-        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        #[cfg(all(feature = "source-binding", target_os = "linux"))]
         let output = output.retain_workspace(workspace)?;
         Ok(output)
     }
@@ -425,7 +425,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
 impl MathematicalBackend for HostMath<'_, '_, '_> {
     type Value = HostValue;
     type Index = usize;
-    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+    #[cfg(all(feature = "source-binding", target_os = "linux"))]
     fn torch_cpu_full_convolution_cache(
         &mut self,
         prior: &HostValue,
@@ -434,7 +434,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
     ) -> Result<HostValue> {
         self.window_full_convolution_cache(prior, minimal, input)
     }
-    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+    #[cfg(all(feature = "source-binding", target_os = "linux"))]
     fn torch_cpu_bf16_gdn(
         &mut self,
         c: &crate::accelerator::program::TorchCpuGdnContract,
@@ -443,66 +443,13 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         self.execute_cpu_gdn(c, input)
     }
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    fn gguf_gdn_input(
+    fn source_operator(
         &mut self,
-        descriptor: &crate::accelerator::program::GgufGdnUpstreamDescriptor,
-    ) -> Result<HostValue> {
-        self.import_gguf_gdn_input(descriptor)
-    }
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    fn gguf_gdn_project(
-        &mut self,
-        descriptor: &crate::accelerator::program::GgufGdnUpstreamDescriptor,
-        projection: crate::accelerator::program::GgufGdnProjection,
-        input: &HostValue,
-    ) -> Result<HostValue> {
-        self.execute_gguf_gdn_projection(descriptor, projection, input)
-    }
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    fn gguf_gdn_conv_silu(
-        &mut self,
-        descriptor: &crate::accelerator::program::GgufGdnUpstreamDescriptor,
-        input: &HostValue,
-    ) -> Result<HostValue> {
-        self.execute_gguf_gdn_convolution(descriptor, input)
-    }
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    fn gguf_gdn_qk(
-        &mut self,
-        descriptor: &crate::accelerator::program::GgufGdnUpstreamDescriptor,
-        input: &HostValue,
-    ) -> Result<HostValue> {
-        self.execute_gguf_gdn_qk(descriptor, input)
-    }
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    fn gguf_prefix_embedding(
-        &mut self,
-        descriptor: &crate::accelerator::program::GgufPrefixDescriptor,
-    ) -> Result<HostValue> {
-        self.execute_gguf_prefix_embedding(descriptor)
-    }
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    fn gguf_prefix_rms(
-        &mut self,
-        descriptor: &crate::accelerator::program::GgufPrefixDescriptor,
-        input: &HostValue,
-    ) -> Result<HostValue> {
-        self.execute_gguf_prefix_rms(descriptor, input)
-    }
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    fn zen_ssm_out_input(
-        &mut self,
-        descriptor: &crate::accelerator::program::ZenSsmOutDescriptor,
-    ) -> Result<HostValue> {
-        self.import_zen_ssm_out(descriptor)
-    }
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    fn zen_ssm_out_project(
-        &mut self,
-        descriptor: &crate::accelerator::program::ZenSsmOutDescriptor,
-        input: &HostValue,
-    ) -> Result<HostValue> {
-        self.execute_zen_ssm_out(descriptor, input)
+        actual: &crate::accelerator::program::SourceOperator,
+        inputs: &[HostValue],
+    ) -> Result<Vec<HostValue>> {
+        self.execute_source_f32(actual, inputs)
+            .map(|value| vec![value])
     }
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     fn bulk_f32_input(
@@ -548,7 +495,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
             || tensor
                 != self
                     .source
-                    .matrix_descriptor(crate::original_binding::QwenMatrixRole::Embedding)?
+                    .matrix_descriptor(crate::source::binding::QwenMatrixRole::Embedding)?
         {
             return Err(Error::Unsupported(
                 "host typed embedding source/contract".into(),
@@ -556,13 +503,13 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         }
         let token = u32::try_from(token)
             .map_err(|_| Error::Malformed("typed embedding token domain".into()))?;
-        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        #[cfg(all(feature = "source-binding", target_os = "linux"))]
         let workspace = self.prepare_output(None, tensor.columns, 1)?;
         let values = match &self.source {
-            HostSource::Loaded(source) => {
-                crate::weights::source_reference_embedding(source.embedding_source(token)?)?
-            }
-            #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+            HostSource::Loaded(source) => zerogravity_cpu::source::source_reference_embedding(
+                source.embedding_source(token)?,
+            )?,
+            #[cfg(all(feature = "source-binding", target_os = "linux"))]
             HostSource::Windows(source) => source.embed(&tensor, token as usize, self.cancelled)?,
         };
         let output = HostValue::typed(
@@ -571,7 +518,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
             self.source.source_identity(),
             self.source.program_numerical_profile(),
         )?;
-        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        #[cfg(all(feature = "source-binding", target_os = "linux"))]
         let output = output.retain_workspace(workspace)?;
         Ok(output)
     }
@@ -603,11 +550,11 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
             ));
         }
         ActivationPrecision::Bf16WidenedF32.validate_values(input.as_slice()?)?;
-        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        #[cfg(all(feature = "source-binding", target_os = "linux"))]
         if let HostSource::Windows(source) = &self.source {
             source.validate_projection_matrix(&tensor)?;
         }
-        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        #[cfg(all(feature = "source-binding", target_os = "linux"))]
         let workspace = self.prepare_output(
             Some(input),
             tensor.rows,
@@ -618,16 +565,16 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         )?;
         let values = match &self.source {
             HostSource::Loaded(source) => {
-                zerogravity_cpu::original_hf::output_first_projection_with_profile(
+                zerogravity_cpu::source::projection::output_first_projection_with_profile(
                     self.source.source_identity(),
                     &tensor.name,
                     zerogravity_core::source::TensorSource::tensor(*source, &tensor.name)?,
                     input.as_slice()?,
                     self.region_kernel,
-                    crate::weights::SourceProjectionProfile::TorchCpuBf16Avx2,
+                    zerogravity_cpu::source::SourceProjectionProfile::TorchCpuBf16Avx2,
                 )?
             }
-            #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+            #[cfg(all(feature = "source-binding", target_os = "linux"))]
             HostSource::Windows(source) => {
                 source.project(&tensor, input.as_slice()?, self.cancelled)?
             }
@@ -656,7 +603,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
             self.source.source_identity(),
             self.source.program_numerical_profile(),
         )?;
-        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        #[cfg(all(feature = "source-binding", target_os = "linux"))]
         let output = output.retain_workspace(workspace)?;
         Ok(output)
     }
@@ -683,7 +630,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
             ));
         }
         let width = contract.validate(&parameter, input.elements)?;
-        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        #[cfg(all(feature = "source-binding", target_os = "linux"))]
         let scratch = input
             .elements
             .checked_mul(5)
@@ -694,13 +641,13 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
                     .and_then(|r| n.checked_add(r))
             })
             .ok_or_else(|| Error::Limit("ordinary RMS scratch elements".into()))?;
-        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        #[cfg(all(feature = "source-binding", target_os = "linux"))]
         let workspace = self.prepare_output(Some(input), input.elements, scratch)?;
         let values = match &self.source {
             HostSource::Loaded(source) => {
                 parameter.validate_source(*source)?;
                 let raw = zerogravity_core::source::TensorSource::tensor(*source, &parameter.name)?;
-                let output = zerogravity_cpu::original_hf::norm::ordinary_rms(
+                let output = zerogravity_cpu::numerics::torch_cpu::norm::ordinary_rms(
                     self.source.source_identity(),
                     raw,
                     input.as_slice()?,
@@ -708,7 +655,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
                 )?;
                 output.output_bf16().to_vec()
             }
-            #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+            #[cfg(all(feature = "source-binding", target_os = "linux"))]
             HostSource::Windows(source) => {
                 source.normalize(&parameter, input.as_slice()?, self.cancelled)?
             }
@@ -719,7 +666,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
             self.source.source_identity(),
             self.source.program_numerical_profile(),
         )?;
-        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        #[cfg(all(feature = "source-binding", target_os = "linux"))]
         let output = output.retain_workspace(workspace)?;
         Ok(output)
     }
@@ -730,11 +677,11 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         history: &HostValue,
         contract: crate::accelerator::program::CausalConvSiluContract,
     ) -> Result<crate::accelerator::program::CausalConvValues<HostValue>> {
-        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        #[cfg(all(feature = "source-binding", target_os = "linux"))]
         {
             self.execute_causal_conv_silu(parameter, input, history, contract)
         }
-        #[cfg(not(all(feature = "original-hf-binding", target_os = "linux")))]
+        #[cfg(not(all(feature = "source-binding", target_os = "linux")))]
         {
             let _ = (parameter, input, history, contract);
             Err(Error::Unsupported(
@@ -798,7 +745,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         if input.view.is_contiguous() {
             return Ok(input.clone());
         }
-        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        #[cfg(all(feature = "source-binding", target_os = "linux"))]
         let workspace = self.prepare_output(Some(input), input.elements, 1)?;
         let mut values = Vec::with_capacity(input.elements);
         for row in 0..input.view.rows {
@@ -816,7 +763,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
             ),
             None => Ok(HostValue::new(values)),
         }?;
-        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        #[cfg(all(feature = "source-binding", target_os = "linux"))]
         let output = output.retain_workspace(workspace)?;
         Ok(output)
     }
@@ -875,7 +822,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
             multiplier,
         )?))
     }
-    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+    #[cfg(all(feature = "source-binding", target_os = "linux"))]
     fn torch_cpu_bf16_silu_mul(
         &mut self,
         _name: &str,
@@ -884,7 +831,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
     ) -> Result<HostValue> {
         self.execute_torch_pointwise(gate, up, true)
     }
-    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+    #[cfg(all(feature = "source-binding", target_os = "linux"))]
     fn torch_cpu_bf16_add(
         &mut self,
         _name: &str,
@@ -898,11 +845,11 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         _name: &str,
         input: crate::accelerator::program::TorchCpuAttentionInputs<'_, HostValue>,
     ) -> Result<crate::accelerator::program::TorchCpuAttentionValues<HostValue>> {
-        #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+        #[cfg(all(feature = "source-binding", target_os = "linux"))]
         {
             self.execute_cpu_attention(input)
         }
-        #[cfg(not(all(feature = "original-hf-binding", target_os = "linux")))]
+        #[cfg(not(all(feature = "source-binding", target_os = "linux")))]
         {
             let _ = input;
             Err(Error::Unsupported(
@@ -1313,14 +1260,14 @@ mod typed_value_tests {
     }
 }
 
-#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
 mod full_window;
-#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
 mod gdn_conv;
 
-#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
 mod attention_tail;
-#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
 mod output_tail;
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]

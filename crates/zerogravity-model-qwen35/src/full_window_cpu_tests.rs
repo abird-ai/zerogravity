@@ -39,7 +39,7 @@ fn source(f: &Fixture) -> Loaded {
 
 #[test]
 fn completed_boundary_trace_uses_original_loop_and_refusal_never_publishes() {
-    use crate::original_binding::WindowDiagnosticBoundary as B;
+    use crate::source::binding::WindowDiagnosticBoundary as B;
     let f = Fixture::new();
     let loaded = source(&f);
     let (raw, host) = windows(&f, &loaded);
@@ -335,7 +335,7 @@ fn initial_inner_prefix_refuses_wrong_actual_source_without_claim_or_allocation(
 
 #[test]
 fn initial_tape_reserves_before_copy_and_retains_same_source_until_drop() {
-    use crate::original_binding::{InitialCoreStage as S, InitialCoreTape};
+    use crate::source::binding::{InitialCoreStage as S, InitialCoreTape};
     let f = Fixture::new();
     let loaded = source(&f);
     let (raw, host) = windows(&f, &loaded);

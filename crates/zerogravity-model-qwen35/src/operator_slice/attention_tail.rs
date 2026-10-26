@@ -5,7 +5,7 @@ use super::{
     output_tail::OutputTailValues,
 };
 use crate::accelerator::program::{TorchCpuAttentionGeometry, TorchCpuAttentionValues};
-use crate::original_binding::{OriginalWindowOperators, QwenMatrixRole, QwenParameterRole};
+use crate::source::binding::{OriginalWindowOperators, QwenMatrixRole, QwenParameterRole};
 use crate::{Error, Result};
 #[cfg(feature = "cpu")]
 use crate::{host_math::HostValue, operator_slice::pure::PureSliceInput};

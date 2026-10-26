@@ -5,7 +5,7 @@ use crate::accelerator::program::{
     ActivationPrecision, MatrixAxes, OrdinaryRmsContract, PlanBuilder, PlanValue,
     ProgramNumericalProfile, SourceParameter, SourceTensor,
 };
-use crate::original_binding::{QwenMatrixRole, QwenParameterRole};
+use crate::source::binding::{QwenMatrixRole, QwenParameterRole};
 use crate::{Error, LoadedQwenModel, Result};
 use zerogravity_core::quant::QuantKind;
 
@@ -35,7 +35,7 @@ pub(crate) fn attention_roles(
         ));
     }
     let geometry = source.geometry();
-    if geometry.layers.get(layer) != Some(&crate::model::LayerKind::FullAttention) {
+    if geometry.layers.get(layer) != Some(&crate::config::LayerKind::FullAttention) {
         return Err(Error::Unsupported(
             "attention slice requires actual FullAttention layer".into(),
         ));
@@ -290,8 +290,8 @@ impl LoadedQwenModel {
         })
     }
 }
-#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
-impl crate::original_binding::OriginalWindowOperators {
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
+impl crate::source::binding::OriginalWindowOperators {
     /// No external-input node is invented; caller retains the source/metadata.
     pub fn append_attention_projection_norm_slice(
         &self,

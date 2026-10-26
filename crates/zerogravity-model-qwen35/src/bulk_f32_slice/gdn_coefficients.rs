@@ -38,7 +38,7 @@ impl BulkGdnCoefficientSlice {
             || model.numerical_profile() != QwenNumericalProfile::GgufSourceV1
             || model.geometry().hidden_size != 2048
             || model.geometry().recurrent_value_heads != Some(16)
-            || model.geometry().layers.first() != Some(&crate::model::LayerKind::LinearAttention)
+            || model.geometry().layers.first() != Some(&crate::config::LayerKind::LinearAttention)
             || model.layers[0].ssm_norm.as_ref().map(Vec::len) != Some(128)
             || model.layers[0].dt.as_ref().map(Vec::len) != Some(16)
             || model.layers[0].a.as_ref().map(Vec::len) != Some(16)
@@ -109,12 +109,12 @@ impl BulkGdnCoefficientSlice {
     /// Retain the actual normalized producer; source/IDs/admission cannot be replaced.
     pub fn from_prefix(prefix: GgufPrefixOutput, cancelled: Option<&AtomicBool>) -> Result<Self> {
         not_cancelled(cancelled)?;
-        zerogravity_cpu::math::haswell_bulk_f32::verify_environment()?;
+        zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
         let model = prefix.model();
         if model.numerical_profile() != QwenNumericalProfile::GgufSourceV1
             || model.geometry().hidden_size != 2048
             || model.geometry().recurrent_value_heads != Some(16)
-            || model.geometry().layers.first() != Some(&crate::model::LayerKind::LinearAttention)
+            || model.geometry().layers.first() != Some(&crate::config::LayerKind::LinearAttention)
             || model.layers[0].ssm_norm.as_ref().map(Vec::len) != Some(128)
             || model.layers[0].dt.as_ref().map(Vec::len) != Some(16)
             || model.layers[0].a.as_ref().map(Vec::len) != Some(16)
@@ -165,7 +165,7 @@ impl BulkGdnCoefficientSlice {
 
     pub fn execute(&self, cancelled: Option<&AtomicBool>) -> Result<BulkGdnCoefficientOutput> {
         not_cancelled(cancelled)?;
-        zerogravity_cpu::math::haswell_bulk_f32::verify_environment()?;
+        zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
         let count = self.pair.alpha.matrix().left().span().len();
         let admission = &self.pair.alpha.inputs.owner.admission;
         // Per teacher: 16 three-word coefficients, softplus and raw gate,
@@ -220,7 +220,7 @@ impl BulkGdnCoefficientSlice {
             }
             stages.push(completed);
         }
-        zerogravity_cpu::math::haswell_bulk_f32::verify_environment()?;
+        zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
         not_cancelled(cancelled)?;
         Ok(BulkGdnCoefficientOutput {
             completed: Arc::new(Completed {

@@ -12,16 +12,20 @@ use crate::accelerator::{
     GroupedRmsNormRegion, MatVecKernel, RegionExecution, RmsNormRegion, RopeKvCompleted,
     RopeKvExecution, RopeKvRegion, SiluRegion,
 };
-#[cfg(feature = "cpu")]
-use crate::math::{ggml_source_exp, ggml_source_silu as silu};
-use crate::model::{Family, LayerKind, ModelGeometry};
+use crate::config::{Family, LayerKind, ModelGeometry};
 #[cfg(feature = "cpu")]
 use crate::session_root::{RootAttempt, RootBinding, SessionAuthority};
 use zerogravity_artifacts::SourceWeights;
-pub use zerogravity_artifacts::{artifact, model};
-pub use zerogravity_core::{Error, Result, accelerator, session_root};
+pub use zerogravity_artifacts::artifact;
 #[cfg(feature = "cpu")]
-pub use zerogravity_cpu::{math, weights};
+use zerogravity_cpu::ops::{ggml_source_exp, ggml_source_silu as silu};
+pub mod config;
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
+pub mod plan;
+#[cfg(all(feature = "cpu", feature = "cache", target_os = "linux"))]
+pub mod reference;
+pub mod source;
+pub use zerogravity_core::{Error, Result, accelerator, session_root};
 pub mod model_catalog;
 #[cfg(feature = "text")]
 pub mod tokenize;
@@ -35,12 +39,11 @@ mod checkpoint;
 #[cfg(feature = "diagnostic-cpu-checkpoint")]
 pub use checkpoint::QwenCheckpoint;
 mod forward;
-#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
 pub mod hybrid_decoder;
 mod model_source;
 pub use model_source::QwenModelMetadata;
 pub mod operator_slice;
-pub mod original_binding;
 pub use forward::run_layer_sequence;
 #[cfg(feature = "cpu")]
 mod host_math;
@@ -198,8 +201,8 @@ fn state_bytes(layers: &[LayerState]) -> usize {
 /// so sessions of one loaded model may safely reuse an actual source buffer.
 pub struct LoadedQwenModel {
     weights: SourceWeights,
-    #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
-    original: Option<original_binding::OriginalQwenBinding>,
+    #[cfg(all(feature = "source-binding", target_os = "linux"))]
+    original: Option<source::binding::OriginalQwenBinding>,
     geometry: ModelGeometry,
     layers: Vec<CachedLayer>,
     final_norm: Vec<f32>,
@@ -535,7 +538,7 @@ impl LoadedQwenModel {
         }
         Ok(Arc::new(Self {
             weights,
-            #[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+            #[cfg(all(feature = "source-binding", target_os = "linux"))]
             original: None,
             geometry: g,
             layers,
@@ -560,8 +563,8 @@ impl LoadedQwenModel {
     }
     /// Borrow the source-bound embedding descriptor without decoding a row.
     pub fn embedding_source(&self, token: u32) -> Result<crate::accelerator::EmbeddingRegion<'_>> {
-        if self.numerical_profile() != original_binding::QwenNumericalProfile::GgufSourceV1 {
-            let tensor = self.matrix_descriptor(original_binding::QwenMatrixRole::Embedding)?;
+        if self.numerical_profile() != source::binding::QwenNumericalProfile::GgufSourceV1 {
+            let tensor = self.matrix_descriptor(source::binding::QwenMatrixRole::Embedding)?;
             let region = crate::accelerator::EmbeddingRegion {
                 source_identity: self.source_identity(),
                 tensor_name: "model.language_model.embed_tokens.weight",
@@ -702,7 +705,7 @@ impl QwenDenseCpu {
     }
 
     fn project(&self, name: &str, input: &[f32]) -> Result<Vec<f32>> {
-        zerogravity_cpu::weights::matvec_with_source(
+        zerogravity_cpu::source::matvec_with_source(
             &self.weights,
             name,
             input,
@@ -789,7 +792,7 @@ impl QwenDenseCpu {
                 RegionExecution::Unsupported => {}
             }
         }
-        crate::weights::source_reference_embedding(r)
+        zerogravity_cpu::source::source_reference_embedding(r)
     }
 
     fn binary_region(&self, r: BinaryRegion<'_>) -> Result<Vec<f32>> {

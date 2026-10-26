@@ -65,11 +65,12 @@ fn pure_window_region_matches_closed_helpers_and_preserves_canonical_history_bit
     assert_eq!(output.source_identity(), source.source_identity());
     // Last tap 1 and three zero weights make each positive input exact.
     same(output.input().unwrap(), output.raw().unwrap());
-    let silu = zerogravity_cpu::original_hf::transcendentals::silu_bf16_widened_f32_contiguous16(
-        source.source_identity(),
-        output.raw().unwrap(),
-    )
-    .unwrap();
+    let silu =
+        zerogravity_cpu::numerics::torch_cpu::transcendentals::silu_bf16_widened_f32_contiguous16(
+            source.source_identity(),
+            output.raw().unwrap(),
+        )
+        .unwrap();
     assert_eq!(silu.len(), output.activated().unwrap().len());
     for (expected, actual) in silu.iter().zip(output.activated().unwrap()) {
         let bits = expected.to_bits();

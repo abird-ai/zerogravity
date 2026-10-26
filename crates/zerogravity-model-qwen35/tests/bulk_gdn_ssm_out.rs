@@ -8,12 +8,13 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-use zerogravity_core::accelerator::program::{BulkF32Layout, PlanOperation, ZenSsmOutContract};
+use zerogravity_core::accelerator::program::{BulkF32Layout, PlanOperation};
 use zerogravity_core::accelerator::{MatVecKernel, MatVecRegion, RegionExecution};
 use zerogravity_core::resource_arbiter::{
     AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
 };
 use zerogravity_model_qwen35::LoadedQwenModel;
+use zerogravity_model_qwen35::operator_slice::bulk_f32::source_bindings::GdnOutputContract;
 use zerogravity_model_qwen35::operator_slice::bulk_f32::{
     BulkF32HostAdmission, BulkGdnCoefficientSlice, BulkGdnGatedSlice, BulkGdnRecurrentSlice,
     BulkGdnSsmOutSlice, ExternalBulkF32, ObservedBulkGdnGate, ObservedBulkGdnInputs,
@@ -295,17 +296,17 @@ fn produced_gdn_gate_feeds_original_q8_zen_ssm_out() {
     assert_eq!(slice.descriptor().source(), model.source_identity());
     assert_eq!(
         slice.descriptor().contract(),
-        ZenSsmOutContract::OpenBlas033Zen16SsmOutV1
+        GdnOutputContract::OpenBlas033Zen16F32V1
     );
     let plan = slice.record().unwrap();
     assert_eq!(plan.plan().nodes().len(), 2);
     assert!(matches!(
-        plan.plan().nodes()[0].operation,
-        PlanOperation::TypedZenSsmOutInput { .. }
+        &plan.plan().nodes()[0].operation,
+        PlanOperation::SourceOperator { descriptor, .. } if matches!(descriptor.kind(), zerogravity_core::accelerator::program::SourceOperatorKind::RetainedRows {origin: zerogravity_core::accelerator::program::SourceRetainedOrigin::Gated,..})
     ));
     assert!(matches!(
-        plan.plan().nodes()[1].operation,
-        PlanOperation::TypedZenSsmOutProjection { .. }
+        &plan.plan().nodes()[1].operation,
+        PlanOperation::SourceOperator { descriptor, .. } if matches!(descriptor.kind(), zerogravity_core::accelerator::program::SourceOperatorKind::Projection {selected_row:None})
     ));
     assert!(plan.plan().required_domains().is_empty());
     assert!(plan.plan().proposed_domains().is_empty());

@@ -23,6 +23,15 @@ their existing numeric/source/physical acceptance gates.
   Exact variants, missing implementations and acceptance TODOs: [FORMATS.md](FORMATS.md).
   Existing19 artifact tests pass; provider/model qualification remains separate.
 
+## Source ownership checkpoint — 26 Oct
+
+- [x] Move family config/tensor roles/graph recording into Qwen/Gemma model
+  crates; retain common verified source, one ForwardPlan and CPU math engine.
+- [x] Group CPU operations, numerical profiles, source access and runtime;
+  preserve original golden inputs and strict numerical contracts.
+- CPU/model/common workspace all-target compile passes on assembled MAIN.
+  CUDA caller migration remains in progress; final assembled gate pending.
+
 ## Uncommitted
 
 ### Model containment and naming — 26 Oct

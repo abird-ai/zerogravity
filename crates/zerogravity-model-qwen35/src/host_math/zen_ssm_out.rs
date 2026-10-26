@@ -1,14 +1,14 @@
 //! Retained producer binding under the existing HostMath adapter.
 use super::bulk_f32::BulkBacking;
 use super::*;
-use crate::accelerator::program::ZenSsmOutDescriptor;
+use crate::operator_slice::bulk_f32::source_bindings::GdnOutputBinding;
 use crate::operator_slice::bulk_f32::{BulkGdnSsmOutSlice, not_cancelled};
 use std::sync::atomic::AtomicBool;
-use zerogravity_cpu::math::haswell_bulk_f32::{BulkF32Admission, verify_environment};
-use zerogravity_cpu::math::zen_blas_q8_f32::{ZenQ8F32Request, execute};
+use zerogravity_cpu::numerics::haswell_bulk_f32::{BulkF32Admission, verify_environment};
+use zerogravity_cpu::numerics::zen_blas_q8_f32::{ZenQ8F32Request, execute};
 
 pub(super) struct ZenSsmOutCall<'a> {
-    slice: &'a BulkGdnSsmOutSlice,
+    pub(super) slice: &'a BulkGdnSsmOutSlice,
     cancelled: Option<&'a AtomicBool>,
 }
 impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
@@ -37,7 +37,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
             .as_ref()
             .ok_or_else(|| Error::Unsupported("Zen ssm_out has no retained-gated issuer".into()))
     }
-    pub(super) fn import_zen_ssm_out(&self, descriptor: &ZenSsmOutDescriptor) -> Result<HostValue> {
+    pub(super) fn import_zen_ssm_out(&self, descriptor: &GdnOutputBinding) -> Result<HostValue> {
         let call = self.zen_call()?;
         not_cancelled(call.cancelled)?;
         verify_environment()?;
@@ -60,7 +60,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
     }
     pub(super) fn execute_zen_ssm_out(
         &self,
-        descriptor: &ZenSsmOutDescriptor,
+        descriptor: &GdnOutputBinding,
         input: &HostValue,
     ) -> Result<HostValue> {
         let call = self.zen_call()?;

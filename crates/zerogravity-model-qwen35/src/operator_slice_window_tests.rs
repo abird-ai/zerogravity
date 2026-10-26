@@ -4,7 +4,7 @@ use crate::accelerator::program::{
     EmbeddingContract, MathematicalBackend, OrdinaryRmsContract, PlanOperation, TensorView,
 };
 use crate::operator_slice::OperatorSliceSource;
-use crate::original_binding::{OriginalWindowOperators, QwenParameterRole};
+use crate::source::binding::{OriginalWindowOperators, QwenParameterRole};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowOpenLimits};
@@ -396,8 +396,8 @@ mod output_tail;
 
 #[test]
 fn window_model_metadata_retains_one_original_issuer_and_stays_execution_closed() {
-    use crate::original_binding::OriginalWindowModelSource;
-    use zerogravity_artifacts::model::qwen_owned::QwenOriginalWindowText;
+    use crate::source::binding::OriginalWindowModelSource;
+    use crate::source::owned::QwenOriginalWindowText;
     let fixture = Fixture::new();
     let loaded = source_with_options(&fixture, true, 256, true, |_| {});
     let (source, admission) = windows(&fixture, &loaded);
@@ -425,7 +425,7 @@ fn window_model_metadata_retains_one_original_issuer_and_stays_execution_closed(
     assert_eq!(view.geometry().layers.len(), view.state_specs().len());
     assert_eq!(
         view.program_numerical_profile(),
-        crate::accelerator::program::ProgramNumericalProfile::Vllm031CudaSm86Bf16SourceV1
+        crate::accelerator::program::ProgramNumericalProfile::SourceCudaSm86Bf16V1
     );
     assert!(matches!(
         view.require_execution_profile(),
@@ -459,8 +459,8 @@ fn window_model_metadata_retains_one_original_issuer_and_stays_execution_closed(
 
 #[test]
 fn equal_original_window_files_cannot_cross_model_role_issuers() {
-    use crate::original_binding::OriginalWindowModelSource;
-    use zerogravity_artifacts::model::qwen_owned::QwenOriginalWindowText;
+    use crate::source::binding::OriginalWindowModelSource;
+    use crate::source::owned::QwenOriginalWindowText;
     let fixture = Fixture::new();
     let loaded = source_with_options(&fixture, true, 256, true, |_| {});
     let (first, a) = windows(&fixture, &loaded);
@@ -523,8 +523,8 @@ fn equal_original_window_files_cannot_cross_model_role_issuers() {
 
 #[test]
 fn window_model_role_metadata_pressure_refuses_before_new_payload_allocation() {
-    use crate::original_binding::OriginalWindowModelSource;
-    use zerogravity_artifacts::model::qwen_owned::QwenOriginalWindowText;
+    use crate::source::binding::OriginalWindowModelSource;
+    use crate::source::owned::QwenOriginalWindowText;
     use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest};
     let fixture = Fixture::new();
     let loaded = source_with_options(&fixture, true, 256, true, |_| {});

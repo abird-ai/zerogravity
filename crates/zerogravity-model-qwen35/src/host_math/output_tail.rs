@@ -103,7 +103,7 @@ impl HostMath<'_, '_, '_> {
         let count = left.elements;
         let workspace = self.prepare_output(Some(left), count, count)?;
         let mut output = if silu {
-            zerogravity_cpu::original_hf::transcendentals::silu_bf16_widened_f32_contiguous16(
+            zerogravity_cpu::numerics::torch_cpu::transcendentals::silu_bf16_widened_f32_contiguous16(
                 self.source.source_identity(),
                 left.as_slice()?,
             )?

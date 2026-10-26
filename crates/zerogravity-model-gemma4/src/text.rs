@@ -7,9 +7,9 @@ mod original;
 #[cfg(feature = "text-tokenizer")]
 pub mod tokenizer;
 pub use original::{
-    Gemma4Bf16Inventory, Gemma4Bf16NormSource, Gemma4Bf16Observation, Gemma4Bf16TextPlan,
-    Gemma4CpuInventory, Gemma4ReferencePlan, Gemma4ReferenceReadback, Gemma4ReferenceSession,
-    Gemma4SourcePins, Gemma4SourceTile, Gemma4SourceTiles, OriginalGemma4Text,
+    Gemma4Bf16TextPlan, Gemma4CpuInventory, Gemma4ReferencePlan, Gemma4ReferenceReadback,
+    Gemma4ReferenceSession, Gemma4SourcePins, Gemma4SourceTile, Gemma4SourceTiles,
+    OriginalGemma4Text,
 };
 #[cfg(test)]
 mod tests;

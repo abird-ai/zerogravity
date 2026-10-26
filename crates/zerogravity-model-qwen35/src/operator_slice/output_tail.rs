@@ -6,7 +6,7 @@ use super::pure::PureSliceInput;
 #[cfg(feature = "cpu")]
 use crate::accelerator::program::ProgramNumericalProfile;
 use crate::accelerator::program::{PlanBuilder, PlanValue};
-use crate::original_binding::{OriginalWindowOperators, QwenMatrixRole, QwenParameterRole};
+use crate::source::binding::{OriginalWindowOperators, QwenMatrixRole, QwenParameterRole};
 use crate::{Error, Result};
 
 /// Same backend values in execution order; no independent evaluator or copied weights.

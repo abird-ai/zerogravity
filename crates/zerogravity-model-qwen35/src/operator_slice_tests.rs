@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::LoadedQwenModel;
+use crate::source::safetensors::QwenTextConfig;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -11,7 +12,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use zerogravity_artifacts::SourceWeights;
 use zerogravity_artifacts::artifact::Artifact;
 use zerogravity_artifacts::cache::TransferAdmission;
-use zerogravity_artifacts::model::qwen::QwenTextConfig;
 use zerogravity_artifacts::source_weights::{ExpectedSourceShard, SourceOpenLimits};
 use zerogravity_core::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, ResourceOwner};
 
@@ -343,7 +343,7 @@ fn unaware_physical_provider_refuses_before_embedding_or_projection_callback() {
 #[test]
 fn typed_ordinary_rms_slice_uses_original_parameter_and_one_shared_backend() {
     use crate::accelerator::program::{ActivationPrecision, OrdinaryRmsContract, PlanOperation};
-    use crate::original_binding::QwenParameterRole;
+    use crate::source::binding::QwenParameterRole;
     for raw_bf16 in [false, true] {
         let fixture = Fixture::new();
         let (model, admission, key) =
@@ -433,7 +433,7 @@ fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unawar
     use crate::accelerator::program::{
         MathematicalBackend, OrdinaryRmsContract, ProjectionContract, TensorView,
     };
-    use crate::original_binding::QwenParameterRole;
+    use crate::source::binding::QwenParameterRole;
     use zerogravity_core::quant::QuantKind;
     let fixture = Fixture::new();
     let (first, _, _) = bind(source_with_geometry(&fixture, true, 256, 512, true, |_| {}));
@@ -565,7 +565,7 @@ fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unawar
 #[test]
 fn typed_ordinary_rms_refuses_unqualified_source_epsilon_before_recording_or_execution() {
     use crate::accelerator::program::{MathematicalBackend, OrdinaryRmsContract};
-    use crate::original_binding::QwenParameterRole;
+    use crate::source::binding::QwenParameterRole;
     let fixture = Fixture::new();
     let mut loaded = source_with_options(&fixture, true, 256, true, |_| {});
     let mut config: Value = serde_json::from_slice(&loaded.config).unwrap();

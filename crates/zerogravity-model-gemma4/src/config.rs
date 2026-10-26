@@ -1,6 +1,8 @@
 //! Immutable admission of the explicitly registered Gemma 4 text variants.
 use crate::{Error, Result, moe::MoeGeometry, variant_26b, variant_31b};
 use serde_json::Value;
+mod inspect;
+pub use inspect::DeclaredGeometry;
 
 const MAX_CONFIG_BYTES: usize = 1024 * 1024;
 

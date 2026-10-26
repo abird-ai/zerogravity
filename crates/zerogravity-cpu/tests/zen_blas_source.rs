@@ -12,8 +12,8 @@ use zerogravity_core::accelerator::SourceIdentity;
 use zerogravity_core::resource_arbiter::{
     AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
 };
-use zerogravity_cpu::math::haswell_bulk_f32::BulkF32Admission;
-use zerogravity_cpu::math::zen_blas_q8_f32::{ZenQ8F32Request, execute};
+use zerogravity_cpu::numerics::haswell_bulk_f32::BulkF32Admission;
+use zerogravity_cpu::numerics::zen_blas_q8_f32::{ZenQ8F32Request, execute};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const LIMIT: u64 = 128 * 1024 * 1024;

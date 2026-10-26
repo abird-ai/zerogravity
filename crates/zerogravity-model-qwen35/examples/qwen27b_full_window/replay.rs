@@ -200,7 +200,7 @@ pub(super) fn run() -> Proof<()> {
         {
             let base = session.binding();
             let validate =
-                |actual: &zerogravity_model_qwen35::original_binding::WindowDiagnosticReadback<
+                |actual: &zerogravity_model_qwen35::source::binding::WindowDiagnosticReadback<
                     '_,
                 >| {
                     callbacks += 1;

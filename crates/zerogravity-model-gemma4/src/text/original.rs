@@ -2,10 +2,7 @@
 mod portable;
 mod resources;
 use super::*;
-pub use portable::{
-    Gemma4Bf16Inventory, Gemma4Bf16NormSource, Gemma4Bf16Observation, Gemma4Bf16TextPlan,
-    Gemma4SourceTile, Gemma4SourceTiles,
-};
+pub use portable::{Gemma4Bf16TextPlan, Gemma4SourceTile, Gemma4SourceTiles};
 pub use resources::Gemma4CpuInventory;
 use sha2::{Digest, Sha256};
 use std::sync::{

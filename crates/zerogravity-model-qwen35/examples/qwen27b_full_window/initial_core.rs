@@ -1,6 +1,6 @@
 //! Initial-core only; expected payloads open after genuine source-prefix math.
 use super::*;
-use zerogravity_model_qwen35::original_binding::InitialCoreStage as S;
+use zerogravity_model_qwen35::source::binding::InitialCoreStage as S;
 #[path = "initial_core_pin.rs"]
 mod pin;
 const FIELDS: [(&str, S); 10] = [
@@ -167,7 +167,7 @@ impl Inner {
         )?;
         // Counterfactual primitive uses only genuine computed Rust tape operands.
         // Original payloads remain comparison-only; model math is unchanged.
-        let fma_qk = zerogravity_cpu::original_hf::reduction::padded64_qk_fma128(
+        let fma_qk = zerogravity_cpu::numerics::torch_cpu::reduction::padded64_qk_fma128(
             source,
             a.initial_core(S::ScaledQuery)?,
             a.initial_core(S::NormalizedKey)?,

@@ -2,7 +2,7 @@
 //! Q/K/V, prior state and projected Z remain observed; no model/root permit.
 #![cfg(all(
     feature = "cpu",
-    feature = "original-hf-binding",
+    feature = "source-binding",
     target_os = "linux",
     target_arch = "x86_64"
 ))]
@@ -19,15 +19,14 @@ use std::sync::{
 use zerogravity_artifacts::{
     artifact::Artifact, cache::TransferAdmission, source_weights::SourceWeights,
 };
-use zerogravity_core::accelerator::program::{
-    GgufPrefixContract, PlanOperation, ProgramNumericalProfile, TeacherSpan,
-};
+use zerogravity_core::accelerator::program::{PlanOperation, ProgramNumericalProfile, TeacherSpan};
 use zerogravity_core::accelerator::{MatVecKernel, MatVecRegion, RegionExecution};
 use zerogravity_core::quant::QuantKind;
 use zerogravity_core::resource_arbiter::{
     AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
 };
 use zerogravity_model_qwen35::LoadedQwenModel;
+use zerogravity_model_qwen35::operator_slice::bulk_f32::source_bindings::PrefixContract;
 use zerogravity_model_qwen35::operator_slice::bulk_f32::{
     BulkF32HostAdmission, BulkGdnCoefficientSlice, BulkGdnGatedSlice, BulkGdnRecurrentSlice,
     BulkGdnSsmOutSlice, GgufPrefixSlice, ObservedBulkGdnGate, ObservedBulkGdnInputs,
@@ -402,7 +401,7 @@ fn verified_original_embedding_rms_feeds_existing_gdn_through_ssm_out() -> Resul
     let prefix_slice = GgufPrefixSlice::new(model.clone(), 0, 8448, &ids, admission.clone(), None)?;
     assert_eq!(
         prefix_slice.descriptor().contract(),
-        GgufPrefixContract::GgufSource2BFirst64V1
+        PrefixContract::First64GgmlF32V1
     );
     assert_eq!(prefix_slice.descriptor().epsilon().to_bits(), 0x358637bd);
     assert_eq!(prefix_slice.descriptor().embedding().source, source);
@@ -415,12 +414,12 @@ fn verified_original_embedding_rms_feeds_existing_gdn_through_ssm_out() -> Resul
     );
     assert_eq!(plan.plan().nodes().len(), 2);
     assert!(matches!(
-        plan.plan().nodes()[0].operation,
-        PlanOperation::TypedGgufPrefixEmbedding { .. }
+        &plan.plan().nodes()[0].operation,
+        PlanOperation::SourceOperator { descriptor, .. } if matches!(descriptor.kind(), zerogravity_core::accelerator::program::SourceOperatorKind::EmbeddingRows)
     ));
     assert!(matches!(
-        plan.plan().nodes()[1].operation,
-        PlanOperation::TypedGgufPrefixRms { .. }
+        &plan.plan().nodes()[1].operation,
+        PlanOperation::SourceOperator { descriptor, .. } if matches!(descriptor.kind(), zerogravity_core::accelerator::program::SourceOperatorKind::Rms(_))
     ));
     assert!(plan.plan().required_domains().is_empty());
     assert!(plan.plan().proposed_domains().is_empty());

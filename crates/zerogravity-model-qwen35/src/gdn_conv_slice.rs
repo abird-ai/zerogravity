@@ -6,7 +6,7 @@ use crate::accelerator::program::{
     ActivationPrecision, CausalConvSiluContract, CausalConvValues, PlanBuilder, PlanValue,
     ProgramNumericalProfile, SourceParameter,
 };
-use crate::original_binding::{QwenMatrixRole, QwenParameterRole};
+use crate::source::binding::{QwenMatrixRole, QwenParameterRole};
 use crate::{Error, LoadedQwenModel, Result};
 
 pub(crate) fn convolution_role(
@@ -15,7 +15,7 @@ pub(crate) fn convolution_role(
 ) -> Result<(SourceParameter, usize)> {
     if source.program_numerical_profile() != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
         || !source.source_identity().is_bound()
-        || source.geometry().layers.get(layer) != Some(&crate::model::LayerKind::LinearAttention)
+        || source.geometry().layers.get(layer) != Some(&crate::config::LayerKind::LinearAttention)
     {
         return Err(Error::Unsupported(
             "closed original convolution profile/layer".into(),
@@ -135,7 +135,7 @@ impl LoadedQwenModel {
     }
 }
 
-#[cfg(all(feature = "cpu", feature = "original-hf-binding", target_os = "linux"))]
+#[cfg(all(feature = "cpu", feature = "source-binding", target_os = "linux"))]
 pub struct GdnConvolutionSiluOutput {
     source: SourceIdentity,
     layer: usize,
@@ -144,7 +144,7 @@ pub struct GdnConvolutionSiluOutput {
     prior: crate::host_math::HostValue,
     values: CausalConvValues<crate::host_math::HostValue>,
 }
-#[cfg(all(feature = "cpu", feature = "original-hf-binding", target_os = "linux"))]
+#[cfg(all(feature = "cpu", feature = "source-binding", target_os = "linux"))]
 impl GdnConvolutionSiluOutput {
     pub fn source_identity(&self) -> SourceIdentity {
         self.source
@@ -177,8 +177,8 @@ impl GdnConvolutionSiluOutput {
         self.values.next_history.as_slice()
     }
 }
-#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
-impl crate::original_binding::OriginalWindowOperators {
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
+impl crate::source::binding::OriginalWindowOperators {
     pub fn append_gdn_convolution_silu_slice(
         &self,
         builder: &mut PlanBuilder,

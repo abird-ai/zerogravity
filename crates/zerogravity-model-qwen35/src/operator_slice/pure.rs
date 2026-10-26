@@ -2,9 +2,9 @@
 //! No producer, session, activation nonlinearities or model execution is asserted.
 use crate::accelerator::SourceIdentity;
 use crate::accelerator::program::{ActivationPrecision, ProgramNumericalProfile};
-#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
 use crate::accelerator::program::{PlanBuilder, PlanValue};
-use crate::original_binding::{QwenMatrixRole, QwenParameterRole};
+use crate::source::binding::{QwenMatrixRole, QwenParameterRole};
 use crate::{Error, Result};
 
 /// External raw transport only. Caller independently binds archive/source and
@@ -69,8 +69,8 @@ pub enum PureSliceRole {
     OrdinaryRms(QwenParameterRole),
 }
 
-#[cfg(all(feature = "original-hf-binding", target_os = "linux"))]
-impl crate::original_binding::OriginalWindowOperators {
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
+impl crate::source::binding::OriginalWindowOperators {
     /// Caller retains its existing same-builder producer and source/metadata.
     /// No external-input node, root or complete model plan is manufactured.
     pub fn append_projection_slice(
@@ -139,14 +139,14 @@ impl crate::original_binding::OriginalWindowOperators {
 }
 
 /// Retained original-source input/output backing, borrowed access only.
-#[cfg(all(feature = "cpu", feature = "original-hf-binding", target_os = "linux"))]
+#[cfg(all(feature = "cpu", feature = "source-binding", target_os = "linux"))]
 pub struct PureSliceOutput {
     source: SourceIdentity,
     role: PureSliceRole,
     input: crate::host_math::HostValue,
     output: crate::host_math::HostValue,
 }
-#[cfg(all(feature = "cpu", feature = "original-hf-binding", target_os = "linux"))]
+#[cfg(all(feature = "cpu", feature = "source-binding", target_os = "linux"))]
 impl PureSliceOutput {
     pub fn role(&self) -> PureSliceRole {
         self.role
@@ -169,7 +169,7 @@ impl PureSliceOutput {
 }
 
 /// Boundary after all synchronous math/RNE/validation, before private return.
-#[cfg(all(feature = "cpu", feature = "original-hf-binding", target_os = "linux"))]
+#[cfg(all(feature = "cpu", feature = "source-binding", target_os = "linux"))]
 pub(crate) fn finish_pure_output(
     output: PureSliceOutput,
     cancelled: Option<&std::sync::atomic::AtomicBool>,

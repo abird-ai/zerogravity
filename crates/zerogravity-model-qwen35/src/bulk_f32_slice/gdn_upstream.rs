@@ -1,9 +1,9 @@
 //! Actual retained normalized prefix → original QKV/Z and source Q/K/V.
+use super::source_bindings::{GdnUpstreamBinding, GdnUpstreamContract};
 use super::*;
-use crate::accelerator::program::{GgufGdnUpstreamContract, GgufGdnUpstreamDescriptor};
 
 pub(crate) struct GgufGdnUpstreamOwner {
-    pub(crate) descriptor: GgufGdnUpstreamDescriptor,
+    pub(crate) descriptor: GdnUpstreamBinding,
     pub(crate) prefix: GgufPrefixOutput,
     _metadata: GlobalResourceLease,
 }
@@ -13,7 +13,7 @@ pub struct GgufGdnUpstreamSlice {
 impl GgufGdnUpstreamSlice {
     pub fn new(prefix: GgufPrefixOutput, cancelled: Option<&AtomicBool>) -> Result<Self> {
         not_cancelled(cancelled)?;
-        zerogravity_cpu::math::haswell_bulk_f32::verify_environment()?;
+        zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
         if prefix.span().base() != 0
             || prefix.span().len() != 64
             || prefix.normalized()?.len() != 131072
@@ -34,10 +34,10 @@ impl GgufGdnUpstreamSlice {
                 bytes: META,
             }],
         )?;
-        let descriptor = GgufGdnUpstreamDescriptor::new(
+        let descriptor = GdnUpstreamBinding::new(
             prefix.descriptor().clone(),
             prefix.model().as_ref(),
-            GgufGdnUpstreamContract::GgufQ4Repacked2BFirst64V1,
+            GdnUpstreamContract::First64Q4RepackF32V1,
         )?;
         not_cancelled(cancelled)?;
         Ok(Self {
@@ -48,7 +48,7 @@ impl GgufGdnUpstreamSlice {
             }),
         })
     }
-    pub fn descriptor(&self) -> &GgufGdnUpstreamDescriptor {
+    pub fn descriptor(&self) -> &GdnUpstreamBinding {
         &self.owner.descriptor
     }
     pub fn record(&self) -> Result<RecordedOperatorSlice> {
@@ -75,7 +75,7 @@ impl GgufGdnUpstreamSlice {
         }
         let mut math = crate::host_math::HostMath::for_gguf_gdn_upstream_slice(self, cancelled);
         let values = crate::forward::gguf_gdn_upstream_slice(&mut math, self.descriptor())?;
-        zerogravity_cpu::math::haswell_bulk_f32::verify_environment()?;
+        zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
         not_cancelled(cancelled)?;
         Ok(GgufGdnUpstreamOutput {
             qkv: values.qkv,
@@ -95,7 +95,7 @@ pub struct GgufGdnUpstreamOutput {
     pub(crate) owner: Arc<GgufGdnUpstreamOwner>,
 }
 impl GgufGdnUpstreamOutput {
-    pub fn descriptor(&self) -> &GgufGdnUpstreamDescriptor {
+    pub fn descriptor(&self) -> &GdnUpstreamBinding {
         &self.owner.descriptor
     }
     pub fn prefix(&self) -> &GgufPrefixOutput {

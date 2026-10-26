@@ -142,6 +142,40 @@ fn reserved(admission: &TransferAdmission) -> u64 {
 }
 
 #[test]
+fn observation_charge_does_not_satisfy_backing_retention_itself() {
+    let fixture = Fixture::new();
+    let host = admission(META + 16 * 1024, "host");
+    let source = fixture.plan(&host).unwrap().open().unwrap();
+    let witness = source.weak_owner();
+    let alias = source.clone();
+    assert!(witness.same_issuer(&alias));
+    let foreign_host = admission(META + 4096, "host");
+    let foreign = fixture.plan(&foreign_host).unwrap().open().unwrap();
+    assert!(!witness.same_issuer(&foreign));
+    drop(foreign);
+    assert_eq!(reserved(&foreign_host), 0);
+    let observation = source
+        .reserve_workspace(4096)
+        .unwrap()
+        .into_observation_workspace()
+        .unwrap();
+    let retained = source
+        .reserve_workspace(4096)
+        .unwrap()
+        .into_host_workspace()
+        .unwrap();
+    drop(source);
+    drop(alias);
+    assert!(witness.retained());
+    assert_eq!(reserved(&host), META + 8192);
+    drop(retained);
+    assert!(!witness.retained());
+    assert_eq!(reserved(&host), 4096);
+    drop(observation);
+    assert_eq!(reserved(&host), 0);
+}
+
+#[test]
 fn shared_small_window_reuse_spends_only_prepaid_capacity_and_keeps_source_alive() {
     use zerogravity_core::resource_arbiter::AllocationRequest;
     let f = Fixture::new();

@@ -1,7 +1,7 @@
 //! First prove the existing original Q4_0_8x8 helper, using produced teachers.
 #![cfg(all(
     feature = "cpu",
-    feature = "original-hf-binding",
+    feature = "source-binding",
     target_os = "linux",
     target_arch = "x86_64"
 ))]
@@ -202,8 +202,8 @@ fn original_source_q4_helpers_replay_qkv_and_z() -> Result<()> {
         )?;
         let mut actual = Vec::with_capacity(rows * 64);
         for activation in prefix.normalized()?.chunks_exact(2048) {
-            zerogravity_cpu::math::haswell_bulk_f32::verify_environment()?;
-            let values = zerogravity_cpu::weights::source_reference_projection(MatVecRegion {
+            zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
+            let values = zerogravity_cpu::source::source_reference_projection(MatVecRegion {
                 source_identity: model.source_identity(),
                 tensor_name: name,
                 kind: tensor.kind,
@@ -215,7 +215,7 @@ fn original_source_q4_helpers_replay_qkv_and_z() -> Result<()> {
             assert_eq!(values.capacity(), rows);
             actual.extend_from_slice(&values);
         }
-        zerogravity_cpu::math::haswell_bulk_f32::verify_environment()?;
+        zerogravity_cpu::numerics::haswell_bulk_f32::verify_environment()?;
         // Native expected output is first read after the original helper replay.
         let expected = words(&read(
             &capture.join(format!("bulk64/field-{field}.f32le")),

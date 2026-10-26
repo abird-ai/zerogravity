@@ -60,7 +60,7 @@ impl TextRotary {
 }
 
 fn reference(builder: &PlanBuilder, inputs: &[PlanValue]) -> Result<()> {
-    if builder.profile == ProgramNumericalProfile::Gemma4E2bBf16TextCandidateV1 {
+    if builder.bf16_text.is_some() {
         if inputs
             .iter()
             .all(|v| v.precision == ActivationPrecision::Bf16WidenedF32)
@@ -87,9 +87,7 @@ pub(super) fn record_elementwise(
     inputs: &[&PlanValue],
 ) -> Result<PlanValue> {
     operation.validate(inputs.len())?;
-    if matches!(operation, TextElementwise::ScaleBf16Scalar(_))
-        && builder.profile != ProgramNumericalProfile::Gemma4E2bBf16TextCandidateV1
-    {
+    if matches!(operation, TextElementwise::ScaleBf16Scalar(_)) && builder.bf16_text.is_none() {
         return Err(Error::Unsupported(
             "BF16 text candidate has no qualified recorded/native profile".into(),
         ));
