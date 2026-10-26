@@ -1,0 +1,16 @@
+# Preserved continuation documents
+
+These are byte-identical dated snapshots of the latest design/audit/result files. Their original locations are listed so internal relative references can be resolved from their original context. They are handoff evidence, not new runtime authority or recurring receipt requirements.
+
+| Snapshot | Canonical original | Bytes | SHA256 |
+|---|---|---:|---|
+| [GDN_RUNTIME_PARAMETERS.md](GDN_RUNTIME_PARAMETERS.md) | [.agents/runs/numerics-and-context-sequence-root-20261026/profile-implementation/gdn-extension/PARAMETRIC_DESIGN.md](../../../runs/numerics-and-context-sequence-root-20261026/profile-implementation/gdn-extension/PARAMETRIC_DESIGN.md) | 13337 | f53465f456b742b028b9ae3b1a8c1be7eb97761e6ccf08d5812d406ff3e9ff8e |
+| [ARCHITECTURE_BOUNDARY_AUDIT.md](ARCHITECTURE_BOUNDARY_AUDIT.md) | [.agents/runs/numerics-and-context-sequence-root-20261026/execution-prep/architecture-fixture-audit/REPORT.md](../../../runs/numerics-and-context-sequence-root-20261026/execution-prep/architecture-fixture-audit/REPORT.md) | 8518 | d51673decfcac5dd88204c8b604affeaa8bbc193006115e554908e949dca5db5 |
+| [NATIVE_POLICY_AUDIT.md](NATIVE_POLICY_AUDIT.md) | [.agents/runs/numerics-and-context-sequence-root-20261026/review/native-policy-audit.md](../../../runs/numerics-and-context-sequence-root-20261026/review/native-policy-audit.md) | 8670 | dfd977c9ff382a75445a794fdb4e1e8ff449cb76abef771e551fd0d536388552 |
+| [PACKED_REFERENCE_REVIEW.md](PACKED_REFERENCE_REVIEW.md) | [.agents/runs/numerics-and-context-sequence-root-20261026/execution-prep/packed-reference-review/REPORT.md](../../../runs/numerics-and-context-sequence-root-20261026/execution-prep/packed-reference-review/REPORT.md) | 3633 | 604993de65135952f9894943bb90d454c561605bfaa45797598252298b752b61 |
+| [SOURCE_IDENTITY_CHANGE.json](SOURCE_IDENTITY_CHANGE.json) | [.agents/runs/numerics-and-context-sequence-root-20261026/review/test-only-moves-capture-identity.json](../../../runs/numerics-and-context-sequence-root-20261026/review/test-only-moves-capture-identity.json) | 1669 | ba8a7490487d24100bf11de82139010c1a42191d7db76e5f2a1df80e7b571aaf |
+| [SOURCE_GATE_RESULT.json](SOURCE_GATE_RESULT.json) | [.agents/runs/numerics-and-context-sequence-root-20261026/root/rotary-full-test-summary.json](../../../runs/numerics-and-context-sequence-root-20261026/root/rotary-full-test-summary.json) | 490 | ba45bff61fb186c059a943f6a7d24e2e58b4463d6b20b86ed1fe3a6d0d4ce7f2 |
+| [HOST_TEST_BINARIES.json](HOST_TEST_BINARIES.json) | [.agents/runs/numerics-and-context-sequence-root-20261026/root/rotary-host-binaries.json](../../../runs/numerics-and-context-sequence-root-20261026/root/rotary-host-binaries.json) | 719 | 1ea01f81c16b9a5694218ef59aace497ac77de2db8932878b381db885521b432 |
+| [WORKTREE_RESULT.json](WORKTREE_RESULT.json) | [.agents/runs/numerics-and-context-sequence-root-20261026/execution-prep/worktree-reconciliation/final-d74f59a/result.json](../../../runs/numerics-and-context-sequence-root-20261026/execution-prep/worktree-reconciliation/final-d74f59a/result.json) | 1350 | c0a9e4e893a045960471662495e9f9eec38eaccc07d2687016a007104a58177c |
+
+[The eleven-file pending GDN draft](PENDING_GDN_DRAFT.md) is also embedded as non-executable text. Its status remains pending; genuine runtime parameterization, source/ABI integration and physical qualification are unfinished.

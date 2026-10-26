@@ -1,0 +1,40 @@
+{
+  "reason": "remove unused test reporting constant; no numerical/kernel/packet/ABI change",
+  "old_capture_sha256": "0938d4353dc49579daa5978a6dc78a70f23c8e8d7cb21130c95a914c0a82c4b0",
+  "new_capture_sha256": "4d77cb6637843a57a17fc093ad1e5241ddf083bf8d9ade0c9bbaa118bc9448e2",
+  "source08_unchanged": "39b9a6180ca95f95510aac6471e0255ba62100200bf6daeac6f5a4fc8d2bb30d",
+  "source_change": {
+    "path": "crates/zerogravity-gpu/src/cuda/native/cohort_native/generated_2b.rs",
+    "before_sha256": "f30bfb0d99c4775f04db7a815acd642ade20cf6075cb7bff7134b9d858d0d4e3",
+    "after_sha256": "087ec580f60085395deb27827f44e1c3ff166f080942157744ce852f32f757d9",
+    "only_change": "pub(super) const SOURCE_INPUT_SHA256: &str =\n    \"13f9aff53f2cedcdbf35d18d0602df5fe1e76b796ecd6ea9f3fdd2cc7c5a587c\";\n"
+  },
+  "consumer_updates": [
+    {
+      "path": "crates/zerogravity-gpu/src/cuda/native/text_native/capture.rs",
+      "replacements": 1
+    },
+    {
+      "path": "crates/zerogravity-gpu/src/cuda/native/text_native/catalogue.rs",
+      "replacements": 6
+    },
+    {
+      "path": "crates/zerogravity-gpu/src/cuda/native/cohort_native/packets.rs",
+      "replacements": 1
+    },
+    {
+      "path": "crates/zerogravity-gpu/src/resident_program/native_cohort/gdn_code.rs",
+      "replacements": 3
+    },
+    {
+      "path": "crates/zerogravity-gpu/src/resident_inference/native_fragment/text/loaded/inventory.rs",
+      "replacements": 2
+    },
+    {
+      "path": "crates/zerogravity-model-qwen35/src/source/binding/window_model/prepare/native.rs",
+      "replacements": 1
+    }
+  ],
+  "frozen_emitter_and_archived_captures_unchanged": true,
+  "native_qualified": false
+}

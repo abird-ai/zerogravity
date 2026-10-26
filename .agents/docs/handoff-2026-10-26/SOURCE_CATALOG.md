@@ -1,0 +1,14298 @@
+# Complete original document catalog
+
+Implementation cutoff: d74f59a18c6345dbea963861acd519c1282a26fa.
+
+All 264 tracked original files under .agents/docs, .agents/plans, top-level docs, .agents/research and .agents/prior-art are indexed below. This includes Markdown, CSV, JSON, text and patch supplements. No original body is removed or rewritten.
+
+The 59 external publication/research/prior-art bodies (1331632 bytes) are also preserved byte-identically under reference-sources so the requested handoff collection resides in .agents/docs/. Original locations remain canonical. These are dated snapshots, not parallel live specifications. Internal links in a snapshot retain their original bytes and must be resolved against the canonical origin listed here.
+
+This catalog excludes new handoff files from its original-source count. Read the parent handoff for the new companion files. It is a requested coverage snapshot, not an additional queue, policy test or recurring receipt obligation. Heading text below is escaped as text; only explicit file/snapshot links are navigation targets.
+
+## .agents/docs/ — 149 files
+
+### [.agents/docs/ABI_FAMILY_CLI_REFACTOR_2026-10-25.md](../ABI_FAMILY_CLI_REFACTOR_2026-10-25.md)
+
+- Bytes: 6048; mode: 0o600; SHA256: 305935e4dd6849658afd3434363b8040279ffd4eff182fec41fcc00e2f191e88.
+- Full heading route:
+  - Line 1: Three-seam refactor: kernel ABI, Qwen family, local run UX — 2026-10-25
+  - Line 5: Design decisions
+  - Line 7: Single kernel ABI without hot-path allocation
+  - Line 16: Family-specific semantics without changing stable type identity
+  - Line 20: One model/device selection policy, simpler spelling
+  - Line 34: Verified on the assembled source
+  - Line 47: Deliberately still open
+
+### [.agents/docs/ACCELERATOR_EXECUTION_FAMILIES_AND_BACKEND_CONTRACT.md](../ACCELERATOR_EXECUTION_FAMILIES_AND_BACKEND_CONTRACT.md)
+
+- Bytes: 23581; mode: 0o644; SHA256: 33ec1a0b63efff4fa71fc0c8e56766ed707680ac8ae9fc470328fa133719ba08.
+- Full heading route:
+  - Line 1: zerogravity — Universal region-execution backend contract (v4.1)
+  - Line 10: 1. The missing abstraction is \*granularity\*, not another framework
+  - Line 25: 2. Five physical execution kinds, one provider protocol
+  - Line 61: 3. Provider capability contract is richer than kernel capability
+  - Line 86: 4. One mathematical representation, many backend lowerings
+  - Line 104: 5. Device state bridge is essential for graph-only and external fabrics
+  - Line 131: 6. Physical topology is a graph of memory, compute, links and \*compiler domains\*
+  - Line 167: 7. Program lifecycle and cost are first-class
+  - Line 195: 8. Quantization is a typed numeric encoding, not a hardware marketing label
+  - Line 205: 9. Partition, collectives and remote/wafer failures
+  - Line 217: 10. Seamless design vs actual hardware implementation
+  - Line 231: 11. Minimum implementation surface and extension drill
+  - Line 246: 12. Final rule
+  - Line 252: 13. v4.2 — one RegionExecutionProvider across network topologies
+  - Line 262: 14. U-048 — command transport within one execution provider
+
+### [.agents/docs/ARCHITECTURE_CORRECTNESS_REVIEW_2026-10-25.md](../ARCHITECTURE_CORRECTNESS_REVIEW_2026-10-25.md)
+
+- Bytes: 11530; mode: 0o600; SHA256: 293f421db103c3caf62d1310575db41e485c00e866841cbed779ee0fda41a263.
+- Full heading route:
+  - Line 1: Fresh source/design/correctness review — 2026-10-25
+  - Line 5: Verdict
+  - Line 11: Confirmed bugs and changes
+  - Line 23: Focused verification run on changed code (no full build)
+  - Line 37: Maintainability and composition review: concrete prioritized direction
+  - Line 39: Keep the existing four responsibilities
+  - Line 48: Next architectural changes, in impact order (review proposals, NOT applied now)
+  - Line 58: Before next full build or task
+
+### [.agents/docs/ASYNC_RESOURCE_COMMAND_IR.md](../ASYNC_RESOURCE_COMMAND_IR.md)
+
+- Bytes: 19879; mode: 0o644; SHA256: 77ba19936ac47746988c05339eb5cd6b368ee631e362dfd0f19b3fa8c549bca0.
+- Full heading route:
+  - Line 1: zerogravity — Async Command/Resource IR (CIR), ownership and compiled execution
+  - Line 11: 1. Why a command IR is required
+  - Line 24: 2. Type/identity vocabulary
+  - Line 61: 3. CIR op classes and effects
+  - Line 82: 4. Async dependency and memory legality
+  - Line 98: 5. Two timelines: static plan and dynamic run
+  - Line 106: 6. Lowering examples
+  - Line 108: Resident MoE decode
+  - Line 120: Missing expert
+  - Line 135: Prefill borrow scratch and restore cache
+  - Line 150: Distributed
+  - Line 161: 7. Optimization opportunities created by CIR
+  - Line 171: 8. Maintainability constraints
+  - Line 181: 9. Proof and exit gates
+  - Line 191: 10. Open implementation details
+  - Line 195: 2026-10-12 integration — XDNA2/iGPU cooperative projection scheduling
+  - Line 207: v4 refinement — command readiness, not semantic commit
+  - Line 215: U-048 — banked stages, terminal notification and retained-plan lifetime
+
+### [.agents/docs/B4_C16_EXECUTION_CONTINUATION_2026-10-25.md](../B4_C16_EXECUTION_CONTINUATION_2026-10-25.md)
+
+- Bytes: 5967; mode: 0o600; SHA256: 6727dd0ab72e28a46d330a4354586a2fa268630124a3cde9d799f1a213764994.
+- Full heading route:
+  - Line 1: B4/C16 execution continuation — 2026-10-25
+  - Line 5: Changes implemented
+  - Line 11: Actual results
+  - Line 27: Remaining blockers in mandated user order
+
+### [.agents/docs/COMPOSITION_AND_EXTENSION_CONTRACTS.md](../COMPOSITION_AND_EXTENSION_CONTRACTS.md)
+
+- Bytes: 23822; mode: 0o644; SHA256: 8b5aaf34ae213f24fdbf25f784b4071239424367f63bddc5714ce36005fd30ff.
+- Full heading route:
+  - Line 1: zerogravity — v4.1 typed composition and region execution contracts
+  - Line 11: 1. Core type ownership — no oversized trait zoo
+  - Line 24: 2. Model math and type/shape guards
+  - Line 63: 3. Region execution contract: native kernels through compiled accelerator programs
+  - Line 106: 4. Prepared whole-state transaction (replaces v3 mutating \`commit\`)
+  - Line 138: 5. TaskDriver is stage control, not an embedded general workflow engine
+  - Line 162: 6. Runtime StepPlan and DeviceBackend
+  - Line 192: 7. Resource admission, local allocators and CIR
+  - Line 227: 8. Task output and transport delivery
+  - Line 245: 9. Fingerprints and invalidation by responsibility
+  - Line 258: 10. Future gradient and parameter update seam
+  - Line 262: 11. Lifecycle and test-before-freeze
+  - Line 278: v4.1 addendum — state/shape/compile qualification for graph-only backends
+  - Line 286: 12. v4.2 — orthogonal distribution contracts and region execution
+  - Line 296: 13. v4.3 — exact route resolution and per-model admission contract
+
+### [.agents/docs/COST_MODEL_AND_AUTOTUNING.md](../COST_MODEL_AND_AUTOTUNING.md)
+
+- Bytes: 24473; mode: 0o644; SHA256: f0408679f82134ff93c6c1daa4950138c9813bfc9a9fc050923861eef7e6561b.
+- Full heading route:
+  - Line 1: Joint cost model, online adaptation and compiler autotuning
+  - Line 17: 1. Objectives and constraints
+  - Line 33: 2. Critical path, not naive sum
+  - Line 50: 3. Cost model inputs
+  - Line 58: 4. Separate planning timescales
+  - Line 70: 5. Kernel tuning database
+  - Line 80: 6. Whole-model fusion decision
+  - Line 91: 7. MoE batch × cache co-planning
+  - Line 113: 8. Speculation cost-aware policy
+  - Line 124: 9. Memory-pressure controller
+  - Line 135: 10. Data collection and causality
+  - Line 141: 11. Autotuner validation gates
+  - Line 154: 12. Unknowns to test
+  - Line 158: 2026-10-10 integrated v2 addendum — critical-path and serving-aware planning
+  - Line 179: 2026-10-12 integration — costed multi-accelerator projection partition
+  - Line 189: v4 refinement — three selection timescales and bounded cost
+  - Line 197: v4.1 — compile granularity, program warmup and topology cost
+  - Line 205: v4.2 — measured topology and independent state/cache placement cost
+  - Line 213: v4.3 — model residency, replica and cache-affinity economics
+
+### [.agents/docs/DERIVED_QUANTIZATION_CONTRACT_2026-10-15.md](../DERIVED_QUANTIZATION_CONTRACT_2026-10-15.md)
+
+- Bytes: 14326; mode: 0o644; SHA256: bf2100d929ed6f2fd6b18981b13470f49dc3d6c17fd9162dfb125ceba69ca55e.
+- Full heading route:
+  - Line 1: Zerogravity — EXL3/QTIP and Source-Qualified Derived Quantization Contract
+  - Line 7: A. Why this is not just add another QuantKind
+  - Line 11: Storage, semantics, and physical layout must remain orthogonal
+  - Line 52: B. Correctness and derived artifact identity
+  - Line 64: C. Per-tensor calibration and sensitivity optimization
+  - Line 82: Sources and realistic caution
+  - Line 86: D. Critical counterexample: lower bitrate may be slower
+  - Line 94: E. Correctness modes and regression policy
+  - Line 104: F. Acceptance matrix for P03/P05/P07/P20/P22
+  - Line 123: G. Implementation seam and phase order
+
+### [.agents/docs/DEVICE_KERNEL_AND_CODEGEN.md](../DEVICE_KERNEL_AND_CODEGEN.md)
+
+- Bytes: 23101; mode: 0o644; SHA256: 7c3631a2b503b9fbd7e9cbb5d9b582e437f1601f66b35dc5e20b3ca973a25d56.
+- Full heading route:
+  - Line 1: Device abstraction, Rust GPU kernels, code generation and backend specialization
+  - Line 11: 1. Backend interface and invariant
+  - Line 32: 2. Capability model
+  - Line 38: 3. Rust kernel source design
+  - Line 50: 4. Output contract and numerical precision
+  - Line 65: 5. Kernel families and target-specific strategies
+  - Line 67: Dense FFN and projection
+  - Line 70: Routed MoE
+  - Line 73: Recurrent GDN/KDA
+  - Line 76: Qwen Sparse Attention
+  - Line 79: GLM sparse MLA + KDA
+  - Line 82: DeepSeek compressed attention
+  - Line 85: Hyperconnections
+  - Line 88: Quantized LM head and sampling
+  - Line 91: N-gram/Engram
+  - Line 94: 6. Strix Halo gfx1151
+  - Line 102: 7. CUDA / NVIDIA and other targets
+  - Line 110: 8. Kernel planning and autotuning
+  - Line 116: 9. Direct execution design
+  - Line 122: 10. Error handling and tests
+  - Line 126: 11. Need-to-measure technical unknowns
+  - Line 137: 2026-10-10 integrated v2 addendum — Rust GPU provider landscape and portability
+  - Line 150: 2026-10-12 integration — XDNA2 AIE/Rust source feasibility provider
+  - Line 160: v4 refinement — true closed-region providers and device-native loop proof
+  - Line 168: v4.1 — kernel backend is a specialized form of a region-program provider
+
+### [.agents/docs/DISTRIBUTED_PARALLELISM.md](../DISTRIBUTED_PARALLELISM.md)
+
+- Bytes: 7780; mode: 0o644; SHA256: c381673cbe696280aba4773921c3168d8becb2d6d7e3f13a9c5118a88d727b1c.
+- Full heading route:
+  - Line 1: Distributed and heterogeneous execution — v4.2 authoritative index
+  - Line 5: Primary goal
+  - Line 11: Four independent placement maps and one physical plan
+  - Line 21: Required topologies
+  - Line 39: Authoritative publication and node failure
+  - Line 45: Transport and security
+  - Line 51: Minimal staging and tests
+
+### [.agents/docs/DISTRIBUTED_PLACEMENT_AND_NETWORK_EXECUTION_CONTRACT.md](../DISTRIBUTED_PLACEMENT_AND_NETWORK_EXECUTION_CONTRACT.md)
+
+- Bytes: 37796; mode: 0o644; SHA256: 2c47bae7d0dae9391c87e34335e9cc76b5b4b7b17815ad9ff31d99d5e72fa5c1.
+- Full heading route:
+  - Line 1: zerogravity — Distributed placement, network and state execution contract (v4.2)
+  - Line 10: 1. Central design rule — four independent placement maps
+  - Line 28: 2. Three graphs, two enduring runtime representations
+  - Line 58: 3. Physical topology, device graph and measured transport
+  - Line 66: 3.1 Separate control plane from data plane
+  - Line 74: 3.2 Tunnel requirements
+  - Line 87: 4. Placement modes all represented by the same compiler and remote worker
+  - Line 107: 5. Per-layer state vs compute placement is first-class
+  - Line 122: 6. Live state separate from compute: three physical plans
+  - Line 124: 6.1 Cache hydrate once then local execution
+  - Line 130: 6.2 Execute stateful operator beside remote state
+  - Line 138: 6.3 Remote live cache byte reads per step
+  - Line 142: 7. Distributed sequence attention: compact partial-result composition
+  - Line 155: 8. Placement plan validity, versioning and state migration
+  - Line 175: 9. Minimal control plane and remote worker protocol
+  - Line 199: 10. Coordinator, split brain and transport failure
+  - Line 212: 11. Network-aware cost planner and performance policy
+  - Line 239: 12. Distributed placement by task kind
+  - Line 250: 13. Security, model rights and user experience
+  - Line 258: 14. Proof/test program and staged delivery
+  - Line 283: 15. Architectural completeness test
+  - Line 291: 16. v4.3 — model router load balancing versus distributed one-model sharding
+
+### [.agents/docs/ENGINE_CORE_EXECUTION_AND_PROTOCOL.md](../ENGINE_CORE_EXECUTION_AND_PROTOCOL.md)
+
+- Bytes: 23782; mode: 0o644; SHA256: 5aaf6b9f69a004dfcd2354066d23ba486992dd3b0d2c4e052c91cc96f2dc4b07.
+- Full heading route:
+  - Line 1: zerogravity — Native Engine Core, Worker Protocol, KV policies and request lifecycles
+  - Line 14: 1. One mutable owner, many concurrent hardware workers
+  - Line 20: 2. Protocol envelopes and communication
+  - Line 72: 3. Step loop and critical-path discipline
+  - Line 89: 4. Two budgets and three execution regimes
+  - Line 101: 5. KV strategy under one resource arbiter
+  - Line 103: Paged block pool (baseline)
+  - Line 108: Optional radix prefix index
+  - Line 111: Contiguous extreme pool
+  - Line 114: General hybrid-domain coordinator
+  - Line 117: 6. Persistent worker input batches and step diffs
+  - Line 123: 7. Sequence state and speculative transactions
+  - Line 136: 8. Interoperation with async CIR and resources
+  - Line 147: 9. API consistency and mode receipts
+  - Line 153: 10. Invariants and failure modes
+  - Line 166: 11. Gating tests
+  - Line 177: 12. Open decisions
+  - Line 181: 2026-10-12 integration — cross-device first-use barrier without extra EngineCore
+  - Line 187: v4 refinement — session owner, device-native StepProgram, output sequence
+  - Line 195: v4.1 — DeviceWorker may submit a compiled graph or static pipeline
+  - Line 201: v4.2 — TaskCoordinator and authorized remote RegionWorker
+  - Line 209: v4.3 — one shared EngineCore under built-in model router
+
+### [.agents/docs/EXAMPLE_EXECUTION_TRACES.md](../EXAMPLE_EXECUTION_TRACES.md)
+
+- Bytes: 19718; mode: 0o644; SHA256: 46ad6832550ee6a070afa9567ea096b9a0b3569be2cd4ccbb788690f9faaaafb.
+- Full heading route:
+  - Line 1: Design walkthroughs — concrete execution and fallback traces
+  - Line 8: Example 1 — Dense Llama-like model on unsupported GPU specialization
+  - Line 21: Example 2 — Qwen3.8 Flash-Next on 128 GB gfx1151
+  - Line 37: Example 3 — GLM-5.3 Flash on 92/96 GB Strix Halo
+  - Line 49: Example 4 — Shared-prefix coding agents with tool calls
+  - Line 59: Example 5 — Training-free novel model op arrives
+  - Line 68: Example 6 — Distributed TP failure during speculative verification
+  - Line 77: Example 7 — Why compiler fusion might lose
+  - Line 81: Practical invariant crosswalk
+  - Line 87: 2026-10-10 integrated v2 addendum — async CIR and modern extension traces
+  - Line 122: 2026-10-12 trace 13 — Qwen cooperative prefill on an optionally qualified XDNA2 NPU
+  - Line 133: v4 traces — prepared state, shape fallback and independent tasks
+  - Line 141: v4.2 distributed and tunneled execution traces
+  - Line 151: v4.3 multi-model router and one-command user traces
+
+### [.agents/docs/EXTREME_HYBRID_MODELS_AND_SPECULATIVE_DRAFTER_SEMANTICS_2026-10-15.md](../EXTREME_HYBRID_MODELS_AND_SPECULATIVE_DRAFTER_SEMANTICS_2026-10-15.md)
+
+- Bytes: 17081; mode: 0o644; SHA256: b51c0c60c5d95b844ebce1c9c9903024b251c5b55c1a461d6b722627cd1bb80c.
+- Full heading route:
+  - Line 1: Zerogravity — Extreme Hybrid Model Recipes, Native MTP and DFlash Source Contracts
+  - Line 6: 0. Governing rule
+  - Line 12: 1. Three distinct registered model recipes
+  - Line 26: 2. Qwen3.8 source recipe
+  - Line 35: 3. GLM5.3 source recipe
+  - Line 43: 4. MiMo2.6 required source adapter (currently a documentation gap)
+  - Line 58: MiMo layer47 FP16 overflow: semantic and derived-format requirement
+  - Line 64: 5. DraftSource families and target-authoritative verification
+  - Line 94: Qwen MTP + n-gram lookup
+  - Line 99: GLM MTP and BF16 sidecar
+  - Line 104: MiMo DFlash attention: exact semantic fields
+  - Line 119: 6. Distinct state and clock budgets for hybrid models
+  - Line 132: 7. Kernel/route-aware speculation and batching
+  - Line 144: 8. Numerical and behavior policy
+  - Line 159: 9. Acceptance matrix P11/P13/P14/P15/P16
+  - Line 182: 10. Existing phase mapping, no new engine
+
+### [.agents/docs/FORMATS_QUANTIZATION_AND_LOADING.md](../FORMATS_QUANTIZATION_AND_LOADING.md)
+
+- Bytes: 15167; mode: 0o644; SHA256: 220b5aeec5b6eb4ac87a19534c3bf0a206407d317255827134f88c76304d0809.
+- Full heading route:
+  - Line 1: Model artifacts, quantization, tokenizer/template parity and safe loading
+  - Line 12: 1. Design constraints
+  - Line 20: 2. Architecture of the loading pipeline
+  - Line 36: 3. GGUF
+  - Line 53: 4. Safetensors / HF
+  - Line 61: 5. Tokenizers, chat templates and agent semantics
+  - Line 74: 6. Distinguish storage precision from compute format
+  - Line 82: 7. Conversion, calibration and verification pipeline (optional developer tooling)
+  - Line 92: 8. Multi-file and huge-file support
+  - Line 98: 9. Layout transform and fallback
+  - Line 102: 10. Adversarial input tests
+  - Line 106: 11. Open policy items
+  - Line 110: 2026-10-10 integrated v2 addendum — complete product-model pipeline
+  - Line 123: v4 refinement — independent artifact, semantic, state and bundle identities
+  - Line 129: U-048 — packed quantization and NPU derived-encoding eligibility
+
+### [.agents/docs/FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-17.md](../FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-17.md)
+
+- Bytes: 377070; mode: 0o644; SHA256: e4fed9cebd90a2f4d193fa73f8637c5254944e1ae2e1c295557961ea574c2ebb.
+- Full heading route:
+  - Line 3: Zerogravity — comprehensive agent handoff, 17 October 2026
+  - Line 20: Contents
+  - Line 34: 1. Read this first: authority and checkpoint
+  - Line 36: 1.1 Current source and working state
+  - Line 60: 1.2 Authority order
+  - Line 80: 1.3 What changed since the original H4 takeover request
+  - Line 103: 1.4 Reading sequence
+  - Line 124: 1.5 Historical recovery and its exact limits
+  - Line 156: Original vision, design evolution and architecture
+  - Line 164: 1. Authority and limits of the surviving record
+  - Line 199: 2. Beginning-to-current architectural evolution
+  - Line 223: 3. Exact ownership, representation and state publication
+  - Line 261: 4. Source, arithmetic and quality are distinct contracts
+  - Line 324: 5. Resources, accelerators and virtual residency
+  - Line 366: 6. Distributed placement, routing, serving and speculation
+  - Line 417: 7. V5/V5.1 multimodal and realtime vision
+  - Line 465: 8. User decisions, proposals and supersessions: complete ID crosswalk
+  - Line 515: 9. Accepted implementation versus historical stage facts
+  - Line 558: 10. Current acquisition and remaining execution boundary
+  - Line 640: 11. Exact surviving historical recovery and unrecoverable material
+  - Line 680: 12. Phase and falsification map for preserving future work
+  - Line 736: 13. Coordinator integration and next-agent guardrails
+  - Line 758: Implementation history, verification and recovery
+  - Line 770: Principal findings for the coordinator
+  - Line 798: Current history, rewritten dates and available references
+  - Line 828: Entire reachable commit ledger
+  - Line 913: How the rewritten baseline is split
+  - Line 945: Recovery: what is really available and what is not
+  - Line 1012: Historical development sequence retained by accepted plans
+  - Line 1026: Design/bootstrap and CPU qualification
+  - Line 1056: Partial GPU owners and first physical acceptance
+  - Line 1081: H1–H25 progression into resident and native execution
+  - Line 1130: Hardware discovery and local AMD hold
+  - Line 1154: Layout, new-family contracts and concurrency disposition
+  - Line 1177: Tracking/archive/checkpoint chronology
+  - Line 1216: Acquisition chronology and accepted gates
+  - Line 1271: Original-model regression route ledger
+  - Line 1330: Substantive failures/corrections that explain acceptance
+  - Line 1396: Still-open limits, not erased by accepted chronology
+  - Line 1438: Paused source drafts that must survive handoff
+  - Line 1460: Audit limits and coordinator use
+  - Line 1476: Recovered original94-source history: exact reading catalog
+  - Line 1484: Correction and precise recovery boundary
+  - Line 1510: Tested read-only commands and wrapper positions
+  - Line 1516: Older full implementation executive/index (read progressively).
+  - Line 1518: Source1 example; every source has its own exact range below.
+  - Line 1520: Concrete recovered G1, G3b and P00 reports.
+  - Line 1532: Complete94 nested-source title and inclusive-line catalog
+  - Line 1631: Outer13 appendices and3 shared snapshots
+  - Line 1656: Additional nesting inspected for a second recovery oversight
+  - Line 1675: Recovered historical phase labels and narrower test counts
+  - Line 1701: Additional substantive early results and limitations
+  - Line 1733: Other assembled-handoff cross-checks
+  - Line 1754: Model acquisition: complete current contracts and recent reasoning
+  - Line 1764: One source, transport, cache and preparation path
+  - Line 1806: Exact selection, closure and independent components
+  - Line 1832: Transport, resume and bounded auxiliary bodies
+  - Line 1863: Protected removal and explicit local HF import
+  - Line 1889: Finite native provider profiles
+  - Line 1921: Native Xet details that must survive continuation
+  - Line 1959: Latest candidate and quant features
+  - Line 1992: Failed experiments and lessons
+  - Line 2028: Exact continuation and complete open-plan snapshot
+  - Line 2034: Starting point and verified scope
+  - Line 2056: Non-negotiable working rules and existing authorization
+  - Line 2069: Current acquisition environment and ownership boundaries
+  - Line 2081: Preserve the two unfinished worktrees
+  - Line 2098: C3 filters — exact recoverable state
+  - Line 2134: C4 required native Xet indexes — exact recoverable state
+  - Line 2154: Commands, environment and failure lessons
+  - Line 2201: Broader backlog, execution order and concrete external gaps
+  - Line 2215: Research and prior-art placement for coordinator integration
+  - Line 2226: Exact open-item snapshot by plan
+  - Line 2230: accepted-baseline — 0 open items
+  - Line 2236: cpu-gpu-optimization — 17 open items
+  - Line 2263: distributed-execution — 7 open items
+  - Line 2277: handoff-cleanup — 0 open items
+  - Line 2283: historical-records — 0 open items
+  - Line 2289: memory-and-streaming — 14 open items
+  - Line 2313: model-acquisition — 20 open items
+  - Line 2346: model-execution — 10 open items
+  - Line 2363: multimodal — 24 open items
+  - Line 2397: numerics-and-context — 7 open items
+  - Line 2411: platform-and-release — 13 open items
+  - Line 2434: serving-and-speculation — 9 open items
+  - Line 2450: Retained research and prior-art source path index
+  - Line 2454: .agents/research — 24 files
+  - Line 2481: .agents/prior-art — 12 files
+  - Line 2496: First resumption checklist for the next coordinator
+  - Line 2510: Practical reconstruction and handoff boundaries
+  - Line 2512: Portable unfinished source under the requested documentation roots
+  - Line 2562: Workspace owner map
+  - Line 2581: Concrete build and qualification commands
+  - Line 2590: Revalidation: read current state, do not reset to a historical reference.
+  - Line 2596: Locked/offline CPU build, using only existing authorized dependencies.
+  - Line 2599: Complete implementation-phase gate, one MAIN target owner.
+  - Line 2603: Actual source-filter check; new source must be included in the Git flake first.
+  - Line 2606: Original trained cache/direct route (both approved models in this one test).
+  - Line 2612: Original trained external-HF-import route, separately and sequentially.
+  - Line 2648: Packaging and product boundaries
+  - Line 2677: Complete retained decision register — dated context snapshot
+  - Line 2792: Explicit user decisions
+  - Line 2861: Strongly recommended architectural choices (not independently approved yet)
+  - Line 2962: Open decisions (do not fill silently)
+  - Line 3041: Assumptions / boundaries
+  - Line 3050: v3 architectural supersession and provenance rule — 2026-10-12
+  - Line 3062: Conflict-resolution protocol
+  - Line 3083: Owner decisions after U-055 — consolidated 2026-10-17
+  - Line 3115: Complete reading catalog and source ownership
+  - Line 3122: Public engineering and publication context
+  - Line 3138: Normative subsystem architecture
+  - Line 3224: Cross-cutting specifications and decision/workflow owners
+  - Line 3258: Live plan TODO owners and completed plain-checklist archives
+  - Line 3292: Retained research and acceptance registers
+  - Line 3344: Prior art, critical review and license/source attribution
+  - Line 3372: Current executable/qualification/reference runbooks
+  - Line 3395: Handoff validation and remaining limitations
+  - Line 3399: Completed documentation validation — 17 October2026
+
+### [.agents/docs/FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-19.md](../FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-19.md)
+
+- Bytes: 602982; mode: 0o600; SHA256: 8510266441c84e1588373d42ab2d43a6831c8e7cac001d8911ca76ffde305492.
+- Full heading route:
+  - Line 6: Zerogravity — full comprehensive implementation and architecture handoff, 19 October 2026
+  - Line 10: 0. Executive takeover — current precise checkpoint
+  - Line 36: 1. Authority, preservation and read order
+  - Line 47: 2. Original user vision and architecture chronology — beginning to present
+  - Line 49: 2.1 What Zerogravity is
+  - Line 55: 2.2 Evolution, including accepted and superseded reasoning
+  - Line 80: 2.3 Latest owner decisions carried forward verbatim in substance
+  - Line 91: 3. System ownership and critical invariants (do not fork these)
+  - Line 107: 4. Actual crate/tool/source ownership map
+  - Line 130: 5. Implementation status: exact claims versus non-claims
+  - Line 146: 6. Current P0 — OpenAI, real GPU batching and vLLM acceptance
+  - Line 148: 6.1 Working server
+  - Line 173: 6.2 GPU status and numerics
+  - Line 181: 6.3 Concrete unimplemented integration acceptance steps — do these in order
+  - Line 192: 7. Current P1 — GPU/RAM/SSD source-residency foundation
+  - Line 200: 8. Current P2 — Qwen3.8, Gemma4 and independent numerical evidence
+  - Line 212: 9. Acquisition and immutable source provenance
+  - Line 218: 10. YAML multimodal pipeline and authorized context scaffolding
+  - Line 238: 11. Hardware, physical safety, failures and lessons
+  - Line 246: 12. Practical verified command and test runbook
+  - Line 248: Safe revalidation
+  - Line 260: Full isolated frozen gate
+  - Line 267: Strict CUDA/CPU/Vulkan lint
+  - Line 278: Approved independent trained Qwen3.5 regression routes
+  - Line 296: Physical CUDA P12 acceptance (only on permitted, healthy card)
+  - Line 340: Serving/vLLM benchmark contracts
+  - Line 347: Nix source integrity (separate from formatting)
+  - Line 354: 13. Test evidence and milestone provenance after the Oct 17 handoff
+  - Line 371: Current local acceptance receipt index
+  - Line 382: 14. Priority execution program for next agent
+  - Line 394: 15. What the new agent must NOT assume
+  - Line 408: 16. Comprehensive reading and provenance catalogue
+  - Line 430: Appendix A — Complete October 17 architecture, decisions, historical recovery and prior handoff
+  - Line 438: Zerogravity — comprehensive agent handoff, 17 October 2026
+  - Line 455: Contents
+  - Line 469: 1. Read this first: authority and checkpoint
+  - Line 471: 1.1 Current source and working state
+  - Line 495: 1.2 Authority order
+  - Line 515: 1.3 What changed since the original H4 takeover request
+  - Line 538: 1.4 Reading sequence
+  - Line 559: 1.5 Historical recovery and its exact limits
+  - Line 591: Original vision, design evolution and architecture
+  - Line 599: 1. Authority and limits of the surviving record
+  - Line 634: 2. Beginning-to-current architectural evolution
+  - Line 658: 3. Exact ownership, representation and state publication
+  - Line 696: 4. Source, arithmetic and quality are distinct contracts
+  - Line 759: 5. Resources, accelerators and virtual residency
+  - Line 801: 6. Distributed placement, routing, serving and speculation
+  - Line 852: 7. V5/V5.1 multimodal and realtime vision
+  - Line 900: 8. User decisions, proposals and supersessions: complete ID crosswalk
+  - Line 950: 9. Accepted implementation versus historical stage facts
+  - Line 993: 10. Current acquisition and remaining execution boundary
+  - Line 1075: 11. Exact surviving historical recovery and unrecoverable material
+  - Line 1115: 12. Phase and falsification map for preserving future work
+  - Line 1171: 13. Coordinator integration and next-agent guardrails
+  - Line 1193: Implementation history, verification and recovery
+  - Line 1205: Principal findings for the coordinator
+  - Line 1233: Current history, rewritten dates and available references
+  - Line 1263: Entire reachable commit ledger
+  - Line 1348: How the rewritten baseline is split
+  - Line 1380: Recovery: what is really available and what is not
+  - Line 1447: Historical development sequence retained by accepted plans
+  - Line 1461: Design/bootstrap and CPU qualification
+  - Line 1491: Partial GPU owners and first physical acceptance
+  - Line 1516: H1–H25 progression into resident and native execution
+  - Line 1565: Hardware discovery and local AMD hold
+  - Line 1589: Layout, new-family contracts and concurrency disposition
+  - Line 1612: Tracking/archive/checkpoint chronology
+  - Line 1651: Acquisition chronology and accepted gates
+  - Line 1706: Original-model regression route ledger
+  - Line 1765: Substantive failures/corrections that explain acceptance
+  - Line 1831: Still-open limits, not erased by accepted chronology
+  - Line 1873: Paused source drafts that must survive handoff
+  - Line 1895: Audit limits and coordinator use
+  - Line 1911: Recovered original94-source history: exact reading catalog
+  - Line 1919: Correction and precise recovery boundary
+  - Line 1945: Tested read-only commands and wrapper positions
+  - Line 1951: Older full implementation executive/index (read progressively).
+  - Line 1953: Source1 example; every source has its own exact range below.
+  - Line 1955: Concrete recovered G1, G3b and P00 reports.
+  - Line 1967: Complete94 nested-source title and inclusive-line catalog
+  - Line 2066: Outer13 appendices and3 shared snapshots
+  - Line 2091: Additional nesting inspected for a second recovery oversight
+  - Line 2110: Recovered historical phase labels and narrower test counts
+  - Line 2136: Additional substantive early results and limitations
+  - Line 2168: Other assembled-handoff cross-checks
+  - Line 2189: Model acquisition: complete current contracts and recent reasoning
+  - Line 2199: One source, transport, cache and preparation path
+  - Line 2241: Exact selection, closure and independent components
+  - Line 2267: Transport, resume and bounded auxiliary bodies
+  - Line 2298: Protected removal and explicit local HF import
+  - Line 2324: Finite native provider profiles
+  - Line 2356: Native Xet details that must survive continuation
+  - Line 2394: Latest candidate and quant features
+  - Line 2427: Failed experiments and lessons
+  - Line 2463: Exact continuation and complete open-plan snapshot
+  - Line 2469: Starting point and verified scope
+  - Line 2491: Non-negotiable working rules and existing authorization
+  - Line 2504: Current acquisition environment and ownership boundaries
+  - Line 2516: Preserve the two unfinished worktrees
+  - Line 2533: C3 filters — exact recoverable state
+  - Line 2569: C4 required native Xet indexes — exact recoverable state
+  - Line 2589: Commands, environment and failure lessons
+  - Line 2636: Broader backlog, execution order and concrete external gaps
+  - Line 2650: Research and prior-art placement for coordinator integration
+  - Line 2661: Exact open-item snapshot by plan
+  - Line 2665: accepted-baseline — 0 open items
+  - Line 2671: cpu-gpu-optimization — 17 open items
+  - Line 2698: distributed-execution — 7 open items
+  - Line 2712: handoff-cleanup — 0 open items
+  - Line 2718: historical-records — 0 open items
+  - Line 2724: memory-and-streaming — 14 open items
+  - Line 2748: model-acquisition — 20 open items
+  - Line 2781: model-execution — 10 open items
+  - Line 2798: multimodal — 24 open items
+  - Line 2832: numerics-and-context — 7 open items
+  - Line 2846: platform-and-release — 13 open items
+  - Line 2869: serving-and-speculation — 9 open items
+  - Line 2885: Retained research and prior-art source path index
+  - Line 2889: .agents/research — 24 files
+  - Line 2916: .agents/prior-art — 12 files
+  - Line 2931: First resumption checklist for the next coordinator
+  - Line 2945: Practical reconstruction and handoff boundaries
+  - Line 2947: Portable unfinished source under the requested documentation roots
+  - Line 2997: Workspace owner map
+  - Line 3016: Concrete build and qualification commands
+  - Line 3025: Revalidation: read current state, do not reset to a historical reference.
+  - Line 3031: Locked/offline CPU build, using only existing authorized dependencies.
+  - Line 3034: Complete implementation-phase gate, one MAIN target owner.
+  - Line 3038: Actual source-filter check; new source must be included in the Git flake first.
+  - Line 3041: Original trained cache/direct route (both approved models in this one test).
+  - Line 3047: Original trained external-HF-import route, separately and sequentially.
+  - Line 3083: Packaging and product boundaries
+  - Line 3112: Complete retained decision register — dated context snapshot
+  - Line 3227: Explicit user decisions
+  - Line 3296: Strongly recommended architectural choices (not independently approved yet)
+  - Line 3397: Open decisions (do not fill silently)
+  - Line 3476: Assumptions / boundaries
+  - Line 3485: v3 architectural supersession and provenance rule — 2026-10-12
+  - Line 3497: Conflict-resolution protocol
+  - Line 3518: Owner decisions after U-055 — consolidated 2026-10-17
+  - Line 3550: Complete reading catalog and source ownership
+  - Line 3557: Public engineering and publication context
+  - Line 3573: Normative subsystem architecture
+  - Line 3659: Cross-cutting specifications and decision/workflow owners
+  - Line 3693: Live plan TODO owners and completed plain-checklist archives
+  - Line 3727: Retained research and acceptance registers
+  - Line 3779: Prior art, critical review and license/source attribution
+  - Line 3807: Current executable/qualification/reference runbooks
+  - Line 3830: Handoff validation and remaining limitations
+  - Line 3834: Completed documentation validation — 17 October2026
+  - Line 3870: Appendix B — Full as-of-HEAD plan and work-item snapshots
+  - Line 3875: Snapshot: .agents/plans/README.md (105 lines)
+  - Line 3878: Plans
+  - Line 3884: Layout
+  - Line 3899: Queue — \`TODO.md\`
+  - Line 3904: Active
+  - Line 3907: Icebox
+  - Line 3910: Closed
+  - Line 3919: Plan — \`README.md\`
+  - Line 3933: Plan — \`TODO.md\`
+  - Line 3936: \<plan\>
+  - Line 3940: Committed
+  - Line 3941: \`\<sha\>\` — \<what this set landed\>
+  - Line 3944: Uncommitted
+  - Line 3948: Tests and verification
+  - Line 3959: History — optional \`HISTORY.md\`
+  - Line 3971: Parallel work
+  - Line 3978: Closeout
+  - Line 3985: Snapshot: .agents/plans/TODO.md (23 lines)
+  - Line 3988: Plan queue
+  - Line 3990: Active
+  - Line 3997: Icebox
+  - Line 4005: Closed
+  - Line 4013: Snapshot: .agents/plans/cpu-gpu-optimization/TODO.md (51 lines)
+  - Line 4016: Cpu gpu optimization
+  - Line 4025: Uncommitted
+  - Line 4052: Committed
+  - Line 4054: 6d74f76
+  - Line 4058: Concurrency review — 1fca893
+  - Line 4062: Tests and verification
+  - Line 4069: Snapshot: .agents/plans/distributed-execution/TODO.md (23 lines)
+  - Line 4072: Distributed execution
+  - Line 4080: Uncommitted
+  - Line 4090: Committed
+  - Line 4092: 6d74f76
+  - Line 4097: Snapshot: .agents/plans/memory-and-streaming/TODO.md (68 lines)
+  - Line 4100: Memory and streaming
+  - Line 4108: Uncommitted
+  - Line 4156: Committed
+  - Line 4158: 6d74f76
+  - Line 4162: Tests and verification
+  - Line 4170: Snapshot: .agents/plans/model-acquisition/TODO.md (334 lines)
+  - Line 4173: TODO — model acquisition
+  - Line 4182: Committed
+  - Line 4190: 837e77f — legacy offline acquisition eligibility
+  - Line 4199: 52e42fc — native HF Xet reconstruction
+  - Line 4212: 46cf5a5 — strong conditional cloud observations
+  - Line 4223: 4db5efb — ModelScope selected exact sizing
+  - Line 4233: f22f759 — metadata-only pinned file candidates
+  - Line 4242: f197c9c — explicit GGUF filename quant families
+  - Line 4253: 1a22597 — completed comprehensive handoff and source preservation
+  - Line 4259: 04363c3 — bounded C3 Unicode filters and exclusion closure
+  - Line 4300: 8195c18 — verified required native Xet indexes
+  - Line 4354: f56b574 — trusted AWS-standard FULL\_OBJECT SHA256
+  - Line 4389: d5aa5cb — original-model v1 source closure and execution cutover
+  - Line 4421: Uncommitted
+  - Line 4486: Tests and verification
+  - Line 4503: Deferred
+  - Line 4509: Snapshot: .agents/plans/model-execution/TODO.md (365 lines)
+  - Line 4512: Model execution
+  - Line 4520: Uncommitted
+  - Line 4672: Committed
+  - Line 4674: 6d74f76
+  - Line 4678: Source contracts — 023703f
+  - Line 4683: 93a5622 — original verified immutable source shard owner
+  - Line 4708: b796a2e — original Qwen text source geometry and CPU value binding
+  - Line 4739: b11e58c — original source-bound Qwen analytical one-layer proposals
+  - Line 4775: 6329cff — source-bound Qwen one-layer TaskCoordinator
+  - Line 4804: e43ba4c — original Qwen full-model FP32 analytical forward
+  - Line 4833: aaf9ba6 — original Qwen BF16 source dtype diagnostics
+  - Line 4867: Deferred — after Qwen/Gemma and Flash execution
+  - Line 4879: Snapshot: .agents/plans/multimodal/TODO.md (73 lines)
+  - Line 4882: Multimodal
+  - Line 4891: Uncommitted
+  - Line 4929: Committed
+  - Line 4931: 6d74f76
+  - Line 4935: Tests and verification
+  - Line 4957: Snapshot: .agents/plans/numerics-and-context/TODO.md (30 lines)
+  - Line 4960: Numerics and context
+  - Line 4967: Uncommitted
+  - Line 4978: Committed
+  - Line 4980: 6d74f76
+  - Line 4985: Accepted investigation findings — 6d74f76
+  - Line 4992: Snapshot: .agents/plans/pipeline-composition/TODO.md (299 lines)
+  - Line 4995: TODO — Single-process model and pipeline composition
+  - Line 5004: Uncommitted
+  - Line 5043: Committed
+  - Line 5050: 4bf624e — accepted foundation
+  - Line 5108: ac44e83 — accepted foundation
+  - Line 5134: f28a62c — accepted foundation
+  - Line 5152: Tests and verification
+  - Line 5222: Deferred
+  - Line 5230: Runtime work deferred until after core model priorities
+  - Line 5296: Snapshot: .agents/plans/platform-and-release/TODO.md (39 lines)
+  - Line 5299: Platform and release
+  - Line 5308: Uncommitted
+  - Line 5323: Committed
+  - Line 5325: 1af2ac4
+  - Line 5329: 6d74f76
+  - Line 5334: Tests and verification
+  - Line 5340: Snapshot: .agents/plans/serving-and-speculation/TODO.md (159 lines)
+  - Line 5343: Serving and speculation
+  - Line 5351: Uncommitted
+  - Line 5470: Committed
+  - Line 5472: 35b9093 — initial OpenAI CPU router and verified SSD extents
+  - Line 5499: 6d74f76
+  - Line 5507: Appendix C — Complete surviving document, research, prior-art, plan and recovery catalogue
+  - Line 5512: Public engineering/publication docs (6 Markdown sources)
+  - Line 5521: Normative system/architecture designs (45 Markdown sources)
+  - Line 5569: Implementation plans and runbooks (37 Markdown sources)
+  - Line 5609: Source-model/performance research (24 Markdown sources)
+  - Line 5636: Prior-art, critical review and licensing (12 Markdown sources)
+  - Line 5651: Agent-run recovery notes (16 Markdown sources)
+  - Line 5670: Cross-document notes
+  - Line 5680: Appendix D — Complete copy-ready 19 October next-agent starting prompt
+  - Line 5684: Starting prompt — Zerogravity comprehensive takeover, 19 October 2026
+
+### [.agents/docs/FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-20.md](../FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-20.md)
+
+- Bytes: 1369067; mode: 0o644; SHA256: dc81f254f87a8b9257bd3870ef159176da7bd7dd976f6d5dd4f40a552a1e1c70.
+- Full heading route:
+  - Line 1: Zerogravity — full comprehensive agent handoff, 20 October 2026
+  - Line 32: Reading map
+  - Line 72: Part 1 — Current takeover and instruction precedence
+  - Line 78: Current takeover context — 20 October 2026
+  - Line 84: Latest instruction and authority
+  - Line 115: Exact repository state at this inspection
+  - Line 148: What changed after the October 19 handoff
+  - Line 169: Proven, unproven and newly proposed work
+  - Line 171: Accepted small-model path
+  - Line 187: Numerical issue
+  - Line 214: Original HF and27B
+  - Line 227: Actual vLLM comparisons
+  - Line 246: Paused implementation that must survive
+  - Line 279: Next work, only after explicit implementation resumption
+  - Line 305: Working and verification rules
+  - Line 338: Part 2 — Live workspace, worktrees and complete reachable commit history
+  - Line 344: Read-only workspace snapshot — 20 October 2026
+  - Line 348: HEAD and signature
+  - Line 354: Local tracking divergence
+  - Line 360: MAIN pending changes
+  - Line 379: Staged paths (empty at snapshot)
+  - Line 385: Root README blob
+  - Line 391: Commits since previous handoff
+  - Line 420: Complete reachable current HEAD history (text is not missing original ancestry)
+  - Line 556: Branches
+  - Line 585: Worktree registry
+  - Line 705: GPU point telemetry
+  - Line 711: GPU compute processes
+  - Line 717: Worktree pending paths
+  - Line 721: \`/home/pvl/spaces/abird/src/zerogravity\`
+  - Line 740: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-activation-prep-20261020\`
+  - Line 747: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-activation-prep-cold-20261020\`
+  - Line 771: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-bf16-dot-20261020\`
+  - Line 793: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-capture-host-tests-20261020\`
+  - Line 803: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-cuda-graph-20261020\`
+  - Line 822: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-axes-20261019\`
+  - Line 841: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-binding-20261020\`
+  - Line 856: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-cached-gdn-20261020\`
+  - Line 863: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-conv-20261020\`
+  - Line 871: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-cuda-boundary-20261020\`
+  - Line 884: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-norm-20261020\`
+  - Line 892: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-ordinary-contract-20261020\`
+  - Line 910: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-ordinary-rms-20261020\`
+  - Line 925: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-raw-parameters-20261020\`
+  - Line 933: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-sigmoid-20261020\`
+  - Line 940: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-silu-20261020\`
+  - Line 948: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-softplus-20261020\`
+  - Line 957: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-typed-20261020\`
+  - Line 973: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-native-prefix-20261020\`
+  - Line 993: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-parameter-window-20261020\`
+  - Line 1000: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-qwen-window-resolver-20261020\`
+  - Line 1032: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-ragged-20261019\`
+  - Line 1058: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-serialized-bench-20261020\`
+  - Line 1066: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-tensor-window-20261020\`
+  - Line 1079: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-token-metrics-20261020\`
+  - Line 1110: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-torch-gdn-reduce-20261020\`
+  - Line 1117: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020\`
+  - Line 1152: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/root-default-bulk-20261020\`
+  - Line 1170: Existing CUDA paths (existence only)
+  - Line 1180: Part 3 — Numerical and model continuation
+  - Line 1186: Numerical and model continuation — 20 October 2026
+  - Line 1203: 1. Read order and inherited architecture
+  - Line 1238: 2. Four numerical targets and the latest decision
+  - Line 1261: 3. Numerical investigation chronology: historical versus fresh GGUF
+  - Line 1263: 3.1 Inherited issue and source recovery
+  - Line 1302: 3.2 Fresh strict AR1 results
+  - Line 1345: 3.3 Default bulk first-gap localization
+  - Line 1384: 3.4 Whole-runtime reference controls and their failures
+  - Line 1428: 3.5 Default-bulk implementation remains a paused candidate
+  - Line 1457: 4. Original HF sources, runtime and first diagnostic gaps
+  - Line 1459: 4.1 Source identities and capacity
+  - Line 1494: 4.2 Pinned native environment and independent captures
+  - Line 1535: 4.3 Earliest .8B CPU diagnostic diagnosis
+  - Line 1558: 5. Accepted shared-engine model/math milestones
+  - Line 1616: 6. Bounded27B source transport and real operator results
+  - Line 1618: 6.1 Source owner/windows and three-node path
+  - Line 1658: 6.2 Genuine27B initial/cached public reference
+  - Line 1677: 6.3 Isolated521-source composition and actual H48/wide gates
+  - Line 1729: 7. Native CPU provider: actual arithmetic versus admission
+  - Line 1780: 8. Paused coefficient/initial-prefix candidates and exact525 trap
+  - Line 1782: 8.1 Coefficient preparation
+  - Line 1810: 8.2 Exact CPU initial query/prefix leaves
+  - Line 1836: 8.3 Combined525 attestation derivative — do not reuse old attestors
+  - Line 1862: 9. Actual vLLM evidence and why matching is still open
+  - Line 1921: 10. Concrete remaining integration seams and implementation order
+  - Line 1988: 11. Paused text artifacts that must survive ignored-run loss
+  - Line 2034: 12. What a successor must not claim
+  - Line 2054: Part 4 — Pinned vLLM GDN arithmetic investigation
+  - Line 2060: Durable GDN source-investigation copy
+  - Line 2076: Pinned vLLM GDN arithmetic audit
+  - Line 2083: Decision
+  - Line 2107: Exact sources
+  - Line 2129: Select the actual path before comparing bits
+  - Line 2144: Arithmetic/storage table
+  - Line 2170: Exact normal packed-decode recurrence
+  - Line 2208: Exact prefill/initial chunk boundaries
+  - Line 2240: Immutable GGUF source transformation is part of the profile
+  - Line 2269: Minimal directly portable work and fastest gates
+  - Line 2321: Proof boundary
+  - Line 2337: Small source files read for GDN investigation
+  - Line 2371: Part 5 — Serving, measured performance and paused GPU work
+  - Line 2377: Serving, performance and paused GPU work — 20 October 2026
+  - Line 2386: 1. Stop state and authority
+  - Line 2418: 2. Context entry points and supersession
+  - Line 2444: 3. Post-c85ad25 implementation chronology
+  - Line 2469: B3/B4: what physical fusion means
+  - Line 2500: B5–B8 serving semantics that must survive optimization
+  - Line 2534: 4. Last accepted state-scatter phase
+  - Line 2565: 5. Performance history and interpretation
+  - Line 2567: Native versus native
+  - Line 2621: Genuine pinned stock vLLM baseline
+  - Line 2668: 6. Benchmark/profiler lifecycle lessons and known failures
+  - Line 2697: 7. Actual hardware counts, not source-counter fiction
+  - Line 2733: 8. Exact paused ordered-SiLU checkpoint
+  - Line 2735: Operator and integration sources
+  - Line 2762: Actual compile failure and scalar repair
+  - Line 2782: Operator physical result and incomplete instruction witness
+  - Line 2812: Current MAIN candidate build — compiled, unaccepted
+  - Line 2856: 9. Temporal, graph and other pending source drafts
+  - Line 2934: 10. Resume procedure and preservation priorities
+  - Line 2973: 11. Independent performance investigation — durable prose copy
+  - Line 2981: Shared-engine performance audit — planning only
+  - Line 2987: Conclusion
+  - Line 3001: What is measured, and what is inferred
+  - Line 3021: Priorities and measurable gates
+  - Line 3023: 0. Close the comparable numerical target and benchmark accounting
+  - Line 3045: 1. Obtain a critical-path decomposition before choosing further kernels
+  - Line 3068: 2. Finish small exact fusion already supported by source
+  - Line 3086: 3. Temporal prefill, including the dominant solo case
+  - Line 3116: 4. Rework the projection data path, not just its launch wrapper
+  - Line 3139: 5. Production graph reuse and synchronization reduction
+  - Line 3160: 6. State traffic, attention and scheduling capacity
+  - Line 3181: Fair staged benchmark matrix
+  - Line 3219: Model feasibility and dependencies
+  - Line 3242: Source/evidence entry points
+  - Line 3264: Part 6 — Original design lineage and historical coverage
+  - Line 3270: History, design and coverage audit — 20 October 2026
+  - Line 3278: Preservation conclusion
+  - Line 3300: What the October 19 handoff already preserves
+  - Line 3318: Durable design lineage and explicit supersessions
+  - Line 3346: October 19 current-state assertions now requiring explicit correction
+  - Line 3388: Historical recovery: positive evidence and limits
+  - Line 3414: Catalogue and remaining coverage risks
+  - Line 3472: Latest GDN investigation must survive
+  - Line 3496: Part 7 — Complete reviewed correctness-first and vLLM performance plan
+  - Line 3502: Correctness first, then measured vLLM performance
+  - Line 3511: 1. Decision and scope
+  - Line 3533: 2. What the evidence establishes
+  - Line 3552: 3. Divergence inventory and fixes
+  - Line 3580: 4. Numerical contracts
+  - Line 3582: 4.1 Keep four targets explicit
+  - Line 3596: 4.2 Mathematical GDN definition
+  - Line 3632: 4.3 Exactness rules
+  - Line 3655: 4.4 Initial prefill versus decode
+  - Line 3725: 4.5 Small-model default bulk arithmetic
+  - Line 3738: 5. Porting strategy and implementation boundaries
+  - Line 3762: 6. Fast implementation sequence, when resumed
+  - Line 3764: C0 — Lock the comparison, not another framework
+  - Line 3790: C1 — Close the earliest small-model default discrepancies
+  - Line 3804: C2 — Complete one vLLM-profile GDN layer
+  - Line 3822: C3 — Complete .8B, then 2B in the same plan
+  - Line 3837: C4 — Complete original27B without relaxing resource guards
+  - Line 3860: C5 — Accept and checkpoint
+  - Line 3874: 7. Numerical parity matrix and acceptance
+  - Line 3933: 8. Why performance is currently far behind
+  - Line 3969: 9. Performance sequence after correctness
+  - Line 4013: 10. Two benchmark deliverables
+  - Line 4015: A. Model execution benchmark
+  - Line 4034: B. OpenAI serving benchmark
+  - Line 4086: 11. Stop conditions and immediate next work
+  - Line 4108: 12. References and evidence boundaries
+  - Line 4143: Part 8 — Complete ROOT implementation journal (dated entries)
+  - Line 4149: Serving parity through trained Qwen3.8 27B
+  - Line 4172: Current phase
+  - Line 4198: Executed / failure follow-up
+  - Line 4227: Continuation 20 Oct
+  - Line 4418: Typed source integration / activation preparation continuation
+  - Line 4452: Closed sigmoid/ordinary RMS + cold GPU preparation continuation
+  - Line 4460: 20 Oct next P12 cold-preparation qualification
+  - Line 4493: Current continuation20Oct20:34UTC
+  - Line 4504: Current continuation20Oct21:06UTC
+  - Line 4515: Actual continuation20Oct21:22UTC
+  - Line 4527: Actual continuation21:39UTC
+  - Line 4535: HTTP fixture failure21:53UTC
+  - Line 4540: HTTP prefix assertion correction22:01UTC
+  - Line 4545: Fresh8K + reviewed source followups22:04UTC
+  - Line 4553: Final HTTP environment retry22:10UTC
+  - Line 4558: Prefix acceptance22:13UTC
+  - Line 4570: Quiet .8B prefix comparison22:19UTC
+  - Line 4576: Actual CPU27B build and diagnostic failures22:25UTC
+  - Line 4584: Actual trained27B + compiled reference-route PASS22:27UTC
+  - Line 4591: Source-window phase accepted22:35UTC
+  - Line 4603: 2026-10-19 22:45 UTC continuation
+  - Line 4608: 2026-10-19 22:49 UTC graph build and genuine provider continuation
+  - Line 4614: 2026-10-19 22:54 UTC genuine public GEMM actual result
+  - Line 4619: 2026-10-19 23:01 UTC initial graph physical complete / bulk control first failure
+  - Line 4626: 2026-10-19 23:08 UTC wider/RoPE and original attention continuation
+  - Line 4632: 2026-10-19 23:13 UTC physical-helper failure and correction
+  - Line 4638: 2026-10-19 23:19 UTC continuation
+  - Line 4642: 2026-10-19 23:27 UTC implementation and qualification
+  - Line 4648: 2026-10-19 23:31 UTC followups
+  - Line 4653: 2026-10-19 23:33 UTC completed actual physical batches
+  - Line 4658: 2026-10-19 23:54 UTC composed gate and reference followups
+  - Line 4665: 2026-10-20 00:13 UTC CPU and numerical results
+  - Line 4671: 2026-10-20 00:13 UTC official matched-GGUF baseline route
+  - Line 4677: 2026-10-20 00:34 UTC continuation
+  - Line 4684: ROOT continuation 2026-10-20 01:06 UTC
+  - Line 4694: ROOT continuation 2026-10-20 01:22 UTC
+  - Line 4704: ROOT continuation 2026-10-20 01:50 UTC
+  - Line 4713: ROOT continuation 2026-10-20 02:18 UTC
+  - Line 4726: ROOT continuation 2026-10-20 02:30 UTC
+  - Line 4734: ROOT continuation 2026-10-20 02:52 UTC
+  - Line 4745: ROOT continuation 2026-10-20 03:12 UTC
+  - Line 4752: ROOT continuation 2026-10-20 03:23 UTC
+  - Line 4761: ROOT continuation 2026-10-20 03:42 UTC
+  - Line 4772: 2026-10-20 04:01 UTC — current phase and genuine baselines
+  - Line 4781: 2026-10-20 04:34 UTC — completed2B baseline and current serving regressions
+  - Line 4789: 2026-10-20 04:50 UTC — source-preserving replay and benchmark continuation
+  - Line 4797: 2026-10-20 04:55 UTC — authentic native H48 slices pass; actual A/B starts
+  - Line 4803: 2026-10-20 05:12 UTC — source-only next cuts while timing remains exclusive
+  - Line 4812: 2026-10-20 05:28 UTC — row/certificate phase accepted
+  - Line 4820: 2026-10-20 05:37 UTC — canonical diagnostic and next dormant operator
+  - Line 4826: 2026-10-20 05:57 UTC — genuine27B wide roles and scalar ABI repair
+  - Line 4834: 2026-10-20 06:09 UTC — ordered leaf physical success; unaccepted integration
+  - Line 4841: 2026-10-20 06:23 UTC — owner requested pause; current release build draining
+  - Line 4852: 2026-10-20 06:31:23 UTC — PAUSED at completed release-build checkpoint
+  - Line 4861: Part 9 — Complete October 19 handoff including original October 17 history
+  - Line 4872: Zerogravity — full comprehensive implementation and architecture handoff, 19 October 2026
+  - Line 4876: 0. Executive takeover — current precise checkpoint
+  - Line 4902: 1. Authority, preservation and read order
+  - Line 4913: 2. Original user vision and architecture chronology — beginning to present
+  - Line 4915: 2.1 What Zerogravity is
+  - Line 4921: 2.2 Evolution, including accepted and superseded reasoning
+  - Line 4946: 2.3 Latest owner decisions carried forward verbatim in substance
+  - Line 4957: 3. System ownership and critical invariants (do not fork these)
+  - Line 4973: 4. Actual crate/tool/source ownership map
+  - Line 4996: 5. Implementation status: exact claims versus non-claims
+  - Line 5012: 6. Current P0 — OpenAI, real GPU batching and vLLM acceptance
+  - Line 5014: 6.1 Working server
+  - Line 5039: 6.2 GPU status and numerics
+  - Line 5047: 6.3 Concrete unimplemented integration acceptance steps — do these in order
+  - Line 5058: 7. Current P1 — GPU/RAM/SSD source-residency foundation
+  - Line 5066: 8. Current P2 — Qwen3.8, Gemma4 and independent numerical evidence
+  - Line 5078: 9. Acquisition and immutable source provenance
+  - Line 5084: 10. YAML multimodal pipeline and authorized context scaffolding
+  - Line 5104: 11. Hardware, physical safety, failures and lessons
+  - Line 5112: 12. Practical verified command and test runbook
+  - Line 5114: Safe revalidation
+  - Line 5126: Full isolated frozen gate
+  - Line 5133: Strict CUDA/CPU/Vulkan lint
+  - Line 5144: Approved independent trained Qwen3.5 regression routes
+  - Line 5162: Physical CUDA P12 acceptance (only on permitted, healthy card)
+  - Line 5206: Serving/vLLM benchmark contracts
+  - Line 5213: Nix source integrity (separate from formatting)
+  - Line 5220: 13. Test evidence and milestone provenance after the Oct 17 handoff
+  - Line 5237: Current local acceptance receipt index
+  - Line 5248: 14. Priority execution program for next agent
+  - Line 5260: 15. What the new agent must NOT assume
+  - Line 5274: 16. Comprehensive reading and provenance catalogue
+  - Line 5296: Appendix A — Complete October 17 architecture, decisions, historical recovery and prior handoff
+  - Line 5304: Zerogravity — comprehensive agent handoff, 17 October 2026
+  - Line 5321: Contents
+  - Line 5335: 1. Read this first: authority and checkpoint
+  - Line 5337: 1.1 Current source and working state
+  - Line 5361: 1.2 Authority order
+  - Line 5381: 1.3 What changed since the original H4 takeover request
+  - Line 5404: 1.4 Reading sequence
+  - Line 5425: 1.5 Historical recovery and its exact limits
+  - Line 5457: Original vision, design evolution and architecture
+  - Line 5465: 1. Authority and limits of the surviving record
+  - Line 5500: 2. Beginning-to-current architectural evolution
+  - Line 5524: 3. Exact ownership, representation and state publication
+  - Line 5562: 4. Source, arithmetic and quality are distinct contracts
+  - Line 5625: 5. Resources, accelerators and virtual residency
+  - Line 5667: 6. Distributed placement, routing, serving and speculation
+  - Line 5718: 7. V5/V5.1 multimodal and realtime vision
+  - Line 5766: 8. User decisions, proposals and supersessions: complete ID crosswalk
+  - Line 5816: 9. Accepted implementation versus historical stage facts
+  - Line 5859: 10. Current acquisition and remaining execution boundary
+  - Line 5941: 11. Exact surviving historical recovery and unrecoverable material
+  - Line 5981: 12. Phase and falsification map for preserving future work
+  - Line 6037: 13. Coordinator integration and next-agent guardrails
+  - Line 6059: Implementation history, verification and recovery
+  - Line 6071: Principal findings for the coordinator
+  - Line 6099: Current history, rewritten dates and available references
+  - Line 6129: Entire reachable commit ledger
+  - Line 6214: How the rewritten baseline is split
+  - Line 6246: Recovery: what is really available and what is not
+  - Line 6313: Historical development sequence retained by accepted plans
+  - Line 6327: Design/bootstrap and CPU qualification
+  - Line 6357: Partial GPU owners and first physical acceptance
+  - Line 6382: H1–H25 progression into resident and native execution
+  - Line 6431: Hardware discovery and local AMD hold
+  - Line 6455: Layout, new-family contracts and concurrency disposition
+  - Line 6478: Tracking/archive/checkpoint chronology
+  - Line 6517: Acquisition chronology and accepted gates
+  - Line 6572: Original-model regression route ledger
+  - Line 6631: Substantive failures/corrections that explain acceptance
+  - Line 6697: Still-open limits, not erased by accepted chronology
+  - Line 6739: Paused source drafts that must survive handoff
+  - Line 6761: Audit limits and coordinator use
+  - Line 6777: Recovered original94-source history: exact reading catalog
+  - Line 6785: Correction and precise recovery boundary
+  - Line 6811: Tested read-only commands and wrapper positions
+  - Line 6817: Older full implementation executive/index (read progressively).
+  - Line 6819: Source1 example; every source has its own exact range below.
+  - Line 6821: Concrete recovered G1, G3b and P00 reports.
+  - Line 6833: Complete94 nested-source title and inclusive-line catalog
+  - Line 6932: Outer13 appendices and3 shared snapshots
+  - Line 6957: Additional nesting inspected for a second recovery oversight
+  - Line 6976: Recovered historical phase labels and narrower test counts
+  - Line 7002: Additional substantive early results and limitations
+  - Line 7034: Other assembled-handoff cross-checks
+  - Line 7055: Model acquisition: complete current contracts and recent reasoning
+  - Line 7065: One source, transport, cache and preparation path
+  - Line 7107: Exact selection, closure and independent components
+  - Line 7133: Transport, resume and bounded auxiliary bodies
+  - Line 7164: Protected removal and explicit local HF import
+  - Line 7190: Finite native provider profiles
+  - Line 7222: Native Xet details that must survive continuation
+  - Line 7260: Latest candidate and quant features
+  - Line 7293: Failed experiments and lessons
+  - Line 7329: Exact continuation and complete open-plan snapshot
+  - Line 7335: Starting point and verified scope
+  - Line 7357: Non-negotiable working rules and existing authorization
+  - Line 7370: Current acquisition environment and ownership boundaries
+  - Line 7382: Preserve the two unfinished worktrees
+  - Line 7399: C3 filters — exact recoverable state
+  - Line 7435: C4 required native Xet indexes — exact recoverable state
+  - Line 7455: Commands, environment and failure lessons
+  - Line 7502: Broader backlog, execution order and concrete external gaps
+  - Line 7516: Research and prior-art placement for coordinator integration
+  - Line 7527: Exact open-item snapshot by plan
+  - Line 7531: accepted-baseline — 0 open items
+  - Line 7537: cpu-gpu-optimization — 17 open items
+  - Line 7564: distributed-execution — 7 open items
+  - Line 7578: handoff-cleanup — 0 open items
+  - Line 7584: historical-records — 0 open items
+  - Line 7590: memory-and-streaming — 14 open items
+  - Line 7614: model-acquisition — 20 open items
+  - Line 7647: model-execution — 10 open items
+  - Line 7664: multimodal — 24 open items
+  - Line 7698: numerics-and-context — 7 open items
+  - Line 7712: platform-and-release — 13 open items
+  - Line 7735: serving-and-speculation — 9 open items
+  - Line 7751: Retained research and prior-art source path index
+  - Line 7755: .agents/research — 24 files
+  - Line 7782: .agents/prior-art — 12 files
+  - Line 7797: First resumption checklist for the next coordinator
+  - Line 7811: Practical reconstruction and handoff boundaries
+  - Line 7813: Portable unfinished source under the requested documentation roots
+  - Line 7863: Workspace owner map
+  - Line 7882: Concrete build and qualification commands
+  - Line 7891: Revalidation: read current state, do not reset to a historical reference.
+  - Line 7897: Locked/offline CPU build, using only existing authorized dependencies.
+  - Line 7900: Complete implementation-phase gate, one MAIN target owner.
+  - Line 7904: Actual source-filter check; new source must be included in the Git flake first.
+  - Line 7907: Original trained cache/direct route (both approved models in this one test).
+  - Line 7913: Original trained external-HF-import route, separately and sequentially.
+  - Line 7949: Packaging and product boundaries
+  - Line 7978: Complete retained decision register — dated context snapshot
+  - Line 8093: Explicit user decisions
+  - Line 8162: Strongly recommended architectural choices (not independently approved yet)
+  - Line 8263: Open decisions (do not fill silently)
+  - Line 8342: Assumptions / boundaries
+  - Line 8351: v3 architectural supersession and provenance rule — 2026-10-12
+  - Line 8363: Conflict-resolution protocol
+  - Line 8384: Owner decisions after U-055 — consolidated 2026-10-17
+  - Line 8416: Complete reading catalog and source ownership
+  - Line 8423: Public engineering and publication context
+  - Line 8439: Normative subsystem architecture
+  - Line 8525: Cross-cutting specifications and decision/workflow owners
+  - Line 8559: Live plan TODO owners and completed plain-checklist archives
+  - Line 8593: Retained research and acceptance registers
+  - Line 8645: Prior art, critical review and license/source attribution
+  - Line 8673: Current executable/qualification/reference runbooks
+  - Line 8696: Handoff validation and remaining limitations
+  - Line 8700: Completed documentation validation — 17 October2026
+  - Line 8736: Appendix B — Full as-of-HEAD plan and work-item snapshots
+  - Line 8741: Snapshot: .agents/plans/README.md (105 lines)
+  - Line 8744: Plans
+  - Line 8750: Layout
+  - Line 8765: Queue — \`TODO.md\`
+  - Line 8770: Active
+  - Line 8773: Icebox
+  - Line 8776: Closed
+  - Line 8785: Plan — \`README.md\`
+  - Line 8799: Plan — \`TODO.md\`
+  - Line 8802: \<plan\>
+  - Line 8806: Committed
+  - Line 8807: \`\<sha\>\` — \<what this set landed\>
+  - Line 8810: Uncommitted
+  - Line 8814: Tests and verification
+  - Line 8825: History — optional \`HISTORY.md\`
+  - Line 8837: Parallel work
+  - Line 8844: Closeout
+  - Line 8851: Snapshot: .agents/plans/TODO.md (23 lines)
+  - Line 8854: Plan queue
+  - Line 8856: Active
+  - Line 8863: Icebox
+  - Line 8871: Closed
+  - Line 8879: Snapshot: .agents/plans/cpu-gpu-optimization/TODO.md (51 lines)
+  - Line 8882: Cpu gpu optimization
+  - Line 8891: Uncommitted
+  - Line 8918: Committed
+  - Line 8920: 6d74f76
+  - Line 8924: Concurrency review — 1fca893
+  - Line 8928: Tests and verification
+  - Line 8935: Snapshot: .agents/plans/distributed-execution/TODO.md (23 lines)
+  - Line 8938: Distributed execution
+  - Line 8946: Uncommitted
+  - Line 8956: Committed
+  - Line 8958: 6d74f76
+  - Line 8963: Snapshot: .agents/plans/memory-and-streaming/TODO.md (68 lines)
+  - Line 8966: Memory and streaming
+  - Line 8974: Uncommitted
+  - Line 9022: Committed
+  - Line 9024: 6d74f76
+  - Line 9028: Tests and verification
+  - Line 9036: Snapshot: .agents/plans/model-acquisition/TODO.md (334 lines)
+  - Line 9039: TODO — model acquisition
+  - Line 9048: Committed
+  - Line 9056: 837e77f — legacy offline acquisition eligibility
+  - Line 9065: 52e42fc — native HF Xet reconstruction
+  - Line 9078: 46cf5a5 — strong conditional cloud observations
+  - Line 9089: 4db5efb — ModelScope selected exact sizing
+  - Line 9099: f22f759 — metadata-only pinned file candidates
+  - Line 9108: f197c9c — explicit GGUF filename quant families
+  - Line 9119: 1a22597 — completed comprehensive handoff and source preservation
+  - Line 9125: 04363c3 — bounded C3 Unicode filters and exclusion closure
+  - Line 9166: 8195c18 — verified required native Xet indexes
+  - Line 9220: f56b574 — trusted AWS-standard FULL\_OBJECT SHA256
+  - Line 9255: d5aa5cb — original-model v1 source closure and execution cutover
+  - Line 9287: Uncommitted
+  - Line 9352: Tests and verification
+  - Line 9369: Deferred
+  - Line 9375: Snapshot: .agents/plans/model-execution/TODO.md (365 lines)
+  - Line 9378: Model execution
+  - Line 9386: Uncommitted
+  - Line 9538: Committed
+  - Line 9540: 6d74f76
+  - Line 9544: Source contracts — 023703f
+  - Line 9549: 93a5622 — original verified immutable source shard owner
+  - Line 9574: b796a2e — original Qwen text source geometry and CPU value binding
+  - Line 9605: b11e58c — original source-bound Qwen analytical one-layer proposals
+  - Line 9641: 6329cff — source-bound Qwen one-layer TaskCoordinator
+  - Line 9670: e43ba4c — original Qwen full-model FP32 analytical forward
+  - Line 9699: aaf9ba6 — original Qwen BF16 source dtype diagnostics
+  - Line 9733: Deferred — after Qwen/Gemma and Flash execution
+  - Line 9745: Snapshot: .agents/plans/multimodal/TODO.md (73 lines)
+  - Line 9748: Multimodal
+  - Line 9757: Uncommitted
+  - Line 9795: Committed
+  - Line 9797: 6d74f76
+  - Line 9801: Tests and verification
+  - Line 9823: Snapshot: .agents/plans/numerics-and-context/TODO.md (30 lines)
+  - Line 9826: Numerics and context
+  - Line 9833: Uncommitted
+  - Line 9844: Committed
+  - Line 9846: 6d74f76
+  - Line 9851: Accepted investigation findings — 6d74f76
+  - Line 9858: Snapshot: .agents/plans/pipeline-composition/TODO.md (299 lines)
+  - Line 9861: TODO — Single-process model and pipeline composition
+  - Line 9870: Uncommitted
+  - Line 9909: Committed
+  - Line 9916: 4bf624e — accepted foundation
+  - Line 9974: ac44e83 — accepted foundation
+  - Line 10000: f28a62c — accepted foundation
+  - Line 10018: Tests and verification
+  - Line 10088: Deferred
+  - Line 10096: Runtime work deferred until after core model priorities
+  - Line 10162: Snapshot: .agents/plans/platform-and-release/TODO.md (39 lines)
+  - Line 10165: Platform and release
+  - Line 10174: Uncommitted
+  - Line 10189: Committed
+  - Line 10191: 1af2ac4
+  - Line 10195: 6d74f76
+  - Line 10200: Tests and verification
+  - Line 10206: Snapshot: .agents/plans/serving-and-speculation/TODO.md (159 lines)
+  - Line 10209: Serving and speculation
+  - Line 10217: Uncommitted
+  - Line 10336: Committed
+  - Line 10338: 35b9093 — initial OpenAI CPU router and verified SSD extents
+  - Line 10365: 6d74f76
+  - Line 10373: Appendix C — Complete surviving document, research, prior-art, plan and recovery catalogue
+  - Line 10378: Public engineering/publication docs (6 Markdown sources)
+  - Line 10387: Normative system/architecture designs (45 Markdown sources)
+  - Line 10435: Implementation plans and runbooks (37 Markdown sources)
+  - Line 10475: Source-model/performance research (24 Markdown sources)
+  - Line 10502: Prior-art, critical review and licensing (12 Markdown sources)
+  - Line 10517: Agent-run recovery notes (16 Markdown sources)
+  - Line 10536: Cross-document notes
+  - Line 10546: Appendix D — Complete copy-ready 19 October next-agent starting prompt
+  - Line 10550: Starting prompt — Zerogravity comprehensive takeover, 19 October 2026
+  - Line 10646: Part 10 — Current AGENTS instructions
+  - Line 10652: AGENTS.md
+  - Line 10656: Shared conventions
+  - Line 10697: Repository
+  - Line 10713: Plans and parallel work
+  - Line 10737: Implementation boundaries
+  - Line 10765: Part 11 — Current plan layout rules
+  - Line 10771: Plans
+  - Line 10777: Layout
+  - Line 10792: Queue — \`TODO.md\`
+  - Line 10797: Active
+  - Line 10800: Icebox
+  - Line 10803: Closed
+  - Line 10812: Plan — \`README.md\`
+  - Line 10826: Plan — \`TODO.md\`
+  - Line 10829: \<plan\>
+  - Line 10833: Committed
+  - Line 10834: \`\<sha\>\` — \<what this set landed\>
+  - Line 10837: Uncommitted
+  - Line 10841: Tests and verification
+  - Line 10852: History — optional \`HISTORY.md\`
+  - Line 10864: Parallel work
+  - Line 10871: Closeout
+  - Line 10879: Part 12 — Current plan queue
+  - Line 10885: Plan queue
+  - Line 10887: Active
+  - Line 10895: Icebox
+  - Line 10902: Closed
+  - Line 10911: Part 13 — Full plan snapshot: .agents/plans/archive/history/accepted-baseline/TODO.md
+  - Line 10917: Accepted implementation baseline
+  - Line 10922: Uncommitted
+  - Line 10926: Committed
+  - Line 10928: 6d74f76 — owner-approved tested baseline
+  - Line 10942: Accepted detail retained from retired reports — 6d74f76
+  - Line 10958: Part 14 — Full plan snapshot: .agents/plans/archive/history/handoff-cleanup/TODO.md
+  - Line 10964: Simplify agent handoffs
+  - Line 10968: Uncommitted
+  - Line 10972: Committed
+  - Line 10974: bfe672c — simple TODO handoffs
+  - Line 10986: 3787519 — starting implementation
+  - Line 10992: Integrated agent results
+  - Line 11011: Final checks
+  - Line 11024: Part 15 — Full plan snapshot: .agents/plans/archive/history/historical-records/TODO.md
+  - Line 11030: TODO — historical records
+  - Line 11040: Committed
+  - Line 11042: aeff567 — retire legacy evidence reports
+  - Line 11054: Migration details
+  - Line 11062: Validation
+  - Line 11072: bfe672c — starting workflow
+  - Line 11077: 9239719 — retire historical archive bodies
+  - Line 11079: Historical archive retirement
+  - Line 11102: Integrated continuation
+  - Line 11112: Uncommitted
+  - Line 11116: Tests and verification
+  - Line 11128: Part 16 — Full plan snapshot: .agents/plans/cpu-gpu-optimization/TODO.md
+  - Line 11134: Cpu gpu optimization
+  - Line 11143: Uncommitted
+  - Line 11170: Committed
+  - Line 11172: 6d74f76
+  - Line 11176: Concurrency review — 1fca893
+  - Line 11180: Tests and verification
+  - Line 11188: Part 17 — Full plan snapshot: .agents/plans/distributed-execution/TODO.md
+  - Line 11194: Distributed execution
+  - Line 11202: Uncommitted
+  - Line 11212: Committed
+  - Line 11214: 6d74f76
+  - Line 11220: Part 18 — Full plan snapshot: .agents/plans/memory-and-streaming/TODO.md
+  - Line 11226: Memory and streaming
+  - Line 11234: Uncommitted
+  - Line 11308: Committed
+  - Line 11310: 35b9093 — source-only verified SSD extents
+  - Line 11327: 6d74f76
+  - Line 11331: Tests and verification
+  - Line 11340: Part 19 — Full plan snapshot: .agents/plans/model-acquisition/TODO.md
+  - Line 11346: TODO — model acquisition
+  - Line 11355: Committed
+  - Line 11363: 837e77f — legacy offline acquisition eligibility
+  - Line 11372: 52e42fc — native HF Xet reconstruction
+  - Line 11385: 46cf5a5 — strong conditional cloud observations
+  - Line 11396: 4db5efb — ModelScope selected exact sizing
+  - Line 11406: f22f759 — metadata-only pinned file candidates
+  - Line 11415: f197c9c — explicit GGUF filename quant families
+  - Line 11426: 1a22597 — completed comprehensive handoff and source preservation
+  - Line 11432: 04363c3 — bounded C3 Unicode filters and exclusion closure
+  - Line 11473: 8195c18 — verified required native Xet indexes
+  - Line 11527: f56b574 — trusted AWS-standard FULL\_OBJECT SHA256
+  - Line 11562: d5aa5cb — original-model v1 source closure and execution cutover
+  - Line 11594: Uncommitted
+  - Line 11659: Tests and verification
+  - Line 11676: Deferred
+  - Line 11683: Part 20 — Full plan snapshot: .agents/plans/model-acquisition/archive/through-a774ded/TODO.md
+  - Line 11689: TODO — completed model acquisition phases through a774ded
+  - Line 11696: Committed
+  - Line 11698: e0073a5 — pinned HTTPS objects
+  - Line 11713: e82d76b — native OCI raw GGUF layers
+  - Line 11724: f74a525 — native GCS generation/metageneration objects
+  - Line 11737: 833d68f — versioned S3 and SigV4
+  - Line 11751: e622222 — pinned Azure BlockBlob revisions
+  - Line 11764: 87f6454 — native ModelScope explicit commits
+  - Line 11775: 223ca79 — unwired Xet hash and chunk primitives
+  - Line 11786: a774ded — explicit cloud content contracts
+  - Line 11797: Tests and verification
+  - Line 11812: Part 21 — Full plan snapshot: .agents/plans/model-acquisition/archive/through-fce1353/TODO.md
+  - Line 11818: TODO — completed model acquisition through fce1353
+  - Line 11824: Committed
+  - Line 11826: 3787519
+  - Line 11836: fa6affa — bounded A2 acquisition
+  - Line 11853: 3c97c52 — A2 durable resume and pull UX
+  - Line 11870: baa9d88 — pinned components and A3 cached CPU preparation
+  - Line 11891: 20f449d — exact size recovery and cancellable cache verification
+  - Line 11913: f44264c — protected snapshot removal
+  - Line 11930: ea700f6 — capped auxiliary streaming
+  - Line 11949: 03b6948 — pinned multi-asset release components
+  - Line 11964: e44f4ee — explicit read-only HF cache import
+  - Line 11981: fce1353 — qualified cross-filesystem HF import
+  - Line 11997: Tests and verification
+  - Line 12039: Part 22 — Full plan snapshot: .agents/plans/model-execution/TODO.md
+  - Line 12045: Model execution
+  - Line 12053: Uncommitted
+  - Line 12229: Committed
+  - Line 12231: fff1842 — trained BF16 operator qualification
+  - Line 12268: fe2a342 — original attention and reference operators
+  - Line 12322: bfe62df — leased source-window execution
+  - Line 12347: 5350a4d — typed ordinary math and source windows
+  - Line 12382: c5eb1f8 — closed pinned sigmoid and ordinary RMS
+  - Line 12408: 2a32aff — typed source composition and vector softplus
+  - Line 12442: cadcbd9 — closed pinned original-HF CPU operators
+  - Line 12476: 9815504 — original HF roles and closed CPU projection/reducers
+  - Line 12497: f26232e — authentic tied original output heads
+  - Line 12508: 1c0bb41 — pinned numerical reference seam
+  - Line 12537: 6d74f76
+  - Line 12541: Source contracts — 023703f
+  - Line 12546: 93a5622 — original verified immutable source shard owner
+  - Line 12571: b796a2e — original Qwen text source geometry and CPU value binding
+  - Line 12602: b11e58c — original source-bound Qwen analytical one-layer proposals
+  - Line 12638: 6329cff — source-bound Qwen one-layer TaskCoordinator
+  - Line 12667: e43ba4c — original Qwen full-model FP32 analytical forward
+  - Line 12696: aaf9ba6 — original Qwen BF16 source dtype diagnostics
+  - Line 12730: Deferred — after Qwen/Gemma and Flash execution
+  - Line 12743: Part 23 — Full plan snapshot: .agents/plans/multimodal/TODO.md
+  - Line 12749: Multimodal
+  - Line 12758: Uncommitted
+  - Line 12796: Committed
+  - Line 12798: 6d74f76
+  - Line 12802: Tests and verification
+  - Line 12825: Part 24 — Full plan snapshot: .agents/plans/numerics-and-context/TODO.md
+  - Line 12831: Numerics and context
+  - Line 12843: Uncommitted
+  - Line 12872: Committed
+  - Line 12874: fff1842 — complete two-model reference control
+  - Line 12890: 9a19901 — original reference-control schedule
+  - Line 12902: bfe62df — independent source and reference-path qualification
+  - Line 12963: 6d74f76
+  - Line 12968: Accepted investigation findings — 6d74f76
+  - Line 12976: Part 25 — Full plan snapshot: .agents/plans/pipeline-composition/TODO.md
+  - Line 12982: TODO — Single-process model and pipeline composition
+  - Line 12991: Uncommitted
+  - Line 13030: Committed
+  - Line 13037: 4bf624e — accepted foundation
+  - Line 13095: ac44e83 — accepted foundation
+  - Line 13121: f28a62c — accepted foundation
+  - Line 13139: Tests and verification
+  - Line 13209: Deferred
+  - Line 13217: Runtime work deferred until after core model priorities
+  - Line 13284: Part 26 — Full plan snapshot: .agents/plans/platform-and-release/TODO.md
+  - Line 13290: Platform and release
+  - Line 13299: Uncommitted
+  - Line 13314: Committed
+  - Line 13316: 1af2ac4
+  - Line 13320: 6d74f76
+  - Line 13325: Tests and verification
+  - Line 13332: Part 27 — Full plan snapshot: .agents/plans/serving-and-speculation/TODO.md
+  - Line 13338: Serving and speculation
+  - Line 13346: Uncommitted
+  - Line 13482: Committed
+  - Line 13484: fb68d8f — exact state transport and certification
+  - Line 13505: fff1842 — stock baseline prerequisites
+  - Line 13518: 9a19901 — batched graph and baseline qualification
+  - Line 13553: f788929 — native teacher-prefix serving
+  - Line 13581: d0a6084 — source activation preparation and physical acceptance
+  - Line 13609: 1b599df — serialized owned benchmark provider lifecycle
+  - Line 13640: dbb5f4f — unequal native decode frontiers and bounded token observations
+  - Line 13695: d9fa829 — native CUDA B4/B8 HTTP bands
+  - Line 13724: 6bfcdbe — bounded offered-work benchmark accounting
+  - Line 13742: 2677d8b — native CUDA B2 HTTP waves
+  - Line 13769: 54fd580 — native CUDA greedy/device feedback
+  - Line 13800: 35ebc5b — native full-model CUDA ForwardPlan
+  - Line 13829: 3ec431a — native quantized batch projections
+  - Line 13847: 08be9c6 — resident cohort publication
+  - Line 13876: 9790fa2 — resident GPU OpenAI serving
+  - Line 13894: 35b9093 — initial OpenAI CPU router and verified SSD extents
+  - Line 13921: 6d74f76
+  - Line 13927: Part 28 — Complete current fused GPU batching design/evidence
+  - Line 13937: P12 — native fused GPU batch acceptance
+  - Line 13951: Ownership boundaries
+  - Line 13968: P12-B0 — physically qualified source F32 multi-row projection
+  - Line 13988: P12-B1 — physical CUDA batch operator acceptance
+  - Line 14028: P12-A1 — physically Ready resident multi-root publication
+  - Line 14074: P12-B2 — physically accepted quantized B\>1 GPU projection
+  - Line 14114: P12-B3 — batch-native resident ForwardPlan
+  - Line 14211: P12-B4 — native greedy packets and device feedback
+  - Line 14324: P12-B5 — native CUDA B2 HTTP waves
+  - Line 14425: Local release tool smoke; no matched performance acceptance
+  - Line 14446: P12-A — batch-native parameter, source and state bindings
+  - Line 14462: P12-B — native kernels (not a host loop)
+  - Line 14479: P12-C — true continuous batching and paged hybrid KV/GDN
+  - Line 14491: P22 — vLLM-equivalent validation
+  - Line 14511: Native CUDA B4/B8 HTTP acceptance — P12-B6
+  - Line 14565: Unequal-frontier native CUDA decode — P12-B7
+  - Line 14634: P22 owned process isolation
+  - Line 14648: P12 block-local source activation preparation
+  - Line 14723: Completed bounded activation-preparation comparison
+  - Line 14758: Native teacher-prefix serving — P12-B8
+  - Line 14803: Bounded native-prefix warm observations
+  - Line 14854: Private CUDA graph and ordered RoPE qualification
+  - Line 14895: Part 29 — Complete copy-ready starting prompt
+  - Line 14901: Starting prompt — Zerogravity comprehensive takeover, 20 October 2026
+
+### [.agents/docs/FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-25-NIGHT.md](../FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-25-NIGHT.md)
+
+- Bytes: 64826; mode: 0o600; SHA256: 321ce13417b587317e25e49c10bf6d1681133904d5675d5bb078839fbeeba1b6.
+- Full heading route:
+  - Line 1: ZeroGravity — full comprehensive agent handoff (25 October 2026, night)
+  - Line 19: 0. Immediate takeover: how to get fully oriented
+  - Line 30: 1. Original vision and immutable design intent
+  - Line 46: 2. Original design hierarchy, supersessions, and surviving historical sources
+  - Line 66: 3. Actual architecture / ownership (one execution fabric)
+  - Line 100: 4. Full implementation chronology and key decisions (Git ancestry, not inferred from dates)
+  - Line 104: 4.1 Original product/research → bootstrap
+  - Line 110: 4.2 GPU residency, physical safety and exact mathematical islands
+  - Line 118: 4.3 Composition, acquisition/SSD, serving and learned-model families
+  - Line 126: 4.4 Late October integration and subsequent corrections
+  - Line 142: 5. State of each subsystem at handoff
+  - Line 161: 6. All original delivery phases P00–P23 (capability gates, NOT completion claims)
+  - Line 192: 7. All current subsystem backlogs, open-item preservation and dependencies
+  - Line 221: 8. Mandatory next sequence: user items 3 → 4 → 2 (NOT P03/P04/P02)
+  - Line 225: 8.1 Item 3 first — full B4 trained/model/physical certification on local RTX3060
+  - Line 238: 8.2 Item 4 second — genuinely matched, quiet, optimized C16 for BOTH .8B and 2B
+  - Line 244: 8.3 Item 2 third — Qwen3.8 27B original full-window capture on x2
+  - Line 255: 9. Hardware, sandbox, runtime device nodes and tool commands
+  - Line 257: 9.1 Host specifics and authorization
+  - Line 265: 9.2 Standard safe commands (inspect executable scripts before executing)
+  - Line 274: Narrow source/CLI/numerics controls; omit nonexistent features on any future HEAD:
+  - Line 284: Genuine isolated whole-gate invocation ONLY with an owned long enough session:
+  - Line 287: Inspect the canonical \*optimized\* release settings before GPU/perf:
+  - Line 298: 10. Explicit evidence ladder, negative experiments and review rules
+  - Line 318: 11. Exact final handoff inventory and provenance checklist
+  - Line 329: 12. Ready-to-paste next agent starting prompt (also retained in .agents/plans)
+
+### [.agents/docs/FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-25-PM.md](../FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-25-PM.md)
+
+- Bytes: 18313; mode: 0o644; SHA256: c3f43d7963d55ac2d05810312d3c2caa7aa828a1c2d2c67a13433b3f86470399.
+- Full heading route:
+  - Line 1: ZeroGravity — Full Comprehensive Agent Handoff — 2026-10-25 (afternoon)
+  - Line 15: 0. Orchestration (current, user-directed)
+  - Line 36: 1. What this session completed \[VERIFIED\]
+  - Line 38: 1.1 The main checkpoint is formed and gated
+  - Line 67: 1.2 Queue lane GPU acceptance \[ACCEPTED\]
+  - Line 82: 1.3 CLI routing finished and merged \[VERIFIED\]
+  - Line 94: 1.4 B4 certification/state transport implemented and merged \[ACCEPTED\]
+  - Line 107: 1.5 HGV physical checkpoint — three passes executed \[ACCEPTED\]
+  - Line 134: 1.6 Lane evidence dirs (all gitignored, local)
+  - Line 145: 2. THE THREE OPEN BUGS (successor's first work) \[VERIFIED\]
+  - Line 207: 3. Binding user decisions (unchanged + this session's)
+  - Line 225: 4. Paused/running lanes at handoff
+  - Line 273: 5. Successor's task queue (ordered)
+  - Line 287: 6. Standing constraints (unchanged)
+
+### [.agents/docs/FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-25.md](../FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-25.md)
+
+- Bytes: 24082; mode: 0o644; SHA256: 4ee08014bf9a7feb60c9bd3cd66858b8c2e2da0b0229a4526eedf5395ae8d2a1.
+- Full heading route:
+  - Line 1: ZeroGravity — Full Comprehensive Agent Handoff — 2026-10-25
+  - Line 14: 0. Orchestration change (user decision, this handoff)
+  - Line 33: 1. What ZeroGravity is and the overall goals
+  - Line 64: 2. Live repository state at handoff \[VERIFIED\]
+  - Line 88: 3. Progress report and validation status
+  - Line 90: 3.1 Numerical parity and benchmarks \[ACCEPTED\]
+  - Line 119: 3.2 Shared queue / continuous batching \[ACCEPTED CPU, GPU pending\]
+  - Line 142: 3.3 CLI device routing / run redesign \[PARTIALLY DONE\]
+  - Line 153: 3.4 Qwen27B (Qwen3.8-27B) lane \[SOURCE ONLY, capture blocked\]
+  - Line 169: 3.5 Gemma4 lane \[SOURCE ONLY\]
+  - Line 179: 3.6 HIP/AMD lane \[ACCEPTED source, physical pending\]
+  - Line 190: 3.7 Vulkan lane \[ACCEPTED source, physical pending\]
+  - Line 206: 3.8 CUDA assembled batch \[INTERRUPTED mid-checks\]
+  - Line 223: 3.9 Housekeeping completed \[ACCEPTED/VERIFIED\]
+  - Line 231: 4. The assembled main batch (uncommitted) — contents
+  - Line 247: 5. Interruption point — exact resume queue
+  - Line 297: 6. User decisions (all, in order) — binding unless the user changes them
+  - Line 362: 7. Where the evidence lives
+  - Line 378: 8. Standing constraints (unchanged)
+
+### [.agents/docs/GFX1151_ROCM_KERNEL_COST_AND_UNIFIED_MEMORY_SAFETY_CONTRACT_2026-10-15.md](../GFX1151_ROCM_KERNEL_COST_AND_UNIFIED_MEMORY_SAFETY_CONTRACT_2026-10-15.md)
+
+- Bytes: 20317; mode: 0o644; SHA256: 609d9da39358304ea5d9a501ea39ba0b780d15a58ad2baad8cffdedc5c8e5268.
+- Full heading route:
+  - Line 1: Zerogravity — gfx1151 ROCm Kernel Specialization, MoE Scheduling and Unified-Memory Safety Contract
+  - Line 6: 0. Governing invariants
+  - Line 10: 1. Target hardware and capabilities
+  - Line 16: Kernel candidate dimensions
+  - Line 25: 2. Wave32 WMMA fragment layout and LDS bank conflict
+  - Line 41: 3. Dense/GDN/MLA/vision kernels: source-first closed regions
+  - Line 58: 4. MoE row-packing, verification and multi-session scheduling
+  - Line 75: Prior-art measured counterexample (source, not Zerogravity result)
+  - Line 81: Shape-aware batch cost (conceptual)
+  - Line 91: 5. Unified-memory admission and Linux page cache
+  - Line 97: Authoritative resource design adjustments
+  - Line 109: Atomic multi-model loading and cache safety
+  - Line 116: 6. Cold-start and first-image specialization
+  - Line 131: 7. Qualifying negative results and overhead ceilings
+  - Line 149: 8. Acceptance gates for P01/P07/P10/P12/P16/P20/P22
+  - Line 172: 9. Existing roadmap mapping
+  - Line 183: U-048 — combined kernel, replay and NPU qualification
+
+### [.agents/docs/HANDOFF_ALL_COMMIT_LINEAGE_2026-10-25.md](../HANDOFF_ALL_COMMIT_LINEAGE_2026-10-25.md)
+
+- Bytes: 19555; mode: 0o600; SHA256: 663074a5fab03e72e37c876840aa6b71a2240587a868fe57919594f15302ab6c.
+- Full heading route:
+  - Line 1: ZeroGravity — lossless source-commit lineage snapshot (oldest first)
+
+### [.agents/docs/HANDOFF_ALL_DESIGN_AND_SPEC_SOURCES_2026-10-25.md](../HANDOFF_ALL_DESIGN_AND_SPEC_SOURCES_2026-10-25.md)
+
+- Bytes: 63351; mode: 0o600; SHA256: cd7f84931302bb417451da313eb1a580be354e20705a3fcec00793099b10d4b2.
+- Full heading route:
+  - Line 1: ZeroGravity — complete design, plan, research and historical source-file index (25 October 2026)
+  - Line 6: Publication / top-level docs — 6 files
+  - Line 17: Current and archived agent architecture/handoffs — 143 files
+  - Line 165: Current and archived agent plans/decisions — 50 files
+  - Line 220: Research / model family and performance — 41 files
+  - Line 266: Prior art, critical reviews and licenses — 12 files
+
+### [.agents/docs/HANDOFF_ALL_OPEN_PLAN_ITEMS_2026-10-25.md](../HANDOFF_ALL_OPEN_PLAN_ITEMS_2026-10-25.md)
+
+- Bytes: 61303; mode: 0o600; SHA256: cb8b18c456a9161e7d7a2c742507e2420a33bbb7305d00e6d3cd785c8dcc3972.
+- Full heading route:
+  - Line 1: ZeroGravity — exhaustive NON-COMPLETED plan work inventory (25 October 2026)
+  - Line 7: Source integrity and complete marker counts
+  - Line 25: Complete exact source task index
+  - Line 29: \[cli-device-routing\](../plans/cli-device-routing/TODO.md)
+  - Line 31: Uncommitted
+  - Line 67: Tests and verification
+  - Line 96: \[cpu-gpu-optimization\](../plans/cpu-gpu-optimization/TODO.md)
+  - Line 98: Uncommitted
+  - Line 140: Committed
+  - Line 146: Tests and verification
+  - Line 157: \[distributed-execution\](../plans/distributed-execution/TODO.md)
+  - Line 159: Uncommitted
+  - Line 174: \[memory-and-streaming\](../plans/memory-and-streaming/TODO.md)
+  - Line 176: Uncommitted
+  - Line 199: Tests and verification
+  - Line 206: \[model-acquisition\](../plans/model-acquisition/TODO.md)
+  - Line 208: Uncommitted
+  - Line 224: Tests and verification
+  - Line 228: Deferred
+  - Line 233: \[model-execution\](../plans/model-execution/TODO.md)
+  - Line 235: Uncommitted
+  - Line 280: Deferred — after Qwen/Gemma and Flash execution
+  - Line 284: \[multimodal\](../plans/multimodal/TODO.md)
+  - Line 286: Uncommitted
+  - Line 300: Tests and verification
+  - Line 318: \[numerics-and-context\](../plans/numerics-and-context/TODO.md)
+  - Line 320: Uncommitted
+  - Line 346: Committed
+  - Line 351: \[pipeline-composition\](../plans/pipeline-composition/TODO.md)
+  - Line 353: Uncommitted
+  - Line 392: Deferred
+  - Line 408: \[platform-and-release\](../plans/platform-and-release/TODO.md)
+  - Line 410: Uncommitted
+  - Line 427: Tests and verification
+  - Line 432: \[serving-and-speculation\](../plans/serving-and-speculation/TODO.md)
+  - Line 434: Uncommitted
+
+### [.agents/docs/HETEROGENEOUS_PREFILL_AND_RETAINED_REPLAY_CONTRACT_2026-10-15.md](../HETEROGENEOUS_PREFILL_AND_RETAINED_REPLAY_CONTRACT_2026-10-15.md)
+
+- Bytes: 18090; mode: 0o644; SHA256: 0c5731fb275b8ea560ede89602c6883d35d7778829ce0f27878fe9e192d3c134.
+- Full heading route:
+  - Line 1: Zerogravity — Heterogeneous prefill and retained replay contract
+  - Line 15: 1. Required capability and honest status
+  - Line 37: 2. Existing boundaries carry every optimization
+  - Line 56: 3. Two distinct cooperative prefill transformations
+  - Line 117: 4. Numerical identity includes the realized schedule
+  - Line 153: 5. External terminal signal is not successful readiness
+  - Line 175: 6. Retained native replay within the existing backend
+  - Line 212: 7. Joint schedule cost, safety and calibration
+  - Line 243: 8. Product/model completeness and faster-than claims
+
+### [.agents/docs/INVARIANTS_AND_FAILURE_SEMANTICS.md](../INVARIANTS_AND_FAILURE_SEMANTICS.md)
+
+- Bytes: 20079; mode: 0o644; SHA256: 718b9aaac7535ccf79cf32cd58997fdc1dec5e6939944cbe41e0344363a940bc.
+- Full heading route:
+  - Line 1: Cross-cutting invariants, state lifetimes and failure semantics
+  - Line 14: Correctness and identity
+  - Line 23: Effects, ownership and memory
+  - Line 33: Serving and speculative semantics
+  - Line 42: Model/hardware compatibility
+  - Line 50: Failure state machine
+  - Line 66: Typed error classes
+  - Line 79: Failure response / recovery matrix
+  - Line 96: Ownership/lifetime diagrams (text)
+  - Line 112: Defensive tests / diagnostics
+  - Line 118: 2026-10-10 integrated v2 addendum — cross-IR and worker-event invariants
+  - Line 132: 2026-10-12 integration — cross-accelerator safety and semantic invariants
+  - Line 138: v4 additional invariants and fault tests
+  - Line 148: v4.3 multi-model routing and API invariants
+
+### [.agents/docs/JOINT_CONCURRENT_SERVING_OPTIMIZATION_AND_GOODPUT_CONTRACT_2026-10-15.md](../JOINT_CONCURRENT_SERVING_OPTIMIZATION_AND_GOODPUT_CONTRACT_2026-10-15.md)
+
+- Bytes: 22925; mode: 0o644; SHA256: d62f507a2a3bac341b753d0ff512c7f7a2f81c15cf95779903bebd4359272dde.
+- Full heading route:
+  - Line 1: Zerogravity — Joint Concurrent Serving, Goodput and Combinatory Specialization Contract
+  - Line 9: 1. Design objective and competitive honesty
+  - Line 26: 2. vLLM-class baseline — operational detail to preserve
+  - Line 40: 3. Three independent admission limits
+  - Line 54: 4. Unified request work frontier
+  - Line 93: 5. Hybrid prefix cache — exact state-domain frontier meet
+  - Line 108: Frontier meet algorithm
+  - Line 113: 6. Joint candidate selection: fast bounded Pareto lookup
+  - Line 144: 7. Async worker pipeline and hot-path costs
+  - Line 158: 8. Distributed prefill/decode and collective overlap
+  - Line 170: 9. Failure, overload and fairness cases
+  - Line 185: 10. Metrics and honest performance claims
+  - Line 193: 11. Phase ownership and evidence status
+  - Line 208: 12. Primary sources and version caveat
+  - Line 221: 13. U-048 — NPU banks and retained replay participate in joint choice
+
+### [.agents/docs/LINUX_DEV_NODE_SELECTORS_2026-10-25.md](../LINUX_DEV_NODE_SELECTORS_2026-10-25.md)
+
+- Bytes: 2428; mode: 0o600; SHA256: 9a950b823bba0bc9827b8b4eab9ddb0ec05264cdbf0a8bf9747378bc4cd38d9d.
+- Full heading route:
+  - Line 1: Linux GPU device-node selectors
+
+### [.agents/docs/MEMORY_RESIDENCY_AND_IO.md](../MEMORY_RESIDENCY_AND_IO.md)
+
+- Bytes: 29375; mode: 0o644; SHA256: b45e4323babf1a655dc8a96dcde9266e7a0cfe9e1caa38e32f58fcedb9083176.
+- Full heading route:
+  - Line 1: Global memory, expert residency, storage I/O and resource admission
+  - Line 17: 1. Core architectural decision
+  - Line 23: 2. Distinguish addressability, residency and physical headroom
+  - Line 51: 3. Resource classes and default priorities
+  - Line 68: 4. Authoritative resource arbiter
+  - Line 110: 5. Expert store organization
+  - Line 120: 6. Fast resident expert path
+  - Line 134: 7. Expert miss path and async event protocol
+  - Line 152: 8. Async SSD and NUMA
+  - Line 162: 9. Disk-only lookup row service
+  - Line 173: 10. KV, prefix and recurrent state tiers
+  - Line 179: 11. Dynamic scratch borrowing
+  - Line 192: 12. Safety and deployment
+  - Line 203: 13. Required test matrix
+  - Line 207: 14. Known research hazards / unapproved constants
+  - Line 211: 2026-10-10 integrated v2 addendum — research-grade KV/expert algorithms governed by CIR
+  - Line 224: 2026-10-12 integration — pinned AIE/NPU buffers and shared physical ownership
+  - Line 232: v4 refinement — reservation authority versus local pool
+  - Line 238: v4.1 — weight/program residency spans GPU, graph and static dataflow
+  - Line 246: v4.2 — one physical accounting discipline across remote model, state and cache owners
+  - Line 254: v4.3 — multiple resident models under one physical ResourceArbiter
+
+### [.agents/docs/MINIMAL_EXECUTION_SPINE_AND_PROTOCOL_V4.md](../MINIMAL_EXECUTION_SPINE_AND_PROTOCOL_V4.md)
+
+- Bytes: 27943; mode: 0o644; SHA256: 72a1f1941239b77e2dc3c0a0eb08d505d024e819a37ec49c777aeb94f25aa845.
+- Full heading route:
+  - Line 1: Minimal execution spine v4 — state, asynchronous workers, resource ownership and hot-path performance
+  - Line 5: 1. Exactly five ownership boundaries
+  - Line 19: 2. State versioning — prepared, not independently committed
+  - Line 21: 2.1 The core error to avoid
+  - Line 27: 2.2 Illustrative states, epochs and root ownership
+  - Line 75: 2.3 On GPU-only decode, how to avoid per-token host barriers
+  - Line 87: 3. Worker step protocol and backpressure
+  - Line 116: 4. Device/command graph boundary
+  - Line 128: 5. Hierarchical physical budget and local allocation (zero global per-token lock)
+  - Line 150: 6. Model/task/plan compatibility keys
+  - Line 163: 7. Logical output commit versus transport delivery
+  - Line 173: 8. Subtask control without a giant workflow runtime
+  - Line 187: 9. Failure semantics matrix
+  - Line 202: 10. First vertical slice acceptance for this document
+  - Line 218: v4.1 addendum — graph/dataflow accelerator readiness and state bridge
+  - Line 228: 11. v4.2 — per-session root publication across remote state shard owners
+  - Line 238: 12. v4.3 — model routing does not own token state or physical allocations
+
+### [.agents/docs/MODEL_ROUTING_RESIDENCY_AND_MULTI_MODEL_SERVING_CONTRACT.md](../MODEL_ROUTING_RESIDENCY_AND_MULTI_MODEL_SERVING_CONTRACT.md)
+
+- Bytes: 33807; mode: 0o644; SHA256: fbadae7f647be6be10eed8413fb288fc8d74948e049f454a000a16f3dc29cad4.
+- Full heading route:
+  - Line 1: zerogravity — Built-in model router, multi-model residency and serving contract (v4.3)
+  - Line 16: 1. One engine, four separable entities
+  - Line 33: 2. Minimal architecture — routing above shared execution, never hot-per-token proxy
+  - Line 69: 3. Typed identities, versioning and naming
+  - Line 96: 4. Distinct route decisions: source identity, replica, phase and application model selection
+  - Line 98: 4.1 Exact-model request (default, no substitution)
+  - Line 104: 4.2 Replica load balancing (same logical model)
+  - Line 118: 4.3 Phase/task and multi-model pipeline routing
+  - Line 124: 4.4 Optional intelligent target-model selector (explicitly configured)
+  - Line 137: 5. Model residency lifecycle, cold-start and scale-to-zero
+  - Line 172: 5.1 Warm/keepalive policies
+  - Line 183: 5.2 Model replicas, sharding and placement
+  - Line 191: 6. One global physical budget, two scheduling timescales
+  - Line 206: 7. Routing snapshot and request consistency
+  - Line 233: 8. Per-model settings: explicit scope and safety
+  - Line 251: 9. Multi-model coexistence and cache compatibility
+  - Line 259: 10. Failure model and human-facing behavior
+  - Line 280: 11. Security, remote scope and API boundaries
+  - Line 288: 12. Observability and perf admission proofs
+  - Line 312: 13. Minimal implementation staging
+
+### [.agents/docs/MODEL_SEMANTICS_AND_COMPATIBILITY.md](../MODEL_SEMANTICS_AND_COMPATIBILITY.md)
+
+- Bytes: 19641; mode: 0o644; SHA256: ffabf256a01a3c29b455593ba5e0162e1cb6a417bedce7fb7b13e00b15594341.
+- Full heading route:
+  - Line 1: Model semantics, model adapters and compatibility qualification
+  - Line 9: 1. Model support contract
+  - Line 24: 2. Canonical operator registry
+  - Line 40: 3. Candidate first model families
+  - Line 42: Llama and dense baseline
+  - Line 45: Gemma 4
+  - Line 48: Qwen3.5+
+  - Line 51: Qwen3.8-Flash-Next
+  - Line 54: GLM-5.3-Flash
+  - Line 57: DeepSeek V4 Flash / V4.1 Flash
+  - Line 60: 4. Initial capability matrix (PLANNED — not supported yet)
+  - Line 74: 5. Model adapter shape (conceptual Rust)
+  - Line 102: 6. Integration steps for an unfamiliar model
+  - Line 115: 7. Numerical contracts to encode
+  - Line 119: 8. Future compatibility principle
+  - Line 123: 2026-10-10 integrated v2 addendum — model recipe/compiler decoupling
+  - Line 136: 2026-10-12 integration — Gufo-family semantic reuse and task control graphs
+  - Line 144: v4 refinement — registered exact mathematical models and future parameter versions
+  - Line 150: Current metadata-only source profiles
+
+### [.agents/docs/MODULAR_AI_SYSTEMS_REFERENCE_ARCHITECTURE.md](../MODULAR_AI_SYSTEMS_REFERENCE_ARCHITECTURE.md)
+
+- Bytes: 24661; mode: 0o644; SHA256: 52e5f1d1b113d1ff359a3eda0d533dc5fe17e55d69d90cbe85f475e35603c2cd.
+- Full heading route:
+  - Line 1: zerogravity — modular AI execution reference architecture v4.1
+  - Line 5: 1. Prime rule — compose execution capabilities, never new engines
+  - Line 13: 2. The minimal system vocabulary
+  - Line 30: 3. Two enduring representations; compiler-internal optimization views
+  - Line 64: 4. Task control without an internal workflow platform
+  - Line 82: 5. State and output transaction, exactly one logical publish
+  - Line 95: 6. Fast scheduling and resource ownership
+  - Line 105: 7. Shape, numeric, cost and specialization guards
+  - Line 118: 8. Minimal extension seams and evolution
+  - Line 135: 9. Deferred complexity and engineering discipline
+  - Line 143: 10. Evidence, scope and authority
+  - Line 151: 11. v4.1 execution granularity — native GPU, graph-only and dataflow accelerators
+  - Line 165: 12. v4.2 — distributed machine and state placement as a core execution capability
+  - Line 175: 13. v4.3 — built-in multi-model request routing without another runtime
+
+### [.agents/docs/NPU_GPU_COOPERATIVE_EXECUTION_AND_TASK_PIPELINES.md](../NPU_GPU_COOPERATIVE_EXECUTION_AND_TASK_PIPELINES.md)
+
+- Bytes: 25956; mode: 0o644; SHA256: da65ffcafe3769127592dceda531685e3b7af416708f43fbfb628cb0e0b0c3b8.
+- Full heading route:
+  - Line 1: zerogravity — NPU/GPU cooperative execution and multimodal TaskProgram design
+  - Line 10: 1. The essential distinction — three hardware parallelism types
+  - Line 20: 2. SIR semantic preservation: output-row sliced GEMM
+  - Line 37: 3. Compiler representations and runtime data flow
+  - Line 39: SIR
+  - Line 42: RIR
+  - Line 45: KIR
+  - Line 56: CIR
+  - Line 83: ExecutableBundle/StepPlan
+  - Line 90: 4. Safety-critical unified SoC power/fabric model
+  - Line 107: 5. Precision and correct mathematical output
+  - Line 119: 6. Cost-aware ownership and utilization
+  - Line 137: 7. General multi-device ownership and sparse compute
+  - Line 151: 8. Extending beyond decoder-only pipelines
+  - Line 175: 9. Exact fallback contracts for a "seamless" experience
+  - Line 193: 10. Acceptance tests and integration plan (proposed, not completed)
+  - Line 209: 11. Files/policy mapping
+  - Line 221: v4 refinement — NPU is a KernelProvider and physical command dependency
+  - Line 227: 12. U-048 — banked prefill and transport-neutral NPU programs
+
+### [.agents/docs/NUMERICS_QUALITY_AND_BENCHMARKS.md](../NUMERICS_QUALITY_AND_BENCHMARKS.md)
+
+- Bytes: 31132; mode: 0o644; SHA256: d419ec8016f967c123e174292b1b0595011bfc8eb2a6588aa5fb27bacb3d017a.
+- Full heading route:
+  - Line 1: Numerical correctness, model-quality evaluation and benchmark methodology
+  - Line 21: 1. Four independent notions of correctness
+  - Line 30: 2. Reference layers
+  - Line 40: 3. Numeric error metrics
+  - Line 57: 4. Critical operator regression cases
+  - Line 78: 5. Quantization and quality comparison
+  - Line 89: 6. Speculative decoding sampling rigor
+  - Line 97: 7. Hybrid state replay equivalence
+  - Line 110: 8. Benchmark taxonomy
+  - Line 122: 9. Benchmark comparability matrix
+  - Line 134: 10. Recorded external author baselines (research only)
+  - Line 144: 11. Statistical method
+  - Line 150: 12. Recording results
+  - Line 162: 13. Quality gates and acceptance policy
+  - Line 175: 14. Long context and quality
+  - Line 179: 15. Acceptance report example (pseudocode)
+  - Line 196: 2026-10-10 integrated v2 addendum — defensible Pareto performance and correction ledger
+  - Line 214: 2026-10-12 integration — NPU BFP compute and performance comparability
+  - Line 220: v4 refinement — four distinct truth claims and task-relative units
+  - Line 226: v4.1 — cross-accelerator precision and program validity
+  - Line 234: v4.2 — distributed mathematical parity and transport-aware benchmarks
+  - Line 242: v4.3 exact-model routing and multi-model performance truthfulness
+  - Line 250: U-048 — separate NPU-twin parity, source quality and route performance
+  - Line 263: Original Qwen3.5 source arithmetic profile
+
+### [.agents/docs/OPERATOR_AND_FUSION_CATALOG.md](../OPERATOR_AND_FUSION_CATALOG.md)
+
+- Bytes: 19814; mode: 0o644; SHA256: 87d160c1e67cd2cf47290a52ae5ee07f06c6ad6a0b4347e8d5e3816f9c60146d.
+- Full heading route:
+  - Line 1: Operator/region contracts, fusion patterns and model execution catalog
+  - Line 14: 1. Canonical operator record
+  - Line 33: 2. Dense linear / embedding
+  - Line 45: Candidate region: Norm + Q8 activation packing + GEMV
+  - Line 48: 3. Attention families
+  - Line 50: Full causal attention / GQA
+  - Line 53: Sliding-window / alternating local-global
+  - Line 56: Qwen Sparse Attention (QSA)
+  - Line 59: GLM latent MLA + DeepSeek Sparse Attention
+  - Line 62: DeepSeek time-compressed attention (CSA/HCA)
+  - Line 65: Candidate region: index score+topk+attention tile
+  - Line 68: 4. Recurrent and hybrid families
+  - Line 70: Gated DeltaNet
+  - Line 73: Kimi Delta Attention
+  - Line 76: Hyperconnections
+  - Line 79: Candidate region: recurrent step + conv history + residual
+  - Line 82: 5. MoE families
+  - Line 94: Candidate fusion plans
+  - Line 103: 6. N-gram / Engram row lookup
+  - Line 107: 7. Output/sampling/drafting
+  - Line 111: 8. Operator capability matrix example (PROPOSED)
+  - Line 129: 9. Reference model and independent data flow
+  - Line 133: 10. Region and fallback execution example
+  - Line 153: 11. Complexity budget
+  - Line 157: 12. Missing official formula checklist
+  - Line 168: 2026-10-10 integrated v2 addendum — effect-aware kernel and fusion ownership
+  - Line 181: 2026-10-12 integration — \`ProjectionRowSlice\` and non-token stage optimization
+  - Line 189: v4 refinement — useful op granularity and precise region substitution
+
+### [.agents/docs/PERFORMANCE_HYPOTHESES_AND_RISKS.md](../PERFORMANCE_HYPOTHESES_AND_RISKS.md)
+
+- Bytes: 18664; mode: 0o644; SHA256: 2d2e1fed43f59dbf5ad1e36ceb7a668216bf0bef15c1fe4c568acf8921f5f060.
+- Full heading route:
+  - Line 1: Architectural risks, opportunities, trade-offs and falsification criteria
+  - Line 8: 1. Risk register (severity × uncertainty)
+  - Line 31: 2. Central falsifiable hypotheses
+  - Line 47: 3. Key trade-off choices
+  - Line 49: A. Semantic IR richness vs maintainability
+  - Line 53: B. CubeCL vs direct hardware kernels vs vendor libraries
+  - Line 57: C. One cache vs many caches
+  - Line 61: D. Whole-layer fusion vs operation modularity
+  - Line 65: E. Full CPU reference vs portable but slow GPU backend
+  - Line 69: F. Automatic adaptation vs predictability
+  - Line 73: 4. Common failure of reasoning to avoid
+  - Line 86: 5. Decision process for research conflicts
+  - Line 90: 6. Prioritize and prune complexity
+  - Line 94: 7. Immediate actionable risks
+  - Line 106: 2026-10-10 integrated v2 addendum — new research risks and falsifiable differentiation
+  - Line 127: 2026-10-12 Gufo XDNA2 opportunity and risks
+  - Line 141: v4 critical-path and complexity risks (review R4-01…R4-24)
+
+### [.agents/docs/POST_4BF3673_AUDIT_AND_RESUME_2026-10-25.md](../POST_4BF3673_AUDIT_AND_RESUME_2026-10-25.md)
+
+- Bytes: 17576; mode: 0o600; SHA256: ed5db9872d7f8a27bcfa5f74c9daf13e269108ae99c2a2adbd0d3604bfd07952.
+- Full heading route:
+  - Line 1: ZeroGravity post-\`4bf3673\` takeover: independent audit and continuation (2026-10-25)
+  - Line 5: Baseline and discipline
+  - Line 11: Independently found bugs and corrected source
+  - Line 19: Tests actually executed (independent from inherited handoff)
+  - Line 32: x2 Qwen27B natural capture and H/G/V status
+  - Line 40: Continuation after initial audit commit — new G control bug and fresh complete H/G packages
+  - Line 49: Next actions (ordered)
+
+### [.agents/docs/PRODUCT_MODEL_PIPELINE_AND_EXTENSIONS.md](../PRODUCT_MODEL_PIPELINE_AND_EXTENSIONS.md)
+
+- Bytes: 20666; mode: 0o644; SHA256: a505cac71b058fdd05fe43edcdd785eca0ccf7cf482b16be9e8e66a47148b316.
+- Full heading route:
+  - Line 1: zerogravity — Product, model loading and extension contract across the full pipeline
+  - Line 8: 1. Source/format are not model mathematics
+  - Line 23: 2. ModelStore and manifest versions
+  - Line 35: 3. GGUF and quantization schema
+  - Line 48: 4. Tokenizer, chat templates and constrained outputs
+  - Line 62: 5. Text generator and encoder/pooler are different runner modes
+  - Line 68: 6. Multimodal and modalities as typed state
+  - Line 78: 7. LoRA/adapter model (previous project gap)
+  - Line 91: 8. Platform and hardware extension contract
+  - Line 97: 9. Serving facade
+  - Line 103: 10. Conformance matrix for every extension
+  - Line 115: 11. Explicit non-goals and open points
+  - Line 121: 2026-10-12 integration — upstream Gufo task pipelines and reusable TaskProgram
+  - Line 131: v4 refinement — TaskDriver, not universal workflow DSL
+  - Line 137: v4.2 — TaskDriver distribution without forcing token-only topology
+  - Line 145: v4.3 — registry model profile vs immutable source and execution residency
+
+### [.agents/docs/REALTIME_MULTIMODAL_SERVING_AND_QOS_V5_1_2026-10-15.md](../REALTIME_MULTIMODAL_SERVING_AND_QOS_V5_1_2026-10-15.md)
+
+- Bytes: 31781; mode: 0o644; SHA256: 0a5412cf92701b7c6a4a8ab22fd75d8746a31b44ee882890c7e7509856ab6352.
+- Full heading route:
+  - Line 1: Zerogravity Real-Time Multimodal Serving, Sessions, QoS and API Contract — v5.1
+  - Line 13: 0. Scope and goals
+  - Line 19: 1. Serving decomposition without a second inference runtime
+  - Line 45: 2. Canonical TaskRequest and response mode
+  - Line 73: 3. RealtimeSession and transport state
+  - Line 104: 4. Five distinct frontiers
+  - Line 116: 5. MediaEvent stream
+  - Line 145: 6. Input clocks and buffering
+  - Line 155: 7. Playback interruption/barge-in protocol
+  - Line 169: 8. Reconnection and resume
+  - Line 180: 9. Admission and QoS
+  - Line 205: 10. Media-specific progress, metrics and SLOs
+  - Line 218: 11. Three fundamental delivery regimes
+  - Line 220: 11.1 Local or one-shot request (sync)
+  - Line 225: 11.2 Progressive streaming (HTTP/SSE or binary streaming)
+  - Line 231: 11.3 Bidirectional live (WebSocket/WebRTC)
+  - Line 239: 12. API matrix and versioning
+  - Line 261: 13. Hosted opaque provider TaskServiceAdapter
+  - Line 286: 14. Failure and availability rules
+  - Line 297: 15. Media presentation receipts and truthful playback
+  - Line 309: 16. Explicit compatibility prior art (not native implementation)
+  - Line 323: 17. Acceptance drill extension
+  - Line 341: 18. Open policy decisions before live serving
+
+### [.agents/docs/REMOTE_PEER_TRANSPORT_AND_STATE_HANDOFF_PROTOCOL.md](../REMOTE_PEER_TRANSPORT_AND_STATE_HANDOFF_PROTOCOL.md)
+
+- Bytes: 16163; mode: 0o644; SHA256: bd35928aa22cfd61e7e089c16a7f3899bfacb01dac9d73a5556edbfcd4f78715.
+- Full heading route:
+  - Line 1: zerogravity — Remote peer transport, state handoff and failure protocol (v4.2)
+  - Line 5: 1. One process can run standalone or offer a peer role
+  - Line 13: 2. Exact identities and separate epochs
+  - Line 24: 3. Wire control is small, bounded and authenticated
+  - Line 46: 4. Bulk transfer and transport capabilities
+  - Line 65: 5. Remote model/layer execution flows
+  - Line 67: 5.1 Layers and mutable cache colocated on peer B
+  - Line 78: 5.2 Layer compute on A, attention/KV state on B
+  - Line 86: 5.3 Compute/FFN/experts on B and stateful attention on A
+  - Line 90: 5.4 Prefill on A, decode on B
+  - Line 100: 5.5 Remote prefix cache and sequence KV shards
+  - Line 106: 6. Recovering from node failures and partitions
+  - Line 118: 7. Fault-injection and QoS gates
+  - Line 133: 8. Minimal implementation discipline
+
+### [.agents/docs/RUNTIME_SERVING_AND_UX.md](../RUNTIME_SERVING_AND_UX.md)
+
+- Bytes: 18788; mode: 0o644; SHA256: dc295903499b72feb8914161adb9ade6c9e3c111d29c63bc24bc3cc62a76a7b9.
+- Full heading route:
+  - Line 1: Runtime, APIs, developer experience and observability
+  - Line 17: 1. Proposed executable and modes (illustrative, not finalized)
+  - Line 31: 2. Rust library/SDK layer
+  - Line 35: 3. HTTP compatibility matrix
+  - Line 49: 4. Streaming correctness
+  - Line 55: 5. Tool and agent histories
+  - Line 61: 6. Context and memory fit UI
+  - Line 78: 7. Multi-model and hot reload
+  - Line 82: 8. Metrics and telemetry
+  - Line 96: 9. Configuration hierarchy
+  - Line 102: 10. Local deployment and packaging
+  - Line 108: 11. Testing API usability
+  - Line 112: 12. Pending policy
+  - Line 116: 2026-10-10 integrated v2 addendum — concrete product and event contracts
+  - Line 129: 2026-10-12 integration — NPU diagnostics and future media outputs
+  - Line 135: v4 refinement — truthful task streams and no hidden task workflow executor
+  - Line 141: v4.3 authoritative multi-model service and zero-config UX refinement
+
+### [.agents/docs/RUST_WORKSPACE_AND_ENGINEERING.md](../RUST_WORKSPACE_AND_ENGINEERING.md)
+
+- Bytes: 25931; mode: 0o644; SHA256: e6944af1831a086f17eba47be27339c6a69d39b1135003ff6b38e76b02931fa8.
+- Full heading route:
+  - Line 1: Rust workspace, interfaces, implementation practices and contributor workflow
+  - Line 37: 1. Language and architecture constraint
+  - Line 43: 2. Historical proposed Cargo ownership map
+  - Line 81: 3. Ownership and concurrency rules
+  - Line 93: 4. Public data contracts
+  - Line 99: 5. Core hot-path performance rules
+  - Line 110: 6. Engineering ergonomics
+  - Line 116: 7. Unsafe and external code
+  - Line 129: 8. Toolchain and build variants
+  - Line 141: 9. CI and physical GPU testing
+  - Line 151: 10. Dependency/version governance
+  - Line 157: 11. Pull request checklist
+  - Line 170: 12. Build/release artifacts
+  - Line 174: 13. Agent work tracking
+  - Line 182: 14. Open structural decisions
+  - Line 186: 2026-10-10 integrated v2 addendum — minimal Rust crates and newer GPU compilers
+  - Line 197: 2026-10-12 integration — optional XRT/AIE backend and Rust source policy
+  - Line 203: v4 refinement — minimum crates, stable Rust interfaces only where proven
+  - Line 211: v4.1 — vendor graph compiler adapter without kernel-source confusion
+  - Line 219: v4.2 — optional authenticated peer feature, no new inference server
+  - Line 227: v4.3 — one executable and one library for CLI, router and multi-model serving
+
+### [.agents/docs/SCHEDULER_BATCHING_AND_SPECULATION.md](../SCHEDULER_BATCHING_AND_SPECULATION.md)
+
+- Bytes: 24878; mode: 0o644; SHA256: a420b6b64ea8a2616633b3ab009924a101c97f91e366ec402a95866b45c2b450.
+- Full heading route:
+  - Line 1: Scheduler, continuous batching, prefix reuse and speculative execution
+  - Line 14: 1. Entities and lifecycle
+  - Line 32: Request ledger fields
+  - Line 55: 2. Unified token-budget scheduling
+  - Line 72: Baseline fairness and admission
+  - Line 76: 3. Execution groups
+  - Line 87: 4. Route-aware MoE execution and cost
+  - Line 103: 5. Prefix-aware scheduling
+  - Line 109: 6. Speculative decoding architecture
+  - Line 123: Exact sampling reminder
+  - Line 129: Transaction for verify block
+  - Line 143: 7. Speculation cost model and guardrails
+  - Line 157: 8. Active batch vs queued concurrency
+  - Line 167: 9. Multi-model hosting and eviction
+  - Line 171: 10. Distributed scheduling and prefill/decode disaggregation
+  - Line 175: 11. Cancellation, priority and stop conditions
+  - Line 179: 12. Metrics required for correct tuning
+  - Line 185: 13. Tests and acceptance
+  - Line 196: 14. Open questions for empirical resolution
+  - Line 200: 2026-10-10 integrated v2 addendum — concrete research event loop and scheduler ownership
+  - Line 213: 2026-10-12 integration — prefill-specific GPU+NPU candidate
+  - Line 219: v4 refinement — mixed task cost, prepared state and bounded overlap
+  - Line 227: v4.2 — cross-machine task admission and stage scheduling without central hot-path RPC
+  - Line 235: v4.3 — multi-model route admission and native within-model batching
+
+### [.agents/docs/SECURITY_AND_RELIABILITY.md](../SECURITY_AND_RELIABILITY.md)
+
+- Bytes: 23521; mode: 0o644; SHA256: b66dbb79129fe5ad3e1400a9fd187258f80e99c3e6157f4c50fd0ffde8555c17.
+- Full heading route:
+  - Line 1: Security, reliability, resilience and safe defaults
+  - Line 8: 1. Threat model
+  - Line 21: 2. Untrusted artifact parsing
+  - Line 35: 3. GPU memory lifetime and physical safety
+  - Line 43: 4. Service exposure and request admission
+  - Line 51: 5. Model and prompt privacy
+  - Line 57: 6. Snapshot integrity and cache poisoning
+  - Line 63: 7. Distributed transport
+  - Line 69: 8. Plugins and generated kernel trust
+  - Line 75: 9. Reliability and operational state
+  - Line 86: 10. Supply chain and licensing
+  - Line 92: 11. Reliability testing before release
+  - Line 102: 12. Release security checklist
+  - Line 117: 13. Open security decisions
+  - Line 121: 2026-10-10 integrated v2 addendum — compiler, async executor and plugin threat boundaries
+  - Line 134: 2026-10-12 integration — GPU+XDNA2 SoC hard-hang risk and NPU artifact trust
+  - Line 144: v4 refinement — one logical root and output delivery security
+  - Line 150: v4.1 — compiled graph/wafer programs, remote sessions and license trust
+  - Line 158: v4.2 — trusted network peers, tunnel isolation and remote state safety
+  - Line 166: v4.3 model router, registry and API security
+
+### [.agents/docs/SEMANTIC_IR_AND_COMPILER.md](../SEMANTIC_IR_AND_COMPILER.md)
+
+- Bytes: 23564; mode: 0o644; SHA256: 44c4050aa02dbb70309dfc1321df74ca20d2db7cc7767dc43b8a9d05a2002338.
+- Full heading route:
+  - Line 1: Semantic IR, state-effect system and ahead-of-time/JIT execution planning
+  - Line 8: 1. Principles and boundaries
+  - Line 19: 2. Three-stage representation
+  - Line 21: SemanticModelIR (SIR)
+  - Line 29: OptimizedExecutionIR (EIR)
+  - Line 33: DevicePlanIR (DPI)
+  - Line 37: 3. Suggested conceptual type system
+  - Line 86: Shape checking
+  - Line 90: Logical versus physical tensor
+  - Line 94: 4. Stateful effects and exactly-once frontier semantics
+  - Line 102: Effect rule examples
+  - Line 112: 5. Typed operator families
+  - Line 134: 6. Numerical policy / legality
+  - Line 153: 7. Pattern matching and region formation
+  - Line 168: 8. Device plan and persistent variant management
+  - Line 184: Runtime plan selection
+  - Line 190: 9. Cross-compilation and specialization choices
+  - Line 196: 10. Independent verifier and proof harness
+  - Line 214: 11. Practical model integration walkthrough
+  - Line 220: 12. Performance and maintenance controls
+  - Line 224: 13. Pending design proof
+  - Line 235: 2026-10-10 integrated v2 addendum — complete compiler partition
+  - Line 248: 2026-10-12 integration — model-independent split-output projections and task stages
+  - Line 256: v4 refinement — two durable representations and explicit legality
+
+### [.agents/docs/STATE_CACHE_AND_TRANSACTIONS.md](../STATE_CACHE_AND_TRANSACTIONS.md)
+
+- Bytes: 23890; mode: 0o644; SHA256: 7b7d3ca70986f488280c1d309128159e049b7c4f9b1fae0b3c5311b298522763.
+- Full heading route:
+  - Line 1: Session state, prefix caching, snapshots and transactional semantics
+  - Line 17: 1. The distinction between state and model parameters
+  - Line 25: 2. Session data model (suggested, not final code)
+  - Line 56: 3. State domains, required saved content and hazards
+  - Line 74: 4. Transactional generation protocol
+  - Line 86: Pseudocode
+  - Line 106: 5. Snapshot and copy-on-write (COW) policy
+  - Line 118: ABA protection
+  - Line 122: 6. Prefix cache identity and compatibility
+  - Line 137: 7. Snapshot persistence schema
+  - Line 155: 8. Prefix replay and chunk boundaries
+  - Line 168: Attention state compression
+  - Line 172: 9. Tiered cache and memory interaction
+  - Line 183: 10. Failure and cancellation handling
+  - Line 194: 11. Test suite design
+  - Line 198: 12. API invariants for implementers
+  - Line 207: 13. Unresolved choices
+  - Line 211: 2026-10-10 integrated v2 addendum — generalized hybrid prefix state + research frontier mechanics
+  - Line 224: v4 refinement — authoritative prepared-root publication
+  - Line 232: v4.2 — remote mutable state owner is distinct from immutable shared cache
+
+### [.agents/docs/TAKEOVER_6EDC6E2_INDEPENDENT_AUDIT_2026-10-25.md](../TAKEOVER_6EDC6E2_INDEPENDENT_AUDIT_2026-10-25.md)
+
+- Bytes: 6571; mode: 0o600; SHA256: a16a21e79393ed05b6dc445a5e542d93de8812cd2c47d97fb7104eaa9dfb3921.
+- Full heading route:
+  - Line 1: Post-\`4bf3673\` continuation audit — 2026-10-25 (independent check)
+  - Line 5: Verified at current source
+  - Line 14: Remaining execution blockers and nonclaims
+  - Line 22: Ordered continuation
+
+### [.agents/docs/TASK_PROGRAM_AND_COMPILER_REFINEMENT_V4.md](../TASK_PROGRAM_AND_COMPILER_REFINEMENT_V4.md)
+
+- Bytes: 24409; mode: 0o644; SHA256: 61411e66c812dc40a9ed37617cb9deff54ee209b9f548aed91409b3275a45142.
+- Full heading route:
+  - Line 1: v4 TaskProgram and compiler contracts — high throughput with a small semantic core
+  - Line 5: 1. One reusable semantic representation, one physical executable plan
+  - Line 18: 2. Two levels of mathematical operations
+  - Line 20: SemanticOp — source mathematical identity
+  - Line 26: Pure tensor subset — optimization internals
+  - Line 32: 3. Value/dimension contracts and dynamic shape guards
+  - Line 56: 4. Effects and legal speculative execution
+  - Line 64: 5. Minimal task driver, not a workflow DSL
+  - Line 94: Supported task drivers and their own frontier
+  - Line 106: 6. Interface compatibility and minimum provider set
+  - Line 117: 7. Compiled StepProgram and host/device scheduling cost
+  - Line 130: 8. Region and whole-model specialized kernels
+  - Line 141: 9. Optional gradient/parameter update future without training bloat
+  - Line 154: 10. Hardware/format-independent optimization search and cost
+  - Line 165: 11. Evolving interop without external engine dependence
+  - Line 180: 12. Acceptance experiments proving high performance and smallness
+  - Line 195: v4.1 addendum — large compiled graphs without a new IR
+  - Line 207: v4.2 — networked execution placement is a compiled physical plan, not a new TaskDriver
+
+### [.agents/docs/UNIFIED_MULTIMODAL_EXECUTION_CONTRACT_V5_2026-10-14.md](../UNIFIED_MULTIMODAL_EXECUTION_CONTRACT_V5_2026-10-14.md)
+
+- Bytes: 21748; mode: 0o644; SHA256: 55fec7a0edcd1b48a2e47eee17c8f7f63f63c6c6f5c5c98a0e34cb13001f7d01.
+- Full heading route:
+  - Line 1: Zerogravity — Unified multimodal execution contracts (v5 design proposal)
+  - Line 6: MM0 executable mock acceptance — 14 October 2026
+  - Line 21: Executive conclusion
+  - Line 36: MM-01. Typed value and clock contract
+  - Line 64: MM-02. Verified model-component graphs
+  - Line 96: MM-03. Distinct iteration policies under one TaskDriver
+  - Line 126: MM-04. Multitrack StateRoot, synchronized commit and interruption
+  - Line 148: MM-05. Denoising, temporal specialization, and task performance
+  - Line 162: MM-06. Orthogonal tensor encodings and ternary adversarial compatibility
+  - Line 188: MM-07. Typed decision scoring, not JSON generation
+  - Line 206: MM-08. Native versus opaque external models
+  - Line 212: MM-09. Four orthogonal dimensions of specialization
+  - Line 223: MM-10. Minimal fake acceptance drills, before feature implementation
+  - Line 242: MM-11. Implementation order without derailing P07
+
+### [.agents/docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_AND_SSD_STREAMING_2026-10-15.md](../UNIFIED_VIRTUAL_TENSOR_RESIDENCY_AND_SSD_STREAMING_2026-10-15.md)
+
+- Bytes: 22533; mode: 0o644; SHA256: d39bfcaaf68165aeb9c3ac4d053a7332d840cac925dce2562df6b0236a2a284f.
+- Full heading route:
+  - Line 1: Zerogravity — First-Class Virtual Tensor Residency and High-Performance SSD Streaming
+  - Line 9: 0. User requirement and an exact promise
+  - Line 17: 1. Independent identities and ownership
+  - Line 31: Illustrative Rust vocabulary — conceptual, not a frozen public ABI
+  - Line 61: 2. Source-preserving fast and miss paths
+  - Line 93: 3. One residency fabric, domain-specific allocation policies
+  - Line 109: 4. Expert source and cache: lifecycle and data layout
+  - Line 126: Mandatory correctness: lease includes ENCODED but UNEXECUTED GPU work
+  - Line 138: 5. Mixed expert sizes and one shared byte budget
+  - Line 151: 6. Multi-tier IO implementation and platform reality
+  - Line 166: 7. Prefill, decoding, and speculative expert reuse
+  - Line 168: Prefill policy
+  - Line 171: Decode policy
+  - Line 174: Dynamic cache policies
+  - Line 183: 8. Four distinct uses of SSD under one substrate
+  - Line 195: 9. Memory budgets and source performance cost
+  - Line 209: 10. Reliability, error handling and cancellation
+  - Line 226: 11. Verification and zero-overhead discipline
+  - Line 238: 12. Source and provenance references (reviewed 2026-10-15)
+
+### [.agents/docs/UNIVERSAL_MULTIMODAL_EXECUTION_ARCHITECTURE_V5_1_2026-10-15.md](../UNIVERSAL_MULTIMODAL_EXECUTION_ARCHITECTURE_V5_1_2026-10-15.md)
+
+- Bytes: 28589; mode: 0o644; SHA256: 4b2e7195c28e6d4813dae9da5bc07b4b9080388295d8b6bf6b5458e38c790637.
+- Full heading route:
+  - Line 1: Zerogravity Universal Multimodal Execution Architecture — v5.1 Design Specification
+  - Line 9: 0. Nonnegotiable goals and non-goals
+  - Line 11: Goals
+  - Line 20: Non-goals
+  - Line 29: 1. Architectural reconciliation and ownership boundaries
+  - Line 50: 2. Type-safe multimodal values
+  - Line 86: 3. ModelAssembly: physically separable, semantically unified
+  - Line 129: 4. TaskDriver families and termination
+  - Line 160: 5. StateRoot, multitrack commit and physical event authority
+  - Line 191: 6. Numerical/specialization legality dimensions
+  - Line 203: 7. TensorEncoding and novel low-bit models
+  - Line 221: 8. Media component placement, resource accounting, and scheduling
+  - Line 234: 9. Distinct stages of composition
+  - Line 242: 10. Artifact/model capability status and truthful UX
+  - Line 255: 11. Failure classes and recovery
+  - Line 270: 12. Complexity ceilings and future-proofing
+  - Line 282: 13. Design acceptance (not yet implementation)
+  - Line 301: 14. Source references / provenance
+
+### [.agents/docs/VERIFIED_MODEL_ASSEMBLIES_AND_SPECIALIZATION_V5_1_2026-10-15.md](../VERIFIED_MODEL_ASSEMBLIES_AND_SPECIALIZATION_V5_1_2026-10-15.md)
+
+- Bytes: 19704; mode: 0o644; SHA256: 01057dffdccd1d9a92bf3c4451cb80784ed7b84b5b90f0c70c9ad0bc754dea1e.
+- Full heading route:
+  - Line 1: Zerogravity Verified Model Assemblies, Source Codecs and Legal Specialization — v5.1
+  - Line 11: 1. Central separation: model, task, data encoding, hardware
+  - Line 22: 2. Artifact and verified assembly manifest (conceptual)
+  - Line 79: 3. Operator registry and output shape
+  - Line 94: 4. Component-to-device specialization
+  - Line 109: 5. Source-specific required model assembly examples
+  - Line 111: 5.1 Qwen3.5 text + optional vision
+  - Line 117: 5.2 Ternary 27B model
+  - Line 124: 5.3 Whisper/Parakeet/Canary
+  - Line 130: 5.4 Kokoro/Qwen TTS/Moshi
+  - Line 137: 5.5 Qwen-Image, FLUX.2, SD3.5
+  - Line 144: 5.6 Autoregressive multimodal image model
+  - Line 148: 5.7 Wan, Mochi, joint audio/video models
+  - Line 155: 5.8 Typed finite decisions
+  - Line 161: 6. Provenance, licensing and external adapter separation
+  - Line 167: 7. Performance and memory hypotheses to falsify
+  - Line 180: 8. Required interfaces for agents adding a model
+  - Line 197: 9. Stop conditions and architectural falsification
+  - Line 210: U-048 — source assemblies and realized heterogeneous numeric provenance
+
+### [.agents/docs/VISION_SCOPE_AND_PRINCIPLES.md](../VISION_SCOPE_AND_PRINCIPLES.md)
+
+- Bytes: 14132; mode: 0o644; SHA256: dd87cfe5d9db503c3806494343204d7efbca9fad2b8013ccb92926c18a24447a.
+- Full heading route:
+  - Line 1: Vision, product scope, constraints and engineering philosophy
+  - Line 8: Directly expressed user requirements
+  - Line 18: Foundational contract
+  - Line 24: Three plan levels
+  - Line 32: What makes zerogravity qualitatively different (hypotheses, not claims)
+  - Line 42: Non-goals
+  - Line 53: User journeys (product specs)
+  - Line 65: Product experience requirements
+  - Line 74: Quality constraints and optimization order
+  - Line 86: Integration boundaries
+  - Line 97: User decisions not inferred
+  - Line 101: Success definition
+  - Line 105: 2026-10-10 integrated v2 addendum — research synthesis and product boundaries
+  - Line 116: 2026-10-12 capability expansion — Gufo NPU and task pipelines
+  - Line 122: v4 refined product scope and minimality principle
+
+### [.agents/docs/ZERO_CONFIG_CLI_CONFIG_AND_OPENAI_API_CONTRACT.md](../ZERO_CONFIG_CLI_CONFIG_AND_OPENAI_API_CONTRACT.md)
+
+- Bytes: 21399; mode: 0o644; SHA256: ab569c147444ab72bdec107f3f433c4c05fabc43522f4832f58d8ed813adfa96.
+- Full heading route:
+  - Line 1: zerogravity — One-command CLI, progressive configuration and OpenAI-compatible APIs (v4.3)
+  - Line 7: 1. Default one-command user journey
+  - Line 9: Interactive local single model
+  - Line 24: Multi-model router/service
+  - Line 39: Model import and profile
+  - Line 50: 2. Progressive disclosure, not a configuration tax
+  - Line 60: 3. Typed configuration, precedence and immutability
+  - Line 77: Proposed readable configuration
+  - Line 138: 4. API compatibility matrix — explicitly qualified subset
+  - Line 157: Chat Completions
+  - Line 165: Responses API (separate schema and events)
+  - Line 171: Embeddings and other tasks
+  - Line 175: Authentication, permissions and resource limits
+  - Line 184: 5. Error, partial streaming and compatibility tests
+  - Line 201: 6. Terminal UX details and advanced controls
+  - Line 212: 7. Advanced configuration, without complexity leakage
+  - Line 218: 8. Same engine for CLI, server and SDK
+  - Line 224: 9. Product acceptance checklist
+  - Line 237: U-048 — task and frontend capabilities
+
+### [.agents/docs/handoff-2026-10-17/PAUSED_FILTERS_CONTEXT.md](../handoff-2026-10-17/PAUSED_FILTERS_CONTEXT.md)
+
+- Bytes: 22153; mode: 0o644; SHA256: 8fb40a46d132879ae46ea597a4c74ed9a9e16cfd1f3e680dabde9734918144de.
+- Full heading route:
+  - Line 1: TODO — additive filters and exclusions cold design
+  - Line 8: Uncommitted
+  - Line 15: Primary requirements and chosen grammar
+  - Line 27: Ordered selection and closure
+  - Line 39: Bounded matcher and admission
+  - Line 47: Additive public and CLI seam
+  - Line 67: Meaningful future qualification (all UNRUN)
+  - Line 78: Remaining choices before implementation
+  - Line 83: Approved C3 source grant
+  - Line 90: Paused interruption handoff — 2026-10-17
+
+### [.agents/docs/handoff-2026-10-17/PAUSED_XET_INDEX_CONTEXT.md](../handoff-2026-10-17/PAUSED_XET_INDEX_CONTEXT.md)
+
+- Bytes: 5809; mode: 0o644; SHA256: 8823513c28666b74e86e503b267f3dd50222d460b7ee772089f9277a486b405c.
+- Full heading route:
+  - Line 1: TODO — native Xet required index reconstruction
+  - Line 8: Uncommitted
+  - Line 16: Tests and verification
+  - Line 23: Boundaries
+  - Line 28: Pause handoff — user-requested wrap/interruption boundary
+
+### [.agents/docs/handoff-2026-10-17/XET_INDEX_DESIGN.md](../handoff-2026-10-17/XET_INDEX_DESIGN.md)
+
+- Bytes: 13746; mode: 0o644; SHA256: b1e0e5115c089a0363ba5f6edf254e3cb3434496e82e880228910c5cee1138c7.
+- Full heading route:
+  - Line 1: TODO — native Xet required-index reconstruction design
+  - Line 8: Uncommitted
+  - Line 15: Smallest useful slice
+  - Line 19: Private provider seam
+  - Line 26: Exact bytes before parser
+  - Line 35: Admission and lifetime accounting
+  - Line 41: Mandatory cumulative seed change
+  - Line 49: Root choices before source grant
+  - Line 55: Proposed source/test ownership after approval
+  - Line 59: Tests and verification — all proposed, UNRUN
+  - Line 70: Current code anchors
+
+### [.agents/docs/handoff-2026-10-17/paused-filters-oracle.py.txt](../handoff-2026-10-17/paused-filters-oracle.py.txt)
+
+- Bytes: 4440; mode: 0o644; SHA256: 052f5636b3bcf6ae86c35c0984ebf719a004cf98e5d69a6e8bbdd4f9bb6c8c28.
+- Non-Markdown supplement; read original body.
+
+### [.agents/docs/handoff-2026-10-17/paused-filters.patch](../handoff-2026-10-17/paused-filters.patch)
+
+- Bytes: 21436; mode: 0o644; SHA256: 097d683b12ee27b7a30d93dd67f06070fab8a3bfa889da9052101d4571dba22b.
+- Non-Markdown supplement; read original body.
+
+### [.agents/docs/handoff-2026-10-17/paused-xet-index.patch](../handoff-2026-10-17/paused-xet-index.patch)
+
+- Bytes: 24553; mode: 0o644; SHA256: 1db1754e780d788f0636f417a6e1fb57e7d332941cae9ad06c0b7a904338c8c6.
+- Non-Markdown supplement; read original body.
+
+### [.agents/docs/handoff-2026-10-20/ARCHIVE_CONTENTS.json](../handoff-2026-10-20/ARCHIVE_CONTENTS.json)
+
+- Bytes: 505041; mode: 0o644; SHA256: 09ec7f9109cbbb39fc8113a87a2ae9df511cbad711511843b7d187bbd81a611e.
+- Non-Markdown supplement; read original body.
+
+### [.agents/docs/handoff-2026-10-20/CANONICAL_SOURCEBOOK_01.md](../handoff-2026-10-20/CANONICAL_SOURCEBOOK_01.md)
+
+- Bytes: 631239; mode: 0o644; SHA256: 606a645583055a45c891b9e9d6c12228a9825bbcab7bd3be66719e77c7033fba.
+- Full heading route:
+  - Line 1: Canonical Sourcebook — volume 1
+  - Line 7: Source: .agents/docs/ACCELERATOR\_EXECUTION\_FAMILIES\_AND\_BACKEND\_CONTRACT.md
+  - Line 13: zerogravity — Universal region-execution backend contract (v4.1)
+  - Line 22: 1. The missing abstraction is \*granularity\*, not another framework
+  - Line 37: 2. Five physical execution kinds, one provider protocol
+  - Line 73: 3. Provider capability contract is richer than kernel capability
+  - Line 98: 4. One mathematical representation, many backend lowerings
+  - Line 116: 5. Device state bridge is essential for graph-only and external fabrics
+  - Line 143: 6. Physical topology is a graph of memory, compute, links and \*compiler domains\*
+  - Line 179: 7. Program lifecycle and cost are first-class
+  - Line 207: 8. Quantization is a typed numeric encoding, not a hardware marketing label
+  - Line 217: 9. Partition, collectives and remote/wafer failures
+  - Line 229: 10. Seamless design vs actual hardware implementation
+  - Line 243: 11. Minimum implementation surface and extension drill
+  - Line 258: 12. Final rule
+  - Line 264: 13. v4.2 — one RegionExecutionProvider across network topologies
+  - Line 274: 14. U-048 — command transport within one execution provider
+  - Line 290: Source: .agents/docs/ASYNC\_RESOURCE\_COMMAND\_IR.md
+  - Line 296: zerogravity — Async Command/Resource IR (CIR), ownership and compiled execution
+  - Line 306: 1. Why a command IR is required
+  - Line 319: 2. Type/identity vocabulary
+  - Line 356: 3. CIR op classes and effects
+  - Line 377: 4. Async dependency and memory legality
+  - Line 393: 5. Two timelines: static plan and dynamic run
+  - Line 401: 6. Lowering examples
+  - Line 403: Resident MoE decode
+  - Line 415: Missing expert
+  - Line 430: Prefill borrow scratch and restore cache
+  - Line 445: Distributed
+  - Line 456: 7. Optimization opportunities created by CIR
+  - Line 466: 8. Maintainability constraints
+  - Line 476: 9. Proof and exit gates
+  - Line 486: 10. Open implementation details
+  - Line 490: 2026-10-12 integration — XDNA2/iGPU cooperative projection scheduling
+  - Line 502: v4 refinement — command readiness, not semantic commit
+  - Line 510: U-048 — banked stages, terminal notification and retained-plan lifetime
+  - Line 525: Source: .agents/docs/COMPOSITION\_AND\_EXTENSION\_CONTRACTS.md
+  - Line 531: zerogravity — v4.1 typed composition and region execution contracts
+  - Line 541: 1. Core type ownership — no oversized trait zoo
+  - Line 554: 2. Model math and type/shape guards
+  - Line 593: 3. Region execution contract: native kernels through compiled accelerator programs
+  - Line 636: 4. Prepared whole-state transaction (replaces v3 mutating \`commit\`)
+  - Line 668: 5. TaskDriver is stage control, not an embedded general workflow engine
+  - Line 692: 6. Runtime StepPlan and DeviceBackend
+  - Line 722: 7. Resource admission, local allocators and CIR
+  - Line 757: 8. Task output and transport delivery
+  - Line 775: 9. Fingerprints and invalidation by responsibility
+  - Line 788: 10. Future gradient and parameter update seam
+  - Line 792: 11. Lifecycle and test-before-freeze
+  - Line 808: v4.1 addendum — state/shape/compile qualification for graph-only backends
+  - Line 816: 12. v4.2 — orthogonal distribution contracts and region execution
+  - Line 826: 13. v4.3 — exact route resolution and per-model admission contract
+  - Line 857: Source: .agents/docs/COST\_MODEL\_AND\_AUTOTUNING.md
+  - Line 863: Joint cost model, online adaptation and compiler autotuning
+  - Line 879: 1. Objectives and constraints
+  - Line 895: 2. Critical path, not naive sum
+  - Line 912: 3. Cost model inputs
+  - Line 920: 4. Separate planning timescales
+  - Line 932: 5. Kernel tuning database
+  - Line 942: 6. Whole-model fusion decision
+  - Line 953: 7. MoE batch × cache co-planning
+  - Line 975: 8. Speculation cost-aware policy
+  - Line 986: 9. Memory-pressure controller
+  - Line 997: 10. Data collection and causality
+  - Line 1003: 11. Autotuner validation gates
+  - Line 1016: 12. Unknowns to test
+  - Line 1020: 2026-10-10 integrated v2 addendum — critical-path and serving-aware planning
+  - Line 1041: 2026-10-12 integration — costed multi-accelerator projection partition
+  - Line 1051: v4 refinement — three selection timescales and bounded cost
+  - Line 1059: v4.1 — compile granularity, program warmup and topology cost
+  - Line 1067: v4.2 — measured topology and independent state/cache placement cost
+  - Line 1075: v4.3 — model residency, replica and cache-affinity economics
+  - Line 1085: Source: .agents/docs/DERIVED\_QUANTIZATION\_CONTRACT\_2026-10-15.md
+  - Line 1091: Zerogravity — EXL3/QTIP and Source-Qualified Derived Quantization Contract
+  - Line 1097: A. Why this is not just add another QuantKind
+  - Line 1101: Storage, semantics, and physical layout must remain orthogonal
+  - Line 1142: B. Correctness and derived artifact identity
+  - Line 1154: C. Per-tensor calibration and sensitivity optimization
+  - Line 1172: Sources and realistic caution
+  - Line 1176: D. Critical counterexample: lower bitrate may be slower
+  - Line 1184: E. Correctness modes and regression policy
+  - Line 1194: F. Acceptance matrix for P03/P05/P07/P20/P22
+  - Line 1213: G. Implementation seam and phase order
+  - Line 1225: Source: .agents/docs/DEVICE\_KERNEL\_AND\_CODEGEN.md
+  - Line 1231: Device abstraction, Rust GPU kernels, code generation and backend specialization
+  - Line 1241: 1. Backend interface and invariant
+  - Line 1262: 2. Capability model
+  - Line 1268: 3. Rust kernel source design
+  - Line 1280: 4. Output contract and numerical precision
+  - Line 1295: 5. Kernel families and target-specific strategies
+  - Line 1297: Dense FFN and projection
+  - Line 1300: Routed MoE
+  - Line 1303: Recurrent GDN/KDA
+  - Line 1306: Qwen Sparse Attention
+  - Line 1309: GLM sparse MLA + KDA
+  - Line 1312: DeepSeek compressed attention
+  - Line 1315: Hyperconnections
+  - Line 1318: Quantized LM head and sampling
+  - Line 1321: N-gram/Engram
+  - Line 1324: 6. Strix Halo gfx1151
+  - Line 1332: 7. CUDA / NVIDIA and other targets
+  - Line 1340: 8. Kernel planning and autotuning
+  - Line 1346: 9. Direct execution design
+  - Line 1352: 10. Error handling and tests
+  - Line 1356: 11. Need-to-measure technical unknowns
+  - Line 1367: 2026-10-10 integrated v2 addendum — Rust GPU provider landscape and portability
+  - Line 1380: 2026-10-12 integration — XDNA2 AIE/Rust source feasibility provider
+  - Line 1390: v4 refinement — true closed-region providers and device-native loop proof
+  - Line 1398: v4.1 — kernel backend is a specialized form of a region-program provider
+  - Line 1410: Source: .agents/docs/DISTRIBUTED\_PARALLELISM.md
+  - Line 1416: Distributed and heterogeneous execution — v4.2 authoritative index
+  - Line 1420: Primary goal
+  - Line 1426: Four independent placement maps and one physical plan
+  - Line 1436: Required topologies
+  - Line 1454: Authoritative publication and node failure
+  - Line 1460: Transport and security
+  - Line 1466: Minimal staging and tests
+  - Line 1476: Source: .agents/docs/DISTRIBUTED\_PLACEMENT\_AND\_NETWORK\_EXECUTION\_CONTRACT.md
+  - Line 1482: zerogravity — Distributed placement, network and state execution contract (v4.2)
+  - Line 1491: 1. Central design rule — four independent placement maps
+  - Line 1509: 2. Three graphs, two enduring runtime representations
+  - Line 1539: 3. Physical topology, device graph and measured transport
+  - Line 1547: 3.1 Separate control plane from data plane
+  - Line 1555: 3.2 Tunnel requirements
+  - Line 1568: 4. Placement modes all represented by the same compiler and remote worker
+  - Line 1588: 5. Per-layer state vs compute placement is first-class
+  - Line 1603: 6. Live state separate from compute: three physical plans
+  - Line 1605: 6.1 Cache hydrate once then local execution
+  - Line 1611: 6.2 Execute stateful operator beside remote state
+  - Line 1619: 6.3 Remote live cache byte reads per step
+  - Line 1623: 7. Distributed sequence attention: compact partial-result composition
+  - Line 1636: 8. Placement plan validity, versioning and state migration
+  - Line 1656: 9. Minimal control plane and remote worker protocol
+  - Line 1680: 10. Coordinator, split brain and transport failure
+  - Line 1693: 11. Network-aware cost planner and performance policy
+  - Line 1720: 12. Distributed placement by task kind
+  - Line 1731: 13. Security, model rights and user experience
+  - Line 1739: 14. Proof/test program and staged delivery
+  - Line 1764: 15. Architectural completeness test
+  - Line 1772: 16. v4.3 — model router load balancing versus distributed one-model sharding
+  - Line 1782: Source: .agents/docs/ENGINE\_CORE\_EXECUTION\_AND\_PROTOCOL.md
+  - Line 1788: zerogravity — Native Engine Core, Worker Protocol, KV policies and request lifecycles
+  - Line 1801: 1. One mutable owner, many concurrent hardware workers
+  - Line 1807: 2. Protocol envelopes and communication
+  - Line 1859: 3. Step loop and critical-path discipline
+  - Line 1876: 4. Two budgets and three execution regimes
+  - Line 1888: 5. KV strategy under one resource arbiter
+  - Line 1890: Paged block pool (baseline)
+  - Line 1895: Optional radix prefix index
+  - Line 1898: Contiguous extreme pool
+  - Line 1901: General hybrid-domain coordinator
+  - Line 1904: 6. Persistent worker input batches and step diffs
+  - Line 1910: 7. Sequence state and speculative transactions
+  - Line 1923: 8. Interoperation with async CIR and resources
+  - Line 1934: 9. API consistency and mode receipts
+  - Line 1940: 10. Invariants and failure modes
+  - Line 1953: 11. Gating tests
+  - Line 1964: 12. Open decisions
+  - Line 1968: 2026-10-12 integration — cross-device first-use barrier without extra EngineCore
+  - Line 1974: v4 refinement — session owner, device-native StepProgram, output sequence
+  - Line 1982: v4.1 — DeviceWorker may submit a compiled graph or static pipeline
+  - Line 1988: v4.2 — TaskCoordinator and authorized remote RegionWorker
+  - Line 1996: v4.3 — one shared EngineCore under built-in model router
+  - Line 2006: Source: .agents/docs/EXAMPLE\_EXECUTION\_TRACES.md
+  - Line 2012: Design walkthroughs — concrete execution and fallback traces
+  - Line 2019: Example 1 — Dense Llama-like model on unsupported GPU specialization
+  - Line 2032: Example 2 — Qwen3.8 Flash-Next on 128 GB gfx1151
+  - Line 2048: Example 3 — GLM-5.3 Flash on 92/96 GB Strix Halo
+  - Line 2060: Example 4 — Shared-prefix coding agents with tool calls
+  - Line 2070: Example 5 — Training-free novel model op arrives
+  - Line 2079: Example 6 — Distributed TP failure during speculative verification
+  - Line 2088: Example 7 — Why compiler fusion might lose
+  - Line 2092: Practical invariant crosswalk
+  - Line 2098: 2026-10-10 integrated v2 addendum — async CIR and modern extension traces
+  - Line 2133: 2026-10-12 trace 13 — Qwen cooperative prefill on an optionally qualified XDNA2 NPU
+  - Line 2144: v4 traces — prepared state, shape fallback and independent tasks
+  - Line 2152: v4.2 distributed and tunneled execution traces
+  - Line 2162: v4.3 multi-model router and one-command user traces
+  - Line 2174: Source: .agents/docs/EXTREME\_HYBRID\_MODELS\_AND\_SPECULATIVE\_DRAFTER\_SEMANTICS\_2026-10-15.md
+  - Line 2180: Zerogravity — Extreme Hybrid Model Recipes, Native MTP and DFlash Source Contracts
+  - Line 2185: 0. Governing rule
+  - Line 2191: 1. Three distinct registered model recipes
+  - Line 2205: 2. Qwen3.8 source recipe
+  - Line 2214: 3. GLM5.3 source recipe
+  - Line 2222: 4. MiMo2.6 required source adapter (currently a documentation gap)
+  - Line 2237: MiMo layer47 FP16 overflow: semantic and derived-format requirement
+  - Line 2243: 5. DraftSource families and target-authoritative verification
+  - Line 2273: Qwen MTP + n-gram lookup
+  - Line 2278: GLM MTP and BF16 sidecar
+  - Line 2283: MiMo DFlash attention: exact semantic fields
+  - Line 2298: 6. Distinct state and clock budgets for hybrid models
+  - Line 2311: 7. Kernel/route-aware speculation and batching
+  - Line 2323: 8. Numerical and behavior policy
+  - Line 2338: 9. Acceptance matrix P11/P13/P14/P15/P16
+  - Line 2361: 10. Existing phase mapping, no new engine
+  - Line 2373: Source: .agents/docs/FORMATS\_QUANTIZATION\_AND\_LOADING.md
+  - Line 2379: Model artifacts, quantization, tokenizer/template parity and safe loading
+  - Line 2390: 1. Design constraints
+  - Line 2398: 2. Architecture of the loading pipeline
+  - Line 2414: 3. GGUF
+  - Line 2431: 4. Safetensors / HF
+  - Line 2439: 5. Tokenizers, chat templates and agent semantics
+  - Line 2452: 6. Distinguish storage precision from compute format
+  - Line 2460: 7. Conversion, calibration and verification pipeline (optional developer tooling)
+  - Line 2470: 8. Multi-file and huge-file support
+  - Line 2476: 9. Layout transform and fallback
+  - Line 2480: 10. Adversarial input tests
+  - Line 2484: 11. Open policy items
+  - Line 2488: 2026-10-10 integrated v2 addendum — complete product-model pipeline
+  - Line 2501: v4 refinement — independent artifact, semantic, state and bundle identities
+  - Line 2507: U-048 — packed quantization and NPU derived-encoding eligibility
+  - Line 2520: Source: .agents/docs/FULL\_COMPREHENSIVE\_AGENT\_HANDOFF\_2026-10-17.md
+  - Line 2528: Zerogravity — comprehensive agent handoff, 17 October 2026
+  - Line 2545: Contents
+  - Line 2559: 1. Read this first: authority and checkpoint
+  - Line 2561: 1.1 Current source and working state
+  - Line 2585: 1.2 Authority order
+  - Line 2605: 1.3 What changed since the original H4 takeover request
+  - Line 2628: 1.4 Reading sequence
+  - Line 2649: 1.5 Historical recovery and its exact limits
+  - Line 2681: Original vision, design evolution and architecture
+  - Line 2689: 1. Authority and limits of the surviving record
+  - Line 2724: 2. Beginning-to-current architectural evolution
+  - Line 2748: 3. Exact ownership, representation and state publication
+  - Line 2786: 4. Source, arithmetic and quality are distinct contracts
+  - Line 2849: 5. Resources, accelerators and virtual residency
+  - Line 2891: 6. Distributed placement, routing, serving and speculation
+  - Line 2942: 7. V5/V5.1 multimodal and realtime vision
+  - Line 2990: 8. User decisions, proposals and supersessions: complete ID crosswalk
+  - Line 3040: 9. Accepted implementation versus historical stage facts
+  - Line 3083: 10. Current acquisition and remaining execution boundary
+  - Line 3165: 11. Exact surviving historical recovery and unrecoverable material
+  - Line 3205: 12. Phase and falsification map for preserving future work
+  - Line 3261: 13. Coordinator integration and next-agent guardrails
+  - Line 3283: Implementation history, verification and recovery
+  - Line 3295: Principal findings for the coordinator
+  - Line 3323: Current history, rewritten dates and available references
+  - Line 3353: Entire reachable commit ledger
+  - Line 3438: How the rewritten baseline is split
+  - Line 3470: Recovery: what is really available and what is not
+  - Line 3537: Historical development sequence retained by accepted plans
+  - Line 3551: Design/bootstrap and CPU qualification
+  - Line 3581: Partial GPU owners and first physical acceptance
+  - Line 3606: H1–H25 progression into resident and native execution
+  - Line 3655: Hardware discovery and local AMD hold
+  - Line 3679: Layout, new-family contracts and concurrency disposition
+  - Line 3702: Tracking/archive/checkpoint chronology
+  - Line 3741: Acquisition chronology and accepted gates
+  - Line 3796: Original-model regression route ledger
+  - Line 3855: Substantive failures/corrections that explain acceptance
+  - Line 3921: Still-open limits, not erased by accepted chronology
+  - Line 3963: Paused source drafts that must survive handoff
+  - Line 3985: Audit limits and coordinator use
+  - Line 4001: Recovered original94-source history: exact reading catalog
+  - Line 4009: Correction and precise recovery boundary
+  - Line 4035: Tested read-only commands and wrapper positions
+  - Line 4041: Older full implementation executive/index (read progressively).
+  - Line 4043: Source1 example; every source has its own exact range below.
+  - Line 4045: Concrete recovered G1, G3b and P00 reports.
+  - Line 4057: Complete94 nested-source title and inclusive-line catalog
+  - Line 4156: Outer13 appendices and3 shared snapshots
+  - Line 4181: Additional nesting inspected for a second recovery oversight
+  - Line 4200: Recovered historical phase labels and narrower test counts
+  - Line 4226: Additional substantive early results and limitations
+  - Line 4258: Other assembled-handoff cross-checks
+  - Line 4279: Model acquisition: complete current contracts and recent reasoning
+  - Line 4289: One source, transport, cache and preparation path
+  - Line 4331: Exact selection, closure and independent components
+  - Line 4357: Transport, resume and bounded auxiliary bodies
+  - Line 4388: Protected removal and explicit local HF import
+  - Line 4414: Finite native provider profiles
+  - Line 4446: Native Xet details that must survive continuation
+  - Line 4484: Latest candidate and quant features
+  - Line 4517: Failed experiments and lessons
+  - Line 4553: Exact continuation and complete open-plan snapshot
+  - Line 4559: Starting point and verified scope
+  - Line 4581: Non-negotiable working rules and existing authorization
+  - Line 4594: Current acquisition environment and ownership boundaries
+  - Line 4606: Preserve the two unfinished worktrees
+  - Line 4623: C3 filters — exact recoverable state
+  - Line 4659: C4 required native Xet indexes — exact recoverable state
+  - Line 4679: Commands, environment and failure lessons
+  - Line 4726: Broader backlog, execution order and concrete external gaps
+  - Line 4740: Research and prior-art placement for coordinator integration
+  - Line 4751: Exact open-item snapshot by plan
+  - Line 4755: accepted-baseline — 0 open items
+  - Line 4761: cpu-gpu-optimization — 17 open items
+  - Line 4788: distributed-execution — 7 open items
+  - Line 4802: handoff-cleanup — 0 open items
+  - Line 4808: historical-records — 0 open items
+  - Line 4814: memory-and-streaming — 14 open items
+  - Line 4838: model-acquisition — 20 open items
+  - Line 4871: model-execution — 10 open items
+  - Line 4888: multimodal — 24 open items
+  - Line 4922: numerics-and-context — 7 open items
+  - Line 4936: platform-and-release — 13 open items
+  - Line 4959: serving-and-speculation — 9 open items
+  - Line 4975: Retained research and prior-art source path index
+  - Line 4979: .agents/research — 24 files
+  - Line 5006: .agents/prior-art — 12 files
+  - Line 5021: First resumption checklist for the next coordinator
+  - Line 5035: Practical reconstruction and handoff boundaries
+  - Line 5037: Portable unfinished source under the requested documentation roots
+  - Line 5087: Workspace owner map
+  - Line 5106: Concrete build and qualification commands
+  - Line 5115: Revalidation: read current state, do not reset to a historical reference.
+  - Line 5121: Locked/offline CPU build, using only existing authorized dependencies.
+  - Line 5124: Complete implementation-phase gate, one MAIN target owner.
+  - Line 5128: Actual source-filter check; new source must be included in the Git flake first.
+  - Line 5131: Original trained cache/direct route (both approved models in this one test).
+  - Line 5137: Original trained external-HF-import route, separately and sequentially.
+  - Line 5173: Packaging and product boundaries
+  - Line 5202: Complete retained decision register — dated context snapshot
+  - Line 5317: Explicit user decisions
+  - Line 5386: Strongly recommended architectural choices (not independently approved yet)
+  - Line 5487: Open decisions (do not fill silently)
+  - Line 5566: Assumptions / boundaries
+  - Line 5575: v3 architectural supersession and provenance rule — 2026-10-12
+  - Line 5587: Conflict-resolution protocol
+  - Line 5608: Owner decisions after U-055 — consolidated 2026-10-17
+  - Line 5640: Complete reading catalog and source ownership
+  - Line 5647: Public engineering and publication context
+  - Line 5663: Normative subsystem architecture
+  - Line 5749: Cross-cutting specifications and decision/workflow owners
+  - Line 5783: Live plan TODO owners and completed plain-checklist archives
+  - Line 5817: Retained research and acceptance registers
+  - Line 5869: Prior art, critical review and license/source attribution
+  - Line 5897: Current executable/qualification/reference runbooks
+  - Line 5920: Handoff validation and remaining limitations
+  - Line 5924: Completed documentation validation — 17 October2026
+
+### [.agents/docs/handoff-2026-10-20/CANONICAL_SOURCEBOOK_02.md](../handoff-2026-10-20/CANONICAL_SOURCEBOOK_02.md)
+
+- Bytes: 624115; mode: 0o644; SHA256: cb6fe546db20d27f7871f2ede4fd3b19bcf32eae5da41bf230045d35c84866f4.
+- Full heading route:
+  - Line 1: Canonical Sourcebook — volume 2
+  - Line 7: Source: .agents/docs/FULL\_COMPREHENSIVE\_AGENT\_HANDOFF\_2026-10-19.md
+  - Line 18: Zerogravity — full comprehensive implementation and architecture handoff, 19 October 2026
+  - Line 22: 0. Executive takeover — current precise checkpoint
+  - Line 48: 1. Authority, preservation and read order
+  - Line 59: 2. Original user vision and architecture chronology — beginning to present
+  - Line 61: 2.1 What Zerogravity is
+  - Line 67: 2.2 Evolution, including accepted and superseded reasoning
+  - Line 92: 2.3 Latest owner decisions carried forward verbatim in substance
+  - Line 103: 3. System ownership and critical invariants (do not fork these)
+  - Line 119: 4. Actual crate/tool/source ownership map
+  - Line 142: 5. Implementation status: exact claims versus non-claims
+  - Line 158: 6. Current P0 — OpenAI, real GPU batching and vLLM acceptance
+  - Line 160: 6.1 Working server
+  - Line 185: 6.2 GPU status and numerics
+  - Line 193: 6.3 Concrete unimplemented integration acceptance steps — do these in order
+  - Line 204: 7. Current P1 — GPU/RAM/SSD source-residency foundation
+  - Line 212: 8. Current P2 — Qwen3.8, Gemma4 and independent numerical evidence
+  - Line 224: 9. Acquisition and immutable source provenance
+  - Line 230: 10. YAML multimodal pipeline and authorized context scaffolding
+  - Line 250: 11. Hardware, physical safety, failures and lessons
+  - Line 258: 12. Practical verified command and test runbook
+  - Line 260: Safe revalidation
+  - Line 272: Full isolated frozen gate
+  - Line 279: Strict CUDA/CPU/Vulkan lint
+  - Line 290: Approved independent trained Qwen3.5 regression routes
+  - Line 308: Physical CUDA P12 acceptance (only on permitted, healthy card)
+  - Line 352: Serving/vLLM benchmark contracts
+  - Line 359: Nix source integrity (separate from formatting)
+  - Line 366: 13. Test evidence and milestone provenance after the Oct 17 handoff
+  - Line 383: Current local acceptance receipt index
+  - Line 394: 14. Priority execution program for next agent
+  - Line 406: 15. What the new agent must NOT assume
+  - Line 420: 16. Comprehensive reading and provenance catalogue
+  - Line 442: Appendix A — Complete October 17 architecture, decisions, historical recovery and prior handoff
+  - Line 450: Zerogravity — comprehensive agent handoff, 17 October 2026
+  - Line 467: Contents
+  - Line 481: 1. Read this first: authority and checkpoint
+  - Line 483: 1.1 Current source and working state
+  - Line 507: 1.2 Authority order
+  - Line 527: 1.3 What changed since the original H4 takeover request
+  - Line 550: 1.4 Reading sequence
+  - Line 571: 1.5 Historical recovery and its exact limits
+  - Line 603: Original vision, design evolution and architecture
+  - Line 611: 1. Authority and limits of the surviving record
+  - Line 646: 2. Beginning-to-current architectural evolution
+  - Line 670: 3. Exact ownership, representation and state publication
+  - Line 708: 4. Source, arithmetic and quality are distinct contracts
+  - Line 771: 5. Resources, accelerators and virtual residency
+  - Line 813: 6. Distributed placement, routing, serving and speculation
+  - Line 864: 7. V5/V5.1 multimodal and realtime vision
+  - Line 912: 8. User decisions, proposals and supersessions: complete ID crosswalk
+  - Line 962: 9. Accepted implementation versus historical stage facts
+  - Line 1005: 10. Current acquisition and remaining execution boundary
+  - Line 1087: 11. Exact surviving historical recovery and unrecoverable material
+  - Line 1127: 12. Phase and falsification map for preserving future work
+  - Line 1183: 13. Coordinator integration and next-agent guardrails
+  - Line 1205: Implementation history, verification and recovery
+  - Line 1217: Principal findings for the coordinator
+  - Line 1245: Current history, rewritten dates and available references
+  - Line 1275: Entire reachable commit ledger
+  - Line 1360: How the rewritten baseline is split
+  - Line 1392: Recovery: what is really available and what is not
+  - Line 1459: Historical development sequence retained by accepted plans
+  - Line 1473: Design/bootstrap and CPU qualification
+  - Line 1503: Partial GPU owners and first physical acceptance
+  - Line 1528: H1–H25 progression into resident and native execution
+  - Line 1577: Hardware discovery and local AMD hold
+  - Line 1601: Layout, new-family contracts and concurrency disposition
+  - Line 1624: Tracking/archive/checkpoint chronology
+  - Line 1663: Acquisition chronology and accepted gates
+  - Line 1718: Original-model regression route ledger
+  - Line 1777: Substantive failures/corrections that explain acceptance
+  - Line 1843: Still-open limits, not erased by accepted chronology
+  - Line 1885: Paused source drafts that must survive handoff
+  - Line 1907: Audit limits and coordinator use
+  - Line 1923: Recovered original94-source history: exact reading catalog
+  - Line 1931: Correction and precise recovery boundary
+  - Line 1957: Tested read-only commands and wrapper positions
+  - Line 1963: Older full implementation executive/index (read progressively).
+  - Line 1965: Source1 example; every source has its own exact range below.
+  - Line 1967: Concrete recovered G1, G3b and P00 reports.
+  - Line 1979: Complete94 nested-source title and inclusive-line catalog
+  - Line 2078: Outer13 appendices and3 shared snapshots
+  - Line 2103: Additional nesting inspected for a second recovery oversight
+  - Line 2122: Recovered historical phase labels and narrower test counts
+  - Line 2148: Additional substantive early results and limitations
+  - Line 2180: Other assembled-handoff cross-checks
+  - Line 2201: Model acquisition: complete current contracts and recent reasoning
+  - Line 2211: One source, transport, cache and preparation path
+  - Line 2253: Exact selection, closure and independent components
+  - Line 2279: Transport, resume and bounded auxiliary bodies
+  - Line 2310: Protected removal and explicit local HF import
+  - Line 2336: Finite native provider profiles
+  - Line 2368: Native Xet details that must survive continuation
+  - Line 2406: Latest candidate and quant features
+  - Line 2439: Failed experiments and lessons
+  - Line 2475: Exact continuation and complete open-plan snapshot
+  - Line 2481: Starting point and verified scope
+  - Line 2503: Non-negotiable working rules and existing authorization
+  - Line 2516: Current acquisition environment and ownership boundaries
+  - Line 2528: Preserve the two unfinished worktrees
+  - Line 2545: C3 filters — exact recoverable state
+  - Line 2581: C4 required native Xet indexes — exact recoverable state
+  - Line 2601: Commands, environment and failure lessons
+  - Line 2648: Broader backlog, execution order and concrete external gaps
+  - Line 2662: Research and prior-art placement for coordinator integration
+  - Line 2673: Exact open-item snapshot by plan
+  - Line 2677: accepted-baseline — 0 open items
+  - Line 2683: cpu-gpu-optimization — 17 open items
+  - Line 2710: distributed-execution — 7 open items
+  - Line 2724: handoff-cleanup — 0 open items
+  - Line 2730: historical-records — 0 open items
+  - Line 2736: memory-and-streaming — 14 open items
+  - Line 2760: model-acquisition — 20 open items
+  - Line 2793: model-execution — 10 open items
+  - Line 2810: multimodal — 24 open items
+  - Line 2844: numerics-and-context — 7 open items
+  - Line 2858: platform-and-release — 13 open items
+  - Line 2881: serving-and-speculation — 9 open items
+  - Line 2897: Retained research and prior-art source path index
+  - Line 2901: .agents/research — 24 files
+  - Line 2928: .agents/prior-art — 12 files
+  - Line 2943: First resumption checklist for the next coordinator
+  - Line 2957: Practical reconstruction and handoff boundaries
+  - Line 2959: Portable unfinished source under the requested documentation roots
+  - Line 3009: Workspace owner map
+  - Line 3028: Concrete build and qualification commands
+  - Line 3037: Revalidation: read current state, do not reset to a historical reference.
+  - Line 3043: Locked/offline CPU build, using only existing authorized dependencies.
+  - Line 3046: Complete implementation-phase gate, one MAIN target owner.
+  - Line 3050: Actual source-filter check; new source must be included in the Git flake first.
+  - Line 3053: Original trained cache/direct route (both approved models in this one test).
+  - Line 3059: Original trained external-HF-import route, separately and sequentially.
+  - Line 3095: Packaging and product boundaries
+  - Line 3124: Complete retained decision register — dated context snapshot
+  - Line 3239: Explicit user decisions
+  - Line 3308: Strongly recommended architectural choices (not independently approved yet)
+  - Line 3409: Open decisions (do not fill silently)
+  - Line 3488: Assumptions / boundaries
+  - Line 3497: v3 architectural supersession and provenance rule — 2026-10-12
+  - Line 3509: Conflict-resolution protocol
+  - Line 3530: Owner decisions after U-055 — consolidated 2026-10-17
+  - Line 3562: Complete reading catalog and source ownership
+  - Line 3569: Public engineering and publication context
+  - Line 3585: Normative subsystem architecture
+  - Line 3671: Cross-cutting specifications and decision/workflow owners
+  - Line 3705: Live plan TODO owners and completed plain-checklist archives
+  - Line 3739: Retained research and acceptance registers
+  - Line 3791: Prior art, critical review and license/source attribution
+  - Line 3819: Current executable/qualification/reference runbooks
+  - Line 3842: Handoff validation and remaining limitations
+  - Line 3846: Completed documentation validation — 17 October2026
+  - Line 3882: Appendix B — Full as-of-HEAD plan and work-item snapshots
+  - Line 3887: Snapshot: .agents/plans/README.md (105 lines)
+  - Line 3890: Plans
+  - Line 3896: Layout
+  - Line 3911: Queue — \`TODO.md\`
+  - Line 3916: Active
+  - Line 3919: Icebox
+  - Line 3922: Closed
+  - Line 3931: Plan — \`README.md\`
+  - Line 3945: Plan — \`TODO.md\`
+  - Line 3948: \<plan\>
+  - Line 3952: Committed
+  - Line 3953: \`\<sha\>\` — \<what this set landed\>
+  - Line 3956: Uncommitted
+  - Line 3960: Tests and verification
+  - Line 3971: History — optional \`HISTORY.md\`
+  - Line 3983: Parallel work
+  - Line 3990: Closeout
+  - Line 3997: Snapshot: .agents/plans/TODO.md (23 lines)
+  - Line 4000: Plan queue
+  - Line 4002: Active
+  - Line 4009: Icebox
+  - Line 4017: Closed
+  - Line 4025: Snapshot: .agents/plans/cpu-gpu-optimization/TODO.md (51 lines)
+  - Line 4028: Cpu gpu optimization
+  - Line 4037: Uncommitted
+  - Line 4064: Committed
+  - Line 4066: 6d74f76
+  - Line 4070: Concurrency review — 1fca893
+  - Line 4074: Tests and verification
+  - Line 4081: Snapshot: .agents/plans/distributed-execution/TODO.md (23 lines)
+  - Line 4084: Distributed execution
+  - Line 4092: Uncommitted
+  - Line 4102: Committed
+  - Line 4104: 6d74f76
+  - Line 4109: Snapshot: .agents/plans/memory-and-streaming/TODO.md (68 lines)
+  - Line 4112: Memory and streaming
+  - Line 4120: Uncommitted
+  - Line 4168: Committed
+  - Line 4170: 6d74f76
+  - Line 4174: Tests and verification
+  - Line 4182: Snapshot: .agents/plans/model-acquisition/TODO.md (334 lines)
+  - Line 4185: TODO — model acquisition
+  - Line 4194: Committed
+  - Line 4202: 837e77f — legacy offline acquisition eligibility
+  - Line 4211: 52e42fc — native HF Xet reconstruction
+  - Line 4224: 46cf5a5 — strong conditional cloud observations
+  - Line 4235: 4db5efb — ModelScope selected exact sizing
+  - Line 4245: f22f759 — metadata-only pinned file candidates
+  - Line 4254: f197c9c — explicit GGUF filename quant families
+  - Line 4265: 1a22597 — completed comprehensive handoff and source preservation
+  - Line 4271: 04363c3 — bounded C3 Unicode filters and exclusion closure
+  - Line 4312: 8195c18 — verified required native Xet indexes
+  - Line 4366: f56b574 — trusted AWS-standard FULL\_OBJECT SHA256
+  - Line 4401: d5aa5cb — original-model v1 source closure and execution cutover
+  - Line 4433: Uncommitted
+  - Line 4498: Tests and verification
+  - Line 4515: Deferred
+  - Line 4521: Snapshot: .agents/plans/model-execution/TODO.md (365 lines)
+  - Line 4524: Model execution
+  - Line 4532: Uncommitted
+  - Line 4684: Committed
+  - Line 4686: 6d74f76
+  - Line 4690: Source contracts — 023703f
+  - Line 4695: 93a5622 — original verified immutable source shard owner
+  - Line 4720: b796a2e — original Qwen text source geometry and CPU value binding
+  - Line 4751: b11e58c — original source-bound Qwen analytical one-layer proposals
+  - Line 4787: 6329cff — source-bound Qwen one-layer TaskCoordinator
+  - Line 4816: e43ba4c — original Qwen full-model FP32 analytical forward
+  - Line 4845: aaf9ba6 — original Qwen BF16 source dtype diagnostics
+  - Line 4879: Deferred — after Qwen/Gemma and Flash execution
+  - Line 4891: Snapshot: .agents/plans/multimodal/TODO.md (73 lines)
+  - Line 4894: Multimodal
+  - Line 4903: Uncommitted
+  - Line 4941: Committed
+  - Line 4943: 6d74f76
+  - Line 4947: Tests and verification
+  - Line 4969: Snapshot: .agents/plans/numerics-and-context/TODO.md (30 lines)
+  - Line 4972: Numerics and context
+  - Line 4979: Uncommitted
+  - Line 4990: Committed
+  - Line 4992: 6d74f76
+  - Line 4997: Accepted investigation findings — 6d74f76
+  - Line 5004: Snapshot: .agents/plans/pipeline-composition/TODO.md (299 lines)
+  - Line 5007: TODO — Single-process model and pipeline composition
+  - Line 5016: Uncommitted
+  - Line 5055: Committed
+  - Line 5062: 4bf624e — accepted foundation
+  - Line 5120: ac44e83 — accepted foundation
+  - Line 5146: f28a62c — accepted foundation
+  - Line 5164: Tests and verification
+  - Line 5234: Deferred
+  - Line 5242: Runtime work deferred until after core model priorities
+  - Line 5308: Snapshot: .agents/plans/platform-and-release/TODO.md (39 lines)
+  - Line 5311: Platform and release
+  - Line 5320: Uncommitted
+  - Line 5335: Committed
+  - Line 5337: 1af2ac4
+  - Line 5341: 6d74f76
+  - Line 5346: Tests and verification
+  - Line 5352: Snapshot: .agents/plans/serving-and-speculation/TODO.md (159 lines)
+  - Line 5355: Serving and speculation
+  - Line 5363: Uncommitted
+  - Line 5482: Committed
+  - Line 5484: 35b9093 — initial OpenAI CPU router and verified SSD extents
+  - Line 5511: 6d74f76
+  - Line 5519: Appendix C — Complete surviving document, research, prior-art, plan and recovery catalogue
+  - Line 5524: Public engineering/publication docs (6 Markdown sources)
+  - Line 5533: Normative system/architecture designs (45 Markdown sources)
+  - Line 5581: Implementation plans and runbooks (37 Markdown sources)
+  - Line 5621: Source-model/performance research (24 Markdown sources)
+  - Line 5648: Prior-art, critical review and licensing (12 Markdown sources)
+  - Line 5663: Agent-run recovery notes (16 Markdown sources)
+  - Line 5682: Cross-document notes
+  - Line 5692: Appendix D — Complete copy-ready 19 October next-agent starting prompt
+  - Line 5696: Starting prompt — Zerogravity comprehensive takeover, 19 October 2026
+  - Line 5792: Source: .agents/docs/GFX1151\_ROCM\_KERNEL\_COST\_AND\_UNIFIED\_MEMORY\_SAFETY\_CONTRACT\_2026-10-15.md
+  - Line 5798: Zerogravity — gfx1151 ROCm Kernel Specialization, MoE Scheduling and Unified-Memory Safety Contract
+  - Line 5803: 0. Governing invariants
+  - Line 5807: 1. Target hardware and capabilities
+  - Line 5813: Kernel candidate dimensions
+  - Line 5822: 2. Wave32 WMMA fragment layout and LDS bank conflict
+  - Line 5838: 3. Dense/GDN/MLA/vision kernels: source-first closed regions
+  - Line 5855: 4. MoE row-packing, verification and multi-session scheduling
+  - Line 5872: Prior-art measured counterexample (source, not Zerogravity result)
+  - Line 5878: Shape-aware batch cost (conceptual)
+  - Line 5888: 5. Unified-memory admission and Linux page cache
+  - Line 5894: Authoritative resource design adjustments
+  - Line 5906: Atomic multi-model loading and cache safety
+  - Line 5913: 6. Cold-start and first-image specialization
+  - Line 5928: 7. Qualifying negative results and overhead ceilings
+  - Line 5946: 8. Acceptance gates for P01/P07/P10/P12/P16/P20/P22
+  - Line 5969: 9. Existing roadmap mapping
+  - Line 5980: U-048 — combined kernel, replay and NPU qualification
+
+### [.agents/docs/handoff-2026-10-20/CANONICAL_SOURCEBOOK_03.md](../handoff-2026-10-20/CANONICAL_SOURCEBOOK_03.md)
+
+- Bytes: 605013; mode: 0o644; SHA256: 9351cdad3805af18d44e7322fb186dd7b2170b401b34b80f4be0bbde121cdca7.
+- Full heading route:
+  - Line 1: Canonical Sourcebook — volume 3
+  - Line 7: Source: .agents/docs/HETEROGENEOUS\_PREFILL\_AND\_RETAINED\_REPLAY\_CONTRACT\_2026-10-15.md
+  - Line 13: Zerogravity — Heterogeneous prefill and retained replay contract
+  - Line 27: 1. Required capability and honest status
+  - Line 49: 2. Existing boundaries carry every optimization
+  - Line 68: 3. Two distinct cooperative prefill transformations
+  - Line 129: 4. Numerical identity includes the realized schedule
+  - Line 165: 5. External terminal signal is not successful readiness
+  - Line 187: 6. Retained native replay within the existing backend
+  - Line 224: 7. Joint schedule cost, safety and calibration
+  - Line 255: 8. Product/model completeness and faster-than claims
+  - Line 290: Source: .agents/docs/INVARIANTS\_AND\_FAILURE\_SEMANTICS.md
+  - Line 296: Cross-cutting invariants, state lifetimes and failure semantics
+  - Line 309: Correctness and identity
+  - Line 318: Effects, ownership and memory
+  - Line 328: Serving and speculative semantics
+  - Line 337: Model/hardware compatibility
+  - Line 345: Failure state machine
+  - Line 361: Typed error classes
+  - Line 374: Failure response / recovery matrix
+  - Line 391: Ownership/lifetime diagrams (text)
+  - Line 407: Defensive tests / diagnostics
+  - Line 413: 2026-10-10 integrated v2 addendum — cross-IR and worker-event invariants
+  - Line 427: 2026-10-12 integration — cross-accelerator safety and semantic invariants
+  - Line 433: v4 additional invariants and fault tests
+  - Line 443: v4.3 multi-model routing and API invariants
+  - Line 457: Source: .agents/docs/JOINT\_CONCURRENT\_SERVING\_OPTIMIZATION\_AND\_GOODPUT\_CONTRACT\_2026-10-15.md
+  - Line 463: Zerogravity — Joint Concurrent Serving, Goodput and Combinatory Specialization Contract
+  - Line 471: 1. Design objective and competitive honesty
+  - Line 488: 2. vLLM-class baseline — operational detail to preserve
+  - Line 502: 3. Three independent admission limits
+  - Line 516: 4. Unified request work frontier
+  - Line 555: 5. Hybrid prefix cache — exact state-domain frontier meet
+  - Line 570: Frontier meet algorithm
+  - Line 575: 6. Joint candidate selection: fast bounded Pareto lookup
+  - Line 606: 7. Async worker pipeline and hot-path costs
+  - Line 620: 8. Distributed prefill/decode and collective overlap
+  - Line 632: 9. Failure, overload and fairness cases
+  - Line 647: 10. Metrics and honest performance claims
+  - Line 655: 11. Phase ownership and evidence status
+  - Line 670: 12. Primary sources and version caveat
+  - Line 683: 13. U-048 — NPU banks and retained replay participate in joint choice
+  - Line 699: Source: .agents/docs/MEMORY\_RESIDENCY\_AND\_IO.md
+  - Line 705: Global memory, expert residency, storage I/O and resource admission
+  - Line 721: 1. Core architectural decision
+  - Line 727: 2. Distinguish addressability, residency and physical headroom
+  - Line 755: 3. Resource classes and default priorities
+  - Line 772: 4. Authoritative resource arbiter
+  - Line 814: 5. Expert store organization
+  - Line 824: 6. Fast resident expert path
+  - Line 838: 7. Expert miss path and async event protocol
+  - Line 856: 8. Async SSD and NUMA
+  - Line 866: 9. Disk-only lookup row service
+  - Line 877: 10. KV, prefix and recurrent state tiers
+  - Line 883: 11. Dynamic scratch borrowing
+  - Line 896: 12. Safety and deployment
+  - Line 907: 13. Required test matrix
+  - Line 911: 14. Known research hazards / unapproved constants
+  - Line 915: 2026-10-10 integrated v2 addendum — research-grade KV/expert algorithms governed by CIR
+  - Line 928: 2026-10-12 integration — pinned AIE/NPU buffers and shared physical ownership
+  - Line 936: v4 refinement — reservation authority versus local pool
+  - Line 942: v4.1 — weight/program residency spans GPU, graph and static dataflow
+  - Line 950: v4.2 — one physical accounting discipline across remote model, state and cache owners
+  - Line 958: v4.3 — multiple resident models under one physical ResourceArbiter
+  - Line 968: Source: .agents/docs/MINIMAL\_EXECUTION\_SPINE\_AND\_PROTOCOL\_V4.md
+  - Line 974: Minimal execution spine v4 — state, asynchronous workers, resource ownership and hot-path performance
+  - Line 978: 1. Exactly five ownership boundaries
+  - Line 992: 2. State versioning — prepared, not independently committed
+  - Line 994: 2.1 The core error to avoid
+  - Line 1000: 2.2 Illustrative states, epochs and root ownership
+  - Line 1048: 2.3 On GPU-only decode, how to avoid per-token host barriers
+  - Line 1060: 3. Worker step protocol and backpressure
+  - Line 1089: 4. Device/command graph boundary
+  - Line 1101: 5. Hierarchical physical budget and local allocation (zero global per-token lock)
+  - Line 1123: 6. Model/task/plan compatibility keys
+  - Line 1136: 7. Logical output commit versus transport delivery
+  - Line 1146: 8. Subtask control without a giant workflow runtime
+  - Line 1160: 9. Failure semantics matrix
+  - Line 1175: 10. First vertical slice acceptance for this document
+  - Line 1191: v4.1 addendum — graph/dataflow accelerator readiness and state bridge
+  - Line 1201: 11. v4.2 — per-session root publication across remote state shard owners
+  - Line 1211: 12. v4.3 — model routing does not own token state or physical allocations
+  - Line 1223: Source: .agents/docs/MODEL\_ROUTING\_RESIDENCY\_AND\_MULTI\_MODEL\_SERVING\_CONTRACT.md
+  - Line 1229: zerogravity — Built-in model router, multi-model residency and serving contract (v4.3)
+  - Line 1244: 1. One engine, four separable entities
+  - Line 1261: 2. Minimal architecture — routing above shared execution, never hot-per-token proxy
+  - Line 1297: 3. Typed identities, versioning and naming
+  - Line 1324: 4. Distinct route decisions: source identity, replica, phase and application model selection
+  - Line 1326: 4.1 Exact-model request (default, no substitution)
+  - Line 1332: 4.2 Replica load balancing (same logical model)
+  - Line 1346: 4.3 Phase/task and multi-model pipeline routing
+  - Line 1352: 4.4 Optional intelligent target-model selector (explicitly configured)
+  - Line 1365: 5. Model residency lifecycle, cold-start and scale-to-zero
+  - Line 1400: 5.1 Warm/keepalive policies
+  - Line 1411: 5.2 Model replicas, sharding and placement
+  - Line 1419: 6. One global physical budget, two scheduling timescales
+  - Line 1434: 7. Routing snapshot and request consistency
+  - Line 1461: 8. Per-model settings: explicit scope and safety
+  - Line 1479: 9. Multi-model coexistence and cache compatibility
+  - Line 1487: 10. Failure model and human-facing behavior
+  - Line 1508: 11. Security, remote scope and API boundaries
+  - Line 1516: 12. Observability and perf admission proofs
+  - Line 1540: 13. Minimal implementation staging
+  - Line 1556: Source: .agents/docs/MODEL\_SEMANTICS\_AND\_COMPATIBILITY.md
+  - Line 1562: Model semantics, model adapters and compatibility qualification
+  - Line 1570: 1. Model support contract
+  - Line 1585: 2. Canonical operator registry
+  - Line 1601: 3. Candidate first model families
+  - Line 1603: Llama and dense baseline
+  - Line 1606: Gemma 4
+  - Line 1609: Qwen3.5+
+  - Line 1612: Qwen3.8-Flash-Next
+  - Line 1615: GLM-5.3-Flash
+  - Line 1618: DeepSeek V4 Flash / V4.1 Flash
+  - Line 1621: 4. Initial capability matrix (PLANNED — not supported yet)
+  - Line 1635: 5. Model adapter shape (conceptual Rust)
+  - Line 1663: 6. Integration steps for an unfamiliar model
+  - Line 1676: 7. Numerical contracts to encode
+  - Line 1680: 8. Future compatibility principle
+  - Line 1684: 2026-10-10 integrated v2 addendum — model recipe/compiler decoupling
+  - Line 1697: 2026-10-12 integration — Gufo-family semantic reuse and task control graphs
+  - Line 1705: v4 refinement — registered exact mathematical models and future parameter versions
+  - Line 1711: Current metadata-only source profiles
+  - Line 1757: Source: .agents/docs/MODULAR\_AI\_SYSTEMS\_REFERENCE\_ARCHITECTURE.md
+  - Line 1763: zerogravity — modular AI execution reference architecture v4.1
+  - Line 1767: 1. Prime rule — compose execution capabilities, never new engines
+  - Line 1775: 2. The minimal system vocabulary
+  - Line 1792: 3. Two enduring representations; compiler-internal optimization views
+  - Line 1826: 4. Task control without an internal workflow platform
+  - Line 1844: 5. State and output transaction, exactly one logical publish
+  - Line 1857: 6. Fast scheduling and resource ownership
+  - Line 1867: 7. Shape, numeric, cost and specialization guards
+  - Line 1880: 8. Minimal extension seams and evolution
+  - Line 1897: 9. Deferred complexity and engineering discipline
+  - Line 1905: 10. Evidence, scope and authority
+  - Line 1913: 11. v4.1 execution granularity — native GPU, graph-only and dataflow accelerators
+  - Line 1927: 12. v4.2 — distributed machine and state placement as a core execution capability
+  - Line 1937: 13. v4.3 — built-in multi-model request routing without another runtime
+  - Line 1949: Source: .agents/docs/NPU\_GPU\_COOPERATIVE\_EXECUTION\_AND\_TASK\_PIPELINES.md
+  - Line 1955: zerogravity — NPU/GPU cooperative execution and multimodal TaskProgram design
+  - Line 1964: 1. The essential distinction — three hardware parallelism types
+  - Line 1974: 2. SIR semantic preservation: output-row sliced GEMM
+  - Line 1991: 3. Compiler representations and runtime data flow
+  - Line 1993: SIR
+  - Line 1996: RIR
+  - Line 1999: KIR
+  - Line 2010: CIR
+  - Line 2037: ExecutableBundle/StepPlan
+  - Line 2044: 4. Safety-critical unified SoC power/fabric model
+  - Line 2061: 5. Precision and correct mathematical output
+  - Line 2073: 6. Cost-aware ownership and utilization
+  - Line 2091: 7. General multi-device ownership and sparse compute
+  - Line 2105: 8. Extending beyond decoder-only pipelines
+  - Line 2129: 9. Exact fallback contracts for a "seamless" experience
+  - Line 2147: 10. Acceptance tests and integration plan (proposed, not completed)
+  - Line 2163: 11. Files/policy mapping
+  - Line 2175: v4 refinement — NPU is a KernelProvider and physical command dependency
+  - Line 2181: 12. U-048 — banked prefill and transport-neutral NPU programs
+  - Line 2197: Source: .agents/docs/NUMERICS\_QUALITY\_AND\_BENCHMARKS.md
+  - Line 2203: Numerical correctness, model-quality evaluation and benchmark methodology
+  - Line 2216: 1. Four independent notions of correctness
+  - Line 2225: 2. Reference layers
+  - Line 2235: 3. Numeric error metrics
+  - Line 2252: 4. Critical operator regression cases
+  - Line 2273: 5. Quantization and quality comparison
+  - Line 2284: 6. Speculative decoding sampling rigor
+  - Line 2292: 7. Hybrid state replay equivalence
+  - Line 2305: 8. Benchmark taxonomy
+  - Line 2317: 9. Benchmark comparability matrix
+  - Line 2329: 10. Recorded external author baselines (research only)
+  - Line 2339: 11. Statistical method
+  - Line 2345: 12. Recording results
+  - Line 2357: 13. Quality gates and acceptance policy
+  - Line 2370: 14. Long context and quality
+  - Line 2374: 15. Acceptance report example (pseudocode)
+  - Line 2391: 2026-10-10 integrated v2 addendum — defensible Pareto performance and correction ledger
+  - Line 2409: 2026-10-12 integration — NPU BFP compute and performance comparability
+  - Line 2415: v4 refinement — four distinct truth claims and task-relative units
+  - Line 2421: v4.1 — cross-accelerator precision and program validity
+  - Line 2429: v4.2 — distributed mathematical parity and transport-aware benchmarks
+  - Line 2437: v4.3 exact-model routing and multi-model performance truthfulness
+  - Line 2445: U-048 — separate NPU-twin parity, source quality and route performance
+  - Line 2458: Original Qwen3.5 source arithmetic profile
+  - Line 2507: Source: .agents/docs/OPERATOR\_AND\_FUSION\_CATALOG.md
+  - Line 2513: Operator/region contracts, fusion patterns and model execution catalog
+  - Line 2526: 1. Canonical operator record
+  - Line 2545: 2. Dense linear / embedding
+  - Line 2557: Candidate region: Norm + Q8 activation packing + GEMV
+  - Line 2560: 3. Attention families
+  - Line 2562: Full causal attention / GQA
+  - Line 2565: Sliding-window / alternating local-global
+  - Line 2568: Qwen Sparse Attention (QSA)
+  - Line 2571: GLM latent MLA + DeepSeek Sparse Attention
+  - Line 2574: DeepSeek time-compressed attention (CSA/HCA)
+  - Line 2577: Candidate region: index score+topk+attention tile
+  - Line 2580: 4. Recurrent and hybrid families
+  - Line 2582: Gated DeltaNet
+  - Line 2585: Kimi Delta Attention
+  - Line 2588: Hyperconnections
+  - Line 2591: Candidate region: recurrent step + conv history + residual
+  - Line 2594: 5. MoE families
+  - Line 2606: Candidate fusion plans
+  - Line 2615: 6. N-gram / Engram row lookup
+  - Line 2619: 7. Output/sampling/drafting
+  - Line 2623: 8. Operator capability matrix example (PROPOSED)
+  - Line 2641: 9. Reference model and independent data flow
+  - Line 2645: 10. Region and fallback execution example
+  - Line 2665: 11. Complexity budget
+  - Line 2669: 12. Missing official formula checklist
+  - Line 2680: 2026-10-10 integrated v2 addendum — effect-aware kernel and fusion ownership
+  - Line 2693: 2026-10-12 integration — \`ProjectionRowSlice\` and non-token stage optimization
+  - Line 2701: v4 refinement — useful op granularity and precise region substitution
+  - Line 2709: Source: .agents/docs/PERFORMANCE\_HYPOTHESES\_AND\_RISKS.md
+  - Line 2715: Architectural risks, opportunities, trade-offs and falsification criteria
+  - Line 2722: 1. Risk register (severity × uncertainty)
+  - Line 2745: 2. Central falsifiable hypotheses
+  - Line 2761: 3. Key trade-off choices
+  - Line 2763: A. Semantic IR richness vs maintainability
+  - Line 2767: B. CubeCL vs direct hardware kernels vs vendor libraries
+  - Line 2771: C. One cache vs many caches
+  - Line 2775: D. Whole-layer fusion vs operation modularity
+  - Line 2779: E. Full CPU reference vs portable but slow GPU backend
+  - Line 2783: F. Automatic adaptation vs predictability
+  - Line 2787: 4. Common failure of reasoning to avoid
+  - Line 2800: 5. Decision process for research conflicts
+  - Line 2804: 6. Prioritize and prune complexity
+  - Line 2808: 7. Immediate actionable risks
+  - Line 2820: 2026-10-10 integrated v2 addendum — new research risks and falsifiable differentiation
+  - Line 2841: 2026-10-12 Gufo XDNA2 opportunity and risks
+  - Line 2855: v4 critical-path and complexity risks (review R4-01…R4-24)
+  - Line 2865: Source: .agents/docs/PRODUCT\_MODEL\_PIPELINE\_AND\_EXTENSIONS.md
+  - Line 2871: zerogravity — Product, model loading and extension contract across the full pipeline
+  - Line 2878: 1. Source/format are not model mathematics
+  - Line 2893: 2. ModelStore and manifest versions
+  - Line 2905: 3. GGUF and quantization schema
+  - Line 2918: 4. Tokenizer, chat templates and constrained outputs
+  - Line 2932: 5. Text generator and encoder/pooler are different runner modes
+  - Line 2938: 6. Multimodal and modalities as typed state
+  - Line 2948: 7. LoRA/adapter model (previous project gap)
+  - Line 2961: 8. Platform and hardware extension contract
+  - Line 2967: 9. Serving facade
+  - Line 2973: 10. Conformance matrix for every extension
+  - Line 2985: 11. Explicit non-goals and open points
+  - Line 2991: 2026-10-12 integration — upstream Gufo task pipelines and reusable TaskProgram
+  - Line 3001: v4 refinement — TaskDriver, not universal workflow DSL
+  - Line 3007: v4.2 — TaskDriver distribution without forcing token-only topology
+  - Line 3015: v4.3 — registry model profile vs immutable source and execution residency
+  - Line 3025: Source: .agents/docs/REALTIME\_MULTIMODAL\_SERVING\_AND\_QOS\_V5\_1\_2026-10-15.md
+  - Line 3031: Zerogravity Real-Time Multimodal Serving, Sessions, QoS and API Contract — v5.1
+  - Line 3043: 0. Scope and goals
+  - Line 3049: 1. Serving decomposition without a second inference runtime
+  - Line 3075: 2. Canonical TaskRequest and response mode
+  - Line 3103: 3. RealtimeSession and transport state
+  - Line 3134: 4. Five distinct frontiers
+  - Line 3146: 5. MediaEvent stream
+  - Line 3175: 6. Input clocks and buffering
+  - Line 3185: 7. Playback interruption/barge-in protocol
+  - Line 3199: 8. Reconnection and resume
+  - Line 3210: 9. Admission and QoS
+  - Line 3235: 10. Media-specific progress, metrics and SLOs
+  - Line 3248: 11. Three fundamental delivery regimes
+  - Line 3250: 11.1 Local or one-shot request (sync)
+  - Line 3255: 11.2 Progressive streaming (HTTP/SSE or binary streaming)
+  - Line 3261: 11.3 Bidirectional live (WebSocket/WebRTC)
+  - Line 3269: 12. API matrix and versioning
+  - Line 3291: 13. Hosted opaque provider TaskServiceAdapter
+  - Line 3316: 14. Failure and availability rules
+  - Line 3327: 15. Media presentation receipts and truthful playback
+  - Line 3339: 16. Explicit compatibility prior art (not native implementation)
+  - Line 3353: 17. Acceptance drill extension
+  - Line 3371: 18. Open policy decisions before live serving
+  - Line 3400: Source: .agents/docs/REMOTE\_PEER\_TRANSPORT\_AND\_STATE\_HANDOFF\_PROTOCOL.md
+  - Line 3406: zerogravity — Remote peer transport, state handoff and failure protocol (v4.2)
+  - Line 3410: 1. One process can run standalone or offer a peer role
+  - Line 3418: 2. Exact identities and separate epochs
+  - Line 3429: 3. Wire control is small, bounded and authenticated
+  - Line 3451: 4. Bulk transfer and transport capabilities
+  - Line 3470: 5. Remote model/layer execution flows
+  - Line 3472: 5.1 Layers and mutable cache colocated on peer B
+  - Line 3483: 5.2 Layer compute on A, attention/KV state on B
+  - Line 3491: 5.3 Compute/FFN/experts on B and stateful attention on A
+  - Line 3495: 5.4 Prefill on A, decode on B
+  - Line 3505: 5.5 Remote prefix cache and sequence KV shards
+  - Line 3511: 6. Recovering from node failures and partitions
+  - Line 3523: 7. Fault-injection and QoS gates
+  - Line 3538: 8. Minimal implementation discipline
+  - Line 3548: Source: .agents/docs/RUNTIME\_SERVING\_AND\_UX.md
+  - Line 3554: Runtime, APIs, developer experience and observability
+  - Line 3570: 1. Proposed executable and modes (illustrative, not finalized)
+  - Line 3584: 2. Rust library/SDK layer
+  - Line 3588: 3. HTTP compatibility matrix
+  - Line 3602: 4. Streaming correctness
+  - Line 3608: 5. Tool and agent histories
+  - Line 3614: 6. Context and memory fit UI
+  - Line 3631: 7. Multi-model and hot reload
+  - Line 3635: 8. Metrics and telemetry
+  - Line 3649: 9. Configuration hierarchy
+  - Line 3655: 10. Local deployment and packaging
+  - Line 3661: 11. Testing API usability
+  - Line 3665: 12. Pending policy
+  - Line 3669: 2026-10-10 integrated v2 addendum — concrete product and event contracts
+  - Line 3682: 2026-10-12 integration — NPU diagnostics and future media outputs
+  - Line 3688: v4 refinement — truthful task streams and no hidden task workflow executor
+  - Line 3694: v4.3 authoritative multi-model service and zero-config UX refinement
+  - Line 3706: Source: .agents/docs/RUST\_WORKSPACE\_AND\_ENGINEERING.md
+  - Line 3712: Rust workspace, interfaces, implementation practices and contributor workflow
+  - Line 3748: 1. Language and architecture constraint
+  - Line 3754: 2. Historical proposed Cargo ownership map
+  - Line 3792: 3. Ownership and concurrency rules
+  - Line 3804: 4. Public data contracts
+  - Line 3810: 5. Core hot-path performance rules
+  - Line 3821: 6. Engineering ergonomics
+  - Line 3827: 7. Unsafe and external code
+  - Line 3840: 8. Toolchain and build variants
+  - Line 3852: 9. CI and physical GPU testing
+  - Line 3862: 10. Dependency/version governance
+  - Line 3868: 11. Pull request checklist
+  - Line 3881: 12. Build/release artifacts
+  - Line 3885: 13. Agent work tracking
+  - Line 3893: 14. Open structural decisions
+  - Line 3897: 2026-10-10 integrated v2 addendum — minimal Rust crates and newer GPU compilers
+  - Line 3908: 2026-10-12 integration — optional XRT/AIE backend and Rust source policy
+  - Line 3914: v4 refinement — minimum crates, stable Rust interfaces only where proven
+  - Line 3922: v4.1 — vendor graph compiler adapter without kernel-source confusion
+  - Line 3930: v4.2 — optional authenticated peer feature, no new inference server
+  - Line 3938: v4.3 — one executable and one library for CLI, router and multi-model serving
+  - Line 3948: Source: .agents/docs/SCHEDULER\_BATCHING\_AND\_SPECULATION.md
+  - Line 3954: Scheduler, continuous batching, prefix reuse and speculative execution
+  - Line 3967: 1. Entities and lifecycle
+  - Line 3985: Request ledger fields
+  - Line 4008: 2. Unified token-budget scheduling
+  - Line 4025: Baseline fairness and admission
+  - Line 4029: 3. Execution groups
+  - Line 4040: 4. Route-aware MoE execution and cost
+  - Line 4056: 5. Prefix-aware scheduling
+  - Line 4062: 6. Speculative decoding architecture
+  - Line 4076: Exact sampling reminder
+  - Line 4082: Transaction for verify block
+  - Line 4096: 7. Speculation cost model and guardrails
+  - Line 4110: 8. Active batch vs queued concurrency
+  - Line 4120: 9. Multi-model hosting and eviction
+  - Line 4124: 10. Distributed scheduling and prefill/decode disaggregation
+  - Line 4128: 11. Cancellation, priority and stop conditions
+  - Line 4132: 12. Metrics required for correct tuning
+  - Line 4138: 13. Tests and acceptance
+  - Line 4149: 14. Open questions for empirical resolution
+  - Line 4153: 2026-10-10 integrated v2 addendum — concrete research event loop and scheduler ownership
+  - Line 4166: 2026-10-12 integration — prefill-specific GPU+NPU candidate
+  - Line 4172: v4 refinement — mixed task cost, prepared state and bounded overlap
+  - Line 4180: v4.2 — cross-machine task admission and stage scheduling without central hot-path RPC
+  - Line 4188: v4.3 — multi-model route admission and native within-model batching
+  - Line 4198: Source: .agents/docs/SECURITY\_AND\_RELIABILITY.md
+  - Line 4204: Security, reliability, resilience and safe defaults
+  - Line 4211: 1. Threat model
+  - Line 4224: 2. Untrusted artifact parsing
+  - Line 4238: 3. GPU memory lifetime and physical safety
+  - Line 4246: 4. Service exposure and request admission
+  - Line 4254: 5. Model and prompt privacy
+  - Line 4260: 6. Snapshot integrity and cache poisoning
+  - Line 4266: 7. Distributed transport
+  - Line 4272: 8. Plugins and generated kernel trust
+  - Line 4278: 9. Reliability and operational state
+  - Line 4289: 10. Supply chain and licensing
+  - Line 4295: 11. Reliability testing before release
+  - Line 4305: 12. Release security checklist
+  - Line 4320: 13. Open security decisions
+  - Line 4324: 2026-10-10 integrated v2 addendum — compiler, async executor and plugin threat boundaries
+  - Line 4337: 2026-10-12 integration — GPU+XDNA2 SoC hard-hang risk and NPU artifact trust
+  - Line 4347: v4 refinement — one logical root and output delivery security
+  - Line 4353: v4.1 — compiled graph/wafer programs, remote sessions and license trust
+  - Line 4361: v4.2 — trusted network peers, tunnel isolation and remote state safety
+  - Line 4369: v4.3 model router, registry and API security
+  - Line 4381: Source: .agents/docs/SEMANTIC\_IR\_AND\_COMPILER.md
+  - Line 4387: Semantic IR, state-effect system and ahead-of-time/JIT execution planning
+  - Line 4394: 1. Principles and boundaries
+  - Line 4405: 2. Three-stage representation
+  - Line 4407: SemanticModelIR (SIR)
+  - Line 4415: OptimizedExecutionIR (EIR)
+  - Line 4419: DevicePlanIR (DPI)
+  - Line 4423: 3. Suggested conceptual type system
+  - Line 4472: Shape checking
+  - Line 4476: Logical versus physical tensor
+  - Line 4480: 4. Stateful effects and exactly-once frontier semantics
+  - Line 4488: Effect rule examples
+  - Line 4498: 5. Typed operator families
+  - Line 4520: 6. Numerical policy / legality
+  - Line 4539: 7. Pattern matching and region formation
+  - Line 4554: 8. Device plan and persistent variant management
+  - Line 4570: Runtime plan selection
+  - Line 4576: 9. Cross-compilation and specialization choices
+  - Line 4582: 10. Independent verifier and proof harness
+  - Line 4600: 11. Practical model integration walkthrough
+  - Line 4606: 12. Performance and maintenance controls
+  - Line 4610: 13. Pending design proof
+  - Line 4621: 2026-10-10 integrated v2 addendum — complete compiler partition
+  - Line 4634: 2026-10-12 integration — model-independent split-output projections and task stages
+  - Line 4642: v4 refinement — two durable representations and explicit legality
+  - Line 4652: Source: .agents/docs/STATE\_CACHE\_AND\_TRANSACTIONS.md
+  - Line 4658: Session state, prefix caching, snapshots and transactional semantics
+  - Line 4674: 1. The distinction between state and model parameters
+  - Line 4682: 2. Session data model (suggested, not final code)
+  - Line 4713: 3. State domains, required saved content and hazards
+  - Line 4731: 4. Transactional generation protocol
+  - Line 4743: Pseudocode
+  - Line 4763: 5. Snapshot and copy-on-write (COW) policy
+  - Line 4775: ABA protection
+  - Line 4779: 6. Prefix cache identity and compatibility
+  - Line 4794: 7. Snapshot persistence schema
+  - Line 4812: 8. Prefix replay and chunk boundaries
+  - Line 4825: Attention state compression
+  - Line 4829: 9. Tiered cache and memory interaction
+  - Line 4840: 10. Failure and cancellation handling
+  - Line 4851: 11. Test suite design
+  - Line 4855: 12. API invariants for implementers
+  - Line 4864: 13. Unresolved choices
+  - Line 4868: 2026-10-10 integrated v2 addendum — generalized hybrid prefix state + research frontier mechanics
+  - Line 4881: v4 refinement — authoritative prepared-root publication
+  - Line 4889: v4.2 — remote mutable state owner is distinct from immutable shared cache
+  - Line 4899: Source: .agents/docs/TASK\_PROGRAM\_AND\_COMPILER\_REFINEMENT\_V4.md
+  - Line 4905: v4 TaskProgram and compiler contracts — high throughput with a small semantic core
+  - Line 4909: 1. One reusable semantic representation, one physical executable plan
+  - Line 4922: 2. Two levels of mathematical operations
+  - Line 4924: SemanticOp — source mathematical identity
+  - Line 4930: Pure tensor subset — optimization internals
+  - Line 4936: 3. Value/dimension contracts and dynamic shape guards
+  - Line 4960: 4. Effects and legal speculative execution
+  - Line 4968: 5. Minimal task driver, not a workflow DSL
+  - Line 4998: Supported task drivers and their own frontier
+  - Line 5010: 6. Interface compatibility and minimum provider set
+  - Line 5021: 7. Compiled StepProgram and host/device scheduling cost
+  - Line 5034: 8. Region and whole-model specialized kernels
+  - Line 5045: 9. Optional gradient/parameter update future without training bloat
+  - Line 5058: 10. Hardware/format-independent optimization search and cost
+  - Line 5069: 11. Evolving interop without external engine dependence
+  - Line 5084: 12. Acceptance experiments proving high performance and smallness
+  - Line 5099: v4.1 addendum — large compiled graphs without a new IR
+  - Line 5111: v4.2 — networked execution placement is a compiled physical plan, not a new TaskDriver
+  - Line 5121: Source: .agents/docs/UNIFIED\_MULTIMODAL\_EXECUTION\_CONTRACT\_V5\_2026-10-14.md
+  - Line 5127: Zerogravity — Unified multimodal execution contracts (v5 design proposal)
+  - Line 5132: MM0 executable mock acceptance — 14 October 2026
+  - Line 5147: Executive conclusion
+  - Line 5162: MM-01. Typed value and clock contract
+  - Line 5190: MM-02. Verified model-component graphs
+  - Line 5222: MM-03. Distinct iteration policies under one TaskDriver
+  - Line 5252: MM-04. Multitrack StateRoot, synchronized commit and interruption
+  - Line 5274: MM-05. Denoising, temporal specialization, and task performance
+  - Line 5288: MM-06. Orthogonal tensor encodings and ternary adversarial compatibility
+  - Line 5314: MM-07. Typed decision scoring, not JSON generation
+  - Line 5332: MM-08. Native versus opaque external models
+  - Line 5338: MM-09. Four orthogonal dimensions of specialization
+  - Line 5349: MM-10. Minimal fake acceptance drills, before feature implementation
+  - Line 5368: MM-11. Implementation order without derailing P07
+  - Line 5382: Source: .agents/docs/UNIFIED\_VIRTUAL\_TENSOR\_RESIDENCY\_AND\_SSD\_STREAMING\_2026-10-15.md
+  - Line 5388: Zerogravity — First-Class Virtual Tensor Residency and High-Performance SSD Streaming
+  - Line 5396: 0. User requirement and an exact promise
+  - Line 5404: 1. Independent identities and ownership
+  - Line 5418: Illustrative Rust vocabulary — conceptual, not a frozen public ABI
+  - Line 5448: 2. Source-preserving fast and miss paths
+  - Line 5480: 3. One residency fabric, domain-specific allocation policies
+  - Line 5496: 4. Expert source and cache: lifecycle and data layout
+  - Line 5513: Mandatory correctness: lease includes ENCODED but UNEXECUTED GPU work
+  - Line 5525: 5. Mixed expert sizes and one shared byte budget
+  - Line 5538: 6. Multi-tier IO implementation and platform reality
+  - Line 5553: 7. Prefill, decoding, and speculative expert reuse
+  - Line 5555: Prefill policy
+  - Line 5558: Decode policy
+  - Line 5561: Dynamic cache policies
+  - Line 5570: 8. Four distinct uses of SSD under one substrate
+  - Line 5582: 9. Memory budgets and source performance cost
+  - Line 5596: 10. Reliability, error handling and cancellation
+  - Line 5613: 11. Verification and zero-overhead discipline
+  - Line 5625: 12. Source and provenance references (reviewed 2026-10-15)
+  - Line 5641: Source: .agents/docs/UNIVERSAL\_MULTIMODAL\_EXECUTION\_ARCHITECTURE\_V5\_1\_2026-10-15.md
+  - Line 5647: Zerogravity Universal Multimodal Execution Architecture — v5.1 Design Specification
+  - Line 5655: 0. Nonnegotiable goals and non-goals
+  - Line 5657: Goals
+  - Line 5666: Non-goals
+  - Line 5675: 1. Architectural reconciliation and ownership boundaries
+  - Line 5696: 2. Type-safe multimodal values
+  - Line 5732: 3. ModelAssembly: physically separable, semantically unified
+  - Line 5775: 4. TaskDriver families and termination
+  - Line 5806: 5. StateRoot, multitrack commit and physical event authority
+  - Line 5837: 6. Numerical/specialization legality dimensions
+  - Line 5849: 7. TensorEncoding and novel low-bit models
+  - Line 5867: 8. Media component placement, resource accounting, and scheduling
+  - Line 5880: 9. Distinct stages of composition
+  - Line 5888: 10. Artifact/model capability status and truthful UX
+  - Line 5901: 11. Failure classes and recovery
+  - Line 5916: 12. Complexity ceilings and future-proofing
+  - Line 5928: 13. Design acceptance (not yet implementation)
+  - Line 5947: 14. Source references / provenance
+
+### [.agents/docs/handoff-2026-10-20/CANONICAL_SOURCEBOOK_04.md](../handoff-2026-10-20/CANONICAL_SOURCEBOOK_04.md)
+
+- Bytes: 583546; mode: 0o644; SHA256: 81b07e7f4b32f716193452c1d5785d99439ab2e55785c16016a0b409032710de.
+- Full heading route:
+  - Line 1: Canonical Sourcebook — volume 4
+  - Line 7: Source: .agents/docs/VERIFIED\_MODEL\_ASSEMBLIES\_AND\_SPECIALIZATION\_V5\_1\_2026-10-15.md
+  - Line 13: Zerogravity Verified Model Assemblies, Source Codecs and Legal Specialization — v5.1
+  - Line 23: 1. Central separation: model, task, data encoding, hardware
+  - Line 34: 2. Artifact and verified assembly manifest (conceptual)
+  - Line 91: 3. Operator registry and output shape
+  - Line 106: 4. Component-to-device specialization
+  - Line 121: 5. Source-specific required model assembly examples
+  - Line 123: 5.1 Qwen3.5 text + optional vision
+  - Line 129: 5.2 Ternary 27B model
+  - Line 136: 5.3 Whisper/Parakeet/Canary
+  - Line 142: 5.4 Kokoro/Qwen TTS/Moshi
+  - Line 149: 5.5 Qwen-Image, FLUX.2, SD3.5
+  - Line 156: 5.6 Autoregressive multimodal image model
+  - Line 160: 5.7 Wan, Mochi, joint audio/video models
+  - Line 167: 5.8 Typed finite decisions
+  - Line 173: 6. Provenance, licensing and external adapter separation
+  - Line 179: 7. Performance and memory hypotheses to falsify
+  - Line 192: 8. Required interfaces for agents adding a model
+  - Line 209: 9. Stop conditions and architectural falsification
+  - Line 222: U-048 — source assemblies and realized heterogeneous numeric provenance
+  - Line 235: Source: .agents/docs/VISION\_SCOPE\_AND\_PRINCIPLES.md
+  - Line 241: Vision, product scope, constraints and engineering philosophy
+  - Line 248: Directly expressed user requirements
+  - Line 258: Foundational contract
+  - Line 264: Three plan levels
+  - Line 272: What makes zerogravity qualitatively different (hypotheses, not claims)
+  - Line 282: Non-goals
+  - Line 293: User journeys (product specs)
+  - Line 305: Product experience requirements
+  - Line 314: Quality constraints and optimization order
+  - Line 326: Integration boundaries
+  - Line 337: User decisions not inferred
+  - Line 341: Success definition
+  - Line 345: 2026-10-10 integrated v2 addendum — research synthesis and product boundaries
+  - Line 356: 2026-10-12 capability expansion — Gufo NPU and task pipelines
+  - Line 362: v4 refined product scope and minimality principle
+  - Line 372: Source: .agents/docs/ZERO\_CONFIG\_CLI\_CONFIG\_AND\_OPENAI\_API\_CONTRACT.md
+  - Line 378: zerogravity — One-command CLI, progressive configuration and OpenAI-compatible APIs (v4.3)
+  - Line 384: 1. Default one-command user journey
+  - Line 386: Interactive local single model
+  - Line 401: Multi-model router/service
+  - Line 416: Model import and profile
+  - Line 427: 2. Progressive disclosure, not a configuration tax
+  - Line 437: 3. Typed configuration, precedence and immutability
+  - Line 454: Proposed readable configuration
+  - Line 515: 4. API compatibility matrix — explicitly qualified subset
+  - Line 534: Chat Completions
+  - Line 542: Responses API (separate schema and events)
+  - Line 548: Embeddings and other tasks
+  - Line 552: Authentication, permissions and resource limits
+  - Line 561: 5. Error, partial streaming and compatibility tests
+  - Line 578: 6. Terminal UX details and advanced controls
+  - Line 589: 7. Advanced configuration, without complexity leakage
+  - Line 595: 8. Same engine for CLI, server and SDK
+  - Line 601: 9. Product acceptance checklist
+  - Line 614: U-048 — task and frontend capabilities
+  - Line 625: Source: .agents/docs/handoff-2026-10-17/PAUSED\_FILTERS\_CONTEXT.md
+  - Line 631: TODO — additive filters and exclusions cold design
+  - Line 638: Uncommitted
+  - Line 645: Primary requirements and chosen grammar
+  - Line 657: Ordered selection and closure
+  - Line 669: Bounded matcher and admission
+  - Line 677: Additive public and CLI seam
+  - Line 697: Meaningful future qualification (all UNRUN)
+  - Line 708: Remaining choices before implementation
+  - Line 713: Approved C3 source grant
+  - Line 720: Paused interruption handoff — 2026-10-17
+  - Line 740: Source: .agents/docs/handoff-2026-10-17/PAUSED\_XET\_INDEX\_CONTEXT.md
+  - Line 746: TODO — native Xet required index reconstruction
+  - Line 753: Uncommitted
+  - Line 761: Tests and verification
+  - Line 768: Boundaries
+  - Line 773: Pause handoff — user-requested wrap/interruption boundary
+  - Line 787: Source: .agents/docs/handoff-2026-10-17/XET\_INDEX\_DESIGN.md
+  - Line 793: TODO — native Xet required-index reconstruction design
+  - Line 800: Uncommitted
+  - Line 807: Smallest useful slice
+  - Line 811: Private provider seam
+  - Line 818: Exact bytes before parser
+  - Line 827: Admission and lifetime accounting
+  - Line 833: Mandatory cumulative seed change
+  - Line 841: Root choices before source grant
+  - Line 847: Proposed source/test ownership after approval
+  - Line 851: Tests and verification — all proposed, UNRUN
+  - Line 862: Current code anchors
+  - Line 873: Source: .agents/docs/handoff-2026-10-17/paused-filters-oracle.py.txt
+  - Line 901: Source: .agents/docs/handoff-2026-10-17/paused-filters.patch
+  - Line 1515: Source: .agents/docs/handoff-2026-10-17/paused-xet-index.patch
+  - Line 2184: Source: .agents/plans/EXPERIMENT\_PROGRAM.md
+  - Line 2190: zerogravity — Project-neutral experimental program, H01–H43 (v4 reviewed)
+  - Line 2203: 0. Common scientific, safety and licensing protocol
+  - Line 2213: Lane A — Kernel, compiler and execution legality
+  - Line 2215: H01 — Rust GPU architecture-specific kernel feasibility
+  - Line 2218: H02 — Compiled execution without IR hot-path tax
+  - Line 2221: H03 — Fusion vs occupancy and numerical legality
+  - Line 2224: H04 — GPU-side routed expert row grouping
+  - Line 2227: H05 — Expert residency × batching × scratch tradeoff
+  - Line 2230: H06 — Huge immutable lookup tables with bounded IO
+  - Line 2233: H07 — Full hybrid-prefix cache sharing
+  - Line 2236: H08 — Adaptive target speculation
+  - Line 2239: H09 — Mixed prefill/decode service fairness
+  - Line 2242: H10 — Long-context dense/sparse/latent/compressed attention
+  - Line 2245: H11 — Physical unified/discrete memory and safe admission
+  - Line 2248: H12 — Quant storage vs compute/derived model quality
+  - Line 2251: H13 — Heterogeneous topology, activations and peer transport
+  - Line 2254: H14 — Real multi-turn agent/task workload
+  - Line 2257: Lane B — Compiler/state/architecture extension
+  - Line 2259: H15 — Multiple Rust kernel providers through one interface
+  - Line 2262: H16 — Effect-token correctness under arbitrary graph rewriting
+  - Line 2265: H17 — CIR async execution, liveness and deliberate failures
+  - Line 2268: H18 — Actual eager vs device capture candidate choice
+  - Line 2271: H19 — Bounded pure-region optimizer/search
+  - Line 2274: H20 — Common resumable prefix frontier for 3+ state groups
+  - Line 2277: H21 — Modularity extension drill
+  - Line 2280: H22 — Product/task correctness and malformed inputs
+  - Line 2283: H23 — Accurate external benchmark comparison provenance
+  - Line 2286: H24 — Actual hardware safety profiles
+  - Line 2289: H25 — Full model compiler runtime overhead
+  - Line 2292: Lane C — Heterogeneous projection compute and additional task programs
+  - Line 2294: H26 — Intra-operator output row partition
+  - Line 2297: H27 — Optional NPU-owned program/driver feasibility
+  - Line 2300: H28 — Cross-API DMA, machine-safety and power/fabric isolation
+  - Line 2303: H29 — Same-source cooperative prefill benchmark
+  - Line 2306: H30 — Block-float numerical and target task quality
+  - Line 2309: H31 — Non-token TaskProgram pipeline reuse
+  - Line 2312: Promotion rules and evidence storage
+  - Line 2324: v4 extension experiments — 2026-10-12, H32–H43
+  - Line 2328: H32 — Prepared StateRoot and atomic logical publication
+  - Line 2332: H33 — GPU-native multi-step input progression
+  - Line 2336: H34 — Hierarchical reserve and device-local allocation
+  - Line 2340: H35 — Dynamic shape polymorphism with guarded fallback
+  - Line 2344: H36 — Minimal TaskDriver versus generic workflow graph
+  - Line 2348: H37 — Fused whole-region candidate with unchanged runtime
+  - Line 2352: H38 — Output stream commit/reconnect semantics
+  - Line 2356: H39 — Distributed epoch fencing and partial failure
+  - Line 2360: H40 — Future parameter update compatibility (without training platform)
+  - Line 2364: H41 — Key/cache migration and shape-band pruning
+  - Line 2368: H42 — Fair mixed-task scheduling under resource/latency targets
+  - Line 2372: H43 — v4 minimality and extension change-radius audit
+  - Line 2379: v4.1 cross-accelerator composability experiments H44–H55 (NOT RUN)
+  - Line 2383: H44 — Coherent local ARM+GPU system versus HBM device admission
+  - Line 2387: H45 — Native block-scaled precision and multi-GPU topology
+  - Line 2391: H46 — Fake graph-only accelerator (TPU-class execution contract)
+  - Line 2395: H47 — Fake wafer-scale programmed dataflow and streamed model weights
+  - Line 2399: H48 — Statically scheduled inter-chip dataflow and heterogeneous stages
+  - Line 2403: H49 — AOT accelerator backend with expensive graph compile
+  - Line 2407: H50 — Additional graph/low-level accelerator device classes
+  - Line 2411: H51 — Opaque stateful graph refusal and exact snapshot bridge
+  - Line 2415: H52 — Region granularity and program residency optimizer
+  - Line 2419: H53 — Remote/cluster topology and epoch fencing
+  - Line 2423: H54 — External model API versus native program boundary
+  - Line 2427: H55 — Backend extensibility, licensing and alternate speculative algorithm
+  - Line 2433: v4.2 new independent distributed execution experiments H56–H70 (NOT RUN)
+  - Line 2437: H56 — Standalone zero-network fast path
+  - Line 2441: H57 — Two-node layer pipeline with layer-local state
+  - Line 2445: H58 — Remote immutable prefix cache versus recompute
+  - Line 2449: H59 — Separate prefill and decode machines
+  - Line 2453: H60 — Remote attention beside KV versus remote KV read
+  - Line 2457: H61 — Sequence-token KV attention partition algebra
+  - Line 2461: H62 — Attention/FFN and routed expert owners
+  - Line 2465: H63 — Tensor/head parallel and fast fabric collectives
+  - Line 2469: H64 — Task-stage distribution beyond text
+  - Line 2473: H65 — Encrypted tunnels, direct versus peer/relay topology
+  - Line 2477: H66 — Trusted node enrollment and adversarial peers
+  - Line 2481: H67 — Coordinator/network partition, epochs and state shards
+  - Line 2485: H68 — State shard migration and topology replan
+  - Line 2489: H69 — Performance/capacity Pareto across multi-machine placements
+  - Line 2493: H70 — Future-topology composability change-radius audit
+  - Line 2499: v4.3 multi-model local runtime, router, config and OpenAI API research H71–H86 (NOT RUN)
+  - Line 2503: H71 — Zero-config one-command local model run
+  - Line 2507: H72 — ModelCatalog, immutable artifact and alias revision
+  - Line 2511: H73 — Concurrent model load deduplication and cold-start fairness
+  - Line 2515: H74 — Many-model simultaneous physical residency
+  - Line 2519: H75 — Idle eviction, keepalive and pinned session safety
+  - Line 2523: H76 — Equivalent replica balancing versus different-model choice
+  - Line 2527: H77 — Sharded deployment versus independent source model replicas
+  - Line 2531: H78 — Model profile precedence and provenance
+  - Line 2535: H79 — OpenAI Chat Completions exact SDK conformance
+  - Line 2539: H80 — Responses subset, stateful retention and event correctness
+  - Line 2543: H81 — Embeddings and extra TaskDriver endpoint qualification
+  - Line 2547: H82 — Local listener versus public API security and native admin
+  - Line 2551: H83 — Multi-model parent TaskProgram roles and resource admission
+  - Line 2555: H84 — Warm/cold replica placement and dynamic per-model batching
+  - Line 2559: H85 — Model/router hot reload, client disconnect and server restart
+  - Line 2563: H86 — End-to-end minimality, parity and observability
+  - Line 2572: Source: .agents/plans/IMMUTABLE\_SHARDED\_SOURCE\_IMPLEMENTATION\_SPEC.md
+  - Line 2578: Large immutable source loading: bounded basic-unit proposal
+  - Line 2601: Findings and boundaries
+  - Line 2630: Immutability decision
+  - Line 2659: Smallest concrete next CPU source unit
+  - Line 2715: File/API ownership proposal
+  - Line 2732: Acceptance with tiny/sparse fixtures
+  - Line 2759: Source: .agents/plans/IMPLEMENTATION\_ROADMAP.md
+  - Line 2765: Zerogravity — architecture roadmap P00–P23
+  - Line 2771: A. Program objective and hard invariants
+  - Line 2777: Critical minimum path
+  - Line 2810: ZG-P00 — Lean foundation, source policy and reproducible build
+  - Line 2818: ZG-P01 — Architecture-specific Rust kernel and hardware feasibility
+  - Line 2826: ZG-P02 — Independent mathematical and state-transition oracle
+  - Line 2834: ZG-P03 — Trusted artifacts, quant codecs and rendering
+  - Line 2842: ZG-P04 — Typed Semantic IR and minimal TaskProgram
+  - Line 2850: ZG-P05 — Legal region optimizer, kernel registry and async CIR
+  - Line 2858: ZG-P06 — Useful portable Rust execution backend
+  - Line 2866: ZG-P07 — Accelerator providers, streams, leases and kernel ownership
+  - Line 2874: ZG-P08 — First complete real model and TaskProgram vertical slice
+  - Line 2882: ZG-P09 — Native TaskCoordinator, worker and serving protocols
+  - Line 2893: ZG-P10 — Global physical memory and full-state prefix manager
+  - Line 2904: ZG-P11 — Hybrid/stateful attention and complex operators
+  - Line 2912: ZG-P12 — Routed sparse parameters and tiered expert execution
+  - Line 2923: ZG-P13 — First extreme hybrid sparse model specialization
+  - Line 2931: ZG-P14 — Second, substantially different heavy model specialization
+  - Line 2939: ZG-P15 — Target-authoritative speculation and model/task transactions
+  - Line 2950: ZG-P16 — Continuous batching and cross-resource cost optimization
+  - Line 2961: ZG-P17 — Broader model families, adapters, embedding and reranking
+  - Line 2969: ZG-P18 — Media TaskPrograms: audio, image, video and iterative AI
+  - Line 2977: ZG-P19 — Heterogeneous accelerators, collectives and remote placement
+  - Line 2985: ZG-P20 — Bounded compiler/autotuner and negative experiments
+  - Line 2996: ZG-P21 — Security, trust, licensing and reproducible releases
+  - Line 3004: ZG-P22 — Full performance and quality release qualification
+  - Line 3015: ZG-P23 — Composability and future-technology evolution qualification
+  - Line 3025: B. Milestones (capability, not dates)
+  - Line 3037: C. New model / kernel / task checklists
+  - Line 3051: D. Decision and progress discipline
+  - Line 3057: v4 roadmap refinement — 2026-10-12
+  - Line 3083: v4.1 universal region-backend implementation crosswalk — 2026-10-12
+  - Line 3105: v4.2 distributed execution and tunneled-machine phase crosswalk (U-020)
+  - Line 3126: v4.3 integrated ModelCatalog, ModelRouter, ResidencyManager and API/UX crosswalk (U-021)
+  - Line 3151: Source: .agents/plans/INTEGRATED\_PHASE\_0\_AND\_DELIVERY\_GATES.md
+  - Line 3157: zerogravity — Independent Stage-0 feasibility and delivery gates (v4 reviewed)
+  - Line 3161: 1. Hard problem and mitigation
+  - Line 3167: 2. Stage-0 work packages
+  - Line 3189: 3. Optional Stage N — shared-SoC GPU+NPU and partial-operator execution
+  - Line 3204: 4. Gates by architectural responsibility
+  - Line 3206: G0-A — Semantic and model foundations
+  - Line 3213: G0-B — Kernel codegen and resource execution
+  - Line 3220: G0-C — Functional end-to-end vertical slice
+  - Line 3226: G0-D — Modularity proof
+  - Line 3232: 5. Later release gates (capabilities, not promised dates)
+  - Line 3236: 6. Evidence and kill/pivot criteria
+  - Line 3252: v4 correction and dedicated proof gates — 2026-10-12
+  - Line 3275: v4.1 optional Stage Fabric — graph-only, wafer/static dataflow and heterogeneous cluster execution
+  - Line 3296: v4.2 optional Stage Distributed — topology, remote state and tunnel execution
+  - Line 3319: v4.3 optional Stage Serve — minimal CLI, model router and API conformance
+  - Line 3342: Source: .agents/plans/MODEL\_ACQUISITION\_IMPLEMENTATION\_SPEC.md
+  - Line 3348: Acquisition next unit — bounded cache first, then HF/GitHub vertical slice
+  - Line 3363: Bounded implementation sequence
+  - Line 3394: Cold API, authority and loader boundary
+  - Line 3429: XDG, locking and transaction details
+  - Line 3487: A2 exact transport/provider contract
+  - Line 3526: Acceptance design (A1 results in model-acquisition/TODO.md; A2/A3 pending)
+  - Line 3550: Inventory gaps / completion decision
+  - Line 3570: Source: .agents/plans/NEXT\_AGENT\_PROMPT\_2026-10-17.md
+  - Line 3576: Starting prompt — Zerogravity takeover, 17 October 2026
+  - Line 3653: Source: .agents/plans/NEXT\_AGENT\_PROMPT\_2026-10-19.md
+  - Line 3659: Starting prompt — Zerogravity comprehensive takeover, 19 October 2026
+  - Line 3755: Source: .agents/plans/README.md
+  - Line 3761: Plans
+  - Line 3767: Layout
+  - Line 3782: Queue — \`TODO.md\`
+  - Line 3787: Active
+  - Line 3790: Icebox
+  - Line 3793: Closed
+  - Line 3802: Plan — \`README.md\`
+  - Line 3816: Plan — \`TODO.md\`
+  - Line 3819: \<plan\>
+  - Line 3823: Committed
+  - Line 3824: \`\<sha\>\` — \<what this set landed\>
+  - Line 3827: Uncommitted
+  - Line 3831: Tests and verification
+  - Line 3842: History — optional \`HISTORY.md\`
+  - Line 3854: Parallel work
+  - Line 3861: Closeout
+  - Line 3869: Source: .agents/plans/RELEASE\_ACCEPTANCE\_GATES.md
+  - Line 3875: zerogravity — Model-neutral release, quality and composability gates (v4 reviewed)
+  - Line 3879: 1. Approval states
+  - Line 3885: 2. Foundational release gates
+  - Line 3901: 3. Required semantic and numerical quality controls
+  - Line 3912: 4. Resource and async safety
+  - Line 3923: 5. Task and service acceptance
+  - Line 3936: 6. Long-run composability release test
+  - Line 3949: 7. Performance qualification
+  - Line 3961: 8. Source/license/security qualification
+  - Line 3971: 9. Evidence/report schema (conceptual)
+  - Line 3990: v4 mandatory architecture acceptance refinements — 2026-10-12
+  - Line 4008: v4.1 backend portability and honesty gates — 2026-10-12
+  - Line 4021: v4.2 distributed placement and networked execution acceptance
+  - Line 4038: v4.3 multi-model router, simple CLI and API conformance release gates
+  - Line 4057: P00 packaging-only Rust binary and release artifact gates — U-023
+  - Line 4079: Source: .agents/plans/TODO.md
+  - Line 4085: Plan queue
+  - Line 4087: Active
+  - Line 4095: Icebox
+  - Line 4102: Closed
+  - Line 4111: Source: .agents/plans/ZEROGRAVITY\_MASTER\_PLAN\_2026-10-10.md
+  - Line 4117: zerogravity — master architecture v4.3: composable AI execution, model routing and simple user experience
+  - Line 4140: 1. Mission, scope and central design argument
+  - Line 4156: 2. Six composable architectural concerns (not six plugin engines)
+  - Line 4188: 3. Correct model math and mutable-state transactions
+  - Line 4190: 3.1 Model and operator support
+  - Line 4196: 3.2 One atomic logical StateRoot publication
+  - Line 4204: 3.3 Full-state prefix/cache compatibility
+  - Line 4208: 4. Specialization and fast-path architecture
+  - Line 4210: 4.1 Closed-region substitution
+  - Line 4216: 4.2 Shape, graph and hot scheduling discipline
+  - Line 4224: 5. Coarse resource admission, local physical execution
+  - Line 4232: 6. Heterogeneous device and source-language strategy
+  - Line 4240: 7. Task kinds and optional training compatibility
+  - Line 4254: 8. Minimal Rust modules and release/process strategy
+  - Line 4262: 9. Quality and performance governance
+  - Line 4276: 10. Staged delivery and source/research separation
+  - Line 4284: 11. Success criterion and practical limitations
+  - Line 4292: 12. v4.1 — universal region execution across GPU, TPU and static dataflow fabrics
+  - Line 4296: 12.1 The decisive abstraction is \*minimum efficient execution granularity\*
+  - Line 4307: 12.2 Platform categories this represents
+  - Line 4321: 12.3 New required capability detail
+  - Line 4329: 12.4 Rust-first and feasibility truth
+  - Line 4335: 12.5 Proof program and scope
+  - Line 4344: 13. v4.2 — One distributed AI execution fabric across hardware, machines and tunnels
+  - Line 4350: 13.1 Four independent placement axes and one derived transfer schedule
+  - Line 4360: 13.2 The placement topologies that must be representable
+  - Line 4377: 13.3 Topology transport and trusted private tunnels
+  - Line 4383: 13.4 One logical StateRoot across remote state shards
+  - Line 4391: 13.5 Topology-aware mathematical and cost legality
+  - Line 4399: 13.6 Delivery and proof without multiplying engine complexity
+  - Line 4415: 14. v4.3 — one-command local UX, built-in multi-model router and OpenAI-compatible serving
+  - Line 4421: 14.1 One engine across CLI, SDK, API and many models
+  - Line 4447: 14.2 Four entities must remain distinct
+  - Line 4456: 14.3 Exact-model routing versus model choice
+  - Line 4464: 14.4 Resident lifecycle and model switching
+  - Line 4470: 14.5 Configuration without upfront complexity
+  - Line 4478: 14.6 APIs, security and complete streaming semantics
+  - Line 4486: 14.7 Performance and long-term minimality
+  - Line 4497: 15. Final editorial and implementation authority (publication dossier 0.1, U-022)
+  - Line 4522: Source: .agents/plans/archive/history/AGENT\_IMPLEMENTATION\_PLAYBOOK.md
+  - Line 4528: Zerogravity — implementation design reference
+  - Line 4535: 2. Begin with a bounded phase contract
+  - Line 4557: 3. Minimal Rust module ownership (first release, not frozen public ABI)
+  - Line 4578: 4. Implementation sequence, Phase P00–P23
+  - Line 4582: P00 — reproducible project foundation
+  - Line 4588: P01 — physical accelerator source/codegen feasibility
+  - Line 4594: P02 — reference operator/state truth
+  - Line 4600: P03 — verified artifact, quant and tokenizer
+  - Line 4606: P04 — effect-aware SemanticProgram and trusted TaskDriver
+  - Line 4612: P05 — region candidates, dynamic guards and async compiled plan
+  - Line 4618: P06 — useful CPU-only model executor
+  - Line 4624: P07 — real GPU worker, local pools and event safety
+  - Line 4630: P08 — first complete real-model vertical slice
+  - Line 4636: P09 — canonical service/SDK plus model router entry
+  - Line 4642: P10 — physical residency + full-state snapshots
+  - Line 4648: P11 — complex hybrid attention/recurrent semantics
+  - Line 4654: P12 — routed sparse weights and tiered IO
+  - Line 4660: P13 — first extreme hybrid model region
+  - Line 4666: P14 — second complex family confirms modularity
+  - Line 4672: P15 — target-authoritative speculative decoding
+  - Line 4678: P16 — high-concurrency multi-model and stage-aware scheduling
+  - Line 4684: P17 — broad model roles, adapters, embeddings
+  - Line 4690: P18 — ASR/TTS/image/video TaskDrivers
+  - Line 4696: P19 — networked multi-device, layer/state and fabric
+  - Line 4702: P20 — bounded offline optimization and cost model
+  - Line 4708: P21 — security, source rights and reproducible release
+  - Line 4714: P22 — release-quality numerical and physical performance matrix
+  - Line 4720: P23 — long-term extension and future technology proof
+  - Line 4728: 5. Test programs as grouped work, not 86 mandatory day-one tasks
+  - Line 4742: 6. Implementation priority / hard dependencies
+  - Line 4780: Source: .agents/plans/archive/history/CURRENT\_STATUS\_AND\_TRACKING.md
+  - Line 4786: Current work
+  - Line 4793: Source: .agents/plans/archive/history/DECISION\_REGISTER.md
+  - Line 4799: Decision register — confirmed user intent versus recommended design
+  - Line 4911: Explicit user decisions
+  - Line 4980: Strongly recommended architectural choices (not independently approved yet)
+  - Line 5081: Open decisions (do not fill silently)
+  - Line 5160: Assumptions / boundaries
+  - Line 5169: v3 architectural supersession and provenance rule — 2026-10-12
+  - Line 5181: Conflict-resolution protocol
+  - Line 5202: Owner decisions after U-055 — consolidated 2026-10-17
+  - Line 5233: Source: .agents/plans/archive/history/OPEN\_CONTRIBUTION\_AI\_DEVELOPMENT\_AND\_MIT\_POLICY\_2026-10-15.md
+  - Line 5239: Zerogravity — Human-Centric Design, AI-Centric Implementation, and Open Contributions
+  - Line 5243: 1. How we build
+  - Line 5255: 2. Contribution workflow
+  - Line 5267: 3. License selection
+  - Line 5274: 4. README and implementation evidence policy
+  - Line 5282: 5. Decision scope
+  - Line 5290: Source: .agents/plans/archive/history/REQUIREMENTS\_AND\_TEST\_TRACEABILITY.md
+  - Line 5296: Zerogravity — requirements and test design
+  - Line 5301: 1. Explicit user intent U-001…U-026
+  - Line 5345: 2. Operational core requirements and integrated invariant mapping
+  - Line 5369: 3. Phase-to-requirement closure map
+  - Line 5398: 4. Suggested milestone-level review gates
+  - Line 5404: 5. Recording actual results
+  - Line 5415: Source: .agents/plans/archive/history/accepted-baseline/TODO.md
+  - Line 5421: Accepted implementation baseline
+  - Line 5426: Uncommitted
+  - Line 5430: Committed
+  - Line 5432: 6d74f76 — owner-approved tested baseline
+  - Line 5446: Accepted detail retained from retired reports — 6d74f76
+  - Line 5462: Source: .agents/plans/archive/history/handoff-cleanup/TODO.md
+  - Line 5468: Simplify agent handoffs
+  - Line 5472: Uncommitted
+  - Line 5476: Committed
+  - Line 5478: bfe672c — simple TODO handoffs
+  - Line 5490: 3787519 — starting implementation
+  - Line 5496: Integrated agent results
+  - Line 5515: Final checks
+  - Line 5528: Source: .agents/plans/archive/history/historical-records/TODO.md
+  - Line 5534: TODO — historical records
+  - Line 5544: Committed
+  - Line 5546: aeff567 — retire legacy evidence reports
+  - Line 5558: Migration details
+  - Line 5566: Validation
+  - Line 5576: bfe672c — starting workflow
+  - Line 5581: 9239719 — retire historical archive bodies
+  - Line 5583: Historical archive retirement
+  - Line 5606: Integrated continuation
+  - Line 5616: Uncommitted
+  - Line 5620: Tests and verification
+  - Line 5632: Source: .agents/plans/cpu-gpu-optimization/TODO.md
+  - Line 5638: Cpu gpu optimization
+  - Line 5647: Uncommitted
+  - Line 5674: Committed
+  - Line 5676: 6d74f76
+  - Line 5680: Concurrency review — 1fca893
+  - Line 5684: Tests and verification
+  - Line 5692: Source: .agents/plans/distributed-execution/TODO.md
+  - Line 5698: Distributed execution
+  - Line 5706: Uncommitted
+  - Line 5716: Committed
+  - Line 5718: 6d74f76
+  - Line 5724: Source: .agents/plans/memory-and-streaming/README.md
+  - Line 5734: Source-preserving SSD residency
+  - Line 5736: Implemented: immutable original SSD source-extent IO
+  - Line 5746: Still pending
+  - Line 5755: Original-index tensor windows
+  - Line 5778: Source: .agents/plans/memory-and-streaming/TODO.md
+  - Line 5784: Memory and streaming
+  - Line 5792: Uncommitted
+  - Line 5866: Committed
+  - Line 5868: 35b9093 — source-only verified SSD extents
+  - Line 5885: 6d74f76
+  - Line 5889: Tests and verification
+
+### [.agents/docs/handoff-2026-10-20/CANONICAL_SOURCEBOOK_05.md](../handoff-2026-10-20/CANONICAL_SOURCEBOOK_05.md)
+
+- Bytes: 475227; mode: 0o644; SHA256: 0215eb835843395b71942d432eee3489c346892a70546196e6874ed997797f17.
+- Full heading route:
+  - Line 1: Canonical Sourcebook — volume 5
+  - Line 7: Source: .agents/plans/model-acquisition/README.md
+  - Line 15: Model acquisition
+  - Line 24: Design
+  - Line 85: Decisions
+  - Line 103: Interfaces and remaining scope
+  - Line 146: Metadata-only candidate discovery
+  - Line 179: Explicit GGUF filename quant selection
+  - Line 232: Explicit full-path Unicode filters
+  - Line 274: Exact length recovery
+  - Line 301: Explicit capped auxiliary streaming
+  - Line 365: Explicit protected-cache removal
+  - Line 438: Explicit components
+  - Line 508: Explicit HTTPS objects
+  - Line 570: Native OCI raw GGUF layers
+  - Line 623: Native GCS versioned objects
+  - Line 681: Native versioned S3 objects
+  - Line 724: Explicit AWS FULL\_OBJECT SHA256
+  - Line 774: Native Azure BlockBlob revisions
+  - Line 825: Explicit unversioned cloud content contracts
+  - Line 861: Strong conditional cloud observations
+  - Line 894: Native ModelScope explicit commits
+  - Line 961: Xet hash and chunk primitives
+  - Line 986: Native HF Xet
+  - Line 1047: Required native LFS/Xet safetensors index reconstruction
+  - Line 1079: Provider and compatibility frontier
+  - Line 1119: Explicit read-only HF cache import
+  - Line 1206: Model pull v1 acceptance and execution cutover
+  - Line 1218: Large HF safetensors examples (source discovery/metadata only)
+  - Line 1230: The executable must be built with the optional acquisition feature.
+  - Line 1231: The exact safetensors index is an explicit source member, never a guessed
+  - Line 1232: selection among arbitrary weight families. 128GiB is a cooperative cache
+  - Line 1233: reservation policy, not proof of free space or a recommended RAM size.
+  - Line 1242: Inspect the output pinned commit and exact selected bytes FIRST.
+  - Line 1243: Only then explicitly omit --dry-run to authorize a real transfer.
+  - Line 1244: Native HF Xet APPLY can reconstruct an Xet-backed index under the
+  - Line 1245: same admitted owner; native dry-run refuses that case without CAS grants.
+  - Line 1246: For GGUF, inspect candidates and explicitly choose one exact --quant tag
+  - Line 1247: or an exact --file (no implicit default, ranking, or fallback).
+  - Line 1275: October 18, 2026 — verified public metadata-only source plans
+  - Line 1309: Cache-to-model preparation
+  - Line 1354: References
+  - Line 1432: Source: .agents/plans/model-acquisition/TODO.md
+  - Line 1438: TODO — model acquisition
+  - Line 1447: Committed
+  - Line 1455: 837e77f — legacy offline acquisition eligibility
+  - Line 1464: 52e42fc — native HF Xet reconstruction
+  - Line 1477: 46cf5a5 — strong conditional cloud observations
+  - Line 1488: 4db5efb — ModelScope selected exact sizing
+  - Line 1498: f22f759 — metadata-only pinned file candidates
+  - Line 1507: f197c9c — explicit GGUF filename quant families
+  - Line 1518: 1a22597 — completed comprehensive handoff and source preservation
+  - Line 1524: 04363c3 — bounded C3 Unicode filters and exclusion closure
+  - Line 1565: 8195c18 — verified required native Xet indexes
+  - Line 1619: f56b574 — trusted AWS-standard FULL\_OBJECT SHA256
+  - Line 1654: d5aa5cb — original-model v1 source closure and execution cutover
+  - Line 1686: Uncommitted
+  - Line 1751: Tests and verification
+  - Line 1768: Deferred
+  - Line 1775: Source: .agents/plans/model-acquisition/archive/through-a774ded/TODO.md
+  - Line 1781: TODO — completed model acquisition phases through a774ded
+  - Line 1788: Committed
+  - Line 1790: e0073a5 — pinned HTTPS objects
+  - Line 1805: e82d76b — native OCI raw GGUF layers
+  - Line 1816: f74a525 — native GCS generation/metageneration objects
+  - Line 1829: 833d68f — versioned S3 and SigV4
+  - Line 1843: e622222 — pinned Azure BlockBlob revisions
+  - Line 1856: 87f6454 — native ModelScope explicit commits
+  - Line 1867: 223ca79 — unwired Xet hash and chunk primitives
+  - Line 1878: a774ded — explicit cloud content contracts
+  - Line 1889: Tests and verification
+  - Line 1904: Source: .agents/plans/model-acquisition/archive/through-fce1353/TODO.md
+  - Line 1910: TODO — completed model acquisition through fce1353
+  - Line 1916: Committed
+  - Line 1918: 3787519
+  - Line 1928: fa6affa — bounded A2 acquisition
+  - Line 1945: 3c97c52 — A2 durable resume and pull UX
+  - Line 1962: baa9d88 — pinned components and A3 cached CPU preparation
+  - Line 1983: 20f449d — exact size recovery and cancellable cache verification
+  - Line 2005: f44264c — protected snapshot removal
+  - Line 2022: ea700f6 — capped auxiliary streaming
+  - Line 2041: 03b6948 — pinned multi-asset release components
+  - Line 2056: e44f4ee — explicit read-only HF cache import
+  - Line 2073: fce1353 — qualified cross-filesystem HF import
+  - Line 2089: Tests and verification
+  - Line 2131: Source: .agents/plans/model-execution/README.md
+  - Line 2140: Zerogravity: source-real model execution (CPU-first)
+  - Line 2142: Active order
+  - Line 2160: LS-B01–B05: verified owned sharded-source transaction
+  - Line 2208: Remaining execution gates
+  - Line 2232: ME-P0 continuation — original Qwen3.8 text binding and CPU value path
+  - Line 2270: ME-P0 analytic original Qwen3.8 one-layer proposals (CPU)
+  - Line 2348: ME-P0 — original Qwen analytical layers and the existing TaskCoordinator
+  - Line 2393: ME-P0 — one full original Qwen FP32 diagnostic token, shared schedule
+  - Line 2445: Remaining production ownership gates
+  - Line 2457: ME-P0 — original BF16 source-dtype diagnostic (not trained parity)
+  - Line 2516: ME-P0 — pinned original-Qwen numerical reference observations
+  - Line 2603: Source: .agents/plans/model-execution/TODO.md
+  - Line 2609: Model execution
+  - Line 2617: Uncommitted
+  - Line 2793: Committed
+  - Line 2795: fff1842 — trained BF16 operator qualification
+  - Line 2832: fe2a342 — original attention and reference operators
+  - Line 2886: bfe62df — leased source-window execution
+  - Line 2911: 5350a4d — typed ordinary math and source windows
+  - Line 2946: c5eb1f8 — closed pinned sigmoid and ordinary RMS
+  - Line 2972: 2a32aff — typed source composition and vector softplus
+  - Line 3006: cadcbd9 — closed pinned original-HF CPU operators
+  - Line 3040: 9815504 — original HF roles and closed CPU projection/reducers
+  - Line 3061: f26232e — authentic tied original output heads
+  - Line 3072: 1c0bb41 — pinned numerical reference seam
+  - Line 3101: 6d74f76
+  - Line 3105: Source contracts — 023703f
+  - Line 3110: 93a5622 — original verified immutable source shard owner
+  - Line 3135: b796a2e — original Qwen text source geometry and CPU value binding
+  - Line 3166: b11e58c — original source-bound Qwen analytical one-layer proposals
+  - Line 3202: 6329cff — source-bound Qwen one-layer TaskCoordinator
+  - Line 3231: e43ba4c — original Qwen full-model FP32 analytical forward
+  - Line 3260: aaf9ba6 — original Qwen BF16 source dtype diagnostics
+  - Line 3294: Deferred — after Qwen/Gemma and Flash execution
+  - Line 3307: Source: .agents/plans/multimodal/TODO.md
+  - Line 3313: Multimodal
+  - Line 3322: Uncommitted
+  - Line 3360: Committed
+  - Line 3362: 6d74f76
+  - Line 3366: Tests and verification
+  - Line 3389: Source: .agents/plans/numerics-and-context/CORRECTNESS\_FIRST\_VLLM\_PLAN\_2026-10-20.md
+  - Line 3395: Correctness first, then measured vLLM performance
+  - Line 3404: 1. Decision and scope
+  - Line 3426: 2. What the evidence establishes
+  - Line 3445: 3. Divergence inventory and fixes
+  - Line 3473: 4. Numerical contracts
+  - Line 3475: 4.1 Keep four targets explicit
+  - Line 3489: 4.2 Mathematical GDN definition
+  - Line 3525: 4.3 Exactness rules
+  - Line 3548: 4.4 Initial prefill versus decode
+  - Line 3618: 4.5 Small-model default bulk arithmetic
+  - Line 3631: 5. Porting strategy and implementation boundaries
+  - Line 3655: 6. Fast implementation sequence, when resumed
+  - Line 3657: C0 — Lock the comparison, not another framework
+  - Line 3683: C1 — Close the earliest small-model default discrepancies
+  - Line 3697: C2 — Complete one vLLM-profile GDN layer
+  - Line 3715: C3 — Complete .8B, then 2B in the same plan
+  - Line 3730: C4 — Complete original27B without relaxing resource guards
+  - Line 3753: C5 — Accept and checkpoint
+  - Line 3767: 7. Numerical parity matrix and acceptance
+  - Line 3826: 8. Why performance is currently far behind
+  - Line 3862: 9. Performance sequence after correctness
+  - Line 3906: 10. Two benchmark deliverables
+  - Line 3908: A. Model execution benchmark
+  - Line 3927: B. OpenAI serving benchmark
+  - Line 3979: 11. Stop conditions and immediate next work
+  - Line 4001: 12. References and evidence boundaries
+  - Line 4036: Source: .agents/plans/numerics-and-context/TODO.md
+  - Line 4042: Numerics and context
+  - Line 4054: Uncommitted
+  - Line 4083: Committed
+  - Line 4085: fff1842 — complete two-model reference control
+  - Line 4101: 9a19901 — original reference-control schedule
+  - Line 4113: bfe62df — independent source and reference-path qualification
+  - Line 4174: 6d74f76
+  - Line 4179: Accepted investigation findings — 6d74f76
+  - Line 4187: Source: .agents/plans/pipeline-composition/README.md
+  - Line 4196: Zerogravity — one fabric, single-model and multi-model pipelines
+  - Line 4206: Product contract
+  - Line 4244: Intended engine flow
+  - Line 4269: Model priorities (binding order)
+  - Line 4310: Pull sequence and quant policy
+  - Line 4356: Pipeline API and typed composition
+  - Line 4381: Only checks the pure graph; no file/source/model or socket is opened.
+  - Line 4384: Same structural graph can be written using repeated flags:
+  - Line 4390: Explicit refusal until real source/backend/stream/transport gates pass.
+  - Line 4409: Typed extension registry and future media operator contracts
+  - Line 4451: Required pipeline examples
+  - Line 4477: Optional previous-chat context for ASR, diarization and translation
+  - Line 4489: Fragment of one entry under pipeline:; see full example for models/stages.
+  - Line 4529: Generic ordered context filtering and decision models
+  - Line 4560: Fragment: config models include assistant and gate; see full example.
+  - Line 4613: In-memory source owner and snapshot selection (implemented in core)
+  - Line 4747: Realtime, backpressure and failure atomicity
+  - Line 4770: API/router lifecycle
+  - Line 4785: Optimization sequence, success gates and non-goals
+  - Line 4823: Actual public metadata-only acquisition evidence — 18 Oct 2026
+  - Line 4871: References
+  - Line 4890: Source: .agents/plans/pipeline-composition/TODO.md
+  - Line 4896: TODO — Single-process model and pipeline composition
+  - Line 4905: Uncommitted
+  - Line 4944: Committed
+  - Line 4951: 4bf624e — accepted foundation
+  - Line 5009: ac44e83 — accepted foundation
+  - Line 5035: f28a62c — accepted foundation
+  - Line 5053: Tests and verification
+  - Line 5123: Deferred
+  - Line 5131: Runtime work deferred until after core model priorities
+  - Line 5198: Source: .agents/plans/platform-and-release/TODO.md
+  - Line 5204: Platform and release
+  - Line 5213: Uncommitted
+  - Line 5228: Committed
+  - Line 5230: 1af2ac4
+  - Line 5234: 6d74f76
+  - Line 5239: Tests and verification
+  - Line 5246: Source: .agents/plans/qwen-parity/API\_ROUTE\_FRONTIER.csv
+  - Line 5326: Source: .agents/plans/qwen-parity/CLI\_OPTION\_FRONTIER.csv
+
+### [.agents/docs/handoff-2026-10-20/CANONICAL_SOURCEBOOK_06.md](../handoff-2026-10-20/CANONICAL_SOURCEBOOK_06.md)
+
+- Bytes: 510508; mode: 0o644; SHA256: 9ca614a6d29e7586e31b4e78700dbb0748afb78f00ac3b6893d5dcec95b4be82.
+- Full heading route:
+  - Line 1: Canonical Sourcebook — volume 6
+  - Line 7: Source: .agents/plans/serving-and-speculation/FUSED\_GPU\_BATCHING.md
+  - Line 17: P12 — native fused GPU batch acceptance
+  - Line 31: Ownership boundaries
+  - Line 48: P12-B0 — physically qualified source F32 multi-row projection
+  - Line 68: P12-B1 — physical CUDA batch operator acceptance
+  - Line 108: P12-A1 — physically Ready resident multi-root publication
+  - Line 154: P12-B2 — physically accepted quantized B\>1 GPU projection
+  - Line 194: P12-B3 — batch-native resident ForwardPlan
+  - Line 291: P12-B4 — native greedy packets and device feedback
+  - Line 404: P12-B5 — native CUDA B2 HTTP waves
+  - Line 505: Local release tool smoke; no matched performance acceptance
+  - Line 526: P12-A — batch-native parameter, source and state bindings
+  - Line 542: P12-B — native kernels (not a host loop)
+  - Line 559: P12-C — true continuous batching and paged hybrid KV/GDN
+  - Line 571: P22 — vLLM-equivalent validation
+  - Line 591: Native CUDA B4/B8 HTTP acceptance — P12-B6
+  - Line 645: Unequal-frontier native CUDA decode — P12-B7
+  - Line 714: P22 owned process isolation
+  - Line 728: P12 block-local source activation preparation
+  - Line 803: Completed bounded activation-preparation comparison
+  - Line 838: Native teacher-prefix serving — P12-B8
+  - Line 883: Bounded native-prefix warm observations
+  - Line 934: Private CUDA graph and ordered RoPE qualification
+  - Line 975: Source: .agents/plans/serving-and-speculation/README.md
+  - Line 985: Native serving and request scheduling
+  - Line 1006: Implemented: first OpenAI HTTP/CPU router slice
+  - Line 1015: Run
+  - Line 1042: Not implemented / next
+  - Line 1050: Resident GPU OpenAI serving — accepted CUDA slice
+  - Line 1077: Run qualified NVIDIA CUDA HTTP source
+  - Line 1080: Supply already-installed CUDA runtime and CCCL include directories
+  - Line 1081: as CUDART\_INCLUDE and CCCL\_INCLUDE; no packages are downloaded.
+  - Line 1086: Put the locally installed NVIDIA driver and NVRTC library directories
+  - Line 1087: on LD\_LIBRARY\_PATH, then launch:
+  - Line 1099: Initial interleaved evidence: RTX 3060 Laptop / CUDA, 19 Oct 2026
+  - Line 1123: Native CUDA B2 HTTP acceptance — P12-B5
+  - Line 1157: Pending: P12/P16/P22
+  - Line 1177: Native CUDA B4/B8 — P12-B6
+  - Line 1190: Unequal decode frontiers and token observations — P12-B7
+  - Line 1207: Serialized benchmark provider ownership
+  - Line 1225: Source: .agents/plans/serving-and-speculation/TODO.md
+  - Line 1231: Serving and speculation
+  - Line 1239: Uncommitted
+  - Line 1375: Committed
+  - Line 1377: fb68d8f — exact state transport and certification
+  - Line 1398: fff1842 — stock baseline prerequisites
+  - Line 1411: 9a19901 — batched graph and baseline qualification
+  - Line 1446: f788929 — native teacher-prefix serving
+  - Line 1474: d0a6084 — source activation preparation and physical acceptance
+  - Line 1502: 1b599df — serialized owned benchmark provider lifecycle
+  - Line 1533: dbb5f4f — unequal native decode frontiers and bounded token observations
+  - Line 1588: d9fa829 — native CUDA B4/B8 HTTP bands
+  - Line 1617: 6bfcdbe — bounded offered-work benchmark accounting
+  - Line 1635: 2677d8b — native CUDA B2 HTTP waves
+  - Line 1662: 54fd580 — native CUDA greedy/device feedback
+  - Line 1693: 35ebc5b — native full-model CUDA ForwardPlan
+  - Line 1722: 3ec431a — native quantized batch projections
+  - Line 1740: 08be9c6 — resident cohort publication
+  - Line 1769: 9790fa2 — resident GPU OpenAI serving
+  - Line 1787: 35b9093 — initial OpenAI CPU router and verified SSD extents
+  - Line 1814: 6d74f76
+  - Line 1820: Source: .agents/research/EXTREME\_MODEL\_SPECIALIZATION\_INTEGRATION\_AND\_ACCEPTANCE\_2026-10-15.md
+  - Line 1826: Zerogravity — Extreme Model Specialization Integration Roadmap and Executable Acceptance Design
+  - Line 1836: 1. Success definition
+  - Line 1851: 2. Specification owners and minimal architecture
+  - Line 1864: 3. Phase dependency map — additive to original project
+  - Line 1866: ZG-P03 (quant formats and artifacts)
+  - Line 1875: ZG-P05/P07 (compiler and physical GPU)
+  - Line 1884: ZG-P10 (global physical admission, OS and state)
+  - Line 1893: ZG-P11–P14 (specialized model math and MoE)
+  - Line 1902: ZG-P15 (target-authoritative speculation)
+  - Line 1911: ZG-P16 (batching and multi-model QoS)
+  - Line 1919: ZG-P20 (bounded autotune / offline quant calibration)
+  - Line 1927: ZG-P22 (release quality, API and performance)
+  - Line 1935: 4. Acceptance register (50 planned tests, NOT implemented)
+  - Line 1945: 5. Experiment methodology and promotion policy
+  - Line 1962: Research cautions retained from the retired handoff
+  - Line 1972: 6. Small design decisions and open questions
+  - Line 1997: 7. References and implementation boundary
+  - Line 2005: Source: .agents/research/GEMMA4\_FAMILY\_CONTRACTS\_2026-10-16.md
+  - Line 2011: Gemma 4 family source contracts — 2026-10-16
+  - Line 2018: Authoritative sources
+  - Line 2032: Implemented API and invariants
+  - Line 2043: Remaining work and qualification limits
+  - Line 2053: Source: .agents/research/GPU\_TEXT\_FRONTEND\_AND\_DEVICE\_ORCHESTRATION\_ROADMAP\_2026-10-16.md
+  - Line 2059: GPU tokenization, execution control and text decoding roadmap
+  - Line 2070: Existing architecture and phase ownership
+  - Line 2090: Shared execution contract
+  - Line 2112: 1. Profile the complete request before selecting optimizations
+  - Line 2130: 2. Reuse prepared execution through captured command graphs
+  - Line 2152: 3. Move bounded generation and task scheduling onto the device
+  - Line 2178: 4. Add exact GPU tokenization as an optional placement
+  - Line 2207: 5. Add exact GPU detokenization and output processing
+  - Line 2232: 6. Joint placement and release acceptance
+  - Line 2257: Research evidence and its limits
+  - Line 2289: Implementation integration
+  - Line 2299: Source: .agents/research/HETEROGENEOUS\_PREFILL\_AND\_REPLAY\_ACCEPTANCE\_2026-10-15.md
+  - Line 2305: Zerogravity — Heterogeneous prefill and retained replay acceptance
+  - Line 2311: 1. Design objective and evidence boundary
+  - Line 2330: 2. Capability ownership and qualification
+  - Line 2363: 3. Required design contracts
+  - Line 2388: 4. Acceptance matrix — ALL PLANNED / NOT RUN
+  - Line 2436: 5. Integration order and comparison policy
+  - Line 2462: 6. Review invariants and document validation
+  - Line 2484: Source: .agents/research/INITIAL\_HARDWARE\_TARGETS\_AND\_OPTIMIZATION\_2026-10-16.md
+  - Line 2490: Initial hardware targets and capability optimization
+  - Line 2499: Target fleet inventory
+  - Line 2534: Existing CPU execution and concrete opportunities
+  - Line 2564: Ordered implementation and acceptance
+  - Line 2628: Source: .agents/research/MODEL\_PULL\_XDG\_CACHE\_AND\_SOURCE\_PARITY\_2026-10-16.md
+  - Line 2634: Model pull, XDG artifact cache and pinned acquisition parity
+  - Line 2640: 1. Primary-source pins and interpretation
+  - Line 2663: 2. Acquisition inventory and explicit parity disposition
+  - Line 2689: 3. Ownership and public command contract
+  - Line 2699: 4. Cache, validation and transaction design
+  - Line 2718: 5. Implementation sequence and finite completion gates
+  - Line 2753: Source: .agents/research/MULTIMODAL\_MODEL\_FAMILY\_SOURCE\_ATLAS\_AND\_IMPLEMENTATION\_2026-10-14.md
+  - Line 2759: Zerogravity — Model-family research atlas and multimodal implementation roadmap
+  - Line 2765: Research method and source hierarchy
+  - Line 2769: Image generation / editing
+  - Line 2780: Speech-to-text, streaming recognition and speech understanding
+  - Line 2793: TTS, codec-token generation, real-time speech and voice cloning
+  - Line 2806: Video and synchronized audiovisual generation
+  - Line 2823: Typed decision engines and model selection
+  - Line 2833: Ternary-compressed and source-native hybrid text models
+  - Line 2850: Cross-model composition examples
+  - Line 2852: Live voice assistant
+  - Line 2860: Image studio
+  - Line 2864: Video with soundtrack
+  - Line 2868: Decision-heavy application
+  - Line 2872: Proposed support tiers, not invented implementation
+  - Line 2887: Implementation roadmap — staged extensions, not a new engine
+  - Line 2903: Architectural acceptance decision
+  - Line 2918: Source: .agents/research/MULTIMODAL\_V5\_1\_ACCEPTANCE\_AND\_ROADMAP\_2026-10-15.md
+  - Line 2924: Zerogravity Multimodal v5.1 — Complete Implementation Roadmap, Dependency Gates and Acceptance Matrix
+  - Line 2938: 0. Universal execution truth and success definition
+  - Line 2954: 1. Scope and source authority
+  - Line 2970: 2. Design readiness gates MM-D0..MM-D5
+  - Line 2972: MM-D0 — source and design consistency
+  - Line 2982: MM-D1 — typed media and clocks (later CODE only if authorized)
+  - Line 2993: MM-D2 — verified ModelAssembly and source codec registry
+  - Line 3006: MM-D3 — task algorithms and transactional multi-domain root
+  - Line 3016: MM-D4 — RealtimeSession and MediaEvent/PresentationLedger
+  - Line 3025: MM-D5 — canonical serving and protocol conformance
+  - Line 3035: 3. Source-real implementation slices MM-I0..MM-I7 (proposed, sequencing requires approval)
+  - Line 3037: MM-I0 — small non-token model and codec mock under same core
+  - Line 3040: MM-I1 — original ASR checkpoint, CPU first
+  - Line 3043: MM-I2 — Kokoro non-AR TTS, CPU first
+  - Line 3046: MM-I3 — dual-AR/Qwen TTS depth AR and full-duplex mock
+  - Line 3052: MM-I4 — image flow generator and editing
+  - Line 3055: MM-I5 — video temporal / Wan expert switching
+  - Line 3058: MM-I6 — joint audio/video and frontier job workflows
+  - Line 3061: MM-I7 — Ternary compression, specialist text, typed decisions at scale
+  - Line 3069: 4. Complete MM-01..MM-12 inherited acceptance matrix
+  - Line 3088: 5. MM-13..MM-24 new realtime/API acceptance matrix (all not implemented)
+  - Line 3107: 6. Model-specific detailed acceptance suites
+  - Line 3119: 7. Source binding and review obligations
+  - Line 3147: 8. Perf/maintainability gates
+  - Line 3159: 9. Dependencies and stop rules
+  - Line 3176: 10. Implementation ownership and pending policy
+  - Line 3192: 11. Technical references
+  - Line 3204: Source: .agents/research/MULTIMODAL\_V5\_1\_DECISIONS\_AND\_PROVENANCE\_2026-10-15.md
+  - Line 3210: Zerogravity v5.1 Multimodal Decisions, User Requirements, Design Proposals and Open Questions
+  - Line 3219: 0. How to interpret the decision ledger
+  - Line 3230: 1. New explicit user instructions U-040 and U-041
+  - Line 3232: U-040 | USER | 15 October 2026 — universal audio/image/video/decision/ternary/realtime design research, strictly no code
+  - Line 3249: U-041 | USER | 15 October 2026 — preserve full comprehensive architecture and all research as on-repo implementation/handoff artifacts
+  - Line 3266: 2. Prior user decisions explicitly retained (not newly re-approved)
+  - Line 3280: 3. Research-derived design proposals DMM-001..DMM-032
+  - Line 3319: 4. Open design decisions OMM-001..OMM-022
+  - Line 3348: 5. Inherited exact model-priority and project-path requirements
+  - Line 3354: 6. Research and source provenance
+  - Line 3367: 7. Changes explicitly forbidden during this documentation task
+  - Line 3380: Source: .agents/research/NATIVE\_FP32\_FMA\_QUALIFICATION\_PROPOSAL\_2026-10-16.md
+  - Line 3386: Proposed native FP32 GEMV FMA qualification
+  - Line 3390: Bounded change and current source
+  - Line 3398: Identity and physical ownership
+  - Line 3404: Numerical acceptance
+  - Line 3421: Performance evidence and closure
+  - Line 3429: Source: .agents/research/PULL\_A1\_LOCAL\_XDG\_CACHE\_2026-10-16.md
+  - Line 3435: A1 local cache — protocol and API reference
+  - Line 3441: Protocol decisions from source/design review
+  - Line 3476: Public API and bounds
+  - Line 3498: Important implementation limits
+  - Line 3521: Source: .agents/research/QWEN\_BASICS\_PARITY\_AND\_ADVANCED\_DECODING\_ROADMAP\_2026-10-16.md
+  - Line 3527: Qwen basics, complete reference parity and advanced decoding
+  - Line 3537: Ordered implementation and honest completion
+  - Line 3562: Pinned source baseline and coverage denominator
+  - Line 3608: Required capability inventory
+  - Line 3641: Basics gates
+  - Line 3665: Speculative and advanced execution contracts
+  - Line 3720: Parity and performance closure
+  - Line 3741: Source: .agents/research/README\_PRE\_PRODUCT\_REWRITE\_SNAPSHOT\_2026-10-15.md
+  - Line 3747: Development, builds and releases
+  - Line 3760: Source: .agents/research/SPECIALIZATION\_SOURCE\_ATLAS\_2026-10-15.md
+  - Line 3766: Zerogravity Specialization Prior Art — Specialist Source Atlas
+  - Line 3770: 1. Original public sources
+  - Line 3793: 2. Published benchmark claims, source-specific
+  - Line 3807: 3. The strongest engineering findings
+  - Line 3809: Packed GPU kernels
+  - Line 3814: MoE and speculative batching
+  - Line 3820: Quant and calibration
+  - Line 3824: Exact MiMo and source semantics
+  - Line 3830: Unified memory and first-image
+  - Line 3834: 4. Architecture/source mapping
+  - Line 3848: 5. Explicitly NOT adopted
+  - Line 3859: 6. Evidence limits and next audit
+  - Line 3867: Source: .agents/research/SSD\_STREAMING\_IMPLEMENTATION\_ROADMAP\_AND\_ACCEPTANCE\_2026-10-15.md
+  - Line 3873: Zerogravity — First-Class SSD Streaming Implementation Roadmap and Acceptance Tests
+  - Line 3881: Reading the design without the retired handoff
+  - Line 3889: 0. Implementation principle and current status
+  - Line 3895: 1. Minimal changes to the existing engine — no new layers
+  - Line 3906: 2. Implementation slices and gate definitions
+  - Line 3908: SSD-P0 — source-only contracts and a fake tiered executor
+  - Line 3913: SSD-P1 — immutable file-backed tensor and bounded IO
+  - Line 3918: SSD-P2 — resident GPU plus source-preserving demand materialization
+  - Line 3923: SSD-P3 — mixed-quant MoE streaming and nonrouted source residency
+  - Line 3928: SSD-P4 — disk-only indexed tables and frozen state
+  - Line 3933: SSD-P5 — adaptive placement, QoS and end-to-end integration
+  - Line 3938: 3. SSD-01..SSD-32 planned acceptance matrix
+  - Line 3977: 4. Required negative-fixture detail — DS4 #384 / #503
+  - Line 3979: Encoded GPU use-after-slot-reuse (SSD-14, SSD-15)
+  - Line 3986: Mixed-format thrash (SSD-21/22/24)
+  - Line 3992: 5. Admission/placement and high-performance UX
+  - Line 4005: 6. Benchmark and evidence reporting
+  - Line 4011: 7. Dependency and next engineering plan
+  - Line 4026: 8. User intent and design decisions
+  - Line 4044: 9. References and implementation boundary
+  - Line 4050: Source: .agents/research/STRIX\_HALO\_OPTIMIZATION\_DOSSIER.md
+  - Line 4056: AMD Strix Halo dossier — gfx1151 extreme inference targets
+  - Line 4066: 1. Why this APU is special
+  - Line 4072: 2. Models and primary cost sources
+  - Line 4074: Qwen3.8-Flash-Next
+  - Line 4089: GLM-5.3-Flash
+  - Line 4097: DeepSeek V4 Flash
+  - Line 4100: 3. Physical resource profiles (illustrative, must measure)
+  - Line 4111: 4. ROCm kernel feasibility tasks
+  - Line 4126: 5. Resident routing and streaming expert model
+  - Line 4144: 6. Unified-memory and OS safety
+  - Line 4150: 7. Large model residency and bandwidth reasoning
+  - Line 4156: 8. Different operating modes on gfx1151
+  - Line 4162: 9. Benchmark scenarios to qualify
+  - Line 4172: 10. Actual speed gap ownership
+  - Line 4184: 11. Implementation priority for this hardware
+  - Line 4188: 12. Uncertainties to maintain openly
+  - Line 4192: 2026-10-10 integrated v2 addendum — hardware optimization under unified compiler
+  - Line 4205: 2026-10-12 integration — XDNA2 NPU + Radeon iGPU on the same Strix Halo SoC
+  - Line 4217: Source: .agents/research/VLLM\_PARITY\_AND\_COMBINATORY\_SPECIALIZATION\_ACCEPTANCE\_2026-10-15.md
+  - Line 4223: Zerogravity — vLLM Parity and Combinatory Serving Acceptance Program
+  - Line 4229: 0. Status and boundaries
+  - Line 4235: 1. Development phases and dependency gates
+  - Line 4252: 2. Quality and benchmark protocol
+  - Line 4254: Benchmark populations
+  - Line 4266: Apples-to-apples source setup
+  - Line 4272: Goodput and service-level availability
+  - Line 4278: 3. Source-free and actual-model acceptance: SERVOPT-01..36
+  - Line 4321: 4. Additional protocol, memory and failure variants
+  - Line 4334: 5. vLLM competitive gate details
+  - Line 4336: Text
+  - Line 4343: Multimodal
+  - Line 4348: Statistical promotion
+  - Line 4355: 6. Responsibility, deliverables and change-radius constraints
+  - Line 4370: 7. Research sources and handoff
+  - Line 4380: Source: .agents/research/multimodal/ASR\_AND\_STREAMING\_SPEECH\_UNDERSTANDING\_2026-10-15.md
+  - Line 4386: Research Track B — ASR, Speech Translation and Streaming Speech Understanding
+  - Line 4392: 1. Verdict and central lesson
+  - Line 4396: 2. Authoritative source matrix
+  - Line 4411: 3. Whisper reference execution trace
+  - Line 4425: 4. CTC source-specific execution trace
+  - Line 4436: 5. RNNT and TDT source-specific trace
+  - Line 4448: 6. Canary ASR + AST / language conditioning
+  - Line 4455: 7. VibeVoice and diarization
+  - Line 4463: 8. Qwen-Omni audio input and live perception
+  - Line 4467: 9. Reusable ASR contract (illustrative)
+  - Line 4494: 10. State, scheduling and memory
+  - Line 4507: 11. Independent verification and negative fixtures
+  - Line 4524: 12. Implementation sequencing and priorities
+  - Line 4534: 13. Primary sources and provenance
+  - Line 4549: Source: .agents/research/multimodal/CROSS\_STREAM\_ARCHITECTURE\_RECONCILIATION\_2026-10-15.md
+  - Line 4555: Research Track H — Cross-Stream Adversarial Reconciliation and Minimal Architecture Delta
+  - Line 4560: 1. Scope and governance
+  - Line 4566: 2. Overarching verdict
+  - Line 4570: 3. Cross-stream conflict and disposition matrix
+  - Line 4595: 4. Minimal delta against v4.3 + v5, not a redesign
+  - Line 4624: 5. Source-to-execution map
+  - Line 4646: 6. Hard invariants to keep
+  - Line 4648: Single authority
+  - Line 4651: Physical buffer safety
+  - Line 4654: Semantics
+  - Line 4657: Time
+  - Line 4660: API truth
+  - Line 4663: Security
+  - Line 4666: 7. Additional design recommendations still OPEN, not silently approved
+  - Line 4675: 8. Adversarial review questions to require on every implementation PR
+  - Line 4696: 9. Proposed acceptance result classification
+  - Line 4700: 10. Reconciliation deliverables
+  - Line 4715: Source: .agents/research/multimodal/DECISION\_MODELS\_TERNARY\_AND\_SPECIALIST\_TEXT\_2026-10-15.md
+  - Line 4721: Research Track F — Typed Decision Models, Ternary Formats and Specialist Text Architectures
+  - Line 4727: 1. Why decision heads need a native task kind
+  - Line 4733: 2. Source variants and execution family
+  - Line 4747: 3. DecisionSchema model
+  - Line 4783: 4. Encoder decision source trace
+  - Line 4795: 5. Joint-schema decision head trace
+  - Line 4808: 6. Hosted typed decisions
+  - Line 4820: 7. Ternary low-bit source architecture: why simple Qwen format recognition is dangerous
+  - Line 4832: 8. Ternary TensorEncoding design
+  - Line 4860: 9. Extensibility to other specialist text models
+  - Line 4873: 10. Negative test matrix
+  - Line 4890: 11. Qualification and implementation order
+  - Line 4901: 12. Original sources reviewed
+  - Line 4916: Source: .agents/research/multimodal/IMAGE\_GENERATION\_EDITING\_AND\_FLOW\_MODELS\_2026-10-15.md
+  - Line 4922: Research Track D — Image Generation, Editing, Flow/Diffusion and Autoregressive Image Models
+  - Line 4928: 1. Verdict
+  - Line 4934: 2. Source model matrix and component inventory
+  - Line 4948: 3. Verified image component assembly contract
+  - Line 4969: 4. Latent tensor and image value semantics
+  - Line 4989: 5. Flow and denoising semantics must be exact
+  - Line 5005: 6. Qwen-Image source-specific trace
+  - Line 5019: 7. Rectified-flow image source-specific trace
+  - Line 5035: 8. Multimodal DiT latent-diffusion source-specific trace
+  - Line 5046: 9. AR/hybrid image model ambiguity protocol
+  - Line 5060: 10. Image editing and composability
+  - Line 5071: 11. Physical memory and performance strategy
+  - Line 5084: 12. Required image acceptance
+  - Line 5099: 13. Recommended implementation order
+  - Line 5110: 14. Primary sources checked
+  - Line 5123: Source: .agents/research/multimodal/SERVING\_API\_AND\_REALTIME\_PRIOR\_ART\_2026-10-15.md
+  - Line 5129: Research Track G — Real-Time and Multimodal Serving / API Prior Art and Design Reconciliation
+  - Line 5135: 1. Executive verdict
+  - Line 5141: 2. OpenAI public realtime model/protocol reality
+  - Line 5159: 3. Hosted live multimodal API reference
+  - Line 5178: 4. Native streaming audio prior art
+  - Line 5184: 5. Hosted voice streaming
+  - Line 5190: 6. Hosted long-running media jobs
+  - Line 5201: 7. vLLM and SGLang useful patterns and caveats
+  - Line 5217: 8. Canonical API compatibility and behavior matrix
+  - Line 5234: 9. Transport-specific lifecycle templates
+  - Line 5236: HTTP file ASR
+  - Line 5239: HTTP SSE text
+  - Line 5242: WebSocket live voice
+  - Line 5245: WebRTC live voice/video
+  - Line 5248: Async hosted video
+  - Line 5251: 10. Security, rate, billing and privacy research learnings
+  - Line 5263: 11. Minimality and performance learnings
+  - Line 5276: 12. Adversarial serving acceptance
+  - Line 5291: 13. Implementation recommendation and scope
+  - Line 5304: 14. External sources / dates
+  - Line 5324: Source: .agents/research/multimodal/TTS\_VOICE\_CODECS\_AND\_FULL\_DUPLEX\_2026-10-15.md
+  - Line 5330: Research Track C — Text-to-Speech, Neural Audio Codecs, Voice and Full-Duplex Conversation
+  - Line 5334: 1. Verdict
+  - Line 5344: 2. Primary source and method matrix
+  - Line 5359: 3. Audio state and clocks: minimum trusted schema
+  - Line 5393: 4. Kokoro: non-token-AR TTS execution trace
+  - Line 5406: 5. Dual-AR codebook generation trace
+  - Line 5419: 6. Qwen3-TTS: variant/streaming cautions
+  - Line 5429: 7. VibeVoice long-form and realtime
+  - Line 5438: 8. Native full duplex with a neural codec
+  - Line 5454: 9. Qwen3-Omni Thinker/Talker
+  - Line 5465: 10. Hosted voice providers
+  - Line 5477: 11. Serving contracts / output finality
+  - Line 5485: 12. Latency, quality and risk
+  - Line 5497: 13. Required adversarial acceptance fixtures
+  - Line 5512: 14. Incremental implementation plan
+  - Line 5523: 15. Primary sources checked
+  - Line 5539: Source: .agents/research/multimodal/VIDEO\_TEMPORAL\_MODELS\_AND\_SYNCHRONIZED\_AV\_2026-10-15.md
+  - Line 5545: Research Track E — Video, Temporal Diffusion, Synchronized Audio-Video and Frontier Providers
+  - Line 5551: 1. Verdict
+  - Line 5563: 2. Source-backed family matrix
+  - Line 5580: 3. Video value and clock contract
+  - Line 5605: 4. Source-valid video-generation execution trace
+  - Line 5618: 5. Wan 2.1 specifics
+  - Line 5626: 6. Wan 2.2 denoising-phase MoE
+  - Line 5641: 7. Dual-stream video DiT original and 1.5
+  - Line 5651: 8. Asymmetric-attention DiT and AsymmVAE
+  - Line 5661: 9. Coupled joint audio/video, exact synchronized group
+  - Line 5684: 10. Frontier proprietary video services
+  - Line 5695: 11. Physical memory and QoS
+  - Line 5710: 12. Test matrix for independent agent implementation
+  - Line 5728: 13. Implementation order, not a changed user model priority
+  - Line 5739: 14. Primary sources reviewed 15 October 2026
+  - Line 5757: Source: .agents/prior-art/ACCELERATOR\_PRIOR\_ART\_AND\_PLATFORM\_RESEARCH\_2026-10-12.md
+  - Line 5763: Accelerator execution prior art — Blackwell, TPU, wafer-scale, static dataflow and specialized runtimes
+  - Line 5771: 1. NVIDIA Blackwell is multiple hardware \*systems\*, not one GPU profile
+  - Line 5773: DGX Spark / GB10 (local ARM + coherent low-power Blackwell)
+  - Line 5781: Blackwell RTX/PRO discrete vs B200/B300 and GB200/GB300 rack domains
+  - Line 5789: 2. Google TPU v5e/v6e/v7x — compiled graph + fabric, not ordinary CUDA commands
+  - Line 5798: 3. Cerebras WSE3 / CS3 — wafer-scale static dataflow and streamed weight model
+  - Line 5808: 4. Cerberus — a distinct parallel-decoding algorithm, not wafer-scale hardware
+  - Line 5813: 5. AWS Trainium/Inferentia — specialized AOT accelerator compiler and runtime
+  - Line 5821: 6. Deterministic dataflow, SRAM processors and hybrid GPU+LPU
+  - Line 5829: 7. Other hardware families informing provider constraints
+  - Line 5843: 8. Why this changes the design beyond v4
+  - Line 5856: 9. Status and scope discipline
+
+### [.agents/docs/handoff-2026-10-20/CANONICAL_SOURCEBOOK_07.md](../handoff-2026-10-20/CANONICAL_SOURCEBOOK_07.md)
+
+- Bytes: 404214; mode: 0o644; SHA256: 95678ea5aaa1af5c809639679f96ecaddd58cf6f9419b07240c497b31da3231a.
+- Full heading route:
+  - Line 1: Canonical Sourcebook — volume 7
+  - Line 7: Source: .agents/prior-art/ARCHITECTURE\_RECONCILIATION\_AND\_AUTHORITY.md
+  - Line 13: zerogravity — Reconciled architecture and authority matrix
+  - Line 22: 0. Reconciliation charter
+  - Line 28: 1. Six ownership planes (logical, NOT six server processes)
+  - Line 39: 2. Canonical set of plans / names
+  - Line 45: Control-flow diagram
+  - Line 63: 3. Model and optimization ownership
+  - Line 69: 4. The general fallback: exact boundaries of the guarantee
+  - Line 75: 5. Scheduler + worker seam adopted from research
+  - Line 87: 6. Memory and caching ownership
+  - Line 105: 7. Kernel authoring policy and new CUDA-Rust evidence
+  - Line 123: 8. Portable first, specialized immediately when justified
+  - Line 132: 9. Tune kernel variants and joint online policy at different timescales
+  - Line 141: 10. Operational product capabilities absorbed
+  - Line 152: 11. Per-model/hardware specialization contract
+  - Line 164: 12. Evidence, correctness and feasibility gates
+  - Line 178: 13. Reconciliation ledger of historical research decisions D-01..D-20
+  - Line 205: 14. Defects or gaps found and disposition
+  - Line 219: 15. Open technical choices kept deliberately unfrozen
+  - Line 223: 16. Next-step success test for this design
+  - Line 229: 2026-10-12 addition — Gufo cooperative NPU prefill reconciled without new runtime fork
+  - Line 238: Multimodal scope review — v5 proposal (14 October 2026)
+  - Line 244: Source: .agents/prior-art/ARCHITECTURE\_V4\_CRITICAL\_REVIEW\_2026-10-12.md
+  - Line 250: zerogravity — v4 critical architectural review, challenges and resolution record
+  - Line 256: 1. Research methodology and genuinely material new evidence
+  - Line 268: 2. Severity-ranked findings: concrete faults in v3
+  - Line 299: 3. Primary adjudications — fewer concepts, not more mandatory infrastructure
+  - Line 317: 4. Performance budget and hot-path invariants
+  - Line 331: 5. Minimality budget / architectural complexity constraints
+  - Line 343: 6. New required proof/counterexample program
+  - Line 362: 7. Risks and unresolved policy, retained deliberately
+  - Line 373: 8. Retained migration rationale and current references
+  - Line 385: 9. Review verdict
+  - Line 395: Source: .agents/prior-art/COMPARATIVE\_COMPILER\_AND\_RUNTIME\_RESEARCH\_2026-10-10.md
+  - Line 401: zerogravity — Comprehensive cross-stack research and design selection
+  - Line 410: 1. Method and independent evidence classes
+  - Line 421: 2. Inference research: transferable strengths and deliberate limits
+  - Line 441: 3. Compiler research: new decisions not fully captured by either old architecture
+  - Line 443: 3.1 A stream/resource layer provides the missing separation
+  - Line 449: 3.2 Separating operator math from schedules; search must be selective
+  - Line 455: 3.3 MLIR's effect system validates explicit non-tensor state semantics
+  - Line 463: 3.4 Minimal-primitive rewriting illustrates both opportunity and risk
+  - Line 469: 3.5 A serving-aware autotuner is decisive
+  - Line 477: 4. 2026 Rust GPU toolchain landscape materially changes the old CubeCL-only premise
+  - Line 497: 5. Unified compiler plan: math, legality, resource schedule, concrete code
+  - Line 538: 6. First-class adaptability in \*every pipeline stage\*
+  - Line 564: 7. Memory and state are a compiled resource graph, not just caches
+  - Line 577: 8. Cache correctness beyond vLLM's current hybrid intersection limits
+  - Line 587: 9. Service and scheduling: concrete vLLM/Strata mechanisms under SIR contracts
+  - Line 599: 10. Data and format pipeline: research specificity, project semantic ownership
+  - Line 613: 11. Quantization, exactness and model performance are independent
+  - Line 626: 12. Performance search objectives and adaptation
+  - Line 650: 13. Targeted hardware and model priority
+  - Line 658: 14. Maintainability scorecard (candidate designs)
+  - Line 669: 15. Research-to-implementation proof program
+  - Line 684: 16. Distinct research sources and provenance
+  - Line 705: 2026-10-12 Gufo/XDNA2 follow-up
+  - Line 715: Source: .agents/prior-art/DISTRIBUTED\_PRIOR\_ART\_AND\_TUNNEL\_RESEARCH\_2026-10-12.md
+  - Line 721: Distributed execution, state disaggregation and tunnel transport: prior-art research
+  - Line 725: 1. New axes beyond model/tensor sharding
+  - Line 731: 2. Prefill/decode, KV transfer, cache-aware routing
+  - Line 741: 3. Attention/FFN disaggregation and remote KV execution
+  - Line 749: 4. Token-range KV sharding and long-context elastic attention
+  - Line 757: 5. LAN and consumer-machine distribution
+  - Line 765: 6. Transport and encrypted tunnels
+  - Line 774: 7. Safety, numerical, economic and product boundaries
+  - Line 780: 8. Conclusion
+  - Line 786: Source: .agents/prior-art/FINAL\_ARCHITECTURE\_REVIEW\_2026-10-12.md
+  - Line 792: Zerogravity — Final Architecture, Editorial and Agent-Handoff Review
+  - Line 800: 1. Final deliverables and ownership
+  - Line 819: 2. Cross-cutting technical findings and dispositions
+  - Line 840: 3. Editorial and citation quality review
+  - Line 850: 4. Open research and implementation risks that documentation cannot close
+  - Line 869: 5. Requirements and work preservation
+  - Line 878: 6. Verification ledger and final closure procedure
+  - Line 891: 7. Publication and engineering verdict
+  - Line 899: Source: .agents/prior-art/GUFO\_FORK\_AND\_XDNA2\_PREFILL\_SOURCE\_RESEARCH\_2026-10-12.md
+  - Line 905: Gufo XDNA2 cooperative-prefill fork and October 2026 Strix Halo report — primary-source research
+  - Line 914: 1. What the user's sources actually establish
+  - Line 936: 2. Architecture in actual fork code
+  - Line 938: 2.1 Hardware and programming interfaces
+  - Line 951: 2.2 One fixed NPU GEMM geometry (initial implementation, NOT fundamental model identity)
+  - Line 959: 2.3 Exactly which mathematical projections are split
+  - Line 969: 2.4 Asynchronous execution and memory sharing
+  - Line 982: 2.5 Runtime/safety limitations actually observed
+  - Line 990: 3. Relation to upstream gufo-org/gufo model pipelines
+  - Line 1004: 4. Observed strengths, weaknesses and potential zerogravity improvements
+  - Line 1018: 5. Required experiments before enabling any NPU offload
+  - Line 1031: 6. Source-by-source references and provenance
+  - Line 1063: Source: .agents/prior-art/MULTI\_MODEL\_ROUTER\_AND\_API\_PRIOR\_ART\_RESEARCH\_2026-10-12.md
+  - Line 1069: Multi-model local runtime, router, CLI and API prior-art research
+  - Line 1073: 1. User goal and immediately important prior art
+  - Line 1084: 1.1 Ollama CLI and lifecycle: simplicity baseline
+  - Line 1096: 1.2 Lightweight native runner/router prior art
+  - Line 1105: 2. OpenAI-compatible APIs must be pinned to an explicit tested subset
+  - Line 1115: 3. Multi-model lifecycle and routing architecture research
+  - Line 1128: 4. Security, model provenance and user experience
+  - Line 1138: 5. Source distinction from requested deliverable
+  - Line 1150: Source: .agents/prior-art/PRIOR\_ART\_LICENSE\_AND\_PROVENANCE\_POLICY.md
+  - Line 1156: Prior art, provenance and architecture neutrality
+  - Line 1170: 1. From-scratch architecture rule
+  - Line 1206: 2. Reuse and license review
+  - Line 1224: 3. Mechanism taxonomy: use these instead of project names in design
+  - Line 1250: 4. Prior-art and research preservation
+  - Line 1259: 5. Concrete developer checklist
+  - Line 1281: Source: .agents/prior-art/RESEARCH\_SOURCE\_ATLAS.md
+  - Line 1287: Source atlas — architectural research preserved for implementers
+  - Line 1294: A. Main engines — direct user selections
+  - Line 1296: vLLM — https://github.com/vllm-project/vllm
+  - Line 1299: SGLang — https://github.com/sgl-project/sglang
+  - Line 1302: llama.cpp / GGML — https://github.com/ggml-org/llama.cpp
+  - Line 1305: Specialized gfx1151 engine
+  - Line 1308: Maya — https://github.com/mw00/project-maya
+  - Line 1311: Project Strata — https://github.com/mach10x/strata
+  - Line 1314: Gufo — https://github.com/gufo-org/gufo
+  - Line 1317: DwarfStar (antirez/ds4) — https://github.com/antirez/ds4
+  - Line 1320: B. Complementary engines and tools
+  - Line 1322: A CPU/GPU heterogeneous engine
+  - Line 1325: A quant-aware inference project
+  - Line 1328: A kernel-dispatch library
+  - Line 1331: A vendor graph compiler
+  - Line 1334: Apple unified-memory frameworks
+  - Line 1337: An independent Rust serving project
+  - Line 1340: A Rust tensor library
+  - Line 1343: CubeCL — https://github.com/tracel-ai/cubecl
+  - Line 1346: C. Research interpretation constraints
+  - Line 1356: D. Minimum reproducibility manifest for future research additions
+  - Line 1370: 2026-10-10 integrated v2 addendum — additional first-party compiler and source programs
+  - Line 1386: 2026-10-12 integration — distinct upstream Gufo and XDNA2 fork
+  - Line 1394: 2026-10-12 addendum — heterogeneous accelerator execution families
+  - Line 1401: 2026-10-12 new distributed state/cache/tunnel research
+  - Line 1407: 2026-10-12 additional model-router/local CLI and API source research
+  - Line 1415: Source: .agents/prior-art/SSD\_STREAMING\_AND\_RELATED\_PRIOR\_ART\_2026-10-15.md
+  - Line 1421: SSD Streaming Research Dossier — DS4/DwarfStar and related offload prior art
+  - Line 1428: 1. Distinguish four source-observed techniques
+  - Line 1437: 2. Antirez DS4 / DwarfStar streaming
+  - Line 1456: 2.1 DS4 issue #384: encoded-but-not-executed GPU command uses evicted expert slab
+  - Line 1472: 2.2 DS4 issue #503: mixed-quant cache reset and prefill evicting decode
+  - Line 1484: 2.3 DS4 issue #629: optional pinned host-RAM second tier
+  - Line 1498: 2.4 DS4 disk KV session cache and direct-file lookups
+  - Line 1508: 3. File-backed disk-only lookup and optional dense reload, not a blanket SSD-expert engine
+  - Line 1522: 4. Prior offloading system: one system across GPU, RAM and disk, optimize task regime
+  - Line 1530: 5. Activation-aware expert caching and source tracing
+  - Line 1536: 6. Source comparison and exact gaps closed
+  - Line 1551: 7. Numerical source and performance honesty
+  - Line 1557: 8. Strictly not adopted
+  - Line 1567: 9. Upstream provenance and exact time
+  - Line 1575: Source: .agents/prior-art/VLLM\_CONCURRENCY\_PRIOR\_ART\_AND\_ARCH\_RECONCILIATION\_2026-10-15.md
+  - Line 1581: vLLM Concurrency Prior Art and Zerogravity Architecture Reconciliation
+  - Line 1585: 1. Verdict
+  - Line 1599: 2. vLLM V1 unified scheduling — real source contract
+  - Line 1615: 3. Three separate overload valves: current vLLM configuration
+  - Line 1630: 4. Hybrid KV and source-domain cache compatibility
+  - Line 1642: 5. Chunked prefill and real-time tail protection
+  - Line 1655: 6. Disaggregated prefill/decode
+  - Line 1670: 7. vLLM-Omni source capabilities and fair comparison
+  - Line 1688: 8. Metrics and honest goodput
+  - Line 1698: 9. Specific research and software risks
+  - Line 1709: 10. Phase owner map and evidence boundary
+  - Line 1719: Source: docs/DEVELOPMENT.md
+  - Line 1725: Development, builds and release definitions
+  - Line 1734: Local Rust development
+  - Line 1789: Nix development and native checks
+  - Line 1809: CPU cross-release definitions
+  - Line 1844: Release installers
+  - Line 1868: NixOS service definition
+  - Line 1888: Source: docs/ENGINEERING\_SPECIFICATION.md
+  - Line 1894: Zerogravity — Integrated Engineering Specification
+  - Line 1895: Executable contracts for a modular AI runtime
+  - Line 1904: Contents
+  - Line 1925: ES-00. Scope, authority and document discipline
+  - Line 1927: ES-00.1 Purpose
+  - Line 1943: ES-00.2 Release status and support ladder
+  - Line 1961: ES-00.3 In and out of the mandatory core
+  - Line 1967: ES-00.4 Public versus internal format stability
+  - Line 1973: ES-01. Minimal dependency boundaries and identity model
+  - Line 1975: ES-01.1 Logical composition and control flow (not literal crate dependencies)
+  - Line 2008: ES-01.2 Canonical identities — what changes when?
+  - Line 2027: ES-01.3 Configuration provenance
+  - Line 2035: ES-02. Trusted artifacts, registered mathematics and source quality
+  - Line 2037: ES-02.1 Trusted model source pipeline
+  - Line 2053: ES-02.2 Semantic operator contract
+  - Line 2067: ES-02.3 Numeric correctness levels
+  - Line 2078: ES-02.4 Versioned mutable model parameters (future)
+  - Line 2084: ES-03. Trusted TaskDrivers, typed outputs and application boundary
+  - Line 2086: ES-03.1 TaskDriver scope
+  - Line 2110: ES-03.2 Task families and frontiers
+  - Line 2125: ES-03.3 External actions and agent orchestration
+  - Line 2129: ES-03.4 Output validity
+  - Line 2135: ES-04. Compiler, closed regions and qualified providers
+  - Line 2137: ES-04.1 One semantic program, one compiled plan
+  - Line 2147: ES-04.2 ClosedSemanticRegion and provider choice
+  - Line 2179: ES-04.3 ShapeEnv and variant caching
+  - Line 2192: ES-04.4 Compiled device StepProgram
+  - Line 2198: ES-04.5 Resource/command dependencies (CIR)
+  - Line 2212: ES-04.6 Fallback and implementation invariants
+  - Line 2220: ES-04.7 Proposed multimodal extension: typed media clocks, component assemblies and non-token task semantics (v5 review)
+  - Line 2235: ES-05. Physical resources, worker protocol and device execution
+  - Line 2237: ES-05.1 Two levels of resource ownership
+  - Line 2255: ES-05.2 Device capability and safety record
+  - Line 2261: ES-05.3 WorkEnvelope and completion protocol
+  - Line 2292: ES-06. Exact logical state transactions and output publication
+  - Line 2294: ES-06.1 StateRoot semantics
+  - Line 2300: ES-06.2 Four-step all-domain transaction
+  - Line 2318: ES-06.3 Speculative and asynchronous hazards
+  - Line 2324: ES-06.4 Prefix sharing and state compatibility
+  - Line 2330: ES-06.5 Output transport is a different guarantee
+  - Line 2336: ES-06.6 State transaction test oracles
+  - Line 2351: ES-07. Model catalog, resident instances, router and live service
+  - Line 2353: ES-07.1 Four model-serving entities
+  - Line 2362: ES-07.2 Exact source route, then compatible replica
+  - Line 2368: ES-07.3 Model lifecycle and resource accountability
+  - Line 2382: ES-07.4 Router and TaskCoordinator do not duplicate scheduling
+  - Line 2386: ES-07.5 Hot alias reload and session consistency
+  - Line 2394: ES-08. Distributed placement and authenticated peer execution
+  - Line 2396: ES-08.1 Four orthogonal placements in one physical plan
+  - Line 2407: ES-08.2 Supported classes of placement
+  - Line 2424: ES-08.3 Exact token-range attention composition
+  - Line 2436: ES-08.4 Topology measurement and cost-aware solver
+  - Line 2444: ES-08.5 Peer protocol and tunnels
+  - Line 2452: ES-08.6 Remote state and failure fencing
+  - Line 2469: ES-09. User-facing CLI, SDK, HTTP and configuration
+  - Line 2471: ES-09.1 One engine behind every entry point
+  - Line 2479: ES-09.2 Scope of local profile and runtime settings
+  - Line 2491: ES-09.3 OpenAI-compatible API is a conformance matrix
+  - Line 2504: ES-09.4 Streaming and client SDK tests
+  - Line 2510: ES-09.5 Bind, privacy and remote service policy
+  - Line 2520: ES-10. Security, licensing, error taxonomy and observability
+  - Line 2522: ES-10.1 Security threat boundaries
+  - Line 2537: ES-10.2 Canonical failure categories
+  - Line 2553: ES-10.3 Observability without telemetry leakage
+  - Line 2559: ES-10.4 Operational safety versus impossible guarantees
+  - Line 2579: ES-11. Required invariants and reviewable implementation tests
+  - Line 2613: ES-11.1 Counterexamples are first-class test cases
+  - Line 2631: ES-12. End-to-end execution walkthroughs
+  - Line 2633: ES-12.1 Supported local model, zero config
+  - Line 2650: ES-12.2 Multi-model API with concurrent physical residency
+  - Line 2670: ES-12.3 Mixed-machine layer pipeline
+  - Line 2687: ES-12.4 Remote attention and independently located state
+  - Line 2691: ES-12.5 Device graph and future media task
+  - Line 2695: ES-12.6 Faulted speculative verifier with slow client
+  - Line 2701: ES-13. Implementation and proof sequencing
+  - Line 2705: ES-13.1 First executable vertical slice
+  - Line 2724: ES-13.2 Then prove composability
+  - Line 2737: ES-13.3 Existing stable project phase program
+  - Line 2743: ES-13.4 Definition of Done per capability/phase
+  - Line 2760: ES-14. Acceptance and architectural sustainability
+  - Line 2780: ES-14.1 Architecture review before implementation
+  - Line 2792: ES-14.2 Historical traceability and open decisions
+  - Line 2796: ES-14.3 What makes the published documents usable independently?
+  - Line 2811: ES-15. References and formal source of truth
+  - Line 2817: ES-15.1 Compact implementation glossary
+  - Line 2851: Source: docs/PUBLICATION\_AND\_REVIEW\_CHECKLIST.md
+  - Line 2857: Whitepaper publication and final architecture review checklist
+  - Line 2867: 1. Technical claims and source honesty
+  - Line 2881: 2. Architecture consistency
+  - Line 2896: 3. Publication manuscript and bibliography
+  - Line 2911: 4. Implementation planning and verification
+  - Line 2922: 5. Automated integrity checks
+  - Line 2935: 6. Publication release decision
+  - Line 2949: Source: docs/README.md
+  - Line 2955: Zerogravity documentation
+  - Line 2962: Read according to your purpose
+  - Line 2972: Documentation categories and authority
+  - Line 2974: A. Publication-facing
+  - Line 2981: B. Canonical current core design (project-neutral)
+  - Line 3005: C. Implementation plans and tests
+  - Line 3017: D. Non-normative historical design and cited prior art
+  - Line 3027: Invariants in one paragraph
+  - Line 3031: Publication and implementation status
+  - Line 3040: Source: docs/REFERENCES.md
+  - Line 3046: References and source provenance
+  - Line 3052: Peer-reviewed and academic research
+  - Line 3054: R01
+  - Line 3057: R02
+  - Line 3060: R03
+  - Line 3063: R04
+  - Line 3066: R05
+  - Line 3069: R06
+  - Line 3072: R07
+  - Line 3075: R08
+  - Line 3078: R09
+  - Line 3081: R10
+  - Line 3084: R11
+  - Line 3087: Primary compiler and hardware documentation
+  - Line 3089: R12
+  - Line 3092: R13
+  - Line 3095: R14
+  - Line 3098: R15
+  - Line 3101: R16
+  - Line 3104: R17
+  - Line 3107: R18
+  - Line 3110: Serving, APIs, local user experience and networking
+  - Line 3112: R19
+  - Line 3115: R20
+  - Line 3118: R21
+  - Line 3121: R22
+  - Line 3124: R23
+  - Line 3127: Additional project research dossiers
+  - Line 3144: Source: docs/WHITEPAPER.md
+  - Line 3150: Zerogravity
+  - Line 3151: A composable execution architecture for AI models, heterogeneous accelerators, and distributed state
+  - Line 3159: Abstract
+  - Line 3173: Contents
+  - Line 3193: 1. Introduction: why a unified execution system?
+  - Line 3203: 1.1 Problem statement
+  - Line 3220: 1.2 Scope
+  - Line 3230: 2. Architecture principles
+  - Line 3252: 3. The minimal execution spine
+  - Line 3287: 3.1 Two enduring representations
+  - Line 3300: 3.2 Closed-region substitution
+  - Line 3308: 3.3 Shape-bounded compilation
+  - Line 3316: 4. AI tasks as distinct control policies over one executor
+  - Line 3334: 5. State consistency is a primary execution contract
+  - Line 3340: 5.1 Prepare, then publish once
+  - Line 3359: 5.2 Prefix sharing and speculative verification
+  - Line 3365: 5.3 Streaming and remote failures
+  - Line 3373: 6. Resource ownership and efficient execution
+  - Line 3385: 7. Hardware universality without pretending devices are equivalent
+  - Line 3401: 7.1 Hardware topology matters
+  - Line 3409: 8. Distributed execution: place computation, parameters, state and caches independently
+  - Line 3420: 8.1 Representative topologies
+  - Line 3436: 8.2 Network and trust
+  - Line 3444: 8.3 The performance condition for distribution
+  - Line 3462: 9. Built-in multi-model service and local UX
+  - Line 3488: 10. Quality and security model
+  - Line 3507: 11. A falsifiable evaluation program
+  - Line 3511: 11.1 Functional milestones
+  - Line 3521: 11.2 Performance measurements
+  - Line 3536: 11.3 Explicit hypotheses rather than results
+  - Line 3552: 12. Implementation and evolution strategy
+  - Line 3564: 13. Limitations and open engineering questions
+  - Line 3576: 14. Conclusion
+  - Line 3588: References and reproducibility
+  - Line 3596: Source: AGENTS.md
+  - Line 3602: AGENTS.md
+  - Line 3606: Shared conventions
+  - Line 3647: Repository
+  - Line 3663: Plans and parallel work
+  - Line 3687: Implementation boundaries
+  - Line 3715: Source: README.md
+  - Line 3721: zerogravity
+  - Line 3735: Intro
+  - Line 3745: Quick start
+  - Line 3770: Architecture
+  - Line 3798: Joint optimization
+  - Line 3827: Design decisions
+  - Line 3835: Engineering
+  - Line 3844: Interfaces
+  - Line 3856: Implementation status and roadmap
+  - Line 3870: FAQ
+  - Line 3882: Related projects
+  - Line 3902: Contributing
+  - Line 3908: AI disclosure
+  - Line 3918: License
+
+### [.agents/docs/handoff-2026-10-20/CONTEXT_CATALOG.md](../handoff-2026-10-20/CONTEXT_CATALOG.md)
+
+- Bytes: 259548; mode: 0o644; SHA256: a5021068f8b0b3c44101c7cf4cef8a938844dbd1aab0994d2f7383c4b5f79ffe.
+- Full heading route:
+  - Line 1: Complete context catalogue — 20 October 2026
+  - Line 6: Read order
+  - Line 16: Coverage and limits
+  - Line 26: Current standalone chapters
+  - Line 39: Stale historical link remaps
+  - Line 52: Archive volumes
+  - Line 134: Exact source-to-volume map
+
+### [.agents/docs/handoff-2026-10-20/CURRENT_TAKEOVER.md](../handoff-2026-10-20/CURRENT_TAKEOVER.md)
+
+- Bytes: 14132; mode: 0o644; SHA256: b5474dd39f8eeb4048f8763b85e0d6dc8520bb4bc627d9b2099d36dc89c056f9.
+- Full heading route:
+  - Line 1: Current takeover context — 20 October 2026
+  - Line 7: Latest instruction and authority
+  - Line 38: Exact repository state at this inspection
+  - Line 71: What changed after the October 19 handoff
+  - Line 92: Proven, unproven and newly proposed work
+  - Line 94: Accepted small-model path
+  - Line 110: Numerical issue
+  - Line 137: Original HF and27B
+  - Line 150: Actual vLLM comparisons
+  - Line 169: Paused implementation that must survive
+  - Line 202: Next work, only after explicit implementation resumption
+  - Line 228: Working and verification rules
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_01.md](../handoff-2026-10-20/DRAFT_PATCHES_01.md)
+
+- Bytes: 219064; mode: 0o644; SHA256: ba7e5390992af5fe206c5715cd3e7a1b56a2578adad2ff933a0a421d178b660d.
+- Full heading route:
+  - Line 1: Draft Patches — volume 1
+  - Line 7: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-20261020/NEW\_DELTA.patch
+  - Line 1239: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-20261020/WIRING.patch
+  - Line 1333: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-20261020/frozen/NEW\_DELTA.patch
+  - Line 2565: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-20261020/frozen/WIRING.patch
+  - Line 2659: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-adversary-20261020/NEW\_DELTA.patch
+  - Line 3581: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-adversary-20261020/WIRING.patch
+  - Line 3624: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-adversary-20261020/frozen/NEW\_DELTA.patch
+  - Line 4546: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-adversary-20261020/frozen/WIRING.patch
+  - Line 4589: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-adversary-root-v2-20261020/NEW\_DELTA.patch
+  - Line 5523: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-adversary-root-v2-20261020/ROOT\_V2.review.patch
+  - Line 5543: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-adversary-root-v2-20261020/WIRING.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_02.md](../handoff-2026-10-20/DRAFT_PATCHES_02.md)
+
+- Bytes: 208045; mode: 0o644; SHA256: d23992efc3b2598c8416150c0e8f5e90739ee6bd047b064cfb8fc5b04fa41094.
+- Full heading route:
+  - Line 1: Draft Patches — volume 2
+  - Line 7: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-adversary-root-v3-20261020/NEW\_DELTA.patch
+  - Line 963: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-adversary-root-v3-20261020/ROOT\_V3.review.patch
+  - Line 993: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-adversary-root-v3-20261020/WIRING.patch
+  - Line 1036: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-root-v2-20261020/NEW\_DELTA.patch
+  - Line 2303: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-root-v2-20261020/ROOT\_V2.review.patch
+  - Line 2346: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-root-v2-20261020/WIRING.patch
+  - Line 2440: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-root-v3-20261020/NEW\_DELTA.patch
+  - Line 3721: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-root-v3-20261020/ROOT\_V3.review.patch
+  - Line 3743: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-root-v3-20261020/WIRING.patch
+  - Line 3837: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-root-v4-20261020/NEW\_DELTA.patch
+  - Line 5118: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-root-v4-20261020/ROOT\_V4\_PYTHON\_IMPORT.review.patch
+  - Line 5162: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-root-v4-20261020/WIRING.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_03.md](../handoff-2026-10-20/DRAFT_PATCHES_03.md)
+
+- Bytes: 215260; mode: 0o644; SHA256: 54c6b5e2b74942516fd474ce0d014b8121269c067109785e4f8f9f4a5d40d1b3.
+- Full heading route:
+  - Line 1: Draft Patches — volume 3
+  - Line 7: Source: .agents/runs/model-execution-hf-bf16-gamma-gated-rms-20261020/NEW\_DELTA.patch
+  - Line 1460: Source: .agents/runs/model-execution-hf-bf16-gamma-gated-rms-20261020/replay/NEW\_PREPARATION.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_04.md](../handoff-2026-10-20/DRAFT_PATCHES_04.md)
+
+- Bytes: 265912; mode: 0o644; SHA256: aed99ba7a8e890fd4dde04fa026b5e035361b67f052ddb9957e5b7577a285585.
+- Full heading route:
+  - Line 1: Draft Patches — volume 4
+  - Line 7: Source: .agents/runs/model-execution-hf-bf16-gamma-gated-rms-20261020/replay/isolated-root-v2/NEW\_DELTA.patch
+  - Line 5615: Source: .agents/runs/model-execution-hf-bf16-gamma-gated-rms-20261020/test-style-v2/TEST\_STYLE\_FOLLOWUP.patch
+  - Line 5642: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/GPU\_REFUSAL.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_05.md](../handoff-2026-10-20/DRAFT_PATCHES_05.md)
+
+- Bytes: 161594; mode: 0o644; SHA256: f785900c08e0e6e9aa06d7e6221e4d4b5e5a01d5c30142e464b61ac0e05db587.
+- Full heading route:
+  - Line 1: Draft Patches — volume 5
+  - Line 7: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/NEW\_DELTA.patch
+  - Line 1261: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-h48-v3/UNUSED\_GAMMA\_CODEC\_FOLLOWUP.patch
+  - Line 1614: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-h48-v3/replay/H48\_REPLAY\_PREPARATION.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_06.md](../handoff-2026-10-20/DRAFT_PATCHES_06.md)
+
+- Bytes: 217916; mode: 0o644; SHA256: e17452347b149ba51b977593c5a9447a1b6a3fe9e0fc9eced73b5bfb57336b97.
+- Full heading route:
+  - Line 1: Draft Patches — volume 6
+  - Line 7: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-h48-v3/replay/isolated-root-v2/NEW\_DELTA.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_07.md](../handoff-2026-10-20/DRAFT_PATCHES_07.md)
+
+- Bytes: 263229; mode: 0o644; SHA256: 492f5eb6cb79620a7fa663a6176834ac7d0a6d02069276aa6f759656db1bf25b.
+- Full heading route:
+  - Line 1: Draft Patches — volume 7
+  - Line 7: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-h48-v3/replay/pre-review-draft-1/H48\_REPLAY\_PREPARATION.patch
+  - Line 2272: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-v2/STRIDE\_FOLLOWUP.patch
+  - Line 2300: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-v2/frozen-stride/STRIDE\_FOLLOWUP.patch
+  - Line 2328: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-v2/replay/REPLAY\_PREPARATION.patch
+  - Line 4043: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-v2/replay/frozen-prepared/REPLAY\_PREPARATION.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_08.md](../handoff-2026-10-20/DRAFT_PATCHES_08.md)
+
+- Bytes: 210828; mode: 0o644; SHA256: 74bab4c2a45a79a4819b461e5956a6118ef3c1c1969da2a4782576a52a432155.
+- Full heading route:
+  - Line 1: Draft Patches — volume 8
+  - Line 7: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-v2/replay-internal-draft-2/REPLAY\_PREPARATION.patch
+  - Line 1720: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/frozen-prepared/GPU\_REFUSAL.patch
+  - Line 1764: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/frozen-prepared/NEW\_DELTA.patch
+  - Line 3018: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/SOURCE\_DELTA.patch
+  - Line 4072: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/SOURCE\_DELTA.patch
+  - Line 5126: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/BOUNDED\_ORACLE\_IO\_V2.patch
+  - Line 5209: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/GPU\_REFUSAL.patch
+  - Line 5250: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/HOSTMATH\_DROP\_TEST\_ONLY\_V3.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_09.md](../handoff-2026-10-20/DRAFT_PATCHES_09.md)
+
+- Bytes: 173708; mode: 0o644; SHA256: ddb9123fc7183b55b792000199b27e314618499448001e77b9c880a6f5462da8.
+- Full heading route:
+  - Line 1: Draft Patches — volume 9
+  - Line 7: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/NEW\_DELTA.patch
+  - Line 1463: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/STEADY\_LEDGER\_HARNESS\_ONLY\_V4.patch
+  - Line 1489: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/frozen-prepared/GPU\_REFUSAL.patch
+  - Line 1530: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/frozen-prepared/NEW\_DELTA.patch
+  - Line 2986: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/frozen-v2/BOUNDED\_ORACLE\_IO\_V2.patch
+  - Line 3069: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/frozen-v2/GPU\_REFUSAL.patch
+  - Line 3110: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/frozen-v2/NEW\_DELTA.patch
+  - Line 4566: Source: .agents/runs/model-execution-hf-gdn-conv-root-v5-20261020/BOUNDED\_ORACLE\_IO\_V2.patch
+  - Line 4649: Source: .agents/runs/model-execution-hf-gdn-conv-root-v5-20261020/GPU\_REFUSAL.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_10.md](../handoff-2026-10-20/DRAFT_PATCHES_10.md)
+
+- Bytes: 206469; mode: 0o644; SHA256: c4949072e146be96ec859686dcc4693cdd8db4ced15534a4fc656d7aaefcd4b9.
+- Full heading route:
+  - Line 1: Draft Patches — volume 10
+  - Line 7: Source: .agents/runs/model-execution-hf-gdn-conv-root-v5-20261020/NEW\_DELTA.patch
+  - Line 1463: Source: .agents/runs/model-execution-hf-gdn-conv-root-v6-20261020/BOUNDED\_ORACLE\_IO\_V2.patch
+  - Line 1546: Source: .agents/runs/model-execution-hf-gdn-conv-root-v6-20261020/GPU\_REFUSAL.patch
+  - Line 1587: Source: .agents/runs/model-execution-hf-gdn-conv-root-v6-20261020/HOSTMATH\_DROP\_TEST\_ONLY\_V3.patch
+  - Line 1616: Source: .agents/runs/model-execution-hf-gdn-conv-root-v6-20261020/NEW\_DELTA.patch
+  - Line 3093: Source: .agents/runs/model-execution-hf-gdn-conv-root-v6-20261020/STEADY\_LEDGER\_HARNESS\_ONLY\_V4.patch
+  - Line 3119: Source: .agents/runs/model-execution-hf-gdn-conv-root-v7-20261020/BOUNDED\_ORACLE\_IO\_V2.patch
+  - Line 3202: Source: .agents/runs/model-execution-hf-gdn-conv-root-v7-20261020/GPU\_REFUSAL.patch
+  - Line 3243: Source: .agents/runs/model-execution-hf-gdn-conv-root-v7-20261020/HOSTMATH\_DROP\_TEST\_ONLY\_V3.patch
+  - Line 3272: Source: .agents/runs/model-execution-hf-gdn-conv-root-v7-20261020/NEW\_DELTA.patch
+  - Line 4749: Source: .agents/runs/model-execution-hf-gdn-conv-root-v7-20261020/ROOT\_V7.review.patch
+  - Line 4769: Source: .agents/runs/model-execution-hf-gdn-conv-root-v7-20261020/STEADY\_LEDGER\_HARNESS\_ONLY\_V4.patch
+  - Line 4795: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/NEW\_DELTA.patch
+  - Line 5229: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/NEW\_DELTA.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_11.md](../handoff-2026-10-20/DRAFT_PATCHES_11.md)
+
+- Bytes: 224169; mode: 0o644; SHA256: b8e977fe75dafeacf887b4f717bf59d47833c4a53449c1d67f35733a854521ae.
+- Full heading route:
+  - Line 1: Draft Patches — volume 11
+  - Line 7: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/NEW\_DELTA.patch
+  - Line 636: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/ROOT\_WIRING.patch
+  - Line 655: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/NEW\_DELTA.patch
+  - Line 1284: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/ROOT\_WIRING.patch
+  - Line 1303: Source: .agents/runs/model-execution-hf2b-attention-paired-20261020/NEW\_PREPARATION.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_12.md](../handoff-2026-10-20/DRAFT_PATCHES_12.md)
+
+- Bytes: 279437; mode: 0o644; SHA256: c00378c6fa576a7f212fb992c936203627db78a3edb6989d82312b3b38e1e8f2.
+- Full heading route:
+  - Line 1: Draft Patches — volume 12
+  - Line 7: Source: .agents/runs/model-execution-hf2b-attention-paired-20261020/frozen-prepared/NEW\_PREPARATION.patch
+  - Line 3150: Source: .agents/runs/model-execution-hf2b-cpu-reference-20261020/LIFECYCLE-NAME-FOLLOWUP.patch
+  - Line 3172: Source: .agents/runs/model-execution-original-attention-replay-20261020/NEW\_DELTA.patch
+  - Line 5079: Source: .agents/runs/model-execution-original-attention-replay-20261020/PRIOR\_CHECKS\_FOLLOWUP\_V2.patch
+  - Line 5237: Source: .agents/runs/model-execution-original-attention-replay-20261020/STEADY\_LEDGER\_FOLLOWUP\_V3.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_13.md](../handoff-2026-10-20/DRAFT_PATCHES_13.md)
+
+- Bytes: 217716; mode: 0o644; SHA256: ea6eb4890a27ba0cc7792604e9bc27eac61f0416b3da1bc0f944ecb75baaf77f.
+- Full heading route:
+  - Line 1: Draft Patches — volume 13
+  - Line 7: Source: .agents/runs/model-execution-original-attention-slice-20261020/NEW\_DELTA.patch
+  - Line 1155: Source: .agents/runs/model-execution-original-attention-slice-20261020/frozen/NEW\_DELTA.patch
+  - Line 2303: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/GPU\_REFUSAL.patch
+  - Line 2347: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/NEW\_DELTA.patch
+  - Line 3747: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/WIRING.patch
+  - Line 4059: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/followup-v2/GPU\_REFUSAL.patch
+  - Line 4103: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/followup-v2/NEW\_DELTA.patch
+  - Line 5503: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/followup-v2/ROOT\_VALIDATOR\_V3.review.patch
+  - Line 5522: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/followup-v2/WIRING.patch
+  - Line 5834: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/followup-v2/frozen/GPU\_REFUSAL.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_14.md](../handoff-2026-10-20/DRAFT_PATCHES_14.md)
+
+- Bytes: 275616; mode: 0o644; SHA256: 86382dd1b524fabafddf15a620ed7572e5326619a9fff5d2f956cc16cde483bc.
+- Full heading route:
+  - Line 1: Draft Patches — volume 14
+  - Line 7: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/followup-v2/frozen/NEW\_DELTA.patch
+  - Line 1407: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/followup-v2/frozen/WIRING.patch
+  - Line 1719: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/frozen/GPU\_REFUSAL.patch
+  - Line 1763: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/frozen/NEW\_DELTA.patch
+  - Line 3163: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/frozen/WIRING.patch
+  - Line 3475: Source: .agents/runs/model-execution-pinned-native-provider-probe-20261020/FOLLOWUP-CLEANUP-LENGTH.patch
+  - Line 3593: Source: .agents/runs/model-execution-qwen38-gdn-reference-20261020/BIT\_TRANSPORT\_V3.patch
+  - Line 4742: Source: .agents/runs/model-execution-qwen38-gdn-reference-20261020/HEADER\_BOUND\_V2.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_15.md](../handoff-2026-10-20/DRAFT_PATCHES_15.md)
+
+- Bytes: 322884; mode: 0o644; SHA256: 841a5773a80c4f49a5a0ba59eee3acb3dbcd02d1d352c6d51a0d079791453b79.
+- Full heading route:
+  - Line 1: Draft Patches — volume 15
+  - Line 7: Source: .agents/runs/model-execution-qwen38-gdn-reference-20261020/NEW\_PREPARATION.patch
+  - Line 1978: Source: .agents/runs/model-execution-qwen38-gdn-reference-20261020/frozen-prepared/NEW\_PREPARATION.patch
+  - Line 3949: Source: .agents/runs/model-execution-qwen38-gdn-reference-20261020/internal-draft-1/NEW\_PREPARATION.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_16.md](../handoff-2026-10-20/DRAFT_PATCHES_16.md)
+
+- Bytes: 253729; mode: 0o644; SHA256: bfc9047bfa305862e952be09ce225fb5a6aaf389f7c0f7defd3da656d2de0baf.
+- Full heading route:
+  - Line 1: Draft Patches — volume 16
+  - Line 7: Source: .agents/runs/model-execution-qwen38-pure-wide-isolated-20261020/NEW\_DELTA.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_17.md](../handoff-2026-10-20/DRAFT_PATCHES_17.md)
+
+- Bytes: 264362; mode: 0o644; SHA256: e90a5bde2c7e911bc5cd53c4fba4a6ffc22b9670e5f58b26fab70f6eda56730e.
+- Full heading route:
+  - Line 1: Draft Patches — volume 17
+  - Line 7: Source: .agents/runs/model-execution-qwen38-window-roles-20261020/NEW\_DELTA.patch
+  - Line 1086: Source: .agents/runs/model-execution-qwen38-window-roles-20261020/followup-v2/EXACT\_HIDDEN\_FOLLOWUP.patch
+  - Line 1167: Source: .agents/runs/model-execution-qwen38-window-roles-20261020/followup-v3/COMPLETED\_CANCEL\_FOLLOWUP.patch
+  - Line 1277: Source: .agents/runs/model-execution-qwen38-window-roles-20261020/qualification/QUALIFICATION\_PREPARATION.patch
+  - Line 4198: Source: .agents/runs/model-execution-qwen38-window-roles-20261020/qualification/metadata-v2/SOURCE\_METADATA\_FOLLOWUP.patch
+  - Line 4556: Source: .agents/runs/model-execution-root-bf16-composition-20261020/root-coefficient-output-size-adapter-2.patch
+  - Line 4585: Source: .agents/runs/model-execution-root-bf16-composition-20261020/root-coefficient-test-array-style-3.patch
+  - Line 4614: Source: .agents/runs/model-execution-root-bf16-composition-20261020/root-model-coefficient-test-array-style-5.patch
+  - Line 4634: Source: .agents/runs/model-execution-root-bf16-composition-20261020/root-model-fixture-contract-reconciliation-6.patch
+  - Line 4726: Source: .agents/runs/model-execution-root-bf16-composition-20261020/root-model-fixture-format-6.patch
+  - Line 4750: Source: .agents/runs/model-execution-root-bf16-composition-20261020/root-model-tied-role-parameter-lifetime-fixture-7.patch
+  - Line 4801: Source: .agents/runs/model-execution-root-bf16-composition-20261020/root-window-test-visibility-import-4.patch
+  - Line 4837: Source: .agents/runs/model-execution-vllm-gemm-operands-20261020/NEW\_DELTA.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_18.md](../handoff-2026-10-20/DRAFT_PATCHES_18.md)
+
+- Bytes: 359146; mode: 0o644; SHA256: a371e6fb235aef795160a086bb3fe5b90025dc750f020fcf019c34d31bad2a5b.
+- Full heading route:
+  - Line 1: Draft Patches — volume 18
+  - Line 7: Source: .agents/runs/numerics-and-context-2b-alpha-replay-20261020/CLEANUP\_V2.patch
+  - Line 208: Source: .agents/runs/numerics-and-context-2b-alpha-replay-20261020/NEW\_DELTA.patch
+  - Line 2131: Source: .agents/runs/numerics-and-context-2b-alpha-replay-20261020/frozen-cleanup-v2/CLEANUP\_V2.patch
+  - Line 2332: Source: .agents/runs/numerics-and-context-2b-alpha-replay-20261020/frozen-prepared/NEW\_DELTA.patch
+  - Line 4255: Source: .agents/runs/numerics-and-context-2b-bulk-causality-20261020/REPACK-TRANSPORT-FOLLOWUP.patch
+  - Line 4803: Source: .agents/runs/numerics-and-context-2b-bulk-causality-20261020/SOURCE\_ONLY\_DELTA.patch
+  - Line 5342: Source: .agents/runs/numerics-and-context-2b-bulk-causality-20261020/WINDOW-BINDING-FOLLOWUP.patch
+  - Line 5383: Source: .agents/runs/numerics-and-context-2b-bulk-causality-20261020/frozen-prepared/SOURCE\_ONLY\_DELTA.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_19.md](../handoff-2026-10-20/DRAFT_PATCHES_19.md)
+
+- Bytes: 249563; mode: 0o644; SHA256: f53ec63f842a2541afab9eb2b631548894fd8ddf13f3f78a384c9eac221cea54.
+- Full heading route:
+  - Line 1: Draft Patches — volume 19
+  - Line 7: Source: .agents/runs/numerics-and-context-2b-bulk-causality-20261020/frozen-repack-transport-followup/REPACK-TRANSPORT-FOLLOWUP.patch
+  - Line 555: Source: .agents/runs/numerics-and-context-av-replay-20261020/FOLLOWUP\_CLEANUP.patch
+  - Line 797: Source: .agents/runs/numerics-and-context-av-replay-20261020/frozen-cleanup-followup/FOLLOWUP\_CLEANUP.patch
+  - Line 1039: Source: .agents/runs/numerics-and-context-bulk-causality-20261020/FOLLOWUP-SPAN-COVERAGE.patch
+  - Line 1340: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/NEW\_DELTA.patch
+  - Line 1990: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/followup-attribution/ATTRIBUTION\_ONLY.patch
+  - Line 2030: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/frozen/NEW\_DELTA.patch
+  - Line 2680: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/GPU\_REFUSAL.patch
+  - Line 2728: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/NEW\_DELTA.patch
+  - Line 4210: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/GPU\_REFUSAL.patch
+  - Line 4258: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/NEW\_DELTA.patch
+  - Line 5740: Source: .agents/runs/numerics-and-context-cpu-mapped-placement-control-20261020/V6\_POLICY\_DIFF.patch
+  - Line 5814: Source: .agents/runs/numerics-and-context-cpu-mapped-placement-control-20261020/frozen-prepared/V6\_POLICY\_DIFF.patch
+  - Line 5888: Source: .agents/runs/numerics-and-context-long-context-audit-20261020/FOLLOWUP\_COMPARATOR.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_20.md](../handoff-2026-10-20/DRAFT_PATCHES_20.md)
+
+- Bytes: 319012; mode: 0o644; SHA256: 2277939dd116c59f043b27629a982a4baafbd1137f25fb3618f092cc8e1e52ec.
+- Full heading route:
+  - Line 1: Draft Patches — volume 20
+  - Line 7: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/BACKEND\_DIAGNOSTIC\_V3.patch
+  - Line 320: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/BINDING\_VALIDATOR\_V6.patch
+  - Line 505: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/FREE\_REFUSAL\_DIAGNOSTIC\_V5.patch
+  - Line 550: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/NEW\_DELTA.patch
+  - Line 2320: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/NULL\_FREE\_FORWARDING\_V6.patch
+  - Line 2358: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/POLICY\_V4.patch
+  - Line 3804: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/PROVIDER\_ATTESTATION\_V2.patch
+  - Line 3925: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/REFUSAL\_GRAPH\_DIAGNOSTIC\_V7.patch
+  - Line 4034: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/REVIEW\_DIFFS\_V4.patch
+  - Line 4812: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/frozen-v2/PROVIDER\_ATTESTATION\_V2.patch
+  - Line 4933: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/frozen-v3/BACKEND\_DIAGNOSTIC\_V3.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_21.md](../handoff-2026-10-20/DRAFT_PATCHES_21.md)
+
+- Bytes: 250100; mode: 0o644; SHA256: e4097d0abc47a8ac8d93eda5481eb4dad4b81cd303bc7cc497a29fbd8fa37cc3.
+- Full heading route:
+  - Line 1: Draft Patches — volume 21
+  - Line 7: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/frozen-v4/POLICY\_V4.patch
+  - Line 1453: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/frozen-v4/REVIEW\_DIFFS\_V4.patch
+  - Line 2231: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/frozen-v5/FREE\_REFUSAL\_DIAGNOSTIC\_V5.patch
+  - Line 2276: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/frozen-v6/BINDING\_VALIDATOR\_V6.patch
+  - Line 2461: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/frozen-v6/NULL\_FREE\_FORWARDING\_V6.patch
+  - Line 2499: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/frozen-v7/REFUSAL\_GRAPH\_DIAGNOSTIC\_V7.patch
+  - Line 2608: Source: .agents/runs/serving-and-speculation-activation-before-after-20261020/FOLLOWUP-GAUGE-PROXY.patch
+  - Line 2722: Source: .agents/runs/serving-and-speculation-cuda-capture-exclusion-spine-20261020/PURE\_PROTOCOL.patch
+  - Line 3621: Source: .agents/runs/serving-and-speculation-cuda-capture-exclusion-spine-20261020/followup-v2/DRAIN\_LIVENESS\_FOLLOWUP.patch
+  - Line 3755: Source: .agents/runs/serving-and-speculation-cuda-capture-exclusion-spine-20261020/followup-v2/frozen-v2/DRAIN\_LIVENESS\_FOLLOWUP.patch
+  - Line 3889: Source: .agents/runs/serving-and-speculation-cuda-capture-exclusion-spine-20261020/frozen/PURE\_PROTOCOL.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_22.md](../handoff-2026-10-20/DRAFT_PATCHES_22.md)
+
+- Bytes: 174359; mode: 0o644; SHA256: e49722f9549fa4316c0d7e618d59d80577d2ed6f520b82548fc206cf14b34d6e.
+- Full heading route:
+  - Line 1: Draft Patches — volume 22
+  - Line 7: Source: .agents/runs/serving-and-speculation-cuda-command-admission-spine-20261020/COMMAND\_ADMISSION.patch
+  - Line 1562: Source: .agents/runs/serving-and-speculation-cuda-command-admission-spine-20261020/followup-v2/CLASSIFICATION\_FOLLOWUP.patch
+  - Line 1632: Source: .agents/runs/serving-and-speculation-cuda-command-admission-spine-20261020/followup-v2/frozen-v2/CLASSIFICATION\_FOLLOWUP.patch
+  - Line 1702: Source: .agents/runs/serving-and-speculation-cuda-command-admission-spine-20261020/frozen/COMMAND\_ADMISSION.patch
+  - Line 3257: Source: .agents/runs/serving-and-speculation-cuda-command-host-harness-20261020/HOST\_HARNESS\_ONLY.patch
+  - Line 3331: Source: .agents/runs/serving-and-speculation-cuda-command-host-harness-20261020/frozen/HOST\_HARNESS\_ONLY.patch
+  - Line 3405: Source: .agents/runs/serving-and-speculation-cuda-retirement-spine-20261020/RETIREMENT.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_23.md](../handoff-2026-10-20/DRAFT_PATCHES_23.md)
+
+- Bytes: 312140; mode: 0o644; SHA256: c0717d6a24585d06c08af07ee774901ac11d6e45524327b2eb2cc348b1df614a.
+- Full heading route:
+  - Line 1: Draft Patches — volume 23
+  - Line 7: Source: .agents/runs/serving-and-speculation-cuda-retirement-spine-20261020/frozen/RETIREMENT.patch
+  - Line 1381: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/NEW\_FILES.review.patch
+  - Line 2661: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/fd-mapping-v3/NEW\_DELTA.patch
+  - Line 4340: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/fd-mapping-v4/NEW\_DELTA.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_24.md](../handoff-2026-10-20/DRAFT_PATCHES_24.md)
+
+- Bytes: 304902; mode: 0o644; SHA256: a2617cb73d01b1c4b39940e5eead04c8243518aaa5ec4919557cb463a2513d55.
+- Full heading route:
+  - Line 1: Draft Patches — volume 24
+  - Line 7: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/finalization-v2/FINALIZATION\_FOLLOWUP.patch
+  - Line 217: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/finalization-v2/pre-review/FINALIZATION\_FOLLOWUP.patch
+  - Line 427: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/frozen/NEW\_FILES.review.patch
+  - Line 1707: Source: .agents/runs/serving-and-speculation-native-before-after-20261020/NEW\_CONTROL\_V2.review.patch
+  - Line 2224: Source: .agents/runs/serving-and-speculation-native-before-after-20261020/NEW\_FILES.review.patch
+  - Line 3665: Source: .agents/runs/serving-and-speculation-native-before-after-20261020/followup-v2/frozen/NEW\_CONTROL\_V2.review.patch
+  - Line 4182: Source: .agents/runs/serving-and-speculation-native-before-after-20261020/frozen/NEW\_FILES.review.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_25.md](../handoff-2026-10-20/DRAFT_PATCHES_25.md)
+
+- Bytes: 294649; mode: 0o644; SHA256: 617f39c3e1f45d406ae54b75804b96238b202cca70a012d2a14d47fb46a83a4b.
+- Full heading route:
+  - Line 1: Draft Patches — volume 25
+  - Line 7: Source: .agents/runs/serving-and-speculation-native-prefix-before-after-20261020/NATURAL\_C8\_ADDITIVE.patch
+  - Line 4947: Source: .agents/runs/serving-and-speculation-native-prefix-before-after-20261020/NEW\_DELTA.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_26.md](../handoff-2026-10-20/DRAFT_PATCHES_26.md)
+
+- Bytes: 253203; mode: 0o644; SHA256: 95316ea539297510196c8a37709e0899fa7bef636de972525ef8989a363de165.
+- Full heading route:
+  - Line 1: Draft Patches — volume 26
+  - Line 7: Source: .agents/runs/serving-and-speculation-native-prefix-before-after-20261020/frozen-prepared/NEW\_DELTA.patch
+  - Line 947: Source: .agents/runs/serving-and-speculation-native-prefix-chunk-20261020/NEW\_DELTA.patch
+  - Line 2390: Source: .agents/runs/serving-and-speculation-native-prefix-chunk-20261020/ROOT\_WIRING.patch
+  - Line 2407: Source: .agents/runs/serving-and-speculation-native-prefix-chunk-20261020/frozen/NEW\_DELTA.patch
+  - Line 3850: Source: .agents/runs/serving-and-speculation-native-prefix-chunk-20261020/frozen/ROOT\_WIRING.patch
+  - Line 3867: Source: .agents/runs/serving-and-speculation-native-solo-temporal-20261020/NEW\_DELTA.patch
+  - Line 5516: Source: .agents/runs/serving-and-speculation-native-solo-temporal-20261020/ROOT\_WIRING.patch
+  - Line 5533: Source: .agents/runs/serving-and-speculation-native-solo-temporal-20261020/followup-v2/CORRECT\_ROOT\_WIRING.patch
+  - Line 5550: Source: .agents/runs/serving-and-speculation-native-solo-temporal-20261020/followup-v2/frozen/CORRECT\_ROOT\_WIRING.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_27.md](../handoff-2026-10-20/DRAFT_PATCHES_27.md)
+
+- Bytes: 204890; mode: 0o644; SHA256: 33e8e4aefa2fdd78a6dea17d6c90fa8479fa679b60b52df4af3c75cbb7384905.
+- Full heading route:
+  - Line 1: Draft Patches — volume 27
+  - Line 7: Source: .agents/runs/serving-and-speculation-native-temporal-grouping-20261020/NEW\_DELTA.patch
+  - Line 2237: Source: .agents/runs/serving-and-speculation-native-temporal-grouping-20261020/PRODUCTION.review.patch
+  - Line 3845: Source: .agents/runs/serving-and-speculation-native-temporal-grouping-20261020/ROOT\_WIRING.patch
+  - Line 3862: Source: .agents/runs/serving-and-speculation-ordered-silu-20261020/NEW\_DELTA.patch
+  - Line 4895: Source: .agents/runs/serving-and-speculation-ordered-silu-20261020/ROOT\_WIRING.patch
+  - Line 4913: Source: .agents/runs/serving-and-speculation-ordered-silu-20261020/followup-v2/BYTE\_BUDGET\_ONLY.patch
+  - Line 4935: Source: .agents/runs/serving-and-speculation-ordered-silu-20261020/followup-v2/INITIALIZATION\_MATH\_FLIGHTS.patch
+  - Line 4995: Source: .agents/runs/serving-and-speculation-ordered-silu-20261020/followup-v2/QUALIFIER\_V2.review.patch
+  - Line 5066: Source: .agents/runs/serving-and-speculation-ordered-silu-20261020/followup-v2/frozen/BYTE\_BUDGET\_ONLY.patch
+  - Line 5088: Source: .agents/runs/serving-and-speculation-ordered-silu-20261020/followup-v2/frozen/INITIALIZATION\_MATH\_FLIGHTS.patch
+  - Line 5148: Source: .agents/runs/serving-and-speculation-ordered-silu-20261020/followup-v2/frozen/QUALIFIER\_V2.review.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_28.md](../handoff-2026-10-20/DRAFT_PATCHES_28.md)
+
+- Bytes: 208998; mode: 0o644; SHA256: f2f61c08b3ad6d42c93ec467b7812d865079cb02ec7e9851f3f10bd12aa5d877.
+- Full heading route:
+  - Line 1: Draft Patches — volume 28
+  - Line 7: Source: .agents/runs/serving-and-speculation-ordered-silu-20261020/frozen/NEW\_DELTA.patch
+  - Line 1040: Source: .agents/runs/serving-and-speculation-ordered-silu-20261020/frozen/ROOT\_WIRING.patch
+  - Line 1058: Source: .agents/runs/serving-and-speculation-ordered-silu-compiler-witness-review-20261020/DUMP\_COLLISION\_ONLY.patch
+  - Line 1197: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/NEW\_DELTA.patch
+  - Line 1515: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/ORDERED\_GEOMETRY\_SEAM.patch
+  - Line 1550: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/ROOT\_WIRING.patch
+  - Line 1569: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/followup-visibility-v2/VISIBILITY\_ONLY.patch
+  - Line 1598: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/followup-visibility-v2/frozen/VISIBILITY\_ONLY.patch
+  - Line 1627: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/NEW\_DELTA.patch
+  - Line 1945: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/ORDERED\_GEOMETRY\_SEAM.patch
+  - Line 1980: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/ROOT\_WIRING.patch
+  - Line 1999: Source: .agents/runs/serving-and-speculation-ordered-silu-scalar-input-20261020/SCALAR\_INPUT\_ONLY.patch
+  - Line 2086: Source: .agents/runs/serving-and-speculation-ordered-silu-scalar-input-20261020/frozen/SCALAR\_INPUT\_ONLY.patch
+  - Line 2173: Source: .agents/runs/serving-and-speculation-parity-root-2026-10-19/b6-worktree-base.patch
+  - Line 3984: Source: .agents/runs/serving-and-speculation-parity-root-2026-10-19/command-host-fixture-strict-followup.patch
+  - Line 4059: Source: .agents/runs/serving-and-speculation-row-state-transport-20261020/NEW\_DELTA.patch
+  - Line 5461: Source: .agents/runs/serving-and-speculation-row-state-transport-20261020/ROOT\_WIRING.patch
+
+### [.agents/docs/handoff-2026-10-20/DRAFT_PATCHES_29.md](../handoff-2026-10-20/DRAFT_PATCHES_29.md)
+
+- Bytes: 130028; mode: 0o644; SHA256: 05cb462eb4e4990612c6b2248b5f8d7601738821c9a60f561a042bd0b4d9ec34.
+- Full heading route:
+  - Line 1: Draft Patches — volume 29
+  - Line 7: Source: .agents/runs/serving-and-speculation-row-state-transport-20261020/frozen-prepared/NEW\_DELTA.patch
+  - Line 1409: Source: .agents/runs/serving-and-speculation-row-state-transport-20261020/frozen-prepared/ROOT\_WIRING.patch
+  - Line 1428: Source: .agents/runs/serving-and-speculation-row-state-transport-20261020/root-compile-fix-v2/ROOT\_V2.review.patch
+  - Line 1488: Source: .agents/runs/serving-and-speculation-state-scatter-certification-20261020/NEW\_DELTA.patch
+  - Line 2467: Source: .agents/runs/serving-and-speculation-state-scatter-certification-20261020/frozen/NEW\_DELTA.patch
+  - Line 3446: Source: .agents/runs/serving-and-speculation-vllm-gguf-baseline-20261020/BUILD\_AFFINITY\_V2.patch
+
+### [.agents/docs/handoff-2026-10-20/GDN_VLLM_ARITHMETIC_AUDIT.md](../handoff-2026-10-20/GDN_VLLM_ARITHMETIC_AUDIT.md)
+
+- Bytes: 22053; mode: 0o644; SHA256: ff86ab3a9e26478640a15f1a0b498902ae5aca4b14894840c1df6cb5f09bda17.
+- Full heading route:
+  - Line 1: Durable GDN source-investigation copy
+  - Line 17: Pinned vLLM GDN arithmetic audit
+  - Line 24: Decision
+  - Line 48: Exact sources
+  - Line 70: Select the actual path before comparing bits
+  - Line 85: Arithmetic/storage table
+  - Line 111: Exact normal packed-decode recurrence
+  - Line 149: Exact prefill/initial chunk boundaries
+  - Line 181: Immutable GGUF source transformation is part of the profile
+  - Line 210: Minimal directly portable work and fastest gates
+  - Line 262: Proof boundary
+  - Line 278: Small source files read for GDN investigation
+
+### [.agents/docs/handoff-2026-10-20/HANDOFF_CONTENTS.json](../handoff-2026-10-20/HANDOFF_CONTENTS.json)
+
+- Bytes: 9668; mode: 0o644; SHA256: 7b251ca706f001dd4c2b24eb126689ba35f48334d18f102f384ecf4bd8bff65a.
+- Non-Markdown supplement; read original body.
+
+### [.agents/docs/handoff-2026-10-20/HISTORY_DESIGN_AND_COVERAGE_AUDIT.md](../handoff-2026-10-20/HISTORY_DESIGN_AND_COVERAGE_AUDIT.md)
+
+- Bytes: 18346; mode: 0o644; SHA256: 5d9f8bb5408983133225a425e30a0eb85980ed68fec49449e55e60848bc26ef0.
+- Full heading route:
+  - Line 1: History, design and coverage audit — 20 October 2026
+  - Line 9: Preservation conclusion
+  - Line 31: What the October 19 handoff already preserves
+  - Line 49: Durable design lineage and explicit supersessions
+  - Line 77: October 19 current-state assertions now requiring explicit correction
+  - Line 119: Historical recovery: positive evidence and limits
+  - Line 145: Catalogue and remaining coverage risks
+  - Line 203: Latest GDN investigation must survive
+
+### [.agents/docs/handoff-2026-10-20/NUMERICAL_AND_MODEL_CONTINUATION.md](../handoff-2026-10-20/NUMERICAL_AND_MODEL_CONTINUATION.md)
+
+- Bytes: 57037; mode: 0o644; SHA256: 7bb2be8f8e84af5df9b82d5c7e746bfb384fb9ee479f3db26df5c6333afef03a.
+- Full heading route:
+  - Line 1: Numerical and model continuation — 20 October 2026
+  - Line 18: 1. Read order and inherited architecture
+  - Line 53: 2. Four numerical targets and the latest decision
+  - Line 76: 3. Numerical investigation chronology: historical versus fresh GGUF
+  - Line 78: 3.1 Inherited issue and source recovery
+  - Line 117: 3.2 Fresh strict AR1 results
+  - Line 160: 3.3 Default bulk first-gap localization
+  - Line 199: 3.4 Whole-runtime reference controls and their failures
+  - Line 243: 3.5 Default-bulk implementation remains a paused candidate
+  - Line 272: 4. Original HF sources, runtime and first diagnostic gaps
+  - Line 274: 4.1 Source identities and capacity
+  - Line 309: 4.2 Pinned native environment and independent captures
+  - Line 350: 4.3 Earliest .8B CPU diagnostic diagnosis
+  - Line 373: 5. Accepted shared-engine model/math milestones
+  - Line 431: 6. Bounded27B source transport and real operator results
+  - Line 433: 6.1 Source owner/windows and three-node path
+  - Line 473: 6.2 Genuine27B initial/cached public reference
+  - Line 492: 6.3 Isolated521-source composition and actual H48/wide gates
+  - Line 544: 7. Native CPU provider: actual arithmetic versus admission
+  - Line 595: 8. Paused coefficient/initial-prefix candidates and exact525 trap
+  - Line 597: 8.1 Coefficient preparation
+  - Line 625: 8.2 Exact CPU initial query/prefix leaves
+  - Line 651: 8.3 Combined525 attestation derivative — do not reuse old attestors
+  - Line 677: 9. Actual vLLM evidence and why matching is still open
+  - Line 736: 10. Concrete remaining integration seams and implementation order
+  - Line 803: 11. Paused text artifacts that must survive ignored-run loss
+  - Line 849: 12. What a successor must not claim
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_01.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_01.md)
+
+- Bytes: 221790; mode: 0o644; SHA256: 0990b1f4304d65f602dcf1a3561a35842e37d7a08124ea092fd965a6a913c6e4.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 1
+  - Line 6: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/COMPOSITION.json
+  - Line 179: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/ORIGIN.json
+  - Line 450: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/SELECTED\_PARENT\_SEAMS.json
+  - Line 499: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/STATIC\_REVIEW.json
+  - Line 519: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/combined\_source.py
+  - Line 731: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/COMPOSITION.json
+  - Line 904: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/ORIGIN.json
+  - Line 1175: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/SELECTED\_PARENT\_SEAMS.json
+  - Line 1224: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/STATIC\_REVIEW.json
+  - Line 1244: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/combined\_source.py
+  - Line 1456: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/h48/replay/Cargo.toml
+  - Line 1489: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/h48/replay/attest\_build.py
+  - Line 1523: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/h48/replay/build-identity.json
+  - Line 1541: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/h48/replay/contracts.py
+  - Line 1692: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/h48/replay/factory.rs
+  - Line 1698: !\[allow(dead\_code)\]
+  - Line 2553: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/h48/replay/main.rs
+  - Line 3242: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/h48/replay/owned\_lifetime.py
+  - Line 3342: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/h48/replay/owned\_native.py
+  - Line 3469: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/h48/replay/prepare\_reference.py
+  - Line 3625: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/h48/replay/run\_replay.py
+  - Line 3712: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/h48/replay/sigterm\_cancellation.py
+  - Line 3768: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/h48/replay/source-bindings.json
+  - Line 4610: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/h48/replay/source-pin.json
+  - Line 4828: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/h48/replay/source\_contract.py
+  - Line 4843: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/h48/replay/test\_contracts.py
+  - Line 4944: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/h48/replay/validate\_replay.py
+  - Line 5153: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/h48/replay/write\_implementation.py
+  - Line 5186: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/initial/replay/Cargo.toml
+  - Line 5218: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/initial/replay/attest\_build.py
+  - Line 5252: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/initial/replay/build-identity.json
+  - Line 5270: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/initial/replay/contracts.py
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_02.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_02.md)
+
+- Bytes: 211306; mode: 0o644; SHA256: 3b56fdd97d050130fd45a891f5d11771f5e739c06a746e009d8644e5a02289b6.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 2
+  - Line 6: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/initial/replay/factory.rs
+  - Line 12: !\[allow(dead\_code)\]
+  - Line 867: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/initial/replay/main.rs
+  - Line 1431: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/initial/replay/owned\_lifetime.py
+  - Line 1531: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/initial/replay/owned\_native.py
+  - Line 1658: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/initial/replay/prepare\_reference.py
+  - Line 1746: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/initial/replay/run\_replay.py
+  - Line 1833: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/initial/replay/sigterm\_cancellation.py
+  - Line 1889: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/initial/replay/source-bindings.json
+  - Line 2207: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/initial/replay/source-pin.json
+  - Line 2425: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/initial/replay/source\_contract.py
+  - Line 2440: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/initial/replay/test\_contracts.py
+  - Line 2470: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/initial/replay/validate\_replay.py
+  - Line 2561: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/initial/replay/write\_implementation.py
+  - Line 2594: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/proposed/crates/zerogravity-cpu/src/original\_hf/initial\_prelude/admitted.rs
+  - Line 2607: \[derive(Clone, Copy)\]
+  - Line 2637: \[derive(Clone)\]
+  - Line 2705: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/proposed/crates/zerogravity-cpu/src/original\_hf/initial\_prelude/tests.rs
+  - Line 2722: \[test\]
+  - Line 2742: \[test\]
+  - Line 2762: \[test\]
+  - Line 2818: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 2971: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/proposed/crates/zerogravity-cpu/src/original\_hf/initial\_prelude.rs
+  - Line 2985: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 2990: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 2997: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 3126: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 3128: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 3130: \[cfg(test)\]
+  - Line 3135: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/proposed/crates/zerogravity-cpu/src/original\_hf.rs
+  - Line 3153: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 3155: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 3241: \[cfg(test)\]
+  - Line 3449: \[cfg(test)\]
+  - Line 3487: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/proposed/crates/zerogravity-model-qwen35/src/coefficient\_preparation\_h48\_tests.rs
+  - Line 3619: \[test\]
+  - Line 3758: \[test\]
+  - Line 3831: \[test\]
+  - Line 3886: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/proposed/crates/zerogravity-model-qwen35/src/coefficient\_preparation\_tests.rs
+  - Line 3932: \[test\]
+  - Line 3982: \[test\]
+  - Line 4056: \[test\]
+  - Line 4121: \[test\]
+  - Line 4164: \[path = "coefficient\_preparation\_h48\_tests.rs"\]
+  - Line 4169: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/proposed/crates/zerogravity-model-qwen35/src/operator\_slice/coefficient\_preparation.rs
+  - Line 4270: \[derive(Clone, Copy)\]
+  - Line 4329: \[cfg(feature = "cpu")\]
+  - Line 4339: \[cfg(feature = "cpu")\]
+  - Line 4373: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 4466: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/test\_combined\_contracts.py
+  - Line 4546: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/h48/replay/Cargo.toml
+  - Line 4579: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/h48/replay/attest\_build.py
+  - Line 4613: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/h48/replay/build-identity.json
+  - Line 4631: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/h48/replay/contracts.py
+  - Line 4782: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/h48/replay/factory.rs
+  - Line 4788: !\[allow(dead\_code)\]
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_03.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_03.md)
+
+- Bytes: 233137; mode: 0o644; SHA256: 6018dbd215d63f21c6fcd3f1353b09c434cefb661b8dc4cd880caa34e018a78c.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 3
+  - Line 6: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/h48/replay/main.rs
+  - Line 695: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/h48/replay/owned\_lifetime.py
+  - Line 795: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/h48/replay/owned\_native.py
+  - Line 922: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/h48/replay/prepare\_reference.py
+  - Line 1078: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/h48/replay/run\_replay.py
+  - Line 1165: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/h48/replay/sigterm\_cancellation.py
+  - Line 1221: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/h48/replay/source-bindings.json
+  - Line 2063: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/h48/replay/source-pin.json
+  - Line 2281: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/h48/replay/source\_contract.py
+  - Line 2296: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/h48/replay/test\_contracts.py
+  - Line 2397: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/h48/replay/validate\_replay.py
+  - Line 2606: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/h48/replay/write\_implementation.py
+  - Line 2639: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/initial/replay/Cargo.toml
+  - Line 2671: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/initial/replay/attest\_build.py
+  - Line 2705: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/initial/replay/build-identity.json
+  - Line 2723: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/initial/replay/contracts.py
+  - Line 2874: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/initial/replay/factory.rs
+  - Line 2880: !\[allow(dead\_code)\]
+  - Line 3735: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/initial/replay/main.rs
+  - Line 4299: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/initial/replay/owned\_lifetime.py
+  - Line 4399: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/initial/replay/owned\_native.py
+  - Line 4526: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/initial/replay/prepare\_reference.py
+  - Line 4614: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/initial/replay/run\_replay.py
+  - Line 4701: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/initial/replay/sigterm\_cancellation.py
+  - Line 4757: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/initial/replay/source-bindings.json
+  - Line 5075: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/initial/replay/source-pin.json
+  - Line 5293: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/initial/replay/source\_contract.py
+  - Line 5308: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/initial/replay/test\_contracts.py
+  - Line 5338: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/initial/replay/validate\_replay.py
+  - Line 5429: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/initial/replay/write\_implementation.py
+  - Line 5462: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/prepared-manifest.json
+  - Line 5782: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/proposed/crates/zerogravity-cpu/src/original\_hf/initial\_prelude/admitted.rs
+  - Line 5795: \[derive(Clone, Copy)\]
+  - Line 5825: \[derive(Clone)\]
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_04.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_04.md)
+
+- Bytes: 197971; mode: 0o644; SHA256: 277d2ec27a0f6e4d5cd26d169d79daff08bfe03a660eb5ecd6b3a77db0617824.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 4
+  - Line 6: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/proposed/crates/zerogravity-cpu/src/original\_hf/initial\_prelude/tests.rs
+  - Line 23: \[test\]
+  - Line 43: \[test\]
+  - Line 63: \[test\]
+  - Line 119: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 272: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/proposed/crates/zerogravity-cpu/src/original\_hf/initial\_prelude.rs
+  - Line 286: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 291: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 298: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 427: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 429: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 431: \[cfg(test)\]
+  - Line 436: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/proposed/crates/zerogravity-cpu/src/original\_hf.rs
+  - Line 454: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 456: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 542: \[cfg(test)\]
+  - Line 750: \[cfg(test)\]
+  - Line 788: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/proposed/crates/zerogravity-model-qwen35/src/coefficient\_preparation\_h48\_tests.rs
+  - Line 920: \[test\]
+  - Line 1059: \[test\]
+  - Line 1132: \[test\]
+  - Line 1187: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/proposed/crates/zerogravity-model-qwen35/src/coefficient\_preparation\_tests.rs
+  - Line 1233: \[test\]
+  - Line 1283: \[test\]
+  - Line 1357: \[test\]
+  - Line 1422: \[test\]
+  - Line 1465: \[path = "coefficient\_preparation\_h48\_tests.rs"\]
+  - Line 1470: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/proposed/crates/zerogravity-model-qwen35/src/operator\_slice/coefficient\_preparation.rs
+  - Line 1571: \[derive(Clone, Copy)\]
+  - Line 1630: \[cfg(feature = "cpu")\]
+  - Line 1640: \[cfg(feature = "cpu")\]
+  - Line 1674: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 1767: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/test\_combined\_contracts.py
+  - Line 1847: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/BASELINE.json
+  - Line 1871: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/baseline/original\_hf.rs
+  - Line 1888: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 1890: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 1976: \[cfg(test)\]
+  - Line 2184: \[cfg(test)\]
+  - Line 2222: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/freeze-manifest.json
+  - Line 2449: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/BASELINE.json
+  - Line 2473: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/baseline/original\_hf.rs
+  - Line 2490: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 2492: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 2578: \[cfg(test)\]
+  - Line 2786: \[cfg(test)\]
+  - Line 2824: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/owned-delta.json
+  - Line 2865: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/pinned-source/AccumulateType.h
+  - Line 2871: pragma once
+  - Line 2872: include \<ATen/Config.h\>
+  - Line 2873: include \<c10/core/DeviceType.h\>
+  - Line 2874: include \<c10/core/ScalarType.h\>
+  - Line 2875: include \<c10/util/BFloat16.h\>
+  - Line 2876: include \<c10/util/Float8\_e4m3fn.h\>
+  - Line 2877: include \<c10/util/Float8\_e4m3fnuz.h\>
+  - Line 2878: include \<c10/util/Float8\_e5m2.h\>
+  - Line 2879: include \<c10/util/Float8\_e5m2fnuz.h\>
+  - Line 2880: include \<c10/util/Half.h\>
+  - Line 2917: if defined(\_\_CUDACC\_\_)
+  - Line 2918: include \<cuda.h\>
+  - Line 2919: include \<cuda\_fp16.h\>
+  - Line 2920: elif defined(\_\_HIPCC\_\_)
+  - Line 2921: include \<hip/hip\_fp16.h\>
+  - Line 2922: include \<hip/hip\_runtime.h\>
+  - Line 2923: endif
+  - Line 2949: define ACC\_TYPE(t, acc\_t, device\_type)         \\
+  - Line 2954: define MPS\_ACC\_TYPE(t, acc\_t) ACC\_TYPE(t, acc\_t, c10::DeviceType::MPS)
+  - Line 2955: define XPU\_ACC\_TYPE(t, acc\_t) ACC\_TYPE(t, acc\_t, c10::DeviceType::XPU)
+  - Line 2956: define CUDA\_ACC\_TYPE(t, acc\_t) ACC\_TYPE(t, acc\_t, c10::DeviceType::CUDA)
+  - Line 2957: define CPU\_ACC\_TYPE(t, acc\_t) ACC\_TYPE(t, acc\_t, c10::DeviceType::CPU)
+  - Line 2997: if defined(\_\_CUDACC\_\_) || defined(\_\_HIPCC\_\_)
+  - Line 2999: endif
+  - Line 3047: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/pinned-source/ReduceOpsKernel.cpp
+  - Line 3053: define TORCH\_ASSERT\_ONLY\_METHOD\_OPERATORS
+  - Line 3054: include \<algorithm\>
+  - Line 3056: include \<ATen/core/Tensor.h\>
+  - Line 3057: include \<ATen/Dispatch.h\>
+  - Line 3058: include \<ATen/OpMathType.h\>
+  - Line 3059: include \<ATen/cpu/vec/vec.h\>
+  - Line 3060: include \<ATen/cpu/vec/functional.h\>
+  - Line 3061: include \<ATen/native/ReduceOps.h\>
+  - Line 3062: include \<ATen/native/Resize.h\>
+  - Line 3063: include \<ATen/native/TensorIterator.h\>
+  - Line 3064: include \<ATen/native/SharedReduceOps.h\>
+  - Line 3065: include \<ATen/native/ReduceOpsUtils.h\>
+  - Line 3066: include \<ATen/native/cpu/Reduce.h\>
+  - Line 3067: include \<ATen/native/cpu/LogAddExp.h\>
+  - Line 3069: ifndef AT\_PER\_OPERATOR\_HEADERS
+  - Line 3070: include \<ATen/Functions.h\>
+  - Line 3071: else
+  - Line 3072: include \<ATen/ops/imag.h\>
+  - Line 3073: endif
+  - Line 3075: include \<c10/util/irange.h\>
+  - Line 3076: include \<ATen/AccumulateType.h\>
+  - Line 3623: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/pinned-source/SOURCE.json
+  - Line 3660: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/proposed/crates/zerogravity-cpu/src/original\_hf/initial\_prelude/admitted.rs
+  - Line 3673: \[derive(Clone, Copy)\]
+  - Line 3703: \[derive(Clone)\]
+  - Line 3771: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/proposed/crates/zerogravity-cpu/src/original\_hf/initial\_prelude/tests.rs
+  - Line 3788: \[test\]
+  - Line 3808: \[test\]
+  - Line 3828: \[test\]
+  - Line 3884: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 4037: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/proposed/crates/zerogravity-cpu/src/original\_hf/initial\_prelude.rs
+  - Line 4051: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 4056: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 4063: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 4192: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 4194: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 4196: \[cfg(test)\]
+  - Line 4201: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/proposed/crates/zerogravity-cpu/src/original\_hf.rs
+  - Line 4219: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 4221: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 4307: \[cfg(test)\]
+  - Line 4515: \[cfg(test)\]
+  - Line 4553: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/replay/Cargo.toml
+  - Line 4585: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/replay/contracts.py
+  - Line 4736: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/replay/factory.rs
+  - Line 4742: !\[allow(dead\_code)\]
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_05.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_05.md)
+
+- Bytes: 228199; mode: 0o644; SHA256: 76e5c01ca375195841f15b38ec56d6308186209cc18e4fbb835fcd25090846e9.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 5
+  - Line 6: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/replay/main.rs
+  - Line 568: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/replay/owned\_lifetime.py
+  - Line 668: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/replay/owned\_native.py
+  - Line 795: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/replay/prepare\_reference.py
+  - Line 883: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/replay/run\_replay.py
+  - Line 961: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/replay/sigterm\_cancellation.py
+  - Line 1017: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/replay/source-bindings.json
+  - Line 1335: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/replay/source-pin.json
+  - Line 1553: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/replay/source\_contract.py
+  - Line 1650: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/replay/test\_contracts.py
+  - Line 1680: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/replay/validate\_replay.py
+  - Line 1764: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/replay/write\_implementation.py
+  - Line 1798: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/owned-delta.json
+  - Line 1839: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/pinned-source/AccumulateType.h
+  - Line 1845: pragma once
+  - Line 1846: include \<ATen/Config.h\>
+  - Line 1847: include \<c10/core/DeviceType.h\>
+  - Line 1848: include \<c10/core/ScalarType.h\>
+  - Line 1849: include \<c10/util/BFloat16.h\>
+  - Line 1850: include \<c10/util/Float8\_e4m3fn.h\>
+  - Line 1851: include \<c10/util/Float8\_e4m3fnuz.h\>
+  - Line 1852: include \<c10/util/Float8\_e5m2.h\>
+  - Line 1853: include \<c10/util/Float8\_e5m2fnuz.h\>
+  - Line 1854: include \<c10/util/Half.h\>
+  - Line 1891: if defined(\_\_CUDACC\_\_)
+  - Line 1892: include \<cuda.h\>
+  - Line 1893: include \<cuda\_fp16.h\>
+  - Line 1894: elif defined(\_\_HIPCC\_\_)
+  - Line 1895: include \<hip/hip\_fp16.h\>
+  - Line 1896: include \<hip/hip\_runtime.h\>
+  - Line 1897: endif
+  - Line 1923: define ACC\_TYPE(t, acc\_t, device\_type)         \\
+  - Line 1928: define MPS\_ACC\_TYPE(t, acc\_t) ACC\_TYPE(t, acc\_t, c10::DeviceType::MPS)
+  - Line 1929: define XPU\_ACC\_TYPE(t, acc\_t) ACC\_TYPE(t, acc\_t, c10::DeviceType::XPU)
+  - Line 1930: define CUDA\_ACC\_TYPE(t, acc\_t) ACC\_TYPE(t, acc\_t, c10::DeviceType::CUDA)
+  - Line 1931: define CPU\_ACC\_TYPE(t, acc\_t) ACC\_TYPE(t, acc\_t, c10::DeviceType::CPU)
+  - Line 1971: if defined(\_\_CUDACC\_\_) || defined(\_\_HIPCC\_\_)
+  - Line 1973: endif
+  - Line 2021: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/pinned-source/ReduceOpsKernel.cpp
+  - Line 2027: define TORCH\_ASSERT\_ONLY\_METHOD\_OPERATORS
+  - Line 2028: include \<algorithm\>
+  - Line 2030: include \<ATen/core/Tensor.h\>
+  - Line 2031: include \<ATen/Dispatch.h\>
+  - Line 2032: include \<ATen/OpMathType.h\>
+  - Line 2033: include \<ATen/cpu/vec/vec.h\>
+  - Line 2034: include \<ATen/cpu/vec/functional.h\>
+  - Line 2035: include \<ATen/native/ReduceOps.h\>
+  - Line 2036: include \<ATen/native/Resize.h\>
+  - Line 2037: include \<ATen/native/TensorIterator.h\>
+  - Line 2038: include \<ATen/native/SharedReduceOps.h\>
+  - Line 2039: include \<ATen/native/ReduceOpsUtils.h\>
+  - Line 2040: include \<ATen/native/cpu/Reduce.h\>
+  - Line 2041: include \<ATen/native/cpu/LogAddExp.h\>
+  - Line 2043: ifndef AT\_PER\_OPERATOR\_HEADERS
+  - Line 2044: include \<ATen/Functions.h\>
+  - Line 2045: else
+  - Line 2046: include \<ATen/ops/imag.h\>
+  - Line 2047: endif
+  - Line 2049: include \<c10/util/irange.h\>
+  - Line 2050: include \<ATen/AccumulateType.h\>
+  - Line 2597: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/pinned-source/SOURCE.json
+  - Line 2634: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/proposed/crates/zerogravity-cpu/src/original\_hf/initial\_prelude/admitted.rs
+  - Line 2647: \[derive(Clone, Copy)\]
+  - Line 2677: \[derive(Clone)\]
+  - Line 2745: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/proposed/crates/zerogravity-cpu/src/original\_hf/initial\_prelude/tests.rs
+  - Line 2762: \[test\]
+  - Line 2782: \[test\]
+  - Line 2802: \[test\]
+  - Line 2858: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 3011: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/proposed/crates/zerogravity-cpu/src/original\_hf/initial\_prelude.rs
+  - Line 3025: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 3030: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 3037: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 3166: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 3168: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 3170: \[cfg(test)\]
+  - Line 3175: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/proposed/crates/zerogravity-cpu/src/original\_hf.rs
+  - Line 3193: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 3195: \[cfg(all(feature = "cache", target\_os = "linux"))\]
+  - Line 3281: \[cfg(test)\]
+  - Line 3489: \[cfg(test)\]
+  - Line 3527: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/replay/Cargo.toml
+  - Line 3559: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/replay/contracts.py
+  - Line 3710: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/replay/factory.rs
+  - Line 3716: !\[allow(dead\_code)\]
+  - Line 4571: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/replay/main.rs
+  - Line 5133: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/replay/owned\_lifetime.py
+  - Line 5233: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/replay/owned\_native.py
+  - Line 5360: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/replay/prepare\_reference.py
+  - Line 5448: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/replay/run\_replay.py
+  - Line 5526: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/replay/sigterm\_cancellation.py
+  - Line 5582: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/replay/source-bindings.json
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_06.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_06.md)
+
+- Bytes: 227672; mode: 0o644; SHA256: 9083f2f776d40d8fde08bec794ec652bfd160c712623a6e470dc86f41301b57e.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 6
+  - Line 6: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/replay/source-pin.json
+  - Line 224: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/replay/source\_contract.py
+  - Line 321: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/replay/test\_contracts.py
+  - Line 351: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/replay/validate\_replay.py
+  - Line 435: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/replay/write\_implementation.py
+  - Line 469: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/BASELINE.json
+  - Line 506: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/MATH\_UNCHANGED.json
+  - Line 529: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/baseline/crates/zerogravity-model-qwen35/src/coefficient\_preparation\_tests.rs
+  - Line 575: \[test\]
+  - Line 625: \[test\]
+  - Line 699: \[test\]
+  - Line 764: \[test\]
+  - Line 809: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/baseline/crates/zerogravity-model-qwen35/src/operator\_slice/coefficient\_preparation.rs
+  - Line 905: \[derive(Clone, Copy)\]
+  - Line 964: \[cfg(feature = "cpu")\]
+  - Line 974: \[cfg(feature = "cpu")\]
+  - Line 1008: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 1101: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/followup.json
+  - Line 1347: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/freeze-manifest.json
+  - Line 1471: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/frozen-prepared/followup.json
+  - Line 1717: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/frozen-prepared/replay/Cargo.toml
+  - Line 1750: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/frozen-prepared/replay/contracts.py
+  - Line 1901: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/frozen-prepared/replay/factory.rs
+  - Line 1907: !\[allow(dead\_code)\]
+  - Line 2762: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/frozen-prepared/replay/main.rs
+  - Line 3449: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/frozen-prepared/replay/owned\_lifetime.py
+  - Line 3549: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/frozen-prepared/replay/owned\_native.py
+  - Line 3676: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/frozen-prepared/replay/prepare\_reference.py
+  - Line 3832: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/frozen-prepared/replay/run\_replay.py
+  - Line 3910: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/frozen-prepared/replay/sigterm\_cancellation.py
+  - Line 3966: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/frozen-prepared/replay/source-bindings.json
+  - Line 4808: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/frozen-prepared/replay/source-pin.json
+  - Line 5026: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/frozen-prepared/replay/source\_contract.py
+  - Line 5127: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/frozen-prepared/replay/test\_contracts.py
+  - Line 5228: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/frozen-prepared/replay/validate\_replay.py
+  - Line 5429: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/frozen-prepared/replay/write\_implementation.py
+  - Line 5463: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/replay/Cargo.toml
+  - Line 5496: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/replay/contracts.py
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_07.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_07.md)
+
+- Bytes: 214066; mode: 0o644; SHA256: 68c4286e8f1eafee55b7aaf7a6d67baa49d232935e7fa7671406df1af8c3a85e.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 7
+  - Line 6: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/replay/factory.rs
+  - Line 12: !\[allow(dead\_code)\]
+  - Line 867: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/replay/main.rs
+  - Line 1554: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/replay/owned\_lifetime.py
+  - Line 1654: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/replay/owned\_native.py
+  - Line 1781: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/replay/prepare\_reference.py
+  - Line 1937: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/replay/run\_replay.py
+  - Line 2015: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/replay/sigterm\_cancellation.py
+  - Line 2071: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/replay/source-bindings.json
+  - Line 2913: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/replay/source-pin.json
+  - Line 3131: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/replay/source\_contract.py
+  - Line 3232: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/replay/test\_contracts.py
+  - Line 3333: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/replay/validate\_replay.py
+  - Line 3534: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/replay/write\_implementation.py
+  - Line 3568: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/freeze-manifest.json
+  - Line 3810: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/BASELINE.json
+  - Line 3847: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/MATH\_UNCHANGED.json
+  - Line 3870: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/baseline/crates/zerogravity-model-qwen35/src/coefficient\_preparation\_tests.rs
+  - Line 3916: \[test\]
+  - Line 3966: \[test\]
+  - Line 4040: \[test\]
+  - Line 4105: \[test\]
+  - Line 4150: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/baseline/crates/zerogravity-model-qwen35/src/operator\_slice/coefficient\_preparation.rs
+  - Line 4246: \[derive(Clone, Copy)\]
+  - Line 4305: \[cfg(feature = "cpu")\]
+  - Line 4315: \[cfg(feature = "cpu")\]
+  - Line 4349: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 4442: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/owned-delta.json
+  - Line 4471: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/proposed/crates/zerogravity-model-qwen35/src/coefficient\_preparation\_h48\_tests.rs
+  - Line 4603: \[test\]
+  - Line 4742: \[test\]
+  - Line 4815: \[test\]
+  - Line 4870: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/proposed/crates/zerogravity-model-qwen35/src/coefficient\_preparation\_tests.rs
+  - Line 4916: \[test\]
+  - Line 4966: \[test\]
+  - Line 5040: \[test\]
+  - Line 5105: \[test\]
+  - Line 5148: \[path = "coefficient\_preparation\_h48\_tests.rs"\]
+  - Line 5153: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/proposed/crates/zerogravity-model-qwen35/src/operator\_slice/coefficient\_preparation.rs
+  - Line 5254: \[derive(Clone, Copy)\]
+  - Line 5313: \[cfg(feature = "cpu")\]
+  - Line 5323: \[cfg(feature = "cpu")\]
+  - Line 5357: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 5450: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/replay/Cargo.toml
+  - Line 5483: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/replay/contracts.py
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_08.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_08.md)
+
+- Bytes: 210043; mode: 0o644; SHA256: 56abf77c7224d8cd9d9a6b57bd0cc836b73daa18f00c8313a7d495dfaa2f45d8.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 8
+  - Line 6: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/replay/factory.rs
+  - Line 12: !\[allow(dead\_code)\]
+  - Line 867: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/replay/main.rs
+  - Line 1552: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/replay/owned\_lifetime.py
+  - Line 1652: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/replay/owned\_native.py
+  - Line 1779: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/replay/prepare\_reference.py
+  - Line 1935: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/replay/run\_replay.py
+  - Line 2013: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/replay/sigterm\_cancellation.py
+  - Line 2069: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/replay/source-bindings.json
+  - Line 2911: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/replay/source-pin.json
+  - Line 3129: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/replay/source\_contract.py
+  - Line 3219: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/replay/test\_contracts.py
+  - Line 3308: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/replay/validate\_replay.py
+  - Line 3509: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/replay/write\_implementation.py
+  - Line 3543: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/owned-delta.json
+  - Line 3572: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/proposed/crates/zerogravity-model-qwen35/src/coefficient\_preparation\_h48\_tests.rs
+  - Line 3704: \[test\]
+  - Line 3843: \[test\]
+  - Line 3916: \[test\]
+  - Line 3971: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/proposed/crates/zerogravity-model-qwen35/src/coefficient\_preparation\_tests.rs
+  - Line 4017: \[test\]
+  - Line 4067: \[test\]
+  - Line 4141: \[test\]
+  - Line 4206: \[test\]
+  - Line 4249: \[path = "coefficient\_preparation\_h48\_tests.rs"\]
+  - Line 4254: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/proposed/crates/zerogravity-model-qwen35/src/operator\_slice/coefficient\_preparation.rs
+  - Line 4355: \[derive(Clone, Copy)\]
+  - Line 4414: \[cfg(feature = "cpu")\]
+  - Line 4424: \[cfg(feature = "cpu")\]
+  - Line 4458: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 4551: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/replay/Cargo.toml
+  - Line 4584: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/replay/contracts.py
+  - Line 4735: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/replay/factory.rs
+  - Line 4741: !\[allow(dead\_code)\]
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_09.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_09.md)
+
+- Bytes: 224026; mode: 0o644; SHA256: 922ea83f3f0f74db8a5efc1bbe0776b97df18ee2c701d973072b0b624f649f38.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 9
+  - Line 6: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/replay/main.rs
+  - Line 691: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/replay/owned\_lifetime.py
+  - Line 791: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/replay/owned\_native.py
+  - Line 918: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/replay/prepare\_reference.py
+  - Line 1074: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/replay/run\_replay.py
+  - Line 1152: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/replay/sigterm\_cancellation.py
+  - Line 1208: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/replay/source-bindings.json
+  - Line 2050: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/replay/source-pin.json
+  - Line 2268: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/replay/source\_contract.py
+  - Line 2358: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/replay/test\_contracts.py
+  - Line 2447: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/replay/validate\_replay.py
+  - Line 2648: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/replay/write\_implementation.py
+  - Line 2682: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/Cargo.toml
+  - Line 2713: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/HISTORICAL-RECOVERY.json
+  - Line 2892: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/baseline/math.rs
+  - Line 3039: \[cfg(test)\]
+  - Line 3083: \[derive(Debug, Clone, serde::Serialize, serde::Deserialize)\]
+  - Line 3122: \[cfg(test)\]
+  - Line 3144: \[cfg(test)\]
+  - Line 3251: \[cfg(test)\]
+  - Line 3271: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/contracts.py
+  - Line 3358: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/followup-attribution/UPSTREAM-NOTICE.txt
+  - Line 3389: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/followup-attribution/freeze-manifest.json
+  - Line 3450: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/followup-attribution/proposed/crates/zerogravity-cpu/src/math/haswell\_bulk\_f32.rs
+  - Line 3521: \[cfg(test)\]
+  - Line 3528: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 3536: \[derive(Clone, Copy)\]
+  - Line 3548: \[derive(Clone, Copy)\]
+  - Line 3840: \[cfg(test)\]
+  - Line 3845: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/freeze-manifest.json
+  - Line 4183: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/frozen/Cargo.toml
+  - Line 4214: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/frozen/HISTORICAL-RECOVERY.json
+  - Line 4393: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/frozen/baseline/math.rs
+  - Line 4540: \[cfg(test)\]
+  - Line 4584: \[derive(Debug, Clone, serde::Serialize, serde::Deserialize)\]
+  - Line 4623: \[cfg(test)\]
+  - Line 4645: \[cfg(test)\]
+  - Line 4752: \[cfg(test)\]
+  - Line 4772: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/frozen/contracts.py
+  - Line 4859: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/frozen/freeze-manifest.json
+  - Line 5197: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/frozen/main.rs
+  - Line 5204: !\[cfg(all(target\_os = "linux", target\_arch = "x86\_64"))\]
+  - Line 5227: \[derive(Deserialize)\]
+  - Line 5228: \[serde(deny\_unknown\_fields)\]
+  - Line 5233: \[derive(Deserialize)\]
+  - Line 5234: \[serde(deny\_unknown\_fields)\]
+  - Line 5242: \[derive(Deserialize)\]
+  - Line 5243: \[serde(deny\_unknown\_fields)\]
+  - Line 5252: \[derive(Deserialize)\]
+  - Line 5253: \[serde(deny\_unknown\_fields)\]
+  - Line 5621: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/frozen/owned\_lifetime.py
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_10.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_10.md)
+
+- Bytes: 149302; mode: 0o644; SHA256: dc1be992c78755cdad9b25ae2ad5030a053a50aa1d44e23bf71c9982fab8e99e.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 10
+  - Line 6: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/frozen/prepare.py
+  - Line 118: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/frozen/proposed/crates/zerogravity-cpu/src/math/haswell\_bulk\_f32/tests.rs
+  - Line 160: \[test\]
+  - Line 175: \[test\]
+  - Line 184: \[test\]
+  - Line 235: \[test\]
+  - Line 283: \[test\]
+  - Line 347: \[test\]
+  - Line 384: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/frozen/proposed/crates/zerogravity-cpu/src/math/haswell\_bulk\_f32.rs
+  - Line 433: \[cfg(test)\]
+  - Line 440: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 448: \[derive(Clone, Copy)\]
+  - Line 460: \[derive(Clone, Copy)\]
+  - Line 752: \[cfg(test)\]
+  - Line 757: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/frozen/proposed/crates/zerogravity-cpu/src/math.rs
+  - Line 904: \[cfg(test)\]
+  - Line 948: \[derive(Debug, Clone, serde::Serialize, serde::Deserialize)\]
+  - Line 987: \[cfg(test)\]
+  - Line 1009: \[cfg(test)\]
+  - Line 1116: \[cfg(test)\]
+  - Line 1139: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/frozen/run\_replay.py
+  - Line 1257: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/frozen/test\_contracts.py
+  - Line 1353: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/frozen/validate.py
+  - Line 1462: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/main.rs
+  - Line 1469: !\[cfg(all(target\_os = "linux", target\_arch = "x86\_64"))\]
+  - Line 1492: \[derive(Deserialize)\]
+  - Line 1493: \[serde(deny\_unknown\_fields)\]
+  - Line 1498: \[derive(Deserialize)\]
+  - Line 1499: \[serde(deny\_unknown\_fields)\]
+  - Line 1507: \[derive(Deserialize)\]
+  - Line 1508: \[serde(deny\_unknown\_fields)\]
+  - Line 1517: \[derive(Deserialize)\]
+  - Line 1518: \[serde(deny\_unknown\_fields)\]
+  - Line 1886: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/owned\_lifetime.py
+  - Line 2175: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/prepare.py
+  - Line 2287: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/proposed/crates/zerogravity-cpu/src/math/haswell\_bulk\_f32/tests.rs
+  - Line 2329: \[test\]
+  - Line 2344: \[test\]
+  - Line 2353: \[test\]
+  - Line 2404: \[test\]
+  - Line 2452: \[test\]
+  - Line 2516: \[test\]
+  - Line 2553: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/proposed/crates/zerogravity-cpu/src/math/haswell\_bulk\_f32.rs
+  - Line 2602: \[cfg(test)\]
+  - Line 2609: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 2617: \[derive(Clone, Copy)\]
+  - Line 2629: \[derive(Clone, Copy)\]
+  - Line 2921: \[cfg(test)\]
+  - Line 2926: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/proposed/crates/zerogravity-cpu/src/math.rs
+  - Line 3073: \[cfg(test)\]
+  - Line 3117: \[derive(Debug, Clone, serde::Serialize, serde::Deserialize)\]
+  - Line 3156: \[cfg(test)\]
+  - Line 3178: \[cfg(test)\]
+  - Line 3285: \[cfg(test)\]
+  - Line 3308: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/run\_replay.py
+  - Line 3426: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/test\_contracts.py
+  - Line 3522: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/validate.py
+  - Line 3631: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/BASELINE.json
+  - Line 3675: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/Cargo.toml
+  - Line 3706: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/STATIC.json
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_11.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_11.md)
+
+- Bytes: 150791; mode: 0o644; SHA256: e9dc7be920202e040715f8f897bb01b405789664aa3a830a86c8ab756c5b6cff.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 11
+  - Line 6: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/baseline/crates/zerogravity-core/src/accelerator/program.rs
+  - Line 36: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 85: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 101: \[derive(Clone, Debug, PartialEq, Eq)\]
+  - Line 176: \[derive(Clone, Copy, Debug)\]
+  - Line 182: \[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)\]
+  - Line 184: \[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)\]
+  - Line 186: \[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)\]
+  - Line 188: \[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)\]
+  - Line 195: \[derive(Clone, Copy, Debug)\]
+  - Line 201: \[derive(Clone, Copy, Debug)\]
+  - Line 229: \[derive(Clone, Copy, Debug)\]
+  - Line 252: \[allow(clippy::too\_many\_arguments)\] // Source closed-op inputs stay explicit.
+  - Line 409: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 415: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 417: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 419: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 435: \[derive(Clone, Copy, Debug)\]
+  - Line 449: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 451: \[derive(Clone, Debug)\]
+  - Line 457: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 462: \[derive(Clone, Copy, Debug)\]
+  - Line 470: \[derive(Clone, Debug)\]
+  - Line 557: \[derive(Clone, Debug)\]
+  - Line 565: \[derive(Clone, Debug)\]
+  - Line 582: \[derive(Clone, Debug)\]
+  - Line 1043: \[allow(clippy::too\_many\_arguments)\] // Source closed-op inputs stay explicit.
+  - Line 1598: \[cfg(test)\]
+  - Line 2389: \[derive(Clone)\]
+  - Line 2390: \[cfg\_attr(feature = "serde", derive(serde::Serialize))\]
+  - Line 2408: \[cfg(test)\]
+  - Line 2409: \[path = "program/typed\_tests.rs"\]
+  - Line 2414: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/baseline/crates/zerogravity-gpu/src/resident\_program/batch.rs
+  - Line 2471: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 2477: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 2479: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 2481: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 4009: \[cube(launch\_unchecked)\]
+  - Line 4053: \[cube(launch\_unchecked)\]
+  - Line 4094: \[cube(launch\_unchecked)\]
+  - Line 4120: \[cube(launch\_unchecked)\]
+  - Line 4153: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 4154: \[cube(launch\_unchecked)\]
+  - Line 4179: \[cube(launch\_unchecked)\]
+  - Line 4208: \[cube(launch\_unchecked)\]
+  - Line 4227: \[cube(launch\_unchecked)\]
+  - Line 4273: \[cube(launch\_unchecked)\]
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_12.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_12.md)
+
+- Bytes: 216594; mode: 0o644; SHA256: ba88fca380a9dabcea1bf6b43cff66a19bcadc1eb6913f7706eeb8e4a4b04264.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 12
+  - Line 6: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/baseline/crates/zerogravity-gpu/src/resident\_program.rs
+  - Line 46: \[cfg(all(test, feature = "qualification"))\]
+  - Line 53: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 56: \[cfg(feature = "qualification")\]
+  - Line 57: \[path = "resident\_projection\_qualification.rs"\]
+  - Line 62: \[derive(Clone, Debug)\]
+  - Line 177: \[derive(Clone, Debug)\]
+  - Line 199: \[derive(Clone, Debug)\]
+  - Line 221: \[derive(Clone, Debug)\]
+  - Line 229: \[derive(Clone, Copy, Debug)\]
+  - Line 242: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 255: \[derive(Clone, Copy, Debug)\]
+  - Line 260: \[derive(Clone, Copy, Debug)\]
+  - Line 270: \[derive(Clone, Debug)\]
+  - Line 332: \[derive(Clone, Debug)\]
+  - Line 2469: \[derive(Clone, Copy, Debug)\]
+  - Line 2477: \[derive(Clone, Copy, Debug)\]
+  - Line 2507: \[cfg(test)\]
+  - Line 2695: \[cfg(test)\]
+  - Line 2696: \[path = "resident\_program/typed\_refusal\_tests.rs"\]
+  - Line 2701: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/baseline/crates/zerogravity-model-qwen35/src/forward.rs
+  - Line 3261: \[cfg(all(test, feature = "cpu"))\]
+  - Line 3362: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/baseline/crates/zerogravity-model-qwen35/src/host\_math.rs
+  - Line 3387: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 3444: \[derive(Clone)\]
+  - Line 3708: \[allow(clippy::too\_many\_arguments)\] // Mirrors already qualified closed-op inputs.
+  - Line 4363: \[cfg(test)\]
+  - Line 4421: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 4426: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/baseline/crates/zerogravity-model-qwen35/src/operator\_slice.rs
+  - Line 4596: \[cfg(feature = "cpu")\]
+  - Line 4604: \[cfg(feature = "cpu")\]
+  - Line 4627: \[cfg(feature = "cpu")\]
+  - Line 4634: \[cfg(feature = "cpu")\]
+  - Line 4653: \[cfg(all(
+  - Line 4659: \[path = "operator\_slice\_tests.rs"\]
+  - Line 4663: \[path = "attention\_slice.rs"\]
+  - Line 4666: \[path = "gdn\_conv\_slice.rs"\]
+  - Line 4671: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/contracts.py
+  - Line 4779: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/execution\_v2.py
+  - Line 4803: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/followup-signal-v2/freeze-manifest.json
+  - Line 4877: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/followup-signal-v2/frozen/execution\_v2.py
+  - Line 4901: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/followup-signal-v2/frozen/run\_replay\_v2.py
+  - Line 5038: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/followup-signal-v2/frozen/sigterm\_guard\_v2.py
+  - Line 5094: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/followup-signal-v2/frozen/test\_execution\_v2.py
+  - Line 5142: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/followup-signal-v2/frozen/validate\_v2.py
+  - Line 5169: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/freeze-manifest.json
+  - Line 5489: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/BASELINE.json
+  - Line 5533: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/Cargo.toml
+  - Line 5564: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/STATIC.json
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_13.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_13.md)
+
+- Bytes: 150805; mode: 0o644; SHA256: 1ebfc30748c751902c741aecafa319b36e66c0efd02058f6378870050e40c01a.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 13
+  - Line 6: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/baseline/crates/zerogravity-core/src/accelerator/program.rs
+  - Line 36: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 85: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 101: \[derive(Clone, Debug, PartialEq, Eq)\]
+  - Line 176: \[derive(Clone, Copy, Debug)\]
+  - Line 182: \[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)\]
+  - Line 184: \[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)\]
+  - Line 186: \[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)\]
+  - Line 188: \[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)\]
+  - Line 195: \[derive(Clone, Copy, Debug)\]
+  - Line 201: \[derive(Clone, Copy, Debug)\]
+  - Line 229: \[derive(Clone, Copy, Debug)\]
+  - Line 252: \[allow(clippy::too\_many\_arguments)\] // Source closed-op inputs stay explicit.
+  - Line 409: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 415: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 417: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 419: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 435: \[derive(Clone, Copy, Debug)\]
+  - Line 449: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 451: \[derive(Clone, Debug)\]
+  - Line 457: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 462: \[derive(Clone, Copy, Debug)\]
+  - Line 470: \[derive(Clone, Debug)\]
+  - Line 557: \[derive(Clone, Debug)\]
+  - Line 565: \[derive(Clone, Debug)\]
+  - Line 582: \[derive(Clone, Debug)\]
+  - Line 1043: \[allow(clippy::too\_many\_arguments)\] // Source closed-op inputs stay explicit.
+  - Line 1598: \[cfg(test)\]
+  - Line 2389: \[derive(Clone)\]
+  - Line 2390: \[cfg\_attr(feature = "serde", derive(serde::Serialize))\]
+  - Line 2408: \[cfg(test)\]
+  - Line 2409: \[path = "program/typed\_tests.rs"\]
+  - Line 2414: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/baseline/crates/zerogravity-gpu/src/resident\_program/batch.rs
+  - Line 2471: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 2477: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 2479: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 2481: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 4009: \[cube(launch\_unchecked)\]
+  - Line 4053: \[cube(launch\_unchecked)\]
+  - Line 4094: \[cube(launch\_unchecked)\]
+  - Line 4120: \[cube(launch\_unchecked)\]
+  - Line 4153: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 4154: \[cube(launch\_unchecked)\]
+  - Line 4179: \[cube(launch\_unchecked)\]
+  - Line 4208: \[cube(launch\_unchecked)\]
+  - Line 4227: \[cube(launch\_unchecked)\]
+  - Line 4273: \[cube(launch\_unchecked)\]
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_14.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_14.md)
+
+- Bytes: 227445; mode: 0o644; SHA256: 15f82f44cbb94431e5241809a56ad351b887734c919cbaee5900d106769cb7bc.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 14
+  - Line 6: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/baseline/crates/zerogravity-gpu/src/resident\_program.rs
+  - Line 46: \[cfg(all(test, feature = "qualification"))\]
+  - Line 53: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 56: \[cfg(feature = "qualification")\]
+  - Line 57: \[path = "resident\_projection\_qualification.rs"\]
+  - Line 62: \[derive(Clone, Debug)\]
+  - Line 177: \[derive(Clone, Debug)\]
+  - Line 199: \[derive(Clone, Debug)\]
+  - Line 221: \[derive(Clone, Debug)\]
+  - Line 229: \[derive(Clone, Copy, Debug)\]
+  - Line 242: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 255: \[derive(Clone, Copy, Debug)\]
+  - Line 260: \[derive(Clone, Copy, Debug)\]
+  - Line 270: \[derive(Clone, Debug)\]
+  - Line 332: \[derive(Clone, Debug)\]
+  - Line 2469: \[derive(Clone, Copy, Debug)\]
+  - Line 2477: \[derive(Clone, Copy, Debug)\]
+  - Line 2507: \[cfg(test)\]
+  - Line 2695: \[cfg(test)\]
+  - Line 2696: \[path = "resident\_program/typed\_refusal\_tests.rs"\]
+  - Line 2701: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/baseline/crates/zerogravity-model-qwen35/src/forward.rs
+  - Line 3261: \[cfg(all(test, feature = "cpu"))\]
+  - Line 3362: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/baseline/crates/zerogravity-model-qwen35/src/host\_math.rs
+  - Line 3387: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 3444: \[derive(Clone)\]
+  - Line 3708: \[allow(clippy::too\_many\_arguments)\] // Mirrors already qualified closed-op inputs.
+  - Line 4363: \[cfg(test)\]
+  - Line 4421: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 4426: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/baseline/crates/zerogravity-model-qwen35/src/operator\_slice.rs
+  - Line 4596: \[cfg(feature = "cpu")\]
+  - Line 4604: \[cfg(feature = "cpu")\]
+  - Line 4627: \[cfg(feature = "cpu")\]
+  - Line 4634: \[cfg(feature = "cpu")\]
+  - Line 4653: \[cfg(all(
+  - Line 4659: \[path = "operator\_slice\_tests.rs"\]
+  - Line 4663: \[path = "attention\_slice.rs"\]
+  - Line 4666: \[path = "gdn\_conv\_slice.rs"\]
+  - Line 4671: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/contracts.py
+  - Line 4779: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/main.rs
+  - Line 4786: !\[cfg(all(target\_os = "linux", target\_arch = "x86\_64"))\]
+  - Line 4815: \[derive(Deserialize)\]
+  - Line 4816: \[serde(deny\_unknown\_fields)\]
+  - Line 4821: \[derive(Deserialize)\]
+  - Line 4822: \[serde(deny\_unknown\_fields)\]
+  - Line 4830: \[derive(Deserialize)\]
+  - Line 4831: \[serde(deny\_unknown\_fields)\]
+  - Line 4840: \[derive(Deserialize)\]
+  - Line 4841: \[serde(deny\_unknown\_fields)\]
+  - Line 5318: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/owned\_lifetime.py
+  - Line 5607: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/prepare.py
+  - Line 5656: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/proposed/crates/zerogravity-core/src/accelerator/program/bulk\_f32/tests.rs
+  - Line 5690: \[test\]
+  - Line 5709: \[test\]
+  - Line 5752: \[test\]
+  - Line 5770: \[test\]
+  - Line 5819: \[test\]
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_15.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_15.md)
+
+- Bytes: 166125; mode: 0o644; SHA256: fb1bada9a82def410fdb1d364c9a3a01606fd8f825fa6c1b17790dab7a08e41e.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 15
+  - Line 6: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/proposed/crates/zerogravity-core/src/accelerator/program/bulk\_f32.rs
+  - Line 17: \[derive(Clone, Debug)\]
+  - Line 19: \[derive(Debug)\]
+  - Line 84: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 180: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 185: \[derive(Clone, Debug, PartialEq, Eq)\]
+  - Line 192: \[derive(Clone, Debug, PartialEq, Eq)\]
+  - Line 279: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 283: \[derive(Clone, Debug, PartialEq, Eq)\]
+  - Line 420: \[cfg(test)\]
+  - Line 425: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/proposed/crates/zerogravity-core/src/accelerator/program.rs
+  - Line 461: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 510: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 526: \[derive(Clone, Debug, PartialEq, Eq)\]
+  - Line 601: \[derive(Clone, Copy, Debug)\]
+  - Line 607: \[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)\]
+  - Line 609: \[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)\]
+  - Line 611: \[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)\]
+  - Line 613: \[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)\]
+  - Line 620: \[derive(Clone, Copy, Debug)\]
+  - Line 626: \[derive(Clone, Copy, Debug)\]
+  - Line 654: \[derive(Clone, Copy, Debug)\]
+  - Line 677: \[allow(clippy::too\_many\_arguments)\] // Source closed-op inputs stay explicit.
+  - Line 849: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 855: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 857: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 859: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 875: \[derive(Clone, Copy, Debug)\]
+  - Line 889: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 891: \[derive(Clone, Debug)\]
+  - Line 897: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 902: \[derive(Clone, Copy, Debug)\]
+  - Line 910: \[derive(Clone, Debug)\]
+  - Line 1003: \[derive(Clone, Debug)\]
+  - Line 1011: \[derive(Clone, Debug)\]
+  - Line 1028: \[derive(Clone, Debug)\]
+  - Line 1513: \[allow(clippy::too\_many\_arguments)\] // Source closed-op inputs stay explicit.
+  - Line 2079: \[cfg(test)\]
+  - Line 2870: \[derive(Clone)\]
+  - Line 2871: \[cfg\_attr(feature = "serde", derive(serde::Serialize))\]
+  - Line 2889: \[cfg(test)\]
+  - Line 2890: \[path = "program/typed\_tests.rs"\]
+  - Line 2895: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/proposed/crates/zerogravity-gpu/src/resident\_program/batch.rs
+  - Line 2952: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 2958: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 2960: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 2962: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 4492: \[cube(launch\_unchecked)\]
+  - Line 4536: \[cube(launch\_unchecked)\]
+  - Line 4577: \[cube(launch\_unchecked)\]
+  - Line 4603: \[cube(launch\_unchecked)\]
+  - Line 4636: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 4637: \[cube(launch\_unchecked)\]
+  - Line 4662: \[cube(launch\_unchecked)\]
+  - Line 4691: \[cube(launch\_unchecked)\]
+  - Line 4710: \[cube(launch\_unchecked)\]
+  - Line 4756: \[cube(launch\_unchecked)\]
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_16.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_16.md)
+
+- Bytes: 224086; mode: 0o644; SHA256: 16f0e23cf2f651dfdbd0f8616e762aa2842a8da30a94678e57dc71a18d87ed9e.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 16
+  - Line 6: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/proposed/crates/zerogravity-gpu/src/resident\_program.rs
+  - Line 46: \[cfg(all(test, feature = "qualification"))\]
+  - Line 53: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 56: \[cfg(feature = "qualification")\]
+  - Line 57: \[path = "resident\_projection\_qualification.rs"\]
+  - Line 62: \[derive(Clone, Debug)\]
+  - Line 177: \[derive(Clone, Debug)\]
+  - Line 199: \[derive(Clone, Debug)\]
+  - Line 221: \[derive(Clone, Debug)\]
+  - Line 229: \[derive(Clone, Copy, Debug)\]
+  - Line 242: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 255: \[derive(Clone, Copy, Debug)\]
+  - Line 260: \[derive(Clone, Copy, Debug)\]
+  - Line 270: \[derive(Clone, Debug)\]
+  - Line 332: \[derive(Clone, Debug)\]
+  - Line 2473: \[derive(Clone, Copy, Debug)\]
+  - Line 2481: \[derive(Clone, Copy, Debug)\]
+  - Line 2511: \[cfg(test)\]
+  - Line 2699: \[cfg(test)\]
+  - Line 2700: \[path = "resident\_program/typed\_refusal\_tests.rs"\]
+  - Line 2705: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/proposed/crates/zerogravity-model-qwen35/src/bulk\_f32\_slice.rs
+  - Line 2729: \[derive(Clone)\]
+  - Line 2988: \[derive(Clone)\]
+  - Line 3022: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/proposed/crates/zerogravity-model-qwen35/src/forward/bulk\_f32.rs
+  - Line 3042: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/proposed/crates/zerogravity-model-qwen35/src/forward.rs
+  - Line 3602: \[cfg(all(test, feature = "cpu"))\]
+  - Line 3701: \[cfg(all(feature = "cpu", target\_os = "linux", target\_arch = "x86\_64"))\]
+  - Line 3702: \[path = "forward/bulk\_f32.rs"\]
+  - Line 3704: \[cfg(all(feature = "cpu", target\_os = "linux", target\_arch = "x86\_64"))\]
+  - Line 3709: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/proposed/crates/zerogravity-model-qwen35/src/host\_math/bulk\_f32.rs
+  - Line 3943: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/proposed/crates/zerogravity-model-qwen35/src/host\_math.rs
+  - Line 3968: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 4027: \[derive(Clone)\]
+  - Line 4327: \[allow(clippy::too\_many\_arguments)\] // Mirrors already qualified closed-op inputs.
+  - Line 5010: \[cfg(test)\]
+  - Line 5068: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 5071: \[cfg(all(target\_os = "linux", target\_arch = "x86\_64"))\]
+  - Line 5076: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/proposed/crates/zerogravity-model-qwen35/src/operator\_slice.rs
+  - Line 5246: \[cfg(feature = "cpu")\]
+  - Line 5254: \[cfg(feature = "cpu")\]
+  - Line 5277: \[cfg(feature = "cpu")\]
+  - Line 5284: \[cfg(feature = "cpu")\]
+  - Line 5303: \[cfg(all(
+  - Line 5309: \[path = "operator\_slice\_tests.rs"\]
+  - Line 5313: \[path = "attention\_slice.rs"\]
+  - Line 5316: \[path = "gdn\_conv\_slice.rs"\]
+  - Line 5320: \[cfg(all(feature = "cpu", target\_os = "linux", target\_arch = "x86\_64"))\]
+  - Line 5321: \[path = "bulk\_f32\_slice.rs"\]
+  - Line 5326: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/run\_replay.py
+  - Line 5460: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/sigterm\_guard.py
+  - Line 5514: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/test\_contracts.py
+  - Line 5581: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/validate.py
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_17.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_17.md)
+
+- Bytes: 208819; mode: 0o644; SHA256: d850710886c0ab41de162c67a2e24ea8ad867036266e19528d7731c96e07dc9d.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 17
+  - Line 6: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/main.rs
+  - Line 13: !\[cfg(all(target\_os = "linux", target\_arch = "x86\_64"))\]
+  - Line 42: \[derive(Deserialize)\]
+  - Line 43: \[serde(deny\_unknown\_fields)\]
+  - Line 48: \[derive(Deserialize)\]
+  - Line 49: \[serde(deny\_unknown\_fields)\]
+  - Line 57: \[derive(Deserialize)\]
+  - Line 58: \[serde(deny\_unknown\_fields)\]
+  - Line 67: \[derive(Deserialize)\]
+  - Line 68: \[serde(deny\_unknown\_fields)\]
+  - Line 545: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/owned\_lifetime.py
+  - Line 834: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/prepare.py
+  - Line 883: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/proposed/crates/zerogravity-core/src/accelerator/program/bulk\_f32/tests.rs
+  - Line 917: \[test\]
+  - Line 936: \[test\]
+  - Line 979: \[test\]
+  - Line 997: \[test\]
+  - Line 1046: \[test\]
+  - Line 1085: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/proposed/crates/zerogravity-core/src/accelerator/program/bulk\_f32.rs
+  - Line 1096: \[derive(Clone, Debug)\]
+  - Line 1098: \[derive(Debug)\]
+  - Line 1163: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 1259: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 1264: \[derive(Clone, Debug, PartialEq, Eq)\]
+  - Line 1271: \[derive(Clone, Debug, PartialEq, Eq)\]
+  - Line 1358: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 1362: \[derive(Clone, Debug, PartialEq, Eq)\]
+  - Line 1499: \[cfg(test)\]
+  - Line 1504: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/proposed/crates/zerogravity-core/src/accelerator/program.rs
+  - Line 1540: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 1589: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 1605: \[derive(Clone, Debug, PartialEq, Eq)\]
+  - Line 1680: \[derive(Clone, Copy, Debug)\]
+  - Line 1686: \[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)\]
+  - Line 1688: \[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)\]
+  - Line 1690: \[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)\]
+  - Line 1692: \[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)\]
+  - Line 1699: \[derive(Clone, Copy, Debug)\]
+  - Line 1705: \[derive(Clone, Copy, Debug)\]
+  - Line 1733: \[derive(Clone, Copy, Debug)\]
+  - Line 1756: \[allow(clippy::too\_many\_arguments)\] // Source closed-op inputs stay explicit.
+  - Line 1928: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 1934: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 1936: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 1938: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 1954: \[derive(Clone, Copy, Debug)\]
+  - Line 1968: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 1970: \[derive(Clone, Debug)\]
+  - Line 1976: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 1981: \[derive(Clone, Copy, Debug)\]
+  - Line 1989: \[derive(Clone, Debug)\]
+  - Line 2082: \[derive(Clone, Debug)\]
+  - Line 2090: \[derive(Clone, Debug)\]
+  - Line 2107: \[derive(Clone, Debug)\]
+  - Line 2592: \[allow(clippy::too\_many\_arguments)\] // Source closed-op inputs stay explicit.
+  - Line 3158: \[cfg(test)\]
+  - Line 3949: \[derive(Clone)\]
+  - Line 3950: \[cfg\_attr(feature = "serde", derive(serde::Serialize))\]
+  - Line 3968: \[cfg(test)\]
+  - Line 3969: \[path = "program/typed\_tests.rs"\]
+  - Line 3974: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/proposed/crates/zerogravity-gpu/src/resident\_program/batch.rs
+  - Line 4031: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 4037: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 4039: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 4041: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 5571: \[cube(launch\_unchecked)\]
+  - Line 5615: \[cube(launch\_unchecked)\]
+  - Line 5656: \[cube(launch\_unchecked)\]
+  - Line 5682: \[cube(launch\_unchecked)\]
+  - Line 5715: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 5716: \[cube(launch\_unchecked)\]
+  - Line 5741: \[cube(launch\_unchecked)\]
+  - Line 5770: \[cube(launch\_unchecked)\]
+  - Line 5789: \[cube(launch\_unchecked)\]
+  - Line 5835: \[cube(launch\_unchecked)\]
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_18.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_18.md)
+
+- Bytes: 237709; mode: 0o644; SHA256: f5edb9482e643c3a327ede5398f12c76a75b589487816245c23344cac44c64ef.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 18
+  - Line 6: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/proposed/crates/zerogravity-gpu/src/resident\_program.rs
+  - Line 46: \[cfg(all(test, feature = "qualification"))\]
+  - Line 53: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 56: \[cfg(feature = "qualification")\]
+  - Line 57: \[path = "resident\_projection\_qualification.rs"\]
+  - Line 62: \[derive(Clone, Debug)\]
+  - Line 177: \[derive(Clone, Debug)\]
+  - Line 199: \[derive(Clone, Debug)\]
+  - Line 221: \[derive(Clone, Debug)\]
+  - Line 229: \[derive(Clone, Copy, Debug)\]
+  - Line 242: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 255: \[derive(Clone, Copy, Debug)\]
+  - Line 260: \[derive(Clone, Copy, Debug)\]
+  - Line 270: \[derive(Clone, Debug)\]
+  - Line 332: \[derive(Clone, Debug)\]
+  - Line 2473: \[derive(Clone, Copy, Debug)\]
+  - Line 2481: \[derive(Clone, Copy, Debug)\]
+  - Line 2511: \[cfg(test)\]
+  - Line 2699: \[cfg(test)\]
+  - Line 2700: \[path = "resident\_program/typed\_refusal\_tests.rs"\]
+  - Line 2705: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/proposed/crates/zerogravity-model-qwen35/src/bulk\_f32\_slice.rs
+  - Line 2729: \[derive(Clone)\]
+  - Line 2988: \[derive(Clone)\]
+  - Line 3022: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/proposed/crates/zerogravity-model-qwen35/src/forward/bulk\_f32.rs
+  - Line 3042: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/proposed/crates/zerogravity-model-qwen35/src/forward.rs
+  - Line 3602: \[cfg(all(test, feature = "cpu"))\]
+  - Line 3701: \[cfg(all(feature = "cpu", target\_os = "linux", target\_arch = "x86\_64"))\]
+  - Line 3702: \[path = "forward/bulk\_f32.rs"\]
+  - Line 3704: \[cfg(all(feature = "cpu", target\_os = "linux", target\_arch = "x86\_64"))\]
+  - Line 3709: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/proposed/crates/zerogravity-model-qwen35/src/host\_math/bulk\_f32.rs
+  - Line 3943: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/proposed/crates/zerogravity-model-qwen35/src/host\_math.rs
+  - Line 3968: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 4027: \[derive(Clone)\]
+  - Line 4327: \[allow(clippy::too\_many\_arguments)\] // Mirrors already qualified closed-op inputs.
+  - Line 5010: \[cfg(test)\]
+  - Line 5068: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 5071: \[cfg(all(target\_os = "linux", target\_arch = "x86\_64"))\]
+  - Line 5076: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/proposed/crates/zerogravity-model-qwen35/src/operator\_slice.rs
+  - Line 5246: \[cfg(feature = "cpu")\]
+  - Line 5254: \[cfg(feature = "cpu")\]
+  - Line 5277: \[cfg(feature = "cpu")\]
+  - Line 5284: \[cfg(feature = "cpu")\]
+  - Line 5303: \[cfg(all(
+  - Line 5309: \[path = "operator\_slice\_tests.rs"\]
+  - Line 5313: \[path = "attention\_slice.rs"\]
+  - Line 5316: \[path = "gdn\_conv\_slice.rs"\]
+  - Line 5320: \[cfg(all(feature = "cpu", target\_os = "linux", target\_arch = "x86\_64"))\]
+  - Line 5321: \[path = "bulk\_f32\_slice.rs"\]
+  - Line 5326: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/run\_replay.py
+  - Line 5460: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/run\_replay\_v2.py
+  - Line 5597: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/sigterm\_guard.py
+  - Line 5651: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/sigterm\_guard\_v2.py
+  - Line 5707: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/test\_contracts.py
+  - Line 5774: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/test\_execution\_v2.py
+  - Line 5822: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/validate.py
+  - Line 5917: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/validate\_v2.py
+  - Line 5944: Source: .agents/runs/numerics-and-context-default-bulk-isolated-20261020/baseline/Cargo.toml
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_19.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_19.md)
+
+- Bytes: 107994; mode: 0o644; SHA256: e1dea61ecc04c3ea93aac84f4ba6e2da4f8baf5f8bd7337cd473883dd8de8d32.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 19
+  - Line 6: Source: .agents/runs/numerics-and-context-default-bulk-isolated-20261020/baseline/contracts.py
+  - Line 114: Source: .agents/runs/numerics-and-context-default-bulk-isolated-20261020/baseline/execution\_v2.py
+  - Line 138: Source: .agents/runs/numerics-and-context-default-bulk-isolated-20261020/baseline/run\_replay\_v2.py
+  - Line 275: Source: .agents/runs/numerics-and-context-default-bulk-isolated-20261020/baseline/validate.py
+  - Line 370: Source: .agents/runs/numerics-and-context-default-bulk-isolated-20261020/baseline/validate\_v2.py
+  - Line 397: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/freeze-manifest.json
+  - Line 446: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/frozen/source-pins.json
+  - Line 571: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/primary-abi-v2/fetch\_primary\_source.py
+  - Line 577: !/usr/bin/env python3
+  - Line 663: Refuse a commented/ZIP64 archive instead of sweeping a tail that might also
+  - Line 664: contain compressed library bytes. This request is exactly the EOCD candidate.
+  - Line 749: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/primary-abi-v2/freeze-manifest.json
+  - Line 817: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/primary-abi-v2/frozen/fetch\_primary\_source.py
+  - Line 823: !/usr/bin/env python3
+  - Line 909: Refuse a commented/ZIP64 archive instead of sweeping a tail that might also
+  - Line 910: contain compressed library bytes. This request is exactly the EOCD candidate.
+  - Line 995: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/primary-abi-v2/frozen/nvidia-redistrib-12.9.1.json
+  - Line 2155: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/primary-abi-v2/frozen/source-acquisition.json
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_20.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_20.md)
+
+- Bytes: 179115; mode: 0o644; SHA256: 5efcd105f2731862dfdec9812ae8f6ab61697d5d42d2061593d74211da12beff.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 20
+  - Line 6: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/primary-abi-v2/frozen/zip-source-directory.json
+  - Line 4436: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/primary-abi-v2/nvidia-redistrib-12.9.1.json
+  - Line 5596: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/primary-abi-v2/source-acquisition.json
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_21.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_21.md)
+
+- Bytes: 191997; mode: 0o644; SHA256: cf4c20e7a3029cdc69c123243cb099d4eb390273293c001106aef0e120e5d514.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 21
+  - Line 6: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/primary-abi-v2/zip-source-directory.json
+  - Line 4436: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/prototype-v3/collector.cpp
+  - Line 4445: ifndef \_GNU\_SOURCE
+  - Line 4446: define \_GNU\_SOURCE
+  - Line 4447: endif
+  - Line 4448: include \<cupti\_callbacks.h\>
+  - Line 4449: include \<cupti\_version.h\>
+  - Line 4450: include \<cupti\_driver\_cbid.h\>
+  - Line 4451: include \<generated\_cuda\_meta.h\>
+  - Line 4452: include \<atomic\>
+  - Line 4453: include \<cerrno\>
+  - Line 4454: include \<cstddef\>
+  - Line 4455: include \<cstdint\>
+  - Line 4456: include \<cstdio\>
+  - Line 4457: include \<cstdlib\>
+  - Line 4458: include \<cstring\>
+  - Line 4459: include \<dlfcn.h\>
+  - Line 4460: include \<fcntl.h\>
+  - Line 4461: include \<initializer\_list\>
+  - Line 4462: include \<new\>
+  - Line 4463: include \<poll.h\>
+  - Line 4464: include \<sys/mman.h\>
+  - Line 4465: include \<sys/socket.h\>
+  - Line 4466: include \<sys/stat.h\>
+  - Line 4467: include \<sys/syscall.h\>
+  - Line 4468: include \<sys/time.h\>
+  - Line 4469: include \<sys/un.h\>
+  - Line 4470: include \<time.h\>
+  - Line 4471: include \<unistd.h\>
+  - Line 4934: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/prototype-v3/freeze-manifest.json
+  - Line 5010: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/prototype-v3/frozen/collector.cpp
+  - Line 5019: ifndef \_GNU\_SOURCE
+  - Line 5020: define \_GNU\_SOURCE
+  - Line 5021: endif
+  - Line 5022: include \<cupti\_callbacks.h\>
+  - Line 5023: include \<cupti\_version.h\>
+  - Line 5024: include \<cupti\_driver\_cbid.h\>
+  - Line 5025: include \<generated\_cuda\_meta.h\>
+  - Line 5026: include \<atomic\>
+  - Line 5027: include \<cerrno\>
+  - Line 5028: include \<cstddef\>
+  - Line 5029: include \<cstdint\>
+  - Line 5030: include \<cstdio\>
+  - Line 5031: include \<cstdlib\>
+  - Line 5032: include \<cstring\>
+  - Line 5033: include \<dlfcn.h\>
+  - Line 5034: include \<fcntl.h\>
+  - Line 5035: include \<initializer\_list\>
+  - Line 5036: include \<new\>
+  - Line 5037: include \<poll.h\>
+  - Line 5038: include \<sys/mman.h\>
+  - Line 5039: include \<sys/socket.h\>
+  - Line 5040: include \<sys/stat.h\>
+  - Line 5041: include \<sys/syscall.h\>
+  - Line 5042: include \<sys/time.h\>
+  - Line 5043: include \<sys/un.h\>
+  - Line 5044: include \<time.h\>
+  - Line 5045: include \<unistd.h\>
+  - Line 5508: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/source-pins.json
+  - Line 5633: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/BASELINE.json
+  - Line 5672: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/SOURCE\_PINS.json
+  - Line 5753: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/STATIC.json
+  - Line 5777: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/baseline/crates/zerogravity-gpu/src/lib.rs
+  - Line 5790: \[cfg(feature = "qualification")\]
+  - Line 5797: \[cfg(any(feature = "qualification", test))\]
+  - Line 5799: \[cfg(any(feature = "qualification", test))\]
+  - Line 5801: \[cfg(any(feature = "qualification", test))\]
+  - Line 5805: \[cfg(feature = "qualification")\]
+  - Line 5807: \[cfg(any(feature = "qualification", test))\]
+  - Line 5809: \[cfg(all(feature = "qualification", feature = "cuda", target\_os = "linux"))\]
+  - Line 5817: \[cfg(feature = "qualification")\]
+  - Line 5821: \[cfg(feature = "qualification")\]
+  - Line 5823: \[cfg(feature = "qualification")\]
+  - Line 5825: \[cfg(feature = "qualification")\]
+  - Line 5827: \[cfg(feature = "qualification")\]
+  - Line 5829: \[cfg(feature = "qualification")\]
+  - Line 5831: \[cfg(feature = "qualification")\]
+  - Line 5833: \[cfg(feature = "qualification")\]
+  - Line 5835: \[cfg(feature = "qualification")\]
+  - Line 5837: \[cfg(feature = "hardware-abort-probe")\]
+  - Line 5843: \[cfg(feature = "qualification")\]
+  - Line 5851: \[cfg(feature = "qualification")\]
+  - Line 5867: \[cfg(feature = "qualification")\]
+  - Line 5877: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_22.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_22.md)
+
+- Bytes: 225431; mode: 0o644; SHA256: 3f6794794b6732594358e88959e85c4b600a8f84ad7eaec3bb1086c2340554f0.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 22
+  - Line 6: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/baseline/crates/zerogravity-gpu/src/ordered\_silu.rs
+  - Line 200: \[cube\]
+  - Line 206: \[cube\]
+  - Line 212: \[cube\]
+  - Line 218: \[cube\]
+  - Line 224: \[cube\]
+  - Line 230: \[cube\]
+  - Line 236: \[cube\]
+  - Line 242: \[cube\]
+  - Line 248: \[cube\]
+  - Line 254: \[cube\]
+  - Line 258: \[cube\]
+  - Line 265: \[cube(launch\_unchecked)\]
+  - Line 364: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 366: \[cfg(test)\]
+  - Line 371: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/baseline/crates/zerogravity-gpu/src/resident\_program/batch.rs
+  - Line 428: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 434: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 436: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 438: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 1966: \[cube(launch\_unchecked)\]
+  - Line 2010: \[cube(launch\_unchecked)\]
+  - Line 2051: \[cube(launch\_unchecked)\]
+  - Line 2077: \[cube(launch\_unchecked)\]
+  - Line 2110: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 2111: \[cube(launch\_unchecked)\]
+  - Line 2136: \[cube(launch\_unchecked)\]
+  - Line 2165: \[cube(launch\_unchecked)\]
+  - Line 2184: \[cube(launch\_unchecked)\]
+  - Line 2230: \[cube(launch\_unchecked)\]
+  - Line 2307: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/baseline/crates/zerogravity-gpu/src/resident\_program.rs
+  - Line 2347: \[cfg(all(test, feature = "qualification"))\]
+  - Line 2354: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 2357: \[cfg(feature = "qualification")\]
+  - Line 2358: \[path = "resident\_projection\_qualification.rs"\]
+  - Line 2363: \[derive(Clone, Debug)\]
+  - Line 2478: \[derive(Clone, Debug)\]
+  - Line 2500: \[derive(Clone, Debug)\]
+  - Line 2522: \[derive(Clone, Debug)\]
+  - Line 2530: \[derive(Clone, Copy, Debug)\]
+  - Line 2543: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 2556: \[derive(Clone, Copy, Debug)\]
+  - Line 2561: \[derive(Clone, Copy, Debug)\]
+  - Line 2571: \[derive(Clone, Debug)\]
+  - Line 2633: \[derive(Clone, Debug)\]
+  - Line 4770: \[derive(Clone, Copy, Debug)\]
+  - Line 4778: \[derive(Clone, Copy, Debug)\]
+  - Line 4808: \[cfg(test)\]
+  - Line 4996: \[cfg(test)\]
+  - Line 4997: \[path = "resident\_program/typed\_refusal\_tests.rs"\]
+  - Line 5002: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/followup-visibility-v2/freeze-manifest.json
+  - Line 5051: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/followup-visibility-v2/frozen/proposed/crates/zerogravity-gpu/src/resident\_program/silu.rs
+  - Line 5060: \[cfg(feature = "cuda")\]
+  - Line 5212: \[cfg(all(test, feature = "cuda"))\]
+  - Line 5217: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/followup-visibility-v2/proposed/crates/zerogravity-gpu/src/resident\_program/silu.rs
+  - Line 5226: \[cfg(feature = "cuda")\]
+  - Line 5378: \[cfg(all(test, feature = "cuda"))\]
+  - Line 5383: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/freeze-manifest.json
+  - Line 5622: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/BASELINE.json
+  - Line 5661: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/SOURCE\_PINS.json
+  - Line 5742: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/STATIC.json
+  - Line 5766: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/baseline/crates/zerogravity-gpu/src/lib.rs
+  - Line 5779: \[cfg(feature = "qualification")\]
+  - Line 5786: \[cfg(any(feature = "qualification", test))\]
+  - Line 5788: \[cfg(any(feature = "qualification", test))\]
+  - Line 5790: \[cfg(any(feature = "qualification", test))\]
+  - Line 5794: \[cfg(feature = "qualification")\]
+  - Line 5796: \[cfg(any(feature = "qualification", test))\]
+  - Line 5798: \[cfg(all(feature = "qualification", feature = "cuda", target\_os = "linux"))\]
+  - Line 5806: \[cfg(feature = "qualification")\]
+  - Line 5810: \[cfg(feature = "qualification")\]
+  - Line 5812: \[cfg(feature = "qualification")\]
+  - Line 5814: \[cfg(feature = "qualification")\]
+  - Line 5816: \[cfg(feature = "qualification")\]
+  - Line 5818: \[cfg(feature = "qualification")\]
+  - Line 5820: \[cfg(feature = "qualification")\]
+  - Line 5822: \[cfg(feature = "qualification")\]
+  - Line 5824: \[cfg(feature = "qualification")\]
+  - Line 5826: \[cfg(feature = "hardware-abort-probe")\]
+  - Line 5832: \[cfg(feature = "qualification")\]
+  - Line 5840: \[cfg(feature = "qualification")\]
+  - Line 5856: \[cfg(feature = "qualification")\]
+  - Line 5866: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_23.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_23.md)
+
+- Bytes: 212803; mode: 0o644; SHA256: add87550b7ea72c4ce6b8fbb47dc08520acf616c67e4a3293dd0cc9a63f28114.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 23
+  - Line 6: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/baseline/crates/zerogravity-gpu/src/ordered\_silu.rs
+  - Line 200: \[cube\]
+  - Line 206: \[cube\]
+  - Line 212: \[cube\]
+  - Line 218: \[cube\]
+  - Line 224: \[cube\]
+  - Line 230: \[cube\]
+  - Line 236: \[cube\]
+  - Line 242: \[cube\]
+  - Line 248: \[cube\]
+  - Line 254: \[cube\]
+  - Line 258: \[cube\]
+  - Line 265: \[cube(launch\_unchecked)\]
+  - Line 364: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 366: \[cfg(test)\]
+  - Line 371: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/baseline/crates/zerogravity-gpu/src/resident\_program/batch.rs
+  - Line 428: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 434: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 436: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 438: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 1966: \[cube(launch\_unchecked)\]
+  - Line 2010: \[cube(launch\_unchecked)\]
+  - Line 2051: \[cube(launch\_unchecked)\]
+  - Line 2077: \[cube(launch\_unchecked)\]
+  - Line 2110: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 2111: \[cube(launch\_unchecked)\]
+  - Line 2136: \[cube(launch\_unchecked)\]
+  - Line 2165: \[cube(launch\_unchecked)\]
+  - Line 2184: \[cube(launch\_unchecked)\]
+  - Line 2230: \[cube(launch\_unchecked)\]
+  - Line 2307: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/baseline/crates/zerogravity-gpu/src/resident\_program.rs
+  - Line 2347: \[cfg(all(test, feature = "qualification"))\]
+  - Line 2354: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 2357: \[cfg(feature = "qualification")\]
+  - Line 2358: \[path = "resident\_projection\_qualification.rs"\]
+  - Line 2363: \[derive(Clone, Debug)\]
+  - Line 2478: \[derive(Clone, Debug)\]
+  - Line 2500: \[derive(Clone, Debug)\]
+  - Line 2522: \[derive(Clone, Debug)\]
+  - Line 2530: \[derive(Clone, Copy, Debug)\]
+  - Line 2543: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 2556: \[derive(Clone, Copy, Debug)\]
+  - Line 2561: \[derive(Clone, Copy, Debug)\]
+  - Line 2571: \[derive(Clone, Debug)\]
+  - Line 2633: \[derive(Clone, Debug)\]
+  - Line 4770: \[derive(Clone, Copy, Debug)\]
+  - Line 4778: \[derive(Clone, Copy, Debug)\]
+  - Line 4808: \[cfg(test)\]
+  - Line 4996: \[cfg(test)\]
+  - Line 4997: \[path = "resident\_program/typed\_refusal\_tests.rs"\]
+  - Line 5002: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/original-silu-arm.txt
+  - Line 5047: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/proposed/crates/zerogravity-gpu/src/lib.rs
+  - Line 5060: \[cfg(feature = "qualification")\]
+  - Line 5067: \[cfg(any(feature = "qualification", test))\]
+  - Line 5069: \[cfg(any(feature = "qualification", test))\]
+  - Line 5071: \[cfg(any(feature = "qualification", test))\]
+  - Line 5075: \[cfg(feature = "qualification")\]
+  - Line 5077: \[cfg(any(feature = "qualification", test))\]
+  - Line 5079: \[cfg(all(feature = "qualification", feature = "cuda", target\_os = "linux"))\]
+  - Line 5087: \[cfg(feature = "qualification")\]
+  - Line 5091: \[cfg(feature = "qualification")\]
+  - Line 5093: \[cfg(feature = "qualification")\]
+  - Line 5095: \[cfg(feature = "qualification")\]
+  - Line 5097: \[cfg(feature = "qualification")\]
+  - Line 5099: \[cfg(feature = "qualification")\]
+  - Line 5101: \[cfg(feature = "qualification")\]
+  - Line 5103: \[cfg(feature = "qualification")\]
+  - Line 5105: \[cfg(feature = "qualification")\]
+  - Line 5107: \[cfg(feature = "hardware-abort-probe")\]
+  - Line 5113: \[cfg(feature = "qualification")\]
+  - Line 5121: \[cfg(feature = "qualification")\]
+  - Line 5137: \[cfg(feature = "qualification")\]
+  - Line 5147: \[cfg(feature = "cuda")\]
+  - Line 5152: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/proposed/crates/zerogravity-gpu/src/ordered\_silu.rs
+  - Line 5351: \[cube\]
+  - Line 5357: \[cube\]
+  - Line 5363: \[cube\]
+  - Line 5369: \[cube\]
+  - Line 5375: \[cube\]
+  - Line 5381: \[cube\]
+  - Line 5387: \[cube\]
+  - Line 5393: \[cube\]
+  - Line 5399: \[cube\]
+  - Line 5405: \[cube\]
+  - Line 5409: \[cube\]
+  - Line 5416: \[cube(launch\_unchecked)\]
+  - Line 5515: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 5517: \[cfg(test)\]
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_24.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_24.md)
+
+- Bytes: 206279; mode: 0o644; SHA256: d36062b9206bb720aec8547c6b80a51e9ba361f3e9042a37898f38eb73452c6d.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 24
+  - Line 6: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/proposed/crates/zerogravity-gpu/src/resident\_program/batch.rs
+  - Line 63: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 69: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 71: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 73: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 1607: \[cube(launch\_unchecked)\]
+  - Line 1651: \[cube(launch\_unchecked)\]
+  - Line 1692: \[cube(launch\_unchecked)\]
+  - Line 1718: \[cube(launch\_unchecked)\]
+  - Line 1751: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 1752: \[cube(launch\_unchecked)\]
+  - Line 1777: \[cube(launch\_unchecked)\]
+  - Line 1806: \[cube(launch\_unchecked)\]
+  - Line 1825: \[cube(launch\_unchecked)\]
+  - Line 1871: \[cube(launch\_unchecked)\]
+  - Line 1948: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/proposed/crates/zerogravity-gpu/src/resident\_program/silu/tests.rs
+  - Line 1956: \[test\]
+  - Line 1970: \[test\]
+  - Line 1984: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/proposed/crates/zerogravity-gpu/src/resident\_program/silu.rs
+  - Line 1993: \[cfg(feature = "cuda")\]
+  - Line 2145: \[cfg(all(test, feature = "cuda"))\]
+  - Line 2150: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/proposed/crates/zerogravity-gpu/src/resident\_program.rs
+  - Line 2190: \[cfg(all(test, feature = "qualification"))\]
+  - Line 2197: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 2200: \[cfg(feature = "qualification")\]
+  - Line 2201: \[path = "resident\_projection\_qualification.rs"\]
+  - Line 2206: \[derive(Clone, Debug)\]
+  - Line 2321: \[derive(Clone, Debug)\]
+  - Line 2343: \[derive(Clone, Debug)\]
+  - Line 2365: \[derive(Clone, Debug)\]
+  - Line 2373: \[derive(Clone, Copy, Debug)\]
+  - Line 2386: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 2399: \[derive(Clone, Copy, Debug)\]
+  - Line 2404: \[derive(Clone, Copy, Debug)\]
+  - Line 2414: \[derive(Clone, Debug)\]
+  - Line 2476: \[derive(Clone, Debug)\]
+  - Line 4591: \[derive(Clone, Copy, Debug)\]
+  - Line 4599: \[derive(Clone, Copy, Debug)\]
+  - Line 4629: \[cfg(test)\]
+  - Line 4817: \[cfg(test)\]
+  - Line 4818: \[path = "resident\_program/typed\_refusal\_tests.rs"\]
+  - Line 4825: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/original-silu-arm.txt
+  - Line 4870: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/proposed/crates/zerogravity-gpu/src/lib.rs
+  - Line 4883: \[cfg(feature = "qualification")\]
+  - Line 4890: \[cfg(any(feature = "qualification", test))\]
+  - Line 4892: \[cfg(any(feature = "qualification", test))\]
+  - Line 4894: \[cfg(any(feature = "qualification", test))\]
+  - Line 4898: \[cfg(feature = "qualification")\]
+  - Line 4900: \[cfg(any(feature = "qualification", test))\]
+  - Line 4902: \[cfg(all(feature = "qualification", feature = "cuda", target\_os = "linux"))\]
+  - Line 4910: \[cfg(feature = "qualification")\]
+  - Line 4914: \[cfg(feature = "qualification")\]
+  - Line 4916: \[cfg(feature = "qualification")\]
+  - Line 4918: \[cfg(feature = "qualification")\]
+  - Line 4920: \[cfg(feature = "qualification")\]
+  - Line 4922: \[cfg(feature = "qualification")\]
+  - Line 4924: \[cfg(feature = "qualification")\]
+  - Line 4926: \[cfg(feature = "qualification")\]
+  - Line 4928: \[cfg(feature = "qualification")\]
+  - Line 4930: \[cfg(feature = "hardware-abort-probe")\]
+  - Line 4936: \[cfg(feature = "qualification")\]
+  - Line 4944: \[cfg(feature = "qualification")\]
+  - Line 4960: \[cfg(feature = "qualification")\]
+  - Line 4970: \[cfg(feature = "cuda")\]
+  - Line 4975: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/proposed/crates/zerogravity-gpu/src/ordered\_silu.rs
+  - Line 5174: \[cube\]
+  - Line 5180: \[cube\]
+  - Line 5186: \[cube\]
+  - Line 5192: \[cube\]
+  - Line 5198: \[cube\]
+  - Line 5204: \[cube\]
+  - Line 5210: \[cube\]
+  - Line 5216: \[cube\]
+  - Line 5222: \[cube\]
+  - Line 5228: \[cube\]
+  - Line 5232: \[cube\]
+  - Line 5239: \[cube(launch\_unchecked)\]
+  - Line 5338: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 5340: \[cfg(test)\]
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_25.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_25.md)
+
+- Bytes: 225397; mode: 0o644; SHA256: 9c7eff01a3453370dd1cb4374d8dbbba384d059eafc702e243041c25bd23816c.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 25
+  - Line 6: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/proposed/crates/zerogravity-gpu/src/resident\_program/batch.rs
+  - Line 63: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 69: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 71: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 73: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 1607: \[cube(launch\_unchecked)\]
+  - Line 1651: \[cube(launch\_unchecked)\]
+  - Line 1692: \[cube(launch\_unchecked)\]
+  - Line 1718: \[cube(launch\_unchecked)\]
+  - Line 1751: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 1752: \[cube(launch\_unchecked)\]
+  - Line 1777: \[cube(launch\_unchecked)\]
+  - Line 1806: \[cube(launch\_unchecked)\]
+  - Line 1825: \[cube(launch\_unchecked)\]
+  - Line 1871: \[cube(launch\_unchecked)\]
+  - Line 1948: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/proposed/crates/zerogravity-gpu/src/resident\_program/silu/tests.rs
+  - Line 1956: \[test\]
+  - Line 1970: \[test\]
+  - Line 1984: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/proposed/crates/zerogravity-gpu/src/resident\_program/silu.rs
+  - Line 1993: \[cfg(feature = "cuda")\]
+  - Line 2145: \[cfg(all(test, feature = "cuda"))\]
+  - Line 2150: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/proposed/crates/zerogravity-gpu/src/resident\_program.rs
+  - Line 2190: \[cfg(all(test, feature = "qualification"))\]
+  - Line 2197: \[cfg(all(feature = "qualification", feature = "cuda"))\]
+  - Line 2200: \[cfg(feature = "qualification")\]
+  - Line 2201: \[path = "resident\_projection\_qualification.rs"\]
+  - Line 2206: \[derive(Clone, Debug)\]
+  - Line 2321: \[derive(Clone, Debug)\]
+  - Line 2343: \[derive(Clone, Debug)\]
+  - Line 2365: \[derive(Clone, Debug)\]
+  - Line 2373: \[derive(Clone, Copy, Debug)\]
+  - Line 2386: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 2399: \[derive(Clone, Copy, Debug)\]
+  - Line 2404: \[derive(Clone, Copy, Debug)\]
+  - Line 2414: \[derive(Clone, Debug)\]
+  - Line 2476: \[derive(Clone, Debug)\]
+  - Line 4591: \[derive(Clone, Copy, Debug)\]
+  - Line 4599: \[derive(Clone, Copy, Debug)\]
+  - Line 4629: \[cfg(test)\]
+  - Line 4817: \[cfg(test)\]
+  - Line 4818: \[path = "resident\_program/typed\_refusal\_tests.rs"\]
+  - Line 4825: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/root-composition-1/composition.json
+  - Line 4857: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/root-composition-1/diagnostic-composition-1.json
+  - Line 4872: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/root-composition-1/dump-transport-isolated-1/manifest.json
+  - Line 4893: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/root-composition-1/dump-transport-isolated-1/result.json
+  - Line 4937: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/root-composition-1/dump-transport-isolated-1/source.rs
+  - Line 4985: \[cfg(test)\]
+  - Line 5030: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/root-composition-1/release-1.json
+  - Line 5092: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/root-composition-1/release-2.json
+  - Line 5281: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/root-composition-1/root-physical-1.py
+  - Line 5432: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/root-composition-1/root-release-1.py
+  - Line 5520: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/root-composition-1/root-release-2.py
+  - Line 5609: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/root-composition-1/root-strict-1.py
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_26.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_26.md)
+
+- Bytes: 174843; mode: 0o644; SHA256: ce0f6e4657edc60333573557bbb8fe1ef10bb30eb5b3be7cdc4efe2c6b8c11d2.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 26
+  - Line 6: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/root-composition-1/source-freeze-1.json
+  - Line 2326: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/root-composition-1/source-freeze-2.json
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_27.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_27.md)
+
+- Bytes: 357132; mode: 0o644; SHA256: 102ccaf088a29b5b87ea9eb647334b8bfc05edc881195cdc8a5d24d77896553a.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 27
+  - Line 6: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/root-composition-1/source-freeze-3.json
+  - Line 2326: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/root-composition-1/strict-1.json
+  - Line 2420: Source: .agents/runs/numerics-and-context-root-20261020/fetch\_reference\_source.py
+  - Line 2455: Source: .agents/runs/numerics-and-context-root-20261020/fresh-mixed-v1-1024.json
+  - Line 2465: Source: .agents/runs/numerics-and-context-root-20261020/fresh-mixed-v1-2048.json
+  - Line 2475: Source: .agents/runs/numerics-and-context-root-20261020/fresh-mixed-v1-4096.json
+  - Line 2485: Source: .agents/runs/numerics-and-context-root-20261020/fresh-mixed-v1-512.json
+  - Line 2495: Source: .agents/runs/numerics-and-context-root-20261020/fresh-mixed-v1-8192.json
+  - Line 2505: Source: .agents/runs/numerics-and-context-root-20261020/fresh-mixed-v1-ids-full.json
+  - Line 2515: Source: .agents/runs/numerics-and-context-root-20261020/fresh-prefix-cases.json
+  - Line 2671: Source: .agents/runs/numerics-and-context-root-20261020/fresh-prefix-generation.json
+  - Line 2686: Source: .agents/runs/numerics-and-context-root-20261020/run\_bounded\_probe.py
+  - Line 2751: Source: .agents/runs/serving-and-speculation-parity-root-2026-10-19/root-pause-20261020-063036.json
+  - Line 2882: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/owned\_container\_v4.py
+  - Line 3171: Source: .agents/runs/serving-and-speculation-state-scatter-certification-20261020/root-serving-cancellation-2.py
+  - Line 3227: Source: /home/pvl/spaces/abird/src/zerogravity :: tracked source diff against fb68d8fa165de16e21d1bd37afef3790b80da971
+  - Line 3495: Source: /home/pvl/spaces/abird/src/zerogravity/crates/zerogravity-gpu/src/ordered\_silu.rs
+  - Line 3697: \[cube\]
+  - Line 3704: \[cube\]
+  - Line 3711: \[cube\]
+  - Line 3719: \[cube\]
+  - Line 3727: \[cube\]
+  - Line 3735: \[cube\]
+  - Line 3743: \[cube\]
+  - Line 3752: \[cube\]
+  - Line 3759: \[cube\]
+  - Line 3766: \[cube\]
+  - Line 3770: \[cube\]
+  - Line 3777: \[cube(launch\_unchecked)\]
+  - Line 3876: \[cfg(all(test, feature = "qualification", feature = "cuda"))\]
+  - Line 3878: \[cfg(test)\]
+  - Line 3883: Source: /home/pvl/spaces/abird/src/zerogravity/crates/zerogravity-gpu/src/ordered\_silu/qualification.rs
+  - Line 3948: \[cube(launch\_unchecked)\]
+  - Line 4101: \[cfg(target\_arch = "x86\_64")\]
+  - Line 4116: \[cfg(not(target\_arch = "x86\_64"))\]
+  - Line 4449: \[test\]
+  - Line 4450: \[ignore = "ROOT release CUDA original queue/leases physical differential only"\]
+  - Line 4528: Source: /home/pvl/spaces/abird/src/zerogravity/crates/zerogravity-gpu/src/ordered\_silu/tests.rs
+  - Line 4536: \[test\]
+  - Line 4556: \[test\]
+  - Line 4575: Source: /home/pvl/spaces/abird/src/zerogravity/crates/zerogravity-gpu/src/resident\_program/silu.rs
+  - Line 4584: \[cfg(feature = "cuda")\]
+  - Line 4736: \[cfg(all(test, feature = "cuda"))\]
+  - Line 4741: Source: /home/pvl/spaces/abird/src/zerogravity/crates/zerogravity-gpu/src/resident\_program/silu/tests.rs
+  - Line 4749: \[test\]
+  - Line 4763: \[test\]
+  - Line 4777: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020 :: tracked source diff against fff1842594f8011b761d08fcc1690311b72543e3
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_28.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_28.md)
+
+- Bytes: 213460; mode: 0o644; SHA256: da2add38310bf49f260a2efc99e43c2da62fb89e23cd3785c54bced1ae740de5.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 28
+  - Line 6: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-core/src/accelerator/program/cached\_gdn.rs
+  - Line 15: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 39: \[derive(Clone)\]
+  - Line 50: \[derive(Clone)\]
+  - Line 158: \[cfg(test)\]
+  - Line 316: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-core/src/accelerator/program/coefficient\_preparation.rs
+  - Line 326: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 366: \[cfg(test)\]
+  - Line 485: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-core/src/accelerator/program/gated\_rms.rs
+  - Line 494: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 560: \[cfg(test)\]
+  - Line 716: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-cpu/src/original\_hf/coefficient\_preparation.rs
+  - Line 833: \[cfg(test)\]
+  - Line 947: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-cpu/src/original\_hf/norm/bf16\_gamma.rs
+  - Line 965: \[derive(Debug)\]
+  - Line 1109: \[cfg(test)\]
+  - Line 1114: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-cpu/src/original\_hf/norm/bf16\_gamma/tests.rs
+  - Line 1133: \[test\]
+  - Line 1144: \[test\]
+  - Line 1162: \[test\]
+  - Line 1195: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-model-qwen35/src/cached\_gdn\_h48\_tests.rs
+  - Line 1340: \[test\]
+  - Line 1444: \[test\]
+  - Line 1519: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-model-qwen35/src/cached\_gdn\_window\_tests.rs
+  - Line 1526: \[path = "cached\_gdn\_h48\_tests.rs"\]
+  - Line 1601: \[test\]
+  - Line 1681: \[test\]
+  - Line 1710: \[test\]
+  - Line 1782: \[test\]
+  - Line 1858: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-model-qwen35/src/coefficient\_preparation\_tests.rs
+  - Line 1904: \[test\]
+  - Line 1954: \[test\]
+  - Line 2028: \[test\]
+  - Line 2093: \[test\]
+  - Line 2138: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-model-qwen35/src/gated\_rms\_window\_tests.rs
+  - Line 2301: \[test\]
+  - Line 2383: \[test\]
+  - Line 2491: \[test\]
+  - Line 2535: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-model-qwen35/src/gdn\_cached\_slice.rs
+  - Line 2595: \[derive(Clone, Copy)\]
+  - Line 2681: \[cfg(all(feature = "cpu", feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 2689: \[cfg(all(feature = "cpu", feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 2723: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 2759: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-model-qwen35/src/gdn\_gated\_rms\_slice.rs
+  - Line 2823: \[derive(Clone, Copy)\]
+  - Line 2885: \[cfg(all(feature = "cpu", feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 2892: \[cfg(all(feature = "cpu", feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 2910: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 2947: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-model-qwen35/src/host\_math/cached\_gdn.rs
+  - Line 3150: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-model-qwen35/src/host\_math/coefficient\_preparation.rs
+  - Line 3161: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 3306: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-model-qwen35/src/host\_math/gated\_rms.rs
+  - Line 3454: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-model-qwen35/src/operator\_slice/coefficient\_preparation.rs
+  - Line 3550: \[derive(Clone, Copy)\]
+  - Line 3609: \[cfg(feature = "cpu")\]
+  - Line 3619: \[cfg(feature = "cpu")\]
+  - Line 3653: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 3746: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-model-qwen35/src/operator\_slice/pure.rs
+  - Line 3756: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 3763: \[derive(Clone, Copy)\]
+  - Line 3817: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 3823: \[cfg(all(feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 3893: \[cfg(all(feature = "cpu", feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 3900: \[cfg(all(feature = "cpu", feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 3923: \[cfg(all(feature = "cpu", feature = "original-hf-binding", target\_os = "linux"))\]
+  - Line 3938: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-model-qwen35/src/operator\_slice\_window\_roles\_tests.rs
+  - Line 3959: \[test\]
+  - Line 4008: \[test\]
+  - Line 4050: \[test\]
+  - Line 4095: \[test\]
+  - Line 4126: \[test\]
+  - Line 4211: \[test\]
+  - Line 4231: \[test\]
+  - Line 4273: \[test\]
+  - Line 4312: \[test\]
+  - Line 4362: \[test\]
+  - Line 4395: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-model-qwen35/src/original\_binding/window/gated\_rms.rs
+  - Line 4446: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020/crates/zerogravity-model-qwen35/src/original\_binding/window/pure.rs
+  - Line 4572: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-default-bulk-20261020 :: tracked source diff against fb68d8fa165de16e21d1bd37afef3790b80da971
+  - Line 4938: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-default-bulk-20261020/crates/zerogravity-core/src/accelerator/program/bulk\_f32.rs
+  - Line 4949: \[derive(Clone, Debug)\]
+  - Line 4951: \[derive(Debug)\]
+  - Line 5016: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 5112: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 5117: \[derive(Clone, Debug, PartialEq, Eq)\]
+  - Line 5124: \[derive(Clone, Debug, PartialEq, Eq)\]
+  - Line 5211: \[derive(Clone, Copy, Debug, PartialEq, Eq)\]
+  - Line 5215: \[derive(Clone, Debug, PartialEq, Eq)\]
+  - Line 5352: \[cfg(test)\]
+  - Line 5357: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-default-bulk-20261020/crates/zerogravity-core/src/accelerator/program/bulk\_f32/tests.rs
+  - Line 5391: \[test\]
+  - Line 5410: \[test\]
+  - Line 5453: \[test\]
+  - Line 5471: \[test\]
+  - Line 5520: \[test\]
+  - Line 5559: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-default-bulk-20261020/crates/zerogravity-cpu/src/math/haswell\_bulk\_f32.rs
+  - Line 5630: \[cfg(test)\]
+  - Line 5637: \[derive(Clone, Copy, Debug, Eq, PartialEq)\]
+  - Line 5645: \[derive(Clone, Copy)\]
+  - Line 5657: \[derive(Clone, Copy)\]
+  - Line 5949: \[cfg(test)\]
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_29.md](../handoff-2026-10-20/PAUSED_CONTINUATION_TEXT_29.md)
+
+- Bytes: 69970; mode: 0o644; SHA256: ff3f5cd6a05091099b473835fc429a97640b150cb95a990226b42f950def0e94.
+- Full heading route:
+  - Line 1: Paused continuation text — volume 29
+  - Line 6: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-default-bulk-20261020/crates/zerogravity-cpu/src/math/haswell\_bulk\_f32/tests.rs
+  - Line 48: \[test\]
+  - Line 63: \[test\]
+  - Line 72: \[test\]
+  - Line 123: \[test\]
+  - Line 171: \[test\]
+  - Line 235: \[test\]
+  - Line 272: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-default-bulk-20261020/crates/zerogravity-model-qwen35/src/bulk\_f32\_slice.rs
+  - Line 296: \[derive(Clone)\]
+  - Line 555: \[derive(Clone)\]
+  - Line 589: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-default-bulk-20261020/crates/zerogravity-model-qwen35/src/forward/bulk\_f32.rs
+  - Line 609: Source: /home/pvl/spaces/abird/src/zerogravity-worktrees/root-default-bulk-20261020/crates/zerogravity-model-qwen35/src/host\_math/bulk\_f32.rs
+  - Line 843: Source: 7e61cb63efd0c1429aa96044f2f7d28fda1e59aa:.agents/research/README\_PRE\_PRODUCT\_REWRITE\_SNAPSHOT\_2026-10-15.md
+  - Line 849: Zerogravity — Pre-product README implementation/history snapshot (15 October 2026)
+  - Line 855: zerogravity
+  - Line 911: Current status: Qwen3.5 text CPU inference + real GPU kernel qualification
+  - Line 934: Current local CPU usage
+  - Line 943: Chat-style user message (Qwen text role delimiters):
+  - Line 946: CPU-only atomic prefill chunk-size variation and optional developer audit:
+  - Line 954: Source/parity verification procedure (the former standalone scripts were retired;
+  - Line 955: the checks below remain the required evidence):
+  - Line 956: - 0.8B independent greedy verification: 12 tokens
+  - Line 957: - 2B independent greedy verification: 8 tokens
+  - Line 958:
+  - Line 959: Strict raw-token aligned probability audit and actual context next-token checks:
+  - Line 960: - 0.8B SHA256 57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf: 32 tokens, 8 prompts -\> target/qualification/numeric-08.json
+  - Line 961: - 2B SHA256 91c102fc9a86de80e427057ee938e1e34fcaf3bba956b7296e252406e05f36f6: 512 target input tokens -\> target/qualification/context-2b-512.json
+  - Line 966: Developer CPU numerical acceptance gate
+  - Line 972: Exit 4 / BLOCKED\_CPU\_FIRST is the expected current status.
+  - Line 974: Capture all source-model layer stages locally (does not itself prove parity):
+  - Line 977: An independent llama/other reference capture is still needed:
+  - Line 979: State round-trip verification procedure retained (former standalone script retired).
+  - Line 981: Run/recover a checked eight-prompt 32-token corpus in batches of 3.
+  - Line 982: Exit 5 means INCOMPLETE, 4 means complete FAIL, 0 means complete PASS.
+  - Line 983: 2B SHA256 91c102fc9a86de80e427057ee938e1e34fcaf3bba956b7296e252406e05f36f6: 32 tokens, 8 prompts,
+  - Line 984: max 3 cases per run, resumable -\> target/qualification/cpu-gate/qwen35-2b/numeric-32.json
+  - Line 989: Confirmed implementation order
+  - Line 999: Still-future unified UX
+  - Line 1010: Build locally
+  - Line 1024: Convenience wrapper for the local Rust, shell and Nix-format checks:
+  - Line 1027: Test the checksum installer against a local offline release fixture:
+  - Line 1038: Native tests, clippy, rustfmt, Nix formatting,
+  - Line 1039: shellcheck, offline installer fixture, workflow lint and NixOS module evaluation.
+  - Line 1045: Cross-platform releases
+  - Line 1059: Produce all six asset files + .sha256, VERSION, PLATFORMS.txt
+  - Line 1061: Or copy and verify them into a local dist/ directory:
+  - Line 1067: GitHub Actions
+  - Line 1078: Install from a published release
+  - Line 1083: Set OWNER/REPO explicitly once an actual GitHub release exists.
+  - Line 1086: Choose version and destination, without root:
+  - Line 1103: NixOS module
+  - Line 1132: Project structure
+  - Line 1153: Engineering principles
+  - Line 1163: Implementation sequence
+  - Line 1169: License
+
+### [.agents/docs/handoff-2026-10-20/PAUSED_LICENSE_AND_CUDA_SOURCE.md](../handoff-2026-10-20/PAUSED_LICENSE_AND_CUDA_SOURCE.md)
+
+- Bytes: 147187; mode: 0o644; SHA256: 4aac2a729130ae15c520035bf01c89600e51ccf2bcb0069134dee64f04f0b92b.
+- Full heading route:
+  - Line 1: Additional paused CUDA source and license notices
+  - Line 5: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/pinned-source/LICENSE-PYTORCH
+  - Line 95: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/pinned-source/LICENSE-PYTORCH
+  - Line 185: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/primary-abi-v2/LICENSE
+  - Line 1831: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/primary-abi-v2/frozen/LICENSE
+  - Line 3477: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/primary-abi-v2/frozen/sass\_source\_map.cu
+  - Line 3487: include \<stdio.h\>
+  - Line 3488: include \<stdlib.h\>
+  - Line 3489: include \<string.h\>
+  - Line 3492: include \<cuda.h\>
+  - Line 3493: include \<cuda\_runtime.h\>
+  - Line 3496: include "helper\_cupti\_activity.h"
+  - Line 3499: define DUMP\_CUBIN 0
+  - Line 3538: if DUMP\_CUBIN
+  - Line 3544: endif
+  - Line 3548: if DUMP\_CUBIN
+  - Line 3558: endif
+  - Line 3708: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/primary-abi-v2/sass\_source\_map.cu
+  - Line 3718: include \<stdio.h\>
+  - Line 3719: include \<stdlib.h\>
+  - Line 3720: include \<string.h\>
+  - Line 3723: include \<cuda.h\>
+  - Line 3724: include \<cuda\_runtime.h\>
+  - Line 3727: include "helper\_cupti\_activity.h"
+  - Line 3730: define DUMP\_CUBIN 0
+  - Line 3769: if DUMP\_CUBIN
+  - Line 3775: endif
+  - Line 3779: if DUMP\_CUBIN
+  - Line 3789: endif
+
+### [.agents/docs/handoff-2026-10-20/RECOVERED_HISTORY_01.md](../handoff-2026-10-20/RECOVERED_HISTORY_01.md)
+
+- Bytes: 292486; mode: 0o644; SHA256: 56f54fe400cd440c52cd336abff94ac9a427338c0a7ab9d227de78d6179f0237.
+- Full heading route:
+  - Line 1: Recovered History — volume 1
+  - Line 7: Source: 7e61cb63efd0c1429aa96044f2f7d28fda1e59aa:.agents/prior-art/DESIGN\_EVOLUTION\_V3\_HANDOFF\_SNAPSHOT.md
+  - Line 13: Design evolution archive — complete v3 agent handoff
+  - Line 19: ZEROGRAVITY — FULL COMPREHENSIVE TAKEOVER HANDOFF v3 (2026-10-12)
+  - Line 31: 1. Precise user requirements and their evolution
+  - Line 43: 2. Required reading and source-of-truth order
+  - Line 55: 3. Original, composable system architecture
+  - Line 101: 4. Why task composition is a core requirement
+  - Line 114: 5. Specialized parallelism without engine forks
+  - Line 125: 6. Source formats, provenance and licenses
+  - Line 133: 7. Physical memory, safety and async ownership
+  - Line 141: 8. Correctness and performance expectations
+  - Line 154: 9. Roadmap and change control
+  - Line 171: 10. Open policies that require future evidence/user input
+  - Line 177: 11. Agent startup prompt for direct reuse
+  - Line 219: 12. Closure of this handoff
+  - Line 227: Source: 7e61cb63efd0c1429aa96044f2f7d28fda1e59aa:.agents/prior-art/DESIGN\_EVOLUTION\_V3\_SNAPSHOT.md
+  - Line 233: v3 design evolution snapshot — superseded but preserved
+  - Line 239: Archived v3 source 1: \`MODULAR\_AI\_SYSTEMS\_REFERENCE\_ARCHITECTURE.md\`
+  - Line 241: Modular AI systems — original, project-neutral reference architecture
+  - Line 247: 0. Prime design principle
+  - Line 258: 1. Orthogonal primitives — no inheritance from named source engines
+  - Line 283: 2. Four dimensions of composability
+  - Line 295: 3. Layered compilation and execution — graph IR disappears from hot path
+  - Line 333: 3.1 Semantic IR (SIR): mathematical truth
+  - Line 338: 3.2 Region IR (RIR): legally better math
+  - Line 343: 3.3 Kernel IR/providers (KIR): best implementation is a capability
+  - Line 354: 3.4 Command/resource IR (CIR): data moves and dependencies
+  - Line 359: 3.5 ExecutableBundle and direct runtime
+  - Line 362: 4. TaskProgram: model-general AI stage execution
+  - Line 366: 4.1 Control graph types
+  - Line 379: 4.2 Common task recipes without separate engines
+  - Line 395: 4.3 Streaming and cancellation contract
+  - Line 398: 5. Reference semantics and invariants across model families
+  - Line 412: 6. Topology- and quality-aware optimization
+  - Line 418: 6.1 Two important heterogeneous region strategies
+  - Line 425: 6.2 Task-aware specialization
+  - Line 428: 7. One global resource authority; different cache policy by data class
+  - Line 436: 8. Serving and concurrency independent of models
+  - Line 444: 9. Numeric fidelity, sampling and artifact identity
+  - Line 456: 10. Security and code provenance
+  - Line 464: 11. Minimal Rust crate/module ownership (not mandated API)
+  - Line 479: 12. Extension acceptance: how we know modularity is genuine
+  - Line 495: 13. Anti-patterns explicitly prohibited
+  - Line 509: 14. Proof-of-architecture program (project-neutral gates)
+  - Line 525: 15. Performance strategy — optimize across regions and workloads, not for slogans
+  - Line 540: 16. Reading and scope authority
+  - Line 548: Archived v3 source 2: \`COMPOSITION\_AND\_EXTENSION\_CONTRACTS.md\`
+  - Line 550: Composition and extension contracts — modular AI without engine rewrites
+  - Line 554: 1. Product-independent contract rules
+  - Line 565: 2. Universal data contract: values, streams and physical representations
+  - Line 567: 2.1 Logical values
+  - Line 597: 2.2 Stream frontiers
+  - Line 603: 3. ModelDefinition and exact semantic operators
+  - Line 626: 4. StateDomain: make effectful inference composable
+  - Line 648: 5. TaskProgram: control-flow algebra
+  - Line 675: Task-level guarantees
+  - Line 685: Threading and ownership
+  - Line 689: 6. KernelProvider and closed-region substitution
+  - Line 719: 7. DeviceProvider and accelerator topology
+  - Line 743: 8. ResourceArbiter and CIR event algebra
+  - Line 782: 9. Scheduling policy and control units
+  - Line 800: 10. Artifact and codec extension
+  - Line 806: 11. Versioning and extension lifecycle
+  - Line 822: 12. Benchmark and quality evidence gating
+  - Line 835: 13. Cross-component extension test scenarios
+  - Line 850: 14. Rust workspace dependency direction
+  - Line 868: 15. Closure
+  - Line 874: Archived v3 source 3: \`ZEROGRAVITY\_MASTER\_PLAN\_2026-10-10.md\`
+  - Line 876: zerogravity — Comprehensive Master Plan v3: Modular Composable AI Systems
+  - Line 882: 0. Mission and non-negotiable constraints
+  - Line 897: 1. Original independent architecture
+  - Line 948: 2. Full AI model and task space
+  - Line 950: 2.1 Semantic model families
+  - Line 965: 2.2 Task composition beyond language generation
+  - Line 978: 3. Mathematical model, state, numerical and artifact contracts
+  - Line 980: 3.1 ModelDefinition/Operator
+  - Line 984: 3.2 Effects and transaction
+  - Line 990: 3.3 Precision and quantization
+  - Line 994: 3.4 Source files
+  - Line 998: 4. Optimization, specialization and fallback
+  - Line 1000: 4.1 General→optimized→extreme tiers
+  - Line 1010: 4.2 Compiling resource/timepoint scheduling
+  - Line 1023: 4.3 Heterogeneous compute patterns
+  - Line 1031: 4.4 Runtime adaptation boundaries
+  - Line 1035: 5. Physical resources and session/worker architecture
+  - Line 1051: 6. Multi-device/host and failure model
+  - Line 1059: 7. Technology extension seams
+  - Line 1076: 8. Product and SDK surface
+  - Line 1082: 9. Phases, evidence, licensing and authority
+  - Line 1100: 10. Non-goals and stop conditions
+  - Line 1115: 11. Final authority
+  - Line 1128: Source: 7e61cb63efd0c1429aa96044f2f7d28fda1e59aa:.agents/prior-art/PRIOR\_ART\_HISTORICAL\_ACCEPTANCE\_GATES\_V2.md
+  - Line 1134: Prior-art/historical archive — RELEASE\_ACCEPTANCE\_GATES.md
+  - Line 1140: zerogravity — Acceptance, verification and release gates
+  - Line 1144: A. Project lifecycle gates
+  - Line 1161: B. Correctness corpus levels
+  - Line 1167: C. Mandatory validation for execution plans
+  - Line 1171: D. Resource safety minimum
+  - Line 1182: E. Serving service-level verification
+  - Line 1186: F. Report schema recommendation
+  - Line 1210: G. Documentation handoff closure
+  - Line 1214: 2026-10-10 integrated v2 acceptance gates
+  - Line 1234: 2026-10-12 acceptance: optional XDNA2 and TaskProgram device/semantic qualification
+  - Line 1246: Source: 7e61cb63efd0c1429aa96044f2f7d28fda1e59aa:.agents/prior-art/PRIOR\_ART\_HISTORICAL\_DISTRIBUTED\_PARALLELISM\_V4\_1.md
+  - Line 1252: Historical distributed-parallelism design before topology v4.2
+  - Line 1258: Heterogeneous devices, distributed execution, topology and recovery
+  - Line 1265: 1. Placement modes
+  - Line 1271: 2. Cost and topology model
+  - Line 1286: 3. Layer pipeline
+  - Line 1292: 4. Tensor parallel
+  - Line 1298: 5. Expert parallel
+  - Line 1302: 6. Prefill/decode disaggregation
+  - Line 1306: 7. Wire protocol and transport
+  - Line 1320: 8. Distributed state transaction
+  - Line 1334: Idempotency
+  - Line 1338: 9. Multi-GPU single-host handling
+  - Line 1344: 10. Performance and quality evaluation
+  - Line 1348: 11. Fault-injection and security
+  - Line 1352: 12. Open choices
+  - Line 1356: 2026-10-10 integrated v2 addendum — distributed inference is CIR + model state protocol
+  - Line 1367: 2026-10-12 integration — one-host heterogeneous computation beyond GPU expert owners
+  - Line 1375: v4 refinement — epoch fencing and limits of atomicity
+  - Line 1381: v4.1 — distributed topology includes compiler-owned fabric programs
+  - Line 1391: Source: 7e61cb63efd0c1429aa96044f2f7d28fda1e59aa:.agents/prior-art/PRIOR\_ART\_HISTORICAL\_EXPERIMENTS\_V2.md
+  - Line 1397: Prior-art/historical archive — EXPERIMENT\_PROGRAM.md
+  - Line 1403: zerogravity — Measured-performance and feasibility experiment program
+  - Line 1407: Scientific protocol — same for every candidate
+  - Line 1417: Baseline and comparison ledger (not apples-to-apples)
+  - Line 1428: Experiment H01 — Kernel compiler feasibility on gfx1151 (ZG-P01)
+  - Line 1434: H02 — Semantic IR overhead removal (ZG-P04/P05)
+  - Line 1438: H03 — Whole-region fusion (P05/P11/P13/P14)
+  - Line 1442: H04 — GPU route-aware batching of MoE (P12/P16)
+  - Line 1446: H05 — Residency × scheduling co-optimization (P10/P12/P16)
+  - Line 1450: H06 — Disk-only n-gram/Engram (P03/P10/P13/P17)
+  - Line 1454: H07 — Hybrid prefix state sharing (P10/P11)
+  - Line 1458: H08 — Adaptive speculation economics (P15/P16)
+  - Line 1462: H09 — Prefill versus decode resource competition (P09/P16)
+  - Line 1466: H10 — Compressed/sparse attention context depth (P11/P13/P14/P17)
+  - Line 1470: H11 — Unified-memory safety and throughput (P07/P10/P13/P14)
+  - Line 1474: H12 — Mixed quantization and model quality (P03/P12/P13/P14)
+  - Line 1478: H13 — Distributed topology and transport (P19)
+  - Line 1482: H14 — Long-lived agent workload (P09/P10/P15/P17)
+  - Line 1486: Bench artifacts organization (future)
+  - Line 1502: Qualification decisions
+  - Line 1511: 2026-10-10 integrated v2 research expansion (new experiments H15–H25)
+  - Line 1538: 2026-10-12 research expansion: Gufo upstream and XDNA2 cooperative prefill (H26–H31)
+  - Line 1556: Source: 7e61cb63efd0c1429aa96044f2f7d28fda1e59aa:.agents/prior-art/PRIOR\_ART\_HISTORICAL\_MASTER\_HANDOFF\_V2.md
+  - Line 1562: Prior-art archive — historical complete v2/v2.1 takeover handoff
+  - Line 1568: ZEROGRAVITY — LATEST TAKEOVER UPDATE (v2.1 · 2026-10-12)
+  - Line 1574: Essential reading additions (must read before NPU/TaskProgram implementation)
+  - Line 1583: Critical user-requested architecture — WHAT IS DIFFERENT
+  - Line 1600: Other upstream Gufo pipelines (future model/task categories)
+  - Line 1612: Handoff/final safety instruction
+  - Line 1618: PREVIOUS UNIFIED v2 TAKEOVER (preserved, subordinate to the latest update)
+  - Line 1620: Previous title: ZEROGRAVITY — CURRENT COMPREHENSIVE MASTER TAKEOVER (Integrated v2 · 2026-10-10)
+  - Line 1626: Read-first authority
+  - Line 1638: Current architecture (mandatory conceptual distinction)
+  - Line 1666: Best of the research preserved
+  - Line 1679: Original programs' faults explicitly corrected
+  - Line 1691: New Stage 0 and phases
+  - Line 1708: Existing user decisions and open policies
+  - Line 1712: Extension/maintainability acceptance
+  - Line 1718: Next-agent operating instructions
+  - Line 1732: HISTORICAL INITIAL HANDOFF SNAPSHOT (v1, preserved for context)
+  - Line 1734: Prior title: ZEROGRAVITY — FULL MASTER HANDOFF AND TAKEOVER AUTHORITY (2026-10-10)
+  - Line 1747: 1. What the user explicitly wants
+  - Line 1760: Key user questions that shaped the project
+  - Line 1773: 2. Authority and reading order
+  - Line 1786: Subsystem docs and what they must answer
+  - Line 1812: 3. Research history — each project's actual contribution
+  - Line 1814: vLLM (https://github.com/vllm-project/vllm)
+  - Line 1817: SGLang (https://github.com/sgl-project/sglang)
+  - Line 1820: llama.cpp / ggml (https://github.com/ggml-org/llama.cpp)
+  - Line 1823: Specialized gfx1151 engine
+  - Line 1826: Gufo (https://github.com/gufo-org/gufo)
+  - Line 1829: Project Maya (https://github.com/mw00/project-maya)
+  - Line 1832: Strata (https://github.com/mach10x/strata)
+  - Line 1835: DwarfStar / antirez/ds4 (https://github.com/antirez/ds4)
+  - Line 1838: Others
+  - Line 1848: 4. Hardware/model facts to carry into planning
+  - Line 1863: 5. The architecture — authoritative synthesis
+  - Line 1880: How a generic model runs
+  - Line 1883: How an extreme model runs
+  - Line 1886: Why semantic IR can help but does not guarantee speed
+  - Line 1889: 6. Key subsystem decisions and invariants
+  - Line 1891: Semantic IR
+  - Line 1894: State and prefix
+  - Line 1897: Memory
+  - Line 1900: Scheduler
+  - Line 1903: Speculation
+  - Line 1906: Device kernels
+  - Line 1909: Distributed
+  - Line 1912: Quant/quality
+  - Line 1915: UX
+  - Line 1918: 7. Proposed development phases, all still NOT\_STARTED
+  - Line 1934: 8. Research/benchmark discipline and important caveats
+  - Line 1946: 9. What has actually been created, and what has not
+  - Line 1952: 10. How next agent should begin
+  - Line 1963: 11. High-priority open decisions
+  - Line 1985: 12. Source/decision preservation policy
+  - Line 1993: 13. Self-contained next-agent starting prompt
+  - Line 2033: 14. Closure of THIS handoff
+  - Line 2039: Source: 7e61cb63efd0c1429aa96044f2f7d28fda1e59aa:.agents/prior-art/PRIOR\_ART\_HISTORICAL\_MASTER\_PLAN\_V2.md
+  - Line 2045: Prior-art archive — Historical v2 unified master architecture
+  - Line 2051: zerogravity — Comprehensive Unified Master Architecture and Product Plan (v2)
+  - Line 2057: 0. Mission
+  - Line 2071: 1. User-confirmed scope versus working choices
+  - Line 2079: 2. Unified system architecture
+  - Line 2130: 3. Semantic IR and compiler legality
+  - Line 2132: 3.1 Model semantics
+  - Line 2145: 3.2 Optimized Region IR
+  - Line 2151: 3.3 Kernel authoring IR and registry
+  - Line 2157: 3.4 Async Command/Resource IR
+  - Line 2163: 4. General path and extreme path — one implementation spine
+  - Line 2172: 5. Physical resources and five+ lifetime classes
+  - Line 2188: 6. Runtime serving, scheduler and concurrency
+  - Line 2196: 7. Speculation, state transactions and cache correctness
+  - Line 2204: 8. Formats, model store, grammar and new modalities
+  - Line 2212: 9. Distributed and heterogeneous
+  - Line 2216: 10. Rust ownership, source policy and maintainability
+  - Line 2224: 11. Physical benchmark + quality governance
+  - Line 2236: 12. Correctness, security and failure invariants
+  - Line 2251: 13. Research decisions reconciled
+  - Line 2263: 14. Implementation dependency strategy
+  - Line 2278: 15. Risks and disconfirming tests
+  - Line 2284: 16. Authority and handoff
+  - Line 2290: 17. October 12, 2026 — Gufo fork, XDNA2 and generalized task pipelines (v2.1)
+  - Line 2294: 17.1 Three heterogeneous execution strategies, one SIR
+  - Line 2302: 17.2 Hardware support, numeric precision and safety
+  - Line 2308: 17.3 TaskProgram for ASR/TTS/vision/diffusion/video
+  - Line 2320: 17.4 Integration and acceptance
+  - Line 2324: 17.5 Why this strengthens long-term flexibility
+  - Line 2330: Source: 7e61cb63efd0c1429aa96044f2f7d28fda1e59aa:.agents/prior-art/PRIOR\_ART\_HISTORICAL\_ROADMAP\_V2.md
+  - Line 2336: Prior-art/historical archive — IMPLEMENTATION\_ROADMAP.md
+  - Line 2342: zerogravity — Implementation Roadmap and Closure Gates (v2 reconciled)
+  - Line 2349: Governance of phases
+  - Line 2355: Lane A: correctness and general portability
+  - Line 2358: Lane B: production service and hybrid intelligence
+  - Line 2361: Lane C: breadth and scale
+  - Line 2366: ZG-P00 — Repository baseline, reproducible toolchains and decision freeze
+  - Line 2381: ZG-P01 — GPU/Rust toolchain feasibility bakeoff (high-risk critical gate)
+  - Line 2395: ZG-P02 — Canonical CPU numeric and state operator oracle
+  - Line 2408: ZG-P03 — Artifact format, tokenizer, quantization and provenance
+  - Line 2422: ZG-P04 — Semantic IR v1, verifier and state-effect model
+  - Line 2435: ZG-P05 — Execution IR, optimizer and plan capabilities
+  - Line 2449: ZG-P06 — Rust CPU portable executor
+  - Line 2461: ZG-P07 — First GPU backends and device resource API
+  - Line 2474: ZG-P08 — First complete dense model, general fallback proof
+  - Line 2487: ZG-P09 — Core local service and sessions
+  - Line 2500: ZG-P10 — Resource arbiter, KV/prefix caching and state snapshots
+  - Line 2513: ZG-P11 — Hybrid operators: GDN, KDA, sparse and compressed attention
+  - Line 2526: ZG-P12 — MoE routing, quantized kernels and expert tiers
+  - Line 2539: ZG-P13 — Qwen3.8 Flash-Next extreme Strix Halo plan
+  - Line 2552: ZG-P14 — GLM-5.3-Flash extreme Strix Halo plan
+  - Line 2565: ZG-P15 — Speculative decoding engine and transactional verification
+  - Line 2578: ZG-P16 — Native batching and joint memory/schedule planning
+  - Line 2591: ZG-P17 — Broader model family readiness
+  - Line 2599: ZG-P18 — Multimodal video/image/audio extensions
+  - Line 2605: ZG-P19 — Parallel and distributed serving
+  - Line 2613: ZG-P20 — Autotuning and optimization lab
+  - Line 2621: ZG-P21 — Packaging, reliability and security
+  - Line 2629: ZG-P22 — Comparative performance/quality release qualification
+  - Line 2637: ZG-P23 — Ongoing compatibility/autoresearch
+  - Line 2647: Cross-phase nonnegotiable checklists
+  - Line 2649: Any new model
+  - Line 2660: Any new kernel or rewrite
+  - Line 2669: Any new memory optimization
+  - Line 2677: Any new speculative feature
+  - Line 2684: Milestone releases (not dates)
+  - Line 2694: Dependency and scope rules
+  - Line 2700: 2026-10-10 integrated v2 delivery adjustments
+  - Line 2708: Major ownership contracts required at P00 interface review
+  - Line 2722: 2026-10-12 NPU and Gufo upstream pipeline integration (U-016)
+  - Line 2740: Source: 7e61cb63efd0c1429aa96044f2f7d28fda1e59aa:.agents/prior-art/PRIOR\_ART\_HISTORICAL\_STAGE0\_V2.md
+  - Line 2746: Prior-art/historical archive — INTEGRATED\_PHASE\_0\_AND\_DELIVERY\_GATES.md
+  - Line 2752: zerogravity — Integrated feasibility, critical path, stage gates and delivery contract
+  - Line 2756: 1. The core program contradiction we avoid
+  - Line 2762: 2. Integrated Stage 0 experiments, with mandatory proof
+  - Line 2786: 3. Gates and hard evidence
+  - Line 2788: G0-A: correctness substrate
+  - Line 2794: G0-B: codegen and async execution
+  - Line 2800: G0-C: first functioning vertical slice
+  - Line 2808: G1: portable product
+  - Line 2813: G2: serving parity
+  - Line 2818: G3: extreme models
+  - Line 2823: G4: breadth/distribution/future
+  - Line 2828: 4. Program phase mapping, unchanged IDs P00–P23
+  - Line 2859: 5. Actual user device versus dated research machine
+  - Line 2865: 6. Source/kernel and licensing policy
+  - Line 2873: 7. Test and evidence matrix
+  - Line 2889: 8. Engineering estimates and kill criteria
+  - Line 2905: 9. Exit bookkeeping
+  - Line 2909: 2026-10-12 additional optional feasibility track: GPU + XDNA2 NPU and TaskProgram
+
+### [.agents/docs/handoff-2026-10-20/RECOVERED_HISTORY_02.md](../handoff-2026-10-20/RECOVERED_HISTORY_02.md)
+
+- Bytes: 2797479; mode: 0o644; SHA256: 10e4782ce6fb00bf871276bdf0a7d83f71ea08a1f1233a0494ac08c674a6a50e.
+- Full heading route:
+  - Line 1: Recovered History — volume 2
+  - Line 7: Source: 7e61cb63efd0c1429aa96044f2f7d28fda1e59aa:.agents/research/COMPREHENSIVE\_MULTIMODAL\_DESIGN\_HANDOFF\_2026-10-15.md
+  - Line 13: Zerogravity — Complete v5.1 Multimodal + Realtime Architecture, All Research and Historical Implementation Handoff
+  - Line 24: Read this first: authority and concise orientation
+  - Line 38: Progressive reading plan for an external coding agent
+  - Line 47: Source index and SHA-256 at snapshot time
+  - Line 68: Documentation precedence and concurrent work safety
+  - Line 79: COMPLETE V5.1 SOURCE APPENDICES (verbatim; each independently hash-verified)
+  - Line 85: V5.1 source 1/13 — .agents/research/MULTIMODAL\_V5\_1\_DECISIONS\_AND\_PROVENANCE\_2026-10-15.md
+  - Line 89: Zerogravity v5.1 Multimodal Decisions, User Requirements, Design Proposals and Open Questions
+  - Line 94: 0. How to interpret the decision ledger
+  - Line 105: 1. New explicit user instructions U-040 and U-041
+  - Line 107: U-040 | USER | 15 October 2026 — universal audio/image/video/decision/ternary/realtime design research, strictly no code
+  - Line 124: U-041 | USER | 15 October 2026 — preserve full comprehensive architecture and all research as on-repo implementation/handoff artifacts
+  - Line 137: 2. Prior user decisions explicitly retained (not newly re-approved)
+  - Line 151: 3. Research-derived design proposals DMM-001..DMM-032
+  - Line 190: 4. Open design decisions OMM-001..OMM-022
+  - Line 219: 5. Inherited exact model-priority and project-path requirements
+  - Line 225: 6. Research and source provenance
+  - Line 238: 7. Changes explicitly forbidden during this documentation task
+  - Line 252: V5.1 source 2/13 — .agents/docs/UNIVERSAL\_MULTIMODAL\_EXECUTION\_ARCHITECTURE\_V5\_1\_2026-10-15.md
+  - Line 256: Zerogravity Universal Multimodal Execution Architecture — v5.1 Design Specification
+  - Line 264: 0. Nonnegotiable goals and non-goals
+  - Line 266: Goals
+  - Line 275: Non-goals
+  - Line 284: 1. Architectural reconciliation and ownership boundaries
+  - Line 305: 2. Type-safe multimodal values
+  - Line 341: 3. ModelAssembly: physically separable, semantically unified
+  - Line 384: 4. TaskDriver families and termination
+  - Line 415: 5. StateRoot, multitrack commit and physical event authority
+  - Line 446: 6. Numerical/specialization legality dimensions
+  - Line 458: 7. TensorEncoding and novel low-bit models
+  - Line 476: 8. Media component placement, resource accounting, and scheduling
+  - Line 489: 9. Distinct stages of composition
+  - Line 497: 10. Artifact/model capability status and truthful UX
+  - Line 510: 11. Failure classes and recovery
+  - Line 525: 12. Complexity ceilings and future-proofing
+  - Line 537: 13. Design acceptance (not yet implementation)
+  - Line 556: 14. Source references / provenance
+  - Line 565: V5.1 source 3/13 — .agents/docs/VERIFIED\_MODEL\_ASSEMBLIES\_AND\_SPECIALIZATION\_V5\_1\_2026-10-15.md
+  - Line 569: Zerogravity Verified Model Assemblies, Source Codecs and Legal Specialization — v5.1
+  - Line 573: 1. Central separation: model, task, data encoding, hardware
+  - Line 584: 2. Artifact and verified assembly manifest (conceptual)
+  - Line 641: 3. Operator registry and output shape
+  - Line 656: 4. Component-to-device specialization
+  - Line 671: 5. Source-specific required model assembly examples
+  - Line 673: 5.1 Qwen3.5 text + optional vision
+  - Line 679: 5.2 27B ternary model
+  - Line 686: 5.3 Whisper/Parakeet/Canary
+  - Line 692: 5.4 Kokoro/the dual-AR speech model/Qwen TTS/Moshi
+  - Line 699: 5.5 Qwen-Image, FLUX.2, SD3.5
+  - Line 706: 5.6 Open autoregressive image model
+  - Line 710: 5.7 Wan, open video model, Mochi, joint A/V model
+  - Line 717: 5.8 Typed finite decisions
+  - Line 723: 6. Provenance, licensing and external adapter separation
+  - Line 729: 7. Performance and memory hypotheses to falsify
+  - Line 742: 8. Required interfaces for agents adding a model
+  - Line 759: 9. Stop conditions and architectural falsification
+  - Line 775: V5.1 source 4/13 — .agents/docs/REALTIME\_MULTIMODAL\_SERVING\_AND\_QOS\_V5\_1\_2026-10-15.md
+  - Line 779: Zerogravity Real-Time Multimodal Serving, Sessions, QoS and API Contract — v5.1
+  - Line 785: 0. Scope and goals
+  - Line 791: 1. Serving decomposition without a second inference runtime
+  - Line 817: 2. Canonical TaskRequest and response mode
+  - Line 845: 3. RealtimeSession and transport state
+  - Line 876: 4. Five distinct frontiers
+  - Line 888: 5. MediaEvent stream
+  - Line 917: 6. Input clocks and buffering
+  - Line 927: 7. Playback interruption/barge-in protocol
+  - Line 941: 8. Reconnection and resume
+  - Line 952: 9. Admission and QoS
+  - Line 977: 10. Media-specific progress, metrics and SLOs
+  - Line 990: 11. Three fundamental delivery regimes
+  - Line 992: 11.1 Local or one-shot request (sync)
+  - Line 997: 11.2 Progressive streaming (HTTP/SSE or binary streaming)
+  - Line 1003: 11.3 Bidirectional live (WebSocket/WebRTC)
+  - Line 1011: 12. API matrix and versioning
+  - Line 1033: 13. Hosted opaque provider TaskServiceAdapter
+  - Line 1058: 14. Failure and availability rules
+  - Line 1069: 15. Media presentation receipts and truthful playback
+  - Line 1081: 16. Explicit compatibility prior art (not native implementation)
+  - Line 1095: 17. Acceptance drill extension
+  - Line 1115: V5.1 source 5/13 — .agents/research/MULTIMODAL\_V5\_1\_RESEARCH\_WORKSTREAMS\_AND\_AGENT\_BRIEFS\_2026-10-15.md
+  - Line 1119: Zerogravity v5.1 — Independent Research Workstreams, Agent Instructions and Integration Ownership
+  - Line 1123: 0. One coordinating lead, independent source research
+  - Line 1137: 1. Research lane A — Core engine and semantic/state design
+  - Line 1145: 2. Research lane B — ASR, translation and speech understanding
+  - Line 1153: 3. Research lane C — TTS, codecs, voice and native duplex
+  - Line 1161: 4. Research lane D — Image/flow/editing
+  - Line 1169: 5. Research lane E — Video, temporal VAE and native coupled AV
+  - Line 1177: 6. Research lane F — Typed decisions and low-bit specialist text
+  - Line 1185: 7. Research lane G — Serving, real-time QoS, APIs and opaque providers
+  - Line 1194: 8. Research lane H — Adversarial reconciliation / quality gate
+  - Line 1211: 9. Copyable design-only agent takeover brief
+  - Line 1241: 10. Parallel work and merge discipline
+  - Line 1249: 11. Completion standard
+  - Line 1258: V5.1 source 6/13 — .agents/research/multimodal/ASR\_AND\_STREAMING\_SPEECH\_UNDERSTANDING\_2026-10-15.md
+  - Line 1262: Research Track B — ASR, Speech Translation and Streaming Speech Understanding
+  - Line 1268: 1. Verdict and central lesson
+  - Line 1272: 2. Authoritative source matrix
+  - Line 1287: 3. Whisper reference execution trace
+  - Line 1301: 4. CTC source-specific execution trace
+  - Line 1312: 5. RNNT and TDT source-specific trace
+  - Line 1324: 6. Canary ASR + AST / language conditioning
+  - Line 1331: 7. VibeVoice and diarization
+  - Line 1339: 8. Qwen-Omni audio input and live perception
+  - Line 1343: 9. Reusable ASR contract (illustrative)
+  - Line 1370: 10. State, scheduling and memory
+  - Line 1383: 11. Independent verification and negative fixtures
+  - Line 1400: 12. Implementation sequencing and priorities
+  - Line 1410: 13. Primary sources and provenance
+  - Line 1426: V5.1 source 7/13 — .agents/research/multimodal/TTS\_VOICE\_CODECS\_AND\_FULL\_DUPLEX\_2026-10-15.md
+  - Line 1430: Research Track C — Text-to-Speech, Neural Audio Codecs, Voice and Full-Duplex Conversation
+  - Line 1434: 1. Verdict
+  - Line 1444: 2. Primary source and method matrix
+  - Line 1459: 3. Audio state and clocks: minimum trusted schema
+  - Line 1493: 4. Kokoro: non-token-AR TTS execution trace
+  - Line 1506: 5. Dual-AR speech model: dual-AR generation trace
+  - Line 1519: 6. Qwen3-TTS: variant/streaming cautions
+  - Line 1529: 7. VibeVoice long-form and realtime
+  - Line 1538: 8. Moshi/Mimi native full duplex
+  - Line 1554: 9. Qwen3-Omni Thinker/Talker
+  - Line 1565: 10. Hosted TTS and external voice providers
+  - Line 1577: 11. Serving contracts / output finality
+  - Line 1585: 12. Latency, quality and risk
+  - Line 1597: 13. Required adversarial acceptance fixtures
+  - Line 1612: 14. Incremental implementation plan
+  - Line 1623: 15. Primary sources checked
+  - Line 1640: V5.1 source 8/13 — .agents/research/multimodal/IMAGE\_GENERATION\_EDITING\_AND\_FLOW\_MODELS\_2026-10-15.md
+  - Line 1644: Research Track D — Image Generation, Editing, Flow/Diffusion and Autoregressive Image Models
+  - Line 1650: 1. Verdict
+  - Line 1656: 2. Source model matrix and component inventory
+  - Line 1670: 3. Verified image component assembly contract
+  - Line 1691: 4. Latent tensor and image value semantics
+  - Line 1711: 5. Flow and denoising semantics must be exact
+  - Line 1727: 6. Qwen-Image source-specific trace
+  - Line 1741: 7. FLUX.2 source-specific trace
+  - Line 1757: 8. Stable Diffusion 3.5 source-specific trace
+  - Line 1768: 9. Open autoregressive image model ambiguity protocol
+  - Line 1782: 10. Image editing and composability
+  - Line 1793: 11. Physical memory and performance strategy
+  - Line 1806: 12. Required image acceptance
+  - Line 1821: 13. Recommended implementation order
+  - Line 1832: 14. Primary sources checked
+  - Line 1846: V5.1 source 9/13 — .agents/research/multimodal/VIDEO\_TEMPORAL\_MODELS\_AND\_SYNCHRONIZED\_AV\_2026-10-15.md
+  - Line 1850: Research Track E — Video, Temporal Diffusion, Synchronized Audio-Video and Frontier Providers
+  - Line 1856: 1. Verdict
+  - Line 1868: 2. Source-backed family matrix
+  - Line 1885: 3. Video value and clock contract
+  - Line 1910: 4. Source-valid video-generation execution trace
+  - Line 1923: 5. Wan 2.1 specifics
+  - Line 1931: 6. Wan 2.2 denoising-phase MoE
+  - Line 1946: 7. Open video model original and 1.5
+  - Line 1956: 8. Mochi AsymmDiT and AsymmVAE
+  - Line 1966: 9. Joint A/V model: audio/video, exact synchronized group
+  - Line 1989: 10. Hosted joint audio-video services and frontier proprietary video services
+  - Line 2000: 11. Physical memory and QoS
+  - Line 2015: 12. Test matrix for independent agent implementation
+  - Line 2033: 13. Implementation order, not a changed user model priority
+  - Line 2044: 14. Primary sources reviewed 15 October 2026
+  - Line 2063: V5.1 source 10/13 — .agents/research/multimodal/DECISION\_MODELS\_TERNARY\_AND\_SPECIALIST\_TEXT\_2026-10-15.md
+  - Line 2067: Research Track F — Typed Decision Models, Ternary Formats and Specialist Text Architectures
+  - Line 2073: 1. Why decision heads need a native task kind
+  - Line 2079: 2. Source variants and execution family
+  - Line 2093: 3. DecisionSchema model
+  - Line 2129: 4. Typed-decision model source trace
+  - Line 2141: 5. Joint-schema decision head trace
+  - Line 2154: 6. Hosted typed decisions
+  - Line 2166: 7. Ternary model source architecture: why simple Qwen format recognition is dangerous
+  - Line 2178: 8. Ternary TensorEncoding design
+  - Line 2206: 9. Extensibility to other specialist text models
+  - Line 2219: 10. Negative test matrix
+  - Line 2236: 11. Qualification and implementation order
+  - Line 2247: 12. Original sources reviewed
+  - Line 2263: V5.1 source 11/13 — .agents/research/multimodal/SERVING\_API\_AND\_REALTIME\_PRIOR\_ART\_2026-10-15.md
+  - Line 2267: Research Track G — Real-Time and Multimodal Serving / API Prior Art and Design Reconciliation
+  - Line 2273: 1. Executive verdict
+  - Line 2279: 2. OpenAI public realtime model/protocol reality
+  - Line 2297: 3. Google Gemini Live real-time reference
+  - Line 2316: 4. Moshi/Mimi as native streaming prior art
+  - Line 2324: 5. Hosted voice streaming
+  - Line 2332: 6. Hosted long-running media jobs
+  - Line 2346: 7. vLLM and SGLang useful patterns and caveats
+  - Line 2362: 8. Canonical API compatibility and behavior matrix
+  - Line 2379: 9. Transport-specific lifecycle templates
+  - Line 2381: HTTP file ASR
+  - Line 2384: HTTP SSE text
+  - Line 2387: WebSocket live voice
+  - Line 2390: WebRTC live voice/video
+  - Line 2393: Async hosted video
+  - Line 2396: 10. Security, rate, billing and privacy research learnings
+  - Line 2408: 11. Minimality and performance learnings
+  - Line 2421: 12. Adversarial serving acceptance
+  - Line 2436: 13. Implementation recommendation and scope
+  - Line 2449: 14. External sources / dates
+  - Line 2470: V5.1 source 12/13 — .agents/research/multimodal/CROSS\_STREAM\_ARCHITECTURE\_RECONCILIATION\_2026-10-15.md
+  - Line 2474: Research Track H — Cross-Stream Adversarial Reconciliation and Minimal Architecture Delta
+  - Line 2479: 1. Scope and governance
+  - Line 2485: 2. Overarching verdict
+  - Line 2489: 3. Cross-stream conflict and disposition matrix
+  - Line 2514: 4. Minimal delta against v4.3 + v5, not a redesign
+  - Line 2543: 5. Source-to-execution map
+  - Line 2565: 6. Hard invariants to keep
+  - Line 2567: Single authority
+  - Line 2570: Physical buffer safety
+  - Line 2573: Semantics
+  - Line 2576: Time
+  - Line 2579: API truth
+  - Line 2582: Security
+  - Line 2585: 7. Additional design recommendations still OPEN, not silently approved
+  - Line 2594: 8. Adversarial review questions to require on every implementation PR
+  - Line 2615: 9. Proposed acceptance result classification
+  - Line 2619: 10. Reconciliation deliverables
+  - Line 2636: V5.1 source 13/13 — .agents/research/MULTIMODAL\_V5\_1\_ACCEPTANCE\_AND\_ROADMAP\_2026-10-15.md
+  - Line 2640: Zerogravity Multimodal v5.1 — Complete Implementation Roadmap, Dependency Gates and Acceptance Matrix
+  - Line 2644: 0. Universal execution truth and success definition
+  - Line 2660: 1. Immutable existing scope (P00–P23 remains)
+  - Line 2669: 2. Design readiness gates MM-D0..MM-D5
+  - Line 2671: MM-D0 — authority consolidation (design docs, NOW)
+  - Line 2681: MM-D1 — typed media and clocks (later CODE only if authorized)
+  - Line 2692: MM-D2 — verified ModelAssembly and source codec registry
+  - Line 2705: MM-D3 — task algorithms and transactional multi-domain root
+  - Line 2715: MM-D4 — RealtimeSession and MediaEvent/PresentationLedger
+  - Line 2724: MM-D5 — canonical serving and protocol conformance
+  - Line 2734: 3. Source-real implementation slices MM-I0..MM-I7 (proposed, sequencing requires approval)
+  - Line 2736: MM-I0 — small non-token model and codec mock under same core
+  - Line 2739: MM-I1 — original ASR checkpoint, CPU first
+  - Line 2742: MM-I2 — Kokoro non-AR TTS, CPU first
+  - Line 2745: MM-I3 — Dual-AR speech model/Qwen TTS depth AR and Moshi duplex mock
+  - Line 2751: MM-I4 — image flow generator and editing
+  - Line 2754: MM-I5 — video temporal / Wan expert switching
+  - Line 2757: MM-I6 — joint audio/video and frontier job workflows
+  - Line 2760: MM-I7 — Ternary low-bit models, specialist compression, typed decisions at scale
+  - Line 2768: 4. Complete MM-01..MM-12 inherited acceptance matrix
+  - Line 2787: 5. MM-13..MM-24 new realtime/API acceptance matrix (all not implemented)
+  - Line 2806: 6. Model-specific detailed acceptance suites
+  - Line 2818: 7. Reproducibility/evidence schema for every model or endpoint
+  - Line 2835: 8. Perf/maintainability gates
+  - Line 2847: 9. Dependencies and stop rules
+  - Line 2864: 10. Handoff ownership and parallel agent protocols
+  - Line 2877: 11. Next steps if user authorizes implementation
+  - Line 2881: 12. Documentary trace
+  - Line 2897: LATEST SHARED HISTORY SNAPSHOTS (verbatim at handoff build time)
+  - Line 2903: Live shared snapshot 1/3 — .agents/plans/DECISION\_REGISTER.md
+  - Line 2907: Decision register — confirmed user intent versus recommended design
+  - Line 2914: Explicit user decisions
+  - Line 2965: Strongly recommended architectural choices (not independently approved yet)
+  - Line 3066: Open decisions (do not fill silently)
+  - Line 3145: Assumptions / boundaries
+  - Line 3154: v3 architectural supersession and provenance rule — 2026-10-12
+  - Line 3166: Conflict-resolution protocol
+  - Line 3173: Live shared snapshot 2/3 — .agents/plans/IMPLEMENTATION\_ROADMAP.md
+  - Line 3177: zerogravity — Minimal, composable AI implementation roadmap (v4 reviewed)
+  - Line 3228: A. Program objective and hard invariants
+  - Line 3234: Critical minimum path
+  - Line 3267: ZG-P00 — Lean foundation, source policy and reproducible build
+  - Line 3275: ZG-P01 — Architecture-specific Rust kernel and hardware feasibility
+  - Line 3283: ZG-P02 — Independent mathematical and state-transition oracle
+  - Line 3291: ZG-P03 — Trusted artifacts, quant codecs and rendering
+  - Line 3299: ZG-P04 — Typed Semantic IR and minimal TaskProgram
+  - Line 3307: ZG-P05 — Legal region optimizer, kernel registry and async CIR
+  - Line 3315: ZG-P06 — Useful portable Rust execution backend
+  - Line 3323: ZG-P07 — Accelerator providers, streams, leases and kernel ownership
+  - Line 3331: ZG-P08 — First complete real model and TaskProgram vertical slice
+  - Line 3339: ZG-P09 — Native TaskCoordinator, worker and serving protocols
+  - Line 3347: ZG-P10 — Global physical memory and full-state prefix manager
+  - Line 3355: ZG-P11 — Hybrid/stateful attention and complex operators
+  - Line 3363: ZG-P12 — Routed sparse parameters and tiered expert execution
+  - Line 3371: ZG-P13 — First extreme hybrid sparse model specialization
+  - Line 3379: ZG-P14 — Second, substantially different heavy model specialization
+  - Line 3387: ZG-P15 — Target-authoritative speculation and model/task transactions
+  - Line 3395: ZG-P16 — Continuous batching and cross-resource cost optimization
+  - Line 3403: ZG-P17 — Broader model families, adapters, embedding and reranking
+  - Line 3411: ZG-P18 — Media TaskPrograms: audio, image, video and iterative AI
+  - Line 3419: ZG-P19 — Heterogeneous accelerators, collectives and remote placement
+  - Line 3427: ZG-P20 — Bounded compiler/autotuner and negative experiments
+  - Line 3435: ZG-P21 — Security, trust, licensing and reproducible releases
+  - Line 3443: ZG-P22 — Full performance and quality release qualification
+  - Line 3451: ZG-P23 — Composability and future-technology evolution qualification
+  - Line 3461: B. Milestones (capability, not dates)
+  - Line 3473: C. New model / kernel / task checklists
+  - Line 3487: D. Decision and progress discipline
+  - Line 3491: v4 roadmap refinement — 2026-10-12
+  - Line 3517: v4.1 universal region-backend implementation crosswalk — 2026-10-12
+  - Line 3539: v4.2 distributed execution and tunneled-machine phase crosswalk (U-020)
+  - Line 3560: v4.3 integrated ModelCatalog, ModelRouter, ResidencyManager and API/UX crosswalk (U-021)
+  - Line 3582: U-023 P00 packaging-only implementation checkpoint — 2026-10-12
+  - Line 3594: Live shared snapshot 3/3 — .agents/plans/CURRENT\_STATUS\_AND\_TRACKING.md
+  - Line 3598: zerogravity — Current live status and change tracking
+  - Line 3659: Artifact and repo status
+  - Line 3669: Phase status at creation
+  - Line 3681: Directory relocation validation — 2026-10-10
+  - Line 3692: Next proposed design/engineering handoff checkpoint
+  - Line 3699: Updating status after future work
+  - Line 3718: Source of status truth
+  - Line 3722: Comprehensive v2 design/research integration — 2026-10-10
+  - Line 3743: Gufo upstream / XDNA2 architecture integration — 2026-10-12
+  - Line 3764: v3 project-neutral modular AI architecture redesign — 2026-10-12
+  - Line 3787: v4 comprehensive minimality, performance and composability review — 2026-10-12
+  - Line 3814: v4.1 universal accelerator/runtime architecture review — 2026-10-12
+  - Line 3833: v4.2 distributed heterogeneous topology and secure tunnels — 2026-10-12
+  - Line 3853: v4.3 native multi-model router, one-command UX and OpenAI-compatible serving — 2026-10-12
+  - Line 3876: FINAL: architecture editorial integration, whitepaper and implementing-agent dossier — 2026-10-12
+  - Line 3903: U-023 — minimal binary, Nix/crane, installers and release workflow (2026-10-12)
+  - Line 3930: U-024 — Phase 1 source/reference implementation (2026-10-13)
+  - Line 3943: COMPLETE ORIGINAL COMPREHENSIVE IMPLEMENTATION HISTORY (verbatim source)
+  - Line 3951: Zerogravity — FULL COMPREHENSIVE IMPLEMENTATION HANDOFF
+  - Line 3970: Part I — Current authoritative executive brief
+  - Line 3974: Zerogravity — Executive implementation takeover brief
+  - Line 3984: 0. Canonical repo and safe takeover
+  - Line 3993: 1. Mission and design intent
+  - Line 4003: 2. Exact approved model order and acceptance gates
+  - Line 4015: 3. Governing v4.3 architecture — actual target, not all implemented
+  - Line 4028: 4. Multimodal v5 design proposal, with exact current implementation boundary
+  - Line 4036: 5. Real native CPU results and source identity
+  - Line 4073: 6. GPU/model implementation chronology — actual state P07-A through P07-G3b
+  - Line 4094: 7. Module map, packaging and reproducibility
+  - Line 4131: 8. Pending work: concrete next order and non-negotiable boundaries
+  - Line 4147: 9. How to use the full handoff archive
+  - Line 4157: Part II — Complete source archive index
+  - Line 4239: Part III — FULL VERBATIM SOURCE TEXT
+  - Line 4247: Archived source 1/94 — README.md
+  - Line 4252: zerogravity
+  - Line 4305: Current status: Qwen3.5 text CPU inference + real GPU kernel qualification
+  - Line 4328: Current local CPU usage
+  - Line 4337: Chat-style user message (Qwen text role delimiters):
+  - Line 4340: CPU-only atomic prefill chunk-size variation and optional developer audit:
+  - Line 4351: Strict raw-token aligned probability audit and actual context next-token checks:
+  - Line 4358: Developer CPU numerical acceptance gate
+  - Line 4364: Exit 4 / BLOCKED\_CPU\_FIRST is the expected current status.
+  - Line 4366: Capture all source-model layer stages locally (does not itself prove parity):
+  - Line 4369: An independent llama/other reference capture is still needed:
+  - Line 4373: Run/recover a checked eight-prompt 32-token corpus in batches of 3.
+  - Line 4374: Exit 5 means INCOMPLETE, 4 means complete FAIL, 0 means complete PASS.
+  - Line 4380: Confirmed implementation order
+  - Line 4390: Still-future unified UX
+  - Line 4401: Build locally
+  - Line 4415: Convenience wrapper for the local Rust, shell and Nix-format checks:
+  - Line 4418: Test the checksum installer against a local offline release fixture:
+  - Line 4429: Native tests, clippy, rustfmt, Nix formatting,
+  - Line 4430: shellcheck, offline installer fixture, workflow lint and NixOS module evaluation.
+  - Line 4436: Cross-platform releases
+  - Line 4450: Produce all six asset files + .sha256, VERSION, PLATFORMS.txt
+  - Line 4452: Or copy and verify them into a local dist/ directory:
+  - Line 4458: GitHub Actions
+  - Line 4469: Install from a published release
+  - Line 4474: Set OWNER/REPO explicitly once an actual GitHub release exists.
+  - Line 4477: Choose version and destination, without root:
+  - Line 4494: NixOS module
+  - Line 4523: Project structure
+  - Line 4544: Engineering principles
+  - Line 4554: Implementation sequence
+  - Line 4560: License
+  - Line 4568: Archived source 2/94 — .agents/plans/DECISION\_REGISTER.md
+  - Line 4573: Decision register — confirmed user intent versus recommended design
+  - Line 4580: Explicit user decisions
+  - Line 4631: Strongly recommended architectural choices (not independently approved yet)
+  - Line 4732: Open decisions (do not fill silently)
+  - Line 4811: Assumptions / boundaries
+  - Line 4820: v3 architectural supersession and provenance rule — 2026-10-12
+  - Line 4832: Conflict-resolution protocol
+  - Line 4840: Archived source 3/94 — .agents/plans/REQUIREMENTS\_AND\_TEST\_TRACEABILITY.md
+  - Line 4845: Zerogravity — Requirements, architecture and validation traceability
+  - Line 4877: 1. Explicit user intent U-001…U-026
+  - Line 4921: 2. Operational core requirements and integrated invariant mapping
+  - Line 4945: 3. Phase-to-requirement closure map
+  - Line 4974: 4. Suggested milestone-level review gates
+  - Line 4980: 5. Evidence level and qualification ledger
+  - Line 5014: Archived source 4/94 — .agents/plans/IMPLEMENTATION\_ROADMAP.md
+  - Line 5019: zerogravity — Minimal, composable AI implementation roadmap (v4 reviewed)
+  - Line 5070: A. Program objective and hard invariants
+  - Line 5076: Critical minimum path
+  - Line 5109: ZG-P00 — Lean foundation, source policy and reproducible build
+  - Line 5117: ZG-P01 — Architecture-specific Rust kernel and hardware feasibility
+  - Line 5125: ZG-P02 — Independent mathematical and state-transition oracle
+  - Line 5133: ZG-P03 — Trusted artifacts, quant codecs and rendering
+  - Line 5141: ZG-P04 — Typed Semantic IR and minimal TaskProgram
+  - Line 5149: ZG-P05 — Legal region optimizer, kernel registry and async CIR
+  - Line 5157: ZG-P06 — Useful portable Rust execution backend
+  - Line 5165: ZG-P07 — Accelerator providers, streams, leases and kernel ownership
+  - Line 5173: ZG-P08 — First complete real model and TaskProgram vertical slice
+  - Line 5181: ZG-P09 — Native TaskCoordinator, worker and serving protocols
+  - Line 5189: ZG-P10 — Global physical memory and full-state prefix manager
+  - Line 5197: ZG-P11 — Hybrid/stateful attention and complex operators
+  - Line 5205: ZG-P12 — Routed sparse parameters and tiered expert execution
+  - Line 5213: ZG-P13 — First extreme hybrid sparse model specialization
+  - Line 5221: ZG-P14 — Second, substantially different heavy model specialization
+  - Line 5229: ZG-P15 — Target-authoritative speculation and model/task transactions
+  - Line 5237: ZG-P16 — Continuous batching and cross-resource cost optimization
+  - Line 5245: ZG-P17 — Broader model families, adapters, embedding and reranking
+  - Line 5253: ZG-P18 — Media TaskPrograms: audio, image, video and iterative AI
+  - Line 5261: ZG-P19 — Heterogeneous accelerators, collectives and remote placement
+  - Line 5269: ZG-P20 — Bounded compiler/autotuner and negative experiments
+  - Line 5277: ZG-P21 — Security, trust, licensing and reproducible releases
+  - Line 5285: ZG-P22 — Full performance and quality release qualification
+  - Line 5293: ZG-P23 — Composability and future-technology evolution qualification
+  - Line 5303: B. Milestones (capability, not dates)
+  - Line 5315: C. New model / kernel / task checklists
+  - Line 5329: D. Decision and progress discipline
+  - Line 5333: v4 roadmap refinement — 2026-10-12
+  - Line 5359: v4.1 universal region-backend implementation crosswalk — 2026-10-12
+  - Line 5381: v4.2 distributed execution and tunneled-machine phase crosswalk (U-020)
+  - Line 5402: v4.3 integrated ModelCatalog, ModelRouter, ResidencyManager and API/UX crosswalk (U-021)
+  - Line 5424: U-023 P00 packaging-only implementation checkpoint — 2026-10-12
+  - Line 5436: Archived source 5/94 — .agents/plans/ZEROGRAVITY\_MASTER\_PLAN\_2026-10-10.md
+  - Line 5441: zerogravity — master architecture v4.3: composable AI execution, model routing and simple user experience
+  - Line 5475: 1. Mission, scope and central design argument
+  - Line 5491: 2. Six composable architectural concerns (not six plugin engines)
+  - Line 5523: 3. Correct model math and mutable-state transactions
+  - Line 5525: 3.1 Model and operator support
+  - Line 5531: 3.2 One atomic logical StateRoot publication
+  - Line 5539: 3.3 Full-state prefix/cache compatibility
+  - Line 5543: 4. Specialization and fast-path architecture
+  - Line 5545: 4.1 Closed-region substitution
+  - Line 5551: 4.2 Shape, graph and hot scheduling discipline
+  - Line 5559: 5. Coarse resource admission, local physical execution
+  - Line 5567: 6. Heterogeneous device and source-language strategy
+  - Line 5575: 7. Task kinds and optional training compatibility
+  - Line 5589: 8. Minimal Rust modules and release/process strategy
+  - Line 5597: 9. Quality and performance governance
+  - Line 5611: 10. Staged delivery and source/research separation
+  - Line 5619: 11. Success criterion and practical limitations
+  - Line 5627: 12. v4.1 — universal region execution across GPU, TPU and static dataflow fabrics
+  - Line 5631: 12.1 The decisive abstraction is \*minimum efficient execution granularity\*
+  - Line 5642: 12.2 Platform categories this represents
+  - Line 5656: 12.3 New required capability detail
+  - Line 5664: 12.4 Rust-first and feasibility truth
+  - Line 5670: 12.5 Proof program and scope
+  - Line 5679: 13. v4.2 — One distributed AI execution fabric across hardware, machines and tunnels
+  - Line 5685: 13.1 Four independent placement axes and one derived transfer schedule
+  - Line 5695: 13.2 The placement topologies that must be representable
+  - Line 5712: 13.3 Topology transport and trusted private tunnels
+  - Line 5718: 13.4 One logical StateRoot across remote state shards
+  - Line 5726: 13.5 Topology-aware mathematical and cost legality
+  - Line 5734: 13.6 Delivery and proof without multiplying engine complexity
+  - Line 5750: 14. v4.3 — one-command local UX, built-in multi-model router and OpenAI-compatible serving
+  - Line 5756: 14.1 One engine across CLI, SDK, API and many models
+  - Line 5782: 14.2 Four entities must remain distinct
+  - Line 5791: 14.3 Exact-model routing versus model choice
+  - Line 5799: 14.4 Resident lifecycle and model switching
+  - Line 5805: 14.5 Configuration without upfront complexity
+  - Line 5813: 14.6 APIs, security and complete streaming semantics
+  - Line 5821: 14.7 Performance and long-term minimality
+  - Line 5832: 15. Final editorial and implementation authority (publication dossier 0.1, U-022)
+  - Line 5858: Archived source 6/94 — docs/WHITEPAPER.md
+  - Line 5863: Zerogravity
+  - Line 5864: A composable execution architecture for AI models, heterogeneous accelerators, and distributed state
+  - Line 5872: Abstract
+  - Line 5886: Contents
+  - Line 5906: 1. Introduction: why a unified execution system?
+  - Line 5916: 1.1 Problem statement
+  - Line 5933: 1.2 Scope
+  - Line 5943: 2. Architecture principles
+  - Line 5965: 3. The minimal execution spine
+  - Line 6000: 3.1 Two enduring representations
+  - Line 6013: 3.2 Closed-region substitution
+  - Line 6021: 3.3 Shape-bounded compilation
+  - Line 6029: 4. AI tasks as distinct control policies over one executor
+  - Line 6047: 5. State consistency is a primary execution contract
+  - Line 6053: 5.1 Prepare, then publish once
+  - Line 6072: 5.2 Prefix sharing and speculative verification
+  - Line 6078: 5.3 Streaming and remote failures
+  - Line 6086: 6. Resource ownership and efficient execution
+  - Line 6098: 7. Hardware universality without pretending devices are equivalent
+  - Line 6114: 7.1 Hardware topology matters
+  - Line 6122: 8. Distributed execution: place computation, parameters, state and caches independently
+  - Line 6133: 8.1 Representative topologies
+  - Line 6149: 8.2 Network and trust
+  - Line 6157: 8.3 The performance condition for distribution
+  - Line 6175: 9. Built-in multi-model service and local UX
+  - Line 6201: 10. Quality and security model
+  - Line 6220: 11. A falsifiable evaluation program
+  - Line 6224: 11.1 Functional milestones
+  - Line 6234: 11.2 Performance measurements
+  - Line 6249: 11.3 Explicit hypotheses rather than results
+  - Line 6265: 12. Implementation and evolution strategy
+  - Line 6277: 13. Limitations and open engineering questions
+  - Line 6289: 14. Conclusion
+  - Line 6301: References and reproducibility
+  - Line 6311: Archived source 7/94 — docs/ENGINEERING\_SPECIFICATION.md
+  - Line 6316: Zerogravity — Integrated Engineering Specification
+  - Line 6317: Executable contracts for a modular AI runtime
+  - Line 6326: Contents
+  - Line 6347: ES-00. Scope, authority and document discipline
+  - Line 6349: ES-00.1 Purpose
+  - Line 6365: ES-00.2 Release status and support ladder
+  - Line 6383: ES-00.3 In and out of the mandatory core
+  - Line 6389: ES-00.4 Public versus internal format stability
+  - Line 6395: ES-01. Minimal dependency boundaries and identity model
+  - Line 6397: ES-01.1 Logical composition and control flow (not literal crate dependencies)
+  - Line 6430: ES-01.2 Canonical identities — what changes when?
+  - Line 6449: ES-01.3 Configuration provenance
+  - Line 6457: ES-02. Trusted artifacts, registered mathematics and source quality
+  - Line 6459: ES-02.1 Trusted model source pipeline
+  - Line 6475: ES-02.2 Semantic operator contract
+  - Line 6489: ES-02.3 Numeric correctness levels
+  - Line 6500: ES-02.4 Versioned mutable model parameters (future)
+  - Line 6506: ES-03. Trusted TaskDrivers, typed outputs and application boundary
+  - Line 6508: ES-03.1 TaskDriver scope
+  - Line 6532: ES-03.2 Task families and frontiers
+  - Line 6547: ES-03.3 External actions and agent orchestration
+  - Line 6551: ES-03.4 Output validity
+  - Line 6557: ES-04. Compiler, closed regions and qualified providers
+  - Line 6559: ES-04.1 One semantic program, one compiled plan
+  - Line 6569: ES-04.2 ClosedSemanticRegion and provider choice
+  - Line 6601: ES-04.3 ShapeEnv and variant caching
+  - Line 6614: ES-04.4 Compiled device StepProgram
+  - Line 6620: ES-04.5 Resource/command dependencies (CIR)
+  - Line 6634: ES-04.6 Fallback and implementation invariants
+  - Line 6642: ES-04.7 Proposed multimodal extension: typed media clocks, component assemblies and non-token task semantics (v5 review)
+  - Line 6657: ES-05. Physical resources, worker protocol and device execution
+  - Line 6659: ES-05.1 Two levels of resource ownership
+  - Line 6677: ES-05.2 Device capability and safety record
+  - Line 6683: ES-05.3 WorkEnvelope and completion protocol
+  - Line 6714: ES-06. Exact logical state transactions and output publication
+  - Line 6716: ES-06.1 StateRoot semantics
+  - Line 6722: ES-06.2 Four-step all-domain transaction
+  - Line 6740: ES-06.3 Speculative and asynchronous hazards
+  - Line 6746: ES-06.4 Prefix sharing and state compatibility
+  - Line 6752: ES-06.5 Output transport is a different guarantee
+  - Line 6758: ES-06.6 State transaction test oracles
+  - Line 6773: ES-07. Model catalog, resident instances, router and live service
+  - Line 6775: ES-07.1 Four model-serving entities
+  - Line 6784: ES-07.2 Exact source route, then compatible replica
+  - Line 6790: ES-07.3 Model lifecycle and resource accountability
+  - Line 6804: ES-07.4 Router and TaskCoordinator do not duplicate scheduling
+  - Line 6808: ES-07.5 Hot alias reload and session consistency
+  - Line 6816: ES-08. Distributed placement and authenticated peer execution
+  - Line 6818: ES-08.1 Four orthogonal placements in one physical plan
+  - Line 6829: ES-08.2 Supported classes of placement
+  - Line 6846: ES-08.3 Exact token-range attention composition
+  - Line 6858: ES-08.4 Topology measurement and cost-aware solver
+  - Line 6866: ES-08.5 Peer protocol and tunnels
+  - Line 6874: ES-08.6 Remote state and failure fencing
+  - Line 6891: ES-09. User-facing CLI, SDK, HTTP and configuration
+  - Line 6893: ES-09.1 One engine behind every entry point
+  - Line 6901: ES-09.2 Scope of local profile and runtime settings
+  - Line 6913: ES-09.3 OpenAI-compatible API is a conformance matrix
+  - Line 6926: ES-09.4 Streaming and client SDK tests
+  - Line 6932: ES-09.5 Bind, privacy and remote service policy
+  - Line 6942: ES-10. Security, licensing, error taxonomy and observability
+  - Line 6944: ES-10.1 Security threat boundaries
+  - Line 6959: ES-10.2 Canonical failure categories
+  - Line 6975: ES-10.3 Observability without telemetry leakage
+  - Line 6981: ES-10.4 Operational safety versus impossible guarantees
+  - Line 7001: ES-11. Required invariants and reviewable implementation tests
+  - Line 7035: ES-11.1 Counterexamples are first-class test cases
+  - Line 7053: ES-12. End-to-end execution walkthroughs
+  - Line 7055: ES-12.1 Supported local model, zero config
+  - Line 7072: ES-12.2 Multi-model API with concurrent physical residency
+  - Line 7092: ES-12.3 Mixed-machine layer pipeline
+  - Line 7109: ES-12.4 Remote attention and independently located state
+  - Line 7113: ES-12.5 Device graph and future media task
+  - Line 7117: ES-12.6 Faulted speculative verifier with slow client
+  - Line 7123: ES-13. Implementation and proof sequencing
+  - Line 7127: ES-13.1 First executable vertical slice
+  - Line 7146: ES-13.2 Then prove composability
+  - Line 7159: ES-13.3 Existing stable project phase program
+  - Line 7165: ES-13.4 Definition of Done per capability/phase
+  - Line 7182: ES-14. Acceptance and architectural sustainability
+  - Line 7202: ES-14.1 Architecture review before implementation
+  - Line 7214: ES-14.2 Historical traceability and open decisions
+  - Line 7218: ES-14.3 What makes the published documents usable independently?
+  - Line 7233: ES-15. References and formal source of truth
+  - Line 7239: ES-15.1 Compact implementation glossary
+  - Line 7274: Archived source 8/94 — .agents/docs/VISION\_SCOPE\_AND\_PRINCIPLES.md
+  - Line 7279: Vision, product scope, constraints and engineering philosophy
+  - Line 7286: Directly expressed user requirements
+  - Line 7296: Foundational contract
+  - Line 7302: Three plan levels
+  - Line 7310: What makes zerogravity qualitatively different (hypotheses, not claims)
+  - Line 7320: Non-goals
+  - Line 7331: User journeys (product specs)
+  - Line 7343: Product experience requirements
+  - Line 7352: Quality constraints and optimization order
+  - Line 7364: Integration boundaries
+  - Line 7375: User decisions not inferred
+  - Line 7379: Success definition
+  - Line 7383: 2026-10-10 integrated v2 addendum — research synthesis and product boundaries
+  - Line 7394: 2026-10-12 capability expansion — Gufo NPU and task pipelines
+  - Line 7400: v4 refined product scope and minimality principle
+  - Line 7412: Archived source 9/94 — .agents/docs/MODULAR\_AI\_SYSTEMS\_REFERENCE\_ARCHITECTURE.md
+  - Line 7417: zerogravity — modular AI execution reference architecture v4.1
+  - Line 7421: 1. Prime rule — compose execution capabilities, never new engines
+  - Line 7429: 2. The minimal system vocabulary
+  - Line 7446: 3. Two enduring representations; compiler-internal optimization views
+  - Line 7480: 4. Task control without an internal workflow platform
+  - Line 7498: 5. State and output transaction, exactly one logical publish
+  - Line 7511: 6. Fast scheduling and resource ownership
+  - Line 7521: 7. Shape, numeric, cost and specialization guards
+  - Line 7534: 8. Minimal extension seams and evolution
+  - Line 7551: 9. Deferred complexity and engineering discipline
+  - Line 7559: 10. Evidence, scope and authority
+  - Line 7567: 11. v4.1 execution granularity — native GPU, graph-only and dataflow accelerators
+  - Line 7581: 12. v4.2 — distributed machine and state placement as a core execution capability
+  - Line 7591: 13. v4.3 — built-in multi-model request routing without another runtime
+  - Line 7605: Archived source 10/94 — .agents/docs/COMPOSITION\_AND\_EXTENSION\_CONTRACTS.md
+  - Line 7610: zerogravity — v4.1 typed composition and region execution contracts
+  - Line 7614: 1. Core type ownership — no oversized trait zoo
+  - Line 7627: 2. Model math and type/shape guards
+  - Line 7666: 3. Region execution contract: native kernels through compiled accelerator programs
+  - Line 7709: 4. Prepared whole-state transaction (replaces v3 mutating \`commit\`)
+  - Line 7741: 5. TaskDriver is stage control, not an embedded general workflow engine
+  - Line 7765: 6. Runtime StepPlan and DeviceBackend
+  - Line 7795: 7. Resource admission, local allocators and CIR
+  - Line 7830: 8. Task output and transport delivery
+  - Line 7848: 9. Fingerprints and invalidation by responsibility
+  - Line 7861: 10. Future gradient and parameter update seam
+  - Line 7865: 11. Lifecycle and test-before-freeze
+  - Line 7881: v4.1 addendum — state/shape/compile qualification for graph-only backends
+  - Line 7889: 12. v4.2 — orthogonal distribution contracts and region execution
+  - Line 7899: 13. v4.3 — exact route resolution and per-model admission contract
+  - Line 7932: Archived source 11/94 — .agents/docs/MINIMAL\_EXECUTION\_SPINE\_AND\_PROTOCOL\_V4.md
+  - Line 7937: Minimal execution spine v4 — state, asynchronous workers, resource ownership and hot-path performance
+  - Line 7941: 1. Exactly five ownership boundaries
+  - Line 7955: 2. State versioning — prepared, not independently committed
+  - Line 7957: 2.1 The core error to avoid
+  - Line 7963: 2.2 Illustrative states, epochs and root ownership
+  - Line 8011: 2.3 On GPU-only decode, how to avoid per-token host barriers
+  - Line 8023: 3. Worker step protocol and backpressure
+  - Line 8052: 4. Device/command graph boundary
+  - Line 8064: 5. Hierarchical physical budget and local allocation (zero global per-token lock)
+  - Line 8086: 6. Model/task/plan compatibility keys
+  - Line 8099: 7. Logical output commit versus transport delivery
+  - Line 8109: 8. Subtask control without a giant workflow runtime
+  - Line 8123: 9. Failure semantics matrix
+  - Line 8138: 10. First vertical slice acceptance for this document
+  - Line 8154: v4.1 addendum — graph/dataflow accelerator readiness and state bridge
+  - Line 8164: 11. v4.2 — per-session root publication across remote state shard owners
+  - Line 8174: 12. v4.3 — model routing does not own token state or physical allocations
+  - Line 8188: Archived source 12/94 — .agents/docs/TASK\_PROGRAM\_AND\_COMPILER\_REFINEMENT\_V4.md
+  - Line 8193: v4 TaskProgram and compiler contracts — high throughput with a small semantic core
+  - Line 8197: 1. One reusable semantic representation, one physical executable plan
+  - Line 8210: 2. Two levels of mathematical operations
+  - Line 8212: SemanticOp — source mathematical identity
+  - Line 8218: Pure tensor subset — optimization internals
+  - Line 8224: 3. Value/dimension contracts and dynamic shape guards
+  - Line 8248: 4. Effects and legal speculative execution
+  - Line 8256: 5. Minimal task driver, not a workflow DSL
+  - Line 8286: Supported task drivers and their own frontier
+  - Line 8298: 6. Interface compatibility and minimum provider set
+  - Line 8309: 7. Compiled StepProgram and host/device scheduling cost
+  - Line 8322: 8. Region and whole-model specialized kernels
+  - Line 8333: 9. Optional gradient/parameter update future without training bloat
+  - Line 8346: 10. Hardware/format-independent optimization search and cost
+  - Line 8357: 11. Evolving interop without external engine dependence
+  - Line 8372: 12. Acceptance experiments proving high performance and smallness
+  - Line 8387: v4.1 addendum — large compiled graphs without a new IR
+  - Line 8399: v4.2 — networked execution placement is a compiled physical plan, not a new TaskDriver
+  - Line 8411: Archived source 13/94 — .agents/docs/MODEL\_SEMANTICS\_AND\_COMPATIBILITY.md
+  - Line 8416: Model semantics, model adapters and compatibility qualification
+  - Line 8421: 1. Model support contract
+  - Line 8436: 2. Canonical operator registry
+  - Line 8452: 3. Candidate first model families
+  - Line 8454: Llama and dense baseline
+  - Line 8457: Gemma 4
+  - Line 8460: Qwen3.5+
+  - Line 8463: Qwen3.8-Flash-Next
+  - Line 8466: GLM-5.3-Flash
+  - Line 8469: DeepSeek V4 Flash / V4.1 Flash
+  - Line 8472: 4. Initial capability matrix (PLANNED — not supported yet)
+  - Line 8486: 5. Model adapter shape (conceptual Rust)
+  - Line 8514: 6. Integration steps for an unfamiliar model
+  - Line 8527: 7. Numerical contracts to encode
+  - Line 8531: 8. Future compatibility principle
+  - Line 8535: 2026-10-10 integrated v2 addendum — model recipe/compiler decoupling
+  - Line 8548: 2026-10-12 integration — Gufo-family semantic reuse and task control graphs
+  - Line 8556: v4 refinement — registered exact mathematical models and future parameter versions
+  - Line 8566: Archived source 14/94 — .agents/docs/SEMANTIC\_IR\_AND\_COMPILER.md
+  - Line 8571: Semantic IR, state-effect system and ahead-of-time/JIT execution planning
+  - Line 8578: 1. Principles and boundaries
+  - Line 8589: 2. Three-stage representation
+  - Line 8591: SemanticModelIR (SIR)
+  - Line 8599: OptimizedExecutionIR (EIR)
+  - Line 8603: DevicePlanIR (DPI)
+  - Line 8607: 3. Suggested conceptual type system
+  - Line 8656: Shape checking
+  - Line 8660: Logical versus physical tensor
+  - Line 8664: 4. Stateful effects and exactly-once frontier semantics
+  - Line 8672: Effect rule examples
+  - Line 8682: 5. Typed operator families
+  - Line 8704: 6. Numerical policy / legality
+  - Line 8723: 7. Pattern matching and region formation
+  - Line 8738: 8. Device plan and persistent variant management
+  - Line 8754: Runtime plan selection
+  - Line 8760: 9. Cross-compilation and specialization choices
+  - Line 8766: 10. Independent verifier and proof harness
+  - Line 8784: 11. Practical model integration walkthrough
+  - Line 8790: 12. Performance and maintenance controls
+  - Line 8794: 13. Pending design proof
+  - Line 8805: 2026-10-10 integrated v2 addendum — complete compiler partition
+  - Line 8818: 2026-10-12 integration — model-independent split-output projections and task stages
+  - Line 8826: v4 refinement — two durable representations and explicit legality
+  - Line 8838: Archived source 15/94 — .agents/docs/ASYNC\_RESOURCE\_COMMAND\_IR.md
+  - Line 8843: zerogravity — Async Command/Resource IR (CIR), ownership and compiled execution
+  - Line 8850: 1. Why a command IR is required
+  - Line 8863: 2. Type/identity vocabulary
+  - Line 8900: 3. CIR op classes and effects
+  - Line 8921: 4. Async dependency and memory legality
+  - Line 8937: 5. Two timelines: static plan and dynamic run
+  - Line 8945: 6. Lowering examples
+  - Line 8947: Resident MoE decode
+  - Line 8959: Missing expert
+  - Line 8974: Prefill borrow scratch and restore cache
+  - Line 8989: Distributed
+  - Line 9000: 7. Optimization opportunities created by CIR
+  - Line 9010: 8. Maintainability constraints
+  - Line 9020: 9. Proof and exit gates
+  - Line 9030: 10. Open implementation details
+  - Line 9034: 2026-10-12 integration — XDNA2/iGPU cooperative projection scheduling
+  - Line 9046: v4 refinement — command readiness, not semantic commit
+  - Line 9058: Archived source 16/94 — .agents/docs/INVARIANTS\_AND\_FAILURE\_SEMANTICS.md
+  - Line 9063: Cross-cutting invariants, state lifetimes and failure semantics
+  - Line 9070: Correctness and identity
+  - Line 9079: Effects, ownership and memory
+  - Line 9089: Serving and speculative semantics
+  - Line 9098: Model/hardware compatibility
+  - Line 9106: Failure state machine
+  - Line 9122: Typed error classes
+  - Line 9135: Failure response / recovery matrix
+  - Line 9152: Ownership/lifetime diagrams (text)
+  - Line 9168: Defensive tests / diagnostics
+  - Line 9174: 2026-10-10 integrated v2 addendum — cross-IR and worker-event invariants
+  - Line 9188: 2026-10-12 integration — cross-accelerator safety and semantic invariants
+  - Line 9194: v4 additional invariants and fault tests
+  - Line 9204: v4.3 multi-model routing and API invariants
+  - Line 9220: Archived source 17/94 — .agents/docs/MODEL\_ROUTING\_RESIDENCY\_AND\_MULTI\_MODEL\_SERVING\_CONTRACT.md
+  - Line 9225: zerogravity — Built-in model router, multi-model residency and serving contract (v4.3)
+  - Line 9233: 1. One engine, four separable entities
+  - Line 9250: 2. Minimal architecture — routing above shared execution, never hot-per-token proxy
+  - Line 9286: 3. Typed identities, versioning and naming
+  - Line 9313: 4. Distinct route decisions: source identity, replica, phase and application model selection
+  - Line 9315: 4.1 Exact-model request (default, no substitution)
+  - Line 9321: 4.2 Replica load balancing (same logical model)
+  - Line 9335: 4.3 Phase/task and multi-model pipeline routing
+  - Line 9341: 4.4 Optional intelligent target-model selector (explicitly configured)
+  - Line 9354: 5. Model residency lifecycle, cold-start and scale-to-zero
+  - Line 9389: 5.1 Warm/keepalive policies
+  - Line 9400: 5.2 Model replicas, sharding and placement
+  - Line 9408: 6. One global physical budget, two scheduling timescales
+  - Line 9423: 7. Routing snapshot and request consistency
+  - Line 9450: 8. Per-model settings: explicit scope and safety
+  - Line 9468: 9. Multi-model coexistence and cache compatibility
+  - Line 9476: 10. Failure model and human-facing behavior
+  - Line 9497: 11. Security, remote scope and API boundaries
+  - Line 9505: 12. Observability and perf admission proofs
+  - Line 9529: 13. Minimal implementation staging
+  - Line 9547: Archived source 18/94 — .agents/docs/DISTRIBUTED\_PLACEMENT\_AND\_NETWORK\_EXECUTION\_CONTRACT.md
+  - Line 9552: zerogravity — Distributed placement, network and state execution contract (v4.2)
+  - Line 9558: 1. Central design rule — four independent placement maps
+  - Line 9576: 2. Three graphs, two enduring runtime representations
+  - Line 9606: 3. Physical topology, device graph and measured transport
+  - Line 9614: 3.1 Separate control plane from data plane
+  - Line 9622: 3.2 Tunnel requirements
+  - Line 9635: 4. Placement modes all represented by the same compiler and remote worker
+  - Line 9655: 5. Per-layer state vs compute placement is first-class
+  - Line 9670: 6. Live state separate from compute: three physical plans
+  - Line 9672: 6.1 Cache hydrate once then local execution
+  - Line 9678: 6.2 Execute stateful operator beside remote state
+  - Line 9686: 6.3 Remote live cache byte reads per step
+  - Line 9690: 7. Distributed sequence attention: compact partial-result composition
+  - Line 9703: 8. Placement plan validity, versioning and state migration
+  - Line 9723: 9. Minimal control plane and remote worker protocol
+  - Line 9747: 10. Coordinator, split brain and transport failure
+  - Line 9760: 11. Network-aware cost planner and performance policy
+  - Line 9787: 12. Distributed placement by task kind
+  - Line 9798: 13. Security, model rights and user experience
+  - Line 9806: 14. Proof/test program and staged delivery
+  - Line 9831: 15. Architectural completeness test
+  - Line 9839: 16. v4.3 — model router load balancing versus distributed one-model sharding
+  - Line 9851: Archived source 19/94 — .agents/docs/ACCELERATOR\_EXECUTION\_FAMILIES\_AND\_BACKEND\_CONTRACT.md
+  - Line 9856: zerogravity — Universal region-execution backend contract (v4.1)
+  - Line 9868: 1. The missing abstraction is \*granularity\*, not another framework
+  - Line 9883: 2. Five physical execution kinds, one provider protocol
+  - Line 9919: 3. Provider capability contract is richer than kernel capability
+  - Line 9944: 4. One mathematical representation, many backend lowerings
+  - Line 9962: 5. Device state bridge is essential for graph-only and external fabrics
+  - Line 9989: 6. Physical topology is a graph of memory, compute, links and \*compiler domains\*
+  - Line 10025: 7. Program lifecycle and cost are first-class
+  - Line 10053: 8. Quantization is a typed numeric encoding, not a hardware marketing label
+  - Line 10063: 9. Partition, collectives and remote/wafer failures
+  - Line 10075: 10. Seamless design vs actual hardware implementation
+  - Line 10089: 11. Minimum implementation surface and extension drill
+  - Line 10104: 12. Final rule
+  - Line 10110: 13. v4.2 — one RegionExecutionProvider across network topologies
+  - Line 10124: Archived source 20/94 — .agents/docs/UNIFIED\_MULTIMODAL\_EXECUTION\_CONTRACT\_V5\_2026-10-14.md
+  - Line 10129: Zerogravity — Unified multimodal execution contracts (v5 design proposal)
+  - Line 10134: MM0 executable mock acceptance — 14 October 2026
+  - Line 10149: Executive conclusion
+  - Line 10164: MM-01. Typed value and clock contract
+  - Line 10192: MM-02. Verified model-component graphs
+  - Line 10224: MM-03. Distinct iteration policies under one TaskDriver
+  - Line 10254: MM-04. Multitrack StateRoot, synchronized commit and interruption
+  - Line 10276: MM-05. Denoising, temporal specialization, and task performance
+  - Line 10290: MM-06. Orthogonal tensor encodings and the ternary low-bit model adversarial compatibility
+  - Line 10316: MM-07. Typed decision scoring, not JSON generation
+  - Line 10334: MM-08. Native versus opaque external models
+  - Line 10340: MM-09. Four orthogonal dimensions of specialization
+  - Line 10351: MM-10. Minimal fake acceptance drills, before feature implementation
+  - Line 10370: MM-11. Implementation order without derailing P07
+  - Line 10386: Archived source 21/94 — the master handoff
+  - Line 10391: Latest working implementation (U-025 · 2026-10-13)
+  - Line 10408: Zerogravity — Current Phase 1 Rust implementation takeover (U-024, 2026-10-13)
+  - Line 10420: Zerogravity — Latest P00 Packaging/Release Bootstrap Handoff (U-023, 2026-10-12)
+  - Line 10438: Preserved comprehensive design and publication handoff
+  - Line 10440: Zerogravity — FINAL PUBLICATION AND IMPLEMENTATION HANDOFF (2026-10-12)
+  - Line 10447: New public publication dossier — this is the current first reading authority
+  - Line 10459: Final editorial/engineering reconciliation — what implementing agents must not get wrong
+  - Line 10477: Recommended first implementation deliverable (only when explicitly authorized)
+  - Line 10483: Publication and evidence limitations
+  - Line 10489: Earlier comprehensive handoff (preserved, source-specific history below)
+  - Line 10491: Previous v4.3 handoff: multi-model product takeover (2026-10-12)
+  - Line 10495: 1. User requirement U-021 — many models, one-command simplicity, full control
+  - Line 10501: 2. Mandatory newest documents (read them in full)
+  - Line 10509: 3. Model routing is a single small control layer in an existing engine
+  - Line 10541: 4. Model lifecycle and physical capacity
+  - Line 10547: 5. Blissful user experience without hiding dangerous choices
+  - Line 10557: 6. OpenAI API and tool/security truthfulness
+  - Line 10563: 7. User goal integration with hardware/topologies
+  - Line 10569: 8. Roadmap/status and next-agent discipline
+  - Line 10579: PREVIOUS COMPLETE v4.2/v4.1/v4 HANDOFF (preserved for history)
+  - Line 10581: Previous v4.2 handoff heading — distributed takeover update (2026-10-12)
+  - Line 10585: 1. Latest user decision U-020: distributed execution is core product purpose
+  - Line 10593: 2. New mandatory specs (read BEFORE distributed implementation)
+  - Line 10602: 3. Minimal architecture — four independent placement maps, one compiled plan
+  - Line 10612: 4. Topologies covered and correctness distinctions
+  - Line 10627: 5. Control/data plane and TaskSession single-writer guarantee
+  - Line 10637: 6. Implementation roadmap, test and gating
+  - Line 10648: 7. User-goal and product honesty
+  - Line 10656: PREVIOUS COMPLETE v4.1/v4 HANDOFF (preserved as prior context)
+  - Line 10658: Historical previous heading: ZEROGRAVITY — LATEST BACKEND TAKEOVER UPDATE (v4.1 · 2026-10-12)
+  - Line 10662: New user decision and ambiguity
+  - Line 10666: Mandatory newest reading before implementation
+  - Line 10674: Critical conceptual correction
+  - Line 10686: Qualification/truthfulness
+  - Line 10694: PREVIOUS COMPLETE v4 HANDOFF (kept as a detailed historical foundation)
+  - Line 10696: Previous handoff title — comprehensive agent takeover v4 (2026-10-12)
+  - Line 10705: 1. Comprehensive user intent, not inferred product approvals
+  - Line 10718: 2. Mandatory authority/read order
+  - Line 10730: 3. Canonical minimal execution model
+  - Line 10772: 4. Major prior fault corrections (new v4 review)
+  - Line 10794: 5. Architecture stress tests and why they matter
+  - Line 10808: 6. Implementation and proof program retained
+  - Line 10820: 7. Open user/product decisions
+  - Line 10826: 8. Work and validation discipline
+  - Line 10832: 9. Reusable next-agent prompt
+  - Line 10867: 10. Final v4 handoff assertion
+  - Line 10877: Archived source 22/94 — .agents/plans/AGENT\_IMPLEMENTATION\_PLAYBOOK.md
+  - Line 10882: Zerogravity — Agent Implementation Playbook
+  - Line 10898: Read, implement, prove, document, hand off
+  - Line 10913: 1. Exact takeover order
+  - Line 10928: 2. Begin with a bounded phase contract
+  - Line 10950: 3. Minimal Rust module ownership (first release, not frozen public ABI)
+  - Line 10971: 4. Implementation sequence, Phase P00–P23
+  - Line 10975: P00 — reproducible project foundation
+  - Line 10981: P01 — physical accelerator source/codegen feasibility
+  - Line 10987: P02 — reference operator/state truth
+  - Line 10993: P03 — verified artifact, quant and tokenizer
+  - Line 10999: P04 — effect-aware SemanticProgram and trusted TaskDriver
+  - Line 11005: P05 — region candidates, dynamic guards and async compiled plan
+  - Line 11011: P06 — useful CPU-only model executor
+  - Line 11017: P07 — real GPU worker, local pools and event safety
+  - Line 11023: P08 — first complete real-model vertical slice
+  - Line 11029: P09 — canonical service/SDK plus model router entry
+  - Line 11035: P10 — physical residency + full-state snapshots
+  - Line 11041: P11 — complex hybrid attention/recurrent semantics
+  - Line 11047: P12 — routed sparse weights and tiered IO
+  - Line 11053: P13 — first extreme hybrid model region
+  - Line 11059: P14 — second complex family confirms modularity
+  - Line 11065: P15 — target-authoritative speculative decoding
+  - Line 11071: P16 — high-concurrency multi-model and stage-aware scheduling
+  - Line 11077: P17 — broad model roles, adapters, embeddings
+  - Line 11083: P18 — ASR/TTS/image/video TaskDrivers
+  - Line 11089: P19 — networked multi-device, layer/state and fabric
+  - Line 11095: P20 — bounded offline optimization and cost model
+  - Line 11101: P21 — security, source rights and reproducible release
+  - Line 11107: P22 — release-quality numerical and physical performance matrix
+  - Line 11113: P23 — long-term extension and future technology proof
+  - Line 11121: 5. Test programs as grouped work, not 86 mandatory day-one tasks
+  - Line 11135: 6. Implementation priority / hard dependencies
+  - Line 11171: 7. Agent development cadence and quality gates
+  - Line 11184: 7.1 Hardware safety and access discipline
+  - Line 11192: 8. Evidence and handoff template (copy/paste)
+  - Line 11195: Zerogravity phase/experiment handoff — \<phase\> — \<date\>
+  - Line 11197: Live source
+  - Line 11205: Scope and decisions
+  - Line 11211: Changes
+  - Line 11217: Validation (copy exact commands, exit status, model fixtures)
+  - Line 11228: Review and implementation status
+  - Line 11235: Next bounded step
+  - Line 11243: 9. Starting prompt for a new implementing agent
+  - Line 11253: Archived source 23/94 — .agents/plans/the agent entrypoint
+  - Line 11258: START HERE — Zerogravity agent takeover
+  - Line 11324: 1. Before doing anything
+  - Line 11330: 2. Reading order — mandatory core, then topic-specific details
+  - Line 11342: 3. The smallest coherent architecture to implement
+  - Line 11379: 4. Implementation priority and a bounded next step
+  - Line 11392: 5. Scope and safety boundaries
+  - Line 11401: 6. Documentation updates and handoff
+  - Line 11413: Archived source 24/94 — .agents/plans/CURRENT\_STATUS\_AND\_TRACKING.md
+  - Line 11418: zerogravity — Current live status and change tracking
+  - Line 11479: Artifact and repo status
+  - Line 11489: Phase status at creation
+  - Line 11501: Directory relocation validation — 2026-10-10
+  - Line 11512: Next proposed design/engineering handoff checkpoint
+  - Line 11519: Updating status after future work
+  - Line 11538: Source of status truth
+  - Line 11542: Comprehensive v2 design/research integration — 2026-10-10
+  - Line 11563: Gufo upstream / XDNA2 architecture integration — 2026-10-12
+  - Line 11584: v3 project-neutral modular AI architecture redesign — 2026-10-12
+  - Line 11607: v4 comprehensive minimality, performance and composability review — 2026-10-12
+  - Line 11634: v4.1 universal accelerator/runtime architecture review — 2026-10-12
+  - Line 11653: v4.2 distributed heterogeneous topology and secure tunnels — 2026-10-12
+  - Line 11673: v4.3 native multi-model router, one-command UX and OpenAI-compatible serving — 2026-10-12
+  - Line 11696: FINAL: architecture editorial integration, whitepaper and implementing-agent dossier — 2026-10-12
+  - Line 11723: U-023 — minimal binary, Nix/crane, installers and release workflow (2026-10-12)
+  - Line 11750: U-024 — Phase 1 source/reference implementation (2026-10-13)
+  - Line 11764: Archived source 25/94 — .agents/plans/the next-agent prompt
+  - Line 11769: Starting prompt — Zerogravity implementation agent
+  - Line 11771: CURRENT U-040 — Shared model sessions + physically measured Q4/allocator (15 Oct 2026)
+  - Line 11775: CURRENT U-039 fresh review handoff — after 15 Oct correctness/minimality pass
+  - Line 11779: CURRENT U-038 handoff — P07-G3a original source-exact Vulkan and physical Future-drop fencing
+  - Line 11783: Current U-037 handoff — after P07-G2b physical GPU source workers
+  - Line 11787: Latest U-036 starting point — partial P07-G2 complete
+  - Line 11792: U-035 definitive next-agent starting prompt
+  - Line 11796: Copyable agent prompt
+  - Line 11810: Historical prior prompts, retained verbatim below
+  - Line 11887: Archived source 26/94 — the retired P07-G global-resource-arbiter handoff
+  - Line 11892: Zerogravity P07-G1 — Global device admission and fair bounded task queue
+  - Line 11896: Authoritative context
+  - Line 11902: Implemented: the resource arbiter module (Rust-only, no GPU dependencies)
+  - Line 11918: Implemented: the fair device queue module (Rust-only fair control-plane queue)
+  - Line 11931: Why this is a deliberately narrow first P07-G slice
+  - Line 11940: Reproduction
+  - Line 11959: Next concrete engineering slice: P07-G2/H
+  - Line 11973: Archived source 27/94 — the retired P07-G2 physical GPU-service handoff
+  - Line 11978: P07-G2a — physical CubeCL service attestation and shared memory admission
+  - Line 11982: Implemented scope
+  - Line 11991: Validation evidence and scope
+  - Line 12001: Architectural constraints / limitations
+  - Line 12009: Next implementation and proof — P07-G2b / G3
+  - Line 12022: Archived source 28/94 — the retired P07-G2b physical fair-GPU-workers handoff
+  - Line 12027: Zerogravity P07-G2b — Bounded Fair Physical GPU Workers and First Source-Real Device Qualification
+  - Line 12031: 1. Why this phase and what changed
+  - Line 12039: 2. Implemented minimal composable runtime path
+  - Line 12050: 3. Actual HARDWARE evidence, not host simulation
+  - Line 12067: 4. Quality and regressions
+  - Line 12078: 5. Physical reproduction on existing Nix machine
+  - Line 12087: Real physical partial-GPU + Qwen StateRoot parity, NVIDIA only qualifies.
+  - Line 12093: Real shared physical device 2 models, 4 region executions.
+  - Line 12097: Replace nvidia with amd to reproduce numerical refusal; exit is nonzero,
+  - Line 12098: NOT a passing model/source quality gate.
+  - Line 12103: 6. Pending phases, limitations and exact next engineering gates
+  - Line 12119: Archived source 29/94 — the retired P07-G3a strict AMD Q4 and abort handoff
+  - Line 12124: Zerogravity P07-G3a — Source-Exact AMD Vulkan Q4 and Physical Post-Launch Abort Proof
+  - Line 12128: 1. Problem isolation and what passed on REAL GPU silicon
+  - Line 12141: 2. Implemented code and correctness policy
+  - Line 12148: 3. Genuine physical submission-abandonment test, safety only
+  - Line 12156: 4. Local reproduction; no downloads or global linker changes
+  - Line 12163: All commands from ./src/zerogravity within dotlink-l5.
+  - Line 12171: The following is EXPECTED TO FAIL strictly (native f32 shader, AMD);
+  - Line 12172: it must NOT be counted as passed:
+  - Line 12175: NVIDIA's earlier fast native F32 path still has an exact diagnostic:
+  - Line 12178: Four prompt tokens per model, full native Qwen CPU logits/StateRoot comparison
+  - Line 12183: Separate ISOLATED PROCESSES per card: expected SUCCESS specifically because
+  - Line 12184: submission uncertainty fences the card and quarantines physical buffers.
+  - Line 12191: 5. Regressions and independent streams
+  - Line 12198: 6. Next P07-G3b and P07-H milestones
+  - Line 12211: Archived source 30/94 — .agents/plans/FRESH\_CODE\_CORRECTNESS\_ARCHITECTURE\_REVIEW\_2026-10-15.md
+  - Line 12216: Zerogravity — Fresh correctness, simplicity and scalability review (15 October 2026)
+  - Line 12220: Executive assessment
+  - Line 12226: Findings corrected in this review
+  - Line 12228: R-01 (High): Recoverable GPU host rejection incorrectly enters terminal physical-submitted state — corrected
+  - Line 12236: R-02 (High): Resident LRU can reject a feasible GPU working set or overcommit host logical accounting — corrected
+  - Line 12244: R-03 (High): Same-length pathname replacement between metadata inspection and source read — corrected
+  - Line 12252: R-04 (Medium): User-facing CPU chunked prefill computed discarded vocabulary logits — corrected
+  - Line 12258: R-05 (Medium): Queue observability implied selection meant physical GPU launch — corrected
+  - Line 12266: R-06 (Medium): Untrusted model-head counts could trigger overflow/impossible allocation — corrected
+  - Line 12270: R-07 (Low / scalability): Hot-path global fence lookups built expensive diagnostic maps — corrected
+  - Line 12274: Tests and scope to preserve
+  - Line 12282: Remaining architectural risks / recommended priority
+  - Line 12299: Reproduction
+  - Line 12311: Physical CubeCL Vulkan loader/ICD setup and dual-model or physical abort
+  - Line 12312: commands are detailed in P07G3A\_STRICT\_AMD\_Q4\_AND\_REAL\_ABORT\_HANDOFF\_2026-10-14.md
+  - Line 12323: Archived source 31/94 — the retired P07-G3b shared-models handoff
+  - Line 12328: Zerogravity U-040 — Shared immutable model sessions and measured GPU costs (15 Oct 2026)
+  - Line 12332: 1. One model allocation, many independent sessions
+  - Line 12338: Real original-checkpoint acceptance
+  - Line 12344: 2. Source-audited Q4 GPU precision timing and OS driver allocation telemetry
+  - Line 12357: 3. Native CUDA/HIP and full-GPU limitations — still blocked
+  - Line 12365: 4. Architecture and next honest integration gates
+  - Line 12380: Archived source 32/94 — .agents/prior-art/ACCELERATOR\_PRIOR\_ART\_AND\_PLATFORM\_RESEARCH\_2026-10-12.md
+  - Line 12385: Accelerator execution prior art — Blackwell, TPU, wafer-scale, static dataflow and specialized runtimes
+  - Line 12393: 1. NVIDIA Blackwell is multiple hardware \*systems\*, not one GPU profile
+  - Line 12395: DGX Spark / GB10 (local ARM + coherent low-power Blackwell)
+  - Line 12403: Blackwell RTX/PRO discrete vs B200/B300 and GB200/GB300 rack domains
+  - Line 12411: 2. Google TPU v5e/v6e/v7x — compiled graph + fabric, not ordinary CUDA commands
+  - Line 12420: 3. Cerebras WSE3 / CS3 — wafer-scale static dataflow and streamed weight model
+  - Line 12430: 4. Cerberus — a distinct parallel-decoding algorithm, not wafer-scale hardware
+  - Line 12435: 5. AWS Trainium/Inferentia — specialized AOT accelerator compiler and runtime
+  - Line 12443: 6. Deterministic dataflow, SRAM processors and hybrid GPU+LPU
+  - Line 12451: 7. Other hardware families informing provider constraints
+  - Line 12465: 8. Why this changes the design beyond v4
+  - Line 12478: 9. Status and scope discipline
+  - Line 12488: Archived source 33/94 — .agents/prior-art/ARCHITECTURE\_RECONCILIATION\_AND\_AUTHORITY.md
+  - Line 12493: zerogravity — Reconciled architecture and authority matrix
+  - Line 12502: 0. Reconciliation charter
+  - Line 12508: 1. Six ownership planes (logical, NOT six server processes)
+  - Line 12519: 2. Canonical set of plans / names
+  - Line 12525: Control-flow diagram
+  - Line 12543: 3. Model and optimization ownership
+  - Line 12549: 4. The general fallback: exact boundaries of the guarantee
+  - Line 12555: 5. Scheduler + worker seam adopted from research
+  - Line 12567: 6. Memory and caching ownership
+  - Line 12585: 7. Kernel authoring policy and new CUDA-Rust evidence
+  - Line 12603: 8. Portable first, specialized immediately when justified
+  - Line 12612: 9. Tune kernel variants and joint online policy at different timescales
+  - Line 12621: 10. Operational product capabilities absorbed
+  - Line 12632: 11. Per-model/hardware specialization contract
+  - Line 12644: 12. Evidence, correctness and feasibility gates
+  - Line 12658: 13. Reconciliation ledger of historical research decisions D-01..D-20
+  - Line 12685: 14. Defects or gaps found and disposition
+  - Line 12699: 15. Open technical choices kept deliberately unfrozen
+  - Line 12703: 16. Next-step success test for this design
+  - Line 12709: 2026-10-12 addition — Gufo cooperative NPU prefill reconciled without new runtime fork
+  - Line 12718: Multimodal scope review — v5 proposal (14 October 2026)
+  - Line 12726: Archived source 34/94 — .agents/prior-art/ARCHITECTURE\_V4\_CRITICAL\_REVIEW\_2026-10-12.md
+  - Line 12731: zerogravity — v4 critical architectural review, challenges and resolution record
+  - Line 12737: 1. Research methodology and genuinely material new evidence
+  - Line 12749: 2. Severity-ranked findings: concrete faults in v3
+  - Line 12780: 3. Primary adjudications — fewer concepts, not more mandatory infrastructure
+  - Line 12798: 4. Performance budget and hot-path invariants
+  - Line 12812: 5. Minimality budget / architectural complexity constraints
+  - Line 12824: 6. New required proof/counterexample program
+  - Line 12843: 7. Risks and unresolved policy, retained deliberately
+  - Line 12854: 8. v4 migration of authoritative specs
+  - Line 12864: 9. Review verdict
+  - Line 12876: Archived source 35/94 — .agents/prior-art/COMPARATIVE\_COMPILER\_AND\_RUNTIME\_RESEARCH\_2026-10-10.md
+  - Line 12881: zerogravity — Comprehensive cross-stack research and design selection
+  - Line 12890: 1. Method and independent evidence classes
+  - Line 12901: 2. Inference research: transferable strengths and deliberate limits
+  - Line 12921: 3. Compiler research: new decisions not fully captured by either old architecture
+  - Line 12923: 3.1 The async-compiler stack provides the missing stream/resource layer
+  - Line 12931: 3.2 A tensor compiler separates operator math and schedules; search must be selective
+  - Line 12939: 3.3 MLIR's effect system validates explicit non-tensor state semantics
+  - Line 12947: 3.4 A Rust graph compiler and an e-graph rewriting tool illustrate both opportunity and risk
+  - Line 12955: 3.5 A fused-attention kernel library's serving-aware autotuner is decisive
+  - Line 12963: 4. 2026 Rust GPU toolchain landscape materially changes the old CubeCL-only premise
+  - Line 12983: 5. Unified compiler plan: math, legality, resource schedule, concrete code
+  - Line 13024: 6. First-class adaptability in \*every pipeline stage\*
+  - Line 13050: 7. Memory and state are a compiled resource graph, not just caches
+  - Line 13063: 8. Cache correctness beyond vLLM's current hybrid intersection limits
+  - Line 13073: 9. Service and scheduling: concrete vLLM/Strata mechanisms under SIR contracts
+  - Line 13085: 10. Data and format pipeline: research specificity, project semantic ownership
+  - Line 13099: 11. Quantization, exactness and model performance are independent
+  - Line 13112: 12. Performance search objectives and adaptation
+  - Line 13136: 13. Targeted hardware and model priority
+  - Line 13144: 14. Maintainability scorecard (candidate designs)
+  - Line 13155: 15. Research-to-implementation proof program
+  - Line 13170: 16. Distinct research sources and provenance
+  - Line 13201: 2026-10-12 Gufo/XDNA2 follow-up
+  - Line 13213: Archived source 36/94 — .agents/docs/COST\_MODEL\_AND\_AUTOTUNING.md
+  - Line 13218: Joint cost model, online adaptation and compiler autotuning
+  - Line 13225: 1. Objectives and constraints
+  - Line 13241: 2. Critical path, not naive sum
+  - Line 13258: 3. Cost model inputs
+  - Line 13266: 4. Separate planning timescales
+  - Line 13278: 5. Kernel tuning database
+  - Line 13288: 6. Whole-model fusion decision
+  - Line 13299: 7. MoE batch × cache co-planning
+  - Line 13321: 8. Speculation cost-aware policy
+  - Line 13332: 9. Memory-pressure controller
+  - Line 13343: 10. Data collection and causality
+  - Line 13349: 11. Autotuner validation gates
+  - Line 13362: 12. Unknowns to test
+  - Line 13366: 2026-10-10 integrated v2 addendum — critical-path and serving-aware planning
+  - Line 13387: 2026-10-12 integration — costed multi-accelerator projection partition
+  - Line 13397: v4 refinement — three selection timescales and bounded cost
+  - Line 13405: v4.1 — compile granularity, program warmup and topology cost
+  - Line 13413: v4.2 — measured topology and independent state/cache placement cost
+  - Line 13421: v4.3 — model residency, replica and cache-affinity economics
+  - Line 13433: Archived source 37/94 — .agents/prior-art/DESIGN\_EVOLUTION\_V3\_HANDOFF\_SNAPSHOT.md
+  - Line 13438: Design evolution archive — complete v3 agent handoff
+  - Line 13444: ZEROGRAVITY — FULL COMPREHENSIVE TAKEOVER HANDOFF v3 (2026-10-12)
+  - Line 13456: 1. Precise user requirements and their evolution
+  - Line 13468: 2. Required reading and source-of-truth order
+  - Line 13480: 3. Original, composable system architecture
+  - Line 13526: 4. Why task composition is a core requirement
+  - Line 13539: 5. Specialized parallelism without engine forks
+  - Line 13550: 6. Source formats, provenance and licenses
+  - Line 13558: 7. Physical memory, safety and async ownership
+  - Line 13566: 8. Correctness and performance expectations
+  - Line 13579: 9. Roadmap and change control
+  - Line 13596: 10. Open policies that require future evidence/user input
+  - Line 13602: 11. Agent startup prompt for direct reuse
+  - Line 13645: 12. Closure of this handoff
+  - Line 13655: Archived source 38/94 — .agents/prior-art/DESIGN\_EVOLUTION\_V3\_SNAPSHOT.md
+  - Line 13660: v3 design evolution snapshot — superseded but preserved
+  - Line 13666: Archived v3 source 1: \`MODULAR\_AI\_SYSTEMS\_REFERENCE\_ARCHITECTURE.md\`
+  - Line 13668: Modular AI systems — original, project-neutral reference architecture
+  - Line 13674: 0. Prime design principle
+  - Line 13685: 1. Orthogonal primitives — no inheritance from named source engines
+  - Line 13710: 2. Four dimensions of composability
+  - Line 13722: 3. Layered compilation and execution — graph IR disappears from hot path
+  - Line 13760: 3.1 Semantic IR (SIR): mathematical truth
+  - Line 13765: 3.2 Region IR (RIR): legally better math
+  - Line 13770: 3.3 Kernel IR/providers (KIR): best implementation is a capability
+  - Line 13781: 3.4 Command/resource IR (CIR): data moves and dependencies
+  - Line 13786: 3.5 ExecutableBundle and direct runtime
+  - Line 13789: 4. TaskProgram: model-general AI stage execution
+  - Line 13793: 4.1 Control graph types
+  - Line 13806: 4.2 Common task recipes without separate engines
+  - Line 13822: 4.3 Streaming and cancellation contract
+  - Line 13825: 5. Reference semantics and invariants across model families
+  - Line 13839: 6. Topology- and quality-aware optimization
+  - Line 13845: 6.1 Two important heterogeneous region strategies
+  - Line 13852: 6.2 Task-aware specialization
+  - Line 13855: 7. One global resource authority; different cache policy by data class
+  - Line 13863: 8. Serving and concurrency independent of models
+  - Line 13871: 9. Numeric fidelity, sampling and artifact identity
+  - Line 13883: 10. Security and code provenance
+  - Line 13891: 11. Minimal Rust crate/module ownership (not mandated API)
+  - Line 13906: 12. Extension acceptance: how we know modularity is genuine
+  - Line 13922: 13. Anti-patterns explicitly prohibited
+  - Line 13936: 14. Proof-of-architecture program (project-neutral gates)
+  - Line 13952: 15. Performance strategy — optimize across regions and workloads, not for slogans
+  - Line 13967: 16. Reading and scope authority
+  - Line 13975: Archived v3 source 2: \`COMPOSITION\_AND\_EXTENSION\_CONTRACTS.md\`
+  - Line 13977: Composition and extension contracts — modular AI without engine rewrites
+  - Line 13981: 1. Product-independent contract rules
+  - Line 13992: 2. Universal data contract: values, streams and physical representations
+  - Line 13994: 2.1 Logical values
+  - Line 14024: 2.2 Stream frontiers
+  - Line 14030: 3. ModelDefinition and exact semantic operators
+  - Line 14053: 4. StateDomain: make effectful inference composable
+  - Line 14075: 5. TaskProgram: control-flow algebra
+  - Line 14102: Task-level guarantees
+  - Line 14112: Threading and ownership
+  - Line 14116: 6. KernelProvider and closed-region substitution
+  - Line 14146: 7. DeviceProvider and accelerator topology
+  - Line 14170: 8. ResourceArbiter and CIR event algebra
+  - Line 14209: 9. Scheduling policy and control units
+  - Line 14227: 10. Artifact and codec extension
+  - Line 14233: 11. Versioning and extension lifecycle
+  - Line 14249: 12. Benchmark and quality evidence gating
+  - Line 14262: 13. Cross-component extension test scenarios
+  - Line 14277: 14. Rust workspace dependency direction
+  - Line 14295: 15. Closure
+  - Line 14301: Archived v3 source 3: \`ZEROGRAVITY\_MASTER\_PLAN\_2026-10-10.md\`
+  - Line 14303: zerogravity — Comprehensive Master Plan v3: Modular Composable AI Systems
+  - Line 14309: 0. Mission and non-negotiable constraints
+  - Line 14324: 1. Original independent architecture
+  - Line 14375: 2. Full AI model and task space
+  - Line 14377: 2.1 Semantic model families
+  - Line 14392: 2.2 Task composition beyond language generation
+  - Line 14405: 3. Mathematical model, state, numerical and artifact contracts
+  - Line 14407: 3.1 ModelDefinition/Operator
+  - Line 14411: 3.2 Effects and transaction
+  - Line 14417: 3.3 Precision and quantization
+  - Line 14421: 3.4 Source files
+  - Line 14425: 4. Optimization, specialization and fallback
+  - Line 14427: 4.1 General→optimized→extreme tiers
+  - Line 14437: 4.2 Compiling resource/timepoint scheduling
+  - Line 14450: 4.3 Heterogeneous compute patterns
+  - Line 14458: 4.4 Runtime adaptation boundaries
+  - Line 14462: 5. Physical resources and session/worker architecture
+  - Line 14478: 6. Multi-device/host and failure model
+  - Line 14486: 7. Technology extension seams
+  - Line 14503: 8. Product and SDK surface
+  - Line 14509: 9. Phases, evidence, licensing and authority
+  - Line 14527: 10. Non-goals and stop conditions
+  - Line 14542: 11. Final authority
+  - Line 14556: Archived source 39/94 — .agents/docs/DEVICE\_KERNEL\_AND\_CODEGEN.md
+  - Line 14561: Device abstraction, Rust GPU kernels, code generation and backend specialization
+  - Line 14568: 1. Backend interface and invariant
+  - Line 14589: 2. Capability model
+  - Line 14595: 3. Rust kernel source design
+  - Line 14607: 4. Output contract and numerical precision
+  - Line 14622: 5. Kernel families and target-specific strategies
+  - Line 14624: Dense FFN and projection
+  - Line 14627: Routed MoE
+  - Line 14630: Recurrent GDN/KDA
+  - Line 14633: Qwen Sparse Attention
+  - Line 14636: GLM sparse MLA + KDA
+  - Line 14639: DeepSeek compressed attention
+  - Line 14642: Hyperconnections
+  - Line 14645: Quantized LM head and sampling
+  - Line 14648: N-gram/Engram
+  - Line 14651: 6. Strix Halo gfx1151
+  - Line 14659: 7. CUDA / NVIDIA and other targets
+  - Line 14667: 8. Kernel planning and autotuning
+  - Line 14673: 9. Direct execution design
+  - Line 14679: 10. Error handling and tests
+  - Line 14683: 11. Need-to-measure technical unknowns
+  - Line 14694: 2026-10-10 integrated v2 addendum — Rust GPU provider landscape and portability
+  - Line 14707: 2026-10-12 integration — XDNA2 AIE/Rust source feasibility provider
+  - Line 14717: v4 refinement — true closed-region providers and device-native loop proof
+  - Line 14725: v4.1 — kernel backend is a specialized form of a region-program provider
+  - Line 14739: Archived source 40/94 — .agents/docs/DISTRIBUTED\_PARALLELISM.md
+  - Line 14744: Distributed and heterogeneous execution — v4.2 authoritative index
+  - Line 14748: Primary goal
+  - Line 14754: Four independent placement maps and one physical plan
+  - Line 14764: Required topologies
+  - Line 14782: Authoritative publication and node failure
+  - Line 14788: Transport and security
+  - Line 14794: Minimal staging and tests
+  - Line 14806: Archived source 41/94 — .agents/prior-art/DISTRIBUTED\_PRIOR\_ART\_AND\_TUNNEL\_RESEARCH\_2026-10-12.md
+  - Line 14811: Distributed execution, state disaggregation and tunnel transport: prior-art research
+  - Line 14815: 1. New axes beyond model/tensor sharding
+  - Line 14821: 2. Prefill/decode, KV transfer, cache-aware routing
+  - Line 14831: 3. Attention/FFN disaggregation and remote KV execution
+  - Line 14839: 4. Token-range KV sharding and long-context elastic attention
+  - Line 14847: 5. LAN and consumer-machine distribution
+  - Line 14855: 6. Transport and encrypted tunnels
+  - Line 14864: 7. Safety, numerical, economic and product boundaries
+  - Line 14870: 8. Conclusion
+  - Line 14878: Archived source 42/94 — .agents/docs/ENGINE\_CORE\_EXECUTION\_AND\_PROTOCOL.md
+  - Line 14883: zerogravity — Native Engine Core, Worker Protocol, KV policies and request lifecycles
+  - Line 14890: 1. One mutable owner, many concurrent hardware workers
+  - Line 14896: 2. Protocol envelopes and communication
+  - Line 14948: 3. Step loop and critical-path discipline
+  - Line 14965: 4. Two budgets and three execution regimes
+  - Line 14977: 5. KV strategy under one resource arbiter
+  - Line 14979: Paged block pool (baseline)
+  - Line 14984: Optional radix prefix index
+  - Line 14987: Contiguous extreme pool
+  - Line 14990: General hybrid-domain coordinator
+  - Line 14993: 6. Persistent worker input batches and step diffs
+  - Line 14999: 7. Sequence state and speculative transactions
+  - Line 15012: 8. Interoperation with async CIR and resources
+  - Line 15023: 9. API consistency and mode receipts
+  - Line 15029: 10. Invariants and failure modes
+  - Line 15042: 11. Gating tests
+  - Line 15053: 12. Open decisions
+  - Line 15057: 2026-10-12 integration — cross-device first-use barrier without extra EngineCore
+  - Line 15063: v4 refinement — session owner, device-native StepProgram, output sequence
+  - Line 15071: v4.1 — DeviceWorker may submit a compiled graph or static pipeline
+  - Line 15077: v4.2 — TaskCoordinator and authorized remote RegionWorker
+  - Line 15085: v4.3 — one shared EngineCore under built-in model router
+  - Line 15097: Archived source 43/94 — .agents/docs/EXAMPLE\_EXECUTION\_TRACES.md
+  - Line 15102: Design walkthroughs — concrete execution and fallback traces
+  - Line 15109: Example 1 — Dense Llama-like model on unsupported GPU specialization
+  - Line 15122: Example 2 — Qwen3.8 Flash-Next on 128 GB gfx1151
+  - Line 15138: Example 3 — GLM-5.3 Flash on 92/96 GB Strix Halo
+  - Line 15150: Example 4 — Shared-prefix coding agents with tool calls
+  - Line 15160: Example 5 — Training-free novel model op arrives
+  - Line 15169: Example 6 — Distributed TP failure during speculative verification
+  - Line 15178: Example 7 — Why compiler fusion might lose
+  - Line 15182: Practical invariant crosswalk
+  - Line 15188: 2026-10-10 integrated v2 addendum — async CIR and modern extension traces
+  - Line 15223: 2026-10-12 trace 13 — Qwen cooperative prefill on an optionally qualified XDNA2 NPU
+  - Line 15234: v4 traces — prepared state, shape fallback and independent tasks
+  - Line 15242: v4.2 distributed and tunneled execution traces
+  - Line 15252: v4.3 multi-model router and one-command user traces
+  - Line 15266: Archived source 44/94 — .agents/docs/FORMATS\_QUANTIZATION\_AND\_LOADING.md
+  - Line 15271: Model artifacts, quantization, tokenizer/template parity and safe loading
+  - Line 15276: 1. Design constraints
+  - Line 15284: 2. Architecture of the loading pipeline
+  - Line 15300: 3. GGUF
+  - Line 15317: 4. Safetensors / HF
+  - Line 15325: 5. Tokenizers, chat templates and agent semantics
+  - Line 15338: 6. Distinguish storage precision from compute format
+  - Line 15346: 7. Conversion, calibration and verification pipeline (optional developer tooling)
+  - Line 15356: 8. Multi-file and huge-file support
+  - Line 15362: 9. Layout transform and fallback
+  - Line 15366: 10. Adversarial input tests
+  - Line 15370: 11. Open policy items
+  - Line 15374: 2026-10-10 integrated v2 addendum — complete product-model pipeline
+  - Line 15387: v4 refinement — independent artifact, semantic, state and bundle identities
+  - Line 15397: Archived source 45/94 — .agents/prior-art/GUFO\_FORK\_AND\_XDNA2\_PREFILL\_SOURCE\_RESEARCH\_2026-10-12.md
+  - Line 15402: Gufo XDNA2 cooperative-prefill fork and October 2026 Strix Halo report — primary-source research
+  - Line 15411: 1. What the user's sources actually establish
+  - Line 15433: 2. Architecture in actual fork code
+  - Line 15435: 2.1 Hardware and programming interfaces
+  - Line 15448: 2.2 One fixed NPU GEMM geometry (initial implementation, NOT fundamental model identity)
+  - Line 15456: 2.3 Exactly which mathematical projections are split
+  - Line 15466: 2.4 Asynchronous execution and memory sharing
+  - Line 15479: 2.5 Runtime/safety limitations actually observed
+  - Line 15487: 3. Relation to upstream gufo-org/gufo model pipelines
+  - Line 15501: 4. Observed strengths, weaknesses and potential zerogravity improvements
+  - Line 15515: 5. Required experiments before enabling any NPU offload
+  - Line 15528: 6. Source-by-source references and provenance
+  - Line 15558: Archived source 46/94 — .agents/docs/MEMORY\_RESIDENCY\_AND\_IO.md
+  - Line 15563: Global memory, expert residency, storage I/O and resource admission
+  - Line 15574: 1. Core architectural decision
+  - Line 15580: 2. Distinguish addressability, residency and physical headroom
+  - Line 15608: 3. Resource classes and default priorities
+  - Line 15625: 4. Authoritative resource arbiter
+  - Line 15667: 5. Expert store organization
+  - Line 15677: 6. Fast resident expert path
+  - Line 15691: 7. Expert miss path and async event protocol
+  - Line 15709: 8. Async SSD and NUMA
+  - Line 15719: 9. Disk-only lookup row service
+  - Line 15730: 10. KV, prefix and recurrent state tiers
+  - Line 15736: 11. Dynamic scratch borrowing
+  - Line 15749: 12. Safety and deployment
+  - Line 15760: 13. Required test matrix
+  - Line 15764: 14. Known research hazards / unapproved constants
+  - Line 15768: 2026-10-10 integrated v2 addendum — research-grade KV/expert algorithms governed by CIR
+  - Line 15781: 2026-10-12 integration — pinned AIE/NPU buffers and shared physical ownership
+  - Line 15789: v4 refinement — reservation authority versus local pool
+  - Line 15795: v4.1 — weight/program residency spans GPU, graph and static dataflow
+  - Line 15803: v4.2 — one physical accounting discipline across remote model, state and cache owners
+  - Line 15811: v4.3 — multiple resident models under one physical ResourceArbiter
+  - Line 15823: Archived source 47/94 — .agents/prior-art/MULTI\_MODEL\_ROUTER\_AND\_API\_PRIOR\_ART\_RESEARCH\_2026-10-12.md
+  - Line 15828: Multi-model local runtime, router, CLI and API prior-art research
+  - Line 15832: 1. User goal and immediately important prior art
+  - Line 15843: 1.1 Ollama CLI and lifecycle: simplicity baseline
+  - Line 15855: 1.2 Lightweight native runner/router prior art
+  - Line 15864: 2. OpenAI-compatible APIs must be pinned to an explicit tested subset
+  - Line 15874: 3. Multi-model lifecycle and routing architecture research
+  - Line 15887: 4. Security, model provenance and user experience
+  - Line 15897: 5. Source distinction from requested deliverable
+  - Line 15911: Archived source 48/94 — .agents/docs/NPU\_GPU\_COOPERATIVE\_EXECUTION\_AND\_TASK\_PIPELINES.md
+  - Line 15916: zerogravity — NPU/GPU cooperative execution and multimodal TaskProgram design
+  - Line 15925: 1. The essential distinction — three hardware parallelism types
+  - Line 15935: 2. SIR semantic preservation: output-row sliced GEMM
+  - Line 15952: 3. Compiler representations and runtime data flow
+  - Line 15954: SIR
+  - Line 15957: RIR
+  - Line 15960: KIR
+  - Line 15971: CIR
+  - Line 15998: ExecutableBundle/StepPlan
+  - Line 16005: 4. Safety-critical unified SoC power/fabric model
+  - Line 16022: 5. Precision and correct mathematical output
+  - Line 16034: 6. Cost-aware ownership and utilization
+  - Line 16052: 7. General multi-device ownership and sparse compute
+  - Line 16066: 8. Extending beyond decoder-only pipelines
+  - Line 16090: 9. Exact fallback contracts for a "seamless" experience
+  - Line 16108: 10. Acceptance tests and integration plan (proposed, not completed)
+  - Line 16124: 11. Files/policy mapping
+  - Line 16136: v4 refinement — NPU is a KernelProvider and physical command dependency
+  - Line 16146: Archived source 49/94 — .agents/docs/NUMERICS\_QUALITY\_AND\_BENCHMARKS.md
+  - Line 16151: Numerical correctness, model-quality evaluation and benchmark methodology
+  - Line 16158: 1. Four independent notions of correctness
+  - Line 16167: 2. Reference layers
+  - Line 16177: 3. Numeric error metrics
+  - Line 16194: 4. Critical operator regression cases
+  - Line 16215: 5. Quantization and quality comparison
+  - Line 16226: 6. Speculative decoding sampling rigor
+  - Line 16234: 7. Hybrid state replay equivalence
+  - Line 16247: 8. Benchmark taxonomy
+  - Line 16259: 9. Benchmark comparability matrix
+  - Line 16271: 10. Recorded external author baselines (research only)
+  - Line 16281: 11. Statistical method
+  - Line 16287: 12. Reproducible results schema and artifacts
+  - Line 16291: 13. Quality gates and acceptance policy
+  - Line 16304: 14. Long context and quality
+  - Line 16308: 15. Acceptance report example (pseudocode)
+  - Line 16325: 2026-10-10 integrated v2 addendum — defensible Pareto performance and correction ledger
+  - Line 16343: 2026-10-12 integration — NPU BFP compute and performance comparability
+  - Line 16349: v4 refinement — four distinct truth claims and task-relative units
+  - Line 16355: v4.1 — cross-accelerator precision and program validity
+  - Line 16363: v4.2 — distributed mathematical parity and transport-aware benchmarks
+  - Line 16371: v4.3 exact-model routing and multi-model performance truthfulness
+  - Line 16383: Archived source 50/94 — .agents/docs/OPERATOR\_AND\_FUSION\_CATALOG.md
+  - Line 16388: Operator/region contracts, fusion patterns and model execution catalog
+  - Line 16395: 1. Canonical operator record
+  - Line 16414: 2. Dense linear / embedding
+  - Line 16426: Candidate region: Norm + Q8 activation packing + GEMV
+  - Line 16429: 3. Attention families
+  - Line 16431: Full causal attention / GQA
+  - Line 16434: Sliding-window / alternating local-global
+  - Line 16437: Qwen Sparse Attention (QSA)
+  - Line 16440: GLM latent MLA + DeepSeek Sparse Attention
+  - Line 16443: DeepSeek time-compressed attention (CSA/HCA)
+  - Line 16446: Candidate region: index score+topk+attention tile
+  - Line 16449: 4. Recurrent and hybrid families
+  - Line 16451: Gated DeltaNet
+  - Line 16454: Kimi Delta Attention
+  - Line 16457: Hyperconnections
+  - Line 16460: Candidate region: recurrent step + conv history + residual
+  - Line 16463: 5. MoE families
+  - Line 16475: Candidate fusion plans
+  - Line 16484: 6. N-gram / Engram row lookup
+  - Line 16488: 7. Output/sampling/drafting
+  - Line 16492: 8. Operator capability matrix example (PROPOSED)
+  - Line 16510: 9. Reference model and independent data flow
+  - Line 16514: 10. Region and fallback execution example
+  - Line 16534: 11. Complexity budget
+  - Line 16538: 12. Missing official formula checklist
+  - Line 16549: 2026-10-10 integrated v2 addendum — effect-aware kernel and fusion ownership
+  - Line 16562: 2026-10-12 integration — \`ProjectionRowSlice\` and non-token stage optimization
+  - Line 16570: v4 refinement — useful op granularity and precise region substitution
+  - Line 16580: Archived source 51/94 — .agents/docs/PERFORMANCE\_HYPOTHESES\_AND\_RISKS.md
+  - Line 16585: Architectural risks, opportunities, trade-offs and falsification criteria
+  - Line 16592: 1. Risk register (severity × uncertainty)
+  - Line 16615: 2. Central falsifiable hypotheses
+  - Line 16631: 3. Key trade-off choices
+  - Line 16633: A. Semantic IR richness vs maintainability
+  - Line 16637: B. CubeCL vs direct hardware kernels vs vendor libraries
+  - Line 16641: C. One cache vs many caches
+  - Line 16645: D. Whole-layer fusion vs operation modularity
+  - Line 16649: E. Full CPU reference vs portable but slow GPU backend
+  - Line 16653: F. Automatic adaptation vs predictability
+  - Line 16657: 4. Common failure of reasoning to avoid
+  - Line 16670: 5. Decision process for research conflicts
+  - Line 16674: 6. Prioritize and prune complexity
+  - Line 16678: 7. Immediate actionable risks
+  - Line 16690: 2026-10-10 integrated v2 addendum — new research risks and falsifiable differentiation
+  - Line 16711: 2026-10-12 Gufo XDNA2 opportunity and risks
+  - Line 16725: v4 critical-path and complexity risks (review R4-01…R4-24)
+  - Line 16737: Archived source 52/94 — .agents/prior-art/PRIOR\_ART\_HISTORICAL\_ACCEPTANCE\_GATES\_V2.md
+  - Line 16742: Prior-art/historical archive — RELEASE\_ACCEPTANCE\_GATES.md
+  - Line 16748: zerogravity — Acceptance, verification and release gates
+  - Line 16752: A. Project lifecycle gates
+  - Line 16769: B. Correctness corpus levels
+  - Line 16775: C. Mandatory validation for execution plans
+  - Line 16779: D. Resource safety minimum
+  - Line 16790: E. Serving service-level verification
+  - Line 16794: F. Report schema recommendation
+  - Line 16818: G. Documentation handoff closure
+  - Line 16822: 2026-10-10 integrated v2 acceptance gates
+  - Line 16842: 2026-10-12 acceptance: optional XDNA2 and TaskProgram device/semantic qualification
+  - Line 16856: Archived source 53/94 — .agents/prior-art/PRIOR\_ART\_HISTORICAL\_DISTRIBUTED\_PARALLELISM\_V4\_1.md
+  - Line 16861: Historical distributed-parallelism design before topology v4.2
+  - Line 16867: Heterogeneous devices, distributed execution, topology and recovery
+  - Line 16874: 1. Placement modes
+  - Line 16880: 2. Cost and topology model
+  - Line 16895: 3. Layer pipeline
+  - Line 16901: 4. Tensor parallel
+  - Line 16907: 5. Expert parallel
+  - Line 16911: 6. Prefill/decode disaggregation
+  - Line 16915: 7. Wire protocol and transport
+  - Line 16929: 8. Distributed state transaction
+  - Line 16943: Idempotency
+  - Line 16947: 9. Multi-GPU single-host handling
+  - Line 16953: 10. Performance and quality evaluation
+  - Line 16957: 11. Fault-injection and security
+  - Line 16961: 12. Open choices
+  - Line 16965: 2026-10-10 integrated v2 addendum — distributed inference is CIR + model state protocol
+  - Line 16976: 2026-10-12 integration — one-host heterogeneous computation beyond GPU expert owners
+  - Line 16984: v4 refinement — epoch fencing and limits of atomicity
+  - Line 16990: v4.1 — distributed topology includes compiler-owned fabric programs
+  - Line 17002: Archived source 54/94 — .agents/prior-art/PRIOR\_ART\_HISTORICAL\_EXPERIMENTS\_V2.md
+  - Line 17007: Prior-art/historical archive — EXPERIMENT\_PROGRAM.md
+  - Line 17013: zerogravity — Measured-performance and feasibility experiment program
+  - Line 17017: Scientific protocol — same for every candidate
+  - Line 17027: Baseline and comparison ledger (not apples-to-apples)
+  - Line 17038: Experiment H01 — Kernel compiler feasibility on gfx1151 (ZG-P01)
+  - Line 17044: H02 — Semantic IR overhead removal (ZG-P04/P05)
+  - Line 17048: H03 — Whole-region fusion (P05/P11/P13/P14)
+  - Line 17052: H04 — GPU route-aware batching of MoE (P12/P16)
+  - Line 17056: H05 — Residency × scheduling co-optimization (P10/P12/P16)
+  - Line 17060: H06 — Disk-only n-gram/Engram (P03/P10/P13/P17)
+  - Line 17064: H07 — Hybrid prefix state sharing (P10/P11)
+  - Line 17068: H08 — Adaptive speculation economics (P15/P16)
+  - Line 17072: H09 — Prefill versus decode resource competition (P09/P16)
+  - Line 17076: H10 — Compressed/sparse attention context depth (P11/P13/P14/P17)
+  - Line 17080: H11 — Unified-memory safety and throughput (P07/P10/P13/P14)
+  - Line 17084: H12 — Mixed quantization and model quality (P03/P12/P13/P14)
+  - Line 17088: H13 — Distributed topology and transport (P19)
+  - Line 17092: H14 — Long-lived agent workload (P09/P10/P15/P17)
+  - Line 17096: Bench artifacts organization (future)
+  - Line 17112: Qualification decisions
+  - Line 17121: 2026-10-10 integrated v2 research expansion (new experiments H15–H25)
+  - Line 17148: 2026-10-12 research expansion: Gufo upstream and XDNA2 cooperative prefill (H26–H31)
+  - Line 17168: Archived source 55/94 — ../prior-art/PRIOR\_ART\_HISTORICAL\_MASTER\_HANDOFF\_V2.md
+  - Line 17173: Prior-art archive — historical complete v2/v2.1 takeover handoff
+  - Line 17179: ZEROGRAVITY — LATEST TAKEOVER UPDATE (v2.1 · 2026-10-12)
+  - Line 17185: Essential reading additions (must read before NPU/TaskProgram implementation)
+  - Line 17194: Critical user-requested architecture — WHAT IS DIFFERENT
+  - Line 17211: Other upstream Gufo pipelines (future model/task categories)
+  - Line 17223: Handoff/final safety instruction
+  - Line 17229: PREVIOUS UNIFIED v2 TAKEOVER (preserved, subordinate to the latest update)
+  - Line 17231: Previous title: ZEROGRAVITY — CURRENT COMPREHENSIVE MASTER TAKEOVER (Integrated v2 · 2026-10-10)
+  - Line 17237: Read-first authority
+  - Line 17249: Current architecture (mandatory conceptual distinction)
+  - Line 17277: Best of the research preserved
+  - Line 17290: Original programs' faults explicitly corrected
+  - Line 17302: New Stage 0 and phases
+  - Line 17319: Existing user decisions and open policies
+  - Line 17323: Extension/maintainability acceptance
+  - Line 17329: Next-agent operating instructions
+  - Line 17343: HISTORICAL INITIAL HANDOFF SNAPSHOT (v1, preserved for context)
+  - Line 17345: Prior title: ZEROGRAVITY — FULL MASTER HANDOFF AND TAKEOVER AUTHORITY (2026-10-10)
+  - Line 17358: 1. What the user explicitly wants
+  - Line 17371: Key user questions that shaped the project
+  - Line 17384: 2. Authority and reading order
+  - Line 17397: Subsystem docs and what they must answer
+  - Line 17423: 3. Research history — each project's actual contribution
+  - Line 17425: vLLM (https://github.com/vllm-project/vllm)
+  - Line 17428: SGLang (https://github.com/sgl-project/sglang)
+  - Line 17431: llama.cpp / ggml (https://github.com/ggml-org/llama.cpp)
+  - Line 17434: Native extreme-optimization engine
+  - Line 17437: Gufo (https://github.com/gufo-org/gufo)
+  - Line 17440: Project Maya (https://github.com/mw00/project-maya)
+  - Line 17443: Strata (https://github.com/mach10x/strata)
+  - Line 17446: DwarfStar / antirez/ds4 (https://github.com/antirez/ds4)
+  - Line 17449: Others
+  - Line 17459: 4. Hardware/model facts to carry into planning
+  - Line 17474: 5. The architecture — authoritative synthesis
+  - Line 17491: How a generic model runs
+  - Line 17494: How an extreme model runs
+  - Line 17497: Why semantic IR can help but does not guarantee speed
+  - Line 17500: 6. Key subsystem decisions and invariants
+  - Line 17502: Semantic IR
+  - Line 17505: State and prefix
+  - Line 17508: Memory
+  - Line 17511: Scheduler
+  - Line 17514: Speculation
+  - Line 17517: Device kernels
+  - Line 17520: Distributed
+  - Line 17523: Quant/quality
+  - Line 17526: UX
+  - Line 17529: 7. Proposed development phases, all still NOT\_STARTED
+  - Line 17545: 8. Research/benchmark discipline and important caveats
+  - Line 17557: 9. What has actually been created, and what has not
+  - Line 17563: 10. How next agent should begin
+  - Line 17574: 11. High-priority open decisions
+  - Line 17596: 12. Source/decision preservation policy
+  - Line 17604: 13. Self-contained next-agent starting prompt
+  - Line 17645: 14. Closure of THIS handoff
+  - Line 17653: Archived source 56/94 — .agents/prior-art/PRIOR\_ART\_HISTORICAL\_MASTER\_PLAN\_V2.md
+  - Line 17658: Prior-art archive — Historical v2 unified master architecture
+  - Line 17664: zerogravity — Comprehensive Unified Master Architecture and Product Plan (v2)
+  - Line 17670: 0. Mission
+  - Line 17684: 1. User-confirmed scope versus working choices
+  - Line 17692: 2. Unified system architecture
+  - Line 17743: 3. Semantic IR and compiler legality
+  - Line 17745: 3.1 Model semantics
+  - Line 17758: 3.2 Optimized Region IR
+  - Line 17764: 3.3 Kernel authoring IR and registry
+  - Line 17770: 3.4 Async Command/Resource IR
+  - Line 17776: 4. General path and extreme path — one implementation spine
+  - Line 17785: 5. Physical resources and five+ lifetime classes
+  - Line 17801: 6. Runtime serving, scheduler and concurrency
+  - Line 17809: 7. Speculation, state transactions and cache correctness
+  - Line 17817: 8. Formats, model store, grammar and new modalities
+  - Line 17825: 9. Distributed and heterogeneous
+  - Line 17829: 10. Rust ownership, source policy and maintainability
+  - Line 17837: 11. Physical benchmark + quality governance
+  - Line 17849: 12. Correctness, security and failure invariants
+  - Line 17864: 13. Research decisions reconciled
+  - Line 17876: 14. Implementation dependency strategy
+  - Line 17891: 15. Risks and disconfirming tests
+  - Line 17897: 16. Authority and handoff
+  - Line 17903: 17. October 12, 2026 — Gufo fork, XDNA2 and generalized task pipelines (v2.1)
+  - Line 17907: 17.1 Three heterogeneous execution strategies, one SIR
+  - Line 17915: 17.2 Hardware support, numeric precision and safety
+  - Line 17921: 17.3 TaskProgram for ASR/TTS/vision/diffusion/video
+  - Line 17933: 17.4 Integration and acceptance
+  - Line 17937: 17.5 Why this strengthens long-term flexibility
+  - Line 17945: Archived source 57/94 — .agents/prior-art/PRIOR\_ART\_HISTORICAL\_ROADMAP\_V2.md
+  - Line 17950: Prior-art/historical archive — IMPLEMENTATION\_ROADMAP.md
+  - Line 17956: zerogravity — Implementation Roadmap and Closure Gates (v2 reconciled)
+  - Line 17963: Governance of phases
+  - Line 17969: Lane A: correctness and general portability
+  - Line 17972: Lane B: production service and hybrid intelligence
+  - Line 17975: Lane C: breadth and scale
+  - Line 17980: ZG-P00 — Repository baseline, reproducible toolchains and decision freeze
+  - Line 17995: ZG-P01 — GPU/Rust toolchain feasibility bakeoff (high-risk critical gate)
+  - Line 18009: ZG-P02 — Canonical CPU numeric and state operator oracle
+  - Line 18022: ZG-P03 — Artifact format, tokenizer, quantization and provenance
+  - Line 18036: ZG-P04 — Semantic IR v1, verifier and state-effect model
+  - Line 18049: ZG-P05 — Execution IR, optimizer and plan capabilities
+  - Line 18063: ZG-P06 — Rust CPU portable executor
+  - Line 18075: ZG-P07 — First GPU backends and device resource API
+  - Line 18088: ZG-P08 — First complete dense model, general fallback proof
+  - Line 18101: ZG-P09 — Core local service and sessions
+  - Line 18114: ZG-P10 — Resource arbiter, KV/prefix caching and state snapshots
+  - Line 18127: ZG-P11 — Hybrid operators: GDN, KDA, sparse and compressed attention
+  - Line 18140: ZG-P12 — MoE routing, quantized kernels and expert tiers
+  - Line 18153: ZG-P13 — Qwen3.8 Flash-Next extreme Strix Halo plan
+  - Line 18166: ZG-P14 — GLM-5.3-Flash extreme Strix Halo plan
+  - Line 18179: ZG-P15 — Speculative decoding engine and transactional verification
+  - Line 18192: ZG-P16 — Native batching and joint memory/schedule planning
+  - Line 18205: ZG-P17 — Broader model family readiness
+  - Line 18213: ZG-P18 — Multimodal video/image/audio extensions
+  - Line 18219: ZG-P19 — Parallel and distributed serving
+  - Line 18227: ZG-P20 — Autotuning and optimization lab
+  - Line 18235: ZG-P21 — Packaging, reliability and security
+  - Line 18243: ZG-P22 — Comparative performance/quality release qualification
+  - Line 18251: ZG-P23 — Ongoing compatibility/autoresearch
+  - Line 18261: Cross-phase nonnegotiable checklists
+  - Line 18263: Any new model
+  - Line 18274: Any new kernel or rewrite
+  - Line 18283: Any new memory optimization
+  - Line 18291: Any new speculative feature
+  - Line 18298: Milestone releases (not dates)
+  - Line 18308: Dependency and scope rules
+  - Line 18314: 2026-10-10 integrated v2 delivery adjustments
+  - Line 18322: Major ownership contracts required at P00 interface review
+  - Line 18336: 2026-10-12 NPU and Gufo upstream pipeline integration (U-016)
+  - Line 18356: Archived source 58/94 — .agents/prior-art/PRIOR\_ART\_HISTORICAL\_STAGE0\_V2.md
+  - Line 18361: Prior-art/historical archive — INTEGRATED\_PHASE\_0\_AND\_DELIVERY\_GATES.md
+  - Line 18367: zerogravity — Integrated feasibility, critical path, stage gates and delivery contract
+  - Line 18371: 1. The core program contradiction we avoid
+  - Line 18377: 2. Integrated Stage 0 experiments, with mandatory proof
+  - Line 18401: 3. Gates and hard evidence
+  - Line 18403: G0-A: correctness substrate
+  - Line 18409: G0-B: codegen and async execution
+  - Line 18415: G0-C: first functioning vertical slice
+  - Line 18423: G1: portable product
+  - Line 18428: G2: serving parity
+  - Line 18433: G3: extreme models
+  - Line 18438: G4: breadth/distribution/future
+  - Line 18443: 4. Program phase mapping, unchanged IDs P00–P23
+  - Line 18474: 5. Actual user device versus dated research machine
+  - Line 18480: 6. Source/kernel and licensing policy
+  - Line 18488: 7. Test and evidence matrix
+  - Line 18504: 8. Engineering estimates and kill criteria
+  - Line 18520: 9. Exit bookkeeping
+  - Line 18524: 2026-10-12 additional optional feasibility track: GPU + XDNA2 NPU and TaskProgram
+  - Line 18547: Archived source 59/94 — .agents/prior-art/PRIOR\_ART\_LICENSE\_AND\_PROVENANCE\_POLICY.md
+  - Line 18552: Prior art, verified licenses, source provenance and architecture neutrality
+  - Line 18556: 1. License-neutral architecture rule
+  - Line 18569: 2. License verification methodology
+  - Line 18573: Verified MIT as repository root (candidate reference/reuse only)
+  - Line 18588: Verified MIT option plus Apache-2.0 alternative (MIT choice may be available for applicable files)
+  - Line 18596: Verified Apache-2.0 root (architectural prior art, not normative naming)
+  - Line 18611: Unverified or restricted root license
+  - Line 18621: 3. Mechanism taxonomy: use these instead of project names in design
+  - Line 18643: 4. Prior-art research preservation
+  - Line 18655: 5. Concrete developer checklist
+  - Line 18667: 2026-10-12 additional hardware/compiler and wafer-scale prior art
+  - Line 18676: 2026-10-12 additional distributed-systems prior art and tunnel transport
+  - Line 18684: 2026-10-12 native multi-model CLI/router and OpenAI-compatible API prior art
+  - Line 18696: Archived source 60/94 — .agents/docs/PRODUCT\_MODEL\_PIPELINE\_AND\_EXTENSIONS.md
+  - Line 18701: zerogravity — Product, model loading and extension contract across the full pipeline
+  - Line 18708: 1. Source/format are not model mathematics
+  - Line 18723: 2. ModelStore and manifest versions
+  - Line 18735: 3. GGUF and quantization schema
+  - Line 18748: 4. Tokenizer, chat templates and constrained outputs
+  - Line 18762: 5. Text generator and encoder/pooler are different runner modes
+  - Line 18768: 6. Multimodal and modalities as typed state
+  - Line 18778: 7. LoRA/adapter model (previous project gap)
+  - Line 18791: 8. Platform and hardware extension contract
+  - Line 18797: 9. Serving facade
+  - Line 18803: 10. Conformance matrix for every extension
+  - Line 18815: 11. Explicit non-goals and open points
+  - Line 18821: 2026-10-12 integration — upstream Gufo task pipelines and reusable TaskProgram
+  - Line 18831: v4 refinement — TaskDriver, not universal workflow DSL
+  - Line 18837: v4.2 — TaskDriver distribution without forcing token-only topology
+  - Line 18845: v4.3 — registry model profile vs immutable source and execution residency
+  - Line 18857: Archived source 61/94 — .agents/docs/REMOTE\_PEER\_TRANSPORT\_AND\_STATE\_HANDOFF\_PROTOCOL.md
+  - Line 18862: zerogravity — Remote peer transport, state handoff and failure protocol (v4.2)
+  - Line 18866: 1. One process can run standalone or offer a peer role
+  - Line 18874: 2. Exact identities and separate epochs
+  - Line 18885: 3. Wire control is small, bounded and authenticated
+  - Line 18907: 4. Bulk transfer and transport capabilities
+  - Line 18926: 5. Remote model/layer execution flows
+  - Line 18928: 5.1 Layers and mutable cache colocated on peer B
+  - Line 18939: 5.2 Layer compute on A, attention/KV state on B
+  - Line 18947: 5.3 Compute/FFN/experts on B and stateful attention on A
+  - Line 18951: 5.4 Prefill on A, decode on B
+  - Line 18961: 5.5 Remote prefix cache and sequence KV shards
+  - Line 18967: 6. Recovering from node failures and partitions
+  - Line 18979: 7. Fault-injection and QoS gates
+  - Line 18994: 8. Minimal implementation discipline
+  - Line 19006: Archived source 62/94 — .agents/prior-art/RESEARCH\_SOURCE\_ATLAS.md
+  - Line 19011: Source atlas — architectural research preserved for implementers
+  - Line 19018: A. Main engines — direct user selections
+  - Line 19020: vLLM — https://github.com/vllm-project/vllm
+  - Line 19023: SGLang — https://github.com/sgl-project/sglang
+  - Line 19026: llama.cpp / GGML — https://github.com/ggml-org/llama.cpp
+  - Line 19029: Native extreme-optimization engine
+  - Line 19032: Maya — https://github.com/mw00/project-maya
+  - Line 19035: Project Strata — https://github.com/mach10x/strata
+  - Line 19038: Gufo — https://github.com/gufo-org/gufo
+  - Line 19041: DwarfStar (antirez/ds4) — https://github.com/antirez/ds4
+  - Line 19044: B. Complementary engines and tools
+  - Line 19046: a CPU-GPU hybrid inference project
+  - Line 19049: a quantized inference engine
+  - Line 19052: a fused-attention kernel library
+  - Line 19055: a vendor inference engine
+  - Line 19058: an Apple-silicon inference stack
+  - Line 19061: an independent Rust inference engine
+  - Line 19064: a Rust tensor framework
+  - Line 19067: CubeCL/CubeK — https://github.com/tracel-ai/cubecl
+  - Line 19070: C. Research interpretation constraints
+  - Line 19080: D. Minimum reproducibility manifest for future research additions
+  - Line 19094: 2026-10-10 integrated v2 addendum — additional first-party compiler and source programs
+  - Line 19110: 2026-10-12 integration — distinct upstream Gufo and XDNA2 fork
+  - Line 19118: 2026-10-12 addendum — heterogeneous accelerator execution families
+  - Line 19125: 2026-10-12 new distributed state/cache/tunnel research
+  - Line 19131: 2026-10-12 additional model-router/local CLI and API source research
+  - Line 19141: Archived source 63/94 — .agents/docs/RUNTIME\_SERVING\_AND\_UX.md
+  - Line 19146: Runtime, APIs, developer experience and observability
+  - Line 19153: 1. Proposed executable and modes (illustrative, not finalized)
+  - Line 19167: 2. Rust library/SDK layer
+  - Line 19171: 3. HTTP compatibility matrix
+  - Line 19185: 4. Streaming correctness
+  - Line 19191: 5. Tool and agent histories
+  - Line 19197: 6. Context and memory fit UI
+  - Line 19214: 7. Multi-model and hot reload
+  - Line 19218: 8. Metrics and telemetry
+  - Line 19232: 9. Configuration hierarchy
+  - Line 19238: 10. Local deployment and packaging
+  - Line 19244: 11. Testing API usability
+  - Line 19248: 12. Pending policy
+  - Line 19252: 2026-10-10 integrated v2 addendum — concrete product and event contracts
+  - Line 19265: 2026-10-12 integration — NPU diagnostics and future media outputs
+  - Line 19271: v4 refinement — truthful task streams and no hidden task workflow executor
+  - Line 19277: v4.3 authoritative multi-model service and zero-config UX refinement
+  - Line 19291: Archived source 64/94 — .agents/docs/RUST\_WORKSPACE\_AND\_ENGINEERING.md
+  - Line 19296: Rust workspace, interfaces, implementation practices and contributor workflow
+  - Line 19301: 1. Language and architecture constraint
+  - Line 19307: 2. Proposed Cargo ownership map (logical modules, NOT a mandate to create crates)
+  - Line 19345: 3. Ownership and concurrency rules
+  - Line 19357: 4. Public data contracts
+  - Line 19363: 5. Core hot-path performance rules
+  - Line 19374: 6. Engineering ergonomics
+  - Line 19380: 7. Unsafe and external code
+  - Line 19393: 8. Toolchain and build variants
+  - Line 19405: 9. CI and physical GPU testing
+  - Line 19415: 10. Dependency/version governance
+  - Line 19421: 11. Pull request checklist
+  - Line 19434: 12. Build/release artifacts
+  - Line 19438: 13. Agent handoff discipline
+  - Line 19442: 14. Open structural decisions
+  - Line 19446: 2026-10-10 integrated v2 addendum — minimal Rust crates and newer GPU compilers
+  - Line 19457: 2026-10-12 integration — optional XRT/AIE backend and Rust source policy
+  - Line 19463: v4 refinement — minimum crates, stable Rust interfaces only where proven
+  - Line 19471: v4.1 — vendor graph compiler adapter without kernel-source confusion
+  - Line 19479: v4.2 — optional authenticated peer feature, no new inference server
+  - Line 19487: v4.3 — one executable and one library for CLI, router and multi-model serving
+  - Line 19499: Archived source 65/94 — .agents/docs/SCHEDULER\_BATCHING\_AND\_SPECULATION.md
+  - Line 19504: Scheduler, continuous batching, prefix reuse and speculative execution
+  - Line 19511: 1. Entities and lifecycle
+  - Line 19529: Request ledger fields
+  - Line 19552: 2. Unified token-budget scheduling
+  - Line 19569: Baseline fairness and admission
+  - Line 19573: 3. Execution groups
+  - Line 19584: 4. Route-aware MoE execution and cost
+  - Line 19600: 5. Prefix-aware scheduling
+  - Line 19606: 6. Speculative decoding architecture
+  - Line 19620: Exact sampling reminder
+  - Line 19626: Transaction for verify block
+  - Line 19640: 7. Speculation cost model and guardrails
+  - Line 19654: 8. Active batch vs queued concurrency
+  - Line 19664: 9. Multi-model hosting and eviction
+  - Line 19668: 10. Distributed scheduling and prefill/decode disaggregation
+  - Line 19672: 11. Cancellation, priority and stop conditions
+  - Line 19676: 12. Metrics required for correct tuning
+  - Line 19682: 13. Tests and acceptance
+  - Line 19693: 14. Open questions for empirical resolution
+  - Line 19697: 2026-10-10 integrated v2 addendum — concrete research event loop and scheduler ownership
+  - Line 19710: 2026-10-12 integration — prefill-specific GPU+NPU candidate
+  - Line 19716: v4 refinement — mixed task cost, prepared state and bounded overlap
+  - Line 19724: v4.2 — cross-machine task admission and stage scheduling without central hot-path RPC
+  - Line 19732: v4.3 — multi-model route admission and native within-model batching
+  - Line 19744: Archived source 66/94 — .agents/docs/SECURITY\_AND\_RELIABILITY.md
+  - Line 19749: Security, reliability, resilience and safe defaults
+  - Line 19756: 1. Threat model
+  - Line 19769: 2. Untrusted artifact parsing
+  - Line 19783: 3. GPU memory lifetime and physical safety
+  - Line 19791: 4. Service exposure and request admission
+  - Line 19799: 5. Model and prompt privacy
+  - Line 19805: 6. Snapshot integrity and cache poisoning
+  - Line 19811: 7. Distributed transport
+  - Line 19817: 8. Plugins and generated kernel trust
+  - Line 19823: 9. Reliability and operational state
+  - Line 19834: 10. Supply chain and licensing
+  - Line 19840: 11. Reliability testing before release
+  - Line 19850: 12. Release security checklist
+  - Line 19865: 13. Open security decisions
+  - Line 19869: 2026-10-10 integrated v2 addendum — compiler, async executor and plugin threat boundaries
+  - Line 19882: 2026-10-12 integration — GPU+XDNA2 SoC hard-hang risk and NPU artifact trust
+  - Line 19892: v4 refinement — one logical root and output delivery security
+  - Line 19898: v4.1 — compiled graph/wafer programs, remote sessions and license trust
+  - Line 19906: v4.2 — trusted network peers, tunnel isolation and remote state safety
+  - Line 19914: v4.3 model router, registry and API security
+  - Line 19928: Archived source 67/94 — .agents/docs/STATE\_CACHE\_AND\_TRANSACTIONS.md
+  - Line 19933: Session state, prefix caching, snapshots and transactional semantics
+  - Line 19940: 1. The distinction between state and model parameters
+  - Line 19948: 2. Session data model (suggested, not final code)
+  - Line 19979: 3. State domains, required saved content and hazards
+  - Line 19997: 4. Transactional generation protocol
+  - Line 20009: Pseudocode
+  - Line 20029: 5. Snapshot and copy-on-write (COW) policy
+  - Line 20041: ABA protection
+  - Line 20045: 6. Prefix cache identity and compatibility
+  - Line 20060: 7. Snapshot persistence schema
+  - Line 20078: 8. Prefix replay and chunk boundaries
+  - Line 20091: Attention state compression
+  - Line 20095: 9. Tiered cache and memory interaction
+  - Line 20106: 10. Failure and cancellation handling
+  - Line 20117: 11. Test suite design
+  - Line 20121: 12. API invariants for implementers
+  - Line 20130: 13. Unresolved choices
+  - Line 20134: 2026-10-10 integrated v2 addendum — generalized hybrid prefix state + research frontier mechanics
+  - Line 20147: v4 refinement — authoritative prepared-root publication
+  - Line 20155: v4.2 — remote mutable state owner is distinct from immutable shared cache
+  - Line 20167: Archived source 68/94 — .agents/research/STRIX\_HALO\_OPTIMIZATION\_DOSSIER.md
+  - Line 20172: AMD Strix Halo dossier — gfx1151 extreme inference targets
+  - Line 20179: 1. Why this APU is special
+  - Line 20185: 2. Models and primary cost sources
+  - Line 20187: Qwen3.8-Flash-Next
+  - Line 20202: GLM-5.3-Flash
+  - Line 20210: DeepSeek V4 Flash
+  - Line 20213: 3. Physical resource profiles (illustrative, must measure)
+  - Line 20224: 4. ROCm kernel feasibility tasks
+  - Line 20239: 5. Resident routing and streaming expert model
+  - Line 20257: 6. Unified-memory and OS safety
+  - Line 20263: 7. Large model residency and bandwidth reasoning
+  - Line 20269: 8. Different operating modes on gfx1151
+  - Line 20275: 9. Benchmark scenarios to qualify
+  - Line 20285: 10. Actual speed gap ownership
+  - Line 20297: 11. Implementation priority for this hardware
+  - Line 20301: 12. Uncertainties to maintain openly
+  - Line 20305: 2026-10-10 integrated v2 addendum — hardware optimization under unified compiler
+  - Line 20318: 2026-10-12 integration — XDNA2 NPU + Radeon iGPU on the same Strix Halo SoC
+  - Line 20332: Archived source 69/94 — .agents/docs/ZERO\_CONFIG\_CLI\_CONFIG\_AND\_OPENAI\_API\_CONTRACT.md
+  - Line 20337: zerogravity — One-command CLI, progressive configuration and OpenAI-compatible APIs (v4.3)
+  - Line 20343: 1. Default one-command user journey
+  - Line 20345: Interactive local single model
+  - Line 20360: Multi-model router/service
+  - Line 20375: Model import and profile
+  - Line 20386: 2. Progressive disclosure, not a configuration tax
+  - Line 20396: 3. Typed configuration, precedence and immutability
+  - Line 20413: Proposed readable configuration
+  - Line 20474: 4. API compatibility matrix — explicitly qualified subset
+  - Line 20491: Chat Completions
+  - Line 20499: Responses API (separate schema and events)
+  - Line 20505: Embeddings and other tasks
+  - Line 20509: Authentication, permissions and resource limits
+  - Line 20518: 5. Error, partial streaming and compatibility tests
+  - Line 20535: 6. Terminal UX details and advanced controls
+  - Line 20546: 7. Advanced configuration, without complexity leakage
+  - Line 20552: 8. Same engine for CLI, server and SDK
+  - Line 20558: 9. Product acceptance checklist
+  - Line 20575: Archived source 70/94 — the retired bootstrap handoff
+  - Line 20580: Zerogravity P00 packaging-only build and release handoff (12 Oct 2026)
+  - Line 20584: Files created/updated
+  - Line 20601: Binary behavior
+  - Line 20615: Validated on the current project's Linux x86-64 machine
+  - Line 20637: Not fully validated / hard blockers
+  - Line 20645: Next exact bounded actions
+  - Line 20660: Archived source 71/94 — .agents/plans/EXPERIMENT\_PROGRAM.md
+  - Line 20665: zerogravity — Project-neutral experimental program, H01–H43 (v4 reviewed)
+  - Line 20669: 0. Common scientific, safety and licensing protocol
+  - Line 20679: Lane A — Kernel, compiler and execution legality
+  - Line 20681: H01 — Rust GPU architecture-specific kernel feasibility
+  - Line 20684: H02 — Compiled execution without IR hot-path tax
+  - Line 20687: H03 — Fusion vs occupancy and numerical legality
+  - Line 20690: H04 — GPU-side routed expert row grouping
+  - Line 20693: H05 — Expert residency × batching × scratch tradeoff
+  - Line 20696: H06 — Huge immutable lookup tables with bounded IO
+  - Line 20699: H07 — Full hybrid-prefix cache sharing
+  - Line 20702: H08 — Adaptive target speculation
+  - Line 20705: H09 — Mixed prefill/decode service fairness
+  - Line 20708: H10 — Long-context dense/sparse/latent/compressed attention
+  - Line 20711: H11 — Physical unified/discrete memory and safe admission
+  - Line 20714: H12 — Quant storage vs compute/derived model quality
+  - Line 20717: H13 — Heterogeneous topology, activations and peer transport
+  - Line 20720: H14 — Real multi-turn agent/task workload
+  - Line 20723: Lane B — Compiler/state/architecture extension
+  - Line 20725: H15 — Multiple Rust kernel providers through one interface
+  - Line 20728: H16 — Effect-token correctness under arbitrary graph rewriting
+  - Line 20731: H17 — CIR async execution, liveness and deliberate failures
+  - Line 20734: H18 — Actual eager vs device capture candidate choice
+  - Line 20737: H19 — Bounded pure-region optimizer/search
+  - Line 20740: H20 — Common resumable prefix frontier for 3+ state groups
+  - Line 20743: H21 — Modularity extension drill
+  - Line 20746: H22 — Product/task correctness and malformed inputs
+  - Line 20749: H23 — Accurate external benchmark comparison provenance
+  - Line 20752: H24 — Actual hardware safety profiles
+  - Line 20755: H25 — Full model compiler runtime overhead
+  - Line 20758: Lane C — Heterogeneous projection compute and additional task programs
+  - Line 20760: H26 — Intra-operator output row partition
+  - Line 20763: H27 — Optional NPU-owned program/driver feasibility
+  - Line 20766: H28 — Cross-API DMA, machine-safety and power/fabric isolation
+  - Line 20769: H29 — Same-source cooperative prefill benchmark
+  - Line 20772: H30 — Block-float numerical and target task quality
+  - Line 20775: H31 — Non-token TaskProgram pipeline reuse
+  - Line 20778: Promotion rules and evidence storage
+  - Line 20790: v4 extension experiments — 2026-10-12, H32–H43
+  - Line 20794: H32 — Prepared StateRoot and atomic logical publication
+  - Line 20798: H33 — GPU-native multi-step input progression
+  - Line 20802: H34 — Hierarchical reserve and device-local allocation
+  - Line 20806: H35 — Dynamic shape polymorphism with guarded fallback
+  - Line 20810: H36 — Minimal TaskDriver versus generic workflow graph
+  - Line 20814: H37 — Fused whole-region candidate with unchanged runtime
+  - Line 20818: H38 — Output stream commit/reconnect semantics
+  - Line 20822: H39 — Distributed epoch fencing and partial failure
+  - Line 20826: H40 — Future parameter update compatibility (without training platform)
+  - Line 20830: H41 — Key/cache migration and shape-band pruning
+  - Line 20834: H42 — Fair mixed-task scheduling under resource/latency targets
+  - Line 20838: H43 — v4 minimality and extension change-radius audit
+  - Line 20845: v4.1 cross-accelerator composability experiments H44–H55 (NOT RUN)
+  - Line 20849: H44 — Coherent local ARM+GPU system versus HBM device admission
+  - Line 20853: H45 — Native block-scaled precision and multi-GPU topology
+  - Line 20857: H46 — Fake graph-only accelerator (TPU-class execution contract)
+  - Line 20861: H47 — Fake wafer-scale programmed dataflow and streamed model weights
+  - Line 20865: H48 — Statically scheduled inter-chip dataflow and heterogeneous stages
+  - Line 20869: H49 — AOT accelerator backend with expensive graph compile
+  - Line 20873: H50 — Additional graph/low-level accelerator device classes
+  - Line 20877: H51 — Opaque stateful graph refusal and exact snapshot bridge
+  - Line 20881: H52 — Region granularity and program residency optimizer
+  - Line 20885: H53 — Remote/cluster topology and epoch fencing
+  - Line 20889: H54 — External model API versus native program boundary
+  - Line 20893: H55 — Backend extensibility, licensing and alternate speculative algorithm
+  - Line 20899: v4.2 new independent distributed execution experiments H56–H70 (NOT RUN)
+  - Line 20903: H56 — Standalone zero-network fast path
+  - Line 20907: H57 — Two-node layer pipeline with layer-local state
+  - Line 20911: H58 — Remote immutable prefix cache versus recompute
+  - Line 20915: H59 — Separate prefill and decode machines
+  - Line 20919: H60 — Remote attention beside KV versus remote KV read
+  - Line 20923: H61 — Sequence-token KV attention partition algebra
+  - Line 20927: H62 — Attention/FFN and routed expert owners
+  - Line 20931: H63 — Tensor/head parallel and fast fabric collectives
+  - Line 20935: H64 — Task-stage distribution beyond text
+  - Line 20939: H65 — Encrypted tunnels, direct versus peer/relay topology
+  - Line 20943: H66 — Trusted node enrollment and adversarial peers
+  - Line 20947: H67 — Coordinator/network partition, epochs and state shards
+  - Line 20951: H68 — State shard migration and topology replan
+  - Line 20955: H69 — Performance/capacity Pareto across multi-machine placements
+  - Line 20959: H70 — Future-topology composability change-radius audit
+  - Line 20965: v4.3 multi-model local runtime, router, config and OpenAI API research H71–H86 (NOT RUN)
+  - Line 20969: H71 — Zero-config one-command local model run
+  - Line 20973: H72 — ModelCatalog, immutable artifact and alias revision
+  - Line 20977: H73 — Concurrent model load deduplication and cold-start fairness
+  - Line 20981: H74 — Many-model simultaneous physical residency
+  - Line 20985: H75 — Idle eviction, keepalive and pinned session safety
+  - Line 20989: H76 — Equivalent replica balancing versus different-model choice
+  - Line 20993: H77 — Sharded deployment versus independent source model replicas
+  - Line 20997: H78 — Model profile precedence and provenance
+  - Line 21001: H79 — OpenAI Chat Completions exact SDK conformance
+  - Line 21005: H80 — Responses subset, stateful retention and event correctness
+  - Line 21009: H81 — Embeddings and extra TaskDriver endpoint qualification
+  - Line 21013: H82 — Local listener versus public API security and native admin
+  - Line 21017: H83 — Multi-model parent TaskProgram roles and resource admission
+  - Line 21021: H84 — Warm/cold replica placement and dynamic per-model batching
+  - Line 21025: H85 — Model/router hot reload, client disconnect and server restart
+  - Line 21029: H86 — End-to-end minimality, parity and observability
+  - Line 21039: Archived source 72/94 — .agents/prior-art/FINAL\_ARCHITECTURE\_REVIEW\_2026-10-12.md
+  - Line 21044: Zerogravity — Final Architecture, Editorial and Agent-Handoff Review
+  - Line 21052: 1. Final deliverables and ownership
+  - Line 21071: 2. Cross-cutting technical findings and dispositions
+  - Line 21092: 3. Editorial and citation quality review
+  - Line 21102: 4. Open research and implementation risks that documentation cannot close
+  - Line 21121: 5. Requirements and work preservation
+  - Line 21130: 6. Verification ledger and final closure procedure
+  - Line 21143: 7. Publication and engineering verdict
+  - Line 21153: Archived source 73/94 — .agents/plans/INTEGRATED\_PHASE\_0\_AND\_DELIVERY\_GATES.md
+  - Line 21158: zerogravity — Independent Stage-0 feasibility and delivery gates (v4 reviewed)
+  - Line 21162: 1. Hard problem and mitigation
+  - Line 21168: 2. Stage-0 work packages
+  - Line 21190: 3. Optional Stage N — shared-SoC GPU+NPU and partial-operator execution
+  - Line 21205: 4. Gates by architectural responsibility
+  - Line 21207: G0-A — Semantic and model foundations
+  - Line 21214: G0-B — Kernel codegen and resource execution
+  - Line 21221: G0-C — Functional end-to-end vertical slice
+  - Line 21227: G0-D — Modularity proof
+  - Line 21233: 5. Later release gates (capabilities, not promised dates)
+  - Line 21237: 6. Evidence and kill/pivot criteria
+  - Line 21253: v4 correction and dedicated proof gates — 2026-10-12
+  - Line 21276: v4.1 optional Stage Fabric — graph-only, wafer/static dataflow and heterogeneous cluster execution
+  - Line 21297: v4.2 optional Stage Distributed — topology, remote state and tunnel execution
+  - Line 21320: v4.3 optional Stage Serve — minimal CLI, model router and API conformance
+  - Line 21345: Archived source 74/94 — .agents/research/MULTIMODAL\_MODEL\_FAMILY\_SOURCE\_ATLAS\_AND\_IMPLEMENTATION\_2026-10-14.md
+  - Line 21350: Zerogravity — Model-family research atlas and multimodal implementation roadmap
+  - Line 21356: Research method and source hierarchy
+  - Line 21360: Image generation / editing
+  - Line 21371: Speech-to-text, streaming recognition and speech understanding
+  - Line 21384: TTS, codec-token generation, real-time speech and voice cloning
+  - Line 21397: Video and synchronized audiovisual generation
+  - Line 21414: Typed decision engines and model selection
+  - Line 21424: Ternary low-bit models and source-native compressed/hybrid text models
+  - Line 21441: Cross-model composition examples
+  - Line 21443: Live voice assistant
+  - Line 21451: Image studio
+  - Line 21455: Video with soundtrack
+  - Line 21459: Decision-heavy application
+  - Line 21463: Proposed support tiers, not invented implementation
+  - Line 21478: Implementation roadmap — staged extensions, not a new engine
+  - Line 21494: Architectural acceptance decision
+  - Line 21511: Archived source 75/94 — .agents/research/MULTIMODAL\_PARALLEL\_RESEARCH\_WORKSTREAMS\_2026-10-14.md
+  - Line 21516: Zerogravity multimodal architecture — parallel reviewer and subagent workstreams
+  - Line 21521: Runtime status of subagent execution
+  - Line 21527: Parallel workstream contracts (each independent, docs-only)
+  - Line 21539: Rules for actual independent agents, if authorized later
+  - Line 21548: Integrated current outputs
+  - Line 21562: Archived source 76/94 — the retired P07-B mixed-quant handoff
+  - Line 21567: Zerogravity P07-B / MM0 / 8K numeric follow-on — source evidence and next steps
+  - Line 21571: Current verdict
+  - Line 21577: P07-B implemented source-matrix kernels
+  - Line 21597: Verified real checkpoint host tests
+  - Line 21606: Real device smoke (when GPU access is authorized)
+  - Line 21616: Parallel MM0: executable architecture falsification mocks
+  - Line 21628: Parallel accuracy: independent 8K microbatch source comparison
+  - Line 21641: Revalidation commands
+  - Line 21657: Next phases
+  - Line 21668: Archived source 77/94 — the retired P07-C resident-GPU-weights handoff
+  - Line 21673: P07-C: source-resident GPU weight leases and synchronous completion fencing
+  - Line 21677: Scope
+  - Line 21683: 1. Model identity
+  - Line 21689: 2. GPU resource policy
+  - Line 21697: 3. Actual source region dispatch
+  - Line 21720: 4. Measured validation scope
+  - Line 21733: 5. Qualification commands
+  - Line 21750: 6. Next phase
+  - Line 21758: Archived source 78/94 — the retired P07-D decode-once handoff
+  - Line 21763: Zerogravity P07-D — decode-once source metadata and typed device-event ownership
+  - Line 21767: Status and scope
+  - Line 21775: A. Decode-once source metadata
+  - Line 21784: Source-trained mathematical validation
+  - Line 21803: B. Typed device event and buffer lease contract (core, no GPU dependency)
+  - Line 21817: Event acceptance tests
+  - Line 21821: C. Technical boundaries
+  - Line 21827: D. Validation / reproduction
+  - Line 21845: E. Next phase
+  - Line 21856: Archived source 79/94 — the retired P07-E async-readback handoff
+  - Line 21861: Zerogravity P07-E — CubeCL asynchronous readback and typed GPU completion bridge
+  - Line 21865: Exact scope
+  - Line 21873: Exact implementation
+  - Line 21881: Verified evidence
+  - Line 21894: Reproduction
+  - Line 21910: Next phase
+  - Line 21918: Archived source 80/94 — the retired P07-F GPU-quarantine handoff
+  - Line 21923: Zerogravity P07-F — Physical GPU handle retention and combined memory admission
+  - Line 21927: Scope and status
+  - Line 21935: Source ownership and physical lifetime
+  - Line 21942: Guarantees and limitations
+  - Line 21950: Validation evidence
+  - Line 21959: Local reproduction
+  - Line 21969: Next engineering phase: P07-G resource arbitration / device worker service
+  - Line 21984: Archived source 81/94 — a retired phase-1 handoff
+  - Line 21989: Zerogravity — Phase 1 source/reference implementation handoff
+  - Line 21998: 1. Git and machine state
+  - Line 22005: 2. What was actually implemented
+  - Line 22007: Source artifacts and quantization
+  - Line 22015: Model config geometry
+  - Line 22028: Reference math and state
+  - Line 22034: CLI and package
+  - Line 22040: 3. Verification evidence
+  - Line 22055: 4. Existing phases and next implementer actions
+  - Line 22068: 5. Ownership, safety and release
+  - Line 22080: Archived source 82/94 — .agents/plans/QWEN35\_8K\_NUMERICAL\_DRIFT\_INVESTIGATION\_2026-10-14.md
+  - Line 22085: U-028: Qwen3.5 8K CPU numerical drift investigation
+  - Line 22090: Numerical meaning: maximum log-probability error is not absolute probability error
+  - Line 22110: Reference execution schedule experiment
+  - Line 22124: Independent final-token 8K trained per-layer localization
+  - Line 22141: Engineering next actions (accuracy stream, separately owned)
+  - Line 22149: Independent repro
+  - Line 22162: Archived source 83/94 — a retired Qwen CPU/GPU handoff
+  - Line 22167: Zerogravity — Qwen3.5 CPU + GPU kernel phase handoff
+  - Line 22175: User priority (supersedes earlier model ordering)
+  - Line 22185: Repository and physical machines
+  - Line 22192: Source checkpoints and source identity
+  - Line 22201: Working Rust CPU model execution
+  - Line 22219: Physically validated Rust GPU kernels, NOT full GPU inference
+  - Line 22240: Optional toolchain requirements and pitfalls
+  - Line 22248: Capability status and next bounded work
+  - Line 22262: Final U-025 reproducibility additions (2026-10-13)
+  - Line 22276: Archived source 84/94 — .agents/plans/QWEN35\_CPU\_LONG\_CONTEXT\_RESUME\_2026-10-13.md
+  - Line 22281: Zerogravity — Qwen3.5 CPU long-context recovery and current acceptance
+  - Line 22287: 8K progress, exact source-bound evidence (latest)
+  - Line 22294: Authoritative live repository and source identities
+  - Line 22303: Completed, real evidence
+  - Line 22318: Important evidence-provenance limitation
+  - Line 22324: In-progress 8K mixed-content trained-model CPU run
+  - Line 22365: Checkpoint and source-state safety
+  - Line 22374: Follow-on CPU checks and GPU priority
+  - Line 22385: Archived source 85/94 — a retired Qwen numerics/context handoff
+  - Line 22390: Zerogravity — Qwen3.5 CPU numerical and real-context qualification
+  - Line 22394: Mandate and scope
+  - Line 22400: Exact local source model identity
+  - Line 22409: What was actually implemented
+  - Line 22420: Important reference-oracle correction
+  - Line 22424: Verified model/output evidence
+  - Line 22443: Numerical gate thresholds (working engineering checks, NOT approved model-spec tolerances)
+  - Line 22447: Reproduce without downloading or using GPU
+  - Line 22464: Decision
+  - Line 22470: Final CPU-first engineering checkpoint — 2026-10-13
+  - Line 22480: Actual current acceptance evidence
+  - Line 22499: Reproduction from canonical repository
+  - Line 22522: Next required CPU work
+  - Line 22531: Final eight-prompt 2B numerical result and resumable validation (2026-10-13)
+  - Line 22550: Archived source 86/94 — .agents/plans/QWEN35\_EXACT\_CPU\_NUMERICS\_LONG\_CONTEXT\_PHASE\_2026-10-13.md
+  - Line 22555: Qwen3.5 CPU — exact short numerics resolved; real long-context phase
+  - Line 22565: User mandate and order
+  - Line 22582: Source model and independent oracle identity
+  - Line 22599: Numerical diagnosis — root causes actually corrected
+  - Line 22649: VERIFIED short-form numerical qualification — both models PASS
+  - Line 22680: VERIFIED all-trained-layer source parity — both models PASS
+  - Line 22704: Real context: NEXT ACTIVE PHASE, NOT FINISHED
+  - Line 22739: Reproduction
+  - Line 22772: Next bounded engineering work
+  - Line 22794: Archived source 87/94 — .agents/plans/QWEN35\_PHASE1\_8K\_GATE\_AND\_P07\_ACCELERATOR\_HANDOFF\_2026-10-14.md
+  - Line 22799: Zerogravity — Phase 1 CPU acceptance and P07 accelerator seam
+  - Line 22803: Decision: 8K is sufficient for Phase 1 GPU-development admission
+  - Line 22814: Real model source, numeric and context evidence
+  - Line 22839: P07 first implementation slice: device-independent specialized matvec boundary
+  - Line 22854: Device access and existing GPU evidence
+  - Line 22860: Next GPU implementation slices (GPU phase is AUTHORIZED to proceed)
+  - Line 22871: Git and build integrity
+  - Line 22879: Archived source 88/94 — .agents/plans/RELEASE\_ACCEPTANCE\_GATES.md
+  - Line 22884: zerogravity — Model-neutral release, quality and composability gates (v4 reviewed)
+  - Line 22888: 1. Approval states
+  - Line 22894: 2. Foundational release gates
+  - Line 22910: 3. Required semantic and numerical quality controls
+  - Line 22921: 4. Resource and async safety
+  - Line 22932: 5. Task and service acceptance
+  - Line 22945: 6. Long-run composability release test
+  - Line 22958: 7. Performance qualification
+  - Line 22970: 8. Source/license/security qualification
+  - Line 22980: 9. Evidence/report schema (conceptual)
+  - Line 22999: v4 mandatory architecture acceptance refinements — 2026-10-12
+  - Line 23017: v4.1 backend portability and honesty gates — 2026-10-12
+  - Line 23030: v4.2 distributed placement and networked execution acceptance
+  - Line 23047: v4.3 multi-model router, simple CLI and API conformance release gates
+  - Line 23066: P00 packaging-only Rust binary and release artifact gates — U-023
+  - Line 23090: Archived source 89/94 — .agents/plans/THREE\_STREAM\_PROGRESS\_2026-10-14.md
+  - Line 23095: Zerogravity — Three-stream takeover and reconciliation
+  - Line 23110: 0. Repository ownership, commit and infrastructure
+  - Line 23119: 1. CPU qualification is established, and long-context scope is unmodified
+  - Line 23127: 2. Stream A — P07 GPU integration (implemented this phase, physical execution pending)
+  - Line 23146: 3. Stream B — Long-context accuracy (measurements completed; root cause open)
+  - Line 23164: 4. Stream C — Multimodal architecture (research/design proposal completed; no media inference implemented)
+  - Line 23183: 5. Operational safety and test/commit rules
+  - Line 23192: 6. Suggested next clean milestones
+  - Line 23202: Archived source 90/94 — docs/PUBLICATION\_AND\_REVIEW\_CHECKLIST.md
+  - Line 23207: Whitepaper publication and final architecture review checklist
+  - Line 23215: 1. Technical claims and source honesty
+  - Line 23229: 2. Architecture consistency
+  - Line 23244: 3. Publication manuscript and bibliography
+  - Line 23259: 4. Developer/LLM agent handoff completeness
+  - Line 23270: 5. Automated integrity checks
+  - Line 23283: 6. Publication release decision
+  - Line 23299: Archived source 91/94 — docs/README.md
+  - Line 23304: Zerogravity documentation
+  - Line 23350: Read according to your purpose
+  - Line 23360: Documentation categories and authority
+  - Line 23362: A. Publication-facing
+  - Line 23369: B. Canonical current core design (project-neutral)
+  - Line 23393: C. Agent implementation and acceptance
+  - Line 23407: D. Non-normative historical design and cited prior art
+  - Line 23417: Invariants in one paragraph
+  - Line 23421: Publication and implementation status
+  - Line 23431: Archived source 92/94 — docs/REFERENCES.md
+  - Line 23436: References and source provenance
+  - Line 23442: Peer-reviewed and academic research
+  - Line 23444: R01
+  - Line 23447: R02
+  - Line 23450: R03
+  - Line 23453: R04
+  - Line 23456: R05
+  - Line 23459: R06
+  - Line 23462: R07
+  - Line 23465: R08
+  - Line 23468: R09
+  - Line 23471: R10
+  - Line 23474: R11
+  - Line 23477: Primary compiler and hardware documentation
+  - Line 23479: R12
+  - Line 23482: R13
+  - Line 23485: R14
+  - Line 23488: R15
+  - Line 23491: R16
+  - Line 23494: R17
+  - Line 23497: R18
+  - Line 23500: Serving, APIs, local user experience and networking
+  - Line 23502: R19
+  - Line 23505: R20
+  - Line 23508: R21
+  - Line 23511: R22
+  - Line 23514: R23
+  - Line 23517: Additional project research dossiers
+  - Line 23536: Archived source 93/94 — the CPU reference probe README
+  - Line 23541: Independent CPU reference probes
+  - Line 23548: Probes
+  - Line 23561: Separate build
+  - Line 23579: Run
+  - Line 23611: Archived source 94/94 — the GPU probe crate README
+  - Line 23616: Zerogravity GPU code-generation feasibility probe
+  - Line 23634: Physically tested on pvl-a1 (2026-10-13)
+  - Line 23645: Reproducing on a qualified NixOS host
+  - Line 23676: P07-A: source-correct CubeCL model-region provider (14 October 2026)
+  - Line 23725: P07-F: physical buffer keepalives and combined GPU admission (14 October 2026)
+  - Line 23755: P07-E: awaitable CubeCL readback and typed event fencing (14 October 2026)
+  - Line 23793: P07-D: decode-once original source descriptors (14 October 2026)
+  - Line 23829: P07-C: bounded device-resident source weights (14 October 2026)
+  - Line 23887: P07-B: mixed source quantization and FP32 projection regions (14 October 2026)
+  - Line 23924: Current P07 integration interface (U-027)
+  - Line 23928: What is not established
+  - Line 23934: Source-verified trained Qwen3.5 Q4\_0 projection validation
+  - Line 23959: Repeat each command for the 2B fixture.
+  - Line 23969: End of comprehensive archived source history
+  - Line 23989: END OF SELF-CONTAINED v5.1 AND HISTORICAL HANDOFF
+
+### [.agents/docs/handoff-2026-10-20/RECOVERED_HISTORY_03.md](../handoff-2026-10-20/RECOVERED_HISTORY_03.md)
+
+- Bytes: 44711; mode: 0o644; SHA256: 40db836ba23ca7873cd43efd68aa0fe2ec952b5fa857718c69998304ee91843f.
+- Full heading route:
+  - Line 1: Recovered History — volume 3
+  - Line 7: Source: 7e61cb63efd0c1429aa96044f2f7d28fda1e59aa:.agents/research/EXTREME\_MODEL\_SPECIALIZATION\_DESIGN\_AGENT\_HANDOFF\_2026-10-15.md
+  - Line 13: Zerogravity — Complete Specialist-Source Specialization Design Handoff for External Agents
+  - Line 19: 0. Progressive full reading order
+  - Line 33: 1. User intent and decision provenance
+  - Line 47: 2. Architectural verdict: no extra inference engines
+  - Line 64: 3. Precise researched lessons to preserve
+  - Line 78: 4. Implementation support truth
+  - Line 84: 5. Phased implementation when authorized
+  - Line 97: 6. Documentation archive generation and historical hash caveat
+  - Line 107: 7. Primary inspected upstream references
+  - Line 128: Source: 7e61cb63efd0c1429aa96044f2f7d28fda1e59aa:.agents/research/MULTIMODAL\_PARALLEL\_RESEARCH\_WORKSTREAMS\_2026-10-14.md
+  - Line 134: Zerogravity multimodal architecture — parallel reviewer and subagent workstreams
+  - Line 139: Runtime status of subagent execution
+  - Line 145: Parallel workstream contracts (each independent, docs-only)
+  - Line 157: Rules for actual independent agents, if authorized later
+  - Line 166: Integrated current outputs
+  - Line 178: Source: 7e61cb63efd0c1429aa96044f2f7d28fda1e59aa:.agents/research/MULTIMODAL\_V5\_1\_RESEARCH\_WORKSTREAMS\_AND\_AGENT\_BRIEFS\_2026-10-15.md
+  - Line 184: Zerogravity v5.1 — Independent Research Workstreams, Agent Instructions and Integration Ownership
+  - Line 188: 0. One coordinating lead, independent source research
+  - Line 202: 1. Research lane A — Core engine and semantic/state design
+  - Line 210: 2. Research lane B — ASR, translation and speech understanding
+  - Line 218: 3. Research lane C — TTS, codecs, voice and native duplex
+  - Line 226: 4. Research lane D — Image/flow/editing
+  - Line 234: 5. Research lane E — Video, temporal VAE and native coupled AV
+  - Line 242: 6. Research lane F — Typed decisions and low-bit specialist text
+  - Line 250: 7. Research lane G — Serving, real-time QoS, APIs and opaque providers
+  - Line 259: 8. Research lane H — Adversarial reconciliation / quality gate
+  - Line 276: 9. Copyable design-only agent takeover brief
+  - Line 306: 10. Parallel work and merge discipline
+  - Line 314: 11. Completion standard
+  - Line 322: Source: 7e61cb63efd0c1429aa96044f2f7d28fda1e59aa:.agents/research/SSD\_STREAMING\_FIRST\_CLASS\_ARCHITECTURE\_AGENT\_HANDOFF\_2026-10-15.md
+  - Line 328: Zerogravity — SSD Streaming as First-Class Model Residency: Comprehensive Next-Agent Handoff
+  - Line 335: 1. Required reading before implementation
+  - Line 345: 2. Architecture diagram — one source tensor, several legal physical homes
+  - Line 375: 3. One source/four policies
+  - Line 384: 4. The two highest-priority external regression fixtures
+  - Line 386: Expert slot corrupting a queued GPU graph (DS4 issue #384)
+  - Line 392: Mixed Q2/Q4 cache thrash and budget overcommit (DS4 issue #503)
+  - Line 398: 5. Phased implementation and honest gates
+  - Line 411: 6. Documentation archive generator repaired in this phase
+  - Line 417: 7. Original external sources
+  - Line 431: 8. Decision provenance and scope
+
+### [.agents/docs/handoff-2026-10-20/RECOVERED_HISTORY_04.md](../handoff-2026-10-20/RECOVERED_HISTORY_04.md)
+
+- Bytes: 40793; mode: 0o644; SHA256: 3fc7d53c6c17fbe1b840f69cedf4e8961250b4fd600cc15a150e21b0316cdd8a.
+- Full heading route:
+  - Line 1: Recovered original pre-product README body
+  - Line 6: Source: be95424837deb7919adf34503db71d27d3ad3adb:.agents/research/README\_PRE\_PRODUCT\_REWRITE\_SNAPSHOT\_2026-10-15.md
+  - Line 9: Zerogravity — Pre-product README implementation/history snapshot (15 October 2026)
+  - Line 15: zerogravity
+  - Line 71: Current status: Qwen3.5 text CPU inference + real GPU kernel qualification
+  - Line 94: Current local CPU usage
+  - Line 103: Chat-style user message (Qwen text role delimiters):
+  - Line 106: CPU-only atomic prefill chunk-size variation and optional developer audit:
+  - Line 114: Source/parity verification procedure (the former standalone scripts were retired;
+  - Line 115: the checks below remain the required evidence):
+  - Line 116: - 0.8B independent greedy verification: 12 tokens
+  - Line 117: - 2B independent greedy verification: 8 tokens
+  - Line 118:
+  - Line 119: Strict raw-token aligned probability audit and actual context next-token checks:
+  - Line 120: - 0.8B SHA256 57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf: 32 tokens, 8 prompts -\> target/qualification/numeric-08.json
+  - Line 121: - 2B SHA256 91c102fc9a86de80e427057ee938e1e34fcaf3bba956b7296e252406e05f36f6: 512 target input tokens -\> target/qualification/context-2b-512.json
+  - Line 126: Developer CPU numerical acceptance gate
+  - Line 132: Exit 4 / BLOCKED\_CPU\_FIRST is the expected current status.
+  - Line 134: Capture all source-model layer stages locally (does not itself prove parity):
+  - Line 137: An independent llama/other reference capture is still needed:
+  - Line 139: State round-trip verification procedure retained (former standalone script retired).
+  - Line 141: Run/recover a checked eight-prompt 32-token corpus in batches of 3.
+  - Line 142: Exit 5 means INCOMPLETE, 4 means complete FAIL, 0 means complete PASS.
+  - Line 143: 2B SHA256 91c102fc9a86de80e427057ee938e1e34fcaf3bba956b7296e252406e05f36f6: 32 tokens, 8 prompts,
+  - Line 144: max 3 cases per run, resumable -\> target/qualification/cpu-gate/qwen35-2b/numeric-32.json
+  - Line 149: Confirmed implementation order
+  - Line 159: Still-future unified UX
+  - Line 170: Build locally
+  - Line 184: Convenience wrapper for the local Rust, shell and Nix-format checks:
+  - Line 187: Test the checksum installer against a local offline release fixture:
+  - Line 198: Native tests, clippy, rustfmt, Nix formatting,
+  - Line 199: shellcheck, offline installer fixture, workflow lint and NixOS module evaluation.
+  - Line 205: Cross-platform releases
+  - Line 219: Produce all six asset files + .sha256, VERSION, PLATFORMS.txt
+  - Line 221: Or copy and verify them into a local dist/ directory:
+  - Line 227: GitHub Actions
+  - Line 238: Install from a published release
+  - Line 243: Set OWNER/REPO explicitly once an actual GitHub release exists.
+  - Line 246: Choose version and destination, without root:
+  - Line 263: NixOS module
+  - Line 292: Project structure
+  - Line 313: Engineering principles
+  - Line 323: Implementation sequence
+  - Line 329: License
+
+### [.agents/docs/handoff-2026-10-20/RUN_NOTES_01.md](../handoff-2026-10-20/RUN_NOTES_01.md)
+
+- Bytes: 413898; mode: 0o644; SHA256: febe9ad67f85b78debc3b52f7922730f64627037c4231687ef7729f7f4fcf007.
+- Full heading route:
+  - Line 1: Run Notes — volume 1
+  - Line 7: Source: .agents/runs/baseline-cupti-h48-peer-review-20261020/REVIEW.md
+  - Line 13: CUPTI C1 +H48 coefficient independent review
+  - Line 19: CUPTI canonical C1 V4: no metadata/claim blocker
+  - Line 50: H48 coefficient freeze05095281: one replay blocker
+  - Line 91: Source: .agents/runs/baseline-cupti-h48-peer-review-20261020/TODO.md
+  - Line 97: Independent CUPTI C1 +H48 source review
+  - Line 111: Source: .agents/runs/gpu-serving-batching-2026-10-19/TODO.md
+  - Line 117: GPU OpenAI serving and batch-wave foundation
+  - Line 149: Source: .agents/runs/model-acquisition-c3-resume/TODO.md
+  - Line 155: TODO — resumed C3 filters integration
+  - Line 162: Verified in this run
+  - Line 188: Still open
+  - Line 205: Source: .agents/runs/model-acquisition-filters/TODO.md
+  - Line 211: TODO — additive filters and exclusions cold design
+  - Line 218: Uncommitted
+  - Line 225: Primary requirements and chosen grammar
+  - Line 237: Ordered selection and closure
+  - Line 249: Bounded matcher and admission
+  - Line 257: Additive public and CLI seam
+  - Line 277: Meaningful future qualification (all UNRUN)
+  - Line 288: Remaining choices before implementation
+  - Line 293: Approved C3 source grant
+  - Line 302: Source: .agents/runs/model-acquisition-v1-completion/TODO.md
+  - Line 308: Model pull v1 source closure cutover
+  - Line 329: Source: .agents/runs/model-acquisition-xet-index/TODO.md
+  - Line 335: TODO — native Xet required index reconstruction
+  - Line 342: Uncommitted
+  - Line 350: Tests and verification
+  - Line 357: Boundaries
+  - Line 362: Pause handoff — user-requested wrap/interruption boundary
+  - Line 376: Source: .agents/runs/model-acquisition-xet-index-design/TODO.md
+  - Line 382: TODO — native Xet required-index reconstruction design
+  - Line 389: Uncommitted
+  - Line 396: Smallest useful slice
+  - Line 400: Private provider seam
+  - Line 407: Exact bytes before parser
+  - Line 416: Admission and lifetime accounting
+  - Line 422: Mandatory cumulative seed change
+  - Line 430: Root choices before source grant
+  - Line 436: Proposed source/test ownership after approval
+  - Line 440: Tests and verification — all proposed, UNRUN
+  - Line 451: Current code anchors
+  - Line 462: Source: .agents/runs/model-execution-bf16-operator-gap-2026-10-20/HF\_SHARED\_ENGINE\_SEAM.md
+  - Line 468: Original HF through the existing Qwen engine
+  - Line 476: Current hard boundaries
+  - Line 495: Minimal safe production-facing slice
+  - Line 537: Numerical work immediately after projection64
+  - Line 556: Suggested disjoint ownership
+  - Line 573: Source: .agents/runs/model-execution-bf16-operator-gap-2026-10-20/TODO.md
+  - Line 579: Original BF16 first-operator gap
+  - Line 628: Source: .agents/runs/model-execution-conv-zero-observation-2026-10-20/BACKEND\_TOPOLOGY.md
+  - Line 634: Pinned original CPU convolution: exact signed-zero cause
+  - Line 639: Pins
+  - Line 653: Actual first differing operation
+  - Line 665: Actual dispatch + pinned compiled arithmetic
+  - Line 692: Failed proposal, corrected proof
+  - Line 715: Synthetic reduction fixture correction
+  - Line 723: Retained unsuccessful observation attempts
+  - Line 737: Implementation boundary
+  - Line 748: Source: .agents/runs/model-execution-conv-zero-observation-2026-10-20/TODO.md
+  - Line 754: Authentic conv/SiLU signed-zero diagnosis
+  - Line 776: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-20261020/README.md
+  - Line 782: CUDA BF16 projection: accepted CPU target
+  - Line 790: Scope
+  - Line 802: Closed mathematical contract
+  - Line 828: Original ownership
+  - Line 852: Prepared physical proof
+  - Line 889: ROOT-only invocation
+  - Line 930: Pending acceptance
+  - Line 948: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-20261020/TODO.md
+  - Line 954: Working checklist
+  - Line 977: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-20261020/frozen/README.md
+  - Line 983: CUDA BF16 projection: accepted CPU target
+  - Line 991: Scope
+  - Line 1003: Closed mathematical contract
+  - Line 1029: Original ownership
+  - Line 1053: Prepared physical proof
+  - Line 1090: ROOT-only invocation
+  - Line 1131: Pending acceptance
+  - Line 1149: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-20261020/frozen/TODO.md
+  - Line 1155: Working checklist
+  - Line 1178: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-adversary-20261020/README.md
+  - Line 1184: CUDA CPU-profile BF16 adversaries — prepared only
+  - Line 1199: New scope
+  - Line 1225: Physical ownership and independent gates
+  - Line 1250: ROOT application and checks
+  - Line 1288: Remaining scope
+  - Line 1300: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-adversary-20261020/TODO.md
+  - Line 1306: Working checklist
+  - Line 1329: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-adversary-20261020/frozen/README.md
+  - Line 1335: CUDA CPU-profile BF16 adversaries — prepared only
+  - Line 1350: New scope
+  - Line 1376: Physical ownership and independent gates
+  - Line 1401: ROOT application and checks
+  - Line 1439: Remaining scope
+  - Line 1451: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-adversary-20261020/frozen/TODO.md
+  - Line 1457: Working checklist
+  - Line 1480: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-adversary-root-v2-20261020/README.md
+  - Line 1486: CUDA CPU-profile BF16 adversaries — prepared only
+  - Line 1501: New scope
+  - Line 1527: Physical ownership and independent gates
+  - Line 1552: ROOT application and checks
+  - Line 1590: Remaining scope
+  - Line 1604: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-adversary-root-v2-20261020/TODO.md
+  - Line 1610: Working checklist
+  - Line 1633: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-adversary-root-v3-20261020/README.md
+  - Line 1639: CUDA CPU-profile BF16 adversaries — prepared only
+  - Line 1654: New scope
+  - Line 1680: Physical ownership and independent gates
+  - Line 1705: ROOT application and checks
+  - Line 1743: Remaining scope
+  - Line 1759: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-adversary-root-v3-20261020/TODO.md
+  - Line 1765: Working checklist
+  - Line 1788: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-root-v2-20261020/README.md
+  - Line 1794: CUDA BF16 projection: accepted CPU target
+  - Line 1802: Scope
+  - Line 1814: Closed mathematical contract
+  - Line 1840: Original ownership
+  - Line 1864: Prepared physical proof
+  - Line 1901: ROOT-only invocation
+  - Line 1942: Pending acceptance
+  - Line 1962: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-root-v2-20261020/TODO.md
+  - Line 1968: Working checklist
+  - Line 1991: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-root-v3-20261020/README.md
+  - Line 1997: CUDA BF16 projection: accepted CPU target
+  - Line 2005: Scope
+  - Line 2017: Closed mathematical contract
+  - Line 2043: Original ownership
+  - Line 2067: Prepared physical proof
+  - Line 2104: ROOT-only invocation
+  - Line 2145: Pending acceptance
+  - Line 2167: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-root-v3-20261020/TODO.md
+  - Line 2173: Working checklist
+  - Line 2196: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-root-v4-20261020/README.md
+  - Line 2202: CUDA BF16 projection: accepted CPU target
+  - Line 2210: Scope
+  - Line 2222: Closed mathematical contract
+  - Line 2248: Original ownership
+  - Line 2272: Prepared physical proof
+  - Line 2309: ROOT-only invocation
+  - Line 2350: Pending acceptance
+  - Line 2374: Source: .agents/runs/model-execution-cuda-cpu-bf16-projection-root-v4-20261020/TODO.md
+  - Line 2380: Working checklist
+  - Line 2403: Source: .agents/runs/model-execution-full-forward-2026-10-18/TODO.md
+  - Line 2409: ME-P0 — original Qwen full-forward FP32 diagnostic
+  - Line 2434: Source: .agents/runs/model-execution-gated-rms-observation-2026-10-20/TODO.md
+  - Line 2440: Actual pinned layer0 gated RMS observations
+  - Line 2459: Source: .agents/runs/model-execution-gated-rms-observation-attempt-2-2026-10-20/TODO.md
+  - Line 2465: Gated RMS actual-call observation attempt 2
+  - Line 2480: Source: .agents/runs/model-execution-gdn-coefficients-observation-2026-10-20/TODO.md
+  - Line 2486: Actual original layer0 GDN coefficient observation
+  - Line 2502: Source: .agents/runs/model-execution-gdn-vllm-resume-20261020/REPORT.md
+  - Line 2508: Pinned vLLM GDN arithmetic audit
+  - Line 2515: Decision
+  - Line 2539: Exact sources
+  - Line 2561: Select the actual path before comparing bits
+  - Line 2576: Arithmetic/storage table
+  - Line 2602: Exact normal packed-decode recurrence
+  - Line 2640: Exact prefill/initial chunk boundaries
+  - Line 2672: Immutable GGUF source transformation is part of the profile
+  - Line 2701: Minimal directly portable work and fastest gates
+  - Line 2753: Proof boundary
+  - Line 2766: Source: .agents/runs/model-execution-gdn-vllm-resume-20261020/SOURCE\_HASHES.md
+  - Line 2772: Small source files read for GDN investigation
+  - Line 2806: Source: .agents/runs/model-execution-gdn-vllm-resume-20261020/TODO.md
+  - Line 2812: GDN resume source investigation
+  - Line 2832: Source: .agents/runs/model-execution-hf-bf16-gamma-gated-rms-20261020/API.md
+  - Line 2838: Original27B BF16 gamma gated RMS — proposed closed operator
+  - Line 2876: Source: .agents/runs/model-execution-hf-bf16-gamma-gated-rms-20261020/ROOT.md
+  - Line 2882: ROOT gates — no execution by author
+  - Line 2897: Source: .agents/runs/model-execution-hf-bf16-gamma-gated-rms-20261020/TODO.md
+  - Line 2903: Original27B BF16 gamma gated RMS
+  - Line 2920: Additive followups
+  - Line 2933: Source: .agents/runs/model-execution-hf-bf16-gamma-gated-rms-20261020/replay/ROOT.md
+  - Line 2939: ROOT-only authentic H48 gated RMS qualification
+  - Line 2975: Source: .agents/runs/model-execution-hf-bf16-gamma-gated-rms-20261020/replay/frozen-prepared/ROOT.md
+  - Line 2981: ROOT-only authentic H48 gated RMS qualification
+  - Line 3017: Source: .agents/runs/model-execution-hf-bf16-gamma-gated-rms-20261020/replay/isolated-root-v2/ISOLATED\_ROOT.md
+  - Line 3023: Isolated ROOT replay source relocation — coordinator only
+  - Line 3032: ROOT sequence
+  - Line 3062: Source: .agents/runs/model-execution-hf-bf16-gamma-gated-rms-20261020/replay/isolated-root-v2/ROOT.md
+  - Line 3068: ROOT-only authentic H48 gated RMS qualification
+  - Line 3104: Source: .agents/runs/model-execution-hf-bf16-gamma-gated-rms-20261020/replay/isolated-root-v2/frozen-prepared/ISOLATED\_ROOT.md
+  - Line 3110: Isolated ROOT replay source relocation — coordinator only
+  - Line 3119: ROOT sequence
+  - Line 3149: Source: .agents/runs/model-execution-hf-bf16-gamma-gated-rms-20261020/replay/isolated-root-v2/frozen-prepared/ROOT.md
+  - Line 3155: ROOT-only authentic H48 gated RMS qualification
+  - Line 3191: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/API.md
+  - Line 3197: Cached GDN private fragment — SOURCE ONLY
+  - Line 3236: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/AUDIT.md
+  - Line 3242: Shortest original-HF continuation
+  - Line 3291: Actual native primitive evidence and missing admission
+  - Line 3313: Layout and27B order
+  - Line 3329: Source anchors (current MAIN unless noted)
+  - Line 3347: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/ROOT-QUALIFICATION.md
+  - Line 3414: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/TODO.md
+  - Line 3433: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-h48-v3/TODO.md
+  - Line 3439: Cached H48 source continuation
+  - Line 3460: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-h48-v3/replay/ROOT.md
+  - Line 3466: ROOT-only authentic H48 cached typed replay
+  - Line 3524: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-h48-v3/replay/frozen-prepared/ROOT.md
+  - Line 3530: ROOT-only authentic H48 cached typed replay
+  - Line 3588: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-h48-v3/replay/isolated-root-v2/ISOLATED\_ROOT.md
+  - Line 3594: Isolated ROOT replay source relocation — coordinator only
+  - Line 3603: ROOT sequence
+  - Line 3633: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-h48-v3/replay/isolated-root-v2/ROOT.md
+  - Line 3639: ROOT-only authentic H48 cached typed replay
+  - Line 3697: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-h48-v3/replay/isolated-root-v2/frozen-prepared/ISOLATED\_ROOT.md
+  - Line 3703: Isolated ROOT replay source relocation — coordinator only
+  - Line 3712: ROOT sequence
+  - Line 3742: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-h48-v3/replay/isolated-root-v2/frozen-prepared/ROOT.md
+  - Line 3748: ROOT-only authentic H48 cached typed replay
+  - Line 3806: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-h48-v3/replay/pre-review-draft-1/frozen-prepared/ROOT.md
+  - Line 3812: ROOT-only authentic H48 cached typed replay
+  - Line 3870: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-v2/TODO.md
+  - Line 3902: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-v2/replay/ROOT.md
+  - Line 3908: ROOT-only archived cached GDN gate
+  - Line 3947: Availability limits
+  - Line 3961: ROOT sequence
+  - Line 3991: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-v2/replay/frozen-prepared/ROOT.md
+  - Line 3997: ROOT-only archived cached GDN gate
+  - Line 4036: Availability limits
+  - Line 4050: ROOT sequence
+  - Line 4080: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-v2/replay-internal-draft-1/ROOT.md
+  - Line 4086: ROOT-only archived cached GDN gate
+  - Line 4125: Availability limits
+  - Line 4139: ROOT sequence
+  - Line 4169: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/followup-v2/replay-internal-draft-2/ROOT.md
+  - Line 4175: ROOT-only archived cached GDN gate
+  - Line 4214: Availability limits
+  - Line 4228: ROOT sequence
+  - Line 4258: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/frozen-prepared/API.md
+  - Line 4264: Cached GDN private fragment — SOURCE ONLY
+  - Line 4303: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/frozen-prepared/AUDIT.md
+  - Line 4309: Shortest original-HF continuation
+  - Line 4358: Actual native primitive evidence and missing admission
+  - Line 4380: Layout and27B order
+  - Line 4396: Source anchors (current MAIN unless noted)
+  - Line 4414: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/frozen-prepared/ROOT-QUALIFICATION.md
+  - Line 4481: Source: .agents/runs/model-execution-hf-cached-gdn-contract-20261020/frozen-prepared/TODO.md
+  - Line 4500: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/READINESS.md
+  - Line 4506: Source-only readiness review
+  - Line 4527: Concrete packaging blocker and repair
+  - Line 4541: Next qualification cut
+  - Line 4558: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/README.md
+  - Line 4564: Combined ROOT525 source-only derivative
+  - Line 4578: Why fresh entrypoints
+  - Line 4593: ROOT composition and build
+  - Line 4653: ROOT bounded replay (each lane, serialized)
+  - Line 4683: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/TODO.md
+  - Line 4704: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/READINESS.md
+  - Line 4710: Source-only readiness review
+  - Line 4731: Concrete packaging blocker and repair
+  - Line 4745: Next qualification cut
+  - Line 4762: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/README.md
+  - Line 4768: Combined ROOT525 source-only derivative
+  - Line 4782: Why fresh entrypoints
+  - Line 4797: ROOT composition and build
+  - Line 4857: ROOT bounded replay (each lane, serialized)
+  - Line 4887: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/TODO.md
+  - Line 4908: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/h48/replay/ROOT.md
+  - Line 4914: ROOT-only combined525 derivative
+  - Line 4925: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/frozen-prepared/initial/replay/ROOT.md
+  - Line 4931: ROOT-only combined525 derivative
+  - Line 4942: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/h48/replay/ROOT.md
+  - Line 4948: ROOT-only combined525 derivative
+  - Line 4959: Source: .agents/runs/model-execution-hf-combined525-attestation-20261020/initial/replay/ROOT.md
+  - Line 4965: ROOT-only combined525 derivative
+  - Line 4976: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/API.md
+  - Line 4982: Original GDN conv + SiLU private region
+  - Line 4992: Region and source
+  - Line 5014: Initial and cached operands
+  - Line 5035: Actual admitted backing
+  - Line 5052: Prepared checks (not executed)
+  - Line 5066: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/ROOT-QUALIFICATION.md
+  - Line 5072: ROOT-only genuine qualification
+  - Line 5150: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/TODO.md
+  - Line 5156: GDN conv+SiLU shared-engine working checklist
+  - Line 5177: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/frozen-prepared/API.md
+  - Line 5183: Original GDN conv + SiLU private region
+  - Line 5193: Region and source
+  - Line 5215: Initial and cached operands
+  - Line 5236: Actual admitted backing
+  - Line 5253: Prepared checks (not executed)
+  - Line 5267: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/frozen-prepared/ROOT-QUALIFICATION.md
+  - Line 5273: ROOT-only genuine qualification
+  - Line 5350: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/frozen-prepared/TODO.md
+  - Line 5356: GDN conv+SiLU shared-engine working checklist
+  - Line 5377: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/frozen-v2/API.md
+  - Line 5383: Original GDN conv + SiLU private region
+  - Line 5393: Region and source
+  - Line 5415: Initial and cached operands
+  - Line 5436: Actual admitted backing
+  - Line 5453: Prepared checks (not executed)
+  - Line 5467: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/frozen-v2/ROOT-QUALIFICATION.md
+  - Line 5473: ROOT-only genuine qualification
+  - Line 5551: Source: .agents/runs/model-execution-hf-gdn-conv-contract-20261020/frozen-v2/TODO.md
+  - Line 5557: GDN conv+SiLU shared-engine working checklist
+  - Line 5578: Source: .agents/runs/model-execution-hf-gdn-conv-root-v5-20261020/API.md
+  - Line 5584: Original GDN conv + SiLU private region
+  - Line 5594: Region and source
+  - Line 5616: Initial and cached operands
+  - Line 5637: Actual admitted backing
+  - Line 5654: Prepared checks (not executed)
+  - Line 5668: Source: .agents/runs/model-execution-hf-gdn-conv-root-v5-20261020/ROOT-QUALIFICATION.md
+  - Line 5674: ROOT-only genuine qualification
+  - Line 5752: Source: .agents/runs/model-execution-hf-gdn-conv-root-v5-20261020/TODO.md
+  - Line 5758: GDN conv+SiLU shared-engine working checklist
+  - Line 5779: Source: .agents/runs/model-execution-hf-gdn-conv-root-v6-20261020/API.md
+  - Line 5785: Original GDN conv + SiLU private region
+  - Line 5795: Region and source
+  - Line 5817: Initial and cached operands
+  - Line 5838: Actual admitted backing
+  - Line 5855: Prepared checks (not executed)
+  - Line 5869: Source: .agents/runs/model-execution-hf-gdn-conv-root-v6-20261020/ROOT-QUALIFICATION.md
+  - Line 5875: ROOT-only genuine qualification
+  - Line 5955: Source: .agents/runs/model-execution-hf-gdn-conv-root-v6-20261020/TODO.md
+  - Line 5961: GDN conv+SiLU shared-engine working checklist
+
+### [.agents/docs/handoff-2026-10-20/RUN_NOTES_02.md](../handoff-2026-10-20/RUN_NOTES_02.md)
+
+- Bytes: 373064; mode: 0o644; SHA256: d0470d4640ea92669d6e4a85a8b0ca7d1981c0320cde626b0086660a81b8cda1.
+- Full heading route:
+  - Line 1: Run Notes — volume 2
+  - Line 7: Source: .agents/runs/model-execution-hf-gdn-conv-root-v7-20261020/API.md
+  - Line 13: Original GDN conv + SiLU private region
+  - Line 23: Region and source
+  - Line 45: Initial and cached operands
+  - Line 66: Actual admitted backing
+  - Line 83: Prepared checks (not executed)
+  - Line 97: Source: .agents/runs/model-execution-hf-gdn-conv-root-v7-20261020/ROOT-QUALIFICATION.md
+  - Line 103: ROOT-only genuine qualification
+  - Line 183: Source: .agents/runs/model-execution-hf-gdn-conv-root-v7-20261020/TODO.md
+  - Line 189: GDN conv+SiLU shared-engine working checklist
+  - Line 210: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/README.md
+  - Line 260: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/TODO.md
+  - Line 266: Working checklist
+  - Line 286: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/FOLLOWUP.md
+  - Line 337: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/frozen-prepared/FOLLOWUP.md
+  - Line 388: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/frozen-prepared/replay/ROOT.md
+  - Line 394: ROOT-only execution
+  - Line 455: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/followup-wrong-layer-v2/replay/ROOT.md
+  - Line 461: ROOT-only execution
+  - Line 522: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/README.md
+  - Line 572: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/TODO.md
+  - Line 578: Working checklist
+  - Line 598: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/frozen-prepared/replay/ROOT.md
+  - Line 604: ROOT-only execution
+  - Line 665: Source: .agents/runs/model-execution-hf-h48-coefficient-preparation-20261020/replay/ROOT.md
+  - Line 671: ROOT-only execution
+  - Line 732: Source: .agents/runs/model-execution-hf-initial-chunk-probe-20261020/TODO.md
+  - Line 738: Pinned initial chunk64 public-op probe
+  - Line 806: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/README.md
+  - Line 812: Initial-GDN query multiply +decay prefix
+  - Line 818: Exact primary source
+  - Line 830: Closed implementation
+  - Line 859: Genuine ROOT replay prepared
+  - Line 880: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/TODO.md
+  - Line 886: Initial query/prefix leaf proposal
+  - Line 901: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/README.md
+  - Line 907: Initial-GDN query multiply +decay prefix
+  - Line 913: Exact primary source
+  - Line 925: Closed implementation
+  - Line 954: Genuine ROOT replay prepared
+  - Line 975: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/TODO.md
+  - Line 981: Initial query/prefix leaf proposal
+  - Line 996: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/frozen-prepared/replay/ROOT.md
+  - Line 1002: ROOT-only qualification
+  - Line 1039: Source: .agents/runs/model-execution-hf-initial-prefix-20261020/replay/ROOT.md
+  - Line 1045: ROOT-only qualification
+  - Line 1082: Source: .agents/runs/model-execution-hf-initial-prefix-peer-review-batch-20261020/REVIEW.md
+  - Line 1088: Initial query/prefix leaf — independent source review
+  - Line 1097: Source arithmetic
+  - Line 1120: Identity, admission and lifetime
+  - Line 1140: Genuine replay and refusal scope
+  - Line 1164: Remaining physical gates
+  - Line 1180: Source: .agents/runs/model-execution-hf-initial-prefix-peer-review-batch-20261020/TODO.md
+  - Line 1186: Initial-prefix peer review
+  - Line 1202: Source: .agents/runs/model-execution-hf-integration-design-20261020/DESIGN.md
+  - Line 1208: Original HF through the existing engine
+  - Line 1213: Decision
+  - Line 1225: Current seams and blockers
+  - Line 1252: Required operation contracts
+  - Line 1278: Small implementation slices and ownership
+  - Line 1343: Streaming /27B / vLLM boundaries
+  - Line 1361: Reviewed source references
+  - Line 1381: Source: .agents/runs/model-execution-hf-integration-design-20261020/TODO.md
+  - Line 1387: Original HF integration design
+  - Line 1404: Source: .agents/runs/model-execution-hf-transcendentals-audit-20261020/SOURCE\_TOPOLOGY.md
+  - Line 1410: Pinned CPU unary arithmetic: source-only audit
+  - Line 1417: Result
+  - Line 1429: Pins and provenance
+  - Line 1455: Activation dispatch and dtype/span dependence
+  - Line 1477: SLEEF AVX2 arithmetic that can be closed in Rust
+  - Line 1504: Standalone Tensor.exp is a separate MKL gate
+  - Line 1527: Recommended incremental shared seam
+  - Line 1546: Required numerical proof, not executed here
+  - Line 1570: Source: .agents/runs/model-execution-hf-transcendentals-audit-20261020/TODO.md
+  - Line 1576: Pinned CPU transcendental audit
+  - Line 1593: Source: .agents/runs/model-execution-hf-typed-oracle-20261020/README.md
+  - Line 1599: Closed embedding → projection replay
+  - Line 1631: Source: .agents/runs/model-execution-hf-typed-oracle-20261020/TODO.md
+  - Line 1637: Typed HF operator oracle preparation
+  - Line 1654: Source: .agents/runs/model-execution-hf2b-attention-paired-20261020/README.md
+  - Line 1660: Original HF2B paired attention observation — ROOT executes
+  - Line 1670: Existing accepted reference
+  - Line 1687: New observation and transparency gates
+  - Line 1711: Bounds and lifetime
+  - Line 1732: ROOT-only commands after source review
+  - Line 1753: Source: .agents/runs/model-execution-hf2b-attention-paired-20261020/TODO.md
+  - Line 1759: Own run — original HF2B paired attention observation
+  - Line 1775: Source: .agents/runs/model-execution-hf2b-attention-paired-20261020/frozen-prepared/README.md
+  - Line 1781: Original HF2B paired attention observation — ROOT executes
+  - Line 1791: Existing accepted reference
+  - Line 1808: New observation and transparency gates
+  - Line 1832: Bounds and lifetime
+  - Line 1853: ROOT-only commands after source review
+  - Line 1874: Source: .agents/runs/model-execution-hf2b-attention-paired-20261020/frozen-prepared/TODO.md
+  - Line 1880: Own run — original HF2B paired attention observation
+  - Line 1896: Source: .agents/runs/model-execution-hf2b-cpu-reference-20261020/README.md
+  - Line 1902: Original HF 2B CPU reference — ROOT EXECUTES
+  - Line 1927: Exact capture
+  - Line 1957: Bounds and cleanup
+  - Line 1985: Root invocation
+  - Line 2002: Source: .agents/runs/model-execution-hf2b-cpu-reference-20261020/TODO.md
+  - Line 2008: model-execution — original HF2B CPU reference
+  - Line 2025: Source: .agents/runs/model-execution-hf2b-cpu-reference-20261020/frozen-prepared/README.md
+  - Line 2031: Original HF 2B CPU reference — ROOT EXECUTES
+  - Line 2056: Exact capture
+  - Line 2086: Bounds and cleanup
+  - Line 2114: Root invocation
+  - Line 2131: Source: .agents/runs/model-execution-hf2b-cpu-reference-20261020/frozen-prepared/TODO.md
+  - Line 2137: model-execution — original HF2B CPU reference
+  - Line 2154: Source: .agents/runs/model-execution-hf2b-source-plan-20261020/HANDOFF.md
+  - Line 2160: Original Qwen3.5 2B source acquisition handoff
+  - Line 2167: Exact official source
+  - Line 2198: Configuration/tokenizer profile
+  - Line 2226: Existing bounded Rust acquisition route (ROOT ONLY, AFTER timing)
+  - Line 2256: Load/qualification consequences
+  - Line 2277: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/ADDRESS\_SPACE.md
+  - Line 2283: Strict worker address-space bound
+  - Line 2299: Concrete first qualification budget using ROOT's28GiB planning domain
+  - Line 2317: Smallest launch variant
+  - Line 2353: Minimum ROOT probe
+  - Line 2373: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/DESIGN.md
+  - Line 2379: Same-engine native CPU provider envelope
+  - Line 2390: Current exact boundary
+  - Line 2404: Why this boundary is smaller than allocator interception
+  - Line 2424: Admission and startup
+  - Line 2451: Physical envelope completeness gate
+  - Line 2473: Smallest RPC contract
+  - Line 2499: In-flight and retirement ownership
+  - Line 2526: Exact existing seams / proposed ownership
+  - Line 2551: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/ROOT\_PROBE\_PLAN.md
+  - Line 2557: ROOT-only next implementation / physical proof
+  - Line 2604: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/TODO.md
+  - Line 2610: Working checklist — native CPU provider envelope audit
+  - Line 2630: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/frozen/ADDRESS\_SPACE.md
+  - Line 2636: Strict worker address-space bound
+  - Line 2652: Concrete first qualification budget using ROOT's28GiB planning domain
+  - Line 2670: Smallest launch variant
+  - Line 2706: Minimum ROOT probe
+  - Line 2726: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/frozen/DESIGN.md
+  - Line 2732: Same-engine native CPU provider envelope
+  - Line 2743: Current exact boundary
+  - Line 2757: Why this boundary is smaller than allocator interception
+  - Line 2777: Admission and startup
+  - Line 2804: Physical envelope completeness gate
+  - Line 2826: Smallest RPC contract
+  - Line 2852: In-flight and retirement ownership
+  - Line 2879: Exact existing seams / proposed ownership
+  - Line 2904: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/frozen/ROOT\_PROBE\_PLAN.md
+  - Line 2910: ROOT-only next implementation / physical proof
+  - Line 2957: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/frozen/TODO.md
+  - Line 2963: Working checklist — native CPU provider envelope audit
+  - Line 2983: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/startup-v1/NEGATIVE\_PLAN.md
+  - Line 2989: Required physical negatives
+  - Line 2993: Included six-case first gate
+  - Line 3008: Required before extending provider eligibility
+  - Line 3043: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/startup-v1/POLICY.md
+  - Line 3049: Startup policy and ownership
+  - Line 3053: Before child spawn
+  - Line 3066: Child controls
+  - Line 3090: Finite IPC and retained lifetime
+  - Line 3116: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/startup-v1/README.md
+  - Line 3122: Native provider startup gate
+  - Line 3132: Scope
+  - Line 3152: Explicit remaining admission gates
+  - Line 3174: Files
+  - Line 3185: ROOT execution order
+  - Line 3235: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/startup-v1/SOURCE\_AUDIT.md
+  - Line 3241: Source boundary
+  - Line 3245: Reused original contracts
+  - Line 3261: Public Linux/libc boundary
+  - Line 3282: Failure review
+  - Line 3309: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/startup-v1/TODO.md
+  - Line 3315: Native provider startup proposal
+  - Line 3341: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/startup-v1/followup-sigterm-v2/README.md
+  - Line 3347: Startup SIGTERM adapter V2
+  - Line 3375: ROOT qualification cut
+  - Line 3461: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/startup-v1/followup-sigterm-v2/TODO.md
+  - Line 3467: Startup SIGTERM V2 working scope
+  - Line 3484: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/startup-v1/followup-sigterm-v2/frozen/README.md
+  - Line 3490: Startup SIGTERM adapter V2
+  - Line 3518: ROOT qualification cut
+  - Line 3604: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/startup-v1/followup-sigterm-v2/frozen/TODO.md
+  - Line 3610: Startup SIGTERM V2 working scope
+  - Line 3627: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/startup-v1/frozen/NEGATIVE\_PLAN.md
+  - Line 3633: Required physical negatives
+  - Line 3637: Included six-case first gate
+  - Line 3652: Required before extending provider eligibility
+  - Line 3687: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/startup-v1/frozen/POLICY.md
+  - Line 3693: Startup policy and ownership
+  - Line 3697: Before child spawn
+  - Line 3710: Child controls
+  - Line 3734: Finite IPC and retained lifetime
+  - Line 3760: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/startup-v1/frozen/README.md
+  - Line 3766: Native provider startup gate
+  - Line 3776: Scope
+  - Line 3796: Explicit remaining admission gates
+  - Line 3818: Files
+  - Line 3829: ROOT execution order
+  - Line 3879: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/startup-v1/frozen/SOURCE\_AUDIT.md
+  - Line 3885: Source boundary
+  - Line 3889: Reused original contracts
+  - Line 3905: Public Linux/libc boundary
+  - Line 3926: Failure review
+  - Line 3953: Source: .agents/runs/model-execution-native-cpu-provider-envelope-20261020/startup-v1/frozen/TODO.md
+  - Line 3959: Native provider startup proposal
+  - Line 3985: Source: .agents/runs/model-execution-original-attention-replay-20261020/README.md
+  - Line 3991: Root-only authentic CPU attention fragment replay
+  - Line 4003: Independent reference and exact scope
+  - Line 4025: Real ownership and negative gates
+  - Line 4051: ROOT execution after independent source review
+  - Line 4059: Source-free parser/transport fixtures; no trained qualification.
+  - Line 4061: Genuine existing archive transport only; fresh directory directly under RUN.
+  - Line 4063: Root records the actual Cargo argv, source freeze and fresh binary SHA.
+  - Line 4066: Actual helper/inputs SHA values are obtained by ROOT, never placeholder pins.
+  - Line 4088: Source: .agents/runs/model-execution-original-attention-replay-20261020/TODO.md
+  - Line 4094: Working checklist
+  - Line 4112: Source: .agents/runs/model-execution-original-attention-replay-20261020/followup-v2/README.md
+  - Line 4118: Root-only authentic CPU attention fragment replay — additive V2
+  - Line 4130: V2 correction and preserved evidence
+  - Line 4148: Independent reference and exact scope
+  - Line 4170: Real ownership and negative gates
+  - Line 4196: ROOT execution after independent source review
+  - Line 4204: Source-free parser/transport fixtures; no trained qualification.
+  - Line 4206: Genuine existing archive transport only; fresh directory directly under RUN.
+  - Line 4208: Root records the actual Cargo argv, source freeze and fresh binary SHA.
+  - Line 4211: Actual helper/inputs SHA values are obtained by ROOT, never placeholder pins.
+  - Line 4233: Source: .agents/runs/model-execution-original-attention-replay-20261020/followup-v2/TODO.md
+  - Line 4239: Additive V2 working checklist
+  - Line 4255: Source: .agents/runs/model-execution-original-attention-replay-20261020/followup-v2/frozen/README.md
+  - Line 4261: Root-only authentic CPU attention fragment replay — additive V2
+  - Line 4273: V2 correction and preserved evidence
+  - Line 4291: Independent reference and exact scope
+  - Line 4313: Real ownership and negative gates
+  - Line 4339: ROOT execution after independent source review
+  - Line 4347: Source-free parser/transport fixtures; no trained qualification.
+  - Line 4349: Genuine existing archive transport only; fresh directory directly under RUN.
+  - Line 4351: Root records the actual Cargo argv, source freeze and fresh binary SHA.
+  - Line 4354: Actual helper/inputs SHA values are obtained by ROOT, never placeholder pins.
+  - Line 4376: Source: .agents/runs/model-execution-original-attention-replay-20261020/followup-v2/frozen/TODO.md
+  - Line 4382: Additive V2 working checklist
+  - Line 4398: Source: .agents/runs/model-execution-original-attention-replay-20261020/followup-v3/README.md
+  - Line 4404: Root-only authentic CPU attention fragment replay — additive V2
+  - Line 4416: V2 correction and preserved evidence
+  - Line 4434: Independent reference and exact scope
+  - Line 4456: Real ownership and negative gates
+  - Line 4482: ROOT execution after independent source review
+  - Line 4490: Source-free parser/transport fixtures; no trained qualification.
+  - Line 4492: Genuine existing archive transport only; fresh directory directly under RUN.
+  - Line 4494: Root records the actual Cargo argv, source freeze and fresh binary SHA.
+  - Line 4497: Actual helper/inputs SHA values are obtained by ROOT, never placeholder pins.
+  - Line 4517: ROOT additive V3 accounting correction
+  - Line 4531: Source: .agents/runs/model-execution-original-attention-replay-20261020/followup-v3/TODO.md
+  - Line 4537: Additive V2 working checklist
+  - Line 4555: Source: .agents/runs/model-execution-original-attention-replay-20261020/followup-v3/frozen-prepared/README.md
+  - Line 4561: Root-only authentic CPU attention fragment replay — additive V2
+  - Line 4573: V2 correction and preserved evidence
+  - Line 4591: Independent reference and exact scope
+  - Line 4613: Real ownership and negative gates
+  - Line 4639: ROOT execution after independent source review
+  - Line 4647: Source-free parser/transport fixtures; no trained qualification.
+  - Line 4649: Genuine existing archive transport only; fresh directory directly under RUN.
+  - Line 4651: Root records the actual Cargo argv, source freeze and fresh binary SHA.
+  - Line 4654: Actual helper/inputs SHA values are obtained by ROOT, never placeholder pins.
+  - Line 4674: ROOT additive V3 accounting correction
+  - Line 4688: Source: .agents/runs/model-execution-original-attention-replay-20261020/followup-v3/frozen-prepared/TODO.md
+  - Line 4694: Additive V2 working checklist
+  - Line 4712: Source: .agents/runs/model-execution-original-attention-replay-20261020/frozen/README.md
+  - Line 4718: Root-only authentic CPU attention fragment replay
+  - Line 4730: Independent reference and exact scope
+  - Line 4752: Real ownership and negative gates
+  - Line 4778: ROOT execution after independent source review
+  - Line 4786: Source-free parser/transport fixtures; no trained qualification.
+  - Line 4788: Genuine existing archive transport only; fresh directory directly under RUN.
+  - Line 4790: Root records the actual Cargo argv, source freeze and fresh binary SHA.
+  - Line 4793: Actual helper/inputs SHA values are obtained by ROOT, never placeholder pins.
+  - Line 4815: Source: .agents/runs/model-execution-original-attention-replay-20261020/frozen/TODO.md
+  - Line 4821: Working checklist
+  - Line 4839: Source: .agents/runs/model-execution-original-attention-slice-20261020/README.md
+  - Line 4845: Original attention projections/QK ordinary RMS — source-only proposal
+  - Line 4852: Shared engine contract
+  - Line 4863: Proposed source/tests
+  - Line 4885: Authentic replay gates
+  - Line 4898: Remaining full-HF blockers
+  - Line 4908: Source: .agents/runs/model-execution-original-attention-slice-20261020/frozen/README.md
+  - Line 4914: Original attention projections/QK ordinary RMS — source-only proposal
+  - Line 4921: Shared engine contract
+  - Line 4932: Proposed source/tests
+  - Line 4954: Authentic replay gates
+  - Line 4967: Remaining full-HF blockers
+  - Line 4977: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/EXP\_BOUNDARY.md
+  - Line 4983: Remaining exact exponential boundary
+  - Line 4987: Actual qualified boundary
+  - Line 5005: Source schedule which remains distinct
+  - Line 5019: Shortest legitimate continuation
+  - Line 5055: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/README.md
+  - Line 5061: Original GDN coefficient preparation — source-only proposal
+  - Line 5076: Numerical and source contract
+  - Line 5103: Physical ownership
+  - Line 5118: Independent public reference
+  - Line 5141: ROOT commands and gates
+  - Line 5185: Unfinished
+  - Line 5196: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/TODO.md
+  - Line 5202: Working checklist — coefficient preparation only
+  - Line 5226: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/followup-v2/COMPOSITION.md
+  - Line 5232: Additive source composition only
+  - Line 5253: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/followup-v2/EXP\_BOUNDARY.md
+  - Line 5259: Remaining exact exponential boundary
+  - Line 5263: Actual qualified boundary
+  - Line 5281: Source schedule which remains distinct
+  - Line 5295: Shortest legitimate continuation
+  - Line 5331: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/followup-v2/README.md
+  - Line 5337: Original GDN coefficient preparation — source-only proposal
+  - Line 5353: Numerical and source contract
+  - Line 5380: Physical ownership
+  - Line 5395: Independent public reference
+  - Line 5418: ROOT commands and gates
+  - Line 5462: Unfinished
+  - Line 5473: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/followup-v2/TODO.md
+  - Line 5479: Working checklist — coefficient preparation only
+  - Line 5505: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/followup-v2/frozen/COMPOSITION.md
+  - Line 5511: Additive source composition only
+  - Line 5532: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/followup-v2/frozen/EXP\_BOUNDARY.md
+  - Line 5538: Remaining exact exponential boundary
+  - Line 5542: Actual qualified boundary
+  - Line 5560: Source schedule which remains distinct
+  - Line 5574: Shortest legitimate continuation
+  - Line 5610: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/followup-v2/frozen/README.md
+  - Line 5616: Original GDN coefficient preparation — source-only proposal
+  - Line 5632: Numerical and source contract
+  - Line 5659: Physical ownership
+  - Line 5674: Independent public reference
+  - Line 5697: ROOT commands and gates
+  - Line 5741: Unfinished
+  - Line 5752: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/followup-v2/frozen/TODO.md
+  - Line 5758: Working checklist — coefficient preparation only
+  - Line 5784: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/frozen/EXP\_BOUNDARY.md
+  - Line 5790: Remaining exact exponential boundary
+  - Line 5794: Actual qualified boundary
+  - Line 5812: Source schedule which remains distinct
+  - Line 5826: Shortest legitimate continuation
+  - Line 5862: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/frozen/README.md
+  - Line 5868: Original GDN coefficient preparation — source-only proposal
+  - Line 5883: Numerical and source contract
+  - Line 5910: Physical ownership
+  - Line 5925: Independent public reference
+  - Line 5948: ROOT commands and gates
+  - Line 5992: Unfinished
+
+### [.agents/docs/handoff-2026-10-20/RUN_NOTES_03.md](../handoff-2026-10-20/RUN_NOTES_03.md)
+
+- Bytes: 399091; mode: 0o644; SHA256: 701e99645bcafe8b3ea50ab177c2474c75407c702258f32e47595434c45e5aa6.
+- Full heading route:
+  - Line 1: Run Notes — volume 3
+  - Line 7: Source: .agents/runs/model-execution-original-gdn-coefficient-preparation-20261020/frozen/TODO.md
+  - Line 13: Working checklist — coefficient preparation only
+  - Line 37: Source: .agents/runs/model-execution-pinned-native-provider-feasibility-20261020/FEASIBILITY.md
+  - Line 43: Optional pinned CPU BLAS/VML operator provider — source-only assessment
+  - Line 49: Existing seams and required extension
+  - Line 58: Acquired ABI and actual reference evidence
+  - Line 71: Same Rust executable inside the pinned container
+  - Line 83: Physical memory, lifetime and cancellation gate
+  - Line 93: License and packaging boundary
+  - Line 99: Recommended next decision and bounded root-only gates
+  - Line 111: Source: .agents/runs/model-execution-pinned-native-provider-feasibility-20261020/TODO.md
+  - Line 117: Pinned native CPU operator feasibility
+  - Line 131: Source: .agents/runs/model-execution-pinned-native-provider-feasibility-20261020/initial-frozen/FEASIBILITY.md
+  - Line 137: Optional pinned CPU BLAS/VML operator provider — source-only assessment
+  - Line 143: Existing seams and required extension
+  - Line 152: Acquired ABI and actual reference evidence
+  - Line 165: Same Rust executable inside the pinned container
+  - Line 177: Physical memory, lifetime and cancellation gate
+  - Line 187: License and packaging boundary
+  - Line 193: Recommended next decision and bounded root-only gates
+  - Line 205: Source: .agents/runs/model-execution-pinned-native-provider-probe-20261020/ABI.md
+  - Line 211: Closed public ABI — source derivation
+  - Line 223: Three public entries
+  - Line 260: Captured matrix transport
+  - Line 285: ABI/provider provenance gate
+  - Line 296: Source: .agents/runs/model-execution-pinned-native-provider-probe-20261020/README.md
+  - Line 302: Root-only Rust public BLAS/VML diagnostic
+  - Line 363: ROOT ONLY, actual artifact/hash values required; new output directory only.
+  - Line 388: Source: .agents/runs/model-execution-pinned-native-provider-probe-20261020/TODO.md
+  - Line 394: Native public-ABI diagnostic preparation
+  - Line 410: Source: .agents/runs/model-execution-pinned-native-provider-probe-20261020/frozen-prepared/ABI.md
+  - Line 416: Closed public ABI — source derivation
+  - Line 428: Three public entries
+  - Line 465: Captured matrix transport
+  - Line 490: ABI/provider provenance gate
+  - Line 501: Source: .agents/runs/model-execution-pinned-native-provider-probe-20261020/frozen-prepared/README.md
+  - Line 507: Root-only Rust public BLAS/VML diagnostic
+  - Line 568: ROOT ONLY, actual artifact/hash values required; new output directory only.
+  - Line 587: Source: .agents/runs/model-execution-pinned-native-provider-probe-20261020/frozen-prepared/TODO.md
+  - Line 593: Native public-ABI diagnostic preparation
+  - Line 608: Source: .agents/runs/model-execution-pinned-native-provider-probe-20261020/frozen-reviewed/ABI.md
+  - Line 614: Closed public ABI — source derivation
+  - Line 626: Three public entries
+  - Line 663: Captured matrix transport
+  - Line 688: ABI/provider provenance gate
+  - Line 699: Source: .agents/runs/model-execution-pinned-native-provider-probe-20261020/frozen-reviewed/README.md
+  - Line 705: Root-only Rust public BLAS/VML diagnostic
+  - Line 766: ROOT ONLY, actual artifact/hash values required; new output directory only.
+  - Line 791: Source: .agents/runs/model-execution-pinned-native-provider-probe-20261020/frozen-reviewed/TODO.md
+  - Line 797: Native public-ABI diagnostic preparation
+  - Line 813: Source: .agents/runs/model-execution-qwen38-arithmetic-2026-10-18/TODO.md
+  - Line 819: Qwen original analytic numerical layer — current agent
+  - Line 854: Source: .agents/runs/model-execution-qwen38-bf16-2026-10-18/TODO.md
+  - Line 860: ME-P0 original Qwen BF16 source dtype diagnostics
+  - Line 883: Source: .agents/runs/model-execution-qwen38-closed-domains-audit-20261020/AUDIT.md
+  - Line 889: Original 27B: concrete closed-domain gaps
+  - Line 893: Authentic geometry
+  - Line 920: Actual blockers and minimum cuts
+  - Line 934: Ordered next work
+  - Line 946: Source: .agents/runs/model-execution-qwen38-gdn-next-cut-audit-20261020/NEXT.md
+  - Line 952: Smallest next27B GDN cuts
+  - Line 993: Source: .agents/runs/model-execution-qwen38-gdn-next-cut-audit-20261020/SOURCE-MAP.md
+  - Line 999: Original27B layer0 GDN: minimum remaining cuts
+  - Line 1005: What is actually available
+  - Line 1013: Exact layer0 geometry and source
+  - Line 1031: Reuse and missing seams
+  - Line 1044: Missing exact native-exp cut
+  - Line 1059: Initial chunk64 is a distinct operator
+  - Line 1081: Ordered next implementation recommendation
+  - Line 1091: Source: .agents/runs/model-execution-qwen38-gdn-next-cut-audit-20261020/TODO.md
+  - Line 1097: Original27B next GDN cut audit
+  - Line 1110: Source: .agents/runs/model-execution-qwen38-gdn-reference-20261020/FOLLOWUP\_V2.md
+  - Line 1116: Header-read bound followup
+  - Line 1156: Source: .agents/runs/model-execution-qwen38-gdn-reference-20261020/FOLLOWUP\_V3.md
+  - Line 1162: Singleton-stride raw-bit transport
+  - Line 1215: Source: .agents/runs/model-execution-qwen38-gdn-reference-20261020/README.md
+  - Line 1221: Original27B layer0 GDN public reference — prepared only
+  - Line 1259: Bounds and source ownership
+  - Line 1286: ROOT execution, after independent source review
+  - Line 1309: Source: .agents/runs/model-execution-qwen38-gdn-reference-20261020/TODO.md
+  - Line 1334: Source: .agents/runs/model-execution-qwen38-gdn-reference-20261020/frozen-prepared/README.md
+  - Line 1340: Original27B layer0 GDN public reference — prepared only
+  - Line 1378: Bounds and source ownership
+  - Line 1405: ROOT execution, after independent source review
+  - Line 1428: Source: .agents/runs/model-execution-qwen38-gdn-reference-20261020/frozen-prepared/TODO.md
+  - Line 1453: Source: .agents/runs/model-execution-qwen38-gdn-reference-20261020/frozen-v2/FOLLOWUP\_V2.md
+  - Line 1459: Header-read bound followup
+  - Line 1499: Source: .agents/runs/model-execution-qwen38-gdn-reference-20261020/frozen-v3/FOLLOWUP\_V3.md
+  - Line 1505: Singleton-stride raw-bit transport
+  - Line 1558: Source: .agents/runs/model-execution-qwen38-gdn-reference-20261020/internal-draft-1/README.md
+  - Line 1564: Original27B layer0 GDN public reference — prepared only
+  - Line 1602: Bounds and source ownership
+  - Line 1629: ROOT execution, after independent source review
+  - Line 1652: Source: .agents/runs/model-execution-qwen38-gdn-reference-20261020/internal-draft-1/TODO.md
+  - Line 1677: Source: .agents/runs/model-execution-qwen38-owned-window-20261020/README.md
+  - Line 1683: Root-only original27B source-window qualification
+  - Line 1763: Source: .agents/runs/model-execution-qwen38-owned-window-20261020/TODO.md
+  - Line 1769: Actual Qwen3.8 27B owned-window harness
+  - Line 1797: Source: .agents/runs/model-execution-qwen38-pure-wide-isolated-20261020/ISOLATED\_ROOT.md
+  - Line 1823: Original oracle and source exceptions
+  - Line 1850: Coordinator sequence
+  - Line 1919: Source: .agents/runs/model-execution-qwen38-pure-wide-isolated-20261020/ROOT.md
+  - Line 1925: ROOT-only genuine original27B pure-role gate
+  - Line 1929: Scope and provenance
+  - Line 1959: Execution, after review and timing hold
+  - Line 1984: Native proof boundary
+  - Line 2009: Source: .agents/runs/model-execution-qwen38-pure-wide-isolated-20261020/TODO.md
+  - Line 2015: Working checklist
+  - Line 2036: Source: .agents/runs/model-execution-qwen38-pure-wide-isolated-20261020/frozen-prepared/ISOLATED\_ROOT.md
+  - Line 2062: Original oracle and source exceptions
+  - Line 2089: Coordinator sequence
+  - Line 2158: Source: .agents/runs/model-execution-qwen38-pure-wide-isolated-20261020/frozen-prepared/ROOT.md
+  - Line 2164: ROOT-only genuine original27B pure-role gate
+  - Line 2168: Scope and provenance
+  - Line 2198: Execution, after review and timing hold
+  - Line 2223: Native proof boundary
+  - Line 2248: Source: .agents/runs/model-execution-qwen38-pure-wide-isolated-20261020/frozen-prepared/TODO.md
+  - Line 2254: Working checklist
+  - Line 2275: Source: .agents/runs/model-execution-qwen38-pure-wide-peer-review-batch-20261020/REVIEW.md
+  - Line 2281: Original27B pure-wide actual proof — independent review
+  - Line 2286: Actual receipt closure
+  - Line 2295: Numerical and physical scope
+  - Line 2302: Explicit limits
+  - Line 2312: Source: .agents/runs/model-execution-qwen38-pure-wide-peer-review-batch-20261020/TODO.md
+  - Line 2318: Pure-wide peer review
+  - Line 2332: Source: .agents/runs/model-execution-qwen38-reference-2026-10-18/TODO.md
+  - Line 2338: Qwen3.8 reference gate — current implementation
+  - Line 2363: Source: .agents/runs/model-execution-qwen38-statebridge-2026-10-18/TODO.md
+  - Line 2369: Qwen original source-bound StateRoot diagnostic — agent run
+  - Line 2398: Source: .agents/runs/model-execution-qwen38-typed-oracle-20261020/README.md
+  - Line 2404: Original27B bounded public-operator reference
+  - Line 2434: Root-only oracle
+  - Line 2480: ROOT ONLY, after source review and coordinating host memory/CPU work.
+  - Line 2502: Source: .agents/runs/model-execution-qwen38-typed-oracle-20261020/TODO.md
+  - Line 2508: Original27B bounded typed operator oracle
+  - Line 2528: Source: .agents/runs/model-execution-qwen38-typed-oracle-20261020/WINDOW-INTEGRATION.md
+  - Line 2534: Same-engine physical-window seam: design only
+  - Line 2539: Existing seams and exact blockers
+  - Line 2561: Small disjoint implementation slices after closed-op reference
+  - Line 2601: Concrete bounded lifetime for the selected fragment
+  - Line 2639: Source: .agents/runs/model-execution-qwen38-typed-oracle-20261020/frozen-prepared/README.md
+  - Line 2645: Original27B bounded public-operator reference
+  - Line 2675: Root-only oracle
+  - Line 2721: ROOT ONLY, after source review and coordinating host memory/CPU work.
+  - Line 2743: Source: .agents/runs/model-execution-qwen38-typed-oracle-20261020/frozen-prepared/TODO.md
+  - Line 2749: Original27B bounded typed operator oracle
+  - Line 2769: Source: .agents/runs/model-execution-qwen38-typed-oracle-20261020/frozen-prepared/WINDOW-INTEGRATION.md
+  - Line 2775: Same-engine physical-window seam: design only
+  - Line 2780: Existing seams and exact blockers
+  - Line 2802: Small disjoint implementation slices after closed-op reference
+  - Line 2842: Concrete bounded lifetime for the selected fragment
+  - Line 2880: Source: .agents/runs/model-execution-qwen38-window-roles-20261020/API.md
+  - Line 2886: Original window pure roles
+  - Line 2910: Payload admission
+  - Line 2928: ROOT gates
+  - Line 2944: Source: .agents/runs/model-execution-qwen38-window-roles-20261020/TODO.md
+  - Line 2950: Original27B window role continuation
+  - Line 2978: Source: .agents/runs/model-execution-qwen38-window-roles-20261020/qualification/ROOT.md
+  - Line 2984: ROOT-only genuine original27B pure-role gate
+  - Line 2988: Scope and provenance
+  - Line 3018: Execution, after review and timing hold
+  - Line 3043: Native proof boundary
+  - Line 3068: Source: .agents/runs/model-execution-qwen38-window-roles-20261020/qualification/frozen-prepared/ROOT.md
+  - Line 3074: ROOT-only genuine original27B pure-role gate
+  - Line 3078: Scope and provenance
+  - Line 3108: Execution, after review and timing hold
+  - Line 3133: Native proof boundary
+  - Line 3158: Source: .agents/runs/model-execution-qwen38-window-roles-20261020/qualification/metadata-v2/ROOT.md
+  - Line 3164: Additive native source metadata binding
+  - Line 3193: Source: .agents/runs/model-execution-qwen38-window-roles-20261020/qualification/metadata-v2/TODO.md
+  - Line 3199: Native metadata followup
+  - Line 3214: Source: .agents/runs/model-execution-qwen38-window-roles-20261020/qualification/metadata-v2/frozen/metadata-v2/ROOT.md
+  - Line 3220: Additive native source metadata binding
+  - Line 3249: Source: .agents/runs/model-execution-root-bf16-composition-20261020/TODO.md
+  - Line 3255: ROOT original BF16 composition
+  - Line 3266: Actual ROOT continuation 2026-10-20 04:28 UTC
+  - Line 3276: Source: .agents/runs/model-execution-slow-gdn-observation-2026-10-20/OPERATOR\_GAPS.md
+  - Line 3282: Actual pinned slow-GDN operator evidence
+  - Line 3288: Executed evidence
+  - Line 3322: Observed operator contract
+  - Line 3341: Concrete differences from existing Rust
+  - Line 3357: Minimal continuation through the existing engine
+  - Line 3380: Source: .agents/runs/model-execution-slow-gdn-observation-2026-10-20/TODO.md
+  - Line 3386: Pinned slow-GDN observation
+  - Line 3412: Source: .agents/runs/model-execution-tied-head/TODO.md
+  - Line 3418: Original Qwen tied head
+  - Line 3424: Completed
+  - Line 3433: Pending
+  - Line 3441: Source: .agents/runs/model-execution-torch-gdn-reductions-2026-10-20/TODO.md
+  - Line 3447: Pinned Torch GDN reductions
+  - Line 3471: Source: .agents/runs/model-execution-torch-gdn-reductions-2026-10-20/TOPOLOGY.md
+  - Line 3477: Pinned FP32 CPU reduction topology
+  - Line 3481: Executed actual-source replay
+  - Line 3496: Source-pinned derivation
+  - Line 3518: Independent candidate comparison, not source replacement
+  - Line 3530: Authorized isolated implementation
+  - Line 3556: Source: .agents/runs/model-execution-vllm-gemm-operands-20261020/README.md
+  - Line 3562: Authentic original-HF CUDA GEMM operand extract
+  - Line 3574: Authority and preserved gates
+  - Line 3604: Actual hook ordering
+  - Line 3622: Compact values and learned row layout
+  - Line 3643: ROOT-only commands
+  - Line 3674: Source: .agents/runs/model-execution-vllm-gemm-operands-20261020/TODO.md
+  - Line 3680: Authentic CUDA GEMM operand capsule
+  - Line 3708: Source: .agents/runs/model-execution-vllm-gemm-operands-20261020/frozen-prepared/README.md
+  - Line 3714: Authentic original-HF CUDA GEMM operand extract
+  - Line 3726: Authority and preserved gates
+  - Line 3756: Actual hook ordering
+  - Line 3774: Compact values and learned row layout
+  - Line 3795: ROOT-only commands
+  - Line 3826: Source: .agents/runs/model-execution-vllm-gemm-operands-20261020/frozen-prepared/TODO.md
+  - Line 3832: Authentic CUDA GEMM operand capsule
+  - Line 3860: Source: .agents/runs/numerical-divergence-planning-review-20261020/REVIEW.md
+  - Line 3866: Numerical divergence: planning-only review
+  - Line 3891: Exact remaining original-HF CPU cuts
+  - Line 3932: Shortest ordered experiments, when execution resumes
+  - Line 3950: ROOT draft review
+  - Line 3977: Source: .agents/runs/numerical-divergence-planning-review-20261020/TODO.md
+  - Line 3996: Source: .agents/runs/numerics-and-context-2b-alpha-replay-20261020/CLEANUP-V2.md
+  - Line 4002: Additive owned-child cleanup v2 — ROOT ONLY
+  - Line 4027: Source: .agents/runs/numerics-and-context-2b-alpha-replay-20261020/README.md
+  - Line 4033: Original2B alpha projection public replay — ROOT EXECUTES
+  - Line 4040: Earliest actual input closure
+  - Line 4066: Genuine public computation and observation
+  - Line 4103: Bounds and ROOT procedure
+  - Line 4159: Source: .agents/runs/numerics-and-context-2b-alpha-replay-20261020/TODO.md
+  - Line 4165: Original2B alpha first-gap public replay
+  - Line 4186: Source: .agents/runs/numerics-and-context-2b-alpha-replay-20261020/frozen-cleanup-v2/CLEANUP-V2.md
+  - Line 4192: Additive owned-child cleanup v2 — ROOT ONLY
+  - Line 4217: Source: .agents/runs/numerics-and-context-2b-alpha-replay-20261020/frozen-prepared/README.md
+  - Line 4223: Original2B alpha projection public replay — ROOT EXECUTES
+  - Line 4230: Earliest actual input closure
+  - Line 4256: Genuine public computation and observation
+  - Line 4293: Bounds and ROOT procedure
+  - Line 4349: Source: .agents/runs/numerics-and-context-2b-alpha-replay-20261020/frozen-prepared/TODO.md
+  - Line 4355: Original2B alpha first-gap public replay
+  - Line 4376: Source: .agents/runs/numerics-and-context-2b-bulk-causality-20261020/README.md
+  - Line 4382: Original 2B unchanged bulk64/AR1 causal observer — ROOT EXECUTES
+  - Line 4388: Scope
+  - Line 4405: Actual operands/results
+  - Line 4449: Mandatory transparency and bounds
+  - Line 4474: Root commands
+  - Line 4493: Only ROOT under existing bounded supervisor; fresh output and binary hash.
+  - Line 4507: Preserved failure and additive transport follow-up
+  - Line 4522: Source: .agents/runs/numerics-and-context-2b-bulk-causality-20261020/TODO.md
+  - Line 4528: numerics-and-context — original2B bulk causal observer
+  - Line 4554: Source: .agents/runs/numerics-and-context-2b-bulk-causality-20261020/frozen-before-repack-transport/README.md
+  - Line 4560: Original 2B unchanged bulk64/AR1 causal observer — ROOT EXECUTES
+  - Line 4566: Scope
+  - Line 4583: Actual operands/results
+  - Line 4611: Mandatory transparency and bounds
+  - Line 4636: Root commands
+  - Line 4654: Only ROOT under existing bounded supervisor; fresh output and binary hash.
+  - Line 4670: Source: .agents/runs/numerics-and-context-2b-bulk-causality-20261020/frozen-before-repack-transport/TODO.md
+  - Line 4676: numerics-and-context — original2B bulk causal observer
+  - Line 4694: Source: .agents/runs/numerics-and-context-2b-bulk-causality-20261020/frozen-prepared/README.md
+  - Line 4700: Original 2B unchanged bulk64/AR1 causal observer — ROOT EXECUTES
+  - Line 4706: Scope
+  - Line 4723: Actual operands/results
+  - Line 4751: Mandatory transparency and bounds
+  - Line 4776: Root commands
+  - Line 4794: Only ROOT under existing bounded supervisor; fresh output and binary hash.
+  - Line 4810: Source: .agents/runs/numerics-and-context-2b-bulk-causality-20261020/frozen-prepared/TODO.md
+  - Line 4816: numerics-and-context — original2B bulk causal observer
+  - Line 4834: Source: .agents/runs/numerics-and-context-2b-bulk-causality-20261020/frozen-repack-transport-followup/README.md
+  - Line 4840: Original 2B unchanged bulk64/AR1 causal observer — ROOT EXECUTES
+  - Line 4846: Scope
+  - Line 4863: Actual operands/results
+  - Line 4907: Mandatory transparency and bounds
+  - Line 4932: Root commands
+  - Line 4951: Only ROOT under existing bounded supervisor; fresh output and binary hash.
+  - Line 4965: Preserved failure and additive transport follow-up
+  - Line 4980: Source: .agents/runs/numerics-and-context-2b-bulk-causality-20261020/frozen-repack-transport-followup/TODO.md
+  - Line 4986: numerics-and-context — original2B bulk causal observer
+  - Line 5012: Source: .agents/runs/numerics-and-context-av-dispatch-20261020/README.md
+  - Line 5018: Transparent AV public-entry observer — ROOT EXECUTES
+  - Line 5024: Boundary
+  - Line 5050: Source route hypothesis, validated only after actual trace
+  - Line 5067: Root commands
+  - Line 5119: Remaining
+  - Line 5129: Source: .agents/runs/numerics-and-context-av-dispatch-20261020/TODO.md
+  - Line 5135: numerics-and-context — AV public-entry route
+  - Line 5151: Source: .agents/runs/numerics-and-context-av-dispatch-20261020/frozen-prepared/README.md
+  - Line 5157: Transparent AV public-entry observer — ROOT EXECUTES
+  - Line 5163: Boundary
+  - Line 5189: Source route hypothesis, validated only after actual trace
+  - Line 5206: Root commands
+  - Line 5258: Remaining
+  - Line 5268: Source: .agents/runs/numerics-and-context-av-dispatch-20261020/frozen-prepared/TODO.md
+  - Line 5274: numerics-and-context — AV public-entry route
+  - Line 5290: Source: .agents/runs/numerics-and-context-av-replay-20261020/README.md
+  - Line 5296: Prepared public AV replay — ROOT EXECUTES
+  - Line 5310: Actual public calls
+  - Line 5332: Root commands
+  - Line 5382: Remaining
+  - Line 5391: Source: .agents/runs/numerics-and-context-av-replay-20261020/TODO.md
+  - Line 5397: Public AV diagnostic preparation
+  - Line 5418: Source: .agents/runs/numerics-and-context-av-replay-20261020/frozen-cleanup-followup/README.md
+  - Line 5424: Prepared public AV replay — ROOT EXECUTES
+  - Line 5438: Actual public calls
+  - Line 5460: Root commands
+  - Line 5510: Remaining
+  - Line 5519: Source: .agents/runs/numerics-and-context-av-replay-20261020/frozen-cleanup-followup/TODO.md
+  - Line 5525: Public AV diagnostic preparation
+  - Line 5546: Source: .agents/runs/numerics-and-context-av-replay-20261020/frozen-prepared/README.md
+  - Line 5552: Prepared public AV replay — ROOT EXECUTES
+  - Line 5566: Actual public calls
+  - Line 5588: Root commands
+  - Line 5631: Remaining
+  - Line 5640: Source: .agents/runs/numerics-and-context-av-replay-20261020/frozen-prepared/TODO.md
+  - Line 5646: Public AV diagnostic preparation
+  - Line 5664: Source: .agents/runs/numerics-and-context-bulk-causality-20261020/AUDIT.md
+  - Line 5670: Fresh0.8B1024 bulk64 causality audit
+  - Line 5680: Current actual evidence
+  - Line 5694: Source-derived candidates, not runtime attribution
+  - Line 5723: Minimal actual continuation
+  - Line 5758: New files and bounds
+  - Line 5780: Root-only preparation/execution
+  - Line 5789: ROOT ONLY; existing root supervisor enforces finite process/resource/log caps.
+  - Line 5798: ROOT review first, then run one original first64-row block only.
+  - Line 5812: Source: .agents/runs/numerics-and-context-bulk-causality-20261020/SPAN\_FIX.md
+  - Line 5818: First64 observation span refusal: narrow follow-up
+  - Line 5868: Source: .agents/runs/numerics-and-context-bulk-causality-20261020/TODO.md
+  - Line 5874: Working checklist
+
+### [.agents/docs/handoff-2026-10-20/RUN_NOTES_04.md](../handoff-2026-10-20/RUN_NOTES_04.md)
+
+- Bytes: 427433; mode: 0o644; SHA256: 794cae390ba525297a77c36352a7e8fbc1a41ac612a6349c55bdba22edfc1b95.
+- Full heading route:
+  - Line 1: Run Notes — volume 4
+  - Line 7: Source: .agents/runs/numerics-and-context-bulk-causality-20261020/frozen-prepared/AUDIT.md
+  - Line 13: Fresh0.8B1024 bulk64 causality audit
+  - Line 20: Current actual evidence
+  - Line 34: Source-derived candidates, not runtime attribution
+  - Line 63: Minimal actual continuation
+  - Line 98: New files and bounds
+  - Line 120: Root-only preparation/execution
+  - Line 129: ROOT ONLY; existing root supervisor enforces finite process/resource/log caps.
+  - Line 138: ROOT review first, then run one original first64-row block only.
+  - Line 152: Source: .agents/runs/numerics-and-context-bulk-causality-20261020/frozen-prepared/TODO.md
+  - Line 158: Working checklist
+  - Line 178: Source: .agents/runs/numerics-and-context-bulk-causality-20261020/frozen-span-coverage/AUDIT.md
+  - Line 184: Fresh0.8B1024 bulk64 causality audit
+  - Line 194: Current actual evidence
+  - Line 208: Source-derived candidates, not runtime attribution
+  - Line 237: Minimal actual continuation
+  - Line 272: New files and bounds
+  - Line 294: Root-only preparation/execution
+  - Line 303: ROOT ONLY; existing root supervisor enforces finite process/resource/log caps.
+  - Line 312: ROOT review first, then run one original first64-row block only.
+  - Line 326: Source: .agents/runs/numerics-and-context-bulk-causality-20261020/frozen-span-coverage/SPAN\_FIX.md
+  - Line 332: First64 observation span refusal: narrow follow-up
+  - Line 382: Source: .agents/runs/numerics-and-context-bulk-causality-20261020/frozen-span-coverage/TODO.md
+  - Line 388: Working checklist
+  - Line 412: Source: .agents/runs/numerics-and-context-bulk-f32-integration-20261020/INTEGRATION.md
+  - Line 418: GGUF temporal bulk integration — source-only proposal
+  - Line 427: Conclusion
+  - Line 437: Actual seams and missing contracts
+  - Line 459: Exact first-gap bindings
+  - Line 479: Smallest implementation cuts, in order
+  - Line 536: Admission and ownership seals before fullmodel use
+  - Line 568: Proposed disjoint ownership
+  - Line 582: Source: .agents/runs/numerics-and-context-bulk-f32-integration-20261020/ROOT-GATES.md
+  - Line 588: ROOT-only default-bulk qualification gates
+  - Line 670: Source: .agents/runs/numerics-and-context-bulk-f32-integration-20261020/TODO.md
+  - Line 676: Working scope
+  - Line 692: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/README.md
+  - Line 698: Closed Haswell bulk-F32 primitive — source preparation only
+  - Line 709: Exact source arithmetic
+  - Line 728: API and resource boundary
+  - Line 753: Genuine ROOT replay protocol
+  - Line 808: Gates that remain CLOSED
+  - Line 826: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/TODO.md
+  - Line 832: Closed bulk-F32 primitive preparation
+  - Line 858: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/followup-attribution/README.md
+  - Line 872: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/frozen/README.md
+  - Line 878: Closed Haswell bulk-F32 primitive — source preparation only
+  - Line 889: Exact source arithmetic
+  - Line 908: API and resource boundary
+  - Line 933: Genuine ROOT replay protocol
+  - Line 988: Gates that remain CLOSED
+  - Line 1006: Source: .agents/runs/numerics-and-context-bulk-f32-primitive-20261020/frozen/TODO.md
+  - Line 1012: Closed bulk-F32 primitive preparation
+  - Line 1038: Source: .agents/runs/numerics-and-context-bulk-f32-typed-peer-review-batch-20261020/REVIEW.md
+  - Line 1044: Closed bulk F32 typed slice — independent source review
+  - Line 1063: Contract and arithmetic
+  - Line 1083: Ownership and resource boundary
+  - Line 1103: Genuine replay and lifecycle
+  - Line 1129: Source: .agents/runs/numerics-and-context-bulk-f32-typed-peer-review-batch-20261020/TODO.md
+  - Line 1135: Closed bulk F32 typed peer review
+  - Line 1151: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/README.md
+  - Line 1157: Closed default-bulk F32 typed slice — source proposal only
+  - Line 1180: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/ROOT.md
+  - Line 1186: ROOT-only execution sequence
+  - Line 1201: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/TODO.md
+  - Line 1207: Closed bulk F32 typed slice
+  - Line 1224: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/followup-signal-v2/README.md
+  - Line 1230: Additive execution-only two-signal guard
+  - Line 1240: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/README.md
+  - Line 1246: Closed default-bulk F32 typed slice — source proposal only
+  - Line 1269: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/ROOT.md
+  - Line 1275: ROOT-only execution sequence
+  - Line 1290: Source: .agents/runs/numerics-and-context-bulk-f32-typed-slice-20261020/frozen/TODO.md
+  - Line 1296: Closed bulk F32 typed slice
+  - Line 1313: Source: .agents/runs/numerics-and-context-compiled-f32-routes-20261020/README.md
+  - Line 1319: Compiled F32 route observation — ROOT execution only
+  - Line 1328: Purpose and limits
+  - Line 1343: Pinned source and compiled entries
+  - Line 1378: Ownership and bounds
+  - Line 1404: ROOT commands after independent source review
+  - Line 1440: Source: .agents/runs/numerics-and-context-compiled-f32-routes-20261020/TODO.md
+  - Line 1446: Compiled F32 route source preparation
+  - Line 1451: Prepared
+  - Line 1462: ROOT pending
+  - Line 1476: Source: .agents/runs/numerics-and-context-compiled-f32-routes-20261020/frozen-prepared/README.md
+  - Line 1482: Compiled F32 route observation — ROOT execution only
+  - Line 1491: Purpose and limits
+  - Line 1506: Pinned source and compiled entries
+  - Line 1541: Ownership and bounds
+  - Line 1567: ROOT commands after independent source review
+  - Line 1603: Source: .agents/runs/numerics-and-context-compiled-f32-routes-20261020/frozen-prepared/TODO.md
+  - Line 1609: Compiled F32 route source preparation
+  - Line 1614: Prepared
+  - Line 1625: ROOT pending
+  - Line 1639: Source: .agents/runs/numerics-and-context-cpu-mapped-placement-control-20261020/README.md
+  - Line 1735: Source: .agents/runs/numerics-and-context-cpu-mapped-placement-control-20261020/TODO.md
+  - Line 1759: Source: .agents/runs/numerics-and-context-cpu-mapped-placement-control-20261020/frozen-prepared/README.md
+  - Line 1855: Source: .agents/runs/numerics-and-context-cpu-mapped-placement-control-20261020/frozen-prepared/TODO.md
+  - Line 1879: Source: .agents/runs/numerics-and-context-default-bulk-isolated-20261020/CHECKPOINT.md
+  - Line 1885: Unfinished relocation — not runnable or qualified
+  - Line 1891: Exact owning inputs
+  - Line 1913: Required narrow adapters
+  - Line 1943: Prepared versus remaining
+  - Line 1953: Source: .agents/runs/numerics-and-context-default-bulk-isolated-20261020/TODO.md
+  - Line 1959: Isolated DEFAULT bulk replay — paused source checkpoint
+  - Line 1989: Source: .agents/runs/numerics-and-context-long-context-audit-20261020/AUDIT.md
+  - Line 1995: Surviving evidence and next diagnostic
+  - Line 2014: Source: .agents/runs/numerics-and-context-long-context-audit-20261020/README.md
+  - Line 2020: Root-only fresh raw-prefix diagnostic
+  - Line 2073: Source: .agents/runs/numerics-and-context-long-context-audit-20261020/REVIEW-20261020.md
+  - Line 2079: Source review after preparation freeze
+  - Line 2083: Typed/raw shared engine
+  - Line 2087: Closed softplus
+  - Line 2093: Fresh long-context diagnostic
+  - Line 2110: Source: .agents/runs/numerics-and-context-long-context-audit-20261020/TODO.md
+  - Line 2116: Fresh long-context source diagnosis
+  - Line 2139: Source: .agents/runs/numerics-and-context-long-context-audit-20261020/frozen-prepared/AUDIT.md
+  - Line 2145: Surviving evidence and next diagnostic
+  - Line 2164: Source: .agents/runs/numerics-and-context-long-context-audit-20261020/frozen-prepared/README.md
+  - Line 2170: Root-only fresh raw-prefix diagnostic
+  - Line 2223: Source: .agents/runs/numerics-and-context-long-context-audit-20261020/frozen-prepared/TODO.md
+  - Line 2229: Fresh long-context source diagnosis
+  - Line 2252: Source: .agents/runs/numerics-and-context-root-20261020/TODO.md
+  - Line 2258: Numerics and context root continuation
+  - Line 2284: Fresh actual continuation through4K
+  - Line 2309: Actual public AV and fresh8K continuation21:06UTC
+  - Line 2317: Actual2B causal continuation21:39UTC
+  - Line 2324: Actual2B8192 and alpha results21:51UTC
+  - Line 2330: BOTH fresh8192 comparisons PASS22:04UTC
+  - Line 2338: Source: .agents/runs/numerics-and-context-root-default-20261020/TODO.md
+  - Line 2344: ROOT isolated DEFAULT bulk continuation
+  - Line 2358: Source: .agents/runs/numerics-and-context-scheduler-placement-audit-20261020/AUDIT.md
+  - Line 2364: Pinned public CPU-placement feasibility
+  - Line 2377: Stock controls that do not guarantee this route
+  - Line 2411: Feasible DISTINCT public-API placement control
+  - Line 2472: Source: .agents/runs/numerics-and-context-scheduler-placement-audit-20261020/TODO.md
+  - Line 2478: Scheduler placement source audit
+  - Line 2489: Source: .agents/runs/numerics-and-context-state-codec-20261020/README.md
+  - Line 2495: Actual native/Rust post-state codec export
+  - Line 2517: Source-derived wire closure
+  - Line 2557: Boundaries
+  - Line 2577: Root-only commands
+  - Line 2588: ROOT build coordinator only, offline; alternatively use existing rustc artifacts.
+  - Line 2590: ROOT only: source-free fixtures first.
+  - Line 2607: Source: .agents/runs/numerics-and-context-state-codec-20261020/TODO.md
+  - Line 2613: Working checklist
+  - Line 2632: Source: .agents/runs/numerics-and-context-state-codec-20261020/frozen-prepared/README.md
+  - Line 2638: Actual native/Rust post-state codec export
+  - Line 2660: Source-derived wire closure
+  - Line 2700: Boundaries
+  - Line 2720: Root-only commands
+  - Line 2731: ROOT build coordinator only, offline; alternatively use existing rustc artifacts.
+  - Line 2733: ROOT only: source-free fixtures first.
+  - Line 2750: Source: .agents/runs/numerics-and-context-state-codec-20261020/frozen-prepared/TODO.md
+  - Line 2756: Working checklist
+  - Line 2775: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/README.md
+  - Line 2781: Public native CPU use\_ref bulk control
+  - Line 2790: Public binding
+  - Line 2820: Numerical boundaries
+  - Line 2838: Ownership and bounds
+  - Line 2854: ROOT execution, after quiet measurements
+  - Line 2864: ROOT only: prepared source-free parser fixtures first.
+  - Line 2867: ROOT authenticates the fresh compiled binary and chooses eight available CPUs.
+  - Line 2892: Supply the already accepted original Rust8192 capture directory; do not rebuild/relabel it.
+  - Line 2910: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/SOURCE\_AUDIT\_V3.md
+  - Line 2916: Additive V3 backend identity diagnostic — ROOT only
+  - Line 2923: Actual refusal and source inference
+  - Line 2945: V3 observation only
+  - Line 2965: ROOT actual compile and invocation binding
+  - Line 2990: Future policy feasibility only — NOT implemented
+  - Line 3030: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/SOURCE\_AUDIT\_V4.md
+  - Line 3036: V4: exact BLAS lifecycle; CPU-only \`use\_ref\` computation
+  - Line 3043: Closed policy
+  - Line 3053: Source and actual selected compiled routes
+  - Line 3071: ROOT build / run / validation
+  - Line 3080: Bounds
+  - Line 3088: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/SOURCE\_AUDIT\_V5.md
+  - Line 3094: V5: observe the SAME V4 free refusal
+  - Line 3100: Actual V4 evidence
+  - Line 3107: Construction/free closure audit, pinned d812350
+  - Line 3120: Prepared ROOT primitive
+  - Line 3131: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/SOURCE\_AUDIT\_V6.md
+  - Line 3137: V6: restore original legal NULL-free forwarding only
+  - Line 3146: ROOT follow-through
+  - Line 3157: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/SOURCE\_AUDIT\_V7.md
+  - Line 3163: V7: metadata at the SAME nonCPU refusal
+  - Line 3202: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/TODO.md
+  - Line 3208: Public CPU use\_ref fresh8K bulk control
+  - Line 3238: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/TODO\_V4.md
+  - Line 3244: baseline\_review V4 working checklist
+  - Line 3263: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/frozen-prepared/README.md
+  - Line 3269: Public native CPU use\_ref bulk control
+  - Line 3278: Public binding
+  - Line 3308: Numerical boundaries
+  - Line 3326: Ownership and bounds
+  - Line 3342: ROOT execution, after quiet measurements
+  - Line 3352: ROOT only: prepared source-free parser fixtures first.
+  - Line 3355: ROOT authenticates the fresh compiled binary and chooses eight available CPUs.
+  - Line 3380: Supply the already accepted original Rust8192 capture directory; do not rebuild/relabel it.
+  - Line 3398: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/frozen-prepared/TODO.md
+  - Line 3404: Public CPU use\_ref fresh8K bulk control
+  - Line 3434: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/frozen-v3/SOURCE\_AUDIT\_V3.md
+  - Line 3440: Additive V3 backend identity diagnostic — ROOT only
+  - Line 3447: Actual refusal and source inference
+  - Line 3469: V3 observation only
+  - Line 3489: ROOT actual compile and invocation binding
+  - Line 3514: Future policy feasibility only — NOT implemented
+  - Line 3554: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/frozen-v4/SOURCE\_AUDIT\_V4.md
+  - Line 3560: V4: exact BLAS lifecycle; CPU-only \`use\_ref\` computation
+  - Line 3567: Closed policy
+  - Line 3577: Source and actual selected compiled routes
+  - Line 3595: ROOT build / run / validation
+  - Line 3604: Bounds
+  - Line 3612: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/frozen-v4/TODO\_V4.md
+  - Line 3618: baseline\_review V4 working checklist
+  - Line 3637: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/frozen-v5/SOURCE\_AUDIT\_V5.md
+  - Line 3643: V5: observe the SAME V4 free refusal
+  - Line 3649: Actual V4 evidence
+  - Line 3656: Construction/free closure audit, pinned d812350
+  - Line 3669: Prepared ROOT primitive
+  - Line 3680: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/frozen-v6/SOURCE\_AUDIT\_V6.md
+  - Line 3686: V6: restore original legal NULL-free forwarding only
+  - Line 3695: ROOT follow-through
+  - Line 3706: Source: .agents/runs/numerics-and-context-use-ref-bulk-control-20261020/frozen-v7/SOURCE\_AUDIT\_V7.md
+  - Line 3712: V7: metadata at the SAME nonCPU refusal
+  - Line 3751: Source: .agents/runs/p12-full-fusion-batch-design/TODO.md
+  - Line 3757: P12 batch lowering
+  - Line 3763: Uncommitted
+  - Line 3770: Tests
+  - Line 3783: Source: .agents/runs/p12-full-fusion-qualification/TODO.md
+  - Line 3789: P12 full-model fused qualification
+  - Line 3817: Source: .agents/runs/p12-full-fusion-root-2026-10-19/TODO.md
+  - Line 3823: P12 batch-native resident forward
+  - Line 3898: Source: .agents/runs/p12-q8-fusion-2026-10-19/TODO.md
+  - Line 3904: P12-B2 source GGUF quantized batch projection
+  - Line 3928: Source: .agents/runs/p12-resident-cohort-2026-10-19/TODO.md
+  - Line 3934: P12-A1 resident GPU state cohort — current run
+  - Line 3962: Source: .agents/runs/qwen-original-bind-2026-10-18/TODO.md
+  - Line 3968: Original Qwen source binding — run checklist
+  - Line 3997: Source: .agents/runs/retired-side-worktrees-2026-10-18/zerogravity-filters-work/.agents/runs/model-acquisition-filters/TODO.md
+  - Line 4003: TODO — additive filters and exclusions cold design
+  - Line 4010: Uncommitted
+  - Line 4017: Primary requirements and chosen grammar
+  - Line 4029: Ordered selection and closure
+  - Line 4041: Bounded matcher and admission
+  - Line 4049: Additive public and CLI seam
+  - Line 4069: Meaningful future qualification (all UNRUN)
+  - Line 4080: Remaining choices before implementation
+  - Line 4085: Approved C3 source grant
+  - Line 4092: Paused interruption handoff — 2026-10-17
+  - Line 4112: Source: .agents/runs/serving-and-speculation-activation-before-after-20261020/README.md
+  - Line 4118: Root-only same-engine before/after observations
+  - Line 4150: ROOT ONLY; values below must come from actual fresh build/NVIDIA receipts.
+  - Line 4168: Source: .agents/runs/serving-and-speculation-activation-before-after-20261020/TODO.md
+  - Line 4174: Activation preparation before/after harness
+  - Line 4196: Source: .agents/runs/serving-and-speculation-activation-before-after-20261020/frozen-gauge-proxy-followup/README.md
+  - Line 4202: Root-only same-engine before/after observations
+  - Line 4234: ROOT ONLY; values below must come from actual fresh build/NVIDIA receipts.
+  - Line 4252: Source: .agents/runs/serving-and-speculation-activation-before-after-20261020/frozen-gauge-proxy-followup/TODO.md
+  - Line 4258: Activation preparation before/after harness
+  - Line 4280: Source: .agents/runs/serving-and-speculation-activation-before-after-20261020/frozen-prepared/README.md
+  - Line 4286: Root-only same-engine before/after observations
+  - Line 4316: ROOT ONLY; values below must come from actual fresh build/NVIDIA receipts.
+  - Line 4334: Source: .agents/runs/serving-and-speculation-activation-before-after-20261020/frozen-prepared/TODO.md
+  - Line 4340: Activation preparation before/after harness
+  - Line 4360: Source: .agents/runs/serving-and-speculation-cuda-capture-exclusion-spine-20261020/CALLERS.md
+  - Line 4366: Required integration map — source, not participation proof
+  - Line 4412: Source: .agents/runs/serving-and-speculation-cuda-capture-exclusion-spine-20261020/DESIGN.md
+  - Line 4418: Complete per-card capture exclusion: minimal honest boundary
+  - Line 4423: Finding
+  - Line 4440: Required layers
+  - Line 4474: Owned-state protocol
+  - Line 4502: Why the narrow three-file edit cannot enable production
+  - Line 4521: Smallest next implementation slice
+  - Line 4540: Source: .agents/runs/serving-and-speculation-cuda-capture-exclusion-spine-20261020/README.md
+  - Line 4546: Pure physical-queue capture protocol proposal
+  - Line 4610: Source: .agents/runs/serving-and-speculation-cuda-capture-exclusion-spine-20261020/TODO.md
+  - Line 4616: Owned capture-exclusion preparation
+  - Line 4640: Source: .agents/runs/serving-and-speculation-cuda-capture-exclusion-spine-20261020/followup-v2/README\_V2.md
+  - Line 4646: Additive host-protocol drain liveness repair
+  - Line 4692: Source: .agents/runs/serving-and-speculation-cuda-capture-exclusion-spine-20261020/followup-v2/TODO\_V2.md
+  - Line 4698: Owned additive drain repair
+  - Line 4712: Source: .agents/runs/serving-and-speculation-cuda-capture-exclusion-spine-20261020/followup-v2/frozen-v2/README\_V2.md
+  - Line 4718: Additive host-protocol drain liveness repair
+  - Line 4764: Source: .agents/runs/serving-and-speculation-cuda-capture-exclusion-spine-20261020/followup-v2/frozen-v2/TODO\_V2.md
+  - Line 4770: Owned additive drain repair
+  - Line 4784: Source: .agents/runs/serving-and-speculation-cuda-capture-exclusion-spine-20261020/frozen/CALLERS.md
+  - Line 4790: Required integration map — source, not participation proof
+  - Line 4836: Source: .agents/runs/serving-and-speculation-cuda-capture-exclusion-spine-20261020/frozen/DESIGN.md
+  - Line 4842: Complete per-card capture exclusion: minimal honest boundary
+  - Line 4847: Finding
+  - Line 4864: Required layers
+  - Line 4898: Owned-state protocol
+  - Line 4926: Why the narrow three-file edit cannot enable production
+  - Line 4945: Smallest next implementation slice
+  - Line 4964: Source: .agents/runs/serving-and-speculation-cuda-capture-exclusion-spine-20261020/frozen/README.md
+  - Line 4970: Pure physical-queue capture protocol proposal
+  - Line 5034: Source: .agents/runs/serving-and-speculation-cuda-capture-exclusion-spine-20261020/frozen/TODO.md
+  - Line 5040: Owned capture-exclusion preparation
+  - Line 5064: Source: .agents/runs/serving-and-speculation-cuda-command-admission-spine-20261020/CALLERS.md
+  - Line 5070: Remaining complete-participation map
+  - Line 5111: Source: .agents/runs/serving-and-speculation-cuda-command-admission-spine-20261020/DESIGN.md
+  - Line 5117: Minimal pre-enqueue transport contract
+  - Line 5122: Exact existing owner
+  - Line 5137: Host lifetime
+  - Line 5158: Constructor bootstrap and reentry
+  - Line 5184: Required retirement slice before closing admission
+  - Line 5207: Root-only checks, after isolated registration is approved
+  - Line 5228: Source: .agents/runs/serving-and-speculation-cuda-command-admission-spine-20261020/README.md
+  - Line 5234: First optional common transport hook — SOURCE ONLY
+  - Line 5305: Source: .agents/runs/serving-and-speculation-cuda-command-admission-spine-20261020/TODO.md
+  - Line 5311: Working checklist
+  - Line 5343: Source: .agents/runs/serving-and-speculation-cuda-command-admission-spine-20261020/followup-v2/README\_V2.md
+  - Line 5349: Additive CallError classification repair — SOURCE ONLY
+  - Line 5363: Source: .agents/runs/serving-and-speculation-cuda-command-admission-spine-20261020/followup-v2/frozen-v2/README\_V2.md
+  - Line 5369: Additive CallError classification repair — SOURCE ONLY
+  - Line 5383: Source: .agents/runs/serving-and-speculation-cuda-command-admission-spine-20261020/frozen/CALLERS.md
+  - Line 5389: Remaining complete-participation map
+  - Line 5430: Source: .agents/runs/serving-and-speculation-cuda-command-admission-spine-20261020/frozen/DESIGN.md
+  - Line 5436: Minimal pre-enqueue transport contract
+  - Line 5441: Exact existing owner
+  - Line 5456: Host lifetime
+  - Line 5477: Constructor bootstrap and reentry
+  - Line 5503: Required retirement slice before closing admission
+  - Line 5526: Root-only checks, after isolated registration is approved
+  - Line 5547: Source: .agents/runs/serving-and-speculation-cuda-command-admission-spine-20261020/frozen/README.md
+  - Line 5553: First optional common transport hook — SOURCE ONLY
+  - Line 5624: Source: .agents/runs/serving-and-speculation-cuda-command-admission-spine-20261020/frozen/TODO.md
+  - Line 5630: Working checklist
+  - Line 5662: Source: .agents/runs/serving-and-speculation-cuda-command-host-harness-20261020/README.md
+  - Line 5668: Exact14 optional-command host harness
+  - Line 5706: Source: .agents/runs/serving-and-speculation-cuda-command-host-harness-20261020/TODO.md
+  - Line 5712: Working checklist
+  - Line 5725: Source: .agents/runs/serving-and-speculation-cuda-command-host-harness-20261020/frozen/README.md
+  - Line 5731: Exact14 optional-command host harness
+  - Line 5769: Source: .agents/runs/serving-and-speculation-cuda-command-host-harness-20261020/frozen/TODO.md
+  - Line 5775: Working checklist
+  - Line 5788: Source: .agents/runs/serving-and-speculation-cuda-command-host-harness-20261020/frozen/harness/README.md
+  - Line 5794: CubeCL Common
+  - Line 5803: Source: .agents/runs/serving-and-speculation-cuda-command-host-harness-20261020/harness/README.md
+  - Line 5809: CubeCL Common
+
+### [.agents/docs/handoff-2026-10-20/RUN_NOTES_05.md](../handoff-2026-10-20/RUN_NOTES_05.md)
+
+- Bytes: 373396; mode: 0o644; SHA256: 1347453afbf5611b9d4667c20b73d8c9ae0daacd7ead85221507e605a544c6e7.
+- Full heading route:
+  - Line 1: Run Notes — volume 5
+  - Line 7: Source: .agents/runs/serving-and-speculation-cuda-graph-design-20261020/DESIGN.md
+  - Line 13: BatchProgram CUDA Graph replay: first safe slice
+  - Line 20: Recommendation
+  - Line 34: Actual source and API
+  - Line 69: Why whole launch\_impl capture is wrong
+  - Line 98: Minimal factoring, same arithmetic order
+  - Line 124: Mandatory stream and capture exclusion
+  - Line 163: Liveness and quarantine
+  - Line 194: Footprint and finite limits
+  - Line 235: Counters and first physical acceptance
+  - Line 268: Disjoint implementation ownership suggestion
+  - Line 281: Source: .agents/runs/serving-and-speculation-cuda-graph-design-20261020/TODO.md
+  - Line 287: CUDA Graph replay design
+  - Line 303: Source: .agents/runs/serving-and-speculation-cuda-prebegin-retirement-20261020/DESIGN\_DRAFT.md
+  - Line 309: Pre-begin token draft — SOURCE DESIGN ONLY
+  - Line 348: Source: .agents/runs/serving-and-speculation-cuda-prebegin-retirement-20261020/TODO.md
+  - Line 354: Pre-begin retirement continuation — interrupted source design
+  - Line 373: Source: .agents/runs/serving-and-speculation-cuda-retirement-spine-20261020/CALLERS.md
+  - Line 379: Exact caller continuation map
+  - Line 407: Source: .agents/runs/serving-and-speculation-cuda-retirement-spine-20261020/DESIGN.md
+  - Line 413: Retirement integration design
+  - Line 418: Implemented source slice
+  - Line 453: Next actual QueueState bridge — required, not implemented
+  - Line 485: Actual remaining construction/completion/destruction plumbing
+  - Line 524: Required ROOT gates before any production close
+  - Line 541: Source: .agents/runs/serving-and-speculation-cuda-retirement-spine-20261020/README.md
+  - Line 547: Original-runner prepaid retirement — source proposal
+  - Line 577: Source: .agents/runs/serving-and-speculation-cuda-retirement-spine-20261020/TODO.md
+  - Line 583: Working checklist — FROZEN source proposal
+  - Line 607: Source: .agents/runs/serving-and-speculation-cuda-retirement-spine-20261020/frozen/CALLERS.md
+  - Line 613: Exact caller continuation map
+  - Line 641: Source: .agents/runs/serving-and-speculation-cuda-retirement-spine-20261020/frozen/DESIGN.md
+  - Line 647: Retirement integration design
+  - Line 652: Implemented source slice
+  - Line 687: Next actual QueueState bridge — required, not implemented
+  - Line 719: Actual remaining construction/completion/destruction plumbing
+  - Line 758: Required ROOT gates before any production close
+  - Line 775: Source: .agents/runs/serving-and-speculation-cuda-retirement-spine-20261020/frozen/README.md
+  - Line 781: Original-runner prepaid retirement — source proposal
+  - Line 811: Source: .agents/runs/serving-and-speculation-cuda-retirement-spine-20261020/frozen/TODO.md
+  - Line 817: Working checklist — FROZEN source proposal
+  - Line 841: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/CONTAINER\_FUTURE\_SEAM.md
+  - Line 847: Future container diagnostic seam — not implemented
+  - Line 885: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/LIFECYCLE\_V2.md
+  - Line 891: Additive native owner V2
+  - Line 899: Narrow composition
+  - Line 931: ROOT-only gates
+  - Line 966: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/README.md
+  - Line 972: Official CUPTI activity diagnostic
+  - Line 983: Exact available source
+  - Line 1001: Collector and queue boundary
+  - Line 1025: Bounds, loss and lifetime
+  - Line 1052: ROOT execution only
+  - Line 1090: Acceptance and remaining scope
+  - Line 1113: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/ROOT\_BUILD.md
+  - Line 1119: ROOT collector build
+  - Line 1162: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/TODO.md
+  - Line 1168: CUPTI diagnostic preparation
+  - Line 1193: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/README.md
+  - Line 1199: Native container activity diagnostic — source only
+  - Line 1207: Files / ROOT execution
+  - Line 1273: Identity, window, policy
+  - Line 1308: Capacity and remaining physical gates
+  - Line 1350: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/TODO.md
+  - Line 1356: CUPTI container diagnostic / capacity revision
+  - Line 1384: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/capacity-v1/README.md
+  - Line 1390: Bounded capacity revision — uncompiled
+  - Line 1420: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/capacity-v1/frozen/README.md
+  - Line 1426: Bounded capacity revision — uncompiled
+  - Line 1456: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/fd-mapping-v3/README.md
+  - Line 1462: CUPTI same-open-FD mapping identity — additive V3
+  - Line 1468: Exact identity rule
+  - Line 1481: ROOT review/execution only
+  - Line 1504: Owned continuation
+  - Line 1513: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/fd-mapping-v3/frozen/README.md
+  - Line 1519: CUPTI same-open-FD mapping identity — additive V3
+  - Line 1525: Exact identity rule
+  - Line 1538: ROOT review/execution only
+  - Line 1561: Owned continuation
+  - Line 1570: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/fd-mapping-v4/README.md
+  - Line 1576: CUPTI safe-signal owner checkpoints — additive V4
+  - Line 1582: Safe checkpoints
+  - Line 1589: ROOT sequence, after active timing
+  - Line 1609: Owned continuation
+  - Line 1617: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/fd-mapping-v4/frozen/README.md
+  - Line 1623: CUPTI safe-signal owner checkpoints — additive V4
+  - Line 1629: Safe checkpoints
+  - Line 1636: ROOT sequence, after active timing
+  - Line 1656: Owned continuation
+  - Line 1664: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/finalization-v2/README.md
+  - Line 1670: Additive final receipt artifact bound
+  - Line 1693: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/finalization-v2/frozen/finalization-v2/README.md
+  - Line 1699: Additive final receipt artifact bound
+  - Line 1722: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/finalization-v2/pre-review/finalization-v2/README.md
+  - Line 1728: Additive final receipt artifact bound
+  - Line 1751: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/frozen/README.md
+  - Line 1757: Native container activity diagnostic — source only
+  - Line 1765: Files / ROOT execution
+  - Line 1831: Identity, window, policy
+  - Line 1866: Capacity and remaining physical gates
+  - Line 1908: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/container-v1/frozen/TODO.md
+  - Line 1914: CUPTI container diagnostic / capacity revision
+  - Line 1942: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/frozen/README.md
+  - Line 1948: Official CUPTI activity diagnostic
+  - Line 1959: Exact available source
+  - Line 1977: Collector and queue boundary
+  - Line 2001: Bounds, loss and lifetime
+  - Line 2028: ROOT execution only
+  - Line 2066: Acceptance and remaining scope
+  - Line 2089: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/frozen/ROOT\_BUILD.md
+  - Line 2095: ROOT collector build
+  - Line 2138: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/frozen/TODO.md
+  - Line 2144: CUPTI diagnostic preparation
+  - Line 2169: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/frozen-future-seam/CONTAINER\_FUTURE\_SEAM.md
+  - Line 2175: Future container diagnostic seam — not implemented
+  - Line 2213: Source: .agents/runs/serving-and-speculation-cupti-activity-20261020/frozen-v2/LIFECYCLE\_V2.md
+  - Line 2219: Additive native owner V2
+  - Line 2227: Narrow composition
+  - Line 2259: ROOT-only gates
+  - Line 2294: Source: .agents/runs/serving-and-speculation-cupti-fd-mapping-review-batch-20261020/REVIEW.md
+  - Line 2300: CUPTI FD mapping V3 independent source review
+  - Line 2337: Source: .agents/runs/serving-and-speculation-cupti-fd-mapping-review-batch-20261020/TODO.md
+  - Line 2343: P12 CUPTI FD mapping review
+  - Line 2353: Source: .agents/runs/serving-and-speculation-cupti-fd-mapping-review-batch-20261020/V4\_REVIEW.md
+  - Line 2359: CUPTI V4 independent signal-only review
+  - Line 2394: Source: .agents/runs/serving-and-speculation-kernel-count-audit-20261020/AUDIT.md
+  - Line 2400: Forward-dispatch accounting audit
+  - Line 2406: Finding
+  - Line 2417: Receipt and accumulator boundaries
+  - Line 2458: Exact original .8B reconciliation
+  - Line 2548: Subset labels
+  - Line 2562: Limits and benchmark use
+  - Line 2589: Source: .agents/runs/serving-and-speculation-kernel-count-audit-20261020/TODO.md
+  - Line 2595: P12 forward-dispatch counter audit
+  - Line 2614: Source: .agents/runs/serving-and-speculation-loaded-sass-peer-review-20261020/REVIEW.md
+  - Line 2620: Source-only checkpoint: loaded-SASS ABI
+  - Line 2625: Completed primary-ABI review
+  - Line 2665: Unfinished prototype review
+  - Line 2690: Source: .agents/runs/serving-and-speculation-loaded-sass-peer-review-20261020/TODO.md
+  - Line 2710: Source: .agents/runs/serving-and-speculation-loaded-sass-peer-review-20261020/frozen-checkpoint/REVIEW.md
+  - Line 2716: Source-only checkpoint: loaded-SASS ABI
+  - Line 2721: Completed primary-ABI review
+  - Line 2761: Unfinished prototype review
+  - Line 2786: Source: .agents/runs/serving-and-speculation-loaded-sass-peer-review-20261020/frozen-checkpoint/TODO.md
+  - Line 2806: Source: .agents/runs/serving-and-speculation-native-ab-peer-review-batch-20261020/REVIEW.md
+  - Line 2812: Native before/after retained-result review
+  - Line 2826: Closure
+  - Line 2853: Descriptive results
+  - Line 2876: Limits retained
+  - Line 2896: Source: .agents/runs/serving-and-speculation-native-ab-peer-review-batch-20261020/TODO.md
+  - Line 2902: Native before/after peer review
+  - Line 2917: Source: .agents/runs/serving-and-speculation-native-before-after-20261020/README.md
+  - Line 2923: Native baseline/candidate latency preparation
+  - Line 3022: Source: .agents/runs/serving-and-speculation-native-before-after-20261020/README\_V2.md
+  - Line 3028: Native baseline/candidate V2 namespace correction
+  - Line 3089: Exact accepted custom-store rootless wrapper2 chain, fresh private net/mount.
+  - Line 3117: Source: .agents/runs/serving-and-speculation-native-before-after-20261020/TODO.md
+  - Line 3123: Native before/after preparation
+  - Line 3142: Source: .agents/runs/serving-and-speculation-native-before-after-20261020/TODO\_V2.md
+  - Line 3148: P12 native/native before-after V2
+  - Line 3164: Source: .agents/runs/serving-and-speculation-native-before-after-20261020/followup-v2/frozen/README\_V2.md
+  - Line 3170: Native baseline/candidate V2 namespace correction
+  - Line 3231: Exact accepted custom-store rootless wrapper2 chain, fresh private net/mount.
+  - Line 3259: Source: .agents/runs/serving-and-speculation-native-before-after-20261020/followup-v2/frozen/TODO\_V2.md
+  - Line 3265: P12 native/native before-after V2
+  - Line 3281: Source: .agents/runs/serving-and-speculation-native-before-after-20261020/followup-v3/README\_V3.md
+  - Line 3287: Fixture-only signal-thread retirement V3
+  - Line 3332: Source: .agents/runs/serving-and-speculation-native-before-after-20261020/followup-v3/frozen/README\_V3.md
+  - Line 3338: Fixture-only signal-thread retirement V3
+  - Line 3383: Source: .agents/runs/serving-and-speculation-native-before-after-20261020/frozen/README.md
+  - Line 3389: Native baseline/candidate latency preparation
+  - Line 3488: Source: .agents/runs/serving-and-speculation-native-before-after-20261020/frozen/TODO.md
+  - Line 3494: Native before/after preparation
+  - Line 3513: Source: .agents/runs/serving-and-speculation-native-forward-roi-audit-20261020/AUDIT.md
+  - Line 3674: Source: .agents/runs/serving-and-speculation-native-forward-roi-audit-20261020/TODO.md
+  - Line 3692: Source: .agents/runs/serving-and-speculation-native-prefix-before-after-20261020/NATURAL\_C8.md
+  - Line 3698: Additive natural concurrency8 workload
+  - Line 3703: Separate scope
+  - Line 3718: Actual packet conservation
+  - Line 3747: Counter domain and namespace
+  - Line 3779: Preserved measurement/lifecycle rules
+  - Line 3798: Prepared checks, not executed by author
+  - Line 3817: Source: .agents/runs/serving-and-speculation-native-prefix-before-after-20261020/NATURAL\_C8\_TODO.md
+  - Line 3823: Natural c8 variant
+  - Line 3840: Source: .agents/runs/serving-and-speculation-native-prefix-before-after-20261020/README.md
+  - Line 3846: Same-engine native-prefix before/after — ROOT EXECUTES
+  - Line 3872: Predeclared finite measurements
+  - Line 3905: Evidence and accounting closure
+  - Line 3950: ROOT commands after physical acceptance
+  - Line 3977: Source: .agents/runs/serving-and-speculation-native-prefix-before-after-20261020/TODO.md
+  - Line 3983: Native-prefix before/after source preparation
+  - Line 4005: Source: .agents/runs/serving-and-speculation-native-prefix-before-after-20261020/frozen-prepared/README.md
+  - Line 4011: Same-engine native-prefix before/after — ROOT EXECUTES
+  - Line 4037: Predeclared finite measurements
+  - Line 4070: Evidence and accounting closure
+  - Line 4115: ROOT commands after physical acceptance
+  - Line 4142: Source: .agents/runs/serving-and-speculation-native-prefix-before-after-20261020/frozen-prepared/TODO.md
+  - Line 4148: Native-prefix before/after source preparation
+  - Line 4170: Source: .agents/runs/serving-and-speculation-native-prefix-before-after-20261020/natural-c8-frozen/NATURAL\_C8.md
+  - Line 4176: Additive natural concurrency8 workload
+  - Line 4181: Separate scope
+  - Line 4196: Actual packet conservation
+  - Line 4225: Counter domain and namespace
+  - Line 4257: Preserved measurement/lifecycle rules
+  - Line 4276: Prepared checks, not executed by author
+  - Line 4295: Source: .agents/runs/serving-and-speculation-native-prefix-before-after-20261020/natural-c8-frozen/NATURAL\_C8\_TODO.md
+  - Line 4301: Natural c8 variant
+  - Line 4318: Source: .agents/runs/serving-and-speculation-native-prefix-chunk-20261020/README.md
+  - Line 4324: Closed native teacher chunk T2/T4
+  - Line 4330: Exact change
+  - Line 4368: Source ownership and composition
+  - Line 4389: Prepared acceptance and limits
+  - Line 4431: Source: .agents/runs/serving-and-speculation-native-prefix-chunk-20261020/ROOT-GATES.md
+  - Line 4437: ROOT qualification cuts
+  - Line 4490: Source: .agents/runs/serving-and-speculation-native-prefix-chunk-20261020/TODO.md
+  - Line 4496: Native teacher chunk private run
+  - Line 4515: Source: .agents/runs/serving-and-speculation-native-prefix-chunk-20261020/frozen/README.md
+  - Line 4521: Closed native teacher chunk T2/T4
+  - Line 4527: Exact change
+  - Line 4565: Source ownership and composition
+  - Line 4586: Prepared acceptance and limits
+  - Line 4628: Source: .agents/runs/serving-and-speculation-native-prefix-chunk-20261020/frozen/ROOT-GATES.md
+  - Line 4634: ROOT qualification cuts
+  - Line 4687: Source: .agents/runs/serving-and-speculation-native-prefix-chunk-20261020/frozen/TODO.md
+  - Line 4693: Native teacher chunk private run
+  - Line 4712: Source: .agents/runs/serving-and-speculation-native-prefix-chunk-20261020/temporal-grouping-design/DESIGN.md
+  - Line 4718: Next qualification cut: true T2 stateless grouping
+  - Line 4723: What sequential T does and does not solve
+  - Line 4737: Concrete existing seams and blockers
+  - Line 4766: Bounded source-derived execution
+  - Line 4807: First production-facing extensions, separately qualified
+  - Line 4820: Required actual evidence
+  - Line 4837: Source: .agents/runs/serving-and-speculation-native-solo-temporal-20261020/EMITTER-FACTOR.md
+  - Line 4843: Original P1 factor source check
+  - Line 4859: Source: .agents/runs/serving-and-speculation-native-solo-temporal-20261020/README.md
+  - Line 4865: Closed direct SOLO B1/T2 temporal grouping
+  - Line 4883: Proposed source
+  - Line 4912: Physical ownership/admission
+  - Line 4942: Prepared ROOT qualification
+  - Line 4977: Source: .agents/runs/serving-and-speculation-native-solo-temporal-20261020/ROOT-GATES.md
+  - Line 4983: ROOT-only SOLO gates
+  - Line 5017: Source: .agents/runs/serving-and-speculation-native-solo-temporal-20261020/TODO.md
+  - Line 5023: P12 SOLO B1/T2 temporal proposal
+  - Line 5037: Source: .agents/runs/serving-and-speculation-native-solo-temporal-20261020/followup-v2/README.md
+  - Line 5043: SOLO qualifier wiring packaging correction
+  - Line 5062: Source: .agents/runs/serving-and-speculation-native-solo-temporal-20261020/followup-v2/frozen/README.md
+  - Line 5068: SOLO qualifier wiring packaging correction
+  - Line 5087: Source: .agents/runs/serving-and-speculation-native-temporal-grouping-20261020/README.md
+  - Line 5093: Closed native temporal grouping
+  - Line 5098: Dependencies and application
+  - Line 5114: Actual proposed source
+  - Line 5150: Prepared evidence; nothing executed by author
+  - Line 5187: Concrete next cuts
+  - Line 5212: Source: .agents/runs/serving-and-speculation-native-temporal-grouping-20261020/REVIEW\_NATIVE\_AB\_V2.md
+  - Line 5218: Independent native/native V2 source review
+  - Line 5259: Source: .agents/runs/serving-and-speculation-native-temporal-grouping-20261020/ROOT-GATES.md
+  - Line 5265: ROOT-only gates
+  - Line 5296: Source: .agents/runs/serving-and-speculation-native-temporal-grouping-20261020/TODO.md
+  - Line 5302: Native temporal grouping
+  - Line 5320: Source: .agents/runs/serving-and-speculation-ordered-silu-20261020/README.md
+  - Line 5326: Ordered CUDA SiLU candidate — uncompiled / unexecuted
+  - Line 5331: Exact scope
+  - Line 5349: Source arithmetic / compiler boundary
+  - Line 5397: Checked binding / original owners
+  - Line 5416: Prepared ROOT gates
+  - Line 5466: Remaining before production or speed claim
+  - Line 5485: Source: .agents/runs/serving-and-speculation-ordered-silu-20261020/TODO.md
+  - Line 5491: Ordered SiLU source candidate
+  - Line 5518: Source: .agents/runs/serving-and-speculation-ordered-silu-20261020/followup-v2/README.md
+  - Line 5524: Ordered SiLU qualifier V2 followup
+  - Line 5563: Source: .agents/runs/serving-and-speculation-ordered-silu-20261020/followup-v2/TODO.md
+  - Line 5569: Ordered SiLU qualifier followup V2
+  - Line 5587: Source: .agents/runs/serving-and-speculation-ordered-silu-20261020/followup-v2/frozen/README.md
+  - Line 5593: Ordered SiLU qualifier V2 followup
+  - Line 5632: Source: .agents/runs/serving-and-speculation-ordered-silu-20261020/followup-v2/frozen/TODO.md
+  - Line 5638: Ordered SiLU qualifier followup V2
+  - Line 5656: Source: .agents/runs/serving-and-speculation-ordered-silu-20261020/frozen/README.md
+  - Line 5662: Ordered CUDA SiLU candidate — uncompiled / unexecuted
+  - Line 5667: Exact scope
+  - Line 5685: Source arithmetic / compiler boundary
+  - Line 5733: Checked binding / original owners
+  - Line 5752: Prepared ROOT gates
+  - Line 5802: Remaining before production or speed claim
+  - Line 5821: Source: .agents/runs/serving-and-speculation-ordered-silu-20261020/frozen/TODO.md
+  - Line 5827: Ordered SiLU source candidate
+  - Line 5854: Source: .agents/runs/serving-and-speculation-ordered-silu-compiler-witness-review-20261020/REVIEW.md
+  - Line 5860: Ordered SiLU compiler witness — source-only peer review
+  - Line 5862: Verdict and actual receipt scope
+  - Line 5871: Correct CPP → PTX binding
+  - Line 5880: Proposed narrow dump transport
+  - Line 5888: Production integration beyond the operator sample
+  - Line 5898: Source: .agents/runs/serving-and-speculation-ordered-silu-compiler-witness-review-20261020/ROOT.md
+  - Line 5904: ROOT-only next steps
+  - Line 5916: Source: .agents/runs/serving-and-speculation-ordered-silu-compiler-witness-review-20261020/TODO.md
+  - Line 5922: Ordered SiLU compiler witness review
+
+### [.agents/docs/handoff-2026-10-20/RUN_NOTES_06.md](../handoff-2026-10-20/RUN_NOTES_06.md)
+
+- Bytes: 453191; mode: 0o644; SHA256: 62864bd8923bdd2dc4e9ca1921bba1e9f16a04389be0d95ee8c2f68eb55e2838.
+- Full heading route:
+  - Line 1: Run Notes — volume 6
+  - Line 7: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/README.md
+  - Line 13: Ordered SiLU resident integration — source proposal
+  - Line 23: Narrow change
+  - Line 36: Cold choice and original flight
+  - Line 58: Arithmetic and ownership
+  - Line 84: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/ROOT.md
+  - Line 90: ROOT promotion gates — no execution by author
+  - Line 141: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/TODO.md
+  - Line 147: Ordered SiLU integration preparation
+  - Line 166: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/followup-visibility-v2/README.md
+  - Line 172: Ordered SiLU integration visibility followup
+  - Line 181: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/followup-visibility-v2/TODO.md
+  - Line 187: Visibility followup
+  - Line 200: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/followup-visibility-v2/frozen/README.md
+  - Line 206: Ordered SiLU integration visibility followup
+  - Line 215: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/followup-visibility-v2/frozen/TODO.md
+  - Line 221: Visibility followup
+  - Line 234: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/README.md
+  - Line 240: Ordered SiLU resident integration — source proposal
+  - Line 250: Narrow change
+  - Line 263: Cold choice and original flight
+  - Line 285: Arithmetic and ownership
+  - Line 311: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/ROOT.md
+  - Line 317: ROOT promotion gates — no execution by author
+  - Line 368: Source: .agents/runs/serving-and-speculation-ordered-silu-integration-20261020/frozen/TODO.md
+  - Line 374: Ordered SiLU integration preparation
+  - Line 393: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/API\_FACTS.md
+  - Line 399: API and source facts
+  - Line 401: Original route
+  - Line 425: Pinned CUPTI 12.9.79 / API 28 headers
+  - Line 461: Original driver callback metadata
+  - Line 483: Tool availability boundary
+  - Line 495: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/DESIGN.md
+  - Line 501: Smallest diagnostic boundary
+  - Line 503: Keep the original execution
+  - Line 523: Exact association, with refusal on ambiguity
+  - Line 557: Bounded copy and ownership proposal
+  - Line 589: Offline inspection and truthful claims
+  - Line 611: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/README.md
+  - Line 617: Original ordered-SiLU loaded SASS — source-only advisory
+  - Line 644: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/ROOT\_GATES.md
+  - Line 650: Remaining ROOT gates
+  - Line 694: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/TODO.md
+  - Line 700: Working checklist
+  - Line 722: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/frozen/API\_FACTS.md
+  - Line 728: API and source facts
+  - Line 730: Original route
+  - Line 754: Pinned CUPTI 12.9.79 / API 28 headers
+  - Line 790: Original driver callback metadata
+  - Line 812: Tool availability boundary
+  - Line 824: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/frozen/DESIGN.md
+  - Line 830: Smallest diagnostic boundary
+  - Line 832: Keep the original execution
+  - Line 852: Exact association, with refusal on ambiguity
+  - Line 886: Bounded copy and ownership proposal
+  - Line 918: Offline inspection and truthful claims
+  - Line 940: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/frozen/README.md
+  - Line 946: Original ordered-SiLU loaded SASS — source-only advisory
+  - Line 973: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/frozen/ROOT\_GATES.md
+  - Line 979: Remaining ROOT gates
+  - Line 1023: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/frozen/TODO.md
+  - Line 1029: Working checklist
+  - Line 1051: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/primary-abi-v2/CLOSURE.md
+  - Line 1057: Exact NVIDIA 12.9.79 module payload closure
+  - Line 1109: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/primary-abi-v2/TODO.md
+  - Line 1115: Working checklist
+  - Line 1129: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/primary-abi-v2/frozen/CLOSURE.md
+  - Line 1135: Exact NVIDIA 12.9.79 module payload closure
+  - Line 1187: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/primary-abi-v2/frozen/TODO.md
+  - Line 1193: Working checklist
+  - Line 1207: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/prototype-v3/PAUSED.md
+  - Line 1213: Checkpoint — unfinished source proposal
+  - Line 1218: Frozen components
+  - Line 1227: Current draft boundary
+  - Line 1254: Resume actions, in order
+  - Line 1295: Author actions
+  - Line 1306: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/prototype-v3/TODO.md
+  - Line 1312: Paused working checklist
+  - Line 1332: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/prototype-v3/frozen/PAUSED.md
+  - Line 1338: Checkpoint — unfinished source proposal
+  - Line 1343: Frozen components
+  - Line 1352: Current draft boundary
+  - Line 1379: Resume actions, in order
+  - Line 1420: Author actions
+  - Line 1431: Source: .agents/runs/serving-and-speculation-ordered-silu-loaded-sass-design-20261020/prototype-v3/frozen/TODO.md
+  - Line 1437: Paused working checklist
+  - Line 1457: Source: .agents/runs/serving-and-speculation-ordered-silu-peer-review-20261020/REVIEW.md
+  - Line 1463: Ordered SiLU integration peer review
+  - Line 1473: Exact reviewed layers
+  - Line 1491: Selection, bounds and original flight
+  - Line 1516: Arithmetic and source receipts
+  - Line 1535: Parser correction and remaining gates
+  - Line 1550: Source: .agents/runs/serving-and-speculation-ordered-silu-peer-review-20261020/TODO.md
+  - Line 1556: Ordered SiLU independent source review
+  - Line 1570: Source: .agents/runs/serving-and-speculation-ordered-silu-runner-peer-review-batch-20261020/REVIEW.md
+  - Line 1576: Ordered SiLU physical runner — source-only review
+  - Line 1584: Case/argument closure
+  - Line 1600: Ownership, signal and source closure
+  - Line 1619: Scope/limitations
+  - Line 1637: Source: .agents/runs/serving-and-speculation-ordered-silu-runner-peer-review-batch-20261020/TODO.md
+  - Line 1643: Physical runner peer review
+  - Line 1657: Source: .agents/runs/serving-and-speculation-ordered-silu-scalar-input-20261020/README.md
+  - Line 1663: Ordered SiLU scalar asm inputs — source-only repair
+  - Line 1672: Causal source finding
+  - Line 1685: Narrow fix
+  - Line 1706: Meaningful ROOT regression recipe
+  - Line 1740: Source: .agents/runs/serving-and-speculation-ordered-silu-scalar-input-20261020/TODO.md
+  - Line 1746: Ordered scalar-input continuation
+  - Line 1761: Source: .agents/runs/serving-and-speculation-ordered-silu-scalar-input-20261020/frozen/README.md
+  - Line 1767: Ordered SiLU scalar asm inputs — source-only repair
+  - Line 1776: Causal source finding
+  - Line 1789: Narrow fix
+  - Line 1810: Meaningful ROOT regression recipe
+  - Line 1844: Source: .agents/runs/serving-and-speculation-ordered-silu-scalar-input-20261020/frozen/TODO.md
+  - Line 1850: Ordered scalar-input continuation
+  - Line 1865: Source: .agents/runs/serving-and-speculation-p12-greedy-batch/TODO.md
+  - Line 1871: Native batch greedy and device feedback
+  - Line 1877: Uncommitted
+  - Line 1885: Tests
+  - Line 1892: Source: .agents/runs/serving-and-speculation-p12-greedy-qual/TODO.md
+  - Line 1898: P12 native greedy qualification
+  - Line 1930: Source: .agents/runs/serving-and-speculation-p12-greedy-root-2026-10-19/TODO.md
+  - Line 1936: P12-B4 native batch greedy/device feedback
+  - Line 1993: Source: .agents/runs/serving-and-speculation-p12-http-network-2026-10-19/TODO.md
+  - Line 1999: Physical CUDA HTTP integration
+  - Line 2005: Uncommitted
+  - Line 2013: Verification
+  - Line 2018: B4/B8 continuation
+  - Line 2038: Source: .agents/runs/serving-and-speculation-p12-http-output-2026-10-19/TODO.md
+  - Line 2044: Bounded output presentation
+  - Line 2050: Uncommitted
+  - Line 2057: Verification
+  - Line 2064: Source: .agents/runs/serving-and-speculation-p12-http-qual-2026-10-19/TODO.md
+  - Line 2070: P12-B5 native GPU worker qualification
+  - Line 2099: Source: .agents/runs/serving-and-speculation-p12-http-review-2026-10-19/TODO.md
+  - Line 2105: P12-B5 independent HTTP/state review
+  - Line 2126: Continued parity audit
+  - Line 2138: Authorized measurement implementation
+  - Line 2159: B4/B8 admission review
+  - Line 2168: Authorized GPU admission qualification
+  - Line 2200: Source: .agents/runs/serving-and-speculation-p12-http-root-2026-10-19/TODO.md
+  - Line 2206: P12-B5 CUDA B2 HTTP integration
+  - Line 2239: Source: .agents/runs/serving-and-speculation-p12-native-bands/TODO.md
+  - Line 2245: P12 native HTTP bands
+  - Line 2251: Completed
+  - Line 2262: Verification
+  - Line 2275: Source: .agents/runs/serving-and-speculation-p12-wide-worker/TODO.md
+  - Line 2281: P12 wide native worker qualification
+  - Line 2287: Completed
+  - Line 2303: Verification
+  - Line 2317: Source: .agents/runs/serving-and-speculation-parity-root-2026-10-19/TODO.md
+  - Line 2323: Serving parity through trained Qwen3.8 27B
+  - Line 2346: Current phase
+  - Line 2372: Executed / failure follow-up
+  - Line 2401: Continuation 20 Oct
+  - Line 2592: Typed source integration / activation preparation continuation
+  - Line 2626: Closed sigmoid/ordinary RMS + cold GPU preparation continuation
+  - Line 2634: 20 Oct next P12 cold-preparation qualification
+  - Line 2667: Current continuation20Oct20:34UTC
+  - Line 2678: Current continuation20Oct21:06UTC
+  - Line 2689: Actual continuation20Oct21:22UTC
+  - Line 2701: Actual continuation21:39UTC
+  - Line 2709: HTTP fixture failure21:53UTC
+  - Line 2714: HTTP prefix assertion correction22:01UTC
+  - Line 2719: Fresh8K + reviewed source followups22:04UTC
+  - Line 2727: Final HTTP environment retry22:10UTC
+  - Line 2732: Prefix acceptance22:13UTC
+  - Line 2744: Quiet .8B prefix comparison22:19UTC
+  - Line 2750: Actual CPU27B build and diagnostic failures22:25UTC
+  - Line 2758: Actual trained27B + compiled reference-route PASS22:27UTC
+  - Line 2765: Source-window phase accepted22:35UTC
+  - Line 2777: 2026-10-19 22:45 UTC continuation
+  - Line 2782: 2026-10-19 22:49 UTC graph build and genuine provider continuation
+  - Line 2788: 2026-10-19 22:54 UTC genuine public GEMM actual result
+  - Line 2793: 2026-10-19 23:01 UTC initial graph physical complete / bulk control first failure
+  - Line 2800: 2026-10-19 23:08 UTC wider/RoPE and original attention continuation
+  - Line 2806: 2026-10-19 23:13 UTC physical-helper failure and correction
+  - Line 2812: 2026-10-19 23:19 UTC continuation
+  - Line 2816: 2026-10-19 23:27 UTC implementation and qualification
+  - Line 2822: 2026-10-19 23:31 UTC followups
+  - Line 2827: 2026-10-19 23:33 UTC completed actual physical batches
+  - Line 2832: 2026-10-19 23:54 UTC composed gate and reference followups
+  - Line 2839: 2026-10-20 00:13 UTC CPU and numerical results
+  - Line 2845: 2026-10-20 00:13 UTC official matched-GGUF baseline route
+  - Line 2851: 2026-10-20 00:34 UTC continuation
+  - Line 2858: ROOT continuation 2026-10-20 01:06 UTC
+  - Line 2868: ROOT continuation 2026-10-20 01:22 UTC
+  - Line 2878: ROOT continuation 2026-10-20 01:50 UTC
+  - Line 2887: ROOT continuation 2026-10-20 02:18 UTC
+  - Line 2900: ROOT continuation 2026-10-20 02:30 UTC
+  - Line 2908: ROOT continuation 2026-10-20 02:52 UTC
+  - Line 2919: ROOT continuation 2026-10-20 03:12 UTC
+  - Line 2926: ROOT continuation 2026-10-20 03:23 UTC
+  - Line 2935: ROOT continuation 2026-10-20 03:42 UTC
+  - Line 2946: 2026-10-20 04:01 UTC — current phase and genuine baselines
+  - Line 2955: 2026-10-20 04:34 UTC — completed2B baseline and current serving regressions
+  - Line 2963: 2026-10-20 04:50 UTC — source-preserving replay and benchmark continuation
+  - Line 2971: 2026-10-20 04:55 UTC — authentic native H48 slices pass; actual A/B starts
+  - Line 2977: 2026-10-20 05:12 UTC — source-only next cuts while timing remains exclusive
+  - Line 2986: 2026-10-20 05:28 UTC — row/certificate phase accepted
+  - Line 2994: 2026-10-20 05:37 UTC — canonical diagnostic and next dormant operator
+  - Line 3000: 2026-10-20 05:57 UTC — genuine27B wide roles and scalar ABI repair
+  - Line 3008: 2026-10-20 06:09 UTC — ordered leaf physical success; unaccepted integration
+  - Line 3015: 2026-10-20 06:23 UTC — owner requested pause; current release build draining
+  - Line 3026: 2026-10-20 06:31:23 UTC — PAUSED at completed release-build checkpoint
+  - Line 3035: Source: .agents/runs/serving-and-speculation-parity-root-2026-10-19/command-host-fixture-runtime/README.md
+  - Line 3041: CubeCL Common
+  - Line 3050: Source: .agents/runs/serving-and-speculation-performance-audit-batch-20261020/REPORT.md
+  - Line 3056: Shared-engine performance audit — planning only
+  - Line 3062: Conclusion
+  - Line 3076: What is measured, and what is inferred
+  - Line 3096: Priorities and measurable gates
+  - Line 3098: 0. Close the comparable numerical target and benchmark accounting
+  - Line 3120: 1. Obtain a critical-path decomposition before choosing further kernels
+  - Line 3143: 2. Finish small exact fusion already supported by source
+  - Line 3161: 3. Temporal prefill, including the dominant solo case
+  - Line 3191: 4. Rework the projection data path, not just its launch wrapper
+  - Line 3214: 5. Production graph reuse and synchronization reduction
+  - Line 3235: 6. State traffic, attention and scheduling capacity
+  - Line 3256: Fair staged benchmark matrix
+  - Line 3294: Model feasibility and dependencies
+  - Line 3317: Source/evidence entry points
+  - Line 3339: Source: .agents/runs/serving-and-speculation-performance-audit-batch-20261020/TODO.md
+  - Line 3345: Performance investigation checkpoint
+  - Line 3364: Source: .agents/runs/serving-and-speculation-pinned-reference-2026-10-19/REFERENCE\_SCOPE.md
+  - Line 3370: Official .8B CPU reference scope
+  - Line 3384: Distinct parameter profiles
+  - Line 3404: Actual operator protocol
+  - Line 3429: Artifacts and layout transforms
+  - Line 3454: Executed result
+  - Line 3493: Source: .agents/runs/serving-and-speculation-pinned-reference-2026-10-19/TODO.md
+  - Line 3499: Official pinned .8B BF16 CPU reference
+  - Line 3587: Source: .agents/runs/serving-and-speculation-pinned-reference-2026-10-19/TOOL\_PROMOTION\_PROPOSAL.md
+  - Line 3593: Reusable original-source reference utility — proposal only
+  - Line 3599: Smallest useful promotion
+  - Line 3627: Profiles are acceptance inputs
+  - Line 3644: Existing tools and engine remain authoritative
+  - Line 3660: Focused qualification before promotion
+  - Line 3677: Source: .agents/runs/serving-and-speculation-rope-angle-audit-20261020/DESIGN.md
+  - Line 3683: Ordered RoPE angle launch reduction — source-only proposal
+  - Line 3688: Actual boundary
+  - Line 3706: Exact numerical contract
+  - Line 3738: Selection, ownership and failure
+  - Line 3761: Minimal disjoint implementation proposal
+  - Line 3773: Root qualification gates, in order
+  - Line 3806: Source: .agents/runs/serving-and-speculation-rope-angle-audit-20261020/TODO.md
+  - Line 3812: RoPE angle audit
+  - Line 3830: Source: .agents/runs/serving-and-speculation-row-state-transport-20261020/API.md
+  - Line 3905: Source: .agents/runs/serving-and-speculation-row-state-transport-20261020/ROOT-QUALIFICATION.md
+  - Line 3978: Source: .agents/runs/serving-and-speculation-row-state-transport-20261020/TODO.md
+  - Line 3996: ROOT actual continuation 2026-10-20
+  - Line 4009: Source: .agents/runs/serving-and-speculation-row-state-transport-20261020/frozen-prepared/API.md
+  - Line 4084: Source: .agents/runs/serving-and-speculation-row-state-transport-20261020/frozen-prepared/ROOT-QUALIFICATION.md
+  - Line 4157: Source: .agents/runs/serving-and-speculation-row-state-transport-20261020/frozen-prepared/TODO.md
+  - Line 4177: Source: .agents/runs/serving-and-speculation-solo-peer-review-20261020/REVIEW.md
+  - Line 4183: SOLO B1/T2 independent source review
+  - Line 4207: Source: .agents/runs/serving-and-speculation-solo-peer-review-20261020/TODO.md
+  - Line 4213: SOLO source review
+  - Line 4226: Source: .agents/runs/serving-and-speculation-spine-review/TODO.md
+  - Line 4232: P12 shared completion / independent Ready rows
+  - Line 4258: Source: .agents/runs/serving-and-speculation-state-scatter-certification-20261020/README.md
+  - Line 4264: Typed state scatter + original finite certificate — source-only candidate
+  - Line 4269: Narrow candidate
+  - Line 4319: ROOT physical gates
+  - Line 4361: Future token-major and graph dependencies
+  - Line 4398: Source: .agents/runs/serving-and-speculation-state-scatter-certification-20261020/TODO.md
+  - Line 4404: State scatter certification source proposal
+  - Line 4428: Source: .agents/runs/serving-and-speculation-state-scatter-certification-20261020/frozen/README.md
+  - Line 4434: Typed state scatter + original finite certificate — source-only candidate
+  - Line 4439: Narrow candidate
+  - Line 4489: ROOT physical gates
+  - Line 4531: Future token-major and graph dependencies
+  - Line 4568: Source: .agents/runs/serving-and-speculation-state-scatter-certification-20261020/frozen/TODO.md
+  - Line 4574: State scatter certification source proposal
+  - Line 4598: Source: .agents/runs/serving-and-speculation-vllm-gguf-audit-spine-20261020/TODO.md
+  - Line 4604: Stock official GGUF plugin audit
+  - Line 4626: Source: .agents/runs/serving-and-speculation-vllm-gguf-baseline-20261020/TODO.md
+  - Line 4632: vLLM GGUF matched baseline
+  - Line 4644: Source: .agents/runs/serving-and-speculation-vllm-gguf-baseline-20261020/source/README.md
+  - Line 4650: vLLM GGUF Quantization Plugin
+  - Line 4656: Installation
+  - Line 4658: Prerequisites
+  - Line 4669: From Source
+  - Line 4694: Development
+  - Line 4707: Usage
+  - Line 4725: Tested model coverage
+  - Line 4756: Source: .agents/runs/serving-and-speculation-vllm-gguf-loader-prep-20261020/CONVERSION.md
+  - Line 4762: Genuine projector preparation
+  - Line 4806: Source: .agents/runs/serving-and-speculation-vllm-gguf-loader-prep-20261020/CONVERSION\_V2.md
+  - Line 4812: Genuine projector preparation
+  - Line 4863: Source: .agents/runs/serving-and-speculation-vllm-gguf-loader-prep-20261020/LOADER.md
+  - Line 4869: Stock GGUF language-only qualification preparation
+  - Line 4912: Distinct arithmetic profiles
+  - Line 4934: ROOT execution
+  - Line 4953: Source: .agents/runs/serving-and-speculation-vllm-gguf-loader-prep-20261020/LOGITS\_ABI\_V3.md
+  - Line 4959: Additive native-logit observation correction
+  - Line 5020: Source: .agents/runs/serving-and-speculation-vllm-gguf-loader-prep-20261020/MTP\_INVENTORY\_V4.md
+  - Line 5026: Additive stock loader V4: exact MTP inventory
+  - Line 5048: Source: .agents/runs/serving-and-speculation-vllm-gguf-loader-prep-20261020/TODO.md
+  - Line 5054: Genuine stock GGUF loader qualification preparation
+  - Line 5083: Source: .agents/runs/serving-and-speculation-vllm-gguf-loader-prep-20261020/conversion-frozen/CONVERSION.md
+  - Line 5089: Genuine projector preparation
+  - Line 5133: Source: .agents/runs/serving-and-speculation-vllm-gguf-loader-prep-20261020/conversion-frozen-v2/CONVERSION\_V2.md
+  - Line 5139: Genuine projector preparation
+  - Line 5190: Source: .agents/runs/serving-and-speculation-vllm-gguf-loader-prep-20261020/loader-frozen/CONVERSION\_V2.md
+  - Line 5196: Genuine projector preparation
+  - Line 5247: Source: .agents/runs/serving-and-speculation-vllm-gguf-loader-prep-20261020/loader-frozen/LOADER.md
+  - Line 5253: Stock GGUF language-only qualification preparation
+  - Line 5296: Distinct arithmetic profiles
+  - Line 5318: ROOT execution
+  - Line 5337: Source: .agents/runs/serving-and-speculation-vllm-gguf-loader-prep-20261020/loader-frozen-v3/CONVERSION\_V2.md
+  - Line 5343: Genuine projector preparation
+  - Line 5394: Source: .agents/runs/serving-and-speculation-vllm-gguf-loader-prep-20261020/loader-frozen-v3/LOADER.md
+  - Line 5400: Stock GGUF language-only qualification preparation
+  - Line 5443: Distinct arithmetic profiles
+  - Line 5465: ROOT execution
+  - Line 5484: Source: .agents/runs/serving-and-speculation-vllm-gguf-loader-prep-20261020/loader-frozen-v3/LOGITS\_ABI\_V3.md
+  - Line 5490: Additive native-logit observation correction
+  - Line 5551: Source: .agents/runs/serving-and-speculation-vllm-gguf-loader-prep-20261020/loader-frozen-v4/CONVERSION\_V2.md
+  - Line 5557: Genuine projector preparation
+  - Line 5608: Source: .agents/runs/serving-and-speculation-vllm-gguf-loader-prep-20261020/loader-frozen-v4/LOADER.md
+  - Line 5614: Stock GGUF language-only qualification preparation
+  - Line 5657: Distinct arithmetic profiles
+  - Line 5679: ROOT execution
+  - Line 5698: Source: .agents/runs/serving-and-speculation-vllm-gguf-loader-prep-20261020/loader-frozen-v4/LOGITS\_ABI\_V3.md
+  - Line 5704: Additive native-logit observation correction
+  - Line 5765: Source: .agents/runs/serving-and-speculation-vllm-gguf-loader-prep-20261020/loader-frozen-v4/MTP\_INVENTORY\_V4.md
+  - Line 5771: Additive stock loader V4: exact MTP inventory
+  - Line 5793: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/BOOTSTRAP\_V2.md
+  - Line 5799: Additive V2: import boundary and actual OS caps
+  - Line 5824: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/BOOTSTRAP\_V3.md
+  - Line 5830: Additive V3: opened cgroup mount identity
+  - Line 5834: Actual cause and evidence
+  - Line 5841: Narrow binding
+  - Line 5853: Unchanged execution and ROOT usage
+  - Line 5865: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/EOS\_COMPATIBILITY\_FINDING.md
+  - Line 5871: Additive source finding — terminal EOS accounting
+  - Line 5897: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/PROFILING.md
+  - Line 5903: Separate real CUDA activity diagnostic — not executed
+  - Line 5922: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/PROTOCOL.md
+  - Line 5928: Genuine stock GGUF matched serving observations — prepared only
+  - Line 5932: Inputs and exact scope
+  - Line 5939: Common public request policy
+  - Line 5951: Resources and runtime routes
+  - Line 5960: Workload, cold/warm and acceptance
+  - Line 5971: ROOT workflow
+
+### [.agents/docs/handoff-2026-10-20/RUN_NOTES_07.md](../handoff-2026-10-20/RUN_NOTES_07.md)
+
+- Bytes: 245249; mode: 0o644; SHA256: 5e5430f751378a8b8c6ba435d1ef382d66a89fe11300921119d501363364d932.
+- Full heading route:
+  - Line 1: Run Notes — volume 7
+  - Line 7: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/ROOT\_CACHE\_V4.md
+  - Line 13: ROOT additive V4: writable FlashInfer workspace
+  - Line 35: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/ROOT\_HPID\_V6.md
+  - Line 41: ROOT V6 numeric HPID membership
+  - Line 61: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/ROOT\_OBSERVER\_V5.md
+  - Line 67: ROOT V5 observer failure evidence
+  - Line 83: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/ROOT\_QUALITY\_BINDING\_V7.md
+  - Line 89: ROOT V7 actual native response binding
+  - Line 110: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/ROOT\_STRICT\_COUNT\_V8.md
+  - Line 116: ROOT V8 strict native footer count
+  - Line 129: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/TODO.md
+  - Line 135: Matched stock GGUF benchmark preparation
+  - Line 152: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-prepared/PROFILING.md
+  - Line 158: Separate real CUDA activity diagnostic — not executed
+  - Line 177: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-prepared/PROTOCOL.md
+  - Line 183: Genuine stock GGUF matched serving observations — prepared only
+  - Line 187: Inputs and exact scope
+  - Line 194: Common public request policy
+  - Line 206: Resources and runtime routes
+  - Line 215: Workload, cold/warm and acceptance
+  - Line 226: ROOT workflow
+  - Line 238: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-prepared/TODO.md
+  - Line 244: Matched stock GGUF benchmark preparation
+  - Line 261: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v2/BOOTSTRAP\_V2.md
+  - Line 267: Additive V2: import boundary and actual OS caps
+  - Line 292: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v2/PROFILING.md
+  - Line 298: Separate real CUDA activity diagnostic — not executed
+  - Line 317: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v2/PROTOCOL.md
+  - Line 323: Genuine stock GGUF matched serving observations — prepared only
+  - Line 327: Inputs and exact scope
+  - Line 334: Common public request policy
+  - Line 346: Resources and runtime routes
+  - Line 355: Workload, cold/warm and acceptance
+  - Line 366: ROOT workflow
+  - Line 378: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v2/TODO.md
+  - Line 384: Matched stock GGUF benchmark preparation
+  - Line 401: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v3/BOOTSTRAP\_V2.md
+  - Line 407: Additive V2: import boundary and actual OS caps
+  - Line 432: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v3/BOOTSTRAP\_V3.md
+  - Line 438: Additive V3: opened cgroup mount identity
+  - Line 442: Actual cause and evidence
+  - Line 449: Narrow binding
+  - Line 461: Unchanged execution and ROOT usage
+  - Line 473: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v3/PROFILING.md
+  - Line 479: Separate real CUDA activity diagnostic — not executed
+  - Line 498: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v3/PROTOCOL.md
+  - Line 504: Genuine stock GGUF matched serving observations — prepared only
+  - Line 508: Inputs and exact scope
+  - Line 515: Common public request policy
+  - Line 527: Resources and runtime routes
+  - Line 536: Workload, cold/warm and acceptance
+  - Line 547: ROOT workflow
+  - Line 559: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v3/TODO.md
+  - Line 565: Matched stock GGUF benchmark preparation
+  - Line 582: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v4/BOOTSTRAP\_V2.md
+  - Line 588: Additive V2: import boundary and actual OS caps
+  - Line 613: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v4/BOOTSTRAP\_V3.md
+  - Line 619: Additive V3: opened cgroup mount identity
+  - Line 623: Actual cause and evidence
+  - Line 630: Narrow binding
+  - Line 642: Unchanged execution and ROOT usage
+  - Line 654: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v4/PROFILING.md
+  - Line 660: Separate real CUDA activity diagnostic — not executed
+  - Line 679: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v4/PROTOCOL.md
+  - Line 685: Genuine stock GGUF matched serving observations — prepared only
+  - Line 689: Inputs and exact scope
+  - Line 696: Common public request policy
+  - Line 708: Resources and runtime routes
+  - Line 717: Workload, cold/warm and acceptance
+  - Line 728: ROOT workflow
+  - Line 740: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v4/ROOT\_CACHE\_V4.md
+  - Line 746: ROOT additive V4: writable FlashInfer workspace
+  - Line 768: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v4/TODO.md
+  - Line 774: Matched stock GGUF benchmark preparation
+  - Line 791: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v5/BOOTSTRAP\_V2.md
+  - Line 797: Additive V2: import boundary and actual OS caps
+  - Line 822: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v5/BOOTSTRAP\_V3.md
+  - Line 828: Additive V3: opened cgroup mount identity
+  - Line 832: Actual cause and evidence
+  - Line 839: Narrow binding
+  - Line 851: Unchanged execution and ROOT usage
+  - Line 863: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v5/PROFILING.md
+  - Line 869: Separate real CUDA activity diagnostic — not executed
+  - Line 888: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v5/PROTOCOL.md
+  - Line 894: Genuine stock GGUF matched serving observations — prepared only
+  - Line 898: Inputs and exact scope
+  - Line 905: Common public request policy
+  - Line 917: Resources and runtime routes
+  - Line 926: Workload, cold/warm and acceptance
+  - Line 937: ROOT workflow
+  - Line 949: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v5/ROOT\_CACHE\_V4.md
+  - Line 955: ROOT additive V4: writable FlashInfer workspace
+  - Line 977: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v5/ROOT\_OBSERVER\_V5.md
+  - Line 983: ROOT V5 observer failure evidence
+  - Line 999: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v5/TODO.md
+  - Line 1005: Matched stock GGUF benchmark preparation
+  - Line 1022: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v6/BOOTSTRAP\_V2.md
+  - Line 1028: Additive V2: import boundary and actual OS caps
+  - Line 1053: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v6/BOOTSTRAP\_V3.md
+  - Line 1059: Additive V3: opened cgroup mount identity
+  - Line 1063: Actual cause and evidence
+  - Line 1070: Narrow binding
+  - Line 1082: Unchanged execution and ROOT usage
+  - Line 1094: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v6/PROFILING.md
+  - Line 1100: Separate real CUDA activity diagnostic — not executed
+  - Line 1119: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v6/PROTOCOL.md
+  - Line 1125: Genuine stock GGUF matched serving observations — prepared only
+  - Line 1129: Inputs and exact scope
+  - Line 1136: Common public request policy
+  - Line 1148: Resources and runtime routes
+  - Line 1157: Workload, cold/warm and acceptance
+  - Line 1168: ROOT workflow
+  - Line 1180: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v6/ROOT\_CACHE\_V4.md
+  - Line 1186: ROOT additive V4: writable FlashInfer workspace
+  - Line 1208: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v6/ROOT\_HPID\_V6.md
+  - Line 1214: ROOT V6 numeric HPID membership
+  - Line 1234: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v6/ROOT\_OBSERVER\_V5.md
+  - Line 1240: ROOT V5 observer failure evidence
+  - Line 1256: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v6/TODO.md
+  - Line 1262: Matched stock GGUF benchmark preparation
+  - Line 1279: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v7/BOOTSTRAP\_V2.md
+  - Line 1285: Additive V2: import boundary and actual OS caps
+  - Line 1310: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v7/BOOTSTRAP\_V3.md
+  - Line 1316: Additive V3: opened cgroup mount identity
+  - Line 1320: Actual cause and evidence
+  - Line 1327: Narrow binding
+  - Line 1339: Unchanged execution and ROOT usage
+  - Line 1351: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v7/PROFILING.md
+  - Line 1357: Separate real CUDA activity diagnostic — not executed
+  - Line 1376: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v7/PROTOCOL.md
+  - Line 1382: Genuine stock GGUF matched serving observations — prepared only
+  - Line 1386: Inputs and exact scope
+  - Line 1393: Common public request policy
+  - Line 1405: Resources and runtime routes
+  - Line 1414: Workload, cold/warm and acceptance
+  - Line 1425: ROOT workflow
+  - Line 1437: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v7/ROOT\_CACHE\_V4.md
+  - Line 1443: ROOT additive V4: writable FlashInfer workspace
+  - Line 1465: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v7/ROOT\_HPID\_V6.md
+  - Line 1471: ROOT V6 numeric HPID membership
+  - Line 1491: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v7/ROOT\_OBSERVER\_V5.md
+  - Line 1497: ROOT V5 observer failure evidence
+  - Line 1513: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v7/ROOT\_QUALITY\_BINDING\_V7.md
+  - Line 1519: ROOT V7 actual native response binding
+  - Line 1540: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v7/TODO.md
+  - Line 1546: Matched stock GGUF benchmark preparation
+  - Line 1563: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v8/BOOTSTRAP\_V2.md
+  - Line 1569: Additive V2: import boundary and actual OS caps
+  - Line 1594: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v8/BOOTSTRAP\_V3.md
+  - Line 1600: Additive V3: opened cgroup mount identity
+  - Line 1604: Actual cause and evidence
+  - Line 1611: Narrow binding
+  - Line 1623: Unchanged execution and ROOT usage
+  - Line 1635: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v8/PROFILING.md
+  - Line 1641: Separate real CUDA activity diagnostic — not executed
+  - Line 1660: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v8/PROTOCOL.md
+  - Line 1666: Genuine stock GGUF matched serving observations — prepared only
+  - Line 1670: Inputs and exact scope
+  - Line 1677: Common public request policy
+  - Line 1689: Resources and runtime routes
+  - Line 1698: Workload, cold/warm and acceptance
+  - Line 1709: ROOT workflow
+  - Line 1721: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v8/ROOT\_CACHE\_V4.md
+  - Line 1727: ROOT additive V4: writable FlashInfer workspace
+  - Line 1749: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v8/ROOT\_HPID\_V6.md
+  - Line 1755: ROOT V6 numeric HPID membership
+  - Line 1775: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v8/ROOT\_OBSERVER\_V5.md
+  - Line 1781: ROOT V5 observer failure evidence
+  - Line 1797: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v8/ROOT\_QUALITY\_BINDING\_V7.md
+  - Line 1803: ROOT V7 actual native response binding
+  - Line 1824: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v8/ROOT\_STRICT\_COUNT\_V8.md
+  - Line 1830: ROOT V8 strict native footer count
+  - Line 1843: Source: .agents/runs/serving-and-speculation-vllm-gguf-matched-bench-20261020/frozen-v8/TODO.md
+  - Line 1849: Matched stock GGUF benchmark preparation
+  - Line 1866: Source: .agents/runs/serving-and-speculation-vllm-runtime-audit-2026-10-19/TODO.md
+  - Line 1872: P12 external runtime and original-source audit
+  - Line 1880: Verified
+  - Line 1931: Pending / boundaries
+  - Line 2022: Source: .agents/runs/serving-and-speculation-warm-multirow-review-20261020/REVIEW.md
+  - Line 2028: Existing V8 warm multirow comparison — source review
+  - Line 2101: Source: .agents/runs/serving-and-speculation-warm-multirow-review-20261020/TODO.md
+  - Line 2107: Warm multirow source review
+  - Line 2122: Source: .agents/runs/serving-ssd-2026-10-19/TODO.md
+  - Line 2128: Native serving/SSD foundations — current run
+
+### [.agents/docs/handoff-2026-10-20/SERVING_PERFORMANCE_AND_PAUSED_GPU_WORK.md](../handoff-2026-10-20/SERVING_PERFORMANCE_AND_PAUSED_GPU_WORK.md)
+
+- Bytes: 60379; mode: 0o644; SHA256: 4ebaa3e70bcb1fcdad24650e8a4d449597bab087abea579c439bf039cc92996a.
+- Full heading route:
+  - Line 1: Serving, performance and paused GPU work — 20 October 2026
+  - Line 10: 1. Stop state and authority
+  - Line 42: 2. Context entry points and supersession
+  - Line 68: 3. Post-c85ad25 implementation chronology
+  - Line 93: B3/B4: what physical fusion means
+  - Line 124: B5–B8 serving semantics that must survive optimization
+  - Line 158: 4. Last accepted state-scatter phase
+  - Line 189: 5. Performance history and interpretation
+  - Line 191: Native versus native
+  - Line 245: Genuine pinned stock vLLM baseline
+  - Line 292: 6. Benchmark/profiler lifecycle lessons and known failures
+  - Line 321: 7. Actual hardware counts, not source-counter fiction
+  - Line 357: 8. Exact paused ordered-SiLU checkpoint
+  - Line 359: Operator and integration sources
+  - Line 386: Actual compile failure and scalar repair
+  - Line 406: Operator physical result and incomplete instruction witness
+  - Line 436: Current MAIN candidate build — compiled, unaccepted
+  - Line 480: 9. Temporal, graph and other pending source drafts
+  - Line 558: 10. Resume procedure and preservation priorities
+  - Line 597: 11. Independent performance investigation — durable prose copy
+  - Line 605: Shared-engine performance audit — planning only
+  - Line 611: Conclusion
+  - Line 625: What is measured, and what is inferred
+  - Line 645: Priorities and measurable gates
+  - Line 647: 0. Close the comparable numerical target and benchmark accounting
+  - Line 669: 1. Obtain a critical-path decomposition before choosing further kernels
+  - Line 692: 2. Finish small exact fusion already supported by source
+  - Line 710: 3. Temporal prefill, including the dominant solo case
+  - Line 740: 4. Rework the projection data path, not just its launch wrapper
+  - Line 763: 5. Production graph reuse and synchronization reduction
+  - Line 784: 6. State traffic, attention and scheduling capacity
+  - Line 805: Fair staged benchmark matrix
+  - Line 843: Model feasibility and dependencies
+  - Line 866: Source/evidence entry points
+
+### [.agents/docs/handoff-2026-10-20/VALIDATION.md](../handoff-2026-10-20/VALIDATION.md)
+
+- Bytes: 1626; mode: 0o644; SHA256: 37e480adb9ffcbe077e62ff9a7cbf83f0350a6cc51daebed9761e42225ac5a88.
+- Full heading route:
+  - Line 1: Handoff preservation validation — 20 October 2026
+
+### [.agents/docs/handoff-2026-10-20/WORKSPACE_SNAPSHOT.md](../handoff-2026-10-20/WORKSPACE_SNAPSHOT.md)
+
+- Bytes: 48474; mode: 0o644; SHA256: e95bf0c74f82f1fd132df7c13ed97e4160efa297931c3ef286ab6d47cb5c622f.
+- Full heading route:
+  - Line 1: Read-only workspace snapshot — 20 October 2026
+  - Line 5: HEAD and signature
+  - Line 11: Local tracking divergence
+  - Line 17: MAIN pending changes
+  - Line 36: Staged paths (empty at snapshot)
+  - Line 42: Root README blob
+  - Line 48: Commits since previous handoff
+  - Line 77: Complete reachable current HEAD history (text is not missing original ancestry)
+  - Line 213: Branches
+  - Line 242: Worktree registry
+  - Line 362: GPU point telemetry
+  - Line 368: GPU compute processes
+  - Line 374: Worktree pending paths
+  - Line 378: \`/home/pvl/spaces/abird/src/zerogravity\`
+  - Line 397: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-activation-prep-20261020\`
+  - Line 404: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-activation-prep-cold-20261020\`
+  - Line 428: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-bf16-dot-20261020\`
+  - Line 450: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-capture-host-tests-20261020\`
+  - Line 460: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-cuda-graph-20261020\`
+  - Line 479: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-axes-20261019\`
+  - Line 498: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-binding-20261020\`
+  - Line 513: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-cached-gdn-20261020\`
+  - Line 520: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-conv-20261020\`
+  - Line 528: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-cuda-boundary-20261020\`
+  - Line 541: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-norm-20261020\`
+  - Line 549: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-ordinary-contract-20261020\`
+  - Line 567: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-ordinary-rms-20261020\`
+  - Line 582: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-raw-parameters-20261020\`
+  - Line 590: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-sigmoid-20261020\`
+  - Line 597: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-silu-20261020\`
+  - Line 605: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-softplus-20261020\`
+  - Line 614: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-hf-typed-20261020\`
+  - Line 630: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-native-prefix-20261020\`
+  - Line 650: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-parameter-window-20261020\`
+  - Line 657: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-qwen-window-resolver-20261020\`
+  - Line 689: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-ragged-20261019\`
+  - Line 715: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-serialized-bench-20261020\`
+  - Line 723: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-tensor-window-20261020\`
+  - Line 736: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-token-metrics-20261020\`
+  - Line 767: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/p12-torch-gdn-reduce-20261020\`
+  - Line 774: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/root-bf16-composition-20261020\`
+  - Line 809: \`/home/pvl/spaces/abird/src/zerogravity-worktrees/root-default-bulk-20261020\`
+  - Line 827: Existing CUDA paths (existence only)
+
+## .agents/plans/ — 56 files
+
+### [.agents/plans/EXPERIMENT_PROGRAM.md](../../plans/EXPERIMENT_PROGRAM.md)
+
+- Bytes: 43912; mode: 0o644; SHA256: 28c362f37d22fcd85493958b6c41fec37cb4b3cd4a26219aa3b78f58cc67541d.
+- Full heading route:
+  - Line 1: zerogravity — Project-neutral experimental program, H01–H43 (v4 reviewed)
+  - Line 14: 0. Common scientific, safety and licensing protocol
+  - Line 24: Lane A — Kernel, compiler and execution legality
+  - Line 26: H01 — Rust GPU architecture-specific kernel feasibility
+  - Line 29: H02 — Compiled execution without IR hot-path tax
+  - Line 32: H03 — Fusion vs occupancy and numerical legality
+  - Line 35: H04 — GPU-side routed expert row grouping
+  - Line 38: H05 — Expert residency × batching × scratch tradeoff
+  - Line 41: H06 — Huge immutable lookup tables with bounded IO
+  - Line 44: H07 — Full hybrid-prefix cache sharing
+  - Line 47: H08 — Adaptive target speculation
+  - Line 50: H09 — Mixed prefill/decode service fairness
+  - Line 53: H10 — Long-context dense/sparse/latent/compressed attention
+  - Line 56: H11 — Physical unified/discrete memory and safe admission
+  - Line 59: H12 — Quant storage vs compute/derived model quality
+  - Line 62: H13 — Heterogeneous topology, activations and peer transport
+  - Line 65: H14 — Real multi-turn agent/task workload
+  - Line 68: Lane B — Compiler/state/architecture extension
+  - Line 70: H15 — Multiple Rust kernel providers through one interface
+  - Line 73: H16 — Effect-token correctness under arbitrary graph rewriting
+  - Line 76: H17 — CIR async execution, liveness and deliberate failures
+  - Line 79: H18 — Actual eager vs device capture candidate choice
+  - Line 82: H19 — Bounded pure-region optimizer/search
+  - Line 85: H20 — Common resumable prefix frontier for 3+ state groups
+  - Line 88: H21 — Modularity extension drill
+  - Line 91: H22 — Product/task correctness and malformed inputs
+  - Line 94: H23 — Accurate external benchmark comparison provenance
+  - Line 97: H24 — Actual hardware safety profiles
+  - Line 100: H25 — Full model compiler runtime overhead
+  - Line 103: Lane C — Heterogeneous projection compute and additional task programs
+  - Line 105: H26 — Intra-operator output row partition
+  - Line 108: H27 — Optional NPU-owned program/driver feasibility
+  - Line 111: H28 — Cross-API DMA, machine-safety and power/fabric isolation
+  - Line 114: H29 — Same-source cooperative prefill benchmark
+  - Line 117: H30 — Block-float numerical and target task quality
+  - Line 120: H31 — Non-token TaskProgram pipeline reuse
+  - Line 123: Promotion rules and evidence storage
+  - Line 135: v4 extension experiments — 2026-10-12, H32–H43
+  - Line 139: H32 — Prepared StateRoot and atomic logical publication
+  - Line 143: H33 — GPU-native multi-step input progression
+  - Line 147: H34 — Hierarchical reserve and device-local allocation
+  - Line 151: H35 — Dynamic shape polymorphism with guarded fallback
+  - Line 155: H36 — Minimal TaskDriver versus generic workflow graph
+  - Line 159: H37 — Fused whole-region candidate with unchanged runtime
+  - Line 163: H38 — Output stream commit/reconnect semantics
+  - Line 167: H39 — Distributed epoch fencing and partial failure
+  - Line 171: H40 — Future parameter update compatibility (without training platform)
+  - Line 175: H41 — Key/cache migration and shape-band pruning
+  - Line 179: H42 — Fair mixed-task scheduling under resource/latency targets
+  - Line 183: H43 — v4 minimality and extension change-radius audit
+  - Line 190: v4.1 cross-accelerator composability experiments H44–H55 (NOT RUN)
+  - Line 194: H44 — Coherent local ARM+GPU system versus HBM device admission
+  - Line 198: H45 — Native block-scaled precision and multi-GPU topology
+  - Line 202: H46 — Fake graph-only accelerator (TPU-class execution contract)
+  - Line 206: H47 — Fake wafer-scale programmed dataflow and streamed model weights
+  - Line 210: H48 — Statically scheduled inter-chip dataflow and heterogeneous stages
+  - Line 214: H49 — AOT accelerator backend with expensive graph compile
+  - Line 218: H50 — Additional graph/low-level accelerator device classes
+  - Line 222: H51 — Opaque stateful graph refusal and exact snapshot bridge
+  - Line 226: H52 — Region granularity and program residency optimizer
+  - Line 230: H53 — Remote/cluster topology and epoch fencing
+  - Line 234: H54 — External model API versus native program boundary
+  - Line 238: H55 — Backend extensibility, licensing and alternate speculative algorithm
+  - Line 244: v4.2 new independent distributed execution experiments H56–H70 (NOT RUN)
+  - Line 248: H56 — Standalone zero-network fast path
+  - Line 252: H57 — Two-node layer pipeline with layer-local state
+  - Line 256: H58 — Remote immutable prefix cache versus recompute
+  - Line 260: H59 — Separate prefill and decode machines
+  - Line 264: H60 — Remote attention beside KV versus remote KV read
+  - Line 268: H61 — Sequence-token KV attention partition algebra
+  - Line 272: H62 — Attention/FFN and routed expert owners
+  - Line 276: H63 — Tensor/head parallel and fast fabric collectives
+  - Line 280: H64 — Task-stage distribution beyond text
+  - Line 284: H65 — Encrypted tunnels, direct versus peer/relay topology
+  - Line 288: H66 — Trusted node enrollment and adversarial peers
+  - Line 292: H67 — Coordinator/network partition, epochs and state shards
+  - Line 296: H68 — State shard migration and topology replan
+  - Line 300: H69 — Performance/capacity Pareto across multi-machine placements
+  - Line 304: H70 — Future-topology composability change-radius audit
+  - Line 310: v4.3 multi-model local runtime, router, config and OpenAI API research H71–H86 (NOT RUN)
+  - Line 314: H71 — Zero-config one-command local model run
+  - Line 318: H72 — ModelCatalog, immutable artifact and alias revision
+  - Line 322: H73 — Concurrent model load deduplication and cold-start fairness
+  - Line 326: H74 — Many-model simultaneous physical residency
+  - Line 330: H75 — Idle eviction, keepalive and pinned session safety
+  - Line 334: H76 — Equivalent replica balancing versus different-model choice
+  - Line 338: H77 — Sharded deployment versus independent source model replicas
+  - Line 342: H78 — Model profile precedence and provenance
+  - Line 346: H79 — OpenAI Chat Completions exact SDK conformance
+  - Line 350: H80 — Responses subset, stateful retention and event correctness
+  - Line 354: H81 — Embeddings and extra TaskDriver endpoint qualification
+  - Line 358: H82 — Local listener versus public API security and native admin
+  - Line 362: H83 — Multi-model parent TaskProgram roles and resource admission
+  - Line 366: H84 — Warm/cold replica placement and dynamic per-model batching
+  - Line 370: H85 — Model/router hot reload, client disconnect and server restart
+  - Line 374: H86 — End-to-end minimality, parity and observability
+
+### [.agents/plans/IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_SPEC.md](../../plans/IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_SPEC.md)
+
+- Bytes: 12534; mode: 0o644; SHA256: dda399a4b79a677d6b2ae1e15b790257720dcdcd345a786c01d613f8821a40b1.
+- Full heading route:
+  - Line 1: Large immutable source loading: bounded basic-unit proposal
+  - Line 24: Findings and boundaries
+  - Line 53: Immutability decision
+  - Line 82: Smallest concrete next CPU source unit
+  - Line 138: File/API ownership proposal
+  - Line 155: Acceptance with tiny/sparse fixtures
+
+### [.agents/plans/IMPLEMENTATION_ROADMAP.md](../../plans/IMPLEMENTATION_ROADMAP.md)
+
+- Bytes: 41396; mode: 0o644; SHA256: a976ec6153dd882d37c5478944c7aa10bb63d28e55d9c236ce49b5f8ff6381fa.
+- Full heading route:
+  - Line 1: Zerogravity — architecture roadmap P00–P23
+  - Line 7: A. Program objective and hard invariants
+  - Line 13: Critical minimum path
+  - Line 46: ZG-P00 — Lean foundation, source policy and reproducible build
+  - Line 54: ZG-P01 — Architecture-specific Rust kernel and hardware feasibility
+  - Line 62: ZG-P02 — Independent mathematical and state-transition oracle
+  - Line 70: ZG-P03 — Trusted artifacts, quant codecs and rendering
+  - Line 78: ZG-P04 — Typed Semantic IR and minimal TaskProgram
+  - Line 86: ZG-P05 — Legal region optimizer, kernel registry and async CIR
+  - Line 94: ZG-P06 — Useful portable Rust execution backend
+  - Line 102: ZG-P07 — Accelerator providers, streams, leases and kernel ownership
+  - Line 110: ZG-P08 — First complete real model and TaskProgram vertical slice
+  - Line 118: ZG-P09 — Native TaskCoordinator, worker and serving protocols
+  - Line 129: ZG-P10 — Global physical memory and full-state prefix manager
+  - Line 140: ZG-P11 — Hybrid/stateful attention and complex operators
+  - Line 148: ZG-P12 — Routed sparse parameters and tiered expert execution
+  - Line 159: ZG-P13 — First extreme hybrid sparse model specialization
+  - Line 167: ZG-P14 — Second, substantially different heavy model specialization
+  - Line 175: ZG-P15 — Target-authoritative speculation and model/task transactions
+  - Line 186: ZG-P16 — Continuous batching and cross-resource cost optimization
+  - Line 197: ZG-P17 — Broader model families, adapters, embedding and reranking
+  - Line 205: ZG-P18 — Media TaskPrograms: audio, image, video and iterative AI
+  - Line 213: ZG-P19 — Heterogeneous accelerators, collectives and remote placement
+  - Line 221: ZG-P20 — Bounded compiler/autotuner and negative experiments
+  - Line 232: ZG-P21 — Security, trust, licensing and reproducible releases
+  - Line 240: ZG-P22 — Full performance and quality release qualification
+  - Line 251: ZG-P23 — Composability and future-technology evolution qualification
+  - Line 261: B. Milestones (capability, not dates)
+  - Line 273: C. New model / kernel / task checklists
+  - Line 287: D. Decision and progress discipline
+  - Line 293: v4 roadmap refinement — 2026-10-12
+  - Line 319: v4.1 universal region-backend implementation crosswalk — 2026-10-12
+  - Line 341: v4.2 distributed execution and tunneled-machine phase crosswalk (U-020)
+  - Line 362: v4.3 integrated ModelCatalog, ModelRouter, ResidencyManager and API/UX crosswalk (U-021)
+
+### [.agents/plans/INTEGRATED_PHASE_0_AND_DELIVERY_GATES.md](../../plans/INTEGRATED_PHASE_0_AND_DELIVERY_GATES.md)
+
+- Bytes: 28363; mode: 0o644; SHA256: 9b11a2bcace9cfcea129dc4a94be051d3f24d516d303d2dd23584ca1e77a3f4b.
+- Full heading route:
+  - Line 1: zerogravity — Independent Stage-0 feasibility and delivery gates (v4 reviewed)
+  - Line 5: 1. Hard problem and mitigation
+  - Line 11: 2. Stage-0 work packages
+  - Line 33: 3. Optional Stage N — shared-SoC GPU+NPU and partial-operator execution
+  - Line 48: 4. Gates by architectural responsibility
+  - Line 50: G0-A — Semantic and model foundations
+  - Line 57: G0-B — Kernel codegen and resource execution
+  - Line 64: G0-C — Functional end-to-end vertical slice
+  - Line 70: G0-D — Modularity proof
+  - Line 76: 5. Later release gates (capabilities, not promised dates)
+  - Line 80: 6. Evidence and kill/pivot criteria
+  - Line 96: v4 correction and dedicated proof gates — 2026-10-12
+  - Line 119: v4.1 optional Stage Fabric — graph-only, wafer/static dataflow and heterogeneous cluster execution
+  - Line 140: v4.2 optional Stage Distributed — topology, remote state and tunnel execution
+  - Line 163: v4.3 optional Stage Serve — minimal CLI, model router and API conformance
+
+### [.agents/plans/MODEL_ACQUISITION_IMPLEMENTATION_SPEC.md](../../plans/MODEL_ACQUISITION_IMPLEMENTATION_SPEC.md)
+
+- Bytes: 15314; mode: 0o644; SHA256: 73d4eb29a98eebd39166b179b8cb647eec961b849a79b7a749220a5dc3c96829.
+- Full heading route:
+  - Line 1: Acquisition next unit — bounded cache first, then HF/GitHub vertical slice
+  - Line 16: Bounded implementation sequence
+  - Line 47: Cold API, authority and loader boundary
+  - Line 82: XDG, locking and transaction details
+  - Line 140: A2 exact transport/provider contract
+  - Line 179: Acceptance design (A1 results in model-acquisition/TODO.md; A2/A3 pending)
+  - Line 203: Inventory gaps / completion decision
+
+### [.agents/plans/NEXT_AGENT_PROMPT_2026-10-17.md](../../plans/NEXT_AGENT_PROMPT_2026-10-17.md)
+
+- Bytes: 4351; mode: 0o644; SHA256: 15734cf3bef345bed0b121768d695d0ffbad0974c758b781e8db40bec20520b8.
+- Full heading route:
+  - Line 1: Starting prompt — Zerogravity takeover, 17 October 2026
+
+### [.agents/plans/NEXT_AGENT_PROMPT_2026-10-19.md](../../plans/NEXT_AGENT_PROMPT_2026-10-19.md)
+
+- Bytes: 8956; mode: 0o600; SHA256: 4566d713995969bf048ed03e65ef4895c5b2566dc66fb159468048f469be76ad.
+- Full heading route:
+  - Line 1: Starting prompt — Zerogravity comprehensive takeover, 19 October 2026
+
+### [.agents/plans/NEXT_AGENT_PROMPT_2026-10-20.md](../../plans/NEXT_AGENT_PROMPT_2026-10-20.md)
+
+- Bytes: 6658; mode: 0o644; SHA256: c0979aedbfb6fd9b88134fac6b80567ab3997d2e0e7f469c8cecc1ad49067918.
+- Full heading route:
+  - Line 1: Starting prompt — Zerogravity comprehensive takeover, 20 October 2026
+
+### [.agents/plans/NEXT_AGENT_PROMPT_2026-10-25-NIGHT.md](../../plans/NEXT_AGENT_PROMPT_2026-10-25-NIGHT.md)
+
+- Bytes: 4137; mode: 0o600; SHA256: 66a7e4b499dc8dd4cc6c3dd00b1e49b58f9df1ecfd78ec7bc28142098ad0ee5d.
+- Full heading route:
+  - Line 1: Next ZeroGravity agent — complete starting prompt (25 October 2026 night)
+
+### [.agents/plans/NEXT_AGENT_PROMPT_2026-10-25.md](../../plans/NEXT_AGENT_PROMPT_2026-10-25.md)
+
+- Bytes: 5494; mode: 0o644; SHA256: 9a6497dbce9bd8113cd03b445e62050a981cf4f619daa351cfb430496d2a20e9.
+- Full heading route:
+  - Line 1: NEXT AGENT PROMPT — 2026-10-25
+  - Line 7: Read first (in this order)
+  - Line 21: Situation
+  - Line 36: Resume queue (in order)
+  - Line 77: Hard rules
+
+### [.agents/plans/README.md](../../plans/README.md)
+
+- Bytes: 5003; mode: 0o644; SHA256: bd56818ca5800a2e427b7c12db2c3e77aa86ebcbf218b0cccfb71597b7bb0897.
+- Full heading route:
+  - Line 1: Plans
+  - Line 7: Layout
+  - Line 22: Queue — \`TODO.md\`
+  - Line 27: Active
+  - Line 30: Icebox
+  - Line 33: Closed
+  - Line 42: Plan — \`README.md\`
+  - Line 56: Plan — \`TODO.md\`
+  - Line 59: \<plan\>
+  - Line 63: Committed
+  - Line 64: \`\<sha\>\` — \<what this set landed\>
+  - Line 67: Uncommitted
+  - Line 71: Tests and verification
+  - Line 82: History — optional \`HISTORY.md\`
+  - Line 94: Parallel work
+  - Line 128: Closeout
+
+### [.agents/plans/RELEASE_ACCEPTANCE_GATES.md](../../plans/RELEASE_ACCEPTANCE_GATES.md)
+
+- Bytes: 27297; mode: 0o644; SHA256: 84377b654b99fe828442debb5810f13feac0600e961c34b04358fe3fa9a9b64c.
+- Full heading route:
+  - Line 1: zerogravity — Model-neutral release, quality and composability gates (v4 reviewed)
+  - Line 5: 1. Approval states
+  - Line 11: 2. Foundational release gates
+  - Line 27: 3. Required semantic and numerical quality controls
+  - Line 38: 4. Resource and async safety
+  - Line 49: 5. Task and service acceptance
+  - Line 62: 6. Long-run composability release test
+  - Line 75: 7. Performance qualification
+  - Line 87: 8. Source/license/security qualification
+  - Line 97: 9. Evidence/report schema (conceptual)
+  - Line 116: v4 mandatory architecture acceptance refinements — 2026-10-12
+  - Line 134: v4.1 backend portability and honesty gates — 2026-10-12
+  - Line 147: v4.2 distributed placement and networked execution acceptance
+  - Line 164: v4.3 multi-model router, simple CLI and API conformance release gates
+  - Line 183: P00 packaging-only Rust binary and release artifact gates — U-023
+
+### [.agents/plans/TODO.md](../../plans/TODO.md)
+
+- Bytes: 1452; mode: 0o644; SHA256: 721aebc8d047b7bdeae0dfa380982fb34e61ed22788d187dfd66b0b95d1a96b9.
+- Full heading route:
+  - Line 1: Plan queue
+  - Line 3: Active
+  - Line 14: Icebox
+  - Line 20: Closed
+
+### [.agents/plans/ZEROGRAVITY_MASTER_PLAN_2026-10-10.md](../../plans/ZEROGRAVITY_MASTER_PLAN_2026-10-10.md)
+
+- Bytes: 55253; mode: 0o644; SHA256: e663490c312d8eca92669286468ddd904aa5a44217f6bb0065f8a8fa99bcd9b1.
+- Full heading route:
+  - Line 1: zerogravity — master architecture v4.3: composable AI execution, model routing and simple user experience
+  - Line 24: 1. Mission, scope and central design argument
+  - Line 40: 2. Six composable architectural concerns (not six plugin engines)
+  - Line 72: 3. Correct model math and mutable-state transactions
+  - Line 74: 3.1 Model and operator support
+  - Line 80: 3.2 One atomic logical StateRoot publication
+  - Line 88: 3.3 Full-state prefix/cache compatibility
+  - Line 92: 4. Specialization and fast-path architecture
+  - Line 94: 4.1 Closed-region substitution
+  - Line 100: 4.2 Shape, graph and hot scheduling discipline
+  - Line 108: 5. Coarse resource admission, local physical execution
+  - Line 116: 6. Heterogeneous device and source-language strategy
+  - Line 124: 7. Task kinds and optional training compatibility
+  - Line 138: 8. Minimal Rust modules and release/process strategy
+  - Line 146: 9. Quality and performance governance
+  - Line 160: 10. Staged delivery and source/research separation
+  - Line 168: 11. Success criterion and practical limitations
+  - Line 176: 12. v4.1 — universal region execution across GPU, TPU and static dataflow fabrics
+  - Line 180: 12.1 The decisive abstraction is \*minimum efficient execution granularity\*
+  - Line 191: 12.2 Platform categories this represents
+  - Line 205: 12.3 New required capability detail
+  - Line 213: 12.4 Rust-first and feasibility truth
+  - Line 219: 12.5 Proof program and scope
+  - Line 228: 13. v4.2 — One distributed AI execution fabric across hardware, machines and tunnels
+  - Line 234: 13.1 Four independent placement axes and one derived transfer schedule
+  - Line 244: 13.2 The placement topologies that must be representable
+  - Line 261: 13.3 Topology transport and trusted private tunnels
+  - Line 267: 13.4 One logical StateRoot across remote state shards
+  - Line 275: 13.5 Topology-aware mathematical and cost legality
+  - Line 283: 13.6 Delivery and proof without multiplying engine complexity
+  - Line 299: 14. v4.3 — one-command local UX, built-in multi-model router and OpenAI-compatible serving
+  - Line 305: 14.1 One engine across CLI, SDK, API and many models
+  - Line 331: 14.2 Four entities must remain distinct
+  - Line 340: 14.3 Exact-model routing versus model choice
+  - Line 348: 14.4 Resident lifecycle and model switching
+  - Line 354: 14.5 Configuration without upfront complexity
+  - Line 362: 14.6 APIs, security and complete streaming semantics
+  - Line 370: 14.7 Performance and long-term minimality
+  - Line 381: 15. Final editorial and implementation authority (publication dossier 0.1, U-022)
+
+### [.agents/plans/archive/history/AGENT_IMPLEMENTATION_PLAYBOOK.md](../../plans/archive/history/AGENT_IMPLEMENTATION_PLAYBOOK.md)
+
+- Bytes: 18003; mode: 0o644; SHA256: bc7233914a8b22ba5a64709efd024254f772302465c5b782b6fa3ff5db8c97a7.
+- Full heading route:
+  - Line 1: Zerogravity — implementation design reference
+  - Line 8: 2. Begin with a bounded phase contract
+  - Line 30: 3. Minimal Rust module ownership (first release, not frozen public ABI)
+  - Line 51: 4. Implementation sequence, Phase P00–P23
+  - Line 55: P00 — reproducible project foundation
+  - Line 61: P01 — physical accelerator source/codegen feasibility
+  - Line 67: P02 — reference operator/state truth
+  - Line 73: P03 — verified artifact, quant and tokenizer
+  - Line 79: P04 — effect-aware SemanticProgram and trusted TaskDriver
+  - Line 85: P05 — region candidates, dynamic guards and async compiled plan
+  - Line 91: P06 — useful CPU-only model executor
+  - Line 97: P07 — real GPU worker, local pools and event safety
+  - Line 103: P08 — first complete real-model vertical slice
+  - Line 109: P09 — canonical service/SDK plus model router entry
+  - Line 115: P10 — physical residency + full-state snapshots
+  - Line 121: P11 — complex hybrid attention/recurrent semantics
+  - Line 127: P12 — routed sparse weights and tiered IO
+  - Line 133: P13 — first extreme hybrid model region
+  - Line 139: P14 — second complex family confirms modularity
+  - Line 145: P15 — target-authoritative speculative decoding
+  - Line 151: P16 — high-concurrency multi-model and stage-aware scheduling
+  - Line 157: P17 — broad model roles, adapters, embeddings
+  - Line 163: P18 — ASR/TTS/image/video TaskDrivers
+  - Line 169: P19 — networked multi-device, layer/state and fabric
+  - Line 175: P20 — bounded offline optimization and cost model
+  - Line 181: P21 — security, source rights and reproducible release
+  - Line 187: P22 — release-quality numerical and physical performance matrix
+  - Line 193: P23 — long-term extension and future technology proof
+  - Line 201: 5. Test programs as grouped work, not 86 mandatory day-one tasks
+  - Line 215: 6. Implementation priority / hard dependencies
+
+### [.agents/plans/archive/history/CURRENT_STATUS_AND_TRACKING.md](../../plans/archive/history/CURRENT_STATUS_AND_TRACKING.md)
+
+- Bytes: 180; mode: 0o644; SHA256: fa73c0751e8106d902962a87725e017a3de0b912fe1f3a2f713cc831756859ed.
+- Full heading route:
+  - Line 1: Current work
+
+### [.agents/plans/archive/history/DECISION_REGISTER.md](../../plans/archive/history/DECISION_REGISTER.md)
+
+- Bytes: 107297; mode: 0o644; SHA256: 2b5651d458aeff95ef86350dd13ae57ccae85df6f1164bb7a64604eba54b38af.
+- Full heading route:
+  - Line 1: Decision register — confirmed user intent versus recommended design
+  - Line 113: Explicit user decisions
+  - Line 182: Strongly recommended architectural choices (not independently approved yet)
+  - Line 283: Open decisions (do not fill silently)
+  - Line 362: Assumptions / boundaries
+  - Line 371: v3 architectural supersession and provenance rule — 2026-10-12
+  - Line 383: Conflict-resolution protocol
+  - Line 404: Owner decisions after U-055 — consolidated 2026-10-17
+
+### [.agents/plans/archive/history/OPEN_CONTRIBUTION_AI_DEVELOPMENT_AND_MIT_POLICY_2026-10-15.md](../../plans/archive/history/OPEN_CONTRIBUTION_AI_DEVELOPMENT_AND_MIT_POLICY_2026-10-15.md)
+
+- Bytes: 4268; mode: 0o644; SHA256: bf208cd7fb2fc5d83de2c38079cd30065365b0b95cdb5e27b5200e39134b0421.
+- Full heading route:
+  - Line 1: Zerogravity — Human-Centric Design, AI-Centric Implementation, and Open Contributions
+  - Line 5: 1. How we build
+  - Line 17: 2. Contribution workflow
+  - Line 29: 3. License selection
+  - Line 36: 4. README and implementation evidence policy
+  - Line 44: 5. Decision scope
+
+### [.agents/plans/archive/history/REQUIREMENTS_AND_TEST_TRACEABILITY.md](../../plans/archive/history/REQUIREMENTS_AND_TEST_TRACEABILITY.md)
+
+- Bytes: 20924; mode: 0o644; SHA256: 30f9b3ae2108d2d311bb1ae012ce5a64ebc9901ff3dd3d96ca6341e3e1a1139e.
+- Full heading route:
+  - Line 1: Zerogravity — requirements and test design
+  - Line 6: 1. Explicit user intent U-001…U-026
+  - Line 50: 2. Operational core requirements and integrated invariant mapping
+  - Line 74: 3. Phase-to-requirement closure map
+  - Line 103: 4. Suggested milestone-level review gates
+  - Line 109: 5. Recording actual results
+
+### [.agents/plans/archive/history/accepted-baseline/TODO.md](../../plans/archive/history/accepted-baseline/TODO.md)
+
+- Bytes: 3128; mode: 0o644; SHA256: 968831b1b3183e027222842127791b88509781adce2e08432acf0cc1eaef0a51.
+- Full heading route:
+  - Line 1: Accepted implementation baseline
+  - Line 6: Uncommitted
+  - Line 10: Committed
+  - Line 12: 6d74f76 — owner-approved tested baseline
+  - Line 26: Accepted detail retained from retired reports — 6d74f76
+
+### [.agents/plans/archive/history/handoff-cleanup/TODO.md](../../plans/archive/history/handoff-cleanup/TODO.md)
+
+- Bytes: 3564; mode: 0o644; SHA256: 0d92b720ff0ece86e003d4235dde95683eae408bbf2def229d2839459130433e.
+- Full heading route:
+  - Line 1: Simplify agent handoffs
+  - Line 5: Uncommitted
+  - Line 9: Committed
+  - Line 11: bfe672c — simple TODO handoffs
+  - Line 23: 3787519 — starting implementation
+  - Line 29: Integrated agent results
+  - Line 48: Final checks
+
+### [.agents/plans/archive/history/historical-records/TODO.md](../../plans/archive/history/historical-records/TODO.md)
+
+- Bytes: 10493; mode: 0o644; SHA256: 2ac60f20d2823af7d309c7867a3cb2cb64469dc42d6f82c011a834b655c3ecda.
+- Full heading route:
+  - Line 1: TODO — historical records
+  - Line 11: Committed
+  - Line 13: aeff567 — retire legacy evidence reports
+  - Line 25: Migration details
+  - Line 33: Validation
+  - Line 43: bfe672c — starting workflow
+  - Line 48: 9239719 — retire historical archive bodies
+  - Line 50: Historical archive retirement
+  - Line 73: Integrated continuation
+  - Line 83: Uncommitted
+  - Line 87: Tests and verification
+
+### [.agents/plans/cli-device-routing/README.md](../../plans/cli-device-routing/README.md)
+
+- Bytes: 44480; mode: 0o644; SHA256: cda9b856cb8024fe51e144e8174967c9e76ccd84a4cc8ae127c8049aa3b117ec.
+- Full heading route:
+  - Line 5: CLI and device routing
+  - Line 12: Outcome
+  - Line 32: Current source and boundaries
+  - Line 57: CLI contract
+  - Line 95: Configuration selection and one schema
+  - Line 160: Semantic parity and precedence
+  - Line 231: Proposed YAML examples
+  - Line 288: Device references and ordering
+  - Line 339: Diagnostics
+  - Line 359: Shared request and placement flow
+  - Line 435: Current resources and comfortable fit
+  - Line 525: Selection, splitting and safe admission
+  - Line 585: Future stage roles, NPUs and peers
+  - Line 644: Examples of the proposed behavior
+  - Line 672: Decisions for user review
+  - Line 694: References
+
+### [.agents/plans/cli-device-routing/TODO.md](../../plans/cli-device-routing/TODO.md)
+
+- Bytes: 18691; mode: 0o644; SHA256: db95b7feea9e1bef0efa7747dbef8edb6d20850f14fd7970e57be8fe60b8b162.
+- Full heading route:
+  - Line 1: CLI and device routing
+  - Line 10: Committed
+  - Line 12: \`b3c5a532d72a\` — unified model, config and device run frontend
+  - Line 18: Reviewed source checkpoint — 24 Oct
+  - Line 74: Review and authorization
+  - Line 82: Uncommitted
+  - Line 84: Reviewed source checkpoint — 24 Oct
+  - Line 92: Review and authorization
+  - Line 97: Explicit source-form addition — 24 Oct
+  - Line 111: Proposed unit 1 — useful local run policy
+  - Line 157: Proposed unit 2 — local layer spill with real state
+  - Line 178: Proposed unit 3 — qualified roles and explicit peers
+  - Line 198: Tests and verification
+
+### [.agents/plans/cpu-gpu-optimization/BACKEND_PARITY.md](../../plans/cpu-gpu-optimization/BACKEND_PARITY.md)
+
+- Bytes: 13005; mode: 0o644; SHA256: f77795ab496a8b52cf1eca1c0bfb43037d7e4d6596f1e040b37568359612b307.
+- Full heading route:
+  - Line 1: Vulkan / CUDA / HIP parity
+  - Line 17: Shared components and remaining implementations
+  - Line 35: Historical pvl-x2 readiness and subsequent finite results
+  - Line 68: Ordered complete units
+
+### [.agents/plans/cpu-gpu-optimization/BENCHMARK_CONTAINER_TERMINATION.md](../../plans/cpu-gpu-optimization/BENCHMARK_CONTAINER_TERMINATION.md)
+
+- Bytes: 7004; mode: 0o644; SHA256: b6a00da62238468fe4d877900d6c02ca38a5f69ee2a58d04566b4eacbf7c05d9.
+- Full heading route:
+  - Line 1: l5 benchmark container termination
+  - Line 13: Preventive fix — 26 Oct
+  - Line 32: Established facts
+  - Line 60: New timeline evidence
+  - Line 91: Limits and next work
+
+### [.agents/plans/cpu-gpu-optimization/SHARED_MEMORY_AND_BOUNDARIES.md](../../plans/cpu-gpu-optimization/SHARED_MEMORY_AND_BOUNDARIES.md)
+
+- Bytes: 15601; mode: 0o644; SHA256: 27f7e8893f37306511cc07de29bbf4514330bdc44edcdcb2586e68c7f1fdc28b.
+- Full heading route:
+  - Line 1: Shared storage and CPU–GPU boundaries
+  - Line 25: Historical causal evidence and priorities
+  - Line 66: Small shared API surface
+  - Line 127: Pool accounting and retirement
+  - Line 148: Transfers and boundary policy
+  - Line 168: Backend owners and conservative admission
+  - Line 188: Ordered substantial units
+  - Line 216: Independent investigations
+
+### [.agents/plans/cpu-gpu-optimization/SHORT_HF_RESULTS.md](../../plans/cpu-gpu-optimization/SHORT_HF_RESULTS.md)
+
+- Bytes: 23594; mode: 0o644; SHA256: 2e840e6f53d9462997fb698652a402eed167d7628ee3e5e787132da551482b76.
+- Full heading route:
+  - Line 1: Short HF performance — current source21 measurement
+  - Line 47: C16 source21 — completed experiments, distinct timing scopes
+  - Line 70: Highest verified retained pairs
+  - Line 93: Historical source11 measurement
+  - Line 250: 2B head residency and transfer repair
+  - Line 275: Prior causal evidence — actor8
+  - Line 349: Independent work
+
+### [.agents/plans/cpu-gpu-optimization/TODO.md](../../plans/cpu-gpu-optimization/TODO.md)
+
+- Bytes: 89395; mode: 0o644; SHA256: 66b049686f7f6b1910242a6ee7b56dfec3947bc016d9975c65dde36c93a1f038.
+- Full heading route:
+  - Line 1: Cpu gpu optimization
+  - Line 15: Uncommitted
+  - Line 17: Current correctness-first order — 26 Oct
+  - Line 28: Current B4 takeover — 25–26 Oct
+  - Line 36: a857d45 — validated fixture repairs
+  - Line 72: SDK replay and serving — unchanged a857d45 runtime
+  - Line 151: Closed C16 measurements and remaining work — 26 Oct
+  - Line 215: Current source checkpoint — 24 Oct
+  - Line 342: Ordered adoption — 21 Oct
+  - Line 726: Owner follow-up — 21 Oct, reuse/harness/target coverage
+  - Line 786: Committed
+  - Line 788: 6d85559 — correctness comparison gate, 26 Oct
+  - Line 799: \`5d40cf5\` — shared pending queue and ingress credit
+  - Line 837: \`52f76a0\` — short-HF tokenizer credit and HOST8
+  - Line 871: 25Oct assembly and evidence records — \`docs(plans)\` (this commit)
+  - Line 906: \`3e89f1919993\` — shared resident execution and current finite checkpoints
+  - Line 912: Current source checkpoint — 24 Oct
+  - Line 1026: Ordered adoption — 21 Oct
+  - Line 1184: 6d74f76
+  - Line 1188: Concurrency review — 1fca893
+  - Line 1192: Tests and verification
+  - Line 1214: 24 Oct — current 2B readiness checkpoint
+
+### [.agents/plans/distributed-execution/TODO.md](../../plans/distributed-execution/TODO.md)
+
+- Bytes: 3876; mode: 0o644; SHA256: 033606bb464b7b556d4a7d4cf859290856d8ac017af70641ab67b4ce53d2c9ff.
+- Full heading route:
+  - Line 1: Distributed execution
+  - Line 9: Uncommitted
+  - Line 16: Deferred mechanism reconciliation — 21 Oct
+  - Line 49: Committed
+  - Line 51: 6d74f76
+
+### [.agents/plans/memory-and-streaming/README.md](../../plans/memory-and-streaming/README.md)
+
+- Bytes: 3106; mode: 0o600; SHA256: 1f67e268e85c23fad327f0be354a4b44d280bcab9513299f14ec893d3083f19d.
+- Full heading route:
+  - Line 5: Source-preserving SSD residency
+  - Line 7: Implemented: immutable original SSD source-extent IO
+  - Line 17: Still pending
+  - Line 26: Original-index tensor windows
+
+### [.agents/plans/memory-and-streaming/TODO.md](../../plans/memory-and-streaming/TODO.md)
+
+- Bytes: 12346; mode: 0o644; SHA256: d3ec590c55c88127ecb77324f1d8cc86b14f003a4d38a73ce9e31b0d99351fb0.
+- Full heading route:
+  - Line 1: Memory and streaming
+  - Line 9: Uncommitted
+  - Line 21: Mechanism adoption — 21 Oct, unimplemented follow-up
+  - Line 96: Committed
+  - Line 98: \`bd277cf76673\` — shared host domains and device backing retirement
+  - Line 104: Mechanism adoption — 21 Oct, unimplemented follow-up
+  - Line 148: 35b9093 — source-only verified SSD extents
+  - Line 165: 6d74f76
+  - Line 169: Tests and verification
+
+### [.agents/plans/model-acquisition/README.md](../../plans/model-acquisition/README.md)
+
+- Bytes: 95268; mode: 0o644; SHA256: b7c16440a4e8882b1c9e15a5ec2892eaf0c21b358e671b6f3bf9bd2175654fb4.
+- Full heading route:
+  - Line 3: Model acquisition
+  - Line 12: Design
+  - Line 73: Decisions
+  - Line 91: Interfaces and remaining scope
+  - Line 134: Metadata-only candidate discovery
+  - Line 167: Explicit GGUF filename quant selection
+  - Line 220: Explicit full-path Unicode filters
+  - Line 262: Exact length recovery
+  - Line 289: Explicit capped auxiliary streaming
+  - Line 353: Explicit protected-cache removal
+  - Line 426: Explicit components
+  - Line 496: Explicit HTTPS objects
+  - Line 558: Native OCI raw GGUF layers
+  - Line 611: Native GCS versioned objects
+  - Line 669: Native versioned S3 objects
+  - Line 712: Explicit AWS FULL\_OBJECT SHA256
+  - Line 762: Native Azure BlockBlob revisions
+  - Line 813: Explicit unversioned cloud content contracts
+  - Line 849: Strong conditional cloud observations
+  - Line 882: Native ModelScope explicit commits
+  - Line 949: Xet hash and chunk primitives
+  - Line 974: Native HF Xet
+  - Line 1035: Required native LFS/Xet safetensors index reconstruction
+  - Line 1067: Provider and compatibility frontier
+  - Line 1107: Explicit read-only HF cache import
+  - Line 1194: Model pull v1 acceptance and execution cutover
+  - Line 1206: Large HF safetensors examples (source discovery/metadata only)
+  - Line 1218: The executable must be built with the optional acquisition feature.
+  - Line 1219: The exact safetensors index is an explicit source member, never a guessed
+  - Line 1220: selection among arbitrary weight families. 128GiB is a cooperative cache
+  - Line 1221: reservation policy, not proof of free space or a recommended RAM size.
+  - Line 1230: Inspect the output pinned commit and exact selected bytes FIRST.
+  - Line 1231: Only then explicitly omit --dry-run to authorize a real transfer.
+  - Line 1232: Native HF Xet APPLY can reconstruct an Xet-backed index under the
+  - Line 1233: same admitted owner; native dry-run refuses that case without CAS grants.
+  - Line 1234: For GGUF, inspect candidates and explicitly choose one exact --quant tag
+  - Line 1235: or an exact --file (no implicit default, ranking, or fallback).
+  - Line 1263: October 18, 2026 — verified public metadata-only source plans
+  - Line 1297: Cache-to-model preparation
+  - Line 1342: References
+
+### [.agents/plans/model-acquisition/TODO.md](../../plans/model-acquisition/TODO.md)
+
+- Bytes: 46012; mode: 0o644; SHA256: 861f26b54d59580d3922b1e83c9d61e1b6bad9ae1a51cd5e03f5d6aec32b1d86.
+- Full heading route:
+  - Line 1: TODO — model acquisition
+  - Line 10: Committed
+  - Line 12: \`a3716fd0de50\` — cached locator and authenticated source access
+  - Line 66: 837e77f — legacy offline acquisition eligibility
+  - Line 75: 52e42fc — native HF Xet reconstruction
+  - Line 88: 46cf5a5 — strong conditional cloud observations
+  - Line 99: 4db5efb — ModelScope selected exact sizing
+  - Line 109: f22f759 — metadata-only pinned file candidates
+  - Line 118: f197c9c — explicit GGUF filename quant families
+  - Line 129: 1a22597 — completed comprehensive handoff and source preservation
+  - Line 135: 04363c3 — bounded C3 Unicode filters and exclusion closure
+  - Line 176: 8195c18 — verified required native Xet indexes
+  - Line 230: f56b574 — trusted AWS-standard FULL\_OBJECT SHA256
+  - Line 265: d5aa5cb — original-model v1 source closure and execution cutover
+  - Line 297: Uncommitted
+  - Line 333: Tests and verification
+  - Line 350: Deferred
+
+### [.agents/plans/model-acquisition/archive/through-a774ded/TODO.md](../../plans/model-acquisition/archive/through-a774ded/TODO.md)
+
+- Bytes: 37926; mode: 0o644; SHA256: 4a178da79a9bc842b39d797f3a8141b28525e5a97cba3a11ba304c8edab27667.
+- Full heading route:
+  - Line 1: TODO — completed model acquisition phases through a774ded
+  - Line 8: Committed
+  - Line 10: e0073a5 — pinned HTTPS objects
+  - Line 25: e82d76b — native OCI raw GGUF layers
+  - Line 36: f74a525 — native GCS generation/metageneration objects
+  - Line 49: 833d68f — versioned S3 and SigV4
+  - Line 63: e622222 — pinned Azure BlockBlob revisions
+  - Line 76: 87f6454 — native ModelScope explicit commits
+  - Line 87: 223ca79 — unwired Xet hash and chunk primitives
+  - Line 98: a774ded — explicit cloud content contracts
+  - Line 109: Tests and verification
+
+### [.agents/plans/model-acquisition/archive/through-fce1353/TODO.md](../../plans/model-acquisition/archive/through-fce1353/TODO.md)
+
+- Bytes: 58744; mode: 0o644; SHA256: e0750281ddc39d99dac3e44542be9087d3fa18b305c0afa39c3785a502032d61.
+- Full heading route:
+  - Line 1: TODO — completed model acquisition through fce1353
+  - Line 7: Committed
+  - Line 9: 3787519
+  - Line 19: fa6affa — bounded A2 acquisition
+  - Line 36: 3c97c52 — A2 durable resume and pull UX
+  - Line 53: baa9d88 — pinned components and A3 cached CPU preparation
+  - Line 74: 20f449d — exact size recovery and cancellable cache verification
+  - Line 96: f44264c — protected snapshot removal
+  - Line 113: ea700f6 — capped auxiliary streaming
+  - Line 132: 03b6948 — pinned multi-asset release components
+  - Line 147: e44f4ee — explicit read-only HF cache import
+  - Line 164: fce1353 — qualified cross-filesystem HF import
+  - Line 180: Tests and verification
+
+### [.agents/plans/model-execution/README.md](../../plans/model-execution/README.md)
+
+- Bytes: 24867; mode: 0o600; SHA256: be399b51b723701045bc24395074e3fec870c81027cb48e256dc1075c5aabb05.
+- Full heading route:
+  - Line 4: Zerogravity: source-real model execution (CPU-first)
+  - Line 6: Active order
+  - Line 24: LS-B01–B05: verified owned sharded-source transaction
+  - Line 72: Remaining execution gates
+  - Line 96: ME-P0 continuation — original Qwen3.8 text binding and CPU value path
+  - Line 134: ME-P0 analytic original Qwen3.8 one-layer proposals (CPU)
+  - Line 212: ME-P0 — original Qwen analytical layers and the existing TaskCoordinator
+  - Line 257: ME-P0 — one full original Qwen FP32 diagnostic token, shared schedule
+  - Line 309: Remaining production ownership gates
+  - Line 321: ME-P0 — original BF16 source-dtype diagnostic (not trained parity)
+  - Line 380: ME-P0 — pinned original-Qwen numerical reference observations
+
+### [.agents/plans/model-execution/TODO.md](../../plans/model-execution/TODO.md)
+
+- Bytes: 99671; mode: 0o644; SHA256: ce7768c1b42630d9e92c3cd348a99cfaf3f3759b91a0c04acd2650a9eaaedb7f.
+- Full heading route:
+  - Line 1: Model execution
+  - Line 9: Uncommitted
+  - Line 11: Current owner direction — 26 Oct
+  - Line 44: H/G/V physical checkpoint — 25 Oct pass 3
+  - Line 63: Current shared source20 hardware checkpoint — 24 Oct
+  - Line 80: Qwen27B and Gemma4 optimization audit — 24 Oct
+  - Line 170: Current model/backend checkpoint — 23 Oct
+  - Line 254: Parallel model work — contained integration, 22 Oct
+  - Line 274: Source-specific optimization backlog — 21 Oct, deferred behind current order
+  - Line 478: Committed
+  - Line 480: 6d85559 — common comparison tools, 26 Oct
+  - Line 489: \`29a98c1\` — HIP source-page events and witness (25Oct assembly)
+  - Line 511: \`225fc5e1a520\` — shared family sources and finite learned-model diagnostics
+  - Line 517: Current shared source20 hardware checkpoint — 24 Oct
+  - Line 534: Qwen27B and Gemma4 optimization audit — 24 Oct
+  - Line 640: Current model/backend checkpoint — 23 Oct
+  - Line 656: Parallel model work — contained integration, 22 Oct
+  - Line 941: fff1842 — trained BF16 operator qualification
+  - Line 978: fe2a342 — original attention and reference operators
+  - Line 1032: bfe62df — leased source-window execution
+  - Line 1057: 5350a4d — typed ordinary math and source windows
+  - Line 1092: c5eb1f8 — closed pinned sigmoid and ordinary RMS
+  - Line 1118: 2a32aff — typed source composition and vector softplus
+  - Line 1152: cadcbd9 — closed pinned original-HF CPU operators
+  - Line 1186: 9815504 — original HF roles and closed CPU projection/reducers
+  - Line 1207: f26232e — authentic tied original output heads
+  - Line 1218: 1c0bb41 — pinned numerical reference seam
+  - Line 1247: 6d74f76
+  - Line 1251: Source contracts — 023703f
+  - Line 1256: 93a5622 — original verified immutable source shard owner
+  - Line 1281: b796a2e — original Qwen text source geometry and CPU value binding
+  - Line 1312: b11e58c — original source-bound Qwen analytical one-layer proposals
+  - Line 1348: 6329cff — source-bound Qwen one-layer TaskCoordinator
+  - Line 1377: e43ba4c — original Qwen full-model FP32 analytical forward
+  - Line 1406: aaf9ba6 — original Qwen BF16 source dtype diagnostics
+  - Line 1440: Deferred — after Qwen/Gemma and Flash execution
+
+### [.agents/plans/multimodal/TODO.md](../../plans/multimodal/TODO.md)
+
+- Bytes: 7625; mode: 0o644; SHA256: 774818e6addf486ea8f64ca8a9c43dfb700c04c8c80954da99eae51cf04ae208.
+- Full heading route:
+  - Line 1: Multimodal
+  - Line 10: Uncommitted
+  - Line 48: Committed
+  - Line 50: 6d74f76
+  - Line 54: Tests and verification
+
+### [.agents/plans/numerics-and-context/CORRECTNESS_FIRST_VLLM_PLAN_2026-10-20.md](../../plans/numerics-and-context/CORRECTNESS_FIRST_VLLM_PLAN_2026-10-20.md)
+
+- Bytes: 45470; mode: 0o644; SHA256: 31a2f1280da6a5df2662c9c8747fc8d795a91a8ab87a1904c33b30dfe88de9f7.
+- Full heading route:
+  - Line 1: Correctness first, then measured vLLM performance
+  - Line 10: 1. Decision and scope
+  - Line 32: 2. What the evidence establishes
+  - Line 51: 3. Divergence inventory and fixes
+  - Line 79: 4. Numerical contracts
+  - Line 81: 4.1 Keep four targets explicit
+  - Line 95: 4.2 Mathematical GDN definition
+  - Line 131: 4.3 Exactness rules
+  - Line 154: 4.4 Initial prefill versus decode
+  - Line 224: 4.5 Small-model default bulk arithmetic
+  - Line 237: 5. Porting strategy and implementation boundaries
+  - Line 261: 6. Fast implementation sequence, when resumed
+  - Line 263: C0 — Lock the comparison, not another framework
+  - Line 289: C1 — Close the earliest small-model default discrepancies
+  - Line 303: C2 — Complete one vLLM-profile GDN layer
+  - Line 321: C3 — Complete .8B, then 2B in the same plan
+  - Line 336: C4 — Complete original27B without relaxing resource guards
+  - Line 359: C5 — Accept and checkpoint
+  - Line 373: 7. Numerical parity matrix and acceptance
+  - Line 432: 8. Why performance is currently far behind
+  - Line 468: 9. Performance sequence after correctness
+  - Line 512: 10. Two benchmark deliverables
+  - Line 514: A. Model execution benchmark
+  - Line 533: B. OpenAI serving benchmark
+  - Line 585: 11. Stop conditions and immediate next work
+  - Line 607: 12. References and evidence boundaries
+
+### [.agents/plans/numerics-and-context/CORRECTNESS_POLICY.md](../../plans/numerics-and-context/CORRECTNESS_POLICY.md)
+
+- Bytes: 7481; mode: 0o644; SHA256: 7af352ae65cb0605a6fda99efd05d7418d66d4eb7153ee9daa748e2a8127fa26.
+- Full heading route:
+  - Line 1: Correctness policy — all models and backends
+  - Line 13: Required independent checks
+  - Line 39: Upstream practice used
+  - Line 65: Application across the registry
+  - Line 80: .8B first milestone and long context
+
+### [.agents/plans/numerics-and-context/TODO.md](../../plans/numerics-and-context/TODO.md)
+
+- Bytes: 87328; mode: 0o644; SHA256: 2d6ba97765e6fabeb589ee0bcef620c2db11410ff81eb729f6b8ee3737e456fa.
+- Full heading route:
+  - Line 1: Numerics and context
+  - Line 18: Committed
+  - Line 20: \`cd4159d\` — owned command streams
+  - Line 30: \`5a18b5b\` — capture scope ownership
+  - Line 44: \`61f095c\` — finite original prompt capture
+  - Line 56: \`3612ecb\` — production and test conventions
+  - Line 61: \`1f08e55\` — rotary preparation and Rust test support
+  - Line 74: Uncommitted
+  - Line 76: Reference capture and remaining runtime separation — 26 Oct
+  - Line 91: Current owner order — 26 Oct
+  - Line 135: Binding continuation — 21 Oct 09:30 UTC
+  - Line 147: Resumed continuation — 21 Oct
+  - Line 299: Bottom-up F32 repair — 20 Oct
+  - Line 317: Remaining qualification
+  - Line 345: Committed
+  - Line 347: 6d85559 — shared correctness checks, 26 Oct
+  - Line 367: \`9dd1ebfb1862\` — original source operators and numerical closure records
+  - Line 485: Binding continuation — 21 Oct 09:30 UTC
+  - Line 525: Bottom-up F32 repair — 20 Oct
+  - Line 584: Remaining qualification
+  - Line 595: fff1842 — complete two-model reference control
+  - Line 611: 9a19901 — original reference-control schedule
+  - Line 623: bfe62df — independent source and reference-path qualification
+  - Line 684: 6d74f76
+  - Line 689: Accepted investigation findings — 6d74f76
+  - Line 696: Full24 forced-input numerical closure — 21 Oct
+
+### [.agents/plans/pipeline-composition/FORMATS.md](../../plans/pipeline-composition/FORMATS.md)
+
+- Bytes: 7672; mode: 0o644; SHA256: 5036c213f6c819c3eb58dab81e585da3efb63cc21cf13e9dc42fc3de6923ce3d.
+- Full heading route:
+  - Line 5: Source formats and precision homes
+  - Line 12: Ownership
+  - Line 28: Current source inventory
+  - Line 52: Concrete family homes
+  - Line 65: Acceptance before support changes
+
+### [.agents/plans/pipeline-composition/PROFILE_POLICY_AND_COMPONENT_REUSE.md](../../plans/pipeline-composition/PROFILE_POLICY_AND_COMPONENT_REUSE.md)
+
+- Bytes: 11951; mode: 0o644; SHA256: 79c92f930edd63267a13c49a41ccf90371fa82c5d7ad6f53d7c09cef08f117b7.
+- Full heading route:
+  - Line 5: Profile policy, replaceable components and native reuse
+  - Line 13: Explicit approximation
+  - Line 35: Replaceable implementations
+  - Line 61: Shared policy context and module-specific decisions
+  - Line 87: Reuse first across all implementations and harnesses
+  - Line 120: Correctness harness and implementation acceptance
+  - Line 148: Hardware order and implementation sequence
+
+### [.agents/plans/pipeline-composition/README.md](../../plans/pipeline-composition/README.md)
+
+- Bytes: 40567; mode: 0o600; SHA256: e1dc4d316c91bc1bbc65ef9158335242fdd5bac24c56a28809a0764b99cba4e4.
+- Full heading route:
+  - Line 4: Zerogravity — one fabric, single-model and multi-model pipelines
+  - Line 31: Product contract
+  - Line 69: Intended engine flow
+  - Line 94: Model priorities (binding order)
+  - Line 135: Pull sequence and quant policy
+  - Line 181: Pipeline API and typed composition
+  - Line 206: Only checks the pure graph; no file/source/model or socket is opened.
+  - Line 209: Same structural graph can be written using repeated flags:
+  - Line 215: Explicit refusal until real source/backend/stream/transport gates pass.
+  - Line 234: Typed extension registry and future media operator contracts
+  - Line 276: Required pipeline examples
+  - Line 302: Optional previous-chat context for ASR, diarization and translation
+  - Line 314: Fragment of one entry under pipeline:; see full example for models/stages.
+  - Line 354: Generic ordered context filtering and decision models
+  - Line 385: Fragment: config models include assistant and gate; see full example.
+  - Line 438: In-memory source owner and snapshot selection (implemented in core)
+  - Line 572: Realtime, backpressure and failure atomicity
+  - Line 595: API/router lifecycle
+  - Line 610: Optimization sequence, success gates and non-goals
+  - Line 648: Actual public metadata-only acquisition evidence — 18 Oct 2026
+  - Line 696: References
+
+### [.agents/plans/pipeline-composition/REGIONS_AND_PROFILES.md](../../plans/pipeline-composition/REGIONS_AND_PROFILES.md)
+
+- Bytes: 51805; mode: 0o644; SHA256: afc847466f74e63f1d91340d42193c4c1b1c6f5b66810cb0e13ecc1eec9a51e7.
+- Full heading route:
+  - Line 5: Recursive pipelines and composable optimization profiles
+  - Line 19: 1. Decision
+  - Line 43: 2. Current source versus design vocabulary
+  - Line 87: 3. Three conceptual layers, two execution representations
+  - Line 108: Primitive layer
+  - Line 123: Recursive pipeline layer
+  - Line 150: Profile layer
+  - Line 157: 4. Typed closed region contract
+  - Line 185: 5. Lowering and specialization
+  - Line 242: Resident values and cross-stage lowering — owner21 Oct
+  - Line 322: 6. Fusion legality and physical limits
+  - Line 371: 7. State, nesting and commit boundaries
+  - Line 373: Inner mathematical pipeline
+  - Line 391: Compound task pipeline
+  - Line 424: Immutable definition, late live binding
+  - Line 447: 8. Profiles: orthogonal selectors, resolved recipes
+  - Line 501: 9. Examples and boundaries
+  - Line 503: Qwen single-token, prefill and verify
+  - Line 544: ASR → language → TTS
+  - Line 569: Native speech alternative
+  - Line 583: 10. Failure, capture and fallback rules
+  - Line 608: 11. Additive implementation sequence
+  - Line 652: 12. Acceptance and extension drills
+  - Line 700: 13. References
+
+### [.agents/plans/pipeline-composition/SHARED_EXECUTION_ARCHITECTURE.md](../../plans/pipeline-composition/SHARED_EXECUTION_ARCHITECTURE.md)
+
+- Bytes: 56341; mode: 0o644; SHA256: ce7f4aa5d0225ea4a8a41990ec4754128a45f16ae92b677b2209f15919b1dba1.
+- Full heading route:
+  - Line 5: Pre-0.1 execution fabric: source-grounded decisions
+  - Line 12: Decision
+  - Line 43: Follow-up: shared physical ownership and the next native consumer
+  - Line 60: Initial findings and concrete corrections
+  - Line 67: 1. Shared core currently contains closed Qwen and Gemma model recipes
+  - Line 114: 2. Streamed head still combines family sealing and reusable execution
+  - Line 138: 3. Reuse must be physical ownership reuse, not hidden retained allocations
+  - Line 158: 4. Serving still dispatches by specific source route
+  - Line 174: 5. Advertised backend support must follow implementation tuples
+  - Line 191: Nested regions, fusion and profiles
+  - Line 220: Sharding, multiple devices and MoE residency
+  - Line 258: Priority and useful end-to-end units
+  - Line 279: Prior design accounting
+  - Line 297: Consolidated redesign review — 23 Oct closeout
+  - Line 299: Boundaries required before new model merges
+  - Line 335: One explicit resource policy, independent physical domains
+  - Line 359: Batch admission precedes batch execution claims
+  - Line 381: HIP native ownership: one concrete blocker, no permission by inventory
+  - Line 408: Composition, sharding, MoE and optimization context
+  - Line 436: Priority, draft disposition and acceptance scope
+  - Line 456: Evidence and unfinished work
+  - Line 474: Read-only followup — prepared head and finite HIP policy
+  - Line 481: Sol six-path head donor
+  - Line 513: Practical HIP policy: finite conservative qualification is sufficient
+  - Line 568: Smallest actual qualification route
+  - Line 610: Original cohort capture: public scheduling barrier and evidence limits
+  - Line 691: 2026-10-23 focused review: cohort execution and reachable Gemma HIP v2
+  - Line 702: Cohort: approve a sealed body in the existing loop, with row-complete joins
+  - Line 765: Share prepared semantics; bind request authority late
+  - Line 790: Gemma37v2: concrete API correction and shared backend policy boundary
+
+### [.agents/plans/pipeline-composition/STRUCTURE_AND_NAMING.md](../../plans/pipeline-composition/STRUCTURE_AND_NAMING.md)
+
+- Bytes: 14133; mode: 0o644; SHA256: 238200c1834d03e1ff8fade285d256a820f811af5c08d06ce8c5c5cd927b2f98.
+- Full heading route:
+  - Line 5: Structure and naming
+  - Line 14: Basic rules
+  - Line 35: Ownership and dependencies
+  - Line 99: Model template
+  - Line 133: Naming and reports
+  - Line 194: Three different topologies
+  - Line 208: Migration and verification
+
+### [.agents/plans/pipeline-composition/TODO.md](../../plans/pipeline-composition/TODO.md)
+
+- Bytes: 55159; mode: 0o644; SHA256: 0a1ee475ffa8a61acebec376b122597ebda7e746a905f7aa66ab364a3a324e5b.
+- Full heading route:
+  - Line 1: TODO — Single-process model and pipeline composition
+  - Line 11: d9a8ecf — Shared output geometry
+  - Line 17: 405a3e6 — Format homes
+  - Line 19: Format homes — 26 Oct
+  - Line 26: a5ed7de — Model and CPU source ownership
+  - Line 35: c90b8cd — GPU providers and prepared bindings
+  - Line 46: 41e9337 — GPU guard repairs
+  - Line 54: fc73457 — Application routes and assembled validation
+  - Line 73: Side-worktree reconciliation — 26 Oct
+  - Line 80: 5c2fe53 — Stash recovery
+  - Line 95: Side-worktree retirement — 26 Oct
+  - Line 102: fe17625 — Shared GDN convolution
+  - Line 110: 263ff79 — GPU/model package boundary
+  - Line 124: Source-lane worktree retirement — 26 Oct
+  - Line 132: Uncommitted
+  - Line 134: Production/test separation — 26 Oct
+  - Line 146: Model containment and naming — 26 Oct
+  - Line 164: Shared HIP / model composition checkpoint — 24 Oct
+  - Line 169: Model optimization reconciliation — 24 Oct
+  - Line 215: Owner additions — 23 Oct, Astra high architecture review
+  - Line 348: Owner additions — 21 Oct, resident stages and fusion
+  - Line 385: Owner additions — 21 Oct, approximation/components/shared policy
+  - Line 416: Recursive composition and profiles — owner request21 Oct, design first
+  - Line 456: Committed
+  - Line 458: \`eb49fa0e945b\` — source programs and shared native composition
+  - Line 464: Shared HIP / model composition checkpoint — 24 Oct
+  - Line 513: Model optimization reconciliation — 24 Oct
+  - Line 525: Owner additions — 23 Oct, Astra high architecture review
+  - Line 544: Recursive composition and profiles — owner request21 Oct, design first
+  - Line 598: 4bf624e — accepted foundation
+  - Line 656: ac44e83 — accepted foundation
+  - Line 682: f28a62c — accepted foundation
+  - Line 700: Tests and verification
+  - Line 770: Deferred
+  - Line 778: Runtime work deferred until after core model priorities
+  - Line 843: 24 Oct — parallel implementation checkpoint
+
+### [.agents/plans/platform-and-release/TODO.md](../../plans/platform-and-release/TODO.md)
+
+- Bytes: 7632; mode: 0o644; SHA256: ad7ce7b692685a262a4acdc23702afda484f61a320d8ec0990ff12abed80cbd1.
+- Full heading route:
+  - Line 1: Platform and release
+  - Line 10: Uncommitted
+  - Line 46: Committed
+  - Line 48: 25Oct evidence records — \`docs(plans)\` (this commit)
+  - Line 80: \`ef9cffd413df\` — assembled feature gates and platform scope
+  - Line 88: 1af2ac4
+  - Line 92: 6d74f76
+  - Line 97: Tests and verification
+
+### [.agents/plans/qwen-parity/API_ROUTE_FRONTIER.csv](../../plans/qwen-parity/API_ROUTE_FRONTIER.csv)
+
+- Bytes: 7276; mode: 0o644; SHA256: b749d2dd43067a507a4b679155a2d2c918efd593a77f8706da23c8bf4e25ae1d.
+- Non-Markdown supplement; read original body.
+
+### [.agents/plans/qwen-parity/CLI_OPTION_FRONTIER.csv](../../plans/qwen-parity/CLI_OPTION_FRONTIER.csv)
+
+- Bytes: 32856; mode: 0o644; SHA256: 979f13376516e471f8bd66aab1d057ee7019d40524d88cd315f198be245ec6fa.
+- Non-Markdown supplement; read original body.
+
+### [.agents/plans/serving-and-speculation/BATCHING_AND_PAGED_STATE.md](../../plans/serving-and-speculation/BATCHING_AND_PAGED_STATE.md)
+
+- Bytes: 14253; mode: 0o644; SHA256: 4b4bb5b486b2519b761228c4e7c61f0abe3bd0089f03be3addf32d8b2a5b25ec.
+- Full heading route:
+  - Line 5: Batching, paged attention and hybrid prefix state
+  - Line 12: Existing scope and missing work
+  - Line 28: Shared engine and numerical profiles
+  - Line 45: Paged state allocator — memory plan
+  - Line 69: Paged attention kernels — serving plan
+  - Line 85: Complete-domain prefix reuse and COW — memory plan
+  - Line 108: Continuous batching, temporal prefill and overlap — serving plan
+  - Line 134: Acceptance and implementation order
+  - Line 174: Performance qualification
+  - Line 198: References and code seams
+
+### [.agents/plans/serving-and-speculation/FUSED_GPU_BATCHING.md](../../plans/serving-and-speculation/FUSED_GPU_BATCHING.md)
+
+- Bytes: 53671; mode: 0o600; SHA256: 68b8f1707452914384170b5fa6fb5271617ed83fac3be18b73ea8f5837e76977.
+- Full heading route:
+  - Line 5: P12 — native fused GPU batch acceptance
+  - Line 19: Ownership boundaries
+  - Line 36: P12-B0 — physically qualified source F32 multi-row projection
+  - Line 56: P12-B1 — physical CUDA batch operator acceptance
+  - Line 96: P12-A1 — physically Ready resident multi-root publication
+  - Line 142: P12-B2 — physically accepted quantized B\>1 GPU projection
+  - Line 182: P12-B3 — batch-native resident ForwardPlan
+  - Line 279: P12-B4 — native greedy packets and device feedback
+  - Line 392: P12-B5 — native CUDA B2 HTTP waves
+  - Line 493: Local release tool smoke; no matched performance acceptance
+  - Line 514: P12-A — batch-native parameter, source and state bindings
+  - Line 530: P12-B — native kernels (not a host loop)
+  - Line 547: P12-C — true continuous batching and paged hybrid KV/GDN
+  - Line 559: P22 — vLLM-equivalent validation
+  - Line 579: Native CUDA B4/B8 HTTP acceptance — P12-B6
+  - Line 633: Unequal-frontier native CUDA decode — P12-B7
+  - Line 702: P22 owned process isolation
+  - Line 716: P12 block-local source activation preparation
+  - Line 791: Completed bounded activation-preparation comparison
+  - Line 826: Native teacher-prefix serving — P12-B8
+  - Line 871: Bounded native-prefix warm observations
+  - Line 922: Private CUDA graph and ordered RoPE qualification
+
+### [.agents/plans/serving-and-speculation/README.md](../../plans/serving-and-speculation/README.md)
+
+- Bytes: 13805; mode: 0o600; SHA256: ef95d4b041b61639b0c8c8d78a61664e89fff63c90a05a5efc9c466dd1a50715.
+- Full heading route:
+  - Line 5: Native serving and request scheduling
+  - Line 26: Implemented: first OpenAI HTTP/CPU router slice
+  - Line 35: Run
+  - Line 62: Not implemented / next
+  - Line 70: Resident GPU OpenAI serving — accepted CUDA slice
+  - Line 97: Run qualified NVIDIA CUDA HTTP source
+  - Line 100: Supply already-installed CUDA runtime and CCCL include directories
+  - Line 101: as CUDART\_INCLUDE and CCCL\_INCLUDE; no packages are downloaded.
+  - Line 106: Put the locally installed NVIDIA driver and NVRTC library directories
+  - Line 107: on LD\_LIBRARY\_PATH, then launch:
+  - Line 119: Initial interleaved evidence: RTX 3060 Laptop / CUDA, 19 Oct 2026
+  - Line 143: Native CUDA B2 HTTP acceptance — P12-B5
+  - Line 177: Pending: P12/P16/P22
+  - Line 197: Native CUDA B4/B8 — P12-B6
+  - Line 210: Unequal decode frontiers and token observations — P12-B7
+  - Line 227: Serialized benchmark provider ownership
+
+### [.agents/plans/serving-and-speculation/TODO.md](../../plans/serving-and-speculation/TODO.md)
+
+- Bytes: 66926; mode: 0o644; SHA256: 82abb6331d61088b93deb2713d605bbf03076113ce4802f09fd75ca363e2a4a0.
+- Full heading route:
+  - Line 1: Serving and speculation
+  - Line 9: Uncommitted
+  - Line 11: Shutdown qualification — 26 Oct
+  - Line 16: Current parity and post-parity optimization order — 23 Oct
+  - Line 290: Batching and paged-state follow-up — 21 Oct design only
+  - Line 317: Resumed correctness-first continuation — 21 Oct
+  - Line 471: Committed
+  - Line 473: c84b987 — Owned provider stop evidence
+  - Line 492: 50abaf7 — Signal-driven serving shutdown
+  - Line 506: \`9999adb1a66d\` — source-routed continuous BF16 cohort serving
+  - Line 519: Current parity and post-parity optimization order — 23 Oct
+  - Line 525: Resumed correctness-first continuation — 21 Oct
+  - Line 539: fb68d8f — exact state transport and certification
+  - Line 560: fff1842 — stock baseline prerequisites
+  - Line 573: 9a19901 — batched graph and baseline qualification
+  - Line 608: f788929 — native teacher-prefix serving
+  - Line 636: d0a6084 — source activation preparation and physical acceptance
+  - Line 664: 1b599df — serialized owned benchmark provider lifecycle
+  - Line 695: dbb5f4f — unequal native decode frontiers and bounded token observations
+  - Line 750: d9fa829 — native CUDA B4/B8 HTTP bands
+  - Line 779: 6bfcdbe — bounded offered-work benchmark accounting
+  - Line 797: 2677d8b — native CUDA B2 HTTP waves
+  - Line 824: 54fd580 — native CUDA greedy/device feedback
+  - Line 855: 35ebc5b — native full-model CUDA ForwardPlan
+  - Line 884: 3ec431a — native quantized batch projections
+  - Line 902: 08be9c6 — resident cohort publication
+  - Line 931: 9790fa2 — resident GPU OpenAI serving
+  - Line 949: 35b9093 — initial OpenAI CPU router and verified SSD extents
+  - Line 976: 6d74f76
+
+## docs/ — 6 files
+
+### [docs/DEVELOPMENT.md](../../../docs/DEVELOPMENT.md)
+
+- Bytes: 7413; mode: 0o644; SHA256: 3427b2041dd19bc3053ef79a11d6bade5eefc493131216de0dc9810f082a63a5.
+- [Byte-identical handoff snapshot](reference-sources/publication/DEVELOPMENT.md).
+- Full heading route:
+  - Line 1: Development, builds and release definitions
+  - Line 10: Local Rust development
+  - Line 65: Nix development and native checks
+  - Line 85: CPU cross-release definitions
+  - Line 120: Release installers
+  - Line 144: NixOS service definition
+
+### [docs/ENGINEERING_SPECIFICATION.md](../../../docs/ENGINEERING_SPECIFICATION.md)
+
+- Bytes: 85270; mode: 0o644; SHA256: 581e597a0b007bf6af8297b4c16aca11a07b3906bd1cc999ae07bcfa029f4711.
+- [Byte-identical handoff snapshot](reference-sources/publication/ENGINEERING_SPECIFICATION.md).
+- Full heading route:
+  - Line 1: Zerogravity — Integrated Engineering Specification
+  - Line 2: Executable contracts for a modular AI runtime
+  - Line 11: Contents
+  - Line 32: ES-00. Scope, authority and document discipline
+  - Line 34: ES-00.1 Purpose
+  - Line 50: ES-00.2 Release status and support ladder
+  - Line 68: ES-00.3 In and out of the mandatory core
+  - Line 74: ES-00.4 Public versus internal format stability
+  - Line 80: ES-01. Minimal dependency boundaries and identity model
+  - Line 82: ES-01.1 Logical composition and control flow (not literal crate dependencies)
+  - Line 115: ES-01.2 Canonical identities — what changes when?
+  - Line 134: ES-01.3 Configuration provenance
+  - Line 142: ES-02. Trusted artifacts, registered mathematics and source quality
+  - Line 144: ES-02.1 Trusted model source pipeline
+  - Line 160: ES-02.2 Semantic operator contract
+  - Line 174: ES-02.3 Numeric correctness levels
+  - Line 185: ES-02.4 Versioned mutable model parameters (future)
+  - Line 191: ES-03. Trusted TaskDrivers, typed outputs and application boundary
+  - Line 193: ES-03.1 TaskDriver scope
+  - Line 217: ES-03.2 Task families and frontiers
+  - Line 232: ES-03.3 External actions and agent orchestration
+  - Line 236: ES-03.4 Output validity
+  - Line 242: ES-04. Compiler, closed regions and qualified providers
+  - Line 244: ES-04.1 One semantic program, one compiled plan
+  - Line 254: ES-04.2 ClosedSemanticRegion and provider choice
+  - Line 286: ES-04.3 ShapeEnv and variant caching
+  - Line 299: ES-04.4 Compiled device StepProgram
+  - Line 305: ES-04.5 Resource/command dependencies (CIR)
+  - Line 319: ES-04.6 Fallback and implementation invariants
+  - Line 327: ES-04.7 Proposed multimodal extension: typed media clocks, component assemblies and non-token task semantics (v5 review)
+  - Line 342: ES-05. Physical resources, worker protocol and device execution
+  - Line 344: ES-05.1 Two levels of resource ownership
+  - Line 362: ES-05.2 Device capability and safety record
+  - Line 368: ES-05.3 WorkEnvelope and completion protocol
+  - Line 399: ES-06. Exact logical state transactions and output publication
+  - Line 401: ES-06.1 StateRoot semantics
+  - Line 407: ES-06.2 Four-step all-domain transaction
+  - Line 425: ES-06.3 Speculative and asynchronous hazards
+  - Line 431: ES-06.4 Prefix sharing and state compatibility
+  - Line 437: ES-06.5 Output transport is a different guarantee
+  - Line 443: ES-06.6 State transaction test oracles
+  - Line 458: ES-07. Model catalog, resident instances, router and live service
+  - Line 460: ES-07.1 Four model-serving entities
+  - Line 469: ES-07.2 Exact source route, then compatible replica
+  - Line 475: ES-07.3 Model lifecycle and resource accountability
+  - Line 489: ES-07.4 Router and TaskCoordinator do not duplicate scheduling
+  - Line 493: ES-07.5 Hot alias reload and session consistency
+  - Line 501: ES-08. Distributed placement and authenticated peer execution
+  - Line 503: ES-08.1 Four orthogonal placements in one physical plan
+  - Line 514: ES-08.2 Supported classes of placement
+  - Line 531: ES-08.3 Exact token-range attention composition
+  - Line 543: ES-08.4 Topology measurement and cost-aware solver
+  - Line 551: ES-08.5 Peer protocol and tunnels
+  - Line 559: ES-08.6 Remote state and failure fencing
+  - Line 576: ES-09. User-facing CLI, SDK, HTTP and configuration
+  - Line 578: ES-09.1 One engine behind every entry point
+  - Line 586: ES-09.2 Scope of local profile and runtime settings
+  - Line 598: ES-09.3 OpenAI-compatible API is a conformance matrix
+  - Line 611: ES-09.4 Streaming and client SDK tests
+  - Line 617: ES-09.5 Bind, privacy and remote service policy
+  - Line 627: ES-10. Security, licensing, error taxonomy and observability
+  - Line 629: ES-10.1 Security threat boundaries
+  - Line 644: ES-10.2 Canonical failure categories
+  - Line 660: ES-10.3 Observability without telemetry leakage
+  - Line 666: ES-10.4 Operational safety versus impossible guarantees
+  - Line 686: ES-11. Required invariants and reviewable implementation tests
+  - Line 720: ES-11.1 Counterexamples are first-class test cases
+  - Line 738: ES-12. End-to-end execution walkthroughs
+  - Line 740: ES-12.1 Supported local model, zero config
+  - Line 757: ES-12.2 Multi-model API with concurrent physical residency
+  - Line 777: ES-12.3 Mixed-machine layer pipeline
+  - Line 794: ES-12.4 Remote attention and independently located state
+  - Line 798: ES-12.5 Device graph and future media task
+  - Line 802: ES-12.6 Faulted speculative verifier with slow client
+  - Line 808: ES-13. Implementation and proof sequencing
+  - Line 812: ES-13.1 First executable vertical slice
+  - Line 831: ES-13.2 Then prove composability
+  - Line 844: ES-13.3 Existing stable project phase program
+  - Line 850: ES-13.4 Definition of Done per capability/phase
+  - Line 867: ES-14. Acceptance and architectural sustainability
+  - Line 887: ES-14.1 Architecture review before implementation
+  - Line 899: ES-14.2 Historical traceability and open decisions
+  - Line 903: ES-14.3 What makes the published documents usable independently?
+  - Line 918: ES-15. References and formal source of truth
+  - Line 924: ES-15.1 Compact implementation glossary
+
+### [docs/PUBLICATION_AND_REVIEW_CHECKLIST.md](../../../docs/PUBLICATION_AND_REVIEW_CHECKLIST.md)
+
+- Bytes: 10283; mode: 0o644; SHA256: da14176e79c2c7ec85f663dc16ac869bb5860a8ddbd84aacb39a367ca15cafb1.
+- [Byte-identical handoff snapshot](reference-sources/publication/PUBLICATION_AND_REVIEW_CHECKLIST.md).
+- Full heading route:
+  - Line 1: Whitepaper publication and final architecture review checklist
+  - Line 11: 1. Technical claims and source honesty
+  - Line 25: 2. Architecture consistency
+  - Line 40: 3. Publication manuscript and bibliography
+  - Line 55: 4. Implementation planning and verification
+  - Line 66: 5. Automated integrity checks
+  - Line 79: 6. Publication release decision
+
+### [docs/README.md](../../../docs/README.md)
+
+- Bytes: 9185; mode: 0o644; SHA256: a48301c57c61da0465e19de248c7452af749db88b08cc385231261dfda46c6b8.
+- [Byte-identical handoff snapshot](reference-sources/publication/README.md).
+- Full heading route:
+  - Line 1: Zerogravity documentation
+  - Line 8: Read according to your purpose
+  - Line 18: Documentation categories and authority
+  - Line 20: A. Publication-facing
+  - Line 27: B. Canonical current core design (project-neutral)
+  - Line 51: C. Implementation plans and tests
+  - Line 63: D. Non-normative historical design and cited prior art
+  - Line 73: Invariants in one paragraph
+  - Line 77: Publication and implementation status
+
+### [docs/REFERENCES.md](../../../docs/REFERENCES.md)
+
+- Bytes: 10251; mode: 0o644; SHA256: 6bba38cd43a9b013d9619c8ed755aab52cb566a43336125e6e63462a371dd20e.
+- [Byte-identical handoff snapshot](reference-sources/publication/REFERENCES.md).
+- Full heading route:
+  - Line 1: References and source provenance
+  - Line 7: Peer-reviewed and academic research
+  - Line 9: R01
+  - Line 12: R02
+  - Line 15: R03
+  - Line 18: R04
+  - Line 21: R05
+  - Line 24: R06
+  - Line 27: R07
+  - Line 30: R08
+  - Line 33: R09
+  - Line 36: R10
+  - Line 39: R11
+  - Line 42: Primary compiler and hardware documentation
+  - Line 44: R12
+  - Line 47: R13
+  - Line 50: R14
+  - Line 53: R15
+  - Line 56: R16
+  - Line 59: R17
+  - Line 62: R18
+  - Line 65: Serving, APIs, local user experience and networking
+  - Line 67: R19
+  - Line 70: R20
+  - Line 73: R21
+  - Line 76: R22
+  - Line 79: R23
+  - Line 82: Additional project research dossiers
+
+### [docs/WHITEPAPER.md](../../../docs/WHITEPAPER.md)
+
+- Bytes: 45354; mode: 0o644; SHA256: 3e54d96b6004c80c694f0d43bf0c40f902b2ad0ec3d943bc2f54a15805e17559.
+- [Byte-identical handoff snapshot](reference-sources/publication/WHITEPAPER.md).
+- Full heading route:
+  - Line 1: Zerogravity
+  - Line 2: A composable execution architecture for AI models, heterogeneous accelerators, and distributed state
+  - Line 10: Abstract
+  - Line 24: Contents
+  - Line 44: 1. Introduction: why a unified execution system?
+  - Line 54: 1.1 Problem statement
+  - Line 71: 1.2 Scope
+  - Line 81: 2. Architecture principles
+  - Line 103: 3. The minimal execution spine
+  - Line 138: 3.1 Two enduring representations
+  - Line 151: 3.2 Closed-region substitution
+  - Line 159: 3.3 Shape-bounded compilation
+  - Line 167: 4. AI tasks as distinct control policies over one executor
+  - Line 185: 5. State consistency is a primary execution contract
+  - Line 191: 5.1 Prepare, then publish once
+  - Line 210: 5.2 Prefix sharing and speculative verification
+  - Line 216: 5.3 Streaming and remote failures
+  - Line 224: 6. Resource ownership and efficient execution
+  - Line 236: 7. Hardware universality without pretending devices are equivalent
+  - Line 252: 7.1 Hardware topology matters
+  - Line 260: 8. Distributed execution: place computation, parameters, state and caches independently
+  - Line 271: 8.1 Representative topologies
+  - Line 287: 8.2 Network and trust
+  - Line 295: 8.3 The performance condition for distribution
+  - Line 313: 9. Built-in multi-model service and local UX
+  - Line 339: 10. Quality and security model
+  - Line 358: 11. A falsifiable evaluation program
+  - Line 362: 11.1 Functional milestones
+  - Line 372: 11.2 Performance measurements
+  - Line 387: 11.3 Explicit hypotheses rather than results
+  - Line 403: 12. Implementation and evolution strategy
+  - Line 415: 13. Limitations and open engineering questions
+  - Line 427: 14. Conclusion
+  - Line 439: References and reproducibility
+
+## .agents/research/ — 41 files
+
+### [.agents/research/EXTREME_MODEL_SPECIALIZATION_INTEGRATION_AND_ACCEPTANCE_2026-10-15.md](../../research/EXTREME_MODEL_SPECIALIZATION_INTEGRATION_AND_ACCEPTANCE_2026-10-15.md)
+
+- Bytes: 20113; mode: 0o644; SHA256: 30a30d0dc41a4aa37829ac92687c0cb4feaa0c2c3cc368767b18ddfa17b7bb02.
+- [Byte-identical handoff snapshot](reference-sources/research/EXTREME_MODEL_SPECIALIZATION_INTEGRATION_AND_ACCEPTANCE_2026-10-15.md).
+- Full heading route:
+  - Line 1: Zerogravity — Extreme Model Specialization Integration Roadmap and Executable Acceptance Design
+  - Line 11: 1. Success definition
+  - Line 26: 2. Specification owners and minimal architecture
+  - Line 39: 3. Phase dependency map — additive to original project
+  - Line 41: ZG-P03 (quant formats and artifacts)
+  - Line 50: ZG-P05/P07 (compiler and physical GPU)
+  - Line 59: ZG-P10 (global physical admission, OS and state)
+  - Line 68: ZG-P11–P14 (specialized model math and MoE)
+  - Line 77: ZG-P15 (target-authoritative speculation)
+  - Line 86: ZG-P16 (batching and multi-model QoS)
+  - Line 94: ZG-P20 (bounded autotune / offline quant calibration)
+  - Line 102: ZG-P22 (release quality, API and performance)
+  - Line 110: 4. Acceptance register (50 planned tests, NOT implemented)
+  - Line 120: 5. Experiment methodology and promotion policy
+  - Line 137: Research cautions retained from the retired handoff
+  - Line 147: 6. Small design decisions and open questions
+  - Line 172: 7. References and implementation boundary
+
+### [.agents/research/GEMMA4_FAMILY_CONTRACTS_2026-10-16.md](../../research/GEMMA4_FAMILY_CONTRACTS_2026-10-16.md)
+
+- Bytes: 4536; mode: 0o644; SHA256: 4a7a0da4210cf82c6c69521875e0a6271199f9899127bbb593b0ecc77ba994f5.
+- [Byte-identical handoff snapshot](reference-sources/research/GEMMA4_FAMILY_CONTRACTS_2026-10-16.md).
+- Full heading route:
+  - Line 1: Gemma 4 family source contracts — 2026-10-16
+  - Line 8: Authoritative sources
+  - Line 22: Implemented API and invariants
+  - Line 33: Remaining work and qualification limits
+
+### [.agents/research/GPU_TEXT_FRONTEND_AND_DEVICE_ORCHESTRATION_ROADMAP_2026-10-16.md](../../research/GPU_TEXT_FRONTEND_AND_DEVICE_ORCHESTRATION_ROADMAP_2026-10-16.md)
+
+- Bytes: 15281; mode: 0o644; SHA256: fd3dfc14e583780556b32eaa5ad65e0003f39a7ff9152d1f2e6429382e837661.
+- [Byte-identical handoff snapshot](reference-sources/research/GPU_TEXT_FRONTEND_AND_DEVICE_ORCHESTRATION_ROADMAP_2026-10-16.md).
+- Full heading route:
+  - Line 1: GPU tokenization, execution control and text decoding roadmap
+  - Line 12: Existing architecture and phase ownership
+  - Line 32: Shared execution contract
+  - Line 54: 1. Profile the complete request before selecting optimizations
+  - Line 72: 2. Reuse prepared execution through captured command graphs
+  - Line 94: 3. Move bounded generation and task scheduling onto the device
+  - Line 120: 4. Add exact GPU tokenization as an optional placement
+  - Line 149: 5. Add exact GPU detokenization and output processing
+  - Line 174: 6. Joint placement and release acceptance
+  - Line 199: Research evidence and its limits
+  - Line 231: Implementation integration
+
+### [.agents/research/HETEROGENEOUS_PREFILL_AND_REPLAY_ACCEPTANCE_2026-10-15.md](../../research/HETEROGENEOUS_PREFILL_AND_REPLAY_ACCEPTANCE_2026-10-15.md)
+
+- Bytes: 15112; mode: 0o644; SHA256: 86de7d64a9bf8246fa1fbd071d4193db425f4323ed52794cfed0db9a6c205bdb.
+- [Byte-identical handoff snapshot](reference-sources/research/HETEROGENEOUS_PREFILL_AND_REPLAY_ACCEPTANCE_2026-10-15.md).
+- Full heading route:
+  - Line 1: Zerogravity — Heterogeneous prefill and retained replay acceptance
+  - Line 7: 1. Design objective and evidence boundary
+  - Line 26: 2. Capability ownership and qualification
+  - Line 59: 3. Required design contracts
+  - Line 84: 4. Acceptance matrix — ALL PLANNED / NOT RUN
+  - Line 132: 5. Integration order and comparison policy
+  - Line 158: 6. Review invariants and document validation
+
+### [.agents/research/INITIAL_HARDWARE_TARGETS_AND_OPTIMIZATION_2026-10-16.md](../../research/INITIAL_HARDWARE_TARGETS_AND_OPTIMIZATION_2026-10-16.md)
+
+- Bytes: 10023; mode: 0o644; SHA256: 5449aae6e719ee9b314c94cd588373f3dfadc4251034d55432c4fc4e00060745.
+- [Byte-identical handoff snapshot](reference-sources/research/INITIAL_HARDWARE_TARGETS_AND_OPTIMIZATION_2026-10-16.md).
+- Full heading route:
+  - Line 1: Initial hardware targets and capability optimization
+  - Line 10: Target fleet inventory
+  - Line 45: Existing CPU execution and concrete opportunities
+  - Line 75: Ordered implementation and acceptance
+
+### [.agents/research/MODEL_PULL_XDG_CACHE_AND_SOURCE_PARITY_2026-10-16.md](../../research/MODEL_PULL_XDG_CACHE_AND_SOURCE_PARITY_2026-10-16.md)
+
+- Bytes: 24738; mode: 0o644; SHA256: 0a6d40f9e51aafb016b8379f5485bab3b6d29f30a0c524147db7e2a2617d77c1.
+- [Byte-identical handoff snapshot](reference-sources/research/MODEL_PULL_XDG_CACHE_AND_SOURCE_PARITY_2026-10-16.md).
+- Full heading route:
+  - Line 1: Model pull, XDG artifact cache and pinned acquisition parity
+  - Line 7: 1. Primary-source pins and interpretation
+  - Line 30: 2. Acquisition inventory and explicit parity disposition
+  - Line 56: 3. Ownership and public command contract
+  - Line 66: 4. Cache, validation and transaction design
+  - Line 85: 5. Implementation sequence and finite completion gates
+
+### [.agents/research/MULTIMODAL_MODEL_FAMILY_SOURCE_ATLAS_AND_IMPLEMENTATION_2026-10-14.md](../../research/MULTIMODAL_MODEL_FAMILY_SOURCE_ATLAS_AND_IMPLEMENTATION_2026-10-14.md)
+
+- Bytes: 25200; mode: 0o644; SHA256: 31e2e73b5228da9328f48bea4c0a76d8e5b31467bf20ee01b83ba55e88158660.
+- [Byte-identical handoff snapshot](reference-sources/research/MULTIMODAL_MODEL_FAMILY_SOURCE_ATLAS_AND_IMPLEMENTATION_2026-10-14.md).
+- Full heading route:
+  - Line 1: Zerogravity — Model-family research atlas and multimodal implementation roadmap
+  - Line 7: Research method and source hierarchy
+  - Line 11: Image generation / editing
+  - Line 22: Speech-to-text, streaming recognition and speech understanding
+  - Line 35: TTS, codec-token generation, real-time speech and voice cloning
+  - Line 48: Video and synchronized audiovisual generation
+  - Line 65: Typed decision engines and model selection
+  - Line 75: Ternary-compressed and source-native hybrid text models
+  - Line 92: Cross-model composition examples
+  - Line 94: Live voice assistant
+  - Line 102: Image studio
+  - Line 106: Video with soundtrack
+  - Line 110: Decision-heavy application
+  - Line 114: Proposed support tiers, not invented implementation
+  - Line 129: Implementation roadmap — staged extensions, not a new engine
+  - Line 145: Architectural acceptance decision
+
+### [.agents/research/MULTIMODAL_V5_1_ACCEPTANCE_AND_ROADMAP_2026-10-15.md](../../research/MULTIMODAL_V5_1_ACCEPTANCE_AND_ROADMAP_2026-10-15.md)
+
+- Bytes: 24952; mode: 0o644; SHA256: cdbdd47321034fdab00031c21541c7f49dfddbe89e52d8c826fb7b0dbf471953.
+- [Byte-identical handoff snapshot](reference-sources/research/MULTIMODAL_V5_1_ACCEPTANCE_AND_ROADMAP_2026-10-15.md).
+- Full heading route:
+  - Line 1: Zerogravity Multimodal v5.1 — Complete Implementation Roadmap, Dependency Gates and Acceptance Matrix
+  - Line 15: 0. Universal execution truth and success definition
+  - Line 31: 1. Scope and source authority
+  - Line 47: 2. Design readiness gates MM-D0..MM-D5
+  - Line 49: MM-D0 — source and design consistency
+  - Line 59: MM-D1 — typed media and clocks (later CODE only if authorized)
+  - Line 70: MM-D2 — verified ModelAssembly and source codec registry
+  - Line 83: MM-D3 — task algorithms and transactional multi-domain root
+  - Line 93: MM-D4 — RealtimeSession and MediaEvent/PresentationLedger
+  - Line 102: MM-D5 — canonical serving and protocol conformance
+  - Line 112: 3. Source-real implementation slices MM-I0..MM-I7 (proposed, sequencing requires approval)
+  - Line 114: MM-I0 — small non-token model and codec mock under same core
+  - Line 117: MM-I1 — original ASR checkpoint, CPU first
+  - Line 120: MM-I2 — Kokoro non-AR TTS, CPU first
+  - Line 123: MM-I3 — dual-AR/Qwen TTS depth AR and full-duplex mock
+  - Line 129: MM-I4 — image flow generator and editing
+  - Line 132: MM-I5 — video temporal / Wan expert switching
+  - Line 135: MM-I6 — joint audio/video and frontier job workflows
+  - Line 138: MM-I7 — Ternary compression, specialist text, typed decisions at scale
+  - Line 146: 4. Complete MM-01..MM-12 inherited acceptance matrix
+  - Line 165: 5. MM-13..MM-24 new realtime/API acceptance matrix (all not implemented)
+  - Line 184: 6. Model-specific detailed acceptance suites
+  - Line 196: 7. Source binding and review obligations
+  - Line 224: 8. Perf/maintainability gates
+  - Line 236: 9. Dependencies and stop rules
+  - Line 253: 10. Implementation ownership and pending policy
+  - Line 269: 11. Technical references
+
+### [.agents/research/MULTIMODAL_V5_1_DECISIONS_AND_PROVENANCE_2026-10-15.md](../../research/MULTIMODAL_V5_1_DECISIONS_AND_PROVENANCE_2026-10-15.md)
+
+- Bytes: 19547; mode: 0o644; SHA256: 8d9a6fd6b7d4f7aa8498eae4cf25aa06a424b7515d3399ee145f446de2abbf7d.
+- [Byte-identical handoff snapshot](reference-sources/research/MULTIMODAL_V5_1_DECISIONS_AND_PROVENANCE_2026-10-15.md).
+- Full heading route:
+  - Line 1: Zerogravity v5.1 Multimodal Decisions, User Requirements, Design Proposals and Open Questions
+  - Line 10: 0. How to interpret the decision ledger
+  - Line 21: 1. New explicit user instructions U-040 and U-041
+  - Line 23: U-040 | USER | 15 October 2026 — universal audio/image/video/decision/ternary/realtime design research, strictly no code
+  - Line 40: U-041 | USER | 15 October 2026 — preserve full comprehensive architecture and all research as on-repo implementation/handoff artifacts
+  - Line 57: 2. Prior user decisions explicitly retained (not newly re-approved)
+  - Line 71: 3. Research-derived design proposals DMM-001..DMM-032
+  - Line 110: 4. Open design decisions OMM-001..OMM-022
+  - Line 139: 5. Inherited exact model-priority and project-path requirements
+  - Line 145: 6. Research and source provenance
+  - Line 158: 7. Changes explicitly forbidden during this documentation task
+
+### [.agents/research/NATIVE_FP32_FMA_QUALIFICATION_PROPOSAL_2026-10-16.md](../../research/NATIVE_FP32_FMA_QUALIFICATION_PROPOSAL_2026-10-16.md)
+
+- Bytes: 8183; mode: 0o644; SHA256: 10aa7ce134a6d8876833a2483f3826d599c74e51ae73c563b13ee1fa33dfa445.
+- [Byte-identical handoff snapshot](reference-sources/research/NATIVE_FP32_FMA_QUALIFICATION_PROPOSAL_2026-10-16.md).
+- Full heading route:
+  - Line 1: Proposed native FP32 GEMV FMA qualification
+  - Line 5: Bounded change and current source
+  - Line 13: Identity and physical ownership
+  - Line 19: Numerical acceptance
+  - Line 36: Performance evidence and closure
+
+### [.agents/research/PULL_A1_LOCAL_XDG_CACHE_2026-10-16.md](../../research/PULL_A1_LOCAL_XDG_CACHE_2026-10-16.md)
+
+- Bytes: 5633; mode: 0o644; SHA256: ef8fc19168c602ce843dc19e95842294579bc0985e625c28dd5b84a19788d5ab.
+- [Byte-identical handoff snapshot](reference-sources/research/PULL_A1_LOCAL_XDG_CACHE_2026-10-16.md).
+- Full heading route:
+  - Line 1: A1 local cache — protocol and API reference
+  - Line 7: Protocol decisions from source/design review
+  - Line 42: Public API and bounds
+  - Line 64: Important implementation limits
+
+### [.agents/research/QWEN_BASICS_PARITY_AND_ADVANCED_DECODING_ROADMAP_2026-10-16.md](../../research/QWEN_BASICS_PARITY_AND_ADVANCED_DECODING_ROADMAP_2026-10-16.md)
+
+- Bytes: 16722; mode: 0o644; SHA256: b45d031e0c058de6777bf652e2b0092ac1ea72c6c6c48b9157dc561b388b2839.
+- [Byte-identical handoff snapshot](reference-sources/research/QWEN_BASICS_PARITY_AND_ADVANCED_DECODING_ROADMAP_2026-10-16.md).
+- Full heading route:
+  - Line 1: Qwen basics, complete reference parity and advanced decoding
+  - Line 11: Ordered implementation and honest completion
+  - Line 36: Pinned source baseline and coverage denominator
+  - Line 82: Required capability inventory
+  - Line 115: Basics gates
+  - Line 139: Speculative and advanced execution contracts
+  - Line 194: Parity and performance closure
+
+### [.agents/research/README_PRE_PRODUCT_REWRITE_SNAPSHOT_2026-10-15.md](../../research/README_PRE_PRODUCT_REWRITE_SNAPSHOT_2026-10-15.md)
+
+- Bytes: 522; mode: 0o644; SHA256: a0832269bd377daa5652b21efa93f749aa85803efb5dc853fdae28eca238bf21.
+- [Byte-identical handoff snapshot](reference-sources/research/README_PRE_PRODUCT_REWRITE_SNAPSHOT_2026-10-15.md).
+- Full heading route:
+  - Line 1: Development, builds and releases
+
+### [.agents/research/SPECIALIZATION_SOURCE_ATLAS_2026-10-15.md](../../research/SPECIALIZATION_SOURCE_ATLAS_2026-10-15.md)
+
+- Bytes: 10291; mode: 0o644; SHA256: bb4602272d9f666762f28f3c3d1b7c45a3f53beece49e949934158486103dedc.
+- [Byte-identical handoff snapshot](reference-sources/research/SPECIALIZATION_SOURCE_ATLAS_2026-10-15.md).
+- Full heading route:
+  - Line 1: Zerogravity Specialization Prior Art — Specialist Source Atlas
+  - Line 5: 1. Original public sources
+  - Line 28: 2. Published benchmark claims, source-specific
+  - Line 42: 3. The strongest engineering findings
+  - Line 44: Packed GPU kernels
+  - Line 49: MoE and speculative batching
+  - Line 55: Quant and calibration
+  - Line 59: Exact MiMo and source semantics
+  - Line 65: Unified memory and first-image
+  - Line 69: 4. Architecture/source mapping
+  - Line 83: 5. Explicitly NOT adopted
+  - Line 94: 6. Evidence limits and next audit
+
+### [.agents/research/SSD_STREAMING_IMPLEMENTATION_ROADMAP_AND_ACCEPTANCE_2026-10-15.md](../../research/SSD_STREAMING_IMPLEMENTATION_ROADMAP_AND_ACCEPTANCE_2026-10-15.md)
+
+- Bytes: 20887; mode: 0o644; SHA256: cf46b1e593ed5cf118ede4b676ef187f4dcec1987b7f58ae8d3e3b8f63cd10f3.
+- [Byte-identical handoff snapshot](reference-sources/research/SSD_STREAMING_IMPLEMENTATION_ROADMAP_AND_ACCEPTANCE_2026-10-15.md).
+- Full heading route:
+  - Line 1: Zerogravity — First-Class SSD Streaming Implementation Roadmap and Acceptance Tests
+  - Line 9: Reading the design without the retired handoff
+  - Line 17: 0. Implementation principle and current status
+  - Line 23: 1. Minimal changes to the existing engine — no new layers
+  - Line 34: 2. Implementation slices and gate definitions
+  - Line 36: SSD-P0 — source-only contracts and a fake tiered executor
+  - Line 41: SSD-P1 — immutable file-backed tensor and bounded IO
+  - Line 46: SSD-P2 — resident GPU plus source-preserving demand materialization
+  - Line 51: SSD-P3 — mixed-quant MoE streaming and nonrouted source residency
+  - Line 56: SSD-P4 — disk-only indexed tables and frozen state
+  - Line 61: SSD-P5 — adaptive placement, QoS and end-to-end integration
+  - Line 66: 3. SSD-01..SSD-32 planned acceptance matrix
+  - Line 105: 4. Required negative-fixture detail — DS4 #384 / #503
+  - Line 107: Encoded GPU use-after-slot-reuse (SSD-14, SSD-15)
+  - Line 114: Mixed-format thrash (SSD-21/22/24)
+  - Line 120: 5. Admission/placement and high-performance UX
+  - Line 133: 6. Benchmark and evidence reporting
+  - Line 139: 7. Dependency and next engineering plan
+  - Line 154: 8. User intent and design decisions
+  - Line 172: 9. References and implementation boundary
+
+### [.agents/research/STRIX_HALO_OPTIMIZATION_DOSSIER.md](../../research/STRIX_HALO_OPTIMIZATION_DOSSIER.md)
+
+- Bytes: 18981; mode: 0o644; SHA256: 41e0d994ce6c52039e0f441486772db8a7caaff474a1a4992a62fc71e9bc6d54.
+- [Byte-identical handoff snapshot](reference-sources/research/STRIX_HALO_OPTIMIZATION_DOSSIER.md).
+- Full heading route:
+  - Line 1: AMD Strix Halo dossier — gfx1151 extreme inference targets
+  - Line 11: 1. Why this APU is special
+  - Line 17: 2. Models and primary cost sources
+  - Line 19: Qwen3.8-Flash-Next
+  - Line 34: GLM-5.3-Flash
+  - Line 42: DeepSeek V4 Flash
+  - Line 45: 3. Physical resource profiles (illustrative, must measure)
+  - Line 56: 4. ROCm kernel feasibility tasks
+  - Line 71: 5. Resident routing and streaming expert model
+  - Line 89: 6. Unified-memory and OS safety
+  - Line 95: 7. Large model residency and bandwidth reasoning
+  - Line 101: 8. Different operating modes on gfx1151
+  - Line 107: 9. Benchmark scenarios to qualify
+  - Line 117: 10. Actual speed gap ownership
+  - Line 129: 11. Implementation priority for this hardware
+  - Line 133: 12. Uncertainties to maintain openly
+  - Line 137: 2026-10-10 integrated v2 addendum — hardware optimization under unified compiler
+  - Line 150: 2026-10-12 integration — XDNA2 NPU + Radeon iGPU on the same Strix Halo SoC
+
+### [.agents/research/VLLM_PARITY_AND_COMBINATORY_SPECIALIZATION_ACCEPTANCE_2026-10-15.md](../../research/VLLM_PARITY_AND_COMBINATORY_SPECIALIZATION_ACCEPTANCE_2026-10-15.md)
+
+- Bytes: 17781; mode: 0o644; SHA256: 064b63c2cd342a464f8ff3325189df5ca35b83803e5c5bc45ed84e9738119d17.
+- [Byte-identical handoff snapshot](reference-sources/research/VLLM_PARITY_AND_COMBINATORY_SPECIALIZATION_ACCEPTANCE_2026-10-15.md).
+- Full heading route:
+  - Line 1: Zerogravity — vLLM Parity and Combinatory Serving Acceptance Program
+  - Line 7: 0. Status and boundaries
+  - Line 13: 1. Development phases and dependency gates
+  - Line 30: 2. Quality and benchmark protocol
+  - Line 32: Benchmark populations
+  - Line 44: Apples-to-apples source setup
+  - Line 50: Goodput and service-level availability
+  - Line 56: 3. Source-free and actual-model acceptance: SERVOPT-01..36
+  - Line 99: 4. Additional protocol, memory and failure variants
+  - Line 112: 5. vLLM competitive gate details
+  - Line 114: Text
+  - Line 121: Multimodal
+  - Line 126: Statistical promotion
+  - Line 133: 6. Responsibility, deliverables and change-radius constraints
+  - Line 148: 7. Research sources and handoff
+
+### [.agents/research/engine-optimization-comparison-2026-10-21/README.md](../../research/engine-optimization-comparison-2026-10-21/README.md)
+
+- Bytes: 22268; mode: 0o644; SHA256: ce1ba5c54531dd65f436d99fd608d829ef19ff0519a2443610c4b4c7d09ae916.
+- [Byte-identical handoff snapshot](reference-sources/research/engine-optimization-comparison-2026-10-21/README.md).
+- Full heading route:
+  - Line 1: Execution fabric: optimization comparison
+  - Line 9: Outcome
+  - Line 24: Independent sources and why they differ
+  - Line 43: Current local evidence
+  - Line 79: Cross-engine mechanism comparison
+  - Line 111: Priority and model order
+  - Line 148: Composition opportunities beyond individual ports
+  - Line 182: Promotion and provenance
+
+### [.agents/research/engine-optimization-comparison-2026-10-21/composition-review.md](../../research/engine-optimization-comparison-2026-10-21/composition-review.md)
+
+- Bytes: 7089; mode: 0o644; SHA256: 591ca60be3eb97265e76d4e718583161131c069b4d9729df684e93f260bd0b16.
+- [Byte-identical handoff snapshot](reference-sources/research/engine-optimization-comparison-2026-10-21/composition-review.md).
+- Full heading route:
+  - Line 1: Independent critical design review
+  - Line 8: Verdict
+  - Line 21: Corrections adopted by ROOT
+  - Line 40: Useful implementation checks, not design prerequisites
+  - Line 66: Substantive checks
+  - Line 96: Research coverage and limits
+
+### [.agents/research/engine-optimization-comparison-2026-10-21/deepinfer-inventory.md](../../research/engine-optimization-comparison-2026-10-21/deepinfer-inventory.md)
+
+- Bytes: 7034; mode: 0o644; SHA256: 38c96f7860f94a4f3063765ceddd89c97740ef8eea3967d761505ba6cb6d4684.
+- [Byte-identical handoff snapshot](reference-sources/research/engine-optimization-comparison-2026-10-21/deepinfer-inventory.md).
+- Full heading route:
+  - Line 1: DeepInfer mechanism dispositions
+
+### [.agents/research/engine-optimization-comparison-2026-10-21/deepinfer.md](../../research/engine-optimization-comparison-2026-10-21/deepinfer.md)
+
+- Bytes: 36456; mode: 0o644; SHA256: 99cc8f80703f3bd00d2c9686d5de8cf6b806428193141a4789a35b713c87a7b2.
+- [Byte-identical handoff snapshot](reference-sources/research/engine-optimization-comparison-2026-10-21/deepinfer.md).
+- Full heading route:
+  - Line 1: DeepInfer: independent source review
+  - Line 11: Revision and scope
+  - Line 20: What executes
+  - Line 39: Implemented execution mechanisms and transfer conditions
+  - Line 41: 1. CPU/GPU overlap and device-side feedback
+  - Line 49: 2. Stable buffers, graph replay and launch dependencies
+  - Line 57: 3. Fusion and physical layouts
+  - Line 67: 4. Distributed topology and communication
+  - Line 75: 5. Expert placement and load balancing
+  - Line 81: 6. Cache layouts, prefix sharing and bounded replay
+  - Line 91: 7. DSpark and adaptive verification
+  - Line 103: 8. Sampling, reproducibility and grammar work
+  - Line 113: Prefill/decode scheduling and resource differences
+  - Line 121: Reported results: what they measure
+  - Line 136: Open proposals and concrete audit cautions
+  - Line 142: Fit with the existing Zerogravity engine
+  - Line 158: Proposed order after vLLM parity
+  - Line 174: Read/qualification limits
+
+### [.agents/research/engine-optimization-comparison-2026-10-21/dwarfstar.md](../../research/engine-optimization-comparison-2026-10-21/dwarfstar.md)
+
+- Bytes: 69281; mode: 0o644; SHA256: 6c8a9b7a488f9c646f893b9d9d6c2b2aac12f6fcb38fca47a0b23d6796bb868a.
+- [Byte-identical handoff snapshot](reference-sources/research/engine-optimization-comparison-2026-10-21/dwarfstar.md).
+- Full heading route:
+  - Line 1: DwarfStar optimization research for one Rust execution fabric
+  - Line 9: 1. Decision
+  - Line 29: 2. Authority, pin and limits
+  - Line 53: 3. Zerogravity evidence boundary
+  - Line 99: 4. Per-optimization inventory
+  - Line 106: Model graph, numerical identity and CPU
+  - Line 116: Kernels, fusion, layouts and dispatch
+  - Line 135: Model-specific long-context semantics
+  - Line 143: Memory, SSD, prefetch and immutable readers
+  - Line 161: Serving, prefix identity and state persistence
+  - Line 173: Speculation and target-authoritative verification
+  - Line 185: Distributed placement, transport and physical cost
+  - Line 197: Frontends, power and measurement
+  - Line 206: 5. Unmerged proposals are separate evidence
+  - Line 222: 6. Benchmarks: exact scope and missing fields
+  - Line 243: 7. Negative experiments, bugs and drift
+  - Line 292: 8. Composition hypotheses inside the existing fabric
+  - Line 335: 9. Required promotion gates
+  - Line 375: 10. License/provenance notes
+  - Line 397: 11. Completion and limitations
+
+### [.agents/research/engine-optimization-comparison-2026-10-21/exllamav3-adoption-scope.md](../../research/engine-optimization-comparison-2026-10-21/exllamav3-adoption-scope.md)
+
+- Bytes: 3080; mode: 0o644; SHA256: f0876f1d566fef69b2dd3a701daec875122581919b89415f6060ba4bd23f2ec7.
+- [Byte-identical handoff snapshot](reference-sources/research/engine-optimization-comparison-2026-10-21/exllamav3-adoption-scope.md).
+- Full heading route:
+  - Line 1: ExLlamaV3 adoption investigation: scope and initial evidence
+  - Line 7: Pinned initial observations
+  - Line 26: Full investigation still pending
+
+### [.agents/research/engine-optimization-comparison-2026-10-21/halogen-inventory.md](../../research/engine-optimization-comparison-2026-10-21/halogen-inventory.md)
+
+- Bytes: 18417; mode: 0o644; SHA256: fc50b4286587e9e928a7a1783e08a03f5bbbbc8e915216ad2afbc2b4549acb72.
+- [Byte-identical handoff snapshot](reference-sources/research/engine-optimization-comparison-2026-10-21/halogen-inventory.md).
+- Full heading route:
+  - Line 1: Halogen per-optimization inventory
+  - Line 83: Pinned primary sources
+
+### [.agents/research/engine-optimization-comparison-2026-10-21/halogen.md](../../research/engine-optimization-comparison-2026-10-21/halogen.md)
+
+- Bytes: 37802; mode: 0o644; SHA256: 438455097f51d41339e10b5befb52e7820372d341ee57152d530c9d3c5c8a68a.
+- [Byte-identical handoff snapshot](reference-sources/research/engine-optimization-comparison-2026-10-21/halogen.md).
+- Full heading route:
+  - Line 1: Halogen: composable execution-fabric research
+  - Line 7: Result and limits
+  - Line 24: Current source identity, access and license
+  - Line 58: Architecture and semantic boundaries
+  - Line 93: Benchmark evidence and exact conditions
+  - Line 141: Negative experiments, caveats and unresolved proof
+  - Line 190: Current Zerogravity mapping (Z1–Z10)
+  - Line 202: Z1 — Prepared/fused/batched/private graph
+  - Line 213: Z2 — Trained forward and isolated original-source numerical work
+  - Line 226: Z3 — Immutable source and supported quant codecs
+  - Line 237: Z4 — Physical authority, completion/quarantine and source-only SSD
+  - Line 248: Z5 — Fair workers and bounded HTTP
+  - Line 259: Z6 — Complete roots and checkpoints
+  - Line 271: Z7 — ONE engine pipeline/context structure
+  - Line 284: Z8 — Speculation/sampling/grammar
+  - Line 292: Z9 — Tokenizer/output and benchmark accountability
+  - Line 301: Z10 — Optimization, numerics and acceptance plans
+  - Line 315: Ranked integration after vLLM parity
+  - Line 355: Mandatory gates and useful compositions
+  - Line 398: Inspection coverage and artifacts
+
+### [.agents/research/engine-optimization-comparison-2026-10-21/llamacpp.md](../../research/engine-optimization-comparison-2026-10-21/llamacpp.md)
+
+- Bytes: 76367; mode: 0o644; SHA256: c30fb53767733347608d683e3f21a63394a8e40636c1d25eab8056ebb7d05b2b.
+- [Byte-identical handoff snapshot](reference-sources/research/engine-optimization-comparison-2026-10-21/llamacpp.md).
+- Full heading route:
+  - Line 1: llama.cpp/GGML optimization reconciliation
+  - Line 7: Finding and execution boundary
+  - Line 19: Provenance and maturity
+  - Line 42: Local evidence legend
+  - Line 53: Optimization-by-optimization map
+  - Line 55: Source, graph, CPU and loading
+  - Line 75: CUDA/HIP/Vulkan/Metal kernels and execution
+  - Line 97: Batching, hybrid cache, serving and speculation
+  - Line 124: Arithmetic and state consequences
+  - Line 136: Post-parity implementation order
+  - Line 149: Credible composition hypotheses
+  - Line 160: Acceptance gates for any selected mechanism
+  - Line 175: Open PRs and plans excluded from implemented claims
+  - Line 188: Local coverage audit
+  - Line 210: Upstream inspection coverage and blind spots
+  - Line 219: Primary source links
+
+### [.agents/research/engine-optimization-comparison-2026-10-21/maya-inventory.md](../../research/engine-optimization-comparison-2026-10-21/maya-inventory.md)
+
+- Bytes: 41292; mode: 0o644; SHA256: 051f0cb4a1af077eb68624136b118a8c54888c78795e7dc5427cd079fd3052db.
+- [Byte-identical handoff snapshot](reference-sources/research/engine-optimization-comparison-2026-10-21/maya-inventory.md).
+- Full heading route:
+  - Line 1: Maya mechanism inventory and Zerogravity disposition
+  - Line 6: Reading the inventory
+  - Line 17: Inventory
+  - Line 19: Weights, residency and IO
+  - Line 34: Token reuse, kernels and topology
+  - Line 49: Attention, commands and batching
+  - Line 62: Speculation and complete state
+  - Line 73: Model formats, graph liveness and policy
+  - Line 86: Local anchors
+  - Line 99: Pinned primary sources
+
+### [.agents/research/engine-optimization-comparison-2026-10-21/maya.md](../../research/engine-optimization-comparison-2026-10-21/maya.md)
+
+- Bytes: 37796; mode: 0o644; SHA256: 42bf21a318c7727dc44382652f680d10adc7b1f5c5031a13cc8b8a3cbae6779a.
+- [Byte-identical handoff snapshot](reference-sources/research/engine-optimization-comparison-2026-10-21/maya.md).
+- Full heading route:
+  - Line 1: Maya: source-backed optimization research
+  - Line 8: Result
+  - Line 20: Research method and qualification limits
+  - Line 28: Current implementation, rather than the old port study
+  - Line 38: Exactness classification
+  - Line 60: Resource, cache and state contracts worth transferring
+  - Line 62: Distinct memory objects and tier policies
+  - Line 71: Why Rust must preserve stronger authorities
+  - Line 83: Complete snapshots, not KV-only hits
+  - Line 90: Current local mapping: established, isolated and open
+  - Line 106: Composition through one mathematical engine
+  - Line 110: Keep semantic graph separate from executable schedule
+  - Line 118: Interactions that prevent multiplying advertised speedups
+  - Line 132: Shared-context opportunities beyond a direct Maya port
+  - Line 144: Performance evidence and negative results
+  - Line 170: Prioritization under the user's model order
+  - Line 179: Blind spots and remaining research
+  - Line 189: Pinned primary sources
+
+### [.agents/research/engine-optimization-comparison-2026-10-21/nvidia-guide-inventory.md](../../research/engine-optimization-comparison-2026-10-21/nvidia-guide-inventory.md)
+
+- Bytes: 3104; mode: 0o644; SHA256: 0bbffb55696e87f2fe23f924e362e3d57ed4e5c78c0fc34806b8c405f6925dca.
+- [Byte-identical handoff snapshot](reference-sources/research/engine-optimization-comparison-2026-10-21/nvidia-guide-inventory.md).
+- Full heading route:
+  - Line 1: Deployment recipe mechanism dispositions
+
+### [.agents/research/engine-optimization-comparison-2026-10-21/nvidia-guide.md](../../research/engine-optimization-comparison-2026-10-21/nvidia-guide.md)
+
+- Bytes: 38847; mode: 0o644; SHA256: e4277b9f07b47176e669aa7f8f3f1313b8b8720a8598d9757fab8cbb0067bc99.
+- [Byte-identical handoff snapshot](reference-sources/research/engine-optimization-comparison-2026-10-21/nvidia-guide.md).
+- Full heading route:
+  - Line 1: NVIDIA DeepSeek V4 / two-Spark recipe: independent research
+  - Line 7: Findings and priority
+  - Line 19: Provenance and version separation
+  - Line 35: Actual serving profiles
+  - Line 55: Why the model and two GB10 systems make this feasible
+  - Line 57: Compute and weight residency
+  - Line 69: Attention, context and state
+  - Line 81: Serving execution mechanisms
+  - Line 95: What the performance evidence does and does not establish
+  - Line 107: Comparison with our current platform
+  - Line 121: Qwen and Gemma4: what actually transfers
+  - Line 133: Ranked candidates immediately after parity
+  - Line 148: Proposed composable stages within the existing Rust engine
+  - Line 162: Qualification and benchmark requirements
+  - Line 176: Deferred work and explicit exclusions
+  - Line 183: Inspection coverage and open gaps
+
+### [.agents/research/engine-optimization-comparison-2026-10-21/profile-coverage.md](../../research/engine-optimization-comparison-2026-10-21/profile-coverage.md)
+
+- Bytes: 8553; mode: 0o644; SHA256: 25133c0544192bd1b9c4c70d147a41bd6d7e3acdd9c5aa539fd34e4ce73b1df8.
+- [Byte-identical handoff snapshot](reference-sources/research/engine-optimization-comparison-2026-10-21/profile-coverage.md).
+- Full heading route:
+  - Line 1: Mechanisms organized into profiles
+  - Line 8: Reusable pipeline components
+  - Line 24: Profile recipes
+  - Line 43: Family coverage
+  - Line 74: First implementation and acceptance
+
+### [.agents/research/engine-optimization-comparison-2026-10-21/tensorfold-inventory.md](../../research/engine-optimization-comparison-2026-10-21/tensorfold-inventory.md)
+
+- Bytes: 37840; mode: 0o644; SHA256: 1954fd637905a4dc3c14c5775a64cbc262aa130000c73a8bc360a6b090e76db2.
+- [Byte-identical handoff snapshot](reference-sources/research/engine-optimization-comparison-2026-10-21/tensorfold-inventory.md).
+- Full heading route:
+  - Line 1: TensorFold optimization coverage matrix
+  - Line 18: Architecture and physical dispatch
+  - Line 30: Arithmetic, projections and layouts
+  - Line 44: Attention, recurrent state and positions
+  - Line 57: Drafting, verification and sampling
+  - Line 74: Serving, scheduling and cost control
+  - Line 87: Memory, prefix cache and IO
+  - Line 103: Quantization and heterogeneous hardware
+  - Line 114: Compilation, parallelism and experimental gates
+  - Line 126: Historical streaming lineage — separate from current native engine
+  - Line 137: Features that are not inference-preserving optimizations
+  - Line 145: Negative experiments worth retaining
+
+### [.agents/research/engine-optimization-comparison-2026-10-21/tensorfold.md](../../research/engine-optimization-comparison-2026-10-21/tensorfold.md)
+
+- Bytes: 26944; mode: 0o644; SHA256: 0b2056b4f3835497d9bcf552b23925d46af63a0c66b9505dcd24d3b6555889f3.
+- [Byte-identical handoff snapshot](reference-sources/research/engine-optimization-comparison-2026-10-21/tensorfold.md).
+- Full heading route:
+  - Line 1: TensorFold: independent source and optimization audit
+  - Line 5: Result
+  - Line 13: Identity, licensing and stale-source traps
+  - Line 23: What its execution architecture actually does
+  - Line 29: Exactness: the important contract difference
+  - Line 37: Current Zerogravity evidence, revalidated
+  - Line 54: Priorities after parity: concrete units
+  - Line 69: Ways we might improve beyond the borrowed mechanisms
+  - Line 84: What not to copy automatically
+  - Line 114: Source-reported benchmarks: useful evidence, limited comparability
+  - Line 127: Research coverage and remaining uncertainty
+
+### [.agents/research/engine-optimization-comparison-2026-10-21/vllm.md](../../research/engine-optimization-comparison-2026-10-21/vllm.md)
+
+- Bytes: 79441; mode: 0o644; SHA256: c05bccada0431cc8ee704ea74d6fa0c2415854c6641a7fbed44fbf9bcc156b0a.
+- [Byte-identical handoff snapshot](reference-sources/research/engine-optimization-comparison-2026-10-21/vllm.md).
+- Full heading route:
+  - Line 1: vLLM optimization inventory and Zerogravity composition
+  - Line 8: 1. Result and provenance
+  - Line 45: 2. Architecture checked in code
+  - Line 79: 3. Local coverage labels and actual anchors
+  - Line 116: 4. Optimization inventory
+  - Line 123: 4.1 Scheduler, batches and host/device orchestration
+  - Line 136: 4.2 State layout, prefix reuse and tiers
+  - Line 152: 4.3 Loading, physical residency and CPU
+  - Line 166: 4.4 Attention, recurrence and precision
+  - Line 181: 4.5 Dense/MoE kernels, fusion, graphs and tuning
+  - Line 198: 4.6 Sampling and speculation
+  - Line 213: 4.7 Distribution, placement, multimodel and observability
+  - Line 227: 5. Shipped code, open work and numerical limits
+  - Line 278: 6. Composable Rust design hypotheses
+  - Line 338: 7. Negative interactions and guardrails
+  - Line 357: 8. Prioritized work after current parity
+  - Line 378: 9. Acceptance matrix for any selected mechanism
+  - Line 430: 10. License, research coverage and handoff
+  - Line 459: Pinned primary source links
+
+### [.agents/research/multimodal/ASR_AND_STREAMING_SPEECH_UNDERSTANDING_2026-10-15.md](../../research/multimodal/ASR_AND_STREAMING_SPEECH_UNDERSTANDING_2026-10-15.md)
+
+- Bytes: 15110; mode: 0o644; SHA256: dc04cf0a1fb0b4cd1dd47be8416cb3da079a39af84c5f5a69064c6e60e8e69db.
+- [Byte-identical handoff snapshot](reference-sources/research/multimodal/ASR_AND_STREAMING_SPEECH_UNDERSTANDING_2026-10-15.md).
+- Full heading route:
+  - Line 1: Research Track B — ASR, Speech Translation and Streaming Speech Understanding
+  - Line 7: 1. Verdict and central lesson
+  - Line 11: 2. Authoritative source matrix
+  - Line 26: 3. Whisper reference execution trace
+  - Line 40: 4. CTC source-specific execution trace
+  - Line 51: 5. RNNT and TDT source-specific trace
+  - Line 63: 6. Canary ASR + AST / language conditioning
+  - Line 70: 7. VibeVoice and diarization
+  - Line 78: 8. Qwen-Omni audio input and live perception
+  - Line 82: 9. Reusable ASR contract (illustrative)
+  - Line 109: 10. State, scheduling and memory
+  - Line 122: 11. Independent verification and negative fixtures
+  - Line 139: 12. Implementation sequencing and priorities
+  - Line 149: 13. Primary sources and provenance
+
+### [.agents/research/multimodal/CROSS_STREAM_ARCHITECTURE_RECONCILIATION_2026-10-15.md](../../research/multimodal/CROSS_STREAM_ARCHITECTURE_RECONCILIATION_2026-10-15.md)
+
+- Bytes: 16022; mode: 0o644; SHA256: 850fe29f213c681bf5ff928d1058787f67acedc024e28e8e2b8a04b6565e27ba.
+- [Byte-identical handoff snapshot](reference-sources/research/multimodal/CROSS_STREAM_ARCHITECTURE_RECONCILIATION_2026-10-15.md).
+- Full heading route:
+  - Line 1: Research Track H — Cross-Stream Adversarial Reconciliation and Minimal Architecture Delta
+  - Line 6: 1. Scope and governance
+  - Line 12: 2. Overarching verdict
+  - Line 16: 3. Cross-stream conflict and disposition matrix
+  - Line 41: 4. Minimal delta against v4.3 + v5, not a redesign
+  - Line 70: 5. Source-to-execution map
+  - Line 92: 6. Hard invariants to keep
+  - Line 94: Single authority
+  - Line 97: Physical buffer safety
+  - Line 100: Semantics
+  - Line 103: Time
+  - Line 106: API truth
+  - Line 109: Security
+  - Line 112: 7. Additional design recommendations still OPEN, not silently approved
+  - Line 121: 8. Adversarial review questions to require on every implementation PR
+  - Line 142: 9. Proposed acceptance result classification
+  - Line 146: 10. Reconciliation deliverables
+
+### [.agents/research/multimodal/DECISION_MODELS_TERNARY_AND_SPECIALIST_TEXT_2026-10-15.md](../../research/multimodal/DECISION_MODELS_TERNARY_AND_SPECIALIST_TEXT_2026-10-15.md)
+
+- Bytes: 15661; mode: 0o644; SHA256: 76aa831a66ff7cb675f6ccf43d0bf0c131508527e5ee6cb630db93349d380094.
+- [Byte-identical handoff snapshot](reference-sources/research/multimodal/DECISION_MODELS_TERNARY_AND_SPECIALIST_TEXT_2026-10-15.md).
+- Full heading route:
+  - Line 1: Research Track F — Typed Decision Models, Ternary Formats and Specialist Text Architectures
+  - Line 7: 1. Why decision heads need a native task kind
+  - Line 13: 2. Source variants and execution family
+  - Line 27: 3. DecisionSchema model
+  - Line 63: 4. Encoder decision source trace
+  - Line 75: 5. Joint-schema decision head trace
+  - Line 88: 6. Hosted typed decisions
+  - Line 100: 7. Ternary low-bit source architecture: why simple Qwen format recognition is dangerous
+  - Line 112: 8. Ternary TensorEncoding design
+  - Line 140: 9. Extensibility to other specialist text models
+  - Line 153: 10. Negative test matrix
+  - Line 170: 11. Qualification and implementation order
+  - Line 181: 12. Original sources reviewed
+
+### [.agents/research/multimodal/IMAGE_GENERATION_EDITING_AND_FLOW_MODELS_2026-10-15.md](../../research/multimodal/IMAGE_GENERATION_EDITING_AND_FLOW_MODELS_2026-10-15.md)
+
+- Bytes: 17669; mode: 0o644; SHA256: c80956cefff5b9b18dc10e2eccfc80eae0a17bd849aafde05d3f3fa57edbbdb3.
+- [Byte-identical handoff snapshot](reference-sources/research/multimodal/IMAGE_GENERATION_EDITING_AND_FLOW_MODELS_2026-10-15.md).
+- Full heading route:
+  - Line 1: Research Track D — Image Generation, Editing, Flow/Diffusion and Autoregressive Image Models
+  - Line 7: 1. Verdict
+  - Line 13: 2. Source model matrix and component inventory
+  - Line 27: 3. Verified image component assembly contract
+  - Line 48: 4. Latent tensor and image value semantics
+  - Line 68: 5. Flow and denoising semantics must be exact
+  - Line 84: 6. Qwen-Image source-specific trace
+  - Line 98: 7. Rectified-flow image source-specific trace
+  - Line 114: 8. Multimodal DiT latent-diffusion source-specific trace
+  - Line 125: 9. AR/hybrid image model ambiguity protocol
+  - Line 139: 10. Image editing and composability
+  - Line 150: 11. Physical memory and performance strategy
+  - Line 163: 12. Required image acceptance
+  - Line 178: 13. Recommended implementation order
+  - Line 189: 14. Primary sources checked
+
+### [.agents/research/multimodal/SERVING_API_AND_REALTIME_PRIOR_ART_2026-10-15.md](../../research/multimodal/SERVING_API_AND_REALTIME_PRIOR_ART_2026-10-15.md)
+
+- Bytes: 17156; mode: 0o644; SHA256: c0514c341b64d20d07ad610945ba89d3fd4c32c8dd10eb159dc92e9de3355747.
+- [Byte-identical handoff snapshot](reference-sources/research/multimodal/SERVING_API_AND_REALTIME_PRIOR_ART_2026-10-15.md).
+- Full heading route:
+  - Line 1: Research Track G — Real-Time and Multimodal Serving / API Prior Art and Design Reconciliation
+  - Line 7: 1. Executive verdict
+  - Line 13: 2. OpenAI public realtime model/protocol reality
+  - Line 31: 3. Hosted live multimodal API reference
+  - Line 50: 4. Native streaming audio prior art
+  - Line 56: 5. Hosted voice streaming
+  - Line 62: 6. Hosted long-running media jobs
+  - Line 73: 7. vLLM and SGLang useful patterns and caveats
+  - Line 89: 8. Canonical API compatibility and behavior matrix
+  - Line 106: 9. Transport-specific lifecycle templates
+  - Line 108: HTTP file ASR
+  - Line 111: HTTP SSE text
+  - Line 114: WebSocket live voice
+  - Line 117: WebRTC live voice/video
+  - Line 120: Async hosted video
+  - Line 123: 10. Security, rate, billing and privacy research learnings
+  - Line 135: 11. Minimality and performance learnings
+  - Line 148: 12. Adversarial serving acceptance
+  - Line 163: 13. Implementation recommendation and scope
+  - Line 176: 14. External sources / dates
+
+### [.agents/research/multimodal/TTS_VOICE_CODECS_AND_FULL_DUPLEX_2026-10-15.md](../../research/multimodal/TTS_VOICE_CODECS_AND_FULL_DUPLEX_2026-10-15.md)
+
+- Bytes: 18756; mode: 0o644; SHA256: efd81080053aad474923d1cd1f57ffff37df91812397baea2d4fd797d42041b1.
+- [Byte-identical handoff snapshot](reference-sources/research/multimodal/TTS_VOICE_CODECS_AND_FULL_DUPLEX_2026-10-15.md).
+- Full heading route:
+  - Line 1: Research Track C — Text-to-Speech, Neural Audio Codecs, Voice and Full-Duplex Conversation
+  - Line 5: 1. Verdict
+  - Line 15: 2. Primary source and method matrix
+  - Line 30: 3. Audio state and clocks: minimum trusted schema
+  - Line 64: 4. Kokoro: non-token-AR TTS execution trace
+  - Line 77: 5. Dual-AR codebook generation trace
+  - Line 90: 6. Qwen3-TTS: variant/streaming cautions
+  - Line 100: 7. VibeVoice long-form and realtime
+  - Line 109: 8. Native full duplex with a neural codec
+  - Line 125: 9. Qwen3-Omni Thinker/Talker
+  - Line 136: 10. Hosted voice providers
+  - Line 148: 11. Serving contracts / output finality
+  - Line 156: 12. Latency, quality and risk
+  - Line 168: 13. Required adversarial acceptance fixtures
+  - Line 183: 14. Incremental implementation plan
+  - Line 194: 15. Primary sources checked
+
+### [.agents/research/multimodal/VIDEO_TEMPORAL_MODELS_AND_SYNCHRONIZED_AV_2026-10-15.md](../../research/multimodal/VIDEO_TEMPORAL_MODELS_AND_SYNCHRONIZED_AV_2026-10-15.md)
+
+- Bytes: 17977; mode: 0o644; SHA256: e6e9510e073aa5bd0b58c04356b3044d5f7cd91917cb5f81bfc5cceefc891448.
+- [Byte-identical handoff snapshot](reference-sources/research/multimodal/VIDEO_TEMPORAL_MODELS_AND_SYNCHRONIZED_AV_2026-10-15.md).
+- Full heading route:
+  - Line 1: Research Track E — Video, Temporal Diffusion, Synchronized Audio-Video and Frontier Providers
+  - Line 7: 1. Verdict
+  - Line 19: 2. Source-backed family matrix
+  - Line 36: 3. Video value and clock contract
+  - Line 61: 4. Source-valid video-generation execution trace
+  - Line 74: 5. Wan 2.1 specifics
+  - Line 82: 6. Wan 2.2 denoising-phase MoE
+  - Line 97: 7. Dual-stream video DiT original and 1.5
+  - Line 107: 8. Asymmetric-attention DiT and AsymmVAE
+  - Line 117: 9. Coupled joint audio/video, exact synchronized group
+  - Line 140: 10. Frontier proprietary video services
+  - Line 151: 11. Physical memory and QoS
+  - Line 166: 12. Test matrix for independent agent implementation
+  - Line 184: 13. Implementation order, not a changed user model priority
+  - Line 195: 14. Primary sources reviewed 15 October 2026
+
+## .agents/prior-art/ — 12 files
+
+### [.agents/prior-art/ACCELERATOR_PRIOR_ART_AND_PLATFORM_RESEARCH_2026-10-12.md](../../prior-art/ACCELERATOR_PRIOR_ART_AND_PLATFORM_RESEARCH_2026-10-12.md)
+
+- Bytes: 19654; mode: 0o644; SHA256: 141281cd8fb7e52b4e21b6ef545a046427852b698c4371d58e50e22f19502b5c.
+- [Byte-identical handoff snapshot](reference-sources/prior-art/ACCELERATOR_PRIOR_ART_AND_PLATFORM_RESEARCH_2026-10-12.md).
+- Full heading route:
+  - Line 1: Accelerator execution prior art — Blackwell, TPU, wafer-scale, static dataflow and specialized runtimes
+  - Line 9: 1. NVIDIA Blackwell is multiple hardware \*systems\*, not one GPU profile
+  - Line 11: DGX Spark / GB10 (local ARM + coherent low-power Blackwell)
+  - Line 19: Blackwell RTX/PRO discrete vs B200/B300 and GB200/GB300 rack domains
+  - Line 27: 2. Google TPU v5e/v6e/v7x — compiled graph + fabric, not ordinary CUDA commands
+  - Line 36: 3. Cerebras WSE3 / CS3 — wafer-scale static dataflow and streamed weight model
+  - Line 46: 4. Cerberus — a distinct parallel-decoding algorithm, not wafer-scale hardware
+  - Line 51: 5. AWS Trainium/Inferentia — specialized AOT accelerator compiler and runtime
+  - Line 59: 6. Deterministic dataflow, SRAM processors and hybrid GPU+LPU
+  - Line 67: 7. Other hardware families informing provider constraints
+  - Line 81: 8. Why this changes the design beyond v4
+  - Line 94: 9. Status and scope discipline
+
+### [.agents/prior-art/ARCHITECTURE_RECONCILIATION_AND_AUTHORITY.md](../../prior-art/ARCHITECTURE_RECONCILIATION_AND_AUTHORITY.md)
+
+- Bytes: 30204; mode: 0o644; SHA256: 129bd53a896531551ef2693c9bc5b638717c4d38a751355468f67d6dc4a71df4.
+- [Byte-identical handoff snapshot](reference-sources/prior-art/ARCHITECTURE_RECONCILIATION_AND_AUTHORITY.md).
+- Full heading route:
+  - Line 1: zerogravity — Reconciled architecture and authority matrix
+  - Line 10: 0. Reconciliation charter
+  - Line 16: 1. Six ownership planes (logical, NOT six server processes)
+  - Line 27: 2. Canonical set of plans / names
+  - Line 33: Control-flow diagram
+  - Line 51: 3. Model and optimization ownership
+  - Line 57: 4. The general fallback: exact boundaries of the guarantee
+  - Line 63: 5. Scheduler + worker seam adopted from research
+  - Line 75: 6. Memory and caching ownership
+  - Line 93: 7. Kernel authoring policy and new CUDA-Rust evidence
+  - Line 111: 8. Portable first, specialized immediately when justified
+  - Line 120: 9. Tune kernel variants and joint online policy at different timescales
+  - Line 129: 10. Operational product capabilities absorbed
+  - Line 140: 11. Per-model/hardware specialization contract
+  - Line 152: 12. Evidence, correctness and feasibility gates
+  - Line 166: 13. Reconciliation ledger of historical research decisions D-01..D-20
+  - Line 193: 14. Defects or gaps found and disposition
+  - Line 207: 15. Open technical choices kept deliberately unfrozen
+  - Line 211: 16. Next-step success test for this design
+  - Line 217: 2026-10-12 addition — Gufo cooperative NPU prefill reconciled without new runtime fork
+  - Line 226: Multimodal scope review — v5 proposal (14 October 2026)
+
+### [.agents/prior-art/ARCHITECTURE_V4_CRITICAL_REVIEW_2026-10-12.md](../../prior-art/ARCHITECTURE_V4_CRITICAL_REVIEW_2026-10-12.md)
+
+- Bytes: 29689; mode: 0o644; SHA256: 15dea9e967c4baafc3a6673df1f6bae7e0667585db18906592a3b0803ce5b88a.
+- [Byte-identical handoff snapshot](reference-sources/prior-art/ARCHITECTURE_V4_CRITICAL_REVIEW_2026-10-12.md).
+- Full heading route:
+  - Line 1: zerogravity — v4 critical architectural review, challenges and resolution record
+  - Line 7: 1. Research methodology and genuinely material new evidence
+  - Line 19: 2. Severity-ranked findings: concrete faults in v3
+  - Line 50: 3. Primary adjudications — fewer concepts, not more mandatory infrastructure
+  - Line 68: 4. Performance budget and hot-path invariants
+  - Line 82: 5. Minimality budget / architectural complexity constraints
+  - Line 94: 6. New required proof/counterexample program
+  - Line 113: 7. Risks and unresolved policy, retained deliberately
+  - Line 124: 8. Retained migration rationale and current references
+  - Line 136: 9. Review verdict
+
+### [.agents/prior-art/COMPARATIVE_COMPILER_AND_RUNTIME_RESEARCH_2026-10-10.md](../../prior-art/COMPARATIVE_COMPILER_AND_RUNTIME_RESEARCH_2026-10-10.md)
+
+- Bytes: 36543; mode: 0o644; SHA256: a35cb596ad869dc67ac6b0589e52a17ae0d2a75955d8e1f5cb65045b6298a41c.
+- [Byte-identical handoff snapshot](reference-sources/prior-art/COMPARATIVE_COMPILER_AND_RUNTIME_RESEARCH_2026-10-10.md).
+- Full heading route:
+  - Line 1: zerogravity — Comprehensive cross-stack research and design selection
+  - Line 10: 1. Method and independent evidence classes
+  - Line 21: 2. Inference research: transferable strengths and deliberate limits
+  - Line 41: 3. Compiler research: new decisions not fully captured by either old architecture
+  - Line 43: 3.1 A stream/resource layer provides the missing separation
+  - Line 49: 3.2 Separating operator math from schedules; search must be selective
+  - Line 55: 3.3 MLIR's effect system validates explicit non-tensor state semantics
+  - Line 63: 3.4 Minimal-primitive rewriting illustrates both opportunity and risk
+  - Line 69: 3.5 A serving-aware autotuner is decisive
+  - Line 77: 4. 2026 Rust GPU toolchain landscape materially changes the old CubeCL-only premise
+  - Line 97: 5. Unified compiler plan: math, legality, resource schedule, concrete code
+  - Line 138: 6. First-class adaptability in \*every pipeline stage\*
+  - Line 164: 7. Memory and state are a compiled resource graph, not just caches
+  - Line 177: 8. Cache correctness beyond vLLM's current hybrid intersection limits
+  - Line 187: 9. Service and scheduling: concrete vLLM/Strata mechanisms under SIR contracts
+  - Line 199: 10. Data and format pipeline: research specificity, project semantic ownership
+  - Line 213: 11. Quantization, exactness and model performance are independent
+  - Line 226: 12. Performance search objectives and adaptation
+  - Line 250: 13. Targeted hardware and model priority
+  - Line 258: 14. Maintainability scorecard (candidate designs)
+  - Line 269: 15. Research-to-implementation proof program
+  - Line 284: 16. Distinct research sources and provenance
+  - Line 305: 2026-10-12 Gufo/XDNA2 follow-up
+
+### [.agents/prior-art/DISTRIBUTED_PRIOR_ART_AND_TUNNEL_RESEARCH_2026-10-12.md](../../prior-art/DISTRIBUTED_PRIOR_ART_AND_TUNNEL_RESEARCH_2026-10-12.md)
+
+- Bytes: 10863; mode: 0o644; SHA256: 17c3c22741d59afbb93acc9c2d1a55abae1d6a934a2efdc1543d74230b39e9e8.
+- [Byte-identical handoff snapshot](reference-sources/prior-art/DISTRIBUTED_PRIOR_ART_AND_TUNNEL_RESEARCH_2026-10-12.md).
+- Full heading route:
+  - Line 1: Distributed execution, state disaggregation and tunnel transport: prior-art research
+  - Line 5: 1. New axes beyond model/tensor sharding
+  - Line 11: 2. Prefill/decode, KV transfer, cache-aware routing
+  - Line 21: 3. Attention/FFN disaggregation and remote KV execution
+  - Line 29: 4. Token-range KV sharding and long-context elastic attention
+  - Line 37: 5. LAN and consumer-machine distribution
+  - Line 45: 6. Transport and encrypted tunnels
+  - Line 54: 7. Safety, numerical, economic and product boundaries
+  - Line 60: 8. Conclusion
+
+### [.agents/prior-art/FINAL_ARCHITECTURE_REVIEW_2026-10-12.md](../../prior-art/FINAL_ARCHITECTURE_REVIEW_2026-10-12.md)
+
+- Bytes: 17174; mode: 0o644; SHA256: bfb2d043c2a6837b378dc3a41bcef852252fbcce6d473102fd5ea5e89362c8f4.
+- [Byte-identical handoff snapshot](reference-sources/prior-art/FINAL_ARCHITECTURE_REVIEW_2026-10-12.md).
+- Full heading route:
+  - Line 1: Zerogravity — Final Architecture, Editorial and Agent-Handoff Review
+  - Line 9: 1. Final deliverables and ownership
+  - Line 28: 2. Cross-cutting technical findings and dispositions
+  - Line 49: 3. Editorial and citation quality review
+  - Line 59: 4. Open research and implementation risks that documentation cannot close
+  - Line 78: 5. Requirements and work preservation
+  - Line 87: 6. Verification ledger and final closure procedure
+  - Line 100: 7. Publication and engineering verdict
+
+### [.agents/prior-art/GUFO_FORK_AND_XDNA2_PREFILL_SOURCE_RESEARCH_2026-10-12.md](../../prior-art/GUFO_FORK_AND_XDNA2_PREFILL_SOURCE_RESEARCH_2026-10-12.md)
+
+- Bytes: 21647; mode: 0o644; SHA256: 089c60c27009c5c6177c35b7f648b72bfda64066eba4f425d45cc86d80aabe4b.
+- [Byte-identical handoff snapshot](reference-sources/prior-art/GUFO_FORK_AND_XDNA2_PREFILL_SOURCE_RESEARCH_2026-10-12.md).
+- Full heading route:
+  - Line 1: Gufo XDNA2 cooperative-prefill fork and October 2026 Strix Halo report — primary-source research
+  - Line 10: 1. What the user's sources actually establish
+  - Line 32: 2. Architecture in actual fork code
+  - Line 34: 2.1 Hardware and programming interfaces
+  - Line 47: 2.2 One fixed NPU GEMM geometry (initial implementation, NOT fundamental model identity)
+  - Line 55: 2.3 Exactly which mathematical projections are split
+  - Line 65: 2.4 Asynchronous execution and memory sharing
+  - Line 78: 2.5 Runtime/safety limitations actually observed
+  - Line 86: 3. Relation to upstream gufo-org/gufo model pipelines
+  - Line 100: 4. Observed strengths, weaknesses and potential zerogravity improvements
+  - Line 114: 5. Required experiments before enabling any NPU offload
+  - Line 127: 6. Source-by-source references and provenance
+
+### [.agents/prior-art/MULTI_MODEL_ROUTER_AND_API_PRIOR_ART_RESEARCH_2026-10-12.md](../../prior-art/MULTI_MODEL_ROUTER_AND_API_PRIOR_ART_RESEARCH_2026-10-12.md)
+
+- Bytes: 11958; mode: 0o644; SHA256: 602044316a685b0b7b90a93e5cd9783f6db770ea4249069771eb2e05da354a6f.
+- [Byte-identical handoff snapshot](reference-sources/prior-art/MULTI_MODEL_ROUTER_AND_API_PRIOR_ART_RESEARCH_2026-10-12.md).
+- Full heading route:
+  - Line 1: Multi-model local runtime, router, CLI and API prior-art research
+  - Line 5: 1. User goal and immediately important prior art
+  - Line 16: 1.1 Ollama CLI and lifecycle: simplicity baseline
+  - Line 28: 1.2 Lightweight native runner/router prior art
+  - Line 37: 2. OpenAI-compatible APIs must be pinned to an explicit tested subset
+  - Line 47: 3. Multi-model lifecycle and routing architecture research
+  - Line 60: 4. Security, model provenance and user experience
+  - Line 70: 5. Source distinction from requested deliverable
+
+### [.agents/prior-art/PRIOR_ART_LICENSE_AND_PROVENANCE_POLICY.md](../../prior-art/PRIOR_ART_LICENSE_AND_PROVENANCE_POLICY.md)
+
+- Bytes: 9348; mode: 0o644; SHA256: 88fad4a36f306cfd104875c0856b9770f83f928958ea61772aa5950b30583e39.
+- [Byte-identical handoff snapshot](reference-sources/prior-art/PRIOR_ART_LICENSE_AND_PROVENANCE_POLICY.md).
+- Full heading route:
+  - Line 1: Prior art, provenance and architecture neutrality
+  - Line 27: 1. Original architecture and reusable implementations
+  - Line 67: 2. Reuse and license review
+  - Line 93: 3. Mechanism taxonomy: use these instead of project names in design
+  - Line 119: 4. Prior-art and research preservation
+  - Line 129: 5. Concrete developer checklist
+
+### [.agents/prior-art/RESEARCH_SOURCE_ATLAS.md](../../prior-art/RESEARCH_SOURCE_ATLAS.md)
+
+- Bytes: 19294; mode: 0o644; SHA256: fa8c73dcd109e72f02cc1d5af2781ac49d7ad0543ee08cc8ec63c31f7b3f1c96.
+- [Byte-identical handoff snapshot](reference-sources/prior-art/RESEARCH_SOURCE_ATLAS.md).
+- Full heading route:
+  - Line 1: Source atlas — architectural research preserved for implementers
+  - Line 8: A. Main engines — direct user selections
+  - Line 10: vLLM — https://github.com/vllm-project/vllm
+  - Line 13: SGLang — https://github.com/sgl-project/sglang
+  - Line 16: llama.cpp / GGML — https://github.com/ggml-org/llama.cpp
+  - Line 19: Specialized gfx1151 engine
+  - Line 22: Maya — https://github.com/mw00/project-maya
+  - Line 25: Project Strata — https://github.com/mach10x/strata
+  - Line 28: Gufo — https://github.com/gufo-org/gufo
+  - Line 31: DwarfStar (antirez/ds4) — https://github.com/antirez/ds4
+  - Line 34: B. Complementary engines and tools
+  - Line 36: A CPU/GPU heterogeneous engine
+  - Line 39: A quant-aware inference project
+  - Line 42: A kernel-dispatch library
+  - Line 45: A vendor graph compiler
+  - Line 48: Apple unified-memory frameworks
+  - Line 51: An independent Rust serving project
+  - Line 54: A Rust tensor library
+  - Line 57: CubeCL — https://github.com/tracel-ai/cubecl
+  - Line 60: C. Research interpretation constraints
+  - Line 70: D. Minimum reproducibility manifest for future research additions
+  - Line 84: 2026-10-10 integrated v2 addendum — additional first-party compiler and source programs
+  - Line 100: 2026-10-12 integration — distinct upstream Gufo and XDNA2 fork
+  - Line 108: 2026-10-12 addendum — heterogeneous accelerator execution families
+  - Line 115: 2026-10-12 new distributed state/cache/tunnel research
+  - Line 121: 2026-10-12 additional model-router/local CLI and API source research
+
+### [.agents/prior-art/SSD_STREAMING_AND_RELATED_PRIOR_ART_2026-10-15.md](../../prior-art/SSD_STREAMING_AND_RELATED_PRIOR_ART_2026-10-15.md)
+
+- Bytes: 16124; mode: 0o644; SHA256: 027703791f1604a822a7d3ee332e1f746bf9db1bece7f65b447c94be5103b466.
+- [Byte-identical handoff snapshot](reference-sources/prior-art/SSD_STREAMING_AND_RELATED_PRIOR_ART_2026-10-15.md).
+- Full heading route:
+  - Line 1: SSD Streaming Research Dossier — DS4/DwarfStar and related offload prior art
+  - Line 8: 1. Distinguish four source-observed techniques
+  - Line 17: 2. Antirez DS4 / DwarfStar streaming
+  - Line 36: 2.1 DS4 issue #384: encoded-but-not-executed GPU command uses evicted expert slab
+  - Line 52: 2.2 DS4 issue #503: mixed-quant cache reset and prefill evicting decode
+  - Line 64: 2.3 DS4 issue #629: optional pinned host-RAM second tier
+  - Line 78: 2.4 DS4 disk KV session cache and direct-file lookups
+  - Line 88: 3. File-backed disk-only lookup and optional dense reload, not a blanket SSD-expert engine
+  - Line 102: 4. Prior offloading system: one system across GPU, RAM and disk, optimize task regime
+  - Line 110: 5. Activation-aware expert caching and source tracing
+  - Line 116: 6. Source comparison and exact gaps closed
+  - Line 131: 7. Numerical source and performance honesty
+  - Line 137: 8. Strictly not adopted
+  - Line 147: 9. Upstream provenance and exact time
+
+### [.agents/prior-art/VLLM_CONCURRENCY_PRIOR_ART_AND_ARCH_RECONCILIATION_2026-10-15.md](../../prior-art/VLLM_CONCURRENCY_PRIOR_ART_AND_ARCH_RECONCILIATION_2026-10-15.md)
+
+- Bytes: 12914; mode: 0o644; SHA256: 357b75cf8a85ed3b4709c232cd43d42a31b77568d9affbc48aabd4555b09a49d.
+- [Byte-identical handoff snapshot](reference-sources/prior-art/VLLM_CONCURRENCY_PRIOR_ART_AND_ARCH_RECONCILIATION_2026-10-15.md).
+- Full heading route:
+  - Line 1: vLLM Concurrency Prior Art and Zerogravity Architecture Reconciliation
+  - Line 5: 1. Verdict
+  - Line 19: 2. vLLM V1 unified scheduling — real source contract
+  - Line 35: 3. Three separate overload valves: current vLLM configuration
+  - Line 50: 4. Hybrid KV and source-domain cache compatibility
+  - Line 62: 5. Chunked prefill and real-time tail protection
+  - Line 75: 6. Disaggregated prefill/decode
+  - Line 90: 7. vLLM-Omni source capabilities and fair comparison
+  - Line 108: 8. Metrics and honest goodput
+  - Line 118: 9. Specific research and software risks
+  - Line 129: 10. Phase owner map and evidence boundary

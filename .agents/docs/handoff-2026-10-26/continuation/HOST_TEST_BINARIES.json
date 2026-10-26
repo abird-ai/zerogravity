@@ -1,0 +1,18 @@
+{
+  "scope": "exact two host-test binaries after executed CUDA-enabled host batch; no physical inference claim",
+  "source_pins": "rotary-source-batch-pins-v2.json",
+  "binaries": [
+    {
+      "path": "/home/pvl/spaces/abird/src/zerogravity/target/debug/deps/zerogravity-f96d48614bd8fbe2",
+      "bytes": 809639512,
+      "sha256": "3de0062196a57ef8210bbed84fa319c74b1fec31f151e39ce2735f5dacf2d97d",
+      "mtime_ns": 1793027823132140665
+    },
+    {
+      "path": "/home/pvl/spaces/abird/src/zerogravity/target/debug/deps/zerogravity_gpu-41e9f20a8a818925",
+      "bytes": 903568288,
+      "sha256": "ab1a641ead8901a6dd509aa2258e90e83ab741d1751acd891670bc269bc82e34",
+      "mtime_ns": 1793027832361872500
+    }
+  ]
+}
