@@ -189,7 +189,12 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
   Native status137, stock0, both16/16 measured requests and healthy independent
   owner closures remain distinct facts. Exact-actor follow-up has2rows, no
   fatal-signal evidence; the earlier empty kernel query proves no OOM absence.
-  No Podman invocation/store mutation, model/device execution or SSH is needed.
+  That forensic review invoked no Podman, model/device execution or SSH.
+  Preventive shutdown/evidence fixes now land as50abaf7/c84b987: real model-free
+  process/PID1 controls and actual cached-image Podman stop pass0/no escalation,
+  ledger0/exactCIDabsent; full gate0. This fixes new-source shutdown, not the
+  historical missing signal/OOM trace. Original-model/backend qualification and
+  capture holds remain separate; no benchmark or inference grant.
 - Q27 frozen original9 revalidated; current owner-readback caller54641525 differs
   from frozen ae75a695. Unchanged validator calls source_open(plan,pins), while
   repaired caller requires state: independent validation ABI blocker. Preserve
@@ -201,7 +206,8 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
 - Next: diagnose original26 case5 numerical/error-retirement failure without
   relaxing comparisons; review2B dispatch cost with phase evidence before any
   optimization; retain the container-termination hold pending actual signal/OOM
-  evidence and validate serving shutdown before future runs; establish the
+  evidence; replay required model/backend shutdown against the new source before
+  future benchmarks, then establish the
   already-authorized exact x2 image+31 model files, verify a genuine CPU/RAM/
   GPU-owner window and all G1–G6 gates, then supervise original natural27B
   capture+independent validation. Capture remains unstarted; no short substitute.

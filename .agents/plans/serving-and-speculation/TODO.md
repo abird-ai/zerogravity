@@ -8,22 +8,6 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
-### Owned provider stop evidence — 26 Oct
-
-- [x] Persist stop intent/results with exact CID/name, redacted argv, UTC and
-  monotonic clocks, PID/group, separate private stdout/stderr, return/timeout,
-  signals, one reap and EOF. Lost/truncated required evidence blocks the next
-  sample after owned cleanup. Recovery cannot erase earlier errors or escalation.
-- [x] Distinguish process cleanup, graceful terminal outcome and acceptance.
-  Bound same-prefix State observations; malformed/unknown state and positive137
-  never establish OOM. Preserve original owner through group signals and one
-  reap. No sealed historical capture helper or source21 package is modified.
-- [x] Mandatory gate now includes serving clippy/tests,12 new evidence tests and
-  existing comparator/lifecycle controls. Full gate0:2049Rust executions,
-  91explicit ignores; actual model-free Podman stop0/no escalation, all stream/
-  owner/CID closure checks pass. Keep the first failed control and interrupted
-  gate separate. [Coverage](../../runs/serving-shutdown-20261026/root/validation.json).
-
 ### Shutdown qualification — 26 Oct
 
 - [ ] Replay applicable original-model/backend shutdown and fault scopes under
@@ -486,6 +470,25 @@ or a change to the active correctness/benchmark/27B order.
 
 ## Committed
 
+### c84b987 — Owned provider stop evidence
+
+- [x] Persist stop intent/results with exact CID/name, redacted argv, UTC and
+  monotonic clocks, PID/group, separate private stdout/stderr, return/timeout,
+  signals, one reap and EOF. Lost/truncated required evidence blocks the next
+  sample after owned cleanup. Recovery cannot erase earlier errors or escalation.
+- [x] Distinguish process cleanup, graceful terminal outcome and acceptance.
+  Bound same-prefix State observations; malformed/unknown state and positive137
+  never establish OOM. Preserve original owner through group signals and one
+  reap. No sealed historical capture helper or source21 package is modified.
+- [x] Mandatory gate now includes serving clippy/tests,12 new evidence tests and
+  existing comparator/lifecycle controls. Full gate0:2049Rust executions,
+  91explicit ignores; actual model-free Podman stop0/no escalation, all stream/
+  owner/CID closure checks pass. Keep the first failed control and interrupted
+  gate separate. [Coverage](../../runs/serving-shutdown-20261026/root/validation.json).
+- Task worktrees reconciled to the accepted source and removed normally; exact
+  candidates/logs and both branch refs retained, no stashes or unique pending
+  source. [Reconciliation](../../runs/serving-shutdown-20261026/reconcile/retirement.json).
+
 ### 50abaf7 — Signal-driven serving shutdown
 
 - [x] Install TERM/INT handling before source preparation; close admission,
@@ -499,6 +502,7 @@ or a change to the active correctness/benchmark/27B order.
   Assembled full `scripts/check.sh` passes; CUDA/HIP/Vulkan feature compilation
   and model-free GPU retirement-failure control pass. No model/device execution
   or performance grant. [Coverage](../../runs/serving-shutdown-20261026/root/validation.json).
+
 ### `9999adb1a66d` — source-routed continuous BF16 cohort serving
 
 Related source commits: `45570bdb3d7f` (serve-wave-planning), `e6b07efdbb2d` (serve-source-routing), `bc66207ce9c5` (facade-short-hf-loader), `08fc5935e124` (facade-short-hf-cohort-suite).

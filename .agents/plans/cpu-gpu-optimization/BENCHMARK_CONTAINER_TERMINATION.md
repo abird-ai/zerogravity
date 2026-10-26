@@ -10,6 +10,25 @@ container stop escalating against a server without a serving shutdown handler.
 This is a causal inference; the historical fatal signal and sender were not
 recorded. OOM is unconfirmed. No benchmark or capture is qualified by this review.
 
+## Preventive fix — 26 Oct
+
+Source commits:`50abaf7` serving shutdown;`c84b987` owned stop evidence.
+The serving shutdown gap is fixed in new source. TERM/INT stops admission,
+interrupts HTTP work, joins handlers and original workers, and reports final
+GPU retirement failure. Stop receipts retain intent, clocks, separate complete
+streams, actual terminal status and cleanup; recovery cannot erase failed attempts.
+
+Four actual process/PID1 signal controls pass with zero serving ledger and no
+cleanup escalation. An actual model-free Podman PID1 control under the already
+approved cached image exits0 after owned stop, records CLOSED/ledger0, and proves
+the exact CID absent. Full `scripts/check.sh` passes (2049Rust executions,
+91explicit ignores), plus12 evidence controls and GPU source/feature checks.
+[Exact coverage and retained failed attempts](../../runs/serving-shutdown-20261026/root/validation.json).
+
+This fixes future shutdown behavior. It does not recreate the historical signal
+trace, qualify trained-model/backend shutdown, or modify sealed source21.
+The actual control's auto-removal also leaves terminal OOM state unobserved.
+
 ## Established facts
 
 - Original source21 package SHA256:
@@ -79,10 +98,11 @@ trace. [Podman stop](https://docs.podman.io/en/latest/markdown/podman-stop.1.htm
 - Do not alter sealed source21 or promote its historical measurement to current
   qualification. Preserve measured, terminal, numerical, physical and cleanup
   outcomes independently, including every rejected/interrupted scope.
-- Before a future applicable run: implement and validate serving shutdown at
-  the actual owner boundary; retain each stop command's identity, argv, monotonic
-  timestamps, return code and full output, plus pre-removal inspect/OOM evidence.
-  Explicitly distinguish a graceful exit, owned escalation and an unknown kill.
+- Before a future applicable benchmark: build the new serving source and replay
+  required original-model/backend shutdown and fault scopes under existing source/
+  device gates. The model-free controls above supply no numerical/performance
+  grant. Use the new owned stop evidence; unavailable terminal State stays unknown.
+  Original pinned capture helpers still require their own explicit owner gates.
 - x2 capture still needs its own current resources, exact inputs, caller ABI and
   capture gates. This local incident supplies no x2 host, SDK or model permission.
 
