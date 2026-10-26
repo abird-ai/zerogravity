@@ -51,8 +51,8 @@ pub use crate::resident_leases::{
 pub(crate) mod source_rotary;
 #[cfg(target_os = "linux")]
 pub use source_rotary::{
-    RotaryComparison, RotaryMode, RotaryOutcome, RotaryOutput, qualify_source_rotary_cubins,
-    qualify_text_rotary_cubins,
+    RotaryComparison, RotaryMode, RotaryOutcome, RotaryOutput, prepare_text_rotary,
+    qualify_source_rotary_cubins, qualify_text_rotary_cubins,
 };
 #[cfg(target_os = "linux")]
 mod tied_weight_upload;
@@ -99,8 +99,6 @@ mod blas;
 mod cubin_manifests;
 #[cfg(target_os = "linux")]
 pub(crate) mod text_native;
-#[cfg(target_os = "linux")]
-pub use cohort_native::text_cohort_source_scope_sha256;
 pub use text_native::{
     TextKernelCapture, text_native_provider_bytes, text_native_provider_bytes_for_cohort,
     text_required_images, text_required_images_for_cohort,

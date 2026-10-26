@@ -127,26 +127,6 @@ impl GdnKernelRecipe {
         }
         Ok(())
     }
-    #[cfg(test)]
-    pub(in crate::cuda::gdn) fn fixture(
-        catalogue: usize,
-        input_tokens: usize,
-        is_decode: bool,
-    ) -> Result<Self> {
-        let cell = catalogue
-            .checked_mul(6)
-            .and_then(|base| {
-                CAPTURES
-                    .get(base..base + 6)?
-                    .iter()
-                    .position(|c| c.input_tokens == input_tokens && c.is_decode == is_decode)
-                    .map(|i| base + i)
-            })
-            .ok_or_else(|| {
-                Error::Unsupported("actual original text fixture tuple absent".into())
-            })?;
-        Self::bind(CAPTURES[cell].recipe_sha256, input_tokens, is_decode)
-    }
 }
 
 pub(super) fn select(
@@ -1101,3 +1081,6 @@ pub(super) const CATALOGUE: &[&str] = &[
     include_str!("qwen2b_cached/decode.cu"),
     include_str!("qwen2b_cached/gated.cu"),
 ];
+
+#[cfg(test)]
+mod tests;

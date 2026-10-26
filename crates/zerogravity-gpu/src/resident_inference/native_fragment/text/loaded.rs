@@ -757,7 +757,14 @@ async fn prepare_text_profile(
         .ok_or_else(|| Error::State("short HF genuine source rotary missing".into()))?
         .into_prefix()?;
     prefix.require_source(&source)?;
-    prefix.require_span(0, 79)?;
+    let rotary_positions = prefix.positions();
+    prefix.require_span(0, rotary_positions)?;
+    if !prefix.is_text() {
+        return Err(Error::State(
+            "text loader requires text rotary source".into(),
+        ));
+    }
+    let rotary_retained_host_bytes = prefix.retained_host_bytes()?;
     let metadata = Arc::new(source.reserve_workspace(8 * MIB)?);
     let owner_metadata = Arc::new(source.reserve_workspace(2 * MIB)?);
     let (bindings, scopes) = cold_source_scopes(&source, capture, &calls)?;
@@ -785,6 +792,11 @@ async fn prepare_text_profile(
         host_bytes: source.workspace_limit_bytes()?,
         device_bytes: provider_capacity_bytes as u64,
     };
+    let source_admission = inventory::TextSourceAdmission {
+        rotary_positions,
+        rotary_retained_host_bytes,
+        compiler_context: Some(&compiler_context),
+    };
     let (head_mode, resources) = if cohort_b4 {
         TextResourceInventory::select_profile(
             true,
@@ -793,7 +805,7 @@ async fn prepare_text_profile(
             &scopes,
             preference,
             memory,
-            Some(&compiler_context),
+            source_admission,
         )?
     } else {
         TextResourceInventory::select_profile(
@@ -803,7 +815,7 @@ async fn prepare_text_profile(
             &scopes,
             preference,
             memory,
-            Some(&compiler_context),
+            source_admission,
         )?
     };
     if service.client().properties().memory.alignment != 512 {
@@ -899,7 +911,13 @@ async fn prepare_text_profile(
         );
     }
     let positions = TextPositionsStorage::prepare(&mut init)?;
-    let rotary = ModelRotary::prepare_text(source.clone(), service.clone(), prefix, &mut init)?;
+    let rotary = ModelRotary::prepare_text(
+        source.clone(),
+        service.clone(),
+        prefix,
+        resources.rotary_uploaded_bytes,
+        &mut init,
+    )?;
     let mut private = Vec::with_capacity(scopes.len());
     for (scope, value) in scopes.iter().zip(&values) {
         private.push(TextGdnWorkspace::allocate(

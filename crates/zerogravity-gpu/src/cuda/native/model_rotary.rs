@@ -27,7 +27,10 @@ impl ModelRotary {
     ) -> Result<Arc<Self>> {
         prefix.require_source(&source)?;
         init.require_service(&service)?;
-        if source.source_identity() != service.source_identity() || prefix.bytes().len() != 8576 {
+        if prefix.is_text()
+            || source.source_identity() != service.source_identity()
+            || prefix.bytes().len() != 8576
+        {
             return Err(Error::State(
                 "full24 original computed rotary source/service/defined extent".into(),
             ));
@@ -51,19 +54,28 @@ impl ModelRotary {
         source: VerifiedTensorSource,
         service: Arc<ResidentService>,
         prefix: Arc<SourceRotaryPrefix>,
+        native_bytes: usize,
         init: &mut ResidentInitialization<'_>,
     ) -> Result<Arc<Self>> {
         prefix.require_source(&source)?;
-        prefix.require_span(0, 79)?;
+        prefix.require_span(0, prefix.positions())?;
         init.require_service(&service)?;
         if !prefix.is_text()
-            || prefix.bytes().len() != 79 * 128
+            || prefix.bytes().len() != prefix.positions() * 128
+            || native_bytes == 0
+            || !native_bytes.is_multiple_of(128)
+            || native_bytes > prefix.bytes().len()
             || source.source_identity() != service.source_identity()
         {
-            return Err(Error::State("text genuine source prefix79/service".into()));
+            return Err(Error::State(
+                "text genuine source prefix extent/service".into(),
+            ));
         }
         init.retain_completion_owner(prefix.clone())?;
-        let lease = init.upload_bytes(prefix.bytes(), BufferRole::ImmutableWeights)?;
+        let lease = init.upload_bytes(
+            &prefix.bytes()[..native_bytes],
+            BufferRole::ImmutableWeights,
+        )?;
         let result = Arc::new(Self {
             prefix,
             lease,
@@ -76,7 +88,7 @@ impl ModelRotary {
         Ok(result)
     }
     pub(crate) fn source_bytes(&self) -> &[u8] {
-        self.prefix.bytes()
+        &self.prefix.bytes()[..self.lease.bytes()]
     }
     pub(crate) fn lease(&self) -> &ResidentLease {
         &self.lease
@@ -95,12 +107,20 @@ impl ModelRotary {
         }
         self.prefix
             .require_span(call.rows().base(), call.rows().len())?;
+        let end = call
+            .rows()
+            .base()
+            .checked_add(call.rows().len())
+            .and_then(|rows| rows.checked_mul(128))
+            .ok_or_else(|| Error::Limit("rotary call source span".into()))?;
         if !source.same_issuer(&self.source)
             || !Arc::ptr_eq(service, &self.service)
             || service.generation() != self.generation
             || !self.lease.is_initialized()
             || self.lease.source_identity() != call.source()
-            || self.lease.bytes() != (if self.text { 79 * 128 } else { 8576 })
+            || self.prefix.is_text() != self.text
+            || self.lease.bytes() > self.prefix.bytes().len()
+            || end > self.lease.bytes()
         {
             return Err(Error::State(
                 "full24 computed rotary original source/service/generation differs".into(),

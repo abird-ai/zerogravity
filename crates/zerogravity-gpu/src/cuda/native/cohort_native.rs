@@ -105,6 +105,75 @@ impl CohortNativeLibrary {
             NativeCatalogue::Source2048 => generated_2b::METADATA_BOUND,
         }
     }
+    pub(crate) fn rotary_binding_bytes(
+        capture: TextKernelCapture,
+        scope: &super::text_model::TextModelBinding,
+    ) -> Result<usize> {
+        scope.require_record(scope.source(), scope.record())?;
+        if scope.native_capture() != capture {
+            return Err(Error::State(
+                "B4 rotary inventory source capture differs".into(),
+            ));
+        }
+        let _metadata = scope
+            .source()
+            .reserve_workspace(Self::host_bytes(capture))?;
+        let (count, definitions) = match capture.catalogue() {
+            NativeCatalogue::Source1024 => (generated::DEFINITION_COUNT, generated::definitions()),
+            NativeCatalogue::Source2048 => {
+                (generated_2b::DEFINITION_COUNT, generated_2b::definitions())
+            }
+        };
+        if definitions.len() != count {
+            return Err(Error::State(
+                "B4 rotary inventory incomplete records".into(),
+            ));
+        }
+        let mut extent = None;
+        for call in 0..capture.captured_call_count() {
+            if call == 0 && !CohortPhases::for_capture(capture).contains(true) {
+                continue;
+            }
+            for (_, site) in scope.attention_sites() {
+                let packets = match capture.catalogue() {
+                    NativeCatalogue::Source1024 => generated::site(call, site.nodes[1])?,
+                    NativeCatalogue::Source2048 => generated_2b::site(call, site.nodes[1])?,
+                };
+                let mut found = false;
+                for packet in packets {
+                    let manifest = &definitions
+                        .get(packet.definition)
+                        .ok_or_else(|| Error::State("B4 rotary record index".into()))?
+                        .manifest;
+                    if packet.roles.len() != manifest.bindings.len() {
+                        return Err(Error::State("B4 rotary binding arity".into()));
+                    }
+                    for (role, binding) in packet.roles.iter().zip(&manifest.bindings) {
+                        if *role != Role::Rotary {
+                            continue;
+                        }
+                        let bytes = usize::try_from(binding.bytes)
+                            .map_err(|_| Error::Limit("B4 native rotary extent".into()))?;
+                        if binding.io != CubinIo::Read
+                            || bytes == 0
+                            || !bytes.is_multiple_of(128)
+                            || extent.is_some_and(|previous| previous != bytes)
+                        {
+                            return Err(Error::Unsupported(
+                                "B4 immutable rotary binding extents differ".into(),
+                            ));
+                        }
+                        extent = Some(bytes);
+                        found = true;
+                    }
+                }
+                if !found {
+                    return Err(Error::State("B4 source QK rotary binding absent".into()));
+                }
+            }
+        }
+        extent.ok_or_else(|| Error::State("B4 native rotary binding absent".into()))
+    }
     pub(crate) fn capture(&self) -> TextKernelCapture {
         self.storage.capture()
     }
@@ -452,15 +521,5 @@ impl CohortNativeSite {
             }
         }
         Ok((native, copies, clears))
-    }
-}
-
-/// Descriptive captured compiler-input identity, never a runtime source permit.
-pub fn text_cohort_source_scope_sha256(capture: TextKernelCapture) -> &'static str {
-    match capture.catalogue() {
-        NativeCatalogue::Source1024 => {
-            "d2b241e5e4feed9a8d16b871693e69169efa40c1b32572d08bb7cc342da80415"
-        }
-        NativeCatalogue::Source2048 => generated_2b::SOURCE_INPUT_SHA256,
     }
 }

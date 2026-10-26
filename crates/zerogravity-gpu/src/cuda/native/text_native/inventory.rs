@@ -19,6 +19,7 @@ pub(crate) struct TextNativeInventory {
     pub(crate) retained_host_bytes: usize,
     pub(crate) initialization_host_bytes: usize,
     pub(crate) provider_bytes: usize,
+    pub(crate) rotary_bytes: usize,
     pub(super) private_layout: Vec<(Role, usize)>,
     pub(super) catalogue_bytes: usize,
 }
@@ -37,6 +38,24 @@ impl TextNativeInventory {
         let calls = capture.prepared_call_count()?;
         let attention_layers = super::attention::LAYERS.len();
         let catalogue_bytes = super::generated::metadata_bytes(capture)?;
+        let rotary_bytes = {
+            let _metadata = super::storage::admit_host_cohort(first.source(), catalogue_bytes)?;
+            let sites = super::generated::sites(capture)?;
+            super::attention::rotary_binding_bytes(&sites)?
+        };
+        let cohort_metadata_bytes = if cohort_b4 {
+            if super::super::cohort_native::CohortNativeLibrary::rotary_binding_bytes(
+                capture, first,
+            )? != rotary_bytes
+            {
+                return Err(Error::Unsupported(
+                    "N1/B4 immutable rotary binding extents differ".into(),
+                ));
+            }
+            super::super::cohort_native::CohortNativeLibrary::host_bytes(capture)
+        } else {
+            0
+        };
         let private_layout = super::generated::private_layout(capture)?.to_vec();
         let mut device_layout = Vec::with_capacity(sum([
             mul(attention_layers, 4)?,
@@ -136,12 +155,15 @@ impl TextNativeInventory {
             mul(mul(attention_layers, 3)?, super::transport::CACHE_BYTES)?,
             64 * 1024,
             2 * (MIB + 24),
-        ])?;
+        ])?
+        .max(catalogue_bytes)
+        .max(cohort_metadata_bytes);
         Ok(Self {
             device_layout,
             retained_host_bytes,
             initialization_host_bytes,
             provider_bytes: super::text_native_provider_bytes_for_cohort(capture, cohort_b4),
+            rotary_bytes,
             private_layout,
             catalogue_bytes,
         })

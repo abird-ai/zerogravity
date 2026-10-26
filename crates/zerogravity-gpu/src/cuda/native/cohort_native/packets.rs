@@ -103,7 +103,7 @@ mod tests {
 
     fn capture(wide: bool) -> TextKernelCapture {
         TextKernelCapture::bind(if wide {
-            "0938d4353dc49579daa5978a6dc78a70f23c8e8d7cb21130c95a914c0a82c4b0"
+            "4d77cb6637843a57a17fc093ad1e5241ddf083bf8d9ade0c9bbaa118bc9448e2"
         } else {
             "39b9a6180ca95f95510aac6471e0255ba62100200bf6daeac6f5a4fc8d2bb30d"
         })

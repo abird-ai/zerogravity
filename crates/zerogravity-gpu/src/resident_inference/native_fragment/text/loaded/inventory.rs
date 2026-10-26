@@ -42,6 +42,15 @@ pub struct TextResourceInventory {
     pub root_initialization_host_bytes: usize,
     pub readback_reservation_bytes: usize,
     pub resident_head_bytes: usize,
+    pub rotary_source_positions: usize,
+    pub rotary_retained_host_bytes: usize,
+    pub rotary_uploaded_bytes: usize,
+}
+#[derive(Clone, Copy)]
+pub(super) struct TextSourceAdmission<'a> {
+    pub(super) rotary_positions: usize,
+    pub(super) rotary_retained_host_bytes: usize,
+    pub(super) compiler_context: Option<&'a crate::physical_service::CudaCompilerContextBudget>,
 }
 #[derive(Default)]
 struct DeviceLedger {
@@ -105,9 +114,18 @@ impl TextResourceInventory {
         capture: TextKernelCapture,
         scopes: &[(Arc<SourceBindings>, GdnKernelRecipe)],
         inputs: &crate::cuda::native::FixedPromptMlpQualificationInputs,
+        rotary_positions: usize,
         limit: zerogravity_core::optimization::MemoryFootprint,
     ) -> Result<Self> {
-        Self::inspect(true, source, capture, scopes, inputs, limit)
+        Self::inspect(
+            true,
+            source,
+            capture,
+            scopes,
+            inputs,
+            rotary_positions,
+            limit,
+        )
     }
     /// Cost-only inspection of the original N1 source-owned cold analysis.
     /// The caller must bind the matching N1 native image cohort.
@@ -116,9 +134,18 @@ impl TextResourceInventory {
         capture: TextKernelCapture,
         scopes: &[(Arc<SourceBindings>, GdnKernelRecipe)],
         inputs: &crate::cuda::native::FixedPromptMlpQualificationInputs,
+        rotary_positions: usize,
         limit: zerogravity_core::optimization::MemoryFootprint,
     ) -> Result<Self> {
-        Self::inspect(false, source, capture, scopes, inputs, limit)
+        Self::inspect(
+            false,
+            source,
+            capture,
+            scopes,
+            inputs,
+            rotary_positions,
+            limit,
+        )
     }
     fn inspect(
         cohort_b4: bool,
@@ -126,6 +153,7 @@ impl TextResourceInventory {
         capture: TextKernelCapture,
         scopes: &[(Arc<SourceBindings>, GdnKernelRecipe)],
         inputs: &crate::cuda::native::FixedPromptMlpQualificationInputs,
+        rotary_positions: usize,
         limit: zerogravity_core::optimization::MemoryFootprint,
     ) -> Result<Self> {
         let verified = source;
@@ -154,10 +182,10 @@ impl TextResourceInventory {
                 "short-HF inventory actual source/image owners and original caps".into(),
             ));
         }
-        // Exact retained MetadataOwner footprint in original source_rotary.rs:
-        //64KiB metadata +1MiB readback +3*79*128 prefix bytes. Cost reservation
-        //only: this is NEVER a SourceRotaryPrefix or numerical producer receipt.
-        let _rotary_metadata = verified.reserve_workspace(64 * 1024 + MIB + 3 * 79 * 128)?;
+        // Cost reservation only; no computed prefix or numerical authority.
+        let rotary_retained_host_bytes =
+            crate::cuda::native::source_rotary::text_rotary_retained_host_bytes(rotary_positions)?;
+        let _rotary_metadata = verified.reserve_workspace(rotary_retained_host_bytes)?;
         let _metadata = verified.reserve_workspace(8 * MIB)?;
         let _owner_metadata = verified.reserve_workspace(2 * MIB)?;
         let (_bindings, scopes) = super::cold_source_scopes(source, capture, scopes)?;
@@ -168,7 +196,11 @@ impl TextResourceInventory {
             &scopes,
             crate::cuda::native::text_head::HeadMode::environment_preference()?,
             limit,
-            None,
+            TextSourceAdmission {
+                rotary_positions,
+                rotary_retained_host_bytes,
+                compiler_context: None,
+            },
         )?;
         Ok(inventory)
     }
@@ -179,7 +211,7 @@ impl TextResourceInventory {
         scopes: &[Arc<crate::cuda::native::text_model::TextModelBinding>],
         preference: zerogravity_core::optimization::ResidencyPreference,
         limit: zerogravity_core::optimization::MemoryFootprint,
-        context: Option<&crate::physical_service::CudaCompilerContextBudget>,
+        admission: TextSourceAdmission<'_>,
     ) -> Result<(crate::cuda::native::text_head::HeadMode, Self)> {
         use crate::cuda::native::text_head::HeadMode;
         use zerogravity_core::optimization::{
@@ -192,7 +224,7 @@ impl TextResourceInventory {
                 capture,
                 scopes,
                 HeadMode::Streamed,
-                context,
+                admission,
             )?
         } else {
             Self::derive_profile_admitted(
@@ -201,7 +233,7 @@ impl TextResourceInventory {
                 capture,
                 scopes,
                 HeadMode::Streamed,
-                context,
+                admission,
             )?
         };
         let resident =
@@ -216,7 +248,7 @@ impl TextResourceInventory {
                     capture,
                     scopes,
                     HeadMode::Resident,
-                    context,
+                    admission,
                 )
             })
             .transpose()?;
@@ -262,11 +294,22 @@ impl TextResourceInventory {
         capture: TextKernelCapture,
         scopes: &[Arc<crate::cuda::native::text_model::TextModelBinding>],
         head_mode: crate::cuda::native::text_head::HeadMode,
-        context: Option<&crate::physical_service::CudaCompilerContextBudget>,
+        admission: TextSourceAdmission<'_>,
     ) -> Result<Self> {
         capture.require_cold_scopes(scopes.iter().map(Arc::as_ref))?;
         let storage = StorageRecipe::scope_geometry_inventory(scopes, text::limits())?;
         let native = TextNativeInventory::for_scopes(capture, scopes, false, cohort_b4, head_mode)?;
+        let rotary_source_bytes = mul(admission.rotary_positions, 128)?;
+        if admission.rotary_retained_host_bytes
+            != crate::cuda::native::source_rotary::text_rotary_retained_host_bytes(
+                admission.rotary_positions,
+            )?
+            || native.rotary_bytes > rotary_source_bytes
+        {
+            return Err(Error::Unsupported(
+                "text source rotary span/cost cannot satisfy native bindings".into(),
+            ));
+        }
         let phases = CohortPhases::for_capture(capture);
         let roots = if cohort_b4 {
             // Preserve the wider candidate reserve for captured initial B4.
@@ -344,7 +387,7 @@ impl TextResourceInventory {
         for _ in 0..roots {
             device.extend([4, 12])?;
         }
-        device.extend([8_519_680, 3 * 513 * 8, 79 * 128])?;
+        device.extend([8_519_680, 3 * 513 * 8, native.rotary_bytes])?;
         device.extend(native.device_layout)?;
         chunks = add(chunks, 18 * 4 * 2)?; // actual72 learned GDN parameter windows
         let readback = FullModelProgram::text_readback_reservation(scopes)?;
@@ -371,6 +414,11 @@ impl TextResourceInventory {
             .max(256 * MIB + 64 * MIB);
         let host_existing = usize::try_from(source.workspace_reserved_bytes()?)
             .map_err(|_| Error::Limit("short-HF host snapshot usize extent".into()))?;
+        if host_existing < admission.rotary_retained_host_bytes {
+            return Err(Error::State(
+                "text retained rotary source absent from host snapshot".into(),
+            ));
+        }
         if cohort_b4 {
             // Full cold cache owned zero plus pinned/fallback staging. Sum with
             // other cold peaks conservatively while CohortLibrary prepares.
@@ -418,7 +466,8 @@ impl TextResourceInventory {
             ])?;
         }
         // Real detached process/context admission, separate from source owner.
-        let already_reserved = context
+        let already_reserved = admission
+            .compiler_context
             .map(|c| c.require_host(source))
             .transpose()?
             .unwrap_or(0) as usize;
@@ -449,6 +498,9 @@ impl TextResourceInventory {
             source_chunk_upper: chunks,
             root_count: roots,
             root_initialization_host_bytes,
+            rotary_source_positions: admission.rotary_positions,
+            rotary_retained_host_bytes: admission.rotary_retained_host_bytes,
+            rotary_uploaded_bytes: native.rotary_bytes,
             readback_reservation_bytes: readback,
             resident_head_bytes: if head_mode.resident() {
                 crate::resident_leases::TiedWeight::source_layout(
@@ -539,7 +591,7 @@ mod tests {
         assert_eq!(ROOTS, 14);
         for fingerprint in [
             "39b9a6180ca95f95510aac6471e0255ba62100200bf6daeac6f5a4fc8d2bb30d",
-            "0938d4353dc49579daa5978a6dc78a70f23c8e8d7cb21130c95a914c0a82c4b0",
+            "4d77cb6637843a57a17fc093ad1e5241ddf083bf8d9ade0c9bbaa118bc9448e2",
         ] {
             let capture = TextKernelCapture::bind(fingerprint)?;
             let phases = CohortPhases::for_capture(capture);
@@ -572,7 +624,7 @@ mod tests {
         )
         .unwrap();
         let wide = TextKernelCapture::bind(
-            "0938d4353dc49579daa5978a6dc78a70f23c8e8d7cb21130c95a914c0a82c4b0",
+            "4d77cb6637843a57a17fc093ad1e5241ddf083bf8d9ade0c9bbaa118bc9448e2",
         )
         .unwrap();
         assert!(current_call_host(wide).unwrap() > current_call_host(narrow).unwrap());

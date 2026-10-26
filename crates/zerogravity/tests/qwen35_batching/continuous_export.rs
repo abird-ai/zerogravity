@@ -14,6 +14,8 @@ use zerogravity::session_root::RootBinding;
 
 const REFERENCE_SCOPE_SHA: &str =
     "7e377543f8383c52b7ae56989dedb7bc4fa4fbb746bd795dad1014c854d4a303";
+const CACHED2B_DEFINITION_SOURCE_SCOPE_SHA: &str =
+    "13f9aff53f2cedcdbf35d18d0602df5fe1e76b796ecd6ea9f3fdd2cc7c5a587c";
 const REFERENCE_README_SHA: &str =
     "6c00873ec0ac2c59bc73703b55a9bfa4d93703334a03fa16bcac2d204cda5b15";
 const MEMBER_CAP: usize = 32 * MIB;
@@ -171,7 +173,7 @@ fn reference_protocol(
     Ok(
         json!({"prompt_profile":"canonical47-repeated-v1","prompt_u32_le_sha256":hash(&raw),
         "native_definition_source_scope_sha256":if profile == zerogravity::qwen35::plan::QwenSourceProfile::Qwen2B {
-            native::text_cohort_source_scope_sha256(native::TextKernelCapture::bind(zerogravity::qwen35::source::binding::ReferenceKernelCapture::for_profile(profile).recipe_sha256())?)
+            CACHED2B_DEFINITION_SOURCE_SCOPE_SHA
         } else { REFERENCE_SCOPE_SHA },
         "original_source7_closure_sha256":"572a76b4016f23c8b716b5088b05bc5426a5f5c4f1efde637a99b1a6f3ea96ba",
         "canonical_state":"full512-F32-prior-and-candidate; native544-spare-excluded",

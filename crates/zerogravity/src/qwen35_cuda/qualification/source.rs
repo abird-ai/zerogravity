@@ -1,17 +1,10 @@
 //! Family eligibility/metadata factories for the existing physical qualification paths.
 use super::*;
 use crate::gpu::cuda::{native, rms::RmsLeafSource};
-use crate::qwen35::{
-    plan::QwenSourceProfile,
-    source::binding::{BoundFullModelSource, PreparedQualificationSource},
-};
+use crate::qwen35::{plan::QwenSourceProfile, source::binding::BoundFullModelSource};
 use zerogravity_artifacts::source_weights::WindowWorkspace;
 
-pub(super) fn retained(prepared: PreparedQualificationSource) -> Arc<native::RetainedSource> {
-    let actual = prepared.source().clone();
-    let owner = prepared.owner().clone();
-    native::RetainedSource::new(actual, owner, Arc::new(prepared))
-}
+pub(super) use crate::qwen35_cuda::bindings::retained;
 
 /// Exact family source/profile before physical projection/solve preparation.
 pub fn prepare_leaf_source(

@@ -7,8 +7,6 @@ use cubecl::cuda::{
 };
 use zerogravity_core::{Error, Result};
 // Whole compiler input SHA256: 13f9aff53f2cedcdbf35d18d0602df5fe1e76b796ecd6ea9f3fdd2cc7c5a587c
-pub(super) const SOURCE_INPUT_SHA256: &str =
-    "13f9aff53f2cedcdbf35d18d0602df5fe1e76b796ecd6ea9f3fdd2cc7c5a587c";
 pub(super) const METADATA_BOUND: usize = 13542960;
 pub(super) const DEFINITION_COUNT: usize = 105;
 #[inline(never)]

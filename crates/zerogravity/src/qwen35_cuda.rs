@@ -195,29 +195,17 @@ async fn load_profile(
     let capture = native::TextKernelCapture::bind(bound.native_kernel_capture().recipe_sha256())?;
     let templates = Arc::new(templates::Templates::prepare(bound)?);
     let scopes = templates.physical_scopes()?;
-    let rotary = qualification::qualify_text_rotary_cubins(
+    let rotary_source = bindings::retained(opened.source.prepare_rotary_source(true)?);
+    let rotary = native::prepare_text_rotary(
         device.clone(),
-        opened.source.clone(),
+        rotary_source,
         (DEVICE_MIB * MIB) as u64,
-        Some(bundle.rotary(opened.source.source(), cancelled)?),
-        native::RotaryMode::Complete,
+        bundle.rotary(opened.source.source(), cancelled)?,
+        opened.metadata.context_capacity_tokens,
         cancelled,
-        |_| Ok(()),
     )
     .await?;
-    let observed = &rotary.comparison;
-    if observed.native_launches != 12
-        || observed.completed_readback_flights != 2
-        || observed.resident_bytes != 0
-        || observed.pending_events != 0
-        || observed.physical_reserved_bytes != observed.backend_reserved_bytes
-        || observed.backend_reserved_bytes != 512 * 1024 * 1024
-        || observed.physical_fenced
-    {
-        return Err(Error::State(
-            "Qwen CUDA original source rotary did not complete/retire".into(),
-        ));
-    }
+    rotary.require_complete(opened.metadata.context_capacity_tokens)?;
     let inputs = native::TextQualificationInputs {
         native: bundle.model(opened.source.source(), cancelled)?,
         rotary: Some(rotary),
@@ -607,6 +595,7 @@ mod b4_inventory_tests {
                     capture,
                     &scopes,
                     &inputs,
+                    79,
                     limit,
                 )
             } else {
@@ -615,6 +604,7 @@ mod b4_inventory_tests {
                     capture,
                     &scopes,
                     &inputs,
+                    79,
                     limit,
                 )
             } {

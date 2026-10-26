@@ -5,7 +5,7 @@ use super::super::{
 };
 use super::{
     TextNativeGeometry,
-    packets::{Catalogue, Key, Role},
+    packets::{Catalogue, Key, Role, Site},
     transport::{CACHE_BYTES, Definitions, Transport},
 };
 use crate::{
@@ -81,6 +81,7 @@ pub(super) struct Storage {
     private: BTreeMap<(Role, usize), ResidentLease>,
     private_roles: BTreeMap<Key, Vec<(Role, usize)>>,
     rotary: Arc<ModelRotary>,
+    rotary_bytes: usize,
     positions: Arc<TextPositionsStorage>,
     _metadata: Arc<WindowWorkspace>,
 }
@@ -125,6 +126,34 @@ fn private(role: Role) -> bool {
         role,
         Role::Lse | Role::PrivateO | Role::PartialO | Role::PartialLse
     )
+}
+pub(super) fn rotary_binding_bytes<'a>(sites: impl IntoIterator<Item = &'a Site>) -> Result<usize> {
+    let mut extent = None;
+    for site in sites {
+        for packet in &site.packets {
+            if packet.roles.len() != packet.manifest.bindings.len() {
+                return Err(Error::State("text native rotary binding arity".into()));
+            }
+            for (role, binding) in packet.roles.iter().zip(&packet.manifest.bindings) {
+                if *role != Role::Rotary {
+                    continue;
+                }
+                let bytes = usize::try_from(binding.bytes)
+                    .map_err(|_| Error::Limit("text native rotary extent".into()))?;
+                if binding.io != cubecl::cuda::CubinIo::Read
+                    || bytes == 0
+                    || !bytes.is_multiple_of(128)
+                    || extent.is_some_and(|previous| previous != bytes)
+                {
+                    return Err(Error::Unsupported(
+                        "text native immutable rotary binding extents differ".into(),
+                    ));
+                }
+                extent = Some(bytes);
+            }
+        }
+    }
+    extent.ok_or_else(|| Error::State("text native rotary binding absent".into()))
 }
 impl Storage {
     pub(super) fn cohort_parameters(
@@ -187,6 +216,13 @@ impl Storage {
             .scope
             .native_capture();
         capture.require_cold_scopes(p.geometries.iter().map(|g| g.scope.as_ref()))?;
+        let rotary_bytes = rotary_binding_bytes(p.catalogue.sites())?;
+        if p.rotary.lease().bytes() != rotary_bytes || p.rotary.source_bytes().len() != rotary_bytes
+        {
+            return Err(Error::State(
+                "text immutable rotary source/upload differs from native bindings".into(),
+            ));
+        }
         let metadata = Arc::new(p.source.reserve_workspace(2 * 1024 * 1024)?);
         init.retain_completion_owner(metadata.clone())?;
         init.retain_completion_owner(p.rotary.clone())?;
@@ -364,6 +400,7 @@ impl Storage {
             private,
             private_roles,
             rotary: p.rotary,
+            rotary_bytes,
             positions: p.positions,
             _metadata: metadata,
         });
@@ -525,7 +562,8 @@ impl Storage {
             && self.statuses.len() == 6
             && self.parameters.len() == 6
             && self.controls.len() == self.capture.prepared_call_count()?
-            && self.rotary.lease().bytes() == 79 * 128
+            && self.rotary.lease().bytes() == self.rotary_bytes
+            && self.rotary.source_bytes().len() == self.rotary_bytes
             && self.positions.lease().bytes() == 12312
             && [self.rotary.lease(), self.positions.lease()]
                 .iter()

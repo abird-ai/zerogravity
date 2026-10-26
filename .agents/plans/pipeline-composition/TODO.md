@@ -131,6 +131,18 @@ their existing numeric/source/physical acceptance gates.
 
 ## Uncommitted
 
+### Production/test separation — 26 Oct
+
+- [x] Rules/review convention landed3612ecb; no new placement-policy tests.
+- [~] Ordinary text loader uses shared source rotary initialization and configured
+  span; exact read-only native binding extents own upload/resource costs. Move
+  actual test-only reporter/helper to Rust tests; preserve executable identities.
+  Strict CUDA/Vulkan Clippy,288 affected host tests and complete isolated
+  check.sh PASS0; original group/reap/EOF complete. No fresh physical acceptance.
+- [ ] Finish remaining qualifier/fault and captured testcase dispatch boundaries
+  across model/GDN/native paths. Parametric GDN source proof/design is ready;
+  actual runtime implementation and source/state/physical validation remain.
+
 ### Model containment and naming — 26 Oct
 
 Contract: [structure and naming](STRUCTURE_AND_NAMING.md). All lanes GPT-6.1

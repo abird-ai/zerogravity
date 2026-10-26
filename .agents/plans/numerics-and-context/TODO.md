@@ -15,7 +15,7 @@ long contexts and Qwen27B. Bindings/readers/helpers are internal steps, with foc
 checks and one complete gate per larger unit; isolate only concrete failures.
 Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20261022/TODO.md`.
 
-## Uncommitted
+## Committed
 
 ### `cd4159d` — owned command streams
 
@@ -41,7 +41,7 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
   resource charges and all96 CUDA tuples remain exact. Full gate above covers
   the assembled source; fresh native48–50 and device qualification remain open.
 
-### Source checkpoint — `feat(reference): capture finite Qwen prompts`
+### `61f095c` — finite original prompt capture
 
 - [x] Stage authenticated current-schema .8B/2B N1 bundles without changing
   resource bytes.28 reference controls and8 bundle controls pass. Failed packed47
@@ -53,6 +53,39 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
   still requires fresh full captures and per-shape implementation. Podman owns
   runtime isolation; source/build checks retain `native-gpu.py` isolation.
 
+### `3612ecb` — production and test conventions
+
+- [x] Placement is a rule/review responsibility; no additional convention tests.
+  Runtime semantics and physical ownership keep meaningful behavioral coverage.
+
+## Uncommitted
+
+### Runtime and fixture separation — 26 Oct
+
+- [~] Replace ordinary text loading's rotary qualifier call and test counters
+  with shared source initialization for the configured context. Retain the true
+  context span; derive exact N1/B4 upload extent from real read-only ABI bindings.
+  Preserve source/issuer/service/generation, admission and retirement. Strict
+  CUDA/Vulkan all-target Clippy and affected CUDA/app/inventory host checks pass;
+  complete assembled gate PASS0 (2050Rust/0fail/91ignored,12Python suites,
+  release/installer/shell/Nix;202.101s/full original owner closure). Fresh
+  physical validation remains open.
+- [~] Move test-only GDN helper and cohort source reporter into Rust test support.
+  Unused production constant removal changes the honest2B aggregate fingerprint
+  from0938d435… to4d77cb66…; complete executable packets and GDN source stay exact.
+- [x] Four fresh packed47–50 original captures complete:408 same-request archives,
+  31008 launches with complete argument fields, all24 layer boundaries/all42
+  states/fullV/consumed priors/natural feedback and original owned cleanup.
+  Earlier failed/incomplete parents remain failed. These are reference results.
+- [x] Offline recipe emission from all three passing48–50 captures completes;
+  81 added factories retain old packets/sites and exact source/ABI facts. Output
+  remains qualification data; no production admission or native execution claim.
+- [ ] Remove remaining shared rotary fault assertions/fixed-prompt qualifier
+  dependency and case-driven model/GDN/native dispatch. Implement genuine
+  parameterized kernels and explicit numerical configurations; do not move or
+  rename test whitelists into runtime descriptors. Original CUDA scalar/source
+  facts stay Rust fixtures. Parametric source proof/design is available only.
+
 ### Current owner order — 26 Oct
 
 - [~] Sequential continuation after serving shutdown: fresh .8B prompt47/48/49/50
@@ -62,8 +95,8 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
   preserves original math/state/fullV/source validators and exact owner; source
   controls pass. Fresh47/48/49/50 original pairs now pass all24/all42, fullV,
   consumed priors and natural feedback;47 uses explicit separate postvalidation
-  after its original controller report-size failure. Full-ABI captures/native
-  comparisons remain pending. Native fresh48–50 remains
+  after its original controller report-size failure. Fresh complete packed
+  v3 captures47–50 now pass; native comparisons remain pending. Native fresh48–50 remains
   unsupported until actual source/ABI/physical qualification.
 - [x] Independently trace numerical-refusal retirement: D2H waits on the actual
   original stream; trusted comparison rejection precedes Ready and deliberately

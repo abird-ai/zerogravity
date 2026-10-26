@@ -8,10 +8,19 @@ use crate::gpu::{
 use crate::qwen35::StateSpec;
 use crate::qwen35::source::binding::{
     ComponentOutput, GdnKernelCapture, OriginalWindowModelSource, PreparedComponent, PreparedPlan,
+    PreparedQualificationSource,
 };
 use crate::{Error, Result};
 use std::sync::Arc;
 use zerogravity_artifacts::source_weights::WindowWorkspace;
+
+pub(super) fn retained(
+    prepared: PreparedQualificationSource,
+) -> Arc<crate::gpu::cuda::native::RetainedSource> {
+    let actual = prepared.source().clone();
+    let owner = prepared.owner().clone();
+    crate::gpu::cuda::native::RetainedSource::new(actual, owner, Arc::new(prepared))
+}
 
 /// Preserve the original source issuer and complete model state geometry, including
 /// domains carried without arithmetic in this call. The engine checks the actual graph.
