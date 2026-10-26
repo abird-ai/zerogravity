@@ -67,6 +67,8 @@ cargo test --locked --offline -p zerogravity-artifacts --no-default-features --f
 if [[ "$(uname -s)" == Linux ]]; then
   echo "Checking model-source reference contracts without model loads..."
   python3 -B -m unittest discover -s tools/model-correctness -p 'test_*.py'
+  python3 -B -m unittest discover -s tools/qwen35-cuda-reference -p 'test_*.py'
+  python3 -B -m unittest discover -s tools/qwen35-cuda-bundle -p 'test_*.py'
   python3 -B -m unittest discover -s tools/gemma4-tokenizer-reference -p test_contract.py
   python3 -B -m unittest discover -s tools/gemma4-e2b-ordinary-reference -p test_contract.py
   python3 -B -m unittest discover -s tools/qwen27b-initial-core-reference -p test_contract.py

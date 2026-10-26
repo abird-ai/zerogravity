@@ -1,0 +1,46 @@
+{
+  "README.md": {
+    "bytes": 5869,
+    "sha256": "e81fd16eefac7f35364bc81fc26077ce0bb1f5e01763238b4c436521ddc08fbf"
+  },
+  "capture-pins.json": {
+    "bytes": 6977,
+    "sha256": "33da755da679c615670e2f842c79493bf4911f1040c8b744b869ec4a47567533"
+  },
+  "contract.py": {
+    "bytes": 4122,
+    "sha256": "5eb55374277f3799872176fad2579819c33929369e6d33c439992a90380d3ce7"
+  },
+  "discovery.py": {
+    "bytes": 23468,
+    "sha256": "13c638800d482f695f49bceaced235c65e2f039a33eb912395a90ec0e88f9eb7"
+  },
+  "matrix_contract.py": {
+    "bytes": 3945,
+    "sha256": "5d22ac6f0dbeb3a9c28f0a92e1ffe86d84a6bd773e4003a13bb1995536757fc8"
+  },
+  "original-pins.json": {
+    "bytes": 5836,
+    "sha256": "a2c02a225754a75e931c85c3e08310309ef09499cceb4c1811391427877d33c2"
+  },
+  "run_reference.py": {
+    "bytes": 29568,
+    "sha256": "301e431d4f8fb7a4e9252d86a1c9d11b39c51b4db00b0ca6f73f700d6693e37d"
+  },
+  "test_contract.py": {
+    "bytes": 8943,
+    "sha256": "7e488eef206b72eaee03ade1edb36f282b7bdb229fdb4fb4fe18e592aefab7e1"
+  },
+  "test_discovery.py": {
+    "bytes": 7512,
+    "sha256": "4ea9e8fd1334d4501ea975f31fc349da15fd6ea943ca38d3ed86bf2c5d2995a9"
+  },
+  "test_original_source.py": {
+    "bytes": 5711,
+    "sha256": "ee51e473e6757aac3bd9d9924bd4122a15972f9e66d8f3646fe14c06b1b1e5d0"
+  },
+  "tokenize_prompt.py": {
+    "bytes": 3780,
+    "sha256": "b41ffeab0bda93b247719af05ce7939ac851721b76c414eaf47bd5ead8d29d32"
+  }
+}

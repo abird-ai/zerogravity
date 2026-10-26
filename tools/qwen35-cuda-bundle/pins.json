@@ -1,0 +1,487 @@
+{
+  "contract_sources": {
+    "crates/zerogravity-gpu/src/cuda/native/cubin_manifests.rs": {
+      "bytes": 44386,
+      "sha256": "f58e0faf1903613c66cafd17fe519ea75bbd9ed36d865075cc0465d41a7da4b1"
+    },
+    "crates/zerogravity-gpu/src/cuda/native/text_native/catalogue.rs": {
+      "bytes": 7997,
+      "sha256": "7f393c4f3ddb753580e28bc5fa585c6edfdebe8d0a929a84164979d1b082133d"
+    },
+    "crates/zerogravity-gpu/vendor/cubecl-cuda/src/owned_command/bf16_gemm.rs": {
+      "bytes": 11197,
+      "sha256": "65b7d2f469d486809d4c7a1ff86bd08cc1d45cd850b76cd05a600588f28f7e28"
+    },
+    "crates/zerogravity/src/qwen35_cuda/manifest.rs": {
+      "bytes": 7088,
+      "sha256": "d005291cd6f1b69ff3e4aaad82c018a8cf05a9725e11aa8c7ae0ccb4448b01bf"
+    }
+  },
+  "profiles": {
+    "0.8b": {
+      "cohort_2b_extra_image_included": false,
+      "legacy_manifest": {
+        "bytes": 2689,
+        "sha256": "6f6269a9e20ffb97f93eb5d5773a36f8661a7b68cc7a636f0ae0ff797daa6365"
+      },
+      "native_catalogue": "Source1024",
+      "resources": [
+        {
+          "bytes": 6601808,
+          "kind": "AmpereBf16Gemm128x64Sm80",
+          "legacy_kind": "AmpereBf16Gemm128x64Sm80",
+          "path": "model/AmpereBf16Gemm128x64Sm80.cubin",
+          "section": "images",
+          "sha256": "c1ca8db71001178d04f1b83d7c55883107fa122927e10d41020672678fff2c86"
+        },
+        {
+          "bytes": 6422224,
+          "kind": "AmpereBf16Gemm64x64Stages64x5Sm80",
+          "legacy_kind": "AmpereBf16Gemm64x64Stages64x5Sm80",
+          "path": "model/AmpereBf16Gemm64x64Stages64x5Sm80.cubin",
+          "section": "images",
+          "sha256": "c3361a22db27ce017fec90a46f66c508cad5d668d606070b214b0351b3cf9588"
+        },
+        {
+          "bytes": 6352608,
+          "kind": "AttentionAmpere256x128Sm80",
+          "legacy_kind": "AttentionAmpere256x128Sm80",
+          "path": "model/AttentionAmpere256x128Sm80.cubin",
+          "section": "images",
+          "sha256": "6ab9468c2d21b9b24c66fbb4380efca47a9057ddcc6adb4eb83997460986a83e"
+        },
+        {
+          "bytes": 3596000,
+          "kind": "AttentionFaCausalCombineSm80",
+          "legacy_kind": "AttentionFaCausalCombineSm80",
+          "path": "model/AttentionFaCausalCombineSm80.cubin",
+          "section": "images",
+          "sha256": "b4c2cb3cdcf9d456d5a0c905e468d9fe01a79df46544c8f447b0471ae2b4f6d1"
+        },
+        {
+          "bytes": 6317664,
+          "kind": "AttentionFaSplitSm80",
+          "legacy_kind": "AttentionFaSplitSm80",
+          "path": "model/AttentionFaSplitSm80.cubin",
+          "section": "images",
+          "sha256": "915016a9eaee3a391e29bbfcf00ee8de82e4da53c4865d080c04505d0d736345"
+        },
+        {
+          "bytes": 1813600,
+          "kind": "AttentionKvSm86",
+          "legacy_kind": "AttentionKvSm86",
+          "path": "model/AttentionKvSm86.cubin",
+          "section": "images",
+          "sha256": "0781fbbcae3a3f26cf97205af806e6e9001413827e66e298d4a0743cde067035"
+        },
+        {
+          "bytes": 3397824,
+          "kind": "AttentionMultiplySm86",
+          "legacy_kind": "AttentionMultiplySm86",
+          "path": "model/AttentionMultiplySm86.cubin",
+          "section": "images",
+          "sha256": "9277f5b0fa8d3a02004e2c8f02c1991c0bef281b8aa8aebab886797daa13502a"
+        },
+        {
+          "bytes": 17584,
+          "kind": "AttentionQkSm86",
+          "legacy_kind": "AttentionQkSm86",
+          "path": "model/AttentionQkSm86.cubin",
+          "section": "images",
+          "sha256": "9049ad21c964126fe32a394f6e5335e9ec0901cb031559db3cab0e63d93b4664"
+        },
+        {
+          "bytes": 2679648,
+          "kind": "AttentionSigmoidSm86",
+          "legacy_kind": "AttentionSigmoidSm86",
+          "path": "model/AttentionSigmoidSm86.cubin",
+          "section": "images",
+          "sha256": "08c00ee67fa7452b5370a7b2fc2b611afdbe219b5343cebf935aeef6e872ef8b"
+        },
+        {
+          "bytes": 2818208,
+          "kind": "Bf16Gemv2TSm86",
+          "legacy_kind": "Bf16Gemv2TSm86",
+          "path": "model/Bf16Gemv2TSm86.cubin",
+          "section": "images",
+          "sha256": "94fc9c63d0562b88395c3d5001397aa1a3a3f572450a00db627750b817c7de56"
+        },
+        {
+          "bytes": 5273248,
+          "kind": "Bf16GemvxSm86",
+          "legacy_kind": "Bf16GemvxSm86",
+          "path": "model/Bf16GemvxSm86.cubin",
+          "section": "images",
+          "sha256": "02cd5eee5a1f93addca2135cde7dfd71b05e499547e227a43806ee953eb2fa99"
+        },
+        {
+          "bytes": 4252960,
+          "kind": "Bf16SplitKReduceSm86",
+          "legacy_kind": "Bf16SplitKReduceSm86",
+          "path": "model/Bf16SplitKReduceSm86.cubin",
+          "section": "images",
+          "sha256": "074807d671d9156ccc56b5a8cbe82f1ba8fae21c8169e674b31b4b8603ba42ec"
+        },
+        {
+          "bytes": 7789728,
+          "kind": "FixedPromptCutlassBf16Sm80",
+          "legacy_kind": "Canonical47CutlassBf16Sm80",
+          "path": "model/Canonical47CutlassBf16Sm80.cubin",
+          "section": "images",
+          "sha256": "66c2e61f0cc1d1bf90eeb8ea3245e2849b0c49466c486c8d1daa219166afdc30"
+        },
+        {
+          "bytes": 1428640,
+          "kind": "CutlassWmmaSm80",
+          "legacy_kind": "CutlassWmmaSm80",
+          "path": "model/CutlassWmmaSm80.cubin",
+          "section": "images",
+          "sha256": "b0ddb21d5b657acf1bb6cfaaff3444be7db85d98135048d3b220e5e3ce46420d"
+        },
+        {
+          "bytes": 3595872,
+          "kind": "TextFaCausalCombineSm80",
+          "legacy_kind": "ShortHfFaCausalCombineSm80",
+          "path": "model/ShortHfFaCausalCombineSm80.cubin",
+          "section": "images",
+          "sha256": "f739be47a3f566d4bca6fea9009a69251c592e5584ad8f266bb6d352f873325f"
+        },
+        {
+          "bytes": 6317920,
+          "kind": "TextFaSplitCombineSm80",
+          "legacy_kind": "ShortHfFaSplitCombineSm80",
+          "path": "model/ShortHfFaSplitCombineSm80.cubin",
+          "section": "images",
+          "sha256": "c777ff76fb18e3d3f30cb94d522432d91755bbd6915e5838d137444bd90c1ee3"
+        },
+        {
+          "bytes": 638536,
+          "kind": "RotaryArangeSm86",
+          "legacy_kind": "RotaryArangeSm86",
+          "path": "rotary/RotaryArangeSm86.cubin",
+          "section": "rotary",
+          "sha256": "a2214f06eb1698d79b9073d5aa0b96687db648a1dfcb972ffd8acd55f0463148"
+        },
+        {
+          "bytes": 4557464,
+          "kind": "RotaryBf16CastSm86",
+          "legacy_kind": "RotaryBf16CastSm86",
+          "path": "rotary/RotaryBf16CastSm86.cubin",
+          "section": "rotary",
+          "sha256": "f57651baaf725abc6147aa5c3b6cdd5f36bd21d094d1e07125ce4af1cfa39bd4"
+        },
+        {
+          "bytes": 2103392,
+          "kind": "RotaryCatSm86",
+          "legacy_kind": "RotaryCatSm86",
+          "path": "rotary/RotaryCatSm86.cubin",
+          "section": "rotary",
+          "sha256": "16b48f3157ebebadf98cff5c1d49c14481b0329db9341242b89a6350fd740bed"
+        },
+        {
+          "bytes": 850848,
+          "kind": "RotaryCosSm86",
+          "legacy_kind": "RotaryCosSm86",
+          "path": "rotary/RotaryCosSm86.cubin",
+          "section": "rotary",
+          "sha256": "74f16ee1c1a02f9023ef564e667515b28e19e62eec34ca2e88abeac8f8554784"
+        },
+        {
+          "bytes": 4066320,
+          "kind": "RotaryDivideSm86",
+          "legacy_kind": "RotaryDivideSm86",
+          "path": "rotary/RotaryDivideSm86.cubin",
+          "section": "rotary",
+          "sha256": "6bdb6b810e0240cf9b43eea275a62a569a1b413a098021647073a023fd7257ef"
+        },
+        {
+          "bytes": 1942400,
+          "kind": "RotaryFillSm86",
+          "legacy_kind": "RotaryFillSm86",
+          "path": "rotary/RotaryFillSm86.cubin",
+          "section": "rotary",
+          "sha256": "842017f87bae6cdf46487a53d681d766bcdd924ec10d8d8c760311f353126dc5"
+        },
+        {
+          "bytes": 16041664,
+          "kind": "RotaryPowSm86",
+          "legacy_kind": "RotaryPowSm86",
+          "path": "rotary/RotaryPowSm86.cubin",
+          "section": "rotary",
+          "sha256": "3af1ff7b658220ca44e2c21926755e74573439133a9a8279229ae7a9bf6a1d46"
+        },
+        {
+          "bytes": 4246208,
+          "kind": "RotaryReciprocalSm86",
+          "legacy_kind": "RotaryReciprocalSm86",
+          "path": "rotary/RotaryReciprocalSm86.cubin",
+          "section": "rotary",
+          "sha256": "e74e50dcbacecbb9513fd86fb522d9c8be3c6380673894e61f18138aa350c510"
+        },
+        {
+          "bytes": 848032,
+          "kind": "RotarySinSm86",
+          "legacy_kind": "RotarySinSm86",
+          "path": "rotary/RotarySinSm86.cubin",
+          "section": "rotary",
+          "sha256": "4c8070076b500012feaaf022e79cb08f3cd7114b2985160452402fa040c56034"
+        },
+        {
+          "bytes": 901664,
+          "path": "activation/silu-and-mul-bf16.cubin",
+          "section": "activation",
+          "sha256": "7ec9414283b09942de90011eb5bdbaeb63b352cd0dc500f2c7ba3854f660fadf"
+        },
+        {
+          "bytes": 105140976,
+          "path": "providers/libcublas.so.12",
+          "section": "cublas",
+          "sha256": "d63456d94f1b8e2408a8a9538c8740eb474c9eba48a84f420b15e2e10fbcd048"
+        },
+        {
+          "bytes": 749205904,
+          "path": "providers/libcublasLt.so.12",
+          "section": "cublas_lt",
+          "sha256": "96ddf4891ca4f4ed1475966783a9185df2abd64a81c3cc713b96d036696fc541"
+        }
+      ]
+    },
+    "2b": {
+      "cohort_2b_extra_image_included": false,
+      "legacy_manifest": {
+        "bytes": 2793,
+        "sha256": "25f5cd3c3389cae7f552e3fbd9ab8eb76b95071e1ebe9b09b451b05555188e8d"
+      },
+      "native_catalogue": "Source2048",
+      "resources": [
+        {
+          "bytes": 6601808,
+          "kind": "AmpereBf16Gemm128x64Sm80",
+          "legacy_kind": "AmpereBf16Gemm128x64Sm80",
+          "path": "model/AmpereBf16Gemm128x64Sm80.cubin",
+          "section": "images",
+          "sha256": "c1ca8db71001178d04f1b83d7c55883107fa122927e10d41020672678fff2c86"
+        },
+        {
+          "bytes": 6422224,
+          "kind": "AmpereBf16Gemm64x64Stages64x5Sm80",
+          "legacy_kind": "AmpereBf16Gemm64x64Stages64x5Sm80",
+          "path": "model/AmpereBf16Gemm64x64Stages64x5Sm80.cubin",
+          "section": "images",
+          "sha256": "c3361a22db27ce017fec90a46f66c508cad5d668d606070b214b0351b3cf9588"
+        },
+        {
+          "bytes": 6352608,
+          "kind": "AttentionAmpere256x128Sm80",
+          "legacy_kind": "AttentionAmpere256x128Sm80",
+          "path": "model/AttentionAmpere256x128Sm80.cubin",
+          "section": "images",
+          "sha256": "6ab9468c2d21b9b24c66fbb4380efca47a9057ddcc6adb4eb83997460986a83e"
+        },
+        {
+          "bytes": 3596000,
+          "kind": "AttentionFaCausalCombineSm80",
+          "legacy_kind": "AttentionFaCausalCombineSm80",
+          "path": "model/AttentionFaCausalCombineSm80.cubin",
+          "section": "images",
+          "sha256": "b4c2cb3cdcf9d456d5a0c905e468d9fe01a79df46544c8f447b0471ae2b4f6d1"
+        },
+        {
+          "bytes": 6317664,
+          "kind": "AttentionFaSplitSm80",
+          "legacy_kind": "AttentionFaSplitSm80",
+          "path": "model/AttentionFaSplitSm80.cubin",
+          "section": "images",
+          "sha256": "915016a9eaee3a391e29bbfcf00ee8de82e4da53c4865d080c04505d0d736345"
+        },
+        {
+          "bytes": 1813600,
+          "kind": "AttentionKvSm86",
+          "legacy_kind": "AttentionKvSm86",
+          "path": "model/AttentionKvSm86.cubin",
+          "section": "images",
+          "sha256": "0781fbbcae3a3f26cf97205af806e6e9001413827e66e298d4a0743cde067035"
+        },
+        {
+          "bytes": 3397824,
+          "kind": "AttentionMultiplySm86",
+          "legacy_kind": "AttentionMultiplySm86",
+          "path": "model/AttentionMultiplySm86.cubin",
+          "section": "images",
+          "sha256": "9277f5b0fa8d3a02004e2c8f02c1991c0bef281b8aa8aebab886797daa13502a"
+        },
+        {
+          "bytes": 17584,
+          "kind": "AttentionQkSm86",
+          "legacy_kind": "AttentionQkSm86",
+          "path": "model/AttentionQkSm86.cubin",
+          "section": "images",
+          "sha256": "9049ad21c964126fe32a394f6e5335e9ec0901cb031559db3cab0e63d93b4664"
+        },
+        {
+          "bytes": 2679648,
+          "kind": "AttentionSigmoidSm86",
+          "legacy_kind": "AttentionSigmoidSm86",
+          "path": "model/AttentionSigmoidSm86.cubin",
+          "section": "images",
+          "sha256": "08c00ee67fa7452b5370a7b2fc2b611afdbe219b5343cebf935aeef6e872ef8b"
+        },
+        {
+          "bytes": 2818208,
+          "kind": "Bf16Gemv2TSm86",
+          "legacy_kind": "Bf16Gemv2TSm86",
+          "path": "model/Bf16Gemv2TSm86.cubin",
+          "section": "images",
+          "sha256": "94fc9c63d0562b88395c3d5001397aa1a3a3f572450a00db627750b817c7de56"
+        },
+        {
+          "bytes": 5273248,
+          "kind": "Bf16GemvxSm86",
+          "legacy_kind": "Bf16GemvxSm86",
+          "path": "model/Bf16GemvxSm86.cubin",
+          "section": "images",
+          "sha256": "02cd5eee5a1f93addca2135cde7dfd71b05e499547e227a43806ee953eb2fa99"
+        },
+        {
+          "bytes": 4252960,
+          "kind": "Bf16SplitKReduceSm86",
+          "legacy_kind": "Bf16SplitKReduceSm86",
+          "path": "model/Bf16SplitKReduceSm86.cubin",
+          "section": "images",
+          "sha256": "074807d671d9156ccc56b5a8cbe82f1ba8fae21c8169e674b31b4b8603ba42ec"
+        },
+        {
+          "bytes": 7789728,
+          "kind": "FixedPromptCutlassBf16Sm80",
+          "legacy_kind": "Canonical47CutlassBf16Sm80",
+          "path": "model/Canonical47CutlassBf16Sm80.cubin",
+          "section": "images",
+          "sha256": "66c2e61f0cc1d1bf90eeb8ea3245e2849b0c49466c486c8d1daa219166afdc30"
+        },
+        {
+          "bytes": 1428640,
+          "kind": "CutlassWmmaSm80",
+          "legacy_kind": "CutlassWmmaSm80",
+          "path": "model/CutlassWmmaSm80.cubin",
+          "section": "images",
+          "sha256": "b0ddb21d5b657acf1bb6cfaaff3444be7db85d98135048d3b220e5e3ce46420d"
+        },
+        {
+          "bytes": 3965472,
+          "kind": "TextCutlassBf16Sm80",
+          "legacy_kind": "ShortHfCutlassBf16Sm80",
+          "path": "model/ShortHfCutlassBf16Sm80.cubin",
+          "section": "images",
+          "sha256": "dd79ea92347b2b68d382fcca514f57d9001e1ec91d228f61b0e7048b2cd86c2b"
+        },
+        {
+          "bytes": 3595872,
+          "kind": "TextFaCausalCombineSm80",
+          "legacy_kind": "ShortHfFaCausalCombineSm80",
+          "path": "model/ShortHfFaCausalCombineSm80.cubin",
+          "section": "images",
+          "sha256": "f739be47a3f566d4bca6fea9009a69251c592e5584ad8f266bb6d352f873325f"
+        },
+        {
+          "bytes": 6317920,
+          "kind": "TextFaSplitCombineSm80",
+          "legacy_kind": "ShortHfFaSplitCombineSm80",
+          "path": "model/ShortHfFaSplitCombineSm80.cubin",
+          "section": "images",
+          "sha256": "c777ff76fb18e3d3f30cb94d522432d91755bbd6915e5838d137444bd90c1ee3"
+        },
+        {
+          "bytes": 638536,
+          "kind": "RotaryArangeSm86",
+          "legacy_kind": "RotaryArangeSm86",
+          "path": "rotary/RotaryArangeSm86.cubin",
+          "section": "rotary",
+          "sha256": "a2214f06eb1698d79b9073d5aa0b96687db648a1dfcb972ffd8acd55f0463148"
+        },
+        {
+          "bytes": 4557464,
+          "kind": "RotaryBf16CastSm86",
+          "legacy_kind": "RotaryBf16CastSm86",
+          "path": "rotary/RotaryBf16CastSm86.cubin",
+          "section": "rotary",
+          "sha256": "f57651baaf725abc6147aa5c3b6cdd5f36bd21d094d1e07125ce4af1cfa39bd4"
+        },
+        {
+          "bytes": 2103392,
+          "kind": "RotaryCatSm86",
+          "legacy_kind": "RotaryCatSm86",
+          "path": "rotary/RotaryCatSm86.cubin",
+          "section": "rotary",
+          "sha256": "16b48f3157ebebadf98cff5c1d49c14481b0329db9341242b89a6350fd740bed"
+        },
+        {
+          "bytes": 850848,
+          "kind": "RotaryCosSm86",
+          "legacy_kind": "RotaryCosSm86",
+          "path": "rotary/RotaryCosSm86.cubin",
+          "section": "rotary",
+          "sha256": "74f16ee1c1a02f9023ef564e667515b28e19e62eec34ca2e88abeac8f8554784"
+        },
+        {
+          "bytes": 4066320,
+          "kind": "RotaryDivideSm86",
+          "legacy_kind": "RotaryDivideSm86",
+          "path": "rotary/RotaryDivideSm86.cubin",
+          "section": "rotary",
+          "sha256": "6bdb6b810e0240cf9b43eea275a62a569a1b413a098021647073a023fd7257ef"
+        },
+        {
+          "bytes": 1942400,
+          "kind": "RotaryFillSm86",
+          "legacy_kind": "RotaryFillSm86",
+          "path": "rotary/RotaryFillSm86.cubin",
+          "section": "rotary",
+          "sha256": "842017f87bae6cdf46487a53d681d766bcdd924ec10d8d8c760311f353126dc5"
+        },
+        {
+          "bytes": 16041664,
+          "kind": "RotaryPowSm86",
+          "legacy_kind": "RotaryPowSm86",
+          "path": "rotary/RotaryPowSm86.cubin",
+          "section": "rotary",
+          "sha256": "3af1ff7b658220ca44e2c21926755e74573439133a9a8279229ae7a9bf6a1d46"
+        },
+        {
+          "bytes": 4246208,
+          "kind": "RotaryReciprocalSm86",
+          "legacy_kind": "RotaryReciprocalSm86",
+          "path": "rotary/RotaryReciprocalSm86.cubin",
+          "section": "rotary",
+          "sha256": "e74e50dcbacecbb9513fd86fb522d9c8be3c6380673894e61f18138aa350c510"
+        },
+        {
+          "bytes": 848032,
+          "kind": "RotarySinSm86",
+          "legacy_kind": "RotarySinSm86",
+          "path": "rotary/RotarySinSm86.cubin",
+          "section": "rotary",
+          "sha256": "4c8070076b500012feaaf022e79cb08f3cd7114b2985160452402fa040c56034"
+        },
+        {
+          "bytes": 901664,
+          "path": "activation/silu-and-mul-bf16.cubin",
+          "section": "activation",
+          "sha256": "7ec9414283b09942de90011eb5bdbaeb63b352cd0dc500f2c7ba3854f660fadf"
+        },
+        {
+          "bytes": 105140976,
+          "path": "providers/libcublas.so.12",
+          "section": "cublas",
+          "sha256": "d63456d94f1b8e2408a8a9538c8740eb474c9eba48a84f420b15e2e10fbcd048"
+        },
+        {
+          "bytes": 749205904,
+          "path": "providers/libcublasLt.so.12",
+          "section": "cublas_lt",
+          "sha256": "96ddf4891ca4f4ed1475966783a9185df2abd64a81c3cc713b96d036696fc541"
+        }
+      ]
+    }
+  },
+  "schema": "zerogravity.cuda-bundle-migration-pins.v1"
+}

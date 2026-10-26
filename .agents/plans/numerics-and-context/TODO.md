@@ -27,7 +27,7 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
   group/reap/EOF closure. Strict CUDA/Vulkan all-target Clippy and284 CUDA/app
   host tests also pass. No physical model acceptance from these source checks.
 
-### Source checkpoint — `refactor(cuda): derive capture scope ownership`
+### `5a18b5b` — capture scope ownership
 
 - [x] Prepare model-owned prompt inventory and capture-owned cold roles/counts;
   both sources retain5prefills/40semantic calls/6physical scopes. B4 selects
@@ -40,6 +40,18 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
   destruction retains original source ownership. Current admitted shapes,
   resource charges and all96 CUDA tuples remain exact. Full gate above covers
   the assembled source; fresh native48–50 and device qualification remain open.
+
+### Source checkpoint — `feat(reference): capture finite Qwen prompts`
+
+- [x] Stage authenticated current-schema .8B/2B N1 bundles without changing
+  resource bytes.28 reference controls and8 bundle controls pass. Failed packed47
+  keeps six absent FA packets, empty norm archive and missing worker receipts;
+  reviewed late-layout reader exports only authentic whole-image/formal facts
+  for a fresh retry. Full packed/native model qualification remains open.
+- [x] Shared original capture and bundle controls join the complete gate.
+  Fresh47–50 original pairs passed independently; native/source/ABI acceptance
+  still requires fresh full captures and per-shape implementation. Podman owns
+  runtime isolation; source/build checks retain `native-gpu.py` isolation.
 
 ### Current owner order — 26 Oct
 
@@ -58,11 +70,6 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
   retains/fences the flight. No independent cleanup defect found; preserve the
   strict cross-batch failure and quarantine. Matching original/native profiles
   remain separate from optional batch invariance; no release or tolerance waiver.
-- [x] Stage authenticated current-schema .8B/2B N1 bundles without changing
-  resource bytes.28 reference controls and8 bundle controls pass. Failed packed47
-  keeps six absent FA packets, empty norm archive and missing worker receipts;
-  reviewed late-layout reader exports only authentic whole-image/formal facts
-  for a fresh retry. Full packed/native model qualification remains open.
 - [~] Apply [all-model correctness policy](CORRECTNESS_POLICY.md), based on
   pinned vLLM/llama.cpp. Sol6.1 xhigh owns every lane; this supersedes older
   Pi/Astra assignments and performance-first continuations below.
