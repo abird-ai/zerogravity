@@ -12,7 +12,7 @@ default-run = "zerogravity"
 default = ["cpu", "model-qwen35", "text"]
 # Opt-in native HTTP/1.1 OpenAI surface; CPU continuous interleaving
 # uses the existing model and state owners.
-serve = ["cpu", "model-qwen35", "text", "cache", "dep:httparse"]
+serve = ["cpu", "model-qwen35", "text", "cache", "dep:httparse", "dep:signal-hook"]
 cpu = ["zerogravity/cpu"]
 model-qwen35 = ["zerogravity/model-qwen35"]
 model-gemma4 = ["zerogravity/model-gemma4"]

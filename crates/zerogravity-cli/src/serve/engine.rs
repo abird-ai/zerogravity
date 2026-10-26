@@ -685,6 +685,51 @@ pub struct Router {
     pub max_output: usize,
 }
 impl Router {
+    /// Model-free transport fixture: the original idle CPU worker/queue/host,
+    /// with no registered model or inference capability.
+    #[cfg(test)]
+    pub(super) fn transport_test() -> (Self, HostPool) {
+        let host = HostPool::isolated(256).unwrap();
+        let models = Arc::new(BTreeMap::new());
+        let stats = Arc::new(CpuStats::default());
+        let queue = PendingQueue::new(host.clone(), Some(8)).unwrap();
+        let charge = workers_charge(
+            &host,
+            1,
+            std::alloc::Layout::new::<CpuWorkerCaptures>(),
+            Some(worker_name_bound(1)),
+            vecdeque_backing_bytes::<Active>(1).unwrap(),
+        )
+        .unwrap();
+        let captures = CpuWorkerCaptures {
+            queue: queue.worker().unwrap(),
+            models: Arc::clone(&models),
+            host: host.clone(),
+            stats: Arc::clone(&stats),
+            active_limit: 1,
+            max_context: 16,
+        };
+        let worker = thread::Builder::new()
+            .name("zg-decode-0".into())
+            .spawn(move || captures.run())
+            .unwrap();
+        (
+            Self {
+                models,
+                host: host.clone(),
+                queue,
+                stats,
+                active_limit: 1,
+                workers: vec![worker],
+                _worker_charge: charge,
+                next_id: AtomicU64::new(1),
+                max_context: 16,
+                max_output: 8,
+            },
+            host,
+        )
+    }
+
     pub fn new(
         declared: Vec<(String, PathBuf)>,
         workers: usize,
@@ -1088,12 +1133,23 @@ impl Router {
         .observed(token_metrics))
     }
 }
+impl Router {
+    pub(super) fn shutdown(&mut self) -> std::io::Result<()> {
+        self.queue.close();
+        let mut failed = false;
+        for handle in self.workers.drain(..) {
+            failed |= handle.join().is_err();
+        }
+        if failed {
+            Err(std::io::Error::other("CPU serving worker panicked"))
+        } else {
+            Ok(())
+        }
+    }
+}
 impl Drop for Router {
     fn drop(&mut self) {
-        self.queue.close();
-        for handle in self.workers.drain(..) {
-            let _ = handle.join();
-        }
+        let _ = self.shutdown();
     }
 }
 pub(super) fn output_transport_bound(
@@ -1442,6 +1498,26 @@ fn worker(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_shutdown_reports_worker_panic_and_joins_remaining_workers() {
+        let (mut router, host) = Router::transport_test();
+        // Retire the original idle worker before installing controlled joins.
+        router.shutdown().unwrap();
+        let retired = Arc::new(AtomicBool::new(false));
+        let witness = Arc::clone(&retired);
+        router
+            .workers
+            .push(thread::spawn(|| panic!("injected CPU worker panic")));
+        router.workers.push(thread::spawn(move || {
+            witness.store(true, Ordering::Release);
+        }));
+        assert!(router.shutdown().is_err());
+        assert!(retired.load(Ordering::Acquire));
+        assert!(router.workers.is_empty());
+        drop(router);
+        assert_eq!(host.serving_bytes(), 0);
+    }
 
     fn output_tokenizer(byte_level: bool) -> Arc<QwenTokenizer> {
         let decoder = if byte_level {

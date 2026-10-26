@@ -701,12 +701,33 @@ impl GpuRouter {
         .observed(token_metrics))
     }
 }
+impl GpuRouter {
+    pub(super) fn shutdown(&mut self) -> std::io::Result<()> {
+        let failures = self.stats.failed.load(Ordering::Acquire);
+        self.queue.close();
+        if self
+            .worker
+            .take()
+            .is_some_and(|worker| worker.join().is_err())
+        {
+            Err(std::io::Error::other("GPU serving worker panicked"))
+        } else if self.stats.failed.load(Ordering::Acquire) != failures
+            || self
+                .models
+                .values()
+                .any(|model| model.readers.load(Ordering::Acquire) != 0)
+        {
+            // Original retirement records failures in WaveStats and retains
+            // quarantine. Joining its worker cannot turn that into success.
+            Err(std::io::Error::other("GPU serving retirement failed"))
+        } else {
+            Ok(())
+        }
+    }
+}
 impl Drop for GpuRouter {
     fn drop(&mut self) {
-        self.queue.close();
-        if let Some(worker) = self.worker.take() {
-            let _ = worker.join();
-        }
+        let _ = self.shutdown();
     }
 }
 struct SourceReaders(Arc<AtomicUsize>);
@@ -1356,6 +1377,61 @@ fn worker(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shutdown_rejects_new_retirement_failures_after_join() {
+        // Exercise original queue closure and a real worker join without any
+        // registered model, device or inference capability.
+        for (previous, fail) in [(7, false), (7, true), (u64::MAX, true)] {
+            let host = ServingHost::isolated(256).unwrap();
+            let queue = PendingQueue::<Scheduled>::new(host.clone(), Some(1)).unwrap();
+            let stats = Arc::new(WaveStats::default());
+            stats.failed.store(previous, Ordering::Release);
+            let captures = (queue.worker().unwrap(), Arc::clone(&stats), fail);
+            let run = move || {
+                let (control, stats, fail) = captures;
+                loop {
+                    match control.pop_wait(Duration::from_millis(10), |_| false) {
+                        Pop::Closed => {
+                            if fail {
+                                stats.failed.fetch_add(1, Ordering::Relaxed);
+                            }
+                            return;
+                        }
+                        Pop::Empty => {}
+                        Pop::Item(_) => panic!("shutdown fixture admitted an unexpected request"),
+                    }
+                }
+            };
+            let name = "zg-shutdown-test";
+            let charge = workers_charge(
+                &host,
+                1,
+                std::alloc::Layout::for_value(&run),
+                Some((name.len(), name.len())),
+                0,
+            )
+            .unwrap();
+            let worker = thread::Builder::new().name(name.into()).spawn(run).unwrap();
+            let mut router = GpuRouter {
+                models: Arc::new(BTreeMap::new()),
+                queue,
+                host: host.clone(),
+                next_id: AtomicU64::new(1),
+                stats,
+                max_output: 1,
+                native_rows: 0,
+                active_limit: 1,
+                worker: Some(worker),
+                _worker_charge: charge,
+            };
+            assert_eq!(router.shutdown().is_err(), fail);
+            assert!(router.worker.is_none());
+            drop(router);
+            assert_eq!(host.serving_bytes(), 0);
+        }
+    }
+
     #[test]
     fn admitted_session_high_water_survives_warmup_and_completed_drops() {
         let stats = Arc::new(WaveStats::default());

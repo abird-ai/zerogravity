@@ -11,16 +11,22 @@ use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 use serde_json::{Map, Value, json};
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::{Shutdown, TcpListener, TcpStream};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use zerogravity::json_allocation::{ValueConstruction, census_json, census_scratch_peak};
+
+#[cfg(test)]
+#[path = "http/shutdown_tests.rs"]
+mod shutdown_tests;
 
 const MAX_HEADERS: usize = 8 * 1024;
 const MAX_BODY: usize = 1024 * 1024;
 const MAX_CONNECTIONS: usize = 64;
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(180);
+const SHUTDOWN_POLL: Duration = Duration::from_millis(20);
+const EVENT_POLL: Duration = Duration::from_millis(50);
 // One `read` into a stack slice. A header-boundary scan can retain at most one
 // such chunk after the accepted header bytes.
 const HEADER_READ_CHUNK: usize = 4096;
@@ -758,7 +764,9 @@ fn stream_events(
     req: RequestEvents,
     chat: bool,
     include_usage: bool,
+    shutdown: &AtomicBool,
 ) -> std::io::Result<()> {
+    check_running(shutdown).map_err(|error| std::io::Error::other(error.message))?;
     let id = format!("chatcmpl-zg-{}", req.id);
     let mut metrics = req
         .token_metrics
@@ -788,6 +796,7 @@ fn stream_events(
     let started = Instant::now();
     let mut last_keepalive = Instant::now();
     loop {
+        check_running(shutdown).map_err(|error| std::io::Error::other(error.message))?;
         if started.elapsed() > RESPONSE_TIMEOUT {
             sse(
                 stream,
@@ -799,7 +808,9 @@ fn stream_events(
             )?;
             break;
         }
-        match req.events.recv_timeout(Duration::from_millis(500)) {
+        let next = req.events.recv_timeout(EVENT_POLL);
+        check_running(shutdown).map_err(|error| std::io::Error::other(error.message))?;
+        match next {
             Ok(ResponseEvent::TokenText { text, token }) => {
                 let token_id = token.id;
                 let Some(observations) = metrics.as_mut() else {
@@ -923,7 +934,9 @@ fn respond(
     router: &Router,
     api_key: Option<&str>,
     enable_per_request_metrics: bool,
+    shutdown: &AtomicBool,
 ) -> Result<(), ServiceError> {
+    check_running(shutdown)?;
     if let Some(expected) = api_key {
         let got = req
             .header("authorization")
@@ -984,87 +997,112 @@ fn respond(
     )?;
     let stream_response = task.stream;
     let ingress = std::mem::take(&mut req.ingress);
+    check_running(shutdown)?;
     let events = router.request_admitted(task, ingress)?;
     if stream_response {
-        stream_events(stream, events, chat, include_usage).map_err(|_| {
+        stream_events(stream, events, chat, include_usage, shutdown).map_err(|_| {
             ServiceError::new(499, "client_closed", "streaming client disconnected")
         })?;
     } else {
-        // A disconnected non-stream client must cancel its model session,
-        // even if no response token has yet been emitted.
-        let started = Instant::now();
-        let mut metrics = events
-            .token_metrics
-            .clone()
-            .map(|request| TokenMetrics::new(request, format!("chatcmpl-zg-{}", events.id)));
-        loop {
-            if started.elapsed() > RESPONSE_TIMEOUT {
-                return Err(ServiceError::new(
-                    504,
-                    "timeout",
-                    "generation deadline reached",
-                ));
+        completion_events(stream, events, chat, shutdown)?;
+    }
+    Ok(())
+}
+fn check_running(shutdown: &AtomicBool) -> Result<(), ServiceError> {
+    if shutdown.load(Ordering::Acquire) {
+        Err(ServiceError::new(
+            503,
+            "shutting_down",
+            "service is stopping",
+        ))
+    } else {
+        Ok(())
+    }
+}
+fn completion_events(
+    stream: &mut TcpStream,
+    events: RequestEvents,
+    chat: bool,
+    shutdown: &AtomicBool,
+) -> Result<(), ServiceError> {
+    // A disconnected non-stream client must cancel its model session,
+    // even if no response token has yet been emitted.
+    let started = Instant::now();
+    let mut metrics = events
+        .token_metrics
+        .clone()
+        .map(|request| TokenMetrics::new(request, format!("chatcmpl-zg-{}", events.id)));
+    loop {
+        check_running(shutdown)?;
+        if started.elapsed() > RESPONSE_TIMEOUT {
+            return Err(ServiceError::new(
+                504,
+                "timeout",
+                "generation deadline reached",
+            ));
+        }
+        let next = events.events.recv_timeout(EVENT_POLL);
+        check_running(shutdown)?;
+        match next {
+            Ok(ResponseEvent::TokenText { token, .. }) => {
+                metrics
+                    .as_mut()
+                    .ok_or_else(|| {
+                        ServiceError::new(
+                            500,
+                            "unexpected_token_observation",
+                            "unrequested token observation",
+                        )
+                    })?
+                    .record(token)?;
             }
-            match events.events.recv_timeout(Duration::from_millis(250)) {
-                Ok(ResponseEvent::TokenText { token, .. }) => {
-                    metrics
-                        .as_mut()
-                        .ok_or_else(|| {
-                            ServiceError::new(
-                                500,
-                                "unexpected_token_observation",
-                                "unrequested token observation",
-                            )
-                        })?
-                        .record(token)?;
-                }
-                Ok(ResponseEvent::Text(_)) => {} // nonstream never sends deltas
-                Ok(ResponseEvent::Done {
-                    output,
+            Ok(ResponseEvent::Text(_)) => {} // nonstream never sends deltas
+            Ok(ResponseEvent::Done {
+                output,
+                prompt_tokens,
+                completion_tokens,
+                finish_reason,
+            }) => {
+                let mut json = completion_response(
+                    events.id,
+                    &events.model,
+                    chat,
+                    &output,
                     prompt_tokens,
                     completion_tokens,
                     finish_reason,
-                }) => {
-                    let mut json = completion_response(
-                        events.id,
-                        &events.model,
-                        chat,
-                        &output,
-                        prompt_tokens,
-                        completion_tokens,
-                        finish_reason,
-                    );
-                    if let Some(observations) = metrics.as_mut() {
-                        let (aggregate, records) = observations.finish(completion_tokens)?;
-                        json["choices"][0]["token_ids"] = json!(observations.token_ids());
-                        json["metrics"] = aggregate;
-                        json["zerogravity_token_metrics"] = records;
-                    }
-                    write_json(stream, 200, &json).map_err(|_| {
-                        ServiceError::new(499, "client_closed", "cannot write response")
-                    })?;
-                    break;
+                );
+                if let Some(observations) = metrics.as_mut() {
+                    let (aggregate, records) = observations.finish(completion_tokens)?;
+                    json["choices"][0]["token_ids"] = json!(observations.token_ids());
+                    json["metrics"] = aggregate;
+                    json["zerogravity_token_metrics"] = records;
                 }
-                Ok(ResponseEvent::Error(error)) => return Err(error),
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    let _ = stream.set_read_timeout(Some(Duration::from_millis(1)));
-                    let mut probe = [0u8; 1];
-                    if let Ok(0) = stream.peek(&mut probe) {
-                        return Err(ServiceError::new(499, "cancelled", "client disconnected"));
-                    }
+                write_json(stream, 200, &json).map_err(|_| {
+                    ServiceError::new(499, "client_closed", "cannot write response")
+                })?;
+                break;
+            }
+            Ok(ResponseEvent::Error(error)) => return Err(error),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                let _ = stream.set_read_timeout(Some(Duration::from_millis(1)));
+                let mut probe = [0u8; 1];
+                if let Ok(0) = stream.peek(&mut probe) {
+                    return Err(ServiceError::new(499, "cancelled", "client disconnected"));
                 }
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return Err(ServiceError::new(
-                        503,
-                        "worker_unavailable",
-                        "model worker disconnected",
-                    ));
-                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(ServiceError::new(
+                    503,
+                    "worker_unavailable",
+                    "model worker disconnected",
+                ));
             }
         }
     }
     Ok(())
 }
+
 fn bind_token_metrics(
     task: &mut Request,
     wire_id: Option<&str>,
@@ -1085,182 +1123,228 @@ fn bind_token_metrics(
     }
     Ok(())
 }
-struct ConnectionSlot {
-    concurrent: Arc<AtomicUsize>,
+/// The accept loop retains a duplicate socket to interrupt both reads and
+/// writes before joining. Every slot/closure stays charged through its join.
+struct Connection {
+    handle: std::thread::JoinHandle<()>,
+    interrupt: TcpStream,
     _charge: ServingCharge,
 }
-impl Drop for ConnectionSlot {
-    fn drop(&mut self) {
-        self.concurrent.fetch_sub(1, Ordering::AcqRel);
+impl Connection {
+    fn join(self) -> std::io::Result<()> {
+        let Self {
+            handle,
+            interrupt,
+            _charge,
+        } = self;
+        let result = handle.join();
+        drop(interrupt);
+        drop(_charge);
+        result.map_err(|_| std::io::Error::other("HTTP connection handler panicked"))
     }
 }
-/// Inline capture bound for one connection handler. The join handle and the
-/// connection charge live in the accept-loop slot, not in the closure, and
-/// the captured `api_key` heap text is priced separately by its capacity.
+
+struct Connections {
+    entries: Vec<Connection>,
+    shutdown: Arc<AtomicBool>,
+    _table_charge: ServingCharge,
+}
+impl Connections {
+    fn new<R: IngressCharge>(router: &R, shutdown: Arc<AtomicBool>) -> std::io::Result<Self> {
+        // Exact table element includes handle, duplicate socket and charge.
+        // Shutdown owns the process flag's separate allocation charge through
+        // the final worker joins; captures only clone its handle.
+        let table_bytes = u64::try_from(MAX_CONNECTIONS)
+            .ok()
+            .and_then(|n| n.checked_mul(std::mem::size_of::<Connection>() as u64))
+            .ok_or_else(|| std::io::Error::other("connection table bound overflow"))?;
+        let charge = router
+            .charge_http_ingress("http-connection", table_bytes)
+            .map_err(|error| std::io::Error::other(error.message))?;
+        Ok(Self {
+            entries: Vec::with_capacity(MAX_CONNECTIONS),
+            shutdown,
+            _table_charge: charge,
+        })
+    }
+    fn reap(&mut self) -> std::io::Result<()> {
+        let mut index = 0;
+        while index < self.entries.len() {
+            if self.entries[index].handle.is_finished() {
+                self.entries.swap_remove(index).join()?;
+            } else {
+                index += 1;
+            }
+        }
+        Ok(())
+    }
+    fn finish(&mut self) -> std::io::Result<()> {
+        self.shutdown.store(true, Ordering::Release);
+        // Interrupt every socket before waiting for any one handler. This
+        // unblocks partial HTTP reads and backpressured writes immediately;
+        // generation waits observe the same flag within EVENT_POLL.
+        for connection in &self.entries {
+            let _ = connection.interrupt.shutdown(Shutdown::Both);
+        }
+        let mut result = Ok(());
+        for connection in self.entries.drain(..) {
+            let joined = connection.join();
+            if result.is_ok() {
+                result = joined;
+            }
+        }
+        result
+    }
+}
+impl Drop for Connections {
+    fn drop(&mut self) {
+        // Startup, listener/spawn failure and panic unwind use the same join
+        // boundary. Explicit finish reports panics on the ordinary return path.
+        let _ = self.finish();
+    }
+}
+
+/// Inline capture bound is admitted from the exact spawned value.
 struct ConnectionCaptures {
     stream: TcpStream,
     router: Arc<Router>,
     api_key: Option<String>,
     enable_per_request_metrics: bool,
+    shutdown: Arc<AtomicBool>,
 }
-
 impl ConnectionCaptures {
-    /// Consume the exact admitted struct so the start closure captures only
-    /// this priced value; the admitted `Layout::for_value` of the same value is
-    /// the captured width and cannot drift from a field mirror.
     fn run(mut self) {
         let _ = self.stream.set_read_timeout(Some(Duration::from_secs(10)));
         let _ = self.stream.set_write_timeout(Some(Duration::from_secs(30)));
-        match read_request(&mut self.stream, self.router.as_ref()).and_then(|req| {
-            respond(
-                &mut self.stream,
-                req,
-                &self.router,
-                self.api_key.as_deref(),
-                self.enable_per_request_metrics,
-            )
-        }) {
+        let result = check_running(&self.shutdown)
+            .and_then(|()| read_request(&mut self.stream, self.router.as_ref()))
+            .and_then(|req| {
+                respond(
+                    &mut self.stream,
+                    req,
+                    &self.router,
+                    self.api_key.as_deref(),
+                    self.enable_per_request_metrics,
+                    &self.shutdown,
+                )
+            });
+        match result {
             Ok(()) => {}
-            Err(error) if error.status == 499 => {}
+            Err(error) if error.status == 499 || self.shutdown.load(Ordering::Acquire) => {}
             Err(error) => {
                 let _ = write_json(&mut self.stream, error.status, &error_json(&error));
             }
         }
     }
 }
+
+fn accept_connections<A, F>(
+    connections: &mut Connections,
+    mut accept: A,
+    mut spawn: F,
+) -> std::io::Result<()>
+where
+    A: FnMut() -> std::io::Result<TcpStream>,
+    F: FnMut(TcpStream, &mut Connections) -> std::io::Result<()>,
+{
+    while !connections.shutdown.load(Ordering::Acquire) {
+        connections.reap()?;
+        match accept() {
+            Ok(stream) => {
+                if connections.shutdown.load(Ordering::Acquire) {
+                    break;
+                }
+                spawn(stream, connections)?;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(SHUTDOWN_POLL);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
 pub fn serve(
     listener: TcpListener,
     router: Arc<Router>,
     api_key: Option<String>,
     enable_per_request_metrics: bool,
+    shutdown: Arc<AtomicBool>,
 ) -> std::io::Result<()> {
-    // The bounded entry table and its shared connection counter are allocated
-    // and charged once, before any connection thread exists. The slot tuple
-    // owns the join handle and the connection charge in the accept loop, not
-    // in the handler closure.
-    let table_bytes = u64::try_from(MAX_CONNECTIONS)
-        .ok()
-        .and_then(|n| {
-            n.checked_mul(
-                std::mem::size_of::<(std::thread::JoinHandle<()>, ConnectionSlot)>() as u64,
-            )
-        })
-        .and_then(|n| {
-            n.checked_add(
-                (2 * std::mem::size_of::<usize>()
-                    + std::mem::size_of::<std::sync::atomic::AtomicUsize>()) as u64,
-            )
-        })
-        .ok_or_else(|| std::io::Error::other("connection table bound overflow"))?;
-    let _table_charge = router
-        .charge_ingress("http-connection", table_bytes)
-        .map_err(|error| std::io::Error::other(error.message))?;
-    let current = Arc::new(AtomicUsize::new(0));
-    let mut connections: Vec<(std::thread::JoinHandle<()>, ConnectionSlot)> =
-        Vec::with_capacity(MAX_CONNECTIONS);
-    for stream in listener.incoming() {
-        // Join completed handlers before releasing their connection slot and
-        // charge. `is_finished` is only a cheap reap trigger; ownership ends
-        // at `join`, not at thread completion.
-        let mut index = 0;
-        while index < connections.len() {
-            if connections[index].0.is_finished() {
-                let (handle, slot) = connections.swap_remove(index);
-                let _ = handle.join();
-                drop(slot);
-            } else {
-                index += 1;
-            }
-        }
-        let mut stream = match stream {
-            Ok(stream) => stream,
-            Err(error) => {
-                for (handle, slot) in connections.drain(..) {
-                    let _ = handle.join();
-                    drop(slot);
-                }
-                return Err(error);
-            }
-        };
-        let count = current.fetch_add(1, Ordering::AcqRel);
-        if count >= MAX_CONNECTIONS {
-            current.fetch_sub(1, Ordering::AcqRel);
-            let _ = write_json(
-                &mut stream,
-                503,
-                &error_json(&ServiceError::new(
+    let mut connections = Connections::new(router.as_ref(), shutdown)?;
+    listener.set_nonblocking(true)?;
+    let result = accept_connections(
+        &mut connections,
+        || listener.accept().map(|(s, _)| s),
+        |mut stream, connections| {
+            // Set a bound before overload/refusal writes, which run in this loop.
+            stream.set_write_timeout(Some(EVENT_POLL))?;
+            if connections.entries.len() >= MAX_CONNECTIONS {
+                let _ = write_json(
+                    &mut stream,
                     503,
-                    "connections_full",
-                    "connection admission capacity reached",
-                )),
-            );
-            continue;
-        }
-        // Native thread stacks, guards, TLS and the OS mapping are external
-        // unquantified headroom: the builder keeps std's default stack=None.
-        // The pinned std control row covers the name, capture closure and
-        // runtime handler-map entry; the captured API-key text and the
-        // accept-loop table/slot are charged separately. The capture is built
-        // first so the admitted layout is the actual spawned closure.
-        let captures = ConnectionCaptures {
-            stream,
-            router: Arc::clone(&router),
-            api_key: api_key.clone(),
-            enable_per_request_metrics,
-        };
-        let connection_bytes = zerogravity::resource_arbiter::rust_thread_control_bytes(
-            std::alloc::Layout::for_value(&captures),
-            Some(("zg-http".len(), "zg-http".len())),
-        )
-        .map_err(|error| ServiceError::new(400, "size_overflow", error.to_string()))
-        .and_then(|bytes| {
-            bytes
-                .checked_add(
-                    captures
-                        .api_key
-                        .as_ref()
-                        .map_or(0, |key| key.capacity() as u64),
-                )
-                .ok_or_else(|| ServiceError::new(400, "size_overflow", "connection bound overflow"))
-        });
-        let connection_charge = match connection_bytes
-            .and_then(|bytes| router.charge_ingress("http-connection", bytes))
-        {
-            Ok(charge) => charge,
-            Err(error) => {
-                current.fetch_sub(1, Ordering::AcqRel);
-                let mut stream = captures.stream;
-                let _ = write_json(&mut stream, error.status, &error_json(&error));
-                continue;
+                    &error_json(&ServiceError::new(
+                        503,
+                        "connections_full",
+                        "connection admission capacity reached",
+                    )),
+                );
+                return Ok(());
             }
-        };
-        let slot = ConnectionSlot {
-            concurrent: Arc::clone(&current),
-            _charge: connection_charge,
-        };
-        let spawned = std::thread::Builder::new()
-            .name("zg-http".into())
-            .spawn(move || captures.run());
-        match spawned {
-            Ok(handle) => connections.push((handle, slot)),
-            Err(error) => {
-                // The thread never ran; drop the slot/charge now, then join
-                // every already-running connection before leaving the accept
-                // loop.
-                drop(slot);
-                for (handle, slot) in connections.drain(..) {
-                    let _ = handle.join();
-                    drop(slot);
+            let interrupt = stream.try_clone()?;
+            // Native stacks, guards, TLS and OS mappings remain external
+            // unquantified headroom; std's default stack=None is unchanged.
+            let captures = ConnectionCaptures {
+                stream,
+                router: Arc::clone(&router),
+                api_key: api_key.clone(),
+                enable_per_request_metrics,
+                shutdown: Arc::clone(&connections.shutdown),
+            };
+            let connection_bytes = zerogravity::resource_arbiter::rust_thread_control_bytes(
+                std::alloc::Layout::for_value(&captures),
+                Some(("zg-http".len(), "zg-http".len())),
+            )
+            .map_err(|error| ServiceError::new(400, "size_overflow", error.to_string()))
+            .and_then(|bytes| {
+                bytes
+                    .checked_add(
+                        captures
+                            .api_key
+                            .as_ref()
+                            .map_or(0, |key| key.capacity() as u64),
+                    )
+                    .ok_or_else(|| {
+                        ServiceError::new(400, "size_overflow", "connection bound overflow")
+                    })
+            });
+            let charge = match connection_bytes
+                .and_then(|bytes| router.charge_ingress("http-connection", bytes))
+            {
+                Ok(charge) => charge,
+                Err(error) => {
+                    let mut stream = captures.stream;
+                    let _ = write_json(&mut stream, error.status, &error_json(&error));
+                    return Ok(());
                 }
-                return Err(error);
-            }
-        }
-    }
-    for (handle, slot) in connections.drain(..) {
-        let _ = handle.join();
-        drop(slot);
-    }
-    Ok(())
+            };
+            let handle = std::thread::Builder::new()
+                .name("zg-http".into())
+                .spawn(move || captures.run())?;
+            connections.entries.push(Connection {
+                handle,
+                interrupt,
+                _charge: charge,
+            });
+            Ok(())
+        },
+    );
+    // Close the listening socket before interrupting and joining clients.
+    drop(listener);
+    let joined = connections.finish();
+    result.and(joined)
 }
 
 #[cfg(test)]
@@ -1489,7 +1573,7 @@ mod tests {
         );
         let writer = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
-            stream_events(&mut stream, request, chat, false).unwrap();
+            stream_events(&mut stream, request, chat, false, &AtomicBool::new(false)).unwrap();
         });
         let mut client = TcpStream::connect(address).unwrap();
         client
@@ -1593,7 +1677,7 @@ mod tests {
         );
         let writer = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
-            stream_events(&mut stream, request, true, false).unwrap();
+            stream_events(&mut stream, request, true, false, &AtomicBool::new(false)).unwrap();
         });
         let mut client = TcpStream::connect(address).unwrap();
         client

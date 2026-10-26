@@ -8,6 +8,22 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
+### Signal-driven serving shutdown — 26 Oct
+
+- [x] Install TERM/INT handling before source preparation; close admission,
+  interrupt partial/backpressured sockets and original request receipts, join
+  all HTTP handlers, then close/join the original CPU/GPU workers. Report handler/
+  worker panic, new final GPU retirement failure or retained source readers as
+  failure. Original source close/quarantine and physical publication are unchanged.
+- [x] Actual model-free process/PID1 TERM+INT controls: exit0, no cleanup signals,
+  no surviving members and serving ledger0. Actual approved cached Podman PID1
+  stop also exit0/CLOSED/ledger0/no escalation; exact CID independently absent.
+  Assembled full `scripts/check.sh` passes; CUDA/HIP/Vulkan feature compilation
+  and model-free GPU retirement-failure control pass. No model/device execution
+  or performance grant. [Coverage](../../runs/serving-shutdown-20261026/root/validation.json).
+- [ ] Replay applicable original-model/backend shutdown and fault scopes under
+  their existing source/device gates before a benchmark qualification claim.
+
 ### Current parity and post-parity optimization order — 23 Oct
 
 - Current MAIN/ISO410: continuous34+dynamic2-key KV and compiler-lifetime7

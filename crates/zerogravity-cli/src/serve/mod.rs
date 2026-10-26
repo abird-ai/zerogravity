@@ -9,6 +9,7 @@ mod gpu_batch;
 mod gpu_engine;
 mod http;
 mod pending;
+mod shutdown;
 mod token_metrics;
 
 #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
@@ -21,6 +22,13 @@ enum Router {
     Gpu(gpu_engine::GpuRouter),
 }
 impl Router {
+    fn shutdown(&mut self) -> std::io::Result<()> {
+        match self {
+            Self::Cpu(router) => router.shutdown(),
+            #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
+            Self::Gpu(router) => router.shutdown(),
+        }
+    }
     fn request_admitted(
         &self,
         request: Request,
@@ -514,7 +522,14 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
         return Ok(());
     }
 
+    // Install before config/source loading, including when serving is PID 1.
+    // Keep the guard alive until all HTTP and inference workers have joined.
+    let mut shutdown = shutdown::Shutdown::install()
+        .map_err(|error| ServiceError::new(500, "signal_handler", error.to_string()))?;
     let options = YamlConfig::cli(args)?;
+    if shutdown.is_requested() {
+        return Ok(());
+    }
     let address: SocketAddr = options.listen.parse().map_err(|_| {
         ServiceError::new(400, "invalid_listen", "--listen requires numeric IP:PORT")
     })?;
@@ -650,14 +665,48 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
         }
     };
     let router = Arc::new(router);
+    shutdown.admit(&router)?;
+    if shutdown.is_requested() {
+        return join_router(router)
+            .map_err(|error| ServiceError::new(500, "shutdown_failed", error.to_string()));
+    }
     let listener = TcpListener::bind(address)
         .map_err(|e| ServiceError::new(500, "bind_failed", e.to_string()))?;
+    if shutdown.is_requested() {
+        drop(listener);
+        return join_router(router)
+            .map_err(|error| ServiceError::new(500, "shutdown_failed", error.to_string()));
+    }
     eprintln!(
         "zerogravity: serving {:?} Qwen on {address}, {} worker(s); max-context {}, max-output {}",
         backend, options.workers, options.max_context, options.max_output
     );
-    http::serve(listener, router, key, options.enable_per_request_metrics)
-        .map_err(|e| ServiceError::new(500, "http_error", e.to_string()))
+    let result = http::serve(
+        listener,
+        Arc::clone(&router),
+        key,
+        options.enable_per_request_metrics,
+        Arc::clone(&shutdown.requested),
+    );
+    // HTTP has dropped every RequestEvents before queue close/worker join.
+    // A retained router Arc would mean a handler escaped that join boundary.
+    let joined = join_router(router);
+    match result.and(joined) {
+        Ok(()) => {
+            eprintln!("zerogravity: shutdown complete; HTTP handlers and inference workers joined");
+            Ok(())
+        }
+        Err(error) => {
+            eprintln!("zerogravity: shutdown failed: {error}");
+            Err(ServiceError::new(500, "http_error", error.to_string()))
+        }
+    }
+}
+
+fn join_router(router: Arc<Router>) -> std::io::Result<()> {
+    let mut router = Arc::try_unwrap(router)
+        .map_err(|_| std::io::Error::other("HTTP handler retained the serving router"))?;
+    router.shutdown()
 }
 
 #[cfg(test)]
