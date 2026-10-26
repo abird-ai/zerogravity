@@ -1,0 +1,54 @@
+{
+  "discovery-inventory.json": {
+    "bytes": 47953,
+    "sha256": "9324cb582c1471cd3d984bfe5878b0d6dbde3d64db5acf2c1cd8ab0b531f3d28"
+  },
+  "image-kinds.json": {
+    "bytes": 2302,
+    "sha256": "7a6176d03c92953facc24d37f85ad215d6117594778f2c602b1ba5bb903f41fe"
+  },
+  "package/classify.py": {
+    "bytes": 17189,
+    "sha256": "8e8943fadacf77b95e03d0d2f1ec0ae01bca9e539cf46cbb89870e98d51c9e21"
+  },
+  "package/generate.py": {
+    "bytes": 27177,
+    "sha256": "4101f235449684b9da04337f8ce9a0558c5faae15fe2286be80a05bed5170b01"
+  },
+  "package/geometry.py": {
+    "bytes": 9569,
+    "sha256": "e4fa3ebb973492db4c71d9e216f1185e26f5884f9cc35d3a445684c8157647e8"
+  },
+  "package/parameters.py": {
+    "bytes": 4300,
+    "sha256": "c308845313fee30c543da177dedbf510f8581d9963fe8c6b0e04be9e4ae84a04"
+  },
+  "package/sites.py": {
+    "bytes": 10521,
+    "sha256": "29731502598e903a49c3d5f5d3a3d717141fb025627cef85638b9c9de2f45088"
+  },
+  "regenerated/catalogue-source.json": {
+    "bytes": 70045,
+    "sha256": "a8faacc74c6f6316d3236dd5689b09e528c23d8ff5128e970b65fc80310164cc"
+  },
+  "regenerated/generated.rs": {
+    "bytes": 3814536,
+    "sha256": "d87f133045da5557fa8550816cfc97b4597657a271f50c9abbea759f28e19d9a"
+  },
+  "regenerated/records.rs": {
+    "bytes": 82261,
+    "sha256": "7d82ef9fc365def2ffc736bda1fac4aa86af460b9d45646bb2ecec3cfc6b17ed"
+  },
+  "regenerated/streamed-head-packets.json": {
+    "bytes": 669,
+    "sha256": "fc98f70711a338b7fecafda3d0afea4831e5893f8c6ab3d462751a85e9f7d539"
+  },
+  "regeneration-proof.json": {
+    "bytes": 1145,
+    "sha256": "ae611289a46baffc922d09b33bdd683916589c78c42979ec4d1d57e878dbb8b4"
+  },
+  "selected-section-comparison.json": {
+    "bytes": 42285,
+    "sha256": "b673cfb1ef1991ecbaee37bd76f759011a9176408f7bc14d3352114f8694d2be"
+  }
+}

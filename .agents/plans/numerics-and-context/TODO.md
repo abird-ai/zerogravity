@@ -58,11 +58,9 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
 - [x] Placement is a rule/review responsibility; no additional convention tests.
   Runtime semantics and physical ownership keep meaningful behavioral coverage.
 
-## Uncommitted
+### `1f08e55` — rotary preparation and Rust test support
 
-### Runtime and fixture separation — 26 Oct
-
-- [~] Replace ordinary text loading's rotary qualifier call and test counters
+- [x] Replace ordinary text loading's rotary qualifier call and test counters
   with shared source initialization for the configured context. Retain the true
   context span; derive exact N1/B4 upload extent from real read-only ABI bindings.
   Preserve source/issuer/service/generation, admission and retirement. Strict
@@ -70,9 +68,13 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
   complete assembled gate PASS0 (2050Rust/0fail/91ignored,12Python suites,
   release/installer/shell/Nix;202.101s/full original owner closure). Fresh
   physical validation remains open.
-- [~] Move test-only GDN helper and cohort source reporter into Rust test support.
+- [x] Move test-only GDN helper and cohort source reporter into Rust test support.
   Unused production constant removal changes the honest2B aggregate fingerprint
   from0938d435… to4d77cb66…; complete executable packets and GDN source stay exact.
+## Uncommitted
+
+### Reference capture and remaining runtime separation — 26 Oct
+
 - [x] Four fresh packed47–50 original captures complete:408 same-request archives,
   31008 launches with complete argument fields, all24 layer boundaries/all42
   states/fullV/consumed priors/natural feedback and original owned cleanup.

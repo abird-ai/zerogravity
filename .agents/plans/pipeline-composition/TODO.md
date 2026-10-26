@@ -134,7 +134,7 @@ their existing numeric/source/physical acceptance gates.
 ### Production/test separation — 26 Oct
 
 - [x] Rules/review convention landed3612ecb; no new placement-policy tests.
-- [~] Ordinary text loader uses shared source rotary initialization and configured
+- [x] Source checkpoint1f08e55: ordinary text loader uses shared rotary initialization and configured
   span; exact read-only native binding extents own upload/resource costs. Move
   actual test-only reporter/helper to Rust tests; preserve executable identities.
   Strict CUDA/Vulkan Clippy,288 affected host tests and complete isolated
