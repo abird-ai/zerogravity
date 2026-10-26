@@ -519,30 +519,36 @@ fn every_explicit_device_compatible_before_source_effects() {
     target_os = "linux"
 ))]
 #[test]
-fn ordinary_qwen_cuda_explicit_target_refuses_before_injected_device_discovery() {
+fn ordinary_qwen_cuda_explicit_targets_refuse_before_injected_device_discovery() {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     let root = std::env::temp_dir().join(format!("zg-explicit-qwen-route-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     let config_path = root.join("run.yaml");
-    std::fs::write(
-        &config_path,
-        "schema: zerogravity.pipeline.v2\nmodel:\n  - id: main\n    target: qwen3.5-0.8b\n    source: ./source-not-opened\nrun:\n  entrypoint: {model: main}\n  backend: cuda\n",
-    )
-    .unwrap();
-    let parsed = parse(&words(&["--config", config_path.to_str().unwrap()]), None).unwrap();
-    let request = config::resolve(parsed, Path::new("/"), None, Some("/home/test".into())).unwrap();
+    for target in ["qwen3.5-0.8b", "qwen3.5-2b"] {
+        std::fs::write(
+            &config_path,
+            format!(
+                "schema: zerogravity.pipeline.v2\nmodel:\n  - id: main\n    target: {target}\n    source: ./source-not-opened\nrun:\n  entrypoint: {{model: main}}\n  backend: cuda\n"
+            ),
+        )
+        .unwrap();
+        let parsed = parse(&words(&["--config", config_path.to_str().unwrap()]), None).unwrap();
+        let request =
+            config::resolve(parsed, Path::new("/"), None, Some("/home/test".into())).unwrap();
+        let discoveries = AtomicUsize::new(0);
+        let error = execute::run_with_discovery(request, || {
+            discoveries.fetch_add(1, Ordering::SeqCst);
+            Err(Error::State("injected discovery must not run".into()))
+        })
+        .unwrap_err();
+        assert!(
+            matches!(error, Error::Unsupported(message) if message.contains("no ordinary dynamic GDN implementation")),
+            "{target}"
+        );
+        assert_eq!(discoveries.load(Ordering::SeqCst), 0, "{target}");
+    }
     std::fs::remove_dir_all(root).unwrap();
-    let discoveries = AtomicUsize::new(0);
-    let error = execute::run_with_discovery(request, || {
-        discoveries.fetch_add(1, Ordering::SeqCst);
-        Err(Error::State("injected discovery must not run".into()))
-    })
-    .unwrap_err();
-    assert!(
-        matches!(error, Error::Unsupported(message) if message.contains("no ordinary dynamic GDN implementation"))
-    );
-    assert_eq!(discoveries.load(Ordering::SeqCst), 0);
 }
 
 #[cfg(all(
@@ -562,6 +568,21 @@ fn ordinary_cpu_and_gguf_routes_reach_injected_discovery() {
             "/does-not-exist/explicit-qwen-source",
             "cpu",
             Some("qwen3.5-0.8b"),
+        ),
+        (
+            "/does-not-exist/future-qwen-source",
+            "cuda",
+            Some("qwen3.5-plus"),
+        ),
+        (
+            "/does-not-exist/unknown-qwen-source",
+            "cuda",
+            Some("qwen3.5-27b"),
+        ),
+        (
+            "/does-not-exist/legacy-prefix-source",
+            "cuda",
+            Some("qwen35-0.8b"),
         ),
     ] {
         let parsed = parse(&words(&[source, "--backend", backend]), None).unwrap();
@@ -613,22 +634,38 @@ fn qwen_cuda_route_classification_is_purely_declarative() {
     }
     std::fs::remove_dir_all(root).unwrap();
 
-    let mut explicit = request("/does-not-exist/source", "cuda");
-    explicit.graph.models[0].target = "qwen3.5-0.8b".into();
-    assert!(qwen35_cuda::selected(
-        &explicit.backend,
-        &explicit.graph.models[0]
-    ));
-    explicit.backend = Backend::Auto;
-    assert!(!qwen35_cuda::selected(
-        &explicit.backend,
-        &explicit.graph.models[0]
-    ));
-    explicit.backend = Backend::Cpu;
-    assert!(!qwen35_cuda::selected(
-        &explicit.backend,
-        &explicit.graph.models[0]
-    ));
+    for target in ["qwen3.5-0.8b", "qwen3.5-2b"] {
+        let mut explicit = request("/does-not-exist/source", "cuda");
+        explicit.graph.models[0].target = target.into();
+        assert!(
+            qwen35_cuda::selected(&explicit.backend, &explicit.graph.models[0]),
+            "{target}"
+        );
+        explicit.backend = Backend::Auto;
+        assert!(
+            !qwen35_cuda::selected(&explicit.backend, &explicit.graph.models[0]),
+            "{target}"
+        );
+        explicit.backend = Backend::Cpu;
+        assert!(
+            !qwen35_cuda::selected(&explicit.backend, &explicit.graph.models[0]),
+            "{target}"
+        );
+    }
+
+    for target in [
+        "qwen3.5-plus",
+        "qwen3.5-27b",
+        "qwen3.5-unknown",
+        "qwen35-0.8b",
+    ] {
+        let mut unsupported = request("/does-not-exist/source", "cuda");
+        unsupported.graph.models[0].target = target.into();
+        assert!(
+            !qwen35_cuda::selected(&unsupported.backend, &unsupported.graph.models[0]),
+            "{target}"
+        );
+    }
 
     let mut diagnostic = request("/does-not-exist/source", "auto");
     diagnostic.graph.models[0].native_artifacts = Some("/not-opened/native".into());

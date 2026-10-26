@@ -1,6 +1,39 @@
 //! Qwen CUDA route selection and ordinary capability refusal.
 use super::*;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct FiniteTargetProfile {
+    target: &'static str,
+    #[cfg(feature = "qwen35-cuda-qualification")]
+    source_family: &'static str,
+}
+
+const FINITE_TARGET_PROFILES: &[FiniteTargetProfile] = &[
+    FiniteTargetProfile {
+        target: "qwen3.5-0.8b",
+        #[cfg(feature = "qwen35-cuda-qualification")]
+        source_family: "0.8b",
+    },
+    FiniteTargetProfile {
+        target: "qwen3.5-2b",
+        #[cfg(feature = "qwen35-cuda-qualification")]
+        source_family: "2b",
+    },
+];
+
+fn finite_target_profile(target: &str) -> Option<&'static FiniteTargetProfile> {
+    FINITE_TARGET_PROFILES
+        .iter()
+        .find(|profile| profile.target == target)
+}
+
+#[cfg(feature = "qwen35-cuda-qualification")]
+fn finite_source_profile(source_family: &str) -> Option<&'static FiniteTargetProfile> {
+    FINITE_TARGET_PROFILES
+        .iter()
+        .find(|profile| profile.source_family == source_family)
+}
+
 pub(super) fn selected(backend: &Backend, model: &zerogravity::pipeline::ModelInstance) -> bool {
     if !matches!(backend, Backend::Auto | Backend::Cuda) {
         return false;
@@ -8,9 +41,8 @@ pub(super) fn selected(backend: &Backend, model: &zerogravity::pipeline::ModelIn
     if model.native_artifacts.is_some() {
         return true;
     }
-    // Direct sources remain generic until their contents identify a family.
-    *backend == Backend::Cuda
-        && (model.target.starts_with("qwen3.5-") || model.target.starts_with("qwen35-"))
+    // Untargeted direct sources remain generic until their contents identify a family.
+    *backend == Backend::Cuda && finite_target_profile(&model.target).is_some()
 }
 
 /// Ordinary builds refuse before inventory/NVML/CUDA metadata. Only the
