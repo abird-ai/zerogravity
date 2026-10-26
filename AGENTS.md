@@ -90,6 +90,31 @@ No mandatory run receipts, source snapshots, per-file hashes, archives or
 generated handoffs. Actual model/content hashes and numerical acceptance limits
 remain part of the implementation wherever needed.
 
+## Production code and qualification support
+
+- Keep test assertions, expected outputs, fixture prompts, testcase schedules and
+  reference-data catalogues in Rust test support. Unit tests use `#[cfg(test)]`
+  modules; integration helpers and fixtures belong under `tests/support`.
+  Standalone qualification harnesses need an explicit diagnostic target.
+- Ordinary libraries, model loading, operators, scheduling and run/serve paths
+  must not depend on test helpers or qualification harnesses. A feature gate
+  alone does not separate them when production enables that feature. Extract
+  genuine execution primitives for both callers; keep comparison, case and
+  fault orchestration in qualification support.
+- Model semantics validate actual source/configuration, shapes, IDs and state
+  extents independently of the test matrix. Backends reject missing kernel
+  implementations explicitly. Preserve real model geometry, numerical
+  contracts, executable source/image/ABI identities and ownership constraints;
+  these are not fixtures merely because they contain constants or dispatch.
+- Do not rename a testcase whitelist as a capability descriptor, admit an
+  unsupported shape through metadata, or silently select another captured
+  case. Preserve a finite captured route explicitly as qualification support
+  until genuine runtime support exists.
+- Review callers, module exports, includes, dependency edges and enabled
+  features for this separation. Enforce it through review and these conventions,
+  not additional placement-policy tests. Keep meaningful numerical, runtime,
+  state, cancellation and physical ownership tests for behavior changes.
+
 ## Execution cadence
 
 - Work in substantial end-to-end units with a concrete user-visible outcome.
