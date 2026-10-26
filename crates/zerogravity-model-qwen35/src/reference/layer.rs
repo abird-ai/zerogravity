@@ -807,7 +807,7 @@ impl<'borrow, 'source> LayerMath<'borrow, 'source> {
         )?;
         let mut next_conv = previous_conv.to_vec();
         let mut raw_conv = vec![0.0; qkv];
-        crate::source_gdn_conv_step(&raw, &conv_weights, &mut next_conv, &mut raw_conv)?;
+        zerogravity_cpu::ops::gdn_conv_step(&raw, &conv_weights, &mut next_conv, &mut raw_conv)?;
         // Original causal conv and SiLU each produce the input dtype.
         let conv = self.round(&raw_conv)?;
         let mixed: Vec<f32> = conv

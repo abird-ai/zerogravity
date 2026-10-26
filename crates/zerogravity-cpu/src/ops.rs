@@ -3,6 +3,9 @@
 //! These are mathematical building blocks, NOT full Qwen GDN or Gemma MoE layer
 //! implementations. Model recipes will register exact higher-level semantics.
 
+mod gdn;
+pub use gdn::gdn_conv_step;
+
 use crate::{Error, Result};
 
 fn check(condition: bool, message: &str) -> Result<()> {

@@ -164,7 +164,7 @@ impl Oracle {
                 return Err(Error::Malformed("portable source token".into()));
             }
             embedding.copy_from_slice(&self.embedding[token * WIDTH..(token + 1) * WIDTH]);
-            zerogravity_model_qwen35::source_gdn_conv_step(
+            zerogravity_cpu::ops::gdn_conv_step(
                 &embedding,
                 &self.source.weights,
                 &mut self.history,

@@ -34,7 +34,7 @@ use zerogravity_gpu::Device;
 use zerogravity_model_qwen35::config::LayerKind;
 use zerogravity_model_qwen35::{
     LoadedQwenModel, source_attention_qk, source_attention_softmax, source_attention_value,
-    source_binary, source_gdn_coefficients, source_gdn_conv_step, source_gdn_recurrent_step,
+    source_binary, source_gdn_coefficients, source_gdn_recurrent_step,
     source_grouped_rms_normalize, source_rms_normalize, source_rope_kv,
 };
 
@@ -726,7 +726,7 @@ impl MatVecKernel for CheckedRegions {
         if let GdnConvExecution::Completed(ref actual) = result {
             let mut expected_history = region.history.to_vec();
             let mut expected_raw = vec![0.0f32; region.activation.len()];
-            source_gdn_conv_step(
+            zerogravity_cpu::ops::gdn_conv_step(
                 region.activation,
                 region.weights,
                 &mut expected_history,

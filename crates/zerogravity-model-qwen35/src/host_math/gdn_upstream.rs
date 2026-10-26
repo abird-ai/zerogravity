@@ -229,7 +229,7 @@ impl<'engine, 'state, 'trace> HostMath<'engine, 'state, 'trace> {
         for (teacher, activation) in input.as_slice()?.chunks_exact(CHANNELS).enumerate() {
             not_cancelled(call.cancelled)?;
             verify_environment()?;
-            crate::source_gdn_conv_step(
+            zerogravity_cpu::ops::gdn_conv_step(
                 activation,
                 weights,
                 &mut history,

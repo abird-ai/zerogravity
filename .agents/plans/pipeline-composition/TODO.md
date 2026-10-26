@@ -100,6 +100,14 @@ their existing numeric/source/physical acceptance gates.
 
 ## Uncommitted
 
+### Shared GDN convolution — 26 Oct
+
+- [x] Move the scalar four-tap GDN convolution and original bit/history/refusal
+  test into CPU operations; migrate model, GPU fixture and tool callers.
+  Original expression/test bodies remain exact after symbol migration.
+  Assembled full `scripts/check.sh` and CUDA/source/tool suites pass;
+  [coverage](../../runs/gpu-model-boundary-20261026/root/validation.json).
+
 ### Model containment and naming — 26 Oct
 
 Contract: [structure and naming](STRUCTURE_AND_NAMING.md). All lanes GPT-6.1
