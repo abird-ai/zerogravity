@@ -76,7 +76,25 @@ their existing numeric/source/physical acceptance gates.
   retain the two earlier stashes. No reset/rebase, ignored overwrite or cache scan.
   [Preservation details](../../runs/modular-architecture-20261026/worktree-reconcile-sol/final-batch-result.json).
 
+## Stash recovery — 26 Oct
+
+- [x] Review all six preserved snapshots against current MAIN. Core/runtime/
+  correctness/B4 work is retained or superseded; model/backend snapshots share
+  two missing source-test cases. Restore them using current APIs: same-source,
+  equal-token independent issuers remain distinct; only owned prefill GDN enters
+  the prepared join, with plain prefill and cached47..53 refused.
+- [x] Validate the assembled recovery: CUDA all-target compile exit0; CUDA597
+  passed/39 ignored; full `scripts/check.sh` exit0. No GPU devices/model loads;
+  original owner/EOF/reap closure and stable source/README verified. Exact logs,
+  source/binary/SDK pins and snapshot dispositions:
+  [recovery](../../runs/stash-recovery-20261026/root/REPORT.md).
+- [x] Preserve all six original snapshots in a verified local Git bundle;
+  atomically retain ignored core/B4 run evidence before directory retirement.
+
 ## Uncommitted
+
+- [ ] Retire the six fully reconciled side worktrees and consumed stashes;
+  preserve branch refs and archived evidence, leave MAIN clean.
 
 ### Model containment and naming — 26 Oct
 
