@@ -14,6 +14,17 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
 
 ## Uncommitted
 
+### Current correctness-first order — 26 Oct
+
+- [~] [Shared vLLM/llama.cpp correctness policy](../numerics-and-context/CORRECTNESS_POLICY.md)
+  across all models; .8B initial/cached47–50, then genuine long contexts and
+  CPU/CUDA/ROCm/Vulkan. All agents GPT-6.1 Sol xhigh. Earlier B4/C16/27B order
+  below is historical; no new performance or27B capture before correctness.
+- [ ] Preserve case5 FAIL101 and quarantine. Original default vLLM N1/B4 also
+  has the same six QKVZ BF16 differences at frontier47 with identical inputs,
+  input RMS and48 prior planes. Width-specific original agreement and model
+  accuracy are distinct; no arithmetic substitution or failed-run relabel.
+
 ### Current B4 takeover — 25–26 Oct
 
 - [ ] Current B4 → fresh optimized matched C16 (.8B +2B) → x2 original27B,
@@ -762,6 +773,17 @@ Implementation remains behind the ordered parity/baseline prerequisites above.
 - [ ] Resolve applicable SYK-011..016 source/derived-quality/LLVM/SLO/pressure/steering choices from the [specialization reference](../../research/EXTREME_MODEL_SPECIALIZATION_INTEGRATION_AND_ACCEPTANCE_2026-10-15.md) before that slice; proposed SYK-002..010 are not frozen user approvals. Preserve negative candidates and the default disabled steering policy.
 
 ## Committed
+
+### 6d85559 — correctness comparison gate, 26 Oct
+
+- [x] All-model shared comparison helpers + fail-closed CPU report gate;
+  genuine2048 requirement restored, existing numerical limits preserved.
+  Full isolated `scripts/check.sh` actual0/EOF:1890 Rust passes/0fail/89ignored;
+  new23+15 controls/selftest pass. No runtime/math source changes or fresh GPU
+  inference. [Evidence](../../runs/q08-correctness-20261026/TODO.md).
+- [x] Retained actual C16 IDs/text digests compare exact for both models under
+  exact/default policies,16 requests/model. Original case5 N1/B4 failure and
+  historical2B performance refusal remain failed; no new speedup claim.
 
 ### `5d40cf5` — shared pending queue and ingress credit
 

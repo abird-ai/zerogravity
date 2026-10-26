@@ -1,5 +1,12 @@
 # Numerical correctness, model-quality evaluation and benchmark methodology
 
+**26 Oct 2026 — all-model correctness policy:**
+[pinned vLLM and llama.cpp practice](../plans/numerics-and-context/CORRECTNESS_POLICY.md)
+governs operator accuracy, model comparisons and separate determinism claims
+across CPU/CUDA/ROCm/Vulkan. Shared comparison tools reject incomplete evidence;
+their output alone grants no model/backend qualification. Existing exact source,
+state and physical-ownership contracts remain binding.
+
 **15 Oct 2026 — mandatory vLLM parity-and-beyond qualification:** [36 concurrency/source tests and fair benchmark methodology](../research/VLLM_PARITY_AND_COMBINATORY_SPECIALIZATION_ACCEPTANCE_2026-10-15.md) require pinned vLLM V1/vLLM-Omni version/config and identical original or derived quant artifact, tokenizer/template, task/numeric policy and comparable device/OS/cache state. Report cold/warm, admission and rejection, per-tenant fairness, p50/p95/p99 TTFT/ITL, accepted **committed** SLO goodput, actual bytes/driver and power, vLLM current continuous/hybrid/batch/disagg capability. Quant-model fidelity and target speculation exactness are distinct. “Outclasses vLLM” cannot be claimed on a different quant, cherry-picked prompt or from the existence of planned design.
 
 

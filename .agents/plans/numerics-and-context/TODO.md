@@ -17,6 +17,22 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
 
 ## Uncommitted
 
+### Current owner order — 26 Oct
+
+- [~] Apply [all-model correctness policy](CORRECTNESS_POLICY.md), based on
+  pinned vLLM/llama.cpp. Sol6.1 xhigh owns every lane; this supersedes older
+  Pi/Astra assignments and performance-first continuations below.
+- [ ] .8B initial47/48/49/50 and cached47→50: actual independent original and
+  native outputs/state/physical closure. Original case5 strict FAIL101 remains;
+  original N1/B4 QKVZ itself differs by six BF16 words at identical frontier47
+  operands. Original48/49 metadata confirms width differences; original paired
+  N1 frontier50 is missing. This explains the diagnostic, not model acceptance.
+- [ ] Genuine .8B512/1024/2048/4096/8192, then16K/32K context/state/feedback;
+  corresponding original BF16 CPU/ROCm/Vulkan full-model routes are missing.
+  GGUF, synthetic operators and finite other-model proofs stay separate. Local
+  Renoir/gfx90c launch/recovery hold remains. Performance and27B follow this
+  correctness sequence; earlier finite timing facts remain historical.
+
 - [ ] **Next one short-HF unit, then matched benchmarks:** both approved .8B/2B
   sources, canonical/ragged47/57/62/67/72 plus genuine cached feedback, original
   active8/caps and existing worker. Stage generic bounded storage/liveness,
@@ -240,6 +256,26 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
 
 
 ## Committed
+
+### 6d85559 — shared correctness checks, 26 Oct
+
+- [x] `tools/model-correctness/`: pinned vLLM exact/default generation checks,
+  complete-vocabulary KL/NLL/probability metrics and llama.cpp candidate-energy
+  NMSE. Explicit identities/history/context/closure; no implicit thresholds or
+  inference qualification. Independent review corrections resolved.
+- [x] CPU evidence gate refuses nonfinite/duplicate/malformed reports and truthy
+  flags; requires genuine2048-token evidence for both models. Existing source
+  digests and0.45/0.05/0.06/14-overlap limits unchanged;16K/32K deferred.
+- [x] Focused23 shared +15 CPU tests/selftest and complete isolated
+  `scripts/check.sh` actual0/EOF/group closure:1890 Rust passes/0fail/89ignored;
+  Python/script/installer gates pass. Source1778 digest
+  `686a1168a88b543563c9a775c22893bd9514e3ed534dfaaf0d57be4947ecb06c`.
+  [ROOT evidence](../../runs/q08-correctness-20261026/TODO.md).
+- [x] Both models' retained same-attempt C16 observations:16 actual requests each,
+  exact wire IDs/stored text digests under both policies, four new comparator
+  invocations0/EOF. No fresh inference/fullV/state/performance qualification;
+  case5 and historical2B performance failures preserved. Runtime source remains
+  byte-identical to signed a857d45; no model/math/profile substitution.
 
 ### `9dd1ebfb1862` — original source operators and numerical closure records
 

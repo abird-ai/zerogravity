@@ -8,6 +8,18 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
+### Current owner direction — 26 Oct
+
+- [~] Every existing/future registry target follows the shared
+  [correctness policy](../numerics-and-context/CORRECTNESS_POLICY.md): declared
+  per-op accuracy, pinned independent task/model quality, separate determinism
+  and exact source/state/physical ownership. Registry metadata is no execution
+  or model-access authorization; unsupported adapters remain unqualified.
+- [ ] Implement/qualify missing full-model/context/backend cells, beginning
+  .8B47–50 then genuine long context on CPU/CUDA/ROCm/Vulkan. ROOT coordinates
+  exclusively GPT-6.1 Sol xhigh lanes. Older Pi/Astra assignments and performance
+  sequence below are superseded; no new timing/27B capture precedes correctness.
+
 Current24Oct: CLI and shared model units are integrated; Pi implements/executes,
 Sol coordinates/reviews/merges, Astra designs/reviews architecture and math.
 Local source21 shared state-certificate preparation passes the complete1793 CPU
@@ -464,6 +476,15 @@ or model support. Qwen parity/short benchmark/long→dense27B→Gemma remains bi
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### 6d85559 — common comparison tools, 26 Oct
+
+- [x] Shared model-output schema/checks and exact/default comparison policies,
+  independent distribution/operator measurements, strict negative controls;
+  complete isolated source gate0/EOF. Both .8B/2B retained C16 output comparisons
+  pass; this adds no fresh execution, full-model or cross-backend permit.
+  [Policy](../numerics-and-context/CORRECTNESS_POLICY.md) and
+  [evidence](../../runs/q08-correctness-20261026/TODO.md).
 
 ### `29a98c1` — HIP source-page events and witness (25Oct assembly)
 
