@@ -1,7 +1,8 @@
 //! Deliberate original-flight cuts; completed comparisons are not GPU failures.
 use super::*;
-use crate::resident_leases::Qwen2bMlpComputeReadCut as ReadCut;
+use crate::resident_leases::{Qwen2bMlpComputeReadCut as ReadCut, Qwen2bMlpSourceVerification};
 use std::sync::{Mutex as StdMutex, Weak};
+use zerogravity_artifacts::source_weights::SourceOwnerWitness;
 use zerogravity_core::device_events::BufferLeaseId;
 use zerogravity_core::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -82,7 +83,7 @@ pub struct Qwen2bMlpComponentFaultOutcome {
     pub root_published: bool,
 }
 struct Witness {
-    source: Weak<OriginalWindowModelSource>,
+    source: SourceOwnerWitness,
     service: Weak<ResidentService>,
     body: Weak<ComponentProgram>,
     cohort: Weak<Vec<ResidentReadback>>,
@@ -112,7 +113,7 @@ impl Probe {
             return Err(Error::State("new2B MLP probe armed twice".into()));
         }
         *slot = Some(Witness {
-            source: Arc::downgrade(body.recipe().source().source()),
+            source: body.recipe().source().weak_owner(),
             service: Arc::downgrade(service),
             body: Arc::downgrade(body),
             cohort: Arc::downgrade(cohort),
@@ -143,14 +144,15 @@ impl Probe {
             .body
             .upgrade()
             .ok_or_else(|| Error::State("2B whole computed graph lost".into()))?;
+        if !w.source.retained() {
+            return Err(Error::State("2B actual source owner lost".into()));
+        }
+        let source = &w.source;
         let service = w
             .service
             .upgrade()
             .ok_or_else(|| Error::State("2B original service lost".into()))?;
-        let source = w
-            .source
-            .upgrade()
-            .ok_or_else(|| Error::State("2B actual source owner lost".into()))?;
+
         let cohort = w
             .cohort
             .upgrade()
@@ -193,7 +195,7 @@ impl Probe {
                 | Qwen2bMlpComponentFault::CancelBeforeDownReducer
         );
         if down_cut
-            && (body.recipe().record().call().rows() != 1
+            && (body.recipe().bindings().call().rows().len() != 1
                 || body.qwen2b_native_launches()? != 6
                 || body.qwen2b_down1_enqueues()? != 1
                 || !body.qwen2b_down1_output_unpromoted()?)
@@ -210,7 +212,7 @@ impl Probe {
             || !physical.fenced
             || physical.reserved != PROVIDER_BYTES as u64
             || service.ensure_usable().is_ok()
-            || !Arc::ptr_eq(&source, body.recipe().source().source())
+            || !source.same_issuer(body.recipe().source())
             || !body.qwen2b_mlp_plan_retained(&plan)?
             || !body.post_attention_graph_retained()?
             || !body.qwen2b_mlp_graph_retained()?
@@ -229,7 +231,7 @@ impl Probe {
             arithmetic,
             fault,
             status: "DELIBERATE_COMPUTE_FLIGHT_REFUSAL_RETAINED",
-            rows: body.recipe().record().call().rows(),
+            rows: body.recipe().bindings().call().rows().len(),
             native_launches: body.qwen2b_native_launches()?,
             submitted_buffers: w.submitted.len(),
             retained_graph_buffers: retained.len(),
@@ -247,12 +249,12 @@ impl Probe {
             quarantined_owners: owners,
             source_record_ticket_body_plan_native_retained: true,
             out_dual_mlp_graph_retained: true,
-            down1_output_unpromoted: if body.recipe().record().call().rows() == 1 {
+            down1_output_unpromoted: if body.recipe().bindings().call().rows().len() == 1 {
                 body.qwen2b_down1_output_unpromoted()?
             } else {
                 false
             },
-            down1_enqueues: if body.recipe().record().call().rows() == 1 {
+            down1_enqueues: if body.recipe().bindings().call().rows().len() == 1 {
                 body.qwen2b_down1_enqueues()?
             } else {
                 0

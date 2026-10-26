@@ -4,7 +4,7 @@ impl ResidentInitialization<'_> {
     pub(crate) fn require_qwen2b_projection_upload(&self, lease: &ResidentLease) -> Result<()> {
         self.require_pending_original_projection_upload(lease)
     }
-    pub(crate) fn require_canonical47_projection_upload(
+    pub(crate) fn require_fixed_prompt_projection_upload(
         &self,
         lease: &ResidentLease,
     ) -> Result<()> {

@@ -2,39 +2,39 @@
 //! Genuine all42 candidates are diagnostic; no RootReady/commit/model route.
 use super::continuation::{AttemptPhaseBinding, GdnAttemptSchedule};
 use super::*;
+use crate::cuda::gdn::{FixedPromptGdnArithmetic, FixedPromptGdnIntermediate};
+use crate::cuda::native::post_attention_projection::validate_images;
 use crate::resident_inference::gdn_state::GdnPhasePlan;
 use crate::resident_leases::ResidentReadback;
 use crate::resident_program::qwen2b_component::{
     ComponentCut, ComponentKind, ComponentProgram, ComponentRecipe,
-    POST_ATTENTION_PROVIDER_BYTES as PROVIDER_BYTES, validate_post_attention_component_source,
+    POST_ATTENTION_PROVIDER_BYTES as PROVIDER_BYTES, validate_component,
 };
-use crate::vllm_cuda_gdn::{Canonical47GdnArithmetic, Canonical47GdnIntermediate};
-use crate::vllm_cuda_qualification::post_attention_projection::validate_images;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PostAttentionArithmetic {
     Qwen2bOwned,
-    Qwen2bExplicit(crate::vllm_cuda_gdn::Qwen2bGdnArithmetic),
-    Canonical47(Canonical47GdnArithmetic),
+    Qwen2bExplicit(crate::cuda::gdn::Qwen2bGdnArithmetic),
+    FixedPrompt(FixedPromptGdnArithmetic),
 }
 impl PostAttentionArithmetic {
     fn kind(self) -> ComponentKind {
         match self {
             Self::Qwen2bOwned | Self::Qwen2bExplicit(_) => ComponentKind::Qwen2b,
-            Self::Canonical47(a) => ComponentKind::Canonical47(a),
+            Self::FixedPrompt(a) => ComponentKind::FixedPrompt(a),
         }
     }
-    fn explicit_qwen2b(self) -> Option<crate::vllm_cuda_gdn::Qwen2bGdnArithmetic> {
+    fn explicit_qwen2b(self) -> Option<crate::cuda::gdn::Qwen2bGdnArithmetic> {
         match self {
             Self::Qwen2bExplicit(arithmetic) => Some(arithmetic),
-            Self::Qwen2bOwned | Self::Canonical47(_) => None,
+            Self::Qwen2bOwned | Self::FixedPrompt(_) => None,
         }
     }
     fn require_binding_parts(
         self,
         kind: ComponentKind,
         cut: ComponentCut,
-        bound: Option<crate::vllm_cuda_gdn::Qwen2bGdnArithmetic>,
+        bound: Option<crate::cuda::gdn::Qwen2bGdnArithmetic>,
     ) -> Result<()> {
         if kind != self.kind()
             || cut != ComponentCut::PostAttention
@@ -51,9 +51,7 @@ impl PostAttentionArithmetic {
     }
 }
 
-use zerogravity_core::accelerator::program::RecordedVllm08Model;
-use zerogravity_core::device_events::BufferRole;
-use zerogravity_model_qwen35::original_binding::BoundFullModelSource;
+use crate::resident_program::source_bindings::SourceBindings;
 
 #[path = "post_attention_component/faults.rs"]
 mod faults;
@@ -81,17 +79,17 @@ pub struct PostAttentionComponentReceipt {
 }
 pub struct PostAttentionComponentReadback<'a> {
     arithmetic: PostAttentionArithmetic,
-    record: &'a Arc<RecordedVllm08Model>,
+    record: &'a Arc<SourceBindings>,
     raw: &'a [Bytes],
     prior: &'a [(StateSlot, std::ops::Range<usize>)],
     candidate: &'a [(StateSlot, std::ops::Range<usize>)],
-    intermediates: &'a [(Canonical47GdnIntermediate, usize)],
+    intermediates: &'a [(FixedPromptGdnIntermediate, usize)],
 }
 impl PostAttentionComponentReadback<'_> {
     pub fn arithmetic(&self) -> PostAttentionArithmetic {
         self.arithmetic
     }
-    pub fn intermediate(&self, key: Canonical47GdnIntermediate) -> Result<&[u8]> {
+    pub fn intermediate(&self, key: FixedPromptGdnIntermediate) -> Result<&[u8]> {
         let (_, index) = self
             .intermediates
             .iter()
@@ -108,7 +106,7 @@ impl PostAttentionComponentReadback<'_> {
         }
         Ok(&bytes[..])
     }
-    pub fn record(&self) -> &Arc<RecordedVllm08Model> {
+    pub fn record(&self) -> &Arc<SourceBindings> {
         self.record
     }
     pub fn value(&self, id: ValueId) -> Result<&[u8]> {
@@ -127,7 +125,7 @@ impl PostAttentionComponentReadback<'_> {
             .raw
             .get(13)
             .ok_or_else(|| Error::State("completed unrounded dual sum absent".into()))?;
-        if bytes.len() != self.record.call().rows() * self.arithmetic.kind().columns() * 4 {
+        if bytes.len() != self.record.call().rows().len() * self.arithmetic.kind().columns() * 4 {
             return Err(Error::State("unrounded dual sum dense F32 extent".into()));
         }
         Ok(&bytes[..])
@@ -164,8 +162,7 @@ enum Outcome {
 /// Expected outputs are available ONLY inside original trusted completion.
 pub async fn qualify_post_attention_component<F>(
     device: Device,
-    source: BoundFullModelSource,
-    record: Arc<RecordedVllm08Model>,
+    recipe: Arc<ComponentRecipe>,
     arithmetic: PostAttentionArithmetic,
     inputs: CubinQualificationInputs,
     cancelled: Option<&AtomicBool>,
@@ -176,8 +173,7 @@ where
 {
     match run(
         device,
-        source,
-        record,
+        recipe,
         inputs,
         cancelled,
         validate,
@@ -197,9 +193,8 @@ where
 /// The caller must independently close its original reference; no pin is created.
 pub async fn qualify_qwen2b_post_attention_component_arithmetic<F>(
     device: Device,
-    source: BoundFullModelSource,
-    record: Arc<RecordedVllm08Model>,
-    arithmetic: crate::vllm_cuda_gdn::Qwen2bGdnArithmetic,
+    recipe: Arc<ComponentRecipe>,
+    arithmetic: crate::cuda::gdn::Qwen2bGdnArithmetic,
     inputs: CubinQualificationInputs,
     cancelled: Option<&AtomicBool>,
     validate: F,
@@ -209,8 +204,7 @@ where
 {
     qualify_post_attention_component(
         device,
-        source,
-        record,
+        recipe,
         PostAttentionArithmetic::Qwen2bExplicit(arithmetic),
         inputs,
         cancelled,
@@ -221,8 +215,7 @@ where
 
 async fn run<F>(
     device: Device,
-    source: BoundFullModelSource,
-    record: Arc<RecordedVllm08Model>,
+    recipe: Arc<ComponentRecipe>,
     inputs: CubinQualificationInputs,
     cancelled: Option<&AtomicBool>,
     validate: F,
@@ -237,26 +230,11 @@ where
         probe,
     } = mode;
     not_cancelled(cancelled)?;
-    match arithmetic.explicit_qwen2b() {
-        Some(owned) => crate::resident_program::qwen2b_component::validate_qwen2b_post_attention_component_arithmetic_source(
-            &source, &record, owned,
-        )?,
-        None => validate_post_attention_component_source(&source, &record, arithmetic.kind())?,
-    }
+    validate_component(&recipe)?;
+    arithmetic.require_binding(&recipe)?;
+    let source = recipe.source().clone();
+    let record = recipe.bindings().clone();
     if fault != Some(PostAttentionComponentFault::AdmissionPressure) {
-        let recipe = match arithmetic.explicit_qwen2b() {
-            Some(owned) => ComponentRecipe::bind_qwen2b_post_attention_arithmetic(
-                source.clone(),
-                record.clone(),
-                owned,
-            )?,
-            None => ComponentRecipe::bind_post_attention(
-                source.clone(),
-                record.clone(),
-                arithmetic.kind(),
-            )?,
-        };
-        arithmetic.require_binding(&recipe)?;
         validate_images(&recipe, &inputs)?;
     }
     validate_provider(&device)?;
@@ -267,7 +245,7 @@ where
     }
     let service = ResidentService::new_pinned_cuda(
         device,
-        source.source().source_identity(),
+        source.source_identity(),
         ResourceOwner::new("source-post-attention", "unpublished-eight-node-component")?,
         PROVIDER_BYTES,
         inputs.device_cap,
@@ -294,28 +272,8 @@ where
     )?;
     let mut slot = ticket.wait().await?;
     slot.begin_submission()?;
-    let program = match arithmetic.explicit_qwen2b() {
-        Some(owned) => {
-            ResidentProgram::prepare_qwen2b_post_attention_component_arithmetic(
-                service.clone(),
-                source.clone(),
-                record.clone(),
-                owned,
-                cancelled,
-            )
-            .await?
-        }
-        None => {
-            ResidentProgram::prepare_post_attention_component(
-                service.clone(),
-                source.clone(),
-                record.clone(),
-                arithmetic.kind(),
-                cancelled,
-            )
-            .await?
-        }
-    };
+    let program =
+        ResidentProgram::prepare_component(service.clone(), recipe.clone(), cancelled).await?;
     slot.finish()?;
     let states = program.budget().states.clone();
     let state_bytes = program.budget().prior_state_bytes;
@@ -350,21 +308,11 @@ where
     }
     not_cancelled(cancelled)?;
     let candidate = model.allocate_state(false).await?;
-    let invocation = record.call().request();
-    let attempt = session.authority.begin_advance(invocation.rows() as u64)?;
-    let schedule = match arithmetic.kind() {
-        ComponentKind::Qwen2b => GdnAttemptSchedule::new_initial_qwen2b_component(
-            &source,
-            attempt.clone(),
-            invocation.clone(),
-        )?,
-        ComponentKind::Canonical47(a) => GdnAttemptSchedule::new_initial_canonical47_component(
-            &source,
-            attempt.clone(),
-            invocation.clone(),
-            a,
-        )?,
-    };
+    let invocation = record.call();
+    let attempt = session
+        .authority
+        .begin_advance(invocation.rows().len() as u64)?;
+    let schedule = GdnAttemptSchedule::new_initial_component(&recipe, attempt.clone())?;
     let phase_binding = AttemptPhaseBinding::new(schedule.clone(), 0, None)?;
     let ticket = service.queue().submit(
         service.budget(),
@@ -386,10 +334,10 @@ where
             candidate: &candidate,
             plan: workspace.program.plan(),
             invocation,
-            phase: match (arithmetic.kind(), invocation.rows()) {
-                (ComponentKind::Qwen2b, 1) => crate::vllm_cuda_gdn::VllmGdnPhase::InitialOne,
-                (ComponentKind::Qwen2b, 64) => crate::vllm_cuda_gdn::VllmGdnPhase::Initial64,
-                _ => crate::vllm_cuda_gdn::VllmGdnPhase::Initial47,
+            phase: match (arithmetic.kind(), invocation.rows().len()) {
+                (ComponentKind::Qwen2b, 1) => crate::cuda::gdn::GdnPhase::InitialOne,
+                (ComponentKind::Qwen2b, 64) => crate::cuda::gdn::GdnPhase::Initial64,
+                _ => crate::cuda::gdn::GdnPhase::FixedPrompt,
             },
             nodes: [4, 5],
         },
@@ -426,16 +374,16 @@ where
             .flat_map(|d| d.leases.iter().cloned().map(|l| (l, DeviceAccess::Write))),
     );
     let parameters = RuntimeParameters {
-        token: invocation.teachers().ids()[0],
+        token: invocation.rows().ids()[0],
         position: 0,
-        valid_tokens: invocation.rows(),
+        valid_tokens: invocation.rows().len(),
     };
     workspace
         .program
         .validate_runtime(service.client(), parameters, &bindings)?;
     let mut reads = body.readbacks()?;
-    let intermediates = if matches!(arithmetic, PostAttentionArithmetic::Canonical47(_)) {
-        body.append_canonical47_diagnostics(&mut reads)?
+    let intermediates = if matches!(arithmetic, PostAttentionArithmetic::FixedPrompt(_)) {
+        body.append_fixed_prompt_diagnostics(&mut reads)?
     } else {
         Vec::new()
     };
@@ -602,7 +550,7 @@ where
     let (dispatches, native_launches, rows) = (
         submitted.dispatches,
         submitted.fused_dispatches,
-        invocation.rows(),
+        invocation.rows().len(),
     );
     drop(submitted);
     drop(rereads);
@@ -643,13 +591,13 @@ where
             PostAttentionArithmetic::Qwen2bOwned | PostAttentionArithmetic::Qwen2bExplicit(_) => {
                 "Original2B"
             }
-            PostAttentionArithmetic::Canonical47(_) => "ObservedOriginal47",
+            PostAttentionArithmetic::FixedPrompt(_) => "ObservedOriginal47",
         },
         original_selected_ptx_equals_owned_tuple: match arithmetic {
             PostAttentionArithmetic::Qwen2bOwned | PostAttentionArithmetic::Qwen2bExplicit(_) => {
                 None
             }
-            PostAttentionArithmetic::Canonical47(_) => Some(false),
+            PostAttentionArithmetic::FixedPrompt(_) => Some(false),
         },
         parent_model_accepted: false,
         rows,

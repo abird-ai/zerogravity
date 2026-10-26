@@ -4,20 +4,20 @@ use crate::resident_inference::native_fragment::NaturalColdSnapshot;
 use crate::resident_program::native_full::FullModelProgram;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Vllm08NaturalReuseFault {
+pub enum NaturalReuseFault {
     CancelBeforeCommit,
     RestoreReplay,
     UnknownAfterConvolution,
     CancelBeforeRecurrent,
 }
-pub struct Vllm08NaturalReuseFaultExecution<'a> {
+pub struct NaturalReuseFaultExecution<'a> {
     pub rotary: Option<RotaryOutcome>,
-    pub fault: Vllm08NaturalReuseFault,
+    pub fault: NaturalReuseFault,
     pub cancelled: Option<&'a AtomicBool>,
 }
 #[derive(Debug)]
-pub struct Vllm08NaturalReuseFaultOutcome {
-    pub fault: Vllm08NaturalReuseFault,
+pub struct NaturalReuseFaultOutcome {
+    pub fault: NaturalReuseFault,
     pub status: &'static str,
     pub roots: [RootBinding; 2],
     pub completed_calls: usize,
@@ -46,7 +46,7 @@ struct Witness {
     body: Weak<FullModelProgram>,
     input: Weak<NaturalCallInput>,
     state: Weak<NaturalCallState>,
-    source: Weak<OriginalWindowModelSource>,
+    source: zerogravity_artifacts::source_weights::SourceOwnerWitness,
     service: Weak<ResidentService>,
     snapshot: NaturalColdSnapshot,
     current: Vec<BufferLeaseId>,
@@ -55,35 +55,37 @@ struct Witness {
     shared_ids: bool,
 }
 
-pub async fn qualify_vllm08_natural_reuse_fault<F>(
+pub async fn qualify_natural_reuse_fault<F>(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    records: [RecordedVllm08Model; 5],
-    inputs: Vllm08ModelInputs,
-    execution: Vllm08NaturalReuseFaultExecution<'_>,
+    scopes: SourceModelScopes,
+    inputs: SourceModelInputs,
+    execution: NaturalReuseFaultExecution<'_>,
     mut validate: F,
-) -> Result<Vllm08NaturalReuseFaultOutcome>
+) -> Result<NaturalReuseFaultOutcome>
 where
-    F: FnMut(Vllm08ModelReadback<'_>) -> Result<()>,
+    F: FnMut(SourceModelReadback<'_>) -> Result<()>,
 {
-    let Vllm08NaturalReuseFaultExecution {
+    let NaturalReuseFaultExecution {
         rotary,
         fault,
         cancelled,
     } = execution;
     not_cancelled(cancelled)?;
-    source.require_vllm08_full_source()?;
-    let _controls = source.source().reserve_workspace(2 * 1024 * 1024)?;
+    let (source, records) = scopes.into_parts();
+    let _controls = source
+        .reserve_workspace(2 * 1024 * 1024)?
+        .into_observation_workspace();
     let mut witness = None;
-    let result: Result<Vllm08NaturalReuseFaultOutcome> = async {
-        let prompt=records[0].call().request().teachers().ids().to_vec();
+    let result: Result<NaturalReuseFaultOutcome> = async {
+        let prompt=records[0].call().rows().ids().to_vec();
         if prompt.len()!=1 {return Err(Error::State("reuse fault requires original initialone prompt".into()));}
-        let PreparedReusableNatural{model,storage}=prepare_reusable_natural_cold(device,source.clone(),records,inputs,rotary,cancelled).await?;
+        let initial_record = records[0].clone();
+        let PreparedReusableNatural{model,storage}=prepare_reusable_natural_cold(device,SourceModelScopes::new(source.clone(),records)?,inputs,rotary,cancelled).await?;
         let service=model.service.clone();let key=service.physical_key();
         let mut first=storage.session(cancelled).await?;
         let mut second=storage.session(cancelled).await?;
         let initial=[first.binding(),second.binding()];
-        let input=first.bind_natural_prompt(source.clone(),NaturalSlot::InitialOne,&prompt,cancelled)?;
+        let input=first.bind_natural_prompt(initial_record.clone(),NaturalSlot::InitialOne,cancelled)?;
         let state=first.bind_fresh_natural_state(input.clone(),cancelled).await?;
         state.require_reusable_state()?;
         let mut first_body=None;
@@ -102,11 +104,11 @@ where
         }
         drop(committed);drop(first_body);
         let snapshot=second.snapshot();
-        let input=second.bind_natural_prompt(source.clone(),NaturalSlot::InitialOne,&prompt,cancelled)?;
+        let input=second.bind_natural_prompt(initial_record.clone(),NaturalSlot::InitialOne,cancelled)?;
         let state=second.bind_fresh_natural_state(input.clone(),cancelled).await?;
         state.require_reusable_state()?;
         let roots=[first.binding(),second.binding()];
-        let uncertain=matches!(fault,Vllm08NaturalReuseFault::UnknownAfterConvolution|Vllm08NaturalReuseFault::CancelBeforeRecurrent);
+        let uncertain=matches!(fault,NaturalReuseFault::UnknownAfterConvolution|NaturalReuseFault::CancelBeforeRecurrent);
         let mut actual_body=None;
         let mut shared_ids=false;
         let prepared=second.prepare_natural_call_bound(input.clone(),state.clone(),storage.completion_owner(),|| {
@@ -117,10 +119,10 @@ where
                 return Err(Error::State("reuse fault requires same scratch and new immutable packet".into()));
             }
             if uncertain {
-                body.arm_fault(if fault==Vllm08NaturalReuseFault::UnknownAfterConvolution {1}else{2})?;
+                body.arm_fault(if fault==NaturalReuseFault::UnknownAfterConvolution {1}else{2})?;
                 witness=Some(Witness {
                     storage:Arc::downgrade(&storage),body:Arc::downgrade(&body),input:Arc::downgrade(&input),
-                    state:Arc::downgrade(&state),source:Arc::downgrade(&source),service:Arc::downgrade(&service),
+                    state:Arc::downgrade(&state),source:source.weak_owner(),service:Arc::downgrade(&service),
                     snapshot:storage.quarantine_snapshot()?,
                     current:body.accesses()?.iter().map(|(l,_)|l.id()).collect(),roots,roots_unchanged:false,shared_ids,
                 });
@@ -149,14 +151,14 @@ where
         let mut stale_inputs_refused=0;
         let mut preserved=vec![kept.clone()];
         let committed_calls = match fault {
-            Vllm08NaturalReuseFault::CancelBeforeCommit=>{
+            NaturalReuseFault::CancelBeforeCommit=>{
                 let cancel=AtomicBool::new(true);
                 if !matches!(second.commit_natural_call(prepared,Some(&cancel)),Err(Error::State(m)) if m=="natural full24 cancelled before publication") || second.binding()!=roots[1] {
                     return Err(Error::State("reuse beforecommit cancellation published candidate".into()));
                 }
                 2
             }
-            Vllm08NaturalReuseFault::RestoreReplay=>{
+            NaturalReuseFault::RestoreReplay=>{
                 let committed=second.commit_natural_call(prepared,cancelled)?;
                 if committed.root().root()!=1 {return Err(Error::State("reuse restore actual commit absent".into()));}
                 let old_feedback=committed.feedback().cloned().ok_or_else(||Error::State("reuse restore committed packet absent".into()))?;
@@ -178,9 +180,9 @@ where
         // Fresh claims/packets on the original restored/current root. A second
         // candidate completes privately while the first private Ready remains.
         let retry_base=second.binding();
-        let PreparedInitial{prepared:retry,body:retry_body,input:retry_input,state:retry_state}=prepare_initial(&second,&source,&storage,&prompt,&mut validate,cancelled).await?;
+        let PreparedInitial{prepared:retry,body:retry_body,input:retry_input,state:retry_state}=prepare_initial(&second,&initial_record,&storage,&mut validate,cancelled).await?;
         if value_ids(&retry_body)?!=first_ids {return Err(Error::State("reuse retry replaced shared scratch".into()));}
-        let PreparedInitial{prepared:competing,body:competing_body,input:competing_input,state:competing_state}=prepare_initial(&second,&source,&storage,&prompt,&mut validate,cancelled).await?;
+        let PreparedInitial{prepared:competing,body:competing_body,input:competing_input,state:competing_state}=prepare_initial(&second,&initial_record,&storage,&mut validate,cancelled).await?;
         if value_ids(&competing_body)?!=first_ids || retry_body.publication_packet()?.id()==competing_body.publication_packet()?.id()
             ||retry_state.outputs().iter().any(|a| competing_state.outputs().iter().any(|b| a.id()==b.id())) {
             return Err(Error::State("reuse competing candidates/packets alias".into()));
@@ -210,7 +212,7 @@ where
         drop(service);
         let physical=zerogravity_core::resource_arbiter::ResourceArbiter::process_shared().snapshot(&key)?;
         if physical.reserved!=0||physical.fenced {return Err(Error::State("reuse safe fault physical final0".into()));}
-        Ok(Vllm08NaturalReuseFaultOutcome {fault,status:"SAFE_REUSE_REFUSED_FINAL0",roots:final_roots,completed_calls:4,committed_calls,
+        Ok(NaturalReuseFaultOutcome {fault,status:"SAFE_REUSE_REFUSED_FINAL0",roots:final_roots,completed_calls:4,committed_calls,
             preserved_packets,stale_inputs_refused,candidate_replay_refused,fresh_retry_committed:true,competing_commit_refused,shared_temporary_ids_reused:shared_ids,
             all_current_owners_retained:false,current_candidate_uninitialized:false,native_launches,convolution_dispatches,
             pending_events:0,quarantined_handles:0,quarantined_completion_owners:0,resident_bytes,physical_reserved_bytes:physical.reserved,
@@ -218,14 +220,13 @@ where
     }.await;
     if !matches!(
         fault,
-        Vllm08NaturalReuseFault::UnknownAfterConvolution
-            | Vllm08NaturalReuseFault::CancelBeforeRecurrent
+        NaturalReuseFault::UnknownAfterConvolution | NaturalReuseFault::CancelBeforeRecurrent
     ) {
         return result;
     }
-    let intended = matches!((&result,fault),(Err(Error::State(m)),Vllm08NaturalReuseFault::UnknownAfterConvolution)
+    let intended = matches!((&result,fault),(Err(Error::State(m)),NaturalReuseFault::UnknownAfterConvolution)
         if m=="deliberate full24 unknown after actual source Conv and canonical copy")
-        || matches!((&result,fault),(Err(Error::State(m)),Vllm08NaturalReuseFault::CancelBeforeRecurrent)
+        || matches!((&result,fault),(Err(Error::State(m)),NaturalReuseFault::CancelBeforeRecurrent)
         if m=="closed original cubin qualification cancelled");
     if !intended {
         return result;
@@ -237,7 +238,12 @@ where
     )
 }
 
-fn inspect(w: Witness, fault: Vllm08NaturalReuseFault) -> Result<Vllm08NaturalReuseFaultOutcome> {
+fn inspect(w: Witness, fault: NaturalReuseFault) -> Result<NaturalReuseFaultOutcome> {
+    if !w.source.retained() {
+        return Err(Error::State(
+            "unknown flight lost actual source backing".into(),
+        ));
+    }
     let storage = w
         .storage
         .upgrade()
@@ -254,10 +260,7 @@ fn inspect(w: Witness, fault: Vllm08NaturalReuseFault) -> Result<Vllm08NaturalRe
         .state
         .upgrade()
         .ok_or_else(|| Error::State("reuse original flight lost canonical candidate".into()))?;
-    let source = w
-        .source
-        .upgrade()
-        .ok_or_else(|| Error::State("reuse original flight lost source".into()))?;
+
     let service = w
         .service
         .upgrade()
@@ -298,7 +301,7 @@ fn inspect(w: Witness, fault: Vllm08NaturalReuseFault) -> Result<Vllm08NaturalRe
         || body.native_launches() != 2
         || body.convolution_dispatches() == 0
         || !Arc::ptr_eq(state.input(), &input)
-        || !Arc::ptr_eq(input.source(), &source)
+        || !w.source.same_issuer(input.source())
         || !Arc::ptr_eq(body.record(), input.record())
         || service.pending_events()? != 1
         || service.ensure_usable().is_ok()
@@ -311,7 +314,7 @@ fn inspect(w: Witness, fault: Vllm08NaturalReuseFault) -> Result<Vllm08NaturalRe
             "reuse original uncertain current graph/ownership/root/fence differs".into(),
         ));
     }
-    Ok(Vllm08NaturalReuseFaultOutcome {
+    Ok(NaturalReuseFaultOutcome {
         fault,
         status: "UNKNOWN_REUSE_RETAINED_NO_PUBLICATION",
         roots: w.roots,
@@ -346,17 +349,16 @@ struct PreparedInitial {
 }
 async fn prepare_initial<F>(
     session: &ResidentSession,
-    source: &Arc<OriginalWindowModelSource>,
+    initial_record: &Arc<SourceBindings>,
     storage: &Arc<ReusableNaturalStorage>,
-    prompt: &[u32],
     validate: &mut F,
     cancelled: Option<&AtomicBool>,
 ) -> Result<PreparedInitial>
 where
-    F: FnMut(Vllm08ModelReadback<'_>) -> Result<()>,
+    F: FnMut(SourceModelReadback<'_>) -> Result<()>,
 {
     let input =
-        session.bind_natural_prompt(source.clone(), NaturalSlot::InitialOne, prompt, cancelled)?;
+        session.bind_natural_prompt(initial_record.clone(), NaturalSlot::InitialOne, cancelled)?;
     let state = session
         .bind_fresh_natural_state(input.clone(), cancelled)
         .await?;

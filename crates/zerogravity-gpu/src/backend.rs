@@ -41,21 +41,3 @@ pub(crate) fn validate_build_provider(device: &Device) -> Result<()> {
     )
 ))]
 pub(crate) mod final_native;
-#[cfg(all(
-    any(
-        feature = "gemma-bf16-qualification",
-        feature = "qwen-source-qualification"
-    ),
-    feature = "hip",
-    target_os = "linux"
-))]
-pub(crate) mod hip_native_policy;
-#[cfg(all(
-    any(
-        feature = "gemma-bf16-qualification",
-        feature = "qwen-source-qualification"
-    ),
-    feature = "vulkan",
-    target_os = "linux"
-))]
-pub(crate) mod vulkan_native_policy;

@@ -158,7 +158,8 @@ pub(super) async fn qualify(
         ));
     }
     let vocabulary_kind = model.tensor_info("token_embd.weight")?.kind;
-    let cuda_blocks = crate::activation_quant_fused::is_cuda_service(resident.service.client());
+    let cuda_blocks =
+        crate::quantization::activation_fused::is_cuda_service(resident.service.client());
     // CUDA block prepare1 + composites1 reduces this exact suffix to12.
     let expected_savings = match (vocabulary_kind, cuda_blocks) {
         (

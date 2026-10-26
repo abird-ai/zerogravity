@@ -44,10 +44,9 @@ use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, Res
 use crate::async_bridge::InFlightRegion;
 use crate::gdn_conv;
 use crate::host_descriptor::{DeviceStep, DynamicStep, StaticSource};
-use crate::mixed_ops;
+
 use crate::physical_queue::{PhysicalQueue, QueueStats, queue_for};
 use crate::physical_service::PhysicalServiceBudget;
-use crate::q4_q8;
 use crate::residency::{ResidencyKey, ResidencyStats, ResidentCache};
 use crate::rms_norm;
 use crate::source_accumulation::{self, SourceAccumulation};
@@ -93,8 +92,8 @@ impl Drop for ResidentWeightLease {
 }
 
 enum PreparedStep {
-    Q4(q4_q8::PreparedQ4Q8),
-    Mixed(mixed_ops::Prepared),
+    Q4(crate::quantization::q4_0::PreparedQ4Q8),
+    Mixed(crate::quantization::projection::Prepared),
     Device(DeviceStep),
 }
 
@@ -206,7 +205,7 @@ impl PreparedStep {
                 // SAFETY: rows, blocks and every physical output index were
                 // verified against the source GGUF before dispatch.
                 unsafe {
-                    q4_q8::source_q4_q8_gemv::launch_unchecked(
+                    crate::quantization::q4_0::source_q4_q8_gemv::launch_unchecked(
                         client,
                         grid,
                         threads,
@@ -227,7 +226,7 @@ impl PreparedStep {
                     dynamic_bytes = p.input_f32.len() * 4;
                     // SAFETY: F32 row geometry is validated in prepare().
                     unsafe {
-                        mixed_ops::f32_ggml_dot_gemv::launch_unchecked(
+                        crate::projection_f32::f32_ggml_dot_gemv::launch_unchecked(
                             client,
                             grid,
                             threads,
@@ -252,7 +251,7 @@ impl PreparedStep {
                             // SAFETY: source Q4_1, dynamic Q8_1 and offsets
                             // were validated against the matrix geometry.
                             unsafe {
-                                mixed_ops::q4_1_q8_1_gemv::launch_unchecked(
+                                crate::quantization::q4_1::q4_1_q8_1_gemv::launch_unchecked(
                                     client,
                                     grid,
                                     threads,
@@ -274,7 +273,7 @@ impl PreparedStep {
                             // SAFETY: original source block/row geometry is
                             // checked before this Q8_0 source kernel launch.
                             unsafe {
-                                mixed_ops::q8_0_q8_0_gemv::launch_unchecked(
+                                crate::quantization::q8_0::q8_0_q8_0_gemv::launch_unchecked(
                                     client,
                                     grid,
                                     threads,
@@ -295,7 +294,7 @@ impl PreparedStep {
                             // SAFETY: original 210-byte Q6_K source blocks
                             // and 256-code signed Q8_K inputs were checked.
                             unsafe {
-                                mixed_ops::q6_k_q8_k_gemv::launch_unchecked(
+                                crate::quantization::q6_k::q6_k_q8_k_gemv::launch_unchecked(
                                     client,
                                     grid,
                                     threads,
@@ -436,7 +435,7 @@ impl CubeResidentProvider {
     }
 
     #[cfg(feature = "qualification")]
-    pub(crate) fn with_device_activation_quantization(mut self, enabled: bool) -> Self {
+    pub fn with_device_activation_quantization(mut self, enabled: bool) -> Self {
         self.device_activation = enabled;
         self
     }
@@ -445,10 +444,7 @@ impl CubeResidentProvider {
     /// Normal source-model providers default to the FP64 wide kernel; the
     /// native shader F32 FMA is known to differ on the AMD Renoir RADV card.
     #[cfg(feature = "qualification")]
-    pub(crate) fn with_source_diagnostic_accumulation(
-        mut self,
-        accumulation: SourceAccumulation,
-    ) -> Self {
+    pub fn with_source_diagnostic_accumulation(mut self, accumulation: SourceAccumulation) -> Self {
         self.numeric_mode = accumulation;
         self
     }
@@ -587,7 +583,7 @@ impl CubeResidentProvider {
                     "device source quantization requires shader UInt64".into(),
                 ));
             }
-            Some(crate::activation_quant::ActivationLayout::new(
+            Some(crate::quantization::activation::ActivationLayout::new(
                 region.kind,
                 region.columns,
                 region.rows,
@@ -1369,7 +1365,7 @@ impl CubeResidentProvider {
     /// Diagnostic-only scalar source-input fixture. Never supplies model output.
     /// Uses the same physical queue/admission/retention/readback as model regions.
     #[cfg(feature = "qualification")]
-    pub(crate) async fn qualify_softmax_reciprocals(&self) -> Result<()> {
+    pub async fn qualify_softmax_reciprocals(&self) -> Result<()> {
         let mut inputs = vec![f64::from_bits(0x3ff0000018000024)];
         for e in 0..=12u64 {
             let bits = (1023 + e) << 52;

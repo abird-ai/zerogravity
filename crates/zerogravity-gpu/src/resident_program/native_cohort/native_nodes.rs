@@ -1,13 +1,13 @@
 //! Source-typed native operands, one binding per node in the original loop.
 use super::super::*;
 use super::{attention::CohortAttention, head_input::CohortHeadInput, values::CohortValues};
-use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, short_hf::ShortHfCallInput};
+use crate::cuda::native::cohort_native::{CohortNativeLibrary, CohortNativeSite, Role};
+use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextCallInput};
 use crate::resident_leases::{ResidentLease, TiedWeight};
-use crate::vllm_cuda_qualification::cohort_native::{CohortNativeLibrary, CohortNativeSite, Role};
 use std::sync::atomic::AtomicBool;
-use zerogravity_core::accelerator::program::{StateEffect, Vllm08Kind, Vllm08Projection};
+use zerogravity_core::accelerator::program::SourceOperatorKind;
+use zerogravity_core::accelerator::program::StateEffect;
 use zerogravity_core::device_events::DeviceAccess;
-use zerogravity_model_qwen35::original_binding::QwenMatrixRole;
 pub(super) struct CohortNativeNodes {
     values: Arc<CohortValues>,
     _library: Arc<CohortNativeLibrary>,
@@ -21,7 +21,7 @@ type CohortNodeCensus = Vec<(usize, Vec<(ResidentLease, DeviceAccess)>)>;
 
 impl CohortNativeNodes {
     pub(super) fn bind(
-        inputs: &[Arc<ShortHfCallInput>],
+        inputs: &[Arc<TextCallInput>],
         values: Arc<CohortValues>,
         library: Arc<CohortNativeLibrary>,
         head: Arc<CohortHeadInput>,
@@ -32,35 +32,39 @@ impl CohortNativeNodes {
         values.require_inputs(inputs)?;
         let mut nodes = BTreeMap::new();
         for (index, node) in inputs[0].record().plan().nodes().iter().enumerate() {
-            let PlanOperation::TypedVllm08 { descriptor, .. } = &node.operation else {
+            let Some(descriptor) = inputs[0].record().operator(index)? else {
                 continue;
             };
             let kind = descriptor.kind();
             if !matches!(
                 kind,
-                Vllm08Kind::Projection(_)
-                    | Vllm08Kind::SiluAndMul
-                    | Vllm08Kind::AttentionQk
-                    | Vllm08Kind::KvAppend
-                    | Vllm08Kind::FlashAttention
-                    | Vllm08Kind::Sigmoid
-                    | Vllm08Kind::Multiply
+                SourceOperatorKind::Projection { .. }
+                    | SourceOperatorKind::SiluAndMul { .. }
+                    | SourceOperatorKind::QkRmsRotaryGated(_)
+                    | SourceOperatorKind::KvAppend { .. }
+                    | SourceOperatorKind::FlashAttention { .. }
+                    | SourceOperatorKind::Sigmoid { .. }
+                    | SourceOperatorKind::Multiply { .. }
             ) {
                 continue;
             }
-            let mut roles = if let Some(layer) = descriptor.layer().filter(|l| {
-                l.is_attention()
-                    && matches!(
-                        kind,
-                        Vllm08Kind::AttentionQk
-                            | Vllm08Kind::KvAppend
-                            | Vllm08Kind::FlashAttention
-                            | Vllm08Kind::Sigmoid
-                            | Vllm08Kind::Multiply
-                    )
-            }) {
+            let attention_layer = inputs[0]
+                .scope()
+                .attention_sites()
+                .find(|(_, site)| site.nodes.contains(&index))
+                .map(|(layer, _)| layer);
+            let mut roles = if matches!(
+                kind,
+                SourceOperatorKind::QkRmsRotaryGated(_)
+                    | SourceOperatorKind::KvAppend { .. }
+                    | SourceOperatorKind::FlashAttention { .. }
+                    | SourceOperatorKind::Sigmoid { .. }
+                    | SourceOperatorKind::Multiply { .. }
+            ) {
+                let layer = attention_layer
+                    .ok_or_else(|| Error::State("B4 actual attention SSA site absent".into()))?;
                 attention
-                    .get(&layer.index())
+                    .get(&layer)
                     .ok_or_else(|| Error::State("B4 original attention binding absent".into()))?
                     .roles(index)?
             } else {
@@ -68,17 +72,13 @@ impl CohortNativeNodes {
             };
             for input in inputs {
                 let actual = &input.record().plan().nodes()[index];
-                let PlanOperation::TypedVllm08 {
-                    descriptor: actual_descriptor,
-                    ..
-                } = &actual.operation
-                else {
-                    return Err(Error::State("B4 every real native source node".into()));
-                };
+                let actual_descriptor = input
+                    .record()
+                    .operator(index)?
+                    .ok_or_else(|| Error::State("B4 every real native source node".into()))?;
                 actual_descriptor.validate()?;
                 if actual_descriptor.call() != input.call()
                     || actual_descriptor.kind() != kind
-                    || actual_descriptor.layer() != descriptor.layer()
                     || actual.inputs != node.inputs
                     || actual.outputs != node.outputs
                 {
@@ -86,29 +86,13 @@ impl CohortNativeNodes {
                         "B4 per-row native descriptor/producers differ".into(),
                     ));
                 }
-                if let Vllm08Kind::Projection(projection) = kind {
-                    let weight = if projection == Vllm08Projection::Head {
-                        let matrices = actual_descriptor.matrices();
-                        if matrices.len() != 1
-                            || !Arc::ptr_eq(input.source().source(), tied.source())
-                        {
-                            return Err(Error::State(
-                                "B4 full Head original tied source role".into(),
-                            ));
-                        }
-                        input
-                            .source()
-                            .source()
-                            .validate_matrix(QwenMatrixRole::Output, &matrices[0])?;
-                        input
-                            .source()
-                            .source()
-                            .validate_matrix(QwenMatrixRole::Embedding, &matrices[0])?;
-                        tied.matrix().require(
-                            input.source().source().source(),
+                if let SourceOperatorKind::Projection { selected_row } = kind {
+                    let weight = if selected_row.is_some() {
+                        super::require_tied_member(
+                            input,
+                            actual_descriptor,
+                            &tied,
                             values.service(),
-                            248320,
-                            input.call().model_profile().hidden_size(),
                         )?;
                         tied.matrix().lease()
                     } else {
@@ -124,7 +108,10 @@ impl CohortNativeNodes {
                     }
                 }
             }
-            if matches!(kind, Vllm08Kind::Projection(_) | Vllm08Kind::SiluAndMul) {
+            if matches!(
+                kind,
+                SourceOperatorKind::Projection { .. } | SourceOperatorKind::SiluAndMul { .. }
+            ) {
                 let ([input], [output]) = (node.inputs.as_slice(), node.outputs.as_slice()) else {
                     return Err(Error::State(
                         "B4 native actual unary projection/ACT SSA".into(),
@@ -132,7 +119,12 @@ impl CohortNativeNodes {
                 };
                 roles.insert(
                     Role::X,
-                    if kind == Vllm08Kind::Projection(Vllm08Projection::Head) {
+                    if matches!(
+                        kind,
+                        SourceOperatorKind::Projection {
+                            selected_row: Some(_)
+                        }
+                    ) {
                         head.lease().clone()
                     } else {
                         values.lease(*input)?.clone()

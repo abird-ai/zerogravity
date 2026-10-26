@@ -5,8 +5,8 @@
 //! live quantization on the host or publishes a result. Every handle returned
 //! by `handles` must be retained by the existing InFlightRegion BEFORE calling
 //! `launch_prepare`; both status arrays must join its actual readback cohort.
-use crate::activation_quant::{self, ActivationLayout, PARAMETER_WORDS};
-use crate::activation_quant_fused::{BlockBindings, PreparedBlocks};
+use crate::quantization::activation::{ActivationLayout, PARAMETER_WORDS};
+use crate::quantization::activation_fused::{BlockBindings, PreparedBlocks};
 use cubecl::{client::Client, prelude::*, server::Handle};
 use zerogravity_artifacts::quant::QuantKind;
 use zerogravity_core::Error;
@@ -134,7 +134,7 @@ impl DeviceActivation {
         biases: &[f32],
     ) -> Result<Self> {
         Self::validate_inputs(layout, input, weight_scales, biases)?;
-        crate::activation_quant_fused::ensure_selected_capability(client)?;
+        crate::quantization::activation_fused::ensure_selected_capability(client)?;
         // Resolve every checked byte calculation before the first allocation.
         Self::admission_bytes(layout)?;
         let parameters_bytes = layout.blocks * PARAMETER_WORDS * 4;
@@ -302,7 +302,7 @@ impl DeviceActivation {
             if let Some(prepared) = &self.prepared_blocks {
                 dispatches += prepared.launch(client)?;
             } else {
-                activation_quant::block_parameters::launch_unchecked(
+                crate::quantization::activation::block_parameters::launch_unchecked(
                     client,
                     grid(layout.blocks),
                     threads,
@@ -314,7 +314,7 @@ impl DeviceActivation {
                     layout.signed_scale,
                 );
                 dispatches += 1;
-                activation_quant::block_scales::launch_unchecked(
+                crate::quantization::activation::block_scales::launch_unchecked(
                     client,
                     grid(layout.blocks),
                     threads,
@@ -324,7 +324,7 @@ impl DeviceActivation {
                     layout.signed_scale,
                 );
                 dispatches += 1;
-                activation_quant::scaled_inputs::launch_unchecked(
+                crate::quantization::activation::scaled_inputs::launch_unchecked(
                     client,
                     grid(layout.columns),
                     threads,
@@ -335,7 +335,7 @@ impl DeviceActivation {
                     layout.block_width,
                 );
                 dispatches += 1;
-                activation_quant::codes::launch_unchecked(
+                crate::quantization::activation::codes::launch_unchecked(
                     client,
                     grid(layout.columns),
                     threads,
@@ -345,7 +345,7 @@ impl DeviceActivation {
                 );
                 dispatches += 1;
                 if !layout.signed_scale {
-                    activation_quant::sum_products::launch_unchecked(
+                    crate::quantization::activation::sum_products::launch_unchecked(
                         client,
                         grid(layout.blocks),
                         threads,
@@ -354,7 +354,7 @@ impl DeviceActivation {
                         layout.blocks,
                     );
                     dispatches += 1;
-                    activation_quant::sum_halves::launch_unchecked(
+                    crate::quantization::activation::sum_halves::launch_unchecked(
                         client,
                         grid(layout.blocks),
                         threads,
@@ -366,7 +366,7 @@ impl DeviceActivation {
                     dispatches += 1;
                 }
             }
-            activation_quant::composites::launch_unchecked(
+            crate::quantization::activation::composites::launch_unchecked(
                 client,
                 grid(layout.rows),
                 threads,

@@ -28,7 +28,7 @@ pub use compiler::{CudaCompilationOptions, CudaCompiler, CudaRepresentation};
 pub use device::*;
 pub use owned_command::OwnedCudaQueue;
 #[cfg(target_os = "linux")]
-pub use owned_command::Vllm08WeightLayout;
+pub use owned_command::SourceWeightLayout;
 #[cfg(target_os = "linux")]
 pub use owned_command::{
     Bf16BlasSourceIdentity, Bf16BlasSources, Bf16GemmApi, Bf16GemmBindings, Bf16GemmInspection,
@@ -107,7 +107,7 @@ pub mod install {
 pub use owned_command::OwnedBf16BlasProvider;
 
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
-pub use owned_command::{Bf16MatrixLayout, ShortHfEmbeddingWidth};
+pub use owned_command::{Bf16MatrixLayout, TextEmbeddingWidth};
 
 pub use compute::context::{CompilerContextUsage, CudaCompilerContextPolicy};
 

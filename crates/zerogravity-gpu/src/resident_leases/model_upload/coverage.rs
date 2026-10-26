@@ -1,5 +1,5 @@
 //! Exact ordered source rows; checkpoint credit is private to real DMA caller.
-use cubecl::cuda::Vllm08WeightLayout;
+use cubecl::cuda::SourceWeightLayout;
 use zerogravity_core::{Error, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -11,14 +11,14 @@ pub(super) struct Region {
     pub bytes: usize,
 }
 pub(super) struct Coverage {
-    layout: Vllm08WeightLayout,
+    layout: SourceWeightLayout,
     member: usize,
     row: usize,
     completed_bytes: usize,
     pending: Option<Region>,
 }
 impl Coverage {
-    pub(super) fn new(layout: Vllm08WeightLayout) -> Self {
+    pub(super) fn new(layout: SourceWeightLayout) -> Self {
         Self {
             layout,
             member: 0,
@@ -29,17 +29,17 @@ impl Coverage {
     }
     pub(super) fn members(&self) -> &'static [usize] {
         match self.layout {
-            Vllm08WeightLayout::Vocabulary08 | Vllm08WeightLayout::Vocabulary2b => &[248320],
-            Vllm08WeightLayout::GdnQkvz | Vllm08WeightLayout::Qwen2bGdnQkvz => &[6144, 2048],
-            Vllm08WeightLayout::GdnBa | Vllm08WeightLayout::Qwen2bGdnBa => &[16, 16],
-            Vllm08WeightLayout::AttentionQkv | Vllm08WeightLayout::Qwen2bAttentionQkv => {
+            SourceWeightLayout::Vocabulary08 | SourceWeightLayout::Vocabulary2b => &[248320],
+            SourceWeightLayout::GdnQkvz | SourceWeightLayout::Qwen2bGdnQkvz => &[6144, 2048],
+            SourceWeightLayout::GdnBa | SourceWeightLayout::Qwen2bGdnBa => &[16, 16],
+            SourceWeightLayout::AttentionQkv | SourceWeightLayout::Qwen2bAttentionQkv => {
                 &[4096, 512, 512]
             }
-            Vllm08WeightLayout::MlpGateUp => &[3584, 3584],
-            Vllm08WeightLayout::Qwen2bMlpGateUp => &[6144, 6144],
-            Vllm08WeightLayout::Qwen2bMlpDown
-            | Vllm08WeightLayout::Qwen2bGdnOutput
-            | Vllm08WeightLayout::Qwen2bAttentionOutput => &[2048],
+            SourceWeightLayout::MlpGateUp => &[3584, 3584],
+            SourceWeightLayout::Qwen2bMlpGateUp => &[6144, 6144],
+            SourceWeightLayout::Qwen2bMlpDown
+            | SourceWeightLayout::Qwen2bGdnOutput
+            | SourceWeightLayout::Qwen2bAttentionOutput => &[2048],
             _ => &[1024],
         }
     }
@@ -132,13 +132,13 @@ mod tests {
     #[test]
     fn all_closed_member_windows_cover_original_rows_once_without_padding() {
         for (layout, count) in [
-            (Vllm08WeightLayout::GdnQkvz, 16),
-            (Vllm08WeightLayout::GdnBa, 2),
-            (Vllm08WeightLayout::GdnOutput, 4),
-            (Vllm08WeightLayout::AttentionQkv, 10),
-            (Vllm08WeightLayout::AttentionOutput, 4),
-            (Vllm08WeightLayout::MlpGateUp, 14),
-            (Vllm08WeightLayout::MlpDown, 8),
+            (SourceWeightLayout::GdnQkvz, 16),
+            (SourceWeightLayout::GdnBa, 2),
+            (SourceWeightLayout::GdnOutput, 4),
+            (SourceWeightLayout::AttentionQkv, 10),
+            (SourceWeightLayout::AttentionOutput, 4),
+            (SourceWeightLayout::MlpGateUp, 14),
+            (SourceWeightLayout::MlpDown, 8),
         ] {
             let mut c = Coverage::new(layout);
             let mut regions = 0;
@@ -166,7 +166,7 @@ mod tests {
     }
     #[test]
     fn member_reorder_gap_overlap_extent_and_uncredited_final_window_refuse() {
-        let mut c = Coverage::new(Vllm08WeightLayout::AttentionQkv);
+        let mut c = Coverage::new(SourceWeightLayout::AttentionQkv);
         let first = c.next().unwrap().unwrap();
         for bad in [
             Region { member: 1, ..first },
@@ -206,13 +206,13 @@ mod tests {
     fn qwen2b_ordered_members_and_non_mebibyte_down_tail_are_exact() {
         for (layout, members, expected_count, expected_tail) in [
             (
-                Vllm08WeightLayout::Qwen2bMlpGateUp,
+                SourceWeightLayout::Qwen2bMlpGateUp,
                 &[6144, 6144][..],
                 48,
                 (5888, 6144, 1048576),
             ),
             (
-                Vllm08WeightLayout::Qwen2bMlpDown,
+                SourceWeightLayout::Qwen2bMlpDown,
                 &[2048][..],
                 25,
                 (2040, 2048, 98304),
@@ -250,13 +250,13 @@ mod tests {
     #[test]
     fn full_2b_groups_use_authentic_member_order_and_2676_real_windows() {
         let layouts = [
-            (Vllm08WeightLayout::Qwen2bGdnQkvz, 32),
-            (Vllm08WeightLayout::Qwen2bGdnBa, 2),
-            (Vllm08WeightLayout::Qwen2bGdnOutput, 8),
-            (Vllm08WeightLayout::Qwen2bAttentionQkv, 20),
-            (Vllm08WeightLayout::Qwen2bAttentionOutput, 8),
-            (Vllm08WeightLayout::Qwen2bMlpGateUp, 48),
-            (Vllm08WeightLayout::Qwen2bMlpDown, 25),
+            (SourceWeightLayout::Qwen2bGdnQkvz, 32),
+            (SourceWeightLayout::Qwen2bGdnBa, 2),
+            (SourceWeightLayout::Qwen2bGdnOutput, 8),
+            (SourceWeightLayout::Qwen2bAttentionQkv, 20),
+            (SourceWeightLayout::Qwen2bAttentionOutput, 8),
+            (SourceWeightLayout::Qwen2bMlpGateUp, 48),
+            (SourceWeightLayout::Qwen2bMlpDown, 25),
         ];
         let mut counts = Vec::new();
         for (layout, expected) in layouts {

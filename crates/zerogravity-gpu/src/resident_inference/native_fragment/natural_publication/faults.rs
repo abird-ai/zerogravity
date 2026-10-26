@@ -2,29 +2,30 @@
 use super::completion::NaturalSubmission;
 use super::*;
 use crate::Device;
+use crate::cuda::native::source_rotary::RotaryOutcome;
 use crate::resident_inference::native_fragment::{
-    NaturalRetirementProbe, Vllm08ModelInputs, Vllm08ModelReadback, prepare_natural_cold,
+    NaturalRetirementProbe, SourceModelInputs, SourceModelReadback, SourceModelScopes,
+    prepare_natural_cold,
 };
-use crate::vllm_cuda_qualification::source_rotary::RotaryOutcome;
 
 mod quarantine;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Vllm08NaturalFault {
+pub enum NaturalFault {
     AdmissionPressure,
     CancelBeforeCommit,
     RestoreReplay,
     UnknownAfterConvolution,
     CancelBeforeRecurrent,
 }
-pub struct Vllm08NaturalFaultExecution<'a> {
+pub struct NaturalFaultExecution<'a> {
     pub rotary: Option<RotaryOutcome>,
-    pub fault: Vllm08NaturalFault,
+    pub fault: NaturalFault,
     pub cancelled: Option<&'a AtomicBool>,
 }
 #[derive(Debug)]
-pub struct Vllm08NaturalFaultOutcome {
-    pub fault: Vllm08NaturalFault,
+pub struct NaturalFaultOutcome {
+    pub fault: NaturalFault,
     pub status: &'static str,
     pub roots: Option<[RootBinding; 2]>,
     pub completed_phases: usize,
@@ -53,37 +54,43 @@ pub struct Vllm08NaturalFaultOutcome {
     pub tied_weight_windows: usize,
 }
 
-pub async fn qualify_vllm08_natural_fault<F>(
+pub async fn qualify_natural_fault<F>(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    records: [RecordedVllm08Model; 5],
-    inputs: Vllm08ModelInputs,
-    execution: Vllm08NaturalFaultExecution<'_>,
+    scopes: SourceModelScopes,
+    inputs: SourceModelInputs,
+    execution: NaturalFaultExecution<'_>,
     mut validate: F,
-) -> Result<Vllm08NaturalFaultOutcome>
+) -> Result<NaturalFaultOutcome>
 where
-    F: FnMut(Vllm08ModelReadback<'_>) -> Result<()>,
+    F: FnMut(SourceModelReadback<'_>) -> Result<()>,
 {
-    let Vllm08NaturalFaultExecution {
+    let NaturalFaultExecution {
         rotary,
         fault,
         cancelled,
     } = execution;
     // True entry cancellation wins before source checks, driver or admissions.
     not_cancelled(cancelled)?;
-    if fault == Vllm08NaturalFault::AdmissionPressure {
-        return quarantine::pressure(device, source, records, inputs, rotary, cancelled).await;
+    let (source, records) = scopes.into_parts();
+    if fault == NaturalFault::AdmissionPressure {
+        return quarantine::pressure(
+            device,
+            SourceModelScopes::new(source, records)?,
+            inputs,
+            rotary,
+            cancelled,
+        )
+        .await;
     }
     if matches!(
         fault,
-        Vllm08NaturalFault::UnknownAfterConvolution | Vllm08NaturalFault::CancelBeforeRecurrent
+        NaturalFault::UnknownAfterConvolution | NaturalFault::CancelBeforeRecurrent
     ) {
         return quarantine::qualify(
             device,
-            source,
-            records,
+            SourceModelScopes::new(source, records)?,
             inputs,
-            Vllm08NaturalFaultExecution {
+            NaturalFaultExecution {
                 rotary,
                 fault,
                 cancelled,
@@ -91,16 +98,22 @@ where
         )
         .await;
     }
-    source.require_vllm08_full_source()?;
-    let _controls = source.source().reserve_workspace(1024 * 1024)?;
-    let prompt = records[0].call().request().teachers().ids().to_vec();
+    let _controls = source.reserve_workspace(1024 * 1024)?;
+    let prompt = records[0].call().rows().ids().to_vec();
     if prompt.len() != 1 {
         return Err(Error::State(
             "natural fault first source prompt geometry".into(),
         ));
     }
-    let cold =
-        prepare_natural_cold(device, source.clone(), records, inputs, rotary, cancelled).await?;
+    let initial_record = records[0].clone();
+    let cold = prepare_natural_cold(
+        device,
+        SourceModelScopes::new(source.clone(), records)?,
+        inputs,
+        rotary,
+        cancelled,
+    )
+    .await?;
     let model = cold.model;
     let mut sessions = cold.sessions;
     let slots = cold.slots;
@@ -110,9 +123,8 @@ where
     let initial = [sessions[0].binding(), sessions[1].binding()];
     let snapshot = sessions[0].snapshot();
     let input = sessions[0].bind_natural_prompt(
-        source.clone(),
+        initial_record.clone(),
         NaturalSlot::InitialOne,
-        &prompt,
         cancelled,
     )?;
     if input.require_session(&sessions[1]).is_ok() {
@@ -142,7 +154,7 @@ where
     }
     let mut stale_inputs_refused = 1;
     let (kind, committed_calls, emitted_tokens, status) = match fault {
-        Vllm08NaturalFault::CancelBeforeCommit => {
+        NaturalFault::CancelBeforeCommit => {
             let flag = AtomicBool::new(true);
             match sessions[0].commit_natural_call(prepared, Some(&flag)) {
                 Err(Error::State(message))
@@ -166,7 +178,7 @@ where
                 "COMPLETED_PRIVATE_CANCELLED_NO_PUBLICATION",
             )
         }
-        Vllm08NaturalFault::RestoreReplay => {
+        NaturalFault::RestoreReplay => {
             let committed = sessions[0].commit_natural_call(prepared, cancelled)?;
             let feedback = committed.feedback().cloned().ok_or_else(|| {
                 Error::State("natural restore probe lacks original committed packet".into())
@@ -189,14 +201,7 @@ where
             }
             if input.require_session(&sessions[0]).is_ok()
                 || feedback.require_current(&sessions[0], &source).is_ok()
-                || sessions[0]
-                    .bind_natural_feedback(
-                        source.clone(),
-                        NaturalSlot::FeedbackAtOne,
-                        feedback.clone(),
-                        cancelled,
-                    )
-                    .is_ok()
+                || feedback.request(&sessions[0]).is_ok()
                 || slots
                     .bind_call(&sessions[0], input.clone(), state.clone(), cancelled)
                     .is_ok()
@@ -248,7 +253,7 @@ where
             "natural safe fault failed original physical final0".into(),
         ));
     }
-    Ok(Vllm08NaturalFaultOutcome {
+    Ok(NaturalFaultOutcome {
         fault,
         status,
         roots: Some(roots),

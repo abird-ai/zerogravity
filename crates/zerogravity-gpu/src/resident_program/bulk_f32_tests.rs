@@ -4,9 +4,10 @@ use zerogravity_core::accelerator::{
     SourceIdentity,
     program::{
         BulkF32Contract, BulkF32Layout, BulkF32Matrix, BulkF32Operand, BulkF32Side,
-        GgufGdnProjection, GgufGdnUpstreamContract, GgufGdnUpstreamDescriptor, GgufPrefixContract,
-        GgufPrefixDescriptor, MathematicalBackend, PlanBuilder, ProgramNumericalProfile,
-        TeacherSpan, ZenSsmOutContract, ZenSsmOutDescriptor,
+        MathematicalBackend, MatrixAxes, PlanBuilder, ProgramNumericalProfile, SourceCall,
+        SourceCallMode, SourceGamma, SourceGroupedQkGeometry, SourceNumericalContract,
+        SourceOperator, SourceOperatorKind, SourceParameter, SourceRetainedOrigin,
+        SourceRmsGeometry, SourceRows, SourceTensor, TeacherSpan,
     },
 };
 use zerogravity_core::quant::QuantKind;
@@ -57,183 +58,198 @@ fn bulk_operator_slice_refuses_before_source_access() -> Result<()> {
     Ok(())
 }
 
-struct SyntheticQ8 {
-    source: SourceIdentity,
-    weights: Vec<u8>,
+fn source_call(source: SourceIdentity) -> Result<SourceCall> {
+    SourceCall::new(
+        SourceRows::from_teacher_span(TeacherSpan::new(source, 0, 128, 16, &[1; 64])?, 16)?,
+        SourceCallMode::Prefill,
+    )
 }
-impl TensorSource for SyntheticQ8 {
-    fn source_identity(&self) -> SourceIdentity {
-        self.source
-    }
-    fn tensor(&self, name: &str) -> Result<SourceTensorRef<'_>> {
-        if name != "blk.0.ssm_out.weight" {
-            return Err(Error::Malformed("unknown synthetic Q8 matrix".into()));
-        }
-        Ok(SourceTensorRef {
-            kind: QuantKind::Q8_0,
-            shape: &[2048, 2048],
-            packed_bytes: &self.weights,
-        })
-    }
+fn source_one(
+    builder: &mut PlanBuilder,
+    op: SourceOperator,
+    inputs: &[zerogravity_core::accelerator::program::PlanValue],
+) -> Result<zerogravity_core::accelerator::program::PlanValue> {
+    Ok(builder.source_operator(&op, inputs)?.remove(0))
 }
-
 #[test]
-fn zen_ssm_out_operator_slice_refuses_before_source_access() -> Result<()> {
+fn quantized_projection_cut_refuses_before_source_callbacks() -> Result<()> {
     let source = SourceIdentity::for_new_allocation()?;
-    let synthetic = SyntheticQ8 {
-        source,
-        weights: vec![0; 2048 * 2048 / 32 * 34],
-    };
-    let descriptor = ZenSsmOutDescriptor::new(
-        TeacherSpan::new(source, 0, 256, 512, &[11; 64])?,
-        &synthetic,
-        "blk.0.ssm_out.weight",
-        ZenSsmOutContract::OpenBlas033Zen16SsmOutV1,
+    let call = source_call(source)?;
+    let mut b = PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1)?;
+    let input = source_one(
+        &mut b,
+        SourceOperator::new(
+            call.clone(),
+            SourceOperatorKind::RetainedRows {
+                width: 2048,
+                origin: SourceRetainedOrigin::Gated,
+            },
+            SourceNumericalContract::OpenBlas033Zen16Q8F32V1,
+            vec![],
+            vec![],
+        )?,
+        &[],
     )?;
-    drop(synthetic); // The refusal requires metadata only, never its payload.
-    for projection in [false, true] {
-        let mut builder =
-            PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1)?;
-        let input = builder.zen_ssm_out_input(&descriptor)?;
-        let output = if projection {
-            builder.zen_ssm_out_project(&descriptor, &input)?
-        } else {
-            input
-        };
-        let slice = builder.finish_operator_slice(output)?;
-        assert!(slice.plan().is_operator_slice());
-        assert_eq!(slice.plan().nodes().len(), if projection { 2 } else { 1 });
-        assert!(matches!(
-            ResidentProgram::preflight(&ForbiddenSource, slice.plan()),
-            Err(Error::Unsupported(_))
-        ));
-    }
-    Ok(())
-}
-
-struct SyntheticGgufPrefix {
-    source: SourceIdentity,
-    embedding: Vec<u8>,
-    norm: Vec<u8>,
-}
-impl TensorSource for SyntheticGgufPrefix {
-    fn source_identity(&self) -> SourceIdentity {
-        self.source
-    }
-    fn tensor(&self, name: &str) -> Result<SourceTensorRef<'_>> {
-        match name {
-            "token_embd.weight" => Ok(SourceTensorRef {
-                kind: QuantKind::Q6K,
-                shape: &[2048, 16],
-                packed_bytes: &self.embedding,
-            }),
-            "blk.0.attn_norm.weight" => Ok(SourceTensorRef {
-                kind: QuantKind::F32,
-                shape: &[2048],
-                packed_bytes: &self.norm,
-            }),
-            _ => Err(Error::Malformed(
-                "unknown synthetic GGUF prefix tensor".into(),
-            )),
-        }
-    }
-}
-
-#[test]
-fn gguf_prefix_operator_slice_refuses_before_source_access() -> Result<()> {
-    let source = SourceIdentity::for_new_allocation()?;
-    let synthetic = SyntheticGgufPrefix {
-        source,
-        embedding: vec![0; 2048 * 16 / 256 * 210],
-        norm: vec![0; 2048 * 4],
-    };
-    let descriptor = GgufPrefixDescriptor::new(
-        TeacherSpan::new(source, 0, 8448, 16, &[11; 64])?,
-        &synthetic,
-        GgufPrefixContract::GgufSource2BFirst64V1,
-        1e-6,
+    let output = source_one(
+        &mut b,
+        SourceOperator::new(
+            call,
+            SourceOperatorKind::Projection { selected_row: None },
+            SourceNumericalContract::OpenBlas033Zen16Q8F32V1,
+            vec![SourceTensor {
+                source,
+                name: "fixture.projection".into(),
+                kind: QuantKind::Q8_0,
+                axes: MatrixAxes::InputOutput,
+                columns: 2048,
+                rows: 2048,
+            }],
+            vec![],
+        )?,
+        &[input],
     )?;
-    drop(synthetic);
-    for normalized in [false, true] {
-        let mut builder =
-            PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1)?;
-        let embedding = builder.gguf_prefix_embedding(&descriptor)?;
-        let output = if normalized {
-            builder.gguf_prefix_rms(&descriptor, &embedding)?
-        } else {
-            embedding
-        };
-        let slice = builder.finish_operator_slice(output)?;
-        assert_eq!(slice.plan().nodes().len(), if normalized { 2 } else { 1 });
-        assert!(matches!(
-            ResidentProgram::preflight(&ForbiddenSource, slice.plan()),
-            Err(Error::Unsupported(_))
-        ));
-    }
-    Ok(())
-}
-
-struct SyntheticUpstream {
-    prefix: SyntheticGgufPrefix,
-    qkv: Vec<u8>,
-    z: Vec<u8>,
-    convolution: Vec<u8>,
-}
-impl TensorSource for SyntheticUpstream {
-    fn source_identity(&self) -> SourceIdentity {
-        self.prefix.source
-    }
-    fn tensor(&self, name: &str) -> Result<SourceTensorRef<'_>> {
-        let (kind, shape, packed_bytes): (_, &[u64], &[u8]) = match name {
-            "blk.0.attn_qkv.weight" => (QuantKind::Q4_0, &[2048, 6144], &self.qkv),
-            "blk.0.attn_gate.weight" => (QuantKind::Q4_0, &[2048, 2048], &self.z),
-            "blk.0.ssm_conv1d.weight" => (QuantKind::F32, &[4, 6144], &self.convolution),
-            _ => return self.prefix.tensor(name),
-        };
-        Ok(SourceTensorRef {
-            kind,
-            shape,
-            packed_bytes,
-        })
-    }
-}
-
-#[test]
-fn gguf_upstream_operator_slice_refuses_before_source_access() -> Result<()> {
-    let source = SourceIdentity::for_new_allocation()?;
-    let synthetic = SyntheticUpstream {
-        prefix: SyntheticGgufPrefix {
-            source,
-            embedding: vec![0; 2048 * 16 / 256 * 210],
-            norm: vec![0; 8192],
-        },
-        qkv: vec![0; 1152 * 6144],
-        z: vec![0; 1152 * 2048],
-        convolution: vec![0; 4 * 6144 * 4],
-    };
-    let prefix = GgufPrefixDescriptor::new(
-        TeacherSpan::new(source, 0, 8448, 16, &[11; 64])?,
-        &synthetic,
-        GgufPrefixContract::GgufSource2BFirst64V1,
-        1e-6,
-    )?;
-    let descriptor = GgufGdnUpstreamDescriptor::new(
-        prefix,
-        &synthetic,
-        GgufGdnUpstreamContract::GgufQ4Repacked2BFirst64V1,
-    )?;
-    drop(synthetic);
-    let mut builder =
-        PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1)?;
-    let input = builder.gguf_gdn_input(&descriptor)?;
-    let qkv = builder.gguf_gdn_project(&descriptor, GgufGdnProjection::Qkv, &input)?;
-    let _z = builder.gguf_gdn_project(&descriptor, GgufGdnProjection::Z, &input)?;
-    let convolution = builder.gguf_gdn_conv_silu(&descriptor, &qkv)?;
-    let operands = builder.gguf_gdn_qk(&descriptor, &convolution)?;
-    let recorded = builder.finish_operator_slice(operands)?;
-    assert_eq!(recorded.plan().nodes().len(), 5);
+    let plan = b.finish_operator_slice(output)?;
     assert!(matches!(
-        ResidentProgram::preflight(&ForbiddenSource, recorded.plan()),
+        ResidentProgram::preflight(&ForbiddenSource, plan.plan()),
+        Err(Error::Unsupported(_))
+    ));
+    Ok(())
+}
+#[test]
+fn embedding_direct_rms_cut_refuses_before_source_callbacks() -> Result<()> {
+    let source = SourceIdentity::for_new_allocation()?;
+    let call = source_call(source)?;
+    let mut b = PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1)?;
+    let input = source_one(
+        &mut b,
+        SourceOperator::new(
+            call.clone(),
+            SourceOperatorKind::EmbeddingRows,
+            SourceNumericalContract::GgmlSourceF32V1,
+            vec![SourceTensor {
+                source,
+                name: "fixture.embedding".into(),
+                kind: QuantKind::Q6K,
+                axes: MatrixAxes::InputOutput,
+                columns: 256,
+                rows: 16,
+            }],
+            vec![],
+        )?,
+        &[],
+    )?;
+    let output = source_one(
+        &mut b,
+        SourceOperator::new(
+            call,
+            SourceOperatorKind::Rms(SourceRmsGeometry {
+                width: 256,
+                epsilon: 1e-6,
+                gamma: SourceGamma::Direct,
+            }),
+            SourceNumericalContract::GgmlSourceF32V1,
+            vec![],
+            vec![SourceParameter {
+                source,
+                name: "fixture.gamma".into(),
+                kind: QuantKind::F32,
+                shape: vec![256],
+                bytes: 1024,
+            }],
+        )?,
+        &[input],
+    )?;
+    let plan = b.finish_operator_slice(output)?;
+    assert!(matches!(
+        ResidentProgram::preflight(&ForbiddenSource, plan.plan()),
+        Err(Error::Unsupported(_))
+    ));
+    Ok(())
+}
+#[test]
+fn quantized_conv_qk_chain_refuses_before_source_callbacks() -> Result<()> {
+    let source = SourceIdentity::for_new_allocation()?;
+    let call = source_call(source)?;
+    let mut b = PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1)?;
+    let input = source_one(
+        &mut b,
+        SourceOperator::new(
+            call.clone(),
+            SourceOperatorKind::RetainedRows {
+                width: 32,
+                origin: SourceRetainedOrigin::Normalized {
+                    epsilon_bits: 1e-6_f32.to_bits(),
+                },
+            },
+            SourceNumericalContract::GgmlSourceF32V1,
+            vec![],
+            vec![SourceParameter {
+                source,
+                name: "fixture.gamma".into(),
+                kind: QuantKind::F32,
+                shape: vec![32],
+                bytes: 128,
+            }],
+        )?,
+        &[],
+    )?;
+    let projected = source_one(
+        &mut b,
+        SourceOperator::new(
+            call.clone(),
+            SourceOperatorKind::Projection { selected_row: None },
+            SourceNumericalContract::GgmlQ4Repack8x8F32V1,
+            vec![SourceTensor {
+                source,
+                name: "fixture.projection".into(),
+                kind: QuantKind::Q4_0,
+                axes: MatrixAxes::InputOutput,
+                columns: 32,
+                rows: 96,
+            }],
+            vec![],
+        )?,
+        &[input],
+    )?;
+    let conv = source_one(
+        &mut b,
+        SourceOperator::new(
+            call.clone(),
+            SourceOperatorKind::CausalConvSiluZero {
+                channels: 96,
+                kernel: 4,
+            },
+            SourceNumericalContract::GgmlSourceF32V1,
+            vec![],
+            vec![SourceParameter {
+                source,
+                name: "fixture.conv".into(),
+                kind: QuantKind::F32,
+                shape: vec![4, 96],
+                bytes: 4 * 96 * 4,
+            }],
+        )?,
+        &[projected],
+    )?;
+    let output = source_one(
+        &mut b,
+        SourceOperator::new(
+            call,
+            SourceOperatorKind::GroupedQkNormalize(SourceGroupedQkGeometry {
+                heads: 1,
+                width: 32,
+                epsilon: 1e-6 / 32.0,
+                scale: 1.0 / 32.0_f32.sqrt(),
+            }),
+            SourceNumericalContract::GgmlSourceF32V1,
+            vec![],
+            vec![],
+        )?,
+        &[conv],
+    )?;
+    let plan = b.finish_operator_slice(output)?;
+    assert!(matches!(
+        ResidentProgram::preflight(&ForbiddenSource, plan.plan()),
         Err(Error::Unsupported(_))
     ));
     Ok(())

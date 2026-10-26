@@ -5,7 +5,7 @@
 //! batch-native fused model graph nor a vLLM performance claim.
 use super::*;
 
-pub(crate) async fn qualify(
+pub async fn qualify(
     device: Device,
     path: &Path,
     provider_cap: usize,

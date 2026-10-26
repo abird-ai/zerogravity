@@ -3,8 +3,6 @@
 //! once per SourceIdentity cache miss. Later token preparation touches only
 //! live activation plus retained small metadata, never walks/copied weights.
 //! Numeric order is source-compatible with P07-A/B.
-
-use crate::{mixed_ops, q4_q8};
 use std::sync::Arc;
 use zerogravity_artifacts::quant::{QuantKind, f16_to_f32, f32_to_f16_rne};
 use zerogravity_core::Error;
@@ -22,13 +20,13 @@ pub struct StaticSource {
     biases: Arc<[f32]>,
 }
 pub enum DynamicStep {
-    Q4(q4_q8::PreparedQ4Q8),
-    Mixed(mixed_ops::Prepared),
+    Q4(crate::quantization::q4_0::PreparedQ4Q8),
+    Mixed(crate::quantization::projection::Prepared),
 }
 
 pub struct DeviceStep {
     pub kind: QuantKind,
-    pub layout: crate::activation_quant::ActivationLayout,
+    pub layout: crate::quantization::activation::ActivationLayout,
     pub input: Vec<f32>,
     pub scales: Arc<[f32]>,
     pub biases: Arc<[f32]>,
@@ -175,8 +173,9 @@ impl StaticSource {
     }
 
     pub fn dynamic_device(&self, activation: &[f32]) -> Result<DeviceStep> {
-        let layout =
-            crate::activation_quant::ActivationLayout::new(self.kind, self.cols, self.rows)?;
+        let layout = crate::quantization::activation::ActivationLayout::new(
+            self.kind, self.cols, self.rows,
+        )?;
         crate::device_activation::DeviceActivation::validate_inputs(
             &layout,
             activation,
@@ -199,20 +198,22 @@ impl StaticSource {
             ));
         }
         if self.kind == QuantKind::F32 {
-            return Ok(DynamicStep::Mixed(mixed_ops::Prepared {
-                kind: self.kind,
-                rows: self.rows,
-                cols: self.cols,
-                blocks: self.blocks,
-                #[cfg(any(test, feature = "qualification"))]
-                source: Vec::new(),
-                scales: Vec::new(),
-                offsets: Vec::new(),
-                activation: Vec::new(),
-                #[cfg(any(test, feature = "qualification"))]
-                weights_f32: Vec::new(),
-                input_f32: activation.to_vec(),
-            }));
+            return Ok(DynamicStep::Mixed(
+                crate::quantization::projection::Prepared {
+                    kind: self.kind,
+                    rows: self.rows,
+                    cols: self.cols,
+                    blocks: self.blocks,
+                    #[cfg(any(test, feature = "qualification"))]
+                    source: Vec::new(),
+                    scales: Vec::new(),
+                    offsets: Vec::new(),
+                    activation: Vec::new(),
+                    #[cfg(any(test, feature = "qualification"))]
+                    weights_f32: Vec::new(),
+                    input_f32: activation.to_vec(),
+                },
+            ));
         }
         let width = if self.kind == QuantKind::Q6K { 256 } else { 32 };
         let mut input_scales = Vec::with_capacity(self.blocks);
@@ -266,7 +267,7 @@ impl StaticSource {
             ));
         }
         if self.kind == QuantKind::Q4_0 {
-            Ok(DynamicStep::Q4(q4_q8::PreparedQ4Q8 {
+            Ok(DynamicStep::Q4(crate::quantization::q4_0::PreparedQ4Q8 {
                 rows: self.rows,
                 blocks_per_row: self.blocks,
                 #[cfg(any(test, feature = "qualification"))]
@@ -275,20 +276,22 @@ impl StaticSource {
                 activations: q8,
             }))
         } else {
-            Ok(DynamicStep::Mixed(mixed_ops::Prepared {
-                kind: self.kind,
-                rows: self.rows,
-                cols: self.cols,
-                blocks: self.blocks,
-                #[cfg(any(test, feature = "qualification"))]
-                source: Vec::new(),
-                scales,
-                offsets,
-                activation: q8,
-                #[cfg(any(test, feature = "qualification"))]
-                weights_f32: Vec::new(),
-                input_f32: Vec::new(),
-            }))
+            Ok(DynamicStep::Mixed(
+                crate::quantization::projection::Prepared {
+                    kind: self.kind,
+                    rows: self.rows,
+                    cols: self.cols,
+                    blocks: self.blocks,
+                    #[cfg(any(test, feature = "qualification"))]
+                    source: Vec::new(),
+                    scales,
+                    offsets,
+                    activation: q8,
+                    #[cfg(any(test, feature = "qualification"))]
+                    weights_f32: Vec::new(),
+                    input_f32: Vec::new(),
+                },
+            ))
         }
     }
 }
@@ -298,7 +301,7 @@ mod tests {
     use super::*;
     use cubecl::prelude::CubeElement;
     use zerogravity_core::accelerator::{MatVecKernel, RegionExecution};
-    use zerogravity_cpu::weights::CpuWeights;
+    use zerogravity_cpu::source::CpuWeights;
 
     #[test]
     #[ignore = "requires exact pinned Qwen3.5 0.8B and 2B GGUFs"]
@@ -310,14 +313,14 @@ mod tests {
                 let prepared = static_source.dynamic(r.activation)?;
                 match prepared {
                     DynamicStep::Q4(new) => {
-                        let old = q4_q8::prepare_source(r)?;
+                        let old = crate::quantization::q4_0::prepare_source(r)?;
                         assert_eq!(bytes, old.weights);
                         assert!(new.weights.is_empty());
                         assert_eq!(new.scales, old.scales);
                         assert_eq!(new.activations, old.activations);
                     }
                     DynamicStep::Mixed(new) => {
-                        let old = mixed_ops::prepare(r)?;
+                        let old = crate::quantization::projection::prepare(r)?;
                         let source = if r.kind == QuantKind::F32 {
                             f32::as_bytes(&old.weights_f32)
                         } else {

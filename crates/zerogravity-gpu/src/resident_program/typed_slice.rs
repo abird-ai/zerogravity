@@ -150,8 +150,8 @@ impl PendingBody {
             scratch: [0; SCRATCH_SLOTS],
         };
         let program = ResidentProgram {
-            _source_owner: ResidentProgramSource::TypedWindows(body.source.clone()),
-            plan: body.slice.plan().clone(),
+            _source_owner: ResidentProgramSource::Windows(body.source.clone()),
+            plan: Arc::clone(body.slice.shared_plan()),
             preflight,
             values,
             status: body.lease(Buffer::Status).handle(),

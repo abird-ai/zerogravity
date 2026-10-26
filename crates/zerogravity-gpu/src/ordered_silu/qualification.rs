@@ -512,11 +512,11 @@ async fn case(
                 }
             }
             let x=f32::from_bits(source_word);
-            let cpu_exp=zerogravity_cpu::math::ggml_source_exp(0.0-x);
+            let cpu_exp=zerogravity_cpu::ops::ggml_source_exp(0.0-x);
             if data[6][at*17+12]!=cpu_exp.to_bits() || data[6][at*17+13]!=(1.0+cpu_exp).to_bits() {
                 return Err(Error::State(format!("ordered SiLU original CPU exp/denominator bits at{at}")));
             }
-            let cpu=zerogravity_cpu::math::ggml_source_silu(x);
+            let cpu=zerogravity_cpu::ops::ggml_source_silu(x);
             let cpu=if multiplied {f32::from_bits(multiplier[at])*cpu} else {cpu};
             if data[3][at]!=cpu.to_bits() {
                 return Err(Error::State(format!("ordered SiLU original CPU source bits at{at}: GPU={:08x} CPU={:08x}",data[3][at],cpu.to_bits())));

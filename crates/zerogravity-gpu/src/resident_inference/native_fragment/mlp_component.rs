@@ -2,20 +2,18 @@
 //! Genuine all42 candidates are diagnostic; no RootReady/commit/model route.
 use super::continuation::{AttemptPhaseBinding, GdnAttemptSchedule};
 use super::*;
+use crate::cuda::gdn::FixedPromptGdnIntermediate;
+use crate::cuda::native::fixed_prompt_mlp::{FixedPromptMlpQualificationInputs, validate_inputs};
 use crate::resident_inference::gdn_state::GdnPhasePlan;
 use crate::resident_leases::ResidentReadback;
 use crate::resident_program::qwen2b_component::{
-    ComponentProgram, ComponentRecipe, POST_ATTENTION_PROVIDER_BYTES as PROVIDER_BYTES,
-    validate_mlp_component_source,
+    ComponentCut, ComponentKind, ComponentProgram, ComponentRecipe,
+    POST_ATTENTION_PROVIDER_BYTES as PROVIDER_BYTES, validate_component,
 };
-use crate::vllm_cuda_gdn::Canonical47GdnIntermediate;
-use crate::vllm_cuda_qualification::canonical47_mlp::{Mlp47QualificationInputs, validate_inputs};
 
 use super::post_attention_component::PostAttentionArithmetic;
 
-use zerogravity_core::accelerator::program::RecordedVllm08Model;
-use zerogravity_core::device_events::BufferRole;
-use zerogravity_model_qwen35::original_binding::BoundFullModelSource;
+use crate::resident_program::source_bindings::SourceBindings;
 
 #[path = "mlp_component/faults.rs"]
 mod faults;
@@ -41,25 +39,29 @@ pub struct MlpComponentReceipt {
     pub final_physical_reserved_bytes: u64,
 }
 pub struct MlpComponentReadback<'a> {
+    kind: ComponentKind,
     arithmetic: PostAttentionArithmetic,
-    record: &'a Arc<RecordedVllm08Model>,
+    record: &'a Arc<SourceBindings>,
     raw: &'a [Bytes],
     prior: &'a [(StateSlot, std::ops::Range<usize>)],
     candidate: &'a [(StateSlot, std::ops::Range<usize>)],
-    intermediates: &'a [(Canonical47GdnIntermediate, usize)],
+    intermediates: &'a [(FixedPromptGdnIntermediate, usize)],
 }
 fn mlp_readback_columns(
-    profile: zerogravity_core::accelerator::program::FullModelProfile,
+    kind: ComponentKind,
     arithmetic: PostAttentionArithmetic,
     rows: usize,
 ) -> Result<usize> {
-    use zerogravity_core::accelerator::program::FullModelProfile;
-    match (profile, arithmetic, rows) {
-        (FullModelProfile::Qwen08, PostAttentionArithmetic::Canonical47(_), 47) => Ok(1024),
+    match (kind, arithmetic, rows) {
+        (ComponentKind::FixedPrompt(bound), PostAttentionArithmetic::FixedPrompt(actual), 47)
+            if bound == actual =>
+        {
+            Ok(1024)
+        }
         (
-            FullModelProfile::Qwen2B,
+            ComponentKind::Qwen2b,
             PostAttentionArithmetic::Qwen2bExplicit(
-                crate::vllm_cuda_gdn::Qwen2bGdnArithmetic::OwnedSolve4Recompute3,
+                crate::cuda::gdn::Qwen2bGdnArithmetic::OwnedSolve4Recompute3,
             ),
             1 | 64,
         ) => Ok(2048),
@@ -70,14 +72,16 @@ fn mlp_readback_columns(
 }
 impl<'a> MlpComponentReadback<'a> {
     pub(super) fn from_qwen2b_completed(
-        record: &'a Arc<RecordedVllm08Model>,
+        record: &'a Arc<SourceBindings>,
+        kind: ComponentKind,
         raw: &'a [Bytes],
         prior: &'a [(StateSlot, std::ops::Range<usize>)],
         candidate: &'a [(StateSlot, std::ops::Range<usize>)],
     ) -> Result<Self> {
         let value = Self {
+            kind,
             arithmetic: PostAttentionArithmetic::Qwen2bExplicit(
-                crate::vllm_cuda_gdn::Qwen2bGdnArithmetic::OwnedSolve4Recompute3,
+                crate::cuda::gdn::Qwen2bGdnArithmetic::OwnedSolve4Recompute3,
             ),
             record,
             raw,
@@ -89,16 +93,12 @@ impl<'a> MlpComponentReadback<'a> {
         Ok(value)
     }
     fn readback_columns(&self) -> Result<usize> {
-        mlp_readback_columns(
-            self.record.call().model_profile(),
-            self.arithmetic,
-            self.record.call().rows(),
-        )
+        mlp_readback_columns(self.kind, self.arithmetic, self.record.call().rows().len())
     }
     pub fn arithmetic(&self) -> PostAttentionArithmetic {
         self.arithmetic
     }
-    pub fn intermediate(&self, key: Canonical47GdnIntermediate) -> Result<&[u8]> {
+    pub fn intermediate(&self, key: FixedPromptGdnIntermediate) -> Result<&[u8]> {
         let (_, index) = self
             .intermediates
             .iter()
@@ -115,7 +115,7 @@ impl<'a> MlpComponentReadback<'a> {
         }
         Ok(&bytes[..])
     }
-    pub fn record(&self) -> &Arc<RecordedVllm08Model> {
+    pub fn record(&self) -> &Arc<SourceBindings> {
         self.record
     }
     pub fn value(&self, id: ValueId) -> Result<&[u8]> {
@@ -132,7 +132,7 @@ impl<'a> MlpComponentReadback<'a> {
             .raw
             .get(16)
             .ok_or_else(|| Error::State("completed unrounded dual sum absent".into()))?;
-        if bytes.len() != self.record.call().rows() * self.readback_columns()? * 4 {
+        if bytes.len() != self.record.call().rows().len() * self.readback_columns()? * 4 {
             return Err(Error::State("unrounded dual sum dense F32 extent".into()));
         }
         Ok(&bytes[..])
@@ -169,10 +169,9 @@ enum Outcome {
 /// Expected outputs are available ONLY inside original trusted completion.
 pub async fn qualify_mlp_component<F>(
     device: Device,
-    source: BoundFullModelSource,
-    record: Arc<RecordedVllm08Model>,
+    recipe: Arc<ComponentRecipe>,
     arithmetic: PostAttentionArithmetic,
-    inputs: Mlp47QualificationInputs,
+    inputs: FixedPromptMlpQualificationInputs,
     cancelled: Option<&AtomicBool>,
     validate: F,
 ) -> Result<MlpComponentReceipt>
@@ -181,8 +180,7 @@ where
 {
     match run(
         device,
-        source,
-        record,
+        recipe,
         inputs,
         cancelled,
         validate,
@@ -200,9 +198,8 @@ where
 }
 async fn run<F>(
     device: Device,
-    source: BoundFullModelSource,
-    record: Arc<RecordedVllm08Model>,
-    inputs: Mlp47QualificationInputs,
+    recipe: Arc<ComponentRecipe>,
+    inputs: FixedPromptMlpQualificationInputs,
     cancelled: Option<&AtomicBool>,
     validate: F,
     mode: RunMode<'_>,
@@ -217,16 +214,25 @@ where
     } = mode;
     not_cancelled(cancelled)?;
     let owned = match arithmetic {
-        PostAttentionArithmetic::Canonical47(a) => a,
+        PostAttentionArithmetic::FixedPrompt(a) => a,
         PostAttentionArithmetic::Qwen2bOwned | PostAttentionArithmetic::Qwen2bExplicit(_) => {
             return Err(Error::Unsupported(
                 "MLP eleven-node component is canonical47 only".into(),
             ));
         }
     };
-    validate_mlp_component_source(&source, &record, owned)?;
+    validate_component(&recipe)?;
+    if recipe.cut() != ComponentCut::Mlp
+        || recipe.kind() != ComponentKind::FixedPrompt(owned)
+        || recipe.qwen2b_arithmetic().is_some()
+    {
+        return Err(Error::State(
+            "fixed prompt actual MLP cut/arithmetic differs".into(),
+        ));
+    }
+    let source = recipe.source().clone();
+    let record = recipe.bindings().clone();
     if fault != Some(MlpComponentFault::AdmissionPressure) {
-        let recipe = ComponentRecipe::bind_mlp(source.clone(), record.clone(), owned)?;
         validate_inputs(&recipe, &inputs)?;
     }
     validate_provider(&device)?;
@@ -235,7 +241,7 @@ where
     }
     let service = ResidentService::new_pinned_cuda(
         device,
-        source.source().source_identity(),
+        source.source_identity(),
         ResourceOwner::new(
             "source-canonical47-mlp",
             "unpublished-eleven-node-component",
@@ -265,14 +271,8 @@ where
     )?;
     let mut slot = ticket.wait().await?;
     slot.begin_submission()?;
-    let program = ResidentProgram::prepare_mlp_component(
-        service.clone(),
-        source.clone(),
-        record.clone(),
-        owned,
-        cancelled,
-    )
-    .await?;
+    let program =
+        ResidentProgram::prepare_component(service.clone(), recipe.clone(), cancelled).await?;
     slot.finish()?;
     let states = program.budget().states.clone();
     let state_bytes = program.budget().prior_state_bytes;
@@ -307,14 +307,11 @@ where
     }
     not_cancelled(cancelled)?;
     let candidate = model.allocate_state(false).await?;
-    let invocation = record.call().request();
-    let attempt = session.authority.begin_advance(invocation.rows() as u64)?;
-    let schedule = GdnAttemptSchedule::new_initial_canonical47_component(
-        &source,
-        attempt.clone(),
-        invocation.clone(),
-        owned,
-    )?;
+    let invocation = record.call();
+    let attempt = session
+        .authority
+        .begin_advance(invocation.rows().len() as u64)?;
+    let schedule = GdnAttemptSchedule::new_initial_component(&recipe, attempt.clone())?;
     let phase_binding = AttemptPhaseBinding::new(schedule.clone(), 0, None)?;
     let ticket = service.queue().submit(
         service.budget(),
@@ -335,7 +332,7 @@ where
             candidate: &candidate,
             plan: workspace.program.plan(),
             invocation,
-            phase: crate::vllm_cuda_gdn::VllmGdnPhase::Initial47,
+            phase: crate::cuda::gdn::GdnPhase::FixedPrompt,
             nodes: [4, 5],
         },
         phase_binding.clone(),
@@ -372,16 +369,16 @@ where
             .flat_map(|d| d.leases.iter().cloned().map(|l| (l, DeviceAccess::Write))),
     );
     let parameters = RuntimeParameters {
-        token: invocation.teachers().ids()[0],
+        token: invocation.rows().ids()[0],
         position: 0,
-        valid_tokens: invocation.rows(),
+        valid_tokens: invocation.rows().len(),
     };
     workspace
         .program
         .validate_runtime(service.client(), parameters, &bindings)?;
     let mut reads = body.readbacks()?;
-    let intermediates = if matches!(arithmetic, PostAttentionArithmetic::Canonical47(_)) {
-        body.append_canonical47_diagnostics(&mut reads)?
+    let intermediates = if matches!(arithmetic, PostAttentionArithmetic::FixedPrompt(_)) {
+        body.append_fixed_prompt_diagnostics(&mut reads)?
     } else {
         Vec::new()
     };
@@ -504,6 +501,7 @@ where
                 ));
             }
             validate(MlpComponentReadback {
+                kind: recipe.kind(),
                 arithmetic,
                 record: &record,
                 raw,
@@ -585,7 +583,7 @@ where
     let (dispatches, native_launches, rows) = (
         submitted.dispatches,
         submitted.fused_dispatches,
-        invocation.rows(),
+        invocation.rows().len(),
     );
     drop(submitted);
     drop(rereads);
@@ -626,13 +624,13 @@ where
             PostAttentionArithmetic::Qwen2bOwned | PostAttentionArithmetic::Qwen2bExplicit(_) => {
                 "Original2B"
             }
-            PostAttentionArithmetic::Canonical47(_) => "ObservedOriginal47",
+            PostAttentionArithmetic::FixedPrompt(_) => "ObservedOriginal47",
         },
         original_selected_ptx_equals_owned_tuple: match arithmetic {
             PostAttentionArithmetic::Qwen2bOwned | PostAttentionArithmetic::Qwen2bExplicit(_) => {
                 None
             }
-            PostAttentionArithmetic::Canonical47(_) => Some(false),
+            PostAttentionArithmetic::FixedPrompt(_) => Some(false),
         },
         parent_model_accepted: false,
         rows,
@@ -654,37 +652,52 @@ where
 #[cfg(test)]
 mod qwen2b_readback_scope_tests {
     use super::*;
-    use zerogravity_core::accelerator::program::FullModelProfile;
     #[test]
     fn readback_width_requires_whole_explicit_source_family_and_geometry() {
         let owned = PostAttentionArithmetic::Qwen2bExplicit(
-            crate::vllm_cuda_gdn::Qwen2bGdnArithmetic::OwnedSolve4Recompute3,
+            crate::cuda::gdn::Qwen2bGdnArithmetic::OwnedSolve4Recompute3,
         );
         for rows in [1, 64] {
             assert_eq!(
-                mlp_readback_columns(FullModelProfile::Qwen2B, owned, rows).unwrap(),
+                mlp_readback_columns(ComponentKind::Qwen2b, owned, rows).unwrap(),
                 2048
             );
         }
         for rows in [0, 2, 47, 65] {
-            assert!(mlp_readback_columns(FullModelProfile::Qwen2B, owned, rows).is_err());
+            assert!(mlp_readback_columns(ComponentKind::Qwen2b, owned, rows).is_err());
         }
-        assert!(mlp_readback_columns(FullModelProfile::Qwen08, owned, 1).is_err());
         assert!(
             mlp_readback_columns(
-                FullModelProfile::Qwen2B,
+                ComponentKind::FixedPrompt(
+                    crate::cuda::gdn::FixedPromptGdnArithmetic::OwnedFixedPromptSolve4
+                ),
+                owned,
+                1
+            )
+            .is_err()
+        );
+        assert!(
+            mlp_readback_columns(
+                ComponentKind::Qwen2b,
                 PostAttentionArithmetic::Qwen2bOwned,
                 1
             )
             .is_err()
         );
-        let legacy = PostAttentionArithmetic::Canonical47(
-            crate::vllm_cuda_gdn::Canonical47GdnArithmetic::OwnedCanonical47Solve4,
+        let legacy = PostAttentionArithmetic::FixedPrompt(
+            crate::cuda::gdn::FixedPromptGdnArithmetic::OwnedFixedPromptSolve4,
         );
         assert_eq!(
-            mlp_readback_columns(FullModelProfile::Qwen08, legacy, 47).unwrap(),
+            mlp_readback_columns(
+                ComponentKind::FixedPrompt(
+                    crate::cuda::gdn::FixedPromptGdnArithmetic::OwnedFixedPromptSolve4
+                ),
+                legacy,
+                47
+            )
+            .unwrap(),
             1024
         );
-        assert!(mlp_readback_columns(FullModelProfile::Qwen2B, legacy, 47).is_err());
+        assert!(mlp_readback_columns(ComponentKind::Qwen2b, legacy, 47).is_err());
     }
 }

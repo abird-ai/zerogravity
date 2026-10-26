@@ -6,7 +6,7 @@ pub(crate) enum ResidentSource {
     Tensor(Arc<dyn zerogravity_core::source::TensorSource>),
     #[cfg(all(
         any(
-            feature = "vllm-cuda-qualification",
+            feature = "cuda-native",
             feature = "gemma-bf16-qualification",
             feature = "qwen-source-qualification"
         ),
@@ -20,7 +20,7 @@ impl ResidentSource {
             Self::Tensor(source) => source.source_identity(),
             #[cfg(all(
                 any(
-                    feature = "vllm-cuda-qualification",
+                    feature = "cuda-native",
                     feature = "gemma-bf16-qualification",
                     feature = "qwen-source-qualification"
                 ),
@@ -396,8 +396,7 @@ impl ResidentPhysical {
         let mut physical = {
             if matches!(&device, Device::Wgpu(wgpu) if wgpu.backend == cubecl::device::WgpuBackend::Vulkan)
             {
-                let preflight =
-                    crate::backend::vulkan_native_policy::preflight_vulkan_device(&device)?;
+                let preflight = crate::vulkan::native::preflight_vulkan_device(&device)?;
                 let pre = PhysicalServiceBudget::preadmit_device(
                     preflight.key().clone(),
                     preflight.max_memory(),

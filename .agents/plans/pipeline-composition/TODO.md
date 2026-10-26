@@ -23,7 +23,7 @@ their existing numeric/source/physical acceptance gates.
   Exact variants, missing implementations and acceptance TODOs: [FORMATS.md](FORMATS.md).
   Existing19 artifact tests pass; provider/model qualification remains separate.
 
-## Source ownership checkpoint — 26 Oct
+## a5ed7de — Model and CPU source ownership
 
 - [x] Move family config/tensor roles/graph recording into Qwen/Gemma model
   crates; retain common verified source, one ForwardPlan and CPU math engine.
@@ -31,6 +31,17 @@ their existing numeric/source/physical acceptance gates.
   preserve original golden inputs and strict numerical contracts.
 - CPU/model/common workspace all-target compile passes on assembled MAIN.
   CUDA caller migration remains in progress; final assembled gate pending.
+
+## GPU source checkpoint — 26 Oct
+
+- [x] Group CUDA/HIP/Vulkan providers and quantization modules; retain original
+  native source/ABI/kernel payloads and independent physical owners.
+- [x] GPU execution consumes prepared common source/SSA/state bindings; model
+  factories own source eligibility and graph recording. Move host model drivers
+  into the qualification tool. GPU library/test targets compile; tools and
+  HIP/Vulkan feature builds pass. CUDA source tests/final gate still pending.
+- Qualification-only Qwen dependencies and production-DAG enforcement remain
+  open; this checkpoint does not establish complete package containment.
 
 ## Uncommitted
 

@@ -101,7 +101,7 @@ pub(crate) fn concatenate(
 }
 
 #[cfg(feature = "qualification")]
-pub(crate) fn qualify(device: cubecl::Device) -> Result<()> {
+pub fn qualify(device: cubecl::Device) -> Result<()> {
     use crate::{
         attention_qk as qk, attention_softmax as sm, attention_value as av, resident_bindings,
     };

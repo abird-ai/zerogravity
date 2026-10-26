@@ -36,14 +36,14 @@ impl CudaServer {
         set.require_active(set_key)?;
         if !matches!(
             set.policy,
-            CubinSetPolicy::ShortHf08
-                | CubinSetPolicy::ShortHf08Cohort4
-                | CubinSetPolicy::ShortHf2B
-                | CubinSetPolicy::ShortHf2BCachedCohort4
+            CubinSetPolicy::Text08
+                | CubinSetPolicy::Text08Cohort4
+                | CubinSetPolicy::Text2B
+                | CubinSetPolicy::Text2BCachedCohort4
                 | CubinSetPolicy::FirstAttentionCaptured
                 | CubinSetPolicy::FirstAttentionComputedGate
                 | CubinSetPolicy::FullQwen08
-                | CubinSetPolicy::Canonical47Natural
+                | CubinSetPolicy::FixedPromptNatural
         ) {
             return Err(failure("attention copy outside exact captured-leaf set"));
         }
@@ -59,22 +59,22 @@ impl CudaServer {
             .ok_or_else(|| failure("attention original image module absent"))?;
         if matches!(
             set.policy,
-            CubinSetPolicy::ShortHf08
-                | CubinSetPolicy::ShortHf08Cohort4
-                | CubinSetPolicy::ShortHf2B
-                | CubinSetPolicy::ShortHf2BCachedCohort4
+            CubinSetPolicy::Text08
+                | CubinSetPolicy::Text08Cohort4
+                | CubinSetPolicy::Text2B
+                | CubinSetPolicy::Text2BCachedCohort4
         ) {
-            crate::owned_command::cubin::short_hf_policy::require(
+            crate::owned_command::cubin::text_policy::require(
                 set.policy,
                 &image.image,
                 &record.manifest,
             )?;
-            crate::owned_command::cubin::short_hf_policy::require_n1_copy(
+            crate::owned_command::cubin::text_policy::require_n1_copy(
                 &image.image,
                 &record.manifest,
             )?;
-        } else if set.policy == CubinSetPolicy::Canonical47Natural {
-            crate::owned_command::cubin::canonical47_natural_policy::require_n1_copy(
+        } else if set.policy == CubinSetPolicy::FixedPromptNatural {
+            crate::owned_command::cubin::fixed_prompt_natural_policy::require_n1_copy(
                 &image.image,
                 &record.manifest,
             )?;

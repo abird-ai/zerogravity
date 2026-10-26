@@ -4,21 +4,21 @@
 //! admission fallback keys; the grouped row-dispatch variant performs the
 //! actual per-call transport as ONE launch per partition.
 use super::super::*;
+use crate::cuda::kernel::PinnedKernel;
 use crate::resident_inference::native_fragment::{
-    PrefixPhaseEnqueue, model_state::BoundModelState, short_hf::ShortHfCallInput,
+    PrefixPhaseEnqueue, model_state::BoundModelState, text::TextCallInput,
 };
 use crate::resident_leases::{ResidentInitialization, ResidentLease, ResidentService};
 use crate::resident_state_transport::typed::{
     CONV_ELEMENTS, PreparedTypedTransport, RECURRENT_ELEMENTS, TypedDirection, TypedLayout,
     TypedRow,
 };
-use crate::vllm_ptx_inline::PinnedKernel;
 use cubecl_runtime::kernel::BufferIOAttr;
 use zerogravity_artifacts::source_weights::WindowWorkspace;
 use zerogravity_core::accelerator::program::StateEffect;
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 
-const SOURCE: &str = include_str!("../../vllm_cuda_gdn/resident/state_copy.cu");
+const SOURCE: &str = include_str!("../../cuda/gdn/resident/state_copy.cu");
 const CONV: usize = 6144 * 3;
 const RECURRENT: usize = 16 * 128 * 128;
 const SLOT_BYTES: usize = 278_528 * 4;
@@ -27,7 +27,7 @@ const CACHE_BYTES: usize = 17 * SLOT_BYTES;
 /// One actual row's per-kind transport planes: (source, destination) in the
 /// original per-row kernel order. Identical addresses to the per-row kernels.
 struct Row {
-    input: Arc<ShortHfCallInput>,
+    input: Arc<TextCallInput>,
     state: Arc<BoundModelState>,
     planes: [(Handle, Handle); 4],
 }
@@ -89,7 +89,7 @@ impl CohortGdnState {
     // additional immutable argument over the original admission sequence.
     pub(super) fn prepare(
         service: Arc<ResidentService>,
-        inputs: &[Arc<ShortHfCallInput>],
+        inputs: &[Arc<TextCallInput>],
         states: &[Arc<BoundModelState>],
         cache: ResidentLease,
         status: ResidentLease,
@@ -98,7 +98,7 @@ impl CohortGdnState {
         init: &mut ResidentInitialization<'_>,
     ) -> Result<Arc<Self>> {
         init.require_service(&service)?;
-        crate::vllm_cuda_qualification::cohort_native::require_input_shape(inputs)?;
+        crate::cuda::native::cohort_native::require_input_shape(inputs)?;
         if inputs.len() != 4
             || states.len() != 4
             || cache.bytes() != CACHE_BYTES
@@ -128,23 +128,24 @@ impl CohortGdnState {
                 ));
             }
         }
-        let source = inputs[0].source().source();
+        let source = inputs[0].source();
         inputs[0]
             .scope()
             .require_record(inputs[0].source(), inputs[0].record())?;
-        let metadata = Arc::new(source.source().reserve_workspace(512 * 1024)?);
+        let metadata = Arc::new(source.reserve_workspace(512 * 1024)?);
         init.retain_completion_owner(metadata.clone())?;
-        let layer = states[0].layer().index();
+        let layer = states[0].layer();
         let mut rows = Vec::with_capacity(4);
         for (row, (input, state)) in inputs.iter().zip(states).enumerate() {
-            state.require_short_hf(input.scope())?;
-            if state.layer().is_attention()
-                || state.layer().index() != layer
+            state.require_text(input.scope())?;
+            if state.conv_domain()?.0 != layer
+                || state.recurrent_domain()?.0 != layer
+                || state.layer() != layer
                 || state.call() != input.call()
-                || input.workload().prompt_rows() != 47
+                || input.prompt_tokens() != 47
                 || !matches!((input.rows(), input.base()), (47, 0) | (1, 47..=53))
                 || input.rows() != inputs[0].rows()
-                || !Arc::ptr_eq(input.source().source(), source)
+                || !input.source().same_issuer(source)
                 || input.call().source() != service.source_identity()
             {
                 return Err(Error::State(
@@ -219,7 +220,7 @@ impl CohortGdnState {
     /// the real native math between these integer transport partitions.
     pub(super) fn require_storage(
         &self,
-        inputs: &[Arc<ShortHfCallInput>],
+        inputs: &[Arc<TextCallInput>],
         cache: &ResidentLease,
         status: &ResidentLease,
         prefill_h: Option<&(ResidentLease, ResidentLease)>,

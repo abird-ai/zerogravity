@@ -1,34 +1,35 @@
 use super::*;
-use zerogravity_core::accelerator::{
-    SourceIdentity,
-    program::{GdnPrefixLayer, VllmBf16Teachers},
-};
-
+use zerogravity_core::accelerator::SourceIdentity;
+use zerogravity_core::accelerator::program::{SourceRows, TextCallGeometry};
 fn invocation(
     source: SourceIdentity,
-    phase: VllmBf16Phase,
+    mode: SourceCallMode,
     base: usize,
     ids: &[u32],
-) -> VllmBf16Invocation {
-    VllmBf16Invocation::new(
-        GdnPrefixLayer::new(source, 0).unwrap(),
-        phase,
-        VllmBf16Teachers::new(source, base, 512, ids).unwrap(),
+) -> SourceCall {
+    SourceCall::new(
+        SourceRows::new(
+            TextCallGeometry::new(source, 248320, 512).unwrap(),
+            base,
+            Arc::from(ids),
+        )
+        .unwrap(),
+        mode,
     )
     .unwrap()
 }
-fn short(source: SourceIdentity) -> Vec<VllmBf16Invocation> {
+fn short(source: SourceIdentity) -> Vec<SourceCall> {
     vec![
-        invocation(source, VllmBf16Phase::InitialOne, 0, &[11]),
-        invocation(source, VllmBf16Phase::CachedOne, 1, &[353]),
+        invocation(source, SourceCallMode::Prefill, 0, &[11]),
+        invocation(source, SourceCallMode::Decode, 1, &[353]),
     ]
 }
-fn long(source: SourceIdentity) -> Vec<VllmBf16Invocation> {
+fn long(source: SourceIdentity) -> Vec<SourceCall> {
     vec![
         // IDs here exercise only original span metadata, not numerical fixtures.
-        invocation(source, VllmBf16Phase::Initial64, 0, &[11; 64]),
-        invocation(source, VllmBf16Phase::ContinuedTwo, 64, &[353, 353]),
-        invocation(source, VllmBf16Phase::CachedOne, 66, &[353]),
+        invocation(source, SourceCallMode::Prefill, 0, &[11; 64]),
+        invocation(source, SourceCallMode::Prefill, 64, &[353, 353]),
+        invocation(source, SourceCallMode::Decode, 66, &[353]),
     ]
 }
 #[test]
@@ -86,7 +87,7 @@ fn wrong_attempt_source_order_extent_or_completed_layers_is_refused() {
         GdnAttemptSchedule::new(base, authority.begin_advance(2).unwrap(), reversed, 3).is_err()
     );
     let mut wrong_cached_base = short(source);
-    wrong_cached_base[1] = invocation(source, VllmBf16Phase::CachedOne, 66, &[353]);
+    wrong_cached_base[1] = invocation(source, SourceCallMode::Decode, 66, &[353]);
     assert!(
         GdnAttemptSchedule::new(
             base,
@@ -142,4 +143,42 @@ fn same_frontier_restore_revokes_the_actual_check_used_before_enqueue() {
     assert_ne!(restored.session_epoch(), base.session_epoch());
     assert!(schedule.require_current(restored).is_err());
     // Metadata authority test only; no fake ResidentReady/GPU/model is built.
+}
+
+#[test]
+fn wrong_mode_capacity_vocabulary_and_row_population_refuse() {
+    let source = SourceIdentity::for_new_allocation().unwrap();
+    let authority = SessionAuthority::new(source).unwrap();
+    for (mode, capacity, vocabulary, ids) in [
+        (SourceCallMode::Decode, 512, 248320, vec![11]),
+        (SourceCallMode::Prefill, 511, 248320, vec![11]),
+        (SourceCallMode::Prefill, 512, 248319, vec![11]),
+        (SourceCallMode::Prefill, 512, 248320, vec![11, 12]),
+    ] {
+        let mut calls = short(source);
+        let replacement = SourceCall::new(
+            SourceRows::new(
+                TextCallGeometry::new(source, vocabulary, capacity).unwrap(),
+                0,
+                Arc::from(ids),
+            )
+            .unwrap(),
+            mode,
+        );
+        if mode == SourceCallMode::Decode {
+            assert!(replacement.is_err());
+            continue;
+        }
+        calls[0] = replacement.unwrap();
+        assert!(
+            GdnAttemptSchedule::new(
+                authority.binding(),
+                authority.begin_advance(2).unwrap(),
+                calls,
+                3
+            )
+            .is_err()
+        );
+    }
+    assert_eq!(authority.binding().frontier(), 0);
 }

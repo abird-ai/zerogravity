@@ -3,51 +3,30 @@
 use super::continuation::{AttemptPhaseBinding, GdnAttemptSchedule};
 use super::mlp_component::MlpComponentReadback;
 use super::*;
+use crate::cuda::gdn::Qwen2bGdnArithmetic;
+use crate::cuda::native::qwen2b_mlp::{Qwen2bMlpQualificationInputs, validate_inputs};
 use crate::resident_inference::gdn_state::GdnPhasePlan;
-use crate::resident_leases::Qwen2bMlpSourceVerification;
 use crate::resident_leases::ResidentReadback;
 use crate::resident_program::qwen2b_component::{
-    ComponentProgram, ComponentRecipe, QWEN2B_MLP_PROVIDER_BYTES as PROVIDER_BYTES,
-    validate_qwen2b_mlp_component_source,
+    ComponentCut, ComponentKind, ComponentProgram, ComponentRecipe,
+    QWEN2B_MLP_PROVIDER_BYTES as PROVIDER_BYTES, validate_component,
 };
-use crate::vllm_cuda_gdn::Qwen2bGdnArithmetic;
-use crate::vllm_cuda_qualification::qwen2b_mlp::{Qwen2bMlpQualificationInputs, validate_inputs};
-use zerogravity_artifacts::source_weights::WindowWorkspace;
-
-use zerogravity_core::accelerator::program::RecordedVllm08Model;
-use zerogravity_core::device_events::BufferRole;
-use zerogravity_model_qwen35::original_binding::BoundFullModelSource;
 
 /// Preexisting source/record/admission. Only the controlled helper establishes reserve-before-record chronology.
 pub struct Qwen2bMlpComponentSource {
-    record: Arc<RecordedVllm08Model>,
-    bound: BoundFullModelSource,
-    record_admission: Arc<WindowWorkspace>,
+    recipe: Arc<ComponentRecipe>,
 }
 impl Qwen2bMlpComponentSource {
-    pub fn new(
-        bound: BoundFullModelSource,
-        record: Arc<RecordedVllm08Model>,
-        record_admission: WindowWorkspace,
-    ) -> Result<Self> {
-        if record_admission.bytes() != 32 * 1024 * 1024
-            || !record_admission
-                .source()
-                .same_issuer(bound.source().source())
-            || record.call().source() != bound.source().source_identity()
-            || record.call().model_profile()
-                != zerogravity_core::accelerator::program::FullModelProfile::Qwen2B
-            || bound.model_profile() != record.call().model_profile()
+    pub fn new(recipe: Arc<ComponentRecipe>) -> Result<Self> {
+        if recipe.cut() != ComponentCut::Qwen2bMlp
+            || recipe.kind() != ComponentKind::Qwen2b
+            || !recipe.qwen2b_mlp_record_admission_retained()
         {
             return Err(Error::State(
                 "same immutable2B record/source and actual32MiB ticket".into(),
             ));
         }
-        Ok(Self {
-            record,
-            bound,
-            record_admission: Arc::new(record_admission),
-        })
+        Ok(Self { recipe })
     }
 }
 
@@ -133,18 +112,30 @@ where
         probe,
     } = mode;
     not_cancelled(cancelled)?;
-    let Qwen2bMlpComponentSource {
-        record,
-        bound: source,
-        record_admission,
-    } = source;
-    let phase = match record.call().rows() {
-        1 => crate::vllm_cuda_gdn::VllmGdnPhase::InitialOne,
-        64 => crate::vllm_cuda_gdn::VllmGdnPhase::Initial64,
+    let Qwen2bMlpComponentSource { recipe } = source;
+    validate_component(&recipe)?;
+    if recipe.cut() != ComponentCut::Qwen2bMlp
+        || recipe.kind() != ComponentKind::Qwen2b
+        || recipe.qwen2b_arithmetic() != Some(arithmetic)
+        || !recipe.qwen2b_mlp_record_admission_retained()
+    {
+        return Err(Error::State(
+            "source2B actual MLP cut/arithmetic/admission differs".into(),
+        ));
+    }
+    let source = recipe.source().clone();
+    let record = recipe.bindings().clone();
+    let record_admission = record
+        .source_record_admission()
+        .ok_or_else(|| Error::State("source2B original record admission absent".into()))?
+        .clone();
+    let phase = match record.call().rows().len() {
+        1 => crate::cuda::gdn::GdnPhase::InitialOne,
+        64 => crate::cuda::gdn::GdnPhase::Initial64,
         _ => return Err(Error::Unsupported("explicit2B MLP initial1/64 only".into())),
     };
     arithmetic.require_owned(phase)?;
-    if record.call().rows() != 1
+    if record.call().rows().len() != 1
         && matches!(
             fault,
             Some(
@@ -157,14 +148,7 @@ where
             "Down main/reducer cut is one-row only".into(),
         ));
     }
-    validate_qwen2b_mlp_component_source(&source, &record, arithmetic, record_admission.clone())?;
     if fault != Some(Qwen2bMlpComponentFault::AdmissionPressure) {
-        let recipe = ComponentRecipe::bind_qwen2b_mlp_arithmetic(
-            source.clone(),
-            record.clone(),
-            arithmetic,
-            record_admission.clone(),
-        )?;
         validate_inputs(&recipe, &inputs)?;
     }
     validate_provider(&device)?;
@@ -173,7 +157,7 @@ where
     }
     let service = ResidentService::new_pinned_cuda(
         device,
-        source.source().source_identity(),
+        source.source_identity(),
         ResourceOwner::new(
             "source-qwen2b-owned-mlp",
             "unpublished-eleven-node-component",
@@ -208,15 +192,8 @@ where
     )?;
     let mut slot = ticket.wait().await?;
     slot.begin_submission()?;
-    let program = ResidentProgram::prepare_qwen2b_mlp_component_arithmetic(
-        service.clone(),
-        source.clone(),
-        record.clone(),
-        arithmetic,
-        record_admission.clone(),
-        cancelled,
-    )
-    .await?;
+    let program =
+        ResidentProgram::prepare_component(service.clone(), recipe.clone(), cancelled).await?;
     slot.finish()?;
     let states = program.budget().states.clone();
     let state_bytes = program.budget().prior_state_bytes;
@@ -255,13 +232,11 @@ where
     }
     not_cancelled(cancelled)?;
     let candidate = model.allocate_state(false).await?;
-    let invocation = record.call().request();
-    let attempt = session.authority.begin_advance(invocation.rows() as u64)?;
-    let schedule = GdnAttemptSchedule::new_initial_qwen2b_component(
-        &source,
-        attempt.clone(),
-        invocation.clone(),
-    )?;
+    let invocation = record.call();
+    let attempt = session
+        .authority
+        .begin_advance(invocation.rows().len() as u64)?;
+    let schedule = GdnAttemptSchedule::new_initial_component(&recipe, attempt.clone())?;
     let phase_binding = AttemptPhaseBinding::new(schedule.clone(), 0, None)?;
     let ticket = service.queue().submit(
         service.budget(),
@@ -321,9 +296,9 @@ where
             .flat_map(|d| d.leases.iter().cloned().map(|l| (l, DeviceAccess::Write))),
     );
     let parameters = RuntimeParameters {
-        token: invocation.teachers().ids()[0],
+        token: invocation.rows().ids()[0],
         position: 0,
-        valid_tokens: invocation.rows(),
+        valid_tokens: invocation.rows().len(),
     };
     workspace
         .program
@@ -438,7 +413,11 @@ where
                 }
             }
             validate(MlpComponentReadback::from_qwen2b_completed(
-                &record, raw, &prior, &proposed,
+                &record,
+                recipe.kind(),
+                raw,
+                &prior,
+                &proposed,
             )?)
         })
         .await?;
@@ -513,7 +492,7 @@ where
     let (dispatches, native_launches, rows) = (
         submitted.dispatches,
         submitted.fused_dispatches,
-        invocation.rows(),
+        invocation.rows().len(),
     );
     let down1_enqueues = if rows == 1 {
         Some(body.qwen2b_down1_enqueues()?)

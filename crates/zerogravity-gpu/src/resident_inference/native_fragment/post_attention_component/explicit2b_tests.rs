@@ -1,6 +1,6 @@
 //! Actual recipe join, not synthetic source/lease/completion qualification.
 use super::*;
-use crate::vllm_cuda_gdn::{Canonical47GdnArithmetic, Qwen2bGdnArithmetic};
+use crate::cuda::gdn::{FixedPromptGdnArithmetic, Qwen2bGdnArithmetic};
 
 #[test]
 fn callback_choice_requires_same_actual_body_explicit_seal() {
@@ -34,7 +34,7 @@ fn callback_choice_requires_same_actual_body_explicit_seal() {
                 .is_err()
         );
     }
-    let other = ComponentKind::Canonical47(Canonical47GdnArithmetic::OwnedCanonical47Solve4);
+    let other = ComponentKind::FixedPrompt(FixedPromptGdnArithmetic::OwnedFixedPromptSolve4);
     assert!(
         explicit
             .require_binding_parts(other, ComponentCut::PostAttention, Some(owned))
@@ -47,11 +47,11 @@ fn old_none_and_47_bindings_remain_distinct_from_explicit2b() {
     old.require_binding_parts(ComponentKind::Qwen2b, ComponentCut::PostAttention, None)
         .unwrap();
     assert_eq!(old.explicit_qwen2b(), None);
-    let arithmetic = Canonical47GdnArithmetic::OwnedCanonical47Solve4;
-    let old47 = PostAttentionArithmetic::Canonical47(arithmetic);
+    let arithmetic = FixedPromptGdnArithmetic::OwnedFixedPromptSolve4;
+    let old47 = PostAttentionArithmetic::FixedPrompt(arithmetic);
     old47
         .require_binding_parts(
-            ComponentKind::Canonical47(arithmetic),
+            ComponentKind::FixedPrompt(arithmetic),
             ComponentCut::PostAttention,
             None,
         )

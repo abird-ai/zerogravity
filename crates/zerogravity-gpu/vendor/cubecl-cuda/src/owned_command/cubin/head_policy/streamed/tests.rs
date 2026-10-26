@@ -3,8 +3,8 @@ use super::*;
 #[test]
 fn finite_source_windows_partition_every_vocabulary_row_once_without_padding() {
     for (layout, hidden, rows, windows) in [
-        (Vllm08WeightLayout::Vocabulary08, 1024, 512, 485),
-        (Vllm08WeightLayout::Vocabulary2b, 2048, 256, 970),
+        (SourceWeightLayout::Vocabulary08, 1024, 512, 485),
+        (SourceWeightLayout::Vocabulary2b, 2048, 256, 970),
     ] {
         assert_eq!(geometry(layout).unwrap(), (hidden, rows));
         let mut covered = vec![false; VOCABULARY];
@@ -37,8 +37,8 @@ fn finite_source_windows_partition_every_vocabulary_row_once_without_padding() {
 #[test]
 fn last_selected_row_uses_full_real_owner_and_exact_output_window() {
     for (layout, hidden, rows) in [
-        (Vllm08WeightLayout::Vocabulary08, 1024, 512),
-        (Vllm08WeightLayout::Vocabulary2b, 2048, 256),
+        (SourceWeightLayout::Vocabulary08, 1024, 512),
+        (SourceWeightLayout::Vocabulary2b, 2048, 256),
     ] {
         for input_rows in [1, 47, 57, 62, 67, 72] {
             for ordinal in [0, VOCABULARY / rows - 1] {
@@ -81,7 +81,7 @@ fn hostile_geometry_and_native_address_ends_refuse() {
     for rows in [0, 2, 46, 48, 64, 73, usize::MAX] {
         assert!(
             Window {
-                layout: Vllm08WeightLayout::Vocabulary08,
+                layout: SourceWeightLayout::Vocabulary08,
                 input_rows: rows,
                 ordinal: 0
             }
@@ -89,9 +89,9 @@ fn hostile_geometry_and_native_address_ends_refuse() {
             .is_err()
         );
     }
-    assert!(geometry(Vllm08WeightLayout::GdnQkvz).is_err());
+    assert!(geometry(SourceWeightLayout::GdnQkvz).is_err());
     let s = Window {
-        layout: Vllm08WeightLayout::Vocabulary08,
+        layout: SourceWeightLayout::Vocabulary08,
         input_rows: 47,
         ordinal: 0,
     };
@@ -107,7 +107,7 @@ fn hostile_geometry_and_native_address_ends_refuse() {
 }
 #[test]
 fn only_original_n_and_grid_change_for_the_08_finite_tile() {
-    let tiled = manifest(Vllm08WeightLayout::Vocabulary08).unwrap();
+    let tiled = manifest(SourceWeightLayout::Vocabulary08).unwrap();
     let old = super::super::manifest();
     assert_eq!(old.grid, [31040, 1, 1]);
     assert_eq!(tiled.grid, [64, 1, 1]);
@@ -136,13 +136,13 @@ fn only_original_n_and_grid_change_for_the_08_finite_tile() {
 }
 #[test]
 fn captured_2b_packet_has_independent_width_and_permission() {
-    let m = manifest(Vllm08WeightLayout::Vocabulary2b).unwrap();
+    let m = manifest(SourceWeightLayout::Vocabulary2b).unwrap();
     assert_eq!(
         matching_layout(&m).unwrap(),
-        Vllm08WeightLayout::Vocabulary2b
+        SourceWeightLayout::Vocabulary2b
     );
     assert_eq!(m.grid, [32, 1, 1]);
-    assert_ne!(m, manifest(Vllm08WeightLayout::Vocabulary08).unwrap());
+    assert_ne!(m, manifest(SourceWeightLayout::Vocabulary08).unwrap());
     for offset in [64, 72] {
         assert_eq!(
             u32::from_le_bytes(
@@ -165,14 +165,14 @@ fn every_old_native_policy_stays_closed_to_streamed_windows() {
         P::ProjectionSix,
         P::FullQwen08,
         P::ConnectedQwen08,
-        P::Canonical47Mlp,
+        P::FixedPromptMlp,
         P::Qwen2bMlp,
-        P::Canonical47Qkv,
-        P::Canonical47QkKv,
-        P::Canonical47Fa,
-        P::Canonical47Layer3,
-        P::Canonical47Full,
-        P::Canonical47Natural,
+        P::FixedPromptQkv,
+        P::FixedPromptQkKv,
+        P::FixedPromptFa,
+        P::FixedPromptLayer3,
+        P::FixedPromptFull,
+        P::FixedPromptNatural,
         P::FirstAttentionCaptured,
         P::FirstAttentionComputedGate,
         P::VocabularyHead,
@@ -183,7 +183,7 @@ fn every_old_native_policy_stays_closed_to_streamed_windows() {
 
 #[test]
 fn entire_manifest_and_all_160_literal_bytes_are_closed() {
-    let m = manifest(Vllm08WeightLayout::Vocabulary08).unwrap();
+    let m = manifest(SourceWeightLayout::Vocabulary08).unwrap();
     matching_layout(&m).unwrap();
     for parameter in 0..3 {
         for byte in 0..m.parameters[parameter].template.len() {

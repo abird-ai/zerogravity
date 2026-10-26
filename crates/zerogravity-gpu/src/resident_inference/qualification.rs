@@ -1,7 +1,7 @@
 //! Source/physical diagnostics, compiled only by explicit qualification.
 use super::*;
 
-pub(crate) async fn qualify_bounded_context(
+pub async fn qualify_bounded_context(
     device: Device,
     path: &Path,
     teacher_ids: Vec<u32>,
@@ -20,7 +20,7 @@ pub(crate) async fn qualify_bounded_context(
     .await
 }
 
-pub(crate) async fn qualify_context(
+pub async fn qualify_context(
     device: Device,
     path: &Path,
     prompt: &Path,
@@ -31,7 +31,7 @@ pub(crate) async fn qualify_context(
     context_qualification::qualify(device, path, prompt, ids, provider_cap, device_cap).await
 }
 
-pub(crate) async fn qualify(
+pub async fn qualify(
     device: Device,
     path: &Path,
     provider_cap: usize,
@@ -364,7 +364,7 @@ pub(super) fn exact(expected: &[f32], actual: &[f32], name: &str) -> Result<()> 
 
 /// Process-isolated diagnostic: real graph launch, then drop before readback.
 #[cfg(feature = "hardware-abort-probe")]
-pub(crate) async fn qualify_abort(
+pub async fn qualify_abort(
     device: Device,
     path: &Path,
     provider_cap: usize,
@@ -374,7 +374,7 @@ pub(crate) async fn qualify_abort(
 }
 
 #[cfg(feature = "hardware-abort-probe")]
-pub(crate) async fn qualify_context_abort(
+pub async fn qualify_context_abort(
     device: Device,
     path: &Path,
     prompt: &Path,

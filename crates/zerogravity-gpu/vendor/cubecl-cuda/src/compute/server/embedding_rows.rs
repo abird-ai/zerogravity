@@ -1,8 +1,8 @@
 //! Source-exact original tied-table→Activation copies on the original stream.
 use super::*;
 use crate::owned_command::embedding_rows::{
-    Bf16MatrixLayout, ROW_BYTES, TABLE_BYTES, validate_canonical47_ids, validate_ids,
-    validate_short_hf_resident_ids,
+    Bf16MatrixLayout, ROW_BYTES, TABLE_BYTES, validate_fixed_prompt_ids, validate_ids,
+    validate_text_resident_ids,
 };
 
 fn full_geometry(handle: &BufferBinding, expected: usize) -> Result<(), ServerError> {
@@ -49,14 +49,14 @@ enum RowDestination {
     Workspace(crate::OwnedCudaBinding),
 }
 impl CudaServer {
-    pub(crate) fn copy_owned_short_hf_resident_embedding_rows(
+    pub(crate) fn copy_owned_text_resident_embedding_rows(
         &mut self,
         stream: StreamId,
         table: Handle,
         destination: Handle,
         ids: Arc<[u32]>,
     ) -> Result<(), ServerError> {
-        validate_short_hf_resident_ids(&ids)?;
+        validate_text_resident_ids(&ids)?;
         self.copy_owned_embedding_rows(stream, table, destination, ids)
     }
     pub(crate) fn copy_owned_vllm08_embedding_rows(
@@ -69,14 +69,14 @@ impl CudaServer {
         validate_ids(&ids)?;
         self.copy_owned_embedding_rows(stream, table, destination, ids)
     }
-    pub(crate) fn copy_owned_canonical47_embedding_rows(
+    pub(crate) fn copy_owned_fixed_prompt_embedding_rows(
         &mut self,
         stream: StreamId,
         table: Handle,
         destination: Handle,
         ids: Arc<[u32]>,
     ) -> Result<(), ServerError> {
-        validate_canonical47_ids(&ids)?;
+        validate_fixed_prompt_ids(&ids)?;
         self.copy_owned_embedding_rows(stream, table, destination, ids)
     }
     fn copy_owned_embedding_rows(
@@ -208,11 +208,11 @@ impl CudaServer {
 struct EmbeddingRows;
 
 impl CudaServer {
-    pub(crate) fn copy_owned_short_hf_source_rows<T>(
+    pub(crate) fn copy_owned_text_source_rows<T>(
         &mut self,
         stream: StreamId,
         destination: Handle,
-        width: crate::owned_command::embedding_rows::ShortHfEmbeddingWidth,
+        width: crate::owned_command::embedding_rows::TextEmbeddingWidth,
         ids: Arc<[u32]>,
         source: Arc<T>,
     ) -> Result<(), ServerError>

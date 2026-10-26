@@ -4,7 +4,7 @@ use crate::resident_inference::native_fragment::model_state::BoundModelState;
 mod reuse;
 use reuse::ReusableState;
 
-pub(crate) struct NaturalStatePool {
+pub struct NaturalStatePool {
     model: Weak<ResidentModel>,
     service: Arc<ResidentService>,
     candidates: Vec<Vec<Domain>>,
@@ -15,11 +15,10 @@ impl NaturalStatePool {
     /// Adopt the actual cold-prepared canonical storage. No managed allocation,
     /// upload, module creation or initialization occurs after native activation.
     pub(in crate::resident_inference) fn from_prepared(
-        source: &Arc<OriginalWindowModelSource>,
+        source: &VerifiedTensorSource,
         model: &Arc<ResidentModel>,
         candidates: Vec<Vec<Domain>>,
     ) -> Result<Arc<Self>> {
-        source.require_vllm08_full_source()?;
         if source.source_identity() != model.service.source_identity()
             || model.capacity != 512
             || model.vocab != 248320
@@ -29,7 +28,7 @@ impl NaturalStatePool {
                 "natural original full24 canonical state pool".into(),
             ));
         }
-        let metadata = source.source().reserve_workspace(256 * 1024)?;
+        let metadata = source.reserve_workspace(256 * 1024)?;
         if candidates.len() != 5 || candidates.capacity() > 5 {
             return Err(Error::State(
                 "natural pool requires exactly five cold canonical roots".into(),
@@ -90,7 +89,7 @@ impl NaturalCallState {
         session.model.validate_domains(&self.candidate, false)?;
         for (layer, state) in self.states.iter().enumerate() {
             if state.call() != self.input.call()
-                || state.layer() != self.input.call().layer(layer)?
+                || state.layer() != layer
                 || state.base() != self.input.attempt().base()
             {
                 return Err(Error::State(
@@ -135,7 +134,7 @@ impl ResidentSession {
             states.push(self.bind_full_model_state(
                 input.attempt(),
                 input.record(),
-                input.call().layer(layer)?,
+                layer,
                 &candidate,
                 input.phase_binding().clone(),
             )?);

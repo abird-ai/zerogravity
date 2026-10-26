@@ -1,10 +1,11 @@
 //! Original full-model BF16 head consumer, separate from legacy F32 total_cmp.
 //! No state/root publication, sampling policy, emission or Ready authority.
 use super::BufferRange;
+use crate::cuda::native::model_values::ModelValues;
 use crate::resident_leases::{
     ResidentInitialization, ResidentLease, ResidentReadback, ResidentService,
 };
-use crate::vllm_cuda_qualification::model_values::ModelValues;
+use crate::resident_program::source_bindings::SourceBindings;
 use cubecl::client::Client;
 use cubecl::{bytes::Bytes, prelude::*};
 use cubecl_common::device::ServiceId;
@@ -12,14 +13,13 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use zerogravity_artifacts::source_weights::WindowWorkspace;
+use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspace};
 use zerogravity_core::accelerator::program::{
-    ActivationPrecision, PlanOperation, ProgramNumericalProfile, RecordedVllm08Model, ValueId,
-    ValueShape, Vllm08Call, Vllm08Kind, Vllm08Projection, VllmValueOrigin,
+    ActivationPrecision, ProgramNumericalProfile, SourceCall, SourceOperatorKind, ValueId,
+    ValueShape,
 };
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 use zerogravity_core::{Error, Result};
-use zerogravity_model_qwen35::original_binding::OriginalWindowModelSource;
 
 mod kernels;
 #[cfg(test)]
@@ -38,54 +38,55 @@ fn not_cancelled(cancelled: Option<&AtomicBool>) -> Result<()> {
 }
 
 /// Only core's real full Head result can bind this output consumer.
-fn require_head(record: &RecordedVllm08Model) -> Result<()> {
+fn require_head(record: &SourceBindings) -> Result<()> {
     let plan = record.plan();
     let call = record.call();
-    call.validate()?;
-    let id = record.logits();
+    let id = record.selection().output();
     if plan.source() != call.source()
-        || plan.numerical_profile() != ProgramNumericalProfile::Vllm031CudaSm86Bf16SourceV1
+        || plan.source_call() != Some(call)
+        || plan.numerical_profile() != ProgramNumericalProfile::SourceCudaSm86Bf16V1
         || plan.is_operator_slice()
         || plan.frontier_delta() != 0
         || plan.logits().is_some()
         || plan.required_domains().len() != 42
         || plan.proposed_domains().len() != 42
+        || record.selection().completed_layers() != 24
         || plan.values().get(id.0 as usize) != Some(&ValueShape::Vector(kernels::VOCABULARY))
         || plan.precisions().get(id.0 as usize) != Some(&ActivationPrecision::Bf16WidenedF32)
     {
         return Err(Error::Unsupported(
-            "BF16 greedy requires unpublished original full24 BF16 head".into(),
+            "BF16 greedy requires unpublished full24 BF16 head".into(),
         ));
     }
-    let Some(VllmValueOrigin::FullModel(origin)) =
-        plan.vllm_value_provenance(id)?.map(|tag| tag.origin())
-    else {
-        return Err(Error::State(
-            "BF16 greedy actual Head SSA origin absent".into(),
-        ));
-    };
-    if origin.call() != call
-        || origin.layer().is_some()
-        || origin.output_index() != 0
-        || origin.kind() != Vllm08Kind::Projection(Vllm08Projection::Head)
-    {
-        return Err(Error::State(
-            "BF16 greedy foreign source/request/Head role".into(),
-        ));
-    }
+    let origin = plan
+        .source_value_provenance(id)?
+        .ok_or_else(|| Error::State("BF16 greedy actual Head SSA origin absent".into()))?;
     let node = plan
         .nodes()
         .get(origin.node_index())
         .ok_or_else(|| Error::State("BF16 greedy Head node absent".into()))?;
-    let PlanOperation::TypedVllm08 { descriptor, .. } = &node.operation else {
-        return Err(Error::State("BF16 greedy Head descriptor absent".into()));
-    };
+    let descriptor = record
+        .operator(origin.node_index())?
+        .ok_or_else(|| Error::State("BF16 greedy Head descriptor absent".into()))?;
     descriptor.validate()?;
-    if descriptor.call() != call
-        || descriptor.layer().is_some()
-        || descriptor.kind() != origin.kind()
+    let selected = record
+        .selection()
+        .selected_row()
+        .ok_or_else(|| Error::State("BF16 greedy selected head row absent".into()))?;
+    if origin.call() != call
+        || origin.output_index() != 0
+        || descriptor.call() != call
+        || descriptor.kind()
+            != (SourceOperatorKind::Projection {
+                selected_row: Some(selected),
+            })
+        || !matches!(descriptor.matrices(), [matrix] if matrix.rows == kernels::VOCABULARY)
+        || !descriptor.parameters().is_empty()
+        || node.state.is_some()
         || node.outputs.as_slice() != std::slice::from_ref(&id)
         || node.inputs.as_slice() != origin.inputs()
+        || node.inputs.len() != 1
+        || record.selection().normalized() != node.inputs.first().copied()
     {
         return Err(Error::State(
             "BF16 greedy Head descriptor/value/producer changed".into(),
@@ -96,7 +97,7 @@ fn require_head(record: &RecordedVllm08Model) -> Result<()> {
 
 struct HostOwner {
     values: Arc<ModelValues>,
-    source: Arc<OriginalWindowModelSource>,
+    source: VerifiedTensorSource,
     // Actual vectors/descriptors in PreparedBf16Greedy drop before this charge.
     _metadata: WindowWorkspace,
 }
@@ -111,7 +112,7 @@ pub(crate) struct PreparedBf16Greedy {
     status: ResidentLease,
     accesses: Vec<(ResidentLease, DeviceAccess)>,
     outputs: Vec<ResidentLease>,
-    call: Vllm08Call,
+    call: SourceCall,
     logits_value: ValueId,
     owner: Arc<HostOwner>,
 }
@@ -121,18 +122,18 @@ impl PreparedBf16Greedy {
     }
 
     pub(crate) fn prepare(
-        source: Arc<OriginalWindowModelSource>,
+        source: VerifiedTensorSource,
         values: Arc<ModelValues>,
         init: &mut ResidentInitialization<'_>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {
         not_cancelled(cancelled)?;
-        let metadata = source.source().reserve_workspace(METADATA_BYTES)?;
+        let metadata = source.reserve_workspace(METADATA_BYTES)?;
         let record = values.record().as_ref();
         require_head(record)?;
         let service = values.service().clone();
         init.require_service(&service)?;
-        let logits_value = record.logits();
+        let logits_value = record.selection().output();
         let call = record.call().clone();
         // ModelValues seals physical BF16 layout and original lease ownership
         // once at the real workspace allocator. No separate operand override.
@@ -200,12 +201,11 @@ impl PreparedBf16Greedy {
 
     fn validate_bindings(&self) -> Result<()> {
         self.service.ensure_usable()?;
-        self.call.validate()?;
         if self.owner.source.source_identity() != self.call.source()
             || self.service.source_identity() != self.call.source()
             || !Arc::ptr_eq(self.owner.values.service(), &self.service)
             || self.owner.values.record().call() != &self.call
-            || self.owner.values.record().logits() != self.logits_value
+            || self.owner.values.record().selection().output() != self.logits_value
         {
             return Err(Error::State(
                 "BF16 greedy retained source/request changed".into(),
@@ -340,23 +340,23 @@ fn parse_packet(packet: &[u8], status: &[u8]) -> Result<(u32, u32)> {
     Ok((id, bits))
 }
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 mod natural;
 
 mod reusable;
 
 mod publication;
 
-mod canonical47_natural;
+mod fixed_prompt_natural;
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
-mod short_hf;
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+mod text;
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub(crate) mod cohort;
 
 /// Same generated keys as actual independent N1/B4 greedy packet producers.
-pub(crate) fn prepare_short_hf_code(
+pub(crate) fn prepare_text_code(
     client: &Client,
     queue: &cubecl::cuda::OwnedCudaQueue,
     cohort: bool,

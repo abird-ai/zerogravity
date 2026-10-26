@@ -48,7 +48,7 @@ impl Shape {
     }
 }
 #[cfg(feature = "qualification")]
-pub(crate) fn qualify(device: cubecl::Device) -> Result<()> {
+pub fn qualify(device: cubecl::Device) -> Result<()> {
     use crate::gdn_recurrent;
     use cubecl::prelude::*;
 

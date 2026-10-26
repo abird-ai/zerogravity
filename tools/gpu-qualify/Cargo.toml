@@ -8,16 +8,21 @@ license = "MIT"
 
 [features]
 default = []
-qualification = ["zerogravity-gpu/qualification"]
+qualification = ["zerogravity-gpu/qualification", "dep:zerogravity-core", "dep:zerogravity-artifacts", "dep:zerogravity-cpu", "dep:zerogravity-model-qwen35", "dep:futures-lite"]
 vulkan = ["zerogravity-gpu/vulkan"]
 cuda = ["zerogravity-gpu/cuda"]
 hip = ["zerogravity-gpu/hip"]
 hardware-abort-probe = ["qualification", "zerogravity-gpu/hardware-abort-probe"]
-portable-checkpoint = ["qualification", "zerogravity-gpu/portable-checkpoint"]
-diagnostic-gdn-trace = ["qualification", "zerogravity-gpu/diagnostic-gdn-trace"]
+portable-checkpoint = ["qualification", "zerogravity-gpu/portable-checkpoint", "zerogravity-model-qwen35/diagnostic-cpu-checkpoint"]
+diagnostic-gdn-trace = ["qualification", "zerogravity-gpu/diagnostic-gdn-trace", "zerogravity-model-qwen35/diagnostic-gdn-trace"]
 
 [dependencies]
 zerogravity-gpu = { path = "../../crates/zerogravity-gpu", default-features = false }
+zerogravity-core = { path = "../../crates/zerogravity-core", optional = true }
+zerogravity-artifacts = { path = "../../crates/zerogravity-artifacts", optional = true, features = ["cache"] }
+zerogravity-cpu = { path = "../../crates/zerogravity-cpu", optional = true, features = ["cache"] }
+zerogravity-model-qwen35 = { path = "../../crates/zerogravity-model-qwen35", default-features = false, optional = true, features = ["cpu", "text"] }
+futures-lite = { version = "=2.6.1", optional = true }
 
 [[bin]]
 name = "zerogravity-gpu-probe"

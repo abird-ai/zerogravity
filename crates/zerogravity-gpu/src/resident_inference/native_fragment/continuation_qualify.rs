@@ -7,17 +7,14 @@ use super::continuation::{
 use super::*;
 use crate::resident_leases::ResidentReadback;
 use crate::resident_program::native::NativeProgram;
-use zerogravity_core::accelerator::program::VllmBf16Phase;
 
 mod sequence_faults;
+pub use sequence_faults::{GdnSequenceFault, GdnSequenceFaultOutcome, qualify_gdn_sequence_fault};
 use sequence_faults::{SequenceMode, SequenceOutcome};
-pub use sequence_faults::{
-    VllmGdnSequenceFault, VllmGdnSequenceFaultOutcome, qualify_vllm_gdn_sequence_fault,
-};
 
 #[derive(Clone, Debug)]
-pub struct VllmGdnSequenceReceipt {
-    pub phases: Vec<VllmGdnFragmentReceipt>,
+pub struct GdnSequenceReceipt {
+    pub phases: Vec<GdnFragmentReceipt>,
     /// Proposed original attempt span; never a published model frontier.
     pub attempted_tokens: u64,
     pub original_root: RootBinding,
@@ -27,8 +24,8 @@ pub struct VllmGdnSequenceReceipt {
 }
 
 #[derive(Clone, Debug)]
-pub struct VllmGdnSequenceRestoreReceipt {
-    pub completed_first_phase: VllmGdnFragmentReceipt,
+pub struct GdnSequenceRestoreReceipt {
+    pub completed_first_phase: GdnFragmentReceipt,
     pub original_root: RootBinding,
     pub restored_original_zero_root: RootBinding,
     pub continuation_refused_before_enqueue: bool,
@@ -53,25 +50,23 @@ struct SequenceOwners {
     candidates: Vec<Vec<Domain>>,
     initial: Vec<Domain>,
     bodies: Vec<Arc<NativeProgram>>,
-    _source: Arc<OriginalWindowModelSource>,
+    _source: VerifiedTensorSource,
 }
 
 /// Expected records are opened by the callback only after genuine arithmetic.
 /// Later `state(slot, false)` is the actual preceding phase's canonical output.
-pub async fn qualify_vllm_gdn_sequence<F>(
+pub async fn qualify_gdn_sequence<F>(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    records: Vec<RecordedVllmGdnFragment>,
+    records: Vec<Arc<SourceBindings>>,
     inputs: LayerMlpCubinInputs,
     cancelled: Option<&AtomicBool>,
     validate: F,
-) -> Result<VllmGdnSequenceReceipt>
+) -> Result<GdnSequenceReceipt>
 where
-    F: FnMut(usize, VllmGdnFragmentReadback<'_>) -> Result<()>,
+    F: FnMut(usize, GdnFragmentReadback<'_>) -> Result<()>,
 {
     match qualify_sequence_inner(
         device,
-        source,
         records,
         inputs,
         cancelled,
@@ -89,20 +84,18 @@ where
 
 /// Revoke an actual prior physical completion using the original all42 zero
 /// snapshot. No prefix candidate is published as a model root.
-pub async fn qualify_vllm_gdn_sequence_restore_refusal<F>(
+pub async fn qualify_gdn_sequence_restore_refusal<F>(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    records: Vec<RecordedVllmGdnFragment>,
+    records: Vec<Arc<SourceBindings>>,
     inputs: LayerMlpCubinInputs,
     cancelled: Option<&AtomicBool>,
     validate: F,
-) -> Result<VllmGdnSequenceRestoreReceipt>
+) -> Result<GdnSequenceRestoreReceipt>
 where
-    F: FnMut(usize, VllmGdnFragmentReadback<'_>) -> Result<()>,
+    F: FnMut(usize, GdnFragmentReadback<'_>) -> Result<()>,
 {
     match qualify_sequence_inner(
         device,
-        source,
         records,
         inputs,
         cancelled,
@@ -120,12 +113,12 @@ where
 
 /// Separate fixed diagnostic envelopes; existing component/initial caps stay put.
 fn sequence_capacity(
-    source: &OriginalWindowModelSource,
-    records: &[RecordedVllmGdnFragment],
-) -> Result<(usize, usize, Vec<VllmBf16Invocation>)> {
+    source: &VerifiedTensorSource,
+    records: &[Arc<SourceBindings>],
+) -> Result<(usize, usize, Vec<SourceCall>)> {
     let layers = records
         .first()
-        .map_or(0, RecordedVllmGdnFragment::completed_layers);
+        .map_or(0, |record| record.selection().completed_layers());
     if !matches!(layers, 1 | 3) || !matches!(records.len(), 2 | 3) {
         return Err(Error::Unsupported(
             "closed complete layer0/prefix request scope".into(),
@@ -134,32 +127,36 @@ fn sequence_capacity(
     let mut invocations = Vec::with_capacity(records.len());
     for record in records {
         // Actual config/epsilon/source headers and exact model recipe BEFORE CUDA.
-        capacity_bound(source, record)?;
-        if record.completed_layers() != layers {
+        capacity_bound(record)?;
+        if record.selection().completed_layers() != layers {
             return Err(Error::State(
                 "request changes completed source layers".into(),
             ));
         }
-        invocations.push(record.plan().vllm_gdn_fragment().unwrap().clone());
+        invocations.push(record.call().clone());
     }
-    let expected: &[(VllmBf16Phase, usize)] = if records.len() == 2 {
+    let expected: &[(SourceCallMode, usize, usize)] = if records.len() == 2 {
         &[
-            (VllmBf16Phase::InitialOne, 0),
-            (VllmBf16Phase::CachedOne, 1),
+            (SourceCallMode::Prefill, 0, 1),
+            (SourceCallMode::Decode, 1, 1),
         ]
     } else {
         &[
-            (VllmBf16Phase::Initial64, 0),
-            (VllmBf16Phase::ContinuedTwo, 64),
-            (VllmBf16Phase::CachedOne, 66),
+            (SourceCallMode::Prefill, 0, 64),
+            (SourceCallMode::Prefill, 64, 2),
+            (SourceCallMode::Decode, 66, 1),
         ]
     };
-    for (invocation, &(phase, base)) in invocations.iter().zip(expected) {
-        if invocation.layer().source() != source.source_identity()
-            || invocation.layer().index() != 0
-            || invocation.legacy_phase()? != phase
-            || invocation.teachers().base() != base
-            || invocation.teachers().capacity() != 512
+    for ((record, invocation), &(mode, base, rows)) in
+        records.iter().zip(&invocations).zip(expected)
+    {
+        if !record.source().same_issuer(source)
+            || invocation.source() != source.source_identity()
+            || invocation.mode() != mode
+            || invocation.rows().base() != base
+            || invocation.rows().len() != rows
+            || invocation.rows().capacity() != 512
+            || invocation.rows().vocabulary() != 248320
         {
             return Err(Error::State(
                 "exact source-owned two request schedules".into(),
@@ -197,15 +194,23 @@ fn device_bound(layers: usize, phases: usize) -> Result<usize> {
     }
     Ok(bound.div_ceil(32 * 1024 * 1024) * (32 * 1024 * 1024))
 }
-fn native_phase(invocation: &VllmBf16Invocation) -> Result<crate::vllm_cuda_gdn::VllmGdnPhase> {
-    use crate::vllm_cuda_gdn::VllmGdnPhase as P;
-    Ok(match invocation.legacy_phase()? {
-        VllmBf16Phase::InitialOne => P::InitialOne,
-        VllmBf16Phase::CachedOne => P::CachedDecode,
-        VllmBf16Phase::Initial64 => P::Initial64,
-        VllmBf16Phase::ContinuedTwo => P::ContinuedTwo,
-    })
+fn native_phase(invocation: &SourceCall) -> Result<crate::cuda::gdn::GdnPhase> {
+    use crate::cuda::gdn::GdnPhase as P;
+    match (
+        invocation.mode(),
+        invocation.rows().base(),
+        invocation.rows().len(),
+    ) {
+        (SourceCallMode::Prefill, 0, 1) => Ok(P::InitialOne),
+        (SourceCallMode::Prefill, 0, 64) => Ok(P::Initial64),
+        (SourceCallMode::Prefill, 64, 2) => Ok(P::ContinuedTwo),
+        (SourceCallMode::Decode, 1 | 66, 1) => Ok(P::CachedDecode),
+        _ => Err(Error::Unsupported(
+            "closed original GDN source phase".into(),
+        )),
+    }
 }
+
 fn touched(slot: StateSlot, layers: usize) -> bool {
     use zerogravity_core::accelerator::program::{ConvDomain, RecurrentDomain};
     matches!(slot, StateSlot::Conv(ConvDomain(i)) | StateSlot::Recurrent(RecurrentDomain(i)) if i < layers)
@@ -213,18 +218,23 @@ fn touched(slot: StateSlot, layers: usize) -> bool {
 
 async fn qualify_sequence_inner<F>(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    records: Vec<RecordedVllmGdnFragment>,
+    records: Vec<Arc<SourceBindings>>,
     inputs: LayerMlpCubinInputs,
     cancelled: Option<&AtomicBool>,
     mut validate: F,
     mode: SequenceMode,
 ) -> Result<SequenceOutcome>
 where
-    F: FnMut(usize, VllmGdnFragmentReadback<'_>) -> Result<()>,
+    F: FnMut(usize, GdnFragmentReadback<'_>) -> Result<()>,
 {
     not_cancelled(cancelled)?;
+    let source = records
+        .first()
+        .ok_or_else(|| Error::Unsupported("closed phase count".into()))?
+        .source()
+        .clone();
     let (cap, layers, invocations) = sequence_capacity(&source, &records)?;
+    let image_owner: CompletionOwner = records[0].clone();
     validate_provider(&device)?;
     let phases = records.len();
     let service = ResidentService::new_pinned_cuda(
@@ -246,9 +256,9 @@ where
         ));
     }
     if mode.is_pressure() {
-        let pressure = faults::pressure(service, VllmGdnFragmentFault::AdmissionPressure)?;
-        return Ok(SequenceOutcome::Fault(VllmGdnSequenceFaultOutcome {
-            fault: VllmGdnSequenceFault::AdmissionPressure,
+        let pressure = faults::pressure(service, GdnFragmentFault::AdmissionPressure)?;
+        return Ok(SequenceOutcome::Fault(GdnSequenceFaultOutcome {
+            fault: GdnSequenceFault::AdmissionPressure,
             completed_phases: 0,
             attempted_phases: phases,
             original_previous_ready_retained: false,
@@ -271,13 +281,7 @@ where
     let mut programs = Vec::with_capacity(phases);
     for record in records {
         programs.push(Some(
-            ResidentProgram::prepare_fragment_values(
-                service.clone(),
-                source.clone(),
-                record,
-                cancelled,
-            )
-            .await?,
+            ResidentProgram::prepare_fragment_values(service.clone(), record, cancelled).await?,
         ));
     }
     slot.finish()?;
@@ -310,7 +314,7 @@ where
     let base = session.binding();
     let original_snapshot = mode.is_restore().then(|| session.snapshot());
     let last = invocations.last().unwrap();
-    let attempted_tokens = (last.teachers().base() + last.rows()) as u64;
+    let attempted_tokens = (last.rows().base() + last.rows().len()) as u64;
     let attempt = session.authority.begin_advance(attempted_tokens)?;
     let schedule = GdnAttemptSchedule::new(base, attempt.clone(), invocations, layers)?;
     let mut candidates = Vec::with_capacity(phases);
@@ -390,8 +394,8 @@ where
     // Immutable source/model owner, never a body that later owns this image set.
     let images = prepare_connected_native_images(
         &service,
-        source.clone(),
-        source.source(),
+        image_owner,
+        &source,
         workspace.program.plan(),
         inputs,
         &mut init,
@@ -496,9 +500,9 @@ where
         let candidate = &owners.candidates[index];
         let bindings = bind_domains(prior, candidate, 0)?;
         let parameters = RuntimeParameters {
-            token: invocation.teachers().ids()[0],
+            token: invocation.rows().ids()[0],
             position: 0,
-            valid_tokens: invocation.rows(),
+            valid_tokens: invocation.rows().len(),
         };
         workspace
             .program
@@ -602,7 +606,7 @@ where
                 }
                 validate(
                     index,
-                    VllmGdnFragmentReadback {
+                    GdnFragmentReadback {
                         invocation,
                         raw,
                         value_count: frame.value_count,
@@ -616,7 +620,7 @@ where
             .await?;
         drop(raw);
         // Keep the original session borrow through actual physical completion.
-        permit.require_invocation(&service, invocation, layers)?;
+        permit.require_invocation(&service, invocation, 0, layers)?;
         slot.finish()?;
         previous = Some(CompletedPrefixPhase::after_completion(
             &session,
@@ -627,8 +631,8 @@ where
             body.clone(),
             previous.take(),
         )?);
-        receipts.push(VllmGdnFragmentReceipt {
-            rows: invocation.rows(),
+        receipts.push(GdnFragmentReceipt {
+            rows: invocation.rows().len(),
             dispatches: submitted.dispatches,
             native_launches: submitted.fused_dispatches,
             readback_bytes: frame.bytes,
@@ -748,7 +752,7 @@ where
         ));
     }
     if let Some(restored) = restored_root {
-        return Ok(SequenceOutcome::Restored(VllmGdnSequenceRestoreReceipt {
+        return Ok(SequenceOutcome::Restored(GdnSequenceRestoreReceipt {
             completed_first_phase: receipts.remove(0),
             original_root: base,
             restored_original_zero_root: restored,
@@ -757,7 +761,7 @@ where
             final_physical_reserved_bytes: physical.reserved,
         }));
     }
-    Ok(SequenceOutcome::Compared(VllmGdnSequenceReceipt {
+    Ok(SequenceOutcome::Compared(GdnSequenceReceipt {
         phases: receipts,
         attempted_tokens,
         original_root: base,

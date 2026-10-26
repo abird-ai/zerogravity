@@ -4,8 +4,8 @@ use super::*;
 /// Call-local. Fresh row packets may escape through genuine completion; the
 /// packed buffer and partials never become committed token feedback owners.
 pub(crate) struct PreparedCohortGreedy {
-    source: Arc<OriginalWindowModelSource>,
-    records: Box<[Arc<RecordedVllm08Model>]>,
+    source: VerifiedTensorSource,
+    records: Box<[Arc<SourceBindings>]>,
     service: Arc<ResidentService>,
     logits: ResidentLease,
     status: ResidentLease,
@@ -36,8 +36,8 @@ impl PreparedCohortGreedy {
     /// Only the enclosing sealed body supplies its actual whole[B,V] producer
     /// and status. Every original logical Head record is validated separately.
     pub(crate) fn prepare(
-        source: Arc<OriginalWindowModelSource>,
-        records: &[Arc<RecordedVllm08Model>],
+        source: VerifiedTensorSource,
+        records: &[Arc<SourceBindings>],
         logits: ResidentLease,
         status: ResidentLease,
         init: &mut ResidentInitialization<'_>,
@@ -51,8 +51,8 @@ impl PreparedCohortGreedy {
         for record in records {
             require_head(record)?;
             if record.call().source() != source.source_identity()
-                || record.call().model_profile() != records[0].call().model_profile()
-                || record.logits() != records[0].logits()
+                || !source.same_issuer(record.source())
+                || record.selection().output() != records[0].selection().output()
             {
                 return Err(Error::State("BF16 cohort every actual source Head".into()));
             }
@@ -62,7 +62,7 @@ impl PreparedCohortGreedy {
                 "BF16 cohort complete reducer buffer admission".into(),
             ));
         }
-        let metadata = source.source().reserve_workspace(METADATA_BYTES)?;
+        let metadata = source.reserve_workspace(METADATA_BYTES)?;
         let partials = init.allocate_empty(width * PARTIAL_BYTES, BufferRole::Scratch)?;
         let packed = init.allocate_empty(width * PACKET_BYTES, BufferRole::Scratch)?;
         let mut packets = Vec::with_capacity(width);
@@ -149,7 +149,6 @@ impl PreparedCohortGreedy {
             ));
         }
         for record in &self.records {
-            record.call().validate()?;
             if record.call().source() != self.source.source_identity() {
                 return Err(Error::State("BF16 cohort row source changed".into()));
             }

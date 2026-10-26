@@ -83,7 +83,7 @@ pub(crate) fn f32_source_batched_projection(
     if lane_id < rows * batch {
         let request = lane_id / rows;
         let row = lane_id % rows;
-        output[lane_id] = crate::mixed_ops::source_f32_ggml_dot(
+        output[lane_id] = crate::projection_f32::source_f32_ggml_dot(
             weights,
             inputs,
             row,
@@ -95,7 +95,7 @@ pub(crate) fn f32_source_batched_projection(
 }
 
 #[cfg(feature = "qualification")]
-pub(crate) fn qualify(device: cubecl::Device) -> Result<()> {
+pub fn qualify(device: cubecl::Device) -> Result<()> {
     use crate::source_accumulation::SourceAccumulation;
 
     const ROWS: usize = 64;
@@ -139,7 +139,7 @@ pub(crate) fn qualify(device: cubecl::Device) -> Result<()> {
                 .create_from_slice(f32::as_bytes(&input[request * COLS..(request + 1) * COLS]));
             let oracle_handle = client.empty(ROWS * 4);
             unsafe {
-                crate::mixed_ops::f32_ggml_dot_gemv::launch_unchecked(
+                crate::projection_f32::f32_ggml_dot_gemv::launch_unchecked(
                     &client,
                     CubeCount::Static((ROWS as u32).div_ceil(32), 1, 1),
                     CubeDim::new_1d(32),

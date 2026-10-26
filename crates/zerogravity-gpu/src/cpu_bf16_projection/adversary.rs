@@ -384,7 +384,7 @@ async fn probe(
             .chunks_exact(2)
             .map(|b| f32::from_bits(u32::from(u16::from_le_bytes([b[0], b[1]])) << 16))
             .collect::<Vec<_>>();
-        let cpu = zerogravity_cpu::original_hf::window_projection::project_bf16_window(
+        let cpu = zerogravity_cpu::source::window_projection::project_bf16_window(
             &desc,
             FIRST..LAST,
             &window,
@@ -401,7 +401,7 @@ async fn probe(
             }
             // Read the two independent finite marker rows through ORIGINAL CPU math.
             let marker = source.read_rows(&matrix, 2..LAST)?;
-            let finite = zerogravity_cpu::original_hf::window_projection::project_bf16_window(
+            let finite = zerogravity_cpu::source::window_projection::project_bf16_window(
                 &desc,
                 2..LAST,
                 &marker,
@@ -431,7 +431,7 @@ async fn probe(
     service.ensure_usable()?;
     service.pinned_cuda_queue()?;
     if service.source_identity() != source.source_identity()
-        || !crate::activation_quant_fused::is_cuda_service(service.client())
+        || !crate::quantization::activation_fused::is_cuda_service(service.client())
         || hardware.max_units_per_cube < 64
         || hardware.max_cube_dim.0 < 64
         || hardware.max_shared_memory_size < 512

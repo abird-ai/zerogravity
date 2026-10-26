@@ -11,20 +11,20 @@ use std::sync::{
 mod args;
 mod attention_gate_policy;
 pub(crate) mod attention_policy;
-mod canonical47_fa_policy;
-mod canonical47_full_policy;
-mod canonical47_layer3_policy;
-mod canonical47_mlp_policy;
-pub(crate) mod canonical47_natural_policy;
-mod canonical47_qkkv_policy;
-mod canonical47_qkv_policy;
+mod fixed_prompt_fa_policy;
+mod fixed_prompt_full_policy;
+mod fixed_prompt_layer3_policy;
+mod fixed_prompt_mlp_policy;
+pub(crate) mod fixed_prompt_natural_policy;
+mod fixed_prompt_qkkv_policy;
+mod fixed_prompt_qkv_policy;
 mod elf;
 mod full_model_policy;
 pub(crate) mod head_policy;
 mod policy;
 mod qwen2b_mlp_policy;
 mod set;
-pub(crate) mod short_hf_policy;
+pub(crate) mod text_policy;
 mod source_rotary_policy;
 mod workspace_clear;
 pub use args::{

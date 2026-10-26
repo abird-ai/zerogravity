@@ -35,7 +35,7 @@ impl CubeResidentProvider {
     /// Physically compare every consumed code/composite and the source
     /// quantizer's physically rounded intermediates. Counts are audited FP32
     /// and code integers, never numerical engine outputs or StateRoot writes.
-    pub(crate) async fn qualify_device_activation(
+    pub async fn qualify_device_activation(
         &self,
         region: MatVecRegion<'_>,
     ) -> Result<(usize, usize)> {

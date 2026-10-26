@@ -46,7 +46,7 @@ impl NativeCacheBudget {
         self.foreign_release_failed();
     }
     #[cfg(any(
-        feature = "vllm-cuda-qualification",
+        feature = "cuda-native",
         all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
     ))]
     pub(crate) fn require_service(&self, service: &Arc<ResidentService>) -> Result<()> {
@@ -83,7 +83,7 @@ impl ForeignProviderOwner for NativeCacheBudget {
     }
 }
 #[cfg(any(
-    feature = "vllm-cuda-qualification",
+    feature = "cuda-native",
     all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
 ))]
 impl ResidentService {

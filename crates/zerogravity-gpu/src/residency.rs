@@ -349,12 +349,15 @@ impl<T> ResidentCache<T> {
 mod tests {
     use super::*;
     #[cfg(feature = "qualification")]
-    use zerogravity_cpu::weights::CpuWeights;
+    use zerogravity_cpu::source::CpuWeights;
 
     /// A CPU-only mathematical interpretation of the *physically resident*
     /// Q4_0 nibble buffer. No device is invoked by this test-only kernel.
     #[cfg(feature = "qualification")]
-    fn host_resident_q4(prepared: &crate::q4_q8::PreparedQ4Q8, stored: &[u8]) -> Vec<f32> {
+    fn host_resident_q4(
+        prepared: &crate::quantization::q4_0::PreparedQ4Q8,
+        stored: &[u8],
+    ) -> Vec<f32> {
         assert_eq!(stored.len(), prepared.rows * prepared.blocks_per_row * 16);
         assert!(prepared.weights.is_empty());
         let mut values = vec![0f32; prepared.rows];

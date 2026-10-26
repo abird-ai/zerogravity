@@ -81,7 +81,7 @@ pub(crate) fn append_kv_batched(
     }
 }
 #[cfg(feature = "qualification")]
-pub(crate) fn qualify(device: cubecl::Device) -> Result<()> {
+pub fn qualify(device: cubecl::Device) -> Result<()> {
     use crate::resident_bindings::append_kv;
     fn grid(n: usize) -> CubeCount {
         CubeCount::Static((n as u32).div_ceil(32), 1, 1)

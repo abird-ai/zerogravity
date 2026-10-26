@@ -211,7 +211,7 @@ impl ResidentLedger {
     }
     #[cfg(any(
         test,
-        feature = "vllm-cuda-qualification",
+        feature = "cuda-native",
         all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
     ))]
     fn reserve_foreign_for(&mut self, model: u64, bytes: usize) -> Result<()> {
@@ -222,7 +222,7 @@ impl ResidentLedger {
     }
     #[cfg(any(
         test,
-        feature = "vllm-cuda-qualification",
+        feature = "cuda-native",
         all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
     ))]
     fn release_foreign_for(&mut self, model: u64, bytes: usize) -> Result<()> {
@@ -250,7 +250,7 @@ impl Deref for ResidentLedger {
 // global envelope and SAME ledger, without a Client/actor reference.
 #[cfg(any(
     test,
-    feature = "vllm-cuda-qualification",
+    feature = "cuda-native",
     all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
 ))]
 pub(crate) trait ForeignProviderOwner: Send + Sync {
@@ -262,7 +262,7 @@ pub(crate) trait ForeignProviderOwner: Send + Sync {
 }
 #[cfg(any(
     test,
-    feature = "vllm-cuda-qualification",
+    feature = "cuda-native",
     all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
 ))]
 pub(crate) struct ForeignProviderCharge<
@@ -273,7 +273,7 @@ pub(crate) struct ForeignProviderCharge<
 }
 #[cfg(any(
     test,
-    feature = "vllm-cuda-qualification",
+    feature = "cuda-native",
     all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
 ))]
 impl<O: ForeignProviderOwner> ForeignProviderCharge<O> {
@@ -289,7 +289,7 @@ impl<O: ForeignProviderOwner> ForeignProviderCharge<O> {
         self.bytes
     }
 }
-#[cfg(feature = "vllm-cuda-qualification")]
+#[cfg(feature = "cuda-native")]
 impl ForeignProviderCharge<super::native_cache::NativeCacheBudget> {
     pub(crate) fn require_service(&self, service: &Arc<ResidentService>) -> Result<()> {
         self.owner.require_service(service)
@@ -297,7 +297,7 @@ impl ForeignProviderCharge<super::native_cache::NativeCacheBudget> {
 }
 #[cfg(any(
     test,
-    feature = "vllm-cuda-qualification",
+    feature = "cuda-native",
     all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
 ))]
 impl<O: ForeignProviderOwner> Drop for ForeignProviderCharge<O> {
@@ -317,7 +317,7 @@ impl<O: ForeignProviderOwner> Drop for ForeignProviderCharge<O> {
         }
     }
 }
-#[cfg(feature = "vllm-cuda-qualification")]
+#[cfg(feature = "cuda-native")]
 impl ResidentService {
     /// Reserve BEFORE a foreign allocator runs. Retain through actual provider
     /// destruction AND pool retirement; unknown completion must quarantine it.

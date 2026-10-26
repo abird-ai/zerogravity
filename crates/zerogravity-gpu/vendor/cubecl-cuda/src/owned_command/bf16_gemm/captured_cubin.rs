@@ -2,17 +2,17 @@
 use super::*;
 use crate::owned_command::cubin::VerifiedCubin;
 use std::any::Any;
-mod canonical47;
+mod fixed_prompt;
 mod rotary;
-mod short_hf;
+mod text;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PinnedCapturedBf16Cubin {
-    ShortHfFaCausalCombineSm80,
-    ShortHfFaSplitCombineSm80,
-    ShortHfCutlassBf16Sm80,
+    TextFaCausalCombineSm80,
+    TextFaSplitCombineSm80,
+    TextCutlassBf16Sm80,
     Cohort2BAmpere64SlicedSm80,
-    Canonical47CutlassBf16Sm80,
+    FixedPromptCutlassBf16Sm80,
     RotaryArangeSm86,
     RotaryDivideSm86,
     RotaryFillSm86,
@@ -55,11 +55,11 @@ pub struct CapturedBf16CubinRecord {
 impl PinnedCapturedBf16Cubin {
     pub const fn capture(self) -> CapturedBf16CubinRecord {
         match self {
-            Self::ShortHfFaCausalCombineSm80 => short_hf::SHORTHFFACAUSALCOMBINESM80,
-            Self::ShortHfFaSplitCombineSm80 => short_hf::SHORTHFFASPLITCOMBINESM80,
-            Self::ShortHfCutlassBf16Sm80 => short_hf::SHORTHFCUTLASSBF16SM80,
-            Self::Cohort2BAmpere64SlicedSm80 => short_hf::COHORT2BAMPERE64SLICEDSM80,
-            Self::Canonical47CutlassBf16Sm80 => canonical47::CAPTURE,
+            Self::TextFaCausalCombineSm80 => text::SHORTHFFACAUSALCOMBINESM80,
+            Self::TextFaSplitCombineSm80 => text::SHORTHFFASPLITCOMBINESM80,
+            Self::TextCutlassBf16Sm80 => text::SHORTHFCUTLASSBF16SM80,
+            Self::Cohort2BAmpere64SlicedSm80 => text::COHORT2BAMPERE64SLICEDSM80,
+            Self::FixedPromptCutlassBf16Sm80 => fixed_prompt::CAPTURE,
             Self::RotaryArangeSm86
             | Self::RotaryDivideSm86
             | Self::RotaryFillSm86

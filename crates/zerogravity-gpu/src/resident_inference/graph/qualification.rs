@@ -68,7 +68,7 @@ pub(super) async fn loaded(
     Ok((source, resident))
 }
 
-pub(crate) async fn qualify(
+pub async fn qualify(
     device: Device,
     path: &Path,
     provider_cap: usize,
@@ -377,7 +377,7 @@ pub(crate) async fn qualify(
 }
 
 #[cfg(feature = "hardware-abort-probe")]
-pub(crate) async fn qualify_abort(
+pub async fn qualify_abort(
     device: Device,
     path: &Path,
     provider_cap: usize,

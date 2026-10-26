@@ -5,10 +5,7 @@ use super::continuation::{
     PrefixPhaseEnqueue,
 };
 use super::*;
-use crate::resident_leases::{ResidentReadback, TiedWeight};
-use crate::resident_program::native_full::{FullModelLibrary, FullModelProgram};
-use crate::resident_program::text_positions::TextPositionsPrepared;
-use crate::vllm_cuda_qualification::{
+use crate::cuda::native::{
     CubinActivationImage, CubinQualificationInputs,
     attention_cubin::{ModelAttentionBinding, ModelAttentionInputs, ModelAttentionParameters},
     full_model_budget::provider_bound,
@@ -20,12 +17,20 @@ use crate::vllm_cuda_qualification::{
     model_weights::{ModelWeights, PendingModelWeights},
     source_rotary::RotaryOutcome,
 };
+use crate::resident_leases::{ResidentReadback, TiedWeight};
+use crate::resident_program::native_full::{FullModelLibrary, FullModelProgram};
+use crate::resident_program::text_positions::TextPositionsPrepared;
 use std::collections::BTreeMap;
-use zerogravity_core::accelerator::program::{PlanOperation, RecordedVllm08Model, Vllm08Kind};
+
+use crate::resident_program::source_bindings::SourceBindings;
+use zerogravity_artifacts::source_weights::VerifiedTensorSource;
+use zerogravity_core::accelerator::program::{KvDomain, SourceOperatorKind, SourceTensor};
+mod scopes;
+pub use scopes::SourceModelScopes;
 
 mod faults;
 use faults::{Mode, Outcome};
-pub use faults::{Vllm08ModelFault, Vllm08ModelFaultOutcome, qualify_vllm08_model_fault};
+pub use faults::{SourceModelFault, SourceModelFaultOutcome, qualify_source_model_fault};
 pub(crate) mod natural_cold;
 struct Execution<'a> {
     rotary: Option<RotaryOutcome>,
@@ -34,26 +39,13 @@ struct Execution<'a> {
     natural: bool,
     reusable: bool,
 }
-pub struct Vllm08ModelInputs {
+pub struct SourceModelInputs {
     pub projections: CubinQualificationInputs,
     pub activation: CubinActivationImage,
 }
-pub struct Vllm08DomainReadback<'a> {
-    pub slot: StateSlot,
-    pub buffers: &'a [Bytes],
-}
-pub struct Vllm08ModelReadback<'a> {
-    pub phase: usize,
-    pub record: &'a RecordedVllm08Model,
-    pub values: &'a [Bytes],
-    pub input_rms: &'a [Bytes],
-    pub rms: &'a [(usize, &'a [Bytes])],
-    pub prior_domains: &'a [Vllm08DomainReadback<'a>],
-    pub domains: &'a [Vllm08DomainReadback<'a>],
-    pub greedy: &'a [Bytes],
-}
+pub use super::source_readback::{SourceDomainReadback, SourceModelReadback};
 #[derive(Debug)]
-pub struct Vllm08ModelReceipt {
+pub struct SourceModelReceipt {
     pub phases: usize,
     pub native_launches: usize,
     pub workspace_clears: usize,
@@ -95,7 +87,7 @@ struct FullOwners {
     frames: Vec<Frame>,
     candidates: Vec<Vec<Domain>>,
     initial: [Vec<Domain>; 2],
-    _source: Arc<OriginalWindowModelSource>,
+    _source: VerifiedTensorSource,
     _parameters: Vec<Arc<ModelGdnParameters>>,
     _attention_parameters: Vec<Arc<ModelAttentionParameters>>,
     _positions: Vec<Arc<TextPositionsPrepared>>,
@@ -112,18 +104,15 @@ fn history(phase: usize) -> usize {
 fn local_phase(phase: usize) -> usize {
     if phase < 2 { phase } else { phase - 2 }
 }
-fn node_pair(record: &RecordedVllm08Model, layer: usize) -> Result<[usize; 2]> {
+fn node_pair(record: &SourceBindings, layer: usize) -> Result<[usize; 2]> {
     let mut pair = [None, None];
-    for (index, node) in record.plan().nodes().iter().enumerate() {
-        let PlanOperation::TypedVllm08 { descriptor, .. } = &node.operation else {
+    for (index, _node) in record.plan().nodes().iter().enumerate() {
+        let Some(descriptor) = &record.operator(index)? else {
             continue;
         };
-        if descriptor.layer().map(|l| l.index()) != Some(layer) {
-            continue;
-        }
         let slot = match descriptor.kind() {
-            Vllm08Kind::GdnConv => 0,
-            Vllm08Kind::GdnRecurrent => 1,
+            SourceOperatorKind::CausalConvSplit { domain, .. } if domain.0 == layer => 0,
+            SourceOperatorKind::GatedDelta { domain, .. } if domain.0 == layer => 1,
             _ => continue,
         };
         if pair[slot].replace(index).is_some() {
@@ -138,21 +127,82 @@ fn node_pair(record: &RecordedVllm08Model, layer: usize) -> Result<[usize; 2]> {
     ])
 }
 
+fn attention_layer(record: &SourceBindings, layer: usize) -> bool {
+    record
+        .state_requirements()
+        .iter()
+        .any(|state| state.slot == StateSlot::Kv(KvDomain(layer)))
+}
+
+fn head_member(record: &SourceBindings) -> Result<&SourceTensor> {
+    let at = record
+        .plan()
+        .source_value_provenance(record.selection().output())?
+        .ok_or_else(|| Error::State("full24 actual head producer absent".into()))?
+        .node_index();
+    let op = record
+        .operator(at)?
+        .ok_or_else(|| Error::State("full24 actual head source absent".into()))?;
+    let [matrix] = op.matrices() else {
+        return Err(Error::State("full24 exact head member arity".into()));
+    };
+    if !matches!(
+        op.kind(),
+        SourceOperatorKind::Projection {
+            selected_row: Some(_)
+        }
+    ) {
+        return Err(Error::State(
+            "full24 selected head projection absent".into(),
+        ));
+    }
+    Ok(matrix)
+}
+fn qk_operator(
+    record: &SourceBindings,
+    layer: usize,
+) -> Result<&zerogravity_core::accelerator::program::SourceOperator> {
+    for (index, node) in record.plan().nodes().iter().enumerate() {
+        let Some(op) = record.operator(index)? else {
+            continue;
+        };
+        if matches!(op.kind(),SourceOperatorKind::KvAppend{domain,..} if domain==KvDomain(layer)) {
+            let query = *node
+                .inputs
+                .first()
+                .ok_or_else(|| Error::State("full24 KV query SSA absent".into()))?;
+            let producer = record
+                .plan()
+                .source_value_provenance(query)?
+                .ok_or_else(|| Error::State("full24 actual QK producer absent".into()))?
+                .node_index();
+            let op = record
+                .operator(producer)?
+                .ok_or_else(|| Error::State("full24 QK descriptor absent".into()))?;
+            if !matches!(op.kind(), SourceOperatorKind::QkRmsRotaryGated(_)) {
+                return Err(Error::State("full24 exact QK producer".into()));
+            }
+            return Ok(op);
+        }
+    }
+    Err(Error::State("full24 attention domain absent".into()))
+}
+
 /// Expected archives may be opened only by `validate`, invoked inside the
 /// original trusted completion AFTER real producer arithmetic and actual D2H.
 /// `rotary` is a genuine completed original constructor result, not user bytes.
-pub async fn qualify_vllm08_model<F>(
+pub async fn qualify_source_model<F>(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    records: [RecordedVllm08Model; 5],
-    inputs: Vllm08ModelInputs,
+    scopes: SourceModelScopes,
+    inputs: SourceModelInputs,
     rotary: Option<RotaryOutcome>,
     cancelled: Option<&AtomicBool>,
     validate: F,
-) -> Result<Vllm08ModelReceipt>
+) -> Result<SourceModelReceipt>
 where
-    F: FnMut(Vllm08ModelReadback<'_>) -> Result<()>,
+    F: FnMut(SourceModelReadback<'_>) -> Result<()>,
 {
+    let (source, records) = scopes.into_parts();
     match qualify_inner(
         device,
         source,
@@ -180,14 +230,14 @@ where
 }
 async fn qualify_inner<F>(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    records: [RecordedVllm08Model; 5],
-    inputs: Vllm08ModelInputs,
+    source: VerifiedTensorSource,
+    records: [Arc<SourceBindings>; 5],
+    inputs: SourceModelInputs,
     execution: Execution<'_>,
     mut validate: F,
 ) -> Result<Outcome>
 where
-    F: FnMut(Vllm08ModelReadback<'_>) -> Result<()>,
+    F: FnMut(SourceModelReadback<'_>) -> Result<()>,
 {
     let Execution {
         rotary,
@@ -197,23 +247,21 @@ where
         reusable,
     } = execution;
     not_cancelled(cancelled)?;
-    source.require_vllm08_full_source()?;
+    SourceModelScopes::require(&source, &records)?;
     let natural_metadata = if natural {
-        Some(source.source().reserve_workspace(1024 * 1024)?)
+        Some(source.reserve_workspace(1024 * 1024)?)
     } else {
         None
     };
-    let metadata = source.source().reserve_workspace(4 * 1024 * 1024)?;
-    let records = records.into_iter().map(Arc::new).collect::<Vec<_>>();
+    let metadata = source.reserve_workspace(4 * 1024 * 1024)?;
+    let records = records.into_iter().collect::<Vec<_>>();
     let cap = if reusable {
         if !natural {
             return Err(Error::State(
                 "reusable preparation requires genuine natural cold mode".into(),
             ));
         }
-        crate::vllm_cuda_qualification::full_model_budget::reusable_provider_bound(
-            &source, &records,
-        )?
+        crate::cuda::native::full_model_budget::reusable_provider_bound(&source, &records)?
     } else {
         provider_bound(&source, &records)?
     };
@@ -289,13 +337,8 @@ where
     let mut programs = Vec::with_capacity(5);
     for record in &records {
         programs.push(Some(
-            ResidentProgram::prepare_full_model_values(
-                service.clone(),
-                source.clone(),
-                record.clone(),
-                cancelled,
-            )
-            .await?,
+            ResidentProgram::prepare_full_model_values(service.clone(), record.clone(), cancelled)
+                .await?,
         ));
     }
     slot.finish()?;
@@ -331,13 +374,13 @@ where
         sessions[1].authority.begin_advance(67)?,
     ];
     let schedules = [
-        GdnAttemptSchedule::new_full_model(
+        GdnAttemptSchedule::new_model(
             &source,
             bases[0],
             attempts[0].clone(),
             records[..2].iter().map(|r| r.call().clone()).collect(),
         )?,
-        GdnAttemptSchedule::new_full_model(
+        GdnAttemptSchedule::new_model(
             &source,
             bases[1],
             attempts[1].clone(),
@@ -403,7 +446,7 @@ where
             bound.push(sessions[h].bind_full_model_state(
                 &attempts[h],
                 &records[index],
-                records[index].call().layer(layer)?,
+                layer,
                 &candidates[index],
                 phases[index].clone(),
             )?);
@@ -435,10 +478,9 @@ where
         init.retain_completion_owner(body.completion_owner())?;
     }
     let pending_tied = init
-        .upload_original_tied_bf16(source.clone(), cancelled)
+        .upload_tied_bf16(source.clone(), head_member(&records[0])?.clone(), cancelled)
         .await?;
-    let pending_weights =
-        PendingModelWeights::upload(source.clone(), &records[0], &mut init, cancelled).await?;
+    let pending_weights = PendingModelWeights::upload(&records[0], &mut init, cancelled).await?;
     let shared_workspace = init.allocate_empty(8_519_680, BufferRole::Scratch)?;
     let rotary = ModelRotary::prepare(source.clone(), service.clone(), prefix, &mut init)?;
     let mut parameters = Vec::with_capacity(18);
@@ -446,10 +488,10 @@ where
     let mut attention_parameters = Vec::with_capacity(6);
     let mut attention_parameter_map = BTreeMap::new();
     for layer in 0..24 {
-        if layer % 4 == 3 {
+        if attention_layer(&records[0], layer) {
             let parameter = ModelAttentionParameters::prepare(
                 source.clone(),
-                records[0].call().layer(layer)?,
+                qk_operator(&records[0], layer)?,
                 &service,
                 &mut init,
                 cancelled,
@@ -458,11 +500,10 @@ where
             attention_parameters.push(parameter);
         } else {
             let pair = node_pair(&records[0], layer)?;
-            let op = |index: usize| match &records[0].plan().nodes()[index].operation {
-                PlanOperation::TypedVllm08 { descriptor, .. } => Ok(descriptor.as_ref()),
-                _ => Err(Error::State(
-                    "full24 original GDN parameter descriptor".into(),
-                )),
+            let op = |index: usize| {
+                records[0]
+                    .operator(index)?
+                    .ok_or_else(|| Error::State("full24 original GDN parameter descriptor".into()))
             };
             let parameter = ModelGdnParameters::prepare(
                 source.clone(),
@@ -480,9 +521,8 @@ where
     for index in 0..5 {
         let h = history(index);
         let binding = sessions[h].bind_text_positions(
-            source.clone(),
+            records[index].clone(),
             &attempts[h],
-            records[index].call().request(),
             Some(phases[index].clone()),
             cancelled,
         )?;
@@ -498,7 +538,7 @@ where
         let h = history(index);
         let mut phase = BTreeMap::new();
         for layer in 0..24 {
-            if layer % 4 != 3 {
+            if !attention_layer(&records[index], layer) {
                 phase.insert(
                     layer,
                     ModelGdnPrepared::prepare(
@@ -524,7 +564,7 @@ where
     for index in 0..5 {
         let h = history(index);
         let mut phase = BTreeMap::new();
-        for layer in [3, 7, 11, 15, 19, 23] {
+        for layer in (0..24).filter(|layer| attention_layer(&records[index], *layer)) {
             let binding = ModelAttentionBinding::prepare(
                 ModelAttentionInputs {
                     values: bodies[index].values().clone(),
@@ -727,11 +767,11 @@ where
         };
         let candidate = &owners.candidates[index];
         let call = records[index].call();
-        let bindings = bind_domains(prior, candidate, call.request().teachers().base())?;
+        let bindings = bind_domains(prior, candidate, call.rows().base())?;
         let runtime = RuntimeParameters {
-            token: call.request().teachers().ids()[0],
-            position: call.request().teachers().base(),
-            valid_tokens: call.rows(),
+            token: call.rows().ids()[0],
+            position: call.rows().base(),
+            valid_tokens: call.rows().len(),
         };
         let permit = PrefixPhaseEnqueue::new(session, &schedules[h], local, previous[h].as_ref())?;
         let accesses = body.accesses()?.to_vec();
@@ -779,9 +819,9 @@ where
             if local==0 && frame.prior.iter().any(|(_,range)|raw[range.clone()].iter().any(|b|b.iter().any(|v|*v!=0))){
                 return Err(Error::State("full24 original all42 initial prior differs from zero".into()));
             }
-            let prior_domains=frame.prior.iter().map(|(slot,range)|Vllm08DomainReadback{slot:*slot,buffers:&raw[range.clone()]}).collect::<Vec<_>>();
-            let domains=frame.candidate.iter().map(|(slot,range)|Vllm08DomainReadback{slot:*slot,buffers:&raw[range.clone()]}).collect::<Vec<_>>();
-            let end=call.request().teachers().base()+call.rows();
+            let prior_domains=frame.prior.iter().map(|(slot,range)|SourceDomainReadback{slot:*slot,buffers:&raw[range.clone()]}).collect::<Vec<_>>();
+            let domains=frame.candidate.iter().map(|(slot,range)|SourceDomainReadback{slot:*slot,buffers:&raw[range.clone()]}).collect::<Vec<_>>();
+            let end=call.rows().base()+call.rows().len();
             for (prior,candidate) in prior_domains.iter().zip(&domains){
                 if prior.slot!=candidate.slot{return Err(Error::State("full24 exact original domain order".into()));}
                 if matches!(prior.slot,StateSlot::Kv(_)) {
@@ -794,12 +834,12 @@ where
             }
             const VALUES:usize=1+18+6+3;
             let rms=frame.rms_nodes.iter().enumerate().map(|(i,n)|(*n,&raw[VALUES+327+i*4..VALUES+327+(i+1)*4])).collect::<Vec<_>>();
-            validate(Vllm08ModelReadback{phase:index,record:&records[index],values:&raw[VALUES..VALUES+327],
+            validate(SourceModelReadback{phase:index,record:&records[index],values:&raw[VALUES..VALUES+327],
                 input_rms:&raw[25..28],rms:&rms,prior_domains:&prior_domains,domains:&domains,
                 greedy:&raw[VALUES+327+48*4..VALUES+327+48*4+2]})
         }).await?;
         drop(raw);
-        permit.require_invocation(&service, call.request(), 24)?;
+        permit.require_invocation(&service, call, 0, 24)?;
         slot.finish()?;
         previous[h] = Some(CompletedPrefixPhase::after_full_completion(
             session,
@@ -855,7 +895,7 @@ where
             "full24 original physical envelope not retired".into(),
         ));
     }
-    Ok(Outcome::Compared(Vllm08ModelReceipt {
+    Ok(Outcome::Compared(SourceModelReceipt {
         phases: 5,
         native_launches,
         workspace_clears,
@@ -877,12 +917,11 @@ async fn verify_tied_and_retire(
     owners: &Arc<FullOwners>,
     cancelled: Option<&AtomicBool>,
 ) -> Result<usize> {
-    use zerogravity_model_qwen35::original_binding::QwenMatrixRole;
     const WINDOWS: usize = 485;
     const BYTES: usize = 1024 * 1024;
     let weight = &owners.tied;
     let source = &owners._source;
-    if !Arc::ptr_eq(weight.source(), source) {
+    if !weight.source().same_issuer(source) {
         return Err(Error::State(
             "full24 original tied owner differs before independent readback".into(),
         ));
@@ -893,8 +932,14 @@ async fn verify_tied_and_retire(
             "full24 actual tied source H2D/checkpoint coverage".into(),
         ));
     }
-    let table = source.matrix_descriptor(QwenMatrixRole::Output)?;
-    let matrix = source.source().matrix(&table.name, table.axes)?;
+    let table = head_member(
+        owners
+            .bodies
+            .first()
+            .ok_or_else(|| Error::State("full24 retained body absent".into()))?
+            .record(),
+    )?;
+    let matrix = source.matrix(&table.name, table.axes)?;
     if matrix.rows() != 248320
         || matrix.columns() != 1024
         || weight.lease().bytes() != WINDOWS * BYTES
@@ -903,7 +948,7 @@ async fn verify_tied_and_retire(
             "full24 original full table source geometry/extent".into(),
         ));
     }
-    let admission = Arc::new(source.source().reserve_workspace(32 * BYTES)?);
+    let admission = Arc::new(source.reserve_workspace(32 * BYTES)?);
     let mut parameters = Vec::new();
     for parameter in &owners._parameters {
         parameters.extend(parameter.immutable_weights());
@@ -923,12 +968,8 @@ async fn verify_tied_and_retire(
         not_cancelled(cancelled)?;
         let first = index * 512;
         let window = Arc::new(match cancelled {
-            Some(flag) => {
-                source
-                    .source()
-                    .read_rows_cancellable(&matrix, first..first + 512, flag)?
-            }
-            None => source.source().read_rows(&matrix, first..first + 512)?,
+            Some(flag) => source.read_rows_cancellable(&matrix, first..first + 512, flag)?,
+            None => source.read_rows(&matrix, first..first + 512)?,
         });
         if window.as_slice().len() != BYTES || window.row_range() != (first..first + 512) {
             return Err(Error::State(

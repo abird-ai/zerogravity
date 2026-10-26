@@ -67,14 +67,14 @@ impl ComponentCursor {
         service: &Arc<ResidentService>,
         permit: &PrefixPhaseEnqueue<'_>,
     ) -> Result<()> {
-        if service.source_identity() != self.recipe.record().call().source() {
+        if service.source_identity() != self.recipe.bindings().call().source() {
             return Err(Error::State(
                 "source2B original service/plan issuer changed".into(),
             ));
         }
         // Original borrowed Session rechecks current root/epoch/generation.
         // One updated GDN domain pair is a component scope, no fullmodel permit.
-        permit.require_invocation(service, self.recipe.record().call().request(), 1)?;
+        permit.require_invocation(service, self.recipe.bindings().call(), 0, 1)?;
         self.order.begin()
     }
     pub(super) fn take(&self, index: usize, node: &PlanNode) -> Result<()> {
@@ -93,24 +93,18 @@ impl ComponentCursor {
         }
         match (&node.operation, &original.operation) {
             (
-                PlanOperation::TypedVllmBf16Embedding { descriptor: a },
-                PlanOperation::TypedVllmBf16Embedding { descriptor: b },
-            ) if a.tensor() == b.tensor()
-                && a.teachers() == b.teachers()
-                && a.model_profile() == b.model_profile() => {}
-            (
-                PlanOperation::TypedVllm08 {
+                PlanOperation::SourceOperator {
                     descriptor: a,
                     state: sa,
                 },
-                PlanOperation::TypedVllm08 {
+                PlanOperation::SourceOperator {
                     descriptor: b,
                     state: sb,
                 },
             ) if a == b && sa == sb => {}
             _ => {
                 return Err(Error::State(
-                    "source2B exact original typed operator changed".into(),
+                    "source2B exact original mathematical operator changed".into(),
                 ));
             }
         }
@@ -129,10 +123,10 @@ impl ComponentCursor {
             5 => false,
             _ => return Err(Error::State("not source2B stateful node".into())),
         };
-        permit.require_invocation(service, self.recipe.record().call().request(), 1)?;
+        permit.require_invocation(service, self.recipe.bindings().call(), 0, 1)?;
         domains.require_enqueue(service, Some(permit))?;
         let effect = self.recipe.effects()?[usize::from(!convolution)];
-        if domains.invocation() != self.recipe.record().call().request()
+        if domains.invocation() != self.recipe.bindings().call()
             || domains.effect(convolution) != effect
         {
             return Err(Error::State(

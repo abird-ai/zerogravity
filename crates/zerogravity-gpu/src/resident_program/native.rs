@@ -1,15 +1,16 @@
 //! Native source/body inside the SAME resident value map and dispatch loop.
+use super::source_bindings::SourceBindings;
 use super::*;
+use crate::cuda::kernel::PinnedKernel;
+use crate::cuda::native::native_gdn::{NativeGdnContext, NativeGdnPrepared};
+use crate::cuda::native::native_plan::{
+    NativePlanContext, NativePlanPhase, NativePlanPrograms, PreparedImages,
+};
+use crate::cuda::rms::{BoundRmsSource, FusedRmsPrepared, RmsPrepared};
 use crate::physical_quarantine::CompletionOwner;
 use crate::resident_inference::gdn_state::BoundGdnDomains;
 use crate::resident_inference::native_fragment::PrefixPhaseEnqueue;
 use crate::resident_leases::{ResidentLease, ResidentReadback, ResidentService};
-use crate::vllm_cuda_input_rms::{BoundRmsSource, FusedRmsPrepared, RmsPrepared};
-use crate::vllm_cuda_qualification::native_gdn::{NativeGdnContext, NativeGdnPrepared};
-use crate::vllm_cuda_qualification::native_plan::{
-    NativePlanContext, NativePlanPhase, NativePlanPrograms, PreparedImages,
-};
-use crate::vllm_ptx_inline::PinnedKernel;
 use cubecl::bytes::Bytes;
 use cubecl_runtime::kernel::BufferIOAttr;
 use std::collections::BTreeMap;
@@ -17,13 +18,14 @@ use std::sync::{
     OnceLock,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
+use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::WindowWorkspace;
+use zerogravity_core::accelerator::program::SourceCall;
 use zerogravity_core::accelerator::program::{
-    ActivationPrecision, ConvDomain, KvDomain, RecordedVllmGdnFragment, RecurrentDomain,
-    VllmBf16Invocation, VllmGdnProjectionKind,
+    ActivationPrecision, SourceGamma, SourceNumericalContract, SourceOperator, SourceOperatorKind,
+    SourceRmsGeometry,
 };
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
-use zerogravity_model_qwen35::{StateSpec, original_binding::OriginalWindowModelSource};
 pub(super) mod certification;
 pub(super) use certification::CertificationRun;
 pub(crate) use certification::qualify as qualify_finite_cohorts;
@@ -31,12 +33,15 @@ pub(crate) use certification::qualify as qualify_finite_cohorts;
 pub(crate) struct NativeProgram {
     // Certificate handles retire before the original value/status leases.
     certificates: CertificateSet,
-    source: Arc<OriginalWindowModelSource>,
-    invocation: VllmBf16Invocation,
+    source: VerifiedTensorSource,
+    bindings: Arc<SourceBindings>,
+    invocation: SourceCall,
     completed_layers: usize,
     rms: Arc<RmsPrepared>,
     status: ResidentLease,
     gdn_nodes: Vec<[usize; 2]>,
+    post_attention_fault_node: Option<usize>,
+    down_fault_node: Option<usize>,
     fused: BTreeMap<usize, Arc<FusedRmsPrepared>>,
     gdn: OnceLock<Vec<Arc<NativeGdnPrepared>>>,
     projections: OnceLock<Arc<NativePlanPrograms>>,
@@ -52,7 +57,7 @@ pub(crate) struct NativeProgram {
     _metadata: WindowWorkspace,
 }
 struct Certificate {
-    launch: crate::vllm_ptx_inline::PreparedPinnedLaunch,
+    launch: crate::cuda::kernel::PreparedPinnedLaunch,
 }
 /// Exact immutable physical bindings, shared by every native body adapter.
 pub(super) struct CertificateSet {
@@ -67,333 +72,123 @@ pub(super) fn cancelled(flag: Option<&AtomicBool>) -> Result<()> {
     Ok(())
 }
 /// Exact source metadata and source layer indices, also used by Session roots.
-pub(super) fn state_requirements(
-    source: &OriginalWindowModelSource,
-    plan: &ForwardPlan,
-) -> Result<Vec<StateRequirement>> {
-    if source.geometry().layers.len() != 24
-        || source.state_specs().len() != 24
-        || plan.prefix_capacity() != 512
-    {
-        return Err(Error::Unsupported(
-            "initial .8B all42 source state layout".into(),
-        ));
-    }
-    let mut requirements = Vec::with_capacity(42);
-    for (layer, spec) in source.state_specs().iter().enumerate() {
-        match *spec {
-            StateSpec::Delta { conv, state }
-                if layer % 4 != 3 && conv == 6144 * 3 && state == 16 * 128 * 128 =>
-            {
-                requirements.push(StateRequirement {
-                    slot: StateSlot::Conv(ConvDomain(layer)),
-                    layout: StateLayout::Vector { elements: conv },
-                    bytes: conv * 4,
-                });
-                requirements.push(StateRequirement {
-                    slot: StateSlot::Recurrent(RecurrentDomain(layer)),
-                    layout: StateLayout::Vector { elements: state },
-                    bytes: state * 4,
-                });
-            }
-            StateSpec::Full { kv_width: 512 } if layer % 4 == 3 => {
-                requirements.push(StateRequirement {
-                    slot: StateSlot::Kv(KvDomain(layer)),
-                    layout: StateLayout::Kv {
-                        slab: 512,
-                        capacity: 512,
-                    },
-                    bytes: 2 * 512 * 512 * 4,
-                })
-            }
-            _ => {
-                return Err(Error::Unsupported(
-                    "actual source canonical state geometry/layer indices".into(),
-                ));
-            }
-        }
-    }
-    requirements.sort_by_key(|r| r.slot);
-    if requirements.iter().map(|r| r.slot).collect::<Vec<_>>() != plan.required_domains() {
-        return Err(Error::State(
-            "same original source all42 state slots differ from fragment".into(),
-        ));
-    }
-    Ok(requirements)
+pub(super) fn state_requirements(bindings: &SourceBindings) -> Result<Vec<StateRequirement>> {
+    Ok(bindings.state_requirements().to_vec())
 }
 struct Recipe {
     gdns: Vec<[usize; 2]>,
     fused: Vec<usize>,
+    first_down: Option<usize>,
     _metadata: WindowWorkspace,
 }
-fn only_output(node: &PlanNode) -> Result<zerogravity_core::accelerator::program::ValueId> {
-    match node.outputs.as_slice() {
-        [value] => Ok(*value),
-        _ => Err(Error::State("one actual typed output".into())),
+fn fragment_rms() -> SourceRmsGeometry {
+    SourceRmsGeometry {
+        width: 1024,
+        epsilon: 1e-6,
+        gamma: SourceGamma::OnePlus,
     }
 }
-fn require_recipe(
-    source: &OriginalWindowModelSource,
-    record: &RecordedVllmGdnFragment,
-) -> Result<Recipe> {
-    use zerogravity_core::accelerator::program::{
-        GdnPrefixLayer, GdnPrefixRmsSite, ResidualRmsContract,
-    };
-    use zerogravity_model_qwen35::original_binding::{QwenMatrixRole as M, QwenParameterRole as P};
-    let metadata = source.source().reserve_workspace(64 * 1024)?;
-    let plan = record.plan();
-    let base = plan
-        .vllm_gdn_fragment()
-        .ok_or_else(|| Error::Unsupported("not native original-root fragment".into()))?;
-    if source.source_identity() != plan.source()
-        || base.layer().index() != 0
+fn source_descriptor<'a>(node: &'a PlanNode, call: &SourceCall) -> Result<&'a SourceOperator> {
+    match &node.operation {
+        PlanOperation::SourceOperator {
+            descriptor,
+            state: None,
+        } if descriptor.call() == call
+            && descriptor.numerical_contract()
+                == SourceNumericalContract::ReferenceCudaSm86Bf16V1 =>
+        {
+            Ok(descriptor)
+        }
+        _ => Err(Error::State(
+            "native actual source mathematical call/contract differs".into(),
+        )),
+    }
+}
+fn require_recipe(bindings: &SourceBindings) -> Result<Recipe> {
+    crate::cuda::native::native_gdn::phase(bindings.call())?;
+    let metadata = bindings.source().reserve_workspace(64 * 1024)?;
+    let plan = bindings.plan();
+    let completed = bindings.selection().completed_layers();
+    if plan.is_operator_slice()
         || plan.frontier_delta() != 0
         || plan.logits().is_some()
-        || plan.is_operator_slice()
-        || !matches!(record.completed_layers(), 0 | 1 | 3)
+        || !matches!(completed, 0 | 1 | 3)
     {
         return Err(Error::Unsupported(
-            "unpublishable exact initial source GDN cut".into(),
+            "native unpublished finite fragment extent".into(),
         ));
     }
-    let full = record.completed_layers() != 0;
-    let layers = record.completed_layers().max(1);
-    let node = |index: usize| {
-        plan.nodes()
-            .get(index)
-            .ok_or_else(|| Error::State("source recipe node absent".into()))
-    };
-    let embedding = node(0)?;
-    let raw = only_output(embedding)?;
-    let PlanOperation::TypedVllmBf16Embedding { descriptor } = &embedding.operation else {
-        return Err(Error::State("original source rows first".into()));
-    };
-    if descriptor.teachers() != base.teachers() || !embedding.inputs.is_empty() {
-        return Err(Error::State("original source teacher issuer".into()));
-    }
-    source.validate_matrix(M::Embedding, descriptor.tensor())?;
-    let norm = node(1)?;
-    let first_normal = only_output(norm)?;
-    let PlanOperation::TypedVllmInputRms { descriptor } = &norm.operation else {
-        return Err(Error::State("explicit layer0 input RMS".into()));
-    };
-    if descriptor.invocation() != base || norm.inputs != [raw] {
-        return Err(Error::State("ordinary RMS consumes actual raw rows".into()));
-    }
-    source.validate_parameter(P::InputNorm(0), descriptor.parameter())?;
     let mut recipe = Recipe {
-        gdns: Vec::with_capacity(layers),
-        fused: Vec::with_capacity(2 * layers - 1),
+        gdns: Vec::with_capacity(completed.max(1)),
+        fused: Vec::with_capacity(2 * completed.max(1) - 1),
+        first_down: bindings.selection().first_mlp_down_node(),
         _metadata: metadata,
     };
-    let mut cursor = 2;
-    let mut branch = raw;
-    let mut residual = raw;
-    let projection = |index: usize,
-                      call: &VllmBf16Invocation,
-                      kind: VllmGdnProjectionKind,
-                      input: zerogravity_core::accelerator::program::ValueId,
-                      roles: &[M]|
-     -> Result<zerogravity_core::accelerator::program::ValueId> {
-        let n = node(index)?;
-        let PlanOperation::TypedVllmGdnProjection { descriptor } = &n.operation else {
-            return Err(Error::State("source projection record".into()));
-        };
-        if descriptor.invocation() != call
-            || descriptor.kind() != kind
-            || n.inputs != [input]
-            || descriptor.members().len() != roles.len()
-        {
-            return Err(Error::State(
-                "source ordered projection/producer recipe".into(),
-            ));
-        }
-        for (member, role) in descriptor.members().iter().zip(roles) {
-            source.validate_matrix(*role, member)?;
-        }
-        only_output(n)
-    };
-    let fused = |index: usize,
-                 layer: GdnPrefixLayer,
-                 site: GdnPrefixRmsSite,
-                 left: zerogravity_core::accelerator::program::ValueId,
-                 right: zerogravity_core::accelerator::program::ValueId,
-                 role: P|
-     -> Result<(
-        zerogravity_core::accelerator::program::ValueId,
-        zerogravity_core::accelerator::program::ValueId,
-    )> {
-        let n = node(index)?;
-        let PlanOperation::TypedResidualRms {
-            parameter,
-            contract,
-        } = &n.operation
-        else {
-            return Err(Error::State("bound dual residual/RMS record".into()));
-        };
-        if *contract != ResidualRmsContract::Vllm031CudaGdnPrefix(layer.rms(site)?)
-            || n.inputs != [left, right]
-            || n.outputs.len() != 2
-        {
-            return Err(Error::State(
-                "actual branch/carried residual/site recipe".into(),
-            ));
-        }
-        source.validate_parameter(role, parameter)?;
-        Ok((n.outputs[0], n.outputs[1]))
-    };
-    for i in 0..layers {
-        let layer = GdnPrefixLayer::new(plan.source(), i)?;
-        let call = VllmBf16Invocation::new(layer, base.legacy_phase()?, base.teachers().clone())?;
-        let (normal, carried) = if i == 0 {
-            (first_normal, raw)
-        } else {
-            let pair = fused(
-                cursor,
-                layer,
-                GdnPrefixRmsSite::InputResidual,
-                branch,
-                residual,
-                P::InputNorm(i),
-            )?;
-            recipe.fused.push(cursor);
-            cursor += 1;
-            pair
-        };
-        let q = projection(
-            cursor,
-            &call,
-            VllmGdnProjectionKind::Qkvz,
-            normal,
-            &[M::GdnQkv(i), M::GdnGate(i)],
-        )?;
-        cursor += 1;
-        let b = projection(
-            cursor,
-            &call,
-            VllmGdnProjectionKind::Ba,
-            normal,
-            &[M::GdnBeta(i), M::GdnAlpha(i)],
-        )?;
-        cursor += 1;
-        let conv_index = cursor;
-        let conv = node(cursor)?;
-        cursor += 1;
-        let rec_index = cursor;
-        let rec = node(cursor)?;
-        cursor += 1;
-        let (
-            PlanOperation::TypedVllmGdnConv { descriptor: c },
-            PlanOperation::TypedVllmGdnRecurrent { descriptor: r },
-        ) = (&conv.operation, &rec.operation)
-        else {
-            return Err(Error::State("actual Conv/recurrent pair".into()));
-        };
-        if c.invocation() != &call
-            || r.invocation() != &call
-            || conv.inputs != [q, b]
-            || conv.outputs.len() != 2
-            || rec.inputs != [conv.outputs[0], conv.outputs[1], b]
-        {
-            return Err(Error::State("exact source/layer/cohort GDN recipe".into()));
-        }
-        source.validate_parameter(P::GdnConvolution(i), c.parameter())?;
-        for (parameter, role) in r
-            .parameters()
-            .iter()
-            .zip([P::GdnA(i), P::GdnDt(i), P::GdnNorm(i)])
-        {
-            source.validate_parameter(role, parameter)?;
-        }
-        let gated = only_output(rec)?;
-        recipe.gdns.push([conv_index, rec_index]);
-        if full {
-            let out = projection(
-                cursor,
-                &call,
-                VllmGdnProjectionKind::GdnOut,
-                gated,
-                &[M::GdnOutput(i)],
-            )?;
-            cursor += 1;
-            let (post, post_residual) = fused(
-                cursor,
-                layer,
-                GdnPrefixRmsSite::PostAttention,
-                out,
-                carried,
-                P::FfnNorm(i),
-            )?;
-            recipe.fused.push(cursor);
-            cursor += 1;
-            let gate_up = projection(
-                cursor,
-                &call,
-                VllmGdnProjectionKind::GateUp,
-                post,
-                &[M::FfnGate(i), M::FfnUp(i)],
-            )?;
-            cursor += 1;
-            let act = node(cursor)?;
-            cursor += 1;
-            let PlanOperation::TypedVllmSiluAndMul { descriptor } = &act.operation else {
-                return Err(Error::State("actual BF16 SiluAndMul record".into()));
-            };
-            if descriptor.invocation() != &call || act.inputs != [gate_up] {
-                return Err(Error::State(
-                    "actual computed GateUp activation recipe".into(),
+    for (index, node) in plan.nodes().iter().enumerate() {
+        let descriptor = source_descriptor(node, bindings.call())?;
+        match descriptor.kind() {
+            SourceOperatorKind::EmbeddingRows
+                if index == 0 && node.inputs.is_empty() && node.outputs.len() == 1 => {}
+            SourceOperatorKind::Rms(geometry)
+                if index == 1
+                    && geometry == fragment_rms()
+                    && node.inputs.len() == 1
+                    && node.outputs.len() == 1 => {}
+            SourceOperatorKind::ResidualRms(geometry)
+                if geometry == fragment_rms()
+                    && node.inputs.len() == 2
+                    && node.outputs.len() == 2
+                    && node.state.is_none() =>
+            {
+                recipe.fused.push(index)
+            }
+            SourceOperatorKind::CausalConvSplit { .. } => {
+                let pair = [index, index + 1];
+                crate::cuda::native::native_gdn::operands(bindings, pair)?;
+                recipe.gdns.push(pair);
+            }
+            SourceOperatorKind::GatedDelta { .. }
+                if recipe.gdns.last().is_some_and(|p| p[1] == index) => {}
+            SourceOperatorKind::Projection { selected_row: None }
+                if node.inputs.len() == 1 && node.outputs.len() == 1 && node.state.is_none() => {}
+            SourceOperatorKind::SiluAndMul { width: 3584 }
+                if node.inputs.len() == 1 && node.outputs.len() == 1 && node.state.is_none() => {}
+            SourceOperatorKind::StateCarry { slot }
+                if node.inputs.is_empty()
+                    && node.outputs.is_empty()
+                    && node.state.is_some_and(|effect| {
+                        effect.read.slot == slot
+                            && effect.write.slot == slot
+                            && effect.read.ordinal == 0
+                            && effect.write.ordinal == 1
+                    }) => {}
+            _ => {
+                return Err(Error::Unsupported(
+                    "operation outside actual native fragment math".into(),
                 ));
             }
-            branch = projection(
-                cursor,
-                &call,
-                VllmGdnProjectionKind::Down,
-                only_output(act)?,
-                &[M::FfnDown(i)],
-            )?;
-            cursor += 1;
-            residual = post_residual;
-        } else {
-            branch = gated;
         }
     }
-    let rest = &plan.nodes()[cursor..];
-    if record.output() != branch
-        || record.residual_output() != full.then_some(residual)
-        || rest.len() != 42 - 2 * layers
-        || rest.iter().any(|n| {
-            !matches!(n.operation, PlanOperation::TypedVllmStateCarry)
-                || !n.inputs.is_empty()
-                || !n.outputs.is_empty()
-        })
+    if recipe.gdns.len() != completed.max(1)
+        || recipe.fused.len() != if completed == 0 { 0 } else { 2 * completed - 1 }
     {
         return Err(Error::State(
-            "exact source initial cut output/canonical remaining-domain copies".into(),
+            "native actual GDN/RMS preparation site coverage".into(),
         ));
     }
     Ok(recipe)
 }
-pub(crate) fn capacity_bound(
-    source: &OriginalWindowModelSource,
-    record: &RecordedVllmGdnFragment,
-) -> Result<usize> {
-    // Closed actual config/epsilon guard BEFORE any Device/client/admission.
-    let _config = crate::vllm_cuda_input_rms::BoundRmsSource::bind(
-        source.owner().clone(),
-        0,
-        zerogravity_core::accelerator::program::GdnPrefixRmsSite::PostAttention,
-    )?;
-    require_recipe(source, record)?;
-    let plan = record.plan();
-    state_requirements(source, plan)?;
-    let rows = plan.vllm_gdn_fragment().unwrap().rows();
-    let layers = record.completed_layers().max(1);
-    let fused = if record.completed_layers() == 0 {
+pub(crate) fn capacity_bound(bindings: &SourceBindings) -> Result<usize> {
+    require_recipe(bindings)?;
+    let state_bytes = checked_sum(bindings.state_requirements().iter().map(|r| r.bytes))?;
+    let rows = bindings.call().rows().len();
+    let layers = bindings.selection().completed_layers().max(1);
+    let fused = if bindings.selection().completed_layers() == 0 {
         0
     } else {
         layers * 2 - 1
     };
-    let full = record.completed_layers() != 0;
+    let full = bindings.selection().completed_layers() != 0;
     // Source-derived initial scope, separate from old component envelopes.
     let per_gdn = 49_504
         + 5_570_560
@@ -407,35 +202,47 @@ pub(crate) fn capacity_bound(
     } else {
         0
     };
-    let bound = 2 * 32_784_384
-        + 64 * 1024 * 1024
+    let body_bound = 64 * 1024 * 1024
         + layers * weights
         + 8_519_680
         + (10_240 + rows * 20_492)
         + layers * (rows * 36_928 + per_gdn + extra_values)
         + fused * (10_240 + rows * 20_492)
         + 4 * (layers + 1);
+    let bound = state_bytes
+        .checked_mul(2)
+        .and_then(|n| n.checked_add(body_bound))
+        .ok_or_else(|| Error::Limit("native state/source capacity bound overflow".into()))?;
     bound
         .checked_add(32 * 1024 * 1024 - 1)
         .map(|n| n / (32 * 1024 * 1024) * (32 * 1024 * 1024))
         .ok_or_else(|| Error::Limit("native fragment capacity bound overflow".into()))
 }
 impl NativeProgram {
+    pub(super) fn require_plan(&self, plan: &ForwardPlan) -> Result<()> {
+        if !std::ptr::eq(plan, self.bindings.plan()) || plan.source_call() != Some(&self.invocation)
+        {
+            return Err(Error::State(
+                "native actual shared graph/call owner differs".into(),
+            ));
+        }
+        Ok(())
+    }
     /// Cold pre-binding stage. No image/module or StateRoot is manufactured.
     pub(crate) async fn prepare_values(
         service: Arc<ResidentService>,
-        source: Arc<OriginalWindowModelSource>,
-        record: &RecordedVllmGdnFragment,
+        bindings: Arc<SourceBindings>,
         cancel: Option<&AtomicBool>,
     ) -> Result<(Arc<Self>, Vec<DeviceBuffer>, ResidentPreflight)> {
         cancelled(cancel)?;
-        let recipe = require_recipe(&source, record)?;
-        let plan = record.plan();
-        let invocation = plan.vllm_gdn_fragment().unwrap().clone();
-        let states = state_requirements(&source, plan)?;
-        let metadata = source.source().reserve_workspace(4 * 1024 * 1024)?;
-        let layers = record.completed_layers().max(1);
-        let packed_weights = if record.completed_layers() == 0 {
+        let recipe = require_recipe(&bindings)?;
+        let plan = bindings.plan();
+        let invocation = bindings.call().clone();
+        let source = bindings.source().clone();
+        let metadata = source.reserve_workspace(4 * 1024 * 1024)?;
+        let states = state_requirements(&bindings)?;
+        let layers = bindings.selection().completed_layers().max(1);
+        let packed_weights = if bindings.selection().completed_layers() == 0 {
             16_842_752
         } else {
             43_057_152
@@ -456,9 +263,9 @@ impl NativeProgram {
             + layers * (packed_weights + 49_504)
             + 4 * (1 + layers)
             + 2048
-            + invocation.rows() * 4096
+            + invocation.rows().len() * 4096
             + public_bytes
-            + recipe.fused.len() * (2048 + invocation.rows() * 8192);
+            + recipe.fused.len() * (2048 + invocation.rows().len() * 8192);
         let readback_chunks = max_readback.div_ceil(32 * 1024 * 1024);
         if !(3..=8).contains(&readback_chunks) {
             return Err(Error::Limit(
@@ -466,18 +273,12 @@ impl NativeProgram {
             ));
         }
         let readback = (0..readback_chunks)
-            .map(|_| source.source().reserve_workspace(32 * 1024 * 1024))
+            .map(|_| source.reserve_workspace(32 * 1024 * 1024))
             .collect::<Result<Vec<_>>>()?;
-        let rms = RmsPrepared::prepare(
-            service.clone(),
-            source.source().clone(),
-            invocation.teachers().ids(),
-            0,
-        )
-        .await?;
+        let rms = RmsPrepared::prepare_bound(service.clone(), bindings.clone(), 0, cancel).await?;
         cancelled(cancel)?;
         let mut init = service.begin_initialization(0)?;
-        init.retain_completion_owner(source.clone())?;
+        init.retain_completion_owner(bindings.clone())?;
         init.retain_completion_owner(rms.completion_owner())?;
         let status = init.upload_bytes(&[0; 4], BufferRole::Scratch)?;
         let mut values: Vec<Option<DeviceBuffer>> = vec![None; plan.values().len()];
@@ -514,31 +315,46 @@ impl NativeProgram {
         // Guard-only prepared consumers; no nested initialization guard/fair ticket.
         for &index in &recipe.fused {
             let node = &plan.nodes()[index];
-            let PlanOperation::TypedResidualRms {
-                parameter,
-                contract,
+            let PlanOperation::SourceOperator {
+                descriptor,
+                state: None,
             } = &node.operation
             else {
-                return Err(Error::State("bound RMS recipe changed".into()));
+                return Err(Error::State("bound RMS mathematical recipe changed".into()));
             };
-            let zerogravity_core::accelerator::program::ResidualRmsContract::Vllm031CudaGdnPrefix(
-                key,
-            ) = *contract
-            else {
-                return Err(Error::Unsupported("typed bound RMS contract".into()));
+            let [normalized, residual] = node.outputs.as_slice() else {
+                return Err(Error::State("bound RMS actual output arity".into()));
             };
-            let source_binding =
-                BoundRmsSource::bind(source.owner().clone(), key.layer().index(), key.site())?;
-            if source
-                .source()
-                .parameter(&key.gamma_name())?
-                .source_parameter()
-                != *parameter
+            let [parameter] = descriptor.parameters() else {
+                return Err(Error::State("bound RMS actual gamma arity".into()));
+            };
+            if descriptor.kind() != SourceOperatorKind::ResidualRms(fragment_rms())
+                || descriptor.call() != &invocation
+                || node.state.is_some()
+                || node.inputs.len() != 2
             {
                 return Err(Error::State(
-                    "actual gamma header differs from typed descriptor".into(),
+                    "bound RMS actual source/call/SSA differs".into(),
                 ));
             }
+            for (ordinal, id) in [*normalized, *residual].into_iter().enumerate() {
+                let tag = plan.source_value_provenance(id)?.ok_or_else(|| {
+                    Error::State("bound RMS actual output provenance absent".into())
+                })?;
+                if tag.node_index() != index
+                    || tag.output_index() != ordinal
+                    || tag.call() != &invocation
+                    || tag.inputs() != node.inputs
+                {
+                    return Err(Error::State(
+                        "bound RMS actual dual producer differs".into(),
+                    ));
+                }
+            }
+            let source_binding = BoundRmsSource::bind(source.clone(), descriptor.as_ref().clone())?;
+            source
+                .parameter(&parameter.name)?
+                .validate_source_parameter(parameter)?;
             let input =
                 |id: zerogravity_core::accelerator::program::ValueId| -> Result<ResidentLease> {
                     values
@@ -551,7 +367,7 @@ impl NativeProgram {
             let prepared = FusedRmsPrepared::prepare_bound(
                 service.clone(),
                 source_binding,
-                invocation.rows(),
+                invocation.rows().len(),
                 input(node.inputs[0])?,
                 input(node.inputs[1])?,
                 0,
@@ -565,7 +381,7 @@ impl NativeProgram {
             {
                 let layout = ResidentBufferLayout::new(
                     ResidentPhysicalType::Bf16,
-                    invocation.rows() * 1024,
+                    invocation.rows().len() * 1024,
                 )?;
                 if values[id.0 as usize].is_some() {
                     return Err(Error::State("fused typed output already bound".into()));
@@ -605,11 +421,14 @@ impl NativeProgram {
         };
         let body = Arc::new(Self {
             source,
+            bindings: bindings.clone(),
             invocation,
-            completed_layers: record.completed_layers(),
+            completed_layers: bindings.selection().completed_layers(),
             rms,
             status,
             certificates,
+            post_attention_fault_node: recipe.fused.first().copied(),
+            down_fault_node: recipe.first_down,
             gdn_nodes: recipe.gdns,
             fused,
             gdn: OnceLock::new(),
@@ -635,6 +454,7 @@ impl NativeProgram {
         domains: Vec<Arc<BoundGdnDomains>>,
         cancel: Option<&AtomicBool>,
     ) -> Result<()> {
+        self.require_plan(plan)?;
         if self.gdn.get().is_some() || self.images.get().is_some() {
             return Err(Error::State(
                 "native source/root body prepared twice".into(),
@@ -651,10 +471,9 @@ impl NativeProgram {
                 NativeGdnPrepared::prepare(
                     NativeGdnContext {
                         service: service.clone(),
-                        source: self.source.owner().clone(),
+                        bindings: self.bindings.clone(),
                         domains,
                     },
-                    plan,
                     values,
                     *nodes,
                     cancel,
@@ -676,6 +495,7 @@ impl NativeProgram {
         init: &mut crate::resident_leases::ResidentInitialization<'_>,
         cancel: Option<&AtomicBool>,
     ) -> Result<()> {
+        self.require_plan(plan)?;
         if self.gdn.get().is_none() || self.projections.get().is_some() {
             return Err(Error::State("native final preparation order".into()));
         }
@@ -686,8 +506,7 @@ impl NativeProgram {
         let programs = NativePlanPrograms::prepare(
             NativePlanContext {
                 images,
-                source_owner: self.source.owner().clone(),
-                invocation: self.invocation.clone(),
+                bindings: self.bindings.clone(),
                 service,
             },
             plan,
@@ -712,6 +531,7 @@ impl NativeProgram {
         }
         let mut bindings = Vec::with_capacity(phases.len());
         for &(body, plan, values) in phases {
+            body.require_plan(plan)?;
             if body.gdn.get().is_none()
                 || body.projections.get().is_some()
                 || body.images.get().is_some()
@@ -725,8 +545,7 @@ impl NativeProgram {
             bindings.push(NativePlanPhase {
                 context: NativePlanContext {
                     images: images.clone(),
-                    source_owner: body.source.owner().clone(),
-                    invocation: body.invocation.clone(),
+                    bindings: body.bindings.clone(),
                     service: service.clone(),
                 },
                 plan,
@@ -748,7 +567,7 @@ impl NativeProgram {
                 "complete source layer0/prefix attempt only".into(),
             ));
         }
-        permit.require_invocation(self.rms.normalized().service(), &self.invocation, layers)
+        permit.require_invocation(self.rms.normalized().service(), &self.invocation, 0, layers)
     }
     pub(crate) fn completion_owner(self: &Arc<Self>) -> CompletionOwner {
         self.clone()
@@ -789,8 +608,8 @@ impl NativeProgram {
     }
     pub(crate) fn validate_runtime(&self, p: RuntimeParameters) -> Result<()> {
         if p.position != 0
-            || p.valid_tokens != self.invocation.rows()
-            || self.invocation.teachers().ids().first().copied() != Some(p.token)
+            || p.valid_tokens != self.invocation.rows().len()
+            || self.invocation.rows().ids().first().copied() != Some(p.token)
         {
             return Err(Error::State(
                 "native runtime differs from recorded genuine initial teacher span".into(),
@@ -809,23 +628,21 @@ impl NativeProgram {
         if let Some(permit) = permit {
             self.require_attempt(permit)?;
         }
-        match &node.operation {
-            PlanOperation::TypedVllmBf16Embedding { .. } => Ok(0), // Actual uploaded source rows, separate from RMS output.
-            PlanOperation::TypedVllmInputRms { .. } => {
+        match source_descriptor(node, &self.invocation)?.kind() {
+            SourceOperatorKind::EmbeddingRows => Ok(0), // Actual uploaded source rows, separate from RMS output.
+            SourceOperatorKind::Rms(_) => {
                 self.rms.enqueue()?;
                 self.rms_dispatches.fetch_add(10, Ordering::AcqRel);
                 Ok(10)
             }
-            PlanOperation::TypedResidualRms { contract, .. } => {
+            SourceOperatorKind::ResidualRms(_) => {
                 self.fused
                     .get(&index)
                     .ok_or_else(|| Error::State("actual bound RMS record absent".into()))?
                     .enqueue(cancel)?;
                 self.rms_dispatches.fetch_add(10, Ordering::AcqRel);
                 if self.fault.load(Ordering::Acquire) == 3
-                    && matches!(contract,
-                    zerogravity_core::accelerator::program::ResidualRmsContract::Vllm031CudaGdnPrefix(key)
-                    if key.layer().index()==0 && key.site()==zerogravity_core::accelerator::program::GdnPrefixRmsSite::PostAttention)
+                    && self.post_attention_fault_node == Some(index)
                 {
                     self.cut.store(true, Ordering::Release);
                     return Err(Error::State(
@@ -834,11 +651,9 @@ impl NativeProgram {
                 }
                 Ok(10)
             }
-            PlanOperation::TypedVllmGdnProjection { .. }
-            | PlanOperation::TypedVllmSiluAndMul { .. } => {
-                let cancel_down = self.fault.load(Ordering::Acquire) == 4
-                    && matches!(&node.operation,
-                    PlanOperation::TypedVllmGdnProjection{descriptor} if descriptor.kind()==VllmGdnProjectionKind::Down && descriptor.invocation().layer().index()==0);
+            SourceOperatorKind::Projection { .. } | SourceOperatorKind::SiluAndMul { .. } => {
+                let cancel_down =
+                    self.fault.load(Ordering::Acquire) == 4 && self.down_fault_node == Some(index);
                 if cancel_down {
                     self.internal_cancel.store(true, Ordering::Release);
                     self.cut.store(true, Ordering::Release);
@@ -861,7 +676,7 @@ impl NativeProgram {
                     .fetch_add(result.native_launches, Ordering::AcqRel);
                 Ok(result.dispatches)
             }
-            PlanOperation::TypedVllmGdnConv { .. } => {
+            SourceOperatorKind::CausalConvSplit { .. } => {
                 let count = self
                     .gdn
                     .get()
@@ -882,7 +697,7 @@ impl NativeProgram {
                 }
                 Ok(count)
             }
-            PlanOperation::TypedVllmGdnRecurrent { .. } => {
+            SourceOperatorKind::GatedDelta { .. } => {
                 if self.fault.load(Ordering::Acquire) == 2 {
                     self.internal_cancel.store(true, Ordering::Release);
                     self.cut.store(true, Ordering::Release);
@@ -916,14 +731,14 @@ impl NativeProgram {
     }
     pub(crate) fn arm_fault(
         &self,
-        fault: Option<crate::resident_inference::native_fragment::VllmGdnFragmentFault>,
+        fault: Option<crate::resident_inference::native_fragment::GdnFragmentFault>,
     ) -> Result<()> {
         if self.launched.load(Ordering::Acquire) {
             return Err(Error::State(
                 "cannot change native fault after enqueue".into(),
             ));
         }
-        use crate::resident_inference::native_fragment::VllmGdnFragmentFault::*;
+        use crate::resident_inference::native_fragment::GdnFragmentFault::*;
         let mode = match fault {
             None => 0,
             Some(UnknownAfterConvolution) => 1,
@@ -1011,7 +826,7 @@ impl NativeProgram {
     pub(crate) fn status(&self) -> &ResidentLease {
         &self.status
     }
-    pub(crate) fn source(&self) -> &Arc<OriginalWindowModelSource> {
+    pub(crate) fn source(&self) -> &VerifiedTensorSource {
         &self.source
     }
     pub(crate) fn gdn_nodes(&self) -> &[[usize; 2]] {
@@ -1023,15 +838,14 @@ impl NativeProgram {
     pub(crate) fn completed_layers(&self) -> usize {
         self.completed_layers
     }
-    pub(crate) fn invocation_for_layer(&self, index: usize) -> Result<VllmBf16Invocation> {
-        VllmBf16Invocation::new(
-            zerogravity_core::accelerator::program::GdnPrefixLayer::new(
-                self.invocation.layer().source(),
-                index,
-            )?,
-            self.invocation.legacy_phase()?,
-            self.invocation.teachers().clone(),
-        )
+    pub(crate) fn invocation_for_layer(&self, index: usize) -> Result<SourceCall> {
+        if !self.gdn_nodes.iter().any(|nodes| matches!(
+            &self.bindings.plan().nodes()[nodes[0]].operation,
+            PlanOperation::SourceOperator { descriptor,.. }
+                if matches!(descriptor.kind(),SourceOperatorKind::CausalConvSplit { domain,.. } if domain.0==index))) {
+            return Err(Error::State("native actual GDN domain site absent".into()));
+        }
+        Ok(self.invocation.clone())
     }
     pub(crate) fn require_readback_capacity(&self, bytes: usize) -> Result<()> {
         let admitted = self
@@ -1070,7 +884,7 @@ impl NativeProgram {
             return Err(Error::State("native actual program status".into()));
         }
         for status in &raw[1..rms] {
-            crate::vllm_cuda_gdn::GdnStateAdapter::validate_status(status.as_ref())?;
+            crate::cuda::gdn::GdnStateAdapter::validate_status(status.as_ref())?;
         }
         self.rms.validate_readback(&raw[rms..rms + 3])?;
         let first_fused = rms + 3 + value_count - 2;
@@ -1107,7 +921,14 @@ impl NativeProgram {
         // SAFETY: enclosing owner proves real completion and armed W retention.
         unsafe { programs.retire_kernels_after_physical_completion() }
             .map_err(|e| Error::State(format!("native kernel retirement: {e}")))?;
-        unsafe{crate::vllm_cuda_qualification::native_plan::retire_native_set_after_physical_completion(self.images.get().ok_or_else(||Error::State("native set absent".into()))?)}.map_err(|e|Error::State(format!("native set retirement: {e}")))
+        unsafe {
+            crate::cuda::native::native_plan::retire_native_set_after_physical_completion(
+                self.images
+                    .get()
+                    .ok_or_else(|| Error::State("native set absent".into()))?,
+            )
+        }
+        .map_err(|e| Error::State(format!("native set retirement: {e}")))
     }
 }
 pub(super) fn finite_definition(n: usize) -> Result<PinnedKernel> {
@@ -1218,7 +1039,7 @@ fn require_certificate<'a>(
     value: &DeviceBuffer,
     status: &Handle,
     original_status: &ResidentLease,
-) -> Result<&'a crate::vllm_ptx_inline::PreparedPinnedLaunch> {
+) -> Result<&'a crate::cuda::kernel::PreparedPinnedLaunch> {
     require_certificate_range(certificates, index, &value.handle, status, original_status)
 }
 fn require_certificate_range<'a>(
@@ -1227,7 +1048,7 @@ fn require_certificate_range<'a>(
     value: &Handle,
     status: &Handle,
     original_status: &ResidentLease,
-) -> Result<&'a crate::vllm_ptx_inline::PreparedPinnedLaunch> {
+) -> Result<&'a crate::cuda::kernel::PreparedPinnedLaunch> {
     let c = certificates
         .entries
         .get(index)
@@ -1254,16 +1075,14 @@ fn same_range(a: &Handle, b: &Handle) -> bool {
 impl ResidentProgram {
     pub(crate) async fn prepare_fragment_values(
         service: Arc<ResidentService>,
-        source: Arc<OriginalWindowModelSource>,
-        record: RecordedVllmGdnFragment,
+        bindings: Arc<SourceBindings>,
         cancel: Option<&AtomicBool>,
     ) -> Result<Self> {
         let (native, values, preflight) =
-            NativeProgram::prepare_values(service.clone(), source.clone(), &record, cancel).await?;
-        let (plan, _) = record.into_parts();
+            NativeProgram::prepare_values(service.clone(), bindings.clone(), cancel).await?;
         Ok(Self {
-            _source_owner: ResidentProgramSource::Windows(source),
-            plan,
+            _source_owner: ResidentProgramSource::Windows(bindings.source().clone()),
+            plan: bindings.shared_plan(),
             preflight,
             values,
             status: native.status().handle(),

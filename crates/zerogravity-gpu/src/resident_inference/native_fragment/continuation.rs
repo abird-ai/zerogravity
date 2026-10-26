@@ -1,32 +1,33 @@
 //! Private physically completed prefix versions inside ONE unpublished attempt.
 //! No root binding, event, Ready or source identity is issued here.
 use super::*;
-use zerogravity_core::accelerator::program::{VllmBf16Invocation, VllmBf16Phase};
+use zerogravity_artifacts::source_weights::VerifiedTensorSource;
+use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode};
 
-mod canonical47_component;
-mod canonical47_model_prefix;
-mod canonical47_published;
-mod canonical47_whole;
+mod component;
+mod fixed_prompt_model_prefix;
+mod fixed_prompt_published;
+mod fixed_prompt_whole;
 mod published_call;
-mod qwen2b_component;
-mod short_hf;
+mod text;
 
 /// Immutable request spans only; the original session authority stays at base.
 pub(super) struct GdnAttemptSchedule {
     base: RootBinding,
     attempt: RootAttempt,
-    invocations: Vec<VllmBf16Invocation>,
+    invocations: Vec<SourceCall>,
     completed_layers: usize,
 }
 impl GdnAttemptSchedule {
+    /// Source calls come from model-authenticated prepared plans. This schedule
+    /// checks physical coordinates; it grants no model/source eligibility.
     /// Distinct per-call publication path: ONE original current RootAttempt,
     /// never the existing unpublished aggregate forced-teacher schedule.
     pub(super) fn new_published_call(
-        source: &zerogravity_model_qwen35::original_binding::OriginalWindowModelSource,
+        source: &VerifiedTensorSource,
         attempt: RootAttempt,
-        call: zerogravity_core::accelerator::program::Vllm08Call,
+        call: SourceCall,
     ) -> Result<Arc<Self>> {
-        source.require_vllm08_full_source()?;
         let base = attempt.base();
         if base.source() != source.source_identity() {
             return Err(Error::State(
@@ -37,14 +38,14 @@ impl GdnAttemptSchedule {
         Ok(Arc::new(Self {
             base,
             attempt,
-            invocations: vec![call.request().clone()],
+            invocations: vec![call],
             completed_layers: 24,
         }))
     }
     pub(super) fn new(
         base: RootBinding,
         attempt: RootAttempt,
-        invocations: Vec<VllmBf16Invocation>,
+        invocations: Vec<SourceCall>,
         completed_layers: usize,
     ) -> Result<Arc<Self>> {
         if !matches!(completed_layers, 1 | 3) {
@@ -57,36 +58,31 @@ impl GdnAttemptSchedule {
     /// Distinct full24 source scope; the existing prefix constructor is unchanged.
     /// Original SessionAuthority/RootAttempt ownership and physical Ready protocol
     /// are reused. Neither this schedule nor its completed phases publish a root.
-    pub(super) fn new_full_model(
-        source: &zerogravity_model_qwen35::original_binding::OriginalWindowModelSource,
+    pub(super) fn new_model(
+        source: &VerifiedTensorSource,
         base: RootBinding,
         attempt: RootAttempt,
-        calls: Vec<zerogravity_core::accelerator::program::Vllm08Call>,
+        calls: Vec<SourceCall>,
     ) -> Result<Arc<Self>> {
-        source.require_vllm08_full_source()?;
         if calls.capacity() > 3 || base.source() != source.source_identity() {
             return Err(Error::Unsupported(
                 "closed full24 original source/request scope".into(),
             ));
         }
         for call in &calls {
-            call.validate()?;
             if call.source() != source.source_identity() {
                 return Err(Error::State(
                     "full24 original request issuer differs".into(),
                 ));
             }
         }
-        let invocations = calls
-            .into_iter()
-            .map(|call| call.request().clone())
-            .collect();
+        let invocations = calls;
         Self::new_inner(base, attempt, invocations, 24)
     }
     fn new_inner(
         base: RootBinding,
         attempt: RootAttempt,
-        invocations: Vec<VllmBf16Invocation>,
+        invocations: Vec<SourceCall>,
         completed_layers: usize,
     ) -> Result<Arc<Self>> {
         if base.frontier() != 0 || attempt.base() != base || invocations.capacity() > 3 {
@@ -94,15 +90,15 @@ impl GdnAttemptSchedule {
                 "original initial-prefix attempt/scope/request capacity".into(),
             ));
         }
-        let expected: &[(VllmBf16Phase, usize)] = match invocations.as_slice() {
+        let expected: &[(SourceCallMode, usize, usize)] = match invocations.as_slice() {
             [_, _] => &[
-                (VllmBf16Phase::InitialOne, 0),
-                (VllmBf16Phase::CachedOne, 1),
+                (SourceCallMode::Prefill, 0, 1),
+                (SourceCallMode::Decode, 1, 1),
             ],
             [_, _, _] => &[
-                (VllmBf16Phase::Initial64, 0),
-                (VllmBf16Phase::ContinuedTwo, 64),
-                (VllmBf16Phase::CachedOne, 66),
+                (SourceCallMode::Prefill, 0, 64),
+                (SourceCallMode::Prefill, 64, 2),
+                (SourceCallMode::Decode, 66, 1),
             ],
             _ => {
                 return Err(Error::Unsupported(
@@ -110,13 +106,13 @@ impl GdnAttemptSchedule {
                 ));
             }
         };
-        for (invocation, &(phase, start)) in invocations.iter().zip(expected) {
-            invocation.validate()?;
-            if invocation.layer().source() != base.source()
-                || invocation.layer().index() != 0
-                || invocation.legacy_phase()? != phase
-                || invocation.teachers().base() != start
-                || invocation.teachers().capacity() != 512
+        for (invocation, &(mode, start, rows)) in invocations.iter().zip(expected) {
+            if invocation.source() != base.source()
+                || invocation.mode() != mode
+                || invocation.rows().len() != rows
+                || invocation.rows().base() != start
+                || invocation.rows().capacity() != 512
+                || invocation.rows().vocabulary() != 248320
             {
                 return Err(Error::State(
                     "exact original teacher/source/phase request schedule".into(),
@@ -125,9 +121,9 @@ impl GdnAttemptSchedule {
         }
         let last = invocations.last().unwrap();
         let end = last
-            .teachers()
+            .rows()
             .base()
-            .checked_add(last.rows())
+            .checked_add(last.rows().len())
             .ok_or_else(|| Error::Limit("prefix transaction span overflow".into()))?;
         if attempt.frontier() != end as u64 {
             return Err(Error::State(
@@ -141,7 +137,7 @@ impl GdnAttemptSchedule {
             completed_layers,
         }))
     }
-    pub(super) fn invocation(&self, index: usize) -> Result<&VllmBf16Invocation> {
+    pub(super) fn invocation(&self, index: usize) -> Result<&SourceCall> {
         self.invocations
             .get(index)
             .ok_or_else(|| Error::State("prefix phase index out of request".into()))
@@ -231,7 +227,7 @@ impl CompletedPrefixPhase {
     ) -> Result<Arc<Self>> {
         schedule.require_session(session)?;
         if schedule.completed_layers != 24
-            || body.record().call().request() != schedule.invocation(phase_index)?
+            || body.record().call() != schedule.invocation(phase_index)?
         {
             return Err(Error::State(
                 "full24 actual prepared body differs from original completed request phase".into(),
@@ -313,7 +309,7 @@ impl CompletedPrefixPhase {
         session: &ResidentSession,
         schedule: &Arc<GdnAttemptSchedule>,
         index: usize,
-        invocation: &VllmBf16Invocation,
+        invocation: &SourceCall,
         completed_layers: usize,
     ) -> Result<&'a [Domain]> {
         schedule.require_session(session)?;
@@ -495,16 +491,15 @@ impl AttemptPhaseBinding {
         &self,
         session: &ResidentSession,
         attempt: &RootAttempt,
-        invocation: &VllmBf16Invocation,
+        invocation: &SourceCall,
+        layer: usize,
     ) -> Result<()> {
         self.schedule.require_session(session)?;
         let expected = self.schedule.invocation(self.phase_index)?;
         if attempt.base() != self.schedule.attempt.base()
             || attempt.frontier() != self.schedule.attempt.frontier()
-            || invocation.layer().source() != expected.layer().source()
-            || invocation.layer().index() >= self.schedule.completed_layers
-            || invocation.teachers() != expected.teachers()
-            || invocation.mode() != expected.mode()
+            || layer >= self.schedule.completed_layers
+            || invocation != expected
         {
             return Err(Error::State(
                 "prepared phase differs from original request attempt/source/span".into(),
@@ -516,29 +511,27 @@ impl AttemptPhaseBinding {
         &self,
         session: &ResidentSession,
         attempt: &RootAttempt,
-        call: &zerogravity_core::accelerator::program::Vllm08Call,
+        call: &SourceCall,
     ) -> Result<()> {
-        call.validate()?;
         if self.schedule.completed_layers != 24 {
             return Err(Error::Unsupported(
                 "original prefix permit cannot bind full24 state".into(),
             ));
         }
-        self.require_binding(session, attempt, call.request())
+        self.require_binding(session, attempt, call, 0)
     }
     pub(crate) fn require_full_model_permit(
         &self,
         permit: &PrefixPhaseEnqueue<'_>,
         service: &Arc<ResidentService>,
-        call: &zerogravity_core::accelerator::program::Vllm08Call,
+        call: &SourceCall,
     ) -> Result<()> {
-        call.validate()?;
         if self.schedule.completed_layers != 24 {
             return Err(Error::Unsupported(
                 "original prefix permit cannot enqueue full24 state".into(),
             ));
         }
-        self.require_permit(permit, service, call.request())
+        self.require_permit(permit, service, call, 0)
     }
     pub(in crate::resident_inference) fn same_full_model_request(&self, other: &Self) -> bool {
         self.schedule.completed_layers == 24
@@ -577,14 +570,15 @@ impl AttemptPhaseBinding {
         &self,
         permit: &PrefixPhaseEnqueue<'_>,
         service: &Arc<ResidentService>,
-        invocation: &VllmBf16Invocation,
+        invocation: &SourceCall,
+        layer: usize,
     ) -> Result<()> {
         if !Arc::ptr_eq(&self.schedule, permit.schedule) || self.phase_index != permit.phase_index {
             return Err(Error::State(
                 "enqueue permit differs from prepared original attempt phase".into(),
             ));
         }
-        permit.require_invocation(service, invocation, self.schedule.completed_layers)
+        permit.require_invocation(service, invocation, layer, self.schedule.completed_layers)
     }
 }
 impl<'a> PrefixPhaseEnqueue<'a> {
@@ -628,7 +622,8 @@ impl<'a> PrefixPhaseEnqueue<'a> {
     pub(crate) fn require_invocation(
         &self,
         service: &Arc<ResidentService>,
-        invocation: &VllmBf16Invocation,
+        invocation: &SourceCall,
+        layer: usize,
         completed_layers: usize,
     ) -> Result<()> {
         self.schedule.require_session(self.session)?;
@@ -636,10 +631,8 @@ impl<'a> PrefixPhaseEnqueue<'a> {
         if !Arc::ptr_eq(service, &self.session.model.service)
             || service.generation() != self.service_generation
             || completed_layers != self.schedule.completed_layers
-            || invocation.layer().source() != expected.layer().source()
-            || invocation.layer().index() >= completed_layers
-            || invocation.teachers() != expected.teachers()
-            || invocation.mode() != expected.mode()
+            || layer >= completed_layers
+            || invocation != expected
         {
             return Err(Error::State(
                 "original attempt/source/generation/teacher phase revoked or differs".into(),

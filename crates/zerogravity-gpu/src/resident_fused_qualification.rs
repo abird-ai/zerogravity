@@ -136,7 +136,7 @@ fn idle(resident: &ResidentModel, bytes: usize) -> Result<()> {
     Ok(())
 }
 
-pub(crate) async fn qualify(
+pub async fn qualify(
     device: Device,
     path: &Path,
     provider_cap: usize,
@@ -402,7 +402,7 @@ pub(crate) async fn qualify(
 
 /// Separate process only: deliberate unknown completion retains the envelope.
 #[cfg(feature = "hardware-abort-probe")]
-pub(crate) async fn qualify_abort(
+pub async fn qualify_abort(
     device: Device,
     path: &Path,
     provider_cap: usize,
@@ -608,7 +608,7 @@ async fn physical_prior_after_abort(
 /// Source-real CPU checkpoint hydration, followed by native B2 GPU decode.
 /// This does not establish continuous GPU prefill of the imported prefix.
 #[cfg(feature = "portable-checkpoint")]
-pub(crate) async fn qualify_boundary(
+pub async fn qualify_boundary(
     device: Device,
     path: &Path,
     provider_cap: usize,
@@ -627,7 +627,12 @@ pub(crate) async fn qualify_boundary(
         .geometry()
         .layers
         .iter()
-        .filter(|kind| matches!(kind, zerogravity_artifacts::model::LayerKind::FullAttention))
+        .filter(|kind| {
+            matches!(
+                kind,
+                zerogravity_model_qwen35::config::LayerKind::FullAttention
+            )
+        })
         .count();
     let boundary_launches = full_layers * (256 / 32) * 3;
     if boundary_launches == 0 {

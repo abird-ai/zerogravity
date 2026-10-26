@@ -1,18 +1,21 @@
 //! Staged original session-domain borrow. No state allocation/publication.
 use super::native_fragment::continuation::{AttemptPhaseBinding, PrefixPhaseEnqueue};
 use super::*;
-use crate::vllm_cuda_gdn::VllmGdnPhase;
+use crate::cuda::gdn::GdnPhase;
+use zerogravity_core::accelerator::program::ConvDomain;
+use zerogravity_core::accelerator::program::ProgramNumericalProfile;
+use zerogravity_core::accelerator::program::RecurrentDomain;
+use zerogravity_core::accelerator::program::StateEffect;
 use zerogravity_core::accelerator::program::{
-    ConvDomain, GdnPrefixLayer, ProgramNumericalProfile, RecurrentDomain, StateEffect,
-    VllmBf16Invocation, VllmBf16Phase,
+    PlanOperation, SourceCall, SourceCallMode, SourceOperatorKind,
 };
 
 /// Sealed original root + original prior/private candidate leases. Only the
 /// existing ResidentSession can construct this binding; not an execution permit.
 pub(crate) struct BoundGdnDomains {
     base: RootBinding,
-    invocation: VllmBf16Invocation,
-    phase: VllmGdnPhase,
+    invocation: SourceCall,
+    phase: GdnPhase,
     conv_effect: StateEffect,
     recurrent_effect: StateEffect,
     prior_conv: ResidentLease,
@@ -21,17 +24,15 @@ pub(crate) struct BoundGdnDomains {
     proposed_recurrent: ResidentLease,
     attempt_phase: Option<Arc<AttemptPhaseBinding>>,
 }
-const CONV_ELEMENTS: usize = 6144 * 3;
-const RECURRENT_ELEMENTS: usize = 16 * 128 * 128;
 
-fn validate_phase(current: RootBinding, attempt: &RootAttempt, phase: VllmGdnPhase) -> Result<()> {
+fn validate_phase(current: RootBinding, attempt: &RootAttempt, phase: GdnPhase) -> Result<()> {
     if current != attempt.base()
         || attempt.frontier().checked_sub(current.frontier()) != Some(phase.tokens() as u64)
         || !match phase {
-            VllmGdnPhase::InitialOne | VllmGdnPhase::Initial64 => current.frontier() == 0,
-            VllmGdnPhase::ContinuedTwo => current.frontier() == 64,
-            VllmGdnPhase::CachedDecode => matches!(current.frontier(), 1 | 66),
-            VllmGdnPhase::Initial47 | VllmGdnPhase::ShortHfPrefill(_) => false,
+            GdnPhase::InitialOne | GdnPhase::Initial64 => current.frontier() == 0,
+            GdnPhase::ContinuedTwo => current.frontier() == 64,
+            GdnPhase::CachedDecode => matches!(current.frontier(), 1 | 66),
+            GdnPhase::FixedPrompt | GdnPhase::TextPrefill(_) => false,
         }
     {
         return Err(Error::State(
@@ -41,6 +42,10 @@ fn validate_phase(current: RootBinding, attempt: &RootAttempt, phase: VllmGdnPha
     Ok(())
 }
 fn vector_lease(domains: &[Domain], slot: StateSlot, elements: usize) -> Result<ResidentLease> {
+    let bytes = elements
+        .checked_mul(4)
+        .filter(|n| *n > 0)
+        .ok_or_else(|| Error::Limit("source F32 vector state byte extent".into()))?;
     let mut found = domains.iter().filter(|domain| domain.slot == slot);
     let domain = found
         .next()
@@ -53,7 +58,7 @@ fn vector_lease(domains: &[Domain], slot: StateSlot, elements: usize) -> Result<
     };
     let lease = &domain.leases[0];
     if buffer.elements != elements
-        || lease.bytes() != elements * 4
+        || lease.bytes() != bytes
         || !same_handle(&buffer.handle, &lease.handle())
         || lease.allocation_generation() != domain.generations[0]
     {
@@ -66,8 +71,8 @@ fn vector_lease(domains: &[Domain], slot: StateSlot, elements: usize) -> Result<
 pub(super) struct GdnPhasePlan<'a> {
     pub candidate: &'a [Domain],
     pub plan: &'a ForwardPlan,
-    pub invocation: &'a VllmBf16Invocation,
-    pub phase: VllmGdnPhase,
+    pub invocation: &'a SourceCall,
+    pub phase: GdnPhase,
     pub nodes: [usize; 2],
 }
 impl ResidentSession {
@@ -78,15 +83,14 @@ impl ResidentSession {
         attempt: &RootAttempt,
         candidate: &[Domain],
         plan: &ForwardPlan,
-        invocation: &VllmBf16Invocation,
-        phase: VllmGdnPhase,
+        invocation: &SourceCall,
+        phase: GdnPhase,
         node_indices: [usize; 2],
     ) -> Result<Arc<BoundGdnDomains>> {
-        invocation.validate()?;
         let base = self.binding();
         validate_phase(base, attempt, phase)?;
-        if !matches!(phase, VllmGdnPhase::InitialOne | VllmGdnPhase::Initial64)
-            || u64::try_from(invocation.teachers().base()).ok() != Some(base.frontier())
+        if !matches!(phase, GdnPhase::InitialOne | GdnPhase::Initial64)
+            || u64::try_from(invocation.rows().base()).ok() != Some(base.frontier())
         {
             return Err(Error::Unsupported(
                 "original initial prefix binder only".into(),
@@ -110,8 +114,23 @@ impl ResidentSession {
         request: GdnPhasePlan<'_>,
         binding: Arc<AttemptPhaseBinding>,
     ) -> Result<Arc<BoundGdnDomains>> {
-        request.invocation.validate()?;
-        binding.require_binding(self, attempt, request.invocation)?;
+        let node = request
+            .plan
+            .nodes()
+            .get(request.nodes[0])
+            .ok_or_else(|| Error::State("GDN phase actual conv node absent".into()))?;
+        let PlanOperation::SourceOperator { descriptor, .. } = &node.operation else {
+            return Err(Error::State(
+                "GDN phase actual source operator absent".into(),
+            ));
+        };
+        let SourceOperatorKind::CausalConvSplit { domain, .. } = descriptor.kind() else {
+            return Err(Error::State("GDN phase actual conv domain absent".into()));
+        };
+        if descriptor.call() != request.invocation {
+            return Err(Error::State("GDN phase actual conv issuer differs".into()));
+        }
+        binding.require_binding(self, attempt, request.invocation, domain.0)?;
         let prior = binding.prior_domains(self);
         self.model
             .validate_domains(prior, binding.prior_is_ready())?;
@@ -130,65 +149,104 @@ impl ResidentSession {
             phase,
             nodes: node_indices,
         } = request;
-        let layer = invocation.layer();
         let base = self.binding();
-        let expected_phase = match phase {
-            VllmGdnPhase::ShortHfPrefill(_) => {
-                return Err(Error::Unsupported(
-                    "short-HF requires genuine whole-model current-root binding".into(),
-                ));
-            }
-            VllmGdnPhase::InitialOne => Some(VllmBf16Phase::InitialOne),
-            VllmGdnPhase::CachedDecode => Some(VllmBf16Phase::CachedOne),
-            VllmGdnPhase::Initial64 => Some(VllmBf16Phase::Initial64),
-            VllmGdnPhase::ContinuedTwo => Some(VllmBf16Phase::ContinuedTwo),
-            VllmGdnPhase::Initial47 => {
+        let exact_phase = match (
+            phase,
+            invocation.mode(),
+            invocation.rows().base(),
+            invocation.rows().len(),
+        ) {
+            (GdnPhase::InitialOne, SourceCallMode::Prefill, 0, 1)
+            | (GdnPhase::Initial64, SourceCallMode::Prefill, 0, 64)
+            | (GdnPhase::ContinuedTwo, SourceCallMode::Prefill, 64, 2)
+            | (GdnPhase::CachedDecode, SourceCallMode::Decode, 1 | 66, 1) => true,
+            (GdnPhase::FixedPrompt, SourceCallMode::Prefill, 0, 47) => {
                 attempt_phase
                     .as_ref()
                     .ok_or_else(|| {
                         Error::Unsupported(
-                            "47 component requires original attempt-bound state".into(),
+                            "fixed prompt component requires original attempt-bound state".into(),
                         )
                     })?
-                    .require_initial_canonical47_component(invocation)?;
-                None
+                    .require_initial_component_call(invocation)?;
+                true
             }
+            _ => false,
         };
-        let phase_matches = match expected_phase {
-            Some(expected) => invocation.legacy_phase()? == expected,
-            None => true, // The exact attempt-bound47 scope was checked above.
-        };
-        if !phase_matches
-            || invocation.rows() != phase.tokens()
-            || invocation.teachers().source() != base.source()
-            || invocation.teachers().capacity() != self.model.capacity
-        {
-            return Err(Error::State(
-                "same original GDN teacher invocation/root span".into(),
-            ));
-        }
-        if !matches!(layer.index(), 0..=2)
-            || layer.source() != base.source()
+        if !exact_phase
+            || invocation.rows().source() != base.source()
+            || invocation.rows().capacity() != self.model.capacity
+            || u64::try_from(invocation.rows().vocabulary()).ok() != Some(self.model.vocab)
             || plan.source() != base.source()
             || base.source() != self.model.service.source_identity()
-            || plan.numerical_profile() != ProgramNumericalProfile::Vllm031CudaSm86Bf16SourceV1
+            || plan.numerical_profile() != ProgramNumericalProfile::SourceCudaSm86Bf16V1
             || plan.is_operator_slice()
             || plan.frontier_delta() != 0
-            || !plan.vllm_gdn_fragment().is_some_and(|base| {
-                base.teachers() == invocation.teachers()
-                    && base.mode() == invocation.mode()
-                    && base.layer().source() == invocation.layer().source()
-            })
+            || plan.source_call() != Some(invocation)
         {
             return Err(Error::Unsupported(
-                "same full CUDA GDN prefix plan/root source".into(),
+                "GDN actual source/call/root phase differs".into(),
             ));
         }
+        let actual =
+            |index: usize| -> Result<&zerogravity_core::accelerator::program::SourceOperator> {
+                let node = plan
+                    .nodes()
+                    .get(index)
+                    .ok_or_else(|| Error::State("GDN actual state node absent".into()))?;
+                let PlanOperation::SourceOperator {
+                    descriptor,
+                    state: None,
+                } = &node.operation
+                else {
+                    return Err(Error::State("GDN actual state operator absent".into()));
+                };
+                if descriptor.call() != invocation {
+                    return Err(Error::State("GDN actual state call issuer differs".into()));
+                }
+                Ok(descriptor.as_ref())
+            };
+        let (
+            SourceOperatorKind::CausalConvSplit {
+                domain: conv_domain,
+                geometry: cg,
+            },
+            SourceOperatorKind::GatedDelta {
+                domain: recurrent_domain,
+                geometry: rg,
+            },
+        ) = (
+            actual(node_indices[0])?.kind(),
+            actual(node_indices[1])?.kind(),
+        )
+        else {
+            return Err(Error::State(
+                "GDN actual state mathematical domain kinds".into(),
+            ));
+        };
+        if conv_domain.0 != recurrent_domain.0 {
+            return Err(Error::State(
+                "GDN actual paired domain coordinates differ".into(),
+            ));
+        }
+        let elements = [
+            cg.qkv_channels
+                .checked_mul(
+                    cg.kernel
+                        .checked_sub(1)
+                        .ok_or_else(|| Error::State("GDN convolution history geometry".into()))?,
+                )
+                .ok_or_else(|| Error::Limit("GDN convolution history extent".into()))?,
+            rg.value_heads
+                .checked_mul(rg.key_width)
+                .and_then(|n| n.checked_mul(rg.value_width))
+                .ok_or_else(|| Error::Limit("GDN recurrent state extent".into()))?,
+        ];
         self.model.service.ensure_usable()?;
         self.model.validate_domains(&self.domains, true)?;
         self.model.validate_domains(candidate, false)?;
-        let conv = StateSlot::Conv(ConvDomain(layer.index()));
-        let recurrent = StateSlot::Recurrent(RecurrentDomain(layer.index()));
+        let conv = StateSlot::Conv(conv_domain);
+        let recurrent = StateSlot::Recurrent(recurrent_domain);
         if [conv, recurrent]
             .iter()
             .any(|slot| !plan.required_domains().contains(slot))
@@ -215,15 +273,14 @@ impl ResidentSession {
                 ));
             }
             for &id in node.inputs.iter().chain(&node.outputs) {
-                let tag = plan.vllm_value_provenance(id)?.ok_or_else(|| {
+                let tag = plan.source_value_provenance(id)?.ok_or_else(|| {
                     Error::State("GDN value lost original teacher provenance".into())
                 })?;
-                if expected_phase.is_some_and(|expected| tag.phase() != Some(expected)) {
+                if tag.call() != invocation {
                     return Err(Error::State(
                         "GDN value phase differs from original root invocation".into(),
                     ));
                 }
-                tag.require_invocation(invocation)?;
             }
             if value.write.slot != slot
                 || value.read.slot != slot
@@ -245,32 +302,39 @@ impl ResidentSession {
             prior,
             candidate,
             effects,
+            elements,
             attempt_phase,
         )?;
         Ok(Arc::new(bound))
     }
     fn gdn_domain_binding(
         base: RootBinding,
-        invocation: VllmBf16Invocation,
-        phase: VllmGdnPhase,
+        invocation: SourceCall,
+        phase: GdnPhase,
         prior: &[Domain],
         candidate: &[Domain],
         effects: [StateEffect; 2],
+        elements: [usize; 2],
         attempt_phase: Option<Arc<AttemptPhaseBinding>>,
     ) -> Result<BoundGdnDomains> {
-        let layer = invocation.layer();
-        let conv = StateSlot::Conv(ConvDomain(layer.index()));
-        let recurrent = StateSlot::Recurrent(RecurrentDomain(layer.index()));
+        let [conv, recurrent] = [effects[0].write.slot, effects[1].write.slot];
+        if !matches!((conv, recurrent),
+            (StateSlot::Conv(c),StateSlot::Recurrent(r)) if c.0 == r.0)
+        {
+            return Err(Error::State(
+                "GDN retained effect domain kinds differ".into(),
+            ));
+        }
         let value = BoundGdnDomains {
             base,
             invocation,
             phase,
             conv_effect: effects[0],
             recurrent_effect: effects[1],
-            prior_conv: vector_lease(prior, conv, CONV_ELEMENTS)?,
-            proposed_conv: vector_lease(candidate, conv, CONV_ELEMENTS)?,
-            prior_recurrent: vector_lease(prior, recurrent, RECURRENT_ELEMENTS)?,
-            proposed_recurrent: vector_lease(candidate, recurrent, RECURRENT_ELEMENTS)?,
+            prior_conv: vector_lease(prior, conv, elements[0])?,
+            proposed_conv: vector_lease(candidate, conv, elements[0])?,
+            prior_recurrent: vector_lease(prior, recurrent, elements[1])?,
+            proposed_recurrent: vector_lease(candidate, recurrent, elements[1])?,
             attempt_phase,
         };
         let leases = value.leases();
@@ -308,7 +372,7 @@ impl BoundGdnDomains {
     ) -> Result<()> {
         match (&self.attempt_phase, permit) {
             (Some(binding), Some(permit)) => {
-                binding.require_permit(permit, service, &self.invocation)?;
+                binding.require_permit(permit, service, &self.invocation, self.conv_domain()?.0)?;
                 binding.require_launch_ready(service)?;
             }
             (None, None) => {}
@@ -325,16 +389,25 @@ impl BoundGdnDomains {
         }
         Ok(())
     }
-    pub(crate) fn invocation(&self) -> &VllmBf16Invocation {
+    pub(crate) fn invocation(&self) -> &SourceCall {
         &self.invocation
     }
     pub(crate) fn base(&self) -> RootBinding {
         self.base
     }
-    pub(crate) fn layer(&self) -> GdnPrefixLayer {
-        self.invocation.layer()
+    pub(crate) fn conv_domain(&self) -> Result<ConvDomain> {
+        match self.conv_effect.write.slot {
+            StateSlot::Conv(domain) => Ok(domain),
+            _ => Err(Error::State("GDN convolution state domain differs".into())),
+        }
     }
-    pub(crate) fn phase(&self) -> VllmGdnPhase {
+    pub(crate) fn recurrent_domain(&self) -> Result<RecurrentDomain> {
+        match self.recurrent_effect.write.slot {
+            StateSlot::Recurrent(domain) => Ok(domain),
+            _ => Err(Error::State("GDN recurrent state domain differs".into())),
+        }
+    }
+    pub(crate) fn phase(&self) -> GdnPhase {
         self.phase
     }
     pub(crate) fn effect(&self, convolution: bool) -> StateEffect {
@@ -361,11 +434,11 @@ mod tests {
     fn existing_authority_attempts_bind_exact_five_phase_frontiers() {
         let source = zerogravity_core::accelerator::SourceIdentity::for_new_allocation().unwrap();
         for (base, phase) in [
-            (0, VllmGdnPhase::InitialOne),
-            (1, VllmGdnPhase::CachedDecode),
-            (0, VllmGdnPhase::Initial64),
-            (64, VllmGdnPhase::ContinuedTwo),
-            (66, VllmGdnPhase::CachedDecode),
+            (0, GdnPhase::InitialOne),
+            (1, GdnPhase::CachedDecode),
+            (0, GdnPhase::Initial64),
+            (64, GdnPhase::ContinuedTwo),
+            (66, GdnPhase::CachedDecode),
         ] {
             let mut authority = SessionAuthority::new(source).unwrap();
             if base > 0 {
@@ -375,20 +448,20 @@ mod tests {
             let attempt = authority.begin_advance(phase.tokens() as u64).unwrap();
             assert!(validate_phase(authority.binding(), &attempt, phase).is_ok());
             for other_phase in [
-                VllmGdnPhase::InitialOne,
-                VllmGdnPhase::Initial64,
-                VllmGdnPhase::ContinuedTwo,
-                VllmGdnPhase::CachedDecode,
-                VllmGdnPhase::Initial47,
+                GdnPhase::InitialOne,
+                GdnPhase::Initial64,
+                GdnPhase::ContinuedTwo,
+                GdnPhase::CachedDecode,
+                GdnPhase::FixedPrompt,
             ] {
                 let other_attempt = authority
                     .begin_advance(other_phase.tokens() as u64)
                     .unwrap();
                 let expected = match other_phase {
-                    VllmGdnPhase::InitialOne | VllmGdnPhase::Initial64 => base == 0,
-                    VllmGdnPhase::ContinuedTwo => base == 64,
-                    VllmGdnPhase::CachedDecode => matches!(base, 1 | 66),
-                    VllmGdnPhase::Initial47 | VllmGdnPhase::ShortHfPrefill(_) => false,
+                    GdnPhase::InitialOne | GdnPhase::Initial64 => base == 0,
+                    GdnPhase::ContinuedTwo => base == 64,
+                    GdnPhase::CachedDecode => matches!(base, 1 | 66),
+                    GdnPhase::FixedPrompt | GdnPhase::TextPrefill(_) => false,
                 };
                 assert_eq!(
                     validate_phase(authority.binding(), &other_attempt, other_phase).is_ok(),

@@ -15,7 +15,7 @@ use zerogravity_core::Error;
 use zerogravity_core::Result;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum SourceAccumulation {
+pub enum SourceAccumulation {
     WideF64,
     #[cfg(feature = "qualification")]
     NativeF32,

@@ -5,21 +5,6 @@
 //! before and after wrapper drop; it grants no numerical or serving permit.
 use zerogravity_core::Result;
 
-#[cfg(all(
-    feature = "qualification",
-    feature = "hip",
-    feature = "hardware-abort-probe",
-    target_os = "linux"
-))]
-use crate::backend::hip_native_policy;
-#[cfg(all(
-    feature = "qualification",
-    feature = "vulkan",
-    feature = "hardware-abort-probe",
-    target_os = "linux"
-))]
-use crate::backend::vulkan_native_policy;
-
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct FinalNativeObservation {
     pub(crate) retained: bool,
@@ -36,14 +21,14 @@ pub(crate) enum FinalNativeProbe {
         feature = "hardware-abort-probe",
         target_os = "linux"
     ))]
-    Hip(hip_native_policy::FinalNativeProbe),
+    Hip(crate::hip::native::FinalNativeProbe),
     #[cfg(all(
         feature = "qualification",
         feature = "vulkan",
         feature = "hardware-abort-probe",
         target_os = "linux"
     ))]
-    Vulkan(vulkan_native_policy::FinalNativeProbe),
+    Vulkan(crate::vulkan::native::FinalNativeProbe),
 }
 
 impl FinalNativeProbe {

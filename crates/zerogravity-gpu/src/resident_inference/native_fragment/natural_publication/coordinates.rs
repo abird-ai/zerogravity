@@ -1,10 +1,10 @@
 //! Closed original natural request coordinates; no source or Root issuer.
-use zerogravity_core::accelerator::program::{Vllm08Call, VllmBf16Phase};
+use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode};
 use zerogravity_core::session_root::{RootAttempt, RootBinding};
 use zerogravity_core::{Error, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum NaturalSlot {
+pub enum NaturalSlot {
     InitialOne,
     FeedbackAtOne,
     Prefix64,
@@ -12,14 +12,14 @@ pub(crate) enum NaturalSlot {
     FeedbackAt66,
 }
 impl NaturalSlot {
-    pub(crate) const ALL: [Self; 5] = [
+    pub const ALL: [Self; 5] = [
         Self::InitialOne,
         Self::FeedbackAtOne,
         Self::Prefix64,
         Self::FinalTwo,
         Self::FeedbackAt66,
     ];
-    pub(crate) const fn index(self) -> usize {
+    pub const fn index(self) -> usize {
         match self {
             Self::InitialOne => 0,
             Self::FeedbackAtOne => 1,
@@ -28,15 +28,15 @@ impl NaturalSlot {
             Self::FeedbackAt66 => 4,
         }
     }
-    pub(crate) const fn phase(self) -> VllmBf16Phase {
+    pub const fn mode(self) -> SourceCallMode {
         match self {
-            Self::InitialOne => VllmBf16Phase::InitialOne,
-            Self::FeedbackAtOne | Self::FeedbackAt66 => VllmBf16Phase::CachedOne,
-            Self::Prefix64 => VllmBf16Phase::Initial64,
-            Self::FinalTwo => VllmBf16Phase::ContinuedTwo,
+            Self::InitialOne => SourceCallMode::Prefill,
+            Self::FeedbackAtOne | Self::FeedbackAt66 => SourceCallMode::Decode,
+            Self::Prefix64 => SourceCallMode::Prefill,
+            Self::FinalTwo => SourceCallMode::Prefill,
         }
     }
-    pub(crate) const fn base(self) -> usize {
+    pub const fn base(self) -> usize {
         match self {
             Self::InitialOne | Self::Prefix64 => 0,
             Self::FeedbackAtOne => 1,
@@ -44,32 +44,33 @@ impl NaturalSlot {
             Self::FeedbackAt66 => 66,
         }
     }
-    pub(crate) const fn rows(self) -> usize {
+    pub const fn rows(self) -> usize {
         match self {
             Self::Prefix64 => 64,
             Self::FinalTwo => 2,
             _ => 1,
         }
     }
-    pub(crate) const fn feedback(self) -> bool {
+    pub const fn feedback(self) -> bool {
         matches!(self, Self::FeedbackAtOne | Self::FeedbackAt66)
     }
-    pub(crate) const fn emits(self) -> bool {
+    pub const fn emits(self) -> bool {
         !matches!(self, Self::Prefix64)
     }
     pub(crate) fn require_current(
         self,
         current: RootBinding,
         attempt: &RootAttempt,
-        call: &Vllm08Call,
+        call: &SourceCall,
     ) -> Result<()> {
-        call.validate()?;
         if current != attempt.base()
             || current.source() != call.source()
             || current.frontier() != self.base() as u64
-            || call.request().legacy_phase()? != self.phase()
-            || call.request().teachers().base() != self.base()
-            || call.rows() != self.rows()
+            || call.mode() != self.mode()
+            || call.rows().base() != self.base()
+            || call.rows().len() != self.rows()
+            || call.rows().capacity() != 512
+            || call.rows().vocabulary() != 248320
             || attempt.frontier() != (self.base() + self.rows()) as u64
         {
             return Err(Error::State(
@@ -83,24 +84,23 @@ impl NaturalSlot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zerogravity_core::accelerator::{
-        SourceIdentity,
-        program::{GdnPrefixLayer, VllmBf16Invocation, VllmBf16Teachers},
-    };
+    use zerogravity_core::accelerator::SourceIdentity;
+    use zerogravity_core::accelerator::program::{SourceRows, TextCallGeometry};
     use zerogravity_core::session_root::SessionAuthority;
-    fn call(slot: NaturalSlot, source: SourceIdentity) -> Vllm08Call {
-        Vllm08Call::new(
-            VllmBf16Invocation::new(
-                GdnPrefixLayer::new(source, 0).unwrap(),
-                slot.phase(),
-                VllmBf16Teachers::new(source, slot.base(), 512, &vec![11; slot.rows()]).unwrap(),
+    fn call(slot: NaturalSlot, source: SourceIdentity) -> SourceCall {
+        SourceCall::new(
+            SourceRows::new(
+                TextCallGeometry::new(source, 248320, 512).unwrap(),
+                slot.base(),
+                std::sync::Arc::from(vec![11; slot.rows()]),
             )
             .unwrap(),
+            slot.mode(),
         )
         .unwrap()
     }
     #[test]
-    fn exact_original_roots_progress_by_one_transaction_and_real_teacher_span() {
+    fn exact_original_roots_progress_by_one_transaction_and_source_call() {
         let source = SourceIdentity::for_new_allocation().unwrap();
         for slots in [
             [NaturalSlot::InitialOne, NaturalSlot::FeedbackAtOne].as_slice(),

@@ -39,7 +39,7 @@ impl Shape {
 }
 
 #[cfg(feature = "qualification")]
-pub(crate) fn qualify(device: cubecl::Device) -> Result<()> {
+pub fn qualify(device: cubecl::Device) -> Result<()> {
     use crate::source_accumulation::SourceAccumulation;
     use crate::{elementwise, rms_norm, silu, source_accumulation};
     use cubecl::prelude::*;

@@ -1,12 +1,8 @@
 //! Finite source/weight ownership only. No native packet or model-cut permission.
 use super::*;
+use crate::cuda::gdn::Qwen2bGdnArithmetic;
 use crate::physical_quarantine::CompletionOwner;
-use crate::vllm_cuda_gdn::{Qwen2bGdnArithmetic, VllmGdnPhase};
-use zerogravity_core::accelerator::program::{
-    ActivationPrecision, FullModelProfile, PlanOperation, RecordedVllm08Model, ValueShape,
-    Vllm08RmsSite, VllmBf16Invocation, VllmBf16Mode, VllmBf16Phase,
-};
-use zerogravity_model_qwen35::original_binding::{BoundFullModelSource, QwenMatrixRole};
+use zerogravity_core::accelerator::program::PlanOperation;
 
 mod cold_probe;
 mod compute_probe;
@@ -15,177 +11,64 @@ use compute_probe::ComputeReadProbe;
 pub(crate) use compute_probe::{Qwen2bMlpComputeProgress, Qwen2bMlpComputeReadCut};
 
 pub(crate) struct Qwen2bMlpWeightCohort {
-    source: BoundFullModelSource,
-    record: Arc<RecordedVllm08Model>,
+    source: zerogravity_artifacts::source_weights::VerifiedTensorSource,
+    bindings: Arc<crate::resident_program::source_bindings::SourceBindings>,
     arithmetic: Qwen2bGdnArithmetic,
     _metadata: WindowWorkspace,
 }
-fn require_request(
-    profile: FullModelProfile,
-    request: &VllmBf16Invocation,
-) -> Result<VllmGdnPhase> {
-    request.validate()?;
-    if profile != FullModelProfile::Qwen2B
-        || request.layer().index() != 0
-        || request.mode() != VllmBf16Mode::Prefill
-        || request.teachers().base() != 0
-        || request.teachers().capacity() != 512
-    {
-        return Err(Error::Unsupported(
-            "finite original2B initial MLP W source span".into(),
-        ));
-    }
-    match request.legacy_phase()? {
-        VllmBf16Phase::InitialOne => Ok(VllmGdnPhase::InitialOne),
-        VllmBf16Phase::Initial64 => Ok(VllmGdnPhase::Initial64),
-        _ => Err(Error::Unsupported(
-            "original2B MLP weights initial1/64 only".into(),
-        )),
-    }
-}
-fn require_node(
-    record: &RecordedVllm08Model,
-    index: usize,
-    kind: Vllm08Kind,
-    inputs: &[u32],
-    outputs: &[u32],
-) -> Result<()> {
-    let node = record
-        .plan()
-        .nodes()
-        .get(index)
-        .ok_or_else(|| Error::State("original2B MLP node absent".into()))?;
-    let PlanOperation::TypedVllm08 {
-        descriptor,
-        state: None,
-    } = &node.operation
-    else {
-        return Err(Error::State(
-            "original2B MLP exact typed stateless node".into(),
-        ));
-    };
-    descriptor.validate()?;
-    if descriptor.call() != record.call()
-        || descriptor.kind() != kind
-        || descriptor.layer().map(|v| v.index()) != Some(if index == 11 { 1 } else { 0 })
-        || node.state.is_some()
-        || node.inputs.iter().map(|v| v.0).collect::<Vec<_>>() != inputs
-        || node.outputs.iter().map(|v| v.0).collect::<Vec<_>>() != outputs
-    {
-        return Err(Error::State(
-            "original2B MLP same call/issuer/SSA node".into(),
-        ));
-    }
-    Ok(())
-}
 impl Qwen2bMlpWeightCohort {
     pub(crate) fn bind(
-        source: BoundFullModelSource,
-        record: Arc<RecordedVllm08Model>,
-        arithmetic: Qwen2bGdnArithmetic,
+        recipe: &Arc<crate::resident_program::qwen2b_component::ComponentRecipe>,
     ) -> Result<Arc<Self>> {
-        let phase = require_request(record.call().model_profile(), record.call().request())?;
-        arithmetic.require_owned(phase)?;
-        if source.model_profile() != FullModelProfile::Qwen2B
-            || source.source().source_identity() != record.call().source()
-            || record.plan().vllm_gdn_fragment() != Some(record.call().request())
-        {
-            return Err(Error::State(
-                "same sealed original2B model/record source".into(),
-            ));
-        }
-        require_node(
-            &record,
-            8,
-            Vllm08Kind::Projection(Vllm08Projection::GateUp),
-            &[8],
-            &[10],
-        )?;
-        require_node(&record, 9, Vllm08Kind::SiluAndMul, &[10], &[11])?;
-        require_node(
-            &record,
-            10,
-            Vllm08Kind::Projection(Vllm08Projection::Down),
-            &[11],
-            &[12],
-        )?;
-        require_node(
-            &record,
-            11,
-            Vllm08Kind::ResidualRms(Vllm08RmsSite::Input),
-            &[12, 9],
-            &[13, 14],
-        )?;
-        let rows = record.call().rows();
-        for (id, width) in [(8, 2048), (9, 2048), (10, 12288), (11, 6144), (12, 2048)] {
-            if record.plan().values().get(id) != Some(&ValueShape::Vector(rows * width))
-                || record.plan().precisions().get(id) != Some(&ActivationPrecision::Bf16WidenedF32)
-            {
-                return Err(Error::State(
-                    "original2B finite MLP value geometry/precision".into(),
-                ));
-            }
-        }
-        for (index, roles) in [
-            (
-                8,
-                &[QwenMatrixRole::FfnGate(0), QwenMatrixRole::FfnUp(0)][..],
-            ),
-            (10, &[QwenMatrixRole::FfnDown(0)][..]),
-        ] {
-            let descriptor = match &record.plan().nodes()[index].operation {
-                PlanOperation::TypedVllm08 { descriptor, .. } => descriptor,
-                _ => return Err(Error::State("original2B weight descriptor absent".into())),
-            };
-            if !descriptor.parameters().is_empty() || descriptor.matrices().len() != roles.len() {
-                return Err(Error::State(
-                    "original2B complete ordered MLP learned members".into(),
-                ));
-            }
-            for (&role, member) in roles.iter().zip(descriptor.matrices()) {
-                source.source().validate_matrix(role, member)?;
-            }
-        }
-        let metadata = source.source().source().reserve_workspace(64 * 1024)?;
+        crate::cuda::native::qwen2b_mlp::require_recipe(recipe)?;
+        let arithmetic = recipe
+            .qwen2b_arithmetic()
+            .ok_or_else(|| Error::State("explicit owned MLP arithmetic absent".into()))?;
+        let metadata = recipe.source().reserve_workspace(64 * 1024)?;
         Ok(Arc::new(Self {
-            source,
-            record,
+            source: recipe.source().clone(),
+            bindings: recipe.bindings().clone(),
             arithmetic,
             _metadata: metadata,
         }))
     }
-    pub(crate) fn record(&self) -> &Arc<RecordedVllm08Model> {
-        &self.record
+    pub(crate) fn bindings(
+        &self,
+    ) -> &Arc<crate::resident_program::source_bindings::SourceBindings> {
+        &self.bindings
     }
     pub(crate) fn arithmetic(&self) -> Qwen2bGdnArithmetic {
         self.arithmetic
     }
-    fn operator(&self, index: usize) -> Result<&Vllm08Operator> {
+    fn source_operator(
+        &self,
+        index: usize,
+    ) -> Result<&zerogravity_core::accelerator::program::SourceOperator> {
         if !matches!(index, 8 | 10) {
             return Err(Error::Unsupported(
-                "two original2B MLP learned nodes only".into(),
+                "two component MLP learned nodes only".into(),
             ));
         }
-        match &self.record.plan().nodes()[index].operation {
-            PlanOperation::TypedVllm08 {
+        match &self.bindings.plan().nodes()[index].operation {
+            PlanOperation::SourceOperator {
                 descriptor,
                 state: None,
-            } => Ok(descriptor),
+            } if descriptor.call() == self.bindings.call() => Ok(descriptor),
             _ => Err(Error::State(
-                "original2B source learned descriptor absent".into(),
+                "component actual learned source/call differs".into(),
             )),
         }
     }
     fn require_service(&self, service: &Arc<ResidentService>) -> Result<()> {
-        require_request(
-            self.record.call().model_profile(),
-            self.record.call().request(),
-        )?;
-        if service.source_identity() != self.source.source().source_identity()
-            || self.source.model_profile() != FullModelProfile::Qwen2B
+        self.arithmetic
+            .require_owned(crate::cuda::gdn::GdnPhase::for_reference_call(
+                self.bindings.call(),
+            )?)?;
+        if service.source_identity() != self.source.source_identity()
+            || !self.source.same_issuer(self.bindings.source())
         {
             return Err(Error::State(
-                "original2B MLP W actual source/service".into(),
+                "component W actual source/service differs".into(),
             ));
         }
         Ok(())
@@ -200,15 +83,22 @@ impl ResidentInitialization<'_> {
     ) -> Result<PendingModelWeight> {
         not_cancelled(cancelled)?;
         cohort.require_service(self.service)?;
-        let descriptor = cohort.operator(index)?.clone();
-        if !matches!(
-            layout(&descriptor)?,
-            Vllm08WeightLayout::Qwen2bMlpGateUp | Vllm08WeightLayout::Qwen2bMlpDown
-        ) {
-            return Err(Error::State("sealed original2B MLP finite W layout".into()));
-        }
-        self.upload_model_weight_inner(cohort.source.source().clone(), descriptor, cancelled)
-            .await
+        let layout = match index {
+            8 => SourceWeightLayout::Qwen2bMlpGateUp,
+            10 => SourceWeightLayout::Qwen2bMlpDown,
+            _ => {
+                return Err(Error::Unsupported(
+                    "component MLP learned packing only".into(),
+                ));
+            }
+        };
+        self.upload_model_weight(
+            cohort.source.clone(),
+            cohort.source_operator(index)?.clone(),
+            layout,
+            cancelled,
+        )
+        .await
     }
 }
 
@@ -248,13 +138,13 @@ impl Qwen2bMlpWeights {
         weights.require_initialized()?;
         Ok(weights)
     }
-    pub(crate) fn require_record(
+    pub(crate) fn require_bindings(
         &self,
-        record: &Arc<RecordedVllm08Model>,
+        bindings: &Arc<crate::resident_program::source_bindings::SourceBindings>,
         service: &Arc<ResidentService>,
     ) -> Result<()> {
         self.require_initialized()?;
-        if !Arc::ptr_eq(record, self.cohort.record())
+        if !Arc::ptr_eq(bindings, self.cohort.bindings())
             || !Arc::ptr_eq(service, &self.service)
             || service.generation() != self.generation
         {
@@ -265,17 +155,16 @@ impl Qwen2bMlpWeights {
         Ok(())
     }
     /// Ownership witness after taint; no service usability or readiness promotion.
-    pub(crate) fn retained_record(
+    pub(crate) fn retained_bindings(
         &self,
-        source: &Arc<OriginalWindowModelSource>,
-        record: &Arc<RecordedVllm08Model>,
+        source: &zerogravity_artifacts::source_weights::VerifiedTensorSource,
+        bindings: &Arc<crate::resident_program::source_bindings::SourceBindings>,
         service: &Arc<ResidentService>,
     ) -> bool {
-        if !Arc::ptr_eq(source, self.cohort.source.source())
-            || !Arc::ptr_eq(record, self.cohort.record())
+        if !source.same_issuer(&self.cohort.source)
+            || !Arc::ptr_eq(bindings, self.cohort.bindings())
             || !Arc::ptr_eq(service, &self.service)
-            || self.cohort.source.model_profile() != FullModelProfile::Qwen2B
-            || record.call().source() != source.source_identity()
+            || bindings.call().source() != source.source_identity()
             || service.source_identity() != source.source_identity()
             || service.generation() != self.generation
             || self.gate_up.lease().id() == self.down.lease().id()
@@ -289,10 +178,10 @@ impl Qwen2bMlpWeights {
         .into_iter()
         .all(|(index, weight, bytes, windows)| {
             let owner = &weight.owner;
-            let Ok(descriptor) = self.cohort.operator(index) else {
+            let Ok(descriptor) = self.cohort.source_operator(index) else {
                 return false;
             };
-            if !Arc::ptr_eq(&owner.source, source)
+            if !owner.source.same_issuer(source)
                 || owner.descriptor != *descriptor
                 || !owner.lease.is_initialized()
                 || owner.lease.bytes() != bytes
@@ -316,7 +205,10 @@ impl Qwen2bMlpWeights {
             (8, &self.gate_up, 50_331_648, 48),
             (10, &self.down, 25_165_824, 25),
         ] {
-            weight.require_operator(self.cohort.source.source(), self.cohort.operator(index)?)?;
+            weight.require_source_operator(
+                &self.cohort.source,
+                self.cohort.source_operator(index)?,
+            )?;
             if weight.lease().bytes() != bytes
                 || weight.copy_counts()? != (windows, windows)
                 || !Arc::ptr_eq(weight.lease().service(), &self.service)
@@ -352,13 +244,7 @@ impl Qwen2bMlpWeights {
         upstream: CompletionOwner,
     ) -> Result<Arc<Qwen2bMlpSourceVerification>> {
         self.require_initialized()?;
-        let host = Arc::new(
-            self.cohort
-                .source
-                .source()
-                .source()
-                .reserve_workspace(2 * 1024 * 1024)?,
-        );
+        let host = Arc::new(self.cohort.source.reserve_workspace(2 * 1024 * 1024)?);
         Ok(Arc::new(Qwen2bMlpSourceVerification {
             weights: self.clone(),
             _upstream: upstream,
@@ -564,6 +450,3 @@ impl Qwen2bMlpSourceVerification {
         Ok(count)
     }
 }
-
-#[cfg(test)]
-mod tests;

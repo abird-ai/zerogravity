@@ -3,13 +3,14 @@ use super::super::*;
 use super::bindings::CohortBindings;
 use crate::resident_leases::backing_pool::{ResidentWorkspaceGeometry, ResidentWorkspaceRun};
 use crate::resident_leases::{ResidentLease, ResidentService};
+use crate::resident_program::source_bindings::SourceBindings;
 use zerogravity_artifacts::source_weights::WindowWorkspace;
-use zerogravity_core::accelerator::program::{ActivationPrecision, RecordedVllm08Model};
+use zerogravity_core::accelerator::program::ActivationPrecision;
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 
 pub(crate) struct CohortValues {
-    records: Box<[Arc<RecordedVllm08Model>]>,
-    _source: Arc<zerogravity_model_qwen35::original_binding::OriginalWindowModelSource>,
+    records: Box<[Arc<SourceBindings>]>,
+    _source: zerogravity_artifacts::source_weights::VerifiedTensorSource,
     service: Arc<ResidentService>,
     geometry: Arc<ResidentWorkspaceGeometry>,
     _run: Arc<ResidentWorkspaceRun>,
@@ -51,7 +52,7 @@ impl CohortValues {
         }
         // Source admission belongs to the actual binding, not an independent
         // host allocator. Immutable records retain that same original owner.
-        let _metadata = binding.source().source().reserve_workspace(128 * 1024)?;
+        let _metadata = binding.source().reserve_workspace(128 * 1024)?;
         let mut buffers = Vec::with_capacity(327);
         let mut ranges = Vec::with_capacity(327);
         for (shape, lease) in plan.values().iter().zip(geometry.leases()) {
@@ -101,12 +102,11 @@ impl CohortValues {
     }
     pub(crate) fn require_inputs(
         &self,
-        inputs: &[Arc<crate::resident_inference::native_fragment::short_hf::ShortHfCallInput>],
+        inputs: &[Arc<crate::resident_inference::native_fragment::text::TextCallInput>],
     ) -> Result<()> {
         if inputs.len() != self.records.len()
             || inputs.iter().zip(&self.records).any(|(input, record)| {
-                !Arc::ptr_eq(input.record(), record)
-                    || !Arc::ptr_eq(input.source().source(), &self._source)
+                !Arc::ptr_eq(input.record(), record) || !input.source().same_issuer(&self._source)
             })
         {
             return Err(Error::State(

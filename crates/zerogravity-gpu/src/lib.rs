@@ -3,10 +3,6 @@
 //! physical queue/service/quarantine implementation; frontends supply immutable
 //! source bindings and the already-recorded mathematical plan.
 
-mod activation_quant;
-mod activation_quant_fused;
-#[cfg(feature = "qualification")]
-mod activation_stress;
 mod async_bridge;
 mod attention_qk;
 mod attention_softmax;
@@ -19,9 +15,6 @@ mod batch_elementwise;
 #[cfg(any(feature = "qualification", test))]
 mod batch_kv;
 mod batch_projection;
-mod batch_quant_projection;
-#[cfg(feature = "qualification")]
-mod batch_quant_qualification;
 #[cfg(any(feature = "qualification", test))]
 mod batch_recurrent;
 #[cfg(all(feature = "qualification", target_os = "linux"))]
@@ -37,36 +30,18 @@ mod gdn_recurrent;
 #[cfg(feature = "qualification")]
 mod gpu_telemetry;
 mod host_descriptor;
-mod mixed_ops;
-#[cfg(feature = "qualification")]
-mod model_bench;
-#[cfg(feature = "qualification")]
-mod model_layer;
-#[cfg(feature = "qualification")]
-mod model_mixed;
-#[cfg(feature = "qualification")]
-mod model_q4;
-#[cfg(feature = "qualification")]
-mod model_resident;
-#[cfg(feature = "qualification")]
-mod model_sessions;
-#[cfg(feature = "qualification")]
-mod model_workers;
-#[cfg(feature = "qualification")]
-mod operator_stress;
 #[cfg(feature = "hardware-abort-probe")]
 mod physical_abort_probe;
 mod physical_quarantine;
 mod physical_queue;
 mod physical_service;
+mod projection_f32;
+mod quantization;
 #[cfg(feature = "cuda")]
-pub use physical_service::{initialize_cuda_physical_identity, validate_cuda_compiler_environment};
-#[cfg(any(feature = "vllm-cuda-qualification", test))]
+pub use physical_service::initialize_cuda_physical_identity;
+#[cfg(any(feature = "cuda-native", test))]
 mod prepared_kernel_key;
 mod program_kernels;
-#[cfg(feature = "qualification")]
-mod q4;
-mod q4_q8;
 mod residency;
 pub mod resident_batch;
 mod resident_batch_greedy;
@@ -79,17 +54,21 @@ mod resident_leases;
 pub use resident_leases::ResidentPhysical;
 mod resident_program;
 #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
-pub use resident_inference::gemma_text::{
-    Gemma4Bf16GpuCall, Gemma4Bf16GpuCandidate, Gemma4Bf16GpuPending, Gemma4Bf16GpuSession,
-    Gemma4Bf16GpuSnapshot,
+pub use resident_inference::bf16_text::{
+    Bf16TextCandidate, Bf16TextPending, Bf16TextResult, Bf16TextSession, Bf16TextSnapshot,
 };
 #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
-pub use resident_program::gemma_text::{
-    GemmaTextHostOwners, GemmaTextNativeOwners, GemmaTextObserver, GemmaTextResourceInventory,
-    GemmaTextStorage, GemmaTextTraffic,
+pub use resident_program::bf16_text::{
+    TextHostOwners, TextNativeOwners, TextObserver, TextResourceInventory, TextStorage, TextTraffic,
 };
 // Pure physical byte metadata; no allocation/backend/model eligibility permit.
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+pub use resident_program::qwen2b_component::{ComponentOutput, ComponentRecipe};
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+pub use resident_program::source_bindings::{SourceBindings, SourceSelection};
 pub use resident_program::{ResidentBufferLayout, ResidentPhysicalType};
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+pub use resident_program::{StateLayout, StateRequirement};
 mod resident_provider;
 mod resident_state_transport;
 mod rms_norm;
@@ -131,17 +110,15 @@ mod source_standalone_exp;
 mod source_transcendentals;
 mod source_trig;
 // Shared retirement has no source, provider or qualification dependency.
-#[cfg_attr(not(feature = "vllm-cuda-qualification"), allow(dead_code))]
+#[cfg_attr(not(feature = "cuda-native"), allow(dead_code))]
 mod transfer_retirement;
 
-#[cfg(feature = "vllm-cuda-qualification")]
-mod vllm_cuda_gdn;
-#[cfg(feature = "vllm-cuda-qualification")]
-mod vllm_cuda_input_rms;
-#[cfg(feature = "vllm-cuda-qualification")]
-pub mod vllm_cuda_qualification;
-#[cfg(feature = "vllm-cuda-qualification")]
-mod vllm_ptx_inline;
+#[cfg(feature = "cuda")]
+pub mod cuda;
+#[cfg(feature = "hip")]
+pub mod hip;
+#[cfg(feature = "vulkan")]
+pub mod vulkan;
 
 #[cfg(feature = "qualification")]
 pub mod qualification;
@@ -158,9 +135,6 @@ pub use resident_provider::CubeResidentProvider;
 #[cfg(feature = "cuda")]
 mod ordered_silu;
 
-#[cfg(all(test, feature = "qualification", feature = "hip", target_os = "linux"))]
-mod hip_native_qualification;
-
 #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
 pub use cubecl::hip::{SourcePageEventProbeMode, SourcePageEventProbeSnapshot};
 #[cfg(all(
@@ -168,11 +142,11 @@ pub use cubecl::hip::{SourcePageEventProbeMode, SourcePageEventProbeSnapshot};
     feature = "hardware-abort-probe",
     target_os = "linux"
 ))]
-pub use resident_inference::qwen_source::QwenFinalOwnerReceipt;
+pub use resident_inference::bf16_text_source::TextSourceFinalOwnerReceipt;
 #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
-pub use resident_inference::qwen_source::{
-    Qwen27bNaturalCall, Qwen27bNaturalPending, Qwen27bSourceGpuCandidate, Qwen27bSourceGpuOutput,
-    Qwen27bSourceGpuPending, Qwen27bSourceGpuSession, Qwen27bSourceGpuSnapshot,
+pub use resident_inference::bf16_text_source::{
+    Bf16TextSourceCandidate, Bf16TextSourceGreedyPending, Bf16TextSourceGreedyResult,
+    Bf16TextSourcePending, Bf16TextSourceResult, Bf16TextSourceSession, Bf16TextSourceSnapshot,
 };
 #[cfg(all(
     feature = "hip",
@@ -185,27 +159,17 @@ pub use resident_inference::qwen_source::{
 ))]
 pub use resident_leases::source_page::SourcePageProbeParts;
 #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
-pub use resident_program::qwen_source::{
-    QwenSourceFrame, QwenSourceFrameKind, QwenSourceObserver, QwenSourceResourceInventory,
+pub use resident_program::bf16_text_source::{
+    TextSourceFrame, TextSourceFrameKind, TextSourceObserver, TextSourceResourceInventory,
 };
 
-#[cfg(all(
-    any(
-        feature = "gemma-bf16-qualification",
-        feature = "qwen-source-qualification"
-    ),
-    feature = "vulkan",
-    feature = "hardware-abort-probe",
-    target_os = "linux"
-))]
-pub use backend::vulkan_native_policy::retained_partial_native_modules;
 #[cfg(all(
     feature = "gemma-bf16-qualification",
     any(feature = "hip", feature = "vulkan"),
     feature = "hardware-abort-probe",
     target_os = "linux"
 ))]
-pub use resident_inference::gemma_text::GemmaFinalOwnerReceipt;
+pub use resident_inference::bf16_text::TextFinalOwnerReceipt;
 #[cfg(all(
     feature = "gemma-bf16-qualification",
     feature = "vulkan",
@@ -213,7 +177,7 @@ pub use resident_inference::gemma_text::GemmaFinalOwnerReceipt;
     feature = "hardware-abort-probe",
     target_os = "linux"
 ))]
-pub use resident_inference::gemma_text::{GemmaVulkanNativeRetention, LearnedSamePciPeerReceipt};
+pub use resident_inference::bf16_text::{LearnedSamePciPeerReceipt, TextVulkanNativeRetention};
 #[cfg(all(
     any(
         feature = "gemma-bf16-qualification",
@@ -224,6 +188,16 @@ pub use resident_inference::gemma_text::{GemmaVulkanNativeRetention, LearnedSame
     feature = "hardware-abort-probe"
 ))]
 pub use resident_inference::{SamePciPeerReceipt, same_pci_peer};
+#[cfg(all(
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification"
+    ),
+    feature = "vulkan",
+    feature = "hardware-abort-probe",
+    target_os = "linux"
+))]
+pub use vulkan::native::retained_partial_native_modules;
 
 #[cfg(all(
     feature = "hip",
@@ -231,4 +205,4 @@ pub use resident_inference::{SamePciPeerReceipt, same_pci_peer};
     feature = "gemma-bf16-qualification",
     target_os = "linux"
 ))]
-pub use backend::hip_native_policy::{HipSourceSetIdentity, SharedHipColdPlan, SharedHipNative};
+pub use hip::native::{HipSourceSetIdentity, SharedHipColdPlan, SharedHipNative};

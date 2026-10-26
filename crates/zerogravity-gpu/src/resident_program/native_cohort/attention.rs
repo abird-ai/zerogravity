@@ -1,19 +1,19 @@
 //! Actual B4 attention producer/state/control roles for the SAME source loop.
 use super::super::*;
 use super::{kv::CohortKvTransport, values::CohortValues};
+use crate::cuda::native::{
+    cohort_native::Role, model_rotary::ModelRotary, text_native::TextNativeStorage,
+};
 use crate::resident_inference::native_fragment::{
-    PrefixPhaseEnqueue, model_state::BoundModelState, short_hf::ShortHfCallInput,
+    PrefixPhaseEnqueue, model_state::BoundModelState, text::TextCallInput,
 };
 use crate::resident_leases::{ResidentInitialization, ResidentLease, ResidentService};
-use crate::vllm_cuda_qualification::{
-    cohort_native::Role, model_rotary::ModelRotary, short_hf_native::ShortHfNativeStorage,
-};
 use zerogravity_artifacts::source_weights::WindowWorkspace;
 use zerogravity_core::accelerator::program::StateEffect;
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 
 pub(super) struct AttentionOwners {
-    pub(super) native: Arc<ShortHfNativeStorage>,
+    pub(super) native: Arc<TextNativeStorage>,
     pub(super) rotary: Arc<ModelRotary>,
     pub(super) cache: ResidentLease,
     pub(super) status: ResidentLease,
@@ -21,9 +21,9 @@ pub(super) struct AttentionOwners {
     pub(super) transport: Arc<super::CohortTransportLibrary>,
 }
 pub(super) struct CohortAttention {
-    inputs: Box<[Arc<ShortHfCallInput>]>,
+    inputs: Box<[Arc<TextCallInput>]>,
     values: Arc<CohortValues>,
-    _native: Arc<ShortHfNativeStorage>,
+    _native: Arc<TextNativeStorage>,
     rotary: Arc<ModelRotary>,
     nodes: [usize; 7],
     roles: BTreeMap<Role, ResidentLease>,
@@ -34,15 +34,15 @@ fn bytes32(values: impl IntoIterator<Item = i32>) -> Vec<u8> {
     values.into_iter().flat_map(i32::to_le_bytes).collect()
 }
 pub(super) struct CohortAttentionControls {
-    inputs: Box<[Arc<ShortHfCallInput>]>,
+    inputs: Box<[Arc<TextCallInput>]>,
     roles: BTreeMap<Role, ResidentLease>,
 }
 impl CohortAttentionControls {
     pub(super) fn prepare(
-        inputs: &[Arc<ShortHfCallInput>],
+        inputs: &[Arc<TextCallInput>],
         init: &mut ResidentInitialization<'_>,
     ) -> Result<Arc<Self>> {
-        crate::vllm_cuda_qualification::cohort_native::require_input_shape(inputs)?;
+        crate::cuda::native::cohort_native::require_input_shape(inputs)?;
         let initial = inputs[0].rows() == 47;
         let m = 4 * inputs[0].rows();
         let mut roles = BTreeMap::new();
@@ -114,7 +114,7 @@ impl CohortAttentionControls {
     }
     pub(super) fn kv_sources(
         &self,
-        inputs: &[Arc<ShortHfCallInput>],
+        inputs: &[Arc<TextCallInput>],
         service: &Arc<ResidentService>,
     ) -> Result<[ResidentLease; 3]> {
         self.require_inputs(inputs)?;
@@ -137,7 +137,7 @@ impl CohortAttentionControls {
         // transport enqueue; these are its already retained readonly owners.
         Ok(sources)
     }
-    fn require_inputs(&self, inputs: &[Arc<ShortHfCallInput>]) -> Result<()> {
+    fn require_inputs(&self, inputs: &[Arc<TextCallInput>]) -> Result<()> {
         if inputs.len() != self.inputs.len()
             || inputs
                 .iter()
@@ -153,7 +153,7 @@ impl CohortAttentionControls {
 }
 impl CohortAttention {
     pub(super) fn prepare(
-        inputs: &[Arc<ShortHfCallInput>],
+        inputs: &[Arc<TextCallInput>],
         states: &[Arc<BoundModelState>],
         values: Arc<CohortValues>,
         layer: usize,
@@ -169,7 +169,7 @@ impl CohortAttention {
             transport,
         } = owners;
         values.require_inputs(inputs)?;
-        crate::vllm_cuda_qualification::cohort_native::require_input_shape(inputs)?;
+        crate::cuda::native::cohort_native::require_input_shape(inputs)?;
         init.require_service(values.service())?;
         if inputs.len() != 4 || states.len() != 4 || layer % 4 != 3 {
             return Err(Error::State(
@@ -184,22 +184,16 @@ impl CohortAttention {
                 || actual.operands != site.operands
                 || input.rows() != inputs[0].rows()
                 || !matches!((input.rows(), input.base()), (47, 0) | (1, 47..=53))
-                || input.workload().prompt_rows() != 47
+                || input.prompt_tokens() != 47
             {
                 return Err(Error::State(
                     "B4 every original attention producer/span".into(),
                 ));
             }
-            rotary.require_call(input.source().source(), input.call(), values.service())?;
+            rotary.require_call(input.source(), input.call(), values.service())?;
         }
         let parameters = native.cohort_qk_parameters(inputs, layer)?;
-        let metadata = Arc::new(
-            inputs[0]
-                .source()
-                .source()
-                .source()
-                .reserve_workspace(512 * 1024)?,
-        );
+        let metadata = Arc::new(inputs[0].source().reserve_workspace(512 * 1024)?);
         init.retain_completion_owner(metadata.clone())?;
         init.retain_completion_owner(native.clone())?;
         init.retain_completion_owner(rotary.clone())?;
@@ -272,16 +266,14 @@ impl CohortAttention {
         Ok(result)
     }
     pub(super) fn roles(&self, node: usize) -> Result<BTreeMap<Role, ResidentLease>> {
-        let site = self.inputs[0].scope().attention_site(
-            // Site source descriptor supplies the genuine model layer.
-            match &self.inputs[0].record().plan().nodes()[self.nodes[1]].operation {
-                PlanOperation::TypedVllm08 { descriptor, .. } => descriptor
-                    .layer()
-                    .ok_or_else(|| Error::State("B4 attention layer descriptor".into()))?
-                    .index(),
-                _ => return Err(Error::State("B4 actual QK source".into())),
-            },
-        )?;
+        let descriptor = self.inputs[0]
+            .record()
+            .operator(self.nodes[2])?
+            .ok_or_else(|| Error::State("B4 actual KV source absent".into()))?;
+        let SourceOperatorKind::KvAppend { domain, .. } = descriptor.kind() else {
+            return Err(Error::State("B4 attention source domain absent".into()));
+        };
+        let site = self.inputs[0].scope().attention_site(domain.0)?;
         let mut roles = self.roles.clone();
         if node == self.nodes[4] {
             roles.insert(Role::X, self.values.lease(site.operands[4])?.clone());
@@ -345,11 +337,8 @@ impl CohortAttention {
         self.values.require_inputs(&self.inputs)?;
         for (input, permit) in self.inputs.iter().zip(permits) {
             input.require_permit(permit, self.values.service())?;
-            self.rotary.require_call(
-                input.source().source(),
-                input.call(),
-                self.values.service(),
-            )?;
+            self.rotary
+                .require_call(input.source(), input.call(), self.values.service())?;
         }
         Ok(())
     }

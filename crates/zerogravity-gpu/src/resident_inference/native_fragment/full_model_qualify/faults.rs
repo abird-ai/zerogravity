@@ -5,14 +5,14 @@ use zerogravity_core::accelerator::program::ValueId;
 use zerogravity_core::device_events::BufferLeaseId;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Vllm08ModelFault {
+pub enum SourceModelFault {
     AdmissionPressure,
     UnknownAfterConvolution,
     CancelBeforeRecurrent,
 }
 #[derive(Clone, Debug)]
-pub struct Vllm08ModelFaultOutcome {
-    pub fault: Vllm08ModelFault,
+pub struct SourceModelFaultOutcome {
+    pub fault: SourceModelFault,
     pub status: &'static str,
     pub ready_completions: usize,
     pub readback_commands: usize,
@@ -108,7 +108,7 @@ impl Probe {
             .and_then(|w| w.owners.upgrade())
             .is_some_and(|o| o.bodies[0].fault_cut_observed()))
     }
-    pub(super) fn inspect(&self, fault: Vllm08ModelFault) -> Result<Vllm08ModelFaultOutcome> {
+    pub(super) fn inspect(&self, fault: SourceModelFault) -> Result<SourceModelFaultOutcome> {
         let guard = self
             .0
             .lock()
@@ -168,7 +168,7 @@ impl Probe {
         {
             return Err(Error::State("full24 unknown did not retain exact submitted/prepared graph, future initialization boundary or physical fence".into()));
         }
-        Ok(Vllm08ModelFaultOutcome {
+        Ok(SourceModelFaultOutcome {
             fault,
             status: "UNKNOWN_RETAINED",
             ready_completions: 0,
@@ -198,7 +198,7 @@ impl Probe {
 pub(super) enum Mode {
     Compare,
     Fault {
-        fault: Vllm08ModelFault,
+        fault: SourceModelFault,
         probe: Arc<Probe>,
     },
 }
@@ -207,7 +207,7 @@ impl Mode {
         matches!(
             self,
             Self::Fault {
-                fault: Vllm08ModelFault::AdmissionPressure,
+                fault: SourceModelFault::AdmissionPressure,
                 ..
             }
         )
@@ -216,11 +216,11 @@ impl Mode {
         match self {
             Self::Compare => 0,
             Self::Fault {
-                fault: Vllm08ModelFault::UnknownAfterConvolution,
+                fault: SourceModelFault::UnknownAfterConvolution,
                 ..
             } => 1,
             Self::Fault {
-                fault: Vllm08ModelFault::CancelBeforeRecurrent,
+                fault: SourceModelFault::CancelBeforeRecurrent,
                 ..
             } => 2,
             _ => 0,
@@ -240,18 +240,18 @@ impl Mode {
 }
 pub(super) enum Outcome {
     Natural(super::natural_cold::PreparedNaturalCold),
-    Compared(Vllm08ModelReceipt),
-    Fault(Vllm08ModelFaultOutcome),
+    Compared(SourceModelReceipt),
+    Fault(SourceModelFaultOutcome),
 }
-pub async fn qualify_vllm08_model_fault(
+pub async fn qualify_source_model_fault(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    records: [RecordedVllm08Model; 5],
-    inputs: Vllm08ModelInputs,
+    scopes: SourceModelScopes,
+    inputs: SourceModelInputs,
     rotary: Option<RotaryOutcome>,
-    fault: Vllm08ModelFault,
+    fault: SourceModelFault,
     cancelled: Option<&AtomicBool>,
-) -> Result<Vllm08ModelFaultOutcome> {
+) -> Result<SourceModelFaultOutcome> {
+    let (source, records) = scopes.into_parts();
     let probe = Arc::new(Probe::default());
     let result = qualify_inner(
         device,
@@ -285,10 +285,10 @@ pub async fn qualify_vllm08_model_fault(
         )),
         Err(error) => {
             let intended = matches!((&error, fault),
-                (Error::State(message), Vllm08ModelFault::UnknownAfterConvolution)
+                (Error::State(message), SourceModelFault::UnknownAfterConvolution)
                     if message == "deliberate full24 unknown after actual source Conv and canonical copy")
                 || matches!((&error, fault),
-                (Error::State(message), Vllm08ModelFault::CancelBeforeRecurrent)
+                (Error::State(message), SourceModelFault::CancelBeforeRecurrent)
                     if message == "closed original cubin qualification cancelled");
             if intended && probe.cut_observed()? {
                 probe.inspect(fault)
@@ -298,10 +298,10 @@ pub async fn qualify_vllm08_model_fault(
         }
     }
 }
-pub(super) fn pressure(service: Arc<ResidentService>) -> Result<Vllm08ModelFaultOutcome> {
-    let active = super::super::faults::pressure(service, VllmGdnFragmentFault::AdmissionPressure)?;
-    Ok(Vllm08ModelFaultOutcome {
-        fault: Vllm08ModelFault::AdmissionPressure,
+pub(super) fn pressure(service: Arc<ResidentService>) -> Result<SourceModelFaultOutcome> {
+    let active = super::super::faults::pressure(service, GdnFragmentFault::AdmissionPressure)?;
+    Ok(SourceModelFaultOutcome {
+        fault: SourceModelFault::AdmissionPressure,
         status: active.status,
         ready_completions: 0,
         readback_commands: 0,

@@ -1,25 +1,20 @@
 //! Exact state-read coordinate accepted by the original full24 dispatcher.
 use zerogravity_core::accelerator::program::{
-    KvDomain, PlanNode, PlanOperation, StateSlot, Vllm08Kind, Vllm08Operator,
+    PlanNode, PlanOperation, SourceOperator, SourceOperatorKind, StateSlot,
 };
 use zerogravity_core::{Error, Result};
 
-pub(super) fn descriptor(node: &PlanNode) -> Result<&Vllm08Operator> {
-    let PlanOperation::TypedVllm08 { descriptor, state } = &node.operation else {
+pub(super) fn descriptor(node: &PlanNode) -> Result<&SourceOperator> {
+    let PlanOperation::SourceOperator { descriptor, state } = &node.operation else {
         return Err(Error::State(
             "full24 actual typed node descriptor absent".into(),
         ));
     };
     let valid = match (descriptor.kind(), state) {
-        (Vllm08Kind::FlashAttention, Some(version)) => {
-            node.state.is_none()
-                && descriptor.layer().is_some_and(|layer| {
-                    layer.is_attention()
-                        && version.slot == StateSlot::Kv(KvDomain(layer.index()))
-                        && version.ordinal == 1
-                })
+        (SourceOperatorKind::FlashAttention { domain, .. }, Some(version)) => {
+            node.state.is_none() && version.slot == StateSlot::Kv(domain) && version.ordinal == 1
         }
-        (Vllm08Kind::FlashAttention, None) => false,
+        (SourceOperatorKind::FlashAttention { .. }, None) => false,
         (_, None) => true,
         (_, Some(_)) => false,
     };
@@ -37,33 +32,47 @@ mod tests {
     use super::*;
     use zerogravity_core::accelerator::SourceIdentity;
     use zerogravity_core::accelerator::program::{
-        ConvDomain, GdnPrefixLayer, RecurrentDomain, StateEffect, StateVersion, ValueId,
-        Vllm08Call, VllmBf16Invocation, VllmBf16Phase, VllmBf16Teachers,
+        AttentionGeometry, KvDomain, SourceAttentionMask, SourceCall, SourceCallMode,
+        SourceNumericalContract, SourceRows, TensorView, TextCallGeometry,
     };
-
-    fn call(phase: VllmBf16Phase, base: usize) -> Vllm08Call {
+    use zerogravity_core::accelerator::program::{
+        ConvDomain, RecurrentDomain, StateEffect, StateVersion, ValueId,
+    };
+    fn call(mode: SourceCallMode, base: usize, rows: usize) -> SourceCall {
         let source = SourceIdentity::for_new_allocation().unwrap();
-        Vllm08Call::new(
-            VllmBf16Invocation::new(
-                GdnPrefixLayer::new(source, 0).unwrap(),
-                phase,
-                VllmBf16Teachers::new(source, base, 512, &vec![353; phase.rows()]).unwrap(),
+        SourceCall::new(
+            SourceRows::new(
+                TextCallGeometry::new(source, 248320, 512).unwrap(),
+                base,
+                vec![353; rows].into(),
             )
             .unwrap(),
+            mode,
         )
         .unwrap()
     }
-    fn operator(call: &Vllm08Call, layer: usize, kind: Vllm08Kind) -> Vllm08Operator {
-        let operator = Vllm08Operator::new(
+    // Fixture math matches the original cases; no model/profile eligibility.
+    fn fa(layer: usize) -> SourceOperatorKind {
+        SourceOperatorKind::FlashAttention {
+            domain: KvDomain(layer),
+            geometry: AttentionGeometry {
+                width: 256,
+                query_heads: 8,
+                kv_heads: 2,
+            },
+            scale: 0.0625,
+            mask: SourceAttentionMask::Causal,
+        }
+    }
+    fn operator(call: &SourceCall, kind: SourceOperatorKind) -> SourceOperator {
+        SourceOperator::new(
             call.clone(),
-            Some(call.layer(layer).unwrap()),
             kind,
+            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
             Vec::new(),
             Vec::new(),
         )
-        .unwrap();
-        operator.validate().unwrap();
-        operator
+        .unwrap()
     }
     fn version(layer: usize, ordinal: u32) -> StateVersion {
         StateVersion {
@@ -71,10 +80,10 @@ mod tests {
             ordinal,
         }
     }
-    fn node(operator: Vllm08Operator, state: Option<StateVersion>) -> PlanNode {
+    fn node(operator: SourceOperator, state: Option<StateVersion>) -> PlanNode {
         PlanNode::new(
-            "vllm.original.full24".into(),
-            PlanOperation::TypedVllm08 {
+            "source.full_state_read".into(),
+            PlanOperation::SourceOperator {
                 descriptor: Box::new(operator),
                 state,
             },
@@ -84,7 +93,7 @@ mod tests {
         )
     }
     fn set_read(node: &mut PlanNode, state: Option<StateVersion>) {
-        let PlanOperation::TypedVllm08 { state: read, .. } = &mut node.operation else {
+        let PlanOperation::SourceOperator { state: read, .. } = &mut node.operation else {
             unreachable!()
         };
         *read = state;
@@ -92,19 +101,19 @@ mod tests {
 
     #[test]
     fn every_original_attention_layer_and_phase_accepts_only_its_appended_read() {
-        for (phase, base) in [
-            (VllmBf16Phase::InitialOne, 0),
-            (VllmBf16Phase::CachedOne, 1),
-            (VllmBf16Phase::Initial64, 0),
-            (VllmBf16Phase::ContinuedTwo, 64),
-            (VllmBf16Phase::CachedOne, 66),
+        for (mode, base, rows) in [
+            (SourceCallMode::Prefill, 0, 1),
+            (SourceCallMode::Decode, 1, 1),
+            (SourceCallMode::Prefill, 0, 64),
+            (SourceCallMode::Prefill, 64, 2),
+            (SourceCallMode::Decode, 66, 1),
         ] {
-            let call = call(phase, base);
+            let call = call(mode, base, rows);
             for layer in [3, 7, 11, 15, 19, 23] {
-                let original = operator(&call, layer, Vllm08Kind::FlashAttention);
+                let original = operator(&call, fa(layer));
                 let actual = node(original.clone(), Some(version(layer, 1)));
                 let returned = descriptor(&actual).unwrap();
-                let PlanOperation::TypedVllm08 {
+                let PlanOperation::SourceOperator {
                     descriptor: retained,
                     ..
                 } = &actual.operation
@@ -120,12 +129,9 @@ mod tests {
 
     #[test]
     fn fa_rejects_missing_foreign_and_wrong_version_reads_on_every_actual_layer() {
-        let call = call(VllmBf16Phase::InitialOne, 0);
+        let call = call(SourceCallMode::Prefill, 0, 1);
         for layer in [3, 7, 11, 15, 19, 23] {
-            let actual = node(
-                operator(&call, layer, Vllm08Kind::FlashAttention),
-                Some(version(layer, 1)),
-            );
+            let actual = node(operator(&call, fa(layer)), Some(version(layer, 1)));
             let foreign_layer = if layer == 3 { 7 } else { 3 };
             for read in [
                 None,
@@ -150,12 +156,9 @@ mod tests {
 
     #[test]
     fn fa_cannot_write_even_when_its_read_is_the_exact_appended_kv_version() {
-        let call = call(VllmBf16Phase::Initial64, 0);
+        let call = call(SourceCallMode::Prefill, 0, 64);
         for layer in [3, 7, 11, 15, 19, 23] {
-            let mut actual = node(
-                operator(&call, layer, Vllm08Kind::FlashAttention),
-                Some(version(layer, 1)),
-            );
+            let mut actual = node(operator(&call, fa(layer)), Some(version(layer, 1)));
             actual.state = Some(StateEffect {
                 read: version(layer, 0),
                 write: version(layer, 1),
@@ -166,15 +169,24 @@ mod tests {
 
     #[test]
     fn non_fa_reads_refuse_but_real_append_write_effect_remains_separate() {
-        let call = call(VllmBf16Phase::ContinuedTwo, 64);
+        let call = call(SourceCallMode::Prefill, 64, 2);
         for layer in [3, 7, 11, 15, 19, 23] {
             for kind in [
-                Vllm08Kind::KvAppend,
-                Vllm08Kind::Sigmoid,
-                Vllm08Kind::Multiply,
+                SourceOperatorKind::KvAppend {
+                    domain: KvDomain(layer),
+                    key_width: 512,
+                    packed_value: TensorView {
+                        offset: 4608,
+                        rows: call.rows().len(),
+                        width: 512,
+                        row_stride: 5120,
+                    },
+                },
+                SourceOperatorKind::Sigmoid { width: 2048 },
+                SourceOperatorKind::Multiply { width: 2048 },
             ] {
-                let mut actual = node(operator(&call, layer, kind), None);
-                if kind == Vllm08Kind::KvAppend {
+                let mut actual = node(operator(&call, kind), None);
+                if matches!(kind, SourceOperatorKind::KvAppend { .. }) {
                     actual.state = Some(StateEffect {
                         read: version(layer, 0),
                         write: version(layer, 1),
@@ -191,7 +203,10 @@ mod tests {
     fn unrelated_plan_operation_never_becomes_a_full24_descriptor() {
         let node = PlanNode::new(
             "unrelated".into(),
-            PlanOperation::TypedVllmStateCarry,
+            PlanOperation::Observe {
+                layer: 0,
+                stage: "unrelated",
+            },
             Vec::new(),
             Vec::new(),
             None,

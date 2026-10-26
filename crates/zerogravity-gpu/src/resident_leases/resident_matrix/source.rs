@@ -35,7 +35,7 @@ impl Bf16MatrixSource {
     pub(crate) fn windows(&self) -> usize {
         self.geometry.windows()
     }
-    #[cfg(feature = "vllm-cuda-qualification")]
+    #[cfg(feature = "cuda-native")]
     fn region(&self, ordinal: usize) -> Result<super::layout::Region> {
         let first = ordinal
             .checked_mul(super::layout::WINDOW / self.geometry.row_bytes())
@@ -44,7 +44,7 @@ impl Bf16MatrixSource {
             .region(first)?
             .ok_or_else(|| Error::State("BF16 source window absent".into()))
     }
-    #[cfg(feature = "vllm-cuda-qualification")]
+    #[cfg(feature = "cuda-native")]
     pub(crate) fn read_window(
         &self,
         ordinal: usize,
@@ -109,7 +109,7 @@ impl Bf16MatrixSource {
         Ok(())
     }
     /// Arithmetic consumers opt into finite BF16; byte transport alone does not.
-    #[cfg(feature = "vllm-cuda-qualification")]
+    #[cfg(feature = "cuda-native")]
     pub(crate) fn require_finite_window(
         &self,
         ordinal: usize,

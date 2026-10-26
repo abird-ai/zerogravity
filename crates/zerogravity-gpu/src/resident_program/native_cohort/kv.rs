@@ -5,21 +5,21 @@
 //! actual per-call transport as ONE launch per direction.
 use super::super::*;
 use super::attention::CohortAttentionControls;
+use crate::cuda::kernel::PinnedKernel;
 use crate::resident_inference::native_fragment::{
-    PrefixPhaseEnqueue, model_state::BoundModelState, short_hf::ShortHfCallInput,
+    PrefixPhaseEnqueue, model_state::BoundModelState, text::TextCallInput,
 };
 use crate::resident_leases::{ResidentInitialization, ResidentLease, ResidentService};
 use crate::resident_state_transport::typed::{
     KV_CACHE_BYTES, KV_CANONICAL_BYTES, PreparedTypedTransport, TypedDirection, TypedLayout,
     TypedRow,
 };
-use crate::vllm_ptx_inline::PinnedKernel;
 use cubecl_runtime::kernel::BufferIOAttr;
 use zerogravity_artifacts::source_weights::WindowWorkspace;
 use zerogravity_core::accelerator::program::StateEffect;
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 
-const SOURCE: &str = include_str!("../../vllm_cuda_qualification/model_kv_copy.cu");
+const SOURCE: &str = include_str!("../../cuda/native/model_kv_copy.cu");
 const CANONICAL_BYTES: usize = KV_CANONICAL_BYTES;
 // Actual source pages4/8/12/16, FullAttentionSpec block544, paired K/V lanes.
 pub(super) const CACHE_BYTES: usize = KV_CACHE_BYTES;
@@ -108,7 +108,7 @@ fn control_view(lease: &ResidentLease, offset: usize, bytes: usize) -> Result<Ha
 /// per-row control views. Identical addresses to the per-row kernels; the
 /// grouped launch re-binds them per call.
 struct Row {
-    input: Arc<ShortHfCallInput>,
+    input: Arc<TextCallInput>,
     state: Arc<BoundModelState>,
     prior_k: Handle,
     prior_v: Handle,
@@ -141,7 +141,7 @@ impl CohortKvTransport {
     // additional immutable argument over the original admission sequence.
     pub(super) fn prepare(
         service: Arc<ResidentService>,
-        inputs: &[Arc<ShortHfCallInput>],
+        inputs: &[Arc<TextCallInput>],
         states: &[Arc<BoundModelState>],
         cache: ResidentLease,
         status: ResidentLease,
@@ -150,7 +150,7 @@ impl CohortKvTransport {
         init: &mut ResidentInitialization<'_>,
     ) -> Result<Arc<Self>> {
         init.require_service(&service)?;
-        crate::vllm_cuda_qualification::cohort_native::require_input_shape(inputs)?;
+        crate::cuda::native::cohort_native::require_input_shape(inputs)?;
         if inputs.len() != 4
             || states.len() != 4
             || !Arc::ptr_eq(cache.service(), &service)
@@ -165,11 +165,11 @@ impl CohortKvTransport {
                 "cohort actual B4 paired cache/status admission".into(),
             ));
         }
-        let source = inputs[0].source().source();
+        let source = inputs[0].source();
         inputs[0]
             .scope()
             .require_record(inputs[0].source(), inputs[0].record())?;
-        let metadata = Arc::new(source.source().reserve_workspace(METADATA_BYTES)?);
+        let metadata = Arc::new(source.reserve_workspace(METADATA_BYTES)?);
         init.retain_completion_owner(metadata.clone())?;
         let control_sources = controls.kv_sources(inputs, &service)?;
         init.retain_completion_owner(controls.clone())?;
@@ -177,17 +177,17 @@ impl CohortKvTransport {
         let grouped = transport.kv_grouped.clone();
         require_metadata_bound(&per_row, &grouped)?;
         let mut rows = Vec::with_capacity(4);
-        let layer = states[0].layer().index();
+        let layer = states[0].layer();
         let mut incoming_words = 0usize;
         for (row, (input, state)) in inputs.iter().zip(states).enumerate() {
-            state.require_short_hf(input.scope())?;
-            if !state.layer().is_attention()
-                || state.layer().index() != layer
+            state.require_text(input.scope())?;
+            if state.kv_domain()?.0 != layer
+                || state.layer() != layer
                 || state.call() != input.call()
-                || input.workload().prompt_rows() != 47
+                || input.prompt_tokens() != 47
                 || !matches!((input.rows(), input.base()), (47, 0) | (1, 47..=53))
                 || input.rows() != inputs[0].rows()
-                || !Arc::ptr_eq(input.source().source(), source)
+                || !input.source().same_issuer(source)
                 || input.call().source() != service.source_identity()
             {
                 return Err(Error::State(

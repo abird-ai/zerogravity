@@ -50,7 +50,7 @@ impl PreparedProjection {
         let bytes = shape.owned_bytes()?;
         let client = service.client();
         let hardware = &client.properties().hardware;
-        if !crate::activation_quant_fused::is_cuda_service(client)
+        if !crate::quantization::activation_fused::is_cuda_service(client)
             || hardware.max_units_per_cube < 64
             || hardware.max_cube_dim.0 < 64
             || hardware.max_shared_memory_size < 512

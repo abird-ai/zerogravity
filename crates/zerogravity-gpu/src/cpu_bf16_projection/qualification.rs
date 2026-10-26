@@ -125,7 +125,7 @@ pub async fn qualify_window(
             .chunks_exact(2)
             .map(|b| f32::from_bits(u32::from(u16::from_le_bytes([b[0], b[1]])) << 16))
             .collect::<Vec<_>>();
-        let cpu = zerogravity_cpu::original_hf::window_projection::project_bf16_window(
+        let cpu = zerogravity_cpu::source::window_projection::project_bf16_window(
             &descriptor,
             rows.clone(),
             &window,

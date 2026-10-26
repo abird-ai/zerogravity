@@ -4,13 +4,14 @@ use crate::resident_leases::{
     Qwen2bMlpSourceVerification as SourceVerification, Qwen2bMlpWeightCohort as Cohort,
     Qwen2bMlpWeights as Weights,
 };
+use crate::resident_program::qwen2b_component::ComponentRecipe;
 use cubecl::Device;
 use std::sync::{Weak, atomic::AtomicUsize};
 use zerogravity_core::device_events::BufferLeaseId;
 use zerogravity_core::resource_arbiter::{
     AllocationClass, AllocationRequest, ResourceArbiter, ResourceOwner,
 };
-use zerogravity_model_qwen35::original_binding::OriginalWindowModelSource;
+use zerogravity_model_qwen35::source::binding::{BoundFullModelSource, OriginalWindowModelSource};
 const MIB: usize = 1024 * 1024;
 const BYTES: usize = 75_497_472;
 const LEADING: usize = 16_384;
@@ -111,7 +112,8 @@ impl ReadProbe {
 }
 struct ColdOwners {
     cohort: Arc<Cohort>,
-    record_admission: WindowWorkspace,
+    source: BoundFullModelSource,
+    record_admission: Arc<WindowWorkspace>,
     _metadata: WindowWorkspace,
 }
 struct Prepared {
@@ -122,9 +124,9 @@ struct Prepared {
 }
 struct Inputs {
     // Stack-only move. Record drops before its caller's actual admission.
-    record: Arc<RecordedVllm08Model>,
+    recipe: Arc<ComponentRecipe>,
     source: BoundFullModelSource,
-    record_admission: WindowWorkspace,
+    record_admission: Arc<WindowWorkspace>,
 }
 impl Prepared {
     fn compare_leading(&self, raw: &[Bytes], cancelled: Option<&AtomicBool>) -> Result<()> {
@@ -160,7 +162,7 @@ struct Probe {
 impl Probe {
     fn new(prepared: &Arc<Prepared>, plan: &Arc<Qwen2bMlpSourceVerification>) -> Self {
         Self {
-            source: Arc::downgrade(prepared.owner.cohort.source.source()),
+            source: Arc::downgrade(prepared.owner.source.source()),
             prepared: Arc::downgrade(prepared),
             plan: Arc::downgrade(plan),
             service: Arc::downgrade(&prepared.weights.service),
@@ -175,7 +177,7 @@ impl Probe {
                 .iter()
                 .map(|v| (v.lease_id(), v.offset(), v.bytes()))
                 .collect(),
-            rows: prepared.owner.cohort.record.call().rows(),
+            rows: prepared.owner.cohort.bindings.call().rows().len(),
         }
     }
     fn inspect(self, mode: Qwen2bMlpWeightMode) -> Result<Qwen2bMlpWeightOutcome> {
@@ -232,7 +234,7 @@ impl Probe {
             || ids[0] == ids[1]
             || reads != self.reads
             || reads.len() != 2
-            || !Arc::ptr_eq(&source, prepared.owner.cohort.source.source())
+            || !Arc::ptr_eq(&source, prepared.owner.source.source())
             || !Arc::ptr_eq(&plan.weights, &prepared.weights)
             || !Arc::ptr_eq(&service, &prepared.weights.service)
             || !prepared
@@ -360,14 +362,14 @@ fn outcome(
 pub async fn qualify_qwen2b_mlp_weights(
     device: Device,
     source: BoundFullModelSource,
-    record: Arc<RecordedVllm08Model>,
-    record_admission: WindowWorkspace,
+    recipe: Arc<ComponentRecipe>,
+    record_admission: Arc<WindowWorkspace>,
     mode: Qwen2bMlpWeightMode,
     device_cap: u64,
     cancelled: Option<&AtomicBool>,
 ) -> Result<Qwen2bMlpWeightOutcome> {
     let inputs = Inputs {
-        record,
+        recipe,
         source,
         record_admission,
     };
@@ -416,18 +418,26 @@ async fn run(
             "same source32MiB record allocation admission required".into(),
         ));
     }
+    if !inputs
+        .recipe
+        .source()
+        .same_issuer(inputs.source.source().source())
+        || inputs
+            .recipe
+            .bindings()
+            .source_record_admission()
+            .is_none_or(|ticket| !Arc::ptr_eq(ticket, &inputs.record_admission))
+    {
+        return Err(Error::State(
+            "same original component record admission required".into(),
+        ));
+    }
     let record_admission = inputs.record_admission;
-    let cohort = Cohort::bind(
-        inputs.source,
-        inputs.record,
-        Qwen2bGdnArithmetic::OwnedSolve4Recompute3,
-    )?;
-    let rows = cohort.record().call().rows();
+    let source = inputs.source;
+    let cohort = Cohort::bind(&inputs.recipe)?;
+    let rows = cohort.bindings().call().rows().len();
     if mode == Qwen2bMlpWeightMode::LegacyUploadRefusal {
-        let result = super::super::require_original08_upload_source(
-            cohort.source.source(),
-            cohort.operator(8)?,
-        );
+        let result = source.source().require_small_model_source();
         if !matches!(result,Err(Error::Unsupported(ref why)) if why=="closed original .8B24 source/config/rotary geometry")
         {
             return Err(Error::State(
@@ -451,7 +461,7 @@ async fn run(
     }
     let service = ResidentService::new_pinned_cuda(
         device,
-        cohort.source.source().source_identity(),
+        cohort.source.source_identity(),
         ResourceOwner::new("original2B-MLP-source", "finite-cold-weights-only")?,
         BYTES,
         device_cap,
@@ -476,7 +486,14 @@ async fn run(
                 "cold2B cap+1 must refuse before W/source windows/H2D".into(),
             ));
         }
-        drop((refusal, cohort, record_admission, service));
+        drop((
+            refusal,
+            cohort,
+            inputs.recipe,
+            source,
+            record_admission,
+            service,
+        ));
         let physical = ResourceArbiter::process_shared().snapshot(&key)?;
         if physical.reserved != 0 || physical.fenced {
             return Err(Error::State("cold2B pressure final physical0".into()));
@@ -488,9 +505,10 @@ async fn run(
             Snapshot::default(),
         ));
     }
-    let host = cohort.source.source().source().reserve_workspace(MIB)?;
+    let host = cohort.source.reserve_workspace(MIB)?;
     let owner = Arc::new(ColdOwners {
         cohort: cohort.clone(),
+        source,
         record_admission,
         _metadata: host,
     });
@@ -507,7 +525,7 @@ async fn run(
     slot.begin_submission()?;
     let weights = Weights::upload(cohort, service.clone(), owner.clone(), cancelled).await?;
     slot.finish()?;
-    weights.require_record(owner.cohort.record(), &service)?;
+    weights.require_bindings(owner.cohort.bindings(), &service)?;
     if weights.immutable_bytes() != BYTES {
         return Err(Error::State(
             "both complete2B W groups actual byte extent".into(),

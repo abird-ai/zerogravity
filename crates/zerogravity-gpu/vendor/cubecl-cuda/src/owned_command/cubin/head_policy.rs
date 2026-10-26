@@ -104,7 +104,8 @@ pub enum VocabularyHeadSelection {
     WholeSelected,
     LastOfTwo,
     LastOfSixtyFour,
-    LastOf47,
+    // Provenance: LastOf47.
+    FixedPromptLast,
     LastOf57,
     LastOf62,
     LastOf67,
@@ -115,11 +116,11 @@ pub(crate) fn selection_allowed(
     selection: VocabularyHeadSelection,
 ) -> bool {
     use super::policy::CubinSetPolicy as P;
-    if matches!(policy, P::ShortHf08 | P::ShortHf08Cohort4) {
+    if matches!(policy, P::Text08 | P::Text08Cohort4) {
         return matches!(
             selection,
             VocabularyHeadSelection::WholeSelected
-                | VocabularyHeadSelection::LastOf47
+                | VocabularyHeadSelection::FixedPromptLast
                 | VocabularyHeadSelection::LastOf57
                 | VocabularyHeadSelection::LastOf62
                 | VocabularyHeadSelection::LastOf67
@@ -131,10 +132,10 @@ pub(crate) fn selection_allowed(
         | VocabularyHeadSelection::LastOf62
         | VocabularyHeadSelection::LastOf67
         | VocabularyHeadSelection::LastOf72 => false,
-        VocabularyHeadSelection::LastOf47 => {
-            matches!(policy, P::Canonical47Full | P::Canonical47Natural)
+        VocabularyHeadSelection::FixedPromptLast => {
+            matches!(policy, P::FixedPromptFull | P::FixedPromptNatural)
         }
-        VocabularyHeadSelection::WholeSelected if policy == P::Canonical47Natural => true,
+        VocabularyHeadSelection::WholeSelected if policy == P::FixedPromptNatural => true,
         _ => matches!(policy, P::VocabularyHead | P::FullQwen08),
     }
 }
@@ -146,7 +147,7 @@ impl VocabularyHeadSelection {
                 Self::WholeSelected => 2048,
                 Self::LastOfTwo => 4096,
                 Self::LastOfSixtyFour => 131_072,
-                Self::LastOf47 => 96_256,
+                Self::FixedPromptLast => 96_256,
                 Self::LastOf57 => 57 * INPUT_BYTES,
                 Self::LastOf62 => 62 * INPUT_BYTES,
                 Self::LastOf67 => 67 * INPUT_BYTES,
@@ -249,7 +250,7 @@ mod tests {
             (0x4000_0000, 96_256),
             (0x5000_0000, OUTPUT_BYTES),
         ];
-        let addresses = VocabularyHeadSelection::LastOf47
+        let addresses = VocabularyHeadSelection::FixedPromptLast
             .checked_addresses(&valid)
             .unwrap();
         assert_eq!(addresses[1], 0x4000_0000 + 94_208);
@@ -257,29 +258,29 @@ mod tests {
             let mut wrong = valid;
             wrong[1].1 = wrong_bytes;
             assert!(
-                VocabularyHeadSelection::LastOf47
+                VocabularyHeadSelection::FixedPromptLast
                     .checked_addresses(&wrong)
                     .is_err()
             );
         }
         assert!(selection_allowed(
-            P::Canonical47Full,
-            VocabularyHeadSelection::LastOf47
+            P::FixedPromptFull,
+            VocabularyHeadSelection::FixedPromptLast
         ));
         for old in [
             P::VocabularyHead,
             P::FullQwen08,
-            P::Canonical47Layer3,
-            P::Canonical47Fa,
+            P::FixedPromptLayer3,
+            P::FixedPromptFa,
         ] {
-            assert!(!selection_allowed(old, VocabularyHeadSelection::LastOf47));
+            assert!(!selection_allowed(old, VocabularyHeadSelection::FixedPromptLast));
         }
         for old in [
             VocabularyHeadSelection::WholeSelected,
             VocabularyHeadSelection::LastOfTwo,
             VocabularyHeadSelection::LastOfSixtyFour,
         ] {
-            assert!(!selection_allowed(P::Canonical47Full, old));
+            assert!(!selection_allowed(P::FixedPromptFull, old));
             assert!(selection_allowed(P::VocabularyHead, old));
             assert!(selection_allowed(P::FullQwen08, old));
         }
@@ -290,7 +291,7 @@ mod tests {
             (VocabularyHeadSelection::WholeSelected, 2048),
             (VocabularyHeadSelection::LastOfTwo, 4096),
             (VocabularyHeadSelection::LastOfSixtyFour, 131_072),
-            (VocabularyHeadSelection::LastOf47, 96_256),
+            (VocabularyHeadSelection::FixedPromptLast, 96_256),
         ] {
             let ranges = [
                 (0x1000_0000, WEIGHT_BYTES),
@@ -424,18 +425,18 @@ mod tests {
     }
 
     #[test]
-    fn short_hf_resident_views_keep_exact_complete_owners_and_policy() {
+    fn text_resident_views_keep_exact_complete_owners_and_policy() {
         use super::super::policy::CubinSetPolicy as P;
         for (s, rows) in [
             (VocabularyHeadSelection::WholeSelected, 1),
-            (VocabularyHeadSelection::LastOf47, 47),
+            (VocabularyHeadSelection::FixedPromptLast, 47),
             (VocabularyHeadSelection::LastOf57, 57),
             (VocabularyHeadSelection::LastOf62, 62),
             (VocabularyHeadSelection::LastOf67, 67),
             (VocabularyHeadSelection::LastOf72, 72),
         ] {
-            assert!(selection_allowed(P::ShortHf08, s));
-            assert!(!selection_allowed(P::ShortHf2B, s));
+            assert!(selection_allowed(P::Text08, s));
+            assert!(!selection_allowed(P::Text2B, s));
             let ranges = [
                 (0x1000_0000, WEIGHT_BYTES),
                 (0x4000_0000, rows * INPUT_BYTES),
@@ -467,19 +468,19 @@ mod tests {
                 for old in [
                     P::VocabularyHead,
                     P::FullQwen08,
-                    P::Canonical47Full,
-                    P::Canonical47Natural,
+                    P::FixedPromptFull,
+                    P::FixedPromptNatural,
                 ] {
                     assert!(!selection_allowed(old, s));
                 }
             }
         }
         assert!(!selection_allowed(
-            P::ShortHf08,
+            P::Text08,
             VocabularyHeadSelection::LastOfTwo
         ));
         assert!(!selection_allowed(
-            P::ShortHf08,
+            P::Text08,
             VocabularyHeadSelection::LastOfSixtyFour
         ));
     }

@@ -23,12 +23,8 @@ impl ComponentValues {
         status: ResidentLease,
         service: Arc<ResidentService>,
     ) -> Result<Arc<Self>> {
-        let metadata = recipe
-            .source()
-            .source()
-            .source()
-            .reserve_workspace(64 * 1024)?;
-        let plan = recipe.record().plan();
+        let metadata = recipe.source().reserve_workspace(64 * 1024)?;
+        let plan = recipe.bindings().plan();
         if buffers.len() != recipe.value_end()
             || plan.source() != service.source_identity()
             || !Arc::ptr_eq(status.service(), &service)
@@ -50,9 +46,21 @@ impl ComponentValues {
             if plan.precisions()[index] != ActivationPrecision::Bf16WidenedF32 {
                 return Err(Error::State("source2B original physical precision".into()));
             }
-            plan.vllm_value_provenance(ValueId(index as u32))?
-                .ok_or_else(|| Error::State("source2B original SSA provenance absent".into()))?
-                .require_invocation(recipe.record().call().request())?;
+            let tag = plan
+                .source_value_provenance(ValueId(index as u32))?
+                .ok_or_else(|| Error::State("component actual SSA provenance absent".into()))?;
+            let producer = plan
+                .nodes()
+                .get(tag.node_index())
+                .ok_or_else(|| Error::State("component SSA producer outside plan".into()))?;
+            if tag.call() != recipe.bindings().call()
+                || producer.outputs.get(tag.output_index()) != Some(&ValueId(index as u32))
+                || tag.inputs() != producer.inputs
+            {
+                return Err(Error::State(
+                    "component actual SSA/source issuer differs".into(),
+                ));
+            }
             let layout = ResidentBufferLayout::new(ResidentPhysicalType::Bf16, elements)?;
             buffer.require_layout(layout)?;
             // This validates the public handle against the retained original

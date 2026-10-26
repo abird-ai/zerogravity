@@ -67,7 +67,7 @@ fn wrong_missing_duplicate_and_replayed_producers_cannot_flush() -> Result<()> {
 #[test]
 fn compiler_context_all_retained_subsets_use_only_exact_prepared_groups_or_individuals()
 -> Result<()> {
-    use crate::vllm_cuda_qualification::model_values::bounded::finite_code_groups;
+    use crate::cuda::native::model_values::bounded::finite_code_groups;
     use cubecl_runtime::kernel::KernelMetadata;
     // A non-dedicated hole and singleton tail must never shift runtime groups.
     let mut dedicated = vec![true; 18];
@@ -148,7 +148,7 @@ fn compiler_context_all_retained_subsets_use_only_exact_prepared_groups_or_indiv
 
 #[test]
 fn b4_envelope_fits_the_derived_metadata_and_ledger_bounds() -> Result<()> {
-    use crate::vllm_cuda_qualification::model_values::bounded::finite_code_groups;
+    use crate::cuda::native::model_values::bounded::finite_code_groups;
     // B4 candidate membership: 327 dedicated values -> ceil(327/8) = 41
     // groups (40 full + one 7-member tail).
     let groups = finite_code_groups(&[true; 327])?;
@@ -182,7 +182,7 @@ fn b4_envelope_fits_the_derived_metadata_and_ledger_bounds() -> Result<()> {
 
 #[test]
 fn cold_group_definitions_are_stable_and_match_fresh_definitions() -> Result<()> {
-    use crate::vllm_cuda_qualification::model_values::bounded::finite_code_groups;
+    use crate::cuda::native::model_values::bounded::finite_code_groups;
     use cubecl_runtime::kernel::KernelMetadata;
     let elements = (1..=327).map(|n| n as u32 * 128).collect::<Vec<_>>();
     let cold = FiniteCohortGroups::prepare(&elements)?;

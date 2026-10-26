@@ -1,6 +1,7 @@
 //! Actual cap+1 and two original node-loop uncertainty cuts; Weak-only witness.
 use super::*;
 use std::sync::{Mutex as StdMutex, Weak};
+use zerogravity_artifacts::source_weights::SourceOwnerWitness;
 use zerogravity_core::device_events::BufferLeaseId;
 use zerogravity_core::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter};
 
@@ -37,7 +38,7 @@ pub struct MlpComponentFaultOutcome {
 struct Witness {
     service: Weak<ResidentService>,
     body: Weak<ComponentProgram>,
-    source: Weak<OriginalWindowModelSource>,
+    source: SourceOwnerWitness,
     cohort: Weak<Vec<ResidentReadback>>,
     descriptors: Vec<(BufferLeaseId, usize, usize)>,
     submitted: Vec<BufferLeaseId>,
@@ -65,7 +66,7 @@ impl Probe {
         *guard = Some(Witness {
             service: Arc::downgrade(service),
             body: Arc::downgrade(body),
-            source: Arc::downgrade(body.recipe().source().source()),
+            source: body.recipe().source().weak_owner(),
             cohort: Arc::downgrade(cohort),
             descriptors: cohort
                 .iter()
@@ -89,6 +90,10 @@ impl Probe {
         let w = guard
             .as_ref()
             .ok_or_else(|| Error::State("MLP failure before real component flight".into()))?;
+        if !w.source.retained() {
+            return Err(Error::State("MLP uncertain source released".into()));
+        }
+        let source = &w.source;
         let service = w
             .service
             .upgrade()
@@ -97,10 +102,7 @@ impl Probe {
             .body
             .upgrade()
             .ok_or_else(|| Error::State("MLP uncertain body released".into()))?;
-        let source = w
-            .source
-            .upgrade()
-            .ok_or_else(|| Error::State("MLP uncertain source released".into()))?;
+
         let cohort = w
             .cohort
             .upgrade()
@@ -121,7 +123,7 @@ impl Probe {
         let physical = ResourceArbiter::process_shared().snapshot(&w.key)?;
         if !body.cut_reached()
             || descriptors != w.descriptors
-            || !Arc::ptr_eq(&source, body.recipe().source().source())
+            || !source.same_issuer(body.recipe().source())
             || w.submitted.iter().any(|id| !retained.contains(id))
             || registry != w.submitted.len()
             || owners < 2
@@ -221,18 +223,16 @@ fn intended_fault(error: &Error, fault: MlpComponentFault) -> bool {
 
 pub async fn qualify_mlp_component_fault(
     device: Device,
-    source: BoundFullModelSource,
-    record: Arc<RecordedVllm08Model>,
+    recipe: Arc<ComponentRecipe>,
     arithmetic: PostAttentionArithmetic,
-    inputs: Mlp47QualificationInputs,
+    inputs: FixedPromptMlpQualificationInputs,
     fault: MlpComponentFault,
     cancelled: Option<&AtomicBool>,
 ) -> Result<MlpComponentFaultOutcome> {
     let probe = Probe::default();
     let result = run(
         device,
-        source,
-        record,
+        recipe,
         inputs,
         cancelled,
         |_: MlpComponentReadback<'_>| {

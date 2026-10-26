@@ -1,6 +1,6 @@
 //! Same BF16 exponent test; only proved retained ranges may share a launch.
 use super::*;
-use crate::vllm_cuda_qualification::model_values::{ModelValues, bounded::FINITE_CODE_GROUP_WIDTH};
+use crate::cuda::native::model_values::{ModelValues, bounded::FINITE_CODE_GROUP_WIDTH};
 use std::sync::Weak;
 use std::sync::atomic::AtomicU8;
 use zerogravity_core::accelerator::program::ValueId;
@@ -25,7 +25,7 @@ type ColdCohortGroup = (PinnedKernel, u32, Arc<[ValueId]>);
 
 struct Cohort {
     members: Vec<(ValueId, usize)>,
-    launch: crate::vllm_ptx_inline::PreparedPinnedLaunch,
+    launch: crate::cuda::kernel::PreparedPinnedLaunch,
 }
 pub(super) struct CohortSet {
     groups: Vec<Cohort>,
@@ -109,7 +109,7 @@ impl FiniteCohortLeases {
         values: &Arc<crate::resident_program::native_cohort::values::CohortValues>,
         status: ResidentLease,
         candidates: Box<[Box<[ValueId]>]>,
-        proof: &crate::vllm_cuda_qualification::model_values::bounded::RetainedFiniteProof,
+        proof: &crate::cuda::native::model_values::bounded::RetainedFiniteProof,
     ) -> Result<Self> {
         if proof.members().len() > 512 {
             return Err(Error::State("finite cohort current source issuer".into()));
@@ -205,7 +205,7 @@ impl FiniteCohortGroups {
     pub(in crate::resident_program) fn prepare(elements: &[u32]) -> Result<Self> {
         let dedicated = vec![true; elements.len()];
         let candidates =
-            crate::vllm_cuda_qualification::model_values::bounded::finite_code_groups(&dedicated)?;
+            crate::cuda::native::model_values::bounded::finite_code_groups(&dedicated)?;
         let mut groups = Vec::with_capacity(candidates.len());
         let mut bytes = groups.capacity()
             * (std::mem::size_of::<PinnedKernel>() + 4 + std::mem::size_of::<Arc<[ValueId]>>())

@@ -1,10 +1,10 @@
 //! Finite original tied-table upload; existing initialization owns completion.
 use super::*;
 use std::sync::Weak;
+use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::{TensorWindow, VerifiedMatrix, WindowWorkspace};
 use zerogravity_core::accelerator::program::SourceTensor;
 use zerogravity_core::quant::QuantKind;
-use zerogravity_model_qwen35::original_binding::{OriginalWindowModelSource, QwenMatrixRole};
 
 use super::resident_matrix::layout::{Coverage, Geometry};
 
@@ -39,7 +39,7 @@ pub(super) struct UploadOwner {
     // Pending actual host storage drops before its source/metadata charges.
     progress: Mutex<Progress>,
     lease: ResidentLease,
-    source: Arc<OriginalWindowModelSource>,
+    source: Arc<VerifiedTensorSource>,
     descriptor: SourceTensor,
     matrix: VerifiedMatrix,
     geometry: Geometry,
@@ -65,10 +65,7 @@ impl UploadOwner {
                 "original full tied-table upload incomplete".into(),
             ));
         }
-        self.source
-            .validate_matrix(QwenMatrixRole::Output, &self.descriptor)?;
-        self.source
-            .validate_matrix(QwenMatrixRole::Embedding, &self.descriptor)
+        require_member(&self.source, &self.descriptor, &self.matrix)
     }
 }
 
@@ -94,7 +91,7 @@ impl PendingTiedWeight {
         self.owner.lease.service().ensure_usable()?;
         let matrix = super::ResidentMatrix::from_completed_upload(
             self.owner.lease.clone(),
-            self.owner.source.source().clone(),
+            self.owner.source.as_ref().clone(),
             self.owner.matrix.clone(),
             self.owner.clone(),
         )?;
@@ -106,11 +103,12 @@ impl PendingTiedWeight {
 }
 impl TiedWeight {
     pub(crate) fn source_layout(
-        source: &OriginalWindowModelSource,
+        source: &VerifiedTensorSource,
+        member: &SourceTensor,
     ) -> Result<cubecl::cuda::Bf16MatrixLayout> {
-        let member = source.tied_output_descriptor()?;
-        let matrix = source.source().matrix(&member.name, member.axes)?;
-        super::ResidentMatrix::authenticate(source.source(), &matrix)?.cuda()
+        let matrix = source.matrix(&member.name, member.axes)?;
+        require_member(source, member, &matrix)?;
+        super::ResidentMatrix::authenticate(&source, &matrix)?.cuda()
     }
     pub(crate) fn matrix(&self) -> &Arc<super::ResidentMatrix> {
         &self.matrix
@@ -118,7 +116,7 @@ impl TiedWeight {
     pub(crate) fn lease(&self) -> &ResidentLease {
         &self.owner.lease
     }
-    pub(crate) fn source(&self) -> &Arc<OriginalWindowModelSource> {
+    pub(crate) fn source(&self) -> &VerifiedTensorSource {
         &self.owner.source
     }
     pub(crate) async fn verify_source_windows(
@@ -133,7 +131,7 @@ impl TiedWeight {
                 "verify original initialized tied table".into(),
             ));
         }
-        let admission = Arc::new(self.source().source().reserve_workspace(32 * 1024 * 1024)?);
+        let admission = Arc::new(self.source().reserve_workspace(32 * 1024 * 1024)?);
         for index in 0..self.owner.geometry.windows() {
             not_cancelled(cancelled)?;
             let first = index * (TIED_WINDOW_BYTES / self.owner.geometry.row_bytes());
@@ -144,15 +142,11 @@ impl TiedWeight {
                 .ok_or_else(|| Error::State("tied verification region absent".into()))?;
             let end = region.end;
             let window = Arc::new(match cancelled {
-                Some(flag) => self.source().source().read_rows_cancellable(
-                    &self.owner.matrix,
-                    first..end,
-                    flag,
-                )?,
-                None => self
-                    .source()
-                    .source()
-                    .read_rows(&self.owner.matrix, first..end)?,
+                Some(flag) => {
+                    self.source()
+                        .read_rows_cancellable(&self.owner.matrix, first..end, flag)?
+                }
+                None => self.source().read_rows(&self.owner.matrix, first..end)?,
             });
             if window.row_range() != (first..end)
                 || window.as_slice().len() != region.bytes
@@ -224,7 +218,7 @@ pub(crate) enum TiedUploadAttempt {
 }
 pub(crate) struct TiedUploadWitness {
     owner: Weak<UploadOwner>,
-    source: Weak<OriginalWindowModelSource>,
+    source: Weak<VerifiedTensorSource>,
     window: Weak<WindowBytes>,
     service: Weak<ResidentService>,
     lease: BufferLeaseId,
@@ -319,7 +313,7 @@ impl TiedUploadWitness {
             || window.0.matrix().source_identity() != source.source_identity()
             || window.0.matrix().tensor().name != owner.descriptor.name
             || owner._metadata.bytes() != METADATA_BYTES
-            || !owner._metadata.source().same_issuer(source.source())
+            || !owner._metadata.source().same_issuer(&source)
             || (progress.enqueued, progress.checkpoints) != expected
             || service.ensure_usable().is_ok()
             || service.resident_bytes()? != owner.geometry.bytes()
@@ -369,27 +363,49 @@ impl TiedUploadWitness {
     }
 }
 
+fn require_member(
+    source: &VerifiedTensorSource,
+    member: &SourceTensor,
+    matrix: &VerifiedMatrix,
+) -> Result<()> {
+    source.require_matrix_binding(matrix)?;
+    if member.source != source.source_identity()
+        || member.name != matrix.tensor().name
+        || member.kind != QuantKind::Bf16
+        || member.kind != matrix.tensor().kind
+        || member.rows != matrix.rows()
+        || member.columns != matrix.columns()
+        || member.axes != matrix.axes()
+    {
+        return Err(Error::State(
+            "actual tied source member/header differs".into(),
+        ));
+    }
+    Ok(())
+}
 fn descriptor(
-    source: &OriginalWindowModelSource,
+    source: &VerifiedTensorSource,
+    embed: SourceTensor,
     service: &Arc<ResidentService>,
 ) -> Result<(SourceTensor, VerifiedMatrix)> {
-    let embed = source.tied_output_descriptor()?;
     if embed.source != service.source_identity() || embed.kind != QuantKind::Bf16 {
         return Err(Error::Unsupported("source-bound tied BF16 matrix".into()));
     }
-    let matrix = source.source().matrix(&embed.name, embed.axes)?;
-    super::ResidentMatrix::authenticate(source.source(), &matrix)?;
+    let matrix = source.matrix(&embed.name, embed.axes)?;
+    require_member(source, &embed, &matrix)?;
+    super::ResidentMatrix::authenticate(&source, &matrix)?;
     Ok((embed, matrix))
 }
 
 impl ResidentInitialization<'_> {
-    pub(crate) async fn upload_original_tied_bf16(
+    pub(crate) async fn upload_tied_bf16(
         &mut self,
-        source: Arc<OriginalWindowModelSource>,
+        source: VerifiedTensorSource,
+        member: SourceTensor,
         cancelled: Option<&AtomicBool>,
     ) -> Result<PendingTiedWeight> {
         match self
-            .upload_tied_bf16_inner(source, TiedUploadCut::Complete, cancelled)
+            .upload_tied_bf16_inner(source, member, TiedUploadCut::Complete, cancelled)
             .await?
         {
             TiedUploadAttempt::Complete(pending) => Ok(pending),
@@ -401,7 +417,8 @@ impl ResidentInitialization<'_> {
 
     pub(crate) async fn upload_tied_bf16_inner(
         &mut self,
-        source: Arc<OriginalWindowModelSource>,
+        source: VerifiedTensorSource,
+        member: SourceTensor,
         cut: TiedUploadCut,
         cancelled: Option<&AtomicBool>,
     ) -> Result<TiedUploadAttempt> {
@@ -412,10 +429,10 @@ impl ResidentInitialization<'_> {
                 "one original tied upload per initialization".into(),
             ));
         }
-        let metadata = source.source().reserve_workspace(METADATA_BYTES)?;
-        let (descriptor, matrix) = descriptor(&source, self.service)?;
+        let metadata = source.reserve_workspace(METADATA_BYTES)?;
+        let (descriptor, matrix) = descriptor(&source, member, self.service)?;
         let queue = self.service.pinned_cuda_queue()?.clone();
-        let geometry = super::ResidentMatrix::authenticate(source.source(), &matrix)?;
+        let geometry = super::ResidentMatrix::authenticate(&source, &matrix)?;
         let lease = self.allocate_empty(geometry.bytes(), BufferRole::ImmutableWeights)?;
         let owner = Arc::new(UploadOwner {
             progress: Mutex::new(Progress {
@@ -425,7 +442,7 @@ impl ResidentInitialization<'_> {
                 checkpoints: 0,
             }),
             lease,
-            source,
+            source: Arc::new(source),
             descriptor,
             matrix,
             geometry,
@@ -441,14 +458,13 @@ impl ResidentInitialization<'_> {
                 .next()?
                 .ok_or_else(|| Error::State("tied upload coverage ended early".into()))?;
             let window = match cancelled {
-                Some(flag) => owner.source.source().read_rows_cancellable(
+                Some(flag) => owner.source.read_rows_cancellable(
                     &owner.matrix,
                     region.first..region.end,
                     flag,
                 )?,
                 None => owner
                     .source
-                    .source()
                     .read_rows(&owner.matrix, region.first..region.end)?,
             };
             let expected_source_offset = owner

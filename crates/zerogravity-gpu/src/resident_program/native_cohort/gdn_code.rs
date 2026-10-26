@@ -8,15 +8,16 @@ use super::{
     gdn_state::CohortGdnState,
     values::CohortValues,
 };
-use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, short_hf::ShortHfCallInput};
+use crate::cuda::kernel::{PinnedKernel, PreparedPinnedLaunch};
+use crate::cuda::native::model_gdn::ModelGdnParameters;
+use crate::cuda::native::text_native::TextKernelCapture;
+use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextCallInput};
 use crate::resident_leases::{ResidentInitialization, ResidentLease, ResidentService};
-use crate::vllm_cuda_qualification::model_gdn::ModelGdnParameters;
-use crate::vllm_ptx_inline::{PinnedKernel, PreparedPinnedLaunch};
 use cubecl_runtime::kernel::BufferIOAttr;
+use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::WindowWorkspace;
-use zerogravity_core::accelerator::program::{FullModelProfile, StateEffect};
+use zerogravity_core::accelerator::program::StateEffect;
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
-use zerogravity_model_qwen35::original_binding::OriginalWindowModelSource;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum Role {
@@ -124,9 +125,9 @@ struct Definition {
     kernel: PinnedKernel,
 }
 pub(super) struct CohortGdnLibrary {
-    source: Arc<OriginalWindowModelSource>,
+    source: VerifiedTensorSource,
     initial: bool,
-    profile: FullModelProfile,
+    capture: TextKernelCapture,
     definitions: Box<[Definition]>,
     _metadata: WindowWorkspace,
 }
@@ -137,18 +138,27 @@ impl CohortGdnLibrary {
         }
         Ok(self.definitions.len())
     }
-    fn stages(profile: FullModelProfile, initial: bool) -> Result<&'static [StageSource]> {
-        match (profile, initial) {
-            (FullModelProfile::Qwen08, true) => Ok(gdn_assets::PREFILL),
-            (FullModelProfile::Qwen08, false) => Ok(gdn_assets::DECODE),
-            (FullModelProfile::Qwen2B, false) => Ok(gdn_assets_2b::DECODE),
-            (FullModelProfile::Qwen2B, true) => Err(Error::Unsupported(
-                "2B INITIAL B4 GDN source capability absent".into(),
+    fn stages(capture: TextKernelCapture, initial: bool) -> Result<&'static [StageSource]> {
+        match (capture.recipe_sha256(), initial) {
+            ("39b9a6180ca95f95510aac6471e0255ba62100200bf6daeac6f5a4fc8d2bb30d", true) => {
+                Ok(gdn_assets::PREFILL)
+            }
+            ("39b9a6180ca95f95510aac6471e0255ba62100200bf6daeac6f5a4fc8d2bb30d", false) => {
+                Ok(gdn_assets::DECODE)
+            }
+            ("0938d4353dc49579daa5978a6dc78a70f23c8e8d7cb21130c95a914c0a82c4b0", false) => {
+                Ok(gdn_assets_2b::DECODE)
+            }
+            ("0938d4353dc49579daa5978a6dc78a70f23c8e8d7cb21130c95a914c0a82c4b0", true) => Err(
+                Error::Unsupported("INITIAL B4 GDN is outside this captured catalogue".into()),
+            ),
+            _ => Err(Error::Unsupported(
+                "B4 GDN unknown exact native capture".into(),
             )),
         }
     }
-    pub(super) fn host_bytes(profile: FullModelProfile, initial: bool) -> Result<usize> {
-        let stages = Self::stages(profile, initial)?;
+    pub(super) fn host_bytes(capture: TextKernelCapture, initial: bool) -> Result<usize> {
+        let stages = Self::stages(capture, initial)?;
         let bound = stages.iter().try_fold(128 * 1024usize, |sum, stage| {
             sum.checked_add(stage.source.len() * 4 + 4096 + PinnedKernel::KEY_METADATA_BYTES)
                 .ok_or_else(|| Error::Limit("B4 GDN actual retained instruction metadata".into()))
@@ -156,20 +166,19 @@ impl CohortGdnLibrary {
         Ok(bound)
     }
     pub(super) fn prepare(
-        source: Arc<OriginalWindowModelSource>,
+        source: VerifiedTensorSource,
+        capture: TextKernelCapture,
         initial: bool,
     ) -> Result<Arc<Self>> {
-        let profile = source.bind_full_model_source()?.model_profile();
-        if !crate::vllm_cuda_qualification::cohort_native::CohortPhases::for_profile(profile)
-            .contains(initial)
+        if !crate::cuda::native::cohort_native::CohortPhases::for_capture(capture).contains(initial)
         {
             return Err(Error::Unsupported(
                 "GDN phase outside this full source profile".into(),
             ));
         }
-        let stages = Self::stages(profile, initial)?;
-        let bound = Self::host_bytes(profile, initial)?;
-        let metadata = source.source().reserve_workspace(bound)?;
+        let stages = Self::stages(capture, initial)?;
+        let bound = Self::host_bytes(capture, initial)?;
+        let metadata = source.reserve_workspace(bound)?;
         let definitions = stages
             .iter()
             .map(|stage| {
@@ -192,7 +201,7 @@ impl CohortGdnLibrary {
         Ok(Arc::new(Self {
             source,
             initial,
-            profile,
+            capture,
             definitions: definitions.into_boxed_slice(),
             _metadata: metadata,
         }))
@@ -260,7 +269,7 @@ impl CohortGdnStorage {
                 "B4 GDN admitted native cache/status/source".into(),
             ));
         }
-        let metadata = Arc::new(library.source.source().reserve_workspace(128 * 1024)?);
+        let metadata = Arc::new(library.source.reserve_workspace(128 * 1024)?);
         init.retain_completion_owner(metadata.clone())?;
         init.retain_completion_owner(library.clone())?;
         let mut required: BTreeSet<Role> = library
@@ -371,7 +380,7 @@ struct Stage {
     launch: PreparedPinnedLaunch,
 }
 pub(super) struct CohortGdnCode {
-    inputs: Box<[Arc<ShortHfCallInput>]>,
+    inputs: Box<[Arc<TextCallInput>]>,
     values: Arc<CohortValues>,
     storage: Arc<CohortGdnStorage>,
     packing: Arc<CohortGdnPacking>,
@@ -388,7 +397,7 @@ pub(super) struct CohortGdnCode {
 }
 impl CohortGdnCode {
     pub(super) fn bind(
-        inputs: &[Arc<ShortHfCallInput>],
+        inputs: &[Arc<TextCallInput>],
         values: Arc<CohortValues>,
         layer: usize,
         storage: Arc<CohortGdnStorage>,
@@ -397,21 +406,21 @@ impl CohortGdnCode {
         parameters: Arc<ModelGdnParameters>,
     ) -> Result<Arc<Self>> {
         values.require_inputs(inputs)?;
-        crate::vllm_cuda_qualification::cohort_native::require_input_shape(inputs)?;
+        crate::cuda::native::cohort_native::require_input_shape(inputs)?;
         if inputs.len() != 4 || !Arc::ptr_eq(values.service(), &storage.service) {
             return Err(Error::State("B4 GDN exact all-row/source/service".into()));
         }
         let initial = (inputs[0].rows(), inputs[0].base()) == (47, 0);
         if initial != storage.library.initial
-            || !Arc::ptr_eq(inputs[0].source().source(), &storage.library.source)
+            || !inputs[0].source().same_issuer(&storage.library.source)
         {
             return Err(Error::State("B4 GDN current phase/source library".into()));
         }
         let site = inputs[0].scope().gdn_site(layer)?;
         for input in inputs {
             let actual = input.scope().gdn_site(layer)?;
-            if input.call().model_profile() != storage.library.profile
-                || input.workload().prompt_rows() != 47
+            if input.scope().native_capture() != storage.library.capture
+                || input.prompt_tokens() != 47
                 || !matches!((input.rows(), input.base()), (47, 0) | (1, 47..=53))
                 || input.rows() != inputs[0].rows()
                 || actual.nodes != site.nodes
@@ -421,7 +430,7 @@ impl CohortGdnCode {
                     "B4 GDN every actual row source layer/frontier".into(),
                 ));
             }
-            parameters.require_short_hf(input.scope(), layer)?;
+            parameters.require_text(input.scope(), layer)?;
         }
         packing.require_storage(
             &values,
@@ -456,7 +465,7 @@ impl CohortGdnCode {
         }
         for (role, lease) in [Role::ConvWeight, Role::ALog, Role::DtBias, Role::Gamma]
             .into_iter()
-            .zip(parameters.short_hf_leases())
+            .zip(parameters.text_leases())
         {
             leases.insert(role, lease.clone());
         }
@@ -573,11 +582,7 @@ impl CohortGdnCode {
         recurrent_accesses.extend(transport.partition_accesses(2));
         recurrent_accesses.extend(transport.partition_accesses(3));
         recurrent_accesses.extend(packing.accesses(Partition::BeforeRecurrent));
-        let metadata = inputs[0]
-            .source()
-            .source()
-            .source()
-            .reserve_workspace(64 * 1024)?;
+        let metadata = inputs[0].source().reserve_workspace(64 * 1024)?;
         let nodes = site.nodes;
         Ok(Arc::new(Self {
             inputs: inputs.to_vec().into_boxed_slice(),
@@ -690,5 +695,35 @@ impl CohortGdnCode {
             (self.nodes[0], self.conv_accesses.clone()),
             (self.nodes[1], self.recurrent_accesses.clone()),
         ]
+    }
+}
+
+#[cfg(test)]
+mod capture_tests {
+    use super::*;
+    #[test]
+    fn exact_captured_stage_sets_do_not_grant_wide_initial() -> Result<()> {
+        let narrow = TextKernelCapture::bind(
+            "39b9a6180ca95f95510aac6471e0255ba62100200bf6daeac6f5a4fc8d2bb30d",
+        )?;
+        let wide = TextKernelCapture::bind(
+            "0938d4353dc49579daa5978a6dc78a70f23c8e8d7cb21130c95a914c0a82c4b0",
+        )?;
+        assert!(std::ptr::eq(
+            CohortGdnLibrary::stages(narrow, true)?,
+            gdn_assets::PREFILL
+        ));
+        assert!(std::ptr::eq(
+            CohortGdnLibrary::stages(narrow, false)?,
+            gdn_assets::DECODE
+        ));
+        assert!(std::ptr::eq(
+            CohortGdnLibrary::stages(wide, false)?,
+            gdn_assets_2b::DECODE
+        ));
+        assert!(CohortGdnLibrary::stages(wide, true).is_err());
+        assert!(CohortGdnLibrary::host_bytes(wide, true).is_err());
+        assert!(TextKernelCapture::bind("unknown").is_err());
+        Ok(())
     }
 }

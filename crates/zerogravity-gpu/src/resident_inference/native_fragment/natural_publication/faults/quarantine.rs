@@ -9,7 +9,7 @@ struct Witness {
     body: Weak<FullModelProgram>,
     input: Weak<NaturalCallInput>,
     state: Weak<NaturalCallState>,
-    source: Weak<OriginalWindowModelSource>,
+    source: zerogravity_artifacts::source_weights::SourceOwnerWitness,
     service: Weak<ResidentService>,
     snapshot: NaturalColdSnapshot,
     current: Vec<BufferLeaseId>,
@@ -20,22 +20,21 @@ struct Witness {
 /// Reuse the SAME actual pre-H2D cold pressure cut; no natural record is bound.
 pub(super) async fn pressure(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    records: [RecordedVllm08Model; 5],
-    inputs: Vllm08ModelInputs,
+    scopes: SourceModelScopes,
+    inputs: SourceModelInputs,
     rotary: Option<RotaryOutcome>,
     cancelled: Option<&AtomicBool>,
-) -> Result<Vllm08NaturalFaultOutcome> {
+) -> Result<NaturalFaultOutcome> {
+    let (source, records) = scopes.into_parts();
     use crate::resident_inference::native_fragment::{
-        Vllm08ModelFault, qualify_vllm08_model_fault,
+        SourceModelFault, qualify_source_model_fault,
     };
-    let actual = qualify_vllm08_model_fault(
+    let actual = qualify_source_model_fault(
         device,
-        source,
-        records,
+        SourceModelScopes::new(source, records)?,
         inputs,
         rotary,
-        Vllm08ModelFault::AdmissionPressure,
+        SourceModelFault::AdmissionPressure,
         cancelled,
     )
     .await?;
@@ -51,8 +50,8 @@ pub(super) async fn pressure(
             "natural shared cold pressure cut did not refuse before physical work".into(),
         ));
     }
-    Ok(Vllm08NaturalFaultOutcome {
-        fault: Vllm08NaturalFault::AdmissionPressure,
+    Ok(NaturalFaultOutcome {
+        fault: NaturalFault::AdmissionPressure,
         status: actual.status,
         roots: None,
         completed_phases: 0,
@@ -84,52 +83,58 @@ pub(super) async fn pressure(
 
 pub(super) async fn qualify(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    records: [RecordedVllm08Model; 5],
-    inputs: Vllm08ModelInputs,
-    execution: Vllm08NaturalFaultExecution<'_>,
-) -> Result<Vllm08NaturalFaultOutcome> {
-    let Vllm08NaturalFaultExecution {
+    scopes: SourceModelScopes,
+    inputs: SourceModelInputs,
+    execution: NaturalFaultExecution<'_>,
+) -> Result<NaturalFaultOutcome> {
+    let (source, records) = scopes.into_parts();
+    let NaturalFaultExecution {
         rotary,
         fault,
         cancelled,
     } = execution;
     not_cancelled(cancelled)?;
-    source.require_vllm08_full_source()?;
     // Admission covers witness metadata through post-drop inspection. It keeps
     // the verified-source admission owner, never an OriginalWindowModelSource,
     // body, cold-slot or device witness used by the Weak checks below.
-    let _controls = source.source().reserve_workspace(1024 * 1024)?;
+    let _controls = source
+        .reserve_workspace(1024 * 1024)?
+        .into_observation_workspace();
     let mut witness = None;
     // Every strong local is confined to this original preparation/submission.
     // After it returns only the genuine armed flight may retain the graph.
     let result: Result<()> = async {
         not_cancelled(cancelled)?;
-        source.require_vllm08_full_source()?;
-        let prompt = records[0].call().request().teachers().ids().to_vec();
+        let prompt = records[0].call().rows().ids().to_vec();
         if prompt.len() != 1 {
             return Err(Error::State(
                 "natural unknown first source prompt geometry".into(),
             ));
         }
-        let cold = prepare_natural_cold(device, source.clone(), records, inputs, rotary, cancelled)
-            .await?;
+        let initial_record = records[0].clone();
+        let cold = prepare_natural_cold(
+            device,
+            SourceModelScopes::new(source.clone(), records)?,
+            inputs,
+            rotary,
+            cancelled,
+        )
+        .await?;
         let model = cold.model;
         let sessions = cold.sessions;
         let slots = cold.slots;
         let pool = cold.state_pool;
         let input = sessions[0].bind_natural_prompt(
-            source.clone(),
+            initial_record.clone(),
             NaturalSlot::InitialOne,
-            &prompt,
             cancelled,
         )?;
         let state = sessions[0].bind_natural_state(input.clone(), &pool)?;
         let program = slots.bind_call(&sessions[0], input.clone(), state.clone(), cancelled)?;
         let body = program.full_model_body()?.clone();
         body.arm_fault(match fault {
-            Vllm08NaturalFault::UnknownAfterConvolution => 1,
-            Vllm08NaturalFault::CancelBeforeRecurrent => 2,
+            NaturalFault::UnknownAfterConvolution => 1,
+            NaturalFault::CancelBeforeRecurrent => 2,
             _ => return Err(Error::State("natural unknown cut not selected".into())),
         })?;
         let snapshot = slots.quarantine_snapshot()?;
@@ -149,7 +154,7 @@ pub(super) async fn qualify(
             body: Arc::downgrade(&body),
             input: Arc::downgrade(&input),
             state: Arc::downgrade(&state),
-            source: Arc::downgrade(&source),
+            source: source.weak_owner(),
             service: Arc::downgrade(&model.service),
             snapshot,
             current,
@@ -182,9 +187,9 @@ pub(super) async fn qualify(
         }
     }
     .await;
-    let intended = matches!((&result,fault),(Err(Error::State(message)),Vllm08NaturalFault::UnknownAfterConvolution)
+    let intended = matches!((&result,fault),(Err(Error::State(message)),NaturalFault::UnknownAfterConvolution)
         if message=="deliberate full24 unknown after actual source Conv and canonical copy")
-        || matches!((&result,fault),(Err(Error::State(message)),Vllm08NaturalFault::CancelBeforeRecurrent)
+        || matches!((&result,fault),(Err(Error::State(message)),NaturalFault::CancelBeforeRecurrent)
         if message=="closed original cubin qualification cancelled");
     if !intended {
         return match result {
@@ -202,7 +207,12 @@ pub(super) async fn qualify(
     inspect(witness, fault)
 }
 
-fn inspect(w: Witness, fault: Vllm08NaturalFault) -> Result<Vllm08NaturalFaultOutcome> {
+fn inspect(w: Witness, fault: NaturalFault) -> Result<NaturalFaultOutcome> {
+    if !w.source.retained() {
+        return Err(Error::State(
+            "unknown flight lost actual source backing".into(),
+        ));
+    }
     let cold = w
         .cold
         .upgrade()
@@ -218,9 +228,7 @@ fn inspect(w: Witness, fault: Vllm08NaturalFault) -> Result<Vllm08NaturalFaultOu
     let state = w.state.upgrade().ok_or_else(|| {
         Error::State("natural original armed flight lost canonical state binding".into())
     })?;
-    let source = w.source.upgrade().ok_or_else(|| {
-        Error::State("natural original armed flight lost immutable source".into())
-    })?;
+
     let service = w
         .service
         .upgrade()
@@ -243,7 +251,7 @@ fn inspect(w: Witness, fault: Vllm08NaturalFault) -> Result<Vllm08NaturalFaultOu
         || body.convolution_dispatches() == 0
         || body.native_launches() != 2
         || !Arc::ptr_eq(state.input(), &input)
-        || !Arc::ptr_eq(input.source(), &source)
+        || !w.source.same_issuer(input.source())
         || body.record().call() != input.call()
         || service.pending_events()? != 1
         || service.ensure_usable().is_ok()
@@ -254,7 +262,7 @@ fn inspect(w: Witness, fault: Vllm08NaturalFault) -> Result<Vllm08NaturalFaultOu
     {
         return Err(Error::State("natural uncertain original graph/source/current root/future initialization/quarantine differs".into()));
     }
-    Ok(Vllm08NaturalFaultOutcome {
+    Ok(NaturalFaultOutcome {
         fault,
         status: "UNKNOWN_RETAINED_NO_PUBLICATION",
         roots: Some(w.roots),

@@ -25,7 +25,7 @@ impl PreparedStep {
         // cross the host before the existing GEMV consumes them.
         unsafe {
             match p.kind {
-                QuantKind::Q4_0 => q4_q8::source_q4_q8_gemv::launch_unchecked(
+                QuantKind::Q4_0 => crate::quantization::q4_0::source_q4_q8_gemv::launch_unchecked(
                     client,
                     grid,
                     threads,
@@ -37,7 +37,7 @@ impl PreparedStep {
                     l.rows,
                     numeric_mode == SourceAccumulation::WideF64,
                 ),
-                QuantKind::Q4_1 => mixed_ops::q4_1_q8_1_gemv::launch_unchecked(
+                QuantKind::Q4_1 => crate::quantization::q4_1::q4_1_q8_1_gemv::launch_unchecked(
                     client,
                     grid,
                     threads,
@@ -50,7 +50,7 @@ impl PreparedStep {
                     l.rows,
                     numeric_mode == SourceAccumulation::WideF64,
                 ),
-                QuantKind::Q8_0 => mixed_ops::q8_0_q8_0_gemv::launch_unchecked(
+                QuantKind::Q8_0 => crate::quantization::q8_0::q8_0_q8_0_gemv::launch_unchecked(
                     client,
                     grid,
                     threads,
@@ -62,7 +62,7 @@ impl PreparedStep {
                     l.rows,
                     numeric_mode == SourceAccumulation::WideF64,
                 ),
-                QuantKind::Q6K => mixed_ops::q6_k_q8_k_gemv::launch_unchecked(
+                QuantKind::Q6K => crate::quantization::q6_k::q6_k_q8_k_gemv::launch_unchecked(
                     client,
                     grid,
                     threads,

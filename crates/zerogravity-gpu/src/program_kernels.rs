@@ -492,8 +492,12 @@ mod tests {
                 let actual = finite_numeric_sortable_key(a) > finite_numeric_sortable_key(b);
                 assert_eq!(
                     actual,
-                    zerogravity_core::accelerator::program::Bf16TextGreedy::prefer((1, a), (2, b))
-                        .unwrap()
+                    zerogravity_core::accelerator::program::Bf16TextGreedy::prefer(
+                        17,
+                        (1, a),
+                        (2, b)
+                    )
+                    .unwrap()
                         && finite_numeric_sortable_key(a) != finite_numeric_sortable_key(b)
                 );
             }
@@ -607,12 +611,12 @@ pub(crate) fn gather_bf16_matrix_words(
     }
 }
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 #[path = "program_kernels/cohort_copy.rs"]
 pub(crate) mod cohort_copy;
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 #[path = "program_kernels/readiness.rs"]
 mod readiness;
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
-pub(crate) use readiness::{prepare_short_hf_code, prepare_state_certificates};
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+pub(crate) use readiness::{prepare_state_certificates, prepare_text_code};

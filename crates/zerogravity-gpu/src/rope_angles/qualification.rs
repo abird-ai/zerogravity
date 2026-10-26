@@ -398,11 +398,11 @@ async fn compare_case(service: &Arc<ResidentService>, fixture: &Fixture) -> Resu
     Ok(result)
 }
 
-pub(crate) async fn qualify_angles(device: Device, path: &Path) -> Result<()> {
+pub async fn qualify_angles(device: Device, path: &Path) -> Result<()> {
     qualify_angles_with_device_cap(device, path, 5120 * 1024 * 1024).await
 }
 
-async fn qualify_angles_with_device_cap(
+pub async fn qualify_angles_with_device_cap(
     device: Device,
     path: &Path,
     device_cap: u64,
@@ -475,32 +475,6 @@ async fn qualify_angles_with_device_cap(
         totals.legacy_row,
         totals.legacy_scalar,
         totals.candidate
-    );
-    Ok(())
-}
-
-/// Compose existing accepted operators/whole-model qualifiers, not a second
-/// model loop. Each route retains its original CPU/B1/state/physical checks.
-pub(crate) async fn qualify_model(
-    device: Device,
-    path: &Path,
-    provider_cap: usize,
-    device_cap: u64,
-    rows: usize,
-) -> Result<()> {
-    if ![2, 4, 8].contains(&rows) {
-        return Err(Error::Malformed("angle full-model rows2/4/8".into()));
-    }
-    qualify_angles_with_device_cap(device.clone(), path, device_cap).await?;
-    crate::model_layer::rope_stress_with_device_cap(device.clone(), path, device_cap)
-        .map_err(|e| Error::State(format!("unchanged trained source RoPE oracle: {e}")))?;
-    crate::resident_inference::qualify_fused(device.clone(), path, provider_cap, device_cap, rows)
-        .await?;
-    crate::resident_inference::qualify_fused_greedy(device, path, provider_cap, device_cap, rows)
-        .await?;
-    println!(
-        "CUDA_ORDERED_ROPE_MODEL_PASS B={rows} source={} CPU_B1_native_full_vocab_and_all42=existing_qualifiers old_physical_angle_oracles=exact fullmodel_old_binary_comparison=separate_gate state_only_worker_HTTP_pressure_abort=separate_gates speed_and_vllm=not_qualified",
-        path.display()
     );
     Ok(())
 }

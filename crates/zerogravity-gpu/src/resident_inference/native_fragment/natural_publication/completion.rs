@@ -1,9 +1,9 @@
 //! Original submit/complete/PreparedInference/Session.commit; no shadow publisher.
 use super::*;
+use crate::cuda::native::{SourceDomainReadback, SourceModelReadback};
 use crate::physical_quarantine::CompletionOwner;
 use crate::resident_inference::{RuntimeParameters, bind_domains};
 use crate::resident_program::ResidentProgram;
-use crate::vllm_cuda_qualification::{Vllm08DomainReadback, Vllm08ModelReadback};
 use zerogravity_core::accelerator::program::StateSlot;
 use zerogravity_core::device_events::DeviceAccess;
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest};
@@ -24,19 +24,19 @@ pub(crate) struct NaturalPrepared {
     sample: Option<(u32, u32)>,
     packet_bytes: Option<[u8; 12]>,
 }
-pub(crate) struct NaturalCommitted {
+pub struct NaturalCommitted {
     readback: InferenceReadback,
     feedback: Option<Arc<CommittedBf16Feedback>>,
     root: RootBinding,
 }
 impl NaturalCommitted {
-    pub(crate) fn root(&self) -> RootBinding {
+    pub fn root(&self) -> RootBinding {
         self.root
     }
-    pub(crate) fn feedback(&self) -> Option<&Arc<CommittedBf16Feedback>> {
+    pub fn feedback(&self) -> Option<&Arc<CommittedBf16Feedback>> {
         self.feedback.as_ref()
     }
-    pub(crate) fn readback(&self) -> &InferenceReadback {
+    pub fn readback(&self) -> &InferenceReadback {
         &self.readback
     }
 }
@@ -64,7 +64,7 @@ impl ResidentSession {
         cancelled: Option<&AtomicBool>,
     ) -> Result<NaturalPrepared>
     where
-        F: FnMut(Vllm08ModelReadback<'_>) -> Result<()>,
+        F: FnMut(SourceModelReadback<'_>) -> Result<()>,
     {
         let NaturalSubmission {
             input,
@@ -95,7 +95,7 @@ impl ResidentSession {
         cancelled: Option<&AtomicBool>,
     ) -> Result<NaturalPrepared>
     where
-        F: FnMut(Vllm08ModelReadback<'_>) -> Result<()>,
+        F: FnMut(SourceModelReadback<'_>) -> Result<()>,
         B: FnOnce() -> Result<ResidentProgram>,
     {
         not_cancelled(cancelled)?;
@@ -185,12 +185,12 @@ impl ResidentSession {
             .iter()
             .enumerate()
             .filter_map(|(index, node)| match &node.operation {
-                zerogravity_core::accelerator::program::PlanOperation::TypedVllm08 {
+                zerogravity_core::accelerator::program::PlanOperation::SourceOperator {
                     descriptor,
                     ..
                 } if matches!(
                     descriptor.kind(),
-                    zerogravity_core::accelerator::program::Vllm08Kind::ResidualRms(_)
+                    zerogravity_core::accelerator::program::SourceOperatorKind::ResidualRms(_)
                 ) =>
                 {
                     Some(index)
@@ -243,14 +243,14 @@ impl ResidentSession {
                 body.validate_publication_extra(&raw[extra.clone()])?;
                 let prior_domains = prior
                     .iter()
-                    .map(|(slot, range)| Vllm08DomainReadback {
+                    .map(|(slot, range)| SourceDomainReadback {
                         slot: *slot,
                         buffers: &raw[range.clone()],
                     })
                     .collect::<Vec<_>>();
                 let domains = candidate
                     .iter()
-                    .map(|(slot, range)| Vllm08DomainReadback {
+                    .map(|(slot, range)| SourceDomainReadback {
                         slot: *slot,
                         buffers: &raw[range.clone()],
                     })
@@ -281,7 +281,7 @@ impl ResidentSession {
                     .enumerate()
                     .map(|(i, node)| (*node, &raw[355 + i * 4..355 + (i + 1) * 4]))
                     .collect::<Vec<_>>();
-                validate(Vllm08ModelReadback {
+                validate(SourceModelReadback {
                     phase: input.slot().index(),
                     record: input.record(),
                     values: &raw[28..355],
@@ -294,7 +294,7 @@ impl ResidentSession {
             })
             .await?;
         // The immutable session borrow covered every enqueue and completion.
-        permit.require_invocation(service, input.call().request(), 24)?;
+        permit.require_invocation(service, input.call(), 0, 24)?;
         input.require_session(self)?;
         slot.finish()?;
         let selected = selected.ok_or_else(|| {

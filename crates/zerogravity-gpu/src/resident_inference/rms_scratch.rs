@@ -1,7 +1,7 @@
 //! New short-HF caller adapter only. Existing workspace/launch loop stays sole.
 use super::*;
+use crate::cuda::rms::{FullModelRmsScratch, RmsScratchRun};
 use crate::resident_leases::ResidentSubmission;
-use crate::vllm_cuda_input_rms::{FullModelRmsScratch, RmsScratchRun};
 
 /// Constructor stays in this original-workspace module; no caller-built token.
 pub(crate) struct RmsScratchRegistration<'a, 'flight> {
@@ -28,13 +28,13 @@ impl RmsScratchRegistration<'_, '_> {
     }
     pub(crate) fn retain_value_storage(
         &mut self,
-        run: Arc<crate::vllm_cuda_qualification::model_values::bounded::ValueStorageRun>,
+        run: Arc<crate::cuda::native::model_values::bounded::ValueStorageRun>,
     ) -> Result<()> {
         self.flight.retain_completion_owner(run)
     }
     pub(crate) fn retain_streamed_head(
         &mut self,
-        run: Arc<crate::vllm_cuda_qualification::short_hf_head::Run>,
+        run: Arc<crate::cuda::native::text_head::Run>,
     ) -> Result<()> {
         self.flight.retain_completion_owner(run)
     }
@@ -56,7 +56,7 @@ pub(in crate::resident_inference) fn enqueue_with_rms_scratch<T: Send + 'static>
     let placement = workspace
         .program
         .full_model_body()?
-        .short_hf_enqueue_placement()?;
+        .text_enqueue_placement()?;
     match placement {
         crate::resident_leases::EnqueuePlacement::Caller => {
             register_and_enqueue(workspace, flight, scope, enqueue)
@@ -80,7 +80,7 @@ fn register_and_enqueue<T>(
     flight.retain_completion_owner(body.completion_owner())?;
     let mut registration = RmsScratchRegistration { flight, scope };
     let values_run = body.values().start_storage_run(&mut registration, scope)?;
-    body.register_short_hf_head(&mut registration)?;
+    body.register_text_head(&mut registration)?;
     let run = scope.start_run(&mut registration)?;
     // Active run is held locally only during launch, then by original flight.
     // Body/actors/PreparedInference keep only the pool's Weak run lookup.

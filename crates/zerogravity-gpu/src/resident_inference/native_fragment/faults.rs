@@ -6,7 +6,7 @@ use std::sync::{Mutex as StdMutex, Weak};
 use zerogravity_core::device_events::BufferLeaseId;
 use zerogravity_core::resource_arbiter::PhysicalDeviceKey;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum VllmGdnFragmentFault {
+pub enum GdnFragmentFault {
     AdmissionPressure,
     UnknownAfterConvolution,
     CancelBeforeRecurrent,
@@ -14,8 +14,8 @@ pub enum VllmGdnFragmentFault {
     CancelBeforeMlpDown,
 }
 #[derive(Clone, Debug)]
-pub struct VllmGdnFragmentFaultOutcome {
-    pub fault: VllmGdnFragmentFault,
+pub struct GdnFragmentFaultOutcome {
+    pub fault: GdnFragmentFault,
     pub status: &'static str,
     pub ready_completions: usize,
     pub compared_words: usize,
@@ -30,7 +30,7 @@ pub struct VllmGdnFragmentFaultOutcome {
     pub original_state_buffers: usize,
     pub retained_graph_leases: usize,
     pub readback_descriptors: usize,
-    pub source_retained: bool,
+    pub source_backing_retained: bool,
     pub body_retained: bool,
     pub all_accesses_retained: bool,
     pub quarantined_handles: usize,
@@ -40,7 +40,7 @@ pub struct VllmGdnFragmentFaultOutcome {
 }
 pub(super) struct Witness {
     service: Weak<ResidentService>,
-    source: Weak<OriginalWindowModelSource>,
+    source: SourceOwnerWitness,
     body: Weak<NativeProgram>,
     readbacks: Weak<Vec<ResidentReadback>>,
     descriptors: Vec<(BufferLeaseId, usize, usize)>,
@@ -52,7 +52,7 @@ pub(super) struct Witness {
 }
 pub(super) struct ProbeContext<'a> {
     pub service: &'a Arc<ResidentService>,
-    pub source: &'a Arc<OriginalWindowModelSource>,
+    pub source: &'a VerifiedTensorSource,
     pub body: &'a Arc<NativeProgram>,
     pub readbacks: &'a Arc<Vec<ResidentReadback>>,
     pub accesses: &'a [(ResidentLease, DeviceAccess)],
@@ -81,7 +81,7 @@ impl Probe {
         }
         *guard = Some(Witness {
             service: Arc::downgrade(service),
-            source: Arc::downgrade(source),
+            source: source.weak_owner(),
             body: Arc::downgrade(body),
             readbacks: Arc::downgrade(readbacks),
             descriptors: readbacks
@@ -106,10 +106,7 @@ impl Probe {
             .and_then(|w| w.body.upgrade())
             .is_some_and(|b| b.fault_cut_observed()))
     }
-    pub(super) fn inspect(
-        &self,
-        fault: VllmGdnFragmentFault,
-    ) -> Result<VllmGdnFragmentFaultOutcome> {
+    pub(super) fn inspect(&self, fault: GdnFragmentFault) -> Result<GdnFragmentFaultOutcome> {
         let guard = self
             .0
             .lock()
@@ -117,6 +114,11 @@ impl Probe {
         let w = guard.as_ref().ok_or_else(|| {
             Error::State("fault failed before actual initial fragment enqueue".into())
         })?;
+        if !w.source.retained() {
+            return Err(Error::State(
+                "uncertain actual source backing released".into(),
+            ));
+        }
         let service = w
             .service
             .upgrade()
@@ -125,10 +127,7 @@ impl Probe {
             .body
             .upgrade()
             .ok_or_else(|| Error::State("uncertain actual graph released".into()))?;
-        let source = w
-            .source
-            .upgrade()
-            .ok_or_else(|| Error::State("uncertain original source released".into()))?;
+
         let readbacks = w
             .readbacks
             .upgrade()
@@ -150,7 +149,7 @@ impl Probe {
         let owners =
             crate::physical_quarantine::quarantined_completion_owners_for(service.client())?;
         if !body.fault_cut_observed()
-            || !Arc::ptr_eq(&source, body.source())
+            || !w.source.same_issuer(body.source())
             || descriptors != w.descriptors
             || !all_accesses_retained
             || w.root_buffers != 96
@@ -163,7 +162,7 @@ impl Probe {
         {
             return Err(Error::State("actual native fragment uncertainty did not retain exact original graph/all42 roots/cohort/envelope".into()));
         }
-        Ok(VllmGdnFragmentFaultOutcome {
+        Ok(GdnFragmentFaultOutcome {
             fault,
             status: "UNKNOWN_RETAINED",
             ready_completions: 0,
@@ -179,7 +178,7 @@ impl Probe {
             original_state_buffers: w.root_buffers,
             retained_graph_leases: w.accesses.len(),
             readback_descriptors: descriptors.len(),
-            source_retained: true,
+            source_backing_retained: true,
             body_retained: true,
             all_accesses_retained,
             quarantined_handles: handles,
@@ -192,12 +191,12 @@ impl Probe {
 pub(super) enum Mode {
     Compare,
     Fault {
-        fault: VllmGdnFragmentFault,
+        fault: GdnFragmentFault,
         probe: Arc<Probe>,
     },
 }
 impl Mode {
-    pub(super) fn fault(&self) -> Option<VllmGdnFragmentFault> {
+    pub(super) fn fault(&self) -> Option<GdnFragmentFault> {
         match self {
             Self::Compare => None,
             Self::Fault { fault, .. } => Some(*fault),
@@ -205,24 +204,22 @@ impl Mode {
     }
 }
 pub(super) enum Outcome {
-    Compared(VllmGdnFragmentReceipt),
-    Fault(VllmGdnFragmentFaultOutcome),
+    Compared(GdnFragmentReceipt),
+    Fault(GdnFragmentFaultOutcome),
 }
 /// Fresh diagnostic process; UNKNOWN never synchronizes/unloads/recoveries.
-pub async fn qualify_vllm_gdn_fragment_fault(
+pub async fn qualify_gdn_fragment_fault(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    record: RecordedVllmGdnFragment,
+    record: Arc<SourceBindings>,
     inputs: CubinQualificationInputs,
-    fault: VllmGdnFragmentFault,
+    fault: GdnFragmentFault,
     cancelled: Option<&AtomicBool>,
-) -> Result<VllmGdnFragmentFaultOutcome> {
+) -> Result<GdnFragmentFaultOutcome> {
     not_cancelled(cancelled)?;
-    if record.completed_layers() != 0
+    if record.selection().completed_layers() != 0
         || matches!(
             fault,
-            VllmGdnFragmentFault::UnknownAfterPostAttentionRms
-                | VllmGdnFragmentFault::CancelBeforeMlpDown
+            GdnFragmentFault::UnknownAfterPostAttentionRms | GdnFragmentFault::CancelBeforeMlpDown
         )
     {
         return Err(Error::Unsupported(
@@ -231,7 +228,6 @@ pub async fn qualify_vllm_gdn_fragment_fault(
     }
     qualify_fault_inner(
         device,
-        source,
         record,
         NativeFragmentImages::Projection(inputs),
         fault,
@@ -239,23 +235,21 @@ pub async fn qualify_vllm_gdn_fragment_fault(
     )
     .await
 }
-pub async fn qualify_vllm_gdn_mlp_fragment_fault(
+pub async fn qualify_gdn_mlp_fragment_fault(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    record: RecordedVllmGdnFragment,
+    record: Arc<SourceBindings>,
     inputs: LayerMlpCubinInputs,
-    fault: VllmGdnFragmentFault,
+    fault: GdnFragmentFault,
     cancelled: Option<&AtomicBool>,
-) -> Result<VllmGdnFragmentFaultOutcome> {
+) -> Result<GdnFragmentFaultOutcome> {
     not_cancelled(cancelled)?;
-    if !matches!(record.completed_layers(), 1 | 3) {
+    if !matches!(record.selection().completed_layers(), 1 | 3) {
         return Err(Error::Unsupported(
             "complete initial layer0/prefix0..2 fault record".into(),
         ));
     }
     qualify_fault_inner(
         device,
-        source,
         record,
         NativeFragmentImages::Connected(inputs),
         fault,
@@ -265,16 +259,14 @@ pub async fn qualify_vllm_gdn_mlp_fragment_fault(
 }
 async fn qualify_fault_inner(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    record: RecordedVllmGdnFragment,
+    record: Arc<SourceBindings>,
     inputs: NativeFragmentImages,
-    fault: VllmGdnFragmentFault,
+    fault: GdnFragmentFault,
     cancelled: Option<&AtomicBool>,
-) -> Result<VllmGdnFragmentFaultOutcome> {
+) -> Result<GdnFragmentFaultOutcome> {
     let probe = Arc::new(Probe::default());
     let result = qualify_inner(
         device,
-        source,
         record,
         inputs,
         cancelled,
@@ -309,8 +301,8 @@ async fn qualify_fault_inner(
 }
 pub(super) fn pressure(
     service: Arc<ResidentService>,
-    fault: VllmGdnFragmentFault,
-) -> Result<VllmGdnFragmentFaultOutcome> {
+    fault: GdnFragmentFault,
+) -> Result<GdnFragmentFaultOutcome> {
     let key = service.physical_key();
     if !matches!(
         service.allocate_uninitialized(
@@ -337,7 +329,7 @@ pub(super) fn pressure(
             "native clean pressure original envelope not retired".into(),
         ));
     }
-    Ok(VllmGdnFragmentFaultOutcome {
+    Ok(GdnFragmentFaultOutcome {
         fault,
         status: "REFUSED_BEFORE_ALLOCATION",
         ready_completions: 0,
@@ -353,7 +345,7 @@ pub(super) fn pressure(
         original_state_buffers: 0,
         retained_graph_leases: 0,
         readback_descriptors: 0,
-        source_retained: false,
+        source_backing_retained: false,
         body_retained: false,
         all_accesses_retained: false,
         quarantined_handles: 0,

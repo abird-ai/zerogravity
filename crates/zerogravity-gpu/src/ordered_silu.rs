@@ -91,7 +91,7 @@ impl PreparedOrderedSilu {
             output,
             trace,
         } = bindings;
-        if !crate::activation_quant_fused::is_cuda_service(client) {
+        if !crate::quantization::activation_fused::is_cuda_service(client) {
             return Err(Error::Unsupported(
                 "ordered SiLU CUDA-only candidate".into(),
             ));

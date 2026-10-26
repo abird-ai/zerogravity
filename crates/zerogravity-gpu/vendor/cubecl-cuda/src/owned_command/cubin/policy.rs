@@ -6,22 +6,22 @@ use cubecl_core::server::ServerError;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CubinSetPolicy {
-    ShortHf08,
-    ShortHf08Cohort4,
-    ShortHf2B,
-    ShortHf2BCachedCohort4,
+    Text08,
+    Text08Cohort4,
+    Text2B,
+    Text2BCachedCohort4,
     SourceRotary,
     ProjectionSix,
     FullQwen08,
     ConnectedQwen08,
-    Canonical47Mlp,
+    FixedPromptMlp,
     Qwen2bMlp,
-    Canonical47Qkv,
-    Canonical47QkKv,
-    Canonical47Fa,
-    Canonical47Layer3,
-    Canonical47Full,
-    Canonical47Natural,
+    FixedPromptQkv,
+    FixedPromptQkKv,
+    FixedPromptFa,
+    FixedPromptLayer3,
+    FixedPromptFull,
+    FixedPromptNatural,
     FirstAttentionCaptured,
     FirstAttentionComputedGate,
     VocabularyHead,
@@ -38,12 +38,12 @@ impl CubinSetPolicy {
     ) -> Result<(), ServerError> {
         if matches!(
             self,
-            Self::ShortHf08
-                | Self::ShortHf08Cohort4
-                | Self::ShortHf2B
-                | Self::ShortHf2BCachedCohort4
+            Self::Text08
+                | Self::Text08Cohort4
+                | Self::Text2B
+                | Self::Text2BCachedCohort4
         ) {
-            return super::short_hf_policy::limits(
+            return super::text_policy::limits(
                 self,
                 modules,
                 functions,
@@ -52,8 +52,8 @@ impl CubinSetPolicy {
                 new_function,
             );
         }
-        if self == Self::Canonical47Natural {
-            return super::canonical47_natural_policy::limits(
+        if self == Self::FixedPromptNatural {
+            return super::fixed_prompt_natural_policy::limits(
                 modules,
                 functions,
                 records,
@@ -62,14 +62,14 @@ impl CubinSetPolicy {
             );
         }
         let (max_modules, max_functions, max_records, message) = match self {
-            Self::ShortHf08
-            | Self::ShortHf08Cohort4
-            | Self::ShortHf2B
-            | Self::ShortHf2BCachedCohort4 => {
+            Self::Text08
+            | Self::Text08Cohort4
+            | Self::Text2B
+            | Self::Text2BCachedCohort4 => {
                 unreachable!("handled finite short-HF policy")
             }
-            Self::Canonical47Natural => unreachable!("handled closed natural policy"),
-            Self::Canonical47Full => (
+            Self::FixedPromptNatural => unreachable!("handled closed natural policy"),
+            Self::FixedPromptFull => (
                 12,
                 15,
                 16,
@@ -81,31 +81,31 @@ impl CubinSetPolicy {
                 7,
                 "closed2B MLP five-module/seven-function/seven-record capacity",
             ),
-            Self::Canonical47Layer3 => (
+            Self::FixedPromptLayer3 => (
                 11,
                 14,
                 15,
                 "closed canonical47 layer3 eleven-module/fourteen-function/fifteen-record capacity",
             ),
-            Self::Canonical47Fa => (
+            Self::FixedPromptFa => (
                 9,
                 12,
                 13,
                 "closed canonical47 FA nine-module/twelve-function/thirteen-record capacity",
             ),
-            Self::Canonical47QkKv => (
+            Self::FixedPromptQkKv => (
                 8,
                 11,
                 12,
                 "closed canonical47 QK/KV eight-module/eleven-function/twelve-record capacity",
             ),
-            Self::Canonical47Qkv => (
+            Self::FixedPromptQkv => (
                 6,
                 9,
                 10,
                 "closed canonical47 QKV six-module/nine-function/ten-record capacity",
             ),
-            Self::Canonical47Mlp => (
+            Self::FixedPromptMlp => (
                 5,
                 7,
                 8,
@@ -172,36 +172,36 @@ impl CubinSetPolicy {
     ) -> Result<(), ServerError> {
         if matches!(
             self,
-            Self::ShortHf08
-                | Self::ShortHf08Cohort4
-                | Self::ShortHf2B
-                | Self::ShortHf2BCachedCohort4
+            Self::Text08
+                | Self::Text08Cohort4
+                | Self::Text2B
+                | Self::Text2BCachedCohort4
         ) {
-            return super::short_hf_policy::require(self, image, manifest);
+            return super::text_policy::require(self, image, manifest);
         }
-        if self == Self::Canonical47Natural {
-            return super::canonical47_natural_policy::require(image, manifest);
+        if self == Self::FixedPromptNatural {
+            return super::fixed_prompt_natural_policy::require(image, manifest);
         }
-        if self == Self::Canonical47Full {
-            return super::canonical47_full_policy::require(image, manifest);
+        if self == Self::FixedPromptFull {
+            return super::fixed_prompt_full_policy::require(image, manifest);
         }
         if self == Self::Qwen2bMlp {
             return super::qwen2b_mlp_policy::require(image, manifest);
         }
-        if self == Self::Canonical47Layer3 {
-            return super::canonical47_layer3_policy::require(image, manifest);
+        if self == Self::FixedPromptLayer3 {
+            return super::fixed_prompt_layer3_policy::require(image, manifest);
         }
-        if self == Self::Canonical47Fa {
-            return super::canonical47_fa_policy::require(image, manifest);
+        if self == Self::FixedPromptFa {
+            return super::fixed_prompt_fa_policy::require(image, manifest);
         }
-        if self == Self::Canonical47QkKv {
-            return super::canonical47_qkkv_policy::require(image, manifest);
+        if self == Self::FixedPromptQkKv {
+            return super::fixed_prompt_qkkv_policy::require(image, manifest);
         }
-        if self == Self::Canonical47Qkv {
-            return super::canonical47_qkv_policy::require(image, manifest);
+        if self == Self::FixedPromptQkv {
+            return super::fixed_prompt_qkv_policy::require(image, manifest);
         }
-        if self == Self::Canonical47Mlp {
-            return super::canonical47_mlp_policy::require(image, manifest);
+        if self == Self::FixedPromptMlp {
+            return super::fixed_prompt_mlp_policy::require(image, manifest);
         }
         if self == Self::FullQwen08 {
             return super::full_model_policy::require(image, manifest);

@@ -1,7 +1,7 @@
 //! Source-issued IDs select the SAME immutable tied BF16 table, without math.
 use super::super::*;
 use super::values::CohortValues;
-use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, short_hf::ShortHfCallInput};
+use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextCallInput};
 use crate::resident_leases::{ResidentInitialization, ResidentLease, TiedWeight};
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_artifacts::source_weights::WindowWorkspace;
@@ -20,7 +20,7 @@ impl Ids {
     }
 }
 pub(super) struct CohortEmbedding {
-    inputs: Box<[Arc<ShortHfCallInput>]>,
+    inputs: Box<[Arc<TextCallInput>]>,
     values: Arc<CohortValues>,
     tied: Arc<TiedWeight>,
     ids: Ids,
@@ -33,14 +33,14 @@ pub(super) struct CohortEmbedding {
 }
 impl CohortEmbedding {
     pub(super) fn prepare(
-        inputs: &[Arc<ShortHfCallInput>],
+        inputs: &[Arc<TextCallInput>],
         values: Arc<CohortValues>,
         tied: Arc<TiedWeight>,
         status: ResidentLease,
         init: &mut ResidentInitialization<'_>,
     ) -> Result<Arc<Self>> {
         values.require_inputs(inputs)?;
-        crate::vllm_cuda_qualification::cohort_native::require_input_shape(inputs)?;
+        crate::cuda::native::cohort_native::require_input_shape(inputs)?;
         init.require_service(values.service())?;
         if inputs.len() != 4
             || status.bytes() != 4
@@ -49,7 +49,7 @@ impl CohortEmbedding {
         {
             return Err(Error::State("B4 source embedding rows/status".into()));
         }
-        let hidden = inputs[0].call().model_profile().hidden_size();
+        let hidden = inputs[0].scope().native_capture().hidden_width();
         let rows = inputs[0].rows() * 4;
         if !matches!((inputs[0].rows(), inputs[0].base()), (47, 0) | (1, 47..=53))
             || !matches!(rows, 4 | 188)
@@ -72,10 +72,10 @@ impl CohortEmbedding {
                 .scope()
                 .require_record(input.source(), input.record())?;
             if input.rows() != inputs[0].rows()
-                || input.workload().prompt_rows() != 47
+                || input.prompt_tokens() != 47
                 || input.ids().len() != input.rows()
                 || input.ids().iter().any(|id| *id >= 248320)
-                || !Arc::ptr_eq(input.source().source(), tied.source())
+                || !input.source().same_issuer(tied.source())
                 || node.outputs.len() != 1
                 || producer.is_some_and(|id| id != node.outputs[0])
             {
@@ -83,6 +83,15 @@ impl CohortEmbedding {
                     "B4 every original embedding producer/source-issued IDs".into(),
                 ));
             }
+            let descriptor = input.record().operator(0)?.ok_or_else(|| {
+                Error::State("B4 actual embedding source descriptor absent".into())
+            })?;
+            if descriptor.kind()
+                != zerogravity_core::accelerator::program::SourceOperatorKind::EmbeddingRows
+            {
+                return Err(Error::State("B4 actual embedding operator differs".into()));
+            }
+            super::require_tied_member(input, descriptor, &tied, values.service())?;
             producer = Some(node.outputs[0]);
             if rows == 188 {
                 for id in input.ids() {
@@ -102,7 +111,7 @@ impl CohortEmbedding {
             ));
         }
         tied.matrix()
-            .require(tied.source().source(), values.service(), 248320, hidden)?;
+            .require(tied.source(), values.service(), 248320, hidden)?;
         let output = values.lease(producer.expect("four actual rows"))?.clone();
         if output.bytes() != rows * hidden * 2 || output.role() != BufferRole::Activation {
             return Err(Error::State(
@@ -116,13 +125,7 @@ impl CohortEmbedding {
                 ));
             }
         }
-        let metadata = Arc::new(
-            inputs[0]
-                .source()
-                .source()
-                .source()
-                .reserve_workspace(64 * 1024)?,
-        );
+        let metadata = Arc::new(inputs[0].source().reserve_workspace(64 * 1024)?);
         init.retain_completion_owner(metadata.clone())?;
         init.retain_completion_owner(tied.clone())?;
         let ids = if rows == 188 {

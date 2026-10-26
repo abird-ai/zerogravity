@@ -1,15 +1,15 @@
 //! Source-exact whole-table projection; no model or publication authority.
 use super::*;
-use crate::{Bf16MatrixLayout, Vllm08WeightLayout};
+use crate::{Bf16MatrixLayout, SourceWeightLayout};
 use cubecl_core::server::ServerError;
 
-fn layout(shape: Bf16MatrixLayout) -> Result<Vllm08WeightLayout, ServerError> {
+fn layout(shape: Bf16MatrixLayout) -> Result<SourceWeightLayout, ServerError> {
     if shape.rows() != streamed::VOCABULARY {
         return Err(failure("resident head original vocabulary"));
     }
     match shape.row_bytes() {
-        2048 => Ok(Vllm08WeightLayout::Vocabulary08),
-        4096 => Ok(Vllm08WeightLayout::Vocabulary2b),
+        2048 => Ok(SourceWeightLayout::Vocabulary08),
+        4096 => Ok(SourceWeightLayout::Vocabulary2b),
         _ => Err(failure("resident head original source width")),
     }
 }
@@ -53,8 +53,8 @@ pub(crate) fn matches_policy(
 ) -> Result<(), ServerError> {
     use super::super::policy::CubinSetPolicy;
     let columns = match policy {
-        CubinSetPolicy::ShortHf08 | CubinSetPolicy::ShortHf08Cohort4 => 1024,
-        CubinSetPolicy::ShortHf2B | CubinSetPolicy::ShortHf2BCachedCohort4 => 2048,
+        CubinSetPolicy::Text08 | CubinSetPolicy::Text08Cohort4 => 1024,
+        CubinSetPolicy::Text2B | CubinSetPolicy::Text2BCachedCohort4 => 2048,
         _ => return Err(failure("resident head actual source policy")),
     };
     require(

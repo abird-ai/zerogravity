@@ -9,7 +9,7 @@
 //! inference (a naive eight-row KV export ABI would need 58 bindings).
 use super::checked_span;
 mod abi;
-use crate::vllm_ptx_inline::PinnedKernel;
+use crate::cuda::kernel::PinnedKernel;
 use cubecl::{client::Client, server::Handle};
 use cubecl_runtime::kernel::BufferIOAttr;
 use std::sync::Arc;
@@ -64,7 +64,7 @@ pub(crate) struct TypedRow<'a> {
 
 /// Checked handle clones, never a new allocation or lease capability.
 pub(crate) struct PreparedTypedTransport {
-    launch: crate::vllm_ptx_inline::PreparedPinnedLaunch,
+    launch: crate::cuda::kernel::PreparedPinnedLaunch,
 }
 
 /// Exact field presence per family: every consumed field present, every other

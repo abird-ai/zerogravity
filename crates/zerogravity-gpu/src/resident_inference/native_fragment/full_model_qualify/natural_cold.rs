@@ -8,21 +8,21 @@ use std::sync::{Weak, atomic::Ordering};
 mod budget;
 mod reusable;
 use budget::require_host_bound;
-pub use reusable::qualify_vllm08_natural_reuse_pressure;
-pub(crate) use reusable::{
+pub use reusable::qualify_natural_reuse_pressure;
+pub use reusable::{
     PreparedReusableNatural, ReusableNaturalStorage, prepare_reusable_natural_cold,
 };
 
-pub(crate) struct PreparedNaturalCold {
-    pub(crate) model: Arc<ResidentModel>,
-    pub(crate) sessions: [ResidentSession; 2],
-    pub(crate) slots: Arc<ColdModelSlots>,
-    pub(crate) state_pool: Arc<NaturalStatePool>,
+pub struct PreparedNaturalCold {
+    pub model: Arc<ResidentModel>,
+    pub sessions: [ResidentSession; 2],
+    pub slots: Arc<ColdModelSlots>,
+    pub state_pool: Arc<NaturalStatePool>,
 }
 /// No strong Model/Session edge: Model.workspace may own a bound call body.
 /// This owner is retained by original init/flight, including future-uninitialized
 /// slots, without marking future values initialized/current Ready.
-pub(crate) struct ColdModelSlots {
+pub struct ColdModelSlots {
     templates: Vec<ColdProgramSlot>,
     model: Weak<ResidentModel>,
     bases: [RootBinding; 2],
@@ -94,9 +94,8 @@ impl ColdModelSlots {
             ));
         }
         let binding = session.bind_text_positions(
-            input.source().clone(),
+            input.record().clone(),
             input.attempt(),
-            input.call().request(),
             Some(input.phase_binding().clone()),
             cancelled,
         )?;
@@ -105,7 +104,7 @@ impl ColdModelSlots {
     }
     /// All five original commits must be real and current. Pending/unknown work
     /// has no cleanup path here; it remains fenced with the whole cold graph.
-    pub(crate) async fn verify_source_and_retire(
+    pub async fn verify_source_and_retire(
         self: &Arc<Self>,
         sessions: &[ResidentSession; 2],
         cancelled: Option<&AtomicBool>,
@@ -232,14 +231,14 @@ pub(crate) enum NaturalRetirementProbe {
 }
 /// Root reference/expected archives are never inputs. This performs only the
 /// SAME full cold preparation; no node loop or model publication runs here.
-pub(crate) async fn prepare_natural_cold(
+pub async fn prepare_natural_cold(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    records: [RecordedVllm08Model; 5],
-    inputs: Vllm08ModelInputs,
+    scopes: SourceModelScopes,
+    inputs: SourceModelInputs,
     rotary: Option<RotaryOutcome>,
     cancelled: Option<&AtomicBool>,
 ) -> Result<PreparedNaturalCold> {
+    let (source, records) = scopes.into_parts();
     not_cancelled(cancelled)?;
     require_host_bound(&source, &records)?;
     match super::qualify_inner(
@@ -346,5 +345,11 @@ impl ColdModelSlots {
             resident_bytes: self.owners.bodies[0].values().service().resident_bytes()?,
             future_uninitialized,
         })
+    }
+}
+
+impl PreparedNaturalCold {
+    pub fn observer(&self) -> super::super::natural_publication::NaturalObserver {
+        super::super::natural_publication::NaturalObserver::new(&self.model)
     }
 }

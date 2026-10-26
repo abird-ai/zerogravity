@@ -1,20 +1,165 @@
-//! Closed source-family forwarding to existing factories; no tensor evaluator.
+//! Typed prepared operations indexed by actual source nodes; one existing node loop.
 use super::*;
-use crate::resident_leases::Qwen2bMlpWeights;
-use crate::vllm_cuda_qualification::canonical47_mlp::{
-    Mlp47Programs, Mlp47QualificationInputs, Mlp47Weights,
+use crate::cuda::native::fixed_prompt_mlp::{
+    FixedPromptMlpPrograms, FixedPromptMlpQualificationInputs, FixedPromptMlpWeights,
 };
-use crate::vllm_cuda_qualification::canonical47_projection::component::ConnectedProjectionPrograms;
-use crate::vllm_cuda_qualification::post_attention_projection::OutPrograms;
-use crate::vllm_cuda_qualification::qwen2b_mlp::{Qwen2bMlpPrograms, Qwen2bMlpQualificationInputs};
-use zerogravity_core::accelerator::program::{Vllm08Kind, Vllm08Operator, Vllm08Projection};
-pub(super) enum ComponentProjections {
-    Qwen2b(Arc<ProjectionPrograms>, Option<Arc<OutPrograms>>),
-    Canonical47(Arc<ConnectedProjectionPrograms>, Option<Arc<OutPrograms>>),
-    Canonical47Mlp(Arc<Mlp47Programs>),
-    Qwen2bMlp(Arc<Qwen2bMlpPrograms>),
+use crate::cuda::native::fixed_prompt_projection::component::ConnectedProjectionPrograms;
+use crate::cuda::native::post_attention_projection::OutPrograms;
+use crate::cuda::native::qwen2b_mlp::{Qwen2bMlpPrograms, Qwen2bMlpQualificationInputs};
+use crate::resident_leases::Qwen2bMlpWeights;
+use std::collections::{BTreeMap, BTreeSet};
+use zerogravity_core::accelerator::program::SourceOperator;
+
+// Real distinct native packet owners, not model bodies or another evaluator.
+#[derive(Clone)]
+enum PreparedOperation {
+    PackedReference(Arc<ProjectionPrograms>),
+    PackedFixedPrompt(Arc<ConnectedProjectionPrograms>),
+    Output(Arc<OutPrograms>),
+    MlpFixedPrompt(Arc<FixedPromptMlpPrograms>),
+    MlpReference(Arc<Qwen2bMlpPrograms>),
+}
+impl PreparedOperation {
+    fn identity(&self) -> (u8, usize) {
+        match self {
+            Self::PackedReference(p) => (0, Arc::as_ptr(p) as usize),
+            Self::PackedFixedPrompt(p) => (1, Arc::as_ptr(p) as usize),
+            Self::Output(p) => (2, Arc::as_ptr(p) as usize),
+            Self::MlpFixedPrompt(p) => (3, Arc::as_ptr(p) as usize),
+            Self::MlpReference(p) => (4, Arc::as_ptr(p) as usize),
+        }
+    }
+    fn immutable_weights(&self) -> Vec<(ResidentLease, &[u8])> {
+        match self {
+            Self::PackedReference(p) => p.immutable_weights(),
+            Self::PackedFixedPrompt(p) => p.immutable_weights(),
+            Self::Output(p) => p.immutable_weights(),
+            Self::MlpFixedPrompt(p) => p.immutable_weights(),
+            Self::MlpReference(p) => p.immutable_weights(),
+        }
+    }
+    fn accesses(
+        &self,
+        op: &SourceOperator,
+        x: &ResidentLease,
+        y: &ResidentLease,
+        workspace: &ResidentLease,
+    ) -> Result<Vec<(ResidentLease, DeviceAccess)>> {
+        match self {
+            Self::PackedReference(p) => p.accesses(op, x, y, workspace),
+            Self::PackedFixedPrompt(p) => p.accesses(op, x, y, workspace),
+            Self::Output(p) => {
+                p.require_operator(op, x, y)?;
+                p.accesses()
+            }
+            Self::MlpFixedPrompt(p) => p.accesses(op, x, y, workspace),
+            Self::MlpReference(p) => p.accesses(op, x, y, workspace),
+        }
+    }
+    fn enqueue(
+        &self,
+        op: &SourceOperator,
+        x: &ResidentLease,
+        y: &ResidentLease,
+        workspace: &ResidentLease,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<usize> {
+        match self {
+            Self::PackedReference(p) => p.enqueue(op, x, y, workspace, cancelled),
+            Self::PackedFixedPrompt(p) => p.enqueue(op, x, y, workspace, cancelled),
+            Self::Output(p) => {
+                p.require_operator(op, x, y)?;
+                p.enqueue(cancelled)
+            }
+            Self::MlpFixedPrompt(p) => p.enqueue(op, x, y, workspace, cancelled),
+            Self::MlpReference(p) => p.enqueue(op, x, y, workspace, cancelled),
+        }
+    }
+    unsafe fn retire(&self) -> Result<()> {
+        unsafe {
+            match self {
+                Self::PackedReference(p) => p.retire_after_physical_completion(),
+                Self::PackedFixedPrompt(p) => p.retire_after_physical_completion(),
+                Self::Output(p) => p.retire_kernels_after_physical_completion(),
+                Self::MlpFixedPrompt(p) => p.retire_after_physical_completion(),
+                Self::MlpReference(p) => p.retire_after_physical_completion(),
+            }
+        }
+    }
+}
+struct PreparedNode {
+    operator: SourceOperator,
+    operation: PreparedOperation,
+}
+pub(super) struct ComponentProjections {
+    nodes: BTreeMap<usize, PreparedNode>,
+    _metadata: WindowWorkspace,
 }
 impl ComponentProjections {
+    fn from_nodes(
+        values: &ComponentValues,
+        metadata: WindowWorkspace,
+        init: &mut ResidentInitialization<'_>,
+        operations: impl IntoIterator<Item = (usize, PreparedOperation)>,
+    ) -> Result<Arc<Self>> {
+        // Admit map/Arc/selector controls before allocating them; no additional graph.
+        let mut nodes = BTreeMap::new();
+        let mut retained = BTreeSet::new();
+        for (index, operation) in operations {
+            if retained.insert(operation.identity()) {
+                match &operation {
+                    PreparedOperation::PackedReference(p) => {
+                        init.retain_completion_owner(p.clone())?
+                    }
+                    PreparedOperation::PackedFixedPrompt(p) => {
+                        init.retain_completion_owner(p.clone())?
+                    }
+                    PreparedOperation::Output(p) => init.retain_completion_owner(p.clone())?,
+                    PreparedOperation::MlpFixedPrompt(p) => {
+                        init.retain_completion_owner(p.clone())?
+                    }
+                    PreparedOperation::MlpReference(p) => {
+                        init.retain_completion_owner(p.clone())?
+                    }
+                };
+            }
+            if !matches!(index, 2 | 3 | 6 | 8 | 9 | 10) || index >= values.recipe().node_end() {
+                return Err(Error::State(
+                    "prepared native node outside component extent".into(),
+                ));
+            }
+            if nodes
+                .insert(
+                    index,
+                    PreparedNode {
+                        operator: values.recipe().operator(index)?.clone(),
+                        operation,
+                    },
+                )
+                .is_some()
+            {
+                return Err(Error::State(
+                    "duplicate prepared native component node".into(),
+                ));
+            }
+        }
+        let expected: &[usize] = if values.recipe().cut().includes_mlp() {
+            &[2, 3, 6, 8, 9, 10]
+        } else if values.recipe().cut().includes_post_attention() {
+            &[2, 3, 6]
+        } else {
+            &[2, 3]
+        };
+        if nodes.keys().copied().collect::<Vec<_>>() != expected {
+            return Err(Error::State(
+                "complete prepared native component node set differs".into(),
+            ));
+        }
+        Ok(Arc::new(Self {
+            nodes,
+            _metadata: metadata,
+        }))
+    }
     pub(super) fn prepare(
         values: Arc<ComponentValues>,
         service: &Arc<ResidentService>,
@@ -22,36 +167,85 @@ impl ComponentProjections {
         init: &mut ResidentInitialization<'_>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {
+        let metadata = values.recipe().source().reserve_workspace(64 * 1024)?;
         let recipe = values.recipe();
         if recipe.cut().includes_mlp() {
             return Err(Error::Unsupported(
-                "MLP requires its separate exact activation/source factory".into(),
+                "MLP requires separate exact activation/source factory".into(),
             ));
         }
-        let value=match (recipe.kind(),recipe.cut()) {
-            (_,ComponentCut::Mlp | ComponentCut::Qwen2bMlp)=>return Err(Error::Unsupported("MLP inputs absent".into())),
-            (ComponentKind::Qwen2b,ComponentCut::Gated)=>Self::Qwen2b(crate::vllm_cuda_qualification::qwen2b_component::prepare_projections(recipe.clone(),service,inputs,init,cancelled)?,None),
-            (ComponentKind::Canonical47(_),ComponentCut::Gated)=>Self::Canonical47(crate::vllm_cuda_qualification::canonical47_projection::component::prepare_projections(recipe.clone(),service,inputs,init,cancelled)?,None),
-            (ComponentKind::Qwen2b,ComponentCut::PostAttention)=>{let (p,o)=crate::vllm_cuda_qualification::qwen2b_component::prepare_post_attention_projections(values,service,inputs,init,cancelled)?;Self::Qwen2b(p,Some(o))},
-            (ComponentKind::Canonical47(_),ComponentCut::PostAttention)=>{let (p,o)=crate::vllm_cuda_qualification::canonical47_projection::component::prepare_post_attention_projections(values,service,inputs,init,cancelled)?;Self::Canonical47(p,Some(o))},
+        let (prefix, out) = match (recipe.kind(), recipe.cut()) {
+            (ComponentKind::Qwen2b, ComponentCut::Gated) => (
+                PreparedOperation::PackedReference(
+                    crate::cuda::native::qwen2b_component::prepare_projections(
+                        recipe.clone(),
+                        service,
+                        inputs,
+                        init,
+                        cancelled,
+                    )?,
+                ),
+                None,
+            ),
+            (ComponentKind::FixedPrompt(_), ComponentCut::Gated) => (
+                PreparedOperation::PackedFixedPrompt(
+                    crate::cuda::native::fixed_prompt_projection::component::prepare_projections(
+                        recipe.clone(),
+                        service,
+                        inputs,
+                        init,
+                        cancelled,
+                    )?,
+                ),
+                None,
+            ),
+            (ComponentKind::Qwen2b, ComponentCut::PostAttention) => {
+                let (p, o) =
+                    crate::cuda::native::qwen2b_component::prepare_post_attention_projections(
+                        values.clone(),
+                        service,
+                        inputs,
+                        init,
+                        cancelled,
+                    )?;
+                (PreparedOperation::PackedReference(p), Some(o))
+            }
+            (ComponentKind::FixedPrompt(_), ComponentCut::PostAttention) => {
+                let(p,o)=crate::cuda::native::fixed_prompt_projection::component::prepare_post_attention_projections(values.clone(),service,inputs,init,cancelled)?;
+                (PreparedOperation::PackedFixedPrompt(p), Some(o))
+            }
+            _ => {
+                return Err(Error::Unsupported(
+                    "native component input set absent".into(),
+                ));
+            }
         };
-        Ok(Arc::new(value))
+        let mut operations = vec![(2, prefix.clone()), (3, prefix)];
+        if let Some(out) = out {
+            operations.push((6, PreparedOperation::Output(out)));
+        }
+        Self::from_nodes(&values, metadata, init, operations)
     }
     pub(super) fn prepare_mlp(
         values: Arc<ComponentValues>,
-        weights: Arc<Mlp47Weights>,
-        inputs: Mlp47QualificationInputs,
+        weights: Arc<FixedPromptMlpWeights>,
+        inputs: FixedPromptMlpQualificationInputs,
         init: &mut ResidentInitialization<'_>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {
         if values.recipe().cut() != ComponentCut::Mlp {
             return Err(Error::Unsupported(
-                "new MLP factory requires exact eleven-node cut".into(),
+                "MLP factory exact eleven-node cut required".into(),
             ));
         }
-        Ok(Arc::new(Self::Canonical47Mlp(Mlp47Programs::prepare(
-            values, weights, inputs, init, cancelled,
-        )?)))
+        let metadata = values.recipe().source().reserve_workspace(64 * 1024)?;
+        let p = FixedPromptMlpPrograms::prepare(values.clone(), weights, inputs, init, cancelled)?;
+        Self::from_nodes(
+            &values,
+            metadata,
+            init,
+            [2, 3, 6, 8, 9, 10].map(|index| (index, PreparedOperation::MlpFixedPrompt(p.clone()))),
+        )
     }
     pub(super) fn prepare_qwen2b_mlp(
         values: Arc<ComponentValues>,
@@ -60,135 +254,100 @@ impl ComponentProjections {
         init: &mut ResidentInitialization<'_>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {
-        if values.recipe().cut() != ComponentCut::Qwen2bMlp
-            || values.recipe().kind() != ComponentKind::Qwen2b
-            || values.recipe().qwen2b_arithmetic()
-                != Some(crate::vllm_cuda_gdn::Qwen2bGdnArithmetic::OwnedSolve4Recompute3)
-        {
-            return Err(Error::Unsupported(
-                "explicit2B eleven-node source/native cut required".into(),
+        crate::cuda::native::qwen2b_mlp::require_recipe(values.recipe())?;
+        weights.require_bindings(values.recipe().bindings(), values.service())?;
+        let metadata = values.recipe().source().reserve_workspace(64 * 1024)?;
+        let p = Qwen2bMlpPrograms::prepare(values.clone(), weights, inputs, init, cancelled)?;
+        Self::from_nodes(
+            &values,
+            metadata,
+            init,
+            [2, 3, 6, 8, 9, 10].map(|index| (index, PreparedOperation::MlpReference(p.clone()))),
+        )
+    }
+    fn operation(&self, op: &SourceOperator) -> Result<&PreparedOperation> {
+        let mut found = self.nodes.values().filter(|node| &node.operator == op);
+        let first = found.next().ok_or_else(|| {
+            Error::State("actual prepared native component operator absent".into())
+        })?;
+        if found.next().is_some() {
+            return Err(Error::State(
+                "ambiguous prepared native source operator".into(),
             ));
         }
-        weights.require_record(values.recipe().record(), values.service())?;
-        Ok(Arc::new(Self::Qwen2bMlp(Qwen2bMlpPrograms::prepare(
-            values, weights, inputs, init, cancelled,
-        )?)))
+        Ok(&first.operation)
+    }
+    fn reference_mlp(&self) -> Result<&Arc<Qwen2bMlpPrograms>> {
+        match self.nodes.get(&10).map(|node| &node.operation) {
+            Some(PreparedOperation::MlpReference(p)) => Ok(p),
+            _ => Err(Error::Unsupported(
+                "reference Down native operation absent".into(),
+            )),
+        }
     }
     pub(super) fn arm_qwen2b_down1_fault(&self, cancel: bool) -> Result<()> {
-        match self {
-            Self::Qwen2bMlp(p) => p.arm_down1_fault(cancel),
-            _ => Err(Error::Unsupported(
-                "only exact2B Down main group fault".into(),
-            )),
-        }
+        self.reference_mlp()?.arm_down1_fault(cancel)
     }
     pub(super) fn qwen2b_native_launches(&self) -> Result<usize> {
-        match self {
-            Self::Qwen2bMlp(p) => Ok(p.native_launches()),
-            _ => Err(Error::Unsupported("only actual2B native metadata".into())),
-        }
+        Ok(self.reference_mlp()?.native_launches())
     }
     pub(super) fn down1_enqueues(&self) -> Result<usize> {
-        match self {
-            Self::Qwen2bMlp(p) => Ok(p.down1_enqueues()),
-            _ => Err(Error::Unsupported("only actual2B Down metadata".into())),
-        }
+        Ok(self.reference_mlp()?.down1_enqueues())
     }
     pub(super) fn down1_output_unpromoted(&self) -> Result<bool> {
-        match self {
-            Self::Qwen2bMlp(p) => p.down1_output_unpromoted(),
-            _ => Err(Error::Unsupported(
-                "only actual2B Down output metadata".into(),
-            )),
-        }
+        self.reference_mlp()?.down1_output_unpromoted()
     }
     pub(super) fn accesses(
         &self,
-        op: &Vllm08Operator,
+        op: &SourceOperator,
         input: &ResidentLease,
         output: &ResidentLease,
         workspace: &ResidentLease,
     ) -> Result<Vec<(ResidentLease, DeviceAccess)>> {
-        if let Self::Canonical47Mlp(p) = self {
-            return p.accesses(op, input, output, workspace);
-        }
-        if let Self::Qwen2bMlp(p) = self {
-            return p.accesses(op, input, output, workspace);
-        }
-        if op.kind() == Vllm08Kind::Projection(Vllm08Projection::GdnOut) {
-            self.out()?.require_operator(op, input, output)?;
-            return self.out()?.accesses();
-        }
-        match self {
-            Self::Qwen2b(p, _) => p.accesses(op, input, output, workspace),
-            Self::Canonical47(p, _) => p.accesses(op, input, output, workspace),
-            Self::Canonical47Mlp(p) => p.accesses(op, input, output, workspace),
-            Self::Qwen2bMlp(p) => p.accesses(op, input, output, workspace),
-        }
+        self.operation(op)?.accesses(op, input, output, workspace)
     }
     pub(super) fn enqueue(
         &self,
-        op: &Vllm08Operator,
+        op: &SourceOperator,
         input: &ResidentLease,
         output: &ResidentLease,
         workspace: &ResidentLease,
         cancelled: Option<&AtomicBool>,
     ) -> Result<usize> {
-        if let Self::Canonical47Mlp(p) = self {
-            return p.enqueue(op, input, output, workspace, cancelled);
-        }
-        if let Self::Qwen2bMlp(p) = self {
-            return p.enqueue(op, input, output, workspace, cancelled);
-        }
-        if op.kind() == Vllm08Kind::Projection(Vllm08Projection::GdnOut) {
-            self.out()?.require_operator(op, input, output)?;
-            return self.out()?.enqueue(cancelled);
-        }
-        match self {
-            Self::Qwen2b(p, _) => p.enqueue(op, input, output, workspace, cancelled),
-            Self::Canonical47(p, _) => p.enqueue(op, input, output, workspace, cancelled),
-            Self::Canonical47Mlp(p) => p.enqueue(op, input, output, workspace, cancelled),
-            Self::Qwen2bMlp(p) => p.enqueue(op, input, output, workspace, cancelled),
-        }
+        self.operation(op)?
+            .enqueue(op, input, output, workspace, cancelled)
     }
     pub(super) fn immutable_weights(&self) -> Vec<(ResidentLease, &[u8])> {
-        let mut weights = match self {
-            Self::Qwen2b(p, _) => p.immutable_weights(),
-            Self::Canonical47(p, _) => p.immutable_weights(),
-            Self::Canonical47Mlp(p) => p.immutable_weights(),
-            Self::Qwen2bMlp(p) => p.immutable_weights(),
-        };
-        if let Ok(out) = self.out() {
-            weights.extend(out.immutable_weights());
+        let mut seen = BTreeSet::new();
+        let mut weights = Vec::new();
+        for node in self.nodes.values() {
+            if seen.insert(node.operation.identity()) {
+                weights.extend(node.operation.immutable_weights());
+            }
         }
         weights
     }
-    fn out(&self) -> Result<&Arc<OutPrograms>> {
-        match self {
-            Self::Qwen2b(_, Some(out)) | Self::Canonical47(_, Some(out)) => Ok(out),
-            _ => Err(Error::Unsupported(
-                "six-node cut has no Out producer".into(),
-            )),
-        }
-    }
     pub(super) fn retained_post_attention_values(&self, values: &Arc<ComponentValues>) -> bool {
-        match self {
-            Self::Canonical47Mlp(p) => p.retained_values(values),
-            Self::Qwen2bMlp(p) => p.retained_values(values),
-            _ => self.out().is_ok_and(|out| out.retained_values(values)),
+        match self.nodes.get(&6).map(|node| &node.operation) {
+            Some(PreparedOperation::Output(p)) => p.retained_values(values),
+            Some(PreparedOperation::MlpFixedPrompt(p)) => p.retained_values(values),
+            Some(PreparedOperation::MlpReference(p)) => p.retained_values(values),
+            _ => false,
         }
     }
     pub(super) unsafe fn retire_after_physical_completion(&self) -> Result<()> {
-        unsafe {
-            if let Ok(out) = self.out() {
-                out.retire_kernels_after_physical_completion()?;
-            }
-            match self {
-                Self::Qwen2b(p, _) => p.retire_after_physical_completion(),
-                Self::Canonical47(p, _) => p.retire_after_physical_completion(),
-                Self::Canonical47Mlp(p) => p.retire_after_physical_completion(),
-                Self::Qwen2bMlp(p) => p.retire_after_physical_completion(),
+        // Out kernels retire before the prefix's shared native set, exactly once.
+        let mut seen = BTreeSet::new();
+        for output_pass in [true, false] {
+            for node in self.nodes.values() {
+                if matches!(&node.operation, PreparedOperation::Output(_)) != output_pass {
+                    continue;
+                }
+                if seen.insert(node.operation.identity()) {
+                    unsafe { node.operation.retire()? };
+                }
             }
         }
+        Ok(())
     }
 }

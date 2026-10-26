@@ -1,11 +1,13 @@
 //! Finite source-owned learned uploads on the original initialization/actor.
 //! Original tied-table transport and the old32MiB packer remain unchanged.
 use super::*;
-use cubecl::cuda::Vllm08WeightLayout;
+use cubecl::cuda::SourceWeightLayout;
+use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::{TensorWindow, VerifiedMatrix, WindowWorkspace};
-use zerogravity_core::accelerator::program::{Vllm08Kind, Vllm08Operator, Vllm08Projection};
+use zerogravity_core::accelerator::program::{
+    SourceNumericalContract, SourceOperator, SourceOperatorKind,
+};
 use zerogravity_core::quant::QuantKind;
-use zerogravity_model_qwen35::original_binding::OriginalWindowModelSource;
 
 mod coverage;
 mod qwen2b_mlp;
@@ -25,67 +27,60 @@ fn not_cancelled(cancelled: Option<&AtomicBool>) -> Result<()> {
     }
     Ok(())
 }
-fn require_original08_upload_source(
-    source: &Arc<OriginalWindowModelSource>,
-    descriptor: &Vllm08Operator,
-) -> Result<()> {
-    source.require_vllm08_full_source()?;
-    if descriptor.kind() == Vllm08Kind::Projection(Vllm08Projection::Head) {
-        return Err(Error::Unsupported(
-            "old .8B learned wrapper excludes tied head".into(),
-        ));
-    }
-    if descriptor.call().model_profile()
-        != zerogravity_core::accelerator::program::FullModelProfile::Qwen08
+fn require_layout(operator: &SourceOperator, shape: SourceWeightLayout) -> Result<()> {
+    operator.validate()?;
+    let members = Coverage::new(shape);
+    if !matches!(operator.kind(), SourceOperatorKind::Projection { .. })
+        || operator.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+        || !operator.parameters().is_empty()
+        || operator.matrices().len() != members.members().len()
+        || operator
+            .matrices()
+            .iter()
+            .zip(members.members())
+            .any(|(matrix, &rows)| {
+                matrix.source != operator.call().source()
+                    || matrix.kind != QuantKind::Bf16
+                    || matrix.rows != rows
+                    || matrix.columns != shape.columns()
+                    || matrix.axes
+                        != zerogravity_core::accelerator::program::MatrixAxes::OutputInput
+            })
     {
         return Err(Error::Unsupported(
-            "original .8B upload rejects2B layouts".into(),
+            "actual ordered BF16 members differ from packed layout".into(),
         ));
     }
     Ok(())
 }
-fn layout(operator: &Vllm08Operator) -> Result<Vllm08WeightLayout> {
-    operator.validate()?;
-    if operator.call().model_profile()
-        == zerogravity_core::accelerator::program::FullModelProfile::Qwen2B
-    {
-        return match operator.kind() {
-            Vllm08Kind::Projection(Vllm08Projection::Head) => Ok(Vllm08WeightLayout::Vocabulary2b),
-            Vllm08Kind::Projection(Vllm08Projection::Qkvz) => Ok(Vllm08WeightLayout::Qwen2bGdnQkvz),
-            Vllm08Kind::Projection(Vllm08Projection::Ba) => Ok(Vllm08WeightLayout::Qwen2bGdnBa),
-            Vllm08Kind::Projection(Vllm08Projection::GdnOut) => {
-                Ok(Vllm08WeightLayout::Qwen2bGdnOutput)
-            }
-            Vllm08Kind::Projection(Vllm08Projection::AttentionQkv) => {
-                Ok(Vllm08WeightLayout::Qwen2bAttentionQkv)
-            }
-            Vllm08Kind::Projection(Vllm08Projection::AttentionOut) => {
-                Ok(Vllm08WeightLayout::Qwen2bAttentionOutput)
-            }
-            Vllm08Kind::Projection(Vllm08Projection::GateUp) => {
-                Ok(Vllm08WeightLayout::Qwen2bMlpGateUp)
-            }
-            Vllm08Kind::Projection(Vllm08Projection::Down) => Ok(Vllm08WeightLayout::Qwen2bMlpDown),
-            _ => Err(Error::Unsupported(
-                "finite2B learned source layouts only".into(),
-            )),
-        };
+
+/// Selects byte packing only; the source factory owns model/recipe eligibility.
+pub(crate) fn layout_for_operator(operator: &SourceOperator) -> Result<SourceWeightLayout> {
+    for shape in [
+        SourceWeightLayout::GdnQkvz,
+        SourceWeightLayout::GdnBa,
+        SourceWeightLayout::GdnOutput,
+        SourceWeightLayout::AttentionQkv,
+        SourceWeightLayout::AttentionOutput,
+        SourceWeightLayout::MlpGateUp,
+        SourceWeightLayout::MlpDown,
+        SourceWeightLayout::Vocabulary08,
+        SourceWeightLayout::Qwen2bGdnQkvz,
+        SourceWeightLayout::Qwen2bGdnBa,
+        SourceWeightLayout::Qwen2bGdnOutput,
+        SourceWeightLayout::Qwen2bAttentionQkv,
+        SourceWeightLayout::Qwen2bAttentionOutput,
+        SourceWeightLayout::Qwen2bMlpGateUp,
+        SourceWeightLayout::Qwen2bMlpDown,
+        SourceWeightLayout::Vocabulary2b,
+    ] {
+        if require_layout(operator, shape).is_ok() {
+            return Ok(shape);
+        }
     }
-    match operator.kind() {
-        Vllm08Kind::Projection(kind) => Ok(match kind {
-            Vllm08Projection::Qkvz => Vllm08WeightLayout::GdnQkvz,
-            Vllm08Projection::Ba => Vllm08WeightLayout::GdnBa,
-            Vllm08Projection::GdnOut => Vllm08WeightLayout::GdnOutput,
-            Vllm08Projection::AttentionQkv => Vllm08WeightLayout::AttentionQkv,
-            Vllm08Projection::AttentionOut => Vllm08WeightLayout::AttentionOutput,
-            Vllm08Projection::GateUp => Vllm08WeightLayout::MlpGateUp,
-            Vllm08Projection::Down => Vllm08WeightLayout::MlpDown,
-            Vllm08Projection::Head => Vllm08WeightLayout::Vocabulary08,
-        }),
-        _ => Err(Error::Unsupported(
-            "closed full-model learned projection upload only".into(),
-        )),
-    }
+    Err(Error::Unsupported(
+        "no existing packed BF16 member layout".into(),
+    ))
 }
 struct SourceWindow(TensorWindow);
 impl AsRef<[u8]> for SourceWindow {
@@ -104,8 +99,9 @@ pub(super) struct ModelUploadOwner {
     progress: Mutex<Progress>,
     lease: ResidentLease,
     matrices: Vec<VerifiedMatrix>,
-    descriptor: Vllm08Operator,
-    source: Arc<OriginalWindowModelSource>,
+    descriptor: SourceOperator,
+    source: VerifiedTensorSource,
+    layout: SourceWeightLayout,
     _metadata: WindowWorkspace,
 }
 impl ModelUploadOwner {
@@ -115,7 +111,8 @@ impl ModelUploadOwner {
             .map_err(|_| Error::State("original learned upload progress poisoned".into()))
     }
     pub(super) fn require_complete(&self) -> Result<()> {
-        let layout = layout(&self.descriptor)?;
+        let layout = self.layout;
+        require_layout(&self.descriptor, layout)?;
         let progress = self.progress()?;
         progress.coverage.require_complete()?;
         if progress.pending.is_some()
@@ -171,25 +168,25 @@ impl ModelWeight {
     }
     /// Immutable W is shared across real requests/phases; this does not transfer
     /// any teacher/Root authority. Node operands retain their own issuer seals.
-    pub(crate) fn require_operator(
+    pub(crate) fn require_source_operator(
         &self,
-        source: &Arc<OriginalWindowModelSource>,
-        descriptor: &Vllm08Operator,
+        source: &VerifiedTensorSource,
+        actual: &SourceOperator,
     ) -> Result<()> {
         self.require_initialized()?;
-        descriptor.validate()?;
-        if !Arc::ptr_eq(source, &self.owner.source)
-            || descriptor.call().source() != source.source_identity()
-            || descriptor.layer() != self.owner.descriptor.layer()
-            || descriptor.kind() != self.owner.descriptor.kind()
-            || descriptor.matrices() != self.owner.descriptor.matrices()
-            || !descriptor.parameters().is_empty()
+        actual.validate()?;
+        if !source.same_issuer(&self.owner.source)
+            || actual.call().source() != source.source_identity()
+            || actual.kind() != self.owner.descriptor.kind()
+            || actual.numerical_contract() != self.owner.descriptor.numerical_contract()
+            || actual.matrices() != self.owner.descriptor.matrices()
+            || actual.parameters() != self.owner.descriptor.parameters()
         {
             return Err(Error::State(
-                "full-model exact shared immutable W source/roles".into(),
+                "exact shared immutable W source/members/contract differ".into(),
             ));
         }
-        Ok(())
+        require_layout(actual, self.owner.layout)
     }
     pub(crate) fn require_initialized(&self) -> Result<()> {
         self.owner.require_complete()?;
@@ -207,78 +204,32 @@ impl ResidentInitialization<'_> {
     /// One source-bound packed W, without retaining a complete host pack. Every
     /// selected native program and managed producer/cache must be preallocated
     /// before activating the native pool, as in the original preparation path.
-    pub(crate) async fn upload_original_model_weight(
+    pub(crate) async fn upload_model_weight(
         &mut self,
-        source: Arc<OriginalWindowModelSource>,
-        descriptor: Vllm08Operator,
+        source: VerifiedTensorSource,
+        descriptor: SourceOperator,
+        shape: SourceWeightLayout,
         cancelled: Option<&AtomicBool>,
     ) -> Result<PendingModelWeight> {
         not_cancelled(cancelled)?;
         self.service.ensure_usable()?;
-        require_original08_upload_source(&source, &descriptor)?;
-        self.upload_model_weight_inner(source, descriptor, cancelled)
-            .await
-    }
-    /// A genuine bound short-HF source authenticates the family/ordered roles.
-    /// Old .8B and2B MLP admission wrappers remain unchanged.
-    pub(crate) async fn upload_short_hf_model_weight(
-        &mut self,
-        scope: &Arc<crate::vllm_cuda_qualification::short_hf_model::ShortHfModelBinding>,
-        node: usize,
-        cancelled: Option<&AtomicBool>,
-    ) -> Result<PendingModelWeight> {
-        not_cancelled(cancelled)?;
-        if !scope.projection_nodes().contains(&node)
-            || scope.source().source().source_identity() != self.service.source_identity()
-        {
-            return Err(Error::State(
-                "short-HF real source learned node before H2D".into(),
-            ));
-        }
-        let zerogravity_core::accelerator::program::PlanOperation::TypedVllm08 {
-            descriptor, ..
-        } = &scope.record().plan().nodes()[node].operation
-        else {
-            return Err(Error::State(
-                "short-HF original typed learned descriptor absent".into(),
-            ));
-        };
-        if descriptor.call() != scope.record().call() {
-            return Err(Error::State("short-HF learned call issuer differs".into()));
-        }
-        self.upload_model_weight_inner(
-            scope.source().source().clone(),
-            descriptor.as_ref().clone(),
-            cancelled,
-        )
-        .await
-    }
-    async fn upload_model_weight_inner(
-        &mut self,
-        source: Arc<OriginalWindowModelSource>,
-        descriptor: Vllm08Operator,
-        cancelled: Option<&AtomicBool>,
-    ) -> Result<PendingModelWeight> {
-        not_cancelled(cancelled)?;
-        self.service.ensure_usable()?;
-        // Only exact .8B, sealed2B MLP or source-bound short-HF wrappers reach here.
-        let shape = layout(&descriptor)?;
+        require_layout(&descriptor, shape)?;
         if source.source_identity() != self.service.source_identity()
             || descriptor.call().source() != source.source_identity()
             || self.model_source_uploads.iter().any(|entry| {
-                entry.descriptor.layer() == descriptor.layer()
-                    && entry.descriptor.kind() == descriptor.kind()
+                entry.descriptor.matrices().first().map(|m| m.name.as_str())
+                    == descriptor.matrices().first().map(|m| m.name.as_str())
             })
         {
             return Err(Error::State(
                 "original full-model W source/service/duplicate role".into(),
             ));
         }
-        let metadata = source.source().reserve_workspace(METADATA_BYTES)?;
+        let metadata = source.reserve_workspace(METADATA_BYTES)?;
         let mut matrices = Vec::with_capacity(descriptor.matrices().len());
         let coverage = Coverage::new(shape);
         for (member, &rows) in descriptor.matrices().iter().zip(coverage.members()) {
-            let matrix = source.source().matrix(&member.name, member.axes)?;
+            let matrix = source.matrix(&member.name, member.axes)?;
             if matrix.source_identity() != source.source_identity()
                 || matrix.tensor().kind != QuantKind::Bf16
                 || matrix.rows() != rows
@@ -311,6 +262,7 @@ impl ResidentInitialization<'_> {
             matrices,
             descriptor,
             source,
+            layout: shape,
             _metadata: metadata,
         });
         self.retain_completion_owner(owner.clone())?;
@@ -322,15 +274,12 @@ impl ResidentInitialization<'_> {
             };
             let matrix = &owner.matrices[region.member];
             let window = match cancelled {
-                Some(flag) => owner.source.source().read_rows_cancellable(
-                    matrix,
-                    region.first..region.end,
-                    flag,
-                )?,
-                None => owner
-                    .source
-                    .source()
-                    .read_rows(matrix, region.first..region.end)?,
+                Some(flag) => {
+                    owner
+                        .source
+                        .read_rows_cancellable(matrix, region.first..region.end, flag)?
+                }
+                None => owner.source.read_rows(matrix, region.first..region.end)?,
             };
             let source_offset = matrix
                 .tensor()
@@ -412,7 +361,80 @@ impl ResidentInitialization<'_> {
 
 impl ModelWeight {
     /// SAME finite layout selected by the actual original upload allocator.
-    pub(crate) fn allocation_bytes(operator: &Vllm08Operator) -> Result<usize> {
-        Ok(layout(operator)?.bytes())
+    pub(crate) fn expected_source_windows(&self) -> Result<usize> {
+        let shape = self.owner.layout;
+        let rows_per_window = 1024 * 1024 / (shape.columns() * 2);
+        Coverage::new(shape)
+            .members()
+            .iter()
+            .try_fold(0usize, |n, rows| {
+                n.checked_add(rows.div_ceil(rows_per_window))
+                    .ok_or_else(|| Error::Limit("source window count".into()))
+            })
+    }
+    pub(crate) fn packing_layout(operator: &SourceOperator) -> Result<SourceWeightLayout> {
+        layout_for_operator(operator)
+    }
+    pub(crate) fn allocation_bytes(operator: &SourceOperator) -> Result<usize> {
+        Ok(layout_for_operator(operator)?.bytes())
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+    use zerogravity_core::accelerator::SourceIdentity;
+    use zerogravity_core::accelerator::program::{
+        MatrixAxes, SourceCall, SourceCallMode, SourceRows, SourceTensor, TextCallGeometry,
+    };
+    fn projection(members: &[(usize, usize)]) -> SourceOperator {
+        let source = SourceIdentity::for_new_allocation().unwrap();
+        let call = SourceCall::new(
+            SourceRows::new(
+                TextCallGeometry::new(source, 248320, 512).unwrap(),
+                0,
+                vec![353].into(),
+            )
+            .unwrap(),
+            SourceCallMode::Prefill,
+        )
+        .unwrap();
+        let matrices = members
+            .iter()
+            .enumerate()
+            .map(|(index, &(rows, columns))| SourceTensor {
+                source,
+                name: format!("member{index}"),
+                kind: QuantKind::Bf16,
+                rows,
+                columns,
+                axes: MatrixAxes::OutputInput,
+            })
+            .collect();
+        SourceOperator::new(
+            call,
+            SourceOperatorKind::Projection { selected_row: None },
+            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            matrices,
+            vec![],
+        )
+        .unwrap()
+    }
+    #[test]
+    fn byte_layout_requires_every_ordered_member_and_complete_extent() {
+        let correct = projection(&[(6144, 1024), (2048, 1024)]);
+        require_layout(&correct, SourceWeightLayout::GdnQkvz).unwrap();
+        for members in [
+            vec![(2048, 1024), (6144, 1024)],
+            vec![(6144, 1024)],
+            vec![(6144, 2048), (2048, 2048)],
+            vec![(6144, 1024), (2049, 1024)],
+        ] {
+            assert!(require_layout(&projection(&members), SourceWeightLayout::GdnQkvz).is_err());
+        }
+        assert_eq!(
+            ModelWeight::allocation_bytes(&correct).unwrap(),
+            SourceWeightLayout::GdnQkvz.bytes()
+        );
     }
 }

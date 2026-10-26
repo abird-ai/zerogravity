@@ -6,8 +6,8 @@ fn distinct_bounded_policy_preserves_old_capacities() {
     assert!(P::Qwen2bMlp.limits(5, 7, 7, false, false).is_err());
     assert!(P::Qwen2bMlp.limits(5, 7, 6, true, false).is_err());
     assert!(P::Qwen2bMlp.limits(5, 7, 6, false, true).is_err());
-    assert!(P::Canonical47Mlp.limits(5, 7, 7, false, false).is_ok());
-    assert!(P::Canonical47Qkv.limits(6, 9, 9, false, false).is_ok());
+    assert!(P::FixedPromptMlp.limits(5, 7, 7, false, false).is_ok());
+    assert!(P::FixedPromptQkv.limits(6, 9, 9, false, false).is_ok());
     assert!(P::ProjectionSix.limits(6, 8, 18, false, false).is_ok());
 }
 #[test]

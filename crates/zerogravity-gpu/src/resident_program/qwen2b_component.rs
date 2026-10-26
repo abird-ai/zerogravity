@@ -4,17 +4,17 @@ use super::native::{
     state_requirements,
 };
 use super::*;
+use crate::cuda::native::fixed_prompt_mlp::{
+    FixedPromptMlpQualificationInputs, FixedPromptMlpWeights,
+};
+use crate::cuda::native::qwen2b_projection::ProjectionPrograms;
+use crate::cuda::native::{CubinQualificationInputs, qwen2b_component::ComponentGdnPrepared};
+use crate::cuda::rms::{FusedRmsPrepared, RmsPrepared};
 use crate::physical_quarantine::CompletionOwner;
 use crate::resident_inference::{gdn_state::BoundGdnDomains, native_fragment::PrefixPhaseEnqueue};
 use crate::resident_leases::{
     Qwen2bMlpSourceVerification, Qwen2bMlpWeightCohort, Qwen2bMlpWeights, ResidentInitialization,
     ResidentLease, ResidentReadback, ResidentService,
-};
-use crate::vllm_cuda_input_rms::{FusedRmsPrepared, RmsPrepared};
-use crate::vllm_cuda_qualification::canonical47_mlp::{Mlp47QualificationInputs, Mlp47Weights};
-use crate::vllm_cuda_qualification::qwen2b_projection::ProjectionPrograms;
-use crate::vllm_cuda_qualification::{
-    CubinQualificationInputs, qwen2b_component::ComponentGdnPrepared,
 };
 use cubecl::bytes::Bytes;
 use std::{
@@ -25,18 +25,19 @@ use std::{
     },
 };
 use zerogravity_artifacts::source_weights::WindowWorkspace;
-use zerogravity_core::accelerator::program::{RecordedVllm08Model, ValueId};
+use zerogravity_core::accelerator::program::ValueId;
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
-use zerogravity_model_qwen35::original_binding::BoundFullModelSource;
 
 mod cursor;
 mod projections;
 mod recipe;
+#[cfg(test)]
+pub(crate) use recipe::FIXED_PROMPT_IDS;
 mod values;
 use cursor::ComponentCursor;
 use projections::ComponentProjections;
-pub(crate) use recipe::CANONICAL47_PROMPT;
-pub(crate) use recipe::{ComponentCut, ComponentKind, ComponentRecipe};
+pub(crate) use recipe::{ComponentCut, ComponentKind};
+pub use recipe::{ComponentOutput, ComponentRecipe};
 pub(crate) use values::ComponentValues;
 
 const MIB: usize = 1024 * 1024;
@@ -45,102 +46,17 @@ const MIB: usize = 1024 * 1024;
 pub(crate) const PROVIDER_BYTES: usize = 192 * MIB;
 pub(crate) const POST_ATTENTION_PROVIDER_BYTES: usize = 224 * MIB;
 pub(crate) const QWEN2B_MLP_PROVIDER_BYTES: usize = 320 * MIB;
-pub(crate) fn validate_component_source(
-    source: &BoundFullModelSource,
-    record: &Arc<RecordedVllm08Model>,
-) -> Result<()> {
-    RmsPrepared::validate_qwen2b_component_source(source)?;
-    let recipe = ComponentRecipe::bind(source.clone(), record.clone())?;
-    state_requirements(source.source(), recipe.record().plan())?;
+pub(crate) fn validate_component(recipe: &Arc<ComponentRecipe>) -> Result<()> {
+    state_requirements(recipe.bindings())?;
     Ok(())
 }
-
-pub(crate) fn validate_canonical47_component_source(
-    source: &BoundFullModelSource,
-    record: &Arc<RecordedVllm08Model>,
-    arithmetic: crate::vllm_cuda_gdn::Canonical47GdnArithmetic,
-) -> Result<()> {
-    arithmetic.require_owned()?;
-    RmsPrepared::validate_canonical47_component_source(source)?;
-    let recipe = ComponentRecipe::bind_canonical47(source.clone(), record.clone(), arithmetic)?;
-    state_requirements(source.source(), recipe.record().plan())?;
-    Ok(())
-}
-
-pub(crate) fn validate_post_attention_component_source(
-    source: &BoundFullModelSource,
-    record: &Arc<RecordedVllm08Model>,
-    kind: ComponentKind,
-) -> Result<()> {
-    match kind {
-        ComponentKind::Qwen2b => RmsPrepared::validate_qwen2b_component_source(source)?,
-        ComponentKind::Canonical47(a) => {
-            a.require_owned()?;
-            RmsPrepared::validate_canonical47_component_source(source)?;
-        }
-    }
-    let recipe = ComponentRecipe::bind_post_attention(source.clone(), record.clone(), kind)?;
-    crate::vllm_cuda_input_rms::BoundModelRmsSource::bind_post_attention_component(&recipe)?;
-    state_requirements(source.source(), recipe.record().plan())?;
-    Ok(())
-}
-
-pub(crate) fn validate_qwen2b_post_attention_component_arithmetic_source(
-    source: &BoundFullModelSource,
-    record: &Arc<RecordedVllm08Model>,
-    arithmetic: crate::vllm_cuda_gdn::Qwen2bGdnArithmetic,
-) -> Result<()> {
-    RmsPrepared::validate_qwen2b_component_source(source)?;
-    let recipe = ComponentRecipe::bind_qwen2b_post_attention_arithmetic(
-        source.clone(),
-        record.clone(),
-        arithmetic,
-    )?;
-    crate::vllm_cuda_input_rms::BoundModelRmsSource::bind_post_attention_component(&recipe)?;
-    state_requirements(source.source(), recipe.record().plan())?;
-    Ok(())
-}
-
-pub(crate) fn validate_mlp_component_source(
-    source: &BoundFullModelSource,
-    record: &Arc<RecordedVllm08Model>,
-    arithmetic: crate::vllm_cuda_gdn::Canonical47GdnArithmetic,
-) -> Result<()> {
-    arithmetic.require_owned()?;
-    RmsPrepared::validate_canonical47_component_source(source)?;
-    let recipe = ComponentRecipe::bind_mlp(source.clone(), record.clone(), arithmetic)?;
-    crate::vllm_cuda_input_rms::BoundModelRmsSource::bind_mlp_component_post_attention(&recipe)?;
-    state_requirements(source.source(), recipe.record().plan())?;
-    Ok(())
-}
-
-pub(crate) fn validate_qwen2b_mlp_component_source(
-    source: &BoundFullModelSource,
-    record: &Arc<RecordedVllm08Model>,
-    arithmetic: crate::vllm_cuda_gdn::Qwen2bGdnArithmetic,
-    record_admission: Arc<WindowWorkspace>,
-) -> Result<()> {
-    RmsPrepared::validate_qwen2b_component_source(source)?;
-    let recipe = ComponentRecipe::bind_qwen2b_mlp_arithmetic(
-        source.clone(),
-        record.clone(),
-        arithmetic,
-        record_admission,
-    )?;
-    crate::vllm_cuda_input_rms::BoundModelRmsSource::bind_qwen2b_mlp_component_post_attention(
-        &recipe,
-    )?;
-    state_requirements(source.source(), recipe.record().plan())?;
-    Ok(())
-}
-
 struct ComponentProducer {
     rms: Arc<RmsPrepared>,
     post_attention: Option<Arc<FusedRmsPrepared>>,
     values: Arc<ComponentValues>,
     workspace: ResidentLease,
     projections: OnceLock<Arc<ComponentProjections>>,
-    mlp_weights: OnceLock<Arc<Mlp47Weights>>,
+    mlp_weights: OnceLock<Arc<FixedPromptMlpWeights>>,
     qwen2b_mlp_weights: OnceLock<Arc<Qwen2bMlpWeights>>,
 }
 pub(crate) struct ComponentProgram {
@@ -181,50 +97,36 @@ impl ComponentProgram {
         cancelled: Option<&AtomicBool>,
     ) -> Result<(Arc<Self>, Vec<DeviceBuffer>, ResidentPreflight)> {
         not_cancelled(cancelled)?;
-        if recipe.source().source().source().staging_chunk_bytes() != MIB {
+        if recipe.source().staging_chunk_bytes() != MIB {
             return Err(Error::Unsupported(
                 "source2B component original1MiB authenticated chunks".into(),
             ));
         }
-        let source = recipe.source().source();
-        let metadata = source.source().reserve_workspace(4 * MIB)?;
+        let source = recipe.source();
+        let metadata = source.reserve_workspace(4 * MIB)?;
         // Canonical prior+candidate65.6MB +sourceW33.7MB +actual values/RMS/gamma.
         let readback_host = (0..4)
-            .map(|_| source.source().reserve_workspace(32 * MIB))
+            .map(|_| source.reserve_workspace(32 * MIB))
             .collect::<Result<Vec<_>>>()?;
-        let states = state_requirements(source, recipe.record().plan())?;
+        let states = state_requirements(recipe.bindings())?;
         let state_bytes = states.iter().try_fold(0usize, |n, s| {
             n.checked_add(s.bytes)
                 .ok_or_else(|| Error::Limit("source2B canonical root extent".into()))
         })?;
-        let rms = match recipe.kind() {
-            ComponentKind::Qwen2b if recipe.cut() == ComponentCut::Qwen2bMlp => {
-                RmsPrepared::prepare_qwen2b_mlp_source_component(
-                    recipe.clone(),
-                    service.clone(),
-                    cancelled,
-                )
-                .await?
-            }
+        let physical_rows = match recipe.kind() {
+            ComponentKind::FixedPrompt(_) => crate::cuda::rms::Rows::FixedPrompt,
             ComponentKind::Qwen2b => {
-                RmsPrepared::prepare_qwen2b_source_component(
-                    recipe.source(),
-                    recipe.record(),
-                    service.clone(),
-                    cancelled,
-                )
-                .await?
-            }
-            ComponentKind::Canonical47(_) => {
-                RmsPrepared::prepare_canonical47_source_component(
-                    recipe.source(),
-                    recipe.record(),
-                    service.clone(),
-                    cancelled,
-                )
-                .await?
+                crate::cuda::rms::Rows::new(recipe.bindings().call().rows().len())?
             }
         };
+        let rms = RmsPrepared::prepare_rows_bound(
+            service.clone(),
+            recipe.bindings().clone(),
+            physical_rows,
+            0,
+            cancelled,
+        )
+        .await?;
         let mut init = service.begin_initialization(0)?;
         init.retain_completion_owner(recipe.clone())?;
         init.retain_completion_owner(rms.completion_owner())?;
@@ -236,7 +138,7 @@ impl ComponentProgram {
         } else {
             recipe.value_end()
         };
-        for (index, shape) in recipe.record().plan().values()[..allocated_end]
+        for (index, shape) in recipe.bindings().plan().values()[..allocated_end]
             .iter()
             .enumerate()
         {
@@ -256,41 +158,24 @@ impl ComponentProgram {
         }
         drop(init.complete_sync().await?);
         let post_attention = if recipe.cut().includes_post_attention() {
-            let prepared = if recipe.cut() == ComponentCut::Qwen2bMlp {
-                FusedRmsPrepared::prepare_qwen2b_mlp_component_post_attention(
-                    service.clone(),
-                    &recipe,
-                    values[7].original_lease()?.clone(),
-                    values[0].original_lease()?.clone(),
-                    0,
-                    cancelled,
-                )
-                .await?
-            } else if recipe.cut() == ComponentCut::Mlp {
-                FusedRmsPrepared::prepare_mlp_component_post_attention(
-                    service.clone(),
-                    &recipe,
-                    values[7].original_lease()?.clone(),
-                    values[0].original_lease()?.clone(),
-                    0,
-                    cancelled,
-                )
-                .await?
-            } else {
-                FusedRmsPrepared::prepare_post_attention_component(
-                    service.clone(),
-                    &recipe,
-                    values[7].original_lease()?.clone(),
-                    values[0].original_lease()?.clone(),
-                    0,
-                    cancelled,
-                )
-                .await?
-            };
+            let binding = crate::cuda::rms::BoundModelRmsSource::bind_for_plan(
+                recipe.bindings().clone(),
+                recipe.operator(7)?.clone(),
+            )?;
+            let prepared = FusedRmsPrepared::prepare_model_rows(
+                service.clone(),
+                binding,
+                physical_rows,
+                values[7].original_lease()?.clone(),
+                values[0].original_lease()?.clone(),
+                0,
+                cancelled,
+            )
+            .await?;
             for lease in [prepared.normalized(), prepared.residual()] {
                 let layout = ResidentBufferLayout::new(
                     ResidentPhysicalType::Bf16,
-                    recipe.record().call().rows() * recipe.kind().columns(),
+                    recipe.bindings().call().rows().len() * recipe.kind().columns(),
                 )?;
                 values.push(DeviceBuffer::from_lease(
                     lease.clone(),
@@ -313,7 +198,7 @@ impl ComponentProgram {
                     .ok_or_else(|| Error::State("MLP actual dual producer absent".into()))?
                     .completion_owner(),
             )?;
-            for shape in &recipe.record().plan().values()[10..13] {
+            for shape in &recipe.bindings().plan().values()[10..13] {
                 let layout = ResidentBufferLayout::new(
                     ResidentPhysicalType::Bf16,
                     shape.capacity_elements()?,
@@ -441,7 +326,7 @@ impl ComponentProgram {
                     .into(),
             ));
         }
-        let weights = Mlp47Weights::upload(
+        let weights = FixedPromptMlpWeights::upload(
             self.recipe.clone(),
             self.producer.values.service().clone(),
             self.completion_owner(),
@@ -455,7 +340,7 @@ impl ComponentProgram {
     }
     pub(crate) fn prepare_mlp_native(
         self: &Arc<Self>,
-        inputs: Mlp47QualificationInputs,
+        inputs: FixedPromptMlpQualificationInputs,
         init: &mut ResidentInitialization<'_>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<()> {
@@ -495,15 +380,7 @@ impl ComponentProgram {
                 "new2B W requires same managed graph before native activation".into(),
             ));
         }
-        let arithmetic = self
-            .recipe
-            .qwen2b_arithmetic()
-            .ok_or_else(|| Error::State("explicit2B MLP arithmetic absent".into()))?;
-        let cohort = Qwen2bMlpWeightCohort::bind(
-            self.recipe.source().clone(),
-            self.recipe.record().clone(),
-            arithmetic,
-        )?;
+        let cohort = Qwen2bMlpWeightCohort::bind(&self.recipe)?;
         let weights = Qwen2bMlpWeights::upload(
             cohort,
             self.producer.values.service().clone(),
@@ -511,7 +388,7 @@ impl ComponentProgram {
             cancelled,
         )
         .await?;
-        weights.require_record(self.recipe.record(), self.producer.values.service())?;
+        weights.require_bindings(self.recipe.bindings(), self.producer.values.service())?;
         self.producer
             .qwen2b_mlp_weights
             .set(weights)
@@ -561,7 +438,7 @@ impl ComponentProgram {
     }
     pub(crate) fn prepare_qwen2b_mlp_native(
         self: &Arc<Self>,
-        inputs: crate::vllm_cuda_qualification::qwen2b_mlp::Qwen2bMlpQualificationInputs,
+        inputs: crate::cuda::native::qwen2b_mlp::Qwen2bMlpQualificationInputs,
         init: &mut ResidentInitialization<'_>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<()> {
@@ -575,7 +452,7 @@ impl ComponentProgram {
             ));
         }
         let weights = self.qwen2b_mlp_weights()?.clone();
-        weights.require_record(self.recipe.record(), self.producer.values.service())?;
+        weights.require_bindings(self.recipe.bindings(), self.producer.values.service())?;
         init.retain_completion_owner(self.completion_owner())?;
         let programs = ComponentProjections::prepare_qwen2b_mlp(
             self.producer.values.clone(),
@@ -589,7 +466,7 @@ impl ComponentProgram {
             .set(programs)
             .map_err(|_| Error::State("new2B native factory installed twice".into()))
     }
-    fn mlp_weights(&self) -> Result<&Arc<Mlp47Weights>> {
+    fn mlp_weights(&self) -> Result<&Arc<FixedPromptMlpWeights>> {
         self.producer
             .mlp_weights
             .get()
@@ -632,7 +509,8 @@ impl ComponentProgram {
     pub(crate) fn require_attempt(&self, permit: &PrefixPhaseEnqueue<'_>) -> Result<()> {
         permit.require_invocation(
             self.producer.values.service(),
-            self.recipe.record().call().request(),
+            self.recipe.bindings().call(),
+            0,
             1,
         )
     }
@@ -655,17 +533,8 @@ impl ComponentProgram {
     }
     pub(crate) fn validate_runtime(&self, p: RuntimeParameters) -> Result<()> {
         if p.position != 0
-            || p.valid_tokens != self.recipe.record().call().rows()
-            || self
-                .recipe
-                .record()
-                .call()
-                .request()
-                .teachers()
-                .ids()
-                .first()
-                .copied()
-                != Some(p.token)
+            || p.valid_tokens != self.recipe.bindings().call().rows().len()
+            || self.recipe.bindings().call().rows().ids().first().copied() != Some(p.token)
         {
             return Err(Error::State(
                 "source2B exact original initial teacher span".into(),
@@ -738,7 +607,7 @@ impl ComponentProgram {
                                 ComponentKind::Qwen2b => {
                                     "deliberate source2B unknown after actual Conv"
                                 }
-                                ComponentKind::Canonical47(_) => {
+                                ComponentKind::FixedPrompt(_) => {
                                     "deliberate canonical47 unknown after actual Conv"
                                 }
                             }
@@ -972,15 +841,15 @@ impl ComponentProgram {
         }
         Ok(reads)
     }
-    pub(crate) fn append_canonical47_diagnostics(
+    pub(crate) fn append_fixed_prompt_diagnostics(
         &self,
         reads: &mut Vec<ResidentReadback>,
-    ) -> Result<Vec<(crate::vllm_cuda_gdn::Canonical47GdnIntermediate, usize)>> {
+    ) -> Result<Vec<(crate::cuda::gdn::FixedPromptGdnIntermediate, usize)>> {
         let more = self
             .gdn
             .get()
             .ok_or_else(|| Error::State("47 actual GDN diagnostic owner absent".into()))?
-            .canonical47_diagnostic_readbacks()?;
+            .fixed_prompt_diagnostic_readbacks()?;
         let mut map = Vec::with_capacity(more.len());
         for (key, read) in more {
             map.push((key, reads.len()));
@@ -996,9 +865,7 @@ impl ComponentProgram {
         }
         self.producer.rms.validate_readback(&raw[1..4])?;
         for bytes in &raw[4..2 + self.recipe.value_end()] {
-            if !crate::vllm_cuda_qualification::qwen2b_component::finite_component_words(
-                bytes.as_ref(),
-            ) {
+            if !crate::cuda::native::qwen2b_component::finite_component_words(bytes.as_ref()) {
                 return Err(Error::Malformed(
                     "source2B actual finite computed prefix output".into(),
                 ));
@@ -1059,7 +926,9 @@ impl ComponentProgram {
             .qwen2b_native_launches()
     }
     pub(crate) fn qwen2b_down1_enqueues(&self) -> Result<usize> {
-        if self.recipe.cut() != ComponentCut::Qwen2bMlp || self.recipe.record().call().rows() != 1 {
+        if self.recipe.cut() != ComponentCut::Qwen2bMlp
+            || self.recipe.bindings().call().rows().len() != 1
+        {
             return Err(Error::Unsupported(
                 "one-row2B Down record metadata only".into(),
             ));
@@ -1081,7 +950,7 @@ impl ComponentProgram {
         if value > 8
             || value > 6
                 && (self.recipe.cut() != ComponentCut::Qwen2bMlp
-                    || self.recipe.record().call().rows() != 1)
+                    || self.recipe.bindings().call().rows().len() != 1)
             || value > 4 && !self.recipe.cut().includes_mlp()
             || value > 2 && !self.recipe.cut().includes_post_attention()
             || self
@@ -1105,83 +974,7 @@ impl ComponentProgram {
     }
 }
 impl ResidentProgram {
-    pub(crate) async fn prepare_qwen2b_component(
-        service: Arc<ResidentService>,
-        source: BoundFullModelSource,
-        record: Arc<RecordedVllm08Model>,
-        cancelled: Option<&AtomicBool>,
-    ) -> Result<Self> {
-        let recipe = ComponentRecipe::bind(source, record)?;
-        Self::prepare_source_component(service, recipe, cancelled).await
-    }
-    pub(crate) async fn prepare_qwen2b_component_arithmetic(
-        service: Arc<ResidentService>,
-        source: BoundFullModelSource,
-        record: Arc<RecordedVllm08Model>,
-        arithmetic: crate::vllm_cuda_gdn::Qwen2bGdnArithmetic,
-        cancelled: Option<&AtomicBool>,
-    ) -> Result<Self> {
-        let recipe = ComponentRecipe::bind_qwen2b_arithmetic(source, record, arithmetic)?;
-        Self::prepare_source_component(service, recipe, cancelled).await
-    }
-    pub(crate) async fn prepare_canonical47_component(
-        service: Arc<ResidentService>,
-        source: BoundFullModelSource,
-        record: Arc<RecordedVllm08Model>,
-        arithmetic: crate::vllm_cuda_gdn::Canonical47GdnArithmetic,
-        cancelled: Option<&AtomicBool>,
-    ) -> Result<Self> {
-        let recipe = ComponentRecipe::bind_canonical47(source, record, arithmetic)?;
-        Self::prepare_source_component(service, recipe, cancelled).await
-    }
-    pub(crate) async fn prepare_post_attention_component(
-        service: Arc<ResidentService>,
-        source: BoundFullModelSource,
-        record: Arc<RecordedVllm08Model>,
-        kind: ComponentKind,
-        cancelled: Option<&AtomicBool>,
-    ) -> Result<Self> {
-        let recipe = ComponentRecipe::bind_post_attention(source, record, kind)?;
-        Self::prepare_source_component(service, recipe, cancelled).await
-    }
-    pub(crate) async fn prepare_qwen2b_post_attention_component_arithmetic(
-        service: Arc<ResidentService>,
-        source: BoundFullModelSource,
-        record: Arc<RecordedVllm08Model>,
-        arithmetic: crate::vllm_cuda_gdn::Qwen2bGdnArithmetic,
-        cancelled: Option<&AtomicBool>,
-    ) -> Result<Self> {
-        let recipe =
-            ComponentRecipe::bind_qwen2b_post_attention_arithmetic(source, record, arithmetic)?;
-        Self::prepare_source_component(service, recipe, cancelled).await
-    }
-    pub(crate) async fn prepare_mlp_component(
-        service: Arc<ResidentService>,
-        source: BoundFullModelSource,
-        record: Arc<RecordedVllm08Model>,
-        arithmetic: crate::vllm_cuda_gdn::Canonical47GdnArithmetic,
-        cancelled: Option<&AtomicBool>,
-    ) -> Result<Self> {
-        let recipe = ComponentRecipe::bind_mlp(source, record, arithmetic)?;
-        Self::prepare_source_component(service, recipe, cancelled).await
-    }
-    pub(crate) async fn prepare_qwen2b_mlp_component_arithmetic(
-        service: Arc<ResidentService>,
-        source: BoundFullModelSource,
-        record: Arc<RecordedVllm08Model>,
-        arithmetic: crate::vllm_cuda_gdn::Qwen2bGdnArithmetic,
-        record_admission: Arc<WindowWorkspace>,
-        cancelled: Option<&AtomicBool>,
-    ) -> Result<Self> {
-        let recipe = ComponentRecipe::bind_qwen2b_mlp_arithmetic(
-            source,
-            record,
-            arithmetic,
-            record_admission,
-        )?;
-        Self::prepare_source_component(service, recipe, cancelled).await
-    }
-    async fn prepare_source_component(
+    pub(crate) async fn prepare_component(
         service: Arc<ResidentService>,
         recipe: Arc<ComponentRecipe>,
         cancelled: Option<&AtomicBool>,
@@ -1189,8 +982,8 @@ impl ResidentProgram {
         let (body, values, preflight) =
             ComponentProgram::prepare_values(service.clone(), recipe.clone(), cancelled).await?;
         Ok(Self {
-            _source_owner: ResidentProgramSource::Windows(recipe.source().source().clone()),
-            plan: recipe.record().plan().clone(),
+            _source_owner: ResidentProgramSource::Windows(recipe.source().clone()),
+            plan: recipe.bindings().shared_plan(),
             preflight,
             values,
             status: body.status().handle(),

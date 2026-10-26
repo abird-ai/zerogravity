@@ -1,25 +1,28 @@
 //! Source-issued full graph, original actors and original dispatch cursor.
 use super::*;
-use crate::vllm_cuda_input_rms::FullModelRmsScratch;
-use crate::vllm_cuda_qualification::{
+use crate::cuda::native::{
     model_values::bounded::{StorageBuilder, StorageMode, StorageRecipe},
-    short_hf_model::ShortHfModelBinding,
+    text_model::TextModelBinding,
 };
+use crate::cuda::rms::FullModelRmsScratch;
 use zerogravity_core::accelerator::program::ValueStorageLimits;
 
 /// One pre-admitted maximum actual diagnostic cohort. All six cold geometries
 /// run under the SAME original workspace lock; returned Pending drops raw D2H.
 /// No separate dispatcher, uncharged capacity or public input authority.
-pub(crate) struct ShortHfReadbackAdmission {
-    source: Arc<OriginalWindowModelSource>,
+pub(crate) struct TextReadbackAdmission {
+    source: VerifiedTensorSource,
     service: Arc<ResidentService>,
-    profile: zerogravity_core::accelerator::program::FullModelProfile,
+    width: usize,
     maximum: usize,
     tickets: Arc<Vec<WindowWorkspace>>,
 }
 enum StorageReadback<'a> {
-    Shared(Arc<ShortHfReadbackAdmission>),
-    SharedViews(Arc<ShortHfReadbackAdmission>, Arc<crate::vllm_cuda_qualification::model_values::bounded::workspace::ValueWorkspaceGeometry>),
+    Shared(Arc<TextReadbackAdmission>),
+    SharedViews(
+        Arc<TextReadbackAdmission>,
+        Arc<crate::cuda::native::model_values::bounded::workspace::ValueWorkspaceGeometry>,
+    ),
     Existing(
         &'a Arc<FullModelProgram>,
         &'a ResidentPreflight,
@@ -53,16 +56,45 @@ fn diagnostic_bytes(public: usize, states: usize, hidden: usize, rows: usize) ->
         12 + 4,
     ])
 }
-pub(super) fn actual_diagnostic_bytes(scope: &ShortHfModelBinding) -> Result<usize> {
+pub(super) fn is_mlp_temporary(record: &SourceBindings, id: ValueId) -> Result<bool> {
+    let producer = record
+        .plan()
+        .source_value_provenance(id)?
+        .ok_or_else(|| Error::State("actual public producer absent".into()))?;
+    let index = producer.node_index();
+    let descriptor = record
+        .operator(index)?
+        .ok_or_else(|| Error::State("actual public operator absent".into()))?;
+    if matches!(descriptor.kind(), SourceOperatorKind::SiluAndMul { .. }) {
+        return Ok(true);
+    }
+    if matches!(
+        descriptor.kind(),
+        SourceOperatorKind::Projection { selected_row: None }
+    ) && let Some(next) = record.plan().nodes().get(index + 1)
+        && let PlanOperation::SourceOperator {
+            descriptor: activation,
+            ..
+        } = &next.operation
+        && matches!(activation.kind(), SourceOperatorKind::SiluAndMul { .. })
+        && activation.call() == record.call()
+        && next.inputs == [id]
+    {
+        return Ok(true);
+    }
+    Ok(false)
+}
+pub(super) fn actual_diagnostic_bytes(scope: &TextModelBinding) -> Result<usize> {
     let record = scope.record();
     let mut public = 0usize;
     let mut retained = 0usize;
     for (index, value) in record.plan().values().iter().enumerate() {
-        let overwritten=record.plan().vllm_value_provenance(ValueId(u32::try_from(index)
-            .map_err(|_|Error::Limit("short-HF actual ValueId extent".into()))?))?
-            .is_some_and(|tag|matches!(tag.origin(),
-                zerogravity_core::accelerator::program::VllmValueOrigin::FullModel(op)
-                if matches!(op.kind(),Vllm08Kind::Projection(Vllm08Projection::GateUp)|Vllm08Kind::SiluAndMul)));
+        let overwritten = is_mlp_temporary(
+            record,
+            ValueId(
+                u32::try_from(index).map_err(|_| Error::Limit("actual ValueId extent".into()))?,
+            ),
+        )?;
         if overwritten {
             continue;
         }
@@ -80,13 +112,13 @@ pub(super) fn actual_diagnostic_bytes(scope: &ShortHfModelBinding) -> Result<usi
             "short-HF exact retained279 and49 actual actors".into(),
         ));
     }
-    let states = state_requirements(scope.source().source(), record.plan())?;
+    let states = state_requirements(record)?;
     let states = checked_sum(states.iter().map(|s| s.bytes))?;
     diagnostic_bytes(
         public,
         states,
-        scope.call().model_profile().hidden_size(),
-        scope.call().span().len(),
+        scope.hidden_size(),
+        scope.call().rows().len(),
     )
 }
 pub(super) fn readback_chunks(maximum: usize) -> Result<usize> {
@@ -112,13 +144,13 @@ pub(super) fn require_geometry_cohort(rows: &[usize]) -> Result<()> {
     }
     Ok(())
 }
-impl ShortHfReadbackAdmission {
-    fn require(&self, scope: &ShortHfModelBinding, service: &Arc<ResidentService>) -> Result<()> {
-        if !Arc::ptr_eq(&self.source, scope.source().source())
+impl TextReadbackAdmission {
+    fn require(&self, scope: &TextModelBinding, service: &Arc<ResidentService>) -> Result<()> {
+        if !self.source.same_issuer(scope.source())
             || !Arc::ptr_eq(&self.service, service)
-            || self.profile != scope.call().model_profile()
+            || self.width != scope.hidden_size()
             || self.source.source_identity() != service.source_identity()
-            || !matches!(scope.call().span().len(), 1 | 47 | 57 | 62 | 67 | 72)
+            || !matches!(scope.call().rows().len(), 1 | 47 | 57 | 62 | 67 | 72)
             || actual_diagnostic_bytes(scope)? > self.maximum
             || self.tickets.len() != readback_chunks(self.maximum)?
         {
@@ -131,27 +163,27 @@ impl ShortHfReadbackAdmission {
 }
 
 impl FullModelProgram {
-    pub(crate) fn admit_short_hf_readbacks(
-        scopes: &[Arc<ShortHfModelBinding>],
+    pub(crate) fn admit_text_readbacks(
+        scopes: &[Arc<TextModelBinding>],
         service: &Arc<ResidentService>,
-    ) -> Result<Arc<ShortHfReadbackAdmission>> {
+    ) -> Result<Arc<TextReadbackAdmission>> {
         if scopes.len() != 6 {
             return Err(Error::State("short-HF exact six actual scopes".into()));
         }
         require_geometry_cohort(
             &scopes
                 .iter()
-                .map(|s| s.call().span().len())
+                .map(|s| s.call().rows().len())
                 .collect::<Vec<_>>(),
         )?;
         service.ensure_usable()?;
         let first = &scopes[0];
-        let source = first.source().source().clone();
-        let profile = first.call().model_profile();
+        let source = first.source().clone();
+        let width = first.hidden_size();
         let mut maximum = 0;
         for scope in scopes {
-            if !Arc::ptr_eq(&source, scope.source().source())
-                || scope.call().model_profile() != profile
+            if !source.same_issuer(scope.source())
+                || scope.hidden_size() != width
                 || source.source_identity() != service.source_identity()
             {
                 return Err(Error::State(
@@ -163,29 +195,29 @@ impl FullModelProgram {
         let chunks = readback_chunks(maximum)?;
         let tickets = Arc::new(
             (0..chunks)
-                .map(|_| source.source().reserve_workspace(32 * 1024 * 1024))
+                .map(|_| source.reserve_workspace(32 * 1024 * 1024))
                 .collect::<Result<Vec<_>>>()?,
         );
-        Ok(Arc::new(ShortHfReadbackAdmission {
+        Ok(Arc::new(TextReadbackAdmission {
             source,
             service: service.clone(),
-            profile,
+            width,
             maximum,
             tickets,
         }))
     }
     /// Preparation supplies storage/actors only. The new source-owned native
     /// binder must seal ALL255 actual lowerer envelopes and the original attempt.
-    pub(crate) async fn prepare_short_hf_values(
-        scope: Arc<ShortHfModelBinding>,
+    pub(crate) async fn prepare_text_values(
+        scope: Arc<TextModelBinding>,
         rms_scope: Arc<FullModelRmsScratch>,
         gdn_family: GdnFamilyIdentity,
         mode: StorageMode,
         limits: ValueStorageLimits,
-        readback: Arc<ShortHfReadbackAdmission>,
+        readback: Arc<TextReadbackAdmission>,
         cancel: Option<&AtomicBool>,
     ) -> Result<(Arc<Self>, Vec<DeviceBuffer>, ResidentPreflight)> {
-        Self::prepare_short_hf_values_inner(
+        Self::prepare_text_values_inner(
             scope,
             rms_scope,
             gdn_family,
@@ -197,28 +229,31 @@ impl FullModelProgram {
         .await
     }
 
-    pub(crate) async fn prepare_short_hf_shared_values(
-        scope: Arc<ShortHfModelBinding>,
+    pub(crate) async fn prepare_text_shared_values(
+        scope: Arc<TextModelBinding>,
         rms_scope: Arc<FullModelRmsScratch>,
-        readback: Arc<ShortHfReadbackAdmission>,
-        geometry: Arc<crate::vllm_cuda_qualification::model_values::bounded::workspace::ValueWorkspaceGeometry>,
+        readback: Arc<TextReadbackAdmission>,
+        geometry: Arc<
+            crate::cuda::native::model_values::bounded::workspace::ValueWorkspaceGeometry,
+        >,
         cancel: Option<&AtomicBool>,
     ) -> Result<(Arc<Self>, Vec<DeviceBuffer>, ResidentPreflight)> {
         geometry.require_scope(&scope)?;
-        Self::prepare_short_hf_values_inner(
+        let family = GdnFamilyIdentity::text(*scope.gdn_recipe());
+        Self::prepare_text_values_inner(
             scope,
             rms_scope.clone(),
-            GdnFamilyIdentity::short_hf(rms_scope.record().call().model_profile()),
+            family,
             StorageMode::ReuseMlp,
-            short_hf::limits(),
+            text::limits(),
             StorageReadback::SharedViews(readback, geometry),
             cancel,
         )
         .await
     }
 
-    pub(crate) async fn bind_short_hf_values(
-        scope: Arc<ShortHfModelBinding>,
+    pub(crate) async fn bind_text_values(
+        scope: Arc<TextModelBinding>,
         rms_scope: Arc<FullModelRmsScratch>,
         gdn_family: GdnFamilyIdentity,
         mode: StorageMode,
@@ -230,7 +265,7 @@ impl FullModelProgram {
         ),
         cancel: Option<&AtomicBool>,
     ) -> Result<(Arc<Self>, Vec<DeviceBuffer>, ResidentPreflight)> {
-        Self::prepare_short_hf_values_inner(
+        Self::prepare_text_values_inner(
             scope,
             rms_scope,
             gdn_family,
@@ -242,8 +277,8 @@ impl FullModelProgram {
         .await
     }
 
-    async fn prepare_short_hf_values_inner(
-        scope: Arc<ShortHfModelBinding>,
+    async fn prepare_text_values_inner(
+        scope: Arc<TextModelBinding>,
         rms_scope: Arc<FullModelRmsScratch>,
         gdn_family: GdnFamilyIdentity,
         mode: StorageMode,
@@ -253,17 +288,17 @@ impl FullModelProgram {
     ) -> Result<(Arc<Self>, Vec<DeviceBuffer>, ResidentPreflight)> {
         cancelled(cancel)?;
         let record = scope.record().clone();
-        let source = scope.source().source().clone();
+        let source = scope.source().clone();
         let service = rms_scope.service().clone();
         if !Arc::ptr_eq(&record, rms_scope.record())
             || service.source_identity() != source.source_identity()
-            || record.call() != scope.call().as_vllm_call()
+            || record.call() != scope.call()
         {
             return Err(Error::State(
                 "short-HF SAME source/current record/private RMS storage".into(),
             ));
         }
-        let metadata = Arc::new(source.source().reserve_workspace(4 * 1024 * 1024)?);
+        let metadata = Arc::new(source.reserve_workspace(4 * 1024 * 1024)?);
         let (template, shared, cold_preflight, tied, geometry) = match readback {
             StorageReadback::Shared(admission) => (None, Some(admission), None, None, None),
             StorageReadback::SharedViews(admission, geometry) => {
@@ -286,7 +321,7 @@ impl FullModelProgram {
             }
         };
         let readback = if let Some(cold) = template {
-            if !Arc::ptr_eq(&source, &cold.source)
+            if !source.same_issuer(&cold.source)
                 || !Arc::ptr_eq(&service, cold.values.service())
                 || cold._readback.is_empty()
             {
@@ -306,8 +341,8 @@ impl FullModelProgram {
             .transpose()?;
         let ordinary_binding = rms_scope.ordinary_binding()?;
         let rms = match template {
-            Some(cold) => cold.rms.bind_short_hf_call(rms_scope.clone(), tied)?,
-            None => RmsPrepared::prepare_short_hf_pooled(rms_scope.clone(), 0, cancel).await?,
+            Some(cold) => cold.rms.bind_prompt_call(rms_scope.clone(), tied)?,
+            None => RmsPrepared::prepare_text_pooled(rms_scope.clone(), 0, cancel).await?,
         };
         let mut init = if template.is_none() {
             Some(service.begin_initialization(0)?)
@@ -361,14 +396,14 @@ impl FullModelProgram {
                     .fused
                     .get(&node_index)
                     .ok_or_else(|| Error::State("short-HF cold dual actor absent".into()))?
-                    .bind_short_hf_call(
+                    .bind_prompt_call(
                         rms_scope.clone(),
                         node_index,
                         storage.lease(*left)?,
                         storage.lease(*right)?,
                     )?,
                 None => {
-                    FusedRmsPrepared::prepare_short_hf_pooled(
+                    FusedRmsPrepared::prepare_text_pooled(
                         rms_scope.clone(),
                         node_index,
                         storage.lease(*left)?.clone(),
@@ -416,7 +451,7 @@ impl FullModelProgram {
         let preflight = if let Some(cold) = cold_preflight {
             cold.clone()
         } else {
-            let states = state_requirements(&source, record.plan())?;
+            let states = state_requirements(&record)?;
             let state_bytes = checked_sum(states.iter().map(|r| r.bytes))?;
             ResidentPreflight {
                 source: source.source_identity(),
@@ -432,8 +467,9 @@ impl FullModelProgram {
             }
         };
         let body = Arc::new(Self {
+            attention_sites: attention_sites(&record)?,
             gdn_family,
-            canonical47: None,
+            fixed_prompt: None,
             source,
             record,
             values,

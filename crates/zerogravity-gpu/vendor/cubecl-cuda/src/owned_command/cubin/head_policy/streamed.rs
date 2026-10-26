@@ -1,6 +1,6 @@
 //! Finite source-row head windows; no model/Ready authority.
 use super::*;
-use crate::owned_command::weight_upload::Vllm08WeightLayout;
+use crate::owned_command::weight_upload::SourceWeightLayout;
 
 pub(crate) const WINDOW_BYTES: u64 = 1024 * 1024;
 pub(crate) const VOCABULARY: usize = 248_320;
@@ -15,16 +15,16 @@ const ORIGINAL_2B: Option<[u8; 160]> = Some([
 ]);
 
 pub(crate) fn geometry(
-    layout: Vllm08WeightLayout,
+    layout: SourceWeightLayout,
 ) -> Result<(usize, usize), cubecl_core::server::ServerError> {
     match layout {
-        Vllm08WeightLayout::Vocabulary08 => Ok((1024, 512)),
-        Vllm08WeightLayout::Vocabulary2b => Ok((2048, 256)),
+        SourceWeightLayout::Vocabulary08 => Ok((1024, 512)),
+        SourceWeightLayout::Vocabulary2b => Ok((2048, 256)),
         _ => Err(failure("streamed head exact original tied source layout")),
     }
 }
 pub(crate) fn manifest(
-    layout: Vllm08WeightLayout,
+    layout: SourceWeightLayout,
 ) -> Result<CubinKernelManifest, cubecl_core::server::ServerError> {
     let (hidden, rows) = geometry(layout)?;
     let original = original_packet(layout)?;
@@ -52,11 +52,11 @@ pub(crate) fn manifest(
     Ok(m)
 }
 pub(super) fn original_packet(
-    layout: Vllm08WeightLayout,
+    layout: SourceWeightLayout,
 ) -> Result<[u8; 160], cubecl_core::server::ServerError> {
     match layout {
-        Vllm08WeightLayout::Vocabulary08 => Ok(TEMPLATE),
-        Vllm08WeightLayout::Vocabulary2b => {
+        SourceWeightLayout::Vocabulary08 => Ok(TEMPLATE),
+        SourceWeightLayout::Vocabulary2b => {
             ORIGINAL_2B.ok_or_else(|| failure("actual2B whole head packet required"))
         }
         _ => Err(failure("streamed head source layout")),
@@ -65,7 +65,7 @@ pub(super) fn original_packet(
 pub(crate) fn require(
     image: &VerifiedCubin,
     m: &CubinKernelManifest,
-) -> Result<Vllm08WeightLayout, cubecl_core::server::ServerError> {
+) -> Result<SourceWeightLayout, cubecl_core::server::ServerError> {
     let pin = IMAGE.derivation();
     if image.derived_from() != Some(IMAGE)
         || image.captured_from().is_some()
@@ -79,10 +79,10 @@ pub(crate) fn require(
 }
 fn matching_layout(
     m: &CubinKernelManifest,
-) -> Result<Vllm08WeightLayout, cubecl_core::server::ServerError> {
+) -> Result<SourceWeightLayout, cubecl_core::server::ServerError> {
     for layout in [
-        Vllm08WeightLayout::Vocabulary08,
-        Vllm08WeightLayout::Vocabulary2b,
+        SourceWeightLayout::Vocabulary08,
+        SourceWeightLayout::Vocabulary2b,
     ] {
         if manifest(layout).is_ok_and(|expected| expected == *m) {
             return Ok(layout);
@@ -98,16 +98,16 @@ fn matching_layout(
 pub(crate) fn policy_allowed(policy: super::super::policy::CubinSetPolicy) -> bool {
     matches!(
         policy,
-        super::super::policy::CubinSetPolicy::ShortHf08
-            | super::super::policy::CubinSetPolicy::ShortHf08Cohort4
-            | super::super::policy::CubinSetPolicy::ShortHf2B
-            | super::super::policy::CubinSetPolicy::ShortHf2BCachedCohort4
+        super::super::policy::CubinSetPolicy::Text08
+            | super::super::policy::CubinSetPolicy::Text08Cohort4
+            | super::super::policy::CubinSetPolicy::Text2B
+            | super::super::policy::CubinSetPolicy::Text2BCachedCohort4
     )
 }
 
 #[derive(Clone, Copy)]
 pub(crate) struct Window {
-    pub(crate) layout: Vllm08WeightLayout,
+    pub(crate) layout: SourceWeightLayout,
     pub(crate) input_rows: usize,
     pub(crate) ordinal: usize,
 }
@@ -225,7 +225,7 @@ impl Selection {
 
 impl Bf16VocabularyHead {
     pub fn streamed_manifest(
-        layout: Vllm08WeightLayout,
+        layout: SourceWeightLayout,
     ) -> Result<CubinKernelManifest, cubecl_core::server::ServerError> {
         manifest(layout)
     }

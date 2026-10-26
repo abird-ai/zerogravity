@@ -73,7 +73,7 @@ impl FullModelProgram {
     ) -> Result<Arc<Self>> {
         let NaturalBinding { storage, cancel } = binding;
         cancelled(cancel)?;
-        if let Some(scope) = &self.canonical47 {
+        if let Some(scope) = &self.fixed_prompt {
             scope.require_native_activation()?;
         }
         if self.launched.load(Ordering::Acquire)
@@ -81,13 +81,13 @@ impl FullModelProgram {
             || self.output_submitted.load(Ordering::Acquire)
             || self.natural.is_some()
             || !Arc::ptr_eq(&input, state.input())
-            || !Arc::ptr_eq(&self.source, input.source())
+            || !self.source.same_issuer(input.source())
         {
             return Err(Error::State(
                 "natural binding requires UNUSED original cold body and exact input/state".into(),
             ));
         }
-        Self::require_record(&self.source, input.record())?;
+        Self::require_record(input.record())?;
         same_recipe(&self.record, input.record())?;
         let old = self
             .bound
@@ -130,7 +130,7 @@ impl FullModelProgram {
                 }
             }
         }
-        let metadata = self.source.source().reserve_workspace(4 * 1024 * 1024)?;
+        let metadata = self.source.reserve_workspace(4 * 1024 * 1024)?;
         let values = ModelValues::bind(
             input.record().clone(),
             buffers,
@@ -138,12 +138,18 @@ impl FullModelProgram {
             self.status().clone(),
         )?;
         let rms = self.rms.bind_natural(input.clone(), table)?;
-        let ordinary = descriptor(&input.record().plan().nodes()[1])?;
+        let ordinary = input
+            .record()
+            .operator(1)?
+            .ok_or_else(|| Error::State("natural ordinary RMS descriptor absent".into()))?;
         let ordinary_binding = BoundModelRmsSource::bind(self.source.clone(), ordinary.clone())?;
         let mut fused = BTreeMap::new();
         for (&node, cold) in &self.fused {
             let n = &input.record().plan().nodes()[node];
-            let op = descriptor(n)?;
+            let op = input
+                .record()
+                .operator(node)?
+                .ok_or_else(|| Error::State("natural dual RMS descriptor absent".into()))?;
             let [a, b] = n.inputs.as_slice() else {
                 return Err(Error::State("natural dual RMS arity".into()));
             };
@@ -165,6 +171,7 @@ impl FullModelProgram {
             NaturalStorageBinding::Reusable => original_greedy.bind_reusable(values.clone())?,
         };
         let result = Arc::new(Self {
+            attention_sites: self.attention_sites.clone(),
             gdn_family: self.gdn_family,
             source: self.source.clone(),
             record: input.record().clone(),
@@ -188,7 +195,7 @@ impl FullModelProgram {
             _readback: self._readback.clone(),
             _metadata: Arc::new(metadata),
             natural: Some(state.clone()),
-            canonical47: None,
+            fixed_prompt: None,
         });
         result
             .greedy
@@ -197,8 +204,8 @@ impl FullModelProgram {
         let mut gdn = BTreeMap::new();
         let mut attention = BTreeMap::new();
         for domains in state.states() {
-            let layer = domains.layer().index();
-            if domains.layer().is_attention() {
+            let layer = domains.layer();
+            if domains.kv_domain().is_ok() {
                 attention.insert(
                     layer,
                     old.attention
@@ -254,7 +261,7 @@ impl ResidentProgram {
         ))
     }
     pub(crate) fn from_natural_body(
-        source: Arc<OriginalWindowModelSource>,
+        source: VerifiedTensorSource,
         body: Arc<FullModelProgram>,
         values: Vec<DeviceBuffer>,
         preflight: ResidentPreflight,
@@ -265,8 +272,8 @@ impl ResidentProgram {
             ));
         }
         Ok(Self {
-            _source_owner: ResidentProgramSource::Windows(source),
-            plan: body.record().plan().clone(),
+            _source_owner: ResidentProgramSource::Windows(source.clone()),
+            plan: body.record().shared_plan(),
             preflight,
             values,
             status: body.status().handle(),

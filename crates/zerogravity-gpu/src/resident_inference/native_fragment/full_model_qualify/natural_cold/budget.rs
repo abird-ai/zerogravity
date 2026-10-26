@@ -20,10 +20,10 @@ fn charge(offset: u64, bytes: usize) -> Result<usize> {
         .ok_or_else(|| Error::Limit("natural checked source-chunk charge".into()))
 }
 pub(super) fn require_host_bound(
-    source: &OriginalWindowModelSource,
-    records: &[RecordedVllm08Model; 5],
+    source: &VerifiedTensorSource,
+    records: &[Arc<SourceBindings>; 5],
 ) -> Result<()> {
-    if source.source().staging_chunk_bytes() != MIB {
+    if source.staging_chunk_bytes() != MIB {
         return Err(Error::Unsupported(
             "natural original immutable1MiB source geometry".into(),
         ));
@@ -31,7 +31,7 @@ pub(super) fn require_host_bound(
     let mut bytes = 0usize;
     let mut windows = 0usize;
     let mut add = |name: &str, relative: usize, length: usize| -> Result<()> {
-        let tensor = source.source().tensor_info(name)?;
+        let tensor = source.tensor_info(name)?;
         if relative
             .checked_add(length)
             .is_none_or(|end| end as u64 > tensor.byte_len)
@@ -51,12 +51,12 @@ pub(super) fn require_host_bound(
         Ok(())
     };
     for record in records {
-        FullModelProgram::require_record(source, record)?;
-        for node in record.plan().nodes() {
-            if let PlanOperation::TypedVllm08 { descriptor, .. } = &node.operation
+        FullModelProgram::require_record(record)?;
+        for (index, _node) in record.plan().nodes().iter().enumerate() {
+            if let Some(descriptor) = &record.operator(index)?
                 && matches!(
                     descriptor.kind(),
-                    Vllm08Kind::InputRms | Vllm08Kind::ResidualRms(_)
+                    SourceOperatorKind::Rms(_) | SourceOperatorKind::ResidualRms(_)
                 )
             {
                 let [parameter] = descriptor.parameters() else {
@@ -65,19 +65,38 @@ pub(super) fn require_host_bound(
                 add(&parameter.name, 0, parameter.bytes)?;
             }
         }
-        for id in record.call().request().teachers().ids() {
+        let embedding = record
+            .operator(0)?
+            .ok_or_else(|| Error::State("natural embedding source absent".into()))?;
+        let [matrix] = embedding.matrices() else {
+            return Err(Error::State("natural embedding source arity".into()));
+        };
+        let row_bytes = matrix
+            .columns
+            .checked_mul(2)
+            .ok_or_else(|| Error::Limit("natural source row bytes".into()))?;
+        if embedding.kind() != SourceOperatorKind::EmbeddingRows || row_bytes != 2048 {
+            return Err(Error::State(
+                "natural captured embedding source row geometry".into(),
+            ));
+        }
+        for id in record.call().rows().ids() {
             add(
-                "model.language_model.embed_tokens.weight",
-                *id as usize * 2048,
-                2048,
+                &matrix.name,
+                (*id as usize)
+                    .checked_mul(row_bytes)
+                    .ok_or_else(|| Error::Limit("natural source row offset".into()))?,
+                row_bytes,
             )?;
         }
     }
-    for node in records[0].plan().nodes() {
-        if let PlanOperation::TypedVllm08 { descriptor, .. } = &node.operation
+    for (index, _node) in records[0].plan().nodes().iter().enumerate() {
+        if let Some(descriptor) = &records[0].operator(index)?
             && matches!(
                 descriptor.kind(),
-                Vllm08Kind::GdnConv | Vllm08Kind::GdnRecurrent | Vllm08Kind::AttentionQk
+                SourceOperatorKind::CausalConvSplit { .. }
+                    | SourceOperatorKind::GatedDelta { .. }
+                    | SourceOperatorKind::QkRmsRotaryGated(_)
             )
         {
             for parameter in descriptor.parameters() {

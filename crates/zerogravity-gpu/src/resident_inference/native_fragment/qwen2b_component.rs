@@ -5,11 +5,10 @@ use super::*;
 use crate::resident_inference::gdn_state::GdnPhasePlan;
 use crate::resident_leases::ResidentReadback;
 use crate::resident_program::qwen2b_component::{
-    ComponentProgram, PROVIDER_BYTES, validate_component_source,
+    ComponentCut, ComponentKind, ComponentProgram, ComponentRecipe, PROVIDER_BYTES,
+    validate_component,
 };
-use zerogravity_core::accelerator::program::RecordedVllm08Model;
-use zerogravity_core::device_events::BufferRole;
-use zerogravity_model_qwen35::original_binding::BoundFullModelSource;
+use crate::resident_program::source_bindings::SourceBindings;
 
 #[path = "qwen2b_component/faults.rs"]
 mod faults;
@@ -31,17 +30,17 @@ pub struct Qwen2bGdnComponentReceipt {
     pub final_physical_reserved_bytes: u64,
 }
 pub struct Qwen2bGdnComponentReadback<'a> {
-    record: &'a Arc<RecordedVllm08Model>,
+    record: &'a Arc<SourceBindings>,
     raw: &'a [Bytes],
     prior: &'a [(StateSlot, std::ops::Range<usize>)],
     candidate: &'a [(StateSlot, std::ops::Range<usize>)],
-    arithmetic: Option<crate::vllm_cuda_gdn::Qwen2bGdnArithmetic>,
+    arithmetic: Option<crate::cuda::gdn::Qwen2bGdnArithmetic>,
 }
 impl Qwen2bGdnComponentReadback<'_> {
-    pub fn arithmetic(&self) -> Option<crate::vllm_cuda_gdn::Qwen2bGdnArithmetic> {
+    pub fn arithmetic(&self) -> Option<crate::cuda::gdn::Qwen2bGdnArithmetic> {
         self.arithmetic
     }
-    pub fn record(&self) -> &Arc<RecordedVllm08Model> {
+    pub fn record(&self) -> &Arc<SourceBindings> {
         self.record
     }
     pub fn value(&self, id: ValueId) -> Result<&[u8]> {
@@ -86,8 +85,7 @@ enum Outcome {
 /// Expected outputs are available ONLY inside original trusted completion.
 pub async fn qualify_qwen2b_gdn_component<F>(
     device: Device,
-    source: BoundFullModelSource,
-    record: Arc<RecordedVllm08Model>,
+    recipe: Arc<ComponentRecipe>,
     inputs: CubinQualificationInputs,
     cancelled: Option<&AtomicBool>,
     validate: F,
@@ -97,8 +95,7 @@ where
 {
     match run(
         device,
-        source,
-        record,
+        recipe,
         inputs,
         cancelled,
         validate,
@@ -116,9 +113,8 @@ where
 /// Additive explicit arithmetic route; legacy entrypoints keep their original binding.
 pub async fn qualify_qwen2b_gdn_component_arithmetic<F>(
     device: Device,
-    source: BoundFullModelSource,
-    record: Arc<RecordedVllm08Model>,
-    arithmetic: crate::vllm_cuda_gdn::Qwen2bGdnArithmetic,
+    recipe: Arc<ComponentRecipe>,
+    arithmetic: crate::cuda::gdn::Qwen2bGdnArithmetic,
     inputs: CubinQualificationInputs,
     cancelled: Option<&AtomicBool>,
     validate: F,
@@ -128,8 +124,7 @@ where
 {
     match run_with_arithmetic(
         device,
-        source,
-        record,
+        recipe,
         ArithmeticInputs {
             arithmetic: Some(arithmetic),
             inputs,
@@ -151,8 +146,7 @@ where
 }
 async fn run<F>(
     device: Device,
-    source: BoundFullModelSource,
-    record: Arc<RecordedVllm08Model>,
+    recipe: Arc<ComponentRecipe>,
     inputs: CubinQualificationInputs,
     cancelled: Option<&AtomicBool>,
     validate: F,
@@ -163,8 +157,7 @@ where
 {
     run_with_arithmetic(
         device,
-        source,
-        record,
+        recipe,
         ArithmeticInputs {
             arithmetic: None,
             inputs,
@@ -176,13 +169,12 @@ where
     .await
 }
 struct ArithmeticInputs {
-    arithmetic: Option<crate::vllm_cuda_gdn::Qwen2bGdnArithmetic>,
+    arithmetic: Option<crate::cuda::gdn::Qwen2bGdnArithmetic>,
     inputs: CubinQualificationInputs,
 }
 async fn run_with_arithmetic<F>(
     device: Device,
-    source: BoundFullModelSource,
-    record: Arc<RecordedVllm08Model>,
+    recipe: Arc<ComponentRecipe>,
     inputs: ArithmeticInputs,
     cancelled: Option<&AtomicBool>,
     validate: F,
@@ -194,16 +186,26 @@ where
     let RunMode { fault, probe } = mode;
     let ArithmeticInputs { arithmetic, inputs } = inputs;
     not_cancelled(cancelled)?;
-    validate_component_source(&source, &record)?;
+    validate_component(&recipe)?;
+    if recipe.cut() != ComponentCut::Gated
+        || recipe.kind() != ComponentKind::Qwen2b
+        || recipe.qwen2b_arithmetic() != arithmetic
+    {
+        return Err(Error::State(
+            "source2B actual component cut/arithmetic differs".into(),
+        ));
+    }
+    let source = recipe.source().clone();
+    let record = recipe.bindings().clone();
     if let Some(choice) = arithmetic {
-        choice.require_owned(if record.call().rows() == 1 {
-            crate::vllm_cuda_gdn::VllmGdnPhase::InitialOne
+        choice.require_owned(if record.call().rows().len() == 1 {
+            crate::cuda::gdn::GdnPhase::InitialOne
         } else {
-            crate::vllm_cuda_gdn::VllmGdnPhase::Initial64
+            crate::cuda::gdn::GdnPhase::Initial64
         })?;
     }
     if fault != Some(Qwen2bGdnComponentFault::AdmissionPressure) {
-        crate::vllm_cuda_qualification::qwen2b_component::validate_component_images(
+        crate::cuda::native::qwen2b_component::validate_component_images(
             &source, &record, &inputs,
         )?;
     }
@@ -215,7 +217,7 @@ where
     }
     let service = ResidentService::new_pinned_cuda(
         device,
-        source.source().source_identity(),
+        source.source_identity(),
         ResourceOwner::new("original2B-source-prefix", "unpublished-six-node-component")?,
         PROVIDER_BYTES,
         inputs.device_cap,
@@ -242,24 +244,8 @@ where
     )?;
     let mut slot = ticket.wait().await?;
     slot.begin_submission()?;
-    let program = if let Some(choice) = arithmetic {
-        ResidentProgram::prepare_qwen2b_component_arithmetic(
-            service.clone(),
-            source.clone(),
-            record.clone(),
-            choice,
-            cancelled,
-        )
-        .await?
-    } else {
-        ResidentProgram::prepare_qwen2b_component(
-            service.clone(),
-            source.clone(),
-            record.clone(),
-            cancelled,
-        )
-        .await?
-    };
+    let program =
+        ResidentProgram::prepare_component(service.clone(), recipe.clone(), cancelled).await?;
     slot.finish()?;
     let states = program.budget().states.clone();
     let state_bytes = program.budget().prior_state_bytes;
@@ -294,13 +280,11 @@ where
     }
     not_cancelled(cancelled)?;
     let candidate = model.allocate_state(false).await?;
-    let invocation = record.call().request();
-    let attempt = session.authority.begin_advance(invocation.rows() as u64)?;
-    let schedule = GdnAttemptSchedule::new_initial_qwen2b_component(
-        &source,
-        attempt.clone(),
-        invocation.clone(),
-    )?;
+    let invocation = record.call();
+    let attempt = session
+        .authority
+        .begin_advance(invocation.rows().len() as u64)?;
+    let schedule = GdnAttemptSchedule::new_initial_component(&recipe, attempt.clone())?;
     let phase_binding = AttemptPhaseBinding::new(schedule.clone(), 0, None)?;
     let ticket = service.queue().submit(
         service.budget(),
@@ -321,10 +305,10 @@ where
             candidate: &candidate,
             plan: workspace.program.plan(),
             invocation,
-            phase: if invocation.rows() == 1 {
-                crate::vllm_cuda_gdn::VllmGdnPhase::InitialOne
+            phase: if invocation.rows().len() == 1 {
+                crate::cuda::gdn::GdnPhase::InitialOne
             } else {
-                crate::vllm_cuda_gdn::VllmGdnPhase::Initial64
+                crate::cuda::gdn::GdnPhase::Initial64
             },
             nodes: [4, 5],
         },
@@ -361,9 +345,9 @@ where
             .flat_map(|d| d.leases.iter().cloned().map(|l| (l, DeviceAccess::Write))),
     );
     let parameters = RuntimeParameters {
-        token: invocation.teachers().ids()[0],
+        token: invocation.rows().ids()[0],
         position: 0,
-        valid_tokens: invocation.rows(),
+        valid_tokens: invocation.rows().len(),
     };
     workspace
         .program
@@ -520,7 +504,7 @@ where
     let (dispatches, native_launches, rows) = (
         submitted.dispatches,
         submitted.fused_dispatches,
-        invocation.rows(),
+        invocation.rows().len(),
     );
     drop(submitted);
     drop(rereads);

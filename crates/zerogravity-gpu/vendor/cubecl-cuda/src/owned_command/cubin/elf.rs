@@ -1,6 +1,6 @@
 //! Bounded ELF64 little-endian CUDA image validation; no fatbin/decompression.
 mod rotary_headers;
-mod short_hf_headers;
+mod text_headers;
 use super::failure;
 use cubecl_core::server::ServerError;
 
@@ -118,7 +118,7 @@ pub(super) fn validate(bytes: &[u8]) -> Result<u8, ServerError> {
                 .iter()
                 .any(|(n, h)| bytes.len() == *n && bytes[..64] == *h)
             || rotary_headers::matches(bytes)
-            || short_hf_headers::matches(bytes)
+            || text_headers::matches(bytes)
             || ATTENTION_HEADERS
                 .iter()
                 .any(|(n, h)| bytes.len() == *n && bytes[..64] == *h))
@@ -412,7 +412,7 @@ mod attention_tests {
 }
 
 #[cfg(test)]
-mod canonical47_header_tests {
+mod fixed_prompt_header_tests {
     use super::*;
     fn structural_fixture() -> Vec<u8> {
         // Structural-only: full-image SHA sealing independently refuses this body.
@@ -426,7 +426,7 @@ mod canonical47_header_tests {
         image
     }
     #[test]
-    fn canonical47_header_matches_only_exact_selected64bytes_and_image_extent() {
+    fn fixed_prompt_header_matches_only_exact_selected64bytes_and_image_extent() {
         let image = structural_fixture();
         assert_eq!(validate(&image).unwrap(), 80);
         for offset in 0..64 {
@@ -446,7 +446,7 @@ mod canonical47_header_tests {
         assert!(validate(&generic123).is_err());
     }
     #[test]
-    fn canonical47_exact_header_does_not_skip_section_or_program_guards() {
+    fn fixed_prompt_exact_header_does_not_skip_section_or_program_guards() {
         let image = structural_fixture();
         let table = u64_at(&image, 40) as usize;
         let names = table + 64;

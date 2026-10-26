@@ -21,7 +21,7 @@ fn digest(value: &str) -> Result<[u8; 32]> {
 /// The invoking driver independently hashes the GGUF and LE-u32 PREFIX IDs.
 /// An existing input file can come from a different GPU/process; its complete
 /// numerical payload must also equal independent CPU execution of PREFIX.
-pub(crate) async fn qualify(
+pub async fn qualify(
     device: Device,
     path: &Path,
     file: &Path,

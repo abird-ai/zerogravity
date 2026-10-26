@@ -112,7 +112,7 @@ pub(super) fn source_tokens(path: &Path, prompt_path: &Path, ids_path: &Path) ->
         )));
     }
     let geometry =
-        zerogravity_artifacts::model::ModelGeometry::from_file(&parent.join("config.json"))?;
+        zerogravity_model_qwen35::config::ModelGeometry::from_file(&parent.join("config.json"))?;
     if tokens
         .iter()
         .any(|&id| u64::from(id) >= geometry.vocab_size)
@@ -242,7 +242,7 @@ pub(super) async fn qualify_bounded(
         .parent()
         .ok_or_else(|| Error::Malformed("context source model path".into()))?;
     let geometry =
-        zerogravity_artifacts::model::ModelGeometry::from_file(&parent.join("config.json"))?;
+        zerogravity_model_qwen35::config::ModelGeometry::from_file(&parent.join("config.json"))?;
     spec.validate_ids(&tokens, geometry.vocab_size)?;
     println!(
         "H18_BOUNDED_CONTEXT_SCOPE capacity={capacity} original_GGUF_B1=true raw_teacher_ids=true before_gpu_upload=true numerical_scope=INTERNAL_CPU_GPU_BIT_PARITY independent_vllm_parity=NOT_ESTABLISHED serving_profile=unchanged"
@@ -272,7 +272,12 @@ async fn qualify_tokens(
         .geometry()
         .layers
         .iter()
-        .filter(|kind| matches!(kind, zerogravity_artifacts::model::LayerKind::FullAttention))
+        .filter(|kind| {
+            matches!(
+                kind,
+                zerogravity_model_qwen35::config::LayerKind::FullAttention
+            )
+        })
         .count();
     let boundary_launches = full_layers * (256 / 32) * 3;
     if boundary_launches != 144 {

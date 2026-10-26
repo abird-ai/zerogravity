@@ -3,49 +3,50 @@ use super::bf16_greedy::PreparedBf16Greedy;
 use super::native::{
     CertificateSet, cancelled, certify_original, prepare_certificates, state_requirements,
 };
+use super::source_bindings::SourceBindings;
 use super::*;
-use crate::physical_quarantine::CompletionOwner;
-use crate::resident_inference::native_fragment::{
-    PrefixPhaseEnqueue, model_state::BoundModelState,
-};
-use crate::resident_leases::{ResidentLease, ResidentReadback, ResidentService};
-use crate::vllm_cuda_gdn::{GdnArithmetic, GdnFamilyIdentity};
-use crate::vllm_cuda_input_rms::{BoundModelRmsSource, FusedRmsPrepared, RmsPrepared};
-use crate::vllm_cuda_qualification::{
+use crate::cuda::gdn::{GdnArithmetic, GdnFamilyIdentity};
+use crate::cuda::native::{
     attention_cubin::{ModelAttentionBinding, ModelAttentionPrograms},
     model_gdn::ModelGdnPrepared,
     model_native::ModelNativePrograms,
     model_values::ModelValues,
     vocabulary_head::ModelHeadPrograms,
 };
+use crate::cuda::rms::{BoundModelRmsSource, FusedRmsPrepared, RmsPrepared};
+use crate::physical_quarantine::CompletionOwner;
+use crate::resident_inference::native_fragment::{
+    PrefixPhaseEnqueue, model_state::BoundModelState,
+};
+use crate::resident_leases::{ResidentLease, ResidentReadback, ResidentService};
 use std::collections::BTreeMap;
 use std::sync::{
     OnceLock,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
+use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::WindowWorkspace;
 use zerogravity_core::accelerator::program::{
-    ActivationPrecision, PlanOperation, RecordedVllm08Model, ValueId, Vllm08Kind, Vllm08Projection,
+    ActivationPrecision, PlanOperation, SourceOperatorKind, ValueId,
 };
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
-use zerogravity_model_qwen35::original_binding::OriginalWindowModelSource;
 
 /// All-phase native records own source/lease identities only. No body, phase
 /// binding, previous Ready, borrowed Session or state publisher is stored here.
 pub(crate) struct FullModelLibrary {
-    pub(crate) source: Arc<OriginalWindowModelSource>,
+    pub(crate) source: VerifiedTensorSource,
     pub(crate) projections: Arc<ModelNativePrograms>,
     pub(crate) attention: Arc<ModelAttentionPrograms>,
     pub(crate) head: Arc<ModelHeadPrograms>,
-    pub(crate) images: Arc<crate::vllm_cuda_qualification::native_plan::PreparedImages>,
+    pub(crate) images: Arc<crate::cuda::native::native_plan::PreparedImages>,
 }
 struct BoundPhase {
     gdn_arithmetic: Arc<GdnArithmetic>,
     phase: usize,
     library: Option<Arc<FullModelLibrary>>,
-    canonical47_prefix: Option<canonical47_prefix::PrefixPhase>,
-    canonical_call: Option<canonical47_natural::CurrentCall>,
-    short_hf: Option<short_hf::CurrentCall>,
+    fixed_prompt_prefix: Option<fixed_prompt_prefix::PrefixPhase>,
+    canonical_call: Option<fixed_prompt_natural::CurrentCall>,
+    text: Option<text::CurrentCall>,
     states: Vec<Arc<BoundModelState>>,
     gdn: BTreeMap<usize, Arc<ModelGdnPrepared>>,
     attention: BTreeMap<usize, Arc<ModelAttentionBinding>>,
@@ -55,14 +56,14 @@ pub(crate) struct FullModelProgram {
     // Certificate handles retire before the original value/status leases.
     certificates: Arc<CertificateSet>,
     gdn_family: GdnFamilyIdentity,
-    canonical47:
-        Option<Arc<crate::vllm_cuda_qualification::canonical47_model::Canonical47ModelBinding>>,
-    source: Arc<OriginalWindowModelSource>,
-    record: Arc<RecordedVllm08Model>,
+    fixed_prompt: Option<Arc<crate::cuda::native::fixed_prompt_model::FixedPromptModelBinding>>,
+    source: VerifiedTensorSource,
+    record: Arc<SourceBindings>,
     values: Arc<ModelValues>,
     rms: Arc<RmsPrepared>,
     _ordinary_binding: BoundModelRmsSource,
     fused: BTreeMap<usize, Arc<FusedRmsPrepared>>,
+    attention_sites: Arc<BTreeMap<usize, usize>>,
     bound: OnceLock<BoundPhase>,
     greedy: OnceLock<Arc<PreparedBf16Greedy>>,
     launched: AtomicBool,
@@ -82,13 +83,23 @@ pub(crate) struct FullModelProgram {
     >,
 }
 
-pub(crate) mod canonical47_natural;
-mod canonical47_prefix;
-mod canonical47_whole;
-pub(crate) mod short_hf;
+pub(crate) mod fixed_prompt_natural;
+mod fixed_prompt_prefix;
+mod fixed_prompt_whole;
 mod state_read;
+pub(crate) mod text;
 use state_read::descriptor;
 
+fn attention_sites(record: &SourceBindings) -> Result<Arc<BTreeMap<usize, usize>>> {
+    let analysis = crate::cuda::native::text_model::analyze_record(record)?;
+    let mut sites = BTreeMap::new();
+    for (domain, site) in &analysis.attention {
+        for &node in &site.nodes {
+            sites.insert(node, *domain);
+        }
+    }
+    Ok(Arc::new(sites))
+}
 fn insert_access(
     all: &mut BTreeMap<
         zerogravity_core::device_events::BufferLeaseId,
@@ -104,46 +115,22 @@ fn insert_access(
 }
 impl FullModelProgram {
     /// Pure source/recipe preflight. No allocator/client/module is consulted.
-    pub(crate) fn require_record(
-        source: &OriginalWindowModelSource,
-        record: &RecordedVllm08Model,
-    ) -> Result<()> {
-        source.require_vllm08_full_source()?;
-        record.call().validate()?;
-        if record.call().model_profile()
-            != zerogravity_core::accelerator::program::FullModelProfile::Qwen08
-        {
-            return Err(Error::Unsupported(
-                "native full24 source geometry remains .8B only".into(),
-            ));
-        }
-        // Private recorded type is minted only by the checked family recipe.
+    pub(crate) fn require_record(record: &SourceBindings) -> Result<()> {
         let plan = record.plan();
-        if plan.source() != source.source_identity()
-            || plan.nodes().len() != 255
-            || plan.state_nodes().len() != 255
-            || plan.values().len() != 327
-            || plan.required_domains().len() != 42
+        if plan.source_call() != Some(record.call())
+            || plan.source() != record.source().source_identity()
             || plan.frontier_delta() != 0
             || plan.logits().is_some()
-            || record.boundaries().len() != 24
+            || record.selection().normalized().is_none()
+            || record.selection().boundaries().is_empty()
+            || record.selection().completed_layers() != record.selection().boundaries().len()
         {
-            return Err(Error::Unsupported(
-                "closed actual original full24 unpublished source recipe".into(),
+            return Err(Error::State(
+                "native whole actual unpublished source/selection differs".into(),
             ));
         }
         for node in plan.nodes() {
-            if let PlanOperation::TypedVllm08 { descriptor, .. } = &node.operation {
-                descriptor.validate()?;
-                if descriptor.call() != record.call() {
-                    return Err(Error::State("full24 recipe contains a foreign call".into()));
-                }
-            }
-            for id in node.inputs.iter().chain(&node.outputs) {
-                plan.vllm_value_provenance(*id)?
-                    .ok_or_else(|| Error::State("full24 actual recipe provenance absent".into()))?
-                    .require_invocation(record.call().request())?;
-            }
+            descriptor(node)?;
         }
         Ok(())
     }
@@ -152,24 +139,22 @@ impl FullModelProgram {
     /// come from original source windows, never reference archives.
     pub(crate) async fn prepare_values(
         service: Arc<ResidentService>,
-        source: Arc<OriginalWindowModelSource>,
-        record: Arc<RecordedVllm08Model>,
+        record: Arc<SourceBindings>,
         cancel: Option<&AtomicBool>,
     ) -> Result<(Arc<Self>, Vec<DeviceBuffer>, ResidentPreflight)> {
         cancelled(cancel)?;
         // Preserve the existing legacy entry and its finite geometry permit.
-        record.call().request().legacy_phase()?;
-        Self::prepare_values_impl(service, source, record, None, None, cancel).await
+        crate::cuda::native::native_gdn::phase(record.call())?;
+        Self::prepare_values_impl(service, record, None, None, cancel).await
     }
-    pub(crate) async fn prepare_canonical47_prefix_values(
+    pub(crate) async fn prepare_fixed_prompt_prefix_values(
         service: Arc<ResidentService>,
-        cut: Arc<crate::vllm_cuda_qualification::canonical47_model_prefix::Canonical47PrefixCut>,
+        cut: Arc<crate::cuda::native::fixed_prompt_model_prefix::FixedPromptPrefixCut>,
         cancel: Option<&AtomicBool>,
     ) -> Result<(Arc<Self>, Vec<DeviceBuffer>, ResidentPreflight)> {
         cancelled(cancel)?;
         Self::prepare_values_impl(
             service,
-            cut.scope().source().source().clone(),
             cut.scope().record().clone(),
             Some(cut.scope().clone()),
             Some(cut),
@@ -179,29 +164,27 @@ impl FullModelProgram {
     }
     async fn prepare_values_impl(
         service: Arc<ResidentService>,
-        source: Arc<OriginalWindowModelSource>,
-        record: Arc<RecordedVllm08Model>,
-        canonical47: Option<
-            Arc<crate::vllm_cuda_qualification::canonical47_model::Canonical47ModelBinding>,
-        >,
-        cut: Option<
-            Arc<crate::vllm_cuda_qualification::canonical47_model_prefix::Canonical47PrefixCut>,
-        >,
+        record: Arc<SourceBindings>,
+        fixed_prompt: Option<Arc<crate::cuda::native::fixed_prompt_model::FixedPromptModelBinding>>,
+        cut: Option<Arc<crate::cuda::native::fixed_prompt_model_prefix::FixedPromptPrefixCut>>,
         cancel: Option<&AtomicBool>,
     ) -> Result<(Arc<Self>, Vec<DeviceBuffer>, ResidentPreflight)> {
         cancelled(cancel)?;
-        Self::require_record(&source, &record)?;
+        Self::require_record(&record)?;
+        let source = record.source().clone();
         if service.source_identity() != source.source_identity() {
             return Err(Error::State(
                 "full24 source/service before original upload".into(),
             ));
         }
-        let metadata = source.source().reserve_workspace(4 * 1024 * 1024)?;
+        let metadata = source.reserve_workspace(4 * 1024 * 1024)?;
         let plan = record.plan();
         let node_end = cut.as_ref().map_or(255, |c| c.nodes().len());
         let value_end = cut.as_ref().map_or(327, |c| c.values().len());
-        let ordinary = descriptor(&plan.nodes()[1])?;
-        if ordinary.kind() != Vllm08Kind::InputRms
+        let ordinary = record
+            .operator(1)?
+            .ok_or_else(|| Error::State("full24 ordinary source operator absent".into()))?;
+        if !matches!(ordinary.kind(), SourceOperatorKind::Rms(_))
             || plan.nodes()[1].inputs != [ValueId(0)]
             || plan.nodes()[1].outputs != [ValueId(1)]
         {
@@ -209,12 +192,12 @@ impl FullModelProgram {
                 "full24 genuine ordinary input RMS producer".into(),
             ));
         }
-        let ordinary_binding = if let Some(scope) = &canonical47 {
+        let ordinary_binding = if let Some(scope) = &fixed_prompt {
             scope.rms(1)?.clone()
         } else {
             BoundModelRmsSource::bind(source.clone(), ordinary.clone())?
         };
-        let states = state_requirements(&source, plan)?;
+        let states = state_requirements(&record)?;
         let state_bytes = checked_sum(states.iter().map(|r| r.bytes))?;
         let public_bytes = checked_sum(
             plan.values()[..value_end]
@@ -231,8 +214,8 @@ impl FullModelProgram {
         let readback_bytes = checked_sum([
             public_bytes,
             2 * state_bytes,
-            48 * (2048 + record.call().rows() * 8192),
-            2048 + record.call().rows() * 4096,
+            48 * (2048 + record.call().rows().len() * 8192),
+            2048 + record.call().rows().len() * 4096,
             1024 * 1024,
         ])?;
         let chunks = readback_bytes.div_ceil(32 * 1024 * 1024);
@@ -240,30 +223,24 @@ impl FullModelProgram {
             return Err(Error::Limit("closed full24 per-phase D2H admission".into()));
         }
         let readback = (0..chunks)
-            .map(|_| source.source().reserve_workspace(32 * 1024 * 1024))
+            .map(|_| source.reserve_workspace(32 * 1024 * 1024))
             .collect::<Result<Vec<_>>>()?;
-        let rms = if let Some(scope) = &canonical47 {
-            RmsPrepared::prepare_canonical47_model(service.clone(), scope.clone(), 0, cancel)
+        let rms = if let Some(scope) = &fixed_prompt {
+            RmsPrepared::prepare_fixed_prompt_model(service.clone(), scope.clone(), 0, cancel)
                 .await?
         } else {
-            RmsPrepared::prepare(
-                service.clone(),
-                source.source().clone(),
-                record.call().request().teachers().ids(),
-                0,
-            )
-            .await?
+            RmsPrepared::prepare_bound(service.clone(), record.clone(), 0, cancel).await?
         };
         cancelled(cancel)?;
         let mut init = service.begin_initialization(0)?;
-        init.retain_completion_owner(source.clone())?;
+        init.retain_completion_owner(record.clone())?;
         init.retain_completion_owner(rms.completion_owner())?;
         let status = init.upload_bytes(&[0; 4], BufferRole::Scratch)?;
         let fused_outputs = plan.nodes()[..node_end]
             .iter()
             .filter(|n| {
-                matches!(&n.operation, PlanOperation::TypedVllm08 { descriptor, .. }
-                if matches!(descriptor.kind(), Vllm08Kind::ResidualRms(_)))
+                matches!(&n.operation, PlanOperation::SourceOperator { descriptor, .. }
+                if matches!(descriptor.kind(), SourceOperatorKind::ResidualRms(_)))
             })
             .flat_map(|n| n.outputs.iter().map(|id| id.0))
             .collect::<BTreeSet<_>>();
@@ -294,10 +271,10 @@ impl FullModelProgram {
         drop(init.complete_sync().await?);
         let mut fused = BTreeMap::new();
         for (index, node) in plan.nodes()[..node_end].iter().enumerate() {
-            let PlanOperation::TypedVllm08 { descriptor, .. } = &node.operation else {
+            let Some(descriptor) = record.operator(index)? else {
                 continue;
             };
-            if !matches!(descriptor.kind(), Vllm08Kind::ResidualRms(_)) {
+            if !matches!(descriptor.kind(), SourceOperatorKind::ResidualRms(_)) {
                 continue;
             }
             let [left, right] = node.inputs.as_slice() else {
@@ -312,8 +289,8 @@ impl FullModelProgram {
                     .original_lease()
                     .cloned()
             };
-            let prepared = if let Some(scope) = &canonical47 {
-                FusedRmsPrepared::prepare_canonical47_model(
+            let prepared = if let Some(scope) = &fixed_prompt {
+                FusedRmsPrepared::prepare_fixed_prompt_model(
                     service.clone(),
                     scope,
                     index,
@@ -326,7 +303,7 @@ impl FullModelProgram {
             } else {
                 FusedRmsPrepared::prepare_model(
                     service.clone(),
-                    BoundModelRmsSource::bind(source.clone(), descriptor.as_ref().clone())?,
+                    BoundModelRmsSource::bind(source.clone(), descriptor.clone())?,
                     input(*left)?,
                     input(*right)?,
                     0,
@@ -334,7 +311,7 @@ impl FullModelProgram {
                 )
                 .await?
             };
-            prepared.require_full_model_operator(descriptor)?;
+            prepared.require_full_model_operator(&descriptor)?;
             for (id, lease) in node
                 .outputs
                 .iter()
@@ -342,7 +319,7 @@ impl FullModelProgram {
             {
                 let layout = ResidentBufferLayout::new(
                     ResidentPhysicalType::Bf16,
-                    record.call().rows() * 1024,
+                    record.call().rows().len() * 1024,
                 )?;
                 if buffers[id.0 as usize].is_some() {
                     return Err(Error::State("full24 duplicate RMS output binding".into()));
@@ -364,7 +341,7 @@ impl FullModelProgram {
             .map(|v| v.ok_or_else(|| Error::State("full24 unbound original ValueID".into())))
             .collect::<Result<Vec<_>>>()?;
         let values = if let Some(cut) = &cut {
-            ModelValues::bind_canonical47_prefix(cut, &buffers, service.clone(), status.clone())?
+            ModelValues::bind_fixed_prompt_prefix(cut, &buffers, service.clone(), status.clone())?
         } else {
             ModelValues::bind(record.clone(), &buffers, service.clone(), status.clone())?
         };
@@ -383,8 +360,9 @@ impl FullModelProgram {
         };
         Ok((
             Arc::new(Self {
+                attention_sites: attention_sites(&record)?,
                 gdn_family: GdnFamilyIdentity::original08(),
-                canonical47,
+                fixed_prompt,
                 source,
                 record,
                 values,
@@ -417,7 +395,7 @@ impl FullModelProgram {
         init: &mut crate::resident_leases::ResidentInitialization<'_>,
         cancel: Option<&AtomicBool>,
     ) -> Result<()> {
-        if let Some(scope) = &self.canonical47 {
+        if let Some(scope) = &self.fixed_prompt {
             scope.require_native_activation()?;
         }
         if self.greedy.get().is_some() || self.bound.get().is_some() {
@@ -441,7 +419,7 @@ impl FullModelProgram {
         gdn: BTreeMap<usize, Arc<ModelGdnPrepared>>,
         attention: BTreeMap<usize, Arc<ModelAttentionBinding>>,
     ) -> Result<()> {
-        if let Some(scope) = &self.canonical47 {
+        if let Some(scope) = &self.fixed_prompt {
             scope.require_native_activation()?;
         }
         if self.bound.get().is_some()
@@ -455,7 +433,7 @@ impl FullModelProgram {
                 "full24 exact once-bound indexed phase resources".into(),
             ));
         }
-        if !Arc::ptr_eq(&library.source, &self.source) {
+        if !library.source.same_issuer(&self.source) {
             return Err(Error::State(
                 "full24 native library immutable source owner differs".into(),
             ));
@@ -465,7 +443,7 @@ impl FullModelProgram {
         library.attention.require_phase(phase, &attention)?;
         let mut layers = BTreeSet::new();
         for state in &states {
-            if state.call() != self.record.call() || !layers.insert(state.layer().index()) {
+            if state.call() != self.record.call() || !layers.insert(state.layer()) {
                 return Err(Error::State(
                     "full24 bound actual indexed source-state cohort".into(),
                 ));
@@ -477,13 +455,13 @@ impl FullModelProgram {
             ));
         }
         for state in &states {
-            if state.layer().is_attention() {
+            if state.kv_domain().is_ok() {
                 attention
-                    .get(&state.layer().index())
+                    .get(&state.layer())
                     .ok_or_else(|| Error::State("full24 attention layer-key mismatch".into()))?
                     .require_value_state(&self.values, state)?;
             } else {
-                gdn.get(&state.layer().index())
+                gdn.get(&state.layer())
                     .ok_or_else(|| Error::State("full24 GDN layer-key mismatch".into()))?
                     .require_value_state(&self.values, state)?;
             }
@@ -554,9 +532,9 @@ impl FullModelProgram {
                 gdn_arithmetic,
                 phase,
                 library: Some(library),
-                canonical47_prefix: None,
+                fixed_prompt_prefix: None,
                 canonical_call: None,
-                short_hf: None,
+                text: None,
                 states,
                 gdn,
                 attention,
@@ -567,7 +545,7 @@ impl FullModelProgram {
     pub(crate) fn values(&self) -> &Arc<ModelValues> {
         &self.values
     }
-    pub(crate) fn record(&self) -> &Arc<RecordedVllm08Model> {
+    pub(crate) fn record(&self) -> &Arc<SourceBindings> {
         &self.record
     }
     pub(crate) fn status(&self) -> &ResidentLease {
@@ -576,7 +554,7 @@ impl FullModelProgram {
     /// Immutable source gamma owners; no bound phase, root or value reuse.
     pub(crate) fn cohort_gammas(
         &self,
-    ) -> Result<BTreeMap<usize, crate::vllm_cuda_input_rms::cohort::CohortGamma>> {
+    ) -> Result<BTreeMap<usize, crate::cuda::rms::cohort::CohortGamma>> {
         let mut gammas = BTreeMap::new();
         gammas.insert(1, self.rms.cohort_gamma(&self._ordinary_binding)?);
         for (&node, rms) in &self.fused {
@@ -621,9 +599,10 @@ impl FullModelProgram {
             .ok_or_else(|| Error::State("original model phase absent".into()))?;
         permit.require_invocation(
             self.values.service(),
-            self.record.call().request(),
+            self.record.call(),
+            0,
             if bound
-                .canonical47_prefix
+                .fixed_prompt_prefix
                 .as_ref()
                 .is_some_and(|p| !p.cut.is_whole())
             {
@@ -659,10 +638,10 @@ impl FullModelProgram {
         Ok(())
     }
     pub(crate) fn validate_runtime(&self, p: RuntimeParameters) -> Result<()> {
-        let request = self.record.call().request();
-        if p.position != request.teachers().base()
-            || p.valid_tokens != self.record.call().rows()
-            || Some(p.token) != request.teachers().ids().first().copied()
+        let request = self.record.call();
+        if p.position != request.rows().base()
+            || p.valid_tokens != self.record.call().rows().len()
+            || Some(p.token) != request.rows().ids().first().copied()
         {
             return Err(Error::State(
                 "full24 runtime differs from original source teacher/phase".into(),
@@ -713,7 +692,7 @@ impl FullModelProgram {
         cancelled(cancel)?;
         let permit =
             permit.ok_or_else(|| Error::State("full24 original borrowed permit absent".into()))?;
-        if let Some(current) = self.bound.get().and_then(|bound| bound.short_hf.as_ref()) {
+        if let Some(current) = self.bound.get().and_then(|bound| bound.text.as_ref()) {
             // begin_launch checked the complete immutable prior cohort before
             // node0. This borrowed permit prevents restore/publication; priors
             // stay retained Reads. Recheck current authority and physical fence
@@ -729,16 +708,17 @@ impl FullModelProgram {
             .bound
             .get()
             .ok_or_else(|| Error::State("full24 state/library preparation absent".into()))?;
-        if matches!(node.operation, PlanOperation::TypedVllmBf16Embedding { .. }) {
+        if matches!(&node.operation, PlanOperation::SourceOperator { descriptor, .. } if descriptor.kind() == SourceOperatorKind::EmbeddingRows)
+        {
             if index != 0 {
                 return Err(Error::State("full24 source embedding index differs".into()));
             }
-            if let Some(current) = &bound.short_hf {
+            if let Some(current) = &bound.text {
                 self.values.require_storage_node(index)?;
                 current
                     .input
                     .require_permit(permit, self.values.service())?;
-                let rows = self.rms.enqueue_short_hf_embedding(permit, cancel)?;
+                let rows = self.rms.enqueue_text_embedding(permit, cancel)?;
                 let positions = current
                     .positions
                     .enqueue(permit.session(), permit, cancel)?;
@@ -754,18 +734,18 @@ impl FullModelProgram {
             return Ok(copies);
         }
         let op = descriptor(node)?;
-        if op.call() != self.record.call() {
+        if op.call() != &*self.record.call() {
             return Err(Error::State(
                 "full24 original node invocation differs".into(),
             ));
         }
-        if let Some(current) = &bound.short_hf
+        if let Some(current) = &bound.text
             && !matches!(
                 op.kind(),
-                Vllm08Kind::InputRms
-                    | Vllm08Kind::ResidualRms(_)
-                    | Vllm08Kind::GdnConv
-                    | Vllm08Kind::GdnRecurrent
+                SourceOperatorKind::Rms(_)
+                    | SourceOperatorKind::ResidualRms(_)
+                    | SourceOperatorKind::CausalConvSplit { .. }
+                    | SourceOperatorKind::GatedDelta { .. }
             )
         {
             current
@@ -812,8 +792,8 @@ impl FullModelProgram {
                 ));
             }
             if self.fault.load(Ordering::Acquire) == 19
-                && op.kind() == Vllm08Kind::FlashAttention
-                && op.layer().is_some_and(|l| l.index() == 23)
+                && matches!(op.kind(), SourceOperatorKind::FlashAttention { .. })
+                && self.attention_sites.get(&index) == Some(&23)
             {
                 self.fault_cut.store(true, Ordering::Release);
                 return Err(Error::State(
@@ -825,10 +805,10 @@ impl FullModelProgram {
         if let Some(current) = &bound.canonical_call
             && !matches!(
                 op.kind(),
-                Vllm08Kind::InputRms
-                    | Vllm08Kind::ResidualRms(_)
-                    | Vllm08Kind::GdnConv
-                    | Vllm08Kind::GdnRecurrent
+                SourceOperatorKind::Rms(_)
+                    | SourceOperatorKind::ResidualRms(_)
+                    | SourceOperatorKind::CausalConvSplit { .. }
+                    | SourceOperatorKind::GatedDelta { .. }
             )
         {
             current
@@ -844,8 +824,8 @@ impl FullModelProgram {
             self.device_copies
                 .fetch_add(submitted.copies, Ordering::AcqRel);
             if self.fault.load(Ordering::Acquire) == 19
-                && op.kind() == Vllm08Kind::FlashAttention
-                && op.layer().is_some_and(|l| l.index() == 23)
+                && matches!(op.kind(), SourceOperatorKind::FlashAttention { .. })
+                && self.attention_sites.get(&index) == Some(&23)
             {
                 self.fault_cut.store(true, Ordering::Release);
                 return Err(Error::State(
@@ -855,14 +835,14 @@ impl FullModelProgram {
             }
             return Ok(submitted.native + submitted.clears + submitted.copies);
         }
-        if let Some(prefix) = &bound.canonical47_prefix
+        if let Some(prefix) = &bound.fixed_prompt_prefix
             && prefix.cut.is_whole()
             && !matches!(
                 op.kind(),
-                Vllm08Kind::InputRms
-                    | Vllm08Kind::ResidualRms(_)
-                    | Vllm08Kind::GdnConv
-                    | Vllm08Kind::GdnRecurrent
+                SourceOperatorKind::Rms(_)
+                    | SourceOperatorKind::ResidualRms(_)
+                    | SourceOperatorKind::CausalConvSplit { .. }
+                    | SourceOperatorKind::GatedDelta { .. }
             )
         {
             let before = prefix.native.enqueued_records();
@@ -890,36 +870,37 @@ impl FullModelProgram {
             return result;
         }
         match op.kind() {
-            Vllm08Kind::InputRms => {
+            SourceOperatorKind::Rms(_) => {
                 if index != 1 {
                     return Err(Error::State("full24 ordinary RMS index differs".into()));
                 }
                 self.rms.enqueue()?;
                 Ok(10)
             }
-            Vllm08Kind::ResidualRms(_) => {
+            SourceOperatorKind::ResidualRms(_) => {
                 let rms = self
                     .fused
                     .get(&index)
                     .ok_or_else(|| Error::State("full24 bound dualRMS node absent".into()))?;
-                rms.require_full_model_operator(op)?;
+                rms.require_source_operator(op)?;
                 rms.enqueue(cancel)?;
                 Ok(10)
             }
-            Vllm08Kind::GdnConv | Vllm08Kind::GdnRecurrent => {
-                let layer = op
-                    .layer()
-                    .ok_or_else(|| Error::State("full24 GDN layer absent".into()))?
-                    .index();
+            SourceOperatorKind::CausalConvSplit { .. } | SourceOperatorKind::GatedDelta { .. } => {
+                let layer = match op.kind() {
+                    SourceOperatorKind::CausalConvSplit { domain, .. } => domain.0,
+                    SourceOperatorKind::GatedDelta { domain, .. } => domain.0,
+                    _ => unreachable!(),
+                };
                 let prepared = bound
                     .gdn
                     .get(&layer)
                     .ok_or_else(|| Error::State("full24 GDN indexed binding absent".into()))?;
                 let late_cancel = layer == 0
-                    && op.kind() == Vllm08Kind::GdnRecurrent
+                    && matches!(op.kind(), SourceOperatorKind::GatedDelta { .. })
                     && (self.fault.load(Ordering::Acquire) == 2
                         || bound
-                            .canonical47_prefix
+                            .fixed_prompt_prefix
                             .as_ref()
                             .is_some_and(|p| p.cut.is_whole())
                             && self.fault.load(Ordering::Acquire) == 18);
@@ -936,13 +917,13 @@ impl FullModelProgram {
                         cancel
                     },
                 )?;
-                if op.kind() == Vllm08Kind::GdnConv {
+                if matches!(op.kind(), SourceOperatorKind::CausalConvSplit { .. }) {
                     self.convolution_dispatches
                         .fetch_add(count, Ordering::AcqRel);
                     if layer == 0
                         && (self.fault.load(Ordering::Acquire) == 1
                             || bound
-                                .canonical47_prefix
+                                .fixed_prompt_prefix
                                 .as_ref()
                                 .is_some_and(|p| p.cut.is_whole())
                                 && self.fault.load(Ordering::Acquire) == 17)
@@ -956,7 +937,9 @@ impl FullModelProgram {
                 }
                 Ok(count)
             }
-            Vllm08Kind::Projection(Vllm08Projection::Head) => {
+            SourceOperatorKind::Projection {
+                selected_row: Some(_),
+            } => {
                 let n = bound
                     .full_library()?
                     .head
@@ -964,14 +947,16 @@ impl FullModelProgram {
                 self.native_launches.fetch_add(n, Ordering::AcqRel);
                 Ok(n)
             }
-            Vllm08Kind::Projection(Vllm08Projection::AttentionQkv)
-                if bound
-                    .canonical47_prefix
-                    .as_ref()
-                    .is_some_and(|p| p.cut.includes_qkv()) =>
+            SourceOperatorKind::Projection { .. }
+                if self.attention_sites.contains_key(&index)
+                    && op.matrices().len() == 3
+                    && bound
+                        .fixed_prompt_prefix
+                        .as_ref()
+                        .is_some_and(|p| p.cut.includes_qkv()) =>
             {
                 let prefix = bound
-                    .canonical47_prefix
+                    .fixed_prompt_prefix
                     .as_ref()
                     .ok_or_else(|| Error::State("canonical47 QKV cut absent".into()))?;
                 // One original armed flight covers producer and reducer. No
@@ -1001,14 +986,14 @@ impl FullModelProgram {
                 }
                 result
             }
-            Vllm08Kind::AttentionQk | Vllm08Kind::KvAppend
+            SourceOperatorKind::QkRmsRotaryGated(_) | SourceOperatorKind::KvAppend { .. }
                 if bound
-                    .canonical47_prefix
+                    .fixed_prompt_prefix
                     .as_ref()
                     .is_some_and(|p| p.cut.includes_kv()) =>
             {
                 let prefix = bound
-                    .canonical47_prefix
+                    .fixed_prompt_prefix
                     .as_ref()
                     .ok_or_else(|| Error::State("canonical47 QK/KV cut absent".into()))?;
                 let mode = self.fault.load(Ordering::Acquire);
@@ -1036,14 +1021,14 @@ impl FullModelProgram {
                 }
                 result
             }
-            Vllm08Kind::FlashAttention
+            SourceOperatorKind::FlashAttention { .. }
                 if bound
-                    .canonical47_prefix
+                    .fixed_prompt_prefix
                     .as_ref()
                     .is_some_and(|p| p.cut.includes_fa()) =>
             {
                 let prefix = bound
-                    .canonical47_prefix
+                    .fixed_prompt_prefix
                     .as_ref()
                     .ok_or_else(|| Error::State("canonical47 FA cut absent".into()))?;
                 let mode = self.fault.load(Ordering::Acquire);
@@ -1069,20 +1054,18 @@ impl FullModelProgram {
                 }
                 result
             }
-            Vllm08Kind::Sigmoid
-            | Vllm08Kind::Multiply
-            | Vllm08Kind::Projection(
-                Vllm08Projection::AttentionOut | Vllm08Projection::GateUp | Vllm08Projection::Down,
-            )
-            | Vllm08Kind::SiluAndMul
+            SourceOperatorKind::Sigmoid { .. }
+            | SourceOperatorKind::Multiply { .. }
+            | SourceOperatorKind::Projection { .. }
+            | SourceOperatorKind::SiluAndMul { .. }
                 if bound
-                    .canonical47_prefix
+                    .fixed_prompt_prefix
                     .as_ref()
                     .is_some_and(|p| p.cut.includes_layer3())
                     && matches!(index, 36 | 37 | 38 | 40 | 41 | 42) =>
             {
                 let prefix = bound
-                    .canonical47_prefix
+                    .fixed_prompt_prefix
                     .as_ref()
                     .ok_or_else(|| Error::State("canonical47 full layer3 binding absent".into()))?;
                 let mode = self.fault.load(Ordering::Acquire);
@@ -1117,18 +1100,18 @@ impl FullModelProgram {
                 }
                 result
             }
-            Vllm08Kind::Projection(
-                Vllm08Projection::AttentionQkv | Vllm08Projection::AttentionOut,
-            )
-            | Vllm08Kind::AttentionQk
-            | Vllm08Kind::KvAppend
-            | Vllm08Kind::FlashAttention
-            | Vllm08Kind::Sigmoid
-            | Vllm08Kind::Multiply => {
-                let layer = op
-                    .layer()
-                    .ok_or_else(|| Error::State("full24 attention layer absent".into()))?
-                    .index();
+            SourceOperatorKind::Projection { .. }
+            | SourceOperatorKind::QkRmsRotaryGated(_)
+            | SourceOperatorKind::KvAppend { .. }
+            | SourceOperatorKind::FlashAttention { .. }
+            | SourceOperatorKind::Sigmoid { .. }
+            | SourceOperatorKind::Multiply { .. }
+                if self.attention_sites.contains_key(&index) =>
+            {
+                let layer = *self
+                    .attention_sites
+                    .get(&index)
+                    .ok_or_else(|| Error::State("full24 attention binding site absent".into()))?;
                 let binding = bound
                     .attention
                     .get(&layer)
@@ -1147,8 +1130,8 @@ impl FullModelProgram {
                     .fetch_add(submitted.device_copies, Ordering::AcqRel);
                 Ok(submitted.native_launches + submitted.device_copies + submitted.transports)
             }
-            Vllm08Kind::Projection(_) | Vllm08Kind::SiluAndMul => {
-                if let Some(prefix) = &bound.canonical47_prefix {
+            SourceOperatorKind::Projection { .. } | SourceOperatorKind::SiluAndMul { .. } => {
+                if let Some(prefix) = &bound.fixed_prompt_prefix {
                     let count = prefix.native.enqueue(index, cancel)?;
                     self.native_launches.fetch_add(count, Ordering::AcqRel);
                     return Ok(count);
@@ -1164,13 +1147,16 @@ impl FullModelProgram {
                     .fetch_add(submitted.workspace_clears, Ordering::AcqRel);
                 Ok(submitted.dispatches + submitted.workspace_clears)
             }
+            _ => Err(Error::Unsupported(
+                "source operator has no prepared full-model physical node".into(),
+            )),
         }
     }
     pub(crate) fn arm_fault(&self, mode: usize) -> Result<()> {
         if self
             .bound
             .get()
-            .and_then(|b| b.canonical47_prefix.as_ref())
+            .and_then(|b| b.fixed_prompt_prefix.as_ref())
             .is_some_and(|p| p.cut.is_whole())
         {
             return Err(Error::Unsupported(
@@ -1180,22 +1166,22 @@ impl FullModelProgram {
         let qkv = self
             .bound
             .get()
-            .and_then(|b| b.canonical47_prefix.as_ref())
+            .and_then(|b| b.fixed_prompt_prefix.as_ref())
             .is_some_and(|p| p.cut.includes_qkv());
         let kv = self
             .bound
             .get()
-            .and_then(|b| b.canonical47_prefix.as_ref())
+            .and_then(|b| b.fixed_prompt_prefix.as_ref())
             .is_some_and(|p| p.cut.includes_kv());
         let fa = self
             .bound
             .get()
-            .and_then(|b| b.canonical47_prefix.as_ref())
+            .and_then(|b| b.fixed_prompt_prefix.as_ref())
             .is_some_and(|p| p.cut.includes_fa());
         let layer3 = self
             .bound
             .get()
-            .and_then(|b| b.canonical47_prefix.as_ref())
+            .and_then(|b| b.fixed_prompt_prefix.as_ref())
             .is_some_and(|p| p.cut.includes_layer3());
         if !(matches!(mode, 0..=2)
             || (qkv && matches!(mode, 3 | 4))
@@ -1231,15 +1217,15 @@ impl FullModelProgram {
             .bound
             .get()
             .ok_or_else(|| Error::State("original model output before binding".into()))?;
-        if let Some(current) = &bound.short_hf {
+        if let Some(current) = &bound.text {
             self.values.require_finished_storage()?;
             current.certification.require_flushed()?;
         } else {
             self.values.finish_storage()?;
         }
-        if bound.canonical47_prefix.is_some() {
+        if bound.fixed_prompt_prefix.is_some() {
             cancelled(cancel)?;
-            self.finish_canonical47_prefix_nodes()?;
+            self.finish_fixed_prompt_prefix_nodes()?;
             if self.greedy.get().is_some() || self.output_submitted.swap(true, Ordering::AcqRel) {
                 return Err(Error::State(
                     "canonical47 finite prefix has no Head/output consumer; finish once".into(),
@@ -1262,7 +1248,7 @@ impl FullModelProgram {
         Ok(n)
     }
     pub(crate) fn certify(&self, value: &DeviceBuffer, status: &Handle) -> Result<usize> {
-        if let Some(current) = self.bound.get().and_then(|b| b.short_hf.as_ref()) {
+        if let Some(current) = self.bound.get().and_then(|b| b.text.as_ref()) {
             let node = self
                 .next_node
                 .load(Ordering::Acquire)
@@ -1276,7 +1262,7 @@ impl FullModelProgram {
     }
     /// Before private proposal certification, sampler and any status readback.
     pub(crate) fn flush_certificates(&self, cancel: Option<&AtomicBool>) -> Result<usize> {
-        if let Some(current) = self.bound.get().and_then(|b| b.short_hf.as_ref()) {
+        if let Some(current) = self.bound.get().and_then(|b| b.text.as_ref()) {
             if !self.launched.load(Ordering::Acquire)
                 || self.next_node.load(Ordering::Acquire) != self.record.plan().nodes().len()
             {
@@ -1293,7 +1279,7 @@ impl FullModelProgram {
     pub(crate) fn finite_certification_metrics(&self) -> [usize; 5] {
         self.bound
             .get()
-            .and_then(|b| b.short_hf.as_ref())
+            .and_then(|b| b.text.as_ref())
             .map(|c| c.certification.metrics())
             .unwrap_or([0; 5])
     }
@@ -1335,7 +1321,7 @@ impl FullModelProgram {
         for fused in self.fused.values() {
             reads.extend(fused.readbacks()?);
         }
-        if bound.canonical47_prefix.is_some() {
+        if bound.fixed_prompt_prefix.is_some() {
             return Ok(reads);
         }
         reads.extend(
@@ -1350,12 +1336,12 @@ impl FullModelProgram {
         if self
             .bound
             .get()
-            .is_some_and(|b| b.canonical47_prefix.is_some())
+            .is_some_and(|b| b.fixed_prompt_prefix.is_some())
         {
-            return self.validate_canonical47_prefix_readbacks(raw);
+            return self.validate_fixed_prompt_prefix_readbacks(raw);
         }
         if self.bound.get().is_some_and(|b| b.canonical_call.is_some()) {
-            return self.validate_canonical47_call_readbacks(raw);
+            return self.validate_fixed_prompt_call_readbacks(raw);
         }
         const STATUS: usize = 1 + 18 + 6;
         if raw.len() != STATUS + 3 + 327 + 48 * 4 + 2 || raw[0][..] != [0; 4] {
@@ -1371,7 +1357,7 @@ impl FullModelProgram {
             }
         }
         for status in &raw[19..STATUS] {
-            crate::vllm_cuda_qualification::model_kv_transport::ModelKvTransport::validate_status(
+            crate::cuda::native::model_kv_transport::ModelKvTransport::validate_status(
                 &status[..],
             )?;
         }
@@ -1390,20 +1376,14 @@ impl FullModelProgram {
 impl ResidentProgram {
     pub(crate) async fn prepare_full_model_values(
         service: Arc<ResidentService>,
-        source: Arc<OriginalWindowModelSource>,
-        record: Arc<RecordedVllm08Model>,
+        record: Arc<SourceBindings>,
         cancel: Option<&AtomicBool>,
     ) -> Result<Self> {
-        let (body, values, preflight) = FullModelProgram::prepare_values(
-            service.clone(),
-            source.clone(),
-            record.clone(),
-            cancel,
-        )
-        .await?;
+        let (body, values, preflight) =
+            FullModelProgram::prepare_values(service.clone(), record.clone(), cancel).await?;
         Ok(Self {
-            _source_owner: ResidentProgramSource::Windows(source),
-            plan: record.plan().clone(),
+            _source_owner: ResidentProgramSource::Windows(record.source().clone()),
+            plan: record.shared_plan(),
             preflight,
             values,
             status: body.status().handle(),
@@ -1434,7 +1414,7 @@ impl ResidentProgram {
             .full_model_body()?
             .bound
             .get()
-            .and_then(|bound| bound.short_hf.as_ref())
+            .and_then(|bound| bound.text.as_ref())
         {
             current.native.native_provider_bytes()?
         } else {
@@ -1468,18 +1448,18 @@ impl ResidentProgram {
     }
 }
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 mod natural;
 
 mod publication;
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 mod rms_scratch;
 
 mod value_storage;
-pub(crate) use value_storage::ShortHfReadbackAdmission;
+pub(crate) use value_storage::TextReadbackAdmission;
 
-mod short_hf_inventory;
+mod text_inventory;
 
 impl FullModelProgram {
     pub(crate) fn prepare_code(&self, queue: &cubecl::cuda::OwnedCudaQueue) -> Result<usize> {

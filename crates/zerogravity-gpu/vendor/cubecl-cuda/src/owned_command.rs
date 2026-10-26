@@ -14,7 +14,7 @@ pub(crate) mod source_upload;
 pub(crate) mod weight_upload;
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
 pub use weight_upload::OwnedCudaTransferRetirement;
-pub use weight_upload::Vllm08WeightLayout;
+pub use weight_upload::SourceWeightLayout;
 
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
 pub(crate) mod cubin;
@@ -100,4 +100,4 @@ impl OwnedCudaQueue {
 pub use bf16_gemm::OwnedBf16BlasProvider;
 
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
-pub use embedding_rows::{Bf16MatrixLayout, ShortHfEmbeddingWidth};
+pub use embedding_rows::{Bf16MatrixLayout, TextEmbeddingWidth};

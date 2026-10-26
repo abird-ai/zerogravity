@@ -4,7 +4,7 @@ use cubecl_core::server::{Handle, ServerError};
 use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Vllm08WeightLayout {
+pub enum SourceWeightLayout {
     GdnQkvz,
     GdnBa,
     GdnOutput,
@@ -22,7 +22,7 @@ pub enum Vllm08WeightLayout {
     Vocabulary08,
     Vocabulary2b,
 }
-impl Vllm08WeightLayout {
+impl SourceWeightLayout {
     pub const fn columns(self) -> usize {
         match self {
             Self::GdnOutput | Self::AttentionOutput => 2048,
@@ -79,7 +79,7 @@ impl OwnedCudaQueue {
     pub unsafe fn enqueue_vllm08_weight_window<T>(
         &self,
         destination: Handle,
-        layout: Vllm08WeightLayout,
+        layout: SourceWeightLayout,
         offset: usize,
         source: Arc<T>,
     ) -> Result<(), ServerError>
@@ -109,7 +109,7 @@ impl OwnedCudaQueue {
     pub unsafe fn enqueue_streamed_head_window<T>(
         &self,
         destination: Handle,
-        layout: Vllm08WeightLayout,
+        layout: SourceWeightLayout,
         source: Arc<T>,
     ) -> Result<(), ServerError>
     where
@@ -137,7 +137,7 @@ impl OwnedCudaQueue {
         &self,
         weight: Handle,
         output: Handle,
-        layout: Vllm08WeightLayout,
+        layout: SourceWeightLayout,
         ordinal: usize,
         source: Arc<T>,
         verification: Option<Arc<std::sync::Mutex<Vec<u8>>>>,
@@ -175,13 +175,13 @@ mod tests {
     #[test]
     fn closed_layout_extents_and_real_down_tail_are_exact() {
         for (layout, bytes) in [
-            (Vllm08WeightLayout::GdnQkvz, 16777216),
-            (Vllm08WeightLayout::GdnBa, 65536),
-            (Vllm08WeightLayout::GdnOutput, 4194304),
-            (Vllm08WeightLayout::AttentionQkv, 10485760),
-            (Vllm08WeightLayout::AttentionOutput, 4194304),
-            (Vllm08WeightLayout::MlpGateUp, 14680064),
-            (Vllm08WeightLayout::MlpDown, 7340032),
+            (SourceWeightLayout::GdnQkvz, 16777216),
+            (SourceWeightLayout::GdnBa, 65536),
+            (SourceWeightLayout::GdnOutput, 4194304),
+            (SourceWeightLayout::AttentionQkv, 10485760),
+            (SourceWeightLayout::AttentionOutput, 4194304),
+            (SourceWeightLayout::MlpGateUp, 14680064),
+            (SourceWeightLayout::MlpDown, 7340032),
         ] {
             assert_eq!(layout.bytes(), bytes);
             let row = layout.columns() * 2;
@@ -197,7 +197,7 @@ mod tests {
             }
         }
         // K3584 is not a divisor of1MiB. Never round a copy into source padding.
-        let layout = Vllm08WeightLayout::MlpDown;
+        let layout = SourceWeightLayout::MlpDown;
         let stride = 146 * 7168;
         for index in 0..7 {
             layout.window(index * stride, stride).unwrap();
@@ -207,8 +207,8 @@ mod tests {
     }
     #[test]
     fn qwen2b_distinct_layouts_preserve_exact_rows_and_reject_padding() {
-        let gate = Vllm08WeightLayout::Qwen2bMlpGateUp;
-        let down = Vllm08WeightLayout::Qwen2bMlpDown;
+        let gate = SourceWeightLayout::Qwen2bMlpGateUp;
+        let down = SourceWeightLayout::Qwen2bMlpDown;
         assert_eq!(
             (gate.rows(), gate.columns(), gate.bytes()),
             (12288, 2048, 50331648)
@@ -217,8 +217,8 @@ mod tests {
             (down.rows(), down.columns(), down.bytes()),
             (2048, 6144, 25165824)
         );
-        assert_ne!(gate, Vllm08WeightLayout::MlpGateUp);
-        assert_ne!(down, Vllm08WeightLayout::MlpDown);
+        assert_ne!(gate, SourceWeightLayout::MlpGateUp);
+        assert_ne!(down, SourceWeightLayout::MlpDown);
         let chunk = 85 * 12288;
         for i in 0..24 {
             down.window(i * chunk, chunk).unwrap();
@@ -233,17 +233,17 @@ mod tests {
         ] {
             assert!(down.window(offset, size).is_err());
         }
-        assert_eq!(Vllm08WeightLayout::MlpGateUp.bytes(), 14680064);
-        assert_eq!(Vllm08WeightLayout::MlpDown.bytes(), 7340032);
+        assert_eq!(SourceWeightLayout::MlpGateUp.bytes(), 14680064);
+        assert_eq!(SourceWeightLayout::MlpDown.bytes(), 7340032);
     }
     #[test]
-    fn short_hf_2b_learned_layouts_preserve_real_widths_and_window_bounds() {
+    fn text_2b_learned_layouts_preserve_real_widths_and_window_bounds() {
         for (layout, rows, bytes) in [
-            (Vllm08WeightLayout::Qwen2bGdnQkvz, 8192, 33554432),
-            (Vllm08WeightLayout::Qwen2bGdnBa, 32, 131072),
-            (Vllm08WeightLayout::Qwen2bGdnOutput, 2048, 8388608),
-            (Vllm08WeightLayout::Qwen2bAttentionQkv, 5120, 20971520),
-            (Vllm08WeightLayout::Qwen2bAttentionOutput, 2048, 8388608),
+            (SourceWeightLayout::Qwen2bGdnQkvz, 8192, 33554432),
+            (SourceWeightLayout::Qwen2bGdnBa, 32, 131072),
+            (SourceWeightLayout::Qwen2bGdnOutput, 2048, 8388608),
+            (SourceWeightLayout::Qwen2bAttentionQkv, 5120, 20971520),
+            (SourceWeightLayout::Qwen2bAttentionOutput, 2048, 8388608),
         ] {
             assert_eq!(
                 (layout.rows(), layout.columns(), layout.bytes()),
@@ -258,10 +258,10 @@ mod tests {
     }
 
     #[test]
-    fn short_hf_tied_tables_have_whole_source_rows_and_exact_bounded_windows() {
+    fn text_tied_tables_have_whole_source_rows_and_exact_bounded_windows() {
         for (layout, bytes, windows) in [
-            (Vllm08WeightLayout::Vocabulary08, 508559360, 485),
-            (Vllm08WeightLayout::Vocabulary2b, 1017118720, 970),
+            (SourceWeightLayout::Vocabulary08, 508559360, 485),
+            (SourceWeightLayout::Vocabulary2b, 1017118720, 970),
         ] {
             assert_eq!(layout.rows(), 248320);
             assert_eq!(layout.bytes(), bytes);
@@ -352,7 +352,7 @@ impl OwnedCudaQueue {
         &self,
         weight: Handle,
         output: Handle,
-        layout: Vllm08WeightLayout,
+        layout: SourceWeightLayout,
         ordinal: usize,
         reusable: Option<OwnedCudaTransferRetirement>,
     ) -> Result<OwnedCudaTransferRetirement, ServerError> {

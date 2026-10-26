@@ -28,45 +28,45 @@ pub use derived_cubin::{PinnedBf16Cubin, PinnedBf16CubinDerivation};
 /// Actual pinned layer0 calls; phase semantics remain the caller's contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ObservedBf16Gemm {
-    Vllm08Layer0QkvzDecode,
-    Vllm08Layer0BaDecode,
-    Vllm08Layer0QkvzPrefill,
-    Vllm08Layer0BaPrefill,
-    Vllm08Layer0OutProjectionDecode,
-    Vllm08Layer0OutProjectionPrefill,
-    Vllm08Layer0QkvzContinuedPrefill,
-    Vllm08Layer0BaContinuedPrefill,
-    Vllm08Layer0OutProjectionContinuedPrefill,
+    Qwen08Layer0QkvzDecode,
+    Qwen08Layer0BaDecode,
+    Qwen08Layer0QkvzPrefill,
+    Qwen08Layer0BaPrefill,
+    Qwen08Layer0OutProjectionDecode,
+    Qwen08Layer0OutProjectionPrefill,
+    Qwen08Layer0QkvzContinuedPrefill,
+    Qwen08Layer0BaContinuedPrefill,
+    Qwen08Layer0OutProjectionContinuedPrefill,
 }
 
 impl ObservedBf16Gemm {
     pub const fn m(self) -> usize {
         match self {
-            Self::Vllm08Layer0QkvzDecode
-            | Self::Vllm08Layer0QkvzPrefill
-            | Self::Vllm08Layer0QkvzContinuedPrefill => 8192,
-            Self::Vllm08Layer0BaDecode
-            | Self::Vllm08Layer0BaPrefill
-            | Self::Vllm08Layer0BaContinuedPrefill => 32,
+            Self::Qwen08Layer0QkvzDecode
+            | Self::Qwen08Layer0QkvzPrefill
+            | Self::Qwen08Layer0QkvzContinuedPrefill => 8192,
+            Self::Qwen08Layer0BaDecode
+            | Self::Qwen08Layer0BaPrefill
+            | Self::Qwen08Layer0BaContinuedPrefill => 32,
             _ => 1024,
         }
     }
     pub const fn n(self) -> usize {
         match self {
-            Self::Vllm08Layer0QkvzDecode
-            | Self::Vllm08Layer0BaDecode
-            | Self::Vllm08Layer0OutProjectionDecode => 1,
-            Self::Vllm08Layer0QkvzPrefill
-            | Self::Vllm08Layer0BaPrefill
-            | Self::Vllm08Layer0OutProjectionPrefill => 64,
+            Self::Qwen08Layer0QkvzDecode
+            | Self::Qwen08Layer0BaDecode
+            | Self::Qwen08Layer0OutProjectionDecode => 1,
+            Self::Qwen08Layer0QkvzPrefill
+            | Self::Qwen08Layer0BaPrefill
+            | Self::Qwen08Layer0OutProjectionPrefill => 64,
             _ => 2,
         }
     }
     pub const fn k(self) -> usize {
         match self {
-            Self::Vllm08Layer0OutProjectionDecode
-            | Self::Vllm08Layer0OutProjectionPrefill
-            | Self::Vllm08Layer0OutProjectionContinuedPrefill => 2048,
+            Self::Qwen08Layer0OutProjectionDecode
+            | Self::Qwen08Layer0OutProjectionPrefill
+            | Self::Qwen08Layer0OutProjectionContinuedPrefill => 2048,
             _ => 1024,
         }
     }

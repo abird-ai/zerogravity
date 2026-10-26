@@ -31,10 +31,7 @@ impl TextPositionsPrepared {
             return Err(Error::State("source positions cancelled".into()));
         }
         init.require_service(binding.service())?;
-        let host = binding
-            .source()
-            .source()
-            .reserve_workspace(3 * POSITION_BYTES)?;
+        let host = binding.source().reserve_workspace(3 * POSITION_BYTES)?;
         let bytes = binding.bytes()?.to_vec();
         if bytes.capacity() > POSITION_BYTES {
             return Err(Error::Limit("source position payload capacity".into()));
@@ -67,7 +64,7 @@ impl TextPositionsPrepared {
         if !self.lease.is_initialized()
             || !Arc::ptr_eq(self.lease.service(), self.payload.binding.service())
             || self.lease.bytes() != POSITION_BYTES
-            || self.lease.source_identity() != self.payload.binding.invocation().teachers().source()
+            || self.lease.source_identity() != self.payload.binding.invocation().source()
         {
             return Err(Error::State(
                 "original position upload not completed or lease changed".into(),
@@ -90,9 +87,8 @@ impl TextPositionsPrepared {
     }
     pub(crate) fn require_invocation(
         &self,
-        invocation: &zerogravity_core::accelerator::program::VllmBf16Invocation,
+        invocation: &zerogravity_core::accelerator::program::SourceCall,
     ) -> Result<()> {
-        invocation.validate()?;
         if self.payload.binding.invocation() != invocation {
             return Err(Error::State(
                 "source positions differ from actual same-plan teacher issuer".into(),
@@ -102,11 +98,11 @@ impl TextPositionsPrepared {
     }
 }
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 mod natural;
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
-pub(crate) mod canonical_natural;
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+pub(crate) mod fixed_prompt_natural;
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
-pub(crate) mod short_hf;
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+pub(crate) mod text;

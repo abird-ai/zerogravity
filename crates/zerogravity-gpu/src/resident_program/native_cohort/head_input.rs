@@ -1,12 +1,20 @@
 //! Four actual final source rows; no independent batch/model/root authority.
 use super::super::*;
 use super::values::CohortValues;
-use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, short_hf::ShortHfCallInput};
+use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextCallInput};
 use crate::resident_leases::{ResidentInitialization, ResidentLease};
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
+fn require_last_row(rows: usize, selected: Option<usize>) -> Result<usize> {
+    if rows == 0 || selected != Some(rows - 1) {
+        return Err(Error::State(
+            "B4 captured head requires actual final selected row".into(),
+        ));
+    }
+    Ok(rows - 1)
+}
 pub(super) struct CohortHeadInput {
-    inputs: Box<[Arc<ShortHfCallInput>]>,
+    inputs: Box<[Arc<TextCallInput>]>,
     values: Arc<CohortValues>,
     source: ResidentLease,
     selected: ResidentLease,
@@ -18,13 +26,13 @@ pub(super) struct CohortHeadInput {
 }
 impl CohortHeadInput {
     pub(super) fn prepare(
-        inputs: &[Arc<ShortHfCallInput>],
+        inputs: &[Arc<TextCallInput>],
         values: Arc<CohortValues>,
         status: ResidentLease,
         init: &mut ResidentInitialization<'_>,
     ) -> Result<Arc<Self>> {
         values.require_inputs(inputs)?;
-        crate::vllm_cuda_qualification::cohort_native::require_input_shape(inputs)?;
+        crate::cuda::native::cohort_native::require_input_shape(inputs)?;
         init.require_service(values.service())?;
         if inputs.len() != 4
             || status.bytes() != 4
@@ -35,13 +43,20 @@ impl CohortHeadInput {
             ));
         }
         let logical = inputs[0].rows();
-        let hidden = inputs[0].call().model_profile().hidden_size();
-        let normalized = inputs[0].record().normalized();
+        let hidden = inputs[0].scope().native_capture().hidden_width();
+        let selected_row =
+            require_last_row(logical, inputs[0].record().selection().selected_row())?;
+        let normalized = inputs[0]
+            .record()
+            .selection()
+            .normalized()
+            .ok_or_else(|| Error::State("B4 final normalized selection absent".into()))?;
         for input in inputs {
             if !matches!((input.rows(), input.base()), (47, 0) | (1, 47..=53))
                 || input.rows() != logical
-                || input.record().normalized() != normalized
-                || input.workload().prompt_rows() != 47
+                || input.record().selection().normalized() != Some(normalized)
+                || input.record().selection().selected_row() != Some(logical - 1)
+                || input.prompt_tokens() != 47
             {
                 return Err(Error::State(
                     "B4 final normalized source producer/span".into(),
@@ -62,7 +77,7 @@ impl CohortHeadInput {
             selected,
             status,
             source_stride: logical * (hidden / 2),
-            source_offset: (logical - 1) * (hidden / 2),
+            source_offset: selected_row * (hidden / 2),
             width_words: hidden / 2,
             submitted: AtomicBool::new(false),
         });
@@ -112,5 +127,21 @@ impl CohortHeadInput {
             (self.selected.clone(), DeviceAccess::Write),
             (self.status.clone(), DeviceAccess::Write),
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn metadata_cannot_retarget_captured_last_row_gather() {
+        for rows in [1, 47] {
+            assert_eq!(require_last_row(rows, Some(rows - 1)).unwrap(), rows - 1);
+            assert!(require_last_row(rows, None).is_err());
+            assert!(require_last_row(rows, Some(rows)).is_err());
+        }
+        assert!(require_last_row(47, Some(0)).is_err());
+        assert!(require_last_row(0, None).is_err());
+        assert!(require_last_row(0, Some(usize::MAX)).is_err());
     }
 }

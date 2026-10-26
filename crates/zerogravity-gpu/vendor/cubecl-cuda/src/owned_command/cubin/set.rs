@@ -145,7 +145,7 @@ impl OwnedCudaQueue {
     /// The armed original initialization retains the exact five sealed images,
     /// source owners and SAME prepaid native charge before any load. Every
     /// manifest must match its complete finite ABI; no profile/Ready authority.
-    pub unsafe fn admit_canonical47_mlp_cubin_set(
+    pub unsafe fn admit_fixed_prompt_mlp_cubin_set(
         self: &Arc<Self>,
         owner: Arc<dyn Any + Send + Sync>,
     ) -> Result<Arc<OwnedCudaModuleSet>, ServerError> {
@@ -153,7 +153,7 @@ impl OwnedCudaQueue {
         let retained = owner.clone();
         self.actor
             .submit_blocking(move |server| {
-                server.admit_owned_canonical47_mlp_cubin_set(key, retained)
+                server.admit_owned_fixed_prompt_mlp_cubin_set(key, retained)
             })
             .map_err(|error| failure(format!("original47 MLP set admission actor:{error:?}")))??;
         Ok(Arc::new(OwnedCudaModuleSet {
@@ -188,7 +188,7 @@ impl OwnedCudaQueue {
     /// # Safety
     /// SAME armed initialization retains all six exact image/source/admission
     /// owners and prepaid charge. No intermediate packet completion or publisher.
-    pub unsafe fn admit_canonical47_qkv_cubin_set(
+    pub unsafe fn admit_fixed_prompt_qkv_cubin_set(
         self: &Arc<Self>,
         owner: Arc<dyn Any + Send + Sync>,
     ) -> Result<Arc<OwnedCudaModuleSet>, ServerError> {
@@ -196,7 +196,7 @@ impl OwnedCudaQueue {
         let retained = owner.clone();
         self.actor
             .submit_blocking(move |server| {
-                server.admit_owned_canonical47_qkv_cubin_set(key, retained)
+                server.admit_owned_fixed_prompt_qkv_cubin_set(key, retained)
             })
             .map_err(|error| failure(format!("original47 QKV set admission actor:{error:?}")))??;
         Ok(Arc::new(OwnedCudaModuleSet {
@@ -210,7 +210,7 @@ impl OwnedCudaQueue {
     /// # Safety
     /// SAME armed initialization retains all eight exact image/source/admission
     /// owners and prepaid charge. No intermediate packet completion or publisher.
-    pub unsafe fn admit_canonical47_qkkv_cubin_set(
+    pub unsafe fn admit_fixed_prompt_qkkv_cubin_set(
         self: &Arc<Self>,
         owner: Arc<dyn Any + Send + Sync>,
     ) -> Result<Arc<OwnedCudaModuleSet>, ServerError> {
@@ -218,7 +218,7 @@ impl OwnedCudaQueue {
         let retained = owner.clone();
         self.actor
             .submit_blocking(move |server| {
-                server.admit_owned_canonical47_qkkv_cubin_set(key, retained)
+                server.admit_owned_fixed_prompt_qkkv_cubin_set(key, retained)
             })
             .map_err(|error| failure(format!("original47 QKV set admission actor:{error:?}")))??;
         Ok(Arc::new(OwnedCudaModuleSet {
@@ -232,7 +232,7 @@ impl OwnedCudaQueue {
     /// # Safety
     /// SAME armed initialization retains all nine exact image/source/admission
     /// owners and prepaid charge. No intermediate packet completion or publisher.
-    pub unsafe fn admit_canonical47_fa_cubin_set(
+    pub unsafe fn admit_fixed_prompt_fa_cubin_set(
         self: &Arc<Self>,
         owner: Arc<dyn Any + Send + Sync>,
     ) -> Result<Arc<OwnedCudaModuleSet>, ServerError> {
@@ -240,7 +240,7 @@ impl OwnedCudaQueue {
         let retained = owner.clone();
         self.actor
             .submit_blocking(move |server| {
-                server.admit_owned_canonical47_fa_cubin_set(key, retained)
+                server.admit_owned_fixed_prompt_fa_cubin_set(key, retained)
             })
             .map_err(|error| failure(format!("original47 QKV set admission actor:{error:?}")))??;
         Ok(Arc::new(OwnedCudaModuleSet {
@@ -253,7 +253,7 @@ impl OwnedCudaQueue {
     /// Closed initial47 full layer3 union; fixed11/14/15.
     /// # Safety
     /// SAME original armed initializer retains every sealed image/source/charge.
-    pub unsafe fn admit_canonical47_layer3_cubin_set(
+    pub unsafe fn admit_fixed_prompt_layer3_cubin_set(
         self: &Arc<Self>,
         owner: Arc<dyn Any + Send + Sync>,
     ) -> Result<Arc<OwnedCudaModuleSet>, ServerError> {
@@ -261,7 +261,7 @@ impl OwnedCudaQueue {
         let retained = owner.clone();
         self.actor
             .submit_blocking(move |server| {
-                server.admit_owned_canonical47_layer3_cubin_set(key, retained)
+                server.admit_owned_fixed_prompt_layer3_cubin_set(key, retained)
             })
             .map_err(|error| failure(format!("original47 QKV set admission actor:{error:?}")))??;
         Ok(Arc::new(OwnedCudaModuleSet {
@@ -274,7 +274,7 @@ impl OwnedCudaQueue {
     /// One complete Initial47 model set; exact12/15/16, no root publication.
     /// # Safety
     /// Same armed initialization retains complete source/images/native admission.
-    pub unsafe fn admit_canonical47_full_cubin_set(
+    pub unsafe fn admit_fixed_prompt_full_cubin_set(
         self: &Arc<Self>,
         owner: Arc<dyn Any + Send + Sync>,
     ) -> Result<Arc<OwnedCudaModuleSet>, ServerError> {
@@ -282,7 +282,7 @@ impl OwnedCudaQueue {
         let retained = owner.clone();
         self.actor
             .submit_blocking(move |server| {
-                server.admit_owned_canonical47_full_cubin_set(key, retained)
+                server.admit_owned_fixed_prompt_full_cubin_set(key, retained)
             })
             .map_err(|error| failure(format!("original47 full set admission actor:{error:?}")))??;
         Ok(Arc::new(OwnedCudaModuleSet {
@@ -295,7 +295,7 @@ impl OwnedCudaQueue {
     /// One finite47+seven cached original-call set.
     /// # Safety
     /// Same source/image charge retained by the original armed initialization.
-    pub unsafe fn admit_canonical47_natural_cubin_set(
+    pub unsafe fn admit_fixed_prompt_natural_cubin_set(
         self: &Arc<Self>,
         owner: Arc<dyn Any + Send + Sync>,
     ) -> Result<Arc<OwnedCudaModuleSet>, ServerError> {
@@ -303,7 +303,7 @@ impl OwnedCudaQueue {
         let retained = owner.clone();
         self.actor
             .submit_blocking(move |server| {
-                server.admit_owned_canonical47_natural_cubin_set(key, retained)
+                server.admit_owned_fixed_prompt_natural_cubin_set(key, retained)
             })
             .map_err(|error| failure(format!("original47 full set admission actor:{error:?}")))??;
         Ok(Arc::new(OwnedCudaModuleSet {
@@ -316,7 +316,7 @@ impl OwnedCudaQueue {
     /// Exact compiled short-HF profile/call catalogue on the original actor.
     /// # Safety
     /// The original armed initialization retains all source/image admissions.
-    pub unsafe fn admit_short_hf_cubin_set(
+    pub unsafe fn admit_text_cubin_set(
         self: &Arc<Self>,
         owner: Arc<dyn Any + Send + Sync>,
         two_b: bool,
@@ -325,7 +325,7 @@ impl OwnedCudaQueue {
         let retained = owner.clone();
         self.actor
             .submit_blocking(move |server| {
-                server.admit_owned_short_hf_cubin_set(key, retained, two_b, false)
+                server.admit_owned_text_cubin_set(key, retained, two_b, false)
             })
             .map_err(|e| failure(format!("short-HF set admission actor:{e:?}")))??;
         Ok(Arc::new(OwnedCudaModuleSet {
@@ -339,7 +339,7 @@ impl OwnedCudaQueue {
     /// # Safety
     /// Actual complete source/image/native admissions precede this call. This
     /// finite ABI policy confers no row, model, RootAttempt or math authority.
-    pub unsafe fn admit_short_hf_b4_cubin_set(
+    pub unsafe fn admit_text_b4_cubin_set(
         self: &Arc<Self>,
         owner: Arc<dyn Any + Send + Sync>,
         two_b: bool,
@@ -348,7 +348,7 @@ impl OwnedCudaQueue {
         let retained = owner.clone();
         self.actor
             .submit_blocking(move |server| {
-                server.admit_owned_short_hf_cubin_set(key, retained, two_b, true)
+                server.admit_owned_text_cubin_set(key, retained, two_b, true)
             })
             .map_err(|error| failure(format!("B4 original set admission actor:{error:?}")))??;
         Ok(Arc::new(OwnedCudaModuleSet {
@@ -685,7 +685,7 @@ impl OwnedCudaKernel {
         weight: Handle,
         input: Handle,
         output: Handle,
-        layout: crate::Vllm08WeightLayout,
+        layout: crate::SourceWeightLayout,
         input_rows: usize,
         ordinal: usize,
     ) -> Result<(), ServerError> {
@@ -746,26 +746,26 @@ impl OwnedCudaKernel {
     /// # Safety
     /// The original armed flight retains this kernel/set and both original
     /// leases after its actual N1 FA enqueue, through completion or quarantine.
-    pub unsafe fn copy_canonical47_attention_output(
+    pub unsafe fn copy_fixed_prompt_attention_output(
         &self,
         source: Handle,
         destination: Handle,
     ) -> Result<(), ServerError> {
         self.require_active()?;
-        super::canonical47_natural_policy::require_n1_copy(&self.image, &self.manifest)?;
+        super::fixed_prompt_natural_policy::require_n1_copy(&self.image, &self.manifest)?;
         self.copy_attention_output(source, destination)
     }
     /// Exact compiled cached short-HF private O to public O copy.
     /// # Safety
     /// This source-bound FA packet and both whole leases share the same original
     /// armed flight; its actual enqueue precedes this copy on this queue.
-    pub unsafe fn copy_short_hf_attention_output(
+    pub unsafe fn copy_text_attention_output(
         &self,
         source: Handle,
         destination: Handle,
     ) -> Result<(), ServerError> {
         self.require_active()?;
-        super::short_hf_policy::require_n1_copy(&self.image, &self.manifest)?;
+        super::text_policy::require_n1_copy(&self.image, &self.manifest)?;
         self.copy_attention_output(source, destination)
     }
     fn copy_attention_output(

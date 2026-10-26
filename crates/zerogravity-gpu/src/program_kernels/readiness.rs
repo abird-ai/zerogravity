@@ -97,11 +97,11 @@ pub(crate) fn prepare_state_certificates(
     Ok(count)
 }
 
-pub(crate) fn prepare_short_hf_code(
+pub(crate) fn prepare_text_code(
     client: &Client,
     queue: &cubecl::cuda::OwnedCudaQueue,
     cohort: bool,
-    profile: zerogravity_core::accelerator::program::FullModelProfile,
+    capture: crate::cuda::native::TextKernelCapture,
 ) -> Result<usize> {
     let settings = |threads| {
         KernelSettings::new(
@@ -129,9 +129,8 @@ pub(crate) fn prepare_short_hf_code(
         a(),
     )))?;
     if cohort {
-        let phases =
-            crate::vllm_cuda_qualification::cohort_native::CohortPhases::for_profile(profile);
-        let width_words = profile.hidden_size() / 2;
+        let phases = crate::cuda::native::cohort_native::CohortPhases::for_capture(capture);
+        let width_words = capture.hidden_width() / 2;
         for (rows, width) in [
             (188, 1024),
             (188, 8),
@@ -174,9 +173,10 @@ pub(crate) fn prepare_short_hf_code(
                 mode,
             )))?;
         }
-        let clear_words: &[usize] = match profile {
-            zerogravity_core::accelerator::program::FullModelProfile::Qwen08 => &[6, 16, 40],
-            zerogravity_core::accelerator::program::FullModelProfile::Qwen2B => &[32],
+        let clear_words: &[usize] = if capture.supports_initial_batch() {
+            &[6, 16, 40]
+        } else {
+            &[32]
         };
         for &words in clear_words {
             prepare(Box::new(cohort_copy::clear_prefix::ClearPrefix::new(
@@ -295,7 +295,7 @@ mod tests {
         let required = 4 * (entry + 1)
             + generated
             + 32 * size_of::<(usize, BufferIOAttr)>()
-            + crate::vllm_ptx_inline::PinnedKernel::KEY_METADATA_BYTES
+            + crate::cuda::kernel::PinnedKernel::KEY_METADATA_BYTES
             + 256
             + size_of::<[usize; 8]>();
         assert!(

@@ -1,18 +1,18 @@
 //! Rebind original unused templates; original workspace serializes actual work.
 use super::*;
 
-pub(crate) struct PreparedReusableNatural {
-    pub(crate) model: Arc<ResidentModel>,
-    pub(crate) storage: Arc<ReusableNaturalStorage>,
+pub struct PreparedReusableNatural {
+    pub model: Arc<ResidentModel>,
+    pub storage: Arc<ReusableNaturalStorage>,
 }
 
 // No strong Model/Session edge: a workspace body may retain this source graph.
-pub(crate) struct ReusableNaturalStorage {
+pub struct ReusableNaturalStorage {
     cold: Arc<ColdModelSlots>,
     closing: AtomicBool,
 }
 struct SessionStaging {
-    _source: Arc<OriginalWindowModelSource>,
+    _source: VerifiedTensorSource,
     _host: [zerogravity_artifacts::source_weights::WindowWorkspace; 2],
 }
 impl ReusableNaturalStorage {
@@ -22,11 +22,11 @@ impl ReusableNaturalStorage {
             .upgrade()
             .ok_or_else(|| Error::State("reusable original model retired".into()))
     }
-    pub(crate) fn source(&self) -> &Arc<OriginalWindowModelSource> {
+    pub(crate) fn source(&self) -> &VerifiedTensorSource {
         &self.cold.owners._source
     }
     /// Fresh ORIGINAL Session root; staging remains admitted through real H2D.
-    pub(crate) async fn session(&self, cancelled: Option<&AtomicBool>) -> Result<ResidentSession> {
+    pub async fn session(&self, cancelled: Option<&AtomicBool>) -> Result<ResidentSession> {
         not_cancelled(cancelled)?;
         if self.closing.load(Ordering::Acquire) {
             return Err(Error::State("reusable storage is closing".into()));
@@ -34,8 +34,8 @@ impl ReusableNaturalStorage {
         let model = self.model()?;
         model.service.ensure_usable()?;
         let host = [
-            self.source().source().reserve_workspace(32 * 1024 * 1024)?,
-            self.source().source().reserve_workspace(32 * 1024 * 1024)?,
+            self.source().reserve_workspace(32 * 1024 * 1024)?,
+            self.source().reserve_workspace(32 * 1024 * 1024)?,
         ];
         let owner = Arc::new(SessionStaging {
             _source: self.source().clone(),
@@ -46,7 +46,7 @@ impl ReusableNaturalStorage {
         self.require_open(&session)?;
         Ok(session)
     }
-    pub(crate) fn require_open(&self, session: &ResidentSession) -> Result<()> {
+    pub fn require_open(&self, session: &ResidentSession) -> Result<()> {
         let model = self.model()?;
         if self.closing.load(Ordering::Acquire)
             || self.cold.retirement_started.load(Ordering::Acquire)
@@ -77,16 +77,15 @@ impl ReusableNaturalStorage {
         input.require_session(session)?;
         state.require_current(session)?;
         state.require_reusable_submission_claimed()?;
-        if !Arc::ptr_eq(&input, state.input()) || !Arc::ptr_eq(input.source(), self.source()) {
+        if !Arc::ptr_eq(&input, state.input()) || !input.source().same_issuer(self.source()) {
             return Err(Error::State(
                 "reusable exact immutable input/state/source differs".into(),
             ));
         }
         let index = input.slot().index();
         let binding = session.bind_text_positions(
-            input.source().clone(),
+            input.record().clone(),
             input.attempt(),
-            input.call().request(),
             Some(input.phase_binding().clone()),
             cancelled,
         )?;
@@ -104,7 +103,7 @@ impl ReusableNaturalStorage {
     }
     /// Closing stops new work before the original fair/workspace barrier. Source
     /// verifiers acquire their OWN fair slots, so release both barrier locks first.
-    pub(crate) async fn verify_source_and_retire(
+    pub async fn verify_source_and_retire(
         self: &Arc<Self>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<(usize, usize)> {
@@ -145,14 +144,14 @@ impl ReusableNaturalStorage {
 }
 
 /// Same genuine cold initialization/native set; no model traversal executes.
-pub(crate) async fn prepare_reusable_natural_cold(
+pub async fn prepare_reusable_natural_cold(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    records: [RecordedVllm08Model; 5],
-    inputs: Vllm08ModelInputs,
+    scopes: SourceModelScopes,
+    inputs: SourceModelInputs,
     rotary: Option<RotaryOutcome>,
     cancelled: Option<&AtomicBool>,
 ) -> Result<PreparedReusableNatural> {
+    let (source, records) = scopes.into_parts();
     not_cancelled(cancelled)?;
     require_host_bound(&source, &records)?;
     let prepared = match super::super::qualify_inner(
@@ -203,17 +202,17 @@ pub(crate) async fn prepare_reusable_natural_cold(
 
 /// Actual cap+1 admission on the NEW derived envelope, before any managed
 /// allocation/H2D/native work. Same existing physical pressure implementation.
-pub async fn qualify_vllm08_natural_reuse_pressure(
+pub async fn qualify_natural_reuse_pressure(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    records: [RecordedVllm08Model; 5],
-    inputs: Vllm08ModelInputs,
+    scopes: SourceModelScopes,
+    inputs: SourceModelInputs,
     cancelled: Option<&AtomicBool>,
-) -> Result<super::super::Vllm08ModelFaultOutcome> {
+) -> Result<super::super::SourceModelFaultOutcome> {
+    let (source, records) = scopes.into_parts();
     not_cancelled(cancelled)?;
     require_host_bound(&source, &records)?;
     let mode = Mode::Fault {
-        fault: super::super::Vllm08ModelFault::AdmissionPressure,
+        fault: super::super::SourceModelFault::AdmissionPressure,
         probe: Arc::new(super::super::faults::Probe::default()),
     };
     match super::super::qualify_inner(

@@ -112,21 +112,21 @@ pub(super) fn policy_limits(
         CubinSetPolicy::ProjectionSix => {
             limits(modules, functions, records, new_module, new_function)
         }
-        CubinSetPolicy::ShortHf08
-        | CubinSetPolicy::ShortHf08Cohort4
-        | CubinSetPolicy::ShortHf2B
-        | CubinSetPolicy::ShortHf2BCachedCohort4
+        CubinSetPolicy::Text08
+        | CubinSetPolicy::Text08Cohort4
+        | CubinSetPolicy::Text2B
+        | CubinSetPolicy::Text2BCachedCohort4
         | CubinSetPolicy::FullQwen08
         | CubinSetPolicy::SourceRotary
         | CubinSetPolicy::ConnectedQwen08
-        | CubinSetPolicy::Canonical47Mlp
+        | CubinSetPolicy::FixedPromptMlp
         | CubinSetPolicy::Qwen2bMlp
-        | CubinSetPolicy::Canonical47Qkv
-        | CubinSetPolicy::Canonical47QkKv
-        | CubinSetPolicy::Canonical47Fa
-        | CubinSetPolicy::Canonical47Layer3
-        | CubinSetPolicy::Canonical47Full
-        | CubinSetPolicy::Canonical47Natural
+        | CubinSetPolicy::FixedPromptQkv
+        | CubinSetPolicy::FixedPromptQkKv
+        | CubinSetPolicy::FixedPromptFa
+        | CubinSetPolicy::FixedPromptLayer3
+        | CubinSetPolicy::FixedPromptFull
+        | CubinSetPolicy::FixedPromptNatural
         | CubinSetPolicy::FirstAttentionCaptured
         | CubinSetPolicy::FirstAttentionComputedGate
         | CubinSetPolicy::VocabularyHead => {

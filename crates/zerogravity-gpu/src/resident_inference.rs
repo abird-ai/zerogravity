@@ -1,7 +1,7 @@
 //! Physical execution of the engine's one recorded schedule and immutable roots.
 //! Arithmetic and layer ordering belong to ForwardPlan; this owner only binds
 //! leases, private state, actual completion and the common logical authority.
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub(crate) mod native_fragment;
 #[cfg(all(
     any(
@@ -12,14 +12,13 @@ pub(crate) mod native_fragment;
 ))]
 #[path = "resident_inference/portable_qualification.rs"]
 mod portable_qualification;
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub use native_fragment::{
-    VllmGdnFragmentFault, VllmGdnFragmentFaultOutcome, VllmGdnFragmentReadback,
-    VllmGdnFragmentReceipt, VllmGdnSequenceFault, VllmGdnSequenceFaultOutcome,
-    VllmGdnSequenceReceipt, VllmGdnSequenceRestoreReceipt, qualify_vllm_gdn_fragment,
-    qualify_vllm_gdn_fragment_fault, qualify_vllm_gdn_mlp_fragment,
-    qualify_vllm_gdn_mlp_fragment_fault, qualify_vllm_gdn_sequence,
-    qualify_vllm_gdn_sequence_fault, qualify_vllm_gdn_sequence_restore_refusal,
+    GdnFragmentFault, GdnFragmentFaultOutcome, GdnFragmentReadback, GdnFragmentReceipt,
+    GdnSequenceFault, GdnSequenceFaultOutcome, GdnSequenceReceipt, GdnSequenceRestoreReceipt,
+    qualify_gdn_fragment, qualify_gdn_fragment_fault, qualify_gdn_mlp_fragment,
+    qualify_gdn_mlp_fragment_fault, qualify_gdn_sequence, qualify_gdn_sequence_fault,
+    qualify_gdn_sequence_restore_refusal,
 };
 #[cfg(all(
     any(
@@ -37,10 +36,10 @@ mod alias_qualification;
 #[cfg(feature = "portable-checkpoint")]
 #[path = "resident_checkpoint.rs"]
 mod checkpoint;
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub(crate) mod gdn_state;
 #[cfg(all(feature = "portable-checkpoint", feature = "qualification"))]
-pub(crate) use checkpoint::qualify as qualify_checkpoint;
+pub use checkpoint::qualify as qualify_checkpoint;
 #[cfg(all(test, feature = "qualification", feature = "cuda"))]
 #[path = "resident_inference/admission_qualification.rs"]
 mod admission_qualification;
@@ -57,21 +56,21 @@ mod fused_qualification;
 #[cfg(all(feature = "qualification", feature = "cuda"))]
 mod graph;
 #[cfg(all(feature = "qualification", feature = "cuda"))]
-pub(crate) use graph::qualify as qualify_graph;
+pub use graph::qualify as qualify_graph;
 #[cfg(all(
     feature = "qualification",
     feature = "cuda",
     feature = "hardware-abort-probe"
 ))]
-pub(crate) use graph::qualify_abort as qualify_graph_abort;
+pub use graph::qualify_abort as qualify_graph_abort;
 #[cfg(all(feature = "qualification", feature = "cuda"))]
-pub(crate) use graph::qualify_wide as qualify_graph_wide;
+pub use graph::qualify_wide as qualify_graph_wide;
 #[cfg(all(
     feature = "qualification",
     feature = "cuda",
     feature = "hardware-abort-probe"
 ))]
-pub(crate) use graph::qualify_wide_abort as qualify_graph_wide_abort;
+pub use graph::qualify_wide_abort as qualify_graph_wide_abort;
 #[cfg(all(
     test,
     feature = "qualification",
@@ -81,15 +80,15 @@ pub(crate) use graph::qualify_wide_abort as qualify_graph_wide_abort;
 #[path = "resident_inference/ragged_qualification.rs"]
 mod ragged_qualification;
 #[cfg(feature = "qualification")]
-pub(crate) use fused_greedy_qualification::qualify as qualify_fused_greedy;
+pub use fused_greedy_qualification::qualify as qualify_fused_greedy;
 #[cfg(all(feature = "qualification", feature = "hardware-abort-probe"))]
-pub(crate) use fused_greedy_qualification::qualify_abort as qualify_fused_greedy_abort;
+pub use fused_greedy_qualification::qualify_abort as qualify_fused_greedy_abort;
 #[cfg(feature = "qualification")]
-pub(crate) use fused_qualification::qualify as qualify_fused;
+pub use fused_qualification::qualify as qualify_fused;
 #[cfg(all(feature = "qualification", feature = "hardware-abort-probe"))]
-pub(crate) use fused_qualification::qualify_abort as qualify_fused_abort;
+pub use fused_qualification::qualify_abort as qualify_fused_abort;
 #[cfg(all(feature = "qualification", feature = "portable-checkpoint"))]
-pub(crate) use fused_qualification::qualify_boundary as qualify_fused_boundary;
+pub use fused_qualification::qualify_boundary as qualify_fused_boundary;
 #[cfg(feature = "qualification")]
 #[path = "resident_context_qualification.rs"]
 mod context_qualification;
@@ -97,7 +96,7 @@ mod context_qualification;
 #[path = "resident_prefill_qualification.rs"]
 mod prefill_qualification;
 #[cfg(feature = "qualification")]
-pub(crate) use cohort_qualification::qualify as qualify_cohort;
+pub use cohort_qualification::qualify as qualify_cohort;
 #[cfg(feature = "qualification")]
 #[path = "resident_range_qualification.rs"]
 mod range_qualification;
@@ -219,9 +218,9 @@ enum Readout {
 struct SourceSteps<'a, 'o> {
     _observer_lifetime: std::marker::PhantomData<&'o ()>,
     #[cfg(feature = "gemma-bf16-qualification")]
-    gemma: Option<gemma_text::GemmaStep<'a, 'o>>,
+    bf16_text: Option<bf16_text::TextStep<'a, 'o>>,
     #[cfg(feature = "qwen-source-qualification")]
-    qwen: Option<qwen_source::QwenStep<'a, 'o>>,
+    bf16_text_source: Option<bf16_text_source::TextSourceStep<'a, 'o>>,
 }
 struct StepInput<'a> {
     token: u32,
@@ -593,7 +592,7 @@ impl ResidentModel {
     pub async fn session(self: &Arc<Self>) -> Result<ResidentSession> {
         self.session_with(|_| Ok(())).await
     }
-    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
     async fn session_retaining(
         self: &Arc<Self>,
         owner: crate::physical_quarantine::CompletionOwner,
@@ -845,9 +844,9 @@ impl ResidentModel {
             SourceSteps {
                 _observer_lifetime: std::marker::PhantomData,
                 #[cfg(feature = "gemma-bf16-qualification")]
-                gemma: None,
+                bf16_text: None,
                 #[cfg(feature = "qwen-source-qualification")]
-                qwen: None,
+                bf16_text_source: None,
             },
         )
         .await
@@ -869,9 +868,9 @@ impl ResidentModel {
         sources: SourceSteps<'_, '_>,
     ) -> Result<(Vec<Domain>, ResidentReady, InferenceReadback)> {
         #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
-        let gemma = sources.gemma;
+        let bf16_text = sources.bf16_text;
         #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
-        let mut qwen = sources.qwen;
+        let mut bf16_text_source = sources.bf16_text_source;
         self.service.ensure_usable()?;
         if base.source() != self.service.source_identity() || position >= self.capacity {
             return Err(Error::State("resident source/frontier mismatch".into()));
@@ -905,7 +904,7 @@ impl ResidentModel {
         let mut slot = ticket.wait().await?;
         let mut workspace = self.workspace.lock().await;
         #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
-        if let Some(step) = &qwen {
+        if let Some(step) = &bf16_text_source {
             if device.is_some() || matches!(readout, Readout::None) || step.call.rows() != 1 {
                 return Err(Error::Unsupported(
                     "source-bound one-row logits/greedy call".into(),
@@ -941,7 +940,7 @@ impl ResidentModel {
             accesses.push((token.lease.clone(), DeviceAccess::Read));
         }
         #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
-        if let Some(feedback) = qwen.as_ref().and_then(|step| step.feedback) {
+        if let Some(feedback) = bf16_text_source.as_ref().and_then(|step| step.feedback) {
             if feedback.producer != Some(base)
                 || feedback.id != token
                 || !Arc::ptr_eq(feedback.lease.service(), &self.service)
@@ -994,8 +993,8 @@ impl ResidentModel {
         #[allow(unused_mut)] // Source adapters are feature-gated; both use this flight.
         let mut source_submitted: Option<crate::resident_program::ResidentSubmission> = None;
         #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
-        if let Some(step) = gemma.as_ref() {
-            source_submitted = Some(workspace.program.launch_gemma_text(
+        if let Some(step) = bf16_text.as_ref() {
+            source_submitted = Some(workspace.program.launch_bf16_text(
                 &mut flight,
                 step.call,
                 base,
@@ -1006,11 +1005,11 @@ impl ResidentModel {
             )?);
         }
         #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
-        if let Some(step) = qwen.as_mut() {
+        if let Some(step) = bf16_text_source.as_mut() {
             if source_submitted.is_some() {
                 return Err(Error::State("two source execution adapters".into()));
             }
-            source_submitted = Some(workspace.program.launch_qwen_source(
+            source_submitted = Some(workspace.program.launch_bf16_text_source(
                 &mut flight,
                 step.call,
                 base,
@@ -1062,9 +1061,9 @@ impl ResidentModel {
                 .ok_or_else(|| Error::State("missing greedy logits".into()))?;
             let numeric_zero_ties = false;
             #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
-            let numeric_zero_ties = numeric_zero_ties || workspace.program.is_gemma_text();
+            let numeric_zero_ties = numeric_zero_ties || workspace.program.is_bf16_text();
             #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
-            let numeric_zero_ties = numeric_zero_ties || workspace.program.is_qwen_source();
+            let numeric_zero_ties = numeric_zero_ties || workspace.program.is_bf16_text_source();
             let greedy = workspace
                 .greedy
                 .as_ref()
@@ -1116,7 +1115,7 @@ impl ResidentModel {
         }
 
         #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
-        if let Some(step) = gemma.as_ref() {
+        if let Some(step) = bf16_text.as_ref() {
             let row = step.call.row(step.row)?;
             let observer = step.observer.borrow_mut().take();
             if let Some(observer) = observer {
@@ -1139,7 +1138,7 @@ impl ResidentModel {
                             for (plane, lease) in domain.leases.iter().enumerate() {
                                 workspace
                                     .program
-                                    .checkpoint_gemma_kv(
+                                    .checkpoint_bf16_text_kv(
                                         &mut flight,
                                         lease,
                                         is_prior,
@@ -1158,10 +1157,10 @@ impl ResidentModel {
                 *step.observer.borrow_mut() = Some(observer);
                 result?;
             }
-            gemma_text::check_cancel(step.cancelled)?;
+            bf16_text::check_cancel(step.cancelled)?;
         }
         #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
-        if let Some(step) = qwen.as_ref() {
+        if let Some(step) = bf16_text_source.as_ref() {
             let observer = step.observer.borrow_mut().take();
             if let Some(observer) = observer {
                 let result: Result<()> = async {
@@ -1173,7 +1172,7 @@ impl ResidentModel {
                             for (plane, lease) in domain.leases.iter().enumerate() {
                                 workspace
                                     .program
-                                    .checkpoint_qwen_state(
+                                    .checkpoint_bf16_text_source_state(
                                         &mut flight,
                                         lease,
                                         position,
@@ -1193,7 +1192,7 @@ impl ResidentModel {
                 *step.observer.borrow_mut() = Some(observer);
                 result?;
             }
-            qwen_source::check_cancel(step.cancelled)?;
+            bf16_text_source::check_cancel(step.cancelled)?;
         }
         #[cfg(feature = "hardware-abort-probe")]
         if self
@@ -1235,10 +1234,10 @@ impl ResidentModel {
             }
         }
         let statuses = cohort.len();
-        let observe_qwen_logits = false;
+        let observe_bf16_text_source_logits = false;
         #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
-        let observe_qwen_logits = observe_qwen_logits
-            || qwen.as_ref().is_some_and(|step| {
+        let observe_bf16_text_source_logits = observe_bf16_text_source_logits
+            || bf16_text_source.as_ref().is_some_and(|step| {
                 matches!(readout, Readout::Greedy) && step.observer.borrow().is_some()
             });
         match readout {
@@ -1256,7 +1255,7 @@ impl ResidentModel {
             Readout::Greedy => {
                 let p = packet.as_ref().unwrap();
                 cohort.push(p.readback(0, 12)?);
-                if observe_qwen_logits {
+                if observe_bf16_text_source_logits {
                     let logits = submitted
                         .logits
                         .as_ref()
@@ -1335,7 +1334,7 @@ impl ResidentModel {
                 {
                     return Err(Error::State("nonfinite resident logits".into()));
                 }
-                if observe_qwen_logits
+                if observe_bf16_text_source_logits
                     && !words(&values[statuses + 1])?.iter().all(|x| x.is_finite())
                 {
                     return Err(Error::State("nonfinite observed source logits".into()));
@@ -1355,7 +1354,7 @@ impl ResidentModel {
         let mut result = InferenceReadback {
             logits: if matches!(readout, Readout::Logits) {
                 words(&read[statuses])?
-            } else if observe_qwen_logits {
+            } else if observe_bf16_text_source_logits {
                 words(&read[statuses + 1])?
             } else {
                 Vec::new()
@@ -1621,12 +1620,11 @@ impl ResidentSession {
         tokens: &[u32],
         diagnostic: bool,
         readout: Readout,
-        #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))] gemma: Option<
-            gemma_text::GemmaOptions<'_, 'o>,
+        #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))] bf16_text: Option<
+            bf16_text::TextOptions<'_, 'o>,
         >,
-        #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))] qwen: Option<
-            qwen_source::QwenOptions<'_, 'o>,
-        >,
+        #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
+        bf16_text_source: Option<bf16_text_source::TextSourceOptions<'_, 'o>>,
     ) -> Result<PreparedInference> {
         let count =
             u64::try_from(tokens.len()).map_err(|_| Error::Limit("resident token count".into()))?;
@@ -1648,49 +1646,46 @@ impl ResidentSession {
             ));
         }
         #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
-        let (_call_admission, call) = if let Some(options) = &gemma {
-            gemma_text::check_cancel(options.cancelled)?;
-            if options.source.source_identity() != base.source() {
-                return Err(Error::State("Gemma original call source differs".into()));
+        let (_call_admission, call) = if let Some(options) = &bf16_text {
+            bf16_text::check_cancel(options.cancelled)?;
+            if options.source.source_identity() != base.source()
+                || options.bindings.source_identity() != base.source()
+                || options.bindings.call().geometry().capacity() != self.model.capacity
+                || options.bindings.call().geometry().vocabulary() as u64 != self.model.vocab
+            {
+                return Err(Error::State(
+                    "text original call source/geometry differs".into(),
+                ));
             }
             (
                 Some(options.source.reserve_workspace(65536)?),
-                Some(zerogravity_core::accelerator::program::Bf16TextCall::bind(
-                    zerogravity_core::accelerator::program::TextCallGeometry::new(
-                        base.source(),
-                        usize::try_from(self.model.vocab)
-                            .map_err(|_| Error::Limit("Gemma source vocabulary extent".into()))?,
-                        self.model.capacity,
-                    )?,
-                    attempt.clone(),
-                    Arc::from(tokens),
-                )?),
+                Some(
+                    options
+                        .bindings
+                        .bind_call(attempt.clone(), Arc::from(tokens))?,
+                ),
             )
         } else {
             (None, None)
         };
         #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
-        let (_qwen_call_admission, qwen_call) = if let Some(options) = &qwen {
-            qwen_source::check_cancel(options.cancelled)?;
-            if tokens.len() != 1 || base.frontier() > 1 {
-                return Err(Error::Unsupported("finite source teacher row".into()));
-            }
-            let body = &options.bodies[base.frontier() as usize];
-            if body.recorded().plan().source() != base.source() {
-                return Err(Error::State("source call owner differs".into()));
-            }
-            (
-                Some(
-                    body.recorded()
-                        .source()
-                        .source()
-                        .reserve_workspace(16 * 1024 * 1024)?,
-                ),
-                Some(body.recorded().bind_call(attempt.clone(), tokens[0])?),
-            )
-        } else {
-            (None, None)
-        };
+        let (_bf16_text_source_call_admission, bf16_text_source_call) =
+            if let Some(options) = &bf16_text_source {
+                bf16_text_source::check_cancel(options.cancelled)?;
+                if tokens.len() != 1 || base.frontier() > 1 {
+                    return Err(Error::Unsupported("finite source teacher row".into()));
+                }
+                let body = &options.bodies[base.frontier() as usize];
+                if body.recorded().plan().source() != base.source() {
+                    return Err(Error::State("source call owner differs".into()));
+                }
+                (
+                    Some(body.source().reserve_workspace(16 * 1024 * 1024)?),
+                    Some(body.recorded().bind_call(attempt.clone(), tokens[0])?),
+                )
+            } else {
+                (None, None)
+            };
         // Reserve the complete private ping-pong peak before the first launch.
         let mut pool = vec![self.model.allocate_state(false).await?];
         if tokens.len() > 1 {
@@ -1730,19 +1725,21 @@ impl ResidentSession {
                     SourceSteps {
                         _observer_lifetime: std::marker::PhantomData,
                         #[cfg(feature = "gemma-bf16-qualification")]
-                        gemma: gemma.as_ref().map(|options| gemma_text::GemmaStep {
+                        bf16_text: bf16_text.as_ref().map(|options| bf16_text::TextStep {
                             call: call.as_ref().unwrap(),
                             row: i,
                             observer: options.observer,
                             cancelled: options.cancelled,
                         }),
                         #[cfg(feature = "qwen-source-qualification")]
-                        qwen: qwen.as_ref().map(|options| qwen_source::QwenStep {
-                            body: &options.bodies[base.frontier() as usize],
-                            call: qwen_call.as_ref().unwrap(),
-                            observer: options.observer,
-                            feedback: options.feedback,
-                            cancelled: options.cancelled,
+                        bf16_text_source: bf16_text_source.as_ref().map(|options| {
+                            bf16_text_source::TextSourceStep {
+                                body: &options.bodies[base.frontier() as usize],
+                                call: bf16_text_source_call.as_ref().unwrap(),
+                                observer: options.observer,
+                                feedback: options.feedback,
+                                cancelled: options.cancelled,
+                            }
                         }),
                     },
                 )
@@ -1916,9 +1913,9 @@ mod qualification;
 #[cfg(feature = "qualification")]
 use qualification::{compare_domains, exact};
 #[cfg(feature = "qualification")]
-pub(crate) use qualification::{qualify, qualify_bounded_context, qualify_context};
+pub use qualification::{qualify, qualify_bounded_context, qualify_context};
 #[cfg(all(feature = "qualification", feature = "hardware-abort-probe"))]
-pub(crate) use qualification::{qualify_abort, qualify_context_abort};
+pub use qualification::{qualify_abort, qualify_context_abort};
 
 #[cfg(feature = "qualification")]
 async fn load_qualified(
@@ -1981,42 +1978,46 @@ fn preflight_profile(
 #[path = "resident_inference/cold_tests.rs"]
 mod cold_tests;
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub use native_fragment::{
-    Vllm08DomainReadback, Vllm08ModelFault, Vllm08ModelFaultOutcome, Vllm08ModelInputs,
-    Vllm08ModelReadback, Vllm08ModelReceipt, qualify_vllm08_model, qualify_vllm08_model_fault,
+    SourceDomainReadback, SourceModelFault, SourceModelFaultOutcome, SourceModelInputs,
+    SourceModelReadback, SourceModelReceipt, SourceModelScopes, qualify_source_model,
+    qualify_source_model_fault,
 };
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub(crate) mod text_positions;
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub use native_fragment::{
-    Vllm08NaturalFault, Vllm08NaturalFaultExecution, Vllm08NaturalFaultOutcome,
-    Vllm08NaturalReceipt, Vllm08NaturalReuseFault, Vllm08NaturalReuseFaultExecution,
-    Vllm08NaturalReuseFaultOutcome, Vllm08NaturalReuseReceipt, Vllm08NaturalReuseRound,
-    qualify_vllm08_natural_fault, qualify_vllm08_natural_model, qualify_vllm08_natural_reuse,
-    qualify_vllm08_natural_reuse_fault,
+    NaturalFault, NaturalFaultExecution, NaturalFaultOutcome, NaturalReceipt, NaturalReuseFault,
+    NaturalReuseFaultExecution, NaturalReuseFaultOutcome, NaturalReuseReceipt, NaturalReuseRound,
+    qualify_natural_fault, qualify_natural_reuse_fault,
 };
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
-pub use native_fragment::qualify_vllm08_natural_reuse_pressure;
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+pub use native_fragment::{
+    ColdModelSlots, CommittedBf16Feedback, NaturalCommitted, NaturalFeedbackRequest,
+    NaturalObserver, NaturalSlot, NaturalStatePool, NaturalStep, PreparedNaturalCold,
+    PreparedReusableNatural, ReusableNaturalStorage, prepare_natural_cold,
+    prepare_reusable_natural_cold, qualify_natural_reuse_pressure,
+};
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub use native_fragment::{
     Qwen2bGdnComponentFault, Qwen2bGdnComponentFaultOutcome, Qwen2bGdnComponentReadback,
     Qwen2bGdnComponentReceipt, qualify_qwen2b_gdn_component,
     qualify_qwen2b_gdn_component_arithmetic, qualify_qwen2b_gdn_component_fault,
 };
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub use native_fragment::{
-    Canonical47GdnComponentFault, Canonical47GdnComponentFaultOutcome,
-    Canonical47GdnComponentReadback, Canonical47GdnComponentReceipt,
-    qualify_canonical47_gdn_component, qualify_canonical47_gdn_component_fault,
+    FixedPromptGdnComponentFault, FixedPromptGdnComponentFaultOutcome,
+    FixedPromptGdnComponentReadback, FixedPromptGdnComponentReceipt,
+    qualify_fixed_prompt_gdn_component, qualify_fixed_prompt_gdn_component_fault,
 };
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub use native_fragment::{
     PostAttentionArithmetic, PostAttentionComponentFault, PostAttentionComponentFaultOutcome,
     PostAttentionComponentReadback, PostAttentionComponentReceipt,
@@ -2024,63 +2025,63 @@ pub use native_fragment::{
     qualify_qwen2b_post_attention_component_arithmetic,
 };
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub use native_fragment::{
     MlpComponentFault, MlpComponentFaultOutcome, MlpComponentReadback, MlpComponentReceipt,
     qualify_mlp_component, qualify_mlp_component_fault,
 };
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub use native_fragment::{
-    Canonical47ModelPrefixFault, Canonical47ModelPrefixFaultOutcome,
-    Canonical47ModelPrefixReadback, Canonical47ModelPrefixReceipt,
-    Canonical47QkKvQualificationInputs, qualify_canonical47_model_fa_prefix,
-    qualify_canonical47_model_fa_prefix_fault, qualify_canonical47_model_kv_prefix,
-    qualify_canonical47_model_kv_prefix_fault, qualify_canonical47_model_layer3_prefix,
-    qualify_canonical47_model_layer3_prefix_fault, qualify_canonical47_model_prefix,
-    qualify_canonical47_model_prefix_fault, qualify_canonical47_model_qkv_prefix,
-    qualify_canonical47_model_qkv_prefix_fault,
+    FixedPromptModelPrefixFault, FixedPromptModelPrefixFaultOutcome,
+    FixedPromptModelPrefixReadback, FixedPromptModelPrefixReceipt,
+    FixedPromptQkKvQualificationInputs, qualify_fixed_prompt_model_fa_prefix,
+    qualify_fixed_prompt_model_fa_prefix_fault, qualify_fixed_prompt_model_kv_prefix,
+    qualify_fixed_prompt_model_kv_prefix_fault, qualify_fixed_prompt_model_layer3_prefix,
+    qualify_fixed_prompt_model_layer3_prefix_fault, qualify_fixed_prompt_model_prefix,
+    qualify_fixed_prompt_model_prefix_fault, qualify_fixed_prompt_model_qkv_prefix,
+    qualify_fixed_prompt_model_qkv_prefix_fault,
 };
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub use native_fragment::{
-    Canonical47FullModelFault, Canonical47FullModelFaultOutcome, Canonical47FullModelReadback,
-    Canonical47FullModelReceipt, qualify_canonical47_full_model,
-    qualify_canonical47_full_model_fault,
+    FixedPromptFullModelFault, FixedPromptFullModelFaultOutcome, FixedPromptFullModelReadback,
+    FixedPromptFullModelReceipt, qualify_fixed_prompt_full_model,
+    qualify_fixed_prompt_full_model_fault,
 };
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub use native_fragment::{
     Qwen2bMlpComponentFault, Qwen2bMlpComponentFaultOutcome, Qwen2bMlpComponentReceipt,
     Qwen2bMlpComponentSource, qualify_qwen2b_mlp_component, qualify_qwen2b_mlp_component_fault,
 };
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub use native_fragment::{
-    Canonical47CallReceipt, Canonical47CloseReceipt, Canonical47EmptySnapshot,
-    Canonical47LifecycleProfile, Canonical47Loaded, Canonical47LoadedObservation,
-    Canonical47LoadedSnapshot, Canonical47NaturalFault, Canonical47NaturalFaultOutcome,
-    Canonical47NaturalReadback, Canonical47Pending, Canonical47Session,
-    canonical47_natural_host_bound, prepare_canonical47_natural,
-    prepare_canonical47_natural_with_profile,
+    FixedPromptCallReceipt, FixedPromptCloseReceipt, FixedPromptEmptySnapshot,
+    FixedPromptFeedbackRequest, FixedPromptLifecycleProfile, FixedPromptLoaded,
+    FixedPromptLoadedObservation, FixedPromptLoadedSnapshot, FixedPromptNaturalFault,
+    FixedPromptNaturalFaultOutcome, FixedPromptNaturalReadback, FixedPromptPending,
+    FixedPromptSession, fixed_prompt_natural_host_bound, prepare_fixed_prompt_natural,
+    prepare_fixed_prompt_natural_with_profile,
 };
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 mod rms_scratch;
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub(crate) use rms_scratch::RmsScratchRegistration;
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub use native_fragment::{
-    ShortHfCallReceipt, ShortHfCloseReceipt, ShortHfCohortFault, ShortHfCohortFaultOutcome,
-    ShortHfCohortFaultRetention, ShortHfCohortPreparation, ShortHfCohortReadback,
-    ShortHfCohortReceipt, ShortHfCohortRowReceipt, ShortHfEmptySnapshot, ShortHfFault,
-    ShortHfFaultOutcome, ShortHfLoaded, ShortHfLoadedObservation, ShortHfLoadedSnapshot,
-    ShortHfPending, ShortHfPendingCohort, ShortHfQualificationInputs, ShortHfReadback,
-    ShortHfResourceInventory, ShortHfSession, prepare_short_hf, prepare_short_hf_b4,
+    TextCallReceipt, TextCloseReceipt, TextCohortFault, TextCohortFaultOutcome,
+    TextCohortFaultRetention, TextCohortPreparation, TextCohortReadback, TextCohortReceipt,
+    TextCohortRowReceipt, TextEmptySnapshot, TextFault, TextFaultOutcome, TextFeedbackRequest,
+    TextLoaded, TextLoadedObservation, TextLoadedSnapshot, TextPending, TextPendingCohort,
+    TextQualificationInputs, TextReadback, TextResourceInventory, TextSession, prepare_text,
+    prepare_text_b4,
 };
 
 #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
-pub(crate) mod gemma_text;
+pub(crate) mod bf16_text;
 
 #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
-pub(crate) mod qwen_source;
+pub(crate) mod bf16_text_source;

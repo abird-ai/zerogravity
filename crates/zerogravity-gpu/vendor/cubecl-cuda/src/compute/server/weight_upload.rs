@@ -1,6 +1,6 @@
 //! Shared original H2D implementation; only closed layout wrappers call it.
 use super::*;
-use crate::owned_command::weight_upload::Vllm08WeightLayout;
+use crate::owned_command::weight_upload::SourceWeightLayout;
 
 fn full_geometry(
     expected: usize,
@@ -25,7 +25,7 @@ impl CudaServer {
         &mut self,
         stream: StreamId,
         destination: Handle,
-        layout: Vllm08WeightLayout,
+        layout: SourceWeightLayout,
         offset: usize,
         source: Arc<T>,
     ) -> Result<(), ServerError>
@@ -423,13 +423,13 @@ mod tests {
     #[test]
     fn closed_full_layouts_cannot_be_reinterpreted_or_supplied_as_subviews() {
         for layout in [
-            Vllm08WeightLayout::GdnQkvz,
-            Vllm08WeightLayout::GdnBa,
-            Vllm08WeightLayout::GdnOutput,
-            Vllm08WeightLayout::AttentionQkv,
-            Vllm08WeightLayout::AttentionOutput,
-            Vllm08WeightLayout::MlpGateUp,
-            Vllm08WeightLayout::MlpDown,
+            SourceWeightLayout::GdnQkvz,
+            SourceWeightLayout::GdnBa,
+            SourceWeightLayout::GdnOutput,
+            SourceWeightLayout::AttentionQkv,
+            SourceWeightLayout::AttentionOutput,
+            SourceWeightLayout::MlpGateUp,
+            SourceWeightLayout::MlpDown,
         ] {
             let bytes = layout.bytes();
             full_geometry(bytes, bytes as u64, None, None).unwrap();

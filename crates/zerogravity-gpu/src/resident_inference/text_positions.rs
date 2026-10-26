@@ -2,52 +2,20 @@
 use super::*;
 use crate::resident_inference::native_fragment::PrefixPhaseEnqueue;
 use crate::resident_inference::native_fragment::continuation::AttemptPhaseBinding;
+use crate::resident_program::source_bindings::SourceBindings;
 use std::sync::atomic::{AtomicBool, Ordering};
-use zerogravity_artifacts::model::{Family, LayerKind};
+use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::WindowWorkspace;
-use zerogravity_core::accelerator::program::VllmBf16Invocation;
-use zerogravity_model_qwen35::original_binding::OriginalWindowModelSource;
+use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode};
 
 pub(crate) const POSITION_PITCH: usize = 65;
 pub(crate) const POSITION_WORDS: usize = 3 * POSITION_PITCH;
 pub(crate) const POSITION_BYTES: usize = POSITION_WORDS * 8;
-const CONFIG_SHA: &str = "b90b86f35c8e6925ef74ee04d0e758f0a845c83a42089ad82bbaa948de9b4204";
 const METADATA_BYTES: usize = 64 * 1024;
 
 fn not_cancelled(cancelled: Option<&AtomicBool>) -> Result<()> {
     if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
         return Err(Error::State("source positions cancelled".into()));
-    }
-    Ok(())
-}
-pub(crate) fn require_position_source(source: &OriginalWindowModelSource) -> Result<()> {
-    let config = source.owner().config();
-    let g = config.geometry();
-    // Config hash checks the exact original mrope sections/interleaving absent
-    // from the generic geometry object; it never substitutes for source issuer.
-    if source.owner().config_sha256() != CONFIG_SHA
-        || g.family != Family::QwenHybrid
-        || g.hidden_size != 1024
-        || g.head_dim != 256
-        || g.vocab_size != 248320
-        || g.max_position_embeddings != 262144
-        || g.num_attention_heads != 8
-        || g.num_key_value_heads != 2
-        || g.layers.len() != 24
-        || config.rotary_dimensions() != 64
-        || config.rope_theta() != 10_000_000.0
-        || g.layers.iter().enumerate().any(|(index, kind)| {
-            *kind
-                != if index % 4 == 3 {
-                    LayerKind::FullAttention
-                } else {
-                    LayerKind::LinearAttention
-                }
-        })
-    {
-        return Err(Error::Unsupported(
-            "closed original .8B text position source geometry".into(),
-        ));
     }
     Ok(())
 }
@@ -58,13 +26,20 @@ struct PositionSpan {
     rows: usize,
 }
 impl PositionSpan {
-    fn new(invocation: &VllmBf16Invocation) -> Result<Self> {
-        invocation.validate()?;
+    fn new(invocation: &SourceCall) -> Result<Self> {
         let value = Self {
-            base: invocation.teachers().base(),
-            rows: invocation.rows(),
+            base: invocation.rows().base(),
+            rows: invocation.rows().len(),
         };
-        if invocation.layer().index() != 0 || invocation.teachers().capacity() != 512 {
+        if invocation.rows().capacity() != 512
+            || invocation.rows().vocabulary() != 248320
+            || !matches!(
+                (invocation.mode(), value.base, value.rows),
+                (SourceCallMode::Prefill, 0, 1 | 64)
+                    | (SourceCallMode::Prefill, 64, 2)
+                    | (SourceCallMode::Decode, 1 | 66, 1)
+            )
+        {
             return Err(Error::State(
                 "positions use exact original request issuer, not an attention-layer retag".into(),
             ));
@@ -90,7 +65,7 @@ impl PositionSpan {
         self.validate()?;
         self.encode()
     }
-    fn bytes_canonical47(self) -> Result<[u8; POSITION_BYTES]> {
+    fn bytes_fixed_prompt(self) -> Result<[u8; POSITION_BYTES]> {
         if self != (Self { base: 0, rows: 47 }) {
             return Err(Error::Unsupported(
                 "closed canonical47 source position span".into(),
@@ -118,11 +93,11 @@ impl PositionSpan {
 fn require_published_span(
     current: RootBinding,
     attempt: &RootAttempt,
-    invocation: &VllmBf16Invocation,
+    invocation: &SourceCall,
 ) -> Result<PositionSpan> {
     let span = PositionSpan::new(invocation)?;
     if current != attempt.base()
-        || current.source() != invocation.teachers().source()
+        || current.source() != invocation.source()
         || u64::try_from(span.base).ok() != Some(current.frontier())
         || u64::try_from(span.base + span.rows).ok() != Some(attempt.frontier())
     {
@@ -135,14 +110,14 @@ fn require_published_span(
 
 /// Immutable source/request binding only. Original session stays sole authority.
 pub(crate) struct BoundTextPositions {
-    source: Arc<OriginalWindowModelSource>,
+    source: VerifiedTensorSource,
+    _record: Arc<SourceBindings>,
     service: Arc<ResidentService>,
-    invocation: VllmBf16Invocation,
+    invocation: SourceCall,
     base: RootBinding,
     attempt: RootAttempt,
     phase: Option<Arc<AttemptPhaseBinding>>,
-    canonical47:
-        Option<Arc<crate::vllm_cuda_qualification::canonical47_model::Canonical47ModelBinding>>,
+    fixed_prompt: Option<Arc<crate::cuda::native::fixed_prompt_model::FixedPromptModelBinding>>,
     span: PositionSpan,
     service_generation: u64,
     _metadata: WindowWorkspace,
@@ -152,41 +127,42 @@ impl ResidentSession {
     /// A complete-model caller uses the actual published root/advance instead.
     pub(super) fn bind_text_positions(
         &self,
-        source: Arc<OriginalWindowModelSource>,
+        record: Arc<SourceBindings>,
         attempt: &RootAttempt,
-        invocation: &VllmBf16Invocation,
         phase: Option<Arc<AttemptPhaseBinding>>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<BoundTextPositions>> {
         not_cancelled(cancelled)?;
-        let metadata = source.source().reserve_workspace(METADATA_BYTES)?;
-        require_position_source(&source)?;
+        let source = record.source().clone();
+        let invocation = record.call().clone();
+        let metadata = source.reserve_workspace(METADATA_BYTES)?;
         let base = self.binding();
         if source.source_identity() != base.source()
             || source.source_identity() != self.model.service.source_identity()
-            || invocation.teachers().source() != base.source()
-            || invocation.teachers().capacity() != self.model.capacity
+            || invocation.source() != base.source()
+            || invocation.rows().capacity() != self.model.capacity
         {
             return Err(Error::State(
                 "same original position model/service/session/source".into(),
             ));
         }
         let span = if let Some(binding) = &phase {
-            binding.require_binding(self, attempt, invocation)?;
-            PositionSpan::new(invocation)?
+            binding.require_binding(self, attempt, &invocation, 0)?;
+            PositionSpan::new(&invocation)?
         } else {
-            require_published_span(base, attempt, invocation)?
+            require_published_span(base, attempt, &invocation)?
         };
         self.model.service.ensure_usable()?;
         self.model.validate_domains(&self.domains, true)?;
         Ok(Arc::new(BoundTextPositions {
             source,
+            _record: record,
             service: self.model.service.clone(),
             invocation: invocation.clone(),
             base,
             attempt: attempt.clone(),
             phase,
-            canonical47: None,
+            fixed_prompt: None,
             span,
             service_generation: self.model.service.generation(),
             _metadata: metadata,
@@ -197,23 +173,23 @@ impl BoundTextPositions {
     pub(crate) fn service(&self) -> &Arc<ResidentService> {
         &self.service
     }
-    pub(crate) fn source(&self) -> &Arc<OriginalWindowModelSource> {
+    pub(crate) fn source(&self) -> &VerifiedTensorSource {
         &self.source
     }
     pub(crate) fn bytes(&self) -> Result<[u8; POSITION_BYTES]> {
-        match &self.canonical47 {
+        match &self.fixed_prompt {
             Some(scope) => {
-                if scope.record().call().request() != &self.invocation {
+                if scope.record().call() != &self.invocation {
                     return Err(Error::State(
                         "canonical47 positions changed original call issuer".into(),
                     ));
                 }
-                self.span.bytes_canonical47()
+                self.span.bytes_fixed_prompt()
             }
             None => self.span.bytes(),
         }
     }
-    pub(crate) fn invocation(&self) -> &VllmBf16Invocation {
+    pub(crate) fn invocation(&self) -> &SourceCall {
         &self.invocation
     }
     /// Fresh borrowed original session + prior completion permit, before QK/RoPE.
@@ -234,7 +210,7 @@ impl BoundTextPositions {
                 "source position root/epoch/service revoked".into(),
             ));
         }
-        if let Some(scope) = &self.canonical47 {
+        if let Some(scope) = &self.fixed_prompt {
             let binding = self
                 .phase
                 .as_ref()
@@ -242,31 +218,31 @@ impl BoundTextPositions {
             let permit = permit.ok_or_else(|| {
                 Error::State("canonical47 original position permit absent".into())
             })?;
-            if scope.record().call().request() != &self.invocation
-                || !Arc::ptr_eq(scope.source().source(), &self.source)
+            if scope.record().call() != &self.invocation
+                || !scope.source().same_issuer(&self.source)
             {
                 return Err(Error::State(
                     "canonical47 position source/call owner changed".into(),
                 ));
             }
-            if binding.canonical47_whole_position_scope() {
-                binding.require_canonical47_whole_binding(
+            if binding.fixed_prompt_whole_position_scope() {
+                binding.require_fixed_prompt_whole_binding(
                     session,
                     &self.attempt,
                     scope.record().call(),
                 )?;
-                return binding.require_canonical47_whole_permit(
+                return binding.require_fixed_prompt_whole_permit(
                     permit,
                     &self.service,
                     scope.record().call(),
                 );
             }
-            binding.require_canonical47_model_prefix_binding(
+            binding.require_fixed_prompt_model_prefix_binding(
                 session,
                 &self.attempt,
                 scope.record().call(),
             )?;
-            return binding.require_canonical47_model_prefix_permit(
+            return binding.require_fixed_prompt_model_prefix_permit(
                 permit,
                 &self.service,
                 scope.record().call(),
@@ -274,8 +250,8 @@ impl BoundTextPositions {
         }
         match (&self.phase, permit) {
             (Some(binding), Some(permit)) => {
-                binding.require_binding(session, &self.attempt, &self.invocation)?;
-                binding.require_permit(permit, &self.service, &self.invocation)
+                binding.require_binding(session, &self.attempt, &self.invocation, 0)?;
+                binding.require_permit(permit, &self.service, &self.invocation, 0)
             }
             (None, None) => {
                 require_published_span(session.binding(), &self.attempt, &self.invocation)
@@ -292,9 +268,9 @@ impl BoundTextPositions {
 #[path = "text_positions/tests.rs"]
 mod tests;
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
-mod canonical47;
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+mod fixed_prompt;
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
-#[path = "text_positions/canonical47_whole.rs"]
-mod canonical47_whole;
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[path = "text_positions/fixed_prompt_whole.rs"]
+mod fixed_prompt_whole;

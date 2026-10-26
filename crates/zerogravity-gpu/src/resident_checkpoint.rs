@@ -6,7 +6,7 @@ use zerogravity_model_qwen35::QwenCheckpoint;
 #[cfg(feature = "qualification")]
 mod qualification;
 #[cfg(feature = "qualification")]
-pub(crate) use qualification::qualify;
+pub use qualification::qualify;
 
 /// Separate diagnostic sibling: the continuing session never imports/reuploads
 /// its own state. Exercises genuine context payloads around the padding boundary.

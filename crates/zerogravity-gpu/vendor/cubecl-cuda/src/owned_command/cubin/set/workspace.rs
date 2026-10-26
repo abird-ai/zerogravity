@@ -196,7 +196,7 @@ impl OwnedCudaKernel {
     pub unsafe fn enqueue_streamed_vocabulary_head_bindings(
         &self,
         bindings: [OwnedCudaBinding; 3],
-        layout: crate::Vllm08WeightLayout,
+        layout: crate::SourceWeightLayout,
         input_rows: usize,
         ordinal: usize,
     ) -> Result<(), ServerError> {
@@ -239,13 +239,13 @@ impl OwnedCudaKernel {
     /// # Safety
     /// Exact cached FA executed earlier in this same original armed flight;
     /// its private output and public destination remain retained to completion.
-    pub unsafe fn copy_short_hf_attention_output_bindings(
+    pub unsafe fn copy_text_attention_output_bindings(
         &self,
         source: OwnedCudaBinding,
         destination: OwnedCudaBinding,
     ) -> Result<(), ServerError> {
         self.require_active()?;
-        super::super::short_hf_policy::require_n1_copy(&self.image, &self.manifest)?;
+        super::super::text_policy::require_n1_copy(&self.image, &self.manifest)?;
         for binding in [&source, &destination] {
             binding.require(self.set.queue.service_id(), 4096, self.allocation_alignment)?;
         }

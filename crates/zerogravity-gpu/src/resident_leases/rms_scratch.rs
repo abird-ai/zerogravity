@@ -1,6 +1,6 @@
 //! Install private scratch ownership on the SAME original armed submission.
 use super::*;
-use crate::vllm_cuda_input_rms::FullModelRmsScratch;
+use crate::cuda::rms::FullModelRmsScratch;
 impl ResidentSubmission<'_> {
     pub(crate) fn require_rms_actor_accesses(
         &self,

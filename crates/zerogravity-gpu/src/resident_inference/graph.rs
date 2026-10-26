@@ -10,12 +10,12 @@ use std::sync::{
 };
 mod qualification;
 mod wider;
-pub(crate) use qualification::qualify;
+pub use qualification::qualify;
 #[cfg(feature = "hardware-abort-probe")]
-pub(crate) use qualification::qualify_abort;
-pub(crate) use wider::qualify as qualify_wide;
+pub use qualification::qualify_abort;
+pub use wider::qualify as qualify_wide;
 #[cfg(feature = "hardware-abort-probe")]
-pub(crate) use wider::qualify_abort as qualify_wide_abort;
+pub use wider::qualify_abort as qualify_wide_abort;
 
 /// A source launch-site count, not a driver graph-node enumeration or timing.
 #[derive(Clone, Copy, Debug)]

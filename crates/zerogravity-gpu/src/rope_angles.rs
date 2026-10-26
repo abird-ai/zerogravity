@@ -98,7 +98,7 @@ impl<'a> PreparedAngles<'a> {
         theta_scale: f32,
         half: usize,
     ) -> Result<Option<Self>> {
-        if !crate::activation_quant_fused::is_cuda_service(client) {
+        if !crate::quantization::activation_fused::is_cuda_service(client) {
             return Ok(None);
         }
         let count = words(half, 1)?;
@@ -128,7 +128,7 @@ impl<'a> PreparedAngles<'a> {
         half: usize,
         rows: usize,
     ) -> Result<Option<Self>> {
-        if !crate::activation_quant_fused::is_cuda_service(client) {
+        if !crate::quantization::activation_fused::is_cuda_service(client) {
             return Ok(None);
         }
         if ![2, 4, 8].contains(&rows) {

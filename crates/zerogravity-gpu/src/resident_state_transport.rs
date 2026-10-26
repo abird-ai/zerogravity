@@ -11,7 +11,7 @@ use zerogravity_core::{Error, Result};
 mod certified;
 // Grouped B4 uses the pinned CUDA launch ABI. Keep it out of HIP/Vulkan-only
 // builds: vllm_ptx_inline and the native_cohort callers share this feature.
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub(crate) mod typed;
 pub(crate) use certified::{PreparedCertifiedScatter, ensure_certified_capability};
 
@@ -56,7 +56,7 @@ pub(crate) fn geometry(shape: Shape, rows: usize) -> Result<(usize, usize)> {
 }
 
 pub(crate) fn ensure_capability(client: &Client, shape: Shape, rows: usize) -> Result<()> {
-    if !crate::activation_quant_fused::is_cuda_service(client) {
+    if !crate::quantization::activation_fused::is_cuda_service(client) {
         return Err(Error::Unsupported(
             "native state transport CUDA service".into(),
         ));

@@ -5,7 +5,7 @@ use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest};
 
 /// Read-only itinerary; never credits upload progress or device completion.
 fn visit_completed_windows<F>(
-    shape: Vllm08WeightLayout,
+    shape: SourceWeightLayout,
     raw: &[u8],
     cancelled: Option<&AtomicBool>,
     mut verify: F,
@@ -78,7 +78,7 @@ impl ModelWeight {
     ) -> Result<usize> {
         not_cancelled(cancelled)?;
         self.require_initialized()?;
-        let shape = layout(&self.owner.descriptor)?;
+        let shape = self.owner.layout;
         let source = &self.owner.source;
         let members = Coverage::new(shape);
         if self.owner.matrices.len() != members.members().len()
@@ -99,13 +99,9 @@ impl ModelWeight {
             // This one window drops before the next; raw is already admitted.
             let window = match cancelled {
                 Some(flag) => {
-                    source
-                        .source()
-                        .read_rows_cancellable(matrix, region.first..region.end, flag)?
+                    source.read_rows_cancellable(matrix, region.first..region.end, flag)?
                 }
-                None => source
-                    .source()
-                    .read_rows(matrix, region.first..region.end)?,
+                None => source.read_rows(matrix, region.first..region.end)?,
             };
             let offset = region
                 .first
@@ -153,12 +149,10 @@ impl ModelWeight {
     ) -> Result<(Arc<TensorWindow>, ResidentReadback, usize)> {
         not_cancelled(cancelled)?;
         let source = &self.owner.source;
-        let shape = layout(&self.owner.descriptor)?;
+        let shape = self.owner.layout;
         let window = Arc::new(match cancelled {
-            Some(flag) => source
-                .source()
-                .read_rows_cancellable(matrix, rows.clone(), flag)?,
-            None => source.source().read_rows(matrix, rows.clone())?,
+            Some(flag) => source.read_rows_cancellable(matrix, rows.clone(), flag)?,
+            None => source.read_rows(matrix, rows.clone())?,
         });
         let bytes = rows
             .end
@@ -204,8 +198,8 @@ impl ModelWeight {
         self.require_initialized()?;
         let source = &self.owner.source;
         let service = self.lease().service();
-        let admission = Arc::new(source.source().reserve_workspace(2 * 1024 * 1024)?);
-        let shape = layout(&self.owner.descriptor)?;
+        let admission = Arc::new(source.reserve_workspace(2 * 1024 * 1024)?);
+        let shape = self.owner.layout;
         let mut destination = 0usize;
         let mut count = 0usize;
         for matrix in &self.owner.matrices {
@@ -261,13 +255,13 @@ mod completed_tests {
     #[test]
     fn completed_itinerary_matches_existing_upload_members_and_final_tails() {
         for (shape, expected) in [
-            (Vllm08WeightLayout::GdnQkvz, 16),
-            (Vllm08WeightLayout::GdnBa, 2),
-            (Vllm08WeightLayout::GdnOutput, 4),
-            (Vllm08WeightLayout::AttentionQkv, 10),
-            (Vllm08WeightLayout::AttentionOutput, 4),
-            (Vllm08WeightLayout::MlpGateUp, 14),
-            (Vllm08WeightLayout::MlpDown, 8),
+            (SourceWeightLayout::GdnQkvz, 16),
+            (SourceWeightLayout::GdnBa, 2),
+            (SourceWeightLayout::GdnOutput, 4),
+            (SourceWeightLayout::AttentionQkv, 10),
+            (SourceWeightLayout::AttentionOutput, 4),
+            (SourceWeightLayout::MlpGateUp, 14),
+            (SourceWeightLayout::MlpDown, 8),
         ] {
             let raw = vec![0x55; shape.bytes()];
             let mut upload = Coverage::new(shape);
@@ -290,7 +284,7 @@ mod completed_tests {
 
     #[test]
     fn wrong_complete_extent_refuses_before_any_fresh_source_visit() {
-        let shape = Vllm08WeightLayout::GdnBa;
+        let shape = SourceWeightLayout::GdnBa;
         for bytes in [0, shape.bytes() - 1, shape.bytes() + 1] {
             let mut visits = 0;
             let raw = vec![0; bytes];
@@ -307,7 +301,7 @@ mod completed_tests {
 
     #[test]
     fn equal_extent_gate_up_members_remain_ordered_and_mutations_refuse() {
-        let shape = Vllm08WeightLayout::MlpGateUp;
+        let shape = SourceWeightLayout::MlpGateUp;
         let half = shape.bytes() / 2;
         let mut raw = vec![0x19; shape.bytes()];
         raw[half..].fill(0xa3);
@@ -331,7 +325,7 @@ mod completed_tests {
 
     #[test]
     fn final_down_remainder_is_compared_including_its_last_byte() {
-        let shape = Vllm08WeightLayout::MlpDown;
+        let shape = SourceWeightLayout::MlpDown;
         let mut raw = vec![0x57; shape.bytes()];
         let mut final_region = None;
         let count = visit_completed_windows(shape, &raw, None, |region, actual| {
@@ -358,11 +352,11 @@ mod completed_tests {
 
     #[test]
     fn cancellation_refuses_before_source_and_between_source_windows() {
-        let raw = vec![0; Vllm08WeightLayout::GdnBa.bytes()];
+        let raw = vec![0; SourceWeightLayout::GdnBa.bytes()];
         let cancelled = AtomicBool::new(true);
         let mut visits = 0;
         assert!(
-            visit_completed_windows(Vllm08WeightLayout::GdnBa, &raw, Some(&cancelled), |_, _| {
+            visit_completed_windows(SourceWeightLayout::GdnBa, &raw, Some(&cancelled), |_, _| {
                 visits += 1;
                 Ok(())
             })
@@ -371,7 +365,7 @@ mod completed_tests {
         assert_eq!(visits, 0);
         cancelled.store(false, Ordering::Release);
         assert!(
-            visit_completed_windows(Vllm08WeightLayout::GdnBa, &raw, Some(&cancelled), |_, _| {
+            visit_completed_windows(SourceWeightLayout::GdnBa, &raw, Some(&cancelled), |_, _| {
                 visits += 1;
                 cancelled.store(true, Ordering::Release);
                 Ok(())
@@ -383,11 +377,11 @@ mod completed_tests {
 
     #[test]
     fn cancellation_after_last_window_does_not_return_a_verified_count() {
-        let raw = vec![0; Vllm08WeightLayout::GdnBa.bytes()];
+        let raw = vec![0; SourceWeightLayout::GdnBa.bytes()];
         let cancelled = AtomicBool::new(false);
         let mut visits = 0;
         assert!(
-            visit_completed_windows(Vllm08WeightLayout::GdnBa, &raw, Some(&cancelled), |_, _| {
+            visit_completed_windows(SourceWeightLayout::GdnBa, &raw, Some(&cancelled), |_, _| {
                 visits += 1;
                 if visits == 2 {
                     cancelled.store(true, Ordering::Release);
@@ -401,9 +395,9 @@ mod completed_tests {
 
     #[test]
     fn source_failure_is_propagated_without_mutating_raw_or_continuing() {
-        let raw = vec![0x6b; Vllm08WeightLayout::GdnBa.bytes()];
+        let raw = vec![0x6b; SourceWeightLayout::GdnBa.bytes()];
         let mut visits = 0;
-        let error = visit_completed_windows(Vllm08WeightLayout::GdnBa, &raw, None, |_, _| {
+        let error = visit_completed_windows(SourceWeightLayout::GdnBa, &raw, None, |_, _| {
             visits += 1;
             Err(Error::State("synthetic source read failure".into()))
         })
@@ -417,8 +411,8 @@ mod completed_tests {
     #[test]
     fn qwen2b_completed_windows_preserve_upload_order_and_full_tail() {
         for (shape, count) in [
-            (Vllm08WeightLayout::Qwen2bMlpGateUp, 48),
-            (Vllm08WeightLayout::Qwen2bMlpDown, 25),
+            (SourceWeightLayout::Qwen2bMlpGateUp, 48),
+            (SourceWeightLayout::Qwen2bMlpDown, 25),
         ] {
             // Callback observes ranges only; no 72MiB expected/shadow pack.
             let raw = vec![0; shape.bytes()];
@@ -436,7 +430,7 @@ mod completed_tests {
             upload.require_complete().unwrap();
             let last = last.unwrap();
             assert_eq!(last.destination_offset + last.bytes, shape.bytes());
-            if shape == Vllm08WeightLayout::Qwen2bMlpDown {
+            if shape == SourceWeightLayout::Qwen2bMlpDown {
                 assert_eq!((last.first, last.end, last.bytes), (2040, 2048, 98304));
             }
         }

@@ -1,38 +1,36 @@
 //! Initial physical fragment on SAME model/session/root/plan/dispatch ownership.
 //! No PreparedInference, publication, cached continuation or model route.
 use super::*;
+use crate::cuda::native::CubinQualificationInputs;
+use crate::cuda::native::LayerMlpCubinInputs;
+use crate::cuda::native::native_plan::{prepare_connected_native_images, prepare_native_images};
 use crate::physical_quarantine::CompletionOwner;
 use crate::resident_program::native::capacity_bound;
-use crate::vllm_cuda_qualification::CubinQualificationInputs;
-use crate::vllm_cuda_qualification::LayerMlpCubinInputs;
-use crate::vllm_cuda_qualification::native_plan::{
-    prepare_connected_native_images, prepare_native_images,
-};
+use crate::resident_program::source_bindings::SourceBindings;
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, Ordering};
-use zerogravity_core::accelerator::program::{
-    RecordedVllmGdnFragment, ValueId, VllmBf16Invocation,
-};
-use zerogravity_model_qwen35::original_binding::OriginalWindowModelSource;
+use zerogravity_artifacts::source_weights::{SourceOwnerWitness, VerifiedTensorSource};
+use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode, ValueId};
 
-pub(crate) mod canonical47_natural;
 pub(in crate::resident_inference) mod continuation;
 mod faults;
-pub(crate) mod short_hf;
+pub(crate) mod fixed_prompt_natural;
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+mod source_readback;
+pub(crate) mod text;
 pub(crate) use continuation::PrefixPhaseEnqueue;
 mod continuation_qualify;
 pub use continuation_qualify::{
-    VllmGdnSequenceFault, VllmGdnSequenceFaultOutcome, VllmGdnSequenceReceipt,
-    VllmGdnSequenceRestoreReceipt, qualify_vllm_gdn_sequence, qualify_vllm_gdn_sequence_fault,
-    qualify_vllm_gdn_sequence_restore_refusal,
+    GdnSequenceFault, GdnSequenceFaultOutcome, GdnSequenceReceipt, GdnSequenceRestoreReceipt,
+    qualify_gdn_sequence, qualify_gdn_sequence_fault, qualify_gdn_sequence_restore_refusal,
+};
+pub use faults::{
+    GdnFragmentFault, GdnFragmentFaultOutcome, qualify_gdn_fragment_fault,
+    qualify_gdn_mlp_fragment_fault,
 };
 use faults::{Mode, Outcome};
-pub use faults::{
-    VllmGdnFragmentFault, VllmGdnFragmentFaultOutcome, qualify_vllm_gdn_fragment_fault,
-    qualify_vllm_gdn_mlp_fragment_fault,
-};
 #[derive(Clone, Debug)]
-pub struct VllmGdnFragmentReceipt {
+pub struct GdnFragmentReceipt {
     pub rows: usize,
     pub dispatches: usize,
     pub native_launches: usize,
@@ -44,8 +42,8 @@ pub struct VllmGdnFragmentReceipt {
     pub final_physical_reserved_bytes: u64,
 }
 /// Borrowed actual physical bytes, made only inside original completion checks.
-pub struct VllmGdnFragmentReadback<'a> {
-    invocation: &'a VllmBf16Invocation,
+pub struct GdnFragmentReadback<'a> {
+    invocation: &'a SourceCall,
     raw: &'a [Bytes],
     value_count: usize,
     gdn_count: usize,
@@ -53,8 +51,8 @@ pub struct VllmGdnFragmentReadback<'a> {
     prior: &'a [(StateSlot, std::ops::Range<usize>)],
     candidate: &'a [(StateSlot, std::ops::Range<usize>)],
 }
-impl VllmGdnFragmentReadback<'_> {
-    pub fn invocation(&self) -> &VllmBf16Invocation {
+impl GdnFragmentReadback<'_> {
+    pub fn invocation(&self) -> &SourceCall {
         self.invocation
     }
     pub fn value(&self, id: ValueId) -> Result<&[u8]> {
@@ -145,25 +143,23 @@ fn domain_readbacks(
 }
 /// ROOT supplies the already-approved source/images and an expected-byte check
 /// invoked only AFTER genuine arithmetic/D2H inside the original completion.
-pub async fn qualify_vllm_gdn_fragment<F>(
+pub async fn qualify_gdn_fragment<F>(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    record: RecordedVllmGdnFragment,
+    record: Arc<SourceBindings>,
     inputs: CubinQualificationInputs,
     cancelled: Option<&AtomicBool>,
     validate: F,
-) -> Result<VllmGdnFragmentReceipt>
+) -> Result<GdnFragmentReceipt>
 where
-    F: FnOnce(VllmGdnFragmentReadback<'_>) -> Result<()>,
+    F: FnOnce(GdnFragmentReadback<'_>) -> Result<()>,
 {
-    if record.completed_layers() != 0 {
+    if record.selection().completed_layers() != 0 {
         return Err(Error::Unsupported(
             "complete MLP fragment requires separate connected images".into(),
         ));
     }
     match qualify_inner(
         device,
-        source,
         record,
         NativeFragmentImages::Projection(inputs),
         cancelled,
@@ -178,26 +174,24 @@ where
         )),
     }
 }
-pub async fn qualify_vllm_gdn_mlp_fragment<F>(
+pub async fn qualify_gdn_mlp_fragment<F>(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    record: RecordedVllmGdnFragment,
+    record: Arc<SourceBindings>,
     inputs: LayerMlpCubinInputs,
     cancelled: Option<&AtomicBool>,
     validate: F,
-) -> Result<VllmGdnFragmentReceipt>
+) -> Result<GdnFragmentReceipt>
 where
-    F: FnOnce(VllmGdnFragmentReadback<'_>) -> Result<()>,
+    F: FnOnce(GdnFragmentReadback<'_>) -> Result<()>,
 {
     not_cancelled(cancelled)?;
-    if !matches!(record.completed_layers(), 1 | 3) {
+    if !matches!(record.selection().completed_layers(), 1 | 3) {
         return Err(Error::Unsupported(
             "complete initial layer0/prefix0..2 requires closed record".into(),
         ));
     }
     match qualify_inner(
         device,
-        source,
         record,
         NativeFragmentImages::Connected(inputs),
         cancelled,
@@ -224,39 +218,30 @@ impl NativeFragmentImages {
 }
 async fn qualify_inner<F>(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    record: RecordedVllmGdnFragment,
+    record: Arc<SourceBindings>,
     inputs: NativeFragmentImages,
     cancelled: Option<&AtomicBool>,
     validate: F,
     mode: Mode,
 ) -> Result<Outcome>
 where
-    F: FnOnce(VllmGdnFragmentReadback<'_>) -> Result<()>,
+    F: FnOnce(GdnFragmentReadback<'_>) -> Result<()>,
 {
     not_cancelled(cancelled)?;
     // This existing API remains initial-only even when request-phase metadata
     // can be recorded for a separate unpublished transaction consumer.
-    let invocation = record
-        .plan()
-        .vllm_gdn_fragment()
-        .ok_or_else(|| Error::Unsupported("original fragment invocation absent".into()))?;
-    if !matches!(
-        invocation.legacy_phase()?,
-        zerogravity_core::accelerator::program::VllmBf16Phase::InitialOne
-            | zerogravity_core::accelerator::program::VllmBf16Phase::Initial64
-    ) {
+    let source = record.source().clone();
+    let invocation = record.call().clone();
+    if invocation.mode() != SourceCallMode::Prefill
+        || invocation.rows().base() != 0
+        || !matches!(invocation.rows().len(), 1 | 64)
+    {
         return Err(Error::Unsupported(
             "existing native qualifier is initial-only".into(),
         ));
     }
     validate_provider(&device)?;
-    let cap = capacity_bound(&source, &record)?;
-    let invocation = record
-        .plan()
-        .vllm_gdn_fragment()
-        .ok_or_else(|| Error::State("source fragment invocation absent".into()))?
-        .clone();
+    let cap = capacity_bound(&record)?;
     let device_cap = inputs.device_cap();
     let service = ResidentService::new_pinned_cuda(
         device,
@@ -276,9 +261,8 @@ where
             "native qualifier requires original solitary envelope".into(),
         ));
     }
-    if mode.fault() == Some(VllmGdnFragmentFault::AdmissionPressure) {
-        return faults::pressure(service, VllmGdnFragmentFault::AdmissionPressure)
-            .map(Outcome::Fault);
+    if mode.fault() == Some(GdnFragmentFault::AdmissionPressure) {
+        return faults::pressure(service, GdnFragmentFault::AdmissionPressure).map(Outcome::Fault);
     }
     let ticket = service.queue().submit(
         service.budget(),
@@ -291,13 +275,9 @@ where
     )?;
     let mut slot = ticket.wait().await?;
     slot.begin_submission()?;
-    let program = ResidentProgram::prepare_fragment_values(
-        service.clone(),
-        source.clone(),
-        record,
-        cancelled,
-    )
-    .await?;
+    let program =
+        ResidentProgram::prepare_fragment_values(service.clone(), record.clone(), cancelled)
+            .await?;
     slot.finish()?;
     let states = program.budget().states.clone();
     let state_bytes = program.budget().prior_state_bytes;
@@ -332,7 +312,9 @@ where
     }
     not_cancelled(cancelled)?;
     let candidate = model.allocate_state(false).await?;
-    let attempt = session.authority.begin_advance(invocation.rows() as u64)?;
+    let attempt = session
+        .authority
+        .begin_advance(invocation.rows().len() as u64)?;
     let ticket = service.queue().submit(
         service.budget(),
         service.owner().clone(),
@@ -354,10 +336,10 @@ where
             &candidate,
             workspace.program.plan(),
             &layer_call,
-            if invocation.rows() == 1 {
-                crate::vllm_cuda_gdn::VllmGdnPhase::InitialOne
+            if invocation.rows().len() == 1 {
+                crate::cuda::gdn::GdnPhase::InitialOne
             } else {
-                crate::vllm_cuda_gdn::VllmGdnPhase::Initial64
+                crate::cuda::gdn::GdnPhase::Initial64
             },
             *nodes,
         )?);
@@ -373,13 +355,13 @@ where
     not_cancelled(cancelled)?;
     let mut init = service.begin_initialization(base.root())?;
     // Independent immutable source payload owner prevents an images→body cycle.
-    let image_owner: CompletionOwner = source.clone();
+    let image_owner: CompletionOwner = record.clone();
     init.retain_completion_owner(body.completion_owner())?;
     let images = match inputs {
         NativeFragmentImages::Projection(inputs) => prepare_native_images(
             &service,
             image_owner,
-            source.source(),
+            &source,
             workspace.program.plan(),
             inputs,
             &mut init,
@@ -388,7 +370,7 @@ where
         NativeFragmentImages::Connected(inputs) => prepare_connected_native_images(
             &service,
             image_owner,
-            source.source(),
+            &source,
             workspace.program.plan(),
             inputs,
             &mut init,
@@ -438,9 +420,9 @@ where
     workspace.program.validate_runtime(
         service.client(),
         RuntimeParameters {
-            token: invocation.teachers().ids()[0],
+            token: invocation.rows().ids()[0],
             position: 0,
-            valid_tokens: invocation.rows(),
+            valid_tokens: invocation.rows().len(),
         },
         &bindings,
     )?;
@@ -493,9 +475,9 @@ where
     let submitted = workspace.program.launch_fragment(
         service.client(),
         RuntimeParameters {
-            token: invocation.teachers().ids()[0],
+            token: invocation.rows().ids()[0],
             position: 0,
-            valid_tokens: invocation.rows(),
+            valid_tokens: invocation.rows().len(),
         },
         &bindings,
         cancelled,
@@ -557,7 +539,7 @@ where
                     ));
                 }
             }
-            validate(VllmGdnFragmentReadback {
+            validate(GdnFragmentReadback {
                 invocation: &invocation,
                 raw,
                 value_count,
@@ -648,8 +630,8 @@ where
             "native fragment original physical envelope not retired".into(),
         ));
     }
-    Ok(Outcome::Compared(VllmGdnFragmentReceipt {
-        rows: invocation.rows(),
+    Ok(Outcome::Compared(GdnFragmentReceipt {
+        rows: invocation.rows().len(),
         dispatches,
         native_launches,
         readback_bytes,
@@ -665,25 +647,30 @@ pub(crate) mod model_state;
 
 mod full_model_qualify;
 pub use full_model_qualify::{
-    Vllm08DomainReadback, Vllm08ModelFault, Vllm08ModelFaultOutcome, Vllm08ModelInputs,
-    Vllm08ModelReadback, Vllm08ModelReceipt, qualify_vllm08_model, qualify_vllm08_model_fault,
+    SourceDomainReadback, SourceModelFault, SourceModelFaultOutcome, SourceModelInputs,
+    SourceModelReadback, SourceModelReceipt, SourceModelScopes, qualify_source_model,
+    qualify_source_model_fault,
 };
 
-pub(crate) use full_model_qualify::natural_cold::{
-    ColdModelSlots, NaturalColdSnapshot, NaturalRetirementProbe, prepare_natural_cold,
+pub use full_model_qualify::natural_cold::{
+    ColdModelSlots, PreparedNaturalCold, prepare_natural_cold,
 };
+pub(crate) use full_model_qualify::natural_cold::{NaturalColdSnapshot, NaturalRetirementProbe};
 
 // Original completion-bound natural publication; existing routes stay closed.
 pub(crate) mod natural_publication;
 pub(crate) mod natural_reuse;
 pub use natural_publication::{
-    Vllm08NaturalFault, Vllm08NaturalFaultExecution, Vllm08NaturalFaultOutcome,
-    Vllm08NaturalReceipt, Vllm08NaturalReuseFault, Vllm08NaturalReuseFaultExecution,
-    Vllm08NaturalReuseFaultOutcome, Vllm08NaturalReuseReceipt, Vllm08NaturalReuseRound,
-    qualify_vllm08_natural_fault, qualify_vllm08_natural_model, qualify_vllm08_natural_reuse,
-    qualify_vllm08_natural_reuse_fault,
+    CommittedBf16Feedback, NaturalCommitted, NaturalFault, NaturalFaultExecution,
+    NaturalFaultOutcome, NaturalFeedbackRequest, NaturalObserver, NaturalReceipt,
+    NaturalReuseFault, NaturalReuseFaultExecution, NaturalReuseFaultOutcome, NaturalReuseReceipt,
+    NaturalReuseRound, NaturalSlot, NaturalStatePool, NaturalStep, qualify_natural_fault,
+    qualify_natural_reuse_fault,
 };
-pub use natural_reuse::qualify_vllm08_natural_reuse_pressure;
+pub use natural_reuse::{
+    PreparedReusableNatural, ReusableNaturalStorage, prepare_reusable_natural_cold,
+    qualify_natural_reuse_pressure,
+};
 
 mod qwen2b_component;
 pub use qwen2b_component::{
@@ -692,11 +679,11 @@ pub use qwen2b_component::{
     qualify_qwen2b_gdn_component_arithmetic, qualify_qwen2b_gdn_component_fault,
 };
 
-mod canonical47_component;
-pub use canonical47_component::{
-    Canonical47GdnComponentFault, Canonical47GdnComponentFaultOutcome,
-    Canonical47GdnComponentReadback, Canonical47GdnComponentReceipt,
-    qualify_canonical47_gdn_component, qualify_canonical47_gdn_component_fault,
+mod fixed_prompt_component;
+pub use fixed_prompt_component::{
+    FixedPromptGdnComponentFault, FixedPromptGdnComponentFaultOutcome,
+    FixedPromptGdnComponentReadback, FixedPromptGdnComponentReceipt,
+    qualify_fixed_prompt_gdn_component, qualify_fixed_prompt_gdn_component_fault,
 };
 
 #[cfg(target_os = "linux")]
@@ -717,29 +704,29 @@ pub use mlp_component::{
     qualify_mlp_component, qualify_mlp_component_fault,
 };
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
-mod canonical47_model_prefix;
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
-pub use canonical47_model_prefix::{
-    Canonical47ModelPrefixFault, Canonical47ModelPrefixFaultOutcome,
-    Canonical47ModelPrefixReadback, Canonical47ModelPrefixReceipt,
-    Canonical47QkKvQualificationInputs, qualify_canonical47_model_fa_prefix,
-    qualify_canonical47_model_fa_prefix_fault, qualify_canonical47_model_kv_prefix,
-    qualify_canonical47_model_kv_prefix_fault, qualify_canonical47_model_layer3_prefix,
-    qualify_canonical47_model_layer3_prefix_fault, qualify_canonical47_model_prefix,
-    qualify_canonical47_model_prefix_fault, qualify_canonical47_model_qkv_prefix,
-    qualify_canonical47_model_qkv_prefix_fault,
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+mod fixed_prompt_model_prefix;
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+pub use fixed_prompt_model_prefix::{
+    FixedPromptModelPrefixFault, FixedPromptModelPrefixFaultOutcome,
+    FixedPromptModelPrefixReadback, FixedPromptModelPrefixReceipt,
+    FixedPromptQkKvQualificationInputs, qualify_fixed_prompt_model_fa_prefix,
+    qualify_fixed_prompt_model_fa_prefix_fault, qualify_fixed_prompt_model_kv_prefix,
+    qualify_fixed_prompt_model_kv_prefix_fault, qualify_fixed_prompt_model_layer3_prefix,
+    qualify_fixed_prompt_model_layer3_prefix_fault, qualify_fixed_prompt_model_prefix,
+    qualify_fixed_prompt_model_prefix_fault, qualify_fixed_prompt_model_qkv_prefix,
+    qualify_fixed_prompt_model_qkv_prefix_fault,
 };
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
-mod canonical47_full_model;
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+mod fixed_prompt_full_model;
 #[cfg(target_os = "linux")]
 mod qwen2b_mlp_component;
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
-pub use canonical47_full_model::{
-    Canonical47FullModelFault, Canonical47FullModelFaultOutcome, Canonical47FullModelReadback,
-    Canonical47FullModelReceipt, qualify_canonical47_full_model,
-    qualify_canonical47_full_model_fault,
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+pub use fixed_prompt_full_model::{
+    FixedPromptFullModelFault, FixedPromptFullModelFaultOutcome, FixedPromptFullModelReadback,
+    FixedPromptFullModelReceipt, qualify_fixed_prompt_full_model,
+    qualify_fixed_prompt_full_model_fault,
 };
 #[cfg(target_os = "linux")]
 pub use qwen2b_mlp_component::{
@@ -747,22 +734,22 @@ pub use qwen2b_mlp_component::{
     Qwen2bMlpComponentSource, qualify_qwen2b_mlp_component, qualify_qwen2b_mlp_component_fault,
 };
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
-pub use canonical47_natural::{
-    Canonical47CallReceipt, Canonical47CloseReceipt, Canonical47EmptySnapshot,
-    Canonical47LifecycleProfile, Canonical47Loaded, Canonical47LoadedObservation,
-    Canonical47LoadedSnapshot, Canonical47NaturalFault, Canonical47NaturalFaultOutcome,
-    Canonical47NaturalReadback, Canonical47Pending, Canonical47Session,
-    canonical47_natural_host_bound, prepare_canonical47_natural,
-    prepare_canonical47_natural_with_profile,
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+pub use fixed_prompt_natural::{
+    FixedPromptCallReceipt, FixedPromptCloseReceipt, FixedPromptEmptySnapshot,
+    FixedPromptFeedbackRequest, FixedPromptLifecycleProfile, FixedPromptLoaded,
+    FixedPromptLoadedObservation, FixedPromptLoadedSnapshot, FixedPromptNaturalFault,
+    FixedPromptNaturalFaultOutcome, FixedPromptNaturalReadback, FixedPromptPending,
+    FixedPromptSession, fixed_prompt_natural_host_bound, prepare_fixed_prompt_natural,
+    prepare_fixed_prompt_natural_with_profile,
 };
 
 #[cfg(target_os = "linux")]
-pub use short_hf::{
-    ShortHfCallReceipt, ShortHfCloseReceipt, ShortHfCohortFault, ShortHfCohortFaultOutcome,
-    ShortHfCohortFaultRetention, ShortHfCohortPreparation, ShortHfCohortReadback,
-    ShortHfCohortReceipt, ShortHfCohortRowReceipt, ShortHfEmptySnapshot, ShortHfFault,
-    ShortHfFaultOutcome, ShortHfLoaded, ShortHfLoadedObservation, ShortHfLoadedSnapshot,
-    ShortHfPending, ShortHfPendingCohort, ShortHfQualificationInputs, ShortHfReadback,
-    ShortHfResourceInventory, ShortHfSession, prepare_short_hf, prepare_short_hf_b4,
+pub use text::{
+    TextCallReceipt, TextCloseReceipt, TextCohortFault, TextCohortFaultOutcome,
+    TextCohortFaultRetention, TextCohortPreparation, TextCohortReadback, TextCohortReceipt,
+    TextCohortRowReceipt, TextEmptySnapshot, TextFault, TextFaultOutcome, TextFeedbackRequest,
+    TextLoaded, TextLoadedObservation, TextLoadedSnapshot, TextPending, TextPendingCohort,
+    TextQualificationInputs, TextReadback, TextResourceInventory, TextSession, prepare_text,
+    prepare_text_b4,
 };

@@ -1,7 +1,7 @@
 //! Exact whole-allocation reuse; original leases/events still own retirement.
 // Current normal constructors live behind the finite native consumer feature.
 // Keep shared ownership available to other providers and source formats.
-#![cfg_attr(not(feature = "vllm-cuda-qualification"), allow(dead_code))]
+#![cfg_attr(not(feature = "cuda-native"), allow(dead_code))]
 use super::*;
 use std::sync::Weak;
 use zerogravity_core::device_events::DeviceBackingId;
@@ -666,7 +666,7 @@ mod tests;
 impl ResidentLease {
     /// Actual enqueue-time bridge; inactive cold views cannot mint a binding.
     /// Old whole allocations keep the original canonical native handle contract.
-    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
     pub(crate) fn cubin_binding(&self) -> Result<cubecl::cuda::OwnedCudaBinding> {
         let service = self.service();
         service.ensure_usable()?;

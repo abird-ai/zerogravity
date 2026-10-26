@@ -18,7 +18,7 @@ impl ResidentProgram {
         node: &PlanNode,
         rows: usize,
     ) -> Result<Option<crate::ordered_silu::PreparedOrderedSilu>> {
-        if !crate::activation_quant_fused::is_cuda_service(client) {
+        if !crate::quantization::activation_fused::is_cuda_service(client) {
             return Ok(None);
         }
         if self.plan.numerical_profile()

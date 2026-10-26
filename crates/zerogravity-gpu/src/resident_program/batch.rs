@@ -5,8 +5,8 @@
 //! launch, and publishes independent roots only after real completion.
 
 use super::*;
-use crate::activation_quant::{self, PARAMETER_WORDS};
-use crate::activation_quant_fused::{BlockBindings, PreparedBlocks};
+use crate::quantization::activation::PARAMETER_WORDS;
+use crate::quantization::activation_fused::{BlockBindings, PreparedBlocks};
 use crate::resident_state_transport::{
     Direction, PreparedCertifiedScatter, PreparedTransport, Row, Shape,
 };
@@ -124,7 +124,7 @@ impl BatchProgram {
     ) -> Result<Self> {
         let preflight = Self::preflight(original, rows)?;
         ResidentProgram::ensure_capability(client)?;
-        if !crate::activation_quant_fused::is_cuda_service(client) {
+        if !crate::quantization::activation_fused::is_cuda_service(client) {
             return Err(Error::Unsupported(
                 "native source batch requires CUDA lowering".into(),
             ));
@@ -713,7 +713,7 @@ impl BatchProgram {
                 .filter(|_| output == ResidentOutput::Logits)
                 .map(|id| self.inner.values[id.0 as usize].clone()),
             proposals,
-            #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
             cohort_proposals: None,
             status: self.inner.status.clone(),
             quant_status,
@@ -941,26 +941,10 @@ impl BatchProgram {
             match &node.operation {
                 PlanOperation::TypedBulkF32Input { .. }
                 | PlanOperation::TypedBulkF32Matmul { .. }
-                | PlanOperation::TypedZenSsmOutInput { .. }
-                | PlanOperation::TypedZenSsmOutProjection { .. }
-                | PlanOperation::TypedGgufPrefixEmbedding { .. }
-                | PlanOperation::TypedGgufPrefixRms { .. }
-                | PlanOperation::TypedGgufGdnInput { .. }
-                | PlanOperation::TypedGgufGdnProjection { .. }
-                | PlanOperation::TypedGgufGdnConvSilu { .. }
-                | PlanOperation::TypedGgufGdnQk { .. }
                 | PlanOperation::TypedEmbed { .. }
                 | PlanOperation::TypedProject { .. }
                 | PlanOperation::TypedOrdinaryRms { .. }
-                | PlanOperation::TypedVllmBf16Embedding { .. }
-                | PlanOperation::TypedVllmInputRms { .. }
-                | PlanOperation::TypedVllmGdnConv { .. }
-                | PlanOperation::TypedVllmGdnRecurrent { .. }
-                | PlanOperation::TypedVllmStateCarry
-                | PlanOperation::TypedVllm08 { .. }
-                | PlanOperation::TypedVllmGdnProjection { .. }
-                | PlanOperation::TypedVllmSiluAndMul { .. }
-                | PlanOperation::TypedResidualRms { .. }
+                | PlanOperation::SourceOperator { .. }
                 | PlanOperation::TypedCausalConvSilu { .. } => Err(Error::Unsupported(
                     "resident batch has no qualified typed lowering".into(),
                 )),
@@ -1566,7 +1550,7 @@ impl BatchProgram {
                 dispatches += 1;
             }
             match tensor.kind {
-                QuantKind::Q4_0 => crate::batch_quant_projection::q4_0_batched::launch_unchecked(
+                QuantKind::Q4_0 => crate::quantization::batch_projection::q4_0_batched::launch_unchecked(
                     client,
                     grid(rows),
                     threads(),
@@ -1580,7 +1564,7 @@ impl BatchProgram {
                     self.rows,
                     true,
                 ),
-                QuantKind::Q4_1 => crate::batch_quant_projection::q4_1_batched::launch_unchecked(
+                QuantKind::Q4_1 => crate::quantization::batch_projection::q4_1_batched::launch_unchecked(
                     client,
                     grid(rows),
                     threads(),
@@ -1596,7 +1580,7 @@ impl BatchProgram {
                     true,
                 ),
                 QuantKind::Q8_0 => {
-                    crate::batch_quant_projection::q8_source_batched_projection::launch_unchecked(
+                    crate::quantization::batch_projection::q8_source_batched_projection::launch_unchecked(
                         client,
                         grid(rows),
                         threads(),
@@ -1611,7 +1595,7 @@ impl BatchProgram {
                         true,
                     )
                 }
-                QuantKind::Q6K => crate::batch_quant_projection::q6_k_batched::launch_unchecked(
+                QuantKind::Q6K => crate::quantization::batch_projection::q6_k_batched::launch_unchecked(
                     client,
                     grid(rows),
                     threads(),
@@ -1879,7 +1863,7 @@ fn batch_composites(
             let scale = round_source(widen_source(a) * widen_source(b), sign);
             scales[index] = scale;
             if (u32::reinterpret(scale) & 0x7fffffffu32) >= 0x7f800000u32 {
-                flags |= activation_quant::COMPOSITE_NONFINITE;
+                flags |= crate::quantization::activation::COMPOSITE_NONFINITE;
             }
             if with_bias {
                 let a = biases[source];
@@ -1888,7 +1872,7 @@ fn batch_composites(
                 let offset = round_source(widen_source(a) * widen_source(b), sign);
                 offsets[index] = offset;
                 if (u32::reinterpret(offset) & 0x7fffffffu32) >= 0x7f800000u32 {
-                    flags |= activation_quant::COMPOSITE_NONFINITE;
+                    flags |= crate::quantization::activation::COMPOSITE_NONFINITE;
                 }
             }
         }

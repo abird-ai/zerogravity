@@ -1,24 +1,25 @@
 //! Closed geometry/storage checks; no call, state, completion or teacher issuer.
 use super::*;
 use crate::resident_leases::ResidentLease;
-use zerogravity_core::accelerator::program::{RecordedVllm08Model, VllmBf16Phase};
+use crate::resident_program::source_bindings::SourceBindings;
+use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode};
 
-pub(crate) fn slot(call: &zerogravity_core::accelerator::program::Vllm08Call) -> Result<usize> {
-    call.validate()?;
-    slot_geometry(
-        call.request().legacy_phase()?,
-        call.request().teachers().base(),
-        call.rows(),
-    )
+pub(crate) fn slot(call: &SourceCall) -> Result<usize> {
+    if call.rows().capacity() != 512 || call.rows().vocabulary() != 248320 {
+        return Err(Error::Unsupported(
+            "natural actual source call capacity/vocabulary".into(),
+        ));
+    }
+    slot_geometry(call.mode(), call.rows().base(), call.rows().len())
 }
-fn slot_geometry(phase: VllmBf16Phase, base: usize, rows: usize) -> Result<usize> {
-    use VllmBf16Phase::*;
+fn slot_geometry(phase: SourceCallMode, base: usize, rows: usize) -> Result<usize> {
+    use SourceCallMode::*;
     match (phase, base, rows) {
-        (InitialOne, 0, 1) => Ok(0),
-        (CachedOne, 1, 1) => Ok(1),
-        (Initial64, 0, 64) => Ok(2),
-        (ContinuedTwo, 64, 2) => Ok(3),
-        (CachedOne, 66, 1) => Ok(4),
+        (Prefill, 0, 1) => Ok(0),
+        (Decode, 1, 1) => Ok(1),
+        (Prefill, 0, 64) => Ok(2),
+        (Prefill, 64, 2) => Ok(3),
+        (Decode, 66, 1) => Ok(4),
         _ => Err(Error::Unsupported(
             "natural call outside original five geometries".into(),
         )),
@@ -46,9 +47,7 @@ pub(crate) fn same_lease(a: &ResidentLease, b: &ResidentLease) -> Result<()> {
 }
 /// Compare the actual sealed recipes, excluding ONLY the true new call issuer.
 /// Mathematical roles, source parameters, SSA/state effects and layouts stay exact.
-pub(crate) fn same_recipe(a: &RecordedVllm08Model, b: &RecordedVllm08Model) -> Result<()> {
-    a.call().validate()?;
-    b.call().validate()?;
+pub(crate) fn same_recipe(a: &SourceBindings, b: &SourceBindings) -> Result<()> {
     if a.plan().nodes().len() != 255
         || b.plan().nodes().len() != 255
         || a.plan().values().len() != 327
@@ -61,12 +60,14 @@ pub(crate) fn same_recipe(a: &RecordedVllm08Model, b: &RecordedVllm08Model) -> R
     let (ap, bp) = (a.plan(), b.plan());
     if slot(a.call())? != slot(b.call())?
         || a.call().source() != b.call().source()
+        || !a.source().same_issuer(b.source())
+        || ap.numerical_profile() != bp.numerical_profile()
         || ap.values() != bp.values()
         || ap.precisions() != bp.precisions()
         || ap.required_domains() != bp.required_domains()
         || ap.proposed_domains() != bp.proposed_domains()
-        || a.logits() != b.logits()
-        || a.normalized() != b.normalized()
+        || a.selection().output() != b.selection().output()
+        || a.selection().normalized() != b.selection().normalized()
         || ap.nodes().len() != bp.nodes().len()
     {
         return Err(Error::State(
@@ -79,45 +80,35 @@ pub(crate) fn same_recipe(a: &RecordedVllm08Model, b: &RecordedVllm08Model) -> R
                 "natural call changes sealed SSA/state effect".into(),
             ));
         }
+        a.operator(index)?;
+        b.operator(index)?;
         match (&old.operation, &new.operation) {
             (
-                PlanOperation::TypedVllmBf16Embedding { descriptor: a },
-                PlanOperation::TypedVllmBf16Embedding { descriptor: b },
-            ) if index == 0 => {
-                a.validate()?;
-                b.validate()?;
-                if a.tensor() != b.tensor() {
-                    return Err(Error::State(
-                        "natural embedding source header differs".into(),
-                    ));
-                }
-            }
-            (
-                PlanOperation::TypedVllm08 {
-                    descriptor: a,
-                    state: sa,
+                PlanOperation::SourceOperator {
+                    descriptor: left,
+                    state: ls,
                 },
-                PlanOperation::TypedVllm08 {
-                    descriptor: b,
-                    state: sb,
+                PlanOperation::SourceOperator {
+                    descriptor: right,
+                    state: rs,
                 },
             ) => {
-                a.validate()?;
-                b.validate()?;
-                if a.kind() != b.kind()
-                    || a.layer() != b.layer()
-                    || a.matrices() != b.matrices()
-                    || a.parameters() != b.parameters()
-                    || sa != sb
+                if left.call() != a.call()
+                    || right.call() != b.call()
+                    || left.kind() != right.kind()
+                    || left.numerical_contract() != right.numerical_contract()
+                    || left.matrices() != right.matrices()
+                    || left.parameters() != right.parameters()
+                    || ls != rs
                 {
                     return Err(Error::State(
-                        "natural call changes source operator/role".into(),
+                        "rebind changes immutable mathematical source recipe".into(),
                     ));
                 }
             }
             _ => {
                 return Err(Error::State(
-                    "natural call introduces a different operation".into(),
+                    "rebind introduces an unrelated operation".into(),
                 ));
             }
         }
@@ -156,7 +147,7 @@ impl ColdProgramSlot {
     pub(crate) fn is_claimed(&self) -> bool {
         self.claimed.is_claimed()
     }
-    pub(crate) fn record(&self) -> &Arc<RecordedVllm08Model> {
+    pub(crate) fn record(&self) -> &Arc<SourceBindings> {
         self.body.record()
     }
     /// The original workspace lock covers binding through real completion.
@@ -266,13 +257,13 @@ mod tests {
     }
     #[test]
     fn fixed_storage_slots_do_not_derive_authority_from_row_count() {
-        use VllmBf16Phase::*;
+        use SourceCallMode::*;
         for (index, (phase, base, rows)) in [
-            (InitialOne, 0, 1),
-            (CachedOne, 1, 1),
-            (Initial64, 0, 64),
-            (ContinuedTwo, 64, 2),
-            (CachedOne, 66, 1),
+            (Prefill, 0, 1),
+            (Decode, 1, 1),
+            (Prefill, 0, 64),
+            (Prefill, 64, 2),
+            (Decode, 66, 1),
         ]
         .into_iter()
         .enumerate()
@@ -280,11 +271,11 @@ mod tests {
             assert_eq!(slot_geometry(phase, base, rows).unwrap(), index);
         }
         for (phase, base, rows) in [
-            (InitialOne, 1, 1),
-            (CachedOne, 0, 1),
-            (CachedOne, 64, 1),
-            (ContinuedTwo, 64, 1),
-            (Initial64, 0, 63),
+            (Prefill, 1, 1),
+            (Decode, 0, 1),
+            (Decode, 64, 1),
+            (Prefill, 64, 1),
+            (Prefill, 0, 63),
         ] {
             assert!(slot_geometry(phase, base, rows).is_err());
         }

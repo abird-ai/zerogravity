@@ -30,7 +30,7 @@ fn fixed47_windows_are_charged_independently_at_every_tensor_alignment() {
     let chunk = 1024 * 1024;
     let stride = 2048;
     let mut multiplicity = [0; 512];
-    for id in recipe::CANONICAL47_PROMPT {
+    for id in recipe::FIXED_PROMPT_IDS {
         multiplicity[id as usize % 512] += 1;
     }
     assert_eq!(multiplicity.into_iter().max(), Some(10));
@@ -39,7 +39,7 @@ fn fixed47_windows_are_charged_independently_at_every_tensor_alignment() {
     for residue in 0..512 {
         for subrow in [0, 1, 2047] {
             let start = residue * stride + subrow;
-            let chunks = recipe::CANONICAL47_PROMPT
+            let chunks = recipe::FIXED_PROMPT_IDS
                 .into_iter()
                 .map(|id| {
                     let begin = start + id as usize * stride;

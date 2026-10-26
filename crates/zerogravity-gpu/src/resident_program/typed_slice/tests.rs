@@ -220,7 +220,7 @@ fn compare_cpu(
         .collect::<Vec<_>>();
     let gp = source.parameter("gamma")?;
     let g = source.read_parameter(&gp, 0..h)?;
-    let reference = zerogravity_cpu::original_hf::norm::ordinary_rms(
+    let reference = zerogravity_cpu::numerics::torch_cpu::norm::ordinary_rms(
         source.source_identity(),
         zerogravity_core::source::SourceTensorRef {
             kind: QuantKind::Bf16,
@@ -289,7 +289,7 @@ fn compare_cpu(
     for first in (0..wm.rows()).step_by(row_capacity) {
         let end = (first + row_capacity).min(wm.rows());
         let window = source.read_rows(&wm, first..end)?;
-        let output = zerogravity_cpu::original_hf::window_projection::project_bf16_window(
+        let output = zerogravity_cpu::source::window_projection::project_bf16_window(
             &descriptor(source, "projection")?,
             first..end,
             &window,

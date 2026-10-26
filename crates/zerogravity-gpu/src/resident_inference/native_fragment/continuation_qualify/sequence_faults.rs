@@ -4,29 +4,27 @@ use std::sync::{Mutex as StdMutex, Weak};
 use zerogravity_core::device_events::BufferLeaseId;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum VllmGdnSequenceFault {
+pub enum GdnSequenceFault {
     AdmissionPressure,
     UnknownAfterConvolution,
     CancelBeforeRecurrent,
     UnknownAfterPostAttentionRms,
     CancelBeforeMlpDown,
 }
-impl VllmGdnSequenceFault {
-    fn fragment(self) -> VllmGdnFragmentFault {
+impl GdnSequenceFault {
+    fn fragment(self) -> GdnFragmentFault {
         match self {
-            Self::AdmissionPressure => VllmGdnFragmentFault::AdmissionPressure,
-            Self::UnknownAfterConvolution => VllmGdnFragmentFault::UnknownAfterConvolution,
-            Self::CancelBeforeRecurrent => VllmGdnFragmentFault::CancelBeforeRecurrent,
-            Self::UnknownAfterPostAttentionRms => {
-                VllmGdnFragmentFault::UnknownAfterPostAttentionRms
-            }
-            Self::CancelBeforeMlpDown => VllmGdnFragmentFault::CancelBeforeMlpDown,
+            Self::AdmissionPressure => GdnFragmentFault::AdmissionPressure,
+            Self::UnknownAfterConvolution => GdnFragmentFault::UnknownAfterConvolution,
+            Self::CancelBeforeRecurrent => GdnFragmentFault::CancelBeforeRecurrent,
+            Self::UnknownAfterPostAttentionRms => GdnFragmentFault::UnknownAfterPostAttentionRms,
+            Self::CancelBeforeMlpDown => GdnFragmentFault::CancelBeforeMlpDown,
         }
     }
 }
 #[derive(Clone, Debug)]
-pub struct VllmGdnSequenceFaultOutcome {
-    pub fault: VllmGdnSequenceFault,
+pub struct GdnSequenceFaultOutcome {
+    pub fault: GdnSequenceFault,
     /// Earlier phases really completed and were independently compared.
     pub completed_phases: usize,
     pub attempted_phases: usize,
@@ -34,7 +32,7 @@ pub struct VllmGdnSequenceFaultOutcome {
     pub all_prepared_phases_retained: bool,
     pub prepared_state_buffers: usize,
     /// Only the faulting phase: zero Ready/comparisons, original fence/pending1.
-    pub active: VllmGdnFragmentFaultOutcome,
+    pub active: GdnFragmentFaultOutcome,
 }
 type Descriptor = (BufferLeaseId, usize, usize);
 struct Witness {
@@ -51,7 +49,7 @@ pub(super) struct SequenceProbe {
 }
 pub(super) struct Arm<'a> {
     pub service: &'a Arc<ResidentService>,
-    pub source: &'a Arc<OriginalWindowModelSource>,
+    pub source: &'a VerifiedTensorSource,
     pub owners: &'a Arc<SequenceOwners>,
     pub index: usize,
     pub previous: Option<&'a Arc<CompletedPrefixPhase>>,
@@ -127,7 +125,7 @@ impl SequenceProbe {
         });
         Ok(())
     }
-    fn inspect(&self, fault: VllmGdnSequenceFault) -> Result<VllmGdnSequenceFaultOutcome> {
+    fn inspect(&self, fault: GdnSequenceFault) -> Result<GdnSequenceFaultOutcome> {
         // Called only after the inner future and ALL its normal locals drop.
         let active = self.active.inspect(fault.fragment())?;
         let guard = self
@@ -156,7 +154,7 @@ impl SequenceProbe {
             || owners
                 .bodies
                 .iter()
-                .any(|body| !Arc::ptr_eq(body.source(), &owners._source))
+                .any(|body| !body.source().same_issuer(&owners._source))
             || owners.initial.len() != 42
             || owners.candidates.iter().any(|d| d.len() != 42)
         {
@@ -165,7 +163,7 @@ impl SequenceProbe {
                     .into(),
             ));
         }
-        Ok(VllmGdnSequenceFaultOutcome {
+        Ok(GdnSequenceFaultOutcome {
             fault,
             completed_phases: witness.phase_index,
             attempted_phases: owners.bodies.len(),
@@ -180,7 +178,7 @@ pub(super) enum SequenceMode {
     Compare,
     RestoreBeforeContinuation,
     Fault {
-        fault: VllmGdnSequenceFault,
+        fault: GdnSequenceFault,
         probe: Arc<SequenceProbe>,
     },
 }
@@ -192,12 +190,12 @@ impl SequenceMode {
         matches!(
             self,
             Self::Fault {
-                fault: VllmGdnSequenceFault::AdmissionPressure,
+                fault: GdnSequenceFault::AdmissionPressure,
                 ..
             }
         )
     }
-    pub(super) fn active_fault(&self, index: usize, phases: usize) -> Option<VllmGdnFragmentFault> {
+    pub(super) fn active_fault(&self, index: usize, phases: usize) -> Option<GdnFragmentFault> {
         match self {
             Self::Fault { fault, .. } if index + 1 == phases => Some(fault.fragment()),
             _ => None,
@@ -213,30 +211,28 @@ impl SequenceMode {
     }
 }
 pub(super) enum SequenceOutcome {
-    Compared(VllmGdnSequenceReceipt),
-    Fault(VllmGdnSequenceFaultOutcome),
-    Restored(VllmGdnSequenceRestoreReceipt),
+    Compared(GdnSequenceReceipt),
+    Fault(GdnSequenceFaultOutcome),
+    Restored(GdnSequenceRestoreReceipt),
 }
 /// Earlier phase callbacks are mandatory independent comparisons; the final
 /// faulting phase must never reach this callback, D2H, Ready or native unload.
-pub async fn qualify_vllm_gdn_sequence_fault<F>(
+pub async fn qualify_gdn_sequence_fault<F>(
     device: Device,
-    source: Arc<OriginalWindowModelSource>,
-    records: Vec<RecordedVllmGdnFragment>,
+    records: Vec<Arc<SourceBindings>>,
     inputs: LayerMlpCubinInputs,
-    fault: VllmGdnSequenceFault,
+    fault: GdnSequenceFault,
     cancelled: Option<&AtomicBool>,
     mut validate: F,
-) -> Result<VllmGdnSequenceFaultOutcome>
+) -> Result<GdnSequenceFaultOutcome>
 where
-    F: FnMut(usize, VllmGdnFragmentReadback<'_>) -> Result<()>,
+    F: FnMut(usize, GdnFragmentReadback<'_>) -> Result<()>,
 {
     not_cancelled(cancelled)?;
     let phases = records.len();
     let probe = Arc::new(SequenceProbe::default());
     let result = qualify_sequence_inner(
         device,
-        source,
         records,
         inputs,
         cancelled,

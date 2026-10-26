@@ -6,13 +6,12 @@ impl PreparedBf16Greedy {
     pub(crate) fn bind_reusable(self: &Arc<Self>, values: Arc<ModelValues>) -> Result<Arc<Self>> {
         same_recipe(self.owner.values.record(), values.record())?;
         require_head(values.record())?;
-        same_lease(&self.logits, values.lease(values.record().logits())?)?;
+        same_lease(
+            &self.logits,
+            values.lease(values.record().selection().output())?,
+        )?;
         same_lease(&self.status, values.status())?;
-        let metadata = self
-            .owner
-            .source
-            .source()
-            .reserve_workspace(METADATA_BYTES)?;
+        let metadata = self.owner.source.reserve_workspace(METADATA_BYTES)?;
         // Original service admission precedes allocation. No fake initialization;
         // the enclosing actual sampler Write is its only content producer.
         let packet = self

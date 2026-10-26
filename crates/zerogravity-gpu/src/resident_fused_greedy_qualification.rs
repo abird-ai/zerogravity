@@ -214,7 +214,7 @@ async fn refusals(
     Ok(())
 }
 
-pub(crate) async fn qualify(
+pub async fn qualify(
     device: Device,
     path: &Path,
     provider_cap: usize,
@@ -750,7 +750,7 @@ async fn selector_fixtures(resident: &Arc<ResidentModel>, count: usize, eos: u32
 
 /// Separate-process unknown completion proof includes original input/output packets.
 #[cfg(feature = "hardware-abort-probe")]
-pub(crate) async fn qualify_abort(
+pub async fn qualify_abort(
     device: Device,
     path: &Path,
     provider_cap: usize,

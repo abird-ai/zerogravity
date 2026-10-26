@@ -2,7 +2,7 @@
 //! No model arithmetic, single-row geometry grant or captured tensor input.
 use super::super::*;
 use super::values::CohortValues;
-use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, short_hf::ShortHfCallInput};
+use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextCallInput};
 use crate::resident_leases::{ResidentLease, ResidentService};
 use zerogravity_artifacts::source_weights::WindowWorkspace;
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
@@ -80,7 +80,7 @@ impl Copy {
 
 pub(super) struct CohortGdnPacking {
     values: Arc<CohortValues>,
-    inputs: Box<[Arc<ShortHfCallInput>]>,
+    inputs: Box<[Arc<TextCallInput>]>,
     nodes: [usize; 2],
     a: ResidentLease,
     b: ResidentLease,
@@ -96,7 +96,7 @@ impl CohortGdnPacking {
     /// workspace. This binder performs no hidden upload or allocation.
     pub(super) fn bind(
         values: Arc<CohortValues>,
-        inputs: &[Arc<ShortHfCallInput>],
+        inputs: &[Arc<TextCallInput>],
         layer: usize,
         a: ResidentLease,
         b: ResidentLease,
@@ -104,7 +104,7 @@ impl CohortGdnPacking {
         status: ResidentLease,
     ) -> Result<Arc<Self>> {
         values.require_inputs(inputs)?;
-        crate::vllm_cuda_qualification::cohort_native::require_input_shape(inputs)?;
+        crate::cuda::native::cohort_native::require_input_shape(inputs)?;
         let service = values.service();
         if inputs.len() != 4 {
             return Err(Error::Unsupported(
@@ -116,7 +116,7 @@ impl CohortGdnPacking {
         let site = inputs[0].scope().gdn_site(layer)?;
         for input in inputs {
             let actual = input.scope().gdn_site(layer)?;
-            if input.workload().prompt_rows() != 47
+            if input.prompt_tokens() != 47
                 || !matches!((input.rows(), input.base()), (47, 0) | (1, 47..=53))
                 || input.rows() != inputs[0].rows()
                 || actual.nodes != site.nodes
@@ -237,11 +237,7 @@ impl CohortGdnPacking {
         for copy in &copies {
             copy.require(service)?;
         }
-        let metadata = inputs[0]
-            .source()
-            .source()
-            .source()
-            .reserve_workspace(32 * 1024)?;
+        let metadata = inputs[0].source().reserve_workspace(32 * 1024)?;
         let nodes = site.nodes;
         Ok(Arc::new(Self {
             values,
@@ -258,7 +254,7 @@ impl CohortGdnPacking {
     pub(super) fn require_storage(
         &self,
         values: &Arc<CohortValues>,
-        inputs: &[Arc<ShortHfCallInput>],
+        inputs: &[Arc<TextCallInput>],
         a: &ResidentLease,
         b: &ResidentLease,
         pitched: Option<&ResidentLease>,

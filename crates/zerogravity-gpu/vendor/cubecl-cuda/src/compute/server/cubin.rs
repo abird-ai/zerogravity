@@ -84,7 +84,7 @@ impl CudaServer {
         ));
         Ok(())
     }
-    pub(crate) fn admit_owned_canonical47_mlp_cubin_set(
+    pub(crate) fn admit_owned_fixed_prompt_mlp_cubin_set(
         &mut self,
         key: u64,
         owner: Arc<dyn std::any::Any + Send + Sync>,
@@ -95,7 +95,7 @@ impl CudaServer {
         self.cubin_set = Some(CubinModuleSet::new_with_policy(
             key,
             owner,
-            CubinSetPolicy::Canonical47Mlp,
+            CubinSetPolicy::FixedPromptMlp,
         ));
         Ok(())
     }
@@ -114,7 +114,7 @@ impl CudaServer {
         ));
         Ok(())
     }
-    pub(crate) fn admit_owned_canonical47_qkv_cubin_set(
+    pub(crate) fn admit_owned_fixed_prompt_qkv_cubin_set(
         &mut self,
         key: u64,
         owner: Arc<dyn std::any::Any + Send + Sync>,
@@ -125,11 +125,11 @@ impl CudaServer {
         self.cubin_set = Some(CubinModuleSet::new_with_policy(
             key,
             owner,
-            CubinSetPolicy::Canonical47Qkv,
+            CubinSetPolicy::FixedPromptQkv,
         ));
         Ok(())
     }
-    pub(crate) fn admit_owned_canonical47_qkkv_cubin_set(
+    pub(crate) fn admit_owned_fixed_prompt_qkkv_cubin_set(
         &mut self,
         key: u64,
         owner: Arc<dyn std::any::Any + Send + Sync>,
@@ -140,11 +140,11 @@ impl CudaServer {
         self.cubin_set = Some(CubinModuleSet::new_with_policy(
             key,
             owner,
-            CubinSetPolicy::Canonical47QkKv,
+            CubinSetPolicy::FixedPromptQkKv,
         ));
         Ok(())
     }
-    pub(crate) fn admit_owned_canonical47_fa_cubin_set(
+    pub(crate) fn admit_owned_fixed_prompt_fa_cubin_set(
         &mut self,
         key: u64,
         owner: Arc<dyn std::any::Any + Send + Sync>,
@@ -155,11 +155,11 @@ impl CudaServer {
         self.cubin_set = Some(CubinModuleSet::new_with_policy(
             key,
             owner,
-            CubinSetPolicy::Canonical47Fa,
+            CubinSetPolicy::FixedPromptFa,
         ));
         Ok(())
     }
-    pub(crate) fn admit_owned_canonical47_layer3_cubin_set(
+    pub(crate) fn admit_owned_fixed_prompt_layer3_cubin_set(
         &mut self,
         key: u64,
         owner: Arc<dyn std::any::Any + Send + Sync>,
@@ -170,11 +170,11 @@ impl CudaServer {
         self.cubin_set = Some(CubinModuleSet::new_with_policy(
             key,
             owner,
-            CubinSetPolicy::Canonical47Layer3,
+            CubinSetPolicy::FixedPromptLayer3,
         ));
         Ok(())
     }
-    pub(crate) fn admit_owned_canonical47_full_cubin_set(
+    pub(crate) fn admit_owned_fixed_prompt_full_cubin_set(
         &mut self,
         key: u64,
         owner: Arc<dyn std::any::Any + Send + Sync>,
@@ -185,11 +185,11 @@ impl CudaServer {
         self.cubin_set = Some(CubinModuleSet::new_with_policy(
             key,
             owner,
-            CubinSetPolicy::Canonical47Full,
+            CubinSetPolicy::FixedPromptFull,
         ));
         Ok(())
     }
-    pub(crate) fn admit_owned_canonical47_natural_cubin_set(
+    pub(crate) fn admit_owned_fixed_prompt_natural_cubin_set(
         &mut self,
         key: u64,
         owner: Arc<dyn std::any::Any + Send + Sync>,
@@ -200,11 +200,11 @@ impl CudaServer {
         self.cubin_set = Some(CubinModuleSet::new_with_policy(
             key,
             owner,
-            CubinSetPolicy::Canonical47Natural,
+            CubinSetPolicy::FixedPromptNatural,
         ));
         Ok(())
     }
-    pub(crate) fn admit_owned_short_hf_cubin_set(
+    pub(crate) fn admit_owned_text_cubin_set(
         &mut self,
         key: u64,
         owner: Arc<dyn std::any::Any + Send + Sync>,
@@ -215,15 +215,15 @@ impl CudaServer {
             return Err(failure("one active cubin module set per original actor"));
         }
         let policy = if cohort4 && two_b {
-            CubinSetPolicy::ShortHf2BCachedCohort4
+            CubinSetPolicy::Text2BCachedCohort4
         } else if cohort4 {
-            CubinSetPolicy::ShortHf08Cohort4
+            CubinSetPolicy::Text08Cohort4
         } else if two_b {
-            CubinSetPolicy::ShortHf2B
+            CubinSetPolicy::Text2B
         } else {
-            CubinSetPolicy::ShortHf08
+            CubinSetPolicy::Text08
         };
-        crate::owned_command::cubin::short_hf_policy::require_complete(policy)?;
+        crate::owned_command::cubin::text_policy::require_complete(policy)?;
         self.cubin_set = Some(CubinModuleSet::new_with_policy(key, owner, policy));
         Ok(())
     }

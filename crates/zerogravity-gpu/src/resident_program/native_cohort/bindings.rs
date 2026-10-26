@@ -2,14 +2,14 @@
 use super::super::*;
 use crate::resident_inference::native_fragment::{
     PrefixPhaseEnqueue,
-    short_hf::{ShortHfCallInput, ShortHfCallState},
+    text::{TextCallInput, TextCallState},
 };
 use crate::resident_leases::ResidentService;
-use zerogravity_core::accelerator::program::RecordedVllm08Model;
+use crate::resident_program::source_bindings::SourceBindings;
 
 pub(super) struct CohortRowBinding {
-    input: Arc<ShortHfCallInput>,
-    state: Arc<ShortHfCallState>,
+    input: Arc<TextCallInput>,
+    state: Arc<TextCallState>,
     runtime: RuntimeParameters,
     bindings: Vec<StateBinding>,
 }
@@ -22,7 +22,7 @@ pub(super) struct CohortBindings {
 impl CohortBindings {
     pub(super) fn bind(
         service: &Arc<ResidentService>,
-        states: &[Arc<ShortHfCallState>],
+        states: &[Arc<TextCallState>],
         permits: &[PrefixPhaseEnqueue<'_>],
         owned: &OwnedRanges,
     ) -> Result<Self> {
@@ -47,7 +47,7 @@ impl CohortBindings {
                 valid_tokens: input.rows(),
             };
             if !matches!((input.rows(), input.base()), (47, 0) | (1, 47..=53))
-                || input.workload().prompt_rows() != 47
+                || input.prompt_tokens() != 47
                 || rows.first().is_some_and(|first: &CohortRowBinding| {
                     first.runtime.valid_tokens != runtime.valid_tokens
                 })
@@ -112,10 +112,7 @@ impl CohortBindings {
             for state in row.state.states() {
                 state.require_enqueue(service, permit)?;
             }
-            let requirements = super::super::native::state_requirements(
-                row.input.source().source(),
-                row.input.record().plan(),
-            )?;
+            let requirements = super::super::native::state_requirements(row.input.record())?;
             let mut slots = BTreeMap::new();
             for binding in &row.bindings {
                 if slots.insert(binding.slot, binding).is_some() {
@@ -194,7 +191,7 @@ impl CohortBindings {
         Ok(())
     }
 
-    pub(super) fn inputs(&self) -> Vec<Arc<ShortHfCallInput>> {
+    pub(super) fn inputs(&self) -> Vec<Arc<TextCallInput>> {
         self.rows.iter().map(|row| row.input.clone()).collect()
     }
     pub(super) fn states_at(
@@ -209,7 +206,7 @@ impl CohortBindings {
                     .state
                     .states()
                     .iter()
-                    .filter(|state| state.layer().index() == layer);
+                    .filter(|state| state.layer() == layer);
                 let state = states
                     .next()
                     .ok_or_else(|| Error::State("cohort original layer state absent".into()))?;
@@ -251,21 +248,19 @@ impl CohortBindings {
             .flat_map(|state| state.leases())
             .collect()
     }
-    pub(super) fn source(
-        &self,
-    ) -> &Arc<zerogravity_model_qwen35::original_binding::OriginalWindowModelSource> {
-        self.rows[0].input.source().source()
+    pub(super) fn source(&self) -> &zerogravity_artifacts::source_weights::VerifiedTensorSource {
+        self.rows[0].input.source()
     }
     pub(super) fn width(&self) -> usize {
         self.rows.len()
     }
-    pub(super) fn records(&self) -> Vec<Arc<RecordedVllm08Model>> {
+    pub(super) fn records(&self) -> Vec<Arc<SourceBindings>> {
         self.rows
             .iter()
             .map(|row| row.input.record().clone())
             .collect()
     }
-    pub(super) fn record(&self, row: usize) -> Result<&RecordedVllm08Model> {
+    pub(super) fn record(&self, row: usize) -> Result<&SourceBindings> {
         self.rows
             .get(row)
             .map(|row| row.input.record().as_ref())
@@ -305,18 +300,18 @@ impl CohortBindings {
 // Correctness bootstrap for independently recorded real invocations. Prepared
 // recipe identity may replace this immutable comparison after peer integration;
 // neither route shares a currently bound record or a row's provenance.
-fn require_same_semantics(a: &RecordedVllm08Model, b: &RecordedVllm08Model) -> Result<()> {
+fn require_same_semantics(a: &SourceBindings, b: &SourceBindings) -> Result<()> {
     let (ap, bp) = (a.plan(), b.plan());
     if a.call().source() != b.call().source()
-        || a.call().model_profile() != b.call().model_profile()
+        || !a.source().same_issuer(b.source())
         || ap.numerical_profile() != bp.numerical_profile()
         || ap.values() != bp.values()
         || ap.precisions() != bp.precisions()
         || ap.required_domains() != bp.required_domains()
         || ap.proposed_domains() != bp.proposed_domains()
-        || a.normalized() != b.normalized()
-        || a.logits() != b.logits()
-        || a.boundaries() != b.boundaries()
+        || a.selection().normalized() != b.selection().normalized()
+        || a.selection().output() != b.selection().output()
+        || a.selection().boundaries() != b.selection().boundaries()
         || ap.nodes().len() != bp.nodes().len()
     {
         return Err(Error::State(
@@ -332,44 +327,31 @@ fn require_same_semantics(a: &RecordedVllm08Model, b: &RecordedVllm08Model) -> R
                 "cohort shared node changes SSA/state effects".into(),
             ));
         }
+        a.operator(index)?;
+        b.operator(index)?;
         match (&x.operation, &y.operation) {
             (
-                PlanOperation::TypedVllmBf16Embedding { descriptor: x },
-                PlanOperation::TypedVllmBf16Embedding { descriptor: y },
-            ) if index == 0 => {
-                x.validate()?;
-                y.validate()?;
-                if x.tensor() != y.tensor() {
-                    return Err(Error::State(
-                        "cohort original embedding source differs".into(),
-                    ));
-                }
-            }
-            (
-                PlanOperation::TypedVllm08 {
+                PlanOperation::SourceOperator {
                     descriptor: x,
                     state: sx,
                 },
-                PlanOperation::TypedVllm08 {
+                PlanOperation::SourceOperator {
                     descriptor: y,
                     state: sy,
                 },
             ) => {
-                x.validate()?;
-                y.validate()?;
                 if x.call() != a.call()
                     || y.call() != b.call()
                     || x.kind() != y.kind()
-                    || x.layer() != y.layer()
+                    || x.numerical_contract() != y.numerical_contract()
                     || x.matrices() != y.matrices()
                     || x.parameters() != y.parameters()
-                    || x.input_elements() != y.input_elements()
-                    || x.output_elements() != y.output_elements()
-                    || x.selected_row() != y.selected_row()
+                    || x.input_elements()? != y.input_elements()?
+                    || x.output_elements()? != y.output_elements()?
                     || sx != sy
                 {
                     return Err(Error::State(
-                        "cohort original source operator roles differ".into(),
+                        "cohort original mathematical source bindings differ".into(),
                     ));
                 }
             }

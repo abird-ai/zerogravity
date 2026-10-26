@@ -7,18 +7,17 @@ use crate::resident_inference::{
     Domain, InferenceReadback, PreparedInference, ResidentModel, ResidentSession, ResidentToken,
 };
 use crate::resident_leases::{ResidentLease, ResidentService};
+use crate::resident_program::source_bindings::SourceBindings;
 use std::sync::{
     Arc, OnceLock, Weak,
     atomic::{AtomicBool, Ordering},
 };
+use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::WindowWorkspace;
-use zerogravity_core::accelerator::program::{
-    GdnPrefixLayer, RecordedVllm08Model, Vllm08Call, VllmBf16Invocation, VllmBf16Teachers,
-};
+use zerogravity_core::accelerator::program::SourceCall;
 use zerogravity_core::device_events::BufferRole;
 use zerogravity_core::session_root::{RootAttempt, RootBinding};
 use zerogravity_core::{Error, Result};
-use zerogravity_model_qwen35::original_binding::OriginalWindowModelSource;
 
 mod completion;
 mod coordinates;
@@ -26,18 +25,16 @@ mod faults;
 mod qualify;
 mod reuse;
 pub use reuse::{
-    Vllm08NaturalReuseFault, Vllm08NaturalReuseFaultExecution, Vllm08NaturalReuseFaultOutcome,
-    Vllm08NaturalReuseReceipt, Vllm08NaturalReuseRound, qualify_vllm08_natural_reuse,
-    qualify_vllm08_natural_reuse_fault,
+    NaturalReuseFault, NaturalReuseFaultExecution, NaturalReuseFaultOutcome, NaturalReuseReceipt,
+    NaturalReuseRound, qualify_natural_reuse_fault,
 };
 mod state;
-pub(crate) use coordinates::NaturalSlot;
-pub use faults::{
-    Vllm08NaturalFault, Vllm08NaturalFaultExecution, Vllm08NaturalFaultOutcome,
-    qualify_vllm08_natural_fault,
-};
-pub use qualify::{Vllm08NaturalReceipt, qualify_vllm08_natural_model};
-pub(crate) use state::{NaturalCallState, NaturalStatePool};
+pub use completion::NaturalCommitted;
+pub use coordinates::NaturalSlot;
+pub use faults::{NaturalFault, NaturalFaultExecution, NaturalFaultOutcome, qualify_natural_fault};
+pub use qualify::{NaturalObserver, NaturalReceipt, NaturalStep};
+pub(crate) use state::NaturalCallState;
+pub use state::NaturalStatePool;
 
 fn not_cancelled(cancelled: Option<&AtomicBool>) -> Result<()> {
     if cancelled.is_some_and(|f| f.load(Ordering::Acquire)) {
@@ -61,8 +58,8 @@ fn same_model(expected: &Weak<ResidentModel>, session: &ResidentSession) -> Resu
 
 /// No constructor accepts public ResidentToken.id/max_bits or caller output IDs.
 /// Created only by completion::commit after original ResidentSession::commit.
-pub(crate) struct CommittedBf16Feedback {
-    source: Arc<OriginalWindowModelSource>,
+pub struct CommittedBf16Feedback {
+    source: VerifiedTensorSource,
     model: Weak<ResidentModel>,
     token: ResidentToken,
     root: RootBinding,
@@ -76,10 +73,17 @@ impl CommittedBf16Feedback {
     fn require_current(
         &self,
         session: &ResidentSession,
-        source: &Arc<OriginalWindowModelSource>,
+        source: &VerifiedTensorSource,
     ) -> Result<u32> {
         same_model(&self.model, session)?;
-        if !Arc::ptr_eq(&self.source, source)
+        require_packet_words(
+            self.selected_id,
+            self.selected_bits,
+            self.token.id,
+            self.token.max_bits,
+            &self.packet_bytes,
+        )?;
+        if !self.source.same_issuer(source)
             || session.binding() != self.root
             || self.token.producer != Some(self.root)
             || !Arc::ptr_eq(self.token.lease.service(), &session.model.service)
@@ -96,8 +100,71 @@ impl CommittedBf16Feedback {
         }
         Ok(self.selected_id)
     }
-    pub(crate) fn selected(&self) -> (u32, u32) {
+    pub fn selected(&self) -> (u32, u32) {
         (self.selected_id, self.selected_bits)
+    }
+}
+
+fn require_packet_words(
+    id: u32,
+    bits: u32,
+    token_id: u32,
+    token_bits: u32,
+    raw: &[u8; 12],
+) -> Result<()> {
+    if id >= 248320
+        || id != token_id
+        || bits != token_bits
+        || raw[..4] != id.to_le_bytes()
+        || raw[4..8] != bits.to_le_bytes()
+        || raw[8..] != [0; 4]
+        || bits & 0xffff != 0
+        || bits & 0x7f80_0000 == 0x7f80_0000
+    {
+        return Err(Error::State(
+            "natural actual committed BF16 packet words differ".into(),
+        ));
+    }
+    Ok(())
+}
+/// Borrows one genuine committed packet and its current session; data is not a permit.
+pub struct NaturalFeedbackRequest<'a> {
+    session: &'a ResidentSession,
+    packet: &'a Arc<CommittedBf16Feedback>,
+    root: RootBinding,
+}
+impl CommittedBf16Feedback {
+    pub fn request<'a>(
+        self: &'a Arc<Self>,
+        session: &'a ResidentSession,
+    ) -> Result<NaturalFeedbackRequest<'a>> {
+        self.require_current(session, &self.source)?;
+        Ok(NaturalFeedbackRequest {
+            session,
+            packet: self,
+            root: session.binding(),
+        })
+    }
+}
+impl NaturalFeedbackRequest<'_> {
+    pub fn selected_id(&self) -> u32 {
+        self.packet.selected_id
+    }
+    pub fn base(&self) -> usize {
+        self.packet.root.frontier() as usize
+    }
+    fn require(
+        &self,
+        session: &ResidentSession,
+        source: &VerifiedTensorSource,
+    ) -> Result<&Arc<CommittedBf16Feedback>> {
+        if !std::ptr::eq(session, self.session) || self.root != session.binding() {
+            return Err(Error::State(
+                "natural feedback request belongs to another current session".into(),
+            ));
+        }
+        self.packet.require_current(session, source)?;
+        Ok(self.packet)
     }
 }
 
@@ -108,11 +175,11 @@ enum InputOrigin {
 /// Only the actual ResidentSession below mints this late immutable request.
 /// Weak model identity avoids Body→input→Model.workspace→Body ownership cycles.
 pub(crate) struct NaturalCallInput {
-    source: Arc<OriginalWindowModelSource>,
+    source: VerifiedTensorSource,
     model: Weak<ResidentModel>,
     service: Arc<ResidentService>,
     attempt: RootAttempt,
-    record: Arc<RecordedVllm08Model>,
+    record: Arc<SourceBindings>,
     schedule: Arc<GdnAttemptSchedule>,
     phase: Arc<AttemptPhaseBinding>,
     slot: NaturalSlot,
@@ -120,17 +187,17 @@ pub(crate) struct NaturalCallInput {
     _metadata: WindowWorkspace,
 }
 impl NaturalCallInput {
-    pub(crate) fn source(&self) -> &Arc<OriginalWindowModelSource> {
+    pub(crate) fn source(&self) -> &VerifiedTensorSource {
         &self.source
     }
-    pub(crate) fn record(&self) -> &Arc<RecordedVllm08Model> {
+    pub(crate) fn record(&self) -> &Arc<SourceBindings> {
         &self.record
     }
-    pub(crate) fn call(&self) -> &Vllm08Call {
+    pub(crate) fn call(&self) -> &SourceCall {
         self.record.call()
     }
     pub(crate) fn ids(&self) -> &[u32] {
-        self.call().request().teachers().ids()
+        self.call().rows().ids()
     }
     pub(crate) fn attempt(&self) -> &RootAttempt {
         &self.attempt
@@ -147,6 +214,9 @@ impl NaturalCallInput {
             .require_current(session.binding(), &self.attempt, self.call())?;
         if !Arc::ptr_eq(&self.service, &session.model.service)
             || self.source.source_identity() != session.binding().source()
+            || !self.source.same_issuer(self.record.source())
+            || self.call().rows().capacity() != session.model.capacity
+            || u64::try_from(self.call().rows().vocabulary()).ok() != Some(session.model.vocab)
             || session.model.capacity != 512
             || session.model.vocab != 248320
         {
@@ -180,23 +250,22 @@ impl NaturalCallInput {
 impl ResidentSession {
     pub(crate) fn bind_natural_prompt(
         &self,
-        source: Arc<OriginalWindowModelSource>,
+        record: Arc<SourceBindings>,
         slot: NaturalSlot,
-        ids: &[u32],
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<NaturalCallInput>> {
         if slot.feedback() {
             return Err(Error::State(
-                "natural cached input requires original completed feedback, not public IDs".into(),
+                "natural cached input requires original committed feedback".into(),
             ));
         }
-        self.bind_natural_input(source, slot, ids, InputOrigin::Prompt, cancelled)
+        self.bind_natural_input(record, slot, InputOrigin::Prompt, cancelled)
     }
     pub(crate) fn bind_natural_feedback(
         &self,
-        source: Arc<OriginalWindowModelSource>,
+        record: Arc<SourceBindings>,
         slot: NaturalSlot,
-        feedback: Arc<CommittedBf16Feedback>,
+        request: NaturalFeedbackRequest<'_>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<NaturalCallInput>> {
         not_cancelled(cancelled)?;
@@ -205,48 +274,50 @@ impl ResidentSession {
                 "natural prompt input cannot be replaced with sampled feedback".into(),
             ));
         }
-        let selected = feedback.require_current(self, &source)?;
+        let feedback = request.require(self, record.source())?;
+        if record.call().rows().ids() != [feedback.selected_id] {
+            return Err(Error::State(
+                "natural prepared call differs from original committed ID".into(),
+            ));
+        }
         self.bind_natural_input(
-            source,
+            record,
             slot,
-            &[selected],
-            InputOrigin::Feedback(feedback),
+            InputOrigin::Feedback(feedback.clone()),
             cancelled,
         )
     }
     fn bind_natural_input(
         &self,
-        source: Arc<OriginalWindowModelSource>,
+        record: Arc<SourceBindings>,
         slot: NaturalSlot,
-        ids: &[u32],
         origin: InputOrigin,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<NaturalCallInput>> {
         not_cancelled(cancelled)?;
-        source.require_vllm08_full_source()?;
         self.model.service.ensure_usable()?;
+        let source = record.source().clone();
+        let call = record.call();
         if source.source_identity() != self.binding().source()
             || source.source_identity() != self.model.service.source_identity()
             || self.model.capacity != 512
             || self.model.vocab != 248320
-            || ids.len() != slot.rows()
-            || ids.iter().any(|id| *id >= 248320)
+            || call.rows().capacity() != 512
+            || call.rows().vocabulary() != 248320
+            || call.rows().ids().len() != slot.rows()
+            || call.rows().ids().iter().any(|id| *id >= 248320)
             || self.binding().frontier() != slot.base() as u64
         {
             return Err(Error::Unsupported(
-                "closed natural .8B original current source/span".into(),
+                "closed natural original current source/span".into(),
             ));
         }
-        let metadata = source.source().reserve_workspace(4 * 1024 * 1024)?;
+        // Same original input-wrapper allowance; graph metadata belongs to record.
+        let metadata = source.reserve_workspace(4 * 1024 * 1024)?;
         let attempt = self.authority.begin_advance(slot.rows() as u64)?;
-        let call = Vllm08Call::new(VllmBf16Invocation::new(
-            GdnPrefixLayer::new(source.source_identity(), 0)?,
-            slot.phase(),
-            VllmBf16Teachers::new(source.source_identity(), slot.base(), 512, ids)?,
-        )?)?;
-        slot.require_current(self.binding(), &attempt, &call)?;
-        let record = Arc::new(source.record_vllm08_model(call.clone())?);
-        let schedule = GdnAttemptSchedule::new_published_call(&source, attempt.clone(), call)?;
+        slot.require_current(self.binding(), &attempt, call)?;
+        let schedule =
+            GdnAttemptSchedule::new_published_call(&source, attempt.clone(), call.clone())?;
         let phase = AttemptPhaseBinding::new(schedule.clone(), 0, None)?;
         let input = Arc::new(NaturalCallInput {
             source,
@@ -262,5 +333,38 @@ impl ResidentSession {
         });
         input.require_session(self)?;
         Ok(input)
+    }
+}
+
+#[cfg(test)]
+mod packet_tests {
+    use super::*;
+    fn words(id: u32, bits: u32) -> [u8; 12] {
+        let mut bytes = [0; 12];
+        bytes[..4].copy_from_slice(&id.to_le_bytes());
+        bytes[4..8].copy_from_slice(&bits.to_le_bytes());
+        bytes
+    }
+    #[test]
+    fn immutable_feedback_words_cannot_substitute_id_bits_or_padding() {
+        let id = 353;
+        let bits = 0x3f80_0000;
+        let raw = words(id, bits);
+        require_packet_words(id, bits, id, bits, &raw).unwrap();
+        assert!(require_packet_words(id, bits, id + 1, bits, &raw).is_err());
+        assert!(require_packet_words(id, bits, id, bits + 0x10000, &raw).is_err());
+        let mut wrong = raw;
+        wrong[0] ^= 1;
+        assert!(require_packet_words(id, bits, id, bits, &wrong).is_err());
+        wrong = raw;
+        wrong[4] ^= 1;
+        assert!(require_packet_words(id, bits, id, bits, &wrong).is_err());
+        wrong = raw;
+        wrong[8] = 1;
+        assert!(require_packet_words(id, bits, id, bits, &wrong).is_err());
+        for bits in [0x3f80_0001, 0x7f80_0000, 0xff80_0000, 0x7fc0_0000] {
+            assert!(require_packet_words(id, bits, id, bits, &words(id, bits)).is_err());
+        }
+        assert!(require_packet_words(248320, 0, 248320, 0, &words(248320, 0)).is_err());
     }
 }

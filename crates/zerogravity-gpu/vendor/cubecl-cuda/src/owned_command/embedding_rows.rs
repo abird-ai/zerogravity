@@ -141,7 +141,7 @@ pub(crate) fn validate_ids(ids: &[u32]) -> Result<(), ServerError> {
     }
     Ok(())
 }
-pub(crate) fn validate_canonical47_ids(ids: &[u32]) -> Result<(), ServerError> {
+pub(crate) fn validate_fixed_prompt_ids(ids: &[u32]) -> Result<(), ServerError> {
     if ids.len() != 47 || ids.iter().any(|id| *id >= 248_320) {
         return Err(ServerError::graph_state(
             "closed canonical47 source embedding rows",
@@ -149,17 +149,17 @@ pub(crate) fn validate_canonical47_ids(ids: &[u32]) -> Result<(), ServerError> {
     }
     Ok(())
 }
-pub(crate) fn validate_short_hf_resident_ids(ids: &[u32]) -> Result<(), ServerError> {
-    ShortHfEmbeddingWidth::H1024.bytes(ids).map(|_| ())
+pub(crate) fn validate_text_resident_ids(ids: &[u32]) -> Result<(), ServerError> {
+    TextEmbeddingWidth::H1024.bytes(ids).map(|_| ())
 }
 impl OwnedCudaQueue {
     /// # Safety
     /// Exact source-row owner and active workspace destination belong to this
     /// SAME armed original flight through completion/quarantine. No Ready here.
-    pub unsafe fn enqueue_short_hf_source_rows_workspace<T>(
+    pub unsafe fn enqueue_text_source_rows_workspace<T>(
         &self,
         destination: crate::OwnedCudaBinding,
-        width: ShortHfEmbeddingWidth,
+        width: TextEmbeddingWidth,
         ids: Arc<[u32]>,
         source: Arc<T>,
     ) -> Result<(), ServerError>
@@ -184,17 +184,17 @@ impl OwnedCudaQueue {
     /// # Safety
     /// SAME complete initialized .8B tied source, actual immutable short-call IDs,
     /// and original registered table Read/exclusive output Write flight. No Ready.
-    pub unsafe fn enqueue_short_hf_resident_embedding_rows(
+    pub unsafe fn enqueue_text_resident_embedding_rows(
         &self,
         table: Handle,
         destination: Handle,
         ids: Arc<[u32]>,
     ) -> Result<(), ServerError> {
-        validate_short_hf_resident_ids(&ids)?;
+        validate_text_resident_ids(&ids)?;
         let stream = self.stream;
         self.actor
             .submit_blocking(move |server| {
-                server.copy_owned_short_hf_resident_embedding_rows(stream, table, destination, ids)
+                server.copy_owned_text_resident_embedding_rows(stream, table, destination, ids)
             })
             .map_err(|error| {
                 ServerError::graph_state(format!(
@@ -205,17 +205,17 @@ impl OwnedCudaQueue {
     /// # Safety
     /// Same source/flight/read/write contract as the legacy method; caller seals
     /// the genuine complete47-row prompt. This method issues no call/Ready permit.
-    pub unsafe fn enqueue_canonical47_embedding_rows(
+    pub unsafe fn enqueue_fixed_prompt_embedding_rows(
         &self,
         table: Handle,
         destination: Handle,
         ids: Arc<[u32]>,
     ) -> Result<(), ServerError> {
-        validate_canonical47_ids(&ids)?;
+        validate_fixed_prompt_ids(&ids)?;
         let stream = self.stream;
         self.actor
             .submit_blocking(move |server| {
-                server.copy_owned_canonical47_embedding_rows(stream, table, destination, ids)
+                server.copy_owned_fixed_prompt_embedding_rows(stream, table, destination, ids)
             })
             .map_err(|error| {
                 ServerError::graph_state(format!("canonical47 source embedding actor: {error:?}"))
@@ -227,7 +227,7 @@ impl OwnedCudaQueue {
     /// IDs from its private authenticated call. The SAME armed flight retains
     /// both complete original leases and the call/table owner before enqueue;
     /// table is Read, exclusive destination Activation is Write. No Ready here.
-    pub unsafe fn enqueue_vllm08_embedding_rows(
+    pub unsafe fn enqueue_qwen08_embedding_rows(
         &self,
         table: Handle,
         destination: Handle,
@@ -246,11 +246,11 @@ impl OwnedCudaQueue {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ShortHfEmbeddingWidth {
+pub enum TextEmbeddingWidth {
     H1024,
     H2048,
 }
-impl ShortHfEmbeddingWidth {
+impl TextEmbeddingWidth {
     pub(crate) const fn row_bytes(self) -> usize {
         match self {
             Self::H1024 => 2048,
@@ -271,10 +271,10 @@ impl OwnedCudaQueue {
     /// Authentic tied embedding source rows and actual call/IDs are retained by
     /// the SAME original armed flight before upload. Exclusive full destination
     /// is Write; source owner includes its real FD/windows/host admission.
-    pub unsafe fn enqueue_short_hf_source_rows<T>(
+    pub unsafe fn enqueue_text_source_rows<T>(
         &self,
         destination: Handle,
-        width: ShortHfEmbeddingWidth,
+        width: TextEmbeddingWidth,
         ids: Arc<[u32]>,
         source: Arc<T>,
     ) -> Result<(), ServerError>
@@ -290,7 +290,7 @@ impl OwnedCudaQueue {
         let stream = self.stream;
         self.actor
             .submit_blocking(move |server| {
-                server.copy_owned_short_hf_source_rows(stream, destination, width, ids, source)
+                server.copy_owned_text_source_rows(stream, destination, width, ids, source)
             })
             .map_err(|e| {
                 ServerError::graph_state(format!("short-HF source embedding actor: {e:?}"))
@@ -298,7 +298,7 @@ impl OwnedCudaQueue {
     }
 }
 #[cfg(test)]
-mod short_hf_tests {
+mod text_tests {
     use super::*;
     #[test]
     fn source_neutral_matrix_layout_prices_whole_storage_and_actual_rows() {
@@ -337,7 +337,7 @@ mod short_hf_tests {
     }
     #[test]
     fn both_actual_source_widths_copy_only_exact_complete_finite_rows() {
-        for width in [ShortHfEmbeddingWidth::H1024, ShortHfEmbeddingWidth::H2048] {
+        for width in [TextEmbeddingWidth::H1024, TextEmbeddingWidth::H2048] {
             for rows in [1, 47, 57, 62, 67, 72] {
                 assert_eq!(
                     width.bytes(&vec![248319; rows]).unwrap(),
@@ -350,23 +350,23 @@ mod short_hf_tests {
             assert!(width.bytes(&[248320]).is_err());
         }
         assert!(validate_ids(&[11; 57]).is_err());
-        assert!(validate_canonical47_ids(&[11; 57]).is_err());
+        assert!(validate_fixed_prompt_ids(&[11; 57]).is_err());
     }
     #[test]
     fn resident_route_adds_only_short_rows_without_widening_original_entrypoints() {
         for rows in [1, 47, 57, 62, 67, 72] {
-            validate_short_hf_resident_ids(&vec![248319; rows]).unwrap();
+            validate_text_resident_ids(&vec![248319; rows]).unwrap();
         }
         for rows in [0, 2, 46, 48, 56, 58, 61, 63, 64, 66, 68, 71, 73] {
-            assert!(validate_short_hf_resident_ids(&vec![11; rows]).is_err());
+            assert!(validate_text_resident_ids(&vec![11; rows]).is_err());
         }
         for rows in [1, 47, 57, 62, 67, 72] {
             let mut ids = vec![11; rows];
             ids[rows - 1] = 248320;
-            assert!(validate_short_hf_resident_ids(&ids).is_err());
+            assert!(validate_text_resident_ids(&ids).is_err());
         }
         assert!(validate_ids(&[11; 57]).is_err());
-        assert!(validate_canonical47_ids(&[11; 57]).is_err());
+        assert!(validate_fixed_prompt_ids(&[11; 57]).is_err());
     }
 }
 
@@ -384,12 +384,12 @@ mod tests {
         assert!(validate_ids(&[248_320]).is_err());
         assert_eq!(248_320 * ROW_BYTES, TABLE_BYTES);
         assert!(validate_ids(&vec![0; 47]).is_err());
-        validate_canonical47_ids(&vec![248_319; 47]).unwrap();
+        validate_fixed_prompt_ids(&vec![248_319; 47]).unwrap();
         for count in [0, 1, 2, 46, 48, 64] {
-            assert!(validate_canonical47_ids(&vec![0; count]).is_err());
+            assert!(validate_fixed_prompt_ids(&vec![0; count]).is_err());
         }
         let mut invalid = vec![0; 47];
         invalid[46] = 248_320;
-        assert!(validate_canonical47_ids(&invalid).is_err());
+        assert!(validate_fixed_prompt_ids(&invalid).is_err());
     }
 }

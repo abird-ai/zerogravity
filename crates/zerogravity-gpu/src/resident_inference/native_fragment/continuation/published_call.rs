@@ -1,29 +1,27 @@
 //! Pure coordinates for ONE original published-root call, without root issuance.
-use zerogravity_core::accelerator::program::{Vllm08Call, VllmBf16Phase};
+use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode};
 use zerogravity_core::session_root::{RootAttempt, RootBinding};
 use zerogravity_core::{Error, Result};
 
 pub(super) fn require_published_call(
     base: RootBinding,
     attempt: &RootAttempt,
-    call: &Vllm08Call,
+    call: &SourceCall,
 ) -> Result<()> {
-    call.validate()?;
-    let request = call.request();
-    let (start, rows) = (request.teachers().base(), call.rows());
+    let (start, rows) = (call.rows().base(), call.rows().len());
     let exact = matches!(
-        (request.legacy_phase()?, start, rows),
-        (VllmBf16Phase::InitialOne, 0, 1)
-            | (VllmBf16Phase::CachedOne, 1 | 66, 1)
-            | (VllmBf16Phase::Initial64, 0, 64)
-            | (VllmBf16Phase::ContinuedTwo, 64, 2)
+        (call.mode(), start, rows),
+        (SourceCallMode::Prefill, 0, 1)
+            | (SourceCallMode::Decode, 1 | 66, 1)
+            | (SourceCallMode::Prefill, 0, 64)
+            | (SourceCallMode::Prefill, 64, 2)
     );
     let end = start
         .checked_add(rows)
         .ok_or_else(|| Error::Limit("natural source call span overflow".into()))?;
     if !exact
-        || request.layer().index() != 0
-        || request.teachers().capacity() != 512
+        || call.rows().capacity() != 512
+        || call.rows().vocabulary() != 248320
         || base.source() != call.source()
         || attempt.base() != base
         || base.frontier() != start as u64
@@ -39,19 +37,17 @@ pub(super) fn require_published_call(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zerogravity_core::accelerator::{
-        SourceIdentity,
-        program::{GdnPrefixLayer, VllmBf16Invocation, VllmBf16Teachers},
-    };
+    use zerogravity_core::accelerator::SourceIdentity;
+    use zerogravity_core::accelerator::program::{SourceRows, TeacherSpan};
     use zerogravity_core::session_root::SessionAuthority;
-    fn call(source: SourceIdentity, phase: VllmBf16Phase, base: usize, rows: usize) -> Vllm08Call {
-        Vllm08Call::new(
-            VllmBf16Invocation::new(
-                GdnPrefixLayer::new(source, 0).unwrap(),
-                phase,
-                VllmBf16Teachers::new(source, base, 512, &vec![7; rows]).unwrap(),
+    fn call(source: SourceIdentity, mode: SourceCallMode, base: usize, rows: usize) -> SourceCall {
+        SourceCall::new(
+            SourceRows::from_teacher_span(
+                TeacherSpan::new(source, base, 512, 248320, &vec![7; rows]).unwrap(),
+                248320,
             )
             .unwrap(),
+            mode,
         )
         .unwrap()
     }
@@ -60,13 +56,13 @@ mod tests {
         let source = SourceIdentity::for_new_allocation().unwrap();
         for steps in [
             &[
-                (VllmBf16Phase::InitialOne, 0, 1),
-                (VllmBf16Phase::CachedOne, 1, 1),
+                (SourceCallMode::Prefill, 0, 1),
+                (SourceCallMode::Decode, 1, 1),
             ][..],
             &[
-                (VllmBf16Phase::Initial64, 0, 64),
-                (VllmBf16Phase::ContinuedTwo, 64, 2),
-                (VllmBf16Phase::CachedOne, 66, 1),
+                (SourceCallMode::Prefill, 0, 64),
+                (SourceCallMode::Prefill, 64, 2),
+                (SourceCallMode::Decode, 66, 1),
             ][..],
         ] {
             let mut authority = SessionAuthority::new(source).unwrap();
@@ -87,7 +83,7 @@ mod tests {
         let source = SourceIdentity::for_new_allocation().unwrap();
         let a = SessionAuthority::new(source).unwrap();
         let b = SessionAuthority::new(source).unwrap();
-        let c = call(source, VllmBf16Phase::InitialOne, 0, 1);
+        let c = call(source, SourceCallMode::Prefill, 0, 1);
         assert!(require_published_call(a.binding(), &b.begin_advance(1).unwrap(), &c).is_err());
         assert!(require_published_call(a.binding(), &a.begin_advance(2).unwrap(), &c).is_err());
         let other = SourceIdentity::for_new_allocation().unwrap();
@@ -95,7 +91,7 @@ mod tests {
             require_published_call(
                 a.binding(),
                 &a.begin_advance(1).unwrap(),
-                &call(other, VllmBf16Phase::InitialOne, 0, 1)
+                &call(other, SourceCallMode::Prefill, 0, 1)
             )
             .is_err()
         );
@@ -110,7 +106,7 @@ mod tests {
         authority.prepare_publish(advance).unwrap().commit();
         let restore = authority.begin_restore(base).unwrap();
         authority.prepare_publish(restore).unwrap().commit();
-        let c = call(source, VllmBf16Phase::InitialOne, 0, 1);
+        let c = call(source, SourceCallMode::Prefill, 0, 1);
         assert!(require_published_call(authority.binding(), &stale, &c).is_err());
         let fresh = authority.begin_advance(1).unwrap();
         require_published_call(authority.binding(), &fresh, &c).unwrap();
@@ -124,7 +120,7 @@ mod tests {
         require_published_call(
             before,
             &attempt,
-            &call(source, VllmBf16Phase::Initial64, 0, 64),
+            &call(source, SourceCallMode::Prefill, 0, 64),
         )
         .unwrap();
         drop(attempt);

@@ -68,9 +68,9 @@ mod native_context;
 #[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
 pub(crate) use native_context::NativeContextBudget;
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 mod cuda_compiler_context;
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub(crate) use cuda_compiler_context::{
     CUDA_COMPILER_DEVICE_BYTES, CUDA_COMPILER_HOST_BYTES, CudaCompilerContextBudget,
 };
@@ -425,13 +425,6 @@ pub fn initialize_cuda_physical_identity(device: &cubecl::Device) -> Result<Phys
     crate::backend::validate_provider(device)?;
     let client = device.client();
     physical_key(client.properties().identity.physical.as_ref())
-}
-
-/// Read-only SDK metadata refusal before intentional CUDA Client bootstrap.
-#[cfg(feature = "cuda")]
-pub fn validate_cuda_compiler_environment() -> Result<()> {
-    cubecl::cuda::CudaCompilerContextPolicy::validate_sdk_configuration()
-        .map_err(|s| Error::Unsupported(s.into()))
 }
 
 #[cfg(test)]

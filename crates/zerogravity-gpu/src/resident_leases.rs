@@ -19,7 +19,7 @@ use zerogravity_core::resource_arbiter::{PhysicalDeviceKey, ResourceOwner};
 use zerogravity_core::session_root::RootBinding;
 
 pub(crate) mod backing_pool;
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 mod enqueue;
 #[cfg(all(
     any(
@@ -32,11 +32,11 @@ pub(crate) mod final_owner_probe;
 mod foreign_provider;
 #[cfg(any(
     test,
-    feature = "vllm-cuda-qualification",
+    feature = "cuda-native",
     all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
 ))]
 mod native_cache;
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub(crate) use enqueue::{
     ENQUEUE_PROFILE_ADMISSION_BYTES, EnqueuePlacement, enqueue_profile_enabled,
     profile_head_enqueue,
@@ -51,7 +51,7 @@ pub(crate) use native_cache::NativeCacheBudget;
     target_os = "linux"
 ))]
 pub(crate) mod frame_checkpoint;
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 mod model_upload;
 #[cfg(all(feature = "qualification", target_os = "linux"))]
 pub(crate) mod resident_matrix;
@@ -63,25 +63,25 @@ pub(crate) mod resident_matrix;
     target_os = "linux"
 ))]
 pub(crate) mod source_page;
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 mod source_upload;
 #[cfg(any(
-    feature = "vllm-cuda-qualification",
+    feature = "cuda-native",
     feature = "qwen-source-qualification",
     all(feature = "gemma-bf16-qualification", feature = "hip")
 ))]
 pub(crate) use foreign_provider::ForeignProviderCharge;
 use foreign_provider::ResidentLedger;
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub(crate) use model_upload::{
     ModelWeight, PendingModelWeight, Qwen2bMlpComputeReadCut, Qwen2bMlpSourceVerification,
     Qwen2bMlpWeightCohort, Qwen2bMlpWeights,
 };
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub use model_upload::{Qwen2bMlpWeightMode, Qwen2bMlpWeightOutcome, qualify_qwen2b_mlp_weights};
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub(crate) use resident_matrix::ResidentMatrix;
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 pub(crate) use source_upload::{
     TIED_BYTES, TIED_ROW_BYTES, TIED_WINDOW_BYTES, TIED_WINDOWS, TiedUploadAttempt, TiedUploadCut,
     TiedWeight,
@@ -221,7 +221,7 @@ impl ResidentService {
             .attach_inner(source, owner, provider_cap, None)
             .map(Arc::new)
     }
-    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
     pub(crate) fn admit_cuda_compiler_context(
         &self,
         source: &zerogravity_artifacts::source_weights::VerifiedTensorSource,
@@ -257,7 +257,7 @@ impl ResidentService {
     }
     /// Read-only original actor/lease observation, also valid after model close
     /// or a physical fence. It grants no work or healthy completion authority.
-    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
     pub(crate) fn observe_cuda_compiler_context(
         &self,
     ) -> Result<(u64, u64, cubecl::cuda::CompilerContextUsage)> {
@@ -470,11 +470,11 @@ impl ResidentService {
             events: Vec::new(),
             leases: Vec::new(),
             uploaded: BTreeSet::new(),
-            #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
             source_uploads: Vec::new(),
             #[cfg(all(feature = "qualification", target_os = "linux"))]
             matrix_source_uploads: Vec::new(),
-            #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
             model_source_uploads: Vec::new(),
             completion_owners: Vec::new(),
             work: Some(work),
@@ -804,11 +804,11 @@ pub(crate) struct ResidentReadback {
     bytes: usize,
 }
 impl ResidentReadback {
-    #[cfg(feature = "vllm-cuda-qualification")]
+    #[cfg(feature = "cuda-native")]
     pub(crate) fn lease_id(&self) -> BufferLeaseId {
         self.lease.id()
     }
-    #[cfg(feature = "vllm-cuda-qualification")]
+    #[cfg(feature = "cuda-native")]
     pub(crate) fn offset(&self) -> usize {
         self.offset
     }
@@ -823,7 +823,7 @@ impl ResidentReadback {
     }
 }
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 enum SourceCompletionMode<'a> {
     Compute(&'a [ResidentLease]),
     Retirement,
@@ -971,7 +971,7 @@ impl ResidentSubmission<'_> {
 
     /// Exact finite source plan installed on THIS armed flight before enqueue.
     /// Serial source verification and the trusted validator precede originalReady.
-    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
     async fn complete_with_readback_and_source_verification<F>(
         self,
         mode: SourceCompletionMode<'_>,
@@ -1179,11 +1179,11 @@ pub(crate) struct ResidentInitialization<'a> {
     events: Vec<DeviceEventId>,
     leases: Vec<ResidentLease>,
     uploaded: BTreeSet<BufferLeaseId>,
-    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
     source_uploads: Vec<Arc<source_upload::UploadOwner>>,
     #[cfg(all(feature = "qualification", target_os = "linux"))]
     matrix_source_uploads: Vec<Arc<resident_matrix::upload::UploadOwner>>,
-    #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
     model_source_uploads: Vec<Arc<model_upload::ModelUploadOwner>>,
     completion_owners: Vec<crate::physical_quarantine::CompletionOwner>,
     work: Option<PhysicalWork<'a>>,
@@ -1312,11 +1312,11 @@ impl ResidentInitialization<'_> {
         for upload in &self.matrix_source_uploads {
             upload.require_complete()?;
         }
-        #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
         for upload in &self.source_uploads {
             upload.require_complete()?;
         }
-        #[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
         for upload in &self.model_source_uploads {
             upload.require_complete()?;
         }
@@ -1481,8 +1481,8 @@ mod tests {
     }
 }
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 mod qwen2b_projection;
 
-#[cfg(all(feature = "vllm-cuda-qualification", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native", target_os = "linux"))]
 mod rms_scratch;

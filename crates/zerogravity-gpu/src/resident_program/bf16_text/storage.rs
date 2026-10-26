@@ -1,0 +1,199 @@
+//! One cold source-shaped selection; invocation/root authority remains elsewhere.
+use super::*;
+use crate::resident_program::bf16_projection::{Bf16ProjectionStorage, PreparedBf16Projection};
+use zerogravity_artifacts::source_weights::VerifiedMatrix;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextStorage {
+    /// Original16GiB qualification schedule and its independently retained evidence.
+    Streamed,
+    /// All repeated projections, including the exact tied embedding/head operand.
+    ResidentProjections,
+    /// Same resident exact source selection, but each Vulkan dispatch is bounded
+    /// by the actual grid limit (at most 8192 selected rows).
+    ResidentProjectionsVulkan,
+}
+impl TextStorage {
+    pub(super) fn is_resident(self) -> bool {
+        matches!(
+            self,
+            Self::ResidentProjections | Self::ResidentProjectionsVulkan
+        )
+    }
+    pub(super) fn is_vulkan(self) -> bool {
+        self == Self::ResidentProjectionsVulkan
+    }
+}
+pub(super) struct Selection {
+    pub matrices: Vec<VerifiedMatrix>,
+    pub operands: Vec<Arc<PreparedBf16Projection>>,
+    pub nodes: Vec<Option<usize>>,
+    pub aligned_bytes: usize,
+    pub largest_binding: usize,
+    pub projection_rows: usize,
+    pub upload_windows: usize,
+    pub cached_row_bytes: usize,
+    pub cached_row_capacity: usize,
+}
+impl Selection {
+    pub(super) fn derive(recorded: &TextSourcePlan, storage: TextStorage) -> Result<Self> {
+        let source = recorded.source();
+        let mut matrices: Vec<VerifiedMatrix> = Vec::new();
+        let mut nodes = vec![None; recorded.plan().nodes().len()];
+        {
+            for (index, node) in recorded.plan().nodes().iter().enumerate() {
+                if let PlanOperation::Project { tensor } = &node.operation {
+                    let matrix = source.matrix(&tensor.name, tensor.axes)?;
+                    if matrix.rows() != tensor.rows
+                        || matrix.columns() != tensor.columns
+                        || matrix.source_identity() != recorded.plan().source()
+                        || matrix.tensor().kind != zerogravity_core::quant::QuantKind::Bf16
+                    {
+                        return Err(Error::State(
+                            "BF16 text resident actual projection descriptor".into(),
+                        ));
+                    }
+                    let operand = match matrices.iter().position(|m| m.same_binding(&matrix)) {
+                        Some(i) => i,
+                        None => {
+                            matrices.push(matrix);
+                            matrices.len() - 1
+                        }
+                    };
+                    nodes[index] = Some(operand);
+                }
+            }
+        }
+        if storage.is_resident() {
+            // Only an EXACT authenticated binding may reuse projection residency.
+            // The family established the tie; equal shapes/names are insufficient.
+            for (index, node) in recorded.plan().nodes().iter().enumerate() {
+                if let PlanOperation::Embed { tensor, .. } = &node.operation {
+                    let matrix = source.matrix(&tensor.name, tensor.axes)?;
+                    nodes[index] = matrices.iter().position(|m| m.same_binding(&matrix));
+                }
+            }
+        }
+        let cached_row_bytes = if storage.is_resident() {
+            recorded
+                .plan()
+                .nodes()
+                .iter()
+                .enumerate()
+                .filter_map(|(i, node)| {
+                    if nodes[i].is_none()
+                        && let PlanOperation::Embed { tensor, .. } = &node.operation
+                    {
+                        Some(
+                            tensor
+                                .columns
+                                .checked_mul(2)
+                                .ok_or_else(|| Error::Limit("source selected row extent".into())),
+                        )
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Result<Vec<_>>>()?
+                .into_iter()
+                .max()
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        let cached_row_capacity = if cached_row_bytes == 0 {
+            0
+        } else {
+            source_page::cached_row_capacity(cached_row_bytes)?
+        };
+        let operands = matrices
+            .iter()
+            .map(|m| {
+                PreparedBf16Projection::new_with_launch_row_cap(
+                    source.clone(),
+                    m.clone(),
+                    match storage {
+                        TextStorage::Streamed => Bf16ProjectionStorage::Streamed,
+                        TextStorage::ResidentProjections
+                        | TextStorage::ResidentProjectionsVulkan => Bf16ProjectionStorage::Resident,
+                    },
+                    storage.is_vulkan().then_some(8192),
+                )
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let resident = operands
+            .iter()
+            .any(|o| o.storage() == Bf16ProjectionStorage::Resident);
+        let aligned_bytes = layout::sum(
+            matrices
+                .iter()
+                .map(|m| layout::aligned(m.tensor().byte_len as usize))
+                .collect::<Result<Vec<_>>>()?,
+        )?;
+        let largest_binding = matrices
+            .iter()
+            .map(|m| {
+                if storage.is_vulkan() {
+                    m.rows()
+                        .min(8192)
+                        .checked_mul(m.columns())
+                        .and_then(|n| n.checked_mul(2))
+                        .ok_or_else(|| Error::Limit("Vulkan projection tile extent".into()))
+                } else {
+                    Ok(m.tensor().byte_len as usize)
+                }
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .max()
+            .unwrap_or(0);
+        let projection_rows = match storage {
+            TextStorage::Streamed => 2048,
+            TextStorage::ResidentProjections | TextStorage::ResidentProjectionsVulkan => {
+                let rows = matrices
+                    .iter()
+                    .map(VerifiedMatrix::rows)
+                    .max()
+                    .ok_or_else(|| {
+                        Error::State("BF16 text resident selection has no projections".into())
+                    })?;
+                if storage.is_vulkan() {
+                    rows.min(8192)
+                } else {
+                    rows
+                }
+            }
+        };
+        if projection_rows == 0
+            || projection_rows > 262144
+            || projection_rows > i32::MAX as usize
+            || matrices.iter().any(|m| {
+                m.columns() > 12288
+                    || !m.columns().is_multiple_of(64)
+                    || m.rows()
+                        .checked_mul(m.columns())
+                        .is_none_or(|n| n / 2 > i32::MAX as usize)
+            })
+        {
+            return Err(Error::Limit(
+                "BF16 text exact64lane full-K resident grid/u32 binding bounds".into(),
+            ));
+        }
+        let upload_windows = layout::sum(
+            matrices
+                .iter()
+                .map(|m| m.rows().div_ceil((1024 * 1024) / (m.columns() * 2))),
+        )?;
+        Ok(Self {
+            cached_row_bytes,
+            cached_row_capacity,
+            operands,
+            matrices,
+            nodes,
+            aligned_bytes: if resident { aligned_bytes } else { 0 },
+            largest_binding: if resident { largest_binding } else { 0 },
+            projection_rows,
+            upload_windows: if resident { upload_windows } else { 0 },
+        })
+    }
+}

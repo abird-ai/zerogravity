@@ -19,7 +19,7 @@ struct Plan {
 }
 struct Case {
     // Dispatch bindings retire before their original physical owners.
-    launch: crate::vllm_ptx_inline::PreparedPinnedLaunch,
+    launch: crate::cuda::kernel::PreparedPinnedLaunch,
     inputs: Vec<ResidentLease>,
     status: ResidentLease,
     expected_inputs: Vec<Vec<u8>>,

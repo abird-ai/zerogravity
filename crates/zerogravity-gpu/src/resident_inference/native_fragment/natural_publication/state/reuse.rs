@@ -85,7 +85,7 @@ impl ResidentSession {
         not_cancelled(cancelled)?;
         input.require_session(self)?;
         self.model.validate_domains(&self.domains, true)?;
-        let metadata = input.source().source().reserve_workspace(METADATA)?;
+        let metadata = input.source().reserve_workspace(METADATA)?;
         let candidate = self.model.allocate_state(false).await?;
         not_cancelled(cancelled)?;
         input.require_session(self)?;
@@ -111,7 +111,7 @@ impl ResidentSession {
             states.push(self.bind_full_model_state(
                 input.attempt(),
                 input.record(),
-                input.call().layer(layer)?,
+                layer,
                 &candidate,
                 input.phase_binding().clone(),
             )?);

@@ -26,31 +26,60 @@ use self::{
 use self::{bindings::CohortBindings, values::CohortValues};
 use super::bf16_greedy::cohort::PreparedCohortGreedy;
 use super::*;
-use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, short_hf::ShortHfCallState};
+use crate::cuda::kernel::PinnedKernel;
+use crate::cuda::native::cohort_native::CohortPhases;
+use crate::cuda::native::model_values::bounded::{MAX_NODE_ACCESSES, RetainedFiniteProof};
+use crate::cuda::native::text_native::TextKernelCapture;
+use crate::cuda::native::{
+    cohort_native::CohortNativeLibrary, model_gdn::ModelGdnParameters, model_rotary::ModelRotary,
+    text_native::TextNativeStorage,
+};
+use crate::cuda::rms::cohort::{CohortGamma, CohortRmsNode, CohortRmsStorage};
+use crate::resident_inference::native_fragment::{PrefixPhaseEnqueue, text::TextCallState};
 use crate::resident_leases::backing_pool::ResidentWorkspaceGeometry;
 use crate::resident_leases::{ResidentInitialization, ResidentLease, ResidentService, TiedWeight};
 use crate::resident_state_transport::typed;
-use crate::vllm_cuda_input_rms::cohort::{CohortGamma, CohortRmsNode, CohortRmsStorage};
-use crate::vllm_cuda_qualification::cohort_native::CohortPhases;
-use crate::vllm_cuda_qualification::model_values::bounded::{
-    MAX_NODE_ACCESSES, RetainedFiniteProof,
-};
-use crate::vllm_cuda_qualification::{
-    cohort_native::CohortNativeLibrary, model_gdn::ModelGdnParameters, model_rotary::ModelRotary,
-    short_hf_native::ShortHfNativeStorage,
-};
-use crate::vllm_ptx_inline::PinnedKernel;
 use std::sync::{
     OnceLock,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use zerogravity_artifacts::source_weights::WindowWorkspace;
-use zerogravity_core::accelerator::program::FullModelProfile;
 use zerogravity_core::device_events::{BufferLeaseId, BufferRole, DeviceAccess};
+
+// Exact actual source member and completed upload, independent of family roles.
+fn require_tied_member(
+    input: &crate::resident_inference::native_fragment::text::TextCallInput,
+    descriptor: &zerogravity_core::accelerator::program::SourceOperator,
+    tied: &TiedWeight,
+    service: &Arc<ResidentService>,
+) -> Result<()> {
+    use zerogravity_core::{accelerator::program::SourceNumericalContract, quant::QuantKind};
+    descriptor.validate()?;
+    let [member] = descriptor.matrices() else {
+        return Err(Error::State("B4 exact tied source matrix arity".into()));
+    };
+    let source = input.source();
+    let matrix = source.matrix(&member.name, member.axes)?;
+    if !source.same_issuer(tied.source())
+        || descriptor.call() != input.call()
+        || descriptor.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+        || member.source != source.source_identity()
+        || member.kind != QuantKind::Bf16
+        || member.kind != matrix.tensor().kind
+        || member.rows != matrix.rows()
+        || member.columns != matrix.columns()
+        || member.axes != matrix.axes()
+    {
+        return Err(Error::State(
+            "B4 actual tied source/member/numerical contract differs".into(),
+        ));
+    }
+    tied.matrix().require_matrix(source, service, &matrix)
+}
 
 /// Explicit diagnostic cuts after actual submitted B4 source kernels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ShortHfCohortFault {
+pub enum TextCohortFault {
     UnknownAfterFirstConvolution,
     UnknownAfterLastFa,
     UnknownAfterHead,
@@ -222,20 +251,19 @@ impl CohortLibrary {
         // Original per-row transport kernels stay compiled as fallback keys
         // and qualification bit oracle; grouped variants compile cold too.
         count += self.transport.prepare_code(queue)?;
-        count +=
-            crate::vllm_cuda_input_rms::cohort::prepare_code(source, self.native.profile(), queue)?;
-        let profile = self.native.profile();
-        for initial in CohortPhases::for_profile(profile).iter() {
+        count += crate::cuda::rms::cohort::prepare_code(source, self.native.capture(), queue)?;
+        let capture = self.native.capture();
+        for initial in CohortPhases::for_capture(capture).iter() {
             let rows = if initial { 188 } else { 4 };
             for width in [
                 32,
                 512,
-                profile.hidden_size(),
+                capture.hidden_width(),
                 2048,
-                profile.intermediate_size(),
+                capture.intermediate_width(),
                 5120,
                 6144,
-                2 * profile.intermediate_size(),
+                2 * capture.intermediate_width(),
                 8192,
             ] {
                 super::native::finite_definition(rows * width)?.prepare_code(queue)?;
@@ -261,9 +289,9 @@ impl CohortLibrary {
         // SAFETY: caller supplies the original physical completion authority.
         unsafe { self.native.retire_after_physical_completion() }
     }
-    pub(crate) fn host_bytes(profile: FullModelProfile) -> Result<usize> {
-        let initial = if CohortPhases::for_profile(profile).contains(true) {
-            CohortGdnLibrary::host_bytes(profile, true)?
+    pub(crate) fn host_bytes(capture: TextKernelCapture) -> Result<usize> {
+        let initial = if CohortPhases::for_capture(capture).contains(true) {
+            CohortGdnLibrary::host_bytes(capture, true)?
         } else {
             0
         };
@@ -276,7 +304,7 @@ impl CohortLibrary {
         // and at most ceil(327/8)=41 grouped definitions (generated source
         // <=4096 B + 9 handles + member chunk + key + wrapper).
         let mut finite: usize = 0;
-        for _ in CohortPhases::for_profile(profile).iter() {
+        for _ in CohortPhases::for_capture(capture).iter() {
             finite = finite
                 .checked_add(
                     327 * (256 + PinnedKernel::KEY_METADATA_BYTES + 512)
@@ -288,8 +316,8 @@ impl CohortLibrary {
                 .ok_or_else(|| Error::Limit("B4 immutable finite metadata".into()))?;
         }
         initial
-            .checked_add(CohortGdnLibrary::host_bytes(profile, false)?)
-            .and_then(|n| n.checked_add(CohortNativeLibrary::host_bytes(profile)))
+            .checked_add(CohortGdnLibrary::host_bytes(capture, false)?)
+            .and_then(|n| n.checked_add(CohortNativeLibrary::host_bytes(capture)))
             .and_then(|n| n.checked_add(transport))
             .and_then(|n| n.checked_add(finite))
             .ok_or_else(|| Error::Limit("B4 immutable native/GDN metadata".into()))
@@ -297,13 +325,13 @@ impl CohortLibrary {
     /// Per-value physical BF16 element counts for one phase: the logical plan
     /// capacity of that phase's canonical scope times the admitted row axis.
     fn phase_value_elements(
-        scopes: &[Arc<crate::vllm_cuda_qualification::short_hf_model::ShortHfModelBinding>],
+        scopes: &[Arc<crate::cuda::native::text_model::TextModelBinding>],
         initial: bool,
     ) -> Result<Vec<u32>> {
         let span = if initial { 47 } else { 1 };
         let scope = scopes
             .iter()
-            .find(|scope| scope.call().span().len() == span)
+            .find(|scope| scope.call().rows().len() == span)
             .ok_or_else(|| Error::State("B4 cold finite scope absent".into()))?;
         let plan = scope.record().plan();
         if plan.values().len() != 327 {
@@ -322,21 +350,25 @@ impl CohortLibrary {
             .collect()
     }
     pub(crate) fn prepare(
-        storage: Arc<ShortHfNativeStorage>,
-        scopes: &[Arc<crate::vllm_cuda_qualification::short_hf_model::ShortHfModelBinding>],
+        storage: Arc<TextNativeStorage>,
+        scopes: &[Arc<crate::cuda::native::text_model::TextModelBinding>],
         service: Arc<ResidentService>,
         init: &mut ResidentInitialization<'_>,
         cancel: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {
         let source = storage.weights().source().clone();
-        let phases = CohortPhases::for_profile(storage.profile());
+        let phases = CohortPhases::for_capture(storage.capture());
         let gdn = [
             if phases.contains(true) {
-                Some(CohortGdnLibrary::prepare(source.clone(), true)?)
+                Some(CohortGdnLibrary::prepare(
+                    source.clone(),
+                    storage.capture(),
+                    true,
+                )?)
             } else {
                 None
             },
-            Some(CohortGdnLibrary::prepare(source, false)?),
+            Some(CohortGdnLibrary::prepare(source, storage.capture(), false)?),
         ];
         let native = CohortNativeLibrary::prepare(storage, service, init, cancel)?;
         let transport = CohortTransportLibrary::prepare()?;
@@ -384,7 +416,7 @@ pub(crate) struct FullModelCohort {
     device_copies: AtomicUsize,
     clears: AtomicUsize,
     grouped_transports: AtomicUsize,
-    fault: Option<ShortHfCohortFault>,
+    fault: Option<TextCohortFault>,
     _metadata: WindowWorkspace,
 }
 /// Merge one adapter's access list into a census node, deduplicating by lease
@@ -410,10 +442,10 @@ fn merge_census_node(
 impl FullModelCohort {
     /// Complete call-local metadata reservations. Both phases retain their own
     /// original row records; only one body executes under model.workspace.
-    pub(crate) fn host_bytes(initial: bool, profile: FullModelProfile) -> Result<usize> {
-        let rms = CohortRmsNode::metadata_bound(initial, false, profile)?
+    pub(crate) fn host_bytes(initial: bool, capture: TextKernelCapture) -> Result<usize> {
+        let rms = CohortRmsNode::metadata_bound(initial, false, capture)?
             .checked_add(
-                CohortRmsNode::metadata_bound(initial, true, profile)?
+                CohortRmsNode::metadata_bound(initial, true, capture)?
                     .checked_mul(48)
                     .ok_or_else(|| Error::Limit("B4 RMS metadata population".into()))?,
             )
@@ -430,7 +462,7 @@ impl FullModelCohort {
             // 327 deferred pending entries + 41 group masks/observations
             // (the LEDGER_LIMIT arithmetic) plus <=41 prepared group launches.
             327 * 128
-                + 41 * (32 + std::mem::size_of::<crate::vllm_ptx_inline::PreparedPinnedLaunch>())
+                + 41 * (32 + std::mem::size_of::<crate::cuda::kernel::PreparedPinnedLaunch>())
                 + 128 * 1024,
             // Transient per-node census built and consumed inside prepare:
             // 255 nodes, each at most the shared per-node access cap.
@@ -445,12 +477,12 @@ impl FullModelCohort {
     }
     /// Source-derived private allocation population for the only active body.
     /// Existing weights/rotary/native scratch and canonical roots priced elsewhere.
-    pub(crate) fn allocation_layout(initial: bool, profile: FullModelProfile) -> Vec<usize> {
+    pub(crate) fn allocation_layout(initial: bool, capture: TextKernelCapture) -> Vec<usize> {
         let m = if initial { 188 } else { 4 };
         let mut result = CohortGdnStorage::allocation_layout(initial);
-        result.extend(CohortRmsStorage::allocation_layout(initial, profile));
-        result.extend([m * profile.hidden_size() * 4; 24]); // optional full source dual-sum diagnostics
-        result.extend([m * 4, 4 * profile.hidden_size() * 2]); // issued IDs and final-row gather
+        result.extend(CohortRmsStorage::allocation_layout(initial, capture));
+        result.extend([m * capture.hidden_width() * 4; 24]); // optional full source dual-sum diagnostics
+        result.extend([m * 4, 4 * capture.hidden_width() * 2]); // issued IDs and final-row gather
         // Four immutable row packets +packed packet +actual 256-way partials.
         result.extend(
             PreparedCohortGreedy::allocation_layout(4).expect("closed four-row allocation layout"),
@@ -472,18 +504,18 @@ impl FullModelCohort {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn prepare(
         service: Arc<ResidentService>,
-        states: &[Arc<ShortHfCallState>],
+        states: &[Arc<TextCallState>],
         permits: &[PrefixPhaseEnqueue<'_>],
         geometry: Arc<ResidentWorkspaceGeometry>,
         status: ResidentLease,
         cache: ResidentLease,
-        native_storage: Arc<ShortHfNativeStorage>,
+        native_storage: Arc<TextNativeStorage>,
         library: Arc<CohortLibrary>,
         rotary: Arc<ModelRotary>,
         parameters: &BTreeMap<usize, Arc<ModelGdnParameters>>,
         gammas: BTreeMap<usize, CohortGamma>,
         diagnostic: bool,
-        fault: Option<ShortHfCohortFault>,
+        fault: Option<TextCohortFault>,
         tied: Arc<TiedWeight>,
         init: &mut ResidentInitialization<'_>,
         cancel: Option<&AtomicBool>,
@@ -511,7 +543,7 @@ impl FullModelCohort {
         let bindings = CohortBindings::bind(&service, states, permits, &owned)?;
         let inputs = bindings.inputs();
         let source = bindings.source().clone();
-        let metadata = source.source().reserve_workspace(8 * 1024 * 1024)?;
+        let metadata = source.reserve_workspace(8 * 1024 * 1024)?;
         let values = CohortValues::bind(&bindings, service.clone(), geometry)?;
         let initial = (inputs[0].rows(), inputs[0].base()) == (47, 0);
         let gdn_library = library.gdn[usize::from(!initial)].clone().ok_or_else(|| {
@@ -531,7 +563,9 @@ impl FullModelCohort {
         let greedy = PreparedCohortGreedy::prepare(
             source.clone(),
             &bindings.records(),
-            values.lease(inputs[0].record().logits())?.clone(),
+            values
+                .lease(inputs[0].record().selection().output())?
+                .clone(),
             status.clone(),
             init,
             cancel,
@@ -540,17 +574,18 @@ impl FullModelCohort {
         let mut sums = BTreeMap::new();
         for (node, gamma) in gammas {
             if diagnostic
-                && matches!(&inputs[0].record().plan().nodes()[node].operation,
-                PlanOperation::TypedVllm08{descriptor,..} if matches!(descriptor.kind(),
-                    zerogravity_core::accelerator::program::Vllm08Kind::ResidualRms(
-                        zerogravity_core::accelerator::program::Vllm08RmsSite::Input |
-                        zerogravity_core::accelerator::program::Vllm08RmsSite::Final)))
+                && inputs[0].record().operator(node)?.is_some_and(|op| {
+                    matches!(
+                        op.kind(),
+                        zerogravity_core::accelerator::program::SourceOperatorKind::ResidualRms(_)
+                    )
+                })
             {
                 sums.insert(
                     node,
                     init.allocate_empty(
                         if initial { 188 } else { 4 }
-                            * inputs[0].call().model_profile().hidden_size()
+                            * inputs[0].scope().native_capture().hidden_width()
                             * 4,
                         BufferRole::Scratch,
                     )?,
@@ -970,7 +1005,7 @@ impl FullModelCohort {
         if index == 253 {
             copies += self.head.enqueue(index, permits)?;
         }
-        if matches!(&node.operation,PlanOperation::TypedVllm08 {descriptor,..} if matches!(descriptor.kind(),zerogravity_core::accelerator::program::Vllm08Kind::Projection(_)))
+        if matches!(&node.operation,PlanOperation::SourceOperator {descriptor,..} if matches!(descriptor.kind(),zerogravity_core::accelerator::program::SourceOperatorKind::Projection { .. }))
         {
             self.projection_launches.fetch_add(n, Ordering::AcqRel);
         }
@@ -980,11 +1015,11 @@ impl FullModelCohort {
         self.grouped_transports.fetch_add(grouped, Ordering::AcqRel);
         self.next_node.store(index + 1, Ordering::Release);
         let cut = match self.fault {
-            Some(ShortHfCohortFault::UnknownAfterFirstConvolution) => matches!(&node.operation,
-                PlanOperation::TypedVllm08 { descriptor, .. } if descriptor.kind() == zerogravity_core::accelerator::program::Vllm08Kind::GdnConv && descriptor.layer().is_some_and(|l| l.index() == 0)),
-            Some(ShortHfCohortFault::UnknownAfterLastFa) => matches!(&node.operation,
-                PlanOperation::TypedVllm08 { descriptor, .. } if descriptor.kind() == zerogravity_core::accelerator::program::Vllm08Kind::FlashAttention && descriptor.layer().is_some_and(|l| l.index() == 23)),
-            Some(ShortHfCohortFault::UnknownAfterHead) => index == 254,
+            Some(TextCohortFault::UnknownAfterFirstConvolution) => matches!(&node.operation,
+                PlanOperation::SourceOperator { descriptor, .. } if matches!(descriptor.kind(), zerogravity_core::accelerator::program::SourceOperatorKind::CausalConvSplit { domain: zerogravity_core::accelerator::program::ConvDomain(0), .. })),
+            Some(TextCohortFault::UnknownAfterLastFa) => matches!(&node.operation,
+                PlanOperation::SourceOperator { descriptor, .. } if matches!(descriptor.kind(), zerogravity_core::accelerator::program::SourceOperatorKind::FlashAttention { domain: zerogravity_core::accelerator::program::KvDomain(23), .. })),
+            Some(TextCohortFault::UnknownAfterHead) => index == 254,
             None => false,
         };
         if cut {
@@ -1139,8 +1174,8 @@ impl FullModelCohort {
 impl ResidentProgram {
     pub(crate) fn from_cohort_body(body: Arc<FullModelCohort>) -> Result<Self> {
         let record = body.bindings.record(0)?;
-        let plan = record.plan().clone();
-        let states = native::state_requirements(body.bindings.source(), &plan)?;
+        let plan = record.shared_plan();
+        let states = native::state_requirements(record)?;
         let state_bytes = checked_sum(states.iter().map(|state| state.bytes))?
             .checked_mul(body.bindings.width())
             .ok_or_else(|| Error::Limit("B4 all-row state preflight extent".into()))?;
