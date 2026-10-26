@@ -4,7 +4,7 @@
 //! and `CHAR_BYTES` once per process into statics it never drops. That storage
 //! belongs to the process, not to a router, a source or a route alias, so this
 //! module owns the single process-global lease and every source owner (CPU,
-//! GGUF, canonical47, short-HF) admits through it before parsing.
+//! GGUF, fixed-prompt CUDA, Qwen text CUDA) admits through it before parsing.
 //!
 //! The permanent lease and the compiler scratch are both charged *before* the
 //! statics are initialised. The first transition is serialised; a partial

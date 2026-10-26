@@ -1,7 +1,12 @@
 //! End-to-end source-only Qwen original HF owned-shard -> original
 //! Qwen text binder -> the existing CPU projection, embedding, vector
 //! operator. NO trained checkpoint, tokenizer, full Qwen forward or GPU.
-#![cfg(all(feature = "cpu", feature = "cache", target_os = "linux"))]
+#![cfg(all(
+    feature = "cpu",
+    feature = "cache",
+    feature = "model-qwen35",
+    target_os = "linux"
+))]
 
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -11,9 +16,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use zerogravity::artifact::Artifact;
 use zerogravity::cache::TransferAdmission;
-use zerogravity::model::qwen::QwenTextConfig;
-use zerogravity::original_qwen_cpu::QwenOriginalCpu;
 use zerogravity::quant::QuantKind;
+use zerogravity::qwen35::reference::source::CpuSource;
+use zerogravity::qwen35::source::safetensors::QwenTextConfig;
 use zerogravity::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, ResourceOwner};
 use zerogravity_artifacts::SourceWeights;
 use zerogravity_artifacts::source_weights::{ExpectedSourceShard, SourceOpenLimits};
@@ -183,7 +188,7 @@ fn original_borrowed_tensor_source_uses_one_owner_and_existing_cpu_value_operato
     let fixture = Fixture::new();
     let (source, config, index, admission, key) = loaded(&fixture);
     let retained = admission.arbiter.snapshot(&key).unwrap().reserved;
-    let bridge = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+    let bridge = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
     assert_eq!(bridge.binding().source_identity(), source.source_identity());
     assert_eq!(
         bridge.binding().text_tensor_count(),
@@ -246,22 +251,21 @@ fn original_borrowed_tensor_source_uses_one_owner_and_existing_cpu_value_operato
 fn original_binding_cannot_override_original_source_config_or_index_pin() {
     let fixture = Fixture::new();
     let (source, config, index, admission, key) = loaded(&fixture);
-    assert!(QwenOriginalCpu::bind(&source, &config, &"0".repeat(64), &sha(&index)).is_err());
-    assert!(QwenOriginalCpu::bind(&source, &config, &sha(&config), &"0".repeat(64)).is_err());
-    assert!(QwenOriginalCpu::bind(&source, &config, "invalid", &sha(&index)).is_err());
+    assert!(CpuSource::bind(&source, &config, &"0".repeat(64), &sha(&index)).is_err());
+    assert!(CpuSource::bind(&source, &config, &sha(&config), &"0".repeat(64)).is_err());
+    assert!(CpuSource::bind(&source, &config, "invalid", &sha(&index)).is_err());
     let mut changed = serde_json::from_slice::<serde_json::Value>(&config).unwrap();
     changed["text_config"]["head_dim"] = json!(8);
     let changed = serde_json::to_vec(&changed).unwrap();
-    assert!(QwenOriginalCpu::bind(&source, &changed, &sha(&changed), &sha(&index)).is_err());
+    assert!(CpuSource::bind(&source, &changed, &sha(&changed), &sha(&index)).is_err());
     assert!(admission.arbiter.snapshot(&key).unwrap().reserved > 0);
 }
 
 #[cfg(feature = "model-qwen35")]
 mod original_numerics {
     use super::*;
-    use zerogravity::original_qwen_math::{
-        OriginalQwenLayerMath, original_gdn_coefficients, repeat_qk_to_value_heads,
-        split_interleaved_query_gate,
+    use zerogravity::qwen35::reference::layer::{
+        LayerMath, gdn_coefficients, repeat_qk_to_value_heads, split_interleaved_query_gate,
     };
 
     fn near(actual: f32, expected: f32, tolerance: f32) {
@@ -289,7 +293,7 @@ mod original_numerics {
                 });
             assert_eq!(source.tensor("lm_head.weight").is_ok(), !tied);
             let retained = admission.arbiter.snapshot(&key).unwrap().reserved;
-            let cpu = QwenOriginalCpu::bind(&source, &cfg, &sha(&cfg), &sha(&index)).unwrap();
+            let cpu = CpuSource::bind(&source, &cfg, &sha(&cfg), &sha(&index)).unwrap();
             assert_eq!(cpu.binding().source_identity(), source.source_identity());
             assert_eq!(cpu.binding().config().tie_word_embeddings(), tied);
             // Unit residual, eps3 and zero-centered gamma0 give exact norm0.5.
@@ -298,10 +302,7 @@ mod original_numerics {
             let expected = (1..=16)
                 .map(|row| sign * 2.0 * row as f32)
                 .collect::<Vec<_>>();
-            for math in [
-                OriginalQwenLayerMath::new(&cpu),
-                OriginalQwenLayerMath::bf16_diagnostic(&cpu),
-            ] {
+            for math in [LayerMath::new(&cpu), LayerMath::bf16_diagnostic(&cpu)] {
                 assert_eq!(math.source_identity(), source.source_identity());
                 let logits = math.final_logits(&[1.0; 4]).unwrap();
                 assert_eq!(
@@ -360,8 +361,8 @@ mod original_numerics {
     fn original_zero_centered_rms_is_one_plus_checkpoint_weight_not_raw_gamma() {
         let fixture = Fixture::new();
         let (source, config, index, _, _) = loaded(&fixture);
-        let bound = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
-        let math = OriginalQwenLayerMath::new(&bound);
+        let bound = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = LayerMath::new(&bound);
         let x = [3., 4.];
         let zero = math.ordinary_norm(&x, &[0., 0.]).unwrap();
         near(zero[0], 3.0 / (12.5f32 + 1e-6).sqrt(), 1e-6);
@@ -377,8 +378,8 @@ mod original_numerics {
     fn original_full_attention_one_token_uses_source_bound_unpublished_kv_proposal() {
         let fixture = Fixture::new();
         let (source, config, index, admit, key) = loaded(&fixture);
-        let bound = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
-        let math = OriginalQwenLayerMath::new(&bound);
+        let bound = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = LayerMath::new(&bound);
         let x = [1.0f32; 4];
         let empty = math.empty_full_prefix(3).unwrap();
         assert!(empty.is_empty());
@@ -429,8 +430,8 @@ mod original_numerics {
         let fixture_b = Fixture::new();
         let (source_b, config_b, index_b, _, _) = loaded(&fixture_b);
         let bound_b =
-            QwenOriginalCpu::bind(&source_b, &config_b, &sha(&config_b), &sha(&index_b)).unwrap();
-        let other = OriginalQwenLayerMath::new(&bound_b);
+            CpuSource::bind(&source_b, &config_b, &sha(&config_b), &sha(&index_b)).unwrap();
+        let other = LayerMath::new(&bound_b);
         assert_ne!(other.source_identity(), math.source_identity());
         assert!(other.propose_full_attention(3, &x, &first.prefix).is_err());
         assert!(admit.arbiter.snapshot(&key).unwrap().reserved > 0);
@@ -440,8 +441,8 @@ mod original_numerics {
     fn original_gdn_private_two_steps_preserve_bound_source_and_session_state_isolation() {
         let fixture = Fixture::new();
         let (source, config, index, _, _) = loaded(&fixture);
-        let bound = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
-        let math = OriginalQwenLayerMath::new(&bound);
+        let bound = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = LayerMath::new(&bound);
         let cfg = bound.binding().config();
         let k = cfg.geometry().recurrent_key_heads.unwrap() as usize;
         let v = cfg.geometry().recurrent_value_heads.unwrap() as usize;
@@ -493,8 +494,8 @@ mod original_numerics {
         let fixture_b = Fixture::new();
         let (source_b, config_b, index_b, _, _) = loaded(&fixture_b);
         let bound_b =
-            QwenOriginalCpu::bind(&source_b, &config_b, &sha(&config_b), &sha(&index_b)).unwrap();
-        let other = OriginalQwenLayerMath::new(&bound_b);
+            CpuSource::bind(&source_b, &config_b, &sha(&config_b), &sha(&index_b)).unwrap();
+        let other = LayerMath::new(&bound_b);
         assert!(other.propose_gdn(0, &x, &first.next).is_err());
     }
 
@@ -543,28 +544,27 @@ mod original_numerics {
     fn original_log_decay_a_and_write_gate_have_an_independent_analytic_oracle() {
         use zerogravity::accelerator::SourceIdentity;
         let source = SourceIdentity::for_new_allocation().unwrap();
-        let ready = original_gdn_coefficients(source, &[0.0], &[0.0], &[0.0], &[0.0], 4).unwrap();
+        let ready = gdn_coefficients(source, &[0.0], &[0.0], &[0.0], &[0.0], 4).unwrap();
         assert_eq!(ready.coefficients.len(), 1);
         near(ready.softplus[0], std::f32::consts::LN_2, 1e-6);
         near(ready.gate_raw[0], -std::f32::consts::LN_2, 1e-6);
         near(ready.coefficients[0].gain, 0.5, 1e-6);
         near(ready.coefficients[0].beta, 0.5, 1e-6);
         near(ready.coefficients[0].scale, 0.5, 1e-6);
-        assert!(original_gdn_coefficients(source, &[0.0], &[0.0], &[0.0], &[100.0], 4).is_err());
+        assert!(gdn_coefficients(source, &[0.0], &[0.0], &[0.0], &[100.0], 4).is_err());
         assert!(
-            original_gdn_coefficients(SourceIdentity::unbound(), &[0.0], &[0.0], &[0.0], &[0.0], 4)
-                .is_err()
+            gdn_coefficients(SourceIdentity::unbound(), &[0.0], &[0.0], &[0.0], &[0.0], 4).is_err()
         );
-        assert!(original_gdn_coefficients(source, &[0.0], &[0.0, 1.0], &[0.0], &[0.0], 4).is_err());
-        assert!(original_gdn_coefficients(source, &[0.0], &[0.0], &[0.0], &[0.0], 0).is_err());
+        assert!(gdn_coefficients(source, &[0.0], &[0.0, 1.0], &[0.0], &[0.0], 4).is_err());
+        assert!(gdn_coefficients(source, &[0.0], &[0.0], &[0.0], &[0.0], 0).is_err());
     }
 
     #[test]
     fn source_bound_original_ffn_applies_swiglu_and_residual_without_model_session() {
         let fixture = Fixture::new();
         let (source, config, index, _, _) = loaded(&fixture);
-        let bound = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
-        let math = OriginalQwenLayerMath::new(&bound);
+        let bound = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = LayerMath::new(&bound);
         let x = [1.0f32; 4];
         let ffn = math.propose_ffn(0, &x).unwrap();
         assert_eq!(ffn.len(), 4);
@@ -586,19 +586,17 @@ mod original_numerics {
 mod original_coordinator_tests {
     use super::*;
     use zerogravity::accelerator::program::{ConvDomain, KvDomain, RecurrentDomain, StateSlot};
-    use zerogravity::original_qwen_math::OriginalQwenLayerMath;
-    use zerogravity::original_qwen_state::{
-        ORIGINAL_CONV_V1, ORIGINAL_KV_V1, ORIGINAL_RECURRENCE_V1, OriginalQwenStateBridge,
-    };
+    use zerogravity::qwen35::reference::layer::LayerMath;
+    use zerogravity::qwen35::reference::state::{CONV_V1, KV_V1, RECURRENT_V1, StateBridge};
     use zerogravity::state::{PreparedDomain, TaskCoordinator};
 
     #[test]
     fn source_approved_gdn_state_domains_publish_all_or_nothing_on_the_original_coordinator() {
         let fixture = Fixture::new();
         let (source, config, index, admission, key) = loaded(&fixture);
-        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
-        let math = OriginalQwenLayerMath::new(&cpu);
-        let bridge = OriginalQwenStateBridge::new(&math);
+        let cpu = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = LayerMath::new(&cpu);
+        let bridge = StateBridge::new(&math);
         assert_eq!(
             bridge.typed_domains(0).unwrap(),
             [
@@ -616,11 +614,11 @@ mod original_coordinator_tests {
         assert_eq!(coordinator.root().domains.len(), 2);
         assert_eq!(
             coordinator.root().domains["qwen.original.conv.0"].schema,
-            ORIGINAL_CONV_V1
+            CONV_V1
         );
         assert_eq!(
             coordinator.root().domains["qwen.original.recurrent.0"].schema,
-            ORIGINAL_RECURRENCE_V1
+            RECURRENT_V1
         );
         let before = coordinator.root().clone();
         let first = bridge.prepare(0, &coordinator, &[1.0; 4]).unwrap();
@@ -672,9 +670,9 @@ mod original_coordinator_tests {
     fn full_attention_prefix_has_only_one_source_bound_kv_domain_and_replays_after_publish() {
         let fixture = Fixture::new();
         let (source, config, index, _, _) = loaded(&fixture);
-        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
-        let math = OriginalQwenLayerMath::new(&cpu);
-        let bridge = OriginalQwenStateBridge::new(&math);
+        let cpu = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = LayerMath::new(&cpu);
+        let bridge = StateBridge::new(&math);
         assert_eq!(
             bridge.typed_domains(3).unwrap(),
             [StateSlot::Kv(KvDomain(3))]
@@ -682,7 +680,7 @@ mod original_coordinator_tests {
         let mut coordinator = bridge.coordinator_for_layer(3, 19).unwrap();
         assert_eq!(
             coordinator.root().domains["qwen.original.kv.3"].schema,
-            ORIGINAL_KV_V1
+            KV_V1
         );
         let proposed = bridge.prepare(3, &coordinator, &[1.0; 4]).unwrap();
         let first_out = proposed.output().to_vec();
@@ -710,9 +708,9 @@ mod original_coordinator_tests {
     fn foreign_source_session_schema_frontier_and_corruption_refuse_without_side_effects() {
         let fixture = Fixture::new();
         let (source, config, index, _, _) = loaded(&fixture);
-        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
-        let math = OriginalQwenLayerMath::new(&cpu);
-        let bridge = OriginalQwenStateBridge::new(&math);
+        let cpu = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = LayerMath::new(&cpu);
+        let bridge = StateBridge::new(&math);
         let mut own = bridge.coordinator_for_layer(0, 1).unwrap();
         let mut another = bridge.coordinator_for_layer(0, 1).unwrap();
         assert_ne!(own.coordinator_id(), another.coordinator_id());
@@ -728,7 +726,7 @@ mod original_coordinator_tests {
         let wrong = TaskCoordinator::new_source_bound(
             0,
             source.source_identity(),
-            [("qwen.original.conv.0".into(), ORIGINAL_CONV_V1)],
+            [("qwen.original.conv.0".into(), CONV_V1)],
         )
         .unwrap();
         assert!(bridge.prepare(0, &wrong, &[1.0; 4]).is_err());
@@ -736,7 +734,7 @@ mod original_coordinator_tests {
             0,
             source.source_identity(),
             [
-                ("qwen.original.conv.0".into(), ORIGINAL_CONV_V1),
+                ("qwen.original.conv.0".into(), CONV_V1),
                 ("qwen.original.recurrent.0".into(), 8),
             ],
         )
@@ -744,22 +742,22 @@ mod original_coordinator_tests {
         assert!(bridge.prepare(0, &wrong_schema, &[1.0; 4]).is_err());
         let fixture_b = Fixture::new();
         let (other_source, other_config, other_index, _, _) = loaded(&fixture_b);
-        let other_cpu = QwenOriginalCpu::bind(
+        let other_cpu = CpuSource::bind(
             &other_source,
             &other_config,
             &sha(&other_config),
             &sha(&other_index),
         )
         .unwrap();
-        let other_math = OriginalQwenLayerMath::new(&other_cpu);
-        let other_bridge = OriginalQwenStateBridge::new(&other_math);
+        let other_math = LayerMath::new(&other_cpu);
+        let other_bridge = StateBridge::new(&other_math);
         assert!(other_bridge.prepare(0, &own, &[1.0; 4]).is_err());
         // Mutated owned state bytes in a trusted source-bound coordinator
         // are still independently decoded before any new proposal.
         let mut forged = bridge.coordinator_for_layer(3, 55).unwrap();
         let wrong_stored = PreparedDomain {
             name: "qwen.original.kv.3".into(),
-            schema: ORIGINAL_KV_V1,
+            schema: KV_V1,
             bytes: vec![1, 2, 3],
             frontier: 1,
         };
@@ -777,7 +775,7 @@ mod original_coordinator_tests {
                 1,
                 vec![PreparedDomain {
                     name: "qwen.original.kv.3".into(),
-                    schema: ORIGINAL_KV_V1,
+                    schema: KV_V1,
                     bytes: f32::NAN.to_le_bytes().repeat(8),
                     frontier: 1,
                 }],
@@ -791,17 +789,17 @@ mod original_coordinator_tests {
 #[cfg(feature = "model-qwen35")]
 mod original_full_model_tests {
     use super::*;
-    use zerogravity::original_qwen_math::OriginalQwenLayerMath;
-    use zerogravity::original_qwen_state::OriginalQwenStateBridge;
+    use zerogravity::qwen35::reference::layer::LayerMath;
+    use zerogravity::qwen35::reference::state::StateBridge;
     use zerogravity::state::PreparedDomain;
 
     #[test]
     fn original_hf_four_layer_model_is_one_complete_source_root_and_full_vocab() {
         let fixture = Fixture::new();
         let (source, config, index, admission, key) = loaded(&fixture);
-        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
-        let math = OriginalQwenLayerMath::new(&cpu);
-        let bridge = OriginalQwenStateBridge::new(&math);
+        let cpu = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = LayerMath::new(&cpu);
+        let bridge = StateBridge::new(&math);
         let mut coordinator = bridge.coordinator_for_model(19).unwrap();
         assert_eq!(
             coordinator.source_identity(),
@@ -896,9 +894,9 @@ mod original_full_model_tests {
     fn full_model_first_gdn_matches_independent_one_layer_published_domain_bytes() {
         let fixture = Fixture::new();
         let (source, config, index, _, _) = loaded(&fixture);
-        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
-        let math = OriginalQwenLayerMath::new(&cpu);
-        let bridge = OriginalQwenStateBridge::new(&math);
+        let cpu = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = LayerMath::new(&cpu);
+        let bridge = StateBridge::new(&math);
         let mut full = bridge.coordinator_for_model(1).unwrap();
         let mut partial = bridge.coordinator_for_layer(0, 1).unwrap();
         let first = bridge.prepare_diagnostic_token_f32(&full, 0).unwrap();
@@ -921,9 +919,9 @@ mod original_full_model_tests {
     fn full_token_rejects_wrong_source_session_and_missing_late_layer_before_publish() {
         let fixture = Fixture::new();
         let (source, config, index, _, _) = loaded(&fixture);
-        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
-        let math = OriginalQwenLayerMath::new(&cpu);
-        let bridge = OriginalQwenStateBridge::new(&math);
+        let cpu = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = LayerMath::new(&cpu);
+        let bridge = StateBridge::new(&math);
         let mut first = bridge.coordinator_for_model(8).unwrap();
         let mut second = bridge.coordinator_for_model(8).unwrap();
         let prepared = bridge.prepare_diagnostic_token_f32(&first, 0).unwrap();
@@ -939,9 +937,9 @@ mod original_full_model_tests {
         assert!(bridge.prepare_diagnostic_token_f32(&malformed, 0).is_err()); // only 2 of 7 domains
         let fixture2 = Fixture::new();
         let (s2, c2, i2, _, _) = loaded(&fixture2);
-        let cpu2 = QwenOriginalCpu::bind(&s2, &c2, &sha(&c2), &sha(&i2)).unwrap();
-        let math2 = OriginalQwenLayerMath::new(&cpu2);
-        let bridge2 = OriginalQwenStateBridge::new(&math2);
+        let cpu2 = CpuSource::bind(&s2, &c2, &sha(&c2), &sha(&i2)).unwrap();
+        let math2 = LayerMath::new(&cpu2);
+        let bridge2 = StateBridge::new(&math2);
         assert!(bridge2.prepare_diagnostic_token_f32(&first, 0).is_err());
 
         // Intentionally fabricate an entire state root using the TRUSTED
@@ -978,11 +976,9 @@ mod original_full_model_tests {
 #[cfg(feature = "model-qwen35")]
 mod original_bf16_diagnostic_tests {
     use super::*;
-    use zerogravity::original_qwen_math::OriginalQwenLayerMath;
-    use zerogravity::original_qwen_precision::OriginalNumericalDType;
-    use zerogravity::original_qwen_state::{
-        ORIGINAL_CONV_V1, ORIGINAL_KV_V1, ORIGINAL_RECURRENCE_V1, OriginalQwenStateBridge,
-    };
+    use zerogravity::qwen35::reference::layer::LayerMath;
+    use zerogravity::qwen35::reference::precision::Precision;
+    use zerogravity::qwen35::reference::state::{CONV_V1, KV_V1, RECURRENT_V1, StateBridge};
 
     fn bf16_representable(value: f32) -> bool {
         value.is_finite() && (value.to_bits() & 0xffff) == 0
@@ -991,23 +987,23 @@ mod original_bf16_diagnostic_tests {
     fn bf16_full_model_uses_distinct_state_schema_and_no_cross_dtype_session_replay() {
         let fixture = Fixture::new();
         let (source, config, index, admission, key) = loaded(&fixture);
-        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
-        let bf16 = OriginalQwenLayerMath::bf16_diagnostic(&cpu);
-        assert_eq!(bf16.dtype(), OriginalNumericalDType::Bf16Diagnostic);
-        let bridge = OriginalQwenStateBridge::new(&bf16);
+        let cpu = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let bf16 = LayerMath::bf16_diagnostic(&cpu);
+        assert_eq!(bf16.dtype(), Precision::Bf16Diagnostic);
+        let bridge = StateBridge::new(&bf16);
         let mut session = bridge.coordinator_for_model(777).unwrap();
         assert_eq!(session.root().domains.len(), 7);
         assert_eq!(
             session.root().domains["qwen.original.conv.0"].schema,
-            ORIGINAL_CONV_V1 + 0x10
+            CONV_V1 + 0x10
         );
         assert_eq!(
             session.root().domains["qwen.original.recurrent.0"].schema,
-            ORIGINAL_RECURRENCE_V1 + 0x10
+            RECURRENT_V1 + 0x10
         );
         assert_eq!(
             session.root().domains["qwen.original.kv.3"].schema,
-            ORIGINAL_KV_V1 + 0x10
+            KV_V1 + 0x10
         );
         assert!(bridge.prepare_diagnostic_token_f32(&session, 0).is_err());
         let before = session.root().clone();
@@ -1031,13 +1027,10 @@ mod original_bf16_diagnostic_tests {
         assert_eq!(committed.domains["qwen.original.kv.3"].bytes.len(), 32);
         assert_eq!(session.root().domains["qwen.original.kv.3"].bytes.len(), 64);
         assert!(admission.arbiter.snapshot(&key).unwrap().reserved > 0);
-        let f32 = OriginalQwenLayerMath::new(&cpu);
-        let bridge_f32 = OriginalQwenStateBridge::new(&f32);
+        let f32 = LayerMath::new(&cpu);
+        let bridge_f32 = StateBridge::new(&f32);
         let pure = bridge_f32.coordinator_for_model(777).unwrap();
-        assert_eq!(
-            pure.root().domains["qwen.original.kv.3"].schema,
-            ORIGINAL_KV_V1
-        );
+        assert_eq!(pure.root().domains["qwen.original.kv.3"].schema, KV_V1);
         assert!(
             bridge_f32
                 .prepare_diagnostic_token_f32(&session, 0)
@@ -1050,9 +1043,9 @@ mod original_bf16_diagnostic_tests {
     fn source_bf16_norm_ffn_attention_gdn_out_are_stage_quantized_not_a_final_logit_cast() {
         let fixture = Fixture::new();
         let (source, config, index, _, _) = loaded(&fixture);
-        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
-        let source_f32 = OriginalQwenLayerMath::new(&cpu);
-        let source_bf16 = OriginalQwenLayerMath::bf16_diagnostic(&cpu);
+        let cpu = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let source_f32 = LayerMath::new(&cpu);
+        let source_bf16 = LayerMath::bf16_diagnostic(&cpu);
         let x = [0.10123456f32, f32::from_bits(0x3f80_8000), 1.019, 1.25];
         let gamma = [0.0f32, 0.5, -0.2, 0.3];
         let normalized = source_bf16.ordinary_norm(&x, &gamma).unwrap();
@@ -1097,29 +1090,26 @@ mod original_bf16_diagnostic_tests {
             |_, _| 1.0,
             |_, rank| if rank == 2 { "BF16" } else { "F32" },
         );
-        let cpu = QwenOriginalCpu::bind(&source, &cfg, &sha(&cfg), &sha(&index)).unwrap();
-        let legacy = OriginalQwenLayerMath::bf16_diagnostic(&cpu);
-        let selected = OriginalQwenLayerMath::bf16_cpu_avx2_diagnostic(&cpu);
-        assert_eq!(
-            selected.dtype(),
-            OriginalNumericalDType::Bf16CpuAvx2Diagnostic
-        );
+        let cpu = CpuSource::bind(&source, &cfg, &sha(&cfg), &sha(&index)).unwrap();
+        let legacy = LayerMath::bf16_diagnostic(&cpu);
+        let selected = LayerMath::bf16_cpu_avx2_diagnostic(&cpu);
+        assert_eq!(selected.dtype(), Precision::Bf16CpuAvx2Diagnostic);
         assert_eq!(selected.dtype().reference_name(), "bf16-cpu-avx2");
-        let old_bridge = OriginalQwenStateBridge::new(&legacy);
-        let new_bridge = OriginalQwenStateBridge::new(&selected);
+        let old_bridge = StateBridge::new(&legacy);
+        let new_bridge = StateBridge::new(&selected);
         let old = old_bridge.coordinator_for_model(123).unwrap();
         let mut new = new_bridge.coordinator_for_model(123).unwrap();
         assert_eq!(
             new.root().domains["qwen.original.conv.0"].schema,
-            ORIGINAL_CONV_V1 + 0x20
+            CONV_V1 + 0x20
         );
         assert_eq!(
             new.root().domains["qwen.original.recurrent.0"].schema,
-            ORIGINAL_RECURRENCE_V1 + 0x20
+            RECURRENT_V1 + 0x20
         );
         assert_eq!(
             new.root().domains["qwen.original.kv.3"].schema,
-            ORIGINAL_KV_V1 + 0x20
+            KV_V1 + 0x20
         );
         assert!(new_bridge.prepare_diagnostic_token_bf16(&old, 0).is_err());
         assert!(old_bridge.prepare_diagnostic_token_bf16(&new, 0).is_err());
@@ -1145,15 +1135,15 @@ mod original_bf16_diagnostic_tests {
 mod original_reference_trace_tests {
     use super::*;
     use serde_json::{Value, json};
-    use zerogravity::original_qwen_math::OriginalQwenLayerMath;
-    use zerogravity::original_qwen_state::OriginalQwenStateBridge;
-    use zerogravity::original_qwen_trace::{
-        OriginalQwenTrace, OriginalReferenceTrace, ReferenceOrigin, ReferenceTolerance,
+    use zerogravity::qwen35::reference::layer::LayerMath;
+    use zerogravity::qwen35::reference::state::StateBridge;
+    use zerogravity::qwen35::reference::trace::{
+        ReferenceOrigin, ReferenceTolerance, ReferenceTrace, Trace,
     };
 
     // Only analytical fixture source; creating this from the same Rust
     // output NEVER provides an independent trained framework reference.
-    fn synthetic_reference(trace: &OriginalQwenTrace) -> Vec<u8> {
+    fn synthetic_reference(trace: &Trace) -> Vec<u8> {
         let observed=trace.records().iter().map(|step|{
             json!({
                 "layer":if step.layer==usize::MAX {None} else{Some(step.layer)},
@@ -1179,16 +1169,16 @@ mod original_reference_trace_tests {
         }))
         .unwrap()
     }
-    fn pinned(json_bytes: &[u8]) -> OriginalReferenceTrace {
-        OriginalReferenceTrace::from_pinned_json(json_bytes, &sha(json_bytes)).unwrap()
+    fn pinned(json_bytes: &[u8]) -> ReferenceTrace {
+        ReferenceTrace::from_pinned_json(json_bytes, &sha(json_bytes)).unwrap()
     }
     #[test]
     fn reference_profile_labels_cannot_reinterpret_legacy_bf16_as_cpu_avx2() {
         let fixture = Fixture::new();
         let (source, cfg, index, _, _) = loaded(&fixture);
-        let cpu = QwenOriginalCpu::bind(&source, &cfg, &sha(&cfg), &sha(&index)).unwrap();
-        let math = OriginalQwenLayerMath::bf16_diagnostic(&cpu);
-        let bridge = OriginalQwenStateBridge::new(&math);
+        let cpu = CpuSource::bind(&source, &cfg, &sha(&cfg), &sha(&index)).unwrap();
+        let math = LayerMath::bf16_diagnostic(&cpu);
+        let bridge = StateBridge::new(&math);
         let session = bridge.coordinator_for_model(113).unwrap();
         let candidate = bridge
             .prepare_diagnostic_token_bf16_with_trace(&session, 0)
@@ -1204,7 +1194,7 @@ mod original_reference_trace_tests {
         );
         document["observations"][0]["bits"][0] = json!("3f800001");
         let encoded = serde_json::to_vec(&document).unwrap();
-        assert!(OriginalReferenceTrace::from_pinned_json(&encoded, &sha(&encoded)).is_err());
+        assert!(ReferenceTrace::from_pinned_json(&encoded, &sha(&encoded)).is_err());
     }
     #[test]
     fn explicit_cpu_avx2_trace_roundtrips_only_its_own_numerical_profile() {
@@ -1215,9 +1205,9 @@ mod original_reference_trace_tests {
             |_, _| 1.0,
             |_, rank| if rank == 2 { "BF16" } else { "F32" },
         );
-        let cpu = QwenOriginalCpu::bind(&source, &cfg, &sha(&cfg), &sha(&index)).unwrap();
-        let math = OriginalQwenLayerMath::bf16_cpu_avx2_diagnostic(&cpu);
-        let bridge = OriginalQwenStateBridge::new(&math);
+        let cpu = CpuSource::bind(&source, &cfg, &sha(&cfg), &sha(&index)).unwrap();
+        let math = LayerMath::bf16_cpu_avx2_diagnostic(&cpu);
+        let bridge = StateBridge::new(&math);
         let session = bridge.coordinator_for_model(114).unwrap();
         let candidate = bridge
             .prepare_diagnostic_token_bf16_with_trace(&session, 0)
@@ -1244,9 +1234,9 @@ mod original_reference_trace_tests {
     fn actual_qualifiable_reference_gate_records_bounded_source_specific_stages() {
         let fixture = Fixture::new();
         let (source, config, index, admission, key) = loaded(&fixture);
-        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
-        let math = OriginalQwenLayerMath::bf16_diagnostic(&cpu);
-        let bridge = OriginalQwenStateBridge::new(&math);
+        let cpu = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = LayerMath::bf16_diagnostic(&cpu);
+        let bridge = StateBridge::new(&math);
         let mut session = bridge.coordinator_for_model(122).unwrap();
         let before = session.root().clone();
         let prepared = bridge
@@ -1345,9 +1335,9 @@ mod original_reference_trace_tests {
     fn first_value_or_stage_mismatch_and_wrong_source_identity_never_pass() {
         let fixture = Fixture::new();
         let (source, config, index, _, _) = loaded(&fixture);
-        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
-        let math = OriginalQwenLayerMath::bf16_diagnostic(&cpu);
-        let bridge = OriginalQwenStateBridge::new(&math);
+        let cpu = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = LayerMath::bf16_diagnostic(&cpu);
+        let bridge = StateBridge::new(&math);
         let session = bridge.coordinator_for_model(11).unwrap();
         let candidate = bridge
             .prepare_diagnostic_token_bf16_with_trace(&session, 0)
@@ -1418,21 +1408,21 @@ mod original_reference_trace_tests {
     fn pinned_reference_schema_and_float_tolerance_are_strictly_bounded() {
         let fixture = Fixture::new();
         let (source, config, index, _, _) = loaded(&fixture);
-        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
-        let math = OriginalQwenLayerMath::bf16_diagnostic(&cpu);
-        let bridge = OriginalQwenStateBridge::new(&math);
+        let cpu = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = LayerMath::bf16_diagnostic(&cpu);
+        let bridge = StateBridge::new(&math);
         let session = bridge.coordinator_for_model(1).unwrap();
         let candidate = bridge
             .prepare_diagnostic_token_bf16_with_trace(&session, 0)
             .unwrap();
         let actual = candidate.trace().unwrap();
         let original = synthetic_reference(actual);
-        assert!(OriginalReferenceTrace::from_pinned_json(&original, &"0".repeat(64)).is_err());
-        assert!(OriginalReferenceTrace::from_pinned_json(&original, "invalid").is_err());
+        assert!(ReferenceTrace::from_pinned_json(&original, &"0".repeat(64)).is_err());
+        assert!(ReferenceTrace::from_pinned_json(&original, "invalid").is_err());
         let mut doc: Value = serde_json::from_slice(&original).unwrap();
         doc["unregistered"] = json!(1);
         let serial = serde_json::to_vec(&doc).unwrap();
-        assert!(OriginalReferenceTrace::from_pinned_json(&serial, &sha(&serial)).is_err());
+        assert!(ReferenceTrace::from_pinned_json(&serial, &sha(&serial)).is_err());
         for bad in [f32::NAN, f32::INFINITY, -1.0, 0.5] {
             assert!(
                 pinned(&original)
@@ -1449,11 +1439,11 @@ mod original_reference_trace_tests {
         let mut doc: Value = serde_json::from_slice(&original).unwrap();
         doc["observations"][0]["bits"][0] = json!("7f800000"); // infinity
         let serial = serde_json::to_vec(&doc).unwrap();
-        assert!(OriginalReferenceTrace::from_pinned_json(&serial, &sha(&serial)).is_err());
+        assert!(ReferenceTrace::from_pinned_json(&serial, &sha(&serial)).is_err());
         let mut invalid_bf16: Value = serde_json::from_slice(&original).unwrap();
         invalid_bf16["observations"][0]["bits"][0] = json!("3f800001");
         let serial = serde_json::to_vec(&invalid_bf16).unwrap();
-        assert!(OriginalReferenceTrace::from_pinned_json(&serial, &sha(&serial)).is_err());
+        assert!(ReferenceTrace::from_pinned_json(&serial, &sha(&serial)).is_err());
 
         let serialized = String::from_utf8(original.clone()).unwrap();
         let duplicate = serialized.replacen(
@@ -1463,26 +1453,23 @@ mod original_reference_trace_tests {
         );
         assert_ne!(duplicate, serialized);
         assert!(
-            OriginalReferenceTrace::from_pinned_json(
-                duplicate.as_bytes(),
-                &sha(duplicate.as_bytes())
-            )
-            .is_err()
+            ReferenceTrace::from_pinned_json(duplicate.as_bytes(), &sha(duplicate.as_bytes()))
+                .is_err()
         );
 
         let mut doc: Value = serde_json::from_slice(&original).unwrap();
         doc["provenance"]["reference_code_sha256"] = json!("unset");
         let serial = serde_json::to_vec(&doc).unwrap();
-        assert!(OriginalReferenceTrace::from_pinned_json(&serial, &sha(&serial)).is_err());
+        assert!(ReferenceTrace::from_pinned_json(&serial, &sha(&serial)).is_err());
     }
 
     #[test]
     fn selected_recurrent_state_is_bounded_and_reference_pins_that_exact_choice() {
         let fixture = Fixture::new();
         let (source, config, index, _, _) = loaded(&fixture);
-        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
-        let math = OriginalQwenLayerMath::bf16_diagnostic(&cpu);
-        let bridge = OriginalQwenStateBridge::new(&math);
+        let cpu = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = LayerMath::bf16_diagnostic(&cpu);
+        let bridge = StateBridge::new(&math);
         let session = bridge.coordinator_for_model(17).unwrap();
         let chosen = bridge
             .prepare_diagnostic_token_bf16_with_selected_trace(&session, 0, Some(2))
@@ -1536,9 +1523,9 @@ mod original_reference_trace_tests {
     fn tolerated_fp32_recurrent_values_are_accepted_but_never_labeled_bit_exact() {
         let fixture = Fixture::new();
         let (source, config, index, _, _) = loaded(&fixture);
-        let cpu = QwenOriginalCpu::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
-        let math = OriginalQwenLayerMath::bf16_diagnostic(&cpu);
-        let bridge = OriginalQwenStateBridge::new(&math);
+        let cpu = CpuSource::bind(&source, &config, &sha(&config), &sha(&index)).unwrap();
+        let math = LayerMath::bf16_diagnostic(&cpu);
+        let bridge = StateBridge::new(&math);
         let session = bridge.coordinator_for_model(24).unwrap();
         let candidate = bridge
             .prepare_diagnostic_token_bf16_with_trace(&session, 0)

@@ -36,10 +36,10 @@ const OUTPUT_STALL_LIMIT: Duration = Duration::from_secs(30);
 mod cohort;
 mod route;
 use route::{ModelEngine, RequestEngine};
-#[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
-mod canonical;
-#[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
-mod short_hf;
+#[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+mod fixed_prompt;
+#[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+mod qwen35_cuda;
 use cohort::{advance_decode_cohort, finish_prompt_cohort};
 #[cfg(all(test, feature = "cuda"))]
 mod qualification;
@@ -469,18 +469,18 @@ impl GpuRouter {
         let queue = self.queue.snapshot();
         let host_snapshot = self.host.snapshot().unwrap_or((0, 0, 0, 0));
         let (limit, reserved, _remaining, serving) = host_snapshot;
-        #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
-        let hf_health = short_hf::health(&self.models, host_snapshot);
-        #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+        #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+        let hf_health = qwen35_cuda::health(&self.models, host_snapshot);
+        #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
         let backend = hf_health
             .as_ref()
             .and_then(|(_, resources)| resources.get("backend_host_reserved_bytes"))
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0);
-        #[cfg(not(all(feature = "short-hf-serving", target_os = "linux")))]
+        #[cfg(not(all(feature = "qwen35-cuda-serving", target_os = "linux")))]
         let backend = 0;
-        #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
-        let host = if short_hf::models_present(&self.models) && hf_health.is_none() {
+        #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+        let host = if qwen35_cuda::models_present(&self.models) && hf_health.is_none() {
             None
         } else {
             Some({
@@ -490,7 +490,7 @@ impl GpuRouter {
                 (limit, reserved, model, backend, serving)
             })
         };
-        #[cfg(not(all(feature = "short-hf-serving", target_os = "linux")))]
+        #[cfg(not(all(feature = "qwen35-cuda-serving", target_os = "linux")))]
         let host = Some({
             let model = reserved.checked_sub(serving);
             (limit, reserved, model, backend, serving)
@@ -506,17 +506,17 @@ impl GpuRouter {
             active: self.stats.active.load(Ordering::Acquire),
             peak_active: self.stats.peak_active.load(Ordering::Acquire),
             active_limit: self.active_limit,
-            #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
-            canonical_resources: canonical::resources(&self.models, host_snapshot),
-            #[cfg(not(all(feature = "canonical47-serving", target_os = "linux")))]
+            #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+            canonical_resources: fixed_prompt::resources(&self.models, host_snapshot),
+            #[cfg(not(all(feature = "qwen35-cuda-serving", target_os = "linux")))]
             canonical_resources: None,
-            #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+            #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
             hf_source: hf_health.as_ref().map(|h| h.0.clone()),
-            #[cfg(not(all(feature = "short-hf-serving", target_os = "linux")))]
+            #[cfg(not(all(feature = "qwen35-cuda-serving", target_os = "linux")))]
             hf_source: None,
-            #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+            #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
             hf_resources: hf_health.map(|h| h.1),
-            #[cfg(not(all(feature = "short-hf-serving", target_os = "linux")))]
+            #[cfg(not(all(feature = "qwen35-cuda-serving", target_os = "linux")))]
             hf_resources: None,
             groups: self.stats.groups.load(Ordering::Relaxed),
             co_scheduled: self.stats.co_scheduled.load(Ordering::Relaxed),
@@ -615,8 +615,8 @@ impl GpuRouter {
             AllocationClass::RecurrentState,
             prompt_bytes,
         )?;
-        // Canonical/short-HF validation runs only after count/host admission.
-        #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
+        // Canonical/Qwen CUDA validation runs only after count/host admission.
+        #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
         model.engine.validate_request(&model.tokenizer, &request)?;
         let request_bytes = pending::checked_sum(&[
             pending::heap_strings(&[&request.model, &request.input])?,
@@ -921,11 +921,11 @@ impl GpuActive {
     }
     /// Original B1 source execution, including all unmatched native-wave rows.
     fn step(&mut self, stats: &WaveStats) -> Result<MemberStep, ServiceError> {
-        #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
-        if self.engine.is_short_hf() {
-            return self.step_short_hf(stats);
+        #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+        if self.engine.is_qwen35_cuda() {
+            return self.step_qwen35_cuda(stats);
         }
-        #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
+        #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
         if self.engine.is_canonical() {
             return self.step_canonical(stats);
         }
@@ -1065,10 +1065,10 @@ fn eligible_member(
 }
 
 fn retire_if_drained(models: &BTreeMap<String, Arc<GpuModel>>, stats: &WaveStats) {
-    #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
-    canonical::retire_sources(models, stats);
-    #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
-    short_hf::retire_sources(models, stats);
+    #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+    fixed_prompt::retire_sources(models, stats);
+    #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+    qwen35_cuda::retire_sources(models, stats);
 }
 struct GpuWorkerCaptures {
     queue: WorkerQueue<Scheduled>,
@@ -1199,14 +1199,15 @@ fn worker(
             } else {
                 active_limit
             },
-            max_tokens: if eligible.iter().all(|row| row.engine.is_short_hf()) {
+            max_tokens: if eligible.iter().all(|row| row.engine.is_qwen35_cuda()) {
                 72 * native_rows.max(1)
             } else {
                 64
             },
             max_scratch: 256 * 1024 * 1024,
         };
-        let planned = if native_rows != 0 && eligible.iter().all(|row| row.engine.is_short_hf()) {
+        let planned = if native_rows != 0 && eligible.iter().all(|row| row.engine.is_qwen35_cuda())
+        {
             // Every admitted ready row gets one original fair quantum/round.
             // Actual native eligibility is checked separately for each member.
             gpu_batch::form_cached_with_prefill_quantum(&ready, bounds, 72)
@@ -1282,12 +1283,12 @@ fn worker(
                     .co_scheduled
                     .fetch_add(wave.indices.len() as u64, Ordering::Relaxed);
             }
-            #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+            #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
             if native_rows == 4
                 && wave.indices.iter().all(|&index| {
                     pending[index]
                         .as_ref()
-                        .is_some_and(|row| row.engine.is_short_hf())
+                        .is_some_and(|row| row.engine.is_qwen35_cuda())
                 })
             {
                 let members = wave
@@ -1295,7 +1296,7 @@ fn worker(
                     .iter()
                     .map(|&index| pending[index].take().expect("unique original HF wave"))
                     .collect();
-                short_hf::advance_cohort(members, &mut active, &stats);
+                qwen35_cuda::advance_cohort(members, &mut active, &stats);
                 continue;
             }
             // Prefix and tail readouts share the original checked publisher.

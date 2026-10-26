@@ -11,7 +11,7 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
-use zerogravity_model_qwen35::original_binding::OriginalWindowOperators;
+use zerogravity_model_qwen35::source::binding::OriginalWindowOperators;
 
 pub struct Qwen27bGpuContext {
     host: TransferAdmission,
@@ -19,11 +19,9 @@ pub struct Qwen27bGpuContext {
 }
 impl Qwen27bGpuContext {
     pub fn new() -> Result<Arc<Self>> {
-        Self::with_host_limit(
-            zerogravity_gpu::Qwen27bSourceGpuCandidate::qualification_host_bytes(),
-        )
+        Self::with_host_limit(zerogravity_gpu::Bf16TextSourceCandidate::qualification_host_bytes())
     }
-    #[cfg(feature = "gemma4-hip-qualification")]
+    #[cfg(feature = "shared-hip-qualification")]
     pub fn new_shared_hip_qualification() -> Result<Arc<Self>> {
         Self::with_host_limit(zerogravity_gpu::SharedHipNative::host_bytes())
     }
@@ -77,7 +75,7 @@ impl Drop for SourceRetention {
 }
 enum NativeTarget {
     Single(zerogravity_gpu::Device),
-    #[cfg(feature = "gemma4-hip-qualification")]
+    #[cfg(feature = "shared-hip-qualification")]
     Shared(Arc<zerogravity_gpu::SharedHipNative>),
 }
 impl Qwen27bGpuLoaded {
@@ -107,7 +105,7 @@ impl Qwen27bGpuLoaded {
         self: &Arc<Self>,
         device: zerogravity_gpu::Device,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<zerogravity_gpu::Qwen27bSourceGpuCandidate>> {
+    ) -> Result<Arc<zerogravity_gpu::Bf16TextSourceCandidate>> {
         self.load_native(NativeTarget::Single(device), false, cancelled)
             .await
     }
@@ -117,27 +115,27 @@ impl Qwen27bGpuLoaded {
         self: &Arc<Self>,
         device: zerogravity_gpu::Device,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<zerogravity_gpu::Qwen27bSourceGpuCandidate>> {
+    ) -> Result<Arc<zerogravity_gpu::Bf16TextSourceCandidate>> {
         self.load_native(NativeTarget::Single(device), true, cancelled)
             .await
     }
     /// Original managed source/close guards, pinned to one cold shared actor.
-    #[cfg(feature = "gemma4-hip-qualification")]
+    #[cfg(feature = "shared-hip-qualification")]
     pub async fn load_shared_hip_qualification(
         self: &Arc<Self>,
         shared: Arc<zerogravity_gpu::SharedHipNative>,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<zerogravity_gpu::Qwen27bSourceGpuCandidate>> {
+    ) -> Result<Arc<zerogravity_gpu::Bf16TextSourceCandidate>> {
         self.load_native(NativeTarget::Shared(shared), false, cancelled)
             .await
     }
     /// Complete authentic source-shaped costs before creating the shared actor.
-    #[cfg(feature = "gemma4-hip-qualification")]
+    #[cfg(feature = "shared-hip-qualification")]
     pub fn shared_hip_cold_plan(
         &self,
-        gemma: &crate::gemma4_cpu::Gemma4CpuLoaded,
-        input: &crate::gemma4_cpu::Gemma4CpuInput,
-        host: &zerogravity_gpu::GemmaTextHostOwners,
+        gemma: &crate::gemma4::execution::Model,
+        input: &crate::gemma4::execution::Input,
+        host: &zerogravity_gpu::TextHostOwners,
     ) -> Result<zerogravity_gpu::SharedHipColdPlan> {
         source::require(&self.snapshot)?;
         let life = self
@@ -149,11 +147,16 @@ impl Qwen27bGpuLoaded {
                 "Qwen cold plan requires unused open source".into(),
             ));
         }
-        gemma.require_shared_hip_input(input)?;
+        let (gemma_source, gemma_bindings) = gemma.shared_hip_cold_bindings(input)?;
+        let steps = [
+            Arc::new(self.source.record_full_source_token(0)?),
+            Arc::new(self.source.record_full_source_token(1)?),
+        ];
         zerogravity_gpu::SharedHipColdPlan::derive(
-            &self.source,
-            &gemma.model,
-            Arc::from(input.ids()),
+            self.source.source(),
+            &steps,
+            &gemma_source,
+            gemma_bindings,
             host,
         )
     }
@@ -162,8 +165,8 @@ impl Qwen27bGpuLoaded {
         target: NativeTarget,
         natural: bool,
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<zerogravity_gpu::Qwen27bSourceGpuCandidate>> {
-        #[cfg(feature = "gemma4-hip-qualification")]
+    ) -> Result<Arc<zerogravity_gpu::Bf16TextSourceCandidate>> {
+        #[cfg(feature = "shared-hip-qualification")]
         if natural && matches!(&target, NativeTarget::Shared(_)) {
             return Err(Error::Unsupported(
                 "shared Qwen natural readout is not an admitted route".into(),
@@ -171,6 +174,10 @@ impl Qwen27bGpuLoaded {
         }
         check_cancel(cancelled)?;
         source::require(&self.snapshot)?;
+        let steps = [
+            Arc::new(self.source.record_full_source_token(0)?),
+            Arc::new(self.source.record_full_source_token(1)?),
+        ];
         {
             let mut life = self
                 .life
@@ -198,28 +205,31 @@ impl Qwen27bGpuLoaded {
         unsafe {
             match target {
                 NativeTarget::Single(device) if natural => {
-                    zerogravity_gpu::Qwen27bSourceGpuCandidate::load_hip_natural_qualification(
+                    zerogravity_gpu::Bf16TextSourceCandidate::load_hip_natural_qualification(
                         device,
-                        self.source.clone(),
+                        self.source.source().clone(),
+                        steps,
                         retention,
                         cancelled,
                     )
                     .await
                 }
                 NativeTarget::Single(device) => {
-                    zerogravity_gpu::Qwen27bSourceGpuCandidate::load_hip_qualification(
+                    zerogravity_gpu::Bf16TextSourceCandidate::load_hip_qualification(
                         device,
-                        self.source.clone(),
+                        self.source.source().clone(),
+                        steps,
                         retention,
                         cancelled,
                     )
                     .await
                 }
-                #[cfg(feature = "gemma4-hip-qualification")]
+                #[cfg(feature = "shared-hip-qualification")]
                 NativeTarget::Shared(shared) => {
-                    zerogravity_gpu::Qwen27bSourceGpuCandidate::load_shared_hip_qualification(
+                    zerogravity_gpu::Bf16TextSourceCandidate::load_shared_hip_qualification(
                         shared,
-                        self.source.clone(),
+                        self.source.source().clone(),
+                        steps,
                         retention,
                         cancelled,
                     )

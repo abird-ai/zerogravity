@@ -15,7 +15,7 @@ use zerogravity::{
     Error,
     accelerator::program::KvDomain,
     cache::{CacheOptions, CacheStore},
-    gemma4_cpu::{Gemma4CpuContext, Gemma4CpuLoaded, Gemma4CpuSession},
+    gemma4::execution::{Context, CpuSession, Model},
     session_root::RootBinding,
 };
 const MISMATCH: &str = "unqualified ordinary Gemma matrix arithmetic mismatch";
@@ -27,7 +27,7 @@ struct Snapshot {
     kv: Vec<[u8; 32]>,
 }
 impl Snapshot {
-    fn of(s: &Gemma4CpuSession) -> Proof<Self> {
+    fn of(s: &CpuSession) -> Proof<Self> {
         let root = s.binding();
         let mut kv = Vec::with_capacity(15);
         for owner in 0..15 {
@@ -50,12 +50,7 @@ impl Snapshot {
         json!({"root":self.root.root(),"frontier":self.root.frontier(),"session":self.root.session().get(),"ids":self.ids,"kv":self.kv.iter().map(|x|format!("{x:x?}")).collect::<Vec<_>>()})
     }
 }
-fn complete(
-    s: &mut Gemma4CpuSession,
-    e: &Expected,
-    call: usize,
-    events: &mut Vec<Value>,
-) -> Proof<bool> {
+fn complete(s: &mut CpuSession, e: &Expected, call: usize, events: &mut Vec<Value>) -> Proof<bool> {
     e.begin(call);
     let before = Snapshot::of(s)?;
     let mut completed = 0;
@@ -105,9 +100,9 @@ fn complete(
     }
 }
 fn lifecycle(
-    s: &mut Gemma4CpuSession,
+    s: &mut CpuSession,
     e: &Expected,
-    context: &Arc<Gemma4CpuContext>,
+    context: &Arc<Context>,
     events: &mut Vec<Value>,
 ) -> Proof<()> {
     let before = Snapshot::of(s)?;
@@ -164,7 +159,7 @@ fn lifecycle(
     }
     Ok(())
 }
-fn trajectory(s: &mut Gemma4CpuSession, e: &Expected, events: &mut Vec<Value>) -> Proof<bool> {
+fn trajectory(s: &mut CpuSession, e: &Expected, events: &mut Vec<Value>) -> Proof<bool> {
     for call in 0..e.cell.calls.len() {
         if !complete(s, e, call, events)? {
             e.after()?;
@@ -199,7 +194,7 @@ pub fn run() -> Proof<()> {
     let report = PathBuf::from(&args[1]);
     need(!report.exists(), "fresh actual result path")?;
     let matrix = Matrix::open(&invocation)?;
-    let context = Gemma4CpuContext::new()?;
+    let context = Context::new()?;
     let store = CacheStore::open_existing(CacheOptions::new(None, 96 * 1024 * 1024 * 1024))?;
     let snapshot = Arc::new(
         store.open_snapshot("ba32b7693d0f7dcbdf4f00f94d13bd61c838e2d7a927f1879817cd5e74fca8b1")?,
@@ -225,7 +220,7 @@ pub fn run() -> Proof<()> {
         "ninth prepared source input refuses before tokenizer allocations",
     )?;
     let prepared_bytes = context.reserved_bytes()?;
-    let loaded = Gemma4CpuLoaded::open(snapshot.clone(), context.clone(), None)?;
+    let loaded = Model::open(snapshot.clone(), context.clone(), None)?;
     need(
         !loaded.trained_model_qualified(),
         "candidate scope remains explicit",
@@ -233,14 +228,14 @@ pub fn run() -> Proof<()> {
     let mut events = Vec::with_capacity(80);
     let mut exact = true;
     let result = (|| -> Proof<()> {
-        let mut a = loaded.session(inputs[0].take().ok_or("actual input A")?)?;
-        let mut b = loaded.session(inputs[1].take().ok_or("actual input B")?)?;
+        let mut a = loaded.cpu_session(inputs[0].take().ok_or("actual input A")?)?;
+        let mut b = loaded.cpu_session(inputs[1].take().ok_or("actual input B")?)?;
         need(
             a.binding().session() != b.binding().session(),
             "independent actual SessionAuthority issuers",
         )?;
         need(
-            matches!(loaded.session(extra), Err(Error::Limit(_))),
+            matches!(loaded.cpu_session(extra), Err(Error::Limit(_))),
             "third session pressure has no source/model duplication",
         )?;
         need(
@@ -282,7 +277,7 @@ pub fn run() -> Proof<()> {
                 input.ids() == e.cell.prompt_ids,
                 "computed input IDs compared only after preparation",
             )?;
-            let mut s = loaded.session(input)?;
+            let mut s = loaded.cpu_session(input)?;
             if i == 3 {
                 lifecycle(&mut s, &e, &context, &mut events)?;
             }

@@ -45,7 +45,7 @@ PREDECESSOR_BASES = ('hip-multiset-source12-20261024-4', 'hip-multiset-controls-
                      'resume-all-five-hip-20261025-2')
 assert FINAL_BASE not in PREDECESSOR_BASES
 CARGO_ARGV = [CARGO+'/cargo', 'build', '-p', 'zerogravity', '--example', 'hip_shared_models',
-              '--release', '--features', 'qwen27b-hip-qualification,gemma4-hip-qualification,zerogravity-gpu/hardware-abort-probe',
+              '--release', '--features', 'shared-hip-qualification,zerogravity-gpu/hardware-abort-probe',
               '--offline', '--locked', '--message-format=json']
 ARTIFACT = 'release/examples/hip_shared_models'
 BUILD_RECEIPT = 'build-receipt.json'

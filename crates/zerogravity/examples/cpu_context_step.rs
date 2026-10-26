@@ -19,7 +19,7 @@ use std::env;
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
-use zerogravity::math::top_logit_ranks;
+use zerogravity::cpu::ops::top_logit_ranks;
 use zerogravity::qwen35::QwenDenseCpu;
 use zerogravity::tokenize::QwenTokenizer;
 use zerogravity::{Error, Result};

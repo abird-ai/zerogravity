@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::Path;
-use zerogravity::math::silu;
-use zerogravity::weights::CpuWeights;
+use zerogravity::cpu::ops::silu;
+use zerogravity::cpu::source::CpuWeights;
 
 fn read_reference(path: &str, rust: bool, layer: usize) -> HashMap<String, Vec<f32>> {
     fs::read_to_string(path)

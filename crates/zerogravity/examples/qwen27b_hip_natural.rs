@@ -30,8 +30,8 @@ use zerogravity::{
     },
 };
 use zerogravity_gpu::{
-    Device, Qwen27bSourceGpuCandidate, Qwen27bSourceGpuSession, Qwen27bSourceGpuSnapshot,
-    QwenSourceFrame, QwenSourceFrameKind, QwenSourceObserver,
+    Bf16TextSourceCandidate, Bf16TextSourceSession, Bf16TextSourceSnapshot, Device,
+    TextSourceFrame, TextSourceFrameKind, TextSourceObserver,
 };
 const GIB: u64 = 1024 * 1024 * 1024;
 const SNAPSHOT: &str = "98cea13c169310196c4d8a113765f8fe58ab7a7961f0d1be69212c70dba8015e";
@@ -107,8 +107,8 @@ impl<'a, 'e> Observed<'a, 'e> {
         Ok((finished, selection))
     }
 }
-impl QwenSourceObserver for Observed<'_, '_> {
-    fn completed(&mut self, frame: QwenSourceFrame, actual: &[u8]) -> zerogravity::Result<()> {
+impl TextSourceObserver for Observed<'_, '_> {
+    fn completed(&mut self, frame: TextSourceFrame, actual: &[u8]) -> zerogravity::Result<()> {
         let words = actual.len() / 4;
         if frame.position != self.call
             || actual.is_empty()
@@ -126,7 +126,7 @@ impl QwenSourceObserver for Observed<'_, '_> {
             ));
         }
         match frame.kind {
-            QwenSourceFrameKind::Value {
+            TextSourceFrameKind::Value {
                 layer,
                 stage: "layer_output",
             } => {
@@ -160,7 +160,7 @@ impl QwenSourceObserver for Observed<'_, '_> {
                     ));
                 }
             }
-            QwenSourceFrameKind::Value {
+            TextSourceFrameKind::Value {
                 stage: "logits", ..
             } => {
                 if frame.total_words != 248320 || frame.offset_words != self.logits_words {
@@ -173,7 +173,7 @@ impl QwenSourceObserver for Observed<'_, '_> {
                     flag.store(true, Ordering::Release);
                 }
             }
-            QwenSourceFrameKind::State { slot, plane, prior }
+            TextSourceFrameKind::State { slot, plane, prior }
                 if frame.offset_words + words == frame.total_words =>
             {
                 let set = if prior {
@@ -193,7 +193,7 @@ impl QwenSourceObserver for Observed<'_, '_> {
     }
 }
 fn completed(
-    session: &mut Qwen27bSourceGpuSession,
+    session: &mut Bf16TextSourceSession,
     seed: Option<u32>,
     expected: &mut Expected,
     repeat: usize,
@@ -235,7 +235,7 @@ fn completed(
         selection,
     ))
 }
-fn snapshot_domains(snapshot: &Qwen27bSourceGpuSnapshot) -> Proof<Vec<(StateSlot, Vec<f32>)>> {
+fn snapshot_domains(snapshot: &Bf16TextSourceSnapshot) -> Proof<Vec<(StateSlot, Vec<f32>)>> {
     let domains = block_on(snapshot.read_domains())?;
     let bytes = domains
         .iter()
@@ -261,7 +261,7 @@ fn snapshot_domains(snapshot: &Qwen27bSourceGpuSnapshot) -> Proof<Vec<(StateSlot
     Ok(domains)
 }
 fn exercise(
-    candidate: Arc<Qwen27bSourceGpuCandidate>,
+    candidate: Arc<Bf16TextSourceCandidate>,
     mode: &str,
     reference: &Arc<expected::Reference>,
 ) -> Proof<Value> {
@@ -438,7 +438,7 @@ fn exercise(
     )
 }
 fn final_reader(
-    candidate: Arc<Qwen27bSourceGpuCandidate>,
+    candidate: Arc<Bf16TextSourceCandidate>,
     snapshot_case: bool,
     fault: bool,
     reference: &Arc<expected::Reference>,

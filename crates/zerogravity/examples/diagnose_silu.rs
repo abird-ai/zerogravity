@@ -1,7 +1,7 @@
 //! Developer-only scalar emulation of the GGML Haswell/AVX2 FMA SiLU
 //! approximation for source-output diagnosis. Not part of model execution.
 use std::{collections::HashMap, env, fs, path::Path};
-use zerogravity::{math::silu, weights::CpuWeights};
+use zerogravity::cpu::{ops::silu, source::CpuWeights};
 type Traces = HashMap<(usize, String), Vec<f32>>;
 fn read(path: &str, source: bool) -> Traces {
     let mut out = Traces::new();

@@ -20,7 +20,7 @@ use zerogravity::{
     },
 };
 use zerogravity_gpu::{
-    Device, Qwen27bSourceGpuSession, QwenSourceFrame, QwenSourceFrameKind, QwenSourceObserver,
+    Bf16TextSourceSession, Device, TextSourceFrame, TextSourceFrameKind, TextSourceObserver,
 };
 const GIB: u64 = 1024 * 1024 * 1024;
 const SNAPSHOT: &str = "98cea13c169310196c4d8a113765f8fe58ab7a7961f0d1be69212c70dba8015e";
@@ -48,8 +48,8 @@ fn binding(root: zerogravity::session_root::RootBinding) -> Value {
     json!({"session":root.session().get(),"root":root.root(),"frontier":root.frontier()})
 }
 struct DiscardObserver;
-impl QwenSourceObserver for DiscardObserver {
-    fn completed(&mut self, _: QwenSourceFrame, _: &[u8]) -> zerogravity::Result<()> {
+impl TextSourceObserver for DiscardObserver {
+    fn completed(&mut self, _: TextSourceFrame, _: &[u8]) -> zerogravity::Result<()> {
         Ok(())
     }
 }
@@ -57,11 +57,11 @@ struct LateCancelObserver<'a> {
     flag: &'a AtomicBool,
     completed_logits: usize,
 }
-impl QwenSourceObserver for LateCancelObserver<'_> {
-    fn completed(&mut self, frame: QwenSourceFrame, _: &[u8]) -> zerogravity::Result<()> {
+impl TextSourceObserver for LateCancelObserver<'_> {
+    fn completed(&mut self, frame: TextSourceFrame, _: &[u8]) -> zerogravity::Result<()> {
         if matches!(
             frame.kind,
-            QwenSourceFrameKind::Value {
+            TextSourceFrameKind::Value {
                 stage: "logits",
                 ..
             }
@@ -75,11 +75,11 @@ impl QwenSourceObserver for LateCancelObserver<'_> {
 struct UnknownObserver {
     completed: usize,
 }
-impl QwenSourceObserver for UnknownObserver {
-    fn completed(&mut self, frame: QwenSourceFrame, _: &[u8]) -> zerogravity::Result<()> {
+impl TextSourceObserver for UnknownObserver {
+    fn completed(&mut self, frame: TextSourceFrame, _: &[u8]) -> zerogravity::Result<()> {
         if matches!(
             frame.kind,
-            QwenSourceFrameKind::Value {
+            TextSourceFrameKind::Value {
                 layer: 0,
                 stage: "layer_output"
             }
@@ -93,12 +93,12 @@ impl QwenSourceObserver for UnknownObserver {
     }
 }
 fn completed(
-    session: &mut Qwen27bSourceGpuSession,
+    session: &mut Bf16TextSourceSession,
     expected: &mut Expected,
     repeat: usize,
     call: usize,
     events: &mut Vec<Value>,
-) -> Proof<zerogravity_gpu::Qwen27bSourceGpuOutput> {
+) -> Proof<zerogravity_gpu::Bf16TextSourceResult> {
     expected.begin(repeat, call)?;
     let before = session.binding();
     need(
@@ -196,7 +196,7 @@ pub fn run() -> Proof<()> {
         return Ok(());
     }
     let mut expected = Expected::new(expected_dir)?;
-    let result = (|| -> Proof<zerogravity_gpu::Qwen27bSourceGpuOutput> {
+    let result = (|| -> Proof<zerogravity_gpu::Bf16TextSourceResult> {
         // Exhaust original canonical admission without allocating untracked payload.
         let free = 16 * GIB - context.reserved_bytes()?;
         let pressure = arbiter.admit(

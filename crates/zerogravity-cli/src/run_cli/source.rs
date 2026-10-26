@@ -5,7 +5,7 @@ use std::io::Read;
 use zerogravity::artifact::Artifact;
 #[cfg(all(feature = "cache", target_os = "linux"))]
 use zerogravity::artifact::ArtifactInfo;
-use zerogravity::model::ModelGeometry;
+use zerogravity::qwen35::config::ModelGeometry;
 pub(super) enum Resolved {
     Local {
         weights: Artifact,

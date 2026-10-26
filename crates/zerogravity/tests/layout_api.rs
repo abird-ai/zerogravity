@@ -3,7 +3,7 @@
 #[test]
 fn legacy_cpu_weights_ufcs_and_mutable_architecture_api_remain_available() {
     use std::path::Path;
-    use zerogravity::{Result, weights::CpuWeights};
+    use zerogravity::{Result, cpu::source::CpuWeights};
     // Deref forwarding alone would preserve method syntax but break these
     // existing associated-function/UFCS call sites after storage extraction.
     let _: fn(&Path) -> Result<CpuWeights> = CpuWeights::open;

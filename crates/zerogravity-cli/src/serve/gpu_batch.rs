@@ -701,7 +701,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod short_hf_atomic_tests {
+mod qwen35_cuda_atomic_tests {
     use super::*;
     fn bounds(tokens: usize) -> Limits {
         Limits {

@@ -15,7 +15,7 @@ cpu_packages=(
   -p zerogravity-core -p zerogravity-artifacts -p zerogravity-cpu
   -p zerogravity-model-qwen35 -p zerogravity-model-gemma4 -p zerogravity -p zerogravity-cli
 )
-cpu_features='zerogravity-cli/cpu,zerogravity-cli/model-qwen35,zerogravity-cli/text,zerogravity-cli/diagnostic-cpu-checkpoint,zerogravity-cli/diagnostic-gdn-trace,zerogravity-model-qwen35/original-hf-binding,zerogravity/model-gemma4-text-reference,zerogravity-model-gemma4/text-tokenizer,zerogravity-cli/gemma4-cpu-candidate'
+cpu_features='zerogravity-cli/cpu,zerogravity-cli/model-qwen35,zerogravity-cli/text,zerogravity-cli/diagnostic-cpu-checkpoint,zerogravity-cli/diagnostic-gdn-trace,zerogravity-model-qwen35/source-binding,zerogravity/model-gemma4-text-reference,zerogravity-model-gemma4/text-tokenizer,zerogravity-cli/gemma4-cpu-candidate'
 cpu_args=(--locked --offline --no-default-features "${cpu_packages[@]}" --features "$cpu_features")
 
 echo "Checking workspace owners and default CPU dependency isolation..."

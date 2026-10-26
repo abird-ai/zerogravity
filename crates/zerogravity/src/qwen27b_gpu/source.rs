@@ -9,7 +9,7 @@ use std::{
     path::Path,
 };
 use zerogravity_artifacts::source_weights::{ExpectedSourceShard, SourceWeights, WindowOpenLimits};
-use zerogravity_model_qwen35::original_binding::QwenNumericalProfile;
+use zerogravity_model_qwen35::source::binding::QwenNumericalProfile;
 fn pins() -> Result<Value> {
     serde_json::from_slice(include_bytes!("source.json"))
         .map_err(|e| Error::Malformed(format!("compiled Qwen source pins: {e}")))

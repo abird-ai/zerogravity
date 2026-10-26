@@ -214,7 +214,7 @@ fn require_fixed_source(model: &OriginalWindowModelSource) -> Result<()> {
         || embedding.columns != 1024
         || gamma.kind != QuantKind::Bf16
         || gamma.name != "model.language_model.layers.0.input_layernorm.weight"
-        || gamma.shape != [1024 as u64]
+        || gamma.shape != [1024_u64]
         || gamma.bytes != 1024 * 2
     {
         return Err(Error::Unsupported(

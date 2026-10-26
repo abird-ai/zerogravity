@@ -10,7 +10,8 @@
 pub use zerogravity_artifacts::acquisition;
 #[cfg(all(feature = "cache", target_os = "linux"))]
 pub use zerogravity_artifacts::cache;
-pub use zerogravity_artifacts::{artifact, json_allocation, model, quant, sharded};
+pub use zerogravity_artifacts::{artifact, json_allocation, quant, sharded};
+pub mod model;
 pub use zerogravity_core::context_filter;
 pub use zerogravity_core::context_snapshot;
 pub use zerogravity_core::pipeline;
@@ -18,46 +19,10 @@ pub use zerogravity_core::run_policy;
 pub use zerogravity_core::targets;
 pub use zerogravity_core::{Error, Result, accelerator, session_root};
 pub use zerogravity_core::{device_events, device_queue, resource_arbiter, state};
-#[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
-pub mod canonical47;
-#[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
-pub mod short_hf;
-#[cfg(all(feature = "cpu", feature = "cache"))]
-pub use zerogravity_cpu::{
-    RAYON_PROJECTION_INJECTOR_BYTES, admit_global_rayon, math, original_hf, weights,
-};
-#[cfg(all(feature = "cpu", not(feature = "cache")))]
-pub use zerogravity_cpu::{math, original_hf, weights};
-#[cfg(all(feature = "cpu", feature = "cache", target_os = "linux"))]
-pub mod original_qwen_cpu;
-#[cfg(all(
-    feature = "cpu",
-    feature = "cache",
-    feature = "model-qwen35",
-    target_os = "linux"
-))]
-pub mod original_qwen_math;
-#[cfg(all(
-    feature = "cpu",
-    feature = "cache",
-    feature = "model-qwen35",
-    target_os = "linux"
-))]
-pub mod original_qwen_precision;
-#[cfg(all(
-    feature = "cpu",
-    feature = "cache",
-    feature = "model-qwen35",
-    target_os = "linux"
-))]
-pub mod original_qwen_state;
-#[cfg(all(
-    feature = "cpu",
-    feature = "cache",
-    feature = "model-qwen35",
-    target_os = "linux"
-))]
-pub mod original_qwen_trace;
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+pub mod qwen35_cuda;
+#[cfg(feature = "cpu")]
+pub use zerogravity_cpu as cpu;
 #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
 pub use zerogravity_gpu as gpu;
 #[cfg(feature = "model-gemma4")]
@@ -69,14 +34,11 @@ pub use zerogravity_model_qwen35::model_catalog;
 #[cfg(feature = "text")]
 pub use zerogravity_model_qwen35::tokenize;
 
-#[cfg(all(feature = "model-gemma4-cpu-candidate", target_os = "linux"))]
-pub mod gemma4_cpu;
-
 #[cfg(all(feature = "model-qwen35", feature = "text"))]
 pub mod prepare;
 
 /// Process-global tokenizer bootstrap and cold-constructor admission shared by
-/// the CPU, GGUF, canonical47 and short-HF source owners.
+/// the CPU, GGUF and Qwen CUDA source owners.
 #[cfg(all(feature = "text", feature = "cache"))]
 pub mod tokenize_admission;
 

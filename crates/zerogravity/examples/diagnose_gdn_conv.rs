@@ -2,7 +2,7 @@
 //! convolution against a separately generated llama.cpp tensor callback.
 //! Not linked or called by the Zerogravity runtime.
 use std::{collections::HashMap, env, fs, path::Path};
-use zerogravity::{math::silu, weights::CpuWeights};
+use zerogravity::cpu::{ops::silu, source::CpuWeights};
 type Values = HashMap<(usize, String), Vec<f32>>;
 fn read_ref(path: &str, rust: bool) -> Values {
     fs::read_to_string(path)

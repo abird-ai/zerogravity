@@ -1,23 +1,23 @@
 //! Ordinary optional-observer caller; original managed source and session publish.
 use super::*;
-use zerogravity::gemma4_cpu::Gemma4CpuInput;
-use zerogravity::gpu::{Device, GemmaTextHostOwners, GemmaTextStorage};
+use zerogravity::gemma4::execution::Input;
+use zerogravity::gpu::{Device, TextHostOwners, TextStorage};
 
 pub(super) fn run(
-    loaded: &Arc<Gemma4CpuLoaded>,
-    input: Gemma4CpuInput,
-    decoder: &Gemma4CpuInput,
+    loaded: &Arc<Model>,
+    input: Input,
+    decoder: &Input,
     max_output: usize,
     flag: &AtomicBool,
 ) -> Result<()> {
     let (candidate, mut session) = futures_lite::future::block_on(loaded.load_hip_qualification(
         Device::Hip(Default::default()),
         input,
-        GemmaTextHostOwners {
+        TextHostOwners {
             additional_recorded_calls: 0,
             additional_frame_bytes: 0,
         },
-        GemmaTextStorage::ResidentProjections,
+        TextStorage::ResidentProjections,
         Some(flag),
     ))?;
     let mut ids = Vec::with_capacity(max_output);

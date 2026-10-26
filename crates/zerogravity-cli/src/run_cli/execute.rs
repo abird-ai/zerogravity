@@ -50,8 +50,8 @@ pub(super) fn run(request: Request) -> Result<()> {
         .iter()
         .position(|m| &m.id == id)
         .ok_or_else(|| bad("direct entrypoint model absent"))?;
-    if short_hf::selected(&request.graph.models[i]) {
-        return short_hf::run(request, inventory, candidates);
+    if qwen35_cuda::selected(&request.graph.models[i]) {
+        return qwen35_cuda::run(request, inventory, candidates);
     }
     gguf(request, inventory, candidates, i)
 }

@@ -24,7 +24,7 @@ use zerogravity::{
     },
 };
 use zerogravity_gpu::{
-    Device, QwenFinalOwnerReceipt, QwenSourceFrame, QwenSourceFrameKind, QwenSourceObserver,
+    Device, TextSourceFinalOwnerReceipt, TextSourceFrame, TextSourceFrameKind, TextSourceObserver,
 };
 const GIB: u64 = 1024 * 1024 * 1024;
 const SNAPSHOT: &str = "98cea13c169310196c4d8a113765f8fe58ab7a7961f0d1be69212c70dba8015e";
@@ -54,8 +54,8 @@ struct Completed {
     states: BTreeSet<(String, usize)>,
     full_vocab: usize,
 }
-impl QwenSourceObserver for Completed {
-    fn completed(&mut self, frame: QwenSourceFrame, actual: &[u8]) -> zerogravity::Result<()> {
+impl TextSourceObserver for Completed {
+    fn completed(&mut self, frame: TextSourceFrame, actual: &[u8]) -> zerogravity::Result<()> {
         let words = actual.len() / 4;
         if frame.position != 0
             || !actual.len().is_multiple_of(4)
@@ -72,7 +72,7 @@ impl QwenSourceObserver for Completed {
             return Ok(());
         }
         match frame.kind {
-            QwenSourceFrameKind::Value {
+            TextSourceFrameKind::Value {
                 layer,
                 stage: "layer_output",
             } if layer >= 64 || frame.total_words != 5120 || !self.layers.insert(layer) => {
@@ -80,7 +80,7 @@ impl QwenSourceObserver for Completed {
                     "final-owner original full64 completed layer".into(),
                 ));
             }
-            QwenSourceFrameKind::Value {
+            TextSourceFrameKind::Value {
                 stage: "logits", ..
             } => {
                 if frame.total_words != 248320 || self.full_vocab != 0 {
@@ -88,7 +88,7 @@ impl QwenSourceObserver for Completed {
                 }
                 self.full_vocab += 1;
             }
-            QwenSourceFrameKind::State {
+            TextSourceFrameKind::State {
                 slot,
                 plane,
                 prior: false,
@@ -102,7 +102,7 @@ impl QwenSourceObserver for Completed {
         Ok(())
     }
 }
-fn receipt_json(r: &QwenFinalOwnerReceipt) -> Value {
+fn receipt_json(r: &TextSourceFinalOwnerReceipt) -> Value {
     json!({
         "wrapper":r.wrapper,"fault":r.fault,"source":r.source,
         "target_lease":r.lease,"service_generation":r.service_generation,
@@ -168,7 +168,7 @@ fn run() -> Proof<()> {
     let mut observer = Completed::default();
     let mut completed_calls = 0;
     let mut commits = 0;
-    let result = (|| -> Proof<QwenFinalOwnerReceipt> {
+    let result = (|| -> Proof<TextSourceFinalOwnerReceipt> {
         let mut session = block_on(candidate.session())?;
         let before = session.binding();
         let pending = block_on(session.prepare_teacher(&mut observer, None))?;

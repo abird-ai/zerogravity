@@ -34,15 +34,19 @@ fn facade_exposes_distinct_official_gemma_contracts_and_existing_core_domains() 
 
 #[test]
 fn facade_contracts_refuse_cross_family_identity_and_transposed_source_shapes() {
-    use zerogravity::model::qwen::QwenTextConfig;
+    #[cfg(feature = "model-qwen35")]
+    use zerogravity::qwen35::source::safetensors::QwenTextConfig;
     assert!(
         Gemma4Config::from_json(
             br#"{"model_type":"qwen3_5","architectures":["Qwen3_5ForConditionalGeneration"]}"#
         )
         .is_err()
     );
-    assert!(QwenTextConfig::from_json(E2B).is_err());
-    assert!(QwenTextConfig::from_json(MOE).is_err());
+    #[cfg(feature = "model-qwen35")]
+    {
+        assert!(QwenTextConfig::from_json(E2B).is_err());
+        assert!(QwenTextConfig::from_json(MOE).is_err());
+    }
     let config = Gemma4Config::from_json(MOE).unwrap();
     let spec = config
         .tensor_specs()

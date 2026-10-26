@@ -19,7 +19,9 @@ impl OriginalWindowModelSource {
             || actual.rows().capacity() != 512
             || actual.rows().vocabulary() != 248320
         {
-            return Err(Error::State("reference call source/profile/layer/extent differs".into()));
+            return Err(Error::State(
+                "reference call source/profile/layer/extent differs".into(),
+            ));
         }
         Ok(actual)
     }

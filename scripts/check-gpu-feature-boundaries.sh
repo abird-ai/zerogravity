@@ -11,7 +11,7 @@ export PYTHONDONTWRITEBYTECODE=1
 
 printf 'Checking HIP-only combined original qualification compilation...\n'
 cargo check --locked --offline -p zerogravity --example hip_shared_models \
-  --features qwen27b-hip-qualification,gemma4-hip-qualification,zerogravity-gpu/hardware-abort-probe
+  --features shared-hip-qualification,zerogravity-gpu/hardware-abort-probe
 
 printf 'Checking Vulkan-only complete/final qualification compilation...\n'
 cargo check --locked --offline -p zerogravity \
@@ -20,7 +20,7 @@ cargo check --locked --offline -p zerogravity \
 
 printf 'Checking CUDA-only native grouped transport compilation...\n'
 cargo check --locked --offline -p zerogravity-gpu --no-default-features \
-  --features vllm-cuda-qualification
+  --features cuda-native
 
 printf 'Checking source-only native qualification regressions...\n'
 python3 -B -m unittest discover -s tools/gemma4-hip-qualification -p test_row_traffic.py

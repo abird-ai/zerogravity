@@ -11,8 +11,8 @@ use std::process::ExitCode;
 use zerogravity::Result;
 use zerogravity::artifact::{Artifact, ArtifactFormat};
 #[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
-use zerogravity::math::top_logit_ranks;
-use zerogravity::model::{Family, LayerKind, ModelGeometry};
+use zerogravity::cpu::ops::top_logit_ranks;
+use zerogravity::model::DeclaredModel;
 #[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
 use zerogravity::prepare::PreparedQwen;
 #[cfg(all(
@@ -426,50 +426,9 @@ fn composed_usage() {
 
 fn inspect(path: &Path) -> Result<()> {
     if path.extension().is_some_and(|v| v == "json") {
-        let geometry = ModelGeometry::from_file(path)?;
+        let model = DeclaredModel::from_file(path)?;
         println!("Config: {}", path.display());
-        println!("Family: {:?}", geometry.family);
-        println!(
-            "Text geometry: {} layers, hidden {}, head dim {}, attention heads {}, KV heads {}",
-            geometry.layers.len(),
-            geometry.hidden_size,
-            geometry.head_dim,
-            geometry.num_attention_heads,
-            geometry.num_key_value_heads
-        );
-        println!(
-            "Vocabulary: {}; max declared positions: {}",
-            geometry.vocab_size, geometry.max_position_embeddings
-        );
-        let full = geometry
-            .layers
-            .iter()
-            .filter(|&&k| k == LayerKind::FullAttention)
-            .count();
-        println!("Full attention layers: {full}");
-        match geometry.family {
-            Family::QwenHybrid => println!(
-                "Gated DeltaNet layers: {}; recurrent K heads: {:?}, V heads: {:?}",
-                geometry
-                    .layers
-                    .iter()
-                    .filter(|&&k| k == LayerKind::LinearAttention)
-                    .count(),
-                geometry.recurrent_key_heads,
-                geometry.recurrent_value_heads
-            ),
-            Family::Gemma4Moe => println!(
-                "Sliding attention layers: {}; window: {:?}; experts: {:?}; selected experts: {:?}",
-                geometry
-                    .layers
-                    .iter()
-                    .filter(|&&k| k == LayerKind::SlidingAttention)
-                    .count(),
-                geometry.sliding_window,
-                geometry.num_experts,
-                geometry.top_k_experts
-            ),
-        }
+        print!("{model}");
         println!(
             "Status: CONFIG GEOMETRY ONLY — source weights/tokenizer/execution not validated."
         );

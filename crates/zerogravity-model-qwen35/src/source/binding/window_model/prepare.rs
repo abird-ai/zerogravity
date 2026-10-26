@@ -67,8 +67,8 @@ pub use gdn::{GdnKernelCapture, PreparedGdnParameters};
 mod native;
 mod positions;
 mod rms;
-pub use rms::{PreparedFinalRmsSource, PreparedRmsSource};
 pub use native::ReferenceKernelCapture;
+pub use rms::{PreparedFinalRmsSource, PreparedRmsSource};
 mod components;
 mod fixed_prompt;
 pub use components::{

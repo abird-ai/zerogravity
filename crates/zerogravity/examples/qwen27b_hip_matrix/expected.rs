@@ -11,7 +11,7 @@ use std::{
 };
 use zerogravity::accelerator::program::{ConvDomain, RecurrentDomain, StateSlot};
 use zerogravity::json_allocation::{self, ValueConstruction};
-use zerogravity_gpu::{QwenSourceFrame, QwenSourceFrameKind, QwenSourceObserver};
+use zerogravity_gpu::{TextSourceFrame, TextSourceFrameKind, TextSourceObserver};
 fn string<'a>(value: &'a Value, key: &str) -> Proof<&'a str> {
     value[key]
         .as_str()
@@ -2779,7 +2779,7 @@ impl Expected {
             "all1040 held records exact after final ordinary read",
         )
     }
-    fn compare(&mut self, frame: QwenSourceFrame, actual: &[u8]) -> Proof<()> {
+    fn compare(&mut self, frame: TextSourceFrame, actual: &[u8]) -> Proof<()> {
         need(
             self.armed
                 && frame.position == self.call
@@ -2788,7 +2788,7 @@ impl Expected {
                 && frame.offset_words + actual.len() / 4 <= frame.total_words,
             "actual completed frame geometry/call binding",
         )?;
-        if let QwenSourceFrameKind::State {
+        if let TextSourceFrameKind::State {
             slot,
             plane,
             prior: true,
@@ -2822,14 +2822,14 @@ impl Expected {
             .as_ref()
             .ok_or("expected bound before producer")?;
         let (layer, label, kv) = match frame.kind {
-            QwenSourceFrameKind::Value { layer, stage } => match stage {
+            TextSourceFrameKind::Value { layer, stage } => match stage {
                 "embedding" => (None, Label::Embedding, false),
                 "layer_output" => (Some(layer), Label::LayerOutput, false),
                 "final_norm" => (None, Label::Normalized, false),
                 "logits" => (None, Label::Logits, false),
                 _ => return Err("unknown original producer boundary".into()),
             },
-            QwenSourceFrameKind::State { slot, plane, prior } => {
+            TextSourceFrameKind::State { slot, plane, prior } => {
                 let (layer, label, kv) = match (slot, prior) {
                     (StateSlot::Conv(d), false) => (d.0, Label::AfterConv4, false),
                     (StateSlot::Conv(d), true) => (d.0, Label::BeforeConv4, false),
@@ -3385,8 +3385,8 @@ impl Expected {
             "compositional_original_adapter":self.compositional})
     }
 }
-impl QwenSourceObserver for Expected {
-    fn completed(&mut self, frame: QwenSourceFrame, actual: &[u8]) -> zerogravity::Result<()> {
+impl TextSourceObserver for Expected {
+    fn completed(&mut self, frame: TextSourceFrame, actual: &[u8]) -> zerogravity::Result<()> {
         self.compare(frame, actual)
             .map_err(|e| zerogravity::Error::State(format!("original full64 comparison: {e}")))
     }
@@ -3759,8 +3759,8 @@ mod tests {
         });
         (reference, dir)
     }
-    fn kind(s: &Spec) -> QwenSourceFrameKind {
-        use zerogravity_gpu::QwenSourceFrameKind as K;
+    fn kind(s: &Spec) -> TextSourceFrameKind {
+        use zerogravity_gpu::TextSourceFrameKind as K;
         match (s.layer, s.label) {
             (None, Label::Embedding) => K::Value {
                 layer: 0,
@@ -3819,7 +3819,7 @@ mod tests {
                 raw
             };
             e.completed(
-                QwenSourceFrame {
+                TextSourceFrame {
                     position: call,
                     kind: kind(s),
                     offset_words: 0,
@@ -3837,9 +3837,9 @@ mod tests {
             while at < total {
                 let words = (total - at).min(4096);
                 e.completed(
-                    QwenSourceFrame {
+                    TextSourceFrame {
                         position: call,
-                        kind: QwenSourceFrameKind::State {
+                        kind: TextSourceFrameKind::State {
                             slot,
                             plane: 0,
                             prior: true,
@@ -3903,7 +3903,7 @@ mod tests {
         let bytes = reference
             .record_bytes(reference.specs.iter().position(|x| x == s).unwrap())
             .unwrap();
-        let frame = |position: usize, offset: usize| QwenSourceFrame {
+        let frame = |position: usize, offset: usize| TextSourceFrame {
             position,
             kind: kind(s),
             offset_words: offset,
@@ -3933,9 +3933,9 @@ mod tests {
                 while at < total {
                     let words = (total - at).min(4096);
                     e.completed(
-                        QwenSourceFrame {
+                        TextSourceFrame {
                             position: 0,
-                            kind: QwenSourceFrameKind::State {
+                            kind: TextSourceFrameKind::State {
                                 slot: StateSlot::Conv(ConvDomain(layer)),
                                 plane: 0,
                                 prior: true,

@@ -115,7 +115,7 @@ impl Router {
                     "active_sessions":m.active,
                     "peak_active_sessions":m.peak_active,
                     "active_sessions_limit":m.active_limit,
-                    "canonical47_resources":m.canonical_resources,
+                    "fixed-prompt_resources":m.canonical_resources,
                     "hf_source":m.hf_source,"hf_resources":m.hf_resources,
                     "queued_requests":m.queue.pending,
                     "pending_admission_in_progress":m.queue.in_progress,
@@ -395,20 +395,20 @@ fn validate_batch_mode(
     }
 }
 
-fn canonical47_owner_profile(active: usize, host: usize, provider: usize) -> bool {
+fn fixed_prompt_owner_profile(active: usize, host: usize, provider: usize) -> bool {
     matches!(
         (provider, host, active),
         (2304, 3072..=16384, 1..=2) | (4096, 4096, 1..=8)
     )
 }
 
-fn short_hf_host_profile(host_mib: usize) -> bool {
+fn qwen35_cuda_host_profile(host_mib: usize) -> bool {
     matches!(host_mib, 4096 | 8192)
 }
 
 fn validate_source_profile(options: &YamlConfig) -> Result<(), ServiceError> {
     if options.native_batch_rows != 0
-        && (options.source_profile != "short-hf-bf16"
+        && (options.source_profile != "qwen35-cuda-bf16"
             || options.backend != "cuda"
             || options.batch_mode != "interleaved"
             || options.native_batch_rows != 4
@@ -417,19 +417,19 @@ fn validate_source_profile(options: &YamlConfig) -> Result<(), ServiceError> {
         return Err(ServiceError::new(
             400,
             "unsupported_native_batch_profile",
-            "native-batch-rows=4 requires short-hf-bf16/CUDA/interleaved/active>=4; default0",
+            "native-batch-rows=4 requires qwen35-cuda-bf16/CUDA/interleaved/active>=4; default0",
         ));
     }
     match options.source_profile.as_str() {
         "gguf" if options.native_artifacts.is_none() => Ok(()),
-        "canonical47-bf16" => {
+        "fixed-prompt-bf16" => {
             if options.backend != "cuda"
                 || options.workers != 1
                 || options.max_context != 512
                 || !(1..=8).contains(&options.max_output)
                 || options.batch_mode != "interleaved"
                 || options.device_mib != 5120
-                || !canonical47_owner_profile(
+                || !fixed_prompt_owner_profile(
                     options.active_per_worker,
                     options.host_mib,
                     options.provider_mib,
@@ -437,27 +437,27 @@ fn validate_source_profile(options: &YamlConfig) -> Result<(), ServiceError> {
             {
                 return Err(ServiceError::new(
                     400,
-                    "unsupported_canonical47_profile",
-                    "canonical47 requires CUDA/1worker/context512/maxoutput1..8/interleaved/device5120 and finite2 or exact4GiB active8 owner profile",
+                    "unsupported_fixed-prompt_profile",
+                    "fixed-prompt requires CUDA/1worker/context512/maxoutput1..8/interleaved/device5120 and finite2 or exact4GiB active8 owner profile",
                 ));
             }
-            if !cfg!(all(feature = "canonical47-serving", target_os = "linux")) {
+            if !cfg!(all(feature = "qwen35-cuda-serving", target_os = "linux")) {
                 return Err(ServiceError::new(
                     400,
                     "backend_not_compiled",
-                    "compile Linux canonical47-serving for original HF native serving",
+                    "compile Linux qwen35-cuda-serving for original HF native serving",
                 ));
             }
             Ok(())
         }
-        "short-hf-bf16" => {
+        "qwen35-cuda-bf16" => {
             if options.backend != "cuda"
                 || options.workers != 1
                 || options.max_context != 512
                 || !(1..=8).contains(&options.max_output)
                 || !(1..=8).contains(&options.active_per_worker)
                 || options.batch_mode != "interleaved"
-                || !short_hf_host_profile(options.host_mib)
+                || !qwen35_cuda_host_profile(options.host_mib)
                 || options.provider_mib == 0
                 || options.provider_mib > options.device_mib
                 || options.device_mib != 5120
@@ -465,15 +465,15 @@ fn validate_source_profile(options: &YamlConfig) -> Result<(), ServiceError> {
             {
                 return Err(ServiceError::new(
                     400,
-                    "unsupported_short_hf_profile",
-                    "short-HF requires CUDA/1worker/context512/maxoutput1..8/active1..8/interleaved/4096or8192host/provider1..5120/5120device and actual native-artifacts",
+                    "unsupported_qwen35_cuda_profile",
+                    "Qwen CUDA requires CUDA/1worker/context512/maxoutput1..8/active1..8/interleaved/4096or8192host/provider1..5120/5120device and actual native-artifacts",
                 ));
             }
-            if !cfg!(all(feature = "short-hf-serving", target_os = "linux")) {
+            if !cfg!(all(feature = "qwen35-cuda-serving", target_os = "linux")) {
                 return Err(ServiceError::new(
                     400,
                     "backend_not_compiled",
-                    "compile Linux short-hf-serving",
+                    "compile Linux qwen35-cuda-serving",
                 ));
             }
             Ok(())
@@ -481,7 +481,7 @@ fn validate_source_profile(options: &YamlConfig) -> Result<(), ServiceError> {
         _ => Err(ServiceError::new(
             400,
             "unsupported_source_profile",
-            "source-profile is gguf, canonical47-bf16 or short-hf-bf16; native-artifacts is HF-only",
+            "source-profile is gguf, fixed-prompt-bf16 or qwen35-cuda-bf16; native-artifacts is HF-only",
         )),
     }
 }
@@ -492,7 +492,7 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
             "USAGE: zerogravity serve --config config.yaml | \
              --model ID=MODEL.gguf [--listen 127.0.0.1:8000] \
              [--backend cpu|cuda|vulkan-nvidia|vulkan-amd|rocm] \
-             [--source-profile gguf|canonical47-bf16|short-hf-bf16] [--native-artifacts DIR] \
+             [--source-profile gguf|fixed-prompt-bf16|qwen35-cuda-bf16] [--native-artifacts DIR] \
              [--workers 2] [--active-per-worker 2] \
              [--max-context 1024] [--max-output 128] \
              [--host-mib 4096|8192] [--provider-mib 2048] [--device-mib 4096] \
@@ -580,7 +580,7 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
                     output: options.max_output,
                     provider_mib: options.provider_mib,
                     device_mib: options.device_mib,
-                    native_rows: if options.source_profile == "short-hf-bf16" {
+                    native_rows: if options.source_profile == "qwen35-cuda-bf16" {
                         options.native_batch_rows
                     } else if options.batch_mode == "fused" {
                         options.batch_rows
@@ -590,8 +590,8 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
                     host_mib: options.host_mib,
                     max_pending: options.max_pending_requests,
                 };
-                if options.source_profile == "canonical47-bf16" {
-                    #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
+                if options.source_profile == "fixed-prompt-bf16" {
+                    #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
                     {
                         Router::Gpu(gpu_engine::GpuRouter::new_canonical(
                             declared,
@@ -601,18 +601,18 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
                             options.native_artifacts.as_deref(),
                         )?)
                     }
-                    #[cfg(not(all(feature = "canonical47-serving", target_os = "linux")))]
+                    #[cfg(not(all(feature = "qwen35-cuda-serving", target_os = "linux")))]
                     {
                         return Err(ServiceError::new(
                             400,
                             "backend_not_compiled",
-                            "canonical47-serving feature required",
+                            "qwen35-cuda-serving feature required",
                         ));
                     }
-                } else if options.source_profile == "short-hf-bf16" {
-                    #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+                } else if options.source_profile == "qwen35-cuda-bf16" {
+                    #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
                     {
-                        Router::Gpu(gpu_engine::GpuRouter::new_short_hf(
+                        Router::Gpu(gpu_engine::GpuRouter::new_qwen35_cuda(
                             declared,
                             selected,
                             profile,
@@ -620,12 +620,12 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
                             options.native_artifacts.as_deref(),
                         )?)
                     }
-                    #[cfg(not(all(feature = "short-hf-serving", target_os = "linux")))]
+                    #[cfg(not(all(feature = "qwen35-cuda-serving", target_os = "linux")))]
                     {
                         return Err(ServiceError::new(
                             400,
                             "backend_not_compiled",
-                            "short-hf-serving feature required",
+                            "qwen35-cuda-serving feature required",
                         ));
                     }
                 } else {
@@ -665,7 +665,7 @@ mod tests {
     #[test]
     fn canonical_eight_profile_needs_all_three_exact_owner_settings() {
         for active in 1..=8 {
-            assert!(super::canonical47_owner_profile(active, 4096, 4096));
+            assert!(super::fixed_prompt_owner_profile(active, 4096, 4096));
         }
         for (active, host, provider) in [
             (0, 4096, 4096),
@@ -678,10 +678,10 @@ mod tests {
             (8, 4096, 4097),
             (3, 4096, 2304),
         ] {
-            assert!(!super::canonical47_owner_profile(active, host, provider));
+            assert!(!super::fixed_prompt_owner_profile(active, host, provider));
         }
-        assert!(super::canonical47_owner_profile(1, 3072, 2304));
-        assert!(super::canonical47_owner_profile(2, 16384, 2304));
+        assert!(super::fixed_prompt_owner_profile(1, 3072, 2304));
+        assert!(super::fixed_prompt_owner_profile(2, 16384, 2304));
     }
 
     use super::*;
@@ -693,7 +693,7 @@ mod tests {
         assert!(validate_source_profile(&old).is_ok());
         let args = [
             "--source-profile",
-            "canonical47-bf16",
+            "fixed-prompt-bf16",
             "--native-artifacts",
             "/bundle",
             "--backend",
@@ -715,7 +715,7 @@ mod tests {
         ]
         .map(str::to_owned);
         let mut cfg = YamlConfig::cli(&args).unwrap();
-        if cfg!(all(feature = "canonical47-serving", target_os = "linux")) {
+        if cfg!(all(feature = "qwen35-cuda-serving", target_os = "linux")) {
             assert!(validate_source_profile(&cfg).is_ok());
         } else {
             assert_eq!(
@@ -726,7 +726,7 @@ mod tests {
         cfg.active_per_worker = 3;
         assert_eq!(
             validate_source_profile(&cfg).unwrap_err().code,
-            "unsupported_canonical47_profile"
+            "unsupported_fixed-prompt_profile"
         );
         cfg.active_per_worker = 1;
         cfg.max_output = 9;
@@ -785,12 +785,12 @@ mod tests {
     }
 
     #[test]
-    fn short_hf_native_four_opt_in_is_reachable_and_bounded_before_source_load() {
+    fn qwen35_cuda_native_four_opt_in_is_reachable_and_bounded_before_source_load() {
         let args = [
             "--model",
             "original=/not-opened",
             "--source-profile",
-            "short-hf-bf16",
+            "qwen35-cuda-bf16",
             "--backend",
             "cuda",
             "--workers",
@@ -818,7 +818,7 @@ mod tests {
         let mut cfg = YamlConfig::cli(&args).unwrap();
         assert_eq!(cfg.native_batch_rows, 4);
         let expect_supported = |cfg: &YamlConfig| {
-            if cfg!(all(feature = "short-hf-serving", target_os = "linux")) {
+            if cfg!(all(feature = "qwen35-cuda-serving", target_os = "linux")) {
                 assert!(validate_source_profile(cfg).is_ok());
             } else {
                 assert_eq!(
@@ -849,7 +849,7 @@ mod tests {
             assert!(validate_source_profile(&cfg).is_err());
         }
         cfg.backend = "cuda".into();
-        for source in ["gguf", "canonical47-bf16"] {
+        for source in ["gguf", "fixed-prompt-bf16"] {
             cfg.source_profile = source.into();
             assert!(validate_source_profile(&cfg).is_err());
         }

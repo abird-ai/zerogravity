@@ -11,16 +11,16 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    task::{Context, Poll, Wake, Waker},
+    task::{Poll, Wake, Waker},
     thread,
 };
 use zerogravity::{
     Error,
     cache::{CacheOptions, CacheStore},
-    gemma4_cpu::{Gemma4CpuContext, Gemma4CpuLoaded},
+    gemma4::execution::{Context, Model},
     resource_arbiter::{PhysicalDeviceKey, ResourceArbiter},
 };
-use zerogravity_gpu::{Device, Gemma4Bf16GpuSession, GemmaTextHostOwners};
+use zerogravity_gpu::{Bf16TextSession, Device, TextHostOwners};
 const GIB: u64 = 1024 * 1024 * 1024;
 const PERSISTENT_CONTEXT_HOST: u64 = 2 * GIB;
 const PERSISTENT_COMPILER_HOST: u64 = 8 * GIB;
@@ -36,7 +36,7 @@ impl Wake for ThreadWake {
 }
 fn block_on<F: Future>(future: F) -> F::Output {
     let waker = Waker::from(Arc::new(ThreadWake(thread::current())));
-    let mut cx = Context::from_waker(&waker);
+    let mut cx = std::task::Context::from_waker(&waker);
     let mut future = pin!(future);
     loop {
         match future.as_mut().poll(&mut cx) {
@@ -49,7 +49,7 @@ fn binding(root: zerogravity::session_root::RootBinding) -> Value {
     json!({"session":root.session().get(),"root":root.root(),"frontier":root.frontier()})
 }
 fn completed(
-    s: &mut Gemma4Bf16GpuSession,
+    s: &mut Bf16TextSession,
     e: &mut Expected,
     call: usize,
     events: &mut Vec<Value>,
@@ -86,11 +86,11 @@ fn completed(
     Ok(true)
 }
 fn trajectory(
-    s: &mut Gemma4Bf16GpuSession,
+    s: &mut Bf16TextSession,
     e: &mut Expected,
     start: usize,
     events: &mut Vec<Value>,
-    decoder: &zerogravity::gemma4_cpu::Gemma4CpuInput,
+    decoder: &zerogravity::gemma4::execution::Input,
 ) -> Proof<bool> {
     for call in start..e.cell.calls.len() {
         if !completed(s, e, call, events)? {
@@ -126,14 +126,14 @@ fn trajectory(
     Ok(true)
 }
 struct BorrowedObserver<'a, 'b>(&'a std::cell::RefCell<&'b mut Expected>);
-impl zerogravity_gpu::GemmaTextObserver for BorrowedObserver<'_, '_> {
+impl zerogravity_gpu::TextObserver for BorrowedObserver<'_, '_> {
     fn completed_producer(
         &mut self,
         p: usize,
-        o: &zerogravity::gemma4::text::Gemma4Bf16Observation,
+        o: &zerogravity::accelerator::program::TextObservation,
         b: &[u8],
     ) -> zerogravity::Result<()> {
-        zerogravity_gpu::GemmaTextObserver::completed_producer(&mut **self.0.borrow_mut(), p, o, b)
+        zerogravity_gpu::TextObserver::completed_producer(&mut **self.0.borrow_mut(), p, o, b)
     }
     fn completed_kv(
         &mut self,
@@ -143,13 +143,13 @@ impl zerogravity_gpu::GemmaTextObserver for BorrowedObserver<'_, '_> {
         a: usize,
         b: &[u8],
     ) -> zerogravity::Result<()> {
-        zerogravity_gpu::GemmaTextObserver::completed_kv(&mut **self.0.borrow_mut(), p, d, v, a, b)
+        zerogravity_gpu::TextObserver::completed_kv(&mut **self.0.borrow_mut(), p, d, v, a, b)
     }
 }
 fn cancelled_and_discarded(
-    s: &mut Gemma4Bf16GpuSession,
+    s: &mut Bf16TextSession,
     e: &mut Expected,
-    loaded: &Arc<Gemma4CpuLoaded>,
+    loaded: &Arc<Model>,
     events: &mut Vec<Value>,
 ) -> Proof<bool> {
     let before = s.binding();
@@ -228,11 +228,11 @@ struct UnknownObserver {
     completed: usize,
     stage: &'static str,
 }
-impl zerogravity_gpu::GemmaTextObserver for UnknownObserver {
+impl zerogravity_gpu::TextObserver for UnknownObserver {
     fn completed_producer(
         &mut self,
         _: usize,
-        o: &zerogravity::gemma4::text::Gemma4Bf16Observation,
+        o: &zerogravity::accelerator::program::TextObservation,
         _: &[u8],
     ) -> zerogravity::Result<()> {
         if o.stage == self.stage {
@@ -278,7 +278,7 @@ pub fn run() -> Proof<()> {
         resident,
         "Vulkan shared/multi-set reload requires resident projections",
     )?;
-    let storage = zerogravity_gpu::GemmaTextStorage::ResidentProjectionsVulkan;
+    let storage = zerogravity_gpu::TextStorage::ResidentProjectionsVulkan;
     let provider = 20u64 * 1024 * 1024 * 1024;
     let invocation = PathBuf::from(&args[0]);
     let report = PathBuf::from(&args[1]);
@@ -287,7 +287,7 @@ pub fn run() -> Proof<()> {
         "absolute expected/fresh report",
     )?;
     // The canonical larger host contract precedes source and expected buffers.
-    let context = Gemma4CpuContext::new_vulkan_qualification()?;
+    let context = Context::new_vulkan_qualification()?;
     let harness = ResourceArbiter::process_shared().admit(
         &PhysicalDeviceKey::new("host", "system-ram")?,
         zerogravity::resource_arbiter::ResourceOwner::new(
@@ -316,14 +316,14 @@ pub fn run() -> Proof<()> {
         inputs.push(Some(input));
     }
     let decoder = context.prepare_text(&snapshot, "One", None)?;
-    let loaded = Gemma4CpuLoaded::open(snapshot.clone(), context.clone(), None)?;
+    let loaded = Model::open(snapshot.clone(), context.clone(), None)?;
     let device = Device::vulkan(zerogravity::gpu::WgpuDeviceKind::IntegratedGpu(0))
         .map_err(|error| Error::State(format!("original Vulkan device: {error}")))?;
     let (candidate, mut a) = {
         block_on(loaded.load_vulkan_qualification(
             device,
             inputs[0].take().ok_or("genuine first prepared text")?,
-            GemmaTextHostOwners {
+            TextHostOwners {
                 additional_recorded_calls: 7,
                 additional_frame_bytes: 32 * 1024 * 1024,
             },

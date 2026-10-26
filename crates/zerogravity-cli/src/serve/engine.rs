@@ -268,7 +268,7 @@ pub struct GpuRootObservation {
     pub session_epoch: u64,
 }
 impl GpuRootObservation {
-    #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
+    #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
     pub fn committed(binding: zerogravity::session_root::RootBinding) -> Self {
         Self {
             session_id: binding.session().get(),
@@ -348,20 +348,20 @@ pub(super) enum Presentation {
 #[derive(Clone)]
 pub(super) enum TextTokenizer {
     Shared(Arc<QwenTokenizer>),
-    #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
-    Canonical(Arc<zerogravity::canonical47::Canonical47Model>),
-    #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
-    ShortHf(Arc<zerogravity::short_hf::ShortHfModel>),
+    #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+    FixedPrompt(Arc<zerogravity::qwen35_cuda::fixed_prompt::Model>),
+    #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+    Qwen35Cuda(Arc<zerogravity::qwen35_cuda::Model>),
 }
 impl std::ops::Deref for TextTokenizer {
     type Target = QwenTokenizer;
     fn deref(&self) -> &QwenTokenizer {
         match self {
             Self::Shared(tokenizer) => tokenizer,
-            #[cfg(all(feature = "canonical47-serving", target_os = "linux"))]
-            Self::Canonical(model) => model.tokenizer(),
-            #[cfg(all(feature = "short-hf-serving", target_os = "linux"))]
-            Self::ShortHf(model) => model.tokenizer(),
+            #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+            Self::FixedPrompt(model) => model.tokenizer(),
+            #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+            Self::Qwen35Cuda(model) => model.tokenizer(),
         }
     }
 }
@@ -848,7 +848,7 @@ impl Router {
             .cloned()
             .ok_or_else(|| ServiceError::new(400, "invalid_model", "no model routes"))?;
         let rayon_admission = host.transfer_admission(&rayon_alias, "global-rayon")?;
-        zerogravity::admit_global_rayon(&rayon_admission)?;
+        zerogravity::cpu::runtime::admit_global_rayon(&rayon_admission)?;
         let models = Arc::new(models);
         let stats = Arc::new(CpuStats::default());
         let queue = PendingQueue::new(host.clone(), max_pending)?;
@@ -1198,7 +1198,7 @@ impl Active {
             &request.model,
             "rayon-projection",
             AllocationClass::Scratch,
-            zerogravity::RAYON_PROJECTION_INJECTOR_BYTES,
+            zerogravity::cpu::runtime::RAYON_PROJECTION_INJECTOR_BYTES,
         )?;
         let session = model
             .weights

@@ -4,9 +4,7 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 use zerogravity::cache::{CacheOptions, CacheStore};
-use zerogravity::gemma4_cpu::{
-    Gemma4CpuContext, Gemma4CpuLoaded, MAX_CONTEXT, MAX_OUTPUT, PROFILE,
-};
+use zerogravity::gemma4::execution::{CPU_PROFILE, Context, MAX_CONTEXT, MAX_OUTPUT, Model};
 use zerogravity::{Error, Result};
 #[cfg(feature = "gemma4-hip-resident-candidate")]
 mod gpu;
@@ -77,7 +75,7 @@ fn options(args: &[String]) -> Result<Options> {
     let resident_hip = profile == Some(HIP_PROFILE);
     #[cfg(not(feature = "gemma4-hip-resident-candidate"))]
     let resident_hip = false;
-    if (profile != Some(PROFILE) && !resident_hip)
+    if (profile != Some(CPU_PROFILE) && !resident_hip)
         || !(1..=MAX_OUTPUT).contains(&max_output)
         || prompt.as_ref().is_some_and(|p| p.len() > 4096)
     {
@@ -98,16 +96,16 @@ impl Drop for Signals {
         }
     }
 }
-fn context(resident_hip: bool) -> Result<Arc<Gemma4CpuContext>> {
+fn context(resident_hip: bool) -> Result<Arc<Context>> {
     if resident_hip {
         #[cfg(feature = "gemma4-hip-resident-candidate")]
-        return Gemma4CpuContext::new_hip_qualification();
+        return Context::new_hip_qualification();
         #[cfg(not(feature = "gemma4-hip-resident-candidate"))]
         return Err(Error::Unsupported(
             "Gemma HIP resident candidate feature is disabled".into(),
         ));
     }
-    Gemma4CpuContext::new()
+    Context::new()
 }
 pub(super) fn run(args: &[String]) -> Result<()> {
     let options = options(args)?;
@@ -156,7 +154,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     if options.resident_hip {
         // Tokenizer owners retire before native preparation; decoder remains admitted.
         let decoder = context.prepare_text(&snapshot, "One", Some(&flag))?;
-        let loaded = Gemma4CpuLoaded::open(snapshot.clone(), context.clone(), Some(&flag))?;
+        let loaded = Model::open(snapshot.clone(), context.clone(), Some(&flag))?;
         let result = gpu::run(&loaded, input, &decoder, options.max_output, &flag);
         drop(decoder);
         let closed = loaded.close(None);
@@ -167,8 +165,8 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         closed?;
         return Ok(());
     }
-    let loaded = Gemma4CpuLoaded::open(snapshot.clone(), context.clone(), Some(&flag))?;
-    let mut session = loaded.session(input)?;
+    let loaded = Model::open(snapshot.clone(), context.clone(), Some(&flag))?;
+    let mut session = loaded.cpu_session(input)?;
     let result = (|| -> Result<()> {
         let first = session.infer_prompt(options.max_output, Some(&flag))?;
         let mut calls = 1;
@@ -224,7 +222,7 @@ mod tests {
         assert!(
             options(&args(&[
                 "--source-profile",
-                PROFILE,
+                CPU_PROFILE,
                 "--prompt",
                 "你好",
                 "--max-tokens",
@@ -235,9 +233,9 @@ mod tests {
         for tail in [
             vec![],
             vec!["--source-profile", "qwen"],
-            vec!["--source-profile", PROFILE, "--max-tokens", "9"],
-            vec!["--source-profile", PROFILE, "--teacher-ids", "1"],
-            vec!["--source-profile", PROFILE, "--chat", "yes"],
+            vec!["--source-profile", CPU_PROFILE, "--max-tokens", "9"],
+            vec!["--source-profile", CPU_PROFILE, "--teacher-ids", "1"],
+            vec!["--source-profile", CPU_PROFILE, "--chat", "yes"],
         ] {
             assert!(options(&args(&tail)).is_err());
         }
@@ -285,7 +283,7 @@ mod tests {
             "--prompt",
             "--source-profile",
             "--source-profile",
-            PROFILE,
+            CPU_PROFILE,
             "--max-tokens",
             "1",
         ]);

@@ -7,15 +7,15 @@ use std::{
     path::PathBuf,
     pin::pin,
     sync::Arc,
-    task::{Context, Poll, Wake, Waker},
+    task::{Poll, Wake, Waker},
     thread,
 };
 use zerogravity::{
     cache::{CacheOptions, CacheStore},
-    gemma4_cpu::{Gemma4CpuContext, Gemma4CpuLoaded},
+    gemma4::execution::{Context, Model},
     resource_arbiter::{PhysicalDeviceKey, ResourceArbiter},
 };
-use zerogravity_gpu::{Device, GemmaTextHostOwners, GemmaTextStorage};
+use zerogravity_gpu::{Device, TextHostOwners, TextStorage};
 
 const GIB: u64 = 1024 * 1024 * 1024;
 const SNAPSHOT: &str = "ba32b7693d0f7dcbdf4f00f94d13bd61c838e2d7a927f1879817cd5e74fca8b1";
@@ -32,7 +32,7 @@ impl Wake for ThreadWake {
 }
 fn block_on<F: Future>(future: F) -> F::Output {
     let waker = Waker::from(Arc::new(ThreadWake(thread::current())));
-    let mut context = Context::from_waker(&waker);
+    let mut context = std::task::Context::from_waker(&waker);
     let mut future = pin!(future);
     loop {
         match future.as_mut().poll(&mut context) {
@@ -62,7 +62,7 @@ fn run() -> Result<(), String> {
         );
         std::process::exit(2);
     }
-    let context = Gemma4CpuContext::new_vulkan_qualification()
+    let context = Context::new_vulkan_qualification()
         .map_err(|e| format!("original Vulkan Gemma context: {e}"))?;
     let store = CacheStore::open_existing(CacheOptions::new(None, 96 * GIB))
         .map_err(|e| format!("existing canonical Gemma cache: {e}"))?;
@@ -71,7 +71,7 @@ fn run() -> Result<(), String> {
             .open_snapshot(SNAPSHOT)
             .map_err(|e| format!("canonical Gemma snapshot: {e}"))?,
     );
-    let loaded = Gemma4CpuLoaded::open(snapshot.clone(), context.clone(), None)
+    let loaded = Model::open(snapshot.clone(), context.clone(), None)
         .map_err(|e| format!("managed Gemma source owner: {e}"))?;
     let input = context
         .prepare_text(&snapshot, "One", None)
@@ -82,11 +82,11 @@ fn run() -> Result<(), String> {
         block_on(loaded.load_vulkan_qualification(
             device,
             input,
-            GemmaTextHostOwners {
+            TextHostOwners {
                 additional_recorded_calls: 1,
                 additional_frame_bytes: 32 * 1024 * 1024,
             },
-            GemmaTextStorage::ResidentProjectionsVulkan,
+            TextStorage::ResidentProjectionsVulkan,
             None,
         ))
     }

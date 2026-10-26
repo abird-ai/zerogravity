@@ -11,16 +11,16 @@ use std::{
     path::{Path, PathBuf},
     pin::pin,
     sync::Arc,
-    task::{Context, Poll, Wake, Waker},
+    task::{Poll, Wake, Waker},
     thread,
 };
 use zerogravity::{
     Error,
     cache::{CacheOptions, CacheStore},
-    gemma4_cpu::{Gemma4CpuContext, Gemma4CpuLoaded},
+    gemma4::execution::{Context, Model},
     resource_arbiter::{PhysicalDeviceKey, ResourceArbiter},
 };
-use zerogravity_gpu::{Device, GemmaTextHostOwners, GemmaTextStorage};
+use zerogravity_gpu::{Device, TextHostOwners, TextStorage};
 type Proof<T> = Result<T, Box<dyn StdError>>;
 fn need(ok: bool, why: impl Into<String>) -> Proof<()> {
     if ok { Ok(()) } else { Err(why.into().into()) }
@@ -44,7 +44,7 @@ impl Wake for ThreadWake {
 }
 fn block_on<F: Future>(future: F) -> F::Output {
     let waker = Waker::from(Arc::new(ThreadWake(thread::current())));
-    let mut cx = Context::from_waker(&waker);
+    let mut cx = std::task::Context::from_waker(&waker);
     let mut future = pin!(future);
     loop {
         match future.as_mut().poll(&mut cx) {
@@ -64,8 +64,8 @@ fn binding(root: zerogravity::session_root::RootBinding) -> Value {
     })
 }
 fn traffic(
-    total: zerogravity_gpu::GemmaTextTraffic,
-    before: zerogravity_gpu::GemmaTextTraffic,
+    total: zerogravity_gpu::TextTraffic,
+    before: zerogravity_gpu::TextTraffic,
 ) -> Proof<(u64, u64, u64, u64, usize, usize)> {
     Ok((
         total
@@ -127,11 +127,11 @@ impl Completed {
         self.boundaries == 70 * self.rows && self.layers.iter().all(|v| *v)
     }
 }
-impl zerogravity_gpu::GemmaTextObserver for Completed {
+impl zerogravity_gpu::TextObserver for Completed {
     fn completed_producer(
         &mut self,
         position: usize,
-        o: &zerogravity::gemma4::text::Gemma4Bf16Observation,
+        o: &zerogravity::accelerator::program::TextObservation,
         actual: &[u8],
     ) -> zerogravity::Result<()> {
         let checked = (|| -> Proof<()> {
@@ -233,7 +233,7 @@ pub fn run() -> Proof<()> {
         report.is_absolute() && !report.exists(),
         "absolute fresh final-owner report",
     )?;
-    let context = Gemma4CpuContext::new_hip_qualification()?;
+    let context = Context::new_hip_qualification()?;
     let harness = ResourceArbiter::process_shared().admit(
         &PhysicalDeviceKey::new("host", "system-ram")?,
         zerogravity::resource_arbiter::ResourceOwner::new(
@@ -253,15 +253,15 @@ pub fn run() -> Proof<()> {
     let input = context.prepare_text(&snapshot, prompt_text, None)?;
     let prompt_ids = input.ids().to_vec();
     need(prompt_ids.len() == 1, "genuine INITIAL1 source prompt")?;
-    let loaded = Gemma4CpuLoaded::open(snapshot.clone(), context.clone(), None)?;
+    let loaded = Model::open(snapshot.clone(), context.clone(), None)?;
     let (candidate, mut session) = block_on(loaded.load_hip_qualification(
         Device::Hip(Default::default()),
         input,
-        GemmaTextHostOwners {
+        TextHostOwners {
             additional_recorded_calls: 2,
             additional_frame_bytes: 32 * 1024 * 1024,
         },
-        GemmaTextStorage::ResidentProjections,
+        TextStorage::ResidentProjections,
         None,
     ))?;
     need(

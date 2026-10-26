@@ -104,14 +104,23 @@ fn inspect_real_local_model_config_geometry() {
     fs::write(&path, config.to_string()).unwrap();
     let output = binary().arg("inspect").arg(&path).output().unwrap();
     fs::remove_file(&path).unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let text = String::from_utf8_lossy(&output.stdout);
-    assert!(text.contains("Gemma4Moe"));
-    assert!(text.contains("CONFIG GEOMETRY ONLY"));
+    // A workspace consumer may also enable the application adapter.
+    if cfg!(feature = "model-gemma4") || output.status.success() {
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let text = String::from_utf8_lossy(&output.stdout);
+        assert!(text.contains("Gemma4Moe"));
+        assert!(text.contains("CONFIG GEOMETRY ONLY"));
+    } else {
+        assert_eq!(output.status.code(), Some(2));
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("Gemma config inspection adapter is not compiled")
+        );
+    }
 }
 
 #[test]

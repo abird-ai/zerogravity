@@ -187,8 +187,9 @@ impl Matrix {
                     == "sha256:eec72f473eb14854e7dcc1682257a531c1cea15f56030eaab2abc5dba5fbf634",
             "approved original image",
         )?;
-        let pins: Value =
-            serde_json::from_slice(include_bytes!("../../src/gemma4_cpu/source.json"))?;
+        let pins: Value = serde_json::from_slice(include_bytes!(
+            "../../../zerogravity-model-gemma4/src/execution/source.json"
+        ))?;
         need(receipt["source"] == pins, "same complete managed source")?;
         let parent = path.parent().ok_or("matrix parent")?.to_owned();
         let capture = json(

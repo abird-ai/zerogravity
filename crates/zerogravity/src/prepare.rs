@@ -1,8 +1,8 @@
 //! Cold preparation joins original source and model-family validation. It does
 //! not acquire data, publish a session root, select a backend or run inference.
 use crate::artifact::{ArtifactFormat, ArtifactInfo};
-use crate::model::{Family, ModelGeometry};
 use crate::qwen35::LoadedQwenModel;
+use crate::qwen35::config::{Family, ModelGeometry};
 use crate::tokenize::QwenTokenizer;
 use crate::{Error, Result};
 use std::path::Path;
@@ -66,7 +66,7 @@ impl PreparedQwen {
         let kv = (g
             .layers
             .iter()
-            .filter(|kind| **kind == crate::model::LayerKind::FullAttention)
+            .filter(|kind| **kind == crate::qwen35::config::LayerKind::FullAttention)
             .count() as u64)
             .checked_mul(g.num_key_value_heads)
             .and_then(|n| n.checked_mul(g.head_dim))
@@ -75,7 +75,7 @@ impl PreparedQwen {
             .ok_or_else(|| Error::Limit("state planning overflow".into()))?;
         let mut recurrent = 0u64;
         for (i, kind) in g.layers.iter().enumerate() {
-            if *kind == crate::model::LayerKind::LinearAttention {
+            if *kind == crate::qwen35::config::LayerKind::LinearAttention {
                 let name = format!("blk.{i}.ssm_norm.weight");
                 let norm = info
                     .tensors
@@ -128,7 +128,7 @@ impl PreparedQwen {
         config: &[u8],
         tokenizer: &[u8],
     ) -> Result<Self> {
-        let geometry = crate::model::ModelGeometry::from_json(config)?;
+        let geometry = crate::qwen35::config::ModelGeometry::from_json(config)?;
         LoadedQwenModel::validate_direct_geometry(&geometry)?;
         let tokenizer = QwenTokenizer::from_bytes(tokenizer)?;
         let weights =
@@ -234,7 +234,7 @@ impl PreparedQwen {
             }],
         )?;
         let config_bytes = config.read_verified(config_file, 1024 * 1024)?;
-        let geometry = crate::model::ModelGeometry::from_json(&config_bytes)?;
+        let geometry = crate::qwen35::config::ModelGeometry::from_json(&config_bytes)?;
         LoadedQwenModel::validate_direct_geometry(&geometry)?;
         let tokenizer_bytes = tokenizer.read_verified(tokenizer_file, 64 * 1024 * 1024)?;
         let tokenizer = QwenTokenizer::from_bytes(&tokenizer_bytes)?;

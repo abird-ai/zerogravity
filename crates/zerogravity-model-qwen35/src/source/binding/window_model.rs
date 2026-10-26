@@ -156,7 +156,7 @@ mod source_plan;
 pub use full_model_source::{BoundFullModelSource, BoundPromptCall};
 mod prepare;
 pub use prepare::{
-    PreparedFinalRmsSource, PreparedRmsSource,
     ComponentImplementation, ComponentKernelCapture, ComponentOutput, GdnKernelCapture,
-    PreparedComponent, PreparedGdnParameters, PreparedPlan, ReferenceKernelCapture,
+    PreparedComponent, PreparedFinalRmsSource, PreparedGdnParameters, PreparedPlan,
+    PreparedRmsSource, ReferenceKernelCapture,
 };

@@ -11,7 +11,7 @@ use zerogravity::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, Resource
 const SNAPSHOT: &str = "ba32b7693d0f7dcbdf4f00f94d13bd61c838e2d7a927f1879817cd5e74fca8b1";
 pub fn publish(stage: &Path) -> Proof<()> {
     need(stage.is_absolute(), "explicit transferred source stage")?;
-    let _context = zerogravity::gemma4_cpu::Gemma4CpuContext::new_hip_qualification()?;
+    let _context = zerogravity::gemma4::execution::Context::new_hip_qualification()?;
     let _control = ResourceArbiter::process_shared().admit(
         &PhysicalDeviceKey::new("host", "system-ram")?,
         ResourceOwner::new("approved-source-transfer", "manifest-control")?,

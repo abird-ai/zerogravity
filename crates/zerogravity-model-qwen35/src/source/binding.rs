@@ -118,10 +118,10 @@ pub use window::full_cpu::{
 pub use window::{OriginalWindowOperators, WindowOperatorPlan};
 #[cfg(all(feature = "source-binding", target_os = "linux"))]
 pub use window_model::{
-    PreparedFinalRmsSource, PreparedRmsSource,
     BoundFullModelSource, BoundPromptCall, ComponentImplementation, ComponentKernelCapture,
     ComponentOutput, GdnKernelCapture, OriginalWindowModelSource, PreparedComponent,
-    PreparedGdnParameters, PreparedPlan, ReferenceKernelCapture,
+    PreparedFinalRmsSource, PreparedGdnParameters, PreparedPlan, PreparedRmsSource,
+    ReferenceKernelCapture,
 };
 
 #[cfg(all(feature = "source-binding", target_os = "linux"))]

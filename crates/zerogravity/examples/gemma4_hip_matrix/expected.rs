@@ -181,8 +181,9 @@ impl Matrix {
                     == "sha256:eec72f473eb14854e7dcc1682257a531c1cea15f56030eaab2abc5dba5fbf634",
             "approved original image",
         )?;
-        let pins: Value =
-            serde_json::from_slice(include_bytes!("../../src/gemma4_cpu/source.json"))?;
+        let pins: Value = serde_json::from_slice(include_bytes!(
+            "../../../zerogravity-model-gemma4/src/execution/source.json"
+        ))?;
         need(receipt["source"] == pins, "same complete managed source")?;
         let parent = path.parent().ok_or("matrix parent")?.to_owned();
         let capture = json(
@@ -459,11 +460,11 @@ fn values(actual: &[u8]) -> Result<Vec<f32>> {
         .map(|w| f32::from_bits(u32::from_ne_bytes(w.try_into().expect("whole F32 word"))))
         .collect())
 }
-impl zerogravity_gpu::GemmaTextObserver for Expected {
+impl zerogravity_gpu::TextObserver for Expected {
     fn completed_producer(
         &mut self,
         position: usize,
-        observation: &zerogravity::gemma4::text::Gemma4Bf16Observation,
+        observation: &zerogravity::accelerator::program::TextObservation,
         actual: &[u8],
     ) -> Result<()> {
         let checked = (|| -> Proof<()> {

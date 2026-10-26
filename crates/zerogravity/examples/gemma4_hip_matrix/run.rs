@@ -11,16 +11,16 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    task::{Context, Poll, Wake, Waker},
+    task::{Poll, Wake, Waker},
     thread,
 };
 use zerogravity::{
     Error,
     cache::{CacheOptions, CacheStore},
-    gemma4_cpu::{Gemma4CpuContext, Gemma4CpuInput, Gemma4CpuLoaded},
+    gemma4::execution::{Context, Input, Model},
     resource_arbiter::{PhysicalDeviceKey, ResourceArbiter},
 };
-use zerogravity_gpu::{Device, Gemma4Bf16GpuCandidate, Gemma4Bf16GpuSession, GemmaTextHostOwners};
+use zerogravity_gpu::{Bf16TextCandidate, Bf16TextSession, Device, TextHostOwners};
 struct ThreadWake(thread::Thread);
 impl Wake for ThreadWake {
     fn wake(self: Arc<Self>) {
@@ -32,7 +32,7 @@ impl Wake for ThreadWake {
 }
 fn block_on<F: Future>(future: F) -> F::Output {
     let waker = Waker::from(Arc::new(ThreadWake(thread::current())));
-    let mut cx = Context::from_waker(&waker);
+    let mut cx = std::task::Context::from_waker(&waker);
     let mut future = pin!(future);
     loop {
         match future.as_mut().poll(&mut cx) {
@@ -60,14 +60,14 @@ struct Tracing<'a> {
     inner: &'a mut Expected,
     observed: &'a mut Observation,
 }
-impl zerogravity_gpu::GemmaTextObserver for Tracing<'_> {
+impl zerogravity_gpu::TextObserver for Tracing<'_> {
     fn completed_producer(
         &mut self,
         p: usize,
-        o: &zerogravity::gemma4::text::Gemma4Bf16Observation,
+        o: &zerogravity::accelerator::program::TextObservation,
         b: &[u8],
     ) -> zerogravity::Result<()> {
-        zerogravity_gpu::GemmaTextObserver::completed_producer(self.inner, p, o, b)
+        zerogravity_gpu::TextObserver::completed_producer(self.inner, p, o, b)
     }
     fn completed_kv(
         &mut self,
@@ -77,7 +77,7 @@ impl zerogravity_gpu::GemmaTextObserver for Tracing<'_> {
         active: usize,
         b: &[u8],
     ) -> zerogravity::Result<()> {
-        zerogravity_gpu::GemmaTextObserver::completed_kv(self.inner, prior, d, v, active, b)?;
+        zerogravity_gpu::TextObserver::completed_kv(self.inner, prior, d, v, active, b)?;
         if prior && active > 0 {
             self.observed.prior += 1;
         } else if !prior && active == self.observed.frontier {
@@ -127,7 +127,7 @@ fn compared(
     Ok(report)
 }
 fn completed(
-    s: &mut Gemma4Bf16GpuSession,
+    s: &mut Bf16TextSession,
     e: &mut Expected,
     call: usize,
     events: &mut Vec<Value>,
@@ -206,11 +206,11 @@ fn completed(
     Ok(true)
 }
 fn trajectory(
-    s: &mut Gemma4Bf16GpuSession,
+    s: &mut Bf16TextSession,
     e: &mut Expected,
     start: usize,
     events: &mut Vec<Value>,
-    decoder: &Gemma4CpuInput,
+    decoder: &Input,
 ) -> Proof<bool> {
     let name = e.cell.request.name.clone();
     for call in start..e.cell.calls.len() {
@@ -246,14 +246,14 @@ fn trajectory(
     Ok(true)
 }
 struct BorrowedObserver<'a, 'b>(&'a std::cell::RefCell<&'b mut Expected>);
-impl zerogravity_gpu::GemmaTextObserver for BorrowedObserver<'_, '_> {
+impl zerogravity_gpu::TextObserver for BorrowedObserver<'_, '_> {
     fn completed_producer(
         &mut self,
         p: usize,
-        o: &zerogravity::gemma4::text::Gemma4Bf16Observation,
+        o: &zerogravity::accelerator::program::TextObservation,
         b: &[u8],
     ) -> zerogravity::Result<()> {
-        zerogravity_gpu::GemmaTextObserver::completed_producer(&mut **self.0.borrow_mut(), p, o, b)
+        zerogravity_gpu::TextObserver::completed_producer(&mut **self.0.borrow_mut(), p, o, b)
     }
     fn completed_kv(
         &mut self,
@@ -263,15 +263,15 @@ impl zerogravity_gpu::GemmaTextObserver for BorrowedObserver<'_, '_> {
         a: usize,
         b: &[u8],
     ) -> zerogravity::Result<()> {
-        zerogravity_gpu::GemmaTextObserver::completed_kv(&mut **self.0.borrow_mut(), p, d, v, a, b)
+        zerogravity_gpu::TextObserver::completed_kv(&mut **self.0.borrow_mut(), p, d, v, a, b)
     }
 }
 /// Pre-cancel, completed-Ready Drop and post-completion refusal/late-cancel on
 /// the ORIGINAL session: no publication, no root or private-feedback change.
 fn cancelled_and_discarded(
-    s: &mut Gemma4Bf16GpuSession,
+    s: &mut Bf16TextSession,
     e: &mut Expected,
-    loaded: &Arc<Gemma4CpuLoaded>,
+    loaded: &Arc<Model>,
     events: &mut Vec<Value>,
 ) -> Proof<bool> {
     let before = s.binding();
@@ -357,11 +357,11 @@ struct UnknownObserver {
     completed: usize,
     stage: &'static str,
 }
-impl zerogravity_gpu::GemmaTextObserver for UnknownObserver {
+impl zerogravity_gpu::TextObserver for UnknownObserver {
     fn completed_producer(
         &mut self,
         _: usize,
-        o: &zerogravity::gemma4::text::Gemma4Bf16Observation,
+        o: &zerogravity::accelerator::program::TextObservation,
         _: &[u8],
     ) -> zerogravity::Result<()> {
         if o.stage == self.stage {
@@ -387,9 +387,9 @@ impl zerogravity_gpu::GemmaTextObserver for UnknownObserver {
 /// three full traversals of one prompt: ordinary, instrumented all-hit and
 /// ordinary observer-free hit. Every completed counter precedes its snapshot.
 fn resident_rows(
-    candidate: &Arc<Gemma4Bf16GpuCandidate>,
+    candidate: &Arc<Bf16TextCandidate>,
     matrix: &Matrix,
-    loaded: &Arc<Gemma4CpuLoaded>,
+    loaded: &Arc<Model>,
     ids: &[Arc<[u32]>],
     events: &mut Vec<Value>,
 ) -> Proof<bool> {
@@ -624,9 +624,9 @@ pub fn run() -> Proof<()> {
         "resident" | "resident-unknown" | "resident-row-unknown"
     );
     let storage = if resident {
-        zerogravity_gpu::GemmaTextStorage::ResidentProjections
+        zerogravity_gpu::TextStorage::ResidentProjections
     } else {
-        zerogravity_gpu::GemmaTextStorage::Streamed
+        zerogravity_gpu::TextStorage::Streamed
     };
     let provider = if resident { 20u64 } else { 16u64 } * 1024 * 1024 * 1024;
     let invocation = PathBuf::from(&args[0]);
@@ -636,7 +636,7 @@ pub fn run() -> Proof<()> {
         "absolute expected/fresh report",
     )?;
     // The canonical larger host contract precedes source and expected buffers.
-    let context = Gemma4CpuContext::new_hip_qualification()?;
+    let context = Context::new_hip_qualification()?;
     let harness = ResourceArbiter::process_shared().admit(
         &PhysicalDeviceKey::new("host", "system-ram")?,
         zerogravity::resource_arbiter::ResourceOwner::new(
@@ -665,11 +665,11 @@ pub fn run() -> Proof<()> {
         inputs.push(Some(input));
     }
     let decoder = context.prepare_text(&snapshot, "One", None)?;
-    let loaded = Gemma4CpuLoaded::open(snapshot.clone(), context.clone(), None)?;
+    let loaded = Model::open(snapshot.clone(), context.clone(), None)?;
     let (candidate, mut a) = block_on(loaded.load_hip_qualification(
         Device::Hip(Default::default()),
         inputs[0].take().ok_or("genuine first prepared text")?,
-        GemmaTextHostOwners {
+        TextHostOwners {
             additional_recorded_calls: 7,
             additional_frame_bytes: 32 * 1024 * 1024,
         },

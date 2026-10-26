@@ -174,7 +174,7 @@ fn actual_qwen_symbolic_forward_covers_source_ops_and_private_domains() {
     }
 }
 
-use zerogravity::weights::CpuWeights;
+use zerogravity::cpu::source::CpuWeights;
 
 fn float_at(buf: &[u8], offset: usize) -> f32 {
     f32::from_le_bytes(buf[offset..offset + 4].try_into().expect("f32 fixture"))
@@ -963,7 +963,7 @@ fn gdn_silu_completion_failure_preserves_nonzero_root() {
                 .iter()
                 .enumerate()
                 .map(|(i, &x)| {
-                    let y = zerogravity::math::ggml_source_silu(x);
+                    let y = zerogravity::cpu::ops::ggml_source_silu(x);
                     region.multiplier.map_or(y, |m| m[i] * y)
                 })
                 .collect();
@@ -1599,9 +1599,9 @@ fn remaining_operator_proposals_preserve_nonzero_root_on_failure() {
         accelerator::{
             BinaryRegion, EmbeddingRegion, MatVecKernel, MatVecRegion, RegionExecution, SiluRegion,
         },
-        math::ggml_source_silu,
+        cpu::ops::ggml_source_silu,
+        cpu::source::source_reference_embedding,
         qwen35::{LoadedQwenModel, source_binary},
-        weights::source_reference_embedding,
     };
     struct Proposal {
         kind: usize,

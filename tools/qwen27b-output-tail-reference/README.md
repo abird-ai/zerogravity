@@ -40,7 +40,7 @@ with existing approved offline Cargo inputs:
 ```sh
 CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=4 python3 scripts/native-gpu.py -- \
   cargo run --locked --offline --release -p zerogravity-model-qwen35 \
-    --features cpu,original-hf-binding --example qwen27b_output_tail -- \
+    --features cpu,source-binding --example qwen27b_output_tail -- \
     --source /ABS/APPROVED_HF_SNAPSHOT_FILES --report /ABS/FRESH_REPLAY.json
 ```
 
@@ -65,7 +65,7 @@ python3 scripts/native-gpu.py -- bash -c \
  'cd tools/qwen27b-output-tail-reference && PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v test_contract.py'
 CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=4 python3 scripts/native-gpu.py -- \
   cargo test --locked --offline -p zerogravity-model-qwen35 \
-    --features cpu,original-hf-binding --example qwen27b_output_tail
+    --features cpu,source-binding --example qwen27b_output_tail
 ```
 
 These fixtures open tiny fabricated files and metadata only. They do not import

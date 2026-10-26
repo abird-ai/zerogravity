@@ -19,12 +19,12 @@ use std::{
     path::PathBuf,
     pin::pin,
     sync::Arc,
-    task::{Context, Poll, Wake, Waker},
+    task::{Poll, Wake, Waker},
     thread,
 };
 use zerogravity::{
     cache::{CacheOptions, CacheStore},
-    gemma4_cpu::{Gemma4CpuContext, Gemma4CpuLoaded},
+    gemma4::execution::{Context, Model},
     json_allocation::{ValueConstruction, census_json, census_scratch_peak},
     qwen27b_gpu::{Qwen27bGpuContext, Qwen27bGpuLoaded},
     resource_arbiter::{
@@ -32,9 +32,8 @@ use zerogravity::{
     },
 };
 use zerogravity_gpu::{
-    Device, Gemma4Bf16GpuCandidate, Gemma4Bf16GpuSession, GemmaTextHostOwners,
-    HipSourceSetIdentity, Qwen27bSourceGpuSession, SharedHipNative, SourcePageEventProbeMode,
-    SourcePageProbeParts,
+    Bf16TextCandidate, Bf16TextSession, Bf16TextSourceSession, Device, HipSourceSetIdentity,
+    SharedHipNative, SourcePageEventProbeMode, SourcePageProbeParts, TextHostOwners,
 };
 const GIB: u64 = 1024 * 1024 * 1024;
 const PROBE_TEXT_CAP: usize = 8 * 1024;
@@ -284,7 +283,7 @@ impl Wake for ThreadWake {
 }
 fn block_on<F: Future>(future: F) -> F::Output {
     let waker = Waker::from(Arc::new(ThreadWake(thread::current())));
-    let mut cx = Context::from_waker(&waker);
+    let mut cx = std::task::Context::from_waker(&waker);
     let mut future = pin!(future);
     loop {
         match future.as_mut().poll(&mut cx) {
@@ -388,10 +387,10 @@ struct Counts {
 struct RefusedQwenObserver {
     frames: usize,
 }
-impl zerogravity_gpu::QwenSourceObserver for RefusedQwenObserver {
+impl zerogravity_gpu::TextSourceObserver for RefusedQwenObserver {
     fn completed(
         &mut self,
-        _: zerogravity_gpu::QwenSourceFrame,
+        _: zerogravity_gpu::TextSourceFrame,
         _: &[u8],
     ) -> zerogravity::Result<()> {
         self.frames += 1;
@@ -402,7 +401,7 @@ impl zerogravity_gpu::QwenSourceObserver for RefusedQwenObserver {
 }
 
 fn qstep(
-    s: &mut Qwen27bSourceGpuSession,
+    s: &mut Bf16TextSourceSession,
     expected: &mut qexpected::Expected,
     repeat: usize,
     call: usize,
@@ -430,7 +429,7 @@ fn qstep(
     Ok(())
 }
 fn gstep(
-    s: &mut Gemma4Bf16GpuSession,
+    s: &mut Bf16TextSession,
     expected: &mut gexpected::Expected,
     normal: bool,
     counts: &mut Counts,
@@ -477,7 +476,7 @@ fn gstep(
     Ok(())
 }
 fn new_gstep(
-    g: &Arc<Gemma4Bf16GpuCandidate>,
+    g: &Arc<Bf16TextCandidate>,
     ids: Arc<[u32]>,
     expected: &mut gexpected::Expected,
     counts: &mut Counts,
@@ -748,7 +747,7 @@ fn run() -> Proof<()> {
         _ => unreachable!("validated finite shared modes"),
     };
     let qctx = Qwen27bGpuContext::new_shared_hip_qualification()?;
-    let gctx = Gemma4CpuContext::new_shared_hip_qualification()?;
+    let gctx = Context::new_shared_hip_qualification()?;
     let arbiter = ResourceArbiter::process_shared();
     let host_key = PhysicalDeviceKey::new("host", "system-ram")?;
     let gpu_key = PhysicalDeviceKey::new("pci", "0000:c6:00.0")?;
@@ -768,8 +767,8 @@ fn run() -> Proof<()> {
     let g_ids: Arc<[u32]> = Arc::from(input.ids());
     need(g_ids.as_ref() == [4906], "actual managed One token")?;
     let q_source = Qwen27bGpuLoaded::open(q_snapshot.clone(), qctx.clone(), None)?;
-    let g_source = Gemma4CpuLoaded::open(g_snapshot.clone(), gctx.clone(), None)?;
-    let host = GemmaTextHostOwners {
+    let g_source = Model::open(g_snapshot.clone(), gctx.clone(), None)?;
+    let host = TextHostOwners {
         additional_recorded_calls: 1,
         additional_frame_bytes: 32 * 1024 * 1024,
     };

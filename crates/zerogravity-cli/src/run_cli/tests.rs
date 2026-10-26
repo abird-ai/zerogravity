@@ -516,10 +516,10 @@ fn every_explicit_device_compatible_before_source_effects() {
 /// Pure finite-route proposal and pre-Client seam unit coverage; no CUDA
 /// client or real source is touched here.
 #[cfg(all(
-    any(feature = "short-hf-serving", feature = "short-hf-run"),
+    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
     target_os = "linux"
 ))]
-mod short_hf_route_tests {
+mod qwen35_cuda_route_tests {
     use super::*;
     use zerogravity::resource_arbiter::{
         AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
@@ -580,8 +580,8 @@ mod short_hf_route_tests {
         }
     }
 
-    fn profile(host_bytes: usize, provider_bytes: usize) -> short_hf::FiniteRouteProfile {
-        short_hf::FiniteRouteProfile {
+    fn profile(host_bytes: usize, provider_bytes: usize) -> qwen35_cuda::FiniteRouteProfile {
+        qwen35_cuda::FiniteRouteProfile {
             host_bytes,
             provider_bytes,
         }
@@ -624,7 +624,8 @@ mod short_hf_route_tests {
             host(Some(64 * 1024 * MIB), Some(64 * 1024 * MIB)),
         ]);
         let (proposed, exclusions) =
-            short_hf::select_sm86_card(&request, &profile, &inv, &ResourceArbiter::new()).unwrap();
+            qwen35_cuda::select_sm86_card(&request, &profile, &inv, &ResourceArbiter::new())
+                .unwrap();
         assert_eq!(proposed.expect("fit card").id, fit.id);
         assert_eq!(
             exclusions,
@@ -689,7 +690,8 @@ mod short_hf_route_tests {
             host(Some(64 * 1024 * MIB), Some(64 * 1024 * MIB)),
         ]);
         let (proposed, exclusions) =
-            short_hf::select_sm86_card(&request, &profile, &inv, &ResourceArbiter::new()).unwrap();
+            qwen35_cuda::select_sm86_card(&request, &profile, &inv, &ResourceArbiter::new())
+                .unwrap();
         assert!(proposed.is_none(), "no card passes every condition");
         assert_eq!(
             exclusions,
@@ -698,12 +700,12 @@ mod short_hf_route_tests {
                 "pci:0000:04:00.0: multiple CUDA views share one PCI identity (MIG/partition ambiguous)",
                 "pci:0000:05:00.0: card capacity below the 5120MiB operator cap",
                 "pci:0000:06:00.0: insufficient current free memory after routing headroom",
-                "pci:0000:07:00.0: finite short-HF route requires qualified sm86 NVIDIA CUDA card",
-                "pci:0000:08:00.0: finite short-HF route requires qualified sm86 NVIDIA CUDA card",
+                "pci:0000:07:00.0: finite Qwen CUDA route requires qualified sm86 NVIDIA CUDA card",
+                "pci:0000:08:00.0: finite Qwen CUDA route requires qualified sm86 NVIDIA CUDA card",
             ]
         );
         assert_eq!(
-            refusal_message(short_hf::no_route_refusal(&profile, &exclusions)),
+            refusal_message(qwen35_cuda::no_route_refusal(&profile, &exclusions)),
             NO_CARD_REFUSAL
         );
     }
@@ -763,7 +765,7 @@ mod short_hf_route_tests {
                 host(Some(64 * 1024 * MIB), Some(64 * 1024 * MIB)),
             ]);
             let (proposed, exclusions) =
-                short_hf::select_sm86_card(&request, &profile, &inv, &arbiter).unwrap();
+                qwen35_cuda::select_sm86_card(&request, &profile, &inv, &arbiter).unwrap();
             assert!(proposed.is_none(), "{name}");
             assert_eq!(
                 exclusions,
@@ -799,7 +801,8 @@ mod short_hf_route_tests {
         let unfit_host = host(Some(64 * 1024 * MIB), Some(1));
         let inv = inventory(vec![amd, fit, unfit_host]);
         let (proposed, exclusions) =
-            short_hf::select_sm86_card(&request, &profile, &inv, &ResourceArbiter::new()).unwrap();
+            qwen35_cuda::select_sm86_card(&request, &profile, &inv, &ResourceArbiter::new())
+                .unwrap();
         assert!(proposed.is_none(), "host unfitness suppresses proposals");
         assert_eq!(
             exclusions.first().map(String::as_str),
@@ -807,7 +810,7 @@ mod short_hf_route_tests {
         );
         assert!(exclusions.len() >= 2, "card exclusions share the trace");
         assert_eq!(
-            refusal_message(short_hf::no_route_refusal(&profile, &exclusions)),
+            refusal_message(qwen35_cuda::no_route_refusal(&profile, &exclusions)),
             HOST_REFUSAL
         );
     }
@@ -828,7 +831,7 @@ mod short_hf_route_tests {
         );
         // No HOST observation is a hard state error, never a silent exclusion.
         let inv = inventory(vec![fit]);
-        assert!(short_hf::select_sm86_card(&request, &profile, &inv, &arbiter).is_err());
+        assert!(qwen35_cuda::select_sm86_card(&request, &profile, &inv, &arbiter).is_err());
         // An unknown HOST ceiling is a hard state error.
         let inv = inventory(vec![
             gpu(
@@ -842,7 +845,7 @@ mod short_hf_route_tests {
             ),
             host(None, None),
         ]);
-        assert!(short_hf::select_sm86_card(&request, &profile, &inv, &arbiter).is_err());
+        assert!(qwen35_cuda::select_sm86_card(&request, &profile, &inv, &arbiter).is_err());
         // An unavailable explicit device is a policy error, not an exclusion.
         let request = route_request(&["m.gguf", "--device", "gpu:5"]);
         let inv = inventory(vec![
@@ -857,16 +860,16 @@ mod short_hf_route_tests {
             ),
             host(Some(64 * 1024 * MIB), Some(64 * 1024 * MIB)),
         ]);
-        assert!(short_hf::select_sm86_card(&request, &profile, &inv, &arbiter).is_err());
+        assert!(qwen35_cuda::select_sm86_card(&request, &profile, &inv, &arbiter).is_err());
         // A fitting host with no GPUs refuses with the exact no-card limit.
         let request = route_request(&["m.gguf"]);
         let inv = inventory(vec![host(Some(64 * 1024 * MIB), Some(64 * 1024 * MIB))]);
         let (proposed, exclusions) =
-            short_hf::select_sm86_card(&request, &profile, &inv, &arbiter).unwrap();
+            qwen35_cuda::select_sm86_card(&request, &profile, &inv, &arbiter).unwrap();
         assert!(proposed.is_none());
         assert!(exclusions.is_empty());
         assert_eq!(
-            refusal_message(short_hf::no_route_refusal(&profile, &exclusions)),
+            refusal_message(qwen35_cuda::no_route_refusal(&profile, &exclusions)),
             NO_CARD_REFUSAL
         );
     }
@@ -874,8 +877,8 @@ mod short_hf_route_tests {
     #[test]
     fn decision_trace_fields_split_dry_run_from_executing_admission() {
         let mut dry = serde_json::json!({});
-        short_hf::dry_run_trace_status(&mut dry);
-        short_hf::dry_run_admission_trace(&mut dry);
+        qwen35_cuda::dry_run_trace_status(&mut dry);
+        qwen35_cuda::dry_run_admission_trace(&mut dry);
         assert_eq!(dry["dry_run"], serde_json::json!(true));
         assert_eq!(dry["reservation"], serde_json::json!("none"));
         assert_eq!(dry["pre_client_admission_gap"], serde_json::json!(true));
@@ -883,7 +886,7 @@ mod short_hf_route_tests {
         assert!(dry.get("advisory_boundary").is_none());
 
         let mut executing = serde_json::json!({});
-        short_hf::executing_admission_trace(&mut executing);
+        qwen35_cuda::executing_admission_trace(&mut executing);
         assert_eq!(
             executing["pre_client_admission"],
             serde_json::json!(
@@ -915,7 +918,7 @@ mod short_hf_route_tests {
                 let barrier = barrier.clone();
                 move || {
                     barrier.wait();
-                    short_hf::admit_pre_client_card(arbiter, key)
+                    qwen35_cuda::admit_pre_client_card(arbiter, key)
                 }
             });
             let b = scope.spawn({
@@ -923,7 +926,7 @@ mod short_hf_route_tests {
                 let key = &key;
                 move || {
                     barrier.wait();
-                    short_hf::admit_pre_client_card(arbiter, key)
+                    qwen35_cuda::admit_pre_client_card(arbiter, key)
                 }
             });
             (a.join().unwrap(), b.join().unwrap())
@@ -950,14 +953,14 @@ mod short_hf_route_tests {
                 .iter()
                 .map(String::as_str)
                 .collect::<Vec<_>>(),
-            ["short-hf-run"]
+            ["qwen35-cuda"]
         );
         // The immutable cap stays one shared budget while the hold is alive.
         assert!(arbiter.register(key.clone(), 1).is_err());
         drop(winner);
         // After the hold is released the loser retries successfully and the
         // budget returns to the exact pre-admission snapshot.
-        let retried = short_hf::admit_pre_client_card(&arbiter, &key).unwrap();
+        let retried = qwen35_cuda::admit_pre_client_card(&arbiter, &key).unwrap();
         drop(retried);
         let released = arbiter.snapshot(&key).unwrap();
         assert_eq!(released.reserved, fresh.reserved);
@@ -975,13 +978,13 @@ mod short_hf_route_tests {
         fenced.register_matching(key.clone(), 5120 * MIB).unwrap();
         fenced.fence_unknown_device(&key).unwrap();
         assert!(matches!(
-            &short_hf::admit_pre_client_card(&fenced, &key),
+            &qwen35_cuda::admit_pre_client_card(&fenced, &key),
             Err(Error::State(m)) if m == "physical device completion uncertain: fenced"
         ));
         let conflicting = ResourceArbiter::new();
         conflicting.register(key.clone(), 4096 * MIB).unwrap();
         assert!(matches!(
-            &short_hf::admit_pre_client_card(&conflicting, &key),
+            &qwen35_cuda::admit_pre_client_card(&conflicting, &key),
             Err(Error::State(m)) if m == "conflicting physical device budget attestation"
         ));
         // Idempotent same-cap registration leaves exactly one budget.
@@ -994,7 +997,7 @@ mod short_hf_route_tests {
             .unwrap();
         assert_eq!(idempotent.snapshot(&key).unwrap().limit, 5120 * MIB);
         assert!(idempotent.register(key.clone(), 5120 * MIB).is_err());
-        let hold = short_hf::admit_pre_client_card(&idempotent, &key).unwrap();
+        let hold = qwen35_cuda::admit_pre_client_card(&idempotent, &key).unwrap();
         drop(hold);
         assert_eq!(idempotent.snapshot(&key).unwrap().reserved, 0);
     }
@@ -1007,10 +1010,10 @@ mod short_hf_route_tests {
     }
 
     #[test]
-    #[ignore = "explicit physical short-HF dry-run; approved sm86 hardware and real source/native bundle, separate fresh owned process"]
-    fn physical_short_hf_dry_run_is_read_only_and_registers_nothing() -> Result<()> {
-        let source = absolute_env("ZG_SHORT_HF_SOURCE")?;
-        let native = absolute_env("ZG_SHORT_HF_NATIVE")?;
+    #[ignore = "explicit physical Qwen CUDA dry-run; approved sm86 hardware and real source/native bundle, separate fresh owned process"]
+    fn physical_qwen35_cuda_dry_run_is_read_only_and_registers_nothing() -> Result<()> {
+        let source = absolute_env("ZG_QWEN35_MODEL_DIR")?;
+        let native = absolute_env("ZG_QWEN35_CUDA_KERNEL_DIR")?;
         let source = source.to_str().ok_or_else(|| bad("UTF-8 source path"))?;
         let native = native.to_str().ok_or_else(|| bad("UTF-8 native path"))?;
         let request = config::resolve(
@@ -1086,11 +1089,11 @@ mod short_hf_route_tests {
         )?;
         let arbiter = ResourceArbiter::process_shared();
         assert!(arbiter.snapshot(&key).is_err());
-        let hold = short_hf::admit_pre_client_card(&arbiter, &key)?;
+        let hold = qwen35_cuda::admit_pre_client_card(&arbiter, &key)?;
         // A second route refuses with the arbiter's exact limit while the
         // first route holds the whole finite card budget.
         assert!(matches!(
-            &short_hf::admit_pre_client_card(&arbiter, &key),
+            &qwen35_cuda::admit_pre_client_card(&arbiter, &key),
             Err(Error::Limit(m)) if m == "physical device memory admission refused"
         ));
         let held = arbiter.snapshot(&key)?;

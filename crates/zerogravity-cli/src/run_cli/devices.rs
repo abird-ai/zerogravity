@@ -302,7 +302,7 @@ pub(super) fn discover() -> Result<Inventory> {
             d.backends.push("cuda:physical-binding-observed".into());
             d.provenance="CUDA cuDevice metadata without primary context +NVML exact UUID+full BDF/current free, capacity intersection; independent immutable source eligibility required".into();
             d.exclusion = if view.compute_capability != (8, 6) {
-                Some("finite short-HF route requires qualified sm86 profile".into())
+                Some("finite Qwen CUDA route requires qualified sm86 profile".into())
             } else if d.available.is_none() {
                 Some("NVML current free/capacity binding unavailable".into())
             } else {
@@ -419,10 +419,10 @@ fn now_ms() -> Result<u128> {
         .as_millis())
 }
 
-/// Host-only current availability/headroom check for the short-HF HOST policy.
+/// Host-only current availability/headroom check for the Qwen CUDA HOST policy.
 /// Reuses the same `/proc`/cgroup observation; no GPU discovery or second pool.
 #[cfg(all(
-    any(feature = "short-hf-serving", feature = "short-hf-run"),
+    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
     target_os = "linux"
 ))]
 pub(super) fn host_available(host_bytes: u64, headroom: &Headroom) -> Result<()> {
@@ -439,7 +439,7 @@ pub(super) fn host_available(host_bytes: u64, headroom: &Headroom) -> Result<()>
         .ok_or_else(|| Error::Limit("HOST availability below configured headroom".into()))?;
     if usable < host_bytes {
         return Err(Error::Limit(format!(
-            "short-HF HOST{}MiB plus {} bytes headroom exceeds current {usable} usable bytes",
+            "Qwen CUDA HOST{}MiB plus {} bytes headroom exceeds current {usable} usable bytes",
             host_bytes / (1024 * 1024),
             margin
         )));
@@ -449,7 +449,7 @@ pub(super) fn host_available(host_bytes: u64, headroom: &Headroom) -> Result<()>
 #[cfg(any(
     all(feature = "cpu", feature = "model-qwen35", feature = "text"),
     all(
-        any(feature = "short-hf-run", feature = "short-hf-serving"),
+        any(feature = "qwen35-cuda", feature = "qwen35-cuda-serving"),
         target_os = "linux"
     )
 ))]

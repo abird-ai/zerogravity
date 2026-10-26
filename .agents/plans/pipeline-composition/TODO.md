@@ -43,13 +43,31 @@ their existing numeric/source/physical acceptance gates.
 - Qualification-only Qwen dependencies and production-DAG enforcement remain
   open; this checkpoint does not establish complete package containment.
 
-## GPU guard repairs — 26 Oct
+## 41e9337 — GPU guard repairs
 
 - [x] Preserve projection-substitution refusal using actual descriptor extents;
   sort/deduplicate renamed capture inventories without changing native payloads.
   Repair generic one-row/required-domain fixtures; keep every negative assertion.
 - CUDA source suite:596 passed,39 explicit ignores, no physical/model execution.
-  All-target caller compilation/final gate remain pending the application batch.
+  All-target caller compilation/final gate are recorded below.
+
+## Application route checkpoint — 26 Oct
+
+- [x] Wire model-owned CPU/reference/CUDA entrypoints, fair serving sessions,
+  source-profile exports and renamed physical fixtures through common bindings.
+  Use semantic workload names and explicit token/request geometry.
+- [x] Assembled validation: full `scripts/check.sh` exit0; CUDA596 passed/39
+  ignored; final CUDA GPU/facade/CLI all-target compile +format exit0; tool and
+  HIP/Vulkan feature compilation exit0. Original owners closed/EOF/reaped.
+  After the full CPU gate, only a CUDA-only test export gained its actual profile
+  field; final compilation covers it. Source/CPU binary pins and exact coverage:
+  [coverage](../../runs/modular-architecture-20261026/root/final-coverage.json).
+- [x] Sign scoped source checkpoints on MAIN; preserve user README; no push.
+- Architecture checker14 fixture cases pass. Live workspace diagnostic exit1:
+  GPU→Qwen optional qualification dependency remains; checker is not a green gate.
+- No new trained-model/physical qualification, optimized CUDA release, matched C16
+  result or x2 capture. Exact source read grants remain absent; gfx90c hold and
+  trusted x2 ED25519-key blocker remain. Historical exit137 cause is unknown.
 
 ## Uncommitted
 
@@ -61,22 +79,17 @@ new .8B48–50/long-context/CPU-HIP-Vulkan work; full27B/Gemma model suites waiv
 for this refactor, not marked passed. Existing engine/ownership/numerical gates
 and local gfx90c hold remain.
 
-- [~] Move family config/tensor roles/source binding from artifacts into model
-  crates; one cold application inspection/registration seam, no feature-based
-  false support. Preserve narrow inspector vs source-qualified model authority.
-- [~] Neutralize core family descriptors while retaining typed semantic/numerical
-  contracts and one ForwardPlan; move closed family recipes to their owner.
-- [~] Separate family GPU adapters from backend physical execution; remove
-  reverse model dependencies before optional model→backend wiring. Reuse already
-  shared head/projection/transport/flight machinery.
-- [ ] Replace production workload nicknames and report ordinals with semantic
-  names plus explicit token/request counts; map historical names without editing
-  old receipts. `cached_decode_matches_single_request` keeps its exact policy.
-- [ ] Align all family entrypoints with common correctness process and template;
-  enforce ownership/dependency rules with focused boundary/feature checks.
-- [ ] ROOT review/integrate coherent source batch, run affected checks and final
-  complete `scripts/check.sh`; sign scoped commits, preserve README/worktrees,
-  no pushes. Full27B/Gemma model suites remain explicitly unrun.
+- [ ] Move remaining Qwen qualification policy/fixtures to model/tool owners;
+  remove `zerogravity-gpu`→`zerogravity-model-qwen35` manifest dependency and
+  enable the existing strict package-DAG checker. Do not add an allowlist.
+- [ ] Extend source-bound .8B qualification to fresh47–50-token prompts, genuine
+  long contexts and original BF16 CPU/HIP/Vulkan routes. Existing cached
+  frontiers48–50 and source fixtures do not establish those capabilities.
+- [ ] After legitimate source access: current independent B4 physical/CPU suite,
+  then optimized release +quiet same-attempt C16 for both small models; then
+  trusted x2 original27B full-window capture and exit137 investigation.
+- [ ] Reconcile preserved side worktrees after this MAIN checkpoint; no destructive
+  reset, stash replay or source overwrite. User deferred that work while MAIN was dirty.
 
 ### Shared HIP / model composition checkpoint — 24 Oct
 
