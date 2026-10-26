@@ -537,14 +537,18 @@ mod source_operator_tests {
         SourceIdentity,
         program::{
             AttentionGeometry, SourceCall, SourceParameter, SourceQkRotaryGeometry, SourceRows,
-            TeacherSpan,
+            TextCallGeometry,
         },
     };
 
     fn qk(theta: f32, query_heads: usize) -> Result<SourceOperator> {
         let source = SourceIdentity::for_new_allocation()?;
         let call = SourceCall::new(
-            SourceRows::from_teacher_span(TeacherSpan::new(source, 0, 512, 248320, &[1])?, 248320)?,
+            SourceRows::new(
+                TextCallGeometry::new(source, 248320, 512)?,
+                0,
+                Arc::from([1]),
+            )?,
             SourceCallMode::Prefill,
         )?;
         let parameters = ["q", "k"]

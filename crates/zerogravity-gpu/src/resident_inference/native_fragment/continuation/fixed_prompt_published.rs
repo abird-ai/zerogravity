@@ -109,20 +109,14 @@ impl AttemptPhaseBinding {
 mod tests {
     use super::*;
     use zerogravity_core::accelerator::SourceIdentity;
-    use zerogravity_core::accelerator::program::SourceCallMode;
+    use zerogravity_core::accelerator::program::{SourceCallMode, SourceRows, TextCallGeometry};
     use zerogravity_core::session_root::SessionAuthority;
 
     fn decode(source: SourceIdentity, base: usize) -> SourceCall {
-        let rows = zerogravity_core::accelerator::program::SourceRows::from_teacher_span(
-            zerogravity_core::accelerator::program::TeacherSpan::new(
-                source,
-                base,
-                512,
-                248320,
-                &[11],
-            )
-            .unwrap(),
-            248320,
+        let rows = SourceRows::new(
+            TextCallGeometry::new(source, 248320, 512).unwrap(),
+            base,
+            Arc::from([11]),
         )
         .unwrap();
         SourceCall::new(rows, SourceCallMode::Decode).unwrap()

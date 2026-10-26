@@ -628,7 +628,7 @@ mod tests {
     }
     #[test]
     fn selection_requires_actual_value_producer_indices_and_rows() {
-        let plan = graph(vec![]);
+        let plan = graph(vec![StateSlot::Conv(ConvDomain(0))]);
         let selection = |output, boundaries, selected_row, node| {
             SourceSelection::new(output, None, None, boundaries, selected_row, 0, node)
         };

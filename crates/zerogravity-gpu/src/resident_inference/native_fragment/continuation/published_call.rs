@@ -38,13 +38,14 @@ pub(super) fn require_published_call(
 mod tests {
     use super::*;
     use zerogravity_core::accelerator::SourceIdentity;
-    use zerogravity_core::accelerator::program::{SourceRows, TeacherSpan};
+    use zerogravity_core::accelerator::program::{SourceRows, TextCallGeometry};
     use zerogravity_core::session_root::SessionAuthority;
     fn call(source: SourceIdentity, mode: SourceCallMode, base: usize, rows: usize) -> SourceCall {
         SourceCall::new(
-            SourceRows::from_teacher_span(
-                TeacherSpan::new(source, base, 512, 248320, &vec![7; rows]).unwrap(),
-                248320,
+            SourceRows::new(
+                TextCallGeometry::new(source, 248320, 512).unwrap(),
+                base,
+                std::sync::Arc::from(vec![7; rows]),
             )
             .unwrap(),
             mode,

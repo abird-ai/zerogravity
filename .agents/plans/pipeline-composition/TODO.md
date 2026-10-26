@@ -32,7 +32,7 @@ their existing numeric/source/physical acceptance gates.
 - CPU/model/common workspace all-target compile passes on assembled MAIN.
   CUDA caller migration remains in progress; final assembled gate pending.
 
-## GPU source checkpoint — 26 Oct
+## c90b8cd — GPU providers and prepared bindings
 
 - [x] Group CUDA/HIP/Vulkan providers and quantization modules; retain original
   native source/ABI/kernel payloads and independent physical owners.
@@ -42,6 +42,14 @@ their existing numeric/source/physical acceptance gates.
   HIP/Vulkan feature builds pass. CUDA source tests/final gate still pending.
 - Qualification-only Qwen dependencies and production-DAG enforcement remain
   open; this checkpoint does not establish complete package containment.
+
+## GPU guard repairs — 26 Oct
+
+- [x] Preserve projection-substitution refusal using actual descriptor extents;
+  sort/deduplicate renamed capture inventories without changing native payloads.
+  Repair generic one-row/required-domain fixtures; keep every negative assertion.
+- CUDA source suite:596 passed,39 explicit ignores, no physical/model execution.
+  All-target caller compilation/final gate remain pending the application batch.
 
 ## Uncommitted
 

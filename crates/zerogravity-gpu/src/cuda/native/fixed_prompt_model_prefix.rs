@@ -461,7 +461,30 @@ fn require_layer3_extension(nodes: &[PlanNode]) -> Result<()> {
                 SourceOperatorKind::Projection { selected_row: None }
             ),
         };
+        descriptor.validate()?;
+        let (input_widths, output_widths): (&[usize], &[usize]) = match index {
+            36 => (&[2048], &[2048]),
+            37 => (&[2048, 2048], &[2048]),
+            38 => (&[2048], &[1024]),
+            39 | 43 => (&[1024, 1024], &[1024, 1024]),
+            40 => (&[1024], &[7168]),
+            41 => (&[7168], &[3584]),
+            42 => (&[3584], &[1024]),
+            _ => {
+                return Err(Error::State(
+                    "fixed prompt tail operation index differs".into(),
+                ));
+            }
+        };
         if !kind
+            || descriptor
+                .input_elements()?
+                .into_iter()
+                .ne(input_widths.iter().map(|width| 47 * width))
+            || descriptor
+                .output_elements()?
+                .into_iter()
+                .ne(output_widths.iter().map(|width| 47 * width))
             || descriptor.call() != call
             || node.state.is_some()
             || !matches!(

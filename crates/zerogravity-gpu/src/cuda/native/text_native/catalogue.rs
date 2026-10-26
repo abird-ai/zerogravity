@@ -6,7 +6,7 @@ use zerogravity_core::Result;
 /// Actual union across five prompt spans and seven natural continuations.
 /// Activation is separately admitted by FixedPromptMlpQualificationInputs.
 pub fn text_required_images(capture: TextKernelCapture) -> Result<Vec<ProjectionImage>> {
-    let images = match capture.catalogue() {
+    let mut images = match capture.catalogue() {
         NativeCatalogue::Source1024 => vec![
             ProjectionImage::AmpereBf16Gemm128x64Sm80,
             ProjectionImage::AmpereBf16Gemm64x64Stages64x5Sm80,
@@ -45,6 +45,8 @@ pub fn text_required_images(capture: TextKernelCapture) -> Result<Vec<Projection
             ProjectionImage::TextFaSplitCombineSm80,
         ],
     };
+    images.sort_by_cached_key(|kind| format!("{kind:?}"));
+    images.dedup();
     Ok(images)
 }
 
@@ -58,6 +60,8 @@ pub fn text_required_images_for_cohort(
     if cohort_b4 && capture.wide() {
         images.push(ProjectionImage::Cohort2BAmpere64SlicedSm80);
     }
+    images.sort_by_cached_key(|kind| format!("{kind:?}"));
+    images.dedup();
     Ok(images)
 }
 

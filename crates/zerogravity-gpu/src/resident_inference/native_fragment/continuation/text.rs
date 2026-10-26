@@ -98,7 +98,7 @@ impl AttemptPhaseBinding {
 mod tests {
     use super::*;
     use zerogravity_core::accelerator::SourceIdentity;
-    use zerogravity_core::accelerator::program::{SourceCallMode, SourceRows, TeacherSpan};
+    use zerogravity_core::accelerator::program::{SourceCallMode, SourceRows, TextCallGeometry};
     use zerogravity_core::session_root::SessionAuthority;
     fn call(
         source: SourceIdentity,
@@ -107,9 +107,10 @@ mod tests {
         ids: &[u32],
     ) -> Result<SourceCall> {
         SourceCall::new(
-            SourceRows::from_teacher_span(
-                TeacherSpan::new(source, base, 512, 248320, ids)?,
-                248320,
+            SourceRows::new(
+                TextCallGeometry::new(source, 248320, 512)?,
+                base,
+                Arc::from(ids),
             )?,
             mode,
         )

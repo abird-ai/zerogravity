@@ -1,12 +1,13 @@
 //! Pure metadata refusals only; no committed GPU packet or model qualification.
 use super::*;
 use zerogravity_core::accelerator::SourceIdentity;
-use zerogravity_core::accelerator::program::{SourceRows, TeacherSpan};
+use zerogravity_core::accelerator::program::{SourceRows, TextCallGeometry};
 use zerogravity_core::session_root::SessionAuthority;
 fn call(source: SourceIdentity, base: usize, mode: SourceCallMode, id: u32) -> SourceCall {
-    let rows = SourceRows::from_teacher_span(
-        TeacherSpan::new(source, base, 512, 248320, &[id]).unwrap(),
-        248320,
+    let rows = SourceRows::new(
+        TextCallGeometry::new(source, 248320, 512).unwrap(),
+        base,
+        Arc::from([id]),
     )
     .unwrap();
     SourceCall::new(rows, mode).unwrap()
