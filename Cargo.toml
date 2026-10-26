@@ -8,6 +8,7 @@ members = [
     "crates/zerogravity-gpu",
     "crates/zerogravity",
     "crates/zerogravity-cli",
+    "tools/gpu-qualify",
 ]
 default-members = ["crates/zerogravity", "crates/zerogravity-cli"]
 exclude = [

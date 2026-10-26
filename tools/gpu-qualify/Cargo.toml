@@ -1,0 +1,25 @@
+[package]
+name = "zerogravity-gpu-qualify"
+version.workspace = true
+edition = "2024"
+rust-version = "1.95"
+publish = false
+license = "MIT"
+
+[features]
+default = []
+qualification = ["zerogravity-gpu/qualification"]
+vulkan = ["zerogravity-gpu/vulkan"]
+cuda = ["zerogravity-gpu/cuda"]
+hip = ["zerogravity-gpu/hip"]
+hardware-abort-probe = ["qualification", "zerogravity-gpu/hardware-abort-probe"]
+portable-checkpoint = ["qualification", "zerogravity-gpu/portable-checkpoint"]
+diagnostic-gdn-trace = ["qualification", "zerogravity-gpu/diagnostic-gdn-trace"]
+
+[dependencies]
+zerogravity-gpu = { path = "../../crates/zerogravity-gpu", default-features = false }
+
+[[bin]]
+name = "zerogravity-gpu-probe"
+path = "src/main.rs"
+required-features = ["qualification"]

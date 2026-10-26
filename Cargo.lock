@@ -5518,6 +5518,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "zerogravity-gpu-qualify"
+version = "0.1.0"
+dependencies = [
+ "zerogravity-gpu",
+]
+
+[[package]]
 name = "zerogravity-model-gemma4"
 version = "0.1.0"
 dependencies = [
