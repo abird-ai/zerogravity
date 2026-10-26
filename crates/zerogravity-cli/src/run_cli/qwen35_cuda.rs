@@ -1,16 +1,31 @@
 //! Qwen CUDA route selection and ordinary capability refusal.
 use super::*;
 
-pub(super) fn selected(model: &zerogravity::pipeline::ModelInstance) -> bool {
-    model.native_artifacts.is_some()
-        || model
-            .source
-            .as_deref()
-            .and_then(|s| match SourceSelector::parse(s).ok()? {
-                SourceSelector::Local(p) => Some(p.is_dir()),
-                _ => None,
-            })
-            .unwrap_or(false)
+pub(super) fn selected(backend: &Backend, model: &zerogravity::pipeline::ModelInstance) -> bool {
+    if !matches!(backend, Backend::Auto | Backend::Cuda) {
+        return false;
+    }
+    if model.native_artifacts.is_some() {
+        return true;
+    }
+    if *backend != Backend::Cuda {
+        return false;
+    }
+    let qwen_target = model.target.is_empty()
+        || model.target.starts_with("qwen3.5-")
+        || model.target.starts_with("qwen35-");
+    qwen_target
+        && model.source.as_deref().is_some_and(|source| {
+            matches!(
+                SourceSelector::parse(source),
+                Ok(SourceSelector::Local(path))
+                    if !path.extension().is_some_and(|extension| {
+                        extension
+                            .to_str()
+                            .is_some_and(|extension| extension.eq_ignore_ascii_case("gguf"))
+                    })
+            )
+        })
 }
 
 /// Ordinary builds refuse before inventory/NVML/CUDA metadata. Only the
@@ -20,9 +35,15 @@ pub(super) fn require_route_capability() -> Result<()> {
     {
         Ok(())
     }
-    #[cfg(not(feature = "qwen35-cuda-qualification"))]
+    #[cfg(all(feature = "qwen35-cuda", not(feature = "qwen35-cuda-qualification")))]
     {
         zerogravity::qwen35_cuda::require_ordinary_capability()
+    }
+    #[cfg(not(feature = "qwen35-cuda"))]
+    {
+        Err(Error::Unsupported(
+            "Qwen CUDA requires the qwen35-cuda feature".into(),
+        ))
     }
 }
 
@@ -32,7 +53,7 @@ pub(super) fn run_route(
     _: devices::Inventory,
     _: Vec<devices::Observation>,
 ) -> Result<()> {
-    zerogravity::qwen35_cuda::require_ordinary_capability()
+    require_route_capability()
 }
 
 #[cfg(feature = "qwen35-cuda-qualification")]

@@ -521,7 +521,7 @@ pub(crate) fn full_model_private_bound(
     Ok(bound)
 }
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod natural;
 
 mod fixed_prompt;

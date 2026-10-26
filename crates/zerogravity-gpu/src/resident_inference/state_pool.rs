@@ -1,7 +1,7 @@
 //! Shared .8B/2B root checkout: fresh logical leases, unchanged domain binding.
 use super::*;
 #[cfg(any(
-    feature = "cuda-native",
+    feature = "cuda-native-qualification",
     feature = "gemma-bf16-qualification",
     feature = "qwen-source-qualification"
 ))]
@@ -86,7 +86,7 @@ where
 
 impl ResidentModel {
     #[cfg(any(
-        feature = "cuda-native",
+        feature = "cuda-native-qualification",
         feature = "gemma-bf16-qualification",
         feature = "qwen-source-qualification"
     ))]

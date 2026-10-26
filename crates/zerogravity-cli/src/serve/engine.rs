@@ -348,7 +348,11 @@ pub(super) enum Presentation {
 #[derive(Clone)]
 pub(super) enum TextTokenizer {
     Shared(Arc<QwenTokenizer>),
-    #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+    #[cfg(all(
+        feature = "qwen35-cuda-serving",
+        feature = "qwen35-cuda-qualification",
+        target_os = "linux"
+    ))]
     FixedPrompt(Arc<zerogravity::qwen35_cuda::fixed_prompt::Model>),
     #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
     Qwen35Cuda(Arc<zerogravity::qwen35_cuda::Model>),
@@ -358,7 +362,11 @@ impl std::ops::Deref for TextTokenizer {
     fn deref(&self) -> &QwenTokenizer {
         match self {
             Self::Shared(tokenizer) => tokenizer,
-            #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+            #[cfg(all(
+                feature = "qwen35-cuda-serving",
+                feature = "qwen35-cuda-qualification",
+                target_os = "linux"
+            ))]
             Self::FixedPrompt(model) => model.tokenizer(),
             #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
             Self::Qwen35Cuda(model) => model.tokenizer(),

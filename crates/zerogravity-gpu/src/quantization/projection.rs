@@ -20,6 +20,7 @@ use crate::projection_f32::f32_ggml_dot_gemv;
 use crate::source_accumulation::{self, SourceAccumulation};
 #[cfg(feature = "qualification")]
 use cubecl::Device;
+#[cfg(feature = "qualification")]
 use cubecl::prelude::*;
 
 #[cfg(feature = "qualification")]

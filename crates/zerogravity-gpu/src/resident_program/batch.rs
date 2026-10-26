@@ -713,7 +713,7 @@ impl BatchProgram {
                 .filter(|_| output == ResidentOutput::Logits)
                 .map(|id| self.inner.values[id.0 as usize].clone()),
             proposals,
-            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             cohort_proposals: None,
             status: self.inner.status.clone(),
             quant_status,

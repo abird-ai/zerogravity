@@ -19,8 +19,12 @@ source-page-event-probe = ["hip", "hardware-abort-probe"]
 gemma-bf16-qualification = ["qualification", "dep:sha2"]
 qwen-source-qualification = ["qualification", "hip", "dep:sha2", "dep:cubecl-hip"]
 portable-checkpoint = ["zerogravity-core/diagnostic-cpu-checkpoint"]
-cuda-native = ["qualification", "cuda", "dep:cubecl-cuda", "cubecl-cuda/owned-cubin", "cubecl-cuda/precompiled-shared"]
-cuda-cublas = ["cuda-native", "cubecl-cuda/owned-cublas-allocator"]
+# Production CUDA transport/compiler ownership only; no captured cases or
+# qualification API surface.
+cuda-native = ["cuda", "zerogravity-artifacts/cache", "dep:cubecl-cuda", "cubecl-cuda/owned-cubin", "cubecl-cuda/precompiled-shared"]
+# Historical finite native orchestration is diagnostic-only.
+cuda-native-qualification = ["cuda-native", "qualification"]
+cuda-cublas = ["cuda-native-qualification", "cubecl-cuda/owned-cublas-allocator"]
 
 [dependencies]
 zerogravity-core = { path = "../zerogravity-core" }

@@ -50,7 +50,7 @@ impl FusedRmsPrepared {
             owner: self.owner.clone(),
             model_binding: Some(binding),
             pooled: None,
-            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             _text_binding: None,
         }))
     }

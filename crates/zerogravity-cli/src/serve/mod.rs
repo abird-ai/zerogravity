@@ -449,11 +449,15 @@ fn validate_source_profile(options: &YamlConfig) -> Result<(), ServiceError> {
                     "fixed-prompt requires CUDA/1worker/context512/maxoutput1..8/interleaved/device5120 and finite2 or exact4GiB active8 owner profile",
                 ));
             }
-            if !cfg!(all(feature = "qwen35-cuda-serving", target_os = "linux")) {
+            if !cfg!(all(
+                feature = "qwen35-cuda-serving",
+                feature = "qwen35-cuda-qualification",
+                target_os = "linux"
+            )) {
                 return Err(ServiceError::new(
                     400,
                     "backend_not_compiled",
-                    "compile Linux qwen35-cuda-serving for original HF native serving",
+                    "fixed-prompt serving requires explicit qwen35-cuda-qualification",
                 ));
             }
             Ok(())
@@ -606,7 +610,11 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
                     max_pending: options.max_pending_requests,
                 };
                 if options.source_profile == "fixed-prompt-bf16" {
-                    #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+                    #[cfg(all(
+                        feature = "qwen35-cuda-serving",
+                        feature = "qwen35-cuda-qualification",
+                        target_os = "linux"
+                    ))]
                     {
                         Router::Gpu(gpu_engine::GpuRouter::new_canonical(
                             declared,
@@ -616,12 +624,16 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
                             options.native_artifacts.as_deref(),
                         )?)
                     }
-                    #[cfg(not(all(feature = "qwen35-cuda-serving", target_os = "linux")))]
+                    #[cfg(not(all(
+                        feature = "qwen35-cuda-serving",
+                        feature = "qwen35-cuda-qualification",
+                        target_os = "linux"
+                    )))]
                     {
                         return Err(ServiceError::new(
                             400,
                             "backend_not_compiled",
-                            "qwen35-cuda-serving feature required",
+                            "fixed-prompt serving requires explicit qwen35-cuda-qualification",
                         ));
                     }
                 } else if options.source_profile == "qwen35-cuda-bf16" {

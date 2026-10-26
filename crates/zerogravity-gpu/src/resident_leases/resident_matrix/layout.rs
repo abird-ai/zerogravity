@@ -71,7 +71,7 @@ impl Geometry {
             bytes: (end - first) * self.row_bytes,
         }))
     }
-    #[cfg(feature = "cuda-native")]
+    #[cfg(feature = "cuda-native-qualification")]
     pub(in crate::resident_leases) fn cuda(self) -> Result<cubecl::cuda::Bf16MatrixLayout> {
         cubecl::cuda::Bf16MatrixLayout::new(self.rows, self.row_bytes / 2)
             .map_err(|e| Error::State(format!("BF16 CUDA layout: {e}")))
@@ -228,7 +228,7 @@ mod tests {
         let g = Geometry::new(1 << 30, 8).unwrap();
         assert!(g.portable_limits(u64::MAX).is_err());
     }
-    #[cfg(feature = "cuda-native")]
+    #[cfg(feature = "cuda-native-qualification")]
     #[test]
     fn cuda_geometry_is_unchanged() {
         for (r, c) in [(248320, 1024), (248320, 2048), (262144, 1536)] {

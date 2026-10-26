@@ -611,12 +611,12 @@ pub(crate) fn gather_bf16_matrix_words(
     }
 }
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 #[path = "program_kernels/cohort_copy.rs"]
 pub(crate) mod cohort_copy;
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 #[path = "program_kernels/readiness.rs"]
 mod readiness;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) use readiness::{prepare_state_certificates, prepare_text_code};

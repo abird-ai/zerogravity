@@ -601,5 +601,5 @@ pub use text::GdnKernelRecipe;
 #[cfg(target_os = "linux")]
 pub(crate) use text::{TextGdnCode, TextGdnGeometry, TextGdnWorkspace};
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) use resident::prepare_state_code;

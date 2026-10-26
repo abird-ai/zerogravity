@@ -101,13 +101,13 @@ impl ResidentMatrix {
         &self.lease
     }
     /// Metadata only: valid even after the physical service is fenced.
-    #[cfg_attr(not(feature = "cuda-native"), allow(dead_code))]
+    #[cfg_attr(not(feature = "cuda-native-qualification"), allow(dead_code))]
     pub(crate) fn matches_matrix(&self, matrix: &VerifiedMatrix) -> bool {
         self.matrix.same_binding(matrix)
     }
     /// Resident bytes must be this exact original source operand, not another
     /// tensor or expert plane with equal shape on the same source/service.
-    #[cfg_attr(not(feature = "cuda-native"), allow(dead_code))]
+    #[cfg_attr(not(feature = "cuda-native-qualification"), allow(dead_code))]
     pub(crate) fn require_matrix(
         &self,
         source: &VerifiedTensorSource,
@@ -148,7 +148,7 @@ impl ResidentMatrix {
     }
     /// Caller has authenticated the actual invocation/IDs and registered this
     /// complete Read plus destination Write on its original armed flight.
-    #[cfg(feature = "cuda-native")]
+    #[cfg(feature = "cuda-native-qualification")]
     pub(crate) fn enqueue_rows(&self, destination: &ResidentLease, ids: Arc<[u32]>) -> Result<()> {
         let service = self.lease.service();
         self.require(

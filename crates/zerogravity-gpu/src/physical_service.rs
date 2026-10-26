@@ -84,9 +84,9 @@ mod native_context;
 ))]
 pub(crate) use native_context::NativeContextBudget;
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod cuda_compiler_context;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) use cuda_compiler_context::{
     CUDA_COMPILER_DEVICE_BYTES, CUDA_COMPILER_HOST_BYTES, CudaCompilerContextBudget,
 };

@@ -36,7 +36,11 @@ const OUTPUT_STALL_LIMIT: Duration = Duration::from_secs(30);
 mod cohort;
 mod route;
 use route::{ModelEngine, RequestEngine};
-#[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+#[cfg(all(
+    feature = "qwen35-cuda-serving",
+    feature = "qwen35-cuda-qualification",
+    target_os = "linux"
+))]
 mod fixed_prompt;
 #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
 mod qwen35_cuda;
@@ -506,9 +510,17 @@ impl GpuRouter {
             active: self.stats.active.load(Ordering::Acquire),
             peak_active: self.stats.peak_active.load(Ordering::Acquire),
             active_limit: self.active_limit,
-            #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+            #[cfg(all(
+                feature = "qwen35-cuda-serving",
+                feature = "qwen35-cuda-qualification",
+                target_os = "linux"
+            ))]
             canonical_resources: fixed_prompt::resources(&self.models, host_snapshot),
-            #[cfg(not(all(feature = "qwen35-cuda-serving", target_os = "linux")))]
+            #[cfg(not(all(
+                feature = "qwen35-cuda-serving",
+                feature = "qwen35-cuda-qualification",
+                target_os = "linux"
+            )))]
             canonical_resources: None,
             #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
             hf_source: hf_health.as_ref().map(|h| h.0.clone()),
@@ -946,7 +958,11 @@ impl GpuActive {
         if self.engine.is_qwen35_cuda() {
             return self.step_qwen35_cuda(stats);
         }
-        #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+        #[cfg(all(
+            feature = "qwen35-cuda-serving",
+            feature = "qwen35-cuda-qualification",
+            target_os = "linux"
+        ))]
         if self.engine.is_canonical() {
             return self.step_canonical(stats);
         }
@@ -1086,7 +1102,12 @@ fn eligible_member(
 }
 
 fn retire_if_drained(models: &BTreeMap<String, Arc<GpuModel>>, stats: &WaveStats) {
-    #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+    let _ = (models, stats);
+    #[cfg(all(
+        feature = "qwen35-cuda-serving",
+        feature = "qwen35-cuda-qualification",
+        target_os = "linux"
+    ))]
     fixed_prompt::retire_sources(models, stats);
     #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
     qwen35_cuda::retire_sources(models, stats);

@@ -1,7 +1,7 @@
 //! Physical execution of the engine's one recorded schedule and immutable roots.
 //! Arithmetic and layer ordering belong to ForwardPlan; this owner only binds
 //! leases, private state, actual completion and the common logical authority.
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod native_fragment;
 #[cfg(all(
     any(
@@ -12,7 +12,7 @@ pub(crate) mod native_fragment;
 ))]
 #[path = "resident_inference/portable_qualification.rs"]
 mod portable_qualification;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
     GdnFragmentFault, GdnFragmentFaultOutcome, GdnFragmentReadback, GdnFragmentReceipt,
     GdnSequenceFault, GdnSequenceFaultOutcome, GdnSequenceReceipt, GdnSequenceRestoreReceipt,
@@ -53,7 +53,7 @@ mod fused_greedy_qualification;
 #[cfg(feature = "qualification")]
 #[path = "resident_fused_qualification.rs"]
 mod fused_qualification;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod gdn_state;
 #[cfg(all(feature = "qualification", feature = "cuda"))]
 mod graph;
@@ -566,7 +566,7 @@ impl ResidentModel {
     pub async fn session(self: &Arc<Self>) -> Result<ResidentSession> {
         self.session_with(|_| Ok(())).await
     }
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     async fn session_retaining(
         self: &Arc<Self>,
         owner: crate::physical_quarantine::CompletionOwner,
@@ -1936,24 +1936,24 @@ fn preflight_profile(
 #[path = "resident_inference/cold_tests.rs"]
 mod cold_tests;
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
     SourceDomainReadback, SourceModelFault, SourceModelFaultOutcome, SourceModelInputs,
     SourceModelReadback, SourceModelReceipt, SourceModelScopes, qualify_source_model,
     qualify_source_model_fault,
 };
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod text_positions;
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
     NaturalFault, NaturalFaultExecution, NaturalFaultOutcome, NaturalReceipt, NaturalReuseFault,
     NaturalReuseFaultExecution, NaturalReuseFaultOutcome, NaturalReuseReceipt, NaturalReuseRound,
     qualify_natural_fault, qualify_natural_reuse_fault,
 };
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
     ColdModelSlots, CommittedBf16Feedback, NaturalCommitted, NaturalFeedbackRequest,
     NaturalObserver, NaturalSlot, NaturalStatePool, NaturalStep, PreparedNaturalCold,
@@ -1961,21 +1961,21 @@ pub use native_fragment::{
     prepare_reusable_natural_cold, qualify_natural_reuse_pressure,
 };
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
     Qwen2bGdnComponentFault, Qwen2bGdnComponentFaultOutcome, Qwen2bGdnComponentReadback,
     Qwen2bGdnComponentReceipt, qualify_qwen2b_gdn_component,
     qualify_qwen2b_gdn_component_arithmetic, qualify_qwen2b_gdn_component_fault,
 };
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
     FixedPromptGdnComponentFault, FixedPromptGdnComponentFaultOutcome,
     FixedPromptGdnComponentReadback, FixedPromptGdnComponentReceipt,
     qualify_fixed_prompt_gdn_component, qualify_fixed_prompt_gdn_component_fault,
 };
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
     PostAttentionArithmetic, PostAttentionComponentFault, PostAttentionComponentFaultOutcome,
     PostAttentionComponentReadback, PostAttentionComponentReceipt,
@@ -1983,13 +1983,13 @@ pub use native_fragment::{
     qualify_qwen2b_post_attention_component_arithmetic,
 };
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
     MlpComponentFault, MlpComponentFaultOutcome, MlpComponentReadback, MlpComponentReceipt,
     qualify_mlp_component, qualify_mlp_component_fault,
 };
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
     FixedPromptModelPrefixFault, FixedPromptModelPrefixFaultOutcome,
     FixedPromptModelPrefixReadback, FixedPromptModelPrefixReceipt,
@@ -2001,19 +2001,19 @@ pub use native_fragment::{
     qualify_fixed_prompt_model_qkv_prefix_fault,
 };
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
     FixedPromptFullModelFault, FixedPromptFullModelFaultOutcome, FixedPromptFullModelReadback,
     FixedPromptFullModelReceipt, qualify_fixed_prompt_full_model,
     qualify_fixed_prompt_full_model_fault,
 };
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
     Qwen2bMlpComponentFault, Qwen2bMlpComponentFaultOutcome, Qwen2bMlpComponentReceipt,
     Qwen2bMlpComponentSource, qualify_qwen2b_mlp_component, qualify_qwen2b_mlp_component_fault,
 };
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
     FixedPromptCallReceipt, FixedPromptCloseReceipt, FixedPromptEmptySnapshot,
     FixedPromptFeedbackRequest, FixedPromptLifecycleProfile, FixedPromptLoaded,
@@ -2023,12 +2023,12 @@ pub use native_fragment::{
     prepare_fixed_prompt_natural_with_profile,
 };
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod rms_scratch;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) use rms_scratch::RmsScratchRegistration;
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use native_fragment::{
     TextCallReceipt, TextCloseReceipt, TextCohortFault, TextCohortFaultOutcome,
     TextCohortFaultRetention, TextCohortPreparation, TextCohortReadback, TextCohortReceipt,

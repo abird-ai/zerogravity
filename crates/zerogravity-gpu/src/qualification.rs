@@ -114,7 +114,7 @@ pub async fn qualify_cpu_profile_bf16_adversaries(
     crate::cpu_bf16_projection::adversary::qualify(device, source, device_cap, fault).await
 }
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use crate::resident_inference::{
     Qwen2bGdnComponentFault, Qwen2bGdnComponentFaultOutcome, Qwen2bGdnComponentReadback,
     Qwen2bGdnComponentReceipt, qualify_qwen2b_gdn_component, qualify_qwen2b_gdn_component_fault,

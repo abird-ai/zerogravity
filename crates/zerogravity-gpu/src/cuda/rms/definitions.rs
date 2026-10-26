@@ -1,6 +1,6 @@
 //! Immutable source/ABI only; gamma, operands and current producers remain local.
 use super::*;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::WindowWorkspace;
 
@@ -14,7 +14,7 @@ pub(super) struct RmsDefinitions {
 impl RmsDefinitions {
     /// Eleven unique definitions; construction can hold three source copies.
     /// Exact headers/entry suffixes fit512B and physical ABI has at most4 slots.
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(super) fn metadata_bound() -> Result<usize> {
         let each = (SOURCE.len().max(fused::ADD_SOURCE.len()) + 512)
             .checked_mul(4)
@@ -26,7 +26,7 @@ impl RmsDefinitions {
             })
             .ok_or_else(|| Error::Limit("RMS immutable definition extent".into()))
     }
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     fn build_specs(rows: Rows, columns: Columns) -> Result<(Vec<Spec>, Vec<Spec>)> {
         if matches!(rows, Rows::CohortB4 { initial: true }) && columns != Columns::Qwen08 {
             return Err(Error::Unsupported(
@@ -47,13 +47,13 @@ impl RmsDefinitions {
         }
         Ok((ordinary, dual))
     }
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(crate) fn readiness_temporary_host_bytes(cohort: bool) -> Result<usize> {
         (64 * 1024usize)
             .checked_add(if cohort { Self::metadata_bound()? } else { 0 })
             .ok_or_else(|| Error::Limit("RMS readiness temporary metadata extent".into()))
     }
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(super) fn prepare(
         source: &VerifiedTensorSource,
         rows: Rows,
@@ -93,7 +93,7 @@ impl RmsDefinitions {
             self.ordinary.clone()
         })
     }
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(crate) fn kernels(&self) -> impl Iterator<Item = &PinnedKernel> {
         self.ordinary
             .iter()
@@ -102,7 +102,7 @@ impl RmsDefinitions {
     }
 }
 
-#[cfg(all(test, feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(test, feature = "cuda-native-qualification", target_os = "linux"))]
 mod tests {
     use super::*;
     use cubecl_runtime::kernel::KernelMetadata;

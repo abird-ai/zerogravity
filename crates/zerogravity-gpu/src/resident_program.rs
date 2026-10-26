@@ -24,7 +24,7 @@ use std::{
 use zerogravity_artifacts::quant::QuantKind;
 use zerogravity_core::Error;
 use zerogravity_core::Result;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 use zerogravity_core::accelerator::program::{SourceNumericalContract, SourceOperatorKind};
 use zerogravity_core::accelerator::{
     MatVecRegion, SourceIdentity,
@@ -245,7 +245,7 @@ impl DeviceBuffer {
         self.lease.as_ref()
     }
     /// Original admitted lease only; public handle metadata cannot retarget it.
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(crate) fn original_lease(&self) -> Result<&crate::resident_leases::ResidentLease> {
         let lease = self.lease.as_ref().ok_or_else(|| {
             Error::State("typed resident value has no original lease owner".into())
@@ -359,14 +359,14 @@ struct NativeExecution<'a> {
     #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
     bf16_text: Option<&'a dyn bf16_text::Execution>,
     cancelled: Option<&'a std::sync::atomic::AtomicBool>,
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     phase: Option<&'a crate::resident_inference::native_fragment::PrefixPhaseEnqueue<'a>>,
 }
 impl<'a> NativeExecution<'a> {
     fn new(cancelled: Option<&'a std::sync::atomic::AtomicBool>) -> Self {
         Self {
             cancelled,
-            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             phase: None,
             #[cfg(all(feature = "gemma-bf16-qualification", target_os = "linux"))]
             bf16_text: None,
@@ -374,7 +374,7 @@ impl<'a> NativeExecution<'a> {
             bf16_text_source: None,
         }
     }
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     fn with_phase(
         mut self,
         phase: &'a crate::resident_inference::native_fragment::PrefixPhaseEnqueue<'a>,
@@ -398,7 +398,7 @@ enum CurrentExecution<'a> {
         parameters: RuntimeParameters,
         states: &'a [StateBinding],
     },
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     Cohort {
         permits: &'a [crate::resident_inference::native_fragment::PrefixPhaseEnqueue<'a>],
     },
@@ -407,7 +407,7 @@ impl CurrentExecution<'_> {
     fn single(&self) -> Result<(RuntimeParameters, &[StateBinding])> {
         match self {
             Self::Single { parameters, states } => Ok((*parameters, states)),
-            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             Self::Cohort { .. } => Err(Error::State(
                 "cohort cannot borrow first-row runtime/state authority".into(),
             )),
@@ -446,7 +446,7 @@ pub enum StateLayout {
     Kv { slab: usize, capacity: usize },
 }
 #[cfg(any(
-    feature = "cuda-native",
+    feature = "cuda-native-qualification",
     feature = "gemma-bf16-qualification",
     feature = "qwen-source-qualification"
 ))]
@@ -551,13 +551,13 @@ enum ResidentProgramBody {
     Bf16Text(Arc<bf16_text::Bf16TextBody>),
     #[cfg(all(feature = "qualification", target_os = "linux"))]
     TypedSlice(Arc<typed_slice::TypedBody>),
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     Native(Arc<native::NativeProgram>),
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     NativeFull(Arc<native_full::FullModelProgram>),
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     NativeCohort(Arc<native_cohort::FullModelCohort>),
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     Qwen2bComponent(Arc<qwen2b_component::ComponentProgram>),
 }
 pub(crate) struct ResidentProgram {
@@ -569,19 +569,19 @@ pub(crate) struct ResidentProgram {
     owned_ranges: OwnedRanges,
     body: ResidentProgramBody,
 }
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod fixed_prompt_binding;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod native;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod native_cohort;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod native_full;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod natural_binding;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod qwen2b_component;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub mod source_bindings;
 
 #[cfg(all(
@@ -605,7 +605,7 @@ pub(crate) struct ResidentSubmission {
     pub logits: Option<DeviceBuffer>,
     pub proposals: Vec<(StateVersion, StateBuffers)>,
     /// Present only for sealed real request cohorts; never projected through one plan.
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub cohort_proposals: Option<Vec<Vec<(StateVersion, StateBuffers)>>>,
     pub status: Handle,
     /// Every dynamic-quant status pair, in plan order. Zero is success.
@@ -628,7 +628,7 @@ impl ResidentProgram {
         }
     }
     fn is_native_source_body(&self) -> bool {
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         {
             matches!(
                 self.body,
@@ -638,7 +638,7 @@ impl ResidentProgram {
                     | ResidentProgramBody::Qwen2bComponent(_)
             )
         }
-        #[cfg(not(all(feature = "cuda-native", target_os = "linux")))]
+        #[cfg(not(all(feature = "cuda-native-qualification", target_os = "linux")))]
         {
             false
         }
@@ -675,7 +675,7 @@ impl ResidentProgram {
             ResidentProgramBody::TypedSlice(_) => Err(Error::Unsupported(
                 "typed slice cannot enter legacy execution".into(),
             )),
-            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             ResidentProgramBody::Native(_)
             | ResidentProgramBody::NativeFull(_)
             | ResidentProgramBody::NativeCohort(_)
@@ -699,7 +699,7 @@ impl ResidentProgram {
             ResidentProgramBody::TypedSlice(_) => Err(Error::Unsupported(
                 "typed slice cannot enter legacy execution".into(),
             )),
-            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             ResidentProgramBody::Native(_)
             | ResidentProgramBody::NativeFull(_)
             | ResidentProgramBody::NativeCohort(_)
@@ -1467,7 +1467,7 @@ impl ResidentProgram {
         if let ResidentProgramBody::Bf16Text(body) = &self.body {
             return body.accesses().iter().map(|(l, _)| l.handle()).collect();
         }
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         match &self.body {
             ResidentProgramBody::Native(native) => {
                 return native.handles(&self.values, &self.status);
@@ -1565,7 +1565,7 @@ impl ResidentProgram {
                 "resident program used with another physical service".into(),
             ));
         }
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         let native = match &self.body {
             ResidentProgramBody::Native(native) => {
                 native.validate_runtime(p)?;
@@ -1581,7 +1581,7 @@ impl ResidentProgram {
             }
             _ => false,
         };
-        #[cfg(not(all(feature = "cuda-native", target_os = "linux")))]
+        #[cfg(not(all(feature = "cuda-native-qualification", target_os = "linux")))]
         let native = false;
         if !native
             && (p.valid_tokens
@@ -1694,7 +1694,7 @@ impl ResidentProgram {
             NativeExecution::new(None),
         )
     }
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(crate) fn launch_fragment(
         &mut self,
         client: &Client,
@@ -1719,7 +1719,7 @@ impl ResidentProgram {
             NativeExecution::new(cancelled),
         )
     }
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(crate) fn launch_attempt_fragment(
         &mut self,
         client: &Client,
@@ -1745,7 +1745,7 @@ impl ResidentProgram {
             NativeExecution::new(cancelled).with_phase(permit),
         )
     }
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(crate) fn launch_cohort<'a>(
         &mut self,
         client: &Client,
@@ -1771,7 +1771,7 @@ impl ResidentProgram {
         let cancelled = execution.cancelled;
         match &current {
             CurrentExecution::Single { parameters, states } => {
-                #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+                #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
                 if matches!(self.body, ResidentProgramBody::NativeCohort(_)) {
                     return Err(Error::State(
                         "cohort requires every original row permit".into(),
@@ -1779,7 +1779,7 @@ impl ResidentProgram {
                 }
                 self.validate_runtime(client, *parameters, states)?;
             }
-            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             CurrentExecution::Cohort { permits } => {
                 let ResidentProgramBody::NativeCohort(body) = &self.body else {
                     return Err(Error::State(
@@ -1792,7 +1792,7 @@ impl ResidentProgram {
                 body.begin_launch(permits, cancelled)?;
             }
         }
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         match &self.body {
             ResidentProgramBody::Native(native) => {
                 native.begin_launch(cancelled, execution.phase)?
@@ -1805,7 +1805,7 @@ impl ResidentProgram {
             }
             _ => {}
         }
-        #[cfg(not(all(feature = "cuda-native", target_os = "linux")))]
+        #[cfg(not(all(feature = "cuda-native-qualification", target_os = "linux")))]
         let _ = cancelled;
         #[cfg(all(feature = "qualification", target_os = "linux"))]
         if let ResidentProgramBody::TypedSlice(body) = &self.body {
@@ -1850,7 +1850,7 @@ impl ResidentProgram {
                 && !self.is_typed_slice()
                 && !self.is_source_window_body(),
         );
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         let nodes = match &self.body {
             ResidentProgramBody::Qwen2bComponent(body) => body.recipe().nodes(),
             ResidentProgramBody::NativeFull(body) => body.execution_nodes()?,
@@ -1859,7 +1859,7 @@ impl ResidentProgram {
             ResidentProgramBody::TypedSlice(_) => self.plan.nodes(),
             _ => output.nodes(&self.plan),
         };
-        #[cfg(not(all(feature = "cuda-native", target_os = "linux")))]
+        #[cfg(not(all(feature = "cuda-native-qualification", target_os = "linux")))]
         let nodes = if self.is_typed_slice() {
             self.plan.nodes()
         } else {
@@ -1870,7 +1870,7 @@ impl ResidentProgram {
                 CurrentExecution::Single { parameters, states } => {
                     self.launch_node(client, index, node, *parameters, states, &execution)?
                 }
-                #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+                #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
                 CurrentExecution::Cohort { permits } => {
                     let ResidentProgramBody::NativeCohort(body) = &self.body else {
                         unreachable!("validated cohort body")
@@ -1886,7 +1886,7 @@ impl ResidentProgram {
                 if let ResidentProgramBody::Bf16TextSource(body) = &self.body {
                     body.finish_node(index, node)?;
                 }
-                #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+                #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
                 match &self.body {
                     ResidentProgramBody::NativeFull(body) => {
                         body.finish_value_storage_node(index)?
@@ -1921,7 +1921,7 @@ impl ResidentProgram {
                         );
                     }
                 } else {
-                    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+                    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
                     match &self.body {
                         ResidentProgramBody::Native(native) => {
                             native.certify(value, &self.status)?
@@ -1942,12 +1942,12 @@ impl ResidentProgram {
                         }
                         _ => self.certify(client, &value.handle, value.elements),
                     }
-                    #[cfg(not(all(feature = "cuda-native", target_os = "linux")))]
+                    #[cfg(not(all(feature = "cuda-native-qualification", target_os = "linux")))]
                     self.certify(client, &value.handle, value.elements);
                 }
                 dispatches += 1;
             }
-            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             match &self.body {
                 ResidentProgramBody::NativeFull(body) => body.finish_value_storage_node(index)?,
                 ResidentProgramBody::NativeCohort(body) => body.finish_value_storage_node(index)?,
@@ -1962,7 +1962,7 @@ impl ResidentProgram {
                 body.finish_node(index, node)?;
             }
         }
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         {
             match &self.body {
                 // Grouped certificates flush at the existing terminal point,
@@ -2039,7 +2039,7 @@ impl ResidentProgram {
         // Certify all private proposals without moving a state scalar to host.
         let candidate_rows: Vec<&[StateBinding]> = match &current {
             CurrentExecution::Single { states, .. } => vec![states],
-            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             CurrentExecution::Cohort { .. } => {
                 let ResidentProgramBody::NativeCohort(body) = &self.body else {
                     unreachable!("validated cohort body")
@@ -2055,11 +2055,11 @@ impl ResidentProgram {
                 }
             }
         }
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         if let ResidentProgramBody::NativeFull(native) = &self.body {
             dispatches += native.enqueue_output(cancelled)?;
         }
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         if let ResidentProgramBody::NativeCohort(body) = &self.body {
             dispatches += body.enqueue_output(cancelled)?;
         }
@@ -2075,10 +2075,10 @@ impl ResidentProgram {
                 }
                 proposals
             }
-            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             CurrentExecution::Cohort { .. } => Vec::new(),
         };
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         let cohort_proposals = match &current {
             CurrentExecution::Single { .. } => None,
             CurrentExecution::Cohort { .. } => {
@@ -2128,14 +2128,14 @@ impl ResidentProgram {
         Ok(ResidentSubmission {
             logits: logits.map(|v| self.values[v.0 as usize].clone()),
             proposals,
-            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             cohort_proposals,
             status: self.status.clone(),
             quant_status,
             embedding_status,
             dispatches,
             fused_dispatches: {
-                #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+                #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
                 {
                     match &self.body {
                         ResidentProgramBody::Native(native) => native.native_launches(),
@@ -2145,7 +2145,7 @@ impl ResidentProgram {
                         _ => 0,
                     }
                 }
-                #[cfg(not(all(feature = "cuda-native", target_os = "linux")))]
+                #[cfg(not(all(feature = "cuda-native-qualification", target_os = "linux")))]
                 {
                     0
                 }
@@ -2243,15 +2243,15 @@ impl ResidentProgram {
         if cancelled.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Acquire)) {
             return Err(Error::State("resident native fragment cancelled".into()));
         }
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         if let ResidentProgramBody::NativeFull(native) = &self.body {
             return native.enqueue(index, node, cancelled, execution.phase);
         }
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         if let ResidentProgramBody::Qwen2bComponent(body) = &self.body {
             return body.enqueue(index, node, cancelled, execution.phase);
         }
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         if let ResidentProgramBody::Native(native) = &self.body {
             if let PlanOperation::SourceOperator {
                 descriptor,
@@ -2309,7 +2309,7 @@ impl ResidentProgram {
             return native.enqueue(index, node, cancelled, execution.phase);
         }
         let legacy = self.legacy()?;
-        #[cfg(not(all(feature = "cuda-native", target_os = "linux")))]
+        #[cfg(not(all(feature = "cuda-native-qualification", target_os = "linux")))]
         let _ = cancelled;
         let input = |i: usize| &self.values[node.inputs[i].0 as usize];
         let output = |i: usize| &self.values[node.outputs[i].0 as usize];
@@ -3661,10 +3661,10 @@ mod bulk_f32_tests;
 #[path = "resident_program/vllm_native_tests.rs"]
 mod vllm_native_tests;
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod bf16_greedy;
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod text_positions;
 
 mod silu;

@@ -33,7 +33,7 @@ pub async fn qualify_bf16_finite_cohorts(
 
 /// Model-free grouped-vs-per-row transport qualification; the per-row
 /// kernels are the independent bit oracle. No model or publisher exists.
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub async fn qualify_grouped_state_transport(
     device: Device,
     host: &zerogravity_core::resource_arbiter::PhysicalDeviceKey,
@@ -527,14 +527,14 @@ pub use crate::resident_inference::{
 #[cfg(target_os = "linux")]
 pub use full_model_budget::qwen08_model_host_bound;
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use crate::resident_inference::{
     NaturalFault, NaturalFaultExecution, NaturalFaultOutcome, NaturalReceipt, NaturalReuseFault,
     NaturalReuseFaultExecution, NaturalReuseFaultOutcome, NaturalReuseReceipt, NaturalReuseRound,
     qualify_natural_fault, qualify_natural_reuse_fault,
 };
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use crate::resident_inference::{
     ColdModelSlots, CommittedBf16Feedback, NaturalCommitted, NaturalFeedbackRequest,
     NaturalObserver, NaturalSlot, NaturalStatePool, NaturalStep, PreparedNaturalCold,
@@ -619,7 +619,7 @@ pub use crate::resident_inference::{
     Qwen2bMlpComponentSource, qualify_qwen2b_mlp_component, qualify_qwen2b_mlp_component_fault,
 };
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use crate::resident_inference::{
     FixedPromptCallReceipt, FixedPromptCloseReceipt, FixedPromptEmptySnapshot,
     FixedPromptFeedbackRequest, FixedPromptLifecycleProfile, FixedPromptLoaded,

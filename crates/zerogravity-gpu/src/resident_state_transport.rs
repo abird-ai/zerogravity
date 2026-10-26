@@ -11,7 +11,7 @@ use zerogravity_core::{Error, Result};
 mod certified;
 // Grouped B4 uses the pinned CUDA launch ABI. Keep it out of HIP/Vulkan-only
 // builds: vllm_ptx_inline and the native_cohort callers share this feature.
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod typed;
 pub(crate) use certified::{PreparedCertifiedScatter, ensure_certified_capability};
 

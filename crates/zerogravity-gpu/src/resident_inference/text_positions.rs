@@ -268,9 +268,9 @@ impl BoundTextPositions {
 #[path = "text_positions/tests.rs"]
 mod tests;
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod fixed_prompt;
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 #[path = "text_positions/fixed_prompt_whole.rs"]
 mod fixed_prompt_whole;

@@ -523,13 +523,7 @@ fn ordinary_qwen_cuda_refuses_before_injected_device_discovery() {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     let parsed = parse(
-        &words(&[
-            "/source-not-opened",
-            "--native-artifacts",
-            "/native-not-opened",
-            "--backend",
-            "cuda",
-        ]),
+        &words(&["/source-not-opened/qwen3.5-model", "--backend", "cuda"]),
         None,
     )
     .unwrap();
@@ -544,6 +538,60 @@ fn ordinary_qwen_cuda_refuses_before_injected_device_discovery() {
         matches!(error, Error::Unsupported(message) if message.contains("no ordinary dynamic GDN implementation"))
     );
     assert_eq!(discoveries.load(Ordering::SeqCst), 0);
+}
+
+#[cfg(all(
+    feature = "qwen35-cuda-serving",
+    not(feature = "qwen35-cuda-qualification"),
+    target_os = "linux"
+))]
+#[test]
+fn ordinary_cpu_and_gguf_routes_reach_injected_discovery() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    for (source, backend) in [
+        ("/does-not-exist/qwen-source", "cpu"),
+        ("/does-not-exist/model.gguf", "cuda"),
+    ] {
+        let parsed = parse(&words(&[source, "--backend", backend]), None).unwrap();
+        let request =
+            config::resolve(parsed, Path::new("/"), None, Some("/home/test".into())).unwrap();
+        let discoveries = AtomicUsize::new(0);
+        let error = execute::run_with_discovery(request, || {
+            discoveries.fetch_add(1, Ordering::SeqCst);
+            Err(Error::State("injected ordinary-route discovery".into()))
+        })
+        .unwrap_err();
+        assert!(
+            matches!(error, Error::State(message) if message == "injected ordinary-route discovery")
+        );
+        assert_eq!(discoveries.load(Ordering::SeqCst), 1);
+    }
+}
+
+#[test]
+fn qwen_cuda_route_classification_is_declarative_and_preserves_cpu_gguf() {
+    let request = |source: &str, backend: &str| {
+        let parsed = parse(&words(&[source, "--backend", backend]), None).unwrap();
+        config::resolve(parsed, Path::new("/"), None, Some("/home/test".into())).unwrap()
+    };
+    let cuda_hf = request("/does-not-exist/qwen-source", "cuda");
+    assert!(qwen35_cuda::selected(
+        &cuda_hf.backend,
+        &cuda_hf.graph.models[0]
+    ));
+
+    let cuda_gguf = request("/does-not-exist/model.GGUF", "cuda");
+    assert!(!qwen35_cuda::selected(
+        &cuda_gguf.backend,
+        &cuda_gguf.graph.models[0]
+    ));
+
+    let cpu_hf = request("/does-not-exist/qwen-source", "cpu");
+    assert!(!qwen35_cuda::selected(
+        &cpu_hf.backend,
+        &cpu_hf.graph.models[0]
+    ));
 }
 
 /// Pure finite-route proposal and pre-Client seam unit coverage; no CUDA

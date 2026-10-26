@@ -34,7 +34,7 @@ impl ResidentBatchRows {
     }
     /// Exact packed BF16 row metadata. Numerical/profile and physical lowering
     /// still require the actual prepared source operation; this grants neither.
-    #[cfg(any(test, all(feature = "cuda-native", target_os = "linux")))]
+    #[cfg(any(test, all(feature = "cuda-native-qualification", target_os = "linux")))]
     pub(crate) fn bf16(bindings: &[RootBinding], row_elements: usize) -> Result<Self> {
         Self::new_layout(bindings, row_elements, 2)
     }
@@ -121,7 +121,7 @@ impl ResidentBatchRows {
             .ok_or_else(|| Error::Limit("batch row offset overflow".into()))
     }
     /// Physical row codec only; never a numerical contract or execution permit.
-    #[cfg(any(test, all(feature = "cuda-native", target_os = "linux")))]
+    #[cfg(any(test, all(feature = "cuda-native-qualification", target_os = "linux")))]
     pub(crate) fn word_bytes(&self) -> usize {
         self.word_bytes
     }

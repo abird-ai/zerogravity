@@ -39,7 +39,7 @@ mod projection_f32;
 mod quantization;
 #[cfg(feature = "cuda")]
 pub use physical_service::initialize_cuda_physical_identity;
-#[cfg(any(feature = "cuda-native", test))]
+#[cfg(any(feature = "cuda-native-qualification", test))]
 mod prepared_kernel_key;
 mod program_kernels;
 mod residency;
@@ -62,12 +62,12 @@ pub use resident_program::bf16_text::{
     TextHostOwners, TextNativeOwners, TextObserver, TextResourceInventory, TextStorage, TextTraffic,
 };
 // Pure physical byte metadata; no allocation/backend/model eligibility permit.
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use resident_program::qwen2b_component::{ComponentOutput, ComponentRecipe};
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use resident_program::source_bindings::{SourceBindings, SourceSelection};
 pub use resident_program::{ResidentBufferLayout, ResidentPhysicalType};
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use resident_program::{StateLayout, StateRequirement};
 mod resident_provider;
 mod resident_state_transport;
@@ -110,7 +110,7 @@ mod source_standalone_exp;
 mod source_transcendentals;
 mod source_trig;
 // Shared retirement has no source, provider or qualification dependency.
-#[cfg_attr(not(feature = "cuda-native"), allow(dead_code))]
+#[cfg_attr(not(feature = "cuda-native-qualification"), allow(dead_code))]
 mod transfer_retirement;
 
 #[cfg(feature = "cuda")]

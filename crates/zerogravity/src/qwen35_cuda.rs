@@ -6,18 +6,22 @@ use crate::qwen35::tokenize::QwenTokenizer;
 #[cfg(feature = "qwen35-cuda-qualification")]
 use crate::resource_arbiter::{GlobalResourceLease, lease_inventory_bytes};
 use crate::{Error, Result};
-use std::sync::Arc;
 #[cfg(feature = "qwen35-cuda-qualification")]
 use std::{
     path::{Path, PathBuf},
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 #[cfg(feature = "qwen35-cuda-qualification")]
 use zerogravity_artifacts::cache::TransferAdmission;
 // Previous entrypoints: short_hf, canonical47.
+#[cfg(feature = "qwen35-cuda-qualification")]
 mod bindings;
 #[cfg(feature = "qwen35-cuda-qualification")]
 mod cohort;
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub mod fixed_prompt;
 #[cfg(feature = "qwen35-cuda-qualification")]
 mod manifest;
@@ -113,6 +117,7 @@ impl Model {
     }
 }
 /// Model-prepared component data; execution and completion remain GPU-owned.
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub fn prepare_component(
     source: &crate::qwen35::source::binding::OriginalWindowModelSource,
     prepared: crate::qwen35::source::binding::PreparedComponent,

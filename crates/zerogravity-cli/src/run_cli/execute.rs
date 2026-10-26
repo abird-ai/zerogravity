@@ -55,7 +55,7 @@ pub(super) fn run_with_discovery(
         .iter()
         .position(|m| &m.id == id)
         .ok_or_else(|| bad("direct entrypoint model absent"))?;
-    if qwen35_cuda::selected(&request.graph.models[i]) {
+    if qwen35_cuda::selected(&request.backend, &request.graph.models[i]) {
         qwen35_cuda::require_route_capability()?;
         let inventory = discover()?;
         let candidates = devices::allowed(&request, &inventory)?;

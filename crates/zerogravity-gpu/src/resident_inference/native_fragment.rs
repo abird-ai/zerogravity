@@ -15,7 +15,7 @@ use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode, ValueId
 pub(in crate::resident_inference) mod continuation;
 mod faults;
 pub(crate) mod fixed_prompt_natural;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod source_readback;
 pub(crate) mod text;
 pub(crate) use continuation::PrefixPhaseEnqueue;
@@ -704,9 +704,9 @@ pub use mlp_component::{
     qualify_mlp_component, qualify_mlp_component_fault,
 };
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod fixed_prompt_model_prefix;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use fixed_prompt_model_prefix::{
     FixedPromptModelPrefixFault, FixedPromptModelPrefixFaultOutcome,
     FixedPromptModelPrefixReadback, FixedPromptModelPrefixReceipt,
@@ -718,11 +718,11 @@ pub use fixed_prompt_model_prefix::{
     qualify_fixed_prompt_model_qkv_prefix_fault,
 };
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod fixed_prompt_full_model;
 #[cfg(target_os = "linux")]
 mod qwen2b_mlp_component;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use fixed_prompt_full_model::{
     FixedPromptFullModelFault, FixedPromptFullModelFaultOutcome, FixedPromptFullModelReadback,
     FixedPromptFullModelReceipt, qualify_fixed_prompt_full_model,
@@ -734,7 +734,7 @@ pub use qwen2b_mlp_component::{
     Qwen2bMlpComponentSource, qualify_qwen2b_mlp_component, qualify_qwen2b_mlp_component_fault,
 };
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use fixed_prompt_natural::{
     FixedPromptCallReceipt, FixedPromptCloseReceipt, FixedPromptEmptySnapshot,
     FixedPromptFeedbackRequest, FixedPromptLifecycleProfile, FixedPromptLoaded,

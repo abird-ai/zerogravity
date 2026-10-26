@@ -254,22 +254,22 @@ mod layer_binding;
 #[cfg(target_os = "linux")]
 pub(crate) use layer_binding::BoundRmsSource;
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod final_binding;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use final_binding::BoundFinalRmsSource;
 
 mod model_binding;
 pub(crate) use model_binding::BoundModelRmsSource;
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 #[path = "rms/pooled.rs"]
 mod pooled;
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) use pooled::{
     FullModelRmsScratch, RmsScratchRun, RmsWorkspaceOutput, RmsWorkspaceViews,
 };
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 #[path = "rms/cohort.rs"]
 pub(crate) mod cohort;

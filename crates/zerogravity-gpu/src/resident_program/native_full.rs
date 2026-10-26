@@ -1448,12 +1448,12 @@ impl ResidentProgram {
     }
 }
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod natural;
 
 mod publication;
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod rms_scratch;
 
 mod value_storage;

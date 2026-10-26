@@ -250,7 +250,7 @@ fn handle(lease: &ResidentLease, spec: BindingSpec) -> Result<Handle> {
         .offset_end((lease.bytes() - end) as u64))
 }
 impl GdnPrepared {
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(crate) fn prepare_code(&self, queue: &cubecl::cuda::OwnedCudaQueue) -> Result<usize> {
         let mut count = 0;
         for stage in self.stages.iter() {
@@ -1065,7 +1065,7 @@ impl GdnPrepared {
     }
 }
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) fn prepare_state_code(queue: &cubecl::cuda::OwnedCudaQueue) -> Result<usize> {
     state_adapter::prepare_code(queue)
 }

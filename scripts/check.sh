@@ -12,6 +12,7 @@ cargo fmt --all -- --check
 echo "Checking architecture boundaries and production dependency graph..."
 python3 -B scripts/check-architecture.py
 python3 -B scripts/test-check-architecture.py
+bash scripts/check-gpu-feature-boundaries.sh
 
 # Explicit CPU owners keep optional GPU compilers and qualification tools out
 # of default CI. Cargo's --all-features would also enable diagnostic GPU paths.

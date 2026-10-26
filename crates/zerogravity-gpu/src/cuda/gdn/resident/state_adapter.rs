@@ -350,7 +350,7 @@ impl GdnStateAdapter {
     }
 }
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(super) fn prepare_code(queue: &cubecl::cuda::OwnedCudaQueue) -> Result<usize> {
     for kind in [
         StateCopy::ConvIn,

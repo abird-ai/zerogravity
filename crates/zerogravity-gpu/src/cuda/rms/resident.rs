@@ -80,7 +80,7 @@ impl Buffer {
 
 struct SourceOwner {
     source: VerifiedTensorSource,
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     _bindings: Option<Arc<crate::resident_program::source_bindings::SourceBindings>>,
     _parameter: ParameterWindow,
     _rows: Vec<TensorWindow>,
@@ -97,7 +97,7 @@ struct SourceOwner {
     _metadata: WindowWorkspace,
 }
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 fn source_embedding(
     bindings: &crate::resident_program::source_bindings::SourceBindings,
 ) -> Result<VerifiedMatrix> {
@@ -308,7 +308,7 @@ fn source_owner_rows_storage_bound(
     };
     Ok(Arc::new(SourceOwner {
         source,
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         _bindings: None,
         _parameter: parameter,
         _rows: windows,
@@ -334,11 +334,11 @@ pub(crate) struct RmsPrepared {
     accesses: Vec<(ResidentLease, DeviceAccess)>,
     outputs: Arc<[ResidentLease]>,
     owner: Arc<SourceOwner>,
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pooled: Option<Arc<super::pooled::PooledRmsActor>>,
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     natural: Option<Arc<natural::NaturalRows>>,
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     text: Option<Arc<text::EmbeddingRows>>,
 }
 impl RmsPrepared {
@@ -351,7 +351,7 @@ impl RmsPrepared {
     }
 
     /// Actual model-prepared embedding/RMS operands; no role names or reissuer.
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(crate) async fn prepare_bound(
         service: Arc<ResidentService>,
         bindings: Arc<crate::resident_program::source_bindings::SourceBindings>,
@@ -363,7 +363,7 @@ impl RmsPrepared {
     }
 
     /// Explicit physical row storage after the caller binds its capture recipe.
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(crate) async fn prepare_rows_bound(
         service: Arc<ResidentService>,
         bindings: Arc<crate::resident_program::source_bindings::SourceBindings>,
@@ -445,7 +445,7 @@ impl RmsPrepared {
             ._bindings = Some(bindings);
         Self::prepare_owner(service, owner, correlation, cancelled).await
     }
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(crate) fn cohort_gamma(
         self: &Arc<Self>,
         binding: &super::BoundModelRmsSource,
@@ -515,7 +515,7 @@ impl RmsPrepared {
         Self::prepare_owner(service, owner, correlation, cancelled).await
     }
 
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(super) async fn prepare_fixed_prompt(
         service: Arc<ResidentService>,
         source: super::leaf_source::RmsLeafSource,
@@ -550,7 +550,7 @@ impl RmsPrepared {
     }
 
     /// Same original source-row/RMS actor; explicit full-record canonical scope.
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(crate) async fn prepare_fixed_prompt_model(
         service: Arc<ResidentService>,
         binding: Arc<crate::cuda::native::fixed_prompt_model::FixedPromptModelBinding>,
@@ -586,7 +586,7 @@ impl RmsPrepared {
             owner,
             correlation,
             cancelled,
-            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             None,
         )
         .await
@@ -597,7 +597,7 @@ impl RmsPrepared {
         owner: Arc<SourceOwner>,
         correlation: u64,
         cancelled: Option<&std::sync::atomic::AtomicBool>,
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))] pooled: Option<
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))] pooled: Option<
             Arc<super::pooled::PooledRmsActor>,
         >,
     ) -> Result<Arc<Self>> {
@@ -606,7 +606,7 @@ impl RmsPrepared {
         let physical_bytes = layout
             .iter()
             .filter(|(role, _)| {
-                #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+                #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
                 if pooled.as_ref().is_some_and(|p| {
                     Self::scratch_role(*role).is_some()
                         || p.has_workspace_outputs()
@@ -626,19 +626,19 @@ impl RmsPrepared {
         }
         let mut init = service.begin_initialization(correlation)?;
         init.retain_completion_owner(owner.clone())?;
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         if let Some(pooled) = &pooled {
             init.retain_completion_owner(pooled.clone())?;
         }
         let mut leases = Vec::with_capacity(layout.len());
         for (role, bytes) in layout {
             require_not_cancelled(cancelled)?;
-            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             if let Some(shared) = pooled.as_ref().zip(Self::scratch_role(role)) {
                 leases.push((role, shared.0.lease(shared.1, bytes)?));
                 continue;
             }
-            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             if let Some(pooled) = &pooled {
                 let output = match role {
                     Buffer::Embedding => Some(super::pooled::RmsWorkspaceOutput::Embedding),
@@ -667,7 +667,7 @@ impl RmsPrepared {
             }
             leases.push((role, lease));
         }
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         if let Some(pooled) = &pooled {
             pooled.require_storage(leases.iter().map(|(_, lease)| lease))?;
         }
@@ -706,11 +706,11 @@ impl RmsPrepared {
             accesses,
             outputs: outputs.into(),
             owner,
-            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             pooled,
-            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             natural: None,
-            #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+            #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             text: None,
         }))
     }
@@ -754,7 +754,7 @@ impl RmsPrepared {
         self.enqueue_stages(stages)?;
         Ok(stages)
     }
-    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     pub(super) fn enqueue_fixed_prompt_through_mean(&self) -> Result<usize> {
         if self.owner.columns != Columns::Qwen08
             || self.owner.rows != Rows::FixedPrompt
@@ -774,7 +774,7 @@ impl RmsPrepared {
     }
     fn enqueue_stages(&self, stages: usize) -> Result<()> {
         self.service.ensure_usable()?;
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         let borrow = match &self.pooled {
             Some(pooled) if stages == Stage::ORDER.len() => Some(pooled.begin()?),
             Some(_) => {
@@ -794,7 +794,7 @@ impl RmsPrepared {
         for stage in self.stages.iter().take(stages) {
             stage.launch()?;
         }
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         if let Some(borrow) = borrow {
             borrow.complete()?;
         }
@@ -823,7 +823,7 @@ impl RmsPrepared {
                 "RMS producer original inputs/output readback".into(),
             ));
         }
-        #[cfg(all(feature = "cuda-native", target_os = "linux"))]
+        #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
         if let Some(rows) = &self.text {
             rows.validate(&actual[1])?;
         } else if self.natural.is_some() {
@@ -833,7 +833,7 @@ impl RmsPrepared {
                 "RMS producer original inputs/output readback".into(),
             ));
         }
-        #[cfg(not(all(feature = "cuda-native", target_os = "linux")))]
+        #[cfg(not(all(feature = "cuda-native-qualification", target_os = "linux")))]
         if &actual[1][..] != self.owner.embedding.as_slice() {
             return Err(Error::State(
                 "RMS producer original inputs/output readback".into(),
@@ -843,14 +843,14 @@ impl RmsPrepared {
     }
 }
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 #[path = "resident/natural.rs"]
 mod natural;
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 #[path = "resident/pooled.rs"]
 mod pooled;
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 #[path = "resident/text.rs"]
 mod text;

@@ -340,7 +340,7 @@ fn parse_packet(packet: &[u8], status: &[u8]) -> Result<(u32, u32)> {
     Ok((id, bits))
 }
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod natural;
 
 mod reusable;
@@ -349,10 +349,10 @@ mod publication;
 
 mod fixed_prompt_natural;
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod text;
 
-#[cfg(all(feature = "cuda-native", target_os = "linux"))]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) mod cohort;
 
 /// Same generated keys as actual independent N1/B4 greedy packet producers.
