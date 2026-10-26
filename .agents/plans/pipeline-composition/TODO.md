@@ -51,7 +51,7 @@ their existing numeric/source/physical acceptance gates.
 - CUDA source suite:596 passed,39 explicit ignores, no physical/model execution.
   All-target caller compilation/final gate are recorded below.
 
-## Application route checkpoint — 26 Oct
+## fc73457 — Application routes and assembled validation
 
 - [x] Wire model-owned CPU/reference/CUDA entrypoints, fair serving sessions,
   source-profile exports and renamed physical fixtures through common bindings.
@@ -68,6 +68,13 @@ their existing numeric/source/physical acceptance gates.
 - No new trained-model/physical qualification, optimized CUDA release, matched C16
   result or x2 capture. Exact source read grants remain absent; gfx90c hold and
   trusted x2 ED25519-key blocker remain. Historical exit137 cause is unknown.
+
+## Side-worktree reconciliation — 26 Oct
+
+- [x] After the complete MAIN batch, fast-forward all six side worktrees;
+  source clean,0/0 divergence. Preserve all four dirty overlays in named stashes;
+  retain the two earlier stashes. No reset/rebase, ignored overwrite or cache scan.
+  [Preservation details](../../runs/modular-architecture-20261026/worktree-reconcile-sol/final-batch-result.json).
 
 ## Uncommitted
 
@@ -88,8 +95,6 @@ and local gfx90c hold remain.
 - [ ] After legitimate source access: current independent B4 physical/CPU suite,
   then optimized release +quiet same-attempt C16 for both small models; then
   trusted x2 original27B full-window capture and exit137 investigation.
-- [ ] Reconcile preserved side worktrees after this MAIN checkpoint; no destructive
-  reset, stash replay or source overwrite. User deferred that work while MAIN was dirty.
 
 ### Shared HIP / model composition checkpoint — 24 Oct
 
