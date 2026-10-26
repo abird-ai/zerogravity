@@ -314,7 +314,7 @@ fn prompt_batch_and_decode_preserve_request_state() -> Result<()> {
     original.preflight()?;
     let device =
         zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA: {e}")))?;
-    let model = block_on(qwen35_cuda::load_b4(
+    let model = block_on(qwen35_cuda::load_b4_qualification(
         device,
         &env("ZG_QWEN35_MODEL_DIR")?,
         &env("ZG_QWEN35_CUDA_KERNEL_DIR")?,
@@ -387,7 +387,7 @@ fn cached_decode_matches_single_request() -> Result<()> {
     original.preflight()?;
     let device =
         zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA: {e}")))?;
-    let model = block_on(qwen35_cuda::load_b4(
+    let model = block_on(qwen35_cuda::load_b4_qualification(
         device,
         &env("ZG_QWEN35_MODEL_DIR")?,
         &env("ZG_QWEN35_CUDA_KERNEL_DIR")?,
@@ -460,7 +460,7 @@ fn export_batched_decode_reference_composition() -> Result<()> {
     original.preflight()?;
     let device =
         zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA: {e}")))?;
-    let model = block_on(qwen35_cuda::load_b4(
+    let model = block_on(qwen35_cuda::load_b4_qualification(
         device,
         &env("ZG_QWEN35_MODEL_DIR")?,
         &env("ZG_QWEN35_CUDA_KERNEL_DIR")?,
@@ -543,7 +543,7 @@ fn cached_decode_fault_retains_unfinished_work() -> Result<()> {
     original.preflight()?;
     let device =
         zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA: {e}")))?;
-    let model = block_on(qwen35_cuda::load_b4(
+    let model = block_on(qwen35_cuda::load_b4_qualification(
         device,
         &env("ZG_QWEN35_MODEL_DIR")?,
         &env("ZG_QWEN35_CUDA_KERNEL_DIR")?,

@@ -102,7 +102,7 @@ pub(super) fn prepare(
     require_embedding(source, record.plan())?;
     require_coverage(&record, |operator| source.validate_operator(operator))?;
     require_state_layout(source, record.plan())?;
-    let pairs = gdn::for_record(source, &record, None)?;
+    let pairs = gdn::for_record(source, &record)?;
     prepare_whole(source.source().clone(), record, metadata, pairs)
 }
 fn require_coverage(
@@ -239,7 +239,7 @@ mod tests {
         }
         let tagged = PromptCall::new(
             QwenSourceProfile::Qwen08,
-            PromptSpan::prefill(source, PromptWorkload::from_prompt_tokens(47)?, &PROMPT_IDS)?,
+            PromptSpan::prefill(source, PromptWorkload::new(47, 512)?, &PROMPT_IDS)?,
         )?;
         assert!(CallKind::of(tagged.request()).is_err());
         Ok(())

@@ -633,7 +633,6 @@ impl BoundFullModelSource {
                 .operator(5)?
                 .ok_or_else(|| Error::State("component recurrence absent".into()))?,
             [4, 5],
-            None,
             record.plan(),
         )?]
         .into_boxed_slice();

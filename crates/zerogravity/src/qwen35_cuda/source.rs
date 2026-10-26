@@ -206,10 +206,12 @@ pub(super) fn open(
             manifest_sha256: spec.manifest_sha,
             hidden_width: spec.hidden,
             vocabulary_size: 248320,
-            prompt_token_counts: profile.prompt_token_counts(),
-            max_output_tokens: profile.max_output_tokens(),
-            context_capacity_tokens: profile.context_capacity_tokens(),
-            max_cached_tokens: profile.max_cached_tokens()?,
+            // Ordinary backend discovery is not implemented. Keep capability
+            // inventory empty rather than advertising qualification captures.
+            prompt_token_counts: &[],
+            max_output_tokens: 0,
+            context_capacity_tokens: 512,
+            max_cached_tokens: 0,
         },
     })
 }

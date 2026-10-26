@@ -7,7 +7,7 @@ use crate::gpu::{
 };
 use crate::qwen35::StateSpec;
 use crate::qwen35::source::binding::{
-    ComponentOutput, GdnKernelCapture, OriginalWindowModelSource, PreparedComponent, PreparedPlan,
+    ComponentOutput, OriginalWindowModelSource, PreparedComponent, PreparedPlan,
     PreparedQualificationSource,
 };
 use crate::{Error, Result};
@@ -66,12 +66,39 @@ pub(super) fn prepare(
     Ok(Arc::new(bindings))
 }
 
-pub(super) fn gdn_recipe(capture: GdnKernelCapture) -> Result<GdnKernelRecipe> {
-    GdnKernelRecipe::bind(
-        capture.recipe_sha256(),
-        capture.input_tokens(),
-        capture.is_decode(),
-    )
+#[derive(Clone, Copy)]
+pub(super) struct GdnImplementation {
+    pub recipe_sha256: &'static str,
+    pub input_tokens: usize,
+    pub is_decode: bool,
+}
+
+/// Ask the backend to bind the exact implementation descriptor. Absence is an
+/// honest unsupported result; model geometry never manufactures a recipe.
+pub(super) fn gdn_recipe(
+    implementation: Option<GdnImplementation>,
+    input_tokens: usize,
+    is_decode: bool,
+) -> Result<GdnKernelRecipe> {
+    let implementation = implementation.ok_or_else(|| {
+        Error::Unsupported("CUDA GDN backend has no implementation for requested call".into())
+    })?;
+    if implementation.input_tokens != input_tokens || implementation.is_decode != is_decode {
+        return Err(Error::Unsupported(
+            "CUDA GDN implementation geometry differs from requested call".into(),
+        ));
+    }
+    let recipe = GdnKernelRecipe::bind(
+        implementation.recipe_sha256,
+        implementation.input_tokens,
+        implementation.is_decode,
+    )?;
+    if recipe.input_tokens() != input_tokens || recipe.is_decode() != is_decode {
+        return Err(Error::State(
+            "CUDA GDN backend rebound a different implementation".into(),
+        ));
+    }
+    Ok(recipe)
 }
 
 /// Move the same source-record ticket into the graph owner before RMS or upload.

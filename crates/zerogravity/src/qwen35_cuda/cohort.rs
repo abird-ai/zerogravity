@@ -76,9 +76,9 @@ impl Model {
         cancelled: &[&AtomicBool],
         validate: Option<Validation<'_>>,
     ) -> Result<native::TextCohortPreparation> {
-        if sessions.len() != 4 || ids.len() != 47 {
+        if sessions.len() != 4 || ids.is_empty() {
             return Err(Error::Malformed(
-                "text initial batch requires four prompt47 requests".into(),
+                "text initial batch requires four requests and a positive prompt".into(),
             ));
         }
         let _metadata = self

@@ -63,7 +63,7 @@ impl PreparedPlan {
 }
 const METADATA_BYTES: usize = 512 * 1024;
 mod gdn;
-pub use gdn::{GdnKernelCapture, PreparedGdnParameters};
+pub use gdn::PreparedGdnParameters;
 mod native;
 mod positions;
 mod qualification;
@@ -112,11 +112,7 @@ impl BoundPromptCall {
         require_embedding(source, record.plan())?;
         require_state_layout(source, record.plan())?;
         {
-            let pairs = gdn::for_record(
-                source,
-                &record,
-                Some(GdnKernelCapture::for_call(self.call())?),
-            )?;
+            let pairs = gdn::for_record(source, &record)?;
             prepare_whole(source.source().clone(), record, metadata, pairs)
         }
     }
@@ -139,7 +135,7 @@ impl OriginalWindowModelSource {
         }
         require_state_layout(self, record.plan())?;
         {
-            let pairs = gdn::for_record(self, &record, None)?;
+            let pairs = gdn::for_record(self, &record)?;
             prepare_whole(self.source().clone(), record, metadata, pairs)
         }
     }

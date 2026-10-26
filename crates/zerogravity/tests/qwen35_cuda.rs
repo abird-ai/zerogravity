@@ -307,7 +307,7 @@ fn source_model_state_and_output_agreement() -> Result<()> {
     let host = FixtureHost::new(ResourceOwner::new("qwen35-cuda-physical", "whole-matrix")?)?;
     let device =
         zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA device: {e}")))?;
-    let model = block_on(qwen35_cuda::load(
+    let model = block_on(qwen35_cuda::load_qualification(
         device,
         &source,
         &bundle,

@@ -102,10 +102,10 @@ fn projection(call: &PromptCall, kind: QwenProjection) -> QwenOperator {
 }
 
 #[test]
-fn finite_actual_prefills_and_all_seven_cached_spans_preserve_issuer() {
+fn dynamic_prefills_and_cached_spans_preserve_issuer() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    for prompt_tokens in PROMPT_TOKEN_COUNTS {
-        let workload = PromptWorkload::from_prompt_tokens(prompt_tokens).unwrap();
+    for prompt_tokens in [1, 47, 48, 49, 50, 73] {
+        let workload = PromptWorkload::new(prompt_tokens, 512).unwrap();
         let rows = workload.prompt_tokens();
         assert_eq!(PromptWorkload::from_prompt_tokens(rows).unwrap(), workload);
         let ids = vec![11; rows];
@@ -132,46 +132,33 @@ fn finite_actual_prefills_and_all_seven_cached_spans_preserve_issuer() {
             *workload.cached_bases().end() + 1,
             workload.final_frontier()
         );
-        assert!(workload.final_frontier() <= 79);
+        assert!(workload.final_frontier() <= workload.context_capacity_tokens());
     }
 }
 
 #[test]
-fn invalid_lengths_ids_and_cached_workload_boundaries_refuse_before_adoption() {
+fn invalid_ids_empty_spans_and_context_frontiers_refuse_before_adoption() {
     let source = SourceIdentity::for_new_allocation().unwrap();
-    for rows in [
-        0,
-        1,
-        46,
-        48,
-        49,
-        50,
-        56,
-        58,
-        61,
-        63,
-        64,
-        66,
-        68,
-        71,
-        73,
-        usize::MAX,
-    ] {
-        assert!(PromptWorkload::from_prompt_tokens(rows).is_err());
+    for (prompt, capacity) in [(0, 512), (1, 0), (513, 512)] {
+        assert!(PromptWorkload::new(prompt, capacity).is_err());
     }
-    for prompt_tokens in PROMPT_TOKEN_COUNTS {
-        let workload = PromptWorkload::from_prompt_tokens(prompt_tokens).unwrap();
+    for prompt_tokens in [1, 48, 49, 50, 73, 511] {
+        let workload = PromptWorkload::new(prompt_tokens, 512).unwrap();
         let rows = workload.prompt_tokens();
-        for ids in [vec![11; rows - 1], vec![11; rows + 1], vec![248_320; rows]] {
+        for ids in [
+            vec![11; rows.saturating_sub(1)],
+            vec![11; rows + 1],
+            vec![248_320; rows],
+        ] {
             assert!(PromptSpan::prefill(source, workload, &ids).is_err());
         }
         assert!(PromptSpan::prefill(SourceIdentity::unbound(), workload, &vec![11; rows]).is_err());
-        for base in [0, rows - 1, rows + 7, usize::MAX] {
+        for base in [0, rows.saturating_sub(1), 512, usize::MAX] {
             assert!(PromptSpan::cached(source, workload, base, 11).is_err());
         }
         assert!(PromptSpan::cached(source, workload, rows, 248_320).is_err());
-        assert!(TeacherSpan::new(source, 0, 512, 248_320, &vec![11; 67]).is_err());
     }
+    assert!(TeacherSpan::new(source, 0, 512, 248_320, &vec![11; 67]).is_err());
 }
 
 #[test]
@@ -342,19 +329,18 @@ fn short_metadata_does_not_enable_an_unaware_backend() {
 }
 
 #[test]
-fn exact_five_geometry_and_output_bounds_precede_model_admission() {
-    for n in [47, 57, 62, 67, 72] {
-        let mut ids = vec![248319; n];
-        for max in 1..=8 {
-            PromptWorkload::validate_request(&ids, max).unwrap();
-        }
-        ids[n - 1] = 248320;
-        assert!(PromptWorkload::validate_request(&ids, 8).is_err());
-        for max in [0, 9, usize::MAX] {
-            assert!(PromptWorkload::validate_request(&vec![0; n], max).is_err());
-        }
-    }
-    for n in [0, 1, 2, 46, 48, 56, 58, 61, 63, 64, 66, 68, 71, 73, 512] {
-        assert!(PromptWorkload::validate_request(&vec![0; n], 8).is_err());
+fn positive_outputs_and_checked_context_frontier_precede_backend_admission() {
+    for n in [1, 47, 48, 49, 50, 73, 511] {
+        let workload = PromptWorkload::new(n, 512).unwrap();
+        let mut ids = vec![248_319; n];
+        workload.validate_request(&ids, 512 - n, 248_320).unwrap();
+        assert!(workload.validate_request(&ids, 0, 248_320).is_err());
+        assert!(
+            workload
+                .validate_request(&ids, 513usize.saturating_sub(n), 248_320)
+                .is_err()
+        );
+        ids[n - 1] = 248_320;
+        assert!(workload.validate_request(&ids, 1, 248_320).is_err());
     }
 }

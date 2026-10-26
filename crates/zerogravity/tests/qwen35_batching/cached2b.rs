@@ -18,7 +18,7 @@ fn host() -> Result<FixtureHost> {
 fn load(host: &TransferAdmission) -> Result<Arc<qwen35_cuda::Model>> {
     let device =
         zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA: {e}")))?;
-    let model = block_on(qwen35_cuda::load_b4(
+    let model = block_on(qwen35_cuda::load_b4_qualification(
         device,
         &env("ZG_QWEN35_MODEL_DIR")?,
         &env("ZG_QWEN35_CUDA_KERNEL_DIR")?,

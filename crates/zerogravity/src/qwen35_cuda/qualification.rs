@@ -28,6 +28,39 @@ pub use source::{
     prepare_tied_weight_source, qualify_qwen2b_mlp_weights,
 };
 
+/// Historical finite schedule retained only by explicit qualification paths.
+pub(super) const PROMPT_TOKEN_COUNTS: &[usize] = &[47, 57, 62, 67, 72];
+
+/// Exact independently captured recipes. The backend must still authenticate
+/// each tuple; these hashes do not grant ordinary runtime capability.
+pub(super) fn gdn_implementation(
+    profile: crate::qwen35::plan::QwenSourceProfile,
+    input_tokens: usize,
+    is_decode: bool,
+) -> Option<super::bindings::GdnImplementation> {
+    use crate::qwen35::plan::QwenSourceProfile::{Qwen2B, Qwen08};
+    let recipe_sha256 = match (profile, input_tokens, is_decode) {
+        (Qwen08, 47, false) => "b24e5fb2ac4b0e591cb907e8226cd1d80bc24507c0586ecfb5238ea4f3c91f8b",
+        (Qwen08, 57, false) => "9ec9c52e82e99b9654d3136f22e10523e1fa6f786a6136f7adefaaedec2aed43",
+        (Qwen08, 62, false) => "f487c0f5bcb5580da48fd33f047c4cf67d4098e496e1040e07a4eeafca0c5a65",
+        (Qwen08, 67, false) => "213a13cfb815791936bca556a1ab66730b03ac71fe9c72f6586cc5fcab0be3e5",
+        (Qwen08, 72, false) => "d2226726eda06c919709e3b7767d019e0dd33f633db925ce266a9f67b48f1d9e",
+        (Qwen08, 1, true) => "cf3ef9d3fa84410540c6d969212a3e29c912255d9b404d2430905155c1cf201e",
+        (Qwen2B, 47, false) => "aaae809312359b22c8404b6ea5ba18073738db731e3df64192372c7f40d82cb6",
+        (Qwen2B, 57, false) => "ab5aef404095ded631a2267be095f51b8a4d239a03289d354f3c7b26a1991741",
+        (Qwen2B, 62, false) => "b95983abb04db60da606ffe7ecccc547062cf714dc8b11361cd829be41fd452b",
+        (Qwen2B, 67, false) => "484de0c7dd651e8646758103db6634e8c34750a44c0d03f4d291deb7c93191df",
+        (Qwen2B, 72, false) => "f79c878120e21e36ed8413c5e24f73f159eb4e8a45aaba90e2c4a120cdb30df1",
+        (Qwen2B, 1, true) => "18faad78538d9d190c5a31668710f7b3aced6e2dd5d922618108b4044b3355d8",
+        _ => return None,
+    };
+    Some(super::bindings::GdnImplementation {
+        recipe_sha256,
+        input_tokens,
+        is_decode,
+    })
+}
+
 /// Consume the original model plans once for forced/fault GPU diagnostics.
 pub fn source_scopes(
     source: &Arc<OriginalWindowModelSource>,

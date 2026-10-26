@@ -17,7 +17,7 @@ struct SourceOwner {
     model: Arc<OriginalWindowModelSource>,
     profile: QwenSourceProfile,
     _metadata: WindowWorkspace,
-    prompt: std::sync::Mutex<Vec<prompt::PreparedRecord>>,
+    prompt: std::sync::Mutex<std::collections::VecDeque<prompt::PreparedRecord>>,
 }
 #[derive(Clone)]
 pub struct BoundFullModelSource(Arc<SourceOwner>);
@@ -55,7 +55,7 @@ impl OriginalWindowModelSource {
             model: self.clone(),
             profile,
             _metadata: metadata,
-            prompt: std::sync::Mutex::new(Vec::new()),
+            prompt: std::sync::Mutex::new(std::collections::VecDeque::new()),
         })))
     }
 }
@@ -101,8 +101,9 @@ fn require_source(model: &OriginalWindowModelSource, profile: QwenSourceProfile)
     let g = model.geometry();
     if g.family != Family::QwenHybrid
         || g.hidden_size != profile.hidden_size() as u64
-        || g.vocab_size != 248320
-        || g.layers.len() != 24
+        || g.vocab_size != profile.vocabulary_size() as u64
+        || g.layers.len() != profile.layer_count()
+        || g.max_position_embeddings != profile.max_position_embeddings() as u64
         || g.head_dim != 256
         || g.num_attention_heads != 8
         || g.num_key_value_heads != 2

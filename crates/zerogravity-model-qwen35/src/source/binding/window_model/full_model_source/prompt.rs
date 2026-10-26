@@ -2,6 +2,8 @@
 use super::*;
 use crate::plan::{PromptCall, PromptSpan};
 
+const PREPARED_PROMPT_CAPACITY: usize = 8;
+
 pub(super) struct PreparedRecord {
     call: PromptCall,
     record: Arc<QwenPlan>,
@@ -28,18 +30,23 @@ fn require_call(
     call.validate()?;
     if call.span().source() != source || call.model_profile() != profile {
         return Err(Error::State(
-            "short-HF exact original source/profile issuer".into(),
+            "full-model exact authenticated source/profile issuer".into(),
         ));
     }
     Ok(())
 }
 impl BoundFullModelSource {
-    /// Complete conservative retained cache allowance, including unvisited shapes.
+    /// Charge only entries retained by the bounded lazy cache.
     pub fn prompt_prepared_metadata_bytes(&self) -> Result<usize> {
-        self.model_profile()
-            .prepared_prompt_call_count()?
+        let retained = self
+            .0
+            .prompt
+            .lock()
+            .map_err(|_| Error::State("prepared prompt source cache poisoned".into()))?
+            .len();
+        retained
             .checked_mul(QwenPlan::PREPARED_METADATA_BYTES)
-            .ok_or_else(|| Error::Limit("profile prepared prompt metadata extent".into()))
+            .ok_or_else(|| Error::Limit("retained prompt metadata extent".into()))
     }
     pub fn bind_prompt_span(&self, span: PromptSpan) -> Result<BoundPromptCall> {
         let call = PromptCall::new(self.model_profile(), span)?;
@@ -69,14 +76,11 @@ impl BoundPromptCall {
             {
                 let mut cache =
                     self.source.0.prompt.lock().map_err(|_| {
-                        Error::State("prepared short-HF source cache poisoned".into())
+                        Error::State("prepared prompt source cache poisoned".into())
                     })?;
                 if let Some(prepared) = cache.iter().find(|p| same_shape(&p.call, &self.call)) {
                     prepared.record.clone()
                 } else {
-                    if cache.len() >= self.source.model_profile().prepared_prompt_call_count()? {
-                        return Err(Error::Limit("prepared short-HF finite shape bound".into()));
-                    }
                     let metadata = self
                         .source
                         .source()
@@ -86,7 +90,10 @@ impl BoundPromptCall {
                         self.record()?
                             .retain_prepared_metadata(metadata.into_host_workspace()?)?,
                     );
-                    cache.push(PreparedRecord {
+                    if cache.len() == PREPARED_PROMPT_CAPACITY {
+                        cache.pop_front();
+                    }
+                    cache.push_back(PreparedRecord {
                         call: self.call.clone(),
                         record: record.clone(),
                     });
@@ -114,62 +121,58 @@ mod tests {
     use super::*;
     use crate::plan::PromptWorkload;
     use zerogravity_core::accelerator::SourceIdentity;
+
+    fn call(
+        source: SourceIdentity,
+        profile: QwenSourceProfile,
+        prompt_tokens: usize,
+        capacity: usize,
+        base: Option<usize>,
+        id: u32,
+    ) -> PromptCall {
+        let workload = PromptWorkload::new(prompt_tokens, capacity).unwrap();
+        let span = match base {
+            None => PromptSpan::prefill(source, workload, &vec![id; prompt_tokens]),
+            Some(base) => PromptSpan::cached(source, workload, base, id),
+        }
+        .unwrap();
+        PromptCall::new(profile, span).unwrap()
+    }
+
     #[test]
     fn source_profile_join_rejects_foreign_owner_without_shape_equivalence() {
-        // Pure join refusal only; synthetic IDs are not authenticated sources.
         let source = SourceIdentity::for_new_allocation().unwrap();
         let foreign = SourceIdentity::for_new_allocation().unwrap();
         for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
-            let span = PromptSpan::prefill(
-                source,
-                PromptWorkload::from_prompt_tokens(72).unwrap(),
-                &[11; 72],
-            )
-            .unwrap();
-            let call = PromptCall::new(profile, span).unwrap();
-            require_call(source, profile, &call).unwrap();
-            assert!(require_call(foreign, profile, &call).is_err());
+            let actual = call(source, profile, 73, 512, None, 11);
+            require_call(source, profile, &actual).unwrap();
+            assert!(require_call(foreign, profile, &actual).is_err());
             let other = if profile == QwenSourceProfile::Qwen08 {
                 QwenSourceProfile::Qwen2B
             } else {
                 QwenSourceProfile::Qwen08
             };
-            assert!(require_call(source, other, &call).is_err());
+            assert!(require_call(source, other, &actual).is_err());
         }
     }
+
     #[test]
-    fn prepared_shape_keys_keep_all_exact_frontiers_profiles_and_issuers() {
+    fn shape_keys_preserve_context_frontier_profile_and_issuer() {
         let source = SourceIdentity::for_new_allocation().unwrap();
         let foreign = SourceIdentity::for_new_allocation().unwrap();
-        for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
-            let mut shapes = Vec::new();
-            for &count in profile.prompt_token_counts() {
-                let workload = profile.prompt_workload(count).unwrap();
-                for base in std::iter::once(None).chain(workload.cached_bases().map(Some)) {
-                    let make = |source, profile, id| {
-                        let span = match base {
-                            None => PromptSpan::prefill(source, workload, &vec![id; count]),
-                            Some(base) => PromptSpan::cached(source, workload, base, id),
-                        }
-                        .unwrap();
-                        PromptCall::new(profile, span).unwrap()
-                    };
-                    let a = make(source, profile, 11);
-                    let b = make(source, profile, 353);
-                    assert_ne!(a, b);
-                    assert!(same_shape(&a, &b));
-                    assert!(!same_shape(&a, &make(foreign, profile, 11)));
-                    let other = if profile == QwenSourceProfile::Qwen08 {
-                        QwenSourceProfile::Qwen2B
-                    } else {
-                        QwenSourceProfile::Qwen08
-                    };
-                    assert!(!same_shape(&a, &make(source, other, 11)));
-                    assert!(shapes.iter().all(|prior| !same_shape(prior, &a)));
-                    shapes.push(a);
-                }
-            }
-            assert_eq!(shapes.len(), profile.prepared_prompt_call_count().unwrap());
+        let a = call(source, QwenSourceProfile::Qwen08, 48, 512, None, 11);
+        let equal_shape = call(source, QwenSourceProfile::Qwen08, 48, 512, None, 353);
+        assert_ne!(a, equal_shape);
+        assert!(same_shape(&a, &equal_shape));
+        for different in [
+            call(foreign, QwenSourceProfile::Qwen08, 48, 512, None, 11),
+            call(source, QwenSourceProfile::Qwen2B, 48, 512, None, 11),
+            call(source, QwenSourceProfile::Qwen08, 49, 512, None, 11),
+            call(source, QwenSourceProfile::Qwen08, 48, 1024, None, 11),
+            call(source, QwenSourceProfile::Qwen08, 48, 512, Some(48), 11),
+            call(source, QwenSourceProfile::Qwen08, 48, 512, Some(49), 11),
+        ] {
+            assert!(!same_shape(&a, &different));
         }
     }
 }

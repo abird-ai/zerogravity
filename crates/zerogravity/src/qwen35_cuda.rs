@@ -33,8 +33,9 @@ pub fn supported_host_mib(host_mib: usize) -> bool {
 pub const PROVIDER_MIB: usize = 4608;
 pub const DEVICE_MIB: usize = 5120;
 
-/// Compiled source inventory, checked against every actual runtime source file.
-/// These fields describe identity/finite input geometry, never numerical results.
+/// Authenticated source geometry plus ordinary backend capability inventory.
+/// Empty/zero capability fields mean no ordinary implementation is available;
+/// explicit qualification captures are intentionally not advertised here.
 pub struct SourceMetadata {
     pub family: &'static str,
     pub repository: &'static str,
@@ -68,7 +69,11 @@ impl Model {
     }
     pub fn validate_prompt(&self, ids: &[u32], max_tokens: usize) -> Result<()> {
         self.resident.require_open()?;
-        crate::qwen35::plan::PromptWorkload::validate_request(ids, max_tokens)
+        self.source_profile().validate_prompt_request(
+            ids,
+            max_tokens,
+            self.metadata.context_capacity_tokens,
+        )
     }
     pub fn resident(&self) -> &Arc<native::TextLoaded> {
         &self.resident
@@ -115,6 +120,7 @@ pub async fn load(
 ) -> Result<Arc<Model>> {
     load_profile(
         false,
+        false,
         device,
         hf_directory,
         artifact_directory,
@@ -134,6 +140,7 @@ pub async fn load_b4(
 ) -> Result<Arc<Model>> {
     load_profile(
         true,
+        false,
         device,
         hf_directory,
         artifact_directory,
@@ -143,8 +150,54 @@ pub async fn load_b4(
     )
     .await
 }
+/// Explicit historical finite qualification route. Ordinary loading never uses
+/// captured recipes as a substitute for backend implementation discovery.
+pub async fn load_qualification(
+    device: crate::gpu::Device,
+    hf_directory: &Path,
+    artifact_directory: &Path,
+    host: &TransferAdmission,
+    provider_capacity_bytes: usize,
+    cancelled: Option<&AtomicBool>,
+) -> Result<Arc<Model>> {
+    load_profile(
+        false,
+        true,
+        device,
+        hf_directory,
+        artifact_directory,
+        host,
+        provider_capacity_bytes,
+        cancelled,
+    )
+    .await
+}
+
+/// Explicit finite B4 qualification route.
+pub async fn load_b4_qualification(
+    device: crate::gpu::Device,
+    hf_directory: &Path,
+    artifact_directory: &Path,
+    host: &TransferAdmission,
+    provider_capacity_bytes: usize,
+    cancelled: Option<&AtomicBool>,
+) -> Result<Arc<Model>> {
+    load_profile(
+        true,
+        true,
+        device,
+        hf_directory,
+        artifact_directory,
+        host,
+        provider_capacity_bytes,
+        cancelled,
+    )
+    .await
+}
+
 async fn load_profile(
     cohort_b4: bool,
+    qualification: bool,
     device: crate::gpu::Device,
     hf_directory: &Path,
     artifact_directory: &Path,
@@ -193,7 +246,11 @@ async fn load_profile(
         cancelled,
     )?;
     let capture = native::TextKernelCapture::bind(bound.native_kernel_capture().recipe_sha256())?;
-    let templates = Arc::new(templates::Templates::prepare(bound)?);
+    let templates = Arc::new(if qualification {
+        templates::Templates::prepare_qualification(bound, opened.metadata.context_capacity_tokens)?
+    } else {
+        templates::Templates::prepare(bound, opened.metadata.context_capacity_tokens)?
+    });
     let scopes = templates.physical_scopes()?;
     let rotary_source = bindings::retained(opened.source.prepare_rotary_source(true)?);
     let rotary = native::prepare_text_rotary(
@@ -578,7 +635,10 @@ mod b4_inventory_tests {
             let inputs = bundle.model(opened.source.source(), None)?;
             let capture =
                 native::TextKernelCapture::bind(bound.native_kernel_capture().recipe_sha256())?;
-            let templates = templates::Templates::prepare(bound.clone())?;
+            let templates = templates::Templates::prepare_qualification(
+                bound.clone(),
+                opened.metadata.context_capacity_tokens,
+            )?;
             let scopes = templates.physical_scopes()?;
             let limit = zerogravity_core::optimization::MemoryFootprint {
                 host_bytes: opened.source.source().workspace_limit_bytes()?,

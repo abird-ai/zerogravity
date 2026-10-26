@@ -1,10 +1,8 @@
-//! Original source-family geometry and finite prompt inventory.
+//! Original source-family geometry.
 //! SourceIdentity and ProgramNumericalProfile/provider semantics stay independent.
 //! No source/runtime/state authority or learned-source substitution.
 use super::{PromptWorkload, QwenProjection};
 use crate::{Error, Result};
-
-const ORIGINAL_PROMPT_TOKEN_COUNTS: &[usize] = &[47, 57, 62, 67, 72];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QwenSourceProfile {
@@ -12,51 +10,40 @@ pub enum QwenSourceProfile {
     Qwen2B,
 }
 impl QwenSourceProfile {
-    /// Model-owned admitted shapes; geometry alone grants no native execution.
-    pub const fn prompt_token_counts(self) -> &'static [usize] {
-        match self {
-            Self::Qwen08 => ORIGINAL_PROMPT_TOKEN_COUNTS,
-            Self::Qwen2B => ORIGINAL_PROMPT_TOKEN_COUNTS,
-        }
+    pub const fn vocabulary_size(self) -> usize {
+        248_320
     }
-    pub const fn max_output_tokens(self) -> usize {
-        8
+    pub const fn layer_count(self) -> usize {
+        24
     }
-    pub const fn context_capacity_tokens(self) -> usize {
-        512
+    pub const fn max_position_embeddings(self) -> usize {
+        262_144
     }
-    pub fn prompt_workload(self, prompt_tokens: usize) -> Result<PromptWorkload> {
-        if !self.prompt_token_counts().contains(&prompt_tokens) {
+    pub fn prompt_workload(
+        self,
+        prompt_tokens: usize,
+        context_capacity_tokens: usize,
+    ) -> Result<PromptWorkload> {
+        let workload = PromptWorkload::new(prompt_tokens, context_capacity_tokens)?;
+        self.validate_prompt_workload(workload)?;
+        Ok(workload)
+    }
+    pub fn validate_prompt_workload(self, workload: PromptWorkload) -> Result<()> {
+        if workload.context_capacity_tokens() > self.max_position_embeddings() {
             return Err(Error::Unsupported(
-                "prompt tokens outside source profile inventory".into(),
+                "prompt context exceeds authenticated model geometry".into(),
             ));
         }
-        PromptWorkload::from_prompt_tokens(prompt_tokens)
+        Ok(())
     }
-    pub fn validate_prompt_request(self, ids: &[u32], max_tokens: usize) -> Result<()> {
-        self.prompt_workload(ids.len())?;
-        PromptWorkload::validate_request(ids, max_tokens)
-    }
-    /// One prefill and each genuine decode frontier through the output limit.
-    pub fn prepared_prompt_call_count(self) -> Result<usize> {
-        self.prompt_token_counts()
-            .len()
-            .checked_mul(self.max_output_tokens())
-            .ok_or_else(|| Error::Limit("profile prepared prompt call count".into()))
-    }
-    /// Distinct prefill layouts and one shared single-token cached layout.
-    pub fn physical_prompt_scope_count(self) -> Result<usize> {
-        self.prompt_token_counts()
-            .len()
-            .checked_add(1)
-            .ok_or_else(|| Error::Limit("profile physical prompt scope count".into()))
-    }
-    pub fn max_cached_tokens(self) -> Result<usize> {
-        self.prompt_token_counts()
-            .iter()
-            .max()
-            .and_then(|tokens| tokens.checked_add(self.max_output_tokens().checked_sub(2)?))
-            .ok_or_else(|| Error::Limit("profile cached token extent".into()))
+    pub fn validate_prompt_request(
+        self,
+        ids: &[u32],
+        max_tokens: usize,
+        context_capacity_tokens: usize,
+    ) -> Result<()> {
+        let workload = self.prompt_workload(ids.len(), context_capacity_tokens)?;
+        workload.validate_request(ids, max_tokens, self.vocabulary_size())
     }
     pub fn hidden_size(self) -> usize {
         match self {
@@ -83,7 +70,7 @@ impl QwenSourceProfile {
             QwenProjection::Ba => 32,
             QwenProjection::AttentionQkv => 5120,
             QwenProjection::GateUp => self.intermediate_size() * 2,
-            QwenProjection::Head => 248320,
+            QwenProjection::Head => self.vocabulary_size(),
             _ => self.hidden_size(),
         }
     }
@@ -94,31 +81,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn finite_prompt_profiles_preserve_admission_and_preparation_extents() {
+    fn model_geometry_accepts_dynamic_spans_but_not_invalid_context_or_ids() {
         for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
-            assert_eq!(profile.prompt_token_counts(), &[47, 57, 62, 67, 72]);
-            assert_eq!(profile.prepared_prompt_call_count().unwrap(), 40);
-            assert_eq!(profile.physical_prompt_scope_count().unwrap(), 6);
-            assert_eq!(profile.max_cached_tokens().unwrap(), 78);
-            assert_eq!(profile.max_output_tokens(), 8);
-            assert_eq!(profile.context_capacity_tokens(), 512);
-            for tokens in profile.prompt_token_counts() {
-                let workload = profile.prompt_workload(*tokens).unwrap();
-                assert_eq!(
-                    workload.cached_bases().count() + 1,
-                    profile.max_output_tokens()
-                );
+            assert_eq!(profile.vocabulary_size(), 248_320);
+            assert_eq!(profile.layer_count(), 24);
+            assert_eq!(profile.max_position_embeddings(), 262_144);
+            for tokens in [1, 47, 48, 49, 50, 73, 511] {
+                let workload = profile.prompt_workload(tokens, 512).unwrap();
+                assert_eq!(workload.prompt_tokens(), tokens);
+                assert_eq!(workload.context_capacity_tokens(), 512);
+                profile
+                    .validate_prompt_request(&vec![11; tokens], 512 - tokens, 512)
+                    .unwrap();
             }
-            for tokens in [0, 46, 48, 49, 50, 51, 512] {
-                assert!(profile.prompt_workload(tokens).is_err());
+            for (tokens, outputs, context) in [(0, 1, 512), (512, 1, 512), (1, 0, 512)] {
                 assert!(
                     profile
-                        .validate_prompt_request(&vec![11; tokens], 1)
+                        .validate_prompt_request(&vec![11; tokens], outputs, context)
                         .is_err()
                 );
             }
-            assert!(profile.validate_prompt_request(&[248320; 47], 1).is_err());
-            assert!(profile.validate_prompt_request(&[11; 47], 9).is_err());
+            assert!(profile.validate_prompt_request(&[248_320], 1, 512).is_err());
+            assert!(
+                profile
+                    .prompt_workload(1, profile.max_position_embeddings() + 1)
+                    .is_err()
+            );
+            let full = PromptWorkload::new(
+                profile.max_position_embeddings(),
+                profile.max_position_embeddings(),
+            )
+            .unwrap();
+            assert!(full.checked_frontier(1).is_err());
         }
     }
 }

@@ -1,6 +1,5 @@
 //! Family policy composes common execution; feedback remains engine-owned.
 use super::*;
-use crate::qwen35::plan::PromptWorkload;
 use crate::session_root::RootBinding;
 pub struct Session {
     engine: native::TextSession,
@@ -45,7 +44,6 @@ impl Session {
         F: for<'a> FnMut(native::TextReadback<'a>) -> Result<()>,
     {
         not_cancelled(cancelled)?;
-        PromptWorkload::validate_request(ids, 1)?;
         let (binding, recipe) = self.templates.bind_prompt(ids)?;
         self.engine
             .prepare_prompt_with(binding, recipe, cancelled, validate)

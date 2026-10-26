@@ -32,12 +32,14 @@ impl QwenSourceCall {
     ) -> Result<Self> {
         request.validate()?;
         if let Some(span) = request.teachers().prompt_span() {
-            model_profile.prompt_workload(span.workload().prompt_tokens())?;
-        }
-        if request.layer().index() != 0 || request.teachers().capacity() != 512 {
+            model_profile.validate_prompt_workload(span.workload())?;
+        } else if request.teachers().capacity() != 512 {
             return Err(Error::Unsupported(
-                "closed .8B full-model request metadata".into(),
+                "legacy reference call requires its exact context".into(),
             ));
+        }
+        if request.layer().index() != 0 {
+            return Err(Error::Unsupported("closed full-model request layer".into()));
         }
         Ok(Self {
             request,
@@ -57,8 +59,8 @@ impl QwenSourceCall {
         self.request.rows()
     }
     pub fn layer(&self, index: usize) -> Result<QwenLayer> {
-        if index >= 24 {
-            return Err(Error::Unsupported("closed original24 layer index".into()));
+        if index >= self.model_profile.layer_count() {
+            return Err(Error::Unsupported("layer outside model geometry".into()));
         }
         Ok(QwenLayer {
             source: self.source(),
@@ -69,10 +71,12 @@ impl QwenSourceCall {
         self.request.validate()?;
         if let Some(span) = self.request.teachers().prompt_span() {
             self.model_profile
-                .prompt_workload(span.workload().prompt_tokens())?;
+                .validate_prompt_workload(span.workload())?;
+        } else if self.request.teachers().capacity() != 512 {
+            return Err(Error::State("legacy reference context changed".into()));
         }
-        if self.request.layer().index() != 0 || self.request.teachers().capacity() != 512 {
-            return Err(Error::State("original full-model request changed".into()));
+        if self.request.layer().index() != 0 {
+            return Err(Error::State("full-model request layer changed".into()));
         }
         Ok(())
     }
@@ -255,9 +259,10 @@ impl QwenOperator {
                 | QwenOperation::Projection(QwenProjection::Head)
         );
         if self.layer.is_none() != final_site
-            || self
-                .layer
-                .is_some_and(|layer| layer.source != self.call.source() || layer.index >= 24)
+            || self.layer.is_some_and(|layer| {
+                layer.source != self.call.source()
+                    || layer.index as usize >= self.call.model_profile.layer_count()
+            })
         {
             return Err(Error::State("full-model exact source/layer/site".into()));
         }
