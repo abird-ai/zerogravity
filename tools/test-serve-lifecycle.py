@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Source-free lifecycle evidence fixtures; no container/model/device runtime."""
 import copy
+import fcntl
 import json
 import os
 from pathlib import Path
 import runpy
+import resource
 import signal
 import socket
 import subprocess
@@ -81,6 +83,60 @@ else:sys.exit(8)
 
 
 class LifecycleEvidence(unittest.TestCase):
+    def test_log_reader_retains_eof_with_descriptor_above_select_limit(self):
+        if resource.getrlimit(resource.RLIMIT_NOFILE)[0] <= 1100:
+            self.skipTest("requires an already available descriptor above 1024")
+        with tempfile.TemporaryDirectory() as temporary:
+            read_fd, write_fd = os.pipe()
+            try:
+                high_fd = fcntl.fcntl(read_fd, fcntl.F_DUPFD_CLOEXEC, 1100)
+            finally:
+                os.close(read_fd)
+            pipe = os.fdopen(high_fd, "rb", buffering=0)
+            try:
+                log = LIFECYCLE["BoundedLog"](pipe, Path(temporary)/"high-fd.log", 1024)
+                os.write(write_fd, b"complete output")
+                os.close(write_fd)
+                write_fd = None
+                result = log.finish(2)
+                self.assertTrue(result["capture_complete"], result)
+                self.assertTrue(result["eof"])
+                self.assertIsNone(result["reader_error"])
+                self.assertEqual(Path(result["path"]).read_bytes(), b"complete output")
+                self.assertTrue(pipe.closed)
+                self.assertFalse(log.thread.is_alive())
+            finally:
+                if write_fd is not None:
+                    os.close(write_fd)
+                pipe.close()
+
+    def test_reference_command_evidence_requires_no_http_provider(self):
+        for code in (0, 7):
+            with self.subTest(returncode=code), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary)
+                observations = []
+                def checkpoint(stage, record):
+                    observations.append((stage, record["pid"], record["leader_reaped"]))
+                    LIFECYCLE["write_json"](directory/"command.json", record)
+                    return True
+                record = LIFECYCLE["owned_command"](
+                    [sys.executable, "-B", "-c",
+                     "import os,sys;os.write(1,b'out');os.write(2,b'err');sys.exit("+str(code)+")"],
+                    "reference-stop", "a"*64, 2, checkpoint,
+                    directory=directory, container_name="owned-reference", log_limit_bytes=1024)
+                self.assertEqual(observations[0], ("reference-stop_intent", None, False))
+                self.assertEqual([row[0] for row in observations],
+                                 ["reference-stop_intent", "reference-stop_spawn", "reference-stop_result"])
+                self.assertEqual(record["returncode"], code)
+                self.assertEqual(record["status"], "finished")
+                self.assertTrue(record["evidence_complete"])
+                self.assertTrue(record["result_persisted"])
+                self.assertEqual(record["signals"], [])
+                self.assertEqual(record["leader_reap_attempts"], 1)
+                self.assertTrue(record["owned_process_group_gone"])
+                self.assertEqual(Path(record["stdout"]["path"]).read_bytes(), b"out")
+                self.assertEqual(Path(record["stderr"]["path"]).read_bytes(), b"err")
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="zg-stop-evidence-")
         self.root = Path(self.temporary.name)

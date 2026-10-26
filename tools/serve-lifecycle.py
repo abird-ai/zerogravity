@@ -33,7 +33,7 @@ import os
 from pathlib import Path
 import queue
 import re
-import select
+import selectors
 import signal
 import socket
 import subprocess
@@ -330,24 +330,26 @@ class BoundedLog:
         except Exception as error:
             self.error = type(error).__name__
         try:
-            while not self.stop.is_set():
-                if not select.select([self.pipe],[],[],.05)[0]:
-                    continue
-                block = os.read(self.pipe.fileno(),65536)
-                if not block:
-                    self.eof = True
-                    self.eof_at = stamp()
-                    break
-                self.seen += len(block)
-                if target is not None and self.error is None:
-                    keep = block[:max(0,self.limit-self.retained)]
-                    try:
-                        if target.write(keep) != len(keep):
-                            raise OSError("short private log write")
-                        self.digest.update(keep)
-                        self.retained += len(keep)
-                    except Exception as error:
-                        self.error = type(error).__name__
+            with selectors.DefaultSelector() as selector:
+                selector.register(self.pipe, selectors.EVENT_READ)
+                while not self.stop.is_set():
+                    if not selector.select(.05):
+                        continue
+                    block = os.read(self.pipe.fileno(),65536)
+                    if not block:
+                        self.eof = True
+                        self.eof_at = stamp()
+                        break
+                    self.seen += len(block)
+                    if target is not None and self.error is None:
+                        keep = block[:max(0,self.limit-self.retained)]
+                        try:
+                            if target.write(keep) != len(keep):
+                                raise OSError("short private log write")
+                            self.digest.update(keep)
+                            self.retained += len(keep)
+                        except Exception as error:
+                            self.error = type(error).__name__
             if target is not None:
                 target.flush()
                 os.fsync(target.fileno())
@@ -372,6 +374,64 @@ class BoundedLog:
                 "truncated":self.seen > self.retained, "sha256_retained":self.digest.hexdigest(),
                 "reader_complete":done, "eof":self.eof, "eof_observed":self.eof_at, "reader_error":self.error,
                 "capture_complete":done and self.eof and self.error is None and self.seen == self.retained}
+
+
+def owned_command(command, label, cid, seconds, checkpoint, *, directory,
+                  container_name, log_limit_bytes, cwd=None, env=None,
+                  redact_arg_indices=()):
+    """Run/reap one owned command; persist intent and complete separate streams.
+
+    checkpoint(stage, record) returns whether the current facts were persisted.
+    A caller retains its original container/process owner and acceptance policy.
+    """
+    record = {"status":"intent", "argv":redacted_argv(command,redact_arg_indices),
+        "owned_cid":cid, "owned_container_name":container_name, "intent":stamp(),
+        "intent_persisted":True, "pid":None, "pgid":None,
+        "timeout_seconds":seconds, "stdout":None, "stderr":None,
+        "returncode":None, "timed_out":False, "signals":[], "leader_reaped":False}
+    if not checkpoint(label+"_intent",record):
+        record["intent_persisted"] = False
+    process,logs = None,{}
+    began = time.monotonic()
+    record["start"] = stamp()
+    record["start_observation"] = "immediately_before_Popen"
+    try:
+        process = subprocess.Popen(command,cwd=cwd,env={**os.environ,**(env or {})},
+            stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True,bufsize=0)
+        record.update(status="running",pid=process.pid,pgid=process.pid)
+        checkpoint(label+"_spawn",record)
+        for stream in ["stdout","stderr"]:
+            logs[stream] = BoundedLog(getattr(process,stream),Path(directory)/(label+"."+stream+".log"),log_limit_bytes)
+        retire_child(process,record,began+seconds)
+        if record["errors"]:
+            record.update(status="command_error",error_type=record["errors"][0]["error_type"])
+    except BaseException as error:
+        record.update(status="program_not_found" if isinstance(error,FileNotFoundError) else "command_error",error_type=type(error).__name__)
+        record.setdefault("errors",[]).append({"stage":"command","error_type":type(error).__name__})
+        if process is not None and process.returncode is None and not record.get("leader_reap_attempts"):
+            retire_child(process,record)
+    finally:
+        for stream in ["stdout","stderr"]:
+            try:
+                if stream in logs:
+                    record[stream] = logs[stream].finish(.5)
+                elif process is not None:
+                    getattr(process,stream).close()
+            except BaseException as error:
+                record[stream] = {"reader_complete":False,"eof":False,"capture_complete":False,
+                    "reader_error":type(error).__name__}
+        record["end"] = stamp()
+        record["elapsed_seconds"] = time.monotonic()-began
+        record["cleanup_complete"] = process is None or bool(record.get("cleanup_complete")
+            and all(record[stream] and record[stream]["reader_complete"] and record[stream]["eof"] for stream in ["stdout","stderr"]))
+        record["evidence_complete"] = bool(record["intent_persisted"] and process is not None
+            and record["cleanup_complete"] and all(record[stream] and record[stream]["capture_complete"] for stream in ["stdout","stderr"]))
+        if record["status"] == "running":
+            record["status"] = "timed_out" if record["timed_out"] else "finished"
+        record["result_persisted"] = True
+        if not checkpoint(label+"_result",record):
+            record["result_persisted"] = record["evidence_complete"] = False
+    return record
 
 
 class LifecyclePlan:
@@ -544,60 +604,22 @@ class OwnedProvider:
     def command(self, command, label, cid, seconds, checkpoint):
         run = self.spec["argv"].index("run")
         redactions = [i for i in self.spec.get("redact_arg_indices",()) if i < run]
-        record = {"status":"intent", "argv":redacted_argv(command,redactions),
-            "owned_cid":cid, "owned_container_name":self.name, "intent":stamp(),
-            "intent_persisted":True, "pid":None, "pgid":None,
-            "timeout_seconds":seconds, "stdout":None, "stderr":None,
-            "returncode":None, "timed_out":False, "signals":[], "leader_reaped":False}
-        shutdown = self.receipt["shutdown"]
-        if label == "stop":
-            shutdown["stop"] = record
-        else:
-            shutdown["container_state"].append(record)
-            record["stage"] = label
-        if not checkpoint(label+"_intent"):
-            record["intent_persisted"] = False
-        process,logs = None,{}
-        began = time.monotonic()
-        record["start"] = stamp()
-        record["start_observation"] = "immediately_before_Popen"
-        try:
-            process = subprocess.Popen(command,cwd=self.spec.get("cwd"),env={**os.environ,**self.spec.get("env",{})},
-                stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True,bufsize=0)
-            record.update(status="running",pid=process.pid,pgid=process.pid)
-            checkpoint(label+"_spawn")
-            for stream in ["stdout","stderr"]:
-                logs[stream] = BoundedLog(getattr(process,stream),self.directory/(label+"."+stream+".log"),self.plan.spec["log_limit_bytes"])
-            retire_child(process,record,began+seconds)
-            if record["errors"]:
-                record.update(status="command_error",error_type=record["errors"][0]["error_type"])
-        except BaseException as error:
-            record.update(status="program_not_found" if isinstance(error,FileNotFoundError) else "command_error",error_type=type(error).__name__)
-            record.setdefault("errors",[]).append({"stage":"command","error_type":type(error).__name__})
-            if process is not None and process.returncode is None and not record.get("leader_reap_attempts"):
-                retire_child(process,record)
-        finally:
-            for stream in ["stdout","stderr"]:
-                try:
-                    if stream in logs:
-                        record[stream] = logs[stream].finish(.5)
-                    elif process is not None:
-                        getattr(process,stream).close()
-                except BaseException as error:
-                    record[stream] = {"reader_complete":False,"eof":False,"capture_complete":False,
-                        "reader_error":type(error).__name__}
-            record["end"] = stamp()
-            record["elapsed_seconds"] = time.monotonic()-began
-            record["cleanup_complete"] = process is None or bool(record.get("cleanup_complete")
-                and all(record[stream] and record[stream]["reader_complete"] and record[stream]["eof"] for stream in ["stdout","stderr"]))
-            record["evidence_complete"] = bool(record["intent_persisted"] and process is not None
-                and record["cleanup_complete"] and all(record[stream] and record[stream]["capture_complete"] for stream in ["stdout","stderr"]))
-            if record["status"] == "running":
-                record["status"] = "timed_out" if record["timed_out"] else "finished"
-            record["result_persisted"] = True
-            if not checkpoint(label+"_result"):
-                record["result_persisted"] = record["evidence_complete"] = False
-        return record
+        installed = False
+        def persist(stage, record):
+            nonlocal installed
+            if not installed:
+                shutdown = self.receipt["shutdown"]
+                if label == "stop":
+                    shutdown["stop"] = record
+                else:
+                    shutdown["container_state"].append(record)
+                    record["stage"] = label
+                installed = True
+            return checkpoint(stage)
+        return owned_command(command,label,cid,seconds,persist,
+            directory=self.directory,container_name=self.name,
+            log_limit_bytes=self.plan.spec["log_limit_bytes"],cwd=self.spec.get("cwd"),
+            env=self.spec.get("env",{}),redact_arg_indices=redactions)
 
     def inspect_container(self, cid, stage, checkpoint):
         run = self.spec["argv"].index("run")

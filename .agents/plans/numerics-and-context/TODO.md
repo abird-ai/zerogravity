@@ -17,16 +17,54 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
 
 ## Uncommitted
 
+### Source checkpoint — `fix(lifecycle): retain owned command streams`
+
+- [x] Shared reference/stop command owner retains intent, exact PID/PGID, one
+  reap, separate bounded streams and EOF; return codes remain caller policy.
+  DefaultSelector handles high descriptors without skipping owned cleanup.
+- [x] Assembled isolated `scripts/check.sh`:2050 Rust PASS/0FAIL/91ignored,
+  12 Python suites PASS, release/installer/shell/Nix PASS; natural0 and original
+  group/reap/EOF closure. Strict CUDA/Vulkan all-target Clippy and284 CUDA/app
+  host tests also pass. No physical model acceptance from these source checks.
+
 ### Current owner order — 26 Oct
 
+- [~] Sequential continuation after serving shutdown: fresh .8B prompt47/48/49/50
+  originals, matching native profiles, real-model shutdown/faults, genuine long
+  contexts/backend routes, then optimized matched C16 and27B. All23 approved
+  model members freshly SHA-verified. New parameterized reference collector
+  preserves original math/state/fullV/source validators and exact owner; source
+  controls pass. Fresh47/48/49/50 original pairs now pass all24/all42, fullV,
+  consumed priors and natural feedback;47 uses explicit separate postvalidation
+  after its original controller report-size failure. Full-ABI captures/native
+  comparisons remain pending. Native fresh48–50 remains
+  unsupported until actual source/ABI/physical qualification.
+- [x] Independently trace numerical-refusal retirement: D2H waits on the actual
+  original stream; trusted comparison rejection precedes Ready and deliberately
+  retains/fences the flight. No independent cleanup defect found; preserve the
+  strict cross-batch failure and quarantine. Matching original/native profiles
+  remain separate from optional batch invariance; no release or tolerance waiver.
+- [x] Prepare model-owned prompt inventory and capture-owned cold roles/counts;
+  both sources retain5prefills/40semantic calls/6physical scopes. B4 selects
+  prefill47/cached1 by role; checked caches/storage/metadata preserve present
+  charges. Native fresh48–50 remains unadmitted. Strict CUDA/Vulkan all-target
+  Clippy passes after correcting baseline feature gates/private adapters/lints;
+  all96 original GDN source tuples/12recipes/2catalogues remain exact. Whole
+  Rust selector identity changed; no old binary qualification transfers.
+- [x] Stage authenticated current-schema .8B/2B N1 bundles without changing
+  resource bytes.28 reference controls and8 bundle controls pass. Failed packed47
+  keeps six absent FA packets, empty norm archive and missing worker receipts;
+  reviewed late-layout reader exports only authentic whole-image/formal facts
+  for a fresh retry. Full packed/native model qualification remains open.
 - [~] Apply [all-model correctness policy](CORRECTNESS_POLICY.md), based on
   pinned vLLM/llama.cpp. Sol6.1 xhigh owns every lane; this supersedes older
   Pi/Astra assignments and performance-first continuations below.
 - [ ] .8B initial47/48/49/50 and cached47→50: actual independent original and
   native outputs/state/physical closure. Original case5 strict FAIL101 remains;
   original N1/B4 QKVZ itself differs by six BF16 words at identical frontier47
-  operands. Original48/49 metadata confirms width differences; original paired
-  N1 frontier50 is missing. This explains the diagnostic, not model acceptance.
+  operands. The historical fifteen-transition archive lacks paired N1 frontier50;
+  fresh47–50 original trajectories are now independently available. This explains
+  the diagnostic, not native model acceptance.
 - [ ] Genuine .8B512/1024/2048/4096/8192, then16K/32K context/state/feedback;
   corresponding original BF16 CPU/ROCm/Vulkan full-model routes are missing.
   GGUF, synthetic operators and finite other-model proofs stay separate. Local
