@@ -76,7 +76,7 @@ their existing numeric/source/physical acceptance gates.
   retain the two earlier stashes. No reset/rebase, ignored overwrite or cache scan.
   [Preservation details](../../runs/modular-architecture-20261026/worktree-reconcile-sol/final-batch-result.json).
 
-## Stash recovery — 26 Oct
+## 5c2fe53 — Stash recovery
 
 - [x] Review all six preserved snapshots against current MAIN. Core/runtime/
   correctness/B4 work is retained or superseded; model/backend snapshots share
@@ -91,10 +91,14 @@ their existing numeric/source/physical acceptance gates.
 - [x] Preserve all six original snapshots in a verified local Git bundle;
   atomically retain ignored core/B4 run evidence before directory retirement.
 
-## Uncommitted
+## Side-worktree retirement — 26 Oct
 
-- [ ] Retire the six fully reconciled side worktrees and consumed stashes;
-  preserve branch refs and archived evidence, leave MAIN clean.
+- [x] Fast-forward all six side branches to the signed recovery commit; verify
+  clean source, then remove all six worktrees without force. Retain branch refs;
+  consume all six reviewed stashes after verifying their archived snapshot IDs.
+  No pending side diff remains. [Disposition/evidence](../../runs/stash-recovery-20261026/root/REPORT.md).
+
+## Uncommitted
 
 ### Model containment and naming — 26 Oct
 
