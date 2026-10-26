@@ -66,8 +66,9 @@ their existing numeric/source/physical acceptance gates.
 - Architecture checker14 fixture cases pass. Live workspace diagnostic exit1:
   GPU→Qwen optional qualification dependency remains; checker is not a green gate.
 - No new trained-model/physical qualification, optimized CUDA release, matched C16
-  result or x2 capture. Exact source read grants remain absent; gfx90c hold and
-  trusted x2 ED25519-key blocker remain. Historical exit137 cause is unknown.
+  result or x2 capture. Source access and x2 trust were held at this checkpoint;
+  subsequent resource facts belong to cpu-gpu-optimization. The gfx90c hold stays.
+  Historical container termination was unexplained at this checkpoint.
 
 ## Side-worktree reconciliation — 26 Oct
 
@@ -106,15 +107,7 @@ their existing numeric/source/physical acceptance gates.
   Assembled full `scripts/check.sh` and CUDA/source/tool suites pass;
   [coverage](../../runs/gpu-model-boundary-20261026/root/validation.json).
 
-## Uncommitted
-
-### Model containment and naming — 26 Oct
-
-Contract: [structure and naming](STRUCTURE_AND_NAMING.md). All lanes GPT-6.1
-Sol xhigh. User requests real source refactoring across .8B/2B/27B/Gemma4 before
-new .8B48–50/long-context/CPU-HIP-Vulkan work; full27B/Gemma model suites waived
-for this refactor, not marked passed. Existing engine/ownership/numerical gates
-and local gfx90c hold remain.
+## 263ff79 — GPU/model package boundary
 
 - [x] Move Qwen source/reference/checkpoint orchestration to model/application/
   tool owners; remove every GPU normal/build/optional model dependency and
@@ -128,12 +121,33 @@ and local gfx90c hold remain.
   All owners closed/EOF/reaped; source1859 and README stable. No model/device
   execution, physical qualification or optimized performance claim.
   [Source/binary/SDK coverage](../../runs/gpu-model-boundary-20261026/root/validation.json).
+## Source-lane worktree retirement — 26 Oct
+
+- [x] Preserve both candidate source patches/archives and ignored run evidence;
+  no unique pending source remains. Fast-forward both branches to263ff79, then
+  remove the two task-owned worktrees without force. Retain branch refs and
+  original evidence; no new stash, reset or rebase. MAIN is the sole worktree.
+  [Disposition](../../runs/gpu-model-boundary-20261026/worktree-reconcile/retirement.json).
+
+## Uncommitted
+
+### Model containment and naming — 26 Oct
+
+Contract: [structure and naming](STRUCTURE_AND_NAMING.md). All lanes GPT-6.1
+Sol xhigh. User requests real source refactoring across .8B/2B/27B/Gemma4 before
+new .8B48–50/long-context/CPU-HIP-Vulkan work; full27B/Gemma model suites waived
+for this refactor, not marked passed. Existing engine/ownership/numerical gates
+and local gfx90c hold remain.
+
 - [ ] Extend source-bound .8B qualification to fresh47–50-token prompts, genuine
   long contexts and original BF16 CPU/HIP/Vulkan routes. Existing cached
   frontiers48–50 and source fixtures do not establish those capabilities.
-- [ ] After legitimate source access: current independent B4 physical/CPU suite,
-  then optimized release +quiet same-attempt C16 for both small models; then
-  trusted x2 original27B full-window capture and exit137 investigation.
+- [ ] After source-bound correctness and legitimate source access: current
+  independent B4 physical/CPU suite, then optimized release +quiet same-attempt
+  C16 for both small models; then trusted x2 original27B full-window capture
+  under its remaining gates. [l5 benchmark container termination](../cpu-gpu-optimization/BENCHMARK_CONTAINER_TERMINATION.md)
+  now has a supported cleanup-escalation inference; historical signal/OOM proof
+  remains unavailable. No failed scope or capture gate is waived.
 
 ### Shared HIP / model composition checkpoint — 24 Oct
 

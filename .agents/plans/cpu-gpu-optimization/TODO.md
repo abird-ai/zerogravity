@@ -178,14 +178,18 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
   SHA85ee2b9c…a4a5, not executed; prescribed/PATH python3 absent. No device open,
   inference, downloads, store/recovery/privilege changes or memory repartition.
   [Current resource review](../../runs/b4-takeover-codex-20261025/x2-current-preflight/root-resource-review.json).
-- UD6 local UID1000 journal query CLOSED0/fullEOF:16 records authenticate both
-  old CIDs as local l5 .8B C16 quiet-repeat owners, same boot, source21/image
-  configf57d77…, not x2/Q27. Recovered original native receipt OWNERS_CLOSED/
-  cleanup_errors[]/exit137 and GPU payload PID3452550; source/nonce/CID joins
-  preserved. Stop-command context and foreground TERM/KILL flags do not record
-  the payload's delivered fatal signal or OOM chain. Cause remains UNKNOWN;
-  earlier empty kernel query proves neither OOM nor absence. No repeat query,
-  guessed host identity or capture. UD6 hold remains.
+- [l5 benchmark container termination](BENCHMARK_CONTAINER_TERMINATION.md):
+  original55 artifact pins revalidated;16original Rust files+Cargo manifest
+  authenticated. Fresh corrected17-row journal query adds actual stop-actor
+  scope start; container death follows by5.288610s on wall/boot-monotonic clocks.
+  The pinned application ran as PID1 without a serving shutdown handler;
+  owned cleanup used `stop --time 5`. Cleanup-timeout escalation is the supported
+  leading inference. Later foreground PGID cleanup cannot explain the earlier
+  container death. Fatal signal/sender and OOM remain unproven; hold stays.
+  Native status137, stock0, both16/16 measured requests and healthy independent
+  owner closures remain distinct facts. Exact-actor follow-up has2rows, no
+  fatal-signal evidence; the earlier empty kernel query proves no OOM absence.
+  No Podman invocation/store mutation, model/device execution or SSH is needed.
 - Q27 frozen original9 revalidated; current owner-readback caller54641525 differs
   from frozen ae75a695. Unchanged validator calls source_open(plan,pins), while
   repaired caller requires state: independent validation ABI blocker. Preserve
@@ -196,7 +200,8 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
   establish capture/inference. Full runtime source gate remains the A3 result.
 - Next: diagnose original26 case5 numerical/error-retirement failure without
   relaxing comparisons; review2B dispatch cost with phase evidence before any
-  optimization; resolve UD6 from actual causal owner evidence, establish the
+  optimization; retain the container-termination hold pending actual signal/OOM
+  evidence and validate serving shutdown before future runs; establish the
   already-authorized exact x2 image+31 model files, verify a genuine CPU/RAM/
   GPU-owner window and all G1–G6 gates, then supervise original natural27B
   capture+independent validation. Capture remains unstarted; no short substitute.
