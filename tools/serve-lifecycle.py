@@ -15,6 +15,10 @@ the launch prefix then use stop --ignore --time N {owned_cid}. An optional
 {owned_name} placeholder expands to a fresh generated name. Missing CID or a
 failed stop blocks the next sample. Receipts retain environment names only;
 raw child output is private and capped, then drained without retention.
+Stop stdout/stderr must be fully retained within each stream's cap; loss,
+missing EOF, timeout or escalation rejects the next sample. Exact-CID container
+State observations are bounded and optional; auto-removal can make terminal
+state unavailable. Exit 137 and absent inspect data never establish OOM.
 """
 from __future__ import annotations
 
@@ -29,6 +33,7 @@ import os
 from pathlib import Path
 import queue
 import re
+import select
 import signal
 import socket
 import subprocess
@@ -162,7 +167,14 @@ def write_json(path, value):
     with os.fdopen(descriptor, "w") as target:
         json.dump(value, target, indent=2, sort_keys=True, allow_nan=False)
         target.write("\n")
+        target.flush()
+        os.fsync(target.fileno())
     os.replace(temporary, path)
+    descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def group_alive(pgid):
@@ -173,42 +185,193 @@ def group_alive(pgid):
         return False
 
 
+def stamp():
+    return {"utc":datetime.now(timezone.utc).isoformat(), "monotonic_ns":time.monotonic_ns()}
+
+
+def leader_status_unreaped(process):
+    if process.returncode is not None:
+        raise ChildProcessError("owned leader already reaped; cannot authenticate group signaling")
+    observed = os.waitid(os.P_PID,process.pid,os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    if observed is None:
+        return None
+    if observed.si_pid != process.pid or observed.si_code not in {os.CLD_EXITED,os.CLD_KILLED,os.CLD_DUMPED}:
+        raise ChildProcessError("unexpected owned child exit observation")
+    return observed.si_status if observed.si_code == os.CLD_EXITED else -observed.si_status
+
+
+def terminal_outcome(code):
+    # Positive 128+signal exit statuses do not prove a signal, much less OOM.
+    return {"kind":"unknown" if code is None else "signal" if code < 0 else "exit",
+            "returncode":code, "signal":-code if code is not None and code < 0 else None,
+            "oom":"not_established"}
+
+
+def owned_group_members(process):
+    """Only the original pinned session/group; zombies are not live workers."""
+    leader_status_unreaped(process)
+    if os.getpgid(process.pid) != process.pid or os.getsid(process.pid) != process.pid:
+        raise ChildProcessError("owned child lost its original session/group binding")
+    live, zombies = [], []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdecimal():
+            continue
+        try:
+            fields = (entry/"stat").read_text().rsplit(") ",1)[1].split()
+        except (FileNotFoundError,ProcessLookupError):
+            continue
+        if int(fields[2]) == process.pid:
+            if int(fields[3]) != process.pid:
+                raise ChildProcessError("owned group session mismatch")
+            (zombies if fields[0] in {"Z","X"} else live).append(int(entry.name))
+    return {"live_pids":sorted(live), "zombie_pids":sorted(zombies)}
+
+
+def retire_child(process, record, natural_deadline=None):
+    """All nonzero group signals precede the one original-child reap attempt."""
+    for key,value in {"signals":[],"leader_reaped":False,"leader_reap_attempts":0,"errors":[],"timed_out":False}.items():
+        record.setdefault(key,value)
+    record.setdefault("retirement_attempts",[]).append(stamp())
+    if record["leader_reaped"] or record["leader_reap_attempts"]:
+        record["errors"].append({"stage":"recovery_after_reap_attempt","error_type":"ChildProcessError"})
+        record["complete"] = False
+        return False
+    def observe():
+        try:
+            code = leader_status_unreaped(process)
+            members = owned_group_members(process)
+            record["last_group_observation"] = {**stamp(),**members}
+            return code,members["live_pids"]
+        except Exception as error:
+            record["errors"].append({"stage":"observe_unreaped","error_type":type(error).__name__})
+            return None,None
+    code,live = observe()
+    if natural_deadline is not None:
+        while code is None and live is not None and time.monotonic() < natural_deadline:
+            time.sleep(min(.01,max(0,natural_deadline-time.monotonic())))
+            code,live = observe()
+        record["timed_out"] |= code is None and time.monotonic() >= natural_deadline
+    if "terminal_before_cleanup" in record:
+        record.setdefault("recovery_observations",[]).append({**stamp(),"terminal_outcome":terminal_outcome(code)})
+    else:
+        record["terminal_before_cleanup"] = terminal_outcome(code)
+    for sig,grace in [(signal.SIGTERM,.3),(signal.SIGKILL,1.)]:
+        if live == []:
+            break
+        attempt = {"signal":sig.name,**stamp(),"sent":False,"leader_unreaped":False}
+        record["signals"].append(attempt)
+        try:
+            leader_status_unreaped(process)
+            if os.getpgid(process.pid) != process.pid or os.getsid(process.pid) != process.pid:
+                raise ChildProcessError("owned child lost its original session/group binding")
+            attempt["leader_unreaped"] = True
+            # A call interrupted after dispatch cannot be reported as unsent.
+            attempt["sent"] = None
+            os.killpg(process.pid,sig)
+            attempt["sent"] = True
+        except ProcessLookupError:
+            attempt["sent"] = False
+            attempt["group_absent"] = True
+        except Exception as error:
+            attempt["error_type"] = type(error).__name__
+            record["errors"].append({"stage":"signal","error_type":type(error).__name__})
+        until = time.monotonic()+grace
+        while time.monotonic() < until:
+            code,live = observe()
+            if code is not None and live == []:
+                break
+            time.sleep(.01)
+    record["all_nonzero_signals_before_reap"] = True
+    record["terminal_before_reap"] = terminal_outcome(code)
+    record["returncode"] = None
+    record["reap_start"] = stamp()
+    try:
+        # Popen.wait invents status 0 on ECHILD; authenticate before using it.
+        leader_status_unreaped(process)
+        record["leader_reap_attempts"] = 1
+        record["returncode"] = process.wait(timeout=1)
+        record["leader_reaped"] = True
+    except Exception as error:
+        record["errors"].append({"stage":"reap","error_type":type(error).__name__})
+    record["reap_end"] = stamp()
+    # Observation only after reap: the numeric group is never signaled again.
+    until = time.monotonic()+.5
+    try:
+        while group_alive(process.pid) and time.monotonic() < until:
+            time.sleep(.01)
+        record["owned_process_group_gone"] = not group_alive(process.pid)
+    except Exception as error:
+        record["owned_process_group_gone"] = False
+        record["errors"].append({"stage":"group_absence","error_type":type(error).__name__})
+    record["terminal_outcome"] = terminal_outcome(record["returncode"])
+    record["cleanup_complete"] = bool(record["leader_reaped"] and record["owned_process_group_gone"])
+    record["complete"] = record["cleanup_complete"] and not record["errors"]
+    return record["complete"]
+
+
 class BoundedLog:
     def __init__(self, pipe, path, limit):
         self.pipe, self.path, self.limit = pipe, path, limit
         self.seen = self.retained = 0
         self.digest = hashlib.sha256()
         self.error = None
+        self.eof = False
+        self.eof_at = None
+        self.stop = threading.Event()
+        os.set_blocking(pipe.fileno(),False)
         self.thread = threading.Thread(target=self.drain, daemon=True)
         self.thread.start()
 
     def drain(self):
+        target = None
         try:
             descriptor = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            with os.fdopen(descriptor, "wb") as target:
-                while block := os.read(self.pipe.fileno(), 65536):
-                    self.seen += len(block)
-                    keep = block[:max(0, self.limit-self.retained)]
-                    target.write(keep)
-                    self.digest.update(keep)
-                    self.retained += len(keep)
+            target = os.fdopen(descriptor, "wb")
         except Exception as error:
             self.error = type(error).__name__
-            # A failed private log must not backpressure an owned stop command.
-            try:
-                while block := os.read(self.pipe.fileno(), 65536):
-                    self.seen += len(block)
-            except Exception:
-                pass
+        try:
+            while not self.stop.is_set():
+                if not select.select([self.pipe],[],[],.05)[0]:
+                    continue
+                block = os.read(self.pipe.fileno(),65536)
+                if not block:
+                    self.eof = True
+                    self.eof_at = stamp()
+                    break
+                self.seen += len(block)
+                if target is not None and self.error is None:
+                    keep = block[:max(0,self.limit-self.retained)]
+                    try:
+                        if target.write(keep) != len(keep):
+                            raise OSError("short private log write")
+                        self.digest.update(keep)
+                        self.retained += len(keep)
+                    except Exception as error:
+                        self.error = type(error).__name__
+            if target is not None:
+                target.flush()
+                os.fsync(target.fileno())
+        except Exception as error:
+            self.error = type(error).__name__
+        finally:
+            if target is not None:
+                try:
+                    target.close()
+                except Exception as error:
+                    self.error = type(error).__name__
 
     def finish(self, seconds):
         self.thread.join(max(0, seconds))
+        if self.thread.is_alive():
+            self.stop.set()
+            self.thread.join(.2)
         done = not self.thread.is_alive()
         if done:
             self.pipe.close()
         return {"path":str(self.path), "bytes_seen":self.seen, "bytes_retained":self.retained,
                 "truncated":self.seen > self.retained, "sha256_retained":self.digest.hexdigest(),
-                "reader_complete":done, "reader_error":self.error}
+                "reader_complete":done, "eof":self.eof, "eof_observed":self.eof_at, "reader_error":self.error,
+                "capture_complete":done and self.eof and self.error is None and self.seen == self.retained}
 
 
 class LifecyclePlan:
@@ -260,7 +423,7 @@ class LifecyclePlan:
                 # Lost evidence also forbids starting the next provider.
                 self.blocked = not complete
             if not complete:
-                raise ValueError(f"owned provider cleanup incomplete; inspect {instance.receipt_path}")
+                raise ValueError(f"owned provider cleanup or shutdown evidence/outcome rejected; inspect {instance.receipt_path}")
 
 
 class OwnedProvider:
@@ -326,7 +489,7 @@ class OwnedProvider:
         while time.monotonic() < deadline:
             if self.log.error:
                 raise ValueError("owned provider log reader failed")
-            if self.process.poll() is not None:
+            if leader_status_unreaped(self.process) is not None:
                 raise ValueError(f"owned provider exited before readiness; inspect {self.receipt_path}")
             results = queue.Queue(maxsize=1)
             def probe():
@@ -346,7 +509,7 @@ class OwnedProvider:
                 raise ValueError(f"owned provider readiness deadline; inspect {self.receipt_path}") from error
             if failure is None:
                 other = next(address for label,address in self.plan.endpoints.items() if label != self.label)
-                if self.process.poll() is not None or listening(other):
+                if leader_status_unreaped(self.process) is not None or listening(other):
                     raise ValueError("readiness lost foreground ownership or another provider endpoint appeared")
                 if self.spec.get("stop_argv"):
                     self.receipt["owned_cid"] = self.cid()
@@ -366,7 +529,7 @@ class OwnedProvider:
 
     def require_foreground(self):
         other = next(address for label,address in self.plan.endpoints.items() if label != self.label)
-        if self.process is None or self.process.poll() is not None or listening(other):
+        if self.process is None or leader_status_unreaped(self.process) is not None or listening(other):
             raise ValueError(f"lost owned foreground process or another provider appeared; inspect {self.receipt_path}")
 
     def record_measurement(self, result):
@@ -378,96 +541,194 @@ class OwnedProvider:
         self.receipt["measurement"]["foreground_alive_after_measurement"] = True
         self.save()
 
+    def command(self, command, label, cid, seconds, checkpoint):
+        run = self.spec["argv"].index("run")
+        redactions = [i for i in self.spec.get("redact_arg_indices",()) if i < run]
+        record = {"status":"intent", "argv":redacted_argv(command,redactions),
+            "owned_cid":cid, "owned_container_name":self.name, "intent":stamp(),
+            "intent_persisted":True, "pid":None, "pgid":None,
+            "timeout_seconds":seconds, "stdout":None, "stderr":None,
+            "returncode":None, "timed_out":False, "signals":[], "leader_reaped":False}
+        shutdown = self.receipt["shutdown"]
+        if label == "stop":
+            shutdown["stop"] = record
+        else:
+            shutdown["container_state"].append(record)
+            record["stage"] = label
+        if not checkpoint(label+"_intent"):
+            record["intent_persisted"] = False
+        process,logs = None,{}
+        began = time.monotonic()
+        record["start"] = stamp()
+        record["start_observation"] = "immediately_before_Popen"
+        try:
+            process = subprocess.Popen(command,cwd=self.spec.get("cwd"),env={**os.environ,**self.spec.get("env",{})},
+                stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True,bufsize=0)
+            record.update(status="running",pid=process.pid,pgid=process.pid)
+            checkpoint(label+"_spawn")
+            for stream in ["stdout","stderr"]:
+                logs[stream] = BoundedLog(getattr(process,stream),self.directory/(label+"."+stream+".log"),self.plan.spec["log_limit_bytes"])
+            retire_child(process,record,began+seconds)
+            if record["errors"]:
+                record.update(status="command_error",error_type=record["errors"][0]["error_type"])
+        except BaseException as error:
+            record.update(status="program_not_found" if isinstance(error,FileNotFoundError) else "command_error",error_type=type(error).__name__)
+            record.setdefault("errors",[]).append({"stage":"command","error_type":type(error).__name__})
+            if process is not None and process.returncode is None and not record.get("leader_reap_attempts"):
+                retire_child(process,record)
+        finally:
+            for stream in ["stdout","stderr"]:
+                try:
+                    if stream in logs:
+                        record[stream] = logs[stream].finish(.5)
+                    elif process is not None:
+                        getattr(process,stream).close()
+                except BaseException as error:
+                    record[stream] = {"reader_complete":False,"eof":False,"capture_complete":False,
+                        "reader_error":type(error).__name__}
+            record["end"] = stamp()
+            record["elapsed_seconds"] = time.monotonic()-began
+            record["cleanup_complete"] = process is None or bool(record.get("cleanup_complete")
+                and all(record[stream] and record[stream]["reader_complete"] and record[stream]["eof"] for stream in ["stdout","stderr"]))
+            record["evidence_complete"] = bool(record["intent_persisted"] and process is not None
+                and record["cleanup_complete"] and all(record[stream] and record[stream]["capture_complete"] for stream in ["stdout","stderr"]))
+            if record["status"] == "running":
+                record["status"] = "timed_out" if record["timed_out"] else "finished"
+            record["result_persisted"] = True
+            if not checkpoint(label+"_result"):
+                record["result_persisted"] = record["evidence_complete"] = False
+        return record
+
+    def inspect_container(self, cid, stage, checkpoint):
+        run = self.spec["argv"].index("run")
+        command = self.expand(self.spec["argv"][:run])+["container","inspect","--format","{{json .State}}",cid]
+        record = self.command(command,"inspect_"+stage,cid,.25,checkpoint)
+        record["state"] = None
+        if record.get("returncode") != 0 or not record["evidence_complete"] or record.get("timed_out"):
+            record["observation"] = "unavailable"
+        else:
+            try:
+                state = json.loads(Path(record["stdout"]["path"]).read_bytes())
+                if (not isinstance(state,dict) or type(state.get("Running")) is not bool
+                        or type(state.get("OOMKilled")) is not bool or type(state.get("ExitCode")) is not int
+                        or "Error" in state and not isinstance(state["Error"],str)):
+                    raise ValueError("container State needs typed Running/OOMKilled/ExitCode observations")
+                # Retain State only, never configuration, environment or image data.
+                record["state"] = state
+                record["observation"] = "observed"
+            except (OSError,ValueError,UnicodeError,RecursionError) as error:
+                record.update(observation="unavailable",parse_error_type=type(error).__name__)
+        checkpoint("inspect_"+stage+"_observation")
+        return record
+
     def close(self):
         if self.closed:
-            return bool(self.receipt["shutdown"]["complete"] and not self.receipt["shutdown"].get("evidence_write_error"))
+            return self.receipt["shutdown"].get("accepted",False)
         self.closed = True
         began = time.monotonic()
-        deadline = began+self.plan.spec["shutdown_timeout_seconds"]
-        shutdown = {"signals":[],"stop":None,"complete":False}
+        shutdown = {"signals":[],"stop":None,"container_state":[],"start":stamp(),"complete":False,
+            "cleanup_complete":False,"graceful_terminal_outcome":False,"accepted":False,
+            "container_oom":"not_established"}
         self.receipt["shutdown"] = shutdown
+        evidence_errors = []
+        def checkpoint(stage):
+            try:
+                self.save()
+                return True
+            except BaseException as error:
+                evidence_errors.append(error)
+                shutdown["accepted"] = False
+                shutdown.setdefault("evidence_write_errors",[]).append({"stage":stage,"error_type":type(error).__name__})
+                shutdown["evidence_write_error"] = type(error).__name__
+                return False
         if not self.receipt["startup"].get("ready"):
             self.receipt["startup"]["elapsed_seconds"] = time.monotonic()-self.began
+        def inspect(cid,stage):
+            try:
+                self.inspect_container(cid,stage,checkpoint)
+            except BaseException as error:
+                # Optional observability cannot skip the exact-CID stop attempt.
+                shutdown["container_state"].append({"stage":"inspect_"+stage,"owned_cid":cid,
+                    "observation":"unavailable","error_type":type(error).__name__,"observed":stamp()})
         stop_ok = True
         if self.process is not None and self.spec.get("stop_argv"):
             try:
                 cid = self.cid()
+                inspect(cid,"before_stop")
                 command = self.expand(self.spec["stop_argv"],cid)
-                stop = subprocess.Popen(command,cwd=self.spec.get("cwd"),env={**os.environ,**self.spec.get("env",{})},stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True,bufsize=0)
-                log = BoundedLog(stop.stdout,self.directory/"stop.log",self.plan.spec["log_limit_bytes"])
-                try:
-                    code = stop.wait(timeout=max(.001,deadline-time.monotonic()))
-                except subprocess.TimeoutExpired:
-                    try:
-                        os.killpg(stop.pid,signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
-                    code = stop.wait(timeout=1)
-                if group_alive(stop.pid):
-                    try:
-                        os.killpg(stop.pid,signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
-                while group_alive(stop.pid) and time.monotonic() < deadline:
-                    time.sleep(.01)
-                stop_group_gone = not group_alive(stop.pid)
-                log_result = log.finish(1)
-                prefix_redactions = [i for i in self.spec.get("redact_arg_indices",()) if i < len(command)-5]
-                shutdown["stop"] = {"argv":redacted_argv(command,prefix_redactions),"owned_cid":cid,"returncode":code,
-                    "owned_process_group_gone":stop_group_gone,"log":log_result}
-                stop_ok = code == 0 and stop_group_gone and log_result["reader_complete"] and not log_result["reader_error"]
+                stop = self.command(command,"stop",cid,self.plan.spec["shutdown_timeout_seconds"],checkpoint)
+                stop_ok = bool(stop.get("status") == "finished" and not stop.get("error_type") and stop.get("returncode") == 0
+                    and not stop.get("timed_out") and not stop.get("signals") and stop["evidence_complete"])
+                inspect(cid,"after_stop")
             except FileNotFoundError:
                 stop_ok = False
                 shutdown["stop"] = {"status":"no_fresh_CID" if self.owned_cid is None else "stop_program_not_found",
-                    "foreground_exited":self.process.poll() is not None}
-            except Exception as error:
+                    "foreground_exited":leader_status_unreaped(self.process) is not None}
+            except BaseException as error:
                 stop_ok = False
-                shutdown["stop"] = {"error_type":type(error).__name__}
+                if shutdown["stop"] is None:
+                    shutdown["stop"] = {"error_type":type(error).__name__}
+                else:
+                    shutdown["stop"]["cleanup_error_type"] = type(error).__name__
         if self.process is not None:
-            for sig in [signal.SIGTERM,signal.SIGKILL]:
-                if group_alive(self.process.pid):
-                    try:
-                        os.killpg(self.process.pid,sig)
-                        shutdown["signals"].append(sig.name)
-                    except ProcessLookupError:
-                        pass
-                try:
-                    self.process.wait(timeout=max(.001,min(1,deadline-time.monotonic())))
-                except subprocess.TimeoutExpired:
-                    pass
-                if not group_alive(self.process.pid):
-                    break
-            shutdown["returncode"] = self.process.poll()
-            shutdown["owned_process_group_gone"] = not group_alive(self.process.pid)
+            foreground = shutdown["foreground"] = {}
+            # A successful stop may precede its foreground attach process exit.
+            retire_child(self.process,foreground,time.monotonic()+.25 if self.spec.get("stop_argv") else None)
+            shutdown["signals"] = [item["signal"] for item in foreground["signals"] if item["sent"] is not False]
+            shutdown["returncode"] = foreground["returncode"]
+            shutdown["owned_process_group_gone"] = foreground["owned_process_group_gone"]
+            shutdown["provider_terminal_outcome"] = terminal_outcome(foreground["returncode"])
         else:
             shutdown["owned_process_group_gone"] = True
+            shutdown["provider_terminal_outcome"] = terminal_outcome(None)
         if self.probe:
-            self.probe.join(max(0,min(.5,deadline-time.monotonic())))
+            self.probe.join(.5)
         shutdown["readiness_reader_complete"] = self.probe is None or not self.probe.is_alive()
         if self.log:
-            self.receipt["log"] = self.log.finish(max(0,min(1,deadline-time.monotonic())))
+            self.receipt["log"] = self.log.finish(.5)
         elif self.process is not None and self.process.stdout is not None:
             self.process.stdout.close()
-        while self.process is not None and time.monotonic() < deadline:
-            self.process.poll()
-            if self.idle() and not group_alive(self.process.pid):
-                break
-            time.sleep(.05)
-        if self.process is not None:
-            shutdown["owned_process_group_gone"] = not group_alive(self.process.pid)
-        shutdown["endpoints_closed"] = self.idle()
-        shutdown["complete"] = self.process is None or bool(stop_ok and shutdown["owned_process_group_gone"] and shutdown["readiness_reader_complete"]
-            and (not self.log or self.receipt["log"]["reader_complete"] and not self.receipt["log"]["reader_error"])
-            and shutdown["endpoints_closed"])
-        shutdown["elapsed_seconds"] = time.monotonic()-began
-        # Evidence I/O follows physical cleanup; failure cannot skip teardown.
         try:
-            self.save()
-            self.plan.save()
+            shutdown["endpoints_closed"] = self.idle()
         except Exception as error:
+            shutdown["endpoints_closed"] = False
+            shutdown["endpoint_observation_error"] = type(error).__name__
+        shutdown["cleanup_complete"] = self.process is None or bool(shutdown["foreground"]["cleanup_complete"] and shutdown["readiness_reader_complete"]
+            and (not self.log or self.receipt["log"]["reader_complete"] and self.receipt["log"]["eof"] and not self.receipt["log"]["reader_error"])
+            and shutdown["endpoints_closed"])
+        commands = shutdown["container_state"]+([shutdown["stop"]] if shutdown["stop"] else [])
+        shutdown["cleanup_complete"] &= all(item.get("cleanup_complete",False) for item in commands if item.get("pid") is not None)
+        shutdown["complete"] = shutdown["cleanup_complete"] and stop_ok
+        terminal_state = next((item["state"] for item in reversed(shutdown["container_state"])
+            if item.get("observation") == "observed" and item["state"].get("Running") is False),None)
+        container_ok = not any(item.get("parse_error_type") for item in shutdown["container_state"])
+        if terminal_state is not None:
+            shutdown["container_oom"] = "observed_true" if terminal_state.get("OOMKilled") is True else "observed_false" if terminal_state.get("OOMKilled") is False else "not_established"
+            container_ok &= type(terminal_state.get("ExitCode")) is int and terminal_state["ExitCode"] == 0 and terminal_state.get("OOMKilled") is False and not terminal_state.get("Error")
+        after_stop = next((item["state"] for item in reversed(shutdown["container_state"])
+            if item.get("stage") == "inspect_after_stop" and item.get("observation") == "observed"),None)
+        if after_stop is not None and after_stop.get("Running") is not False:
+            container_ok = False
+        shutdown["container_terminal_state_observed"] = terminal_state is not None
+        shutdown["graceful_terminal_outcome"] = bool(self.process is not None and shutdown["complete"] and shutdown["returncode"] == 0
+            and "SIGKILL" not in shutdown["signals"] and not shutdown["foreground"]["timed_out"]
+            and not shutdown["foreground"]["errors"] and container_ok)
+        shutdown["accepted"] = bool(shutdown["complete"] and (not self.receipt["startup"].get("ready")
+            or self.receipt.get("failure_type") or shutdown["graceful_terminal_outcome"]) and not evidence_errors)
+        shutdown["elapsed_seconds"] = time.monotonic()-began
+        shutdown["end"] = stamp()
+        # Evidence I/O follows physical cleanup; failure cannot skip teardown.
+        checkpoint("shutdown_result")
+        try:
+            self.plan.save()
+        except BaseException as error:
+            evidence_errors.append(error)
             shutdown["evidence_write_error"] = type(error).__name__
-            raise
-        return shutdown["complete"]
+        if evidence_errors:
+            shutdown["accepted"] = False
+            checkpoint("shutdown_evidence_failure")
+            raise evidence_errors[0]
+        return shutdown["accepted"]
 
 
 def self_test(comparison):
@@ -708,7 +969,7 @@ else:sys.exit(8)
                 globals()["write_json"] = original_write
             owned = injected["owned"]
             shutdown = owned.receipt["shutdown"]
-            assert shutdown["complete"] and shutdown["owned_process_group_gone"] and shutdown["endpoints_closed"], (phase,shutdown)
+            assert shutdown["cleanup_complete"] and shutdown["owned_process_group_gone"] and shutdown["endpoints_closed"], (phase,shutdown)
             assert shutdown["readiness_reader_complete"] and not group_alive(owned.process.pid)
             assert owned.receipt["log"]["reader_complete"] and not owned.log.thread.is_alive()
             assert owned.process.stdout.closed and plan.blocked and plan.current is None
