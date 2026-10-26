@@ -29,6 +29,7 @@ pub const PROVIDER_MIB: usize = 2304;
 pub const DEVICE_MIB: usize = 5120;
 const MIB: usize = 1024 * 1024;
 const LOADER_BYTES: usize = 128 * MIB;
+const ROTARY_POSITIONS: usize = 67;
 
 /// Tokenizer allocations remain charged while any model/request owner survives.
 pub struct Model {
@@ -144,29 +145,18 @@ pub async fn load_with_profile(
     let retained = bootstrap.retain_arbiter(host, "fixed-prompt-inventory")?;
     let tokenizer = Arc::new(source::tokenizer(hf_directory, host, cancelled)?);
     let templates = Arc::new(bindings::Templates::prepare(source.clone())?);
-    let rotary = super::qualification::qualify_source_rotary_cubins(
+    let rotary_source = super::bindings::retained(source.prepare_rotary_source(false)?);
+    let rotary = native::prepare_fixed_prompt_rotary(
         device.clone(),
-        source.clone(),
+        rotary_source,
         (DEVICE_MIB * MIB) as u64,
-        Some(bundle.rotary(source.source(), cancelled)?),
-        native::RotaryMode::Complete,
+        bundle.rotary(source.source(), cancelled)?,
+        ROTARY_POSITIONS,
         cancelled,
-        |_| Ok(()),
     )
     .await?;
-    // All real rotary kernels/images retire before the full model image pack.
-    let comparison = rotary.comparison;
-    if comparison.native_launches != 12
-        || comparison.completed_readback_flights != 2
-        || comparison.resident_bytes != 0
-        || comparison.pending_events != 0
-        || comparison.physical_reserved_bytes != 0
-        || comparison.physical_fenced
-    {
-        return Err(Error::State(
-            "fixed-prompt source rotary did not complete/retire".into(),
-        ));
-    }
+    // The sealed fixed route and its native retirement precede model images.
+    rotary.require_fixed_complete(ROTARY_POSITIONS)?;
     let inputs = native::FixedPromptQkKvQualificationInputs {
         native: bundle.model(source.source(), cancelled)?,
         rotary: Some(rotary),

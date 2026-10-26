@@ -32,22 +32,44 @@ use layout::{Layout, SourceKind};
 pub use qualification::{RotaryMode, qualify_source_rotary_cubins, qualify_text_rotary_cubins};
 
 pub(crate) fn text_rotary_retained_host_bytes(positions: usize) -> Result<usize> {
-    let layout = Layout::new(SourceKind::Text, positions)?;
-    (64usize * 1024)
-        .checked_add(layout.readback_bytes()?)
-        .and_then(|bytes| bytes.checked_add(layout.prefix_reservation_bytes().ok()?))
-        .ok_or_else(|| Error::Limit("rotary source preparation extent".into()))
+    Layout::new(SourceKind::Text, positions)?.retained_host_bytes()
 }
 
-#[derive(Clone, Copy, Default)]
-struct FaultPlan {
-    pressure: bool,
-    cancel_before: Option<usize>,
-    unknown_after: Option<usize>,
+trait PreparationControl {
+    fn pressure(&self) -> bool {
+        false
+    }
+    fn cancel_before(&self, _index: usize) -> bool {
+        false
+    }
+    fn unknown_after(&self, _launches: usize) -> bool {
+        false
+    }
+    fn is_fault(&self) -> bool {
+        false
+    }
+    fn validate(&mut self, _records: &[(RotaryOutput, &[u8])]) -> Result<()> {
+        Ok(())
+    }
+    fn pressure_status(&self) -> &'static str {
+        ""
+    }
+    fn fault_status(&self, _cancelled: bool) -> &'static str {
+        ""
+    }
+    fn complete_status(&self, _kind: SourceKind) -> &'static str {
+        ""
+    }
 }
-impl FaultPlan {
-    fn is_fault(self) -> bool {
-        self.cancel_before.is_some() || self.unknown_after.is_some()
+
+#[derive(Default)]
+struct ProductionControl;
+impl PreparationControl for ProductionControl {
+    fn complete_status(&self, kind: SourceKind) -> &'static str {
+        match kind {
+            SourceKind::FixedPrompt => "SOURCE_ROTARY_FIXED_PREFIX_READY",
+            SourceKind::Text => "SOURCE_ROTARY_TEXT_PREFIX_READY",
+        }
     }
 }
 
@@ -78,30 +100,39 @@ pub struct RotaryComparison {
 pub struct RotaryOutcome {
     pub comparison: RotaryComparison,
     prefix: Option<Arc<SourceRotaryPrefix>>,
+    retired: bool,
 }
 impl RotaryOutcome {
-    pub fn require_complete(&self, positions: usize) -> Result<()> {
+    fn require_complete_for(&self, kind: SourceKind, positions: usize) -> Result<()> {
         let prefix = self.prefix.as_ref().ok_or_else(|| {
             Error::State("rotary preparation has no completed source prefix".into())
         })?;
         prefix.require_source(prefix.source())?;
+        prefix.require_kind(kind)?;
         prefix.require_span(0, positions)?;
         if prefix.positions() != positions {
             return Err(Error::State(
                 "rotary prepared context extent differs".into(),
             ));
         }
-        let state = &self.comparison;
-        if state.resident_bytes != 0
-            || state.pending_events != 0
-            || state.physical_fenced
-            || state.physical_reserved_bytes != state.backend_reserved_bytes
-        {
+        if !self.retired {
             return Err(Error::State(
                 "rotary source preparation has not retired".into(),
             ));
         }
         Ok(())
+    }
+    pub fn require_complete(&self, positions: usize) -> Result<()> {
+        let prefix = self.prefix.as_ref().ok_or_else(|| {
+            Error::State("rotary preparation has no completed source prefix".into())
+        })?;
+        self.require_complete_for(prefix.owner.profile.kind, positions)
+    }
+    pub fn require_fixed_complete(&self, positions: usize) -> Result<()> {
+        self.require_complete_for(SourceKind::FixedPrompt, positions)
+    }
+    pub fn require_text_complete(&self, positions: usize) -> Result<()> {
+        self.require_complete_for(SourceKind::Text, positions)
     }
     pub fn discard_source_prefix(self) -> Result<()> {
         let prefix = self.into_prefix()?;
@@ -149,6 +180,9 @@ impl SourceRotaryPrefix {
     pub(crate) fn require_span(&self, base: usize, rows: usize) -> Result<()> {
         self.owner.profile.require_span(base, rows)
     }
+    fn require_kind(&self, kind: SourceKind) -> Result<()> {
+        self.owner.profile.require_kind(kind)
+    }
     pub(crate) fn is_text(&self) -> bool {
         self.owner.profile.kind == SourceKind::Text
     }
@@ -156,12 +190,19 @@ impl SourceRotaryPrefix {
         self.owner.profile.positions()
     }
     pub(crate) fn retained_host_bytes(&self) -> Result<usize> {
-        self.owner
+        let actual = self
+            .owner
             ._metadata
             .bytes()
             .checked_add(self.owner._readback.bytes())
             .and_then(|bytes| bytes.checked_add(self.owner._prefix.bytes()))
-            .ok_or_else(|| Error::Limit("rotary retained source extent".into()))
+            .ok_or_else(|| Error::Limit("rotary retained source extent".into()))?;
+        if actual != self.owner.profile.retained_host_bytes()? {
+            return Err(Error::State(
+                "rotary retained source ownership extent differs".into(),
+            ));
+        }
+        Ok(actual)
     }
 }
 
@@ -307,8 +348,29 @@ fn check_snapshot_zero(
     }
     Ok(())
 }
-/// Compute and retain the requested source span with original native math.
+/// Compute and retain a fixed-prompt source span with original native math.
 /// No reference case, expected output or fault selection enters model loading.
+pub async fn prepare_fixed_prompt_rotary(
+    device: Device,
+    source: Arc<RetainedSource>,
+    device_cap: u64,
+    inputs: CubinQualificationInputs,
+    positions: usize,
+    cancelled: Option<&AtomicBool>,
+) -> Result<RotaryOutcome> {
+    prepare_rotary_inner(
+        device,
+        source,
+        device_cap,
+        Some(inputs),
+        cancelled,
+        ProductionControl,
+        Layout::new(SourceKind::FixedPrompt, positions)?,
+    )
+    .await
+}
+
+/// Compute and retain a text source span with original native math.
 pub async fn prepare_text_rotary(
     device: Device,
     source: Arc<RetainedSource>,
@@ -317,34 +379,27 @@ pub async fn prepare_text_rotary(
     positions: usize,
     cancelled: Option<&AtomicBool>,
 ) -> Result<RotaryOutcome> {
-    let layout = Layout::new(SourceKind::Text, positions)?;
     prepare_rotary_inner(
         device,
         source,
         device_cap,
         Some(inputs),
-        FaultPlan::default(),
         cancelled,
-        |_| Ok(()),
-        layout,
+        ProductionControl,
+        Layout::new(SourceKind::Text, positions)?,
     )
     .await
 }
 
-#[expect(clippy::too_many_arguments)]
-async fn prepare_rotary_inner<F>(
+async fn prepare_rotary_inner<C: PreparationControl>(
     device: Device,
     source: Arc<RetainedSource>,
     device_cap: u64,
     inputs: Option<CubinQualificationInputs>,
-    mode: FaultPlan,
     cancelled: Option<&AtomicBool>,
-    validate: F,
+    mut control: C,
     profile: Layout,
-) -> Result<RotaryOutcome>
-where
-    F: FnOnce(&[(RotaryOutput, &[u8])]) -> Result<()>,
-{
+) -> Result<RotaryOutcome> {
     not_cancelled(cancelled)?;
     if cfg!(debug_assertions) || !matches!(device, Device::Cuda(_)) {
         return Err(Error::Unsupported(
@@ -396,7 +451,7 @@ where
             "source rotary requires solitary original physical envelope".into(),
         ));
     }
-    if mode.pressure {
+    if control.pressure() {
         if !matches!(
             service.allocate_uninitialized(CAP + 1, BufferRole::Scratch),
             Err(Error::Limit(_))
@@ -414,12 +469,13 @@ where
         check_snapshot_zero(&key, backend_reserved)?;
         return Ok(RotaryOutcome {
             comparison: RotaryComparison {
-                status: "SOURCE_ROTARY_PRESSURE_REFUSED_BEFORE_BUFFER_NATIVE_H2D",
+                status: control.pressure_status(),
                 physical_reserved_bytes: backend_reserved,
                 backend_reserved_bytes: backend_reserved,
                 ..Default::default()
             },
             prefix: None,
+            retired: true,
         });
     }
     let inputs =
@@ -517,29 +573,32 @@ where
     flight.retain_completion_owner(programs.clone())?;
     let mut native_launches = 0;
     let mut cut = false;
+    let mut cancelled_cut = false;
     for index in 0..programs.launches.len() {
-        if mode.cancel_before == Some(index) {
+        let cancel_before = control.cancel_before(index);
+        if cancel_before {
             local_cancel.store(true, Ordering::Release);
         }
         // SAFETY: one original flight retains all twelve writes and their dependency graph.
         let result = unsafe { programs.enqueue(index, cancelled, &local_cancel) };
-        if mode.cancel_before == Some(index) {
+        if cancel_before {
             if !matches!(result, Err(Error::State(_))) {
                 return Err(Error::State(
                     "source rotary actual pre-enqueue cancellation failed".into(),
                 ));
             }
             cut = true;
+            cancelled_cut = true;
             break;
         }
         result?;
         native_launches += 1;
-        if mode.unknown_after == Some(native_launches) {
+        if control.unknown_after(native_launches) {
             cut = true;
             break;
         }
     }
-    if mode.is_fault() {
+    if control.is_fault() {
         if !cut {
             return Err(Error::State(
                 "source rotary exact real fault cut absent".into(),
@@ -586,11 +645,7 @@ where
         }
         return Ok(RotaryOutcome {
             comparison: RotaryComparison {
-                status: if mode.cancel_before.is_some() {
-                    "SOURCE_ROTARY_CANCELLED_UNKNOWN_RETAINED"
-                } else {
-                    "SOURCE_ROTARY_UNKNOWN_RETAINED"
-                },
+                status: control.fault_status(cancelled_cut),
                 native_launches,
                 resident_bytes,
                 pending_events,
@@ -607,6 +662,7 @@ where
                 ..Default::default()
             },
             prefix: None,
+            retired: false,
         });
     }
     if native_launches != RotaryOutput::ALL.len() {
@@ -633,7 +689,7 @@ where
                 .copied()
                 .zip(raw.iter().map(|b| b.as_ref()))
                 .collect::<Vec<_>>();
-            validate(&records)
+            control.validate(&records)
         })
         .await?;
     slot.finish()?;
@@ -699,10 +755,7 @@ where
     check_snapshot_zero(&key, backend_reserved)?;
     Ok(RotaryOutcome {
         comparison: RotaryComparison {
-            status: match profile.kind {
-                SourceKind::FixedPrompt => "SOURCE_ROTARY_FIXED_PREFIX_READY",
-                SourceKind::Text => "SOURCE_ROTARY_TEXT_PREFIX_READY",
-            },
+            status: control.complete_status(profile.kind),
             native_launches,
             completed_readback_flights: 2,
             physical_reserved_bytes: backend_reserved,
@@ -718,5 +771,6 @@ where
             ..Default::default()
         },
         prefix: Some(prefix),
+        retired: true,
     })
 }

@@ -27,7 +27,12 @@ fn requested_spans_preserve_source_extents_and_boundaries() {
             .map(|r| layout.prefix_bytes(r))
             .sum::<usize>();
         assert_eq!(sum, 648 + 772 * positions);
-        assert!(layout.readback_bytes().unwrap() >= sum);
+        let readback = sum.max(1024 * 1024);
+        assert_eq!(layout.readback_bytes().unwrap(), readback);
+        assert_eq!(
+            layout.retained_host_bytes().unwrap(),
+            64 * 1024 + readback + positions * 384
+        );
         for role in RotaryOutput::ALL {
             assert!(layout.prefix_bytes(role) <= role.bytes());
         }
@@ -47,5 +52,23 @@ fn source_limit_and_route_identity_are_independent_of_case_lengths() {
     let fixed = Layout::new(SourceKind::FixedPrompt, 67).unwrap();
     let text = Layout::new(SourceKind::Text, 67).unwrap();
     assert_eq!(fixed.bytes(), text.bytes());
-    assert_ne!(fixed.kind, text.kind);
+    fixed.require_kind(SourceKind::FixedPrompt).unwrap();
+    text.require_kind(SourceKind::Text).unwrap();
+    assert!(fixed.require_kind(SourceKind::Text).is_err());
+    assert!(text.require_kind(SourceKind::FixedPrompt).is_err());
+}
+
+#[test]
+fn fixed_and_text_costs_are_derived_from_the_requested_owned_span() {
+    let fixed = Layout::new(SourceKind::FixedPrompt, 67).unwrap();
+    assert_eq!(fixed.bytes(), 8_576);
+    assert_eq!(fixed.readback_bytes().unwrap(), 1024 * 1024);
+    assert_eq!(fixed.prefix_reservation_bytes().unwrap(), 25_728);
+    assert_eq!(fixed.retained_host_bytes().unwrap(), 1_139_840);
+
+    let text = Layout::new(SourceKind::Text, 512).unwrap();
+    assert_eq!(text.bytes(), 65_536);
+    assert_eq!(text.readback_bytes().unwrap(), 1024 * 1024);
+    assert_eq!(text.prefix_reservation_bytes().unwrap(), 196_608);
+    assert_eq!(text.retained_host_bytes().unwrap(), 1_310_720);
 }

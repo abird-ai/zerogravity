@@ -51,8 +51,8 @@ pub use crate::resident_leases::{
 pub(crate) mod source_rotary;
 #[cfg(target_os = "linux")]
 pub use source_rotary::{
-    RotaryComparison, RotaryMode, RotaryOutcome, RotaryOutput, prepare_text_rotary,
-    qualify_source_rotary_cubins, qualify_text_rotary_cubins,
+    RotaryComparison, RotaryMode, RotaryOutcome, RotaryOutput, prepare_fixed_prompt_rotary,
+    prepare_text_rotary, qualify_source_rotary_cubins, qualify_text_rotary_cubins,
 };
 #[cfg(target_os = "linux")]
 mod tied_weight_upload;

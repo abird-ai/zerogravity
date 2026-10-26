@@ -30,13 +30,66 @@ impl RotaryMode {
         }
     }
 }
-impl RotaryMode {
-    fn plan(self) -> FaultPlan {
-        FaultPlan {
-            pressure: self == Self::Pressure,
-            cancel_before: self.cancel_before(),
-            unknown_after: self.unknown_after(),
+
+#[derive(Clone, Copy)]
+struct FaultPlan {
+    pressure: bool,
+    cancel_before: Option<usize>,
+    unknown_after: Option<usize>,
+}
+impl FaultPlan {
+    fn new(mode: RotaryMode) -> Self {
+        Self {
+            pressure: mode == RotaryMode::Pressure,
+            cancel_before: mode.cancel_before(),
+            unknown_after: mode.unknown_after(),
         }
+    }
+    fn is_fault(self) -> bool {
+        self.cancel_before.is_some() || self.unknown_after.is_some()
+    }
+}
+
+struct QualificationControl<F> {
+    plan: FaultPlan,
+    validate: Option<F>,
+    complete_status: &'static str,
+}
+impl<F> PreparationControl for QualificationControl<F>
+where
+    F: FnOnce(&[(RotaryOutput, &[u8])]) -> Result<()>,
+{
+    fn pressure(&self) -> bool {
+        self.plan.pressure
+    }
+    fn cancel_before(&self, index: usize) -> bool {
+        self.plan.cancel_before == Some(index)
+    }
+    fn unknown_after(&self, launches: usize) -> bool {
+        self.plan.unknown_after == Some(launches)
+    }
+    fn is_fault(&self) -> bool {
+        self.plan.is_fault()
+    }
+    fn validate(&mut self, records: &[(RotaryOutput, &[u8])]) -> Result<()> {
+        self.validate
+            .take()
+            .ok_or_else(|| Error::State("rotary diagnostic callback already consumed".into()))?(
+            records,
+        )
+    }
+    fn pressure_status(&self) -> &'static str {
+        "SOURCE_ROTARY_PRESSURE_REFUSED_BEFORE_BUFFER_NATIVE_H2D"
+    }
+    fn fault_status(&self, cancelled: bool) -> &'static str {
+        if cancelled {
+            "SOURCE_ROTARY_CANCELLED_UNKNOWN_RETAINED"
+        } else {
+            "SOURCE_ROTARY_UNKNOWN_RETAINED"
+        }
+    }
+    fn complete_status(&self, _kind: SourceKind) -> &'static str {
+        self.complete_status
     }
 }
 
@@ -60,18 +113,15 @@ where
         source,
         device_cap,
         inputs,
-        mode.plan(),
         cancelled,
-        validate,
+        QualificationControl {
+            plan: FaultPlan::new(mode),
+            validate: Some(validate),
+            complete_status: "SOURCE_ROTARY_FIRST67_EXACT_NO_MODEL_QUALIFICATION",
+        },
         Layout::new(SourceKind::FixedPrompt, 67)?,
     )
     .await
-    .map(|mut outcome| {
-        if outcome.prefix.is_some() {
-            outcome.comparison.status = "SOURCE_ROTARY_FIRST67_EXACT_NO_MODEL_QUALIFICATION";
-        }
-        outcome
-    })
 }
 
 /// Same original native source constructor; authentic .8B/2B and positions0..79.
@@ -92,16 +142,13 @@ where
         source,
         device_cap,
         inputs,
-        mode.plan(),
         cancelled,
-        validate,
+        QualificationControl {
+            plan: FaultPlan::new(mode),
+            validate: Some(validate),
+            complete_status: "SOURCE_ROTARY_FIRST79_EXACT_NO_MODEL_QUALIFICATION",
+        },
         Layout::new(SourceKind::Text, 79)?,
     )
     .await
-    .map(|mut outcome| {
-        if outcome.prefix.is_some() {
-            outcome.comparison.status = "SOURCE_ROTARY_FIRST79_EXACT_NO_MODEL_QUALIFICATION";
-        }
-        outcome
-    })
 }

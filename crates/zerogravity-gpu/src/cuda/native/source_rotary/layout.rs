@@ -55,6 +55,18 @@ impl Layout {
             .checked_mul(3)
             .ok_or_else(|| Error::Limit("rotary prefix retention extent".into()))
     }
+    pub(super) fn retained_host_bytes(self) -> Result<usize> {
+        (64usize * 1024)
+            .checked_add(self.readback_bytes()?)
+            .and_then(|bytes| bytes.checked_add(self.prefix_reservation_bytes().ok()?))
+            .ok_or_else(|| Error::Limit("rotary source preparation extent".into()))
+    }
+    pub(super) fn require_kind(self, kind: SourceKind) -> Result<()> {
+        if self.kind != kind {
+            return Err(Error::State("rotary source route kind differs".into()));
+        }
+        Ok(())
+    }
     pub(super) fn require_span(self, base: usize, rows: usize) -> Result<()> {
         if rows == 0
             || base
