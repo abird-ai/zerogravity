@@ -28,6 +28,18 @@ impl Layout {
     pub(super) fn positions(self) -> usize {
         self.positions
     }
+    pub(super) fn production_owner(self) -> &'static str {
+        match self.kind {
+            SourceKind::FixedPrompt => "original-hf08",
+            SourceKind::Text => "qwen35-text",
+        }
+    }
+    pub(super) fn production_ready_status(self) -> &'static str {
+        match self.kind {
+            SourceKind::FixedPrompt => "SOURCE_ROTARY_FIXED_PREFIX_READY",
+            SourceKind::Text => "SOURCE_ROTARY_TEXT_PREFIX_READY",
+        }
+    }
     pub(super) fn bytes(self) -> usize {
         // Constructor bounds positions by the original complete table extent.
         self.positions * 128

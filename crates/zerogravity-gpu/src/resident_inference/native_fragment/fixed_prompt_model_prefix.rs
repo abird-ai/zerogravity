@@ -436,7 +436,7 @@ where
             .ok_or_else(|| {
                 Error::State("canonical47 genuine completed rotary constructor required".into())
             })?
-            .into_prefix()?;
+            .into_fixed_prefix()?;
         prefix.require_source(&source)?;
         prefix.require_span(0, 47)?;
         Some(prefix)

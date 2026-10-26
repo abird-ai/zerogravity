@@ -532,7 +532,7 @@ pub async fn prepare_fixed_prompt_natural_with_profile(
     } = inputs;
     let prefix = rotary
         .ok_or_else(|| Error::State("canonical actual source rotary producer absent".into()))?
-        .into_prefix()?;
+        .into_fixed_prefix()?;
     prefix.require_source(&source)?;
     prefix.require_span(0, 54)?;
     let metadata = Arc::new(source.reserve_workspace(8 * 1024 * 1024)?);

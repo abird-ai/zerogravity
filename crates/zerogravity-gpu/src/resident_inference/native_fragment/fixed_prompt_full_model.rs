@@ -154,7 +154,7 @@ where
             .ok_or_else(|| {
                 Error::State("whole genuine completed rotary constructor absent".into())
             })?
-            .into_prefix()?;
+            .into_fixed_prefix()?;
         prefix.require_source(&source)?;
         prefix.require_span(0, 47)?;
         Some(prefix)

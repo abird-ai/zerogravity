@@ -26,11 +26,9 @@ impl ModelRotary {
         init: &mut ResidentInitialization<'_>,
     ) -> Result<Arc<Self>> {
         prefix.require_source(&source)?;
+        prefix.require_fixed_route()?;
         init.require_service(&service)?;
-        if prefix.is_text()
-            || source.source_identity() != service.source_identity()
-            || prefix.bytes().len() != 8576
-        {
+        if source.source_identity() != service.source_identity() || prefix.bytes().len() != 8576 {
             return Err(Error::State(
                 "full24 original computed rotary source/service/defined extent".into(),
             ));
@@ -58,10 +56,10 @@ impl ModelRotary {
         init: &mut ResidentInitialization<'_>,
     ) -> Result<Arc<Self>> {
         prefix.require_source(&source)?;
+        prefix.require_text_route()?;
         prefix.require_span(0, prefix.positions())?;
         init.require_service(&service)?;
-        if !prefix.is_text()
-            || prefix.bytes().len() != prefix.positions() * 128
+        if prefix.bytes().len() != prefix.positions() * 128
             || native_bytes == 0
             || !native_bytes.is_multiple_of(128)
             || native_bytes > prefix.bytes().len()
@@ -100,6 +98,11 @@ impl ModelRotary {
         service: &Arc<ResidentService>,
     ) -> Result<()> {
         self.prefix.require_source(source)?;
+        if self.text {
+            self.prefix.require_text_route()?;
+        } else {
+            self.prefix.require_fixed_route()?;
+        }
         if call.source() != source.source_identity() {
             return Err(Error::State(
                 "computed rotary actual source call differs".into(),
@@ -118,7 +121,6 @@ impl ModelRotary {
             || service.generation() != self.generation
             || !self.lease.is_initialized()
             || self.lease.source_identity() != call.source()
-            || self.prefix.is_text() != self.text
             || self.lease.bytes() > self.prefix.bytes().len()
             || end > self.lease.bytes()
         {

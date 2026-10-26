@@ -65,10 +65,33 @@ fn fixed_and_text_costs_are_derived_from_the_requested_owned_span() {
     assert_eq!(fixed.readback_bytes().unwrap(), 1024 * 1024);
     assert_eq!(fixed.prefix_reservation_bytes().unwrap(), 25_728);
     assert_eq!(fixed.retained_host_bytes().unwrap(), 1_139_840);
+    assert!(fixed.retained_host_bytes().unwrap() >= 1024 * 1024);
 
     let text = Layout::new(SourceKind::Text, 512).unwrap();
     assert_eq!(text.bytes(), 65_536);
     assert_eq!(text.readback_bytes().unwrap(), 1024 * 1024);
     assert_eq!(text.prefix_reservation_bytes().unwrap(), 196_608);
     assert_eq!(text.retained_host_bytes().unwrap(), 1_310_720);
+    assert!(text.retained_host_bytes().unwrap() >= 1024 * 1024);
+}
+
+#[test]
+fn production_routes_own_distinct_api_identity() {
+    let fixed = Layout::new(SourceKind::FixedPrompt, 67).unwrap();
+    let text = Layout::new(SourceKind::Text, 67).unwrap();
+    assert_eq!(fixed.production_owner(), "original-hf08");
+    assert_eq!(text.production_owner(), "qwen35-text");
+    assert_eq!(
+        fixed.production_ready_status(),
+        "SOURCE_ROTARY_FIXED_PREFIX_READY"
+    );
+    assert_eq!(
+        text.production_ready_status(),
+        "SOURCE_ROTARY_TEXT_PREFIX_READY"
+    );
+    assert_ne!(fixed.production_owner(), text.production_owner());
+    assert_ne!(
+        fixed.production_ready_status(),
+        text.production_ready_status()
+    );
 }

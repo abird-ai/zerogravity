@@ -755,15 +755,10 @@ async fn prepare_text_profile(
     } = inputs;
     let prefix = rotary
         .ok_or_else(|| Error::State("short HF genuine source rotary missing".into()))?
-        .into_prefix()?;
+        .into_text_prefix()?;
     prefix.require_source(&source)?;
     let rotary_positions = prefix.positions();
     prefix.require_span(0, rotary_positions)?;
-    if !prefix.is_text() {
-        return Err(Error::State(
-            "text loader requires text rotary source".into(),
-        ));
-    }
     let rotary_retained_host_bytes = prefix.retained_host_bytes()?;
     let metadata = Arc::new(source.reserve_workspace(8 * MIB)?);
     let owner_metadata = Arc::new(source.reserve_workspace(2 * MIB)?);

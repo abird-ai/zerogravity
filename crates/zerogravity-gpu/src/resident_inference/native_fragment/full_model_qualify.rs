@@ -275,7 +275,7 @@ where
                     "full24 requires genuinely completed original rotary producer".into(),
                 )
             })?
-            .into_prefix()?;
+            .into_fixed_prefix()?;
         prefix.require_source(&source)?;
         Some(prefix)
     };

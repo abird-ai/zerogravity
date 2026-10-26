@@ -205,7 +205,7 @@ async fn load_profile(
         cancelled,
     )
     .await?;
-    rotary.require_complete(opened.metadata.context_capacity_tokens)?;
+    rotary.require_text_complete(opened.metadata.context_capacity_tokens)?;
     let inputs = native::TextQualificationInputs {
         native: bundle.model(opened.source.source(), cancelled)?,
         rotary: Some(rotary),
