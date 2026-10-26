@@ -4,8 +4,8 @@ use zerogravity_core::{Error, Result};
 fn specialize_packed_conv(cache_lines: u32) -> String {
     super::super::parameterized_conv::SOURCE
         .replace(
-            "// Reversible candidate SHA256: 2165f48fc19f67b7d6570086cf179feb5d00717f5a816772ee32db716df655c9",
-            "// Original PTX SHA256: 7e9600b09ee757c1d786657d7edfa5b3629cb5b1b00480de1fdb5a761e4a0a5c",
+            "// Reversible candidate SHA256: 2165f48fc19f67b7d6570086cf179feb5d00717f5a816772ee32db716df655c9\n",
+            "",
         )
         .replace(
             "struct alignas(8) ZgGdnConvScalarWords {\n    unsigned long long words[3];\n};\nstatic_assert(sizeof(ZgGdnConvScalarWords) == 24, \"GDN Conv scalar ABI\");\nstatic_assert(alignof(ZgGdnConvScalarWords) == 8, \"GDN Conv scalar alignment\");\n",
@@ -61,7 +61,7 @@ fn packed_conv_reversibly_specializes_to_every_retained_prefill_source() {
     );
     assert_ne!(
         super::super::parameterized_conv::PACKED_SOURCE_SHA256,
-        super::super::parameterized_conv::CANDIDATE_SHA256
+        super::super::parameterized_conv::CANDIDATE_SOURCE_SHA256
     );
 }
 

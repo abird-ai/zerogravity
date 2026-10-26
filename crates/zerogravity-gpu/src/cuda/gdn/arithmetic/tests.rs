@@ -75,6 +75,55 @@ fn compiler_source_identity_covers_each_actual_options_load_and_lifetime_unit() 
 }
 
 #[test]
+fn static_info_transport_and_locked_metadata_source_are_code_identity() {
+    let source = COMPILATION_SOURCE;
+    assert!(
+        source
+            .cuda_server_source
+            .contains("resources.extend(info_const);")
+    );
+    assert!(
+        source
+            .cuda_server_source
+            .contains("Some(info.data.as_ptr() as *mut c_void)")
+    );
+    assert!(
+        source
+            .cuda_server_source
+            .contains("info.dynamic_metadata_offset < info.data.len()")
+    );
+    assert!(
+        source
+            .metadata_binding_info_source
+            .contains("pub dynamic_metadata_offset: usize")
+    );
+    assert!(
+        source
+            .metadata_binding_info_source
+            .contains("Self::new(data, 0)")
+    );
+    assert_eq!(
+        source.metadata_binding_info_version,
+        "cubecl-runtime 0.11.0\0registry+https://github.com/rust-lang/crates.io-index\0sha256:a1c2bdd3bfe667906cd55cc8f0a956a8476124263b6838cc5d7d68d9edacfea0"
+    );
+    let lock = include_str!("../../../../../../Cargo.lock");
+    assert!(lock.contains(
+        "name = \"cubecl-runtime\"\nversion = \"0.11.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"a1c2bdd3bfe667906cd55cc8f0a956a8476124263b6838cc5d7d68d9edacfea0\""
+    ));
+
+    let actual = GdnFamilyIdentity::original08();
+    for change in 0..3 {
+        let mut changed = actual;
+        match change {
+            0 => changed.compile_source.cuda_server_source = "changed CUDA packet transport",
+            1 => changed.compile_source.metadata_binding_info_source = "changed metadata source",
+            _ => changed.compile_source.metadata_binding_info_version = "changed metadata pin",
+        }
+        assert!(actual.require_same(&changed).is_err());
+    }
+}
+
+#[test]
 fn exact_code_compile_and_launch_metadata_are_distinct_from_qualification() {
     let spec = kernel(GdnPhase::Initial64, GdnStage::Solve).unwrap();
     let actual = spec.arithmetic;
@@ -296,6 +345,9 @@ fn reference_compile_eq(a: &CompilationSourceContract, b: &CompilationSourceCont
         a.context_source,
         a.shared_header_source,
         a.cuda_compiler_source,
+        a.cuda_server_source,
+        a.metadata_binding_info_source,
+        a.metadata_binding_info_version,
         a.language,
         a.hardware,
         a.address_bits,
@@ -306,6 +358,9 @@ fn reference_compile_eq(a: &CompilationSourceContract, b: &CompilationSourceCont
         b.context_source,
         b.shared_header_source,
         b.cuda_compiler_source,
+        b.cuda_server_source,
+        b.metadata_binding_info_source,
+        b.metadata_binding_info_version,
         b.language,
         b.hardware,
         b.address_bits,
@@ -399,6 +454,12 @@ fn exact_family_shortcut_matches_every_original_source_and_compiler_field() {
         separate_text(actual.compile_source.shared_header_source);
     equal.compile_source.cuda_compiler_source =
         separate_text(actual.compile_source.cuda_compiler_source);
+    equal.compile_source.cuda_server_source =
+        separate_text(actual.compile_source.cuda_server_source);
+    equal.compile_source.metadata_binding_info_source =
+        separate_text(actual.compile_source.metadata_binding_info_source);
+    equal.compile_source.metadata_binding_info_version =
+        separate_text(actual.compile_source.metadata_binding_info_version);
     equal.compile_source.language = separate_text(actual.compile_source.language);
     equal.compile_source.hardware = separate_text(actual.compile_source.hardware);
     equal.schedule_source = separate_text(actual.schedule_source);
@@ -425,23 +486,26 @@ fn exact_family_shortcut_matches_every_original_source_and_compiler_field() {
     ));
     assert!(reference_family_eq(&actual, &equal));
     actual.require_same(&equal).unwrap();
-    for change in 0..15 {
+    for change in 0..18 {
         let mut changed = equal;
         match change {
             0 => changed.compile_source.kernel_source = "different kernel",
             1 => changed.compile_source.context_source = "different options",
             2 => changed.compile_source.shared_header_source = "different header",
             3 => changed.compile_source.cuda_compiler_source = "different compiler",
-            4 => changed.compile_source.language = "different language",
-            5 => changed.compile_source.hardware = "different hardware",
-            6 => changed.compile_source.address_bits = 32,
-            7 => changed.compile_source.unchecked = false,
-            8 => changed.capture_catalogue = Some("different exact source catalogue"),
-            9 => changed.selectors = &["selector B", "selector A"],
-            10 => changed.schedule_source = "different order",
-            11 => changed.bindings_source = "different bindings",
-            12 => changed.catalogue = &["code B", "code A"],
-            13 => changed.catalogue = &["code A", "code C"],
+            4 => changed.compile_source.cuda_server_source = "different static-info transport",
+            5 => changed.compile_source.metadata_binding_info_source = "different metadata packet",
+            6 => changed.compile_source.metadata_binding_info_version = "different runtime pin",
+            7 => changed.compile_source.language = "different language",
+            8 => changed.compile_source.hardware = "different hardware",
+            9 => changed.compile_source.address_bits = 32,
+            10 => changed.compile_source.unchecked = false,
+            11 => changed.capture_catalogue = Some("different exact source catalogue"),
+            12 => changed.selectors = &["selector B", "selector A"],
+            13 => changed.schedule_source = "different order",
+            14 => changed.bindings_source = "different bindings",
+            15 => changed.catalogue = &["code B", "code A"],
+            16 => changed.catalogue = &["code A", "code C"],
             _ => changed.catalogue = &actual.catalogue[..1],
         }
         assert!(!reference_family_eq(&actual, &changed));

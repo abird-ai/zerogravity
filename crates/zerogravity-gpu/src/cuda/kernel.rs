@@ -92,11 +92,7 @@ impl StaticScalarSchema {
         if fields.is_empty()
             || fields.len() > MAX_STATIC_SCALARS
             || alignment != STATIC_SCALAR_ALIGNMENT
-            || byte_size
-                != fields
-                    .len()
-                    .checked_mul(STATIC_SCALAR_ALIGNMENT)
-                    .unwrap_or(usize::MAX)
+            || byte_size != fields.len().saturating_mul(STATIC_SCALAR_ALIGNMENT)
             || byte_size > u8::MAX as usize
             || fields
                 .iter()
@@ -428,6 +424,28 @@ impl PinnedKernel {
         handles: &[Handle],
         static_scalars: StaticScalarBlock,
     ) -> Result<()> {
+        let args = self.launch_arguments(handles, static_scalars)?;
+        client.launch(
+            Box::new(self.clone()),
+            CubeCount::Static(grid[0], grid[1], grid[2]),
+            args,
+        );
+        Ok(())
+    }
+
+    /// Build the exact host packet consumed by the existing CUDA server. This
+    /// proves host ordering only; compiler-reflected and physical ABI remain a
+    /// native gate.
+    fn launch_arguments(
+        &self,
+        handles: &[Handle],
+        static_scalars: StaticScalarBlock,
+    ) -> Result<KernelArguments> {
+        if handles.len() != self.bindings.len() {
+            return Err(Error::State(
+                "prepared CUDA pointer argument count changed".into(),
+            ));
+        }
         if static_scalars.schema() != self.static_scalars.schema() {
             return Err(Error::State(
                 "prepared CUDA static scalar schema changed".into(),
@@ -437,13 +455,16 @@ impl PinnedKernel {
         for (handle, (_, access)) in handles.iter().zip(self.bindings.iter()) {
             args = args.with_buffer_io(handle.clone().binding(), *access);
         }
-        args = args.with_info(static_scalars.binding_info());
-        client.launch(
-            Box::new(self.clone()),
-            CubeCount::Static(grid[0], grid[1], grid[2]),
-            args,
-        );
-        Ok(())
+        Ok(args.with_info(static_scalars.binding_info()))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn host_launch_arguments(
+        &self,
+        handles: &[Handle],
+        static_scalars: StaticScalarBlock,
+    ) -> Result<KernelArguments> {
+        self.launch_arguments(handles, static_scalars)
     }
 }
 impl KernelMetadata for PinnedKernel {

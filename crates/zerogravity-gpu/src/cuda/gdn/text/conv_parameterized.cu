@@ -1,5 +1,6 @@
 // cubecl.cuda.dynamic_shared_bytes=0
 // Generated from pinned vLLM/Triton PTX; instructions retained.
+// Original PTX SHA256: 7e9600b09ee757c1d786657d7edfa5b3629cb5b1b00480de1fdb5a761e4a0a5c
 // Reversible candidate SHA256: 2165f48fc19f67b7d6570086cf179feb5d00717f5a816772ee32db716df655c9
 #if __CUDA_ARCH__ != 860
 #error Closed SM86 provider

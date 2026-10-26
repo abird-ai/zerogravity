@@ -215,6 +215,14 @@ fn parameterized_conv_uses_source_extents_dynamic_grid_and_one_packed_abi() -> R
             parameterized_conv::prepare(GdnPhase::TextPrefill(rows), GdnCacheSlot::One, geometry)?;
         assert_eq!(definition.asset.entry, parameterized_conv::ENTRY);
         assert_eq!(definition.asset.source, parameterized_conv::SOURCE);
+        assert_eq!(
+            definition.asset.ptx_sha256,
+            parameterized_conv::ORIGINAL_PTX_SHA256
+        );
+        assert_ne!(
+            definition.asset.ptx_sha256,
+            parameterized_conv::CANDIDATE_SOURCE_SHA256
+        );
         assert_eq!(definition.asset.grid, [rows.div_ceil(8) as u32, 24, 1]);
         assert_eq!(definition.scalars.words(), [5, 8192, 6144]);
         assert_eq!(definition.scalars.schema().byte_size(), 24);
@@ -233,6 +241,14 @@ fn parameterized_conv_uses_source_extents_dynamic_grid_and_one_packed_abi() -> R
             Some((definition.asset.entry, definition.asset.source))
         );
     }
+    assert!(parameterized_conv::SOURCE.contains(&format!(
+        "Original PTX SHA256: {}",
+        parameterized_conv::ORIGINAL_PTX_SHA256
+    )));
+    assert!(parameterized_conv::SOURCE.contains(&format!(
+        "Reversible candidate SHA256: {}",
+        parameterized_conv::CANDIDATE_SOURCE_SHA256
+    )));
     assert!(parameterized_conv::SOURCE.contains("ZgGdnConvScalarWords zg_scalars"));
     assert!(
         parameterized_conv::SOURCE
@@ -244,6 +260,92 @@ fn parameterized_conv_uses_source_extents_dynamic_grid_and_one_packed_abi() -> R
     assert!(!parameterized_conv::SOURCE.contains("zg_vllm_a905e193ffad4e19"));
     assert!(!parameterized_conv::SOURCE.contains(" 492;"));
     assert!(!parameterized_conv::SOURCE.contains(" 157;"));
+    Ok(())
+}
+
+#[test]
+fn parameterized_conv_host_packet_keeps_nine_pointers_then_one_static_block() -> Result<()> {
+    use cubecl::server::Handle;
+    use cubecl_common::device::{DeviceId, ServiceId};
+    use cubecl_core::environment::stream::StreamId;
+    use cubecl_runtime::server::KernelResource;
+    use zerogravity_core::accelerator::program::SourceConvGeometry;
+
+    struct HostPacketTest;
+    let phase = GdnPhase::TextPrefill(47);
+    let definition = parameterized_conv::prepare(
+        phase,
+        GdnCacheSlot::One,
+        SourceConvGeometry {
+            qkv_channels: 6144,
+            z_channels: 2048,
+            coefficient_channels: 32,
+            kernel: 4,
+        },
+    )?;
+    let scalars = definition.scalars;
+    let recipe = GdnKernelRecipe::fixture(0, 47, false)?;
+    let spec = kernel_from_asset_with_scalars(
+        phase,
+        GdnStage::Conv,
+        true,
+        definition.asset,
+        arithmetic::GdnArithmeticFamily::Text(recipe),
+        scalars,
+    )?;
+    let service = ServiceId::of::<HostPacketTest>(DeviceId::new(0, 0));
+    let stream = StreamId::current();
+    let handles = spec
+        .bindings
+        .iter()
+        .map(|binding| Handle::new(service, stream, binding.physical_bytes as u64))
+        .collect::<Vec<_>>();
+    let packet = spec.kernel.host_launch_arguments(&handles, scalars)?;
+
+    assert_eq!(spec.kernel.binding_count(), 9);
+    assert_eq!(packet.resources.len(), 9);
+    assert_eq!(
+        packet.declared_io,
+        spec.bindings
+            .iter()
+            .map(|binding| binding.io)
+            .collect::<Vec<_>>()
+    );
+    for (index, (resource, handle)) in packet.resources.iter().zip(&handles).enumerate() {
+        let KernelResource::Buffer(binding) = resource else {
+            panic!("Conv argument {index} is not a pointer buffer");
+        };
+        assert_eq!(binding.memory.id(), handle.memory.descriptor().id);
+        assert_eq!(binding.service, service);
+        assert_eq!(binding.stream, stream);
+        assert_eq!(binding.size, spec.bindings[index].physical_bytes as u64);
+    }
+    assert_eq!(packet.info.data, [5, 8192, 6144]);
+    assert_eq!(packet.info.dynamic_metadata_offset, packet.info.data.len());
+    assert_eq!(
+        packet
+            .info
+            .data
+            .iter()
+            .flat_map(|word| word.to_le_bytes())
+            .collect::<Vec<_>>(),
+        scalars.packed_bytes()
+    );
+    assert!(
+        spec.kernel
+            .host_launch_arguments(&handles[..8], scalars)
+            .is_err()
+    );
+
+    let formal = "void zg_gdn_conv_prefill_parameterized_v1(void* zg_arg0, void* zg_arg1, void* zg_arg2, void* zg_arg3, void* zg_arg4, void* zg_arg5, void* zg_arg6, void* zg_arg7, void* zg_arg8, ZgGdnConvScalarWords zg_scalars)";
+    assert!(parameterized_conv::SOURCE.contains(formal));
+    assert!(
+        parameterized_conv::SOURCE
+            .contains("static_assert(sizeof(ZgGdnConvScalarWords) == 24, \"GDN Conv scalar ABI\")")
+    );
+    assert!(parameterized_conv::SOURCE.contains(
+        "static_assert(alignof(ZgGdnConvScalarWords) == 8, \"GDN Conv scalar alignment\")"
+    ));
     Ok(())
 }
 
@@ -363,6 +465,10 @@ fn parameterized_conv_refuses_wrong_source_layout_controls_and_overflow() -> Res
             retained,
         )
         .is_err()
+    );
+    assert!(
+        parameterized_conv::prepare_with_layout(phase, GdnCacheSlot::Four, geometry, retained,)
+            .is_err()
     );
     Ok(())
 }

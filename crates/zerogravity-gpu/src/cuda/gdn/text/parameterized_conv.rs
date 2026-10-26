@@ -7,13 +7,16 @@ use zerogravity_core::accelerator::program::SourceConvGeometry;
 
 pub(super) const ENTRY: &str = "zg_gdn_conv_prefill_parameterized_v1";
 pub(super) const SOURCE: &str = include_str!("conv_parameterized.cu");
-// Authenticated reversible three-formal candidate; the final packed ABI has a
-// distinct entry and complete SOURCE identity.
-pub(super) const CANDIDATE_SHA256: &str =
+// Three separate facts: authentic input PTX, reversible three-formal CUDA
+// candidate, and this packed CUDA source (whose complete text is the code key).
+pub(super) const ORIGINAL_PTX_SHA256: &str =
+    "7e9600b09ee757c1d786657d7edfa5b3629cb5b1b00480de1fdb5a761e4a0a5c";
+#[cfg(test)]
+pub(super) const CANDIDATE_SOURCE_SHA256: &str =
     "2165f48fc19f67b7d6570086cf179feb5d00717f5a816772ee32db716df655c9";
 #[cfg(test)]
 pub(super) const PACKED_SOURCE_SHA256: &str =
-    "eddbbab8b514d4d3278d8b3f057281508a2aa5171a967c94ecb434b61df7f678";
+    "3541c23397d51f32bf5e44b6f85715ccc3a19353616c375b1b8c657d0d42f929";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct ConvLayout {
@@ -65,18 +68,19 @@ pub(super) fn prepare_with_layout(
             "parameterized GDN Conv is text prefill only".into(),
         ));
     };
+    slot.validate(phase)?;
     if tokens == 0
         || geometry.qkv_channels != 6144
         || geometry.z_channels != 2048
         || geometry.coefficient_channels != 32
         || geometry.kernel != 4
-        || geometry.qkv_channels % 256 != 0
+        || !geometry.qkv_channels.is_multiple_of(256)
         || layout.cache_indices_bytes != 4
         || layout.has_initial_bytes != 1
         || layout.query_starts_bytes != 8
-        || layout.conv_batch_bytes % 4 != 0
+        || !layout.conv_batch_bytes.is_multiple_of(4)
         || layout.conv_chunk_offsets_bytes != layout.conv_batch_bytes
-        || layout.cache_arena_bytes % CACHE_SLOT_BYTES != 0
+        || !layout.cache_arena_bytes.is_multiple_of(CACHE_SLOT_BYTES)
     {
         return Err(Error::Unsupported(
             "parameterized GDN Conv source/control geometry".into(),
@@ -165,7 +169,7 @@ pub(super) fn prepare_with_layout(
             threads: 128,
             grid,
             shared: 0,
-            ptx_sha256: CANDIDATE_SHA256,
+            ptx_sha256: ORIGINAL_PTX_SHA256,
         },
         scalars,
     })

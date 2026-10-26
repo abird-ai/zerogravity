@@ -14,6 +14,9 @@ struct CompilationSourceContract {
     context_source: &'static str,
     shared_header_source: &'static str,
     cuda_compiler_source: &'static str,
+    cuda_server_source: &'static str,
+    metadata_binding_info_source: &'static str,
+    metadata_binding_info_version: &'static str,
     language: &'static str,
     hardware: &'static str,
     address_bits: u8,
@@ -27,6 +30,15 @@ impl PartialEq for CompilationSourceContract {
             && source_text_eq(self.context_source, other.context_source)
             && source_text_eq(self.shared_header_source, other.shared_header_source)
             && source_text_eq(self.cuda_compiler_source, other.cuda_compiler_source)
+            && source_text_eq(self.cuda_server_source, other.cuda_server_source)
+            && source_text_eq(
+                self.metadata_binding_info_source,
+                other.metadata_binding_info_source,
+            )
+            && source_text_eq(
+                self.metadata_binding_info_version,
+                other.metadata_binding_info_version,
+            )
             && source_text_eq(self.language, other.language)
             && source_text_eq(self.hardware, other.hardware)
             && self.address_bits == other.address_bits
@@ -41,6 +53,29 @@ enum FloatSemantics {
     // Rounding, FMA, approximate and noftz instructions are in the full body.
     OriginalInlinePtxModifiers,
 }
+
+// Exact source unit used by cubecl-runtime 0.11.0 to define the trailing
+// metadata packet. The registry checksum below pins the complete crate source.
+const METADATA_BINDING_INFO_SOURCE: &str = r#"#[derive(new, Debug, Default)]
+pub struct MetadataBindingInfo {
+    /// Scalar and metadata values
+    pub data: Vec<u64>,
+    /// Start of the dynamically sized portion of the metadata, relative to the entire info buffer
+    pub dynamic_metadata_offset: usize,
+}
+
+impl MetadataBindingInfo {
+    /// Create a new binding info for custom data, for externally compiled kernels.
+    pub fn custom(data: Vec<u64>) -> Self {
+        Self::new(data, 0)
+    }
+}
+"#;
+const METADATA_BINDING_INFO_VERSION: &str = concat!(
+    "cubecl-runtime 0.11.0\0",
+    "registry+https://github.com/rust-lang/crates.io-index\0",
+    "sha256:a1c2bdd3bfe667906cd55cc8f0a956a8476124263b6838cc5d7d68d9edacfea0",
+);
 
 const COMPILATION_SOURCE: CompilationSourceContract = CompilationSourceContract {
     kernel_source: include_str!("../kernel.rs"),
@@ -66,6 +101,9 @@ const COMPILATION_SOURCE: CompilationSourceContract = CompilationSourceContract 
         "../../../vendor/cubecl-cuda/src/compute/context/precompiled_shared.rs"
     ),
     cuda_compiler_source: include_str!("../../../vendor/cubecl-cuda/src/compiler.rs"),
+    cuda_server_source: include_str!("../../../vendor/cubecl-cuda/src/compute/server.rs"),
+    metadata_binding_info_source: METADATA_BINDING_INFO_SOURCE,
+    metadata_binding_info_version: METADATA_BINDING_INFO_VERSION,
     language: "cuda",
     hardware: "ptx_sm86",
     address_bits: 64,
