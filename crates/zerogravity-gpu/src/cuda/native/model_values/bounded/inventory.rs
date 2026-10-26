@@ -11,7 +11,7 @@ pub(crate) struct GeometryInventory {
     pub(crate) physical_leases: usize,
     pub(crate) physical_aligned_bytes: usize,
 }
-pub(crate) struct SixGeometryInventory {
+pub(crate) struct ScopeGeometryInventory {
     pub(crate) geometries: Vec<GeometryInventory>,
     pub(crate) physical_leases: usize,
     pub(crate) physical_aligned_bytes: usize,
@@ -23,7 +23,7 @@ pub(crate) struct SixGeometryInventory {
 fn sum(values: impl IntoIterator<Item = usize>) -> Result<usize> {
     values.into_iter().try_fold(0usize, |n, v| {
         n.checked_add(v)
-            .ok_or_else(|| Error::Limit("text six-geometry storage sum".into()))
+            .ok_or_else(|| Error::Limit("text captured geometry storage sum".into()))
     })
 }
 fn aligned(bytes: usize, alignment: usize) -> Result<usize> {
@@ -54,21 +54,22 @@ fn private_rms_layout(rows: usize, width: usize) -> Result<Vec<usize>> {
     Ok(layout)
 }
 impl StorageRecipe {
-    /// Price all five actual prompt records and one cached geometry using the
+    /// Price the actual captured prompt records and cached geometry using the
     /// SAME native allocator recipe. Original source/profile/IDs remain sealed;
     /// no synthetic plan or logical-byte subtraction stands in for real slots.
     /// Caller separately adds learned W, roots, private GDN/native/other owners.
-    pub(crate) fn six_geometry_inventory(
-        scopes: [Arc<TextModelBinding>; 6],
+    pub(crate) fn scope_geometry_inventory(
+        scopes: &[Arc<TextModelBinding>],
         limits: ValueStorageLimits,
-    ) -> Result<SixGeometryInventory> {
-        let _metadata = scopes[0].source().reserve_workspace(1024 * 1024)?;
-        let mut geometries = Vec::with_capacity(6);
-        let mut recipes = Vec::with_capacity(6);
+    ) -> Result<ScopeGeometryInventory> {
+        let metadata_bytes = workspace::WorkspaceLayout::metadata_bytes(scopes)?;
+        let _metadata = scopes[0].source().reserve_workspace(metadata_bytes)?;
+        let mut geometries = Vec::with_capacity(scopes.len());
+        let mut recipes = Vec::with_capacity(scopes.len());
         for scope in scopes {
             let rows = scope.call().rows().len();
             let width = scope.hidden_size();
-            let recipe = Self::new(scope, StorageMode::ReuseMlp, limits)?;
+            let recipe = Self::new(scope.clone(), StorageMode::ReuseMlp, limits)?;
             let values = recipe.inventory();
             recipes.push(recipe);
             let rms = private_rms_layout(rows, width)?;
@@ -90,9 +91,6 @@ impl StorageRecipe {
                 physical_aligned_bytes,
             });
         }
-        if geometries.iter().map(|g| g.rows).collect::<Vec<_>>() != [47, 57, 62, 67, 72, 1] {
-            return Err(Error::State("text complete six real geometries".into()));
-        }
         let isolated_physical_aligned_bytes =
             sum(geometries.iter().map(|g| g.physical_aligned_bytes))?;
         let workspace = workspace::WorkspaceLayout::derive(&recipes)?;
@@ -103,13 +101,13 @@ impl StorageRecipe {
             workspace.gamma_aligned_bytes,
         ])?;
         let workspace_host_bytes = sum([
-            METADATA_BYTES,
+            metadata_bytes,
             crate::resident_leases::backing_pool::ResidentWorkspace::metadata_bytes(
                 workspace.physical.len(),
                 workspace_views,
             )?,
         ])?;
-        Ok(SixGeometryInventory {
+        Ok(ScopeGeometryInventory {
             geometries,
             physical_leases,
             physical_aligned_bytes,

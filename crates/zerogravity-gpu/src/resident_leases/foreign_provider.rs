@@ -212,7 +212,15 @@ impl ResidentLedger {
     #[cfg(any(
         test,
         feature = "cuda-native",
-        all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
+        all(
+            target_os = "linux",
+            any(feature = "hip", feature = "vulkan"),
+            any(
+                feature = "gemma-bf16-qualification",
+                feature = "qwen-source-qualification",
+                all(test, feature = "qualification", feature = "hip")
+            )
+        )
     ))]
     fn reserve_foreign_for(&mut self, model: u64, bytes: usize) -> Result<()> {
         self.check_request(model, bytes)?;
@@ -223,7 +231,15 @@ impl ResidentLedger {
     #[cfg(any(
         test,
         feature = "cuda-native",
-        all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
+        all(
+            target_os = "linux",
+            any(feature = "hip", feature = "vulkan"),
+            any(
+                feature = "gemma-bf16-qualification",
+                feature = "qwen-source-qualification",
+                all(test, feature = "qualification", feature = "hip")
+            )
+        )
     ))]
     fn release_foreign_for(&mut self, model: u64, bytes: usize) -> Result<()> {
         let used = self
@@ -251,7 +267,15 @@ impl Deref for ResidentLedger {
 #[cfg(any(
     test,
     feature = "cuda-native",
-    all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
+    all(
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan"),
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification",
+            all(test, feature = "qualification", feature = "hip")
+        )
+    )
 ))]
 pub(crate) trait ForeignProviderOwner: Send + Sync {
     fn foreign_ledger(&self) -> &Mutex<ResidentLedger>;
@@ -263,7 +287,15 @@ pub(crate) trait ForeignProviderOwner: Send + Sync {
 #[cfg(any(
     test,
     feature = "cuda-native",
-    all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
+    all(
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan"),
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification",
+            all(test, feature = "qualification", feature = "hip")
+        )
+    )
 ))]
 pub(crate) struct ForeignProviderCharge<
     O: ForeignProviderOwner = super::native_cache::NativeCacheBudget,
@@ -274,7 +306,15 @@ pub(crate) struct ForeignProviderCharge<
 #[cfg(any(
     test,
     feature = "cuda-native",
-    all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
+    all(
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan"),
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification",
+            all(test, feature = "qualification", feature = "hip")
+        )
+    )
 ))]
 impl<O: ForeignProviderOwner> ForeignProviderCharge<O> {
     pub(super) fn reserve(owner: Arc<O>, bytes: usize) -> Result<Arc<Self>> {
@@ -298,7 +338,15 @@ impl ForeignProviderCharge<super::native_cache::NativeCacheBudget> {
 #[cfg(any(
     test,
     feature = "cuda-native",
-    all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
+    all(
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan"),
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification",
+            all(test, feature = "qualification", feature = "hip")
+        )
+    )
 ))]
 impl<O: ForeignProviderOwner> Drop for ForeignProviderCharge<O> {
     fn drop(&mut self) {

@@ -306,16 +306,7 @@ impl ResidentSession {
                 "text prompt requires the original empty root".into(),
             ));
         }
-        let prompt_tokens = record.call().rows().len();
-        self.bind_text_input(
-            prepared,
-            record,
-            recipe,
-            capture,
-            prompt_tokens,
-            Origin::Prompt,
-            cancelled,
-        )
+        self.bind_text_input(prepared, record, recipe, capture, Origin::Prompt, cancelled)
     }
     pub(crate) fn bind_text_feedback(
         &self,
@@ -329,13 +320,11 @@ impl ResidentSession {
         not_cancelled(cancelled)?;
         let id = packet.require_current(self, prepared.source())?;
         require_feedback_coordinates(record.call(), self.binding(), packet.prompt_tokens, id)?;
-        let prompt_tokens = packet.prompt_tokens;
         self.bind_text_input(
             prepared,
             record,
             recipe,
             capture,
-            prompt_tokens,
             Origin::Feedback(packet),
             cancelled,
         )
@@ -346,11 +335,14 @@ impl ResidentSession {
         record: Arc<SourceBindings>,
         recipe: GdnKernelRecipe,
         capture: TextKernelCapture,
-        prompt_tokens: usize,
         origin: Origin,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<TextCallInput>> {
         not_cancelled(cancelled)?;
+        let prompt_tokens = match &origin {
+            Origin::Prompt => record.call().rows().len(),
+            Origin::Feedback(packet) => packet.prompt_tokens,
+        };
         let source = prepared.source().clone();
         if !source.same_issuer(record.source())
             || source.source_identity() != self.binding().source()

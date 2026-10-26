@@ -184,12 +184,8 @@ pub(super) fn open(
         spec.index_sha,
     )?);
     let source = OriginalWindowModelSource::from_owner(owner)?;
-    if source
-        .bind_full_model_source()?
-        .model_profile()
-        .hidden_size()
-        != spec.hidden
-    {
+    let profile = source.bind_full_model_source()?.model_profile();
+    if profile.hidden_size() != spec.hidden {
         return Err(Error::State(
             "actual full source/profile differs from inventory".into(),
         ));
@@ -210,10 +206,10 @@ pub(super) fn open(
             manifest_sha256: spec.manifest_sha,
             hidden_width: spec.hidden,
             vocabulary_size: 248320,
-            prompt_token_counts: [47, 57, 62, 67, 72],
-            max_output_tokens: 8,
-            context_capacity_tokens: 512,
-            max_cached_tokens: 78,
+            prompt_token_counts: profile.prompt_token_counts(),
+            max_output_tokens: profile.max_output_tokens(),
+            context_capacity_tokens: profile.context_capacity_tokens(),
+            max_cached_tokens: profile.max_cached_tokens()?,
         },
     })
 }

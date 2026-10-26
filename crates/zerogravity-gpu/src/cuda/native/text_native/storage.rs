@@ -16,7 +16,7 @@ use crate::{
     resident_program::text_positions::text::TextPositions,
 };
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -87,18 +87,17 @@ impl TextNativeStorage {
             head_mode,
             tied_head,
         } = preparation;
-        if geometries.len() != 6 || geometries.capacity() > 6 {
+        capture.require_cold_scopes(geometries.iter().map(|g| g.scope.as_ref()))?;
+        if geometries.capacity() > capture.cold_scope_count()? {
             return Err(Error::State(
-                "text exact five prefill plus one row storage geometries".into(),
+                "text bounded captured cold storage geometry capacity".into(),
             ));
         }
-        let mut rows = BTreeSet::new();
         for g in &geometries {
             g.scope.require_values(&g.values)?;
             weights.require_text(&g.scope)?;
             init.require_service(g.values.service())?;
-            if !rows.insert(g.scope.call().rows().len())
-                || g.scope.native_capture() != capture
+            if g.scope.native_capture() != capture
                 || !g.scope.source().same_issuer(&source)
                 || !Arc::ptr_eq(g.rms_scope.record(), g.scope.record())
                 || !Arc::ptr_eq(g.values.service(), workspace.service())
@@ -108,8 +107,7 @@ impl TextNativeStorage {
                 ));
             }
         }
-        if rows != BTreeSet::from([1, 47, 57, 62, 67, 72])
-            || workspace.bytes() != 8_519_680
+        if workspace.bytes() != 8_519_680
             || workspace.role() != BufferRole::Scratch
             || workspace.source_identity() != source.source_identity()
             || workspace.service_generation() != workspace.service().generation()
@@ -120,7 +118,7 @@ impl TextNativeStorage {
             ));
         }
         // Requiring actual compiled packets precedes all new allocation/admission.
-        // Six managed geometries never collapse the forty current-call packet keys.
+        // Managed geometries never collapse the captured current-call packet keys.
         let scopes = geometries
             .iter()
             .map(|g| g.scope.clone())
@@ -165,7 +163,7 @@ impl TextNativeStorage {
             cancelled,
         )?;
         let pool = super::pool::Pool::prepare(catalogue, images.clone(), init, cancelled)?;
-        // One genuine Cold Head W slot/kernel for all six shapes; bind_call
+        // One genuine Cold Head W slot/kernel for all captured shapes; bind_call
         // supplies the current source-selected final normalized row.
         let g = &geometries[0];
         let head = StreamedHead::prepare(

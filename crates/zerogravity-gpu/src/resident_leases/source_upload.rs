@@ -108,7 +108,7 @@ impl TiedWeight {
     ) -> Result<cubecl::cuda::Bf16MatrixLayout> {
         let matrix = source.matrix(&member.name, member.axes)?;
         require_member(source, member, &matrix)?;
-        super::ResidentMatrix::authenticate(&source, &matrix)?.cuda()
+        super::ResidentMatrix::authenticate(source, &matrix)?.cuda()
     }
     pub(crate) fn matrix(&self) -> &Arc<super::ResidentMatrix> {
         &self.matrix
@@ -393,7 +393,7 @@ fn descriptor(
     }
     let matrix = source.matrix(&embed.name, embed.axes)?;
     require_member(source, &embed, &matrix)?;
-    super::ResidentMatrix::authenticate(&source, &matrix)?;
+    super::ResidentMatrix::authenticate(source, &matrix)?;
     Ok((embed, matrix))
 }
 

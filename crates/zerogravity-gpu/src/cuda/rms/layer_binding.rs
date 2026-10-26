@@ -46,9 +46,6 @@ impl BoundRmsSource {
     pub(crate) fn source(&self) -> &VerifiedTensorSource {
         &self.source
     }
-    pub(crate) fn operator(&self) -> &SourceOperator {
-        &self.operator
-    }
     pub(crate) fn parameter(&self) -> &SourceParameter {
         &self.operator.parameters()[0]
     }

@@ -44,7 +44,15 @@ pub struct ResidentPhysical {
     pub(super) next_allocation: AtomicU64,
     pub(super) poisoned: AtomicBool,
     generation: u64,
-    #[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan"),
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification",
+            all(test, feature = "qualification", feature = "hip")
+        )
+    ))]
     _native_context: Option<Arc<crate::physical_service::NativeContextBudget>>,
 }
 /// Detached quota/source owner: no Client, physical owner, service or cache Arc.
@@ -243,7 +251,15 @@ impl ResidentPhysical {
             next_allocation: AtomicU64::new(1),
             poisoned: AtomicBool::new(false),
             generation,
-            #[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
+            #[cfg(all(
+                target_os = "linux",
+                any(feature = "hip", feature = "vulkan"),
+                any(
+                    feature = "gemma-bf16-qualification",
+                    feature = "qwen-source-qualification",
+                    all(test, feature = "qualification", feature = "hip")
+                )
+            ))]
             _native_context: None,
         })
     }
@@ -359,7 +375,15 @@ impl ResidentPhysical {
     pub fn generation(&self) -> u64 {
         self.generation
     }
-    #[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan"),
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification",
+            all(test, feature = "qualification", feature = "hip")
+        )
+    ))]
     pub(crate) fn new_with_native_context(
         device: Device,
         provider_cap: usize,

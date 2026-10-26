@@ -295,28 +295,6 @@ impl ResidentSession {
             effect(conv, node_indices[0])?,
             effect(recurrent, node_indices[1])?,
         ];
-        let bound = Self::gdn_domain_binding(
-            base,
-            invocation.clone(),
-            phase,
-            prior,
-            candidate,
-            effects,
-            elements,
-            attempt_phase,
-        )?;
-        Ok(Arc::new(bound))
-    }
-    fn gdn_domain_binding(
-        base: RootBinding,
-        invocation: SourceCall,
-        phase: GdnPhase,
-        prior: &[Domain],
-        candidate: &[Domain],
-        effects: [StateEffect; 2],
-        elements: [usize; 2],
-        attempt_phase: Option<Arc<AttemptPhaseBinding>>,
-    ) -> Result<BoundGdnDomains> {
         let [conv, recurrent] = [effects[0].write.slot, effects[1].write.slot];
         if !matches!((conv, recurrent),
             (StateSlot::Conv(c),StateSlot::Recurrent(r)) if c.0 == r.0)
@@ -327,7 +305,7 @@ impl ResidentSession {
         }
         let value = BoundGdnDomains {
             base,
-            invocation,
+            invocation: invocation.clone(),
             phase,
             conv_effect: effects[0],
             recurrent_effect: effects[1],
@@ -347,7 +325,7 @@ impl ResidentSession {
                 "GDN proposal aliases committed/sibling domain".into(),
             ));
         }
-        Ok(value)
+        Ok(Arc::new(value))
     }
 }
 impl BoundGdnDomains {

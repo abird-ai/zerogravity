@@ -33,7 +33,15 @@ mod foreign_provider;
 #[cfg(any(
     test,
     feature = "cuda-native",
-    all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
+    all(
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan"),
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification",
+            all(test, feature = "qualification", feature = "hip")
+        )
+    )
 ))]
 mod native_cache;
 #[cfg(all(feature = "cuda-native", target_os = "linux"))]
@@ -41,7 +49,15 @@ pub(crate) use enqueue::{
     ENQUEUE_PROFILE_ADMISSION_BYTES, EnqueuePlacement, enqueue_profile_enabled,
     profile_head_enqueue,
 };
-#[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "hip", feature = "vulkan"),
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification",
+        all(test, feature = "qualification", feature = "hip")
+    )
+))]
 pub(crate) use native_cache::NativeCacheBudget;
 #[cfg(all(
     any(
@@ -67,8 +83,15 @@ pub(crate) mod source_page;
 mod source_upload;
 #[cfg(any(
     feature = "cuda-native",
-    feature = "qwen-source-qualification",
-    all(feature = "gemma-bf16-qualification", feature = "hip")
+    all(
+        target_os = "linux",
+        feature = "hip",
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification",
+            all(test, feature = "qualification")
+        )
+    )
 ))]
 pub(crate) use foreign_provider::ForeignProviderCharge;
 use foreign_provider::ResidentLedger;
@@ -88,7 +111,15 @@ pub(crate) use source_upload::{
 };
 
 static NEXT_SERVICE_GENERATION: AtomicU64 = AtomicU64::new(1);
-#[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "hip", feature = "vulkan"),
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification",
+        all(test, feature = "qualification", feature = "hip")
+    )
+))]
 static NATIVE_CONTEXT_CONSTRUCTED: AtomicBool = AtomicBool::new(false);
 
 fn access_positions(
@@ -171,7 +202,7 @@ impl ResidentService {
             .attach_inner(source, owner, provider_cap, None)
             .map(Arc::new)
     }
-    #[cfg(all(test, feature = "qualification", feature = "hip"))]
+    #[cfg(all(test, feature = "qualification", feature = "hip", target_os = "linux"))]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new_with_native_context(
         device: Device,

@@ -80,7 +80,6 @@ pub(super) fn prepare_final_rms_source(
 
 /// The legacy .8B uploader's actual 2B refusal is family policy; W transfer,
 /// complete source readback and uncertain retirement still use the GPU owner.
-#[expect(clippy::too_many_arguments)]
 pub async fn qualify_qwen2b_mlp_weights(
     device: Device,
     source: BoundFullModelSource,

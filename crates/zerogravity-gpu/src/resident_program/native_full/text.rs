@@ -49,7 +49,7 @@ impl FullModelProgram {
                 service.clone(),
                 limits(),
             )?;
-        let mut cold = Vec::with_capacity(6);
+        let mut cold = Vec::with_capacity(scopes.len());
         for (index, scope) in scopes.iter().enumerate() {
             cold.push(
                 Self::prepare_text_cold_inner(

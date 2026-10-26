@@ -2,8 +2,6 @@
 use super::*;
 use crate::plan::{PromptCall, PromptSpan};
 
-// Five workloads × (one prefill + seven exact decode frontiers).
-pub(super) const MAX_PREPARED_SHAPES: usize = 40;
 pub(super) struct PreparedRecord {
     call: PromptCall,
     record: Arc<QwenPlan>,
@@ -37,8 +35,12 @@ fn require_call(
 }
 impl BoundFullModelSource {
     /// Complete conservative retained cache allowance, including unvisited shapes.
-    pub const PROMPT_PREPARED_METADATA_BYTES: usize =
-        MAX_PREPARED_SHAPES * QwenPlan::PREPARED_METADATA_BYTES;
+    pub fn prompt_prepared_metadata_bytes(&self) -> Result<usize> {
+        self.model_profile()
+            .prepared_prompt_call_count()?
+            .checked_mul(QwenPlan::PREPARED_METADATA_BYTES)
+            .ok_or_else(|| Error::Limit("profile prepared prompt metadata extent".into()))
+    }
     pub fn bind_prompt_span(&self, span: PromptSpan) -> Result<BoundPromptCall> {
         let call = PromptCall::new(self.model_profile(), span)?;
         require_call(self.source().source_identity(), self.model_profile(), &call)?;
@@ -72,7 +74,7 @@ impl BoundPromptCall {
                 if let Some(prepared) = cache.iter().find(|p| same_shape(&p.call, &self.call)) {
                     prepared.record.clone()
                 } else {
-                    if cache.len() >= MAX_PREPARED_SHAPES {
+                    if cache.len() >= self.source.model_profile().prepared_prompt_call_count()? {
                         return Err(Error::Limit("prepared short-HF finite shape bound".into()));
                     }
                     let metadata = self
@@ -141,8 +143,8 @@ mod tests {
         let foreign = SourceIdentity::for_new_allocation().unwrap();
         for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
             let mut shapes = Vec::new();
-            for count in [47, 57, 62, 67, 72] {
-                let workload = PromptWorkload::from_prompt_tokens(count).unwrap();
+            for &count in profile.prompt_token_counts() {
+                let workload = profile.prompt_workload(count).unwrap();
                 for base in std::iter::once(None).chain(workload.cached_bases().map(Some)) {
                     let make = |source, profile, id| {
                         let span = match base {
@@ -167,7 +169,7 @@ mod tests {
                     shapes.push(a);
                 }
             }
-            assert_eq!(shapes.len(), MAX_PREPARED_SHAPES);
+            assert_eq!(shapes.len(), profile.prepared_prompt_call_count().unwrap());
         }
     }
 }

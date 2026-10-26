@@ -43,7 +43,7 @@ pub struct SourceMetadata {
     pub manifest_sha256: &'static str,
     pub hidden_width: usize,
     pub vocabulary_size: u64,
-    pub prompt_token_counts: [usize; 5],
+    pub prompt_token_counts: &'static [usize],
     pub max_output_tokens: usize,
     pub context_capacity_tokens: usize,
     pub max_cached_tokens: usize,

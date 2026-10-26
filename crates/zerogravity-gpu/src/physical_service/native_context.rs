@@ -40,7 +40,15 @@ impl NativeContextBudget {
             bytes,
         }))
     }
-    #[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan"),
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification",
+            all(test, feature = "qualification", feature = "hip")
+        )
+    ))]
     pub(crate) fn require(
         &self,
         physical: &PhysicalDeviceKey,
@@ -62,7 +70,15 @@ impl NativeContextBudget {
     pub(crate) fn bytes(&self) -> u64 {
         self.bytes
     }
-    #[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan"),
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification",
+            all(test, feature = "qualification", feature = "hip")
+        )
+    ))]
     pub(crate) fn fence_unknown(&self) {
         self.envelope.fence_unknown();
         self.fence.store(true, Ordering::Release);

@@ -17,26 +17,14 @@ impl DecodeCohortWorkspace {
         capture: TextKernelCapture,
         scopes: &[Arc<TextModelBinding>],
     ) -> Result<(Vec<ResidentPlaneLayout>, [Vec<ResidentViewLayout>; 2])> {
-        if scopes.len() != 6
-            || scopes[0].call().rows().len() != 47
-            || scopes[5].call().rows().len() != 1
-        {
-            return Err(Error::Unsupported(
-                "B4 fixed-prompt immutable source geometries only".into(),
-            ));
-        }
-        if scopes.iter().any(|scope| {
-            scope.native_capture() != capture || !scope.source().same_issuer(scopes[0].source())
-        }) {
-            return Err(Error::State(
-                "B4 workspace immutable source/profile differs".into(),
-            ));
-        }
+        capture.require_cold_scopes(scopes.iter().map(Arc::as_ref))?;
+        let initial = capture.cold_scope_index(SourceCallMode::Prefill, 47)?;
+        let cached = capture.cold_scope_index(SourceCallMode::Decode, 1)?;
         let phases = crate::cuda::native::cohort_native::CohortPhases::for_capture(capture);
         let cached_only = !phases.contains(true);
         let mut planes = Vec::with_capacity(327);
         let mut views = [Vec::with_capacity(327), Vec::with_capacity(327)];
-        for (scope_index, scope) in [scopes[0].clone(), scopes[5].clone()].iter().enumerate() {
+        for (scope_index, scope) in [&scopes[initial], &scopes[cached]].into_iter().enumerate() {
             if cached_only && scope_index == 0 {
                 continue;
             }

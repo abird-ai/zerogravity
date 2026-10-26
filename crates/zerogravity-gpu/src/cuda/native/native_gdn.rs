@@ -44,12 +44,6 @@ impl NativeGdnBinding {
     pub(crate) fn operators(&self) -> &[SourceOperator; 2] {
         &self.operators
     }
-    pub(crate) fn nodes(&self) -> [usize; 2] {
-        self.nodes
-    }
-    pub(crate) fn value_ids(&self) -> [ValueId; 5] {
-        self.value_ids
-    }
     pub(crate) fn invocation(&self) -> &SourceCall {
         &self.invocation
     }

@@ -25,7 +25,6 @@ pub(super) mod performance;
 mod source_check;
 mod workspace;
 const MIB: usize = 1024 * 1024;
-const N1_PROMPT_GEOMETRIES: usize = 5;
 pub(crate) mod cohort;
 mod inventory;
 pub use cohort::{
@@ -60,15 +59,13 @@ impl ColdModel {
         state: Arc<TextCallState>,
         cancel: Option<&AtomicBool>,
     ) -> Result<ResidentProgram> {
-        let which = if input.rows() == 1 {
-            5
-        } else {
-            [47, 57, 62, 67, 72]
-                .iter()
-                .position(|&r| r == input.rows())
-                .ok_or_else(|| Error::Unsupported("short HF cold geometry absent".into()))?
-        };
-        let cold = &self.values[which];
+        let which = self
+            .capture
+            .cold_scope_index(input.call().mode(), input.rows())?;
+        let cold = self
+            .values
+            .get(which)
+            .ok_or_else(|| Error::State("short HF captured cold geometry absent".into()))?;
         let (body, buffers, preflight, rms_scope) = cold
             .bind_values(&input, &state, self.native.head().resident_weight(), cancel)
             .await?;
@@ -99,39 +96,19 @@ impl ColdModel {
 /// Bounded N1 coverage derived from the source-issued cold scopes actually prepared.
 #[derive(Clone, Debug)]
 struct TextColdGeometry {
-    prompt_rows: [usize; N1_PROMPT_GEOMETRIES],
+    prompt_rows: &'static [usize],
     cached_rows: usize,
 }
 impl TextColdGeometry {
-    fn from_scopes(scopes: &[Arc<TextModelBinding>]) -> Result<Self> {
-        let mut prompt_rows = [0; N1_PROMPT_GEOMETRIES];
-        let mut prompts = 0;
-        let mut cached_rows = 0;
-        for scope in scopes {
-            let call = scope.call();
-            match call.mode() {
-                SourceCallMode::Prefill => {
-                    let slot = prompt_rows.get_mut(prompts).ok_or_else(|| {
-                        Error::State("short HF prepared N1 prompt geometry overflow".into())
-                    })?;
-                    *slot = call.rows().len();
-                    prompts += 1;
-                }
-                SourceCallMode::Decode => cached_rows += 1,
-            }
-        }
-        if prompts != N1_PROMPT_GEOMETRIES || cached_rows == 0 {
-            return Err(Error::State(
-                "short HF prepared N1 geometry coverage incomplete".into(),
-            ));
-        }
+    fn from_scopes(capture: TextKernelCapture, scopes: &[Arc<TextModelBinding>]) -> Result<Self> {
+        capture.require_cold_scopes(scopes.iter().map(Arc::as_ref))?;
         Ok(Self {
-            prompt_rows,
-            cached_rows,
+            prompt_rows: capture.captured_prefill_rows(),
+            cached_rows: 1,
         })
     }
     fn prompt_rows(&self) -> &[usize] {
-        &self.prompt_rows
+        self.prompt_rows
     }
     fn cached_rows(&self) -> usize {
         self.cached_rows
@@ -726,21 +703,19 @@ fn cold_source_scopes(
     capture: TextKernelCapture,
     calls: &[(Arc<SourceBindings>, GdnKernelRecipe)],
 ) -> Result<(Arc<TextModelBindings>, Vec<Arc<TextModelBinding>>)> {
-    if calls.len() != 6 {
+    if calls.len() != capture.cold_scope_count()? {
         return Err(Error::State(
-            "text complete six cold scopes required".into(),
+            "text complete captured cold scopes required".into(),
         ));
     }
-    let bindings = TextModelBindings::new(source.clone())?;
-    let mut scopes = Vec::with_capacity(6);
-    for ((record, recipe), rows) in calls.iter().zip([47, 57, 62, 67, 72, 1]) {
+    let bindings = TextModelBindings::new(source.clone(), capture)?;
+    let mut scopes = Vec::with_capacity(calls.len());
+    for (index, (record, recipe)) in calls.iter().enumerate() {
         let call = record.call();
+        capture.cold_scope_role(index)?.require_call(call)?;
         if !source.same_issuer(record.source())
-            || call.rows().len() != rows
             || call.rows().capacity() != 512
             || call.rows().vocabulary() != 248320
-            || (rows == 1 && (call.mode() != SourceCallMode::Decode || call.rows().base() != 47))
-            || (rows != 1 && (call.mode() != SourceCallMode::Prefill || call.rows().base() != 0))
         {
             return Err(Error::State(
                 "text actual source/cold call geometry differs".into(),
@@ -751,6 +726,10 @@ fn cold_source_scopes(
     }
     Ok((bindings, scopes))
 }
+#[expect(
+    clippy::too_many_arguments,
+    reason = "capture/call provenance, qualifier inputs, physical capacity and cancellation are independent admission inputs"
+)]
 async fn prepare_text_profile(
     cohort_b4: bool,
     device: Device,
@@ -782,7 +761,7 @@ async fn prepare_text_profile(
     let metadata = Arc::new(source.reserve_workspace(8 * MIB)?);
     let owner_metadata = Arc::new(source.reserve_workspace(2 * MIB)?);
     let (bindings, scopes) = cold_source_scopes(&source, capture, &calls)?;
-    let readiness_geometry = TextColdGeometry::from_scopes(&scopes)?;
+    let readiness_geometry = TextColdGeometry::from_scopes(capture, &scopes)?;
     let preference = crate::cuda::native::text_head::HeadMode::environment_preference()?;
     if provider_capacity_bytes == 0
         || provider_capacity_bytes as u64 > inputs.projections.device_cap
@@ -844,8 +823,8 @@ async fn prepare_text_profile(
     let mut slot = ticket.wait().await?;
     request_not_cancelled(cancelled)?;
     slot.begin_submission()?;
-    // One original workspace serializes all six geometries, including D2H.
-    // Price the exact maximum retained diagnostic cohort once, not six times.
+    // One original workspace serializes the captured geometries, including D2H.
+    // Price the exact maximum retained diagnostic cohort once.
     let readback = FullModelProgram::admit_text_readbacks(&scopes, &service)?;
     let values =
         FullModelProgram::prepare_text_shared_cold(&scopes, service.clone(), readback, cancelled)
@@ -921,7 +900,7 @@ async fn prepare_text_profile(
     }
     let positions = TextPositionsStorage::prepare(&mut init)?;
     let rotary = ModelRotary::prepare_text(source.clone(), service.clone(), prefix, &mut init)?;
-    let mut private = Vec::with_capacity(6);
+    let mut private = Vec::with_capacity(scopes.len());
     for (scope, value) in scopes.iter().zip(&values) {
         private.push(TextGdnWorkspace::allocate(
             scope.clone(),
@@ -936,7 +915,7 @@ async fn prepare_text_profile(
     }
     let weights = pending.bind_initialized()?;
     let tied_head = pending_tied.map(|p| p.bind_initialized()).transpose()?;
-    let mut gdn = Vec::with_capacity(6);
+    let mut gdn = Vec::with_capacity(scopes.len());
     for ((scope, value), workspace) in scopes.iter().zip(&values).zip(&private) {
         let mut cohort = BTreeMap::new();
         for (&layer, p) in &parameters {
@@ -955,7 +934,7 @@ async fn prepare_text_profile(
         }
         gdn.push(cohort);
     }
-    let mut geometries = Vec::with_capacity(6);
+    let mut geometries = Vec::with_capacity(scopes.len());
     for (scope, value) in scopes.iter().zip(&values) {
         geometries.push(TextNativeGeometry {
             scope: scope.clone(),

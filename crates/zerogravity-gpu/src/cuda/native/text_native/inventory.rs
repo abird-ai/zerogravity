@@ -3,6 +3,17 @@ use super::{super::text_model::TextModelBinding, packets::Role};
 use std::{collections::BTreeSet, sync::Arc};
 use zerogravity_core::{Error, Result};
 const MIB: usize = 1024 * 1024;
+fn add(a: usize, b: usize) -> Result<usize> {
+    a.checked_add(b)
+        .ok_or_else(|| Error::Limit("text native inventory sum".into()))
+}
+fn mul(a: usize, b: usize) -> Result<usize> {
+    a.checked_mul(b)
+        .ok_or_else(|| Error::Limit("text native inventory product".into()))
+}
+fn sum(items: impl IntoIterator<Item = usize>) -> Result<usize> {
+    items.into_iter().try_fold(0, add)
+}
 pub(crate) struct TextNativeInventory {
     pub(crate) device_layout: Vec<usize>,
     pub(crate) retained_host_bytes: usize,
@@ -22,41 +33,27 @@ impl TextNativeInventory {
         let first = scopes
             .first()
             .ok_or_else(|| Error::State("text inventory missing genuine source scopes".into()))?;
-        let mut rows = BTreeSet::new();
-        capture.require_bindings(first.record())?;
-        let mut prompts = BTreeSet::new();
-        for scope in scopes {
-            capture.require_bindings(scope.record())?;
-            if scope.native_capture() != capture
-                || !scope.source().same_issuer(first.source())
-                || !rows.insert(scope.call().rows().len())
-            {
-                return Err(Error::State(
-                    "text inventory source/family/real row geometries".into(),
-                ));
-            }
-            if scope.call().rows().base() == 0 {
-                prompts.insert(scope.call().rows().len());
-            }
-        }
-        if scopes.len() != 6
-            || rows != BTreeSet::from([1, 47, 57, 62, 67, 72])
-            || prompts != BTreeSet::from([47, 57, 62, 67, 72])
-        {
-            return Err(Error::State(
-                "text inventory exactly five prompts plus fresh N1".into(),
-            ));
-        }
+        capture.require_cold_scopes(scopes.iter().map(Arc::as_ref))?;
+        let calls = capture.prepared_call_count()?;
+        let attention_layers = super::attention::LAYERS.len();
         let catalogue_bytes = super::generated::metadata_bytes(capture)?;
         let private_layout = super::generated::private_layout(capture)?.to_vec();
-        let mut device_layout = Vec::with_capacity(6 + 12 + 6 + 40 * 7 + private_layout.len() + 1);
-        device_layout.extend([super::transport::CACHE_BYTES; 6]);
-        device_layout.extend([512; 12]);
-        device_layout.extend([4; 6]);
-        for prompt in [47, 57, 62, 67, 72] {
-            for call in 0..8 {
+        let mut device_layout = Vec::with_capacity(sum([
+            mul(attention_layers, 4)?,
+            mul(calls, 7)?,
+            private_layout.len(),
+            1,
+        ])?);
+        device_layout.extend(std::iter::repeat_n(
+            super::transport::CACHE_BYTES,
+            attention_layers,
+        ));
+        device_layout.extend(std::iter::repeat_n(512, mul(attention_layers, 2)?));
+        device_layout.extend(std::iter::repeat_n(4, attention_layers));
+        for &prompt in capture.captured_prefill_rows() {
+            for call in 0..capture.captured_call_count() {
                 let rows = if call == 0 { prompt } else { 1 };
-                device_layout.extend([rows * 8, 4, 4, 8, 8, 4, 16]);
+                device_layout.extend([mul(rows, 8)?, 4, 4, 8, 8, 4, 16]);
             }
         }
         let mut private_seen = BTreeSet::new();
@@ -97,42 +94,49 @@ impl TextNativeInventory {
         });
         // The one resident table replaces the streamed slot; it is never a
         // full retained host shadow. Original uploader keeps one source window.
-        let upload_metadata = usize::from(head_mode.resident()) * 64 * 1024;
+        let upload_metadata = mul(usize::from(head_mode.resident()), 64 * 1024)?;
         // No sharing/dedup assumption: each of12 <=512B source windows may
         // retain two1MiB chunks; actual scans/source metadata are caller-priced.
-        let source_windows = 24 * (MIB + 24);
+        let source_windows = mul(mul(attention_layers, 4)?, MIB + 24)?;
         let transport_metadata = scopes
             .iter()
             .filter(|scope| scope.call().rows().base() == 0)
             .try_fold(0usize, |total, scope| {
-                (0..8).try_fold(total, |n, ordinal| {
+                (0..capture.captured_call_count()).try_fold(total, |n, ordinal| {
                     n.checked_add(super::transport::Definitions::metadata_bound(
                         scope.call().rows().len(),
                         ordinal,
                     )?)
-                    .ok_or_else(|| Error::Limit("text forty cold transport owner sum".into()))
+                    .ok_or_else(|| Error::Limit("text captured cold transport owner sum".into()))
                 })
             })?;
-        let retained_host_bytes = upload_metadata
-            + catalogue_bytes
-            + 2 * MIB
-            + 6 * 64 * 1024
-            + 40 * (64 * 1024 + 3 * 4096)
-            + 128 * 1024
-            + 6 * 64 * 1024
-            + usize::from(audit_head) * MIB
-            + source_windows
+        let retained_host_bytes = sum([
+            upload_metadata,
+            catalogue_bytes,
+            2 * MIB,
+            mul(attention_layers, 64 * 1024)?,
+            mul(calls, 64 * 1024 + 3 * 4096)?,
+            128 * 1024,
+            mul(capture.cold_scope_count()?, 64 * 1024)?,
+            mul(usize::from(audit_head), MIB)?,
+            source_windows,
             // Second retained source window in the bounded retirement ring.
-            + usize::from(!head_mode.resident())
-                * super::super::text_head::STREAMED_WINDOW_STAGING_UPPER;
+            mul(
+                usize::from(!head_mode.resident()),
+                super::super::text_head::STREAMED_WINDOW_STAGING_UPPER,
+            )?,
+        ])?;
         let retained_host_bytes = retained_host_bytes
             .checked_add(transport_metadata)
             .ok_or_else(|| Error::Limit("text retained cold source metadata".into()))?;
-        // Conservative cold-binding budget permits all six supported shapes;
-        // Storage actually prepares ONE cold Head. Fresh current wrappers are caller-priced.
-        // Include the Head streaming source window peak with init/transient upper.
-        let initialization_host_bytes =
-            6 * 3 * super::transport::CACHE_BYTES + 64 * 1024 + 2 * (MIB + 24);
+        // Cold-head binding budget above covers every captured scope although
+        // Storage prepares one head. This peak is six attention-cache uploads
+        // plus the head streaming window; current wrappers are caller-priced.
+        let initialization_host_bytes = sum([
+            mul(mul(attention_layers, 3)?, super::transport::CACHE_BYTES)?,
+            64 * 1024,
+            2 * (MIB + 24),
+        ])?;
         Ok(Self {
             device_layout,
             retained_host_bytes,

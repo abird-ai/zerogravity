@@ -31,6 +31,9 @@ impl QwenSourceCall {
         request: QwenGdnCall,
     ) -> Result<Self> {
         request.validate()?;
+        if let Some(span) = request.teachers().prompt_span() {
+            model_profile.prompt_workload(span.workload().prompt_tokens())?;
+        }
         if request.layer().index() != 0 || request.teachers().capacity() != 512 {
             return Err(Error::Unsupported(
                 "closed .8B full-model request metadata".into(),
@@ -64,6 +67,10 @@ impl QwenSourceCall {
     }
     pub fn validate(&self) -> Result<()> {
         self.request.validate()?;
+        if let Some(span) = self.request.teachers().prompt_span() {
+            self.model_profile
+                .prompt_workload(span.workload().prompt_tokens())?;
+        }
         if self.request.layer().index() != 0 || self.request.teachers().capacity() != 512 {
             return Err(Error::State("original full-model request changed".into()));
         }

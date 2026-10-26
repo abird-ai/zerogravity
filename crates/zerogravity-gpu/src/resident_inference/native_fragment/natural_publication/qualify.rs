@@ -102,6 +102,10 @@ impl ColdModelSlots {
         self.prepare_input(session, input, pool, validate, cancelled)
             .await
     }
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "qualification API keeps current session, immutable source record, feedback authority, state pool and validation callback distinct"
+    )]
     pub async fn prepare_feedback<F>(
         self: &Arc<Self>,
         session: &ResidentSession,

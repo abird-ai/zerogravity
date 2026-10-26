@@ -37,7 +37,7 @@ use zerogravity_core::{
     device_events::{BufferRole, DeviceAccess},
 };
 
-const LAYERS: [usize; 6] = [3, 7, 11, 15, 19, 23];
+pub(super) const LAYERS: [usize; 6] = [3, 7, 11, 15, 19, 23];
 struct ZeroSource {
     bytes: Vec<u8>,
     _source: VerifiedTensorSource,
@@ -72,6 +72,7 @@ pub(super) struct Preparation<'a> {
 }
 pub(super) struct Storage {
     source: VerifiedTensorSource,
+    capture: super::TextKernelCapture,
     service: Arc<ResidentService>,
     parameters: BTreeMap<usize, Parameters>,
     caches: BTreeMap<usize, ResidentLease>,
@@ -179,6 +180,13 @@ impl Storage {
     ) -> Result<Arc<Self>> {
         not_cancelled(cancel)?;
         init.require_service(&p.service)?;
+        let capture = p
+            .geometries
+            .first()
+            .ok_or_else(|| Error::State("text attention source geometry absent".into()))?
+            .scope
+            .native_capture();
+        capture.require_cold_scopes(p.geometries.iter().map(|g| g.scope.as_ref()))?;
         let metadata = Arc::new(p.source.reserve_workspace(2 * 1024 * 1024)?);
         init.retain_completion_owner(metadata.clone())?;
         init.retain_completion_owner(p.rotary.clone())?;
@@ -263,7 +271,7 @@ impl Storage {
             .filter(|g| g.scope.call().rows().base() == 0)
         {
             let prompt = geometry.scope.call().rows().len();
-            for call in 0..8 {
+            for call in 0..capture.captured_call_count() {
                 let base = if call == 0 { 0 } else { prompt + call - 1 };
                 let rows = if call == 0 { prompt } else { 1 };
                 let host = Arc::new(p.source.reserve_workspace(
@@ -347,6 +355,7 @@ impl Storage {
         }
         let result = Arc::new(Self {
             source: p.source,
+            capture,
             service: p.service,
             parameters,
             caches,
@@ -515,7 +524,7 @@ impl Storage {
             && self.caches.len() == 6
             && self.statuses.len() == 6
             && self.parameters.len() == 6
-            && self.controls.len() == 40
+            && self.controls.len() == self.capture.prepared_call_count()?
             && self.rotary.lease().bytes() == 79 * 128
             && self.positions.lease().bytes() == 12312
             && [self.rotary.lease(), self.positions.lease()]

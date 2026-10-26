@@ -70,7 +70,14 @@ fn require_fit(
     }
     Ok(())
 }
-fn current_call_host(hidden: usize) -> Result<usize> {
+fn current_call_host(capture: TextKernelCapture) -> Result<usize> {
+    let hidden = capture.hidden_width();
+    let rows = capture
+        .captured_prefill_rows()
+        .iter()
+        .copied()
+        .max()
+        .ok_or_else(|| Error::State("short-HF current captured prefill extent absent".into()))?;
     // Invocation binding512KiB +Body4MiB +StorageRecipe1MiB; authentic current
     // scope512KiB/state256KiB; all currentRMS bindings/actors/source wrappers.
     // GDN code/workspace/adapter/prepared wrappers:4x18x64KiB.
@@ -85,7 +92,7 @@ fn current_call_host(hidden: usize) -> Result<usize> {
         // Current transport wrappers share source-owned cold definitions;
         // their complete text/ABI/key owners are in the cold layouts below.
         3 * (3 * 513 * 8) + 64 * 1024,
-        mul(72, hidden * 6)? + 2 * 64 * 1024,
+        add(mul(rows, mul(hidden, 6)?)?, 2 * 64 * 1024)?,
         64 * 1024,
         64 * 1024,
     ])
@@ -257,22 +264,8 @@ impl TextResourceInventory {
         head_mode: crate::cuda::native::text_head::HeadMode,
         context: Option<&crate::physical_service::CudaCompilerContextBudget>,
     ) -> Result<Self> {
-        if scopes.len() != 6
-            || scopes
-                .iter()
-                .map(|s| s.call().rows().len())
-                .collect::<Vec<_>>()
-                != [47, 57, 62, 67, 72, 1]
-        {
-            return Err(Error::State(
-                "short-HF exact source six cold geometry order".into(),
-            ));
-        }
-        let six_scopes = scopes
-            .to_vec()
-            .try_into()
-            .map_err(|_| Error::State("text exact six source inventories".into()))?;
-        let six = StorageRecipe::six_geometry_inventory(six_scopes, text::limits())?;
+        capture.require_cold_scopes(scopes.iter().map(Arc::as_ref))?;
+        let storage = StorageRecipe::scope_geometry_inventory(scopes, text::limits())?;
         let native = TextNativeInventory::for_scopes(capture, scopes, false, cohort_b4, head_mode)?;
         let phases = CohortPhases::for_capture(capture);
         let roots = if cohort_b4 {
@@ -287,13 +280,13 @@ impl TextResourceInventory {
         };
         let hidden = capture.hidden_width();
         let mut device = DeviceLedger {
-            count: six.physical_leases,
-            bytes: six.physical_aligned_bytes,
+            count: storage.physical_leases,
+            bytes: storage.physical_aligned_bytes,
         };
-        let mut retained = six.workspace_host_bytes;
+        let mut retained = storage.workspace_host_bytes;
         let mut chunks = 0;
         let mut gdn_initial = 0;
-        for (scope, actual) in scopes.iter().zip(&six.geometries) {
+        for (scope, actual) in scopes.iter().zip(&storage.geometries) {
             let rows = scope.call().rows().len();
             if actual.rows != rows
                 || actual.values.logical_values != 327
@@ -359,14 +352,14 @@ impl TextResourceInventory {
             retained,
             // Model/app templates are already admitted in host_existing; GPU
             // owns only the physical prepared-site cache below.
-            TextModelBindings::PREPARED_METADATA_BYTES,
+            TextModelBindings::prepared_metadata_bytes(capture)?,
             114 * 64 * 1024,
             18 * (64 + 256) * 1024,
             mul(chunks, MIB + 24)?,
             native.retained_host_bytes,
             crate::resident_leases::backing_pool::ResidentPool::metadata_bytes(root.len(), roots)?,
             readback,
-            mul(CALLS, current_call_host(hidden)?)?,
+            mul(CALLS, current_call_host(capture)?)?,
             2 * 64 * 1024,
         ])?;
         // Distinct original phases: coldGDNzeros; native cache initialization;
@@ -420,7 +413,7 @@ impl TextResourceInventory {
                 body_host,
                 // Four genuine current records/scope/state/provenance owners;
                 // price each with the existing complete N1 bound, no Arc shortcut.
-                mul(4, current_call_host(hidden)?)?,
+                mul(4, current_call_host(capture)?)?,
                 64 * 1024, // exact cohort input issuer/join
             ])?;
         }
@@ -443,9 +436,9 @@ impl TextResourceInventory {
         let provider = add(device.bytes, native.provider_bytes)?;
         Ok(Self {
             managed_allocations: device.count,
-            value_rms_isolated_aligned_bytes: six.isolated_physical_aligned_bytes,
-            value_rms_shared_aligned_bytes: six.physical_aligned_bytes,
-            shared_workspace_views: six.workspace_views,
+            value_rms_isolated_aligned_bytes: storage.isolated_physical_aligned_bytes,
+            value_rms_shared_aligned_bytes: storage.physical_aligned_bytes,
+            shared_workspace_views: storage.workspace_views,
             managed_aligned_bytes: device.bytes,
             native_provider_bytes: native.provider_bytes,
             provider_upper_bytes: provider,
@@ -512,7 +505,7 @@ mod tests {
         let library = CohortLibrary::host_bytes(capture)?;
         let body = FullModelCohort::host_bytes(true, capture)?
             .max(FullModelCohort::host_bytes(false, capture)?);
-        let current_rows = mul(4, current_call_host(1024)?)?;
+        let current_rows = mul(4, current_call_host(capture)?)?;
         let delta = sum([
             readback_delta,
             geometry,
@@ -574,6 +567,14 @@ mod tests {
             d.extend([4, 12]).unwrap();
         }
         assert_eq!((d.count, d.bytes), (28, 14 * 1024));
-        assert!(current_call_host(2048).unwrap() > current_call_host(1024).unwrap());
+        let narrow = TextKernelCapture::bind(
+            "39b9a6180ca95f95510aac6471e0255ba62100200bf6daeac6f5a4fc8d2bb30d",
+        )
+        .unwrap();
+        let wide = TextKernelCapture::bind(
+            "0938d4353dc49579daa5978a6dc78a70f23c8e8d7cb21130c95a914c0a82c4b0",
+        )
+        .unwrap();
+        assert!(current_call_host(wide).unwrap() > current_call_host(narrow).unwrap());
     }
 }

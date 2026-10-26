@@ -2,8 +2,7 @@
 use std::sync::Arc;
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspace};
 use zerogravity_core::accelerator::program::{
-    SourceGamma, SourceNumericalContract, SourceOperator, SourceOperatorKind, SourceParameter,
-    SourceRmsGeometry,
+    SourceGamma, SourceNumericalContract, SourceParameter, SourceRmsGeometry,
 };
 use zerogravity_core::quant::QuantKind;
 use zerogravity_core::{Error, Result};
@@ -11,7 +10,6 @@ struct FinalRmsOwner {
     source: VerifiedTensorSource,
     parameter: SourceParameter,
     geometry: SourceRmsGeometry,
-    _bindings: Option<Arc<crate::resident_program::source_bindings::SourceBindings>>,
     _metadata: Arc<WindowWorkspace>,
 }
 #[derive(Clone)]
@@ -49,43 +47,8 @@ impl BoundFinalRmsSource {
             source,
             parameter,
             geometry,
-            _bindings: None,
             _metadata: metadata,
         })))
-    }
-    pub(crate) fn bind_for_plan(
-        bindings: Arc<crate::resident_program::source_bindings::SourceBindings>,
-        operator: SourceOperator,
-    ) -> Result<Self> {
-        let actual = super::BoundModelRmsSource::bind_for_plan(bindings.clone(), operator)?;
-        let normalized = bindings
-            .selection()
-            .normalized()
-            .ok_or_else(|| Error::State("final RMS normalized selector absent".into()))?;
-        let producer = bindings
-            .plan()
-            .source_value_provenance(normalized)?
-            .ok_or_else(|| Error::State("final RMS actual normalized producer absent".into()))?;
-        if !matches!(actual.operator().kind(), SourceOperatorKind::ResidualRms(_))
-            || producer.output_index() != 0
-            || bindings.operator(producer.node_index())? != Some(actual.operator())
-        {
-            return Err(Error::State(
-                "final RMS actual selected producer differs".into(),
-            ));
-        }
-        let metadata = Arc::new(bindings.source().reserve_workspace(64 * 1024)?);
-        let mut result = Self::bind(
-            bindings.source().clone(),
-            actual.parameter().clone(),
-            actual.geometry(),
-            actual.operator().numerical_contract(),
-            metadata,
-        )?;
-        Arc::get_mut(&mut result.0)
-            .ok_or_else(|| Error::State("fresh final RMS owner".into()))?
-            ._bindings = Some(bindings);
-        Ok(result)
     }
     pub(crate) fn source(&self) -> &VerifiedTensorSource {
         &self.0.source
@@ -95,9 +58,6 @@ impl BoundFinalRmsSource {
     }
     pub(crate) fn geometry(&self) -> SourceRmsGeometry {
         self.0.geometry
-    }
-    pub(crate) fn parameter(&self) -> &SourceParameter {
-        &self.0.parameter
     }
     pub(crate) fn require_source(&self, source: &VerifiedTensorSource) -> Result<()> {
         if !source.same_issuer(self.source()) {

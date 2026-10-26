@@ -62,10 +62,26 @@ fn checked_caps(reported: Option<u64>, operator: u64, provider: u64) -> Result<(
 
 #[cfg(any(
     test,
-    all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
+    all(
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan"),
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification",
+            all(test, feature = "qualification", feature = "hip")
+        )
+    )
 ))]
 mod native_context;
-#[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "hip", feature = "vulkan"),
+    any(
+        feature = "gemma-bf16-qualification",
+        feature = "qwen-source-qualification",
+        all(test, feature = "qualification", feature = "hip")
+    )
+))]
 pub(crate) use native_context::NativeContextBudget;
 
 #[cfg(all(feature = "cuda-native", target_os = "linux"))]
@@ -304,7 +320,15 @@ impl PhysicalServiceBudget {
     /// Partition while exclusively owned, before local admission/submission.
     /// The backend policy supplies this fixed context allowance; model adapters
     /// cannot construct the persistent proof or grow it during execution.
-    #[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan"),
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification",
+            all(test, feature = "qualification", feature = "hip")
+        )
+    ))]
     pub(crate) fn partition_native_context(
         &mut self,
         backend: &'static str,

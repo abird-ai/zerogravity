@@ -223,7 +223,7 @@ impl ComponentGdnPrepared {
         }
         let mut windows = Vec::with_capacity(4);
         let mut bytes: [Vec<u8>; 4] = std::array::from_fn(|_| Vec::new());
-        for index in 0..4 {
+        for (index, bytes) in bytes.iter_mut().enumerate() {
             let descriptor = if index == 0 {
                 &conv.parameters()[0]
             } else {
@@ -249,15 +249,15 @@ impl ComponentGdnPrepared {
                     "source2B complete learned parameter source".into(),
                 ));
             }
-            bytes[index] = if index == 3 {
+            *bytes = if index == 3 {
                 super::loaded_gamma(&window)?
             } else {
                 window.as_slice().to_vec()
             };
             if !(if index == 1 {
-                super::layer_common::finite_f32(&bytes[index])
+                super::layer_common::finite_f32(bytes)
             } else {
-                super::finite_bf16(&bytes[index])
+                super::finite_bf16(bytes)
             }) {
                 return Err(Error::Malformed(
                     "source2B finite actual learned GDN parameter".into(),

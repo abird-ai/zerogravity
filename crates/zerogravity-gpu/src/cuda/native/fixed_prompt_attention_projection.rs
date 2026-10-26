@@ -1,18 +1,21 @@
 //! Exact FixedPrompt/call0/layer3 QKV packets; no QK/KV/FA/model publication.
 use super::cubin_manifests::ProjectionImage;
-use super::fixed_prompt_model::{FixedPromptCallKind, FixedPromptProjectionBinding};
+#[cfg(test)]
+use super::fixed_prompt_model::FixedPromptCallKind;
+use super::fixed_prompt_model::FixedPromptProjectionBinding;
 use super::fixed_prompt_model_native::{Binding, Packet};
 use cubecl::cuda::{
     CubinBinding, CubinIo, CubinKernelManifest, CubinLaunchAttributes, CubinParameter,
     CubinPointerFixup,
 };
-use zerogravity_core::accelerator::program::SourceCall;
-use zerogravity_core::accelerator::program::ValueId;
+#[cfg(test)]
+use zerogravity_core::accelerator::program::{SourceCall, ValueId};
 use zerogravity_core::{Error, Result};
 
 // ROOT materializes only after independent selected memory/resource review.
 const SELECTED_MEMORY_RECIPE_REVIEWED: bool = true;
 
+#[cfg(test)]
 pub(super) fn require_site(
     request: &SourceCall,
     layer: usize,

@@ -6,10 +6,12 @@ impl ColdModel {
         &self,
         rows: usize,
     ) -> Result<Option<Arc<crate::resident_leases::backing_pool::ResidentWorkspaceRun>>> {
-        let index = [47, 57, 62, 67, 72, 1]
-            .iter()
-            .position(|&n| n == rows)
-            .ok_or_else(|| Error::Unsupported("short-HF workspace geometry absent".into()))?;
+        let mode = if rows == 1 {
+            SourceCallMode::Decode
+        } else {
+            SourceCallMode::Prefill
+        };
+        let index = self.capture.cold_scope_index(mode, rows)?;
         let cold = self
             .values
             .get(index)

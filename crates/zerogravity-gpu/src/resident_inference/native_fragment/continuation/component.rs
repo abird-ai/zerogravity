@@ -58,13 +58,6 @@ impl AttemptPhaseBinding {
         }
         coordinates(self.schedule.base, &self.schedule.attempt, call)
     }
-    pub(in crate::resident_inference) fn require_initial_component(
-        &self,
-        recipe: &ComponentRecipe,
-    ) -> Result<()> {
-        recipe.kind().require_call(recipe.bindings().call())?;
-        self.require_initial_component_call(recipe.bindings().call())
-    }
 }
 #[cfg(test)]
 mod tests {

@@ -72,6 +72,7 @@ struct PreparedTextModel {
 }
 pub(crate) struct TextModelBindings {
     source: VerifiedTensorSource,
+    capture: TextKernelCapture,
     prepared: std::sync::Mutex<Vec<Arc<PreparedTextModel>>>,
     _metadata: WindowWorkspace,
 }
@@ -379,12 +380,21 @@ impl PreparedTextModel {
     }
 }
 impl TextModelBindings {
-    const MAX_SHAPES: usize = 40;
-    pub(crate) const PREPARED_METADATA_BYTES: usize = Self::MAX_SHAPES * 512 * 1024 + 64 * 1024;
-    pub(crate) fn new(source: VerifiedTensorSource) -> Result<Arc<Self>> {
+    pub(crate) fn prepared_metadata_bytes(capture: TextKernelCapture) -> Result<usize> {
+        capture
+            .prepared_call_count()?
+            .checked_mul(512 * 1024)
+            .and_then(|n| n.checked_add(64 * 1024))
+            .ok_or_else(|| Error::Limit("source prepared binding metadata extent".into()))
+    }
+    pub(crate) fn new(
+        source: VerifiedTensorSource,
+        capture: TextKernelCapture,
+    ) -> Result<Arc<Self>> {
         let metadata = source.reserve_workspace(64 * 1024)?;
         Ok(Arc::new(Self {
             source,
+            capture,
             prepared: std::sync::Mutex::new(Vec::new()),
             _metadata: metadata,
         }))
@@ -398,7 +408,8 @@ impl TextModelBindings {
         gdn_recipe: GdnKernelRecipe,
         native_capture: TextKernelCapture,
     ) -> Result<Arc<TextModelBinding>> {
-        if !self.source.same_issuer(record.source())
+        if native_capture != self.capture
+            || !self.source.same_issuer(record.source())
             || gdn_recipe.input_tokens() != record.call().rows().len()
             || gdn_recipe.is_decode() != (record.call().mode() == SourceCallMode::Decode)
         {
@@ -418,7 +429,7 @@ impl TextModelBindings {
             }) {
                 prepared.clone()
             } else {
-                if cache.len() >= Self::MAX_SHAPES {
+                if cache.len() >= self.capture.prepared_call_count()? {
                     return Err(Error::Limit(
                         "source finite prepared binding capacity".into(),
                     ));
@@ -449,13 +460,6 @@ impl TextModelBindings {
     }
 }
 impl TextModelBinding {
-    pub(crate) fn bind(
-        record: Arc<SourceBindings>,
-        recipe: GdnKernelRecipe,
-        capture: TextKernelCapture,
-    ) -> Result<Arc<Self>> {
-        TextModelBindings::new(record.source().clone())?.bind(record, recipe, capture)
-    }
     pub(crate) fn source(&self) -> &VerifiedTensorSource {
         self.record.source()
     }
@@ -569,7 +573,7 @@ impl TextModelBinding {
         let ([x], [y]) = (n.inputs.as_slice(), n.outputs.as_slice()) else {
             return Err(Error::State("text unary projection SSA".into()));
         };
-        let weight = weights.require_operator(&op)?.clone();
+        let weight = weights.require_operator(op)?.clone();
         let input = values.lease(*x)?.clone();
         let output = values.lease(*y)?.clone();
         if input.id() == output.id()

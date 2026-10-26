@@ -17,7 +17,7 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
 
 ## Uncommitted
 
-### Source checkpoint — `fix(lifecycle): retain owned command streams`
+### `cd4159d` — owned command streams
 
 - [x] Shared reference/stop command owner retains intent, exact PID/PGID, one
   reap, separate bounded streams and EOF; return codes remain caller policy.
@@ -26,6 +26,20 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
   12 Python suites PASS, release/installer/shell/Nix PASS; natural0 and original
   group/reap/EOF closure. Strict CUDA/Vulkan all-target Clippy and284 CUDA/app
   host tests also pass. No physical model acceptance from these source checks.
+
+### Source checkpoint — `refactor(cuda): derive capture scope ownership`
+
+- [x] Prepare model-owned prompt inventory and capture-owned cold roles/counts;
+  both sources retain5prefills/40semantic calls/6physical scopes. B4 selects
+  prefill47/cached1 by role; checked caches/storage/metadata preserve present
+  charges. Native fresh48–50 remains unadmitted. Strict CUDA/Vulkan all-target
+  Clippy passes after correcting baseline feature gates/private adapters/lints;
+  all96 original GDN source tuples/12recipes/2catalogues remain exact. Whole
+  Rust selector identity changed; no old binary qualification transfers.
+- [x] Actual inventory4 and compiler-lifetime7 host controls PASS; uncertain
+  destruction retains original source ownership. Current admitted shapes,
+  resource charges and all96 CUDA tuples remain exact. Full gate above covers
+  the assembled source; fresh native48–50 and device qualification remain open.
 
 ### Current owner order — 26 Oct
 
@@ -44,13 +58,6 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
   retains/fences the flight. No independent cleanup defect found; preserve the
   strict cross-batch failure and quarantine. Matching original/native profiles
   remain separate from optional batch invariance; no release or tolerance waiver.
-- [x] Prepare model-owned prompt inventory and capture-owned cold roles/counts;
-  both sources retain5prefills/40semantic calls/6physical scopes. B4 selects
-  prefill47/cached1 by role; checked caches/storage/metadata preserve present
-  charges. Native fresh48–50 remains unadmitted. Strict CUDA/Vulkan all-target
-  Clippy passes after correcting baseline feature gates/private adapters/lints;
-  all96 original GDN source tuples/12recipes/2catalogues remain exact. Whole
-  Rust selector identity changed; no old binary qualification transfers.
 - [x] Stage authenticated current-schema .8B/2B N1 bundles without changing
   resource bytes.28 reference controls and8 bundle controls pass. Failed packed47
   keeps six absent FA packets, empty norm archive and missing worker receipts;

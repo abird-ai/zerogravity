@@ -258,7 +258,17 @@ impl TextLoaded {
         // All current roots and private allocations precede source launch. This
         // body remains call-local; workspace.program keeps its original N1 body.
         let geometry = cold.workspace.geometry(&inputs)?;
-        let gammas = self.cold.values[if initial { 0 } else { 5 }]
+        let (mode, rows) = if initial {
+            (SourceCallMode::Prefill, 47)
+        } else {
+            (SourceCallMode::Decode, 1)
+        };
+        let gamma_scope = self.cold.capture.cold_scope_index(mode, rows)?;
+        let gammas = self
+            .cold
+            .values
+            .get(gamma_scope)
+            .ok_or_else(|| Error::State("B4 captured cold gamma scope absent".into()))?
             .body
             .cohort_gammas()?;
         let tied = self

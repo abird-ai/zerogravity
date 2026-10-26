@@ -1,4 +1,4 @@
-//! Six actual recipes, semantic cells and exact original geometry views.
+//! Captured source recipes, semantic cells and exact original geometry views.
 use super::*;
 use crate::resident_leases::backing_pool::{
     ResidentPlaneLayout, ResidentViewLayout, ResidentWorkspace, ResidentWorkspaceGeometry,
@@ -87,6 +87,45 @@ fn cell(
     })
 }
 impl WorkspaceLayout {
+    pub(crate) fn metadata_bytes(scopes: &[Arc<TextModelBinding>]) -> Result<usize> {
+        let first = scopes
+            .first()
+            .ok_or_else(|| Error::State("shared geometry source scopes absent".into()))?;
+        first
+            .native_capture()
+            .require_cold_scopes(scopes.iter().map(Arc::as_ref))?;
+        let bytes = scopes.iter().try_fold(0usize, |total, scope| {
+            let values = scope.record().plan().values().len();
+            let sums = scope
+                .rms_nodes()
+                .len()
+                .checked_sub(1)
+                .ok_or_else(|| Error::State("shared geometry RMS roles absent".into()))?;
+            let views = values
+                .checked_add(9)
+                .and_then(|n| n.checked_add(sums))
+                .ok_or_else(|| Error::Limit("shared geometry metadata view count".into()))?;
+            // Cell membership/maps and temporary vectors: <=256B per source
+            // value. Include both geometry view/sum copies during preparation.
+            let geometry = values
+                .checked_mul(256)
+                .and_then(|n| {
+                    views
+                        .checked_mul(2 * std::mem::size_of::<ResidentViewLayout>())
+                        .and_then(|v| n.checked_add(v))
+                })
+                .and_then(|n| {
+                    sums.checked_mul(2 * std::mem::size_of::<usize>())
+                        .and_then(|v| n.checked_add(v))
+                })
+                .and_then(|n| n.checked_add(2 * std::mem::size_of::<GeometryLayout>()))
+                .ok_or_else(|| Error::Limit("shared geometry metadata extent".into()))?;
+            total
+                .checked_add(geometry)
+                .ok_or_else(|| Error::Limit("shared geometry metadata sum".into()))
+        })?;
+        Ok(bytes.max(METADATA_BYTES))
+    }
     pub(crate) fn view_count(&self) -> Result<usize> {
         self.geometries.iter().try_fold(0usize, |n, g| {
             n.checked_add(g.views.len())
@@ -99,20 +138,13 @@ impl WorkspaceLayout {
             .ok_or_else(|| Error::State("shared geometry cohort absent".into()))?;
         let source = first.scope.source();
         let width = first.scope.hidden_size();
-        if recipes.len() != 6
-            || recipes
-                .iter()
-                .map(|r| r.scope.call().rows().len())
-                .collect::<Vec<_>>()
-                != [47, 57, 62, 67, 72, 1]
-        {
-            return Err(Error::State(
-                "shared geometry exact original six-plan order".into(),
-            ));
-        }
+        first
+            .scope
+            .native_capture()
+            .require_cold_scopes(recipes.iter().map(|r| r.scope.as_ref()))?;
         let mut keys = BTreeMap::new();
         let mut physical = Vec::new();
-        let mut geometries = Vec::with_capacity(6);
+        let mut geometries = Vec::with_capacity(recipes.len());
         let mut gamma_leases = 0usize;
         let mut gamma_aligned_bytes = 0usize;
         for recipe in recipes {
@@ -244,7 +276,11 @@ impl SharedValueWorkspace {
         let first = scopes
             .first()
             .ok_or_else(|| Error::State("shared value scopes absent".into()))?;
-        let metadata = Arc::new(first.source().reserve_workspace(METADATA_BYTES)?);
+        let metadata = Arc::new(
+            first
+                .source()
+                .reserve_workspace(WorkspaceLayout::metadata_bytes(scopes)?)?,
+        );
         let recipes = scopes
             .iter()
             .map(|s| StorageRecipe::new(s.clone(), StorageMode::ReuseMlp, limits))

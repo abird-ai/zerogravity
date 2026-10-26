@@ -9,20 +9,22 @@ pub struct PromptWorkload {
 impl PromptWorkload {
     /// Finite source route policy; neither metadata nor geometry admits inference.
     pub fn validate_request(ids: &[u32], max_tokens: usize) -> Result<()> {
-        if !matches!(ids.len(), 47 | 57 | 62 | 67 | 72)
-            || ids.iter().any(|&id| id >= 248320)
-            || !(1..=8).contains(&max_tokens)
-        {
+        Self::from_prompt_tokens(ids.len())?;
+        if ids.iter().any(|&id| id >= 248320) || !(1..=8).contains(&max_tokens) {
             return Err(Error::Unsupported(
-                "text finite prompt tokens47/57/62/67/72 and1..8 outputs only".into(),
+                "text finite prompt inventory and1..8 outputs only".into(),
             ));
         }
         Ok(())
     }
+    /// Semantic union only; PromptCall independently joins its source profile.
     pub fn from_prompt_tokens(prompt_tokens: usize) -> Result<Self> {
-        if !matches!(prompt_tokens, 47 | 57 | 62 | 67 | 72) {
+        if ![QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B]
+            .iter()
+            .any(|profile| profile.prompt_token_counts().contains(&prompt_tokens))
+        {
             return Err(Error::Unsupported(
-                "closed bounded prompt tokens47/57/62/67/72".into(),
+                "closed bounded prompt token inventory".into(),
             ));
         }
         Ok(Self { prompt_tokens })
@@ -159,6 +161,7 @@ pub struct PromptCall {
 }
 impl PromptCall {
     pub fn new(profile: QwenSourceProfile, span: PromptSpan) -> Result<Self> {
+        profile.prompt_workload(span.workload().prompt_tokens())?;
         let request = QwenGdnCall::from_prompt_span(span.clone())?;
         let call = QwenSourceCall::from_request(profile, request)?;
         let value = Self { span, call };
@@ -180,6 +183,8 @@ impl PromptCall {
     pub fn validate(&self) -> Result<()> {
         self.span.validate()?;
         self.call.validate()?;
+        self.model_profile()
+            .prompt_workload(self.span.workload().prompt_tokens())?;
         if self.request().teachers().prompt_span() != Some(&self.span)
             || self.request().mode() != self.span.mode()
             || self.call.source() != self.span.source()

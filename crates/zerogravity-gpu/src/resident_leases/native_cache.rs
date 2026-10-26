@@ -30,7 +30,15 @@ impl NativeCacheBudget {
             ForeignProviderCharge::reserve(self.clone(), bytes)
         })
     }
-    #[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan"),
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification",
+            all(test, feature = "qualification", feature = "hip")
+        )
+    ))]
     pub(crate) fn require_usable(&self) -> Result<()> {
         self.arbiter.with_unfenced(&self.physical, || {
             self.admission.ensure_open()?;
@@ -41,13 +49,29 @@ impl NativeCacheBudget {
             }
         })
     }
-    #[cfg(all(feature = "qualification", any(feature = "hip", feature = "vulkan")))]
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan"),
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification",
+            all(test, feature = "qualification", feature = "hip")
+        )
+    ))]
     pub(crate) fn fence_unknown(self: &Arc<Self>) {
         self.foreign_release_failed();
     }
     #[cfg(any(
         feature = "cuda-native",
-        all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
+        all(
+            target_os = "linux",
+            any(feature = "hip", feature = "vulkan"),
+            any(
+                feature = "gemma-bf16-qualification",
+                feature = "qwen-source-qualification",
+                all(test, feature = "qualification", feature = "hip")
+            )
+        )
     ))]
     pub(crate) fn require_service(&self, service: &Arc<ResidentService>) -> Result<()> {
         if !Arc::ptr_eq(&self.admission, &service.admission)
@@ -84,7 +108,15 @@ impl ForeignProviderOwner for NativeCacheBudget {
 }
 #[cfg(any(
     feature = "cuda-native",
-    all(feature = "qualification", any(feature = "hip", feature = "vulkan"))
+    all(
+        target_os = "linux",
+        any(feature = "hip", feature = "vulkan"),
+        any(
+            feature = "gemma-bf16-qualification",
+            feature = "qwen-source-qualification",
+            all(test, feature = "qualification", feature = "hip")
+        )
+    )
 ))]
 impl ResidentService {
     pub(crate) fn native_cache_budget(self: &Arc<Self>) -> Result<Arc<NativeCacheBudget>> {

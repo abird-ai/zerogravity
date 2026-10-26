@@ -311,7 +311,7 @@ impl FullModelProgram {
                 )
                 .await?
             };
-            prepared.require_full_model_operator(&descriptor)?;
+            prepared.require_full_model_operator(descriptor)?;
             for (id, lease) in node
                 .outputs
                 .iter()
@@ -734,7 +734,7 @@ impl FullModelProgram {
             return Ok(copies);
         }
         let op = descriptor(node)?;
-        if op.call() != &*self.record.call() {
+        if op.call() != self.record.call() {
             return Err(Error::State(
                 "full24 original node invocation differs".into(),
             ));

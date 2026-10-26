@@ -559,7 +559,7 @@ impl ResidentModel {
             allocation: Mutex::new(()),
         }))
     }
-    #[cfg(feature = "qualification")]
+    #[cfg(feature = "hardware-abort-probe")]
     pub(crate) fn service(&self) -> &Arc<ResidentService> {
         &self.service
     }

@@ -156,7 +156,7 @@ pub(super) fn select(
 ) -> Result<assets::Asset> {
     recipe.require_phase(phase)?;
     match (recipe.cell, phase) {
-        (0, GdnPhase::TextPrefill(prompt_tokens)) if prompt_tokens == 47 => {
+        (0, GdnPhase::TextPrefill(47)) => {
             use GdnStage::*;
             Ok(match stage {
                 Conv => assets::Asset {
@@ -234,7 +234,7 @@ pub(super) fn select(
                 _ => return Err(Error::Unsupported("original prefill stage".into())),
             })
         }
-        (1, GdnPhase::TextPrefill(prompt_tokens)) if prompt_tokens == 57 => {
+        (1, GdnPhase::TextPrefill(57)) => {
             use GdnStage::*;
             Ok(match stage {
                 Conv => assets::Asset {
@@ -312,7 +312,7 @@ pub(super) fn select(
                 _ => return Err(Error::Unsupported("original prefill stage".into())),
             })
         }
-        (2, GdnPhase::TextPrefill(prompt_tokens)) if prompt_tokens == 62 => {
+        (2, GdnPhase::TextPrefill(62)) => {
             use GdnStage::*;
             Ok(match stage {
                 Conv => assets::Asset {
@@ -390,7 +390,7 @@ pub(super) fn select(
                 _ => return Err(Error::Unsupported("original prefill stage".into())),
             })
         }
-        (3, GdnPhase::TextPrefill(prompt_tokens)) if prompt_tokens == 67 => {
+        (3, GdnPhase::TextPrefill(67)) => {
             use GdnStage::*;
             Ok(match stage {
                 Conv => assets::Asset {
@@ -468,7 +468,7 @@ pub(super) fn select(
                 _ => return Err(Error::Unsupported("original prefill stage".into())),
             })
         }
-        (4, GdnPhase::TextPrefill(prompt_tokens)) if prompt_tokens == 72 => {
+        (4, GdnPhase::TextPrefill(72)) => {
             use GdnStage::*;
             Ok(match stage {
                 Conv => assets::Asset {
@@ -576,7 +576,7 @@ pub(super) fn select(
                 _ => return Err(Error::Unsupported("original prefill stage".into())),
             })
         }
-        (6, GdnPhase::TextPrefill(prompt_tokens)) if prompt_tokens == 47 => {
+        (6, GdnPhase::TextPrefill(47)) => {
             use GdnStage::*;
             Ok(match stage {
                 Conv => assets::Asset {
@@ -654,7 +654,7 @@ pub(super) fn select(
                 _ => return Err(Error::Unsupported("original prefill stage".into())),
             })
         }
-        (7, GdnPhase::TextPrefill(prompt_tokens)) if prompt_tokens == 57 => {
+        (7, GdnPhase::TextPrefill(57)) => {
             use GdnStage::*;
             Ok(match stage {
                 Conv => assets::Asset {
@@ -732,7 +732,7 @@ pub(super) fn select(
                 _ => return Err(Error::Unsupported("original prefill stage".into())),
             })
         }
-        (8, GdnPhase::TextPrefill(prompt_tokens)) if prompt_tokens == 62 => {
+        (8, GdnPhase::TextPrefill(62)) => {
             use GdnStage::*;
             Ok(match stage {
                 Conv => assets::Asset {
@@ -810,7 +810,7 @@ pub(super) fn select(
                 _ => return Err(Error::Unsupported("original prefill stage".into())),
             })
         }
-        (9, GdnPhase::TextPrefill(prompt_tokens)) if prompt_tokens == 67 => {
+        (9, GdnPhase::TextPrefill(67)) => {
             use GdnStage::*;
             Ok(match stage {
                 Conv => assets::Asset {
@@ -888,7 +888,7 @@ pub(super) fn select(
                 _ => return Err(Error::Unsupported("original prefill stage".into())),
             })
         }
-        (10, GdnPhase::TextPrefill(prompt_tokens)) if prompt_tokens == 72 => {
+        (10, GdnPhase::TextPrefill(72)) => {
             use GdnStage::*;
             Ok(match stage {
                 Conv => assets::Asset {
