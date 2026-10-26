@@ -593,9 +593,15 @@ fn qwen_cuda_route_classification_is_purely_declarative() {
         config::resolve(parsed, Path::new("/"), None, Some("/home/test".into())).unwrap()
     };
 
+    let root = std::env::temp_dir().join(format!("zg-route-kind-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let extensionless_gguf = root.join("weights");
+    std::fs::write(&extensionless_gguf, b"GGUF").unwrap();
+    let arbitrary_directory = root.join("arbitrary-local-source");
+    std::fs::create_dir(&arbitrary_directory).unwrap();
     for source in [
-        "/does-not-exist/extensionless-qwen-gguf",
-        "/does-not-exist/arbitrary/local-source",
+        extensionless_gguf.to_str().unwrap(),
+        arbitrary_directory.to_str().unwrap(),
         "/does-not-exist/model.GGUF",
     ] {
         let generic = request(source, "cuda");
@@ -605,6 +611,7 @@ fn qwen_cuda_route_classification_is_purely_declarative() {
             "{source}"
         );
     }
+    std::fs::remove_dir_all(root).unwrap();
 
     let mut explicit = request("/does-not-exist/source", "cuda");
     explicit.graph.models[0].target = "qwen3.5-0.8b".into();
