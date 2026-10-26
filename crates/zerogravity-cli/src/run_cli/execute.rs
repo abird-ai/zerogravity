@@ -1,6 +1,13 @@
 use super::*;
 
 pub(super) fn run(request: Request) -> Result<()> {
+    run_with_discovery(request, devices::discover)
+}
+
+pub(super) fn run_with_discovery(
+    request: Request,
+    mut discover: impl FnMut() -> Result<devices::Inventory>,
+) -> Result<()> {
     request.validate_policy()?;
     if !matches!(request.speculation, Speculation::Auto | Speculation::Off) {
         return Err(Error::Unsupported(
@@ -35,8 +42,6 @@ pub(super) fn run(request: Request) -> Result<()> {
             request.backend.label()
         )));
     }
-    let inventory = devices::discover()?;
-    let candidates = devices::allowed(&request, &inventory)?;
     let Entrypoint::Model(id) = &request.entrypoint else {
         request.graph.validate_entrypoint(&request.entrypoint)?;
         return Err(Error::Unsupported(
@@ -51,8 +56,13 @@ pub(super) fn run(request: Request) -> Result<()> {
         .position(|m| &m.id == id)
         .ok_or_else(|| bad("direct entrypoint model absent"))?;
     if qwen35_cuda::selected(&request.graph.models[i]) {
-        return qwen35_cuda::run(request, inventory, candidates);
+        qwen35_cuda::require_route_capability()?;
+        let inventory = discover()?;
+        let candidates = devices::allowed(&request, &inventory)?;
+        return qwen35_cuda::run_route(request, inventory, candidates);
     }
+    let inventory = discover()?;
+    let candidates = devices::allowed(&request, &inventory)?;
     gguf(request, inventory, candidates, i)
 }
 #[cfg(not(all(feature = "cpu", feature = "model-qwen35", feature = "text")))]

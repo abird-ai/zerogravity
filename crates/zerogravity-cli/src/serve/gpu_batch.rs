@@ -77,6 +77,7 @@ pub(super) fn qualified_bands(count: usize, widths: &[usize]) -> Result<Vec<usiz
 }
 
 /// BF16/HF source bands never inherit the GGUF B2 qualification.
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub(super) fn bf16_bands(count: usize, ceiling: usize) -> Result<Vec<usize>, ServiceError> {
     if count > 64 || !matches!(ceiling, 1 | 4 | 8) {
         return Err(ServiceError::new(

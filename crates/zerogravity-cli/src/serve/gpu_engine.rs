@@ -469,17 +469,17 @@ impl GpuRouter {
         let queue = self.queue.snapshot();
         let host_snapshot = self.host.snapshot().unwrap_or((0, 0, 0, 0));
         let (limit, reserved, _remaining, serving) = host_snapshot;
-        #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+        #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
         let hf_health = qwen35_cuda::health(&self.models, host_snapshot);
-        #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+        #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
         let backend = hf_health
             .as_ref()
             .and_then(|(_, resources)| resources.get("backend_host_reserved_bytes"))
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0);
-        #[cfg(not(all(feature = "qwen35-cuda-serving", target_os = "linux")))]
+        #[cfg(not(all(feature = "qwen35-cuda-qualification", target_os = "linux")))]
         let backend = 0;
-        #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+        #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
         let host = if qwen35_cuda::models_present(&self.models) && hf_health.is_none() {
             None
         } else {
@@ -490,7 +490,7 @@ impl GpuRouter {
                 (limit, reserved, model, backend, serving)
             })
         };
-        #[cfg(not(all(feature = "qwen35-cuda-serving", target_os = "linux")))]
+        #[cfg(not(all(feature = "qwen35-cuda-qualification", target_os = "linux")))]
         let host = Some({
             let model = reserved.checked_sub(serving);
             (limit, reserved, model, backend, serving)
@@ -510,13 +510,13 @@ impl GpuRouter {
             canonical_resources: fixed_prompt::resources(&self.models, host_snapshot),
             #[cfg(not(all(feature = "qwen35-cuda-serving", target_os = "linux")))]
             canonical_resources: None,
-            #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+            #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
             hf_source: hf_health.as_ref().map(|h| h.0.clone()),
-            #[cfg(not(all(feature = "qwen35-cuda-serving", target_os = "linux")))]
+            #[cfg(not(all(feature = "qwen35-cuda-qualification", target_os = "linux")))]
             hf_source: None,
-            #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+            #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
             hf_resources: hf_health.map(|h| h.1),
-            #[cfg(not(all(feature = "qwen35-cuda-serving", target_os = "linux")))]
+            #[cfg(not(all(feature = "qwen35-cuda-qualification", target_os = "linux")))]
             hf_resources: None,
             groups: self.stats.groups.load(Ordering::Relaxed),
             co_scheduled: self.stats.co_scheduled.load(Ordering::Relaxed),
@@ -942,7 +942,7 @@ impl GpuActive {
     }
     /// Original B1 source execution, including all unmatched native-wave rows.
     fn step(&mut self, stats: &WaveStats) -> Result<MemberStep, ServiceError> {
-        #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+        #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
         if self.engine.is_qwen35_cuda() {
             return self.step_qwen35_cuda(stats);
         }
@@ -1088,7 +1088,7 @@ fn eligible_member(
 fn retire_if_drained(models: &BTreeMap<String, Arc<GpuModel>>, stats: &WaveStats) {
     #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
     fixed_prompt::retire_sources(models, stats);
-    #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+    #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
     qwen35_cuda::retire_sources(models, stats);
 }
 struct GpuWorkerCaptures {
@@ -1304,7 +1304,7 @@ fn worker(
                     .co_scheduled
                     .fetch_add(wave.indices.len() as u64, Ordering::Relaxed);
             }
-            #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
+            #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
             if native_rows == 4
                 && wave.indices.iter().all(|&index| {
                     pending[index]

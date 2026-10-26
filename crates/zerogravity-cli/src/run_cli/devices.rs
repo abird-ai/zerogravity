@@ -421,10 +421,7 @@ fn now_ms() -> Result<u128> {
 
 /// Host-only current availability/headroom check for the Qwen CUDA HOST policy.
 /// Reuses the same `/proc`/cgroup observation; no GPU discovery or second pool.
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
+#[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
 pub(super) fn host_available(host_bytes: u64, headroom: &Headroom) -> Result<()> {
     let host = host();
     let ceiling = host
@@ -448,10 +445,7 @@ pub(super) fn host_available(host_bytes: u64, headroom: &Headroom) -> Result<()>
 }
 #[cfg(any(
     all(feature = "cpu", feature = "model-qwen35", feature = "text"),
-    all(
-        any(feature = "qwen35-cuda", feature = "qwen35-cuda-serving"),
-        target_os = "linux"
-    )
+    all(feature = "qwen35-cuda-qualification", target_os = "linux")
 ))]
 pub(super) fn fresh(inventory: &Inventory) -> Result<()> {
     if now_ms()?

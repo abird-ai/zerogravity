@@ -3,7 +3,7 @@
 //! CPU test execution. Requires approved sm86 hardware with the real
 //! source/native bundle from ZG_QWEN35_MODEL_DIR/ZG_QWEN35_CUDA_KERNEL_DIR in a
 //! fresh owned process.
-#![cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#![cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
 use std::path::{Path, PathBuf};
 use std::process::Command;
 

@@ -1,41 +1,66 @@
 //! Authenticated Qwen CUDA source and tokenizer; the original engine owns math.
+#[cfg(feature = "qwen35-cuda-qualification")]
 use crate::gpu::cuda::native;
+#[cfg(feature = "qwen35-cuda-qualification")]
 use crate::qwen35::tokenize::QwenTokenizer;
+#[cfg(feature = "qwen35-cuda-qualification")]
 use crate::resource_arbiter::{GlobalResourceLease, lease_inventory_bytes};
 use crate::{Error, Result};
+use std::sync::Arc;
+#[cfg(feature = "qwen35-cuda-qualification")]
 use std::{
     path::{Path, PathBuf},
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::atomic::{AtomicBool, Ordering},
 };
+#[cfg(feature = "qwen35-cuda-qualification")]
 use zerogravity_artifacts::cache::TransferAdmission;
 // Previous entrypoints: short_hf, canonical47.
 mod bindings;
+#[cfg(feature = "qwen35-cuda-qualification")]
 mod cohort;
 pub mod fixed_prompt;
+#[cfg(feature = "qwen35-cuda-qualification")]
 mod manifest;
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub mod qualification;
+#[cfg(feature = "qwen35-cuda-qualification")]
 mod session;
+#[cfg(feature = "qwen35-cuda-qualification")]
 mod source;
+#[cfg(feature = "qwen35-cuda-qualification")]
 mod templates;
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub use session::Session;
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub use source::RouteTokenizer;
+const ORDINARY_CAPABILITY_REFUSAL: &str = "Qwen CUDA has no ordinary dynamic GDN implementation; finite captured execution requires the explicit qwen35-cuda-qualification diagnostic feature";
+
+/// Ordinary run/serve must refuse before source, device or driver discovery.
+pub fn require_ordinary_capability() -> Result<()> {
+    Err(Error::Unsupported(ORDINARY_CAPABILITY_REFUSAL.into()))
+}
+
+#[cfg(feature = "qwen35-cuda-qualification")]
 const MIB: usize = 1024 * 1024;
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub const HOST_MIB: usize = 4096;
 /// Explicit Qwen CUDA HOST profile bounds; CPU and other models stay 4096.
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub const HOST_MIB_MAX: usize = 8192;
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub fn supported_host_mib(host_mib: usize) -> bool {
     matches!(host_mib, HOST_MIB | HOST_MIB_MAX)
 }
 /// Default finite physical-test profile; serving passes its configured allowance.
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub const PROVIDER_MIB: usize = 4608;
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub const DEVICE_MIB: usize = 5120;
 
 /// Authenticated source geometry plus ordinary backend capability inventory.
 /// Empty/zero capability fields mean no ordinary implementation is available;
 /// explicit qualification captures are intentionally not advertised here.
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub struct SourceMetadata {
     pub family: &'static str,
     pub repository: &'static str,
@@ -49,6 +74,7 @@ pub struct SourceMetadata {
     pub context_capacity_tokens: usize,
     pub max_cached_tokens: usize,
 }
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub struct Model {
     resident: Arc<native::TextLoaded>,
     templates: Arc<templates::Templates>,
@@ -57,6 +83,7 @@ pub struct Model {
     _tokenizer: crate::tokenize_admission::Retained,
     _loader: GlobalResourceLease,
 }
+#[cfg(feature = "qwen35-cuda-qualification")]
 impl Model {
     pub fn source_profile(&self) -> crate::qwen35::plan::QwenSourceProfile {
         self.templates.source().model_profile()
@@ -92,12 +119,14 @@ pub fn prepare_component(
 ) -> Result<Arc<crate::gpu::ComponentRecipe>> {
     bindings::component(source, prepared)
 }
+#[cfg(feature = "qwen35-cuda-qualification")]
 fn not_cancelled(flag: Option<&AtomicBool>) -> Result<()> {
     if flag.is_some_and(|f| f.load(Ordering::Acquire)) {
         return Err(Error::State("Qwen CUDA source load cancelled".into()));
     }
     Ok(())
 }
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub fn native_artifact_root(explicit: Option<&Path>) -> Result<PathBuf> {
     let root = crate::qwen35_cuda::fixed_prompt::paths::native_root(
         explicit,
@@ -110,94 +139,9 @@ pub fn native_artifact_root(explicit: Option<&Path>) -> Result<PathBuf> {
         root.with_file_name("text")
     })
 }
-pub async fn load(
-    device: crate::gpu::Device,
-    hf_directory: &Path,
-    artifact_directory: &Path,
-    host: &TransferAdmission,
-    provider_capacity_bytes: usize,
-    cancelled: Option<&AtomicBool>,
-) -> Result<Arc<Model>> {
-    load_profile(
-        false,
-        false,
-        device,
-        hf_directory,
-        artifact_directory,
-        host,
-        provider_capacity_bytes,
-        cancelled,
-    )
-    .await
-}
-pub async fn load_b4(
-    device: crate::gpu::Device,
-    hf_directory: &Path,
-    artifact_directory: &Path,
-    host: &TransferAdmission,
-    provider_capacity_bytes: usize,
-    cancelled: Option<&AtomicBool>,
-) -> Result<Arc<Model>> {
-    load_profile(
-        true,
-        false,
-        device,
-        hf_directory,
-        artifact_directory,
-        host,
-        provider_capacity_bytes,
-        cancelled,
-    )
-    .await
-}
-/// Explicit historical finite qualification route. Ordinary loading never uses
-/// captured recipes as a substitute for backend implementation discovery.
-pub async fn load_qualification(
-    device: crate::gpu::Device,
-    hf_directory: &Path,
-    artifact_directory: &Path,
-    host: &TransferAdmission,
-    provider_capacity_bytes: usize,
-    cancelled: Option<&AtomicBool>,
-) -> Result<Arc<Model>> {
-    load_profile(
-        false,
-        true,
-        device,
-        hf_directory,
-        artifact_directory,
-        host,
-        provider_capacity_bytes,
-        cancelled,
-    )
-    .await
-}
-
-/// Explicit finite B4 qualification route.
-pub async fn load_b4_qualification(
-    device: crate::gpu::Device,
-    hf_directory: &Path,
-    artifact_directory: &Path,
-    host: &TransferAdmission,
-    provider_capacity_bytes: usize,
-    cancelled: Option<&AtomicBool>,
-) -> Result<Arc<Model>> {
-    load_profile(
-        true,
-        true,
-        device,
-        hf_directory,
-        artifact_directory,
-        host,
-        provider_capacity_bytes,
-        cancelled,
-    )
-    .await
-}
-
+#[cfg(feature = "qwen35-cuda-qualification")]
 async fn load_profile(
     cohort_b4: bool,
-    qualification: bool,
     device: crate::gpu::Device,
     hf_directory: &Path,
     artifact_directory: &Path,
@@ -246,11 +190,10 @@ async fn load_profile(
         cancelled,
     )?;
     let capture = native::TextKernelCapture::bind(bound.native_kernel_capture().recipe_sha256())?;
-    let templates = Arc::new(if qualification {
-        templates::Templates::prepare_qualification(bound, opened.metadata.context_capacity_tokens)?
-    } else {
-        templates::Templates::prepare(bound, opened.metadata.context_capacity_tokens)?
-    });
+    let templates = Arc::new(templates::Templates::prepare_qualification(
+        bound,
+        opened.metadata.context_capacity_tokens,
+    )?);
     let scopes = templates.physical_scopes()?;
     let rotary_source = bindings::retained(opened.source.prepare_rotary_source(true)?);
     let rotary = native::prepare_text_rotary(
@@ -306,6 +249,7 @@ async fn load_profile(
 
 /// A known finite source policy, distinct from actual full-source/native
 /// authentication performed by load and its original ResourceInventory.
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub struct RouteMetadata {
     pub family: &'static str,
     pub repository: &'static str,
@@ -316,6 +260,7 @@ pub struct RouteMetadata {
     pub host_bytes: usize,
     profile: crate::qwen35::plan::QwenSourceProfile,
 }
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub fn inspect_route(directory: &Path, native_directory: &Path) -> Result<RouteMetadata> {
     let metadata = source::route_metadata(directory)?;
     // Metadata parser only: image payload verification remains in load.
@@ -327,12 +272,14 @@ pub fn inspect_route(directory: &Path, native_directory: &Path) -> Result<RouteM
     )?);
     Ok(metadata)
 }
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub fn route_tokenizer(directory: &Path, host: &TransferAdmission) -> Result<RouteTokenizer> {
     source::route_tokenizer(directory, host)
 }
 
 /// Original scoped source HOST policy shared by direct and serving frontends.
 /// It is not system RAM capacity or a second physical-memory allocator.
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub fn host_admission_mib(
     host_mib: usize,
     owner: crate::resource_arbiter::ResourceOwner,
@@ -353,11 +300,12 @@ pub fn host_admission_mib(
     })
 }
 /// Legacy explicit 4 GiB Qwen CUDA HOST wrapper/default.
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub fn host_admission(owner: crate::resource_arbiter::ResourceOwner) -> Result<TransferAdmission> {
     host_admission_mib(HOST_MIB, owner)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "qwen35-cuda-qualification"))]
 mod b4_inventory_tests {
     use super::*;
     use crate::resource_arbiter::{

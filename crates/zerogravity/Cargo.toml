@@ -29,8 +29,11 @@ acquisition = ["cache", "zerogravity-artifacts/acquisition"]
 diagnostic-acquisition = ["acquisition", "zerogravity-artifacts/diagnostic-acquisition"]
 vulkan = ["dep:zerogravity-gpu", "zerogravity-gpu/vulkan"]
 cuda = ["dep:zerogravity-gpu", "zerogravity-gpu/cuda"]
+# Source contracts and ordinary capability refusal only. Finite captured
+# execution belongs to the explicit diagnostic feature below.
 # Previous features: canonical47-serving, short-hf-serving.
 qwen35-cuda = ["cuda", "cache", "text", "zerogravity-gpu/cuda-native", "zerogravity-model-qwen35/source-binding", "dep:rustix"]
+qwen35-cuda-qualification = ["qwen35-cuda"]
 hip = ["dep:zerogravity-gpu", "zerogravity-gpu/hip"]
 all-models = ["model-qwen35", "model-gemma4"]
 all-backends = ["cpu", "vulkan", "cuda", "hip"]
@@ -132,3 +135,13 @@ required-features = ["shared-hip-qualification", "zerogravity-gpu/hardware-abort
 name = "qwen27b_hip_natural"
 path = "examples/qwen27b_hip_natural.rs"
 required-features = ["qwen27b-hip-qualification", "zerogravity-gpu/hardware-abort-probe"]
+
+[[test]]
+name = "qwen35_cuda"
+path = "tests/qwen35_cuda.rs"
+required-features = ["qwen35-cuda-qualification"]
+
+[[test]]
+name = "qwen35_batching"
+path = "tests/qwen35_batching.rs"
+required-features = ["qwen35-cuda-qualification"]

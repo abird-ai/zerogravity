@@ -1,10 +1,15 @@
 //! Genuine source-owned Qwen CUDA sessions on the original fair worker.
+#[cfg(feature = "qwen35-cuda-qualification")]
 use super::super::engine::GpuRootObservation;
 use super::*;
+#[cfg(feature = "qwen35-cuda-qualification")]
 mod cohort;
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub(super) use cohort::advance_cohort;
+#[cfg(feature = "qwen35-cuda-qualification")]
 use zerogravity::gpu::cuda::native::TextCallReceipt;
 use zerogravity::qwen35_cuda as source;
+#[cfg(feature = "qwen35-cuda-qualification")]
 use zerogravity::resource_arbiter::ResourceArbiter;
 
 fn validate_profile(
@@ -35,6 +40,32 @@ fn validate_profile(
     }
     Ok(())
 }
+#[cfg(not(feature = "qwen35-cuda-qualification"))]
+fn unsupported_capability(error: zerogravity::Error) -> ServiceError {
+    match error {
+        zerogravity::Error::Unsupported(message) => {
+            ServiceError::new(400, "unsupported_qwen35_cuda_capability", message)
+        }
+        other => ServiceError::inference(other),
+    }
+}
+
+#[cfg(not(feature = "qwen35-cuda-qualification"))]
+impl GpuRouter {
+    pub(in crate::serve) fn new_qwen35_cuda(
+        _declared: Vec<(String, PathBuf)>,
+        backend: GpuBackend,
+        profile: GpuProfile,
+        host_mib: usize,
+        bundle: Option<&Path>,
+    ) -> Result<Self, ServiceError> {
+        validate_profile(backend, &profile, host_mib, bundle)?;
+        source::require_ordinary_capability().map_err(unsupported_capability)?;
+        unreachable!("ordinary Qwen CUDA capability always refuses")
+    }
+}
+
+#[cfg(feature = "qwen35-cuda-qualification")]
 impl GpuRouter {
     pub(in crate::serve) fn new_qwen35_cuda(
         declared: Vec<(String, PathBuf)>,
@@ -111,9 +142,11 @@ impl GpuRouter {
             })?;
         let loaded = block_on(async {
             if profile.native_rows == 4 {
-                source::load_b4(device, directory, bundle, &admitted, capacity, None).await
+                source::qualification::load_b4(device, directory, bundle, &admitted, capacity, None)
+                    .await
             } else {
-                source::load(device, directory, bundle, &admitted, capacity, None).await
+                source::qualification::load(device, directory, bundle, &admitted, capacity, None)
+                    .await
             }
         })
         .map_err(ServiceError::inference)?;
@@ -144,12 +177,14 @@ impl GpuRouter {
     }
 }
 
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub(super) fn models_present(models: &BTreeMap<String, Arc<GpuModel>>) -> bool {
     models
         .values()
         .any(|model| matches!(&model.engine, ModelEngine::Qwen35Cuda(_)))
 }
 
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub(super) fn health(
     models: &BTreeMap<String, Arc<GpuModel>>,
     host_snapshot: (u64, u64, u64, u64),
@@ -198,6 +233,7 @@ pub(super) fn health(
     ))
 }
 
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub(super) fn inference_error(
     error: zerogravity::Error,
     model: &source::Model,
@@ -218,6 +254,7 @@ pub(super) fn inference_error(
         ServiceError::inference(error)
     }
 }
+#[cfg(feature = "qwen35-cuda-qualification")]
 impl GpuActive {
     fn install_qwen35_cuda(
         &mut self,
@@ -306,6 +343,7 @@ impl GpuActive {
         Ok(MemberStep::Forwarded)
     }
 }
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub(super) fn retire_sources(models: &BTreeMap<String, Arc<GpuModel>>, stats: &WaveStats) {
     // A model alias may share one resident source group. Any live reader in
     // the group keeps retirement closed, even if this particular alias has
@@ -346,6 +384,27 @@ mod tests {
             max_pending: None,
         }
     }
+    #[cfg(not(feature = "qwen35-cuda-qualification"))]
+    #[test]
+    fn ordinary_serve_capability_refusal_is_configuration_not_inference() {
+        let error = GpuRouter::new_qwen35_cuda(
+            vec![("not-opened".into(), PathBuf::from("/source-not-opened"))],
+            GpuBackend::Cuda,
+            profile(),
+            4096,
+            Some(Path::new("/native-not-opened")),
+        )
+        .err()
+        .expect("ordinary Qwen CUDA serving must refuse");
+        assert_eq!(error.status, 400);
+        assert_eq!(error.code, "unsupported_qwen35_cuda_capability");
+        assert!(
+            error
+                .message
+                .contains("no ordinary dynamic GDN implementation")
+        );
+    }
+
     #[test]
     fn route_rejects_budget_fusion_and_context_before_source_device_or_native_load() {
         let mut eight = profile();

@@ -513,12 +513,42 @@ fn every_explicit_device_compatible_before_source_effects() {
     assert!(devices::allowed(&request, &inventory).is_err());
 }
 
-/// Pure finite-route proposal and pre-Client seam unit coverage; no CUDA
-/// client or real source is touched here.
 #[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
+    feature = "qwen35-cuda",
+    not(feature = "qwen35-cuda-qualification"),
     target_os = "linux"
 ))]
+#[test]
+fn ordinary_qwen_cuda_refuses_before_injected_device_discovery() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let parsed = parse(
+        &words(&[
+            "/source-not-opened",
+            "--native-artifacts",
+            "/native-not-opened",
+            "--backend",
+            "cuda",
+        ]),
+        None,
+    )
+    .unwrap();
+    let request = config::resolve(parsed, Path::new("/"), None, Some("/home/test".into())).unwrap();
+    let discoveries = AtomicUsize::new(0);
+    let error = execute::run_with_discovery(request, || {
+        discoveries.fetch_add(1, Ordering::SeqCst);
+        Err(Error::State("injected discovery must not run".into()))
+    })
+    .unwrap_err();
+    assert!(
+        matches!(error, Error::Unsupported(message) if message.contains("no ordinary dynamic GDN implementation"))
+    );
+    assert_eq!(discoveries.load(Ordering::SeqCst), 0);
+}
+
+/// Pure finite-route proposal and pre-Client seam unit coverage; no CUDA
+/// client or real source is touched here.
+#[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
 mod qwen35_cuda_route_tests {
     use super::*;
     use zerogravity::resource_arbiter::{

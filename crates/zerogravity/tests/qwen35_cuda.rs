@@ -1,4 +1,4 @@
-#![cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+#![cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
 //! Explicit real-source/GPU suite; never part of ordinary CPU test execution.
 //! A fresh 47-token prompt commits frontier 47; frontiers 48–50 consume one cached token each.
 //! Fresh 48–50-token prompts are not implemented or qualified by this suite.
@@ -307,7 +307,7 @@ fn source_model_state_and_output_agreement() -> Result<()> {
     let host = FixtureHost::new(ResourceOwner::new("qwen35-cuda-physical", "whole-matrix")?)?;
     let device =
         zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA device: {e}")))?;
-    let model = block_on(qwen35_cuda::load_qualification(
+    let model = block_on(qwen35_cuda::qualification::load(
         device,
         &source,
         &bundle,

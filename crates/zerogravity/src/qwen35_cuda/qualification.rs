@@ -12,10 +12,14 @@ use crate::qwen35::plan::{
 };
 use crate::qwen35::source::binding::OriginalWindowModelSource;
 use crate::{Error, Result};
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
+use zerogravity_artifacts::cache::TransferAdmission;
 mod leaves;
 mod natural;
 pub use leaves::*;
@@ -27,6 +31,49 @@ pub use source::{
     prepare_leaf_source, prepare_rms_leaf_source, prepare_rotary_source,
     prepare_tied_weight_source, qualify_qwen2b_mlp_weights,
 };
+
+/// Explicit historical finite N1 loader. This API exists only with the
+/// `qwen35-cuda-qualification` diagnostic feature.
+pub async fn load(
+    device: Device,
+    hf_directory: &Path,
+    artifact_directory: &Path,
+    host: &TransferAdmission,
+    provider_capacity_bytes: usize,
+    cancelled: Option<&AtomicBool>,
+) -> Result<Arc<super::Model>> {
+    super::load_profile(
+        false,
+        device,
+        hf_directory,
+        artifact_directory,
+        host,
+        provider_capacity_bytes,
+        cancelled,
+    )
+    .await
+}
+
+/// Explicit historical finite B4 loader.
+pub async fn load_b4(
+    device: Device,
+    hf_directory: &Path,
+    artifact_directory: &Path,
+    host: &TransferAdmission,
+    provider_capacity_bytes: usize,
+    cancelled: Option<&AtomicBool>,
+) -> Result<Arc<super::Model>> {
+    super::load_profile(
+        true,
+        device,
+        hf_directory,
+        artifact_directory,
+        host,
+        provider_capacity_bytes,
+        cancelled,
+    )
+    .await
+}
 
 /// Historical finite schedule retained only by explicit qualification paths.
 pub(super) const PROMPT_TOKEN_COUNTS: &[usize] = &[47, 57, 62, 67, 72];

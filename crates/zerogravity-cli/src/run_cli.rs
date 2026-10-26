@@ -14,21 +14,10 @@ mod qwen35_cuda;
 mod source;
 
 /// Narrow HOST-only precheck shared by direct and serving Qwen CUDA frontends.
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
+#[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
 pub(crate) fn qwen35_cuda_host_available(host_bytes: u64, headroom: &Headroom) -> Result<()> {
     devices::host_available(host_bytes, headroom)
 }
-/// Transactional pre-Client card admission shared by the direct run and
-/// serving Qwen CUDA frontends; one seam, never forked. Serve wiring needs
-/// its own device-identity qualification first (see the plan TODO).
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
-pub(crate) use qwen35_cuda::admit_pre_client_card;
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct RunDoc {

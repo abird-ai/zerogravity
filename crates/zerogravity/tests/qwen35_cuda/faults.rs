@@ -183,7 +183,7 @@ pub(super) fn run() -> Result<()> {
     let host = FixtureHost::new(ResourceOwner::new("qwen35-cuda-physical", "cached-fault")?)?;
     let device =
         zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA device: {e}")))?;
-    let model = block_on(qwen35_cuda::load_qualification(
+    let model = block_on(qwen35_cuda::qualification::load(
         device,
         &source,
         &bundle,

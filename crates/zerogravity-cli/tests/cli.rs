@@ -212,7 +212,9 @@ fn gpu_request_argument_errors_do_not_open_the_source_or_initialize_a_device() {
             assert_eq!(output.status.code(), Some(2));
             let error = String::from_utf8_lossy(&output.stderr);
             assert!(
-                error.contains("positive integer") || error.contains("1..=512"),
+                error.contains("positive integer")
+                    || error.contains("1..=512")
+                    || error.contains("bounded context/output/prompt/prefill request"),
                 "{name}: {error}"
             );
             assert!(!error.contains("I/O error"), "{name}: {error}");

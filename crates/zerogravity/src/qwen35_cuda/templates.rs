@@ -10,17 +10,38 @@ use zerogravity_artifacts::source_weights::WindowWorkspace;
 
 const PREPARED_CAPACITY: usize = 8;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ImplementationPolicy {
-    Ordinary,
-    Qualification,
+struct PreparedCache<T> {
+    entries: VecDeque<T>,
+    capacity: usize,
+}
+impl<T> PreparedCache<T> {
+    fn new(capacity: usize) -> Self {
+        assert!(capacity > 0, "prepared cache capacity");
+        Self {
+            entries: VecDeque::with_capacity(capacity),
+            capacity,
+        }
+    }
+    fn find(&self, mut predicate: impl FnMut(&T) -> bool) -> Option<&T> {
+        self.entries.iter().find(|entry| predicate(entry))
+    }
+    /// Returns the evicted owner so destruction can happen after the cache lock.
+    fn insert(&mut self, entry: T) -> Option<T> {
+        let evicted = (self.entries.len() == self.capacity)
+            .then(|| self.entries.pop_front().expect("full prepared cache"));
+        self.entries.push_back(entry);
+        evicted
+    }
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
 }
 
 pub(super) struct Templates {
     source: BoundFullModelSource,
     context_capacity_tokens: usize,
-    calls: Mutex<VecDeque<Template>>,
-    policy: ImplementationPolicy,
+    calls: Mutex<PreparedCache<Template>>,
     _metadata: WindowWorkspace,
 }
 struct Template {
@@ -46,30 +67,9 @@ impl Templates {
             .and_then(|bytes| (bytes / (64 * 1024)).max(1).checked_mul(64 * 1024))
             .ok_or_else(|| Error::Limit("prompt template metadata extent".into()))
     }
-    pub(super) fn prepare(
-        source: BoundFullModelSource,
-        context_capacity_tokens: usize,
-    ) -> Result<Self> {
-        Self::prepare_with_policy(
-            source,
-            context_capacity_tokens,
-            ImplementationPolicy::Ordinary,
-        )
-    }
     pub(super) fn prepare_qualification(
         source: BoundFullModelSource,
         context_capacity_tokens: usize,
-    ) -> Result<Self> {
-        Self::prepare_with_policy(
-            source,
-            context_capacity_tokens,
-            ImplementationPolicy::Qualification,
-        )
-    }
-    fn prepare_with_policy(
-        source: BoundFullModelSource,
-        context_capacity_tokens: usize,
-        policy: ImplementationPolicy,
     ) -> Result<Self> {
         source
             .model_profile()
@@ -81,8 +81,7 @@ impl Templates {
         Ok(Self {
             source,
             context_capacity_tokens,
-            calls: Mutex::new(VecDeque::with_capacity(PREPARED_CAPACITY)),
-            policy,
+            calls: Mutex::new(PreparedCache::new(PREPARED_CAPACITY)),
             _metadata: metadata,
         })
     }
@@ -94,23 +93,14 @@ impl Templates {
         input_tokens: usize,
         is_decode: bool,
     ) -> Option<bindings::GdnImplementation> {
-        match self.policy {
-            ImplementationPolicy::Ordinary => None,
-            ImplementationPolicy::Qualification => qualification::gdn_implementation(
-                self.source.model_profile(),
-                input_tokens,
-                is_decode,
-            ),
-        }
+        qualification::gdn_implementation(self.source.model_profile(), input_tokens, is_decode)
     }
     fn find(
-        calls: &VecDeque<Template>,
+        calls: &PreparedCache<Template>,
         workload: PromptWorkload,
         base: Option<usize>,
     ) -> Option<&Template> {
-        calls
-            .iter()
-            .find(|call| call.workload == workload && call.base == base)
+        calls.find(|call| call.workload == workload && call.base == base)
     }
     fn template(
         &self,
@@ -158,23 +148,17 @@ impl Templates {
         if let Some(template) = Self::find(&calls, workload, base) {
             return Ok((template.binding.clone(), template.recipe));
         }
-        if calls.len() == PREPARED_CAPACITY {
-            calls.pop_front();
-        }
-        calls.push_back(Template {
+        let evicted = calls.insert(Template {
             workload,
             base,
             binding: binding.clone(),
             recipe,
         });
+        drop(calls);
+        drop(evicted);
         Ok((binding, recipe))
     }
     pub(super) fn physical_scopes(&self) -> Result<Vec<(Arc<SourceBindings>, GdnKernelRecipe)>> {
-        if self.policy != ImplementationPolicy::Qualification {
-            return Err(Error::Unsupported(
-                "CUDA backend has no ordinary dynamic GDN preparation API".into(),
-            ));
-        }
         let mut scopes = Vec::with_capacity(qualification::PROMPT_TOKEN_COUNTS.len() + 1);
         for &count in qualification::PROMPT_TOKEN_COUNTS {
             let workload = self
@@ -248,6 +232,50 @@ mod tests {
     fn bounded_lazy_wrapper_charge_does_not_encode_historical_call_count() {
         assert_eq!(Templates::metadata_bytes().unwrap(), 64 * 1024);
         assert_eq!(PREPARED_CAPACITY, 8);
+    }
+
+    #[test]
+    fn capacity_eight_cache_retains_evicted_in_flight_owner_then_releases_all() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct Resource {
+            id: usize,
+            released: Arc<AtomicUsize>,
+        }
+        impl Drop for Resource {
+            fn drop(&mut self) {
+                self.released.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        let released = Arc::new(AtomicUsize::new(0));
+        let mut cache = PreparedCache::new(PREPARED_CAPACITY);
+        for id in 0..PREPARED_CAPACITY {
+            assert!(
+                cache
+                    .insert(Arc::new(Resource {
+                        id,
+                        released: Arc::clone(&released),
+                    }))
+                    .is_none()
+            );
+        }
+        assert_eq!(cache.len(), 8);
+        let in_flight = Arc::clone(cache.find(|resource| resource.id == 0).unwrap());
+        let evicted = cache
+            .insert(Arc::new(Resource {
+                id: PREPARED_CAPACITY,
+                released: Arc::clone(&released),
+            }))
+            .expect("ninth prepared owner evicts the oldest cache entry");
+        assert_eq!(cache.len(), 8);
+        assert_eq!(evicted.id, 0);
+        drop(evicted);
+        assert_eq!(released.load(Ordering::SeqCst), 0);
+        drop(in_flight);
+        assert_eq!(released.load(Ordering::SeqCst), 1);
+        drop(cache);
+        assert_eq!(released.load(Ordering::SeqCst), 9);
     }
 
     #[test]

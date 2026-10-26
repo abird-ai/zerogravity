@@ -26,6 +26,8 @@ vulkan = ["zerogravity/vulkan", "dep:futures-lite"]
 cuda = ["zerogravity/cuda", "dep:futures-lite", "dep:nvml-wrapper"]
 # Previous features: short-hf-run, canonical47-serving, short-hf-serving.
 qwen35-cuda = ["cuda", "cache", "model-qwen35", "text", "zerogravity/qwen35-cuda"]
+# Explicit diagnostic target for finite captured Qwen CUDA execution.
+qwen35-cuda-qualification = ["qwen35-cuda", "zerogravity/qwen35-cuda-qualification"]
 qwen35-cuda-serving = ["serve", "qwen35-cuda"]
 hip = ["zerogravity/hip", "dep:futures-lite"]
 all-models = ["model-qwen35", "model-gemma4"]
@@ -53,3 +55,8 @@ path = "src/main.rs"
 
 [dev-dependencies]
 sha2 = "=0.10.9"
+
+[[test]]
+name = "qwen35_cuda_dry_run"
+path = "tests/qwen35_cuda_dry_run.rs"
+required-features = ["qwen35-cuda-qualification"]
