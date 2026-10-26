@@ -16,7 +16,7 @@ fn one_prefill_has_true_chunk_indices_scratch_and_final_offsets() -> Result<()> 
     let source = SourceIdentity::for_new_allocation()?;
     for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
         for rows in [47, 57, 62, 67, 72] {
-            let workload = PromptWorkload::from_prompt_tokens(rows)?;
+            let workload = PromptWorkload::new(rows, 512)?;
             let call = PromptCall::new(
                 profile,
                 PromptSpan::prefill(source, workload, &vec![11; rows])?,
@@ -95,7 +95,7 @@ fn observed_source_tuples_are_distinct_and_never_open_legacy_factories() -> Resu
     let source = SourceIdentity::for_new_allocation()?;
     for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
         for rows in [47, 57, 62, 67, 72] {
-            let workload = PromptWorkload::from_prompt_tokens(rows)?;
+            let workload = PromptWorkload::new(rows, 512)?;
             let call = PromptCall::new(
                 profile,
                 PromptSpan::prefill(source, workload, &vec![11; rows])?,
@@ -469,6 +469,381 @@ fn parameterized_conv_refuses_wrong_source_layout_controls_and_overflow() -> Res
     assert!(
         parameterized_conv::prepare_with_layout(phase, GdnCacheSlot::Four, geometry, retained,)
             .is_err()
+    );
+    Ok(())
+}
+
+#[test]
+fn parameterized_prefill_geometry_scalars_and_pointer_contracts_are_exact() -> Result<()> {
+    use cubecl_runtime::kernel::BufferIOAttr::{ReadOnly as R, WriteOnly as W};
+
+    for rows in [47, 48, 49, 50, 57, 62, 67, 72] {
+        let phase = GdnPhase::TextPrefill(rows);
+        let prep = parameterized_prefill::prepare(phase, GdnCacheSlot::One, GdnStage::Prep)?;
+        assert_eq!(prep.asset.entry, parameterized_prefill::PREP_ENTRY);
+        assert_eq!(prep.asset.source, parameterized_prefill::PREP_SOURCE);
+        assert_eq!(prep.asset.grid, [rows.div_ceil(16) as u32, 32, 1]);
+        assert_eq!(prep.asset.shared, 0);
+        assert_eq!(prep.scalars.schema().byte_size(), 56);
+        assert_eq!(
+            prep.scalars.words(),
+            [6144, 16, 16, 2048, 2048, 2048, rows as u64]
+        );
+        assert_eq!(
+            prep.scalars.packed_bytes(),
+            [6144_u64, 16, 16, 2048, 2048, 2048, rows as u64]
+                .into_iter()
+                .flat_map(u64::to_le_bytes)
+                .collect::<Vec<_>>()
+        );
+
+        for (stage, entry, source, shared) in [
+            (
+                GdnStage::Cumsum,
+                parameterized_prefill::CUMSUM_ENTRY,
+                parameterized_prefill::CUMSUM_SOURCE,
+                8,
+            ),
+            (
+                GdnStage::Solve,
+                parameterized_prefill::SOLVE_ENTRY,
+                parameterized_prefill::SOLVE_SOURCE,
+                10240,
+            ),
+        ] {
+            let definition = parameterized_prefill::prepare(phase, GdnCacheSlot::One, stage)?;
+            assert_eq!(definition.asset.entry, entry);
+            assert_eq!(definition.asset.source, source);
+            assert_eq!(definition.asset.grid, [rows.div_ceil(64) as u32, 16, 1]);
+            assert_eq!(definition.asset.shared, shared);
+            assert!(definition.scalars.words().is_empty());
+        }
+    }
+
+    let phase = GdnPhase::TextPrefill(47);
+    let recipe = GdnKernelRecipe::fixture(0, 47, false)?;
+    for (stage, expected) in [
+        (
+            GdnStage::Prep,
+            vec![
+                (GdnBuffer::ConvOutput, 47 * 6144 * 2, R),
+                (GdnBuffer::AContiguous, 47 * 16 * 2, R),
+                (GdnBuffer::BContiguous, 47 * 16 * 2, R),
+                (GdnBuffer::ALog, 16 * 4, R),
+                (GdnBuffer::DtBias, 16 * 2, R),
+                (GdnBuffer::Q, 47 * 2048 * 2, W),
+                (GdnBuffer::K, 47 * 2048 * 2, W),
+                (GdnBuffer::V, 47 * 2048 * 2, W),
+                (GdnBuffer::GRaw, 47 * 16 * 4, W),
+                (GdnBuffer::Beta, 47 * 16 * 4, W),
+            ],
+        ),
+        (
+            GdnStage::Cumsum,
+            vec![
+                (GdnBuffer::GRaw, 47 * 16 * 4, R),
+                (GdnBuffer::GCumulative, 47 * 16 * 4, W),
+                (GdnBuffer::QueryStarts, 8, R),
+                (GdnBuffer::ChunkIndices, 8, R),
+            ],
+        ),
+        (
+            GdnStage::Solve,
+            vec![
+                (GdnBuffer::Kkt, 47 * 16 * 64 * 4, R),
+                (GdnBuffer::Inverse, 47 * 16 * 64 * 2, W),
+                (GdnBuffer::QueryStarts, 8, R),
+                (GdnBuffer::ChunkIndices, 8, R),
+            ],
+        ),
+    ] {
+        let definition = parameterized_prefill::prepare(phase, GdnCacheSlot::One, stage)?;
+        let spec = kernel_from_asset_with_scalars(
+            phase,
+            stage,
+            true,
+            definition.asset,
+            arithmetic::GdnArithmeticFamily::Text(recipe),
+            definition.scalars,
+        )?;
+        assert_eq!(
+            spec.bindings
+                .iter()
+                .map(|binding| (binding.role, binding.physical_bytes, binding.io))
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert!(spec.bindings.iter().all(|binding| binding.offset == 0));
+    }
+    Ok(())
+}
+
+#[test]
+fn parameterized_prefill_host_packets_keep_pointers_then_only_preps_packed_block() -> Result<()> {
+    use cubecl::server::Handle;
+    use cubecl_common::device::{DeviceId, ServiceId};
+    use cubecl_core::environment::stream::StreamId;
+    use cubecl_runtime::server::KernelResource;
+
+    struct HostPacketTest;
+    let phase = GdnPhase::TextPrefill(47);
+    let recipe = GdnKernelRecipe::fixture(0, 47, false)?;
+    let service = ServiceId::of::<HostPacketTest>(DeviceId::new(0, 0));
+    let stream = StreamId::current();
+    for stage in [GdnStage::Prep, GdnStage::Cumsum, GdnStage::Solve] {
+        let definition = parameterized_prefill::prepare(phase, GdnCacheSlot::One, stage)?;
+        let scalars = definition.scalars;
+        let spec = kernel_from_asset_with_scalars(
+            phase,
+            stage,
+            true,
+            definition.asset,
+            arithmetic::GdnArithmeticFamily::Text(recipe),
+            scalars,
+        )?;
+        let handles = spec
+            .bindings
+            .iter()
+            .map(|binding| Handle::new(service, stream, binding.physical_bytes as u64))
+            .collect::<Vec<_>>();
+        let packet = spec.kernel.host_launch_arguments(&handles, scalars)?;
+        assert_eq!(
+            packet.resources.len(),
+            if stage == GdnStage::Prep { 10 } else { 4 }
+        );
+        assert_eq!(
+            packet.declared_io,
+            spec.bindings
+                .iter()
+                .map(|binding| binding.io)
+                .collect::<Vec<_>>()
+        );
+        for (index, (resource, handle)) in packet.resources.iter().zip(&handles).enumerate() {
+            let KernelResource::Buffer(binding) = resource else {
+                panic!("prefill argument {index} is not a pointer buffer");
+            };
+            assert_eq!(binding.memory.id(), handle.memory.descriptor().id);
+            assert_eq!(binding.service, service);
+            assert_eq!(binding.stream, stream);
+            assert_eq!(binding.size, spec.bindings[index].physical_bytes as u64);
+        }
+        let expected = if stage == GdnStage::Prep {
+            vec![6144, 16, 16, 2048, 2048, 2048, 47]
+        } else {
+            Vec::new()
+        };
+        assert_eq!(packet.info.data, expected);
+        assert_eq!(packet.info.dynamic_metadata_offset, packet.info.data.len());
+        assert!(
+            spec.kernel
+                .host_launch_arguments(&handles[..handles.len() - 1], scalars)
+                .is_err()
+        );
+    }
+    assert!(parameterized_prefill::PREP_SOURCE.contains(
+        "void zg_gdn_prep_prefill_parameterized_v1(void* zg_arg0, void* zg_arg1, void* zg_arg2, void* zg_arg3, void* zg_arg4, void* zg_arg5, void* zg_arg6, void* zg_arg7, void* zg_arg8, void* zg_arg9, ZgGdnPrepScalarWords zg_scalars)"
+    ));
+    assert!(
+        parameterized_prefill::PREP_SOURCE
+            .contains("static_assert(sizeof(ZgGdnPrepScalarWords) == 56, \"GDN Prep scalar ABI\")")
+    );
+    for source in [
+        parameterized_prefill::CUMSUM_SOURCE,
+        parameterized_prefill::SOLVE_SOURCE,
+    ] {
+        assert!(!source.contains("zg_scalars"));
+        assert!(!source.contains("void* zg_arg4"));
+    }
+    Ok(())
+}
+
+#[test]
+fn parameterized_prefill_refuses_bad_phase_slot_extents_controls_and_integer_ranges() -> Result<()>
+{
+    let phase = GdnPhase::TextPrefill(48);
+    let prep = parameterized_prefill::PrepLayout {
+        mixed_qkv_bytes: 48 * 6144 * 2,
+        a_bytes: 48 * 16 * 2,
+        b_bytes: 48 * 16 * 2,
+        a_log_bytes: 16 * 4,
+        dt_bias_bytes: 16 * 2,
+        q_bytes: 48 * 2048 * 2,
+        k_bytes: 48 * 2048 * 2,
+        v_bytes: 48 * 2048 * 2,
+        g_bytes: 48 * 16 * 4,
+        beta_bytes: 48 * 16 * 4,
+    };
+    assert!(
+        parameterized_prefill::prepare_prep_with_layout(phase, GdnCacheSlot::One, prep).is_ok()
+    );
+    for bad in [
+        parameterized_prefill::PrepLayout {
+            mixed_qkv_bytes: prep.mixed_qkv_bytes - 2,
+            ..prep
+        },
+        parameterized_prefill::PrepLayout {
+            a_bytes: prep.a_bytes + 2,
+            ..prep
+        },
+        parameterized_prefill::PrepLayout {
+            a_log_bytes: prep.a_log_bytes - 4,
+            ..prep
+        },
+        parameterized_prefill::PrepLayout {
+            q_bytes: prep.q_bytes - 2,
+            ..prep
+        },
+        parameterized_prefill::PrepLayout {
+            beta_bytes: prep.beta_bytes + 4,
+            ..prep
+        },
+    ] {
+        assert!(
+            parameterized_prefill::prepare_prep_with_layout(phase, GdnCacheSlot::One, bad).is_err()
+        );
+    }
+
+    for (stage, input_bytes, output_bytes) in [
+        (GdnStage::Cumsum, 48 * 16 * 4, 48 * 16 * 4),
+        (GdnStage::Solve, 48 * 16 * 64 * 4, 48 * 16 * 64 * 2),
+    ] {
+        let layout = parameterized_prefill::SequenceLayout {
+            input_bytes,
+            output_bytes,
+            query_starts_bytes: 8,
+            chunk_indices_bytes: 8,
+        };
+        assert!(
+            parameterized_prefill::prepare_sequence_with_layout(
+                phase,
+                GdnCacheSlot::One,
+                stage,
+                layout,
+            )
+            .is_ok()
+        );
+        for bad in [
+            parameterized_prefill::SequenceLayout {
+                input_bytes: input_bytes - 4,
+                ..layout
+            },
+            parameterized_prefill::SequenceLayout {
+                output_bytes: output_bytes + 2,
+                ..layout
+            },
+            parameterized_prefill::SequenceLayout {
+                query_starts_bytes: 4,
+                ..layout
+            },
+            parameterized_prefill::SequenceLayout {
+                chunk_indices_bytes: 16,
+                ..layout
+            },
+        ] {
+            assert!(
+                parameterized_prefill::prepare_sequence_with_layout(
+                    phase,
+                    GdnCacheSlot::One,
+                    stage,
+                    bad,
+                )
+                .is_err()
+            );
+        }
+    }
+
+    for stage in [GdnStage::Prep, GdnStage::Cumsum, GdnStage::Solve] {
+        assert!(
+            parameterized_prefill::prepare(GdnPhase::CachedDecode, GdnCacheSlot::One, stage)
+                .is_err()
+        );
+        assert!(
+            parameterized_prefill::prepare(GdnPhase::TextPrefill(0), GdnCacheSlot::One, stage)
+                .is_err()
+        );
+        assert!(parameterized_prefill::prepare(phase, GdnCacheSlot::Four, stage).is_err());
+        assert!(
+            parameterized_prefill::prepare(
+                GdnPhase::TextPrefill(i32::MAX as usize + 1),
+                GdnCacheSlot::One,
+                stage,
+            )
+            .is_err()
+        );
+        assert!(
+            parameterized_prefill::prepare(
+                GdnPhase::TextPrefill(usize::MAX),
+                GdnCacheSlot::One,
+                stage,
+            )
+            .is_err()
+        );
+    }
+    assert!(parameterized_prefill::prepare(phase, GdnCacheSlot::One, GdnStage::Kkt).is_err());
+    Ok(())
+}
+
+#[test]
+fn parameterized_prefill_code_identity_is_new_stable_and_not_a_fixture_selector() -> Result<()> {
+    use cubecl_runtime::kernel::KernelMetadata;
+
+    let mut ids = std::collections::BTreeMap::new();
+    for rows in [47, 57] {
+        let phase = GdnPhase::TextPrefill(rows);
+        let recipe = GdnKernelRecipe::fixture(0, rows, false)?;
+        for stage in [GdnStage::Prep, GdnStage::Cumsum, GdnStage::Solve] {
+            let definition = parameterized_prefill::prepare(phase, GdnCacheSlot::One, stage)?;
+            let spec = kernel_from_asset_with_scalars(
+                phase,
+                stage,
+                true,
+                definition.asset,
+                arithmetic::GdnArithmeticFamily::Text(recipe),
+                definition.scalars,
+            )?;
+            assert_eq!(spec.kernel.id(), spec.kernel.clone().id());
+            ids.insert((stage as u8, rows), spec.kernel.id());
+            assert_ne!(
+                select(recipe, phase, stage)?.entry,
+                observed::select(recipe, phase, stage)?.entry
+            );
+        }
+    }
+    // Source/schema stay shared; exact physical pointer extents remain in each
+    // compiled key and therefore distinguish different launch instances.
+    for stage in [GdnStage::Prep, GdnStage::Cumsum, GdnStage::Solve] {
+        assert_ne!(ids[&(stage as u8, 47)], ids[&(stage as u8, 57)]);
+    }
+    assert_ne!(
+        ids[&(GdnStage::Prep as u8, 47)],
+        ids[&(GdnStage::Cumsum as u8, 47)]
+    );
+    assert_ne!(
+        ids[&(GdnStage::Cumsum as u8, 47)],
+        ids[&(GdnStage::Solve as u8, 47)]
+    );
+    let recipe47 = GdnKernelRecipe::fixture(0, 47, false)?;
+    assert!(select(recipe47, GdnPhase::TextPrefill(48), GdnStage::Prep).is_err());
+    assert!(
+        parameterized_prefill::prepare(
+            GdnPhase::TextPrefill(48),
+            GdnCacheSlot::One,
+            GdnStage::Prep,
+        )
+        .is_ok()
+    );
+    assert_ne!(
+        parameterized_prefill::PREP_ORIGINAL_PTX_SHA256,
+        parameterized_prefill::PREP_CANDIDATE_SOURCE_SHA256
+    );
+    assert_ne!(
+        parameterized_prefill::CUMSUM_ORIGINAL_PTX_SHA256,
+        parameterized_prefill::CUMSUM_CANDIDATE_SOURCE_SHA256
+    );
+    assert!(
+        parameterized_prefill::SOLVE_CANDIDATE_SOURCE_SHA256S
+            .iter()
+            .all(|candidate| *candidate != parameterized_prefill::SOLVE_ORIGINAL_PTX_SHA256)
     );
     Ok(())
 }

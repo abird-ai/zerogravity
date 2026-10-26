@@ -59,36 +59,47 @@ impl TextGdnGeometry {
     }
 }
 
-/// Prefill Conv is one checked parameterized body. Remaining finite stages keep
-/// their observed numerical configurations until separately parameterized.
+/// Checked parameterized stages are prepared before the legacy finite selector.
+/// The whole call remains admitted by its exact recipe while unconverted stages
+/// still require retained numerical configurations.
 pub(super) fn select(
     recipe: GdnKernelRecipe,
     phase: GdnPhase,
     stage: GdnStage,
 ) -> Result<assets::Asset> {
-    if stage == GdnStage::Conv && matches!(phase, GdnPhase::TextPrefill(_)) {
+    if matches!(phase, GdnPhase::TextPrefill(_))
+        && matches!(
+            stage,
+            GdnStage::Conv | GdnStage::Prep | GdnStage::Cumsum | GdnStage::Solve
+        )
+    {
         if recipe.input_tokens() != phase.tokens() || recipe.is_decode() {
             return Err(Error::Unsupported(
                 "exact recorded GDN recipe/phase/count".into(),
             ));
         }
-        return Ok(parameterized_conv::prepare(
-            phase,
-            GdnCacheSlot::One,
-            SourceConvGeometry {
-                qkv_channels: 6144,
-                z_channels: 2048,
-                coefficient_channels: 32,
-                kernel: 4,
-            },
-        )?
-        .asset);
+        return if stage == GdnStage::Conv {
+            Ok(parameterized_conv::prepare(
+                phase,
+                GdnCacheSlot::One,
+                SourceConvGeometry {
+                    qkv_channels: 6144,
+                    z_channels: 2048,
+                    coefficient_channels: 32,
+                    kernel: 4,
+                },
+            )?
+            .asset)
+        } else {
+            Ok(parameterized_prefill::prepare(phase, GdnCacheSlot::One, stage)?.asset)
+        };
     }
     observed::select(recipe, phase, stage)
 }
 
 mod observed;
 mod parameterized_conv;
+mod parameterized_prefill;
 pub(super) fn observed_catalogue() -> &'static [&'static str] {
     observed::CATALOGUE
 }
@@ -231,17 +242,21 @@ impl TextGdnCode {
             return Err(Error::State("text GDN phase changed".into()));
         }
         let family = arithmetic::GdnArithmeticFamily::Text(self.geometry.recipe);
-        if stage == GdnStage::Conv && matches!(phase, GdnPhase::TextPrefill(_)) {
-            let definition =
-                parameterized_conv::prepare(phase, self.geometry.slot, self.conv_geometry)?;
-            kernel_from_asset_with_scalars(
-                phase,
+        if matches!(phase, GdnPhase::TextPrefill(_))
+            && matches!(
                 stage,
-                true,
-                definition.asset,
-                family,
-                definition.scalars,
+                GdnStage::Conv | GdnStage::Prep | GdnStage::Cumsum | GdnStage::Solve
             )
+        {
+            let (asset, scalars) = if stage == GdnStage::Conv {
+                let definition =
+                    parameterized_conv::prepare(phase, self.geometry.slot, self.conv_geometry)?;
+                (definition.asset, definition.scalars)
+            } else {
+                let definition = parameterized_prefill::prepare(phase, self.geometry.slot, stage)?;
+                (definition.asset, definition.scalars)
+            };
+            kernel_from_asset_with_scalars(phase, stage, true, asset, family, scalars)
         } else {
             kernel_from_asset(
                 phase,

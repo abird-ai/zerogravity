@@ -10,11 +10,7 @@ fn equal_call_metadata_does_not_replace_distinct_record_identity() -> Result<()>
     use zerogravity_model_qwen35::plan::QwenSourceProfile;
     let source = SourceIdentity::for_new_allocation()?;
     for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
-        let span = PromptSpan::prefill(
-            source,
-            PromptWorkload::from_prompt_tokens(47).unwrap(),
-            &[11; 47],
-        )?;
+        let span = PromptSpan::prefill(source, PromptWorkload::new(47, 512).unwrap(), &[11; 47])?;
         let cold = Arc::new(PromptCall::new(profile, span.clone())?);
         let same_call = Arc::new(PromptCall::new(profile, span)?);
         assert_eq!(cold, same_call); // SAME immutable teacher span, equal call.

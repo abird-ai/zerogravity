@@ -13,7 +13,7 @@ fn actual_last_prompt_row_and_both_source_widths_are_not_legacy_case_retags() ->
     for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
         let row = profile.hidden_size() * 2;
         for count in [47, 57, 62, 67, 72] {
-            let workload = PromptWorkload::from_prompt_tokens(count)?;
+            let workload = PromptWorkload::new(count, 512)?;
             let span = PromptSpan::prefill(source, workload, &vec![11; count])?;
             let call = PromptCall::new(profile, span)?;
             let head = TextHeadView::new(
@@ -32,7 +32,7 @@ fn actual_last_prompt_row_and_both_source_widths_are_not_legacy_case_retags() ->
                 }
             );
             assert!(call.request().reference_phase().is_err());
-            for base in workload.cached_bases() {
+            for base in workload.prompt_tokens()..=workload.prompt_tokens() + 6 {
                 let call =
                     PromptCall::new(profile, PromptSpan::cached(source, workload, base, 353)?)?;
                 let head = TextHeadView::new(
@@ -58,11 +58,7 @@ fn fa_uses_the_original_appended_private_read_and_never_a_fake_write() -> Result
     let source = SourceIdentity::for_new_allocation()?;
     let call = PromptCall::new(
         QwenSourceProfile::Qwen2B,
-        PromptSpan::prefill(
-            source,
-            PromptWorkload::from_prompt_tokens(67).unwrap(),
-            &[11; 67],
-        )?,
+        PromptSpan::prefill(source, PromptWorkload::new(67, 512).unwrap(), &[11; 67])?,
     )?;
     for layer in [3, 7, 11, 15, 19, 23] {
         let descriptor = QwenOperator::new(

@@ -20,8 +20,9 @@ fn actual_source_sites_and_head_values_survive_only_same_math_rebinding() -> Res
     let source = SourceIdentity::for_new_allocation()?;
     for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
         for prompt_tokens in [47, 57, 62, 67, 72] {
-            let workload = PromptWorkload::from_prompt_tokens(prompt_tokens)?;
-            for base in std::iter::once(None).chain(workload.cached_bases().map(Some)) {
+            let workload = PromptWorkload::new(prompt_tokens, 512)?;
+            let cached = workload.prompt_tokens()..=workload.prompt_tokens() + 6;
+            for base in std::iter::once(None).chain(cached.map(Some)) {
                 let first = fixture::call(source, profile, workload, base, 11);
                 let template = fixture::record(&first);
                 let selected = selection(&template);
@@ -72,7 +73,7 @@ fn selected_head_cannot_replace_actual_normalized_input_row_or_producer() -> Res
     let call = fixture::call(
         source,
         QwenSourceProfile::Qwen08,
-        PromptWorkload::from_prompt_tokens(47)?,
+        PromptWorkload::new(47, 512)?,
         None,
         11,
     );
