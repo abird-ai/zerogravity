@@ -3,6 +3,11 @@ Co-authors: GPT-6
 
 # Zerogravity — one fabric, single-model and multi-model pipelines
 
+**26 Oct conventions and refactor:** [structure and naming](STRUCTURE_AND_NAMING.md)
+establishes small ownership/dependency rules and a common model template.
+Qwen .8B/2B/27B and Gemma4 migrate together before further context/backend
+expansion. Source migration and qualification remain tracked in the live TODO.
+
 **21 Oct design extension:** [recursive regions and profiles](REGIONS_AND_PROFILES.md)
 specifies primitives, nested mathematical/task pipelines and orthogonal resolved
 profiles. It extends the existing composition contract; recursive execution,

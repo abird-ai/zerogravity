@@ -61,6 +61,13 @@ it and whose open work sits under `## Uncommitted`.
 
 ## Plans and parallel work
 
+Architecture, structure and naming follow
+[STRUCTURE_AND_NAMING.md](.agents/plans/pipeline-composition/STRUCTURE_AND_NAMING.md).
+Model semantics belong to model crates; shared operators and physical owners
+remain shared. Workload sizes and test ordinals are data, not production names.
+Existing boundary debt is tracked in the owning plan; preserve numerical/source
+identities and historical evidence while migrating actual consumers.
+
 - `.agents/plans/TODO.md`: one checkbox and link per plan. Check it only when
   the whole plan is implemented and tested; partial milestones stay in its file.
 - `.agents/runs/<plan>-<session-or-agent-id>/TODO.md`: each agent's own working
@@ -95,21 +102,16 @@ remain part of the implementation wherever needed.
 - Respect the user's agent roles and model settings. Architecture/design agents
   review and propose redesigns; the requested implementation agents apply them.
   Keep those roles explicit when delegating and handing off work.
-- Current delegation: Sol xhigh coordinates, plans, reviews and merges. Use
-  Astra high for complex architecture, mathematical reasoning and design review.
-  Use CLI Pi with `--model deepseek-v4.1-flash:1017` for implementation and
-  execution; Pi can also provide preliminary reviews. Do not silently substitute
-  a different implementation model.
-- Launch Pi with explicit `--thinking xhigh`; return only its concise final
-  report. Keep reasoning, intermediate messages, tool calls/results and
-  diagnostics in run-local logs; never feed raw event/session streams into the
-  coordinator context. Review changed source and verification evidence separately.
-- Set `PYTHONDONTWRITEBYTECODE=1` for Pi processes and use `python3 -B` for
+- Current delegation: GPT-6.1 Sol xhigh for coordination, architecture,
+  implementation, execution and review, per the user's26Oct instruction.
+  Keep file, build and device ownership explicit across independent lanes.
+- Return concise final reports. Keep intermediate tool streams and diagnostics
+  in run-local logs; review changed source and executed evidence separately.
+- Set `PYTHONDONTWRITEBYTECODE=1` for agent processes and use `python3 -B` for
   read-only preflight: imports must not add bytecode to sealed source packages.
-- Run focused Pi tasks generously in parallel, including tens of independent
-  lanes when useful. Optimize time to the larger outcome, not agent count;
-  declare file/device ownership and coordinate shared build/GPU capacity.
-  Give implementers concrete plans, invariants, checks and completion criteria.
+- Use focused independent lanes where safe. Optimize time to the larger outcome;
+  coordinate shared build/GPU capacity. Give implementers concrete invariants,
+  interfaces, checks and completion criteria.
   The coordinator independently inspects code, results and failures before
   accepting or merging; an agent's report alone is not evidence of correctness.
 - When fixes become circular or repeated fix/test cycles stall a task, assign
@@ -122,6 +124,13 @@ remain part of the implementation wherever needed.
 - Integrate completed, contained changes promptly, even within a larger unit.
   Reconcile active worktrees at periodic useful checkpoints to limit drift and
   catch interface conflicts early; do not wait for every parallel task to finish.
+- Commit ready changes in small logical units at useful checkpoints. Fix major
+  source/refactor bugs first; track smaller qualification bugs separately.
+  Reuse applicable batch evidence instead of inventing per-commit acceptance
+  cycles; run the comprehensive gate on the assembled changes.
+- After a commit batch, delegate side-worktree reconciliation where independent.
+  Preserve unique/unintegrated work and active ownership; synchronize cleanly
+  without discarding changes or rewriting history.
 - Batch related implementations and parallel contributions before validation.
   Bindings, readers, helpers and individual changes do not each require a test,
   review, physical-regression or acceptance cycle.

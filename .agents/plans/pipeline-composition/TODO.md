@@ -8,7 +8,13 @@ Owners: model-acquisition, model-execution, serving-and-speculation, multimodal,
 memory-and-streaming. All model/source/media execution remains subject to
 their existing numeric/source/physical acceptance gates.
 
-## Uncommitted
+## d9a8ecf — Shared output geometry
+
+- [x] Use output-v2 explicit phase/prompt/input/cached-token/request-batch fields
+  across the common comparison process;26 fixture tests pass. Preserve historical
+  failed strict decode evidence and independent source/physical qualification.
+
+## 405a3e6 — Format homes
 
 ### Format homes — 26 Oct
 
@@ -16,6 +22,33 @@ their existing numeric/source/physical acceptance gates.
   BF16 under precision; split existing scalar codecs without arithmetic changes.
   Exact variants, missing implementations and acceptance TODOs: [FORMATS.md](FORMATS.md).
   Existing19 artifact tests pass; provider/model qualification remains separate.
+
+## Uncommitted
+
+### Model containment and naming — 26 Oct
+
+Contract: [structure and naming](STRUCTURE_AND_NAMING.md). All lanes GPT-6.1
+Sol xhigh. User requests real source refactoring across .8B/2B/27B/Gemma4 before
+new .8B48–50/long-context/CPU-HIP-Vulkan work; full27B/Gemma model suites waived
+for this refactor, not marked passed. Existing engine/ownership/numerical gates
+and local gfx90c hold remain.
+
+- [~] Move family config/tensor roles/source binding from artifacts into model
+  crates; one cold application inspection/registration seam, no feature-based
+  false support. Preserve narrow inspector vs source-qualified model authority.
+- [~] Neutralize core family descriptors while retaining typed semantic/numerical
+  contracts and one ForwardPlan; move closed family recipes to their owner.
+- [~] Separate family GPU adapters from backend physical execution; remove
+  reverse model dependencies before optional model→backend wiring. Reuse already
+  shared head/projection/transport/flight machinery.
+- [ ] Replace production workload nicknames and report ordinals with semantic
+  names plus explicit token/request counts; map historical names without editing
+  old receipts. `cached_decode_matches_single_request` keeps its exact policy.
+- [ ] Align all family entrypoints with common correctness process and template;
+  enforce ownership/dependency rules with focused boundary/feature checks.
+- [ ] ROOT review/integrate coherent source batch, run affected checks and final
+  complete `scripts/check.sh`; sign scoped commits, preserve README/worktrees,
+  no pushes. Full27B/Gemma model suites remain explicitly unrun.
 
 ### Shared HIP / model composition checkpoint — 24 Oct
 
