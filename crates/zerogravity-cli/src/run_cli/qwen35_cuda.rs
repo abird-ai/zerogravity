@@ -8,24 +8,9 @@ pub(super) fn selected(backend: &Backend, model: &zerogravity::pipeline::ModelIn
     if model.native_artifacts.is_some() {
         return true;
     }
-    if *backend != Backend::Cuda {
-        return false;
-    }
-    let qwen_target = model.target.is_empty()
-        || model.target.starts_with("qwen3.5-")
-        || model.target.starts_with("qwen35-");
-    qwen_target
-        && model.source.as_deref().is_some_and(|source| {
-            matches!(
-                SourceSelector::parse(source),
-                Ok(SourceSelector::Local(path))
-                    if !path.extension().is_some_and(|extension| {
-                        extension
-                            .to_str()
-                            .is_some_and(|extension| extension.eq_ignore_ascii_case("gguf"))
-                    })
-            )
-        })
+    // Direct sources remain generic until their contents identify a family.
+    *backend == Backend::Cuda
+        && (model.target.starts_with("qwen3.5-") || model.target.starts_with("qwen35-"))
 }
 
 /// Ordinary builds refuse before inventory/NVML/CUDA metadata. Only the

@@ -519,15 +519,20 @@ fn every_explicit_device_compatible_before_source_effects() {
     target_os = "linux"
 ))]
 #[test]
-fn ordinary_qwen_cuda_refuses_before_injected_device_discovery() {
+fn ordinary_qwen_cuda_explicit_target_refuses_before_injected_device_discovery() {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    let parsed = parse(
-        &words(&["/source-not-opened/qwen3.5-model", "--backend", "cuda"]),
-        None,
+    let root = std::env::temp_dir().join(format!("zg-explicit-qwen-route-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let config_path = root.join("run.yaml");
+    std::fs::write(
+        &config_path,
+        "schema: zerogravity.pipeline.v2\nmodel:\n  - id: main\n    target: qwen3.5-0.8b\n    source: ./source-not-opened\nrun:\n  entrypoint: {model: main}\n  backend: cuda\n",
     )
     .unwrap();
+    let parsed = parse(&words(&["--config", config_path.to_str().unwrap()]), None).unwrap();
     let request = config::resolve(parsed, Path::new("/"), None, Some("/home/test".into())).unwrap();
+    std::fs::remove_dir_all(root).unwrap();
     let discoveries = AtomicUsize::new(0);
     let error = execute::run_with_discovery(request, || {
         discoveries.fetch_add(1, Ordering::SeqCst);
@@ -549,48 +554,85 @@ fn ordinary_qwen_cuda_refuses_before_injected_device_discovery() {
 fn ordinary_cpu_and_gguf_routes_reach_injected_discovery() {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    for (source, backend) in [
-        ("/does-not-exist/qwen-source", "cpu"),
-        ("/does-not-exist/model.gguf", "cuda"),
+    for (source, backend, target) in [
+        ("/does-not-exist/extensionless-qwen-gguf", "cuda", None),
+        ("/does-not-exist/arbitrary/local-source", "cuda", None),
+        ("/does-not-exist/model.GGUF", "cuda", None),
+        (
+            "/does-not-exist/explicit-qwen-source",
+            "cpu",
+            Some("qwen3.5-0.8b"),
+        ),
     ] {
         let parsed = parse(&words(&[source, "--backend", backend]), None).unwrap();
-        let request =
+        let mut request =
             config::resolve(parsed, Path::new("/"), None, Some("/home/test".into())).unwrap();
+        if let Some(target) = target {
+            request.graph.models[0].target = target.into();
+        }
         let discoveries = AtomicUsize::new(0);
         let error = execute::run_with_discovery(request, || {
             discoveries.fetch_add(1, Ordering::SeqCst);
-            Err(Error::State("injected ordinary-route discovery".into()))
+            Err(Error::State(
+                "generic direct-source route reached discovery".into(),
+            ))
         })
         .unwrap_err();
         assert!(
-            matches!(error, Error::State(message) if message == "injected ordinary-route discovery")
+            matches!(error, Error::State(message) if message == "generic direct-source route reached discovery"),
+            "{source}"
         );
-        assert_eq!(discoveries.load(Ordering::SeqCst), 1);
+        assert_eq!(discoveries.load(Ordering::SeqCst), 1, "{source}");
     }
 }
 
 #[test]
-fn qwen_cuda_route_classification_is_declarative_and_preserves_cpu_gguf() {
+fn qwen_cuda_route_classification_is_purely_declarative() {
     let request = |source: &str, backend: &str| {
         let parsed = parse(&words(&[source, "--backend", backend]), None).unwrap();
         config::resolve(parsed, Path::new("/"), None, Some("/home/test".into())).unwrap()
     };
-    let cuda_hf = request("/does-not-exist/qwen-source", "cuda");
+
+    for source in [
+        "/does-not-exist/extensionless-qwen-gguf",
+        "/does-not-exist/arbitrary/local-source",
+        "/does-not-exist/model.GGUF",
+    ] {
+        let generic = request(source, "cuda");
+        assert!(generic.graph.models[0].target.is_empty());
+        assert!(
+            !qwen35_cuda::selected(&generic.backend, &generic.graph.models[0]),
+            "{source}"
+        );
+    }
+
+    let mut explicit = request("/does-not-exist/source", "cuda");
+    explicit.graph.models[0].target = "qwen3.5-0.8b".into();
     assert!(qwen35_cuda::selected(
-        &cuda_hf.backend,
-        &cuda_hf.graph.models[0]
+        &explicit.backend,
+        &explicit.graph.models[0]
+    ));
+    explicit.backend = Backend::Auto;
+    assert!(!qwen35_cuda::selected(
+        &explicit.backend,
+        &explicit.graph.models[0]
+    ));
+    explicit.backend = Backend::Cpu;
+    assert!(!qwen35_cuda::selected(
+        &explicit.backend,
+        &explicit.graph.models[0]
     ));
 
-    let cuda_gguf = request("/does-not-exist/model.GGUF", "cuda");
-    assert!(!qwen35_cuda::selected(
-        &cuda_gguf.backend,
-        &cuda_gguf.graph.models[0]
+    let mut diagnostic = request("/does-not-exist/source", "auto");
+    diagnostic.graph.models[0].native_artifacts = Some("/not-opened/native".into());
+    assert!(qwen35_cuda::selected(
+        &diagnostic.backend,
+        &diagnostic.graph.models[0]
     ));
-
-    let cpu_hf = request("/does-not-exist/qwen-source", "cpu");
+    diagnostic.backend = Backend::Cpu;
     assert!(!qwen35_cuda::selected(
-        &cpu_hf.backend,
-        &cpu_hf.graph.models[0]
+        &diagnostic.backend,
+        &diagnostic.graph.models[0]
     ));
 }
 
@@ -670,6 +712,21 @@ mod qwen35_cuda_route_tests {
             Error::Limit(m) => m,
             other => panic!("expected limit refusal: {other:?}"),
         }
+    }
+
+    #[test]
+    fn native_artifacts_marker_keeps_qualified_auto_route() {
+        let request = route_request(&[
+            "/source-not-opened/model",
+            "--native-artifacts",
+            "/native-not-opened",
+        ]);
+        assert_eq!(request.backend, Backend::Auto);
+        assert!(request.graph.models[0].target.is_empty());
+        assert!(qwen35_cuda::selected(
+            &request.backend,
+            &request.graph.models[0]
+        ));
     }
 
     #[test]
