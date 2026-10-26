@@ -7,22 +7,23 @@ from check import compare, read, unique
 
 
 def document():
-    return {"schema": "zg.model-output.v1", "complete": True, "text_representation": "utf8",
+    return {"schema": "zg.model-output.v2", "complete": True, "text_representation": "utf8",
             "owner_closure": {"complete": True, "errors": []},
             "model": {"source_sha256": "a" * 64, "tokenizer_sha256": "b" * 64,
                       "template_sha256": "c" * 64, "precision": "bf16", "quantization": "none"},
             "execution": {"backend": "cuda", "runtime_revision": "independent-original",
                           "numerical_profile": "fixture-only", "runtime_artifact_sha256": "d" * 64,
                           "runtime_artifact_kind": "executable",
-                          "context_capacity": 512, "vocabulary_size": 8, "batch_invariant": False},
-            "cases": [{"id": "cached48", "input_ids": [1] * 48,
-                       "new_input_tokens": 1, "cached_tokens": 47,
+                          "context_capacity_tokens": 512, "vocabulary_size": 8, "batch_invariant": False},
+            "cases": [{"id": "decode_after_prompt", "input_ids": [1] * 48,
+                       "phase": "decode", "prompt_tokens": 47, "request_batch_size": 1,
+                       "input_tokens": 1, "cached_tokens": 47,
                        "generation": {"token_ids": [2, 3], "text": "fixture", "top_logprobs": None}}]}
 
 
 class Protocol(unittest.TestCase):
     def test_all_model_labels_and_backends_share_comparison(self):
-        for backend in ("cpu", "cuda", "rocm", "vulkan"):
+        for backend in ("cpu", "cuda", "hip", "vulkan"):
             ref, candidate = document(), document()
             candidate["execution"]["backend"] = backend
             candidate["execution"]["runtime_revision"] = "zerogravity-fixture"
@@ -54,15 +55,41 @@ class Protocol(unittest.TestCase):
         with self.assertRaises(ValueError):
             compare(document(), other)
 
-    def test_initial48_does_not_substitute_cached47_plus1(self):
+    def test_fresh_prompt_cannot_substitute_cached_decode(self):
         other = document()
-        other["cases"][0].update(new_input_tokens=48, cached_tokens=0)
+        other["cases"][0].update(phase="prefill", prompt_tokens=48, input_tokens=48, cached_tokens=0)
         with self.assertRaises(ValueError):
             compare(document(), other)
 
+    def test_phase_and_counts_describe_actual_history(self):
+        for edit in ({"phase": "unknown"}, {"phase": "prefill"},
+                     {"prompt_tokens": 48}, {"prompt_tokens": True},
+                     {"request_batch_size": 0}, {"request_batch_size": True},
+                     {"request_batch_size": None}):
+            other = document()
+            other["cases"][0].update(edit)
+            with self.assertRaises(ValueError):
+                compare(document(), other)
+
+    def test_batch_width_is_reported_without_imposing_bit_invariance(self):
+        other = document()
+        other["cases"][0]["request_batch_size"] = 4
+        result = compare(document(), other)
+        self.assertTrue(result["comparison_passed"])
+        self.assertEqual(result["cases"][0]["reference_request_batch_size"], 1)
+        self.assertEqual(result["cases"][0]["candidate_request_batch_size"], 4)
+
+    def test_complete_prefill_and_final_prompt_chunk(self):
+        for cached in (0, 24):
+            ref, other = document(), document()
+            for doc in (ref, other):
+                doc["cases"][0].update(phase="prefill", prompt_tokens=48,
+                                       cached_tokens=cached, input_tokens=48 - cached)
+            self.assertTrue(compare(ref, other)["comparison_passed"])
+
     def test_owner_errors_context_truncation_and_invariance_change_refuse(self):
         for edit in (lambda d: d["owner_closure"].update(errors=["incomplete EOF"]),
-                     lambda d: d["execution"].update(context_capacity=49),
+                     lambda d: d["execution"].update(context_capacity_tokens=49),
                      lambda d: d["execution"].update(batch_invariant=True),
                      lambda d: d["cases"][0].update(cached_tokens=True)):
             other = document()

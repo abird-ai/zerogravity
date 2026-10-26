@@ -43,22 +43,26 @@ python3 -B tools/model-correctness/check.py \
   --policy vllm-default --report fresh-comparison.json
 ```
 
-Both inputs use `schema: "zg.model-output.v1"` and contain:
+Both inputs use `schema: "zg.model-output.v2"` and contain:
 
 - `complete: true`, `owner_closure: {"complete": true, "errors": []}`.
 - `text_representation`: `utf8` for actual text, or `sha256` for actual stored
   output digests. Digest comparison never reconstructs or claims retained text.
 - `model`: `source_sha256`, `tokenizer_sha256`, `template_sha256`, `precision`,
   `quantization`. All five values must match. Digests are64 lowercase hex digits.
-- `execution`: actual `backend` (`cpu/cuda/rocm/vulkan`), `runtime_revision`,
+- `execution`: actual `backend` (`cpu/cuda/hip/vulkan`), `runtime_revision`,
   `numerical_profile`, `runtime_artifact_kind` (`executable/container-config`),
-  `runtime_artifact_sha256`, `context_capacity`, `vocabulary_size`,
+  `runtime_artifact_sha256`, `context_capacity_tokens`, `vocabulary_size`,
   `batch_invariant`. Runtime artifacts/backends/profiles are reported separately;
   model identities, context capacity, vocabulary and invariance mode must match.
-- Nonempty ordered `cases`, each with unique `id`, actual `input_ids`,
-  `new_input_tokens`, `cached_tokens` and `generation`. New+cached counts must
-  equal input length; input+requested output must fit context. Initial48 differs
-  from cached47+1 and cannot substitute for it.
+- Nonempty ordered `cases`, each with unique descriptive `id`, actual
+  `input_ids`, `phase`, `prompt_tokens`, `input_tokens`, `cached_tokens`,
+  `request_batch_size` and `generation`. Input+cached counts equal input length;
+  input+requested output must fit context. `prefill` completes the prompt
+  (possibly its last chunk); `decode` consumes one token after the prompt.
+  A fresh 48-token prompt differs from a 47-token prompt followed by decode.
+  Reference and candidate batch sizes are reported separately; comparing model
+  accuracy across widths does not require or establish byte invariance.
 - `generation`: nonempty `token_ids`, `text` (actual text or declared SHA256),
   and explicit `top_logprobs` (`null`, or one list of `{token_id,logprob}` per
   output). Every selected ID is in its own returned map; each map has5 or6
@@ -71,6 +75,16 @@ means the selected output-comparison policy passed; exit4 means refusal/failure.
 Reported metadata is not independently authenticated by this tool. Reports
 explicitly grant no source, operator/state/physical or inference qualification.
 Missing contexts/backends and interrupted originals remain unqualified.
+
+Every model uses this same protocol. Model adapters collect their own source,
+tokenizer, state and owner facts; they do not duplicate comparison algorithms.
+Keep family-specific capture tools beside their reference contracts and pass
+their complete outputs to this shared checker. A partial layer/prefix capture
+cannot be exported as a completed model generation. `hip` identifies the actual
+ROCm API backend; driver/SDK/source identities remain independently recorded.
+
+<!-- Previous protocol/labels: zg.model-output.v1, new_input_tokens,
+context_capacity, rocm, initial48, cached48. No input aliases retained. -->
 
 ## Upstream basis
 

@@ -2,7 +2,7 @@
 
 Owner: @pvl. Coordinator: ROOT / GPT-6.1 Sol xhigh.
 User decision26Oct2026: use the correctness approach of both vLLM and llama.cpp
-throughout all models. .8B frontiers47–50 precede genuine long-context work;
+throughout all models. .8B prompts of47–50 tokens precede genuine long-context work;
 CPU/CUDA/ROCm/Vulkan results remain separately source/device qualified.
 
 This applies to every existing/future target in `zerogravity-core::targets`,
@@ -79,8 +79,9 @@ may silently substitute for the requested original BF16/F32 model.
 
 ## .8B first milestone and long context
 
-- Preserve original case5 FAIL101 and deliberate quarantine. It asks strict
-  N1/B4 byte equality. Independently authenticated original vLLM N1/B4 already
+- Preserve the historical strict single-request/batched decode FAIL101 and
+  deliberate quarantine. It asks byte equality at request batch sizes1/4.
+  Independently authenticated original vLLM N1/B4 already
   differ on identical frontier47 operands: the same six QKVZ BF16 differences.
   Metadata also establishes width differences at48/49; no paired original N1
   frontier50 exists in that fifteen-transition archive. Do not fabricate one.
@@ -88,10 +89,11 @@ may silently substitute for the requested original BF16/F32 model.
   original numerical profile and actual model outputs. Preserve complete
   same-width operator/state proofs and exact structural safety. A batch-invariant
   kernel would be a new explicitly qualified profile, not a fix to relabel the
-  default original's result. Case5's failed historical result never turns green.
+  default original's result. The failed historical result never turns green.
 - Initial prompt lengths47/48/49/50 differ from a47-token prompt followed by
   cached decode at48/49/50. Declare and test both requested paths; the current
-  finite HF route's unsupported initial48–50 are not covered by cached evidence.
+  finite HF route's unsupported fresh48–50-token prompts are not covered by
+  cached evidence.
 - Genuine full-model contexts512/1024/2048/4096/8192 and then16384/32768 need
   actual independently run prefixes/continuations within admitted capacity,
   plus state/replay/chunk/fault coverage. Large RoPE positions or empty padding
@@ -104,3 +106,5 @@ Future model/backend changes use this policy and shared metrics alongside their
 existing original-source and ownership checks. Complete the focused numerical,
 source/state/physical/serving checks and assembled `scripts/check.sh` before
 accepting an implementation; performance work follows correctness.
+
+<!-- Previous labels: case5, initial48–50. Use explicit phase/token/batch fields. -->

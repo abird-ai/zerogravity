@@ -8,8 +8,9 @@ import re
 
 from accuracy import compare_generation, full_logits_metrics
 
-SCHEMA = "zg.model-output.v1"
-BACKENDS = {"cpu", "cuda", "rocm", "vulkan"}
+# Previous protocol: zg.model-output.v1, new_input_tokens, context_capacity, rocm.
+SCHEMA = "zg.model-output.v2"
+BACKENDS = {"cpu", "cuda", "hip", "vulkan"}
 MODEL_KEYS = {"source_sha256", "tokenizer_sha256", "template_sha256", "precision", "quantization"}
 
 
@@ -72,7 +73,7 @@ def validate(document):
             "explicit runtime artifact kind")
     require(digest(execution.get("runtime_artifact_sha256")), "runtime artifact digest")
     require(type(execution.get("batch_invariant")) is bool, "explicit invariance mode")
-    capacity, vocabulary = execution.get("context_capacity"), execution.get("vocabulary_size")
+    capacity, vocabulary = execution.get("context_capacity_tokens"), execution.get("vocabulary_size")
     require(integer(capacity, 1) and integer(vocabulary, 1), "context and vocabulary bounds")
     cases = document.get("cases")
     require(isinstance(cases, list) and cases, "nonempty complete case population")
@@ -84,9 +85,15 @@ def validate(document):
         ids = case.get("input_ids")
         require(isinstance(ids, list) and ids and all(integer(i) and i < vocabulary for i in ids),
                 "complete original token-id input")
-        new, cached = case.get("new_input_tokens"), case.get("cached_tokens")
+        new, cached = case.get("input_tokens"), case.get("cached_tokens")
         require(integer(new, 1) and integer(cached) and new + cached == len(ids),
                 "new input and cached prefix lengths join actual input")
+        phase, prompt = case.get("phase"), case.get("prompt_tokens")
+        require(integer(prompt, 1) and integer(case.get("request_batch_size"), 1),
+                "explicit positive prompt length and request batch size")
+        require((phase == "prefill" and prompt == len(ids))
+                or (phase == "decode" and new == 1 and prompt <= cached),
+                "prefill completes its prompt; decode consumes one token after its prompt")
         generation = case.get("generation")
         require(isinstance(generation, dict) and isinstance(generation.get("token_ids"), list)
                 and generation["token_ids"], "complete nonempty generation")
@@ -113,16 +120,19 @@ def compare(reference, candidate, *, policy="vllm-default"):
     require(reference["text_representation"] == candidate["text_representation"],
             "same raw text or text-digest representation")
     require(re["vocabulary_size"] == ce["vocabulary_size"], "same vocabulary")
-    require(re["context_capacity"] == ce["context_capacity"], "same declared context capacity")
+    require(re["context_capacity_tokens"] == ce["context_capacity_tokens"], "same declared context capacity")
     require(re["batch_invariant"] == ce["batch_invariant"], "same declared invariance mode")
     require([c["id"] for c in rc] == [c["id"] for c in cc],
             "same complete ordered case population")
     results = []
     for left, right in zip(rc, cc):
-        for key in ("input_ids", "new_input_tokens", "cached_tokens"):
+        for key in ("input_ids", "phase", "prompt_tokens", "input_tokens", "cached_tokens"):
             require(left[key] == right[key], "same original input/history/schedule: " + key)
-        result = {"id": left["id"], "new_input_tokens": left["new_input_tokens"],
+        result = {"id": left["id"], "input_tokens": left["input_tokens"],
                   "cached_tokens": left["cached_tokens"],
+                  "phase": left["phase"], "prompt_tokens": left["prompt_tokens"],
+                  "reference_request_batch_size": left["request_batch_size"],
+                  "candidate_request_batch_size": right["request_batch_size"],
                   "generation": compare_generation(left["generation"], right["generation"],
                                                    policy=policy, top_k=5)}
         has_logits = "full_logits" in left or "full_logits" in right
@@ -136,7 +146,7 @@ def compare(reference, candidate, *, policy="vllm-default"):
             result["logits_metrics"] = full_logits_metrics(left["full_logits"], right["full_logits"],
                 left.get("target_id"), vocabulary_size=re["vocabulary_size"])
         results.append(result)
-    return {"schema": "zg.model-output-comparison.v1", "policy": policy,
+    return {"schema": "zg.model-output-comparison.v2", "policy": policy,
             "comparison_passed": all(r["generation"]["accepted"] for r in results),
             "text_equality_kind": reference["text_representation"],
             "model": rm, "reference_execution": re, "candidate_execution": ce,
@@ -159,7 +169,7 @@ def main():
         result["inputs"] = {"reference": rp, "candidate": cp}
         payload = json.dumps(result, indent=2, sort_keys=True, allow_nan=False) + "\n"
     except (OSError, ValueError, TypeError, KeyError) as error:
-        result = {"schema": "zg.model-output-comparison.v1", "comparison_passed": False,
+        result = {"schema": "zg.model-output-comparison.v2", "comparison_passed": False,
                   "error": str(error), "inference_qualified": False}
         payload = json.dumps(result, indent=2, sort_keys=True, allow_nan=False) + "\n"
     # An existing reference/result path must never be overwritten by a report.
