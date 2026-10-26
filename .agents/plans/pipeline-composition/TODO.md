@@ -10,6 +10,13 @@ their existing numeric/source/physical acceptance gates.
 
 ## Uncommitted
 
+### Format homes — 26 Oct
+
+- [x] Give Q1/Q2/Q3/Q4/Q6/Q8/NVFP4 explicit codec and CPU/GPU homes, with
+  BF16 under precision; split existing scalar codecs without arithmetic changes.
+  Exact variants, missing implementations and acceptance TODOs: [FORMATS.md](FORMATS.md).
+  Existing19 artifact tests pass; provider/model qualification remains separate.
+
 ### Shared HIP / model composition checkpoint — 24 Oct
 
 - [ ] Natural independent-reference and explicit Gemma row-hit/transfer scopes;
