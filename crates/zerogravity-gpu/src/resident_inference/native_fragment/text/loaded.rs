@@ -536,7 +536,7 @@ impl TextSession {
     pub async fn prepare_prompt_with<F>(
         &self,
         record: Arc<SourceBindings>,
-        recipe: GdnKernelRecipe,
+        implementation: TextGdnImplementation,
         cancelled: Option<&AtomicBool>,
         mut validate: F,
     ) -> Result<TextPending>
@@ -552,7 +552,7 @@ impl TextSession {
         let input = self.original.bind_text_prompt(
             self.loaded.cold.bindings.clone(),
             record,
-            recipe,
+            implementation,
             self.loaded.cold.capture,
             cancelled,
         )?;
@@ -592,7 +592,7 @@ impl TextSession {
         &self,
         request: TextFeedbackRequest<'_>,
         record: Arc<SourceBindings>,
-        recipe: GdnKernelRecipe,
+        implementation: TextGdnImplementation,
         cancelled: Option<&AtomicBool>,
         mut validate: F,
     ) -> Result<TextPending>
@@ -604,7 +604,7 @@ impl TextSession {
         let input = self.original.bind_text_feedback(
             self.loaded.cold.bindings.clone(),
             record,
-            recipe,
+            implementation,
             self.loaded.cold.capture,
             packet,
             cancelled,
@@ -615,7 +615,7 @@ impl TextSession {
     pub async fn prepare_prompt(
         &self,
         record: Arc<SourceBindings>,
-        recipe: GdnKernelRecipe,
+        implementation: TextGdnImplementation,
         cancelled: Option<&AtomicBool>,
     ) -> Result<TextPending> {
         request_not_cancelled(cancelled)?;
@@ -627,7 +627,7 @@ impl TextSession {
         let input = self.original.bind_text_prompt(
             self.loaded.cold.bindings.clone(),
             record,
-            recipe,
+            implementation,
             self.loaded.cold.capture,
             cancelled,
         )?;
@@ -637,7 +637,7 @@ impl TextSession {
         &self,
         request: TextFeedbackRequest<'_>,
         record: Arc<SourceBindings>,
-        recipe: GdnKernelRecipe,
+        implementation: TextGdnImplementation,
         cancelled: Option<&AtomicBool>,
     ) -> Result<TextPending> {
         request_not_cancelled(cancelled)?;
@@ -645,7 +645,7 @@ impl TextSession {
         let input = self.original.bind_text_feedback(
             self.loaded.cold.bindings.clone(),
             record,
-            recipe,
+            implementation,
             self.loaded.cold.capture,
             packet,
             cancelled,
@@ -658,7 +658,7 @@ pub async fn prepare_text(
     device: Device,
     source: VerifiedTensorSource,
     capture: TextKernelCapture,
-    scopes: Vec<(Arc<SourceBindings>, GdnKernelRecipe)>,
+    scopes: Vec<(Arc<SourceBindings>, TextGdnImplementation)>,
     inputs: TextQualificationInputs,
     provider_capacity_bytes: usize,
     cancelled: Option<&AtomicBool>,
@@ -680,7 +680,7 @@ pub async fn prepare_text_b4(
     device: Device,
     source: VerifiedTensorSource,
     capture: TextKernelCapture,
-    scopes: Vec<(Arc<SourceBindings>, GdnKernelRecipe)>,
+    scopes: Vec<(Arc<SourceBindings>, TextGdnImplementation)>,
     inputs: TextQualificationInputs,
     provider_capacity_bytes: usize,
     cancelled: Option<&AtomicBool>,
@@ -701,7 +701,7 @@ pub async fn prepare_text_b4(
 fn cold_source_scopes(
     source: &VerifiedTensorSource,
     capture: TextKernelCapture,
-    calls: &[(Arc<SourceBindings>, GdnKernelRecipe)],
+    calls: &[(Arc<SourceBindings>, TextGdnImplementation)],
 ) -> Result<(Arc<TextModelBindings>, Vec<Arc<TextModelBinding>>)> {
     if calls.len() != capture.cold_scope_count()? {
         return Err(Error::State(
@@ -710,7 +710,7 @@ fn cold_source_scopes(
     }
     let bindings = TextModelBindings::new(source.clone(), capture)?;
     let mut scopes = Vec::with_capacity(calls.len());
-    for (index, (record, recipe)) in calls.iter().enumerate() {
+    for (index, (record, implementation)) in calls.iter().enumerate() {
         let call = record.call();
         capture.cold_scope_role(index)?.require_call(call)?;
         if !source.same_issuer(record.source())
@@ -722,7 +722,7 @@ fn cold_source_scopes(
             ));
         }
         capture.require_bindings(record)?;
-        scopes.push(bindings.bind(record.clone(), *recipe, capture)?);
+        scopes.push(bindings.bind(record.clone(), *implementation, capture)?);
     }
     Ok((bindings, scopes))
 }
@@ -735,7 +735,7 @@ async fn prepare_text_profile(
     device: Device,
     source: VerifiedTensorSource,
     capture: TextKernelCapture,
-    calls: Vec<(Arc<SourceBindings>, GdnKernelRecipe)>,
+    calls: Vec<(Arc<SourceBindings>, TextGdnImplementation)>,
     inputs: TextQualificationInputs,
     provider_capacity_bytes: usize,
     cancelled: Option<&AtomicBool>,

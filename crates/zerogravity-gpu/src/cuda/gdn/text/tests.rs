@@ -23,7 +23,7 @@ fn one_prefill_has_true_chunk_indices_scratch_and_final_offsets() -> Result<()> 
             )?;
             let geometry = TextGdnGeometry::for_call(
                 &call.as_source_call().request().source_call()?,
-                GdnKernelRecipe::fixture(
+                fixture_implementation(
                     if profile == QwenSourceProfile::Qwen08 {
                         0
                     } else {
@@ -102,7 +102,7 @@ fn observed_source_tuples_are_distinct_and_never_open_legacy_factories() -> Resu
             )?;
             let g = TextGdnGeometry::for_call(
                 &call.as_source_call().request().source_call()?,
-                GdnKernelRecipe::fixture(
+                fixture_implementation(
                     if profile == QwenSourceProfile::Qwen08 {
                         0
                     } else {
@@ -116,14 +116,14 @@ fn observed_source_tuples_are_distinct_and_never_open_legacy_factories() -> Resu
                 assert!(kernel_with_typed_outputs(g.phase, stage).is_err());
                 assert!(assets::select_qwen2b(g.phase, stage).is_err());
                 {
-                    let actual = select(g.recipe, g.config, g.phase, stage)?;
+                    let actual = select(g.implementation.config(), g.phase, stage)?;
                     let expected = (actual.grid, actual.source);
                     let spec = kernel_from_asset(
                         g.phase,
                         stage,
                         true,
                         actual,
-                        arithmetic::GdnArithmeticFamily::Text(g.recipe),
+                        arithmetic::GdnArithmeticFamily::Text(g.implementation.config()),
                     )?;
                     assert_eq!(spec.grid, expected.0);
                     assert_eq!(
@@ -156,7 +156,7 @@ fn observed_source_tuples_are_distinct_and_never_open_legacy_factories() -> Resu
     for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
         for stage in [GdnStage::Conv, GdnStage::Decode, GdnStage::Gated] {
             let phase = GdnPhase::CachedDecode;
-            let recipe = GdnKernelRecipe::fixture(
+            let implementation = fixture_implementation(
                 if profile == QwenSourceProfile::Qwen08 {
                     0
                 } else {
@@ -165,21 +165,14 @@ fn observed_source_tuples_are_distinct_and_never_open_legacy_factories() -> Resu
                 1,
                 true,
             )?;
-            let actual = select(
-                recipe,
-                matches!(phase, GdnPhase::TextPrefill(_))
-                    .then(|| recipe.historical_prefill_config())
-                    .transpose()?,
-                phase,
-                stage,
-            )?;
+            let actual = select(implementation.config(), phase, stage)?;
             let expected = actual.grid;
             let spec = kernel_from_asset(
                 phase,
                 stage,
                 true,
                 actual,
-                arithmetic::GdnArithmeticFamily::Text(recipe),
+                arithmetic::GdnArithmeticFamily::Text(implementation.config()),
             )?;
             assert_eq!(
                 spec.bindings.len(),
@@ -191,16 +184,25 @@ fn observed_source_tuples_are_distinct_and_never_open_legacy_factories() -> Resu
             assert_eq!(spec.grid, expected);
         }
     }
-    assert_ne!(
-        GdnFamilyIdentity::text(GdnKernelRecipe::fixture(0, 47, false)?),
-        GdnFamilyIdentity::text(GdnKernelRecipe::fixture(1, 47, false)?)
+    let qwen08_47 = fixture_implementation(0, 47, false)?;
+    let qwen2b_47 = fixture_implementation(1, 47, false)?;
+    let qwen2b_57 = fixture_implementation(1, 57, false)?;
+    assert_eq!(
+        GdnFamilyIdentity::text(qwen08_47.config()),
+        GdnFamilyIdentity::text(qwen2b_57.config()),
+        "same explicit config across historical cells is one implementation family"
     );
     assert_ne!(
-        GdnFamilyIdentity::text(GdnKernelRecipe::fixture(0, 47, false)?),
+        GdnFamilyIdentity::text(qwen08_47.config()),
+        GdnFamilyIdentity::text(qwen2b_47.config()),
+        "different explicit configs are different implementation families"
+    );
+    assert_ne!(
+        GdnFamilyIdentity::text(qwen08_47.config()),
         GdnFamilyIdentity::original08()
     );
     assert_ne!(
-        GdnFamilyIdentity::text(GdnKernelRecipe::fixture(1, 47, false)?),
+        GdnFamilyIdentity::text(qwen2b_47.config()),
         GdnFamilyIdentity::original2b()
     );
     Ok(())
@@ -291,13 +293,13 @@ fn parameterized_conv_host_packet_keeps_nine_pointers_then_one_static_block() ->
         },
     )?;
     let scalars = definition.scalars;
-    let recipe = GdnKernelRecipe::fixture(0, 47, false)?;
+    let implementation = fixture_implementation(0, 47, false)?;
     let spec = kernel_from_asset_with_scalars(
         phase,
         GdnStage::Conv,
         true,
         definition.asset,
-        arithmetic::GdnArithmeticFamily::Text(recipe),
+        arithmetic::GdnArithmeticFamily::Text(implementation.config()),
         scalars,
     )?;
     let service = ServiceId::of::<HostPacketTest>(DeviceId::new(0, 0));
@@ -369,7 +371,7 @@ fn parameterized_conv_scalar_values_are_part_of_arithmetic_not_code_identity() -
         coefficient_channels: 32,
         kernel: 4,
     };
-    let recipe = GdnKernelRecipe::fixture(0, 47, false)?;
+    let implementation = fixture_implementation(0, 47, false)?;
     let definition = parameterized_conv::prepare(phase, GdnCacheSlot::One, geometry)?;
     let changed = StaticScalarBlock::new(
         definition.scalars.schema(),
@@ -384,7 +386,7 @@ fn parameterized_conv_scalar_values_are_part_of_arithmetic_not_code_identity() -
         GdnStage::Conv,
         true,
         definition.asset,
-        arithmetic::GdnArithmeticFamily::Text(recipe),
+        arithmetic::GdnArithmeticFamily::Text(implementation.config()),
         definition.scalars,
     )?;
     let changed_definition = parameterized_conv::prepare(phase, GdnCacheSlot::One, geometry)?;
@@ -393,7 +395,7 @@ fn parameterized_conv_scalar_values_are_part_of_arithmetic_not_code_identity() -
         GdnStage::Conv,
         true,
         changed_definition.asset,
-        arithmetic::GdnArithmeticFamily::Text(recipe),
+        arithmetic::GdnArithmeticFamily::Text(implementation.config()),
         changed,
     )?;
     assert_eq!(actual.kernel.id(), changed.kernel.id());
@@ -528,7 +530,7 @@ fn parameterized_prefill_geometry_scalars_and_pointer_contracts_are_exact() -> R
     }
 
     let phase = GdnPhase::TextPrefill(47);
-    let recipe = GdnKernelRecipe::fixture(0, 47, false)?;
+    let implementation = fixture_implementation(0, 47, false)?.config();
     for (stage, expected) in [
         (
             GdnStage::Prep,
@@ -570,7 +572,7 @@ fn parameterized_prefill_geometry_scalars_and_pointer_contracts_are_exact() -> R
             stage,
             true,
             definition.asset,
-            arithmetic::GdnArithmeticFamily::Text(recipe),
+            arithmetic::GdnArithmeticFamily::Text(implementation),
             definition.scalars,
         )?;
         assert_eq!(
@@ -594,7 +596,7 @@ fn parameterized_prefill_host_packets_keep_pointers_then_only_preps_packed_block
 
     struct HostPacketTest;
     let phase = GdnPhase::TextPrefill(47);
-    let recipe = GdnKernelRecipe::fixture(0, 47, false)?;
+    let implementation = fixture_implementation(0, 47, false)?.config();
     let service = ServiceId::of::<HostPacketTest>(DeviceId::new(0, 0));
     let stream = StreamId::current();
     for stage in [GdnStage::Prep, GdnStage::Cumsum, GdnStage::Solve] {
@@ -605,7 +607,7 @@ fn parameterized_prefill_host_packets_keep_pointers_then_only_preps_packed_block
             stage,
             true,
             definition.asset,
-            arithmetic::GdnArithmeticFamily::Text(recipe),
+            arithmetic::GdnArithmeticFamily::Text(implementation),
             scalars,
         )?;
         let handles = spec
@@ -677,8 +679,10 @@ fn configured_prefill_host_packets_keep_exact_pointer_and_scalar_abis() -> Resul
     for catalogue in 0..2 {
         for tokens in [47, 57, 62, 67, 72] {
             let phase = GdnPhase::TextPrefill(tokens);
-            let recipe = GdnKernelRecipe::fixture(catalogue, tokens, false)?;
-            let config = recipe.historical_prefill_config()?;
+            let implementation = fixture_implementation(catalogue, tokens, false)?;
+            let config = implementation
+                .config()
+                .ok_or_else(|| Error::State("test prefill config absent".into()))?;
             for stage in [
                 GdnStage::Kkt,
                 GdnStage::Recompute,
@@ -697,7 +701,7 @@ fn configured_prefill_host_packets_keep_exact_pointer_and_scalar_abis() -> Resul
                     stage,
                     true,
                     definition.asset,
-                    arithmetic::GdnArithmeticFamily::Text(recipe),
+                    arithmetic::GdnArithmeticFamily::Text(implementation.config()),
                     scalars,
                 )?;
                 let handles = spec
@@ -867,6 +871,7 @@ fn parameterized_prefill_code_identity_is_new_stable_and_not_a_fixture_selector(
     for rows in [47, 57] {
         let phase = GdnPhase::TextPrefill(rows);
         let recipe = GdnKernelRecipe::fixture(0, rows, false)?;
+        let implementation = fixture_implementation(0, rows, false)?.config();
         for stage in [GdnStage::Prep, GdnStage::Cumsum, GdnStage::Solve] {
             let definition = parameterized_prefill::prepare(phase, GdnCacheSlot::One, stage)?;
             let spec = kernel_from_asset_with_scalars(
@@ -874,19 +879,13 @@ fn parameterized_prefill_code_identity_is_new_stable_and_not_a_fixture_selector(
                 stage,
                 true,
                 definition.asset,
-                arithmetic::GdnArithmeticFamily::Text(recipe),
+                arithmetic::GdnArithmeticFamily::Text(implementation),
                 definition.scalars,
             )?;
             assert_eq!(spec.kernel.id(), spec.kernel.clone().id());
             ids.insert((stage as u8, rows), spec.kernel.id());
             assert_ne!(
-                select(
-                    recipe,
-                    Some(recipe.historical_prefill_config()?),
-                    phase,
-                    stage,
-                )?
-                .entry,
+                select(implementation, phase, stage)?.entry,
                 observed::select(recipe, phase, stage)?.entry
             );
         }
@@ -904,15 +903,11 @@ fn parameterized_prefill_code_identity_is_new_stable_and_not_a_fixture_selector(
         ids[&(GdnStage::Cumsum as u8, 47)],
         ids[&(GdnStage::Solve as u8, 47)]
     );
-    let recipe47 = GdnKernelRecipe::fixture(0, 47, false)?;
+    let implementation47 = fixture_implementation(0, 47, false)?;
     assert!(
-        select(
-            recipe47,
-            Some(recipe47.historical_prefill_config()?),
-            GdnPhase::TextPrefill(48),
-            GdnStage::Prep,
-        )
-        .is_err()
+        implementation47
+            .require_phase(GdnPhase::TextPrefill(48))
+            .is_err()
     );
     assert!(
         parameterized_prefill::prepare(
@@ -969,7 +964,7 @@ fn parameterized_gated_has_exact_bits_extents_packets_and_new_identity() -> Resu
     }
 
     let phase = GdnPhase::TextPrefill(47);
-    let recipe = GdnKernelRecipe::fixture(0, 47, false)?;
+    let implementation = fixture_implementation(0, 47, false)?.config();
     let definition = parameterized_gated::prepare(phase, GdnCacheSlot::One)?;
     let scalars = definition.scalars;
     let spec = kernel_from_asset_with_scalars(
@@ -977,7 +972,7 @@ fn parameterized_gated_has_exact_bits_extents_packets_and_new_identity() -> Resu
         GdnStage::Gated,
         true,
         definition.asset,
-        arithmetic::GdnArithmeticFamily::Text(recipe),
+        arithmetic::GdnArithmeticFamily::Text(implementation),
         scalars,
     )?;
     parameterized_gated::require_bindings(phase, scalars, &spec.bindings)?;
@@ -1069,6 +1064,7 @@ fn parameterized_cached_uses_retained_five_slot_layout_exact_abis_and_aliases() 
     let phase = GdnPhase::CachedDecode;
     let slot = GdnCacheSlot::One;
     let recipe = GdnKernelRecipe::fixture(0, 1, true)?;
+    let implementation = fixture_implementation(0, 1, true)?.config();
     let service = ServiceId::of::<HostPacketTest>(DeviceId::new(0, 0));
     let stream = StreamId::current();
     for stage in [GdnStage::Conv, GdnStage::Decode, GdnStage::Gated] {
@@ -1084,7 +1080,7 @@ fn parameterized_cached_uses_retained_five_slot_layout_exact_abis_and_aliases() 
             stage,
             true,
             asset,
-            arithmetic::GdnArithmeticFamily::Text(recipe),
+            arithmetic::GdnArithmeticFamily::Text(implementation),
             scalars,
         )?;
         if stage == GdnStage::Gated {
@@ -1120,7 +1116,7 @@ fn parameterized_cached_uses_retained_five_slot_layout_exact_abis_and_aliases() 
                 .is_err()
         );
         assert_ne!(
-            select(recipe, None, phase, stage)?.entry,
+            select(implementation, phase, stage)?.entry,
             observed::select(recipe, phase, stage)?.entry
         );
     }

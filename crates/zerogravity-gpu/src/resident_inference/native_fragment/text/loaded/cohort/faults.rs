@@ -119,7 +119,7 @@ impl TextLoaded {
         self: &Arc<Self>,
         sessions: &[&TextSession],
         requests: &[TextFeedbackRequest<'_>],
-        calls: &[(Arc<SourceBindings>, GdnKernelRecipe)],
+        calls: &[(Arc<SourceBindings>, TextGdnImplementation)],
         cancelled: &[&AtomicBool],
         fault: TextCohortFault,
     ) -> Result<TextCohortFaultOutcome> {

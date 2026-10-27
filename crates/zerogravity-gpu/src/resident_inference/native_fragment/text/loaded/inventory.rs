@@ -112,7 +112,7 @@ impl TextResourceInventory {
     pub fn inspect_b4(
         source: &VerifiedTensorSource,
         capture: TextKernelCapture,
-        scopes: &[(Arc<SourceBindings>, GdnKernelRecipe)],
+        scopes: &[(Arc<SourceBindings>, TextGdnImplementation)],
         inputs: &crate::cuda::native::FixedPromptMlpQualificationInputs,
         rotary_positions: usize,
         limit: zerogravity_core::optimization::MemoryFootprint,
@@ -132,7 +132,7 @@ impl TextResourceInventory {
     pub fn inspect_n1(
         source: &VerifiedTensorSource,
         capture: TextKernelCapture,
-        scopes: &[(Arc<SourceBindings>, GdnKernelRecipe)],
+        scopes: &[(Arc<SourceBindings>, TextGdnImplementation)],
         inputs: &crate::cuda::native::FixedPromptMlpQualificationInputs,
         rotary_positions: usize,
         limit: zerogravity_core::optimization::MemoryFootprint,
@@ -151,7 +151,7 @@ impl TextResourceInventory {
         cohort_b4: bool,
         source: &VerifiedTensorSource,
         capture: TextKernelCapture,
-        scopes: &[(Arc<SourceBindings>, GdnKernelRecipe)],
+        scopes: &[(Arc<SourceBindings>, TextGdnImplementation)],
         inputs: &crate::cuda::native::FixedPromptMlpQualificationInputs,
         rotary_positions: usize,
         limit: zerogravity_core::optimization::MemoryFootprint,
@@ -349,13 +349,13 @@ impl TextResourceInventory {
             }
             device.extend(TextGdnWorkspace::allocation_layout(
                 scope.call(),
-                *scope.gdn_recipe(),
+                scope.gdn_implementation(),
             )?)?;
             device.extend(ColdTextGdn::allocation_layout(scope)?)?;
             device.extend(PreparedBf16Greedy::text_allocation_layout())?;
             device.extend([4])?; // actual cold Body status
             let (workspace_host, initial) =
-                TextGdnWorkspace::host_layout(scope.call(), *scope.gdn_recipe())?;
+                TextGdnWorkspace::host_layout(scope.call(), scope.gdn_implementation())?;
             gdn_initial = add(gdn_initial, initial)?;
             retained = sum([
                 retained,

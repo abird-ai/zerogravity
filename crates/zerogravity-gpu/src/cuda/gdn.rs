@@ -598,8 +598,8 @@ pub use fixed_prompt_component::{FixedPromptGdnArithmetic, FixedPromptGdnInterme
 mod text;
 #[cfg(target_os = "linux")]
 pub use text::{
-    GdnKernelConfig, GdnKernelRecipe, GdnKktKernel, GdnOutputKernel, GdnRecomputeKernel,
-    GdnStateKernel,
+    GdnKernelConfig, GdnKktKernel, GdnOutputKernel, GdnRecomputeKernel, GdnStateKernel,
+    TextGdnImplementation,
 };
 #[cfg(target_os = "linux")]
 pub(crate) use text::{TextGdnCode, TextGdnGeometry, TextGdnWorkspace};

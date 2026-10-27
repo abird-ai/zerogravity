@@ -3,8 +3,8 @@ use super::model_cache::ModelCache;
 use super::model_values::ModelValues;
 use super::{finite_bf16, loaded_gamma};
 use crate::cuda::gdn::{
-    GdnArithmetic, GdnBuffer, GdnCacheSlot, GdnInputs, GdnPhase, GdnPrepared, GdnTypedOutputs,
-    ModelGdnAdapter, ModelGdnConvEnqueued,
+    GdnArithmetic, GdnBuffer, GdnCacheSlot, GdnFamilyIdentity, GdnInputs, GdnPhase, GdnPrepared,
+    GdnTypedOutputs, ModelGdnAdapter, ModelGdnConvEnqueued,
 };
 use crate::resident_inference::native_fragment::{
     PrefixPhaseEnqueue, model_state::BoundModelState,
@@ -78,7 +78,7 @@ fn require_native_gdn_pair(
 struct ParameterPayload {
     source: VerifiedTensorSource,
     site: usize,
-    text_catalogue: Option<&'static str>,
+    text_implementation: Option<GdnFamilyIdentity>,
     descriptors: [SourceParameter; 4],
     windows: Vec<ParameterWindow>,
     bytes: [Vec<u8>; 4],
@@ -106,7 +106,7 @@ impl ModelGdnParameters {
         conv: &SourceOperator,
         recurrent: &SourceOperator,
         init: &mut ResidentInitialization<'_>,
-        text_catalogue: Option<&'static str>,
+        text_implementation: Option<GdnFamilyIdentity>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {
         super::projection_cubin::not_cancelled(cancelled)?;
@@ -160,7 +160,7 @@ impl ModelGdnParameters {
         let payload = Arc::new(ParameterPayload {
             source,
             site,
-            text_catalogue,
+            text_implementation,
             descriptors,
             windows,
             bytes,

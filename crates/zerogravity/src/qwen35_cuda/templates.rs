@@ -1,7 +1,7 @@
 //! Lazy model calls and exact backend implementation binding.
 use super::*;
 use crate::gpu::SourceBindings;
-use crate::gpu::cuda::gdn::GdnKernelRecipe;
+use crate::gpu::cuda::gdn::TextGdnImplementation;
 use crate::qwen35::plan::{PromptSpan, PromptWorkload};
 use crate::qwen35::source::binding::BoundFullModelSource;
 use std::collections::VecDeque;
@@ -48,7 +48,7 @@ struct Template {
     workload: PromptWorkload,
     base: Option<usize>,
     binding: Arc<SourceBindings>,
-    recipe: GdnKernelRecipe,
+    implementation: TextGdnImplementation,
 }
 impl Templates {
     fn metadata_bytes() -> Result<usize> {
@@ -92,8 +92,10 @@ impl Templates {
         &self,
         input_tokens: usize,
         is_decode: bool,
-    ) -> Option<bindings::GdnImplementation> {
-        qualification::gdn_implementation(self.source.model_profile(), input_tokens, is_decode)
+    ) -> Result<Option<TextGdnImplementation>> {
+        let profile = self.source.model_profile();
+        let candidate = qualification::gdn_implementation(profile, input_tokens, is_decode)?;
+        qualification::seal_gdn_implementation(profile, input_tokens, is_decode, candidate)
     }
     fn find(
         calls: &PreparedCache<Template>,
@@ -106,14 +108,14 @@ impl Templates {
         &self,
         workload: PromptWorkload,
         base: Option<usize>,
-    ) -> Result<(Arc<SourceBindings>, GdnKernelRecipe)> {
+    ) -> Result<(Arc<SourceBindings>, TextGdnImplementation)> {
         {
             let calls = self
                 .calls
                 .lock()
                 .map_err(|_| Error::State("prompt template cache poisoned".into()))?;
             if let Some(template) = Self::find(&calls, workload, base) {
-                return Ok((template.binding.clone(), template.recipe));
+                return Ok((template.binding.clone(), template.implementation));
             }
         }
         let is_decode = base.is_some();
@@ -122,8 +124,8 @@ impl Templates {
         } else {
             workload.prompt_tokens()
         };
-        let recipe = bindings::gdn_recipe(
-            self.implementation(input_tokens, is_decode),
+        let implementation = bindings::gdn_implementation(
+            self.implementation(input_tokens, is_decode)?,
             input_tokens,
             is_decode,
         )?;
@@ -146,19 +148,21 @@ impl Templates {
             .lock()
             .map_err(|_| Error::State("prompt template cache poisoned".into()))?;
         if let Some(template) = Self::find(&calls, workload, base) {
-            return Ok((template.binding.clone(), template.recipe));
+            return Ok((template.binding.clone(), template.implementation));
         }
         let evicted = calls.insert(Template {
             workload,
             base,
             binding: binding.clone(),
-            recipe,
+            implementation,
         });
         drop(calls);
         drop(evicted);
-        Ok((binding, recipe))
+        Ok((binding, implementation))
     }
-    pub(super) fn physical_scopes(&self) -> Result<Vec<(Arc<SourceBindings>, GdnKernelRecipe)>> {
+    pub(super) fn physical_scopes(
+        &self,
+    ) -> Result<Vec<(Arc<SourceBindings>, TextGdnImplementation)>> {
         let mut scopes = Vec::with_capacity(qualification::PROMPT_TOKEN_COUNTS.len() + 1);
         for &count in qualification::PROMPT_TOKEN_COUNTS {
             let workload = self
@@ -185,41 +189,41 @@ impl Templates {
     pub(super) fn bind_prompt(
         &self,
         ids: &[u32],
-    ) -> Result<(Arc<SourceBindings>, GdnKernelRecipe)> {
+    ) -> Result<(Arc<SourceBindings>, TextGdnImplementation)> {
         let profile = self.source.model_profile();
         profile.validate_prompt_request(ids, 1, self.context_capacity_tokens)?;
         let workload = profile.prompt_workload(ids.len(), self.context_capacity_tokens)?;
-        let (template, recipe) = self.template(workload, None)?;
+        let (template, implementation) = self.template(workload, None)?;
         let metadata = self.admit_call(&template)?;
         let span = PromptSpan::prefill(self.source.source().source_identity(), workload, ids)?;
-        self.bind(span, template, recipe, metadata)
+        self.bind(span, template, implementation, metadata)
     }
     pub(super) fn bind_cached_metadata(
         &self,
         prompt_tokens: usize,
         base: usize,
         id: u32,
-    ) -> Result<(Arc<SourceBindings>, GdnKernelRecipe)> {
+    ) -> Result<(Arc<SourceBindings>, TextGdnImplementation)> {
         let workload = self
             .source
             .model_profile()
             .prompt_workload(prompt_tokens, self.context_capacity_tokens)?;
         let span = PromptSpan::cached(self.source.source().source_identity(), workload, base, id)?;
-        let (template, recipe) = self.template(workload, Some(base))?;
+        let (template, implementation) = self.template(workload, Some(base))?;
         let metadata = self.admit_call(&template)?;
-        self.bind(span, template, recipe, metadata)
+        self.bind(span, template, implementation, metadata)
     }
     fn bind(
         &self,
         span: PromptSpan,
         template: Arc<SourceBindings>,
-        recipe: GdnKernelRecipe,
+        implementation: TextGdnImplementation,
         metadata: WindowWorkspace,
-    ) -> Result<(Arc<SourceBindings>, GdnKernelRecipe)> {
+    ) -> Result<(Arc<SourceBindings>, TextGdnImplementation)> {
         span.validate()?;
         let call = self.source.bind_prompt_span(span)?;
         let binding = template.rebind(call.call().request().source_call()?, metadata)?;
-        Ok((Arc::new(binding), recipe))
+        Ok((Arc::new(binding), implementation))
     }
 }
 
@@ -279,14 +283,61 @@ mod tests {
     }
 
     #[test]
-    fn missing_or_mismatched_backend_implementation_refuses() {
+    fn missing_or_mismatched_backend_implementation_refuses_before_preparation() {
+        use crate::gpu::cuda::gdn::{
+            GdnKernelConfig, GdnKktKernel, GdnOutputKernel, GdnRecomputeKernel, GdnStateKernel,
+            TextGdnImplementation,
+        };
+
         assert!(matches!(
-            bindings::gdn_recipe(None, 48, false),
+            bindings::gdn_implementation(None, 48, false),
             Err(Error::Unsupported(_))
         ));
-        let implementation =
-            qualification::gdn_implementation(QwenSourceProfile::Qwen08, 47, false).unwrap();
-        assert!(bindings::gdn_recipe(Some(implementation), 48, false).is_err());
-        assert!(qualification::gdn_implementation(QwenSourceProfile::Qwen08, 48, false).is_none());
+        assert!(
+            qualification::seal_gdn_implementation(QwenSourceProfile::Qwen08, 47, false, None,)
+                .is_err()
+        );
+
+        let qwen08_47 = qualification::gdn_implementation(QwenSourceProfile::Qwen08, 47, false)
+            .unwrap()
+            .unwrap();
+        let qwen2b_47 = qualification::gdn_implementation(QwenSourceProfile::Qwen2B, 47, false)
+            .unwrap()
+            .unwrap();
+        let qwen2b_57 = qualification::gdn_implementation(QwenSourceProfile::Qwen2B, 57, false)
+            .unwrap()
+            .unwrap();
+        assert_eq!(qwen08_47.config(), qwen2b_57.config());
+        assert_ne!(qwen08_47.config(), qwen2b_47.config());
+        assert!(bindings::gdn_implementation(Some(qwen08_47), 48, false).is_err());
+
+        let explicit = GdnKernelConfig::from_stages(
+            GdnKktKernel::Bk32W4S3,
+            GdnRecomputeKernel::Bk64Bv64W8S4,
+            GdnStateKernel::Bv64W4S2,
+            GdnOutputKernel::Bk32Bv32W4S3,
+        )
+        .unwrap();
+        let mismatched = TextGdnImplementation::prefill(
+            "b24e5fb2ac4b0e591cb907e8226cd1d80bc24507c0586ecfb5238ea4f3c91f8b",
+            47,
+            explicit,
+        )
+        .unwrap();
+        assert_eq!(mismatched.config(), Some(explicit));
+        assert!(
+            qualification::seal_gdn_implementation(
+                QwenSourceProfile::Qwen08,
+                47,
+                false,
+                Some(mismatched),
+            )
+            .is_err()
+        );
+        assert!(
+            qualification::gdn_implementation(QwenSourceProfile::Qwen08, 48, false)
+                .unwrap()
+                .is_none()
+        );
     }
 }

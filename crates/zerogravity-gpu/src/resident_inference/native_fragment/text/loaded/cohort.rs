@@ -20,14 +20,14 @@ impl DecodeCohortInputs {
     pub(crate) fn issue(
         sessions: &[&TextSession],
         requests: &[TextFeedbackRequest<'_>],
-        calls: &[(Arc<SourceBindings>, GdnKernelRecipe)],
+        calls: &[(Arc<SourceBindings>, TextGdnImplementation)],
         cancelled: &[&AtomicBool],
     ) -> Result<Arc<Self>> {
         Self::issue_inner(sessions, Some(requests), calls, cancelled, false)
     }
     pub(crate) fn issue_fixed_prompt(
         sessions: &[&TextSession],
-        calls: &[(Arc<SourceBindings>, GdnKernelRecipe)],
+        calls: &[(Arc<SourceBindings>, TextGdnImplementation)],
         cancelled: &[&AtomicBool],
     ) -> Result<Arc<Self>> {
         Self::issue_inner(sessions, None, calls, cancelled, true)
@@ -35,7 +35,7 @@ impl DecodeCohortInputs {
     fn issue_inner(
         sessions: &[&TextSession],
         requests: Option<&[TextFeedbackRequest<'_>]>,
-        calls: &[(Arc<SourceBindings>, GdnKernelRecipe)],
+        calls: &[(Arc<SourceBindings>, TextGdnImplementation)],
         cancelled: &[&AtomicBool],
         prompt: bool,
     ) -> Result<Arc<Self>> {
@@ -82,14 +82,14 @@ impl DecodeCohortInputs {
         let roots = ResidentBatchRows::bf16(&roots, row_elements)?;
         let metadata = first.loaded.source().reserve_workspace(64 * 1024)?;
         let mut rows: Vec<Arc<TextCallInput>> = Vec::with_capacity(sessions.len());
-        for (index, ((session, flag), (record, recipe))) in
+        for (index, ((session, flag), (record, implementation))) in
             sessions.iter().zip(cancelled).zip(calls).enumerate()
         {
             let input = if prompt {
                 session.original.bind_text_prompt(
                     session.loaded.cold.bindings.clone(),
                     record.clone(),
-                    *recipe,
+                    *implementation,
                     session.loaded.cold.capture,
                     Some(flag),
                 )?
@@ -100,7 +100,7 @@ impl DecodeCohortInputs {
                 session.original.bind_text_feedback(
                     session.loaded.cold.bindings.clone(),
                     record.clone(),
-                    *recipe,
+                    *implementation,
                     session.loaded.cold.capture,
                     packet,
                     Some(flag),
@@ -180,7 +180,7 @@ fn require_same_cohort_recipe(a: &TextCallInput, b: &TextCallInput) -> Result<()
         || (mode == SourceCallMode::Prefill && (b.base() != 0 || a.ids() != b.ids()))
         || !a.source().same_issuer(b.source())
         || a.call().source() != b.call().source()
-        || a.scope().gdn_recipe() != b.scope().gdn_recipe()
+        || a.scope().gdn_implementation() != b.scope().gdn_implementation()
         || a.scope().native_capture() != b.scope().native_capture()
         || ap.numerical_profile() != bp.numerical_profile()
         || ap.values() != bp.values()

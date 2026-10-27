@@ -44,9 +44,9 @@ impl Session {
         F: for<'a> FnMut(native::TextReadback<'a>) -> Result<()>,
     {
         not_cancelled(cancelled)?;
-        let (binding, recipe) = self.templates.bind_prompt(ids)?;
+        let (binding, implementation) = self.templates.bind_prompt(ids)?;
         self.engine
-            .prepare_prompt_with(binding, recipe, cancelled, validate)
+            .prepare_prompt_with(binding, implementation, cancelled, validate)
             .await
     }
     pub async fn prepare_next_with<F>(
@@ -59,13 +59,13 @@ impl Session {
     {
         not_cancelled(cancelled)?;
         let request = self.engine.feedback_request()?;
-        let (binding, recipe) = self.templates.bind_cached_metadata(
+        let (binding, implementation) = self.templates.bind_cached_metadata(
             request.prompt_tokens(),
             request.base(),
             request.selected_id(),
         )?;
         self.engine
-            .prepare_next_with(request, binding, recipe, cancelled, validate)
+            .prepare_next_with(request, binding, implementation, cancelled, validate)
             .await
     }
     pub fn commit(
@@ -117,7 +117,7 @@ impl Session {
         cancelled: Option<&AtomicBool>,
     ) -> Result<native::TextFaultOutcome> {
         let request = self.engine.feedback_request()?;
-        let (binding, recipe) = self.templates.bind_cached_metadata(
+        let (binding, implementation) = self.templates.bind_cached_metadata(
             request.prompt_tokens(),
             request.base(),
             request.selected_id(),
@@ -125,6 +125,8 @@ impl Session {
         let Self { engine, templates } = self;
         // The observation must not be satisfied by the app's own source cache.
         drop(templates);
-        engine.probe_cached(fault, binding, recipe, cancelled).await
+        engine
+            .probe_cached(fault, binding, implementation, cancelled)
+            .await
     }
 }

@@ -100,7 +100,7 @@ impl FullModelProgram {
             Self::prepare_text_values(
                 scope.clone(),
                 rms_scope.clone(),
-                GdnFamilyIdentity::text(*scope.gdn_recipe()),
+                GdnFamilyIdentity::text(scope.gdn_implementation().config()),
                 StorageMode::ReuseMlp,
                 limits(),
                 readback,
@@ -361,7 +361,7 @@ impl TextColdValues {
         let (body, buffers, preflight) = FullModelProgram::bind_text_values(
             input.scope().clone(),
             scope.clone(),
-            GdnFamilyIdentity::text(*input.scope().gdn_recipe()),
+            GdnFamilyIdentity::text(input.scope().gdn_implementation().config()),
             StorageMode::ReuseMlp,
             limits(),
             (&self.body, &self.preflight, tied),

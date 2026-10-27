@@ -1,7 +1,7 @@
 //! Cold model-to-engine data join; no kernel launch, root or publication authority.
 use crate::accelerator::program::{ConvDomain, KvDomain, RecurrentDomain, StateSlot};
 #[cfg(feature = "qwen35-cuda-qualification")]
-use crate::gpu::cuda::gdn::GdnKernelRecipe;
+use crate::gpu::cuda::gdn::TextGdnImplementation;
 use crate::gpu::{
     ComponentOutput as EngineComponentOutput, ComponentRecipe, SourceBindings, SourceSelection,
     StateLayout, StateRequirement,
@@ -67,41 +67,28 @@ pub(super) fn prepare(
     Ok(Arc::new(bindings))
 }
 
+/// Require the sealed implementation selected by explicit qualification before
+/// any source record or workspace is prepared.
 #[cfg(feature = "qwen35-cuda-qualification")]
-#[derive(Clone, Copy)]
-pub(super) struct GdnImplementation {
-    pub recipe_sha256: &'static str,
-    pub input_tokens: usize,
-    pub is_decode: bool,
-}
-
-/// Ask the backend to bind the exact implementation descriptor. Absence is an
-/// honest unsupported result; model geometry never manufactures a recipe.
-#[cfg(feature = "qwen35-cuda-qualification")]
-pub(super) fn gdn_recipe(
-    implementation: Option<GdnImplementation>,
+pub(super) fn gdn_implementation(
+    implementation: Option<TextGdnImplementation>,
     input_tokens: usize,
     is_decode: bool,
-) -> Result<GdnKernelRecipe> {
+) -> Result<TextGdnImplementation> {
     let implementation = implementation.ok_or_else(|| {
         Error::Unsupported("CUDA GDN backend has no implementation for requested call".into())
     })?;
-    if implementation.input_tokens != input_tokens || implementation.is_decode != is_decode {
+    if implementation.input_tokens() != input_tokens || implementation.is_decode() != is_decode {
         return Err(Error::Unsupported(
             "CUDA GDN implementation geometry differs from requested call".into(),
         ));
     }
-    let recipe = GdnKernelRecipe::bind(
-        implementation.recipe_sha256,
-        implementation.input_tokens,
-        implementation.is_decode,
-    )?;
-    if recipe.input_tokens() != input_tokens || recipe.is_decode() != is_decode {
-        return Err(Error::State(
-            "CUDA GDN backend rebound a different implementation".into(),
+    if is_decode != implementation.config().is_none() {
+        return Err(Error::Unsupported(
+            "CUDA GDN implementation has missing or mismatched explicit config".into(),
         ));
     }
-    Ok(recipe)
+    Ok(implementation)
 }
 
 /// Move the same source-record ticket into the graph owner before RMS or upload.

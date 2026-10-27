@@ -1,7 +1,7 @@
 //! Actual source calls and original current-root/committed-packet ownership.
 use super::continuation::{AttemptPhaseBinding, GdnAttemptSchedule, PrefixPhaseEnqueue};
 use super::*;
-use crate::cuda::gdn::GdnKernelRecipe;
+use crate::cuda::gdn::TextGdnImplementation;
 use crate::cuda::native::text_model::{TextModelBinding, TextModelBindings};
 use crate::cuda::native::text_native::TextKernelCapture;
 use crate::resident_program::source_bindings::SourceBindings;
@@ -294,7 +294,7 @@ impl ResidentSession {
         &self,
         prepared: Arc<TextModelBindings>,
         record: Arc<SourceBindings>,
-        recipe: GdnKernelRecipe,
+        implementation: TextGdnImplementation,
         capture: TextKernelCapture,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<TextCallInput>> {
@@ -306,13 +306,20 @@ impl ResidentSession {
                 "text prompt requires the original empty root".into(),
             ));
         }
-        self.bind_text_input(prepared, record, recipe, capture, Origin::Prompt, cancelled)
+        self.bind_text_input(
+            prepared,
+            record,
+            implementation,
+            capture,
+            Origin::Prompt,
+            cancelled,
+        )
     }
     pub(crate) fn bind_text_feedback(
         &self,
         prepared: Arc<TextModelBindings>,
         record: Arc<SourceBindings>,
-        recipe: GdnKernelRecipe,
+        implementation: TextGdnImplementation,
         capture: TextKernelCapture,
         packet: Arc<CommittedTextPacket>,
         cancelled: Option<&AtomicBool>,
@@ -323,7 +330,7 @@ impl ResidentSession {
         self.bind_text_input(
             prepared,
             record,
-            recipe,
+            implementation,
             capture,
             Origin::Feedback(packet),
             cancelled,
@@ -333,7 +340,7 @@ impl ResidentSession {
         &self,
         prepared: Arc<TextModelBindings>,
         record: Arc<SourceBindings>,
-        recipe: GdnKernelRecipe,
+        implementation: TextGdnImplementation,
         capture: TextKernelCapture,
         origin: Origin,
         cancelled: Option<&AtomicBool>,
@@ -352,7 +359,7 @@ impl ResidentSession {
             return Err(Error::State("text original source/session differs".into()));
         }
         let metadata = source.reserve_workspace(CALL_METADATA_BYTES)?;
-        let scope = prepared.bind(record, recipe, capture)?;
+        let scope = prepared.bind(record, implementation, capture)?;
         let attempt = self
             .authority
             .begin_advance(scope.call().rows().len() as u64)?;

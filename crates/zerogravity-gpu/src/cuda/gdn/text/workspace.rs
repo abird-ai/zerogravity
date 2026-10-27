@@ -29,8 +29,8 @@ fn layout(geometry: TextGdnGeometry) -> Result<BTreeMap<GdnBuffer, usize>> {
             geometry.phase,
             stage,
             true,
-            select(geometry.recipe, geometry.config, geometry.phase, stage)?,
-            arithmetic::GdnArithmeticFamily::Text(geometry.recipe),
+            select(geometry.implementation.config(), geometry.phase, stage)?,
+            arithmetic::GdnArithmeticFamily::Text(geometry.implementation.config()),
         )?;
         roles.extend(spec.bindings.into_iter().map(|b| b.role));
     }
@@ -69,7 +69,7 @@ impl TextGdnWorkspace {
     ) -> Result<Arc<Self>> {
         scope.require_values(&values)?;
         init.require_service(values.service())?;
-        let geometry = TextGdnGeometry::for_call(scope.call(), *scope.gdn_recipe())?;
+        let geometry = TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?;
         geometry.require_catalog()?; // Missing real tuples refuse before H2D/allocation.
         let source = scope.source();
         let metadata = Arc::new(
@@ -137,7 +137,7 @@ impl TextGdnWorkspace {
             || Arc::ptr_eq(&values, &self.values)
             || !scope.source().same_issuer(self.scope.source())
             || !Arc::ptr_eq(values.service(), self.values.service())
-            || TextGdnGeometry::for_call(scope.call(), *scope.gdn_recipe())? != self.geometry
+            || TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())? != self.geometry
         {
             return Err(Error::State(
                 "text GDN fresh record/same actual physical geometry".into(),
@@ -169,7 +169,7 @@ impl TextGdnWorkspace {
         scope.require_values(values)?;
         if !Arc::ptr_eq(scope, &self.scope)
             || !Arc::ptr_eq(values, &self.values)
-            || TextGdnGeometry::for_call(scope.call(), *scope.gdn_recipe())? != self.geometry
+            || TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())? != self.geometry
         {
             return Err(Error::State(
                 "text private GDN same physical geometry/source scope".into(),
@@ -258,17 +258,17 @@ impl TextGdnWorkspace {
 impl TextGdnWorkspace {
     pub(crate) fn allocation_layout(
         call: &SourceCall,
-        recipe: GdnKernelRecipe,
+        implementation: TextGdnImplementation,
     ) -> Result<Vec<usize>> {
-        Ok(layout(TextGdnGeometry::for_call(call, recipe)?)?
+        Ok(layout(TextGdnGeometry::for_call(call, implementation)?)?
             .into_values()
             .collect())
     }
     pub(crate) fn host_layout(
         call: &SourceCall,
-        recipe: GdnKernelRecipe,
+        implementation: TextGdnImplementation,
     ) -> Result<(usize, usize)> {
-        let geometry = TextGdnGeometry::for_call(call, recipe)?;
+        let geometry = TextGdnGeometry::for_call(call, implementation)?;
         geometry.require_catalog()?;
         let retained = geometry
             .metadata_bound()?
@@ -322,12 +322,10 @@ mod tests {
     #[test]
     fn selected_geometry_never_allocates_source_or_public_roles_in_private_pool() -> Result<()> {
         for prompt_tokens in [47, 57, 62, 67, 72] {
-            let recipe = GdnKernelRecipe::fixture(0, prompt_tokens, false)?;
             let g = TextGdnGeometry {
-                recipe,
+                implementation: fixture_implementation(0, prompt_tokens, false)?,
                 phase: GdnPhase::TextPrefill(prompt_tokens),
                 slot: GdnCacheSlot::One,
-                config: Some(recipe.historical_prefill_config()?),
             };
             let actual = layout(g)?;
             assert!(

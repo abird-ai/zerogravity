@@ -119,7 +119,7 @@ impl TextLoaded {
     pub async fn prepare_fixed_prompt_cohort(
         self: &Arc<Self>,
         sessions: &[&TextSession],
-        calls: &[(Arc<SourceBindings>, GdnKernelRecipe)],
+        calls: &[(Arc<SourceBindings>, TextGdnImplementation)],
         cancelled: &[&AtomicBool],
         validate: Option<Validation<'_>>,
     ) -> Result<Option<TextPendingCohort>> {
@@ -130,7 +130,7 @@ impl TextLoaded {
     pub async fn prepare_fixed_prompt_cohort_status(
         self: &Arc<Self>,
         sessions: &[&TextSession],
-        calls: &[(Arc<SourceBindings>, GdnKernelRecipe)],
+        calls: &[(Arc<SourceBindings>, TextGdnImplementation)],
         cancelled: &[&AtomicBool],
         validate: Option<Validation<'_>>,
     ) -> Result<TextCohortPreparation> {
@@ -149,7 +149,7 @@ impl TextLoaded {
         self: &Arc<Self>,
         sessions: &[&TextSession],
         requests: &[TextFeedbackRequest<'_>],
-        calls: &[(Arc<SourceBindings>, GdnKernelRecipe)],
+        calls: &[(Arc<SourceBindings>, TextGdnImplementation)],
         cancelled: &[&AtomicBool],
         validate: Option<Validation<'_>>,
     ) -> Result<Option<TextPendingCohort>> {
@@ -161,7 +161,7 @@ impl TextLoaded {
         self: &Arc<Self>,
         sessions: &[&TextSession],
         requests: &[TextFeedbackRequest<'_>],
-        calls: &[(Arc<SourceBindings>, GdnKernelRecipe)],
+        calls: &[(Arc<SourceBindings>, TextGdnImplementation)],
         cancelled: &[&AtomicBool],
         validate: Option<Validation<'_>>,
     ) -> Result<TextCohortPreparation> {

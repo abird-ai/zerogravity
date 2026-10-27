@@ -111,11 +111,13 @@ const COMPILATION_SOURCE: CompilationSourceContract = CompilationSourceContract 
     float_semantics: FloatSemantics::OriginalInlinePtxModifiers,
 };
 
-// Full catalogue source participates in family equality across compiled artifacts.
-// No request, fresh teacher issuer, state root, allocator or expected tensor here.
+// Exact selected executable sources participate in family equality.
+// No qualification recipe, request, root, allocator or expected tensor here.
 #[derive(Clone, Copy)]
 pub(crate) struct GdnFamilyIdentity {
-    capture_catalogue: Option<&'static str>,
+    text_implementation: bool,
+    text_config: Option<super::GdnKernelConfig>,
+    selected_sources: Option<[&'static str; 4]>,
     compile_source: CompilationSourceContract,
     selectors: &'static [&'static str],
     schedule_source: &'static str,
@@ -125,7 +127,13 @@ pub(crate) struct GdnFamilyIdentity {
 
 impl PartialEq for GdnFamilyIdentity {
     fn eq(&self, other: &Self) -> bool {
-        self.capture_catalogue == other.capture_catalogue
+        self.text_implementation == other.text_implementation
+            && self.text_config == other.text_config
+            && match (self.selected_sources, other.selected_sources) {
+                (Some(left), Some(right)) => source_slice_eq(&left, &right),
+                (None, None) => true,
+                _ => false,
+            }
             && self.compile_source == other.compile_source
             && source_slice_eq(self.selectors, other.selectors)
             && source_text_eq(self.schedule_source, other.schedule_source)
@@ -139,8 +147,11 @@ impl fmt::Debug for GdnFamilyIdentity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("GdnFamilyIdentity")
             .field("hardware", &self.compile_source.hardware)
-            .field("capture_catalogue", &self.capture_catalogue)
-            .field("source_units", &self.catalogue.len())
+            .field("text_config", &self.text_config)
+            .field(
+                "source_units",
+                &(self.catalogue.len() + self.selected_sources.map_or(0, |sources| sources.len())),
+            )
             .finish_non_exhaustive()
     }
 }
@@ -148,7 +159,9 @@ impl GdnFamilyIdentity {
     #[cfg(any(test, target_os = "linux"))]
     pub(crate) fn original2b() -> Self {
         Self {
-            capture_catalogue: None,
+            text_implementation: false,
+            text_config: None,
+            selected_sources: None,
             compile_source: COMPILATION_SOURCE,
             selectors: &[include_str!("qwen2b_assets.rs")],
             schedule_source: include_str!("resident.rs"),
@@ -158,7 +171,9 @@ impl GdnFamilyIdentity {
     }
     pub(crate) fn original08() -> Self {
         Self {
-            capture_catalogue: None,
+            text_implementation: false,
+            text_config: None,
+            selected_sources: None,
             compile_source: COMPILATION_SOURCE,
             selectors: &[
                 include_str!("assets.rs"),
@@ -170,14 +185,30 @@ impl GdnFamilyIdentity {
         }
     }
     #[cfg(target_os = "linux")]
-    pub(crate) fn text(recipe: super::GdnKernelRecipe) -> Self {
+    pub(crate) fn text(config: Option<super::GdnKernelConfig>) -> Self {
+        let (text_config, selected_sources, catalogue) = super::text::text_source_contract(config);
         Self {
-            capture_catalogue: Some(recipe.catalogue_sha256()),
+            text_implementation: true,
+            text_config,
+            selected_sources,
             compile_source: COMPILATION_SOURCE,
-            selectors: &[include_str!("text.rs"), include_str!("text/observed.rs")],
-            schedule_source: include_str!("resident.rs"),
+            selectors: &[
+                include_str!("text/config.rs"),
+                include_str!("text/parameterized_conv.rs"),
+                include_str!("text/parameterized_prefill.rs"),
+                include_str!("text/parameterized_prefill_variants.rs"),
+                include_str!("text/parameterized_cached.rs"),
+                include_str!("text/parameterized_gated.rs"),
+            ],
+            schedule_source: concat!(
+                include_str!("text.rs"),
+                "\0workspace.rs\0",
+                include_str!("text/workspace.rs"),
+                "\0resident.rs\0",
+                include_str!("resident.rs"),
+            ),
             bindings_source: include_str!("../gdn.rs"),
-            catalogue: super::text::observed_catalogue(),
+            catalogue,
         }
     }
     pub(crate) fn require_same(&self, other: &Self) -> Result<()> {
@@ -196,7 +227,7 @@ pub(super) enum GdnArithmeticFamily {
     #[cfg(any(test, target_os = "linux"))]
     Original2b,
     #[cfg(target_os = "linux")]
-    Text(super::GdnKernelRecipe),
+    Text(Option<super::GdnKernelConfig>),
 }
 
 #[derive(Clone)]
@@ -254,20 +285,13 @@ impl StageArithmetic {
             #[cfg(any(test, target_os = "linux"))]
             GdnArithmeticFamily::Original2b => Self::original2b(phase, stage, asset, bindings),
             #[cfg(target_os = "linux")]
-            GdnArithmeticFamily::Text(recipe) => Self::checked(
+            GdnArithmeticFamily::Text(config) => Self::checked(
                 phase,
                 stage,
                 asset,
                 bindings,
-                &super::text::select(
-                    recipe,
-                    matches!(phase, GdnPhase::TextPrefill(_))
-                        .then(|| recipe.historical_prefill_config())
-                        .transpose()?,
-                    phase,
-                    stage,
-                )?,
-                GdnFamilyIdentity::text(recipe),
+                &super::text::select(config, phase, stage)?,
+                GdnFamilyIdentity::text(config),
             ),
         }
     }

@@ -519,8 +519,9 @@ fn configured_prefill_reverses_all_40_historical_stage_tuples() -> Result<()> {
     for (index, legacy_stages) in LEGACY.into_iter().enumerate() {
         let catalogue = index / 5;
         let tokens = [47, 57, 62, 67, 72][index % 5];
-        let recipe = GdnKernelRecipe::fixture(catalogue, tokens, false)?;
-        let config = recipe.historical_prefill_config()?;
+        let config = super::super::fixture_implementation(catalogue, tokens, false)?
+            .config()
+            .ok_or_else(|| Error::State("test prefill config absent".into()))?;
         for ((stage, legacy), output) in stages
             .into_iter()
             .zip(legacy_stages)
@@ -567,9 +568,15 @@ fn closed_config_matrix_accepts_only_six_observed_combinations() -> Result<()> {
     }
     assert_eq!(accepted.len(), 6);
     assert!(super::super::GdnKernelConfig::require(None).is_err());
-    let recipe = GdnKernelRecipe::fixture(0, 47, false)?;
-    let config = recipe.historical_prefill_config()?;
-    assert!(super::super::select(recipe, None, GdnPhase::TextPrefill(47), GdnStage::Kkt,).is_err());
+    let implementation = super::super::fixture_implementation(0, 47, false)?;
+    let config = implementation
+        .config()
+        .ok_or_else(|| Error::State("test prefill config absent".into()))?;
+    assert!(
+        implementation
+            .require_phase(GdnPhase::TextPrefill(48))
+            .is_err()
+    );
     for (phase, slot, stage) in [
         (GdnPhase::CachedDecode, GdnCacheSlot::One, GdnStage::Kkt),
         (GdnPhase::TextPrefill(47), GdnCacheSlot::Four, GdnStage::H),
@@ -587,9 +594,13 @@ fn closed_config_matrix_accepts_only_six_observed_combinations() -> Result<()> {
     }
     for catalogue in 0..2 {
         for tokens in [47, 57, 62, 67, 72] {
-            assert!(accepted.contains(
-                &GdnKernelRecipe::fixture(catalogue, tokens, false)?.historical_prefill_config()?
-            ));
+            assert!(
+                accepted.contains(
+                    &super::super::fixture_implementation(catalogue, tokens, false)?
+                        .config()
+                        .ok_or_else(|| Error::State("test prefill config absent".into()))?
+                )
+            );
         }
     }
     Ok(())
@@ -627,7 +638,9 @@ fn configured_prefill_grids_packets_bodies_and_source_identities_are_exact() -> 
     for catalogue in 0..2 {
         for tokens in [47, 57, 62, 67, 72] {
             let recipe = GdnKernelRecipe::fixture(catalogue, tokens, false)?;
-            let config = recipe.historical_prefill_config()?;
+            let config = super::super::fixture_implementation(catalogue, tokens, false)?
+                .config()
+                .ok_or_else(|| Error::State("test prefill config absent".into()))?;
             for stage in [
                 GdnStage::Kkt,
                 GdnStage::Recompute,

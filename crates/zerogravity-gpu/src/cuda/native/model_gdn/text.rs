@@ -23,7 +23,7 @@ impl ModelGdnParameters {
     ) -> Result<Arc<Self>> {
         super::super::projection_cubin::not_cancelled(cancelled)?;
         let (conv, recurrent) = operators(scope, layer)?;
-        TextGdnGeometry::for_call(scope.call(), *scope.gdn_recipe())?.require_catalog()?;
+        TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?.require_catalog()?;
         if scope.source().source_identity() != service.source_identity() {
             return Err(Error::State(
                 "text GDN actual source/service before parameter upload".into(),
@@ -35,13 +35,18 @@ impl ModelGdnParameters {
             &conv,
             &recurrent,
             init,
-            Some(scope.gdn_recipe().catalogue_sha256()),
+            Some(crate::cuda::gdn::GdnFamilyIdentity::text(
+                scope.gdn_implementation().config(),
+            )),
             cancelled,
         )
     }
     pub(crate) fn require_text(&self, scope: &TextModelBinding, layer: usize) -> Result<()> {
         let (conv, recurrent) = operators(scope, layer)?;
-        if self.payload.text_catalogue != Some(scope.gdn_recipe().catalogue_sha256())
+        if self.payload.text_implementation
+            != Some(crate::cuda::gdn::GdnFamilyIdentity::text(
+                scope.gdn_implementation().config(),
+            ))
             || self.payload.site != layer
             || !self.payload.source.same_issuer(scope.source())
         {
@@ -138,7 +143,8 @@ impl ColdTextGdn {
         let layer = self.code.layer();
         if domains.call() != scope.record().call()
             || domains.layer() != layer
-            || TextGdnGeometry::for_call(scope.call(), *scope.gdn_recipe())? != self.code.geometry()
+            || TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?
+                != self.code.geometry()
             || !scope.source().same_issuer(self.code.scope().source())
         {
             return Err(Error::State(
@@ -222,12 +228,12 @@ impl ModelGdnPrepared {
         self.binding
             .require_prepared(&self.prepared, &self.domains)?;
         self.prepared.arithmetic().require_instance(
-            TextGdnGeometry::for_call(scope.call(), *scope.gdn_recipe())?.phase,
+            TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?.phase,
             GdnCacheSlot::One,
             true,
         )?;
         self.prepared.arithmetic().family().require_same(
-            &crate::cuda::gdn::GdnFamilyIdentity::text(*scope.gdn_recipe()),
+            &crate::cuda::gdn::GdnFamilyIdentity::text(scope.gdn_implementation().config()),
         )
     }
 }
@@ -269,7 +275,7 @@ impl ColdTextGdn {
 
 impl ColdTextGdn {
     pub(crate) fn allocation_layout(scope: &TextModelBinding) -> Result<Vec<usize>> {
-        let geometry = TextGdnGeometry::for_call(scope.call(), *scope.gdn_recipe())?;
+        let geometry = TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?;
         geometry.require_catalog()?;
         let count = scope
             .gdn_sites()
@@ -286,7 +292,7 @@ impl ColdTextGdn {
         Ok(result)
     }
     pub(crate) fn host_bytes(scope: &TextModelBinding) -> Result<usize> {
-        let geometry = TextGdnGeometry::for_call(scope.call(), *scope.gdn_recipe())?;
+        let geometry = TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?;
         geometry
             .metadata_bound()?
             .checked_add(64 * 1024)

@@ -239,7 +239,7 @@ impl FullModelProgram {
         cancel: Option<&AtomicBool>,
     ) -> Result<(Arc<Self>, Vec<DeviceBuffer>, ResidentPreflight)> {
         geometry.require_scope(&scope)?;
-        let family = GdnFamilyIdentity::text(*scope.gdn_recipe());
+        let family = GdnFamilyIdentity::text(scope.gdn_implementation().config());
         Self::prepare_text_values_inner(
             scope,
             rms_scope.clone(),

@@ -78,6 +78,33 @@ const OUTPUT_S3: Variant = Variant {
     ptx_sha256: "b0f269381218e2a3fa2e8148d5b83122e9fcf4d628e741164c074f8c53c93efc",
 };
 
+pub(super) fn source_contract(config: GdnKernelConfig) -> [&'static str; 4] {
+    use GdnKktKernel::*;
+    use GdnOutputKernel::*;
+    use GdnRecomputeKernel::*;
+    use GdnStateKernel::*;
+
+    [
+        match config.kkt() {
+            Bk32W4S3 => KKT_BK32_W4_S3.source,
+            Bk32W8S3 => KKT_BK32_W8_S3.source,
+            Bk64W8S4 => KKT_BK64_W8_S4.source,
+        },
+        match config.recompute() {
+            Bk64Bv64W8S3 => RECOMPUTE_S3.source,
+            Bk64Bv64W8S4 => RECOMPUTE_S4.source,
+        },
+        match config.state() {
+            Bv32W4S2 => H_BV32.source,
+            Bv64W4S2 => H_BV64.source,
+        },
+        match config.output() {
+            Bk32Bv32W4S2 => OUTPUT_S2.source,
+            Bk32Bv32W4S3 => OUTPUT_S3.source,
+        },
+    ]
+}
+
 fn tokens(phase: GdnPhase, slot: GdnCacheSlot) -> Result<usize> {
     let GdnPhase::TextPrefill(tokens) = phase else {
         return Err(Error::Unsupported(

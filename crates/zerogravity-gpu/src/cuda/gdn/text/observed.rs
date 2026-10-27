@@ -9,80 +9,67 @@ pub struct GdnKernelRecipe {
 }
 struct Capture {
     recipe_sha256: &'static str,
-    catalogue_sha256: &'static str,
     input_tokens: usize,
     is_decode: bool,
 }
 const CAPTURES: &[Capture] = &[
     Capture {
         recipe_sha256: "b24e5fb2ac4b0e591cb907e8226cd1d80bc24507c0586ecfb5238ea4f3c91f8b",
-        catalogue_sha256: "2866412f47d66a3bfa9f71182ded8d0f860b0fdef40cfbfc3d75c0df0d08273f",
         input_tokens: 47,
         is_decode: false,
     },
     Capture {
         recipe_sha256: "9ec9c52e82e99b9654d3136f22e10523e1fa6f786a6136f7adefaaedec2aed43",
-        catalogue_sha256: "2866412f47d66a3bfa9f71182ded8d0f860b0fdef40cfbfc3d75c0df0d08273f",
         input_tokens: 57,
         is_decode: false,
     },
     Capture {
         recipe_sha256: "f487c0f5bcb5580da48fd33f047c4cf67d4098e496e1040e07a4eeafca0c5a65",
-        catalogue_sha256: "2866412f47d66a3bfa9f71182ded8d0f860b0fdef40cfbfc3d75c0df0d08273f",
         input_tokens: 62,
         is_decode: false,
     },
     Capture {
         recipe_sha256: "213a13cfb815791936bca556a1ab66730b03ac71fe9c72f6586cc5fcab0be3e5",
-        catalogue_sha256: "2866412f47d66a3bfa9f71182ded8d0f860b0fdef40cfbfc3d75c0df0d08273f",
         input_tokens: 67,
         is_decode: false,
     },
     Capture {
         recipe_sha256: "d2226726eda06c919709e3b7767d019e0dd33f633db925ce266a9f67b48f1d9e",
-        catalogue_sha256: "2866412f47d66a3bfa9f71182ded8d0f860b0fdef40cfbfc3d75c0df0d08273f",
         input_tokens: 72,
         is_decode: false,
     },
     Capture {
         recipe_sha256: "cf3ef9d3fa84410540c6d969212a3e29c912255d9b404d2430905155c1cf201e",
-        catalogue_sha256: "2866412f47d66a3bfa9f71182ded8d0f860b0fdef40cfbfc3d75c0df0d08273f",
         input_tokens: 1,
         is_decode: true,
     },
     Capture {
         recipe_sha256: "aaae809312359b22c8404b6ea5ba18073738db731e3df64192372c7f40d82cb6",
-        catalogue_sha256: "2caee8e4a11fd3e27f90961842d5d55507cacac9af8d90e41eebcb138c473ed1",
         input_tokens: 47,
         is_decode: false,
     },
     Capture {
         recipe_sha256: "ab5aef404095ded631a2267be095f51b8a4d239a03289d354f3c7b26a1991741",
-        catalogue_sha256: "2caee8e4a11fd3e27f90961842d5d55507cacac9af8d90e41eebcb138c473ed1",
         input_tokens: 57,
         is_decode: false,
     },
     Capture {
         recipe_sha256: "b95983abb04db60da606ffe7ecccc547062cf714dc8b11361cd829be41fd452b",
-        catalogue_sha256: "2caee8e4a11fd3e27f90961842d5d55507cacac9af8d90e41eebcb138c473ed1",
         input_tokens: 62,
         is_decode: false,
     },
     Capture {
         recipe_sha256: "484de0c7dd651e8646758103db6634e8c34750a44c0d03f4d291deb7c93191df",
-        catalogue_sha256: "2caee8e4a11fd3e27f90961842d5d55507cacac9af8d90e41eebcb138c473ed1",
         input_tokens: 67,
         is_decode: false,
     },
     Capture {
         recipe_sha256: "f79c878120e21e36ed8413c5e24f73f159eb4e8a45aaba90e2c4a120cdb30df1",
-        catalogue_sha256: "2caee8e4a11fd3e27f90961842d5d55507cacac9af8d90e41eebcb138c473ed1",
         input_tokens: 72,
         is_decode: false,
     },
     Capture {
         recipe_sha256: "18faad78538d9d190c5a31668710f7b3aced6e2dd5d922618108b4044b3355d8",
-        catalogue_sha256: "2caee8e4a11fd3e27f90961842d5d55507cacac9af8d90e41eebcb138c473ed1",
         input_tokens: 1,
         is_decode: true,
     },
@@ -102,7 +89,8 @@ impl GdnKernelRecipe {
             })?;
         Ok(Self { cell })
     }
-    pub fn recipe_sha256(self) -> &'static str {
+    #[cfg(test)]
+    pub(crate) fn recipe_sha256(self) -> &'static str {
         CAPTURES[self.cell].recipe_sha256
     }
     pub fn input_tokens(self) -> usize {
@@ -110,32 +98,6 @@ impl GdnKernelRecipe {
     }
     pub fn is_decode(self) -> bool {
         CAPTURES[self.cell].is_decode
-    }
-    pub(crate) fn catalogue_sha256(self) -> &'static str {
-        CAPTURES[self.cell].catalogue_sha256
-    }
-    /// Qualification-only migration from a retained prefill recipe to the
-    /// coherent backend implementation contract observed for that call.
-    pub(crate) fn historical_prefill_config(self) -> Result<GdnKernelConfig> {
-        use GdnKktKernel::{Bk32W4S3, Bk32W8S3, Bk64W8S4};
-        use GdnOutputKernel::{Bk32Bv32W4S2, Bk32Bv32W4S3};
-        use GdnRecomputeKernel::{Bk64Bv64W8S3, Bk64Bv64W8S4};
-        use GdnStateKernel::{Bv32W4S2, Bv64W4S2};
-
-        let stages = match self.cell {
-            0 | 7 => (Bk32W8S3, Bk64Bv64W8S4, Bv64W4S2, Bk32Bv32W4S2),
-            1 | 2 => (Bk32W8S3, Bk64Bv64W8S4, Bv64W4S2, Bk32Bv32W4S3),
-            3 => (Bk64W8S4, Bk64Bv64W8S3, Bv32W4S2, Bk32Bv32W4S3),
-            4 | 8 | 9 => (Bk32W8S3, Bk64Bv64W8S4, Bv32W4S2, Bk32Bv32W4S2),
-            6 => (Bk32W4S3, Bk64Bv64W8S4, Bv64W4S2, Bk32Bv32W4S3),
-            10 => (Bk32W4S3, Bk64Bv64W8S4, Bv32W4S2, Bk32Bv32W4S3),
-            _ => {
-                return Err(Error::Unsupported(
-                    "cached GDN recipe has no prefill kernel config".into(),
-                ));
-            }
-        };
-        GdnKernelConfig::from_stages(stages.0, stages.1, stages.2, stages.3)
     }
     #[cfg(test)]
     fn require_phase(self, phase: GdnPhase) -> Result<()> {
@@ -941,108 +903,6 @@ pub(super) fn select(
         )),
     }
 }
-
-pub(super) const CATALOGUE: &[&str] = &[
-    include_str!("observed.rs"),
-    include_str!("parameterized_conv.rs"),
-    include_str!("conv_parameterized.cu"),
-    include_str!("parameterized_prefill.rs"),
-    include_str!("prep_parameterized.cu"),
-    include_str!("cumsum_parameterized.cu"),
-    include_str!("solve_parameterized.cu"),
-    include_str!("parameterized_gated.rs"),
-    include_str!("gated_parameterized.cu"),
-    include_str!("cached_gated_parameterized.cu"),
-    include_str!("parameterized_cached.rs"),
-    include_str!("cached_conv_parameterized.cu"),
-    include_str!("cached_decode_parameterized.cu"),
-    include_str!("qwen08_47/prep.cu"),
-    include_str!("qwen08_47/cumsum.cu"),
-    include_str!("qwen08_47/kkt.cu"),
-    include_str!("qwen08_47/solve.cu"),
-    include_str!("qwen08_47/recompute.cu"),
-    include_str!("qwen08_47/h.cu"),
-    include_str!("qwen08_47/output.cu"),
-    include_str!("qwen08_47/gated.cu"),
-    include_str!("qwen08_57/prep.cu"),
-    include_str!("qwen08_57/cumsum.cu"),
-    include_str!("qwen08_57/kkt.cu"),
-    include_str!("qwen08_57/solve.cu"),
-    include_str!("qwen08_57/recompute.cu"),
-    include_str!("qwen08_57/h.cu"),
-    include_str!("qwen08_57/output.cu"),
-    include_str!("qwen08_57/gated.cu"),
-    include_str!("qwen08_62/prep.cu"),
-    include_str!("qwen08_62/cumsum.cu"),
-    include_str!("qwen08_62/kkt.cu"),
-    include_str!("qwen08_62/solve.cu"),
-    include_str!("qwen08_62/recompute.cu"),
-    include_str!("qwen08_62/h.cu"),
-    include_str!("qwen08_62/output.cu"),
-    include_str!("qwen08_62/gated.cu"),
-    include_str!("qwen08_67/prep.cu"),
-    include_str!("qwen08_67/cumsum.cu"),
-    include_str!("qwen08_67/kkt.cu"),
-    include_str!("qwen08_67/solve.cu"),
-    include_str!("qwen08_67/recompute.cu"),
-    include_str!("qwen08_67/h.cu"),
-    include_str!("qwen08_67/output.cu"),
-    include_str!("qwen08_67/gated.cu"),
-    include_str!("qwen08_72/prep.cu"),
-    include_str!("qwen08_72/cumsum.cu"),
-    include_str!("qwen08_72/kkt.cu"),
-    include_str!("qwen08_72/solve.cu"),
-    include_str!("qwen08_72/recompute.cu"),
-    include_str!("qwen08_72/h.cu"),
-    include_str!("qwen08_72/output.cu"),
-    include_str!("qwen08_72/gated.cu"),
-    include_str!("qwen08_cached/conv.cu"),
-    include_str!("qwen08_cached/decode.cu"),
-    include_str!("qwen08_cached/gated.cu"),
-    include_str!("qwen2b_47/prep.cu"),
-    include_str!("qwen2b_47/cumsum.cu"),
-    include_str!("qwen2b_47/kkt.cu"),
-    include_str!("qwen2b_47/solve.cu"),
-    include_str!("qwen2b_47/recompute.cu"),
-    include_str!("qwen2b_47/h.cu"),
-    include_str!("qwen2b_47/output.cu"),
-    include_str!("qwen2b_47/gated.cu"),
-    include_str!("qwen2b_57/prep.cu"),
-    include_str!("qwen2b_57/cumsum.cu"),
-    include_str!("qwen2b_57/kkt.cu"),
-    include_str!("qwen2b_57/solve.cu"),
-    include_str!("qwen2b_57/recompute.cu"),
-    include_str!("qwen2b_57/h.cu"),
-    include_str!("qwen2b_57/output.cu"),
-    include_str!("qwen2b_57/gated.cu"),
-    include_str!("qwen2b_62/prep.cu"),
-    include_str!("qwen2b_62/cumsum.cu"),
-    include_str!("qwen2b_62/kkt.cu"),
-    include_str!("qwen2b_62/solve.cu"),
-    include_str!("qwen2b_62/recompute.cu"),
-    include_str!("qwen2b_62/h.cu"),
-    include_str!("qwen2b_62/output.cu"),
-    include_str!("qwen2b_62/gated.cu"),
-    include_str!("qwen2b_67/prep.cu"),
-    include_str!("qwen2b_67/cumsum.cu"),
-    include_str!("qwen2b_67/kkt.cu"),
-    include_str!("qwen2b_67/solve.cu"),
-    include_str!("qwen2b_67/recompute.cu"),
-    include_str!("qwen2b_67/h.cu"),
-    include_str!("qwen2b_67/output.cu"),
-    include_str!("qwen2b_67/gated.cu"),
-    include_str!("qwen2b_72/prep.cu"),
-    include_str!("qwen2b_72/cumsum.cu"),
-    include_str!("qwen2b_72/kkt.cu"),
-    include_str!("qwen2b_72/solve.cu"),
-    include_str!("qwen2b_72/recompute.cu"),
-    include_str!("qwen2b_72/h.cu"),
-    include_str!("qwen2b_72/output.cu"),
-    include_str!("qwen2b_72/gated.cu"),
-    include_str!("qwen2b_cached/conv.cu"),
-    include_str!("qwen2b_cached/decode.cu"),
-    include_str!("qwen2b_cached/gated.cu"),
-];
 
 #[cfg(test)]
 mod tests;

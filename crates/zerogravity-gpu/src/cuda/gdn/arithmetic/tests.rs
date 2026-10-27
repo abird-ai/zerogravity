@@ -372,13 +372,17 @@ fn reference_compile_eq(a: &CompilationSourceContract, b: &CompilationSourceCont
 fn reference_family_eq(a: &GdnFamilyIdentity, b: &GdnFamilyIdentity) -> bool {
     reference_compile_eq(&a.compile_source, &b.compile_source)
         && (
-            a.capture_catalogue,
+            a.text_implementation,
+            a.text_config,
+            a.selected_sources,
             a.selectors,
             a.schedule_source,
             a.bindings_source,
             a.catalogue,
         ) == (
-            b.capture_catalogue,
+            b.text_implementation,
+            b.text_config,
+            b.selected_sources,
             b.selectors,
             b.schedule_source,
             b.bindings_source,
@@ -486,7 +490,7 @@ fn exact_family_shortcut_matches_every_original_source_and_compiler_field() {
     ));
     assert!(reference_family_eq(&actual, &equal));
     actual.require_same(&equal).unwrap();
-    for change in 0..18 {
+    for change in 0..20 {
         let mut changed = equal;
         match change {
             0 => changed.compile_source.kernel_source = "different kernel",
@@ -500,12 +504,18 @@ fn exact_family_shortcut_matches_every_original_source_and_compiler_field() {
             8 => changed.compile_source.hardware = "different hardware",
             9 => changed.compile_source.address_bits = 32,
             10 => changed.compile_source.unchecked = false,
-            11 => changed.capture_catalogue = Some("different exact source catalogue"),
-            12 => changed.selectors = &["selector B", "selector A"],
-            13 => changed.schedule_source = "different order",
-            14 => changed.bindings_source = "different bindings",
-            15 => changed.catalogue = &["code B", "code A"],
-            16 => changed.catalogue = &["code A", "code C"],
+            11 => changed.text_implementation = true,
+            12 => {
+                changed.text_config = crate::cuda::gdn::text::fixture_implementation(0, 47, false)
+                    .unwrap()
+                    .config()
+            }
+            13 => changed.selected_sources = Some(["a", "b", "c", "d"]),
+            14 => changed.selectors = &["selector B", "selector A"],
+            15 => changed.schedule_source = "different order",
+            16 => changed.bindings_source = "different bindings",
+            17 => changed.catalogue = &["code B", "code A"],
+            18 => changed.catalogue = &["code A", "code C"],
             _ => changed.catalogue = &actual.catalogue[..1],
         }
         assert!(!reference_family_eq(&actual, &changed));
@@ -522,13 +532,23 @@ fn exact_family_shortcut_matches_every_original_source_and_compiler_field() {
     #[cfg(target_os = "linux")]
     {
         let a = GdnFamilyIdentity::text(
-            crate::cuda::gdn::GdnKernelRecipe::fixture(0, 47, false).unwrap(),
+            crate::cuda::gdn::text::fixture_implementation(0, 47, false)
+                .unwrap()
+                .config(),
         );
-        let b = GdnFamilyIdentity::text(
-            crate::cuda::gdn::GdnKernelRecipe::fixture(1, 47, false).unwrap(),
+        let same = GdnFamilyIdentity::text(
+            crate::cuda::gdn::text::fixture_implementation(1, 57, false)
+                .unwrap()
+                .config(),
         );
-        assert_eq!(a == b, reference_family_eq(&a, &b));
-        assert!(a.require_same(&b).is_err());
+        let different = GdnFamilyIdentity::text(
+            crate::cuda::gdn::text::fixture_implementation(1, 47, false)
+                .unwrap()
+                .config(),
+        );
+        assert_eq!(a == same, reference_family_eq(&a, &same));
+        a.require_same(&same).unwrap();
+        assert!(a.require_same(&different).is_err());
         a.require_same(&a).unwrap();
     }
 }

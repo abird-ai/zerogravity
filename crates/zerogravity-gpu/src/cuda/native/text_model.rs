@@ -1,6 +1,6 @@
 //! Actual source/SSA bindings; model factories own family recipes and eligibility.
 use super::{model_values::ModelValues, model_weights::ModelWeights};
-use crate::cuda::gdn::GdnKernelRecipe;
+use crate::cuda::gdn::TextGdnImplementation;
 use crate::cuda::native::text_native::TextKernelCapture;
 use crate::resident_leases::{ModelWeight, ResidentLease};
 use crate::resident_program::source_bindings::{SourceBindings, SourceSelection};
@@ -52,7 +52,7 @@ impl TextHeadView {
 pub(crate) struct TextModelBinding {
     record: Arc<SourceBindings>,
     prepared: Arc<PreparedTextModel>,
-    gdn_recipe: GdnKernelRecipe,
+    gdn_implementation: TextGdnImplementation,
     native_capture: TextKernelCapture,
     _metadata: WindowWorkspace,
 }
@@ -66,7 +66,7 @@ pub(crate) struct TextAnalysis {
 struct PreparedTextModel {
     record: Arc<SourceBindings>,
     analysis: TextAnalysis,
-    gdn_recipe: GdnKernelRecipe,
+    gdn_implementation: TextGdnImplementation,
     native_capture: TextKernelCapture,
     _metadata: zerogravity_core::resource_arbiter::HostWorkspace,
 }
@@ -348,7 +348,7 @@ impl PreparedTextModel {
     fn new(
         record: Arc<SourceBindings>,
         analysis: TextAnalysis,
-        gdn_recipe: GdnKernelRecipe,
+        gdn_implementation: TextGdnImplementation,
         native_capture: TextKernelCapture,
         metadata: zerogravity_core::resource_arbiter::HostWorkspace,
     ) -> Result<Self> {
@@ -360,7 +360,7 @@ impl PreparedTextModel {
         Ok(Self {
             record,
             analysis,
-            gdn_recipe,
+            gdn_implementation,
             native_capture,
             _metadata: metadata,
         })
@@ -368,12 +368,12 @@ impl PreparedTextModel {
     fn require_call(
         &self,
         record: &SourceBindings,
-        recipe: GdnKernelRecipe,
+        implementation: TextGdnImplementation,
         capture: TextKernelCapture,
     ) -> Result<()> {
-        if self.gdn_recipe != recipe || self.native_capture != capture {
+        if self.gdn_implementation != implementation || self.native_capture != capture {
             return Err(Error::State(
-                "source prepared GDN kernel recipe differs".into(),
+                "source prepared GDN implementation differs".into(),
             ));
         }
         require_prepared_record(&self.record, record)
@@ -405,16 +405,16 @@ impl TextModelBindings {
     pub(crate) fn bind(
         &self,
         record: Arc<SourceBindings>,
-        gdn_recipe: GdnKernelRecipe,
+        gdn_implementation: TextGdnImplementation,
         native_capture: TextKernelCapture,
     ) -> Result<Arc<TextModelBinding>> {
         if native_capture != self.capture
             || !self.source.same_issuer(record.source())
-            || gdn_recipe.input_tokens() != record.call().rows().len()
-            || gdn_recipe.is_decode() != (record.call().mode() == SourceCallMode::Decode)
+            || gdn_implementation.input_tokens() != record.call().rows().len()
+            || gdn_implementation.is_decode() != (record.call().mode() == SourceCallMode::Decode)
         {
             return Err(Error::State(
-                "source actual source/call/kernel recipe differs".into(),
+                "source actual source/call/GDN implementation differs".into(),
             ));
         }
         let prepared = {
@@ -424,7 +424,7 @@ impl TextModelBindings {
                 .map_err(|_| Error::State("source prepared binding cache poisoned".into()))?;
             if let Some(prepared) = cache.iter().find(|p| {
                 p.record.shares_prepared_semantics(&record)
-                    && p.gdn_recipe == gdn_recipe
+                    && p.gdn_implementation == gdn_implementation
                     && p.native_capture == native_capture
             }) {
                 prepared.clone()
@@ -440,7 +440,7 @@ impl TextModelBindings {
                 let prepared = Arc::new(PreparedTextModel::new(
                     record.clone(),
                     analysis,
-                    gdn_recipe,
+                    gdn_implementation,
                     native_capture,
                     metadata.into_host_workspace()?,
                 )?);
@@ -448,12 +448,12 @@ impl TextModelBindings {
                 prepared
             }
         };
-        prepared.require_call(&record, gdn_recipe, native_capture)?;
+        prepared.require_call(&record, gdn_implementation, native_capture)?;
         let metadata = self.source.reserve_workspace(512 * 1024)?;
         Ok(Arc::new(TextModelBinding {
             record,
             prepared,
-            gdn_recipe,
+            gdn_implementation,
             native_capture,
             _metadata: metadata,
         }))
@@ -475,8 +475,8 @@ impl TextModelBinding {
     pub(crate) fn hidden_size(&self) -> usize {
         self.prepared.analysis.head.selected_bytes / 2
     }
-    pub(crate) fn gdn_recipe(&self) -> &GdnKernelRecipe {
-        &self.gdn_recipe
+    pub(crate) fn gdn_implementation(&self) -> TextGdnImplementation {
+        self.gdn_implementation
     }
     pub(crate) fn require_record(
         &self,
@@ -489,7 +489,7 @@ impl TextModelBinding {
             ));
         }
         self.prepared
-            .require_call(record, self.gdn_recipe, self.native_capture)
+            .require_call(record, self.gdn_implementation, self.native_capture)
     }
     pub(crate) fn rms_nodes(&self) -> &[usize] {
         &self.prepared.analysis.rms

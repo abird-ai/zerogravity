@@ -362,7 +362,7 @@ impl TextSession {
         self,
         fault: TextFault,
         record: Arc<SourceBindings>,
-        recipe: GdnKernelRecipe,
+        implementation: TextGdnImplementation,
         cancelled: Option<&AtomicBool>,
     ) -> Result<TextFaultOutcome> {
         not_cancelled(cancelled)?;
@@ -405,7 +405,7 @@ impl TextSession {
         let input = self.original.bind_text_feedback(
             self.loaded.cold.bindings.clone(),
             record,
-            recipe,
+            implementation,
             self.loaded.cold.capture,
             feedback,
             cancelled,
