@@ -945,6 +945,7 @@ impl BatchProgram {
                 | PlanOperation::TypedProject { .. }
                 | PlanOperation::TypedOrdinaryRms { .. }
                 | PlanOperation::SourceOperator { .. }
+                | PlanOperation::SourceOperatorTemplate { .. }
                 | PlanOperation::TypedCausalConvSilu { .. } => Err(Error::Unsupported(
                     "resident batch has no qualified typed lowering".into(),
                 )),

@@ -731,6 +731,7 @@ impl ResidentProgram {
                         | PlanOperation::TypedProject { .. }
                         | PlanOperation::TypedOrdinaryRms { .. }
                         | PlanOperation::SourceOperator { .. }
+                        | PlanOperation::SourceOperatorTemplate { .. }
                         | PlanOperation::TypedCausalConvSilu { .. }
                 )
             })
@@ -2357,6 +2358,7 @@ impl ResidentProgram {
                 | PlanOperation::TypedProject { .. }
                 | PlanOperation::TypedOrdinaryRms { .. }
                 | PlanOperation::SourceOperator { .. }
+                | PlanOperation::SourceOperatorTemplate { .. }
                 | PlanOperation::TypedCausalConvSilu { .. } => Err(Error::Unsupported(
                     "resident typed operation has no qualified lowering".into(),
                 )),

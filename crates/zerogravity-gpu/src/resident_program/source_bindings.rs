@@ -319,6 +319,9 @@ impl SourceBindings {
             .ok_or_else(|| Error::State("source operator index outside actual graph".into()))?;
         match &node.operation {
             PlanOperation::SourceOperator { descriptor, .. } => Ok(Some(descriptor)),
+            PlanOperation::SourceOperatorTemplate { .. } => Err(Error::Unsupported(
+                "bound source-call path cannot expose a call-free template".into(),
+            )),
             _ => Ok(None),
         }
     }

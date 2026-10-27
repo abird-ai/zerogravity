@@ -2,7 +2,13 @@
 //! The shared core plan owns math/SSA/state effects only; source authentication
 //! and family roles stay with the model, while roots/completion stay external.
 use super::*;
-use crate::source::binding::{QwenMatrixRole, QwenParameterRole};
+use crate::source::binding::{OrdinaryCudaSourceSeal, QwenMatrixRole, QwenParameterRole};
+
+#[derive(Debug)]
+struct OrdinaryQwenPlanOwner {
+    source: OrdinaryCudaSourceSeal,
+    plan: Arc<ForwardPlan>,
+}
 
 pub const ORDINARY_CUDA_MAX_CHUNK_ROWS: usize = 64;
 pub const ORDINARY_CUDA_MIN_CONTEXT: usize = 512;
@@ -10,7 +16,7 @@ pub const ORDINARY_CUDA_MAX_CONTEXT: usize = 32_768;
 
 #[derive(Clone, Debug)]
 pub struct OrdinaryQwenPlan {
-    plan: Arc<ForwardPlan>,
+    owner: Arc<OrdinaryQwenPlanOwner>,
     profile: QwenSourceProfile,
     boundaries: Arc<[[ValueId; 2]]>,
     normalized: ValueId,
@@ -18,13 +24,21 @@ pub struct OrdinaryQwenPlan {
 }
 impl OrdinaryQwenPlan {
     pub fn plan(&self) -> &Arc<ForwardPlan> {
-        &self.plan
+        &self.owner.plan
+    }
+    /// Authenticated source capability retained with the static plan.
+    pub fn source_seal(&self) -> &OrdinaryCudaSourceSeal {
+        &self.owner.source
+    }
+    /// Exact immutable source backing for GPU preparation and validation.
+    pub fn source(&self) -> &zerogravity_artifacts::source_weights::VerifiedTensorSource {
+        self.owner.source.source()
     }
     pub fn model_profile(&self) -> QwenSourceProfile {
         self.profile
     }
     pub fn context_capacity_tokens(&self) -> usize {
-        self.plan.prefix_capacity()
+        self.owner.plan.prefix_capacity()
     }
     pub fn max_chunk_rows(&self) -> usize {
         ORDINARY_CUDA_MAX_CHUNK_ROWS
@@ -47,7 +61,7 @@ impl OrdinaryQwenPlan {
     ) -> Result<OrdinaryQwenInvocation> {
         let invocation = SourceInvocation::new(
             TextCallGeometry::new(
-                self.plan.source(),
+                self.owner.plan.source(),
                 self.profile.vocabulary_size(),
                 self.context_capacity_tokens(),
             )?,
@@ -56,7 +70,8 @@ impl OrdinaryQwenPlan {
             emit_logits,
         )?;
         Ok(OrdinaryQwenInvocation {
-            bound: self.plan.bind_source_invocation(invocation)?,
+            bound: self.owner.plan.bind_source_invocation(invocation)?,
+            owner: self.owner.clone(),
             profile: self.profile,
         })
     }
@@ -65,11 +80,18 @@ impl OrdinaryQwenPlan {
 #[derive(Clone, Debug)]
 pub struct OrdinaryQwenInvocation {
     bound: BoundSourceInvocation,
+    owner: Arc<OrdinaryQwenPlanOwner>,
     profile: QwenSourceProfile,
 }
 impl OrdinaryQwenInvocation {
     pub fn plan(&self) -> &Arc<ForwardPlan> {
         self.bound.plan()
+    }
+    pub fn source_seal(&self) -> &OrdinaryCudaSourceSeal {
+        &self.owner.source
+    }
+    pub fn source(&self) -> &zerogravity_artifacts::source_weights::VerifiedTensorSource {
+        self.owner.source.source()
     }
     pub fn model_profile(&self) -> QwenSourceProfile {
         self.profile
@@ -98,20 +120,53 @@ fn domains() -> Result<Vec<StateSlot>> {
     hybrid_state_domains((0..24).map(|index| index % 4 == 3))
 }
 
+struct RecordedOrdinaryPlan {
+    plan: Arc<ForwardPlan>,
+    boundaries: Arc<[[ValueId; 2]]>,
+    normalized: ValueId,
+    logits: ValueId,
+}
+
 pub(crate) fn build_ordinary_plan(
-    source: SourceIdentity,
+    source: &OrdinaryCudaSourceSeal,
+    context_capacity_tokens: usize,
+    matrix: impl FnMut(QwenMatrixRole) -> Result<SourceTensor>,
+    parameter: impl FnMut(QwenParameterRole) -> Result<SourceParameter>,
+) -> Result<OrdinaryQwenPlan> {
+    let profile = source.model_profile();
+    let recorded = record_ordinary_plan(
+        source.source_identity(),
+        profile,
+        context_capacity_tokens,
+        matrix,
+        parameter,
+    )?;
+    Ok(OrdinaryQwenPlan {
+        owner: Arc::new(OrdinaryQwenPlanOwner {
+            source: source.clone(),
+            plan: recorded.plan,
+        }),
+        profile,
+        boundaries: recorded.boundaries,
+        normalized: recorded.normalized,
+        logits: recorded.logits,
+    })
+}
+
+fn record_ordinary_plan(
+    identity: SourceIdentity,
     profile: QwenSourceProfile,
     context_capacity_tokens: usize,
     mut matrix: impl FnMut(QwenMatrixRole) -> Result<SourceTensor>,
     mut parameter: impl FnMut(QwenParameterRole) -> Result<SourceParameter>,
-) -> Result<OrdinaryQwenPlan> {
+) -> Result<RecordedOrdinaryPlan> {
     if !(ORDINARY_CUDA_MIN_CONTEXT..=ORDINARY_CUDA_MAX_CONTEXT).contains(&context_capacity_tokens) {
         return Err(Error::Unsupported(
             "ordinary CUDA context capacity must be 512..32768".into(),
         ));
     }
     let geometry = SourcePlanGeometry::new(
-        source,
+        identity,
         profile.vocabulary_size(),
         context_capacity_tokens,
         ORDINARY_CUDA_MAX_CHUNK_ROWS,
@@ -159,9 +214,8 @@ pub(crate) fn build_ordinary_plan(
             "ordinary plan static source/state/logits structure".into(),
         ));
     }
-    Ok(OrdinaryQwenPlan {
+    Ok(RecordedOrdinaryPlan {
         plan: Arc::new(plan),
-        profile,
         boundaries: recorder
             .boundaries
             .into_iter()
@@ -508,6 +562,21 @@ fn roles(
         _ => Vec::new(),
     };
     (matrices, parameters)
+}
+
+#[cfg(all(test, feature = "cpu"))]
+pub(crate) fn build_test_ordinary_plan(
+    source: &OrdinaryCudaSourceSeal,
+    context_capacity_tokens: usize,
+) -> Result<OrdinaryQwenPlan> {
+    let identity = source.source_identity();
+    let profile = source.model_profile();
+    build_ordinary_plan(
+        source,
+        context_capacity_tokens,
+        |role| Ok(tests::matrix(identity, profile, role)),
+        |role| Ok(tests::parameter(identity, profile, role)),
+    )
 }
 
 #[cfg(test)]

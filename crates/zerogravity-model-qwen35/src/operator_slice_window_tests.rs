@@ -458,6 +458,52 @@ fn window_model_metadata_retains_one_original_issuer_and_stays_execution_closed(
 }
 
 #[test]
+fn ordinary_plan_and_invocation_retain_exact_source_and_workspace_without_a_cycle() {
+    use crate::plan::{QwenSourceProfile, build_test_ordinary_plan};
+    use crate::source::binding::{OrdinaryCudaSourceSeal, OriginalWindowModelSource};
+    use crate::source::owned::QwenOriginalWindowText;
+    let fixture = Fixture::new();
+    let loaded = source_with_options(&fixture, true, 256, true, |_| {});
+    let (source, admission) = windows(&fixture, &loaded);
+    let source_witness = source.weak_owner();
+    let owner = Arc::new(
+        QwenOriginalWindowText::bind(
+            source.clone(),
+            &loaded.config,
+            &digest(&loaded.config),
+            &loaded.index_sha256,
+        )
+        .unwrap(),
+    );
+    let owner_witness = Arc::downgrade(&owner);
+    let model = OriginalWindowModelSource::from_owner(owner.clone()).unwrap();
+    let before_seal = reserved(&admission);
+    let seal = OrdinaryCudaSourceSeal::for_test(model.clone(), QwenSourceProfile::Qwen08).unwrap();
+    assert_eq!(reserved(&admission), before_seal + 64 * 1024);
+    let plan = build_test_ordinary_plan(&seal, 512).unwrap();
+    assert!(plan.source().same_issuer(&source));
+    assert!(plan.source_seal().source().same_issuer(&source));
+    assert_eq!(plan.plan().source(), source.source_identity());
+    let invocation = plan.bind_invocation(0, Arc::from([11, 353]), true).unwrap();
+    assert!(invocation.source().same_issuer(&source));
+    assert!(Arc::ptr_eq(invocation.plan(), plan.plan()));
+
+    drop(source);
+    drop(owner);
+    drop(model);
+    drop(seal);
+    drop(plan);
+    assert!(owner_witness.upgrade().is_some());
+    assert!(source_witness.retained());
+    assert_eq!(reserved(&admission), before_seal + 64 * 1024);
+
+    drop(invocation);
+    assert!(owner_witness.upgrade().is_none());
+    assert!(!source_witness.retained());
+    assert_eq!(reserved(&admission), 0);
+}
+
+#[test]
 fn equal_original_window_files_cannot_cross_model_role_issuers() {
     use crate::source::binding::OriginalWindowModelSource;
     use crate::source::owned::QwenOriginalWindowText;

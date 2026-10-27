@@ -159,6 +159,7 @@ fn complete35_uses_same_forward_all15_states_and_explicit_bf16_contract() {
         n.operation,
         PlanOperation::TypedOrdinaryRms { .. }
             | PlanOperation::SourceOperator { .. }
+            | PlanOperation::SourceOperatorTemplate { .. }
             | PlanOperation::TextMoe { .. }
     )));
 }

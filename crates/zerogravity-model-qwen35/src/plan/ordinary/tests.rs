@@ -1,7 +1,7 @@
 use super::*;
 use zerogravity_core::quant::QuantKind;
 
-fn matrix(
+pub(super) fn matrix(
     source: SourceIdentity,
     profile: QwenSourceProfile,
     role: QwenMatrixRole,
@@ -37,7 +37,7 @@ fn matrix(
     }
 }
 
-fn parameter(
+pub(super) fn parameter(
     source: SourceIdentity,
     profile: QwenSourceProfile,
     role: QwenParameterRole,
@@ -81,8 +81,8 @@ fn plan(
     source: SourceIdentity,
     profile: QwenSourceProfile,
     capacity: usize,
-) -> Result<OrdinaryQwenPlan> {
-    build_ordinary_plan(
+) -> Result<RecordedOrdinaryPlan> {
+    record_ordinary_plan(
         source,
         profile,
         capacity,
@@ -91,64 +91,84 @@ fn plan(
     )
 }
 
+fn invocation(
+    plan: &RecordedOrdinaryPlan,
+    profile: QwenSourceProfile,
+    base: usize,
+    ids: Arc<[u32]>,
+    emit_logits: bool,
+) -> Result<BoundSourceInvocation> {
+    plan.plan.bind_source_invocation(SourceInvocation::new(
+        TextCallGeometry::new(
+            plan.plan.source(),
+            profile.vocabulary_size(),
+            plan.plan.prefix_capacity(),
+        )?,
+        base,
+        ids,
+        emit_logits,
+    )?)
+}
+
 #[test]
 fn one_static_plan_serves_runtime_lengths_ids_and_emit_policy_for_both_profiles() {
     for profile in [QwenSourceProfile::Qwen08, QwenSourceProfile::Qwen2B] {
         let source = SourceIdentity::for_new_allocation().unwrap();
         for capacity in [512, 4096, 32_768] {
             let plan = plan(source, profile, capacity).unwrap();
-            assert_eq!(plan.model_profile(), profile);
-            assert_eq!(plan.context_capacity_tokens(), capacity);
-            assert_eq!(plan.max_chunk_rows(), 64);
+            assert_eq!(plan.plan.prefix_capacity(), capacity);
+            assert_eq!(ORDINARY_CUDA_MAX_CHUNK_ROWS, 64);
             let expected = domains()
                 .unwrap()
                 .into_iter()
                 .collect::<std::collections::BTreeSet<_>>();
             assert_eq!(
-                plan.plan()
+                plan.plan
                     .required_domains()
                     .iter()
                     .copied()
                     .collect::<std::collections::BTreeSet<_>>(),
                 expected
             );
-            assert_eq!(plan.plan().proposed_domains().len(), 42);
+            assert_eq!(plan.plan.proposed_domains().len(), 42);
             assert!(
-                plan.plan()
+                plan.plan
                     .proposed_domains()
                     .iter()
                     .all(|version| version.ordinal == 1 && expected.contains(&version.slot))
             );
-            assert_eq!(plan.boundaries().len(), 24);
-            assert_eq!(plan.plan().source_call(), None);
-            assert_eq!(plan.plan().logits(), Some(plan.logits()));
-            assert!(plan.plan().nodes().iter().all(|node| matches!(
+            assert_eq!(plan.boundaries.len(), 24);
+            assert_eq!(plan.plan.source_call(), None);
+            assert_eq!(plan.plan.logits(), Some(plan.logits));
+            assert!(plan.plan.nodes().iter().all(|node| matches!(
                 node.operation,
                 PlanOperation::SourceOperatorTemplate { .. }
             )));
-            let head = plan.plan().nodes().last().unwrap();
+            let head = plan.plan.nodes().last().unwrap();
             let PlanOperation::SourceOperatorTemplate { descriptor, .. } = &head.operation else {
                 panic!("call-free head absent")
             };
             assert_eq!(descriptor.row_selection(), SourceRowSelection::LastActive);
             assert_eq!(descriptor.output_elements().unwrap(), [248_320]);
 
-            let first = plan.bind_invocation(0, Arc::from([11, 353]), true).unwrap();
-            let cached = plan
-                .bind_invocation(capacity - 1, Arc::from([7]), false)
-                .unwrap();
+            let first = invocation(&plan, profile, 0, Arc::from([11, 353]), true).unwrap();
+            let cached = invocation(&plan, profile, capacity - 1, Arc::from([7]), false).unwrap();
             assert!(Arc::ptr_eq(first.plan(), cached.plan()));
-            assert!(Arc::ptr_eq(first.plan(), plan.plan()));
-            assert_eq!((first.base(), first.rows(), first.frontier()), (0, 2, 2));
-            assert_eq!(first.ids(), [11, 353]);
-            assert!(first.emit_logits());
-            assert_eq!(cached.frontier(), capacity);
-            assert!(!cached.emit_logits());
-            assert!(std::ptr::eq(first.active_nodes(), plan.plan().nodes()));
-            assert!(std::ptr::eq(
-                cached.active_nodes(),
-                plan.plan().state_nodes()
-            ));
+            assert!(Arc::ptr_eq(first.plan(), &plan.plan));
+            assert_eq!(
+                (
+                    first.invocation().base(),
+                    first.invocation().rows(),
+                    first.invocation().frontier()
+                ),
+                (0, 2, 2)
+            );
+            assert_eq!(first.invocation().ids(), [11, 353]);
+            assert!(first.invocation().emit_logits());
+            assert_eq!(cached.invocation().frontier(), capacity);
+            assert!(!cached.invocation().emit_logits());
+            assert!(std::ptr::eq(first.active_nodes(), plan.plan.nodes()));
+            assert!(std::ptr::eq(cached.active_nodes(), plan.plan.state_nodes()));
             assert_eq!(first.active_nodes().len(), cached.active_nodes().len() + 1);
         }
     }
@@ -162,20 +182,14 @@ fn ordinary_plan_refuses_bad_context_chunk_frontier_ids_and_source_descriptors()
         assert!(plan(source, profile, capacity).is_err());
     }
     let plan = plan(source, profile, 512).unwrap();
-    assert!(plan.bind_invocation(0, Arc::from([]), true).is_err());
-    assert!(
-        plan.bind_invocation(0, Arc::from(vec![11; 65]), true)
-            .is_err()
-    );
-    assert!(
-        plan.bind_invocation(500, Arc::from(vec![11; 13]), true)
-            .is_err()
-    );
-    assert!(plan.bind_invocation(0, Arc::from([248_320]), true).is_err());
+    assert!(invocation(&plan, profile, 0, Arc::from([]), true).is_err());
+    assert!(invocation(&plan, profile, 0, Arc::from(vec![11; 65]), true).is_err());
+    assert!(invocation(&plan, profile, 500, Arc::from(vec![11; 13]), true).is_err());
+    assert!(invocation(&plan, profile, 0, Arc::from([248_320]), true).is_err());
 
     let foreign = SourceIdentity::for_new_allocation().unwrap();
     assert!(
-        build_ordinary_plan(
+        record_ordinary_plan(
             source,
             profile,
             512,
@@ -185,7 +199,7 @@ fn ordinary_plan_refuses_bad_context_chunk_frontier_ids_and_source_descriptors()
         .is_err()
     );
     assert!(
-        build_ordinary_plan(
+        record_ordinary_plan(
             source,
             profile,
             512,

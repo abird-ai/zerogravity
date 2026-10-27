@@ -14,6 +14,15 @@ struct OrdinaryCudaOwner {
 /// allocation, root, queue, completion or publication permission.
 #[derive(Clone)]
 pub struct OrdinaryCudaSourceSeal(Arc<OrdinaryCudaOwner>);
+impl std::fmt::Debug for OrdinaryCudaSourceSeal {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("OrdinaryCudaSourceSeal")
+            .field("source", &self.source_identity())
+            .field("profile", &self.model_profile())
+            .finish_non_exhaustive()
+    }
+}
 impl OrdinaryCudaSourceSeal {
     pub fn source_identity(&self) -> crate::accelerator::SourceIdentity {
         self.0.model.source_identity()
@@ -21,11 +30,13 @@ impl OrdinaryCudaSourceSeal {
     pub fn model_profile(&self) -> QwenSourceProfile {
         self.0.profile
     }
+    pub fn source(&self) -> &VerifiedTensorSource {
+        self.0.model.source()
+    }
     pub fn build_plan(&self, context_capacity_tokens: usize) -> Result<OrdinaryQwenPlan> {
         let model = &self.0.model;
         build_ordinary_plan(
-            model.source_identity(),
-            self.0.profile,
+            self,
             context_capacity_tokens,
             |role| {
                 let descriptor = model.matrix_descriptor(role)?;
@@ -38,6 +49,18 @@ impl OrdinaryCudaSourceSeal {
                 Ok(descriptor)
             },
         )
+    }
+    #[cfg(all(test, feature = "cpu"))]
+    pub(crate) fn for_test(
+        model: Arc<OriginalWindowModelSource>,
+        profile: QwenSourceProfile,
+    ) -> Result<Self> {
+        let metadata = model.source().reserve_workspace(64 * 1024)?;
+        Ok(Self(Arc::new(OrdinaryCudaOwner {
+            model,
+            profile,
+            _metadata: metadata,
+        })))
     }
 }
 

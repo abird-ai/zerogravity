@@ -102,6 +102,11 @@ fn require_step_source(source: &VerifiedTensorSource, record: &TextStepBindings)
                     parameter(p)?;
                 }
             }
+            PlanOperation::SourceOperatorTemplate { .. } => {
+                return Err(Error::Unsupported(
+                    "captured source-step path cannot lower call-free templates".into(),
+                ));
+            }
             _ => {}
         }
     }

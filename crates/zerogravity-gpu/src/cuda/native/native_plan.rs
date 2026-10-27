@@ -115,6 +115,11 @@ fn projection_images_inner(
                 )?;
                 selected += 1;
             }
+            PlanOperation::SourceOperatorTemplate { .. } => {
+                return Err(Error::Unsupported(
+                    "captured native images cannot lower call-free source templates".into(),
+                ));
+            }
             _ => {}
         }
     }
@@ -745,6 +750,11 @@ fn prepare_bindings(
                     descriptor.output_elements()?[0],
                     None,
                 )
+            }
+            PlanOperation::SourceOperatorTemplate { .. } => {
+                return Err(Error::Unsupported(
+                    "captured native plan cannot lower call-free source templates".into(),
+                ));
             }
             _ => continue,
         };

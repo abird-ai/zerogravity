@@ -1,6 +1,9 @@
 use super::*;
 use zerogravity_core::accelerator::SourceIdentity;
-use zerogravity_core::accelerator::program::{MathematicalBackend, MatrixAxes, PlanBuilder};
+use zerogravity_core::accelerator::program::{
+    ConvDomain, MathematicalBackend, MatrixAxes, PlanBuilder, SourceNumericalContract,
+    SourceOperatorTemplate, SourcePlanGeometry, SourceRowSelection, StateSlot,
+};
 use zerogravity_core::quant::QuantKind;
 use zerogravity_model_qwen35::plan::QwenPlanBuilder;
 use zerogravity_model_qwen35::plan::{
@@ -63,6 +66,71 @@ fn neutral(d: &QwenGdnProjection) -> SourceOperator {
         vec![],
     )
     .unwrap()
+}
+
+#[test]
+fn captured_native_image_selection_refuses_call_free_templates() {
+    let source = SourceIdentity::for_new_allocation().unwrap();
+    let geometry = SourcePlanGeometry::new(source, 16, 512, 1).unwrap();
+    let matrix = |name: &str, rows, columns| SourceTensor {
+        source,
+        name: name.into(),
+        kind: QuantKind::Bf16,
+        axes: MatrixAxes::OutputInput,
+        columns,
+        rows,
+    };
+    let slot = StateSlot::Conv(ConvDomain(0));
+    let mut builder = PlanBuilder::new_source_template(geometry, vec![slot]).unwrap();
+    let embedding = SourceOperatorTemplate::new(
+        geometry,
+        SourceRowSelection::AllActive,
+        SourceOperatorKind::EmbeddingRows,
+        SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        vec![matrix("embedding", 16, 4)],
+        vec![],
+    )
+    .unwrap();
+    let [input] = builder
+        .record_source_template("embedding", &embedding, &[])
+        .unwrap()
+        .try_into()
+        .unwrap();
+    let carry = SourceOperatorTemplate::new(
+        geometry,
+        SourceRowSelection::AllActive,
+        SourceOperatorKind::StateCarry { slot },
+        SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        vec![],
+        vec![],
+    )
+    .unwrap();
+    assert!(
+        builder
+            .record_source_template("state", &carry, &[])
+            .unwrap()
+            .is_empty()
+    );
+    let head = SourceOperatorTemplate::new(
+        geometry,
+        SourceRowSelection::LastActive,
+        SourceOperatorKind::Projection { selected_row: None },
+        SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        vec![matrix("head", 8, 4)],
+        vec![],
+    )
+    .unwrap();
+    let [output] = builder
+        .record_source_template("head", &head, &[input])
+        .unwrap()
+        .try_into()
+        .unwrap();
+    let plan = builder.finish_source_template(output).unwrap();
+    assert!(matches!(
+        projection_images(&plan),
+        Err(Error::Unsupported(message))
+            if message.contains("call-free source templates")
+    ));
 }
 
 #[test]
