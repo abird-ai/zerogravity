@@ -283,6 +283,106 @@ mod tests {
     }
 
     #[test]
+    fn qualification_owns_exact_historical_recipe_envelope() -> Result<()> {
+        use crate::qwen35::plan::QwenSourceProfile::{Qwen2B, Qwen08};
+
+        let expected = [
+            (
+                Qwen08,
+                47,
+                false,
+                "b24e5fb2ac4b0e591cb907e8226cd1d80bc24507c0586ecfb5238ea4f3c91f8b",
+            ),
+            (
+                Qwen08,
+                57,
+                false,
+                "9ec9c52e82e99b9654d3136f22e10523e1fa6f786a6136f7adefaaedec2aed43",
+            ),
+            (
+                Qwen08,
+                62,
+                false,
+                "f487c0f5bcb5580da48fd33f047c4cf67d4098e496e1040e07a4eeafca0c5a65",
+            ),
+            (
+                Qwen08,
+                67,
+                false,
+                "213a13cfb815791936bca556a1ab66730b03ac71fe9c72f6586cc5fcab0be3e5",
+            ),
+            (
+                Qwen08,
+                72,
+                false,
+                "d2226726eda06c919709e3b7767d019e0dd33f633db925ce266a9f67b48f1d9e",
+            ),
+            (
+                Qwen08,
+                1,
+                true,
+                "cf3ef9d3fa84410540c6d969212a3e29c912255d9b404d2430905155c1cf201e",
+            ),
+            (
+                Qwen2B,
+                47,
+                false,
+                "aaae809312359b22c8404b6ea5ba18073738db731e3df64192372c7f40d82cb6",
+            ),
+            (
+                Qwen2B,
+                57,
+                false,
+                "ab5aef404095ded631a2267be095f51b8a4d239a03289d354f3c7b26a1991741",
+            ),
+            (
+                Qwen2B,
+                62,
+                false,
+                "b95983abb04db60da606ffe7ecccc547062cf714dc8b11361cd829be41fd452b",
+            ),
+            (
+                Qwen2B,
+                67,
+                false,
+                "484de0c7dd651e8646758103db6634e8c34750a44c0d03f4d291deb7c93191df",
+            ),
+            (
+                Qwen2B,
+                72,
+                false,
+                "f79c878120e21e36ed8413c5e24f73f159eb4e8a45aaba90e2c4a120cdb30df1",
+            ),
+            (
+                Qwen2B,
+                1,
+                true,
+                "18faad78538d9d190c5a31668710f7b3aced6e2dd5d922618108b4044b3355d8",
+            ),
+        ];
+        for (profile, tokens, decode, recipe) in expected {
+            assert_eq!(
+                qualification::gdn_recipe_sha256(profile, tokens, decode)?,
+                Some(recipe)
+            );
+            assert!(qualification::gdn_implementation(profile, tokens, decode)?.is_some());
+        }
+        for profile in [Qwen08, Qwen2B] {
+            for tokens in [48, 49, 50] {
+                assert_eq!(
+                    qualification::gdn_recipe_sha256(profile, tokens, false)?,
+                    None
+                );
+                assert_eq!(
+                    qualification::gdn_implementation(profile, tokens, false)?,
+                    None
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn missing_or_mismatched_backend_implementation_refuses_before_preparation() {
         use crate::gpu::cuda::gdn::{
             GdnKernelConfig, GdnKktKernel, GdnOutputKernel, GdnRecomputeKernel, GdnStateKernel,
@@ -318,12 +418,7 @@ mod tests {
             GdnOutputKernel::Bk32Bv32W4S3,
         )
         .unwrap();
-        let mismatched = TextGdnImplementation::prefill(
-            "b24e5fb2ac4b0e591cb907e8226cd1d80bc24507c0586ecfb5238ea4f3c91f8b",
-            47,
-            explicit,
-        )
-        .unwrap();
+        let mismatched = TextGdnImplementation::prefill(47, explicit).unwrap();
         assert_eq!(mismatched.config(), Some(explicit));
         assert!(
             qualification::seal_gdn_implementation(

@@ -1,133 +1,107 @@
 //! Actual original per-cell source tuples; whole-model numerics remain to be executed.
 use super::*;
 
-/// Reference selection/provenance pin; actual source/compiler checks stay separate.
-/// No source/root or publication authority.
+/// Historical source-cell selector used only by source regression tests.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct GdnKernelRecipe {
+pub(super) struct ObservedCell {
     cell: usize,
 }
 struct Capture {
-    recipe_sha256: &'static str,
     input_tokens: usize,
     is_decode: bool,
 }
 const CAPTURES: &[Capture] = &[
     Capture {
-        recipe_sha256: "b24e5fb2ac4b0e591cb907e8226cd1d80bc24507c0586ecfb5238ea4f3c91f8b",
         input_tokens: 47,
         is_decode: false,
     },
     Capture {
-        recipe_sha256: "9ec9c52e82e99b9654d3136f22e10523e1fa6f786a6136f7adefaaedec2aed43",
         input_tokens: 57,
         is_decode: false,
     },
     Capture {
-        recipe_sha256: "f487c0f5bcb5580da48fd33f047c4cf67d4098e496e1040e07a4eeafca0c5a65",
         input_tokens: 62,
         is_decode: false,
     },
     Capture {
-        recipe_sha256: "213a13cfb815791936bca556a1ab66730b03ac71fe9c72f6586cc5fcab0be3e5",
         input_tokens: 67,
         is_decode: false,
     },
     Capture {
-        recipe_sha256: "d2226726eda06c919709e3b7767d019e0dd33f633db925ce266a9f67b48f1d9e",
         input_tokens: 72,
         is_decode: false,
     },
     Capture {
-        recipe_sha256: "cf3ef9d3fa84410540c6d969212a3e29c912255d9b404d2430905155c1cf201e",
         input_tokens: 1,
         is_decode: true,
     },
     Capture {
-        recipe_sha256: "aaae809312359b22c8404b6ea5ba18073738db731e3df64192372c7f40d82cb6",
         input_tokens: 47,
         is_decode: false,
     },
     Capture {
-        recipe_sha256: "ab5aef404095ded631a2267be095f51b8a4d239a03289d354f3c7b26a1991741",
         input_tokens: 57,
         is_decode: false,
     },
     Capture {
-        recipe_sha256: "b95983abb04db60da606ffe7ecccc547062cf714dc8b11361cd829be41fd452b",
         input_tokens: 62,
         is_decode: false,
     },
     Capture {
-        recipe_sha256: "484de0c7dd651e8646758103db6634e8c34750a44c0d03f4d291deb7c93191df",
         input_tokens: 67,
         is_decode: false,
     },
     Capture {
-        recipe_sha256: "f79c878120e21e36ed8413c5e24f73f159eb4e8a45aaba90e2c4a120cdb30df1",
         input_tokens: 72,
         is_decode: false,
     },
     Capture {
-        recipe_sha256: "18faad78538d9d190c5a31668710f7b3aced6e2dd5d922618108b4044b3355d8",
         input_tokens: 1,
         is_decode: true,
     },
 ];
-impl GdnKernelRecipe {
-    /// Match a complete reference tuple fingerprint, never a model/dimension guess.
-    pub fn bind(recipe_sha256: &str, input_tokens: usize, is_decode: bool) -> Result<Self> {
-        let cell = CAPTURES
-            .iter()
-            .position(|capture| {
-                capture.recipe_sha256 == recipe_sha256
-                    && capture.input_tokens == input_tokens
-                    && capture.is_decode == is_decode
+impl ObservedCell {
+    pub(super) fn fixture(catalogue: usize, input_tokens: usize, is_decode: bool) -> Result<Self> {
+        let cell = catalogue
+            .checked_mul(6)
+            .and_then(|base| {
+                CAPTURES
+                    .get(base..base + 6)?
+                    .iter()
+                    .position(|c| c.input_tokens == input_tokens && c.is_decode == is_decode)
+                    .map(|i| base + i)
             })
-            .ok_or_else(|| {
-                Error::Unsupported("actual original text source tuple not present".into())
-            })?;
+            .ok_or_else(|| Error::Unsupported("historical text source cell absent".into()))?;
         Ok(Self { cell })
     }
-    #[cfg(test)]
-    pub(crate) fn recipe_sha256(self) -> &'static str {
-        CAPTURES[self.cell].recipe_sha256
-    }
-    pub fn input_tokens(self) -> usize {
-        CAPTURES[self.cell].input_tokens
-    }
-    pub fn is_decode(self) -> bool {
-        CAPTURES[self.cell].is_decode
-    }
-    #[cfg(test)]
     fn require_phase(self, phase: GdnPhase) -> Result<()> {
-        if phase.tokens() != self.input_tokens()
+        let capture = &CAPTURES[self.cell];
+        if phase.tokens() != capture.input_tokens
             || !matches!(
-                (phase, self.is_decode()),
+                (phase, capture.is_decode),
                 (GdnPhase::TextPrefill(_), false) | (GdnPhase::CachedDecode, true)
             )
         {
             return Err(Error::Unsupported(
-                "exact recorded GDN recipe/phase/count".into(),
+                "historical GDN source cell/phase/count".into(),
             ));
         }
         Ok(())
     }
 }
 
-#[cfg(test)]
 pub(super) fn select(
-    recipe: GdnKernelRecipe,
+    cell: ObservedCell,
     phase: GdnPhase,
     stage: GdnStage,
 ) -> Result<assets::Asset> {
-    recipe.require_phase(phase)?;
+    cell.require_phase(phase)?;
     if stage == GdnStage::Conv && matches!(phase, GdnPhase::TextPrefill(_)) {
         return Err(Error::Unsupported(
             "legacy specialized text Conv is qualification-only".into(),
         ));
     }
-    match (recipe.cell, phase) {
+    match (cell.cell, phase) {
         (0, GdnPhase::TextPrefill(47)) => {
             use GdnStage::*;
             Ok(match stage {

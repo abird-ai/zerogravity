@@ -1,4 +1,4 @@
-use super::{CAPTURES, GdnKernelRecipe};
+use super::ObservedCell;
 use crate::cuda::gdn::{GdnCacheSlot, GdnPhase, GdnStage};
 use zerogravity_core::{Error, Result};
 
@@ -384,28 +384,6 @@ fn parameterized_cached_sources_reverse_to_both_retained_profiles() {
     }
 }
 
-impl GdnKernelRecipe {
-    pub(in crate::cuda::gdn) fn fixture(
-        catalogue: usize,
-        input_tokens: usize,
-        is_decode: bool,
-    ) -> Result<Self> {
-        let cell = catalogue
-            .checked_mul(6)
-            .and_then(|base| {
-                CAPTURES
-                    .get(base..base + 6)?
-                    .iter()
-                    .position(|c| c.input_tokens == input_tokens && c.is_decode == is_decode)
-                    .map(|i| base + i)
-            })
-            .ok_or_else(|| {
-                Error::Unsupported("actual original text fixture tuple absent".into())
-            })?;
-        Self::bind(CAPTURES[cell].recipe_sha256, input_tokens, is_decode)
-    }
-}
-
 fn reverse_configured_prefill_source(
     source: &str,
     wrapper_entry: &str,
@@ -548,7 +526,7 @@ fn configured_prefill_reverses_all_40_historical_stage_tuples() -> Result<()> {
 }
 
 #[test]
-fn closed_config_matrix_accepts_only_six_observed_combinations() -> Result<()> {
+fn closed_config_matrix_accepts_every_explicit_source_combination() -> Result<()> {
     use super::super::{
         GdnKktKernel::*, GdnOutputKernel::*, GdnRecomputeKernel::*, GdnStateKernel::*,
     };
@@ -566,7 +544,7 @@ fn closed_config_matrix_accepts_only_six_observed_combinations() -> Result<()> {
             }
         }
     }
-    assert_eq!(accepted.len(), 6);
+    assert_eq!(accepted.len(), 24);
     assert!(super::super::GdnKernelConfig::require(None).is_err());
     let implementation = super::super::fixture_implementation(0, 47, false)?;
     let config = implementation
@@ -637,7 +615,7 @@ fn configured_prefill_grids_packets_bodies_and_source_identities_are_exact() -> 
 
     for catalogue in 0..2 {
         for tokens in [47, 57, 62, 67, 72] {
-            let recipe = GdnKernelRecipe::fixture(catalogue, tokens, false)?;
+            let cell = ObservedCell::fixture(catalogue, tokens, false)?;
             let config = super::super::fixture_implementation(catalogue, tokens, false)?
                 .config()
                 .ok_or_else(|| Error::State("test prefill config absent".into()))?;
@@ -653,7 +631,7 @@ fn configured_prefill_grids_packets_bodies_and_source_identities_are_exact() -> 
                     GdnCacheSlot::One,
                     stage,
                 )?;
-                let old = super::select(recipe, GdnPhase::TextPrefill(tokens), stage)?;
+                let old = super::select(cell, GdnPhase::TextPrefill(tokens), stage)?;
                 assert_eq!(
                     (
                         new.asset.threads,

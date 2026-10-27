@@ -970,9 +970,9 @@ impl GdnPrepared {
             };
             crate::resident_program::natural_binding::same_lease(actual, &expected)?;
         }
-        // The finite selector depends on the checked immutable geometry alone.
-        // Retain the exact cold sources/specs; fresh operands are checked above.
-        code.require_same_recipe(old)?;
+        // Retain the exact implementation/geometry and cold sources/specs;
+        // fresh operands are checked above.
+        code.require_same_implementation(old)?;
         code.require_arithmetic(&self.arithmetic)?;
         Ok(Arc::new(Self {
             arithmetic: self.arithmetic.clone(),

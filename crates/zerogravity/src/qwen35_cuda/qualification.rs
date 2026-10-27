@@ -82,13 +82,58 @@ pub async fn load_b4(
 /// Historical finite schedule retained only by explicit qualification paths.
 pub(super) const PROMPT_TOKEN_COUNTS: &[usize] = &[47, 57, 62, 67, 72];
 
-/// Exact independently captured recipes. The backend must still authenticate
-/// each tuple; these hashes do not grant ordinary runtime capability.
-pub(super) fn gdn_implementation(
+/// Qualification-only historical identity, consumed before the GPU descriptor.
+struct HistoricalGdnImplementation {
+    recipe_sha256: &'static str,
+    input_tokens: usize,
+    is_decode: bool,
+    config: Option<GdnKernelConfig>,
+}
+impl HistoricalGdnImplementation {
+    fn authenticated(
+        recipe_sha256: &'static str,
+        input_tokens: usize,
+        is_decode: bool,
+        config: Option<GdnKernelConfig>,
+    ) -> Result<Self> {
+        if recipe_sha256.len() != 64
+            || !recipe_sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || is_decode != config.is_none()
+            || (is_decode && input_tokens != 1)
+        {
+            return Err(Error::State(
+                "historical qualification GDN recipe/config identity".into(),
+            ));
+        }
+        Ok(Self {
+            recipe_sha256,
+            input_tokens,
+            is_decode,
+            config,
+        })
+    }
+    fn descriptor(self) -> Result<TextGdnImplementation> {
+        let _authenticated_recipe = self.recipe_sha256;
+        if self.is_decode {
+            Ok(TextGdnImplementation::cached())
+        } else {
+            TextGdnImplementation::prefill(
+                self.input_tokens,
+                self.config.ok_or_else(|| {
+                    Error::State("qualification prefill GDN config absent".into())
+                })?,
+            )
+        }
+    }
+}
+
+/// Exact independently captured recipes. Qualification authenticates this
+/// finite envelope before constructing a recipe-free GPU descriptor.
+fn historical_gdn_implementation(
     profile: crate::qwen35::plan::QwenSourceProfile,
     input_tokens: usize,
     is_decode: bool,
-) -> Result<Option<TextGdnImplementation>> {
+) -> Result<Option<HistoricalGdnImplementation>> {
     use crate::qwen35::plan::QwenSourceProfile::{Qwen2B, Qwen08};
     use GdnKktKernel::{Bk32W4S3, Bk32W8S3, Bk64W8S4};
     use GdnOutputKernel::{Bk32Bv32W4S2, Bk32Bv32W4S3};
@@ -146,20 +191,39 @@ pub(super) fn gdn_implementation(
         ),
         _ => return Ok(None),
     };
-    let implementation = match stages {
-        Some((kkt, recompute, state, output)) if !is_decode => TextGdnImplementation::prefill(
-            recipe_sha256,
-            input_tokens,
-            GdnKernelConfig::from_stages(kkt, recompute, state, output)?,
-        )?,
-        None if is_decode => TextGdnImplementation::cached(recipe_sha256)?,
-        _ => {
-            return Err(Error::State(
-                "qualification GDN recipe/config phase mismatch".into(),
-            ));
-        }
-    };
-    Ok(Some(implementation))
+    let config = stages
+        .map(|(kkt, recompute, state, output)| {
+            GdnKernelConfig::from_stages(kkt, recompute, state, output)
+        })
+        .transpose()?;
+    Ok(Some(HistoricalGdnImplementation::authenticated(
+        recipe_sha256,
+        input_tokens,
+        is_decode,
+        config,
+    )?))
+}
+
+pub(super) fn gdn_implementation(
+    profile: crate::qwen35::plan::QwenSourceProfile,
+    input_tokens: usize,
+    is_decode: bool,
+) -> Result<Option<TextGdnImplementation>> {
+    historical_gdn_implementation(profile, input_tokens, is_decode)?
+        .map(HistoricalGdnImplementation::descriptor)
+        .transpose()
+}
+
+#[cfg(test)]
+pub(super) fn gdn_recipe_sha256(
+    profile: crate::qwen35::plan::QwenSourceProfile,
+    input_tokens: usize,
+    is_decode: bool,
+) -> Result<Option<&'static str>> {
+    Ok(
+        historical_gdn_implementation(profile, input_tokens, is_decode)?
+            .map(|implementation| implementation.recipe_sha256),
+    )
 }
 
 /// Seal exactly the descriptor selected by the finite qualification table.
@@ -173,7 +237,7 @@ pub(super) fn seal_gdn_implementation(
     let expected = gdn_implementation(profile, input_tokens, is_decode)?;
     if candidate != expected {
         return Err(Error::Unsupported(
-            "qualification GDN recipe/config descriptor mismatch".into(),
+            "qualification GDN descriptor mismatch".into(),
         ));
     }
     Ok(candidate)

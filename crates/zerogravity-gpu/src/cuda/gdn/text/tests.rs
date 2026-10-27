@@ -209,6 +209,78 @@ fn observed_source_tuples_are_distinct_and_never_open_legacy_factories() -> Resu
 }
 
 #[test]
+fn fresh_prefill_geometries_prepare_all_stages_without_recipe_membership() -> Result<()> {
+    use zerogravity_core::accelerator::program::{
+        SourceCall, SourceCallMode, SourceRows, TextCallGeometry,
+    };
+
+    let config = GdnKernelConfig::from_stages(
+        GdnKktKernel::Bk32W8S3,
+        GdnRecomputeKernel::Bk64Bv64W8S4,
+        GdnStateKernel::Bv64W4S2,
+        GdnOutputKernel::Bk32Bv32W4S2,
+    )?;
+    let source = SourceIdentity::for_new_allocation()?;
+    let call_geometry = TextCallGeometry::new(source, 256_000, 512)?;
+    let expected_bindings = [9, 10, 4, 6, 4, 9, 10, 8, 5];
+    for rows in [48, 49, 50] {
+        let call = SourceCall::new(
+            SourceRows::new(call_geometry, 0, Arc::from(vec![11; rows]))?,
+            SourceCallMode::Prefill,
+        )?;
+        let implementation = TextGdnImplementation::prefill(rows, config)?;
+        let geometry = TextGdnGeometry::for_call(&call, implementation)?;
+        geometry.require_implementation()?;
+        let chunks = rows.div_ceil(64) as u32;
+        let expected_grids = [
+            [rows.div_ceil(8) as u32, 24, 1],
+            [rows.div_ceil(16) as u32, 32, 1],
+            [chunks, 16, 1],
+            [chunks, 16, 1],
+            [chunks, 16, 1],
+            [chunks, 16, 1],
+            [2, 16, 1],
+            [4, chunks, 16],
+            [(rows * 4) as u32, 1, 1],
+        ];
+        for ((&stage, expected_grid), expected_binding_count) in geometry
+            .phase
+            .stages()
+            .iter()
+            .zip(expected_grids)
+            .zip(expected_bindings)
+        {
+            let asset = select(implementation.config(), geometry.phase, stage)?;
+            let spec = kernel_from_asset(
+                geometry.phase,
+                stage,
+                true,
+                asset,
+                arithmetic::GdnArithmeticFamily::Text(implementation.config()),
+            )?;
+            assert_eq!(spec.grid, expected_grid, "{rows} {stage:?}");
+            assert_eq!(
+                spec.bindings.len(),
+                expected_binding_count,
+                "{rows} {stage:?}"
+            );
+        }
+    }
+
+    let prefill = TextGdnImplementation::prefill(48, config)?;
+    assert!(prefill.require_phase(GdnPhase::TextPrefill(49)).is_err());
+    assert!(prefill.require_phase(GdnPhase::CachedDecode).is_err());
+    assert!(
+        TextGdnImplementation::cached()
+            .require_phase(GdnPhase::TextPrefill(1))
+            .is_err()
+    );
+    assert!(select(None, GdnPhase::TextPrefill(48), GdnStage::Conv).is_err());
+    assert!(select(Some(config), GdnPhase::CachedDecode, GdnStage::Conv).is_err());
+    Ok(())
+}
+
+#[test]
 fn parameterized_conv_uses_source_extents_dynamic_grid_and_one_packed_abi() -> Result<()> {
     use zerogravity_core::accelerator::program::SourceConvGeometry;
 
@@ -870,7 +942,7 @@ fn parameterized_prefill_code_identity_is_new_stable_and_not_a_fixture_selector(
     let mut ids = std::collections::BTreeMap::new();
     for rows in [47, 57] {
         let phase = GdnPhase::TextPrefill(rows);
-        let recipe = GdnKernelRecipe::fixture(0, rows, false)?;
+        let cell = observed::ObservedCell::fixture(0, rows, false)?;
         let implementation = fixture_implementation(0, rows, false)?.config();
         for stage in [GdnStage::Prep, GdnStage::Cumsum, GdnStage::Solve] {
             let definition = parameterized_prefill::prepare(phase, GdnCacheSlot::One, stage)?;
@@ -886,7 +958,7 @@ fn parameterized_prefill_code_identity_is_new_stable_and_not_a_fixture_selector(
             ids.insert((stage as u8, rows), spec.kernel.id());
             assert_ne!(
                 select(implementation, phase, stage)?.entry,
-                observed::select(recipe, phase, stage)?.entry
+                observed::select(cell, phase, stage)?.entry
             );
         }
     }
@@ -1063,7 +1135,7 @@ fn parameterized_cached_uses_retained_five_slot_layout_exact_abis_and_aliases() 
     struct HostPacketTest;
     let phase = GdnPhase::CachedDecode;
     let slot = GdnCacheSlot::One;
-    let recipe = GdnKernelRecipe::fixture(0, 1, true)?;
+    let cell = observed::ObservedCell::fixture(0, 1, true)?;
     let implementation = fixture_implementation(0, 1, true)?.config();
     let service = ServiceId::of::<HostPacketTest>(DeviceId::new(0, 0));
     let stream = StreamId::current();
@@ -1117,7 +1189,7 @@ fn parameterized_cached_uses_retained_five_slot_layout_exact_abis_and_aliases() 
         );
         assert_ne!(
             select(implementation, phase, stage)?.entry,
-            observed::select(recipe, phase, stage)?.entry
+            observed::select(cell, phase, stage)?.entry
         );
     }
     Ok(())
@@ -1248,17 +1320,4 @@ fn pooled_private_lease_ownership_never_implies_a_retained_layer_observation() {
     ] {
         assert!(retained_history(role), "{role:?}");
     }
-}
-
-#[test]
-fn exact_reference_fingerprint_refuses_changed_count_phase_or_unregistered_recipe() -> Result<()> {
-    let recipe = GdnKernelRecipe::fixture(0, 47, false)?;
-    assert!(GdnKernelRecipe::bind(recipe.recipe_sha256(), 48, false).is_err());
-    assert!(GdnKernelRecipe::bind(recipe.recipe_sha256(), 47, true).is_err());
-    assert!(GdnKernelRecipe::bind("changed source tuple", 47, false).is_err());
-    assert!(GdnKernelRecipe::fixture(0, 48, false).is_err());
-    assert!(GdnKernelRecipe::fixture(0, 49, false).is_err());
-    assert!(GdnKernelRecipe::fixture(0, 50, false).is_err());
-    assert!(GdnKernelRecipe::fixture(0, 47, true).is_err());
-    Ok(())
 }

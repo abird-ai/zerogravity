@@ -8,8 +8,6 @@ pub use config::{
     GdnKernelConfig, GdnKktKernel, GdnOutputKernel, GdnRecomputeKernel, GdnStateKernel,
     TextGdnImplementation,
 };
-#[cfg(test)]
-pub(crate) use observed::GdnKernelRecipe;
 use zerogravity_core::accelerator::program::{
     PlanOperation, SourceCall, SourceCallMode, SourceConvGeometry, SourceOperatorKind,
 };
@@ -43,7 +41,7 @@ impl TextGdnGeometry {
             implementation,
         })
     }
-    pub(crate) fn require_catalog(self) -> Result<()> {
+    pub(crate) fn require_implementation(self) -> Result<()> {
         self.slot.validate(self.phase)?;
         for &stage in self.phase.stages() {
             select(self.implementation.config(), self.phase, stage)?;
@@ -51,7 +49,7 @@ impl TextGdnGeometry {
         Ok(())
     }
     pub(crate) fn metadata_bound(self) -> Result<usize> {
-        self.require_catalog()?;
+        self.require_implementation()?;
         self.phase.stages().iter().try_fold(
             256usize * 1024 + 6 * PinnedKernel::KEY_METADATA_BYTES,
             |sum, &stage| {
@@ -69,9 +67,8 @@ impl TextGdnGeometry {
     }
 }
 
-/// Checked parameterized stages are prepared from an explicit coherent config.
-/// The exact historical recipe remains only the whole-call admission boundary;
-/// no executable prefill stage reaches the retained fixture selector.
+/// Checked parameterized stages are prepared from explicit implementation data.
+/// No executable stage consults a qualification recipe or finite case table.
 pub(super) fn select(
     config: Option<GdnKernelConfig>,
     phase: GdnPhase,
@@ -120,6 +117,7 @@ pub(super) fn select(
 }
 
 mod config;
+#[cfg(test)]
 mod observed;
 mod parameterized_cached;
 mod parameterized_conv;
@@ -137,9 +135,11 @@ pub(super) fn fixture_implementation(
     use GdnRecomputeKernel::{Bk64Bv64W8S3, Bk64Bv64W8S4};
     use GdnStateKernel::{Bv32W4S2, Bv64W4S2};
 
-    let recipe = GdnKernelRecipe::fixture(catalogue, input_tokens, is_decode)?;
     if is_decode {
-        return TextGdnImplementation::cached(recipe.recipe_sha256());
+        if input_tokens != 1 || catalogue > 1 {
+            return Err(Error::Unsupported("test GDN implementation cell".into()));
+        }
+        return Ok(TextGdnImplementation::cached());
     }
     let stages = match (catalogue, input_tokens) {
         (0, 47) | (1, 57) => (Bk32W8S3, Bk64Bv64W8S4, Bv64W4S2, Bk32Bv32W4S2),
@@ -151,7 +151,6 @@ pub(super) fn fixture_implementation(
         _ => return Err(Error::Unsupported("test GDN implementation cell".into())),
     };
     TextGdnImplementation::prefill(
-        recipe.recipe_sha256(),
         input_tokens,
         GdnKernelConfig::from_stages(stages.0, stages.1, stages.2, stages.3)?,
     )
@@ -200,7 +199,7 @@ pub(crate) struct TextGdnCode {
     _metadata: zerogravity_artifacts::source_weights::WindowWorkspace,
 }
 impl TextGdnCode {
-    pub(super) fn require_same_recipe(&self, old: &Self) -> Result<()> {
+    pub(super) fn require_same_implementation(&self, old: &Self) -> Result<()> {
         if self.geometry != old.geometry
             || self.conv_geometry != old.conv_geometry
             || self.layer != old.layer
@@ -209,9 +208,9 @@ impl TextGdnCode {
                 "GDN immutable kernel geometry/site changed".into(),
             ));
         }
-        // Both recipes use this same closed selector. No per-call/source-root
-        // operand enters kernel construction; those remain fresh binding checks.
-        self.geometry.require_catalog()
+        // No per-call/source-root operand enters kernel construction; those
+        // remain fresh binding checks.
+        self.geometry.require_implementation()
     }
     pub(crate) fn bind(
         scope: Arc<TextModelBinding>,
@@ -222,8 +221,8 @@ impl TextGdnCode {
     ) -> Result<Arc<Self>> {
         scope.require_values(&values)?;
         let geometry = TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?;
-        // Complete tuple membership before any private allocation or upload.
-        geometry.require_catalog()?;
+        // Validate the complete actual implementation before private allocation.
+        geometry.require_implementation()?;
         workspace.require_scope(&scope, &values)?;
         let site = scope.gdn_site(layer)?;
         let node = scope
@@ -317,7 +316,7 @@ impl TextGdnCode {
         if !Arc::ptr_eq(service, self.values.service()) || phase != self.geometry.phase {
             return Err(Error::State("text GDN same source/geometry/service".into()));
         }
-        self.geometry.require_catalog()
+        self.geometry.require_implementation()
     }
     pub(super) fn kernel(&self, phase: GdnPhase, stage: GdnStage) -> Result<LaunchSpec> {
         if phase != self.geometry.phase {

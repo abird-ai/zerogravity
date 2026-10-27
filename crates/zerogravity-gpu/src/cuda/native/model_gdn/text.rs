@@ -23,7 +23,8 @@ impl ModelGdnParameters {
     ) -> Result<Arc<Self>> {
         super::super::projection_cubin::not_cancelled(cancelled)?;
         let (conv, recurrent) = operators(scope, layer)?;
-        TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?.require_catalog()?;
+        TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?
+            .require_implementation()?;
         if scope.source().source_identity() != service.source_identity() {
             return Err(Error::State(
                 "text GDN actual source/service before parameter upload".into(),
@@ -276,7 +277,7 @@ impl ColdTextGdn {
 impl ColdTextGdn {
     pub(crate) fn allocation_layout(scope: &TextModelBinding) -> Result<Vec<usize>> {
         let geometry = TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?;
-        geometry.require_catalog()?;
+        geometry.require_implementation()?;
         let count = scope
             .gdn_sites()
             .len()

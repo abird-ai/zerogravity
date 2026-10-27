@@ -22,7 +22,7 @@ pub(crate) fn is_external(role: GdnBuffer) -> bool {
     )
 }
 fn layout(geometry: TextGdnGeometry) -> Result<BTreeMap<GdnBuffer, usize>> {
-    geometry.require_catalog()?;
+    geometry.require_implementation()?;
     let mut roles = BTreeSet::from([GdnBuffer::CacheArena]);
     for &stage in geometry.phase.stages() {
         let spec = kernel_from_asset(
@@ -70,7 +70,7 @@ impl TextGdnWorkspace {
         scope.require_values(&values)?;
         init.require_service(values.service())?;
         let geometry = TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?;
-        geometry.require_catalog()?; // Missing real tuples refuse before H2D/allocation.
+        geometry.require_implementation()?; // Invalid implementations refuse before H2D/allocation.
         let source = scope.source();
         let metadata = Arc::new(
             source.reserve_workspace(
@@ -269,7 +269,7 @@ impl TextGdnWorkspace {
         implementation: TextGdnImplementation,
     ) -> Result<(usize, usize)> {
         let geometry = TextGdnGeometry::for_call(call, implementation)?;
-        geometry.require_catalog()?;
+        geometry.require_implementation()?;
         let retained = geometry
             .metadata_bound()?
             .checked_add(256 * 1024)
