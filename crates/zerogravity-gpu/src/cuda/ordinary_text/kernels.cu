@@ -12,9 +12,13 @@
 struct alignas(8) ZgWords1 { unsigned long long words[1]; };
 struct alignas(8) ZgWords2 { unsigned long long words[2]; };
 struct alignas(8) ZgWords3 { unsigned long long words[3]; };
+struct alignas(8) ZgWords4 { unsigned long long words[4]; };
+struct alignas(8) ZgWords5 { unsigned long long words[5]; };
 static_assert(sizeof(ZgWords1) == 8 && alignof(ZgWords1) == 8, "words1 ABI");
 static_assert(sizeof(ZgWords2) == 16 && alignof(ZgWords2) == 8, "words2 ABI");
 static_assert(sizeof(ZgWords3) == 24 && alignof(ZgWords3) == 8, "words3 ABI");
+static_assert(sizeof(ZgWords4) == 32 && alignof(ZgWords4) == 8, "words4 ABI");
+static_assert(sizeof(ZgWords5) == 40 && alignof(ZgWords5) == 8, "words5 ABI");
 
 static __device__ __forceinline__ unsigned zg_u32(unsigned long long word) {
     return (unsigned)word;
@@ -73,7 +77,9 @@ void zg_ot_rope_v1(void* query_raw, void* key_raw, void* positions_raw,
         const unsigned second = first + half;
         const float a = zg_load(query + first);
         const float b = zg_load(query + second);
-        const float angle = (float)position * inverse[pair];
+        const float frequency = inverse[pair];
+        if (!isfinite(a) || !isfinite(b) || !isfinite(frequency)) zg_bad(status, 2u);
+        const float angle = (float)position * frequency;
         float sine, cosine;
         sincosf(angle, &sine, &cosine);
         const float x = a * cosine - b * sine;
@@ -91,7 +97,9 @@ void zg_ot_rope_v1(void* query_raw, void* key_raw, void* positions_raw,
         const unsigned second = first + half;
         const float a = zg_load(key + first);
         const float b = zg_load(key + second);
-        const float angle = (float)position * inverse[pair];
+        const float frequency = inverse[pair];
+        if (!isfinite(a) || !isfinite(b) || !isfinite(frequency)) zg_bad(status, 2u);
+        const float angle = (float)position * frequency;
         float sine, cosine;
         sincosf(angle, &sine, &cosine);
         const float x = a * cosine - b * sine;
@@ -119,7 +127,9 @@ void zg_ot_embedding_v1(void* tokens_raw, void* table_raw, void* output_raw,
         if (token >= ZG_VOCABULARY) {
             output[i] = zg_store(0.0f); zg_bad(status, 1u);
         } else {
-            output[i] = table[(size_t)token * ZG_HIDDEN_WIDTH + column];
+            const float weight = zg_load(table + (size_t)token * ZG_HIDDEN_WIDTH + column);
+            output[i] = zg_store(weight);
+            if (!isfinite(weight)) zg_bad(status, 2u);
         }
     }
 }
@@ -150,8 +160,11 @@ void zg_ot_rms_v1(void* input_raw, void* raw_gamma_raw, void* output_raw,
     const float inverse = rsqrtf(reduction[0] / (float)ZG_HIDDEN_WIDTH + zg_f32(scalars.words[1]));
     for (unsigned c = threadIdx.x; c < ZG_HIDDEN_WIDTH; c += blockDim.x) {
         const size_t i = (size_t)row * ZG_HIDDEN_WIDTH + c;
-        const float y = zg_load(input + i) * inverse * (1.0f + zg_load(raw_gamma + c));
-        output[i] = zg_store(y); if (!isfinite(y)) zg_bad(status, 2u);
+        const float x = zg_load(input + i);
+        const float gamma = zg_load(raw_gamma + c);
+        const float y = x * inverse * (1.0f + gamma);
+        output[i] = zg_store(y);
+        if (!isfinite(x) || !isfinite(gamma) || !isfinite(inverse) || !isfinite(y)) zg_bad(status, 2u);
     }
 }
 
@@ -171,11 +184,13 @@ void zg_ot_residual_rms_v1(void* input_raw, void* residual_raw, void* raw_gamma_
     float sum = 0.0f;
     for (unsigned c = threadIdx.x; c < ZG_HIDDEN_WIDTH; c += blockDim.x) {
         const size_t i = (size_t)row * ZG_HIDDEN_WIDTH + c;
-        const float x = zg_load(input + i) + zg_load(residual + i);
+        const float input_value = zg_load(input + i);
+        const float residual_value = zg_load(residual + i);
+        const float x = input_value + residual_value;
         const __nv_bfloat16 rounded = zg_store(x);
         residual[i] = rounded;
         const float r = __bfloat162float(rounded); sum += r * r;
-        if (!isfinite(r)) zg_bad(status, 2u);
+        if (!isfinite(input_value) || !isfinite(residual_value) || !isfinite(r)) zg_bad(status, 2u);
     }
     reduction[threadIdx.x] = sum; __syncthreads();
     for (unsigned stride = ZG_THREADS / 2; stride; stride >>= 1) {
@@ -185,17 +200,20 @@ void zg_ot_residual_rms_v1(void* input_raw, void* residual_raw, void* raw_gamma_
     const float inverse = rsqrtf(reduction[0] / (float)ZG_HIDDEN_WIDTH + zg_f32(scalars.words[1]));
     for (unsigned c = threadIdx.x; c < ZG_HIDDEN_WIDTH; c += blockDim.x) {
         const size_t i = (size_t)row * ZG_HIDDEN_WIDTH + c;
-        const float y = zg_load(residual + i) * inverse * (1.0f + zg_load(raw_gamma + c));
-        output[i] = zg_store(y); if (!isfinite(y)) zg_bad(status, 2u);
+        const float residual_value = zg_load(residual + i);
+        const float gamma = zg_load(raw_gamma + c);
+        const float y = residual_value * inverse * (1.0f + gamma);
+        output[i] = zg_store(y);
+        if (!isfinite(residual_value) || !isfinite(gamma) || !isfinite(inverse) || !isfinite(y)) zg_bad(status, 2u);
     }
 }
 
-// Q/K zero-centered RMS: one independent 256-thread block per head.
-// words = [rows, epsilon_f32_bits].
+// Q/K zero-centered RMS over packed Q/G/K/V projection rows: one block/head.
+// words = [rows, input_offset, input_row_stride, input_head_stride, epsilon_f32_bits].
 #define ZG_DEFINE_HEAD_RMS(NAME, HEADS) \
 extern "C" __global__ __launch_bounds__(ZG_THREADS) \
 void NAME(void* input_raw, void* raw_gamma_raw, void* output_raw, \
-          void* status_raw, ZgWords2 scalars) { \
+          void* status_raw, ZgWords5 scalars) { \
     const __nv_bfloat16* input = (const __nv_bfloat16*)input_raw; \
     const __nv_bfloat16* raw_gamma = (const __nv_bfloat16*)raw_gamma_raw; \
     __nv_bfloat16* output = (__nv_bfloat16*)output_raw; \
@@ -203,10 +221,16 @@ void NAME(void* input_raw, void* raw_gamma_raw, void* output_raw, \
     __shared__ float reduction[ZG_THREADS]; \
     const unsigned group = blockIdx.x; \
     const unsigned rows = zg_u32(scalars.words[0]); \
+    const unsigned input_offset = zg_u32(scalars.words[1]); \
+    const unsigned input_stride = zg_u32(scalars.words[2]); \
+    const unsigned input_head_stride = zg_u32(scalars.words[3]); \
     if (group >= rows * (HEADS)) return; \
     const unsigned lane = threadIdx.x; \
-    const size_t i = (size_t)group * ZG_HEAD_DIM + lane; \
-    const float x = zg_load(input + i); \
+    const unsigned row = group / (HEADS); \
+    const unsigned head = group % (HEADS); \
+    const size_t input_i = (size_t)row * input_stride + input_offset + (size_t)head * input_head_stride + lane; \
+    const size_t output_i = (size_t)group * ZG_HEAD_DIM + lane; \
+    const float x = zg_load(input + input_i); \
     reduction[lane] = x * x; \
     if (!isfinite(x)) zg_bad(status, 2u); \
     __syncthreads(); \
@@ -214,36 +238,72 @@ void NAME(void* input_raw, void* raw_gamma_raw, void* output_raw, \
         if (lane < stride) reduction[lane] += reduction[lane + stride]; \
         __syncthreads(); \
     } \
-    const float inverse = rsqrtf(reduction[0] / (float)ZG_HEAD_DIM + zg_f32(scalars.words[1])); \
-    const float y = x * inverse * (1.0f + zg_load(raw_gamma + lane)); \
-    output[i] = zg_store(y); \
-    if (!isfinite(y)) zg_bad(status, 2u); \
+    const float inverse = rsqrtf(reduction[0] / (float)ZG_HEAD_DIM + zg_f32(scalars.words[4])); \
+    const float gamma = zg_load(raw_gamma + lane); \
+    const float y = x * inverse * (1.0f + gamma); \
+    output[output_i] = zg_store(y); \
+    if (!isfinite(gamma) || !isfinite(inverse) || !isfinite(y)) zg_bad(status, 2u); \
 }
 
 ZG_DEFINE_HEAD_RMS(zg_ot_query_head_rms_v1, ZG_QUERY_HEADS)
 ZG_DEFINE_HEAD_RMS(zg_ot_key_head_rms_v1, ZG_KV_HEADS)
 #undef ZG_DEFINE_HEAD_RMS
 
-// words = [rows].
+// Packed GateUp words = [rows, gate_offset, up_offset, row_stride] in elements.
 extern "C" __global__ __launch_bounds__(ZG_THREADS)
-void zg_ot_silu_up_v1(void* gate_raw, void* up_raw, void* output_raw,
-                      void* status_raw, ZgWords1 scalars) {
-    const __nv_bfloat16* gate = (const __nv_bfloat16*)gate_raw;
-    const __nv_bfloat16* up = (const __nv_bfloat16*)up_raw;
+void zg_ot_silu_up_v1(void* packed_raw, void* output_raw,
+                      void* status_raw, ZgWords4 scalars) {
+    const __nv_bfloat16* packed = (const __nv_bfloat16*)packed_raw;
     __nv_bfloat16* output = (__nv_bfloat16*)output_raw;
     unsigned* status = (unsigned*)status_raw;
-    const size_t count = (size_t)zg_u32(scalars.words[0]) * ZG_INTERMEDIATE_WIDTH;
+    const unsigned rows = zg_u32(scalars.words[0]);
+    const unsigned gate_offset = zg_u32(scalars.words[1]);
+    const unsigned up_offset = zg_u32(scalars.words[2]);
+    const unsigned row_stride = zg_u32(scalars.words[3]);
+    const size_t count = (size_t)rows * ZG_INTERMEDIATE_WIDTH;
     const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (i < count) {
-        const float x = zg_load(gate + i);
-        const float y = (x / (1.0f + expf(-x))) * zg_load(up + i);
-        output[i] = zg_store(y); if (!isfinite(y)) zg_bad(status, 2u);
+        const size_t row = i / ZG_INTERMEDIATE_WIDTH;
+        const size_t column = i % ZG_INTERMEDIATE_WIDTH;
+        const float gate = zg_load(packed + row * row_stride + gate_offset + column);
+        const float up = zg_load(packed + row * row_stride + up_offset + column);
+        const __nv_bfloat16 activated = zg_store(gate / (1.0f + expf(-gate)));
+        const float y = zg_load(&activated) * up;
+        output[i] = zg_store(y);
+        if (!isfinite(gate) || !isfinite(up) || !isfinite(y)) zg_bad(status, 2u);
     }
 }
 
+// Interleaved Q/G words = [rows, gate_offset, head_stride, row_stride] in elements.
 extern "C" __global__ __launch_bounds__(ZG_THREADS)
-void zg_ot_sigmoid_gate_v1(void* input_raw, void* gate_raw, void* output_raw,
-                           void* status_raw, ZgWords1 scalars) {
+void zg_ot_sigmoid_v1(void* packed_raw, void* output_raw,
+                      void* status_raw, ZgWords4 scalars) {
+    const __nv_bfloat16* packed = (const __nv_bfloat16*)packed_raw;
+    __nv_bfloat16* output = (__nv_bfloat16*)output_raw;
+    unsigned* status = (unsigned*)status_raw;
+    const size_t width = (size_t)ZG_QUERY_HEADS * ZG_HEAD_DIM;
+    const unsigned rows = zg_u32(scalars.words[0]);
+    const unsigned gate_offset = zg_u32(scalars.words[1]);
+    const unsigned head_stride = zg_u32(scalars.words[2]);
+    const unsigned row_stride = zg_u32(scalars.words[3]);
+    const size_t count = (size_t)rows * width;
+    const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < count) {
+        const size_t row = i / width;
+        const size_t column = i % width;
+        const size_t head = column / ZG_HEAD_DIM;
+        const size_t lane = column % ZG_HEAD_DIM;
+        const float gate = zg_load(packed + row * row_stride + head * head_stride + gate_offset + lane);
+        const float sigmoid = 1.0f / (1.0f + expf(-gate));
+        output[i] = zg_store(sigmoid);
+        if (!isfinite(gate) || !isfinite(sigmoid)) zg_bad(status, 2u);
+    }
+}
+
+// Multiply consumes the separately BF16-rounded sigmoid output.
+extern "C" __global__ __launch_bounds__(ZG_THREADS)
+void zg_ot_multiply_v1(void* input_raw, void* gate_raw, void* output_raw,
+                       void* status_raw, ZgWords1 scalars) {
     const __nv_bfloat16* input = (const __nv_bfloat16*)input_raw;
     const __nv_bfloat16* gate = (const __nv_bfloat16*)gate_raw;
     __nv_bfloat16* output = (__nv_bfloat16*)output_raw;
@@ -252,9 +312,11 @@ void zg_ot_sigmoid_gate_v1(void* input_raw, void* gate_raw, void* output_raw,
     const size_t count = (size_t)zg_u32(scalars.words[0]) * width;
     const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (i < count) {
-        const float g = zg_load(gate + i);
-        const float y = zg_load(input + i) / (1.0f + expf(-g));
-        output[i] = zg_store(y); if (!isfinite(y)) zg_bad(status, 2u);
+        const float input_value = zg_load(input + i);
+        const float rounded_sigmoid = zg_load(gate + i);
+        const float y = input_value * rounded_sigmoid;
+        output[i] = zg_store(y);
+        if (!isfinite(input_value) || !isfinite(rounded_sigmoid) || !isfinite(y)) zg_bad(status, 2u);
     }
 }
 
@@ -268,23 +330,29 @@ void zg_ot_residual_v1(void* input_raw, void* residual_raw, void* output_raw,
     const size_t count = (size_t)zg_u32(scalars.words[0]) * ZG_HIDDEN_WIDTH;
     const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (i < count) {
-        const float y = zg_load(input + i) + zg_load(residual + i);
-        output[i] = zg_store(y); if (!isfinite(y)) zg_bad(status, 2u);
+        const float input_value = zg_load(input + i);
+        const float residual_value = zg_load(residual + i);
+        const float y = input_value + residual_value;
+        output[i] = zg_store(y);
+        if (!isfinite(input_value) || !isfinite(residual_value) || !isfinite(y)) zg_bad(status, 2u);
     }
 }
 
-// words = [rows, base, capacity]. Cache layout is [token, kv_head, HEAD_DIM].
+// words = [rows, base, capacity, value_offset, value_row_stride] in elements.
+// Cache layout is [token, kv_head, HEAD_DIM]; V is read from packed Q/G/K/V.
 extern "C" __global__ __launch_bounds__(ZG_THREADS)
-void zg_ot_kv_append_v1(void* key_raw, void* value_raw, void* key_cache_raw,
-                        void* value_cache_raw, void* status_raw, ZgWords3 scalars) {
+void zg_ot_kv_append_v1(void* key_raw, void* packed_raw, void* key_cache_raw,
+                        void* value_cache_raw, void* status_raw, ZgWords5 scalars) {
     const __nv_bfloat16* key = (const __nv_bfloat16*)key_raw;
-    const __nv_bfloat16* value = (const __nv_bfloat16*)value_raw;
+    const __nv_bfloat16* packed = (const __nv_bfloat16*)packed_raw;
     __nv_bfloat16* key_cache = (__nv_bfloat16*)key_cache_raw;
     __nv_bfloat16* value_cache = (__nv_bfloat16*)value_cache_raw;
     unsigned* status = (unsigned*)status_raw;
     const unsigned rows = zg_u32(scalars.words[0]);
     const unsigned base = zg_u32(scalars.words[1]);
     const unsigned capacity = zg_u32(scalars.words[2]);
+    const unsigned value_offset = zg_u32(scalars.words[3]);
+    const unsigned value_stride = zg_u32(scalars.words[4]);
     const size_t row_width = (size_t)ZG_KV_HEADS * ZG_HEAD_DIM;
     const size_t count = (size_t)rows * row_width;
     const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
@@ -292,8 +360,12 @@ void zg_ot_kv_append_v1(void* key_raw, void* value_raw, void* key_cache_raw,
         const unsigned row = (unsigned)(i / row_width);
         const size_t destination = ((size_t)base + row) * row_width + i % row_width;
         if (base + row >= capacity) { zg_bad(status, 1u); return; }
-        key_cache[destination] = key[i]; value_cache[destination] = value[i];
-        if (!isfinite(zg_load(key + i)) || !isfinite(zg_load(value + i))) zg_bad(status, 2u);
+        const size_t value_i = (size_t)row * value_stride + value_offset + i % row_width;
+        const float key_value = zg_load(key + i);
+        const float value_value = zg_load(packed + value_i);
+        key_cache[destination] = zg_store(key_value);
+        value_cache[destination] = zg_store(value_value);
+        if (!isfinite(key_value) || !isfinite(value_value)) zg_bad(status, 2u);
     }
 }
 
@@ -322,7 +394,10 @@ void zg_ot_unqualified_online_fp32_attention_v1(void* query_raw, void* key_cache
     const unsigned valid = base + row + 1;
     for (unsigned token = 0; token < valid; ++token) {
         const size_t cache_i = ((size_t)token * ZG_KV_HEADS + kv_head) * ZG_HEAD_DIM + d;
-        dot[d] = q * zg_load(key_cache + cache_i); __syncthreads();
+        const float key_value = zg_load(key_cache + cache_i);
+        const float value_value = zg_load(value_cache + cache_i);
+        if (!isfinite(q) || !isfinite(key_value) || !isfinite(value_value)) zg_bad(status, 2u);
+        dot[d] = q * key_value; __syncthreads();
         for (unsigned stride = ZG_HEAD_DIM / 2; stride; stride >>= 1) {
             if (d < stride) dot[d] += dot[d + stride];
             __syncthreads();
@@ -331,7 +406,7 @@ void zg_ot_unqualified_online_fp32_attention_v1(void* query_raw, void* key_cache
         const float next_maximum = fmaxf(maximum, score);
         const float previous = maximum == -INFINITY ? 0.0f : expf(maximum - next_maximum);
         const float current = expf(score - next_maximum);
-        accumulator = accumulator * previous + zg_load(value_cache + cache_i) * current;
+        accumulator = accumulator * previous + value_value * current;
         normalizer = normalizer * previous + current;
         maximum = next_maximum;
         __syncthreads();

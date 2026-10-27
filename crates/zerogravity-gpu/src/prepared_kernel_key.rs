@@ -1,4 +1,3 @@
-#![cfg_attr(not(feature = "cuda-native-qualification"), allow(dead_code))]
 //! Immutable compiler-key metadata; hashing grants no execution authority.
 use cubecl_common::hash::{StableHash, StableHasher};
 use std::{

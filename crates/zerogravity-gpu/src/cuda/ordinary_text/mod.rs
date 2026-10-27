@@ -16,7 +16,7 @@ use zerogravity_core::{Error, Result};
 
 const THREADS: u32 = 256;
 pub const MAX_RUNTIME_ROWS: usize = 64;
-pub const MAX_CONTEXT_CAPACITY: usize = 262_144;
+pub const MAX_CONTEXT_CAPACITY: usize = 32_768;
 /// Device status: runtime token or position exceeded its admitted extent.
 pub const STATUS_OUT_OF_RANGE: u32 = 1;
 /// Device status: an arithmetic input or output was non-finite.
@@ -142,11 +142,15 @@ impl Step {
 
 /// Exact internal pointer role; order comes from each crate-private definition.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum BufferRole {
+pub enum BufferRole {
     Positions,
     Query,
     Key,
     Value,
+    /// Projection rows: 8 × [query256, gate256], key512, value512.
+    PackedAttention,
+    /// Projection output rows: gate[intermediate], up[intermediate].
+    PackedGateUp,
     InverseFrequency,
     TokenIds,
     EmbeddingTable,
@@ -168,7 +172,7 @@ pub(crate) enum BufferRole {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum Access {
+pub enum Access {
     Read,
     Write,
     ReadWrite,
@@ -185,7 +189,7 @@ impl Access {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct BufferBinding {
+pub struct BufferBinding {
     pub role: BufferRole,
     pub bytes: usize,
     pub alignment: usize,
@@ -225,6 +229,61 @@ pub(crate) struct LaunchCompletion {
     pub(crate) status: u32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StatusPhase {
+    NeedsClear,
+    Cleared,
+    Submitted,
+    FencedRead,
+}
+
+struct StatusProtocol(StatusPhase);
+
+impl StatusProtocol {
+    fn new() -> Self {
+        Self(StatusPhase::NeedsClear)
+    }
+
+    fn cleared(&mut self) -> Result<()> {
+        if self.0 != StatusPhase::NeedsClear {
+            return Err(Error::State("ordinary text status clear order".into()));
+        }
+        self.0 = StatusPhase::Cleared;
+        Ok(())
+    }
+
+    fn submitted(&mut self) -> Result<()> {
+        if self.0 != StatusPhase::Cleared {
+            return Err(Error::State("ordinary text status submit order".into()));
+        }
+        self.0 = StatusPhase::Submitted;
+        Ok(())
+    }
+
+    fn fenced_read(&mut self, status: u32) -> Result<LaunchCompletion> {
+        if self.0 != StatusPhase::Submitted {
+            return Err(Error::State("ordinary text status fence/read order".into()));
+        }
+        self.0 = StatusPhase::FencedRead;
+        Ok(LaunchCompletion { status })
+    }
+}
+
+impl LaunchCompletion {
+    /// Status acceptance is a separate publication gate. Any device flag
+    /// refuses the candidate; zero alone still grants no `StateRoot` write.
+    pub(crate) fn require_accepted(self) -> Result<()> {
+        if self.status == 0 {
+            Ok(())
+        } else {
+            Err(Error::State(format!(
+                "ordinary text device status refuses publication: {:#x}",
+                self.status
+            )))
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum Primitive {
     Positions,
@@ -233,7 +292,8 @@ pub(crate) enum Primitive {
     Rms,
     ResidualRms,
     SiluUp,
-    SigmoidGate,
+    Sigmoid,
+    Multiply,
     Residual,
     KvAppend,
     QueryHeadRms,
@@ -253,7 +313,8 @@ impl Primitive {
             Self::Rms => "zg_ot_rms_v1",
             Self::ResidualRms => "zg_ot_residual_rms_v1",
             Self::SiluUp => "zg_ot_silu_up_v1",
-            Self::SigmoidGate => "zg_ot_sigmoid_gate_v1",
+            Self::Sigmoid => "zg_ot_sigmoid_v1",
+            Self::Multiply => "zg_ot_multiply_v1",
             Self::Residual => "zg_ot_residual_v1",
             Self::KvAppend => "zg_ot_kv_append_v1",
             Self::QueryHeadRms => "zg_ot_query_head_rms_v1",
@@ -262,6 +323,54 @@ impl Primitive {
             Self::Greedy => "zg_ot_greedy_v1",
         }
     }
+}
+
+/// Public selected primitive identity. The private FP32 attention diagnostic
+/// intentionally has no representable contract value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum PrimitiveKind {
+    Positions,
+    Rope,
+    Embedding,
+    Rms,
+    ResidualRms,
+    SiluUp,
+    Sigmoid,
+    Multiply,
+    Residual,
+    KvAppend,
+    QueryHeadRms,
+    KeyHeadRms,
+    Greedy,
+}
+
+/// Public, non-executable description used by model/application lowering.
+/// It grants no handle, queue, completion, source, or publication authority.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DefinitionContract {
+    pub primitive: PrimitiveKind,
+    pub entry: &'static str,
+    pub bindings: Arc<[BufferBinding]>,
+    pub scalar_words: Arc<[u64]>,
+    pub grid: [u32; 3],
+}
+
+/// Source-neutral semantic request for one ordinary primitive definition.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PlanPrimitive {
+    Positions,
+    Rope,
+    Embedding,
+    Rms { epsilon: f32 },
+    ResidualRms { epsilon: f32 },
+    SiluAndMul,
+    Sigmoid,
+    Multiply,
+    Residual,
+    KvAppend,
+    QueryHeadRms { epsilon: f32 },
+    KeyHeadRms { epsilon: f32 },
+    Greedy,
 }
 
 /// Complete source, ABI, static scalar block, and launch geometry.
@@ -435,6 +544,36 @@ impl Definition {
         Ok(())
     }
 
+    fn contract(&self) -> Result<DefinitionContract> {
+        let primitive = match self.primitive {
+            Primitive::Positions => PrimitiveKind::Positions,
+            Primitive::Rope => PrimitiveKind::Rope,
+            Primitive::Embedding => PrimitiveKind::Embedding,
+            Primitive::Rms => PrimitiveKind::Rms,
+            Primitive::ResidualRms => PrimitiveKind::ResidualRms,
+            Primitive::SiluUp => PrimitiveKind::SiluUp,
+            Primitive::Sigmoid => PrimitiveKind::Sigmoid,
+            Primitive::Multiply => PrimitiveKind::Multiply,
+            Primitive::Residual => PrimitiveKind::Residual,
+            Primitive::KvAppend => PrimitiveKind::KvAppend,
+            Primitive::QueryHeadRms => PrimitiveKind::QueryHeadRms,
+            Primitive::KeyHeadRms => PrimitiveKind::KeyHeadRms,
+            Primitive::Greedy => PrimitiveKind::Greedy,
+            Primitive::UnqualifiedOnlineFp32Attention => {
+                return Err(Error::Unsupported(
+                    "private unqualified FP32 attention has no selectable contract".into(),
+                ));
+            }
+        };
+        Ok(DefinitionContract {
+            primitive,
+            entry: self.entry(),
+            bindings: self.bindings.clone(),
+            scalar_words: self.scalar_words().into(),
+            grid: self.grid,
+        })
+    }
+
     /// Compile/load and require the exact driver-reflected pointer/scalar ABI.
     #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     fn diagnose_code(&self, queue: &cubecl::cuda::OwnedCudaQueue) -> Result<()> {
@@ -462,13 +601,16 @@ impl PreparedLaunch {
         client: &Client,
         status: &mut S,
     ) -> Result<LaunchCompletion> {
+        let mut protocol = StatusProtocol::new();
         require_same_status(&self.status_handle, &status.binding())?;
         status.clear_before_submit(client)?;
+        protocol.cleared()?;
         require_same_status(&self.status_handle, &status.binding())?;
         self.inner.launch_on(client)?;
+        protocol.submitted()?;
         let observed = status.complete_and_read(client)?;
         require_same_status(&self.status_handle, &status.binding())?;
-        Ok(LaunchCompletion { status: observed })
+        protocol.fenced_read(observed)
     }
 }
 
@@ -540,6 +682,27 @@ impl Program {
 
     pub fn geometry(&self) -> Geometry {
         self.geometry
+    }
+
+    /// Checked, non-executable lowering contract for an authenticated model
+    /// adapter. Runtime execution remains crate-private and owner-gated.
+    pub fn contract(&self, operation: PlanPrimitive, step: Step) -> Result<DefinitionContract> {
+        let definition = match operation {
+            PlanPrimitive::Positions => self.positions(step)?,
+            PlanPrimitive::Rope => self.rope(step)?,
+            PlanPrimitive::Embedding => self.embedding(step.rows)?,
+            PlanPrimitive::Rms { epsilon } => self.rms(step.rows, epsilon)?,
+            PlanPrimitive::ResidualRms { epsilon } => self.residual_rms(step.rows, epsilon)?,
+            PlanPrimitive::SiluAndMul => self.silu_up(step.rows)?,
+            PlanPrimitive::Sigmoid => self.sigmoid(step.rows)?,
+            PlanPrimitive::Multiply => self.multiply(step.rows)?,
+            PlanPrimitive::Residual => self.residual(step.rows)?,
+            PlanPrimitive::KvAppend => self.kv_append(step)?,
+            PlanPrimitive::QueryHeadRms { epsilon } => self.query_head_rms(step.rows, epsilon)?,
+            PlanPrimitive::KeyHeadRms { epsilon } => self.key_head_rms(step.rows, epsilon)?,
+            PlanPrimitive::Greedy => self.greedy(step.rows)?,
+        };
+        definition.contract()
     }
 
     pub fn memory_plan(&self, rows: usize, capacity: usize) -> Result<MemoryPlan> {
@@ -689,18 +852,94 @@ impl Program {
     }
 
     pub(crate) fn silu_up(&self, rows: usize) -> Result<Definition> {
-        self.elementwise(
-            Primitive::SiluUp,
+        require_rows(rows)?;
+        let packed_width = checked_mul(
+            self.geometry.intermediate_width,
+            2,
+            "packed gate/up row stride",
+        )?;
+        let packed = extent(rows, packed_width, BF16_BYTES, "packed gate/up batch")?;
+        require_strided_view(
+            rows,
+            packed_width,
+            1,
+            0,
+            0,
+            self.geometry.intermediate_width,
+            packed / BF16_BYTES,
+            "packed gate",
+        )?;
+        require_strided_view(
+            rows,
+            packed_width,
+            1,
+            0,
+            self.geometry.intermediate_width,
+            self.geometry.intermediate_width,
+            packed / BF16_BYTES,
+            "packed up",
+        )?;
+        let output = extent(
             rows,
             self.geometry.intermediate_width,
-            BufferRole::Gate,
-            BufferRole::Up,
+            BF16_BYTES,
+            "SiLU output batch",
+        )?;
+        self.definition(
+            Primitive::SiluUp,
+            vec![
+                binding(BufferRole::PackedGateUp, packed, Access::Read),
+                binding(BufferRole::Output, output, Access::Write),
+                status(),
+            ],
+            u32_words(&[rows, 0, self.geometry.intermediate_width, packed_width])?,
+            element_grid(checked_mul(
+                rows,
+                self.geometry.intermediate_width,
+                "SiLU grid",
+            )?)?,
         )
     }
 
-    pub(crate) fn sigmoid_gate(&self, rows: usize) -> Result<Definition> {
-        self.elementwise(
-            Primitive::SigmoidGate,
+    /// Qwen attention gate is a strided view of the packed Q/G/K/V projection.
+    /// Sigmoid stores BF16 first; [`Self::multiply`] consumes that rounded value.
+    pub(crate) fn sigmoid(&self, rows: usize) -> Result<Definition> {
+        require_rows(rows)?;
+        let packed = self.packed_attention_bytes(rows)?;
+        let width = self.geometry.query_width()?;
+        let head_stride =
+            checked_mul(2, self.geometry.head_width, "packed query/gate head stride")?;
+        require_strided_view(
+            rows,
+            self.attention_row_stride()?,
+            self.geometry.query_heads,
+            head_stride,
+            self.geometry.head_width,
+            self.geometry.head_width,
+            packed / BF16_BYTES,
+            "interleaved attention gate",
+        )?;
+        let output = extent(rows, width, BF16_BYTES, "sigmoid output batch")?;
+        self.definition(
+            Primitive::Sigmoid,
+            vec![
+                binding(BufferRole::PackedAttention, packed, Access::Read),
+                binding(BufferRole::Output, output, Access::Write),
+                status(),
+            ],
+            u32_words(&[
+                rows,
+                self.geometry.head_width,
+                head_stride,
+                self.attention_row_stride()?,
+            ])?,
+            element_grid(checked_mul(rows, width, "sigmoid grid")?)?,
+        )
+    }
+
+    pub(crate) fn multiply(&self, rows: usize) -> Result<Definition> {
+        self.contiguous_elementwise(
+            Primitive::Multiply,
             rows,
             self.geometry.query_width()?,
             BufferRole::Input,
@@ -709,7 +948,7 @@ impl Program {
     }
 
     pub(crate) fn residual(&self, rows: usize) -> Result<Definition> {
-        self.elementwise(
+        self.contiguous_elementwise(
             Primitive::Residual,
             rows,
             self.geometry.hidden_width,
@@ -718,7 +957,7 @@ impl Program {
         )
     }
 
-    fn elementwise(
+    fn contiguous_elementwise(
         &self,
         primitive: Primitive,
         rows: usize,
@@ -745,11 +984,32 @@ impl Program {
     pub(crate) fn kv_append(&self, step: Step) -> Result<Definition> {
         let step = Step::new(step.rows, step.base, step.capacity)?;
         let plan = self.memory_plan(step.rows, step.capacity)?;
+        let value_offset = checked_mul(
+            2,
+            self.geometry.query_width()?,
+            "packed attention value offset",
+        )?
+        .checked_add(self.geometry.kv_width()?)
+        .ok_or_else(|| Error::Limit("ordinary text packed value offset overflow".into()))?;
+        require_strided_view(
+            step.rows,
+            self.attention_row_stride()?,
+            1,
+            0,
+            value_offset,
+            self.geometry.kv_width()?,
+            self.packed_attention_bytes(step.rows)? / BF16_BYTES,
+            "packed attention value",
+        )?;
         self.definition(
             Primitive::KvAppend,
             vec![
                 binding(BufferRole::Key, plan.kv_batch_bytes, Access::Read),
-                binding(BufferRole::Value, plan.kv_batch_bytes, Access::Read),
+                binding(
+                    BufferRole::PackedAttention,
+                    self.packed_attention_bytes(step.rows)?,
+                    Access::Read,
+                ),
                 binding(
                     BufferRole::KeyCache,
                     plan.key_cache_bytes,
@@ -762,7 +1022,13 @@ impl Program {
                 ),
                 status(),
             ],
-            u32_words(&[step.rows, step.base, step.capacity])?,
+            u32_words(&[
+                step.rows,
+                step.base,
+                step.capacity,
+                value_offset,
+                self.attention_row_stride()?,
+            ])?,
             element_grid(plan.kv_batch_bytes / BF16_BYTES)?,
         )
     }
@@ -772,7 +1038,6 @@ impl Program {
             Primitive::QueryHeadRms,
             rows,
             self.geometry.query_heads,
-            BufferRole::Query,
             BufferRole::QueryRawGamma,
             BufferRole::QueryNormalized,
             epsilon,
@@ -784,7 +1049,6 @@ impl Program {
             Primitive::KeyHeadRms,
             rows,
             self.geometry.kv_heads,
-            BufferRole::Key,
             BufferRole::KeyRawGamma,
             BufferRole::KeyNormalized,
             epsilon,
@@ -797,7 +1061,6 @@ impl Program {
         primitive: Primitive,
         rows: usize,
         heads: usize,
-        input: BufferRole,
         raw_gamma: BufferRole,
         output: BufferRole,
         epsilon: f32,
@@ -813,17 +1076,54 @@ impl Program {
             "head RMS",
         )?;
         let gamma = self.geometry.head_width * BF16_BYTES;
-        self.definition_with_aliases(
+        let (input_offset, input_head_stride) = match primitive {
+            Primitive::QueryHeadRms => (
+                0,
+                checked_mul(2, self.geometry.head_width, "packed query/gate head stride")?,
+            ),
+            Primitive::KeyHeadRms => (
+                checked_mul(
+                    2,
+                    self.geometry.query_width()?,
+                    "packed attention key offset",
+                )?,
+                self.geometry.head_width,
+            ),
+            _ => return Err(Error::State("ordinary text head RMS primitive".into())),
+        };
+        let packed = self.packed_attention_bytes(rows)?;
+        require_strided_view(
+            rows,
+            self.attention_row_stride()?,
+            heads,
+            input_head_stride,
+            input_offset,
+            self.geometry.head_width,
+            packed / BF16_BYTES,
+            "packed attention head RMS",
+        )?;
+        self.definition(
             primitive,
             vec![
-                binding(input, bytes, Access::Read),
+                binding(BufferRole::PackedAttention, packed, Access::Read),
                 binding(raw_gamma, gamma, Access::Read),
                 binding(output, bytes, Access::Write),
                 status(),
             ],
-            &[(input, output)],
             words(&[
                 (StaticScalarType::U32, StaticScalarValue::U32(rows as u64)),
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(input_offset as u64),
+                ),
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(self.attention_row_stride()? as u64),
+                ),
+                (
+                    StaticScalarType::U32,
+                    StaticScalarValue::U32(input_head_stride as u64),
+                ),
                 (
                     StaticScalarType::F32Bits,
                     StaticScalarValue::F32Bits(epsilon.to_bits()),
@@ -895,13 +1195,37 @@ impl Program {
             self.rms(step.rows, epsilon)?,
             self.residual_rms(step.rows, epsilon)?,
             self.silu_up(step.rows)?,
-            self.sigmoid_gate(step.rows)?,
+            self.sigmoid(step.rows)?,
+            self.multiply(step.rows)?,
             self.residual(step.rows)?,
             self.kv_append(step)?,
             self.query_head_rms(step.rows, epsilon)?,
             self.key_head_rms(step.rows, epsilon)?,
             self.greedy(step.rows)?,
         ])
+    }
+
+    fn attention_row_stride(&self) -> Result<usize> {
+        checked_mul(
+            2,
+            self.geometry.query_width()?,
+            "packed attention query/gate",
+        )?
+        .checked_add(checked_mul(
+            2,
+            self.geometry.kv_width()?,
+            "packed attention KV",
+        )?)
+        .ok_or_else(|| Error::Limit("ordinary text packed attention stride overflow".into()))
+    }
+
+    fn packed_attention_bytes(&self, rows: usize) -> Result<usize> {
+        extent(
+            rows,
+            self.attention_row_stride()?,
+            BF16_BYTES,
+            "packed attention batch",
+        )
     }
 
     fn diagnostic_definitions(&self, step: Step, epsilon: f32) -> Result<Vec<Definition>> {
@@ -986,7 +1310,7 @@ pub fn compile_reflection_diagnostic(queue: &cubecl::cuda::OwnedCudaQueue) -> Re
     let mut count = 0;
     for geometry in [Geometry::qwen35_08(), Geometry::qwen35_2b()] {
         let program = Program::new(geometry)?;
-        for definition in program.diagnostic_definitions(Step::new(64, 262_080, 262_144)?, 1e-6)? {
+        for definition in program.diagnostic_definitions(Step::new(64, 32_704, 32_768)?, 1e-6)? {
             definition.diagnose_code(queue)?;
             count += 1;
         }
@@ -1069,6 +1393,47 @@ fn checked_mul(a: usize, b: usize, role: &str) -> Result<usize> {
 
 fn extent(rows: usize, width: usize, element_bytes: usize, role: &str) -> Result<usize> {
     checked_mul(rows, width, role).and_then(|n| checked_mul(n, element_bytes, role))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn require_strided_view(
+    rows: usize,
+    row_stride: usize,
+    groups: usize,
+    group_stride: usize,
+    offset: usize,
+    width: usize,
+    total_elements: usize,
+    role: &str,
+) -> Result<()> {
+    let end = rows
+        .checked_sub(1)
+        .and_then(|row| row.checked_mul(row_stride))
+        .and_then(|base| base.checked_add(offset))
+        .and_then(|base| {
+            groups
+                .checked_sub(1)
+                .and_then(|group| group.checked_mul(group_stride))
+                .and_then(|group| base.checked_add(group))
+        })
+        .and_then(|base| base.checked_add(width));
+    let crosses_group = groups > 1
+        && (group_stride == 0
+            || offset
+                .checked_rem(group_stride)
+                .and_then(|within| within.checked_add(width))
+                .is_none_or(|within_end| within_end > group_stride));
+    if rows == 0
+        || groups == 0
+        || width == 0
+        || crosses_group
+        || end.is_none_or(|end| end > total_elements)
+    {
+        return Err(Error::Limit(format!(
+            "ordinary text {role} strided view exceeds binding"
+        )));
+    }
+    Ok(())
 }
 
 fn element_grid(elements: usize) -> Result<[u32; 3]> {

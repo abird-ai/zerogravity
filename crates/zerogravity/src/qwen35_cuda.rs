@@ -25,6 +25,7 @@ mod cohort;
 pub mod fixed_prompt;
 #[cfg(feature = "qwen35-cuda-qualification")]
 mod manifest;
+mod ordinary;
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub mod qualification;
 #[cfg(feature = "qwen35-cuda-qualification")]
@@ -37,11 +38,34 @@ mod templates;
 pub use session::Session;
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub use source::RouteTokenizer;
-const ORDINARY_CAPABILITY_REFUSAL: &str = "Qwen CUDA has no ordinary dynamic GDN implementation; finite captured execution requires the explicit qwen35-cuda-qualification diagnostic feature";
+const ORDINARY_CAPABILITY_REFUSAL: &str = "ordinary Qwen CUDA is unintegrable: source-bound projections, dynamic GDN, contract-exact BF16 attention, and physical queue/flight/completion-owner/StateRoot wiring are incomplete; no backend is exposed";
 
 /// Ordinary run/serve must refuse before source, device or driver discovery.
 pub fn require_ordinary_capability() -> Result<()> {
     Err(Error::Unsupported(ORDINARY_CAPABILITY_REFUSAL.into()))
+}
+
+/// Audit an authenticated ordinary plan/invocation against the checked CUDA
+/// primitive contracts, then refuse explicitly because complete physical owner
+/// and missing-operation wiring is not integrated.
+pub fn require_ordinary_invocation_capability(
+    plan: &crate::qwen35::plan::OrdinaryQwenPlan,
+    invocation: &crate::qwen35::plan::OrdinaryQwenInvocation,
+) -> Result<()> {
+    ordinary::require_binding(plan, invocation)
+}
+
+#[cfg(test)]
+mod ordinary_refusal_tests {
+    #[test]
+    fn ordinary_backend_is_explicitly_unintegrable_not_dead_allowed() {
+        let error = super::require_ordinary_capability()
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("unintegrable"));
+        assert!(error.contains("physical queue/flight/completion-owner/StateRoot"));
+        assert!(error.contains("no backend is exposed"));
+    }
 }
 
 #[cfg(feature = "qwen35-cuda-qualification")]
