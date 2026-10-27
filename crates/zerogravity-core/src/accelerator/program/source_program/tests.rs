@@ -179,6 +179,109 @@ fn core_owns_call_ssa_precision_and_atomic_state_effects() {
     assert_eq!(plan.frontier_delta(), 0);
 }
 #[test]
+fn call_free_plan_binds_dynamic_rows_without_node_or_id_capture() {
+    let source = SourceIdentity::for_new_allocation().unwrap();
+    let geometry = SourcePlanGeometry::new(source, 17, 512, 64).unwrap();
+    let slot = StateSlot::Kv(KvDomain(3));
+    let matrix = SourceTensor {
+        source,
+        name: "actual.embedding".into(),
+        kind: QuantKind::Bf16,
+        axes: MatrixAxes::OutputInput,
+        columns: 16,
+        rows: 17,
+    };
+    let mut builder = PlanBuilder::new_source_template(geometry, vec![slot]).unwrap();
+    let raw = builder
+        .record_source_template(
+            "embedding",
+            &SourceOperatorTemplate::new(
+                geometry,
+                SourceRowSelection::AllActive,
+                SourceOperatorKind::EmbeddingRows,
+                NUMERICAL,
+                vec![matrix.clone()],
+                vec![],
+            )
+            .unwrap(),
+            &[],
+        )
+        .unwrap()[0];
+    builder
+        .record_source_template(
+            "state",
+            &SourceOperatorTemplate::new(
+                geometry,
+                SourceRowSelection::AllActive,
+                SourceOperatorKind::StateCarry { slot },
+                NUMERICAL,
+                vec![],
+                vec![],
+            )
+            .unwrap(),
+            &[],
+        )
+        .unwrap();
+    let logits = builder
+        .record_source_template(
+            "head",
+            &SourceOperatorTemplate::new(
+                geometry,
+                SourceRowSelection::LastActive,
+                SourceOperatorKind::Projection { selected_row: None },
+                NUMERICAL,
+                vec![matrix],
+                vec![],
+            )
+            .unwrap(),
+            &[raw],
+        )
+        .unwrap()[0];
+    assert_eq!(logits.elements(), 17);
+    let plan = Arc::new(builder.finish_source_template(logits).unwrap());
+    assert!(plan.source_call().is_none());
+    assert_eq!(plan.source_plan_geometry(), Some(geometry));
+    assert_eq!(plan.required_domains(), [slot]);
+    assert_eq!(plan.frontier_delta(), 0);
+    assert!(
+        plan.nodes()
+            .iter()
+            .all(|node| matches!(node.operation, PlanOperation::SourceOperatorTemplate { .. }))
+    );
+
+    let bind = |base, ids: &[u32], emit_logits| {
+        SourceInvocation::new(
+            TextCallGeometry::new(source, 17, 512).unwrap(),
+            base,
+            Arc::from(ids),
+            emit_logits,
+        )
+        .and_then(|invocation| plan.bind_source_invocation(invocation))
+    };
+    let a = bind(0, &[1, 2], true).unwrap();
+    let b = bind(29, &[3], false).unwrap();
+    assert!(Arc::ptr_eq(a.plan(), b.plan()));
+    assert_eq!((a.invocation().rows(), a.invocation().frontier()), (2, 2));
+    assert_eq!((b.invocation().base(), b.invocation().frontier()), (29, 30));
+    assert!(!b.invocation().emit_logits());
+    assert!(std::ptr::eq(a.active_nodes(), plan.nodes()));
+    assert!(std::ptr::eq(b.active_nodes(), plan.state_nodes()));
+    assert_eq!(a.active_nodes().len(), b.active_nodes().len() + 1);
+
+    assert!(bind(500, &[1; 13], true).is_err());
+    assert!(bind(0, &[1; 65], true).is_err());
+    assert!(bind(0, &[17], true).is_err());
+    let foreign = SourceInvocation::new(
+        TextCallGeometry::new(SourceIdentity::for_new_allocation().unwrap(), 17, 512).unwrap(),
+        0,
+        Arc::from([1]),
+        true,
+    )
+    .unwrap();
+    assert!(plan.bind_source_invocation(foreign).is_err());
+}
+
+#[test]
 fn prepared_rebind_shares_topology_semantics_and_accounts_local_allocations() {
     let source = SourceIdentity::for_new_allocation().unwrap();
     use crate::resource_arbiter::{

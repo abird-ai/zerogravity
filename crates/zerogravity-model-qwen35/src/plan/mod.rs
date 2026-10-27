@@ -9,6 +9,12 @@ use zerogravity_core::quant::QuantKind;
 use zerogravity_core::source::TensorSource;
 mod source_profile;
 pub use source_profile::QwenSourceProfile;
+mod ordinary;
+pub(crate) use ordinary::build_ordinary_plan;
+pub use ordinary::{
+    ORDINARY_CUDA_MAX_CHUNK_ROWS, ORDINARY_CUDA_MAX_CONTEXT, ORDINARY_CUDA_MIN_CONTEXT,
+    OrdinaryQwenInvocation, OrdinaryQwenPlan,
+};
 mod prompt;
 pub use prompt::{PromptCall, PromptSpan, PromptWorkload};
 mod prefix;

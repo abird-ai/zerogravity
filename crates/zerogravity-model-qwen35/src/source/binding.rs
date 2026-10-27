@@ -119,9 +119,9 @@ pub use window::{OriginalWindowOperators, WindowOperatorPlan};
 #[cfg(all(feature = "source-binding", target_os = "linux"))]
 pub use window_model::{
     BoundFullModelSource, BoundPromptCall, ComponentImplementation, ComponentKernelCapture,
-    ComponentOutput, OriginalWindowModelSource, PreparedComponent, PreparedFinalRmsSource,
-    PreparedGdnParameters, PreparedPlan, PreparedQualificationSource, PreparedRmsSource,
-    ReferenceKernelCapture,
+    ComponentOutput, OrdinaryCudaSourceSeal, OriginalWindowModelSource, PreparedComponent,
+    PreparedFinalRmsSource, PreparedGdnParameters, PreparedPlan, PreparedQualificationSource,
+    PreparedRmsSource, ReferenceKernelCapture,
 };
 
 #[cfg(all(feature = "source-binding", target_os = "linux"))]

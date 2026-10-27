@@ -49,10 +49,11 @@ pub use text_bindings::{
 pub use text_step::TextStepBindings;
 mod source_program;
 pub use source_program::{
-    SourceAttentionMask, SourceCall, SourceCallMode, SourceConvGeometry, SourceGamma,
-    SourceGdnContract, SourceGdnGeometry, SourceGroupedQkGeometry, SourceNumericalContract,
-    SourceOperator, SourceOperatorKind, SourceOperatorSemantics, SourceQkRotaryGeometry,
-    SourceRetainedOrigin, SourceRmsGeometry, SourceRows, SourceStateAccess, SourceValueProvenance,
+    BoundSourceInvocation, SourceAttentionMask, SourceCall, SourceCallMode, SourceConvGeometry,
+    SourceGamma, SourceGdnContract, SourceGdnGeometry, SourceGroupedQkGeometry, SourceInvocation,
+    SourceNumericalContract, SourceOperator, SourceOperatorKind, SourceOperatorSemantics,
+    SourceOperatorTemplate, SourcePlanGeometry, SourceQkRotaryGeometry, SourceRetainedOrigin,
+    SourceRmsGeometry, SourceRowSelection, SourceRows, SourceStateAccess, SourceValueProvenance,
 };
 mod value_storage;
 pub use value_storage::{
@@ -632,6 +633,11 @@ pub enum PlanOperation {
         descriptor: Box<SourceOperator>,
         state: Option<StateVersion>,
     },
+    /// Call-free source math; runtime rows and IDs never enter this node.
+    SourceOperatorTemplate {
+        descriptor: Box<SourceOperatorTemplate>,
+        state: Option<StateVersion>,
+    },
     TextMoe {
         contract: Box<TextMoeContract>,
         router_scale: StaticVectorId,
@@ -815,6 +821,7 @@ pub struct ForwardPlan {
 #[derive(Clone, Debug)]
 pub struct ForwardPlanSemantics {
     metadata: Option<Arc<PreparedPlanMetadata>>,
+    source_template: Option<SourcePlanGeometry>,
     source: SourceIdentity,
     profile: ProgramNumericalProfile,
     standalone_exp: Option<StandaloneExpProfile>,
@@ -922,6 +929,7 @@ impl ForwardPlan {
 
 pub struct PlanBuilder {
     source_call: Option<SourceCall>,
+    source_template: Option<SourcePlanGeometry>,
     source_provenance: Vec<Option<SourceValueProvenance>>,
     owner: u64,
     profile: ProgramNumericalProfile,
@@ -1044,6 +1052,7 @@ impl PlanBuilder {
         Ok(Self {
             owner,
             source_call: None,
+            source_template: None,
             source_provenance: Vec::new(),
             profile,
             standalone_exp: None,
@@ -1136,6 +1145,9 @@ impl PlanBuilder {
         match operation {
             PlanOperation::SourceOperator { descriptor, .. } => {
                 source_program::precision(self, descriptor, inputs)
+            }
+            PlanOperation::SourceOperatorTemplate { descriptor, .. } => {
+                source_program::template_precision(self, descriptor, inputs)
             }
             PlanOperation::TypedBulkF32Input { operand } => {
                 bulk_f32::input_precision(self, operand)
@@ -1256,6 +1268,7 @@ impl PlanBuilder {
                 && !matches!(
                     operation,
                     PlanOperation::SourceOperator { .. }
+                        | PlanOperation::SourceOperatorTemplate { .. }
                         | PlanOperation::TypedBulkF32Input { .. }
                         | PlanOperation::TypedBulkF32Matmul { .. }
                         | PlanOperation::TypedEmbed { .. }
@@ -1296,6 +1309,9 @@ impl PlanBuilder {
                             if descriptor.numerical_contract().is_f32() =>
                         {
                             !matches!(operation, PlanOperation::SourceOperator { .. })
+                        }
+                        PlanOperation::SourceOperatorTemplate { .. } => {
+                            !matches!(operation, PlanOperation::SourceOperatorTemplate { .. })
                         }
                         _ => false,
                     }
@@ -1442,6 +1458,7 @@ impl PlanBuilder {
                 nodes: self.nodes,
                 semantics: Arc::new(ForwardPlanSemantics {
                     metadata: None,
+                    source_template: self.source_template,
                     source: self.source,
                     profile: self.profile,
                     standalone_exp: self.standalone_exp,
@@ -1488,6 +1505,7 @@ impl PlanBuilder {
             nodes: self.nodes,
             semantics: Arc::new(ForwardPlanSemantics {
                 metadata: None,
+                source_template: self.source_template,
                 source: self.source,
                 profile: self.profile,
                 standalone_exp: self.standalone_exp,

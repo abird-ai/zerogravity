@@ -5,7 +5,8 @@ use crate::plan::{QwenGdnCall, QwenPlan, QwenSourceCall, QwenSourceProfile};
 mod prompt;
 pub use prompt::BoundPromptCall;
 
-const CONFIG2B: &str = "ed1c1723241f23f7f4e23430759cbd7dcfb4103cbdfe052bfe7626b57c2615b4";
+pub(super) const CONFIG2B: &str =
+    "ed1c1723241f23f7f4e23430759cbd7dcfb4103cbdfe052bfe7626b57c2615b4";
 const INDEX2B: &str = "aca8afed9da75b0f050b408d270766fd77627f1af401e240f61c3b47d0db02f9";
 const BYTES2B: u64 = 4_548_221_488;
 const MIB: usize = 1024 * 1024;
@@ -82,7 +83,10 @@ fn require_2b_pins(
     Ok(())
 }
 
-fn require_source(model: &OriginalWindowModelSource, profile: QwenSourceProfile) -> Result<()> {
+pub(super) fn require_source(
+    model: &OriginalWindowModelSource,
+    profile: QwenSourceProfile,
+) -> Result<()> {
     use crate::config::{Family, LayerKind};
     use crate::source::safetensors::GdnOutputGate;
     if profile == QwenSourceProfile::Qwen08 {
