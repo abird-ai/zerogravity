@@ -10,6 +10,7 @@ mod qwen2b;
 pub(super) fn select_qwen2b(phase: GdnPhase, stage: GdnStage) -> Result<Asset> {
     qwen2b::select(phase, stage)
 }
+#[derive(Clone, Copy)]
 pub(super) struct Asset {
     pub entry: &'static str,
     pub source: &'static str,

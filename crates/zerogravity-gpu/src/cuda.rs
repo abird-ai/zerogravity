@@ -3,9 +3,9 @@
 // vllm_cuda_qualification, vllm_ptx_inline.
 
 pub mod compiler;
-#[cfg(feature = "cuda-native-qualification")]
+#[cfg(feature = "cuda-native")]
 pub mod gdn;
-#[cfg(feature = "cuda-native-qualification")]
+#[cfg(feature = "cuda-native")]
 pub(crate) mod kernel;
 #[cfg(feature = "cuda-native-qualification")]
 pub mod native;

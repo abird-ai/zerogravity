@@ -39,7 +39,7 @@ mod projection_f32;
 mod quantization;
 #[cfg(feature = "cuda")]
 pub use physical_service::initialize_cuda_physical_identity;
-#[cfg(any(feature = "cuda-native-qualification", test))]
+#[cfg(any(feature = "cuda-native", test))]
 mod prepared_kernel_key;
 mod program_kernels;
 mod residency;

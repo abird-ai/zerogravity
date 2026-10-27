@@ -1,3 +1,7 @@
+#![cfg_attr(
+    not(feature = "cuda-native-qualification"),
+    allow(dead_code, unused_imports)
+)]
 //! Private SM86 .8B layer0 qualification; original generated instructions.
 //! Runtime storage comes from the original resident owner, never a trace.
 // Former names: VllmGdnPhase, short_hf, canonical47. Native ABI/source pins unchanged.
@@ -12,16 +16,18 @@ use zerogravity_core::{Error, Result};
 mod arithmetic;
 pub(crate) use arithmetic::GdnFamilyIdentity;
 mod assets;
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod qwen2b_arithmetic;
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use qwen2b_arithmetic::{Qwen2bGdnArithmetic, Qwen2bOriginalGdnReference};
+#[cfg(feature = "cuda-native-qualification")]
 pub(crate) mod resident;
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) use resident::{
     ComponentConvEnqueued, ComponentGdnAdapter, GdnConvEnqueued, GdnStateAdapter, ModelGdnAdapter,
     ModelGdnConvEnqueued, ModelGdnTransportStorage,
 };
+#[cfg(feature = "cuda-native-qualification")]
 pub(crate) use resident::{GdnArithmetic, GdnInputs, GdnPrepared, GdnTypedOutputs};
 
 pub(crate) const CACHE_SLOT_BYTES: usize = 278528 * 4;
@@ -586,22 +592,27 @@ pub(crate) fn metadata(phase: GdnPhase, slot: GdnCacheSlot) -> Result<Vec<(GdnBu
     Ok(values)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "cuda-native-qualification"))]
 mod tests;
 
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod fixed_prompt_component;
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use fixed_prompt_component::{FixedPromptGdnArithmetic, FixedPromptGdnIntermediate};
 
 #[cfg(target_os = "linux")]
 mod text;
 #[cfg(target_os = "linux")]
 pub use text::{
-    GdnKernelConfig, GdnKktKernel, GdnOutputKernel, GdnRecomputeKernel, GdnStateKernel,
-    TextGdnImplementation,
+    GdnKernelConfig, GdnKktKernel, GdnOutputKernel, GdnRecomputeKernel, GdnRuntimeAccess,
+    GdnRuntimeBinding, GdnRuntimeBuffer, GdnRuntimeBufferLayout, GdnRuntimeBufferOwnership,
+    GdnRuntimeCacheSlot, GdnRuntimeCacheView, GdnRuntimeConfig, GdnRuntimeControl,
+    GdnRuntimeGeometry, GdnRuntimeInitialState, GdnRuntimeKernelGeometry, GdnRuntimeLaunch,
+    GdnRuntimeMode, GdnRuntimePlan, GdnRuntimePrefill, GdnRuntimeScalarField, GdnRuntimeScalarType,
+    GdnRuntimeStage, GdnRuntimeStageIdentity, GdnRuntimeStageKind, GdnRuntimeWorkspaceLayout,
+    GdnStateKernel, TextGdnImplementation,
 };
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) use text::{TextGdnCode, TextGdnGeometry, TextGdnWorkspace};
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]

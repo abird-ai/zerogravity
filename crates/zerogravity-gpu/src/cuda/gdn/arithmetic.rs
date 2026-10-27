@@ -433,5 +433,5 @@ const ORIGINAL2B_CATALOGUE: &[&str] = &[
     include_str!("gated_two.cu"),
 ];
 
-#[cfg(test)]
+#[cfg(all(test, feature = "cuda-native-qualification"))]
 mod tests;

@@ -1,3 +1,4 @@
+#![cfg_attr(not(feature = "cuda-native-qualification"), allow(dead_code))]
 //! Closed source kernels on the existing CUDA client; no second stream/allocator.
 //! Callers retain admitted original leases through completion/quarantine.
 use crate::prepared_kernel_key::PreparedKernelKey;
@@ -119,6 +120,13 @@ impl StaticScalarSchema {
 
     fn fields(self) -> impl ExactSizeIterator<Item = StaticScalarField> {
         self.fields.into_iter().take(self.count as usize)
+    }
+
+    pub(crate) fn fields_with_offsets(
+        self,
+    ) -> impl ExactSizeIterator<Item = (StaticScalarType, usize)> {
+        self.fields()
+            .map(|field| (field.ty, usize::from(field.offset)))
     }
 
     #[cfg(test)]

@@ -1,23 +1,29 @@
 //! Source-owned whole-call selection; missing actual tuples fail before H2D.
 use super::*;
+#[cfg(feature = "cuda-native-qualification")]
 use crate::cuda::native::{
     model_gdn::ModelGdnParameters, model_values::ModelValues, text_model::TextModelBinding,
 };
+#[cfg(feature = "cuda-native-qualification")]
 use crate::resident_leases::{ResidentLease, ResidentService};
 pub use config::{
     GdnKernelConfig, GdnKktKernel, GdnOutputKernel, GdnRecomputeKernel, GdnStateKernel,
     TextGdnImplementation,
 };
+use zerogravity_core::accelerator::program::SourceConvGeometry;
+#[cfg(feature = "cuda-native-qualification")]
 use zerogravity_core::accelerator::program::{
-    PlanOperation, SourceCall, SourceCallMode, SourceConvGeometry, SourceOperatorKind,
+    PlanOperation, SourceCall, SourceCallMode, SourceOperatorKind,
 };
 
+#[cfg(feature = "cuda-native-qualification")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct TextGdnGeometry {
     pub(crate) phase: GdnPhase,
     pub(crate) slot: GdnCacheSlot,
     pub(crate) implementation: TextGdnImplementation,
 }
+#[cfg(feature = "cuda-native-qualification")]
 impl TextGdnGeometry {
     pub(crate) fn for_call(
         call: &SourceCall,
@@ -117,14 +123,23 @@ pub(super) fn select(
 }
 
 mod config;
-#[cfg(test)]
+#[cfg(all(test, feature = "cuda-native-qualification"))]
 mod observed;
 mod parameterized_cached;
 mod parameterized_conv;
 mod parameterized_gated;
 mod parameterized_prefill;
 mod parameterized_prefill_variants;
-#[cfg(test)]
+mod runtime;
+pub use runtime::{
+    GdnRuntimeAccess, GdnRuntimeBinding, GdnRuntimeBuffer, GdnRuntimeBufferLayout,
+    GdnRuntimeBufferOwnership, GdnRuntimeCacheSlot, GdnRuntimeCacheView, GdnRuntimeConfig,
+    GdnRuntimeControl, GdnRuntimeGeometry, GdnRuntimeInitialState, GdnRuntimeKernelGeometry,
+    GdnRuntimeLaunch, GdnRuntimeMode, GdnRuntimePlan, GdnRuntimePrefill, GdnRuntimeScalarField,
+    GdnRuntimeScalarType, GdnRuntimeStage, GdnRuntimeStageIdentity, GdnRuntimeStageKind,
+    GdnRuntimeWorkspaceLayout,
+};
+#[cfg(all(test, feature = "cuda-native-qualification"))]
 pub(super) fn fixture_implementation(
     catalogue: usize,
     input_tokens: usize,
@@ -187,6 +202,7 @@ pub(super) fn text_source_contract(
 
 /// Holds the genuine model/role/producer owners before private storage begins.
 /// It has no StateRoot, expected tensor, completion or publication authority.
+#[cfg(feature = "cuda-native-qualification")]
 pub(crate) struct TextGdnCode {
     scope: Arc<TextModelBinding>,
     values: Arc<ModelValues>,
@@ -198,6 +214,7 @@ pub(crate) struct TextGdnCode {
     operands: [ResidentLease; 5],
     _metadata: zerogravity_artifacts::source_weights::WindowWorkspace,
 }
+#[cfg(feature = "cuda-native-qualification")]
 impl TextGdnCode {
     pub(super) fn require_same_implementation(&self, old: &Self) -> Result<()> {
         if self.geometry != old.geometry
@@ -459,14 +476,17 @@ impl TextGdnCode {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "cuda-native-qualification"))]
 mod tests;
 
+#[cfg(feature = "cuda-native-qualification")]
 mod workspace;
+#[cfg(feature = "cuda-native-qualification")]
 pub(crate) use workspace::TextGdnWorkspace;
 
 /// Persistent public/source/control/Rstd storage only; pooled private values are
 /// not a per-layer late observation even though their physical owner is alive.
+#[cfg(feature = "cuda-native-qualification")]
 pub(super) fn retained_history(role: GdnBuffer) -> bool {
     workspace::is_external(role)
         || matches!(
