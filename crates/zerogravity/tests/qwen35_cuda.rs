@@ -44,6 +44,10 @@ fn env(name: &str) -> Result<PathBuf> {
         .filter(|p| p.is_absolute())
         .ok_or_else(|| fail(format!("required absolute {name}")))
 }
+fn fresh_reference_cell(root: &Path, rows: usize) -> PathBuf {
+    root.join(format!("prefill-{rows}-discovery"))
+        .join("observed")
+}
 struct ThreadWake(thread::Thread);
 impl Wake for ThreadWake {
     fn wake(self: Arc<Self>) {
@@ -392,12 +396,36 @@ fn source_model_state_and_output_agreement() -> Result<()> {
 }
 
 #[test]
+fn fresh_reference_cells_open_when_configured() -> Result<()> {
+    let Some(root) = std::env::var_os("ZG_QWEN35_FRESH_REFERENCE_ROOT") else {
+        return Ok(());
+    };
+    let root = PathBuf::from(root);
+    ensure(
+        root.is_absolute(),
+        "absolute ZG_QWEN35_FRESH_REFERENCE_ROOT",
+    )?;
+    for rows in [47, 48, 49, 50] {
+        let cell = oracle::FixedCell::open_fresh(
+            &fresh_reference_cell(&root, rows),
+            zerogravity::qwen35::plan::QwenSourceProfile::Qwen08,
+            rows,
+        )?;
+        cell.json("trajectory-validation.json", 16 * MIB)?;
+        cell.json("plain/all42/report.json", 8 * MIB)?;
+        cell.json("plain/worker-report.json", 16 * MIB)?;
+        cell.json("plain/result.json", MIB)?;
+    }
+    Ok(())
+}
+
+#[test]
 #[ignore = "explicit qualification-only fresh-prefill 47-50, release CUDA, owned isolated process only"]
 fn fresh_prefill_state_logits_root_and_cleanup_agreement() -> Result<()> {
     ensure(!cfg!(debug_assertions), "release physical matrix only")?;
     let source = env("ZG_QWEN35_MODEL_DIR")?;
     let bundle = env("ZG_QWEN35_CUDA_KERNEL_DIR")?;
-    let reference = env("ZG_QWEN35_REFERENCE_DIR")?;
+    let reference = env("ZG_QWEN35_FRESH_REFERENCE_ROOT")?;
     let prompts = env("ZG_QWEN35_PROMPT_FIXTURES")?;
     let public = oracle::json(&prompts, MIB)?;
     let host = FixtureHost::new(ResourceOwner::new(
@@ -418,14 +446,14 @@ fn fresh_prefill_state_logits_root_and_cleanup_agreement() -> Result<()> {
     let result: Result<()> = block_on(async {
         for rows in [47, 48, 49, 50] {
             let ids = fixture_prompt(&public, rows)?;
-            let cell = reference.join(format!("{}-{rows}", model.source_metadata().family));
+            let cell = fresh_reference_cell(&reference, rows);
             let mut session = model.session(None).await?;
             let before = session.binding();
             let mut callbacks = 0;
             let receipt = session
                 .infer_prompt_with(&ids, None, |read| {
                     callbacks += 1;
-                    compare::completed(read, &cell, 0, rows, model.source_profile())
+                    compare::completed_fresh(read, &cell, 0, rows, model.source_profile())
                 })
                 .await?;
             ensure(

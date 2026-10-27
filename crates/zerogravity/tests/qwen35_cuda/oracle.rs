@@ -5,7 +5,8 @@ use std::fs::File;
 use std::io::Read;
 
 pub(super) struct FixedCell {
-    root: PathBuf,
+    metadata_root: PathBuf,
+    archive_root: PathBuf,
     pins: serde_json::Value,
 }
 impl FixedCell {
@@ -13,6 +14,29 @@ impl FixedCell {
         root: &Path,
         profile: zerogravity::qwen35::plan::QwenSourceProfile,
         rows: usize,
+    ) -> Result<Self> {
+        Self::open_at(root, &root.join("plain"), profile, rows, "")
+    }
+    pub(super) fn open_fresh(
+        observed: &Path,
+        profile: zerogravity::qwen35::plan::QwenSourceProfile,
+        rows: usize,
+    ) -> Result<Self> {
+        ensure(
+            observed.file_name().is_some_and(|name| name == "observed"),
+            "fresh reference observed directory",
+        )?;
+        let discovery = observed
+            .parent()
+            .ok_or_else(|| fail("fresh reference discovery directory"))?;
+        Self::open_at(discovery, observed, profile, rows, "fresh-")
+    }
+    fn open_at(
+        metadata_root: &Path,
+        archive_root: &Path,
+        profile: zerogravity::qwen35::plan::QwenSourceProfile,
+        rows: usize,
+        key_prefix: &str,
     ) -> Result<Self> {
         use zerogravity::qwen35::plan::QwenSourceProfile;
         let model = match profile {
@@ -26,13 +50,14 @@ impl FixedCell {
             catalogue["schema"] == "zg.short-hf-fixed-original-oracles.v1",
             "fixed original oracle schema",
         )?;
-        let pins = catalogue["cells"][format!("{model}-{rows}")].clone();
+        let pins = catalogue["cells"][format!("{key_prefix}{model}-{rows}")].clone();
         ensure(
             pins["model"] == model && pins["prompt_rows"].as_u64() == Some(rows as u64),
             "fixed model and prompt oracle",
         )?;
         Ok(Self {
-            root: root.to_path_buf(),
+            metadata_root: metadata_root.to_path_buf(),
+            archive_root: archive_root.to_path_buf(),
             pins,
         })
     }
@@ -40,7 +65,15 @@ impl FixedCell {
         let pin = &self.pins["files"][name];
         let bytes = number(pin, "bytes")?;
         ensure(bytes <= cap, "fixed numerical metadata bound")?;
-        let mut file = File::open(self.root.join(name))?;
+        let path = if name == "trajectory-validation.json" {
+            self.metadata_root.join(name)
+        } else {
+            let name = name
+                .strip_prefix("plain/")
+                .ok_or_else(|| fail("fixed reference metadata path"))?;
+            self.archive_root.join(name)
+        };
+        let mut file = File::open(path)?;
         ensure(
             file.metadata()?.len() == bytes as u64,
             "fixed numerical metadata exact extent",
@@ -53,6 +86,9 @@ impl FixedCell {
     }
     pub(super) fn source_manifest(&self) -> &serde_json::Value {
         &self.pins["source_manifest_sha256"]
+    }
+    pub(super) fn archive_root(&self) -> &Path {
+        &self.archive_root
     }
 }
 

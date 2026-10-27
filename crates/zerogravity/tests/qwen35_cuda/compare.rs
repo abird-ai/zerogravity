@@ -13,8 +13,36 @@ pub(super) fn completed(
     prompt_rows: usize,
     profile: zerogravity::qwen35::plan::QwenSourceProfile,
 ) -> Result<()> {
+    completed_fixed(
+        read,
+        oracle::FixedCell::open(reference, profile, prompt_rows)?,
+        call,
+        prompt_rows,
+    )
+}
+
+pub(super) fn completed_fresh(
+    read: TextReadback<'_>,
+    observed: &Path,
+    call: usize,
+    prompt_rows: usize,
+    profile: zerogravity::qwen35::plan::QwenSourceProfile,
+) -> Result<()> {
+    completed_fixed(
+        read,
+        oracle::FixedCell::open_fresh(observed, profile, prompt_rows)?,
+        call,
+        prompt_rows,
+    )
+}
+
+fn completed_fixed(
+    read: TextReadback<'_>,
+    fixed: oracle::FixedCell,
+    call: usize,
+    prompt_rows: usize,
+) -> Result<()> {
     // This function is invoked by the existing trusted-completion boundary.
-    let fixed = oracle::FixedCell::open(reference, profile, prompt_rows)?;
     let acceptance = fixed.json("trajectory-validation.json", 16 * MIB)?;
     ensure(
         acceptance["all24_all42_post_validation"] == "PASS"
@@ -26,7 +54,7 @@ pub(super) fn completed(
             && acceptance["outputs"] == 8,
         "fixed accepted whole original/source/lifetime reference",
     )?;
-    let plain = reference.join("plain");
+    let plain = fixed.archive_root();
     let states = fixed.json("plain/all42/report.json", 8 * MIB)?;
     let worker = fixed.json("plain/worker-report.json", 16 * MIB)?;
     let result = fixed.json("plain/result.json", MIB)?;
