@@ -117,9 +117,9 @@ impl GdnRuntimeConfig {
 pub struct GdnRuntimeCacheSlot(u8);
 impl GdnRuntimeCacheSlot {
     pub fn new(index: usize) -> Result<Self> {
-        if index >= CACHE_SLOTS {
+        if !(1..CACHE_SLOTS).contains(&index) {
             return Err(Error::Unsupported(
-                "parameterized GDN runtime cache slot".into(),
+                "parameterized GDN runtime non-null cache slot".into(),
             ));
         }
         Ok(Self(index as u8))
@@ -284,6 +284,7 @@ pub enum GdnRuntimeBufferOwnership {
     InputOutput,
     Parameters,
     CacheState,
+    RecurrentState,
     Control,
     Scratch,
 }
@@ -295,6 +296,7 @@ fn ownership(role: GdnBuffer) -> GdnRuntimeBufferOwnership {
         }
         ConvWeights | ALog | DtBias | GatedGamma => GdnRuntimeBufferOwnership::Parameters,
         CacheArena => GdnRuntimeBufferOwnership::CacheState,
+        InitialState | FinalState => GdnRuntimeBufferOwnership::RecurrentState,
         CacheIndices | HasInitial | QueryStarts | ConvBatch | ConvChunkOffsets | ChunkIndices
         | ChunkOffsets => GdnRuntimeBufferOwnership::Control,
         _ => GdnRuntimeBufferOwnership::Scratch,
@@ -350,6 +352,21 @@ impl GdnRuntimeWorkspaceLayout {
                     })
                     .or_insert_with(|| binding.role.bytes(GdnPhase::CachedDecode));
             }
+        }
+        // Copy-only source/destination extents are part of the executable layout.
+        for role in [
+            GdnBuffer::PackedBa,
+            GdnBuffer::AContiguous,
+            GdnBuffer::BContiguous,
+            GdnBuffer::ZCompact,
+            GdnBuffer::InitialState,
+            GdnBuffer::FinalState,
+            GdnBuffer::Inverse,
+        ] {
+            roles
+                .entry(role)
+                .and_modify(|bytes: &mut usize| *bytes = (*bytes).max(role.bytes(phase)))
+                .or_insert_with(|| role.bytes(phase));
         }
         let buffers = roles
             .into_iter()
@@ -575,29 +592,6 @@ impl GdnRuntimeStage {
     pub fn identity(&self) -> &GdnRuntimeStageIdentity {
         &self.identity
     }
-
-    /// Validate exact pointer extents/service and device launch limits. This does
-    /// not submit work or grant completion/publication authority.
-    pub fn validate_launch(
-        &self,
-        client: &cubecl::client::Client,
-        handles: &[cubecl::server::Handle],
-    ) -> Result<()> {
-        self.spec.kernel.validate(client, self.spec.grid, handles)
-    }
-
-    /// Bind exact views in ABI order. The enclosing physical owner must retain
-    /// the leases and an admitted flight through completion or quarantine.
-    pub fn prepare_launch(
-        &self,
-        client: &cubecl::client::Client,
-        handles: Vec<cubecl::server::Handle>,
-    ) -> Result<GdnRuntimeLaunch> {
-        Ok(GdnRuntimeLaunch {
-            identity: self.identity.clone(),
-            launch: self.spec.kernel.prepare(client, self.spec.grid, handles)?,
-        })
-    }
 }
 impl fmt::Debug for GdnRuntimeStage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -605,25 +599,144 @@ impl fmt::Debug for GdnRuntimeStage {
     }
 }
 
-/// Bound low-level launch; state publication remains with the caller's owner.
+/// One ordered operation in the complete executable schedule.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum GdnRuntimeScheduleKind {
+    PackA,
+    PackB,
+    PackZ,
+    CopyQkvPrefix,
+    Conv,
+    Prep,
+    Cumsum,
+    Kkt,
+    ZeroInverse,
+    Solve,
+    Recompute,
+    ZeroInitialState,
+    GatherInitialState,
+    State,
+    ScatterFinalState,
+    Output,
+    Gated,
+    Decode,
+}
+impl From<GdnRuntimeStageKind> for GdnRuntimeScheduleKind {
+    fn from(value: GdnRuntimeStageKind) -> Self {
+        match value {
+            GdnRuntimeStageKind::Conv => Self::Conv,
+            GdnRuntimeStageKind::Prep => Self::Prep,
+            GdnRuntimeStageKind::Cumsum => Self::Cumsum,
+            GdnRuntimeStageKind::Kkt => Self::Kkt,
+            GdnRuntimeStageKind::Solve => Self::Solve,
+            GdnRuntimeStageKind::Recompute => Self::Recompute,
+            GdnRuntimeStageKind::State => Self::State,
+            GdnRuntimeStageKind::Output => Self::Output,
+            GdnRuntimeStageKind::Gated => Self::Gated,
+            GdnRuntimeStageKind::Decode => Self::Decode,
+        }
+    }
+}
+
 #[derive(Clone)]
-pub struct GdnRuntimeLaunch {
-    identity: GdnRuntimeStageIdentity,
+enum GdnRuntimeScheduleSource {
+    Static(&'static str),
+    Owned(Arc<str>),
+}
+impl GdnRuntimeScheduleSource {
+    fn as_str(&self) -> &str {
+        match self {
+            Self::Static(source) => source,
+            Self::Owned(source) => source,
+        }
+    }
+}
+
+/// Public schedule identity; executable binding remains crate-private.
+#[derive(Clone)]
+pub struct GdnRuntimeScheduleStep {
+    kind: GdnRuntimeScheduleKind,
+    entry: &'static str,
+    source: GdnRuntimeScheduleSource,
+    threads: u32,
+    shared_bytes: usize,
+    grid: [u32; 3],
+    bindings: Vec<GdnRuntimeBinding>,
+    kernel: crate::cuda::kernel::PinnedKernel,
+}
+impl GdnRuntimeScheduleStep {
+    pub fn kind(&self) -> GdnRuntimeScheduleKind {
+        self.kind
+    }
+    pub fn entry(&self) -> &'static str {
+        self.entry
+    }
+    pub fn source(&self) -> &str {
+        self.source.as_str()
+    }
+    pub fn threads(&self) -> u32 {
+        self.threads
+    }
+    pub fn shared_bytes(&self) -> usize {
+        self.shared_bytes
+    }
+    pub fn grid(&self) -> [u32; 3] {
+        self.grid
+    }
+    pub fn bindings(&self) -> &[GdnRuntimeBinding] {
+        &self.bindings
+    }
+
+    /// Caller must retain admitted leases and its physical flight through
+    /// completion or quarantine. This grants no completion/publication right.
+    pub(crate) fn prepare_launch(
+        &self,
+        client: &cubecl::client::Client,
+        handles: Vec<cubecl::server::Handle>,
+    ) -> Result<GdnRuntimeLaunch> {
+        Ok(GdnRuntimeLaunch {
+            launch: self.kernel.prepare(client, self.grid, handles)?,
+        })
+    }
+}
+impl fmt::Debug for GdnRuntimeScheduleStep {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GdnRuntimeScheduleStep")
+            .field("kind", &self.kind)
+            .field("entry", &self.entry)
+            .field("source_bytes", &self.source.as_str().len())
+            .field("threads", &self.threads)
+            .field("shared_bytes", &self.shared_bytes)
+            .field("grid", &self.grid)
+            .field("bindings", &self.bindings)
+            .finish()
+    }
+}
+
+/// Bound low-level launch. It cannot complete or publish caller state.
+#[derive(Clone)]
+pub(crate) struct GdnRuntimeLaunch {
     launch: crate::cuda::kernel::PreparedPinnedLaunch,
 }
 impl GdnRuntimeLaunch {
-    pub fn identity(&self) -> &GdnRuntimeStageIdentity {
-        &self.identity
-    }
-
-    /// Enqueue on the bound existing client. This is not a completion signal.
-    pub fn launch(&self) -> Result<()> {
+    #[allow(dead_code)]
+    pub(crate) fn launch(&self) -> Result<()> {
         self.launch.launch()
     }
 }
-impl fmt::Debug for GdnRuntimeLaunch {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.identity.fmt(f)
+
+/// Ordered launches retained by, and executable only under, the caller's flight.
+#[derive(Clone)]
+pub(crate) struct GdnRuntimeLaunchSchedule {
+    launches: Vec<GdnRuntimeLaunch>,
+}
+impl GdnRuntimeLaunchSchedule {
+    #[allow(dead_code)]
+    pub(crate) fn launch(&self) -> Result<usize> {
+        for launch in &self.launches {
+            launch.launch()?;
+        }
+        Ok(self.launches.len())
     }
 }
 
@@ -641,25 +754,60 @@ impl GdnRuntimeControl {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct GdnRuntimeCacheView {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum GdnRuntimeStateKind {
+    Convolution,
+    RecurrentInitial,
+    RecurrentFinal,
+    RecurrentCache,
+}
+
+/// Exact state role and suballocation. Different roles require different owners.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct GdnRuntimeStateView {
+    role: GdnRuntimeBuffer,
     offset: usize,
     bytes: usize,
+    kind: GdnRuntimeStateKind,
 }
-impl GdnRuntimeCacheView {
+impl GdnRuntimeStateView {
+    pub fn role(self) -> GdnRuntimeBuffer {
+        self.role
+    }
     pub fn offset(self) -> usize {
         self.offset
     }
     pub fn bytes(self) -> usize {
         self.bytes
     }
+    pub fn kind(self) -> GdnRuntimeStateKind {
+        self.kind
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GdnRuntimeInitialState {
-    Zero,
-    Cache(GdnRuntimeCacheView),
-    InPlace(GdnRuntimeCacheView),
+    Zero {
+        destination: GdnRuntimeStateView,
+    },
+    Copy {
+        source: GdnRuntimeStateView,
+        destination: GdnRuntimeStateView,
+    },
+    InPlace {
+        state: GdnRuntimeStateView,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GdnRuntimeFinalState {
+    Scatter {
+        source: GdnRuntimeStateView,
+        destination: GdnRuntimeStateView,
+    },
+    InPlace {
+        state: GdnRuntimeStateView,
+    },
 }
 
 /// Prepared source/ABI/geometry for one 1..=64-row chunk or cached token.
@@ -671,6 +819,9 @@ pub struct GdnRuntimePlan {
     workspace: Arc<GdnRuntimeWorkspaceLayout>,
     controls: Vec<GdnRuntimeControl>,
     stages: Vec<GdnRuntimeStage>,
+    schedule: Vec<GdnRuntimeScheduleStep>,
+    initial_state: GdnRuntimeInitialState,
+    final_state: GdnRuntimeFinalState,
 }
 impl GdnRuntimePlan {
     pub fn prefill_chunk(
@@ -786,14 +937,22 @@ impl GdnRuntimePlan {
                 spec,
             });
         }
-        Ok(Self {
+        let initial_state = runtime_initial_state(slot, geometry);
+        let final_state = runtime_final_state(slot, geometry);
+        let schedule = build_schedule(phase, geometry, slot, &stages)?;
+        let result = Self {
             config,
             slot,
             geometry,
             workspace,
             controls,
             stages,
-        })
+            schedule,
+            initial_state,
+            final_state,
+        };
+        result.require_schedule()?;
+        Ok(result)
     }
 
     pub fn config(&self) -> GdnRuntimeConfig {
@@ -817,30 +976,103 @@ impl GdnRuntimePlan {
     pub fn stage(&self, kind: GdnRuntimeStageKind) -> Option<&GdnRuntimeStage> {
         self.stages.iter().find(|stage| stage.identity.kind == kind)
     }
-    pub fn convolution_state(&self) -> GdnRuntimeCacheView {
-        GdnRuntimeCacheView {
+    pub fn schedule(&self) -> &[GdnRuntimeScheduleStep] {
+        &self.schedule
+    }
+    pub fn convolution_state(&self) -> GdnRuntimeStateView {
+        GdnRuntimeStateView {
+            role: GdnRuntimeBuffer::CacheArena,
             offset: self.slot.convolution_offset(),
             bytes: CONV_STATE_BYTES,
+            kind: GdnRuntimeStateKind::Convolution,
         }
     }
     pub fn initial_recurrent_state(&self) -> GdnRuntimeInitialState {
-        let view = GdnRuntimeCacheView {
-            offset: self.slot.recurrent_offset(),
-            bytes: RECURRENT_STATE_BYTES,
-        };
-        match self.geometry.mode {
-            GdnRuntimeMode::CachedDecode => GdnRuntimeInitialState::InPlace(view),
-            GdnRuntimeMode::Prefill if self.geometry.has_initial => {
-                GdnRuntimeInitialState::Cache(view)
-            }
-            GdnRuntimeMode::Prefill => GdnRuntimeInitialState::Zero,
-        }
+        self.initial_state
     }
-    pub fn final_recurrent_state(&self) -> GdnRuntimeCacheView {
-        GdnRuntimeCacheView {
-            offset: self.slot.recurrent_offset(),
-            bytes: RECURRENT_STATE_BYTES,
+    pub fn final_recurrent_state(&self) -> GdnRuntimeFinalState {
+        self.final_state
+    }
+
+    fn require_schedule(&self) -> Result<()> {
+        require_schedule(self)
+    }
+
+    /// Bind caller-owned full allocation handles to exact operation views.
+    /// Initial/final/cache state must be physically distinct allocations.
+    #[allow(dead_code)]
+    pub(crate) fn bind_schedule_handles(
+        &self,
+        handles: &BTreeMap<GdnRuntimeBuffer, cubecl::server::Handle>,
+    ) -> Result<Vec<Vec<cubecl::server::Handle>>> {
+        self.require_schedule()?;
+        if self.geometry.mode == GdnRuntimeMode::Prefill {
+            let state_handle = |role| {
+                handles
+                    .get(&role)
+                    .ok_or_else(|| Error::State("GDN runtime state owner absent".into()))
+            };
+            let cache = state_handle(GdnRuntimeBuffer::CacheArena)?;
+            let initial = state_handle(GdnRuntimeBuffer::InitialState)?;
+            let final_state = state_handle(GdnRuntimeBuffer::FinalState)?;
+            let cache_id = cache.memory.descriptor().id;
+            let initial_id = initial.memory.descriptor().id;
+            let final_id = final_state.memory.descriptor().id;
+            if cache_id == initial_id || cache_id == final_id || initial_id == final_id {
+                return Err(Error::State(
+                    "GDN runtime cache/initial/final state allocations alias".into(),
+                ));
+            }
         }
+        self.schedule
+            .iter()
+            .map(|step| {
+                step.bindings
+                    .iter()
+                    .map(|binding| {
+                        let layout = self
+                            .workspace
+                            .buffers
+                            .iter()
+                            .find(|layout| layout.role == binding.role)
+                            .ok_or_else(|| Error::State("GDN runtime bound role absent".into()))?;
+                        let handle = handles.get(&binding.role).ok_or_else(|| {
+                            Error::State("GDN runtime allocation handle absent".into())
+                        })?;
+                        let available = usize::try_from(handle.size_in_used()).map_err(|_| {
+                            Error::Limit("GDN runtime allocation handle extent".into())
+                        })?;
+                        let end = binding
+                            .offset
+                            .checked_add(binding.bytes)
+                            .filter(|end| *end <= layout.bytes && *end <= available)
+                            .ok_or_else(|| Error::State("GDN runtime handle view extent".into()))?;
+                        Ok(handle
+                            .clone()
+                            .offset_start(binding.offset as u64)
+                            .offset_end((available - end) as u64))
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// Low-level preparation only. The caller retains the admitted flight and
+    /// every source/state owner; this capsule has no completion/publication API.
+    #[allow(dead_code)]
+    pub(crate) fn prepare_launches(
+        &self,
+        client: &cubecl::client::Client,
+        handles: &BTreeMap<GdnRuntimeBuffer, cubecl::server::Handle>,
+    ) -> Result<GdnRuntimeLaunchSchedule> {
+        let handles = self.bind_schedule_handles(handles)?;
+        let launches = self
+            .schedule
+            .iter()
+            .zip(handles)
+            .map(|(step, handles)| step.prepare_launch(client, handles))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(GdnRuntimeLaunchSchedule { launches })
     }
 }
 
@@ -929,6 +1161,546 @@ impl GdnRuntimePrefill {
             self.workspace.clone(),
         )
     }
+}
+
+fn cache_recurrent_view(slot: GdnRuntimeCacheSlot) -> GdnRuntimeStateView {
+    GdnRuntimeStateView {
+        role: GdnRuntimeBuffer::CacheArena,
+        offset: slot.recurrent_offset(),
+        bytes: RECURRENT_STATE_BYTES,
+        kind: GdnRuntimeStateKind::RecurrentCache,
+    }
+}
+
+fn local_state_view(role: GdnRuntimeBuffer, kind: GdnRuntimeStateKind) -> GdnRuntimeStateView {
+    GdnRuntimeStateView {
+        role,
+        offset: 0,
+        bytes: RECURRENT_STATE_BYTES,
+        kind,
+    }
+}
+
+fn runtime_initial_state(
+    slot: GdnRuntimeCacheSlot,
+    geometry: GdnRuntimeGeometry,
+) -> GdnRuntimeInitialState {
+    match geometry.mode {
+        GdnRuntimeMode::CachedDecode => GdnRuntimeInitialState::InPlace {
+            state: cache_recurrent_view(slot),
+        },
+        GdnRuntimeMode::Prefill if geometry.has_initial => GdnRuntimeInitialState::Copy {
+            source: cache_recurrent_view(slot),
+            destination: local_state_view(
+                GdnRuntimeBuffer::InitialState,
+                GdnRuntimeStateKind::RecurrentInitial,
+            ),
+        },
+        GdnRuntimeMode::Prefill => GdnRuntimeInitialState::Zero {
+            destination: local_state_view(
+                GdnRuntimeBuffer::InitialState,
+                GdnRuntimeStateKind::RecurrentInitial,
+            ),
+        },
+    }
+}
+
+fn runtime_final_state(
+    slot: GdnRuntimeCacheSlot,
+    geometry: GdnRuntimeGeometry,
+) -> GdnRuntimeFinalState {
+    match geometry.mode {
+        GdnRuntimeMode::CachedDecode => GdnRuntimeFinalState::InPlace {
+            state: cache_recurrent_view(slot),
+        },
+        GdnRuntimeMode::Prefill => GdnRuntimeFinalState::Scatter {
+            source: local_state_view(
+                GdnRuntimeBuffer::FinalState,
+                GdnRuntimeStateKind::RecurrentFinal,
+            ),
+            destination: cache_recurrent_view(slot),
+        },
+    }
+}
+
+fn stage_step(stage: &GdnRuntimeStage) -> GdnRuntimeScheduleStep {
+    let identity = stage.identity();
+    GdnRuntimeScheduleStep {
+        kind: identity.kind().into(),
+        entry: identity.entry(),
+        source: GdnRuntimeScheduleSource::Static(identity.source()),
+        threads: identity.threads(),
+        shared_bytes: identity.shared_bytes(),
+        grid: identity.grid(),
+        bindings: identity.bindings().to_vec(),
+        kernel: stage.spec.kernel.clone(),
+    }
+}
+
+#[derive(Clone, Copy)]
+struct RuntimeCopyGeometry {
+    source: Option<GdnRuntimeBuffer>,
+    destination: GdnRuntimeBuffer,
+    rows: usize,
+    words: usize,
+    source_stride: usize,
+    destination_stride: usize,
+    source_offset: usize,
+    destination_offset: usize,
+}
+
+fn runtime_copy_geometry(
+    phase: GdnPhase,
+    slot: GdnRuntimeCacheSlot,
+    kind: GdnRuntimeScheduleKind,
+) -> Result<RuntimeCopyGeometry> {
+    use GdnRuntimeBuffer::*;
+    let rows = phase.tokens();
+    let value = match kind {
+        GdnRuntimeScheduleKind::PackA | GdnRuntimeScheduleKind::PackB if rows > 1 => {
+            RuntimeCopyGeometry {
+                source: Some(PackedBa),
+                destination: if kind == GdnRuntimeScheduleKind::PackA {
+                    AContiguous
+                } else {
+                    BContiguous
+                },
+                rows,
+                words: 8,
+                source_stride: 16,
+                destination_stride: 8,
+                source_offset: if kind == GdnRuntimeScheduleKind::PackA {
+                    8
+                } else {
+                    0
+                },
+                destination_offset: 0,
+            }
+        }
+        GdnRuntimeScheduleKind::PackZ => RuntimeCopyGeometry {
+            source: Some(PackedQkvz),
+            destination: ZCompact,
+            rows,
+            words: 1024,
+            source_stride: 4096,
+            destination_stride: 1024,
+            source_offset: 3072,
+            destination_offset: 0,
+        },
+        GdnRuntimeScheduleKind::CopyQkvPrefix if phase == GdnPhase::CachedDecode => {
+            RuntimeCopyGeometry {
+                source: Some(PackedQkvz),
+                destination: ConvOutput,
+                rows: 1,
+                words: 3072,
+                source_stride: 4096,
+                destination_stride: 3072,
+                source_offset: 0,
+                destination_offset: 0,
+            }
+        }
+        GdnRuntimeScheduleKind::ZeroInverse if phase != GdnPhase::CachedDecode => {
+            RuntimeCopyGeometry {
+                source: None,
+                destination: Inverse,
+                rows: 1,
+                words: GdnBuffer::Inverse.bytes(phase) / 4,
+                source_stride: 0,
+                destination_stride: GdnBuffer::Inverse.bytes(phase) / 4,
+                source_offset: 0,
+                destination_offset: 0,
+            }
+        }
+        GdnRuntimeScheduleKind::ZeroInitialState if phase != GdnPhase::CachedDecode => {
+            RuntimeCopyGeometry {
+                source: None,
+                destination: InitialState,
+                rows: 1,
+                words: RECURRENT_STATE_BYTES / 4,
+                source_stride: 0,
+                destination_stride: RECURRENT_STATE_BYTES / 4,
+                source_offset: 0,
+                destination_offset: 0,
+            }
+        }
+        GdnRuntimeScheduleKind::GatherInitialState if phase != GdnPhase::CachedDecode => {
+            RuntimeCopyGeometry {
+                source: Some(CacheArena),
+                destination: InitialState,
+                rows: 1,
+                words: RECURRENT_STATE_BYTES / 4,
+                source_stride: RECURRENT_STATE_BYTES / 4,
+                destination_stride: RECURRENT_STATE_BYTES / 4,
+                source_offset: slot.recurrent_offset() / 4,
+                destination_offset: 0,
+            }
+        }
+        GdnRuntimeScheduleKind::ScatterFinalState if phase != GdnPhase::CachedDecode => {
+            RuntimeCopyGeometry {
+                source: Some(FinalState),
+                destination: CacheArena,
+                rows: 1,
+                words: RECURRENT_STATE_BYTES / 4,
+                source_stride: RECURRENT_STATE_BYTES / 4,
+                destination_stride: RECURRENT_STATE_BYTES / 4,
+                source_offset: 0,
+                destination_offset: slot.recurrent_offset() / 4,
+            }
+        }
+        _ => {
+            return Err(Error::Unsupported(
+                "parameterized GDN runtime copy geometry".into(),
+            ));
+        }
+    };
+    Ok(value)
+}
+
+fn copy_binding(
+    role: GdnRuntimeBuffer,
+    offset_words: usize,
+    rows: usize,
+    stride_words: usize,
+    words: usize,
+    access: GdnRuntimeAccess,
+) -> Result<GdnRuntimeBinding> {
+    let offset = offset_words
+        .checked_mul(4)
+        .ok_or_else(|| Error::Limit("GDN runtime copy offset overflow".into()))?;
+    let span_words = (rows - 1)
+        .checked_mul(stride_words)
+        .and_then(|n| n.checked_add(words))
+        .ok_or_else(|| Error::Limit("GDN runtime copy span overflow".into()))?;
+    let bytes = span_words
+        .checked_mul(4)
+        .ok_or_else(|| Error::Limit("GDN runtime copy bytes overflow".into()))?;
+    Ok(GdnRuntimeBinding {
+        role,
+        offset,
+        bytes,
+        access,
+    })
+}
+
+fn build_copy_step(
+    phase: GdnPhase,
+    slot: GdnRuntimeCacheSlot,
+    kind: GdnRuntimeScheduleKind,
+) -> Result<GdnRuntimeScheduleStep> {
+    let geometry = runtime_copy_geometry(phase, slot, kind)?;
+    let mut bindings = Vec::with_capacity(2);
+    if let Some(source) = geometry.source {
+        bindings.push(copy_binding(
+            source,
+            geometry.source_offset,
+            geometry.rows,
+            geometry.source_stride,
+            geometry.words,
+            GdnRuntimeAccess::ReadOnly,
+        )?);
+    }
+    bindings.push(copy_binding(
+        geometry.destination,
+        geometry.destination_offset,
+        geometry.rows,
+        geometry.destination_stride,
+        geometry.words,
+        GdnRuntimeAccess::WriteOnly,
+    )?);
+    let entry = match kind {
+        GdnRuntimeScheduleKind::PackA => "zg_gdn_runtime_pack_a",
+        GdnRuntimeScheduleKind::PackB => "zg_gdn_runtime_pack_b",
+        GdnRuntimeScheduleKind::PackZ => "zg_gdn_runtime_pack_z",
+        GdnRuntimeScheduleKind::CopyQkvPrefix => "zg_gdn_runtime_copy_qkv_prefix",
+        GdnRuntimeScheduleKind::ZeroInverse => "zg_gdn_runtime_zero_inverse",
+        GdnRuntimeScheduleKind::ZeroInitialState => "zg_gdn_runtime_zero_initial",
+        GdnRuntimeScheduleKind::GatherInitialState => "zg_gdn_runtime_gather_initial",
+        GdnRuntimeScheduleKind::ScatterFinalState => "zg_gdn_runtime_scatter_final",
+        _ => {
+            return Err(Error::Unsupported(
+                "parameterized GDN runtime copy operation".into(),
+            ));
+        }
+    };
+    let total = geometry
+        .rows
+        .checked_mul(geometry.words)
+        .ok_or_else(|| Error::Limit("GDN runtime copy launch overflow".into()))?;
+    let total_u32 = u32::try_from(total)
+        .map_err(|_| Error::Limit("GDN runtime copy launch exceeds u32".into()))?;
+    let (parameters, statement) = if geometry.source.is_some() {
+        (
+            "const unsigned int* source, unsigned int* destination",
+            format!(
+                "unsigned int row = index / {words}u; unsigned int col = index % {words}u; destination[row * {destination_stride}u + col] = source[row * {source_stride}u + col];",
+                words = geometry.words,
+                destination_stride = geometry.destination_stride,
+                source_stride = geometry.source_stride,
+            ),
+        )
+    } else {
+        (
+            "unsigned int* destination",
+            "destination[index] = 0u;".into(),
+        )
+    };
+    let source: Arc<str> = format!(
+        "// cubecl.cuda.dynamic_shared_bytes=0\n#if __CUDA_ARCH__ != 860\n#error Closed SM86 GDN runtime copy\n#endif\nextern \"C\" __global__ __launch_bounds__(128) void {entry}({parameters}) {{ unsigned int index = blockIdx.x * blockDim.x + threadIdx.x; if (index < {total_u32}u) {{ {statement} }} }}\n"
+    )
+    .into();
+    let kernel = crate::cuda::kernel::PinnedKernel::new(
+        entry,
+        source.clone(),
+        128,
+        bindings
+            .iter()
+            .map(|binding| {
+                (
+                    binding.bytes,
+                    match binding.access {
+                        GdnRuntimeAccess::ReadOnly => BufferIOAttr::ReadOnly,
+                        GdnRuntimeAccess::WriteOnly => BufferIOAttr::WriteOnly,
+                        GdnRuntimeAccess::ReadWrite => BufferIOAttr::ReadWrite,
+                        GdnRuntimeAccess::Dead => BufferIOAttr::Dead,
+                    },
+                )
+            })
+            .collect::<Vec<_>>()
+            .into(),
+    )?;
+    Ok(GdnRuntimeScheduleStep {
+        kind,
+        entry,
+        source: GdnRuntimeScheduleSource::Owned(source),
+        threads: 128,
+        shared_bytes: 0,
+        grid: [total_u32.div_ceil(128), 1, 1],
+        bindings,
+        kernel,
+    })
+}
+
+fn build_schedule(
+    phase: GdnPhase,
+    geometry: GdnRuntimeGeometry,
+    slot: GdnRuntimeCacheSlot,
+    stages: &[GdnRuntimeStage],
+) -> Result<Vec<GdnRuntimeScheduleStep>> {
+    let mut result = Vec::new();
+    if geometry.mode == GdnRuntimeMode::CachedDecode {
+        result.push(build_copy_step(
+            phase,
+            slot,
+            GdnRuntimeScheduleKind::CopyQkvPrefix,
+        )?);
+        result.push(build_copy_step(phase, slot, GdnRuntimeScheduleKind::PackZ)?);
+    } else {
+        if geometry.rows > 1 {
+            result.push(build_copy_step(phase, slot, GdnRuntimeScheduleKind::PackA)?);
+            result.push(build_copy_step(phase, slot, GdnRuntimeScheduleKind::PackB)?);
+        }
+        result.push(build_copy_step(phase, slot, GdnRuntimeScheduleKind::PackZ)?);
+    }
+    for stage in stages {
+        match stage.identity.kind {
+            GdnRuntimeStageKind::Solve => result.push(build_copy_step(
+                phase,
+                slot,
+                GdnRuntimeScheduleKind::ZeroInverse,
+            )?),
+            GdnRuntimeStageKind::State => result.push(build_copy_step(
+                phase,
+                slot,
+                if geometry.has_initial {
+                    GdnRuntimeScheduleKind::GatherInitialState
+                } else {
+                    GdnRuntimeScheduleKind::ZeroInitialState
+                },
+            )?),
+            _ => {}
+        }
+        result.push(stage_step(stage));
+        if stage.identity.kind == GdnRuntimeStageKind::State {
+            result.push(build_copy_step(
+                phase,
+                slot,
+                GdnRuntimeScheduleKind::ScatterFinalState,
+            )?);
+        }
+    }
+    Ok(result)
+}
+
+fn expected_schedule_kinds(geometry: GdnRuntimeGeometry) -> Vec<GdnRuntimeScheduleKind> {
+    use GdnRuntimeScheduleKind::*;
+    if geometry.mode == GdnRuntimeMode::CachedDecode {
+        return vec![CopyQkvPrefix, PackZ, Conv, Decode, Gated];
+    }
+    let mut kinds = Vec::new();
+    if geometry.rows > 1 {
+        kinds.extend([PackA, PackB]);
+    }
+    kinds.extend([
+        PackZ,
+        Conv,
+        Prep,
+        Cumsum,
+        Kkt,
+        ZeroInverse,
+        Solve,
+        Recompute,
+        if geometry.has_initial {
+            GatherInitialState
+        } else {
+            ZeroInitialState
+        },
+        State,
+        ScatterFinalState,
+        Output,
+        Gated,
+    ]);
+    kinds
+}
+
+fn require_schedule(plan: &GdnRuntimePlan) -> Result<()> {
+    let phase = match plan.geometry.mode {
+        GdnRuntimeMode::Prefill => GdnPhase::TextPrefill(plan.geometry.rows),
+        GdnRuntimeMode::CachedDecode => GdnPhase::CachedDecode,
+    };
+    let actual = plan
+        .schedule
+        .iter()
+        .map(|step| step.kind)
+        .collect::<Vec<_>>();
+    if actual != expected_schedule_kinds(plan.geometry) {
+        return Err(Error::State(
+            "GDN runtime incomplete or reordered schedule".into(),
+        ));
+    }
+    for step in &plan.schedule {
+        for binding in &step.bindings {
+            let available = plan.workspace.bytes(binding.role).ok_or_else(|| {
+                Error::State("GDN runtime schedule role absent from workspace".into())
+            })?;
+            if binding
+                .offset
+                .checked_add(binding.bytes)
+                .is_none_or(|end| end > available)
+            {
+                return Err(Error::State(format!(
+                    "GDN runtime schedule {:?}/{:?} binding {}+{} exceeds {}",
+                    step.kind, binding.role, binding.offset, binding.bytes, available
+                )));
+            }
+        }
+        if matches!(
+            step.kind,
+            GdnRuntimeScheduleKind::PackA
+                | GdnRuntimeScheduleKind::PackB
+                | GdnRuntimeScheduleKind::PackZ
+                | GdnRuntimeScheduleKind::CopyQkvPrefix
+                | GdnRuntimeScheduleKind::ZeroInverse
+                | GdnRuntimeScheduleKind::ZeroInitialState
+                | GdnRuntimeScheduleKind::GatherInitialState
+                | GdnRuntimeScheduleKind::ScatterFinalState
+        ) {
+            let expected = build_copy_step(phase, plan.slot, step.kind)?;
+            if step.bindings != expected.bindings {
+                return Err(Error::State("GDN runtime copy access contract".into()));
+            }
+        } else {
+            let stage_kind = plan
+                .stages
+                .iter()
+                .find(|stage| GdnRuntimeScheduleKind::from(stage.identity.kind) == step.kind)
+                .ok_or_else(|| Error::State("GDN runtime scheduled stage absent".into()))?;
+            if step.bindings != stage_kind.identity.bindings {
+                return Err(Error::State("GDN runtime stage access contract".into()));
+            }
+        }
+    }
+    let initial_layout = plan
+        .workspace
+        .buffers
+        .iter()
+        .find(|layout| layout.role == GdnRuntimeBuffer::InitialState);
+    let final_layout = plan
+        .workspace
+        .buffers
+        .iter()
+        .find(|layout| layout.role == GdnRuntimeBuffer::FinalState);
+    match (initial_layout, final_layout) {
+        (
+            Some(GdnRuntimeBufferLayout {
+                ownership: GdnRuntimeBufferOwnership::RecurrentState,
+                ..
+            }),
+            Some(GdnRuntimeBufferLayout {
+                ownership: GdnRuntimeBufferOwnership::RecurrentState,
+                ..
+            }),
+        ) => {}
+        _ => return Err(Error::State("GDN runtime recurrent ownership".into())),
+    }
+    if plan.initial_state != runtime_initial_state(plan.slot, plan.geometry)
+        || plan.final_state != runtime_final_state(plan.slot, plan.geometry)
+    {
+        return Err(Error::State("GDN runtime state view mutation".into()));
+    }
+    match plan.initial_state {
+        GdnRuntimeInitialState::Zero { destination }
+            if destination.role == GdnRuntimeBuffer::InitialState
+                && destination.kind == GdnRuntimeStateKind::RecurrentInitial => {}
+        GdnRuntimeInitialState::Copy {
+            source,
+            destination,
+        } if source.role == GdnRuntimeBuffer::CacheArena
+            && destination.role == GdnRuntimeBuffer::InitialState
+            && source.role != destination.role
+            && source.kind == GdnRuntimeStateKind::RecurrentCache
+            && destination.kind == GdnRuntimeStateKind::RecurrentInitial => {}
+        GdnRuntimeInitialState::InPlace { state }
+            if plan.geometry.mode == GdnRuntimeMode::CachedDecode
+                && state.role == GdnRuntimeBuffer::CacheArena
+                && state.kind == GdnRuntimeStateKind::RecurrentCache => {}
+        _ => {
+            return Err(Error::State(
+                "GDN runtime initial-state ownership/alias".into(),
+            ));
+        }
+    }
+    match plan.final_state {
+        GdnRuntimeFinalState::Scatter {
+            source,
+            destination,
+        } if plan.geometry.mode == GdnRuntimeMode::Prefill
+            && source.role == GdnRuntimeBuffer::FinalState
+            && destination.role == GdnRuntimeBuffer::CacheArena
+            && source.role != destination.role
+            && source.kind == GdnRuntimeStateKind::RecurrentFinal
+            && destination.kind == GdnRuntimeStateKind::RecurrentCache => {}
+        GdnRuntimeFinalState::InPlace { state }
+            if plan.geometry.mode == GdnRuntimeMode::CachedDecode
+                && state.role == GdnRuntimeBuffer::CacheArena
+                && state.kind == GdnRuntimeStateKind::RecurrentCache => {}
+        _ => {
+            return Err(Error::State(
+                "GDN runtime final-state ownership/alias".into(),
+            ));
+        }
+    }
+    if let (
+        GdnRuntimeInitialState::Copy { destination, .. }
+        | GdnRuntimeInitialState::Zero { destination },
+        GdnRuntimeFinalState::Scatter { source, .. },
+    ) = (plan.initial_state, plan.final_state)
+        && destination.role == source.role
+    {
+        return Err(Error::State(
+            "GDN runtime initial/final recurrent allocations alias".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn runtime_controls(

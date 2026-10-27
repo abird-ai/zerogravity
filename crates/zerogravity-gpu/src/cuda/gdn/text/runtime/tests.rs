@@ -53,18 +53,32 @@ fn chunk64_and_tail_share_one_workspace_and_advance_explicit_state() -> Result<(
     );
     assert_eq!(
         first.initial_recurrent_state(),
-        GdnRuntimeInitialState::Zero
+        GdnRuntimeInitialState::Zero {
+            destination: local_state_view(
+                GdnRuntimeBuffer::InitialState,
+                GdnRuntimeStateKind::RecurrentInitial,
+            ),
+        }
     );
     assert_eq!(
         tail.initial_recurrent_state(),
-        GdnRuntimeInitialState::Cache(GdnRuntimeCacheView {
-            offset: slot.recurrent_offset(),
-            bytes: RECURRENT_STATE_BYTES,
-        })
+        GdnRuntimeInitialState::Copy {
+            source: cache_recurrent_view(slot),
+            destination: local_state_view(
+                GdnRuntimeBuffer::InitialState,
+                GdnRuntimeStateKind::RecurrentInitial,
+            ),
+        }
     );
     assert_eq!(
-        tail.final_recurrent_state().offset(),
-        slot.recurrent_offset()
+        tail.final_recurrent_state(),
+        GdnRuntimeFinalState::Scatter {
+            source: local_state_view(
+                GdnRuntimeBuffer::FinalState,
+                GdnRuntimeStateKind::RecurrentFinal,
+            ),
+            destination: cache_recurrent_view(slot),
+        }
     );
     assert!(prefill.chunk(2).is_err());
     Ok(())
@@ -98,10 +112,15 @@ fn nonzero_prior_is_explicit_and_cached_decode_accepts_arbitrary_frontier() -> R
         assert!(decode.stage(GdnRuntimeStageKind::Prep).is_none());
         assert_eq!(
             decode.initial_recurrent_state(),
-            GdnRuntimeInitialState::InPlace(GdnRuntimeCacheView {
-                offset: slot.recurrent_offset(),
-                bytes: RECURRENT_STATE_BYTES,
-            })
+            GdnRuntimeInitialState::InPlace {
+                state: cache_recurrent_view(slot),
+            }
+        );
+        assert_eq!(
+            decode.final_recurrent_state(),
+            GdnRuntimeFinalState::InPlace {
+                state: cache_recurrent_view(slot),
+            }
         );
         assert_eq!(
             control(&decode, GdnRuntimeBuffer::CacheIndices),
@@ -115,7 +134,7 @@ fn nonzero_prior_is_explicit_and_cached_decode_accepts_arbitrary_frontier() -> R
 #[test]
 fn arbitrary_rows_have_checked_grids_abis_and_workspace_extents() -> Result<()> {
     let config = runtime_config()?;
-    let slot = GdnRuntimeCacheSlot::new(0)?;
+    let slot = GdnRuntimeCacheSlot::new(1)?;
     for rows in [1, 2, 7, 8, 9, 16, 31, 48, 63, 64] {
         let plan = GdnRuntimePlan::prefill_chunk(config, slot, 0, rows, false)?;
         let grid = |stage| plan.stage(stage).unwrap().identity().grid();
@@ -241,7 +260,11 @@ fn invalid_configuration_state_geometry_and_indices_refuse() -> Result<()> {
     assert!(GdnRuntimeKernelGeometry::new(6145, 2048, 32, 4, 16, 128, 64, 5).is_err());
     assert!(GdnRuntimeKernelGeometry::new(6144, 2048, 32, 4, 16, 128, 63, 5).is_err());
     assert!(GdnRuntimeKernelGeometry::new(6144, 2048, 32, 4, 16, 128, 64, 1).is_err());
+    assert!(GdnRuntimeCacheSlot::new(0).is_err());
     assert!(GdnRuntimeCacheSlot::new(5).is_err());
+    for index in 1..5 {
+        assert_eq!(GdnRuntimeCacheSlot::new(index)?.index(), index);
+    }
 
     let config = runtime_config()?;
     let slot = GdnRuntimeCacheSlot::new(1)?;
@@ -256,6 +279,325 @@ fn invalid_configuration_state_geometry_and_indices_refuse() -> Result<()> {
     assert!(GdnRuntimePrefill::new(config, slot, usize::MAX, 2, true).is_err());
     assert!(GdnRuntimePlan::cached_decode(config, slot, 0).is_err());
     assert!(GdnRuntimePlan::cached_decode(config, slot, usize::MAX).is_err());
+    Ok(())
+}
+
+fn kinds(plan: &GdnRuntimePlan) -> Vec<GdnRuntimeScheduleKind> {
+    plan.schedule().iter().map(|step| step.kind()).collect()
+}
+
+fn schedule_binding(
+    plan: &GdnRuntimePlan,
+    kind: GdnRuntimeScheduleKind,
+    role: GdnRuntimeBuffer,
+) -> GdnRuntimeBinding {
+    *plan
+        .schedule()
+        .iter()
+        .find(|step| step.kind() == kind)
+        .unwrap()
+        .bindings()
+        .iter()
+        .find(|binding| binding.role() == role)
+        .unwrap()
+}
+
+#[test]
+fn schedules_include_every_copy_in_dependency_order_with_exact_access() -> Result<()> {
+    use GdnRuntimeScheduleKind::*;
+    let config = runtime_config()?;
+    let slot = GdnRuntimeCacheSlot::new(2)?;
+    let first = GdnRuntimePlan::prefill_chunk(config, slot, 0, 9, false)?;
+    assert_eq!(
+        kinds(&first),
+        [
+            PackA,
+            PackB,
+            PackZ,
+            Conv,
+            Prep,
+            Cumsum,
+            Kkt,
+            ZeroInverse,
+            Solve,
+            Recompute,
+            ZeroInitialState,
+            State,
+            ScatterFinalState,
+            Output,
+            Gated,
+        ]
+    );
+    assert_eq!(
+        schedule_binding(&first, PackA, GdnRuntimeBuffer::PackedBa),
+        GdnRuntimeBinding {
+            role: GdnRuntimeBuffer::PackedBa,
+            offset: 8 * 4,
+            bytes: ((9 - 1) * 16 + 8) * 4,
+            access: GdnRuntimeAccess::ReadOnly,
+        }
+    );
+    assert_eq!(
+        schedule_binding(&first, PackA, GdnRuntimeBuffer::AContiguous).access(),
+        GdnRuntimeAccess::WriteOnly
+    );
+    assert_eq!(
+        schedule_binding(&first, PackB, GdnRuntimeBuffer::PackedBa).offset(),
+        0
+    );
+    assert_eq!(
+        schedule_binding(&first, PackZ, GdnRuntimeBuffer::PackedQkvz).offset(),
+        3072 * 4
+    );
+    assert_eq!(
+        schedule_binding(&first, ZeroInverse, GdnRuntimeBuffer::Inverse).access(),
+        GdnRuntimeAccess::WriteOnly
+    );
+    assert_eq!(
+        schedule_binding(&first, ZeroInitialState, GdnRuntimeBuffer::InitialState).access(),
+        GdnRuntimeAccess::WriteOnly
+    );
+    assert_eq!(
+        schedule_binding(&first, ScatterFinalState, GdnRuntimeBuffer::FinalState).access(),
+        GdnRuntimeAccess::ReadOnly
+    );
+    assert_eq!(
+        schedule_binding(&first, ScatterFinalState, GdnRuntimeBuffer::CacheArena),
+        GdnRuntimeBinding {
+            role: GdnRuntimeBuffer::CacheArena,
+            offset: slot.recurrent_offset(),
+            bytes: RECURRENT_STATE_BYTES,
+            access: GdnRuntimeAccess::WriteOnly,
+        }
+    );
+
+    let continued = GdnRuntimePlan::prefill_chunk(config, slot, 9, 1, true)?;
+    assert_eq!(
+        kinds(&continued),
+        [
+            PackZ,
+            Conv,
+            Prep,
+            Cumsum,
+            Kkt,
+            ZeroInverse,
+            Solve,
+            Recompute,
+            GatherInitialState,
+            State,
+            ScatterFinalState,
+            Output,
+            Gated,
+        ]
+    );
+    assert_eq!(
+        schedule_binding(&continued, GatherInitialState, GdnRuntimeBuffer::CacheArena),
+        GdnRuntimeBinding {
+            role: GdnRuntimeBuffer::CacheArena,
+            offset: slot.recurrent_offset(),
+            bytes: RECURRENT_STATE_BYTES,
+            access: GdnRuntimeAccess::ReadOnly,
+        }
+    );
+
+    let cached = GdnRuntimePlan::cached_decode(config, slot, 10)?;
+    assert_eq!(kinds(&cached), [CopyQkvPrefix, PackZ, Conv, Decode, Gated]);
+    assert_eq!(
+        schedule_binding(&cached, CopyQkvPrefix, GdnRuntimeBuffer::PackedQkvz).bytes(),
+        3072 * 4
+    );
+    assert_eq!(
+        schedule_binding(&cached, CopyQkvPrefix, GdnRuntimeBuffer::ConvOutput).access(),
+        GdnRuntimeAccess::WriteOnly
+    );
+    Ok(())
+}
+
+#[test]
+fn recurrent_views_have_distinct_roles_and_explicit_ownership() -> Result<()> {
+    let config = runtime_config()?;
+    let slot = GdnRuntimeCacheSlot::new(4)?;
+    let plan = GdnRuntimePlan::prefill_chunk(config, slot, 64, 2, true)?;
+    let ownership = |role| {
+        plan.workspace()
+            .buffers()
+            .iter()
+            .find(|layout| layout.role() == role)
+            .unwrap()
+            .ownership()
+    };
+    assert_eq!(
+        ownership(GdnRuntimeBuffer::CacheArena),
+        GdnRuntimeBufferOwnership::CacheState
+    );
+    assert_eq!(
+        ownership(GdnRuntimeBuffer::InitialState),
+        GdnRuntimeBufferOwnership::RecurrentState
+    );
+    assert_eq!(
+        ownership(GdnRuntimeBuffer::FinalState),
+        GdnRuntimeBufferOwnership::RecurrentState
+    );
+    let GdnRuntimeInitialState::Copy {
+        source: initial_source,
+        destination: initial_destination,
+    } = plan.initial_recurrent_state()
+    else {
+        panic!("continued prefill must gather recurrent state");
+    };
+    let GdnRuntimeFinalState::Scatter {
+        source: final_source,
+        destination: final_destination,
+    } = plan.final_recurrent_state()
+    else {
+        panic!("prefill must scatter recurrent state");
+    };
+    assert_ne!(initial_source.role(), initial_destination.role());
+    assert_ne!(initial_destination.role(), final_source.role());
+    assert_ne!(final_source.role(), final_destination.role());
+    assert_eq!(initial_source, final_destination);
+    assert_eq!(
+        initial_destination.kind(),
+        GdnRuntimeStateKind::RecurrentInitial
+    );
+    assert_eq!(final_source.kind(), GdnRuntimeStateKind::RecurrentFinal);
+    Ok(())
+}
+
+#[test]
+fn caller_handle_binding_rejects_physical_state_aliases_and_slices_exact_views() -> Result<()> {
+    use cubecl::server::Handle;
+    use cubecl_common::device::{DeviceId, ServiceId};
+    use cubecl_core::environment::stream::StreamId;
+
+    struct RuntimeHandleTest;
+    let plan = GdnRuntimePlan::prefill_chunk(
+        runtime_config()?,
+        GdnRuntimeCacheSlot::new(2)?,
+        64,
+        2,
+        true,
+    )?;
+    let service = ServiceId::of::<RuntimeHandleTest>(DeviceId::new(0, 0));
+    let stream = StreamId::current();
+    let mut handles = plan
+        .workspace()
+        .buffers()
+        .iter()
+        .map(|layout| {
+            (
+                layout.role(),
+                Handle::new(service, stream, layout.bytes() as u64),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let bound = plan.bind_schedule_handles(&handles)?;
+    assert_eq!(bound.len(), plan.schedule().len());
+    for (step, operation) in plan.schedule().iter().zip(&bound) {
+        assert_eq!(operation.len(), step.bindings().len());
+        for (handle, binding) in operation.iter().zip(step.bindings()) {
+            assert_eq!(handle.size_in_used(), binding.bytes() as u64);
+        }
+    }
+
+    handles.insert(
+        GdnRuntimeBuffer::FinalState,
+        handles[&GdnRuntimeBuffer::InitialState].clone(),
+    );
+    assert!(plan.bind_schedule_handles(&handles).is_err());
+
+    handles.insert(
+        GdnRuntimeBuffer::FinalState,
+        Handle::new(service, stream, RECURRENT_STATE_BYTES as u64),
+    );
+    handles.insert(
+        GdnRuntimeBuffer::InitialState,
+        handles[&GdnRuntimeBuffer::CacheArena].clone(),
+    );
+    assert!(plan.bind_schedule_handles(&handles).is_err());
+
+    let cached =
+        GdnRuntimePlan::cached_decode(runtime_config()?, GdnRuntimeCacheSlot::new(2)?, 66)?;
+    let mut required = BTreeMap::<GdnRuntimeBuffer, usize>::new();
+    for binding in cached.schedule().iter().flat_map(|step| step.bindings()) {
+        let end = binding.offset() + binding.bytes();
+        required
+            .entry(binding.role())
+            .and_modify(|bytes| *bytes = (*bytes).max(end))
+            .or_insert(end);
+    }
+    let cached_handles = required
+        .into_iter()
+        .map(|(role, bytes)| (role, Handle::new(service, stream, bytes as u64)))
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(
+        cached.bind_schedule_handles(&cached_handles)?.len(),
+        cached.schedule().len()
+    );
+    assert!(!cached_handles.contains_key(&GdnRuntimeBuffer::InitialState));
+    assert!(!cached_handles.contains_key(&GdnRuntimeBuffer::FinalState));
+    Ok(())
+}
+
+#[test]
+fn schedule_order_access_and_state_alias_mutations_refuse() -> Result<()> {
+    let plan = GdnRuntimePlan::prefill_chunk(
+        runtime_config()?,
+        GdnRuntimeCacheSlot::new(3)?,
+        64,
+        2,
+        true,
+    )?;
+    for index in 0..plan.schedule.len() - 1 {
+        let mut changed = plan.clone();
+        changed.schedule.swap(index, index + 1);
+        assert!(
+            changed.require_schedule().is_err(),
+            "order mutation {index}"
+        );
+    }
+    for step_index in 0..plan.schedule.len() {
+        for binding_index in 0..plan.schedule[step_index].bindings.len() {
+            let mut changed = plan.clone();
+            let access = &mut changed.schedule[step_index].bindings[binding_index].access;
+            *access = match *access {
+                GdnRuntimeAccess::ReadOnly => GdnRuntimeAccess::WriteOnly,
+                _ => GdnRuntimeAccess::ReadOnly,
+            };
+            assert!(
+                changed.require_schedule().is_err(),
+                "access mutation {step_index}/{binding_index}"
+            );
+        }
+    }
+
+    let mut changed = plan.clone();
+    let GdnRuntimeInitialState::Copy {
+        ref mut destination,
+        ..
+    } = changed.initial_state
+    else {
+        panic!("continued prefill state");
+    };
+    destination.role = GdnRuntimeBuffer::FinalState;
+    assert!(changed.require_schedule().is_err());
+
+    let mut changed = plan.clone();
+    let GdnRuntimeFinalState::Scatter { ref mut source, .. } = changed.final_state else {
+        panic!("prefill final state");
+    };
+    source.role = GdnRuntimeBuffer::InitialState;
+    assert!(changed.require_schedule().is_err());
+
+    let mut changed = plan;
+    let workspace = Arc::make_mut(&mut changed.workspace);
+    workspace
+        .buffers
+        .iter_mut()
+        .find(|layout| layout.role == GdnRuntimeBuffer::InitialState)
+        .unwrap()
+        .ownership = GdnRuntimeBufferOwnership::Scratch;
+    assert!(changed.require_schedule().is_err());
     Ok(())
 }
 

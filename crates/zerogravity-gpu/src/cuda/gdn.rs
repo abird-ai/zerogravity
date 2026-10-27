@@ -606,10 +606,11 @@ mod text;
 pub use text::{
     GdnKernelConfig, GdnKktKernel, GdnOutputKernel, GdnRecomputeKernel, GdnRuntimeAccess,
     GdnRuntimeBinding, GdnRuntimeBuffer, GdnRuntimeBufferLayout, GdnRuntimeBufferOwnership,
-    GdnRuntimeCacheSlot, GdnRuntimeCacheView, GdnRuntimeConfig, GdnRuntimeControl,
-    GdnRuntimeGeometry, GdnRuntimeInitialState, GdnRuntimeKernelGeometry, GdnRuntimeLaunch,
-    GdnRuntimeMode, GdnRuntimePlan, GdnRuntimePrefill, GdnRuntimeScalarField, GdnRuntimeScalarType,
-    GdnRuntimeStage, GdnRuntimeStageIdentity, GdnRuntimeStageKind, GdnRuntimeWorkspaceLayout,
+    GdnRuntimeCacheSlot, GdnRuntimeConfig, GdnRuntimeControl, GdnRuntimeFinalState,
+    GdnRuntimeGeometry, GdnRuntimeInitialState, GdnRuntimeKernelGeometry, GdnRuntimeMode,
+    GdnRuntimePlan, GdnRuntimePrefill, GdnRuntimeScalarField, GdnRuntimeScalarType,
+    GdnRuntimeScheduleKind, GdnRuntimeScheduleStep, GdnRuntimeStage, GdnRuntimeStageIdentity,
+    GdnRuntimeStageKind, GdnRuntimeStateKind, GdnRuntimeStateView, GdnRuntimeWorkspaceLayout,
     GdnStateKernel, TextGdnImplementation,
 };
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]

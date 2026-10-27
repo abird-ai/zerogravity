@@ -133,11 +133,11 @@ mod parameterized_prefill_variants;
 mod runtime;
 pub use runtime::{
     GdnRuntimeAccess, GdnRuntimeBinding, GdnRuntimeBuffer, GdnRuntimeBufferLayout,
-    GdnRuntimeBufferOwnership, GdnRuntimeCacheSlot, GdnRuntimeCacheView, GdnRuntimeConfig,
-    GdnRuntimeControl, GdnRuntimeGeometry, GdnRuntimeInitialState, GdnRuntimeKernelGeometry,
-    GdnRuntimeLaunch, GdnRuntimeMode, GdnRuntimePlan, GdnRuntimePrefill, GdnRuntimeScalarField,
-    GdnRuntimeScalarType, GdnRuntimeStage, GdnRuntimeStageIdentity, GdnRuntimeStageKind,
-    GdnRuntimeWorkspaceLayout,
+    GdnRuntimeBufferOwnership, GdnRuntimeCacheSlot, GdnRuntimeConfig, GdnRuntimeControl,
+    GdnRuntimeFinalState, GdnRuntimeGeometry, GdnRuntimeInitialState, GdnRuntimeKernelGeometry,
+    GdnRuntimeMode, GdnRuntimePlan, GdnRuntimePrefill, GdnRuntimeScalarField, GdnRuntimeScalarType,
+    GdnRuntimeScheduleKind, GdnRuntimeScheduleStep, GdnRuntimeStage, GdnRuntimeStageIdentity,
+    GdnRuntimeStageKind, GdnRuntimeStateKind, GdnRuntimeStateView, GdnRuntimeWorkspaceLayout,
 };
 #[cfg(all(test, feature = "cuda-native-qualification"))]
 pub(super) fn fixture_implementation(
