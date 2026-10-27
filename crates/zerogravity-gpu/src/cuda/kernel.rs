@@ -252,7 +252,7 @@ impl PreparedPinnedLaunch {
     }
 }
 impl PinnedKernel {
-    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
+    #[cfg(all(feature = "cuda-native", target_os = "linux"))]
     pub(crate) fn prepare_code(&self, queue: &cubecl::cuda::OwnedCudaQueue) -> Result<()> {
         // SAFETY: private source/ABI factory; original actor requires installed
         // detached policy ownership. No buffers or inference are submitted.

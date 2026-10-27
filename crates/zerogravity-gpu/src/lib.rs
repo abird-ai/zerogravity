@@ -40,6 +40,7 @@ mod quantization;
 #[cfg(feature = "cuda")]
 pub use physical_service::initialize_cuda_physical_identity;
 #[cfg(any(feature = "cuda-native", test))]
+#[cfg_attr(not(feature = "cuda-native-qualification"), allow(dead_code))]
 mod prepared_kernel_key;
 mod program_kernels;
 mod residency;
