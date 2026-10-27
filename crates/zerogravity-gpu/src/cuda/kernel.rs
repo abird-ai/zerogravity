@@ -129,7 +129,7 @@ impl StaticScalarSchema {
             .map(|field| (field.ty, usize::from(field.offset)))
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "cuda-native-qualification"))]
     pub(crate) fn byte_size(self) -> usize {
         self.byte_size as usize
     }
@@ -258,6 +258,38 @@ impl PinnedKernel {
         // detached policy ownership. No buffers or inference are submitted.
         unsafe { queue.prepare_kernel(Box::new(self.clone())) }
             .map_err(|e| Error::State(format!("original CUDA code readiness: {e}")))
+    }
+
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
+    pub(crate) fn diagnose_parameter_layout(
+        &self,
+        queue: &cubecl::cuda::OwnedCudaQueue,
+        pointer_count: usize,
+    ) -> Result<()> {
+        if pointer_count != self.bindings.len() {
+            return Err(Error::State(
+                "CUDA reflection pointer contract differs".into(),
+            ));
+        }
+        let scalar_bytes = self.static_scalars.schema().byte_size();
+        let parameter_count = pointer_count + usize::from(scalar_bytes != 0);
+        // SAFETY: same private checked definition and admitted compiler owner as
+        // prepare_code; reflection performs no kernel launch.
+        let actual =
+            unsafe { queue.diagnose_kernel_parameters(Box::new(self.clone()), parameter_count) }
+                .map_err(|error| Error::State(format!("CUDA parameter reflection: {error}")))?;
+        let mut expected = (0..pointer_count)
+            .map(|index| (index * 8, 8))
+            .collect::<Vec<_>>();
+        if scalar_bytes != 0 {
+            expected.push((pointer_count * 8, scalar_bytes));
+        }
+        if actual != expected {
+            return Err(Error::State(format!(
+                "CUDA reflected formal ABI differs: expected {expected:?}, observed {actual:?}"
+            )));
+        }
+        Ok(())
     }
     // Charged once per new(), shared by all prepared/current/driver copies.
     pub(crate) const KEY_METADATA_BYTES: usize = PreparedKernelKey::<SourceKey>::ALLOCATION_BYTES;

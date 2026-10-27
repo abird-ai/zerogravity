@@ -34,8 +34,9 @@ static __device__ __forceinline__ void zg_bad(unsigned* status, unsigned flag) {
 
 // words = [rows, base, capacity]
 extern "C" __global__ __launch_bounds__(ZG_THREADS)
-void zg_ot_positions_v1(void* positions_raw, ZgWords3 scalars) {
+void zg_ot_positions_v1(void* positions_raw, void* status_raw, ZgWords3 scalars) {
     unsigned* positions = (unsigned*)positions_raw;
+    unsigned* status = (unsigned*)status_raw;
     const unsigned rows = zg_u32(scalars.words[0]);
     const unsigned base = zg_u32(scalars.words[1]);
     const unsigned capacity = zg_u32(scalars.words[2]);
@@ -43,6 +44,7 @@ void zg_ot_positions_v1(void* positions_raw, ZgWords3 scalars) {
     if (i < rows) {
         const unsigned position = base + i;
         if (position < capacity) positions[i] = position;
+        else zg_bad(status, 1u);
     }
 }
 
@@ -124,10 +126,10 @@ void zg_ot_embedding_v1(void* tokens_raw, void* table_raw, void* output_raw,
 
 // words = [rows, epsilon_f32_bits].
 extern "C" __global__ __launch_bounds__(ZG_THREADS)
-void zg_ot_rms_v1(void* input_raw, void* gamma_raw, void* output_raw,
+void zg_ot_rms_v1(void* input_raw, void* raw_gamma_raw, void* output_raw,
                   void* status_raw, ZgWords2 scalars) {
     const __nv_bfloat16* input = (const __nv_bfloat16*)input_raw;
-    const __nv_bfloat16* gamma = (const __nv_bfloat16*)gamma_raw;
+    const __nv_bfloat16* raw_gamma = (const __nv_bfloat16*)raw_gamma_raw;
     __nv_bfloat16* output = (__nv_bfloat16*)output_raw;
     unsigned* status = (unsigned*)status_raw;
     __shared__ float reduction[ZG_THREADS];
@@ -148,18 +150,18 @@ void zg_ot_rms_v1(void* input_raw, void* gamma_raw, void* output_raw,
     const float inverse = rsqrtf(reduction[0] / (float)ZG_HIDDEN_WIDTH + zg_f32(scalars.words[1]));
     for (unsigned c = threadIdx.x; c < ZG_HIDDEN_WIDTH; c += blockDim.x) {
         const size_t i = (size_t)row * ZG_HIDDEN_WIDTH + c;
-        const float y = zg_load(input + i) * inverse * zg_load(gamma + c);
+        const float y = zg_load(input + i) * inverse * (1.0f + zg_load(raw_gamma + c));
         output[i] = zg_store(y); if (!isfinite(y)) zg_bad(status, 2u);
     }
 }
 
 // words = [rows, epsilon_f32_bits]. Residual is updated before normalization.
 extern "C" __global__ __launch_bounds__(ZG_THREADS)
-void zg_ot_residual_rms_v1(void* input_raw, void* residual_raw, void* gamma_raw,
+void zg_ot_residual_rms_v1(void* input_raw, void* residual_raw, void* raw_gamma_raw,
                            void* output_raw, void* status_raw, ZgWords2 scalars) {
     const __nv_bfloat16* input = (const __nv_bfloat16*)input_raw;
     __nv_bfloat16* residual = (__nv_bfloat16*)residual_raw;
-    const __nv_bfloat16* gamma = (const __nv_bfloat16*)gamma_raw;
+    const __nv_bfloat16* raw_gamma = (const __nv_bfloat16*)raw_gamma_raw;
     __nv_bfloat16* output = (__nv_bfloat16*)output_raw;
     unsigned* status = (unsigned*)status_raw;
     __shared__ float reduction[ZG_THREADS];
@@ -183,10 +185,44 @@ void zg_ot_residual_rms_v1(void* input_raw, void* residual_raw, void* gamma_raw,
     const float inverse = rsqrtf(reduction[0] / (float)ZG_HIDDEN_WIDTH + zg_f32(scalars.words[1]));
     for (unsigned c = threadIdx.x; c < ZG_HIDDEN_WIDTH; c += blockDim.x) {
         const size_t i = (size_t)row * ZG_HIDDEN_WIDTH + c;
-        const float y = zg_load(residual + i) * inverse * zg_load(gamma + c);
+        const float y = zg_load(residual + i) * inverse * (1.0f + zg_load(raw_gamma + c));
         output[i] = zg_store(y); if (!isfinite(y)) zg_bad(status, 2u);
     }
 }
+
+// Q/K zero-centered RMS: one independent 256-thread block per head.
+// words = [rows, epsilon_f32_bits].
+#define ZG_DEFINE_HEAD_RMS(NAME, HEADS) \
+extern "C" __global__ __launch_bounds__(ZG_THREADS) \
+void NAME(void* input_raw, void* raw_gamma_raw, void* output_raw, \
+          void* status_raw, ZgWords2 scalars) { \
+    const __nv_bfloat16* input = (const __nv_bfloat16*)input_raw; \
+    const __nv_bfloat16* raw_gamma = (const __nv_bfloat16*)raw_gamma_raw; \
+    __nv_bfloat16* output = (__nv_bfloat16*)output_raw; \
+    unsigned* status = (unsigned*)status_raw; \
+    __shared__ float reduction[ZG_THREADS]; \
+    const unsigned group = blockIdx.x; \
+    const unsigned rows = zg_u32(scalars.words[0]); \
+    if (group >= rows * (HEADS)) return; \
+    const unsigned lane = threadIdx.x; \
+    const size_t i = (size_t)group * ZG_HEAD_DIM + lane; \
+    const float x = zg_load(input + i); \
+    reduction[lane] = x * x; \
+    if (!isfinite(x)) zg_bad(status, 2u); \
+    __syncthreads(); \
+    for (unsigned stride = ZG_THREADS / 2; stride; stride >>= 1) { \
+        if (lane < stride) reduction[lane] += reduction[lane + stride]; \
+        __syncthreads(); \
+    } \
+    const float inverse = rsqrtf(reduction[0] / (float)ZG_HEAD_DIM + zg_f32(scalars.words[1])); \
+    const float y = x * inverse * (1.0f + zg_load(raw_gamma + lane)); \
+    output[i] = zg_store(y); \
+    if (!isfinite(y)) zg_bad(status, 2u); \
+}
+
+ZG_DEFINE_HEAD_RMS(zg_ot_query_head_rms_v1, ZG_QUERY_HEADS)
+ZG_DEFINE_HEAD_RMS(zg_ot_key_head_rms_v1, ZG_KV_HEADS)
+#undef ZG_DEFINE_HEAD_RMS
 
 // words = [rows].
 extern "C" __global__ __launch_bounds__(ZG_THREADS)
@@ -261,9 +297,11 @@ void zg_ot_kv_append_v1(void* key_raw, void* value_raw, void* key_cache_raw,
     }
 }
 
-// Causal online softmax. words = [rows, base, capacity].
+// UNQUALIFIED causal online-FP32 softmax diagnostic. It does not reproduce
+// Qwen's declared BF16 attention cast/reduction schedule and is never selected.
+// words = [rows, base, capacity].
 extern "C" __global__ __launch_bounds__(ZG_THREADS)
-void zg_ot_attention_v1(void* query_raw, void* key_cache_raw, void* value_cache_raw,
+void zg_ot_unqualified_online_fp32_attention_v1(void* query_raw, void* key_cache_raw, void* value_cache_raw,
                         void* output_raw, void* status_raw, ZgWords3 scalars) {
     const __nv_bfloat16* query = (const __nv_bfloat16*)query_raw;
     const __nv_bfloat16* key_cache = (const __nv_bfloat16*)key_cache_raw;
@@ -320,7 +358,10 @@ void zg_ot_greedy_v1(void* logits_raw, void* tokens_raw, void* maxima_raw,
     float best = -INFINITY; unsigned best_index = 0;
     for (unsigned i = threadIdx.x; i < ZG_VOCABULARY; i += blockDim.x) {
         const float value = logits[(size_t)row * ZG_VOCABULARY + i];
-        if (isnan(value)) { zg_bad(status, 4u); continue; }
+        if (!isfinite(value)) {
+            zg_bad(status, 2u | (isnan(value) ? 4u : 0u));
+            continue;
+        }
         if (value > best || (value == best && i < best_index)) { best = value; best_index = i; }
     }
     values[threadIdx.x] = best; indices[threadIdx.x] = best_index; __syncthreads();

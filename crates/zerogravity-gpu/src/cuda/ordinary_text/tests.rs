@@ -1,15 +1,7 @@
 use super::*;
 
 fn geometry() -> Geometry {
-    Geometry {
-        hidden_width: 1024,
-        intermediate_width: 3584,
-        vocabulary: 248_320,
-        query_heads: 8,
-        kv_heads: 2,
-        head_width: 256,
-        rotary_width: 64,
-    }
+    Geometry::qwen35_08()
 }
 
 fn program() -> Program {
@@ -19,7 +11,7 @@ fn program() -> Program {
 #[test]
 fn complete_family_has_source_derived_entries_and_no_capture_coordinates() -> Result<()> {
     let definitions = program().definitions(Step::new(64, 32_704, 32_768)?, 1e-6)?;
-    assert_eq!(definitions.len(), 11);
+    assert_eq!(definitions.len(), 12);
     assert_eq!(
         definitions
             .iter()
@@ -35,7 +27,8 @@ fn complete_family_has_source_derived_entries_and_no_capture_coordinates() -> Re
             Primitive::SigmoidGate,
             Primitive::Residual,
             Primitive::KvAppend,
-            Primitive::Attention,
+            Primitive::QueryHeadRms,
+            Primitive::KeyHeadRms,
             Primitive::Greedy,
         ]
     );
@@ -77,6 +70,7 @@ fn canonical_buffer_schemas_are_exact() -> Result<()> {
             .map(|&(role, bytes, access)| BufferBinding {
                 role,
                 bytes,
+                alignment: 4,
                 access,
             })
             .collect::<Vec<_>>()
@@ -105,7 +99,7 @@ fn canonical_buffer_schemas_are_exact() -> Result<()> {
         expected(&[
             (Input, plan.hidden_batch_bytes, R),
             (Residual, plan.hidden_batch_bytes, RW),
-            (Gamma, 1024 * 2, R),
+            (RawGamma, 1024 * 2, R),
             (Output, plan.hidden_batch_bytes, W),
             (Status, 4, RW),
         ])
@@ -121,12 +115,30 @@ fn canonical_buffer_schemas_are_exact() -> Result<()> {
         ])
     );
     assert_eq!(
-        p.attention(step)?.bindings(),
+        p.unqualified_online_fp32_attention(step)?.bindings(),
         expected(&[
             (Query, plan.query_batch_bytes, R),
             (KeyCache, plan.key_cache_bytes, R),
             (ValueCache, plan.value_cache_bytes, R),
             (Output, plan.query_batch_bytes, W),
+            (Status, 4, RW),
+        ])
+    );
+    assert_eq!(
+        p.query_head_rms(2, 1e-6)?.bindings(),
+        expected(&[
+            (Query, plan.query_batch_bytes, R),
+            (QueryRawGamma, 512, R),
+            (QueryNormalized, plan.query_batch_bytes, W),
+            (Status, 4, RW),
+        ])
+    );
+    assert_eq!(
+        p.key_head_rms(2, 1e-6)?.bindings(),
+        expected(&[
+            (Key, plan.kv_batch_bytes, R),
+            (KeyRawGamma, 512, R),
+            (KeyNormalized, plan.kv_batch_bytes, W),
             (Status, 4, RW),
         ])
     );
@@ -143,7 +155,19 @@ fn canonical_buffer_schemas_are_exact() -> Result<()> {
 }
 
 #[test]
-fn memory_plan_covers_sm86_qwen_extents_without_allocating() -> Result<()> {
+fn memory_plan_covers_both_sm86_qwen_geometries_without_allocating() -> Result<()> {
+    assert_eq!(Geometry::qwen35_08().validate()?, geometry());
+    let two_b = Geometry::qwen35_2b().validate()?;
+    assert_eq!(two_b.hidden_width, 2048);
+    assert_eq!(two_b.intermediate_width, 6144);
+    assert_eq!(two_b.query_width()?, 2048);
+    assert_eq!(two_b.kv_width()?, 512);
+    let two_b_plan = Program::new(two_b)?.memory_plan(64, 262_144)?;
+    assert_eq!(two_b_plan.hidden_batch_bytes, 64 * 2048 * 2);
+    assert_eq!(two_b_plan.intermediate_batch_bytes, 64 * 6144 * 2);
+    assert_eq!(two_b_plan.embedding_table_bytes, 248_320 * 2048 * 2);
+    assert_eq!(two_b_plan.key_cache_bytes, 262_144 * 2 * 256 * 2);
+
     let plan = program().memory_plan(64, 32_768)?;
     assert_eq!(plan.positions_bytes, 256);
     assert_eq!(plan.hidden_batch_bytes, 64 * 1024 * 2);
@@ -168,14 +192,15 @@ fn rows_intervals_geometry_epsilon_and_layer_overflow_refuse() -> Result<()> {
         (65, 0, 65),
         (1, 0, 0),
         (2, 31, 32),
-        (1, 32_768, 32_768),
-        (1, 0, 32_769),
+        (1, 262_144, 262_144),
+        (1, 0, 262_145),
         (usize::MAX, 1, 1),
     ] {
         assert!(Step::new(rows, base, capacity).is_err());
     }
     assert_eq!(Step::new(1, 0, 1)?.base, 0);
     assert_eq!(Step::new(64, 32_704, 32_768)?.rows, 64);
+    assert_eq!(Step::new(64, 262_080, 262_144)?.capacity, 262_144);
 
     let p = program();
     for epsilon in [0.0, -1.0, f32::NAN, f32::INFINITY] {
@@ -206,15 +231,173 @@ fn launch_geometry_is_runtime_derived_not_enumerated() -> Result<()> {
         let step = Step::new(rows, 19, 19 + rows)?;
         assert_eq!(p.positions(step)?.grid(), [1, 1, 1]);
         assert_eq!(p.rms(rows, 1e-6)?.grid(), [rows as u32, 1, 1]);
-        assert_eq!(p.attention(step)?.grid(), [(rows * 8) as u32, 1, 1]);
+        assert_eq!(
+            p.unqualified_online_fp32_attention(step)?.grid(),
+            [(rows * 8) as u32, 1, 1]
+        );
+        assert_eq!(
+            p.query_head_rms(rows, 1e-6)?.grid(),
+            [(rows * 8) as u32, 1, 1]
+        );
+        assert_eq!(
+            p.key_head_rms(rows, 1e-6)?.grid(),
+            [(rows * 2) as u32, 1, 1]
+        );
         assert_eq!(p.greedy(rows)?.grid(), [rows as u32, 1, 1]);
     }
     Ok(())
 }
 
-#[cfg(target_os = "linux")]
 #[test]
-#[ignore = "SM86 CUDA compiler/driver ABI diagnostic; compile and load only"]
+fn selectable_contract_is_raw_gamma_headwise_and_excludes_unqualified_attention() -> Result<()> {
+    let p = program();
+    let definitions = p.definitions(Step::new(2, 7, 32)?, 1e-6)?;
+    assert!(
+        definitions
+            .iter()
+            .all(|definition| definition.primitive() != Primitive::UnqualifiedOnlineFp32Attention)
+    );
+    let source = definitions[0].source();
+    assert!(source.contains("(1.0f + zg_load(raw_gamma + c))"));
+    assert!(source.contains("ZG_DEFINE_HEAD_RMS(zg_ot_query_head_rms_v1, ZG_QUERY_HEADS)"));
+    assert!(source.contains("ZG_DEFINE_HEAD_RMS(zg_ot_key_head_rms_v1, ZG_KV_HEADS)"));
+    assert!(source.contains("one independent 256-thread block per head"));
+    assert!(source.contains("UNQUALIFIED causal online-FP32 softmax diagnostic"));
+    assert_eq!(
+        p.unqualified_online_fp32_attention(Step::new(2, 7, 32)?)?
+            .primitive(),
+        Primitive::UnqualifiedOnlineFp32Attention
+    );
+    Ok(())
+}
+
+#[test]
+fn host_greedy_keeps_lowest_numeric_tie_and_flags_every_nonfinite() -> Result<()> {
+    assert_eq!(
+        greedy_host_semantics(&[-0.0, 0.0, -1.0])?,
+        GreedyHostOutcome {
+            token: 0,
+            maximum_bits: (-0.0f32).to_bits(),
+            status: 0,
+        }
+    );
+    assert_eq!(greedy_host_semantics(&[0.0, -0.0])?.maximum_bits, 0);
+    assert_eq!(greedy_host_semantics(&[1.0, 2.0, 2.0])?.token, 1);
+    assert_eq!(
+        greedy_host_semantics(&[f32::NAN, 3.0, f32::INFINITY])?,
+        GreedyHostOutcome {
+            token: 1,
+            maximum_bits: 3.0f32.to_bits(),
+            status: STATUS_NONFINITE | STATUS_NAN_LOGIT,
+        }
+    );
+    assert_eq!(
+        greedy_host_semantics(&[f32::NEG_INFINITY])?,
+        GreedyHostOutcome {
+            token: 0,
+            maximum_bits: f32::NEG_INFINITY.to_bits(),
+            status: STATUS_NONFINITE,
+        }
+    );
+    assert!(greedy_host_semantics(&[]).is_err());
+    Ok(())
+}
+
+#[test]
+fn role_access_service_extent_alignment_and_alias_policy_are_checked() -> Result<()> {
+    use cubecl_common::device::DeviceId;
+    use cubecl_core::environment::stream::StreamId;
+
+    let service = ServiceId::of::<()>(DeviceId::new(0, 0));
+    let foreign = ServiceId::of::<u8>(DeviceId::new(0, 0));
+    let stream = StreamId::current();
+    let definition = program().residual_rms(2, 1e-6)?;
+    let fresh = || {
+        definition
+            .bindings()
+            .iter()
+            .map(|expected| {
+                LaunchBinding::new(
+                    expected.role,
+                    expected.access,
+                    Handle::new(service, stream, expected.bytes as u64),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    definition.validate_bindings(service, &fresh())?;
+
+    let mut bad = fresh();
+    bad[0].role = BufferRole::Gate;
+    assert!(definition.validate_bindings(service, &bad).is_err());
+    let mut bad = fresh();
+    bad[0].access = Access::Write;
+    assert!(definition.validate_bindings(service, &bad).is_err());
+    let mut bad = fresh();
+    bad[0].handle.service = foreign;
+    assert!(definition.validate_bindings(service, &bad).is_err());
+    let mut bad = fresh();
+    bad[0].handle = Handle::new(service, stream, bad[0].handle.size_in_used() + 4);
+    assert!(definition.validate_bindings(service, &bad).is_err());
+    let mut bad = fresh();
+    bad[0].handle = Handle::new(service, stream, bad[0].handle.size_in_used() + 2).offset_start(2);
+    assert!(definition.validate_bindings(service, &bad).is_err());
+
+    // Residual and input have equal extents but no permitted alias.
+    let mut bad = fresh();
+    bad[1].handle = bad[0].handle.clone();
+    assert!(definition.validate_bindings(service, &bad).is_err());
+
+    // Input/output is an explicit exact in-place alias.
+    let mut allowed = fresh();
+    allowed[3].handle = allowed[0].handle.clone();
+    definition.validate_bindings(service, &allowed)?;
+
+    // Even an allowed role pair may not partially overlap.
+    let bytes = definition.bindings()[0].bytes as u64;
+    let base = Handle::new(service, stream, bytes + 4);
+    let mut partial = fresh();
+    partial[0].handle = base.clone().offset_end(4);
+    partial[3].handle = base.offset_start(4);
+    assert!(definition.validate_bindings(service, &partial).is_err());
+    Ok(())
+}
+
+#[test]
+fn status_owner_identity_requires_same_exact_four_byte_range() -> Result<()> {
+    use cubecl_common::device::DeviceId;
+    use cubecl_core::environment::stream::StreamId;
+
+    let service = ServiceId::of::<()>(DeviceId::new(0, 0));
+    let stream = StreamId::current();
+    let status = Handle::new(service, stream, 4);
+    let binding = LaunchBinding::new(BufferRole::Status, Access::ReadWrite, status.clone());
+    require_same_status(&status, &binding)?;
+    assert!(
+        require_same_status(
+            &status,
+            &LaunchBinding::new(
+                BufferRole::Status,
+                Access::ReadWrite,
+                Handle::new(service, stream, 4),
+            ),
+        )
+        .is_err()
+    );
+    let base = Handle::new(service, stream, 8);
+    assert!(
+        require_same_status(
+            &base.clone().offset_end(4),
+            &LaunchBinding::new(BufferRole::Status, Access::ReadWrite, base.offset_start(4),),
+        )
+        .is_err()
+    );
+    Ok(())
+}
+
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
+#[test]
+#[ignore = "SM86 CUDA compiler/driver reflection diagnostic; compile and load only"]
 fn all_ordinary_text_driver_formals_compile_and_load() -> Result<()> {
     use cubecl::cuda::{CudaRuntime, OwnedCudaQueue};
     use cubecl_runtime::runtime::Runtime;
@@ -239,8 +422,6 @@ fn all_ordinary_text_driver_formals_compile_and_load() -> Result<()> {
             "ordinary text compiler owner was not adopted".into(),
         ));
     }
-    for definition in program().definitions(Step::new(64, 32_704, 32_768)?, 1e-6)? {
-        definition.prepare_code(&queue)?;
-    }
+    assert_eq!(compile_reflection_diagnostic(&queue)?, 26);
     Ok(())
 }

@@ -9,13 +9,14 @@ use crate::cuda::kernel::{
     StaticScalarValue,
 };
 use cubecl::{client::Client, server::Handle};
+use cubecl_common::device::ServiceId;
 use cubecl_runtime::kernel::BufferIOAttr;
 use std::sync::Arc;
 use zerogravity_core::{Error, Result};
 
 const THREADS: u32 = 256;
 pub const MAX_RUNTIME_ROWS: usize = 64;
-pub const MAX_CONTEXT_CAPACITY: usize = 32_768;
+pub const MAX_CONTEXT_CAPACITY: usize = 262_144;
 /// Device status: runtime token or position exceeded its admitted extent.
 pub const STATUS_OUT_OF_RANGE: u32 = 1;
 /// Device status: an arithmetic input or output was non-finite.
@@ -40,6 +41,34 @@ pub struct Geometry {
 }
 
 impl Geometry {
+    /// Declared Qwen3.5 0.8B ordinary-text dimensions. Geometry alone
+    /// grants no model, source, backend, or numerical authority.
+    pub const fn qwen35_08() -> Self {
+        Self {
+            hidden_width: 1024,
+            intermediate_width: 3584,
+            vocabulary: 248_320,
+            query_heads: 8,
+            kv_heads: 2,
+            head_width: 256,
+            rotary_width: 64,
+        }
+    }
+
+    /// Declared Qwen3.5 2B ordinary-text dimensions. Geometry alone
+    /// grants no model, source, backend, or numerical authority.
+    pub const fn qwen35_2b() -> Self {
+        Self {
+            hidden_width: 2048,
+            intermediate_width: 6144,
+            vocabulary: 248_320,
+            query_heads: 8,
+            kv_heads: 2,
+            head_width: 256,
+            rotary_width: 64,
+        }
+    }
+
     pub fn validate(self) -> Result<Self> {
         if self.hidden_width == 0
             || self.hidden_width > 131_072
@@ -82,8 +111,8 @@ impl Geometry {
     }
 }
 
-/// Runtime token interval. The cache append and attention contract is
-/// `[base, base + rows)`, with every row attending through its own new token.
+/// Runtime token interval. Cache append covers `[base, base + rows)`.
+/// The unselected attention diagnostic observes each row through its new token.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Step {
     pub rows: usize,
@@ -111,9 +140,9 @@ impl Step {
     }
 }
 
-/// Exact pointer order is the order returned by [`Definition::bindings`].
+/// Exact internal pointer role; order comes from each crate-private definition.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum BufferRole {
+pub(crate) enum BufferRole {
     Positions,
     Query,
     Key,
@@ -123,7 +152,11 @@ pub enum BufferRole {
     EmbeddingTable,
     Input,
     Residual,
-    Gamma,
+    RawGamma,
+    QueryRawGamma,
+    KeyRawGamma,
+    QueryNormalized,
+    KeyNormalized,
     Gate,
     Up,
     KeyCache,
@@ -135,7 +168,7 @@ pub enum BufferRole {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Access {
+pub(crate) enum Access {
     Read,
     Write,
     ReadWrite,
@@ -152,14 +185,48 @@ impl Access {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct BufferBinding {
+pub(crate) struct BufferBinding {
     pub role: BufferRole,
     pub bytes: usize,
+    pub alignment: usize,
     pub access: Access,
 }
 
+/// A caller-supplied physical handle tagged with its intended ABI role and
+/// access. Construction is crate-private: only the physical owner may bind it.
+#[derive(Clone)]
+pub(crate) struct LaunchBinding {
+    role: BufferRole,
+    access: Access,
+    handle: Handle,
+}
+
+impl LaunchBinding {
+    pub(crate) fn new(role: BufferRole, access: Access, handle: Handle) -> Self {
+        Self {
+            role,
+            access,
+            handle,
+        }
+    }
+}
+
+/// Caller-owned status protocol. Clearing must complete before return;
+/// completion/read must wait for this submission and return the observed word.
+pub(crate) trait CallerStatusContract {
+    fn binding(&self) -> LaunchBinding;
+    fn clear_before_submit(&mut self, client: &Client) -> Result<()>;
+    fn complete_and_read(&mut self, client: &Client) -> Result<u32>;
+}
+
+/// Completed kernel status only. Zero flags do not publish or imply `Ready`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct LaunchCompletion {
+    pub(crate) status: u32,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Primitive {
+pub(crate) enum Primitive {
     Positions,
     Rope,
     Embedding,
@@ -169,7 +236,11 @@ pub enum Primitive {
     SigmoidGate,
     Residual,
     KvAppend,
-    Attention,
+    QueryHeadRms,
+    KeyHeadRms,
+    /// Diagnostic online-FP32 arithmetic; not Qwen numerical authority and
+    /// never selected by [`Program::definitions`].
+    UnqualifiedOnlineFp32Attention,
     Greedy,
 }
 
@@ -185,7 +256,9 @@ impl Primitive {
             Self::SigmoidGate => "zg_ot_sigmoid_gate_v1",
             Self::Residual => "zg_ot_residual_v1",
             Self::KvAppend => "zg_ot_kv_append_v1",
-            Self::Attention => "zg_ot_attention_v1",
+            Self::QueryHeadRms => "zg_ot_query_head_rms_v1",
+            Self::KeyHeadRms => "zg_ot_key_head_rms_v1",
+            Self::UnqualifiedOnlineFp32Attention => "zg_ot_unqualified_online_fp32_attention_v1",
             Self::Greedy => "zg_ot_greedy_v1",
         }
     }
@@ -193,10 +266,11 @@ impl Primitive {
 
 /// Complete source, ABI, static scalar block, and launch geometry.
 #[derive(Clone)]
-pub struct Definition {
+pub(crate) struct Definition {
     primitive: Primitive,
     source: Arc<str>,
     bindings: Arc<[BufferBinding]>,
+    permitted_aliases: Arc<[(BufferRole, BufferRole)]>,
     scalars: StaticScalarBlock,
     grid: [u32; 3],
     kernel: PinnedKernel,
@@ -207,10 +281,23 @@ impl Definition {
         primitive: Primitive,
         source: Arc<str>,
         bindings: Vec<BufferBinding>,
+        permitted_aliases: &[(BufferRole, BufferRole)],
         scalars: StaticScalarBlock,
         grid: [u32; 3],
     ) -> Result<Self> {
-        if bindings.is_empty() || bindings.iter().any(|binding| binding.bytes == 0) {
+        if bindings.is_empty()
+            || bindings.iter().any(|binding| {
+                binding.bytes == 0 || !binding.alignment.is_power_of_two() || binding.alignment > 16
+            })
+            || bindings.last().is_none_or(|binding| {
+                binding.role != BufferRole::Status || binding.access != Access::ReadWrite
+            })
+            || permitted_aliases.iter().any(|&(a, b)| {
+                a == b
+                    || !bindings.iter().any(|binding| binding.role == a)
+                    || !bindings.iter().any(|binding| binding.role == b)
+            })
+        {
             return Err(Error::State("ordinary text empty ABI binding".into()));
         }
         let native = bindings
@@ -235,6 +322,7 @@ impl Definition {
             primitive,
             source,
             bindings: bindings.into(),
+            permitted_aliases: permitted_aliases.into(),
             scalars,
             grid,
             kernel,
@@ -271,44 +359,116 @@ impl Definition {
         self.scalars.words()
     }
 
-    /// Validate exact service/extents and retain handles in an immutable launch.
-    /// The existing physical owner remains responsible for access admission,
-    /// ordering, completion, and quarantine.
-    pub fn prepare(&self, client: &Client, handles: Vec<Handle>) -> Result<PreparedLaunch> {
+    /// Validate role, access, service, extent, alignment, and alias policy;
+    /// retain immutable handles without granting direct launch authority.
+    pub(crate) fn prepare<S: CallerStatusContract>(
+        &self,
+        client: &Client,
+        mut bindings: Vec<LaunchBinding>,
+        status: &S,
+    ) -> Result<PreparedLaunch> {
+        if bindings
+            .iter()
+            .any(|binding| binding.role == BufferRole::Status)
+        {
+            return Err(Error::State(
+                "ordinary text status must come from its caller owner".into(),
+            ));
+        }
+        bindings.push(status.binding());
+        self.validate_bindings(client.service_id(), &bindings)?;
+        let status_handle = bindings
+            .last()
+            .ok_or_else(|| Error::State("ordinary text status binding absent".into()))?
+            .handle
+            .clone();
         Ok(PreparedLaunch {
-            inner: self.kernel.prepare(client, self.grid, handles)?,
+            inner: self.kernel.prepare(
+                client,
+                self.grid,
+                bindings.into_iter().map(|binding| binding.handle).collect(),
+            )?,
             primitive: self.primitive,
+            status_handle,
         })
     }
 
-    /// Compile/load on the already-owned queue; creates no client or allocator.
-    #[cfg(target_os = "linux")]
-    pub fn prepare_code(&self, queue: &cubecl::cuda::OwnedCudaQueue) -> Result<()> {
-        self.kernel.prepare_code(queue)
+    fn validate_bindings(&self, service: ServiceId, bindings: &[LaunchBinding]) -> Result<()> {
+        if bindings.len() != self.bindings.len()
+            || bindings
+                .iter()
+                .zip(self.bindings.iter())
+                .any(|(actual, expected)| {
+                    actual.role != expected.role
+                        || actual.access != expected.access
+                        || actual.handle.service != service
+                        || used_bytes(&actual.handle).ok() != Some(expected.bytes as u64)
+                        || !actual
+                            .handle
+                            .offset_start
+                            .unwrap_or(0)
+                            .is_multiple_of(expected.alignment as u64)
+                })
+        {
+            return Err(Error::State(
+                "ordinary text role/access/service/extent/alignment differs".into(),
+            ));
+        }
+        for left in 0..bindings.len() {
+            for right in left + 1..bindings.len() {
+                let a = &bindings[left];
+                let b = &bindings[right];
+                if !overlap(&a.handle, &b.handle)? {
+                    continue;
+                }
+                let permitted = self
+                    .permitted_aliases
+                    .iter()
+                    .any(|&(x, y)| (x == a.role && y == b.role) || (x == b.role && y == a.role));
+                if !permitted || !same_range(&a.handle, &b.handle)? {
+                    return Err(Error::State(
+                        "ordinary text binding alias is not explicitly permitted".into(),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Compile/load and require the exact driver-reflected pointer/scalar ABI.
+    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
+    fn diagnose_code(&self, queue: &cubecl::cuda::OwnedCudaQueue) -> Result<()> {
+        self.kernel
+            .diagnose_parameter_layout(queue, self.bindings.len())
     }
 }
 
 #[derive(Clone)]
-pub struct PreparedLaunch {
+pub(crate) struct PreparedLaunch {
     inner: PreparedPinnedLaunch,
     primitive: Primitive,
+    status_handle: Handle,
 }
 
 impl PreparedLaunch {
-    pub fn primitive(&self) -> Primitive {
+    pub(crate) fn primitive(&self) -> Primitive {
         self.primitive
     }
 
-    pub fn handles(&self) -> &[Handle] {
-        self.inner.handles()
-    }
-
-    pub fn launch(&self) -> Result<()> {
-        self.inner.launch()
-    }
-
-    pub fn launch_on(&self, client: &Client) -> Result<()> {
-        self.inner.launch_on(client)
+    /// Clear through the caller's owner, submit once, then wait/read through
+    /// that same owner. The returned flags are not a publication state.
+    pub(crate) fn submit<S: CallerStatusContract>(
+        &self,
+        client: &Client,
+        status: &mut S,
+    ) -> Result<LaunchCompletion> {
+        require_same_status(&self.status_handle, &status.binding())?;
+        status.clear_before_submit(client)?;
+        require_same_status(&self.status_handle, &status.binding())?;
+        self.inner.launch_on(client)?;
+        let observed = status.complete_and_read(client)?;
+        require_same_status(&self.status_handle, &status.binding())?;
+        Ok(LaunchCompletion { status: observed })
     }
 }
 
@@ -418,17 +578,20 @@ impl Program {
         })
     }
 
-    pub fn positions(&self, step: Step) -> Result<Definition> {
+    pub(crate) fn positions(&self, step: Step) -> Result<Definition> {
         let step = Step::new(step.rows, step.base, step.capacity)?;
         self.definition(
             Primitive::Positions,
-            vec![binding(BufferRole::Positions, step.rows * 4, Access::Write)],
+            vec![
+                binding(BufferRole::Positions, step.rows * 4, Access::Write),
+                status(),
+            ],
             u32_words(&[step.rows, step.base, step.capacity])?,
             element_grid(step.rows)?,
         )
     }
 
-    pub fn rope(&self, step: Step) -> Result<Definition> {
+    pub(crate) fn rope(&self, step: Step) -> Result<Definition> {
         let step = Step::new(step.rows, step.base, step.capacity)?;
         let plan = self.memory_plan(step.rows, step.capacity)?;
         let pairs = checked_mul(
@@ -458,7 +621,7 @@ impl Program {
         )
     }
 
-    pub fn embedding(&self, rows: usize) -> Result<Definition> {
+    pub(crate) fn embedding(&self, rows: usize) -> Result<Definition> {
         let plan = self.memory_plan(rows, rows)?;
         self.definition(
             Primitive::Embedding,
@@ -481,11 +644,11 @@ impl Program {
         )
     }
 
-    pub fn rms(&self, rows: usize, epsilon: f32) -> Result<Definition> {
+    pub(crate) fn rms(&self, rows: usize, epsilon: f32) -> Result<Definition> {
         self.rms_definition(Primitive::Rms, rows, epsilon)
     }
 
-    pub fn residual_rms(&self, rows: usize, epsilon: f32) -> Result<Definition> {
+    pub(crate) fn residual_rms(&self, rows: usize, epsilon: f32) -> Result<Definition> {
         self.rms_definition(Primitive::ResidualRms, rows, epsilon)
     }
 
@@ -506,13 +669,14 @@ impl Program {
             bindings.push(binding(BufferRole::Residual, bytes, Access::ReadWrite));
         }
         bindings.extend([
-            binding(BufferRole::Gamma, gamma, Access::Read),
+            binding(BufferRole::RawGamma, gamma, Access::Read),
             binding(BufferRole::Output, bytes, Access::Write),
             status(),
         ]);
-        self.definition(
+        self.definition_with_aliases(
             primitive,
             bindings,
+            &[(BufferRole::Input, BufferRole::Output)],
             words(&[
                 (StaticScalarType::U32, StaticScalarValue::U32(rows as u64)),
                 (
@@ -524,7 +688,7 @@ impl Program {
         )
     }
 
-    pub fn silu_up(&self, rows: usize) -> Result<Definition> {
+    pub(crate) fn silu_up(&self, rows: usize) -> Result<Definition> {
         self.elementwise(
             Primitive::SiluUp,
             rows,
@@ -534,7 +698,7 @@ impl Program {
         )
     }
 
-    pub fn sigmoid_gate(&self, rows: usize) -> Result<Definition> {
+    pub(crate) fn sigmoid_gate(&self, rows: usize) -> Result<Definition> {
         self.elementwise(
             Primitive::SigmoidGate,
             rows,
@@ -544,7 +708,7 @@ impl Program {
         )
     }
 
-    pub fn residual(&self, rows: usize) -> Result<Definition> {
+    pub(crate) fn residual(&self, rows: usize) -> Result<Definition> {
         self.elementwise(
             Primitive::Residual,
             rows,
@@ -564,7 +728,7 @@ impl Program {
     ) -> Result<Definition> {
         require_rows(rows)?;
         let bytes = extent(rows, width, BF16_BYTES, "elementwise batch")?;
-        self.definition(
+        self.definition_with_aliases(
             primitive,
             vec![
                 binding(first, bytes, Access::Read),
@@ -572,12 +736,13 @@ impl Program {
                 binding(BufferRole::Output, bytes, Access::Write),
                 status(),
             ],
+            &[(first, BufferRole::Output)],
             u32_words(&[rows])?,
             element_grid(checked_mul(rows, width, "elementwise grid")?)?,
         )
     }
 
-    pub fn kv_append(&self, step: Step) -> Result<Definition> {
+    pub(crate) fn kv_append(&self, step: Step) -> Result<Definition> {
         let step = Step::new(step.rows, step.base, step.capacity)?;
         let plan = self.memory_plan(step.rows, step.capacity)?;
         self.definition(
@@ -602,11 +767,84 @@ impl Program {
         )
     }
 
-    pub fn attention(&self, step: Step) -> Result<Definition> {
+    pub(crate) fn query_head_rms(&self, rows: usize, epsilon: f32) -> Result<Definition> {
+        self.head_rms_definition(
+            Primitive::QueryHeadRms,
+            rows,
+            self.geometry.query_heads,
+            BufferRole::Query,
+            BufferRole::QueryRawGamma,
+            BufferRole::QueryNormalized,
+            epsilon,
+        )
+    }
+
+    pub(crate) fn key_head_rms(&self, rows: usize, epsilon: f32) -> Result<Definition> {
+        self.head_rms_definition(
+            Primitive::KeyHeadRms,
+            rows,
+            self.geometry.kv_heads,
+            BufferRole::Key,
+            BufferRole::KeyRawGamma,
+            BufferRole::KeyNormalized,
+            epsilon,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn head_rms_definition(
+        &self,
+        primitive: Primitive,
+        rows: usize,
+        heads: usize,
+        input: BufferRole,
+        raw_gamma: BufferRole,
+        output: BufferRole,
+        epsilon: f32,
+    ) -> Result<Definition> {
+        require_rows(rows)?;
+        if !epsilon.is_finite() || epsilon <= 0.0 {
+            return Err(Error::Unsupported("ordinary text head RMS epsilon".into()));
+        }
+        let bytes = extent(
+            rows,
+            heads * self.geometry.head_width,
+            BF16_BYTES,
+            "head RMS",
+        )?;
+        let gamma = self.geometry.head_width * BF16_BYTES;
+        self.definition_with_aliases(
+            primitive,
+            vec![
+                binding(input, bytes, Access::Read),
+                binding(raw_gamma, gamma, Access::Read),
+                binding(output, bytes, Access::Write),
+                status(),
+            ],
+            &[(input, output)],
+            words(&[
+                (StaticScalarType::U32, StaticScalarValue::U32(rows as u64)),
+                (
+                    StaticScalarType::F32Bits,
+                    StaticScalarValue::F32Bits(epsilon.to_bits()),
+                ),
+            ])?,
+            [
+                u32::try_from(rows * heads)
+                    .map_err(|_| Error::Limit("ordinary text head RMS grid".into()))?,
+                1,
+                1,
+            ],
+        )
+    }
+
+    /// Unqualified online-FP32 diagnostic. This intentionally does not claim
+    /// or implement the declared Qwen BF16 attention cast/reduction schedule.
+    fn unqualified_online_fp32_attention(&self, step: Step) -> Result<Definition> {
         let step = Step::new(step.rows, step.base, step.capacity)?;
         let plan = self.memory_plan(step.rows, step.capacity)?;
         self.definition(
-            Primitive::Attention,
+            Primitive::UnqualifiedOnlineFp32Attention,
             vec![
                 binding(BufferRole::Query, plan.query_batch_bytes, Access::Read),
                 binding(BufferRole::KeyCache, plan.key_cache_bytes, Access::Read),
@@ -628,7 +866,7 @@ impl Program {
         )
     }
 
-    pub fn greedy(&self, rows: usize) -> Result<Definition> {
+    pub(crate) fn greedy(&self, rows: usize) -> Result<Definition> {
         let plan = self.memory_plan(rows, rows)?;
         self.definition(
             Primitive::Greedy,
@@ -647,7 +885,9 @@ impl Program {
         )
     }
 
-    pub fn definitions(&self, step: Step, epsilon: f32) -> Result<Vec<Definition>> {
+    /// Selectable ordinary primitives. The unqualified online-FP32 attention
+    /// diagnostic is deliberately absent.
+    pub(crate) fn definitions(&self, step: Step, epsilon: f32) -> Result<Vec<Definition>> {
         Ok(vec![
             self.positions(step)?,
             self.rope(step)?,
@@ -658,9 +898,16 @@ impl Program {
             self.sigmoid_gate(step.rows)?,
             self.residual(step.rows)?,
             self.kv_append(step)?,
-            self.attention(step)?,
+            self.query_head_rms(step.rows, epsilon)?,
+            self.key_head_rms(step.rows, epsilon)?,
             self.greedy(step.rows)?,
         ])
+    }
+
+    fn diagnostic_definitions(&self, step: Step, epsilon: f32) -> Result<Vec<Definition>> {
+        let mut definitions = self.definitions(step, epsilon)?;
+        definitions.push(self.unqualified_online_fp32_attention(step)?);
+        Ok(definitions)
     }
 
     fn definition(
@@ -670,20 +917,142 @@ impl Program {
         scalars: StaticScalarBlock,
         grid: [u32; 3],
     ) -> Result<Definition> {
-        Definition::new(primitive, self.source.clone(), bindings, scalars, grid)
+        self.definition_with_aliases(primitive, bindings, &[], scalars, grid)
     }
+
+    fn definition_with_aliases(
+        &self,
+        primitive: Primitive,
+        bindings: Vec<BufferBinding>,
+        permitted_aliases: &[(BufferRole, BufferRole)],
+        scalars: StaticScalarBlock,
+        grid: [u32; 3],
+    ) -> Result<Definition> {
+        Definition::new(
+            primitive,
+            self.source.clone(),
+            bindings,
+            permitted_aliases,
+            scalars,
+            grid,
+        )
+    }
+}
+
+/// Host mirror of the diagnostic greedy kernel. Non-finite values are ignored
+/// for deterministic output and set flags; callers must not publish that row.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GreedyHostOutcome {
+    pub token: u32,
+    pub maximum_bits: u32,
+    pub status: u32,
+}
+
+pub fn greedy_host_semantics(logits: &[f32]) -> Result<GreedyHostOutcome> {
+    if logits.is_empty() || logits.len() > 1_048_576 || u32::try_from(logits.len()).is_err() {
+        return Err(Error::Unsupported(
+            "ordinary text host greedy vocabulary extent".into(),
+        ));
+    }
+    let mut best: Option<(usize, f32)> = None;
+    let mut flags = 0;
+    for (index, &value) in logits.iter().enumerate() {
+        if !value.is_finite() {
+            flags |= STATUS_NONFINITE;
+            if value.is_nan() {
+                flags |= STATUS_NAN_LOGIT;
+            }
+            continue;
+        }
+        if best.is_none_or(|(best_index, maximum)| {
+            value > maximum || value == maximum && index < best_index
+        }) {
+            best = Some((index, value));
+        }
+    }
+    let (token, maximum) = best.unwrap_or((0, f32::NEG_INFINITY));
+    Ok(GreedyHostOutcome {
+        token: token as u32,
+        maximum_bits: maximum.to_bits(),
+        status: flags,
+    })
+}
+
+/// Physical compile/reflection diagnostic only; it performs no launch and
+/// grants no model or numerical authority. Includes the explicitly unqualified
+/// online-FP32 attention body so its ABI cannot silently drift.
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
+pub fn compile_reflection_diagnostic(queue: &cubecl::cuda::OwnedCudaQueue) -> Result<usize> {
+    let mut count = 0;
+    for geometry in [Geometry::qwen35_08(), Geometry::qwen35_2b()] {
+        let program = Program::new(geometry)?;
+        for definition in program.diagnostic_definitions(Step::new(64, 262_080, 262_144)?, 1e-6)? {
+            definition.diagnose_code(queue)?;
+            count += 1;
+        }
+    }
+    Ok(count)
 }
 
 fn binding(role: BufferRole, bytes: usize, access: Access) -> BufferBinding {
     BufferBinding {
         role,
         bytes,
+        alignment: 4,
         access,
     }
 }
 
 fn status() -> BufferBinding {
     binding(BufferRole::Status, STATUS_BYTES, Access::ReadWrite)
+}
+
+fn used_bytes(handle: &Handle) -> Result<u64> {
+    handle
+        .size()
+        .checked_sub(handle.offset_start.unwrap_or(0))
+        .and_then(|bytes| bytes.checked_sub(handle.offset_end.unwrap_or(0)))
+        .ok_or_else(|| Error::State("ordinary text invalid binding offsets".into()))
+}
+
+fn handle_range(handle: &Handle) -> Result<(u64, u64)> {
+    let start = handle.offset_start.unwrap_or(0);
+    let end = start
+        .checked_add(used_bytes(handle)?)
+        .ok_or_else(|| Error::Limit("ordinary text binding range overflow".into()))?;
+    Ok((start, end))
+}
+
+fn same_allocation(a: &Handle, b: &Handle) -> bool {
+    a.service == b.service && a.memory.descriptor().id == b.memory.descriptor().id
+}
+
+fn overlap(a: &Handle, b: &Handle) -> Result<bool> {
+    if !same_allocation(a, b) {
+        return Ok(false);
+    }
+    let (a_start, a_end) = handle_range(a)?;
+    let (b_start, b_end) = handle_range(b)?;
+    Ok(a_start < b_end && b_start < a_end)
+}
+
+fn same_range(a: &Handle, b: &Handle) -> Result<bool> {
+    Ok(same_allocation(a, b) && handle_range(a)? == handle_range(b)?)
+}
+
+fn require_same_status(expected: &Handle, actual: &LaunchBinding) -> Result<()> {
+    if actual.role != BufferRole::Status
+        || actual.access != Access::ReadWrite
+        || !same_range(expected, &actual.handle)?
+        || expected.service != actual.handle.service
+        || used_bytes(&actual.handle)? != STATUS_BYTES as u64
+        || !actual.handle.offset_start.unwrap_or(0).is_multiple_of(4)
+    {
+        return Err(Error::State(
+            "ordinary text caller status owner/binding changed".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn require_rows(rows: usize) -> Result<()> {

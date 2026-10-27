@@ -11,6 +11,7 @@ pub(crate) mod kernel;
 #[cfg(feature = "cuda-native-qualification")]
 pub mod native;
 #[cfg(feature = "cuda-native")]
+#[allow(dead_code)] // Internal candidate API; no production selector yet.
 pub mod ordinary_text;
 #[cfg(feature = "cuda-native-qualification")]
 pub mod rms;
