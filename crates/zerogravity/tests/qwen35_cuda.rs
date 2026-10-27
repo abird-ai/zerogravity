@@ -501,9 +501,17 @@ fn fresh_prefill_state_logits_root_and_cleanup_agreement() -> Result<()> {
     )?;
     let physical_retired = host.arbiter.snapshot(&retired.physical_key)?.reserved;
     ensure(
-        physical_retired == retired.backend_device_reserved_bytes
-            && host.arbiter.snapshot(&host.resource)?.reserved
-                == retired.backend_host_reserved_bytes,
+        retired.backend_device_reserved_bytes == (512 * MIB) as u64
+            && retired.backend_host_reserved_bytes == (384 * MIB) as u64
+            && physical_retired == retired.backend_device_reserved_bytes
+            && host
+                .arbiter
+                .snapshot(&retired.physical_key)?
+                .active_models
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+                == ["backend/cuda"],
         "fresh-prefill final host/provider/physical conservation",
     )?;
     host.require_final(retired.backend_host_reserved_bytes)?;
