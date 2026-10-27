@@ -1441,4 +1441,17 @@ impl CudaServer {
         }
         Ok(())
     }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn diagnose_owned_kernel_parameters(
+        &mut self,
+        kernel: Box<dyn CubeKernel>,
+        parameter_count: usize,
+    ) -> Result<Vec<(usize, usize)>, ServerError> {
+        let key = kernel.id();
+        self.prepare_owned_kernel(kernel)?;
+        self.ctx
+            .kernel_parameter_layout(&key, parameter_count)
+            .map_err(|error| ServerError::Launch(error.into()))
+    }
 }

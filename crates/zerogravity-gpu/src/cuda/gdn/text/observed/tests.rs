@@ -534,7 +534,7 @@ fn closed_config_matrix_accepts_every_explicit_source_combination() -> Result<()
     for kkt in [Bk32W4S3, Bk32W8S3, Bk64W8S4] {
         for recompute in [Bk64Bv64W8S3, Bk64Bv64W8S4] {
             for state in [Bv32W4S2, Bv64W4S2] {
-                for output in [Bk32Bv32W4S2, Bk32Bv32W4S3] {
+                for output in [Bk32Bv32W4S2, Bk32Bv32W4S3, Bk32Bv64W4S3] {
                     if let Ok(config) =
                         super::super::GdnKernelConfig::from_stages(kkt, recompute, state, output)
                     {
@@ -544,7 +544,7 @@ fn closed_config_matrix_accepts_every_explicit_source_combination() -> Result<()
             }
         }
     }
-    assert_eq!(accepted.len(), 24);
+    assert_eq!(accepted.len(), 36);
     assert!(super::super::GdnKernelConfig::require(None).is_err());
     let implementation = super::super::fixture_implementation(0, 47, false)?;
     let config = implementation
@@ -597,6 +597,7 @@ fn configured_prefill_grids_packets_bodies_and_source_identities_are_exact() -> 
         "7aea70c2a560b602c59a66124a2e0ad4749a58389bed28a4c39b6b138af30fd2",
         "fb8b6cc12c03370277fea413edc544ffa96d214d19e5f2dd05f3de2e5d238f6a",
         "a8f03bdada74703b25aa338b696b329cef9a1431045781ba43e415f7b39ca80a",
+        "09e039b29f63553b5ec49760fb094fb198e57a08b5d4a3aeaff9d9ecb34ed244",
     ];
     let sources = [
         include_str!("../kkt_bk32_w4_s3.cu"),
@@ -608,6 +609,7 @@ fn configured_prefill_grids_packets_bodies_and_source_identities_are_exact() -> 
         include_str!("../h_bv64_w4_s2.cu"),
         include_str!("../output_bk32_bv32_w4_s2.cu"),
         include_str!("../output_bk32_bv32_w4_s3.cu"),
+        include_str!("../output_bk32_bv64_w4_s3.cu"),
     ];
     for (source, expected) in sources.into_iter().zip(expected_hashes) {
         assert_eq!(format!("{:x}", Sha256::digest(source.as_bytes())), expected);

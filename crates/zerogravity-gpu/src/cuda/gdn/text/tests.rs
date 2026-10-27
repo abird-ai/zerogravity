@@ -209,21 +209,41 @@ fn observed_source_tuples_are_distinct_and_never_open_legacy_factories() -> Resu
 }
 
 #[test]
-fn fresh_prefill_geometries_prepare_all_stages_without_recipe_membership() -> Result<()> {
+fn explicit_prefill_47_through_50_configs_prepare_exact_grids() -> Result<()> {
+    use GdnKktKernel::{Bk32W4S3, Bk32W8S3};
+    use GdnOutputKernel::{Bk32Bv32W4S2, Bk32Bv32W4S3, Bk32Bv64W4S3};
+    use GdnRecomputeKernel::{Bk64Bv64W8S3, Bk64Bv64W8S4};
+    use GdnStateKernel::Bv64W4S2;
     use zerogravity_core::accelerator::program::{
         SourceCall, SourceCallMode, SourceRows, TextCallGeometry,
     };
 
-    let config = GdnKernelConfig::from_stages(
-        GdnKktKernel::Bk32W8S3,
-        GdnRecomputeKernel::Bk64Bv64W8S4,
-        GdnStateKernel::Bv64W4S2,
-        GdnOutputKernel::Bk32Bv32W4S2,
-    )?;
+    let cases = [
+        (
+            47,
+            GdnKernelConfig::from_stages(Bk32W8S3, Bk64Bv64W8S4, Bv64W4S2, Bk32Bv32W4S2)?,
+            4,
+        ),
+        (
+            48,
+            GdnKernelConfig::from_stages(Bk32W8S3, Bk64Bv64W8S3, Bv64W4S2, Bk32Bv64W4S3)?,
+            2,
+        ),
+        (
+            49,
+            GdnKernelConfig::from_stages(Bk32W4S3, Bk64Bv64W8S4, Bv64W4S2, Bk32Bv32W4S3)?,
+            4,
+        ),
+        (
+            50,
+            GdnKernelConfig::from_stages(Bk32W4S3, Bk64Bv64W8S3, Bv64W4S2, Bk32Bv32W4S3)?,
+            4,
+        ),
+    ];
     let source = SourceIdentity::for_new_allocation()?;
     let call_geometry = TextCallGeometry::new(source, 256_000, 512)?;
     let expected_bindings = [9, 10, 4, 6, 4, 9, 10, 8, 5];
-    for rows in [48, 49, 50] {
+    for (rows, config, output_blocks) in cases {
         let call = SourceCall::new(
             SourceRows::new(call_geometry, 0, Arc::from(vec![11; rows]))?,
             SourceCallMode::Prefill,
@@ -240,7 +260,7 @@ fn fresh_prefill_geometries_prepare_all_stages_without_recipe_membership() -> Re
             [chunks, 16, 1],
             [chunks, 16, 1],
             [2, 16, 1],
-            [4, chunks, 16],
+            [output_blocks, chunks, 16],
             [(rows * 4) as u32, 1, 1],
         ];
         for ((&stage, expected_grid), expected_binding_count) in geometry
@@ -250,13 +270,57 @@ fn fresh_prefill_geometries_prepare_all_stages_without_recipe_membership() -> Re
             .zip(expected_grids)
             .zip(expected_bindings)
         {
-            let asset = select(implementation.config(), geometry.phase, stage)?;
-            let spec = kernel_from_asset(
+            let (asset, scalars) = match stage {
+                GdnStage::Conv => {
+                    let definition = parameterized_conv::prepare(
+                        geometry.phase,
+                        geometry.slot,
+                        SourceConvGeometry {
+                            qkv_channels: 6144,
+                            z_channels: 2048,
+                            coefficient_channels: 32,
+                            kernel: 4,
+                        },
+                    )?;
+                    (definition.asset, definition.scalars)
+                }
+                GdnStage::Prep | GdnStage::Cumsum | GdnStage::Solve => {
+                    let definition =
+                        parameterized_prefill::prepare(geometry.phase, geometry.slot, stage)?;
+                    (definition.asset, definition.scalars)
+                }
+                GdnStage::Kkt | GdnStage::Recompute | GdnStage::H | GdnStage::Output => {
+                    let definition = parameterized_prefill_variants::prepare(
+                        config,
+                        geometry.phase,
+                        geometry.slot,
+                        stage,
+                    )?;
+                    (definition.asset, definition.scalars)
+                }
+                GdnStage::Gated => {
+                    let definition = parameterized_gated::prepare(geometry.phase, geometry.slot)?;
+                    (definition.asset, definition.scalars)
+                }
+                GdnStage::Decode => unreachable!(),
+            };
+            if rows == 48 && stage == GdnStage::Output {
+                assert_eq!(asset.entry, "zg_gdn_output_prefill_bk32_bv64_w4_s3_v1");
+                assert_eq!(asset.shared, 24_576);
+                assert_eq!(
+                    asset.ptx_sha256,
+                    "7f2dbcfefa2963a1a771343dbec6a903cf2199a2bc80b05f8bf490c315c7b261"
+                );
+                assert_eq!(scalars.words(), [1_035_273_459]);
+                assert_eq!(scalars.schema().byte_size(), 8);
+            }
+            let spec = kernel_from_asset_with_scalars(
                 geometry.phase,
                 stage,
                 true,
                 asset,
-                arithmetic::GdnArithmeticFamily::Text(implementation.config()),
+                arithmetic::GdnArithmeticFamily::Text(Some(config)),
+                scalars,
             )?;
             assert_eq!(spec.grid, expected_grid, "{rows} {stage:?}");
             assert_eq!(
@@ -267,7 +331,8 @@ fn fresh_prefill_geometries_prepare_all_stages_without_recipe_membership() -> Re
         }
     }
 
-    let prefill = TextGdnImplementation::prefill(48, config)?;
+    let config48 = cases[1].1;
+    let prefill = TextGdnImplementation::prefill(48, config48)?;
     assert!(prefill.require_phase(GdnPhase::TextPrefill(49)).is_err());
     assert!(prefill.require_phase(GdnPhase::CachedDecode).is_err());
     assert!(
@@ -276,7 +341,7 @@ fn fresh_prefill_geometries_prepare_all_stages_without_recipe_membership() -> Re
             .is_err()
     );
     assert!(select(None, GdnPhase::TextPrefill(48), GdnStage::Conv).is_err());
-    assert!(select(Some(config), GdnPhase::CachedDecode, GdnStage::Conv).is_err());
+    assert!(select(Some(config48), GdnPhase::CachedDecode, GdnStage::Conv).is_err());
     Ok(())
 }
 
@@ -1278,6 +1343,183 @@ fn parameterized_cached_refuses_bad_indices_pitch_offsets_extents_and_stages() -
     }
     assert!(parameterized_cached::prepare(phase, slot, GdnStage::Gated).is_err());
     assert!(parameterized_cached::prepare(GdnPhase::TextPrefill(1), slot, GdnStage::Conv).is_err());
+    Ok(())
+}
+
+#[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
+#[test]
+#[ignore = "SM86 CUDA compiler/driver ABI diagnostic; compile and load only"]
+fn parameterized_gdn_driver_formals_are_exact() -> Result<()> {
+    use cubecl::cuda::{CudaRuntime, OwnedCudaQueue};
+    use cubecl_runtime::runtime::Runtime;
+    use std::collections::BTreeSet;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use zerogravity_core::accelerator::program::SourceConvGeometry;
+
+    let client = CudaRuntime::client(&Default::default());
+    if client.properties().identity.fingerprint != "ptx_sm86" {
+        return Err(Error::Unsupported(
+            "parameterized GDN ABI diagnostic requires SM86".into(),
+        ));
+    }
+    let (_client, queue) = unsafe { OwnedCudaQueue::pin_cold(client) }
+        .map_err(|error| Error::State(format!("pin CUDA ABI diagnostic queue: {error}")))?;
+    let adopted = Arc::new(AtomicBool::new(false));
+    unsafe { queue.install_compiler_context(Arc::new(()), adopted.clone()) }
+        .map_err(|error| Error::State(format!("admit CUDA ABI diagnostic compiler: {error}")))?;
+    if !adopted.load(Ordering::Acquire) {
+        return Err(Error::State(
+            "CUDA ABI diagnostic compiler owner was not adopted".into(),
+        ));
+    }
+
+    use GdnKktKernel::{Bk32W4S3, Bk32W8S3, Bk64W8S4};
+    use GdnOutputKernel::{Bk32Bv32W4S2, Bk32Bv32W4S3, Bk32Bv64W4S3};
+    use GdnRecomputeKernel::{Bk64Bv64W8S3, Bk64Bv64W8S4};
+    use GdnStateKernel::{Bv32W4S2, Bv64W4S2};
+
+    let phase = GdnPhase::TextPrefill(48);
+    let base = GdnKernelConfig::from_stages(Bk32W8S3, Bk64Bv64W8S3, Bv64W4S2, Bk32Bv64W4S3)?;
+    let mut definitions = Vec::new();
+    macro_rules! add {
+        ($phase:expr, $stage:expr, $config:expr, $definition:expr) => {{
+            let definition = $definition;
+            definitions.push((
+                $phase,
+                $stage,
+                $config,
+                definition.asset,
+                definition.scalars,
+            ));
+        }};
+    }
+    add!(
+        phase,
+        GdnStage::Conv,
+        Some(base),
+        parameterized_conv::prepare(
+            phase,
+            GdnCacheSlot::One,
+            SourceConvGeometry {
+                qkv_channels: 6144,
+                z_channels: 2048,
+                coefficient_channels: 32,
+                kernel: 4,
+            },
+        )?
+    );
+    for stage in [GdnStage::Prep, GdnStage::Cumsum, GdnStage::Solve] {
+        add!(
+            phase,
+            stage,
+            Some(base),
+            parameterized_prefill::prepare(phase, GdnCacheSlot::One, stage)?
+        );
+    }
+    for kkt in [Bk32W4S3, Bk32W8S3, Bk64W8S4] {
+        let config = GdnKernelConfig::from_stages(kkt, Bk64Bv64W8S3, Bv64W4S2, Bk32Bv64W4S3)?;
+        add!(
+            phase,
+            GdnStage::Kkt,
+            Some(config),
+            parameterized_prefill_variants::prepare(
+                config,
+                phase,
+                GdnCacheSlot::One,
+                GdnStage::Kkt,
+            )?
+        );
+    }
+    for recompute in [Bk64Bv64W8S3, Bk64Bv64W8S4] {
+        let config = GdnKernelConfig::from_stages(Bk32W8S3, recompute, Bv64W4S2, Bk32Bv64W4S3)?;
+        add!(
+            phase,
+            GdnStage::Recompute,
+            Some(config),
+            parameterized_prefill_variants::prepare(
+                config,
+                phase,
+                GdnCacheSlot::One,
+                GdnStage::Recompute,
+            )?
+        );
+    }
+    for state in [Bv32W4S2, Bv64W4S2] {
+        let config = GdnKernelConfig::from_stages(Bk32W8S3, Bk64Bv64W8S3, state, Bk32Bv64W4S3)?;
+        add!(
+            phase,
+            GdnStage::H,
+            Some(config),
+            parameterized_prefill_variants::prepare(config, phase, GdnCacheSlot::One, GdnStage::H)?
+        );
+    }
+    for output in [Bk32Bv32W4S2, Bk32Bv32W4S3, Bk32Bv64W4S3] {
+        let config = GdnKernelConfig::from_stages(Bk32W8S3, Bk64Bv64W8S3, Bv64W4S2, output)?;
+        add!(
+            phase,
+            GdnStage::Output,
+            Some(config),
+            parameterized_prefill_variants::prepare(
+                config,
+                phase,
+                GdnCacheSlot::One,
+                GdnStage::Output,
+            )?
+        );
+    }
+    add!(
+        phase,
+        GdnStage::Gated,
+        Some(base),
+        parameterized_gated::prepare(phase, GdnCacheSlot::One)?
+    );
+    for stage in [GdnStage::Conv, GdnStage::Decode] {
+        add!(
+            GdnPhase::CachedDecode,
+            stage,
+            None,
+            parameterized_cached::prepare(GdnPhase::CachedDecode, GdnCacheSlot::One, stage)?
+        );
+    }
+    add!(
+        GdnPhase::CachedDecode,
+        GdnStage::Gated,
+        None,
+        parameterized_gated::prepare(GdnPhase::CachedDecode, GdnCacheSlot::One)?
+    );
+
+    let mut entries = BTreeSet::new();
+    for (phase, stage, config, asset, scalars) in definitions {
+        let entry = asset.entry;
+        if !entries.insert(entry) {
+            return Err(Error::State(format!(
+                "duplicate parameterized GDN diagnostic entry {entry}"
+            )));
+        }
+        let scalar_bytes = scalars.schema().byte_size();
+        let spec = kernel_from_asset_with_scalars(
+            phase,
+            stage,
+            true,
+            asset,
+            arithmetic::GdnArithmeticFamily::Text(config),
+            scalars,
+        )?;
+        let pointers = spec.bindings.len();
+        let parameter_count = pointers + usize::from(scalar_bytes != 0);
+        let actual = unsafe {
+            queue.diagnose_kernel_parameters(Box::new(spec.kernel.clone()), parameter_count)
+        }
+        .map_err(|error| Error::State(format!("{entry} CUDA parameter diagnostic: {error}")))?;
+        let mut expected = (0..pointers)
+            .map(|index| (index * 8, 8))
+            .collect::<Vec<_>>();
+        if scalar_bytes != 0 {
+            expected.push((pointers * 8, scalar_bytes));
+        }
+        assert_eq!(actual, expected, "{entry}");
+    }
+    assert_eq!(entries.len(), 18);
     Ok(())
 }
 

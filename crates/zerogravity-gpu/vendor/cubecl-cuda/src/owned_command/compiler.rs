@@ -51,4 +51,22 @@ impl OwnedCudaQueue {
             .submit_blocking(move |server| server.prepare_owned_kernel(kernel))
             .map_err(|e| ServerError::graph_state(format!("original compiler actor: {e:?}")))?
     }
+
+    /// Compile/load without launch, then return the driver-reflected formal ABI.
+    ///
+    /// # Safety
+    /// Same admitted compiler/context and retained immutable definition contract
+    /// as [`Self::prepare_kernel`].
+    #[cfg(target_os = "linux")]
+    pub unsafe fn diagnose_kernel_parameters(
+        &self,
+        kernel: Box<dyn CubeKernel>,
+        parameter_count: usize,
+    ) -> Result<Vec<(usize, usize)>, ServerError> {
+        self.actor
+            .submit_blocking(move |server| {
+                server.diagnose_owned_kernel_parameters(kernel, parameter_count)
+            })
+            .map_err(|e| ServerError::graph_state(format!("original compiler actor: {e:?}")))?
+    }
 }

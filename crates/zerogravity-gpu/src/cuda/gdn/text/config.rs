@@ -28,6 +28,7 @@ pub enum GdnStateKernel {
 pub enum GdnOutputKernel {
     Bk32Bv32W4S2,
     Bk32Bv32W4S3,
+    Bk32Bv64W4S3,
 }
 
 /// A coherent backend numerical implementation contract.

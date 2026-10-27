@@ -70,12 +70,19 @@ const OUTPUT_S2: Variant = Variant {
     shared: 12288,
     ptx_sha256: "284a22e9904079006d593e67082d6d898cd35becf07e7aebf8086ec9c070df0e",
 };
-const OUTPUT_S3: Variant = Variant {
+const OUTPUT_BV32_S3: Variant = Variant {
     entry: "zg_gdn_output_prefill_bk32_bv32_w4_s3_v1",
     source: include_str!("output_bk32_bv32_w4_s3.cu"),
     threads: 128,
     shared: 20480,
     ptx_sha256: "b0f269381218e2a3fa2e8148d5b83122e9fcf4d628e741164c074f8c53c93efc",
+};
+const OUTPUT_BV64_S3: Variant = Variant {
+    entry: "zg_gdn_output_prefill_bk32_bv64_w4_s3_v1",
+    source: include_str!("output_bk32_bv64_w4_s3.cu"),
+    threads: 128,
+    shared: 24576,
+    ptx_sha256: "7f2dbcfefa2963a1a771343dbec6a903cf2199a2bc80b05f8bf490c315c7b261",
 };
 
 pub(super) fn source_contract(config: GdnKernelConfig) -> [&'static str; 4] {
@@ -100,7 +107,8 @@ pub(super) fn source_contract(config: GdnKernelConfig) -> [&'static str; 4] {
         },
         match config.output() {
             Bk32Bv32W4S2 => OUTPUT_S2.source,
-            Bk32Bv32W4S3 => OUTPUT_S3.source,
+            Bk32Bv32W4S3 => OUTPUT_BV32_S3.source,
+            Bk32Bv64W4S3 => OUTPUT_BV64_S3.source,
         },
     ]
 }
@@ -154,13 +162,11 @@ pub(super) fn prepare(
             Bv32W4S2 => (&H_BV32, [4, 16, 1]),
             Bv64W4S2 => (&H_BV64, [2, 16, 1]),
         },
-        GdnStage::Output => (
-            match config.output() {
-                Bk32Bv32W4S2 => &OUTPUT_S2,
-                Bk32Bv32W4S3 => &OUTPUT_S3,
-            },
-            [4, chunks, 16],
-        ),
+        GdnStage::Output => match config.output() {
+            Bk32Bv32W4S2 => (&OUTPUT_S2, [4, chunks, 16]),
+            Bk32Bv32W4S3 => (&OUTPUT_BV32_S3, [4, chunks, 16]),
+            Bk32Bv64W4S3 => (&OUTPUT_BV64_S3, [2, chunks, 16]),
+        },
         _ => {
             return Err(Error::Unsupported(
                 "configured GDN KKT/Recompute/H/Output stage".into(),

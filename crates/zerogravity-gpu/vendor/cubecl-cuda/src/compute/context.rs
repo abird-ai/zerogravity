@@ -523,6 +523,55 @@ impl CudaContext {
             .and_then(|kernel| kernel.io.clone())
     }
 
+    #[cfg(target_os = "linux")]
+    pub(crate) fn kernel_parameter_layout(
+        &mut self,
+        kernel_id: &KernelId,
+        parameter_count: usize,
+    ) -> Result<Vec<(usize, usize)>, CompilationError> {
+        self.check_compiler()?;
+        let function = self
+            .modules
+            .get(kernel_id)
+            .map(|kernel| kernel.func)
+            .ok_or_else(|| self.compiler_limit("CUDA parameter diagnostic kernel is not loaded"))?;
+        let mut layout = Vec::with_capacity(parameter_count);
+        for index in 0..parameter_count {
+            let mut offset = usize::MAX;
+            let mut bytes = usize::MAX;
+            let status = unsafe {
+                cudarc::driver::sys::cuFuncGetParamInfo(
+                    function,
+                    index,
+                    &mut offset,
+                    &mut bytes,
+                )
+            };
+            if status != cudarc::driver::sys::CUresult::CUDA_SUCCESS {
+                return Err(self.compiler_limit(format!(
+                    "cuFuncGetParamInfo parameter {index}: {status:?}"
+                )));
+            }
+            layout.push((offset, bytes));
+        }
+        let mut offset = 0;
+        let mut bytes = 0;
+        let status = unsafe {
+            cudarc::driver::sys::cuFuncGetParamInfo(
+                function,
+                parameter_count,
+                &mut offset,
+                &mut bytes,
+            )
+        };
+        if status != cudarc::driver::sys::CUresult::CUDA_ERROR_INVALID_VALUE {
+            return Err(self.compiler_limit(format!(
+                "CUDA parameter diagnostic count differs: {status:?}"
+            )));
+        }
+        Ok(layout)
+    }
+
     pub fn execute_task(
         &mut self,
         stream: &mut Stream,
