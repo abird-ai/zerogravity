@@ -23,8 +23,8 @@ impl ModelGdnParameters {
     ) -> Result<Arc<Self>> {
         super::super::projection_cubin::not_cancelled(cancelled)?;
         let (conv, recurrent) = operators(scope, layer)?;
-        TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?
-            .require_implementation()?;
+        let geometry = TextGdnGeometry::for_call(scope.call(), scope.gdn_implementation())?;
+        geometry.require_implementation()?;
         if scope.source().source_identity() != service.source_identity() {
             return Err(Error::State(
                 "text GDN actual source/service before parameter upload".into(),
@@ -36,21 +36,14 @@ impl ModelGdnParameters {
             &conv,
             &recurrent,
             init,
-            Some(crate::cuda::gdn::GdnFamilyIdentity::text(
-                scope.gdn_implementation().config(),
-            )),
+            ParameterRoute::text(geometry.implementation, geometry.phase)?,
             cancelled,
         )
     }
     pub(crate) fn require_text(&self, scope: &TextModelBinding, layer: usize) -> Result<()> {
         let (conv, recurrent) = operators(scope, layer)?;
-        if self.payload.text_implementation
-            != Some(crate::cuda::gdn::GdnFamilyIdentity::text(
-                scope.gdn_implementation().config(),
-            ))
-            || self.payload.site != layer
-            || !self.payload.source.same_issuer(scope.source())
-        {
+        self.payload.route.require_text()?;
+        if self.payload.site != layer || !self.payload.source.same_issuer(scope.source()) {
             return Err(Error::State(
                 "text four learned parameter source/role/profile owner".into(),
             ));

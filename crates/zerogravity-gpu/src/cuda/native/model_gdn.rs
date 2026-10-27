@@ -3,8 +3,8 @@ use super::model_cache::ModelCache;
 use super::model_values::ModelValues;
 use super::{finite_bf16, loaded_gamma};
 use crate::cuda::gdn::{
-    GdnArithmetic, GdnBuffer, GdnCacheSlot, GdnFamilyIdentity, GdnInputs, GdnPhase, GdnPrepared,
-    GdnTypedOutputs, ModelGdnAdapter, ModelGdnConvEnqueued,
+    GdnArithmetic, GdnBuffer, GdnCacheSlot, GdnInputs, GdnPhase, GdnPrepared, GdnTypedOutputs,
+    ModelGdnAdapter, ModelGdnConvEnqueued,
 };
 use crate::resident_inference::native_fragment::{
     PrefixPhaseEnqueue, model_state::BoundModelState,
@@ -74,11 +74,35 @@ fn require_native_gdn_pair(
     Ok((cd, rd))
 }
 
+/// Parameter transport identity; executable selection stays with text code/geometry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ParameterRoute {
+    NonText,
+    Text,
+}
+impl ParameterRoute {
+    fn text(
+        implementation: crate::cuda::gdn::TextGdnImplementation,
+        phase: GdnPhase,
+    ) -> Result<Self> {
+        implementation.require_phase(phase)?;
+        Ok(Self::Text)
+    }
+    fn require_text(self) -> Result<()> {
+        if self != Self::Text {
+            return Err(Error::State(
+                "text four learned parameter source/role/profile owner".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Immutable learned source payload only, shared by genuine request phases.
 struct ParameterPayload {
     source: VerifiedTensorSource,
     site: usize,
-    text_implementation: Option<GdnFamilyIdentity>,
+    route: ParameterRoute,
     descriptors: [SourceParameter; 4],
     windows: Vec<ParameterWindow>,
     bytes: [Vec<u8>; 4],
@@ -98,7 +122,15 @@ impl ModelGdnParameters {
         init: &mut ResidentInitialization<'_>,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {
-        Self::prepare_source(source, service, conv, recurrent, init, None, cancelled)
+        Self::prepare_source(
+            source,
+            service,
+            conv,
+            recurrent,
+            init,
+            ParameterRoute::NonText,
+            cancelled,
+        )
     }
     fn prepare_source(
         source: VerifiedTensorSource,
@@ -106,7 +138,7 @@ impl ModelGdnParameters {
         conv: &SourceOperator,
         recurrent: &SourceOperator,
         init: &mut ResidentInitialization<'_>,
-        text_implementation: Option<GdnFamilyIdentity>,
+        route: ParameterRoute,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {
         super::projection_cubin::not_cancelled(cancelled)?;
@@ -160,7 +192,7 @@ impl ModelGdnParameters {
         let payload = Arc::new(ParameterPayload {
             source,
             site,
-            text_implementation,
+            route,
             descriptors,
             windows,
             bytes,
@@ -585,4 +617,48 @@ fn parameter_allocation_layout(
         parameters[2].bytes,
         gamma,
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cuda::gdn::{
+        GdnFamilyIdentity, GdnKernelConfig, GdnKktKernel, GdnOutputKernel, GdnRecomputeKernel,
+        GdnStateKernel, TextGdnImplementation,
+    };
+
+    #[test]
+    fn text_parameters_share_route_across_distinct_legal_prefill_implementations() -> Result<()> {
+        let implementation47 = TextGdnImplementation::prefill(
+            47,
+            GdnKernelConfig::from_stages(
+                GdnKktKernel::Bk32W8S3,
+                GdnRecomputeKernel::Bk64Bv64W8S4,
+                GdnStateKernel::Bv64W4S2,
+                GdnOutputKernel::Bk32Bv32W4S2,
+            )?,
+        )?;
+        let implementation48 = TextGdnImplementation::prefill(
+            48,
+            GdnKernelConfig::from_stages(
+                GdnKktKernel::Bk32W8S3,
+                GdnRecomputeKernel::Bk64Bv64W8S3,
+                GdnStateKernel::Bv64W4S2,
+                GdnOutputKernel::Bk32Bv64W4S3,
+            )?,
+        )?;
+
+        assert_ne!(implementation47, implementation48);
+        assert_ne!(
+            GdnFamilyIdentity::text(implementation47.config()),
+            GdnFamilyIdentity::text(implementation48.config())
+        );
+        assert_eq!(
+            ParameterRoute::text(implementation47, GdnPhase::TextPrefill(47))?,
+            ParameterRoute::text(implementation48, GdnPhase::TextPrefill(48))?
+        );
+        ParameterRoute::Text.require_text()?;
+        assert!(ParameterRoute::NonText.require_text().is_err());
+        Ok(())
+    }
 }
