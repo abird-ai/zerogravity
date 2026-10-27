@@ -299,7 +299,9 @@ fn require_selected_extent(
     input_bytes: usize,
     output_bytes: usize,
 ) -> Result<()> {
-    if ![1, 47, 57, 62, 67, 72].contains(&input_rows)
+    let historical = [1, 47, 57, 62, 67, 72].contains(&input_rows);
+    let fresh08 = columns == 1024 && [48, 49, 50].contains(&input_rows);
+    if !(historical || fresh08)
         || selected_row.checked_add(1) != Some(input_rows)
         || input_rows
             .checked_mul(columns)
@@ -971,7 +973,12 @@ mod retirement_tests {
     #[test]
     fn selected_head_is_not_independent_request_batching() {
         for columns in [1024, 2048] {
-            for input_rows in [1, 47, 57, 62, 67, 72] {
+            let accepted: &[usize] = if columns == 1024 {
+                &[1, 47, 48, 49, 50, 57, 62, 67, 72]
+            } else {
+                &[1, 47, 57, 62, 67, 72]
+            };
+            for &input_rows in accepted {
                 let input = input_rows * columns * 2;
                 let output = 248320 * 2;
                 require_selected_extent(columns, 248320, input_rows, input_rows - 1, input, output)
@@ -1033,6 +1040,11 @@ mod retirement_tests {
                     .is_err()
                 );
             }
+        }
+        for rows in [48, 49, 50] {
+            assert!(
+                require_selected_extent(2048, 248320, rows, rows - 1, rows * 4096, 496640).is_err()
+            );
         }
         assert!(require_selected_extent(usize::MAX, 248320, 47, 46, 0, 248320 * 2).is_err());
         assert!(require_selected_extent(1024, usize::MAX, 47, 46, 47 * 1024 * 2, 0).is_err());

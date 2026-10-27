@@ -258,12 +258,15 @@ impl TextEmbeddingWidth {
         }
     }
     pub(crate) fn bytes(self, ids: &[u32]) -> Result<usize, ServerError> {
-        if !matches!(ids.len(), 1 | 47 | 57 | 62 | 67 | 72) || ids.iter().any(|id| *id >= 248320) {
+        let rows = ids.len();
+        let historical = matches!(rows, 1 | 47 | 57 | 62 | 67 | 72);
+        let fresh08 = self == Self::H1024 && matches!(rows, 48 | 49 | 50);
+        if !(historical || fresh08) || ids.iter().any(|id| *id >= 248320) {
             return Err(ServerError::graph_state(
                 "finite genuine short-HF source embedding rows",
             ));
         }
-        Ok(ids.len() * self.row_bytes())
+        Ok(rows * self.row_bytes())
     }
 }
 impl OwnedCudaQueue {
@@ -337,30 +340,44 @@ mod text_tests {
     }
     #[test]
     fn both_actual_source_widths_copy_only_exact_complete_finite_rows() {
-        for width in [TextEmbeddingWidth::H1024, TextEmbeddingWidth::H2048] {
-            for rows in [1, 47, 57, 62, 67, 72] {
+        for (width, accepted) in [
+            (
+                TextEmbeddingWidth::H1024,
+                &[1, 47, 48, 49, 50, 57, 62, 67, 72][..],
+            ),
+            (
+                TextEmbeddingWidth::H2048,
+                &[1, 47, 57, 62, 67, 72][..],
+            ),
+        ] {
+            for &rows in accepted {
                 assert_eq!(
                     width.bytes(&vec![248319; rows]).unwrap(),
                     rows * width.row_bytes()
                 );
             }
-            for rows in [0, 2, 46, 48, 56, 58, 61, 63, 64, 66, 68, 71, 73] {
+            for rows in [0, 2, 46, 51, 56, 58, 61, 63, 64, 66, 68, 71, 73] {
                 assert!(width.bytes(&vec![11; rows]).is_err());
             }
             assert!(width.bytes(&[248320]).is_err());
+        }
+        for rows in [48, 49, 50] {
+            assert!(TextEmbeddingWidth::H2048
+                .bytes(&vec![11; rows])
+                .is_err());
         }
         assert!(validate_ids(&[11; 57]).is_err());
         assert!(validate_fixed_prompt_ids(&[11; 57]).is_err());
     }
     #[test]
     fn resident_route_adds_only_short_rows_without_widening_original_entrypoints() {
-        for rows in [1, 47, 57, 62, 67, 72] {
+        for rows in [1, 47, 48, 49, 50, 57, 62, 67, 72] {
             validate_text_resident_ids(&vec![248319; rows]).unwrap();
         }
-        for rows in [0, 2, 46, 48, 56, 58, 61, 63, 64, 66, 68, 71, 73] {
+        for rows in [0, 2, 46, 51, 56, 58, 61, 63, 64, 66, 68, 71, 73] {
             assert!(validate_text_resident_ids(&vec![11; rows]).is_err());
         }
-        for rows in [1, 47, 57, 62, 67, 72] {
+        for rows in [1, 47, 48, 49, 50, 57, 62, 67, 72] {
             let mut ids = vec![11; rows];
             ids[rows - 1] = 248320;
             assert!(validate_text_resident_ids(&ids).is_err());
