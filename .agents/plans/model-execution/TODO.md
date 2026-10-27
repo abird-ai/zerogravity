@@ -8,6 +8,27 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
+### Ordinary Qwen execution checkpoint — 27 Oct
+
+- [x] `ad82feb`/`f7ff4f9` add one call-free source-template plan for authenticated
+  Qwen3.5 `.8B` and `2B`, retaining the exact source owner/workspace through plan
+  and invocation lifetimes. The shared 24-layer schedule has42 state domains,
+  chunks<=64 and context<=32768; old captured resident/batch paths refuse it.
+- [x] `fe228ab`/`52bfb51` add the complete parameterized GDN prefill/cached
+  schedule with explicit transport/state operations and no public second launch
+  authority. Configuration/source/ABI remain explicit; source/host checks do not
+  establish whole-model numerics.
+- [ ] Complete the ordinary non-GDN lowerer and physical owner using exact packed
+  Qwen layouts and authenticated tensors. It must enter the existing queue,
+  flight, status/completion/quarantine and `StateRoot`; no generated packet table,
+  prompt/call/node identity or qualification fallback may authorize it.
+  Candidate series `ec91ad1`/`3a91a97`/`29b491d` awaits an interrupted independent
+  review: see
+  [review record](../../docs/REVIEW_ORDINARY_CANDIDATE_29B491D_2026-10-27.md).
+- [ ] Qualify `.8B` then `2B` full model, cached continuation, faults, shutdown
+  and exact resource fit before enabling an ordinary serving route. Long-context,
+  CPU, HIP and Vulkan cells remain independent gates.
+
 ### Current owner direction — 26 Oct
 
 - [~] Every existing/future registry target follows the shared

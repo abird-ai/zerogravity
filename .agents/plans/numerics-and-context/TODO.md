@@ -73,6 +73,37 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
   from0938d435… to4d77cb66…; complete executable packets and GDN source stay exact.
 ## Uncommitted
 
+### Ordinary source-derived continuation — 27 Oct
+
+- [x] Qualification-only `.8B` fresh prefill 47/48/49/50 physically passes on
+  RTX 3060: all24 boundaries, all42 post-state domains, full248320 logits,
+  consumed priors, natural greedy248068, four independent roots, retirement and
+  conservation. Commits `eb38dd5`..`e99c76e`; this grants no ordinary route.
+- [x] Shared call-free `.8B`/`2B` `ForwardPlan` and retained authenticated source
+  seal landed as `ad82feb`/`f7ff4f9`; exact24-layer/42-domain schedule,
+  contexts512..32768 and chunks<=64. Legacy capture consumers explicitly refuse
+  the new template.
+- [x] Complete call-free parameterized GDN transport/state schedule landed as
+  `fe228ab`/`52bfb51`: non-null slots1..4, explicit initial/final/cache state,
+  alias guards and crate-private flight-owned launch preparation. Host/source
+  gates pass; current-source numerical/device launch qualification remains open.
+- [ ] Finish source-derived non-GDN CUDA lowering and existing physical-owner
+  integration. Pending branch `pi-web-agent-8026e968…@29b491d` is **not integrated
+  and not reviewed to completion**; its independent review was cut off by a usage
+  limit. Resume from
+  [the review record](../../docs/REVIEW_ORDINARY_CANDIDATE_29B491D_2026-10-27.md):
+  close the RMS reduction-overflow status gap, SiluUp word order, `byte_size()`
+  cfg and alias rules, untested feature builds, and refresh the refusal text.
+  Then integrate only as unselected primitives, or reject the series. Ordinary
+  Qwen CUDA must continue refusing before allocation.
+- [ ] Requalify cached47→48→49→50, affected faults/cancellation/retirement and
+  real-model shutdown on the assembled source; then `.8B` 512/1K/2K/4K/8K and
+  16K/32K. Admit `2B` contexts only where the exact two-root resource plan fits.
+- [ ] Run the final isolated `scripts/check.sh`, then the single serial matched
+  campaign in
+  `../serving-and-speculation/BENCHMARK_CAMPAIGN_2026-10-27.md`. No 27 Oct
+  performance cell has run.
+
 ### Reference capture and remaining runtime separation — 26 Oct
 
 - [x] Four fresh packed47–50 original captures complete:408 same-request archives,

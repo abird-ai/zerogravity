@@ -14,6 +14,26 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
 
 ## Uncommitted
 
+### Current source and campaign boundary — 27 Oct
+
+- [x] Call-free Qwen source plans (`ad82feb`/`f7ff4f9`), complete parameterized
+  GDN runtime schedule (`fe228ab`/`52bfb51`) and serial comparison tooling
+  (`1921db1`/`1d278ed`) are integrated. These are planning/source/host changes,
+  not a current whole-model or performance qualification.
+- [x] Production source-free queue/worker qualification passes C16/C32/C64
+  offered populations with actual active<=8 scheduling, health, cap refusal and
+  cleanup. Native Qwen remains at most B4; client width is not kernel width.
+- [ ] Finish exact packed/strided non-GDN CUDA lowering and integrate it through
+  the existing physical owner. Pending branch `29b491d` awaits a resumed,
+  interrupted review (see
+  [review record](../../docs/REVIEW_ORDINARY_CANDIDATE_29B491D_2026-10-27.md)).
+  Then run current-source `.8B`/`2B` model, cached, fault, shutdown and
+  fitted-context qualification plus final full gate.
+- [ ] Run the one serial campaign specified in
+  `../serving-and-speculation/BENCHMARK_CAMPAIGN_2026-10-27.md`. Preserve the
+  historical `2B` C16 loss and all cap/resource asymmetries; no new benchmark
+  was executed in this checkpoint.
+
 ### Current correctness-first order — 26 Oct
 
 - [~] [Shared vLLM/llama.cpp correctness policy](../numerics-and-context/CORRECTNESS_POLICY.md)

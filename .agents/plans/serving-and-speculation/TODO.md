@@ -8,6 +8,28 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
+### Matched campaign checkpoint — 27 Oct
+
+Design and acceptance: [Qwen3.5 matched serving campaign](BENCHMARK_CAMPAIGN_2026-10-27.md).
+
+- [x] `1921db1`/`1d278ed` extend bounded comparison through C64 and add one
+  serial matrix driver. Every complete per-cell report is retained atomically;
+  aggregate/cell output aliases and existing outputs refuse unless explicitly
+  overwritten. Self-tests are part of `scripts/check.sh`.
+- [x] Current-source production CPU Router test passed genuine offered
+  populations16/32/64 through two workers×four active slots, real Qwen
+  execution/output, queue/active health, host charges, cap refusal/recovery and
+  full cleanup. This closes source-free pending/admission scheduling, not the
+  missing ordinary CUDA model route. Synthetic scheduler commit `68cbef5` was
+  rejected.
+- [ ] Extend retained usage/timing for exact context prompt tokens and explicit
+  provider-side prefill/first-token timing. Prepare strict canonical47, ragged
+  47/57/62/67/72 and 512..32768 workload/lifecycle inputs under XDG state.
+- [ ] After ordinary `.8B`/`2B` correctness, cached/fault/shutdown, long-context
+  fit and final gate: execute one serial C1/C4/C8/C16, then admitted C32/C64 and
+  context campaign with two balanced ABBA/BAAB repetitions; cold and warm stay
+  separate. No 27 Oct timing has run.
+
 ### Shutdown qualification — 26 Oct
 
 - [ ] Replay applicable original-model/backend shutdown and fault scopes under

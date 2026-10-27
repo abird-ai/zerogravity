@@ -8,6 +8,19 @@ Contracts: [unified residency/SSD](../../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_A
 
 ## Uncommitted
 
+### Qwen long-context fit boundary — 27 Oct
+
+- [ ] Derive and physically admit each ordinary Qwen context independently after
+  source-derived CUDA execution is complete. `.8B` 32K is only a candidate N1
+  profile with two roots, streamed vocabulary head and one shared serial
+  attention workspace/cache; no fit claim exists yet.
+- [ ] Current F32 state/two-root `2B` 32K does not fit the 6 GiB RTX 3060 target.
+  Refuse rather than change precision/source/root semantics. Admit smaller `2B`
+  cells only from exact live inventory and peak ownership.
+- [ ] Preserve complete recurrent/conv/KV state history, chunk continuation,
+  cancellation/quarantine and readback owners at 512/1K/2K/4K/8K, then16K/32K.
+  A context plan or benchmark prompt alone is not physical or numerical support.
+
 23Oct allocation/boundary adoption: [shared pools, layouts and transfer APIs](../cpu-gpu-optimization/SHARED_MEMORY_AND_BOUNDARIES.md).
 Two independent source audits are reconciled there; implementation remains open.
 
