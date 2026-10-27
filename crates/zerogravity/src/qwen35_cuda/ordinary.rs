@@ -1,7 +1,8 @@
 //! Honest lowering audit for the incomplete ordinary CUDA path.
 //! This retains the model invocation while checking backend definitions, but
-//! cannot mint execution: projection/GDN/exact attention and owner wiring are
-//! absent, so every attempted binding returns an explicit refusal.
+//! cannot mint execution: source-bound non-GDN projection/attention lowering
+//! and physical owner wiring are absent. GDN remains with the existing runtime
+//! owner, so every attempted binding returns an explicit refusal.
 
 use super::*;
 use crate::gpu::cuda::ordinary_text::{
@@ -71,7 +72,7 @@ fn audit(plan: &OrdinaryQwenPlan, invocation: &OrdinaryQwenInvocation) -> Result
                 "ordinary Qwen source template identity/contract differs".into(),
             ));
         }
-        match plan_primitives(descriptor.kind(), geometry)? {
+        match plan_primitives(descriptor.kind(), geometry, invocation.rows())? {
             Ok(operations) => {
                 for operation in operations {
                     contracts.push(program.contract(operation, step)?);
@@ -93,7 +94,7 @@ fn audit(plan: &OrdinaryQwenPlan, invocation: &OrdinaryQwenInvocation) -> Result
             "ordinary Qwen primitive status binding contract differs".into(),
         ));
     }
-    missing.insert("physical queue/flight/completion-owner and sole StateRoot publication wiring");
+    missing.insert("physical queue/flight/completion/StateRoot ownership");
     Ok(LoweringAudit {
         _invocation: invocation.clone(),
         contracts,
@@ -104,6 +105,7 @@ fn audit(plan: &OrdinaryQwenPlan, invocation: &OrdinaryQwenInvocation) -> Result
 fn plan_primitives(
     kind: SourceOperatorKind,
     geometry: Geometry,
+    rows: usize,
 ) -> Result<std::result::Result<Vec<PlanPrimitive>, &'static str>> {
     let operations = match kind {
         SourceOperatorKind::EmbeddingRows => vec![PlanPrimitive::Embedding],
@@ -120,6 +122,7 @@ fn plan_primitives(
                 || g.attention.query_heads != geometry.query_heads
                 || g.attention.kv_heads != geometry.kv_heads
                 || g.rotary_dimensions != geometry.rotary_width
+                || g.theta.to_bits() != 10_000_000.0f32.to_bits()
                 || g.epsilon.to_bits() != EPSILON.to_bits()
             {
                 return Err(Error::State(
@@ -137,13 +140,22 @@ fn plan_primitives(
             packed_value,
             ..
         } => {
+            let query_width = geometry.query_width()?;
+            let kv_width = geometry.kv_width()?;
+            let value_offset = query_width
+                .checked_mul(2)
+                .and_then(|width| width.checked_add(kv_width))
+                .ok_or_else(|| Error::Limit("ordinary Qwen packed value offset overflow".into()))?;
+            let row_stride = value_offset.checked_add(kv_width).ok_or_else(|| {
+                Error::Limit("ordinary Qwen packed attention stride overflow".into())
+            })?;
             let expected = TensorView {
-                offset: 4608,
-                rows: 64,
-                width: 512,
-                row_stride: 5120,
+                offset: value_offset,
+                rows,
+                width: kv_width,
+                row_stride,
             };
-            if key_width != geometry.kv_width()? || packed_value != expected {
+            if key_width != kv_width || packed_value != expected {
                 return Err(Error::State(
                     "ordinary Qwen packed KV append view differs".into(),
                 ));
@@ -173,13 +185,15 @@ fn plan_primitives(
             vec![PlanPrimitive::SiluAndMul]
         }
         SourceOperatorKind::Projection { .. } => {
-            return Ok(Err("source-bound BF16 projection execution"));
+            return Ok(Err("source-bound non-GDN projection lowering"));
         }
+        // Dynamic GDN is already owned by the existing ordinary runtime schedule;
+        // this audit must not duplicate it or describe it as an integration gap.
         SourceOperatorKind::CausalConvSplit { .. } | SourceOperatorKind::GatedDelta { .. } => {
-            return Ok(Err("ordinary GDN execution"));
+            Vec::new()
         }
         SourceOperatorKind::FlashAttention { .. } => {
-            return Ok(Err("contract-exact BF16 attention"));
+            return Ok(Err("source-bound non-GDN attention lowering"));
         }
         SourceOperatorKind::RetainedRows { .. }
         | SourceOperatorKind::CausalConvSiluZero { .. }
@@ -253,7 +267,7 @@ mod tests {
                         key_width: 512,
                         packed_value: TensorView {
                             offset: 4608,
-                            rows: 64,
+                            rows: 17,
                             width: 512,
                             row_stride: 5120,
                         },
@@ -276,7 +290,7 @@ mod tests {
                 ),
             ];
             for (kind, expected) in cases {
-                assert_eq!(plan_primitives(kind, geometry)?.unwrap(), expected);
+                assert_eq!(plan_primitives(kind, geometry, 17)?.unwrap(), expected);
             }
         }
         Ok(())
@@ -288,11 +302,14 @@ mod tests {
         assert_eq!(
             plan_primitives(
                 SourceOperatorKind::Projection { selected_row: None },
-                geometry
+                geometry,
+                64,
             )?,
-            Err("source-bound BF16 projection execution")
+            Err("source-bound non-GDN projection lowering")
         );
-        assert!(plan_primitives(SourceOperatorKind::SiluAndMul { width: 6144 }, geometry).is_err());
+        assert!(
+            plan_primitives(SourceOperatorKind::SiluAndMul { width: 6144 }, geometry, 64).is_err()
+        );
         assert!(
             plan_primitives(
                 SourceOperatorKind::KvAppend {
@@ -306,6 +323,26 @@ mod tests {
                     },
                 },
                 geometry,
+                64,
+            )
+            .is_err()
+        );
+
+        let wrong_theta = SourceQkRotaryGeometry {
+            attention: AttentionGeometry {
+                width: 256,
+                query_heads: 8,
+                kv_heads: 2,
+            },
+            rotary_dimensions: 64,
+            theta: 1_000_000.0,
+            epsilon: EPSILON,
+        };
+        assert!(
+            plan_primitives(
+                SourceOperatorKind::QkRmsRotaryGated(wrong_theta),
+                geometry,
+                64,
             )
             .is_err()
         );

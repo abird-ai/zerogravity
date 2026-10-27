@@ -357,6 +357,13 @@ fn kernel_source_flags_nonfinite_gate_embedding_and_all_arithmetic_inputs() {
     assert!(source.contains("if (!isfinite(gate) || !isfinite(sigmoid)) zg_bad(status, 2u);"));
     assert!(source.contains("!isfinite(input_value) || !isfinite(residual_value)"));
     assert!(source.contains("!isfinite(key_value) || !isfinite(value_value)"));
+    assert_eq!(
+        source
+            .matches("!isfinite(reduction[0])) zg_bad(status, 2u);")
+            .count(),
+        3
+    );
+    assert_eq!(source.matches("inverse == 0.0f").count(), 3);
     for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         assert!(!value.is_finite());
     }
@@ -451,6 +458,34 @@ fn role_access_service_extent_alignment_and_alias_policy_are_checked() -> Result
     partial[0].handle = base.clone().offset_end(4);
     partial[3].handle = base.offset_start(4);
     assert!(definition.validate_bindings(service, &partial).is_err());
+
+    // Read/read overlap is still an alias and is not implicitly permitted.
+    let input_bytes = definition.bindings()[0].bytes as u64;
+    let gamma_bytes = definition.bindings()[2].bytes as u64;
+    let base = Handle::new(service, stream, input_bytes + gamma_bytes - 4);
+    let mut read_read = fresh();
+    read_read[0].handle = base.clone().offset_end(gamma_bytes - 4);
+    read_read[2].handle = base.offset_start(input_bytes - 4);
+    assert!(definition.validate_bindings(service, &read_read).is_err());
+
+    // Write/write overlap is also rejected unless the exact role pair is listed.
+    let greedy = program().greedy(2)?;
+    let mut write_write = greedy
+        .bindings()
+        .iter()
+        .map(|expected| {
+            LaunchBinding::new(
+                expected.role,
+                expected.access,
+                Handle::new(service, stream, expected.bytes as u64),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(greedy.bindings()[1].access, Access::Write);
+    assert_eq!(greedy.bindings()[2].access, Access::Write);
+    assert_eq!(greedy.bindings()[1].bytes, greedy.bindings()[2].bytes);
+    write_write[2].handle = write_write[1].handle.clone();
+    assert!(greedy.validate_bindings(service, &write_write).is_err());
     Ok(())
 }
 

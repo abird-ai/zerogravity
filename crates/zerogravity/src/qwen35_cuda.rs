@@ -38,7 +38,7 @@ mod templates;
 pub use session::Session;
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub use source::RouteTokenizer;
-const ORDINARY_CAPABILITY_REFUSAL: &str = "ordinary Qwen CUDA is unintegrable: source-bound projections, dynamic GDN, contract-exact BF16 attention, and physical queue/flight/completion-owner/StateRoot wiring are incomplete; no backend is exposed";
+const ORDINARY_CAPABILITY_REFUSAL: &str = "ordinary Qwen CUDA is unintegrable: source-bound non-GDN projection/attention lowering plus physical queue/flight/completion/StateRoot ownership are incomplete; no backend is exposed";
 
 /// Ordinary run/serve must refuse before source, device or driver discovery.
 pub fn require_ordinary_capability() -> Result<()> {
@@ -63,7 +63,7 @@ mod ordinary_refusal_tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("unintegrable"));
-        assert!(error.contains("physical queue/flight/completion-owner/StateRoot"));
+        assert!(error.contains("physical queue/flight/completion/StateRoot ownership"));
         assert!(error.contains("no backend is exposed"));
     }
 }

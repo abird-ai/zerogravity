@@ -2,9 +2,8 @@
 #if __CUDA_ARCH__ != 860
 #error Ordinary text CUDA primitives require SM86
 #endif
+#include <cuda_runtime.h>
 #include <cuda_bf16.h>
-#include <math.h>
-#include <stdint.h>
 
 #define ZG_THREADS 256
 #define ZG_BF16_BYTES 2
@@ -25,6 +24,9 @@ static __device__ __forceinline__ unsigned zg_u32(unsigned long long word) {
 }
 static __device__ __forceinline__ float zg_f32(unsigned long long word) {
     return __uint_as_float((unsigned)word);
+}
+static __device__ __forceinline__ float zg_negative_infinity() {
+    return __uint_as_float(0xff800000u);
 }
 static __device__ __forceinline__ float zg_load(const __nv_bfloat16* p) {
     return __bfloat162float(*p);
@@ -157,7 +159,9 @@ void zg_ot_rms_v1(void* input_raw, void* raw_gamma_raw, void* output_raw,
         if (threadIdx.x < stride) reduction[threadIdx.x] += reduction[threadIdx.x + stride];
         __syncthreads();
     }
+    if (threadIdx.x == 0 && !isfinite(reduction[0])) zg_bad(status, 2u);
     const float inverse = rsqrtf(reduction[0] / (float)ZG_HIDDEN_WIDTH + zg_f32(scalars.words[1]));
+    if (threadIdx.x == 0 && (!isfinite(inverse) || inverse == 0.0f)) zg_bad(status, 2u);
     for (unsigned c = threadIdx.x; c < ZG_HIDDEN_WIDTH; c += blockDim.x) {
         const size_t i = (size_t)row * ZG_HIDDEN_WIDTH + c;
         const float x = zg_load(input + i);
@@ -197,7 +201,9 @@ void zg_ot_residual_rms_v1(void* input_raw, void* residual_raw, void* raw_gamma_
         if (threadIdx.x < stride) reduction[threadIdx.x] += reduction[threadIdx.x + stride];
         __syncthreads();
     }
+    if (threadIdx.x == 0 && !isfinite(reduction[0])) zg_bad(status, 2u);
     const float inverse = rsqrtf(reduction[0] / (float)ZG_HIDDEN_WIDTH + zg_f32(scalars.words[1]));
+    if (threadIdx.x == 0 && (!isfinite(inverse) || inverse == 0.0f)) zg_bad(status, 2u);
     for (unsigned c = threadIdx.x; c < ZG_HIDDEN_WIDTH; c += blockDim.x) {
         const size_t i = (size_t)row * ZG_HIDDEN_WIDTH + c;
         const float residual_value = zg_load(residual + i);
@@ -238,7 +244,9 @@ void NAME(void* input_raw, void* raw_gamma_raw, void* output_raw, \
         if (lane < stride) reduction[lane] += reduction[lane + stride]; \
         __syncthreads(); \
     } \
+    if (lane == 0 && !isfinite(reduction[0])) zg_bad(status, 2u); \
     const float inverse = rsqrtf(reduction[0] / (float)ZG_HEAD_DIM + zg_f32(scalars.words[4])); \
+    if (lane == 0 && (!isfinite(inverse) || inverse == 0.0f)) zg_bad(status, 2u); \
     const float gamma = zg_load(raw_gamma + lane); \
     const float y = x * inverse * (1.0f + gamma); \
     output[output_i] = zg_store(y); \
@@ -390,7 +398,7 @@ void zg_ot_unqualified_online_fp32_attention_v1(void* query_raw, void* key_cache
     const unsigned d = threadIdx.x;
     const unsigned kv_head = head / (ZG_QUERY_HEADS / ZG_KV_HEADS);
     const float q = zg_load(query + ((size_t)row * ZG_QUERY_HEADS + head) * ZG_HEAD_DIM + d);
-    float maximum = -INFINITY, normalizer = 0.0f, accumulator = 0.0f;
+    float maximum = zg_negative_infinity(), normalizer = 0.0f, accumulator = 0.0f;
     const unsigned valid = base + row + 1;
     for (unsigned token = 0; token < valid; ++token) {
         const size_t cache_i = ((size_t)token * ZG_KV_HEADS + kv_head) * ZG_HEAD_DIM + d;
@@ -404,7 +412,7 @@ void zg_ot_unqualified_online_fp32_attention_v1(void* query_raw, void* key_cache
         }
         const float score = dot[0] * ZG_ATTENTION_SCALE;
         const float next_maximum = fmaxf(maximum, score);
-        const float previous = maximum == -INFINITY ? 0.0f : expf(maximum - next_maximum);
+        const float previous = maximum == zg_negative_infinity() ? 0.0f : expf(maximum - next_maximum);
         const float current = expf(score - next_maximum);
         accumulator = accumulator * previous + value_value * current;
         normalizer = normalizer * previous + current;
@@ -430,7 +438,7 @@ void zg_ot_greedy_v1(void* logits_raw, void* tokens_raw, void* maxima_raw,
     const unsigned row = blockIdx.x;
     const unsigned rows = zg_u32(scalars.words[0]);
     if (row >= rows) return;
-    float best = -INFINITY; unsigned best_index = 0;
+    float best = zg_negative_infinity(); unsigned best_index = 0;
     for (unsigned i = threadIdx.x; i < ZG_VOCABULARY; i += blockDim.x) {
         const float value = logits[(size_t)row * ZG_VOCABULARY + i];
         if (!isfinite(value)) {
