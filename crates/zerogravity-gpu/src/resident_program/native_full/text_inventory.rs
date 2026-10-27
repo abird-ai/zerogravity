@@ -18,7 +18,17 @@ impl FullModelProgram {
         Ok(layout)
     }
     pub(crate) fn text_readback_reservation(scopes: &[Arc<TextModelBinding>]) -> Result<usize> {
+        let capture = scopes
+            .first()
+            .ok_or_else(|| Error::State("short-HF no actual readback scopes".into()))?
+            .native_capture();
+        if scopes.iter().any(|scope| scope.native_capture() != capture) {
+            return Err(Error::State(
+                "short-HF readback scopes mix native captures".into(),
+            ));
+        }
         value_storage::require_geometry_cohort(
+            capture,
             &scopes
                 .iter()
                 .map(|s| s.call().rows().len())

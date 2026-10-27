@@ -73,12 +73,12 @@ pub(crate) struct Catalogue {
 }
 
 impl Key {
-    pub(crate) fn current(actual: &SourceCall, prompt_tokens: usize, node: usize) -> Result<Self> {
-        if !matches!(prompt_tokens, 47 | 57 | 62 | 67 | 72) {
-            return Err(Error::Unsupported(
-                "native captured prompt length absent".into(),
-            ));
-        }
+    pub(crate) fn current(
+        capture: TextKernelCapture,
+        actual: &SourceCall,
+        prompt_tokens: usize,
+        node: usize,
+    ) -> Result<Self> {
         let call = if actual.rows().base() == 0 {
             if actual.mode() != SourceCallMode::Prefill || actual.rows().len() != prompt_tokens {
                 return Err(Error::State(
@@ -97,11 +97,7 @@ impl Key {
                 .and_then(|n| n.checked_add(1))
                 .ok_or_else(|| Error::State("native actual packet call ordinal".into()))?
         };
-        if call >= 8 {
-            return Err(Error::State(
-                "native captured continuation extent exceeded".into(),
-            ));
-        }
+        capture.require_packet_geometry(prompt_tokens, call)?;
         Ok(Self {
             prompt_tokens,
             call,
@@ -126,10 +122,12 @@ impl Catalogue {
         capture: TextKernelCapture,
         scopes: &[super::TextNativeGeometry],
     ) -> Result<Self> {
-        let sites = super::generated::sites(capture)?;
+        let sites = super::generated_sites(capture)?;
         let mut map = BTreeMap::new();
         for site in sites {
-            if site.key.call >= 8
+            if capture
+                .require_packet_geometry(site.key.prompt_tokens, site.key.call)
+                .is_err()
                 || site.packets.is_empty()
                 || site.packets.len() > 3
                 || map.insert(site.key, site).is_some()
@@ -141,7 +139,7 @@ impl Catalogue {
         }
         let mut expected = BTreeSet::new();
         for scope in scopes.iter().filter(|g| g.scope.call().rows().base() == 0) {
-            for call in 0..8 {
+            for call in 0..capture.captured_call_count() {
                 for node in 0..scope.scope.record().plan().nodes().len() {
                     let Some(descriptor) = &scope.scope.record().operator(node)? else {
                         continue;
@@ -156,10 +154,16 @@ impl Catalogue {
                 }
             }
         }
-        if expected.len() != 5 * 8 * 168 || map.keys().copied().collect::<BTreeSet<_>>() != expected
+        let expected_sites = capture
+            .prepared_call_count()?
+            .checked_mul(168)
+            .ok_or_else(|| Error::Limit("text captured native site count".into()))?;
+        if expected.len() != expected_sites
+            || map.keys().copied().collect::<BTreeSet<_>>() != expected
         {
             return Err(Error::Unsupported(
-                "text complete genuine five-workload/eight-call native packet catalogue unavailable".into()));
+                "text complete captured native packet catalogue unavailable".into(),
+            ));
         }
         for site in map.values() {
             for packet in &site.packets {

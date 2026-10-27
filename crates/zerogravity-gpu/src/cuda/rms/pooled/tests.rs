@@ -10,7 +10,17 @@ fn pooling_uses_only_finite_source_row_and_width_specifications() {
             assert_eq!(value.count(), rows);
             assert!(Rows::new(rows).is_err());
         }
-        for rows in [0, 2, 46, 48, 56, 58, 61, 63, 64, 66, 68, 71, 73, usize::MAX] {
+        for rows in [48, 49, 50] {
+            if width == 1024 {
+                assert_eq!(
+                    FullModelRmsScratch::row_spec(rows, width).unwrap().count(),
+                    rows
+                );
+            } else {
+                assert!(FullModelRmsScratch::row_spec(rows, width).is_err());
+            }
+        }
+        for rows in [0, 2, 46, 56, 58, 61, 63, 64, 66, 68, 71, 73, usize::MAX] {
             assert!(matches!(
                 FullModelRmsScratch::row_spec(rows, width),
                 Err(Error::Unsupported(_))
@@ -108,7 +118,26 @@ fn cold_actor_inventory_uses_actual_allocated_role_layouts() -> Result<()> {
                 [2 * h, 4 * rows * h]
             );
         }
-        for rows in [0, 2, 46, 48, 64, 73, usize::MAX] {
+        for rows in [48, 49, 50] {
+            if width == 1024 {
+                let shared = FullModelRmsScratch::allocation_layout(rows, width)?;
+                assert_eq!(shared.len(), 9);
+                assert_eq!(
+                    shared.iter().sum::<usize>(),
+                    8 * h + 16 * rows * h + 12 * rows
+                );
+                assert_eq!(RmsPrepared::text_private_layout(rows, width)?, [2 * h]);
+                assert_eq!(
+                    FusedRmsPrepared::text_private_layout(rows, width)?,
+                    [2 * h, 4 * rows * h]
+                );
+            } else {
+                assert!(FullModelRmsScratch::allocation_layout(rows, width).is_err());
+                assert!(RmsPrepared::text_private_layout(rows, width).is_err());
+                assert!(FusedRmsPrepared::text_private_layout(rows, width).is_err());
+            }
+        }
+        for rows in [0, 2, 46, 51, 64, 73, usize::MAX] {
             assert!(FullModelRmsScratch::allocation_layout(rows, width).is_err());
             assert!(RmsPrepared::text_private_layout(rows, width).is_err());
             assert!(FusedRmsPrepared::text_private_layout(rows, width).is_err());

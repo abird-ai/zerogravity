@@ -121,7 +121,7 @@ impl FullModelRmsScratch {
         match (rows, width) {
             (1, _) => Ok(Rows::One),
             (47, 1024) => Ok(Rows::FixedPrompt),
-            (47 | 57 | 62 | 67 | 72, _) => Ok(Rows::Text {
+            (48..=50, 1024) | (47 | 57 | 62 | 67 | 72, _) => Ok(Rows::Text {
                 prompt_tokens: rows,
             }),
             _ => Err(Error::Unsupported("pooled RMS captured row storage".into())),
@@ -711,7 +711,7 @@ mod tests;
 mod physical_rows_tests {
     use super::*;
     #[test]
-    fn captured_row_storage_preserves_widths_and_refuses_new_prompt_lengths() {
+    fn captured_row_storage_preserves_widths_and_only_retained_prompt_lengths() {
         for width in [1024, 2048] {
             for rows in [1, 47, 57, 62, 67, 72] {
                 assert_eq!(
@@ -719,7 +719,17 @@ mod physical_rows_tests {
                     rows
                 );
             }
-            for rows in [0, 2, 46, 48, 49, 50, 64, 73] {
+            for rows in [48, 49, 50] {
+                if width == 1024 {
+                    assert_eq!(
+                        FullModelRmsScratch::row_spec(rows, width).unwrap().count(),
+                        rows
+                    );
+                } else {
+                    assert!(FullModelRmsScratch::row_spec(rows, width).is_err());
+                }
+            }
+            for rows in [0, 2, 46, 51, 64, 73] {
                 assert!(FullModelRmsScratch::row_spec(rows, width).is_err());
             }
         }

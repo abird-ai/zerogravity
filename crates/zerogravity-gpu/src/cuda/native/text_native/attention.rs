@@ -311,9 +311,9 @@ impl Storage {
                 let base = if call == 0 { 0 } else { prompt + call - 1 };
                 let rows = if call == 0 { prompt } else { 1 };
                 let host = Arc::new(p.source.reserve_workspace(
-                    64 * 1024 + 3 * 4096 + Definitions::metadata_bound(prompt, call)?,
+                    64 * 1024 + 3 * 4096 + Definitions::metadata_bound(capture, prompt, call)?,
                 )?);
-                let definitions = Definitions::prepare(prompt, call, host.clone())?;
+                let definitions = Definitions::prepare(capture, prompt, call, host.clone())?;
                 let roles = [
                     Role::Slots,
                     Role::KScale,
@@ -600,7 +600,12 @@ impl Current {
         }
         // Private native owners are selected by this exact compiled site's roles,
         // never by caller-provided bytes, raw addresses or public-value aliasing.
-        let key = Key::current(self.input.call(), self.input.prompt_tokens(), node)?;
+        let key = Key::current(
+            self.storage.capture,
+            self.input.call(),
+            self.input.prompt_tokens(),
+            node,
+        )?;
         for &(role, n) in self
             .storage
             .private_roles

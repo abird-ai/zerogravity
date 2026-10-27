@@ -40,7 +40,12 @@ fn last_selected_row_uses_full_real_owner_and_exact_output_window() {
         (SourceWeightLayout::Vocabulary08, 1024, 512),
         (SourceWeightLayout::Vocabulary2b, 2048, 256),
     ] {
-        for input_rows in [1, 47, 57, 62, 67, 72] {
+        let input_rows = if layout == SourceWeightLayout::Vocabulary08 {
+            vec![1, 47, 48, 49, 50, 57, 62, 67, 72]
+        } else {
+            vec![1, 47, 57, 62, 67, 72]
+        };
+        for input_rows in input_rows {
             for ordinal in [0, VOCABULARY / rows - 1] {
                 let s = Window {
                     layout,
@@ -78,7 +83,7 @@ fn last_selected_row_uses_full_real_owner_and_exact_output_window() {
 }
 #[test]
 fn hostile_geometry_and_native_address_ends_refuse() {
-    for rows in [0, 2, 46, 48, 64, 73, usize::MAX] {
+    for rows in [0, 2, 46, 51, 64, 73, usize::MAX] {
         assert!(
             Window {
                 layout: SourceWeightLayout::Vocabulary08,
@@ -89,6 +94,15 @@ fn hostile_geometry_and_native_address_ends_refuse() {
             .is_err()
         );
     }
+    assert!(
+        Window {
+            layout: SourceWeightLayout::Vocabulary2b,
+            input_rows: 48,
+            ordinal: 0,
+        }
+        .validate()
+        .is_err()
+    );
     assert!(geometry(SourceWeightLayout::GdnQkvz).is_err());
     let s = Window {
         layout: SourceWeightLayout::Vocabulary08,
@@ -105,6 +119,25 @@ fn hostile_geometry_and_native_address_ends_refuse() {
         .is_err()
     );
 }
+#[test]
+fn fresh_rows_are_admitted_only_by_the_distinct_fresh_policy() {
+    use crate::owned_command::cubin::policy::CubinSetPolicy;
+    for rows in [47, 48, 49, 50] {
+        assert!(input_rows_allowed(
+            CubinSetPolicy::Text08FreshPrefill,
+            rows
+        ));
+    }
+    for rows in [1, 57, 62, 67, 72] {
+        assert!(!input_rows_allowed(
+            CubinSetPolicy::Text08FreshPrefill,
+            rows
+        ));
+    }
+    assert!(!input_rows_allowed(CubinSetPolicy::Text08, 48));
+    assert!(input_rows_allowed(CubinSetPolicy::Text08, 57));
+}
+
 #[test]
 fn only_original_n_and_grid_change_for_the_08_finite_tile() {
     let tiled = manifest(SourceWeightLayout::Vocabulary08).unwrap();

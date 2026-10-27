@@ -1,4 +1,5 @@
 //! Unchanged paired BF16/U32 copy equations, sealed to the current source span.
+use super::TextKernelCapture;
 use crate::{
     cuda::kernel::PinnedKernel,
     resident_inference::native_fragment::{
@@ -35,13 +36,9 @@ struct Geometry {
     end: usize,
 }
 impl Geometry {
-    fn new(prompt_tokens: usize, ordinal: usize) -> Result<Self> {
+    fn new(capture: TextKernelCapture, prompt_tokens: usize, ordinal: usize) -> Result<Self> {
+        capture.require_packet_geometry(prompt_tokens, ordinal)?;
         let prompt = prompt_tokens;
-        if !matches!(prompt, 47 | 57 | 62 | 67 | 72) || ordinal >= 8 {
-            return Err(Error::State(
-                "text cold transport prompt_tokens/call".into(),
-            ));
-        }
         let base = if ordinal == 0 {
             0
         } else {
@@ -60,8 +57,8 @@ impl Geometry {
             end,
         })
     }
-    fn require(&self, input: &TextCallInput) -> Result<()> {
-        let actual = Self::new(input.prompt_tokens(), input.call_ordinal())?;
+    fn require(&self, capture: TextKernelCapture, input: &TextCallInput) -> Result<()> {
+        let actual = Self::new(capture, input.prompt_tokens(), input.call_ordinal())?;
         if actual != *self
             || input.base() != self.base
             || input.rows() != self.rows
@@ -75,6 +72,7 @@ impl Geometry {
     }
 }
 pub(super) struct Definitions {
+    capture: TextKernelCapture,
     geometry: Geometry,
     incoming: Option<CopyDefinition>,
     outgoing: CopyDefinition,
@@ -89,8 +87,12 @@ impl Definitions {
         Ok(1 + usize::from(self.incoming.is_some()))
     }
     /// Full immutable text/ABI/key owners and source construction peak.
-    pub(super) fn metadata_bound(prompt_tokens: usize, ordinal: usize) -> Result<usize> {
-        let g = Geometry::new(prompt_tokens, ordinal)?;
+    pub(super) fn metadata_bound(
+        capture: TextKernelCapture,
+        prompt_tokens: usize,
+        ordinal: usize,
+    ) -> Result<usize> {
+        let g = Geometry::new(capture, prompt_tokens, ordinal)?;
         let count = if g.base == 0 { 1 } else { 2 };
         Ok(count
             * (3 * (SOURCE.len() + 512)
@@ -102,11 +104,12 @@ impl Definitions {
             + 32)
     }
     pub(super) fn prepare(
+        capture: TextKernelCapture,
         prompt_tokens: usize,
         ordinal: usize,
         metadata: Arc<WindowWorkspace>,
     ) -> Result<Arc<Self>> {
-        let geometry = Geometry::new(prompt_tokens, ordinal)?;
+        let geometry = Geometry::new(capture, prompt_tokens, ordinal)?;
         let base = geometry.base;
         let end = geometry.end;
         let make = |incoming: bool| -> Result<CopyDefinition> {
@@ -128,7 +131,7 @@ impl Definitions {
             bindings.push((4, RW));
             let kernel = PinnedKernel::new(entry, source, 128, bindings.into())?;
             if kernel.retained_metadata_bytes()? + std::mem::size_of::<CopyDefinition>()
-                > Self::metadata_bound(prompt_tokens, ordinal)?
+                > Self::metadata_bound(capture, prompt_tokens, ordinal)?
             {
                 return Err(Error::Limit(
                     "text retained cold transport source/ABI/key bound".into(),
@@ -142,6 +145,7 @@ impl Definitions {
             })
         };
         Ok(Arc::new(Self {
+            capture,
             geometry,
             incoming: (base != 0).then(|| make(true)).transpose()?,
             outgoing: make(false)?,
@@ -195,7 +199,7 @@ impl Transport {
         status: ResidentLease,
     ) -> Result<Self> {
         state.require_text(input.scope())?;
-        definitions.geometry.require(&input)?;
+        definitions.geometry.require(definitions.capture, &input)?;
         let base = input.base();
         let end = base
             .checked_add(input.rows())
@@ -243,7 +247,9 @@ impl Transport {
         })
     }
     fn require(&self, permit: &PrefixPhaseEnqueue<'_>, effect: StateEffect) -> Result<()> {
-        self.definitions.geometry.require(&self.input)?;
+        self.definitions
+            .geometry
+            .require(self.definitions.capture, &self.input)?;
         self.state.require_text(self.input.scope())?;
         self.state.require_enqueue(self.cache.service(), permit)?;
         self.state.require_effect(effect, false)

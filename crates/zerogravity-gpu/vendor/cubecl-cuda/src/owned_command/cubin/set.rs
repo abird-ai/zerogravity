@@ -335,6 +335,28 @@ impl OwnedCudaQueue {
             retired: AtomicBool::new(false),
         }))
     }
+    /// Qualification-only .8B fresh-prefill 47--50 packet policy.
+    /// # Safety
+    /// The original armed initialization retains the four exact source scopes,
+    /// candidate image owners and prepaid native charge before this admission.
+    pub unsafe fn admit_text_fresh_prefill_cubin_set(
+        self: &Arc<Self>,
+        owner: Arc<dyn Any + Send + Sync>,
+    ) -> Result<Arc<OwnedCudaModuleSet>, ServerError> {
+        let key = identity()?;
+        let retained = owner.clone();
+        self.actor
+            .submit_blocking(move |server| {
+                server.admit_owned_text_fresh_prefill_cubin_set(key, retained)
+            })
+            .map_err(|error| failure(format!("fresh-prefill set admission actor:{error:?}")))??;
+        Ok(Arc::new(OwnedCudaModuleSet {
+            queue: self.clone(),
+            owner,
+            key,
+            retired: AtomicBool::new(false),
+        }))
+    }
     /// Exact original N1 plus canonical47 B4 ABI union on the SAME actor/set.
     /// # Safety
     /// Actual complete source/image/native admissions precede this call. This

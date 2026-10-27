@@ -1,7 +1,8 @@
 #![cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
 //! Explicit real-source/GPU suite; never part of ordinary CPU test execution.
 //! A fresh 47-token prompt commits frontier 47; frontiers 48–50 consume one cached token each.
-//! Fresh 48–50-token prompts are not implemented or qualified by this suite.
+//! Historical routing does not admit fresh 48–50-token prompts. The separate
+//! ignored fresh-prefill test below admits exactly one initial call for rows 47–50.
 // Former names: short_hf, canonical47, case5. Historical oracle labels remain exact.
 
 use std::{
@@ -387,6 +388,86 @@ fn source_model_state_and_output_agreement() -> Result<()> {
     println!(
         "QWEN35_CUDA_WHOLE_MATRIX_PASS model={family} prompts=47,57,62,67,72 calls=40 native_performance_qualified=false"
     );
+    Ok(())
+}
+
+#[test]
+#[ignore = "explicit qualification-only fresh-prefill 47-50, release CUDA, owned isolated process only"]
+fn fresh_prefill_state_logits_root_and_cleanup_agreement() -> Result<()> {
+    ensure(!cfg!(debug_assertions), "release physical matrix only")?;
+    let source = env("ZG_QWEN35_MODEL_DIR")?;
+    let bundle = env("ZG_QWEN35_CUDA_KERNEL_DIR")?;
+    let reference = env("ZG_QWEN35_REFERENCE_DIR")?;
+    let prompts = env("ZG_QWEN35_PROMPT_FIXTURES")?;
+    let public = oracle::json(&prompts, MIB)?;
+    let host = FixtureHost::new(ResourceOwner::new(
+        "qwen35-cuda-fresh-prefill",
+        "four-scopes-one-call",
+    )?)?;
+    let device =
+        zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA device: {e}")))?;
+    let model = block_on(qwen35_cuda::qualification::load_fresh_prefill(
+        device,
+        &source,
+        &bundle,
+        &host,
+        qwen35_cuda::PROVIDER_MIB * MIB,
+        None,
+    ))?;
+    let observation = model.resident().observation();
+    let result: Result<()> = block_on(async {
+        for rows in [47, 48, 49, 50] {
+            let ids = fixture_prompt(&public, rows)?;
+            let cell = reference.join(format!("{}-{rows}", model.source_metadata().family));
+            let mut session = model.session(None).await?;
+            let before = session.binding();
+            let mut callbacks = 0;
+            let receipt = session
+                .infer_prompt_with(&ids, None, |read| {
+                    callbacks += 1;
+                    compare::completed(read, &cell, 0, rows, model.source_profile())
+                })
+                .await?;
+            ensure(
+                callbacks == 1
+                    && receipt.root == session.binding()
+                    && receipt.root.session() == before.session()
+                    && receipt.root.root() == before.root() + 1
+                    && receipt.root.frontier() == rows as u64
+                    && receipt.consumed_tokens == rows
+                    && receipt.executed_nodes == 255
+                    && receipt.native_launches > 0,
+                "exactly one fresh output preserves the reusable root/state/logit comparison",
+            )?;
+            pool_conservation(&model)?;
+        }
+        Ok(())
+    });
+    if let Err(error) = &result {
+        eprintln!("QWEN35_CUDA_FRESH_PREFILL_FAILURE {error:?}");
+    }
+    let closed = block_on(model.resident().clone().close(None));
+    drop(model);
+    let retired = observation.snapshot()?;
+    drop(observation);
+    ensure(
+        retired.resident_bytes == 0
+            && retired.pending_events == 0
+            && retired.root_pool_allocated_sets == 0
+            && retired.root_pool_backing_bytes == 0,
+        "fresh-prefill whole-model native retirement",
+    )?;
+    let physical_retired = host.arbiter.snapshot(&retired.physical_key)?.reserved;
+    ensure(
+        physical_retired == retired.backend_device_reserved_bytes
+            && host.arbiter.snapshot(&host.resource)?.reserved
+                == retired.backend_host_reserved_bytes,
+        "fresh-prefill final host/provider/physical conservation",
+    )?;
+    host.require_final(retired.backend_host_reserved_bytes)?;
+    closed?;
+    result?;
+    println!("QWEN35_CUDA_FRESH_PREFILL_PASS prompts=47,48,49,50 calls=4 decode=false");
     Ok(())
 }
 

@@ -7,6 +7,7 @@ use cubecl_core::server::ServerError;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CubinSetPolicy {
     Text08,
+    Text08FreshPrefill,
     Text08Cohort4,
     Text2B,
     Text2BCachedCohort4,
@@ -39,6 +40,7 @@ impl CubinSetPolicy {
         if matches!(
             self,
             Self::Text08
+                | Self::Text08FreshPrefill
                 | Self::Text08Cohort4
                 | Self::Text2B
                 | Self::Text2BCachedCohort4
@@ -63,6 +65,7 @@ impl CubinSetPolicy {
         }
         let (max_modules, max_functions, max_records, message) = match self {
             Self::Text08
+            | Self::Text08FreshPrefill
             | Self::Text08Cohort4
             | Self::Text2B
             | Self::Text2BCachedCohort4 => {
@@ -173,6 +176,7 @@ impl CubinSetPolicy {
         if matches!(
             self,
             Self::Text08
+                | Self::Text08FreshPrefill
                 | Self::Text08Cohort4
                 | Self::Text2B
                 | Self::Text2BCachedCohort4

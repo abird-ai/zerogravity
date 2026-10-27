@@ -3,6 +3,7 @@ use super::{CubinKernelManifest, VerifiedCubin, failure, policy::CubinSetPolicy}
 use cubecl_core::server::ServerError;
 mod cohort2b;
 mod cohort4;
+mod fresh_prefill;
 mod records;
 const COHORT4: records::Cohort = records::Cohort {
     calls: 48,
@@ -21,6 +22,7 @@ const COHORT2B: records::Cohort = records::Cohort {
 fn cohort(policy: CubinSetPolicy) -> Result<&'static records::Cohort, ServerError> {
     match policy {
         CubinSetPolicy::Text08 => Ok(&records::QWEN08),
+        CubinSetPolicy::Text08FreshPrefill => Ok(&fresh_prefill::QWEN08_FRESH_PREFILL),
         CubinSetPolicy::Text08Cohort4 => Ok(&COHORT4),
         CubinSetPolicy::Text2B => Ok(&records::QWEN2B),
         CubinSetPolicy::Text2BCachedCohort4 => Ok(&COHORT2B),
@@ -35,6 +37,7 @@ pub(crate) fn require_complete(policy: CubinSetPolicy) -> Result<(), ServerError
         _ => None,
     };
     let calls = match policy {
+        CubinSetPolicy::Text08FreshPrefill => 4,
         CubinSetPolicy::Text08Cohort4 => 48,
         CubinSetPolicy::Text2BCachedCohort4 => 47,
         _ => 40,
@@ -48,7 +51,7 @@ pub(crate) fn require_complete(policy: CubinSetPolicy) -> Result<(), ServerError
         || c.limits.2 != c.rules.len() + base.map_or(0, |source| source.rules.len())
     {
         return Err(failure(
-            "short-HF all five-workload/eight-call source ABI cohort unavailable",
+            "short-HF complete source ABI cohort unavailable",
         ));
     }
     Ok(())
@@ -210,6 +213,22 @@ mod tests {
         assert!(limits(cached, 19, 32, 172, false, true).is_err());
         assert!(limits(cached, 19, 32, 173, false, false).is_err());
     }
+    #[test]
+    fn fresh_prefill_has_a_distinct_four_call_candidate_policy() {
+        let fresh = CubinSetPolicy::Text08FreshPrefill;
+        require_complete(fresh).unwrap();
+        let cohort = cohort(fresh).unwrap();
+        assert_eq!(cohort.calls, 4);
+        assert_eq!(cohort.limits, (13, 17, 61));
+        assert_eq!(cohort.rules.len(), 61);
+        assert!(cohort.rules.iter().any(|rule| {
+            require_rule(records::QWEN08.rules, rule.image, rule.abi).is_err()
+        }));
+        assert!(limits(fresh, 13, 16, 60, false, true).is_ok());
+        assert!(limits(fresh, 13, 17, 60, false, true).is_err());
+        assert!(limits(CubinSetPolicy::Text08, 13, 17, 60, false, false).is_ok());
+    }
+
     #[test]
     fn full_image_full_abi_and_uniqueness_are_independent() {
         let r = records::Rule {

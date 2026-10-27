@@ -37,6 +37,7 @@ impl CudaServer {
         if !matches!(
             set.policy,
             CubinSetPolicy::Text08
+                | CubinSetPolicy::Text08FreshPrefill
                 | CubinSetPolicy::Text08Cohort4
                 | CubinSetPolicy::Text2B
                 | CubinSetPolicy::Text2BCachedCohort4
@@ -60,6 +61,7 @@ impl CudaServer {
         if matches!(
             set.policy,
             CubinSetPolicy::Text08
+                | CubinSetPolicy::Text08FreshPrefill
                 | CubinSetPolicy::Text08Cohort4
                 | CubinSetPolicy::Text2B
                 | CubinSetPolicy::Text2BCachedCohort4

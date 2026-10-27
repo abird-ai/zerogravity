@@ -9,6 +9,7 @@ pub use catalogue::{
 };
 mod attention;
 mod generated;
+mod generated_fresh_prefill;
 mod images;
 mod inventory;
 mod packets;
@@ -17,6 +18,31 @@ mod transport;
 pub(crate) use inventory::TextNativeInventory;
 mod programs;
 mod storage;
+
+fn generated_sites(capture: TextKernelCapture) -> Result<Vec<packets::Site>> {
+    if capture.is_fresh_prefill() {
+        generated_fresh_prefill::sites(capture)
+    } else {
+        generated::sites(capture)
+    }
+}
+fn generated_metadata_bytes(capture: TextKernelCapture) -> Result<usize> {
+    if capture.is_fresh_prefill() {
+        Ok(generated_fresh_prefill::METADATA_BYTES)
+    } else {
+        generated::metadata_bytes(capture)
+    }
+}
+fn generated_private_layout(
+    capture: TextKernelCapture,
+) -> Result<&'static [(packets::Role, usize)]> {
+    if capture.is_fresh_prefill() {
+        generated_fresh_prefill::private_layout(capture)
+    } else {
+        generated::private_layout(capture)
+    }
+}
+
 pub(crate) use programs::TextPrograms;
 pub(crate) use storage::TextNativeStorage;
 

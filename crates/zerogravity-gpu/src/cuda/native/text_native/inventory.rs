@@ -37,10 +37,10 @@ impl TextNativeInventory {
         capture.require_cold_scopes(scopes.iter().map(Arc::as_ref))?;
         let calls = capture.prepared_call_count()?;
         let attention_layers = super::attention::LAYERS.len();
-        let catalogue_bytes = super::generated::metadata_bytes(capture)?;
+        let catalogue_bytes = super::generated_metadata_bytes(capture)?;
         let rotary_bytes = {
             let _metadata = super::storage::admit_host_cohort(first.source(), catalogue_bytes)?;
-            let sites = super::generated::sites(capture)?;
+            let sites = super::generated_sites(capture)?;
             super::attention::rotary_binding_bytes(&sites)?
         };
         let cohort_metadata_bytes = if cohort_b4 {
@@ -56,7 +56,7 @@ impl TextNativeInventory {
         } else {
             0
         };
-        let private_layout = super::generated::private_layout(capture)?.to_vec();
+        let private_layout = super::generated_private_layout(capture)?.to_vec();
         let mut device_layout = Vec::with_capacity(sum([
             mul(attention_layers, 4)?,
             mul(calls, 7)?,
@@ -123,6 +123,7 @@ impl TextNativeInventory {
             .try_fold(0usize, |total, scope| {
                 (0..capture.captured_call_count()).try_fold(total, |n, ordinal| {
                     n.checked_add(super::transport::Definitions::metadata_bound(
+                        capture,
                         scope.call().rows().len(),
                         ordinal,
                     )?)

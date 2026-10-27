@@ -113,6 +113,7 @@ pub(super) fn policy_limits(
             limits(modules, functions, records, new_module, new_function)
         }
         CubinSetPolicy::Text08
+        | CubinSetPolicy::Text08FreshPrefill
         | CubinSetPolicy::Text08Cohort4
         | CubinSetPolicy::Text2B
         | CubinSetPolicy::Text2BCachedCohort4

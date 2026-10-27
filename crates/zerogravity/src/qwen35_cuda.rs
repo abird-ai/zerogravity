@@ -145,8 +145,21 @@ pub fn native_artifact_root(explicit: Option<&Path>) -> Result<PathBuf> {
     })
 }
 #[cfg(feature = "qwen35-cuda-qualification")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum QualificationMode {
+    HistoricalN1,
+    HistoricalB4,
+    FreshPrefill,
+}
+#[cfg(feature = "qwen35-cuda-qualification")]
+impl QualificationMode {
+    const fn cohort_b4(self) -> bool {
+        matches!(self, Self::HistoricalB4)
+    }
+}
+#[cfg(feature = "qwen35-cuda-qualification")]
 async fn load_profile(
-    cohort_b4: bool,
+    mode: QualificationMode,
     device: crate::gpu::Device,
     hf_directory: &Path,
     artifact_directory: &Path,
@@ -188,16 +201,25 @@ async fn load_profile(
     let retained = bootstrap.retain_arbiter(host, "qwen35-cuda-inventory")?;
     let opened = source::open(hf_directory, host, cancelled)?;
     let bound = opened.source.bind_full_model_source()?;
+    let cohort_b4 = mode.cohort_b4();
     let bundle = manifest::Bundle::open(
         artifact_directory,
         bound.model_profile(),
         cohort_b4,
         cancelled,
     )?;
-    let capture = native::TextKernelCapture::bind(bound.native_kernel_capture().recipe_sha256())?;
+    let capture = match mode {
+        QualificationMode::FreshPrefill => native::TextKernelCapture::bind_fresh_prefill(
+            bound.native_kernel_capture().recipe_sha256(),
+        )?,
+        QualificationMode::HistoricalN1 | QualificationMode::HistoricalB4 => {
+            native::TextKernelCapture::bind(bound.native_kernel_capture().recipe_sha256())?
+        }
+    };
     let templates = Arc::new(templates::Templates::prepare_qualification(
         bound,
         opened.metadata.context_capacity_tokens,
+        mode,
     )?);
     let scopes = templates.physical_scopes()?;
     let rotary_source = bindings::retained(opened.source.prepare_rotary_source(true)?);
@@ -591,6 +613,11 @@ mod b4_inventory_tests {
             let templates = templates::Templates::prepare_qualification(
                 bound.clone(),
                 opened.metadata.context_capacity_tokens,
+                if cohort_b4 {
+                    QualificationMode::HistoricalB4
+                } else {
+                    QualificationMode::HistoricalN1
+                },
             )?;
             let scopes = templates.physical_scopes()?;
             let limit = zerogravity_core::optimization::MemoryFootprint {

@@ -99,10 +99,27 @@ pub(crate) fn policy_allowed(policy: super::super::policy::CubinSetPolicy) -> bo
     matches!(
         policy,
         super::super::policy::CubinSetPolicy::Text08
+            | super::super::policy::CubinSetPolicy::Text08FreshPrefill
             | super::super::policy::CubinSetPolicy::Text08Cohort4
             | super::super::policy::CubinSetPolicy::Text2B
             | super::super::policy::CubinSetPolicy::Text2BCachedCohort4
     )
+}
+fn input_rows_allowed(
+    policy: super::super::policy::CubinSetPolicy,
+    input_rows: usize,
+) -> bool {
+    use super::super::policy::CubinSetPolicy;
+    match policy {
+        CubinSetPolicy::Text08FreshPrefill => [47, 48, 49, 50].contains(&input_rows),
+        CubinSetPolicy::Text08
+        | CubinSetPolicy::Text08Cohort4
+        | CubinSetPolicy::Text2B
+        | CubinSetPolicy::Text2BCachedCohort4 => {
+            [1, 47, 57, 62, 67, 72].contains(&input_rows)
+        }
+        _ => false,
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -114,8 +131,10 @@ pub(crate) struct Window {
 impl Window {
     pub(crate) fn validate(self) -> Result<(usize, usize), cubecl_core::server::ServerError> {
         let (hidden, rows) = geometry(self.layout)?;
-        if ![1, 47, 57, 62, 67, 72].contains(&self.input_rows) || self.ordinal >= VOCABULARY / rows
-        {
+        let historical = [1, 47, 57, 62, 67, 72].contains(&self.input_rows);
+        let fresh = self.layout == SourceWeightLayout::Vocabulary08
+            && [48, 49, 50].contains(&self.input_rows);
+        if (!historical && !fresh) || self.ordinal >= VOCABULARY / rows {
             return Err(failure(
                 "streamed head finite real input rows/window ordinal",
             ));
@@ -211,7 +230,9 @@ impl Selection {
         match self {
             Self::Original(s) if super::selection_allowed(policy, s) => super::require(image, m),
             Self::Resident(s) => s.require(policy, image, m),
-            Self::Streamed(s) if policy_allowed(policy) => {
+            Self::Streamed(s)
+                if policy_allowed(policy) && input_rows_allowed(policy, s.input_rows) =>
+            {
                 s.validate()?;
                 if require(image, m)? != s.layout {
                     return Err(failure("streamed head packet/source-family differs"));

@@ -154,7 +154,7 @@ fn require_resident(scope: &FullModelRmsScratch, tied: &Arc<TiedWeight>) -> Resu
     // Original completed upload seals both tied source roles; current IDs still
     // come only from this fresh immutable recorded invocation.
     let ids = scope.record().call().rows().ids();
-    if !matches!(ids.len(), 1 | 47 | 57 | 62 | 67 | 72)
+    if !matches!(ids.len(), 1 | 47 | 48 | 49 | 50 | 57 | 62 | 67 | 72)
         || ids.len() != scope.rows()?.count()
         || ids.iter().any(|&id| id >= VOCABULARY as u32)
     {

@@ -53,7 +53,9 @@ pub(crate) fn matches_policy(
 ) -> Result<(), ServerError> {
     use super::super::policy::CubinSetPolicy;
     let columns = match policy {
-        CubinSetPolicy::Text08 | CubinSetPolicy::Text08Cohort4 => 1024,
+        CubinSetPolicy::Text08
+        | CubinSetPolicy::Text08FreshPrefill
+        | CubinSetPolicy::Text08Cohort4 => 1024,
         CubinSetPolicy::Text2B | CubinSetPolicy::Text2BCachedCohort4 => 2048,
         _ => return Err(failure("resident head actual source policy")),
     };
@@ -71,8 +73,11 @@ pub(crate) struct Selection {
 }
 impl Selection {
     fn validate(self) -> Result<(), ServerError> {
-        layout(self.shape)?;
-        if ![1, 47, 57, 62, 67, 72].contains(&self.input_rows) {
+        let source_layout = layout(self.shape)?;
+        let historical = [1, 47, 57, 62, 67, 72].contains(&self.input_rows);
+        let fresh = source_layout == SourceWeightLayout::Vocabulary08
+            && [48, 49, 50].contains(&self.input_rows);
+        if !historical && !fresh {
             return Err(failure("resident head genuine input row geometry"));
         }
         Ok(())
@@ -122,7 +127,21 @@ impl Selection {
         image: &VerifiedCubin,
         m: &CubinKernelManifest,
     ) -> Result<(), ServerError> {
+        use super::super::policy::CubinSetPolicy;
         self.validate()?;
+        let rows_allowed = match policy {
+            CubinSetPolicy::Text08FreshPrefill => [47, 48, 49, 50].contains(&self.input_rows),
+            CubinSetPolicy::Text08
+            | CubinSetPolicy::Text08Cohort4
+            | CubinSetPolicy::Text2B
+            | CubinSetPolicy::Text2BCachedCohort4 => {
+                [1, 47, 57, 62, 67, 72].contains(&self.input_rows)
+            }
+            _ => false,
+        };
+        if !rows_allowed {
+            return Err(failure("resident head rows differ from the active text policy"));
+        }
         matches_policy(policy, image, m)?;
         require(image, m, self.shape)
     }
@@ -152,7 +171,12 @@ mod tests {
             );
             assert_eq!(m.bindings[0].bytes, (248320 * columns * 2) as u64);
             assert_eq!(m.grid, [31040, 1, 1]);
-            for input_rows in [1, 47, 57, 62, 67, 72] {
+            let input_rows = if columns == 1024 {
+                vec![1, 47, 48, 49, 50, 57, 62, 67, 72]
+            } else {
+                vec![1, 47, 57, 62, 67, 72]
+            };
+            for input_rows in input_rows {
                 let s = Selection { shape, input_rows };
                 let ranges = [
                     (0x1000_0000, s.full_bytes(0).unwrap()),

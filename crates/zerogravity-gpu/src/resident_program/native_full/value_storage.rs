@@ -3,6 +3,7 @@ use super::*;
 use crate::cuda::native::{
     model_values::bounded::{StorageBuilder, StorageMode, StorageRecipe},
     text_model::TextModelBinding,
+    text_native::TextKernelCapture,
 };
 use crate::cuda::rms::FullModelRmsScratch;
 use zerogravity_core::accelerator::program::ValueStorageLimits;
@@ -12,6 +13,7 @@ use zerogravity_core::accelerator::program::ValueStorageLimits;
 /// No separate dispatcher, uncharged capacity or public input authority.
 pub(crate) struct TextReadbackAdmission {
     source: VerifiedTensorSource,
+    capture: TextKernelCapture,
     service: Arc<ResidentService>,
     width: usize,
     maximum: usize,
@@ -130,16 +132,26 @@ pub(super) fn readback_chunks(maximum: usize) -> Result<usize> {
     }
     Ok(chunks)
 }
-pub(super) fn require_geometry_cohort(rows: &[usize]) -> Result<()> {
-    if rows.len() != 6
+pub(super) fn require_geometry_cohort(capture: TextKernelCapture, rows: &[usize]) -> Result<()> {
+    let expected = if capture.is_fresh_prefill() {
+        capture.captured_prefill_rows().to_vec()
+    } else {
+        capture
+            .captured_prefill_rows()
+            .iter()
+            .copied()
+            .chain(std::iter::once(1))
+            .collect()
+    };
+    if rows.len() != capture.cold_scope_count()?
         || rows
             .iter()
             .copied()
             .collect::<std::collections::BTreeSet<_>>()
-            != [1, 47, 57, 62, 67, 72].into_iter().collect()
+            != expected.into_iter().collect()
     {
         return Err(Error::State(
-            "short-HF one complete six-geometry readback admission".into(),
+            "short-HF complete capture-geometry readback admission".into(),
         ));
     }
     Ok(())
@@ -150,7 +162,11 @@ impl TextReadbackAdmission {
             || !Arc::ptr_eq(&self.service, service)
             || self.width != scope.hidden_size()
             || self.source.source_identity() != service.source_identity()
-            || !matches!(scope.call().rows().len(), 1 | 47 | 57 | 62 | 67 | 72)
+            || scope.native_capture() != self.capture
+            || self
+                .capture
+                .cold_scope_index(scope.call().mode(), scope.call().rows().len())
+                .is_err()
             || actual_diagnostic_bytes(scope)? > self.maximum
             || self.tickets.len() != readback_chunks(self.maximum)?
         {
@@ -167,10 +183,17 @@ impl FullModelProgram {
         scopes: &[Arc<TextModelBinding>],
         service: &Arc<ResidentService>,
     ) -> Result<Arc<TextReadbackAdmission>> {
-        if scopes.len() != 6 {
-            return Err(Error::State("short-HF exact six actual scopes".into()));
+        let capture = scopes
+            .first()
+            .ok_or_else(|| Error::State("short-HF no actual scopes".into()))?
+            .native_capture();
+        if scopes.len() != capture.cold_scope_count()?
+            || scopes.iter().any(|scope| scope.native_capture() != capture)
+        {
+            return Err(Error::State("short-HF exact captured scopes".into()));
         }
         require_geometry_cohort(
+            capture,
             &scopes
                 .iter()
                 .map(|s| s.call().rows().len())
@@ -200,6 +223,7 @@ impl FullModelProgram {
         );
         Ok(Arc::new(TextReadbackAdmission {
             source,
+            capture,
             service: service.clone(),
             width,
             maximum,
@@ -536,8 +560,14 @@ mod shared_readback_tests {
     }
     #[test]
     fn missing_duplicate_extra_and_unsupported_geometry_refuse() {
-        require_geometry_cohort(&[47, 57, 62, 67, 72, 1]).unwrap();
-        require_geometry_cohort(&[1, 72, 67, 62, 57, 47]).unwrap();
+        let historical = TextKernelCapture::bind(
+            "39b9a6180ca95f95510aac6471e0255ba62100200bf6daeac6f5a4fc8d2bb30d",
+        )
+        .unwrap();
+        require_geometry_cohort(historical, &[47, 57, 62, 67, 72, 1]).unwrap();
+        require_geometry_cohort(historical, &[1, 72, 67, 62, 57, 47]).unwrap();
+        let fresh = TextKernelCapture::bind_fresh_prefill(historical.recipe_sha256()).unwrap();
+        require_geometry_cohort(fresh, &[47, 48, 49, 50]).unwrap();
         for rows in [
             vec![47, 57, 62, 67, 72],
             vec![47, 57, 62, 67, 72, 72],
@@ -545,7 +575,7 @@ mod shared_readback_tests {
             vec![47, 57, 62, 67, 72, 1, 1],
             Vec::new(),
         ] {
-            assert!(require_geometry_cohort(&rows).is_err());
+            assert!(require_geometry_cohort(historical, &rows).is_err());
         }
     }
     #[test]

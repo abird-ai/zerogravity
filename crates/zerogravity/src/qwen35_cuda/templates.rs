@@ -41,6 +41,7 @@ impl<T> PreparedCache<T> {
 pub(super) struct Templates {
     source: BoundFullModelSource,
     context_capacity_tokens: usize,
+    mode: QualificationMode,
     calls: Mutex<PreparedCache<Template>>,
     _metadata: WindowWorkspace,
 }
@@ -51,10 +52,10 @@ struct Template {
     implementation: TextGdnImplementation,
 }
 impl Templates {
-    fn metadata_bytes() -> Result<usize> {
+    fn metadata_bytes(mode: QualificationMode) -> Result<usize> {
         // Bounded retained wrappers only. Graph/source charges are owned by each
         // retained prepared entry and survive independently while referenced.
-        let entries = PREPARED_CAPACITY
+        let entries = Self::prepared_capacity(mode)
             .checked_mul(
                 std::mem::size_of::<Template>()
                     .checked_add(1024)
@@ -67,9 +68,16 @@ impl Templates {
             .and_then(|bytes| (bytes / (64 * 1024)).max(1).checked_mul(64 * 1024))
             .ok_or_else(|| Error::Limit("prompt template metadata extent".into()))
     }
+    const fn prepared_capacity(mode: QualificationMode) -> usize {
+        match mode {
+            QualificationMode::FreshPrefill => 4,
+            QualificationMode::HistoricalN1 | QualificationMode::HistoricalB4 => PREPARED_CAPACITY,
+        }
+    }
     pub(super) fn prepare_qualification(
         source: BoundFullModelSource,
         context_capacity_tokens: usize,
+        mode: QualificationMode,
     ) -> Result<Self> {
         source
             .model_profile()
@@ -77,11 +85,12 @@ impl Templates {
         let metadata = source
             .source()
             .source()
-            .reserve_workspace(Self::metadata_bytes()?)?;
+            .reserve_workspace(Self::metadata_bytes(mode)?)?;
         Ok(Self {
             source,
             context_capacity_tokens,
-            calls: Mutex::new(PreparedCache::new(PREPARED_CAPACITY)),
+            mode,
+            calls: Mutex::new(PreparedCache::new(Self::prepared_capacity(mode))),
             _metadata: metadata,
         })
     }
@@ -94,8 +103,16 @@ impl Templates {
         is_decode: bool,
     ) -> Result<Option<TextGdnImplementation>> {
         let profile = self.source.model_profile();
-        let candidate = qualification::gdn_implementation(profile, input_tokens, is_decode)?;
-        qualification::seal_gdn_implementation(profile, input_tokens, is_decode, candidate)
+        match self.mode {
+            QualificationMode::FreshPrefill => {
+                qualification::fresh_prefill_gdn_implementation(profile, input_tokens, is_decode)
+            }
+            QualificationMode::HistoricalN1 | QualificationMode::HistoricalB4 => {
+                let candidate =
+                    qualification::gdn_implementation(profile, input_tokens, is_decode)?;
+                qualification::seal_gdn_implementation(profile, input_tokens, is_decode, candidate)
+            }
+        }
     }
     fn find(
         calls: &PreparedCache<Template>,
@@ -163,20 +180,30 @@ impl Templates {
     pub(super) fn physical_scopes(
         &self,
     ) -> Result<Vec<(Arc<SourceBindings>, TextGdnImplementation)>> {
-        let mut scopes = Vec::with_capacity(qualification::PROMPT_TOKEN_COUNTS.len() + 1);
-        for &count in qualification::PROMPT_TOKEN_COUNTS {
+        let counts = match self.mode {
+            QualificationMode::FreshPrefill => qualification::FRESH_PREFILL_TOKEN_COUNTS,
+            QualificationMode::HistoricalN1 | QualificationMode::HistoricalB4 => {
+                qualification::PROMPT_TOKEN_COUNTS
+            }
+        };
+        let mut scopes = Vec::with_capacity(
+            counts.len() + usize::from(self.mode != QualificationMode::FreshPrefill),
+        );
+        for &count in counts {
             let workload = self
                 .source
                 .model_profile()
                 .prompt_workload(count, self.context_capacity_tokens)?;
             scopes.push(self.template(workload, None)?);
         }
-        let first = qualification::PROMPT_TOKEN_COUNTS[0];
-        let workload = self
-            .source
-            .model_profile()
-            .prompt_workload(first, self.context_capacity_tokens)?;
-        scopes.push(self.template(workload, Some(first))?);
+        if self.mode != QualificationMode::FreshPrefill {
+            let first = qualification::PROMPT_TOKEN_COUNTS[0];
+            let workload = self
+                .source
+                .model_profile()
+                .prompt_workload(first, self.context_capacity_tokens)?;
+            scopes.push(self.template(workload, Some(first))?);
+        }
         Ok(scopes)
     }
     fn admit_call(&self, binding: &SourceBindings) -> Result<WindowWorkspace> {
@@ -192,6 +219,13 @@ impl Templates {
     ) -> Result<(Arc<SourceBindings>, TextGdnImplementation)> {
         let profile = self.source.model_profile();
         profile.validate_prompt_request(ids, 1, self.context_capacity_tokens)?;
+        if self.mode == QualificationMode::FreshPrefill
+            && !qualification::FRESH_PREFILL_TOKEN_COUNTS.contains(&ids.len())
+        {
+            return Err(Error::Unsupported(
+                "fresh-prefill qualification prompt geometry".into(),
+            ));
+        }
         let workload = profile.prompt_workload(ids.len(), self.context_capacity_tokens)?;
         let (template, implementation) = self.template(workload, None)?;
         let metadata = self.admit_call(&template)?;
@@ -204,6 +238,11 @@ impl Templates {
         base: usize,
         id: u32,
     ) -> Result<(Arc<SourceBindings>, TextGdnImplementation)> {
+        if self.mode == QualificationMode::FreshPrefill {
+            return Err(Error::Unsupported(
+                "fresh-prefill qualification has no decode".into(),
+            ));
+        }
         let workload = self
             .source
             .model_profile()
@@ -234,8 +273,19 @@ mod tests {
 
     #[test]
     fn bounded_lazy_wrapper_charge_does_not_encode_historical_call_count() {
-        assert_eq!(Templates::metadata_bytes().unwrap(), 64 * 1024);
+        assert_eq!(
+            Templates::metadata_bytes(QualificationMode::HistoricalN1).unwrap(),
+            64 * 1024
+        );
+        assert_eq!(
+            Templates::metadata_bytes(QualificationMode::FreshPrefill).unwrap(),
+            64 * 1024
+        );
         assert_eq!(PREPARED_CAPACITY, 8);
+        assert_eq!(
+            Templates::prepared_capacity(QualificationMode::FreshPrefill),
+            4
+        );
     }
 
     #[test]
@@ -379,6 +429,46 @@ mod tests {
                 );
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn fresh_prefill_uses_only_four_explicit_dot8_configs_without_decode() -> Result<()> {
+        use crate::gpu::cuda::gdn::{
+            GdnKernelConfig,
+            GdnKktKernel::{Bk32W4S3, Bk32W8S3},
+            GdnOutputKernel::{Bk32Bv32W4S2, Bk32Bv32W4S3, Bk32Bv64W4S3},
+            GdnRecomputeKernel::{Bk64Bv64W8S3, Bk64Bv64W8S4},
+            GdnStateKernel::Bv64W4S2,
+        };
+        let expected = [
+            (47, (Bk32W8S3, Bk64Bv64W8S4, Bv64W4S2, Bk32Bv32W4S2)),
+            (48, (Bk32W8S3, Bk64Bv64W8S3, Bv64W4S2, Bk32Bv64W4S3)),
+            (49, (Bk32W4S3, Bk64Bv64W8S4, Bv64W4S2, Bk32Bv32W4S3)),
+            (50, (Bk32W4S3, Bk64Bv64W8S3, Bv64W4S2, Bk32Bv32W4S3)),
+        ];
+        for (rows, stages) in expected {
+            let actual = qualification::fresh_prefill_gdn_implementation(
+                QwenSourceProfile::Qwen08,
+                rows,
+                false,
+            )?
+            .expect("fresh config");
+            assert_eq!(
+                actual.config(),
+                Some(GdnKernelConfig::from_stages(
+                    stages.0, stages.1, stages.2, stages.3
+                )?)
+            );
+        }
+        assert!(
+            qualification::fresh_prefill_gdn_implementation(QwenSourceProfile::Qwen08, 1, true,)?
+                .is_none()
+        );
+        assert!(
+            qualification::fresh_prefill_gdn_implementation(QwenSourceProfile::Qwen2B, 48, false,)?
+                .is_none()
+        );
         Ok(())
     }
 

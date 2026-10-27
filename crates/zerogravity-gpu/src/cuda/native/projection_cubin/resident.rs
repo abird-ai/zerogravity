@@ -631,6 +631,9 @@ impl AdmittedImages {
         // are retained before native module admission/load on this original actor.
         let set = unsafe {
             match scope {
+                ImageScope::Text(capture, _) if capture.is_fresh_prefill() => {
+                    queue.admit_text_fresh_prefill_cubin_set(owner.clone())
+                }
                 ImageScope::Text(capture, true) => {
                     queue.admit_text_b4_cubin_set(owner.clone(), capture.wide())
                 }

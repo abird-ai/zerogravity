@@ -8,8 +8,14 @@ pub(in crate::cuda::native) enum NativeCatalogue {
     Source2048,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CaptureMode {
+    Historical,
+    FreshPrefill,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TextKernelCapture {
     catalogue: NativeCatalogue,
+    mode: CaptureMode,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TextColdScopeRole {
@@ -39,7 +45,23 @@ impl TextKernelCapture {
                 ));
             }
         };
-        Ok(Self { catalogue })
+        Ok(Self {
+            catalogue,
+            mode: CaptureMode::Historical,
+        })
+    }
+    /// Qualification-only four-scope capture. It admits one genuine prefill
+    /// call for each of rows 47 through 50 and never admits cached decode.
+    pub fn bind_fresh_prefill(recipe_sha256: &str) -> Result<Self> {
+        if recipe_sha256 != CAPTURE_1024 {
+            return Err(Error::Unsupported(
+                "fresh-prefill capture requires the exact .8B source recipe".into(),
+            ));
+        }
+        Ok(Self {
+            catalogue: NativeCatalogue::Source1024,
+            mode: CaptureMode::FreshPrefill,
+        })
     }
     pub const fn recipe_sha256(self) -> &'static str {
         match self.catalogue {
@@ -61,16 +83,24 @@ impl TextKernelCapture {
     }
     pub const fn supports_initial_batch(self) -> bool {
         matches!(self.catalogue, NativeCatalogue::Source1024)
+            && matches!(self.mode, CaptureMode::Historical)
+    }
+    pub(crate) const fn is_fresh_prefill(self) -> bool {
+        matches!(self.mode, CaptureMode::FreshPrefill)
     }
     // Actual native artifact coverage, independent of model prompt issuance.
     // Extending this requires a separately bound capture, not a larger model list.
     pub(crate) const fn captured_prefill_rows(self) -> &'static [usize] {
-        match self.catalogue {
-            NativeCatalogue::Source1024 | NativeCatalogue::Source2048 => &[47, 57, 62, 67, 72],
+        match self.mode {
+            CaptureMode::Historical => &[47, 57, 62, 67, 72],
+            CaptureMode::FreshPrefill => &[47, 48, 49, 50],
         }
     }
     pub(crate) const fn captured_call_count(self) -> usize {
-        8
+        match self.mode {
+            CaptureMode::Historical => 8,
+            CaptureMode::FreshPrefill => 1,
+        }
     }
     pub(crate) fn prepared_call_count(self) -> Result<usize> {
         self.captured_prefill_rows()
@@ -81,13 +111,13 @@ impl TextKernelCapture {
     pub(crate) fn cold_scope_count(self) -> Result<usize> {
         self.captured_prefill_rows()
             .len()
-            .checked_add(1)
+            .checked_add(usize::from(!self.is_fresh_prefill()))
             .ok_or_else(|| Error::Limit("text captured cold scope count".into()))
     }
     pub(crate) fn cold_scope_role(self, index: usize) -> Result<TextColdScopeRole> {
         if let Some(&rows) = self.captured_prefill_rows().get(index) {
             Ok(TextColdScopeRole::Prefill(rows))
-        } else if index == self.captured_prefill_rows().len() {
+        } else if !self.is_fresh_prefill() && index == self.captured_prefill_rows().len() {
             Ok(TextColdScopeRole::Cached)
         } else {
             Err(Error::State("text captured cold scope index".into()))
@@ -100,7 +130,9 @@ impl TextKernelCapture {
                 .iter()
                 .position(|&actual| actual == rows)
                 .ok_or_else(|| Error::Unsupported("text captured prefill geometry absent".into())),
-            SourceCallMode::Decode if rows == 1 => Ok(self.captured_prefill_rows().len()),
+            SourceCallMode::Decode if rows == 1 && !self.is_fresh_prefill() => {
+                Ok(self.captured_prefill_rows().len())
+            }
             SourceCallMode::Decode => Err(Error::Unsupported(
                 "text captured cached geometry absent".into(),
             )),
@@ -138,6 +170,20 @@ impl TextKernelCapture {
     pub(in crate::cuda::native) const fn wide(self) -> bool {
         matches!(self.catalogue, NativeCatalogue::Source2048)
     }
+    pub(crate) fn require_packet_geometry(
+        self,
+        prompt_tokens: usize,
+        ordinal: usize,
+    ) -> Result<()> {
+        if !self.captured_prefill_rows().contains(&prompt_tokens)
+            || ordinal >= self.captured_call_count()
+        {
+            return Err(Error::Unsupported(
+                "text capture packet geometry absent".into(),
+            ));
+        }
+        Ok(())
+    }
     pub(crate) fn require_bindings(self, bindings: &SourceBindings) -> Result<()> {
         let call = bindings.call();
         let plan = bindings.plan();
@@ -146,7 +192,9 @@ impl TextKernelCapture {
                 call.rows().base() == 0 && self.captured_prefill_rows().contains(&call.rows().len())
             }
             SourceCallMode::Decode => {
-                call.rows().len() == 1 && matches!(call.rows().base(), 47..=78)
+                !self.is_fresh_prefill()
+                    && call.rows().len() == 1
+                    && matches!(call.rows().base(), 47..=78)
             }
         };
         if !call_ok
@@ -205,7 +253,7 @@ mod tests {
         for pin in [CAPTURE_1024, CAPTURE_2048] {
             let capture = TextKernelCapture::bind(pin)?;
             let mut actual = BTreeMap::<usize, BTreeSet<usize>>::new();
-            for site in super::super::generated::sites(capture)? {
+            for site in super::super::generated_sites(capture)? {
                 actual
                     .entry(site.key.prompt_tokens)
                     .or_default()
@@ -249,6 +297,25 @@ mod tests {
                     .is_err()
             );
         }
+
+        let fresh = TextKernelCapture::bind_fresh_prefill(CAPTURE_1024)?;
+        let mut actual = BTreeMap::<usize, BTreeSet<usize>>::new();
+        for site in super::super::generated_sites(fresh)? {
+            actual
+                .entry(site.key.prompt_tokens)
+                .or_default()
+                .insert(site.key.call);
+        }
+        assert_eq!(actual.keys().copied().collect::<Vec<_>>(), [47, 48, 49, 50]);
+        assert!(
+            actual
+                .values()
+                .all(|calls| calls == &[0].into_iter().collect())
+        );
+        assert_eq!(fresh.prepared_call_count()?, 4);
+        assert_eq!(fresh.cold_scope_count()?, 4);
+        assert!(fresh.cold_scope_index(SourceCallMode::Decode, 1).is_err());
+        assert!(TextKernelCapture::bind_fresh_prefill(CAPTURE_2048).is_err());
         Ok(())
     }
 

@@ -204,6 +204,19 @@ impl CudaServer {
         ));
         Ok(())
     }
+    pub(crate) fn admit_owned_text_fresh_prefill_cubin_set(
+        &mut self,
+        key: u64,
+        owner: Arc<dyn std::any::Any + Send + Sync>,
+    ) -> Result<(), ServerError> {
+        if self.cubin_set.is_some() {
+            return Err(failure("one active cubin module set per original actor"));
+        }
+        let policy = CubinSetPolicy::Text08FreshPrefill;
+        crate::owned_command::cubin::text_policy::require_complete(policy)?;
+        self.cubin_set = Some(CubinModuleSet::new_with_policy(key, owner, policy));
+        Ok(())
+    }
     pub(crate) fn admit_owned_text_cubin_set(
         &mut self,
         key: u64,

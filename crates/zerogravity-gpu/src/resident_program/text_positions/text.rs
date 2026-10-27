@@ -18,7 +18,7 @@ pub(crate) struct TextPositions {
     _host: WindowWorkspace,
 }
 fn encode(base: usize, rows: usize) -> Result<Box<[u8; TEXT_POSITION_BYTES]>> {
-    if !matches!(rows, 1 | 47 | 57 | 62 | 67 | 72)
+    if !matches!(rows, 1 | 47 | 48 | 49 | 50 | 57 | 62 | 67 | 72)
         || base.checked_add(rows).is_none_or(|end| end > 79)
     {
         return Err(Error::Unsupported(
@@ -143,7 +143,7 @@ mod tests {
     #[test]
     fn full_actual_stride_and_every_active_position_are_source_derived() -> Result<()> {
         assert_eq!(TEXT_POSITION_BYTES, 12312);
-        for rows in [1, 47, 57, 62, 67, 72] {
+        for rows in [1, 47, 48, 49, 50, 57, 62, 67, 72] {
             for base in if rows == 1 {
                 vec![47, 53, 57, 63, 62, 68, 67, 73, 72, 78]
             } else {

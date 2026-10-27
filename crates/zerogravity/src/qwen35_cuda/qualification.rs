@@ -47,7 +47,7 @@ pub async fn load(
     cancelled: Option<&AtomicBool>,
 ) -> Result<Arc<super::Model>> {
     super::load_profile(
-        false,
+        super::QualificationMode::HistoricalN1,
         device,
         hf_directory,
         artifact_directory,
@@ -68,7 +68,28 @@ pub async fn load_b4(
     cancelled: Option<&AtomicBool>,
 ) -> Result<Arc<super::Model>> {
     super::load_profile(
-        true,
+        super::QualificationMode::HistoricalB4,
+        device,
+        hf_directory,
+        artifact_directory,
+        host,
+        provider_capacity_bytes,
+        cancelled,
+    )
+    .await
+}
+
+/// Qualification-only four-scope, one-call loader. It does not admit decode.
+pub async fn load_fresh_prefill(
+    device: Device,
+    hf_directory: &Path,
+    artifact_directory: &Path,
+    host: &TransferAdmission,
+    provider_capacity_bytes: usize,
+    cancelled: Option<&AtomicBool>,
+) -> Result<Arc<super::Model>> {
+    super::load_profile(
+        super::QualificationMode::FreshPrefill,
         device,
         hf_directory,
         artifact_directory,
@@ -81,6 +102,7 @@ pub async fn load_b4(
 
 /// Historical finite schedule retained only by explicit qualification paths.
 pub(super) const PROMPT_TOKEN_COUNTS: &[usize] = &[47, 57, 62, 67, 72];
+pub(super) const FRESH_PREFILL_TOKEN_COUNTS: &[usize] = &[47, 48, 49, 50];
 
 /// Qualification-only historical identity, consumed before the GPU descriptor.
 struct HistoricalGdnImplementation {
@@ -212,6 +234,32 @@ pub(super) fn gdn_implementation(
     historical_gdn_implementation(profile, input_tokens, is_decode)?
         .map(HistoricalGdnImplementation::descriptor)
         .transpose()
+}
+
+pub(super) fn fresh_prefill_gdn_implementation(
+    profile: crate::qwen35::plan::QwenSourceProfile,
+    input_tokens: usize,
+    is_decode: bool,
+) -> Result<Option<TextGdnImplementation>> {
+    use crate::qwen35::plan::QwenSourceProfile::Qwen08;
+    use GdnKktKernel::{Bk32W4S3, Bk32W8S3};
+    use GdnOutputKernel::{Bk32Bv32W4S2, Bk32Bv32W4S3, Bk32Bv64W4S3};
+    use GdnRecomputeKernel::{Bk64Bv64W8S3, Bk64Bv64W8S4};
+    use GdnStateKernel::Bv64W4S2;
+
+    if profile != Qwen08 || is_decode {
+        return Ok(None);
+    }
+    let stages = match input_tokens {
+        // Preserve the historical 47 configuration exactly.
+        47 => (Bk32W8S3, Bk64Bv64W8S4, Bv64W4S2, Bk32Bv32W4S2),
+        48 => (Bk32W8S3, Bk64Bv64W8S3, Bv64W4S2, Bk32Bv64W4S3),
+        49 => (Bk32W4S3, Bk64Bv64W8S4, Bv64W4S2, Bk32Bv32W4S3),
+        50 => (Bk32W4S3, Bk64Bv64W8S3, Bv64W4S2, Bk32Bv32W4S3),
+        _ => return Ok(None),
+    };
+    let config = GdnKernelConfig::from_stages(stages.0, stages.1, stages.2, stages.3)?;
+    Ok(Some(TextGdnImplementation::prefill(input_tokens, config)?))
 }
 
 #[cfg(test)]

@@ -111,7 +111,12 @@ impl TextPrograms {
             if !packets::is_native(descriptor.kind()) {
                 continue;
             }
-            let key = Key::current(input.call(), input.prompt_tokens(), index)?;
+            let key = Key::current(
+                storage.capture(),
+                input.call(),
+                input.prompt_tokens(),
+                index,
+            )?;
             let projection = if matches!(descriptor.kind(), SourceOperatorKind::Projection { .. }) {
                 Some(
                     projections
