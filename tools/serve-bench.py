@@ -24,6 +24,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+MIB = 1024 * 1024
+MAX_PROMPT_BYTES = 256 * 1024
+MAX_WORKLOAD_PROMPT_BYTES = 32 * MIB
+MAX_WORKLOAD_FILE_BYTES = 256 * MIB
+WORKLOAD_SCHEMA = "zerogravity.serving.workload.v1"
+
+
 @dataclass
 class Outcome:
     completed: bool
@@ -50,7 +57,7 @@ def percentile(values: list[float], percentage: float) -> float | None:
     return series[min(len(series) - 1, max(0, math.ceil(len(series) * percentage) - 1))]
 
 
-def strict_json(path: str) -> object:
+def strict_json(path: str, max_bytes: int = 8 * MIB) -> object:
     def pairs(items):
         result = {}
         for key, value in items:
@@ -62,10 +69,12 @@ def strict_json(path: str) -> object:
     def constant(value):
         raise ValueError(f"nonfinite JSON number: {value}")
 
+    if type(max_bytes) is not int or max_bytes < 1:
+        raise ValueError("positive JSON byte limit required")
     with Path(path).open("rb") as source:
-        raw = source.read(8 * 1024 * 1024 + 1)
-    if len(raw) > 8 * 1024 * 1024:
-        raise ValueError("JSON input exceeds 8 MiB")
+        raw = source.read(max_bytes + 1)
+    if len(raw) > max_bytes:
+        raise ValueError(f"JSON input exceeds {max_bytes} bytes")
     return json.loads(raw, object_pairs_hook=pairs, parse_constant=constant)
 
 
@@ -80,9 +89,12 @@ def label(value: object) -> bool:
 
 def workload_records(value: object, max_tokens: int) -> list[dict]:
     if isinstance(value, dict):
-        if set(value) != {"requests"}:
-            raise ValueError("workload object requires only requests")
-        value = value["requests"]
+        if set(value) == {"requests"}:
+            value = value["requests"]
+        elif set(value) == {"schema", "requests"} and value.get("schema") == WORKLOAD_SCHEMA:
+            value = value["requests"]
+        else:
+            raise ValueError("workload object requires requests or the strict workload.v1 envelope")
     if not isinstance(value, list) or not 1 <= len(value) <= 1024:
         raise ValueError("workload requires 1..1024 requests")
     result, seen, total = [], set(), 0
@@ -95,17 +107,22 @@ def workload_records(value: object, max_tokens: int) -> list[dict]:
         prompt, arrival = item.get("prompt"), item.get("arrival_seconds")
         tenant, limit = item.get("tenant", "default"), item.get("max_tokens", max_tokens)
         if (not label(identity) or identity in seen or not label(tenant)
-                or not isinstance(prompt, str) or not prompt or len(prompt.encode()) > 32 * 1024
+                or not isinstance(prompt, str) or not prompt or len(prompt.encode()) > MAX_PROMPT_BYTES
                 or not number(arrival, 0, 600) or not isinstance(limit, int)
                 or isinstance(limit, bool) or not 1 <= limit <= 512):
             raise ValueError("invalid/duplicate bounded workload request")
         total += len(prompt.encode())
-        if total > 8 * 1024 * 1024:
-            raise ValueError("workload prompts exceed 8 MiB")
+        if total > MAX_WORKLOAD_PROMPT_BYTES:
+            raise ValueError("workload prompts exceed 32 MiB")
         seen.add(identity)
         result.append(dict(request_id=identity, prompt=prompt, arrival_seconds=float(arrival),
                            tenant=tenant, max_tokens=limit, input_index=index))
     return result
+
+
+def load_workload(path: str, max_tokens: int) -> list[dict]:
+    """Read a bounded workload; decoded prompt bytes have a tighter 32 MiB cap."""
+    return workload_records(strict_json(path, MAX_WORKLOAD_FILE_BYTES), max_tokens)
 
 
 def wire_token_observation(groups: list[dict], extension: object, aggregate: object,
@@ -463,8 +480,10 @@ def bench(url: str, model: str, prompt: str, count: int, concurrency: int,
             raise ValueError("workload count differs from offered count")
         mode = "open_loop_scheduled_arrivals"
     else:
-        if not prompt or len(prompt.encode()) > 32 * 1024:
-            raise ValueError("nonempty prompt up to 32 KiB required")
+        prompt_bytes = len(prompt.encode()) if isinstance(prompt, str) else 0
+        if (not prompt_bytes or prompt_bytes > MAX_PROMPT_BYTES
+                or prompt_bytes * count > MAX_WORKLOAD_PROMPT_BYTES):
+            raise ValueError("nonempty prompt up to 256 KiB and workload up to 32 MiB required")
         items = [dict(request_id=f"request-{i}", prompt=prompt, arrival_seconds=0., tenant="default",
                       max_tokens=max_tokens, input_index=i) for i in range(count)]
         mode = "closed_loop_bounded_concurrency"
@@ -817,10 +836,28 @@ def self_test() -> None:
         assert traced["provider_trace_slo"]["requests_meeting_both"] == 0
         assert traced["provider_trace_slo"]["provider_reported_committed_tokens_per_offered_second"] == 0
         assert traced["provider_trace_slo"]["qualified_source_correct_slo_goodput"] is None
+        long_prompt = "x" * MAX_PROMPT_BYTES
+        assert workload_records({"schema":WORKLOAD_SCHEMA,"requests":[
+            dict(prompt=long_prompt,arrival_seconds=0)]},2)[0]["prompt"] == long_prompt
+        assert len(workload_records({"requests":[dict(prompt="legacy",arrival_seconds=0)]},2)) == 1
+        assert len(workload_records([dict(prompt="legacy-list",arrival_seconds=0)],2)) == 1
+        population = [dict(request_id=f"population-{i}",prompt="x",arrival_seconds=0)
+                      for i in range(1024)]
+        assert len(workload_records(population,2)) == 1024
+        full = [dict(request_id=f"large-{i}",prompt=long_prompt,arrival_seconds=0)
+                for i in range(MAX_WORKLOAD_PROMPT_BYTES // MAX_PROMPT_BYTES)]
+        assert len(workload_records({"schema":WORKLOAD_SCHEMA,"requests":full},2)) == 128
+        bounded = bench(endpoint,"fixture",long_prompt,1,1,2,8,None)
+        assert bounded["completed_requests"] == 1, bounded
         for bad in [[dict(request_id="same", prompt="a", arrival_seconds=0)] * 2,
                     [dict(prompt="a", arrival_seconds=float("nan"))],
                     [dict(prompt="a", arrival_seconds=True)],
-                    [dict(prompt="a", arrival_seconds=0, unknown=True)]]:
+                    [dict(prompt="a", arrival_seconds=0, unknown=True)],
+                    [dict(prompt="x" * (MAX_PROMPT_BYTES + 1),arrival_seconds=0)],
+                    full + [dict(request_id="too-large",prompt="x",arrival_seconds=0)],
+                    population + [dict(request_id="population-1024",prompt="x",arrival_seconds=0)],
+                    {"schema":"zerogravity.serving.workload.v2","requests":[]},
+                    {"schema":WORKLOAD_SCHEMA,"requests":[],"extra":True}]:
             try:
                 workload_records(bad, 2)
                 raise AssertionError("invalid workload accepted")
@@ -863,7 +900,7 @@ def main() -> None:
         parser.error("--model is required")
     import os
     try:
-        work = workload_records(strict_json(args.workload), args.max_tokens) if args.workload else None
+        work = load_workload(args.workload, args.max_tokens) if args.workload else None
         if work is not None:
             work = [{k: v for k, v in row.items() if k != "input_index"} for row in work]
         result = bench(args.endpoint, args.model, args.prompt, len(work) if work is not None else args.requests,

@@ -25,11 +25,29 @@ bench = BENCH["bench"]
 stream_one = BENCH["stream_one"]
 strict_json = BENCH["strict_json"]
 workload_records = BENCH["workload_records"]
+load_workload = BENCH["load_workload"]
+MAX_PROMPT_BYTES = BENCH["MAX_PROMPT_BYTES"]
+MAX_WORKLOAD_PROMPT_BYTES = BENCH["MAX_WORKLOAD_PROMPT_BYTES"]
 LIFECYCLE = runpy.run_path(str(Path(__file__).with_name("serve-lifecycle.py")))
 
 
 def valid_sha(value: str | None) -> bool:
     return value is not None and re.fullmatch(r"[a-f0-9]{64}", value) is not None
+
+
+def validate_comparison_bounds(requests: int, concurrencies: list[int], max_tokens: int,
+                               timeout: float, prompt: str, workload: object) -> None:
+    if (type(requests) is not int or not 1 <= requests <= 1024
+            or not all(type(n) is int and 1 <= n <= min(requests, 64) for n in concurrencies)):
+        raise ValueError("comparison requests 1..1024 and concurrent 1..64")
+    if (type(max_tokens) is not int or not 1 <= max_tokens <= 512
+            or not isinstance(timeout, (int, float)) or isinstance(timeout, bool)
+            or not 1 <= timeout <= 600):
+        raise ValueError("comparison timeout/token bounds")
+    prompt_bytes = len(prompt.encode()) if isinstance(prompt, str) else 0
+    if (not prompt_bytes or prompt_bytes > MAX_PROMPT_BYTES
+            or workload is None and prompt_bytes * requests > MAX_WORKLOAD_PROMPT_BYTES):
+        raise ValueError("comparison prompt/workload out of bounds")
 
 
 def preflight(url: str, model: str, key: str | None) -> None:
@@ -64,14 +82,7 @@ def comparison(
     if (not 1 <= repetitions <= 4 or not 1 <= len(concurrencies) <= 8
             or len(set(concurrencies)) != len(concurrencies)):
         raise ValueError("repetitions 1..4; 1..8 distinct concurrency values")
-    if requests < 1 or requests > 128 or not all(
-        1 <= n <= min(requests, 8) for n in concurrencies
-    ):
-        raise ValueError("comparison requests 1..128 and concurrent 1..8")
-    if not 1 <= max_tokens <= 512 or not 1 <= timeout <= 600:
-        raise ValueError("comparison timeout/token bounds")
-    if not prompt or len(prompt.encode()) > 32 * 1024:
-        raise ValueError("comparison prompt out of bounds")
+    validate_comparison_bounds(requests, concurrencies, max_tokens, timeout, prompt, workload)
     if workload is not None:
         checked = workload_records(workload, max_tokens)
         if len(checked) != requests:
@@ -341,6 +352,18 @@ def self_test() -> None:
         assert observed["summaries"][0]["response_bound_output_token_ids_matched"] is True
         assert observed["summaries"][0]["independent_source_numeric_state_equivalence"] == "NOT_ESTABLISHED"
         assert all(sample["wire_token_metrics"]["completed_requests_with_provider_commit_observations"] == 0 for sample in observed["runs"])
+        validate_comparison_bounds(1024,[1,4,8,16,32,64],1,10,"x",object())
+        for population,concurrency in [(1025,1),(64,65),(63,64)]:
+            try:
+                validate_comparison_bounds(population,[concurrency],1,10,"x",object())
+                raise AssertionError("comparison population/concurrency cap was not enforced")
+            except ValueError:
+                pass
+        try:
+            validate_comparison_bounds(129,[1],1,10,"x" * BENCH["MAX_PROMPT_BYTES"],None)
+            raise AssertionError("closed-loop 32 MiB total prompt cap was not enforced")
+        except ValueError:
+            pass
         different = comparison(
             a,b,"fixture","fixture","Hi.",1,[1],1,None,None,
             (None,None),(None,None),1,10
@@ -405,7 +428,7 @@ def main() -> None:
         concurrencies=list(dict.fromkeys(
             int(item.strip()) for item in args.concurrency.split(",")
         ))
-        work = workload_records(strict_json(args.workload), args.max_tokens) if args.workload else None
+        work = load_workload(args.workload, args.max_tokens) if args.workload else None
         if work is not None:
             work = [{k: v for k, v in row.items() if k != "input_index"} for row in work]
         result=comparison(
