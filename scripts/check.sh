@@ -118,6 +118,7 @@ PYLOOPBACK
   cargo test --locked --offline -p zerogravity-cli --no-default-features --features serve --all-targets
   python3 -B tools/test-serve-lifecycle.py
   python3 -B tools/serve-compare.py --self-test
+  python3 -B tools/serve-matrix.py --self-test
 
   cargo clippy --locked --offline -p zerogravity-artifacts --no-default-features --features acquisition --all-targets -- -D warnings
   cargo clippy --locked --offline -p zerogravity-cli --no-default-features --features acquisition --all-targets -- -D warnings
