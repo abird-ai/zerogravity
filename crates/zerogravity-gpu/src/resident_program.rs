@@ -50,6 +50,8 @@ pub use physical_layout::{ResidentBufferLayout, ResidentPhysicalType};
 
 mod batch;
 pub(crate) use batch::BatchProgram;
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+pub(crate) mod ordinary_cuda;
 #[cfg(all(feature = "qualification", target_os = "linux"))]
 pub(crate) mod typed_slice;
 #[cfg(all(feature = "qualification", feature = "cuda"))]

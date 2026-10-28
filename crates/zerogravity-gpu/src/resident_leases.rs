@@ -32,6 +32,7 @@ pub(crate) mod final_owner_probe;
 mod foreign_provider;
 #[cfg(any(
     test,
+    feature = "cuda-cublas",
     feature = "cuda-native-qualification",
     all(
         target_os = "linux",
@@ -69,6 +70,8 @@ pub(crate) use native_cache::NativeCacheBudget;
 pub(crate) mod frame_checkpoint;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod model_upload;
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+pub(crate) mod ordinary_projection_upload;
 #[cfg(all(feature = "qualification", target_os = "linux"))]
 pub(crate) mod resident_matrix;
 #[cfg(all(
@@ -82,6 +85,7 @@ pub(crate) mod source_page;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod source_upload;
 #[cfg(any(
+    feature = "cuda-cublas",
     feature = "cuda-native-qualification",
     all(
         target_os = "linux",
@@ -237,9 +241,13 @@ impl ResidentService {
         Ok(())
     }
 
-    /// Qualifier-only cold constructor. Pin before any own clone, allocation,
-    /// transfer or submission. Global capture still requires process isolation.
-    #[cfg(all(feature = "qualification", feature = "cuda"))]
+    /// Cold CUDA constructor. Pin before any own clone, allocation, transfer
+    /// or submission. Capture-specific policy remains qualification-only.
+    #[cfg(all(
+        feature = "cuda",
+        any(feature = "qualification", feature = "cuda-cublas")
+    ))]
+    #[allow(dead_code)] // Staged ordinary CUDA constructor; public route remains refused.
     pub fn new_pinned_cuda(
         device: Device,
         source: SourceIdentity,
@@ -314,7 +322,10 @@ impl ResidentService {
     pub fn client(&self) -> &Client {
         &self.client
     }
-    #[cfg(all(feature = "qualification", feature = "cuda"))]
+    #[cfg(all(
+        feature = "cuda",
+        any(feature = "qualification", feature = "cuda-cublas")
+    ))]
     pub fn pinned_cuda_queue(&self) -> Result<&Arc<cubecl::cuda::OwnedCudaQueue>> {
         self.ensure_usable()?;
         self.pinned_cuda_queue
@@ -345,7 +356,10 @@ impl ResidentService {
     pub fn uploaded_value_bytes(&self) -> u64 {
         self.uploaded_value_bytes.load(Ordering::Acquire)
     }
-    #[cfg(all(feature = "qualification", target_os = "linux"))]
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "qualification", feature = "cuda-cublas")
+    ))]
     pub(crate) fn record_value_upload(&self, bytes: usize) {
         self.uploaded_value_bytes
             .fetch_add(bytes as u64, Ordering::AcqRel);
@@ -905,7 +919,7 @@ impl ResidentSubmission<'_> {
         }
         Ok(())
     }
-    #[cfg(feature = "qualification")]
+    #[cfg(any(feature = "qualification", feature = "cuda-cublas"))]
     pub(crate) fn retain_completion_owner(
         &mut self,
         owner: crate::physical_quarantine::CompletionOwner,
@@ -1221,7 +1235,7 @@ pub(crate) struct ResidentInitialization<'a> {
     armed: bool,
 }
 impl ResidentInitialization<'_> {
-    #[cfg(feature = "qualification")]
+    #[cfg(any(feature = "qualification", feature = "cuda-cublas"))]
     pub(crate) fn require_service(&self, service: &Arc<ResidentService>) -> Result<()> {
         if !Arc::ptr_eq(self.service, service) {
             return Err(Error::State(
@@ -1230,7 +1244,7 @@ impl ResidentInitialization<'_> {
         }
         service.ensure_usable()
     }
-    #[cfg(feature = "qualification")]
+    #[cfg(any(feature = "qualification", feature = "cuda-cublas"))]
     pub(crate) fn retain_completion_owner(
         &mut self,
         owner: crate::physical_quarantine::CompletionOwner,

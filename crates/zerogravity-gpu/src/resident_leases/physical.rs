@@ -36,7 +36,10 @@ pub struct ResidentPhysical {
     pub(super) client: Client,
     #[cfg(feature = "qualification")]
     pub(super) provider: crate::backend::Provider,
-    #[cfg(all(feature = "qualification", feature = "cuda"))]
+    #[cfg(all(
+        feature = "cuda",
+        any(feature = "qualification", feature = "cuda-cublas")
+    ))]
     pub(super) pinned_cuda_queue: Option<Arc<cubecl::cuda::OwnedCudaQueue>>,
     pub(super) budget: PhysicalServiceBudget,
     pub(super) queue: Arc<PhysicalQueue>,
@@ -232,6 +235,8 @@ impl ResidentPhysical {
         let _ = provider_cap;
         #[cfg(not(feature = "qualification"))]
         let _ = provider;
+        #[cfg(not(any(feature = "qualification", feature = "cuda-cublas")))]
+        let _ = provider;
         let generation = issue(&NEXT_SERVICE_GENERATION)?;
         let queue = queue_for(budget.physical_key())?;
         Ok(Self {
@@ -239,7 +244,10 @@ impl ResidentPhysical {
             client,
             #[cfg(feature = "qualification")]
             provider,
-            #[cfg(all(feature = "qualification", feature = "cuda"))]
+            #[cfg(all(
+                feature = "cuda",
+                any(feature = "qualification", feature = "cuda-cublas")
+            ))]
             pinned_cuda_queue: None,
             ledger: Arc::new(Mutex::new(ResidentLedger::physical(
                 generation,
@@ -503,7 +511,11 @@ impl ResidentPhysical {
         )?));
         Ok((physical, context))
     }
-    #[cfg(all(feature = "qualification", feature = "cuda"))]
+    #[cfg(all(
+        feature = "cuda",
+        any(feature = "qualification", feature = "cuda-cublas")
+    ))]
+    #[allow(dead_code)] // Staged ordinary CUDA constructor; selector remains refused.
     pub(crate) fn new_pinned_cuda(
         device: Device,
         provider_cap: usize,

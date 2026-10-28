@@ -489,7 +489,7 @@ impl OwnedCudaQueue {
             .iter()
             .zip(sizes)
             .any(|(handle, bytes)| {
-                handle.service != self.service_id() || handle.size() != bytes as u64
+                handle.service != self.service_id() || handle.size_in_used() != bytes as u64
             })
         {
             return Err(failure("cuBLAS exact original service/binding extent"));

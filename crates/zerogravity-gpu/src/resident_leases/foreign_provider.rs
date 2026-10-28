@@ -211,6 +211,7 @@ impl ResidentLedger {
     }
     #[cfg(any(
         test,
+        feature = "cuda-cublas",
         feature = "cuda-native-qualification",
         all(
             target_os = "linux",
@@ -230,6 +231,7 @@ impl ResidentLedger {
     }
     #[cfg(any(
         test,
+        feature = "cuda-cublas",
         feature = "cuda-native-qualification",
         all(
             target_os = "linux",
@@ -266,6 +268,7 @@ impl Deref for ResidentLedger {
 // global envelope and SAME ledger, without a Client/actor reference.
 #[cfg(any(
     test,
+    feature = "cuda-cublas",
     feature = "cuda-native-qualification",
     all(
         target_os = "linux",
@@ -286,6 +289,7 @@ pub(crate) trait ForeignProviderOwner: Send + Sync {
 }
 #[cfg(any(
     test,
+    feature = "cuda-cublas",
     feature = "cuda-native-qualification",
     all(
         target_os = "linux",
@@ -305,6 +309,7 @@ pub(crate) struct ForeignProviderCharge<
 }
 #[cfg(any(
     test,
+    feature = "cuda-cublas",
     feature = "cuda-native-qualification",
     all(
         target_os = "linux",
@@ -329,7 +334,7 @@ impl<O: ForeignProviderOwner> ForeignProviderCharge<O> {
         self.bytes
     }
 }
-#[cfg(feature = "cuda-native-qualification")]
+#[cfg(any(feature = "cuda-native-qualification", feature = "cuda-cublas"))]
 impl ForeignProviderCharge<super::native_cache::NativeCacheBudget> {
     pub(crate) fn require_service(&self, service: &Arc<ResidentService>) -> Result<()> {
         self.owner.require_service(service)
@@ -337,6 +342,7 @@ impl ForeignProviderCharge<super::native_cache::NativeCacheBudget> {
 }
 #[cfg(any(
     test,
+    feature = "cuda-cublas",
     feature = "cuda-native-qualification",
     all(
         target_os = "linux",
@@ -365,7 +371,7 @@ impl<O: ForeignProviderOwner> Drop for ForeignProviderCharge<O> {
         }
     }
 }
-#[cfg(feature = "cuda-native-qualification")]
+#[cfg(any(feature = "cuda-native-qualification", feature = "cuda-cublas"))]
 impl ResidentService {
     /// Reserve BEFORE a foreign allocator runs. Retain through actual provider
     /// destruction AND pool retirement; unknown completion must quarantine it.
