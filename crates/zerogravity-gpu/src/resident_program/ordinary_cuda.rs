@@ -88,6 +88,26 @@ impl OrdinaryCudaProviderPaths {
     }
 }
 
+fn quarantine_blas_activation_failure(
+    service: &Arc<ResidentService>,
+    workspace: &ResidentLease,
+    sentinel: &ResidentLease,
+    sources: &Arc<Bf16BlasSources>,
+    charge: &Arc<ForeignProviderCharge>,
+    pool: Option<&Arc<OwnedBlasAllocationPool>>,
+    provider: Option<&Arc<OwnedBf16BlasProvider>>,
+) {
+    let mut owners: Vec<crate::physical_quarantine::CompletionOwner> =
+        vec![sources.clone(), charge.clone()];
+    if let Some(pool) = pool {
+        owners.push(pool.clone());
+    }
+    if let Some(provider) = provider {
+        owners.push(provider.clone());
+    }
+    service.fence_and_retain_owners(&[workspace.clone(), sentinel.clone()], owners);
+}
+
 struct BlasRetirementReservation<'a> {
     flag: &'a AtomicBool,
     irreversible: bool,
@@ -175,10 +195,18 @@ impl OrdinaryCudaBlas {
         slot.finish()?;
 
         // No native provider can exist before the exact non-Handle charge.
-        let pool =
-            unsafe { queue.activate_blas_allocation_pool(FOREIGN_BYTES as u64, charge.clone()) }
-                .map_err(server_error)?;
-        let ticket = service.queue().submit(
+        let pool = match unsafe {
+            queue.activate_blas_allocation_pool(FOREIGN_BYTES as u64, charge.clone())
+        } {
+            Ok(pool) => pool,
+            Err(error) => {
+                quarantine_blas_activation_failure(
+                    &service, &workspace, &sentinel, &sources, &charge, None, None,
+                );
+                return Err(server_error(error));
+            }
+        };
+        let ticket = match service.queue().submit(
             service.budget(),
             service.owner().clone(),
             &[AllocationRequest {
@@ -186,13 +214,72 @@ impl OrdinaryCudaBlas {
                 bytes: FOREIGN_BYTES as u64,
             }],
             None,
-        )?;
-        let mut slot = ticket.wait().await?;
-        slot.begin_submission()?;
+        ) {
+            Ok(ticket) => ticket,
+            Err(error) => {
+                quarantine_blas_activation_failure(
+                    &service,
+                    &workspace,
+                    &sentinel,
+                    &sources,
+                    &charge,
+                    Some(&pool),
+                    None,
+                );
+                return Err(error);
+            }
+        };
+        let mut slot = match ticket.wait().await {
+            Ok(slot) => slot,
+            Err(error) => {
+                quarantine_blas_activation_failure(
+                    &service,
+                    &workspace,
+                    &sentinel,
+                    &sources,
+                    &charge,
+                    Some(&pool),
+                    None,
+                );
+                return Err(error);
+            }
+        };
+        if let Err(error) = slot.begin_submission() {
+            quarantine_blas_activation_failure(
+                &service,
+                &workspace,
+                &sentinel,
+                &sources,
+                &charge,
+                Some(&pool),
+                None,
+            );
+            return Err(error);
+        }
         let mut flight =
-            service.submit(expected_root, &[(sentinel.clone(), DeviceAccess::Read)])?;
-        flight.retain_completion_owner(sources.clone())?;
-        flight.retain_completion_owner(pool.clone())?;
+            match service.submit(expected_root, &[(sentinel.clone(), DeviceAccess::Read)]) {
+                Ok(flight) => flight,
+                Err(error) => {
+                    quarantine_blas_activation_failure(
+                        &service,
+                        &workspace,
+                        &sentinel,
+                        &sources,
+                        &charge,
+                        Some(&pool),
+                        None,
+                    );
+                    return Err(error);
+                }
+            };
+        if let Err(error) = flight.retain_completion_owner(sources.clone()) {
+            service.fence_and_retain_owners(&[], vec![pool.clone(), charge.clone()]);
+            return Err(error);
+        }
+        if let Err(error) = flight.retain_completion_owner(pool.clone()) {
+            service.fence_and_retain_owners(&[], vec![charge.clone()]);
+            return Err(error);
+        }
         flight.retain_completion_owner(charge.clone())?;
         let provider = unsafe { queue.create_bf16_blas_provider(sources.clone(), pool.clone()) }
             .map_err(server_error)?;
@@ -209,7 +296,18 @@ impl OrdinaryCudaBlas {
                 Ok(())
             })
             .await?;
-        slot.finish()?;
+        if let Err(error) = slot.finish() {
+            quarantine_blas_activation_failure(
+                &service,
+                &workspace,
+                &sentinel,
+                &sources,
+                &charge,
+                Some(&pool),
+                Some(&provider),
+            );
+            return Err(error);
+        }
 
         Ok(Arc::new(Self {
             service,
