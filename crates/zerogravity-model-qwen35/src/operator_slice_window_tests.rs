@@ -1,7 +1,8 @@
 //! Synthetic original full-header sources; no trained27B parity claim.
 use super::*;
 use crate::accelerator::program::{
-    EmbeddingContract, MathematicalBackend, OrdinaryRmsContract, PlanOperation, TensorView,
+    EmbeddingContract, MathematicalBackend, OrdinaryRmsContract, PlanOperation, SourceCallMode,
+    TensorView,
 };
 use crate::operator_slice::OperatorSliceSource;
 use crate::source::binding::{OriginalWindowOperators, QwenParameterRole};

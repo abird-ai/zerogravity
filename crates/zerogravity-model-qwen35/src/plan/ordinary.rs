@@ -579,6 +579,108 @@ fn roles(
     (matrices, parameters)
 }
 
+#[cfg(feature = "diagnostic-cpu-checkpoint")]
+pub fn diagnostic_ordinary_plan(
+    profile: QwenSourceProfile,
+    context_capacity_tokens: usize,
+) -> Result<Arc<ForwardPlan>> {
+    let source = SourceIdentity::for_new_allocation()?;
+    let recorded = record_ordinary_plan(
+        source,
+        profile,
+        context_capacity_tokens,
+        |role| Ok(diagnostic_matrix(source, profile, role)),
+        |role| Ok(diagnostic_parameter(source, profile, role)),
+    )?;
+    Ok(recorded.plan)
+}
+
+#[cfg(feature = "diagnostic-cpu-checkpoint")]
+fn diagnostic_matrix(
+    source: SourceIdentity,
+    profile: QwenSourceProfile,
+    role: QwenMatrixRole,
+) -> SourceTensor {
+    let hidden = profile.hidden_size();
+    let intermediate = profile.intermediate_size();
+    let (name, rows, columns) = match role {
+        QwenMatrixRole::Embedding | QwenMatrixRole::Output => (
+            "model.language_model.embed_tokens.weight".into(),
+            profile.vocabulary_size(),
+            hidden,
+        ),
+        QwenMatrixRole::FfnGate(index) => (format!("layer.{index}.gate"), intermediate, hidden),
+        QwenMatrixRole::FfnUp(index) => (format!("layer.{index}.up"), intermediate, hidden),
+        QwenMatrixRole::FfnDown(index) => (format!("layer.{index}.down"), hidden, intermediate),
+        QwenMatrixRole::GdnQkv(index) => (format!("layer.{index}.qkv"), 6144, hidden),
+        QwenMatrixRole::GdnGate(index) => (format!("layer.{index}.z"), 2048, hidden),
+        QwenMatrixRole::GdnAlpha(index) => (format!("layer.{index}.a"), 16, hidden),
+        QwenMatrixRole::GdnBeta(index) => (format!("layer.{index}.b"), 16, hidden),
+        QwenMatrixRole::GdnOutput(index) => (format!("layer.{index}.gdn_out"), hidden, 2048),
+        QwenMatrixRole::Query(index) => (format!("layer.{index}.q"), 4096, hidden),
+        QwenMatrixRole::Key(index) => (format!("layer.{index}.k"), 512, hidden),
+        QwenMatrixRole::Value(index) => (format!("layer.{index}.v"), 512, hidden),
+        QwenMatrixRole::AttentionOutput(index) => (format!("layer.{index}.attn_out"), hidden, 2048),
+    };
+    SourceTensor {
+        source,
+        name,
+        kind: QuantKind::Bf16,
+        axes: MatrixAxes::OutputInput,
+        columns,
+        rows,
+    }
+}
+
+#[cfg(feature = "diagnostic-cpu-checkpoint")]
+fn diagnostic_parameter(
+    source: SourceIdentity,
+    profile: QwenSourceProfile,
+    role: QwenParameterRole,
+) -> SourceParameter {
+    let hidden = profile.hidden_size();
+    let (name, kind, shape) = match role {
+        QwenParameterRole::FinalNorm => ("final_norm".into(), QuantKind::Bf16, vec![hidden as u64]),
+        QwenParameterRole::InputNorm(index) => (
+            format!("layer.{index}.input_norm"),
+            QuantKind::Bf16,
+            vec![hidden as u64],
+        ),
+        QwenParameterRole::FfnNorm(index) => (
+            format!("layer.{index}.ffn_norm"),
+            QuantKind::Bf16,
+            vec![hidden as u64],
+        ),
+        QwenParameterRole::GdnConvolution(index) => (
+            format!("layer.{index}.conv"),
+            QuantKind::Bf16,
+            vec![6144, 1, 4],
+        ),
+        QwenParameterRole::GdnNorm(index) => {
+            (format!("layer.{index}.gdn_norm"), QuantKind::F32, vec![128])
+        }
+        QwenParameterRole::GdnA(index) => {
+            (format!("layer.{index}.A_log"), QuantKind::F32, vec![16])
+        }
+        QwenParameterRole::GdnDt(index) => (format!("layer.{index}.dt"), QuantKind::Bf16, vec![16]),
+        QwenParameterRole::QueryNorm(index) => {
+            (format!("layer.{index}.q_norm"), QuantKind::Bf16, vec![256])
+        }
+        QwenParameterRole::KeyNorm(index) => {
+            (format!("layer.{index}.k_norm"), QuantKind::Bf16, vec![256])
+        }
+    };
+    let element_bytes = if kind == QuantKind::Bf16 { 2 } else { 4 };
+    let bytes = shape.iter().map(|n| *n as usize).product::<usize>() * element_bytes;
+    SourceParameter {
+        source,
+        name,
+        kind,
+        shape,
+        bytes,
+    }
+}
+
 #[cfg(all(test, feature = "cpu"))]
 pub(crate) fn build_test_ordinary_plan(
     source: &OrdinaryCudaSourceSeal,

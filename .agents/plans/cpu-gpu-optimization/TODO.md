@@ -1246,3 +1246,21 @@ build or general model/backend grant. Historical failures keep their source scop
 - [x] Source-free lifecycle/build gate passes: qualification ordinary tests, strict qwen35-cuda-qualification Clippy, plain qwen35-cuda, default and all-features checks. Explicit shutdown now requires unique model ownership, retires the BLAS provider/pool before lease release, verifies zero resident bytes/events, then closes the model namespace; source-free close-order tests cover managed allocations, opaque foreign charge and in-flight event retirement.
 - [ ] Real current-source qualification remains mandatory before production routing: .8B natural/current-root parity including cached 47→50, physical fault/cancellation/retirement and real-model shutdown, then .8B 512/1K/2K/4K/8K and 16K/32K. Admit 2B contexts only where the exact two-root plan fits.
 - [ ] Current physical blocker: the approved .8B receipt (Qwen/Qwen3.5-0.8B, revision 2fc06364715b967f1860aea9cf38778875588b17) is present, but the exact 1,746,942,600-byte safetensor shard SHA256 04b1c301231dd422b8860db31311ab2721511346a32cb1e079c4c4e5f1fe4696 is not visible through the current connector filesystem. Do not download or substitute another source; resume physical qualification when that held shard is accessible.
+
+### 28 Oct 2026 — exact ordinary CUDA context admission matrix
+
+- [x] Diagnostic source-semantic Qwen plans now feed the same production
+  OrdinaryCudaAdmission analyzer, with no source IO, GPU allocation or execution
+  authority. Under the unchanged 4608 MiB provider allowance inside the 5120
+  MiB physical envelope, exact cold + two-root totals are:
+  - .8B: 512=1,652,905,937 B; 1K=1,667,651,537; 2K=1,697,142,737;
+    4K=1,756,125,137; 8K=1,874,089,937; 16K=2,110,019,537;
+    32K=2,581,878,737. All fit admission.
+  - 2B: 512=3,911,835,601 B; 1K=3,926,581,201; 2K=3,956,072,401;
+    4K=4,015,054,801; 8K=4,133,019,601; 16K=4,368,949,201;
+    32K=4,840,808,401. 512 through 16K fit; 32K exceeds 4608 MiB
+    (4,831,838,208 B) by 8,970,193 B and must refuse before allocation.
+- [ ] These are fit/admission results only. Physical correctness, continuation,
+  replay, faults and state-history qualification remain required for each cell
+  before production use; .8B real-model qualification is still blocked by the
+  inaccessible approved safetensor shard.

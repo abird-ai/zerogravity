@@ -651,3 +651,64 @@ pub(crate) async fn prepare_program(
             .to_vec(),
     })
 }
+
+#[cfg(test)]
+mod admission_matrix_tests {
+    use super::OrdinaryCudaAdmission;
+    use zerogravity_model_qwen35::plan::{QwenSourceProfile, diagnostic_ordinary_plan};
+
+    const MIB: usize = 1024 * 1024;
+    const PROVIDER_CAP: usize = 4608 * MIB;
+
+    #[test]
+    fn source_semantic_context_matrix_reports_exact_two_root_fit() {
+        let capacities = [512usize, 1024, 2048, 4096, 8192, 16_384, 32_768];
+        let expected = [
+            (
+                QwenSourceProfile::Qwen08,
+                [
+                    1_652_905_937usize,
+                    1_667_651_537,
+                    1_697_142_737,
+                    1_756_125_137,
+                    1_874_089_937,
+                    2_110_019_537,
+                    2_581_878_737,
+                ],
+                [true; 7],
+            ),
+            (
+                QwenSourceProfile::Qwen2B,
+                [
+                    3_911_835_601usize,
+                    3_926_581_201,
+                    3_956_072_401,
+                    4_015_054_801,
+                    4_133_019_601,
+                    4_368_949_201,
+                    4_840_808_401,
+                ],
+                [true, true, true, true, true, true, false],
+            ),
+        ];
+        for (profile, totals, fits) in expected {
+            let mut previous = 0usize;
+            for ((capacity, expected_total), expected_fit) in
+                capacities.into_iter().zip(totals).zip(fits)
+            {
+                let plan = diagnostic_ordinary_plan(profile, capacity).unwrap();
+                let admission = OrdinaryCudaAdmission::analyze(plan).unwrap();
+                let total = admission.total_bytes().unwrap();
+                eprintln!(
+                    "ordinary-context-fit profile={profile:?} capacity={capacity} total_bytes={total} total_mib={:.3} fits_4608={}",
+                    total as f64 / MIB as f64,
+                    total <= PROVIDER_CAP
+                );
+                assert_eq!(total, expected_total);
+                assert_eq!(total <= PROVIDER_CAP, expected_fit);
+                assert!(total >= previous);
+                previous = total;
+            }
+        }
+    }
+}
