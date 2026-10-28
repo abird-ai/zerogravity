@@ -32,13 +32,13 @@ struct PackedSourceOwner {
 
 /// One exact packed [sum(output), input] BF16 matrix, retaining the authenticated
 /// source owner and every original member binding.
-pub(crate) struct PackedProjectionWeights {
+pub(crate) struct PackedSourceMatrices {
     owner: Arc<PackedSourceOwner>,
     lease: ResidentLease,
     rows: usize,
     columns: usize,
 }
-impl PackedProjectionWeights {
+impl PackedSourceMatrices {
     pub(crate) fn source_identity(&self) -> SourceIdentity {
         self.owner.source.source_identity()
     }
@@ -54,7 +54,7 @@ impl PackedProjectionWeights {
     pub(crate) fn require_members(&self, members: &[SourceTensor]) -> Result<()> {
         if members != self.owner.members.as_ref() || members.len() != self.owner.matrices.len() {
             return Err(Error::State(
-                "ordinary CUDA projection source members changed".into(),
+                "ordinary CUDA source matrix members changed".into(),
             ));
         }
         for (member, matrix) in members.iter().zip(self.owner.matrices.iter()) {
@@ -70,7 +70,7 @@ impl PackedProjectionWeights {
                     .same_binding(matrix)
             {
                 return Err(Error::State(
-                    "ordinary CUDA projection authenticated member differs".into(),
+                    "ordinary CUDA source matrix authenticated member differs".into(),
                 ));
             }
         }
@@ -91,13 +91,13 @@ impl ResidentInitialization<'_> {
     /// Pack one to three source-declared full matrices in order into one resident
     /// allocation. Each bounded source window is copied then physically synced
     /// before the next window; the full source owner remains a completion owner.
-    pub(crate) async fn upload_ordinary_projection(
+    pub(crate) async fn upload_ordinary_matrices(
         &mut self,
         service: &Arc<ResidentService>,
         source: VerifiedTensorSource,
         members: &[SourceTensor],
         cancelled: Option<&AtomicBool>,
-    ) -> Result<Arc<PackedProjectionWeights>> {
+    ) -> Result<Arc<PackedSourceMatrices>> {
         self.require_service(service)?;
         not_cancelled(cancelled)?;
         if members.is_empty()
@@ -105,7 +105,7 @@ impl ResidentInitialization<'_> {
             || source.source_identity() != service.source_identity()
         {
             return Err(Error::State(
-                "ordinary CUDA projection source/member ownership differs".into(),
+                "ordinary CUDA source matrix/member ownership differs".into(),
             ));
         }
 
@@ -121,7 +121,7 @@ impl ResidentInitialization<'_> {
                 || member.columns == 0
             {
                 return Err(Error::State(
-                    "ordinary CUDA projection member contract differs".into(),
+                    "ordinary CUDA source matrix member contract differs".into(),
                 ));
             }
             let matrix = source.matrix(&member.name, member.axes)?;
@@ -130,21 +130,19 @@ impl ResidentInitialization<'_> {
                 || matrix.rows() != member.rows
                 || matrix.columns() != member.columns
             {
-                return Err(Error::State(
-                    "ordinary CUDA projection source matrix differs".into(),
-                ));
+                return Err(Error::State("ordinary CUDA source matrix differs".into()));
             }
             if columns
                 .replace(member.columns)
                 .is_some_and(|value| value != member.columns)
             {
                 return Err(Error::State(
-                    "ordinary CUDA projection member input widths differ".into(),
+                    "ordinary CUDA source matrix input widths differ".into(),
                 ));
             }
             rows = rows
                 .checked_add(member.rows)
-                .ok_or_else(|| Error::Limit("ordinary CUDA projection rows overflow".into()))?;
+                .ok_or_else(|| Error::Limit("ordinary CUDA source matrix rows overflow".into()))?;
             total_bytes = total_bytes
                 .checked_add(
                     member
@@ -152,19 +150,19 @@ impl ResidentInitialization<'_> {
                         .checked_mul(member.columns)
                         .and_then(|elements| elements.checked_mul(2))
                         .ok_or_else(|| {
-                            Error::Limit("ordinary CUDA projection bytes overflow".into())
+                            Error::Limit("ordinary CUDA source matrix bytes overflow".into())
                         })?,
                 )
                 .ok_or_else(|| {
-                    Error::Limit("ordinary CUDA packed projection bytes overflow".into())
+                    Error::Limit("ordinary CUDA packed source matrix bytes overflow".into())
                 })?;
             matrices.push(matrix);
         }
         let columns = columns
-            .ok_or_else(|| Error::State("ordinary CUDA projection columns absent".into()))?;
+            .ok_or_else(|| Error::State("ordinary CUDA source matrix columns absent".into()))?;
         if total_bytes as u64 > service.client().properties().memory.max_page_size {
             return Err(Error::Unsupported(
-                "ordinary CUDA packed projection exceeds device allocation page".into(),
+                "ordinary CUDA packed source matrix exceeds device allocation page".into(),
             ));
         }
 
@@ -196,7 +194,7 @@ impl ResidentInitialization<'_> {
                 };
                 if !window.matrix().same_binding(matrix) || window.row_range() != (first..end) {
                     return Err(Error::State(
-                        "ordinary CUDA projection source window differs".into(),
+                        "ordinary CUDA source matrix window differs".into(),
                     ));
                 }
                 let payload = window.as_slice();
@@ -205,21 +203,25 @@ impl ResidentInitialization<'_> {
                 })?;
                 if payload.len() != expected {
                     return Err(Error::State(
-                        "ordinary CUDA projection source window extent differs".into(),
+                        "ordinary CUDA source matrix window extent differs".into(),
                     ));
                 }
                 let start = destination_offset
                     .checked_add(first.checked_mul(row_bytes).ok_or_else(|| {
-                        Error::Limit("ordinary CUDA projection destination offset overflow".into())
+                        Error::Limit(
+                            "ordinary CUDA source matrix destination offset overflow".into(),
+                        )
                     })?)
                     .ok_or_else(|| {
-                        Error::Limit("ordinary CUDA projection destination offset overflow".into())
+                        Error::Limit(
+                            "ordinary CUDA source matrix destination offset overflow".into(),
+                        )
                     })?;
                 let finish = start
                     .checked_add(payload.len())
                     .filter(|finish| *finish <= total_bytes)
                     .ok_or_else(|| {
-                        Error::Limit("ordinary CUDA projection destination exceeds lease".into())
+                        Error::Limit("ordinary CUDA source matrix destination exceeds lease".into())
                     })?;
                 let view = lease
                     .handle()
@@ -237,7 +239,7 @@ impl ResidentInitialization<'_> {
                     .await
                     .map_err(|error| {
                         Error::State(format!(
-                            "ordinary CUDA projection upload completion: {error}"
+                            "ordinary CUDA source matrix upload completion: {error}"
                         ))
                     })?;
                 first = end;
@@ -247,21 +249,32 @@ impl ResidentInitialization<'_> {
                     Error::Limit("ordinary CUDA source matrix bytes overflow".into())
                 })?)
                 .ok_or_else(|| {
-                    Error::Limit("ordinary CUDA projection destination overflow".into())
+                    Error::Limit("ordinary CUDA source matrix destination overflow".into())
                 })?;
         }
         if destination_offset != total_bytes {
             return Err(Error::State(
-                "ordinary CUDA projection packed byte coverage incomplete".into(),
+                "ordinary CUDA source matrix packed byte coverage incomplete".into(),
             ));
         }
         self.uploaded.insert(lease.id());
 
-        Ok(Arc::new(PackedProjectionWeights {
+        Ok(Arc::new(PackedSourceMatrices {
             owner,
             lease,
             rows,
             columns,
         }))
+    }
+
+    pub(crate) async fn upload_ordinary_projection(
+        &mut self,
+        service: &Arc<ResidentService>,
+        source: VerifiedTensorSource,
+        members: &[SourceTensor],
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<Arc<PackedSourceMatrices>> {
+        self.upload_ordinary_matrices(service, source, members, cancelled)
+            .await
     }
 }

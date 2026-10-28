@@ -8,7 +8,7 @@
 
 use crate::resident_leases::{
     ForeignProviderCharge, ResidentInitialization, ResidentLease, ResidentService,
-    ResidentSubmission, ordinary_projection_upload::PackedProjectionWeights,
+    ResidentSubmission, ordinary_projection_upload::PackedSourceMatrices,
 };
 use cubecl::cuda::{
     Bf16BlasSources, Bf16GemmBindings, Bf16GemmOperation, OwnedBf16BlasProvider,
@@ -26,7 +26,10 @@ mod attention;
 
 use zerogravity_core::{
     Error, Result,
-    accelerator::program::{SourceNumericalContract, SourceOperator, SourceOperatorKind},
+    accelerator::program::{
+        SourceNumericalContract, SourceOperator, SourceOperatorKind, SourceOperatorTemplate,
+        SourceRowSelection,
+    },
     device_events::{BufferRole, DeviceAccess},
     resource_arbiter::{AllocationClass, AllocationRequest},
 };
@@ -306,90 +309,116 @@ impl OrdinaryCudaBlas {
     }
 }
 
-/// One source-derived full projection. Weights are packed in SourceOperator
-/// member order and remain source-authenticated through the compute flight.
+/// One source-derived full projection. Cold ownership binds the call-free
+/// template; request-local row geometry never owns or reloads weights.
 pub(crate) struct OrdinaryCudaProjection {
-    descriptor: SourceOperator,
-    weights: Arc<PackedProjectionWeights>,
-    operation: Bf16GemmOperation,
-    selected_row: Option<usize>,
+    template: SourceOperatorTemplate,
+    weights: Arc<PackedSourceMatrices>,
 }
 impl OrdinaryCudaProjection {
     pub(crate) async fn prepare(
         service: &Arc<ResidentService>,
         init: &mut ResidentInitialization<'_>,
         source: VerifiedTensorSource,
-        descriptor: &SourceOperator,
+        template: &SourceOperatorTemplate,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Arc<Self>> {
-        if descriptor.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1 {
+        if template.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1 {
             return Err(Error::Unsupported(
                 "ordinary CUDA projection numerical contract differs".into(),
             ));
         }
-        let SourceOperatorKind::Projection { selected_row } = descriptor.kind() else {
-            return Err(Error::State(
-                "ordinary CUDA projection requires projection descriptor".into(),
-            ));
-        };
-        if descriptor.call().source() != source.source_identity()
-            || descriptor.matrices().is_empty()
-            || !descriptor.parameters().is_empty()
+        if !matches!(
+            template.kind(),
+            SourceOperatorKind::Projection { selected_row: None }
+        ) || template.source() != source.source_identity()
+            || template.matrices().is_empty()
+            || !template.parameters().is_empty()
         {
             return Err(Error::State(
-                "ordinary CUDA projection source/parameter contract differs".into(),
-            ));
-        }
-        let rows = descriptor.call().rows().len();
-        let active_rows = if selected_row.is_some() { 1 } else { rows };
-        if selected_row.is_some_and(|row| row >= rows) {
-            return Err(Error::State(
-                "ordinary CUDA selected projection row outside call".into(),
+                "ordinary CUDA projection template/source contract differs".into(),
             ));
         }
         let weights = init
-            .upload_ordinary_projection(service, source, descriptor.matrices(), cancelled)
+            .upload_ordinary_projection(service, source, template.matrices(), cancelled)
             .await?;
-        weights.require_members(descriptor.matrices())?;
+        weights.require_members(template.matrices())?;
+        Ok(Arc::new(Self {
+            template: template.clone(),
+            weights,
+        }))
+    }
+
+    fn operation(&self, descriptor: &SourceOperator) -> Result<(Bf16GemmOperation, usize)> {
+        descriptor.validate()?;
+        let rows = descriptor.call().rows().len();
+        let SourceOperatorKind::Projection { selected_row } = descriptor.kind() else {
+            return Err(Error::State(
+                "ordinary CUDA projection runtime descriptor kind differs".into(),
+            ));
+        };
+        let expected_selected = match self.template.row_selection() {
+            SourceRowSelection::AllActive => None,
+            SourceRowSelection::LastActive => Some(
+                rows.checked_sub(1)
+                    .ok_or_else(|| Error::State("ordinary CUDA projection empty call".into()))?,
+            ),
+        };
+        if descriptor.numerical_contract() != self.template.numerical_contract()
+            || descriptor.call().source() != self.template.source()
+            || descriptor.call().rows().vocabulary() != self.template.vocabulary()
+            || rows > self.template.max_rows()
+            || descriptor.matrices() != self.template.matrices()
+            || descriptor.parameters() != self.template.parameters()
+            || selected_row != expected_selected
+        {
+            return Err(Error::State(
+                "ordinary CUDA projection runtime/template semantics differ".into(),
+            ));
+        }
+        self.weights.require_members(descriptor.matrices())?;
+        let active_rows = usize::from(selected_row.is_none())
+            .checked_mul(rows)
+            .and_then(|all| all.checked_add(usize::from(selected_row.is_some())))
+            .ok_or_else(|| Error::Limit("ordinary CUDA projection active rows".into()))?;
         let operation =
-            Bf16GemmOperation::reference(weights.rows(), active_rows, weights.columns())
+            Bf16GemmOperation::reference(self.weights.rows(), active_rows, self.weights.columns())
                 .map_err(server_error)?;
-        if descriptor.input_elements()?.as_slice() != [rows * weights.columns()]
-            || descriptor.output_elements()?.as_slice() != [active_rows * weights.rows()]
+        if descriptor.input_elements()?.as_slice() != [rows * self.weights.columns()]
+            || descriptor.output_elements()?.as_slice() != [active_rows * self.weights.rows()]
         {
             return Err(Error::State(
                 "ordinary CUDA projection operator/packed geometry differs".into(),
             ));
         }
-        Ok(Arc::new(Self {
-            descriptor: descriptor.clone(),
-            weights,
-            operation,
-            selected_row,
-        }))
-    }
-
-    pub(crate) fn output_bytes(&self) -> Result<usize> {
-        self.operation.output_bytes().map_err(server_error)
-    }
-
-    pub(crate) fn accesses(
-        &self,
-        blas: &OrdinaryCudaBlas,
-        input: &ResidentLease,
-        output: &ResidentLease,
-    ) -> Result<Vec<(ResidentLease, DeviceAccess)>> {
-        let input_bytes = self.operation.input_bytes().map_err(server_error)?;
-        let input_offset = self
-            .selected_row
+        let input_offset = selected_row
             .unwrap_or(0)
             .checked_mul(self.weights.columns())
             .and_then(|elements| elements.checked_mul(2))
             .ok_or_else(|| Error::Limit("ordinary CUDA projection input offset overflow".into()))?;
+        Ok((operation, input_offset))
+    }
+
+    pub(crate) fn output_bytes(&self, descriptor: &SourceOperator) -> Result<usize> {
+        self.operation(descriptor)?
+            .0
+            .output_bytes()
+            .map_err(server_error)
+    }
+
+    pub(crate) fn accesses(
+        &self,
+        descriptor: &SourceOperator,
+        blas: &OrdinaryCudaBlas,
+        input: &ResidentLease,
+        output: &ResidentLease,
+    ) -> Result<Vec<(ResidentLease, DeviceAccess)>> {
+        let (operation, input_offset) = self.operation(descriptor)?;
+        let input_bytes = operation.input_bytes().map_err(server_error)?;
         if input_offset
             .checked_add(input_bytes)
             .is_none_or(|end| end > input.bytes())
-            || output.bytes() != self.operation.output_bytes().map_err(server_error)?
+            || output.bytes() < operation.output_bytes().map_err(server_error)?
         {
             return Err(Error::State(
                 "ordinary CUDA projection input/output lease extent differs".into(),
@@ -405,26 +434,16 @@ impl OrdinaryCudaProjection {
 
     pub(crate) fn enqueue(
         &self,
+        descriptor: &SourceOperator,
         blas: &OrdinaryCudaBlas,
         flight: &mut ResidentSubmission<'_>,
         input: &ResidentLease,
         output: &ResidentLease,
     ) -> Result<()> {
-        if self.descriptor.call().source() != self.weights.source_identity() {
-            return Err(Error::State(
-                "ordinary CUDA projection source owner changed".into(),
-            ));
-        }
-        self.weights.require_members(self.descriptor.matrices())?;
-        let input_offset = self
-            .selected_row
-            .unwrap_or(0)
-            .checked_mul(self.weights.columns())
-            .and_then(|elements| elements.checked_mul(2))
-            .ok_or_else(|| Error::Limit("ordinary CUDA projection input offset overflow".into()))?;
+        let (operation, input_offset) = self.operation(descriptor)?;
         blas.enqueue(
             flight,
-            self.operation,
+            operation,
             self.weights.lease(),
             input,
             input_offset,
