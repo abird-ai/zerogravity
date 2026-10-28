@@ -312,20 +312,24 @@ impl DeviceBuffer {
         }
         lease.readback(0, self.physical.bytes()?)
     }
-    /// Existing shaders/state/control consumers retain exact original F32-word
-    /// minimum-range validation; a BF16 tag can never enter that ABI.
-    fn check(&self, client: &Client, expected: usize) -> Result<BufferRange> {
-        self.require_layout(ResidentBufferLayout::legacy_f32(expected))?;
+    fn check_layout(&self, client: &Client, expected: ResidentBufferLayout) -> Result<BufferRange> {
+        self.require_layout(expected)?;
         let range = BufferRange::new(&self.handle)?;
-        if self.elements != expected
-            || range.service != client.service_id()
-            || range.bytes.end - range.bytes.start < self.physical.bytes()? as u64
+        if range.service != client.service_id()
+            || range.bytes.end - range.bytes.start != expected.bytes()? as u64
         {
             return Err(Error::State(
-                "resident program binding size/service mismatch".into(),
+                "resident program typed binding size/service mismatch".into(),
             ));
         }
+        expected.validate_region(range.bytes.start, range.bytes.end - range.bytes.start)?;
         Ok(range)
+    }
+
+    /// Existing shaders/control consumers retain exact original F32-word
+    /// validation. Typed state validation uses check_layout directly.
+    fn check(&self, client: &Client, expected: usize) -> Result<BufferRange> {
+        self.check_layout(client, ResidentBufferLayout::legacy_f32(expected))
     }
 }
 #[derive(Clone, Debug)]
@@ -1629,14 +1633,15 @@ impl ResidentProgram {
             let b = seen
                 .get(&r.slot)
                 .ok_or_else(|| Error::State("missing resident state domain".into()))?;
+            let (planes, physical) = r.plane_layout()?;
             for (state, ranges) in [(&b.prior, &mut priors), (&b.candidate, &mut candidates)] {
                 match (r.layout, state) {
-                    (StateLayout::Vector { elements }, StateBuffers::Vector(v)) => {
-                        ranges.push(v.check(client, elements)?);
+                    (StateLayout::Vector { .. }, StateBuffers::Vector(v)) if planes == 1 => {
+                        ranges.push(v.check_layout(client, physical)?);
                     }
-                    (StateLayout::Kv { slab, capacity }, StateBuffers::Kv { keys, values }) => {
-                        ranges.push(keys.check(client, slab * capacity)?);
-                        ranges.push(values.check(client, slab * capacity)?);
+                    (StateLayout::Kv { .. }, StateBuffers::Kv { keys, values }) if planes == 2 => {
+                        ranges.push(keys.check_layout(client, physical)?);
+                        ranges.push(values.check_layout(client, physical)?);
                         if b.prior_tokens != p.position {
                             return Err(Error::State(
                                 "resident KV prefix differs from bound position".into(),
