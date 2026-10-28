@@ -265,6 +265,10 @@ impl DeviceBuffer {
         )?;
         Ok(lease)
     }
+    pub(crate) fn physical_layout(&self) -> ResidentBufferLayout {
+        self.physical
+    }
+
     pub(crate) fn require_layout(&self, expected: ResidentBufferLayout) -> Result<()> {
         self.physical.require(expected)?;
         if self.elements != self.physical.elements() {

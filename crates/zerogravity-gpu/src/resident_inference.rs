@@ -344,6 +344,66 @@ fn words(bytes: &Bytes) -> Result<Vec<f32>> {
         .map(|b| f32::from_bits(u32::from_ne_bytes(b.try_into().unwrap())))
         .collect())
 }
+fn resident_plane_finite(bytes: &Bytes, layout: ResidentBufferLayout) -> Result<bool> {
+    if bytes.len() != layout.bytes()? {
+        return Err(Error::State(
+            "resident typed snapshot physical byte extent differs".into(),
+        ));
+    }
+    Ok(match layout.kind() {
+        ResidentPhysicalType::F32 => bytes
+            .chunks_exact(4)
+            .all(|word| f32::from_bits(u32::from_ne_bytes(word.try_into().unwrap())).is_finite()),
+        ResidentPhysicalType::Bf16 => bytes
+            .chunks_exact(2)
+            .all(|word| (u16::from_ne_bytes(word.try_into().unwrap()) & 0x7f80) != 0x7f80),
+    })
+}
+
+fn resident_plane_values(
+    bytes: &Bytes,
+    layout: ResidentBufferLayout,
+    elements: usize,
+) -> Result<Vec<f32>> {
+    if elements > layout.elements() || bytes.len() != layout.bytes()? {
+        return Err(Error::State(
+            "resident typed snapshot active element extent differs".into(),
+        ));
+    }
+    let end = elements
+        .checked_mul(layout.kind().byte_width())
+        .ok_or_else(|| Error::Limit("resident typed snapshot active bytes".into()))?;
+    let raw = &bytes[..end];
+    Ok(match layout.kind() {
+        ResidentPhysicalType::F32 => raw
+            .chunks_exact(4)
+            .map(|word| f32::from_bits(u32::from_ne_bytes(word.try_into().unwrap())))
+            .collect(),
+        ResidentPhysicalType::Bf16 => raw
+            .chunks_exact(2)
+            .map(|word| {
+                f32::from_bits(u32::from(u16::from_ne_bytes(word.try_into().unwrap())) << 16)
+            })
+            .collect(),
+    })
+}
+
+fn resident_plane_tail_zero(
+    bytes: &Bytes,
+    layout: ResidentBufferLayout,
+    active_elements: usize,
+) -> Result<bool> {
+    if active_elements > layout.elements() || bytes.len() != layout.bytes()? {
+        return Err(Error::State(
+            "resident typed snapshot tail extent differs".into(),
+        ));
+    }
+    let start = active_elements
+        .checked_mul(layout.kind().byte_width())
+        .ok_or_else(|| Error::Limit("resident typed snapshot tail byte offset".into()))?;
+    Ok(bytes[start..].iter().all(|byte| *byte == 0))
+}
+
 fn all_zero(bytes: &Bytes) -> bool {
     bytes.iter().all(|b| *b == 0)
 }
@@ -1819,6 +1879,17 @@ impl ResidentSnapshot {
             .cloned()
             .map(|l| (l, DeviceAccess::Read))
             .collect::<Vec<_>>();
+        let layouts = self
+            .domains
+            .iter()
+            .flat_map(|domain| domain.buffers.buffers())
+            .map(DeviceBuffer::physical_layout)
+            .collect::<Vec<_>>();
+        if layouts.len() != leases.len() {
+            return Err(Error::State(
+                "resident snapshot typed plane coverage differs".into(),
+            ));
+        }
         let cohort = leases
             .iter()
             .map(|l| l.readback(0, l.bytes()))
@@ -1840,8 +1911,13 @@ impl ResidentSnapshot {
         let flight = service.submit(self.binding.root(), &accesses)?;
         let read = flight
             .complete_read_only_readback(&cohort, |data| {
-                for b in data {
-                    if !words(b)?.iter().all(|v| v.is_finite()) {
+                if data.len() != layouts.len() {
+                    return Err(Error::State(
+                        "resident snapshot typed readback coverage differs".into(),
+                    ));
+                }
+                for (bytes, &layout) in data.iter().zip(&layouts) {
+                    if !resident_plane_finite(bytes, layout)? {
                         return Err(Error::State("nonfinite committed resident snapshot".into()));
                     }
                 }
@@ -1853,17 +1929,44 @@ impl ResidentSnapshot {
         let mut output = Vec::new();
         for d in &self.domains {
             let mut flat = Vec::new();
-            for l in &d.leases {
-                let values = words(&read[cursor])?;
-                if matches!(&d.buffers, StateBuffers::Kv { .. }) {
-                    let active = l.bytes() / 4 / self.capacity * self.binding.frontier() as usize;
-                    if values[active..].iter().any(|x| x.to_bits() != 0) {
+            let buffers = d.buffers.buffers();
+            if buffers.len() != d.leases.len() {
+                return Err(Error::State(
+                    "resident snapshot typed domain plane coverage differs".into(),
+                ));
+            }
+            for (lease, buffer) in d.leases.iter().zip(buffers) {
+                let layout = buffer.physical_layout();
+                if lease.bytes() != layout.bytes()? || layouts[cursor] != layout {
+                    return Err(Error::State(
+                        "resident snapshot typed lease/layout differs".into(),
+                    ));
+                }
+                let active_elements = if matches!(&d.buffers, StateBuffers::Kv { .. }) {
+                    if !layout.elements().is_multiple_of(self.capacity) {
+                        return Err(Error::State(
+                            "resident snapshot KV plane/capacity differs".into(),
+                        ));
+                    }
+                    let slab = layout.elements() / self.capacity;
+                    let frontier = usize::try_from(self.binding.frontier())
+                        .map_err(|_| Error::Limit("resident snapshot frontier".into()))?;
+                    let active = slab
+                        .checked_mul(frontier)
+                        .filter(|active| *active <= layout.elements())
+                        .ok_or_else(|| Error::Limit("resident snapshot active KV extent".into()))?;
+                    if !resident_plane_tail_zero(&read[cursor], layout, active)? {
                         return Err(Error::State("snapshot noncanonical KV tail".into()));
                     }
-                    flat.extend_from_slice(&values[..active]);
+                    active
                 } else {
-                    flat.extend(values);
-                }
+                    layout.elements()
+                };
+                flat.extend(resident_plane_values(
+                    &read[cursor],
+                    layout,
+                    active_elements,
+                )?);
                 cursor += 1;
             }
             output.push((d.slot, flat));
@@ -2564,5 +2667,66 @@ mod ordinary_shutdown_owner_tests {
         flag.store(true, std::sync::atomic::Ordering::Release);
         assert!(super::ordinary_not_cancelled(Some(&flag)).is_err());
         assert!(super::ordinary_not_cancelled(None).is_ok());
+    }
+
+    #[test]
+    fn typed_snapshot_decode_preserves_f32_and_bf16_and_rejects_nonfinite() {
+        let f32_layout =
+            super::ResidentBufferLayout::new(super::ResidentPhysicalType::F32, 3).unwrap();
+        let f32_raw = cubecl::bytes::Bytes::from_bytes_vec(
+            [0.0f32, -1.5, 3.25]
+                .into_iter()
+                .flat_map(f32::to_ne_bytes)
+                .collect(),
+        );
+        assert!(super::resident_plane_finite(&f32_raw, f32_layout).unwrap());
+        assert_eq!(
+            super::resident_plane_values(&f32_raw, f32_layout, 3).unwrap(),
+            [0.0, -1.5, 3.25]
+        );
+
+        let bf16_layout =
+            super::ResidentBufferLayout::new(super::ResidentPhysicalType::Bf16, 4).unwrap();
+        let bf16_raw = cubecl::bytes::Bytes::from_bytes_vec(
+            [0x0000u16, 0x8000, 0x3f80, 0xbf80]
+                .into_iter()
+                .flat_map(u16::to_ne_bytes)
+                .collect(),
+        );
+        assert!(super::resident_plane_finite(&bf16_raw, bf16_layout).unwrap());
+        let actual = super::resident_plane_values(&bf16_raw, bf16_layout, 4).unwrap();
+        assert_eq!(actual[0].to_bits(), 0.0f32.to_bits());
+        assert_eq!(actual[1].to_bits(), (-0.0f32).to_bits());
+        assert_eq!(actual[2], 1.0);
+        assert_eq!(actual[3], -1.0);
+
+        let nonfinite = cubecl::bytes::Bytes::from_bytes_vec(
+            [0x7f80u16, 0x0000, 0x0000, 0x0000]
+                .into_iter()
+                .flat_map(u16::to_ne_bytes)
+                .collect(),
+        );
+        assert!(!super::resident_plane_finite(&nonfinite, bf16_layout).unwrap());
+    }
+
+    #[test]
+    fn typed_snapshot_kv_tail_is_raw_zero_and_active_extent_is_element_based() {
+        let layout =
+            super::ResidentBufferLayout::new(super::ResidentPhysicalType::Bf16, 8).unwrap();
+        let mut raw = vec![0u8; 16];
+        for (index, bits) in [0x3f80u16, 0x4000, 0x4040, 0x4080].into_iter().enumerate() {
+            raw[index * 2..index * 2 + 2].copy_from_slice(&bits.to_ne_bytes());
+        }
+        let bytes = cubecl::bytes::Bytes::from_bytes_vec(raw.clone());
+        assert!(super::resident_plane_tail_zero(&bytes, layout, 4).unwrap());
+        assert_eq!(
+            super::resident_plane_values(&bytes, layout, 4)
+                .unwrap()
+                .len(),
+            4
+        );
+        raw[14] = 1;
+        let dirty = cubecl::bytes::Bytes::from_bytes_vec(raw);
+        assert!(!super::resident_plane_tail_zero(&dirty, layout, 4).unwrap());
     }
 }

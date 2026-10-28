@@ -1515,3 +1515,18 @@ build or general model/backend grant. Historical failures keep their source scop
 - [ ] Real physical after-launch cancellation/fault and real-model shutdown
   remain required with the approved .8B source; source-free ownership success
   does not substitute for those device tests.
+
+### 28 Oct 2026 — typed committed-root snapshot and canonical KV tail
+
+- [x] Ordinary KV candidate planes are now fully defined inside the same model
+  flight: each BF16 candidate key/value plane is zeroed, the committed prefix is
+  copied exactly, then new rows are appended. Future KV tail therefore remains
+  exact +0 instead of inheriting uninitialized allocation bytes.
+- [x] ResidentSnapshot readback is physical-type aware. F32 roots decode as F32;
+  BF16 roots widen exact BF16 bits to F32 for comparison, reject nonfinite
+  encodings, derive active KV elements from typed element count/capacity, and
+  require the untouched physical tail bytes to be zero.
+- [x] Typed snapshot unit tests, exact admission matrix, strict cuda-cublas and
+  qwen35-cuda-qualification Clippy, and all-features build pass.
+- [ ] This provides the committed-root comparison surface for the real .8B
+  47→50 parity harness; it does not substitute for the blocked physical run.

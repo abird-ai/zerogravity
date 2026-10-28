@@ -606,7 +606,13 @@ impl OrdinaryCudaBody {
                 else {
                     return Err(Error::State("ordinary CUDA candidate KV layout".into()));
                 };
+                let state_elements = step
+                    .capacity
+                    .checked_mul(512)
+                    .ok_or_else(|| Error::Limit("ordinary CUDA KV state extent".into()))?;
                 let mut launches = 0;
+                launches += attention::zero_bf16(client, &candidate_keys.handle, state_elements)?;
+                launches += attention::zero_bf16(client, &candidate_values.handle, state_elements)?;
                 if step.base != 0 {
                     let elements = step.base.checked_mul(512).ok_or_else(|| {
                         Error::Limit("ordinary CUDA KV prefix element count".into())

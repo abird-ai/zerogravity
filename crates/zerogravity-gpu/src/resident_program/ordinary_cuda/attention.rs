@@ -46,6 +46,14 @@ fn pack_source_bf16(
 }
 
 #[cube(launch_unchecked)]
+fn zero_words_runtime(destination: &mut [u32], words: u32) {
+    let i = ABSOLUTE_POS;
+    if i < usize::cast_from(words) {
+        destination[i] = 0u32;
+    }
+}
+
+#[cube(launch_unchecked)]
 fn copy_words_runtime(source: &[u32], destination: &mut [u32], status: &[Atomic<u32>], words: u32) {
     let i = ABSOLUTE_POS;
     if i < usize::cast_from(words) {
@@ -218,6 +226,39 @@ mod tests {
         assert!(managed_bytes(0).is_err());
         assert!(managed_bytes(32_769).is_err());
     }
+}
+
+pub(super) fn zero_bf16(
+    client: &cubecl::client::Client,
+    destination: &cubecl::server::Handle,
+    elements: usize,
+) -> Result<usize> {
+    if elements == 0 || !elements.is_multiple_of(2) {
+        return Err(Error::Unsupported(
+            "ordinary CUDA BF16 zero even positive extent".into(),
+        ));
+    }
+    let bytes = elements
+        .checked_mul(2)
+        .ok_or_else(|| Error::Limit("ordinary CUDA BF16 zero bytes".into()))?;
+    if destination.size_in_used() != bytes as u64
+        || destination.service != client.service_id()
+        || u32::try_from(elements / 2).is_err()
+    {
+        return Err(Error::State(
+            "ordinary CUDA BF16 zero exact service/extent".into(),
+        ));
+    }
+    unsafe {
+        zero_words_runtime::launch_unchecked(
+            client,
+            grid(elements / 2),
+            threads(),
+            arg(destination, elements / 2),
+            (elements / 2) as u32,
+        );
+    }
+    Ok(1)
 }
 
 pub(super) fn copy_bf16_prefix(
