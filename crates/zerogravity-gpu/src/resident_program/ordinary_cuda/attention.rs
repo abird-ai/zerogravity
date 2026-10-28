@@ -45,6 +45,19 @@ fn pack_source_bf16(
     }
 }
 
+#[cube(launch_unchecked)]
+fn certify_bf16(input: &[u32], status: &[Atomic<u32>], elements: u32) {
+    let i = ABSOLUTE_POS;
+    if i < usize::cast_from(elements) {
+        let word = input[i / 2usize];
+        let shift = u32::cast_from(i % 2usize) * 16u32;
+        let bits = (word >> shift) & 0xffffu32;
+        if (bits & 0x7f80u32) == 0x7f80u32 {
+            status[0].fetch_or(crate::program_kernels::NONFINITE_VALUE);
+        }
+    }
+}
+
 fn grid(n: usize) -> CubeCount {
     CubeCount::Static((n as u32).div_ceil(32), 1, 1)
 }
@@ -175,6 +188,36 @@ mod tests {
         assert!(managed_bytes(0).is_err());
         assert!(managed_bytes(32_769).is_err());
     }
+}
+
+pub(super) fn certify(
+    client: &cubecl::client::Client,
+    input: &cubecl::server::Handle,
+    status: &cubecl::server::Handle,
+    elements: usize,
+) -> Result<usize> {
+    if elements == 0
+        || input.size_in_used() != (elements * 2) as u64
+        || status.size_in_used() != 4
+        || input.service != client.service_id()
+        || status.service != client.service_id()
+        || u32::try_from(elements).is_err()
+    {
+        return Err(Error::State(
+            "ordinary CUDA BF16 certificate exact service/extent".into(),
+        ));
+    }
+    unsafe {
+        certify_bf16::launch_unchecked(
+            client,
+            grid(elements),
+            threads(),
+            arg(input, elements.div_ceil(2)),
+            arg(status, 1),
+            elements as u32,
+        );
+    }
+    Ok(1)
 }
 
 const WIDTH: usize = 256;
@@ -392,19 +435,46 @@ impl OrdinaryCudaAttention {
         let mut launches = 0;
         // Widen once after KV append. Future rows are present in the candidate
         // but masked by each row's exact active causal prefix.
-        launches += widen(
-            client,
-            &keys.handle(),
-            &self.keys.handle(),
-            &status.handle(),
-            state_elements,
+        let active_state_elements = end
+            .checked_mul(KV_WIDTH)
+            .ok_or_else(|| Error::Limit("ordinary attention active KV extent".into()))?;
+        let keys_in = super::exact_view(
+            keys,
+            0,
+            active_state_elements * 2,
+            "attention active key cache",
+        )?;
+        let values_in = super::exact_view(
+            values,
+            0,
+            active_state_elements * 2,
+            "attention active value cache",
+        )?;
+        let keys_out = super::exact_view(
+            &self.keys,
+            0,
+            active_state_elements * 4,
+            "attention active widened keys",
+        )?;
+        let values_out = super::exact_view(
+            &self.values,
+            0,
+            active_state_elements * 4,
+            "attention active widened values",
         )?;
         launches += widen(
             client,
-            &values.handle(),
-            &self.values.handle(),
+            &keys_in,
+            &keys_out,
             &status.handle(),
-            state_elements,
+            active_state_elements,
+        )?;
+        launches += widen(
+            client,
+            &values_in,
+            &values_out,
+            &status.handle(),
+            active_state_elements,
         )?;
 
         let score_elements = self.capacity * QUERY_HEADS;
