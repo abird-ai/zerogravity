@@ -24,7 +24,7 @@ portable-checkpoint = ["zerogravity-core/diagnostic-cpu-checkpoint"]
 cuda-native = ["cuda", "zerogravity-artifacts/cache", "dep:cubecl-cuda", "cubecl-cuda/owned-cubin", "cubecl-cuda/precompiled-shared"]
 # Historical finite native orchestration is diagnostic-only.
 cuda-native-qualification = ["cuda-native", "qualification"]
-cuda-cublas = ["cuda-native-qualification", "cubecl-cuda/owned-cublas-allocator"]
+cuda-cublas = ["cuda-native", "cubecl-cuda/owned-cublas-allocator"]
 
 [dependencies]
 zerogravity-core = { path = "../zerogravity-core" }
