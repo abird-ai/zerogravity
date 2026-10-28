@@ -78,11 +78,13 @@ mod rope_kv;
 mod silu;
 mod source_accumulation;
 #[cfg(any(
+    feature = "cuda-cublas",
     feature = "gemma-bf16-qualification",
     feature = "qwen-source-qualification"
 ))]
 mod source_arithmetic;
 #[cfg(any(
+    feature = "cuda-cublas",
     feature = "gemma-bf16-qualification",
     feature = "qwen-source-qualification"
 ))]
@@ -99,6 +101,7 @@ mod source_rms;
 ))]
 mod source_rotary;
 #[cfg(any(
+    feature = "cuda-cublas",
     feature = "gemma-bf16-qualification",
     feature = "qwen-source-qualification"
 ))]

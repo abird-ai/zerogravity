@@ -22,6 +22,8 @@ use std::{
     },
 };
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
+mod attention;
+
 use zerogravity_core::{
     Error, Result,
     accelerator::program::{SourceNumericalContract, SourceOperator, SourceOperatorKind},

@@ -247,7 +247,10 @@ impl DeviceBuffer {
         self.lease.as_ref()
     }
     /// Original admitted lease only; public handle metadata cannot retarget it.
-    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "cuda-native-qualification", feature = "cuda-cublas")
+    ))]
     pub(crate) fn original_lease(&self) -> Result<&crate::resident_leases::ResidentLease> {
         let lease = self.lease.as_ref().ok_or_else(|| {
             Error::State("typed resident value has no original lease owner".into())
