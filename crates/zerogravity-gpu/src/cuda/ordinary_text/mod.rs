@@ -727,7 +727,12 @@ impl Program {
     pub fn contract(&self, operation: PlanPrimitive, step: Step) -> Result<DefinitionContract> {
         let definition = match operation {
             PlanPrimitive::Positions => self.positions(step)?,
-            PlanPrimitive::Rope => self.rope(step)?,
+            PlanPrimitive::Rope => {
+                return Err(Error::Unsupported(
+                    "legacy ordinary RoPE is qualification-only; production uses source-exact rotary"
+                        .into(),
+                ));
+            }
             PlanPrimitive::Embedding => self.embedding(step.rows)?,
             PlanPrimitive::Rms { epsilon } => self.rms(step.rows, epsilon)?,
             PlanPrimitive::ResidualRms { epsilon } => self.residual_rms(step.rows, epsilon)?,
@@ -792,6 +797,7 @@ impl Program {
         )
     }
 
+    #[cfg(any(test, feature = "cuda-native-qualification"))]
     pub(crate) fn rope(&self, step: Step) -> Result<Definition> {
         let step = Step::new(step.rows, step.base, step.capacity)?;
         let plan = self.memory_plan(step.rows, step.capacity)?;
@@ -1223,8 +1229,10 @@ impl Program {
         )
     }
 
-    /// Selectable ordinary primitives. The unqualified online-FP32 attention
-    /// diagnostic is deliberately absent.
+    /// Qualification/test inventory only. It intentionally retains the legacy
+    /// numerically rejected RoPE definition for ABI regression coverage; the
+    /// checked production contract above refuses PlanPrimitive::Rope.
+    #[cfg(any(test, feature = "cuda-native-qualification"))]
     pub(crate) fn definitions(&self, step: Step, epsilon: f32) -> Result<Vec<Definition>> {
         Ok(vec![
             self.positions(step)?,
@@ -1266,6 +1274,7 @@ impl Program {
         )
     }
 
+    #[cfg(any(test, feature = "cuda-native-qualification"))]
     fn diagnostic_definitions(&self, step: Step, epsilon: f32) -> Result<Vec<Definition>> {
         let mut definitions = self.definitions(step, epsilon)?;
         definitions.push(self.unqualified_online_fp32_attention(step)?);

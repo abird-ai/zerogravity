@@ -62,6 +62,17 @@ fn complete_family_has_source_derived_entries_and_no_capture_coordinates() -> Re
 }
 
 #[test]
+fn legacy_rope_checked_contract_is_permanently_refused() -> Result<()> {
+    let error = program()
+        .contract(PlanPrimitive::Rope, Step::new(1, 1, 512)?)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("qualification-only"));
+    assert!(error.contains("source-exact rotary"));
+    Ok(())
+}
+
+#[test]
 fn canonical_buffer_schemas_are_exact() -> Result<()> {
     use Access::{Read as R, ReadWrite as RW, Write as W};
     use BufferRole::*;
