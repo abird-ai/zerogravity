@@ -184,12 +184,13 @@ impl ResidentProgram {
         request: &zerogravity_core::accelerator::program::ForwardPlan,
         states: &[crate::resident_program::StateBinding],
         output: crate::resident_program::ResidentOutput,
+        cancelled: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<crate::resident_program::ResidentSubmission> {
         let ResidentProgramBody::OrdinaryCuda(body) = &self.body else {
             return Err(Error::State(
                 "ordinary CUDA launch requested from another resident body".into(),
             ));
         };
-        body.execute(flight, request, states, output)
+        body.execute(flight, request, states, output, cancelled)
     }
 }

@@ -322,6 +322,14 @@ fn publish_prepared_cohort(
     Ok(())
 }
 
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+fn ordinary_not_cancelled(cancelled: Option<&std::sync::atomic::AtomicBool>) -> Result<()> {
+    if cancelled.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Acquire)) {
+        return Err(Error::State("ordinary CUDA request cancelled".into()));
+    }
+    Ok(())
+}
+
 fn into_unique_owner<T>(owner: Arc<T>, label: &str) -> Result<T> {
     Arc::try_unwrap(owner)
         .map_err(|_| Error::State(format!("{label} still has live session/model owners")))
@@ -1544,7 +1552,9 @@ impl ResidentModel {
         candidate: Vec<Domain>,
         request: &ForwardPlan,
         output: ResidentOutput,
+        cancelled: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<(Vec<Domain>, ResidentReady, InferenceReadback)> {
+        ordinary_not_cancelled(cancelled)?;
         self.service.ensure_usable()?;
         let call = request
             .source_call()
@@ -1564,6 +1574,7 @@ impl ResidentModel {
         self.validate_domains(&candidate, false)?;
         let bindings = bind_domains(prior, &candidate, call.rows().base())?;
 
+        ordinary_not_cancelled(cancelled)?;
         let ticket = self.service.queue().submit(
             self.service.budget(),
             ResourceOwner {
@@ -1577,6 +1588,7 @@ impl ResidentModel {
             None,
         )?;
         let mut slot = ticket.wait().await?;
+        ordinary_not_cancelled(cancelled)?;
         let workspace = self.workspace.lock().await;
         if !workspace.program.is_ordinary_cuda() {
             return Err(Error::State(
@@ -1607,12 +1619,17 @@ impl ResidentModel {
                     .map(|lease| (lease, DeviceAccess::Write)),
             );
         }
+        ordinary_not_cancelled(cancelled)?;
         slot.begin_submission()?;
         let mut flight = self.service.submit(base.root(), &accesses)?;
-        let submitted =
-            workspace
-                .program
-                .launch_ordinary_cuda(&mut flight, request, &bindings, output)?;
+        let submitted = workspace.program.launch_ordinary_cuda(
+            &mut flight,
+            request,
+            &bindings,
+            output,
+            cancelled,
+        )?;
+        ordinary_not_cancelled(cancelled)?;
 
         let expected = workspace.program.plan().proposed_domains();
         if submitted.proposals.len() != expected.len() {
@@ -1661,6 +1678,7 @@ impl ResidentModel {
             .flat_map(|domain| domain.leases.iter().cloned())
             .collect::<Vec<_>>();
         let expected_readback_bytes = cohort.iter().map(|item| item.bytes()).sum();
+        ordinary_not_cancelled(cancelled)?;
         let (ready, read) = flight
             .complete_with_readback(&promoted, &cohort, |values| {
                 if !all_zero(&values[0]) {
@@ -1677,6 +1695,7 @@ impl ResidentModel {
             })
             .await?;
         slot.finish()?;
+        ordinary_not_cancelled(cancelled)?;
 
         Ok((
             candidate,
@@ -2049,7 +2068,16 @@ impl ResidentSession {
     }
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
     pub async fn prepare_ordinary_cuda(&self, request: ForwardPlan) -> Result<PreparedInference> {
-        self.prepare_ordinary_cuda_mode(request, ResidentOutput::Logits)
+        self.prepare_ordinary_cuda_mode(request, ResidentOutput::Logits, None)
+            .await
+    }
+
+    pub async fn prepare_ordinary_cuda_cancellable(
+        &self,
+        request: ForwardPlan,
+        cancelled: &std::sync::atomic::AtomicBool,
+    ) -> Result<PreparedInference> {
+        self.prepare_ordinary_cuda_mode(request, ResidentOutput::Logits, Some(cancelled))
             .await
     }
 
@@ -2058,16 +2086,27 @@ impl ResidentSession {
         &self,
         request: ForwardPlan,
     ) -> Result<PreparedInference> {
-        self.prepare_ordinary_cuda_mode(request, ResidentOutput::StateOnly)
+        self.prepare_ordinary_cuda_mode(request, ResidentOutput::StateOnly, None)
             .await
     }
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+    pub async fn prepare_ordinary_cuda_state_only_cancellable(
+        &self,
+        request: ForwardPlan,
+        cancelled: &std::sync::atomic::AtomicBool,
+    ) -> Result<PreparedInference> {
+        self.prepare_ordinary_cuda_mode(request, ResidentOutput::StateOnly, Some(cancelled))
+            .await
+    }
+
     async fn prepare_ordinary_cuda_mode(
         &self,
         request: ForwardPlan,
         output: ResidentOutput,
+        cancelled: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<PreparedInference> {
+        ordinary_not_cancelled(cancelled)?;
         let call = request
             .source_call()
             .ok_or_else(|| Error::State("ordinary CUDA request call absent".into()))?
@@ -2095,14 +2134,18 @@ impl ResidentSession {
             workspace.program.validate_ordinary_cuda_request(&request)?;
         }
 
+        ordinary_not_cancelled(cancelled)?;
         let count = u64::try_from(call.rows().len())
             .map_err(|_| Error::Limit("ordinary CUDA request row count".into()))?;
         let attempt = self.authority.begin_advance(count)?;
+        ordinary_not_cancelled(cancelled)?;
         let candidate = self.model.allocate_state(false).await?;
+        ordinary_not_cancelled(cancelled)?;
         let (domains, ready, readback) = self
             .model
-            .execute_ordinary_cuda(base, &self.domains, candidate, &request, output)
+            .execute_ordinary_cuda(base, &self.domains, candidate, &request, output, cancelled)
             .await?;
+        ordinary_not_cancelled(cancelled)?;
         Ok(PreparedInference {
             attempt,
             domains,
@@ -2121,11 +2164,35 @@ impl ResidentSession {
     }
 
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+    pub async fn forward_ordinary_cuda_cancellable(
+        &mut self,
+        request: ForwardPlan,
+        cancelled: &std::sync::atomic::AtomicBool,
+    ) -> Result<InferenceReadback> {
+        let prepared = self
+            .prepare_ordinary_cuda_cancellable(request, cancelled)
+            .await?;
+        ordinary_not_cancelled(Some(cancelled))?;
+        self.commit(prepared)
+    }
+
     pub async fn forward_ordinary_cuda_state_only(
         &mut self,
         request: ForwardPlan,
     ) -> Result<InferenceReadback> {
         let prepared = self.prepare_ordinary_cuda_state_only(request).await?;
+        self.commit(prepared)
+    }
+
+    pub async fn forward_ordinary_cuda_state_only_cancellable(
+        &mut self,
+        request: ForwardPlan,
+        cancelled: &std::sync::atomic::AtomicBool,
+    ) -> Result<InferenceReadback> {
+        let prepared = self
+            .prepare_ordinary_cuda_state_only_cancellable(request, cancelled)
+            .await?;
+        ordinary_not_cancelled(Some(cancelled))?;
         self.commit(prepared)
     }
 
@@ -2488,5 +2555,14 @@ mod ordinary_shutdown_owner_tests {
             into_unique_owner(owner, "ordinary CUDA test model").unwrap(),
             23
         );
+    }
+
+    #[test]
+    fn ordinary_cancellation_is_explicit_and_fail_closed() {
+        let flag = std::sync::atomic::AtomicBool::new(false);
+        assert!(super::ordinary_not_cancelled(Some(&flag)).is_ok());
+        flag.store(true, std::sync::atomic::Ordering::Release);
+        assert!(super::ordinary_not_cancelled(Some(&flag)).is_err());
+        assert!(super::ordinary_not_cancelled(None).is_ok());
     }
 }

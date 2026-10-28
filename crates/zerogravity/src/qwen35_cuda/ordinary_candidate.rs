@@ -135,6 +135,32 @@ impl Session {
         ids: &[u32],
         emit_logits: bool,
     ) -> Result<InferenceReadback> {
+        self.forward_inner(mode, ids, emit_logits, None).await
+    }
+
+    pub async fn forward_cancellable(
+        &mut self,
+        mode: SourceCallMode,
+        ids: &[u32],
+        emit_logits: bool,
+        cancelled: &AtomicBool,
+    ) -> Result<InferenceReadback> {
+        self.forward_inner(mode, ids, emit_logits, Some(cancelled))
+            .await
+    }
+
+    async fn forward_inner(
+        &mut self,
+        mode: SourceCallMode,
+        ids: &[u32],
+        emit_logits: bool,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<InferenceReadback> {
+        if cancelled.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Acquire)) {
+            return Err(Error::State(
+                "ordinary Qwen candidate request cancelled".into(),
+            ));
+        }
         if ids.is_empty() || ids.len() > self.model.plan.max_chunk_rows() {
             return Err(Error::Malformed(
                 "ordinary Qwen candidate request row count".into(),
@@ -154,12 +180,23 @@ impl Session {
             emit_logits,
         )?;
         let request = invocation.materialize_source_plan()?;
-        if emit_logits {
-            self.resident.forward_ordinary_cuda(request).await
-        } else {
-            self.resident
-                .forward_ordinary_cuda_state_only(request)
-                .await
+        match (emit_logits, cancelled) {
+            (true, Some(cancelled)) => {
+                self.resident
+                    .forward_ordinary_cuda_cancellable(request, cancelled)
+                    .await
+            }
+            (false, Some(cancelled)) => {
+                self.resident
+                    .forward_ordinary_cuda_state_only_cancellable(request, cancelled)
+                    .await
+            }
+            (true, None) => self.resident.forward_ordinary_cuda(request).await,
+            (false, None) => {
+                self.resident
+                    .forward_ordinary_cuda_state_only(request)
+                    .await
+            }
         }
     }
 }

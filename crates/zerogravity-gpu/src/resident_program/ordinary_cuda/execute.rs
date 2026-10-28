@@ -33,6 +33,13 @@ use zerogravity_core::{
     device_events::{BufferRole, DeviceAccess},
 };
 
+fn require_not_cancelled(cancelled: Option<&std::sync::atomic::AtomicBool>) -> Result<()> {
+    if cancelled.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Acquire)) {
+        return Err(Error::State("ordinary CUDA request cancelled".into()));
+    }
+    Ok(())
+}
+
 impl OrdinaryCudaBody {
     pub(in crate::resident_program) fn execute(
         &self,
@@ -40,7 +47,9 @@ impl OrdinaryCudaBody {
         request: &ForwardPlan,
         states: &[StateBinding],
         output: ResidentOutput,
+        cancelled: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<ProgramSubmission> {
+        require_not_cancelled(cancelled)?;
         let call = self.validate_request(request)?;
         let state_map = self.validate_states(call, states)?;
         flight.require_accesses(
@@ -75,6 +84,7 @@ impl OrdinaryCudaBody {
             ResidentOutput::Logits => request.nodes(),
         };
         for (node_index, node) in nodes.iter().enumerate() {
+            require_not_cancelled(cancelled)?;
             let PlanOperation::SourceOperator {
                 descriptor,
                 state: declared_state,
@@ -127,6 +137,7 @@ impl OrdinaryCudaBody {
                 .checked_add(fused)
                 .ok_or_else(|| Error::Limit("ordinary CUDA fused dispatch count".into()))?;
         }
+        require_not_cancelled(cancelled)?;
         if !gate_alias.is_empty() {
             return Err(Error::State(
                 "ordinary CUDA attention gate alias not consumed".into(),
@@ -156,6 +167,7 @@ impl OrdinaryCudaBody {
             None
         };
 
+        require_not_cancelled(cancelled)?;
         let proposals = request
             .proposed_domains()
             .iter()

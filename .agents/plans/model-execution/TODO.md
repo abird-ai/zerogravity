@@ -1497,3 +1497,21 @@ build or general model/backend grant. Historical failures keep their source scop
   replay, faults and state-history qualification remain required for each cell
   before production use; .8B real-model qualification is still blocked by the
   inaccessible approved safetensor shard.
+
+### 28 Oct 2026 — ordinary CUDA source-free cancellation/fault ownership
+
+- [x] Ordinary request cancellation is explicit at the resident owner: checks run
+  before candidate-root allocation, before flight arming, between source nodes,
+  after launch/completion, and immediately before commit. Cancellation on an
+  armed flight returns through the existing ResidentSubmission Drop path, so
+  completion becomes unknown, the service is fenced and original access/native
+  owners are retained for quarantine; no alternate cancellation authority or
+  root publication path exists.
+- [x] Source-free lifecycle regression set passes: ordinary cancellation helper,
+  independent model close/reload with global IDs/events, delayed event reader
+  source/quota retention until actual retirement, unknown module release
+  sibling fencing, explicit ordinary provider shutdown, strict cuda-cublas and
+  qwen35-cuda-qualification Clippy, and all-features build.
+- [ ] Real physical after-launch cancellation/fault and real-model shutdown
+  remain required with the approved .8B source; source-free ownership success
+  does not substitute for those device tests.
