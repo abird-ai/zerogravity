@@ -373,6 +373,9 @@ impl OrdinaryCudaCold {
     pub(super) fn program(&self) -> &Program {
         &self.program
     }
+    pub(super) fn values(&self) -> &[DeviceBuffer] {
+        &self.values
+    }
     pub(super) fn value(&self, index: usize) -> Result<&DeviceBuffer> {
         self.values
             .get(index)
