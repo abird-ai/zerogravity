@@ -1,6 +1,6 @@
 //! Explicit genuine-operand leaf proofs; never a model eligibility permit.
 // Former names: vllm08, short_hf, canonical47, solve47_leaf. No compatibility aliases.
-use crate::cuda::gdn::{GdnBuffer, GdnPhase, GdnStage, kernel};
+use crate::cuda::gdn::{GdnBuffer, GdnPhase, GdnStage, kernel, loaded_gamma};
 use crate::resident_leases::{ResidentLease, ResidentService};
 use cubecl::{Device, bytes::Bytes};
 use std::sync::Arc;
@@ -202,32 +202,6 @@ fn finite_bf16(bytes: &[u8]) -> bool {
             let bits = u16::from_le_bytes([b[0], b[1]]);
             bits & 0x7f80 != 0x7f80
         })
-}
-
-fn loaded_gamma(window: &ParameterWindow) -> Result<Vec<u8>> {
-    if !window.is_complete() || window.parameter().elements() != 128 {
-        return Err(Error::Malformed("complete original GDN gamma128".into()));
-    }
-    let values = match window.parameter().tensor().kind {
-        QuantKind::Bf16 => window.as_slice().to_vec(),
-        QuantKind::F32 => {
-            let mut out = Vec::with_capacity(256);
-            for raw in window.as_slice().chunks_exact(4) {
-                let bits = u32::from_le_bytes(raw.try_into().unwrap());
-                if !f32::from_bits(bits).is_finite() {
-                    return Err(Error::Malformed("nonfinite original GDN gamma".into()));
-                }
-                let rounded = bits.wrapping_add(0x7fff + ((bits >> 16) & 1));
-                out.extend_from_slice(&((rounded >> 16) as u16).to_le_bytes());
-            }
-            out
-        }
-        _ => return Err(Error::Unsupported("pinned vLLM gamma source dtype".into())),
-    };
-    if values.len() != 256 || !finite_bf16(&values) {
-        return Err(Error::Malformed("finite loaded BF16 GDN gamma".into()));
-    }
-    Ok(values)
 }
 
 async fn gated_leaf(

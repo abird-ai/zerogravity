@@ -1,7 +1,12 @@
 //! Exact canonical-root <-> GDN-cache bit transport. No StateRoot/Ready authority.
-use super::*;
+use crate::cuda::kernel::PinnedKernel;
+use crate::resident_leases::{ResidentLease, ResidentService};
+use cubecl::server::Handle;
+use cubecl_runtime::kernel::BufferIOAttr;
+use std::sync::Arc;
+use zerogravity_core::{Error, Result};
 
-const STATE_COPY_SOURCE: &str = include_str!("state_copy.cu");
+const STATE_COPY_SOURCE: &str = include_str!("resident/state_copy.cu");
 pub(crate) const CONV_ELEMENTS: usize = 6144 * 3;
 pub(crate) const RECURRENT_ELEMENTS: usize = 16 * 128 * 128;
 

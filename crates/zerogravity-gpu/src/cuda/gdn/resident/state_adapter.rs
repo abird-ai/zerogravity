@@ -9,7 +9,7 @@ use zerogravity_core::accelerator::program::{SourceOperatorKind, SourceStateAcce
 
 const METADATA_BYTES: usize = 2 * 1024 * 1024;
 
-use super::state_transport::{
+use crate::cuda::gdn::state_transport::{
     CONV_ELEMENTS, RECURRENT_ELEMENTS, StateCopy, StateTransport, plane_handle,
 };
 

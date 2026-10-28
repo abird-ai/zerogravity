@@ -1,6 +1,6 @@
 //! SAME GDN partitions and canonical transport, sealed to actual 2B producers.
-use super::state_transport::{StateCopy, StateTransport, plane_handle};
 use super::*;
+use crate::cuda::gdn::state_transport::{StateCopy, StateTransport, plane_handle};
 use crate::cuda::native::qwen2b_component::ComponentGdnBinding;
 use crate::resident_inference::native_fragment::PrefixPhaseEnqueue;
 use zerogravity_core::accelerator::program::StateEffect;

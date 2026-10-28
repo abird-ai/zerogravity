@@ -18,8 +18,6 @@ mod component;
 pub(crate) mod solve_leaf;
 mod state_adapter;
 #[cfg(target_os = "linux")]
-pub(crate) mod state_transport;
-#[cfg(target_os = "linux")]
 pub(crate) use component::{ComponentConvEnqueued, ComponentGdnAdapter};
 #[cfg(target_os = "linux")]
 pub(crate) use state_adapter::GdnStateAdapter;
@@ -1068,5 +1066,5 @@ impl GdnPrepared {
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub(crate) fn prepare_state_code(queue: &cubecl::cuda::OwnedCudaQueue) -> Result<usize> {
-    state_transport::prepare_code(queue)
+    super::state_transport::prepare_code(queue)
 }

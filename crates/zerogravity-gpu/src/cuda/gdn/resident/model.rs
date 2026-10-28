@@ -1,6 +1,8 @@
 //! Same canonical GDN bit transports; distinct full-layer source/root binding.
-use super::state_transport::{StateCopy, StateTransport, StateTransportDefinition, plane_handle};
 use super::*;
+use crate::cuda::gdn::state_transport::{
+    StateCopy, StateTransport, StateTransportDefinition, plane_handle,
+};
 use crate::cuda::native::model_gdn::ModelGdnBinding;
 use crate::resident_inference::native_fragment::{
     PrefixPhaseEnqueue, model_state::BoundModelState,

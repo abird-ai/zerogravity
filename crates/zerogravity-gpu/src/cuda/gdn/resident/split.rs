@@ -1,6 +1,6 @@
 //! Consumed enqueue token only, not completion/Ready/root authority.
-use super::state_transport::StateCopy;
 use super::*;
+use crate::cuda::gdn::state_transport::StateCopy;
 use crate::resident_inference::native_fragment::PrefixPhaseEnqueue;
 use zerogravity_core::accelerator::program::StateEffect;
 

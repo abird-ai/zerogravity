@@ -10,7 +10,9 @@ use cubecl_runtime::kernel::BufferIOAttr;
 #[cfg(test)]
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use zerogravity_artifacts::source_weights::ParameterWindow;
 use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode};
+use zerogravity_core::quant::QuantKind;
 use zerogravity_core::{Error, Result};
 
 mod arithmetic;
@@ -18,6 +20,11 @@ pub(crate) use arithmetic::GdnFamilyIdentity;
 mod assets;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod qwen2b_arithmetic;
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", feature = "cuda-native-qualification")
+))]
+pub(crate) mod state_transport;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use qwen2b_arithmetic::{Qwen2bGdnArithmetic, Qwen2bOriginalGdnReference};
 #[cfg(feature = "cuda-native-qualification")]
@@ -34,6 +41,37 @@ pub(crate) const CACHE_SLOT_BYTES: usize = 278528 * 4;
 pub(crate) const CACHE_SLOTS: usize = 5;
 pub(crate) const CONV_STATE_BYTES: usize = 3 * 6144 * 2;
 pub(crate) const RECURRENT_STATE_BYTES: usize = 16 * 128 * 128 * 4;
+
+pub(crate) fn loaded_gamma(window: &ParameterWindow) -> Result<Vec<u8>> {
+    if !window.is_complete() || window.parameter().elements() != 128 {
+        return Err(Error::Malformed("complete original GDN gamma128".into()));
+    }
+    let values = match window.parameter().tensor().kind {
+        QuantKind::Bf16 => window.as_slice().to_vec(),
+        QuantKind::F32 => {
+            let mut out = Vec::with_capacity(256);
+            for raw in window.as_slice().chunks_exact(4) {
+                let bits = u32::from_le_bytes(raw.try_into().unwrap());
+                if !f32::from_bits(bits).is_finite() {
+                    return Err(Error::Malformed("nonfinite original GDN gamma".into()));
+                }
+                let rounded = bits.wrapping_add(0x7fff + ((bits >> 16) & 1));
+                out.extend_from_slice(&((rounded >> 16) as u16).to_le_bytes());
+            }
+            out
+        }
+        _ => return Err(Error::Unsupported("GDN gamma source dtype".into())),
+    };
+    if values.len() != 256
+        || values.chunks_exact(2).any(|raw| {
+            let bits = u16::from_le_bytes([raw[0], raw[1]]);
+            bits & 0x7f80 == 0x7f80
+        })
+    {
+        return Err(Error::Malformed("finite loaded BF16 GDN gamma".into()));
+    }
+    Ok(values)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum GdnPhase {
