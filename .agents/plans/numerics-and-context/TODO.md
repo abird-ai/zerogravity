@@ -859,3 +859,18 @@ build or general model/backend grant. Historical failures keep their source scop
   DSOs are not visible through the current connector. The available Nix CUDA
   12.9.2.10 DSOs have different sizes/hashes. Do not repin or substitute them
   without an explicit source/provider qualification decision.
+
+### 28 Oct 2026 — source-independent ordinary primitive numerical parity
+
+- [x] Clean RTX 3060 physical parity against source-derived arithmetic passes
+  ordinary .8B full-width RMS for rows 1, 2, 17 and 64, including exact BF16
+  output bits and zero shared status.
+- [x] Query-head RMS (8x256) and key-head RMS (2x256) from the real packed
+  5120-row attention layout pass exact source parity for rows 1, 2, 17 and 64.
+- [x] Ordinary FFN SiLU*up and attention sigmoid pass exact source SLEEF BF16
+  parity for rows 1, 2, 17 and 64. The tested paths cover the production packed
+  GateUp and attention-gate layouts.
+- [x] These gates are source/model independent and do not replace the mandatory
+  current-source full-model parity run. Together with the source-exact RoPE
+  correction they remove the known primitive-level numerical drift before the
+  blocked .8B 47->50 campaign.
