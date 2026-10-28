@@ -737,11 +737,6 @@ pub(crate) struct GdnRuntimeLaunchSchedule {
     launches: Vec<GdnRuntimeLaunch>,
 }
 impl GdnRuntimeLaunchSchedule {
-    pub(crate) fn len(&self) -> usize {
-        self.launches.len()
-    }
-
-    #[allow(dead_code)]
     pub(crate) fn launch(&self) -> Result<usize> {
         for launch in &self.launches {
             launch.launch()?;
@@ -1013,6 +1008,7 @@ impl GdnRuntimePlan {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn partition_kinds(
         &self,
         partition: GdnRuntimePartition,
@@ -1132,16 +1128,6 @@ impl GdnRuntimePlan {
             .map(|(step, handles)| step.prepare_launch(client, handles))
             .collect::<Result<Vec<_>>>()?;
         Ok(GdnRuntimeLaunchSchedule { launches })
-    }
-
-    /// Compile/cache every source-backed runtime step for this exact geometry.
-    /// No launch, allocation, source IO, completion or publication occurs.
-    pub(crate) fn prepare_code(&self, queue: &cubecl::cuda::OwnedCudaQueue) -> Result<usize> {
-        self.require_schedule()?;
-        for step in &self.schedule {
-            step.kernel.prepare_code(queue)?;
-        }
-        Ok(self.schedule.len())
     }
 }
 

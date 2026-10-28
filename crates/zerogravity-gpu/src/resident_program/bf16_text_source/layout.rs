@@ -185,6 +185,7 @@ impl Layout {
                             StateRequirement {
                                 slot: binding.slot(),
                                 layout,
+                                physical: ResidentPhysicalType::F32,
                                 bytes,
                             },
                         )
