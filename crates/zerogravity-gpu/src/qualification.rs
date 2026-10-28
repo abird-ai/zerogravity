@@ -133,6 +133,163 @@ pub use crate::resident_program::typed_slice::qualification::{
 };
 
 #[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
+async fn qualify_ordinary_owned_blas_identity(
+    device: Device,
+    cublas: &std::path::Path,
+    cublas_lt: &std::path::Path,
+) -> zerogravity_core::Result<()> {
+    use crate::{
+        resident_leases::ResidentService,
+        resident_program::ordinary_cuda::{OrdinaryCudaBlas, OrdinaryCudaProviderPaths},
+    };
+    use cubecl::cuda::Bf16GemmOperation;
+    use zerogravity_core::{
+        Error,
+        accelerator::SourceIdentity,
+        device_events::{BufferRole, DeviceAccess},
+        resource_arbiter::{AllocationClass, AllocationRequest, ResourceOwner},
+    };
+
+    const MIB: usize = 1024 * 1024;
+    const WIDTH: usize = 64;
+    const MAX_ROWS: usize = 64;
+    const BF16_ONE: u16 = 0x3f80;
+    const VALUES: [u16; 4] = [0x3f00, 0x3f80, 0x4000, 0xbf80];
+
+    let source = SourceIdentity::for_new_allocation()?;
+    let service = ResidentService::new_pinned_cuda(
+        device,
+        source,
+        ResourceOwner::new("ordinary-blas-identity", "isolated-qualification")?,
+        256 * MIB,
+        (512 * MIB) as u64,
+    )?;
+
+    let mut weight_bytes = Vec::with_capacity(WIDTH * WIDTH * 2);
+    for row in 0..WIDTH {
+        for column in 0..WIDTH {
+            weight_bytes
+                .extend_from_slice(&(if row == column { BF16_ONE } else { 0u16 }).to_le_bytes());
+        }
+    }
+    let mut input_bytes = Vec::with_capacity(MAX_ROWS * WIDTH * 2);
+    for row in 0..MAX_ROWS {
+        for column in 0..WIDTH {
+            input_bytes
+                .extend_from_slice(&VALUES[(row * WIDTH + column) % VALUES.len()].to_le_bytes());
+        }
+    }
+    let output_bytes = input_bytes.len();
+    let init_bytes = weight_bytes
+        .len()
+        .checked_add(input_bytes.len())
+        .and_then(|bytes| bytes.checked_add(output_bytes))
+        .ok_or_else(|| Error::Limit("ordinary BLAS identity initialization bytes".into()))?;
+
+    let ticket = service.queue().submit(
+        service.budget(),
+        service.owner().clone(),
+        &[AllocationRequest {
+            kind: AllocationClass::Other,
+            bytes: init_bytes as u64,
+        }],
+        None,
+    )?;
+    let mut slot = ticket.wait().await?;
+    slot.begin_submission()?;
+    let mut init = service.begin_initialization(0)?;
+    let weights = init.upload_bytes(&weight_bytes, BufferRole::ImmutableWeights)?;
+    let input = init.upload_bytes(&input_bytes, BufferRole::Activation)?;
+    let output = init.allocate_empty(output_bytes, BufferRole::Output)?;
+    drop(init.complete_sync().await?);
+    slot.finish()?;
+
+    let paths = OrdinaryCudaProviderPaths::new(cublas, cublas_lt)?;
+    let blas = OrdinaryCudaBlas::prepare(service.clone(), 0, &paths).await?;
+
+    for rows in [1usize, 2, 17, 64] {
+        let operation = Bf16GemmOperation::reference(WIDTH, rows, WIDTH)
+            .map_err(|error| Error::State(format!("ordinary BLAS identity operation: {error}")))?;
+        let expected_bytes = rows * WIDTH * 2;
+        let ticket = service.queue().submit(
+            service.budget(),
+            service.owner().clone(),
+            &[AllocationRequest {
+                kind: AllocationClass::Scratch,
+                bytes: expected_bytes as u64,
+            }],
+            None,
+        )?;
+        let mut slot = ticket.wait().await?;
+        slot.begin_submission()?;
+        let mut accesses = vec![
+            (weights.clone(), DeviceAccess::Read),
+            (input.clone(), DeviceAccess::Read),
+            (output.clone(), DeviceAccess::Write),
+        ];
+        accesses.extend(blas.execution_accesses());
+        let mut flight = service.submit(0, &accesses)?;
+        blas.enqueue(&mut flight, operation, &weights, &input, 0, &output, 0)?;
+        let expected = &input_bytes[..expected_bytes];
+        let (ready, actual) = flight
+            .complete_with_readback(
+                std::slice::from_ref(&output),
+                &[output.readback(0, expected_bytes)?],
+                |read| {
+                    if read.len() != 1 || &read[0][..] != expected {
+                        return Err(Error::State(format!(
+                            "ordinary owned cuBLAS identity GEMM differs for rows={rows}"
+                        )));
+                    }
+                    Ok(())
+                },
+            )
+            .await?;
+        drop(ready);
+        slot.finish()?;
+        if actual.len() != 1 || &actual[0][..] != expected {
+            return Err(Error::State(format!(
+                "ordinary owned cuBLAS identity readback differs for rows={rows}"
+            )));
+        }
+        println!("ordinary-owned-cublas-identity rows={rows} PASS");
+    }
+
+    blas.retire(0).await?;
+    drop(blas);
+    drop((weights, input, output));
+    service
+        .client()
+        .memory_cleanup()
+        .map_err(|error| Error::State(format!("ordinary BLAS identity cleanup: {error}")))?;
+    if service.resident_bytes()? != 0 || service.model_events()? != 0 {
+        return Err(Error::State(
+            "ordinary BLAS identity left resident bytes/events".into(),
+        ));
+    }
+    service.close_model_namespace()?;
+    Ok(())
+}
+
+#[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
+#[test]
+#[ignore = "isolated NVIDIA ordinary owned-cuBLAS dynamic-row numerical/lifecycle qualification"]
+fn ordinary_owned_blas_identity_dynamic_rows_on_nvidia() -> zerogravity_core::Result<()> {
+    let cublas = std::env::var_os("ZG_QWEN35_CUBLAS")
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| zerogravity_core::Error::State("ZG_QWEN35_CUBLAS required".into()))?;
+    let cublas_lt = std::env::var_os("ZG_QWEN35_CUBLAS_LT")
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| zerogravity_core::Error::State("ZG_QWEN35_CUBLAS_LT required".into()))?;
+    let device = Device::cuda(0).map_err(|error| {
+        zerogravity_core::Error::State(format!("CUDA device 0 unavailable: {error}"))
+    })?;
+    futures_lite::future::block_on(qualify_ordinary_owned_blas_identity(
+        device, &cublas, &cublas_lt,
+    ))
+}
+
+#[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
 fn qualify_ordinary_rope_source_parity(device: Device) -> zerogravity_core::Result<()> {
     use crate::resident_program::ordinary_cuda::rotary::enqueue_source_exact_raw;
     use zerogravity_core::{Error, Result};
