@@ -540,6 +540,63 @@ fn caller_handle_binding_rejects_physical_state_aliases_and_slices_exact_views()
 }
 
 #[test]
+fn mathematical_conv_and_recurrent_partitions_cover_each_schedule_once() -> Result<()> {
+    use GdnRuntimePartition::{Convolution, Recurrent};
+    use GdnRuntimeScheduleKind::*;
+
+    let config = runtime_config()?;
+    let slot = GdnRuntimeCacheSlot::new(2)?;
+    for (plan, expected_conv, expected_recurrent) in [
+        (
+            GdnRuntimePlan::prefill_chunk(config, slot, 0, 1, false)?,
+            vec![PackZ, Conv],
+            vec![
+                Prep,
+                Cumsum,
+                Kkt,
+                ZeroInverse,
+                Solve,
+                Recompute,
+                ZeroInitialState,
+                State,
+                ScatterFinalState,
+                Output,
+                Gated,
+            ],
+        ),
+        (
+            GdnRuntimePlan::prefill_chunk(config, slot, 7, 64, true)?,
+            vec![PackA, PackB, PackZ, Conv],
+            vec![
+                Prep,
+                Cumsum,
+                Kkt,
+                ZeroInverse,
+                Solve,
+                Recompute,
+                GatherInitialState,
+                State,
+                ScatterFinalState,
+                Output,
+                Gated,
+            ],
+        ),
+        (
+            GdnRuntimePlan::cached_decode(config, slot, 71)?,
+            vec![CopyQkvPrefix, PackZ, Conv],
+            vec![Decode, Gated],
+        ),
+    ] {
+        assert_eq!(plan.partition_kinds(Convolution)?, expected_conv);
+        assert_eq!(plan.partition_kinds(Recurrent)?, expected_recurrent);
+        let mut joined = plan.partition_kinds(Convolution)?;
+        joined.extend(plan.partition_kinds(Recurrent)?);
+        assert_eq!(joined, kinds(&plan));
+    }
+    Ok(())
+}
+
+#[test]
 fn schedule_order_access_and_state_alias_mutations_refuse() -> Result<()> {
     let plan = GdnRuntimePlan::prefill_chunk(
         runtime_config()?,

@@ -601,6 +601,12 @@ impl fmt::Debug for GdnRuntimeStage {
 
 /// One ordered operation in the complete executable schedule.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum GdnRuntimePartition {
+    Convolution,
+    Recurrent,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum GdnRuntimeScheduleKind {
     PackA,
     PackB,
@@ -731,6 +737,10 @@ pub(crate) struct GdnRuntimeLaunchSchedule {
     launches: Vec<GdnRuntimeLaunch>,
 }
 impl GdnRuntimeLaunchSchedule {
+    pub(crate) fn len(&self) -> usize {
+        self.launches.len()
+    }
+
     #[allow(dead_code)]
     pub(crate) fn launch(&self) -> Result<usize> {
         for launch in &self.launches {
@@ -979,6 +989,39 @@ impl GdnRuntimePlan {
     pub fn schedule(&self) -> &[GdnRuntimeScheduleStep] {
         &self.schedule
     }
+
+    fn partition_range(&self, partition: GdnRuntimePartition) -> Result<std::ops::Range<usize>> {
+        self.require_schedule()?;
+        let conv = self
+            .schedule
+            .iter()
+            .position(|step| step.kind == GdnRuntimeScheduleKind::Conv)
+            .ok_or_else(|| {
+                Error::State("GDN runtime convolution schedule boundary absent".into())
+            })?;
+        let split = conv
+            .checked_add(1)
+            .ok_or_else(|| Error::Limit("GDN runtime partition boundary overflow".into()))?;
+        if split >= self.schedule.len() {
+            return Err(Error::State(
+                "GDN runtime recurrent schedule partition absent".into(),
+            ));
+        }
+        Ok(match partition {
+            GdnRuntimePartition::Convolution => 0..split,
+            GdnRuntimePartition::Recurrent => split..self.schedule.len(),
+        })
+    }
+
+    pub(crate) fn partition_kinds(
+        &self,
+        partition: GdnRuntimePartition,
+    ) -> Result<Vec<GdnRuntimeScheduleKind>> {
+        Ok(self.schedule[self.partition_range(partition)?]
+            .iter()
+            .map(|step| step.kind)
+            .collect())
+    }
     pub fn convolution_state(&self) -> GdnRuntimeStateView {
         GdnRuntimeStateView {
             role: GdnRuntimeBuffer::CacheArena,
@@ -1073,6 +1116,32 @@ impl GdnRuntimePlan {
             .map(|(step, handles)| step.prepare_launch(client, handles))
             .collect::<Result<Vec<_>>>()?;
         Ok(GdnRuntimeLaunchSchedule { launches })
+    }
+
+    pub(crate) fn prepare_partition_launches(
+        &self,
+        client: &cubecl::client::Client,
+        handles: &BTreeMap<GdnRuntimeBuffer, cubecl::server::Handle>,
+        partition: GdnRuntimePartition,
+    ) -> Result<GdnRuntimeLaunchSchedule> {
+        let range = self.partition_range(partition)?;
+        let handles = self.bind_schedule_handles(handles)?;
+        let launches = self.schedule[range.clone()]
+            .iter()
+            .zip(handles[range].iter().cloned())
+            .map(|(step, handles)| step.prepare_launch(client, handles))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(GdnRuntimeLaunchSchedule { launches })
+    }
+
+    /// Compile/cache every source-backed runtime step for this exact geometry.
+    /// No launch, allocation, source IO, completion or publication occurs.
+    pub(crate) fn prepare_code(&self, queue: &cubecl::cuda::OwnedCudaQueue) -> Result<usize> {
+        self.require_schedule()?;
+        for step in &self.schedule {
+            step.kernel.prepare_code(queue)?;
+        }
+        Ok(self.schedule.len())
     }
 }
 
