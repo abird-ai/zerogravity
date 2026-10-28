@@ -920,3 +920,16 @@ build or general model/backend grant. Historical failures keep their source scop
   causal frontier base+row+1.
 - [x] This qualifies wrapper prefix/row/layout/BF16 transport semantics in
   addition to the already source-derived attention arithmetic.
+
+### 28 Oct 2026 — ordinary canonical GDN state transport physical qualification
+
+- [x] Clean RTX 3060 qualification passes the production canonical state
+  adapters ConvIn->ConvOut and RecurrentIn->RecurrentOut with exact round-trip
+  bytes, zero shared status, and zero resident bytes/events before namespace
+  close.
+- [x] Conv transport covers canonical F32 BF16-widened roots <-> native BF16
+  [frame,channel] layout; recurrent transport covers the exact F32 H/K/V <->
+  H/V/K transpose.
+- [x] A deliberately non-BF16 canonical conv root sets the transport fault bit,
+  proving fail-closed validation rather than silently truncating malformed root
+  state.
