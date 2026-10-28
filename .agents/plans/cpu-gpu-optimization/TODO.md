@@ -1320,3 +1320,23 @@ build or general model/backend grant. Historical failures keep their source scop
   for query/key BF16 bits exactly.
 - [x] Context admission totals were re-derived after the rotary scratch change;
   the fit matrix is unchanged (.8B through 32K, 2B through 16K; 2B 32K refuses).
+
+### 28 Oct 2026 — ordinary owned-cuBLAS physical qualification harness
+
+- [x] Added an isolated source-independent NVIDIA qualification for the exact
+  ordinary owned-cuBLAS path at dynamic rows 1, 2, 17 and 64. It uses identity
+  BF16 weights, verifies exact output bytes, retains the original resident
+  flight/provider/pool owners, then explicitly retires the BLAS provider and
+  verifies zero resident bytes/events before namespace close.
+- [x] The harness compiles/discovers under qualification,cuda-cublas, strict
+  Clippy passes, and all-features builds.
+- [ ] Physical execution is currently blocked by provider identity, not code:
+  the verifier is pinned to libcublas.so.12 bytes=105,140,976 SHA256
+  d63456d94f1b8e2408a8a9538c8740eb474c9eba48a84f420b15e2e10fbcd048
+  and libcublasLt.so.12 bytes=749,205,904 SHA256
+  96ddf4891ca4f4ed1475966783a9185df2abd64a81c3cc713b96d036696fc541.
+  Historical validated runs used
+  /usr/local/lib/python3.12/dist-packages/nvidia/cublas/lib/, but those held
+  DSOs are not visible through the current connector. The available Nix CUDA
+  12.9.2.10 DSOs have different sizes/hashes. Do not repin or substitute them
+  without an explicit source/provider qualification decision.
