@@ -88,7 +88,10 @@ impl BufferRange {
             && self.bytes.start < other.bytes.end
             && other.bytes.start < self.bytes.end
     }
-    #[cfg(all(feature = "qualification", target_os = "linux"))]
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "qualification", feature = "cuda-cublas")
+    ))]
     pub(crate) fn require_exact_len(&self, bytes: usize) -> Result<()> {
         if self.bytes.end - self.bytes.start != bytes as u64 {
             return Err(Error::State("resident exact logical buffer length".into()));
@@ -542,14 +545,20 @@ struct NodeStatus {
 #[derive(Clone)]
 enum ResidentProgramSource {
     Owned(Arc<dyn TensorSource>),
-    #[cfg(all(feature = "qualification", target_os = "linux"))]
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "qualification", feature = "cuda-cublas")
+    ))]
     Windows(zerogravity_artifacts::source_weights::VerifiedTensorSource),
 }
 impl ResidentProgramSource {
     fn source_identity(&self) -> SourceIdentity {
         match self {
             Self::Owned(source) => source.source_identity(),
-            #[cfg(all(feature = "qualification", target_os = "linux"))]
+            #[cfg(all(
+                target_os = "linux",
+                any(feature = "qualification", feature = "cuda-cublas")
+            ))]
             Self::Windows(source) => source.source_identity(),
         }
     }
@@ -565,6 +574,8 @@ struct LegacyProgram {
     trig_tables: Handle,
 }
 enum ResidentProgramBody {
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+    OrdinaryCuda(Arc<ordinary_cuda::body::OrdinaryCudaBody>),
     #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
     Bf16TextSource(Arc<bf16_text_source::Bf16TextSourceBody>),
     Legacy(Box<LegacyProgram>),
@@ -684,6 +695,10 @@ impl ResidentProgram {
     fn legacy(&self) -> Result<&LegacyProgram> {
         match &self.body {
             ResidentProgramBody::Legacy(body) => Ok(body),
+            #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+            ResidentProgramBody::OrdinaryCuda(_) => Err(Error::Unsupported(
+                "ordinary CUDA body cannot enter legacy execution".into(),
+            )),
             #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
             ResidentProgramBody::Bf16TextSource(_) => Err(Error::Unsupported(
                 "source native body cannot enter legacy execution".into(),
@@ -708,6 +723,10 @@ impl ResidentProgram {
     fn legacy_mut(&mut self) -> Result<&mut LegacyProgram> {
         match &mut self.body {
             ResidentProgramBody::Legacy(body) => Ok(body),
+            #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+            ResidentProgramBody::OrdinaryCuda(_) => Err(Error::Unsupported(
+                "ordinary CUDA body cannot enter legacy execution".into(),
+            )),
             #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
             ResidentProgramBody::Bf16TextSource(_) => Err(Error::Unsupported(
                 "source native body cannot enter legacy execution".into(),
@@ -1482,6 +1501,15 @@ impl ResidentProgram {
     /// statuses are absent so their uninitialized storage cannot become Ready.
     /// This is cold binding metadata, not a second allocation or program.
     pub fn execution_handles(&self, output: ResidentOutput) -> Vec<Handle> {
+        #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+        if let ResidentProgramBody::OrdinaryCuda(body) = &self.body {
+            let _ = output;
+            return body
+                .accesses()
+                .iter()
+                .map(|(lease, _)| lease.handle())
+                .collect();
+        }
         #[cfg(all(feature = "qualification", target_os = "linux"))]
         if let ResidentProgramBody::TypedSlice(body) = &self.body {
             return body.accesses().iter().map(|(l, _)| l.handle()).collect();

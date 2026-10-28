@@ -23,6 +23,7 @@ use std::{
 };
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 mod attention;
+pub(super) mod body;
 mod cold;
 mod layout;
 
@@ -194,6 +195,23 @@ impl OrdinaryCudaBlas {
             sentinel,
             retired: AtomicBool::new(false),
         }))
+    }
+
+    pub(crate) fn require_service(&self, service: &Arc<ResidentService>) -> Result<()> {
+        self.require_active()?;
+        if !Arc::ptr_eq(&self.service, service) {
+            return Err(Error::State(
+                "ordinary CUDA BLAS physical service differs".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn accesses(&self) -> Vec<(ResidentLease, DeviceAccess)> {
+        vec![
+            (self.workspace.clone(), DeviceAccess::Write),
+            (self.sentinel.clone(), DeviceAccess::Read),
+        ]
     }
 
     fn require_active(&self) -> Result<()> {
