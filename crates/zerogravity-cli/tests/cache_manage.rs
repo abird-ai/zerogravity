@@ -291,6 +291,51 @@ mod enabled {
     }
 
     #[test]
+    fn by_name_reset_requires_explicit_alias_discard_and_preserves_canonical_data() {
+        let fixture = Fixture::new();
+        let digest = fixture.seed("reset", Some("runtime-reset"));
+        fixture
+            .store()
+            .set_by_name_alias("keep-human", &digest, false)
+            .unwrap();
+
+        std::fs::remove_dir_all(fixture.0.join(".by-name-state")).unwrap();
+        assert!(fixture.0.join(".by-name-initialized").is_file());
+
+        let list = binary()
+            .args(["cache", "by-name", "list", "--cache"])
+            .arg(&fixture.0)
+            .output()
+            .unwrap();
+        assert_eq!(list.status.code(), Some(2));
+
+        let unsafe_reset = binary()
+            .args(["cache", "by-name", "reset", "--cache"])
+            .arg(&fixture.0)
+            .output()
+            .unwrap();
+        assert_eq!(unsafe_reset.status.code(), Some(2));
+
+        let reset = binary()
+            .args(["cache", "by-name", "reset", "--discard-aliases", "--cache"])
+            .arg(&fixture.0)
+            .output()
+            .unwrap();
+        assert!(
+            reset.status.success(),
+            "{}",
+            String::from_utf8_lossy(&reset.stderr)
+        );
+        assert!(String::from_utf8_lossy(&reset.stdout).contains("explicit aliases were discarded"));
+
+        let store = fixture.store();
+        assert!(store.resolve_ref("runtime-reset").is_ok());
+        let entries = store.list_by_name().unwrap();
+        assert!(entries.iter().all(|entry| entry.name() != "keep-human"));
+        assert!(entries.iter().any(|entry| entry.snapshot() == digest));
+    }
+
+    #[test]
     fn dry_run_preserves_target_and_apply_reports_observed_charge() {
         let fixture = Fixture::new();
         let digest = fixture.seed("one", None);

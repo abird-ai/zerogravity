@@ -121,6 +121,17 @@ mod diagnostics {
             Ok(())
         }
     }
+
+    #[derive(Default)]
+    struct ByNameTrace(Mutex<Vec<CachePoint>>);
+    impl CacheHook for ByNameTrace {
+        fn point(&self, point: CachePoint) -> Result<()> {
+            if is_by_name_operation(point.operation) {
+                self.0.lock().unwrap().push(point);
+            }
+            Ok(())
+        }
+    }
     struct FailAt {
         index: usize,
         count: AtomicUsize,
@@ -152,7 +163,15 @@ mod diagnostics {
                 && path.file_name().is_some_and(|name| {
                     matches!(
                         name.to_str(),
-                        Some("by-name" | "by-name.json" | ".by-name.next" | ".by-name.json.next")
+                        Some(
+                            "by-name"
+                                | ".by-name.next"
+                                | ".by-name-state"
+                                | ".by-name-state.next"
+                                | ".by-name-initialized"
+                                | "by-name.json"
+                                | ".by-name.json.next"
+                        )
                     )
                 });
             if derived_by_name {
@@ -218,6 +237,26 @@ mod diagnostics {
         }
         points
     }
+
+    fn by_name_trace() -> Vec<CachePoint> {
+        let fixture = Fixture::new();
+        let (store, target, _) = prepare(&fixture);
+        let trace = Arc::new(ByNameTrace::default());
+        let outcome = store
+            .with_hook(trace.clone())
+            .reclaim_snapshot(&target, ReclaimMode::Apply, &AtomicBool::new(false))
+            .unwrap();
+        assert!(
+            matches!(&outcome, ReclaimOutcome::Durable(_)),
+            "by-name trace outcome: {outcome:?}"
+        );
+        let points = trace.0.lock().unwrap().clone();
+        assert!(
+            !points.is_empty(),
+            "reclamation emitted no by-name durability hooks"
+        );
+        points
+    }
     fn verify_restart(fixture: &Fixture, target: &str, survivor: &str, context: &str) {
         let reopened = CacheStore::open_existing(options(&fixture.root)).unwrap();
         assert_payload(&reopened.resolve_ref("survivor").unwrap(), NEW);
@@ -250,6 +289,18 @@ mod diagnostics {
             matches!(&again, ReclaimOutcome::Durable(report) if !report.retired() && report.removed_files() == 0 && report.removed_directories() == 0),
             "{context}: absent-target retry returned {again:?}"
         );
+        let by_name = reopened.list_by_name().unwrap();
+        assert!(
+            by_name.iter().all(|entry| entry.snapshot() != target),
+            "{context}: reclaimed snapshot retained a human name"
+        );
+        for entry in by_name {
+            assert_eq!(
+                fs::read_link(fixture.root.join("by-name").join(entry.name())).unwrap(),
+                std::path::PathBuf::from(format!("../snapshots/{}", entry.snapshot())),
+                "{context}: human projection diverged after restart"
+            );
+        }
     }
 
     #[test]
@@ -315,6 +366,31 @@ mod diagnostics {
             "RECLAIM_PROCESS_EXIT_BOUNDARIES_PASS callbacks={} actual_exit=86 survivor=exact restarted=1 independent_charge=exact",
             points.len()
         );
+    }
+
+    #[test]
+    fn every_observed_reclaim_by_name_process_exit_boundary_self_heals() {
+        let _spawn_schedule = PROCESS_FIXTURE_SCHEDULE.lock().unwrap();
+        let points = by_name_trace();
+        for (index, point) in points.iter().enumerate() {
+            let fixture = Fixture::new();
+            let (_, target, survivor) = prepare(&fixture);
+            let output =
+                RunningChild::spawn(&fixture.root, "crash-reclaim-by-name", index, &target)
+                    .finish();
+            assert_eq!(
+                output.status.code(),
+                Some(86),
+                "child did not exit at by-name {point:?}: {}",
+                String::from_utf8_lossy(&output.stdout)
+            );
+            verify_restart(
+                &fixture,
+                &target,
+                &survivor,
+                &format!("by-name exit callback {index} {point:?}"),
+            );
+        }
     }
 
     struct InheritedChild {
@@ -470,6 +546,35 @@ mod diagnostics {
                 let _ =
                     store.reclaim_snapshot(&target, ReclaimMode::Apply, &AtomicBool::new(false));
                 panic!("requested removal exit boundary was not reached");
+            }
+
+            "crash-reclaim-by-name" => {
+                struct ExitAt {
+                    index: usize,
+                    count: AtomicUsize,
+                }
+                impl CacheHook for ExitAt {
+                    fn point(&self, point: CachePoint) -> Result<()> {
+                        if is_by_name_operation(point.operation)
+                            && self.count.fetch_add(1, Ordering::SeqCst) == self.index
+                        {
+                            std::process::exit(86);
+                        }
+                        Ok(())
+                    }
+                }
+                let root = std::env::var_os(CHILD_ROOT).unwrap();
+                let target = std::env::var(CHILD_REFERENCE).unwrap();
+                let index = std::env::var(CHILD_POINT).unwrap().parse().unwrap();
+                let store = CacheStore::open_existing(options(Path::new(&root)))
+                    .unwrap()
+                    .with_hook(Arc::new(ExitAt {
+                        index,
+                        count: AtomicUsize::new(0),
+                    }));
+                let _ =
+                    store.reclaim_snapshot(&target, ReclaimMode::Apply, &AtomicBool::new(false));
+                panic!("requested by-name removal exit boundary was not reached");
             }
             _ => panic!("unknown isolated test helper mode"),
         }

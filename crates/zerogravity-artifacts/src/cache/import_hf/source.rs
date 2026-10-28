@@ -1,9 +1,9 @@
 //! Read-only capabilities for an explicitly selected local HF cache snapshot.
 //! Directory labels and blob names describe layout, not authenticated origin.
 use crate::cache::CacheLimits;
-use crate::cache::paths::{is_by_name_auxiliary, validate_relative_path};
+use crate::cache::paths::{is_by_name_auxiliary, mount_id, require_mount, validate_relative_path};
 use crate::{Error, Result};
-use rustix::fs::{self, AtFlags, FileType, Mode, OFlags, StatxFlags};
+use rustix::fs::{self, AtFlags, FileType, Mode, OFlags};
 use std::collections::BTreeSet;
 use std::fs::{File, Metadata};
 use std::io::{self, Read};
@@ -43,25 +43,10 @@ fn identity(metadata: &Metadata) -> (u64, u64) {
     (metadata.dev(), metadata.ino())
 }
 
-fn mount_id(file: BorrowedFd<'_>) -> Result<u64> {
-    let stat = fs::statx(file, "", AtFlags::EMPTY_PATH, StatxFlags::MNT_ID).map_err(|_| {
-        Error::Unsupported("local cache import requires readable mount identity".into())
-    })?;
-    if stat.stx_mask & StatxFlags::MNT_ID.bits() == 0 {
-        return Err(Error::Unsupported(
-            "local cache import requires mount identity support".into(),
-        ));
-    }
-    Ok(stat.stx_mnt_id)
-}
-
 fn same_mount(file: &File, expected: u64) -> Result<()> {
-    if mount_id(file.as_fd())? != expected {
-        return Err(Error::Unsupported(
-            "crossed mounts in local cache import are unsupported".into(),
-        ));
-    }
-    Ok(())
+    require_mount(file, expected).map_err(|_| {
+        Error::Unsupported("crossed mounts in local cache import are unsupported".into())
+    })
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -85,7 +70,9 @@ impl RootIdentity {
     fn read(file: &File) -> Result<Self> {
         let metadata = file.metadata()?;
         Ok(Self {
-            mount: mount_id(file.as_fd())?,
+            mount: mount_id(file.as_fd()).map_err(|_| {
+                Error::Unsupported("local cache import requires readable mount identity".into())
+            })?,
             device: metadata.dev(),
             inode: metadata.ino(),
             kind: None,

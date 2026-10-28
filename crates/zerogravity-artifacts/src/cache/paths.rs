@@ -1,8 +1,8 @@
 //! Linux directory capabilities and cooperative stable-inode advisory locks.
 //! No pathname reopening, source issuer, cache quota or publication authority.
 use crate::{Error, Result};
-use rustix::fs::{self, AtFlags, FileType, FlockOperation, Mode, OFlags};
-use std::ffi::OsStr;
+use rustix::fs::{self, AtFlags, FileType, FlockOperation, Mode, OFlags, StatxFlags};
+use std::ffi::{CStr, OsStr};
 use std::fs::File;
 use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::fs::MetadataExt;
@@ -14,19 +14,68 @@ const MAX_PATH: usize = 4096;
 const MAX_COMPONENTS: usize = 64;
 const MAX_INVENTORY_PATH_BYTES: usize = 8 * 1024 * 1024;
 
-/// Reserved top-level names for the disposable human-facing cache projection.
+/// Reserved top-level names for the human-only naming layer: durable human
+/// claims, migration/recovery markers, and the disposable symlink projection.
 /// Canonical cache authority never traverses, charges, selects, or trusts them.
 /// The strict bootstrap walk still observes them before a protected policy is
 /// established, so an untrusted policy-less cache cannot smuggle them in.
 pub(crate) fn is_by_name_auxiliary(name: &str) -> bool {
     matches!(
         name,
-        "by-name" | "by-name.json" | ".by-name.next" | ".by-name.json.next"
+        "by-name"
+            | ".by-name.next"
+            | ".by-name-state"
+            | ".by-name-state.next"
+            | ".by-name-initialized"
+            | "by-name.json"
+            | ".by-name.json.next"
     )
 }
 
 fn os<T>(result: rustix::io::Result<T>) -> Result<T> {
     result.map_err(|error| std::io::Error::from(error).into())
+}
+
+/// Linux mount identity for an already-open capability. Device numbers alone
+/// do not distinguish bind mounts, so destructive recursive helpers use this
+/// before descending across directory boundaries.
+pub(crate) fn mount_id(file: BorrowedFd<'_>) -> Result<u64> {
+    let stat = fs::statx(file, "", AtFlags::EMPTY_PATH, StatxFlags::MNT_ID).map_err(|_| {
+        Error::Unsupported("cache operation requires readable mount identity".into())
+    })?;
+    if stat.stx_mask & StatxFlags::MNT_ID.bits() == 0 {
+        return Err(Error::Unsupported(
+            "cache operation requires mount identity support".into(),
+        ));
+    }
+    Ok(stat.stx_mnt_id)
+}
+
+pub(crate) fn require_mount(file: &File, expected: u64) -> Result<()> {
+    if mount_id(file.as_fd())? != expected {
+        return Err(Error::Unsupported(
+            "cache operation refused to cross a mount boundary".into(),
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn require_mount_at(parent: &File, name: &CStr, expected: u64) -> Result<()> {
+    let stat =
+        fs::statx(parent, name, AtFlags::SYMLINK_NOFOLLOW, StatxFlags::MNT_ID).map_err(|_| {
+            Error::Unsupported("cache operation requires readable mount identity".into())
+        })?;
+    if stat.stx_mask & StatxFlags::MNT_ID.bits() == 0 {
+        return Err(Error::Unsupported(
+            "cache operation requires mount identity support".into(),
+        ));
+    }
+    if stat.stx_mnt_id != expected {
+        return Err(Error::Unsupported(
+            "cache operation refused to cross a mount boundary".into(),
+        ));
+    }
+    Ok(())
 }
 
 /// Logical paths are case-sensitive UTF8 bytes on Linux. No Unicode/case
@@ -285,11 +334,11 @@ impl RootDir {
         self.walk_tree_inner(maximum, false)
     }
 
-    /// Canonical cache inventory. The top-level by-name directory is a
-    /// derived, human-only projection and is deliberately excluded from
-    /// canonical accounting, selection, reclamation and provenance walks.
-    /// Its directory inode must still be owner-private and must never itself
-    /// be a symlink. No descendant is followed or trusted here.
+    /// Canonical cache inventory. Reserved top-level human naming state and
+    /// projection paths are deliberately excluded from canonical accounting,
+    /// selection, reclamation and provenance walks. No descendant is followed
+    /// or trusted here; the naming layer validates its own capabilities when
+    /// explicitly used.
     pub(crate) fn walk_canonical_tree(&self, maximum: usize) -> Result<Vec<CacheNode>> {
         self.walk_tree_inner(maximum, true)
     }
@@ -526,6 +575,18 @@ mod tests {
     use std::io::Write;
     use std::os::unix::fs::{PermissionsExt, symlink};
     use std::sync::atomic::AtomicU64;
+
+    #[test]
+    fn mount_identity_is_checked_for_named_entries_before_destructive_traversal() {
+        let root = File::open("/").unwrap();
+        let expected = mount_id(root.as_fd()).unwrap();
+        let dot = std::ffi::CString::new(".").unwrap();
+        require_mount_at(&root, dot.as_c_str(), expected).unwrap();
+        assert!(matches!(
+            require_mount_at(&root, dot.as_c_str(), expected.wrapping_add(1)),
+            Err(Error::Unsupported(_))
+        ));
+    }
 
     struct Fixture(PathBuf);
     impl Fixture {
@@ -803,6 +864,23 @@ mod tests {
         );
         assert_eq!(std::fs::read(original).unwrap(), b"preserved");
     }
+    #[test]
+    fn mount_identity_refuses_cross_mount_when_distinct_mounts_are_available() {
+        let tmp = File::open("/tmp").unwrap();
+        let Ok(shm) = File::open("/dev/shm") else {
+            return;
+        };
+        let tmp_mount = mount_id(tmp.as_fd()).unwrap();
+        let shm_mount = mount_id(shm.as_fd()).unwrap();
+        require_mount(&tmp, tmp_mount).unwrap();
+        if tmp_mount != shm_mount {
+            assert!(matches!(
+                require_mount(&shm, tmp_mount),
+                Err(Error::Unsupported(_))
+            ));
+        }
+    }
+
     #[test]
     fn inventory_path_reservation_is_bounded_before_clone_and_atomic_on_error() {
         let mut total = MAX_INVENTORY_PATH_BYTES - 2;

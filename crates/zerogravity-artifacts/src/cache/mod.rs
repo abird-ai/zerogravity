@@ -149,8 +149,9 @@ impl PublishedSnapshot {
         self.reference.as_deref()
     }
 
-    /// Flat lowercase human-only aliases materialized under by-name/. These
-    /// names never participate in model selection or snapshot authority.
+    /// Automatic flat lowercase human names materialized for this publication.
+    /// Explicit user aliases are listed separately through the by-name APIs.
+    /// Neither participates in model selection or snapshot authority.
     pub fn by_name(&self) -> &[String] {
         &self.by_name
     }
@@ -302,6 +303,16 @@ pub enum CacheOperation {
     ReferenceRecordDirectorySync,
     RefRename,
     RefDirectorySync,
+    ByNameDirtyFileSync,
+    ByNameDirtyDirectorySync,
+    ByNameStateFileSync,
+    ByNameStateInstall,
+    ByNameStateDirectorySync,
+    ByNameProjectionEntryInstall,
+    ByNameProjectionDirectorySync,
+    ByNameProjectionExchange,
+    ByNameRootSync,
+    ByNameDirtyRemove,
     RetirementRename,
     ReclaimUnlink,
     ReclaimDirectorySync,

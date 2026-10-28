@@ -1,509 +1,435 @@
 //! Durable human-facing names for immutable cache snapshots.
 //!
-//! Canonical snapshots and refs remain the only runtime/cache authority. This
-//! module owns a separate bounded human metadata record plus a disposable flat
-//! lowercase symlink projection. Runtime selection never reads either one.
+//! Canonical snapshots and refs remain the only runtime/cache authority. Human
+//! naming state is stored as small per-entry claims under .by-name-state/ and
+//! projected into a disposable flat lowercase by-name/ symlink directory.
+//!
+//! Layout:
+//! - automatic/<name> -> snapshot digest
+//! - aliases/<name> -> snapshot digest
+//! - snapshots/<digest> -> automatic name (derived reverse index)
+//! - dirty -> recovery intent while state/projection mutation is in flight
+//!
+//! Healthy automatic publication is constant-size work: reverse lookup,
+//! collision probes, one claim/reverse update and one symlink update. Whole
+//! state/canonical scans are reserved for migration, explicit refresh, reset or
+//! crash recovery. A durable dirty marker makes every interrupted human-layer
+//! mutation detectable without making this layer runtime authority.
 
 use super::*;
+use crate::cache::paths::{mount_id, require_mount};
 use rustix::fs::{self, AtFlags, FileType, Mode, OFlags, RenameFlags};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::{CStr, CString};
-use std::fs::File;
-use std::os::unix::fs::MetadataExt;
 
-const STATE_SCHEMA: &str = "zerogravity.cache.by-name.v1";
-const STATE_PATH: &str = "by-name.json";
-const STATE_NEXT: &str = ".by-name.json.next";
+const STATE_SCHEMA: &[u8] = b"zerogravity.cache.by-name.v2";
+const LEGACY_SCHEMA: &str = "zerogravity.cache.by-name.v1";
+const STATE_DIR: &str = ".by-name-state";
+const STATE_NEXT: &str = ".by-name-state.next";
+const STATE_SCHEMA_PATH: &str = ".by-name-state/schema";
+const DIRTY_PATH: &str = ".by-name-state/dirty";
+const AUTO_DIR: &str = ".by-name-state/automatic";
+const ALIAS_DIR: &str = ".by-name-state/aliases";
+const REVERSE_DIR: &str = ".by-name-state/snapshots";
+const REVERSE_NEXT: &str = ".by-name-state/snapshots.next";
+const INIT_MARKER: &str = ".by-name-initialized";
+const LEGACY_STATE: &str = "by-name.json";
+const LEGACY_NEXT: &str = ".by-name.json.next";
 const LIVE_DIR: &str = "by-name";
 const NEXT_DIR: &str = ".by-name.next";
-const MAX_BY_NAME_ENTRIES: usize = 8192;
-const MAX_ALIAS_BYTES: usize = 240;
-const MAX_ALIAS_INPUT_BYTES: usize = 4096;
-const MAX_STATE_BYTES: usize = 4 * 1024 * 1024;
-const MAX_AUX_NODES: usize = 131_072;
-const MAX_AUX_DEPTH: usize = 64;
-const AUTO_REPOSITORY_BYTES: usize = 176;
-const AUTO_REVISION_BYTES: usize = 24;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+const MAX_AUTOMATIC_ENTRIES: usize = 131_072;
+const MAX_ALIAS_ENTRIES: usize = 65_536;
+const MAX_STATE_ENTRIES: usize = MAX_AUTOMATIC_ENTRIES + MAX_ALIAS_ENTRIES;
+// Crash recovery may observe automatic claims, explicit aliases, both the live
+// and staged reverse indexes, plus bounded temporary/control entries.
+const MAX_STATE_CLEANUP_NODES: usize =
+    (MAX_AUTOMATIC_ENTRIES * 3) + MAX_ALIAS_ENTRIES + (4 * 1024) + 64;
+const MAX_DIRTY_BYTES: usize = 96;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ClaimKind {
+    Automatic,
+    Alias,
+}
+
+impl ClaimKind {
+    const fn directory(self) -> &'static str {
+        match self {
+            Self::Automatic => AUTO_DIR,
+            Self::Alias => ALIAS_DIR,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum DirtyMode {
+    Projection,
+    Reconcile,
+    Pending(String),
+}
+
+impl DirtyMode {
+    fn bytes(&self) -> Vec<u8> {
+        match self {
+            Self::Projection => b"projection".to_vec(),
+            Self::Reconcile => b"reconcile".to_vec(),
+            Self::Pending(snapshot) => format!("pending:{snapshot}").into_bytes(),
+        }
+    }
+
+    fn parse(bytes: &[u8]) -> Result<Self> {
+        if bytes == b"projection" {
+            return Ok(Self::Projection);
+        }
+        if bytes == b"reconcile" {
+            return Ok(Self::Reconcile);
+        }
+        let Some(snapshot) = bytes.strip_prefix(b"pending:") else {
+            return Err(Error::Malformed("invalid by-name dirty marker".into()));
+        };
+        let snapshot = std::str::from_utf8(snapshot)
+            .map_err(|_| Error::Malformed("invalid by-name pending digest".into()))?;
+        validate_digest(snapshot)?;
+        Ok(Self::Pending(snapshot.into()))
+    }
+}
+
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ByNameState {
+struct LegacyState {
     schema: String,
     automatic: BTreeMap<String, String>,
     aliases: BTreeMap<String, String>,
 }
 
-impl ByNameState {
-    fn empty() -> Self {
-        Self {
-            schema: STATE_SCHEMA.into(),
-            automatic: BTreeMap::new(),
-            aliases: BTreeMap::new(),
+#[path = "by_name/fs_support.rs"]
+mod fs_support;
+#[path = "by_name/naming.rs"]
+mod naming;
+
+use fs_support::{MAX_AUX_NODES, parent_path, remove_auxiliary, remove_relative_tree, root_copy};
+use naming::{AutoCandidates, MAX_ALIAS_BYTES, normalize_alias, target, validate_name};
+#[cfg(test)]
+use naming::{MAX_ALIAS_INPUT_BYTES, auto_name};
+
+impl CacheStore {
+    #[cfg(feature = "diagnostic-cache")]
+    fn by_name_point(&self, operation: CacheOperation, moment: CacheMoment) -> Result<()> {
+        self.point(operation, moment, None)
+    }
+
+    fn read_optional(&self, path: &str, limit: usize) -> Result<Option<Vec<u8>>> {
+        match self.read(path, limit) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error),
         }
     }
 
-    fn validate(&self) -> Result<()> {
-        if self.schema != STATE_SCHEMA {
-            return Err(Error::Unsupported(
-                "unsupported by-name metadata schema".into(),
+    fn sync_human_dir(&self, path: &str) -> Result<()> {
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(
+            CacheOperation::ByNameStateDirectorySync,
+            CacheMoment::Before,
+        )?;
+        self.sync_dir(path)?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameStateDirectorySync, CacheMoment::After)?;
+        Ok(())
+    }
+
+    fn write_human_staged_new(&self, path: &str, bytes: &[u8]) -> Result<()> {
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameStateFileSync, CacheMoment::Before)?;
+        self.write_new(path, bytes)?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameStateFileSync, CacheMoment::After)?;
+        Ok(())
+    }
+
+    fn write_human_new(&self, path: &str, bytes: &[u8]) -> Result<()> {
+        self.write_human_staged_new(path, bytes)?;
+        self.sync_human_dir(parent_path(path))
+    }
+
+    fn write_human_replace(&self, path: &str, bytes: &[u8]) -> Result<()> {
+        let parent = parent_path(path);
+        let token = digest(format!("{path}|{}", digest(bytes)).as_bytes());
+        let temporary = if parent.is_empty() {
+            format!(".next-{}", &token[..24])
+        } else {
+            format!("{parent}/.next-{}", &token[..24])
+        };
+        let _ = remove_relative_tree(self, &temporary);
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameStateFileSync, CacheMoment::Before)?;
+        let mut file = self.inner.root.open_file(
+            &temporary,
+            OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL,
+            Mode::RUSR | Mode::WUSR,
+        )?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameStateFileSync, CacheMoment::After)?;
+        drop(file);
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameStateInstall, CacheMoment::Before)?;
+        self.rename(&temporary, path, true)?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameStateInstall, CacheMoment::After)?;
+        self.sync_human_dir(parent)
+    }
+
+    fn marker_exists_locked(&self) -> Result<bool> {
+        let Some(bytes) = self.read_optional(INIT_MARKER, STATE_SCHEMA.len())? else {
+            return Ok(false);
+        };
+        if bytes != STATE_SCHEMA {
+            return Err(Error::Malformed(
+                "invalid by-name initialization marker".into(),
             ));
         }
-        if self
-            .automatic
-            .len()
-            .checked_add(self.aliases.len())
-            .is_none_or(|count| count > MAX_BY_NAME_ENTRIES)
-        {
-            return Err(Error::Limit("by-name metadata entry limit".into()));
+        Ok(true)
+    }
+
+    fn create_marker_locked(&self) -> Result<()> {
+        if self.marker_exists_locked()? {
+            return Ok(());
         }
-        let mut automatic_targets = BTreeSet::new();
-        for (name, snapshot) in &self.automatic {
-            validate_name(name)?;
-            validate_digest(snapshot)?;
-            if !automatic_targets.insert(snapshot.as_str()) {
-                return Err(Error::Malformed(
-                    "one snapshot has multiple automatic by-name claims".into(),
-                ));
+        self.write_human_staged_new(INIT_MARKER, STATE_SCHEMA)?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameRootSync, CacheMoment::Before)?;
+        self.sync_dir("")?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameRootSync, CacheMoment::After)?;
+        Ok(())
+    }
+
+    fn validate_state_layout_locked(&self) -> Result<()> {
+        let root_mount = mount_id(self.inner.root.as_fd())?;
+        let state = self.inner.root.open_dir(STATE_DIR, false)?;
+        require_mount(&state, root_mount)?;
+        for path in [AUTO_DIR, ALIAS_DIR, REVERSE_DIR] {
+            let directory = self.inner.root.open_dir(path, false)?;
+            require_mount(&directory, root_mount)?;
+        }
+        let schema = self.read(STATE_SCHEMA_PATH, STATE_SCHEMA.len())?;
+        if schema != STATE_SCHEMA {
+            return Err(Error::Malformed("invalid by-name state schema".into()));
+        }
+        Ok(())
+    }
+
+    fn state_directory_exists_locked(&self) -> Result<bool> {
+        let root = root_copy(self)?;
+        match fs::statat(&root, STATE_DIR, AtFlags::SYMLINK_NOFOLLOW) {
+            Ok(stat) => {
+                if FileType::from_raw_mode(stat.st_mode) != FileType::Directory {
+                    return Err(Error::State("by-name state path is not a directory".into()));
+                }
+                Ok(true)
+            }
+            Err(rustix::io::Errno::NOENT) => Ok(false),
+            Err(error) => Err(io(error)),
+        }
+    }
+
+    fn read_claim_locked(&self, kind: ClaimKind, name: &str) -> Result<Option<String>> {
+        validate_name(name)?;
+        let path = format!("{}/{name}", kind.directory());
+        let Some(bytes) = self.read_optional(&path, 64)? else {
+            return Ok(None);
+        };
+        let digest = std::str::from_utf8(&bytes)
+            .map_err(|_| Error::Malformed("non-UTF8 by-name claim".into()))?;
+        validate_digest(digest)?;
+        Ok(Some(digest.into()))
+    }
+
+    fn read_reverse_locked(&self, snapshot: &str) -> Result<Option<String>> {
+        validate_digest(snapshot)?;
+        let path = format!("{REVERSE_DIR}/{snapshot}");
+        let Some(bytes) = self.read_optional(&path, MAX_ALIAS_BYTES)? else {
+            return Ok(None);
+        };
+        let name = std::str::from_utf8(&bytes)
+            .map_err(|_| Error::Malformed("non-UTF8 by-name reverse claim".into()))?;
+        validate_name(name)?;
+        Ok(Some(name.into()))
+    }
+
+    fn write_claim_new_locked(&self, kind: ClaimKind, name: &str, snapshot: &str) -> Result<()> {
+        validate_name(name)?;
+        validate_digest(snapshot)?;
+        self.write_human_new(&format!("{}/{name}", kind.directory()), snapshot.as_bytes())
+    }
+
+    fn write_claim_replace_locked(
+        &self,
+        kind: ClaimKind,
+        name: &str,
+        snapshot: &str,
+    ) -> Result<()> {
+        validate_name(name)?;
+        validate_digest(snapshot)?;
+        self.write_human_replace(&format!("{}/{name}", kind.directory()), snapshot.as_bytes())
+    }
+
+    fn write_reverse_new_locked(&self, snapshot: &str, name: &str) -> Result<()> {
+        validate_digest(snapshot)?;
+        validate_name(name)?;
+        self.write_human_new(&format!("{REVERSE_DIR}/{snapshot}"), name.as_bytes())
+    }
+
+    fn unlink_human_file_locked(&self, path: &str) -> Result<bool> {
+        match self.unlink(path, false) {
+            Ok(()) => {
+                self.sync_human_dir(parent_path(path))?;
+                Ok(true)
+            }
+            Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn scan_claims_locked(&self, kind: ClaimKind) -> Result<BTreeMap<String, String>> {
+        let root_mount = mount_id(self.inner.root.as_fd())?;
+        let directory = self.inner.root.open_dir(kind.directory(), false)?;
+        require_mount(&directory, root_mount)?;
+        let maximum = match kind {
+            ClaimKind::Automatic => MAX_AUTOMATIC_ENTRIES,
+            ClaimKind::Alias => MAX_ALIAS_ENTRIES,
+        };
+        let mut result = BTreeMap::new();
+        let mut observed = 0usize;
+        for entry in fs::Dir::read_from(&directory).map_err(io)? {
+            let entry = entry.map_err(io)?;
+            let raw = entry
+                .file_name()
+                .to_str()
+                .map_err(|_| Error::Malformed("non-UTF8 by-name state entry".into()))?;
+            if raw == "." || raw == ".." {
+                continue;
+            }
+            observed = observed
+                .checked_add(1)
+                .filter(|count| *count <= maximum.saturating_add(1024))
+                .ok_or_else(|| Error::Limit("by-name state directory entry limit".into()))?;
+            if raw.starts_with(".next-") {
+                continue;
+            }
+            if result.len() == maximum {
+                return Err(Error::Limit("by-name claim count exceeds bound".into()));
+            }
+            validate_name(raw)?;
+            let snapshot = self
+                .read_claim_locked(kind, raw)?
+                .ok_or_else(|| Error::State("by-name claim disappeared during scan".into()))?;
+            if result.insert(raw.into(), snapshot).is_some() {
+                return Err(Error::Malformed("duplicate by-name claim".into()));
             }
         }
-        for (name, snapshot) in &self.aliases {
-            validate_name(name)?;
-            validate_digest(snapshot)?;
-            if self.automatic.contains_key(name) {
+        Ok(result)
+    }
+
+    fn state_entries_locked(&self) -> Result<Vec<ByNameEntry>> {
+        let automatic = self.scan_claims_locked(ClaimKind::Automatic)?;
+        let aliases = self.scan_claims_locked(ClaimKind::Alias)?;
+        for name in aliases.keys() {
+            if automatic.contains_key(name) {
                 return Err(Error::Malformed(
                     "automatic and explicit by-name entries collide".into(),
                 ));
             }
         }
+        let mut targets = BTreeSet::new();
+        for snapshot in automatic.values() {
+            if !targets.insert(snapshot.as_str()) {
+                return Err(Error::Malformed(
+                    "one snapshot has multiple automatic by-name claims".into(),
+                ));
+            }
+        }
+        let mut result = Vec::with_capacity(automatic.len() + aliases.len());
+        result.extend(automatic.into_iter().map(|(name, snapshot)| ByNameEntry {
+            name,
+            snapshot,
+            kind: ByNameKind::Automatic,
+        }));
+        result.extend(aliases.into_iter().map(|(name, snapshot)| ByNameEntry {
+            name,
+            snapshot,
+            kind: ByNameKind::Alias,
+        }));
+        result.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+        Ok(result)
+    }
+
+    fn dirty_mode_locked(&self) -> Result<Option<DirtyMode>> {
+        let Some(bytes) = self.read_optional(DIRTY_PATH, MAX_DIRTY_BYTES)? else {
+            return Ok(None);
+        };
+        Ok(Some(DirtyMode::parse(&bytes)?))
+    }
+
+    fn mark_dirty_locked(&self, mode: DirtyMode) -> Result<()> {
+        if self.dirty_mode_locked()?.is_some() {
+            return Err(Error::State(
+                "by-name mutation began before prior recovery completed".into(),
+            ));
+        }
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameDirtyFileSync, CacheMoment::Before)?;
+        self.write_new(DIRTY_PATH, &mode.bytes())?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameDirtyFileSync, CacheMoment::After)?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(
+            CacheOperation::ByNameDirtyDirectorySync,
+            CacheMoment::Before,
+        )?;
+        self.sync_dir(STATE_DIR)?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameDirtyDirectorySync, CacheMoment::After)?;
         Ok(())
     }
 
-    fn total_entries(&self) -> Result<usize> {
-        self.automatic
-            .len()
-            .checked_add(self.aliases.len())
-            .filter(|count| *count <= MAX_BY_NAME_ENTRIES)
-            .ok_or_else(|| Error::Limit("by-name metadata entry limit".into()))
-    }
-
-    fn name_taken(&self, name: &str) -> bool {
-        self.automatic.contains_key(name) || self.aliases.contains_key(name)
-    }
-
-    fn automatic_for_snapshot(&self, snapshot: &str) -> Option<&str> {
-        self.automatic
-            .iter()
-            .find_map(|(name, digest)| (digest == snapshot).then_some(name.as_str()))
-    }
-}
-
-fn slug(value: &str, maximum: usize) -> String {
-    let mut out = String::new();
-    let mut separator = false;
-    for byte in value.bytes() {
-        let mapped = match byte {
-            b'A'..=b'Z' => Some((byte + (b'a' - b'A')) as char),
-            b'a'..=b'z' | b'0'..=b'9' => Some(byte as char),
-            b'.' => Some('.'),
-            _ => None,
-        };
-        match mapped {
-            Some(ch) => {
-                if separator && !out.is_empty() && !out.ends_with('-') {
-                    out.push('-');
-                }
-                separator = false;
-                if out.len() < maximum {
-                    out.push(ch);
-                }
-            }
-            None => separator = true,
+    fn clear_dirty_locked(&self) -> Result<()> {
+        if self.dirty_mode_locked()?.is_none() {
+            return Ok(());
         }
-        if out.len() >= maximum {
-            break;
-        }
-    }
-    while out.ends_with(['-', '.']) {
-        out.pop();
-    }
-    while out.starts_with(['-', '.']) {
-        out.remove(0);
-    }
-    out
-}
-
-fn validate_name(name: &str) -> Result<()> {
-    if name.is_empty()
-        || name.len() > MAX_ALIAS_BYTES
-        || name.starts_with(['-', '.'])
-        || name.ends_with(['-', '.'])
-        || !name.bytes().all(|byte| {
-            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'.')
-        })
-    {
-        return Err(Error::Malformed(
-            "invalid lowercase flat by-name alias".into(),
-        ));
-    }
-    Ok(())
-}
-
-fn normalize_alias(value: &str) -> Result<String> {
-    if value.is_empty()
-        || value.len() > MAX_ALIAS_INPUT_BYTES
-        || value.chars().any(char::is_control)
-    {
-        return Err(Error::Malformed("invalid by-name alias".into()));
-    }
-    let normalized = slug(value, MAX_ALIAS_BYTES);
-    if normalized.is_empty() {
-        return Err(Error::Malformed(
-            "by-name alias needs at least one ASCII letter or digit".into(),
-        ));
-    }
-    validate_name(&normalized)?;
-    Ok(normalized)
-}
-
-fn provider_slug(provider: &str) -> String {
-    match provider {
-        "huggingface" => "hf".into(),
-        "huggingface-bundle" => "hf-bundle".into(),
-        "github" => "gh".into(),
-        "github-bundle" => "gh-bundle".into(),
-        "modelscope" => "ms".into(),
-        "local-hf-cache" => "hf-local".into(),
-        "https-object" => "https".into(),
-        other => {
-            let value = slug(other, 32);
-            if value.is_empty() {
-                "source".into()
-            } else {
-                value
-            }
-        }
-    }
-}
-
-fn revision_slug(revision: &str) -> String {
-    if revision.len() >= 8 && revision.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        revision[..8].to_ascii_lowercase()
-    } else {
-        let value = slug(revision, AUTO_REVISION_BYTES);
-        if value.is_empty() {
-            "revision".into()
-        } else {
-            value
-        }
-    }
-}
-
-fn repository_slug(repository: &str, maximum: usize) -> String {
-    let (owner, model) = repository.rsplit_once('/').unwrap_or(("", repository));
-    let model = slug(model, maximum);
-    let owner = slug(owner, maximum);
-    let value = match (model.is_empty(), owner.is_empty()) {
-        (false, false) => format!("{model}-{owner}"),
-        (false, true) => model,
-        (true, false) => owner,
-        (true, true) => "model".into(),
-    };
-    slug(&value, maximum)
-}
-
-fn auto_name(source: &ManifestSource) -> String {
-    let provider = provider_slug(source.provider());
-    let revision = revision_slug(source.revision());
-    let reserved = provider
-        .len()
-        .saturating_add(revision.len())
-        .saturating_add(2);
-    let repository_limit = MAX_ALIAS_BYTES
-        .saturating_sub(reserved)
-        .clamp(1, AUTO_REPOSITORY_BYTES);
-    let repository = repository_slug(source.repository(), repository_limit);
-    let name = format!("{repository}-{provider}-{revision}");
-    let name = slug(&name, MAX_ALIAS_BYTES);
-    debug_assert!(validate_name(&name).is_ok());
-    name
-}
-
-fn target(snapshot: &str) -> Result<String> {
-    validate_digest(snapshot)?;
-    Ok(format!("../snapshots/{snapshot}"))
-}
-
-fn auto_collision_key(source: &ManifestSource, snapshot: &str) -> String {
-    let material = format!(
-        "{}|{}|{}|{}",
-        source.provider(),
-        source.repository(),
-        source.revision(),
-        snapshot
-    );
-    digest(material.as_bytes())
-}
-
-fn with_suffix(base: &str, suffix: &str) -> String {
-    let keep = MAX_ALIAS_BYTES
-        .saturating_sub(suffix.len())
-        .saturating_sub(1);
-    let base = slug(base, keep.max(1));
-    format!("{base}-{suffix}")
-}
-
-fn claim_automatic(
-    state: &mut ByNameState,
-    source: &ManifestSource,
-    snapshot: &str,
-) -> Result<(String, bool)> {
-    validate_digest(snapshot)?;
-    if let Some(name) = state.automatic_for_snapshot(snapshot) {
-        return Ok((name.to_owned(), false));
-    }
-    state.total_entries()?;
-    if state.automatic.len() + state.aliases.len() == MAX_BY_NAME_ENTRIES {
-        return Err(Error::Limit("by-name metadata entry limit".into()));
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameDirtyRemove, CacheMoment::Before)?;
+        self.unlink(DIRTY_PATH, false)?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameDirtyRemove, CacheMoment::After)?;
+        self.sync_human_dir(STATE_DIR)
     }
 
-    let base = auto_name(source);
-    if !state.name_taken(&base) {
-        state.automatic.insert(base.clone(), snapshot.into());
-        return Ok((base, true));
-    }
-
-    let hash = auto_collision_key(source, snapshot);
-    for width in [8usize, 12, 16, 24, 32, 48, 64] {
-        let candidate = with_suffix(&base, &hash[..width]);
-        if !state.name_taken(&candidate) {
-            state.automatic.insert(candidate.clone(), snapshot.into());
-            return Ok((candidate, true));
-        }
-    }
-    Err(Error::State(
-        "unable to allocate a stable automatic by-name alias".into(),
-    ))
-}
-
-fn entries(state: &ByNameState) -> Vec<ByNameEntry> {
-    let mut result = Vec::with_capacity(state.automatic.len() + state.aliases.len());
-    result.extend(state.automatic.iter().map(|(name, snapshot)| ByNameEntry {
-        name: name.clone(),
-        snapshot: snapshot.clone(),
-        kind: ByNameKind::Automatic,
-    }));
-    result.extend(state.aliases.iter().map(|(name, snapshot)| ByNameEntry {
-        name: name.clone(),
-        snapshot: snapshot.clone(),
-        kind: ByNameKind::Alias,
-    }));
-    result.sort_unstable_by(|a, b| a.name.cmp(&b.name));
-    result
-}
-
-fn desired_projection(state: &ByNameState) -> Result<BTreeMap<String, String>> {
-    state.validate()?;
-    let mut desired = BTreeMap::new();
-    for (name, snapshot) in state.automatic.iter().chain(state.aliases.iter()) {
-        if desired.insert(name.clone(), target(snapshot)?).is_some() {
-            return Err(Error::Malformed(
-                "duplicate by-name projection alias".into(),
-            ));
-        }
-    }
-    Ok(desired)
-}
-
-fn root_copy(store: &CacheStore) -> Result<File> {
-    let root = File::from(
-        fs::openat(
-            store.inner.root.as_fd(),
-            ".",
-            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-            Mode::empty(),
-        )
-        .map_err(io)?,
-    );
-    let metadata = root.metadata()?;
-    if (metadata.dev(), metadata.ino()) != store.inner.root.identity() {
-        return Err(Error::State(
-            "by-name root capability identity changed".into(),
-        ));
-    }
-    Ok(root)
-}
-
-fn remove_entry_at(parent: &File, name: &CStr, nodes: &mut usize, depth: usize) -> Result<()> {
-    if depth > MAX_AUX_DEPTH {
-        return Err(Error::Limit("by-name cleanup depth limit".into()));
-    }
-    *nodes = nodes
-        .checked_add(1)
-        .filter(|count| *count <= MAX_AUX_NODES)
-        .ok_or_else(|| Error::Limit("by-name cleanup entry limit".into()))?;
-
-    let before = match fs::statat(parent, name, AtFlags::SYMLINK_NOFOLLOW) {
-        Ok(stat) => stat,
-        Err(rustix::io::Errno::NOENT) => return Ok(()),
-        Err(error) => return Err(io(error)),
-    };
-    if FileType::from_raw_mode(before.st_mode) != FileType::Directory {
-        fs::unlinkat(parent, name, AtFlags::empty()).map_err(io)?;
-        return Ok(());
-    }
-
-    let directory = File::from(
-        fs::openat(
-            parent,
-            name,
-            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-            Mode::empty(),
-        )
-        .map_err(io)?,
-    );
-    let metadata = directory.metadata()?;
-    if metadata.dev() != before.st_dev || metadata.ino() != before.st_ino {
-        return Err(Error::State(
-            "by-name cleanup directory changed during inspection".into(),
-        ));
-    }
-    for entry in fs::Dir::read_from(&directory).map_err(io)? {
-        let entry = entry.map_err(io)?;
-        let child = entry.file_name().to_owned();
-        if child.as_bytes() == b"." || child.as_bytes() == b".." {
-            continue;
-        }
-        remove_entry_at(&directory, &child, nodes, depth + 1)?;
-    }
-    let current = fs::statat(parent, name, AtFlags::SYMLINK_NOFOLLOW).map_err(io)?;
-    if current.st_dev != before.st_dev || current.st_ino != before.st_ino {
-        return Err(Error::State(
-            "by-name cleanup directory binding changed".into(),
-        ));
-    }
-    fs::unlinkat(parent, name, AtFlags::REMOVEDIR).map_err(io)
-}
-
-fn remove_auxiliary(store: &CacheStore, name: &str) -> Result<()> {
-    if !crate::cache::paths::is_by_name_auxiliary(name) {
-        return Err(Error::State(
-            "refusing to remove a non by-name auxiliary entry".into(),
-        ));
-    }
-    let root = root_copy(store)?;
-    let name = CString::new(name)
-        .map_err(|_| Error::Malformed("invalid by-name auxiliary path".into()))?;
-    let mut nodes = 0;
-    remove_entry_at(&root, &name, &mut nodes, 0)
-}
-
-fn install_symlink(directory: &File, name: &str, link_target: &str) -> Result<()> {
-    validate_name(name)?;
-    let token = digest(format!("{name}|{link_target}").as_bytes());
-    let temporary = format!(".next-{}", &token[..24]);
-    match fs::statat(directory, temporary.as_str(), AtFlags::SYMLINK_NOFOLLOW) {
-        Ok(_) => {
-            fs::unlinkat(directory, temporary.as_str(), AtFlags::empty()).map_err(io)?;
-        }
-        Err(rustix::io::Errno::NOENT) => {}
-        Err(error) => return Err(io(error)),
-    }
-    fs::symlinkat(link_target, directory, temporary.as_str()).map_err(io)?;
-
-    match fs::statat(directory, name, AtFlags::SYMLINK_NOFOLLOW) {
-        Err(rustix::io::Errno::NOENT) => {
-            fs::renameat_with(
-                directory,
-                temporary.as_str(),
-                directory,
-                name,
-                RenameFlags::NOREPLACE,
-            )
-            .map_err(io)?;
-        }
-        Ok(stat) if FileType::from_raw_mode(stat.st_mode) == FileType::Symlink => {
-            fs::renameat_with(
-                directory,
-                temporary.as_str(),
-                directory,
-                name,
-                RenameFlags::empty(),
-            )
-            .map_err(io)?;
-        }
-        Ok(_) => {
-            fs::unlinkat(directory, temporary.as_str(), AtFlags::empty()).map_err(io)?;
-            return Err(Error::State(
-                "by-name alias is occupied by a non-symlink entry".into(),
-            ));
-        }
-        Err(error) => {
-            let _ = fs::unlinkat(directory, temporary.as_str(), AtFlags::empty());
-            return Err(io(error));
-        }
-    }
-    directory.sync_all()?;
-    Ok(())
-}
-
-impl CacheStore {
-    fn read_by_name_state_locked(&self) -> Result<Option<ByNameState>> {
-        let bytes = match self.read(STATE_PATH, MAX_STATE_BYTES) {
+    fn snapshot_manifest_optional_locked(&self, snapshot: &str) -> Result<Option<Manifest>> {
+        validate_digest(snapshot)?;
+        let path = format!("snapshots/{snapshot}/manifest.json");
+        let bytes = match self.read(&path, self.inner.options.limits.max_manifest_bytes) {
             Ok(bytes) => bytes,
             Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
                 return Ok(None);
             }
             Err(error) => return Err(error),
         };
-        let state: ByNameState = serde_json::from_slice(&bytes)
-            .map_err(|_| Error::Malformed("invalid by-name metadata".into()))?;
-        state.validate()?;
-        Ok(Some(state))
-    }
-
-    fn write_by_name_state_locked(&self, state: &ByNameState) -> Result<()> {
-        state.validate()?;
-        let mut bytes = serde_json::to_vec(state)
-            .map_err(|error| Error::Malformed(format!("by-name metadata encoding: {error}")))?;
-        bytes.push(b'\n');
-        if bytes.len() > MAX_STATE_BYTES {
-            return Err(Error::Limit("by-name metadata byte limit".into()));
-        }
-
-        remove_auxiliary(self, STATE_NEXT)?;
-        let mut file = self.inner.root.open_file(
-            STATE_NEXT,
-            OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL,
-            Mode::RUSR | Mode::WUSR,
-        )?;
-        file.write_all(&bytes)?;
-        file.sync_all()?;
-        drop(file);
-        self.rename(STATE_NEXT, STATE_PATH, true)?;
-        self.sync_dir("")
-    }
-
-    fn snapshot_source_locked(&self, snapshot: &str) -> Result<ManifestSource> {
-        validate_digest(snapshot)?;
-        let manifest = Manifest::from_json(
-            &self.read(
-                &format!("snapshots/{snapshot}/manifest.json"),
-                self.inner.options.limits.max_manifest_bytes,
-            )?,
-            &self.inner.options.limits,
-        )?;
+        let manifest = Manifest::from_json(&bytes, &self.inner.options.limits)?;
         if manifest.digest()? != snapshot {
             return Err(Error::Malformed(
                 "by-name snapshot manifest identity mismatch".into(),
             ));
         }
-        Ok(manifest.source().clone())
+        Ok(Some(manifest))
     }
 
-    fn snapshot_sources_locked(&self) -> Result<Vec<(String, ManifestSource)>> {
+    fn snapshot_manifests_locked(&self) -> Result<Vec<(String, Manifest)>> {
         let snapshots = self.inner.root.open_dir("snapshots", false)?;
-        let mut result = Vec::new();
+        let mut result: Vec<(String, Manifest)> = Vec::new();
         for entry in fs::Dir::read_from(&snapshots).map_err(io)? {
             let entry = entry.map_err(io)?;
             let name = entry
@@ -520,140 +446,598 @@ impl CacheStore {
                     "snapshot namespace contains a non-directory entry".into(),
                 ));
             }
-            if result.len() == MAX_BY_NAME_ENTRIES {
+            if result.len() == MAX_AUTOMATIC_ENTRIES {
                 return Err(Error::Limit(
                     "automatic by-name snapshot count exceeds bound".into(),
                 ));
             }
-            result.push((name.to_owned(), self.snapshot_source_locked(name)?));
+            let manifest = self
+                .snapshot_manifest_optional_locked(name)?
+                .ok_or_else(|| Error::State("snapshot disappeared during by-name scan".into()))?;
+            result.push((name.into(), manifest));
         }
         result.sort_unstable_by(|a, b| a.0.cmp(&b.0));
         Ok(result)
     }
 
-    fn reconcile_by_name_state_locked(&self, state: &mut ByNameState) -> Result<bool> {
-        state.validate()?;
-        let snapshots = self.snapshot_sources_locked()?;
+    fn legacy_state_locked(&self) -> Result<Option<LegacyState>> {
+        let Some(bytes) = self.read_optional(LEGACY_STATE, 4 * 1024 * 1024)? else {
+            return Ok(None);
+        };
+        let legacy: LegacyState = serde_json::from_slice(&bytes)
+            .map_err(|_| Error::Malformed("invalid legacy by-name metadata".into()))?;
+        if legacy.schema != LEGACY_SCHEMA
+            || legacy.automatic.len() > MAX_AUTOMATIC_ENTRIES
+            || legacy.aliases.len() > MAX_ALIAS_ENTRIES
+        {
+            return Err(Error::Malformed(
+                "unsupported or oversized legacy by-name metadata".into(),
+            ));
+        }
+        let mut targets = BTreeSet::new();
+        for (name, snapshot) in &legacy.automatic {
+            validate_name(name)?;
+            validate_digest(snapshot)?;
+            if !targets.insert(snapshot.as_str()) {
+                return Err(Error::Malformed(
+                    "legacy by-name automatic target duplicated".into(),
+                ));
+            }
+        }
+        for (name, snapshot) in &legacy.aliases {
+            validate_name(name)?;
+            validate_digest(snapshot)?;
+            if legacy.automatic.contains_key(name) {
+                return Err(Error::Malformed(
+                    "legacy by-name alias collides with automatic name".into(),
+                ));
+            }
+        }
+        Ok(Some(legacy))
+    }
+
+    fn initialize_state_locked(&self) -> Result<()> {
+        if self.marker_exists_locked()? {
+            return Err(Error::State(
+                "by-name state is missing after prior initialization; refusing to discard human aliases"
+                    .into(),
+            ));
+        }
+        remove_auxiliary(self, STATE_NEXT)?;
+        let root_mount = mount_id(self.inner.root.as_fd())?;
+        let automatic_next = format!("{STATE_NEXT}/automatic");
+        let aliases_next = format!("{STATE_NEXT}/aliases");
+        let snapshots_next = format!("{STATE_NEXT}/snapshots");
+        for path in [
+            STATE_NEXT,
+            automatic_next.as_str(),
+            aliases_next.as_str(),
+            snapshots_next.as_str(),
+        ] {
+            let directory = self.inner.root.open_dir(path, true)?;
+            require_mount(&directory, root_mount)?;
+        }
+        self.write_human_staged_new(&format!("{STATE_NEXT}/schema"), STATE_SCHEMA)?;
+        self.write_human_staged_new(&format!("{STATE_NEXT}/dirty"), b"projection")?;
+
+        let snapshots = self.snapshot_manifests_locked()?;
         let present = snapshots
             .iter()
             .map(|(snapshot, _)| snapshot.as_str())
             .collect::<BTreeSet<_>>();
-        let before_automatic = state.automatic.len();
-        let before_aliases = state.aliases.len();
-        state
-            .automatic
-            .retain(|_, snapshot| present.contains(snapshot.as_str()));
-        state
-            .aliases
-            .retain(|_, snapshot| present.contains(snapshot.as_str()));
-        let mut changed =
-            before_automatic != state.automatic.len() || before_aliases != state.aliases.len();
+        let legacy = self.legacy_state_locked()?;
+        let mut used = BTreeSet::new();
+        let mut automatic_targets = BTreeSet::new();
 
-        for (snapshot, source) in snapshots {
-            let (_, inserted) = claim_automatic(state, &source, &snapshot)?;
-            changed |= inserted;
+        if let Some(legacy) = &legacy {
+            for (name, snapshot) in &legacy.automatic {
+                if !present.contains(snapshot.as_str()) {
+                    continue;
+                }
+                if !used.insert(name.clone()) || !automatic_targets.insert(snapshot.clone()) {
+                    return Err(Error::Malformed(
+                        "legacy by-name state is not one-to-one".into(),
+                    ));
+                }
+                self.write_human_staged_new(
+                    &format!("{STATE_NEXT}/automatic/{name}"),
+                    snapshot.as_bytes(),
+                )?;
+                self.write_human_staged_new(
+                    &format!("{STATE_NEXT}/snapshots/{snapshot}"),
+                    name.as_bytes(),
+                )?;
+            }
+            for (name, snapshot) in &legacy.aliases {
+                if !present.contains(snapshot.as_str()) {
+                    continue;
+                }
+                if !used.insert(name.clone()) {
+                    return Err(Error::Malformed(
+                        "legacy by-name state contains a name collision".into(),
+                    ));
+                }
+                self.write_human_staged_new(
+                    &format!("{STATE_NEXT}/aliases/{name}"),
+                    snapshot.as_bytes(),
+                )?;
+            }
         }
-        state.validate()?;
-        Ok(changed)
+
+        for (snapshot, manifest) in &snapshots {
+            if automatic_targets.contains(snapshot) {
+                continue;
+            }
+            let mut chosen = None;
+            for candidate in AutoCandidates::new(manifest, snapshot).take(MAX_STATE_ENTRIES + 16) {
+                if used.insert(candidate.clone()) {
+                    chosen = Some(candidate);
+                    break;
+                }
+            }
+            let name = chosen.ok_or_else(|| {
+                Error::State("unable to allocate migrated automatic by-name alias".into())
+            })?;
+            automatic_targets.insert(snapshot.clone());
+            self.write_human_staged_new(
+                &format!("{STATE_NEXT}/automatic/{name}"),
+                snapshot.as_bytes(),
+            )?;
+            self.write_human_staged_new(
+                &format!("{STATE_NEXT}/snapshots/{snapshot}"),
+                name.as_bytes(),
+            )?;
+        }
+
+        for path in [
+            automatic_next.as_str(),
+            aliases_next.as_str(),
+            snapshots_next.as_str(),
+            STATE_NEXT,
+        ] {
+            self.sync_human_dir(path)?;
+        }
+
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameStateInstall, CacheMoment::Before)?;
+        self.rename(STATE_NEXT, STATE_DIR, false)?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameStateInstall, CacheMoment::After)?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameRootSync, CacheMoment::Before)?;
+        self.sync_dir("")?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameRootSync, CacheMoment::After)?;
+
+        self.rebuild_projection_locked()?;
+        self.clear_dirty_locked()?;
+        self.create_marker_locked()?;
+        let _ = remove_auxiliary(self, LEGACY_STATE);
+        let _ = remove_auxiliary(self, LEGACY_NEXT);
+        Ok(())
     }
 
-    fn load_or_initialize_by_name_state_locked(&self) -> Result<(ByNameState, bool)> {
-        if let Some(state) = self.read_by_name_state_locked()? {
-            return Ok((state, false));
+    fn cleanup_state_temporaries_locked(&self) -> Result<()> {
+        remove_relative_tree(self, REVERSE_NEXT)?;
+        for directory_path in [AUTO_DIR, ALIAS_DIR, REVERSE_DIR] {
+            let directory = self.inner.root.open_dir(directory_path, false)?;
+            let mut stale = Vec::new();
+            let mut observed = 0usize;
+            for entry in fs::Dir::read_from(&directory).map_err(io)? {
+                let entry = entry.map_err(io)?;
+                let name = entry
+                    .file_name()
+                    .to_str()
+                    .map_err(|_| Error::Malformed("non-UTF8 by-name temporary".into()))?;
+                if name == "." || name == ".." {
+                    continue;
+                }
+                observed = observed
+                    .checked_add(1)
+                    .filter(|count| *count <= MAX_AUX_NODES)
+                    .ok_or_else(|| Error::Limit("by-name temporary scan entry limit".into()))?;
+                if name.starts_with(".next-") {
+                    stale.push(format!("{directory_path}/{name}"));
+                }
+            }
+            for path in stale {
+                remove_relative_tree(self, &path)?;
+            }
         }
-        let mut state = ByNameState::empty();
-        self.reconcile_by_name_state_locked(&mut state)?;
-        self.write_by_name_state_locked(&state)?;
-        Ok((state, true))
+        Ok(())
     }
 
-    fn rebuild_by_name_projection_locked(&self, state: &ByNameState) -> Result<()> {
-        let desired = desired_projection(state)?;
+    fn rebuild_reverse_locked(&self) -> Result<()> {
+        let automatic = self.scan_claims_locked(ClaimKind::Automatic)?;
+        let mut by_snapshot = BTreeMap::new();
+        for (name, snapshot) in &automatic {
+            if by_snapshot.insert(snapshot.clone(), name.clone()).is_some() {
+                return Err(Error::Malformed(
+                    "one snapshot has multiple automatic by-name claims".into(),
+                ));
+            }
+        }
+
+        remove_relative_tree(self, REVERSE_NEXT)?;
+        let root_mount = mount_id(self.inner.root.as_fd())?;
+        let next = self.inner.root.open_dir(REVERSE_NEXT, true)?;
+        require_mount(&next, root_mount)?;
+        for (snapshot, name) in &by_snapshot {
+            self.write_human_staged_new(&format!("{REVERSE_NEXT}/{snapshot}"), name.as_bytes())?;
+        }
+        self.sync_human_dir(REVERSE_NEXT)?;
+        drop(next);
+
+        let state = self.inner.root.open_dir(STATE_DIR, false)?;
+        require_mount(&state, root_mount)?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameStateInstall, CacheMoment::Before)?;
+        fs::renameat_with(
+            &state,
+            "snapshots.next",
+            &state,
+            "snapshots",
+            RenameFlags::EXCHANGE,
+        )
+        .map_err(io)?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameStateInstall, CacheMoment::After)?;
+        self.sync_human_dir(STATE_DIR)?;
+        remove_relative_tree(self, REVERSE_NEXT)?;
+        self.sync_human_dir(STATE_DIR)
+    }
+
+    fn rebuild_projection_locked(&self) -> Result<()> {
+        let entries = self.state_entries_locked()?;
+        if entries.len() > MAX_STATE_ENTRIES {
+            return Err(Error::Limit("by-name projection entry limit".into()));
+        }
         remove_auxiliary(self, NEXT_DIR)?;
+        let root_mount = mount_id(self.inner.root.as_fd())?;
         let next = self.inner.root.open_dir(NEXT_DIR, true)?;
-        for (name, link_target) in &desired {
-            fs::symlinkat(link_target.as_str(), &next, name.as_str()).map_err(io)?;
+        require_mount(&next, root_mount)?;
+        for entry in &entries {
+            fs::symlinkat(target(entry.snapshot())?.as_str(), &next, entry.name()).map_err(io)?;
         }
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(
+            CacheOperation::ByNameProjectionDirectorySync,
+            CacheMoment::Before,
+        )?;
         next.sync_all()?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(
+            CacheOperation::ByNameProjectionDirectorySync,
+            CacheMoment::After,
+        )?;
         drop(next);
 
         let root = root_copy(self)?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(
+            CacheOperation::ByNameProjectionExchange,
+            CacheMoment::Before,
+        )?;
         match fs::statat(&root, LIVE_DIR, AtFlags::SYMLINK_NOFOLLOW) {
             Err(rustix::io::Errno::NOENT) => {
                 fs::renameat_with(&root, NEXT_DIR, &root, LIVE_DIR, RenameFlags::NOREPLACE)
                     .map_err(io)?;
-                root.sync_all()?;
-                Ok(())
             }
             Ok(_) => {
                 fs::renameat_with(&root, NEXT_DIR, &root, LIVE_DIR, RenameFlags::EXCHANGE)
                     .map_err(io)?;
-                root.sync_all()?;
-                remove_auxiliary(self, NEXT_DIR)?;
-                root.sync_all()?;
-                Ok(())
             }
-            Err(error) => Err(io(error)),
+            Err(error) => return Err(io(error)),
         }
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameProjectionExchange, CacheMoment::After)?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameRootSync, CacheMoment::Before)?;
+        root.sync_all()?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(CacheOperation::ByNameRootSync, CacheMoment::After)?;
+
+        let _ = remove_auxiliary(self, NEXT_DIR);
+        root.sync_all()?;
+        Ok(())
     }
 
-    fn install_by_name_alias_locked(&self, name: &str, snapshot: &str) -> Result<()> {
-        // Missing/non-directory projection means it was externally damaged.
-        // Do not silently recreate a partial directory containing only this
-        // snapshot; caller falls back to the complete bounded state projection.
+    fn install_projection_alias_locked(&self, name: &str, snapshot: &str) -> Result<()> {
+        validate_name(name)?;
+        let link_target = target(snapshot)?;
+        let root_mount = mount_id(self.inner.root.as_fd())?;
         let directory = self.inner.root.open_dir(LIVE_DIR, false)?;
-        install_symlink(&directory, name, &target(snapshot)?)
+        require_mount(&directory, root_mount)?;
+
+        match fs::statat(&directory, name, AtFlags::SYMLINK_NOFOLLOW) {
+            Ok(stat) if FileType::from_raw_mode(stat.st_mode) == FileType::Symlink => {
+                let current = fs::readlinkat(&directory, name, Vec::new()).map_err(io)?;
+                if current.to_bytes() == link_target.as_bytes() {
+                    return Ok(());
+                }
+            }
+            Ok(_) => {
+                return Err(Error::State(
+                    "by-name alias is occupied by a non-symlink entry".into(),
+                ));
+            }
+            Err(rustix::io::Errno::NOENT) => {}
+            Err(error) => return Err(io(error)),
+        }
+
+        let token = digest(format!("{name}|{link_target}").as_bytes());
+        let temporary = format!(".next-{}", &token[..24]);
+        match fs::statat(&directory, temporary.as_str(), AtFlags::SYMLINK_NOFOLLOW) {
+            Ok(_) => {
+                fs::unlinkat(&directory, temporary.as_str(), AtFlags::empty()).map_err(io)?;
+            }
+            Err(rustix::io::Errno::NOENT) => {}
+            Err(error) => return Err(io(error)),
+        }
+        fs::symlinkat(link_target.as_str(), &directory, temporary.as_str()).map_err(io)?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(
+            CacheOperation::ByNameProjectionEntryInstall,
+            CacheMoment::Before,
+        )?;
+        fs::renameat_with(
+            &directory,
+            temporary.as_str(),
+            &directory,
+            name,
+            RenameFlags::empty(),
+        )
+        .map_err(io)?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(
+            CacheOperation::ByNameProjectionEntryInstall,
+            CacheMoment::After,
+        )?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(
+            CacheOperation::ByNameProjectionDirectorySync,
+            CacheMoment::Before,
+        )?;
+        directory.sync_all()?;
+        #[cfg(feature = "diagnostic-cache")]
+        self.by_name_point(
+            CacheOperation::ByNameProjectionDirectorySync,
+            CacheMoment::After,
+        )?;
+        Ok(())
+    }
+
+    fn ensure_automatic_under_dirty_locked(
+        &self,
+        manifest: &Manifest,
+        snapshot: &str,
+    ) -> Result<String> {
+        if let Some(name) = self.read_reverse_locked(snapshot)? {
+            match self.read_claim_locked(ClaimKind::Automatic, &name)? {
+                Some(existing) if existing == snapshot => return Ok(name),
+                _ => {
+                    return Err(Error::State(
+                        "by-name automatic reverse index is inconsistent".into(),
+                    ));
+                }
+            }
+        }
+
+        for name in AutoCandidates::new(manifest, snapshot).take(MAX_STATE_ENTRIES + 16) {
+            let automatic = self.read_claim_locked(ClaimKind::Automatic, &name)?;
+            let alias = self.read_claim_locked(ClaimKind::Alias, &name)?;
+            match (automatic, alias) {
+                (Some(existing), None) if existing == snapshot => {
+                    self.write_reverse_new_locked(snapshot, &name)?;
+                    return Ok(name);
+                }
+                (None, None) => {
+                    self.write_claim_new_locked(ClaimKind::Automatic, &name, snapshot)?;
+                    self.write_reverse_new_locked(snapshot, &name)?;
+                    return Ok(name);
+                }
+                _ => {}
+            }
+        }
+        Err(Error::State(
+            "unable to allocate a stable automatic by-name alias".into(),
+        ))
+    }
+
+    fn remove_claims_for_snapshot_under_dirty_locked(&self, snapshot: &str) -> Result<bool> {
+        let mut changed = false;
+        if let Some(name) = self.read_reverse_locked(snapshot)? {
+            changed |= self.unlink_human_file_locked(&format!("{AUTO_DIR}/{name}"))?;
+            changed |= self.unlink_human_file_locked(&format!("{REVERSE_DIR}/{snapshot}"))?;
+        } else {
+            // An interrupted automatic claim can exist before its reverse index.
+            // This scan is recovery-only; the healthy path is the lookup above.
+            let automatic = self.scan_claims_locked(ClaimKind::Automatic)?;
+            for (name, target) in automatic {
+                if target == snapshot {
+                    changed |= self.unlink_human_file_locked(&format!("{AUTO_DIR}/{name}"))?;
+                }
+            }
+        }
+
+        let aliases = self.scan_claims_locked(ClaimKind::Alias)?;
+        for (name, target) in aliases {
+            if target == snapshot {
+                changed |= self.unlink_human_file_locked(&format!("{ALIAS_DIR}/{name}"))?;
+            }
+        }
+        Ok(changed)
+    }
+
+    fn reconcile_claims_with_canonical_under_dirty_locked(&self) -> Result<()> {
+        let snapshots = self.snapshot_manifests_locked()?;
+        let present = snapshots
+            .iter()
+            .map(|(snapshot, _)| snapshot.as_str())
+            .collect::<BTreeSet<_>>();
+
+        for kind in [ClaimKind::Automatic, ClaimKind::Alias] {
+            let claims = self.scan_claims_locked(kind)?;
+            for (name, snapshot) in claims {
+                if !present.contains(snapshot.as_str()) {
+                    self.unlink_human_file_locked(&format!("{}/{name}", kind.directory()))?;
+                }
+            }
+        }
+
+        self.rebuild_reverse_locked()?;
+        for (snapshot, manifest) in snapshots {
+            self.ensure_automatic_under_dirty_locked(&manifest, &snapshot)?;
+        }
+        Ok(())
+    }
+
+    fn recover_dirty_locked(&self, mode: DirtyMode) -> Result<()> {
+        match mode {
+            DirtyMode::Projection => {
+                self.cleanup_state_temporaries_locked()?;
+                self.rebuild_reverse_locked()?;
+                self.rebuild_projection_locked()?;
+            }
+            DirtyMode::Reconcile => {
+                self.cleanup_state_temporaries_locked()?;
+                self.reconcile_claims_with_canonical_under_dirty_locked()?;
+                self.rebuild_projection_locked()?;
+            }
+            DirtyMode::Pending(snapshot) => {
+                if let Some(manifest) = self.snapshot_manifest_optional_locked(&snapshot)? {
+                    let name = self.ensure_automatic_under_dirty_locked(&manifest, &snapshot)?;
+                    if self
+                        .install_projection_alias_locked(&name, &snapshot)
+                        .is_err()
+                    {
+                        self.rebuild_projection_locked()?;
+                    }
+                } else {
+                    self.remove_claims_for_snapshot_under_dirty_locked(&snapshot)?;
+                    self.rebuild_reverse_locked()?;
+                    self.rebuild_projection_locked()?;
+                }
+            }
+        }
+        self.clear_dirty_locked()
+    }
+
+    fn ensure_state_locked(&self) -> Result<()> {
+        if !self.state_directory_exists_locked()? {
+            if self.marker_exists_locked()? {
+                return Err(Error::State(
+                    "by-name state is missing after prior initialization; refusing to discard human aliases"
+                        .into(),
+                ));
+            }
+            return self.initialize_state_locked();
+        }
+
+        self.validate_state_layout_locked()?;
+        let had_marker = self.marker_exists_locked()?;
+        if let Some(mode) = self.dirty_mode_locked()? {
+            self.recover_dirty_locked(mode)?;
+        }
+        if !had_marker {
+            // Existing v2 state without the durable initialization marker can
+            // only be an interrupted adoption or foreign human-layer state.
+            // Reconcile it against canonical snapshots before blessing it.
+            self.mark_dirty_locked(DirtyMode::Reconcile)?;
+            self.recover_dirty_locked(DirtyMode::Reconcile)?;
+        }
+        self.create_marker_locked()?;
+        let _ = remove_auxiliary(self, STATE_NEXT);
+        let _ = remove_auxiliary(self, LEGACY_STATE);
+        let _ = remove_auxiliary(self, LEGACY_NEXT);
+        Ok(())
+    }
+
+    pub(crate) fn prepare_by_name_reconcile_locked(&self) -> Result<()> {
+        self.ensure_state_locked()?;
+        self.mark_dirty_locked(DirtyMode::Reconcile)
+    }
+
+    pub(crate) fn prepare_by_name_pending_locked(&self, snapshot: &str) -> Result<()> {
+        validate_digest(snapshot)?;
+        self.ensure_state_locked()?;
+        if self.read_reverse_locked(snapshot)?.is_some() {
+            return Ok(());
+        }
+        self.mark_dirty_locked(DirtyMode::Pending(snapshot.into()))
     }
 
     pub(crate) fn publish_by_name_locked(
         &self,
-        source: &ManifestSource,
+        manifest: &Manifest,
         snapshot: &str,
     ) -> Result<String> {
-        let (mut state, initialized) = self.load_or_initialize_by_name_state_locked()?;
-        let (name, changed) = claim_automatic(&mut state, source, snapshot)?;
-        if changed {
-            self.write_by_name_state_locked(&state)?;
+        validate_digest(snapshot)?;
+        self.ensure_state_locked()?;
+        if let Some(name) = self.read_reverse_locked(snapshot)? {
+            let claim = self
+                .read_claim_locked(ClaimKind::Automatic, &name)?
+                .ok_or_else(|| {
+                    Error::State("by-name automatic reverse index has no claim".into())
+                })?;
+            if claim != snapshot {
+                return Err(Error::State(
+                    "by-name automatic reverse index points to another snapshot".into(),
+                ));
+            }
+            if self
+                .install_projection_alias_locked(&name, snapshot)
+                .is_err()
+            {
+                self.mark_dirty_locked(DirtyMode::Projection)?;
+                let result = self.rebuild_projection_locked();
+                if result.is_ok() {
+                    self.clear_dirty_locked()?;
+                }
+                result?;
+            }
+            return Ok(name);
         }
-        if initialized {
-            self.rebuild_by_name_projection_locked(&state)?;
-        } else if self.install_by_name_alias_locked(&name, snapshot).is_err() {
-            // Projection loss/corruption is human-layer damage only. Recover
-            // from bounded persisted state without scanning canonical snapshots.
-            self.rebuild_by_name_projection_locked(&state)?;
+
+        self.mark_dirty_locked(DirtyMode::Projection)?;
+        let name = self.ensure_automatic_under_dirty_locked(manifest, snapshot)?;
+        let projection = self
+            .install_projection_alias_locked(&name, snapshot)
+            .or_else(|_| self.rebuild_projection_locked());
+        if projection.is_ok() {
+            self.clear_dirty_locked()?;
         }
+        projection?;
         Ok(name)
     }
 
     pub(crate) fn remove_snapshot_by_name_locked(&self, snapshot: &str) -> Result<()> {
-        let (mut state, _) = self.load_or_initialize_by_name_state_locked()?;
-        let before = state.automatic.len() + state.aliases.len();
-        state.automatic.retain(|_, digest| digest != snapshot);
-        state.aliases.retain(|_, digest| digest != snapshot);
-        if before != state.automatic.len() + state.aliases.len() {
-            self.write_by_name_state_locked(&state)?;
+        validate_digest(snapshot)?;
+        self.ensure_state_locked()?;
+        let has_automatic = self.read_reverse_locked(snapshot)?.is_some();
+        let has_alias = self
+            .scan_claims_locked(ClaimKind::Alias)?
+            .values()
+            .any(|target| target == snapshot);
+        if !has_automatic && !has_alias {
+            return Ok(());
         }
-        self.rebuild_by_name_projection_locked(&state)
+        self.mark_dirty_locked(DirtyMode::Reconcile)?;
+        self.remove_claims_for_snapshot_under_dirty_locked(snapshot)?;
+        let result = self.rebuild_projection_locked();
+        if result.is_ok() {
+            self.clear_dirty_locked()?;
+        }
+        result
     }
 
-    /// List intended human names. This never resolves a model or opens payloads.
     pub fn list_by_name(&self) -> Result<Vec<ByNameEntry>> {
         let publication = self.lock("publication", &AtomicBool::new(false))?;
         publication.ensure_bound()?;
-        let state = match self.read_by_name_state_locked()? {
-            Some(state) => state,
-            None => {
-                let mut state = ByNameState::empty();
-                self.reconcile_by_name_state_locked(&mut state)?;
-                state
-            }
-        };
-        Ok(entries(&state))
+        self.ensure_state_locked()?;
+        self.state_entries_locked()
     }
 
-    /// Create or update an explicit human alias. Automatic aliases cannot be
-    /// replaced; use another human name. A projection warning leaves the human
-    /// metadata saved and canonical model data untouched.
     pub fn set_by_name_alias(
         &self,
         alias: &str,
@@ -662,18 +1046,24 @@ impl CacheStore {
     ) -> Result<ByNameUpdate> {
         let publication = self.lock("publication", &AtomicBool::new(false))?;
         publication.ensure_bound()?;
-        self.snapshot_source_locked(snapshot)?;
+        self.ensure_state_locked()?;
+        self.snapshot_manifest_optional_locked(snapshot)?
+            .ok_or_else(|| Error::State("human alias target snapshot is not canonical".into()))?;
         let name = normalize_alias(alias)?;
-        let (mut state, _) = self.load_or_initialize_by_name_state_locked()?;
 
-        if state.automatic.contains_key(&name) {
+        if self
+            .read_claim_locked(ClaimKind::Automatic, &name)?
+            .is_some()
+        {
             return Err(Error::State(
                 "human alias collides with a stable automatic by-name entry; choose another alias"
                     .into(),
             ));
         }
-        let changed = match state.aliases.get(&name) {
-            Some(existing) if existing == snapshot => false,
+
+        let existing = self.read_claim_locked(ClaimKind::Alias, &name)?;
+        let changed = match existing.as_deref() {
+            Some(current) if current == snapshot => false,
             Some(_) if !replace => {
                 return Err(Error::State(
                     "human alias already points to another snapshot; use --replace explicitly"
@@ -682,90 +1072,183 @@ impl CacheStore {
             }
             _ => true,
         };
-        if changed {
-            state.aliases.insert(name.clone(), snapshot.into());
-            state.validate()?;
-            self.write_by_name_state_locked(&state)?;
+
+        if !changed {
+            let warning = match self.install_projection_alias_locked(&name, snapshot) {
+                Ok(()) => None,
+                Err(_) => {
+                    self.mark_dirty_locked(DirtyMode::Projection)?;
+                    match self.rebuild_projection_locked() {
+                        Ok(()) => {
+                            self.clear_dirty_locked()?;
+                            None
+                        }
+                        Err(error) => Some(error.to_string()),
+                    }
+                }
+            };
+            return Ok(ByNameUpdate {
+                name,
+                snapshot: Some(snapshot.into()),
+                changed: false,
+                projection_warning: warning,
+            });
         }
-        let projection_warning = self
-            .rebuild_by_name_projection_locked(&state)
-            .err()
-            .map(|error| error.to_string());
+
+        if existing.is_none()
+            && self.scan_claims_locked(ClaimKind::Alias)?.len() == MAX_ALIAS_ENTRIES
+        {
+            return Err(Error::Limit(
+                "explicit by-name alias count exceeds bound".into(),
+            ));
+        }
+
+        self.mark_dirty_locked(DirtyMode::Projection)?;
+        if existing.is_some() {
+            self.write_claim_replace_locked(ClaimKind::Alias, &name, snapshot)?;
+        } else {
+            self.write_claim_new_locked(ClaimKind::Alias, &name, snapshot)?;
+        }
+
+        let projection = self
+            .install_projection_alias_locked(&name, snapshot)
+            .or_else(|_| self.rebuild_projection_locked());
+        let warning = match projection {
+            Ok(()) => {
+                self.clear_dirty_locked()?;
+                None
+            }
+            Err(error) => Some(error.to_string()),
+        };
         Ok(ByNameUpdate {
             name,
             snapshot: Some(snapshot.into()),
-            changed,
-            projection_warning,
+            changed: true,
+            projection_warning: warning,
         })
     }
 
-    /// Remove only an explicit human alias. Stable automatic aliases are
-    /// intentionally not mutable through this API.
     pub fn remove_by_name_alias(&self, alias: &str) -> Result<ByNameUpdate> {
         let publication = self.lock("publication", &AtomicBool::new(false))?;
         publication.ensure_bound()?;
+        self.ensure_state_locked()?;
         let name = normalize_alias(alias)?;
-        let (mut state, _) = self.load_or_initialize_by_name_state_locked()?;
-        if state.automatic.contains_key(&name) {
+        if self
+            .read_claim_locked(ClaimKind::Automatic, &name)?
+            .is_some()
+        {
             return Err(Error::State(
                 "automatic by-name entries are derived and cannot be removed as human aliases"
                     .into(),
             ));
         }
-        let changed = state.aliases.remove(&name).is_some();
-        if changed {
-            self.write_by_name_state_locked(&state)?;
+        if self.read_claim_locked(ClaimKind::Alias, &name)?.is_none() {
+            return Ok(ByNameUpdate {
+                name,
+                snapshot: None,
+                changed: false,
+                projection_warning: None,
+            });
         }
-        let projection_warning = self
-            .rebuild_by_name_projection_locked(&state)
-            .err()
-            .map(|error| error.to_string());
+
+        self.mark_dirty_locked(DirtyMode::Projection)?;
+        self.unlink_human_file_locked(&format!("{ALIAS_DIR}/{name}"))?;
+        let projection = self.rebuild_projection_locked();
+        let warning = match projection {
+            Ok(()) => {
+                self.clear_dirty_locked()?;
+                None
+            }
+            Err(error) => Some(error.to_string()),
+        };
         Ok(ByNameUpdate {
             name,
             snapshot: None,
-            changed,
-            projection_warning,
+            changed: true,
+            projection_warning: warning,
         })
     }
 
-    /// Reconcile automatic claims with canonical snapshots, prune aliases whose
-    /// canonical snapshot no longer exists, then atomically replace the entire
-    /// disposable symlink projection. Existing projection contents are never a
-    /// source of truth.
+    /// Explicitly discard all human naming metadata and rebuild automatic
+    /// names from canonical snapshots. This never changes runtime refs,
+    /// snapshots, provenance, or model payloads. Callers must present their own
+    /// explicit destructive-intent UX before invoking it.
+    pub fn reset_by_name(&self) -> Result<Vec<ByNameEntry>> {
+        let publication = self.lock("publication", &AtomicBool::new(false))?;
+        publication.ensure_bound()?;
+        for path in [
+            NEXT_DIR,
+            STATE_NEXT,
+            STATE_DIR,
+            INIT_MARKER,
+            LEGACY_STATE,
+            LEGACY_NEXT,
+            LIVE_DIR,
+        ] {
+            remove_auxiliary(self, path)?;
+        }
+        self.initialize_state_locked()?;
+        self.state_entries_locked()
+    }
+
     pub fn refresh_by_name(&self) -> Result<Vec<ByNameEntry>> {
         let publication = self.lock("publication", &AtomicBool::new(false))?;
         publication.ensure_bound()?;
-        let (mut state, initialized) = self.load_or_initialize_by_name_state_locked()?;
-        if !initialized && self.reconcile_by_name_state_locked(&mut state)? {
-            self.write_by_name_state_locked(&state)?;
+        self.ensure_state_locked()?;
+        self.mark_dirty_locked(DirtyMode::Reconcile)?;
+        let result = self
+            .reconcile_claims_with_canonical_under_dirty_locked()
+            .and_then(|()| self.rebuild_projection_locked());
+        if result.is_ok() {
+            self.clear_dirty_locked()?;
         }
-        self.rebuild_by_name_projection_locked(&state)?;
-        Ok(entries(&state))
+        result?;
+        self.state_entries_locked()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::CacheLimits;
 
-    fn source(provider: &str, repository: &str, revision: &str) -> ManifestSource {
-        ManifestSource::new(provider, repository, revision).unwrap()
+    fn manifest(provider: &str, repository: &str, revision: &str, path: &str) -> Manifest {
+        Manifest::new(
+            ManifestSource::new(provider, repository, revision).unwrap(),
+            vec![
+                ManifestEntry::new(
+                    path,
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    1,
+                    FileRole::Weights,
+                )
+                .unwrap(),
+            ],
+            &CacheLimits::default(),
+        )
+        .unwrap()
     }
 
     #[test]
     fn automatic_names_are_model_first_flat_lowercase_and_readable() {
-        assert_eq!(
-            auto_name(&source(
-                "huggingface",
-                "Qwen/Qwen3.5-0.8B",
-                "2FC06364715B967F1860AEA9CF38778875588B17",
-            )),
-            "qwen3.5-0.8b-qwen-hf-2fc06364"
+        let qwen = manifest(
+            "huggingface",
+            "Qwen/Qwen3.5-0.8B",
+            "2FC06364715B967F1860AEA9CF38778875588B17",
+            "model.safetensors",
         );
-        assert_eq!(
-            auto_name(&source("github", "Org/My_Model", "Release/V1")),
-            "my-model-org-gh-release-v1"
+        assert_eq!(auto_name(&qwen), "qwen3.5-0.8b-qwen-hf-2fc06364");
+
+        let github = manifest("github", "Org/My_Model", "Release/V1", "model.bin");
+        assert_eq!(auto_name(&github), "my-model-org-gh-release-v1");
+
+        let object = manifest(
+            "https-object",
+            "origin-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "weights/llama-8b.gguf",
         );
+        assert_eq!(auto_name(&object), "llama-8b-https-bbbbbbbb");
     }
 
     #[test]
@@ -782,44 +1265,31 @@ mod tests {
     }
 
     #[test]
-    fn later_auto_collision_never_retargets_existing_primary_name() {
-        let mut state = ByNameState::empty();
-        let first = source("local", "owner/my_model", "v1");
-        let second = source("local", "owner/my-model", "v1");
-        let (first_name, _) = claim_automatic(
-            &mut state,
-            &first,
+    fn candidate_suffixes_are_deterministic_and_bounded() {
+        let model = manifest("local", "owner/my_model", "v1", "model.bin");
+        let names = AutoCandidates::new(
+            &model,
             "1111111111111111111111111111111111111111111111111111111111111111",
         )
-        .unwrap();
-        let (second_name, _) = claim_automatic(
-            &mut state,
-            &second,
-            "2222222222222222222222222222222222222222222222222222222222222222",
-        )
-        .unwrap();
-        assert_eq!(
-            state.automatic.get(&first_name).map(String::as_str),
-            Some("1111111111111111111111111111111111111111111111111111111111111111")
-        );
-        assert_ne!(first_name, second_name);
-        assert!(second_name.starts_with(&(auto_name(&second) + "-")));
+        .take(10)
+        .collect::<Vec<_>>();
+        assert_eq!(names.len(), 10);
+        assert!(names.iter().all(|name| name.len() <= MAX_ALIAS_BYTES));
+        assert!(names.iter().all(|name| validate_name(name).is_ok()));
+        assert!(names[1].starts_with(&(names[0].clone() + "-")));
+        assert!(names[9].ends_with("-2"));
     }
 
     #[test]
-    fn explicit_alias_cannot_steal_automatic_name_in_state() {
-        let mut state = ByNameState::empty();
-        let source = source("local", "owner/model", "v1");
-        let (automatic, _) = claim_automatic(
-            &mut state,
-            &source,
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        )
-        .unwrap();
-        state.aliases.insert(
-            automatic,
-            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
-        );
-        assert!(state.validate().is_err());
+    fn dirty_modes_roundtrip_without_ambiguity() {
+        for mode in [
+            DirtyMode::Projection,
+            DirtyMode::Reconcile,
+            DirtyMode::Pending(
+                "1111111111111111111111111111111111111111111111111111111111111111".into(),
+            ),
+        ] {
+            assert_eq!(DirtyMode::parse(&mode.bytes()).unwrap(), mode);
+        }
     }
 }

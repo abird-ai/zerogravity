@@ -183,7 +183,7 @@ fn corrupt_human_metadata_never_blocks_canonical_snapshot_or_reference_reads() {
     let admission = admission(128 * 1024 * 1024);
     let snapshot = durable(publish(&store, &admission, NEW, Some("runtime-ref")).unwrap());
 
-    fs::write(fixture.root.join("by-name.json"), b"not json").unwrap();
+    fs::write(fixture.root.join(".by-name-state/schema"), b"corrupt").unwrap();
     fs::remove_dir_all(fixture.root.join("by-name")).unwrap();
     symlink("/does/not/matter", fixture.root.join("by-name")).unwrap();
 
@@ -237,7 +237,7 @@ fn corrupt_human_metadata_surfaces_warning_without_downgrading_canonical_publica
     let admission = admission(128 * 1024 * 1024);
     let first = durable(publish(&store, &admission, OLD, None).unwrap());
 
-    fs::write(fixture.root.join("by-name.json"), b"corrupt").unwrap();
+    fs::write(fixture.root.join(".by-name-state/schema"), b"corrupt").unwrap();
     let outcome = publish(&store, &admission, NEW, Some("runtime-second")).unwrap();
     let CommitOutcome::Durable(published) = outcome else {
         panic!("human metadata must never downgrade canonical durability");
@@ -247,6 +247,118 @@ fn corrupt_human_metadata_surfaces_warning_without_downgrading_canonical_publica
     assert_ne!(published.digest(), first);
     assert_payload(&store.open_snapshot(published.digest()).unwrap(), NEW);
     assert_payload(&store.resolve_ref("runtime-second").unwrap(), NEW);
+}
+
+#[test]
+fn by_name_v1_migration_preserves_stable_automatic_and_explicit_aliases() {
+    let fixture = Fixture::new();
+    let store = fixture.open();
+    let admission = admission(128 * 1024 * 1024);
+    let snapshot = durable(publish(&store, &admission, NEW, None).unwrap());
+    store
+        .set_by_name_alias("human-name", &snapshot, false)
+        .unwrap();
+    let before = store.list_by_name().unwrap();
+    let automatic = before
+        .iter()
+        .find(|entry| entry.kind() == ByNameKind::Automatic)
+        .unwrap()
+        .name()
+        .to_owned();
+
+    let mut automatic_map = serde_json::Map::new();
+    automatic_map.insert(
+        automatic.clone(),
+        serde_json::Value::String(snapshot.clone()),
+    );
+    let mut aliases_map = serde_json::Map::new();
+    aliases_map.insert(
+        "human-name".into(),
+        serde_json::Value::String(snapshot.clone()),
+    );
+    let legacy = serde_json::json!({
+        "schema": "zerogravity.cache.by-name.v1",
+        "automatic": automatic_map,
+        "aliases": aliases_map,
+    });
+
+    fs::remove_dir_all(fixture.root.join(".by-name-state")).unwrap();
+    fs::remove_file(fixture.root.join(".by-name-initialized")).unwrap();
+    fs::write(
+        fixture.root.join("by-name.json"),
+        serde_json::to_vec(&legacy).unwrap(),
+    )
+    .unwrap();
+
+    let migrated = store.refresh_by_name().unwrap();
+    assert!(migrated.iter().any(|entry| entry.name() == automatic
+        && entry.snapshot() == snapshot
+        && entry.kind() == ByNameKind::Automatic));
+    assert!(migrated.iter().any(|entry| entry.name() == "human-name"
+        && entry.snapshot() == snapshot
+        && entry.kind() == ByNameKind::Alias));
+    assert!(!fixture.root.join("by-name.json").exists());
+    assert!(fixture.root.join(".by-name-initialized").is_file());
+}
+
+#[test]
+fn initialized_by_name_state_loss_is_detected_without_affecting_canonical_data() {
+    let fixture = Fixture::new();
+    let store = fixture.open();
+    let admission = admission(128 * 1024 * 1024);
+    let snapshot = durable(publish(&store, &admission, NEW, Some("runtime")).unwrap());
+    store.set_by_name_alias("human", &snapshot, false).unwrap();
+
+    fs::remove_dir_all(fixture.root.join(".by-name-state")).unwrap();
+    assert!(fixture.root.join(".by-name-initialized").is_file());
+
+    assert!(matches!(store.list_by_name(), Err(Error::State(_))));
+    assert_payload(&store.open_snapshot(&snapshot).unwrap(), NEW);
+    assert_payload(&store.resolve_ref("runtime").unwrap(), NEW);
+}
+
+#[test]
+fn dirty_by_name_marker_repairs_projection_and_reverse_index_on_next_use() {
+    let fixture = Fixture::new();
+    let store = fixture.open();
+    let admission = admission(128 * 1024 * 1024);
+    let snapshot = durable(publish(&store, &admission, NEW, None).unwrap());
+    let automatic = store
+        .list_by_name()
+        .unwrap()
+        .into_iter()
+        .find(|entry| entry.kind() == ByNameKind::Automatic)
+        .unwrap()
+        .name()
+        .to_owned();
+
+    fs::remove_file(fixture.root.join("by-name").join(&automatic)).unwrap();
+    fs::remove_file(
+        fixture
+            .root
+            .join(".by-name-state/snapshots")
+            .join(&snapshot),
+    )
+    .unwrap();
+    fs::write(fixture.root.join(".by-name-state/dirty"), b"projection").unwrap();
+
+    let listed = store.list_by_name().unwrap();
+    assert!(listed.iter().any(|entry| entry.name() == automatic));
+    assert_eq!(
+        fs::read_link(fixture.root.join("by-name").join(&automatic)).unwrap(),
+        std::path::PathBuf::from(format!("../snapshots/{snapshot}"))
+    );
+    assert_eq!(
+        fs::read_to_string(
+            fixture
+                .root
+                .join(".by-name-state/snapshots")
+                .join(&snapshot)
+        )
+        .unwrap(),
+        automatic
+    );
+    assert!(!fixture.root.join(".by-name-state/dirty").exists());
 }
 
 #[test]
@@ -565,18 +677,22 @@ mod diagnostics {
     use std::path::Path;
     use std::sync::Mutex;
     use std::time::Duration;
-    use zerogravity_artifacts::cache::{CacheHook, CachePoint};
+    use zerogravity_artifacts::cache::{CacheHook, CacheMoment, CacheOperation, CachePoint};
     use zerogravity_artifacts::cache::{Manifest, ManifestEntry, ManifestSource};
 
     struct FailAt {
         point: CachePoint,
         ordinal: usize,
+        by_name: bool,
         calls: AtomicUsize,
         reached: Arc<AtomicUsize>,
     }
 
     impl CacheHook for FailAt {
         fn point(&self, point: CachePoint) -> Result<()> {
+            if is_by_name_operation(point.operation) != self.by_name {
+                return Ok(());
+            }
             if self.calls.fetch_add(1, Ordering::Relaxed) == self.ordinal {
                 assert_eq!(point, self.point, "publication callback order changed");
                 self.reached.fetch_add(1, Ordering::Relaxed);
@@ -613,7 +729,11 @@ mod diagnostics {
             )
             .unwrap(),
         );
-        let observed = recorder.0.lock().unwrap().clone();
+        let all = recorder.0.lock().unwrap().clone();
+        let observed = all
+            .into_iter()
+            .filter(|point| !is_by_name_operation(point.operation))
+            .collect::<Vec<_>>();
         for required in points() {
             assert!(
                 observed.contains(&required),
@@ -625,6 +745,119 @@ mod diagnostics {
             observed.len()
         );
         observed
+    }
+
+    fn observed_by_name_init_points() -> Vec<CachePoint> {
+        let fixture = Fixture::new();
+        let store = fixture.open();
+        let admission = admission(128 * 1024 * 1024);
+        let recorder = Arc::new(RecordPoints::default());
+        durable(
+            publish(
+                &store.with_hook(recorder.clone()),
+                &admission,
+                OLD,
+                Some("fixture"),
+            )
+            .unwrap(),
+        );
+        recorder
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .copied()
+            .filter(|point| is_by_name_operation(point.operation))
+            .collect()
+    }
+
+    fn observed_by_name_publish_points() -> Vec<CachePoint> {
+        let fixture = Fixture::new();
+        let store = fixture.open();
+        let admission = admission(128 * 1024 * 1024);
+        durable(publish(&store, &admission, OLD, Some("fixture")).unwrap());
+        let recorder = Arc::new(RecordPoints::default());
+        durable(
+            publish(
+                &store.with_hook(recorder.clone()),
+                &admission,
+                NEW,
+                Some("fixture"),
+            )
+            .unwrap(),
+        );
+        recorder
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .copied()
+            .filter(|point| is_by_name_operation(point.operation))
+            .collect()
+    }
+
+    fn observed_by_name_refresh_points() -> Vec<CachePoint> {
+        let fixture = Fixture::new();
+        let store = fixture.open();
+        let admission = admission(128 * 1024 * 1024);
+        durable(publish(&store, &admission, OLD, Some("fixture")).unwrap());
+        let recorder = Arc::new(RecordPoints::default());
+        store
+            .clone()
+            .with_hook(recorder.clone())
+            .refresh_by_name()
+            .unwrap();
+        recorder
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .copied()
+            .filter(|point| is_by_name_operation(point.operation))
+            .collect()
+    }
+
+    fn observed_by_name_alias_set_points() -> Vec<CachePoint> {
+        let fixture = Fixture::new();
+        let store = fixture.open();
+        let admission = admission(128 * 1024 * 1024);
+        let snapshot = durable(publish(&store, &admission, OLD, Some("fixture")).unwrap());
+        let recorder = Arc::new(RecordPoints::default());
+        store
+            .clone()
+            .with_hook(recorder.clone())
+            .set_by_name_alias("human", &snapshot, false)
+            .unwrap();
+        recorder
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .copied()
+            .filter(|point| is_by_name_operation(point.operation))
+            .collect()
+    }
+
+    fn observed_by_name_alias_remove_points() -> Vec<CachePoint> {
+        let fixture = Fixture::new();
+        let store = fixture.open();
+        let admission = admission(128 * 1024 * 1024);
+        let snapshot = durable(publish(&store, &admission, OLD, Some("fixture")).unwrap());
+        store.set_by_name_alias("human", &snapshot, false).unwrap();
+        let recorder = Arc::new(RecordPoints::default());
+        store
+            .clone()
+            .with_hook(recorder.clone())
+            .remove_by_name_alias("human")
+            .unwrap();
+        recorder
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .copied()
+            .filter(|point| is_by_name_operation(point.operation))
+            .collect()
     }
 
     fn lock_inodes(root: &Path) -> BTreeMap<std::ffi::OsString, (u64, u64)> {
@@ -667,6 +900,7 @@ mod diagnostics {
                 let faulted = store.clone().with_hook(Arc::new(FailAt {
                     point,
                     ordinal,
+                    by_name: false,
                     calls: AtomicUsize::new(0),
                     reached: reached.clone(),
                 }));
@@ -765,6 +999,105 @@ mod diagnostics {
                 assert_eq!(usage.reserved_bytes, 0);
                 assert!(usage.used_bytes <= usage.limit_bytes);
                 assert_lock_inodes_preserved(&fixture.root, &lock_ids);
+                assert_no_host_reservation(&admission);
+            }
+        }
+    }
+
+    fn assert_by_name_projection_converged(store: &CacheStore, root: &Path) {
+        let entries = store.list_by_name().unwrap();
+        assert!(!root.join(".by-name-state/dirty").exists());
+        for entry in entries {
+            assert_eq!(
+                fs::read_link(root.join("by-name").join(entry.name())).unwrap(),
+                std::path::PathBuf::from(format!("../snapshots/{}", entry.snapshot()))
+            );
+        }
+    }
+
+    #[test]
+    fn real_child_exit_at_each_by_name_boundary_self_heals() {
+        let scenarios = [
+            ("crash-by-name-init", observed_by_name_init_points()),
+            ("crash-by-name-publish", observed_by_name_publish_points()),
+            ("crash-by-name-refresh", observed_by_name_refresh_points()),
+            (
+                "crash-by-name-alias-set",
+                observed_by_name_alias_set_points(),
+            ),
+            (
+                "crash-by-name-alias-remove",
+                observed_by_name_alias_remove_points(),
+            ),
+        ];
+        for (mode, observed) in scenarios {
+            assert!(!observed.is_empty(), "no by-name hooks observed for {mode}");
+            for (index, point) in observed.into_iter().enumerate() {
+                let fixture = Fixture::new();
+                let store = fixture.open();
+                let admission = admission(128 * 1024 * 1024);
+                if mode != "crash-by-name-init" {
+                    let snapshot =
+                        durable(publish(&store, &admission, OLD, Some("fixture")).unwrap());
+                    if mode == "crash-by-name-alias-remove" {
+                        store.set_by_name_alias("human", &snapshot, false).unwrap();
+                    }
+                }
+
+                let output = RunningChild::spawn(&fixture.root, mode, index, "fixture").finish();
+                assert_eq!(
+                    output.status.code(),
+                    Some(86),
+                    "child missed {mode} {point:?}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+
+                let reopened = fixture.open();
+                match mode {
+                    "crash-by-name-init" => {
+                        durable(publish(&reopened, &admission, OLD, Some("fixture")).unwrap());
+                        assert_payload(&reopened.resolve_ref("fixture").unwrap(), OLD);
+                    }
+                    "crash-by-name-publish" => {
+                        durable(publish(&reopened, &admission, NEW, Some("fixture")).unwrap());
+                        assert_payload(&reopened.resolve_ref("fixture").unwrap(), NEW);
+                    }
+                    "crash-by-name-refresh" => {
+                        reopened.refresh_by_name().unwrap();
+                        assert_payload(&reopened.resolve_ref("fixture").unwrap(), OLD);
+                    }
+                    "crash-by-name-alias-set" => {
+                        let snapshot = reopened
+                            .list_snapshots()
+                            .unwrap()
+                            .into_iter()
+                            .next()
+                            .unwrap();
+                        reopened
+                            .set_by_name_alias("human", &snapshot, false)
+                            .unwrap();
+                        assert!(
+                            reopened
+                                .list_by_name()
+                                .unwrap()
+                                .iter()
+                                .any(|entry| entry.name() == "human")
+                        );
+                    }
+                    "crash-by-name-alias-remove" => {
+                        reopened.remove_by_name_alias("human").unwrap();
+                        assert!(
+                            reopened
+                                .list_by_name()
+                                .unwrap()
+                                .iter()
+                                .all(|entry| entry.name() != "human")
+                        );
+                    }
+                    _ => unreachable!(),
+                }
+                assert_by_name_projection_converged(&reopened, &fixture.root);
+                assert_eq!(reopened.usage().unwrap().reserved_bytes, 0);
                 assert_no_host_reservation(&admission);
             }
         }
@@ -1020,12 +1353,16 @@ mod diagnostics {
             point: CachePoint,
             crash: bool,
             crash_ordinal: usize,
+            by_name: bool,
             calls: AtomicUsize,
             reads: Arc<AtomicUsize>,
             held: AtomicBool,
         }
         impl CacheHook for ChildHook {
             fn point(&self, point: CachePoint) -> Result<()> {
+                if is_by_name_operation(point.operation) != self.by_name {
+                    return Ok(());
+                }
                 let ordinal = self.calls.fetch_add(1, Ordering::Relaxed);
                 if self.crash && ordinal == self.crash_ordinal {
                     // A real process exit without Rust Drop, on this same
@@ -1058,6 +1395,7 @@ mod diagnostics {
                     point: points()[0],
                     crash: true,
                     crash_ordinal: index,
+                    by_name: false,
                     calls: AtomicUsize::new(0),
                     reads: reads.clone(),
                     held: AtomicBool::new(false),
@@ -1081,6 +1419,93 @@ mod diagnostics {
                 assert!(result.is_err(), "crash point was not reached");
                 panic!("crash point returned instead of exiting");
             }
+            "crash-by-name-init"
+            | "crash-by-name-publish"
+            | "crash-by-name-refresh"
+            | "crash-by-name-alias-set"
+            | "crash-by-name-alias-remove" => {
+                let index: usize = std::env::var(CHILD_POINT).unwrap().parse().unwrap();
+                let reads = Arc::new(AtomicUsize::new(0));
+                let hook = Arc::new(ChildHook {
+                    point: CachePoint {
+                        operation: CacheOperation::ByNameDirtyFileSync,
+                        moment: CacheMoment::Before,
+                        object: None,
+                    },
+                    crash: true,
+                    crash_ordinal: index,
+                    by_name: true,
+                    calls: AtomicUsize::new(0),
+                    reads: reads.clone(),
+                    held: AtomicBool::new(false),
+                });
+                let hooked = store.with_hook(hook);
+                match mode.as_str() {
+                    "crash-by-name-init" => {
+                        let mut reader = ObservedReader {
+                            bytes: OLD,
+                            reads,
+                            observe: Box::new(|| {}),
+                        };
+                        let result = hooked
+                            .begin(
+                                payload_manifest(OLD),
+                                &admission,
+                                Arc::new(AtomicBool::new(false)),
+                            )
+                            .and_then(|mut transaction| {
+                                transaction.import_object(PAYLOAD_PATH, &mut reader)?;
+                                transaction.commit(Some(&reference))
+                            });
+                        assert!(result.is_err(), "by-name init crash point was not reached");
+                    }
+                    "crash-by-name-publish" => {
+                        let mut reader = ObservedReader {
+                            bytes: NEW,
+                            reads,
+                            observe: Box::new(|| {}),
+                        };
+                        let result = hooked
+                            .begin(
+                                payload_manifest(NEW),
+                                &admission,
+                                Arc::new(AtomicBool::new(false)),
+                            )
+                            .and_then(|mut transaction| {
+                                transaction.import_object(PAYLOAD_PATH, &mut reader)?;
+                                transaction.commit(Some(&reference))
+                            });
+                        assert!(
+                            result.is_err(),
+                            "by-name publish crash point was not reached"
+                        );
+                    }
+                    "crash-by-name-refresh" => {
+                        let result = hooked.refresh_by_name();
+                        assert!(
+                            result.is_err(),
+                            "by-name refresh crash point was not reached"
+                        );
+                    }
+                    "crash-by-name-alias-set" => {
+                        let snapshot = hooked.list_snapshots().unwrap().into_iter().next().unwrap();
+                        let result = hooked.set_by_name_alias("human", &snapshot, false);
+                        assert!(
+                            result.is_err(),
+                            "by-name alias-set crash point was not reached"
+                        );
+                    }
+                    "crash-by-name-alias-remove" => {
+                        let result = hooked.remove_by_name_alias("human");
+                        assert!(
+                            result.is_err(),
+                            "by-name alias-remove crash point was not reached"
+                        );
+                    }
+                    _ => unreachable!(),
+                }
+                panic!("by-name crash point returned instead of exiting");
+            }
             "hold" | "hold-object" => {
                 use zerogravity_artifacts::cache::{CacheMoment, CacheOperation};
                 let hook = Arc::new(ChildHook {
@@ -1099,6 +1524,7 @@ mod diagnostics {
                     },
                     crash: false,
                     crash_ordinal: usize::MAX,
+                    by_name: false,
                     calls: AtomicUsize::new(0),
                     reads: Arc::new(AtomicUsize::new(0)),
                     held: AtomicBool::new(false),

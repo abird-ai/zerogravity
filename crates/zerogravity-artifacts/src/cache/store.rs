@@ -1499,6 +1499,13 @@ impl CacheTransaction {
                 Err(error) => return Err(error),
             }
         }
+        // Human naming is non-authoritative, but a durable pending marker
+        // written before canonical namespace installation lets the next process
+        // finish the automatic name if this process exits after snapshot
+        // durability but before the human projection update. Failure to prepare
+        // this convenience marker must never block canonical publication.
+        let _ = self.store.prepare_by_name_pending_locked(&self.digest);
+
         let manifest_target = format!("manifests/{}.json", self.digest);
         #[cfg(feature = "diagnostic-cache")]
         self.store
@@ -1668,7 +1675,7 @@ impl CacheTransaction {
         }
         match self
             .store
-            .publish_by_name_locked(self.manifest.source(), &self.digest)
+            .publish_by_name_locked(&self.manifest, &self.digest)
         {
             Ok(name) => published.by_name.push(name),
             Err(error) => published.by_name_warning = Some(error.to_string()),

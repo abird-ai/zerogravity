@@ -232,6 +232,32 @@ fn run_by_name(args: &[String]) -> Result<()> {
             print_by_name_entries(&entries);
             Ok(())
         }
+        "reset" => {
+            if args[1..]
+                .iter()
+                .filter(|arg| arg.as_str() == "--discard-aliases")
+                .count()
+                != 1
+            {
+                return Err(invalid());
+            }
+            let filtered = args[1..]
+                .iter()
+                .filter(|arg| arg.as_str() != "--discard-aliases")
+                .cloned()
+                .collect::<Vec<_>>();
+            let (root, disk, replace) = parse_by_name_common(&filtered)?;
+            if replace {
+                return Err(invalid());
+            }
+            let entries = by_name_store(root, disk)?.reset_by_name()?;
+            println!(
+                "Reset human-only by-name state; explicit aliases were discarded. Rebuilt {} automatic entries.",
+                entries.len()
+            );
+            print_by_name_entries(&entries);
+            Ok(())
+        }
         "set" => {
             if args.len() < 4 {
                 return Err(invalid());
@@ -315,6 +341,7 @@ fn help() {
     zerogravity cache remove DIGEST --dry-run|--apply --cache ABS_PATH
     zerogravity cache by-name list --cache ABS_PATH
     zerogravity cache by-name refresh --cache ABS_PATH
+    zerogravity cache by-name reset --discard-aliases --cache ABS_PATH
     zerogravity cache by-name set NAME DIGEST [--replace] --cache ABS_PATH
     zerogravity cache by-name remove NAME --cache ABS_PATH
     zerogravity cache import-hf --help
@@ -326,6 +353,8 @@ OPTIONS:
     --disk-limit-bytes N      Existing cooperative disk policy (default16GiB)
     by-name list              List intended human names without model loading
     by-name refresh           Reconcile snapshots and atomically rebuild symlinks
+    by-name reset             With --discard-aliases, rebuild human state from
+                              canonical snapshots after state loss/corruption
     by-name set NAME DIGEST   Create an explicit human alias; --replace is required
                               to retarget an existing explicit alias
     by-name remove NAME       Remove only an explicit human alias
@@ -333,7 +362,9 @@ OPTIONS:
 by-name is one flat lowercase namespace. Each immutable snapshot gets one stable
 model-first automatic name (for example qwen3.5-0.8b-qwen-hf-2fc06364).
 Explicit aliases are stored separately from runtime refs. Automatic collisions
-preserve the existing primary name and suffix only the newcomer. Every symlink
+preserve the existing primary name and suffix only the newcomer. Reset is
+deliberately destructive only to explicit human aliases and requires
+--discard-aliases. Every symlink
 targets ../snapshots/DIGEST. Runtime selection, provenance, quota and reclamation
 authority never read by-name or its human metadata.
 

@@ -177,6 +177,22 @@ pub mod process {
     const TIMEOUT: Duration = Duration::from_secs(20);
     const MAX_OUTPUT: u64 = 512 * 1024;
 
+    pub fn is_by_name_operation(operation: CacheOperation) -> bool {
+        matches!(
+            operation,
+            CacheOperation::ByNameDirtyFileSync
+                | CacheOperation::ByNameDirtyDirectorySync
+                | CacheOperation::ByNameStateFileSync
+                | CacheOperation::ByNameStateInstall
+                | CacheOperation::ByNameStateDirectorySync
+                | CacheOperation::ByNameProjectionEntryInstall
+                | CacheOperation::ByNameProjectionDirectorySync
+                | CacheOperation::ByNameProjectionExchange
+                | CacheOperation::ByNameRootSync
+                | CacheOperation::ByNameDirtyRemove
+        )
+    }
+
     pub fn points() -> Vec<CachePoint> {
         use CacheMoment::{After, Before};
         use CacheOperation::*;

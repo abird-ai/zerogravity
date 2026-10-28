@@ -504,6 +504,12 @@ impl CacheStore {
             check_cancel(cancel)?;
             return Ok(ReclaimOutcome::DryRun(report));
         }
+        // Human naming never gates canonical reclamation, but a best-effort
+        // durable reconcile marker before the first canonical mutation ensures
+        // process exit cannot strand stale human aliases without a recovery
+        // signal. Dry-run returned above and remains strictly read-only.
+        let _ = self.prepare_by_name_reconcile_locked();
+
         let mut work = Work {
             store: self,
             cancel,

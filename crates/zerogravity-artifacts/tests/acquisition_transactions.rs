@@ -610,6 +610,9 @@ mod crash {
     }
     impl CacheHook for At {
         fn point(&self, point: CachePoint) -> Result<()> {
+            if is_by_name_operation(point.operation) {
+                return Ok(());
+            }
             if self.calls.fetch_add(1, Ordering::Relaxed) == self.ordinal {
                 assert_eq!(point, self.point, "discovered callback schedule changed");
                 if self.crash {
@@ -640,7 +643,14 @@ mod crash {
             NEW,
             "fixture",
         );
-        let points = recorder.0.lock().unwrap().clone();
+        let points = recorder
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .copied()
+            .filter(|point| !is_by_name_operation(point.operation))
+            .collect::<Vec<_>>();
         assert!(
             points.len() > 38,
             "new path must include all A1 operations plus actual-manifest transition"

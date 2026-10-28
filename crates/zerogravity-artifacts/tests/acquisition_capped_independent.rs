@@ -377,7 +377,10 @@ mod faults {
         crash: bool,
     }
     impl CacheHook for Fail {
-        fn point(&self, _: CachePoint) -> Result<()> {
+        fn point(&self, point: CachePoint) -> Result<()> {
+            if is_by_name_operation(point.operation) {
+                return Ok(());
+            }
             if self.calls.fetch_add(1, Ordering::Relaxed) == self.ordinal {
                 if self.crash {
                     std::process::exit(86);
@@ -395,7 +398,14 @@ mod faults {
         let a = admission(128 * 1024 * 1024);
         let recorder = Arc::new(Recorder::default());
         attempt(&store.with_hook(recorder.clone()), &a, NEW).unwrap();
-        let points = recorder.0.lock().unwrap().clone();
+        let points = recorder
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .copied()
+            .filter(|point| !is_by_name_operation(point.operation))
+            .collect::<Vec<_>>();
         assert!(!points.is_empty());
         eprintln!(
             "capped callbacks {}; I/O fixtures {}; child-exit fixtures {}",
