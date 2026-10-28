@@ -1,7 +1,9 @@
 //! Cold ordinary CUDA source ownership and reusable resident storage.
 //! No request binding, launch, completion, root attempt, or publication lives here.
 
-use super::{OrdinaryCudaProjection, attention::OrdinaryCudaAttention, layout};
+use super::{
+    OrdinaryCudaProjection, attention::OrdinaryCudaAttention, layout, rotary::OrdinaryCudaRotary,
+};
 use crate::{
     cuda::{
         gdn::{GdnRuntimeBuffer, GdnRuntimeBufferOwnership},
@@ -37,9 +39,9 @@ pub(super) struct OrdinaryCudaCold {
     value_slots: Arc<[ResidentLease]>,
     status: ResidentLease,
     token_ids: ResidentLease,
-    positions: ResidentLease,
     logits_f32: ResidentLease,
     inverse_frequency: ResidentLease,
+    rotary: Arc<OrdinaryCudaRotary>,
     attention: Arc<OrdinaryCudaAttention>,
     gdn_internal: BTreeMap<GdnRuntimeBuffer, ResidentLease>,
     matrix_packs: Arc<[Arc<PackedSourceMatrices>]>,
@@ -102,10 +104,10 @@ impl OrdinaryCudaCold {
 
         let status = init.upload_zeroed(4, BufferRole::Scratch)?;
         let token_ids = init.upload_zeroed(layout::MAX_ROWS * 4, BufferRole::Activation)?;
-        let positions = init.upload_zeroed(layout::MAX_ROWS * 4, BufferRole::Activation)?;
         let logits_f32 = init.allocate_empty(layout::VOCABULARY * 4, BufferRole::Output)?;
         let inverse_frequency =
             init.upload_bytes(&inverse_frequency_bytes(), BufferRole::ImmutableWeights)?;
+        let rotary = OrdinaryCudaRotary::prepare(service.clone(), init)?;
         let attention =
             OrdinaryCudaAttention::prepare(service.clone(), init, layout.plan().prefix_capacity())?;
 
@@ -277,9 +279,9 @@ impl OrdinaryCudaCold {
             value_slots: value_slots.into(),
             status,
             token_ids,
-            positions,
             logits_f32,
             inverse_frequency,
+            rotary,
             attention,
             gdn_internal,
             matrix_packs: matrix_packs.into(),
@@ -301,7 +303,6 @@ impl OrdinaryCudaCold {
             || self.value_slots.len() != self.layout.slot_bytes().len()
             || self.status.bytes() != 4
             || self.token_ids.bytes() != layout::MAX_ROWS * 4
-            || self.positions.bytes() != layout::MAX_ROWS * 4
             || self.logits_f32.bytes() != layout::VOCABULARY * 4
             || self.inverse_frequency.bytes() != 32 * 4
             || self.matrix_packs.len() != self.layout.matrices().len()
@@ -395,14 +396,14 @@ impl OrdinaryCudaCold {
     pub(super) fn token_ids(&self) -> &ResidentLease {
         &self.token_ids
     }
-    pub(super) fn positions(&self) -> &ResidentLease {
-        &self.positions
-    }
     pub(super) fn logits_f32(&self) -> &ResidentLease {
         &self.logits_f32
     }
     pub(super) fn inverse_frequency(&self) -> &ResidentLease {
         &self.inverse_frequency
+    }
+    pub(super) fn rotary(&self) -> &Arc<OrdinaryCudaRotary> {
+        &self.rotary
     }
     pub(super) fn attention(&self) -> &Arc<OrdinaryCudaAttention> {
         &self.attention
@@ -442,15 +443,13 @@ impl OrdinaryCudaCold {
         for lease in self.value_slots.iter() {
             add(lease, DeviceAccess::Write);
         }
-        for lease in [
-            &self.status,
-            &self.token_ids,
-            &self.positions,
-            &self.logits_f32,
-        ] {
+        for lease in [&self.status, &self.token_ids, &self.logits_f32] {
             add(lease, DeviceAccess::Write);
         }
         add(&self.inverse_frequency, DeviceAccess::Read);
+        for (lease, access) in self.rotary.accesses() {
+            add(&lease, access);
+        }
         for (lease, access) in self.attention.accesses() {
             add(&lease, access);
         }

@@ -201,33 +201,6 @@ fn host_pack(a: f32, b: f32) -> Result<u32> {
     Ok((a >> 16) | (b & 0xffff_0000))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn bf16_transport_is_bit_exact_and_pack_refuses_unrounded_f32() {
-        for bits in [0u16, 0x8000, 1, 0x8001, 0x3f80, 0xbf80, 0x7f7f, 0xff7f] {
-            let value = host_widen(bits);
-            let packed = host_pack(value, 0.0).unwrap();
-            assert_eq!(packed as u16, bits);
-        }
-        assert!(host_pack(f32::from_bits(0x3f80_0001), 0.0).is_err());
-        assert!(host_pack(f32::INFINITY, 0.0).is_err());
-        assert!(host_pack(f32::NAN, 0.0).is_err());
-    }
-
-    #[test]
-    fn attention_inventory_is_capacity_derived_and_bounded() {
-        for capacity in [1usize, 512, 8_192, 32_768] {
-            let expected_elements = 4_121usize + 1_056usize * capacity;
-            assert_eq!(managed_bytes(capacity).unwrap(), expected_elements * 4);
-        }
-        assert!(managed_bytes(0).is_err());
-        assert!(managed_bytes(32_769).is_err());
-    }
-}
-
 pub(super) fn zero_bf16(
     client: &cubecl::client::Client,
     destination: &cubecl::server::Handle,
@@ -716,5 +689,32 @@ impl OrdinaryCudaAttention {
         }
         debug_assert_eq!(end, base + rows);
         Ok(launches)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bf16_transport_is_bit_exact_and_pack_refuses_unrounded_f32() {
+        for bits in [0u16, 0x8000, 1, 0x8001, 0x3f80, 0xbf80, 0x7f7f, 0xff7f] {
+            let value = host_widen(bits);
+            let packed = host_pack(value, 0.0).unwrap();
+            assert_eq!(packed as u16, bits);
+        }
+        assert!(host_pack(f32::from_bits(0x3f80_0001), 0.0).is_err());
+        assert!(host_pack(f32::INFINITY, 0.0).is_err());
+        assert!(host_pack(f32::NAN, 0.0).is_err());
+    }
+
+    #[test]
+    fn attention_inventory_is_capacity_derived_and_bounded() {
+        for capacity in [1usize, 512, 8_192, 32_768] {
+            let expected_elements = 4_121usize + 1_056usize * capacity;
+            assert_eq!(managed_bytes(capacity).unwrap(), expected_elements * 4);
+        }
+        assert!(managed_bytes(0).is_err());
+        assert!(managed_bytes(32_769).is_err());
     }
 }

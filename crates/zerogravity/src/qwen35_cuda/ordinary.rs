@@ -116,10 +116,12 @@ fn plan_primitives(
                     "ordinary Qwen packed Q/K/RoPE geometry differs".into(),
                 ));
             }
+            // Q/K RMS remains on the reviewed ordinary primitive ABI. Rotary
+            // executes through the integrated source-exact trig component and
+            // must never authorize the legacy libdevice sincosf primitive.
             vec![
                 PlanPrimitive::QueryHeadRms { epsilon: g.epsilon },
                 PlanPrimitive::KeyHeadRms { epsilon: g.epsilon },
-                PlanPrimitive::Rope,
             ]
         }
         SourceOperatorKind::KvAppend {
@@ -240,7 +242,6 @@ mod tests {
                     vec![
                         PlanPrimitive::QueryHeadRms { epsilon: EPSILON },
                         PlanPrimitive::KeyHeadRms { epsilon: EPSILON },
-                        PlanPrimitive::Rope,
                     ],
                 ),
                 (

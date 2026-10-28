@@ -75,7 +75,7 @@ impl OrdinaryCudaBody {
             call.rows().base(),
             call.rows().capacity(),
         )?;
-        let mut dispatches = self.enqueue_positions(client, step)?;
+        let mut dispatches = 0usize;
         let mut fused_dispatches = 0usize;
         let mut gate_alias = BTreeMap::<u32, u32>::new();
 
@@ -336,25 +336,6 @@ impl OrdinaryCudaBody {
         Ok(())
     }
 
-    fn enqueue_positions(&self, client: &cubecl::client::Client, step: Step) -> Result<usize> {
-        let positions = exact_view(
-            self.cold().positions(),
-            0,
-            step.rows * 4,
-            "ordinary request positions",
-        )?;
-        self.enqueue_primitive(
-            self.cold().program().positions(step)?,
-            vec![LaunchBinding::new(
-                OrdinaryRole::Positions,
-                Access::Write,
-                positions,
-            )],
-        )?;
-        let _ = client;
-        Ok(1)
-    }
-
     #[allow(clippy::too_many_arguments)]
     fn enqueue_node(
         &self,
@@ -561,31 +542,20 @@ impl OrdinaryCudaBody {
                         ),
                     ],
                 )?;
-                let positions = exact_view(
-                    self.cold().positions(),
-                    0,
-                    step.rows * 4,
-                    "ordinary RoPE positions",
-                )?;
-                self.enqueue_primitive(
-                    self.cold().program().rope(step)?,
-                    vec![
-                        LaunchBinding::new(OrdinaryRole::Query, Access::ReadWrite, query_handle),
-                        LaunchBinding::new(OrdinaryRole::Key, Access::ReadWrite, key_handle),
-                        LaunchBinding::new(OrdinaryRole::Positions, Access::Read, positions),
-                        LaunchBinding::new(
-                            OrdinaryRole::InverseFrequency,
-                            Access::Read,
-                            self.cold().inverse_frequency().handle(),
-                        ),
-                    ],
+                let rotary_launches = self.cold().rotary().enqueue(
+                    &query_handle,
+                    &key_handle,
+                    self.cold().inverse_frequency(),
+                    self.cold().status(),
+                    step.base,
+                    step.rows,
                 )?;
                 if gate_alias.insert(gate.0, packed.0).is_some() {
                     return Err(Error::State(
                         "ordinary CUDA QK gate alias duplicated".into(),
                     ));
                 }
-                Ok((3, 0))
+                Ok((2 + rotary_launches, 0))
             }
             KvAppend { domain, .. } => {
                 let ([key, packed], []) = (node.inputs.as_slice(), node.outputs.as_slice()) else {

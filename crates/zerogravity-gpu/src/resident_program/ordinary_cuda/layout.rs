@@ -3,7 +3,7 @@
 //! This consumes only the immutable call-free ForwardPlan. It performs no
 //! source reads, GPU allocations, provider creation, request binding or launch.
 
-use super::attention;
+use super::{attention, rotary};
 use crate::{
     cuda::gdn::{
         GdnKernelConfig, GdnKktKernel, GdnOutputKernel, GdnRecomputeKernel,
@@ -37,7 +37,6 @@ const FOREIGN_PROVIDER_BYTES: usize = 64 * 1024 * 1024;
 const BLAS_WORKSPACE_BYTES: usize = 8_519_680;
 const BLAS_SENTINEL_BYTES: usize = 4;
 const TOKEN_BYTES: usize = MAX_ROWS * 4;
-const POSITION_BYTES: usize = MAX_ROWS * 4;
 const INVERSE_FREQUENCY_BYTES: usize = 32 * 4;
 const F32_LOGITS_BYTES: usize = VOCABULARY * 4;
 const STATUS_BYTES: usize = 4;
@@ -177,8 +176,8 @@ impl OrdinaryCudaLayout {
             attention_bytes,
             gdn_workspace_bytes,
             TOKEN_BYTES,
-            POSITION_BYTES,
             F32_LOGITS_BYTES,
+            rotary::scratch_bytes(),
         ])?;
         let mut value_bindings = storage.bindings().to_vec();
         for (value, alias) in residual_aliases.iter().enumerate() {

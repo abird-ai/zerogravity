@@ -98,6 +98,7 @@ mod source_float;
 ))]
 mod source_rms;
 #[cfg(any(
+    feature = "cuda-cublas",
     feature = "gemma-bf16-qualification",
     feature = "qwen-source-qualification"
 ))]
