@@ -1681,3 +1681,30 @@ build or general model/backend grant. Historical failures keep their source scop
   as every prefill/continued-prefill cell.
 - [x] Strict qualification,cuda-cublas Clippy, all-features build, formatting
   and diff checks pass after the correction.
+
+### 28 Oct 2026 — deterministic serial ordinary cached47->50 run wrapper
+
+- [x] Added scripts/qualify-qwen35-ordinary-cached47-50.sh. It performs no
+  acquisition, substitution, repinning, permission changes or GPU recovery.
+  Before either process starts it requires explicit absolute paths and
+  authenticates: the complete approved .8B HF source census from source08.json,
+  the complete non-provider .8B native-kernel census from the checked-in bundle
+  pins, the exact pinned libcublas.so.12/libcublasLt.so.12 SONAME/size/SHA
+  identities, an explicit CUDA include view, NVRTC visibility, a fresh evidence
+  path, and an idle NVIDIA compute queue.
+- [x] The wrapper runs the existing two ignored integration tests in separate
+  release processes, reference evidence first and ordinary comparison second,
+  with --no-default-features and defaults of CARGO_BUILD_JOBS=8 /
+  RAYON_NUM_THREADS=8. GPU idleness is rechecked between phases and after the
+  comparison.
+- [x] Release-mode qwen35_cuda integration-test cargo check passes for the exact
+  qwen35-cuda-qualification feature surface. bash syntax/shell checks pass.
+  Missing-env preflight is explicit/fail-closed.
+- [x] Current-host preflight with valid CUDA 12.9/NVRTC paths performs no GPU
+  work and refuses immediately because the available target/models/qwen35-0.8b
+  directory is not the approved HF source tree (first missing member: LICENSE).
+  This is expected and confirms the wrapper stops before provider/kernel/GPU
+  execution when held artifacts are absent.
+- [ ] When the approved source tree, pinned native bundle payloads and pinned
+  provider DSOs reappear, use this wrapper with a fresh evidence path; no manual
+  phase ordering is required.
