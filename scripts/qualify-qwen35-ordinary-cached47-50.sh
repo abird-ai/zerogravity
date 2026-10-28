@@ -19,9 +19,11 @@ Usage:
   ZG_QWEN35_CUBLAS_LT=/abs/.../libcublasLt.so.12 \
   CUDA_PATH=/abs/cuda-include-view \
   LD_LIBRARY_PATH=.../nvrtc/lib:... \
-  bash scripts/qualify-qwen35-ordinary-cached47-50.sh [--preflight-only]
+  bash scripts/qualify-qwen35-ordinary-cached47-50.sh [--preflight-only|--compare-existing]
 
-The evidence path must not already exist. Use a fresh absolute path per run.
+Default run and --preflight-only require a fresh evidence path.
+--compare-existing requires an already-published regular evidence file and runs
+only the ordinary comparison phase after full artifact/GPU preflight.
 USAGE
   exit 2
 }
@@ -34,7 +36,7 @@ else
   usage
 fi
 case "$mode" in
-  run|--preflight-only) ;;
+  run|--preflight-only|--compare-existing) ;;
   *) usage ;;
 esac
 
@@ -64,9 +66,16 @@ cuda_path="$(require_absolute CUDA_PATH "$(printenv CUDA_PATH || true)")"
   printf 'Evidence parent directory absent: %s\n' "$(dirname -- "$evidence")" >&2
   exit 2
 }
-if [[ -e "$evidence" || -L "$evidence" ]]; then
-  printf 'Refusing stale/existing parity evidence path: %s\n' "$evidence" >&2
-  exit 2
+if [[ "$mode" == "--compare-existing" ]]; then
+  if [[ ! -f "$evidence" || -L "$evidence" ]]; then
+    printf 'Compare-existing requires regular non-symlink evidence: %s\n' "$evidence" >&2
+    exit 2
+  fi
+else
+  if [[ -e "$evidence" || -L "$evidence" ]]; then
+    printf 'Refusing stale/existing parity evidence path: %s\n' "$evidence" >&2
+    exit 2
+  fi
 fi
 
 command -v python3 >/dev/null 2>&1 || { printf 'python3 required\n' >&2; exit 2; }
@@ -237,18 +246,22 @@ if ! printenv CARGO_BUILD_JOBS >/dev/null 2>&1; then export CARGO_BUILD_JOBS=8; 
 if ! printenv RAYON_NUM_THREADS >/dev/null 2>&1; then export RAYON_NUM_THREADS=8; fi
 export PYTHONDONTWRITEBYTECODE=1
 
-printf '\n== phase 1/2: historical current-source reference -> evidence ==\n'
-cargo test --locked --offline --release --no-default-features \
-  -p zerogravity --features qwen35-cuda-qualification \
-  --test qwen35_cuda \
-  ordinary_cached47_to50_capture_reference_evidence \
-  -- --ignored --exact --nocapture
+if [[ "$mode" != "--compare-existing" ]]; then
+  printf '\n== phase 1/2: historical current-source reference -> evidence ==\n'
+  cargo test --locked --offline --release --no-default-features \
+    -p zerogravity --features qwen35-cuda-qualification \
+    --test qwen35_cuda \
+    ordinary_cached47_to50_capture_reference_evidence \
+    -- --ignored --exact --nocapture
 
-[[ -f "$evidence" && ! -L "$evidence" ]] || {
-  printf 'Phase 1 did not create regular evidence: %s\n' "$evidence" >&2
-  exit 2
-}
-require_idle_gpu
+  [[ -f "$evidence" && ! -L "$evidence" ]] || {
+    printf 'Phase 1 did not create regular evidence: %s\n' "$evidence" >&2
+    exit 2
+  }
+  require_idle_gpu
+else
+  printf '\n== resume: existing reference evidence -> ordinary comparison ==\n'
+fi
 
 printf '\n== phase 2/2: fresh ordinary process -> exact evidence comparison ==\n'
 cargo test --locked --offline --release --no-default-features \

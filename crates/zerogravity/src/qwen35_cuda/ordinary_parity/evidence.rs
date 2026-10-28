@@ -15,9 +15,10 @@ use crate::{
 };
 use sha2::{Digest, Sha256};
 use std::{
+    ffi::OsString,
     fs::{File, OpenOptions},
-    io::{BufReader, BufWriter, Read, Write},
-    path::Path,
+    io::{BufReader, BufWriter, ErrorKind, Read, Write},
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
@@ -100,7 +101,7 @@ pub(super) fn write(path: &Path, evidence: &ReferenceEvidence) -> Result<[u8; 32
     require_path(path)?;
     require_evidence(evidence)?;
 
-    let file = OpenOptions::new().write(true).create_new(true).open(path)?;
+    let (temporary, file) = create_sibling_temp(path)?;
     let result = (|| -> Result<[u8; 32]> {
         let mut writer = HashingWriter::new(BufWriter::new(file));
         writer.write_all(MAGIC)?;
@@ -142,12 +143,55 @@ pub(super) fn write(path: &Path, evidence: &ReferenceEvidence) -> Result<[u8; 32
             .map_err(|error| Error::Io(error.into_error()))?;
         file.write_all(&digest)?;
         file.sync_all()?;
+        publish_sibling_temp(&temporary, path)?;
         Ok(digest)
     })();
     if result.is_err() {
-        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(&temporary);
     }
     result
+}
+
+fn create_sibling_temp(path: &Path) -> Result<(PathBuf, File)> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| Error::Malformed("ordinary parity evidence parent absent".into()))?;
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| Error::Malformed("ordinary parity evidence filename absent".into()))?;
+    for attempt in 0..128u32 {
+        let mut name = OsString::from(".");
+        name.push(file_name);
+        name.push(format!(".zg-parity.tmp.{}.{}", std::process::id(), attempt));
+        let candidate = parent.join(name);
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(file) => return Ok((candidate, file)),
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Err(Error::State(
+        "ordinary parity evidence temporary namespace exhausted".into(),
+    ))
+}
+
+fn publish_sibling_temp(temporary: &Path, path: &Path) -> Result<()> {
+    std::fs::hard_link(temporary, path)?;
+    sync_parent(path)?;
+    std::fs::remove_file(temporary)?;
+    sync_parent(path)
+}
+
+fn sync_parent(path: &Path) -> Result<()> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| Error::Malformed("ordinary parity evidence parent absent".into()))?;
+    File::open(parent)?.sync_all()?;
+    Ok(())
 }
 
 pub(super) fn read(path: &Path) -> Result<(ReferenceEvidence, [u8; 32])> {
@@ -492,5 +536,36 @@ mod tests {
             write_slot(&mut bytes, slot).unwrap();
             assert_eq!(read_slot(&mut Cursor::new(bytes)).unwrap(), slot);
         }
+    }
+
+    #[test]
+    fn evidence_publish_is_create_new_and_final_name_is_atomic() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let root = std::env::temp_dir().join(format!(
+            "zg-qwen35-parity-publish-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let final_path = root.join("evidence.bin");
+
+        let (temporary, mut file) = create_sibling_temp(&final_path).unwrap();
+        file.write_all(b"complete-evidence").unwrap();
+        file.sync_all().unwrap();
+        assert!(!final_path.exists());
+        publish_sibling_temp(&temporary, &final_path).unwrap();
+        assert_eq!(std::fs::read(&final_path).unwrap(), b"complete-evidence");
+        assert!(!temporary.exists());
+
+        let (second, mut second_file) = create_sibling_temp(&final_path).unwrap();
+        second_file.write_all(b"must-not-overwrite").unwrap();
+        second_file.sync_all().unwrap();
+        assert!(publish_sibling_temp(&second, &final_path).is_err());
+        let _ = std::fs::remove_file(&second);
+        assert_eq!(std::fs::read(&final_path).unwrap(), b"complete-evidence");
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
