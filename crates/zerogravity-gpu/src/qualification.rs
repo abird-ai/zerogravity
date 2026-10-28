@@ -1339,6 +1339,175 @@ fn ordinary_multiply_and_kv_on_nvidia() -> zerogravity_core::Result<()> {
 }
 
 #[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
+fn qualify_ordinary_embedding(device: Device) -> zerogravity_core::Result<()> {
+    use crate::cuda::ordinary_text::{
+        Access, BufferRole, Geometry, LaunchBinding, Program, STATUS_OUT_OF_RANGE,
+    };
+    use cubecl::bytes::Bytes;
+    use zerogravity_core::{Error, Result};
+
+    const HIDDEN: usize = 1024;
+    const VOCABULARY: usize = 248_320;
+    const ROW_BYTES: usize = HIDDEN * 2;
+    const TABLE_BYTES: usize = VOCABULARY * ROW_BYTES;
+    const TOKENS: [u32; 12] = [0, 1, 47, 48, 49, 50, 511, 1023, 4095, 8191, 16_383, 248_319];
+    const PATTERNS: [u16; 12] = [
+        0x0000, 0x3d80, 0xbd80, 0x3e80, 0xbe80, 0x3f00, 0xbf00, 0x3f80, 0xbf80, 0x4000, 0xc000,
+        0x4040,
+    ];
+
+    fn row_bits(token: u32) -> Vec<u16> {
+        (0..HIDDEN)
+            .map(|lane| {
+                let index = (lane * 17 + token as usize * 13) % PATTERNS.len();
+                PATTERNS[index]
+            })
+            .collect()
+    }
+    fn bf16_bytes(values: &[u16]) -> Vec<u8> {
+        values
+            .iter()
+            .flat_map(|value| value.to_le_bytes())
+            .collect()
+    }
+    fn parse_bf16(raw: &[u8], label: &str) -> Result<Vec<u16>> {
+        if !raw.len().is_multiple_of(2) {
+            return Err(Error::State(format!("{label} BF16 alignment")));
+        }
+        Ok(raw
+            .chunks_exact(2)
+            .map(|word| u16::from_le_bytes([word[0], word[1]]))
+            .collect())
+    }
+    fn parse_status(raw: &[u8], label: &str) -> Result<u32> {
+        let word: [u8; 4] = raw
+            .try_into()
+            .map_err(|_| Error::State(format!("{label} status extent")))?;
+        Ok(u32::from_le_bytes(word))
+    }
+    fn exact_view(
+        handle: &cubecl::server::Handle,
+        offset: usize,
+        bytes: usize,
+    ) -> Result<cubecl::server::Handle> {
+        let available = usize::try_from(handle.size_in_used())
+            .map_err(|_| Error::Limit("embedding table handle extent".into()))?;
+        let end = offset
+            .checked_add(bytes)
+            .filter(|end| *end <= available)
+            .ok_or_else(|| Error::State("embedding table row view exceeds handle".into()))?;
+        Ok(handle
+            .clone()
+            .offset_start(offset as u64)
+            .offset_end((available - end) as u64))
+    }
+
+    let client = device.client();
+    let program = Program::new(Geometry::qwen35_08())?;
+    let table = client.empty(TABLE_BYTES);
+
+    for &token in &TOKENS {
+        let bytes = bf16_bytes(&row_bits(token));
+        let offset = usize::try_from(token)
+            .map_err(|_| Error::Limit("embedding token index".into()))?
+            .checked_mul(ROW_BYTES)
+            .ok_or_else(|| Error::Limit("embedding row offset".into()))?;
+        let row = exact_view(&table, offset, ROW_BYTES)?;
+        client.write(&row, Bytes::from_bytes_vec(bytes));
+    }
+
+    for rows in [1usize, 2, 17, 64] {
+        let token_ids = (0..rows)
+            .map(|row| TOKENS[(row * 5 + rows) % TOKENS.len()])
+            .collect::<Vec<_>>();
+        let expected = token_ids
+            .iter()
+            .flat_map(|&token| row_bits(token))
+            .collect::<Vec<_>>();
+        let token_handle = client.create_from_slice(u32::as_bytes(&token_ids));
+        let output = client.empty(rows * ROW_BYTES);
+        let status = client.create_from_slice(u32::as_bytes(&[0u32]));
+        let prepared = program.embedding(rows)?.prepare_owned(
+            &client,
+            vec![
+                LaunchBinding::new(BufferRole::TokenIds, Access::Read, token_handle),
+                LaunchBinding::new(BufferRole::EmbeddingTable, Access::Read, table.clone()),
+                LaunchBinding::new(BufferRole::Output, Access::Write, output.clone()),
+            ],
+            LaunchBinding::new(BufferRole::Status, Access::ReadWrite, status.clone()),
+        )?;
+        prepared.enqueue_owned(&client, &status)?;
+
+        let actual = parse_bf16(
+            &client
+                .read_one(output)
+                .map_err(|error| Error::State(format!("embedding output readback: {error}")))?,
+            "embedding",
+        )?;
+        let flags = parse_status(
+            &client
+                .read_one(status)
+                .map_err(|error| Error::State(format!("embedding status readback: {error}")))?,
+            "embedding",
+        )?;
+        if flags != 0 || actual != expected {
+            let mismatch = actual
+                .iter()
+                .zip(&expected)
+                .position(|(actual, expected)| actual != expected);
+            return Err(Error::State(format!(
+                "ordinary embedding rows={rows} differs: status={flags:#x} mismatch={mismatch:?}"
+            )));
+        }
+        println!("ordinary-embedding rows={rows} PASS");
+    }
+
+    let invalid_token = [VOCABULARY as u32];
+    let token_handle = client.create_from_slice(u32::as_bytes(&invalid_token));
+    let output = client.create_from_slice(&vec![0xffu8; ROW_BYTES]);
+    let status = client.create_from_slice(u32::as_bytes(&[0u32]));
+    let prepared = program.embedding(1)?.prepare_owned(
+        &client,
+        vec![
+            LaunchBinding::new(BufferRole::TokenIds, Access::Read, token_handle),
+            LaunchBinding::new(BufferRole::EmbeddingTable, Access::Read, table),
+            LaunchBinding::new(BufferRole::Output, Access::Write, output.clone()),
+        ],
+        LaunchBinding::new(BufferRole::Status, Access::ReadWrite, status.clone()),
+    )?;
+    prepared.enqueue_owned(&client, &status)?;
+    let invalid_output = parse_bf16(
+        &client
+            .read_one(output)
+            .map_err(|error| Error::State(format!("invalid embedding output: {error}")))?,
+        "invalid embedding",
+    )?;
+    let flags = parse_status(
+        &client
+            .read_one(status)
+            .map_err(|error| Error::State(format!("invalid embedding status: {error}")))?,
+        "invalid embedding",
+    )?;
+    if flags != STATUS_OUT_OF_RANGE || invalid_output.iter().any(|value| *value != 0) {
+        return Err(Error::State(format!(
+            "ordinary invalid embedding differs: status={flags:#x} nonzero_output={}",
+            invalid_output.iter().any(|value| *value != 0)
+        )));
+    }
+    println!("ordinary-embedding invalid-token PASS");
+    Ok(())
+}
+
+#[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
+#[test]
+#[ignore = "actual NVIDIA ordinary Qwen embedding gather/bounds qualification"]
+fn ordinary_embedding_on_nvidia() -> zerogravity_core::Result<()> {
+    qualify_ordinary_embedding(Device::cuda(0).map_err(|error| {
+        zerogravity_core::Error::State(format!("CUDA device 0 unavailable: {error}"))
+    })?)
+}
+
+#[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
 async fn qualify_ordinary_owned_blas_identity(
     device: Device,
     cublas: &std::path::Path,
