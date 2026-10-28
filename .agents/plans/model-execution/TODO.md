@@ -1486,13 +1486,13 @@ build or general model/backend grant. Historical failures keep their source scop
   OrdinaryCudaAdmission analyzer, with no source IO, GPU allocation or execution
   authority. Under the unchanged 4608 MiB provider allowance inside the 5120
   MiB physical envelope, exact cold + two-root totals are:
-  - .8B: 512=1,652,905,937 B; 1K=1,667,651,537; 2K=1,697,142,737;
-    4K=1,756,125,137; 8K=1,874,089,937; 16K=2,110,019,537;
-    32K=2,581,878,737. All fit admission.
-  - 2B: 512=3,911,835,601 B; 1K=3,926,581,201; 2K=3,956,072,401;
-    4K=4,015,054,801; 8K=4,133,019,601; 16K=4,368,949,201;
-    32K=4,840,808,401. 512 through 16K fit; 32K exceeds 4608 MiB
-    (4,831,838,208 B) by 8,970,193 B and must refuse before allocation.
+  - .8B: 512=1,652,916,305 B; 1K=1,667,661,905; 2K=1,697,153,105;
+    4K=1,756,135,505; 8K=1,874,100,305; 16K=2,110,029,905;
+    32K=2,581,889,105. All fit admission.
+  - 2B: 512=3,911,845,969 B; 1K=3,926,591,569; 2K=3,956,082,769;
+    4K=4,015,065,169; 8K=4,133,029,969; 16K=4,368,959,569;
+    32K=4,840,818,769. 512 through 16K fit; 32K exceeds 4608 MiB
+    (4,831,838,208 B) by 8,980,561 B and must refuse before allocation.
 - [ ] These are fit/admission results only. Physical correctness, continuation,
   replay, faults and state-history qualification remain required for each cell
   before production use; .8B real-model qualification is still blocked by the
@@ -1553,3 +1553,18 @@ build or general model/backend grant. Historical failures keep their source scop
   pass. This is qualification infrastructure only.
 - [ ] Execute both phases serially as soon as the approved .8B safetensor shard
   becomes visible to the connector. Do not download or substitute source.
+
+### 28 Oct 2026 — ordinary RoPE switched to source-exact trig
+
+- [x] Clean RTX 3060 qualification with explicit CUDA 12.9 headers/NVRTC
+  reproduced a real legacy ordinary RoPE error at position 1:
+  query[3] ordinary 0xc4dd vs source 0xc4dc (1 BF16 ULP).
+- [x] Production ordinary execution no longer calls the legacy CUDA sincosf
+  primitive. It now uses the existing source angle reduction, Arm-derived
+  source sincos schedule, source rotary apply, and exact BF16 widen/pack
+  transport under the same resident flight/status/completion owner.
+- [x] Panic-free physical NVIDIA parity of the production raw rotary helper
+  passes positions 0,1,47,48,49,50,511,512,1023,2047,4095,8191,16383,32767
+  for query/key BF16 bits exactly.
+- [x] Context admission totals were re-derived after the rotary scratch change;
+  the fit matrix is unchanged (.8B through 32K, 2B through 16K; 2B 32K refuses).
