@@ -88,6 +88,32 @@ impl OrdinaryCudaProviderPaths {
     }
 }
 
+struct BlasRetirementReservation<'a> {
+    flag: &'a AtomicBool,
+    irreversible: bool,
+}
+impl<'a> BlasRetirementReservation<'a> {
+    fn reserve(flag: &'a AtomicBool) -> Result<Self> {
+        flag.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| Error::State("ordinary CUDA BLAS retirement raced".into()))?;
+        Ok(Self {
+            flag,
+            irreversible: false,
+        })
+    }
+
+    fn make_irreversible(&mut self) {
+        self.irreversible = true;
+    }
+}
+impl Drop for BlasRetirementReservation<'_> {
+    fn drop(&mut self) {
+        if !self.irreversible {
+            self.flag.store(false, Ordering::Release);
+        }
+    }
+}
+
 /// The one active opaque BLAS provider for an ordinary ResidentService.
 /// Explicit retirement is mandatory; Drop never pretends the provider retired.
 pub(crate) struct OrdinaryCudaBlas {
@@ -280,14 +306,25 @@ impl OrdinaryCudaBlas {
         unsafe { self.provider.enqueue(operation, bindings) }.map_err(server_error)
     }
 
+    fn quarantine_retirement_failure(&self) {
+        self.service.fence_and_retain_owners(
+            &[self.workspace.clone(), self.sentinel.clone()],
+            vec![
+                self.sources.clone(),
+                self.provider.clone(),
+                self.pool.clone(),
+                self.charge.clone(),
+            ],
+        );
+    }
+
     /// Destroy/unload only after a trusted completion fence on the same service.
-    /// Any error leaves the owner non-reusable and the service/flight retains
-    /// native objects through the ordinary quarantine path.
+    /// Pre-flight admission/queue failures remain retryable. Once the retirement
+    /// flight retains every opaque owner, any later failure is irreversible and
+    /// stays on the original quarantine path.
     pub(crate) async fn retire(&self, expected_root: u64) -> Result<()> {
         self.require_active()?;
-        self.retired
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .map_err(|_| Error::State("ordinary CUDA BLAS retirement raced".into()))?;
+        let mut reservation = BlasRetirementReservation::reserve(&self.retired)?;
         let ticket = self.service.queue().submit(
             self.service.budget(),
             self.service.owner().clone(),
@@ -307,6 +344,7 @@ impl OrdinaryCudaBlas {
         flight.retain_completion_owner(self.provider.clone())?;
         flight.retain_completion_owner(self.pool.clone())?;
         flight.retain_completion_owner(self.charge.clone())?;
+        reservation.make_irreversible();
         unsafe { self.provider.destroy_after_physical_completion() }.map_err(server_error)?;
         flight
             .complete_read_only_readback(&[self.sentinel.readback(0, 4)?], |actual| {
@@ -318,14 +356,23 @@ impl OrdinaryCudaBlas {
                 Ok(())
             })
             .await?;
-        slot.finish()?;
-        let retired =
-            unsafe { self.pool.retire_after_physical_completion() }.map_err(server_error)?;
+        if let Err(error) = slot.finish() {
+            self.quarantine_retirement_failure();
+            return Err(error);
+        }
+        let retired = match unsafe { self.pool.retire_after_physical_completion() } {
+            Ok(retired) => retired,
+            Err(error) => {
+                self.quarantine_retirement_failure();
+                return Err(server_error(error));
+            }
+        };
         if !retired.retired
             || retired.charged_bytes != 0
             || retired.live_allocations != 0
             || retired.provider_live
         {
+            self.quarantine_retirement_failure();
             return Err(Error::State(
                 "ordinary CUDA BLAS pool retirement incomplete".into(),
             ));
@@ -501,6 +548,24 @@ impl OrdinaryCudaProjection {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retirement_reservation_retries_before_irreversible_boundary() {
+        let retired = AtomicBool::new(false);
+        {
+            let _reservation = BlasRetirementReservation::reserve(&retired).unwrap();
+            assert!(retired.load(Ordering::Acquire));
+            assert!(BlasRetirementReservation::reserve(&retired).is_err());
+        }
+        assert!(!retired.load(Ordering::Acquire));
+
+        {
+            let mut reservation = BlasRetirementReservation::reserve(&retired).unwrap();
+            reservation.make_irreversible();
+        }
+        assert!(retired.load(Ordering::Acquire));
+        assert!(BlasRetirementReservation::reserve(&retired).is_err());
+    }
 
     #[test]
     fn provider_paths_are_explicit_and_never_inferred() {
