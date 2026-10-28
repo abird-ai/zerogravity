@@ -343,6 +343,26 @@ impl OrdinaryCudaProjection {
         let weights = init
             .upload_ordinary_projection(service, source, template.matrices(), cancelled)
             .await?;
+        Self::prepare_with_weights(template, weights)
+    }
+
+    pub(crate) fn prepare_with_weights(
+        template: &SourceOperatorTemplate,
+        weights: Arc<PackedSourceMatrices>,
+    ) -> Result<Arc<Self>> {
+        if template.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+            || !matches!(
+                template.kind(),
+                SourceOperatorKind::Projection { selected_row: None }
+            )
+            || template.source() != weights.source_identity()
+            || template.matrices().is_empty()
+            || !template.parameters().is_empty()
+        {
+            return Err(Error::State(
+                "ordinary CUDA projection shared weights/template differs".into(),
+            ));
+        }
         weights.require_members(template.matrices())?;
         Ok(Arc::new(Self {
             template: template.clone(),
