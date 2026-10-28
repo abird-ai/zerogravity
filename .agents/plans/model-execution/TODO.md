@@ -1637,3 +1637,15 @@ build or general model/backend grant. Historical failures keep their source scop
   all-zero output row and reports exactly STATUS_OUT_OF_RANGE.
 - [x] This closes the remaining simple ordinary transport primitive that can be
   physically qualified without the blocked model/provider artifacts.
+
+### 28 Oct 2026 — ordinary attention wrapper physical qualification
+
+- [x] Clean RTX 3060 qualification passes the private production
+  OrdinaryCudaAttention wrapper for rows 1, 2, 17 and 64 at base 31/capacity
+  512 using authentic materialized .8B FlashAttention descriptors.
+- [x] Candidate KV future tail is deliberately BF16-NaN poisoned. The wrapper
+  widens only the active prefix, keeps shared status at zero, and matches an
+  independently scheduled source-attention oracle bit-for-bit for every row's
+  causal frontier base+row+1.
+- [x] This qualifies wrapper prefix/row/layout/BF16 transport semantics in
+  addition to the already source-derived attention arithmetic.
