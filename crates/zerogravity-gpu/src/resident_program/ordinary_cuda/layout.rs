@@ -163,7 +163,12 @@ impl OrdinaryCudaLayout {
                         GdnRuntimeBufferOwnership::CacheState
                             | GdnRuntimeBufferOwnership::Control
                             | GdnRuntimeBufferOwnership::Scratch
-                    ) || buffer.role() == crate::cuda::gdn::GdnRuntimeBuffer::Rstd
+                    ) || matches!(
+                        buffer.role(),
+                        crate::cuda::gdn::GdnRuntimeBuffer::Rstd
+                            | crate::cuda::gdn::GdnRuntimeBuffer::InitialState
+                            | crate::cuda::gdn::GdnRuntimeBuffer::FinalState
+                    )
                 })
                 .map(|buffer| buffer.bytes()),
         )?;
