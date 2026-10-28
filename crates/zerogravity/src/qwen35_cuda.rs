@@ -39,8 +39,6 @@ mod ordinary_source;
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub mod qualification;
 #[cfg(feature = "qwen35-cuda-qualification")]
-mod reference_identity;
-#[cfg(feature = "qwen35-cuda-qualification")]
 mod session;
 #[cfg(feature = "qwen35-cuda-qualification")]
 mod source;
@@ -123,7 +121,6 @@ pub struct Model {
     templates: Arc<templates::Templates>,
     tokenizer: QwenTokenizer,
     metadata: SourceMetadata,
-    reference_implementation: reference_identity::ReferenceImplementationIdentity,
     _tokenizer: crate::tokenize_admission::Retained,
     _loader: GlobalResourceLease,
 }
@@ -166,9 +163,6 @@ impl Model {
     }
     pub fn source_metadata(&self) -> &SourceMetadata {
         &self.metadata
-    }
-    fn reference_implementation(&self) -> &reference_identity::ReferenceImplementationIdentity {
-        &self.reference_implementation
     }
 }
 /// Model-prepared component data; execution and completion remain GPU-owned.
@@ -263,7 +257,6 @@ async fn load_profile(
         cohort_b4,
         cancelled,
     )?;
-    let reference_implementation = bundle.reference_implementation().clone();
     let capture = match mode {
         QualificationMode::FreshPrefill => native::TextKernelCapture::bind_fresh_prefill(
             bound.native_kernel_capture().recipe_sha256(),
@@ -325,7 +318,6 @@ async fn load_profile(
         templates,
         tokenizer: opened.tokenizer,
         metadata: opened.metadata,
-        reference_implementation,
         _tokenizer: retained,
         _loader: loader,
     }))

@@ -530,7 +530,6 @@ fn ordinary_cached47_to50_compare_reference_evidence() -> Result<()> {
     ensure(!cfg!(debug_assertions), "release physical matrix only")?;
     let source = env("ZG_QWEN35_MODEL_DIR")?;
     let evidence = env("ZG_QWEN35_ORDINARY_PARITY_EVIDENCE")?;
-    let bundle = env("ZG_QWEN35_CUDA_KERNEL_DIR")?;
     let expected = std::env::var("ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256")
         .map_err(|_| fail("ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256 required"))
         .and_then(|value| qwen35_cuda::ordinary_parity::parse_evidence_sha256(&value))?;
@@ -541,7 +540,7 @@ fn ordinary_cached47_to50_compare_reference_evidence() -> Result<()> {
         zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA device: {e}")))?;
     let receipt = block_on(
         qwen35_cuda::ordinary_parity::compare_current_source_cached_47_to_50_evidence(
-            device, &source, &bundle, &evidence, expected, providers, None,
+            device, &source, &evidence, expected, providers, None,
         ),
     )?;
     receipt.require_exact()?;

@@ -6,10 +6,7 @@
 //! ownership closes. Phase 2 independently authenticates the source and executes
 //! the fixed qualification trajectory; evidence only compares completed results.
 
-use super::{
-    Model as ReferenceModel, ordinary_candidate,
-    reference_identity::{self, ReferenceImplementationIdentity},
-};
+use super::{Model as ReferenceModel, ordinary_candidate};
 mod evidence;
 use crate::gpu::cuda::native::{TextCallReceipt, TextReadback};
 use crate::{
@@ -57,8 +54,6 @@ pub(super) struct ParitySourceIdentity {
     pub(super) family: String,
     pub(super) repository: String,
     pub(super) revision: String,
-    pub(super) index_sha256: String,
-    pub(super) manifest_sha256: String,
     pub(super) hidden_width: usize,
     pub(super) capacity: usize,
 }
@@ -147,8 +142,7 @@ pub async fn capture_current_source_cached_47_to_50_evidence(
         cancelled,
     )
     .await?;
-    let identity = reference_identity(&model);
-    let implementation = model.reference_implementation().clone();
+    let identity = source_identity(&model);
     let run = capture_reference_cached_47_to_50(&model, cancelled).await;
     // Once loaded, cancellation never skips physical/source teardown.
     let close = model.shutdown(None).await;
@@ -163,7 +157,6 @@ pub async fn capture_current_source_cached_47_to_50_evidence(
     }
     let evidence = evidence::ReferenceEvidence {
         identity,
-        implementation,
         reference,
         close: close.clone(),
     };
@@ -174,7 +167,6 @@ pub async fn capture_current_source_cached_47_to_50_evidence(
 pub async fn compare_current_source_cached_47_to_50_evidence(
     device: crate::gpu::Device,
     hf_directory: &Path,
-    artifact_directory: &Path,
     evidence_path: &Path,
     expected_evidence_sha256: [u8; 32],
     providers: crate::gpu::OrdinaryCudaProviderPaths,
@@ -182,14 +174,7 @@ pub async fn compare_current_source_cached_47_to_50_evidence(
 ) -> Result<OrdinaryEvidenceReceipt> {
     const MIB: usize = 1024 * 1024;
     require_not_cancelled(cancelled)?;
-    let current_implementation =
-        reference_identity::inspect(artifact_directory, QwenSourceProfile::Qwen08, cancelled)?;
     let (evidence, sha256) = evidence::read(evidence_path, expected_evidence_sha256)?;
-    if evidence.implementation != current_implementation {
-        return Err(Error::State(
-            "ordinary/reference evidence implementation identity differs".into(),
-        ));
-    }
     if evidence.reference.capacity != CURRENT_PARITY_CAPACITY
         || evidence.identity.capacity != CURRENT_PARITY_CAPACITY
     {
@@ -230,14 +215,12 @@ pub async fn compare_current_source_cached_47_to_50_evidence(
     Ok(receipt)
 }
 
-fn reference_identity(model: &ReferenceModel) -> ParitySourceIdentity {
+fn source_identity(model: &ReferenceModel) -> ParitySourceIdentity {
     let metadata = model.source_metadata();
     ParitySourceIdentity {
         family: metadata.family.to_string(),
         repository: metadata.repository.to_string(),
         revision: metadata.revision.to_string(),
-        index_sha256: metadata.index_sha256.to_string(),
-        manifest_sha256: metadata.manifest_sha256.to_string(),
         hidden_width: metadata.hidden_width,
         capacity: metadata.context_capacity_tokens,
     }
@@ -249,8 +232,6 @@ fn ordinary_identity(model: &ordinary_candidate::Model) -> ParitySourceIdentity 
         family: metadata.family.to_string(),
         repository: metadata.repository.to_string(),
         revision: metadata.revision.to_string(),
-        index_sha256: metadata.index_sha256.to_string(),
-        manifest_sha256: metadata.manifest_sha256.to_string(),
         hidden_width: metadata.hidden_width,
         capacity: model.context_capacity_tokens(),
     }

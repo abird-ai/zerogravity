@@ -1,17 +1,11 @@
 """Pure temporary-file controls; no real model/provider/image files are opened."""
-import copy
-import hashlib
+
 import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
 
 import stage
-
-
-def pin(raw):
-    return {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
 
 
 class Staging(unittest.TestCase):
@@ -21,209 +15,149 @@ class Staging(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.legacy = self.root / "legacy"
         self.output = self.root / "staged"
-        self.repo = self.root / "repo"
-        for path in (self.legacy, self.repo):
-            path.mkdir()
-        rows = [
-            dict(section="images", legacy_kind="Canonical47CutlassBf16Sm80", kind="FixedPromptCutlassBf16Sm80", path="model/first.cubin"),
-            dict(section="rotary", legacy_kind="RotaryArangeSm86", kind="RotaryArangeSm86", path="rotary/arange.cubin"),
-            dict(section="activation", path="activation/silu.cubin"),
-            dict(section="cublas", path="providers/cublas.so"),
-            dict(section="cublas_lt", path="providers/lt.so"),
+        self.legacy.mkdir()
+
+        self.rows = [
+            ("images", "Canonical47CutlassBf16Sm80", "model/first.cubin"),
+            ("images", "ShortHfFaCausalCombineSm80", "model/fa.cubin"),
+            ("rotary", "RotaryArangeSm86", "rotary/arange.cubin"),
         ]
         self.words = {}
-        for i, row in enumerate(rows):
-            raw = (f"synthetic resource {i}\n" * 3).encode()
-            row.update(pin(raw))
-            path = self.legacy / row["path"]
+        for index, (_, _, name) in enumerate(self.rows):
+            raw = (f"synthetic resource {index}\n" * 3).encode()
+            path = self.legacy / name
             path.parent.mkdir(exist_ok=True)
             path.write_bytes(raw)
-            self.words[row["path"]] = raw
-        manifest = dict(schema="zerogravity-short-hf-native-v1")
-        for section in ("images", "rotary"):
-            manifest[section] = [{"kind": r["legacy_kind"], "path": r["path"]} for r in rows if r["section"] == section]
-        for section in ("activation", "cublas", "cublas_lt"):
-            manifest[section] = next(r["path"] for r in rows if r["section"] == section)
-        raw = stage.encoded(manifest)
-        (self.legacy / stage.LEGACY).write_bytes(raw)
-        profile = dict(legacy_manifest=pin(raw), resources=rows, native_catalogue="synthetic", cohort_2b_extra_image_included=False)
-        other = copy.deepcopy(profile)
-        other["legacy_manifest"] = pin(b"different synthetic manifest")
-        driver = Path(stage.__file__).read_bytes()
-        self.pins = dict(
-            schema="zerogravity.cuda-bundle-migration-pins.v1",
-            contract_sources={
-                "contract.rs": pin(b"synthetic contract"),
-                "tools/qwen35-cuda-bundle/stage.py": pin(driver),
-            },
-            profiles={"0.8b": profile, "2b": other},
-        )
-        (self.repo / "contract.rs").write_bytes(b"synthetic contract")
-        driver_path = self.repo / "tools/qwen35-cuda-bundle/stage.py"
-        driver_path.parent.mkdir(parents=True)
-        driver_path.write_bytes(driver)
-        pins_path = self.repo / stage.PINS
-        pins_path.parent.mkdir(parents=True, exist_ok=True)
-        pins_path.write_bytes(stage.encoded(self.pins))
-        self.addCleanup(patch.stopall)
-        patch.object(stage, "REPO", self.repo).start()
+            self.words[name] = raw
 
-    def run_stage(self):
-        return stage.stage(self.legacy, self.output)
+        support = {
+            "activation": "activation/silu.cubin",
+            "cublas": "providers/cublas.so",
+            "cublas_lt": "providers/lt.so",
+        }
+        for index, name in enumerate(support.values(), start=10):
+            raw = (f"synthetic support {index}\n" * 3).encode()
+            path = self.legacy / name
+            path.parent.mkdir(exist_ok=True)
+            path.write_bytes(raw)
+            self.words[name] = raw
 
-    def test_copies_exact_words_and_emits_only_current_labels_and_false_grants(self):
-        original = (self.legacy / stage.LEGACY).read_bytes()
-        receipt = self.run_stage()
-        self.assertTrue(receipt["complete"])
-        self.assertFalse(receipt["native_execution_qualified"])
-        self.assertFalse(receipt["admission_enabled"])
-        self.assertEqual(original, (self.legacy / stage.LEGACY).read_bytes())
+        manifest = {
+            "schema": "zerogravity-short-hf-native-v1",
+            "images": [
+                {"kind": kind, "path": name}
+                for section, kind, name in self.rows
+                if section == "images"
+            ],
+            "rotary": [
+                {"kind": kind, "path": name}
+                for section, kind, name in self.rows
+                if section == "rotary"
+            ],
+            **support,
+        }
+        (self.legacy / stage.LEGACY).write_bytes(stage.encoded(manifest))
+
+    def test_check_legacy_is_read_only_and_translates_only_closed_labels(self):
+        before = {
+            path.relative_to(self.legacy): path.read_bytes()
+            for path in self.legacy.rglob("*")
+            if path.is_file()
+        }
+        checked = stage.check_legacy(self.legacy)
+        self.assertTrue(checked["complete"])
+        self.assertEqual(checked["schema"], "legacy")
+        self.assertEqual(checked["resources"], len(self.words))
+        kinds = [row["kind"] for row in checked["current_manifest"]["images"]]
+        self.assertEqual(kinds, ["FixedPromptCutlassBf16Sm80", "TextFaCausalCombineSm80"])
+        after = {
+            path.relative_to(self.legacy): path.read_bytes()
+            for path in self.legacy.rglob("*")
+            if path.is_file()
+        }
+        self.assertEqual(before, after)
+
+    def test_stage_copies_exact_bytes_without_pins_or_receipts(self):
+        result = stage.stage(self.legacy, self.output)
+        self.assertTrue(result["complete"])
+        self.assertEqual(result["resources"], len(self.words))
+        self.assertFalse((self.output / stage.LEGACY).exists())
+        self.assertFalse((self.output / "stage-result.json").exists())
         current = json.loads((self.output / stage.CURRENT).read_bytes())
         self.assertEqual(current["schema"], "zerogravity.cuda-kernels.v2")
-        self.assertEqual(current["images"][0]["kind"], "FixedPromptCutlassBf16Sm80")
         for name, raw in self.words.items():
-            self.assertEqual(raw, (self.output / name).read_bytes())
+            self.assertEqual((self.output / name).read_bytes(), raw)
             self.assertNotEqual((self.output / name).stat().st_ino, (self.legacy / name).stat().st_ino)
-        self.assertFalse((self.output / stage.LEGACY).exists())
+        checked = stage.check_current(self.output)
+        self.assertTrue(checked["complete"])
 
-    def test_current_verifier_reuses_closed_pins_and_rejects_mutation(self):
-        self.run_stage()
-        verified = stage.verify_current(self.output)
-        self.assertTrue(verified["complete"])
-        self.assertEqual(verified["family"], "0.8b")
-        self.assertEqual(verified["resources"], len(self.pins["profiles"]["0.8b"]["resources"]))
+    def test_current_check_allows_old_audit_receipt_but_does_not_require_it(self):
+        stage.stage(self.legacy, self.output)
+        (self.output / "stage-result.json").write_text('{"historical":true}\n')
+        self.assertTrue(stage.check_current(self.output)["complete"])
+        (self.output / "stage-result.json").unlink()
+        self.assertTrue(stage.check_current(self.output)["complete"])
 
-        path = self.output / "model/first.cubin"
-        raw = path.read_bytes()
-        path.write_bytes(b"x" + raw[1:])
-        with self.assertRaisesRegex(ValueError, "SHA differs"):
-            stage.verify_current(self.output)
-
-    def test_current_verifier_accepts_historical_lineage_but_reports_it(self):
-        self.run_stage()
-        receipt_path = self.output / "stage-result.json"
-        receipt = json.loads(receipt_path.read_bytes())
-        receipt["migration_pins_sha256"] = "0" * 64
-        receipt_path.write_bytes(stage.encoded(receipt))
-        verified = stage.verify_current(self.output)
-        self.assertTrue(verified["complete"])
-        self.assertFalse(verified["stage_lineage_current"])
-
-        receipt["migration_pins_sha256"] = "not-a-digest"
-        receipt_path.write_bytes(stage.encoded(receipt))
-        with self.assertRaises(ValueError):
-            stage.verify_current(self.output)
-
-    def test_current_verifier_rejects_extra_files_and_contract_source_drift(self):
-        self.run_stage()
-        extra = self.output / "unexpected"
+    def test_extra_missing_symlink_and_bad_manifest_refuse(self):
+        extra = self.legacy / "extra"
         extra.write_bytes(b"x")
-        with self.assertRaisesRegex(ValueError, "missing or extra current resource"):
-            stage.verify_current(self.output)
+        with self.assertRaisesRegex(ValueError, "extra"):
+            stage.check_legacy(self.legacy)
         extra.unlink()
 
-        contract = self.repo / "contract.rs"
-        raw = contract.read_bytes()
-        contract.write_bytes(b"x" + raw[1:])
-        with self.assertRaisesRegex(ValueError, "SHA differs"):
-            stage.verify_current(self.output)
-
-    def test_changed_same_extent_resource_refuses_before_output(self):
-        path = self.legacy / "providers/cublas.so"
-        raw = path.read_bytes()
-        path.write_bytes(b"x" + raw[1:])
-        with self.assertRaisesRegex(ValueError, "SHA differs"):
-            self.run_stage()
-        self.assertFalse(self.output.exists())
-
-    def test_missing_extra_and_empty_unknown_directory_refuse(self):
-        for name, directory in (("extra", False), ("empty", True)):
-            with self.subTest(name=name):
-                path = self.legacy / name
-                path.mkdir() if directory else path.write_bytes(b"extra")
-                with self.assertRaisesRegex(ValueError, "extra legacy resource"):
-                    self.run_stage()
-                path.rmdir() if directory else path.unlink()
-        (self.legacy / "model/first.cubin").unlink()
-        with self.assertRaisesRegex(ValueError, "missing or extra"):
-            self.run_stage()
-
-    def test_symlink_resource_and_directory_and_root_refuse(self):
-        path = self.legacy / "model/first.cubin"
-        original = self.root / "original"
-        path.rename(original)
-        path.symlink_to(original)
-        with self.assertRaises(ValueError):
-            self.run_stage()
-        path.unlink()
-        original.rename(path)
-        model = self.legacy / "model"
-        model.rename(self.root / "model")
-        model.symlink_to(self.root / "model", target_is_directory=True)
-        with self.assertRaises(ValueError):
-            self.run_stage()
-        model.unlink()
-        (self.root / "model").rename(model)
-        alias = self.root / "alias"
-        alias.symlink_to(self.legacy, target_is_directory=True)
+        target = self.legacy / "model/first.cubin"
+        raw = target.read_bytes()
+        target.unlink()
+        target.symlink_to(self.legacy / "model/fa.cubin")
         with self.assertRaises(OSError):
-            stage.stage(alias, self.output)
+            stage.check_legacy(self.legacy)
+        target.unlink()
+        target.write_bytes(raw)
 
-    def test_changed_legacy_or_current_contract_refuses(self):
-        path = self.legacy / stage.LEGACY
-        raw = path.read_bytes()
-        path.write_bytes(raw + b"\n")
-        with self.assertRaisesRegex(ValueError, "authenticated legacy"):
-            self.run_stage()
-        path.write_bytes(raw)
-        (self.repo / "contract.rs").write_bytes(b"changed contract")
+        manifest = json.loads((self.legacy / stage.LEGACY).read_bytes())
+        manifest["unexpected"] = True
+        (self.legacy / stage.LEGACY).write_bytes(stage.encoded(manifest))
         with self.assertRaises(ValueError):
-            self.run_stage()
+            stage.check_legacy(self.legacy)
+
+    def test_failed_stage_removes_partial_output(self):
+        original = stage.write_new
+
+        def fail(*args, **kwargs):
+            raise RuntimeError("synthetic failure")
+
+        stage.write_new = fail
+        try:
+            with self.assertRaisesRegex(RuntimeError, "synthetic failure"):
+                stage.stage(self.legacy, self.output)
+        finally:
+            stage.write_new = original
         self.assertFalse(self.output.exists())
 
-    def test_unknown_fields_duplicate_keys_missing_rows_and_traversal_refuse(self):
-        raw = (self.legacy / stage.LEGACY).read_bytes()
-        value = json.loads(raw)
-        for kind in ("unknown", "missing", "traversal", "duplicate"):
-            with self.subTest(kind=kind):
-                current, pins = copy.deepcopy(value), copy.deepcopy(self.pins)
-                if kind == "unknown":
-                    current["authority"] = True
-                elif kind == "missing":
-                    current["images"] = []
-                elif kind == "traversal":
-                    current["images"][0]["path"] = "../outside"
-                    pins["profiles"]["0.8b"]["resources"][0]["path"] = "../outside"
-                candidate = stage.encoded(current)
-                if kind == "duplicate":
-                    candidate = candidate.replace(b'"images":', b'"images": [], "images":', 1)
-                pins["profiles"]["0.8b"]["legacy_manifest"] = pin(candidate)
-                with self.assertRaises(ValueError):
-                    stage.plan(candidate, pins)
-
-    def test_post_copy_source_mutation_retains_failure_and_no_success(self):
-        original_write = stage.write_new
-
-        def mutate(directory, name, raw):
-            result = original_write(directory, name, raw)
-            if name == stage.CURRENT:
-                (self.legacy / "model/first.cubin").write_bytes(b"changed")
-            return result
-        with patch.object(stage, "write_new", side_effect=mutate):
-            with self.assertRaises(ValueError):
-                self.run_stage()
-        self.assertFalse((self.output / "stage-result.json").exists())
-        self.assertFalse(json.loads((self.output / "stage-failure.json").read_bytes())["complete"])
-
-    def test_existing_output_and_symlink_output_parent_refuse(self):
+    def test_existing_output_and_symlink_ancestors_refuse(self):
         self.output.mkdir()
         with self.assertRaises(ValueError):
-            self.run_stage()
+            stage.stage(self.legacy, self.output)
         self.output.rmdir()
-        alias = self.root / "parent-alias"
-        alias.symlink_to(self.root, target_is_directory=True)
+
+        alias = self.root / "legacy-alias"
+        alias.symlink_to(self.legacy, target_is_directory=True)
         with self.assertRaises(OSError):
-            stage.stage(self.legacy, alias / "output")
+            stage.check_legacy(alias)
+
+    def test_duplicate_paths_kinds_and_traversal_refuse(self):
+        manifest = json.loads((self.legacy / stage.LEGACY).read_bytes())
+        for mutation in ("path", "kind", "traversal"):
+            value = json.loads(json.dumps(manifest))
+            if mutation == "path":
+                value["images"][1]["path"] = value["images"][0]["path"]
+            elif mutation == "kind":
+                value["images"][1]["kind"] = value["images"][0]["kind"]
+            else:
+                value["images"][0]["path"] = "../outside"
+            with self.subTest(mutation=mutation):
+                with self.assertRaises(ValueError):
+                    stage.manifest(stage.encoded(value), legacy=True)
 
 
 if __name__ == "__main__":
