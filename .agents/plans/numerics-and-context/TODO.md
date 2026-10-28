@@ -897,3 +897,14 @@ build or general model/backend grant. Historical failures keep their source scop
 - [x] The harness is source/model/provider independent and strict
   qualification,cuda-cublas Clippy passes. It does not substitute for the
   blocked full-model state-history/attention continuation campaign.
+
+### 28 Oct 2026 — ordinary embedding physical qualification
+
+- [x] Clean RTX 3060 qualification passes the production .8B embedding gather
+  at the exact 248,320 x 1,024 BF16 table extent for rows 1, 2, 17 and 64.
+  Selected rows are populated through exact device subviews and gathered output
+  matches the expected BF16 rows bit-for-bit with zero shared status.
+- [x] Token ID == vocabulary is also qualified: the production kernel writes an
+  all-zero output row and reports exactly STATUS_OUT_OF_RANGE.
+- [x] This closes the remaining simple ordinary transport primitive that can be
+  physically qualified without the blocked model/provider artifacts.
