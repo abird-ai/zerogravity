@@ -1366,3 +1366,15 @@ build or general model/backend grant. Historical failures keep their source scop
   all-features, formatting and diff checks pass.
 - [x] This closes the last ordinary RMS normalization variant with distinct
   alias/rounding semantics before the blocked current-source full-model run.
+
+### 28 Oct 2026 — ordinary multiply and KV append physical qualification
+
+- [x] Clean RTX 3060 qualification passes the production post-sigmoid multiply
+  against source arithmetic exactly for rows 1, 2, 17 and 64, including BF16
+  output bits and zero shared status.
+- [x] Production KV append passes rows 1, 2, 17 and 64 at base 31/capacity 512:
+  key/value BF16 payloads land in exactly [base, base+rows), all cache words
+  outside that interval remain untouched sentinels, and shared status stays 0.
+- [x] The harness is source/model/provider independent and strict
+  qualification,cuda-cublas Clippy passes. It does not substitute for the
+  blocked full-model state-history/attention continuation campaign.
