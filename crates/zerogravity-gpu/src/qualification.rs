@@ -11,6 +11,30 @@ fn multiply_by_two(input: &[f32], output: &mut [f32]) {
 
 #[cfg(all(test, feature = "cuda-cublas"))]
 #[cube(launch_unchecked)]
+fn source_multiply_oracle(
+    input: &[f32],
+    gate: &[f32],
+    output: &mut [f32],
+    status: &[Atomic<u32>],
+    #[comptime] elements: usize,
+) {
+    let i = ABSOLUTE_POS;
+    if i < elements {
+        let a = input[i];
+        let b = gate[i];
+        let y = crate::source_arithmetic::bf16(crate::source_arithmetic::mul(a, b));
+        output[i] = y;
+        if !crate::source_arithmetic::source_bf16(a)
+            || !crate::source_arithmetic::source_bf16(b)
+            || !crate::source_arithmetic::finite(y)
+        {
+            status[0].fetch_or(crate::program_kernels::NONFINITE_VALUE);
+        }
+    }
+}
+
+#[cfg(all(test, feature = "cuda-cublas"))]
+#[cube(launch_unchecked)]
 fn source_residual_add_oracle(
     input: &[f32],
     residual: &[f32],
@@ -1071,6 +1095,245 @@ fn qualify_ordinary_nonlinear_source_parity(device: Device) -> zerogravity_core:
 #[ignore = "actual NVIDIA ordinary/source Qwen SiLU+sigmoid numerical parity"]
 fn ordinary_nonlinear_matches_source_reference_on_nvidia() -> zerogravity_core::Result<()> {
     qualify_ordinary_nonlinear_source_parity(Device::cuda(0).map_err(|error| {
+        zerogravity_core::Error::State(format!("CUDA device 0 unavailable: {error}"))
+    })?)
+}
+
+#[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
+fn qualify_ordinary_multiply_and_kv(device: Device) -> zerogravity_core::Result<()> {
+    use crate::cuda::ordinary_text::{Access, BufferRole, Geometry, LaunchBinding, Program, Step};
+    use zerogravity_core::{Error, Result};
+
+    const QUERY_WIDTH: usize = 2048;
+    const KV_WIDTH: usize = 512;
+    const PACKED_WIDTH: usize = 5120;
+    const VALUE_OFFSET: usize = 4608;
+    const CAPACITY: usize = 512;
+    const BASE: usize = 31;
+    const SENTINEL: u16 = 0x3c00;
+    const INPUTS: [u16; 10] = [
+        0x3d80, 0xbd80, 0x3e80, 0xbe80, 0x3f00, 0xbf00, 0x3f80, 0xbf80, 0x4000, 0xc000,
+    ];
+    const GATES: [u16; 8] = [
+        0x3e00, 0xbe00, 0x3e80, 0xbe80, 0x3f00, 0xbf00, 0x3f80, 0xbf80,
+    ];
+
+    fn bits(count: usize, salt: usize, patterns: &[u16]) -> Vec<u16> {
+        (0..count)
+            .map(|i| patterns[(i * 31 + salt * 7) % patterns.len()])
+            .collect()
+    }
+    fn bytes(values: &[u16]) -> Vec<u8> {
+        values.iter().flat_map(|v| v.to_le_bytes()).collect()
+    }
+    fn widen(values: &[u16]) -> Vec<f32> {
+        values
+            .iter()
+            .map(|&v| f32::from_bits(u32::from(v) << 16))
+            .collect()
+    }
+    fn parse_bf16(raw: &[u8], label: &str) -> Result<Vec<u16>> {
+        if !raw.len().is_multiple_of(2) {
+            return Err(Error::State(format!("{label} BF16 alignment")));
+        }
+        Ok(raw
+            .chunks_exact(2)
+            .map(|w| u16::from_le_bytes([w[0], w[1]]))
+            .collect())
+    }
+    fn parse_status(raw: &[u8], label: &str) -> Result<u32> {
+        let word: [u8; 4] = raw
+            .try_into()
+            .map_err(|_| Error::State(format!("{label} status extent")))?;
+        Ok(u32::from_le_bytes(word))
+    }
+    fn grid(elements: usize) -> CubeCount {
+        CubeCount::Static((elements as u32).div_ceil(32), 1, 1)
+    }
+    fn arg(handle: cubecl::server::Handle, elements: usize) -> BufferArg {
+        // SAFETY: qualification fixtures allocate exact typed extents.
+        unsafe { BufferArg::from_raw_parts(handle, elements) }
+    }
+
+    let client = device.client();
+    let ordinary = Program::new(Geometry::qwen35_08())?;
+
+    for rows in [1usize, 2, 17, 64] {
+        // Source-rounded multiply after separately rounded sigmoid.
+        let elements = rows * QUERY_WIDTH;
+        let input_bits = bits(elements, rows, &INPUTS);
+        let gate_bits = bits(elements, rows + 5, &GATES);
+        let ordinary_input = client.create_from_slice(&bytes(&input_bits));
+        let ordinary_gate = client.create_from_slice(&bytes(&gate_bits));
+        let ordinary_output = client.empty(elements * 2);
+        let ordinary_status = client.create_from_slice(u32::as_bytes(&[0u32]));
+        let prepared = ordinary.multiply(rows)?.prepare_owned(
+            &client,
+            vec![
+                LaunchBinding::new(BufferRole::Input, Access::Read, ordinary_input),
+                LaunchBinding::new(BufferRole::Gate, Access::Read, ordinary_gate),
+                LaunchBinding::new(BufferRole::Output, Access::Write, ordinary_output.clone()),
+            ],
+            LaunchBinding::new(
+                BufferRole::Status,
+                Access::ReadWrite,
+                ordinary_status.clone(),
+            ),
+        )?;
+        prepared.enqueue_owned(&client, &ordinary_status)?;
+
+        let source_input = client.create_from_slice(f32::as_bytes(&widen(&input_bits)));
+        let source_gate = client.create_from_slice(f32::as_bytes(&widen(&gate_bits)));
+        let source_output = client.empty(elements * 4);
+        let source_status = client.create_from_slice(u32::as_bytes(&[0u32]));
+        unsafe {
+            source_multiply_oracle::launch_unchecked(
+                &client,
+                grid(elements),
+                CubeDim::new_1d(32),
+                arg(source_input, elements),
+                arg(source_gate, elements),
+                arg(source_output.clone(), elements),
+                arg(source_status.clone(), 1),
+                elements,
+            );
+        }
+
+        let actual = parse_bf16(
+            &client
+                .read_one(ordinary_output)
+                .map_err(|error| Error::State(format!("ordinary multiply output: {error}")))?,
+            "ordinary multiply",
+        )?;
+        let source_raw = client
+            .read_one(source_output)
+            .map_err(|error| Error::State(format!("source multiply output: {error}")))?;
+        let source = f32::from_bytes(&source_raw);
+        if actual.len() != elements || source.len() != elements {
+            return Err(Error::State(
+                "ordinary/source multiply extent differs".into(),
+            ));
+        }
+        let ordinary_flags = parse_status(
+            &client
+                .read_one(ordinary_status)
+                .map_err(|error| Error::State(format!("ordinary multiply status: {error}")))?,
+            "ordinary multiply",
+        )?;
+        let source_flags = parse_status(
+            &client
+                .read_one(source_status)
+                .map_err(|error| Error::State(format!("source multiply status: {error}")))?,
+            "source multiply",
+        )?;
+        if ordinary_flags != 0 || source_flags != 0 {
+            return Err(Error::State(format!(
+                "ordinary/source multiply status rows={rows}: ordinary={ordinary_flags:#x} source={source_flags:#x}"
+            )));
+        }
+        for (index, (&a, &b)) in actual.iter().zip(source).enumerate() {
+            if b.to_bits() & 0xffff != 0 {
+                return Err(Error::State(format!(
+                    "source multiply not BF16-widened rows={rows} index={index}"
+                )));
+            }
+            let expected = (b.to_bits() >> 16) as u16;
+            if a != expected {
+                return Err(Error::State(format!(
+                    "ordinary/source multiply mismatch rows={rows} index={index} ordinary={a:#06x} source={expected:#06x}"
+                )));
+            }
+        }
+
+        // KV append must write only [BASE, BASE+rows), preserving all other words.
+        let key_bits = bits(rows * KV_WIDTH, rows + 11, &INPUTS);
+        let value_bits = bits(rows * KV_WIDTH, rows + 17, &GATES);
+        let mut packed = vec![0u16; rows * PACKED_WIDTH];
+        for row in 0..rows {
+            let start = row * PACKED_WIDTH + VALUE_OFFSET;
+            packed[start..start + KV_WIDTH]
+                .copy_from_slice(&value_bits[row * KV_WIDTH..(row + 1) * KV_WIDTH]);
+        }
+        let initial_cache = vec![SENTINEL; CAPACITY * KV_WIDTH];
+        let key = client.create_from_slice(&bytes(&key_bits));
+        let packed = client.create_from_slice(&bytes(&packed));
+        let key_cache = client.create_from_slice(&bytes(&initial_cache));
+        let value_cache = client.create_from_slice(&bytes(&initial_cache));
+        let status = client.create_from_slice(u32::as_bytes(&[0u32]));
+        let prepared = ordinary
+            .kv_append(Step::new(rows, BASE, CAPACITY)?)?
+            .prepare_owned(
+                &client,
+                vec![
+                    LaunchBinding::new(BufferRole::Key, Access::Read, key),
+                    LaunchBinding::new(BufferRole::PackedAttention, Access::Read, packed),
+                    LaunchBinding::new(BufferRole::KeyCache, Access::ReadWrite, key_cache.clone()),
+                    LaunchBinding::new(
+                        BufferRole::ValueCache,
+                        Access::ReadWrite,
+                        value_cache.clone(),
+                    ),
+                ],
+                LaunchBinding::new(BufferRole::Status, Access::ReadWrite, status.clone()),
+            )?;
+        prepared.enqueue_owned(&client, &status)?;
+
+        let key_actual = parse_bf16(
+            &client
+                .read_one(key_cache)
+                .map_err(|error| Error::State(format!("ordinary key cache: {error}")))?,
+            "ordinary key cache",
+        )?;
+        let value_actual = parse_bf16(
+            &client
+                .read_one(value_cache)
+                .map_err(|error| Error::State(format!("ordinary value cache: {error}")))?,
+            "ordinary value cache",
+        )?;
+        let flags = parse_status(
+            &client
+                .read_one(status)
+                .map_err(|error| Error::State(format!("ordinary KV status: {error}")))?,
+            "ordinary KV",
+        )?;
+        if flags != 0 {
+            return Err(Error::State(format!(
+                "ordinary KV status rows={rows}: {flags:#x}"
+            )));
+        }
+        for token in 0..CAPACITY {
+            let target = token >= BASE && token < BASE + rows;
+            let row = token.saturating_sub(BASE);
+            for lane in 0..KV_WIDTH {
+                let index = token * KV_WIDTH + lane;
+                let expected_key = if target {
+                    key_bits[row * KV_WIDTH + lane]
+                } else {
+                    SENTINEL
+                };
+                let expected_value = if target {
+                    value_bits[row * KV_WIDTH + lane]
+                } else {
+                    SENTINEL
+                };
+                if key_actual[index] != expected_key || value_actual[index] != expected_value {
+                    return Err(Error::State(format!(
+                        "ordinary KV append mismatch rows={rows} token={token} lane={lane} key={:#06x}/{expected_key:#06x} value={:#06x}/{expected_value:#06x}",
+                        key_actual[index], value_actual[index]
+                    )));
+                }
+            }
+        }
+        println!("ordinary-multiply-kv rows={rows} PASS");
+    }
+    Ok(())
+}
+
+#[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
+#[test]
+#[ignore = "actual NVIDIA ordinary Qwen multiply + KV append physical qualification"]
+fn ordinary_multiply_and_kv_on_nvidia() -> zerogravity_core::Result<()> {
+    qualify_ordinary_multiply_and_kv(Device::cuda(0).map_err(|error| {
         zerogravity_core::Error::State(format!("CUDA device 0 unavailable: {error}"))
     })?)
 }
