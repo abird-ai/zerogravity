@@ -74,6 +74,64 @@ impl CacheOptions {
     }
 }
 
+/// Human-only cache name classification. Neither kind is model/source
+/// authority; both always point at an immutable canonical snapshot digest.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ByNameKind {
+    Automatic,
+    Alias,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ByNameEntry {
+    pub(crate) name: String,
+    pub(crate) snapshot: String,
+    pub(crate) kind: ByNameKind,
+}
+
+impl ByNameEntry {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn snapshot(&self) -> &str {
+        &self.snapshot
+    }
+
+    pub const fn kind(&self) -> ByNameKind {
+        self.kind
+    }
+}
+
+/// Result of an explicit human-alias mutation. The alias metadata is the
+/// human-layer source of truth; a projection warning means the by-name
+/// directory should be refreshed, never that canonical model data changed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ByNameUpdate {
+    pub(crate) name: String,
+    pub(crate) snapshot: Option<String>,
+    pub(crate) changed: bool,
+    pub(crate) projection_warning: Option<String>,
+}
+
+impl ByNameUpdate {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn snapshot(&self) -> Option<&str> {
+        self.snapshot.as_deref()
+    }
+
+    pub const fn changed(&self) -> bool {
+        self.changed
+    }
+
+    pub fn projection_warning(&self) -> Option<&str> {
+        self.projection_warning.as_deref()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PublishedSnapshot {
     pub(crate) digest: String,
@@ -194,7 +252,7 @@ impl ReclaimReport {
     }
 
     /// Human-only projection repair failure, if any. Canonical reclamation
-    /// remains authoritative and can be followed by cache by-name --refresh.
+    /// remains authoritative and can be followed by cache by-name refresh.
     pub fn by_name_warning(&self) -> Option<&str> {
         self.by_name_warning.as_deref()
     }

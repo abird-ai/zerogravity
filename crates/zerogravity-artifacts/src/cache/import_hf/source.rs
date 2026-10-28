@@ -1,7 +1,7 @@
 //! Read-only capabilities for an explicitly selected local HF cache snapshot.
 //! Directory labels and blob names describe layout, not authenticated origin.
 use crate::cache::CacheLimits;
-use crate::cache::paths::validate_relative_path;
+use crate::cache::paths::{is_by_name_auxiliary, validate_relative_path};
 use crate::{Error, Result};
 use rustix::fs::{self, AtFlags, FileType, Mode, OFlags, StatxFlags};
 use std::collections::BTreeSet;
@@ -605,33 +605,11 @@ impl<'a> TreeWalk<'a> {
             if name.to_bytes() == b"." || name.to_bytes() == b".." {
                 continue;
             }
-            if self.skip_by_name && depth == 0 && name.to_bytes() == b"by-name" {
-                let before = os(fs::statat(directory, name, AtFlags::SYMLINK_NOFOLLOW))?;
-                if FileType::from_raw_mode(before.st_mode) != FileType::Directory {
-                    return Err(Error::State(
-                        "derived by-name cache projection must be a directory".into(),
-                    ));
-                }
-                let file = open_directory(directory, "by-name", self.mount)?;
-                let metadata = file.metadata()?;
-                if metadata.dev() != before.st_dev || metadata.ino() != before.st_ino {
-                    return Err(Error::State(
-                        "local import target changed during by-name inspection".into(),
-                    ));
-                }
-                if self.device.is_some_and(|device| metadata.dev() != device) {
-                    return Err(Error::Unsupported(
-                        "crossed topology devices in local HF import are unsupported".into(),
-                    ));
-                }
-                if self
-                    .forbidden
-                    .is_some_and(|forbidden| forbidden.contains(&identity(&metadata)))
-                {
-                    return Err(Error::State(
-                        "local HF source inode aliases destination by-name directory".into(),
-                    ));
-                }
+            if self.skip_by_name && depth == 0 && name.to_str().is_ok_and(is_by_name_auxiliary) {
+                // The source/destination ancestor proof above already rejects
+                // overlap. Human projection entries are disposable and never
+                // canonical import targets, so do not descend into or trust
+                // their current type/content here.
                 continue;
             }
             self.nodes += 1;

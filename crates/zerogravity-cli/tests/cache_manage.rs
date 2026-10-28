@@ -170,10 +170,34 @@ mod enabled {
         let fixture = Fixture::new();
         let digest = fixture.seed("V1", Some("Team/Primary_Model"));
         let by_name = fixture.0.join("by-name");
+
+        // A runtime ref does not implicitly become a human alias.
+        assert!(!by_name.join("team-primary-model").exists());
+        let set = binary()
+            .args([
+                "cache",
+                "by-name",
+                "set",
+                "Team/Primary_Model",
+                &digest,
+                "--cache",
+            ])
+            .arg(&fixture.0)
+            .output()
+            .unwrap();
+        assert!(
+            set.status.success(),
+            "{}",
+            String::from_utf8_lossy(&set.stderr)
+        );
+
+        // Replace the entire disposable projection with corrupt data. Refresh
+        // must reconstruct it from canonical snapshots plus human metadata.
         std::fs::remove_dir_all(&by_name).unwrap();
+        std::fs::write(&by_name, b"corrupt projection").unwrap();
 
         let output = binary()
-            .args(["cache", "by-name", "--refresh", "--cache"])
+            .args(["cache", "by-name", "refresh", "--cache"])
             .arg(&fixture.0)
             .output()
             .unwrap();
@@ -183,10 +207,10 @@ mod enabled {
             String::from_utf8_lossy(&output.stderr)
         );
         let text = String::from_utf8_lossy(&output.stdout);
-        assert!(text.contains("by-name/owned-cli-fixture-v1"));
-        assert!(text.contains("by-name/team-primary-model"));
+        assert!(text.contains("cli-owned-fixture-v1"));
+        assert!(text.contains("team-primary-model"));
         assert_eq!(
-            std::fs::read_link(by_name.join("owned-cli-fixture-v1")).unwrap(),
+            std::fs::read_link(by_name.join("cli-owned-fixture-v1")).unwrap(),
             std::path::PathBuf::from(format!("../snapshots/{digest}"))
         );
         assert_eq!(
@@ -203,9 +227,77 @@ mod enabled {
     }
 
     #[test]
+    fn explicit_by_name_alias_lifecycle_is_separate_from_runtime_refs() {
+        let fixture = Fixture::new();
+        let first = fixture.seed("one", Some("runtime-one"));
+        let second = fixture.seed("two", Some("runtime-two"));
+
+        let set = binary()
+            .args(["cache", "by-name", "set", "My Chat", &first, "--cache"])
+            .arg(&fixture.0)
+            .output()
+            .unwrap();
+        assert!(set.status.success());
+        assert!(String::from_utf8_lossy(&set.stdout).contains("by-name/my-chat"));
+
+        let conflict = binary()
+            .args(["cache", "by-name", "set", "my-chat", &second, "--cache"])
+            .arg(&fixture.0)
+            .output()
+            .unwrap();
+        assert_eq!(conflict.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&conflict.stderr).contains("--replace"));
+
+        let replace = binary()
+            .args([
+                "cache",
+                "by-name",
+                "set",
+                "my-chat",
+                &second,
+                "--replace",
+                "--cache",
+            ])
+            .arg(&fixture.0)
+            .output()
+            .unwrap();
+        assert!(replace.status.success());
+
+        let list = binary()
+            .args(["cache", "by-name", "list", "--cache"])
+            .arg(&fixture.0)
+            .output()
+            .unwrap();
+        assert!(list.status.success());
+        let text = String::from_utf8_lossy(&list.stdout);
+        assert!(text.contains("my-chat"));
+        assert!(text.contains(&second));
+        assert!(text.contains("alias"));
+        assert!(!text.contains("runtime-one"));
+        assert!(!text.contains("runtime-two"));
+
+        let remove = binary()
+            .args(["cache", "by-name", "remove", "MY CHAT", "--cache"])
+            .arg(&fixture.0)
+            .output()
+            .unwrap();
+        assert!(remove.status.success());
+        assert!(String::from_utf8_lossy(&remove.stdout).contains("removed"));
+        assert!(!fixture.0.join("by-name/my-chat").exists());
+
+        // Machine refs remain intact throughout human-alias mutations.
+        assert!(fixture.store().resolve_ref("runtime-one").is_ok());
+        assert!(fixture.store().resolve_ref("runtime-two").is_ok());
+    }
+
+    #[test]
     fn dry_run_preserves_target_and_apply_reports_observed_charge() {
         let fixture = Fixture::new();
         let digest = fixture.seed("one", None);
+        fixture
+            .store()
+            .set_by_name_alias("temporary", &digest, false)
+            .unwrap();
         let output = fixture.remove(&digest, "--dry-run");
         assert!(
             output.status.success(),
@@ -224,6 +316,15 @@ mod enabled {
         assert!(text.contains("Observed charged-byte"));
         assert!(!text.contains("physical bytes freed"));
         assert!(fixture.store().open_snapshot(&digest).is_err());
+        assert!(
+            fixture
+                .store()
+                .list_by_name()
+                .unwrap()
+                .iter()
+                .all(|entry| entry.snapshot() != digest),
+            "human aliases must not retain a reclaimed canonical snapshot"
+        );
         assert!(
             std::fs::read_dir(fixture.0.join("by-name"))
                 .unwrap()

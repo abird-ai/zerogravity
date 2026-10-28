@@ -570,7 +570,7 @@ impl CacheStore {
             Ok(())
         })();
         if result.is_ok()
-            && let Err(error) = self.refresh_by_name_locked()
+            && let Err(error) = self.remove_snapshot_by_name_locked(digest)
         {
             report.by_name_warning = Some(error.to_string());
         }

@@ -2,7 +2,10 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
-use zerogravity::cache::{CacheOptions, CacheStore, ReclaimMode, ReclaimOutcome, ReclaimReport};
+use zerogravity::cache::{
+    ByNameKind, CacheOptions, CacheStore, PublishedSnapshot, ReclaimMode, ReclaimOutcome,
+    ReclaimReport,
+};
 use zerogravity::{Error, Result};
 
 #[path = "cache_import.rs"]
@@ -112,21 +115,16 @@ fn describe(report: &ReclaimReport) {
     }
 }
 
-fn run_by_name(args: &[String]) -> Result<()> {
-    if args.len() == 1 && matches!(args[0].as_str(), "--help" | "-h" | "help") {
-        help();
-        return Ok(());
-    }
-    if args.len() < 3 || args.len() > 8 || args.iter().any(|arg| arg.len() > 4096) {
-        return Err(invalid());
-    }
-    if args[0] != "--refresh" {
-        return Err(invalid());
-    }
+fn by_name_store(root: PathBuf, disk: u64) -> Result<CacheStore> {
+    CacheStore::open_existing(CacheOptions::new(Some(root), disk))
+}
+
+fn parse_by_name_common(args: &[String]) -> Result<(PathBuf, u64, bool)> {
     let mut root = None;
     let mut disk = DEFAULT_DISK_LIMIT;
+    let mut replace = false;
     let mut seen = BTreeSet::new();
-    let mut rest = args[1..].iter();
+    let mut rest = args.iter();
     while let Some(flag) = rest.next() {
         if !seen.insert(flag.as_str()) {
             return Err(invalid());
@@ -148,20 +146,119 @@ fn run_by_name(args: &[String]) -> Result<()> {
                     .filter(|value| *value > 0)
                     .ok_or_else(invalid)?;
             }
+            "--replace" => replace = true,
             _ => return Err(invalid()),
         }
     }
-    let store =
-        CacheStore::open_existing(CacheOptions::new(Some(root.ok_or_else(invalid)?), disk))?;
-    let names = store.refresh_by_name()?;
-    println!(
-        "Refreshed {} human-only by-name aliases from canonical snapshots and refs.",
-        names.len()
-    );
-    for name in names {
-        println!("by-name/{name}");
+    Ok((root.ok_or_else(invalid)?, disk, replace))
+}
+
+fn print_by_name_entries(entries: &[zerogravity::cache::ByNameEntry]) {
+    for entry in entries {
+        let kind = match entry.kind() {
+            ByNameKind::Automatic => "auto",
+            ByNameKind::Alias => "alias",
+        };
+        println!("{}  {}  {}", entry.name(), entry.snapshot(), kind);
     }
-    Ok(())
+}
+
+fn print_by_name_update(update: &zerogravity::cache::ByNameUpdate) {
+    if let Some(snapshot) = update.snapshot() {
+        println!(
+            "by-name/{} -> ../snapshots/{}{}",
+            update.name(),
+            snapshot,
+            if update.changed() { "" } else { " (unchanged)" }
+        );
+    } else {
+        println!(
+            "by-name/{} {}",
+            update.name(),
+            if update.changed() {
+                "removed"
+            } else {
+                "was not an explicit alias"
+            }
+        );
+    }
+    if let Some(warning) = update.projection_warning() {
+        eprintln!(
+            "WARNING: human alias metadata is saved but by-name projection needs refresh: {warning}"
+        );
+    }
+}
+
+pub(super) fn report_publication(snapshot: &PublishedSnapshot) {
+    for name in snapshot.by_name() {
+        eprintln!("By-name: by-name/{name}");
+    }
+    if let Some(warning) = snapshot.by_name_warning() {
+        eprintln!(
+            "WARNING: canonical snapshot is durable but by-name projection needs refresh: {warning}"
+        );
+    }
+}
+
+fn run_by_name(args: &[String]) -> Result<()> {
+    if args.len() == 1 && matches!(args[0].as_str(), "--help" | "-h" | "help") {
+        help();
+        return Ok(());
+    }
+    if args.is_empty() || args.len() > 12 || args.iter().any(|arg| arg.len() > 4096) {
+        return Err(invalid());
+    }
+
+    match args[0].as_str() {
+        "list" => {
+            let (root, disk, replace) = parse_by_name_common(&args[1..])?;
+            if replace {
+                return Err(invalid());
+            }
+            let entries = by_name_store(root, disk)?.list_by_name()?;
+            print_by_name_entries(&entries);
+            Ok(())
+        }
+        "refresh" | "--refresh" => {
+            let (root, disk, replace) = parse_by_name_common(&args[1..])?;
+            if replace {
+                return Err(invalid());
+            }
+            let entries = by_name_store(root, disk)?.refresh_by_name()?;
+            println!(
+                "Refreshed {} human-only by-name entries from canonical snapshots and human alias metadata.",
+                entries.len()
+            );
+            print_by_name_entries(&entries);
+            Ok(())
+        }
+        "set" => {
+            if args.len() < 4 {
+                return Err(invalid());
+            }
+            let name = &args[1];
+            let snapshot = &args[2];
+            zerogravity::cache::paths::validate_digest(snapshot).map_err(|_| invalid())?;
+            let (root, disk, replace) = parse_by_name_common(&args[3..])?;
+            let update = by_name_store(root, disk)?.set_by_name_alias(name, snapshot, replace)?;
+            print_by_name_update(&update);
+            Ok(())
+        }
+        "remove" => {
+            if args.len() < 3 {
+                return Err(invalid());
+            }
+            let name = &args[1];
+            let (root, disk, replace) = parse_by_name_common(&args[2..])?;
+            if replace {
+                return Err(invalid());
+            }
+            let update = by_name_store(root, disk)?.remove_by_name_alias(name)?;
+            print_by_name_update(&update);
+            Ok(())
+        }
+        _ => Err(invalid()),
+    }
 }
 
 pub(super) fn run(args: &[String]) -> Result<()> {
@@ -216,7 +313,10 @@ fn help() {
     println!(
         "USAGE:
     zerogravity cache remove DIGEST --dry-run|--apply --cache ABS_PATH
-    zerogravity cache by-name --refresh --cache ABS_PATH
+    zerogravity cache by-name list --cache ABS_PATH
+    zerogravity cache by-name refresh --cache ABS_PATH
+    zerogravity cache by-name set NAME DIGEST [--replace] --cache ABS_PATH
+    zerogravity cache by-name remove NAME --cache ABS_PATH
     zerogravity cache import-hf --help
 
 OPTIONS:
@@ -224,14 +324,18 @@ OPTIONS:
     --apply                   Revalidate and remove the exact unreferenced snapshot
     --cache ABS_PATH          Required existing cache root; never creates a root
     --disk-limit-bytes N      Existing cooperative disk policy (default16GiB)
-    by-name --refresh         Rebuild flat lowercase human-only symlinks from
-                              canonical snapshots and refs; never model authority
+    by-name list              List intended human names without model loading
+    by-name refresh           Reconcile snapshots and atomically rebuild symlinks
+    by-name set NAME DIGEST   Create an explicit human alias; --replace is required
+                              to retarget an existing explicit alias
+    by-name remove NAME       Remove only an explicit human alias
 
-by-name is one flat namespace. Each immutable snapshot gets a concise derived
-source alias (for example qwen-qwen3.5-0.8b-hf-2fc06364); non-default refs become
-custom aliases in the same directory. Collisions receive deterministic lowercase
-hash suffixes. Every link targets ../snapshots/DIGEST and is ignored by runtime,
-selection, provenance, quota and reclamation authority.
+by-name is one flat lowercase namespace. Each immutable snapshot gets one stable
+model-first automatic name (for example qwen3.5-0.8b-qwen-hf-2fc06364).
+Explicit aliases are stored separately from runtime refs. Automatic collisions
+preserve the existing primary name and suffix only the newcomer. Every symlink
+targets ../snapshots/DIGEST. Runtime selection, provenance, quota and reclamation
+authority never read by-name or its human metadata.
 
 Linux cache-only operation: no network, credentials, provider or signal handlers.
 import-hf explicitly copies selected local HF snapshot data; see its own help.

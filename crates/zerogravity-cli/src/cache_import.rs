@@ -196,10 +196,13 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         );
     }
     match receipt.into_outcome() {
-        CommitOutcome::Durable(snapshot) => println!(
-            "Snapshot: {}\nImported verified local data only; no remote-origin or model-readiness claim.",
-            snapshot.digest()
-        ),
+        CommitOutcome::Durable(snapshot) => {
+            println!(
+                "Snapshot: {}\nImported verified local data only; no remote-origin or model-readiness claim.",
+                snapshot.digest()
+            );
+            super::report_publication(&snapshot);
+        }
         CommitOutcome::DurabilityUnknown {
             snapshot, cause, ..
         } => {

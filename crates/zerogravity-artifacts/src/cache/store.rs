@@ -2,9 +2,9 @@ use super::paths::{
     CacheLock, CacheNode, RootDir, resolve_root, validate_digest, validate_relative_path,
 };
 use super::{
-    ByteLength, CacheOptions, CommitOutcome, DigestProvenance, DiskUsage, FileRole,
-    FilesystemProfile, Manifest, ManifestEntry, ManifestSource, PublishedSnapshot, SnapshotLease,
-    TransferAdmission,
+    ByNameEntry, ByNameKind, ByNameUpdate, ByteLength, CacheOptions, CommitOutcome,
+    DigestProvenance, DiskUsage, FileRole, FilesystemProfile, Manifest, ManifestEntry,
+    ManifestSource, PublishedSnapshot, SnapshotLease, TransferAdmission,
 };
 #[cfg(feature = "diagnostic-cache")]
 use super::{CacheHook, CacheMoment, CacheOperation, CachePoint};
@@ -1666,14 +1666,11 @@ impl CacheTransaction {
                 });
             }
         }
-        match self.store.refresh_by_name_locked() {
-            Ok(names) => {
-                let target = format!("../snapshots/{}", self.digest);
-                published.by_name = names
-                    .into_iter()
-                    .filter_map(|(name, value)| (value == target).then_some(name))
-                    .collect();
-            }
+        match self
+            .store
+            .publish_by_name_locked(self.manifest.source(), &self.digest)
+        {
+            Ok(name) => published.by_name.push(name),
             Err(error) => published.by_name_warning = Some(error.to_string()),
         }
         // Reservation is released by exact-owned staging cleanup. Installed

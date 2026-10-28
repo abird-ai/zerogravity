@@ -25,13 +25,24 @@ mod xet;
 use zerogravity::acquisition::http::{HttpOptions, HttpsClient};
 use zerogravity::acquisition::{self, Provider, PullLimits, PullRequest, Selection};
 use zerogravity::cache::{
-    CacheOptions, CacheStore, CommitOutcome, SnapshotLease, TransferAdmission,
+    CacheOptions, CacheStore, CommitOutcome, PublishedSnapshot, SnapshotLease, TransferAdmission,
 };
 use zerogravity::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, ResourceOwner};
 use zerogravity::{Error, Result};
 
 const DISK_DEFAULT: u64 = 16 * 1024 * 1024 * 1024;
 const MEMORY_DEFAULT: u64 = 128 * 1024 * 1024;
+
+pub(super) fn report_publication(snapshot: &PublishedSnapshot) {
+    for name in snapshot.by_name() {
+        eprintln!("By-name: by-name/{name}");
+    }
+    if let Some(warning) = snapshot.by_name_warning() {
+        eprintln!(
+            "WARNING: canonical snapshot is durable but by-name projection needs refresh: {warning}"
+        );
+    }
+}
 
 // Test-only spawn scheduling: another case's child can inherit temporary cache
 // descriptors until CLOEXEC. Intentional concurrency within a case is retained.
@@ -739,6 +750,7 @@ fn run_fetch(
             );
             use std::io::Write;
             std::io::stdout().write_all(&receipt.manifest().canonical_bytes()?)?;
+            report_publication(snapshot);
             eprintln!(
                 "Verified during acquisition; data only, not immutable against arbitrary same-UID writers or executable model readiness."
             );

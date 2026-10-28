@@ -541,7 +541,20 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                 let _ = display.report(event, &mut std::io::stderr());
             },
         )?;
-        match receipt.outcome(){CommitOutcome::Durable(s)=>{println!("Snapshot: {}",s.digest());describe_selected(pin.as_ref(), plan);std::io::stdout().write_all(&receipt.manifest().canonical_bytes()?)?;},CommitOutcome::DurabilityUnknown{..}=>return Err(Error::State("complete Azure data visible but durability unknown; earlier independent data may remain".into()))}
+        match receipt.outcome() {
+            CommitOutcome::Durable(snapshot) => {
+                println!("Snapshot: {}", snapshot.digest());
+                describe_selected(pin.as_ref(), plan);
+                std::io::stdout().write_all(&receipt.manifest().canonical_bytes()?)?;
+                super::report_publication(snapshot);
+            }
+            CommitOutcome::DurabilityUnknown { .. } => {
+                return Err(Error::State(
+                    "complete Azure data visible but durability unknown; earlier independent data may remain"
+                        .into(),
+                ));
+            }
+        }
     }
     eprintln!(
         "Verified independent Azure data only; earlier data may survive later failure. No atomic prefix, model closure, license or inference eligibility claim."

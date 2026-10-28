@@ -603,6 +603,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                 println!("Snapshot: {}", snapshot.digest());
                 describe_selected(pin.as_ref(), plan);
                 std::io::stdout().write_all(&receipt.manifest().canonical_bytes()?)?;
+                super::report_publication(snapshot);
             }
             CommitOutcome::DurabilityUnknown { .. } => return Err(Error::State("complete S3 object data is visible but durability is unknown; earlier independent snapshots may remain".into())),
         }

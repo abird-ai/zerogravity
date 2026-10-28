@@ -149,12 +149,13 @@ mod diagnostics {
         while let Some(path) = pending.pop() {
             let metadata = fs::symlink_metadata(&path).unwrap();
             let derived_by_name = path.parent() == Some(root)
-                && path.file_name().is_some_and(|name| name == "by-name");
+                && path.file_name().is_some_and(|name| {
+                    matches!(
+                        name.to_str(),
+                        Some("by-name" | "by-name.json" | ".by-name.next" | ".by-name.json.next")
+                    )
+                });
             if derived_by_name {
-                assert!(
-                    metadata.is_dir() && !metadata.file_type().is_symlink(),
-                    "top-level by-name projection itself must remain a real directory"
-                );
                 continue;
             }
             assert!(

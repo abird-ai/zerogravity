@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use zerogravity_artifacts::Error;
 #[cfg(feature = "diagnostic-cache")]
 use zerogravity_artifacts::Result;
-use zerogravity_artifacts::cache::{CacheStore, CommitOutcome, FileRole};
+use zerogravity_artifacts::cache::{ByNameKind, CacheStore, CommitOutcome, FileRole};
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, ResourceOwner};
 
 #[test]
@@ -77,50 +77,63 @@ fn by_name_is_flat_lowercase_rebuildable_and_never_snapshot_authority() {
     let target = std::path::PathBuf::from(format!("../snapshots/{snapshot}"));
     let by_name = fixture.root.join("by-name");
     let automatic = by_name.join("synthetic-fixture-local-immutable-test-revision");
-    let custom = by_name.join("team-primary-model");
 
+    // Machine refs remain runtime/catalog metadata and do not implicitly become
+    // human aliases.
+    let initial = store.list_by_name().unwrap();
+    assert_eq!(initial.len(), 1);
+    assert_eq!(initial[0].kind(), ByNameKind::Automatic);
+    assert_eq!(fs::read_link(&automatic).unwrap(), target);
+    assert!(!by_name.join("team-primary-model").exists());
+
+    let update = store
+        .set_by_name_alias("Team/Primary_Model", &snapshot, false)
+        .unwrap();
+    assert_eq!(update.name(), "team-primary-model");
+    assert!(update.changed());
+    assert!(update.projection_warning().is_none());
+    let custom = by_name.join("team-primary-model");
+    assert_eq!(fs::read_link(&custom).unwrap(), target);
+
+    // Arbitrary projection corruption cannot affect canonical model/ref access.
+    fs::remove_dir_all(&by_name).unwrap();
+    fs::write(&by_name, b"human projection corruption").unwrap();
+    assert_payload(&store.open_snapshot(&snapshot).unwrap(), NEW);
+    assert_payload(&store.resolve_ref("Team/Primary_Model").unwrap(), NEW);
+    assert_eq!(store.list_snapshots().unwrap(), vec![snapshot.clone()]);
+    assert_eq!(store.usage().unwrap().reserved_bytes, 0);
+
+    let refreshed = store.refresh_by_name().unwrap();
+    assert!(
+        refreshed
+            .iter()
+            .any(|entry| entry.name() == "team-primary-model" && entry.kind() == ByNameKind::Alias)
+    );
     assert_eq!(fs::read_link(&automatic).unwrap(), target);
     assert_eq!(fs::read_link(&custom).unwrap(), target);
-    let entries = fs::read_dir(&by_name)
-        .unwrap()
-        .collect::<std::result::Result<Vec<_>, _>>()
-        .unwrap();
-    assert_eq!(entries.len(), 2);
-    for entry in entries {
+
+    for entry in fs::read_dir(&by_name).unwrap() {
+        let entry = entry.unwrap();
         let name = entry.file_name().into_string().unwrap();
         assert_eq!(name, name.to_ascii_lowercase());
         assert!(!name.contains('/'));
         assert!(entry.file_type().unwrap().is_symlink());
     }
-
-    fs::remove_file(&custom).unwrap();
-    symlink(
-        "../snapshots/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-        &custom,
-    )
-    .unwrap();
-    assert_payload(&store.open_snapshot(&snapshot).unwrap(), NEW);
-    assert_eq!(store.list_snapshots().unwrap(), vec![snapshot.clone()]);
-    assert_eq!(store.usage().unwrap().reserved_bytes, 0);
-
-    let refreshed = store.refresh_by_name().unwrap();
-    assert!(refreshed.contains(&"team-primary-model".to_string()));
-    assert_eq!(fs::read_link(&custom).unwrap(), target);
-
-    let stale = by_name.join("UPPERCASE");
-    symlink(&target, &stale).unwrap();
-    store.refresh_by_name().unwrap();
-    assert!(fs::symlink_metadata(&stale).is_err());
-    assert_payload(&store.resolve_ref("Team/Primary_Model").unwrap(), NEW);
 }
 
 #[test]
-fn published_by_name_metadata_is_scoped_to_the_new_snapshot() {
+fn published_by_name_metadata_is_scoped_and_machine_refs_are_not_human_aliases() {
     let fixture = Fixture::new();
     let store = fixture.open();
     let admission = admission(128 * 1024 * 1024);
 
-    let first = durable(publish(&store, &admission, OLD, None).unwrap());
+    let first_outcome = publish(&store, &admission, OLD, None).unwrap();
+    let CommitOutcome::Durable(first_published) = first_outcome else {
+        panic!("unexpected durability uncertainty");
+    };
+    let first = first_published.digest().to_owned();
+    let first_name = first_published.by_name()[0].clone();
+
     let outcome = publish(&store, &admission, NEW, Some("Friendly")).unwrap();
     let CommitOutcome::Durable(published) = outcome else {
         panic!("unexpected durability uncertainty");
@@ -128,22 +141,112 @@ fn published_by_name_metadata_is_scoped_to_the_new_snapshot() {
     let second = published.digest().to_owned();
     assert_ne!(first, second);
     assert!(published.by_name_warning().is_none());
-    assert!(published.by_name().iter().any(|name| name == "friendly"));
-
-    for name in published.by_name() {
-        assert_eq!(
-            fs::read_link(fixture.root.join("by-name").join(name)).unwrap(),
-            std::path::PathBuf::from(format!("../snapshots/{second}"))
-        );
-    }
-    let first_target = std::path::PathBuf::from(format!("../snapshots/{first}"));
-    assert!(
-        fs::read_dir(fixture.root.join("by-name"))
-            .unwrap()
-            .filter_map(|entry| entry.ok())
-            .any(|entry| fs::read_link(entry.path()).ok().as_ref() == Some(&first_target)),
-        "the prior snapshot keeps its independent derived source alias"
+    assert_eq!(published.by_name().len(), 1);
+    let second_name = &published.by_name()[0];
+    assert_ne!(second_name, &first_name);
+    assert!(second_name.starts_with(&(first_name.clone() + "-")));
+    assert_eq!(
+        fs::read_link(fixture.root.join("by-name").join(&first_name)).unwrap(),
+        std::path::PathBuf::from(format!("../snapshots/{first}"))
     );
+    assert_eq!(
+        fs::read_link(fixture.root.join("by-name").join(second_name)).unwrap(),
+        std::path::PathBuf::from(format!("../snapshots/{second}"))
+    );
+
+    // The runtime ref exists but no explicit human alias was inferred from it.
+    assert_payload(&store.resolve_ref("Friendly").unwrap(), NEW);
+    assert!(
+        store
+            .list_by_name()
+            .unwrap()
+            .iter()
+            .all(|entry| entry.kind() == ByNameKind::Automatic)
+    );
+
+    store.set_by_name_alias("Friendly", &second, false).unwrap();
+    assert!(
+        store
+            .list_by_name()
+            .unwrap()
+            .iter()
+            .any(|entry| entry.name() == "friendly"
+                && entry.snapshot() == second
+                && entry.kind() == ByNameKind::Alias)
+    );
+}
+
+#[test]
+fn corrupt_human_metadata_never_blocks_canonical_snapshot_or_reference_reads() {
+    let fixture = Fixture::new();
+    let store = fixture.open();
+    let admission = admission(128 * 1024 * 1024);
+    let snapshot = durable(publish(&store, &admission, NEW, Some("runtime-ref")).unwrap());
+
+    fs::write(fixture.root.join("by-name.json"), b"not json").unwrap();
+    fs::remove_dir_all(fixture.root.join("by-name")).unwrap();
+    symlink("/does/not/matter", fixture.root.join("by-name")).unwrap();
+
+    assert_payload(&store.open_snapshot(&snapshot).unwrap(), NEW);
+    assert_payload(&store.resolve_ref("runtime-ref").unwrap(), NEW);
+    assert_eq!(store.list_snapshots().unwrap(), vec![snapshot]);
+    assert_eq!(store.usage().unwrap().reserved_bytes, 0);
+}
+
+#[test]
+fn missing_projection_during_later_publication_restores_all_prior_human_names() {
+    let fixture = Fixture::new();
+    let store = fixture.open();
+    let admission = admission(128 * 1024 * 1024);
+
+    let first_outcome = publish(&store, &admission, OLD, None).unwrap();
+    let CommitOutcome::Durable(first) = first_outcome else {
+        panic!("unexpected durability uncertainty");
+    };
+    store
+        .set_by_name_alias("first-human", first.digest(), false)
+        .unwrap();
+    let first_auto = first.by_name()[0].clone();
+
+    fs::remove_dir_all(fixture.root.join("by-name")).unwrap();
+    let second_outcome = publish(&store, &admission, NEW, None).unwrap();
+    let CommitOutcome::Durable(second) = second_outcome else {
+        panic!("unexpected durability uncertainty");
+    };
+    assert!(second.by_name_warning().is_none());
+
+    let first_target = std::path::PathBuf::from(format!("../snapshots/{}", first.digest()));
+    assert_eq!(
+        fs::read_link(fixture.root.join("by-name").join(first_auto)).unwrap(),
+        first_target
+    );
+    assert_eq!(
+        fs::read_link(fixture.root.join("by-name/first-human")).unwrap(),
+        first_target
+    );
+    assert_eq!(
+        fs::read_link(fixture.root.join("by-name").join(&second.by_name()[0])).unwrap(),
+        std::path::PathBuf::from(format!("../snapshots/{}", second.digest()))
+    );
+}
+
+#[test]
+fn corrupt_human_metadata_surfaces_warning_without_downgrading_canonical_publication() {
+    let fixture = Fixture::new();
+    let store = fixture.open();
+    let admission = admission(128 * 1024 * 1024);
+    let first = durable(publish(&store, &admission, OLD, None).unwrap());
+
+    fs::write(fixture.root.join("by-name.json"), b"corrupt").unwrap();
+    let outcome = publish(&store, &admission, NEW, Some("runtime-second")).unwrap();
+    let CommitOutcome::Durable(published) = outcome else {
+        panic!("human metadata must never downgrade canonical durability");
+    };
+    assert!(published.by_name().is_empty());
+    assert!(published.by_name_warning().is_some());
+    assert_ne!(published.digest(), first);
+    assert_payload(&store.open_snapshot(published.digest()).unwrap(), NEW);
+    assert_payload(&store.resolve_ref("runtime-second").unwrap(), NEW);
 }
 
 #[test]

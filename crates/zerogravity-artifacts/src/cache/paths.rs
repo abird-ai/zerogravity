@@ -14,6 +14,17 @@ const MAX_PATH: usize = 4096;
 const MAX_COMPONENTS: usize = 64;
 const MAX_INVENTORY_PATH_BYTES: usize = 8 * 1024 * 1024;
 
+/// Reserved top-level names for the disposable human-facing cache projection.
+/// Canonical cache authority never traverses, charges, selects, or trusts them.
+/// The strict bootstrap walk still observes them before a protected policy is
+/// established, so an untrusted policy-less cache cannot smuggle them in.
+pub(crate) fn is_by_name_auxiliary(name: &str) -> bool {
+    matches!(
+        name,
+        "by-name" | "by-name.json" | ".by-name.next" | ".by-name.json.next"
+    )
+}
+
 fn os<T>(result: rustix::io::Result<T>) -> Result<T> {
     result.map_err(|error| std::io::Error::from(error).into())
 }
@@ -303,14 +314,9 @@ impl RootDir {
                 }
                 let before = os(fs::statat(&directory, name, AtFlags::SYMLINK_NOFOLLOW))?;
                 let kind = FileType::from_raw_mode(before.st_mode);
-                if skip_by_name && prefix.is_empty() && name == "by-name" {
-                    if kind != FileType::Directory {
-                        return Err(Error::State(
-                            "derived by-name cache projection must be a directory".into(),
-                        ));
-                    }
-                    let projected = child_dir(&directory, OsStr::new(name), false)?;
-                    private_dir(&projected)?;
+                if skip_by_name && prefix.is_empty() && is_by_name_auxiliary(name) {
+                    // Human projection state is intentionally outside canonical
+                    // cache authority. Never follow or inspect its descendants.
                     continue;
                 }
                 if nodes.len() == maximum {

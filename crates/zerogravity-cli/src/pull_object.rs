@@ -290,6 +290,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
                 snapshot.digest()
             );
             std::io::stdout().write_all(&receipt.manifest().canonical_bytes()?)?;
+            super::report_publication(snapshot);
             Ok(())
         }
         CommitOutcome::DurabilityUnknown { .. } => Err(Error::State(

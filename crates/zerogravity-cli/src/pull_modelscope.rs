@@ -223,7 +223,9 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     match receipt.outcome() {
         CommitOutcome::Durable(snapshot) => {
             println!("Snapshot: {}\nVerified during acquisition; pinned repository data only, no model readiness or license approval.", snapshot.digest());
-            std::io::stdout().write_all(&receipt.manifest().canonical_bytes()?)?; Ok(())
+            std::io::stdout().write_all(&receipt.manifest().canonical_bytes()?)?;
+            super::report_publication(snapshot);
+            Ok(())
         }
         CommitOutcome::DurabilityUnknown { .. } => Err(Error::State("complete ModelScope data is visible but durability is unknown; inspect before retrying".into())),
     }
