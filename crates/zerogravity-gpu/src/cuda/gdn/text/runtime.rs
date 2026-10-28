@@ -1887,3 +1887,197 @@ fn build_stage(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+pub(crate) fn qualify_zero_runtime_on_nvidia(device: cubecl::Device) -> Result<()> {
+    use cubecl::bytes::Bytes;
+
+    const GATED_WIDTH: usize = 2048;
+    const BF16_ONE: [u8; 2] = 0x3f80u16.to_le_bytes();
+
+    fn config() -> Result<GdnRuntimeConfig> {
+        Ok(GdnRuntimeConfig::new(
+            GdnKernelConfig::from_stages(
+                GdnKktKernel::Bk32W8S3,
+                GdnRecomputeKernel::Bk64Bv64W8S3,
+                GdnStateKernel::Bv64W4S2,
+                GdnOutputKernel::Bk32Bv64W4S3,
+            )?,
+            GdnRuntimeKernelGeometry::new(6144, 2048, 32, 4, 16, 128, 64, 5)?,
+        ))
+    }
+
+    fn exact_prefix(
+        handle: &cubecl::server::Handle,
+        bytes: usize,
+    ) -> Result<cubecl::server::Handle> {
+        let available = usize::try_from(handle.size_in_used())
+            .map_err(|_| Error::Limit("GDN runtime control handle extent".into()))?;
+        if bytes == 0 || bytes > available {
+            return Err(Error::State(
+                "GDN runtime control prefix exceeds buffer".into(),
+            ));
+        }
+        Ok(handle.clone().offset_end((available - bytes) as u64))
+    }
+
+    fn poison_gated(bytes: usize) -> Vec<u8> {
+        let mut result = vec![0u8; bytes];
+        for word in result.chunks_exact_mut(2) {
+            word.copy_from_slice(&BF16_ONE);
+        }
+        result
+    }
+
+    let client = device.client();
+    let config = config()?;
+    let workspace = GdnRuntimeWorkspaceLayout::new(config)?;
+    let mut handles = BTreeMap::new();
+    for layout in workspace.buffers() {
+        let initial = if layout.role() == GdnRuntimeBuffer::Gated {
+            poison_gated(layout.bytes())
+        } else {
+            vec![0u8; layout.bytes()]
+        };
+        handles.insert(layout.role(), client.create_from_slice(&initial));
+    }
+
+    enum Case {
+        Prefill {
+            frontier: usize,
+            rows: usize,
+            has_initial: bool,
+        },
+        Decode {
+            frontier: usize,
+        },
+    }
+    let cases = [
+        Case::Prefill {
+            frontier: 0,
+            rows: 1,
+            has_initial: false,
+        },
+        Case::Prefill {
+            frontier: 0,
+            rows: 2,
+            has_initial: false,
+        },
+        Case::Prefill {
+            frontier: 0,
+            rows: 17,
+            has_initial: false,
+        },
+        Case::Prefill {
+            frontier: 0,
+            rows: 64,
+            has_initial: false,
+        },
+        Case::Prefill {
+            frontier: 64,
+            rows: 17,
+            has_initial: true,
+        },
+        Case::Decode { frontier: 71 },
+    ];
+
+    for case in cases {
+        // Every case starts from an explicit all-zero input/parameter/cache state.
+        for layout in workspace.buffers() {
+            let handle = handles
+                .get(&layout.role())
+                .ok_or_else(|| Error::State("GDN runtime qualification handle absent".into()))?;
+            let bytes = if layout.role() == GdnRuntimeBuffer::Gated {
+                poison_gated(layout.bytes())
+            } else {
+                vec![0u8; layout.bytes()]
+            };
+            client.write(handle, Bytes::from_bytes_vec(bytes));
+        }
+
+        let plan = match case {
+            Case::Prefill {
+                frontier,
+                rows,
+                has_initial,
+            } => GdnRuntimePlan::prefill_chunk(
+                config,
+                GdnRuntimeCacheSlot::new(1)?,
+                frontier,
+                rows,
+                has_initial,
+            )?,
+            Case::Decode { frontier } => {
+                GdnRuntimePlan::cached_decode(config, GdnRuntimeCacheSlot::new(1)?, frontier)?
+            }
+        };
+        if plan.workspace() != &workspace {
+            return Err(Error::State(
+                "GDN runtime qualification workspace differs".into(),
+            ));
+        }
+        for control in plan.controls() {
+            let handle = handles
+                .get(&control.role())
+                .ok_or_else(|| Error::State("GDN runtime control handle absent".into()))?;
+            let target = exact_prefix(handle, control.bytes().len())?;
+            client.write(&target, Bytes::from_bytes_vec(control.bytes().to_vec()));
+        }
+
+        let conv = plan
+            .prepare_partition_launches(&client, &handles, GdnRuntimePartition::Convolution)?
+            .launch()?;
+        let recurrent = plan
+            .prepare_partition_launches(&client, &handles, GdnRuntimePartition::Recurrent)?
+            .launch()?;
+        if conv == 0 || recurrent == 0 {
+            return Err(Error::State(
+                "GDN runtime qualification partition launch count".into(),
+            ));
+        }
+
+        let gated = handles
+            .get(&GdnRuntimeBuffer::Gated)
+            .ok_or_else(|| Error::State("GDN runtime Gated buffer absent".into()))?;
+        let raw = client
+            .read_one(gated.clone())
+            .map_err(|error| Error::State(format!("GDN runtime Gated readback: {error}")))?;
+        let rows = plan.geometry().rows();
+        let active_words = rows
+            .checked_mul(GATED_WIDTH)
+            .ok_or_else(|| Error::Limit("GDN runtime active Gated words".into()))?;
+        if raw.len() != workspace.bytes(GdnRuntimeBuffer::Gated).unwrap_or_default() {
+            return Err(Error::State(
+                "GDN runtime Gated workspace readback extent".into(),
+            ));
+        }
+        for (index, word) in raw.chunks_exact(2).enumerate() {
+            let bits = u16::from_le_bytes([word[0], word[1]]);
+            if index < active_words {
+                if bits & 0x7fff != 0 {
+                    return Err(Error::State(format!(
+                        "GDN zero fixture active output differs row_count={rows} index={index} bits={bits:#06x}"
+                    )));
+                }
+            } else if bits != 0x3f80 {
+                return Err(Error::State(format!(
+                    "GDN zero fixture inactive tail overwritten row_count={rows} index={index} bits={bits:#06x}"
+                )));
+            }
+        }
+        println!(
+            "ordinary-gdn-runtime mode={:?} frontier={} rows={} conv_launches={} recurrent_launches={} PASS",
+            plan.geometry().mode(),
+            plan.geometry().frontier(),
+            rows,
+            conv,
+            recurrent
+        );
+    }
+
+    drop(handles);
+    client
+        .memory_cleanup()
+        .map_err(|error| Error::State(format!("GDN runtime qualification cleanup: {error}")))?;
+    Ok(())
+}

@@ -642,6 +642,8 @@ pub use fixed_prompt_component::{FixedPromptGdnArithmetic, FixedPromptGdnInterme
 mod text;
 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
 pub(crate) use text::GdnRuntimePartition;
+#[cfg(all(test, target_os = "linux"))]
+pub(crate) use text::qualify_zero_runtime_on_nvidia;
 pub use text::{
     GdnKernelConfig, GdnKktKernel, GdnOutputKernel, GdnRecomputeKernel, GdnRuntimeAccess,
     GdnRuntimeBinding, GdnRuntimeBuffer, GdnRuntimeBufferLayout, GdnRuntimeBufferOwnership,

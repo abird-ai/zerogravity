@@ -1532,6 +1532,16 @@ fn ordinary_state_transport_roundtrip_on_nvidia() -> zerogravity_core::Result<()
 }
 
 #[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
+#[test]
+#[ignore = "actual NVIDIA generic ordinary GDN zero-fixture runtime execution"]
+fn ordinary_generic_gdn_runtime_on_nvidia() -> zerogravity_core::Result<()> {
+    let device = Device::cuda(0).map_err(|error| {
+        zerogravity_core::Error::State(format!("CUDA device 0 unavailable: {error}"))
+    })?;
+    crate::cuda::gdn::qualify_zero_runtime_on_nvidia(device)
+}
+
+#[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
 async fn qualify_ordinary_owned_blas_identity(
     device: Device,
     cublas: &std::path::Path,

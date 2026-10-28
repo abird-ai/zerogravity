@@ -133,6 +133,8 @@ mod parameterized_prefill_variants;
 mod runtime;
 #[cfg(feature = "cuda-cublas")]
 pub(crate) use runtime::GdnRuntimePartition;
+#[cfg(test)]
+pub(crate) use runtime::qualify_zero_runtime_on_nvidia;
 pub use runtime::{
     GdnRuntimeAccess, GdnRuntimeBinding, GdnRuntimeBuffer, GdnRuntimeBufferLayout,
     GdnRuntimeBufferOwnership, GdnRuntimeCacheSlot, GdnRuntimeConfig, GdnRuntimeControl,

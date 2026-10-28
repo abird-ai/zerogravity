@@ -131,12 +131,21 @@ fn prepare_checked(phase: GdnPhase, slot: GdnCacheSlot, layout: GatedLayout) -> 
         GdnPhase::CachedDecode => (CACHED_ENTRY, CACHED_SOURCE, CACHED_ORIGINAL_PTX_SHA256),
         _ => unreachable!(),
     };
+    let grid = match phase {
+        GdnPhase::TextPrefill(_) => [rows_u32 / 4, 1, 1],
+        // The pinned cached PTX emits four BF16 values per lane. One block
+        // therefore covers 128 BF16 outputs; all 16 head rows are required to
+        // cover the full 2,048-element cached Gated vector. This matches the
+        // immutable original asset metadata for CACHED_ORIGINAL_PTX_SHA256.
+        GdnPhase::CachedDecode => [rows_u32, 1, 1],
+        _ => unreachable!(),
+    };
     Ok(Definition {
         asset: assets::Asset {
             entry,
             source,
             threads: 32,
-            grid: [rows_u32 / 4, 1, 1],
+            grid,
             shared: 0,
             ptx_sha256,
         },
@@ -174,4 +183,21 @@ pub(super) fn require_bindings(
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cached_grid_covers_all_2048_bf16_outputs() -> Result<()> {
+        let cached = prepare(GdnPhase::CachedDecode, GdnCacheSlot::One)?;
+        assert_eq!(cached.asset.grid, [16, 1, 1]);
+        assert_eq!(cached.asset.ptx_sha256, CACHED_ORIGINAL_PTX_SHA256);
+
+        let prefill = prepare(GdnPhase::TextPrefill(47), GdnCacheSlot::One)?;
+        assert_eq!(prefill.asset.grid, [188, 1, 1]);
+        assert_eq!(prefill.asset.ptx_sha256, PREFILL_ORIGINAL_PTX_SHA256);
+        Ok(())
+    }
 }
