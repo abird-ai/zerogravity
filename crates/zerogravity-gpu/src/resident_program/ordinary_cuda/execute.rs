@@ -44,7 +44,7 @@ impl OrdinaryCudaBody {
         let call = self.validate_request(request)?;
         let state_map = self.validate_states(call, states)?;
         flight.require_accesses(
-            self.accesses()
+            self.accesses(output)
                 .iter()
                 .map(|(lease, access)| (lease, *access)),
         )?;
@@ -232,7 +232,7 @@ impl OrdinaryCudaBody {
             ));
         }
         let cold_ids = self
-            .accesses()
+            .owned_accesses()
             .iter()
             .map(|(lease, _)| lease.id())
             .collect::<BTreeSet<_>>();

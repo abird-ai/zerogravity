@@ -1503,9 +1503,8 @@ impl ResidentProgram {
     pub fn execution_handles(&self, output: ResidentOutput) -> Vec<Handle> {
         #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
         if let ResidentProgramBody::OrdinaryCuda(body) = &self.body {
-            let _ = output;
             return body
-                .accesses()
+                .accesses(output)
                 .iter()
                 .map(|(lease, _)| lease.handle())
                 .collect();

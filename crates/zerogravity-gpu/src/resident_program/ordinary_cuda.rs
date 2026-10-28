@@ -215,6 +215,10 @@ impl OrdinaryCudaBlas {
         ]
     }
 
+    pub(crate) fn execution_accesses(&self) -> Vec<(ResidentLease, DeviceAccess)> {
+        vec![(self.workspace.clone(), DeviceAccess::Write)]
+    }
+
     fn require_active(&self) -> Result<()> {
         self.service.ensure_usable()?;
         self.charge.require_service(&self.service)?;

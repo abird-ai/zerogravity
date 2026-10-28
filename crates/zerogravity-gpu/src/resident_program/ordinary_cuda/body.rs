@@ -18,7 +18,9 @@ use zerogravity_core::{
 pub(in crate::resident_program) struct OrdinaryCudaBody {
     cold: Arc<OrdinaryCudaCold>,
     blas: Arc<OrdinaryCudaBlas>,
-    accesses: Arc<[(ResidentLease, DeviceAccess)]>,
+    owned_accesses: Arc<[(ResidentLease, DeviceAccess)]>,
+    state_accesses: Arc<[(ResidentLease, DeviceAccess)]>,
+    logit_accesses: Arc<[(ResidentLease, DeviceAccess)]>,
 }
 impl OrdinaryCudaBody {
     pub(super) fn bind(
@@ -98,10 +100,23 @@ impl OrdinaryCudaBody {
             )));
         }
 
+        let logit_accesses = cold
+            .accesses()
+            .into_iter()
+            .chain(blas.execution_accesses())
+            .collect::<Vec<_>>();
+        let logits_id = cold.logits_f32().id();
+        let state_accesses = logit_accesses
+            .iter()
+            .filter(|(lease, _)| lease.id() != logits_id)
+            .cloned()
+            .collect::<Vec<_>>();
         let body = Arc::new(Self {
             cold: cold.clone(),
             blas,
-            accesses: accesses.into(),
+            owned_accesses: accesses.into(),
+            state_accesses: state_accesses.into(),
+            logit_accesses: logit_accesses.into(),
         });
         Ok(ResidentProgram {
             _source_owner: ResidentProgramSource::Windows(cold.source().clone()),
@@ -120,8 +135,18 @@ impl OrdinaryCudaBody {
     pub(super) fn blas(&self) -> &Arc<OrdinaryCudaBlas> {
         &self.blas
     }
-    pub(in crate::resident_program) fn accesses(&self) -> &[(ResidentLease, DeviceAccess)] {
-        &self.accesses
+    pub(in crate::resident_program) fn owned_accesses(&self) -> &[(ResidentLease, DeviceAccess)] {
+        &self.owned_accesses
+    }
+
+    pub(in crate::resident_program) fn accesses(
+        &self,
+        output: crate::resident_program::ResidentOutput,
+    ) -> &[(ResidentLease, DeviceAccess)] {
+        match output {
+            crate::resident_program::ResidentOutput::StateOnly => &self.state_accesses,
+            crate::resident_program::ResidentOutput::Logits => &self.logit_accesses,
+        }
     }
 }
 
