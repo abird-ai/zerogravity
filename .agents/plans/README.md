@@ -4,6 +4,9 @@ This folder is the agent planning entry point. Start here, then work from
 `TODO.md`. Git is the authoritative history (author, time, diff, provenance sha);
 this folder keeps the live queue and per-plan checklists.
 
+Current canonical takeover: `../docs/FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-28.md`.
+Copyable successor prompt: `../docs/NEXT_AGENT_PROMPT_2026-10-28.md`.
+
 ## Layout
 
 ```text
