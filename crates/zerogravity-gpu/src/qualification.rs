@@ -1508,6 +1508,18 @@ fn ordinary_embedding_on_nvidia() -> zerogravity_core::Result<()> {
 }
 
 #[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
+#[test]
+#[ignore = "actual NVIDIA ordinary attention wrapper active-prefix/causal qualification"]
+fn ordinary_attention_wrapper_on_nvidia() -> zerogravity_core::Result<()> {
+    let device = Device::cuda(0).map_err(|error| {
+        zerogravity_core::Error::State(format!("CUDA device 0 unavailable: {error}"))
+    })?;
+    futures_lite::future::block_on(
+        crate::resident_program::ordinary_cuda::qualify_attention_wrapper_source_semantics(device),
+    )
+}
+
+#[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
 async fn qualify_ordinary_owned_blas_identity(
     device: Device,
     cublas: &std::path::Path,

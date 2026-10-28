@@ -677,6 +677,13 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+pub(crate) async fn qualify_attention_wrapper_source_semantics(
+    device: cubecl::Device,
+) -> Result<()> {
+    attention::qualify_wrapper_source_semantics(device).await
+}
+
 pub(crate) struct OrdinaryCudaAdmission {
     layout: Arc<layout::OrdinaryCudaLayout>,
 }

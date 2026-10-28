@@ -718,3 +718,342 @@ mod tests {
         assert!(managed_bytes(32_769).is_err());
     }
 }
+
+#[cfg(test)]
+pub(crate) async fn qualify_wrapper_source_semantics(device: cubecl::Device) -> Result<()> {
+    use crate::resident_program::{DeviceBuffer, ResidentBufferLayout, ResidentPhysicalType};
+    use std::sync::Arc;
+    use zerogravity_core::{
+        accelerator::program::{
+            PlanOperation, SourceCallMode, SourceInvocation, SourceOperator, SourceOperatorKind,
+            TextCallGeometry,
+        },
+        device_events::{BufferRole, DeviceAccess},
+        resource_arbiter::ResourceOwner,
+    };
+    use zerogravity_model_qwen35::plan::{QwenSourceProfile, diagnostic_ordinary_plan};
+
+    const CAPACITY: usize = 512;
+    const BASE: usize = 31;
+    const VOCABULARY: usize = 248_320;
+    const NAN_BF16: u16 = 0x7fc0;
+    const PATTERNS: [u16; 12] = [
+        0x0000, 0x3d80, 0xbd80, 0x3e80, 0xbe80, 0x3f00, 0xbf00, 0x3f80, 0xbf80, 0x4000, 0xc000,
+        0x4040,
+    ];
+
+    fn bits(index: usize, salt: usize) -> u16 {
+        PATTERNS[(index * 29 + salt * 17) % PATTERNS.len()]
+    }
+    fn bf16_bytes(values: &[u16]) -> Vec<u8> {
+        values
+            .iter()
+            .flat_map(|value| value.to_le_bytes())
+            .collect()
+    }
+    fn widen_host(values: &[u16]) -> Vec<f32> {
+        values
+            .iter()
+            .map(|&value| f32::from_bits(u32::from(value) << 16))
+            .collect()
+    }
+    fn source_descriptor(
+        plan: &Arc<zerogravity_core::accelerator::program::ForwardPlan>,
+        rows: usize,
+    ) -> Result<SourceOperator> {
+        let geometry = TextCallGeometry::new(plan.source(), VOCABULARY, CAPACITY)?;
+        let ids = (0..rows)
+            .map(|index| u32::try_from(100 + index).unwrap())
+            .collect::<Vec<_>>();
+        let invocation = SourceInvocation::new(geometry, BASE, ids.into(), false)?;
+        let materialized = plan
+            .bind_source_invocation(invocation)?
+            .materialize_source_plan(SourceCallMode::Prefill)?;
+        materialized
+            .nodes()
+            .iter()
+            .find_map(|node| match &node.operation {
+                PlanOperation::SourceOperator { descriptor, .. }
+                    if matches!(descriptor.kind(), SourceOperatorKind::FlashAttention { .. }) =>
+                {
+                    Some((**descriptor).clone())
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                Error::State("diagnostic ordinary FlashAttention descriptor absent".into())
+            })
+    }
+    fn parse_status(raw: &[u8], label: &str) -> Result<u32> {
+        let word: [u8; 4] = raw
+            .try_into()
+            .map_err(|_| Error::State(format!("{label} status extent")))?;
+        Ok(u32::from_le_bytes(word))
+    }
+    fn parse_bf16(raw: &[u8], label: &str) -> Result<Vec<u16>> {
+        if !raw.len().is_multiple_of(2) {
+            return Err(Error::State(format!("{label} BF16 alignment")));
+        }
+        Ok(raw
+            .chunks_exact(2)
+            .map(|word| u16::from_le_bytes([word[0], word[1]]))
+            .collect())
+    }
+
+    let plan = diagnostic_ordinary_plan(QwenSourceProfile::Qwen08, CAPACITY)?;
+    let source = plan.source();
+    let service = crate::resident_leases::ResidentService::new_pinned_cuda(
+        device,
+        source,
+        ResourceOwner::new("ordinary-attention-wrapper", "source-semantics")?,
+        64 * 1024 * 1024,
+        (128 * 1024 * 1024) as u64,
+    )?;
+    let client = service.client().clone();
+
+    let attention = {
+        let mut init = service.begin_initialization(0)?;
+        let attention = OrdinaryCudaAttention::prepare(service.clone(), &mut init, CAPACITY)?;
+        drop(init.complete_sync().await?);
+        attention
+    };
+
+    for rows in [1usize, 2, 17, 64] {
+        let descriptor = source_descriptor(&plan, rows)?;
+        let end = BASE + rows;
+        let state_elements = CAPACITY * KV_WIDTH;
+        let active_elements = end * KV_WIDTH;
+        let query_elements = rows * QUERY_WIDTH;
+
+        let mut key_bits = vec![NAN_BF16; state_elements];
+        let mut value_bits = vec![NAN_BF16; state_elements];
+        for index in 0..active_elements {
+            key_bits[index] = bits(index, rows + 3);
+            value_bits[index] = bits(index, rows + 7);
+        }
+        let query_bits = (0..query_elements)
+            .map(|index| bits(index, rows + 11))
+            .collect::<Vec<_>>();
+
+        let (key_lease, value_lease, status) = {
+            let mut init = service.begin_initialization(0)?;
+            let keys = init.upload_bytes(&bf16_bytes(&key_bits), BufferRole::RecurrentState)?;
+            let values = init.upload_bytes(&bf16_bytes(&value_bits), BufferRole::RecurrentState)?;
+            let status = init.upload_zeroed(4, BufferRole::Scratch)?;
+            drop(init.complete_sync().await?);
+            (keys, values, status)
+        };
+        let state_layout = ResidentBufferLayout::new(ResidentPhysicalType::Bf16, state_elements)?;
+        let keys = DeviceBuffer::from_lease(
+            key_lease.clone(),
+            state_layout,
+            BufferRole::RecurrentState,
+            DeviceAccess::Read,
+        )?;
+        let values = DeviceBuffer::from_lease(
+            value_lease.clone(),
+            state_layout,
+            BufferRole::RecurrentState,
+            DeviceAccess::Read,
+        )?;
+        let query = client.create_from_slice(&bf16_bytes(&query_bits));
+        let output = client.empty(query_elements * 2);
+        attention.enqueue(
+            &client,
+            &descriptor,
+            &query,
+            &keys,
+            &values,
+            &output,
+            &status,
+        )?;
+        client
+            .sync()
+            .await
+            .map_err(|error| Error::State(format!("ordinary attention wrapper sync: {error}")))?;
+        let actual = parse_bf16(
+            &client
+                .read_one(output)
+                .map_err(|error| Error::State(format!("ordinary attention output: {error}")))?,
+            "ordinary attention",
+        )?;
+        let wrapper_flags = parse_status(
+            &client
+                .read_one(status.handle())
+                .map_err(|error| Error::State(format!("ordinary attention status: {error}")))?,
+            "ordinary attention",
+        )?;
+        if wrapper_flags != 0 {
+            return Err(Error::State(format!(
+                "ordinary attention wrapper status rows={rows}: {wrapper_flags:#x}"
+            )));
+        }
+
+        // Independent scheduling of the source attention sequence. It shares
+        // the arithmetic kernels but not wrapper prefix/row/BF16 transport.
+        let source_keys = client.create_from_slice(f32::as_bytes(&widen_host(&key_bits)));
+        let source_values = client.create_from_slice(f32::as_bytes(&widen_host(&value_bits)));
+        let zero = client.create_from_slice(f32::as_bytes(&[0.0f32]));
+        let source_status = client.create_from_slice(u32::as_bytes(&[0u32]));
+        let score_elements = CAPACITY * QUERY_HEADS;
+        let dots = client.empty(score_elements * 4);
+        let scores = client.empty(score_elements * 4);
+        let maxima = client.empty(QUERY_HEADS * 4);
+        let exponentials = client.empty(score_elements * 4);
+        let sums = client.empty(QUERY_HEADS * 4);
+        let inverse = client.empty(QUERY_HEADS * 4);
+        let probabilities = client.empty(score_elements * 4);
+        let source_output = client.empty(QUERY_WIDTH * 4);
+        let mut expected = Vec::with_capacity(query_elements);
+
+        for row in 0..rows {
+            let active = BASE + row + 1;
+            let start = row * QUERY_WIDTH;
+            let query_row = client.create_from_slice(f32::as_bytes(&widen_host(
+                &query_bits[start..start + QUERY_WIDTH],
+            )));
+            unsafe {
+                crate::source_attention::kernels::qk::launch_unchecked(
+                    &client,
+                    CubeCount::Static(score_elements as u32, 1, 1),
+                    CubeDim::new_1d(64),
+                    arg(&query_row, QUERY_WIDTH),
+                    arg(&source_keys, state_elements),
+                    arg(&dots, score_elements),
+                    arg(&scores, score_elements),
+                    arg(&source_status, 1),
+                    arg(&zero, 1),
+                    WIDTH,
+                    QUERY_HEADS,
+                    KV_HEADS,
+                    CAPACITY,
+                    SCALE,
+                    active as u32,
+                    0u32,
+                );
+                crate::source_attention::kernels::reduce::launch_unchecked(
+                    &client,
+                    CubeCount::Static(QUERY_HEADS as u32, 1, 1),
+                    threads(),
+                    arg(&scores, score_elements),
+                    arg(&maxima, QUERY_HEADS),
+                    arg(&source_status, 1),
+                    active as u32,
+                    true,
+                    CAPACITY,
+                );
+                crate::source_attention::kernels::exponentials::launch_unchecked(
+                    &client,
+                    grid(score_elements),
+                    threads(),
+                    arg(&scores, score_elements),
+                    arg(&maxima, QUERY_HEADS),
+                    arg(&exponentials, score_elements),
+                    arg(&source_status, 1),
+                    active as u32,
+                    QUERY_HEADS,
+                    CAPACITY,
+                );
+                crate::source_attention::kernels::reduce::launch_unchecked(
+                    &client,
+                    CubeCount::Static(QUERY_HEADS as u32, 1, 1),
+                    threads(),
+                    arg(&exponentials, score_elements),
+                    arg(&sums, QUERY_HEADS),
+                    arg(&source_status, 1),
+                    active as u32,
+                    false,
+                    CAPACITY,
+                );
+                crate::source_attention::kernels::inverse::launch_unchecked(
+                    &client,
+                    grid(QUERY_HEADS),
+                    threads(),
+                    arg(&sums, QUERY_HEADS),
+                    arg(&inverse, QUERY_HEADS),
+                    arg(&source_status, 1),
+                    QUERY_HEADS,
+                );
+                crate::source_attention::kernels::probabilities::launch_unchecked(
+                    &client,
+                    grid(score_elements),
+                    threads(),
+                    arg(&exponentials, score_elements),
+                    arg(&inverse, QUERY_HEADS),
+                    arg(&probabilities, score_elements),
+                    arg(&source_status, 1),
+                    active as u32,
+                    QUERY_HEADS,
+                    CAPACITY,
+                );
+                crate::source_attention::kernels::pv::launch_unchecked(
+                    &client,
+                    grid(QUERY_WIDTH),
+                    threads(),
+                    arg(&probabilities, score_elements),
+                    arg(&source_values, state_elements),
+                    arg(&source_output, QUERY_WIDTH),
+                    arg(&source_status, 1),
+                    arg(&zero, 1),
+                    WIDTH,
+                    QUERY_HEADS,
+                    KV_HEADS,
+                    CAPACITY,
+                    active as u32,
+                    1u32,
+                    active as u32,
+                );
+            }
+            let raw = client
+                .read_one(source_output.clone())
+                .map_err(|error| Error::State(format!("source attention output: {error}")))?;
+            let values = f32::from_bytes(&raw);
+            if values.len() != QUERY_WIDTH {
+                return Err(Error::State("source attention row extent differs".into()));
+            }
+            for (index, &value) in values.iter().enumerate() {
+                if value.to_bits() & 0xffff != 0 {
+                    return Err(Error::State(format!(
+                        "source attention output not BF16-widened rows={rows} row={row} index={index}"
+                    )));
+                }
+                expected.push((value.to_bits() >> 16) as u16);
+            }
+        }
+        let source_flags = parse_status(
+            &client
+                .read_one(source_status)
+                .map_err(|error| Error::State(format!("source attention status: {error}")))?,
+            "source attention",
+        )?;
+        if source_flags != 0 {
+            return Err(Error::State(format!(
+                "source attention status rows={rows}: {source_flags:#x}"
+            )));
+        }
+        if actual != expected {
+            let mismatch = actual
+                .iter()
+                .zip(&expected)
+                .position(|(actual, expected)| actual != expected);
+            return Err(Error::State(format!(
+                "ordinary attention wrapper differs rows={rows} mismatch={mismatch:?}"
+            )));
+        }
+        println!("ordinary-attention-wrapper rows={rows} PASS");
+
+        drop((keys, values, key_lease, value_lease, status));
+    }
+
+    drop(attention);
+    client
+        .memory_cleanup()
+        .map_err(|error| Error::State(format!("ordinary attention cleanup: {error}")))?;
+    if service.resident_bytes()? != 0 || service.model_events()? != 0 {
+        return Err(Error::State(
+            "ordinary attention qualification left resident bytes/events".into(),
+        ));
+    }
+    service.close_model_namespace()?;
+    Ok(())
+}
