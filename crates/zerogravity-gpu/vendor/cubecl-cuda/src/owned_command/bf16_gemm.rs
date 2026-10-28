@@ -4,6 +4,76 @@ use cubecl_core::server::{Handle, ServerError};
 use sha2::{Digest, Sha256};
 use std::fs::{File, Metadata};
 use std::io::Read;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn observed_operations_lower_to_identical_generic_contracts() {
+        use ObservedBf16Gemm::*;
+        for observed in [
+            Qwen08Layer0QkvzDecode,
+            Qwen08Layer0BaDecode,
+            Qwen08Layer0QkvzPrefill,
+            Qwen08Layer0BaPrefill,
+            Qwen08Layer0OutProjectionDecode,
+            Qwen08Layer0OutProjectionPrefill,
+            Qwen08Layer0QkvzContinuedPrefill,
+            Qwen08Layer0BaContinuedPrefill,
+            Qwen08Layer0OutProjectionContinuedPrefill,
+        ] {
+            let operation = observed.operation();
+            assert_eq!(
+                (operation.m(), operation.n(), operation.k()),
+                (observed.m(), observed.n(), observed.k())
+            );
+            assert_eq!(operation.api(), observed.observed_api());
+            assert_eq!(operation.weight_bytes().unwrap(), observed.weight_bytes());
+            assert_eq!(operation.input_bytes().unwrap(), observed.input_bytes());
+            assert_eq!(operation.output_bytes().unwrap(), observed.output_bytes());
+            assert_eq!(operation.workspace_bytes(), observed.workspace_bytes());
+        }
+    }
+
+    #[test]
+    fn generic_reference_geometry_is_dynamic_but_api_is_closed() {
+        for rows in 1..=64 {
+            let operation = Bf16GemmOperation::reference(8192, rows, 1024).unwrap();
+            assert_eq!(operation.n(), rows);
+            assert_eq!(operation.api(), REFERENCE_BF16_GEMM_API);
+            assert_eq!(
+                operation.sizes().unwrap(),
+                [
+                    8192 * 1024 * 2,
+                    1024 * rows * 2,
+                    8192 * rows * 2,
+                    REFERENCE_BF16_GEMM_WORKSPACE_BYTES,
+                ]
+            );
+        }
+        assert!(Bf16GemmOperation::reference(0, 1, 1).is_err());
+        assert!(Bf16GemmOperation::reference(1, 0, 1).is_err());
+        assert!(Bf16GemmOperation::reference(1, 1, 0).is_err());
+        assert!(Bf16GemmOperation::reference(i32::MAX as usize + 1, 1, 1).is_err());
+        assert!(
+            Bf16GemmOperation::new(1, 1, 1, 4, REFERENCE_BF16_GEMM_API).is_err()
+        );
+        let mut wrong = REFERENCE_BF16_GEMM_API;
+        wrong.beta_bits = 1;
+        assert!(
+            Bf16GemmOperation::new(
+                1,
+                1,
+                1,
+                REFERENCE_BF16_GEMM_WORKSPACE_BYTES,
+                wrong
+            )
+            .is_err()
+        );
+    }
+}
+
 #[cfg(all(
     feature = "owned-cublas-allocator",
     target_arch = "x86_64",
@@ -40,6 +110,16 @@ pub enum ObservedBf16Gemm {
 }
 
 impl ObservedBf16Gemm {
+    pub const fn operation(self) -> Bf16GemmOperation {
+        Bf16GemmOperation {
+            m: self.m(),
+            n: self.n(),
+            k: self.k(),
+            workspace_bytes: REFERENCE_BF16_GEMM_WORKSPACE_BYTES,
+            api: REFERENCE_BF16_GEMM_API,
+        }
+    }
+
     pub const fn m(self) -> usize {
         match self {
             Self::Qwen08Layer0QkvzDecode
@@ -84,18 +164,7 @@ impl ObservedBf16Gemm {
     }
     /// Public cublasGemmEx request only, not the hidden selected kernel.
     pub const fn observed_api(self) -> Bf16GemmApi {
-        Bf16GemmApi {
-            transpose_a: 1,
-            transpose_b: 0,
-            data_type: 14,
-            compute_type: 68,
-            requested_algorithm: 99,
-            alpha_bits: 0x3f80_0000,
-            beta_bits: 0,
-            pointer_mode: 0,
-            math_mode: 0,
-            atomics_mode: 0,
-        }
+        REFERENCE_BF16_GEMM_API
     }
 }
 
@@ -113,6 +182,116 @@ pub struct Bf16GemmApi {
     pub atomics_mode: i32,
 }
 
+pub const REFERENCE_BF16_GEMM_API: Bf16GemmApi = Bf16GemmApi {
+    transpose_a: 1,
+    transpose_b: 0,
+    data_type: 14,
+    compute_type: 68,
+    requested_algorithm: 99,
+    alpha_bits: 0x3f80_0000,
+    beta_bits: 0,
+    pointer_mode: 0,
+    math_mode: 0,
+    atomics_mode: 0,
+};
+pub const REFERENCE_BF16_GEMM_WORKSPACE_BYTES: usize = 8_519_680;
+
+/// Exact public GemmEx operation. Geometry is source/request derived; the
+/// numerical API profile is closed and cannot be caller-modified.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Bf16GemmOperation {
+    m: usize,
+    n: usize,
+    k: usize,
+    workspace_bytes: usize,
+    api: Bf16GemmApi,
+}
+impl From<ObservedBf16Gemm> for Bf16GemmOperation {
+    fn from(observed: ObservedBf16Gemm) -> Self {
+        observed.operation()
+    }
+}
+
+impl Bf16GemmOperation {
+    pub fn reference(m: usize, n: usize, k: usize) -> Result<Self, ServerError> {
+        Self::new(
+            m,
+            n,
+            k,
+            REFERENCE_BF16_GEMM_WORKSPACE_BYTES,
+            REFERENCE_BF16_GEMM_API,
+        )
+    }
+
+    fn new(
+        m: usize,
+        n: usize,
+        k: usize,
+        workspace_bytes: usize,
+        api: Bf16GemmApi,
+    ) -> Result<Self, ServerError> {
+        if m == 0
+            || n == 0
+            || k == 0
+            || m > i32::MAX as usize
+            || n > i32::MAX as usize
+            || k > i32::MAX as usize
+            || workspace_bytes != REFERENCE_BF16_GEMM_WORKSPACE_BYTES
+            || api != REFERENCE_BF16_GEMM_API
+        {
+            return Err(failure("closed BF16 GemmEx geometry/API contract"));
+        }
+        let operation = Self {
+            m,
+            n,
+            k,
+            workspace_bytes,
+            api,
+        };
+        operation.sizes()?;
+        Ok(operation)
+    }
+
+    pub const fn m(self) -> usize {
+        self.m
+    }
+    pub const fn n(self) -> usize {
+        self.n
+    }
+    pub const fn k(self) -> usize {
+        self.k
+    }
+    pub const fn workspace_bytes(self) -> usize {
+        self.workspace_bytes
+    }
+    pub const fn api(self) -> Bf16GemmApi {
+        self.api
+    }
+    pub fn weight_bytes(self) -> Result<usize, ServerError> {
+        checked_bf16_bytes(self.m, self.k, "weights")
+    }
+    pub fn input_bytes(self) -> Result<usize, ServerError> {
+        checked_bf16_bytes(self.k, self.n, "input")
+    }
+    pub fn output_bytes(self) -> Result<usize, ServerError> {
+        checked_bf16_bytes(self.m, self.n, "output")
+    }
+    pub fn sizes(self) -> Result<[usize; 4], ServerError> {
+        Ok([
+            self.weight_bytes()?,
+            self.input_bytes()?,
+            self.output_bytes()?,
+            self.workspace_bytes,
+        ])
+    }
+}
+
+fn checked_bf16_bytes(a: usize, b: usize, role: &str) -> Result<usize, ServerError> {
+    a.checked_mul(b)
+        .and_then(|elements| elements.checked_mul(2))
+        .ok_or_else(|| failure(format!("BF16 GemmEx {role} extent overflow")))
+}
+
 /// Original handles only. Caller retains the physical ResidentLease owners.
 pub struct Bf16GemmBindings {
     pub weights: Handle,
@@ -123,14 +302,6 @@ pub struct Bf16GemmBindings {
 impl Bf16GemmBindings {
     pub(crate) fn handles(&self) -> [&Handle; 4] {
         [&self.weights, &self.input, &self.output, &self.workspace]
-    }
-    pub(crate) fn sizes(operation: ObservedBf16Gemm) -> [usize; 4] {
-        [
-            operation.weight_bytes(),
-            operation.input_bytes(),
-            operation.output_bytes(),
-            operation.workspace_bytes(),
-        ]
     }
 }
 
@@ -279,7 +450,7 @@ impl Bf16BlasSources {
 /// No raw pointer/physical stream, loaded provider or Ready escapes inspection.
 #[derive(Debug)]
 pub struct Bf16GemmInspection {
-    pub operation: ObservedBf16Gemm,
+    pub operation: Bf16GemmOperation,
     pub bytes: [usize; 4],
     pub provider_allocations_admitted: bool,
 }
@@ -307,14 +478,16 @@ impl OwnedCudaQueue {
     pub unsafe fn inspect_bf16_gemm(
         self: &Arc<Self>,
         sources: &Bf16BlasSources,
-        operation: ObservedBf16Gemm,
+        operation: impl Into<Bf16GemmOperation>,
         bindings: Bf16GemmBindings,
     ) -> Result<Bf16GemmInspection, ServerError> {
+        let operation = operation.into();
         sources.require_queue(self)?;
+        let sizes = operation.sizes()?;
         if bindings
             .handles()
             .iter()
-            .zip(Bf16GemmBindings::sizes(operation))
+            .zip(sizes)
             .any(|(handle, bytes)| {
                 handle.service != self.service_id() || handle.size() != bytes as u64
             })

@@ -1,12 +1,12 @@
 //! Pointer resolution stays inside the original CudaServer actor.
 use super::*;
-use crate::owned_command::{Bf16GemmBindings, Bf16GemmInspection, ObservedBf16Gemm};
+use crate::owned_command::{Bf16GemmBindings, Bf16GemmInspection, Bf16GemmOperation};
 
 impl CudaServer {
     pub(crate) fn inspect_owned_bf16_gemm(
         &mut self,
         stream: StreamId,
-        operation: ObservedBf16Gemm,
+        operation: Bf16GemmOperation,
         bindings: Bf16GemmBindings,
     ) -> Result<Bf16GemmInspection, ServerError> {
         self.streams.ensure_written(
@@ -22,7 +22,7 @@ impl CudaServer {
         let mut extents = [(0_u64, 0_u64); 4];
         for (index, (binding, bytes)) in native
             .into_iter()
-            .zip(Bf16GemmBindings::sizes(operation))
+            .zip(operation.sizes()?)
             .enumerate()
         {
             let resource = command.resource(binding)?;
@@ -52,7 +52,7 @@ impl CudaServer {
         }
         Ok(Bf16GemmInspection {
             operation,
-            bytes: Bf16GemmBindings::sizes(operation),
+            bytes: operation.sizes()?,
             provider_allocations_admitted: false,
         })
     }

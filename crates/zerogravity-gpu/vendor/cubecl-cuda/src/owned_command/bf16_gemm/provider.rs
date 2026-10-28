@@ -29,9 +29,10 @@ impl OwnedBf16BlasProvider {
     /// enqueue only: success is neither Ready nor numerical qualification.
     pub unsafe fn enqueue(
         &self,
-        operation: ObservedBf16Gemm,
+        operation: impl Into<Bf16GemmOperation>,
         bindings: Bf16GemmBindings,
     ) -> Result<(), ServerError> {
+        let operation = operation.into();
         self.require_active()?;
         validate_bindings(&self.queue, operation, &bindings)?;
         let stream = self.queue.stream;
@@ -60,13 +61,13 @@ impl OwnedBf16BlasProvider {
 }
 fn validate_bindings(
     queue: &Arc<OwnedCudaQueue>,
-    operation: ObservedBf16Gemm,
+    operation: Bf16GemmOperation,
     bindings: &Bf16GemmBindings,
 ) -> Result<(), ServerError> {
     if bindings
         .handles()
         .iter()
-        .zip(Bf16GemmBindings::sizes(operation))
+        .zip(operation.sizes()?)
         .any(|(handle, bytes)| {
             handle.service != queue.service_id()
                 || handle.size() != bytes as u64

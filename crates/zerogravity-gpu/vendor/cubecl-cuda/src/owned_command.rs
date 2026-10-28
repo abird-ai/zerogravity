@@ -30,7 +30,8 @@ mod bf16_gemm;
 #[cfg(target_os = "linux")]
 pub use bf16_gemm::{
     Bf16BlasSourceIdentity, Bf16BlasSources, Bf16GemmApi, Bf16GemmBindings, Bf16GemmInspection,
-    ObservedBf16Gemm,
+    Bf16GemmOperation, ObservedBf16Gemm, REFERENCE_BF16_GEMM_API,
+    REFERENCE_BF16_GEMM_WORKSPACE_BYTES,
 };
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
 pub use bf16_gemm::{

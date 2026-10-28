@@ -32,7 +32,8 @@ pub use owned_command::SourceWeightLayout;
 #[cfg(target_os = "linux")]
 pub use owned_command::{
     Bf16BlasSourceIdentity, Bf16BlasSources, Bf16GemmApi, Bf16GemmBindings, Bf16GemmInspection,
-    ObservedBf16Gemm,
+    Bf16GemmOperation, ObservedBf16Gemm, REFERENCE_BF16_GEMM_API,
+    REFERENCE_BF16_GEMM_WORKSPACE_BYTES,
 };
 #[cfg(all(feature = "owned-cubin", target_os = "linux"))]
 pub use owned_command::{

@@ -316,3 +316,54 @@ pub async fn qualify_projections(
     }
     Ok(compared)
 }
+
+#[cfg(test)]
+mod tests {
+    use cubecl::cuda::{
+        Bf16GemmOperation, ObservedBf16Gemm, REFERENCE_BF16_GEMM_API,
+        REFERENCE_BF16_GEMM_WORKSPACE_BYTES,
+    };
+
+    #[test]
+    fn owned_bf16_gemm_descriptor_preserves_observed_calls_and_accepts_dynamic_rows() {
+        use ObservedBf16Gemm::*;
+        for observed in [
+            Qwen08Layer0QkvzDecode,
+            Qwen08Layer0BaDecode,
+            Qwen08Layer0QkvzPrefill,
+            Qwen08Layer0BaPrefill,
+            Qwen08Layer0OutProjectionDecode,
+            Qwen08Layer0OutProjectionPrefill,
+            Qwen08Layer0QkvzContinuedPrefill,
+            Qwen08Layer0BaContinuedPrefill,
+            Qwen08Layer0OutProjectionContinuedPrefill,
+        ] {
+            let operation = observed.operation();
+            assert_eq!(
+                (operation.m(), operation.n(), operation.k()),
+                (observed.m(), observed.n(), observed.k())
+            );
+            assert_eq!(operation.api(), observed.observed_api());
+            assert_eq!(operation.workspace_bytes(), observed.workspace_bytes());
+        }
+
+        for rows in 1..=64 {
+            let operation = Bf16GemmOperation::reference(8192, rows, 1024).unwrap();
+            assert_eq!(operation.n(), rows);
+            assert_eq!(operation.api(), REFERENCE_BF16_GEMM_API);
+            assert_eq!(
+                operation.workspace_bytes(),
+                REFERENCE_BF16_GEMM_WORKSPACE_BYTES
+            );
+            assert_eq!(
+                operation.sizes().unwrap(),
+                [
+                    8192 * 1024 * 2,
+                    1024 * rows * 2,
+                    8192 * rows * 2,
+                    REFERENCE_BF16_GEMM_WORKSPACE_BYTES,
+                ]
+            );
+        }
+    }
+}

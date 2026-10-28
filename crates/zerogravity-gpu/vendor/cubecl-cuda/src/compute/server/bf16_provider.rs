@@ -1,7 +1,7 @@
 //! Pinned cuBLAS entry points and native handles never leave CudaServer.
 use super::*;
 use crate::OwnedBlasAllocationPool;
-use crate::owned_command::{Bf16BlasSources, Bf16GemmBindings, ObservedBf16Gemm};
+use crate::owned_command::{Bf16BlasSources, Bf16GemmBindings, Bf16GemmOperation};
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
@@ -199,7 +199,7 @@ impl CudaServer {
     pub(crate) fn enqueue_owned_bf16_gemm(
         &mut self,
         stream: StreamId,
-        operation: ObservedBf16Gemm,
+        operation: Bf16GemmOperation,
         bindings: Bf16GemmBindings,
     ) -> Result<(), ServerError> {
         self.inspect_owned_bf16_gemm(
@@ -260,30 +260,31 @@ impl CudaServer {
                     },
                     "set admitted workspace",
                 )?;
-                let alpha = 1.0_f32;
-                let beta = 0.0_f32;
+                let contract = operation.api();
+                let alpha = f32::from_bits(contract.alpha_bits);
+                let beta = f32::from_bits(contract.beta_bits);
                 status(
                     unsafe {
                         (api.gemm)(
                             handle,
-                            1,
-                            0,
+                            contract.transpose_a,
+                            contract.transpose_b,
                             operation.m() as c_int,
                             operation.n() as c_int,
                             operation.k() as c_int,
                             (&alpha as *const f32).cast(),
                             weights as *const c_void,
-                            14,
+                            contract.data_type,
                             operation.k() as c_int,
                             input as *const c_void,
-                            14,
+                            contract.data_type,
                             operation.k() as c_int,
                             (&beta as *const f32).cast(),
                             output as *mut c_void,
-                            14,
+                            contract.data_type,
                             operation.m() as c_int,
-                            68,
-                            99,
+                            contract.compute_type,
+                            contract.requested_algorithm,
                         )
                     },
                     "GemmEx enqueue",
