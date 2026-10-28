@@ -396,6 +396,7 @@ impl ResidentService {
             .map_err(|_| Error::State("resident event ledger poisoned".into()))
     }
 
+    #[cfg(feature = "cuda-cublas")]
     pub(crate) fn close_model_namespace(&self) -> Result<()> {
         self.ensure_usable()?;
         if self.resident_bytes()? != 0 || self.model_events()? != 0 {

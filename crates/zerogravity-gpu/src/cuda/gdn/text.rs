@@ -131,6 +131,7 @@ mod parameterized_gated;
 mod parameterized_prefill;
 mod parameterized_prefill_variants;
 mod runtime;
+#[cfg(feature = "cuda-cublas")]
 pub(crate) use runtime::GdnRuntimePartition;
 pub use runtime::{
     GdnRuntimeAccess, GdnRuntimeBinding, GdnRuntimeBuffer, GdnRuntimeBufferLayout,

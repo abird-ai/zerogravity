@@ -600,6 +600,7 @@ impl fmt::Debug for GdnRuntimeStage {
 }
 
 /// One ordered operation in the complete executable schedule.
+#[cfg(any(test, feature = "cuda-cublas"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum GdnRuntimePartition {
     Convolution,
@@ -668,7 +669,7 @@ pub struct GdnRuntimeScheduleStep {
     shared_bytes: usize,
     grid: [u32; 3],
     bindings: Vec<GdnRuntimeBinding>,
-    kernel: crate::cuda::kernel::PinnedKernel,
+    _kernel: crate::cuda::kernel::PinnedKernel,
 }
 impl GdnRuntimeScheduleStep {
     pub fn kind(&self) -> GdnRuntimeScheduleKind {
@@ -695,13 +696,14 @@ impl GdnRuntimeScheduleStep {
 
     /// Caller must retain admitted leases and its physical flight through
     /// completion or quarantine. This grants no completion/publication right.
+    #[cfg(feature = "cuda-cublas")]
     pub(crate) fn prepare_launch(
         &self,
         client: &cubecl::client::Client,
         handles: Vec<cubecl::server::Handle>,
     ) -> Result<GdnRuntimeLaunch> {
         Ok(GdnRuntimeLaunch {
-            launch: self.kernel.prepare(client, self.grid, handles)?,
+            launch: self._kernel.prepare(client, self.grid, handles)?,
         })
     }
 }
@@ -720,10 +722,12 @@ impl fmt::Debug for GdnRuntimeScheduleStep {
 }
 
 /// Bound low-level launch. It cannot complete or publish caller state.
+#[cfg(feature = "cuda-cublas")]
 #[derive(Clone)]
 pub(crate) struct GdnRuntimeLaunch {
     launch: crate::cuda::kernel::PreparedPinnedLaunch,
 }
+#[cfg(feature = "cuda-cublas")]
 impl GdnRuntimeLaunch {
     #[allow(dead_code)]
     pub(crate) fn launch(&self) -> Result<()> {
@@ -732,10 +736,12 @@ impl GdnRuntimeLaunch {
 }
 
 /// Ordered launches retained by, and executable only under, the caller's flight.
+#[cfg(feature = "cuda-cublas")]
 #[derive(Clone)]
 pub(crate) struct GdnRuntimeLaunchSchedule {
     launches: Vec<GdnRuntimeLaunch>,
 }
+#[cfg(feature = "cuda-cublas")]
 impl GdnRuntimeLaunchSchedule {
     pub(crate) fn launch(&self) -> Result<usize> {
         for launch in &self.launches {
@@ -985,6 +991,7 @@ impl GdnRuntimePlan {
         &self.schedule
     }
 
+    #[cfg(any(test, feature = "cuda-cublas"))]
     fn partition_range(&self, partition: GdnRuntimePartition) -> Result<std::ops::Range<usize>> {
         self.require_schedule()?;
         let conv = self
@@ -1040,6 +1047,7 @@ impl GdnRuntimePlan {
     /// Bind caller-owned full allocation handles to exact operation views.
     /// Initial/final/cache state must be physically distinct allocations.
     #[allow(dead_code)]
+    #[cfg(any(test, feature = "cuda-cublas"))]
     pub(crate) fn bind_schedule_handles(
         &self,
         handles: &BTreeMap<GdnRuntimeBuffer, cubecl::server::Handle>,
@@ -1099,6 +1107,7 @@ impl GdnRuntimePlan {
     /// Low-level preparation only. The caller retains the admitted flight and
     /// every source/state owner; this capsule has no completion/publication API.
     #[allow(dead_code)]
+    #[cfg(feature = "cuda-cublas")]
     pub(crate) fn prepare_launches(
         &self,
         client: &cubecl::client::Client,
@@ -1114,6 +1123,7 @@ impl GdnRuntimePlan {
         Ok(GdnRuntimeLaunchSchedule { launches })
     }
 
+    #[cfg(feature = "cuda-cublas")]
     pub(crate) fn prepare_partition_launches(
         &self,
         client: &cubecl::client::Client,
@@ -1288,7 +1298,7 @@ fn stage_step(stage: &GdnRuntimeStage) -> GdnRuntimeScheduleStep {
         shared_bytes: identity.shared_bytes(),
         grid: identity.grid(),
         bindings: identity.bindings().to_vec(),
-        kernel: stage.spec.kernel.clone(),
+        _kernel: stage.spec.kernel.clone(),
     }
 }
 
@@ -1531,7 +1541,7 @@ fn build_copy_step(
         shared_bytes: 0,
         grid: [total_u32.div_ceil(128), 1, 1],
         bindings,
-        kernel,
+        _kernel: kernel,
     })
 }
 

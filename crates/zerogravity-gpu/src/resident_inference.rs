@@ -330,6 +330,7 @@ fn ordinary_not_cancelled(cancelled: Option<&std::sync::atomic::AtomicBool>) -> 
     Ok(())
 }
 
+#[cfg(any(test, feature = "cuda-cublas"))]
 fn into_unique_owner<T>(owner: Arc<T>, label: &str) -> Result<T> {
     Arc::try_unwrap(owner)
         .map_err(|_| Error::State(format!("{label} still has live session/model owners")))
@@ -2175,6 +2176,7 @@ impl ResidentSession {
             .await
     }
 
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
     pub async fn prepare_ordinary_cuda_cancellable(
         &self,
         request: ForwardPlan,
@@ -2203,6 +2205,7 @@ impl ResidentSession {
             .await
     }
 
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
     async fn prepare_ordinary_cuda_mode(
         &self,
         request: ForwardPlan,
@@ -2279,6 +2282,7 @@ impl ResidentSession {
         self.commit(prepared)
     }
 
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
     pub async fn forward_ordinary_cuda_state_only(
         &mut self,
         request: ForwardPlan,
@@ -2287,6 +2291,7 @@ impl ResidentSession {
         self.commit(prepared)
     }
 
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
     pub async fn forward_ordinary_cuda_state_only_cancellable(
         &mut self,
         request: ForwardPlan,
@@ -2660,6 +2665,7 @@ mod ordinary_shutdown_owner_tests {
         );
     }
 
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
     #[test]
     fn ordinary_cancellation_is_explicit_and_fail_closed() {
         let flag = std::sync::atomic::AtomicBool::new(false);
