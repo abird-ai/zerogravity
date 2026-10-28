@@ -148,7 +148,19 @@ mod diagnostics {
         let mut physical = BTreeMap::<(u64, u64), u64>::new();
         while let Some(path) = pending.pop() {
             let metadata = fs::symlink_metadata(&path).unwrap();
-            assert!(!metadata.file_type().is_symlink());
+            let derived_by_name = path.parent() == Some(root)
+                && path.file_name().is_some_and(|name| name == "by-name");
+            if derived_by_name {
+                assert!(
+                    metadata.is_dir() && !metadata.file_type().is_symlink(),
+                    "top-level by-name projection itself must remain a real directory"
+                );
+                continue;
+            }
+            assert!(
+                !metadata.file_type().is_symlink(),
+                "canonical cache accounting namespaces must remain symlink-free"
+            );
             let logical = metadata.len().div_ceil(block) * block;
             let observed = metadata.blocks() * 512;
             let charge = logical.max(observed) + inode;

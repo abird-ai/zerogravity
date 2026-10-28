@@ -78,6 +78,8 @@ impl CacheOptions {
 pub struct PublishedSnapshot {
     pub(crate) digest: String,
     pub(crate) reference: Option<String>,
+    pub(crate) by_name: Vec<String>,
+    pub(crate) by_name_warning: Option<String>,
 }
 
 impl PublishedSnapshot {
@@ -87,6 +89,18 @@ impl PublishedSnapshot {
 
     pub fn reference(&self) -> Option<&str> {
         self.reference.as_deref()
+    }
+
+    /// Flat lowercase human-only aliases materialized under by-name/. These
+    /// names never participate in model selection or snapshot authority.
+    pub fn by_name(&self) -> &[String] {
+        &self.by_name
+    }
+
+    /// A derived projection failure never downgrades an otherwise durable
+    /// canonical snapshot/reference publication. Explicit refresh can repair it.
+    pub fn by_name_warning(&self) -> Option<&str> {
+        self.by_name_warning.as_deref()
     }
 }
 
@@ -135,6 +149,7 @@ pub struct ReclaimReport {
     pub(crate) removed_files: usize,
     pub(crate) removed_directories: usize,
     pub(crate) retained_blobs: usize,
+    pub(crate) by_name_warning: Option<String>,
 }
 
 impl ReclaimReport {
@@ -176,6 +191,12 @@ impl ReclaimReport {
 
     pub fn retained_blobs(&self) -> usize {
         self.retained_blobs
+    }
+
+    /// Human-only projection repair failure, if any. Canonical reclamation
+    /// remains authoritative and can be followed by cache by-name --refresh.
+    pub fn by_name_warning(&self) -> Option<&str> {
+        self.by_name_warning.as_deref()
     }
 }
 

@@ -166,6 +166,43 @@ mod enabled {
     }
 
     #[test]
+    fn by_name_refresh_rebuilds_flat_lowercase_projection_without_network() {
+        let fixture = Fixture::new();
+        let digest = fixture.seed("V1", Some("Team/Primary_Model"));
+        let by_name = fixture.0.join("by-name");
+        std::fs::remove_dir_all(&by_name).unwrap();
+
+        let output = binary()
+            .args(["cache", "by-name", "--refresh", "--cache"])
+            .arg(&fixture.0)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let text = String::from_utf8_lossy(&output.stdout);
+        assert!(text.contains("by-name/fixture-owned-cli-v1"));
+        assert!(text.contains("by-name/team-primary-model"));
+        assert_eq!(
+            std::fs::read_link(by_name.join("fixture-owned-cli-v1")).unwrap(),
+            std::path::PathBuf::from(format!("../snapshots/{digest}"))
+        );
+        assert_eq!(
+            std::fs::read_link(by_name.join("team-primary-model")).unwrap(),
+            std::path::PathBuf::from(format!("../snapshots/{digest}"))
+        );
+        for entry in std::fs::read_dir(&by_name).unwrap() {
+            let entry = entry.unwrap();
+            let name = entry.file_name().into_string().unwrap();
+            assert_eq!(name, name.to_ascii_lowercase());
+            assert!(!name.contains('/'));
+            assert!(entry.file_type().unwrap().is_symlink());
+        }
+    }
+
+    #[test]
     fn dry_run_preserves_target_and_apply_reports_observed_charge() {
         let fixture = Fixture::new();
         let digest = fixture.seed("one", None);
@@ -187,6 +224,13 @@ mod enabled {
         assert!(text.contains("Observed charged-byte"));
         assert!(!text.contains("physical bytes freed"));
         assert!(fixture.store().open_snapshot(&digest).is_err());
+        assert!(
+            std::fs::read_dir(fixture.0.join("by-name"))
+                .unwrap()
+                .next()
+                .is_none(),
+            "reclamation must remove derived aliases for the removed snapshot"
+        );
         let repeated = fixture.remove(&digest, "--apply");
         assert!(
             repeated.status.success(),

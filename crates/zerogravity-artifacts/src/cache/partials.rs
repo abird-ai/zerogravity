@@ -291,7 +291,7 @@ fn recover_candidate(
     let publication = store.lock("publication", &transaction.cancel)?;
     publication.ensure_bound()?;
     let mut selected: Option<RecoveredPartial> = None;
-    for node in store.inner.root.walk_tree(MAX_NODES)? {
+    for node in store.inner.root.walk_canonical_tree(MAX_NODES)? {
         let parts: Vec<_> = node.path.split('/').collect();
         if node.is_directory
             || parts.len() != 3

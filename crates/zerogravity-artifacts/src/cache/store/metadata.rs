@@ -192,7 +192,7 @@ impl CacheMetadata {
     pub fn snapshots(&self) -> Result<Vec<SnapshotMetadata>> {
         let mut result = Vec::new();
         let mut bytes = 0usize;
-        for node in self.root.walk_tree(MAX_NODES)? {
+        for node in self.root.walk_canonical_tree(MAX_NODES)? {
             if let Some(d) = node.path.strip_prefix("snapshots/")
                 && node.is_directory
                 && !d.contains('/')

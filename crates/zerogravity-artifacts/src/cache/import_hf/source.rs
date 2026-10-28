@@ -431,7 +431,7 @@ impl SourceView {
         // Compact inode keys are the only retained inventory. The walk never
         // reads refs or unselected payload contents and keeps at most one
         // directory stream per depth; symlinks are metadata-only capabilities.
-        let mut source_walk = TreeWalk::new(source_identity, crossfs, None, cancel);
+        let mut source_walk = TreeWalk::new(source_identity, crossfs, None, false, cancel);
         source_walk.collected.insert(source_identity.inode_key());
         source_walk
             .collected
@@ -457,6 +457,7 @@ impl SourceView {
             target_identity,
             crossfs,
             Some(&source_walk.collected),
+            true,
             cancel,
         )
         .inspect(&target_file, 0, 0)?;
@@ -565,6 +566,7 @@ struct TreeWalk<'a> {
     mount: u64,
     device: Option<u64>,
     forbidden: Option<&'a BTreeSet<(u64, u64)>>,
+    skip_by_name: bool,
     collected: BTreeSet<(u64, u64)>,
     cancel: &'a AtomicBool,
     nodes: usize,
@@ -576,12 +578,14 @@ impl<'a> TreeWalk<'a> {
         root: RootIdentity,
         enforce_device: bool,
         forbidden: Option<&'a BTreeSet<(u64, u64)>>,
+        skip_by_name: bool,
         cancel: &'a AtomicBool,
     ) -> Self {
         Self {
             mount: root.mount,
             device: enforce_device.then_some(root.device),
             forbidden,
+            skip_by_name,
             collected: BTreeSet::new(),
             cancel,
             nodes: 0,
@@ -599,6 +603,35 @@ impl<'a> TreeWalk<'a> {
             let entry = os(entry)?;
             let name = entry.file_name();
             if name.to_bytes() == b"." || name.to_bytes() == b".." {
+                continue;
+            }
+            if self.skip_by_name && depth == 0 && name.to_bytes() == b"by-name" {
+                let before = os(fs::statat(directory, name, AtFlags::SYMLINK_NOFOLLOW))?;
+                if FileType::from_raw_mode(before.st_mode) != FileType::Directory {
+                    return Err(Error::State(
+                        "derived by-name cache projection must be a directory".into(),
+                    ));
+                }
+                let file = open_directory(directory, "by-name", self.mount)?;
+                let metadata = file.metadata()?;
+                if metadata.dev() != before.st_dev || metadata.ino() != before.st_ino {
+                    return Err(Error::State(
+                        "local import target changed during by-name inspection".into(),
+                    ));
+                }
+                if self.device.is_some_and(|device| metadata.dev() != device) {
+                    return Err(Error::Unsupported(
+                        "crossed topology devices in local HF import are unsupported".into(),
+                    ));
+                }
+                if self
+                    .forbidden
+                    .is_some_and(|forbidden| forbidden.contains(&identity(&metadata)))
+                {
+                    return Err(Error::State(
+                        "local HF source inode aliases destination by-name directory".into(),
+                    ));
+                }
                 continue;
             }
             self.nodes += 1;

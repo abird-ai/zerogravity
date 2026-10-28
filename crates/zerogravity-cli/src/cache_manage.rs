@@ -105,11 +105,71 @@ fn describe(report: &ReclaimReport) {
         }
         None => println!("Charged cache bytes after: unknown"),
     }
+    if let Some(warning) = report.by_name_warning() {
+        eprintln!(
+            "WARNING: canonical cache maintenance completed but by-name refresh needs repair: {warning}"
+        );
+    }
+}
+
+fn run_by_name(args: &[String]) -> Result<()> {
+    if args.len() == 1 && matches!(args[0].as_str(), "--help" | "-h" | "help") {
+        help();
+        return Ok(());
+    }
+    if args.len() < 3 || args.len() > 8 || args.iter().any(|arg| arg.len() > 4096) {
+        return Err(invalid());
+    }
+    if args[0] != "--refresh" {
+        return Err(invalid());
+    }
+    let mut root = None;
+    let mut disk = DEFAULT_DISK_LIMIT;
+    let mut seen = BTreeSet::new();
+    let mut rest = args[1..].iter();
+    while let Some(flag) = rest.next() {
+        if !seen.insert(flag.as_str()) {
+            return Err(invalid());
+        }
+        match flag.as_str() {
+            "--cache" => {
+                let value = rest.next().ok_or_else(invalid)?;
+                if !Path::new(value).is_absolute() || value.chars().any(char::is_control) {
+                    return Err(invalid());
+                }
+                root = Some(PathBuf::from(value));
+            }
+            "--disk-limit-bytes" => {
+                disk = rest
+                    .next()
+                    .ok_or_else(invalid)?
+                    .parse::<u64>()
+                    .ok()
+                    .filter(|value| *value > 0)
+                    .ok_or_else(invalid)?;
+            }
+            _ => return Err(invalid()),
+        }
+    }
+    let store =
+        CacheStore::open_existing(CacheOptions::new(Some(root.ok_or_else(invalid)?), disk))?;
+    let names = store.refresh_by_name()?;
+    println!(
+        "Refreshed {} human-only by-name aliases from canonical snapshots and refs.",
+        names.len()
+    );
+    for name in names {
+        println!("by-name/{name}");
+    }
+    Ok(())
 }
 
 pub(super) fn run(args: &[String]) -> Result<()> {
     if args.first().is_some_and(|arg| arg == "import-hf") {
         return import::run(&args[1..]);
+    }
+    if args.first().is_some_and(|arg| arg == "by-name") {
+        return run_by_name(&args[1..]);
     }
     if (args.len() == 1 && matches!(args[0].as_str(), "--help" | "-h" | "help"))
         || (args.len() == 2
@@ -156,6 +216,7 @@ fn help() {
     println!(
         "USAGE:
     zerogravity cache remove DIGEST --dry-run|--apply --cache ABS_PATH
+    zerogravity cache by-name --refresh --cache ABS_PATH
     zerogravity cache import-hf --help
 
 OPTIONS:
@@ -163,6 +224,14 @@ OPTIONS:
     --apply                   Revalidate and remove the exact unreferenced snapshot
     --cache ABS_PATH          Required existing cache root; never creates a root
     --disk-limit-bytes N      Existing cooperative disk policy (default16GiB)
+    by-name --refresh         Rebuild flat lowercase human-only symlinks from
+                              canonical snapshots and refs; never model authority
+
+by-name is one flat namespace. Each immutable snapshot gets a concise derived
+source alias (for example hf-qwen-qwen3.5-0.8b-2fc06364); non-default refs become
+custom aliases in the same directory. Collisions receive deterministic lowercase
+hash suffixes. Every link targets ../snapshots/DIGEST and is ignored by runtime,
+selection, provenance, quota and reclamation authority.
 
 Linux cache-only operation: no network, credentials, provider or signal handlers.
 import-hf explicitly copies selected local HF snapshot data; see its own help.

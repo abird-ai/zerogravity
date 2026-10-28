@@ -176,7 +176,7 @@ impl CacheStore {
     }
 
     fn prepare_reclamation(&self, digest: &str, cancel: &AtomicBool) -> Result<Prepared> {
-        let nodes = self.inner.root.walk_tree(MAX_NODES)?;
+        let nodes = self.inner.root.walk_canonical_tree(MAX_NODES)?;
         // walk_tree returns path-sorted entries. Graph validation stays bounded
         // by O(nodes log nodes), including roots with many empty markers.
         let find = |path: &str| {
@@ -487,6 +487,7 @@ impl CacheStore {
             removed_files: 0,
             removed_directories: 0,
             retained_blobs: prepared.retained_blobs,
+            by_name_warning: None,
         };
         if prepared.root.is_some()
             && !prepared.retired
@@ -568,6 +569,11 @@ impl CacheStore {
             }
             Ok(())
         })();
+        if result.is_ok()
+            && let Err(error) = self.refresh_by_name_locked()
+        {
+            report.by_name_warning = Some(error.to_string());
+        }
         report.used_after_bytes = activity
             .ensure_bound()
             .and_then(|()| publication.ensure_bound())

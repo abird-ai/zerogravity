@@ -14,9 +14,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use zerogravity_artifacts::Error;
 #[cfg(feature = "diagnostic-cache")]
 use zerogravity_artifacts::Result;
-#[cfg(feature = "diagnostic-cache")]
-use zerogravity_artifacts::cache::CommitOutcome;
-use zerogravity_artifacts::cache::{CacheStore, FileRole};
+use zerogravity_artifacts::cache::{CacheStore, CommitOutcome, FileRole};
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, ResourceOwner};
 
 #[test]
@@ -67,6 +65,84 @@ fn local_multifile_snapshot_ref_replacement_and_retained_lease() {
     assert_eq!(
         fs::metadata(&fixture.root).unwrap().permissions().mode() & 0o777,
         0o700
+    );
+}
+
+#[test]
+fn by_name_is_flat_lowercase_rebuildable_and_never_snapshot_authority() {
+    let fixture = Fixture::new();
+    let store = fixture.open();
+    let admission = admission(128 * 1024 * 1024);
+    let snapshot = durable(publish(&store, &admission, NEW, Some("Team/Primary_Model")).unwrap());
+    let target = std::path::PathBuf::from(format!("../snapshots/{snapshot}"));
+    let by_name = fixture.root.join("by-name");
+    let automatic = by_name.join("local-synthetic-fixture-immutable-test-revision");
+    let custom = by_name.join("team-primary-model");
+
+    assert_eq!(fs::read_link(&automatic).unwrap(), target);
+    assert_eq!(fs::read_link(&custom).unwrap(), target);
+    let entries = fs::read_dir(&by_name)
+        .unwrap()
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(entries.len(), 2);
+    for entry in entries {
+        let name = entry.file_name().into_string().unwrap();
+        assert_eq!(name, name.to_ascii_lowercase());
+        assert!(!name.contains('/'));
+        assert!(entry.file_type().unwrap().is_symlink());
+    }
+
+    fs::remove_file(&custom).unwrap();
+    symlink(
+        "../snapshots/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        &custom,
+    )
+    .unwrap();
+    assert_payload(&store.open_snapshot(&snapshot).unwrap(), NEW);
+    assert_eq!(store.list_snapshots().unwrap(), vec![snapshot.clone()]);
+    assert_eq!(store.usage().unwrap().reserved_bytes, 0);
+
+    let refreshed = store.refresh_by_name().unwrap();
+    assert!(refreshed.contains(&"team-primary-model".to_string()));
+    assert_eq!(fs::read_link(&custom).unwrap(), target);
+
+    let stale = by_name.join("UPPERCASE");
+    symlink(&target, &stale).unwrap();
+    store.refresh_by_name().unwrap();
+    assert!(fs::symlink_metadata(&stale).is_err());
+    assert_payload(&store.resolve_ref("Team/Primary_Model").unwrap(), NEW);
+}
+
+#[test]
+fn published_by_name_metadata_is_scoped_to_the_new_snapshot() {
+    let fixture = Fixture::new();
+    let store = fixture.open();
+    let admission = admission(128 * 1024 * 1024);
+
+    let first = durable(publish(&store, &admission, OLD, None).unwrap());
+    let outcome = publish(&store, &admission, NEW, Some("Friendly")).unwrap();
+    let CommitOutcome::Durable(published) = outcome else {
+        panic!("unexpected durability uncertainty");
+    };
+    let second = published.digest().to_owned();
+    assert_ne!(first, second);
+    assert!(published.by_name_warning().is_none());
+    assert!(published.by_name().iter().any(|name| name == "friendly"));
+
+    for name in published.by_name() {
+        assert_eq!(
+            fs::read_link(fixture.root.join("by-name").join(name)).unwrap(),
+            std::path::PathBuf::from(format!("../snapshots/{second}"))
+        );
+    }
+    let first_target = std::path::PathBuf::from(format!("../snapshots/{first}"));
+    assert!(
+        fs::read_dir(fixture.root.join("by-name"))
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .any(|entry| fs::read_link(entry.path()).ok().as_ref() == Some(&first_target)),
+        "the prior snapshot keeps its independent derived source alias"
     );
 }
 

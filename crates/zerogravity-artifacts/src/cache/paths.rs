@@ -266,9 +266,24 @@ impl RootDir {
         file_bound(&parent, &name, &file)?;
         Ok(Some(file))
     }
-    /// Bounded no-follow inventory includes the root and all empty directories.
-    /// Identity and metadata must be charged by the store, not this path layer.
+    /// Strict bounded no-follow inventory includes the root and all empty
+    /// directories. Symlinks are rejected everywhere. This is used while
+    /// establishing cache trust, before any derived human projection may be
+    /// ignored.
     pub(crate) fn walk_tree(&self, maximum: usize) -> Result<Vec<CacheNode>> {
+        self.walk_tree_inner(maximum, false)
+    }
+
+    /// Canonical cache inventory. The top-level by-name directory is a
+    /// derived, human-only projection and is deliberately excluded from
+    /// canonical accounting, selection, reclamation and provenance walks.
+    /// Its directory inode must still be owner-private and must never itself
+    /// be a symlink. No descendant is followed or trusted here.
+    pub(crate) fn walk_canonical_tree(&self, maximum: usize) -> Result<Vec<CacheNode>> {
+        self.walk_tree_inner(maximum, true)
+    }
+
+    fn walk_tree_inner(&self, maximum: usize, skip_by_name: bool) -> Result<Vec<CacheNode>> {
         if maximum == 0 {
             return Err(Error::Limit("cache inventory limit is zero".into()));
         }
@@ -286,6 +301,18 @@ impl RootDir {
                 if name == "." || name == ".." {
                     continue;
                 }
+                let before = os(fs::statat(&directory, name, AtFlags::SYMLINK_NOFOLLOW))?;
+                let kind = FileType::from_raw_mode(before.st_mode);
+                if skip_by_name && prefix.is_empty() && name == "by-name" {
+                    if kind != FileType::Directory {
+                        return Err(Error::State(
+                            "derived by-name cache projection must be a directory".into(),
+                        ));
+                    }
+                    let projected = child_dir(&directory, OsStr::new(name), false)?;
+                    private_dir(&projected)?;
+                    continue;
+                }
                 if nodes.len() == maximum {
                     return Err(Error::Limit("cache inventory entry limit".into()));
                 }
@@ -301,8 +328,6 @@ impl RootDir {
                     format!("{prefix}/{name}")
                 };
                 validate_relative_path(&path)?;
-                let before = os(fs::statat(&directory, name, AtFlags::SYMLINK_NOFOLLOW))?;
-                let kind = FileType::from_raw_mode(before.st_mode);
                 let file = match kind {
                     FileType::Directory => child_dir(&directory, OsStr::new(name), false)?,
                     FileType::RegularFile => File::from(os(fs::openat(

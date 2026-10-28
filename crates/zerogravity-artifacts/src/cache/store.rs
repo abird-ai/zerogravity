@@ -24,6 +24,8 @@ use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, Glo
 #[path = "store/metadata.rs"]
 mod metadata;
 pub use metadata::{CacheMetadata, SnapshotMetadata};
+#[path = "by_name.rs"]
+mod by_name;
 
 const UNIT: u64 = 4096;
 const MAX_NODES: usize = 131_072;
@@ -668,7 +670,7 @@ impl CacheStore {
     /// inode once, at least rounded logical bytes, observed allocated blocks,
     /// plus fixed metadata allowance. It does not reserve filesystem free space.
     fn usage_locked(&self) -> Result<DiskUsage> {
-        let nodes = self.inner.root.walk_tree(MAX_NODES)?;
+        let nodes = self.inner.root.walk_canonical_tree(MAX_NODES)?;
         let used = inode_charge(nodes.iter())?;
         let mut reserved = 0;
         for node in &nodes {
@@ -756,7 +758,7 @@ impl CacheStore {
         let lock = self.lock("publication", &AtomicBool::new(false))?;
         lock.ensure_bound()?;
         let mut result = Vec::new();
-        for node in self.inner.root.walk_tree(MAX_NODES)? {
+        for node in self.inner.root.walk_canonical_tree(MAX_NODES)? {
             if let Some(name) = node.path.strip_prefix("snapshots/")
                 && node.is_directory
                 && !name.contains('/')
@@ -1560,9 +1562,11 @@ impl CacheTransaction {
         #[cfg(feature = "diagnostic-cache")]
         self.store
             .point(CacheOperation::SnapshotParentSync, CacheMoment::After, None)?;
-        let published = PublishedSnapshot {
+        let mut published = PublishedSnapshot {
             digest: self.digest.clone(),
             reference: reference.map(str::to_string),
+            by_name: Vec::new(),
+            by_name_warning: None,
         };
         if let Some(path) = reference_path {
             let temporary = self.stage("reference.json");
@@ -1651,6 +1655,10 @@ impl CacheTransaction {
                 Ok(())
             })();
             if let Err(cause) = durability {
+                published.by_name_warning = Some(
+                    "by-name projection not refreshed because canonical reference durability is unknown"
+                        .into(),
+                );
                 return Ok(CommitOutcome::DurabilityUnknown {
                     snapshot: published,
                     reference: reference.map(str::to_string),
@@ -1658,8 +1666,20 @@ impl CacheTransaction {
                 });
             }
         }
+        match self.store.refresh_by_name_locked() {
+            Ok(names) => {
+                let target = format!("../snapshots/{}", self.digest);
+                published.by_name = names
+                    .into_iter()
+                    .filter_map(|(name, value)| (value == target).then_some(name))
+                    .collect();
+            }
+            Err(error) => published.by_name_warning = Some(error.to_string()),
+        }
         // Reservation is released by exact-owned staging cleanup. Installed
         // unreferenced snapshots/blobs remain in the next inventory charge.
+        // The human-only by-name projection is independently rebuildable and
+        // never changes canonical publication durability or authority.
         Ok(CommitOutcome::Durable(published))
     }
 }
@@ -1839,7 +1859,7 @@ impl Drop for CacheTransaction {
             return;
         }
         let prefix = format!("staging/{}/", self.attempt);
-        if let Ok(nodes) = self.store.inner.root.walk_tree(MAX_NODES) {
+        if let Ok(nodes) = self.store.inner.root.walk_canonical_tree(MAX_NODES) {
             let mut owned: Vec<_> = nodes
                 .into_iter()
                 .filter(|x| x.path.starts_with(&prefix))
