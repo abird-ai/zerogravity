@@ -216,6 +216,15 @@ impl SourceInvocation {
     pub fn emit_logits(&self) -> bool {
         self.emit_logits
     }
+
+    /// Bind the caller-declared execution phase without inferring it from row
+    /// count or position. A one-row continuation can be prefill or decode.
+    pub fn source_call(&self, mode: SourceCallMode) -> Result<SourceCall> {
+        SourceCall::new(
+            SourceRows::new(self.geometry, self.base, self.ids.clone())?,
+            mode,
+        )
+    }
 }
 
 /// One shared static plan plus request-local invocation data. This wrapper has
@@ -239,6 +248,125 @@ impl BoundSourceInvocation {
         } else {
             self.plan.state_nodes()
         }
+    }
+
+    /// Materialize request-local mathematical descriptors from the immutable
+    /// template. This preserves shared topology/semantics and grants no launch,
+    /// completion, queue or StateRoot authority.
+    pub fn materialize_source_plan(&self, mode: SourceCallMode) -> Result<ForwardPlan> {
+        let geometry = self
+            .plan
+            .source_template
+            .ok_or_else(|| Error::State("not a call-free source plan".into()))?;
+        let call = self.invocation.source_call(mode)?;
+        if call.source() != geometry.source()
+            || call.rows().capacity() != geometry.context_capacity()
+            || call.rows().vocabulary() != geometry.vocabulary()
+            || call.rows().len() > geometry.max_rows()
+        {
+            return Err(Error::State(
+                "source materialization differs from static plan bounds".into(),
+            ));
+        }
+
+        let mut bound = (*self.plan).clone();
+        if bound.source_call.is_some()
+            || bound.binding_metadata.is_some()
+            || bound.source_provenance.len() != bound.values().len()
+            || bound.source_provenance.iter().any(Option::is_some)
+        {
+            return Err(Error::State(
+                "source template already carries invocation-local state".into(),
+            ));
+        }
+
+        for node_index in 0..bound.nodes.len() {
+            let node = &bound.nodes[node_index];
+            let (template, state) = match &node.operation {
+                PlanOperation::SourceOperatorTemplate { descriptor, state } => {
+                    ((**descriptor).clone(), *state)
+                }
+                _ => {
+                    return Err(Error::State(
+                        "source materialization contains non-template operation".into(),
+                    ));
+                }
+            };
+            if template.source() != geometry.source()
+                || template.vocabulary() != geometry.vocabulary()
+                || template.max_rows() != geometry.max_rows()
+            {
+                return Err(Error::State(
+                    "source materialization template geometry differs".into(),
+                ));
+            }
+            let descriptor = template.bind_call(&call)?;
+            let input_elements = descriptor.input_elements()?;
+            let output_elements = descriptor.output_elements()?;
+            if input_elements.len() != node.inputs.len()
+                || output_elements.len() != node.outputs.len()
+                || node
+                    .inputs
+                    .iter()
+                    .zip(input_elements)
+                    .any(|(&id, elements)| {
+                        bound
+                            .values()
+                            .get(id.0 as usize)
+                            .and_then(|shape| shape.capacity_elements().ok())
+                            .is_none_or(|capacity| elements > capacity)
+                    })
+                || node
+                    .outputs
+                    .iter()
+                    .zip(output_elements)
+                    .any(|(&id, elements)| {
+                        bound
+                            .values()
+                            .get(id.0 as usize)
+                            .and_then(|shape| shape.capacity_elements().ok())
+                            .is_none_or(|capacity| elements > capacity)
+                    })
+            {
+                return Err(Error::State(
+                    "source materialization active extent exceeds static value".into(),
+                ));
+            }
+
+            let inputs: Arc<[ValueId]> = node.inputs.clone().into();
+            let outputs = node.outputs.clone();
+            for (output_index, id) in outputs.iter().copied().enumerate() {
+                let slot = bound
+                    .source_provenance
+                    .get_mut(id.0 as usize)
+                    .ok_or_else(|| {
+                        Error::State("source materialization output slot absent".into())
+                    })?;
+                if slot.is_some() {
+                    return Err(Error::State(
+                        "source materialization output producer duplicated".into(),
+                    ));
+                }
+                *slot = Some(SourceValueProvenance {
+                    call: call.clone(),
+                    node_index,
+                    output_index,
+                    inputs: inputs.clone(),
+                });
+            }
+            bound.nodes[node_index].operation = PlanOperation::SourceOperator {
+                descriptor: Box::new(descriptor),
+                state,
+            };
+        }
+
+        if bound.source_provenance.iter().any(Option::is_none) {
+            return Err(Error::State(
+                "source materialization producer coverage incomplete".into(),
+            ));
+        }
+        bound.source_call = Some(call);
+        Ok(bound)
     }
 }
 
@@ -504,6 +632,68 @@ impl SourceOperatorTemplate {
         SourceOperator::new(
             SourceCall::new(rows, SourceCallMode::Prefill)?,
             self.kind(),
+            self.numerical_contract(),
+            self.matrices().to_vec(),
+            self.parameters().to_vec(),
+        )
+    }
+
+    fn bind_call(&self, call: &SourceCall) -> Result<SourceOperator> {
+        if call.source() != self.source
+            || call.rows().vocabulary() != self.vocabulary
+            || call.rows().len() > self.max_rows
+        {
+            return Err(Error::State(
+                "source template actual call/source/rows differ".into(),
+            ));
+        }
+        let kind = match (self.row_selection, self.kind()) {
+            (
+                SourceRowSelection::LastActive,
+                SourceOperatorKind::Projection { selected_row: None },
+            ) => SourceOperatorKind::Projection {
+                selected_row: Some(
+                    call.rows()
+                        .len()
+                        .checked_sub(1)
+                        .ok_or_else(|| Error::State("source last-active row absent".into()))?,
+                ),
+            },
+            (SourceRowSelection::LastActive, _) => {
+                return Err(Error::State(
+                    "source last-active binding requires projection".into(),
+                ));
+            }
+            (
+                SourceRowSelection::AllActive,
+                SourceOperatorKind::Projection {
+                    selected_row: Some(_),
+                },
+            ) => {
+                return Err(Error::State(
+                    "source all-active projection carries selected row".into(),
+                ));
+            }
+            (
+                SourceRowSelection::AllActive,
+                SourceOperatorKind::KvAppend {
+                    domain,
+                    key_width,
+                    mut packed_value,
+                },
+            ) => {
+                packed_value.rows = call.rows().len();
+                SourceOperatorKind::KvAppend {
+                    domain,
+                    key_width,
+                    packed_value,
+                }
+            }
+            (SourceRowSelection::AllActive, kind) => kind,
+        };
+        SourceOperator::new(
+            call.clone(),
+            kind,
             self.numerical_contract(),
             self.matrices().to_vec(),
             self.parameters().to_vec(),

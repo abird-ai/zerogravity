@@ -484,7 +484,9 @@ fn ordinary_plan_and_invocation_retain_exact_source_and_workspace_without_a_cycl
     assert!(plan.source().same_issuer(&source));
     assert!(plan.source_seal().source().same_issuer(&source));
     assert_eq!(plan.plan().source(), source.source_identity());
-    let invocation = plan.bind_invocation(0, Arc::from([11, 353]), true).unwrap();
+    let invocation = plan
+        .bind_invocation(SourceCallMode::Prefill, 0, Arc::from([11, 353]), true)
+        .unwrap();
     assert!(invocation.source().same_issuer(&source));
     assert!(Arc::ptr_eq(invocation.plan(), plan.plan()));
 

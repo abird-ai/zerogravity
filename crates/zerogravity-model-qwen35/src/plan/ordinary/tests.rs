@@ -94,11 +94,12 @@ fn plan(
 fn invocation(
     plan: &RecordedOrdinaryPlan,
     profile: QwenSourceProfile,
+    mode: SourceCallMode,
     base: usize,
     ids: Arc<[u32]>,
     emit_logits: bool,
 ) -> Result<BoundSourceInvocation> {
-    plan.plan.bind_source_invocation(SourceInvocation::new(
+    let bound = plan.plan.bind_source_invocation(SourceInvocation::new(
         TextCallGeometry::new(
             plan.plan.source(),
             profile.vocabulary_size(),
@@ -107,7 +108,9 @@ fn invocation(
         base,
         ids,
         emit_logits,
-    )?)
+    )?)?;
+    bound.invocation().source_call(mode)?;
+    Ok(bound)
 }
 
 #[test]
@@ -151,8 +154,24 @@ fn one_static_plan_serves_runtime_lengths_ids_and_emit_policy_for_both_profiles(
             assert_eq!(descriptor.row_selection(), SourceRowSelection::LastActive);
             assert_eq!(descriptor.output_elements().unwrap(), [248_320]);
 
-            let first = invocation(&plan, profile, 0, Arc::from([11, 353]), true).unwrap();
-            let cached = invocation(&plan, profile, capacity - 1, Arc::from([7]), false).unwrap();
+            let first = invocation(
+                &plan,
+                profile,
+                SourceCallMode::Prefill,
+                0,
+                Arc::from([11, 353]),
+                true,
+            )
+            .unwrap();
+            let cached = invocation(
+                &plan,
+                profile,
+                SourceCallMode::Decode,
+                capacity - 1,
+                Arc::from([7]),
+                false,
+            )
+            .unwrap();
             assert!(Arc::ptr_eq(first.plan(), cached.plan()));
             assert!(Arc::ptr_eq(first.plan(), &plan.plan));
             assert_eq!(
@@ -170,6 +189,45 @@ fn one_static_plan_serves_runtime_lengths_ids_and_emit_policy_for_both_profiles(
             assert!(std::ptr::eq(first.active_nodes(), plan.plan.nodes()));
             assert!(std::ptr::eq(cached.active_nodes(), plan.plan.state_nodes()));
             assert_eq!(first.active_nodes().len(), cached.active_nodes().len() + 1);
+
+            let materialized = first
+                .materialize_source_plan(SourceCallMode::Prefill)
+                .unwrap();
+            assert!(materialized.shares_semantics(&plan.plan));
+            assert!(materialized.source_call().is_some());
+            assert_eq!(materialized.source_call().unwrap().rows().ids(), [11, 353]);
+            assert!(
+                materialized
+                    .nodes()
+                    .iter()
+                    .all(|node| matches!(node.operation, PlanOperation::SourceOperator { .. }))
+            );
+            let head = materialized.nodes().last().unwrap();
+            let PlanOperation::SourceOperator { descriptor, .. } = &head.operation else {
+                unreachable!()
+            };
+            assert_eq!(
+                descriptor.kind(),
+                SourceOperatorKind::Projection {
+                    selected_row: Some(1)
+                }
+            );
+            let kv = materialized
+                .nodes()
+                .iter()
+                .find_map(|node| match &node.operation {
+                    PlanOperation::SourceOperator { descriptor, .. }
+                        if matches!(descriptor.kind(), SourceOperatorKind::KvAppend { .. }) =>
+                    {
+                        Some(descriptor)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            let SourceOperatorKind::KvAppend { packed_value, .. } = kv.kind() else {
+                unreachable!()
+            };
+            assert_eq!(packed_value.rows, 2);
         }
     }
 }
@@ -182,10 +240,98 @@ fn ordinary_plan_refuses_bad_context_chunk_frontier_ids_and_source_descriptors()
         assert!(plan(source, profile, capacity).is_err());
     }
     let plan = plan(source, profile, 512).unwrap();
-    assert!(invocation(&plan, profile, 0, Arc::from([]), true).is_err());
-    assert!(invocation(&plan, profile, 0, Arc::from(vec![11; 65]), true).is_err());
-    assert!(invocation(&plan, profile, 500, Arc::from(vec![11; 13]), true).is_err());
-    assert!(invocation(&plan, profile, 0, Arc::from([248_320]), true).is_err());
+    assert!(
+        invocation(
+            &plan,
+            profile,
+            SourceCallMode::Prefill,
+            0,
+            Arc::from([]),
+            true
+        )
+        .is_err()
+    );
+    assert!(
+        invocation(
+            &plan,
+            profile,
+            SourceCallMode::Prefill,
+            0,
+            Arc::from(vec![11; 65]),
+            true
+        )
+        .is_err()
+    );
+    assert!(
+        invocation(
+            &plan,
+            profile,
+            SourceCallMode::Prefill,
+            500,
+            Arc::from(vec![11; 13]),
+            true
+        )
+        .is_err()
+    );
+    assert!(
+        invocation(
+            &plan,
+            profile,
+            SourceCallMode::Prefill,
+            0,
+            Arc::from([248_320]),
+            true
+        )
+        .is_err()
+    );
+    assert!(
+        invocation(
+            &plan,
+            profile,
+            SourceCallMode::Decode,
+            0,
+            Arc::from([11]),
+            true
+        )
+        .is_err()
+    );
+
+    let one_prefill = invocation(
+        &plan,
+        profile,
+        SourceCallMode::Prefill,
+        7,
+        Arc::from([11]),
+        true,
+    )
+    .unwrap();
+    let one_decode = invocation(
+        &plan,
+        profile,
+        SourceCallMode::Decode,
+        7,
+        Arc::from([11]),
+        true,
+    )
+    .unwrap();
+    assert_eq!(
+        one_prefill
+            .materialize_source_plan(SourceCallMode::Prefill)
+            .unwrap()
+            .source_call()
+            .unwrap()
+            .mode(),
+        SourceCallMode::Prefill
+    );
+    assert_eq!(
+        one_decode
+            .materialize_source_plan(SourceCallMode::Decode)
+            .unwrap()
+            .source_call()
+            .unwrap()
+            .mode(),
+        SourceCallMode::Decode
+    );
 
     let foreign = SourceIdentity::for_new_allocation().unwrap();
     assert!(

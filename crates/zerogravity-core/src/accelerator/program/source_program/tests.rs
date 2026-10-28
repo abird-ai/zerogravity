@@ -268,6 +268,38 @@ fn call_free_plan_binds_dynamic_rows_without_node_or_id_capture() {
     assert!(std::ptr::eq(b.active_nodes(), plan.state_nodes()));
     assert_eq!(a.active_nodes().len(), b.active_nodes().len() + 1);
 
+    let materialized = a.materialize_source_plan(SourceCallMode::Prefill).unwrap();
+    assert!(materialized.shares_semantics(&plan));
+    assert_eq!(materialized.source_call().unwrap().rows().ids(), [1, 2]);
+    assert!(
+        materialized
+            .nodes()
+            .iter()
+            .all(|node| matches!(node.operation, PlanOperation::SourceOperator { .. }))
+    );
+    assert!(materialized.source_provenance.iter().all(Option::is_some));
+    let head = materialized.nodes().last().unwrap();
+    let PlanOperation::SourceOperator { descriptor, .. } = &head.operation else {
+        unreachable!()
+    };
+    assert_eq!(
+        descriptor.kind(),
+        SourceOperatorKind::Projection {
+            selected_row: Some(1)
+        }
+    );
+
+    let one = bind(29, &[3], true).unwrap();
+    let prefill = one
+        .materialize_source_plan(SourceCallMode::Prefill)
+        .unwrap();
+    let decode = one.materialize_source_plan(SourceCallMode::Decode).unwrap();
+    assert_eq!(
+        prefill.source_call().unwrap().mode(),
+        SourceCallMode::Prefill
+    );
+    assert_eq!(decode.source_call().unwrap().mode(), SourceCallMode::Decode);
+
     assert!(bind(500, &[1; 13], true).is_err());
     assert!(bind(0, &[1; 65], true).is_err());
     assert!(bind(0, &[17], true).is_err());

@@ -55,6 +55,7 @@ impl OrdinaryQwenPlan {
     /// Bind request data without cloning/rebinding the plan or minting a root.
     pub fn bind_invocation(
         &self,
+        mode: SourceCallMode,
         base: usize,
         ids: Arc<[u32]>,
         emit_logits: bool,
@@ -69,10 +70,14 @@ impl OrdinaryQwenPlan {
             ids,
             emit_logits,
         )?;
+        let bound = self.owner.plan.bind_source_invocation(invocation)?;
+        // Phase is explicit; never infer cached decode from row count or base.
+        bound.invocation().source_call(mode)?;
         Ok(OrdinaryQwenInvocation {
-            bound: self.owner.plan.bind_source_invocation(invocation)?,
+            bound,
             owner: self.owner.clone(),
             profile: self.profile,
+            mode,
         })
     }
 }
@@ -82,6 +87,7 @@ pub struct OrdinaryQwenInvocation {
     bound: BoundSourceInvocation,
     owner: Arc<OrdinaryQwenPlanOwner>,
     profile: QwenSourceProfile,
+    mode: SourceCallMode,
 }
 impl OrdinaryQwenInvocation {
     pub fn plan(&self) -> &Arc<ForwardPlan> {
@@ -95,6 +101,15 @@ impl OrdinaryQwenInvocation {
     }
     pub fn model_profile(&self) -> QwenSourceProfile {
         self.profile
+    }
+    pub fn mode(&self) -> SourceCallMode {
+        self.mode
+    }
+    pub fn source_call(&self) -> Result<SourceCall> {
+        self.bound.invocation().source_call(self.mode)
+    }
+    pub fn materialize_source_plan(&self) -> Result<ForwardPlan> {
+        self.bound.materialize_source_plan(self.mode)
     }
     pub fn base(&self) -> usize {
         self.bound.invocation().base()
