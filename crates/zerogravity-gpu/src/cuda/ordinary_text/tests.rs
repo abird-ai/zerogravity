@@ -490,6 +490,70 @@ fn role_access_service_extent_alignment_and_alias_policy_are_checked() -> Result
 }
 
 #[test]
+fn owner_gated_status_binding_uses_the_same_exact_abi_without_minting_completion() -> Result<()> {
+    use cubecl_common::device::DeviceId;
+    use cubecl_core::environment::stream::StreamId;
+
+    let service = ServiceId::of::<()>(DeviceId::new(0, 0));
+    let stream = StreamId::current();
+    let definition = program().sigmoid(2)?;
+    let mut bindings = definition
+        .bindings()
+        .iter()
+        .filter(|binding| binding.role != BufferRole::Status)
+        .map(|expected| {
+            LaunchBinding::new(
+                expected.role,
+                expected.access,
+                Handle::new(service, stream, expected.bytes as u64),
+            )
+        })
+        .collect::<Vec<_>>();
+    let status = LaunchBinding::new(
+        BufferRole::Status,
+        Access::ReadWrite,
+        Handle::new(service, stream, 4),
+    );
+    let (validated, retained) =
+        definition.validated_owner_bindings(service, bindings.clone(), status.clone())?;
+    assert_eq!(validated.len(), definition.bindings().len());
+    assert!(same_range(&retained, &status.handle)?);
+
+    // Caller cannot smuggle its own status among data operands.
+    bindings.push(status.clone());
+    assert!(
+        definition
+            .validated_owner_bindings(service, bindings, status.clone())
+            .is_err()
+    );
+
+    // The owner status is still the exact four-byte RW range, not merely a
+    // same-size or overlapping allocation.
+    let wrong = LaunchBinding::new(
+        BufferRole::Status,
+        Access::ReadWrite,
+        Handle::new(service, stream, 4),
+    );
+    definition.validated_owner_bindings(
+        service,
+        validated[..validated.len() - 1].to_vec(),
+        wrong.clone(),
+    )?;
+    assert!(require_same_status(&retained, &wrong).is_err());
+    let wrong_access = LaunchBinding::new(BufferRole::Status, Access::Read, status.handle.clone());
+    assert!(
+        definition
+            .validated_owner_bindings(
+                service,
+                validated[..validated.len() - 1].to_vec(),
+                wrong_access,
+            )
+            .is_err()
+    );
+    Ok(())
+}
+
+#[test]
 fn status_clear_submit_fence_read_order_and_publication_gate_are_mandatory() {
     let mut wrong = StatusProtocol::new();
     assert!(wrong.submitted().is_err());

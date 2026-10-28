@@ -473,24 +473,32 @@ impl Definition {
     pub(crate) fn prepare<S: CallerStatusContract>(
         &self,
         client: &Client,
-        mut bindings: Vec<LaunchBinding>,
+        bindings: Vec<LaunchBinding>,
         status: &S,
     ) -> Result<PreparedLaunch> {
-        if bindings
-            .iter()
-            .any(|binding| binding.role == BufferRole::Status)
-        {
-            return Err(Error::State(
-                "ordinary text status must come from its caller owner".into(),
-            ));
-        }
-        bindings.push(status.binding());
-        self.validate_bindings(client.service_id(), &bindings)?;
-        let status_handle = bindings
-            .last()
-            .ok_or_else(|| Error::State("ordinary text status binding absent".into()))?
-            .handle
-            .clone();
+        self.prepare_with_status_binding(client, bindings, status.binding())
+    }
+
+    /// Same checked ABI seam for an enclosing physical owner that already owns
+    /// one status epoch for the complete graph. This does not clear, submit,
+    /// synchronize, read status, or publish completion.
+    pub(crate) fn prepare_owned(
+        &self,
+        client: &Client,
+        bindings: Vec<LaunchBinding>,
+        status: LaunchBinding,
+    ) -> Result<PreparedLaunch> {
+        self.prepare_with_status_binding(client, bindings, status)
+    }
+
+    fn prepare_with_status_binding(
+        &self,
+        client: &Client,
+        bindings: Vec<LaunchBinding>,
+        status: LaunchBinding,
+    ) -> Result<PreparedLaunch> {
+        let (bindings, status_handle) =
+            self.validated_owner_bindings(client.service_id(), bindings, status)?;
         Ok(PreparedLaunch {
             inner: self.kernel.prepare(
                 client,
@@ -500,6 +508,27 @@ impl Definition {
             primitive: self.primitive,
             status_handle,
         })
+    }
+
+    fn validated_owner_bindings(
+        &self,
+        service: ServiceId,
+        mut bindings: Vec<LaunchBinding>,
+        status: LaunchBinding,
+    ) -> Result<(Vec<LaunchBinding>, Handle)> {
+        if bindings
+            .iter()
+            .any(|binding| binding.role == BufferRole::Status)
+        {
+            return Err(Error::State(
+                "ordinary text status must come from its caller owner".into(),
+            ));
+        }
+        require_same_status(&status.handle, &status)?;
+        let status_handle = status.handle.clone();
+        bindings.push(status);
+        self.validate_bindings(service, &bindings)?;
+        Ok((bindings, status_handle))
     }
 
     fn validate_bindings(&self, service: ServiceId, bindings: &[LaunchBinding]) -> Result<()> {
@@ -592,6 +621,15 @@ pub(crate) struct PreparedLaunch {
 impl PreparedLaunch {
     pub(crate) fn primitive(&self) -> Primitive {
         self.primitive
+    }
+
+    /// Enqueue under an enclosing owner's already-cleared status epoch. The
+    /// owner retains all physical leases and performs the only completion/status
+    /// read. This returns no completion or publication authority.
+    pub(crate) fn enqueue_owned(&self, client: &Client, status: &Handle) -> Result<()> {
+        let actual = LaunchBinding::new(BufferRole::Status, Access::ReadWrite, status.clone());
+        require_same_status(&self.status_handle, &actual)?;
+        self.inner.launch_on(client)
     }
 
     /// Clear through the caller's owner, submit once, then wait/read through
