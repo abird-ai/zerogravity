@@ -9,6 +9,58 @@ fn multiply_by_two(input: &[f32], output: &mut [f32]) {
     }
 }
 
+#[cfg(all(test, feature = "cuda-cublas"))]
+#[cube(launch_unchecked)]
+fn source_silu_mul_oracle(
+    gate: &[f32],
+    up: &[f32],
+    output: &mut [f32],
+    status: &[Atomic<u32>],
+    #[comptime] elements: usize,
+) {
+    let i = ABSOLUTE_POS;
+    if i < elements {
+        let g = gate[i];
+        let u = up[i];
+        let s = crate::source_arithmetic::bf16(crate::source_sleef::silu(g));
+        let y = crate::source_arithmetic::bf16(crate::source_arithmetic::mul(s, u));
+        output[i] = y;
+        if !crate::source_arithmetic::source_bf16(g)
+            || !crate::source_arithmetic::source_bf16(u)
+            || !crate::source_arithmetic::finite(y)
+        {
+            status[0].fetch_or(crate::program_kernels::NONFINITE_VALUE);
+        }
+    }
+}
+
+#[cfg(all(test, feature = "cuda-cublas"))]
+#[cube(launch_unchecked)]
+fn source_sigmoid_oracle(
+    input: &[f32],
+    output: &mut [f32],
+    status: &[Atomic<u32>],
+    #[comptime] elements: usize,
+) {
+    let i = ABSOLUTE_POS;
+    if i < elements {
+        let x = input[i];
+        let e = crate::source_sleef::exp(crate::source_arithmetic::neg(x));
+        let y = crate::source_arithmetic::bf16(crate::source_arithmetic::div(
+            1.0f32,
+            crate::source_arithmetic::add(1.0f32, e),
+        ));
+        output[i] = y;
+        if !crate::source_arithmetic::source_bf16(x)
+            || !crate::source_arithmetic::finite(y)
+            || y < 0.0f32
+            || y > 1.0f32
+        {
+            status[0].fetch_or(crate::program_kernels::NONFINITE_VALUE);
+        }
+    }
+}
+
 /// Actual basic device dispatch; no model support claim.
 pub fn qualify_dispatch(device: Device, name: &str) {
     let client = device.client();
@@ -131,6 +183,652 @@ pub use crate::resident_program::typed_slice::qualification::{
     CompletedSlice, SliceFault, SliceOutcome, qualify_portable_bf16_slice,
     qualify_portable_bf16_slice_cross_provider,
 };
+
+#[cfg(all(
+    test,
+    feature = "cuda-cublas",
+    feature = "qwen-source-qualification",
+    target_os = "linux"
+))]
+fn qualify_ordinary_rms_source_parity(device: Device) -> zerogravity_core::Result<()> {
+    use crate::cuda::ordinary_text::{Access, BufferRole, Geometry, LaunchBinding, Program};
+    use zerogravity_core::{Error, Result};
+
+    const WIDTH: usize = 1024;
+    const EPSILON: f32 = 1e-6;
+    const VALUE_PATTERNS: [u16; 12] = [
+        0x3d80, 0xbd80, 0x3e80, 0xbe80, 0x3f00, 0xbf00, 0x3f80, 0xbf80, 0x4000, 0xc000, 0x4040,
+        0xc040,
+    ];
+    const GAMMA_PATTERNS: [u16; 8] = [
+        0x0000, 0x3c80, 0xbc80, 0x3d00, 0xbd00, 0x3d80, 0xbd80, 0x3e00,
+    ];
+
+    fn bf16_values(count: usize, salt: usize, patterns: &[u16]) -> Vec<u16> {
+        (0..count)
+            .map(|index| patterns[(index * 17 + salt * 13) % patterns.len()])
+            .collect()
+    }
+    fn bf16_bytes(values: &[u16]) -> Vec<u8> {
+        values
+            .iter()
+            .flat_map(|value| value.to_le_bytes())
+            .collect()
+    }
+    fn widen(values: &[u16]) -> Vec<f32> {
+        values
+            .iter()
+            .map(|&value| f32::from_bits(u32::from(value) << 16))
+            .collect()
+    }
+    fn parse_u16(bytes: &[u8], label: &str) -> Result<Vec<u16>> {
+        if !bytes.len().is_multiple_of(2) {
+            return Err(Error::State(format!("{label} BF16 readback alignment")));
+        }
+        Ok(bytes
+            .chunks_exact(2)
+            .map(|word| u16::from_le_bytes([word[0], word[1]]))
+            .collect())
+    }
+    fn parse_u32(bytes: &[u8], label: &str) -> Result<u32> {
+        let word: [u8; 4] = bytes
+            .try_into()
+            .map_err(|_| Error::State(format!("{label} status readback extent")))?;
+        Ok(u32::from_le_bytes(word))
+    }
+
+    let client = device.client();
+    let ordinary = Program::new(Geometry::qwen35_08())?;
+    let gamma_bits = bf16_values(WIDTH, 5, &GAMMA_PATTERNS);
+    let source_gamma = widen(&gamma_bits);
+
+    for rows in [1usize, 2, 17, 64] {
+        let count = rows * WIDTH;
+        let input_bits = bf16_values(count, rows, &VALUE_PATTERNS);
+        let source_input = widen(&input_bits);
+
+        let ordinary_input = client.create_from_slice(&bf16_bytes(&input_bits));
+        let ordinary_gamma = client.create_from_slice(&bf16_bytes(&gamma_bits));
+        let ordinary_output = client.empty(count * 2);
+        let ordinary_status = client.create_from_slice(u32::as_bytes(&[0u32]));
+        let definition = ordinary.rms(rows, EPSILON)?;
+        let prepared = definition.prepare_owned(
+            &client,
+            vec![
+                LaunchBinding::new(BufferRole::Input, Access::Read, ordinary_input),
+                LaunchBinding::new(BufferRole::RawGamma, Access::Read, ordinary_gamma),
+                LaunchBinding::new(BufferRole::Output, Access::Write, ordinary_output.clone()),
+            ],
+            LaunchBinding::new(
+                BufferRole::Status,
+                Access::ReadWrite,
+                ordinary_status.clone(),
+            ),
+        )?;
+        prepared.enqueue_owned(&client, &ordinary_status)?;
+
+        let source_input_handle = client.create_from_slice(f32::as_bytes(&source_input));
+        let source_gamma_handle = client.create_from_slice(f32::as_bytes(&source_gamma));
+        let source_output = client.empty(count * 4);
+        let source_status = client.create_from_slice(u32::as_bytes(&[0u32]));
+        let zero = client.create_from_slice(f32::as_bytes(&[0.0f32]));
+        let extents = [count, rows, rows, rows, rows, rows, count, count];
+        let scratch = extents
+            .into_iter()
+            .map(|elements| client.empty(elements * 4))
+            .collect::<Vec<_>>();
+        crate::source_rms::launch(
+            &client,
+            &scratch,
+            &source_input_handle,
+            Some(&source_gamma_handle),
+            &source_output,
+            &source_status,
+            &zero,
+            WIDTH,
+            rows,
+            crate::source_rms::Gamma::OnePlusRaw,
+        )?;
+
+        let ordinary_bits = parse_u16(
+            &client
+                .read_one(ordinary_output)
+                .map_err(|error| Error::State(format!("ordinary RMS output readback: {error}")))?,
+            "ordinary RMS",
+        )?;
+        let source_raw = client
+            .read_one(source_output)
+            .map_err(|error| Error::State(format!("source RMS output readback: {error}")))?;
+        let source_values = f32::from_bytes(&source_raw);
+        if ordinary_bits.len() != count || source_values.len() != count {
+            return Err(Error::State(
+                "ordinary/source RMS output extent differs".into(),
+            ));
+        }
+        let ordinary_flags = parse_u32(
+            &client
+                .read_one(ordinary_status)
+                .map_err(|error| Error::State(format!("ordinary RMS status readback: {error}")))?,
+            "ordinary RMS",
+        )?;
+        let source_flags = parse_u32(
+            &client
+                .read_one(source_status)
+                .map_err(|error| Error::State(format!("source RMS status readback: {error}")))?,
+            "source RMS",
+        )?;
+        if ordinary_flags != 0 || source_flags != 0 {
+            return Err(Error::State(format!(
+                "ordinary/source RMS status differs rows={rows}: ordinary={ordinary_flags:#x} source={source_flags:#x}"
+            )));
+        }
+        for (index, (&actual, &expected)) in ordinary_bits.iter().zip(source_values).enumerate() {
+            if expected.to_bits() & 0xffff != 0 {
+                return Err(Error::State(format!(
+                    "source RMS output is not BF16-widened rows={rows} index={index} bits={:#010x}",
+                    expected.to_bits()
+                )));
+            }
+            let expected = (expected.to_bits() >> 16) as u16;
+            if actual != expected {
+                return Err(Error::State(format!(
+                    "ordinary/source RMS bit mismatch rows={rows} index={index} ordinary={actual:#06x} source={expected:#06x}"
+                )));
+            }
+        }
+        println!("ordinary-source-rms rows={rows} PASS");
+    }
+    Ok(())
+}
+
+#[cfg(all(
+    test,
+    feature = "cuda-cublas",
+    feature = "qwen-source-qualification",
+    target_os = "linux"
+))]
+fn qualify_ordinary_head_rms_source_parity(device: Device) -> zerogravity_core::Result<()> {
+    use crate::cuda::ordinary_text::{Access, BufferRole, Geometry, LaunchBinding, Program};
+    use zerogravity_core::{Error, Result};
+
+    const WIDTH: usize = 256;
+    const ROW_STRIDE: usize = 5120;
+    const QUERY_HEADS: usize = 8;
+    const KEY_HEADS: usize = 2;
+    const QUERY_HEAD_STRIDE: usize = 512;
+    const KEY_BASE: usize = 4096;
+    const EPSILON: f32 = 1e-6;
+    const VALUES: [u16; 12] = [
+        0x3d80, 0xbd80, 0x3e80, 0xbe80, 0x3f00, 0xbf00, 0x3f80, 0xbf80, 0x4000, 0xc000, 0x4040,
+        0xc040,
+    ];
+    const GAMMA: [u16; 8] = [
+        0x0000, 0x3c80, 0xbc80, 0x3d00, 0xbd00, 0x3d80, 0xbd80, 0x3e00,
+    ];
+
+    fn bits(count: usize, salt: usize, patterns: &[u16]) -> Vec<u16> {
+        (0..count)
+            .map(|index| patterns[(index * 19 + salt * 11) % patterns.len()])
+            .collect()
+    }
+    fn bytes(values: &[u16]) -> Vec<u8> {
+        values.iter().flat_map(|v| v.to_le_bytes()).collect()
+    }
+    fn widen(values: &[u16]) -> Vec<f32> {
+        values
+            .iter()
+            .map(|&v| f32::from_bits(u32::from(v) << 16))
+            .collect()
+    }
+    fn parse_bf16(raw: &[u8], label: &str) -> Result<Vec<u16>> {
+        if !raw.len().is_multiple_of(2) {
+            return Err(Error::State(format!("{label} BF16 alignment")));
+        }
+        Ok(raw
+            .chunks_exact(2)
+            .map(|w| u16::from_le_bytes([w[0], w[1]]))
+            .collect())
+    }
+    fn parse_status(raw: &[u8], label: &str) -> Result<u32> {
+        let word: [u8; 4] = raw
+            .try_into()
+            .map_err(|_| Error::State(format!("{label} status extent")))?;
+        Ok(u32::from_le_bytes(word))
+    }
+    fn source_expected(
+        client: &cubecl::client::Client,
+        input_bits: &[u16],
+        gamma_bits: &[u16],
+        groups: usize,
+    ) -> Result<Vec<u16>> {
+        let gamma = client.create_from_slice(f32::as_bytes(&widen(gamma_bits)));
+        let zero = client.create_from_slice(f32::as_bytes(&[0.0f32]));
+        let mut result = Vec::with_capacity(input_bits.len());
+        let mut group_base = 0usize;
+        while group_base < groups {
+            let chunk_groups = (groups - group_base).min(64);
+            let start = group_base * WIDTH;
+            let end = start + chunk_groups * WIDTH;
+            let input = client.create_from_slice(f32::as_bytes(&widen(&input_bits[start..end])));
+            let output = client.empty((end - start) * 4);
+            let status = client.create_from_slice(u32::as_bytes(&[0u32]));
+            let count = chunk_groups * WIDTH;
+            let extents = [
+                count,
+                chunk_groups,
+                chunk_groups,
+                chunk_groups,
+                chunk_groups,
+                chunk_groups,
+                count,
+                count,
+            ];
+            let scratch = extents
+                .into_iter()
+                .map(|elements| client.empty(elements * 4))
+                .collect::<Vec<_>>();
+            crate::source_rms::launch(
+                client,
+                &scratch,
+                &input,
+                Some(&gamma),
+                &output,
+                &status,
+                &zero,
+                WIDTH,
+                chunk_groups,
+                crate::source_rms::Gamma::OnePlusRaw,
+            )?;
+            let flags = parse_status(
+                &client
+                    .read_one(status)
+                    .map_err(|error| Error::State(format!("source head RMS status: {error}")))?,
+                "source head RMS",
+            )?;
+            if flags != 0 {
+                return Err(Error::State(format!(
+                    "source head RMS status nonzero: {flags:#x}"
+                )));
+            }
+            let raw = client
+                .read_one(output)
+                .map_err(|error| Error::State(format!("source head RMS output: {error}")))?;
+            let values = f32::from_bytes(&raw);
+            for (index, &value) in values.iter().enumerate() {
+                if value.to_bits() & 0xffff != 0 {
+                    return Err(Error::State(format!(
+                        "source head RMS not BF16-widened group_base={group_base} index={index}"
+                    )));
+                }
+                result.push((value.to_bits() >> 16) as u16);
+            }
+            group_base += chunk_groups;
+        }
+        Ok(result)
+    }
+
+    let client = device.client();
+    let ordinary = Program::new(Geometry::qwen35_08())?;
+    let gamma_bits = bits(WIDTH, 7, &GAMMA);
+
+    for rows in [1usize, 2, 17, 64] {
+        let query_bits = bits(rows * QUERY_HEADS * WIDTH, rows, &VALUES);
+        let key_bits = bits(rows * KEY_HEADS * WIDTH, rows + 3, &VALUES);
+        let mut packed = vec![0u16; rows * ROW_STRIDE];
+        for row in 0..rows {
+            for head in 0..QUERY_HEADS {
+                for lane in 0..WIDTH {
+                    let src = row * QUERY_HEADS * WIDTH + head * WIDTH + lane;
+                    let dst = row * ROW_STRIDE + head * QUERY_HEAD_STRIDE + lane;
+                    packed[dst] = query_bits[src];
+                }
+            }
+            for head in 0..KEY_HEADS {
+                for lane in 0..WIDTH {
+                    let src = row * KEY_HEADS * WIDTH + head * WIDTH + lane;
+                    let dst = row * ROW_STRIDE + KEY_BASE + head * WIDTH + lane;
+                    packed[dst] = key_bits[src];
+                }
+            }
+        }
+        let packed_handle = client.create_from_slice(&bytes(&packed));
+        let gamma_handle = client.create_from_slice(&bytes(&gamma_bits));
+
+        for (label, definition, role, expected) in [
+            (
+                "query",
+                ordinary.query_head_rms(rows, EPSILON)?,
+                BufferRole::QueryNormalized,
+                source_expected(&client, &query_bits, &gamma_bits, rows * QUERY_HEADS)?,
+            ),
+            (
+                "key",
+                ordinary.key_head_rms(rows, EPSILON)?,
+                BufferRole::KeyNormalized,
+                source_expected(&client, &key_bits, &gamma_bits, rows * KEY_HEADS)?,
+            ),
+        ] {
+            let output = client.empty(expected.len() * 2);
+            let status = client.create_from_slice(u32::as_bytes(&[0u32]));
+            let gamma_role = if label == "query" {
+                BufferRole::QueryRawGamma
+            } else {
+                BufferRole::KeyRawGamma
+            };
+            let prepared = definition.prepare_owned(
+                &client,
+                vec![
+                    LaunchBinding::new(
+                        BufferRole::PackedAttention,
+                        Access::Read,
+                        packed_handle.clone(),
+                    ),
+                    LaunchBinding::new(gamma_role, Access::Read, gamma_handle.clone()),
+                    LaunchBinding::new(role, Access::Write, output.clone()),
+                ],
+                LaunchBinding::new(BufferRole::Status, Access::ReadWrite, status.clone()),
+            )?;
+            prepared.enqueue_owned(&client, &status)?;
+            let flags = parse_status(
+                &client.read_one(status).map_err(|error| {
+                    Error::State(format!("ordinary {label} head RMS status: {error}"))
+                })?,
+                label,
+            )?;
+            if flags != 0 {
+                return Err(Error::State(format!(
+                    "ordinary {label} head RMS status rows={rows}: {flags:#x}"
+                )));
+            }
+            let actual = parse_bf16(
+                &client.read_one(output).map_err(|error| {
+                    Error::State(format!("ordinary {label} head RMS output: {error}"))
+                })?,
+                label,
+            )?;
+            if actual != expected {
+                let index = actual
+                    .iter()
+                    .zip(&expected)
+                    .position(|(a, b)| a != b)
+                    .unwrap_or(usize::MAX);
+                return Err(Error::State(format!(
+                    "ordinary/source {label} head RMS mismatch rows={rows} index={index} ordinary={:#06x} source={:#06x}",
+                    actual.get(index).copied().unwrap_or_default(),
+                    expected.get(index).copied().unwrap_or_default()
+                )));
+            }
+        }
+        println!("ordinary-source-head-rms rows={rows} PASS");
+    }
+    Ok(())
+}
+
+#[cfg(all(
+    test,
+    feature = "cuda-cublas",
+    feature = "qwen-source-qualification",
+    target_os = "linux"
+))]
+#[test]
+#[ignore = "actual NVIDIA ordinary/source Qwen query/key head RMS numerical parity"]
+fn ordinary_head_rms_matches_source_reference_on_nvidia() -> zerogravity_core::Result<()> {
+    qualify_ordinary_head_rms_source_parity(Device::cuda(0).map_err(|error| {
+        zerogravity_core::Error::State(format!("CUDA device 0 unavailable: {error}"))
+    })?)
+}
+
+#[cfg(all(
+    test,
+    feature = "cuda-cublas",
+    feature = "qwen-source-qualification",
+    target_os = "linux"
+))]
+#[test]
+#[ignore = "actual NVIDIA ordinary/source Qwen RMS numerical parity"]
+fn ordinary_rms_matches_source_reference_on_nvidia() -> zerogravity_core::Result<()> {
+    qualify_ordinary_rms_source_parity(Device::cuda(0).map_err(|error| {
+        zerogravity_core::Error::State(format!("CUDA device 0 unavailable: {error}"))
+    })?)
+}
+
+#[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
+fn qualify_ordinary_nonlinear_source_parity(device: Device) -> zerogravity_core::Result<()> {
+    use crate::cuda::ordinary_text::{Access, BufferRole, Geometry, LaunchBinding, Program};
+    use zerogravity_core::{Error, Result};
+
+    const INTERMEDIATE: usize = 3584;
+    const QUERY_WIDTH: usize = 2048;
+    const ATTN_STRIDE: usize = 5120;
+    const HEADS: usize = 8;
+    const HEAD_STRIDE: usize = 512;
+    const GATE_OFFSET: usize = 256;
+    const PATTERNS: [u16; 13] = [
+        0xc100, 0xc080, 0xc000, 0xbf80, 0xbf00, 0xbe80, 0x0000, 0x3e80, 0x3f00, 0x3f80, 0x4000,
+        0x4080, 0x4100,
+    ];
+    const UP_PATTERNS: [u16; 8] = [
+        0x3e80, 0xbe80, 0x3f00, 0xbf00, 0x3f80, 0xbf80, 0x4000, 0xc000,
+    ];
+
+    fn bits(count: usize, salt: usize, patterns: &[u16]) -> Vec<u16> {
+        (0..count)
+            .map(|i| patterns[(i * 29 + salt * 7) % patterns.len()])
+            .collect()
+    }
+    fn bytes(values: &[u16]) -> Vec<u8> {
+        values.iter().flat_map(|v| v.to_le_bytes()).collect()
+    }
+    fn widen(values: &[u16]) -> Vec<f32> {
+        values
+            .iter()
+            .map(|&v| f32::from_bits(u32::from(v) << 16))
+            .collect()
+    }
+    fn parse_bf16(bytes: &[u8], label: &str) -> Result<Vec<u16>> {
+        if !bytes.len().is_multiple_of(2) {
+            return Err(Error::State(format!("{label} BF16 alignment")));
+        }
+        Ok(bytes
+            .chunks_exact(2)
+            .map(|w| u16::from_le_bytes([w[0], w[1]]))
+            .collect())
+    }
+    fn parse_status(bytes: &[u8], label: &str) -> Result<u32> {
+        let word: [u8; 4] = bytes
+            .try_into()
+            .map_err(|_| Error::State(format!("{label} status extent")))?;
+        Ok(u32::from_le_bytes(word))
+    }
+    fn grid(elements: usize) -> CubeCount {
+        CubeCount::Static((elements as u32).div_ceil(32), 1, 1)
+    }
+    fn arg(handle: cubecl::server::Handle, elements: usize) -> BufferArg {
+        // SAFETY: qualification fixtures allocate exact typed extents.
+        unsafe { BufferArg::from_raw_parts(handle, elements) }
+    }
+
+    let client = device.client();
+    let program = Program::new(Geometry::qwen35_08())?;
+
+    for rows in [1usize, 2, 17, 64] {
+        // FFN SiLU*up.
+        let elements = rows * INTERMEDIATE;
+        let gate_bits = bits(elements, rows, &PATTERNS);
+        let up_bits = bits(elements, rows + 3, &UP_PATTERNS);
+        let mut packed = Vec::with_capacity(rows * INTERMEDIATE * 2);
+        for row in 0..rows {
+            packed.extend_from_slice(&gate_bits[row * INTERMEDIATE..(row + 1) * INTERMEDIATE]);
+            packed.extend_from_slice(&up_bits[row * INTERMEDIATE..(row + 1) * INTERMEDIATE]);
+        }
+        let ordinary_packed = client.create_from_slice(&bytes(&packed));
+        let ordinary_output = client.empty(elements * 2);
+        let ordinary_status = client.create_from_slice(u32::as_bytes(&[0u32]));
+        let definition = program.silu_up(rows)?;
+        let prepared = definition.prepare_owned(
+            &client,
+            vec![
+                LaunchBinding::new(BufferRole::PackedGateUp, Access::Read, ordinary_packed),
+                LaunchBinding::new(BufferRole::Output, Access::Write, ordinary_output.clone()),
+            ],
+            LaunchBinding::new(
+                BufferRole::Status,
+                Access::ReadWrite,
+                ordinary_status.clone(),
+            ),
+        )?;
+        prepared.enqueue_owned(&client, &ordinary_status)?;
+
+        let source_gate = client.create_from_slice(f32::as_bytes(&widen(&gate_bits)));
+        let source_up = client.create_from_slice(f32::as_bytes(&widen(&up_bits)));
+        let source_output = client.empty(elements * 4);
+        let source_status = client.create_from_slice(u32::as_bytes(&[0u32]));
+        unsafe {
+            source_silu_mul_oracle::launch_unchecked(
+                &client,
+                grid(elements),
+                CubeDim::new_1d(32),
+                arg(source_gate, elements),
+                arg(source_up, elements),
+                arg(source_output.clone(), elements),
+                arg(source_status.clone(), 1),
+                elements,
+            );
+        }
+        compare_bf16_source_outputs(
+            &client,
+            &ordinary_output,
+            &ordinary_status,
+            &source_output,
+            &source_status,
+            elements,
+            &format!("SiLU rows={rows}"),
+        )?;
+
+        // Attention sigmoid gate.
+        let gate_elements = rows * QUERY_WIDTH;
+        let gate_bits = bits(gate_elements, rows + 11, &PATTERNS);
+        let mut attention = vec![0u16; rows * ATTN_STRIDE];
+        for row in 0..rows {
+            for head in 0..HEADS {
+                for lane in 0..256usize {
+                    let src = row * QUERY_WIDTH + head * 256 + lane;
+                    let dst = row * ATTN_STRIDE + head * HEAD_STRIDE + GATE_OFFSET + lane;
+                    attention[dst] = gate_bits[src];
+                }
+            }
+        }
+        let ordinary_packed = client.create_from_slice(&bytes(&attention));
+        let ordinary_output = client.empty(gate_elements * 2);
+        let ordinary_status = client.create_from_slice(u32::as_bytes(&[0u32]));
+        let definition = program.sigmoid(rows)?;
+        let prepared = definition.prepare_owned(
+            &client,
+            vec![
+                LaunchBinding::new(BufferRole::PackedAttention, Access::Read, ordinary_packed),
+                LaunchBinding::new(BufferRole::Output, Access::Write, ordinary_output.clone()),
+            ],
+            LaunchBinding::new(
+                BufferRole::Status,
+                Access::ReadWrite,
+                ordinary_status.clone(),
+            ),
+        )?;
+        prepared.enqueue_owned(&client, &ordinary_status)?;
+
+        let source_input = client.create_from_slice(f32::as_bytes(&widen(&gate_bits)));
+        let source_output = client.empty(gate_elements * 4);
+        let source_status = client.create_from_slice(u32::as_bytes(&[0u32]));
+        unsafe {
+            source_sigmoid_oracle::launch_unchecked(
+                &client,
+                grid(gate_elements),
+                CubeDim::new_1d(32),
+                arg(source_input, gate_elements),
+                arg(source_output.clone(), gate_elements),
+                arg(source_status.clone(), 1),
+                gate_elements,
+            );
+        }
+        compare_bf16_source_outputs(
+            &client,
+            &ordinary_output,
+            &ordinary_status,
+            &source_output,
+            &source_status,
+            gate_elements,
+            &format!("sigmoid rows={rows}"),
+        )?;
+        println!("ordinary-source-nonlinear rows={rows} PASS");
+    }
+
+    fn compare_bf16_source_outputs(
+        client: &cubecl::client::Client,
+        ordinary_output: &cubecl::server::Handle,
+        ordinary_status: &cubecl::server::Handle,
+        source_output: &cubecl::server::Handle,
+        source_status: &cubecl::server::Handle,
+        elements: usize,
+        label: &str,
+    ) -> Result<()> {
+        let ordinary = parse_bf16(
+            &client.read_one(ordinary_output.clone()).map_err(|error| {
+                Error::State(format!("{label} ordinary output readback: {error}"))
+            })?,
+            label,
+        )?;
+        let source_raw = client
+            .read_one(source_output.clone())
+            .map_err(|error| Error::State(format!("{label} source output readback: {error}")))?;
+        let source = f32::from_bytes(&source_raw);
+        if ordinary.len() != elements || source.len() != elements {
+            return Err(Error::State(format!("{label} output extent differs")));
+        }
+        let ordinary_flags = parse_status(
+            &client.read_one(ordinary_status.clone()).map_err(|error| {
+                Error::State(format!("{label} ordinary status readback: {error}"))
+            })?,
+            label,
+        )?;
+        let source_flags = parse_status(
+            &client.read_one(source_status.clone()).map_err(|error| {
+                Error::State(format!("{label} source status readback: {error}"))
+            })?,
+            label,
+        )?;
+        if ordinary_flags != 0 || source_flags != 0 {
+            return Err(Error::State(format!(
+                "{label} status differs: ordinary={ordinary_flags:#x} source={source_flags:#x}"
+            )));
+        }
+        for (index, (&actual, &expected)) in ordinary.iter().zip(source).enumerate() {
+            if expected.to_bits() & 0xffff != 0 {
+                return Err(Error::State(format!(
+                    "{label} source output not BF16-widened index={index} bits={:#010x}",
+                    expected.to_bits()
+                )));
+            }
+            let expected = (expected.to_bits() >> 16) as u16;
+            if actual != expected {
+                return Err(Error::State(format!(
+                    "{label} bit mismatch index={index} ordinary={actual:#06x} source={expected:#06x}"
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    Ok(())
+}
+
+#[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
+#[test]
+#[ignore = "actual NVIDIA ordinary/source Qwen SiLU+sigmoid numerical parity"]
+fn ordinary_nonlinear_matches_source_reference_on_nvidia() -> zerogravity_core::Result<()> {
+    qualify_ordinary_nonlinear_source_parity(Device::cuda(0).map_err(|error| {
+        zerogravity_core::Error::State(format!("CUDA device 0 unavailable: {error}"))
+    })?)
+}
 
 #[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
 async fn qualify_ordinary_owned_blas_identity(

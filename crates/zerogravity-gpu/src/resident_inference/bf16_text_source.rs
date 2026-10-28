@@ -78,6 +78,7 @@ pub enum TextSourceRetentionMode {
     /// Published root: the actual final native/source owners retire.
     Known,
     /// Refused publication: the actual native/source owners remain retained.
+    #[cfg_attr(not(feature = "hardware-abort-probe"), allow(dead_code))]
     Unknown,
 }
 impl TextSourceRetentionMode {
@@ -92,6 +93,7 @@ impl TextSourceRetentionMode {
     }
     /// Join to the actual shared-final observation: retained flag, live module
     /// count and retained module HOST bytes must agree with the typed mode.
+    #[cfg_attr(not(feature = "hardware-abort-probe"), allow(dead_code))]
     pub fn agrees_with_final(self, retained: bool, modules: usize, host_bytes: usize) -> bool {
         if self.retains_source() {
             retained && modules > 0 && host_bytes > 0

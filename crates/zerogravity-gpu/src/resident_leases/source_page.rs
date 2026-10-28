@@ -47,11 +47,11 @@ pub(crate) fn transport_host_bytes(source: &VerifiedTensorSource) -> Result<usiz
             .window_cache_stats()
             .map_err(|error| Error::State(format!("source window cache charge: {error}")))?
             .budget_bytes;
-        return Ok(serial.max(transport_host_charge(chunk, cache)?));
+        Ok(serial.max(transport_host_charge(chunk, cache)?))
     }
     #[cfg(not(feature = "hip"))]
     {
-        return Ok(serial);
+        Ok(serial)
     }
 }
 /// One serial source window: the unchanged three-page family baseline plus
@@ -560,14 +560,13 @@ impl ResidentSourcePage {
         let control = source.reserve_workspace(CONTROL_BYTES)?;
         let lease = init.allocate_empty(PAGE_BYTES, BufferRole::Scratch)?;
         #[cfg(feature = "hip")]
-        if let Some(actor) = &transport {
-            if actor.service() != service.client().service_id()
-                || actor.generation() != service.generation()
-            {
-                return Err(Error::State(
-                    "source page original actor/generation differs".into(),
-                ));
-            }
+        if let Some(actor) = &transport
+            && (actor.service() != service.client().service_id()
+                || actor.generation() != service.generation())
+        {
+            return Err(Error::State(
+                "source page original actor/generation differs".into(),
+            ));
         }
         let page = Arc::new(Self {
             source,
@@ -760,14 +759,13 @@ impl ResidentSourcePage {
     #[cfg(feature = "hip")]
     fn require_finish_authority(&self) -> Result<()> {
         self.service.ensure_usable()?;
-        if let Some(actor) = &self.transport {
-            if actor.service() != self.service.client().service_id()
-                || actor.generation() != self.service.generation()
-            {
-                return Err(Error::State(
-                    "source page finish actor/generation differs".into(),
-                ));
-            }
+        if let Some(actor) = &self.transport
+            && (actor.service() != self.service.client().service_id()
+                || actor.generation() != self.service.generation())
+        {
+            return Err(Error::State(
+                "source page finish actor/generation differs".into(),
+            ));
         }
         Ok(())
     }
@@ -1356,16 +1354,14 @@ impl ResidentSourcePage {
         );
         if let Ok(mut p) = self.progress.lock() {
             p.failed = true;
-            if let Some(run) = p.run.as_ref() {
-                if let Ok(mut inner) = run.inner.lock() {
-                    if inner
-                        .pending
-                        .as_ref()
-                        .is_some_and(|pending| Arc::ptr_eq(pending, owner))
-                    {
-                        inner.pending = None;
-                    }
-                }
+            if let Some(run) = p.run.as_ref()
+                && let Ok(mut inner) = run.inner.lock()
+                && inner
+                    .pending
+                    .as_ref()
+                    .is_some_and(|pending| Arc::ptr_eq(pending, owner))
+            {
+                inner.pending = None;
             }
         }
     }
