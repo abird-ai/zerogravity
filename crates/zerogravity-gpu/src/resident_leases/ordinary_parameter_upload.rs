@@ -1,4 +1,3 @@
-#![allow(dead_code)] // Private unselected cold owner until ordinary body consumes it.
 //! Authenticated complete source parameter -> immutable resident bytes.
 //!
 //! The caller supplies the exact SourceParameter descriptor and an explicit

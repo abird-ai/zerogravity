@@ -23,6 +23,7 @@ use std::{
 };
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 mod attention;
+mod cold;
 mod layout;
 
 use zerogravity_core::{

@@ -483,7 +483,10 @@ fn immutable_specs(plan: &ForwardPlan) -> Result<(Vec<MatrixPackSpec>, Vec<Param
     Ok((matrices, parameters))
 }
 
-fn parameter_storage(kind: SourceOperatorKind, ordinal: usize) -> Result<OrdinaryParameterStorage> {
+pub(super) fn parameter_storage(
+    kind: SourceOperatorKind,
+    ordinal: usize,
+) -> Result<OrdinaryParameterStorage> {
     use OrdinaryParameterStorage::{Bf16Rne, Original};
     use SourceOperatorKind::*;
     match kind {
