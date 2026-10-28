@@ -1547,4 +1547,8 @@ build or general model/backend grant. Historical failures keep their source scop
   all-features build, formatting and diff checks pass. This is test
   infrastructure only; it grants no production backend.
 - [ ] Execute the serial harness as soon as the approved .8B safetensor shard
-  becomes visible to the connector. Do not download or substitute source.
+  becomes visible to the connector. The ignored integration test is
+  ordinary_cached47_to50_serial_current_source_parity and requires absolute
+  ZG_QWEN35_MODEL_DIR, ZG_QWEN35_CUDA_KERNEL_DIR, ZG_QWEN35_CUBLAS and
+  ZG_QWEN35_CUBLAS_LT. Run release CUDA in an isolated process. Do not download
+  or substitute source.

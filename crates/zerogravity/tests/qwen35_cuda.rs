@@ -522,6 +522,30 @@ fn fresh_prefill_state_logits_root_and_cleanup_agreement() -> Result<()> {
 }
 
 #[test]
+#[ignore = "explicit qualification-only serial current-source ordinary parity; release CUDA, approved source, isolated process only"]
+fn ordinary_cached47_to50_serial_current_source_parity() -> Result<()> {
+    ensure(!cfg!(debug_assertions), "release physical matrix only")?;
+    let source = env("ZG_QWEN35_MODEL_DIR")?;
+    let bundle = env("ZG_QWEN35_CUDA_KERNEL_DIR")?;
+    let cublas = env("ZG_QWEN35_CUBLAS")?;
+    let cublas_lt = env("ZG_QWEN35_CUBLAS_LT")?;
+    let providers = zerogravity::gpu::OrdinaryCudaProviderPaths::new(cublas, cublas_lt)?;
+    let device =
+        zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA device: {e}")))?;
+    let receipt = block_on(
+        qwen35_cuda::ordinary_parity::run_current_source_cached_47_to_50_serial(
+            device, &source, &bundle, providers, None,
+        ),
+    )?;
+    receipt.require_exact()?;
+    println!(
+        "QWEN35_ORDINARY_CUDA_CACHED47_50_PARITY_PASS steps={} exact=true serial_reference_then_ordinary=true",
+        receipt.parity.steps.len()
+    );
+    Ok(())
+}
+
+#[test]
 #[ignore = "fresh owned isolated release process per deliberate cached fault"]
 fn decode_fault_retains_unfinished_work() -> Result<()> {
     faults::run()
