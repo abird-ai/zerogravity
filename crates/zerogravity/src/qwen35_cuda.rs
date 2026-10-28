@@ -31,6 +31,8 @@ mod ordinary;
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub mod ordinary_candidate;
 #[cfg(feature = "qwen35-cuda-qualification")]
+pub mod ordinary_parity;
+#[cfg(feature = "qwen35-cuda-qualification")]
 mod ordinary_source;
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub mod qualification;
@@ -125,6 +127,18 @@ impl Model {
     pub fn source_profile(&self) -> crate::qwen35::plan::QwenSourceProfile {
         self.templates.source().model_profile()
     }
+    pub async fn shutdown(
+        self: Arc<Self>,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<native::TextCloseReceipt> {
+        let model = Arc::try_unwrap(self).map_err(|_| {
+            Error::State("reference Qwen CUDA model still has live model owners".into())
+        })?;
+        let resident = model.resident.clone();
+        drop(model);
+        resident.close(cancelled).await
+    }
+
     pub async fn session(&self, cancelled: Option<&AtomicBool>) -> Result<Session> {
         Ok(Session::new(
             self.resident.session(cancelled).await?,

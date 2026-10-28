@@ -129,6 +129,10 @@ impl Session {
         &self.model
     }
 
+    pub fn snapshot(&self) -> crate::gpu::ResidentSnapshot {
+        self.resident.snapshot()
+    }
+
     pub async fn forward(
         &mut self,
         mode: SourceCallMode,

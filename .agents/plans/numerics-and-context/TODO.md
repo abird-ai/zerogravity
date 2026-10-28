@@ -801,3 +801,21 @@ build or general model/backend grant. Historical failures keep their source scop
   qwen35-cuda-qualification Clippy, and all-features build pass.
 - [ ] This provides the committed-root comparison surface for the real .8B
   47→50 parity harness; it does not substitute for the blocked physical run.
+
+### 28 Oct 2026 — cached47→50 serial real-parity harness ready
+
+- [x] Qualification-only serial harness captures the approved historical
+  current-source .8B path at frontiers 47→48→49→50, including full 248320
+  logits, greedy ID/max bits, and all 42 canonical state domains. Reference KV
+  is checked for exact future +0 and BF16-widened F32 semantics.
+- [x] The harness explicitly closes the reference model and validates
+  source/head retirement window counts before loading the ordinary model on the
+  same CUDA device. Ordinary comparison uses the same prompt and selected-token
+  feedback, canonical typed root snapshots, exact bit comparison, and explicit
+  ordinary shutdown. Any run/comparison failure still performs model teardown;
+  cleanup failure is reported rather than hidden.
+- [x] Source-free harness tests, strict qwen35-cuda-qualification Clippy,
+  all-features build, formatting and diff checks pass. This is test
+  infrastructure only; it grants no production backend.
+- [ ] Execute the serial harness as soon as the approved .8B safetensor shard
+  becomes visible to the connector. Do not download or substitute source.
