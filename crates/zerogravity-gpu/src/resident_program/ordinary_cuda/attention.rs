@@ -46,6 +46,18 @@ fn pack_source_bf16(
 }
 
 #[cube(launch_unchecked)]
+fn copy_words_runtime(source: &[u32], destination: &mut [u32], status: &[Atomic<u32>], words: u32) {
+    let i = ABSOLUTE_POS;
+    if i < usize::cast_from(words) {
+        if i < source.len() && i < destination.len() {
+            destination[i] = source[i];
+        } else {
+            status[0].fetch_or(crate::program_kernels::VIEW_OUT_OF_BOUNDS);
+        }
+    }
+}
+
+#[cube(launch_unchecked)]
 fn certify_bf16(input: &[u32], status: &[Atomic<u32>], elements: u32) {
     let i = ABSOLUTE_POS;
     if i < usize::cast_from(elements) {
@@ -68,6 +80,24 @@ fn arg(handle: &cubecl::server::Handle, elements: usize) -> BufferArg {
     // SAFETY: caller validates exact physical BF16/F32 extents and retains
     // original leases in the enclosing armed flight.
     unsafe { BufferArg::from_raw_parts(handle.clone(), elements) }
+}
+
+fn exact_handle_view(
+    handle: &cubecl::server::Handle,
+    offset: usize,
+    bytes: usize,
+    role: &str,
+) -> Result<cubecl::server::Handle> {
+    let available = usize::try_from(handle.size_in_used())
+        .map_err(|_| Error::Limit(format!("ordinary attention {role} handle extent")))?;
+    let end = offset
+        .checked_add(bytes)
+        .filter(|end| *end <= available)
+        .ok_or_else(|| Error::State(format!("ordinary attention {role} view exceeds handle")))?;
+    Ok(handle
+        .clone()
+        .offset_start(offset as u64)
+        .offset_end((available - end) as u64))
 }
 
 pub(super) fn widen(
@@ -188,6 +218,47 @@ mod tests {
         assert!(managed_bytes(0).is_err());
         assert!(managed_bytes(32_769).is_err());
     }
+}
+
+pub(super) fn copy_bf16_prefix(
+    client: &cubecl::client::Client,
+    source: &cubecl::server::Handle,
+    destination: &cubecl::server::Handle,
+    status: &cubecl::server::Handle,
+    elements: usize,
+) -> Result<usize> {
+    if elements == 0 || !elements.is_multiple_of(2) {
+        return Err(Error::Unsupported(
+            "ordinary CUDA BF16 prefix copy even positive extent".into(),
+        ));
+    }
+    let bytes = elements
+        .checked_mul(2)
+        .ok_or_else(|| Error::Limit("ordinary CUDA BF16 prefix copy bytes".into()))?;
+    if source.size_in_used() != bytes as u64
+        || destination.size_in_used() != bytes as u64
+        || status.size_in_used() != 4
+        || source.service != client.service_id()
+        || destination.service != client.service_id()
+        || status.service != client.service_id()
+        || u32::try_from(elements / 2).is_err()
+    {
+        return Err(Error::State(
+            "ordinary CUDA BF16 prefix copy exact service/extent".into(),
+        ));
+    }
+    unsafe {
+        copy_words_runtime::launch_unchecked(
+            client,
+            grid(elements / 2),
+            threads(),
+            arg(source, elements / 2),
+            arg(destination, elements / 2),
+            arg(status, 1),
+            (elements / 2) as u32,
+        );
+    }
+    Ok(1)
 }
 
 pub(super) fn certify(
@@ -379,18 +450,18 @@ impl OrdinaryCudaAttention {
         &self,
         client: &cubecl::client::Client,
         operator: &zerogravity_core::accelerator::program::SourceOperator,
-        query: &ResidentLease,
+        query: &cubecl::server::Handle,
         candidate_keys: &crate::resident_program::DeviceBuffer,
         candidate_values: &crate::resident_program::DeviceBuffer,
-        output: &ResidentLease,
+        output: &cubecl::server::Handle,
         status: &ResidentLease,
     ) -> Result<usize> {
         use crate::resident_program::{ResidentBufferLayout, ResidentPhysicalType};
         self.require_operator(operator)?;
         self.service.ensure_usable()?;
         if client.service_id() != self.service.client().service_id()
-            || !Arc::ptr_eq(query.service(), &self.service)
-            || !Arc::ptr_eq(output.service(), &self.service)
+            || query.service != client.service_id()
+            || output.service != client.service_id()
             || !Arc::ptr_eq(status.service(), &self.service)
             || status.bytes() != 4
         {
@@ -407,7 +478,9 @@ impl OrdinaryCudaAttention {
         let query_elements = rows
             .checked_mul(QUERY_WIDTH)
             .ok_or_else(|| Error::Limit("ordinary attention query batch".into()))?;
-        if query.bytes() != query_elements * 2 || output.bytes() != query_elements * 2 {
+        if query.size_in_used() != (query_elements * 2) as u64
+            || output.size_in_used() != (query_elements * 2) as u64
+        {
             return Err(Error::State(
                 "ordinary attention BF16 query/output extent differs".into(),
             ));
@@ -480,13 +553,13 @@ impl OrdinaryCudaAttention {
         let score_elements = self.capacity * QUERY_HEADS;
         for row in 0..rows {
             let active = base + row + 1;
-            let query_view = super::exact_view(
+            let query_view = exact_handle_view(
                 query,
                 row * QUERY_WIDTH * 2,
                 QUERY_WIDTH * 2,
                 "attention query row",
             )?;
-            let output_view = super::exact_view(
+            let output_view = exact_handle_view(
                 output,
                 row * QUERY_WIDTH * 2,
                 QUERY_WIDTH * 2,
