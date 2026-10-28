@@ -20,9 +20,9 @@ use std::sync::Arc;
 use zerogravity_core::{
     Error, Result,
     accelerator::program::{
-        ConvDomain, ForwardPlan, KvDomain, PlanOperation, RecurrentDomain, SourceOperatorKind,
-        SourceParameter, SourceTensor, StateSlot, ValueStorageBinding, ValueStorageLimits,
-        ValueStorageRetention, ValueStorageReusePolicy,
+        ConvDomain, ForwardPlan, KvDomain, PlanOperation, RecurrentDomain, SourceNumericalContract,
+        SourceOperatorKind, SourceParameter, SourceTensor, StateSlot, ValueId, ValueStorageBinding,
+        ValueStorageLimits, ValueStorageRetention, ValueStorageReusePolicy,
     },
 };
 
@@ -98,12 +98,20 @@ impl OrdinaryCudaLayout {
                 ResidentBufferLayout::new(ResidentPhysicalType::Bf16, shape.capacity_elements()?)
             })
             .collect::<Result<Vec<_>>>()?;
+        let residual_aliases = residual_aliases(&plan)?;
+        let mut pinned = residual_aliases
+            .iter()
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>();
+        pinned.sort_unstable_by_key(|value| value.0);
+        pinned.dedup();
         let storage = ResidentBufferLayout::plan_values(
             &plan,
             &value_layouts,
             ValueStorageRetention::Reuse {
                 escaped: &[],
-                pinned: &[],
+                pinned: &pinned,
                 taps: &[],
             },
             ValueStorageLimits {
@@ -155,7 +163,7 @@ impl OrdinaryCudaLayout {
                         GdnRuntimeBufferOwnership::CacheState
                             | GdnRuntimeBufferOwnership::Control
                             | GdnRuntimeBufferOwnership::Scratch
-                    )
+                    ) || buffer.role() == crate::cuda::gdn::GdnRuntimeBuffer::Rstd
                 })
                 .map(|buffer| buffer.bytes()),
         )?;
@@ -167,7 +175,22 @@ impl OrdinaryCudaLayout {
             POSITION_BYTES,
             F32_LOGITS_BYTES,
         ])?;
-        let value_bindings: Arc<[ValueStorageBinding]> = storage.bindings().into();
+        let mut value_bindings = storage.bindings().to_vec();
+        for (value, alias) in residual_aliases.iter().enumerate() {
+            let Some(root) = alias else {
+                continue;
+            };
+            let root = root.0 as usize;
+            if value_layouts[value] != value_layouts[root]
+                || value_bindings[value].bytes != value_bindings[root].bytes
+            {
+                return Err(Error::State(
+                    "ordinary CUDA residual alias physical layout differs".into(),
+                ));
+            }
+            value_bindings[value] = value_bindings[root];
+        }
+        let value_bindings: Arc<[ValueStorageBinding]> = value_bindings.into();
         let value_total_bytes = storage.total_bytes();
         drop(storage);
 
@@ -281,6 +304,7 @@ fn require_plan_shape(plan: &ForwardPlan) -> Result<()> {
         if descriptor.source() != plan.source()
             || descriptor.max_rows() != MAX_ROWS
             || descriptor.vocabulary() != VOCABULARY
+            || descriptor.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
         {
             return Err(Error::State(
                 "ordinary CUDA template source/rows/vocabulary differs".into(),
@@ -289,6 +313,51 @@ fn require_plan_shape(plan: &ForwardPlan) -> Result<()> {
         counts.add(descriptor.kind());
     }
     counts.require_exact()
+}
+
+fn residual_aliases(plan: &ForwardPlan) -> Result<Vec<Option<ValueId>>> {
+    let mut aliases = vec![None; plan.values().len()];
+    for node in plan.nodes() {
+        let PlanOperation::SourceOperatorTemplate { descriptor, .. } = &node.operation else {
+            return Err(Error::State(
+                "ordinary CUDA residual alias requires source template plan".into(),
+            ));
+        };
+        if !matches!(descriptor.kind(), SourceOperatorKind::ResidualRms(_)) {
+            continue;
+        }
+        let ([_, residual], [_, carried]) = (node.inputs.as_slice(), node.outputs.as_slice())
+        else {
+            return Err(Error::State(
+                "ordinary CUDA residual RMS exact two-input/two-output arity".into(),
+            ));
+        };
+        let residual_index = residual.0 as usize;
+        let carried_index = carried.0 as usize;
+        let root = aliases
+            .get(residual_index)
+            .copied()
+            .flatten()
+            .unwrap_or(*residual);
+        let root_index = root.0 as usize;
+        if residual.0 >= carried.0
+            || aliases
+                .get(carried_index)
+                .is_none_or(|current| current.is_some())
+            || plan.values().get(root_index) != plan.values().get(carried_index)
+        {
+            return Err(Error::State(
+                "ordinary CUDA residual in-place alias chain differs".into(),
+            ));
+        }
+        aliases[carried_index] = Some(root);
+    }
+    if aliases.iter().filter(|alias| alias.is_some()).count() != 48 {
+        return Err(Error::State(
+            "ordinary CUDA exact 48 residual in-place aliases differ".into(),
+        ));
+    }
+    Ok(aliases)
 }
 
 #[derive(Default)]
@@ -606,7 +675,7 @@ mod tests {
                     GdnRuntimeBufferOwnership::CacheState
                         | GdnRuntimeBufferOwnership::Control
                         | GdnRuntimeBufferOwnership::Scratch
-                )
+                ) || buffer.role() == crate::cuda::gdn::GdnRuntimeBuffer::Rstd
             })
             .map(|buffer| buffer.bytes())
             .sum::<usize>();

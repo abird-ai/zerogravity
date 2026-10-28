@@ -116,7 +116,8 @@ impl OrdinaryCudaCold {
                 GdnRuntimeBufferOwnership::CacheState
                     | GdnRuntimeBufferOwnership::Control
                     | GdnRuntimeBufferOwnership::Scratch
-            ) {
+            ) && buffer.role() != GdnRuntimeBuffer::Rstd
+            {
                 continue;
             }
             if gdn_internal
