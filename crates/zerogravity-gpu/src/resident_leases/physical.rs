@@ -118,6 +118,10 @@ impl ModelAdmission {
         }
         .register()
     }
+    pub(super) fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::Acquire)
+    }
+
     pub(super) fn ensure_open(&self) -> Result<()> {
         if self.closed.load(Ordering::Acquire) || self.fence.load(Ordering::Acquire) {
             return Err(Error::State(
@@ -686,6 +690,38 @@ mod tests {
             128
         );
     }
+    #[test]
+    fn model_close_waits_for_managed_foreign_and_event_retirement() {
+        let physical = PhysicalFixture::new();
+        let model = physical.attach(81, 96, None).unwrap();
+        let foreign = ForeignProviderCharge::reserve(Arc::new(Module(model.clone())), 16).unwrap();
+        let managed = physical
+            .ledger
+            .lock()
+            .unwrap()
+            .admit_for(81, 32, BufferRole::Output)
+            .unwrap();
+        let event = physical
+            .ledger
+            .lock()
+            .unwrap()
+            .submit(0, &[(managed, DeviceAccess::Read)])
+            .unwrap();
+
+        assert!(model.close().is_err());
+        drop(foreign);
+        assert!(model.close().is_err());
+
+        {
+            let mut ledger = physical.ledger.lock().unwrap();
+            ledger.report_physical_ready(event).unwrap();
+            ledger.retire_physical_ready(event).unwrap();
+            ledger.release_lease(managed).unwrap();
+        }
+        model.close().unwrap();
+        assert!(model.ensure_open().is_err());
+    }
+
     #[test]
     fn sum_of_model_quotas_and_native_managed_charges_share_one_original_envelope() {
         let physical = PhysicalFixture::new();

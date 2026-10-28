@@ -322,6 +322,11 @@ fn publish_prepared_cohort(
     Ok(())
 }
 
+fn into_unique_owner<T>(owner: Arc<T>, label: &str) -> Result<T> {
+    Arc::try_unwrap(owner)
+        .map_err(|_| Error::State(format!("{label} still has live session/model owners")))
+}
+
 fn words(bytes: &Bytes) -> Result<Vec<f32>> {
     if !bytes.len().is_multiple_of(4) {
         return Err(Error::State("resident f32 readback alignment".into()));
@@ -489,6 +494,36 @@ impl ResidentModel {
             }),
             allocation: Mutex::new(()),
         }))
+    }
+
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+    pub async fn shutdown_ordinary_cuda(self: Arc<Self>) -> Result<()> {
+        let model = into_unique_owner(self, "ordinary CUDA resident model")?;
+        let service = model.service.clone();
+        {
+            let workspace = model.workspace.lock().await;
+            if !workspace.program.is_ordinary_cuda() {
+                return Err(Error::State(
+                    "ordinary CUDA shutdown requested from another resident model".into(),
+                ));
+            }
+            workspace.program.retire_ordinary_cuda().await?;
+        }
+
+        // No sessions can remain after the unique-owner check. Dropping the
+        // model retires all cold/value/state-pool leases while this service Arc
+        // keeps the original namespace available for exact ledger validation.
+        drop(model);
+        service
+            .client()
+            .memory_cleanup()
+            .map_err(|error| Error::State(format!("ordinary CUDA shutdown cleanup: {error}")))?;
+        if service.resident_bytes()? != 0 || service.model_events()? != 0 {
+            return Err(Error::State(
+                "ordinary CUDA shutdown left resident bytes or events".into(),
+            ));
+        }
+        service.close_model_namespace()
     }
 
     pub fn physical_owner(&self) -> Arc<ResidentPhysical> {
@@ -2433,5 +2468,25 @@ impl CheckpointFixture for ResidentSession {
             &checkpoint.domain_values(),
         )
         .await
+    }
+}
+
+#[cfg(test)]
+mod ordinary_shutdown_owner_tests {
+    use super::into_unique_owner;
+    use std::sync::Arc;
+
+    #[test]
+    fn shutdown_requires_unique_model_owner() {
+        let owner = Arc::new(17usize);
+        let sibling = owner.clone();
+        assert!(into_unique_owner(owner, "ordinary CUDA test model").is_err());
+        drop(sibling);
+
+        let owner = Arc::new(23usize);
+        assert_eq!(
+            into_unique_owner(owner, "ordinary CUDA test model").unwrap(),
+            23
+        );
     }
 }

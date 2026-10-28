@@ -168,6 +168,16 @@ impl ResidentProgram {
         body.validate_request(request).map(|_| ())
     }
 
+    pub(crate) async fn retire_ordinary_cuda(&self) -> Result<()> {
+        let ResidentProgramBody::OrdinaryCuda(body) = &self.body else {
+            return Err(Error::State(
+                "ordinary CUDA retirement requested from another resident body".into(),
+            ));
+        };
+        // Root 0 is event bookkeeping only. Shutdown publishes no logical root.
+        body.blas().retire(0).await
+    }
+
     pub(crate) fn launch_ordinary_cuda(
         &self,
         flight: &mut crate::resident_leases::ResidentSubmission<'_>,

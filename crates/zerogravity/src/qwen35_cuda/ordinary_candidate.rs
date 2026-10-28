@@ -101,6 +101,13 @@ impl Model {
         &self.resident
     }
 
+    pub async fn shutdown(self: Arc<Self>) -> Result<()> {
+        let model = Arc::try_unwrap(self).map_err(|_| {
+            Error::State("ordinary Qwen candidate still has live session/model owners".into())
+        })?;
+        model.resident.shutdown_ordinary_cuda().await
+    }
+
     pub async fn session(self: &Arc<Self>) -> Result<Session> {
         Ok(Session {
             model: self.clone(),

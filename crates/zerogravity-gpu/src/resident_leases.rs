@@ -167,6 +167,9 @@ pub(crate) struct ResidentService {
 }
 impl Drop for ResidentService {
     fn drop(&mut self) {
+        if self.admission.is_closed() {
+            return;
+        }
         // Final source reader only; never synchronize per hot logical lease.
         // Both original admission and physical envelope remain fields until
         // the actual backend drop queue/unused-page cleanup has completed.
@@ -385,12 +388,26 @@ impl ResidentService {
             .checked_sub(self.resident_bytes()?)
             .ok_or_else(|| Error::State("resident capacity accounting invalid".into()))
     }
-    #[cfg(feature = "qualification")]
-    pub fn pending_events(&self) -> Result<usize> {
+
+    pub(crate) fn model_events(&self) -> Result<usize> {
         self.ledger
             .lock()
-            .map(|l| l.model_events(self.generation))
+            .map(|ledger| ledger.model_events(self.generation))
             .map_err(|_| Error::State("resident event ledger poisoned".into()))
+    }
+
+    pub(crate) fn close_model_namespace(&self) -> Result<()> {
+        self.ensure_usable()?;
+        if self.resident_bytes()? != 0 || self.model_events()? != 0 {
+            return Err(Error::State(
+                "resident model close requires zero allocations and events".into(),
+            ));
+        }
+        self.admission.close()
+    }
+    #[cfg(feature = "qualification")]
+    pub fn pending_events(&self) -> Result<usize> {
+        self.model_events()
     }
     pub fn ensure_usable(&self) -> Result<()> {
         self.admission
