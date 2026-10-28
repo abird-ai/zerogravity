@@ -1472,3 +1472,10 @@ build or general model/backend grant. Historical failures keep their source scop
   accepted/rejected context records and decision-fallback semantics
   before enabling generic context-filter execution; pipeline check alone
   provides only typed static intent.
+
+### 28 Oct 2026 — ordinary Qwen CUDA integrated, qualification-only
+
+- [x] Source-derived ordinary .8B/2B CUDA execution is assembled under the existing ResidentProgram / ResidentInference owner: one call-free ForwardPlan, request-local materialization, owned cuBLAS projections, source-exact attention, arbitrary-row GDN, F32/F32/BF16 two-root state, one queue/flight/completion/quarantine path and the existing StateRoot publication authority. Prompt IDs, lengths, ordinals, packets, captures and recipe hashes do not authorize ordinary execution.
+- [x] Source-free lifecycle/build gate passes: qualification ordinary tests, strict qwen35-cuda-qualification Clippy, plain qwen35-cuda, default and all-features checks. Explicit shutdown now requires unique model ownership, retires the BLAS provider/pool before lease release, verifies zero resident bytes/events, then closes the model namespace; source-free close-order tests cover managed allocations, opaque foreign charge and in-flight event retirement.
+- [ ] Real current-source qualification remains mandatory before production routing: .8B natural/current-root parity including cached 47→50, physical fault/cancellation/retirement and real-model shutdown, then .8B 512/1K/2K/4K/8K and 16K/32K. Admit 2B contexts only where the exact two-root plan fits.
+- [ ] Current physical blocker: the approved .8B receipt (Qwen/Qwen3.5-0.8B, revision 2fc06364715b967f1860aea9cf38778875588b17) is present, but the exact 1,746,942,600-byte safetensor shard SHA256 04b1c301231dd422b8860db31311ab2721511346a32cb1e079c4c4e5f1fe4696 is not visible through the current connector filesystem. Do not download or substitute another source; resume physical qualification when that held shard is accessible.

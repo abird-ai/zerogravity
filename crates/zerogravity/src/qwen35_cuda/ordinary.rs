@@ -1,15 +1,14 @@
-//! Honest lowering audit for the incomplete ordinary CUDA path.
-//! This retains the model invocation while checking backend definitions, but
-//! cannot mint execution: source-bound non-GDN projection/attention lowering
-//! and physical owner wiring are absent. GDN remains with the existing runtime
-//! owner, so every attempted binding returns an explicit refusal.
+//! Qualification-only lowering audit for the integrated ordinary CUDA path.
+//! This retains the exact model invocation and checks all reviewed primitive
+//! contracts. Projection, source-exact attention, GDN, and physical
+//! queue/flight/completion/StateRoot ownership are now integrated under the
+//! existing resident owner; this module grants no production routing.
 
 use super::*;
 use crate::gpu::cuda::ordinary_text::{
     Access, BufferRole, DefinitionContract, Geometry, PlanPrimitive, Program, Step,
 };
 use crate::qwen35::plan::{OrdinaryQwenInvocation, OrdinaryQwenPlan, QwenSourceProfile};
-use std::collections::BTreeSet;
 use zerogravity_core::accelerator::program::{
     PlanOperation, SourceGamma, SourceNumericalContract, SourceOperatorKind, TensorView,
 };
@@ -20,7 +19,6 @@ struct LoweringAudit {
     // Retains the exact plan/source seal through the complete audit/refusal.
     _invocation: OrdinaryQwenInvocation,
     contracts: Vec<DefinitionContract>,
-    missing: BTreeSet<&'static str>,
 }
 
 pub(super) fn require_binding(
@@ -29,9 +27,8 @@ pub(super) fn require_binding(
 ) -> Result<()> {
     let audit = audit(plan, invocation)?;
     let mapped = audit.contracts.len();
-    let missing = audit.missing.into_iter().collect::<Vec<_>>().join(", ");
     Err(Error::Unsupported(format!(
-        "ordinary Qwen CUDA is unintegrable: mapped {mapped} checked primitive definitions; missing {missing}"
+        "ordinary Qwen CUDA is integrated but qualification-only: audited {mapped} checked primitive definitions; current-source real-model parity, fault/cancellation/retirement/shutdown qualification, and context-fit gates remain"
     )))
 }
 
@@ -57,7 +54,6 @@ fn audit(plan: &OrdinaryQwenPlan, invocation: &OrdinaryQwenInvocation) -> Result
         plan.context_capacity_tokens(),
     )?;
     let mut contracts = vec![program.contract(PlanPrimitive::Positions, step)?];
-    let mut missing = BTreeSet::new();
     for node in invocation.active_nodes() {
         let PlanOperation::SourceOperatorTemplate { descriptor, .. } = &node.operation else {
             return Err(Error::State(
@@ -72,15 +68,8 @@ fn audit(plan: &OrdinaryQwenPlan, invocation: &OrdinaryQwenInvocation) -> Result
                 "ordinary Qwen source template identity/contract differs".into(),
             ));
         }
-        match plan_primitives(descriptor.kind(), geometry, invocation.rows())? {
-            Ok(operations) => {
-                for operation in operations {
-                    contracts.push(program.contract(operation, step)?);
-                }
-            }
-            Err(unimplemented) => {
-                missing.insert(unimplemented);
-            }
+        for operation in plan_primitives(descriptor.kind(), geometry, invocation.rows())? {
+            contracts.push(program.contract(operation, step)?);
         }
     }
     if contracts.iter().any(|contract| {
@@ -94,11 +83,9 @@ fn audit(plan: &OrdinaryQwenPlan, invocation: &OrdinaryQwenInvocation) -> Result
             "ordinary Qwen primitive status binding contract differs".into(),
         ));
     }
-    missing.insert("physical queue/flight/completion/StateRoot ownership");
     Ok(LoweringAudit {
         _invocation: invocation.clone(),
         contracts,
-        missing,
     })
 }
 
@@ -106,7 +93,7 @@ fn plan_primitives(
     kind: SourceOperatorKind,
     geometry: Geometry,
     rows: usize,
-) -> Result<std::result::Result<Vec<PlanPrimitive>, &'static str>> {
+) -> Result<Vec<PlanPrimitive>> {
     let operations = match kind {
         SourceOperatorKind::EmbeddingRows => vec![PlanPrimitive::Embedding],
         SourceOperatorKind::Rms(g) => {
@@ -184,17 +171,12 @@ fn plan_primitives(
             }
             vec![PlanPrimitive::SiluAndMul]
         }
-        SourceOperatorKind::Projection { .. } => {
-            return Ok(Err("source-bound non-GDN projection lowering"));
-        }
-        // Dynamic GDN is already owned by the existing ordinary runtime schedule;
-        // this audit must not duplicate it or describe it as an integration gap.
-        SourceOperatorKind::CausalConvSplit { .. } | SourceOperatorKind::GatedDelta { .. } => {
-            Vec::new()
-        }
-        SourceOperatorKind::FlashAttention { .. } => {
-            return Ok(Err("source-bound non-GDN attention lowering"));
-        }
+        // These execute through the integrated resident owner rather than the
+        // ordinary-text primitive ABI audited here.
+        SourceOperatorKind::Projection { .. }
+        | SourceOperatorKind::CausalConvSplit { .. }
+        | SourceOperatorKind::GatedDelta { .. }
+        | SourceOperatorKind::FlashAttention { .. } => Vec::new(),
         SourceOperatorKind::RetainedRows { .. }
         | SourceOperatorKind::CausalConvSiluZero { .. }
         | SourceOperatorKind::GroupedQkNormalize(_)
@@ -204,7 +186,7 @@ fn plan_primitives(
             ));
         }
     };
-    Ok(Ok(operations))
+    Ok(operations)
 }
 
 fn require_rms(width: usize, epsilon: f32, gamma: SourceGamma, hidden: usize) -> Result<()> {
@@ -290,7 +272,7 @@ mod tests {
                 ),
             ];
             for (kind, expected) in cases {
-                assert_eq!(plan_primitives(kind, geometry, 17)?.unwrap(), expected);
+                assert_eq!(plan_primitives(kind, geometry, 17)?, expected);
             }
         }
         Ok(())
@@ -299,13 +281,13 @@ mod tests {
     #[test]
     fn missing_runtime_operations_and_layout_substitutions_refuse() -> Result<()> {
         let geometry = Geometry::qwen35_08();
-        assert_eq!(
+        assert!(
             plan_primitives(
                 SourceOperatorKind::Projection { selected_row: None },
                 geometry,
                 64,
-            )?,
-            Err("source-bound non-GDN projection lowering")
+            )?
+            .is_empty()
         );
         assert!(
             plan_primitives(SourceOperatorKind::SiluAndMul { width: 6144 }, geometry, 64).is_err()

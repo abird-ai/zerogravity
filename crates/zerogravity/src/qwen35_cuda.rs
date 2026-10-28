@@ -46,7 +46,7 @@ mod templates;
 pub use session::Session;
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub use source::RouteTokenizer;
-const ORDINARY_CAPABILITY_REFUSAL: &str = "ordinary Qwen CUDA is unintegrable: source-bound non-GDN projection/attention lowering plus physical queue/flight/completion/StateRoot ownership are incomplete; no backend is exposed";
+const ORDINARY_CAPABILITY_REFUSAL: &str = "ordinary Qwen CUDA is integrated but qualification-only: current-source real-model parity, fault/cancellation/retirement/shutdown qualification, and context-fit gates remain; no production backend is exposed";
 
 /// Ordinary run/serve must refuse before source, device or driver discovery.
 pub fn require_ordinary_capability() -> Result<()> {
@@ -54,8 +54,8 @@ pub fn require_ordinary_capability() -> Result<()> {
 }
 
 /// Audit an authenticated ordinary plan/invocation against the checked CUDA
-/// primitive contracts, then refuse explicitly because complete physical owner
-/// and missing-operation wiring is not integrated.
+/// contracts. This grants no production routing; the integrated path remains
+/// qualification-only until the real-model/lifecycle/context gates close.
 pub fn require_ordinary_invocation_capability(
     plan: &crate::qwen35::plan::OrdinaryQwenPlan,
     invocation: &crate::qwen35::plan::OrdinaryQwenInvocation,
@@ -66,13 +66,14 @@ pub fn require_ordinary_invocation_capability(
 #[cfg(test)]
 mod ordinary_refusal_tests {
     #[test]
-    fn ordinary_backend_is_explicitly_unintegrable_not_dead_allowed() {
+    fn ordinary_backend_is_explicitly_qualification_only_not_dead_allowed() {
         let error = super::require_ordinary_capability()
             .unwrap_err()
             .to_string();
-        assert!(error.contains("unintegrable"));
-        assert!(error.contains("physical queue/flight/completion/StateRoot ownership"));
-        assert!(error.contains("no backend is exposed"));
+        assert!(error.contains("integrated but qualification-only"));
+        assert!(error.contains("real-model parity"));
+        assert!(error.contains("fault/cancellation/retirement/shutdown"));
+        assert!(error.contains("no production backend is exposed"));
     }
 }
 
