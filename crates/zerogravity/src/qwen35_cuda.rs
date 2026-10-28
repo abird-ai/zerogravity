@@ -24,14 +24,22 @@ mod cohort;
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub mod fixed_prompt;
 #[cfg(feature = "qwen35-cuda-qualification")]
+mod held_directory;
+#[cfg(feature = "qwen35-cuda-qualification")]
 mod manifest;
 mod ordinary;
+#[cfg(feature = "qwen35-cuda-qualification")]
+pub mod ordinary_candidate;
+#[cfg(feature = "qwen35-cuda-qualification")]
+mod ordinary_source;
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub mod qualification;
 #[cfg(feature = "qwen35-cuda-qualification")]
 mod session;
 #[cfg(feature = "qwen35-cuda-qualification")]
 mod source;
+#[cfg(feature = "qwen35-cuda-qualification")]
+mod source_inventory;
 #[cfg(feature = "qwen35-cuda-qualification")]
 mod templates;
 #[cfg(feature = "qwen35-cuda-qualification")]

@@ -2,7 +2,10 @@
 use super::*;
 use crate::qwen35::source::binding::OriginalWindowModelSource;
 use crate::qwen35::source::owned::QwenOriginalWindowText;
-use crate::qwen35_cuda::fixed_prompt::paths::{Directory, digest};
+use crate::qwen35_cuda::{
+    held_directory::Directory,
+    source_inventory::{digest, member, select},
+};
 use sha2::{Digest, Sha256};
 use zerogravity_artifacts::{
     artifact::Artifact,
@@ -13,63 +16,6 @@ pub(super) struct Opened {
     pub source: Arc<OriginalWindowModelSource>,
     pub tokenizer: QwenTokenizer,
     pub metadata: SourceMetadata,
-}
-struct Spec {
-    family: &'static str,
-    repository: &'static str,
-    revision: &'static str,
-    config_sha: &'static str,
-    index_sha: &'static str,
-    manifest_sha: &'static str,
-    inventory: &'static str,
-    hidden: usize,
-    max_source: u64,
-}
-static SPECS: [Spec; 2] = [
-    Spec {
-        family: "0.8b",
-        repository: "Qwen/Qwen3.5-0.8B",
-        revision: "2fc06364715b967f1860aea9cf38778875588b17",
-        config_sha: "b90b86f35c8e6925ef74ee04d0e758f0a845c83a42089ad82bbaa948de9b4204",
-        index_sha: "d8a08838a613b025eb7952ed9db11696213e57e76a375661ef5c12f9dd5dcf4e",
-        manifest_sha: "c4c1d349743c0e0ba51ab07f769348e6b13f9896c354303c7af5e839c11dbf09",
-        inventory: include_str!("source08.json"),
-        hidden: 1024,
-        max_source: 2 * 1024 * MIB as u64,
-    },
-    Spec {
-        family: "2b",
-        repository: "Qwen/Qwen3.5-2B",
-        revision: "15852e8c16360a2fea060d615a32b45270f8a8fc",
-        config_sha: "ed1c1723241f23f7f4e23430759cbd7dcfb4103cbdfe052bfe7626b57c2615b4",
-        index_sha: "aca8afed9da75b0f050b408d270766fd77627f1af401e240f61c3b47d0db02f9",
-        manifest_sha: "88606494611dfa37253320ef82c88ca6ae6f665ac873fec28859fafd216dbf52",
-        inventory: include_str!("source2b.json"),
-        hidden: 2048,
-        max_source: 5 * 1024 * MIB as u64,
-    },
-];
-fn select(config: &[u8]) -> Result<&'static Spec> {
-    let sha = Sha256::digest(config);
-    SPECS
-        .iter()
-        .find(|s| sha[..] == digest(s.config_sha))
-        .ok_or_else(|| Error::Unsupported("Qwen CUDA exact approved config/source required".into()))
-}
-fn member(row: &serde_json::Value, small: bool) -> Result<(&str, usize, &str)> {
-    let text = |key| {
-        row[key]
-            .as_str()
-            .ok_or_else(|| Error::Malformed("compiled source member".into()))
-    };
-    let name = text(if small { "name" } else { "path" })?;
-    let sha = text(if small { "sha256" } else { "digest" })?;
-    let bytes = row["bytes"]
-        .as_u64()
-        .and_then(|n| usize::try_from(n).ok())
-        .filter(|&n| n > 0)
-        .ok_or_else(|| Error::Limit("compiled source member bytes".into()))?;
-    Ok((name, bytes, sha))
 }
 pub(super) fn open(
     directory: &Path,

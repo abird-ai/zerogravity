@@ -3,8 +3,8 @@ use crate::accelerator::program::{ConvDomain, KvDomain, RecurrentDomain, StateSl
 #[cfg(feature = "qwen35-cuda-qualification")]
 use crate::gpu::cuda::gdn::TextGdnImplementation;
 use crate::gpu::{
-    ComponentOutput as EngineComponentOutput, ComponentRecipe, SourceBindings, SourceSelection,
-    StateLayout, StateRequirement,
+    ComponentOutput as EngineComponentOutput, ComponentRecipe, ResidentPhysicalType,
+    SourceBindings, SourceSelection, StateLayout, StateRequirement,
 };
 use crate::qwen35::StateSpec;
 use crate::qwen35::source::binding::{
@@ -141,6 +141,7 @@ fn state_requirements(specs: &[StateSpec], capacity: usize) -> Result<Vec<StateR
                     states.push(StateRequirement {
                         slot,
                         layout: StateLayout::Vector { elements },
+                        physical: ResidentPhysicalType::F32,
                         bytes: state_bytes(elements, 1)?,
                     });
                 }
@@ -155,6 +156,7 @@ fn state_requirements(specs: &[StateSpec], capacity: usize) -> Result<Vec<StateR
                         slab: kv_width,
                         capacity,
                     },
+                    physical: ResidentPhysicalType::F32,
                     bytes: state_bytes(elements, 2)?,
                 });
             }
