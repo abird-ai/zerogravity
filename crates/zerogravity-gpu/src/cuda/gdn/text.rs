@@ -131,6 +131,7 @@ mod parameterized_gated;
 mod parameterized_prefill;
 mod parameterized_prefill_variants;
 mod runtime;
+pub(crate) use runtime::GdnRuntimePartition;
 pub use runtime::{
     GdnRuntimeAccess, GdnRuntimeBinding, GdnRuntimeBuffer, GdnRuntimeBufferLayout,
     GdnRuntimeBufferOwnership, GdnRuntimeCacheSlot, GdnRuntimeConfig, GdnRuntimeControl,

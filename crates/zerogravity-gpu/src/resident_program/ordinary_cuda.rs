@@ -25,6 +25,7 @@ use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 mod attention;
 pub(super) mod body;
 mod cold;
+mod execute;
 mod layout;
 
 use zerogravity_core::{

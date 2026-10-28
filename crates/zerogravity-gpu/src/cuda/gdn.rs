@@ -641,6 +641,7 @@ pub use fixed_prompt_component::{FixedPromptGdnArithmetic, FixedPromptGdnInterme
 #[cfg(target_os = "linux")]
 mod text;
 #[cfg(target_os = "linux")]
+pub(crate) use text::GdnRuntimePartition;
 pub use text::{
     GdnKernelConfig, GdnKktKernel, GdnOutputKernel, GdnRecomputeKernel, GdnRuntimeAccess,
     GdnRuntimeBinding, GdnRuntimeBuffer, GdnRuntimeBufferLayout, GdnRuntimeBufferOwnership,

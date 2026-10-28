@@ -124,3 +124,24 @@ impl OrdinaryCudaBody {
         &self.accesses
     }
 }
+
+impl ResidentProgram {
+    pub(crate) fn is_ordinary_cuda(&self) -> bool {
+        matches!(self.body, ResidentProgramBody::OrdinaryCuda(_))
+    }
+
+    pub(crate) fn launch_ordinary_cuda(
+        &self,
+        flight: &mut crate::resident_leases::ResidentSubmission<'_>,
+        request: &zerogravity_core::accelerator::program::ForwardPlan,
+        states: &[crate::resident_program::StateBinding],
+        output: crate::resident_program::ResidentOutput,
+    ) -> Result<crate::resident_program::ResidentSubmission> {
+        let ResidentProgramBody::OrdinaryCuda(body) = &self.body else {
+            return Err(Error::State(
+                "ordinary CUDA launch requested from another resident body".into(),
+            ));
+        };
+        body.execute(flight, request, states, output)
+    }
+}
