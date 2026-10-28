@@ -1414,3 +1414,22 @@ build or general model/backend grant. Historical failures keep their source scop
 - [x] A deliberately non-BF16 canonical conv root sets the transport fault bit,
   proving fail-closed validation rather than silently truncating malformed root
   state.
+
+### 28 Oct 2026 — generic ordinary GDN runtime physical qualification
+
+- [x] Added and ran a source/model/provider-independent RTX 3060 smoke for the
+  production parameterized GDN runtime with the exact ordinary stage tuple.
+  Initial prefill rows 1, 2, 17 and 64, continued prefill frontier 64 / rows 17,
+  and cached decode frontier 71 all execute both convolution and recurrent
+  partitions successfully with zero-fixture outputs.
+- [x] The smoke found a real cached Gated launch-geometry bug before the
+  full-model campaign: the retained cached PTX writes 128 BF16 outputs per
+  block and immutable original metadata for PTX SHA a97d127b... records grid
+  [16,1,1], while the parameterized runtime launched [4,1,1]. That wrote only
+  512 of the declared 2,048 BF16 cached Gated outputs.
+- [x] Cached Gated now launches [16,1,1]; prefill keeps its source-derived
+  rows/4 grid. A source-free regression pins cached [16,1,1] and 47-token
+  prefill [188,1,1]. The physical zero-fixture now passes cached decode as well
+  as every prefill/continued-prefill cell.
+- [x] Strict qualification,cuda-cublas Clippy, all-features build, formatting
+  and diff checks pass after the correction.
