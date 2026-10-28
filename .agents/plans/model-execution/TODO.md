@@ -1708,3 +1708,24 @@ build or general model/backend grant. Historical failures keep their source scop
 - [ ] When the approved source tree, pinned native bundle payloads and pinned
   provider DSOs reappear, use this wrapper with a fresh evidence path; no manual
   phase ordering is required.
+
+### 28 Oct 2026 — ordinary parity evidence/restart hardening
+
+- [x] Reference evidence publication is now crash-safe at the final filename:
+  phase 1 writes/hashes/fsyncs a create-new sibling temporary file, atomically
+  hard-links it into the create-new final evidence path, fsyncs the directory,
+  then removes the temporary name. A partial phase-1 crash cannot publish a
+  partial final evidence file.
+- [x] Evidence publication has a source-free regression proving the final name
+  is absent before publish, complete bytes appear at publish, and a second
+  publisher cannot overwrite an existing final evidence file.
+- [x] The serial wrapper now supports --compare-existing for deterministic
+  phase-2 restart after a successful reference capture. It requires an existing
+  regular non-symlink evidence file, reruns the complete source/kernel/provider/
+  CUDA/NVRTC/GPU-idle preflight, then runs only the fresh ordinary comparison
+  process. Corrupt evidence remains SHA/schema rejected before ordinary load.
+- [x] Wrapper mode tests pass: compare-existing rejects missing evidence,
+  fresh/preflight mode rejects an existing evidence path, and compare-existing
+  with an existing file advances to artifact authentication. Release integration
+  cargo check, strict qualification Clippy, parity unit tests, bash syntax and
+  shell checks all pass with CARGO_BUILD_JOBS=8 / RAYON_NUM_THREADS=8.
