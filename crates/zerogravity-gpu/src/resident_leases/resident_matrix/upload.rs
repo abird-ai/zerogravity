@@ -127,7 +127,7 @@ impl ResidentInitialization<'_> {
         self.service.ensure_usable()?;
         let matrix = Bf16MatrixSource::new(source, matrix)?;
         let geometry = matrix.geometry();
-        require_portable(self.service, geometry)?;
+        require_upload(self.service, geometry)?;
         if matrix.source().source_identity() != self.service.source_identity()
             || self.service.client().is_capturing()
         {

@@ -14,6 +14,21 @@ pub(in crate::resident_leases) mod upload;
 use layout::Geometry;
 pub(crate) use upload::PendingResidentMatrix;
 
+fn require_upload(service: &Arc<ResidentService>, geometry: Geometry) -> Result<()> {
+    service.ensure_usable()?;
+    if !matches!(
+        service.provider,
+        crate::backend::Provider::Cuda
+            | crate::backend::Provider::Hip
+            | crate::backend::Provider::Vulkan
+    ) {
+        return Err(Error::Unsupported(
+            "BF16 matrix upload requires an explicit GPU provider".into(),
+        ));
+    }
+    geometry.portable_limits(service.client().properties().memory.max_page_size)
+}
+
 fn require_portable(service: &Arc<ResidentService>, geometry: Geometry) -> Result<()> {
     service.ensure_usable()?;
     if !matches!(
