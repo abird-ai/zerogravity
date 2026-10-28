@@ -26,7 +26,7 @@ impl OrdinaryCudaBody {
     pub(super) fn bind(
         cold: Arc<OrdinaryCudaCold>,
         blas: Arc<OrdinaryCudaBlas>,
-    ) -> Result<ResidentProgram> {
+    ) -> Result<(ResidentProgram, Arc<Self>)> {
         cold.service().ensure_usable()?;
         blas.require_service(cold.service())?;
         if cold.layout().total_admission_bytes()?
@@ -118,15 +118,16 @@ impl OrdinaryCudaBody {
             state_accesses: state_accesses.into(),
             logit_accesses: logit_accesses.into(),
         });
-        Ok(ResidentProgram {
+        let program = ResidentProgram {
             _source_owner: ResidentProgramSource::Windows(cold.source().clone()),
             plan: cold.plan().clone(),
             preflight,
             values: cold.values().to_vec(),
             status: cold.status().handle(),
             owned_ranges,
-            body: ResidentProgramBody::OrdinaryCuda(body),
-        })
+            body: ResidentProgramBody::OrdinaryCuda(body.clone()),
+        };
+        Ok((program, body))
     }
 
     pub(super) fn cold(&self) -> &Arc<OrdinaryCudaCold> {

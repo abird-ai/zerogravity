@@ -64,12 +64,12 @@ fn exact_view(
 /// Explicit runtime provider binding. These paths are never selected by model,
 /// prompt, call/node ordinals, packets or captured recipe metadata.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct OrdinaryCudaProviderPaths {
+pub struct OrdinaryCudaProviderPaths {
     cublas: PathBuf,
     cublas_lt: PathBuf,
 }
 impl OrdinaryCudaProviderPaths {
-    pub(crate) fn new(cublas: impl Into<PathBuf>, cublas_lt: impl Into<PathBuf>) -> Result<Self> {
+    pub fn new(cublas: impl Into<PathBuf>, cublas_lt: impl Into<PathBuf>) -> Result<Self> {
         let cublas = cublas.into();
         let cublas_lt = cublas_lt.into();
         if cublas.as_os_str().is_empty() || cublas_lt.as_os_str().is_empty() || cublas == cublas_lt
@@ -511,4 +511,143 @@ mod tests {
         assert!(OrdinaryCudaProviderPaths::new("", "/b/libcublasLt.so.12").is_err());
         assert!(OrdinaryCudaProviderPaths::new("/same", "/same").is_err());
     }
+}
+
+pub(crate) struct OrdinaryCudaAdmission {
+    layout: Arc<layout::OrdinaryCudaLayout>,
+}
+impl OrdinaryCudaAdmission {
+    pub(crate) fn analyze(
+        plan: Arc<zerogravity_core::accelerator::program::ForwardPlan>,
+    ) -> Result<Self> {
+        Ok(Self {
+            layout: layout::OrdinaryCudaLayout::analyze(plan)?,
+        })
+    }
+    pub(crate) fn total_bytes(&self) -> Result<usize> {
+        self.layout.total_admission_bytes()
+    }
+    pub(crate) fn source(&self) -> zerogravity_core::accelerator::SourceIdentity {
+        self.layout.plan().source()
+    }
+    pub(crate) fn capacity(&self) -> usize {
+        self.layout.plan().prefix_capacity()
+    }
+    pub(crate) fn vocabulary(&self) -> usize {
+        layout::VOCABULARY
+    }
+    pub(crate) fn preflight(&self) -> &crate::resident_program::ResidentPreflight {
+        self.layout.preflight()
+    }
+}
+
+pub(crate) struct PreparedOrdinaryCuda {
+    pub(crate) program: crate::resident_program::ResidentProgram,
+    pub(crate) owned_accesses: Vec<(ResidentLease, DeviceAccess)>,
+    pub(crate) state_accesses: Vec<(ResidentLease, DeviceAccess)>,
+    pub(crate) logit_accesses: Vec<(ResidentLease, DeviceAccess)>,
+}
+
+fn same_state_requirements(
+    a: &[crate::resident_program::StateRequirement],
+    b: &[crate::resident_program::StateRequirement],
+) -> bool {
+    a.len() == b.len()
+        && a.iter().zip(b).all(|(a, b)| {
+            a.slot == b.slot
+                && a.physical == b.physical
+                && a.bytes == b.bytes
+                && match (a.layout, b.layout) {
+                    (
+                        crate::resident_program::StateLayout::Vector { elements: a },
+                        crate::resident_program::StateLayout::Vector { elements: b },
+                    ) => a == b,
+                    (
+                        crate::resident_program::StateLayout::Kv {
+                            slab: aslab,
+                            capacity: acap,
+                        },
+                        crate::resident_program::StateLayout::Kv {
+                            slab: bslab,
+                            capacity: bcap,
+                        },
+                    ) => aslab == bslab && acap == bcap,
+                    _ => false,
+                }
+        })
+}
+
+pub(crate) async fn prepare_program(
+    service: Arc<ResidentService>,
+    admission: OrdinaryCudaAdmission,
+    source: VerifiedTensorSource,
+    paths: &OrdinaryCudaProviderPaths,
+    cancelled: Option<&AtomicBool>,
+) -> Result<PreparedOrdinaryCuda> {
+    service.ensure_usable()?;
+    if service.source_identity() != admission.source()
+        || source.source_identity() != admission.source()
+    {
+        return Err(Error::State(
+            "ordinary CUDA preparation source/service differs".into(),
+        ));
+    }
+    let cold_bytes = admission.preflight().owned_bytes()?;
+    if admission.total_bytes()? > service.remaining_capacity()?
+        || cold_bytes > service.remaining_capacity()?
+    {
+        return Err(Error::Limit(
+            "ordinary CUDA complete cold/two-root admission exceeds model capacity".into(),
+        ));
+    }
+
+    // The complete fit decision above precedes cleanup, queue work and allocation.
+    service
+        .client()
+        .memory_cleanup()
+        .map_err(|error| Error::State(format!("ordinary CUDA cold allocator cleanup: {error}")))?;
+
+    let ticket = service.queue().submit(
+        service.budget(),
+        service.owner().clone(),
+        &[AllocationRequest {
+            kind: AllocationClass::TransferStaging,
+            bytes: cold_bytes as u64,
+        }],
+        None,
+    )?;
+    let mut slot = ticket.wait().await?;
+    slot.begin_submission()?;
+    let mut init = service.begin_initialization(0)?;
+    let cold = cold::OrdinaryCudaCold::prepare(
+        admission.layout.clone(),
+        source,
+        service.clone(),
+        &mut init,
+        cancelled,
+    )
+    .await?;
+    drop(init.complete_sync().await?);
+    slot.finish()?;
+
+    let blas = OrdinaryCudaBlas::prepare(service, 0, paths).await?;
+    let (program, body) = body::OrdinaryCudaBody::bind(cold, blas)?;
+    if !same_state_requirements(&program.budget().states, &admission.preflight().states)
+        || program.budget().prior_state_bytes != admission.preflight().prior_state_bytes
+        || program.budget().candidate_state_bytes != admission.preflight().candidate_state_bytes
+    {
+        return Err(Error::State(
+            "ordinary CUDA bound program state preflight differs".into(),
+        ));
+    }
+    Ok(PreparedOrdinaryCuda {
+        program,
+        owned_accesses: body.owned_accesses().to_vec(),
+        state_accesses: body
+            .accesses(crate::resident_program::ResidentOutput::StateOnly)
+            .to_vec(),
+        logit_accesses: body
+            .accesses(crate::resident_program::ResidentOutput::Logits)
+            .to_vec(),
+    })
 }

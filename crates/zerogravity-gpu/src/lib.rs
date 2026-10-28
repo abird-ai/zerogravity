@@ -63,6 +63,8 @@ pub use resident_program::bf16_text::{
     TextHostOwners, TextNativeOwners, TextObserver, TextResourceInventory, TextStorage, TextTraffic,
 };
 // Pure physical byte metadata; no allocation/backend/model eligibility permit.
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+pub use resident_program::ordinary_cuda::OrdinaryCudaProviderPaths;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use resident_program::qwen2b_component::{ComponentOutput, ComponentRecipe};
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]

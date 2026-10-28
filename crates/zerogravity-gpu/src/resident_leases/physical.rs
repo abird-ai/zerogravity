@@ -6,6 +6,7 @@ pub(crate) enum ResidentSource {
     Tensor(Arc<dyn zerogravity_core::source::TensorSource>),
     #[cfg(all(
         any(
+            feature = "cuda-cublas",
             feature = "cuda-native-qualification",
             feature = "gemma-bf16-qualification",
             feature = "qwen-source-qualification"
@@ -20,6 +21,7 @@ impl ResidentSource {
             Self::Tensor(source) => source.source_identity(),
             #[cfg(all(
                 any(
+                    feature = "cuda-cublas",
                     feature = "cuda-native-qualification",
                     feature = "gemma-bf16-qualification",
                     feature = "qwen-source-qualification"

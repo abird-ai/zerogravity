@@ -82,6 +82,8 @@ use crate::resident_batch::ResidentBatchRows;
 use crate::resident_leases::{
     ResidentLease, ResidentPhysical, ResidentReady, ResidentService, ResidentSource,
 };
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+use crate::resident_program::ordinary_cuda;
 use crate::resident_program::{
     AllocationInit, BatchProgram, DeviceBuffer, ResidentBufferLayout, ResidentBufferRole,
     ResidentOutput, ResidentPhysicalType, ResidentPreflight, ResidentProgram, RuntimeParameters,
@@ -92,6 +94,8 @@ use cubecl::{Device, bytes::Bytes, server::Handle};
 #[cfg(all(test, feature = "qualification"))]
 use std::path::Path;
 use std::sync::Arc;
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_core::Error;
 use zerogravity_core::Result;
 use zerogravity_core::accelerator::program::{
@@ -386,6 +390,105 @@ impl ResidentModel {
     ) -> Result<Arc<Self>> {
         let device = physical.device();
         Self::load_attached(device, model, plan, model_cap, 0, false, Some(physical)).await
+    }
+
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn load_ordinary_cuda(
+        device: Device,
+        source: VerifiedTensorSource,
+        plan: Arc<ForwardPlan>,
+        providers: crate::OrdinaryCudaProviderPaths,
+        provider_cap: usize,
+        device_cap: u64,
+        cancelled: Option<&std::sync::atomic::AtomicBool>,
+    ) -> Result<Arc<Self>> {
+        validate_provider(&device)?;
+        if !matches!(device, Device::Cuda(_)) {
+            return Err(Error::Unsupported(
+                "ordinary CUDA resident model requires CUDA".into(),
+            ));
+        }
+
+        // Pure source-plan/resource analysis. This MUST precede physical owner
+        // creation, source attachment, cleanup, queue work, or allocation.
+        let admission = ordinary_cuda::OrdinaryCudaAdmission::analyze(plan)?;
+        let total = admission.total_bytes()?;
+        if total > provider_cap {
+            return Err(Error::Limit(format!(
+                "ordinary CUDA exact cold plus two-root plan does not fit provider cap: {total} > {provider_cap}"
+            )));
+        }
+        let source_identity = admission.source();
+        if source.source_identity() != source_identity {
+            return Err(Error::State(
+                "ordinary CUDA verified source differs from plan".into(),
+            ));
+        }
+        let capacity = admission.capacity();
+        let vocab = admission.vocabulary() as u64;
+        let expected_preflight = admission.preflight().clone();
+
+        let physical = ResidentPhysical::new_pinned_cuda(device, provider_cap, device_cap)?;
+        let owner = ResourceOwner {
+            model: format!("ordinary-qwen-source-{source_identity:?}"),
+            session: "resident-program".into(),
+        };
+        let service =
+            physical.attach_model(ResidentSource::Windows(source.clone()), owner, provider_cap)?;
+        let prepared = ordinary_cuda::prepare_program(
+            service.clone(),
+            admission,
+            source,
+            &providers,
+            cancelled,
+        )
+        .await?;
+        let program = prepared.program;
+        if program.source_identity() != source_identity
+            || program.plan().source() != source_identity
+            || program.plan().prefix_capacity() != capacity
+            || program.budget().owned_bytes()?
+                != prepared
+                    .owned_accesses
+                    .iter()
+                    .try_fold(0usize, |sum, (lease, _)| {
+                        sum.checked_add(lease.bytes()).ok_or_else(|| {
+                            Error::Limit("ordinary CUDA owned access byte sum".into())
+                        })
+                    })?
+            || program.budget().prior_state_bytes != expected_preflight.prior_state_bytes
+            || program.budget().candidate_state_bytes != expected_preflight.candidate_state_bytes
+        {
+            return Err(Error::State(
+                "ordinary CUDA bound resident model/preflight differs".into(),
+            ));
+        }
+        let states = program.budget().states.clone();
+        let state_bytes = program.budget().prior_state_bytes;
+
+        Ok(Arc::new(Self {
+            service,
+            states,
+            state_bytes,
+            capacity,
+            vocab,
+            native_batch: false,
+            state_pool: std::sync::OnceLock::new(),
+            #[cfg(feature = "hardware-abort-probe")]
+            abort_after_launch: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(feature = "hardware-abort-probe")]
+            launch_seen: std::sync::atomic::AtomicUsize::new(0),
+            workspace: Mutex::new(Workspace {
+                program,
+                greedy: None,
+                leases: prepared.owned_accesses,
+                state_accesses: prepared.state_accesses,
+                logit_accesses: prepared.logit_accesses,
+                batch: None,
+            }),
+            allocation: Mutex::new(()),
+        }))
     }
 
     pub fn physical_owner(&self) -> Arc<ResidentPhysical> {
