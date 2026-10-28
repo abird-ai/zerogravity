@@ -1603,3 +1603,14 @@ build or general model/backend grant. Historical failures keep their source scop
   current-source full-model parity run. Together with the source-exact RoPE
   correction they remove the known primitive-level numerical drift before the
   blocked .8B 47->50 campaign.
+
+### 28 Oct 2026 — ordinary residual-RMS physical source parity
+
+- [x] Clean RTX 3060 physical parity passes ordinary residual-RMS for rows
+  1, 2, 17 and 64 against source arithmetic, including the in-place BF16
+  residual update, normalized BF16 output, and zero shared status.
+- [x] The source-free harness is discoverable under
+  qualification,cuda-cublas,qwen-source-qualification; strict combined Clippy,
+  all-features, formatting and diff checks pass.
+- [x] This closes the last ordinary RMS normalization variant with distinct
+  alias/rounding semantics before the blocked current-source full-model run.
