@@ -71,6 +71,8 @@ pub(crate) mod frame_checkpoint;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod model_upload;
 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+pub(crate) mod ordinary_parameter_upload;
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
 pub(crate) mod ordinary_projection_upload;
 #[cfg(all(feature = "qualification", target_os = "linux"))]
 pub(crate) mod resident_matrix;
