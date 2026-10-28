@@ -88,7 +88,7 @@ fn auto_name(source: &ManifestSource) -> String {
     let repository_limit = MAX_ALIAS_BYTES.saturating_sub(reserved).max(1);
     let repository = slug(&repository, repository_limit);
     slug(
-        &format!("{provider}-{repository}-{revision}"),
+        &format!("{repository}-{provider}-{revision}"),
         MAX_ALIAS_BYTES,
     )
 }
@@ -372,11 +372,11 @@ mod tests {
                 "Qwen/Qwen3.5-0.8B",
                 "2FC06364715B967F1860AEA9CF38778875588B17",
             )),
-            "hf-qwen-qwen3.5-0.8b-2fc06364"
+            "qwen-qwen3.5-0.8b-hf-2fc06364"
         );
         assert_eq!(
             auto_name(&source("github", "Org/My_Model", "Release/V1")),
-            "gh-org-my-model-release-v1"
+            "org-my-model-gh-release-v1"
         );
     }
 

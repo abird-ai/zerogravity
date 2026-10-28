@@ -76,7 +76,7 @@ fn by_name_is_flat_lowercase_rebuildable_and_never_snapshot_authority() {
     let snapshot = durable(publish(&store, &admission, NEW, Some("Team/Primary_Model")).unwrap());
     let target = std::path::PathBuf::from(format!("../snapshots/{snapshot}"));
     let by_name = fixture.root.join("by-name");
-    let automatic = by_name.join("local-synthetic-fixture-immutable-test-revision");
+    let automatic = by_name.join("synthetic-fixture-local-immutable-test-revision");
     let custom = by_name.join("team-primary-model");
 
     assert_eq!(fs::read_link(&automatic).unwrap(), target);

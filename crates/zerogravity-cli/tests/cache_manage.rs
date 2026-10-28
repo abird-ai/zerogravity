@@ -183,10 +183,10 @@ mod enabled {
             String::from_utf8_lossy(&output.stderr)
         );
         let text = String::from_utf8_lossy(&output.stdout);
-        assert!(text.contains("by-name/fixture-owned-cli-v1"));
+        assert!(text.contains("by-name/owned-cli-fixture-v1"));
         assert!(text.contains("by-name/team-primary-model"));
         assert_eq!(
-            std::fs::read_link(by_name.join("fixture-owned-cli-v1")).unwrap(),
+            std::fs::read_link(by_name.join("owned-cli-fixture-v1")).unwrap(),
             std::path::PathBuf::from(format!("../snapshots/{digest}"))
         );
         assert_eq!(

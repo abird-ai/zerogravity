@@ -228,7 +228,7 @@ OPTIONS:
                               canonical snapshots and refs; never model authority
 
 by-name is one flat namespace. Each immutable snapshot gets a concise derived
-source alias (for example hf-qwen-qwen3.5-0.8b-2fc06364); non-default refs become
+source alias (for example qwen-qwen3.5-0.8b-hf-2fc06364); non-default refs become
 custom aliases in the same directory. Collisions receive deterministic lowercase
 hash suffixes. Every link targets ../snapshots/DIGEST and is ignored by runtime,
 selection, provenance, quota and reclamation authority.
