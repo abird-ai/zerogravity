@@ -177,9 +177,13 @@ pub(super) fn run() -> Result<()> {
     let source = env("ZG_QWEN35_MODEL_DIR")?;
     let bundle = env("ZG_QWEN35_CUDA_KERNEL_DIR")?;
     let reference = env("ZG_QWEN35_REFERENCE_DIR")?;
-    let prompts = env("ZG_QWEN35_PROMPT_FIXTURES")?;
-    let public = oracle::json(&prompts, MIB)?;
-    let ids = fixture_prompt(&public, 47)?;
+    let cell = reference.join("0.8b-47");
+    let ids = oracle::FixedCell::open(
+        &cell,
+        zerogravity::qwen35::plan::QwenSourceProfile::Qwen08,
+        47,
+    )?
+    .prompt_ids(47)?;
     let host = FixtureHost::new(ResourceOwner::new("qwen35-cuda-physical", "cached-fault")?)?;
     let device =
         zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA device: {e}")))?;

@@ -5,24 +5,27 @@
 //! feeds back its own greedy tokens. Evidence is only consulted after outputs exist.
 
 use super::{
-    Cached47To50Reference, FRONTIERS, ParitySourceIdentity, ReferenceParityStep, VOCABULARY,
-    expected_domain_slots, expected_domain_values, require_reference, require_reference_close,
+    Cached47To50Reference, FRONTIERS, ParitySourceIdentity, ReferenceImplementationIdentity,
+    ReferenceParityStep, VOCABULARY, expected_domain_slots, expected_domain_values,
+    require_reference, require_reference_close,
 };
 use crate::{
     Error, Result,
     accelerator::program::{ConvDomain, KvDomain, RecurrentDomain, StateSlot},
     gpu::cuda::native::TextCloseReceipt,
+    qwen35_cuda::held_file::{HeldFile, open_absolute_directory},
 };
+use rustix::fs::{self, AtFlags, Mode, OFlags};
 use sha2::{Digest, Sha256};
 use std::{
-    ffi::OsString,
-    fs::{File, OpenOptions},
-    io::{BufReader, BufWriter, ErrorKind, Read, Write},
-    path::{Path, PathBuf},
+    ffi::{OsStr, OsString},
+    fs::File,
+    io::{BufReader, BufWriter, Read, Write},
+    path::Path,
     sync::Arc,
 };
 
-const MAGIC: &[u8; 16] = b"ZGQ35P47EVID0001";
+const MAGIC: &[u8; 16] = b"ZGQ35P47EVID0002";
 const DIGEST_BYTES: u64 = 32;
 const MAX_EVIDENCE_BYTES: u64 = 160 * 1024 * 1024;
 const MAX_STRING_BYTES: usize = 512;
@@ -30,6 +33,7 @@ const MAX_STRING_BYTES: usize = 512;
 #[derive(Clone, Debug)]
 pub(super) struct ReferenceEvidence {
     pub(super) identity: ParitySourceIdentity,
+    pub(super) implementation: ReferenceImplementationIdentity,
     pub(super) reference: Cached47To50Reference,
     pub(super) close: TextCloseReceipt,
 }
@@ -101,7 +105,13 @@ pub(super) fn write(path: &Path, evidence: &ReferenceEvidence) -> Result<[u8; 32
     require_path(path)?;
     require_evidence(evidence)?;
 
-    let (temporary, file) = create_sibling_temp(path)?;
+    let temporary = create_sibling_temp(path)?;
+    let EvidenceTemp {
+        parent,
+        final_name,
+        temporary_name,
+        file,
+    } = temporary;
     let result = (|| -> Result<[u8; 32]> {
         let mut writer = HashingWriter::new(BufWriter::new(file));
         writer.write_all(MAGIC)?;
@@ -109,8 +119,15 @@ pub(super) fn write(path: &Path, evidence: &ReferenceEvidence) -> Result<[u8; 32
         write_string(&mut writer, &evidence.identity.repository)?;
         write_string(&mut writer, &evidence.identity.revision)?;
         write_string(&mut writer, &evidence.identity.index_sha256)?;
+        write_string(&mut writer, &evidence.identity.manifest_sha256)?;
         write_u64(&mut writer, evidence.identity.hidden_width)?;
         write_u64(&mut writer, evidence.identity.capacity)?;
+        write_string(&mut writer, &evidence.implementation.capture_recipe_sha256)?;
+        write_string(&mut writer, &evidence.implementation.bundle_manifest_sha256)?;
+        write_string(
+            &mut writer,
+            &evidence.implementation.reference_contract_sha256,
+        )?;
 
         for value in close_values(&evidence.close) {
             write_u64(&mut writer, value)?;
@@ -143,35 +160,55 @@ pub(super) fn write(path: &Path, evidence: &ReferenceEvidence) -> Result<[u8; 32
             .map_err(|error| Error::Io(error.into_error()))?;
         file.write_all(&digest)?;
         file.sync_all()?;
-        publish_sibling_temp(&temporary, path)?;
+        publish_sibling_temp(&parent, &temporary_name, &final_name)?;
         Ok(digest)
     })();
     if result.is_err() {
-        let _ = std::fs::remove_file(&temporary);
+        let _ = fs::unlinkat(&parent, &temporary_name, AtFlags::empty());
     }
     result
 }
 
-fn create_sibling_temp(path: &Path) -> Result<(PathBuf, File)> {
-    let parent = path
+struct EvidenceTemp {
+    parent: File,
+    final_name: OsString,
+    temporary_name: OsString,
+    file: File,
+}
+
+fn os<T>(result: rustix::io::Result<T>) -> Result<T> {
+    result.map_err(|error| std::io::Error::from(error).into())
+}
+
+fn create_sibling_temp(path: &Path) -> Result<EvidenceTemp> {
+    let parent_path = path
         .parent()
         .ok_or_else(|| Error::Malformed("ordinary parity evidence parent absent".into()))?;
-    let file_name = path
+    let parent = open_absolute_directory(parent_path)?;
+    let final_name = path
         .file_name()
-        .ok_or_else(|| Error::Malformed("ordinary parity evidence filename absent".into()))?;
+        .ok_or_else(|| Error::Malformed("ordinary parity evidence filename absent".into()))?
+        .to_owned();
     for attempt in 0..128u32 {
-        let mut name = OsString::from(".");
-        name.push(file_name);
-        name.push(format!(".zg-parity.tmp.{}.{}", std::process::id(), attempt));
-        let candidate = parent.join(name);
-        match OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&candidate)
-        {
-            Ok(file) => return Ok((candidate, file)),
-            Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error.into()),
+        let mut temporary_name = OsString::from(".");
+        temporary_name.push(&final_name);
+        temporary_name.push(format!(".zg-parity.tmp.{}.{}", std::process::id(), attempt));
+        match fs::openat(
+            &parent,
+            &temporary_name,
+            OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::RUSR | Mode::WUSR,
+        ) {
+            Ok(file) => {
+                return Ok(EvidenceTemp {
+                    parent,
+                    final_name,
+                    temporary_name,
+                    file: File::from(file),
+                });
+            }
+            Err(rustix::io::Errno::EXIST) => continue,
+            Err(error) => return Err(std::io::Error::from(error).into()),
         }
     }
     Err(Error::State(
@@ -179,38 +216,34 @@ fn create_sibling_temp(path: &Path) -> Result<(PathBuf, File)> {
     ))
 }
 
-fn publish_sibling_temp(temporary: &Path, path: &Path) -> Result<()> {
-    std::fs::hard_link(temporary, path)?;
-    sync_parent(path)?;
-    std::fs::remove_file(temporary)?;
-    sync_parent(path)
-}
-
-fn sync_parent(path: &Path) -> Result<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| Error::Malformed("ordinary parity evidence parent absent".into()))?;
-    File::open(parent)?.sync_all()?;
+fn publish_sibling_temp(parent: &File, temporary: &OsStr, final_name: &OsStr) -> Result<()> {
+    os(fs::linkat(
+        parent,
+        temporary,
+        parent,
+        final_name,
+        AtFlags::empty(),
+    ))?;
+    parent.sync_all()?;
+    os(fs::unlinkat(parent, temporary, AtFlags::empty()))?;
+    parent.sync_all()?;
     Ok(())
 }
 
-pub(super) fn read(path: &Path) -> Result<(ReferenceEvidence, [u8; 32])> {
+pub(super) fn read(
+    path: &Path,
+    expected_sha256: [u8; 32],
+) -> Result<(ReferenceEvidence, [u8; 32])> {
     require_path(path)?;
-    let metadata = std::fs::symlink_metadata(path)?;
-    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
-        return Err(Error::Malformed(
-            "ordinary parity evidence must be a regular non-symlink file".into(),
-        ));
-    }
-    let bytes = metadata.len();
+    let mut held = HeldFile::open_absolute(path)?;
+    let bytes = held.len();
     if bytes <= DIGEST_BYTES || bytes > MAX_EVIDENCE_BYTES {
         return Err(Error::Limit(
             "ordinary parity evidence file extent outside finite bound".into(),
         ));
     }
     let payload = bytes - DIGEST_BYTES;
-    let file = File::open(path)?;
-    let mut reader = HashingReader::new(BufReader::new(file), payload);
+    let mut reader = HashingReader::new(BufReader::new(held.file_mut()), payload);
 
     let mut magic = [0u8; 16];
     reader.read_exact(&mut magic)?;
@@ -225,8 +258,14 @@ pub(super) fn read(path: &Path) -> Result<(ReferenceEvidence, [u8; 32])> {
         repository: read_string(&mut reader)?,
         revision: read_string(&mut reader)?,
         index_sha256: read_string(&mut reader)?,
+        manifest_sha256: read_string(&mut reader)?,
         hidden_width: read_usize(&mut reader, "hidden width")?,
         capacity: read_usize(&mut reader, "context capacity")?,
+    };
+    let implementation = ReferenceImplementationIdentity {
+        capture_recipe_sha256: read_string(&mut reader)?,
+        bundle_manifest_sha256: read_string(&mut reader)?,
+        reference_contract_sha256: read_string(&mut reader)?,
     };
 
     let close = TextCloseReceipt {
@@ -317,12 +356,16 @@ pub(super) fn read(path: &Path) -> Result<(ReferenceEvidence, [u8; 32])> {
     }
     if recorded != digest {
         return Err(Error::Malformed(
-            "ordinary parity evidence SHA256 differs".into(),
+            "ordinary parity evidence embedded SHA256 differs".into(),
         ));
     }
+    drop(file);
+    held.verify_unchanged()?;
+    require_expected_digest(digest, expected_sha256)?;
 
     let evidence = ReferenceEvidence {
         identity,
+        implementation,
         reference: Cached47To50Reference {
             capacity: 512,
             prompt: Arc::from(prompt),
@@ -334,13 +377,26 @@ pub(super) fn read(path: &Path) -> Result<(ReferenceEvidence, [u8; 32])> {
     Ok((evidence, digest))
 }
 
+fn require_expected_digest(actual: [u8; 32], expected: [u8; 32]) -> Result<()> {
+    if actual != expected {
+        return Err(Error::State(
+            "ordinary parity evidence does not match trusted expected SHA256".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn require_evidence(evidence: &ReferenceEvidence) -> Result<()> {
     if evidence.identity.capacity != 512
         || evidence.reference.capacity != 512
         || evidence.identity.family.is_empty()
         || evidence.identity.repository.is_empty()
         || evidence.identity.revision.len() != 40
-        || evidence.identity.index_sha256.len() != 64
+        || !hex64(&evidence.identity.index_sha256)
+        || !hex64(&evidence.identity.manifest_sha256)
+        || !hex64(&evidence.implementation.capture_recipe_sha256)
+        || !hex64(&evidence.implementation.bundle_manifest_sha256)
+        || !hex64(&evidence.implementation.reference_contract_sha256)
         || evidence.identity.hidden_width != 1024
     {
         return Err(Error::State(
@@ -349,6 +405,10 @@ fn require_evidence(evidence: &ReferenceEvidence) -> Result<()> {
     }
     require_reference_close(&evidence.close)?;
     require_reference(&evidence.reference)
+}
+
+fn hex64(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn require_path(path: &Path) -> Result<()> {
@@ -526,6 +586,13 @@ mod tests {
     }
 
     #[test]
+    fn trusted_expected_digest_is_independent_from_embedded_integrity() {
+        let actual = [7u8; 32];
+        assert!(require_expected_digest(actual, actual).is_ok());
+        assert!(require_expected_digest(actual, [8u8; 32]).is_err());
+    }
+
+    #[test]
     fn slot_codec_is_exact_for_all_domain_kinds() {
         for slot in [
             StateSlot::Conv(ConvDomain(2)),
@@ -551,21 +618,37 @@ mod tests {
         std::fs::create_dir(&root).unwrap();
         let final_path = root.join("evidence.bin");
 
-        let (temporary, mut file) = create_sibling_temp(&final_path).unwrap();
+        let temporary = create_sibling_temp(&final_path).unwrap();
+        let EvidenceTemp {
+            parent,
+            final_name,
+            temporary_name,
+            mut file,
+        } = temporary;
         file.write_all(b"complete-evidence").unwrap();
         file.sync_all().unwrap();
         assert!(!final_path.exists());
-        publish_sibling_temp(&temporary, &final_path).unwrap();
+        publish_sibling_temp(&parent, &temporary_name, &final_name).unwrap();
         assert_eq!(std::fs::read(&final_path).unwrap(), b"complete-evidence");
-        assert!(!temporary.exists());
+        assert!(fs::statat(&parent, &temporary_name, AtFlags::SYMLINK_NOFOLLOW).is_err());
 
-        let (second, mut second_file) = create_sibling_temp(&final_path).unwrap();
-        second_file.write_all(b"must-not-overwrite").unwrap();
-        second_file.sync_all().unwrap();
-        assert!(publish_sibling_temp(&second, &final_path).is_err());
-        let _ = std::fs::remove_file(&second);
+        let second = create_sibling_temp(&final_path).unwrap();
+        let EvidenceTemp {
+            parent,
+            final_name,
+            temporary_name,
+            mut file,
+        } = second;
+        file.write_all(b"must-not-overwrite").unwrap();
+        file.sync_all().unwrap();
+        assert!(publish_sibling_temp(&parent, &temporary_name, &final_name).is_err());
+        let _ = fs::unlinkat(&parent, &temporary_name, AtFlags::empty());
         assert_eq!(std::fs::read(&final_path).unwrap(), b"complete-evidence");
 
+        let alias = root.with_extension("alias");
+        std::os::unix::fs::symlink(&root, &alias).unwrap();
+        assert!(create_sibling_temp(&alias.join("other.bin")).is_err());
+        std::fs::remove_file(alias).unwrap();
         std::fs::remove_dir_all(root).unwrap();
     }
 }

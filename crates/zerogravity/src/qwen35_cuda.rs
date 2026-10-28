@@ -26,6 +26,8 @@ pub mod fixed_prompt;
 #[cfg(feature = "qwen35-cuda-qualification")]
 mod held_directory;
 #[cfg(feature = "qwen35-cuda-qualification")]
+mod held_file;
+#[cfg(feature = "qwen35-cuda-qualification")]
 mod manifest;
 mod ordinary;
 #[cfg(feature = "qwen35-cuda-qualification")]
@@ -36,6 +38,8 @@ pub mod ordinary_parity;
 mod ordinary_source;
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub mod qualification;
+#[cfg(feature = "qwen35-cuda-qualification")]
+mod reference_identity;
 #[cfg(feature = "qwen35-cuda-qualification")]
 mod session;
 #[cfg(feature = "qwen35-cuda-qualification")]
@@ -48,7 +52,7 @@ mod templates;
 pub use session::Session;
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub use source::RouteTokenizer;
-const ORDINARY_CAPABILITY_REFUSAL: &str = "ordinary Qwen CUDA is integrated but qualification-only: current-source real-model parity, fault/cancellation/retirement/shutdown qualification, and context-fit gates remain; no production backend is exposed";
+const ORDINARY_CAPABILITY_REFUSAL: &str = "ordinary Qwen CUDA is integrated but qualification-only: physical current-source parity and fault/cancellation/retirement/shutdown certification remain; no production backend is exposed";
 
 /// Ordinary run/serve must refuse before source, device or driver discovery.
 pub fn require_ordinary_capability() -> Result<()> {
@@ -57,7 +61,7 @@ pub fn require_ordinary_capability() -> Result<()> {
 
 /// Audit an authenticated ordinary plan/invocation against the checked CUDA
 /// contracts. This grants no production routing; the integrated path remains
-/// qualification-only until the real-model/lifecycle/context gates close.
+/// qualification-only until physical current-source parity and lifecycle gates close.
 pub fn require_ordinary_invocation_capability(
     plan: &crate::qwen35::plan::OrdinaryQwenPlan,
     invocation: &crate::qwen35::plan::OrdinaryQwenInvocation,
@@ -73,8 +77,8 @@ mod ordinary_refusal_tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("integrated but qualification-only"));
-        assert!(error.contains("real-model parity"));
-        assert!(error.contains("fault/cancellation/retirement/shutdown"));
+        assert!(error.contains("physical current-source parity"));
+        assert!(error.contains("fault/cancellation/retirement/shutdown certification"));
         assert!(error.contains("no production backend is exposed"));
     }
 }
@@ -119,6 +123,7 @@ pub struct Model {
     templates: Arc<templates::Templates>,
     tokenizer: QwenTokenizer,
     metadata: SourceMetadata,
+    reference_implementation: reference_identity::ReferenceImplementationIdentity,
     _tokenizer: crate::tokenize_admission::Retained,
     _loader: GlobalResourceLease,
 }
@@ -161,6 +166,9 @@ impl Model {
     }
     pub fn source_metadata(&self) -> &SourceMetadata {
         &self.metadata
+    }
+    fn reference_implementation(&self) -> &reference_identity::ReferenceImplementationIdentity {
+        &self.reference_implementation
     }
 }
 /// Model-prepared component data; execution and completion remain GPU-owned.
@@ -255,6 +263,7 @@ async fn load_profile(
         cohort_b4,
         cancelled,
     )?;
+    let reference_implementation = bundle.reference_implementation().clone();
     let capture = match mode {
         QualificationMode::FreshPrefill => native::TextKernelCapture::bind_fresh_prefill(
             bound.native_kernel_capture().recipe_sha256(),
@@ -316,6 +325,7 @@ async fn load_profile(
         templates,
         tokenizer: opened.tokenizer,
         metadata: opened.metadata,
+        reference_implementation,
         _tokenizer: retained,
         _loader: loader,
     }))

@@ -49,19 +49,12 @@ fn fresh_reference_cell(root: &Path, rows: usize) -> PathBuf {
         .join("observed")
 }
 fn fresh_reference_prompt(cell: &Path, rows: usize) -> Result<Vec<u32>> {
-    let result = oracle::json(&cell.join("result.json"), MIB)?;
-    let ids = result["cases"][0]["prompt_ids"]
-        .as_array()
-        .ok_or_else(|| fail("fresh reference prompt IDs"))?;
-    ensure(ids.len() == rows, "fresh reference prompt length")?;
-    ids.iter()
-        .map(|id| {
-            id.as_u64()
-                .filter(|n| *n < 248320)
-                .map(|n| n as u32)
-                .ok_or_else(|| fail("fresh reference token ID"))
-        })
-        .collect()
+    oracle::FixedCell::open_fresh(
+        cell,
+        zerogravity::qwen35::plan::QwenSourceProfile::Qwen08,
+        rows,
+    )?
+    .prompt_ids(rows)
 }
 struct ThreadWake(thread::Thread);
 impl Wake for ThreadWake {
@@ -83,20 +76,6 @@ fn block_on<F: Future>(future: F) -> F::Output {
         }
     }
 }
-fn fixture_prompt(public: &serde_json::Value, rows: usize) -> Result<Vec<u32>> {
-    let ids = public[rows.to_string()]["prompt_token_ids"]
-        .as_array()
-        .ok_or_else(|| fail("public prompt IDs"))?;
-    ensure(ids.len() == rows, "genuine public prompt length")?;
-    ids.iter()
-        .map(|id| {
-            id.as_u64()
-                .filter(|n| *n < 248320)
-                .map(|n| n as u32)
-                .ok_or_else(|| fail("public source token ID"))
-        })
-        .collect()
-}
 fn pool_conservation(model: &qwen35_cuda::Model) -> Result<()> {
     let loaded = model.resident();
     let observed = loaded.observation().snapshot()?;
@@ -113,12 +92,11 @@ fn pool_conservation(model: &qwen35_cuda::Model) -> Result<()> {
 async fn matrix(
     model: &Arc<qwen35_cuda::Model>,
     host: &TransferAdmission,
-    public: &serde_json::Value,
     reference: &Path,
 ) -> Result<()> {
     for rows in [47, 57, 62, 67, 72] {
-        let ids = fixture_prompt(public, rows)?;
         let cell = reference.join(format!("{}-{rows}", model.source_metadata().family));
+        let ids = oracle::FixedCell::open(&cell, model.source_profile(), rows)?.prompt_ids(rows)?;
         let mut session = model.session(None).await?;
         for call in 0..8 {
             let before = session.binding();
@@ -190,8 +168,9 @@ async fn matrix(
     }
     Ok(())
 }
-async fn lifecycle(model: &Arc<qwen35_cuda::Model>, public: &serde_json::Value) -> Result<()> {
-    let ids = fixture_prompt(public, 47)?;
+async fn lifecycle(model: &Arc<qwen35_cuda::Model>, reference: &Path) -> Result<()> {
+    let cell = reference.join(format!("{}-47", model.source_metadata().family));
+    let ids = oracle::FixedCell::open(&cell, model.source_profile(), 47)?.prompt_ids(47)?;
     let loaded = model.resident();
     let mut sessions = Vec::with_capacity(8);
     for _ in 0..8 {
@@ -322,8 +301,6 @@ fn source_model_state_and_output_agreement() -> Result<()> {
     let source = env("ZG_QWEN35_MODEL_DIR")?;
     let bundle = env("ZG_QWEN35_CUDA_KERNEL_DIR")?;
     let reference = env("ZG_QWEN35_REFERENCE_DIR")?;
-    let prompts = env("ZG_QWEN35_PROMPT_FIXTURES")?;
-    let public = oracle::json(&prompts, MIB)?;
     let host = FixtureHost::new(ResourceOwner::new("qwen35-cuda-physical", "whole-matrix")?)?;
     let device =
         zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA device: {e}")))?;
@@ -364,8 +341,8 @@ fn source_model_state_and_output_agreement() -> Result<()> {
     )?;
     let family = model.source_metadata().family;
     let result = block_on(async {
-        matrix(&model, &host, &public, &reference).await?;
-        lifecycle(&model, &public).await
+        matrix(&model, &host, &reference).await?;
+        lifecycle(&model, &reference).await
     });
     if let Err(error) = &result {
         eprintln!("QWEN35_CUDA_EXECUTION_FAILURE {error:?}");
@@ -553,6 +530,10 @@ fn ordinary_cached47_to50_compare_reference_evidence() -> Result<()> {
     ensure(!cfg!(debug_assertions), "release physical matrix only")?;
     let source = env("ZG_QWEN35_MODEL_DIR")?;
     let evidence = env("ZG_QWEN35_ORDINARY_PARITY_EVIDENCE")?;
+    let bundle = env("ZG_QWEN35_CUDA_KERNEL_DIR")?;
+    let expected = std::env::var("ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256")
+        .map_err(|_| fail("ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256 required"))
+        .and_then(|value| qwen35_cuda::ordinary_parity::parse_evidence_sha256(&value))?;
     let cublas = env("ZG_QWEN35_CUBLAS")?;
     let cublas_lt = env("ZG_QWEN35_CUBLAS_LT")?;
     let providers = zerogravity::gpu::OrdinaryCudaProviderPaths::new(cublas, cublas_lt)?;
@@ -560,7 +541,7 @@ fn ordinary_cached47_to50_compare_reference_evidence() -> Result<()> {
         zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA device: {e}")))?;
     let receipt = block_on(
         qwen35_cuda::ordinary_parity::compare_current_source_cached_47_to_50_evidence(
-            device, &source, &evidence, providers, None,
+            device, &source, &bundle, &evidence, expected, providers, None,
         ),
     )?;
     receipt.require_exact()?;

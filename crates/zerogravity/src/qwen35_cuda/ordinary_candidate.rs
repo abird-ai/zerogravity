@@ -23,6 +23,7 @@ pub struct SourceMetadata {
     pub repository: &'static str,
     pub revision: &'static str,
     pub index_sha256: &'static str,
+    pub manifest_sha256: &'static str,
     pub hidden_width: usize,
 }
 
@@ -76,6 +77,7 @@ impl Model {
                 repository: opened.metadata.repository,
                 revision: opened.metadata.revision,
                 index_sha256: opened.metadata.index_sha256,
+                manifest_sha256: opened.metadata.manifest_sha256,
                 hidden_width: opened.metadata.hidden_width,
             },
         }))

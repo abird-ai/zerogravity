@@ -1,7 +1,10 @@
 //! Data-only names for exact compiled kinds. No caller entrypoint/hash/scalar fields.
 use super::*;
 use crate::qwen35::plan::QwenSourceProfile;
-use crate::qwen35_cuda::fixed_prompt::paths;
+use crate::qwen35_cuda::{
+    fixed_prompt::paths,
+    reference_identity::{self, ReferenceImplementationIdentity},
+};
 use native::{
     CubinActivationImage, CubinImage, CubinImageKind as K, CubinQualificationInputs,
     FixedPromptMlpQualificationInputs,
@@ -33,6 +36,7 @@ pub(super) struct Bundle {
     activation: String,
     cublas: PathBuf,
     cublas_lt: PathBuf,
+    reference_implementation: ReferenceImplementationIdentity,
 }
 fn image_map(rows: Vec<Image>, expected: &[K]) -> Result<BTreeMap<K, String>> {
     if rows.len() != expected.len() {
@@ -68,6 +72,7 @@ impl Bundle {
         if spec.schema != "zerogravity.cuda-kernels.v2" {
             return Err(Error::Unsupported("Qwen CUDA native bundle schema".into()));
         }
+        let reference_implementation = reference_identity::inspect_held(&raw, profile)?;
         let expected = crate::qwen35::source::binding::ReferenceKernelCapture::for_profile(profile);
         let capture = native::TextKernelCapture::bind(expected.recipe_sha256())?;
         let required = native::text_required_images_for_cohort(capture, cohort_b4)?;
@@ -118,7 +123,12 @@ impl Bundle {
             activation: spec.activation,
             cublas,
             cublas_lt,
+            reference_implementation,
         })
+    }
+
+    pub(super) fn reference_implementation(&self) -> &ReferenceImplementationIdentity {
+        &self.reference_implementation
     }
     fn image(
         &self,

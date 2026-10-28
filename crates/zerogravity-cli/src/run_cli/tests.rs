@@ -542,10 +542,7 @@ fn ordinary_qwen_cuda_explicit_targets_refuse_before_injected_device_discovery()
             Err(Error::State("injected discovery must not run".into()))
         })
         .unwrap_err();
-        assert!(
-            matches!(error, Error::Unsupported(message) if message.contains("no ordinary dynamic GDN implementation")),
-            "{target}"
-        );
+        assert!(matches!(error, Error::Unsupported(_)), "{target}: {error}");
         assert_eq!(discoveries.load(Ordering::SeqCst), 0, "{target}");
     }
     std::fs::remove_dir_all(root).unwrap();

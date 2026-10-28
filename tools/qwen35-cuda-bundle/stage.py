@@ -13,11 +13,18 @@ REPO = HERE.parents[1]
 MIB = 1024 * 1024
 LEGACY = "short-hf-native.json"
 CURRENT = "cuda-kernels.json"
+PINS = "crates/zerogravity/src/qwen35_cuda/bundle_migration_pins.json"
 
 
 def require(ok, message):
     if not ok:
         raise ValueError(message)
+
+
+def hex64(value):
+    return isinstance(value, str) and len(value) == 64 and all(
+        c in "0123456789abcdefABCDEF" for c in value
+    )
 
 
 def stamp(value):
@@ -230,6 +237,121 @@ def inventory_names(resources):
     return result
 
 
+def read_bounded(directory, name, cap):
+    fd = directory.open(name)
+    try:
+        before = stamp(os.fstat(fd))
+        require(stat.S_ISREG(before[2]) and 0 < before[3] <= cap,
+                "bounded regular metadata: " + name)
+        chunks = []
+        offset = 0
+        while offset < before[3]:
+            block = os.pread(fd, min(MIB, before[3] - offset), offset)
+            require(bool(block), "complete held metadata read: " + name)
+            chunks.append(block)
+            offset += len(block)
+        require(os.pread(fd, 1, offset) == b"", "held metadata exact EOF: " + name)
+        raw = b"".join(chunks)
+        require(len(raw) == before[3] and stamp(os.fstat(fd)) == before,
+                "held metadata changed: " + name)
+        return raw
+    finally:
+        os.close(fd)
+
+
+def current_inventory_names(resources):
+    result = {CURRENT, "stage-result.json"}
+    for row in resources:
+        parts = relative(row["path"])
+        result.add(row["path"])
+        result.update("/".join(parts[:i]) + "/" for i in range(1, len(parts)))
+    return result
+
+
+def verify_current(current_root):
+    current_root = Path(current_root)
+    with ExitStack() as stack:
+        current = Directory(current_root)
+        stack.callback(current.close)
+        repository = Directory(REPO)
+        stack.callback(repository.close)
+        pins_raw = read_bounded(repository, PINS, 64 * 1024)
+        pins = decode(pins_raw)
+        require(set(pins) == {"schema", "contract_sources", "profiles"}
+                and pins["schema"] == "zerogravity.cuda-bundle-migration-pins.v1",
+                "closed migration catalogue")
+        pins_sha = hashlib.sha256(pins_raw).hexdigest()
+
+        manifest_raw = read_bounded(current, CURRENT, 64 * 1024)
+        receipt_raw = read_bounded(current, "stage-result.json", 256 * 1024)
+        manifest = decode(manifest_raw)
+        receipt = decode(receipt_raw)
+        require(manifest.get("schema") == "zerogravity.cuda-kernels.v2",
+                "current manifest schema")
+        family = receipt.get("family")
+        require(family in pins["profiles"], "current receipt family")
+        profile = pins["profiles"][family]
+        resources = profile["resources"]
+
+        expected = {"schema": "zerogravity.cuda-kernels.v2"}
+        for section in ("images", "rotary"):
+            rows = [r for r in resources if r["section"] == section]
+            expected[section] = [{"kind": r["kind"], "path": r["path"]} for r in rows]
+        for section in ("activation", "cublas", "cublas_lt"):
+            rows = [r for r in resources if r["section"] == section]
+            require(len(rows) == 1, "current support resource")
+            expected[section] = rows[0]["path"]
+        require(manifest == expected, "current manifest differs from migration pins")
+
+        manifest_pin = {"bytes": len(manifest_raw),
+                        "sha256": hashlib.sha256(manifest_raw).hexdigest()}
+        expected_resources = [{"path": r["path"], "bytes": r["bytes"],
+                               "sha256": r["sha256"]} for r in resources]
+        driver_pin = pins["contract_sources"].get("tools/qwen35-cuda-bundle/stage.py")
+        require(
+            isinstance(driver_pin, dict)
+            and receipt.get("schema") == "zerogravity.cuda-bundle-stage.v1"
+            and receipt.get("complete") is True
+            and receipt.get("current_manifest", {}).get("bytes") == manifest_pin["bytes"]
+            and receipt.get("current_manifest", {}).get("sha256") == manifest_pin["sha256"]
+            and receipt.get("resources") == expected_resources
+            and receipt.get("native_catalogue") == profile["native_catalogue"]
+            and receipt.get("cohort_2b_extra_image_included")
+                == profile["cohort_2b_extra_image_included"]
+            and receipt.get("admission_enabled") is False
+            and receipt.get("native_execution_qualified") is False
+            and receipt.get("model_execution_qualified") is False
+            and receipt.get("performance_qualified") is False
+            and hex64(receipt.get("migration_pins_sha256"))
+            and hex64(receipt.get("driver_sha256"))
+            and isinstance(receipt.get("contract_sources"), dict),
+            "current stage receipt structure/resources differ")
+        lineage_current = (
+            receipt.get("migration_pins_sha256", "").lower() == pins_sha
+            and receipt.get("contract_sources") == pins["contract_sources"]
+            and receipt.get("driver_sha256", "").lower() == driver_pin.get("sha256")
+        )
+
+        for name, pin in pins["contract_sources"].items():
+            held = Held(repository, name, pin, MIB)
+            stack.callback(held.close)
+        for row in resources:
+            held = Held(current, row["path"], row)
+            stack.callback(held.close)
+        require(current.inventory() == current_inventory_names(resources),
+                "missing or extra current resource")
+        current.check()
+        return {
+            "complete": True,
+            "family": family,
+            "current_manifest": manifest_pin,
+            "reference_contract_sha256": pins_sha,
+            "stage_migration_pins_sha256": receipt["migration_pins_sha256"].lower(),
+            "stage_lineage_current": lineage_current,
+            "resources": len(resources),
+        }
+
+
 def stage(legacy_root, output):
     legacy_root, output = Path(legacy_root), Path(output)
     require(output.is_absolute() and not output.exists() and not output.is_symlink(), "fresh absolute output required")
@@ -238,28 +360,25 @@ def stage(legacy_root, output):
     with ExitStack() as stack:
         source = Directory(legacy_root)
         stack.callback(source.close)
-        tool = Directory(HERE)
-        stack.callback(tool.close)
-        pins_raw = (HERE / "pins.json").read_bytes()
-        require(0 < len(pins_raw) <= 64 * 1024, "bounded migration catalogue")
-        pins = decode(pins_raw)
-        held_pins = Held(tool, "pins.json", {"bytes": len(pins_raw), "sha256": hashlib.sha256(pins_raw).hexdigest()}, MIB)
-        stack.callback(held_pins.close)
-        require(held_pins.raw() == pins_raw, "same catalogue bytes")
         repository = Directory(REPO)
         stack.callback(repository.close)
+        pins_raw = read_bounded(repository, PINS, 64 * 1024)
+        require(0 < len(pins_raw) <= 64 * 1024, "bounded migration catalogue")
+        pins = decode(pins_raw)
+        held_pins = Held(
+            repository,
+            PINS,
+            {"bytes": len(pins_raw), "sha256": hashlib.sha256(pins_raw).hexdigest()},
+            MIB,
+        )
+        stack.callback(held_pins.close)
+        require(held_pins.raw() == pins_raw, "same catalogue bytes")
         contracts = []
         for name, pin in pins["contract_sources"].items():
             held = Held(repository, name, pin, MIB)
             stack.callback(held.close)
             contracts.append(held)
-        manifest_fd = source.open(LEGACY)
-        try:
-            size = os.fstat(manifest_fd).st_size
-            require(0 < size <= 64 * 1024, "bounded legacy manifest")
-            raw = os.pread(manifest_fd, size + 1, 0)
-        finally:
-            os.close(manifest_fd)
+        raw = read_bounded(source, LEGACY, 64 * 1024)
         family, profile, current = plan(raw, pins)
         manifest = Held(source, LEGACY, profile["legacy_manifest"], MIB)
         stack.callback(manifest.close)
@@ -327,7 +446,7 @@ def stage(legacy_root, output):
                            legacy_root=str(legacy_root), legacy_manifest=profile["legacy_manifest"],
                            current_manifest=current_pin, resources=copied,
                            migration_pins_sha256=hashlib.sha256(pins_raw).hexdigest(),
-                           driver_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                           driver_sha256=pins["contract_sources"]["tools/qwen35-cuda-bundle/stage.py"]["sha256"],
                            contract_sources=pins["contract_sources"],
                            transformations="manifest filename/schema and four closed kind labels only; resource bytes and relative paths unchanged",
                            native_catalogue=profile["native_catalogue"],

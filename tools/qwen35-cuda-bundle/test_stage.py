@@ -21,9 +21,8 @@ class Staging(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.legacy = self.root / "legacy"
         self.output = self.root / "staged"
-        self.tool = self.root / "tool"
         self.repo = self.root / "repo"
-        for path in (self.legacy, self.tool, self.repo):
+        for path in (self.legacy, self.repo):
             path.mkdir()
         rows = [
             dict(section="images", legacy_kind="Canonical47CutlassBf16Sm80", kind="FixedPromptCutlassBf16Sm80", path="model/first.cubin"),
@@ -50,12 +49,23 @@ class Staging(unittest.TestCase):
         profile = dict(legacy_manifest=pin(raw), resources=rows, native_catalogue="synthetic", cohort_2b_extra_image_included=False)
         other = copy.deepcopy(profile)
         other["legacy_manifest"] = pin(b"different synthetic manifest")
-        self.pins = dict(schema="zerogravity.cuda-bundle-migration-pins.v1", contract_sources={"contract.rs": pin(b"synthetic contract")},
-                         profiles={"0.8b": profile, "2b": other})
+        driver = Path(stage.__file__).read_bytes()
+        self.pins = dict(
+            schema="zerogravity.cuda-bundle-migration-pins.v1",
+            contract_sources={
+                "contract.rs": pin(b"synthetic contract"),
+                "tools/qwen35-cuda-bundle/stage.py": pin(driver),
+            },
+            profiles={"0.8b": profile, "2b": other},
+        )
         (self.repo / "contract.rs").write_bytes(b"synthetic contract")
-        (self.tool / "pins.json").write_bytes(stage.encoded(self.pins))
+        driver_path = self.repo / "tools/qwen35-cuda-bundle/stage.py"
+        driver_path.parent.mkdir(parents=True)
+        driver_path.write_bytes(driver)
+        pins_path = self.repo / stage.PINS
+        pins_path.parent.mkdir(parents=True, exist_ok=True)
+        pins_path.write_bytes(stage.encoded(self.pins))
         self.addCleanup(patch.stopall)
-        patch.object(stage, "HERE", self.tool).start()
         patch.object(stage, "REPO", self.repo).start()
 
     def run_stage(self):
@@ -75,6 +85,48 @@ class Staging(unittest.TestCase):
             self.assertEqual(raw, (self.output / name).read_bytes())
             self.assertNotEqual((self.output / name).stat().st_ino, (self.legacy / name).stat().st_ino)
         self.assertFalse((self.output / stage.LEGACY).exists())
+
+    def test_current_verifier_reuses_closed_pins_and_rejects_mutation(self):
+        self.run_stage()
+        verified = stage.verify_current(self.output)
+        self.assertTrue(verified["complete"])
+        self.assertEqual(verified["family"], "0.8b")
+        self.assertEqual(verified["resources"], len(self.pins["profiles"]["0.8b"]["resources"]))
+
+        path = self.output / "model/first.cubin"
+        raw = path.read_bytes()
+        path.write_bytes(b"x" + raw[1:])
+        with self.assertRaisesRegex(ValueError, "SHA differs"):
+            stage.verify_current(self.output)
+
+    def test_current_verifier_accepts_historical_lineage_but_reports_it(self):
+        self.run_stage()
+        receipt_path = self.output / "stage-result.json"
+        receipt = json.loads(receipt_path.read_bytes())
+        receipt["migration_pins_sha256"] = "0" * 64
+        receipt_path.write_bytes(stage.encoded(receipt))
+        verified = stage.verify_current(self.output)
+        self.assertTrue(verified["complete"])
+        self.assertFalse(verified["stage_lineage_current"])
+
+        receipt["migration_pins_sha256"] = "not-a-digest"
+        receipt_path.write_bytes(stage.encoded(receipt))
+        with self.assertRaises(ValueError):
+            stage.verify_current(self.output)
+
+    def test_current_verifier_rejects_extra_files_and_contract_source_drift(self):
+        self.run_stage()
+        extra = self.output / "unexpected"
+        extra.write_bytes(b"x")
+        with self.assertRaisesRegex(ValueError, "missing or extra current resource"):
+            stage.verify_current(self.output)
+        extra.unlink()
+
+        contract = self.repo / "contract.rs"
+        raw = contract.read_bytes()
+        contract.write_bytes(b"x" + raw[1:])
+        with self.assertRaisesRegex(ValueError, "SHA differs"):
+            stage.verify_current(self.output)
 
     def test_changed_same_extent_resource_refuses_before_output(self):
         path = self.legacy / "providers/cublas.so"

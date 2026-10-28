@@ -84,6 +84,22 @@ impl FixedCell {
         hash(&raw, &pin["sha256"])?;
         serde_json::from_slice(&raw).map_err(|e| fail(format!("fixed reference JSON: {e}")))
     }
+    pub(super) fn prompt_ids(&self, rows: usize) -> Result<Vec<u32>> {
+        let result = self.json("plain/result.json", MIB)?;
+        let ids = result["cases"][0]["prompt_ids"]
+            .as_array()
+            .ok_or_else(|| fail("pinned reference prompt IDs"))?;
+        ensure(ids.len() == rows, "pinned reference prompt length")?;
+        ids.iter()
+            .map(|id| {
+                id.as_u64()
+                    .filter(|value| *value < 248_320)
+                    .map(|value| value as u32)
+                    .ok_or_else(|| fail("pinned reference token ID"))
+            })
+            .collect()
+    }
+
     pub(super) fn source_manifest(&self) -> &serde_json::Value {
         &self.pins["source_manifest_sha256"]
     }
@@ -92,15 +108,6 @@ impl FixedCell {
     }
 }
 
-pub(super) fn json(path: &Path, cap: usize) -> Result<serde_json::Value> {
-    let mut file = File::open(path)?;
-    let bytes = usize::try_from(file.metadata()?.len()).map_err(|_| fail("reference extent"))?;
-    ensure(bytes > 0 && bytes <= cap, "bounded reference metadata")?;
-    let mut raw = Vec::with_capacity(bytes);
-    file.read_to_end(&mut raw)?;
-    ensure(raw.len() == bytes, "complete reference metadata")?;
-    serde_json::from_slice(&raw).map_err(|e| fail(format!("reference JSON: {e}")))
-}
 fn number(v: &serde_json::Value, key: &str) -> Result<usize> {
     v[key]
         .as_u64()

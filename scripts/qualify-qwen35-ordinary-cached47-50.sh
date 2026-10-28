@@ -21,9 +21,18 @@ Usage:
   LD_LIBRARY_PATH=.../nvrtc/lib:... \
   bash scripts/qualify-qwen35-ordinary-cached47-50.sh [--preflight-only|--compare-existing]
 
+Optional:
+  ZG_QWEN35_CUDA_STAGED_DIR=/abs/derived-current-bundle
+
 Default run and --preflight-only require a fresh evidence path.
---compare-existing requires an already-published regular evidence file and runs
-only the ordinary comparison phase after full artifact/GPU preflight.
+--compare-existing requires an already-published regular evidence file plus
+ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256 from the trusted phase-1 receipt. It
+runs only the ordinary comparison phase after full artifact/GPU preflight.
+ZG_QWEN35_CUDA_KERNEL_DIR may be either an authenticated current bundle or one
+of the exact retained legacy bundles. Legacy input is never modified: it is
+staged into ZG_QWEN35_CUDA_STAGED_DIR, or by default a catalogue-versioned
+<evidence>.native-bundle-<pin-prefix> directory.
+Existing derived bundles are reused only after complete reauthentication.
 USAGE
   exit 2
 }
@@ -58,12 +67,14 @@ cuda_path="$(require_absolute CUDA_PATH "$(printenv CUDA_PATH || true)")"
 
 [[ -d "$model_dir" ]] || { printf 'Model directory absent: %s\n' "$model_dir" >&2; exit 2; }
 [[ -d "$kernel_dir" ]] || { printf 'Native kernel directory absent: %s\n' "$kernel_dir" >&2; exit 2; }
-[[ -d "$cuda_path" && -f "$cuda_path/include/cuda_runtime.h" ]] || {
-  printf 'CUDA_PATH does not contain include/cuda_runtime.h: %s\n' "$cuda_path" >&2
-  exit 2
-}
 [[ -d "$(dirname -- "$evidence")" ]] || {
   printf 'Evidence parent directory absent: %s\n' "$(dirname -- "$evidence")" >&2
+  exit 2
+}
+command -v python3 >/dev/null 2>&1 || { printf 'python3 required\n' >&2; exit 2; }
+
+[[ -d "$cuda_path" && -f "$cuda_path/include/cuda_runtime.h" ]] || {
+  printf 'CUDA_PATH does not contain include/cuda_runtime.h: %s\n' "$cuda_path" >&2
   exit 2
 }
 if [[ "$mode" == "--compare-existing" ]]; then
@@ -78,7 +89,14 @@ else
   fi
 fi
 
-command -v python3 >/dev/null 2>&1 || { printf 'python3 required\n' >&2; exit 2; }
+expected_evidence_sha=$(printenv ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256 || true)
+if [[ "$mode" == "--compare-existing" ]]; then
+  if [[ ! "$expected_evidence_sha" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+    printf 'Compare-existing requires trusted ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256 (64 hex digits)\n' >&2
+    exit 2
+  fi
+fi
+
 command -v cargo >/dev/null 2>&1 || { printf 'cargo required\n' >&2; exit 2; }
 command -v nvidia-smi >/dev/null 2>&1 || { printf 'nvidia-smi required\n' >&2; exit 2; }
 
@@ -127,49 +145,6 @@ print(
 )
 PY
 
-python3 - "$kernel_dir" "$repo/tools/qwen35-cuda-bundle/pins.json" <<'PY'
-import hashlib
-import json
-import os
-import stat
-import sys
-
-root, pins_path = sys.argv[1:]
-with open(pins_path, "rb") as f:
-    pins = json.load(f)
-profile = pins["profiles"]["0.8b"]
-checked = 0
-for item in profile["resources"]:
-    if item["section"] in ("cublas", "cublas_lt"):
-        continue
-    path = os.path.join(root, item["path"])
-    try:
-        st = os.stat(path)
-    except FileNotFoundError:
-        raise SystemExit(f"pinned native kernel absent: {path}")
-    if not stat.S_ISREG(st.st_mode):
-        raise SystemExit(f"pinned native kernel is not a regular file: {path}")
-    if st.st_size != item["bytes"]:
-        raise SystemExit(
-            f"pinned native kernel extent differs: {path}: {st.st_size} != {item['bytes']}"
-        )
-    h = hashlib.sha256()
-    with open(path, "rb", buffering=0) as f:
-        while True:
-            chunk = f.read(1024 * 1024)
-            if not chunk:
-                break
-            h.update(chunk)
-    actual = h.hexdigest()
-    if actual != item["sha256"]:
-        raise SystemExit(
-            f"pinned native kernel SHA256 differs: {path}: {actual} != {item['sha256']}"
-        )
-    checked += 1
-if checked == 0:
-    raise SystemExit("0.8B native kernel pin census is empty")
-print(f"QWEN35_ORDINARY_PARITY_KERNEL_PREFLIGHT_PASS files={checked}")
-PY
 
 python3 - "$cublas" "$cublas_lt" <<'PY'
 import hashlib
@@ -225,6 +200,36 @@ if not any(
 print("QWEN35_ORDINARY_PARITY_NVRTC_PREFLIGHT_PASS")
 PY
 
+if [[ -f "$kernel_dir/cuda-kernels.json" && -f "$kernel_dir/stage-result.json" ]]; then
+  :
+elif [[ -f "$kernel_dir/short-hf-native.json" ]]; then
+  legacy_kernel_dir=$kernel_dir
+  staged_kernel_dir=$(printenv ZG_QWEN35_CUDA_STAGED_DIR || true)
+  if [[ -z "$staged_kernel_dir" ]]; then
+    pins_tag=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()[:12])' "$repo/crates/zerogravity/src/qwen35_cuda/bundle_migration_pins.json")
+    staged_kernel_dir="$evidence.native-bundle-$pins_tag"
+  fi
+  staged_kernel_dir="$(require_absolute ZG_QWEN35_CUDA_STAGED_DIR "$staged_kernel_dir")"
+  if [[ -e "$staged_kernel_dir" || -L "$staged_kernel_dir" ]]; then
+    [[ -d "$staged_kernel_dir" && ! -L "$staged_kernel_dir" ]] || {
+      printf '%s\n' "Derived current bundle path exists but is not a real directory: $staged_kernel_dir" >&2
+      exit 2
+    }
+    printf '%s\n' "QWEN35_ORDINARY_PARITY_BUNDLE_REUSE_CANDIDATE legacy=$legacy_kernel_dir staged=$staged_kernel_dir"
+  else
+    PYTHONDONTWRITEBYTECODE=1 python3 -B "$repo/tools/qwen35-cuda-bundle/stage.py" --legacy-root "$legacy_kernel_dir" --output "$staged_kernel_dir"
+    printf '%s\n' "QWEN35_ORDINARY_PARITY_BUNDLE_STAGE_PASS legacy=$legacy_kernel_dir staged=$staged_kernel_dir"
+  fi
+  kernel_dir=$staged_kernel_dir
+  export ZG_QWEN35_CUDA_KERNEL_DIR="$kernel_dir"
+else
+  printf 'Native bundle is neither authenticated current nor supported retained legacy form: %s\n' "$kernel_dir" >&2
+  exit 2
+fi
+
+PYTHONDONTWRITEBYTECODE=1 python3 -B "$repo/tools/qwen35-cuda-bundle/verify_current.py" --root "$kernel_dir"
+printf 'QWEN35_ORDINARY_PARITY_KERNEL_PREFLIGHT_PASS shared_verifier=1\n'
+
 require_idle_gpu() {
   local pids
   pids="$(nvidia-smi --query-compute-apps=pid --format=csv,noheader,nounits 2>/dev/null \
@@ -248,19 +253,39 @@ export PYTHONDONTWRITEBYTECODE=1
 
 if [[ "$mode" != "--compare-existing" ]]; then
   printf '\n== phase 1/2: historical current-source reference -> evidence ==\n'
-  cargo test --locked --offline --release --no-default-features \
+  set +e
+  phase1_output=$(cargo test --locked --offline --release --no-default-features \
     -p zerogravity --features qwen35-cuda-qualification \
     --test qwen35_cuda \
     ordinary_cached47_to50_capture_reference_evidence \
-    -- --ignored --exact --nocapture
+    -- --ignored --exact --nocapture 2>&1)
+  phase1_status=$?
+  set -e
+  printf '%s\n' "$phase1_output"
+  if (( phase1_status != 0 )); then
+    exit "$phase1_status"
+  fi
 
+  phase1_receipts=$(
+    printf '%s\n' "$phase1_output" | grep -Eo \
+      'QWEN35_ORDINARY_CUDA_CACHED47_50_REFERENCE_EVIDENCE_PASS sha256=[0-9a-f]{64}' \
+      || true
+  )
+  receipt_count=$(printf '%s\n' "$phase1_receipts" | sed '/^$/d' | wc -l)
+  expected_evidence_sha=$(printf '%s\n' "$phase1_receipts" | sed -n '1s/.*sha256=//p')
+  if [[ "$receipt_count" != 1 || ! "$expected_evidence_sha" =~ ^[0-9a-f]{64}$ ]]; then
+    printf 'Phase 1 did not emit exactly one trusted evidence SHA256 receipt\n' >&2
+    exit 2
+  fi
+  export ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256="$expected_evidence_sha"
   [[ -f "$evidence" && ! -L "$evidence" ]] || {
     printf 'Phase 1 did not create regular evidence: %s\n' "$evidence" >&2
     exit 2
   }
   require_idle_gpu
 else
-  printf '\n== resume: existing reference evidence -> ordinary comparison ==\n'
+  export ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256="$expected_evidence_sha"
+  printf '\n== resume: existing authenticated reference evidence -> ordinary comparison ==\n'
 fi
 
 printf '\n== phase 2/2: fresh ordinary process -> exact evidence comparison ==\n'
@@ -271,4 +296,5 @@ cargo test --locked --offline --release --no-default-features \
   -- --ignored --exact --nocapture
 
 require_idle_gpu
-printf '\nQWEN35_ORDINARY_CUDA_CACHED47_50_SERIAL_PASS evidence=%s\n' "$evidence"
+printf '\nQWEN35_ORDINARY_CUDA_CACHED47_50_SERIAL_PASS evidence=%s expected_sha256=%s\n' \
+  "$evidence" "$ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256"

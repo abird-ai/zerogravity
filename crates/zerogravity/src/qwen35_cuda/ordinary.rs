@@ -28,7 +28,7 @@ pub(super) fn require_binding(
     let audit = audit(plan, invocation)?;
     let mapped = audit.contracts.len();
     Err(Error::Unsupported(format!(
-        "ordinary Qwen CUDA is integrated but qualification-only: audited {mapped} checked primitive definitions; current-source real-model parity, fault/cancellation/retirement/shutdown qualification, and context-fit gates remain"
+        "ordinary Qwen CUDA is integrated but qualification-only: audited {mapped} checked primitive definitions; physical current-source parity and fault/cancellation/retirement/shutdown certification remain"
     )))
 }
 

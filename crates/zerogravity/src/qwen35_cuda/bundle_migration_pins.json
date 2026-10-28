@@ -6,15 +6,27 @@
     },
     "crates/zerogravity-gpu/src/cuda/native/text_native/catalogue.rs": {
       "bytes": 7997,
-      "sha256": "7f393c4f3ddb753580e28bc5fa585c6edfdebe8d0a929a84164979d1b082133d"
+      "sha256": "dcfba5f41be5265074c1bc2515cd86e491ed85e9794790c49aea1f8ccb4aed31"
     },
     "crates/zerogravity-gpu/vendor/cubecl-cuda/src/owned_command/bf16_gemm.rs": {
-      "bytes": 11197,
-      "sha256": "65b7d2f469d486809d4c7a1ff86bd08cc1d45cd850b76cd05a600588f28f7e28"
+      "bytes": 16486,
+      "sha256": "b72920da0cb84ef46c7c9694d84e7a2302cc57a4f9eb5f6907397ec658cb01f4"
     },
     "crates/zerogravity/src/qwen35_cuda/manifest.rs": {
-      "bytes": 7088,
-      "sha256": "d005291cd6f1b69ff3e4aaad82c018a8cf05a9725e11aa8c7ae0ccb4448b01bf"
+      "bytes": 7486,
+      "sha256": "6c5bc9ccda98cc736710406f6e67ec2dd6032dcf8295f958141e3e23e12bb277"
+    },
+    "crates/zerogravity/src/qwen35_cuda/reference_identity.rs": {
+      "bytes": 3287,
+      "sha256": "ee7254a9fd3f9111aec7abdedcfdbbca0a28fd80efacff053cfbb3ce671cd13b"
+    },
+    "tools/qwen35-cuda-bundle/stage.py": {
+      "bytes": 20995,
+      "sha256": "25e4d021df58980703707e715a5fe955b98bb0e973ec7e53e08ec3f76dd39f38"
+    },
+    "tools/qwen35-cuda-bundle/verify_current.py": {
+      "bytes": 444,
+      "sha256": "ff6c45ed819803033033418585a555f0c1d4b9bc16a4a6f23e585d096b602c9b"
     }
   },
   "profiles": {

@@ -6,7 +6,10 @@
 //! ownership closes. Phase 2 independently authenticates the source and executes
 //! the fixed qualification trajectory; evidence only compares completed results.
 
-use super::{Model as ReferenceModel, ordinary_candidate};
+use super::{
+    Model as ReferenceModel, ordinary_candidate,
+    reference_identity::{self, ReferenceImplementationIdentity},
+};
 mod evidence;
 use crate::gpu::cuda::native::{TextCallReceipt, TextReadback};
 use crate::{
@@ -26,12 +29,36 @@ const VOCABULARY: usize = 248_320;
 const FRONTIERS: [usize; 4] = [47, 48, 49, 50];
 const CURRENT_PARITY_CAPACITY: usize = 512;
 
+pub fn parse_evidence_sha256(value: &str) -> Result<[u8; 32]> {
+    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(Error::Malformed(
+            "ordinary parity expected evidence SHA256 must be 64 hex digits".into(),
+        ));
+    }
+    let mut digest = [0u8; 32];
+    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+        let nibble = |byte: u8| -> Result<u8> {
+            match byte {
+                b'0'..=b'9' => Ok(byte - b'0'),
+                b'a'..=b'f' => Ok(byte - b'a' + 10),
+                b'A'..=b'F' => Ok(byte - b'A' + 10),
+                _ => Err(Error::Malformed(
+                    "ordinary parity expected evidence SHA256 contains non-hex".into(),
+                )),
+            }
+        };
+        digest[index] = nibble(pair[0])? * 16 + nibble(pair[1])?;
+    }
+    Ok(digest)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct ParitySourceIdentity {
     pub(super) family: String,
     pub(super) repository: String,
     pub(super) revision: String,
     pub(super) index_sha256: String,
+    pub(super) manifest_sha256: String,
     pub(super) hidden_width: usize,
     pub(super) capacity: usize,
 }
@@ -121,6 +148,7 @@ pub async fn capture_current_source_cached_47_to_50_evidence(
     )
     .await?;
     let identity = reference_identity(&model);
+    let implementation = model.reference_implementation().clone();
     let run = capture_reference_cached_47_to_50(&model, cancelled).await;
     // Once loaded, cancellation never skips physical/source teardown.
     let close = model.shutdown(None).await;
@@ -135,6 +163,7 @@ pub async fn capture_current_source_cached_47_to_50_evidence(
     }
     let evidence = evidence::ReferenceEvidence {
         identity,
+        implementation,
         reference,
         close: close.clone(),
     };
@@ -145,13 +174,22 @@ pub async fn capture_current_source_cached_47_to_50_evidence(
 pub async fn compare_current_source_cached_47_to_50_evidence(
     device: crate::gpu::Device,
     hf_directory: &Path,
+    artifact_directory: &Path,
     evidence_path: &Path,
+    expected_evidence_sha256: [u8; 32],
     providers: crate::gpu::OrdinaryCudaProviderPaths,
     cancelled: Option<&AtomicBool>,
 ) -> Result<OrdinaryEvidenceReceipt> {
     const MIB: usize = 1024 * 1024;
     require_not_cancelled(cancelled)?;
-    let (evidence, sha256) = evidence::read(evidence_path)?;
+    let current_implementation =
+        reference_identity::inspect(artifact_directory, QwenSourceProfile::Qwen08, cancelled)?;
+    let (evidence, sha256) = evidence::read(evidence_path, expected_evidence_sha256)?;
+    if evidence.implementation != current_implementation {
+        return Err(Error::State(
+            "ordinary/reference evidence implementation identity differs".into(),
+        ));
+    }
     if evidence.reference.capacity != CURRENT_PARITY_CAPACITY
         || evidence.identity.capacity != CURRENT_PARITY_CAPACITY
     {
@@ -199,6 +237,7 @@ fn reference_identity(model: &ReferenceModel) -> ParitySourceIdentity {
         repository: metadata.repository.to_string(),
         revision: metadata.revision.to_string(),
         index_sha256: metadata.index_sha256.to_string(),
+        manifest_sha256: metadata.manifest_sha256.to_string(),
         hidden_width: metadata.hidden_width,
         capacity: metadata.context_capacity_tokens,
     }
@@ -211,6 +250,7 @@ fn ordinary_identity(model: &ordinary_candidate::Model) -> ParitySourceIdentity 
         repository: metadata.repository.to_string(),
         revision: metadata.revision.to_string(),
         index_sha256: metadata.index_sha256.to_string(),
+        manifest_sha256: metadata.manifest_sha256.to_string(),
         hidden_width: metadata.hidden_width,
         capacity: model.context_capacity_tokens(),
     }
@@ -718,6 +758,18 @@ fn decode_f32_prefix_with_zero_tail(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn expected_evidence_digest_parser_is_exact_and_case_insensitive() {
+        let lower = "0123456789abcdef".repeat(4);
+        let upper = lower.to_ascii_uppercase();
+        assert_eq!(
+            parse_evidence_sha256(&lower).unwrap(),
+            parse_evidence_sha256(&upper).unwrap()
+        );
+        assert!(parse_evidence_sha256(&lower[..63]).is_err());
+        assert!(parse_evidence_sha256(&(lower[..63].to_owned() + "z")).is_err());
+    }
 
     #[test]
     fn reference_close_requires_stable_retirement_windows() {

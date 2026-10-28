@@ -39,6 +39,7 @@ pub(crate) struct Metadata {
     pub(crate) repository: &'static str,
     pub(crate) revision: &'static str,
     pub(crate) index_sha256: &'static str,
+    pub(crate) manifest_sha256: &'static str,
     pub(crate) hidden_width: usize,
 }
 
@@ -189,6 +190,7 @@ pub(crate) fn open(
             repository: spec.repository,
             revision: spec.revision,
             index_sha256: spec.index_sha,
+            manifest_sha256: spec.manifest_sha,
             hidden_width: spec.hidden,
         },
     })
