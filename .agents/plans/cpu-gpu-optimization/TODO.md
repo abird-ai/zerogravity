@@ -1283,24 +1283,25 @@ build or general model/backend grant. Historical failures keep their source scop
   remain required with the approved .8B source; source-free ownership success
   does not substitute for those device tests.
 
-### 28 Oct 2026 — cached47→50 serial real-parity harness ready
+### 28 Oct 2026 — cached47→50 two-process real-parity harness ready
 
-- [x] Qualification-only serial harness captures the approved historical
-  current-source .8B path at frontiers 47→48→49→50, including full 248320
-  logits, greedy ID/max bits, and all 42 canonical state domains. Reference KV
-  is checked for exact future +0 and BF16-widened F32 semantics.
-- [x] The harness explicitly closes the reference model and validates
-  source/head retirement window counts before loading the ordinary model on the
-  same CUDA device. Ordinary comparison uses the same prompt and selected-token
-  feedback, canonical typed root snapshots, exact bit comparison, and explicit
-  ordinary shutdown. Any run/comparison failure still performs model teardown;
-  cleanup failure is reported rather than hidden.
-- [x] Source-free harness tests, strict qwen35-cuda-qualification Clippy,
-  all-features build, formatting and diff checks pass. This is test
-  infrastructure only; it grants no production backend.
-- [ ] Execute the serial harness as soon as the approved .8B safetensor shard
-  becomes visible to the connector. The ignored integration test is
-  ordinary_cached47_to50_serial_current_source_parity and requires absolute
-  ZG_QWEN35_MODEL_DIR, ZG_QWEN35_CUDA_KERNEL_DIR, ZG_QWEN35_CUBLAS and
-  ZG_QWEN35_CUBLAS_LT. Run release CUDA in an isolated process. Do not download
-  or substitute source.
+- [x] Qualification-only phase 1 captures the approved historical current-source
+  .8B path at frontiers 47→48→49→50, including full 248320 logits, greedy
+  ID/max bits, and all 42 canonical state domains. Reference KV checks exact
+  future +0 and BF16-widened F32 semantics. After explicit historical model
+  shutdown, it writes bounded SHA256-protected host comparison evidence.
+- [x] Same-process reference→ordinary was rejected during audit: the historical
+  path loads cuBLAS, while ordinary bounded BLAS activation must precede every
+  cuBLAS DSO mapping. Phase 2 therefore runs in a fresh process. It independently
+  authenticates the approved source, fixed 512 context and provider paths;
+  evidence cannot choose the plan, context, prompt or next token. Ordinary
+  48→50 uses its own greedy feedback and stops at the first exact-parity failure.
+- [x] Two ignored release-CUDA integration tests compile and strict-Clippy clean:
+  ordinary_cached47_to50_capture_reference_evidence then, in a separate process,
+  ordinary_cached47_to50_compare_reference_evidence. Both use the same absolute
+  ZG_QWEN35_ORDINARY_PARITY_EVIDENCE path. Phase 1 additionally requires
+  ZG_QWEN35_CUDA_KERNEL_DIR; phase 2 requires explicit ZG_QWEN35_CUBLAS and
+  ZG_QWEN35_CUBLAS_LT. Source-free parity/evidence tests and all-features build
+  pass. This is qualification infrastructure only.
+- [ ] Execute both phases serially as soon as the approved .8B safetensor shard
+  becomes visible to the connector. Do not download or substitute source.

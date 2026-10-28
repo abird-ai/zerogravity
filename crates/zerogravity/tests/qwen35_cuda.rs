@@ -522,24 +522,55 @@ fn fresh_prefill_state_logits_root_and_cleanup_agreement() -> Result<()> {
 }
 
 #[test]
-#[ignore = "explicit qualification-only serial current-source ordinary parity; release CUDA, approved source, isolated process only"]
-fn ordinary_cached47_to50_serial_current_source_parity() -> Result<()> {
+#[ignore = "phase 1: fresh release CUDA process captures authenticated historical reference evidence, then exits"]
+fn ordinary_cached47_to50_capture_reference_evidence() -> Result<()> {
     ensure(!cfg!(debug_assertions), "release physical matrix only")?;
     let source = env("ZG_QWEN35_MODEL_DIR")?;
     let bundle = env("ZG_QWEN35_CUDA_KERNEL_DIR")?;
+    let evidence = env("ZG_QWEN35_ORDINARY_PARITY_EVIDENCE")?;
+    let device =
+        zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA device: {e}")))?;
+    let receipt = block_on(
+        qwen35_cuda::ordinary_parity::capture_current_source_cached_47_to_50_evidence(
+            device, &source, &bundle, &evidence, None,
+        ),
+    )?;
+    let digest = receipt
+        .sha256
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    println!(
+        "QWEN35_ORDINARY_CUDA_CACHED47_50_REFERENCE_EVIDENCE_PASS sha256={digest} windows={} retired_windows={}",
+        receipt.close.source_weight_windows, receipt.close.retirement_source_weight_windows,
+    );
+    Ok(())
+}
+
+#[test]
+#[ignore = "phase 2: fresh release CUDA process independently loads ordinary path and compares host evidence"]
+fn ordinary_cached47_to50_compare_reference_evidence() -> Result<()> {
+    ensure(!cfg!(debug_assertions), "release physical matrix only")?;
+    let source = env("ZG_QWEN35_MODEL_DIR")?;
+    let evidence = env("ZG_QWEN35_ORDINARY_PARITY_EVIDENCE")?;
     let cublas = env("ZG_QWEN35_CUBLAS")?;
     let cublas_lt = env("ZG_QWEN35_CUBLAS_LT")?;
     let providers = zerogravity::gpu::OrdinaryCudaProviderPaths::new(cublas, cublas_lt)?;
     let device =
         zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA device: {e}")))?;
     let receipt = block_on(
-        qwen35_cuda::ordinary_parity::run_current_source_cached_47_to_50_serial(
-            device, &source, &bundle, providers, None,
+        qwen35_cuda::ordinary_parity::compare_current_source_cached_47_to_50_evidence(
+            device, &source, &evidence, providers, None,
         ),
     )?;
     receipt.require_exact()?;
+    let digest = receipt
+        .sha256
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     println!(
-        "QWEN35_ORDINARY_CUDA_CACHED47_50_PARITY_PASS steps={} exact=true serial_reference_then_ordinary=true",
+        "QWEN35_ORDINARY_CUDA_CACHED47_50_PARITY_PASS steps={} exact=true natural_feedback=true two_process=true evidence_sha256={digest}",
         receipt.parity.steps.len()
     );
     Ok(())
