@@ -233,6 +233,7 @@ mod tests {
         StateRequirement {
             slot: StateSlot::Conv(ConvDomain(0)),
             layout,
+            physical: crate::resident_program::ResidentPhysicalType::F32,
             bytes,
         }
     }

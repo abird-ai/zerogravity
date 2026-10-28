@@ -439,7 +439,8 @@ fn require_storage(requirement: &StateRequirement) -> Result<()> {
         .and_then(|n| n.checked_mul(4))
         .filter(|n| *n > 0)
         .ok_or_else(|| Error::Limit("source F32 state storage extent".into()))?;
-    if requirement.bytes != bytes
+    if requirement.physical != crate::resident_program::ResidentPhysicalType::F32
+        || requirement.bytes != bytes
         || !matches!(
             (requirement.slot, requirement.layout),
             (
@@ -512,6 +513,7 @@ mod tests {
                 require_storage(&StateRequirement {
                     slot,
                     layout,
+                    physical: crate::resident_program::ResidentPhysicalType::F32,
                     bytes
                 })
                 .is_ok()
@@ -520,6 +522,7 @@ mod tests {
                 require_storage(&StateRequirement {
                     slot,
                     layout,
+                    physical: crate::resident_program::ResidentPhysicalType::F32,
                     bytes: bytes / 2
                 })
                 .is_err()
@@ -529,6 +532,7 @@ mod tests {
             require_storage(&StateRequirement {
                 slot: StateSlot::Kv(KvDomain(0)),
                 layout: StateLayout::Vector { elements: 8 },
+                physical: crate::resident_program::ResidentPhysicalType::F32,
                 bytes: 32
             })
             .is_err()
@@ -537,6 +541,7 @@ mod tests {
             require_storage(&StateRequirement {
                 slot: StateSlot::Conv(ConvDomain(0)),
                 layout: StateLayout::Vector { elements: 0 },
+                physical: crate::resident_program::ResidentPhysicalType::F32,
                 bytes: 0
             })
             .is_err()
@@ -548,6 +553,7 @@ mod tests {
                     slab: usize::MAX,
                     capacity: 2
                 },
+                physical: crate::resident_program::ResidentPhysicalType::F32,
                 bytes: 8
             })
             .is_err()
@@ -691,6 +697,7 @@ mod tests {
             StateRequirement {
                 slot: conv,
                 layout: StateLayout::Vector { elements: 9 },
+                physical: crate::resident_program::ResidentPhysicalType::F32,
                 bytes: 36,
             },
             StateRequirement {
@@ -699,6 +706,7 @@ mod tests {
                     slab: 5,
                     capacity: 16,
                 },
+                physical: crate::resident_program::ResidentPhysicalType::F32,
                 bytes: 640,
             },
         ];

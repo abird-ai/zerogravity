@@ -450,11 +450,6 @@ pub enum StateLayout {
     Vector { elements: usize },
     Kv { slab: usize, capacity: usize },
 }
-#[cfg(any(
-    feature = "cuda-native-qualification",
-    feature = "gemma-bf16-qualification",
-    feature = "qwen-source-qualification"
-))]
 impl StateLayout {
     /// Actual plane count and F32 word extent per plane. A KV domain is two
     /// planes of one checked `slab*capacity` extent; total requirement bytes/4
@@ -474,7 +469,24 @@ impl StateLayout {
 pub struct StateRequirement {
     pub slot: StateSlot,
     pub layout: StateLayout,
+    pub physical: ResidentPhysicalType,
     pub bytes: usize,
+}
+impl StateRequirement {
+    pub(crate) fn plane_layout(&self) -> Result<(usize, ResidentBufferLayout)> {
+        let (planes, elements) = self.layout.planes()?;
+        let layout = ResidentBufferLayout::new(self.physical, elements)?;
+        let bytes = layout
+            .bytes()?
+            .checked_mul(planes)
+            .ok_or_else(|| Error::Limit("resident state physical byte sum overflow".into()))?;
+        if bytes != self.bytes {
+            return Err(Error::State(
+                "resident state declared physical bytes differ".into(),
+            ));
+        }
+        Ok((planes, layout))
+    }
 }
 
 /// Exact logical allocations, excluding allocator page rounding. Prior and
@@ -1161,6 +1173,7 @@ impl ResidentProgram {
             states.push(StateRequirement {
                 slot,
                 layout,
+                physical: crate::resident_program::ResidentPhysicalType::F32,
                 bytes: b,
             });
         }

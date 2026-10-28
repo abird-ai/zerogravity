@@ -146,11 +146,7 @@ impl ResidentBufferLayout {
                 BufferRole::Activation | BufferRole::Output | BufferRole::Scratch,
                 DeviceAccess::Read | DeviceAccess::Write,
             ) => Ok(()),
-            (BufferRole::RecurrentState, DeviceAccess::Read | DeviceAccess::Write)
-                if self.kind == ResidentPhysicalType::F32 =>
-            {
-                Ok(())
-            }
+            (BufferRole::RecurrentState, DeviceAccess::Read | DeviceAccess::Write) => Ok(()),
             _ => Err(Error::Unsupported(
                 "resident physical role/storage contract".into(),
             )),
@@ -163,3 +159,43 @@ mod tests;
 
 #[cfg(test)]
 mod value_storage_tests;
+
+#[cfg(test)]
+mod state_requirement_tests {
+    use super::*;
+    use crate::resident_program::{StateLayout, StateRequirement};
+    use zerogravity_core::accelerator::program::{KvDomain, StateSlot};
+
+    #[test]
+    fn state_requirement_physical_type_owns_plane_bytes() {
+        for (physical, plane_bytes, total_bytes) in [
+            (ResidentPhysicalType::F32, 8 * 4, 2 * 8 * 4),
+            (ResidentPhysicalType::Bf16, 8 * 2, 2 * 8 * 2),
+        ] {
+            let requirement = StateRequirement {
+                slot: StateSlot::Kv(KvDomain(0)),
+                layout: StateLayout::Kv {
+                    slab: 2,
+                    capacity: 4,
+                },
+                physical,
+                bytes: total_bytes,
+            };
+            let (planes, layout) = requirement.plane_layout().unwrap();
+            assert_eq!(planes, 2);
+            assert_eq!(layout.kind(), physical);
+            assert_eq!(layout.elements(), 8);
+            assert_eq!(layout.bytes().unwrap(), plane_bytes);
+        }
+        let wrong = StateRequirement {
+            slot: StateSlot::Kv(KvDomain(0)),
+            layout: StateLayout::Kv {
+                slab: 2,
+                capacity: 4,
+            },
+            physical: ResidentPhysicalType::Bf16,
+            bytes: 64,
+        };
+        assert!(wrong.plane_layout().is_err());
+    }
+}

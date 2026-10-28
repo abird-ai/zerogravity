@@ -183,6 +183,7 @@ impl Layout {
                             StateRequirement {
                                 slot: effect.write.slot,
                                 layout: StateLayout::Kv { slab, capacity: 64 },
+                                physical: crate::resident_program::ResidentPhysicalType::F32,
                                 bytes: 2 * 64 * slab * 4,
                             },
                         )

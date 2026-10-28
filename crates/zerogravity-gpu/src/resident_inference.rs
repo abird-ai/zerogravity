@@ -704,8 +704,9 @@ impl ResidentModel {
             let mut initialization = self.service.begin_initialization(0)?;
             retain(&mut initialization)?;
             for r in &self.states {
-                let mut allocate =
-                    |n: usize| initialization.upload_zeroed(n * 4, BufferRole::RecurrentState);
+                let mut allocate = |layout: ResidentBufferLayout| {
+                    initialization.upload_zeroed(layout.bytes()?, BufferRole::RecurrentState)
+                };
                 output.push(make_domain(r, &mut allocate)?);
             }
             drop(initialization.complete_sync().await?);
@@ -724,11 +725,11 @@ impl ResidentModel {
                 .states
                 .iter()
                 .map(|requirement| {
-                    make_domain(requirement, &mut |n| {
+                    make_domain(requirement, &mut |layout| {
                         let lease = next
                             .next()
                             .ok_or_else(|| Error::State("resident root plane missing".into()))?;
-                        if lease.bytes() != n * 4
+                        if lease.bytes() != layout.bytes()?
                             || lease.is_initialized()
                             || lease.role() != BufferRole::RecurrentState
                             || !Arc::ptr_eq(lease.service(), &self.service)
@@ -754,9 +755,9 @@ impl ResidentModel {
         self.states
             .iter()
             .map(|r| {
-                let mut allocate = |n: usize| {
+                let mut allocate = |layout: ResidentBufferLayout| {
                     self.service
-                        .allocate_uninitialized(n * 4, BufferRole::RecurrentState)
+                        .allocate_uninitialized(layout.bytes()?, BufferRole::RecurrentState)
                 };
                 make_domain(r, &mut allocate)
             })
@@ -1398,32 +1399,39 @@ impl ResidentModel {
 
 fn make_domain(
     r: &StateRequirement,
-    allocate: &mut impl FnMut(usize) -> Result<ResidentLease>,
+    allocate: &mut impl FnMut(ResidentBufferLayout) -> Result<ResidentLease>,
 ) -> Result<Domain> {
+    let (planes, physical) = r.plane_layout()?;
     let (leases, buffers) = match r.layout {
-        StateLayout::Vector { elements } => {
-            let l = allocate(elements)?;
+        StateLayout::Vector { .. } => {
+            if planes != 1 {
+                return Err(Error::State("resident vector state plane count".into()));
+            }
+            let l = allocate(physical)?;
             let b = DeviceBuffer::from_lease(
                 l.clone(),
-                ResidentBufferLayout::new(ResidentPhysicalType::F32, elements)?,
+                physical,
                 BufferRole::RecurrentState,
                 DeviceAccess::Write,
             )?;
             (vec![l], StateBuffers::Vector(b))
         }
-        StateLayout::Kv { slab, capacity } => {
-            let k = allocate(slab * capacity)?;
-            let v = allocate(slab * capacity)?;
+        StateLayout::Kv { .. } => {
+            if planes != 2 {
+                return Err(Error::State("resident KV state plane count".into()));
+            }
+            let k = allocate(physical)?;
+            let v = allocate(physical)?;
             let b = StateBuffers::Kv {
                 keys: DeviceBuffer::from_lease(
                     k.clone(),
-                    ResidentBufferLayout::new(ResidentPhysicalType::F32, slab * capacity)?,
+                    physical,
                     BufferRole::RecurrentState,
                     DeviceAccess::Write,
                 )?,
                 values: DeviceBuffer::from_lease(
                     v.clone(),
-                    ResidentBufferLayout::new(ResidentPhysicalType::F32, slab * capacity)?,
+                    physical,
                     BufferRole::RecurrentState,
                     DeviceAccess::Write,
                 )?,

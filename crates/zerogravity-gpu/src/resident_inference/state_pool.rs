@@ -37,11 +37,11 @@ where
     let mut next = leases.iter();
     let mut domains = Vec::with_capacity(model.states.len());
     for requirement in &model.states {
-        domains.push(make_domain(requirement, &mut |elements| {
+        domains.push(make_domain(requirement, &mut |layout| {
             let lease = next
                 .next()
                 .ok_or_else(|| Error::State("resident root pool plane missing".into()))?;
-            if elements.checked_mul(4) != Some(lease.bytes())
+            if layout.bytes()? != lease.bytes()
                 || lease.role() != BufferRole::RecurrentState
                 || lease.is_initialized()
                 || !Arc::ptr_eq(lease.service(), &model.service)
@@ -96,11 +96,8 @@ impl ResidentModel {
         let mut layout = Vec::new();
         let mut total = 0usize;
         for requirement in &self.states {
-            let (count, elements) = requirement.layout.planes()?;
-            let bytes = elements
-                .checked_mul(4)
-                .filter(|n| *n != 0)
-                .ok_or_else(|| Error::Limit("resident root plane extent".into()))?;
+            let (count, plane) = requirement.plane_layout()?;
+            let bytes = plane.bytes()?;
             total = count
                 .checked_mul(bytes)
                 .and_then(|n| total.checked_add(n))
