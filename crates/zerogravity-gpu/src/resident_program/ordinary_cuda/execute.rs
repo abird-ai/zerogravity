@@ -179,7 +179,10 @@ impl OrdinaryCudaBody {
         })
     }
 
-    fn validate_request<'a>(&self, request: &'a ForwardPlan) -> Result<&'a SourceCall> {
+    pub(in crate::resident_program) fn validate_request<'a>(
+        &self,
+        request: &'a ForwardPlan,
+    ) -> Result<&'a SourceCall> {
         let cold = self.cold().plan();
         if !request.shares_semantics(cold)
             || request.nodes().len() != cold.nodes().len()

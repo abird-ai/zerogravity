@@ -1500,6 +1500,169 @@ impl ResidentModel {
     }
 }
 
+#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+impl ResidentModel {
+    async fn execute_ordinary_cuda(
+        &self,
+        base: RootBinding,
+        prior: &[Domain],
+        candidate: Vec<Domain>,
+        request: &ForwardPlan,
+        output: ResidentOutput,
+    ) -> Result<(Vec<Domain>, ResidentReady, InferenceReadback)> {
+        self.service.ensure_usable()?;
+        let call = request
+            .source_call()
+            .ok_or_else(|| Error::State("ordinary CUDA materialized call absent".into()))?;
+        if base.source() != self.service.source_identity()
+            || call.source() != base.source()
+            || call.rows().base() as u64 != base.frontier()
+            || call.rows().capacity() != self.capacity
+            || call.rows().vocabulary() as u64 != self.vocab
+            || call.rows().frontier() > self.capacity
+        {
+            return Err(Error::State(
+                "ordinary CUDA session root/call geometry differs".into(),
+            ));
+        }
+        self.validate_domains(prior, true)?;
+        self.validate_domains(&candidate, false)?;
+        let bindings = bind_domains(prior, &candidate, call.rows().base())?;
+
+        let ticket = self.service.queue().submit(
+            self.service.budget(),
+            ResourceOwner {
+                model: self.service.owner().model.clone(),
+                session: format!("ordinary-session-{}", base.session().get()),
+            },
+            &[AllocationRequest {
+                kind: AllocationClass::Scratch,
+                bytes: self.state_bytes as u64,
+            }],
+            None,
+        )?;
+        let mut slot = ticket.wait().await?;
+        let workspace = self.workspace.lock().await;
+        if !workspace.program.is_ordinary_cuda() {
+            return Err(Error::State(
+                "ordinary CUDA request reached another resident model".into(),
+            ));
+        }
+        workspace.program.validate_ordinary_cuda_request(request)?;
+
+        let mut accesses = match output {
+            ResidentOutput::StateOnly => workspace.state_accesses.clone(),
+            ResidentOutput::Logits => workspace.logit_accesses.clone(),
+        };
+        for domain in prior {
+            accesses.extend(
+                domain
+                    .leases
+                    .iter()
+                    .cloned()
+                    .map(|lease| (lease, DeviceAccess::Read)),
+            );
+        }
+        for domain in &candidate {
+            accesses.extend(
+                domain
+                    .leases
+                    .iter()
+                    .cloned()
+                    .map(|lease| (lease, DeviceAccess::Write)),
+            );
+        }
+        slot.begin_submission()?;
+        let mut flight = self.service.submit(base.root(), &accesses)?;
+        let submitted =
+            workspace
+                .program
+                .launch_ordinary_cuda(&mut flight, request, &bindings, output)?;
+
+        let expected = workspace.program.plan().proposed_domains();
+        if submitted.proposals.len() != expected.len() {
+            return Err(Error::State(
+                "ordinary CUDA incomplete state effect receipt".into(),
+            ));
+        }
+        for ((version, buffers), expected) in submitted.proposals.iter().zip(expected) {
+            let domain = candidate
+                .iter()
+                .find(|domain| domain.slot == version.slot)
+                .ok_or_else(|| Error::State("ordinary CUDA foreign state proposal".into()))?;
+            let actual = buffers.handles();
+            let target = domain.buffers.handles();
+            if version.slot != expected.slot
+                || version.ordinal != expected.ordinal
+                || actual.len() != target.len()
+                || actual.iter().zip(target).any(|(a, b)| !same_handle(a, &b))
+            {
+                return Err(Error::State(
+                    "ordinary CUDA state effect version/allocation mismatch".into(),
+                ));
+            }
+        }
+
+        let status_lease = lease_for(&accesses, &submitted.status)?;
+        let mut cohort = vec![status_lease.readback(0, 4)?];
+        if output == ResidentOutput::Logits {
+            let logits = submitted
+                .logits
+                .as_ref()
+                .ok_or_else(|| Error::State("ordinary CUDA logits receipt absent".into()))?;
+            let lease = lease_for(&accesses, &logits.handle)?;
+            cohort.push(logits.readback(
+                lease,
+                ResidentBufferLayout::new(ResidentPhysicalType::F32, logits.elements)?,
+            )?);
+        } else if submitted.logits.is_some() {
+            return Err(Error::State(
+                "ordinary CUDA state-only execution returned logits".into(),
+            ));
+        }
+
+        let promoted = candidate
+            .iter()
+            .flat_map(|domain| domain.leases.iter().cloned())
+            .collect::<Vec<_>>();
+        let expected_readback_bytes = cohort.iter().map(|item| item.bytes()).sum();
+        let (ready, read) = flight
+            .complete_with_readback(&promoted, &cohort, |values| {
+                if !all_zero(&values[0]) {
+                    return Err(Error::State(
+                        "ordinary CUDA shared status rejected proposed graph".into(),
+                    ));
+                }
+                if output == ResidentOutput::Logits
+                    && !words(&values[1])?.iter().all(|value| value.is_finite())
+                {
+                    return Err(Error::State("ordinary CUDA nonfinite F32 logits".into()));
+                }
+                Ok(())
+            })
+            .await?;
+        slot.finish()?;
+
+        Ok((
+            candidate,
+            ready,
+            InferenceReadback {
+                logits: if output == ResidentOutput::Logits {
+                    words(&read[1])?
+                } else {
+                    Vec::new()
+                },
+                dispatches: submitted.dispatches,
+                bytes: expected_readback_bytes,
+                chunk_bytes: expected_readback_bytes,
+                state_only_steps: usize::from(output == ResidentOutput::StateOnly),
+                logit_steps: usize::from(output == ResidentOutput::Logits),
+                ..Default::default()
+            },
+        ))
+    }
+}
+
 fn make_domain(
     r: &StateRequirement,
     allocate: &mut impl FnMut(ResidentBufferLayout) -> Result<ResidentLease>,
@@ -1849,6 +2012,88 @@ impl ResidentSession {
             readback,
         })
     }
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+    pub async fn prepare_ordinary_cuda(&self, request: ForwardPlan) -> Result<PreparedInference> {
+        self.prepare_ordinary_cuda_mode(request, ResidentOutput::Logits)
+            .await
+    }
+
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+    pub async fn prepare_ordinary_cuda_state_only(
+        &self,
+        request: ForwardPlan,
+    ) -> Result<PreparedInference> {
+        self.prepare_ordinary_cuda_mode(request, ResidentOutput::StateOnly)
+            .await
+    }
+
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+    async fn prepare_ordinary_cuda_mode(
+        &self,
+        request: ForwardPlan,
+        output: ResidentOutput,
+    ) -> Result<PreparedInference> {
+        let call = request
+            .source_call()
+            .ok_or_else(|| Error::State("ordinary CUDA request call absent".into()))?
+            .clone();
+        let base = self.binding();
+        if call.source() != base.source()
+            || call.rows().base() as u64 != base.frontier()
+            || call.rows().capacity() != self.model.capacity
+            || call.rows().vocabulary() as u64 != self.model.vocab
+            || call.rows().frontier() > self.model.capacity
+        {
+            return Err(Error::State(
+                "ordinary CUDA request differs from current session root".into(),
+            ));
+        }
+
+        // Validate source semantics/topology before candidate-root allocation.
+        {
+            let workspace = self.model.workspace.lock().await;
+            if !workspace.program.is_ordinary_cuda() {
+                return Err(Error::State(
+                    "ordinary CUDA request belongs to another resident model".into(),
+                ));
+            }
+            workspace.program.validate_ordinary_cuda_request(&request)?;
+        }
+
+        let count = u64::try_from(call.rows().len())
+            .map_err(|_| Error::Limit("ordinary CUDA request row count".into()))?;
+        let attempt = self.authority.begin_advance(count)?;
+        let candidate = self.model.allocate_state(false).await?;
+        let (domains, ready, readback) = self
+            .model
+            .execute_ordinary_cuda(base, &self.domains, candidate, &request, output)
+            .await?;
+        Ok(PreparedInference {
+            attempt,
+            domains,
+            ready,
+            readback,
+        })
+    }
+
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+    pub async fn forward_ordinary_cuda(
+        &mut self,
+        request: ForwardPlan,
+    ) -> Result<InferenceReadback> {
+        let prepared = self.prepare_ordinary_cuda(request).await?;
+        self.commit(prepared)
+    }
+
+    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+    pub async fn forward_ordinary_cuda_state_only(
+        &mut self,
+        request: ForwardPlan,
+    ) -> Result<InferenceReadback> {
+        let prepared = self.prepare_ordinary_cuda_state_only(request).await?;
+        self.commit(prepared)
+    }
+
     /// Full already-Ready typed state/lease preflight shared by B1 and B>1
     /// logical commit. Must not alter state or issue a new event.
     fn validate_prepared(&self, prepared: &PreparedInference) -> Result<()> {

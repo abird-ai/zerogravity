@@ -156,6 +156,18 @@ impl ResidentProgram {
         matches!(self.body, ResidentProgramBody::OrdinaryCuda(_))
     }
 
+    pub(crate) fn validate_ordinary_cuda_request(
+        &self,
+        request: &zerogravity_core::accelerator::program::ForwardPlan,
+    ) -> Result<()> {
+        let ResidentProgramBody::OrdinaryCuda(body) = &self.body else {
+            return Err(Error::State(
+                "ordinary CUDA validation requested from another resident body".into(),
+            ));
+        };
+        body.validate_request(request).map(|_| ())
+    }
+
     pub(crate) fn launch_ordinary_cuda(
         &self,
         flight: &mut crate::resident_leases::ResidentSubmission<'_>,
