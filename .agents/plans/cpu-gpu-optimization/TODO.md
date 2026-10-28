@@ -23,12 +23,14 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
 - [x] Production source-free queue/worker qualification passes C16/C32/C64
   offered populations with actual active<=8 scheduling, health, cap refusal and
   cleanup. Native Qwen remains at most B4; client width is not kernel width.
-- [ ] Finish exact packed/strided non-GDN CUDA lowering and integrate it through
-  the existing physical owner. Pending branch `29b491d` awaits a resumed,
-  interrupted review (see
-  [review record](../../docs/REVIEW_ORDINARY_CANDIDATE_29B491D_2026-10-27.md)).
-  Then run current-source `.8B`/`2B` model, cached, fault, shutdown and
-  fitted-context qualification plus final full gate.
+- [x] Resume and close the `29b491d` primitive review. The accepted inert series
+  is integrated as `ea66b3a`/`68393e5`/`6b4a2ec`/`441fa64`; source/ABI/status,
+  alias and SM86 compile/reflection checks pass, with no backend/launch permit.
+  See
+  [review record](../../docs/REVIEW_ORDINARY_CANDIDATE_29B491D_2026-10-27.md).
+- [ ] Finish exact packed/strided non-GDN projection/attention lowering through
+  the existing physical owner. Then run current-source `.8B`/`2B` model, cached,
+  fault, shutdown and fitted-context qualification plus final full gate.
 - [ ] Run the one serial campaign specified in
   `../serving-and-speculation/BENCHMARK_CAMPAIGN_2026-10-27.md`. Preserve the
   historical `2B` C16 loss and all cap/resource asymmetries; no new benchmark

@@ -202,3 +202,112 @@ qualification gates are unchanged.
 - No `pi-web-agent-*` worktree currently exists; `git worktree list` shows only
   `main` and the preserved `qwen35-prompt-reference-20261026` extraction overlay.
 - A prior draft commit `68cbef5` (synthetic queue test) stays unintegrated.
+
+## 7. Resumed independent review, closure and integration
+
+The interrupted review was resumed from the recorded source state. The original
+`/tmp/rev-29b491d` materialization was verified, but dotlink's per-command
+sandbox makes `/tmp` ephemeral; after pruning only that stale registration the
+same commit was rematerialized at
+`/home/pvl/spaces/abird/src/.zerogravity-worktrees/rev-29b491d` and attached to
+`pi-web-agent-8026e968-eb45-46fd-a2a1-d669a232fe6b`. No conclusion below relies
+on the interrupted reviewer's verdict.
+
+### A. Independently re-derived findings
+
+- **Authority remains absent.** There is no `CallerStatusContract`
+  implementation for ordinary text, no production ordinary primitive selector,
+  and no call site that can turn the new definitions into an ordinary backend.
+  Run/serve still call `require_ordinary_capability()` and refuse before source,
+  device or driver discovery. The only ordinary `launch_on` remains inside the
+  crate-private `PreparedLaunch::submit`; the unqualified online-FP32 attention
+  primitive remains absent from selectable definitions.
+- **`SiluUp` scalar ABI is correct.** CUDA consumes
+  `[rows, gate_offset, up_offset, row_stride]`; Rust emits
+  `[rows, 0, intermediate_width, 2 * intermediate_width]`. The source-derived
+  packed-plan test covers both admitted geometries and every runtime row 1..64.
+- **`StaticScalarSchema::byte_size()` widening is correct.** It is exposed only
+  under `cfg(any(test, feature = "cuda-native-qualification"))`, exactly where
+  CUDA formal-parameter reflection needs it; it is not widened into ordinary
+  production API surface.
+- **Alias validation is fail-closed.** Every overlapping pair is checked
+  regardless of access mode. Only an explicitly listed role pair with the exact
+  same allocation/range may alias. Partial overlap is rejected even for an
+  allowed pair. New controls also reject read/read and write/write overlap.
+- **The lowering audit had two additional source-identity weaknesses.**
+  `KvAppend` hard-coded the 64-row view instead of the invocation row count, and
+  QK/RoPE authenticated epsilon but not the declared `theta=10_000_000`. Both
+  were fail-closed but made the audit weaker than claimed.
+
+### B. Review fixes
+
+Signed branch commit `b6aae7fe1656c249d89af76e2fb7d469bd328977`
+(`fix(cuda): close ordinary primitive review gaps`) closes the review blockers:
+
+1. RMS, residual-RMS and Q/K head-RMS now set nonfinite status if the completed
+   sum-of-squares reduction is nonfinite, and also if the computed inverse is
+   nonfinite or exactly zero. A finite input whose square/reduction overflows can
+   therefore no longer produce a silently accepted zero row; publication still
+   depends on the existing fenced status protocol.
+2. The Qwen audit derives the packed KV view from geometry plus the actual
+   invocation row count, and authenticates the exact RoPE theta.
+3. Dynamic GDN is no longer described as missing. It stays owned by the existing
+   runtime schedule; the audit names only source-bound **non-GDN**
+   projection/attention lowering plus physical
+   queue/flight/completion/`StateRoot` ownership as incomplete.
+4. Ordinary refusal text now names that same real gap and still refuses before
+   allocation.
+5. The CUDA source no longer depends on host `<math.h>`/`<stdint.h>` or the host
+   `INFINITY` macro. It uses the admitted CUDA runtime headers and constructs
+   IEEE negative infinity from exact bits, which is accepted by the existing
+   Nix CUDA/NVRTC environment.
+
+### C. Independent verification
+
+All commands were run from the reviewed tree with locked/offline Cargo where
+applicable:
+
+- `cargo test --locked --offline -p zerogravity-gpu --features cuda-native ordinary_text::tests --lib`
+  — **12 passed, 0 failed**.
+- `cargo test --locked --offline -p zerogravity --no-default-features --features qwen35-cuda qwen35_cuda::ordinary --lib`
+  — **3 passed, 0 failed**.
+- `cargo clippy --locked --offline -p zerogravity-gpu --features cuda-native --lib -- -D warnings`
+  — **passed**.
+- `cargo clippy --locked --offline -p zerogravity --features qwen35-cuda --lib -- -D warnings`
+  — **passed**.
+- Plain `cargo check --locked --offline -p zerogravity --features qwen35-cuda`
+  — **passed**.
+- Default `cargo check --locked --offline -p zerogravity` — **passed**.
+- `cargo check --locked --offline -p zerogravity --all-features` — **passed**;
+  only three pre-existing dead-code warnings outside this candidate were emitted.
+- `cargo fmt --all -- --check` and `git diff --check` — **passed**.
+- SM86 CUDA formal compile/load reflection under the already accepted local CUDA
+  12.9 include view and pinned Nix NVRTC/driver libraries — **1 passed, 0
+  failed**, with no compute process before or after. The first attempt correctly
+  refused for absent `CUDA_PATH`; after using the existing admitted SDK view,
+  reflection exposed the host-header/`INFINITY` portability defects above.
+  Those were fixed in-source; no SDK download, host permission change or fallback
+  compiler path was used.
+
+The reflection result is compilation/ABI evidence only. It is **not** ordinary
+kernel launch, numerical inference, model support or performance evidence.
+
+### D. Verdict and main integration
+
+**Accepted only as unselected primitives with no backend or launch authority.**
+The remaining ordinary gap is source-bound non-GDN projection/attention lowering
+through the existing physical queue/flight/completion/quarantine owner and sole
+`StateRoot` publication path.
+
+The reviewed four-commit series was integrated onto documentation-only main
+`901d23e` as signed cherry-picks:
+
+- `ea66b3a` — `Add dynamic CUDA ordinary text primitives`
+- `68393e5` — `fix(cuda): constrain ordinary text candidate`
+- `6b4a2ec` — `fix(cuda): close ordinary Qwen review blockers`
+- `441fa64` — `fix(cuda): close ordinary primitive review gaps`
+
+The integrated owned source is byte-for-byte identical to reviewed branch tip
+`b6aae7f`. No root README, Fabric vNext path, extraction overlay, model/source
+identity, captured recipe/table, ordinary serving route, numerical permit or
+performance claim was changed or granted.

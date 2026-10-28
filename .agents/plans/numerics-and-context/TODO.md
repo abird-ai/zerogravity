@@ -87,15 +87,16 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
   `fe228ab`/`52bfb51`: non-null slots1..4, explicit initial/final/cache state,
   alias guards and crate-private flight-owned launch preparation. Host/source
   gates pass; current-source numerical/device launch qualification remains open.
-- [ ] Finish source-derived non-GDN CUDA lowering and existing physical-owner
-  integration. Pending branch `pi-web-agent-8026e968…@29b491d` is **not integrated
-  and not reviewed to completion**; its independent review was cut off by a usage
-  limit. Resume from
-  [the review record](../../docs/REVIEW_ORDINARY_CANDIDATE_29B491D_2026-10-27.md):
-  close the RMS reduction-overflow status gap, SiluUp word order, `byte_size()`
-  cfg and alias rules, untested feature builds, and refresh the refusal text.
-  Then integrate only as unselected primitives, or reject the series. Ordinary
-  Qwen CUDA must continue refusing before allocation.
+- [x] Resume the interrupted `29b491d` review and integrate only inert ordinary
+  primitives. RMS/head-RMS overflow status, SiluUp word order, `byte_size()` cfg,
+  alias rules, dynamic KV rows, RoPE theta, CUDA/NVRTC source portability and the
+  previously untested feature matrix are independently closed. The reviewed
+  series is integrated as `ea66b3a`/`68393e5`/`6b4a2ec`/`441fa64`; no backend or
+  launch authority was added. See
+  [the final review record](../../docs/REVIEW_ORDINARY_CANDIDATE_29B491D_2026-10-27.md).
+- [ ] Finish source-derived non-GDN CUDA projection/attention lowering through
+  the existing physical queue/flight/completion/quarantine owner and sole
+  `StateRoot` publisher. Ordinary Qwen CUDA continues refusing before allocation.
 - [ ] Requalify cached47→48→49→50, affected faults/cancellation/retirement and
   real-model shutdown on the assembled source; then `.8B` 512/1K/2K/4K/8K and
   16K/32K. Admit `2B` contexts only where the exact two-root resource plan fits.

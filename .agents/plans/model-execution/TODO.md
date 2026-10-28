@@ -18,13 +18,17 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   schedule with explicit transport/state operations and no public second launch
   authority. Configuration/source/ABI remain explicit; source/host checks do not
   establish whole-model numerics.
-- [ ] Complete the ordinary non-GDN lowerer and physical owner using exact packed
-  Qwen layouts and authenticated tensors. It must enter the existing queue,
-  flight, status/completion/quarantine and `StateRoot`; no generated packet table,
-  prompt/call/node identity or qualification fallback may authorize it.
-  Candidate series `ec91ad1`/`3a91a97`/`29b491d` awaits an interrupted independent
-  review: see
+- [x] Independently complete the interrupted ordinary-primitive review. The
+  source-derived primitive series is integrated as
+  `ea66b3a`/`68393e5`/`6b4a2ec`/`441fa64`, with RMS overflow/status, scalar ABI,
+  alias, theta/KV-layout and CUDA compile/reflection gaps closed. It remains
+  unselected and has no backend or launch authority; see
   [review record](../../docs/REVIEW_ORDINARY_CANDIDATE_29B491D_2026-10-27.md).
+- [ ] Complete the ordinary non-GDN projection/attention lowerer through the
+  existing physical owner using exact packed Qwen layouts and authenticated
+  tensors. It must enter the existing queue, flight,
+  status/completion/quarantine and `StateRoot`; no generated packet table,
+  prompt/call/node identity or qualification fallback may authorize it.
 - [ ] Qualify `.8B` then `2B` full model, cached continuation, faults, shutdown
   and exact resource fit before enabling an ordinary serving route. Long-context,
   CPU, HIP and Vulkan cells remain independent gates.
