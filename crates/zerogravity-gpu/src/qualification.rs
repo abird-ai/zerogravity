@@ -1520,6 +1520,18 @@ fn ordinary_attention_wrapper_on_nvidia() -> zerogravity_core::Result<()> {
 }
 
 #[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
+#[test]
+#[ignore = "actual NVIDIA ordinary canonical GDN state transport roundtrip"]
+fn ordinary_state_transport_roundtrip_on_nvidia() -> zerogravity_core::Result<()> {
+    let device = Device::cuda(0).map_err(|error| {
+        zerogravity_core::Error::State(format!("CUDA device 0 unavailable: {error}"))
+    })?;
+    futures_lite::future::block_on(
+        crate::cuda::gdn::state_transport::qualify_roundtrip_on_nvidia(device),
+    )
+}
+
+#[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
 async fn qualify_ordinary_owned_blas_identity(
     device: Device,
     cublas: &std::path::Path,

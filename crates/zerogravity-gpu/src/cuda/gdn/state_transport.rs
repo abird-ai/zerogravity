@@ -173,3 +173,202 @@ pub(crate) fn prepare_code(queue: &cubecl::cuda::OwnedCudaQueue) -> Result<usize
     }
     Ok(4)
 }
+
+#[cfg(test)]
+pub(crate) async fn qualify_roundtrip_on_nvidia(device: cubecl::Device) -> Result<()> {
+    use crate::resident_leases::ResidentService;
+    use zerogravity_core::{
+        accelerator::SourceIdentity, device_events::BufferRole, resource_arbiter::ResourceOwner,
+    };
+
+    const MIB: usize = 1024 * 1024;
+    const PATTERNS: [u32; 10] = [
+        0x0000_0000,
+        0x8000_0000,
+        0x3d80_0000,
+        0xbd80_0000,
+        0x3e80_0000,
+        0xbe80_0000,
+        0x3f00_0000,
+        0xbf00_0000,
+        0x3f80_0000,
+        0xbf80_0000,
+    ];
+    fn f32_bytes(words: &[u32]) -> Vec<u8> {
+        words.iter().flat_map(|word| word.to_le_bytes()).collect()
+    }
+    fn status_word(raw: &[u8]) -> Result<u32> {
+        let bytes: [u8; 4] = raw
+            .try_into()
+            .map_err(|_| Error::State("state transport status extent".into()))?;
+        Ok(u32::from_le_bytes(bytes))
+    }
+
+    let source = SourceIdentity::for_new_allocation()?;
+    let service = ResidentService::new_pinned_cuda(
+        device,
+        source,
+        ResourceOwner::new("ordinary-state-transport", "roundtrip")?,
+        16 * MIB,
+        (32 * MIB) as u64,
+    )?;
+    let client = service.client().clone();
+
+    let conv_words = (0..CONV_ELEMENTS)
+        .map(|index| PATTERNS[(index * 17 + 3) % PATTERNS.len()])
+        .collect::<Vec<_>>();
+    let recurrent_words = (0..RECURRENT_ELEMENTS)
+        .map(|index| {
+            let base = PATTERNS[(index * 19 + 7) % PATTERNS.len()];
+            // Recurrent transport is exact F32 transposition, so also exercise
+            // finite non-BF16 low mantissa bits.
+            base | u32::try_from(index % 251).unwrap()
+        })
+        .collect::<Vec<_>>();
+
+    let (conv_in, conv_native, conv_out, recurrent_in, recurrent_native, recurrent_out, status) = {
+        let mut init = service.begin_initialization(0)?;
+        let conv_in = init.upload_bytes(&f32_bytes(&conv_words), BufferRole::RecurrentState)?;
+        let conv_native = init.allocate_empty(CONV_ELEMENTS * 2, BufferRole::Scratch)?;
+        let conv_out = init.allocate_empty(CONV_ELEMENTS * 4, BufferRole::RecurrentState)?;
+        let recurrent_in =
+            init.upload_bytes(&f32_bytes(&recurrent_words), BufferRole::RecurrentState)?;
+        let recurrent_native = init.allocate_empty(RECURRENT_ELEMENTS * 4, BufferRole::Scratch)?;
+        let recurrent_out =
+            init.allocate_empty(RECURRENT_ELEMENTS * 4, BufferRole::RecurrentState)?;
+        let status = init.upload_zeroed(4, BufferRole::Scratch)?;
+        drop(init.complete_sync().await?);
+        (
+            conv_in,
+            conv_native,
+            conv_out,
+            recurrent_in,
+            recurrent_native,
+            recurrent_out,
+            status,
+        )
+    };
+
+    StateTransport::prepare(
+        &service,
+        StateCopy::ConvIn,
+        conv_in.handle(),
+        conv_native.handle(),
+        &status,
+    )?
+    .launch(&service)?;
+    StateTransport::prepare(
+        &service,
+        StateCopy::ConvOut,
+        conv_native.handle(),
+        conv_out.handle(),
+        &status,
+    )?
+    .launch(&service)?;
+    StateTransport::prepare(
+        &service,
+        StateCopy::RecurrentIn,
+        recurrent_in.handle(),
+        recurrent_native.handle(),
+        &status,
+    )?
+    .launch(&service)?;
+    StateTransport::prepare(
+        &service,
+        StateCopy::RecurrentOut,
+        recurrent_native.handle(),
+        recurrent_out.handle(),
+        &status,
+    )?
+    .launch(&service)?;
+
+    client
+        .sync()
+        .await
+        .map_err(|error| Error::State(format!("state transport sync: {error}")))?;
+    let flags = status_word(
+        &client
+            .read_one(status.handle())
+            .map_err(|error| Error::State(format!("state transport status readback: {error}")))?,
+    )?;
+    if flags != 0 {
+        return Err(Error::State(format!(
+            "state transport roundtrip status nonzero: {flags:#x}"
+        )));
+    }
+    let conv_actual = client
+        .read_one(conv_out.handle())
+        .map_err(|error| Error::State(format!("conv state roundtrip readback: {error}")))?;
+    let recurrent_actual = client
+        .read_one(recurrent_out.handle())
+        .map_err(|error| Error::State(format!("recurrent state roundtrip readback: {error}")))?;
+    if &conv_actual[..] != f32_bytes(&conv_words).as_slice()
+        || &recurrent_actual[..] != f32_bytes(&recurrent_words).as_slice()
+    {
+        return Err(Error::State(
+            "canonical GDN state transport roundtrip bytes differ".into(),
+        ));
+    }
+
+    // ConvIn must fail closed when a canonical F32 value is not an exact
+    // BF16-widened finite root.
+    let bad_words = {
+        let mut words = conv_words.clone();
+        words[0] = 0x3f80_0001;
+        words
+    };
+    let (bad_in, bad_native, bad_status) = {
+        let mut init = service.begin_initialization(0)?;
+        let input = init.upload_bytes(&f32_bytes(&bad_words), BufferRole::RecurrentState)?;
+        let native = init.allocate_empty(CONV_ELEMENTS * 2, BufferRole::Scratch)?;
+        let status = init.upload_zeroed(4, BufferRole::Scratch)?;
+        drop(init.complete_sync().await?);
+        (input, native, status)
+    };
+    StateTransport::prepare(
+        &service,
+        StateCopy::ConvIn,
+        bad_in.handle(),
+        bad_native.handle(),
+        &bad_status,
+    )?
+    .launch(&service)?;
+    client
+        .sync()
+        .await
+        .map_err(|error| Error::State(format!("bad conv state sync: {error}")))?;
+    let bad_flags = status_word(
+        &client
+            .read_one(bad_status.handle())
+            .map_err(|error| Error::State(format!("bad conv status readback: {error}")))?,
+    )?;
+    if bad_flags & 1 == 0 {
+        return Err(Error::State(
+            "non-BF16 canonical conv root was not rejected".into(),
+        ));
+    }
+
+    drop((
+        conv_in,
+        conv_native,
+        conv_out,
+        recurrent_in,
+        recurrent_native,
+        recurrent_out,
+        status,
+        bad_in,
+        bad_native,
+        bad_status,
+    ));
+    client
+        .memory_cleanup()
+        .map_err(|error| Error::State(format!("state transport cleanup: {error}")))?;
+    if service.resident_bytes()? != 0 || service.model_events()? != 0 {
+        return Err(Error::State(
+            "state transport qualification left resident bytes/events".into(),
+        ));
+    }
+    service.close_model_namespace()?;
+    println!("ordinary-state-transport roundtrip PASS");
+    Ok(())
+}
