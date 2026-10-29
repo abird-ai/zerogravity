@@ -289,6 +289,16 @@ Git history; current source and this TODO supersede their archived checklists.
 
 ## Uncommitted
 
+### Cache fixture portability — 29 Oct
+
+- [x] The Qwen continuation's assembled gate exposed two synthetic by-name
+  fixtures created as 0644 under umask0022. Set legacy metadata and dirty-marker
+  fixtures to 0600 before public cache calls; keep production private-file
+  validation unchanged. Initial migration/repair failures stay failed.
+- [x] Transaction suites pass with cache and diagnostic-cache under both
+  umask0022/0077; isolated assembled repository gate passes. This changes only
+  synthetic test metadata, not cache ownership, migration or recovery behavior.
+
 - [ ] Canonical source-pull execution order (18 Oct decision): Qwen3.5 .8B/
   2B, Qwen3.8 27B; Gemma4 E2B/26B-A4B/31B, each exact chosen GGUF
   quants or indexed original safetensors; QwenImage2.1 original

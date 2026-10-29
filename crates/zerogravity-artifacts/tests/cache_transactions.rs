@@ -284,11 +284,9 @@ fn by_name_v1_migration_preserves_stable_automatic_and_explicit_aliases() {
 
     fs::remove_dir_all(fixture.root.join(".by-name-state")).unwrap();
     fs::remove_file(fixture.root.join(".by-name-initialized")).unwrap();
-    fs::write(
-        fixture.root.join("by-name.json"),
-        serde_json::to_vec(&legacy).unwrap(),
-    )
-    .unwrap();
+    let legacy_path = fixture.root.join("by-name.json");
+    fs::write(&legacy_path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+    fs::set_permissions(&legacy_path, fs::Permissions::from_mode(0o600)).unwrap();
 
     let migrated = store.refresh_by_name().unwrap();
     assert!(migrated.iter().any(|entry| entry.name() == automatic
@@ -340,7 +338,9 @@ fn dirty_by_name_marker_repairs_projection_and_reverse_index_on_next_use() {
             .join(&snapshot),
     )
     .unwrap();
-    fs::write(fixture.root.join(".by-name-state/dirty"), b"projection").unwrap();
+    let dirty_path = fixture.root.join(".by-name-state/dirty");
+    fs::write(&dirty_path, b"projection").unwrap();
+    fs::set_permissions(&dirty_path, fs::Permissions::from_mode(0o600)).unwrap();
 
     let listed = store.list_by_name().unwrap();
     assert!(listed.iter().any(|entry| entry.name() == automatic));
