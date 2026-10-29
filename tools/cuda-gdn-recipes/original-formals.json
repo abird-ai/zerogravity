@@ -1,0 +1,374 @@
+{
+  "cached": {
+    "source": "/home/pvl/spaces/abird/src/zerogravity/.agents/runs/serving-and-speculation-benchmark-wrap-root-20261022/original-assets/0.8b-47/cached/assets.json",
+    "source_sha256": "033745aef0f73de530819d6221350e214bc70e159555a98e30c52dcf2aadb7c6",
+    "stages": {
+      "Conv": [
+        {
+          "name": "x_ptr",
+          "type": "*bf16"
+        },
+        {
+          "name": "w_ptr",
+          "type": "*bf16"
+        },
+        {
+          "name": "conv_state_ptr",
+          "type": "*bf16"
+        },
+        {
+          "name": "conv_state_indices_ptr",
+          "type": "*i32"
+        },
+        {
+          "name": "o_ptr",
+          "type": "*bf16"
+        }
+      ],
+      "Decode": [
+        {
+          "name": "mixed_qkv",
+          "type": "*bf16"
+        },
+        {
+          "name": "a",
+          "type": "*bf16"
+        },
+        {
+          "name": "b",
+          "type": "*bf16"
+        },
+        {
+          "name": "A_log",
+          "type": "*fp32"
+        },
+        {
+          "name": "dt_bias",
+          "type": "*bf16"
+        },
+        {
+          "name": "o",
+          "type": "*bf16"
+        },
+        {
+          "name": "h0",
+          "type": "*fp32"
+        },
+        {
+          "name": "ht",
+          "type": "*fp32"
+        },
+        {
+          "name": "ssm_state_indices",
+          "type": "*i32"
+        }
+      ],
+      "Gated": [
+        {
+          "name": "X",
+          "type": "*bf16"
+        },
+        {
+          "name": "Y",
+          "type": "*bf16"
+        },
+        {
+          "name": "W",
+          "type": "*bf16"
+        },
+        {
+          "name": "Z",
+          "type": "*bf16"
+        },
+        {
+          "name": "Rstd",
+          "type": "*fp32"
+        }
+      ]
+    }
+  },
+  "prefill": {
+    "source": "/home/pvl/spaces/abird/src/zerogravity/.agents/runs/serving-and-speculation-benchmark-wrap-root-20261022/original-assets/0.8b-47/assets.json",
+    "source_sha256": "7ab39bb48abf37a573f81667d8d6babcfb321afa3ed785a8dff1d8c186e84d67",
+    "stages": {
+      "Conv": [
+        {
+          "name": "x_ptr",
+          "type": "*bf16"
+        },
+        {
+          "name": "w_ptr",
+          "type": "*bf16"
+        },
+        {
+          "name": "initial_states_ptr",
+          "type": "*bf16"
+        },
+        {
+          "name": "cache_indices_ptr",
+          "type": "*i32"
+        },
+        {
+          "name": "has_initial_states_ptr",
+          "type": "*u1"
+        },
+        {
+          "name": "query_start_loc_ptr",
+          "type": "*i32"
+        },
+        {
+          "name": "batch_ptr",
+          "type": "*i32"
+        },
+        {
+          "name": "token_chunk_offset_ptr",
+          "type": "*i32"
+        },
+        {
+          "name": "o_ptr",
+          "type": "*bf16"
+        }
+      ],
+      "Cumsum": [
+        {
+          "name": "s",
+          "type": "*fp32"
+        },
+        {
+          "name": "o",
+          "type": "*fp32"
+        },
+        {
+          "name": "cu_seqlens",
+          "type": "*i32"
+        },
+        {
+          "name": "chunk_indices",
+          "type": "*i32"
+        }
+      ],
+      "Gated": [
+        {
+          "name": "X",
+          "type": "*bf16"
+        },
+        {
+          "name": "Y",
+          "type": "*bf16"
+        },
+        {
+          "name": "W",
+          "type": "*bf16"
+        },
+        {
+          "name": "Z",
+          "type": "*bf16"
+        },
+        {
+          "name": "Rstd",
+          "type": "*fp32"
+        }
+      ],
+      "H": [
+        {
+          "name": "k",
+          "type": "*bf16"
+        },
+        {
+          "name": "v",
+          "type": "*bf16"
+        },
+        {
+          "name": "w",
+          "type": "*bf16"
+        },
+        {
+          "name": "v_new",
+          "type": "*bf16"
+        },
+        {
+          "name": "g",
+          "type": "*fp32"
+        },
+        {
+          "name": "h",
+          "type": "*bf16"
+        },
+        {
+          "name": "h0",
+          "type": "*fp32"
+        },
+        {
+          "name": "ht",
+          "type": "*fp32"
+        },
+        {
+          "name": "cu_seqlens",
+          "type": "*i32"
+        },
+        {
+          "name": "chunk_offsets",
+          "type": "*i64"
+        }
+      ],
+      "Kkt": [
+        {
+          "name": "k",
+          "type": "*bf16"
+        },
+        {
+          "name": "beta",
+          "type": "*fp32"
+        },
+        {
+          "name": "g",
+          "type": "*fp32"
+        },
+        {
+          "name": "A",
+          "type": "*fp32"
+        },
+        {
+          "name": "cu_seqlens",
+          "type": "*i32"
+        },
+        {
+          "name": "chunk_indices",
+          "type": "*i32"
+        }
+      ],
+      "Output": [
+        {
+          "name": "q",
+          "type": "*bf16"
+        },
+        {
+          "name": "k",
+          "type": "*bf16"
+        },
+        {
+          "name": "v",
+          "type": "*bf16"
+        },
+        {
+          "name": "h",
+          "type": "*bf16"
+        },
+        {
+          "name": "g",
+          "type": "*fp32"
+        },
+        {
+          "name": "o",
+          "type": "*bf16"
+        },
+        {
+          "name": "cu_seqlens",
+          "type": "*i32"
+        },
+        {
+          "name": "chunk_indices",
+          "type": "*i32"
+        }
+      ],
+      "Prep": [
+        {
+          "name": "mixed_qkv_ptr",
+          "type": "*bf16"
+        },
+        {
+          "name": "a_ptr",
+          "type": "*bf16"
+        },
+        {
+          "name": "b_ptr",
+          "type": "*bf16"
+        },
+        {
+          "name": "A_log_ptr",
+          "type": "*fp32"
+        },
+        {
+          "name": "dt_bias_ptr",
+          "type": "*bf16"
+        },
+        {
+          "name": "q_ptr",
+          "type": "*bf16"
+        },
+        {
+          "name": "k_ptr",
+          "type": "*bf16"
+        },
+        {
+          "name": "v_ptr",
+          "type": "*bf16"
+        },
+        {
+          "name": "g_ptr",
+          "type": "*fp32"
+        },
+        {
+          "name": "beta_ptr",
+          "type": "*fp32"
+        }
+      ],
+      "Recompute": [
+        {
+          "name": "k",
+          "type": "*bf16"
+        },
+        {
+          "name": "v",
+          "type": "*bf16"
+        },
+        {
+          "name": "beta",
+          "type": "*fp32"
+        },
+        {
+          "name": "w",
+          "type": "*bf16"
+        },
+        {
+          "name": "u",
+          "type": "*bf16"
+        },
+        {
+          "name": "A",
+          "type": "*bf16"
+        },
+        {
+          "name": "g",
+          "type": "*fp32"
+        },
+        {
+          "name": "cu_seqlens",
+          "type": "*i32"
+        },
+        {
+          "name": "chunk_indices",
+          "type": "*i32"
+        }
+      ],
+      "Solve": [
+        {
+          "name": "A",
+          "type": "*fp32"
+        },
+        {
+          "name": "Ai",
+          "type": "*bf16"
+        },
+        {
+          "name": "cu_seqlens",
+          "type": "*i32"
+        },
+        {
+          "name": "chunk_indices",
+          "type": "*i32"
+        }
+      ]
+    }
+  }
+}

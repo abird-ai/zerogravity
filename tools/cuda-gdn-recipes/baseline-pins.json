@@ -1,0 +1,394 @@
+{
+  "crates/zerogravity-gpu/src/cuda/gdn/text/observed.rs": {
+    "bytes": 49387,
+    "sha256": "f2fdca10ac151115ae6b12c430d918e82a5a0f40355b9f03489983db09a6154e"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_47/conv.cu": {
+    "bytes": 23106,
+    "sha256": "61fbd137aa75d6b8bc1c4c124c0049479019e47c008c087769ce30b79deae9fe"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_47/cumsum.cu": {
+    "bytes": 6005,
+    "sha256": "05415f4a695ec9676911bdc0d9d78f161d632d2f4a11ff9228cac3d9c9341ed1"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_47/gated.cu": {
+    "bytes": 25145,
+    "sha256": "4915a95ebfff02c5e24b7aeeed10bfa7b88c9dbdcfbe91148d219bf3981f4d2a"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_47/h.cu": {
+    "bytes": 163058,
+    "sha256": "3cb1cb2217e4205adb4ab26e0dacdf3d7255034fc74dcc4a282c51600b139e00"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_47/kkt.cu": {
+    "bytes": 39207,
+    "sha256": "fe41abf35df7268a8d64fc286fd485d2690785a596a172b4021ed6702c8a6a38"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_47/output.cu": {
+    "bytes": 77976,
+    "sha256": "ac7f0f31786647aab58a25505ccd4240b8d5d2c6e0dc6ecf3a0dcdbb5e5ae259"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_47/prep.cu": {
+    "bytes": 28141,
+    "sha256": "1d2730a9fd52f49c3f4628bbfea15cbfb2b5969fef06357fb4b8a1d516a8f694"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_47/recompute.cu": {
+    "bytes": 68892,
+    "sha256": "60968a002c972723ad36de68657af554c645a0cd78c3531a73599c44d3f38f1f"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_47/solve.cu": {
+    "bytes": 98296,
+    "sha256": "31d29c35e5c15a324fff302b4ccd47f0d1ba2c67d706f00e6498d48192639c86"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_57/conv.cu": {
+    "bytes": 23106,
+    "sha256": "61fbd137aa75d6b8bc1c4c124c0049479019e47c008c087769ce30b79deae9fe"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_57/cumsum.cu": {
+    "bytes": 6005,
+    "sha256": "05415f4a695ec9676911bdc0d9d78f161d632d2f4a11ff9228cac3d9c9341ed1"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_57/gated.cu": {
+    "bytes": 25145,
+    "sha256": "7cc71edb88e9f1848ec8ebc9c2138c98c0456293a26372bff4e183256009cc89"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_57/h.cu": {
+    "bytes": 163058,
+    "sha256": "3cb1cb2217e4205adb4ab26e0dacdf3d7255034fc74dcc4a282c51600b139e00"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_57/kkt.cu": {
+    "bytes": 39207,
+    "sha256": "fe41abf35df7268a8d64fc286fd485d2690785a596a172b4021ed6702c8a6a38"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_57/output.cu": {
+    "bytes": 80014,
+    "sha256": "89f346a5e71e2eb50308be4c13622d81c63264eb4f578407da13ea572490cdfa"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_57/prep.cu": {
+    "bytes": 28141,
+    "sha256": "87a22246232315a66d3b91f3b7747863833c334ad8797201985944091b8007a7"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_57/recompute.cu": {
+    "bytes": 68892,
+    "sha256": "60968a002c972723ad36de68657af554c645a0cd78c3531a73599c44d3f38f1f"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_57/solve.cu": {
+    "bytes": 98296,
+    "sha256": "7b47b2b2b3fea67a5d2981e7812b19370f1736cb1cf4523fcf9b9864b4748748"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_62/conv.cu": {
+    "bytes": 23106,
+    "sha256": "61fbd137aa75d6b8bc1c4c124c0049479019e47c008c087769ce30b79deae9fe"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_62/cumsum.cu": {
+    "bytes": 6005,
+    "sha256": "05415f4a695ec9676911bdc0d9d78f161d632d2f4a11ff9228cac3d9c9341ed1"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_62/gated.cu": {
+    "bytes": 25145,
+    "sha256": "da703459b488f4fa707ab612a5e3d9e17c20fbf688cc57d00f9ee6fdff748a40"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_62/h.cu": {
+    "bytes": 163058,
+    "sha256": "3cb1cb2217e4205adb4ab26e0dacdf3d7255034fc74dcc4a282c51600b139e00"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_62/kkt.cu": {
+    "bytes": 39207,
+    "sha256": "fe41abf35df7268a8d64fc286fd485d2690785a596a172b4021ed6702c8a6a38"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_62/output.cu": {
+    "bytes": 80014,
+    "sha256": "89f346a5e71e2eb50308be4c13622d81c63264eb4f578407da13ea572490cdfa"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_62/prep.cu": {
+    "bytes": 28141,
+    "sha256": "ec63cd406d890450b9b0c6ce0daa8f9cb556c98d4f167d82c00c96eba4bbacdf"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_62/recompute.cu": {
+    "bytes": 68892,
+    "sha256": "60968a002c972723ad36de68657af554c645a0cd78c3531a73599c44d3f38f1f"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_62/solve.cu": {
+    "bytes": 98296,
+    "sha256": "31d29c35e5c15a324fff302b4ccd47f0d1ba2c67d706f00e6498d48192639c86"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_67/conv.cu": {
+    "bytes": 23106,
+    "sha256": "61fbd137aa75d6b8bc1c4c124c0049479019e47c008c087769ce30b79deae9fe"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_67/cumsum.cu": {
+    "bytes": 6005,
+    "sha256": "05415f4a695ec9676911bdc0d9d78f161d632d2f4a11ff9228cac3d9c9341ed1"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_67/gated.cu": {
+    "bytes": 25146,
+    "sha256": "958fcb51cc8fc1aea64295ff9885d7dd4e54afdb38d799612ba022112128af8f"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_67/h.cu": {
+    "bytes": 102888,
+    "sha256": "5cf745e1c3da74002c4a7db331ac4900a0a5f82fcfbec5c13fb0cdf770c25ea0"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_67/kkt.cu": {
+    "bytes": 53636,
+    "sha256": "8e30698522b5a2ff9b915af1cb3fe72ad6b7f380c71171878228b30ad13a59b7"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_67/output.cu": {
+    "bytes": 80014,
+    "sha256": "89f346a5e71e2eb50308be4c13622d81c63264eb4f578407da13ea572490cdfa"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_67/prep.cu": {
+    "bytes": 28141,
+    "sha256": "bfa79d87618bc4354963712aa5786b5daa1dad98fd89226bfbca92da39d90699"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_67/recompute.cu": {
+    "bytes": 67391,
+    "sha256": "27c3c52d69d5cb5053c508b5820be8a8a31b7681759921e3a4d2d60aa837b841"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_67/solve.cu": {
+    "bytes": 98296,
+    "sha256": "3876259b4b5833a772a8e800901a71a83087146084ee5a7c9bf0f60178a3a496"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_72/conv.cu": {
+    "bytes": 23106,
+    "sha256": "61fbd137aa75d6b8bc1c4c124c0049479019e47c008c087769ce30b79deae9fe"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_72/cumsum.cu": {
+    "bytes": 6005,
+    "sha256": "05415f4a695ec9676911bdc0d9d78f161d632d2f4a11ff9228cac3d9c9341ed1"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_72/gated.cu": {
+    "bytes": 25146,
+    "sha256": "36bc79a18ff19b5a738ae99283998e5eb9e024c1855d836004156c01be0c8531"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_72/h.cu": {
+    "bytes": 102888,
+    "sha256": "5cf745e1c3da74002c4a7db331ac4900a0a5f82fcfbec5c13fb0cdf770c25ea0"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_72/kkt.cu": {
+    "bytes": 39207,
+    "sha256": "fe41abf35df7268a8d64fc286fd485d2690785a596a172b4021ed6702c8a6a38"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_72/output.cu": {
+    "bytes": 77976,
+    "sha256": "ac7f0f31786647aab58a25505ccd4240b8d5d2c6e0dc6ecf3a0dcdbb5e5ae259"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_72/prep.cu": {
+    "bytes": 28141,
+    "sha256": "6de77f3d8b5a07628650934cd73f326538e2e202edf12cf0ac36c74e1c3ff7ab"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_72/recompute.cu": {
+    "bytes": 68892,
+    "sha256": "60968a002c972723ad36de68657af554c645a0cd78c3531a73599c44d3f38f1f"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_72/solve.cu": {
+    "bytes": 98296,
+    "sha256": "7b47b2b2b3fea67a5d2981e7812b19370f1736cb1cf4523fcf9b9864b4748748"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_cached/conv.cu": {
+    "bytes": 13120,
+    "sha256": "9cc1c318707d4ff9090e78792b4180282447fa8c92b12fc7b0d586eb5c7d4034"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_cached/decode.cu": {
+    "bytes": 137352,
+    "sha256": "7e8adeda8bfb71d047a26ecab014bba67679f9e96da792aa50ca580aaae0c4d5"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen08_cached/gated.cu": {
+    "bytes": 8671,
+    "sha256": "24c671049caca8667b69f8804edaf1243c2e6ac9e0df2647ebfe0ba4c270c844"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_47/conv.cu": {
+    "bytes": 23106,
+    "sha256": "417d08b1eea186ff4d0f156c184c84108d475c406c6e28194f285c3d072317dd"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_47/cumsum.cu": {
+    "bytes": 6005,
+    "sha256": "05415f4a695ec9676911bdc0d9d78f161d632d2f4a11ff9228cac3d9c9341ed1"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_47/gated.cu": {
+    "bytes": 25145,
+    "sha256": "4915a95ebfff02c5e24b7aeeed10bfa7b88c9dbdcfbe91148d219bf3981f4d2a"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_47/h.cu": {
+    "bytes": 163058,
+    "sha256": "3cb1cb2217e4205adb4ab26e0dacdf3d7255034fc74dcc4a282c51600b139e00"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_47/kkt.cu": {
+    "bytes": 60771,
+    "sha256": "26ec3a53b6e0ecdc231f8a979f295b13eedcc3699a346d39dab7d662f11b34a8"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_47/output.cu": {
+    "bytes": 80014,
+    "sha256": "89f346a5e71e2eb50308be4c13622d81c63264eb4f578407da13ea572490cdfa"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_47/prep.cu": {
+    "bytes": 28141,
+    "sha256": "1d2730a9fd52f49c3f4628bbfea15cbfb2b5969fef06357fb4b8a1d516a8f694"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_47/recompute.cu": {
+    "bytes": 68892,
+    "sha256": "60968a002c972723ad36de68657af554c645a0cd78c3531a73599c44d3f38f1f"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_47/solve.cu": {
+    "bytes": 98296,
+    "sha256": "7b47b2b2b3fea67a5d2981e7812b19370f1736cb1cf4523fcf9b9864b4748748"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_57/conv.cu": {
+    "bytes": 23106,
+    "sha256": "417d08b1eea186ff4d0f156c184c84108d475c406c6e28194f285c3d072317dd"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_57/cumsum.cu": {
+    "bytes": 6005,
+    "sha256": "05415f4a695ec9676911bdc0d9d78f161d632d2f4a11ff9228cac3d9c9341ed1"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_57/gated.cu": {
+    "bytes": 25145,
+    "sha256": "7cc71edb88e9f1848ec8ebc9c2138c98c0456293a26372bff4e183256009cc89"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_57/h.cu": {
+    "bytes": 163058,
+    "sha256": "3cb1cb2217e4205adb4ab26e0dacdf3d7255034fc74dcc4a282c51600b139e00"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_57/kkt.cu": {
+    "bytes": 39207,
+    "sha256": "fe41abf35df7268a8d64fc286fd485d2690785a596a172b4021ed6702c8a6a38"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_57/output.cu": {
+    "bytes": 77976,
+    "sha256": "ac7f0f31786647aab58a25505ccd4240b8d5d2c6e0dc6ecf3a0dcdbb5e5ae259"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_57/prep.cu": {
+    "bytes": 28141,
+    "sha256": "87a22246232315a66d3b91f3b7747863833c334ad8797201985944091b8007a7"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_57/recompute.cu": {
+    "bytes": 68892,
+    "sha256": "60968a002c972723ad36de68657af554c645a0cd78c3531a73599c44d3f38f1f"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_57/solve.cu": {
+    "bytes": 98296,
+    "sha256": "31d29c35e5c15a324fff302b4ccd47f0d1ba2c67d706f00e6498d48192639c86"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_62/conv.cu": {
+    "bytes": 23106,
+    "sha256": "417d08b1eea186ff4d0f156c184c84108d475c406c6e28194f285c3d072317dd"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_62/cumsum.cu": {
+    "bytes": 6005,
+    "sha256": "05415f4a695ec9676911bdc0d9d78f161d632d2f4a11ff9228cac3d9c9341ed1"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_62/gated.cu": {
+    "bytes": 25145,
+    "sha256": "da703459b488f4fa707ab612a5e3d9e17c20fbf688cc57d00f9ee6fdff748a40"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_62/h.cu": {
+    "bytes": 102888,
+    "sha256": "5cf745e1c3da74002c4a7db331ac4900a0a5f82fcfbec5c13fb0cdf770c25ea0"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_62/kkt.cu": {
+    "bytes": 39207,
+    "sha256": "fe41abf35df7268a8d64fc286fd485d2690785a596a172b4021ed6702c8a6a38"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_62/output.cu": {
+    "bytes": 77976,
+    "sha256": "ac7f0f31786647aab58a25505ccd4240b8d5d2c6e0dc6ecf3a0dcdbb5e5ae259"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_62/prep.cu": {
+    "bytes": 28141,
+    "sha256": "ec63cd406d890450b9b0c6ce0daa8f9cb556c98d4f167d82c00c96eba4bbacdf"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_62/recompute.cu": {
+    "bytes": 68892,
+    "sha256": "60968a002c972723ad36de68657af554c645a0cd78c3531a73599c44d3f38f1f"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_62/solve.cu": {
+    "bytes": 98296,
+    "sha256": "31d29c35e5c15a324fff302b4ccd47f0d1ba2c67d706f00e6498d48192639c86"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_67/conv.cu": {
+    "bytes": 23106,
+    "sha256": "417d08b1eea186ff4d0f156c184c84108d475c406c6e28194f285c3d072317dd"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_67/cumsum.cu": {
+    "bytes": 6005,
+    "sha256": "05415f4a695ec9676911bdc0d9d78f161d632d2f4a11ff9228cac3d9c9341ed1"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_67/gated.cu": {
+    "bytes": 25146,
+    "sha256": "958fcb51cc8fc1aea64295ff9885d7dd4e54afdb38d799612ba022112128af8f"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_67/h.cu": {
+    "bytes": 102888,
+    "sha256": "5cf745e1c3da74002c4a7db331ac4900a0a5f82fcfbec5c13fb0cdf770c25ea0"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_67/kkt.cu": {
+    "bytes": 39207,
+    "sha256": "fe41abf35df7268a8d64fc286fd485d2690785a596a172b4021ed6702c8a6a38"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_67/output.cu": {
+    "bytes": 77976,
+    "sha256": "ac7f0f31786647aab58a25505ccd4240b8d5d2c6e0dc6ecf3a0dcdbb5e5ae259"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_67/prep.cu": {
+    "bytes": 28141,
+    "sha256": "bfa79d87618bc4354963712aa5786b5daa1dad98fd89226bfbca92da39d90699"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_67/recompute.cu": {
+    "bytes": 68892,
+    "sha256": "60968a002c972723ad36de68657af554c645a0cd78c3531a73599c44d3f38f1f"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_67/solve.cu": {
+    "bytes": 98296,
+    "sha256": "7b47b2b2b3fea67a5d2981e7812b19370f1736cb1cf4523fcf9b9864b4748748"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_72/conv.cu": {
+    "bytes": 23106,
+    "sha256": "417d08b1eea186ff4d0f156c184c84108d475c406c6e28194f285c3d072317dd"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_72/cumsum.cu": {
+    "bytes": 6005,
+    "sha256": "05415f4a695ec9676911bdc0d9d78f161d632d2f4a11ff9228cac3d9c9341ed1"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_72/gated.cu": {
+    "bytes": 25146,
+    "sha256": "36bc79a18ff19b5a738ae99283998e5eb9e024c1855d836004156c01be0c8531"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_72/h.cu": {
+    "bytes": 102888,
+    "sha256": "5cf745e1c3da74002c4a7db331ac4900a0a5f82fcfbec5c13fb0cdf770c25ea0"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_72/kkt.cu": {
+    "bytes": 60771,
+    "sha256": "26ec3a53b6e0ecdc231f8a979f295b13eedcc3699a346d39dab7d662f11b34a8"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_72/output.cu": {
+    "bytes": 80014,
+    "sha256": "89f346a5e71e2eb50308be4c13622d81c63264eb4f578407da13ea572490cdfa"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_72/prep.cu": {
+    "bytes": 28141,
+    "sha256": "6de77f3d8b5a07628650934cd73f326538e2e202edf12cf0ac36c74e1c3ff7ab"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_72/recompute.cu": {
+    "bytes": 68892,
+    "sha256": "60968a002c972723ad36de68657af554c645a0cd78c3531a73599c44d3f38f1f"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_72/solve.cu": {
+    "bytes": 98296,
+    "sha256": "31d29c35e5c15a324fff302b4ccd47f0d1ba2c67d706f00e6498d48192639c86"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_cached/conv.cu": {
+    "bytes": 13120,
+    "sha256": "b02771bc6eb861339762157b10bfbcb277f0031e950c3a99beb06da7441e249c"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_cached/decode.cu": {
+    "bytes": 137352,
+    "sha256": "7e8adeda8bfb71d047a26ecab014bba67679f9e96da792aa50ca580aaae0c4d5"
+  },
+  "crates/zerogravity-gpu/src/cuda/gdn/text/qwen2b_cached/gated.cu": {
+    "bytes": 8671,
+    "sha256": "24c671049caca8667b69f8804edaf1243c2e6ac9e0df2647ebfe0ba4c270c844"
+  },
+  "crates/zerogravity-model-qwen35/src/source/binding/window_model/prepare/gdn.rs": {
+    "bytes": 11188,
+    "sha256": "36d38712d8598b24cf2186f52960a91f8304a3ebe4fd72de6020db38b062989c"
+  }
+}
