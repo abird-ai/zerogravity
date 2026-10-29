@@ -776,7 +776,11 @@ mod tests {
         ]
         .map(str::to_owned);
         let mut cfg = YamlConfig::cli(&args).unwrap();
-        if cfg!(all(feature = "qwen35-cuda-serving", target_os = "linux")) {
+        if cfg!(all(
+            feature = "qwen35-cuda-serving",
+            feature = "qwen35-cuda-qualification",
+            target_os = "linux"
+        )) {
             assert!(validate_source_profile(&cfg).is_ok());
         } else {
             assert_eq!(

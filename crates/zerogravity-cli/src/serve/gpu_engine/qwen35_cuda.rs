@@ -398,11 +398,8 @@ mod tests {
         .expect("ordinary Qwen CUDA serving must refuse");
         assert_eq!(error.status, 400);
         assert_eq!(error.code, "unsupported_qwen35_cuda_capability");
-        assert!(
-            error
-                .message
-                .contains("no ordinary dynamic GDN implementation")
-        );
+        assert!(error.message.contains("integrated but qualification-only"));
+        assert!(error.message.contains("no production backend is exposed"));
     }
 
     #[test]
