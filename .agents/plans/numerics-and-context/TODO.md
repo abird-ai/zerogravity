@@ -77,6 +77,30 @@ checks and one complete gate per larger unit; isolate only concrete failures.
 
 ## Uncommitted
 
+### Provider boundary investigation — 30 Oct
+
+- [x] Trace the real refused call in a symbolized, isolated model-free process.
+  Pinned cuBLAS runtime aborts initialization on any nonzero CUDART_INTERFACE
+  query result; changing the refusal code cannot provide a fallback.
+- [x] Test pinned `cublasLtCreate` under the same already-active original pool.
+  It also returns status1 at the same private interface, before allocations or
+  GEMM. Switching public BLAS APIs does not remove the dependency.
+- [x] Inspect driver table metadata without initialization or callback execution.
+  The runtime interface has13 slots; available public compatibility declarations
+  leave several unspecified. No opaque callback was forwarded.
+- [x] A temporary non-forwarding typed context-prefix probe advances only to
+  mandatory TOOLS_RUNTIME_CALLBACK_HOOKS
+  (`a094798c2e742e7493f20800200c0a66`). It still fails before allocation/math.
+  Remove all temporary probes; allocator/provider source is byte-identical to
+  `97c52ec`. These failed probes are not provider or numerical qualification.
+- [ ] Confirm permission to replace ordinary opaque BLAS execution with a genuine
+  parameterized driver-only GEMM under the existing Rust engine/queue/arbiter,
+  retaining pinned cuBLAS as reference. This changes execution implementation,
+  not model bytes, precision, exact cached47→50 acceptance or ownership limits.
+  Otherwise an audited complete runtime-interface/lifetime adapter is needed;
+  partial declarations, UUID allowlists and guessed callback ABIs are not enough.
+- [ ] CUDA parity/lifecycle/context remain open; ROCm on `pvl-x2` has not started.
+
 ### Current physical continuation — 29 Oct
 
 - [x] Recover the exact `.8B` historical N1 bundle offline: 28 existing
