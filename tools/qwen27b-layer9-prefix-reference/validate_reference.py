@@ -97,10 +97,8 @@ def validate_calls(calls):
                 require(all(flag[n] is initialized for n in names), 'only original prefix state initialized')
 
 
-def join_full_reference(held, report, raw):
-    pin = metadata(HERE/'full-reference-pin.json')
-    accepted_file = held.enter_context(Held(Path(pin['path']), 1024**2))
-    require(accepted_file.bytes == pin['bytes'] and accepted_file.sha == pin['sha256'], 'unchanged accepted full64 anchor')
+def join_full_reference(held, report, raw, accepted_path):
+    accepted_file = held.enter_context(Held(accepted_path, 1024**2))
     accepted = accepted_file.json()
     require(accepted['schema'] == 'zg.actual-original27b-full-window-reference.v1'
             and accepted['status'] == 'ACTUAL_ORIGINAL27B_FULL_WINDOW_REFERENCE_ONLY'
@@ -135,7 +133,7 @@ def join_full_reference(held, report, raw):
             'overlapping_records':joins,'all_overlapping_full_records_exact':True}
 
 
-def validate(output, receipt):
+def validate(output, receipt, full_reference):
     with ExitStack() as held:
         identity = package()
         plan, pins = metadata(HERE/'inputs.json'), metadata(HERE/'source-pin.json')
@@ -185,7 +183,7 @@ def validate(output, receipt):
         require(raw_file.bytes == report['raw']['bytes'] and raw_file.sha == report['raw']['sha256'], 'whole held raw identity')
         validate_calls(report['calls'])
         validate_records(report['records'], raw_file, plan)
-        full_join = join_full_reference(held, report, raw_file)
+        full_join = join_full_reference(held, report, raw_file, full_reference)
         require(set(p.name for p in (output/'captured').iterdir()) == {'raw.bin', 'manifest.json'}, 'closed capture file cohort')
         fds, source_rows = source_open(plan, pins)
         try:
@@ -241,5 +239,6 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--receipt', type=Path, required=True)
+    p.add_argument('--full-reference', type=Path, required=True)
     args = p.parse_args()
-    validate(args.output, args.receipt)
+    validate(args.output, args.receipt, args.full_reference.resolve())

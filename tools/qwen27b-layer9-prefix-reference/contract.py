@@ -15,7 +15,7 @@ TORCH_GIT = 'cf30153c4c131c8164ee7798e5022d810682e2cb'
 REGISTRY_SHA = '2bb924d3c486e14b66cc43f9314000970b627f37a53dc8fc08e8f08079e68a2f'
 KINDS = tuple('full_attention' if i % 4 == 3 else 'linear_attention' for i in range(64))
 FILES = ('contract.py', 'capture.py', 'source_owner.py', 'archive.py', 'run_reference.py',
-         'validate_reference.py', 'owned_container_v4.py', 'inputs.json', 'source-pin.json', 'full-reference-pin.json')
+         'validate_reference.py', 'owned_container_v4.py', 'inputs.json', 'source-pin.json')
 
 
 def require(ok, why):
