@@ -45,10 +45,8 @@ pub fn select_immutable_residency(
                     "resident source implementation unavailable".into(),
                 ));
             }
-            Some(_) if preference == ResidencyPreference::RequireResident => {
-                return Err(Error::Limit(
-                    "complete resident footprint exceeds budget".into(),
-                ));
+            Some(cost) if preference == ResidencyPreference::RequireResident => {
+                return Err(footprint_error("resident", cost, budget));
             }
             _ => {}
         }
@@ -56,10 +54,15 @@ pub fn select_immutable_residency(
     if costs.streamed.fits(budget) {
         Ok(ResidencyChoice::Streamed)
     } else {
-        Err(Error::Limit(
-            "complete streamed footprint exceeds budget".into(),
-        ))
+        Err(footprint_error("streamed", costs.streamed, budget))
     }
+}
+
+fn footprint_error(mode: &str, cost: MemoryFootprint, budget: MemoryFootprint) -> Error {
+    Error::Limit(format!(
+        "complete {mode} footprint exceeds budget: host_bytes={} host_limit={} device_bytes={} device_limit={}",
+        cost.host_bytes, budget.host_bytes, cost.device_bytes, budget.device_bytes,
+    ))
 }
 
 /// Bounded immutable small-window reuse inside an already paid metadata
@@ -124,6 +127,44 @@ mod tests {
             device_bytes: 89,
         };
         assert!(select_immutable_residency(costs, too_small, ResidencyPreference::Auto).is_err());
+    }
+    #[test]
+    fn residency_refusal_reports_both_required_and_available_extents() {
+        let budget = MemoryFootprint {
+            host_bytes: 100,
+            device_bytes: 200,
+        };
+        let costs = ResidencyCosts {
+            streamed: MemoryFootprint {
+                host_bytes: 101,
+                device_bytes: 90,
+            },
+            resident: Some(MemoryFootprint {
+                host_bytes: 80,
+                device_bytes: 201,
+            }),
+        };
+        for (preference, expected) in [
+            (
+                ResidencyPreference::Auto,
+                "complete streamed footprint exceeds budget: host_bytes=101 host_limit=100 device_bytes=90 device_limit=200",
+            ),
+            (
+                ResidencyPreference::RequireResident,
+                "complete resident footprint exceeds budget: host_bytes=80 host_limit=100 device_bytes=201 device_limit=200",
+            ),
+            (
+                ResidencyPreference::RequireStreamed,
+                "complete streamed footprint exceeds budget: host_bytes=101 host_limit=100 device_bytes=90 device_limit=200",
+            ),
+        ] {
+            let Error::Limit(message) =
+                select_immutable_residency(costs, budget, preference).unwrap_err()
+            else {
+                panic!("expected a capacity refusal");
+            };
+            assert_eq!(message, expected);
+        }
     }
     #[test]
     fn cache_never_spends_unpaid_or_used_metadata_capacity() {

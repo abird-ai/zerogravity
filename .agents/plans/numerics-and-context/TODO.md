@@ -71,6 +71,12 @@ checks and one complete gate per larger unit; isolate only concrete failures.
   from0938d435… to4d77cb66…; complete executable packets and GDN source stay exact.
 ## Uncommitted
 
+### Residency refusal diagnostics — 29 Oct
+
+- [x] Report required/available host and device bytes in shared streamed/resident
+  refusal errors without changing selection or admission. All three focused
+  optimization tests and the final isolated assembled repository gate pass.
+
 ### Ordinary source-derived continuation — 27 Oct
 
 - [x] Qualification-only `.8B` fresh prefill 47/48/49/50 physically passes on
