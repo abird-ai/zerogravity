@@ -1,5 +1,8 @@
 # TODO — Single-process model and pipeline composition
 
+> **Note (2026-10-29):** links in this file pointing into `zerogravity-worktrees/…` are dead —
+> those worktrees were retired. See `.agents/docs/retired-2026-10-29/README.md`.
+
 Status: existing scaffolds accepted; recursive primitive/pipeline/profile design active;
 execution deferred to owner plans
 Provenance: 4bf624e (original scaffolds); ac44e83/f28a62c (context source/filter)

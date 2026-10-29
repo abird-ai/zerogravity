@@ -63,6 +63,8 @@ repo), **[ACCEPTED]** (validated by lane agents with evidence in
   `qwen27b-attention-tail-20261022`, `gemma4-ple-pi-20261024`,
   `qwen27b-natural-pi-20261024`, `vulkan-gemma-pi-20261024`,
   `.preserved-nine-20261024`.
+  **Retired 2026-10-29:** all six entries above were deleted in the cleanup pass;
+  see `.agents/docs/retired-2026-10-29/README.md`. The text above is a historical record.
 
 ### 1.2 Queue lane GPU acceptance [ACCEPTED]
 

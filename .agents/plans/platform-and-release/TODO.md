@@ -1,5 +1,8 @@
 # Platform and release
 
+> **Note (2026-10-29):** links in this file pointing into `zerogravity-worktrees/…` are dead —
+> those worktrees were retired. See `.agents/docs/retired-2026-10-29/README.md`.
+
 Provenance commit: `6d74f76`.
 Scope: remaining P00/P04/P05/P08/P20/P21/P22/P23.
 Contracts: [P00–P23 roadmap](../IMPLEMENTATION_ROADMAP.md),

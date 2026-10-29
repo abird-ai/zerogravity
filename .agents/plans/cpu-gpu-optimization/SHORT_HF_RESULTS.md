@@ -1,5 +1,8 @@
 # Short HF performance — current source21 measurement
 
+> **Note (2026-10-29):** links in this file pointing into `zerogravity-worktrees/…` are dead —
+> those worktrees were retired. See `.agents/docs/retired-2026-10-29/README.md`.
+
 24Oct source21 passes CPU/strict/build, physical23, full2B numerical composition,
 both .8B/2B API/HTTP and the following fresh matched measurements:
 

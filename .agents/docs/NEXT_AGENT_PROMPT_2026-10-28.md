@@ -46,15 +46,15 @@ Current truth:
 Immediate next goal:
 
 1. Revalidate main and exact artifact availability.
-2. If the exact approved .8B HF source tree, pinned native bundle payloads and pinned cuBLAS/cuBLASLt DSOs are available, run:
+2. Use the authenticated current staged bundle at .agents/runs/qwen35-ordinary-cached47-50-resume-20261028/current-native-bundle-v5. If the exact approved .8B HF source tree is readable, run:
 
        scripts/qualify-qwen35-ordinary-cached47-50.sh --preflight-only
 
 3. If preflight passes, run the same script without a mode. It must execute historical reference capture first and ordinary comparison in a fresh second process.
 4. Require exact cached 47→48→49→50 parity for all 248,320 logits, selected token/max bits and all 42 canonical state domains.
-5. If phase 1 succeeded but phase 2 must be retried, use:
+5. If phase 1 succeeded but phase 2 must be retried, recover the SHA256 printed by the phase-1 receipt and use:
 
-       scripts/qualify-qwen35-ordinary-cached47-50.sh --compare-existing
+       ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256=<trusted-phase1-sha256> scripts/qualify-qwen35-ordinary-cached47-50.sh --compare-existing
 
 6. After exact parity, run after-launch cancellation/fault, retirement and real-model shutdown qualification.
 7. Then run .8B physical context correctness 512/1K/2K/4K/8K/16K/32K; admit 2B only where the exact two-root admission fits.
@@ -67,7 +67,7 @@ Current artifact blockers recorded at handoff:
 - weight shard model.safetensors-00001-of-00001.safetensors, 1,746,942,600 bytes, SHA256 04b1c301231dd422b8860db31311ab2721511346a32cb1e079c4c4e5f1fe4696;
 - pinned libcublas.so.12: 105,140,976 bytes, SHA256 d63456d94f1b8e2408a8a9538c8740eb474c9eba48a84f420b15e2e10fbcd048;
 - pinned libcublasLt.so.12: 749,205,904 bytes, SHA256 96ddf4891ca4f4ed1475966783a9185df2abd64a81c3cc713b96d036696fc541;
-- the connector-visible target/models/qwen35-0.8b tree and current Nix cuBLAS build are not substitutes.
+- the current staged native bundle v4 is already authenticated; the remaining blocker is the connector read policy for /home/pvl/.cache/abird/zerogravity/ where the exact approved model source lives.
 
 If those exact held artifacts are still unavailable, report the exact missing identity and stop at that boundary. Do not download, repin or substitute them. Do not skip ahead to context timing or vLLM benchmarks.
 

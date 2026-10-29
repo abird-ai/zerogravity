@@ -1,3 +1,5 @@
+> **Note (2026-10-29):** links in this file pointing into `zerogravity-worktrees/…` are dead —
+> those worktrees were retired. See `.agents/docs/retired-2026-10-29/README.md`.
 Author: Project owner
 Co-authors: GPT-6
 Owner: @pvl

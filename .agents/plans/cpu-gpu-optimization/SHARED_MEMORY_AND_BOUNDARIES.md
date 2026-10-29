@@ -1,5 +1,8 @@
 # Shared storage and CPU–GPU boundaries
 
+> **Note (2026-10-29):** links in this file pointing into `zerogravity-worktrees/…` are dead —
+> those worktrees were retired. See `.agents/docs/retired-2026-10-29/README.md`.
+
 Author: Codex. Owner: @pvl. User direction,23Oct.
 Status: reconciled design plus historical causal investigation. Current
 implementation/qualification: [TODO.md](TODO.md) and [measurements](SHORT_HF_RESULTS.md).

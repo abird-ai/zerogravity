@@ -1,5 +1,8 @@
 # Model execution
 
+> **Note (2026-10-29):** links in this file pointing into `zerogravity-worktrees/…` are dead —
+> those worktrees were retired. See `.agents/docs/retired-2026-10-29/README.md`.
+
 Provenance commit: `6d74f76`.
 Scope: P02/P03/P08/P11–P14/P17; CPU truth before GPU specialization.
 Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_SPEC.md),

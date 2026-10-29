@@ -1019,9 +1019,9 @@ Do not reuse .8B shape/fit/source assumptions for 2B.
 
 Complete CUDA bundle migration pins:
 
-    tools/qwen35-cuda-bundle/pins.json
+    crates/zerogravity/src/qwen35_cuda/bundle_migration_pins.json
 
-The deterministic parity wrapper checks every non-provider .8B resource in that manifest by size/SHA before phase 1.
+The deterministic parity wrapper requires a current staged bundle, calls tools/qwen35-cuda-bundle/verify_current.py, and authenticates the closed 28-resource .8B bundle plus its staging-driver/contract-source lineage before phase 1.
 
 ### 16.4 Current blocker
 
@@ -1084,7 +1084,8 @@ Properties:
 
 - explicit magic/schema;
 - bounded file size <= 160 MiB;
-- source identity/profile metadata;
+- source identity/profile metadata including source-manifest SHA;
+- semantic reference identity: capture recipe, current bundle-manifest SHA and migration-pin catalogue SHA;
 - close/retirement receipt;
 - exact 47-token prompt;
 - exact frontiers 47/48/49/50;
@@ -1092,9 +1093,10 @@ Properties:
 - exact sorted 42-domain state set;
 - finite-only values;
 - KV values must be BF16-widened F32;
-- SHA256 over payload;
+- embedded SHA256 over payload for file integrity;
+- a separately supplied trusted phase-1 payload SHA256 is required by phase 2/restart;
 - trailing/unknown bytes rejected;
-- symlink evidence rejected.
+- evidence is opened once with NOFOLLOW and parsed from that same held descriptor.
 
 Publication was hardened on 28 Oct:
 
@@ -1118,10 +1120,11 @@ Restart mode:
 This mode:
 
 - requires an existing regular non-symlink evidence file;
-- reruns full source/kernel/provider/CUDA/NVRTC/GPU-idle preflight;
+- requires ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256 from the trusted phase-1 receipt;
+- reruns full source/current-staged-bundle/provider/CUDA/NVRTC/GPU-idle preflight;
 - skips phase 1;
 - runs only phase 2;
-- evidence SHA/schema is revalidated before ordinary load.
+- embedded integrity SHA, out-of-band expected SHA, schema v2, source identity and reference bundle lineage are all revalidated before ordinary load.
 
 ---
 
@@ -1155,6 +1158,7 @@ Required explicit environment:
     ZG_QWEN35_MODEL_DIR
     ZG_QWEN35_CUDA_KERNEL_DIR
     ZG_QWEN35_ORDINARY_PARITY_EVIDENCE
+    ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256   # required only for --compare-existing
     ZG_QWEN35_CUBLAS
     ZG_QWEN35_CUBLAS_LT
     CUDA_PATH
@@ -1165,7 +1169,7 @@ The script performs no acquisition, provider substitution, repinning, permission
 It verifies:
 
 1. complete source08.json file census;
-2. complete .8B non-provider native bundle census from tools/qwen35-cuda-bundle/pins.json;
+2. current staged .8B bundle + lineage from crates/zerogravity/src/qwen35_cuda/bundle_migration_pins.json via verify_current.py;
 3. exact cuBLAS/cuBLASLt SONAME, size and SHA;
 4. CUDA include view;
 5. NVRTC visibility;
@@ -1229,7 +1233,7 @@ The exact next sequence is:
 5. Run parity wrapper --preflight-only.
 6. Run full serial parity wrapper.
 7. Require exact 47→50 logit + 42-domain parity.
-8. If phase 1 succeeded but phase 2 needs retry, use --compare-existing.
+8. If phase 1 succeeded but phase 2 needs retry, preserve its printed trusted evidence SHA256 and pass it as ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256 with --compare-existing.
 9. Run after-launch cancellation/fault qualification with approved artifacts.
 10. Run real-model explicit shutdown/retirement qualification.
 11. Run .8B context correctness:
@@ -1473,7 +1477,7 @@ The next agent should NOT begin long-context performance work.
 
 The next agent should first revalidate current main and artifact availability.
 
-If the approved source/provider/native bundle are still missing, report the exact missing artifact and stop at that boundary.
+The legacy native bundle is visible and has been deterministically staged/authenticated at .agents/runs/qwen35-ordinary-cached47-50-resume-20261028/current-native-bundle-v5. The remaining physical parity blocker is read-only connector visibility of the exact approved model source under /home/pvl/.cache/abird/zerogravity/.
 
 If they are available:
 
@@ -1482,9 +1486,9 @@ If they are available:
 3. inspect exact parity and shutdown;
 4. continue the ordered lifecycle/context gates.
 
-If phase 1 evidence already exists from a successful capture:
+If phase 1 evidence already exists from a successful capture, recover its printed trusted SHA256 receipt and run:
 
-    scripts/qualify-qwen35-ordinary-cached47-50.sh --compare-existing
+    ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256=<trusted-phase1-sha256> scripts/qualify-qwen35-ordinary-cached47-50.sh --compare-existing
 
 Do not delete or replace evidence casually.
 

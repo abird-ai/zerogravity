@@ -1,5 +1,8 @@
 # Cpu gpu optimization
 
+> **Note (2026-10-29):** links in this file pointing into `zerogravity-worktrees/…` are dead —
+> those worktrees were retired. See `.agents/docs/retired-2026-10-29/README.md`.
+
 Provenance commit: `6d74f76`.
 Scope: P01/P06/P07/P20/P22; follow acquisition and measure before selecting complexity.
 Contracts: [fleet optimization](../../research/INITIAL_HARDWARE_TARGETS_AND_OPTIMIZATION_2026-10-16.md),

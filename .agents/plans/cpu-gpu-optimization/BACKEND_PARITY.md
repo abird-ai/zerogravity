@@ -1,5 +1,8 @@
 # Vulkan / CUDA / HIP parity
 
+> **Note (2026-10-29):** links in this file pointing into `zerogravity-worktrees/…` are dead —
+> those worktrees were retired. See `.agents/docs/retired-2026-10-29/README.md`.
+
 Owner directive,23Oct: Vulkan reaches CUDA parity; AMD uses ROCm/HIP.
 Live source/tests/results outrank this implementation map. No backend parity
 or new model qualification is established by this document.
