@@ -6,6 +6,8 @@ this folder keeps the live queue and per-plan checklists.
 
 Current source, tests, and TODO.md are authoritative. Git retains retired history; deleted takeover snapshots are not live instructions.
 
+Cross-window continuation starts at [the canonical current handoff](../docs/CURRENT_HANDOFF.md). The handoff is an index/pointer into this maintained plan/status set, not a generated archive.
+
 ## Layout
 
 ```text

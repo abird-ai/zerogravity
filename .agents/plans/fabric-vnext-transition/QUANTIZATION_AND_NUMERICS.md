@@ -88,7 +88,7 @@ performance: matched complete-request qualified
 
 For example Q4_K currently has source recognized + scalar decoder, but source-exact CPU matvec deliberately Unsupported and no general trained model eligibility. It remains Unsupported at that level after refactor. A Q6_K GPU implementation on one backend does not qualify an independently different HIP/Vulkan backend or CUDA graph profile.
 
-## 3. Present source implementation map at fadf2b1
+## 3. Historical source implementation map at fadf2b1
 
 | Exact scheme | Artifact bytes/decoder | CPU source arithmetic | GPU source work | Whole-model support |
 | --- | --- | --- | --- | --- |
@@ -157,7 +157,7 @@ The 27-Oct CUDA GDN work explicitly separates a backend configuration (GdnKktKer
 - Compiler/preparation joins only compatible SourceCall and GdnKernelConfig and checks full phase stage implementation prior to H2D or root reservation; refuses missing implementation.
 - Qualified source evidence may certify exact fresh47 or 48 or cached mode; a source-kernel implementation existing is not proof of general dynamic source.
 - Backend code may retain explicit specialized geometric constants as a guarded implementation (e.g. QKV/Z width) but NOT falsely treat them as generic GDN mathematical law.
-- Fresh-prefill capture added in ba7fb03 and oracle reference layout amended in fadf2b1. Treat as **in-progress source/qualification**, not promoted ordinary dynamic CUDA. Keep code/compiler/driver/ABI hashes for comparison when source moves.
+- Fresh-prefill capture added in ba7fb03 and oracle reference layout amended in fadf2b1. This is historical transition context; current ordinary CUDA status is in CURRENT_SOURCE_RECONCILIATION.md and CURRENT_STATUS_AND_TRACKING.md. Do not promote historical capture evidence into present support.
 - Historic finite source recipes and expected-output comparison remain in independent qualification/test support; code running in production must not lookup testcase-specific names or prompt lists.
 
 ## 7. Derived low-bit/approximate models after transition

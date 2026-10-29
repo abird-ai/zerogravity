@@ -23,11 +23,11 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   `ea66b3a`/`68393e5`/`6b4a2ec`/`441fa64`, with RMS overflow/status, scalar ABI,
   alias, theta/KV-layout and CUDA compile/reflection gaps closed. It remains
   unselected and has no backend or launch authority.
-- [ ] Complete the ordinary non-GDN projection/attention lowerer through the
-  existing physical owner using exact packed Qwen layouts and authenticated
-  tensors. It must enter the existing queue, flight,
-  status/completion/quarantine and `StateRoot`; no generated packet table,
-  prompt/call/node identity or qualification fallback may authorize it.
+- [x] The ordinary non-GDN projection/attention lowerer is integrated through
+  the existing physical owner with authenticated tensors, queue/flight,
+  status/completion/quarantine and `StateRoot`; the 28-Oct ordinary checkpoint
+  below supersedes this earlier open item. No generated packet table,
+  prompt/call/node identity or qualification fallback authorizes execution.
 - [ ] Qualify `.8B` then `2B` full model, cached continuation, faults, shutdown
   and exact resource fit before enabling an ordinary serving route. Long-context,
   CPU, HIP and Vulkan cells remain independent gates.
@@ -1474,7 +1474,7 @@ build or general model/backend grant. Historical failures keep their source scop
 - [x] Source-derived ordinary .8B/2B CUDA execution is assembled under the existing ResidentProgram / ResidentInference owner: one call-free ForwardPlan, request-local materialization, owned cuBLAS projections, source-exact attention, arbitrary-row GDN, F32/F32/BF16 two-root state, one queue/flight/completion/quarantine path and the existing StateRoot publication authority. Prompt IDs, lengths, ordinals, packets, captures and recipe hashes do not authorize ordinary execution.
 - [x] Source-free lifecycle/build gate passes: qualification ordinary tests, strict qwen35-cuda-qualification Clippy, plain qwen35-cuda, default and all-features checks. Explicit shutdown now requires unique model ownership, retires the BLAS provider/pool before lease release, verifies zero resident bytes/events, then closes the model namespace; source-free close-order tests cover managed allocations, opaque foreign charge and in-flight event retirement.
 - [ ] Real current-source qualification remains mandatory before production routing: .8B natural/current-root parity including cached 47→50, physical fault/cancellation/retirement and real-model shutdown, then .8B 512/1K/2K/4K/8K and 16K/32K. Admit 2B contexts only where the exact two-root plan fits.
-- [ ] Current physical blocker: the approved .8B receipt (Qwen/Qwen3.5-0.8B, revision 2fc06364715b967f1860aea9cf38778875588b17) is present, but the exact 1,746,942,600-byte safetensor shard SHA256 04b1c301231dd422b8860db31311ab2721511346a32cb1e079c4c4e5f1fe4696 is not visible through the current connector filesystem. Do not download or substitute another source; resume physical qualification when that held shard is accessible.
+- [ ] Current physical blocker: the approved .8B source is now visible at `/home/pvl/.cache/abird/zerogravity/external-baselines/models/Qwen--Qwen3.5-0.8B/2fc06364715b967f1860aea9cf38778875588b17`; its 1,746,942,600-byte safetensor SHA256 is exactly `04b1c301231dd422b8860db31311ab2721511346a32cb1e079c4c4e5f1fe4696`. The transient `.agents/runs` native bundle was intentionally purged and no `cuda-kernels.json`/legacy `short-hf-native.json` bundle remains under the repo or user cache. Reacquire/regenerate the qualified native/reference bundle through the maintained capture path; do not restore deleted run directories or substitute another model source.
 
 ### 28 Oct 2026 — exact ordinary CUDA context admission matrix
 
@@ -1491,8 +1491,8 @@ build or general model/backend grant. Historical failures keep their source scop
     (4,831,838,208 B) by 8,980,561 B and must refuse before allocation.
 - [ ] These are fit/admission results only. Physical correctness, continuation,
   replay, faults and state-history qualification remain required for each cell
-  before production use; .8B real-model qualification is still blocked by the
-  inaccessible approved safetensor shard.
+  before production use; .8B real-model qualification is blocked on a qualified
+  native/reference bundle, not on model-source visibility.
 
 ### 28 Oct 2026 — ordinary CUDA source-free cancellation/fault ownership
 

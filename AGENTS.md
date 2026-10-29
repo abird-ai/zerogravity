@@ -145,22 +145,23 @@ remain part of the implementation wherever needed.
   The coordinator independently inspects code, results and failures before
   accepting or merging; an agent's report alone is not evidence of correctness.
 - When fixes become circular or repeated fix/test cycles stall a task, assign
-  focused root-cause work in a separate worktree and keep other work moving.
-  Coordinate shared GPU, compiler and memory use so concurrent jobs do not
-  invalidate results or contend needlessly.
-- Use separate worktrees for independent changes or overlapping investigations.
-  Declare ownership and interfaces, preserve existing work, and keep the main
-  agent responsible for reconciliation and integration.
+  focused root-cause work to an independent agent with explicit file ownership
+  or ephemeral external scratch; keep `main` as the only persistent repository
+  checkout/branch. Coordinate shared GPU, compiler and memory use so concurrent
+  jobs do not invalidate results or contend needlessly.
+- Parallel agents may inspect current `main` and prepare bounded external scratch
+  or proposals, but only one owner writes a shared source surface at a time.
+  Declare ownership/interfaces and integrate accepted bytes directly into `main`.
 - Integrate completed, contained changes promptly, even within a larger unit.
-  Reconcile active worktrees at periodic useful checkpoints to limit drift and
-  catch interface conflicts early; do not wait for every parallel task to finish.
+  Reconcile agent results at useful checkpoints to limit drift and catch
+  interface conflicts early; do not wait for every parallel task to finish.
 - Commit ready changes in small logical units at useful checkpoints. Fix major
   source/refactor bugs first; track smaller qualification bugs separately.
   Reuse applicable batch evidence instead of inventing per-commit acceptance
   cycles; run the comprehensive gate on the assembled changes.
-- After a commit batch, delegate side-worktree reconciliation where independent.
-  Preserve unique/unintegrated work and active ownership; synchronize cleanly
-  without discarding changes or rewriting history.
+- After a commit batch, reconcile independent agent results against current
+  `main`; preserve unique/unintegrated work without creating durable side
+  branches or rewriting history.
 - Batch related implementations and parallel contributions before validation.
   Bindings, readers, helpers and individual changes do not each require a test,
   review, physical-regression or acceptance cycle.
@@ -199,10 +200,9 @@ physical tests; compilation or mocks do not establish inference support. Inspect
 changed code and failed/interrupted tests when resuming; Git IDs are source
 references.
 
-When merging source from a worktree, copy bytes with fresh modification times.
-Preserving older timestamps can make Cargo reuse a stale library; unchanged
-bytes may need a narrow timestamp refresh before rerunning the same affected
-checks.
+When applying externally prepared source bytes, ensure modification times are
+fresh enough that Cargo cannot reuse stale build products; unchanged bytes may
+need a narrow timestamp refresh before rerunning the same affected checks.
 
 The root README is user-authored: leave its bytes unchanged. Do not download
 models/SDKs or change device privileges or recovery without applicable user

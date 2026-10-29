@@ -1,6 +1,6 @@
 # Fabric vNext — comprehensive current feature and behavior preservation matrix
 
-**Source baseline:** HEAD fadf2b1 on dotlink-l5, 27 Oct 2026; source-scope evidence read from current crates and .agents/plans/TODO.md, not a new physical/test qualification. This is the **functional recovery checklist** for F4/Q0/Q2. Break/delete pre-v1 implementation and API names freely, but do not lose actually supported model, artifact, device, service or safety behavior. Current stubs/metadata only MUST remain explicitly unsupported until genuinely implemented.
+**Historical source baseline:** HEAD fadf2b1 on dotlink-l5, 27 Oct 2026. The functional rows remain a recovery checklist for F4/Q0/Q2, but current source/tests and CURRENT_SOURCE_RECONCILIATION.md determine today's implementation state. Break/delete pre-v1 implementation and API names freely, but do not lose actually supported model, artifact, device, service or safety behavior. Current stubs/metadata only MUST remain explicitly unsupported until genuinely implemented.
 
 ## 1. Preservation policy and truth states
 

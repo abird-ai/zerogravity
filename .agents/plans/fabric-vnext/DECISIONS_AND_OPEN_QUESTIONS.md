@@ -55,7 +55,7 @@ These two decisions supersede any previous vNext proposed file tree with HTTP se
 >
 > once you finish writing, let me know, then and only then will we start the next phase to readapt our selves to the new changes
 
-**Decision U-VNEXT-04 — ACCEPTED:** The current deliverable is an exhaustive **side documentation archive and handoff only**. Preserve all prior architecture and research context in new files under .agents without modifying, reinterpreting or implementing against a moving source tree. The immediate future stage is separately initiated resynchronization/revalidation; DO NOT continue into that stage automatically after writing the archive. No source files, active plans, benchmarks, model assets, devices, Git branches or releases were requested.
+**Decision U-VNEXT-04 — HISTORICAL, handoff mechanism superseded:** the 27-Oct turn intentionally produced documentation only and did not authorize implementation. Its architectural decisions remain useful, but the old side-archive/concatenated-handoff mechanism is retired. Current handoff authority is `.agents/docs/CURRENT_HANDOFF.md` plus the four maintained planning/status files and this live plan set; Git history retains the deleted archive snapshots.
 
 ## 2. Settled architectural conclusions from accepted redesign
 
@@ -200,6 +200,6 @@ The 26-Oct file-tree inventory was read-only on a moving and very dirty branch. 
 
 **Existing active repository authority:** AGENTS.md and .agents/plans/README.md, TODO.md and owning live TODOs govern ongoing implementation. We deliberately leave them unchanged this phase; this side proposal does not replace their current status or user approvals.
 
-**Work status:** side documentation archive created 27 October; no source changes, no code build/tests, no new model/device qualification, no benchmark, no active plan resync. The only next step (once explicitly requested) is refresh and compare the changed repository before any implementation.
+**Work status:** the 27-Oct documentation-only phase is historical. Current main has since advanced substantially; use the canonical current handoff/status files and revalidate source-dependent assumptions before implementing this architecture.
 
 Full next-agent starting prompt and document read order: [HANDOFF.md](HANDOFF.md).

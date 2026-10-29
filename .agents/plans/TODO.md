@@ -1,10 +1,11 @@
 # Plan queue
 
 Current source, tests, and this queue are authoritative; Git retains retired history.
+Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 
 ## Active
 
-- [~] P0 serving-and-speculation — @pvl — artifact-dependent ordinary `.8B` cached47→50 exact parity, lifecycle/context qualification, then one serial canonical/ragged/queue/context vLLM campaign — [details](serving-and-speculation/TODO.md)
+- [~] P0 serving-and-speculation — @pvl — approved `.8B` source visible; qualified native/reference bundle needed for cached47→50 exact parity, lifecycle/context qualification, then one serial canonical/ragged/queue/context vLLM campaign — [details](serving-and-speculation/TODO.md)
 - [~] P1 numerics-and-context — @pvl — ordinary CUDA integrated qualification-only; source-independent physical hot path closed, exact approved-source cached47→50 and long-context correctness next — [details](numerics-and-context/TODO.md)
 - [~] P1 memory-and-streaming — @pvl — exact two-root admission: `.8B` fits through 32K, `2B` through 16K, `2B`32K refuses before allocation — [details](memory-and-streaming/TODO.md)
 - [~] P1 cpu-gpu-optimization — @pvl — ordinary source-independent CUDA numerics/transport qualified; approved-source whole-model parity before the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)

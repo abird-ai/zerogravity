@@ -69,7 +69,7 @@ The normal/build GPU→Qwen dependency was already REMOVED in commit 263ff79; th
 - Extract model-neutral Engine and dedicated Serving from CLI/application; public facade becomes capable high-level SDK.
 - Keep all existing supported paths after migration and delete obsolete compatibility/internal duplicate branches. Distinguish full working features from metadata scaffolds and future planned work.
 
-**Latest snapshot:** 41 commits from prior 195099ca baseline (39 through eb38dd5 plus ba7fb03 and fadf2b1). Recent final two touched fresh CUDA prefill generated capture and reference layout; treat as qualification-in-progress. At archive creation initial source tree had eight crates (core, artifacts, cpu, gpu, Qwen, Gemma, facade, CLI) plus gpu-qualify tool; two new structural crates intended: engine and serving. Existing source API is not general production HF CUDA, despite finite capture paths.
+**Historical 27-Oct snapshot:** 41 commits from prior 195099ca baseline (39 through eb38dd5 plus ba7fb03 and fadf2b1). Recent final two touched fresh CUDA prefill generated capture and reference layout; treat as qualification-in-progress. At archive creation initial source tree had eight crates (core, artifacts, cpu, gpu, Qwen, Gemma, facade, CLI) plus gpu-qualify tool; two new structural crates intended: engine and serving. Existing source API is not general production HF CUDA, despite finite capture paths.
 
 ## 4. Implementation tranche contract
 
@@ -111,7 +111,7 @@ The first target source structure and model-neutral contracts are the main early
 10. [DECISIONS_RISKS_AND_ACCEPTANCE.md](DECISIONS_RISKS_AND_ACCEPTANCE.md) — exact commitments, rejected designs, risk/mitigation and stop gates.
 11. [TODO.md](TODO.md) — held checklist in plan-manager convention.
 
-A combined one-file archive will include all seven historical frozen design files plus all transition documents verbatim; both historical and updated architecture and source-level comparisons are preserved for other agents.
+No combined archive is maintained. The canonical cross-window entrypoint is `.agents/docs/CURRENT_HANDOFF.md`; it points to the four maintained planning/status files and this transition set. Git history preserves superseded snapshots.
 
 ## 7. Minimum completion claims and guardrails
 

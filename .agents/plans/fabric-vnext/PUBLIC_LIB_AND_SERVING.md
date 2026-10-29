@@ -334,4 +334,4 @@ The strongest release test is a library embedding a Runtime, direct model task, 
 
 [README.md](README.md) supplies full overarching architecture. [PRIOR_ART_AND_REVALIDATION.md](PRIOR_ART_AND_REVALIDATION.md) preserves original research. [IMPLEMENTATION_AND_ACCEPTANCE.md](IMPLEMENTATION_AND_ACCEPTANCE.md) maps this amendment to specific future source moves and gates. [DECISIONS_AND_OPEN_QUESTIONS.md](DECISIONS_AND_OPEN_QUESTIONS.md) records hard decisions and open API policy.
 
-**The next authorized phase is RESYNC AND DESIGN REVALIDATION ONLY**, not moving serve code now. Do not touch active source or shared plan TODOs merely because these docs describe the target.
+**Implementation guard:** this design does not itself authorize source changes. At any Fabric implementation start, use CURRENT_HANDOFF.md, revalidate current source first, and follow the user's latest explicit implementation instruction.

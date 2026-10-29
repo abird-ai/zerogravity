@@ -10,13 +10,13 @@ Contracts: [unified residency/SSD](../../docs/UNIFIED_VIRTUAL_TENSOR_RESIDENCY_A
 
 ### Qwen long-context fit boundary — 27 Oct
 
-- [ ] Derive and physically admit each ordinary Qwen context independently after
-  source-derived CUDA execution is complete. `.8B` 32K is only a candidate N1
-  profile with two roots, streamed vocabulary head and one shared serial
-  attention workspace/cache; no fit claim exists yet.
-- [ ] Current F32 state/two-root `2B` 32K does not fit the 6 GiB RTX 3060 target.
-  Refuse rather than change precision/source/root semantics. Admit smaller `2B`
-  cells only from exact live inventory and peak ownership.
+- [x] Exact production admission analysis is closed for the current two-root
+  ordinary plans: `.8B` 512..32K all fit the 4608 MiB provider allowance;
+  `2B` 512..16K fit and 32K is 8,980,561 B over the allowance and refuses before
+  physical owner/allocation. This is a fit result, not a correctness grant.
+- [ ] Physically qualify each admitted context independently. Preserve current
+  F32/F32/BF16 two-root semantics; never change precision/source/root semantics
+  merely to make a cell fit.
 - [ ] Preserve complete recurrent/conv/KV state history, chunk continuation,
   cancellation/quarantine and readback owners at 512/1K/2K/4K/8K, then16K/32K.
   A context plan or benchmark prompt alone is not physical or numerical support.

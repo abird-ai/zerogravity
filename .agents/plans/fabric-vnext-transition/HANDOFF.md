@@ -1,5 +1,7 @@
 # Fabric vNext transition — COMPLETE next-agent implementation handoff
 
+**Canonical current entrypoint:** `.agents/docs/CURRENT_HANDOFF.md`. Current source/tests and the four-file planning spine outrank historical source snapshots in this document.
+
 **Created:** 27 October 2026. **STATUS: PLAN/HANDOFF COMPLETE; SOURCE IMPLEMENTATION NOT STARTED.**
 **Repo:** /home/pvl/spaces/abird/src/zerogravity; connector **dotlink-l5** (host pvl-l5), not dotlink-a1.
 **Source observation during this design pass:** HEAD fadf2b1123309a2118725f2cc005d3edc7ea39f2 at 06:50 UTC; 41 commits after prior deep-review baseline 195099ca, including codec split, model/CPU/GPU source refactors and recent fresh CUDA prefill source/oracle. Run current HEAD/status again before any implementation.
@@ -20,7 +22,7 @@ Mandatory current implementation sources:
 10. [ROADMAP_AFTER_TRANSITION.md](ROADMAP_AFTER_TRANSITION.md) — next expansion phases model/serving/SSD/codec/media/distribution/perf after transition.
 11. [TODO.md](TODO.md) — held per-phase checklist and plan conventions.
 
-Read **every** original frozen complete-design source as well:
+Read the maintained earlier Fabric design set as architecture context:
 - ../fabric-vnext/README.md
 - ../fabric-vnext/PUBLIC_LIB_AND_SERVING.md
 - ../fabric-vnext/PRIOR_ART_AND_REVALIDATION.md (full llama.cpp/vLLM source tree and model portability analysis)
@@ -42,7 +44,7 @@ Read **every** original frozen complete-design source as well:
 - Moving code and functional migration go in small coherent signed commits with quick checks; do NOT run long full check.sh/real GPU trained-model/long-context benchmarks after every move.
 - When all S/F source transitions are assembled, run **ONE Q0 full qualification**, track regressions as targeted Q1 bugfix commits, then **ONE Q2 final gate**. No blanket future model/format/driver performance claims from source only.
 - Preserve original exact source/numerical/state/physical evidence and all currently real user features; metadata/codec/test-case existence is not a capability.
-- No implementation, Git commit or push is requested in THIS plan-writing conversation.
+- Historical boundary: creating this transition packet did not authorize implementation. Current implementation authority comes only from the latest user instruction reached through CURRENT_HANDOFF.md.
 
 ## 3. Core correction to apply before coding
 
@@ -61,7 +63,7 @@ Read **every** original frozen complete-design source as well:
 Only after a **new explicit user implementation instruction**:
 
 1. **Read source/plan ownership:** use dotlink-l5 current HEAD/status/recent commits, AGENTS.md and all linked docs, active TODOs, other workers. No destructive Git operations, no unapproved model/device access, never overwrite other agent uncommitted files. Treat fadf2b1 only as the last *review snapshot*.
-2. **Freeze small interface choices** and integrate shared source/type names with actual latest code. Appoint one coordinator for Cargo/runtime/root shared files and separate owners for independent lanes. Respect repo's signed commits/isolated checkout rules.
+2. **Freeze small interface choices** and integrate shared source/type names with actual latest code. Appoint one coordinator for Cargo/runtime/root shared files and separate owners for independent lanes. Respect the repo's signed commits, explicit file ownership and main-only persistent topology.
 3. **S0 first:** create full Rust workspace/module skeleton in a SINGLE logical commit with actual types/traits, engine/serving crates, public facade, CLI target, task/media/codec/placement contracts, static checker. Fast build/feature/architecture/unit/refusal checks; no expensive whole-model/HIP/CUDA GPU runs. User must SEE full architecture immediately in source.
 4. **S1:** current actual q4/q6/q8 codecs, CPU source arithmetic and GPU quant binding into exact format vs numerical vs physical homes; preserve source identities and original q4_k refusal. Signed per coherent move.
 5. **S2:** family/source math and same ForwardPlan, existing CUDA GDN parameterized/fresh-prefill native kernels and source/qualifier isolation into one provider contract. No repeating already merged GPU→Qwen dep extraction; signed source/test logical units.
@@ -91,107 +93,24 @@ Only after S0 completes and shared interfaces are agreed. Avoid separate teams s
 
 Progress must be monotonic: no missing code tracked as passing, no uncommitted massive patch handed off as complete. Per phase build/lint/checker/targeted test only. Heavy GPU/bench jobs wait Q0. Stop early on broken source math, resource/physical safety, invalid state publication or architecture DAG even during skeleton.
 
-## 6. Ready-to-paste NEXT AGENT PROMPT — implementation after approval
+## 6. Current implementation-launch method
 
-~~~text
-Use the dotlink-l5 connector at /home/pvl/spaces/abird/src/zerogravity.
-We have approved a full pre-v1 Fabric vNext architectural transition.
-Everything is available for breaking changes if it results in a cleaner,
-more maintainable, more composable and faster Rust execution fabric.
+Do not use the retired embedded implementation prompt from the 27-Oct design
+window. Start at `.agents/docs/CURRENT_HANDOFF.md`, re-read current `main`, then
+read this transition packet in the order in README.md.
 
-FIRST READ THE ENTIRE HANDOFF, not just README:
-.agents/plans/fabric-vnext-transition/HANDOFF.md
-.agents/plans/fabric-vnext-transition/README.md
-.agents/plans/fabric-vnext-transition/DECISIONS_RISKS_AND_ACCEPTANCE.md
-.agents/plans/fabric-vnext-transition/CURRENT_SOURCE_RECONCILIATION.md
-.agents/plans/fabric-vnext-transition/ARCHITECTURE_AND_CRATE_CONTRACTS.md
-.agents/plans/fabric-vnext-transition/QUANTIZATION_AND_NUMERICS.md
-.agents/plans/fabric-vnext-transition/STRUCTURAL_SKELETON.md
-.agents/plans/fabric-vnext-transition/PHASED_IMPLEMENTATION.md
-.agents/plans/fabric-vnext-transition/FEATURE_PARITY_MATRIX.md
-.agents/plans/fabric-vnext-transition/QUALIFICATION_AND_COMMIT_POLICY.md
-.agents/plans/fabric-vnext-transition/ROADMAP_AFTER_TRANSITION.md
-.agents/plans/fabric-vnext-transition/TODO.md
+Only if the user's latest instruction explicitly authorizes Fabric implementation:
 
-ALSO READ the full frozen previous design:
-.agents/plans/fabric-vnext/README.md
-.agents/plans/fabric-vnext/PUBLIC_LIB_AND_SERVING.md
-.agents/plans/fabric-vnext/PRIOR_ART_AND_REVALIDATION.md
-.agents/plans/fabric-vnext/IMPLEMENTATION_AND_ACCEPTANCE.md
-.agents/plans/fabric-vnext/DECISIONS_AND_OPEN_QUESTIONS.md
-.agents/plans/fabric-vnext/HANDOFF.md
-and the combined comprehensive reference under .agents/docs.
-Then read AGENTS.md, .agents/plans/README.md, .agents/plans/TODO.md
-and active owner plans / current source tests.
+1. revalidate source/ownership/current capability matrix;
+2. begin S0 with the complete compilable architecture skeleton;
+3. continue S1–S3 and F0–F4 in logical signed units;
+4. run Q0 once assembled, fix bounded regressions in Q1, then run Q2;
+5. preserve current source/numerical/state/resource/refusal semantics and do not
+   mint support from historical capture or design metadata.
 
-DO NOT trust historic HEAD/path line numbers blindly. The last
-read-only review observed fadf2b1 after 41 new commits since 195099ca.
-Revalidate live HEAD, working tree, ongoing agents and current Cargo
-graph before any source edits. Preserve others' work and source evidence.
+The canonical current handoff owns the copy/paste starting prompt. Historical
+prompt text is retained only in Git history.
 
-The critical latest user mandate:
-1. Make the ENTIRE target architecture VISIBLE immediately in compiled
-   Rust code in the FIRST structural milestone S0. Add full crate/module
-   structure, zerogravity-engine and standalone zerogravity-serving libraries,
-   exported public zerogravity SDK, thin CLI target, semantic/codec/numeric/
-   model/task/provider/placement/state/resource contracts and type-safe
-   future capabilities. Private feature-gated todo! stubs are okay, but
-   ordinary supported API/CLI/HTTP paths MUST NOT panic; return typed
-   Unsupported for genuinely unimplemented future features.
-2. Next S1-S3 move the ACTUAL current source/codec/CPU/GPU/model/state/
-   qualification implementations into their final owners. Reuse the recent
-   codec/precision split, GPU->Qwen dependency removal, CPU GDN math and
-   parameterized CUDA GDN/fresh-prefill source; do not redo completed work
-   or mistake finite captured kernels for general production.
-3. Next F0-F4 lift real model-neutral session/scheduler/router/runtime,
-   all model acquisition/cache/device/config/pipeline work and HTTP/SSE
-   from CLI into engine, public zerogravity SDK and independent serving lib.
-   zerogravity-cli must own ONLY args/env/UX/process signals and use
-   zerogravity public APIs for all project functionality. Delete legacy
-   pre-v1 compatibility/shadow runtimes. Preserve every current real
-   feature, cancellation, source and physical safety/refusal behavior.
-4. Keep one process-shared low-level ResourceArbiter in core (engine uses it,
-   no reverse backend->engine dependencies), one logical TaskCoordinator/
-   SessionAuthority StateRoot publish protocol, one original ForwardPlan-
-   based SemanticProgram and one ExecutableBundle.
-5. Format layers are distinct: stored scalar/quant scheme, source decoder,
-   temporary activation encoding, numerical/reduction contract, reversible
-   device layout, optional lossy DerivedArtifact, qualified physical kernel.
-   Q1/2/3/NVFP4 folders are only placeholders; Q4_K source CPU matvec
-   explicitly refuses. Do not grant unsupported execution.
-6. Do this in LOGICAL UNIT SIGNED COMMITS. Every S/F phase gets cheap
-   cargo format/check/clippy, architecture dependency and targeted small
-   relevant unit/source/refusal tests. DO NOT run repeated heavyweight
-   all-model/full GPU/check.sh/performance suites after each source move.
-   Once the large structural and functional migration is assembled, do ONE
-   integrated Q0 qualification; record failures, fix in Q1 lowest-layer
-   bugfix commits with focused tests; then one final Q2 full gate.
-   Keep any unavailable physical/model/hardware scope explicitly held,
-   not passed; never bypass source/device safety or launch held gfx90c.
-7. After Q2, future high-performance serving/paged state/SSD/27B/Gemma/
-   more quant formats/sparse/MTP/multimodal/distributed milestones are
-   separately planned in ROADMAP_AFTER_TRANSITION.md, not prerequisites
-   for rehoming current working functionality.
+## 7. Current handoff/report method
 
-Begin with S0 immediately after revalidating the current source and
-ownership. Use subagents for independent substantial source lanes where
-supported, with explicit ownership and one integration coordinator.
-Do not add a second model engine, allocator, router per model or session
-publisher. No dynamic compiler/token hot-path model registry/HTTP JSON.
-No false support/performance claims. Signed coherent commits only,
-source/tests reviewed. No push, tag, destructive reset/rebase, firmware
-changes, model downloads or unsafe remote/device access without the
-user's separately stated permissions.
-
-Deliver every phase's commit SHA, exact changed owners, focused tests,
-unsupported/held cases, final source/device/codec matrix and the
-consolidated Q0/Q1/Q2 acceptance report. Start by making the FULL
-architecture skeleton visible and compiling, then transition working
-implementations quickly.
-~~~
-
-**This prompt is meant for the agent that has received explicit user authorization to implement. The current conversation is design/docs only and must finish after writing/verification, without starting S0 itself.**
-
-## 7. Completion/report to user for THIS writing task
-
-Report creation and verification of new sibling transition plan and complete single-file reference including original frozen context. State that source, active plans, build/test/physical usage and Git commits were not changed. Provide path of the handoff and display the ready-to-paste prompt in the response, then stop. User/next agent controls actual S0 start.
+This file is a maintained architecture handoff inside the vNext plan, not the global cross-window entrypoint. Start a new agent at `.agents/docs/CURRENT_HANDOFF.md`; it points to the four maintained planning/status files, this transition set and the earlier vNext architecture set. Git history retains retired snapshots. Do not recreate a single-file archive or documentation SHA catalogue. When handing off, print the ready-to-paste starting prompt in chat; the user controls actual S0 start.

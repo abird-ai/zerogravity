@@ -10,7 +10,11 @@ Owner: @pvl; future implementation coordinator to be appointed only after resync
 
 This file is the normative *proposed* architecture reference for the next conversation, not a retroactive change to existing implementation requirements. The companion reports deliberately retain preceding research, counterexamples, original options and exact user decisions. The entire folder is self-contained for an agent without chat history.
 
-Read [HANDOFF.md](HANDOFF.md) first for the next-agent workflow, [PRIOR_ART_AND_REVALIDATION.md](PRIOR_ART_AND_REVALIDATION.md) for source-level llama.cpp/vLLM/current-zerogravity evidence, [PUBLIC_LIB_AND_SERVING.md](PUBLIC_LIB_AND_SERVING.md) for the 27 October public-library amendments, [IMPLEMENTATION_AND_ACCEPTANCE.md](IMPLEMENTATION_AND_ACCEPTANCE.md) for staged migration, [DECISIONS_AND_OPEN_QUESTIONS.md](DECISIONS_AND_OPEN_QUESTIONS.md) for commitments versus options, and [TODO.md](TODO.md) for held work. An optional single-file combined copy is referenced from the companion index in .agents/docs.
+Read [HANDOFF.md](HANDOFF.md) first for the next-agent workflow, [PRIOR_ART_AND_REVALIDATION.md](PRIOR_ART_AND_REVALIDATION.md) for source-level llama.cpp/vLLM/current-zerogravity evidence, [PUBLIC_LIB_AND_SERVING.md](PUBLIC_LIB_AND_SERVING.md) for the 27 October public-library amendments, [IMPLEMENTATION_AND_ACCEPTANCE.md](IMPLEMENTATION_AND_ACCEPTANCE.md) for staged migration, [DECISIONS_AND_OPEN_QUESTIONS.md](DECISIONS_AND_OPEN_QUESTIONS.md) for commitments versus options, and [TODO.md](TODO.md) for held work. The canonical current handoff is `.agents/docs/CURRENT_HANDOFF.md`; it points into the maintained navigation spine and this plan set. Git history retains superseded snapshots.
+
+## Current handoff method
+
+Use `.agents/docs/CURRENT_HANDOFF.md` as the only cross-window entrypoint. It links to the four maintained planning/status files and to this directory. Do not recreate monolithic archives, documentation SHA catalogues or frozen copies; Git history is the historical record.
 
 ## 0. Mission, scope and fidelity
 
@@ -328,7 +332,7 @@ See [PUBLIC_LIB_AND_SERVING.md](PUBLIC_LIB_AND_SERVING.md) for exact intended ex
 
 ## 14. Initial accepted design priority
 
-**Next phase must FIRST resync/revalidate against actual repository HEAD and uncommitted code**, assess recent refactors/commits, run affected read-only source inspections and plan crosswalk, revise documents as needed, and only then ask/receive a separate user instruction for implementation. This 27 October archive deliberately does not claim the 26 October code inventory remains current. The previous inspected live tree (2026-10-26) was HEAD 195099ca and very dirty; by 2026-10-27 on dotlink-l5 HEAD has advanced to eb38dd5e and was clean at initial read. This reflects moving work, not a verified migration. Never transplant old file-line findings without rechecking.
+**At any implementation start, first revalidate against current repository HEAD/source**, assess recent refactors/commits and plan crosswalk, then follow the user's latest explicit authorization. CURRENT_HANDOFF.md is the cross-window authority for that decision. This 27 October archive deliberately does not claim the 26 October code inventory remains current. The previous inspected live tree (2026-10-26) was HEAD 195099ca and very dirty; by 2026-10-27 on dotlink-l5 HEAD has advanced to eb38dd5e and was clean at initial read. This reflects moving work, not a verified migration. Never transplant old file-line findings without rechecking.
 
 After explicit implementation authorization, focus: make baseline reproducible; enforce source→semantic→physical ownership and Cargo boundaries; extract one common engine and robust library facade; split serving into standalone crate; have CLI depend exclusively on facade; qualify Qwen3.5 0.8B/2B source CPU and selected GPU with unchanged numerical evidence; register Gemma without copying runtime; then vLLM-class temporal serving and complete-domain state; then 27B SSD/dense, Gemma variants, broader tasks/distribution in accepted user sequence.
 

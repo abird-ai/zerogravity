@@ -70,7 +70,7 @@ This is an implementation-focused decision register made 27 October 2026. It **s
 | Broad full suites repeatedly block transition | Medium-high | Tier L/M focused checks per commit, Q0 one main run, Q1 fixes, Q2 final |
 | Heavy qualification delayed hides obvious broken import or source guard | High | Every phase compile+small actual invariant tests; do not commit broken source safety |
 | Historical binary evidence retagged after code image changes | Critical | Preserve source/driver/model fingerprints, fresh physical qualification when allowed |
-| Live source moved by other agents while plan executed | High | Recheck HEAD/active TODO/owner, isolated checkouts, one merge coordinator |
+| Live source moved by other agents while plan executed | High | Recheck HEAD/active TODO/owner, explicit file ownership, one integration coordinator on main |
 | gfx90c/NPU safety hold bypassed by "full qualification" script | Critical | Review hardware access, no unsafe/unauthorized device launches or system tuning |
 | Published UI claims all planned models/formats run | High | Capability matrix per source/quant/task/shape/backend/numerical/quality |
 | One giant unreviewable commit | High | Single full structural S0 commit, subsequent smallest coherent logical signed commits |
@@ -121,5 +121,5 @@ Any deviation from mandatory latest user decisions needs explicit agreement. The
 
 - New transition side plan is independent of .agents/plans/TODO.md active owner queue until a coordinator explicitly promotes it during authorized implementation.
 - Existing older frozen ../fabric-vnext files and full archive remain unchanged; successor must read them as historical architecture/research, with user-requested updated phase ordering here.
-- At actual code handoff, verify current source HEAD, AGENTS.md, active TODO plans, potential concurrent agent checkouts and partial runs. Do not automatically push/tag or include other agent files.
-- This turn writes documents only. The copyable next-agent implementation prompt is in HANDOFF.md and provided to the user in chat.
+- At actual code handoff, verify current source HEAD, AGENTS.md, active TODO plans and concurrent agent ownership. Do not automatically push/tag or include unrelated agent files.
+- The 27-Oct planning turn was documentation-only. Current cross-window handoff starts at `.agents/docs/CURRENT_HANDOFF.md`; this directory remains the architecture/transition detail set.

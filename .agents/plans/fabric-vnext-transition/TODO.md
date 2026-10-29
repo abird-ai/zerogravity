@@ -4,7 +4,7 @@ Author: Project owner
 Co-authors: GPT-6
 Owner: @pvl — successor coordinator not yet appointed
 
-**Scope:** all future code phases held pending a new explicit implementation instruction. This plan was created as documentation only and is not promoted to the active .agents/plans/TODO.md queue. Initial read-only source HEAD fadf2b1123309a2118725f2cc005d3edc7ea39f2, moving; base for implementation is NOT frozen. No plan commit has been made.
+**Scope:** future Fabric implementation phases remain separately authorized. This transition packet began as documentation-only. Historical initial read-only source observation was fadf2b1123309a2118725f2cc005d3edc7ea39f2; it is not an implementation baseline. Current source/status is owned by CURRENT_HANDOFF.md and CURRENT_SOURCE_RECONCILIATION.md.
 **Reference authority:** HANDOFF.md → README.md → PHASED_IMPLEMENTATION.md → STRUCTURAL_SKELETON.md; old preserved ../fabric-vnext entire packet.
 
 ## Committed
@@ -109,9 +109,9 @@ None. No code/refactor/source/test commit authorized during plan writing. When i
 - [ ] E09 NPU/graph/wafer/remote distributed placement and state bridge.
 - [ ] E10 calibrated cost/autotune, matched vLLM/llama.cpp task benchmarks and release.
 
-## Tests and verification — THIS documentation task ONLY
+## Handoff and documentation maintenance
 
-- [ ] Verify all new side transition files exist, are UTF-8, include full user/source/architecture/correctness/phase content and local links resolve. Perform read-only check before reporting completion.
-- [ ] Create complete consolidated archive under .agents/docs that reproduces all 7 frozen original files and all new transition files in known order (not merely links), plus index and SHA-256 documentation hashes.
-- [ ] Confirm Git status changes ONLY new side documentation paths and original frozen plan files remain byte-identical; no source, active TODO, build/test, commit or push.
-- [ ] Present next-agent prompt in chat and do not begin S0 without a new explicit implementation instruction.
+- [ ] Keep every transition document UTF-8, internally linked and consistent with the canonical current handoff plus the four maintained planning/status files.
+- [ ] Revalidate source-dependent claims against current main; historical source SHAs are provenance only and never an implementation base.
+- [ ] Do not recreate consolidated archives, per-file documentation SHA indexes or frozen handoff copies; Git history is the archive.
+- [ ] Present the next-agent starting prompt in chat when handing off; actual S0 still requires the user's explicit implementation instruction.

@@ -1,7 +1,8 @@
 # Requirements and test traceability
 
 This is the stable repository target for acceptance/evidence navigation. It is
-not a historical matrix of every prior run.
+not a historical matrix of every prior run. Cross-window context starts at
+[CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 
 ## Governing rule
 
@@ -35,3 +36,9 @@ not acceptance inputs.
   current source, tests or a later qualification.
 - Physical/hardware claims remain scoped to the exact device/backend/source
   cell actually tested.
+
+## Current open physical qualification edge
+
+- Approved Qwen3.5 .8B model bytes are visible and exact.
+- The complete qualified CUDA native/reference bundle is not currently retained in the repo/user cache; regenerate or reacquire it via the maintained capture/qualification path.
+- Until that bundle and real device run are available, ordinary CUDA remains qualification-only regardless of source-free tests or fit calculations.

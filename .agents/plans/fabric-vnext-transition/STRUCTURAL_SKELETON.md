@@ -50,7 +50,7 @@ The internal-stub feature must not be included in release/all-features build sur
 ## 3. S0 mechanical action order and integration
 
 Before coding:
-1. Recheck actual current HEAD/status, AGENTS.md, active plan ownership and concurrent agents; source may have advanced beyond fadf2b1. Never overwrite uncommitted docs or other agents' work.
+1. Recheck actual current HEAD/status, AGENTS.md, active plan ownership and concurrent agents; source may have advanced beyond the historical fadf2b1 snapshot. Never overwrite unrelated or concurrently owned work.
 2. Decide exact final crate/type names once against current source and avoid unnecessary public compatibility aliases. The user explicitly permits breaking pre-v1 APIs.
 3. Freeze input source identities, existing actual capability inventory and the lightweight migration smoke commands. Do not run heavyweight model/device suites yet.
 

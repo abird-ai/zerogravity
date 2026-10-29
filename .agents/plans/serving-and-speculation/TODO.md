@@ -8,6 +8,13 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
+### Reviewed continuation — 29 Oct 2026
+
+- [x] Current `main` ordinary Qwen CUDA is integrated but qualification-only: source-derived projections/attention/GDN, one resident queue/flight/completion/quarantine path, one `StateRoot`, explicit provider shutdown and source-free cancellation/fault ownership.
+- [x] Approved `.8B` source is accessible and exact at revision `2fc06364715b967f1860aea9cf38778875588b17`; the 1,746,942,600-byte shard hashes to `04b1c301231dd422b8860db31311ab2721511346a32cb1e079c4c4e5f1fe4696`.
+- [ ] Reacquire/regenerate the qualified native/reference bundle. Transient `.agents/runs` was intentionally purged; no current/legacy native bundle remains in the repo or user cache. Do not recreate deleted run trees as provenance.
+- [ ] Then execute cached47→48→49→50 reference capture + ordinary comparison, real after-launch cancellation/fault/retirement/shutdown, admitted context correctness, assembled gate, and only then the serial vLLM campaign below.
+
 ### Matched campaign checkpoint — 27 Oct
 
 Design and acceptance: [Qwen3.5 matched serving campaign](BENCHMARK_CAMPAIGN_2026-10-27.md).

@@ -60,11 +60,11 @@ None in this plan. The reference is side documentation only; nothing has been co
 - [ ] Minimality/extension drills for new model, novel stateful op, backend, task, transport with measured shared source change radius.
 - [ ] Consolidate normative docs/public whitepaper/current status after actual implementation acceptance.
 
-## Tests and verification — design archive only
+## Tests and verification — maintained design set
 
-- [ ] Verify the planned side-pack files exist, are UTF-8, complete, link internally and contain user amendments and no misleading runtime/perf qualification. This archive-only verification can be done NOW with a read-only check.
-- [ ] Confirm **only new side documentation paths** changed during archive writing; source, active TODOs, binaries, models, device settings untouched. This archive-only verification can be done NOW.
-- [ ] Confirm the next-agent handoff prompt includes explicit resync-first/no-source-change instruction.
+- [ ] Keep this plan set internally linked and consistent with the canonical current handoff and four-file planning spine.
+- [ ] Revalidate source-dependent statements against current main before implementation; historical SHAs remain provenance only.
+- [ ] Keep the next-agent prompt source-first: read the canonical handoff, current status/traceability, then this plan; do not reconstruct deleted archive snapshots.
 - [ ] Later: enforce Cargo acyclic layering including serving→engine and facade→serving and CLI→facade.
 - [ ] Later: public zerogravity-only embedded Rust direct run/server examples compile without CLI, with one shared model/ResourceArbiter and exact source states.
 - [ ] Later: source/semantic/quality/physical/serving/multimodal/distributed acceptance gates defined in IMPLEMENTATION_AND_ACCEPTANCE.md and original project owners.

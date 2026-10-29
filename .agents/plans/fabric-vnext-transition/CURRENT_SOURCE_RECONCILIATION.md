@@ -1,8 +1,17 @@
-# Fabric vNext transition — current-source and 41-commit reconciliation
+# Fabric vNext transition — current-source reconciliation
 
+## 29 Oct 2026 current-source refresh
+
+- Reviewed implementation baseline: `ae8cd89` on `main`, with one persistent checkout/branch and no side branches or transient run provenance. Re-run HEAD/status before editing; current source/tests outrank every SHA/path/count below.
+- Workspace remains the nine-package set enforced by `scripts/check.sh`: core, artifacts, cpu, gpu, Qwen, Gemma, facade, CLI and gpu-qualify. Proposed `zerogravity-engine` and `zerogravity-serving` crates are still future Fabric S0 work, not current crates.
+- Ordinary Qwen CUDA is now assembled source-derived execution under ResidentProgram/ResidentInference with one queue/flight/completion/quarantine path and existing StateRoot, but it is qualification-only. This materially supersedes the 27-Oct statement that ordinary dynamic Qwen CUDA was still missing non-GDN lowering.
+- Exact two-root admission is current: .8B 512..32K fits; 2B 512..16K fits; 2B 32K exceeds the 4608 MiB provider allowance by 8,980,561 B and refuses before physical allocation. These are fit results, not correctness grants.
+- The exact approved .8B model source is accessible; the remaining physical-parity dependency is the qualified native/reference bundle, which was transient and intentionally purged. Do not recreate `.agents/runs` or use deleted archives as provenance.
+- Cache/acquisition/by-name crash consistency, serving lifecycle, release/install and source-only reference gates have advanced far beyond the 27-Oct snapshot. See `.agents/plans/CURRENT_STATUS_AND_TRACKING.md` and `.agents/plans/REQUIREMENTS_AND_TEST_TRACEABILITY.md` for current evidence navigation.
+- The historical 195099ca/eb38dd5/fadf2b1 analysis below is retained only for architecture-evolution context and old-to-new ownership reasoning. It is not the implementation baseline.
 **Read-only baseline:** dotlink-l5, /home/pvl/spaces/abird/src/zerogravity, HEAD fadf2b1123309a2118725f2cc005d3edc7ea39f2, observed 2026-10-27 06:50 UTC. The read-only Python architecture checker passed at this HEAD. No full Cargo suites, trained-model test, GPU workload, full benchmark or physical qualification run was performed for this design.
 
-## 1. Baseline and commit lineage
+## 1. Historical 26–27 Oct baseline and commit lineage
 
 The original file-tree/revalidation research inspected HEAD 195099ca583ace766d075682927f590360c823a5 with a then-large moving uncommitted checkout. The first vNext source refresh inspected eb38dd5e892f2120ac29cc2fb79b2dbe137a37fe, **39 commits** after 195099ca, 1,220 files touched, 157,086 inserted and 103,429 deleted lines (includes moves, generated source and handoffs). Two later commits ba7fb03 and fadf2b1 bring the observed gap to **41 commits**. Earlier whole-repository history contained approximately 289 commits; do not mistake the last 41 for all project work.
 
@@ -28,7 +37,7 @@ The original file-tree/revalidation research inspected HEAD 195099ca583ace766d07
 | 1b898ff, c0bdbb1 | Sealed explicit kernel combinations, no recipe bridge in execution | Don't reintroduce test-case dispatch in production |
 | eb38dd5 | Fresh-48 output variant | Not proof of general dynamic shape/model inference |
 | ba7fb03 | Added fresh-prefill capture and generated source | Retain qualification source hashes/compiler/lease semantics |
-| fadf2b1 | Fresh-prefill reference layout/oracle fixture corrections | Latest code snapshot; real hardware/model gate remains separate |
+| fadf2b1 | Fresh-prefill reference layout/oracle fixture corrections | Historical final 27-Oct design snapshot; real hardware/model gate remained separate |
 
 ## 2. Actual current Cargo workspace, dependencies, ownership
 
@@ -56,7 +65,7 @@ Normal/build dependencies:
 - Gemma model -> core, optional artifacts/CPU/GPU for specific preparation/qualification.
 - facade -> core+artifacts, optional CPU/GPU/families.
 - CLI -> facade plus CLI-specific crates. It still owns core application behaviors even though it only depends on facade by name.
-The original scripts/check-architecture.py enforces currently accepted normal/build/optional/target boundaries and passed at fadf2b1. Extend it in skeleton S0 for engine/serving/facade/CLI, not a new checker with a second policy.
+scripts/check-architecture.py remains the single architecture-boundary checker and passed again during the 29-Oct review. Extend this checker in skeleton S0 for engine/serving/facade/CLI rather than creating a second policy checker. The earlier fadf2b1 pass is historical evidence only.
 
 Historic approximate source counts at refresh: GPU ~590 Rust files/~310,274 LoC (~120,414 generated source); artifacts 57/~32,268; Qwen 95/~36,517; Gemma 24/~6,677; CPU 43/~11,774; core 43/~19,383; facade 27/~5,924; CLI 46/~26,407. Includes test/qualification sources. These are indicators of refactor ownership, not numerical/model capability.
 
