@@ -179,7 +179,12 @@ impl CudaServer {
         let mut handle = ptr::null_mut();
         let created = unsafe { (api.create)(&mut handle) };
         provider.handle = handle as usize;
-        status(created, "create")?;
+        if created != 0 {
+            return Err(failure(format!(
+                "pinned cuBLAS create status {created}; allocator={:?}",
+                provider.pool.snapshot(),
+            )));
+        }
         if handle.is_null() {
             return Err(failure("pinned cuBLAS null successful handle"));
         }

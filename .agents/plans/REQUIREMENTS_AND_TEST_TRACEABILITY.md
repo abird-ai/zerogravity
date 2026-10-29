@@ -40,5 +40,6 @@ not acceptance inputs.
 ## Current open physical qualification edge
 
 - Approved Qwen3.5 .8B model bytes are visible and exact.
-- The complete qualified CUDA native/reference bundle is not currently retained in the repo/user cache; regenerate or reacquire it via the maintained capture/qualification path.
-- Until that bundle and real device run are available, ordinary CUDA remains qualification-only regardless of source-free tests or fit calculations.
+- `.8B` native/reference inputs are recovered offline with exact current Rust payload/provider identities; fresh phase-1 cached47→50 capture and source retirement pass.
+- Fresh ordinary startup fails at pinned cuBLAS initialization: its requested private export table is denied by the owned allocator. No ordinary model math/parity ran. Preserve that ownership boundary; reference success and admission totals do not authorize ordinary production CUDA.
+- Ordinary parity, physical lifecycle/shutdown and admitted contexts remain open. Finish CUDA correctness before the requested ROCm (`pvl-x2`) continuation.

@@ -129,8 +129,10 @@ pub async fn capture_current_source_cached_47_to_50_evidence(
 ) -> Result<ReferenceEvidenceReceipt> {
     const MIB: usize = 1024 * 1024;
     require_not_cancelled(cancelled)?;
+    // The historical reference retains all finite scopes, like the model-backed
+    // fixtures. Ordinary execution keeps its separate 4 GiB host profile.
     let host = super::host_admission_mib(
-        super::HOST_MIB,
+        super::HOST_MIB_MAX,
         ResourceOwner::new("qwen35-cuda-parity-reference", "cached47-50-evidence")?,
     )?;
     let model = super::qualification::load(

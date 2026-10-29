@@ -12,8 +12,11 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 - [x] Current `main` ordinary Qwen CUDA is integrated but qualification-only: source-derived projections/attention/GDN, one resident queue/flight/completion/quarantine path, one `StateRoot`, explicit provider shutdown and source-free cancellation/fault ownership.
 - [x] Approved `.8B` source is accessible and exact at revision `2fc06364715b967f1860aea9cf38778875588b17`; the 1,746,942,600-byte shard hashes to `04b1c301231dd422b8860db31311ab2721511346a32cb1e079c4c4e5f1fe4696`.
-- [ ] Reacquire/regenerate the qualified native/reference bundle. Transient `.agents/runs` was intentionally purged; no current/legacy native bundle remains in the repo or user cache. Do not recreate deleted run trees as provenance.
-- [ ] Then execute cached47→48→49→50 reference capture + ordinary comparison, real after-launch cancellation/fault/retirement/shutdown, admitted context correctness, assembled gate, and only then the serial vLLM campaign below.
+- [x] Recover `.8B` N1 native/reference inputs offline: retained canonical images plus exact whole SM80 FlashAttention modules extracted from the pinned local reference image, original cuBLAS providers, 28 resources matching current Rust identities. All 11 approved model members verify; maintained bundle validation and isolated structural preflight pass. No deleted run trees restored.
+- [x] Fresh phase-1 cached47→50 capture passes with the existing explicit 8 GiB reference fixture host profile; 1,008 source windows retire. Preserve the original 4 GiB admission failure. Ordinary host/device allowances remain unchanged.
+- [ ] Resolve ordinary pinned cuBLAS initialization before parity: `cublasCreate_v2` returns status 1; the owned allocator denies private `cuGetExportTable` UUID `6bd5fb6c5bf4e74a8987d93912fd9df9`, with zero allocation attempts/charges. A legacy `cuGraphInstantiate` lookup also refuses. No unsafe passthrough, preload bypass or unpriced second owner.
+- [ ] Then exact ordinary cached47→50 comparison, real after-launch cancellation/fault/retirement/shutdown, admitted context correctness and assembled gate. Reference capture alone closes none of those gates.
+- [ ] Latest owner order: finish Qwen CUDA correctness, then Qwen ROCm (HIP) on `pvl-x2`; no subagents. Do not start the matched benchmark campaign before correctness or displace that ROCm continuation.
 
 ### Matched campaign checkpoint — 27 Oct
 

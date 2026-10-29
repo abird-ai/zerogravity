@@ -24,8 +24,9 @@ Authority, highest first:
 
 Do not resurrect deleted handoff archives, transient .agents/runs trees, old side branches or old worktrees as live provenance.
 
-Reviewed implementation baseline before this handoff documentation update: ae8cd89.
-The handoff documentation commit itself does not change execution capability; always re-run git status and git log before editing.
+Historical reviewed implementation baseline: ae8cd89. The 29-Oct continuation
+below recovers reference evidence and fixes qualification diagnostics/fixtures;
+it does not qualify ordinary execution. Re-run git status and git log before editing.
 
 ## 2. Immediate startup for a successor
 
@@ -383,18 +384,29 @@ The tracked source manifest is:
 
     crates/zerogravity/src/qwen35_cuda/source08.json
 
-### Current missing physical input
+### Current physical blocker — 29 Oct continuation
 
-The old complete native bundle lived in transient run state and was intentionally purged when the repository was normalized.
+The old assembled bundle was purged, but its exact `.8B` N1 inputs are recovered
+offline under XDG state. Retained canonical images plus two whole SM80
+FlashAttention modules extracted from the pinned local reference image and the
+original cuBLAS providers match current Rust identities. All 11 model members
+verify; maintained bundle validation and isolated structural preflight pass.
 
-Current searches found:
+Fresh phase-1 cached47→50 reference capture passes after selecting the existing
+8 GiB reference-fixture host profile, with all 1,008 source windows retired.
+The original 4 GiB refusal stays failed. The independently emitted evidence
+content digest is retained in the owning numerics plan and external evidence.
 
-- no cuda-kernels.json under the repository;
-- no legacy short-hf-native.json under the repository;
-- no current/legacy native bundle under /home/pvl/.cache/abird/zerogravity;
-- no retained original-source/capture-source package under the repository.
+Fresh ordinary comparison fails before model math: pinned `cublasCreate_v2`
+returns status 1 after the owned allocator denies a private `cuGetExportTable`
+call. Zero allocation attempts/charges and bounded resolver observations identify
+this as a provider ownership blocker, not missing model/bundle bytes. Do not
+forward opaque tables or preload cuBLAS around admission to make it run.
 
-The tracked tree does contain many parameterized GDN CUDA source files, but the complete native bundle also depends on captured/precompiled CUDA module images and provider artifacts. Do not claim the complete bundle can be recreated merely by compiling the tracked GDN .cu files.
+The current evidence and remaining work live in
+`../plans/numerics-and-context/TODO.md`. Ordinary parity/lifecycle/context and
+production routing remain unqualified. Owner order is CUDA correctness first,
+then ROCm on `pvl-x2`, with no subagents.
 
 Maintained tooling:
 
@@ -402,9 +414,14 @@ Maintained tooling:
 - tools/qwen35-cuda-bundle/
 - scripts/qualify-qwen35-ordinary-cached47-50.sh
 
-The capture protocol expects explicit retained external reference/capture inputs. Those are qualification inputs, not production authority.
+The Python discovery/packed-capture protocol still requires explicit retained
+external capture sources. Exact offline bundle recovery is documented in the
+bundle helper README; the Rust two-process parity wrapper uses that recovered
+bundle. These are qualification inputs, not production authority.
 
-The clean next step is to reacquire or regenerate the qualified native/reference bundle through that maintained capture/qualification path. Do not recreate deleted .agents/runs paths as aliases or treat old run names as provenance.
+Next resolve the ordinary provider ownership blocker, then resume comparison
+with the independently retained phase-1 digest. Do not recreate deleted
+`.agents/runs` paths or treat old run names as provenance.
 
 ## 9. Ordinary cached47→50 parity protocol
 
@@ -493,10 +510,10 @@ These are admission/fit results only. Every admitted context still needs real-mo
 
 Unless the user explicitly switches to Fabric vNext implementation, this is the main execution sequence:
 
-1. Reacquire/regenerate the qualified .8B native/reference bundle using maintained capture/qualification tooling and exact approved source.
-2. Run wrapper structural preflight.
-3. Capture a fresh historical/current-source reference into evidence and retain the trusted phase-1 evidence digest.
-4. Start a fresh ordinary process and compare exact cached 47→48→49→50:
+1. Preserve the recovered exact `.8B` native/reference inputs and approved source.
+2. Preserve passing structural preflight and fresh phase-1 capture/retirement evidence; retain its independently emitted digest.
+3. Resolve ordinary cuBLAS private export-table ownership without weakening admission or quarantine.
+4. Start a fresh ordinary process with `--compare-existing` and compare exact cached 47→48→49→50:
    - 248,320 logits;
    - all 42 state domains;
    - natural feedback;
@@ -824,7 +841,10 @@ After the PID1 harness fix:
 
 A previous monolithic scripts/check.sh invocation exceeded the connector's single-call wall while compiling, so the same sections were executed in bounded groups. Do not interpret the connector wall as a source failure.
 
-Physical model/device gates that require missing native/reference inputs remain open and must not be inferred from source-only gates.
+The 29-Oct continuation recovered `.8B` native inputs and passed fresh reference
+capture. Ordinary provider startup still refuses a private driver export-table
+call; physical parity/lifecycle/context remain open. Source-only gates do not
+close that blocker.
 
 ## 21. Git/topology cleanup history
 
@@ -860,11 +880,12 @@ If the user says “continue the main task”:
 
 - stay on the Qwen ordinary CUDA critical path in section 11;
 - do not start Fabric S0;
-- first solve the qualified native/reference bundle input cleanly;
-- use exact approved .8B source already visible;
-- run reference capture and ordinary comparison;
+- preserve recovered native inputs and passing phase-1 reference evidence;
+- resolve ordinary cuBLAS private export-table ownership;
+- resume ordinary comparison with the trusted phase-1 digest;
 - then lifecycle/context/final gate;
-- benchmark only after correctness.
+- latest owner order: ROCm on `pvl-x2` after CUDA correctness, no subagents;
+- benchmark only after correctness and without displacing that ROCm task.
 
 If the user says “begin Fabric vNext” or equivalent:
 
@@ -903,7 +924,9 @@ If the user asks for another review:
 After reading the required window set, determine which of these two paths the user's latest message requests:
 
 A. Current implementation critical path:
-   recover/regenerate qualified native bundle -> exact ordinary parity -> lifecycle/context -> final gate -> matched benchmark.
+   resolve ordinary cuBLAS export-table ownership -> exact ordinary parity against
+   retained trusted reference evidence -> lifecycle/context -> final gate ->
+   ROCm on `pvl-x2` (latest owner order). Matched benchmarking remains deferred.
 
 B. Fabric vNext transition:
    current-source resync -> S0 full visible architecture skeleton -> S1/S2/S3 -> F0/F1/F2/F3/F4 -> Q0/Q1/Q2.

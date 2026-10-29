@@ -33,3 +33,35 @@ outputs.
 
 stage-result.json from older staged bundles is accepted as optional historical
 audit metadata, but it is never required or trusted for execution.
+
+## Offline recovery from retained reference artifacts
+
+A missing assembled bundle need not require a new model capture. Check the
+project's separate container store, not only the default Podman store.
+
+For the `.8B` historical N1 reference:
+
+- A retained `canonical47-native.json` bundle supplies 14 model images, nine
+  rotary images and the activation image. It is not a complete current bundle.
+- The exact pinned reference image's `vllm_flash_attn/_vllm_fa2_C.abi3.so`
+  contains the two missing whole SM80 modules. Extract into fresh external
+  scratch with the retained CUDA tool:
+
+      cuobjdump --gpu-architecture sm_80 --extract-elf all /ABS/_vllm_fa2_C.abi3.so
+
+- Select `TextFaCausalCombineSm80` and `TextFaSplitCombineSm80` by exact extent
+  and content identity from `ProjectionImage` in
+  `crates/zerogravity-gpu/src/cuda/native/cubin_manifests.rs`, never extraction
+  ordinal/name alone. Do not patch, rebuild or repin a nonmatching module.
+- Copy the required images and original authenticated cuBLAS/cuBLASLt files
+  into a fresh XDG qualification directory. Write `cuda-kernels.json` using the
+  current schema and kind names; all resource paths must be relative for this
+  structural helper. The complete N1 bundle has 28 distinct resources.
+- Run `stage.py --check-current`, then the parity wrapper's structural preflight
+  and fresh phase-1 capture. Rust remains the authority for every payload and
+  provider identity. Extraction/structural success does not qualify inference.
+
+The current required image set is owned by `text_required_images_for_cohort`;
+`2B` and B4 require their own inventories. Do not silently reuse the `.8B` set.
+Phase 1 uses the existing 8 GiB historical-reference host profile; phase 2 keeps
+ordinary's 4 GiB host profile. Provider/device limits remain 4,608/5,120 MiB.

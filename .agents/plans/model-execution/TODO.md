@@ -8,6 +8,18 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
+### Current physical continuation — 29 Oct
+
+- [x] Exact `.8B` native/reference inputs recovered offline; fresh phase-1
+  cached47→50 reference capture and all 1,008 source-window retirements pass
+  after selecting the existing explicit 8 GiB reference host profile.
+- [ ] Ordinary startup refuses pinned cuBLAS's private `cuGetExportTable` call
+  before model math. Establish auditable provider allocation/retirement ownership
+  without bypassing the existing pool, then exact parity/lifecycle/context/gate.
+  [Current numerical evidence](../numerics-and-context/TODO.md).
+- [ ] Owner order: CUDA correctness first, then Qwen ROCm (HIP) on `pvl-x2`;
+  no subagents, source substitutions/downloads or device-privilege changes.
+
 ### Ordinary Qwen execution checkpoint — 27 Oct
 
 - [x] `ad82feb`/`f7ff4f9` add one call-free source-template plan for authenticated

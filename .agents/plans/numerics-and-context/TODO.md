@@ -69,13 +69,47 @@ checks and one complete gate per larger unit; isolate only concrete failures.
 - [x] Move test-only GDN helper and cohort source reporter into Rust test support.
   Unused production constant removal changes the honest2B aggregate fingerprint
   from0938d435… to4d77cb66…; complete executable packets and GDN source stay exact.
-## Uncommitted
-
-### Residency refusal diagnostics — 29 Oct
+### `60907d1` — residency refusal diagnostics
 
 - [x] Report required/available host and device bytes in shared streamed/resident
   refusal errors without changing selection or admission. All three focused
   optimization tests and the final isolated assembled repository gate pass.
+
+## Uncommitted
+
+### Current physical continuation — 29 Oct
+
+- [x] Recover the exact `.8B` historical N1 bundle offline: 28 existing
+  image/provider resources, 959,218,944 B. The two missing SM80 FlashAttention
+  images come from the pinned retained reference image, not recompilation.
+  All 11 approved model members match; structural preflight passes.
+- [x] Correct phase 1 to use the existing explicit 8 GiB reference-fixture host
+  profile. Fresh cached47→50 capture records full logits/all42/natural feedback
+  and passes explicit retirement of all 1,008 source windows. Preserve the earlier
+  4 GiB admission failure. Evidence-content SHA256 emitted by phase 1:
+  `4cd19e05b31f8979a1fa6e73c0d73aa3b3f61d4392d62dc2467e57a92d7de82b`.
+- [x] Failed cuBLAS creation retains its original pool and reports bounded
+  resolver/allocation observations without masking the creation status if
+  the diagnostic snapshot itself fails.
+- [ ] Resolve ordinary cuBLAS ownership before model math. Fresh phase 2 fails
+  `cublasCreate_v2` status 1 with one denied `cuGetExportTable` call, UUID
+  `6bd5fb6c5bf4e74a8987d93912fd9df9`; allocation attempts/charges are zero and
+  observation buffers do not overflow. A legacy `cuGraphInstantiate` lookup
+  also refuses. The existing model-free dynamic-row identity test reproduces
+  the same startup failure, before any GEMM. No opaque table passthrough or
+  preloading around admission.
+- [ ] Resume fresh ordinary comparison using the independently retained digest;
+  then physical lifecycle/shutdown and admitted contexts. Production routing
+  stays disabled. CUDA correctness precedes ROCm on `pvl-x2`; no subagents or
+  benchmark campaign during this continuation.
+- [x] Final CUDA-facade strict clippy, all 11 parity host tests and isolated
+  `scripts/check.sh` pass for the contained harness/diagnostic changes. The full
+  gate has 2,129 Rust executions/0 failures/83 ignored across 283 suites, plus
+  its Python/shell/release/installer checks. Initial full gate exposed two
+  umask-dependent cache fixtures; test-only repairs pass all four cache/diagnostic
+  × umask0022/0077 combinations (82 executions). See
+  [model acquisition](../model-acquisition/TODO.md). This source gate does not
+  close the failed physical ordinary scope.
 
 ### Ordinary source-derived continuation — 27 Oct
 

@@ -26,9 +26,14 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
 - [x] Resume and close the `29b491d` primitive review. The accepted inert series
   is integrated as `ea66b3a`/`68393e5`/`6b4a2ec`/`441fa64`; source/ABI/status,
   alias and SM86 compile/reflection checks pass, with no backend/launch permit.
-- [ ] Finish exact packed/strided non-GDN projection/attention lowering through
-  the existing physical owner. Then run current-source `.8B`/`2B` model, cached,
-  fault, shutdown and fitted-context qualification plus final full gate.
+- [x] Source-derived non-GDN projection/attention lowering is integrated under
+  the existing physical owner; the 28-Oct ordinary checkpoint supersedes the
+  older open implementation item. Production routing remains qualification-only.
+- [ ] Run current-source `.8B`/`2B` model, cached, fault, shutdown and fitted-context
+  qualification plus final full gate. `.8B` native/reference inputs were recovered
+  offline on 29 Oct and fresh phase-1 capture passes with the existing 8 GiB
+  reference host profile. Ordinary cuBLAS initialization now refuses a private
+  driver export-table call before model math; preserve allocator ownership.
 - [ ] Run the one serial campaign specified in
   `../serving-and-speculation/BENCHMARK_CAMPAIGN_2026-10-27.md`. Preserve the
   historical `2B` C16 loss and all cap/resource asymmetries; no new benchmark
