@@ -4,7 +4,7 @@
 **Specification edition 1 · Architecture v4.3 · 12 October 2026**  
 **Classification:** authoritative *integrated design* for implementation agents, not working code or a frozen public ABI.  
 **Audience:** Rust engineers, model/kernel/compiler engineers, security reviewers, release maintainers and autonomous coding agents.  
-**Companion:** [Whitepaper](WHITEPAPER.md), [Implementation Playbook](../.agents/plans/AGENT_IMPLEMENTATION_PLAYBOOK.md), [Requirements Traceability](../.agents/plans/REQUIREMENTS_AND_TEST_TRACEABILITY.md), [Reference Bibliography](REFERENCES.md).
+**Companion:** [Whitepaper](WHITEPAPER.md), [Implementation Playbook](../.agents/plans/README.md), [Requirements Traceability](../.agents/plans/REQUIREMENTS_AND_TEST_TRACEABILITY.md), [Reference Bibliography](REFERENCES.md).
 
 > **Build rule:** Treat the mathematical contracts, state/resource ownership and rejection/fallback behavior below as requirements. Rust snippets and command syntax are **pseudocode to clarify interfaces**, not preapproved modules, crate organization or backward-compatible API commitments. Actual tests/physical measurements are necessary before status changes to FUNCTIONAL, STATE_SAFE or PERFORMANCE_QUALIFIED.
 
@@ -39,7 +39,7 @@ The project root is `/home/pvl/spaces/abird/src/zerogravity/`. Its `.agents/docs
 
 **Precedence when documents disagree:**
 
-1. Latest explicit user requirements in [Decision Register](../.agents/plans/DECISION_REGISTER.md) and live verified code/tests (once source exists); a new user decision may revise design.
+1. Latest explicit user requirements in [Decision Register](../.agents/plans/fabric-vnext/DECISIONS_AND_OPEN_QUESTIONS.md) and live verified code/tests (once source exists); a new user decision may revise design.
 2. **This integration specification**, [Modular Reference Architecture](../.agents/docs/MODULAR_AI_SYSTEMS_REFERENCE_ARCHITECTURE.md), [Composition Contracts](../.agents/docs/COMPOSITION_AND_EXTENSION_CONTRACTS.md) and [current Master Plan](../.agents/plans/ZEROGRAVITY_MASTER_PLAN_2026-10-10.md).
 3. Detailed current normative subsystem specs for precise operators, numeric and hardware behavior; newer explicit v4.x corrections supersede earlier appended examples.
 4. [Current implementation roadmap](../.agents/plans/IMPLEMENTATION_ROADMAP.md), [Stage0 gates](../.agents/plans/INTEGRATED_PHASE_0_AND_DELIVERY_GATES.md), [experiments](../.agents/plans/EXPERIMENT_PROGRAM.md), [release criteria](../.agents/plans/RELEASE_ACCEPTANCE_GATES.md). They define work and **prove nothing until run**.
@@ -845,7 +845,7 @@ Expand real MoE/recurrent/indexer/source quant, attention/FFN and heterogeneous 
 
 The **24 existing IDs remain authoritative** in [Implementation Roadmap](../.agents/plans/IMPLEMENTATION_ROADMAP.md), from ZG-P00 workspace through ZG-P23 extension proof. Supporting [Stage0 Gates](../.agents/plans/INTEGRATED_PHASE_0_AND_DELIVERY_GATES.md) and [Experiments](../.agents/plans/EXPERIMENT_PROGRAM.md) contain a large optional matrix. Every phase has an implementation/validation owner and a proof package.
 
-The [Implementation Playbook](../.agents/plans/AGENT_IMPLEMENTATION_PLAYBOOK.md) groups the stable phases into dependencies, concrete file/trait/test ownership and source-of-truth checks to prevent agents from implementing an isolated advanced feature before basic execution is correct.
+The [Implementation Playbook](../.agents/plans/README.md) groups the stable phases into dependencies, concrete file/trait/test ownership and source-of-truth checks to prevent agents from implementing an isolated advanced feature before basic execution is correct.
 
 ### ES-13.4 Definition of Done per capability/phase
 
@@ -898,7 +898,7 @@ Review each proposed optimization against:
 
 ### ES-14.2 Historical traceability and open decisions
 
-The original user decisions, proposals and unresolved product questions remain in [Decision Register](../.agents/plans/DECISION_REGISTER.md). The [critical review](../.agents/prior-art/ARCHITECTURE_V4_CRITICAL_REVIEW_2026-10-12.md) retains rejected-design rationale, and the [research source atlas](../.agents/prior-art/RESEARCH_SOURCE_ATLAS.md) retains prior-art attribution. Superseded v2/v3 bodies remain in Git history. **The currently proposed Rust interfaces are not irreversible public types**, and future measured code may justify revisions. Frozen security, numerical and session guarantees require an explicit decision/test protocol before relaxation.
+The original user decisions, proposals and unresolved product questions remain in [Decision Register](../.agents/plans/fabric-vnext/DECISIONS_AND_OPEN_QUESTIONS.md). The [critical review](../.agents/prior-art/ARCHITECTURE_V4_CRITICAL_REVIEW_2026-10-12.md) retains rejected-design rationale, and the [research source atlas](../.agents/prior-art/RESEARCH_SOURCE_ATLAS.md) retains prior-art attribution. Superseded v2/v3 bodies remain in Git history. **The currently proposed Rust interfaces are not irreversible public types**, and future measured code may justify revisions. Frozen security, numerical and session guarantees require an explicit decision/test protocol before relaxation.
 
 ### ES-14.3 What makes the published documents usable independently?
 
@@ -911,13 +911,13 @@ A new implementing agent should be able to:
 6. report the result accurately, update plans/decision register and hand off;
 7. reject a requested optimization that violates math/StateRoot/resource/auth even if a microbenchmark looks attractive.
 
-The [Agent Implementation Playbook](../.agents/plans/AGENT_IMPLEMENTATION_PLAYBOOK.md), [Traceability Matrix](../.agents/plans/REQUIREMENTS_AND_TEST_TRACEABILITY.md) and [Document Index](README.md) implement these navigation and proof obligations.
+The [Agent Implementation Playbook](../.agents/plans/README.md), [Traceability Matrix](../.agents/plans/REQUIREMENTS_AND_TEST_TRACEABILITY.md) and [Document Index](README.md) implement these navigation and proof obligations.
 
 ---
 
 ## ES-15. References and formal source of truth
 
-The [Whitepaper](WHITEPAPER.md) presents the rationale and research context for public review. Its [References](REFERENCES.md) are attributed prior art. The actual normative design is specified here and in the current active source-neutral contracts under `.agents/docs`, with [Master Plan](../.agents/plans/ZEROGRAVITY_MASTER_PLAN_2026-10-10.md) for cross-domain integration, [Release Gates](../.agents/plans/RELEASE_ACCEPTANCE_GATES.md) for concrete acceptance and [Decision Register](../.agents/plans/DECISION_REGISTER.md) for exact user intent versus open policy.
+The [Whitepaper](WHITEPAPER.md) presents the rationale and research context for public review. Its [References](REFERENCES.md) are attributed prior art. The actual normative design is specified here and in the current active source-neutral contracts under `.agents/docs`, with [Master Plan](../.agents/plans/ZEROGRAVITY_MASTER_PLAN_2026-10-10.md) for cross-domain integration, [Release Gates](../.agents/plans/RELEASE_ACCEPTANCE_GATES.md) for concrete acceptance and [Decision Register](../.agents/plans/fabric-vnext/DECISIONS_AND_OPEN_QUESTIONS.md) for exact user intent versus open policy.
 
 **Document status: complete integrated design, unimplemented.** This is suitable as an implementation handoff and engineering design-review submission. Performance leadership, public API compatibility, physical accelerator breadth, distributed availability and safety certification remain **testable ambitions rather than achieved facts**.
 

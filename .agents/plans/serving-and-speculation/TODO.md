@@ -170,7 +170,7 @@ Design and acceptance: [Qwen3.5 matched serving campaign](BENCHMARK_CAMPAIGN_202
   routing fixes; isolated gate7 PASS1715Rust/0failed/88ignored/266suites plus
   scriptchecks, exact source/rootREADME unchanged. No new timed binary or HIP/
   Vulkan physical support follows. C8 finite-check cohort successor and portable
-  backend source/transport work continue in isolated worktrees.
+  backend source/transport work continue in isolated checkouts.
 - Latest accepted MAIN/ISO210selected changed-source unit: frozenpair7 actual
   301deviceedge+40natural calls/allfivefaults/matchedAPI24offers192tokens per
   provider PASS, fullsource/originalgroup/container/EOFclosure. All40 calls
@@ -305,7 +305,7 @@ Design and acceptance: [Qwen3.5 matched serving campaign](BENCHMARK_CAMPAIGN_202
   qualified compatible variants. The user-facing profile combines pipelines,
   while original roots, physical admission and actual completion authorize work.
 
-Research/priorities: [mechanism comparison](../../research/engine-optimization-comparison-2026-10-21/README.md),
+Research/priorities: [mechanism comparison](../fabric-vnext/PRIOR_ART_AND_REVALIDATION.md),
 [optimization tasks](../cpu-gpu-optimization/TODO.md),
 [recursive composition](../pipeline-composition/TODO.md).
 
@@ -352,7 +352,7 @@ or a change to the active correctness/benchmark/27B order.
   computedcache and separatecarriedresidual/sourceWunchanged/host0. Leaf
   cancel/pressure/unknown and4whole-blockfaults pass. Whole-model/
   all42state/serving parity remain open; timings held and27B not started.
-- [ROOT checklist](../../runs/numerics-and-context-upstream-cuda-root-20261020/TODO.md).
+- ROOT checklist.
   Rebind any future benchmark to its actual accepted source/profile/binary;
   preserve paused SiLU work. No new unit merged or committed.
 
@@ -506,10 +506,10 @@ or a change to the active correctness/benchmark/27B order.
   existing comparator/lifecycle controls. Full gate0:2049Rust executions,
   91explicit ignores; actual model-free Podman stop0/no escalation, all stream/
   owner/CID closure checks pass. Keep the first failed control and interrupted
-  gate separate. [Coverage](../../runs/serving-shutdown-20261026/root/validation.json).
-- Task worktrees reconciled to the accepted source and removed normally; exact
+  gate separate. Coverage.
+- Task checkouts reconciled to the accepted source and removed normally; exact
   candidates/logs and both branch refs retained, no stashes or unique pending
-  source. [Reconciliation](../../runs/serving-shutdown-20261026/reconcile/retirement.json).
+  source. Reconciliation.
 
 ### 50abaf7 — Signal-driven serving shutdown
 
@@ -523,7 +523,7 @@ or a change to the active correctness/benchmark/27B order.
   stop also exit0/CLOSED/ledger0/no escalation; exact CID independently absent.
   Assembled full `scripts/check.sh` passes; CUDA/HIP/Vulkan feature compilation
   and model-free GPU retirement-failure control pass. No model/device execution
-  or performance grant. [Coverage](../../runs/serving-shutdown-20261026/root/validation.json).
+  or performance grant. Coverage.
 
 ### `9999adb1a66d` — source-routed continuous BF16 cohort serving
 

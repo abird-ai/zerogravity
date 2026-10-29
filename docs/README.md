@@ -10,9 +10,9 @@ implementation, tests and remaining work are tracked in
 | Audience | Start here | Then |
 |---|---|---|
 | **Technical reader, collaborator or reviewer** | [Whitepaper](WHITEPAPER.md) | [References](REFERENCES.md) and [Publication/Review Checklist](PUBLICATION_AND_REVIEW_CHECKLIST.md) |
-| **Systems/ML engineer implementing the runtime** | [Engineering Specification](ENGINEERING_SPECIFICATION.md) | [Agent Implementation Playbook](../.agents/plans/AGENT_IMPLEMENTATION_PLAYBOOK.md) and the relevant subsystem contract |
+| **Systems/ML engineer implementing the runtime** | [Engineering Specification](ENGINEERING_SPECIFICATION.md) | [Agent Implementation Playbook](../.agents/plans/README.md) and the relevant subsystem contract |
 | **Coding LLM or autonomous agent** | [Plan TODO index](../.agents/plans/TODO.md) | [AGENTS.md](../AGENTS.md), the selected plan TODO and its linked specifications |
-| **Architecture/product lead** | [Whitepaper](WHITEPAPER.md) + [Master Architecture](../.agents/plans/ZEROGRAVITY_MASTER_PLAN_2026-10-10.md) | [Open decisions](../.agents/plans/DECISION_REGISTER.md), [Critical Review](../.agents/prior-art/ARCHITECTURE_V4_CRITICAL_REVIEW_2026-10-12.md), [Final Architecture/Publication Review](../.agents/prior-art/FINAL_ARCHITECTURE_REVIEW_2026-10-12.md), [Release Gates](../.agents/plans/RELEASE_ACCEPTANCE_GATES.md) |
+| **Architecture/product lead** | [Whitepaper](WHITEPAPER.md) + [Master Architecture](../.agents/plans/ZEROGRAVITY_MASTER_PLAN_2026-10-10.md) | [Open decisions](../.agents/plans/fabric-vnext/DECISIONS_AND_OPEN_QUESTIONS.md), [Critical Review](../.agents/prior-art/ARCHITECTURE_V4_CRITICAL_REVIEW_2026-10-12.md), [Final Architecture/Publication Review](../.agents/prior-art/FINAL_ARCHITECTURE_REVIEW_2026-10-12.md), [Release Gates](../.agents/plans/RELEASE_ACCEPTANCE_GATES.md) |
 | **Performance or correctness reviewer** | [Engineering Spec ES-11…13](ENGINEERING_SPECIFICATION.md) | [Benchmark/Numerics](../.agents/docs/NUMERICS_QUALITY_AND_BENCHMARKS.md), [State/Failure Invariants](../.agents/docs/INVARIANTS_AND_FAILURE_SEMANTICS.md), [Experiments](../.agents/plans/EXPERIMENT_PROGRAM.md) |
 
 ## Documentation categories and authority
@@ -55,7 +55,7 @@ The public Engineering Specification governs cross-component consistency. For mo
   provenance, coordinator integration and carrying unfinished items forward.
 - [Architecture roadmap](../.agents/plans/IMPLEMENTATION_ROADMAP.md),
   [requirements/test design](../.agents/plans/REQUIREMENTS_AND_TEST_TRACEABILITY.md)
-  and [decision register](../.agents/plans/DECISION_REGISTER.md): design references.
+  and [decision register](../.agents/plans/fabric-vnext/DECISIONS_AND_OPEN_QUESTIONS.md): design references.
 - [Release gates](../.agents/plans/RELEASE_ACCEPTANCE_GATES.md) and
   [experiments](../.agents/plans/EXPERIMENT_PROGRAM.md): planned checks; completion
   and actual results belong in the selected plan TODO.

@@ -33,7 +33,7 @@ Two independent source audits are reconciled there; implementation remains open.
 
 ### Mechanism adoption — 21 Oct, unimplemented follow-up
 
-Source comparison: [families09–13](../../research/engine-optimization-comparison-2026-10-21/README.md#cross-engine-mechanism-comparison).
+Source comparison: [families09–13](../fabric-vnext/PRIOR_ART_AND_REVALIDATION.md).
 The following extends existing owners; source-byte qualification is not inference.
 
 - [ ] Bind physical backing identity across aliases, prepared packs, graph views,

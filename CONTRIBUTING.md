@@ -14,8 +14,8 @@ the [README](README.md#ai-disclosure).
   `.agents/plans/TODO.md` so people and AI agents reason from the same decisions.
 - **Contained implementation.** Send a focused PR with source references, tests,
   and measured results where applicable, working from the plan's `TODO.md`.
-  Parallel agents keep their own checklist under
-  `.agents/runs/<plan>-<agent-id>/TODO.md` until a coordinator integrates it.
+  Keep transient agent scratch/logs outside tracked repository state; durable
+  decisions and unfinished work belong in the owning plan TODO.
 - **Research and verification.** Contribute reproducible analysis, failing
   cases, hardware measurements, counterexamples, or simpler architectural
   options. Keep reproduced evidence separate from hypotheses.
@@ -24,7 +24,7 @@ the [README](README.md#ai-disclosure).
 
 ## How work is planned
 
-Read the [TODO spec](.agents/plans/TODO-SPEC.md) before opening a plan. A plan
+Read the [TODO spec](.agents/plans/README.md) before opening a plan. A plan
 lives in `.agents/plans/<plan>/`:
 
 - **`README.md`** — optional; the plan details (what it is and why it exists),

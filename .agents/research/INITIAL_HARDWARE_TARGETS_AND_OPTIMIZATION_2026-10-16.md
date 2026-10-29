@@ -36,7 +36,7 @@ separate gate. Vulkan CPU llvmpipe is excluded from the five-GPU count.
 
 The qualified native a1 HIP profile uses its existing ROCm/runtime closure with
 an explicit glibc2.44/GCC16.2 loader. The default2.42 loader cannot replace that
-profile. Exact approved model identities are in [the accepted baseline](../plans/accepted-baseline/TODO.md).
+profile. Exact approved model identities are in [the accepted baseline](../plans/CURRENT_STATUS_AND_TRACKING.md).
 SDK/compiler versions, usable memory, swap/load and power telemetry must be
 measured for a new test; no global cache purge, downloads or device recovery is
 implied. Old H24 discovery JSON/scripts/stderr are retired and are not required
@@ -75,12 +75,12 @@ unrequested persistent machine configuration.
 ## Ordered implementation and acceptance
 
 After native qualification, follow the approved
-[workspace/layout redesign](../plans/accepted-baseline/TODO.md),
+[workspace/layout redesign](../plans/CURRENT_STATUS_AND_TRACKING.md),
 then the immediately following [left-right redesign](../plans/cpu-gpu-optimization/TODO.md).
 Implement measured optimization variants within that user-approved ordering.
 
 1. **Complete native enablement first.** Follow
-   [P07-H24](../plans/accepted-baseline/TODO.md); qualify compilation,
+   [P07-H24](../plans/CURRENT_STATUS_AND_TRACKING.md); qualify compilation,
    physical identity and exact operators before complete CUDA/HIP models.
    Reuse one Rust model schedule and existing physical arbiters/leases/events.
    Never infer `gfx1150`/`gfx1151` support from a different RDNA target or count

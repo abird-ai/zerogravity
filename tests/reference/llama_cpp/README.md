@@ -52,7 +52,7 @@ Repeat with qwen35-2b and its original SHA
 `91c102fc9a86de80e427057ee938e1e34fcaf3bba956b7296e252406e05f36f6`.
 These Nix paths describe the qualified local closure; other machines need their
 own matching pinned headers/library and loader, not an unpinned replacement.
-The [accepted baseline](../../../.agents/plans/accepted-baseline/TODO.md)
+The [accepted baseline](../../../.agents/plans/CURRENT_STATUS_AND_TRACKING.md)
 records GPU qualification and its limits.
 
 ## P07-H10 native QK dots and independently captured scale
@@ -85,7 +85,7 @@ ZG_TRACE_ALL_LAYERS=1 RAYON_NUM_THREADS=8 target/release/examples/trace_tokens \
 
 Repeat with qwen35-2b and its SHA listed above. These helpers remain external
 qualification clients, never dependencies of the Rust mathematical engine.
-See the [accepted baseline](../../../.agents/plans/accepted-baseline/TODO.md)
+See the [accepted baseline](../../../.agents/plans/CURRENT_STATUS_AND_TRACKING.md)
 for physical qualification and the [numerical reference](../../../.agents/docs/NUMERICS_QUALITY_AND_BENCHMARKS.md)
 for source arithmetic.
 
@@ -119,7 +119,7 @@ ZG_TRACE_ALL_LAYERS=1 RAYON_NUM_THREADS=8 target/release/examples/trace_tokens \
 ```
 
 Repeat with qwen35-2b and its original SHA listed above. The
-[accepted baseline](../../../.agents/plans/accepted-baseline/TODO.md)
+[accepted baseline](../../../.agents/plans/CURRENT_STATUS_AND_TRACKING.md)
 records the separate physical and source-profile gates.
 
 ## Separate build

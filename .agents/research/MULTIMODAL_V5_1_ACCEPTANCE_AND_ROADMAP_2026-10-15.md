@@ -8,7 +8,7 @@
 
 Technical implementation and acceptance reference. Live work and completed results
 belong to [the multimodal TODO](../plans/multimodal/TODO.md), under
-[TODO-SPEC](../plans/TODO-SPEC.md). The requirements below do not grant permission
+[plan rules](../plans/README.md). The requirements below do not grant permission
 to acquire checkpoints, invoke a provider or change devices. Real media/decision
 support requires its original source, task/state and eligible-device gates.
 
@@ -254,7 +254,7 @@ Test both speed and extension cost:
 
 Assign narrow source/driver/codec/provider work to disjoint owners; the coordinator
 integrates reviewed changes and test results. Use the current multimodal TODO and
-TODO-SPEC, not copied agent briefs or a static aggregate. Named research lanes are
+plan rules, not copied agent briefs or a static aggregate. Named research lanes are
 not evidence that independent reviewers ran, and no future test is passed by
 writing its specification.
 

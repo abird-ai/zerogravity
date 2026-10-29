@@ -192,7 +192,7 @@ codec research may proceed independently when it does not interfere with native
 backend bring-up. Persistent scheduling follows a measured need and complete
 ownership/fairness gates. Track each bounded implementation slice, source/model
 identities, actual hardware/numerical results, failures and unfinished gates in
-the owning plan/run TODOs under [TODO-SPEC.md](../plans/TODO-SPEC.md). Commit
+the owning plan/run TODOs under [README.md](../plans/README.md). Commit
 verified implementation, tests and plan updates together; no generated handoff,
 archive or documentation SHA closeout is required. Existing phase IDs remain.
 

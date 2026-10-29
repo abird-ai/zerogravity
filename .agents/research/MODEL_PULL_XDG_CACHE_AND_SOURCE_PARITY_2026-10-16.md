@@ -1,6 +1,6 @@
 # Model pull, XDG artifact cache and pinned acquisition parity
 
-**16 October 2026 — DESIGN ONLY.** No pull command, transport dependency, model download or acceptance result is implemented by this document. User-directed order: finish the [workspace redesign](../plans/accepted-baseline/TODO.md), complete the [contention-first concurrency review](../plans/cpu-gpu-optimization/TODO.md), then implement this pull milestone, before returning to GPU optimization. Existing local-file CPU/GPU inference and its qualification scope remain authoritative.
+**16 October 2026 — DESIGN ONLY.** No pull command, transport dependency, model download or acceptance result is implemented by this document. User-directed order: finish the [workspace redesign](../plans/CURRENT_STATUS_AND_TRACKING.md), complete the [contention-first concurrency review](../plans/cpu-gpu-optimization/TODO.md), then implement this pull milestone, before returning to GPU optimization. Existing local-file CPU/GPU inference and its qualification scope remain authoritative.
 
 This refines the [routing/residency contract](../docs/MODEL_ROUTING_RESIDENCY_AND_MULTI_MODEL_SERVING_CONTRACT.md) and acquisition scope of the [serving parity plan](VLLM_PARITY_AND_COMBINATORY_SPECIALIZATION_ACCEPTANCE_2026-10-15.md). It introduces no second inference engine, scheduler, catalog publisher or resource allocator. The user explicitly requested GitHub and Hugging Face pull plus source-pinned acquisition capability parity; implementing this plan may acquire only artifacts the subsequent pull invocation requests. This research fetched public source/docs and repository metadata only, never model weights or SDKs.
 
@@ -11,7 +11,7 @@ This refines the [routing/residency contract](../docs/MODEL_ROUTING_RESIDENCY_AN
 | vLLM | `a8be1500bad93d3c459e435bf71194aa8062e49d` | 2026-10-16 00:21:24 |
 | llama.cpp | `2851b3bcbf8d993a2243ae751c0a7dfa8e944a40` | 2026-10-15 23:46:42 |
 
-The research pins below remain the reference baseline, independent of the numerical oracle revision. Raw research captures were retired under the [accepted checkpoint](../plans/accepted-baseline/TODO.md); primary links remain below. The [bounded cache/transport specification](../plans/MODEL_ACQUISITION_IMPLEMENTATION_SPEC.md) and its 57-row provisional acquisition inventory define future work. Their gates remain NOT RUN; revalidate selected upstream surfaces before claiming parity. Optional delegated packages remain separately unqualified.
+The research pins below remain the reference baseline, independent of the numerical oracle revision. Raw research captures were retired under the [accepted checkpoint](../plans/CURRENT_STATUS_AND_TRACKING.md); primary links remain below. The [bounded cache/transport specification](../plans/MODEL_ACQUISITION_IMPLEMENTATION_SPEC.md) and its 57-row provisional acquisition inventory define future work. Their gates remain NOT RUN; revalidate selected upstream surfaces before claiming parity. Optional delegated packages remain separately unqualified.
 
 | Key | Pinned source / primary documentation |
 |---|---|

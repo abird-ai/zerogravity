@@ -1,6 +1,6 @@
 # Plan queue
 
-Canonical current takeover: [FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-28.md](../docs/FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-28.md). Copyable next-agent prompt: [NEXT_AGENT_PROMPT_2026-10-28.md](../docs/NEXT_AGENT_PROMPT_2026-10-28.md).
+Current source, tests, and this queue are authoritative; Git retains retired history.
 
 ## Active
 

@@ -5,7 +5,7 @@ own source and documentation](../../LICENSE) and approved root and GPU package
 metadata `license = "MIT"`, with founder/contributor copyright. This **does not**
 automatically relicense externally sourced files, model weights, tokenizers,
 codecs, datasets, precompiled GPU kernels, or dependencies. [Contribution and AI
-development policy](../plans/OPEN_CONTRIBUTION_AI_DEVELOPMENT_AND_MIT_POLICY_2026-10-15.md)
+development policy](../../CONTRIBUTING.md)
 records human-led design and AI-assisted implementation with a docs-first
 contribution workflow.
 

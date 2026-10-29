@@ -219,7 +219,7 @@ Safe after S0 schema:
 - **Engine lane:** F0 Runtime/ModelInstance/TaskScheduler and F1 SDK shape.
 - **Serving/CLI lane:** F2 protocol extraction, F3 binary thinning, only after engine/SDK API interfaces freeze enough.
 
-Coordinate all shared files through one integration owner, isolated worktrees with original source read-only per AGENTS. No concurrent model+GPU edits on same source/release root. Always preserve other agents' uncommitted work and signed old receipts. Re-evaluate source changes before applying historical line-number path descriptions.
+Coordinate all shared files through one integration owner, isolated checkouts with original source read-only per AGENTS. No concurrent model+GPU edits on same source/release root. Always preserve other agents' uncommitted work and signed old receipts. Re-evaluate source changes before applying historical line-number path descriptions.
 
 ## 6. Future milestones (not part of current structural closure)
 

@@ -111,7 +111,7 @@ next decision / guarded fallback / reviewer source license
 
 An unknown metric remains null/omitted rather than a misleading zero. Tests, raw data and hardware/OS error reports link the exact implementation state. No user private prompts or copyrighted weights in public artifacts.
 
-**Implementation closure:** follow [TODO-SPEC.md](TODO-SPEC.md). Record actual gate commands/results, source/model-content identities, hardware scope, failures and remaining work in the owning plan/run TODOs. Commit verified implementation, tests and relevant design/policy updates together; completed work is grouped under its actual landing commit and unfinished work remains in Uncommitted. Plans alone do not pass a gate. No generated handoff, archive or documentation SHA manifest is required.
+**Implementation closure:** follow [README.md](README.md). Record actual gate commands/results, source/model-content identities, hardware scope, failures and remaining work in the owning plan/run TODOs. Commit verified implementation, tests and relevant design/policy updates together; completed work is grouped under its actual landing commit and unfinished work remains in Uncommitted. Plans alone do not pass a gate. No generated handoff, archive or documentation SHA manifest is required.
 
 ## v4 mandatory architecture acceptance refinements — 2026-10-12
 

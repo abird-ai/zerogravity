@@ -74,7 +74,7 @@ build or general model/backend grant. Historical failures keep their source scop
 #### Review and authorization
 
 - [x] User explicitly resumes implementation of the designed run CLI and asks
-  for worktree/subagent execution in parallel, followed by merge into main24Oct.
+  for checkout/subagent execution in parallel, followed by merge into main24Oct.
 
 - [x] Coordinator schedules a Sol HIGH isolated lane and adds this active plan;
   ongoing2B/HIP/model work proceeds independently.

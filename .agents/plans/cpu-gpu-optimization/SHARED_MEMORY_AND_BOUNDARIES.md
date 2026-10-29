@@ -1,8 +1,5 @@
 # Shared storage and CPU–GPU boundaries
 
-> **Note (2026-10-29):** links in this file pointing into `zerogravity-worktrees/…` are dead —
-> those worktrees were retired. See `.agents/docs/retired-2026-10-29/README.md`.
-
 Author: Codex. Owner: @pvl. User direction,23Oct.
 Status: reconciled design plus historical causal investigation. Current
 implementation/qualification: [TODO.md](TODO.md) and [measurements](SHORT_HF_RESULTS.md).
@@ -218,8 +215,8 @@ from CPU samples/device envelopes. No per-helper acceptance phases.
 
 ## Independent investigations
 
-- [Allocation/reuse audit](../../runs/cpu-gpu-optimization-allocation-reuse-gemma-math-20261023/REPORT.md).
-- [GPU–CPU boundary audit](../../../../zerogravity-worktrees/gemma4-portable-gpu-whole35-20261023/.agents/runs/model-execution-gemma4-portable-gpu-whole35-20261023/GPU_CPU_BOUNDARY_REVIEW.md).
+- Allocation/reuse audit.
+- GPU–CPU boundary audit.
 - [Current measured ShortHF results](SHORT_HF_RESULTS.md).
-- [2B original paired C1 measurements](../../../../zerogravity-worktrees/root-lowest-f32-20261020/.agents/runs/serving-and-speculation-short-hf-08-bench-live-state-20261022/prepared2b-pair9-c1-comparison.json).
+- 2B original paired C1 measurements.
 - [Backend parity and qualification boundaries](BACKEND_PARITY.md).

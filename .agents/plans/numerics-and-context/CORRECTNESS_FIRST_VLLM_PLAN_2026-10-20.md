@@ -231,7 +231,7 @@ accumulators remain a separate contract.
 
 Validate the original strided AV and F32 alpha captures, together covering
 132,096 output words. Then advance through downstream routes, including
-Q8/dequant/BLAS. The prepared `root-default-bulk-20261020` worktree is
+Q8/dequant/BLAS. The prepared `root-default-bulk-20261020` checkout is
 uncompiled and unqualified; its existence is not a fix.
 
 ## 5. Porting strategy and implementation boundaries
@@ -591,7 +591,7 @@ oracle. Continue diagnosis at that operation; do not advance a claim.
 When the owner resumes implementation, the first concrete work is:
 
 1. Revalidate paused overlays and accepted artifacts; use the existing bulk
-   worktree for the bounded CPU reproduction.
+   checkout for the bounded CPU reproduction.
 2. Establish actual .8B vLLM projection→convolution inputs and select the
    first complete GDN layer's pinned phase/backend.
 3. Port the smallest differing operation with genuine before/after evidence,

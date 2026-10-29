@@ -13,7 +13,7 @@ None. No code/refactor/source/test commit authorized during plan writing. When i
 
 ## Uncommitted — future S0 COMPLETE architectural skeleton FIRST
 
-- [ ] User explicitly authorizes actual source implementation and integration owner; re-read live HEAD, source status, active owners/worktrees, AGENTS.md and all referenced docs; preserve unrelated work.
+- [ ] User explicitly authorizes actual source implementation and integration owner; re-read live HEAD, source status, active owners/checkouts, AGENTS.md and all referenced docs; preserve unrelated work.
 - [ ] Create zerogravity-engine and zerogravity-serving as compiled independent Rust library crates, correct Cargo features and resource ownership (engine model-neutral, serving no facade/CLI).
 - [ ] Make core semantic/effects/encoding/numerics/model/task/typed media/provider/placement/root/physical contract modules visible in Rust with actual types and explicit capability/refusal.
 - [ ] Keep source exact existing ForwardPlan and original process-shared low-level ResourceArbiter, SessionAuthority, GPU event/lease as one real implementation each; avoid parallel placeholder owners.

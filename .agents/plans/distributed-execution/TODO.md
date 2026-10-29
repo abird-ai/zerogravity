@@ -15,7 +15,7 @@ state; no distributed runtime or async expert-cache qualification is claimed.
 
 ### Deferred mechanism reconciliation — 21 Oct
 
-Research: [families18–20](../../research/engine-optimization-comparison-2026-10-21/README.md#cross-engine-mechanism-comparison).
+Research: [families18–20](../fabric-vnext/PRIOR_ART_AND_REVALIDATION.md).
 No new device/peer/transport execution authorized by this research.
 
 - [ ] Evaluate layer, tensor/head, context and expert partitions as independent

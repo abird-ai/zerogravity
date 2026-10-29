@@ -1,11 +1,11 @@
 # zerogravity — master architecture v4.3: composable AI execution, model routing and simple user experience
 
 
-**Design baseline:** reviewed and extended 2026-10-12 (v4.3 local-first UX, native multi-model router, residency, profiles and API compatibility). This is an architectural specification, not an implementation-status ledger. [The plan index](TODO.md) and [accepted baseline](accepted-baseline/TODO.md) govern current completion; [numerics](numerics-and-context/TODO.md), [model execution](model-execution/TODO.md) and [CPU/GPU optimization](cpu-gpu-optimization/TODO.md) retain their unfinished gates. The October 13 progress prefixes have been retired rather than presented as live status.
+**Design baseline:** reviewed and extended 2026-10-12 (v4.3 local-first UX, native multi-model router, residency, profiles and API compatibility). This is an architectural specification, not an implementation-status ledger. [The plan index](TODO.md) and [accepted baseline](CURRENT_STATUS_AND_TRACKING.md) govern current completion; [numerics](numerics-and-context/TODO.md), [model execution](model-execution/TODO.md) and [CPU/GPU optimization](cpu-gpu-optimization/TODO.md) retain their unfinished gates. The October 13 progress prefixes have been retired rather than presented as live status.
 
-**Authority:** v4.3 supersedes the older v2/v3 sketches where they differ. The [critical review](../prior-art/ARCHITECTURE_V4_CRITICAL_REVIEW_2026-10-12.md) retains the rejected-design rationale; earlier document versions remain in Git. Work tracking follows [AGENTS.md](../../AGENTS.md) and [TODO-SPEC.md](TODO-SPEC.md), not archived handoff or manifest procedures.
+**Authority:** v4.3 supersedes the older v2/v3 sketches where they differ. The [critical review](../prior-art/ARCHITECTURE_V4_CRITICAL_REVIEW_2026-10-12.md) retains the rejected-design rationale; earlier document versions remain in Git. Work tracking follows [AGENTS.md](../../AGENTS.md) and [README.md](README.md), not archived handoff or manifest procedures.
 
-**Latest integrated, publication-facing authority:** `../../docs/ENGINEERING_SPECIFICATION.md` (ES-00…ES-15 model/task/compiler/state/resource/distribution/router/API implementation contracts), `../../docs/WHITEPAPER.md` (technical argument and limitations), `../../docs/README.md` (documentation categories and authority), and [the current workflow](../../AGENTS.md) with [TODO-SPEC.md](TODO-SPEC.md) (implementation and verification tracking). These do **not** invalidate the exact mathematical/operator/protocol detail below; they resolve cross-document ambiguity and establish the shortest implementation reading path.
+**Latest integrated, publication-facing authority:** `../../docs/ENGINEERING_SPECIFICATION.md` (ES-00…ES-15 model/task/compiler/state/resource/distribution/router/API implementation contracts), `../../docs/WHITEPAPER.md` (technical argument and limitations), `../../docs/README.md` (documentation categories and authority), and [the current workflow](../../AGENTS.md) with [README.md](README.md) (implementation and verification tracking). These do **not** invalidate the exact mathematical/operator/protocol detail below; they resolve cross-document ambiguity and establish the shortest implementation reading path.
 
 **Read-first detailed subsystem references:**
 1. `../docs/MODULAR_AI_SYSTEMS_REFERENCE_ARCHITECTURE.md` — short governing ontology and invariants.
@@ -18,7 +18,7 @@
 8. `../docs/MINIMAL_EXECUTION_SPINE_AND_PROTOCOL_V4.md` — precise state publication, async workers, hierarchical memory ownership and delivery semantics.
 9. `../docs/TASK_PROGRAM_AND_COMPILER_REFINEMENT_V4.md` — two owning representations, dynamic shape/region guards, TaskDriver, optional gradients, performance.
 10. `../prior-art/ARCHITECTURE_V4_CRITICAL_REVIEW_2026-10-12.md` — review findings R4-01…R4-24 and independently researched external prior art.
-11. `DECISION_REGISTER.md`, `INTEGRATED_PHASE_0_AND_DELIVERY_GATES.md`, `IMPLEMENTATION_ROADMAP.md`, `EXPERIMENT_PROGRAM.md`, `RELEASE_ACCEPTANCE_GATES.md` — user requirements and practical work/evidence.
+11. `fabric-vnext/DECISIONS_AND_OPEN_QUESTIONS.md`, `INTEGRATED_PHASE_0_AND_DELIVERY_GATES.md`, `IMPLEMENTATION_ROADMAP.md`, `EXPERIMENT_PROGRAM.md`, `RELEASE_ACCEPTANCE_GATES.md` — user requirements and practical work/evidence.
 12. The other subsystem specifications, with v4 supersession note, and separate `../prior-art/PRIOR_ART_LICENSE_AND_PROVENANCE_POLICY.md`.
 
 ## 1. Mission, scope and central design argument
@@ -137,7 +137,7 @@ Agent tools/RAG/external workflows are above the permissioned TaskRequest layer,
 
 ## 8. Minimal Rust modules and release/process strategy
 
-**Keep cohesive ownership boundaries**, splitting packages only when backend toolchain, unsafe boundary, compile profile or feature isolation justifies it. The original one-library/one-binary bootstrap advice was not a permanent crate limit; the accepted workspace layout is recorded in the [baseline](accepted-baseline/TODO.md). Organize internal modules for artifacts+models, semantics+state, task drivers, compiler+kernel registry, device+resource, runtime/coordinator, optional service/validation. Avoid mandatory dynamic plugins, giant abstract factories, generalized agent workflows or per-model servers. Compile-time feature flags isolate unavailable CUDA/ROCm/XRT drivers while CPU tests run on ordinary hosts.
+**Keep cohesive ownership boundaries**, splitting packages only when backend toolchain, unsafe boundary, compile profile or feature isolation justifies it. The original one-library/one-binary bootstrap advice was not a permanent crate limit; the accepted workspace layout is recorded in the [baseline](CURRENT_STATUS_AND_TRACKING.md). Organize internal modules for artifacts+models, semantics+state, task drivers, compiler+kernel registry, device+resource, runtime/coordinator, optional service/validation. Avoid mandatory dynamic plugins, giant abstract factories, generalized agent workflows or per-model servers. Compile-time feature flags isolate unavailable CUDA/ROCm/XRT drivers while CPU tests run on ordinary hosts.
 
 **Future developer test:** independently add one new stateful op/model, another kernel device, an unusual quant, a non-token TaskDriver and an alternate IO tier. Record unrelated files/modules touched, compile time and hot-path overhead. If the change duplicates scheduler/model loader/allocator or requires broad type switches throughout unrelated code, **the architecture fails maintainability**.
 
@@ -163,7 +163,7 @@ Optimization can be promoted only inside measured capability cell and safety/qua
 
 **Prior art:** retained source research records external URLs/revisions, licenses, benchmark author claims and limitations; superseded v2/v3 document bodies are recoverable from Git, not mandatory live archives; core architecture and type/module names are **original project-neutral contracts**. Verified MIT source may be considered only after file-level notice/weight/device code licensing and Rust ownership review. Non-MIT projects remain attributable research; no copied source without explicit approval. The external research corpus remains read-only.
 
-**Developer operating rule:** start with [the plan index](TODO.md), its relevant TODO and linked contracts. Use the decision register and this master for design context, inspect live source/tests, and record implementation and verification under actual commits using [the TODO rules](TODO-SPEC.md). No generated handoff, raw-evidence archive or SHA inventory is a delivery requirement.
+**Developer operating rule:** start with [the plan index](TODO.md), its relevant TODO and linked contracts. Use the decision register and this master for design context, inspect live source/tests, and record implementation and verification under actual commits using [the TODO rules](README.md). No generated handoff, raw-evidence archive or SHA inventory is a delivery requirement.
 
 ## 11. Success criterion and practical limitations
 
@@ -387,7 +387,7 @@ Router selection uses warm replica cost, physical model residency, cache localit
 - `../../docs/ENGINEERING_SPECIFICATION.md`: integrated normative implementation acceptance **ES-00…ES-15**, spanning precise source semantics, region execution, all-domain prepared state, hierarchical resources, distributed placement, multi-model router, CLI/API, source/security and implementation tests.
 - `../../docs/REFERENCES.md`: numbered academic and primary source citations, no presumed code-copy permission.
 - `../../docs/README.md`: documentation authority/navigation map, separating active contracts from non-normative historical/source reports.
-- [AGENTS.md](../../AGENTS.md) and [TODO-SPEC.md](TODO-SPEC.md): bounded implementation, appropriate source/test/hardware/security gates and commit-grouped TODOs. Historical playbook templates impose no extra tracking duties.
+- [AGENTS.md](../../AGENTS.md) and [README.md](README.md): bounded implementation, appropriate source/test/hardware/security gates and commit-grouped TODOs. Historical playbook templates impose no extra tracking duties.
 - `REQUIREMENTS_AND_TEST_TRACEABILITY.md`: explicit U-001…U-022 user intents mapped to ES/INV/phase/test obligations.
 - `../../docs/PUBLICATION_AND_REVIEW_CHECKLIST.md`: claims, author/license/public release signoff and future physical benchmark/reproducibility.
 - `FINAL_ARCHITECTURE_REVIEW_2026-10-12.md`: final editorial/technical consistency and residual risk ledger.

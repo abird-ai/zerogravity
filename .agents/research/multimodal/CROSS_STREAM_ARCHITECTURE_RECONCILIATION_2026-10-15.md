@@ -152,6 +152,6 @@ Authoritative for agents:
 - Independent ASR, TTS, image, video, decision/ternary, serving research dossiers (this folder).
 - .agents/research/MULTIMODAL_V5_1_DECISIONS_AND_PROVENANCE_2026-10-15.md
 - .agents/research/MULTIMODAL_V5_1_ACCEPTANCE_AND_ROADMAP_2026-10-15.md
-- Current [multimodal checklist](../../plans/multimodal/TODO.md) and [TODO rules](../../plans/TODO-SPEC.md); earlier aggregate bodies remain in Git history.
+- Current [multimodal checklist](../../plans/multimodal/TODO.md) and [TODO rules](../../plans/README.md); earlier aggregate bodies remain in Git history.
 
 All choices remain subject to explicit user approval where they are recommendations rather than user directives.

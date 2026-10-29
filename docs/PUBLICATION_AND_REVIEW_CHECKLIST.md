@@ -6,7 +6,7 @@
 
 This checklist prevents a polished design document from being mistaken for a proven implementation. Exact completed/pending status should only be marked after the checks are run, not because an earlier agent said a manuscript looked complete.
 
-This dated manuscript checklist is not current runtime status. Use the [plan index](../.agents/plans/TODO.md) and [TODO spec](../.agents/plans/TODO-SPEC.md) for current work, passing gates and committed completion.
+This dated manuscript checklist is not current runtime status. Use the [plan index](../.agents/plans/TODO.md) and [TODO spec](../.agents/plans/README.md) for current work, passing gates and committed completion.
 
 ## 1. Technical claims and source honesty
 
@@ -45,7 +45,7 @@ This dated manuscript checklist is not current runtime status. Use the [plan ind
 - [x] Diagram includes a textual equivalent explaining node/edge semantics; no image or copyrighted figure imported.
 - [x] Tables have explicit headings and enough surrounding prose; Markdown renders in ordinary repository viewers.
 - [ ] **Author credit/byline, institutional affiliation and contact** need the project's owner to select a public identity. No personal or organization attribution was invented.
-- [ ] Confirm the publication artifact's licensing and third-party permissions before public release, following the owner's [MIT project policy](../.agents/plans/OPEN_CONTRIBUTION_AI_DEVELOPMENT_AND_MIT_POLICY_2026-10-15.md) and [LICENSE](../LICENSE). Separate third-party material and formal publication clearance still require review.
+- [ ] Confirm the publication artifact's licensing and third-party permissions before public release, following the owner's [MIT project policy](../CONTRIBUTING.md) and [LICENSE](../LICENSE). Separate third-party material and formal publication clearance still require review.
 - [ ] **Trademark, third-party material and publication legal review** remain owner responsibility; prior-source code/weights/license rights must be reassessed if implementation incorporates them.
 - [ ] **Persistent publication date/version/DOI/canonical URL** to be assigned when publicly submitted; internal paths are local developer references, not external URLs.
 - [ ] **External link rot audit at actual publication time** and citation-style proofreading should be repeated; references were researched as of 12 October 2026.
@@ -55,13 +55,13 @@ This dated manuscript checklist is not current runtime status. Use the [plan ind
 ## 4. Implementation planning and verification
 
 - [x] Public [Engineering Specification](ENGINEERING_SPECIFICATION.md) includes ES-00…ES-15, identity, interfaces, state/lease/worker protocols, fallbacks, network and API, negative tests, six end-to-end traces and release conditions.
-- [x] [Implementation Playbook](../.agents/plans/AGENT_IMPLEMENTATION_PLAYBOOK.md) lists stable P00–P23 with bounded deliverables/independent proof and stop/blocked instructions.
+- [x] [Implementation Playbook](../.agents/plans/README.md) lists stable P00–P23 with bounded deliverables/independent proof and stop/blocked instructions.
 - [x] [Requirements Traceability](../.agents/plans/REQUIREMENTS_AND_TEST_TRACEABILITY.md) maps explicit user decisions U-001…U-022 to technical source/phase/test requirements and integrated invariants.
 - [x] [plan TODO index](../.agents/plans/TODO.md), root README and [Document Index](README.md) provide ordered navigation and authoritative/research separation.
 - [x] No implementation phase marked complete merely because an acceptance test was described.
 - [x] Remaining publication, release model/task/backend, public API and network-trust choices stay explicit. Follow the selected project license and qualified vendor-runtime scope rather than reopening settled decisions.
 - [ ] Before implementation, inspect the live source revision, working changes and agent ownership; follow [AGENTS.md](../AGENTS.md).
-- [ ] Record actual test commands/results, relevant model-content identities, fixtures/hardware, failures and unfinished work in the plan/run TODOs. Group completed work under its landing commit after its gates pass, following [TODO-SPEC.md](../.agents/plans/TODO-SPEC.md); no generated handoff or separate proof inventory is required.
+- [ ] Record actual test commands/results, relevant model-content identities, fixtures/hardware, failures and unfinished work in the plan/run TODOs. Group completed work under its landing commit after its gates pass, following [README.md](../.agents/plans/README.md); no generated handoff or separate proof inventory is required.
 
 ## 5. Automated integrity checks
 

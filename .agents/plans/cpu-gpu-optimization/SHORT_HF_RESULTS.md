@@ -1,8 +1,5 @@
 # Short HF performance — current source21 measurement
 
-> **Note (2026-10-29):** links in this file pointing into `zerogravity-worktrees/…` are dead —
-> those worktrees were retired. See `.agents/docs/retired-2026-10-29/README.md`.
-
 24Oct source21 passes CPU/strict/build, physical23, full2B numerical composition,
 both .8B/2B API/HTTP and the following fresh matched measurements:
 
@@ -32,10 +29,10 @@ fresh genuine stock5cap HTTP5/36 and all4owners close. Cold396 equals whole,
 compiler0; provider4608MiB/physical5120MiB/HOST4096MiB unchanged.
 Failed20/compiler intervals remain preserved.
 
-[Current C1/C4 raw](../../runs/cpu-gpu-optimization-cohort-b4-root-20261023/current-quiet08-21-1/run/quick.json),
-[current C8 raw](../../runs/cpu-gpu-optimization-cohort-b4-root-20261023/current-c8-08-21-1/run/quick.json),
-[current2B C1/C4 raw](../../runs/cpu-gpu-optimization-cohort-b4-root-20261023/current-quiet2b-21-1/run/quick.json),
-[current2B C8 raw](../../runs/cpu-gpu-optimization-cohort-b4-root-20261023/current-c8-2b-21-1/run/quick.json),
+Current C1/C4 raw,
+current C8 raw,
+current2B C1/C4 raw,
+current2B C8 raw,
 [current queue](TODO.md).
 
 Latest user bands: C1/C4/C8, then C16/C32/C64 for both models; no C2 requested.
@@ -63,10 +60,10 @@ success does not convert it to a speed win. The .8B repeat added332 GPU/listener
 samples across both arms, changing observation scope; neither .8B attempt is an
 accepted quiet/best C16 result. No further unchanged rerun is scheduled.
 
-[Original C16 timeline and rates](../../runs/resume-all-c16-executor-pi-20261024/C16_TIMELINE_AND_RAW_SUMMARY.json),
-[final observation-scope review](../../runs/resume-all-parallel-source-supervision-sol-20261024/C16_FINAL_SCOPE_REVIEW.json).
+Original C16 timeline and rates,
+final observation-scope review.
 After five-tree integration, implement shared prepared B4 validation/state-copy
-submissions per [Astra design](../../runs/cpu-gpu-optimization-astra-c16-shared-gap-20261024/DESIGN.md),
+submissions per Astra design,
 then run a fresh matched comparison. Fewer software enqueues alone do not prove
 wall improvement. C32/C64 remain unexecuted.
 
@@ -91,7 +88,7 @@ this is a historical record, not a repeated-run ranking or confidence claim.
 The .8B C1 retained maximum is about67.8tok/s; no verified70tok/s C1 appears
 in this bounded set. Historical C4/C8 exceeded100tok/s. Source11 C1 differs
 from current21 by0.083%; one pass cannot establish a performance change.
-[Paired audit](../../runs/cpu-gpu-optimization-best-results-audit-pi-20261024/BEST_RESULTS.json).
+Paired audit.
 
 ## Historical source11 measurement
 
@@ -133,8 +130,8 @@ owned-file rustfmt applied. Fullgate18 PASS on current12:1756Rust/0failed/
 420selectedISO/rootREADME unchanged after the gate. GPU/model/serving grants
 remain the separate frozen-binary scopes above.
 
-[C1/C4 actual comparison](../../runs/cpu-gpu-optimization-cohort-b4-root-20261023/actual-readiness11-c1-c4-1/run/quick.json)
-and [C8 actual comparison](../../runs/cpu-gpu-optimization-cohort-b4-root-20261023/actual-readiness11-c8-1/run/quick.json).
+C1/C4 actual comparison
+and C8 actual comparison.
 
 Historical continuous-path regression (superseded above):
 
@@ -150,7 +147,7 @@ Original benchmark39 policy, eight offers/eight natural tokens, local RTX3060
 Laptop6GiB CUDA, same original B1-only warmup. All32offers256tokens exact; four
 original source/process/container/group/one-reap/fullEOF closures healthy.
 One pass per provider/band; no repeated-run confidence claim. ROOT74852 CLOSED0.
-[Actual measurement](../../runs/cpu-gpu-optimization-cohort-b4-root-20261023/actual-c1-c4-8-cli6-reused-1/quick.json).
+Actual measurement.
 Separate full API8 PASS24offers192tokens/provider; wave16B4flights64rows starts
 with B4 prefill, ragged remains N1. Separate actual event-driven HTTPv2 passes
 five genuine N1prefills→mixedcachedB4→completedA/replacementE/refilledB4,
@@ -169,7 +166,7 @@ compile union3.10167–3.10218s; nested NVRTC2.18533–2.18585s, module load
 compiler spans. Child/parent scopes are not additive. Instrumented diagnostic,
 not the quiet-run fraction or a faster benchmark. Exact source/artifact kept
 separate; shared admitted cold compiler readiness is next.
-[Direct attribution](../../runs/cpu-gpu-optimization-cohort-b4-root-20261023/actual-c4-compiler-diagnostic-4/timing-analysis.json).
+Direct attribution.
 Final assembled gate pending; gate16 below
 accepts preceding316 only.
 
@@ -201,7 +198,7 @@ cross-width kernel differences alone do not qualify it. No fresh API/timing or
 speedup grant for this successor.
 Actual release4 source/state/lifecycle/healthy retirement/three unknown cuts
 and fresh API pass. Final assembled gate remains pending; gate16 below covers
-preceding316 only. [Actual comparison](../../runs/cpu-gpu-optimization-cohort-b4-root-20261023/timing-b4-c1-c4-4/quick.json).
+preceding316 only. Actual comparison.
 
 Prior accepted source checkpoint:
 
@@ -243,8 +240,8 @@ population and cleanup controls. Both engines executed on the same GPU.
   1752Rust/0failed/89ignored/269suites/allscriptchecks;316selected sourcepaths
   and both rootREADME identities unchanged.
   Wider numerical/profile/long-context parity remains open.
-- Actual [.8B comparison](../../runs/cpu-gpu-optimization-prepared-binding-root-20261023/timing-08-1/quick.json)
-  and [2B C1](../../runs/cpu-gpu-optimization-storage-rings-root-20261023/actual-batch-2/timing-2b-c1-4608/quick.json).
+- Actual .8B comparison
+  and 2B C1.
   Earlier storage/rings release2 observed .8B C1+63.70%/C4+21.68%/C8−7.08%.
   Prepared-recipe release1 observed C1+70.73%/C4+28.81%/C8−2.58%.
   Previous pair9 C8+2.03% was also onepass; its small margin was not stable
@@ -255,7 +252,7 @@ population and cleanup controls. Both engines executed on the same GPU.
 Earlier frozen9 at4096MiB streamed the1017118720B vocabulary head through970
 one-MiB uploads and actual stream waits perforward. Its exact preliminary C1
 was ZG0.5298 vsstock37.0680tok/s (stock69.97x); preserved
-[original comparison](../../../../zerogravity-worktrees/root-lowest-f32-20261020/.agents/runs/serving-and-speculation-short-hf-08-bench-live-state-20261022/prepared2b-pair9-c1-comparison.json).
+original comparison.
 
 Current source shares six mutually exclusive geometry workspaces, reducing
 source-derived2B workspace allocation590622720→139673088B; this is an inventory
@@ -313,7 +310,7 @@ quiet measurements pass above; full isolated gate11 passes1724Rust/0failures/
 Two parallel allocation/boundary audits rank root-backing reuse + immutable
 layout/access sharing next, then owned transfer/frame retirement. No sample
 fraction establishes a wall speedup. [Shared design](SHARED_MEMORY_AND_BOUNDARIES.md).
-[Actual nested timing](../../../../zerogravity-worktrees/root-lowest-f32-20261020/.agents/runs/serving-and-speculation-short-hf-08-bench-live-state-20261022/actor8-sampled-phase-c8-1/nested-phase-and-gpu-envelope-summary.json).
+Actual nested timing.
 
 Earlier frozen pair6 C8 diagnostic, exact64forwards/8offers and complete original+
 profiler/source closure: nested forward1.134798s, bind.131585, preflight.036283,

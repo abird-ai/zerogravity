@@ -48,7 +48,7 @@ upstream deliberately: review a pinned delta and add new rows, keeping the old
 comparison reproducible. A mutable "latest" label cannot define completion.
 
 Historical research captures and repository-tree receipts are retired under the
-[accepted checkpoint](../plans/accepted-baseline/TODO.md). The preserved documentation frontier contains 145
+[accepted checkpoint](../plans/CURRENT_STATUS_AND_TRACKING.md). The preserved documentation frontier contains 145
 **unreviewed** document paths. It is a seed, not an exhaustive capability
 inventory or a passing result. No checkpoint, tokenizer body or SDK was acquired.
 

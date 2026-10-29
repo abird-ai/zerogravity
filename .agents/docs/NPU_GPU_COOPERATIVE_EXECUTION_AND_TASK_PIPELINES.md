@@ -214,7 +214,7 @@ All tasks share ArtifactReader/ModelRecipe/SIR math/state and KIR/CIR/ResourceAr
 - **Hardware/SoC**: `STRIX_HALO_OPTIMIZATION_DOSSIER.md`, `SECURITY_AND_RELIABILITY.md`, `DISTRIBUTED_PARALLELISM.md`.
 - **Engine/metrics**: `ENGINE_CORE_EXECUTION_AND_PROTOCOL.md`, `SCHEDULER_BATCHING_AND_SPECULATION.md`.
 - **Products/tasks**: `PRODUCT_MODEL_PIPELINE_AND_EXTENSIONS.md`, `RUNTIME_SERVING_AND_UX.md`.
-- **Plan**: `../plans/INTEGRATED_PHASE_0_AND_DELIVERY_GATES.md`, `../plans/IMPLEMENTATION_ROADMAP.md`, `../plans/EXPERIMENT_PROGRAM.md`, `../plans/RELEASE_ACCEPTANCE_GATES.md`, `../plans/DECISION_REGISTER.md`.
+- **Plan**: `../plans/INTEGRATED_PHASE_0_AND_DELIVERY_GATES.md`, `../plans/IMPLEMENTATION_ROADMAP.md`, `../plans/EXPERIMENT_PROGRAM.md`, `../plans/RELEASE_ACCEPTANCE_GATES.md`, `../plans/fabric-vnext/DECISIONS_AND_OPEN_QUESTIONS.md`.
 
 **Final invariant:** new accelerator or new media task attaches at an explicit capability/semantic/task/command boundary without changing established, qualified model math. If a new XDNA2 kernel fails or causes a hardware stability problem, all earlier GPU-only execution remains intact and users get an honest diagnostic.
 

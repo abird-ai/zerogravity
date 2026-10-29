@@ -408,7 +408,7 @@ The second slice proves **architecture reuse**: another model/op, a missing fast
 
 Full TPU/static-dataflow, advanced media pipelines, high-availability clustering, native accelerator compiler toolchains and gradient training remain **separately qualified extensions**. They should not inflate the startup or runtime cost of a single CPU/GPU text request.
 
-The [Engineering Specification](ENGINEERING_SPECIFICATION.md) states exact component contracts, model/task/device/placement interfaces and failure tests. The [Implementation Playbook](../.agents/plans/AGENT_IMPLEMENTATION_PLAYBOOK.md) organizes the preserved 24-phase roadmap into bounded, independently verifiable work packages. Prior-art licenses and historical decisions remain auditable.
+The [Engineering Specification](ENGINEERING_SPECIFICATION.md) states exact component contracts, model/task/device/placement interfaces and failure tests. The [Implementation Playbook](../.agents/plans/README.md) organizes the preserved 24-phase roadmap into bounded, independently verifiable work packages. Prior-art licenses and historical decisions remain auditable.
 
 ---
 

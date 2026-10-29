@@ -4,8 +4,7 @@ This folder is the agent planning entry point. Start here, then work from
 `TODO.md`. Git is the authoritative history (author, time, diff, provenance sha);
 this folder keeps the live queue and per-plan checklists.
 
-Current canonical takeover: `../docs/FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-28.md`.
-Copyable successor prompt: `../docs/NEXT_AGENT_PROMPT_2026-10-28.md`.
+Current source, tests, and TODO.md are authoritative. Git retains retired history; deleted takeover snapshots are not live instructions.
 
 ## Layout
 
@@ -96,37 +95,11 @@ Light plans can skip it; the commits are the history.
 
 ## Parallel work
 
-The owner on the queue line owns the plan directory; no one else edits it.
-Parallel agents keep scratch under `.agents/runs/<plan>-<agent>/TODO.md` and
-append back only when finished. The coordinator reconciles the queue line and
-the plan's committed groups.
-
-Pi implementation/execution/review launches use
-`--provider ollama-cloud --model deepseek-v4.1-flash:1017 --thinking xhigh`.
-Return only the concise final report. Redirect intermediate messages, reasoning,
-tool calls/results and diagnostics to run-local logs; never import raw event or
-session streams into coordinator context. The coordinator separately reviews
-changed source and concrete verification evidence before accepting work.
-Prefer `--print --mode text`: installed Pi emits only the final assistant text,
-excluding thinking/tool events, and reports truncated/error completions as
-failures. Keep stdout/stderr local; forward only the final report. JSON event
-mode is private diagnostic storage, never coordinator input.
-
-Implementation Pi runs start in their actual candidate directory, with MAIN and
-other worktrees mounted read-only; candidate and owned run are writable. A
-prompt or shell `cd` is insufficient isolation: a24Oct worker edited MAIN and
-the original physical source guard correctly refused the batch. Preserve stray
-edits before restoring a verified baseline. Keep Pi provider credentials/settings
-in a private temporary config when locks need writes; never expose their values
-or change global configuration. No GPU devices in preparation-only namespaces.
-Retain the current user ID in this outer namespace; do not force UID0/GID0
-and drop all capabilities, which prevents the mandatory nested native-gpu
-user/network mapping. The current-user readonly boundary passes that wrapper.
-An isolation setup failure stops checks; direct execution cannot replace it.
-Search with `rg` in named source directories; bound exploratory searches and
-exclude `target`, weights, raw tensors and Pi event/session streams. Do not run
-recursive `grep` across the repository: a24Oct executor spent over312CPUseconds
-there before benchmark launch. Read explicit reviewed paths before searching.
+main is the only persistent checkout and branch. Parallel agents may inspect the
+same checkout or use ephemeral external scratch, but durable repository
+checkouts/branches are not coordination state. Reconcile finished work into
+main, commit logical units, and keep transient logs/artifacts out of tracked
+documentation unless they become stable fixtures.
 
 ## Closeout
 

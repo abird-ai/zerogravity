@@ -28,9 +28,6 @@ Read **every** original frozen complete-design source as well:
 - ../fabric-vnext/DECISIONS_AND_OPEN_QUESTIONS.md (verbatim user instructions and old decisions)
 - ../fabric-vnext/HANDOFF.md (earlier phase status, superseded by newest user request for implementation plan)
 - ../fabric-vnext/TODO.md
-- ../../docs/FABRIC_VNEXT_COMPLETE_REFERENCE_2026-10-27.md (complete old frozen single-file copy).
-
-The combined NEW complete reference under .agents/docs/FABRIC_VNEXT_TRANSITION_COMPLETE_REFERENCE_2026-10-27.md copies all original frozen seven files AND all current transition files word for word (excluding self-referential duplicate text where noted by index). Read it if one context file is more convenient. The original frozen archive is still preserved separately; current implementation phase ordering in this file is newer and wins where plans conflict.
 
 **Original existing engineering policy remains in:** AGENTS.md, .agents/plans/README.md, .agents/plans/TODO.md, source owners .agents/plans/{pipeline-composition,model-execution,serving-and-speculation,cpu-gpu-optimization,numerics-and-context,memory-and-streaming,model-acquisition,cli-device-routing}/TODO.md, and source-specific normative .agents/docs and P00–P23 roadmap. Do not lose existing accepted/failed/held evidence.
 
@@ -64,7 +61,7 @@ The combined NEW complete reference under .agents/docs/FABRIC_VNEXT_TRANSITION_C
 Only after a **new explicit user implementation instruction**:
 
 1. **Read source/plan ownership:** use dotlink-l5 current HEAD/status/recent commits, AGENTS.md and all linked docs, active TODOs, other workers. No destructive Git operations, no unapproved model/device access, never overwrite other agent uncommitted files. Treat fadf2b1 only as the last *review snapshot*.
-2. **Freeze small interface choices** and integrate shared source/type names with actual latest code. Appoint one coordinator for Cargo/runtime/root shared files and separate owners for independent lanes. Respect repo's signed commits/isolated worktree rules.
+2. **Freeze small interface choices** and integrate shared source/type names with actual latest code. Appoint one coordinator for Cargo/runtime/root shared files and separate owners for independent lanes. Respect repo's signed commits/isolated checkout rules.
 3. **S0 first:** create full Rust workspace/module skeleton in a SINGLE logical commit with actual types/traits, engine/serving crates, public facade, CLI target, task/media/codec/placement contracts, static checker. Fast build/feature/architecture/unit/refusal checks; no expensive whole-model/HIP/CUDA GPU runs. User must SEE full architecture immediately in source.
 4. **S1:** current actual q4/q6/q8 codecs, CPU source arithmetic and GPU quant binding into exact format vs numerical vs physical homes; preserve source identities and original q4_k refusal. Signed per coherent move.
 5. **S2:** family/source math and same ForwardPlan, existing CUDA GDN parameterized/fresh-prefill native kernels and source/qualifier isolation into one provider contract. No repeating already merged GPU→Qwen dep extraction; signed source/test logical units.

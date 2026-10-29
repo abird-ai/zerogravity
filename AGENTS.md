@@ -45,10 +45,16 @@ follow the markers below.
 
 ## Repository
 
+**Topology override:** `main` is the only persistent local branch and checkout.
+Do not keep side branches/checkouts as coordination state. If exceptional isolated
+scratch is required for a bounded investigation, reconcile or discard it and
+remove it before the checkpoint/closeout.
+
 Start with [.agents/plans/TODO.md](.agents/plans/TODO.md), choose the relevant
 plan, and read its `TODO.md` plus the specifications it links. These TODO files
 replace the old handoffs, status ledgers, evidence workflow and SHA inventories.
-Older documents remain design/history references, not extra tracking duties.
+Git history retains superseded material; current source, tests and live plans are
+the only tracking authority.
 
 Read [.agents/plans/README.md](.agents/plans/README.md) before opening a plan —
 it is the rulebook for the layout. A plan is `.agents/plans/<plan>/` with an
@@ -70,10 +76,9 @@ identities and historical evidence while migrating actual consumers.
 
 - `.agents/plans/TODO.md`: one checkbox and link per plan. Check it only when
   the whole plan is implemented and tested; partial milestones stay in its file.
-- `.agents/runs/<plan>-<session-or-agent-id>/TODO.md`: each agent's own working
-  checklist. Record its parent plan, owned scope, tests, results, failures and
-  unfinished items, so another agent can continue an interrupted run. Do not
-  edit another agent's checklist.
+- Keep transient agent scratch and execution logs outside tracked repository
+  state. Durable decisions, open work and accepted results belong in the owning
+  plan TODO and landing commit; Git history retains superseded checkpoints.
 - The coordinator alone reconciles the shared plan: one writer, one serialized
   atomic update; parallel appends must not overwrite each other. A finished run
   file can be removed once its items are in the main plan; keep an interrupted

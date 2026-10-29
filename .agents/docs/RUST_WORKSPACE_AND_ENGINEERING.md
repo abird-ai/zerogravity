@@ -1,6 +1,6 @@
 # Rust workspace, interfaces, implementation practices and contributor workflow
 
-**Current layout and model contracts ·16 October2026:** [H25](../plans/accepted-baseline/TODO.md) is accepted and committed as `8c39aa8`. The workspace now also contains the reviewed ninth Gemma4 contract library and Qwen3.8 source metadata APIs; their [separate main integration gates](../plans/model-execution/TODO.md) pass. These describe original configuration/tensor semantics and do not enable trained new-model inference. The ownership map below supersedes historical bootstrap sketches. One mathematical schedule, one source-identity issuer, independent session roots, sole physical admission and actual completion/quarantine remain mandatory.
+**Current layout and model contracts ·16 October2026:** [H25](../plans/CURRENT_STATUS_AND_TRACKING.md) is accepted and committed as `8c39aa8`. The workspace now also contains the reviewed ninth Gemma4 contract library and Qwen3.8 source metadata APIs; their [separate main integration gates](../plans/model-execution/TODO.md) pass. These describe original configuration/tensor semantics and do not enable trained new-model inference. The ownership map below supersedes historical bootstrap sketches. One mathematical schedule, one source-identity issuer, independent session roots, sole physical admission and actual completion/quarantine remain mandatory.
 
 | Workspace package | Responsibility |
 |---|---|
@@ -22,7 +22,7 @@ llama.cpp clients under `tests/reference/llama_cpp`, and the fixture extractor
 under `tools/gpu-qualify`. Historical paths in dated reports remain historical.
 Record retirement and any remaining work in the relevant plan TODO; obsolete
 compiled objects and executable bodies are disposable build products. Audit sidetree ancestry, unique work and live users before
-removing a merged or superseded worktree.
+removing a merged or superseded checkout.
 
 **Current work:** Follow [the plan TODO index](../plans/TODO.md) and
 [AGENTS.md](../../AGENTS.md). Layout and contention-first concurrency review are

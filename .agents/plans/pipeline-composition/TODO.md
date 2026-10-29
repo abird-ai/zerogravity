@@ -1,8 +1,5 @@
 # TODO — Single-process model and pipeline composition
 
-> **Note (2026-10-29):** links in this file pointing into `zerogravity-worktrees/…` are dead —
-> those worktrees were retired. See `.agents/docs/retired-2026-10-29/README.md`.
-
 Status: existing scaffolds accepted; recursive primitive/pipeline/profile design active;
 execution deferred to owner plans
 Provenance: 4bf624e (original scaffolds); ac44e83/f28a62c (context source/filter)
@@ -64,7 +61,7 @@ their existing numeric/source/physical acceptance gates.
   HIP/Vulkan feature compilation exit0. Original owners closed/EOF/reaped.
   After the full CPU gate, only a CUDA-only test export gained its actual profile
   field; final compilation covers it. Source/CPU binary pins and exact coverage:
-  [coverage](../../runs/modular-architecture-20261026/root/final-coverage.json).
+  coverage.
 - [x] Sign scoped source checkpoints on MAIN; preserve user README; no push.
 - Architecture checker14 fixture cases pass. Live workspace diagnostic exit1:
   GPU→Qwen optional qualification dependency remains; checker is not a green gate.
@@ -73,12 +70,12 @@ their existing numeric/source/physical acceptance gates.
   subsequent resource facts belong to cpu-gpu-optimization. The gfx90c hold stays.
   Historical container termination was unexplained at this checkpoint.
 
-## Side-worktree reconciliation — 26 Oct
+## Side-checkout reconciliation — 26 Oct
 
-- [x] After the complete MAIN batch, fast-forward all six side worktrees;
+- [x] After the complete MAIN batch, fast-forward all six side checkouts;
   source clean,0/0 divergence. Preserve all four dirty overlays in named stashes;
   retain the two earlier stashes. No reset/rebase, ignored overwrite or cache scan.
-  [Preservation details](../../runs/modular-architecture-20261026/worktree-reconcile-sol/final-batch-result.json).
+  Preservation details.
 
 ## 5c2fe53 — Stash recovery
 
@@ -91,16 +88,16 @@ their existing numeric/source/physical acceptance gates.
   passed/39 ignored; full `scripts/check.sh` exit0. No GPU devices/model loads;
   original owner/EOF/reap closure and stable source/README verified. Exact logs,
   source/binary/SDK pins and snapshot dispositions:
-  [recovery](../../runs/stash-recovery-20261026/root/REPORT.md).
+  recovery.
 - [x] Preserve all six original snapshots in a verified local Git bundle;
   atomically retain ignored core/B4 run evidence before directory retirement.
 
-## Side-worktree retirement — 26 Oct
+## Side-checkout retirement — 26 Oct
 
 - [x] Fast-forward all six side branches to the signed recovery commit; verify
-  clean source, then remove all six worktrees without force. Retain branch refs;
+  clean source, then remove all six checkouts without force. Retain branch refs;
   consume all six reviewed stashes after verifying their archived snapshot IDs.
-  No pending side diff remains. [Disposition/evidence](../../runs/stash-recovery-20261026/root/REPORT.md).
+  No pending side diff remains. Disposition/evidence.
 
 ## fe17625 — Shared GDN convolution
 
@@ -108,7 +105,7 @@ their existing numeric/source/physical acceptance gates.
   test into CPU operations; migrate model, GPU fixture and tool callers.
   Original expression/test bodies remain exact after symbol migration.
   Assembled full `scripts/check.sh` and CUDA/source/tool suites pass;
-  [coverage](../../runs/gpu-model-boundary-20261026/root/validation.json).
+  coverage.
 
 ## 263ff79 — GPU/model package boundary
 
@@ -123,14 +120,14 @@ their existing numeric/source/physical acceptance gates.
   ignores, tool2pass; full gate0 (1914Rust test executions,87explicit ignores).
   All owners closed/EOF/reaped; source1859 and README stable. No model/device
   execution, physical qualification or optimized performance claim.
-  [Source/binary/SDK coverage](../../runs/gpu-model-boundary-20261026/root/validation.json).
-## Source-lane worktree retirement — 26 Oct
+  Source/binary/SDK coverage.
+## Source-lane checkout retirement — 26 Oct
 
 - [x] Preserve both candidate source patches/archives and ignored run evidence;
   no unique pending source remains. Fast-forward both branches to263ff79, then
-  remove the two task-owned worktrees without force. Retain branch refs and
-  original evidence; no new stash, reset or rebase. MAIN is the sole worktree.
-  [Disposition](../../runs/gpu-model-boundary-20261026/worktree-reconcile/retirement.json).
+  remove the two task-owned checkouts without force. Retain branch refs and
+  original evidence; no new stash, reset or rebase. MAIN is the sole checkout.
+  Disposition.
 
 ## Uncommitted
 
@@ -171,7 +168,7 @@ and local gfx90c hold remain.
 
 ### Model optimization reconciliation — 24 Oct
 
-Input: [Qwen27/Gemma4 audit](../../runs/model-execution-qwen-gemma-vllm-audit-20261024/REPORT.md),
+Input: Qwen27/Gemma4 audit,
 20Qwen/20Gemma/15shared source comparisons. Neither family has full applicable
 vLLM optimization coverage; source113 remains distinct from qualified execution.
 
@@ -191,7 +188,7 @@ vLLM optimization coverage; source113 remains distinct from qualified execution.
   compositional proof, not an independently generated original public trajectory
   or universal N1/B4 bit equality. Preserve distinct strategies/source permits;
   no production reference imports, weakened limits or cross-width grant.
-  [Astra contract review](../../runs/architecture-astra-cross-width-contract-20261024/DESIGN.md).
+  Astra contract review.
 - [ ] Use temporal/ragged pipeline liveness for Gemma E2B/E4B shared-tail fast
   prefill; retain requested prompt logits/taps and every future KV dependency.
   It is inapplicable to12B/26B/31B. Request B4 is not temporal prefill.
@@ -213,7 +210,7 @@ vLLM optimization coverage; source113 remains distinct from qualified execution.
   now exact; first newcached fault fails an unchanged compound retention check,
   last2faults unrun. Fixture-only14 logs full actual snapshots without relaxed
   checks; API/HTTP/timing/full assembled acceptance remain held.
-  [Astra architecture verdict](../../runs/model-execution-astra-phase-profiles-review-20261024/REVIEW.md).
+  Astra architecture verdict.
 
 ### Owner additions — 23 Oct, Astra high architecture review
 
@@ -226,7 +223,7 @@ Lift reusable behavior before copying it; retain specialized implementations onl
 for concrete source/numerical/kernel requirements. Review actual reuse and callers,
 not only matching API names; no parallel allocator/dispatcher/publication spine.
 
-- [ ] Implement the [Astra next-native redesign](../../runs/architecture-astra-next-native-review-20261023/DESIGN.md)
+- [ ] Implement the Astra next-native redesign
   through Sol HIGH: source-neutral physical owner plus source-bound services,
   same envelope/queue/ledger/fence, exact model sub-admissions and independent
   source/close/reload lifetimes. No per-model bootstrap/cap increase or source
@@ -246,7 +243,7 @@ not only matching API names; no parallel allocator/dispatcher/publication spine.
   does not grant simultaneous Gemma/Qwen native execution. Preserve exact source/
   arithmetic/specialization identities, original envelope/global fence and actual
   per-set module/flight retirement. No learned payload sharing by code identity.
-  [Astra selected seam](../../runs/architecture-astra-shared-native-20261023/DESIGN.md):
+  Astra selected seam:
   nonzero never-reused logical StreamId through all compile/cache/IO/driver joins,
   immutable source-service Client including internal enqueue paths, maxphysical
   streams1 retained. Cold32/64/32GiB provider/device/host remains a candidate;
@@ -258,12 +255,12 @@ not only matching API names; no parallel allocator/dispatcher/publication spine.
   shared context gives27,386,945,001B before new metadata. No duplicate context
   subtraction, live cap growth or optimistic compiler-host release. Sol HIGH
   implements; actual multi-set remains open.
-  [Concrete ABI review](../../runs/architecture-astra-residency-and-set-key-20261023/DESIGN.md):
+  Concrete ABI review:
   private scoped key nests the FULL original KernelId; bounded full-Eq routing
   reaches actual driver lookup despite Command dropping logical StreamId.
   Fixed SingleCompat/Scoped mode preserves original callers without fallback
   mixing. Per-set source/module/admission and global unknown fence remain.
-  [Astra HIGH draft-source/API review](../../runs/pipeline-composition-astra-hip-multiset-review-20261024/REPORT.md)
+  Astra HIGH draft-source/API review
   approves the bounded direction: shared-only Qwen reload after actual final
   reader/native/service retirement; exact pinned-client preflight with a cold
   Arc/Weak identity, without cache backedges. Sol implements both corrections.
@@ -278,7 +275,7 @@ not only matching API names; no parallel allocator/dispatcher/publication spine.
   scoped-metadata maxima and128MiB fixture allowance, leaving690,852,116B under
   fixed32GiB; actual costs/fit and two-source lifecycle remain open. Grouped
   GPU-free successor checks run separately; no physical or performance grant.
-  [Compiler lifetime correction](../../runs/pipeline-composition-hip-multiset-sol-high-20261024/compiler-successor-v2/REVIEW.md).
+  Compiler lifetime correction.
   Frozenv4 whole7stage CPU unit now PASS: all3strict,171resident/12core/7compiler
   tests and2actual-type source-expression controls. Actual compiled scoped metadata
   is observed per set and joined exactly, not inferred as a residual. Corrected
@@ -320,7 +317,7 @@ not only matching API names; no parallel allocator/dispatcher/publication spine.
   plus streamed2B faults PASS; .8B quiet C1+70.73%/C4+28.81%/C8−2.58%, singlepass.
   Full assembled gate15 LAST PASS1752Rust/0failed/89ignored/269suites/allchecks;
   314sourcepaths/rootREADME unchanged. No zero allocation/general pipeline claim.
-  [Architecture review](../../runs/architecture-astra-prepared-review-20261023/DESIGN.md).
+  Architecture review.
   Residual Sol8 binder now integrated MAIN/ISO316: concrete existing ColdModel
   cache40, genuine invocation validation outside lock, original retained
   witness/site charges512KiB each +64KiB owner. GPU551/provider+default strict
@@ -418,7 +415,7 @@ These are pending implementation/acceptance tasks, not new runtime support.
 
 ### Recursive composition and profiles — owner request21 Oct, design first
 
-Independent [mechanism research](../../research/engine-optimization-comparison-2026-10-21/README.md)
+Independent [mechanism research](../fabric-vnext/PRIOR_ART_AND_REVALIDATION.md)
 is complete; parallel design runs without blocking active source parity/binding.
 Existing YAML/DAG validation does not establish nested executable pipelines.
 Proposed contract: [recursive regions and profiles](REGIONS_AND_PROFILES.md).
@@ -500,8 +497,7 @@ build or general model/backend grant. Historical failures keep their source scop
 
 - [x] Astra integration design: one HIP loader parameterized by original owner
   and readout, preserving existing shared teacher117; contextual Qwen natural13
-  and Gemma reuse7 merge, no duplicate loader/allocator/source authority. See
-  `.agents/runs/pipeline-composition-astra-three-unit-integration-20261024/TODO.md`.
+  and Gemma reuse7 merge, no duplicate loader/allocator/source authority.
 
 - [x] ROOT independently reviewed contextual38-path composition, six Pi review
   dispositions and Astra design review; merged into main source19 preserving
@@ -523,7 +519,7 @@ build or general model/backend grant. Historical failures keep their source scop
   same-actor compile-only exact recipes. Actual19/source/fault/retirement/API/
   genuineHTTP pass; livecompiler deltas0 in C1/C4/C8. Currentfullgate18 PASS.
   Finite SM86/profile scope, no arbitrary compiler allocation theorem, graph
-  replay or other-backend grant. [Astra design](../../runs/architecture-astra-compiler-readiness-20261024/DESIGN.md).
+  replay or other-backend grant. Astra design.
 
 #### Owner additions — 23 Oct, Astra high architecture review
 
@@ -551,7 +547,7 @@ build or general model/backend grant. Historical failures keep their source scop
   staged compound-task commits, finite profile matrix and extension drills.
   Independent second source/coverage review passes after shared-traversal and
   content-recipe/live-source-owner corrections; actual producer completion join
-  clarified. [Review](../../research/engine-optimization-comparison-2026-10-21/composition-review.md).
+  clarified. [Review](../fabric-vnext/PRIOR_ART_AND_REVALIDATION.md).
   No source/runtime/performance acceptance.
 
 - [x] Canonical YAML schema `zerogravity.pipeline.v1` replaces TOML
@@ -674,13 +670,9 @@ build or general model/backend grant. Historical failures keep their source scop
   block against application prompts or authorized sharing. No model
   inference/automatic context history access is claimed.
 
-- [x] Audited all 6 old detached side worktrees against signed C3/C4/C5,
-  v1 and pipeline acceptance commits; preserved earlier unfinished portable
-  source patches under .agents/docs and copied nine side-only run artifacts
-  into existing MAIN .agents/runs before removing all six detached
-  worktrees. One new active, clean worktree
-  zerogravity-worktrees/agents-conventions at unmerged e0410c7 is
-  intentionally retained. No branch or unrelated user work deleted.
+- [x] Reconciled the former parallel side work into current main. No persistent
+  side checkouts or branches remain; current source and Git history are the
+  provenance for accepted work.
 
 ### f28a62c — accepted foundation
 

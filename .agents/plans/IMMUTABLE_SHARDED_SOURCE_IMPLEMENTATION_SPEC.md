@@ -9,7 +9,7 @@ The later original trained Qwen3.8 27B model, SSD streaming,
 full original tensor/mathematical binding and physical-device
 qualification are NOT IMPLEMENTED. See the
 [model-execution TODO](model-execution/TODO.md) for accepted gates.
-The historical proposal below is retained for implementation context. The [accepted checkpoint](accepted-baseline/TODO.md) settles historical verification; [plan TODO index](TODO.md) is required for implementation. Revalidate source observations against the live workspace before editing. Artifact files below belong to `crates/zerogravity-artifacts/`.
+The historical proposal below is retained for implementation context. The [accepted checkpoint](CURRENT_STATUS_AND_TRACKING.md) settles historical verification; [plan TODO index](TODO.md) is required for implementation. Revalidate source observations against the live workspace before editing. Artifact files below belong to `crates/zerogravity-artifacts/`.
 
 Status of original review: design only. No production change,
 limit increase, dependency addition, benchmark, model acquisition or GPU work.

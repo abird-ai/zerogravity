@@ -2,9 +2,9 @@
 
 **15 October 2026 · user intent and model-research provenance addendum.**  
 This retained ledger distinguishes historical user decisions U-040/U-041,
-research proposals and unresolved policy. The [decision register](../plans/DECISION_REGISTER.md)
+research proposals and unresolved policy. The [decision register](../plans/fabric-vnext/DECISIONS_AND_OPEN_QUESTIONS.md)
 retains the wider project decisions. Current work uses [the plan TODOs](../plans/TODO.md)
-and [TODO-SPEC](../plans/TODO-SPEC.md); historical handoff/manifest instructions
+and [plan rules](../plans/README.md); historical handoff/manifest instructions
 below are superseded tracking methods, not current duties. Git retains history.
 
 ## 0. How to interpret the decision ledger
@@ -66,7 +66,7 @@ snapshot copies are superseded by the current TODO workflow and are not required
 | U-025..U-027 | Qwen3.5 0.8B then 2B CPU→CUDA/ROCm/Vulkan, Gemma4 E2B/26B then Qwen3.8 27B CPU-first; 8K Phase1 16/16; extended 16K/32K deferred | MM design does NOT silently reorder practical implementation gates |
 | U-028..U-029 | independent long-context GDN accuracy investigation and three parallel workstreams including multimodal research | separate CPU math/GPU/architecture ownership, no invented subagent execution |
 | U-030..U-039 | source-correct GPU P07-A→G3a and critical review gates, true device readback/quarantine, single StateRoot, no false hardware proof | existing partial GPU status honest; source-free media mocks ≠ media support |
-| All previous explicit user decisions | full record in .agents/plans/DECISION_REGISTER.md | current decisions and Git retain history; plan TODOs track implementation without snapshot copies |
+| All previous explicit user decisions | full record in .agents/plans/fabric-vnext/DECISIONS_AND_OPEN_QUESTIONS.md | current decisions and Git retain history; plan TODOs track implementation without snapshot copies |
 
 ## 3. Research-derived design proposals DMM-001..DMM-032
 

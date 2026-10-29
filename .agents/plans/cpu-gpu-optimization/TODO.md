@@ -1,15 +1,12 @@
 # Cpu gpu optimization
 
-> **Note (2026-10-29):** links in this file pointing into `zerogravity-worktrees/…` are dead —
-> those worktrees were retired. See `.agents/docs/retired-2026-10-29/README.md`.
-
 Provenance commit: `6d74f76`.
 Scope: P01/P06/P07/P20/P22; follow acquisition and measure before selecting complexity.
 Contracts: [fleet optimization](../../research/INITIAL_HARDWARE_TARGETS_AND_OPTIMIZATION_2026-10-16.md),
 [GPU text/control](../../research/GPU_TEXT_FRONTEND_AND_DEVICE_ORCHESTRATION_ROADMAP_2026-10-16.md),
 [FP32 FMA proposal](../../research/NATIVE_FP32_FMA_QUALIFICATION_PROPOSAL_2026-10-16.md),
 [derived quant contract](../../docs/DERIVED_QUANTIZATION_CONTRACT_2026-10-15.md).
-Research: [independent engine mechanism comparison](../../research/engine-optimization-comparison-2026-10-21/README.md)
+Research: [independent engine mechanism comparison](../fabric-vnext/PRIOR_ART_AND_REVALIDATION.md)
 (416 overlapping source-scoped entries; research is not runtime qualification).
 Current measurements: [short-HF results and profile limits](SHORT_HF_RESULTS.md).
 Shared allocation/boundary direction: [reconciled pool, layout and transfer APIs](SHARED_MEMORY_AND_BOUNDARIES.md).
@@ -29,8 +26,6 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
 - [x] Resume and close the `29b491d` primitive review. The accepted inert series
   is integrated as `ea66b3a`/`68393e5`/`6b4a2ec`/`441fa64`; source/ABI/status,
   alias and SM86 compile/reflection checks pass, with no backend/launch permit.
-  See
-  [review record](../../docs/REVIEW_ORDINARY_CANDIDATE_29B491D_2026-10-27.md).
 - [ ] Finish exact packed/strided non-GDN projection/attention lowering through
   the existing physical owner. Then run current-source `.8B`/`2B` model, cached,
   fault, shutdown and fitted-context qualification plus final full gate.
@@ -55,8 +50,8 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
 - [ ] Current B4 → fresh optimized matched C16 (.8B +2B) → x2 original27B,
   latest owner order; no C2. Base `d0fff261`, all246 signatures verified;
   README unchanged. All current lanes: GPT-6.1 Sol xhigh, owner override.
-  [Owned run](../../runs/b4-takeover-codex-20261025/TODO.md).
-  [Final evidence index](../../runs/b4-takeover-codex-20261025/FINAL_REPORT.md).
+  Owned run.
+  Final evidence index.
 
 #### a857d45 — validated fixture repairs
 
@@ -190,7 +185,7 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
   and healthy cleanup.16 genuine N1 initializations +28cached B4 publications,
   128committed rows/864physical steps. No2B performance pass or both-model win.
   Single measured wave/model, no confidence-certified performance claim.
-  [Both closed review](../../runs/b4-takeover-codex-20261025/matched-c16-v6/root-both-closed-review.json);
+  Both closed review;
   actual-results SHA58ec6b242aac7cb4c3f07c41b29af32ffdb78b91b98e98680aa5c58dc769df79.
 - Strict x2 SSH now actually verifies existing alias/address ED25519
   `SHA256:acPQLnW/MfwchrrYkM/TB9eVeTWrnaA5efNPrEJZ2U0`, via prescribed
@@ -202,7 +197,7 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
   image store/runroot absent. Existing host Nix Python3.13 metadata/RX verified,
   SHA85ee2b9c…a4a5, not executed; prescribed/PATH python3 absent. No device open,
   inference, downloads, store/recovery/privilege changes or memory repartition.
-  [Current resource review](../../runs/b4-takeover-codex-20261025/x2-current-preflight/root-resource-review.json).
+  Current resource review.
 - [l5 benchmark container termination](BENCHMARK_CONTAINER_TERMINATION.md):
   original55 artifact pins revalidated;16original Rust files+Cargo manifest
   authenticated. Fresh corrected17-row journal query adds actual stop-actor
@@ -259,7 +254,7 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
   Rate refusal is a measured performance loss, not numerical/cleanup failure.
   First.8B timing overlaps audit scan; one repeat105.7331vs96.6544tok/s has an
   extra sampler and remains diagnostic, not quiet/best evidence. No third rerun.
-  [Scope review](../../runs/resume-all-parallel-source-supervision-sol-20261024/C16_FINAL_SCOPE_REVIEW.json).
+  Scope review.
 Historical source13 checkpoint (superseded by source20 above): ROOT adopted models118 plus source-bound2B
 cachedB4 as one guarded173path unit (172effective/46new), fresh mtimes and
 README/lock preserved. Full1629/selected492 source equality verified MAIN/ISO/
@@ -368,7 +363,7 @@ are the accepted checkpoint. Run the next complete gate last on the assembled
 
 Owner-authorized optimization is active for physically qualified short-HF
 profiles; wider profiles require their own source/state/natural-serving parity.
-Qwen27B/Gemma integration continues independently in parallel worktrees. Keep
+Qwen27B/Gemma integration continues independently in parallel checkouts. Keep
 large end-to-end units and distinct claims; run the full gate last on the
 assembled batch rather than after each helper.
 
@@ -416,7 +411,7 @@ case13 replay restores coverage without inventing lost local closure. ROOT
 reviewed/merged only fixture lifetime correction as345v3; production unchanged.
 B4 body/policy/worker and Qwen27B native consumer continue in parallel; next
 Astra residency/set-key pass is architecture only. Final assembled gate pending;
-measured release stays316. [Physical scope](../../runs/cpu-gpu-optimization-physical-owner-root-20261023/TODO.md).
+measured release stays316. Physical scope.
 
 Current MAIN/ISO410 assembles continuous34 and compiler-lifetime7. Dynamic KV
 uses two direction-only keys with existing readonly controls; genuine canonical47
@@ -477,7 +472,7 @@ Genuine canonical47 N1→mixedcached47..53/refill/cancel source is frozen33paths
 CPU/strict/worker checks PASS, physical qualification pending. Wider prompts stay
 N1 pending authentic native qualification. Final assembled gate LAST; gate16
 still accepts preceding316 only.
-[B4 unit](../../runs/cpu-gpu-optimization-cohort-b4-root-20261023/TODO.md).
+B4 unit.
 
 - [ ] Shared compiler lifetime/readiness: fix checked all-exit raw NVRTC cleanup,
   retain/fence uncertain destruction and partial module loads; establish actual
@@ -485,7 +480,7 @@ still accepts preceding316 only.
   No global DryRun, dummy roots or unpriced cache. Existing model-local128MiB
   loader is host scratch, not a persistent CUDA context charge. Numeric ceilings/
   complete fit remain unresolved; Sol HIGH implements the contained foundation.
-  [Astra architecture](../../runs/architecture-astra-compiler-readiness-20261024/DESIGN.md).
+  Astra architecture.
 - [ ] After current C8/refill and source113 qualification: shared prepared matrix/
   compact IO reuse, temporal work, optimized eligible GEMM/attention/GDN, pages/
   full-domain prefix/COW, admitted prefetch and graph replay. Preserve numerical
@@ -500,12 +495,12 @@ correctness baseline. New source-neutral physical owner and simultaneous
 prepared sets need their own actual checks; no Gemma serving/performance grant.
 Current HIP actor still refuses a second live native set; bounded lifecycle
 extension remains in the next shared native-consumer unit.
-The [Astra follow-up](../../runs/architecture-astra-shared-native-20261023/DESIGN.md)
+The Astra follow-up
 selects nonzero, never-reused logical streams through every actor cache/IO/driver
 lookup, immutable source-service Client views, explicit cold32GiBprovider/
 64GiBdevice/32GiBhost with two12GiB quotas and conservative compiler retention.
 These are provisional design ceilings; complete cost/actual fit is unproved.
-The [Astra residency/set-key follow-up](../../runs/architecture-astra-residency-and-set-key-20261023/DESIGN.md)
+The Astra residency/set-key follow-up
 accepts a private key carrying logical set plus the FULL original KernelId,
 bounded full-Eq actual-driver routing and immutable SingleCompat/Scoped modes.
 Sol HIGH implements separately from single-source Qwen numerics. Gemma's next
@@ -759,7 +754,7 @@ Implementation remains behind the ordered parity/baseline prerequisites above.
   report actual H2D/D2H/device traffic, host waits and reasons for required
   bridges. Preserve arithmetic/declared approximation, original commits,
   lifetimes/cancel/fairness and measure complete-task benefit/negative cases.
-- [ ] Complete the dedicated [ExLlamaV3 investigation](../../research/engine-optimization-comparison-2026-10-21/exllamav3-adoption-scope.md):
+- [ ] Complete the dedicated [ExLlamaV3 investigation](../fabric-vnext/PRIOR_ART_AND_REVALIDATION.md):
   pinned kernel/packing/transform/codec consumers, shape/model/backend limits,
   KV, batching/graphs, CPU offload and partition seams; exact file/dependency
   licenses and static C/Rust ABI versus direct-port disposition. Add independent
@@ -816,7 +811,7 @@ Implementation remains behind the ordered parity/baseline prerequisites above.
   genuine2048 requirement restored, existing numerical limits preserved.
   Full isolated `scripts/check.sh` actual0/EOF:1890 Rust passes/0fail/89ignored;
   new23+15 controls/selftest pass. No runtime/math source changes or fresh GPU
-  inference. [Evidence](../../runs/q08-correctness-20261026/TODO.md).
+  inference. Evidence.
 - [x] Retained actual C16 IDs/text digests compare exact for both models under
   exact/default policies,16 requests/model. Original case5 N1/B4 failure and
   historical2B performance refusal remain failed; no new speedup claim.
@@ -830,13 +825,13 @@ Implementation remains behind the ordered parity/baseline prerequisites above.
   through join; original default thread stacks remain runtime-selected.
   Platform stacks/TLS/caches and OS/driver headroom remain separate, unquantified
   scope: application reservations are not process RSS or a full-process fit.
-  [Contract decision](../../runs/resume-all-queue-production-bound-astra-review-20261024/MERGE_SCOPE_DECISION.md).
+  Contract decision.
   CPU functional acceptance is complete; the final full CPU gate passed
   rc0 25Oct on the committed tree. Assembled GPU checks PASSED 25Oct
   (22/22 rc0: builds/stricts, cuda_compiler_context 4/4, loaded/inventory
   4/4, CLI baseline/serve-short_hf, host-profile umbrella, four ignored
   route cases alone, five actual source-cost cases) —
-  [execution](../../runs/resume-all-takeover-queue-gpu-glm-20261025/LOG.md).
+  execution.
   Physical device scopes (CLI direct route, serving) remain open.
 - [x] Optimized25Oct CPU population/cap/cancellation/HOST continuation passes
   under unchanged4096MiB,2workers×4active and unrestricted P16 affinity.
@@ -846,7 +841,7 @@ Implementation remains behind the ordered parity/baseline prerequisites above.
   remains distinct from optional queue-cap429. Actual release CPU/serve build
   and strict checks pass. Captured successful child output does not expose
   exact peak/backing traces; this is CPU correctness, not GPU C16/32/64 timing.
-  [Execution](../../runs/resume-all-tokenizer-vm-cpu-continuation-prep-pi-20261025/).
+  Execution.
 - Earlier optimized25Oct population control fails at offer12/16 under unchanged
   HOST4096MiB/active8: each pending request retains about240MB temporary tokenizer
   credit. Source review separates about224MB fixed VM scratch from about17MB
@@ -857,7 +852,7 @@ Implementation remains behind the ordered parity/baseline prerequisites above.
   acceptance must cover unrestricted production P16, without narrowing affinity.
   Remove duplicate CPU/GPU request charges, preserve all prompt/output/state
   owners. The repaired CPU population batch passes above; GPU acceptance remains.
-  [Reviewed design](../../runs/resume-all-queue-production-bound-astra-review-20261024/TOKENIZER_GROWTH_CREDIT_PLAN.md).
+  Reviewed design.
 
 ### `52f76a0` — short-HF tokenizer credit and HOST8
 
@@ -867,7 +862,7 @@ Implementation remains behind the ordered parity/baseline prerequisites above.
   Earlier zero-test/default-feature and101 attempts remain failed/unaccepted.
   Actual current rows: R1,147,648,523/G17,054,684/V224,000,144B, plus actual
   lease inventory; the older supplied R was136B higher. No passing CPU replay.
-  [Execution](../../runs/resume-all-tokenizer-text-fixed-coverage-pi-20261025/).
+  Execution.
 - [~] Direct short-HF route lifetime correction: preliminary tokenizer drops
   before model loading, but its static retained-credit vector never releases.
   Return tokenizer plus its actual lease; validate the exact legitimate
@@ -895,13 +890,13 @@ Implementation remains behind the ordered parity/baseline prerequisites above.
 
 ### 25Oct assembly and evidence records — `docs(plans)` (this commit)
 
-- [x] Old-worktree cleanup:52 registered trees +5 redundant extracts removed;
+- [x] Old-checkout cleanup:52 registered trees +5 redundant extracts removed;
   historical source/notes/evidence archived and independently rechecked.
   Separately removed30 obsolete merged branches; main and five active heads
   remain. Two historical registrations retired after exact metadata backup;
   their ordinary reference files remain at the required paths. Six registered
   trees remain: main and five active lanes. Main/rootREADME preserved.
-  [Details](../../runs/resume-all-parallel-root-20261024/WORKTREE_CLEANUP.md).
+  Details.
 - [~] Five-lane source is assembled in MAIN; the final affected batch completes
   portable core admission, actual spawn-capture ownership and direct-lease
   metadata. Original private-network HTTP checks now execute without a fallback.
@@ -916,7 +911,7 @@ Implementation remains behind the ordered parity/baseline prerequisites above.
 - [x] Retire the five active Qwen27B/Gemma4/HIP/Vulkan/queue lane trees at the
   reviewed checkpoint; their units are integrated (`8f01635`..`68e13a8`).
   DONE25Oct: prepared-B4 certification/state transport implemented per
-  [Astra design](../../runs/cpu-gpu-optimization-astra-c16-shared-gap-20261024/DESIGN.md)
+  Astra design
   and merged in `d3d21a3` (existing arithmetic, caps and independent roots
   kept; 22.13% remains a software-dispatch ceiling, not a wall-speedup
   claim). Unit green: 594 gpu lib tests + 17 new (real ABI counts 9/22/30,
@@ -924,7 +919,7 @@ Implementation remains behind the ordered parity/baseline prerequisites above.
   actual_grouped_state_transport_oracle) and the fresh matched C16 for
   both models on the checkpoint tree; C32/C64 follow acceptance.
   DONE25Oct: five trees and branches retired after evidence preservation
-  (zerogravity-worktrees/.preserved-lanes-20261025/); OLD-OIDs recorded there.
+  (Git history); OLD-OIDs recorded there.
 
 
 
@@ -1053,7 +1048,7 @@ build or general model/backend grant. Historical failures keep their source scop
 - [x] Qwen27/Gemma4 vLLM optimization audit:20Qwen+20Gemma+15shared source
   comparisons, frozen benchmark0.31/current upstream/stable0.32 distinguished.
   Neither has all applicable optimizations; backend/codec/model gates explicit.
-  [Report and priorities](../../runs/model-execution-qwen-gemma-vllm-audit-20261024/REPORT.md).
+  Report and priorities.
 
 - [x] **Pools/rings and shared .8B→2B reuse.** Assemble
   charged backing/fresh logical roots, bounded transfer retirement, immutable

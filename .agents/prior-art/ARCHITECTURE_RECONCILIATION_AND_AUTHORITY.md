@@ -188,7 +188,7 @@ No compiler/pass/API contract is "frozen" before a green vertical slice proves t
 | D-19 quant/imatrix quality bands | **Adopt** | low-bit specialist quality |
 | D-20 multi-lane CI + verified performance | **Adopt** | essential proof |
 
-This is an **engineering council reconciliation**, not retroactive user signature on every table row. All future user policy choices are tracked in `DECISION_REGISTER.md`; tests/code override hypothetical mechanisms.
+This is an **engineering council reconciliation**, not retroactive user signature on every table row. All future user policy choices are tracked in `fabric-vnext/DECISIONS_AND_OPEN_QUESTIONS.md`; tests/code override hypothetical mechanisms.
 
 ## 14. Defects or gaps found and disposition
 

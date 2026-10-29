@@ -15,7 +15,7 @@
 | Bibliography | `../../docs/REFERENCES.md` | Numbered academic/first-party source references and attribution, no invented original-source credit |
 | Publication checklist | `../../docs/PUBLICATION_AND_REVIEW_CHECKLIST.md` | Claims, independent results, code/whitepaper license, author signoff and editorial release gates |
 | Public docs index | `../../docs/README.md` | Routes readers/reviewers/agents, classifies normative versus source history |
-| Implementation playbook | `AGENT_IMPLEMENTATION_PLAYBOOK.md` | Every stable P00–P23 phase has bounded goal, owned modules, reference/negative tests and handoff rules |
+| Implementation playbook | `README.md` | Every stable P00–P23 phase has bounded goal, owned modules, reference/negative tests and handoff rules |
 | Requirements traceability | `REQUIREMENTS_AND_TEST_TRACEABILITY.md` | U-001…U-022 → ES + invariants + P phases and Stage0 proof requirements |
 | Current concise agent entry | the agent playbook | Minimal mandatory reading order and existing project/hardware/privacy status |
 | Full handoff | the retired master handoff | Latest publication takeover at top, all previous v4.3/v4.2/v4.1 history preserved |
@@ -77,7 +77,7 @@ These are **not excuses to add hypothetical frameworks now**. Each risk should b
 
 ## 5. Requirements and work preservation
 
-- User decisions **U-001…U-022** remain in `DECISION_REGISTER.md` with all P working decisions and O open items retained.
+- User decisions **U-001…U-022** remain in `fabric-vnext/DECISIONS_AND_OPEN_QUESTIONS.md` with all P working decisions and O open items retained.
 - Stable original implementation phases **ZG-P00…P23** remain unchanged and NOT_STARTED.
 - Experiments **H01…H86** remain a research/proof program, not a to-do list that must all be implemented in the first release.
 - Original Stage0 S0-00…S0-14, optional NPU S0-NPU-A…F, V4 S0-V4-A…J, optional fabric S0-FABRIC-A…H, distributed S0-DIST-A…L and serving S0-SERVE-A…J remain traceable.

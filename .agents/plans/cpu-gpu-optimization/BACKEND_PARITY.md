@@ -1,8 +1,5 @@
 # Vulkan / CUDA / HIP parity
 
-> **Note (2026-10-29):** links in this file pointing into `zerogravity-worktrees/…` are dead —
-> those worktrees were retired. See `.agents/docs/retired-2026-10-29/README.md`.
-
 Owner directive,23Oct: Vulkan reaches CUDA parity; AMD uses ROCm/HIP.
 Live source/tests/results outrank this implementation map. No backend parity
 or new model qualification is established by this document.
@@ -11,7 +8,7 @@ or new model qualification is established by this document.
 imported on x2. Source20's actual shared HIP full64/full35 lifecycle unit passes;
 natural Qwen comparison and learned Gemma PLE-hit coverage advance separately.
 The earlier inventory/cache and whole-model blockers below retain their dates.
-ROOT reviewed [Astra's next Vulkan unit](../../runs/cpu-gpu-optimization-astra-portable-next-20261024/DESIGN.md):
+ROOT reviewed Astra's next Vulkan unit:
 reuse full Gemma E2B traversal/oracle; add priced source-owned pipeline
 preparation/retirement, full-K output-row tiling and effective binding limits.
 Pi implements in a MAIN-readonly isolated candidate; no new Vulkan model or
@@ -88,7 +85,7 @@ correction passed assembled gate8b. Frozen CUDA binaries remain unchanged.
   24real handles/64MiB; each cross-direction retains each provider's own handles
   and both128MiB envelopes until process retirement. HIP reports103079215104B,
   Vulkan79807275008B; both use the same256MiB operator cap/physical key/queue.
-  [Actual source, results and limitations](../../../../zerogravity-worktrees/qwen27b-attention-tail-20261022/.agents/runs/model-execution-portable-service-qualification-20261023/RESULT.md).
+  Actual source, results and limitations.
 - [x] Bounded actual BF16 transport through original HIP/Vulkan services on x2.
   Reviewed11path transport plus2path range correction integrated MAIN/ISO.
   Gate9 passes1715Rust/0failures/allscriptchecks before the range correction;
@@ -107,7 +104,7 @@ correction passed assembled gate8b. Frozen CUDA binaries remain unchanged.
   test/outcome/cap/source/held-binary/group/reap/EOF records and final quiescence.
   Actual16B views have256B HIP/32B Vulkan backing. This establishes transport,
   not BF16 arithmetic, model execution, serving or performance.
-  [Actual source, outcomes and preserved failure](../../../../zerogravity-worktrees/gemma4-text-end-to-end-20261022/.agents/runs/model-execution-portable-bf16-matrix-ranges-source-20261023/RESULT.md).
+  Actual source, outcomes and preserved failure.
 - [ ] Portable arithmetic assembled integration: existing recorded typed embedding→ordinaryRMS→
   projection slice, same ResidentProgram traversal/service/flight, explicit
   TorchCpuBf16Avx2MixedSourceV1 contract. Reuse the existing64lane projection
@@ -129,10 +126,10 @@ correction passed assembled gate8b. Frozen CUDA binaries remain unchanged.
   Finite synthetic3node CPU-profile proof only; no broad32MiBgeometry, learned
   model, CUDA-specific profile, serving or performance grant. Full model parity
   needs its actual backend/reference contract, not a provider retag.
-  [Actual arithmetic results](../../../../zerogravity-worktrees/qwen27b-attention-tail-20261022/.agents/runs/model-execution-portable-bf16-arithmetic-source-20261023/RESULT.md).
+  Actual arithmetic results.
 - [ ] Whole-model HF and serving profiles on each backend, with full vocabulary,
   every state domain, private natural feedback and independent concurrent roots.
-  [Gemma E2B whole35 bridge design](../../../../zerogravity-worktrees/gemma4-text-end-to-end-20261022/.agents/runs/model-execution-actor-review-gemma-gpu-bridge-20261023/GEMMA_GPU_BRIDGE.md)
+  Gemma E2B whole35 bridge design
   maps direct gamma1536/grouped256/512, actual call-M/PV contraction, source
   row/full-K tiles and numeric-zero-tie262144 greedy into the original engine.
   Reviewed13path source/call/observation/tile contract checkpoint merged MAIN;
@@ -140,7 +137,7 @@ correction passed assembled gate8b. Frozen CUDA binaries remain unchanged.
   authentic gamma/unit-V roles, callM/projection/PV geometry and <=1MiB frame
   recipes preserve old profiles. Inventory prices one4MiB call; every other
   simultaneous call/frame/native owner still needs actual admission. Lowerers
-  and full model/state/physical qualification continue in isolated worktrees
+  and full model/state/physical qualification continue in isolated checkouts
   from current MAIN+portable21. No second traversal/IR or monolithic fit grant.
 - [ ] Before any large Vulkan matrix consumer, use the device's effective buffer
   and storage-binding limits. CubeCL's Vulkan index64 path can expose heap size

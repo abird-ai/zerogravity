@@ -4,7 +4,7 @@ Owner: @pvl
 
 # CLI and device routing
 
-**Implementation authorized · parallel worktree lane · 24 October 2026.**
+**Implementation authorized · parallel checkout lane · 24 October 2026.**
 The user explicitly requested implementation and merge into main. This contract
 still grants no unimplemented model/backend/composition support. Current work,
 source-form additions and applicable acceptance remain in [TODO.md](TODO.md).

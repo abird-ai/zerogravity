@@ -96,7 +96,7 @@ Do not invert this hierarchy by prioritizing a kernel headline over exact model 
 
 ## User decisions not inferred
 
-No license, supported OS release priority, first model order, kernel compiler selection, precise numerical tolerance, context/concurrency targets, remote distribution policy, public milestones or deployment dates were selected. They remain explicit in DECISION_REGISTER; phase plan uses recommendations.
+No license, supported OS release priority, first model order, kernel compiler selection, precise numerical tolerance, context/concurrency targets, remote distribution policy, public milestones or deployment dates were selected. They remain explicit in the current decision plan; phase plan uses recommendations.
 
 ## Success definition
 

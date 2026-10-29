@@ -23,7 +23,7 @@ cleanup escalation. An actual model-free Podman PID1 control under the already
 approved cached image exits0 after owned stop, records CLOSED/ledger0, and proves
 the exact CID absent. Full `scripts/check.sh` passes (2049Rust executions,
 91explicit ignores), plus12 evidence controls and GPU source/feature checks.
-[Exact coverage and retained failed attempts](../../runs/serving-shutdown-20261026/root/validation.json).
+Exact coverage and retained failed attempts.
 
 This fixes future shutdown behavior. It does not recreate the historical signal
 trace, qualify trained-model/backend shutdown, or modify sealed source21.
@@ -106,7 +106,7 @@ trace. [Podman stop](https://docs.podman.io/en/latest/markdown/podman-stop.1.htm
 - x2 capture still needs its own current resources, exact inputs, caller ABI and
   capture gates. This local incident supplies no x2 host, SDK or model permission.
 
-Evidence: [archive/source review](../../runs/benchmark-container-termination-20261026/archive/REPORT.md),
-[fresh journal query](../../runs/benchmark-container-termination-20261026/root/journal-corrected-result.json),
-[exact-actor query](../../runs/benchmark-container-termination-20261026/root/actor-journal-result.json).
+Evidence: archive/source review,
+fresh journal query,
+exact-actor query.
 Raw stdout/stderr and original rejected/closed receipts remain in those run directories.

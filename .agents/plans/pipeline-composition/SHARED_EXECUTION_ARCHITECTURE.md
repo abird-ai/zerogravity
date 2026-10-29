@@ -42,7 +42,7 @@ acceptance criteria.
 
 ## Follow-up: shared physical ownership and the next native consumer
 
-The [Astra architecture-only follow-up](../../runs/architecture-astra-next-native-review-20261023/DESIGN.md)
+The Astra architecture-only follow-up
 accepts prepared-binding8 and defines two substantial Sol HIGH units:
 
 - Split source-neutral physical ownership from source-bound ResidentService:
@@ -380,7 +380,7 @@ existing cohort publication extraction are appropriate low-level seams.
 
 ### HIP native ownership: one concrete blocker, no permission by inventory
 
-Reviewed peer draft in its Gemma worktree:
+Reviewed peer draft in its Gemma checkout:
 `vendor/cubecl-hip/src/prepared_native.rs`, `prepared_native/artifact.rs`,
 `compute/context.rs`, `compute/server/prepared_native.rs`.
 
@@ -480,8 +480,7 @@ cover the frozen phase1 implementation, not the new extraction or HIP inference.
 
 ### Sol six-path head donor
 
-Reviewed `.agents/runs/shared-integration-sol-high-20261023/head-donor`, especially
-`gpu/src/vllm_cuda_qualification/{prepared_bf16_head,short_hf_head}.rs`.
+Reviewed the then-current prepared BF16 head/source implementation; the current source tree supersedes that donor snapshot.
 
 - Approve the architectural split: concrete PreparedBf16Head/Bf16HeadCall own
   source operand, numerical profile, native manifest/images, WXY leases and

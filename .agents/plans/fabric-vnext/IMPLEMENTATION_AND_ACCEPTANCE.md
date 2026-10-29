@@ -9,7 +9,7 @@ Use [README.md](README.md) as the authoritative proposed architecture, [PUBLIC_L
 Historical 26 October reference inspected with dotlink-l5:
 - /home/pvl/spaces/abird/src/zerogravity; Git HEAD 195099ca583ace766d075682927f590360c823a5.
 - Live workspace had hundreds of modified/deleted/untracked artifacts while a family/source/runtime refactor was underway. Source tree analysis and file-line counts are from that particular state and may no longer apply.
-- At the beginning of this 27 October archival phase, HEAD was eb38dd5e892f2120ac29cc2fb79b2dbe137a37fe and the worktree initially clean, as verified by read-only Git commands. That observation is NOT a full source re-audit, comparison, build or execution capability claim.
+- At the beginning of this 27 October archival phase, HEAD was eb38dd5e892f2120ac29cc2fb79b2dbe137a37fe and the checkout initially clean, as verified by read-only Git commands. That observation is NOT a full source re-audit, comparison, build or execution capability claim.
 - Current active owner plans remain .agents/plans/TODO.md and per-plan TODOs. This new fabric-vnext folder is explicitly NOT integrated into their queue yet, to avoid colliding with ongoing work.
 - Never check off old tests, reuse numerical permits, or equate a moved source file with previously qualified exact source/compiler/kernel identity.
 - No destructive Git operations, pushes, branch rewrites, model downloads, device launches or service starts are implied by this reference.
@@ -18,7 +18,7 @@ Historical 26 October reference inspected with dotlink-l5:
 
 This is the first and ONLY authorized type of work when the user returns with "resync", "revalidate" or equivalent; even then, obey the exact later instruction.
 
-1. Open AGENTS.md, .agents/plans/README.md and .agents/plans/TODO.md; detect in-flight ownership and relevant worktrees.
+1. Open AGENTS.md, .agents/plans/README.md and .agents/plans/TODO.md; detect in-flight ownership and relevant checkouts.
 2. Inspect git status/HEAD/recent commits for the current working tree with dotlink-l5. Do not overwrite other agent edits, untracked files or abandoned source; no cleanup/reset/rebase.
 3. Refresh Cargo workspace dependency graph, crate roles, source counts (exclude generated/vendor and distinguish test/qualification), compilation modes and feature maps.
 4. Read current architecture docs and active plan updates at their actual revision, comparing any new decisions to this saved 27 October proposal.

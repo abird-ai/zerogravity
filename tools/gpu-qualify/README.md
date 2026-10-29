@@ -39,6 +39,6 @@ python3 tools/gpu-qualify/extract-qwen-q4.py --help
 ```
 
 Supply the existing approved local checkpoint, an ignored output path and its
-exact `--sha256`; the helper downloads nothing. The [accepted checkpoint](../../.agents/plans/accepted-baseline/TODO.md)
+exact `--sha256`; the helper downloads nothing. The [accepted checkpoint](../../.agents/plans/CURRENT_STATUS_AND_TRACKING.md)
 records historical qualification. New runs follow the
 [plan TODO index](../../.agents/plans/TODO.md).

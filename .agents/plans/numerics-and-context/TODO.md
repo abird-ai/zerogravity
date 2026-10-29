@@ -13,8 +13,6 @@ then advance. The design alone closes no numerical or performance gate.
 feedback and worker/HTTP parity together, followed by short-context benchmarks,
 long contexts and Qwen27B. Bindings/readers/helpers are internal steps, with focused
 checks and one complete gate per larger unit; isolate only concrete failures.
-Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20261022/TODO.md`.
-
 ## Committed
 
 ### `cd4159d` — owned command streams
@@ -92,8 +90,7 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
   alias rules, dynamic KV rows, RoPE theta, CUDA/NVRTC source portability and the
   previously untested feature matrix are independently closed. The reviewed
   series is integrated as `ea66b3a`/`68393e5`/`6b4a2ec`/`441fa64`; no backend or
-  launch authority was added. See
-  [the final review record](../../docs/REVIEW_ORDINARY_CANDIDATE_29B491D_2026-10-27.md).
+  launch authority was added.
 - [ ] Finish source-derived non-GDN CUDA projection/attention lowering through
   the existing physical queue/flight/completion/quarantine owner and sole
   `StateRoot` publisher. Ordinary Qwen CUDA continues refusing before allocation.
@@ -180,7 +177,7 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
 
 - Latest owner order: genuine .8B/2B vLLM source/state/full-model parity,
   then benchmarks, then qwen:27b. Timings held; layer0 cuts are component proofs.
-  [Current ROOT checklist](../../runs/numerics-and-context-upstream-cuda-root-20261020/TODO.md).
+  Current ROOT checklist.
 - Earlier captured-image unit: combined CUDA/Vulkan/portable strict Clippy
   passes;20 focused GPU host tests and4 pure vendor captured-image tests pass.
   All15 original source-weight projection leaves compare638112 BF16 words
@@ -389,7 +386,7 @@ Directive read in full: `.agents/runs/numerics-and-context-user-feedback-side-20
   `scripts/check.sh` actual0/EOF/group closure:1890 Rust passes/0fail/89ignored;
   Python/script/installer gates pass. Source1778 digest
   `686a1168a88b543563c9a775c22893bd9514e3ed534dfaaf0d57be4947ecb06c`.
-  [ROOT evidence](../../runs/q08-correctness-20261026/TODO.md).
+  ROOT evidence.
 - [x] Both models' retained same-attempt C16 observations:16 actual requests each,
   exact wire IDs/stored text digests under both policies, four new comparator
   invocations0/EOF. No fresh inference/fullV/state/performance qualification;
@@ -419,7 +416,7 @@ build or general model/backend grant. Historical failures keep their source scop
 
 - [x] **Previous MAIN source convergence,22Oct:** all536 selected runtime/support paths
   now match ROOT bytes/modes; preserve MAIN orderedSiLU and collision-safe PTX
-  dump, unrelated worktrees/changes and rootREADME. Fresh MAIN strictClippy,
+  dump, unrelated checkouts/changes and rootREADME. Fresh MAIN strictClippy,
   focused SiLU/canonical tests, release builds and complete isolated checkgate
   PASS:1490 Rust passes/0failed/80ignored,257suites,18Python plus packaging/style.
   Actual six SiLU modes and both original GGUF B2 workers PASS with exact source
@@ -431,7 +428,7 @@ build or general model/backend grant. Historical failures keep their source scop
   adds no wider two-model/active8/all327-oracle/original-GDN-tuple/perf claim.
 
 - [x] **Cached47+7 and existing-worker HTTP unit accepted in integration
-  worktree:** .8B original255-node/327-value path, actual greedy feedback and
+  checkout:** .8B original255-node/327-value path, actual greedy feedback and
   independent roots; eight complete state/boundary/fullV comparisons exact.
   Interleaved sessions, restore/stale/cancel/pressure+survivor, three submitted
   cached cuts and two affected legacy regressions pass; unknown work retains
@@ -446,7 +443,7 @@ build or general model/backend grant. Historical failures keep their source scop
   ROOT cached-http TODO records original source fixes and numerical outcomes;
   root README unchanged.
 
-- [x] Whole Initial47 end-to-end unit accepted in integration worktree: same original255-node/327-value engine, all24layers/finalnorm/fullV and all42active canonicalstate exact for the healthy observed trajectory (26,860,544B independently captured coverage; all327 observed=false). Genuine sourceW1008+tied485windows verifiedtwice; normalhost/resident/physical0. Coldcancel/pressure/positive/five submittedfaultcuts and focused affectedlegacy/currentRoot/prefix/2B regressions PASS; independentownedcleanup checks and completecheckgate40 PASS. Unpublished initialcall only: cachedfeedback/workerHTTP/broadtwo-model parity and servingperformance remainopen. Next ONE coherentcached47..53/current-root+workerHTTP unit, with unrelated27B/Gemma implementation inparallel. ROOT acceptance68; rootREADME unchanged.
+- [x] Whole Initial47 end-to-end unit accepted in integration checkout: same original255-node/327-value engine, all24layers/finalnorm/fullV and all42active canonicalstate exact for the healthy observed trajectory (26,860,544B independently captured coverage; all327 observed=false). Genuine sourceW1008+tied485windows verifiedtwice; normalhost/resident/physical0. Coldcancel/pressure/positive/five submittedfaultcuts and focused affectedlegacy/currentRoot/prefix/2B regressions PASS; independentownedcleanup checks and completecheckgate40 PASS. Unpublished initialcall only: cachedfeedback/workerHTTP/broadtwo-model parity and servingperformance remainopen. Next ONE coherentcached47..53/current-root+workerHTTP unit, with unrelated27B/Gemma implementation inparallel. ROOT acceptance68; rootREADME unchanged.
 
 - [x] Original full Initial47 expected reference255/327 accepted separately: SAMEhealthy discovery2OBS source/trajectory and all44metadata/64wholearchive identities, original unchanged common/all42/attention gates freshly PASS with disjoint newreceipt destinations; all24paired166576128B/3096records rechecked, fullheldsource before/after and tied508559360B/finalgamma2048B actualsourceword joins closed. Expectedcomparison26860544B covers48blockboundaries/all42active/finalnorm+F32sum/selectedrow46/fullV; original8callfeedback provenance only, all327/privateLSE/originalGDNtuple/native/model/serving/perffalse. Frozen21children219deps fullyread/reauthenticated,12isolatedPython guards and independent ROOT postvalidation PASS; newreceipt315134B/cce765be. Sixnewreader children remain uninstalled/pinNone. Next fullInitial runtime/seals/pool/head source drafts in parallel; no modelacceptance fromreference.
 
@@ -544,7 +541,7 @@ build or general model/backend grant. Historical failures keep their source scop
 
 - [x] Canonical47 connected first-six frontier phase56 accepted ISO below, following finite47 projection55 and exact arithmetic54. Existing publicGemmExCreate status1/export-UUID issue remains blocked; no bypass. Original failed47 parent remains fatal and separate from bounded connected-prefix acceptance.
 
-- [x] Canonical47 QKVZ/BA explicit normalized-input leaf phase55 accepted ISO: current source35children/27deps/6parents; independent QKVZ and BA address/branch audits, authentic small-original NVINFO corroboration and pinned CPU NVRTC→SASS predicate proof. Exact captured66c2 image/manifest, immutable sourceW, original actor/flight/caps retained. Finalhelper55b all5native modes+5oldRMS47/2Bprefix64/solve47/naturalreuse regressions PASS;385024QKVZ+1504BA+48128input BF16words exact,16842752B sourceW unchanged, normalhost/resident/physical0. Unknown/latecancel6handles/3owners/pending1/fenced128MiB/resident93340608B/retainedhost329843168B/0Ready+D2H+publication. Negative-single fixture/Linuxcfg fixes and initial unrecognized exactCUDA123 ELFheader failure preserved; onlynewexact7.8MB/64B header branch added, fullSHA/structuralguards unchanged. Actualparser9/5GPU/35helper guards/strictcombinedClippy5/completegate27 PASS1333Rust/0fail/76ignored/257suites +18Python/release/installer/shell/Nix,0warnings. Directvendorregistryguard remains authored/unrun because vendor not workspace-testable. Frozen drafts/priorhelpers/README/30worktrees preserved. No computed47GDN/wholemodel/serving/perf permit; phase-acceptance-55.json pins bounded acceptance.
+- [x] Canonical47 QKVZ/BA explicit normalized-input leaf phase55 accepted ISO: current source35children/27deps/6parents; independent QKVZ and BA address/branch audits, authentic small-original NVINFO corroboration and pinned CPU NVRTC→SASS predicate proof. Exact captured66c2 image/manifest, immutable sourceW, original actor/flight/caps retained. Finalhelper55b all5native modes+5oldRMS47/2Bprefix64/solve47/naturalreuse regressions PASS;385024QKVZ+1504BA+48128input BF16words exact,16842752B sourceW unchanged, normalhost/resident/physical0. Unknown/latecancel6handles/3owners/pending1/fenced128MiB/resident93340608B/retainedhost329843168B/0Ready+D2H+publication. Negative-single fixture/Linuxcfg fixes and initial unrecognized exactCUDA123 ELFheader failure preserved; onlynewexact7.8MB/64B header branch added, fullSHA/structuralguards unchanged. Actualparser9/5GPU/35helper guards/strictcombinedClippy5/completegate27 PASS1333Rust/0fail/76ignored/257suites +18Python/release/installer/shell/Nix,0warnings. Directvendorregistryguard remains authored/unrun because vendor not workspace-testable. Frozen drafts/priorhelpers/README/30checkouts preserved. No computed47GDN/wholemodel/serving/perf permit; phase-acceptance-55.json pins bounded acceptance.
 
 - [x] Canonical47 source six-node connected prefix phase56 accepted ISO: actual embedding/RMS/QKVZ/BA/Conv/Z/Gated964064BF16words, eight GDN intermediate648672words and canonicalConv18432/H262144F32words exact versus independently authenticated originalOBS expected trajectory. All42fresh priors/40completeunchanged carries and16892256B immutableW verified;3native/134dispatch/86312100B readback. Five physical modes+9old47/2B1/2B64/naturalreuse regressions PASS. Unknown/latecancel147actual graphbuffers/119descriptors/pending1/fenced192MiB/retainedhost468406660B after externaldrops,0D2H/Ready/publication; normalhost/resident/physical0. Independent complete source review,18canonical47/32GDN/3component filter tests(overlap),44helper guards/strictClippy/completegate28 PASS1333Rust/0fail/76ignored/257suites +18Python/release/installer/shell/Nix,0warnings. Two private-module helper imports corrected to existing public reexports; failedbuild retained. Current OwnedCanonical47Solve4 code remains different from originalOBSselectedtuple despite actual fullword equality. Same engine/session/attempt; frontier0/stopsbeforeGdnOut. Acceptance56/helper56 preserved; no full47/cached47/whole2B/serving/perf permit.
 
@@ -593,7 +590,7 @@ build or general model/backend grant. Historical failures keep their source scop
 
 - [x] Compose40 owned code/test paths into MAIN with fresh mtimes. MAIN
   combined strict and all6 actual source comparisons pass;38 owned Rust
-  files pass formatting. Original changes, worktrees, README and existing
+  files pass formatting. Original changes, checkouts, README and existing
   unaccepted SiLU binary preserved; no staging/commit/push or GPU execution.
 
 - [x] Native probe initialization refusal retained: AS2GiB could not fit

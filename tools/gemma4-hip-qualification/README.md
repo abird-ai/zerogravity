@@ -20,7 +20,7 @@ or `.git` autodiscovery:
   pinned by the supplied record.
 - `--payload ABS` and `--archive ABS`: both fresh, absolute, nonexistent and
   outside this tool tree. The archive must be outside the payload. Outputs under
-  `ROOT/.agents/runs/<fresh-run>` are allowed and are excluded from input
+  a fresh external scratch directory are allowed and excluded from input
   discovery. The source root may be staged without `.git`.
 
 Prepare copies the exact manifest bytes to `payload/assembled-source.json`, every
@@ -130,17 +130,14 @@ CPU controls are accepted; nothing here is qualified. Accepted evidence:
   signals during cleanup, missing `Log`/raw-pipe fallback, ALRM between hashes and
   inside the all-held `finally`, and non-critical deadline with bounded receipt
   failure.
-  Evidence: `.agents/runs/resume-all-qvg-caller-assembled-cpu-pi-20261024/FINAL-VERIFICATION.json`
-  (`cases: 81`, `caller_controls_pass: true`, `fd_leaks: 0`, `rescue_needed: 0`).
+  Accepted checkpoint: 81 cases, caller controls pass, zero FD leaks and no rescue required.
 - 33 complete-manifest metadata controls over the supplied complete ROOT
   manifest (Cargo workspace/path/vendor/build-script and literal include inputs),
   plus the default awaiting and accepted external receipt paths with fresh
-  outputs. Evidence: the same `FINAL-VERIFICATION.json` (`prepare_cases: 33`,
-  `prepare_controls_pass: true`).
+  outputs. Accepted checkpoint: 33 preparation cases pass.
 - 12 late cleanup controls: owner TERM stage and pre-assignment ALRM with real
   owner retirement, held FDs closed, one child, one invocation, bounded seconds.
-  Evidence: `.agents/runs/resume-all-qvg-owner-error-final-pi-20261024/VERIFICATION-OWNER.json`
-  (`passed: 12`, `total: 12`, `all_ok: true`, `sources_ok: true`).
+  Accepted checkpoint: 12/12 cases pass with source checks.
 
 These are CPU controls only: no model, source-provenance or physics acceptance.
 

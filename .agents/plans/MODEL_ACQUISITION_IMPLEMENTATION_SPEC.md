@@ -4,7 +4,7 @@ Status: A1 local cache implementation VERIFIED; A2/A3 remain planned. The
 [A1 acceptance](../research/PULL_A1_LOCAL_XDG_CACHE_2026-10-16.md) records actual API, source
 snapshot, tests, findings and limits. This specification retains the original
 full acquisition design; provider/loader/parity gates do not pass by implication.
-The [accepted checkpoint](accepted-baseline/TODO.md) settles the earlier
+The [accepted checkpoint](CURRENT_STATUS_AND_TRACKING.md) settles the earlier
 baseline; [plan TODO](model-acquisition/TODO.md) tracks subsequent implementation and tests.
 
 The original design below assumed no source changes at that time. A1 is now

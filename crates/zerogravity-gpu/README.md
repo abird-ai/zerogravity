@@ -76,11 +76,11 @@ The native command guard always requires actual user/network isolation and
 Cargo offline mode. Default CPP commands do not require LLVM. Explicit
 `--require-llvm` and `--verify-only` verify the existing pinned cache; they never
 acquire it. Accepted qualification and limits are recorded in the
-[baseline TODO](../../.agents/plans/accepted-baseline/TODO.md).
+[baseline TODO](../../.agents/plans/CURRENT_STATUS_AND_TRACKING.md).
 
 ## Accepted qualification baseline
 
-The [owner-approved checkpoint](../../.agents/plans/accepted-baseline/TODO.md)
+The [owner-approved checkpoint](../../.agents/plans/CURRENT_STATUS_AND_TRACKING.md)
 records completed physical qualification and limits. Its raw records are retired.
 Follow the [plan TODO index](../../.agents/plans/TODO.md) for future
 changes; use the current commands above rather than restoring old probe paths.

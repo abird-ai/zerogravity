@@ -1,8 +1,5 @@
 # Model execution
 
-> **Note (2026-10-29):** links in this file pointing into `zerogravity-worktrees/…` are dead —
-> those worktrees were retired. See `.agents/docs/retired-2026-10-29/README.md`.
-
 Provenance commit: `6d74f76`.
 Scope: P02/P03/P08/P11–P14/P17; CPU truth before GPU specialization.
 Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_SPEC.md),
@@ -25,8 +22,7 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   source-derived primitive series is integrated as
   `ea66b3a`/`68393e5`/`6b4a2ec`/`441fa64`, with RMS overflow/status, scalar ABI,
   alias, theta/KV-layout and CUDA compile/reflection gaps closed. It remains
-  unselected and has no backend or launch authority; see
-  [review record](../../docs/REVIEW_ORDINARY_CANDIDATE_29B491D_2026-10-27.md).
+  unselected and has no backend or launch authority.
 - [ ] Complete the ordinary non-GDN projection/attention lowerer through the
   existing physical owner using exact packed Qwen layouts and authenticated
   tensors. It must enter the existing queue, flight,
@@ -64,15 +60,14 @@ queue acceptance; physical jobs and quiet timings retain coordinated ownership.
 
 Latest owner merge direction: complete the current Qwen27B/Gemma4/HIP/Vulkan/
 queue units to a tested, mergeable checkpoint, assemble and reconcile shared
-source, then integrate into main and retire completed worktrees. Keep original
+source, then integrate into main and retire completed checkouts. Keep original
 reference roots while current checks use them. Broken source or a draft
 controller is not a merge checkpoint; preserve pending physical scopes honestly.
 
 
 ### H/G/V physical checkpoint — 25 Oct pass 3
 
-- [~] Three passes executed on pvl-x2 (full evidence:
-  ../../runs/resume-all-hgv-checkpoint-execution-sol-20261025/LOG.md).
+- [~] Three passes executed on pvl-x2.
   Root causes of passes 1-2 fixed and verified on hardware
   (`06b89da` E0308, `c217c35` V parents, `e6ab074` census,
   `3941a3c` Gemma envelope). Pass 3: builds/admins/binds all PASS;
@@ -83,9 +78,7 @@ controller is not a merge checkpoint; preserve pending physical scopes honestly.
   g-resident: parity row-upload fixture contract vs legitimate PLE
   row dedup; v-resident: adapter validator requires a false-permit
   field the producer never emits — physical case itself passed);
-  19 cases stopped as dependents. Fix sites pinned in
-  [the PM handoff](../docs/FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-25-PM.md) §2;
-  pass-4 procedure §2 there. No product defect established
+  19 cases stopped as dependents. No product defect established
   (qualification-gated paths).
 
 ### Current shared source20 hardware checkpoint — 24 Oct
@@ -169,9 +162,9 @@ controller is not a merge checkpoint; preserve pending physical scopes honestly.
   is diagnosed; fixture-only15 correction builds, preserving every graph/source/
   fence guard. Current assembled phase and final
   assembled gate still required. Prior.8B measured checkpoint remains source11/12.
-  [Combined assembly results](../../runs/model-execution-current11-assembled-checks-sol-high-20261024/REPORT.md).
-  [Four-case report](../../runs/model-execution-gemma-final-feedback-verifier-v2-sol-high-20261024/REPORT.md).
-  [Independent source evidence](../../runs/model-execution-gemma-final-owner-review-sol-high-20261024/REVIEW.md).
+  Combined assembly results.
+  Four-case report.
+  Independent source evidence.
 - [ ] Gemma E2B/E4B: dependency-based shared-tail fast prefill, PLE row reuse,
   optimized packed projections and eligible attention, physical SWA reclamation.
   E2B15owners/20shared tail exists; E4B needs24/18 and a new functional route.
@@ -209,7 +202,7 @@ controller is not a merge checkpoint; preserve pending physical scopes honestly.
   substantive HybridDecoder composition consumed by BOTH small-model and27B
   recorders, with shared role groups/bindings/state schema. Packed-vllm delayed
   residual versus separate Torch/BF16 arithmetic remain explicit adapters.
-  [Astra initial review](../../runs/architecture-astra-qwen-pool-review-20261023/TODO.md)
+  Astra initial review
   accepts the design; settled source/caller reuse and actual checks remain open.
 - Shared physical successor now integrated MAIN/ISO345v3. Required local release
   and both small models' original full source/state/fault/API matrices PASS;
@@ -223,7 +216,7 @@ controller is not a merge checkpoint; preserve pending physical scopes honestly.
   and multiple-native-set work follows Astra architecture-only review and Sol
   HIGH implementation; final assembled gate remains pending.
 - Gemma optimized residency unit active in isolated Sol HIGH assembly, following
-  [Astra architecture-only design](../../runs/architecture-astra-residency-and-set-key-20261023/DESIGN.md):
+  Astra architecture-only design:
   reuse shared authenticated matrices/row transport, cold-select repeated full
   projections and tied embedding/head, widen output-row launches without changing
   full-K arithmetic, normal observer=None before D2H construction, original
@@ -252,7 +245,7 @@ controller is not a merge checkpoint; preserve pending physical scopes honestly.
   retains contextdevice4GiB/host2GiB until process exit. Both original local+
   remote source35/group/one-reap/fullEOF closures pass; sampled shared memory is
   not an isolated peak/bound. Three fresh-process ELF hashes differ explicitly.
-  [Complete actual checkpoint](../../../../zerogravity-worktrees/gemma4-portable-gpu-whole35-20261023/.agents/runs/model-execution-native-sol-high-20261023/GEMMA_APPLY-v5-2.md).
+  Complete actual checkpoint.
   Single1MiB synchronous source transport is a correctness baseline; no serving/
   performance/general HIP permit. Binder316 and the new shared physical-owner
   split were not executed by that proof. Next assembled gate/affected physical
@@ -301,7 +294,7 @@ controller is not a merge checkpoint; preserve pending physical scopes honestly.
 
 ### Source-specific optimization backlog — 21 Oct, deferred behind current order
 
-Source details and limits: [independent comparison](../../research/engine-optimization-comparison-2026-10-21/README.md).
+Source details and limits: [independent comparison](../fabric-vnext/PRIOR_ART_AND_REVALIDATION.md).
 These are future operators/strategies in the same engine, not payload approval
 or model support. Qwen parity/short benchmark/long→dense27B→Gemma remains binding.
 
@@ -512,7 +505,7 @@ or model support. Qwen parity/short benchmark/long→dense27B→Gemma remains bi
   complete isolated source gate0/EOF. Both .8B/2B retained C16 output comparisons
   pass; this adds no fresh execution, full-model or cross-backend permit.
   [Policy](../numerics-and-context/CORRECTNESS_POLICY.md) and
-  [evidence](../../runs/q08-correctness-20261026/TODO.md).
+  evidence.
 
 ### `29a98c1` — HIP source-page events and witness (25Oct assembly)
 
@@ -548,7 +541,7 @@ build or general model/backend grant. Historical failures keep their source scop
   finite known3Q/4G reload plus two unknown1Q/1G lifecycle cases. Revalidated
   original typed receipts, exact1650 source,70dataFD, artifact51808f9e…,
   global fence, both process-group/reap/EOF layers; all earlier failures kept.
-  [Actual scope](../../runs/source20-x2-actual-namespace2-pi-20261024/REPORT.md).
+  Actual scope.
 
 - [x] ROOT authenticates original Qwen teacher receipt/manifest and independently
   scans allfour248320V BF16 records. Both original call0 select220, while held
@@ -557,13 +550,13 @@ build or general model/backend grant. Historical failures keep their source scop
   never relabel teacher call1. ROOT+Astra reject correction draft: signedzero
   stillwrong, fresh package table stale, scopes/staging incomplete; replacement
   controller has invented caps/reap-before-signals. No merge/physical grant.
-  [Coherent corrective design](../../runs/model-execution-astra-qwen-natural-capture-correction-20261024/DESIGN.md).
+  Coherent corrective design.
 
 #### Qwen27B and Gemma4 optimization audit — 24 Oct
 
 - [x] Separate parallel read-only audit of actual vLLM0.31 benchmark sources,
   stable0.32 and frozen current upstream;20Qwen/20Gemma/15shared comparisons.
-  [Report, exact model matrix and source links](../../runs/model-execution-qwen-gemma-vllm-audit-20261024/REPORT.md).
+  Report, exact model matrix and source links.
   Neither family currently has all applicable vLLM optimizations. Source dispatch,
   planning inventory and source113 assembly do not grant physical/serving/perf.
 
@@ -575,12 +568,12 @@ build or general model/backend grant. Historical failures keep their source scop
   31B down projections; extend source-bound profiles/inventory, not inherited
   limits or permits. Variant KV owner/PLE costs and MAIN versus frozen118
   boundaries are explicit. No new runtime/performance qualification.
-  [Complete matrix, corrections and reuse map](../../runs/model-execution-gemma-series-audit-review-sol-high-20261024/REPORT.md).
+  Complete matrix, corrections and reuse map.
 
 - [x] Source466 x2 readiness/control unit reviewed and executed through actual
   packs/builds/GPU-free imports; Gemma Resident20 healthy+fresh unknown PASS.
   Old namespaces/controls immutable; source466 excludes later RMS3/source6.
-  [Commands, costs and limitations](../../../../zerogravity-worktrees/model-source410-checks-sol-high-20261024/.agents/runs/model-execution-x2-readiness-sol-high-20261024/READINESS.md).
+  Commands, costs and limitations.
 
 - [x] Fresh Gemma source466 source-only pack reviewed:32,286,720B archive
   `28fcd32410715277668534efc14ce18aadf998b0fd5bbde6e759480ad482226d`,
@@ -622,7 +615,7 @@ build or general model/backend grant. Historical failures keep their source scop
   original groups/one-reap/fullEOF closures pass. Shared sampledVRAM is not an
   isolated peak; seven fresh ELF hashes differ explicitly. No serving/speed or
   current late-RMS/source8 grant.
-  [Complete actual scope](../../../../zerogravity-worktrees/model-source410-checks-sol-high-20261024/.agents/runs/model-execution-x2-readiness-sol-high-20261024/execute-source466-v1/PHYSICAL-SETUP-RESULT.md).
+  Complete actual scope.
 
 - [x] Qwen466 actual original receive+GPU-free new96GiB CacheStore import CLOSED0:
   31payloads55,586,113,293B, snapshot`98cea13c169310196c4d8a113765f8fe58ab7a7961f0d1be69212c70dba8015e`.
@@ -649,7 +642,7 @@ build or general model/backend grant. Historical failures keep their source scop
   dev-bind/dataFD namespace is not present in this original Qwen GPU controller;
   import's private GPU-free bwrap is separate. P1 final-owner Pending/Snapshot
   actual HIP fault coverage remains open regardless of finite matrix outcome.
-  [Complete physical scopes and transport distinction](../../../../zerogravity-worktrees/model-source410-checks-sol-high-20261024/.agents/runs/model-execution-x2-readiness-sol-high-20261024/execute-source466-v1/QWEN-PHYSICAL-RESULT.md).
+  Complete physical scopes and transport distinction.
 
 - [x] Frozen469 alias-v2 actual P1 final Pending/Snapshot reader retirement:
   all4 fresh HIP cases PASS; ROOT independently checked every actual report and
@@ -663,7 +656,7 @@ build or general model/backend grant. Historical failures keep their source scop
   old-order negative/natural-temporal/serving/speed grant. Original failed469
   incomplete internal alias census remains failed; exact equality preserved in
   repair. Genuine own P1 cache reused with actual locks, no second55GB import.
-  [Four-case results](../../../../zerogravity-worktrees/qwen-final-owner-alias-sol-high-20261024/.agents/runs/model-execution-qwen-final-owner-alias-sol-high-20261024/REPORT.md).
+  Four-case results.
 
 #### Current model/backend checkpoint — 23 Oct
 
@@ -960,11 +953,11 @@ build or general model/backend grant. Historical failures keep their source scop
   Assembled isolated gate7 PASS1715Rust/0failed/88ignored/266suites plus scripted
   checks; actual Gemma matrix retains its immutable earlier binary scope.
 
-- [x] Qwen27B CPU source-window output tail integrated into ROOT worktree: final FFN norm → gate/up → staged BF16 SiLU/multiply → down → residual → final norm → full vocabulary, through existing MathematicalBackend/HostMath. Fourteen owned paths merged with fresh mtimes after exact parent checks; integrated model67/core17 tests PASS. Explicit post-attention input remains the boundary; no trained whole27B/112-domain/serving parity claim. [Scope and checks](../../../../zerogravity-worktrees/root-lowest-f32-20261020/.agents/runs/model-execution-qwen27b-root-integration-20261022/TODO.md).
+- [x] Qwen27B CPU source-window output tail integrated into ROOT checkout: final FFN norm → gate/up → staged BF16 SiLU/multiply → down → residual → final norm → full vocabulary, through existing MathematicalBackend/HostMath. Fourteen owned paths merged with fresh mtimes after exact parent checks; integrated model67/core17 tests PASS. Explicit post-attention input remains the boundary; no trained whole27B/112-domain/serving parity claim. Scope and checks.
 
 - [x] Complete isolated CPU integration gate now covers Qwen27B + Gemma: scripts/check.sh PASS,1490 Rust test passes/0failed/80ignored across257 suites,18Python checks, strictClippy/release/installer/shell/Nix PASS,0warnings. Full trained inference/native/serving/performance qualifications remain open.
 
-- [x] Gemma E2B source-bound AnalyticF32TextV1 CPU reference integrated: one generic full35-layer schedule,15KV owners/shared consumers,PLE/proportional rotary/sliding attention/finalnorm/tied full vocabulary and original SessionAuthority transactions. Eighteen owned paths contextually merged with fresh mtimes, preserving27B. Tiny genuine source-window fixtures/nonzero synthetic continuation/rollback and complete CPU integration gate PASS. [Scope and checks](../../../../zerogravity-worktrees/root-lowest-f32-20261020/.agents/runs/model-execution-gemma4-root-integration-20261022/TODO.md).
+- [x] Gemma E2B source-bound AnalyticF32TextV1 CPU reference integrated: one generic full35-layer schedule,15KV owners/shared consumers,PLE/proportional rotary/sliding attention/finalnorm/tied full vocabulary and original SessionAuthority transactions. Eighteen owned paths contextually merged with fresh mtimes, preserving27B. Tiny genuine source-window fixtures/nonzero synthetic continuation/rollback and complete CPU integration gate PASS. Scope and checks.
 
 ### fff1842 — trained BF16 operator qualification
 

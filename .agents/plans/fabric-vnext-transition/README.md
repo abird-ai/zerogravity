@@ -38,9 +38,8 @@ The preceding full architecture reference remains frozen:
 - ../fabric-vnext/DECISIONS_AND_OPEN_QUESTIONS.md — literal user instructions and design choices.
 - ../fabric-vnext/HANDOFF.md — original context and read order.
 - ../fabric-vnext/TODO.md — historical held work.
-- ../../docs/FABRIC_VNEXT_COMPLETE_REFERENCE_2026-10-27.md — full single-file original snapshot (~198KB).
 
-**Do not silently replace this historical material.** This transition pack supplements it with the second read-only current-code refresh, improved phase ordering, precise codec split, root/resource correction, complete feature inventory and actionable engineering commit sequence. A combined complete reference will reproduce both packs verbatim, so an LLM can load everything in one file.
+**Do not silently replace this historical material.** This transition pack supplements it with the second read-only current-code refresh, improved phase ordering, precise codec split, root/resource correction, complete feature inventory and actionable engineering commit sequence. The plan files in this directory and ../fabric-vnext are the maintained architecture source.
 
 ## 2. Project's core product and architecture, retained
 

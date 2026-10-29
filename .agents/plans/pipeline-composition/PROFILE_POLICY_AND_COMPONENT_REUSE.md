@@ -119,7 +119,7 @@ gates and supported-target packaging checks.
 
 ## Correctness harness and implementation acceptance
 
-Promote [the existing kernel-contract research](../../research/engine-optimization-comparison-2026-10-21/tensorfold.md)
+Promote [the existing kernel-contract research](../fabric-vnext/PRIOR_ART_AND_REVALIDATION.md)
 into explicit implementation tasks. Reuse/port the harness and useful kernels
 according to the same rule; importing test names without executable checks is
 insufficient. Build shared comparison/contract logic in native Rust; provide a

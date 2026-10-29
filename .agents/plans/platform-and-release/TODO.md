@@ -1,8 +1,5 @@
 # Platform and release
 
-> **Note (2026-10-29):** links in this file pointing into `zerogravity-worktrees/…` are dead —
-> those worktrees were retired. See `.agents/docs/retired-2026-10-29/README.md`.
-
 Provenance commit: `6d74f76`.
 Scope: remaining P00/P04/P05/P08/P20/P21/P22/P23.
 Contracts: [P00–P23 roadmap](../IMPLEMENTATION_ROADMAP.md),
@@ -50,11 +47,11 @@ Contracts: [P00–P23 roadmap](../IMPLEMENTATION_ROADMAP.md),
 
 ### 25Oct evidence records — `docs(plans)` (this commit)
 
-- [x] User-requested obsolete worktree cleanup:43 registered +5 redundant
+- [x] User-requested obsolete checkout cleanup:43 registered +5 redundant
   extracted trees retired after source/evidence preservation; branch refs and
   active/reference/build trees retained. ROOT reverified all44 new archives and
   four preexisting extract archives; main/rootREADME unchanged.
-  [Recovery and remaining live scope](../../runs/resume-all-parallel-root-20261024/WORKTREE_CLEANUP.md).
+  Recovery and remaining live scope.
 
 - [x] Retire nine more obsolete trees: all source/evidence and Git metadata
   preserved; ROOT compared all18 TAR archives against actual source before
@@ -75,7 +72,7 @@ Contracts: [P00–P23 roadmap](../IMPLEMENTATION_ROADMAP.md),
   integrated (`8f01635`..`68e13a8`, full CPU gate rc0 25Oct). Keep three donor
   drafts until their work is recovered; preserve lane-unique evidence first.
   DONE25Oct: trees and branches retired; unique evidence preserved under
-  zerogravity-worktrees/.preserved-lanes-20261025/ (SHA256SUMS + RECORDS.md);
+  Git history (SHA256SUMS + RECORDS.md);
   OLD-OIDs recorded; donor/reference trees kept.
 
 

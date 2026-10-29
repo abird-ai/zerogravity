@@ -3,8 +3,8 @@
 **Date frozen:** 2026-10-27.
 **Status:** DOCUMENTATION / REFERENCE ONLY. The user explicitly said to finish writing and report completion *before* any next phase. Do not initiate resync, source refactor, test, download, commit or deployment from this plan until their later instruction.
 **Project:** zerogravity, /home/pvl/spaces/abird/src/zerogravity on connector **dotlink-l5** (pvl-l5).
-**Initial 27-Oct archival-phase observed HEAD:** eb38dd5e892f2120ac29cc2fb79b2dbe137a37fe, worktree initially clean; this observation is provenance ONLY, not a readapted architecture review.
-**Historical in-depth 26-Oct comparison checkout:** 195099ca583ace766d075682927f590360c823a5 plus a large moving worktree; source paths, file counts and status in comparative research refer ONLY to it.
+**Initial 27-Oct archival-phase observed HEAD:** eb38dd5e892f2120ac29cc2fb79b2dbe137a37fe, checkout initially clean; this observation is provenance ONLY, not a readapted architecture review.
+**Historical in-depth 26-Oct comparison checkout:** 195099ca583ace766d075682927f590360c823a5 plus a large moving checkout; source paths, file counts and status in comparative research refer ONLY to it.
 
 ## 1. Why this archive exists
 
@@ -28,7 +28,7 @@ This archive fulfills #5 and fully describes #1–4; the other phases have not b
 7. [TODO.md](TODO.md) — held work, never treat as part of active queue unless coordinator later promotes it.
 8. Existing source-of-truth instructions only when future resync is expressly requested: AGENTS.md; .agents/plans/README.md; .agents/plans/TODO.md; .agents/plans/pipeline-composition/STRUCTURE_AND_NAMING.md; relevant active TODOs and normative .agents/docs/ contracts (see PRIOR_ART_AND_REVALIDATION).
 
-A combined single-file full-reference archive may exist under .agents/docs/FABRIC_VNEXT_COMPLETE_REFERENCE_2026-10-27.md. It is a lossless concatenated copy of the detailed plan contents for convenience; individual plan files remain the editable authoritative sections in a later *separately approved* documentation phase.
+The individual plan files in this directory are the maintained authoritative architecture source.
 
 ## 3. The latest architectural mandate
 
@@ -58,7 +58,7 @@ The core goal:
 - provide an "already done / still needed / newly conflicts / revised plan" analysis;
 - do NOT begin code changes unless later instruction expressly asks to implement.
 
-**If user expressly says "implement after resync":** reconcile current source and design, then implement in smallest reviewable logical units, preserving active agent ownership and accepted test evidence. Follow AGENTS.md and designated owner coordination; do not alter other worktrees, git history or push without explicit permission.
+**If user expressly says "implement after resync":** reconcile current source and design, then implement in smallest reviewable logical units, preserving active agent ownership and accepted test evidence. Follow AGENTS.md and designated owner coordination; do not alter other checkouts, git history or push without explicit permission.
 
 ## 5. Ready-to-paste next-agent prompt (resynchronization-only)
 

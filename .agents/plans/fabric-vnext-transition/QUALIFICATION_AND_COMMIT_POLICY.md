@@ -9,7 +9,7 @@ This adapts, but does not annul, the existing all-model correctness policy at .a
 ### Tier L — FAST per-commit structure/contract checks
 
 Run for EVERY signed logical phase:
-- `cargo fmt --all -- --check` (or scoped before full worktree integration).
+- `cargo fmt --all -- --check` (or scoped before full checkout integration).
 - `python3 -B scripts/check-architecture.py` and its small checker fixtures; extend existing checker to know engine/serving/facade/CLI after S0.
 - Cargo dependency feature tree and build checked at least for the changed affected crates with `--locked --offline` and `--no-default-features` where appropriate. Cargo compilation is not a model/device qualification.
 - `cargo check` or targeted `cargo clippy --all-targets -- -D warnings` on affected packages/features only; do not treat intentionally disabled physical qualification as a release feature.
@@ -134,7 +134,7 @@ docs(fabric): record final source/quality/physical acceptance
 
 Messages are suggestions; actual unit should describe what source really changed. Record scoped source/test evidence and open Q0 gate after each S/F commit. Never falsely mark long H completed because a package builds. Do not disable commit signing, don't rewrite old source/test history or push on planning authorization. Other agents' staged or unstaged paths cannot be automatically included.
 
-For parallel work: isolate candidate branches/worktrees with explicit read-only original/source policy; one coordinator merges, checks staged diff, and integrates source/code/release boundaries serially. Keep shared Cargo/engine/state/owner files under one writer; don't have four agents independently invent runtime TaskId/BufferLease types. Subagent results are not accepted without code review and actual targeted evidence.
+For parallel work: isolate candidate branches/checkouts with explicit read-only original/source policy; one coordinator merges, checks staged diff, and integrates source/code/release boundaries serially. Keep shared Cargo/engine/state/owner files under one writer; don't have four agents independently invent runtime TaskId/BufferLease types. Subagent results are not accepted without code review and actual targeted evidence.
 
 ## 6. Acceptance that must never be hidden by deferral
 

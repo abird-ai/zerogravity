@@ -4,7 +4,7 @@
 
 ## 1. Baseline and commit lineage
 
-The original file-tree/revalidation research inspected HEAD 195099ca583ace766d075682927f590360c823a5 with a then-large moving uncommitted worktree. The first vNext source refresh inspected eb38dd5e892f2120ac29cc2fb79b2dbe137a37fe, **39 commits** after 195099ca, 1,220 files touched, 157,086 inserted and 103,429 deleted lines (includes moves, generated source and handoffs). Two later commits ba7fb03 and fadf2b1 bring the observed gap to **41 commits**. Earlier whole-repository history contained approximately 289 commits; do not mistake the last 41 for all project work.
+The original file-tree/revalidation research inspected HEAD 195099ca583ace766d075682927f590360c823a5 with a then-large moving uncommitted checkout. The first vNext source refresh inspected eb38dd5e892f2120ac29cc2fb79b2dbe137a37fe, **39 commits** after 195099ca, 1,220 files touched, 157,086 inserted and 103,429 deleted lines (includes moves, generated source and handoffs). Two later commits ba7fb03 and fadf2b1 bring the observed gap to **41 commits**. Earlier whole-repository history contained approximately 289 commits; do not mistake the last 41 for all project work.
 
 | Commit | Concrete change | Fabric transition consequence |
 | --- | --- | --- |
@@ -132,7 +132,7 @@ Current truthful gaps:
 ## 6. Boundaries for successor agents
 
 The source is actively changing and the latest observed model/GPU evidence can shift between turns. At future code start:
-- Read HEAD/status/active worktrees, all .agents/plans owner TODO updates and AGENTS.md.
+- Read HEAD/status/active checkouts, all .agents/plans owner TODO updates and AGENTS.md.
 - Preserve signed commit history, retained source hashes, source model/driver/kernel code IDs and explicit negative tests.
 - Don't rerun already completed low-level dependency extraction just to match a new filename; move responsibility only where still genuinely misplaced.
 - Never execute held gfx90c GPU or unsafe system power tuning; model downloads and remote peers need separate authorization.

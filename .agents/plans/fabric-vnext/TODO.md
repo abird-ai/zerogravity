@@ -20,7 +20,7 @@ None in this plan. The reference is side documentation only; nothing has been co
 
 - [ ] Confirm the user has expressly initiated the **read-only resync/revalidation phase**.
 - [ ] Read the full frozen Fabric vNext pack and literal user amendments, then AGENTS.md and current owner plans.
-- [ ] Inspect current live HEAD, branch, worktree, recent commits, in-flight agents and true Cargo feature/dependency graph. Protect third-party work.
+- [ ] Inspect current live HEAD, branch, checkout, recent commits, in-flight agents and true Cargo feature/dependency graph. Protect third-party work.
 - [ ] Reconcile current source/architecture docs/active TODOs with historical 26-Oct analysis; classify old path anchors obsolete/new/already done.
 - [ ] Reconfirm current in-source model families, generic semantics, numerical policies, physical provider, queues, state publication, resource services and source ownership.
 - [ ] Reconfirm current model-neutral engine/SDK/CLI/serving responsibilities and look specifically for newly added server/engine library work.

@@ -1,5 +1,3 @@
-> **Note (2026-10-29):** links in this file pointing into `zerogravity-worktrees/…` are dead —
-> those worktrees were retired. See `.agents/docs/retired-2026-10-29/README.md`.
 Author: Project owner
 Co-authors: GPT-6
 Owner: @pvl
@@ -8,7 +6,7 @@ Owner: @pvl
 
 Design proposal, 21 Oct 2026. Interfaces and new recursive/profile behavior remain
 unimplemented; no runtime or performance qualification follows from this document.
-Parent: [pipeline composition](/home/pvl/spaces/abird/src/zerogravity/.agents/plans/pipeline-composition/README.md).
+Parent: pipeline composition.
 The coordinator reconciles shared plans; current source/tests and live TODOs
 outrank this proposal. Existing qualified execution remains unchanged.
 
@@ -49,21 +47,21 @@ These anchors identify source, not immutable runtime qualification.
 
 | Existing contract | Current scope | Proposed use |
 | --- | --- | --- |
-| [shared layer traversal](/home/pvl/spaces/abird/src/zerogravity/crates/zerogravity-model-qwen35/src/forward.rs:19) | `run_layer_sequence` is the family-neutral traversal seam; profile-specific closures retain layer mathematics | Continue recording/evaluating through this shared seam; no second optimized model traversal |
-| [typed operations and plan](/home/pvl/spaces/abird/src/zerogravity/crates/zerogravity-core/src/accelerator/program.rs:513) | `PlanOperation`, flat `PlanNode` list, `ForwardPlan`; source/profile/value precision, state versions and frontier | Preserve canonical operations; add private nested region scopes only when a real lowering needs them |
-| [numerical contracts](/home/pvl/spaces/abird/src/zerogravity/crates/zerogravity-core/src/accelerator/program/typed.rs:32) | `ProgramNumericalProfile` is explicit and closed; its presence grants no backend eligibility | Extend with independently qualified arithmetic contracts; do not turn workload profiles into this enum |
-| [resident lowering](/home/pvl/spaces/abird/src/zerogravity/crates/zerogravity-gpu/src/resident_program.rs:1) | Exact plan-to-physical bindings/preflight/preparation and launch | Initial concrete home for qualified region strategies, layout and scratch planning |
-| [configuration structure](/home/pvl/spaces/abird/src/zerogravity/crates/zerogravity-core/src/pipeline.rs:284) | `ModelInstance`, `PipelineNode`, edges, flat stage lists | Source-neutral task recipe; no nested execution, source admission or device effects today |
-| [pure validator](/home/pvl/spaces/abird/src/zerogravity/crates/zerogravity-core/src/pipeline.rs:418) | `VerifiedShape.ordered` is a topological stage order | Structural validation must remain effect-free; successful recursion checking would still not authorize execution |
-| [context owner](/home/pvl/spaces/abird/src/zerogravity/crates/zerogravity-core/src/context_snapshot.rs:219) | Revocable grants and frozen authorized committed records | Outer tasks can pass read-only context snapshots; they cannot manufacture grants or neural caches |
-| [freshness boundary](/home/pvl/spaces/abird/src/zerogravity/crates/zerogravity-core/src/context_snapshot.rs:530) | `ContextReader::require_fresh` rejects stale/foreign snapshots | Recheck at actual consuming admission/publication/delivery boundaries |
-| [state publication](/home/pvl/spaces/abird/src/zerogravity/crates/zerogravity-gpu/src/resident_inference.rs:1257) | Prepared candidate validated, original service fence, authority transition, state swap, token bound to actual published root | Preserve this ownership boundary through any inner nesting/fusion |
-| [event ownership](/home/pvl/spaces/abird/src/zerogravity/crates/zerogravity-core/src/device_events.rs:1) | Ready requires actual completion; unknown completion forbids fallback/reuse/publication | Every new region, capture, transfer and task cancellation obeys it |
+| shared layer traversal | `run_layer_sequence` is the family-neutral traversal seam; profile-specific closures retain layer mathematics | Continue recording/evaluating through this shared seam; no second optimized model traversal |
+| typed operations and plan | `PlanOperation`, flat `PlanNode` list, `ForwardPlan`; source/profile/value precision, state versions and frontier | Preserve canonical operations; add private nested region scopes only when a real lowering needs them |
+| numerical contracts | `ProgramNumericalProfile` is explicit and closed; its presence grants no backend eligibility | Extend with independently qualified arithmetic contracts; do not turn workload profiles into this enum |
+| resident lowering | Exact plan-to-physical bindings/preflight/preparation and launch | Initial concrete home for qualified region strategies, layout and scratch planning |
+| configuration structure | `ModelInstance`, `PipelineNode`, edges, flat stage lists | Source-neutral task recipe; no nested execution, source admission or device effects today |
+| pure validator | `VerifiedShape.ordered` is a topological stage order | Structural validation must remain effect-free; successful recursion checking would still not authorize execution |
+| context owner | Revocable grants and frozen authorized committed records | Outer tasks can pass read-only context snapshots; they cannot manufacture grants or neural caches |
+| freshness boundary | `ContextReader::require_fresh` rejects stale/foreign snapshots | Recheck at actual consuming admission/publication/delivery boundaries |
+| state publication | Prepared candidate validated, original service fence, authority transition, state swap, token bound to actual published root | Preserve this ownership boundary through any inner nesting/fusion |
+| event ownership | Ready requires actual completion; unknown completion forbids fallback/reuse/publication | Every new region, capture, transfer and task cancellation obeys it |
 
 `RegionExecutionProvider`, `ExecutableBundle`, SIR/CIR and the generic
 TaskDriver sketches are architectural vocabulary in the
-[reference architecture](/home/pvl/spaces/abird/src/zerogravity/.agents/docs/MODULAR_AI_SYSTEMS_REFERENCE_ARCHITECTURE.md:30)
-and [composition contracts](/home/pvl/spaces/abird/src/zerogravity/.agents/docs/COMPOSITION_AND_EXTENSION_CONTRACTS.md:63).
+reference architecture
+and composition contracts.
 Do not describe them as a general recursive runtime already implemented.
 
 Observed qualification boundary at this design snapshot:
@@ -72,7 +70,7 @@ Observed qualification boundary at this design snapshot:
   failure cases exist; this does not qualify arbitrary source/profile/shape.
 - Isolated original .8B forced five-phase full24/all42/fullV proof and faults
   passed, followed by the complete gate17. Its actual
-  [positive log](/home/pvl/spaces/abird/src/zerogravity/.agents/runs/numerics-and-context-upstream-cuda-root-20261020/root-full24-positive-3/execution.log:3)
+  positive log
   explicitly says no model-root publication, natural feedback, performance or
   serving qualification. Subsequently ISO natural binding/publication passed
   finalhelper43's seven actual physical modes, strictcombined Clippy2 and complete
@@ -80,10 +78,10 @@ Observed qualification boundary at this design snapshot:
   1/1/64/2/1 calls. Reusable calls and canonical benchmark shapes remain open.
 - Original 2B natural/all42 independent reference passed; native model/serving
   qualification is still open. See the
-  [live numerical queue](/home/pvl/spaces/abird/src/zerogravity/.agents/plans/numerics-and-context/TODO.md:389).
+  live numerical queue.
 - Production graph admission, full temporal GPU prefill, paged complete-domain
   prefix/COW, large dense model execution, media and distributed runtime remain
-  open. The [current batching design](/home/pvl/spaces/abird/src/zerogravity/.agents/plans/serving-and-speculation/BATCHING_AND_PAGED_STATE.md)
+  open. The current batching design
   is a follow-up contract, not implementation proof.
 
 ## 3. Three conceptual layers, two execution representations
@@ -439,7 +437,7 @@ completion events at the original per-call preparation boundary.
 Late binding checks the same original source owner; it does not replace the
 source issuer captured by prepared records or transfer leases.
 
-The [isolated native body](/home/pvl/spaces/abird/src/zerogravity-worktrees/root-lowest-f32-20261020/crates/zerogravity-gpu/src/resident_program/native_full.rs:32)
+The isolated native body
 already separates a source-owned shared library from once-bound phase state.
 That is a useful direction, not general reuse proof. Fresh calls require fresh
 immutable wrappers/original input uploads and ownership checks; never clear a
@@ -706,10 +704,10 @@ a substitute for that result.
 - [Execution spine](../../docs/MINIMAL_EXECUTION_SPINE_AND_PROTOCOL_V4.md).
 - [Task/compiler refinement](../../docs/TASK_PROGRAM_AND_COMPILER_REFINEMENT_V4.md).
 - [Current batching and complete state](../serving-and-speculation/BATCHING_AND_PAGED_STATE.md).
-- [Independent mechanism research and dispositions](../../research/engine-optimization-comparison-2026-10-21/README.md).
-- [Mechanism-to-profile crosswalk](../../research/engine-optimization-comparison-2026-10-21/profile-coverage.md).
-- [Critical review](/home/pvl/spaces/abird/src/zerogravity-worktrees/root-lowest-f32-20261020/.agents/runs/composable-pipelines-profiles-design-20261021/REVIEW.md).
-- [Independent source and coverage review](../../research/engine-optimization-comparison-2026-10-21/composition-review.md).
+- [Independent mechanism research and dispositions](../fabric-vnext/PRIOR_ART_AND_REVALIDATION.md).
+- [Mechanism-to-profile crosswalk](../fabric-vnext/PRIOR_ART_AND_REVALIDATION.md).
+- Critical review.
+- [Independent source and coverage review](../fabric-vnext/PRIOR_ART_AND_REVALIDATION.md).
 
 The semantic/effect/state/resource rules above stand independently of the
 research corpus. No foreign runtime or source import is required by the design.

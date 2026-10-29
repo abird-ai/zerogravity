@@ -1413,4 +1413,4 @@ Numerical acceptance is tracked in TODO.md.
   and [Btrfs inode identities](https://raw.githubusercontent.com/torvalds/linux/v6.17/fs/btrfs/inode.c).
 - [Linux flock lifetime and advisory semantics](https://man7.org/linux/man-pages/man2/flock.2.html).
 - [A1 local cache contract](../../research/PULL_A1_LOCAL_XDG_CACHE_2026-10-16.md),
-  [current workflow](../../../AGENTS.md) and [TODO rules](../TODO-SPEC.md).
+  [current workflow](../../../AGENTS.md) and [TODO rules](../README.md).

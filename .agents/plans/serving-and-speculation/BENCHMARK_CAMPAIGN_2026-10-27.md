@@ -25,9 +25,6 @@ kernel, or synthetic queue does not grant a benchmark route.
 - Tokenizer/source hashes must be supplied to `tools/serve-compare.py` and match
   between providers. Route names alone prove nothing.
 
-The retained vLLM package and complete hashes are indexed by
-`../../docs/FULL_COMPREHENSIVE_AGENT_HANDOFF_2026-10-27.md`.
-
 ## Required implementation gates
 
 1. One ordinary, source-derived Qwen CUDA route for both models:
