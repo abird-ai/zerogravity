@@ -31,7 +31,8 @@ python3 tools/qwen27b-output-tail-reference/validate_reference.py \
 ```
 
 After independent ROOT validation, the actual expected-only identity is sealed
-in `examples/qwen27b_output_tail/reference_pin.rs`. Actual capture and release
+via `ACTUAL_REFERENCE` in the replay harness (harness retired 2026-10-29; see
+`.agents/docs/retired-2026-10-29/README.md`). Actual capture and release
 replay passed all2,609,152 BF16 words, source/lifetime checks and finalhost0; see
 `.agents/runs/model-execution-qwen27b-output-tail-root-20261022/TODO.md`. This
 qualifies only the external-boundary tail described above. Build/replay serially
