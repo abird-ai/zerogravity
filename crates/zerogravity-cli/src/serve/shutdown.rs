@@ -141,5 +141,34 @@ mod tests {
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr),
         );
+        let report: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("serving signal control report JSON");
+        let rows = report["serving_shutdown_controls"]
+            .as_array()
+            .expect("serving signal control rows");
+        assert_eq!(rows.len(), 4, "TERM/INT × process/PID1 rows");
+        for row in rows.iter().filter(|row| row["namespace_pid1"] == false) {
+            assert_eq!(row["passed"], true, "ordinary process signal control");
+            assert_ne!(row["skipped"], true, "ordinary process control cannot skip");
+        }
+        if report["pid1_supported"] == true {
+            for row in rows.iter().filter(|row| row["namespace_pid1"] == true) {
+                assert_eq!(row["passed"], true, "PID1 signal control");
+                assert_ne!(row["skipped"], true, "supported PID1 control cannot skip");
+            }
+        } else {
+            assert!(
+                report["pid1_skip_reason"]
+                    .as_str()
+                    .is_some_and(|reason| !reason.is_empty()),
+                "unsupported PID1 environment must report why"
+            );
+            for row in rows.iter().filter(|row| row["namespace_pid1"] == true) {
+                assert_eq!(
+                    row["skipped"], true,
+                    "unsupported PID1 controls are explicit"
+                );
+            }
+        }
     }
 }

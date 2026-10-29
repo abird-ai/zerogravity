@@ -34,6 +34,53 @@ def members(group):
     return found
 
 
+def pid1_namespace_support():
+    wrapper = shutil.which("bwrap")
+    if not wrapper:
+        return False, "bubblewrap unavailable"
+    command = [
+        wrapper,
+        "--die-with-parent",
+        "--unshare-pid",
+        "--as-pid-1",
+        "--ro-bind",
+        "/",
+        "/",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--",
+        "true",
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=5,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise AssertionError("bubblewrap PID1 preflight timed out") from error
+    if completed.returncode == 0:
+        return True, None
+    detail = completed.stderr.decode("utf-8", errors="replace").strip()
+    if len(detail) > 4096:
+        detail = detail[:4096] + "…"
+    unavailable = (
+        "Operation not permitted",
+        "No permissions to create new namespace",
+        "Creating new namespace failed",
+    )
+    if any(marker in detail for marker in unavailable):
+        return False, detail
+    raise AssertionError(
+        f"bubblewrap PID1 preflight failed unexpectedly ({completed.returncode}): {detail}"
+    )
+
+
 def events(path):
     data = path.read_bytes()
     if len(data) > 128 * 1024:
@@ -193,11 +240,33 @@ def main():
     # caller's test TMPDIR; the outer supervised run owns that directory.
     directory = Path(tempfile.mkdtemp(prefix="zg-serving-shutdown-"))
     results = []
+    pid1_supported, pid1_skip_reason = pid1_namespace_support()
     for namespace in (False, True):
         for sig in (signal.SIGTERM, signal.SIGINT):
             tag = ("pid1" if namespace else "process") + "-" + sig.name.lower()
-            results.append(run_case(args.test_binary.resolve(strict=True), args.child_test, namespace, sig, directory / tag))
-    print(json.dumps({"serving_shutdown_controls": results, "evidence": str(directory)}), flush=True)
+            if namespace and not pid1_supported:
+                results.append({
+                    "namespace_pid1": True,
+                    "signal": sig.name,
+                    "skipped": True,
+                    "reason": pid1_skip_reason,
+                })
+                continue
+            results.append(
+                run_case(
+                    args.test_binary.resolve(strict=True),
+                    args.child_test,
+                    namespace,
+                    sig,
+                    directory / tag,
+                )
+            )
+    print(json.dumps({
+        "serving_shutdown_controls": results,
+        "pid1_supported": pid1_supported,
+        "pid1_skip_reason": pid1_skip_reason,
+        "evidence": str(directory),
+    }), flush=True)
 
 
 if __name__ == "__main__":
