@@ -15,6 +15,28 @@ long contexts and Qwen27B. Bindings/readers/helpers are internal steps, with foc
 checks and one complete gate per larger unit; isolate only concrete failures.
 ## Committed
 
+### `f6fa4b9` — original-source HIP attention
+
+- [x] Shared GPU attention uses geometry-sized scratch and one matching kernel
+  constructor/launch set. Independent original HF rotary/eager capture covers
+  40 cases, nine fields each:8Q/2KV at16 lengths through64, plus24Q/4KV at1/2/47/64;
+  both random and arithmetic-cancellation inputs. CPU and actual gfx1151 HIP
+  each match all1,774,240 output words exactly. Raw13,488,016B SHA256
+  `0b215c2fe121ddd8fc50908e4aa7342a8251df84a9fbea40c581a54d6a9e17af`.
+  Every360 field and40 device-case scope inspected;150 native modules retire,
+  original namespace closes, supervisor exits0/empty cgroup, completed unit stops.
+  Native execution uses the original admitted source/service/queue/flight and
+  retains its compiler owner through completion/quarantine. Synthetic operator
+  inputs are not trained-model, publication, cancellation-fault or serving proof.
+  Finite27B position<=1 guards remain. General source-state lowering, ordinary
+  admission/publication and real model references remain open. Assembled isolated
+  `scripts/check.sh` passed2,135 Rust executions/0fail/85ignored/283 suites,
+  17 Python suites/178 reported cases, release/installer/shell/Nix checks.
+  Non-strict feature warnings match the preceding accepted gate; selected CPU
+  and HIP all-target strict checks are warning-free. See the active
+  [model-execution unit](../model-execution/TODO.md).
+
+
 ### `d4d5df4` — original CPU attention PV
 
 - [x] Correct the actual eager CPU PV reduction before ordinary HIP assembly.
@@ -298,26 +320,6 @@ landed. Broader reference scopes remain open; production stays disabled.
   2B/9B/27B downloads through canonical XDG cache. No SDK/device-privilege changes.
   Preserve completed CUDA lifecycle/source gates and separate wider numerical scopes.
 
-### Shared source attention — 31 Oct, verified for checkpoint
-
-- [x] Shared GPU attention uses geometry-sized scratch and one matching kernel
-  constructor/launch set. Independent original HF rotary/eager capture covers
-  40 cases, nine fields each:8Q/2KV at16 lengths through64, plus24Q/4KV at1/2/47/64;
-  both random and arithmetic-cancellation inputs. CPU and actual gfx1151 HIP
-  each match all1,774,240 output words exactly. Raw13,488,016B SHA256
-  `0b215c2fe121ddd8fc50908e4aa7342a8251df84a9fbea40c581a54d6a9e17af`.
-  Every360 field and40 device-case scope inspected;150 native modules retire,
-  original namespace closes, supervisor exits0/empty cgroup, completed unit stops.
-  Native execution uses the original admitted source/service/queue/flight and
-  retains its compiler owner through completion/quarantine. Synthetic operator
-  inputs are not trained-model, publication, cancellation-fault or serving proof.
-  Finite27B position<=1 guards remain. General source-state lowering, ordinary
-  admission/publication and real model references remain open. Assembled isolated
-  `scripts/check.sh` passed2,135 Rust executions/0fail/85ignored/283 suites,
-  17 Python suites/178 reported cases, release/installer/shell/Nix checks.
-  Non-strict feature warnings match the preceding accepted gate; selected CPU
-  and HIP all-target strict checks are warning-free. See the active
-  [model-execution unit](../model-execution/TODO.md).
 
 ### Provider boundary investigation — 30 Oct
 

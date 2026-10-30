@@ -27,8 +27,12 @@ Do not resurrect deleted handoff archives, transient .agents/runs trees, old sid
 Current owned CUDA implementation checkpoint: `2983bb7` (signed). Exact `.8B`
 cached47→50, lifecycle/capacity and source gates pass; broader reference scopes
 remain open. Shared source binding `99f0232` and finite27B HIP natural/lifetime
-checkpoint `825ade8` are signed; ordinary HIP/context/serving/performance remain
-open. Earlier checkpoints below are historical. Re-read git status/log.
+checkpoint `825ade8` are signed. New signed `d4d5df4` fixes CPU attention PV;
+`f6fa4b9` shares source traversal and actual HIP attention. Independent CPU/HIP
+operator comparisons pass1,774,240 words through64 active tokens;150 native
+modules retire and the durable parent exits0/empty cgroup. Final source gate
+passes2,135 Rust/17 Python suites. Ordinary HIP/model contexts/serving/performance
+remain open; operator data is not trained-model evidence. Re-read git status/log.
 
 ## 2. Immediate startup for a successor
 
@@ -44,6 +48,16 @@ source/device or ownership requirements. Missing wider CUDA references do not
 block independent ROCm work. Finite27B diagnostics alone do not finish the mission.
 Current results are in section8 and the status/numerics TODO.
 
+**Immediate implementation lane:** ordinary0.8B/2B HIP. Source-only recording
+is CPU-free and geometry-derived but bounded to64 tokens; finite27B guards remain
+2 positions/112 domains. Actual shared attention is now checked on gfx1151, so
+assemble source-state/resident-weight lowering, cold admission and existing
+session/root publication rather than repeating finite27B or operator acceptance.
+Both small-model cached sources are reverified (11/12 members,488/632 index
+entries); original reference runtime is cached locally. Independent whole-model
+captures remain to be made. No native worker is left from the attention run.
+Detailed acceptance/remaining work lives in the model-execution/numerics plans.
+
 Repository:
 
     /home/pvl/spaces/abird/src/zerogravity
@@ -51,7 +65,9 @@ Repository:
 Persistent topology:
 
 - main is the only persistent local branch.
-- main is the only persistent repository checkout.
+- main is the only authorized implementation checkout; do not create another.
+- 31Oct preflight also found an external detached Kilo scratch checkout; it was
+  not created, read or modified by this lane. Preserve other owners' work.
 - origin/main is the only remote branch currently relevant.
 - no stashes.
 - do not create durable side branches/checkouts as coordination state.

@@ -22,6 +22,26 @@ live authority.
   HIP, general27B contexts, model-specific concurrency and performance remain open.
   See [campaign](serving-and-speculation/BENCHMARK_CAMPAIGN_2026-10-27.md).
 
+## Shared source execution foundation — 31 Oct
+
+- Signed `d4d5df4` fixes eager CPU PV: original four-part BMM reduction, not
+  projection/QK order. Original seven-token failure remains recorded; no relaxed
+  tolerance.32 independent cases match65,536 words exactly.
+- Signed `f6fa4b9` separates source traversal/recording from CPU diagnostics and
+  shared HIP preparation from probes. Model geometry determines state extents;
+  recording owns original metadata/source, not backend/publication authority.
+- Independent original HF attention:40 cases through64 active tokens, nine
+  fields each. CPU and actual gfx1151 each match1,774,240 words exactly. All150
+  native modules retire, namespace closes, durable parent exits0/empty cgroup.
+  This is operator evidence, not populated full-model or serving qualification.
+- Final isolated gate:2,135 Rust passes/0fail/85ignored/283 suites;17 Python
+  suites/178 reported cases, release/installer/shell/Nix pass. Selected CPU/HIP
+  strict checks pass; existing non-strict warnings are unchanged.
+- Approved `.8B`/`2B` cache inputs reverified:11/12 members and genuine indexes.
+  Next: actual ordinary source-state/resident-weight lowering, cold pricing,
+  existing session publication and independent whole-model references. CUDA-only
+  seals and finite27B state/native policies have not been relabeled or widened.
+
 ## Owned CUDA checkpoint — `2983bb7`
 
 - Owner authorized continuation and completion. Signed owned CUDA execution
