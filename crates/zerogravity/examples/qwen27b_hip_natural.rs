@@ -26,7 +26,8 @@ use zerogravity::{
     cache::{CacheOptions, CacheStore},
     qwen27b_gpu::{Qwen27bGpuContext, Qwen27bGpuLoaded},
     resource_arbiter::{
-        AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
+        AllocationClass, AllocationRequest, GlobalResourceLease, PhysicalDeviceKey,
+        ResourceArbiter, ResourceOwner,
     },
 };
 use zerogravity_gpu::{
@@ -42,6 +43,25 @@ const ROOT_BYTES: u64 = 159_121_408;
 const DIAGNOSTIC_HOST_BYTES: u64 = 384 * 1024 * 1024;
 const RETAINED_SOURCE_METADATA_BYTES: u64 = 64 * 1024 * 1024;
 const RETAINED_CONTEXT_CONTROL_BYTES: u64 = 4 * 1024 * 1024;
+fn admit_harness(
+    arbiter: &ResourceArbiter,
+    bytes: u64,
+) -> zerogravity::Result<GlobalResourceLease> {
+    let host = PhysicalDeviceKey::new("host", "system-ram")?;
+    // Same canonical host budget as the later context; no GPU/source creation.
+    arbiter.register_matching(
+        host.clone(),
+        Bf16TextSourceCandidate::qualification_host_bytes(),
+    )?;
+    arbiter.admit(
+        &host,
+        ResourceOwner::new("Qwen27B-natural", "bounded-actual-frames-report")?,
+        &[AllocationRequest {
+            kind: AllocationClass::Scratch,
+            bytes,
+        }],
+    )
+}
 struct ThreadWake(thread::Thread);
 impl Wake for ThreadWake {
     fn wake(self: Arc<Self>) {
@@ -574,14 +594,7 @@ fn run() -> Proof<()> {
     let arbiter = ResourceArbiter::process_shared();
     let host_key = PhysicalDeviceKey::new("host", "system-ram")?;
     let physical_key = PhysicalDeviceKey::new("pci", "0000:c6:00.0")?;
-    let harness = arbiter.admit(
-        &host_key,
-        ResourceOwner::new("Qwen27B-natural", "bounded-actual-frames-report")?,
-        &[AllocationRequest {
-            kind: AllocationClass::Scratch,
-            bytes: harness_bytes,
-        }],
-    )?;
+    let harness = admit_harness(&arbiter, harness_bytes)?;
     let present = expected::natural_receipt_present(&expected_root, (external_bytes, external_sha));
     if present.is_err() {
         let reason = "accepted original natural capture absent: run the frozen natural tool, then validate --receipt";
@@ -629,11 +642,10 @@ fn run() -> Proof<()> {
     let source_inventory = format!("{:?}", candidate.inventory());
     let witness = candidate.retention_witness();
     let result = if final_case {
-        final_reader(candidate.clone(), snapshot_case, fault, &reference)
+        final_reader(candidate, snapshot_case, fault, &reference)
     } else {
-        exercise(candidate.clone(), mode, &reference)
+        exercise(candidate, mode, &reference)
     };
-    drop(candidate);
     let retention = witness.observe()?;
     let close = loaded.clone().close(None);
     drop((loaded, snapshot, store, context));
@@ -698,20 +710,25 @@ fn run() -> Proof<()> {
     } else {
         true
     };
-    need(
-        typed_final_join,
-        "typed final native retention mode agrees with the actual observation",
-    )?;
-    let retains_source = mode.ends_with("fault") || mode == "cached-unknown";
+    let failure = result.as_ref().err().map(ToString::to_string).or_else(|| {
+        if !typed_final_join {
+            Some("typed final native retention mode disagrees with the actual observation".into())
+        } else if !expected {
+            Some("original source/native/model/context disposition".into())
+        } else {
+            None
+        }
+    });
+    let retains_source = retention.native_admission_retained;
     let lease = reference.lease_evidence();
     write_new(
         &report,
         &json!({"schema":"zg.qwen27b-natural-two-position-diagnostic.v2",
-        "status":if result.is_ok() && expected {"PASS_DIAGNOSTIC_NATURAL_UNQUALIFIED"} else {"REFUSED_UNQUALIFIED"},
+        "status":if failure.is_none() {"PASS_DIAGNOSTIC_NATURAL_UNQUALIFIED"} else {"REFUSED_UNQUALIFIED"},
         "mode":mode,"retention_mode":if retains_source {"unknown"} else {"known"},"snapshot":SNAPSHOT,
         "typed_final_retention_join":typed_final_join,
         "inventory":source_inventory.clone(),"actual":result.as_ref().ok(),
-        "failure":result.as_ref().err().map(ToString::to_string),"source_close_refused":close.is_err(),
+        "failure":failure,"source_close_refused":close.is_err(),
         "physical_reserved":physical.reserved,"physical_fenced":physical.fenced,"host_reserved":host.reserved,"host_fenced":host.fenced,
         "diagnostic_host_bytes":DIAGNOSTIC_HOST_BYTES,
         "natural_accepted_pin":{"bytes":external_bytes,"sha256":external_sha},
@@ -739,6 +756,10 @@ fn run() -> Proof<()> {
         "trained_native_natural_serving_or_performance_qualified":false}),
     )?;
     result?;
+    need(
+        typed_final_join,
+        "typed final native retention agrees with actual observation",
+    )?;
     need(expected, "original source/native/model/context disposition")?;
     drop(harness);
     Ok(())
@@ -747,5 +768,60 @@ fn main() {
     if let Err(error) = run() {
         eprintln!("QWEN27B_NATURAL_REFUSED: {error}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod admission_tests {
+    use super::*;
+
+    #[test]
+    fn fresh_host_registration_prices_and_retires_the_reference_harness() {
+        let arbiter = ResourceArbiter::new();
+        let key = PhysicalDeviceKey::new("host", "system-ram").unwrap();
+        assert!(arbiter.snapshot(&key).is_err());
+        let bytes = expected::natural_admission_preflight().unwrap();
+        let lease = admit_harness(&arbiter, bytes).unwrap();
+        let budget = arbiter.snapshot(&key).unwrap();
+        assert_eq!(budget.reserved, bytes);
+        assert_eq!(
+            budget.limit,
+            Bf16TextSourceCandidate::qualification_host_bytes()
+        );
+        assert!(!budget.fenced);
+        drop(lease);
+        assert_eq!(arbiter.snapshot(&key).unwrap().reserved, 0);
+    }
+
+    #[test]
+    fn conflicting_limit_and_pressure_cannot_expand_the_original_host_budget() {
+        let arbiter = ResourceArbiter::new();
+        let key = PhysicalDeviceKey::new("host", "system-ram").unwrap();
+        let limit = Bf16TextSourceCandidate::qualification_host_bytes();
+        arbiter.register_matching(key.clone(), limit - 1).unwrap();
+        assert!(admit_harness(&arbiter, DIAGNOSTIC_HOST_BYTES).is_err());
+        assert_eq!(arbiter.snapshot(&key).unwrap().reserved, 0);
+        assert_eq!(arbiter.snapshot(&key).unwrap().limit, limit - 1);
+
+        let arbiter = ResourceArbiter::new();
+        arbiter.register_matching(key.clone(), limit).unwrap();
+        let pressure_bytes = limit - DIAGNOSTIC_HOST_BYTES + 1;
+        let pressure = arbiter
+            .admit(
+                &key,
+                ResourceOwner::new("test", "pressure").unwrap(),
+                &[AllocationRequest {
+                    kind: AllocationClass::Scratch,
+                    bytes: pressure_bytes,
+                }],
+            )
+            .unwrap();
+        assert!(admit_harness(&arbiter, DIAGNOSTIC_HOST_BYTES).is_err());
+        let after = arbiter.snapshot(&key).unwrap();
+        assert_eq!(after.reserved, pressure_bytes);
+        assert_eq!(after.limit, limit);
+        assert!(!after.fenced);
+        drop(pressure);
+        assert_eq!(arbiter.snapshot(&key).unwrap().reserved, 0);
     }
 }

@@ -248,11 +248,17 @@ pub fn run() -> Proof<()> {
         };
         let refused = block_on(a.prepare_teacher(&mut late, Some(&flag)));
         need(
-            matches!(refused, Err(Error::State(ref why)) if why == "Qwen source call cancelled")
+            matches!(refused, Err(Error::State(ref why)) if why == "BF16 text source call cancelled")
                 && late.completed_logits == 1
                 && a.binding() == before
                 && !candidate.physical_fenced(),
-            "late cancellation after actual Ready/fullV refuses publication without unknown fence",
+            format!(
+                "late cancellation after Ready/fullV: error={:?}, logits={}, root_unchanged={}, fenced={}",
+                refused.as_ref().err(),
+                late.completed_logits,
+                a.binding() == before,
+                candidate.physical_fenced(),
+            ),
         )?;
         events.push(json!({"kind":"actual-completed-late-cancel","root":binding(before),"full_extra_initial_call":true}));
         let untouched = b.binding();

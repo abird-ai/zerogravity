@@ -365,8 +365,8 @@ const NATURAL_PACKAGE: [(&str, u64, &str); 9] = [
     ),
     (
         "capture.py",
-        10815,
-        "2c0e0692a51383c2527fe994a0e8a05a8b490e8d43988effcc815264885ddfd3",
+        11623,
+        "a0549e7613a03d951660ea3d8e7cd9ea547a03fe4f4b5962f85c8a92747275a3",
     ),
     (
         "contract.py",
@@ -400,8 +400,8 @@ const NATURAL_PACKAGE: [(&str, u64, &str); 9] = [
     ),
     (
         "validate_reference.py",
-        18197,
-        "2574c7fe4eaf5d472db4694b0127bf47d7a9f3ce69bbe7edf7a3b4e41b176c15",
+        18436,
+        "757e47a0f6b58a19844660e3c10e3f1ab92158247d7c0008f8bda182d8c43b58",
     ),
 ];
 // Original immutable reference runtime (unchanged by this derivative).
@@ -1992,7 +1992,7 @@ impl Reference {
                 .and_then(|v| u32::try_from(v).ok())
                 .filter(|v| *v < 248320)
                 .ok_or("bounded original call1 teacher input")?;
-            for repeat in 0..2 {
+            for (repeat, teacher) in teachers.iter_mut().enumerate() {
                 let seed = geometry
                     .iter()
                     .position(|s| s.repeat == repeat && s.call == 0)
@@ -2001,12 +2001,12 @@ impl Reference {
                     manifest["records"][seed]["teacher"].as_u64() == Some(11),
                     "natural call0 is original seed11",
                 )?;
-                teachers[repeat] = [11, held];
+                *teacher = [11, held];
             }
             if !compositional {
-                for repeat in 0..2 {
+                for selection in &selections {
                     need(
-                        held == selections[repeat][0].0,
+                        held == selection[0].0,
                         "independent natural call1 input equals accepted call0 selection",
                     )?;
                 }
@@ -2916,18 +2916,18 @@ impl Expected {
             }
         }
         progress.words += actual.len() / 4;
-        if self.compositional && self.call == 1 {
-            if let Some(p) = self.progress.get(&index)
-                && p.mismatches > 0
-            {
-                let held = reference.teachers[self.repeat][1];
-                let required = reference.selections[self.repeat][0].0;
-                let label_name = label.name();
-                return Err(format!(
-                    "held natural join unavailable: teacher-forced original call1 input {held} differs from independent natural feedback input {required} at {label_name}; no accepted natural call1 record (receipt natural_feedback_qualified=false)"
-                )
-                .into());
-            }
+        if self.compositional
+            && self.call == 1
+            && let Some(p) = self.progress.get(&index)
+            && p.mismatches > 0
+        {
+            let held = reference.teachers[self.repeat][1];
+            let required = reference.selections[self.repeat][0].0;
+            let label_name = label.name();
+            return Err(format!(
+                "held natural join unavailable: teacher-forced original call1 input {held} differs from independent natural feedback input {required} at {label_name}; no accepted natural call1 record (receipt natural_feedback_qualified=false)"
+            )
+            .into());
         }
         Ok(())
     }
@@ -3005,7 +3005,9 @@ impl Expected {
             "interrupted closure requires the one armed caller-owned call",
         )?;
         let active = (self.repeat, self.call);
-        interrupted_scope(&self.scope, active, proposals)?;
+        let (last, completed) = self.scope.split_last().ok_or("missing armed scope")?;
+        need(*last == active, "armed call is the final bound proposal")?;
+        interrupted_scope(completed, active, proposals)?;
         let scope = scope_totals(&r.specs, proposals)?;
         let mut seen = BTreeSet::new();
         for index in &self.scope_records {
@@ -3427,14 +3429,17 @@ pub(super) fn natural_report_fixtures() -> Value {
         "committed_bytes":200_000_000u64,"report_bytes":3_000_000u64,
         "peak_bytes":300_000_000u64,"host_bytes":384*1024*1024u64});
     let closure = |call: usize| {
-        json!({"declared_proposals":[[0,call]],"records":196,
-        "float_records":195,"float_words":1000,"positions":3,"mismatches":0,"exact":true})
+        json!({"declared_proposals":[[0,call]],"records":if call==0 {196} else {324},
+        "float_records":if call==0 {195} else {323},
+        "float_words":if call==0 {40_333_824u64} else {80_114_176u64},
+        "positions":3,"mismatches":0,"exact":true})
     };
     let receipt = |fault: bool, wrapper: &str| {
         json!({
         "wrapper":wrapper,"fault":fault,"source":"source","lease":"lease",
         "service_generation":1,"lease_bytes":12,"aliases_inside_wrapper":1,
-        "candidate_owners_before_drop":1,"model_owners_before_drop":1,
+        "candidate_owners_before_drop":1,
+        "model_owners_before_drop":if wrapper=="Session" {2} else {1},
         "candidate_workspace_target_aliases":0,"candidate_retired":true,"release_hits":1,
         "native_retirement_attempts":1,"reader_hits_before_native_retirement":1,
         "native_modules_before":4,"native_code_bytes_before":1000,
@@ -3500,7 +3505,8 @@ pub(super) fn natural_report_fixtures() -> Value {
                 "independent_peer_cached":{"call":0,"selected_id":next1.0,"max_bits":next1.1},
                 "first_selection":sel(seed0.0,seed0.1),"cached_selection":sel(next0.0,next0.1),
                 "peer_selection":sel(seed1.0,seed1.1),"peer_cached_selection":sel(next1.0,next1.1),
-                "late_cancel":{"scope":json!({"selected_id":next0.0,"max_bits":next0.1}),
+                "late_cancel":{"scope":json!({"repeat":0,"call":1,"records":324,
+                    "float_words":80_114_176u64,"positions":3,"mismatches":0,"exact":true}),
                     "scope_closure":closure(1),"selection":sel(next0.0,next0.1)},
                 "restore_replay":{"scope":json!({"selected_id":next0.0,"max_bits":next0.1}),
                     "scope_closure":closure(1),"selection":sel(next0.0,next0.1)},
@@ -3890,6 +3896,54 @@ mod tests {
         assert_eq!(closure["float_records"], 390);
         assert_eq!(closure["mismatches"], 0);
     }
+    #[test]
+    fn actual_interrupted_lifecycle_separates_completed_seed_from_armed_cached_call() {
+        let (reference, _dir) = synthetic_reference();
+        let mut e = Expected::new_shared(&reference, true).unwrap();
+        e.begin(0, 0).unwrap();
+        feed_initial(&mut e, 0);
+        feed_records(&mut e, &reference, 0, 0);
+        e.finish().unwrap();
+        let completed_words = e.words;
+        e.begin(0, 1).unwrap();
+        let (index, spec) = reference
+            .specs
+            .iter()
+            .enumerate()
+            .find(|(_, s)| s.repeat == 0 && s.call == 1 && s.codec == Codec::F32)
+            .unwrap();
+        e.completed(
+            TextSourceFrame {
+                position: 1,
+                kind: kind(spec),
+                offset_words: 0,
+                total_words: spec.elements(),
+            },
+            &reference.record_bytes(index).unwrap(),
+        )
+        .unwrap();
+        for wrong in [
+            vec![(0, 0)],
+            vec![(0, 1)],
+            vec![(0, 0), (0, 1), (0, 1)],
+            vec![(0, 0), (0, 1), (1, 0)],
+        ] {
+            assert!(e.finish_partial(&wrong).is_err());
+            assert!(e.armed);
+            assert_eq!(e.words, completed_words);
+        }
+        let closed = e.finish_partial(&[(0, 0), (0, 1)]).unwrap();
+        assert_eq!(closed["completed_float_records"], 195);
+        assert_eq!(closed["completed_float_words"], completed_words);
+        assert_eq!(closed["observed"]["records"], 1);
+        assert_eq!(closed["observed"]["call"], 1);
+        assert_eq!(closed["mismatches"], 0);
+        assert_eq!(closed["exact_completed_prefix"], true);
+        assert!(closed["unavailable_float_words"].as_u64().unwrap() > 0);
+        assert!(!e.armed && e.scope.is_empty() && e.progress.is_empty());
+        assert!(e.finish_partial(&[(0, 0), (0, 1)]).is_err());
+    }
+
     #[test]
     fn actual_completed_refuses_wrong_position_gap_duplicate_and_contamination() {
         let (reference, _dir) = synthetic_reference();

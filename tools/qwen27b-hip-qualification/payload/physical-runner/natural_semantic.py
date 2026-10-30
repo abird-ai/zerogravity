@@ -28,9 +28,31 @@ def selection(value, key):
     return value
 
 
-def closure(value, key):
-    require(type(value) is dict and value['exact'] is True and value['mismatches'] == 0,
-            'scope closure exact from held bytes '+key)
+def closure(value, key, call):
+    require(call in (0, 1) and type(value) is dict
+            and value['declared_proposals'] == [[0, call]]
+            and value['records'] == (196 if call == 0 else 324)
+            and value['float_records'] == (195 if call == 0 else 323)
+            and value['float_words'] == (40333824 if call == 0 else 80114176)
+            and value['positions'] == 3
+            and value['exact'] is True and value['mismatches'] == 0,
+            'complete scope closure exact from held bytes '+key)
+    return value
+
+
+def late_comparison(value):
+    # Cancellation publishes no packet. This is the complete observed source
+    # comparison; its fullV equality binds the separately held reference argmax.
+    require(type(value) is dict
+            and set(value) == {'repeat', 'call', 'records', 'float_words',
+                               'positions', 'mismatches', 'exact'}
+            and all(type(value[k]) is int for k in
+                    ('repeat', 'call', 'records', 'float_words', 'positions', 'mismatches'))
+            and value['repeat'] == 0 and value['call'] == 1
+            and value['records'] == 324 and value['float_words'] == 80114176
+            and value['positions'] == 3 and value['mismatches'] == 0
+            and value['exact'] is True,
+            'late cancellation closes the complete cached comparison, not a published packet')
     return value
 
 
@@ -40,7 +62,8 @@ def final_reader(value, mode):
     require(type(value) is dict and value['lease_bytes'] == 12
             and value['aliases_inside_wrapper'] == 1
             and value['candidate_owners_before_drop'] == 1
-            and value['model_owners_before_drop'] == 1
+            # Session owns the model through inner and loaded; Snapshot only loaded.
+            and value['model_owners_before_drop'] == (2 if wrapper == 'Session' else 1)
             and value['candidate_workspace_target_aliases'] == 0
             and value['candidate_retired'] is True
             and value['release_hits'] == 1
@@ -179,7 +202,7 @@ def validate_natural(mode, report, log):
                 'cached fault retains the held seed input 11 join without a next output')
         return {'mode': mode, 'interrupted_prefix_only': True}
     if final:
-        closure(actual['scope_closure'], 'final call0')
+        closure(actual['scope_closure'], 'final call0', 0)
         selection(actual['selection'], 'first')
         tuples = actual['selected_output_tuples']
         require(tuples['seed_input'] == 11
@@ -190,9 +213,6 @@ def validate_natural(mode, report, log):
                 and tuples['distinct_from_seed_input'] is True,
                 'final selected output tuples join the held seed input 11')
         final_reader(actual['original_final_reader'], mode)
-        scope = actual['scope_closure']
-        require(scope['declared_proposals'] == [[0, 0]],
-                'final reader closes only the seed call0 scope')
         return {'mode': mode, 'final_reader': True}
     require(actual['actual_full64_calls'] == 9 and actual['source_capacity'] == 2,
             'nine actual full64 calls on a two-position capacity')
@@ -215,7 +235,7 @@ def validate_natural(mode, report, log):
     cached = selection(actual['cached_selection'], 'cached')
     peer = selection(actual['peer_selection'], 'independent peer')
     peer_cached = selection(actual['peer_cached_selection'], 'independent peer cached')
-    late = selection(actual['late_cancel']['selection'], 'late cancellation')
+    late = selection(actual['late_cancel']['selection'], 'late compared fullV reference')
     replay = selection(actual['restore_replay']['selection'], 'restore replay')
     # The input token 11 belongs to the independently validated source call; the
     # packet is the selected output tuple. Join every actual selector and each
@@ -236,11 +256,11 @@ def validate_natural(mode, report, log):
                                 ('cached', actual['cached'], cached),
                                 ('peer', actual['independent_peer'], peer),
                                 ('peer_cached', actual['independent_peer_cached'], peer_cached),
-                                ('late', actual['late_cancel']['scope'], late),
                                 ('replay', actual['restore_replay']['scope'], replay)):
         require(type(row) is dict and row['selected_id'] == expected[0]
                 and row['max_bits'] == expected[1],
                 'completed call '+name+' selected_id/max_bits equals its joined tuple')
+    late_comparison(actual['late_cancel']['scope'])
     require(full4['join']['independent_original_natural_trajectory'] is True
             and full4['join']['actual_observed'] is True
             and full4['join']['teacher_forcing_only'] is False
@@ -259,8 +279,5 @@ def validate_natural(mode, report, log):
             and committed['mismatches'] == 0,
             'ordinary committed comparison is repeat0/call1/112 domains/39780352 words')
     for name in ('late_cancel', 'restore_replay'):
-        scope = actual[name]['scope_closure']
-        require(scope['declared_proposals'] == [[0, 1]],
-                name+' closes only the call1 scope')
-        closure(scope, name)
+        closure(actual[name]['scope_closure'], name, 1)
     return {'mode': mode, 'natural_positions': 2}

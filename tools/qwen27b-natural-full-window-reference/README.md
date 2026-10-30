@@ -41,11 +41,16 @@ Changed (natural only):
   call1 asserts its input is that same cohort's call0 selection. `natural_inputs`
   and the status are natural-specific; `status` is
   `CAPTURED_ORIGINAL27B_NATURAL_FULL_WINDOW_REQUIRES_VALIDATION`.
+  FullV readback reopens the write-only archive's held inode read-only via
+  `/proc/self/fd`; bounds/stamps and reader closure precede feedback checks.
+  The shared archive, original arithmetic and comparison contract are unchanged.
 - `validate_reference.py`: validates the natural cohort (seed call0, feedback
   call1, predecessor fullV sha join), decodes every `logits` record with the
   independent `argmax_bf16`, and requires the decoded id/bits to equal the
   reported call row and each cohort's call1 input to equal its independently
-  decoded call0 argmax. Receipt schema/status are natural and carry
+  decoded call0 argmax. The current source-owner API receives its explicit
+  signal state and caller-owned FD map; complete/partial/error paths close all FDs.
+  Receipt schema/status are natural and carry
   `natural_inputs`, `image_id`, `image_digest`.
 - `inputs.json`: natural schema/scope, `seed`, `independent_call1_input`,
   `calls`, `capacity`; identical source/model/cache/record geometry

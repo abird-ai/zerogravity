@@ -161,6 +161,16 @@ checks and one complete gate per larger unit; isolate only concrete failures.
   HIP/Qwen/Gemma and Vulkan/Gemma all-target checks pass; narrow unused test gates
   and mechanical lint/visibility issues without changing backend arithmetic.
 
+### `99f0232` — declared parameter source binding
+
+- [x] Shared metadata-only binding retains the exact vector/Conv4 rank, issuer,
+  dtype, shape and extent. Preflight and complete reads use the same validator;
+  no flattening, new shapes, staging or numerical changes.30 source-window
+  controls pass, including cancellation and final source-owner lifetime.
+- [x] Narrow final-native feature gates to their actual consumers, remove unused
+  source-page probe forwarding and fix diagnostic-only lints. Narrow/shared HIP
+  strict checks pass in the assembled batch; no kernel or ownership change.
+
 ## Uncommitted
 
 ### Remaining CUDA/ROCm qualification
@@ -191,11 +201,11 @@ landed. Broader reference scopes remain open; production stays disabled.
   missing CUDA references. Reuse cached approved sources; owner permits needed
   2B/9B/27B downloads through canonical XDG cache. No SDK/device-privilege changes.
   Preserve completed CUDA lifecycle/source gates and separate wider numerical scopes.
-- [ ] Current Qwen27B HIP unit: current-source build, canonical source import,
-  independent natural two-position capture, exact full64/fullV/state comparison,
-  actual cancellation/final-reader/quarantine, strict feature checks and final
-  repository gate. Existing finite teacher proof is not natural or general-context
-  acceptance; `.8B`/`2B` ordinary HIP lowering is still absent.
+- [x] Complete the bounded Qwen27B HIP source/natural/lifetime unit: current-source
+  build, canonical source import, fresh independent natural two-position capture,
+  exact full64/fullV/state comparison, actual cancellation/final-reader/quarantine,
+  strict feature checks and final repository gate. Ordinary/general-context
+  acceptance remains separate; `.8B`/`2B` ordinary HIP lowering is still absent.
 - [x] Diagnose actual natural capture failure: pread on the shared write-only
   archive returns EBADF after initial original full64 execution. Retain failed
   capture and healthy owner/group/EOF/source-FD closure. Reopen only the held output
@@ -217,13 +227,6 @@ landed. Broader reference scopes remain open; production stays disabled.
   SHA256 `69126b45e49ae08189aa22016ec8917e23d0b1e3587a393a5085986786d70733`.
   The earlier readable capture is not repinned; its stale-validator refusal and
   the separate misplaced-receipt-path refusal remain failed evidence.
-- [x] Fix actual HIP source preflight routing Conv4 `[channels,1,4]` through the
-  rank1 reader. Shared metadata-only declared-parameter binding now reuses the
-  existing exact vector/Conv4 validators, and the complete reader uses that same
-  binding; no flattening, new shapes, staging or numerical changes.30 real
-  source-window controls and narrow HIP strict checks pass. Subsequent actual
-  teacher/natural full-model runs pass; the original pre-admission refusal stays
-  failed.
 - [x] Actual current-source HIP teacher comparison passes all4 proposals,
   full64/fullV/all112-state,240,896,000 float words/0 mismatches. Real two-session
   isolation, pressure/pre/late-cancel/Ready discard, snapshot/restore/reset,
@@ -232,7 +235,7 @@ landed. Broader reference scopes remain open; production stays disabled.
 - [x] Natural host admission now registers the same canonical16GiB host domain
   before its384MiB harness, without early GPU/model creation or another budget.
   25 comparator/admission controls and missing-receipt preeffect refusal pass.
-- [ ] Complete physical natural/final-reader batch. Healthy9-call natural mode
+- [x] Complete repaired physical natural/final-reader scopes. Healthy9-call natural mode
   passes full4 original comparison(240,896,000 words), all112 committed domains,
   ordinary16B status+packet readback and healthy closure. Correct the external
   validator/source-only fixture: cancelled calls carry complete comparison scope,
@@ -258,11 +261,14 @@ landed. Broader reference scopes remain open; production stays disabled.
   comparison is exact. All five repaired scopes were individually inspected.
   Final healthy9-call report also passes maintained semantic validation: exact
   full4/ordinary committed state/replay/late cancellation and known retirement.
-  However, the agent session lost its job/watch registration and outer process
-  exit before recording final batch closure. Keep that controller scope incomplete;
-  do not infer exit0 from the passing report. A fresh healthy-only replay runs
-  under a durable user supervisor retaining exit status and process-group state.
-  No whole-unit acceptance/checkpoint until that closure is verified.
+  The earlier repaired batch lost its outer healthy exit record when job/watch
+  registrations disappeared; that controller scope remains incomplete. A fresh
+  healthy-only replay under a durable user supervisor now also passes: actual
+  exit0, MainPID0 and no remaining cgroup processes independently verified.
+  Its full4 comparison is exact240,896,000 words; ordinary committed112 domains/
+  39,780,352 words, replay/late cancellation and normal source/native closure pass.
+  All six accepted modes were individually inspected; no result depends on the
+  missing earlier exit. No ordinary context/serving/performance grant.
 - [x] Actual teacher unknown and all4 independent Pending/Snapshot final-owner
   cases pass, individually inspected. Full64/fullV/128 proposed planes before
   each final drop; Pending3 aliases/Snapshot2, sole candidate/model, one reader
@@ -274,8 +280,8 @@ landed. Broader reference scopes remain open; production stays disabled.
 - [x] Final isolated assembled `scripts/check.sh` passes on the repaired source:
   2,132 Rust executions/0 failures/83 ignored across283 suites;17 Python suites
   pass(178 reported cases,10 source-input-dependent skips). Release CLI, offline
-  installer, shell/Nix and serving source-contract checks pass. This source gate
-  does not replace the pending final healthy physical replay.
+  installer, shell/Nix and serving source-contract checks pass. The final supervised
+  healthy replay also passes; reuse this unchanged assembled source gate.
 
 ### Provider boundary investigation — 30 Oct
 

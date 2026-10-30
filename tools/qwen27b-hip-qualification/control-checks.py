@@ -452,6 +452,16 @@ def main():
         short['actual']['ordinary_packet']['seed_readback_bytes'] = 12
         expect_refusal(lambda: natural_semantic.validate_natural('healthy', short, 'ok'),
                        'a 12B readback claim without the actual packet')
+        late = fixtures['healthy']['actual']['late_cancel']['scope']
+        require(set(late) == {'repeat', 'call', 'records', 'float_words',
+                             'positions', 'mismatches', 'exact'},
+                'cancelled call emits comparison scope, not a publication packet')
+        for field, value in (('call', 0), ('records', 323), ('float_words', 80114175),
+                             ('mismatches', 1), ('exact', False)):
+            altered = copy('healthy')
+            altered['actual']['late_cancel']['scope'][field] = value
+            expect_refusal(lambda altered=altered: natural_semantic.validate_natural(
+                'healthy', altered, 'ok'), 'incomplete or inexact late comparison '+field)
         cached = copy('cached-unknown')
         cached['physical_fenced'] = False
         expect_refusal(lambda: natural_semantic.validate_natural('cached-unknown', cached, 'ok'),

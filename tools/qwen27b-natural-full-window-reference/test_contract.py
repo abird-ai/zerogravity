@@ -12,8 +12,9 @@ from unittest.mock import patch
 
 from contract import (HERE, argmax_bf16, digest, extent, finite, record_metadata,
                       record_specs, role_view, roles, scope, specs, state_specs)
-from validate_reference import Held, join_call_records, natural_inputs, validate_calls
+from validate_reference import Held, held_source, join_call_records, natural_inputs, validate_calls
 from archive import Archive
+from capture import held_record
 from run_reference import source_after
 from contract import fingerprint
 
@@ -75,6 +76,81 @@ def declared_package(const):
 
 
 class Protocol(unittest.TestCase):
+    def test_natural_readback_uses_same_write_only_archive_without_seek(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'raw.bin'
+            archive = Archive(path, {'record_cap': 32, 'archive_cap': 64}, None)
+            try:
+                archive.stream.write(b'prefix-logits')
+                archive.total = 13
+                archive.stream.flush()
+                with self.assertRaises(OSError):
+                    os.pread(archive.stream.fileno(), 6, 7)
+                self.assertEqual(held_record(archive, {'offset': 7, 'bytes': 6}), b'logits')
+                self.assertEqual(archive.stream.tell(), 13)
+                archive.stream.write(b'-tail')
+                archive.total += 5
+                self.assertEqual(held_record(archive, {'offset': 13, 'bytes': 5}), b'-tail')
+                self.assertEqual(path.read_bytes(), b'prefix-logits-tail')
+                for offset, size in [(-1, 1), (18, 1), (0, 0), (17, 2), (0, 33)]:
+                    with self.assertRaises(ValueError):
+                        held_record(archive, {'offset': offset, 'bytes': size})
+            finally:
+                archive.close()
+
+    def test_natural_readback_rejects_other_inode_and_closes_reader(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'raw.bin'
+            archive = Archive(path, {'record_cap': 32, 'archive_cap': 64}, None)
+            other = Path(directory)/'other.bin'
+            other.write_bytes(b'other')
+            fd = os.open(other, os.O_RDONLY)
+            try:
+                archive.stream.write(b'logit')
+                archive.total = 5
+                with patch('capture.os.open', return_value=fd):
+                    with self.assertRaises(ValueError):
+                        held_record(archive, {'offset': 0, 'bytes': 5})
+                with self.assertRaises(OSError):
+                    os.fstat(fd)
+                self.assertEqual(held_record(archive, {'offset': 0, 'bytes': 5}), b'logit')
+            finally:
+                archive.close()
+
+    def test_validator_source_lease_uses_current_owner_and_closes_every_fd(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data = b'actual source bytes'
+            path = Path(directory)/'model.bin'
+            path.write_bytes(data)
+            plan = {'source_directory': directory}
+            pin = {'bytes': len(data), 'sha256': digest(data)}
+            with patch('run_reference.specs', return_value={'model.bin': pin}):
+                with held_source(plan, {}) as (fds, rows):
+                    fd = fds['model.bin']
+                    self.assertEqual(os.pread(fd, len(data), 0), data)
+                    self.assertEqual(rows[0]['sha256'], digest(data))
+                with self.assertRaises(OSError):
+                    os.fstat(fd)
+                with self.assertRaisesRegex(ValueError, 'body failed'):
+                    with held_source(plan, {}) as (fds, rows):
+                        fd = fds['model.bin']
+                        raise ValueError('body failed')
+                with self.assertRaises(OSError):
+                    os.fstat(fd)
+            original_open, opened = os.open, []
+            def tracked_open(*args, **kwargs):
+                fd = original_open(*args, **kwargs)
+                opened.append(fd)
+                return fd
+            with patch('run_reference.specs', return_value={'model.bin': pin, 'missing.bin': pin}):
+                with patch('run_reference.os.open', side_effect=tracked_open):
+                    with self.assertRaises(FileNotFoundError):
+                        with held_source(plan, {}):
+                            self.fail('partial source opening must refuse')
+            self.assertEqual(len(opened), 1)
+            with self.assertRaises(OSError):
+                os.fstat(opened[0])
+
     def test_runtime_declared_pins_equal_these_actual_tool_bytes(self):
         """Declared Rust pins and the approved/natural package bytes cannot drift."""
         if not (RUST.is_file() and REFERENCE_TOOL.is_dir()):

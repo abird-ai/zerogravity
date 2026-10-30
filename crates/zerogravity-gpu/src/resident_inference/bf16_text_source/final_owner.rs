@@ -134,9 +134,9 @@ impl Boundary {
         let candidate_owners = Arc::strong_count(loaded);
         let model_owners = Arc::strong_count(&loaded.model);
         if candidate_owners != 1 || model_owners != expected_model_owners {
-            return Err(Error::State(
-                "BF16 text source final feedback wrapper owner population".into(),
-            ));
+            return Err(Error::State(format!(
+                "BF16 text source final feedback wrapper owner population: candidate={candidate_owners}/1 model={model_owners}/{expected_model_owners}"
+            )));
         }
         loaded.model.service.ensure_usable()?;
         let token = feedback.ok_or_else(|| {

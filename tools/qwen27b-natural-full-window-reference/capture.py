@@ -5,11 +5,30 @@ import os
 from pathlib import Path
 import resource
 from contract import (HERE, MODEL_SHA, TORCH_GIT, KINDS, require, metadata, package,
-                      specs, digest, sha, write, record_specs, scope)
+                      specs, digest, sha, write, record_specs, scope, fingerprint)
 from source_owner import SourceOwner
 from archive import Archive
 
 OWNER = None
+
+
+def held_record(archive, record):
+    archive.stream.flush()
+    writer = archive.stream.fileno()
+    before = fingerprint(os.fstat(writer))
+    offset, size = record['offset'], record['bytes']
+    require(0 <= offset < archive.total and 0 < size <= archive.plan['record_cap']
+            and offset+size <= archive.total == before[2], 'held output record extent')
+    # The shared archive is write-only; reopen its held inode, never a pathname.
+    fd = os.open(f'/proc/self/fd/{writer}', os.O_RDONLY | os.O_CLOEXEC)
+    try:
+        require(fingerprint(os.fstat(fd)) == before, 'same original output inode')
+        raw = os.pread(fd, size, offset)
+        require(len(raw) == size and fingerprint(os.fstat(fd)) == before
+                and fingerprint(os.fstat(writer)) == before, 'stable complete output record')
+        return raw
+    finally:
+        os.close(fd)
 
 
 def cache_flags(cache, empty):
@@ -134,8 +153,7 @@ def main():
                             and bits & 0x7f80 != 0x7f80, 'this forward original head fullV record')
                     record = head[0]
                     words = logits.view(torch.int16).numpy().tobytes(order='C')
-                    archive.stream.flush()
-                    held = os.pread(archive.stream.fileno(), len(words), record['offset'])
+                    held = held_record(archive, record)
                     require(held == words and digest(words) == record['sha256']
                             and len(words) == record['bytes'], 'actual head record is this fullV forward')
                     calls.append({**tag, 'before': before_flags, 'after': after_flags,

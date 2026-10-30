@@ -1,6 +1,6 @@
 """Fresh ROOT-only full original producer validation. Never a Rust parity grant."""
 import argparse
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 import hashlib
 import json
 import os
@@ -169,6 +169,18 @@ def validate_calls(calls):
     return declared
 
 
+@contextmanager
+def held_source(plan, pins):
+    fds = {}
+    try:
+        _, rows = source_open(plan, pins, {'critical': False, 'pending': []}, fds)
+        yield fds, rows
+    finally:
+        with ExitStack() as closing:
+            for fd in fds.values():
+                closing.callback(os.close, fd)
+
+
 def validate(output, receipt):
     with ExitStack() as held:
         identity = package()
@@ -221,8 +233,7 @@ def validate(output, receipt):
         require(report['natural_inputs'] == declared, 'declared natural cohort inputs join actual calls')
         validate_records(report['records'], raw_file, plan, report['calls'])
         require(set(p.name for p in (output/'captured').iterdir()) == {'raw.bin', 'manifest.json'}, 'closed capture file cohort')
-        fds, source_rows = source_open(plan, pins)
-        try:
+        with held_source(plan, pins) as (fds, source_rows):
             require(source_rows == inv['source_before'], 'fresh whole source identities agree with actual original run')
             views, readsets, counts = report['source_views'], report['source_readsets'], report['source_counts']
             required = roles()
@@ -251,9 +262,6 @@ def validate(output, receipt):
                         and event['mapping_bytes'] == totals[group] and event['source_bound'] is True
                         and event['roles'] == sum(r['group'] == group for r in required), 'all actual original module/source events')
             source_after(fds, source_rows, plan['source_directory'])
-        finally:
-            for fd in fds.values():
-                os.close(fd)
         require(package() == identity, 'unchanged producer/validator source after long scans')
         # Recheck the same held snapshots after source IO; never pin replacement paths.
         result = {'schema': 'zg.actual-original27b-full-window-natural-reference.v1',
