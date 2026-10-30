@@ -171,36 +171,8 @@ checks and one complete gate per larger unit; isolate only concrete failures.
   source-page probe forwarding and fix diagnostic-only lints. Narrow/shared HIP
   strict checks pass in the assembled batch; no kernel or ownership change.
 
-## Uncommitted
+### `825ade8` — finite HIP natural and lifetime qualification
 
-### Remaining CUDA/ROCm qualification
-
-- [ ] Owner30Oct expands completion to `pvl-l5` CUDA `.8B`/`2B` and `pvl-x2`
-  ROCm `.8B`/`2B`/`27B`, genuine active contexts through supported fit, then
-  C1/C4/C8/C16/C32/C64 serving correctness and matched vLLM optimization.
-  Use x2 resources as needed; no routine permission prompts. The current27B
-  finite unit is a prerequisite, not completion of ordinary/context/concurrency
-  routes. Performance follows qualified cells; record every loss/unrun scope.
-
-**Continue and finish.** Exact `.8B` cached47→50 and lifecycle/source gates have
-landed. Broader reference scopes remain open; production stays disabled.
-
-- [ ] Recover the exact additional2B reference `TextCutlassBf16Sm80` image
-  (3,965,472 bytes; identity in `cuda/native/cubin_manifests.rs`). Approved2B
-  model bytes are already in the canonical cache and load successfully. No match
-  among1,252 SM80 images extracted from retained cuBLAS/cuBLASLt/Torch/VLLM
-  libraries, nor their accessible embedded ELF inventory. The remote project
-  cache also has no matching-size candidate. No substitution/repin.
-- [ ] Obtain independently trusted active-context comparison inputs. The retained
-  Rust reference is finite cached47→50 at512 capacity; the Python reference
-  protocol is also finite, and requires retained original/capture-source,
-  observer/collector and owner inputs not found in the current qualification
-  root. Capacity-only48-token runs and analytic32K attention do not close this.
-  Do not restore deleted runs or weaken the reference to manufacture acceptance.
-- [ ] Finish ROCm on `pvl-x2`, explicitly authorized30Oct without waiting for
-  missing CUDA references. Reuse cached approved sources; owner permits needed
-  2B/9B/27B downloads through canonical XDG cache. No SDK/device-privilege changes.
-  Preserve completed CUDA lifecycle/source gates and separate wider numerical scopes.
 - [x] Complete the bounded Qwen27B HIP source/natural/lifetime unit: current-source
   build, canonical source import, fresh independent natural two-position capture,
   exact full64/fullV/state comparison, actual cancellation/final-reader/quarantine,
@@ -282,6 +254,37 @@ landed. Broader reference scopes remain open; production stays disabled.
   pass(178 reported cases,10 source-input-dependent skips). Release CLI, offline
   installer, shell/Nix and serving source-contract checks pass. The final supervised
   healthy replay also passes; reuse this unchanged assembled source gate.
+
+## Uncommitted
+
+### Remaining CUDA/ROCm qualification
+
+- [ ] Owner30Oct expands completion to `pvl-l5` CUDA `.8B`/`2B` and `pvl-x2`
+  ROCm `.8B`/`2B`/`27B`, genuine active contexts through supported fit, then
+  C1/C4/C8/C16/C32/C64 serving correctness and matched vLLM optimization.
+  Use x2 resources as needed; no routine permission prompts. The current27B
+  finite unit is a prerequisite, not completion of ordinary/context/concurrency
+  routes. Performance follows qualified cells; record every loss/unrun scope.
+
+**Continue and finish.** Exact `.8B` cached47→50 and lifecycle/source gates have
+landed. Broader reference scopes remain open; production stays disabled.
+
+- [ ] Recover the exact additional2B reference `TextCutlassBf16Sm80` image
+  (3,965,472 bytes; identity in `cuda/native/cubin_manifests.rs`). Approved2B
+  model bytes are already in the canonical cache and load successfully. No match
+  among1,252 SM80 images extracted from retained cuBLAS/cuBLASLt/Torch/VLLM
+  libraries, nor their accessible embedded ELF inventory. The remote project
+  cache also has no matching-size candidate. No substitution/repin.
+- [ ] Obtain independently trusted active-context comparison inputs. The retained
+  Rust reference is finite cached47→50 at512 capacity; the Python reference
+  protocol is also finite, and requires retained original/capture-source,
+  observer/collector and owner inputs not found in the current qualification
+  root. Capacity-only48-token runs and analytic32K attention do not close this.
+  Do not restore deleted runs or weaken the reference to manufacture acceptance.
+- [ ] Finish ROCm on `pvl-x2`, explicitly authorized30Oct without waiting for
+  missing CUDA references. Reuse cached approved sources; owner permits needed
+  2B/9B/27B downloads through canonical XDG cache. No SDK/device-privilege changes.
+  Preserve completed CUDA lifecycle/source gates and separate wider numerical scopes.
 
 ### Provider boundary investigation — 30 Oct
 

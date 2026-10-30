@@ -14,6 +14,18 @@ Architecture: [Astra high shared/family/model boundary review](../pipeline-compo
 
 ## Uncommitted
 
+### Expanded owner target — 30 Oct
+
+- [ ] After correctness: optimize CUDA `.8B`/`2B` on l5 and ROCm `.8B`/`2B`/`27B`
+  on x2 across fitted active contexts and C1/C4/C8/C16/C32/C64. High concurrency
+  belongs on sufficiently capable hardware; preserve actual active/queued widths.
+- [ ] Beat the matched, pinned vLLM baseline in every required feasible run;
+  diagnose losses, retain all samples and separate throughput/latency metrics.
+  Prefer simple shared-layer fixes and measured hot-path changes. Finite source
+  diagnostics and old timings are not current ordinary-serving performance.
+- [ ] x2 compute/memory/storage use is authorized without routine requests;
+  do not relax numerical/source/ownership contracts to obtain a timing win.
+
 ### Current source and campaign boundary — 27 Oct
 
 - [x] Call-free Qwen source plans (`ad82feb`/`f7ff4f9`), complete parameterized

@@ -9,6 +9,19 @@ Current source and tests are the implementation truth. The active work queue is
 retains superseded plans, handoffs, checkouts and run evidence; they are not
 live authority.
 
+## Current owner mission — 30 Oct
+
+- Finish CUDA `.8B`/`2B` on `pvl-l5`, ROCm `.8B`/`2B`/`27B` on `pvl-x2`,
+  genuine active contexts through supported fit, and C1/C4/C8/C16/C32/C64 serving.
+- Then measured optimization against pinned matched vLLM in every feasible run;
+  high concurrency on capable hardware, especially x2. No hiding losses or
+  inferring acceptance from padded capacity, a finite diagnostic or old timings.
+- x2 resource use is authorized without routine prompts. Continue ready work;
+  ask only for consequential external dependencies/decisions beyond the repo.
+- The completed27B finite checkpoint is a prerequisite, not the whole mission. Ordinary small-model
+  HIP, general27B contexts, model-specific concurrency and performance remain open.
+  See [campaign](serving-and-speculation/BENCHMARK_CAMPAIGN_2026-10-27.md).
+
 ## Owned CUDA checkpoint — `2983bb7`
 
 - Owner authorized continuation and completion. Signed owned CUDA execution
@@ -36,10 +49,38 @@ live authority.
   plus strict CUDA/HIP/Vulkan feature checks. Earlier failed scopes remain failed.
 - Remaining input edge: exact2B reference image and trusted active-context
   comparison inputs; no model/SDK download, substitution or reference relaxation.
-- ROCm on `pvl-x2` is unqualified. Read-only SSH confirms AMD PCI1586, cached
-  ROCm/Rust/Python toolchains and prior qualification inputs; no current checkout.
-  No physical AMD run or permission change. No benchmark detour; see
-  [numerics](numerics-and-context/TODO.md).
+
+## Current ROCm finite checkpoint — `825ade8`
+
+- Latest owner order: finish ROCm on `pvl-x2` now, without waiting for separate
+  CUDA reference gaps. Needed2B/9B/27B model downloads are authorized; existing
+  exact31-member27B source was verified/imported to canonical cache instead.
+- Current-source HIP attempts run on gfx1151/96GiB. Fresh original natural
+  full64/fullV/all112-state reference validates both11→220→16 cohorts and
+  source/FD/process closure. Protocol14 and comparator/admission26 controls pass,
+  as do narrow/shared HIP strict checks. Signed `99f0232` fixes rank3 Conv4's
+  rank1 preflight routing with shared authenticated binding/30 source-window
+  controls. SDK-matched
+  child-only loader resolves old build-libc versus GLIBC2.44 runtime refusal.
+  No SDK download, device permission change or production routing.
+- Actual teacher full4 and natural healthy9-call diagnostics pass exact full64/
+  fullV/all112 state; each full4 comparison has240,896,000 float words/0 mismatches.
+  Healthy natural passes maintained semantic validation, including complete
+  late-cancel scope rather than an invented publication packet.
+- Teacher unknown and all4 independent Pending/Snapshot final-owner cases pass,
+  individually inspected. All six repaired natural reports pass maintained semantic
+  validation. Known final-reader paths retire121 modules; two release faults retain
+  all121 modules, original service/source and1,477 quarantined handles. Cached
+  unknown preserves the exact completed seed, refuses publication and retains the
+  original fenced domain; its unfinished cached suffix is not numerical evidence.
+- Five original natural failures remain failed. The earlier repaired batch lost
+  its outer healthy exit record; that controller scope remains incomplete. A fresh
+  healthy-only replay passes independently under durable supervision: exit0,
+  no remaining processes, exact full4/ordinary committed state/replay/late-cancel
+  and known retirement. Signed diagnostic checkpoint `825ade8` follows `99f0232`.
+- Final isolated source gate passes2,132 Rust executions/0 failures/83 ignored,
+  17 Python suites(10 source-input-dependent skips), release/installer/shell/Nix.
+  No ordinary context/serving/performance grant; see [numerics](numerics-and-context/TODO.md).
 
 ## Historical pre-owned-execution baseline — 29 Oct 2026
 

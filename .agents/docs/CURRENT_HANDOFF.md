@@ -26,13 +26,23 @@ Do not resurrect deleted handoff archives, transient .agents/runs trees, old sid
 
 Current owned CUDA implementation checkpoint: `2983bb7` (signed). Exact `.8B`
 cached47→50, lifecycle/capacity and source gates pass; broader reference scopes
-remain open. Earlier checkpoints below are historical. Re-read git status/log.
+remain open. Shared source binding `99f0232` and finite27B HIP natural/lifetime
+checkpoint `825ade8` are signed; ordinary HIP/context/serving/performance remain
+open. Earlier checkpoints below are historical. Re-read git status/log.
 
 ## 2. Immediate startup for a successor
 
-**Owner resumed: continue and finish.** Owned CUDA `.8B` cached47→50 exact parity
-passes; broader lifecycle/context and the final gate precede ROCm. No benchmark detour. Current
-results are in section8 and the maintained status/numerics TODO.
+**Latest owner mission:** finish CUDA `.8B`/`2B` on `pvl-l5`, ROCm `.8B`/`2B`/`27B`
+on `pvl-x2`, genuine active-context fit, then C1/C4/C8/C16/C32/C64 serving and
+measured vLLM superiority in every required feasible run. Use high concurrency
+on sufficiently capable hardware, especially x2. Routine x2 resource use needs
+no further permission. Correctness precedes timing; do not cherry-pick losses.
+Check cached models first; needed2B/9B/27B model downloads into canonical XDG cache
+are authorized. No subagents; stop to ask only for consequential external inputs
+or decisions. The earlier blanket benchmark deferral is superseded, not numerical,
+source/device or ownership requirements. Missing wider CUDA references do not
+block independent ROCm work. Finite27B diagnostics alone do not finish the mission.
+Current results are in section8 and the status/numerics TODO.
 
 Repository:
 
@@ -471,11 +481,27 @@ Owned execution landed in signed main commit `2983bb7`; nothing is pushed and
 production remains disabled. The extra exact2B reference image was not found
 among1,252 extracted SM80 modules; retained original capture inputs/long-context
 comparisons are also missing from the current qualification root. Do not replace
-or repin them. ROCm is unqualified; read-only SSH reached pvl-x2 and observed AMD
-PCI1586, cached ROCm/Rust/Python and prior qualification inputs, but no current
-repository checkout or global Python/Cargo. Existing device nodes are unchanged;
-no physical AMD test, SDK/model download or privilege change. Remote cached
-inputs also contain no exact2B image. See the owning numerics TODO.
+or repin them. ROCm is now active on `pvl-x2` gfx1151/96GiB, independently of
+those CUDA input gaps. Current source is in bounded run-local execution scratch,
+not another Git worktree. The exact31-member Qwen3.8-27B snapshot was imported and
+verified in canonical XDG cache from existing inputs; no download was needed.
+Fresh independent natural full64/fullV/all112-state reference capture validates
+both seed11→220→16 cohorts and source/process/FD closure. Capture/validator
+protocol repairs have14 Python controls;26 Rust comparator/admission controls and
+narrow/shared HIP strict checks pass. Signed `99f0232` fixes rank3 Conv4 preflight
+through the shared exact binding/30 source-window tests. SDK-matched child-only
+loader resolves build-libc versus GLIBC2.44 runtime refusal without replacing
+SDKs or changing shell libc. Actual teacher full4 and healthy natural9-call reports
+match full64/fullV/all112-state exactly; all six repaired natural modes pass
+semantic validation. Known reader paths retire121 modules; release faults retain
+121 modules/original service/source/1,477 handles. Teacher unknown and independent
+Pending/Snapshot final-owner scopes also pass. Earlier failed scopes stay failed.
+The old healthy controller exit record was lost; that controller scope stays
+incomplete. A fresh durable healthy-only replay passes with exit0 and no remaining
+processes. Signed `825ade8` lands the bounded diagnostic repairs. Source gate
+passes2,132 Rust/17 Python suites with explicit skips. Genuine ordinary contexts, small-model HIP, C1..C64
+and performance remain open; production stays disabled. See the owning numerics
+TODO for exact scopes and continuation.
 
 Do not recreate deleted `.agents/runs` paths or treat old run names as provenance.
 

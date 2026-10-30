@@ -1,17 +1,50 @@
-# Qwen3.5 matched serving campaign — 27 Oct 2026
+# Qwen matched serving campaign — 27–30 Oct 2026
 
 Author: @pvl
 
 ## Purpose
 
-One serial, correctness-gated comparison of ZeroGravity and pinned vLLM for the
-approved Qwen3.5 `.8B` and `2B` sources. This plan excludes Fabric vNext.
+Correctness-gated ZeroGravity/vLLM comparisons for approved Qwen sources.
+Owner30Oct expands the original CUDA campaign to both machines and27B.
+This plan excludes Fabric vNext.
 
 No cell runs until its exact model/source/numerical/context/physical route is
 qualified. Refusal is a valid result; a finite capture, source proof, compiled
 kernel, or synthetic queue does not grant a benchmark route.
 
-## Fixed identities
+## Owner30Oct scope and completion
+
+- `pvl-l5` / CUDA: `.8B` and `2B`; real active contexts through the largest
+  genuinely supported fit. Existing2B16K capacity evidence and32K refusal do
+  not establish active-context numerical acceptance or an immutable maximum.
+- `pvl-x2` / ROCm: `.8B`, `2B`, `27B`; ordinary natural inference and serving.
+  The27B full64/two-position diagnostic is a prerequisite, not that route.
+- C1/C4/C8/C16/C32/C64: high concurrency on capable hardware, especially `pvl-x2`.
+  Report offered clients, real active requests, queue population and kernel
+  batch width separately; an offered64 run does not imply64 active roots.
+- Correctness before each performance route: source/operator/model accuracy,
+  populated contexts, independent state, replay, cancellation and physical
+  retirement. Preserve existing exact profiles; do not loosen a failed limit.
+- Goal: measured superiority over vLLM in every required feasible run. Keep
+  per-run throughput, TTFT/prefill and decode latency, not only winning medians.
+  Investigate losses; no cherry-picking, artificially crippled baseline or
+  acceptance from unrun/refused cells. Record supported-fit exclusions exactly.
+- Use `pvl-x2` CPU/GPU/RAM/storage as needed without routine permission requests.
+  Existing-cache reuse first; needed model acquisition stays canonical XDG.
+  External credentials, irreversible system/device changes and source-identity
+  decisions remain distinct from routine repo/build/test work.
+- Independent devices may advance correctness in parallel. Timed measurements
+  keep one GPU owner and no competing build/model/profiler on that machine.
+- Finish with affected physical/serving checks, assembled repository gate,
+  signed logical checkpoints and complete matrix accounting. A finite27B pass
+  or earlier CUDA checkpoint alone does not complete this expanded mission.
+
+## Original CUDA baseline identities
+
+These are retained identities, not an automatically authorized ROCm runtime or
+an obligation to cap every later vLLM campaign at active8. Inspect cached inputs,
+pin the actual backend-specific baseline and document matched resource policies
+before timing; preserve these historical results separately.
 
 - Hardware: NVIDIA GeForce RTX 3060 Laptop GPU, 6 GiB, one campaign owner.
 - vLLM: `0.31.0`, commit

@@ -8,17 +8,25 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ## Uncommitted
 
-### Current physical continuation — 29 Oct
+### Current physical checkpoint — 31 Oct
 
 - [x] Exact `.8B` native/reference inputs recovered offline; fresh phase-1
   cached47→50 reference capture and all 1,008 source-window retirements pass
   after selecting the existing explicit 8 GiB reference host profile.
-- [ ] Ordinary startup refuses pinned cuBLAS's private `cuGetExportTable` call
-  before model math. Establish auditable provider allocation/retirement ownership
-  without bypassing the existing pool, then exact parity/lifecycle/context/gate.
+- [x] Signed `2983bb7` replaces ordinary cuBLAS dependency with owned execution;
+  exact `.8B` cached47→50, physical lifecycle/capacity and source gates pass.
+  The historical private-provider refusal remains intact.
   [Current numerical evidence](../numerics-and-context/TODO.md).
-- [ ] Owner order: CUDA correctness first, then Qwen ROCm (HIP) on `pvl-x2`;
-  no subagents, source substitutions/downloads or device-privilege changes.
+- [ ] Owner30Oct explicitly resumes Qwen ROCm (HIP) on `pvl-x2` independently
+  of wider CUDA reference gaps; approved2B/9B/27B model downloads into canonical
+  XDG cache are allowed if needed. No subagents, source substitutions, SDK
+  downloads or device-privilege changes. Current27B finite source/natural reports
+  pass exact full64/fullV/all112-state with supervised exit/retirement in signed
+  `825ade8`. Ordinary small-model HIP and general27B contexts remain absent.
+- [ ] Implement ordinary HIP through shared operators/physical owners, not a
+  backend flag on the CUDA plan. Declare actual numerical/storage contracts;
+  generalize real model geometry beyond24 layers/42 domains for27B. Preserve
+  source-priced admission, independent roots, flights and physical retirement.
 
 ### Ordinary Qwen execution checkpoint — 27 Oct
 
@@ -54,9 +62,10 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 - [ ] Implement/qualify missing full-model/context/backend cells, beginning
   .8B47–50 then genuine long context on CPU/CUDA/ROCm/Vulkan. ROOT coordinates
   exclusively GPT-6.1 Sol xhigh lanes. Older Pi/Astra assignments and performance
-  sequence below are superseded; no new timing/27B capture precedes correctness.
+  sequence below are superseded. The later30Oct mission resumes independent ROCm
+  and correctness-gated timing; older blanket deferrals below are historical.
 
-Current24Oct: CLI and shared model units are integrated; Pi implements/executes,
+Historical24Oct: CLI and shared model units are integrated; Pi implements/executes,
 Sol coordinates/reviews/merges, Astra designs/reviews architecture and math.
 Local source21 shared state-certificate preparation passes the complete1793 CPU
 gate, combined strict, five readiness contracts and optimized release build.

@@ -8,6 +8,20 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 
 ## Uncommitted
 
+### Expanded owner mission — 30 Oct
+
+- [ ] Finish ordinary correctness on `pvl-l5` CUDA `.8B`/`2B` through genuine
+  active-context fit, and `pvl-x2` ROCm `.8B`/`2B`/`27B`. Current finite
+  references/capacity checks do not fill missing routes or populated contexts.
+- [ ] Qualify real C1/C4/C8/C16/C32/C64 scheduling, independent state, faults
+  and shutdown; place higher concurrency on capable hardware, especially x2.
+- [ ] Then optimize and execute every feasible matched vLLM cell under the
+  [expanded campaign](BENCHMARK_CAMPAIGN_2026-10-27.md). Per-run wins are the
+  goal; preserve losses, active/offered widths and resource asymmetries.
+- [ ] Use x2 resources as needed; continue without routine permission prompts.
+  Only consequential external dependencies/decisions justify stopping to ask.
+  This supersedes the earlier blanket benchmark deferral, not correctness gates.
+
 ### Reviewed continuation — 29 Oct 2026
 
 - [x] Current `main` ordinary Qwen CUDA is integrated but qualification-only: source-derived projections/attention/GDN, one resident queue/flight/completion/quarantine path, one `StateRoot`, explicit provider shutdown and source-free cancellation/fault ownership.
@@ -16,7 +30,7 @@ Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZAT
 - [x] Fresh phase-1 cached47→50 capture passes with the existing explicit 8 GiB reference fixture host profile; 1,008 source windows retire. Preserve the original 4 GiB admission failure. Ordinary host/device allowances remain unchanged.
 - [ ] Owner resumed. Owned GEMM/RMS/rotary/attention now pass exact ordinary `.8B` cached47→50: full logits/all42/natural feedback and normal shutdown. Normal/fault lifecycle and final gate pass; long-active-context/2B numerical scopes need independent reference inputs; see [numerics](../numerics-and-context/TODO.md). Original cuBLAS private interface remains correctly refused; no alternate allocator or relaxed reference.
 - [ ] Then exact ordinary cached47→50 comparison, real after-launch cancellation/fault/retirement/shutdown, admitted context correctness and assembled gate. Reference capture alone closes none of those gates.
-- [ ] Latest owner order: finish Qwen CUDA correctness, then Qwen ROCm (HIP) on `pvl-x2`; no subagents. Do not start the matched benchmark campaign before correctness or displace that ROCm continuation.
+- [ ] Owner30Oct: continue through Qwen ROCm (HIP) on `pvl-x2` now; do not wait on wider CUDA reference gaps. Needed approved2B/9B/27B downloads may use canonical XDG cache. No subagents or benchmark detour; serving remains disabled.
 
 ### Matched campaign checkpoint — 27 Oct
 
