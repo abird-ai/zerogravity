@@ -1,4 +1,4 @@
-# ZeroGravity current comprehensive handoff — 29 Oct 2026
+# ZeroGravity current comprehensive handoff
 
 This is the canonical cross-window handoff for the repository.
 
@@ -24,11 +24,15 @@ Authority, highest first:
 
 Do not resurrect deleted handoff archives, transient .agents/runs trees, old side branches or old worktrees as live provenance.
 
-Historical reviewed implementation baseline: ae8cd89. The 29-Oct continuation
-below recovers reference evidence and fixes qualification diagnostics/fixtures;
-it does not qualify ordinary execution. Re-run git status and git log before editing.
+Current owned CUDA implementation checkpoint: `2983bb7` (signed). Exact `.8B`
+cached47→50, lifecycle/capacity and source gates pass; broader reference scopes
+remain open. Earlier checkpoints below are historical. Re-read git status/log.
 
 ## 2. Immediate startup for a successor
+
+**Owner resumed: continue and finish.** Owned CUDA `.8B` cached47→50 exact parity
+passes; broader lifecycle/context and the final gate precede ROCm. No benchmark detour. Current
+results are in section8 and the maintained status/numerics TODO.
 
 Repository:
 
@@ -384,7 +388,7 @@ The tracked source manifest is:
 
     crates/zerogravity/src/qwen35_cuda/source08.json
 
-### Current physical blocker — 29 Oct continuation
+### Recovered reference and original blocker — 29 Oct
 
 The old assembled bundle was purged, but its exact `.8B` N1 inputs are recovered
 offline under XDG state. Retained canonical images plus two whole SM80
@@ -404,8 +408,8 @@ this as a provider ownership blocker, not missing model/bundle bytes. Do not
 forward opaque tables or preload cuBLAS around admission to make it run.
 
 The current evidence and remaining work live in
-`../plans/numerics-and-context/TODO.md`. Ordinary parity/lifecycle/context and
-production routing remain unqualified. Owner order is CUDA correctness first,
+`../plans/numerics-and-context/TODO.md`. `.8B` cached47→50 is exact; broader
+lifecycle/context and production routing remain unqualified. Owner order is CUDA correctness first,
 then ROCm on `pvl-x2`, with no subagents.
 
 Maintained tooling:
@@ -419,9 +423,61 @@ external capture sources. Exact offline bundle recovery is documented in the
 bundle helper README; the Rust two-process parity wrapper uses that recovered
 bundle. These are qualification inputs, not production authority.
 
-Next resolve the ordinary provider ownership blocker, then resume comparison
-with the independently retained phase-1 digest. Do not recreate deleted
-`.agents/runs` paths or treat old run names as provenance.
+### Owned execution checkpoint — `2983bb7`
+
+Owner approved replacing ordinary opaque BLAS with shared driver-only GEMM.
+The allocation-free tensor-core/SIMT primitive passes 180 synthetic cases and
+eight authenticated prefill/cached projections exactly, including guards and
+retirement. Typed SSA roles choose explicit reductions without captured node or
+prompt lookup. Original compiler-context reservations and physical flights remain
+the owners; pinned reference/source/resource limits are unchanged. Ordinary
+comparison no longer requires cuBLAS paths.
+
+Corrected the rotary admission omission (+280 bytes), GDN partition binding and
+premature BF16 rounding of residual RMS sums. Row RMS retains Torch vector-four
+FP32 boundaries; Q/K RMS instead follows the fused Triton adjacent-pair/warp
+reduction. CUDA rotary now uses FP32 FMA and final BF16 rounding; the CPU-target
+BF16 product contract is unchanged. All211 GPU host tests (43 ignored) and an
+independent host-FMA rotary comparison at14 positions through32767 pass.
+
+Owned tile-64 CUDA attention now preserves FlashAttention's BF16 unnormalized
+probabilities, FTZ FP32 online softmax and tensor-core QK/PV. Runtime geometry,
+not captured-case routing; no new device scratch or allocation authority. Both
+independently authenticated prefill/cached attention captures match exactly.
+Nine analytic causal/multitile cases through a32K active prefix and three
+nonfinite refusals pass with guards and retirement. They are not long-context
+model parity.
+
+Fresh `.8B` cached47→48→49→50 passes exactly: all248,320 logits, all42 state
+domains and natural feedback at every step, with normal model shutdown. The
+reference bytes/digest are unchanged. The earlier229,459-logit /4,359,077-state
+failure (max0.28125) remains failed historical evidence.
+
+Replaced obsolete row/residual CPU-profile CUDA oracles with independent staged
+CUDA/Torch comparisons:16 cases across widths1024/2048, rows1/2/17/64 and residual
+modes pass exactly, including non-BF16 residual sums, guards and retirement.
+Real post-launch cancellation and abandoned-future probes pass:396 original
+handles quarantined, prior bits/tails intact, unchanged root, peer refusal and
+retained charges after external drops. Normal lifecycle passes all13 admitted
+capacities (`.8B` through32K,2B through16K), each at48 active tokens;2B32K refuses
+at pure preflight. Long-active-context/2B numerical parity remains open. Final
+isolated repository gate passes2,129 Rust executions/0fail/83ignored;14 Python
+suites and ancillary gates pass. CUDA/native host675/0fail/54ignored and strict
+CUDA/HIP/Vulkan feature checks pass.
+The2B approved snapshot exists in the canonical cache; its extra reference image
+must be recovered independently, not replaced by the `.8B` inventory.
+
+Owned execution landed in signed main commit `2983bb7`; nothing is pushed and
+production remains disabled. The extra exact2B reference image was not found
+among1,252 extracted SM80 modules; retained original capture inputs/long-context
+comparisons are also missing from the current qualification root. Do not replace
+or repin them. ROCm is unqualified; read-only SSH reached pvl-x2 and observed AMD
+PCI1586, cached ROCm/Rust/Python and prior qualification inputs, but no current
+repository checkout or global Python/Cargo. Existing device nodes are unchanged;
+no physical AMD test, SDK/model download or privilege change. Remote cached
+inputs also contain no exact2B image. See the owning numerics TODO.
+
+Do not recreate deleted `.agents/runs` paths or treat old run names as provenance.
 
 ## 9. Ordinary cached47→50 parity protocol
 
@@ -476,33 +532,36 @@ Modes:
 
 ## 10. Exact ordinary CUDA context admission
 
-Under the current 4608 MiB provider allowance inside the 5120 MiB physical envelope, cold model plus two-root totals are:
+Under the unchanged 4608 MiB provider / 5120 MiB physical limits, totals include
+cold model, two roots and retained conservative admission headroom. The owned
+GEMM allocates no scratch; these are not claims of physical scratch usage.
+The 30-Oct correction includes the previously omitted 280-byte rotary table.
 
 ### .8B
 
-- 512: 1,652,916,305 B
-- 1K: 1,667,661,905 B
-- 2K: 1,697,153,105 B
-- 4K: 1,756,135,505 B
-- 8K: 1,874,100,305 B
-- 16K: 2,110,029,905 B
-- 32K: 2,581,889,105 B
+- 512: 1,652,916,585 B
+- 1K: 1,667,662,185 B
+- 2K: 1,697,153,385 B
+- 4K: 1,756,135,785 B
+- 8K: 1,874,100,585 B
+- 16K: 2,110,030,185 B
+- 32K: 2,581,889,385 B
 
 All fit admission.
 
 ### 2B
 
-- 512: 3,911,845,969 B
-- 1K: 3,926,591,569 B
-- 2K: 3,956,082,769 B
-- 4K: 4,015,065,169 B
-- 8K: 4,133,029,969 B
-- 16K: 4,368,959,569 B
-- 32K: 4,840,818,769 B
+- 512: 3,911,846,249 B
+- 1K: 3,926,591,849 B
+- 2K: 3,956,083,049 B
+- 4K: 4,015,065,449 B
+- 8K: 4,133,030,249 B
+- 16K: 4,368,959,849 B
+- 32K: 4,840,819,049 B
 
 512 through 16K fit.
 
-32K exceeds 4,831,838,208 B by 8,980,561 B and must refuse before physical allocation.
+32K exceeds 4,831,838,208 B by 8,980,841 B and must refuse before physical allocation.
 
 These are admission/fit results only. Every admitted context still needs real-model correctness, continuation, fault and ownership qualification.
 
@@ -512,7 +571,7 @@ Unless the user explicitly switches to Fabric vNext implementation, this is the 
 
 1. Preserve the recovered exact `.8B` native/reference inputs and approved source.
 2. Preserve passing structural preflight and fresh phase-1 capture/retirement evidence; retain its independently emitted digest.
-3. Resolve ordinary cuBLAS private export-table ownership without weakening admission or quarantine.
+3. Finish qualifying owned driver-only GEMM integration without weakening admission or quarantine.
 4. Start a fresh ordinary process with `--compare-existing` and compare exact cached 47→48→49→50:
    - 248,320 logits;
    - all 42 state domains;
@@ -523,7 +582,8 @@ Unless the user explicitly switches to Fabric vNext implementation, this is the 
 7. Qualify .8B context ladder 512/1K/2K/4K/8K/16K/32K.
 8. Qualify 2B only for admitted cells; 32K remains a required pre-allocation refusal under current plan.
 9. Run the assembled repository gate.
-10. Only after correctness, run the serial matched ZeroGravity/vLLM campaign:
+10. Qualify ROCm/HIP on `pvl-x2` next; no downloads or privilege changes without authorization.
+11. Deferred, not the current task: the serial matched ZeroGravity/vLLM campaign:
     - canonical;
     - ragged;
     - queue scaling;
@@ -842,9 +902,9 @@ After the PID1 harness fix:
 A previous monolithic scripts/check.sh invocation exceeded the connector's single-call wall while compiling, so the same sections were executed in bounded groups. Do not interpret the connector wall as a source failure.
 
 The 29-Oct continuation recovered `.8B` native inputs and passed fresh reference
-capture. Ordinary provider startup still refuses a private driver export-table
-call; physical parity/lifecycle/context remain open. Source-only gates do not
-close that blocker.
+capture. The old opaque-provider startup still refuses a private driver
+export-table call. The30-Oct driver-only path supersedes that blocker and passes
+exact `.8B` cached47→50; broader physical scopes remain open (section8).
 
 ## 21. Git/topology cleanup history
 
@@ -881,9 +941,9 @@ If the user says “continue the main task”:
 - stay on the Qwen ordinary CUDA critical path in section 11;
 - do not start Fabric S0;
 - preserve recovered native inputs and passing phase-1 reference evidence;
-- resolve ordinary cuBLAS private export-table ownership;
-- resume ordinary comparison with the trusted phase-1 digest;
-- then lifecycle/context/final gate;
+- preserve the passing owned `.8B` cached47→50/lifecycle/source-gate checkpoint;
+- recover missing exact2B and long-active-context reference inputs;
+- finish those broader numerical scopes without altering the reference;
 - latest owner order: ROCm on `pvl-x2` after CUDA correctness, no subagents;
 - benchmark only after correctness and without displacing that ROCm task.
 
@@ -924,8 +984,8 @@ If the user asks for another review:
 After reading the required window set, determine which of these two paths the user's latest message requests:
 
 A. Current implementation critical path:
-   resolve ordinary cuBLAS export-table ownership -> exact ordinary parity against
-   retained trusted reference evidence -> lifecycle/context -> final gate ->
+   retain passing owned CUDA `.8B` cached47→50 exact parity -> finish broader
+   lifecycle/context and2B numerical coverage -> final gate ->
    ROCm on `pvl-x2` (latest owner order). Matched benchmarking remains deferred.
 
 B. Fabric vNext transition:

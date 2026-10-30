@@ -41,5 +41,6 @@ not acceptance inputs.
 
 - Approved Qwen3.5 .8B model bytes are visible and exact.
 - `.8B` native/reference inputs are recovered offline with exact current Rust payload/provider identities; fresh phase-1 cached47→50 capture and source retirement pass.
-- Fresh ordinary startup fails at pinned cuBLAS initialization: its requested private export table is denied by the owned allocator. No ordinary model math/parity ran. Preserve that ownership boundary; reference success and admission totals do not authorize ordinary production CUDA.
-- Ordinary parity, physical lifecycle/shutdown and admitted contexts remain open. Finish CUDA correctness before the requested ROCm (`pvl-x2`) continuation.
+- Owned GEMM/RMS/rotary/attention pass exact `.8B` cached47→50: full logits/all42/natural feedback.180 synthetic and eight authenticated GEMMs, two authenticated attentions,12 analytic/refusal attention cases and16 staged CUDA RMS cases pass with guards/retirement. Original cuBLAS private exports remain refused; no opaque passthrough.
+- Owner resumed. Real post-launch cancellation/abandonment preserves prior bits/tails/root and original quarantine charges. Normal lifecycle passes all13 admitted capacities at48 active tokens;2B32K refuses at pure preflight. Long-active-context/2B numerical coverage is separate and open.
+- Current complete repository gate passes2,129/0failed/83ignored; CUDA/native host675/0failed and strict CUDA/HIP/Vulkan feature checks pass. Production stays disabled. Missing exact2B/long-context reference inputs block broader acceptance; ROCm (`pvl-x2`) has only read-only readiness inspection. See the owning numerics TODO.

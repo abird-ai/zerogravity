@@ -75,13 +75,7 @@ checks and one complete gate per larger unit; isolate only concrete failures.
   refusal errors without changing selection or admission. All three focused
   optimization tests and the final isolated assembled repository gate pass.
 
-## Uncommitted
-
-### Owned GEMM continuation — 30 Oct
-
-**Resumed by owner: continue and finish.** Exact `.8B` cached47→50 passes;
-broader lifecycle/context and final qualification precede ROCm. Implementation
-is uncommitted; the four-frontier result is not general context acceptance.
+### `2983bb7` — owned CUDA execution
 
 - [x] Owner approved a clean, high-performance driver-only replacement; retain
   the pinned reference, exact numerical contract and existing resource limits.
@@ -103,7 +97,8 @@ is uncommitted; the four-frontier result is not general context acceptance.
 - [x] Fix shared GDN partition binding: bind only the selected schedule, not all
   operands from both partitions. Keep recurrent cache/initial/final alias guards.
   All 11 runtime host tests pass, including incomplete-partition/alias controls.
-- [ ] Close exact model arithmetic. Ordered GEMM first failed frontier47 with
+- [x] Close exact `.8B` cached47→50 arithmetic (full pass below); retain failed
+  predecessors. Ordered GEMM first failed frontier47 with
   233,282 differing logits / 5,219,072 state values. Source-role reductions then
   matched both layer0 state domains, but still failed: 228,365 logits,
   max absolute error0.3125, 4,965,314 state values. Matching token248068 is not
@@ -165,11 +160,20 @@ is uncommitted; the four-frontier result is not general context acceptance.
   checks pass. CUDA/native host suite passes675/0failed/54ignored. Strict CUDA,
   HIP/Qwen/Gemma and Vulkan/Gemma all-target checks pass; narrow unused test gates
   and mechanical lint/visibility issues without changing backend arithmetic.
+
+## Uncommitted
+
+### Remaining CUDA/ROCm qualification
+
+**Continue and finish.** Exact `.8B` cached47→50 and lifecycle/source gates have
+landed. Broader reference scopes remain open; production stays disabled.
+
 - [ ] Recover the exact additional2B reference `TextCutlassBf16Sm80` image
   (3,965,472 bytes; identity in `cuda/native/cubin_manifests.rs`). Approved2B
   model bytes are already in the canonical cache and load successfully. No match
   among1,252 SM80 images extracted from retained cuBLAS/cuBLASLt/Torch/VLLM
-  libraries, nor their accessible embedded ELF inventory. No substitution/repin.
+  libraries, nor their accessible embedded ELF inventory. The remote project
+  cache also has no matching-size candidate. No substitution/repin.
 - [ ] Obtain independently trusted active-context comparison inputs. The retained
   Rust reference is finite cached47→50 at512 capacity; the Python reference
   protocol is also finite, and requires retained original/capture-source,

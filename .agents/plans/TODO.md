@@ -5,13 +5,13 @@ Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 
 ## Active
 
-- [~] P0 serving-and-speculation — @pvl — `.8B` native inputs recovered and reference captured; resolve ordinary cuBLAS export-table ownership, then exact parity/lifecycle/context/gate; ROCm on `pvl-x2` next — [details](serving-and-speculation/TODO.md)
-- [~] P1 numerics-and-context — @pvl — ordinary CUDA integrated qualification-only; source-independent physical hot path closed, exact approved-source cached47→50 and long-context correctness next — [details](numerics-and-context/TODO.md)
+- [~] P0 serving-and-speculation — @pvl — owned CUDA checkpoint2983bb7 passes; wider reference scopes open, ROCm on `pvl-x2` pending — [details](serving-and-speculation/TODO.md)
+- [~] P1 numerics-and-context — @pvl — exact cached47→50, lifecycle/capacity and final gate pass; active-context/2B reference inputs missing — [details](numerics-and-context/TODO.md)
 - [~] P1 memory-and-streaming — @pvl — exact two-root admission: `.8B` fits through 32K, `2B` through 16K, `2B`32K refuses before allocation — [details](memory-and-streaming/TODO.md)
-- [~] P1 cpu-gpu-optimization — @pvl — ordinary source-independent CUDA numerics/transport qualified; approved-source whole-model parity before the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)
+- [~] P1 cpu-gpu-optimization — @pvl — ordinary kernel/transport checks pass; exact whole-model parity before measured tuning and the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)
 - [~] P1 pipeline-composition — @pvl — recursive primitives/pipelines/profiles; shared execution adapters active, deferred behind the Qwen correctness critical path — [details](pipeline-composition/TODO.md)
 - [~] P1 cli-device-routing — @pvl — unified run/config/source/device selection; separate from the current Qwen parity critical path — [details](cli-device-routing/TODO.md)
-- [~] P2 model-execution — @pvl — ordinary Qwen CUDA resident owner/executor is integrated; approved-source parity, after-launch fault/shutdown and context correctness remain before route activation — [details](model-execution/TODO.md)
+- [~] P2 model-execution — @pvl — ordinary CUDA .8B cached47→50/fault/shutdown pass; broader context/2B numerical coverage remains before route activation — [details](model-execution/TODO.md)
 - [~] P2 model-acquisition — @pvl — [details](model-acquisition/TODO.md)
 
 ## Icebox
