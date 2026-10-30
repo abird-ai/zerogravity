@@ -1,7 +1,7 @@
 //! Single-row eager BF16 attention using the existing CPU numerical primitives.
 //! Pinned HF source: modeling_qwen3_5.py 762feb6c…12c3b, lines143–214/674–826.
-//! This implementation needs learned reference qualification; libm rotary and
-//! reuse of the existing B1 dot do not prove a Torch BMM reduction match.
+//! QK and PV retain distinct original reductions. Operator checks do not grant
+//! learned-model parity; libm rotary still needs its own source comparison.
 use crate::accelerator::SourceIdentity;
 use crate::accelerator::program::{
     ActivationPrecision, TorchCpuAttentionInputs, TorchCpuAttentionValues,
@@ -134,19 +134,25 @@ pub fn eager_bf16(
         *v = rounded(*v)?;
     }
     let mut context = vector(q)?;
+    let mut column = [0.0; 64];
+    let pv = super::pv::Bf16PvGeometry {
+        query_rows: 1,
+        contraction: tokens,
+        output_width: g.width,
+    };
     for h in 0..g.query_heads {
         check(cancelled)?;
         let group = h / (g.query_heads / g.kv_heads);
         for d in 0..g.width {
-            packed.clear();
-            for t in 0..tokens {
-                let x = values[t * kv + group * g.width + d];
-                packed.extend_from_slice(&((x.to_bits() >> 16) as u16).to_le_bytes());
+            for (t, value) in column[..tokens].iter_mut().enumerate() {
+                *value = values[t * kv + group * g.width + d];
             }
-            context.push(rounded(crate::source::dot_bf16_cpu_avx2(
-                &packed,
+            context.push(rounded(super::pv::bf16_pv_f32_accumulator(
+                source,
                 &probabilities[h * tokens..(h + 1) * tokens],
-            ))?);
+                &column[..tokens],
+                pv,
+            )?)?);
         }
     }
     let mut gated =

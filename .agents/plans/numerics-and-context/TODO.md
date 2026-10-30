@@ -286,6 +286,36 @@ landed. Broader reference scopes remain open; production stays disabled.
   2B/9B/27B downloads through canonical XDG cache. No SDK/device-privilege changes.
   Preserve completed CUDA lifecycle/source gates and separate wider numerical scopes.
 
+### Ordinary source attention — 31 Oct, uncommitted
+
+- [x] Correct the actual eager CPU PV reduction before ordinary HIP assembly.
+  Original Torch2.13.0+cu129/cf30153c4 AVX2, authenticated cached image and original
+  Qwen `repeat_kv`/`matmul`, produced32 independent cases. The existing projection
+  dot failed the actual eager path at7 tokens (`3f090000` vs `3f240000`). Reuse
+  the already-defined four-part BMM accumulator, not a tolerance change.
+  All65,536 captured output words now match;16 eager arithmetic-cancellation cases
+  through64 tokens pass. Capture parent/group/container/EOF closure verified;
+  raw2,093,584B SHA256`9d43819ebae00ec8f00ad8d4840507b37108ca0ee971c0903c7618163283bc3b`.
+  These are operator controls, not trained whole-model/context acceptance.
+- [ ] Shared GPU attention uses geometry-sized scratch and one matching kernel
+  constructor/launch set. Independent original HF rotary/eager capture covers
+  40 cases, nine fields each:8Q/2KV at16 lengths through64, plus24Q/4KV at1/2/47/64;
+  both random and arithmetic-cancellation inputs. CPU and actual gfx1151 HIP
+  each match all1,774,240 output words exactly. Raw13,488,016B SHA256
+  `0b215c2fe121ddd8fc50908e4aa7342a8251df84a9fbea40c581a54d6a9e17af`.
+  Every360 field and40 device-case scope inspected;150 native modules retire,
+  original namespace closes, supervisor exits0/empty cgroup, completed unit stops.
+  Native execution uses the original admitted source/service/queue/flight and
+  retains its compiler owner through completion/quarantine. Synthetic operator
+  inputs are not trained-model, publication, cancellation-fault or serving proof.
+  Finite27B position<=1 guards remain. General source-state lowering, ordinary
+  admission/publication and real model references remain open. Assembled isolated
+  `scripts/check.sh` passed2,135 Rust executions/0fail/85ignored/283 suites,
+  17 Python suites/178 reported cases, release/installer/shell/Nix checks.
+  Non-strict feature warnings match the preceding accepted gate; selected CPU
+  and HIP all-target strict checks are warning-free. See the active
+  [model-execution unit](../model-execution/TODO.md).
+
 ### Provider boundary investigation — 30 Oct
 
 - [x] Trace the real refused call in a symbolized, isolated model-free process.

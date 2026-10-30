@@ -206,4 +206,73 @@ mod tests {
             0
         );
     }
+
+    #[test]
+    #[ignore = "requires independently captured pinned Torch CPU BMM archive"]
+    fn original_torch_bmm_archive_all_words() {
+        use sha2::{Digest, Sha256};
+        let path = std::env::var("ZG_TORCH_CPU_PV_REFERENCE").expect("original reference path");
+        let file = std::fs::File::open(path).unwrap();
+        assert_eq!(file.metadata().unwrap().len(), 2_093_584);
+        let mut bytes = Vec::new();
+        let mut limited = std::io::Read::take(file, 2_093_585);
+        std::io::Read::read_to_end(&mut limited, &mut bytes).unwrap();
+        assert_eq!(bytes.len(), 2_093_584);
+        assert_eq!(
+            format!("{:x}", Sha256::digest(&bytes)),
+            "9d43819ebae00ec8f00ad8d4840507b37108ca0ee971c0903c7618163283bc3b"
+        );
+        let mut at = 0;
+        let mut take = |n: usize| {
+            let result = &bytes[at..at + n];
+            at += n;
+            result
+        };
+        assert_eq!(take(8), b"ZGCPV001");
+        assert_eq!(u64::from_le_bytes(take(8).try_into().unwrap()), 32);
+        let source = source();
+        let mut compared = 0;
+        for case in 0..32 {
+            let [tokens, heads, kv_heads, width] = std::array::from_fn(|_| {
+                usize::try_from(u64::from_le_bytes(take(8).try_into().unwrap())).unwrap()
+            });
+            assert!((1..=64).contains(&tokens));
+            assert_eq!((heads, kv_heads, width), (8, 2, 256));
+            let mut floats = |n: usize| {
+                take(n * 4)
+                    .chunks_exact(4)
+                    .map(|v| f32::from_le_bytes(v.try_into().unwrap()))
+                    .collect::<Vec<_>>()
+            };
+            let probabilities = floats(heads * tokens);
+            let values = floats(tokens * kv_heads * width);
+            let expected = floats(heads * width);
+            let mut column = [0.0; 64];
+            for head in 0..heads {
+                let group = head / (heads / kv_heads);
+                for lane in 0..width {
+                    for (t, v) in column[..tokens].iter_mut().enumerate() {
+                        *v = values[(t * kv_heads + group) * width + lane];
+                    }
+                    let actual = bf16_pv_f32_accumulator(
+                        source,
+                        &probabilities[head * tokens..(head + 1) * tokens],
+                        &column[..tokens],
+                        geometry(tokens, width),
+                    )
+                    .unwrap();
+                    let actual = super::super::norm::round_bf16(actual).unwrap();
+                    assert_eq!(
+                        actual.to_bits(),
+                        expected[head * width + lane].to_bits(),
+                        "original case{case} head{head} lane{lane}"
+                    );
+                    compared += 1;
+                }
+            }
+        }
+        assert_eq!(at, bytes.len());
+        assert_eq!(compared, 65_536);
+        println!("ORIGINAL_TORCH_CPU_PV_PASS cases=32 words={compared} exact=true");
+    }
 }

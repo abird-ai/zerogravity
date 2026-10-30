@@ -100,3 +100,161 @@ fn malformed_nonfinite_foreign_source_and_cancel_fail_without_prefix_changes() {
     assert!(eager_bf16(source, bad, None).is_err());
     assert_eq!(v, vec![1.0; 256]);
 }
+
+#[test]
+fn eager_cached_pv_uses_original_bmm_order_not_the_projection_dot() {
+    // Independent Torch2.13.0+cu129 cf30153c4, AVX2, original Qwen repeat_kv/matmul.
+    // Raw32-case artifact SHA256:9d43819ebae00ec8f00ad8d4840507b37108ca0ee971c0903c7618163283bc3b.
+    let expected = [
+        (1, 0x4b800000),
+        (2, 0x4b000000),
+        (3, 0x3f000000),
+        (4, 0x3e800000),
+        (7, 0x3f240000),
+        (8, 0x3e000000),
+        (15, 0x3ea20000),
+        (16, 0x00000000),
+        (31, 0x3e900000),
+        (32, 0x00000000),
+        (47, 0x3e8b0000),
+        (48, 0x3e800000),
+        (49, 0x48a70000),
+        (50, 0x48a40000),
+        (63, 0x3e880000),
+        (64, 0x00000000),
+    ];
+    let pattern = [
+        16_777_216.0,
+        1.0,
+        -16_777_216.0,
+        1.0,
+        1.0 / 1024.0,
+        -1.0 / 1024.0,
+        1.0,
+        -1.0,
+    ];
+    let source = SourceIdentity::for_new_allocation().unwrap();
+    let g = TorchCpuAttentionGeometry {
+        query_heads: 8,
+        kv_heads: 2,
+        ..geometry()
+    };
+    let q = vec![0.0; 8 * 256];
+    let k = vec![0.0; 2 * 256];
+    for (tokens, word) in expected {
+        let values = (0..tokens)
+            .flat_map(|t| std::iter::repeat_n(pattern[t % 8], 512))
+            .collect::<Vec<_>>();
+        let prior_keys = vec![0.0; (tokens - 1) * 512];
+        let prior = if tokens == 1 {
+            None
+        } else {
+            Some((prior_keys.as_slice(), &values[..(tokens - 1) * 512]))
+        };
+        let result = eager_bf16(
+            source,
+            TorchCpuAttentionInputs {
+                query: &q,
+                key: &k,
+                value: &values[(tokens - 1) * 512..],
+                gate: &q,
+                prior,
+                geometry: g,
+                position: tokens - 1,
+            },
+            None,
+        )
+        .unwrap();
+        assert!(
+            result.context.iter().all(|v| v.to_bits() == word),
+            "original BMM context at{tokens}: {:08x} != {word:08x}",
+            result.context[0].to_bits()
+        );
+        assert_eq!(result.values, values);
+        assert_eq!(prior_keys, vec![0.0; (tokens - 1) * 512]);
+    }
+}
+
+#[path = "../../../../../../tests/support/torch_cpu_attention.rs"]
+mod original_archive;
+
+#[test]
+#[ignore = "requires independently captured pinned original HF attention archive"]
+fn original_hf_attention_all_stages() {
+    let cases = original_archive::read().unwrap();
+    let source = SourceIdentity::for_new_allocation().unwrap();
+    let mut words = 0;
+    let mut mismatches = 0;
+    for (index, case) in cases.iter().enumerate() {
+        let inputs = case
+            .inputs
+            .iter()
+            .map(|bytes| {
+                bytes
+                    .chunks_exact(4)
+                    .map(|v| f32::from_le_bytes(v.try_into().unwrap()))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let result = eager_bf16(
+            source,
+            TorchCpuAttentionInputs {
+                query: &inputs[0],
+                key: &inputs[1],
+                value: &inputs[2],
+                gate: &inputs[3],
+                prior: if case.position == 0 {
+                    None
+                } else {
+                    Some((&inputs[4], &inputs[5]))
+                },
+                geometry: case.geometry,
+                position: case.position,
+            },
+            None,
+        )
+        .unwrap();
+        for (stage, (actual, expected)) in [
+            result.rotated_query,
+            result.rotated_key,
+            result.keys,
+            result.values,
+            result.dots,
+            result.scores,
+            result.probabilities,
+            result.context,
+            result.gated,
+        ]
+        .iter()
+        .zip(&case.expected)
+        .enumerate()
+        {
+            assert_eq!(actual.len() * 4, expected.len());
+            let mut differences = 0;
+            for (word, (a, e)) in actual.iter().zip(expected.chunks_exact(4)).enumerate() {
+                let e = u32::from_le_bytes(e.try_into().unwrap());
+                if a.to_bits() != e {
+                    if differences == 0 {
+                        eprintln!(
+                            "SOURCE_ATTENTION_CPU_DIFFERENCE case={index} stage={stage} word={word} actual={:08x} expected={e:08x}",
+                            a.to_bits()
+                        );
+                    }
+                    differences += 1;
+                }
+            }
+            words += actual.len();
+            mismatches += differences;
+            eprintln!(
+                "SOURCE_ATTENTION_CPU_STAGE case={index} stage={stage} words={} mismatches={differences}",
+                actual.len()
+            );
+        }
+    }
+    eprintln!(
+        "SOURCE_ATTENTION_CPU_RESULT cases={} words={words} mismatches={mismatches}",
+        cases.len()
+    );
+    assert_eq!(mismatches, 0);
+    assert_eq!(words, 1_774_240);
+}
