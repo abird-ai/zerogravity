@@ -70,12 +70,8 @@ fn require_step_source(source: &VerifiedTensorSource, record: &TextStepBindings)
             "source step actual snapshot/geometry differs".into(),
         ));
     }
-    let parameter = |p: &SourceParameter| -> Result<()> {
-        if source.parameter(&p.name)?.source_parameter() != *p {
-            return Err(Error::State("source step actual parameter differs".into()));
-        }
-        Ok(())
-    };
+    let parameter =
+        |p: &SourceParameter| -> Result<()> { source.bind_declared_parameter(p).map(|_| ()) };
     for node in record.plan().nodes() {
         match &node.operation {
             PlanOperation::TypedEmbed { tensor, .. }
@@ -231,12 +227,6 @@ impl Bf16TextSourceBody {
         mode: cubecl::hip::SourcePageEventProbeMode,
     ) -> Result<source_page::SourcePageProbeParts> {
         self.page.arm_source_page_event_probe(mode)
-    }
-    #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
-    pub(crate) fn source_page_event_probe(
-        &self,
-    ) -> Result<(cubecl::hip::SourcePageEventProbeSnapshot, bool, bool)> {
-        self.page.source_page_event_probe()
     }
     pub(crate) fn prepare(
         source: VerifiedTensorSource,

@@ -89,6 +89,7 @@ impl zerogravity_gpu::TextObserver for Tracing<'_> {
 /// One diagnostic proposal against the immutable expected cell. The original
 /// expected report owns call/exact/mismatched/boundary/frontier/packet fields;
 /// only the diagnostic-only counters are added here.
+#[allow(clippy::too_many_arguments)]
 fn compared(
     e: &mut Expected,
     call: usize,

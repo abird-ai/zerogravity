@@ -165,6 +165,13 @@ checks and one complete gate per larger unit; isolate only concrete failures.
 
 ### Remaining CUDA/ROCm qualification
 
+- [ ] Owner30Oct expands completion to `pvl-l5` CUDA `.8B`/`2B` and `pvl-x2`
+  ROCm `.8B`/`2B`/`27B`, genuine active contexts through supported fit, then
+  C1/C4/C8/C16/C32/C64 serving correctness and matched vLLM optimization.
+  Use x2 resources as needed; no routine permission prompts. The current27B
+  finite unit is a prerequisite, not completion of ordinary/context/concurrency
+  routes. Performance follows qualified cells; record every loss/unrun scope.
+
 **Continue and finish.** Exact `.8B` cached47→50 and lifecycle/source gates have
 landed. Broader reference scopes remain open; production stays disabled.
 
@@ -180,9 +187,95 @@ landed. Broader reference scopes remain open; production stays disabled.
   observer/collector and owner inputs not found in the current qualification
   root. Capacity-only48-token runs and analytic32K attention do not close this.
   Do not restore deleted runs or weaken the reference to manufacture acceptance.
-- [ ] After accepted `.8B` cached47→50, finish physical lifecycle/fault/context,
-  complete repository gate and ROCm. Long-context/2B coverage and measured tuning
-  remain separate; production routing stays disabled.
+- [ ] Finish ROCm on `pvl-x2`, explicitly authorized30Oct without waiting for
+  missing CUDA references. Reuse cached approved sources; owner permits needed
+  2B/9B/27B downloads through canonical XDG cache. No SDK/device-privilege changes.
+  Preserve completed CUDA lifecycle/source gates and separate wider numerical scopes.
+- [ ] Current Qwen27B HIP unit: current-source build, canonical source import,
+  independent natural two-position capture, exact full64/fullV/state comparison,
+  actual cancellation/final-reader/quarantine, strict feature checks and final
+  repository gate. Existing finite teacher proof is not natural or general-context
+  acceptance; `.8B`/`2B` ordinary HIP lowering is still absent.
+- [x] Diagnose actual natural capture failure: pread on the shared write-only
+  archive returns EBADF after initial original full64 execution. Retain failed
+  capture and healthy owner/group/EOF/source-FD closure. Reopen only the held output
+  inode read-only, check bounds/stamps and close the reader; original archive,
+  source/model/image/arithmetic/comparison contracts unchanged. The next capture
+  completed1040 records/934,776,928 B and healthy source/process/EOF closure;
+  validation exposed an outdated source-owner API call. Correct that call with
+  an explicit state/caller-owned FD map and complete/partial/error cleanup.
+  All14 protocol controls pass. Recapture under the corrected package identity;
+  do not relabel earlier artifacts. CUDA and accepted teacher references unchanged.
+- [x] Import the existing exact31-member27B snapshot through CacheStore into
+  `pvl-x2`'s canonical XDG model cache; all source bytes verified, no download.
+  Current-source CPP-only release build and narrow/shared HIP all-target strict
+  checks pass;23 natural comparator host controls pass.
+- [x] Fresh independent natural reference now validates: seed11→selected220→16
+  in both cohorts,1040 records/934,776,928 B, full64/fullV/all112 state domains,
+  exact repeated/prior joins, all31 source files rechecked and original group/
+  one-reap/fullEOF/FD closure. External receipt13363 B,
+  SHA256 `69126b45e49ae08189aa22016ec8917e23d0b1e3587a393a5085986786d70733`.
+  The earlier readable capture is not repinned; its stale-validator refusal and
+  the separate misplaced-receipt-path refusal remain failed evidence.
+- [x] Fix actual HIP source preflight routing Conv4 `[channels,1,4]` through the
+  rank1 reader. Shared metadata-only declared-parameter binding now reuses the
+  existing exact vector/Conv4 validators, and the complete reader uses that same
+  binding; no flattening, new shapes, staging or numerical changes.30 real
+  source-window controls and narrow HIP strict checks pass. Subsequent actual
+  teacher/natural full-model runs pass; the original pre-admission refusal stays
+  failed.
+- [x] Actual current-source HIP teacher comparison passes all4 proposals,
+  full64/fullV/all112-state,240,896,000 float words/0 mismatches. Real two-session
+  isolation, pressure/pre/late-cancel/Ready discard, snapshot/restore/reset,
+  retained output and normal source/model retirement pass. The earlier stale
+  cancellation-string assertion remains failed, not numerical evidence.
+- [x] Natural host admission now registers the same canonical16GiB host domain
+  before its384MiB harness, without early GPU/model creation or another budget.
+  25 comparator/admission controls and missing-receipt preeffect refusal pass.
+- [ ] Complete physical natural/final-reader batch. Healthy9-call natural mode
+  passes full4 original comparison(240,896,000 words), all112 committed domains,
+  ordinary16B status+packet readback and healthy closure. Correct the external
+  validator/source-only fixture: cancelled calls carry complete comparison scope,
+  not a published selection packet. Six fixture modes, actual healthy report and
+  counter/exactness corruption refusals pass. Cached-unknown physically preserves
+  original fence/source/native retention but its comparator closure incorrectly
+  includes the armed call in the completed prefix. Four natural final-reader
+  cases also fail: an outer candidate clone prevents sole-wrapper ownership;
+  the fault report guard then hides that failure behind a retention mismatch.
+  These harness repairs now pass26 Rust controls, shared-HIP strict checks,
+  five Python schema controls, six source fixtures and healthy real-report
+  revalidation. Pass the candidate by ownership; preserve failed reports and
+  derive failure retention from observation, not the requested fault name.
+  Session's two model Arcs (`inner`+`loaded`) are distinct from Snapshot's one;
+  validator/fixtures now require those exact counts and complete call extents.
+  Fresh session-known now passes full seed comparison/sole12B feedback reader,
+  one reader release before121 native modules retire, no quarantine. Cached-unknown
+  passes its exact completed seed plus10,240 observed cached words;80,103,936
+  unavailable words remain explicitly unqualified, no cached root publishes and
+  original source/native/fenced16GiB retention holds. Snapshot-known also retires
+  all121 modules. Both actual12B reader-release faults retain all121 modules,
+  original service/source and1,477 quarantined handles; each complete seed
+  comparison is exact. All five repaired scopes were individually inspected.
+  Final healthy9-call report also passes maintained semantic validation: exact
+  full4/ordinary committed state/replay/late cancellation and known retirement.
+  However, the agent session lost its job/watch registration and outer process
+  exit before recording final batch closure. Keep that controller scope incomplete;
+  do not infer exit0 from the passing report. A fresh healthy-only replay runs
+  under a durable user supervisor retaining exit status and process-group state.
+  No whole-unit acceptance/checkpoint until that closure is verified.
+- [x] Actual teacher unknown and all4 independent Pending/Snapshot final-owner
+  cases pass, individually inspected. Full64/fullV/128 proposed planes before
+  each final drop; Pending3 aliases/Snapshot2, sole candidate/model, one reader
+  release before one native retirement attempt. Known paths retire117 modules;
+  fault paths retain all117, original service and1,602 quarantined handles.
+  Teacher unknown publishes0 roots and retains the original fenced16GiB domain.
+  These are physical-lifetime results, not extra numerical or serving coverage.
+
+- [x] Final isolated assembled `scripts/check.sh` passes on the repaired source:
+  2,132 Rust executions/0 failures/83 ignored across283 suites;17 Python suites
+  pass(178 reported cases,10 source-input-dependent skips). Release CLI, offline
+  installer, shell/Nix and serving source-contract checks pass. This source gate
+  does not replace the pending final healthy physical replay.
 
 ### Provider boundary investigation — 30 Oct
 
@@ -204,8 +297,8 @@ landed. Broader reference scopes remain open; production stays disabled.
   engine/queue/arbiter, retaining pinned cuBLAS as reference. Model bytes,
   precision, exact cached47→50 acceptance and ownership limits stay unchanged.
   No partial runtime declarations, UUID allowlists or guessed callback ABIs.
-- [ ] Broader CUDA active-context/2B numerical coverage and final gate remain
-  open after the owned `.8B` pass; ROCm on `pvl-x2` has not started.
+- [ ] Broader CUDA active-context/2B numerical coverage remains open; the CUDA
+  checkpoint's final gate passed. ROCm continuation is active as directed above.
 
 ### Current physical continuation — 29 Oct
 

@@ -49,6 +49,57 @@ fn full_original_rank3_and_partial_range_keep_truthful_metadata_and_owner() {
     assert_eq!(reserved(&host), 0);
 }
 #[test]
+fn declared_binding_preserves_rank_and_rejects_forged_metadata_without_staging() {
+    for (dtype, shape) in [("BF16", vec![32, 1, 4]), ("F32", vec![64])] {
+        let f = fixture(dtype, &shape, 256);
+        let host = admission(64 * 1024 * 1024, "host");
+        let source = f.plan(&host).unwrap().open().unwrap();
+        let foreign = f.plan(&host).unwrap().open().unwrap();
+        let raw = if shape.len() == 3 {
+            assert!(source.parameter("conv").is_err());
+            source.conv4_parameter("conv").unwrap()
+        } else {
+            source.parameter("conv").unwrap()
+        };
+        let descriptor = raw.source_parameter();
+        let baseline = reserved(&host);
+        let bound = source.bind_declared_parameter(&descriptor).unwrap();
+        assert_eq!(bound.source_parameter(), descriptor);
+        assert_eq!(reserved(&host), baseline);
+        for field in 0..5 {
+            let mut forged = descriptor.clone();
+            match field {
+                0 => forged.source = foreign.source_identity(),
+                1 => forged.name = "matrix".into(),
+                2 => forged.kind = zerogravity_core::quant::QuantKind::F16,
+                3 => forged.shape = vec![bound.elements() as u64, 1],
+                4 => forged.bytes += 2,
+                _ => unreachable!(),
+            }
+            assert!(source.bind_declared_parameter(&forged).is_err());
+            assert!(source.read_declared_parameter(&forged, None).is_err());
+            assert_eq!(reserved(&host), baseline);
+        }
+        let cancelled = AtomicBool::new(true);
+        assert!(
+            source
+                .read_declared_parameter(&descriptor, Some(&cancelled))
+                .is_err()
+        );
+        assert_eq!(reserved(&host), baseline);
+        let window = source.read_declared_parameter(&descriptor, None).unwrap();
+        assert!(window.is_complete());
+        assert_eq!(window.parameter().source_parameter(), descriptor);
+        assert_eq!(window.as_slice().len(), 256);
+        drop((bound, raw, source, foreign));
+        assert!(reserved(&host) > 0);
+        assert_eq!(window.parameter().tensor().shape, shape);
+        drop(window);
+        assert_eq!(reserved(&host), 0);
+    }
+}
+
+#[test]
 fn geometry_corruption_cancel_and_pressure_refuse_without_leases() {
     for (dtype, shape, bytes) in [
         ("F32", vec![32, 1, 4], 512),

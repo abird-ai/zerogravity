@@ -136,7 +136,7 @@ impl zerogravity_gpu::TextObserver for Completed {
     ) -> zerogravity::Result<()> {
         let checked = (|| -> Proof<()> {
             need(
-                !actual.is_empty() && actual.len() % 4 == 0,
+                !actual.is_empty() && actual.len().is_multiple_of(4),
                 "bounded F32 frame",
             )?;
             if matches!(o.stage, "block.input" | "block.output" | "logits") {

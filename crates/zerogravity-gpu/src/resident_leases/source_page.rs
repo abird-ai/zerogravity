@@ -616,21 +616,6 @@ impl ResidentSourcePage {
         *held = Some(parts.clone());
         Ok(parts)
     }
-    /// Real accessor for the same armed parts; the original program forwarding
-    /// therefore observes the page's actual one-shot state, not a second mock.
-    #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
-    pub(crate) fn source_page_event_probe(
-        &self,
-    ) -> Result<(cubecl::hip::SourcePageEventProbeSnapshot, bool, bool)> {
-        let parts = self
-            .probe
-            .lock()
-            .map_err(|_| Error::State("source page probe poisoned".into()))?
-            .as_ref()
-            .cloned()
-            .ok_or_else(|| Error::State("source page probe not armed".into()))?;
-        parts.snapshot()
-    }
     pub(crate) fn require_operand(
         &self,
         source: &VerifiedTensorSource,

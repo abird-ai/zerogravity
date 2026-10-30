@@ -35,9 +35,8 @@ pub(crate) fn validate_build_provider(device: &Device) -> Result<()> {
 
 #[cfg(all(
     feature = "hardware-abort-probe",
-    any(
-        feature = "gemma-bf16-qualification",
-        feature = "qwen-source-qualification"
-    )
+    feature = "gemma-bf16-qualification",
+    any(feature = "hip", feature = "vulkan"),
+    target_os = "linux"
 ))]
 pub(crate) mod final_native;

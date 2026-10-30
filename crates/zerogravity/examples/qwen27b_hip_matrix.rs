@@ -1,8 +1,10 @@
 //! Explicit full64 finite teacher/source/StateRoot HIP qualification.
 #[path = "qwen27b_hip_matrix/cache_import.rs"]
 mod cache_import;
+#[allow(dead_code)]
 #[path = "qwen27b_hip_matrix/expected.rs"]
 mod expected;
+#[allow(dead_code)]
 #[path = "gemma4_cpu_matrix/io.rs"]
 mod io;
 #[path = "qwen27b_hip_matrix/run.rs"]
