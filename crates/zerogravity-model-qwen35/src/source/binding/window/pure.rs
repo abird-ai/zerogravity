@@ -1,6 +1,6 @@
 //! Config/header-bound roles only; source bytes and CPU arithmetic stay unchanged.
 use super::*;
-use crate::accelerator::program::OrdinaryRmsContract;
+use crate::accelerator::program::{OrdinaryRmsContract, TorchCpuGdnContract};
 use zerogravity_core::quant::QuantKind;
 
 const MAX_INPUT: usize = 17408;
@@ -113,5 +113,50 @@ impl OriginalWindowOperators {
         Err(Error::State(
             "window ordinary RMS original role/heads".into(),
         ))
+    }
+}
+
+impl OriginalWindowOperators {
+    pub(crate) fn gdn_contract(&self, layer: usize) -> Result<TorchCpuGdnContract> {
+        if self.geometry().layers.get(layer) != Some(&crate::config::LayerKind::LinearAttention) {
+            return Err(Error::Unsupported("diagnostic GDN source layer".into()));
+        }
+        let g = self.binding.gdn_geometry();
+        if g.key_width != 128 || g.value_width != 128 || g.convolution_kernel != 4 {
+            return Err(Error::Unsupported(
+                "diagnostic GDN128/four-tap source geometry".into(),
+            ));
+        }
+        let roles = crate::hybrid_decoder::ParameterGroup::GdnAll.roles(layer);
+        let [convolution, a_log, dt_bias, norm]: [crate::accelerator::program::SourceParameter; 4] =
+            roles
+                .into_iter()
+                .map(|role| self.parameter_descriptor(role))
+                .collect::<Result<Vec<_>>>()?
+                .try_into()
+                .map_err(|_| Error::State("family GDN parameter group arity".into()))?;
+        let c = TorchCpuGdnContract {
+            standalone_exp:
+                crate::accelerator::program::StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1,
+            convolution,
+            a_log,
+            dt_bias,
+            norm,
+            key_heads: g.key_heads,
+            value_heads: g.value_heads,
+        };
+        let (channels, value, _) = c.validate(self.source_identity())?;
+        for (role, rows) in [
+            (QwenMatrixRole::GdnQkv(layer), channels),
+            (QwenMatrixRole::GdnGate(layer), value),
+            (QwenMatrixRole::GdnAlpha(layer), g.value_heads),
+            (QwenMatrixRole::GdnBeta(layer), g.value_heads),
+        ] {
+            let d = self.projection_role(role)?;
+            if d.rows != rows || d.columns as u64 != self.geometry().hidden_size {
+                return Err(Error::State("diagnostic GDN actual projection role".into()));
+            }
+        }
+        Ok(c)
     }
 }

@@ -511,3 +511,105 @@ fn full_four_frame_transport_rejects_foreign_issuer_and_wrong_precision() {
     assert_eq!(reserved(&admission), 0);
     assert_eq!(reserved(&admission2), 0);
 }
+
+#[test]
+fn source_token_recording_uses_actual_domains_frontier_and_original_metadata_owner() {
+    use crate::accelerator::program::{ActivationPrecision, ProgramNumericalProfile};
+    let f = Fixture::new();
+    let loaded = source(&f);
+    let (raw, host) = windows(&f, &loaded);
+    let source = Arc::new(bind_windows(raw.clone(), &loaded));
+    let before = reserved(&host);
+    let slots = [
+        StateSlot::Conv(ConvDomain(0)),
+        StateSlot::Recurrent(RecurrentDomain(0)),
+        StateSlot::Kv(KvDomain(1)),
+    ];
+    for (position, capacity) in [(0, 1), (0, 64), (1, 2), (47, 64), (63, 64)] {
+        let step = source.record_source_token(position, capacity).unwrap();
+        assert_eq!(step.source_identity(), raw.source_identity());
+        assert_eq!(step.position(), position);
+        assert_eq!(step.capacity(), capacity);
+        let plan = step.plan();
+        assert_eq!(
+            plan.numerical_profile(),
+            ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+        );
+        assert!(!plan.is_operator_slice());
+        assert_eq!(plan.frontier_delta(), 1);
+        assert_eq!(plan.required_domains().len(), slots.len());
+        assert_eq!(plan.proposed_domains().len(), slots.len());
+        for slot in slots {
+            assert!(plan.required_domains().contains(&slot));
+            assert!(
+                plan.proposed_domains()
+                    .iter()
+                    .any(|v| v.slot == slot && v.ordinal == 1)
+            );
+        }
+        let mut reads = 0;
+        let mut writes = 0;
+        for node in plan.nodes() {
+            let (binding, write) = match &node.operation {
+                PlanOperation::TypedSourceStateRead { binding, state } => {
+                    assert_eq!(state.ordinal, 0);
+                    reads += 1;
+                    (binding, false)
+                }
+                PlanOperation::TypedSourceStateWrite { binding } => {
+                    writes += 1;
+                    (binding, true)
+                }
+                _ => continue,
+            };
+            match binding.slot() {
+                StateSlot::Conv(ConvDomain(0)) => {
+                    assert_eq!(binding.components(), [2304 * 4]);
+                    assert_eq!(binding.precision(), ActivationPrecision::Bf16WidenedF32);
+                }
+                StateSlot::Recurrent(RecurrentDomain(0)) => {
+                    assert_eq!(binding.components(), [16 * 128 * 128]);
+                    assert_eq!(binding.precision(), ActivationPrecision::F32);
+                }
+                StateSlot::Kv(KvDomain(1)) => {
+                    let active = if write { position + 1 } else { position };
+                    assert_eq!(binding.components(), [active * 256; 2]);
+                    assert_eq!(binding.precision(), ActivationPrecision::Bf16WidenedF32);
+                }
+                _ => panic!("unexpected state domain"),
+            }
+        }
+        assert_eq!(reads, if position == 0 { 2 } else { 3 });
+        assert_eq!(writes, 3);
+        assert_eq!(reserved(&host), before + 4 * 1024 * 1024);
+        drop(step);
+        assert_eq!(reserved(&host), before);
+    }
+    let retained = source
+        .record_source_token(0, 2)
+        .unwrap()
+        .shared_plan()
+        .clone();
+    drop((source, raw));
+    assert_ne!(reserved(&host), 0);
+    drop(retained);
+    assert_eq!(reserved(&host), 0);
+}
+
+#[test]
+fn source_token_recording_refuses_arithmetic_bounds_without_widening_finite_entry() {
+    let f = Fixture::new();
+    let loaded = source(&f);
+    let (raw, host) = windows(&f, &loaded);
+    let source = Arc::new(bind_windows(raw.clone(), &loaded));
+    let before = reserved(&host);
+    for (position, capacity) in [(0, 0), (1, 1), (2, 2), (64, 64), (0, 65), (usize::MAX, 64)] {
+        assert!(source.record_source_token(position, capacity).is_err());
+        assert_eq!(reserved(&host), before);
+    }
+    assert!(source.record_full_source_token(0).is_err());
+    assert!(source.record_full_source_token(2).is_err());
+    assert_eq!(reserved(&host), before);
+    drop((source, raw));
+    assert_eq!(reserved(&host), 0);
+}

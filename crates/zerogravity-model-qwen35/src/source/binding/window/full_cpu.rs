@@ -3,23 +3,14 @@ use super::*;
 mod initial;
 use crate::accelerator::program::{ActivationPrecision, StateSlot, TorchCpuGdnContract};
 use crate::host_math::{HostMath, HostValue};
+use crate::source::binding::{SourceLayerState, SourceObserver, SourceOutput};
 pub use initial::InitialCoreStage;
 pub(crate) use initial::InitialCoreTape;
 use std::sync::Arc;
 use zerogravity_artifacts::source_weights::ParameterWindow;
 use zerogravity_core::session_root::{RootBinding, SessionAuthority};
-#[derive(Clone)]
-pub(crate) enum DiagnosticLayerState<V = HostValue> {
-    Gdn {
-        history: V,
-        full_history: Option<V>,
-        state: V,
-    },
-    Attention {
-        keys: Option<V>,
-        values: Option<V>,
-    },
-}
+type DiagnosticLayerState = SourceLayerState<HostValue>;
+
 pub struct OriginalWindowDiagnosticSession {
     source: Arc<OriginalWindowOperators>,
     layers: Vec<DiagnosticLayerState>,
@@ -52,25 +43,69 @@ pub enum WindowDiagnosticBoundary {
     FinalNorm,
     Layer9(WindowDiagnosticLayer9Stage),
 }
-/// Borrowed producers from the same genuine layer9; no alternate evaluator.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum WindowDiagnosticLayer9Stage {
-    InputNorm,
-    Qkv,
-    Z,
-    B,
-    A,
-    Core,
-    NormGate,
-    Gated,
-    GdnOut,
-    PostAttention,
-    PostNorm,
-    FfnGate,
-    FfnUp,
-    FfnGated,
-    FfnDown,
+pub use super::traversal::SourceStage as WindowDiagnosticLayer9Stage;
+
+impl<V: Clone> WindowDiagnosticTrace<'_, V> {
+    fn record(&mut self, boundary: WindowDiagnosticBoundary, value: &V) {
+        self.boundaries.push((boundary, value.clone()));
+    }
 }
+impl<V: Clone> SourceObserver<V> for Option<WindowDiagnosticTrace<'_, V>> {
+    fn embedding(&mut self, value: &V) {
+        if let Some(trace) = self.as_mut() {
+            trace.record(WindowDiagnosticBoundary::Embedding, value);
+        }
+    }
+    fn stage(&mut self, layer: usize, stage: WindowDiagnosticLayer9Stage, value: &V) {
+        if layer == 9
+            && let Some(trace) = self.as_mut()
+            && trace.layer9
+        {
+            trace.record(WindowDiagnosticBoundary::Layer9(stage), value);
+        }
+    }
+    fn layer(&mut self, layer: usize, value: &V) {
+        if let Some(trace) = self.as_mut() {
+            trace.record(WindowDiagnosticBoundary::Layer(layer), value);
+        }
+    }
+    fn final_norm(&mut self, value: &V) {
+        if let Some(trace) = self.as_mut() {
+            trace.record(WindowDiagnosticBoundary::FinalNorm, value);
+        }
+    }
+}
+
+fn diagnostic_token(
+    source: &OriginalWindowOperators,
+    math: &mut HostMath<'_, '_, '_>,
+    states: &mut [DiagnosticLayerState],
+    token: u32,
+    position: usize,
+    trace: Option<WindowDiagnosticTrace<'_>>,
+) -> Result<HostValue> {
+    let output = if trace.as_ref().is_some_and(|trace| trace.prefix) {
+        SourceOutput {
+            layers: 10,
+            logits: false,
+        }
+    } else {
+        SourceOutput {
+            layers: source.geometry().layers.len(),
+            logits: true,
+        }
+    };
+    crate::forward::window_source_token(
+        source,
+        math,
+        states,
+        token as usize,
+        position,
+        output,
+        trace,
+    )
+}
+
 impl WindowDiagnosticReadback<'_> {
     pub fn logits(&self) -> Result<&[f32]> {
         if self.prefix {
@@ -142,48 +177,6 @@ impl WindowDiagnosticOutput {
     }
 }
 impl OriginalWindowOperators {
-    pub(crate) fn gdn_contract(&self, layer: usize) -> Result<TorchCpuGdnContract> {
-        if self.geometry().layers.get(layer) != Some(&crate::config::LayerKind::LinearAttention) {
-            return Err(Error::Unsupported("diagnostic GDN source layer".into()));
-        }
-        let g = self.binding.gdn_geometry();
-        if g.key_width != 128 || g.value_width != 128 || g.convolution_kernel != 4 {
-            return Err(Error::Unsupported(
-                "diagnostic GDN128/four-tap source geometry".into(),
-            ));
-        }
-        let roles = crate::hybrid_decoder::ParameterGroup::GdnAll.roles(layer);
-        let [convolution, a_log, dt_bias, norm]: [crate::accelerator::program::SourceParameter; 4] =
-            roles
-                .into_iter()
-                .map(|role| self.parameter_descriptor(role))
-                .collect::<Result<Vec<_>>>()?
-                .try_into()
-                .map_err(|_| Error::State("family GDN parameter group arity".into()))?;
-        let c = TorchCpuGdnContract {
-            standalone_exp:
-                crate::accelerator::program::StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1,
-            convolution,
-            a_log,
-            dt_bias,
-            norm,
-            key_heads: g.key_heads,
-            value_heads: g.value_heads,
-        };
-        let (channels, value, _) = c.validate(self.source_identity())?;
-        for (role, rows) in [
-            (QwenMatrixRole::GdnQkv(layer), channels),
-            (QwenMatrixRole::GdnGate(layer), value),
-            (QwenMatrixRole::GdnAlpha(layer), g.value_heads),
-            (QwenMatrixRole::GdnBeta(layer), g.value_heads),
-        ] {
-            let d = self.projection_role(role)?;
-            if d.rows != rows || d.columns as u64 != self.geometry().hidden_size {
-                return Err(Error::State("diagnostic GDN actual projection role".into()));
-            }
-        }
-        Ok(c)
-    }
     pub(crate) fn require_gdn_contract(&self, c: &TorchCpuGdnContract) -> Result<()> {
         for (i, k) in self.geometry().layers.iter().enumerate() {
             if *k == crate::config::LayerKind::LinearAttention {
@@ -440,7 +433,7 @@ impl OriginalWindowDiagnosticSession {
             None
         };
         math.initial_core_tape = inner.clone();
-        let logits = crate::forward::window_diagnostic_token(
+        let logits = diagnostic_token(
             &self.source,
             &mut math,
             &mut proposed,

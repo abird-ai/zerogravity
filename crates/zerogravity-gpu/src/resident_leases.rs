@@ -398,7 +398,10 @@ impl ResidentService {
             .map_err(|_| Error::State("resident event ledger poisoned".into()))
     }
 
-    #[cfg(feature = "cuda-cublas")]
+    #[cfg(any(
+        feature = "cuda-cublas",
+        all(test, feature = "hip", feature = "qwen-source-qualification")
+    ))]
     pub(crate) fn close_model_namespace(&self) -> Result<()> {
         self.ensure_usable()?;
         if self.resident_bytes()? != 0 || self.model_events()? != 0 {

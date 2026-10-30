@@ -1,4 +1,5 @@
-//! Fixed finite original-HIP native ownership policy; no numerical permit.
+//! Original HIP native ownership; current cold policies remain finite.
+//! Preparation itself grants no numerical or ordinary-model eligibility.
 use crate::physical_service::NativeContextBudget;
 use crate::resident_leases::{ForeignProviderCharge, NativeCacheBudget, ResidentService};
 use cubecl::client::Client;
@@ -18,6 +19,8 @@ use zerogravity_core::resource_arbiter::{
     ResourceOwner,
 };
 use zerogravity_core::{Error, Result};
+#[cfg(feature = "qualification")]
+mod diagnostic;
 #[cfg(all(
     feature = "qwen-source-qualification",
     feature = "gemma-bf16-qualification"
@@ -683,13 +686,22 @@ impl ColdNativePreparation {
     pub(crate) fn service(&self) -> Arc<ResidentService> {
         self.service.clone()
     }
-    /// Internal engine adapter: genuine complete catalogue and its already
-    /// admitted source metadata; no caller opaque allowance or policy argument.
+    fn require_catalogue_metadata(&self, metadata: &WindowWorkspace) -> Result<()> {
+        if !metadata.source().same_issuer(&self.source) || metadata.bytes() != 1024 * 1024 {
+            return Err(Error::State(
+                "HIP original complete source catalogue metadata owner".into(),
+            ));
+        }
+        Ok(())
+    }
+    /// Prepare only the supplied kernel set under its original source/queue.
+    /// No diagnostic kernels, probes or numerical eligibility are added here.
     pub(crate) async fn prepare(
         self,
         kernels: Vec<Box<dyn CubeKernel>>,
         catalogue_metadata: WindowWorkspace,
     ) -> Result<Arc<PreparedSourceNative>> {
+        self.require_catalogue_metadata(&catalogue_metadata)?;
         let Self {
             service,
             context,
@@ -697,16 +709,6 @@ impl ColdNativePreparation {
             source_owner,
             scoped,
         } = self;
-        if !catalogue_metadata.source().same_issuer(&source)
-            || catalogue_metadata.bytes() != 1024 * 1024
-        {
-            return Err(Error::State(
-                "HIP original complete source catalogue metadata owner".into(),
-            ));
-        }
-        let mut kernels = kernels;
-        // Backend qualification probe uses the original shared scalar primitive.
-        kernels.push(crate::source_float::qualification::kernel(service.client()));
         let kernel_count = kernels.len();
         if kernel_count == 0 || kernel_count > MAX_MODULES {
             return Err(Error::Limit(
@@ -809,7 +811,6 @@ impl ColdNativePreparation {
             ))]
             final_owner_admission: Arc::downgrade(&admission),
         });
-        crate::source_float::qualification::run(&service, &source).await?;
         Ok(owner)
     }
 }

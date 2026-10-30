@@ -28,6 +28,50 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   generalize real model geometry beyond24 layers/42 domains for27B. Preserve
   source-priced admission, independent roots, flights and physical retirement.
 
+### Ordinary HIP implementation — 31 Oct, in progress
+
+- [ ] Assemble real source-state lowering, shared resident weights/workspace,
+  source-priced cold admission and existing session publication for0.8B/2B.
+  Preserve actual F32/BF16-widened state contracts; no renamed CUDA seal/flag.
+- [ ] Generalize actual geometry/backend execution for27B and populated contexts.
+  Finite27B still pins2 positions/112 domains; current CPU attention arithmetic
+  stops before position64. Source recording is not ordinary model execution.
+- [ ] Capture independent small-model whole-source references from approved
+  cached original runtime/weights. Both manifests pin genuine single-shard
+  indexes; no fabricated provenance or self-oracle. Original CUDA runtime image
+  is available locally, not in x2's named baseline store.
+- [ ] Qualify actual model prefill/decode/full logits/all state, replay, root
+  isolation, cancellation/quarantine/shutdown before enabling production routes.
+
+### Verified source execution foundation — checkpoint pending
+
+- [x] Share source traversal and optional observations independently of CPU
+  execution/layer9 diagnostics. `record_source_token(position,capacity)` derives
+  actual full4 Conv, recurrent and KV domains/extents from authenticated geometry,
+  retaining original metadata/source ownership. Bound64 tokens/layers; the finite
+  wrapper still requires2 positions/64 layers/112 domains. Host194/0fail/1ignored;
+  source-only CPU-free and shared-HIP all-target strict checks pass.
+- [x] Separate shared HIP kernel preparation from explicit diagnostic probes.
+  Preserve existing Qwen/Gemma probe order, issuer/metadata checks, original
+  service/queue/flight/native owners and unchanged cold ceilings.
+- [x] Share actual GPU attention execution, geometry-sized scratch, source-service
+  range/alias checks and matching kernel constructors. Extract sigmoid and KV
+  append/output gate; keep the finite attention adapter's position<=1 guard.
+- [x] Independent original Torch2.13/cf30153/HF5.17 AVX2 reference covers40 calls:
+  8Q/2KV at16 active lengths through64;24Q/4KV at1/2/47/64, random and arithmetic
+  cancellation. CPU and real gfx1151 each match all1,774,240 words across360
+  fields. Original reference and durable HIP worker both exit0 with verified
+  owner/descendant closure. Every17-launch case inspected,150 native modules
+  retire, original model namespace closes, completed supervisor unit stops.
+  No trained-model, root publication, fault-cancellation or serving claim.
+- [x] Final isolated `scripts/check.sh`:2,135 Rust executions/0fail/85ignored,
+  283 suites;17 Python suites/178 reported cases, release/installer/shell/Nix.
+  Existing non-strict feature warnings match the preceding accepted gate;
+  selected CPU/HIP strict checks are warning-free. Initial format, CPU-free
+  observer, diagnostic callback/namespace and remote-image failures retained.
+  Evidence: external `ordinary-hip-20261031.Jc5XWh`; no repeated finite27B run.
+
+
 ### Ordinary Qwen execution checkpoint — 27 Oct
 
 - [x] `ad82feb`/`f7ff4f9` add one call-free source-template plan for authenticated
@@ -518,6 +562,13 @@ or model support. Qwen parity/short benchmark/long→dense27B→Gemma remains bi
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### `d4d5df4` — original eager CPU attention
+
+- [x] Fix PV four-part BMM reduction; retain the distinct projection/QK schedule.
+  Original32-case/65,536-word and complete40-case/1,774,240-word comparisons
+  are exact;16 analytic arithmetic-cancellation cases cover lengths through64.
+  Original seven-token failure retained; no tolerance or source change.
 
 ### 6d85559 — common comparison tools, 26 Oct
 

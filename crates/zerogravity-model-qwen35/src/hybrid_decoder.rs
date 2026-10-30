@@ -149,7 +149,7 @@ impl ParameterGroup {
 #[derive(Clone, Copy)]
 pub(crate) enum ConvolutionRetention {
     OperatorHistory,
-    #[cfg(feature = "cpu")]
+    #[cfg(feature = "source-binding")]
     FullSourceCache,
 }
 /// Same original .8B/2B source schema with an explicit retained-cache choice.
@@ -172,7 +172,7 @@ pub(crate) fn state_specs(
         ConvolutionRetention::OperatorHistory => {
             g.convolution_kernel.checked_sub(1).ok_or_else(overflow)?
         }
-        #[cfg(feature = "cpu")]
+        #[cfg(feature = "source-binding")]
         ConvolutionRetention::FullSourceCache => g.convolution_kernel,
     };
     if frames == 0 {
@@ -203,7 +203,7 @@ pub(crate) fn state_specs(
         })
         .collect()
 }
-#[cfg(feature = "cpu")]
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
 pub(crate) fn state_domains(
     geometry: &crate::config::ModelGeometry,
 ) -> Result<Vec<crate::accelerator::program::StateSlot>> {

@@ -4,7 +4,6 @@ use zerogravity_core::{
     Error, Result,
     accelerator::program::{StandaloneExpProfile, TorchCpuGdnContract, TorchCpuGdnPhase},
 };
-mod attention;
 mod coefficients;
 mod gdn;
 pub(super) mod prepared;
@@ -467,234 +466,25 @@ pub(super) fn attention(
     geometry: zerogravity_core::accelerator::program::TorchCpuAttentionGeometry,
     position: usize,
 ) -> Result<usize> {
-    let (q, kv, tokens) = geometry.validate(position)?;
-    if position > 1 || input.len() != if position == 0 { 4 } else { 6 } {
+    if position > 1 {
         return Err(Error::Unsupported(
             "finite INITIAL1/cached1 source attention".into(),
         ));
     }
-    let scores = geometry.query_heads * tokens;
-    let mut extents = vec![q, kv, kv, q];
-    if position > 0 {
-        extents.extend([position * kv, position * kv]);
-    }
-    for (h, n) in input.iter().zip(extents) {
-        check(h, n * 4)?;
-    }
-    for (h, n) in output.iter().zip([
-        q,
-        kv,
-        tokens * kv,
-        tokens * kv,
-        scores,
-        scores,
-        scores,
-        q,
-        q,
-    ]) {
-        check(h, n * 4)?;
-    }
-    check(frequencies, 32 * 4)?;
-    check(trig_table, 35 * 8)?;
-    check(scalar_table, 72 * 8)?;
-    check(status, 4)?;
-    check(zero, 4)?;
-    let mut launches = 0;
-    unsafe {
-        crate::source_rotary::kernels::angles::launch_unchecked(
-            client,
-            grid(32),
-            threads(),
-            arg(frequencies, 32),
-            s.arg(21, 32),
-            position as u32,
-            32usize,
-        );
-        crate::source_trig::sincos_angles::launch_unchecked(
-            client,
-            grid(32),
-            threads(),
-            s.arg(21, 32),
-            arg(trig_table, 35),
-            s.arg(22, 64),
-            32usize,
-        );
-        launches += 2;
-        for (original, rotated, count) in [(input[0], output[0], q), (input[1], output[1], kv)] {
-            // Partial rotary leaves the remaining192 head lanes bit-identical.
-            crate::program_kernels::copy_strided_words::launch_unchecked(
-                client,
-                grid(count),
-                threads(),
-                arg(original, count),
-                arg(rotated, count),
-                arg(status, 1),
-                0u32,
-                0u32,
-                count as u32,
-                count as u32,
-                1usize,
-                count,
-                true,
-            );
-            crate::source_rotary::kernels::apply::launch_unchecked(
-                client,
-                grid((count / 256) * 32),
-                threads(),
-                arg(original, count),
-                s.arg(22, 64),
-                arg(rotated, count),
-                arg(status, 1),
-                256usize,
-                count,
-                64usize,
-            );
-            launches += 2;
-        }
-        attention::append::launch_unchecked(
-            client,
-            grid(tokens * kv),
-            threads(),
-            arg(
-                if position == 0 { zero } else { input[4] },
-                if position == 0 { 1 } else { position * kv },
-            ),
-            arg(
-                if position == 0 { zero } else { input[5] },
-                if position == 0 { 1 } else { position * kv },
-            ),
-            arg(output[1], kv),
-            arg(input[2], kv),
-            arg(output[2], tokens * kv),
-            arg(output[3], tokens * kv),
-            kv,
-            position,
-        );
-        crate::source_attention::kernels::qk::launch_unchecked(
-            client,
-            CubeCount::Static(scores as u32, 1, 1),
-            CubeDim::new_1d(64),
-            arg(output[0], q),
-            arg(output[2], tokens * kv),
-            arg(output[4], scores),
-            arg(output[5], scores),
-            arg(status, 1),
-            arg(zero, 1),
-            256usize,
-            geometry.query_heads,
-            geometry.kv_heads,
-            tokens,
-            0.0625f32,
-            tokens as u32,
-            0u32,
-        );
-        crate::source_attention::kernels::reduce::launch_unchecked(
-            client,
-            CubeCount::Static(geometry.query_heads as u32, 1, 1),
-            threads(),
-            arg(output[5], scores),
-            s.arg(25, geometry.query_heads),
-            arg(status, 1),
-            tokens as u32,
-            true,
-            tokens,
-        );
-        crate::source_attention::kernels::exponentials::launch_unchecked(
-            client,
-            grid(scores),
-            threads(),
-            arg(output[5], scores),
-            s.arg(25, geometry.query_heads),
-            s.arg(26, scores),
-            arg(status, 1),
-            tokens as u32,
-            geometry.query_heads,
-            tokens,
-        );
-        crate::source_attention::kernels::reduce::launch_unchecked(
-            client,
-            CubeCount::Static(geometry.query_heads as u32, 1, 1),
-            threads(),
-            s.arg(26, scores),
-            s.arg(27, geometry.query_heads),
-            arg(status, 1),
-            tokens as u32,
-            false,
-            tokens,
-        );
-        crate::source_attention::kernels::inverse::launch_unchecked(
-            client,
-            grid(geometry.query_heads),
-            threads(),
-            s.arg(27, geometry.query_heads),
-            s.arg(28, geometry.query_heads),
-            arg(status, 1),
-            geometry.query_heads,
-        );
-        crate::source_attention::kernels::probabilities::launch_unchecked(
-            client,
-            grid(scores),
-            threads(),
-            s.arg(26, scores),
-            s.arg(28, geometry.query_heads),
-            arg(output[6], scores),
-            arg(status, 1),
-            tokens as u32,
-            geometry.query_heads,
-            tokens,
-        );
-        crate::source_attention::kernels::pv::launch_unchecked(
-            client,
-            grid(q),
-            threads(),
-            arg(output[6], scores),
-            arg(output[3], tokens * kv),
-            arg(output[7], q),
-            arg(status, 1),
-            arg(zero, 1),
-            256usize,
-            geometry.query_heads,
-            geometry.kv_heads,
-            tokens,
-            tokens as u32,
-            1u32,
-            tokens as u32,
-        );
-        // Contraction1/2 here equals the original dot's scalar tail. The shared
-        // PV kernel's broader BMM schedule grants no larger Qwen contraction.
-        coefficients::sigmoid_shift::launch_unchecked(
-            client,
-            grid(q),
-            threads(),
-            arg(input[3], q),
-            arg(scalar_table, 72),
-            s.arg(23, q),
-            q,
-        );
-        coefficients::sigmoid::launch_unchecked(
-            client,
-            grid(q),
-            threads(),
-            arg(input[3], q),
-            arg(scalar_table, 72),
-            s.arg(23, q),
-            s.arg(24, q),
-            arg(status, 1),
-            q,
-        );
-        attention::gate::launch_unchecked(
-            client,
-            grid(q),
-            threads(),
-            arg(output[7], q),
-            s.arg(24, q),
-            arg(output[8], q),
-            arg(status, 1),
-            q,
-        );
-        launches += 11;
-    }
-    Ok(launches)
+    let scratch = [21, 22, 25, 26, 27, 28, 23, 24].map(|i| s.handles[i].clone());
+    crate::source_attention::single_row::launch(
+        client,
+        &scratch,
+        input,
+        output,
+        frequencies,
+        trig_table,
+        scalar_table,
+        status,
+        zero,
+        geometry,
+        position,
+    )
 }
 
 pub(super) fn silu_mul(

@@ -188,46 +188,37 @@ fn source_ffn_layer<B: MathematicalBackend>(
     })
 }
 
-/// Diagnostic CPU adapter over the same recordable source traversal.
-#[cfg(all(feature = "source-binding", target_os = "linux", feature = "cpu"))]
-pub(crate) fn window_diagnostic_token(
-    source: &crate::source::binding::OriginalWindowOperators,
-    math: &mut crate::host_math::HostMath<'_, '_, '_>,
-    states: &mut [crate::source::binding::DiagnosticLayerState],
-    token: u32,
-    position: usize,
-    trace: Option<crate::source::binding::WindowDiagnosticTrace<'_>>,
-) -> Result<crate::host_math::HostValue> {
-    window_source_token(source, math, states, token as usize, position, trace)
-}
-
 /// One original family traversal; state producers belong to the backend.
-#[cfg(all(feature = "source-binding", target_os = "linux", feature = "cpu"))]
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
 pub(crate) fn window_source_token<B: MathematicalBackend>(
     source: &crate::source::binding::OriginalWindowOperators,
     math: &mut B,
-    states: &mut [crate::source::binding::DiagnosticLayerState<B::Value>],
+    states: &mut [crate::source::binding::SourceLayerState<B::Value>],
     token: B::Index,
     position: usize,
-    trace: Option<crate::source::binding::WindowDiagnosticTrace<'_, B::Value>>,
+    output: crate::source::binding::SourceOutput,
+    observer: impl crate::source::binding::SourceObserver<B::Value>,
 ) -> Result<B::Value> {
     if position >= 64 || states.len() != source.geometry().layers.len() {
-        return Err(Error::State("diagnostic full actual state/position".into()));
+        return Err(Error::State("source actual state/position".into()));
     }
-    let prefix = trace.as_ref().is_some_and(|t| t.prefix);
-    let layers = &source.geometry().layers[..if prefix {
-        10
-    } else {
-        source.geometry().layers.len()
-    }];
+    if output.logits && output.layers != source.geometry().layers.len() {
+        return Err(Error::State("source vocabulary requires all layers".into()));
+    }
+    let layers = source
+        .geometry()
+        .layers
+        .get(..output.layers)
+        .filter(|layers| !layers.is_empty())
+        .ok_or_else(|| Error::State("source layer extent".into()))?;
     let mut adapter = SourceDecoder {
         source,
         math,
         states,
         token: Some(token),
         position,
-        trace,
-        prefix,
+        observer,
+        output,
         evolved: None,
     };
     crate::hybrid_decoder::compose(layers, &mut adapter)
@@ -959,41 +950,34 @@ pub(crate) fn gguf_gdn_upstream_slice<M: MathematicalBackend>(
     })
 }
 
-#[cfg(all(feature = "source-binding", target_os = "linux", feature = "cpu"))]
-struct SourceDecoder<'a, 't, B: MathematicalBackend> {
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
+struct SourceDecoder<'a, B: MathematicalBackend, O> {
     source: &'a crate::source::binding::OriginalWindowOperators,
     math: &'a mut B,
-    states: &'a mut [crate::source::binding::DiagnosticLayerState<B::Value>],
+    states: &'a mut [crate::source::binding::SourceLayerState<B::Value>],
     token: Option<B::Index>,
     position: usize,
-    trace: Option<crate::source::binding::WindowDiagnosticTrace<'t, B::Value>>,
-    prefix: bool,
-    evolved: Option<(
-        usize,
-        crate::source::binding::DiagnosticLayerState<B::Value>,
-    )>,
+    observer: O,
+    output: crate::source::binding::SourceOutput,
+    evolved: Option<(usize, crate::source::binding::SourceLayerState<B::Value>)>,
 }
-#[cfg(all(feature = "source-binding", target_os = "linux", feature = "cpu"))]
-impl<B: MathematicalBackend> SourceDecoder<'_, '_, B> {
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
+impl<B: MathematicalBackend, O: crate::source::binding::SourceObserver<B::Value>>
+    SourceDecoder<'_, B, O>
+{
     fn observe(
         &mut self,
         layer: usize,
-        stage: crate::source::binding::WindowDiagnosticLayer9Stage,
+        stage: crate::source::binding::SourceStage,
         value: &B::Value,
     ) {
-        if layer == 9
-            && let Some(trace) = self.trace.as_mut()
-            && trace.layer9
-        {
-            trace.boundaries.push((
-                crate::source::binding::WindowDiagnosticBoundary::Layer9(stage),
-                value.clone(),
-            ));
-        }
+        self.observer.stage(layer, stage, value);
     }
 }
-#[cfg(all(feature = "source-binding", target_os = "linux", feature = "cpu"))]
-impl<B: MathematicalBackend> crate::hybrid_decoder::HybridDecoder for SourceDecoder<'_, '_, B> {
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
+impl<B: MathematicalBackend, O: crate::source::binding::SourceObserver<B::Value>>
+    crate::hybrid_decoder::HybridDecoder for SourceDecoder<'_, B, O>
+{
     type Value = B::Value;
     type GdnInputs = [B::Value; 4];
     type AttentionInputs = crate::operator_slice::attention::AttentionProjectionValues<B::Value>;
@@ -1009,12 +993,7 @@ impl<B: MathematicalBackend> crate::hybrid_decoder::HybridDecoder for SourceDeco
             self.source.embedding_contract(),
         )?;
         self.math.observe(0, "embedding", &x)?;
-        if let Some(t) = self.trace.as_mut() {
-            t.boundaries.push((
-                crate::source::binding::WindowDiagnosticBoundary::Embedding,
-                x.clone(),
-            ));
-        }
+        self.observer.embedding(&x);
         Ok(x)
     }
     fn input_norm(
@@ -1036,13 +1015,13 @@ impl<B: MathematicalBackend> crate::hybrid_decoder::HybridDecoder for SourceDeco
         )?;
         self.observe(
             layer,
-            crate::source::binding::WindowDiagnosticLayer9Stage::InputNorm,
+            crate::source::binding::SourceStage::InputNorm,
             &normal,
         );
         Ok((normal, branch))
     }
     fn gdn_inputs(&mut self, layer: usize, normal: &B::Value) -> Result<Self::GdnInputs> {
-        use crate::source::binding::WindowDiagnosticLayer9Stage as S;
+        use crate::source::binding::SourceStage as S;
         let roles = crate::hybrid_decoder::ProjectionGroup::GdnInput.roles(layer);
         let coefficients = crate::hybrid_decoder::ProjectionGroup::GdnCoefficients.roles(layer);
         let qkv = pure_projection_slice(self.source, self.math, roles[0], normal)?;
@@ -1061,8 +1040,8 @@ impl<B: MathematicalBackend> crate::hybrid_decoder::HybridDecoder for SourceDeco
         [qkv, gate, alpha, beta]: Self::GdnInputs,
     ) -> Result<B::Value> {
         use crate::accelerator::program::{TorchCpuGdnInputs, TorchCpuGdnPhase};
-        use crate::source::binding::{DiagnosticLayerState, WindowDiagnosticLayer9Stage as S};
-        let DiagnosticLayerState::Gdn {
+        use crate::source::binding::{SourceLayerState, SourceStage as S};
+        let SourceLayerState::Gdn {
             history,
             full_history,
             state,
@@ -1100,7 +1079,7 @@ impl<B: MathematicalBackend> crate::hybrid_decoder::HybridDecoder for SourceDeco
         self.observe(layer, S::Gated, &core.gated);
         self.evolved = Some((
             layer,
-            DiagnosticLayerState::Gdn {
+            SourceLayerState::Gdn {
                 history: core.history,
                 full_history: proposed_full,
                 state: core.state,
@@ -1115,7 +1094,7 @@ impl<B: MathematicalBackend> crate::hybrid_decoder::HybridDecoder for SourceDeco
     ) -> Result<Self::AttentionInputs> {
         // Preserve prior geometry refusal before the original projected producers.
         let r = crate::operator_slice::attention::attention_roles(self.source, layer)?;
-        let crate::source::binding::DiagnosticLayerState::Attention { keys, values } =
+        let crate::source::binding::SourceLayerState::Attention { keys, values } =
             &self.states[layer]
         else {
             return Err(Error::State(
@@ -1137,9 +1116,9 @@ impl<B: MathematicalBackend> crate::hybrid_decoder::HybridDecoder for SourceDeco
     }
     fn attention_evolve(&mut self, layer: usize, p: Self::AttentionInputs) -> Result<B::Value> {
         use crate::accelerator::program::{TorchCpuAttentionGeometry, TorchCpuAttentionInputs};
-        use crate::source::binding::DiagnosticLayerState;
+        use crate::source::binding::SourceLayerState;
         let r = crate::operator_slice::attention::attention_roles(self.source, layer)?;
-        let DiagnosticLayerState::Attention { keys, values } = &self.states[layer] else {
+        let SourceLayerState::Attention { keys, values } = &self.states[layer] else {
             return Err(Error::State(
                 "diagnostic source attention state domain mismatch".into(),
             ));
@@ -1166,7 +1145,7 @@ impl<B: MathematicalBackend> crate::hybrid_decoder::HybridDecoder for SourceDeco
         )?;
         self.evolved = Some((
             layer,
-            DiagnosticLayerState::Attention {
+            SourceLayerState::Attention {
                 keys: Some(a.keys),
                 values: Some(a.values),
             },
@@ -1186,11 +1165,7 @@ impl<B: MathematicalBackend> crate::hybrid_decoder::HybridDecoder for SourceDeco
         };
         let branch = pure_projection_slice(self.source, self.math, role, &value)?;
         if kind == LayerKind::LinearAttention {
-            self.observe(
-                layer,
-                crate::source::binding::WindowDiagnosticLayer9Stage::GdnOut,
-                &branch,
-            );
+            self.observe(layer, crate::source::binding::SourceStage::GdnOut, &branch);
         }
         let (actual, state) = self
             .evolved
@@ -1208,7 +1183,7 @@ impl<B: MathematicalBackend> crate::hybrid_decoder::HybridDecoder for SourceDeco
         branch: B::Value,
         carried: B::Value,
     ) -> Result<(B::Value, B::Value)> {
-        use crate::source::binding::WindowDiagnosticLayer9Stage as S;
+        use crate::source::binding::SourceStage as S;
         let residual =
             self.math
                 .torch_cpu_bf16_add("original.model.attention.residual", &carried, &branch)?;
@@ -1223,7 +1198,7 @@ impl<B: MathematicalBackend> crate::hybrid_decoder::HybridDecoder for SourceDeco
         Ok((normal, residual))
     }
     fn ffn_inputs(&mut self, layer: usize, normal: &B::Value) -> Result<Self::FfnInputs> {
-        use crate::source::binding::WindowDiagnosticLayer9Stage as S;
+        use crate::source::binding::SourceStage as S;
         let roles = crate::hybrid_decoder::ProjectionGroup::FfnInput.roles(layer);
         let gate = pure_projection_slice(self.source, self.math, roles[0], normal)?;
         let up = pure_projection_slice(self.source, self.math, roles[1], normal)?;
@@ -1235,11 +1210,7 @@ impl<B: MathematicalBackend> crate::hybrid_decoder::HybridDecoder for SourceDeco
         let gated =
             self.math
                 .torch_cpu_bf16_silu_mul("original.output_tail.silu_mul", &gate, &up)?;
-        self.observe(
-            layer,
-            crate::source::binding::WindowDiagnosticLayer9Stage::FfnGated,
-            &gated,
-        );
+        self.observe(layer, crate::source::binding::SourceStage::FfnGated, &gated);
         Ok(gated)
     }
     fn ffn_output(&mut self, layer: usize, value: B::Value) -> Result<B::Value> {
@@ -1249,11 +1220,7 @@ impl<B: MathematicalBackend> crate::hybrid_decoder::HybridDecoder for SourceDeco
             QwenMatrixRole::FfnDown(layer),
             &value,
         )?;
-        self.observe(
-            layer,
-            crate::source::binding::WindowDiagnosticLayer9Stage::FfnDown,
-            &branch,
-        );
+        self.observe(layer, crate::source::binding::SourceStage::FfnDown, &branch);
         Ok(branch)
     }
     fn finish_layer(
@@ -1267,12 +1234,7 @@ impl<B: MathematicalBackend> crate::hybrid_decoder::HybridDecoder for SourceDeco
                 .torch_cpu_bf16_add("original.output_tail.residual", &carried, &branch)?;
         self.math.assert_finite(layer, &out)?;
         self.math.observe(layer, "layer_output", &out)?;
-        if let Some(t) = self.trace.as_mut() {
-            t.boundaries.push((
-                crate::source::binding::WindowDiagnosticBoundary::Layer(layer),
-                out.clone(),
-            ));
-        }
+        self.observer.layer(layer, &out);
         Ok((out, None))
     }
     fn finish_model(&mut self, branch: B::Value, residual: Option<B::Value>) -> Result<B::Value> {
@@ -1281,7 +1243,7 @@ impl<B: MathematicalBackend> crate::hybrid_decoder::HybridDecoder for SourceDeco
                 "source decoder has unpublished adapter state".into(),
             ));
         }
-        if self.prefix {
+        if !self.output.logits {
             return Ok(branch);
         }
         let normalized = pure_ordinary_rms_slice(
@@ -1295,12 +1257,7 @@ impl<B: MathematicalBackend> crate::hybrid_decoder::HybridDecoder for SourceDeco
             "final_norm",
             &normalized,
         )?;
-        if let Some(t) = self.trace.as_mut() {
-            t.boundaries.push((
-                crate::source::binding::WindowDiagnosticBoundary::FinalNorm,
-                normalized.clone(),
-            ));
-        }
+        self.observer.final_norm(&normalized);
         pure_projection_slice(self.source, self.math, QwenMatrixRole::Output, &normalized)
     }
 }

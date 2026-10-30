@@ -42,7 +42,9 @@ impl TextNativeOwners {
         };
         let service = cold.service();
         let specs = math::prepared::enumerate(cold.client(), recorded, storage)?;
-        let prepared = cold.prepare(specs.kernels, specs._metadata).await?;
+        let prepared = cold
+            .prepare_diagnostic(specs.kernels, specs._metadata)
+            .await?;
         let owners = Arc::new(Self {
             source: recorded.plan().source(),
             service: service.client().service_id(),

@@ -25,13 +25,16 @@ impl Builder {
         )
     }
     fn add(&mut self, k: impl CubeKernel + 'static) -> Result<()> {
+        self.add_boxed(Box::new(k))
+    }
+    fn add_boxed(&mut self, k: Box<dyn CubeKernel>) -> Result<()> {
         if self.ids.insert(k.id()) {
             if self.kernels.len() == 1024 {
                 return Err(Error::Limit(
                     "source finite complete native catalogue".into(),
                 ));
             }
-            self.kernels.push(Box::new(k));
+            self.kernels.push(k);
         }
         Ok(())
     }
@@ -287,35 +290,6 @@ fn add_coefficients_ffn_silu_mul(b: &mut Builder, elements: usize) -> Result<()>
     ))
 }
 
-fn add_attention_append(b: &mut Builder, slab: usize, position: usize) -> Result<()> {
-    b.add(<attention::append::Append>::new(
-        b.settings(32),
-        b.properties.clone(),
-        b.target.clone(),
-        buffer(),
-        buffer(),
-        buffer(),
-        buffer(),
-        buffer(),
-        buffer(),
-        slab,
-        position,
-    ))
-}
-
-fn add_attention_gate(b: &mut Builder, elements: usize) -> Result<()> {
-    b.add(<attention::gate::Gate>::new(
-        b.settings(32),
-        b.properties.clone(),
-        b.target.clone(),
-        buffer(),
-        buffer(),
-        buffer(),
-        buffer(),
-        elements,
-    ))
-}
-
 fn add_source_rms_kernels_squares(b: &mut Builder, count: usize) -> Result<()> {
     b.add(<crate::source_rms::kernels::squares::Squares>::new(
         b.settings(32),
@@ -405,163 +379,6 @@ fn add_source_rms_kernels_store(b: &mut Builder, count: usize) -> Result<()> {
     ))
 }
 
-fn add_source_attention_kernels_qk(
-    b: &mut Builder,
-    width: usize,
-    heads: usize,
-    kv_heads: usize,
-    capacity: usize,
-) -> Result<()> {
-    b.add(<crate::source_attention::kernels::qk::Qk>::new(
-        b.settings(64),
-        b.properties.clone(),
-        b.target.clone(),
-        buffer(),
-        buffer(),
-        buffer(),
-        buffer(),
-        buffer(),
-        buffer(),
-        (),
-        (),
-        (),
-        width,
-        heads,
-        kv_heads,
-        capacity,
-    ))
-}
-
-fn add_source_attention_kernels_reduce(
-    b: &mut Builder,
-    is_max: bool,
-    capacity: usize,
-) -> Result<()> {
-    b.add(<crate::source_attention::kernels::reduce::Reduce>::new(
-        b.settings(32),
-        b.properties.clone(),
-        b.target.clone(),
-        buffer(),
-        buffer(),
-        buffer(),
-        (),
-        is_max,
-        capacity,
-    ))
-}
-
-fn add_source_attention_kernels_exponentials(
-    b: &mut Builder,
-    heads: usize,
-    capacity: usize,
-) -> Result<()> {
-    b.add(
-        <crate::source_attention::kernels::exponentials::Exponentials>::new(
-            b.settings(32),
-            b.properties.clone(),
-            b.target.clone(),
-            buffer(),
-            buffer(),
-            buffer(),
-            buffer(),
-            (),
-            heads,
-            capacity,
-        ),
-    )
-}
-
-fn add_source_attention_kernels_inverse(b: &mut Builder, heads: usize) -> Result<()> {
-    b.add(<crate::source_attention::kernels::inverse::Inverse>::new(
-        b.settings(32),
-        b.properties.clone(),
-        b.target.clone(),
-        buffer(),
-        buffer(),
-        buffer(),
-        heads,
-    ))
-}
-
-fn add_source_attention_kernels_probabilities(
-    b: &mut Builder,
-    heads: usize,
-    capacity: usize,
-) -> Result<()> {
-    b.add(
-        <crate::source_attention::kernels::probabilities::Probabilities>::new(
-            b.settings(32),
-            b.properties.clone(),
-            b.target.clone(),
-            buffer(),
-            buffer(),
-            buffer(),
-            buffer(),
-            (),
-            heads,
-            capacity,
-        ),
-    )
-}
-
-fn add_source_attention_kernels_pv(
-    b: &mut Builder,
-    width: usize,
-    heads: usize,
-    kv_heads: usize,
-    capacity: usize,
-) -> Result<()> {
-    b.add(<crate::source_attention::kernels::pv::Pv>::new(
-        b.settings(32),
-        b.properties.clone(),
-        b.target.clone(),
-        buffer(),
-        buffer(),
-        buffer(),
-        buffer(),
-        buffer(),
-        (),
-        (),
-        (),
-        width,
-        heads,
-        kv_heads,
-        capacity,
-    ))
-}
-
-fn add_source_rotary_kernels_angles(b: &mut Builder, half: usize) -> Result<()> {
-    b.add(<crate::source_rotary::kernels::angles::Angles>::new(
-        b.settings(32),
-        b.properties.clone(),
-        b.target.clone(),
-        buffer(),
-        buffer(),
-        (),
-        half,
-    ))
-}
-
-fn add_source_rotary_kernels_apply(
-    b: &mut Builder,
-    width: usize,
-    count: usize,
-    rotation: usize,
-) -> Result<()> {
-    b.add(<crate::source_rotary::kernels::apply::Apply>::new(
-        b.settings(32),
-        b.properties.clone(),
-        b.target.clone(),
-        buffer(),
-        buffer(),
-        buffer(),
-        buffer(),
-        width,
-        count,
-        rotation,
-    ))
-}
-
 fn add_source_standalone_exp_normal_vector(b: &mut Builder, elements: usize) -> Result<()> {
     b.add(
         <crate::source_standalone_exp::normal_vector::NormalVector>::new(
@@ -575,18 +392,6 @@ fn add_source_standalone_exp_normal_vector(b: &mut Builder, elements: usize) -> 
             elements,
         ),
     )
-}
-
-fn add_source_trig_sincos_angles(b: &mut Builder, half: usize) -> Result<()> {
-    b.add(<crate::source_trig::sincos_angles::SincosAngles>::new(
-        b.settings(32),
-        b.properties.clone(),
-        b.target.clone(),
-        buffer(),
-        buffer(),
-        buffer(),
-        half,
-    ))
 }
 
 fn add_transport_widen(b: &mut Builder) -> Result<()> {
@@ -781,48 +586,14 @@ pub(in crate::resident_program::bf16_text_source) fn enumerate(
                     add_gdn_full_convolution(&mut b, count(node.inputs[2])?)?
                 }
                 PlanOperation::TypedTorchAttention { geometry, position } => {
-                    let (q, kv, tokens) = geometry.validate(*position)?;
                     if *position != record.position() {
                         return Err(Error::State("source attention phase catalogue".into()));
                     }
-                    add_source_rotary_kernels_angles(&mut b, 32)?;
-                    add_source_trig_sincos_angles(&mut b, 32)?;
-                    for n in [q, kv] {
-                        copy(&mut b, 1, n)?;
-                        add_source_rotary_kernels_apply(&mut b, 256, n, 64)?;
+                    for kernel in
+                        crate::source_attention::single_row::kernels(client, *geometry, *position)?
+                    {
+                        b.add_boxed(kernel)?;
                     }
-                    add_attention_append(&mut b, kv, *position)?;
-                    add_source_attention_kernels_qk(
-                        &mut b,
-                        256,
-                        geometry.query_heads,
-                        geometry.kv_heads,
-                        tokens,
-                    )?;
-                    for is_max in [true, false] {
-                        add_source_attention_kernels_reduce(&mut b, is_max, tokens)?;
-                    }
-                    add_source_attention_kernels_exponentials(
-                        &mut b,
-                        geometry.query_heads,
-                        tokens,
-                    )?;
-                    add_source_attention_kernels_inverse(&mut b, geometry.query_heads)?;
-                    add_source_attention_kernels_probabilities(
-                        &mut b,
-                        geometry.query_heads,
-                        tokens,
-                    )?;
-                    add_source_attention_kernels_pv(
-                        &mut b,
-                        256,
-                        geometry.query_heads,
-                        geometry.kv_heads,
-                        tokens,
-                    )?;
-                    add_coefficients_sigmoid_shift(&mut b, q)?;
-                    add_coefficients_sigmoid(&mut b, q)?;
-                    add_attention_gate(&mut b, q)?;
                 }
                 PlanOperation::TypedSourceStateRead { binding, .. } => {
                     for n in binding.components() {

@@ -4,7 +4,7 @@ use crate::source_arithmetic::{bf16, finite, mul};
 use cubecl::prelude::*;
 
 #[cube(launch_unchecked)]
-pub(super) fn append(
+pub(crate) fn append(
     prior_key: &[f32],
     prior_value: &[f32],
     key: &[f32],
@@ -26,7 +26,7 @@ pub(super) fn append(
     }
 }
 #[cube(launch_unchecked)]
-pub(super) fn gate(
+pub(crate) fn gate(
     context: &[f32],
     sigmoid: &[f32],
     output: &mut [f32],

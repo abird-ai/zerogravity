@@ -108,12 +108,14 @@ mod window_model;
 #[cfg(all(feature = "source-binding", target_os = "linux", feature = "cpu"))]
 pub use window::WindowOperatorOutput;
 #[cfg(all(feature = "source-binding", target_os = "linux", feature = "cpu"))]
-pub(crate) use window::full_cpu::{DiagnosticLayerState, InitialCoreTape, WindowDiagnosticTrace};
+pub(crate) use window::full_cpu::InitialCoreTape;
 #[cfg(all(feature = "source-binding", target_os = "linux", feature = "cpu"))]
 pub use window::full_cpu::{
     InitialCoreStage, OriginalWindowDiagnosticSession, WindowDiagnosticBoundary,
     WindowDiagnosticLayer9Stage, WindowDiagnosticOutput, WindowDiagnosticReadback,
 };
+#[cfg(all(feature = "source-binding", target_os = "linux"))]
+pub(crate) use window::traversal::{SourceLayerState, SourceObserver, SourceOutput, SourceStage};
 #[cfg(all(feature = "source-binding", target_os = "linux"))]
 pub use window::{OriginalWindowOperators, WindowOperatorPlan};
 #[cfg(all(feature = "source-binding", target_os = "linux"))]

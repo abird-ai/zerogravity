@@ -101,6 +101,8 @@ mod source_rms;
     feature = "qwen-source-qualification"
 ))]
 mod source_rotary;
+#[cfg(feature = "qwen-source-qualification")]
+mod source_sigmoid;
 #[cfg(any(
     feature = "cuda-cublas",
     feature = "gemma-bf16-qualification",

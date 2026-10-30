@@ -343,7 +343,7 @@ impl Bf16TextSourceCandidate {
             readout,
         )?;
         let service = cold.service();
-        let native = cold.prepare(catalogue.0, catalogue.1).await?;
+        let native = cold.prepare_diagnostic(catalogue.0, catalogue.1).await?;
         let inventory = crate::resident_program::bf16_text_source::inventory(
             &source, &records, &native, readout,
         )?;
