@@ -1,7 +1,7 @@
 //! Two-process current-source reference -> ordinary parity harness.
 //!
-//! The historical reference and ordinary candidate cannot share one process:
-//! ordinary BLAS admission must precede every cuBLAS DSO mapping. Phase 1 writes
+//! Historical reference and ordinary candidate run in separate processes to
+//! close process-local native/context ownership between phases. Phase 1 writes
 //! bounded checksummed host evidence after reference retirement/process-local
 //! ownership closes. Phase 2 independently authenticates the source and executes
 //! the fixed qualification trajectory; evidence only compares completed results.
@@ -112,9 +112,11 @@ impl Cached47To50ParityReport {
     pub fn require_exact_source_parity(&self) -> Result<()> {
         if self.steps.len() != FRONTIERS.len() || self.steps.iter().any(|step| !step_is_exact(step))
         {
-            return Err(Error::State(
-                "ordinary CUDA cached47→50 exact source parity failed".into(),
-            ));
+            return Err(Error::State(format!(
+                "ordinary CUDA cached47→50 exact source parity failed: steps={} first_failure={:?}",
+                self.steps.len(),
+                self.steps.iter().find(|step| !step_is_exact(step)),
+            )));
         }
         Ok(())
     }
@@ -171,7 +173,6 @@ pub async fn compare_current_source_cached_47_to_50_evidence(
     hf_directory: &Path,
     evidence_path: &Path,
     expected_evidence_sha256: [u8; 32],
-    providers: crate::gpu::OrdinaryCudaProviderPaths,
     cancelled: Option<&AtomicBool>,
 ) -> Result<OrdinaryEvidenceReceipt> {
     const MIB: usize = 1024 * 1024;
@@ -191,7 +192,6 @@ pub async fn compare_current_source_cached_47_to_50_evidence(
         device,
         hf_directory,
         CURRENT_PARITY_CAPACITY,
-        providers,
         super::HOST_MIB,
         super::PROVIDER_MIB * MIB,
         (super::DEVICE_MIB * MIB) as u64,

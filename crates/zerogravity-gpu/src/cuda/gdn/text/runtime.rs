@@ -1052,8 +1052,32 @@ impl GdnRuntimePlan {
         &self,
         handles: &BTreeMap<GdnRuntimeBuffer, cubecl::server::Handle>,
     ) -> Result<Vec<Vec<cubecl::server::Handle>>> {
+        self.bind_schedule_range_handles(handles, 0..self.schedule.len())
+    }
+
+    #[cfg(any(test, feature = "cuda-cublas"))]
+    fn bind_schedule_range_handles(
+        &self,
+        handles: &BTreeMap<GdnRuntimeBuffer, cubecl::server::Handle>,
+        range: std::ops::Range<usize>,
+    ) -> Result<Vec<Vec<cubecl::server::Handle>>> {
         self.require_schedule()?;
-        if self.geometry.mode == GdnRuntimeMode::Prefill {
+        let schedule = self
+            .schedule
+            .get(range)
+            .filter(|steps| !steps.is_empty())
+            .ok_or_else(|| Error::State("GDN runtime binding schedule range".into()))?;
+        let binds_recurrent_state =
+            schedule
+                .iter()
+                .flat_map(|step| &step.bindings)
+                .any(|binding| {
+                    matches!(
+                        binding.role,
+                        GdnRuntimeBuffer::InitialState | GdnRuntimeBuffer::FinalState
+                    )
+                });
+        if self.geometry.mode == GdnRuntimeMode::Prefill && binds_recurrent_state {
             let state_handle = |role| {
                 handles
                     .get(&role)
@@ -1071,7 +1095,7 @@ impl GdnRuntimePlan {
                 ));
             }
         }
-        self.schedule
+        schedule
             .iter()
             .map(|step| {
                 step.bindings
@@ -1084,7 +1108,10 @@ impl GdnRuntimePlan {
                             .find(|layout| layout.role == binding.role)
                             .ok_or_else(|| Error::State("GDN runtime bound role absent".into()))?;
                         let handle = handles.get(&binding.role).ok_or_else(|| {
-                            Error::State("GDN runtime allocation handle absent".into())
+                            Error::State(format!(
+                                "GDN runtime allocation handle absent: stage={:?} role={:?}",
+                                step.kind, binding.role
+                            ))
                         })?;
                         let available = usize::try_from(handle.size_in_used()).map_err(|_| {
                             Error::Limit("GDN runtime allocation handle extent".into())
@@ -1131,10 +1158,10 @@ impl GdnRuntimePlan {
         partition: GdnRuntimePartition,
     ) -> Result<GdnRuntimeLaunchSchedule> {
         let range = self.partition_range(partition)?;
-        let handles = self.bind_schedule_handles(handles)?;
-        let launches = self.schedule[range.clone()]
+        let handles = self.bind_schedule_range_handles(handles, range.clone())?;
+        let launches = self.schedule[range]
             .iter()
-            .zip(handles[range].iter().cloned())
+            .zip(handles)
             .map(|(step, handles)| step.prepare_launch(client, handles))
             .collect::<Result<Vec<_>>>()?;
         Ok(GdnRuntimeLaunchSchedule { launches })

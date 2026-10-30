@@ -15,8 +15,6 @@ Usage (capture + compare, or preflight):
   ZG_QWEN35_MODEL_DIR=/abs/approved-qwen35-0.8b \
   ZG_QWEN35_CUDA_KERNEL_DIR=/abs/current-or-legacy-native-bundle \
   ZG_QWEN35_ORDINARY_PARITY_EVIDENCE=/abs/new-evidence.bin \
-  ZG_QWEN35_CUBLAS=/abs/.../libcublas.so.12 \
-  ZG_QWEN35_CUBLAS_LT=/abs/.../libcublasLt.so.12 \
   CUDA_PATH=/abs/cuda-include-view \
   LD_LIBRARY_PATH=.../nvrtc/lib:... \
   bash scripts/qualify-qwen35-ordinary-cached47-50.sh [--preflight-only]
@@ -25,8 +23,6 @@ Usage (resume compare only; no historical bundle required):
   ZG_QWEN35_MODEL_DIR=/abs/approved-qwen35-0.8b \
   ZG_QWEN35_ORDINARY_PARITY_EVIDENCE=/abs/existing-evidence.bin \
   ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256=<trusted phase-1 digest> \
-  ZG_QWEN35_CUBLAS=/abs/.../libcublas.so.12 \
-  ZG_QWEN35_CUBLAS_LT=/abs/.../libcublasLt.so.12 \
   CUDA_PATH=/abs/cuda-include-view \
   LD_LIBRARY_PATH=.../nvrtc/lib:... \
   bash scripts/qualify-qwen35-ordinary-cached47-50.sh --compare-existing
@@ -62,8 +58,6 @@ require_absolute() {
 
 model_dir="$(require_absolute ZG_QWEN35_MODEL_DIR "$(printenv ZG_QWEN35_MODEL_DIR || true)")"
 evidence="$(require_absolute ZG_QWEN35_ORDINARY_PARITY_EVIDENCE "$(printenv ZG_QWEN35_ORDINARY_PARITY_EVIDENCE || true)")"
-cublas="$(require_absolute ZG_QWEN35_CUBLAS "$(printenv ZG_QWEN35_CUBLAS || true)")"
-cublas_lt="$(require_absolute ZG_QWEN35_CUBLAS_LT "$(printenv ZG_QWEN35_CUBLAS_LT || true)")"
 cuda_path="$(require_absolute CUDA_PATH "$(printenv CUDA_PATH || true)")"
 
 kernel_dir=
@@ -72,8 +66,6 @@ if [[ "$mode" != "--compare-existing" ]]; then
 fi
 
 [[ -d "$model_dir" ]] || { printf 'Model directory absent: %s\n' "$model_dir" >&2; exit 2; }
-[[ -f "$cublas" ]] || { printf 'cuBLAS path absent/non-file: %s\n' "$cublas" >&2; exit 2; }
-[[ -f "$cublas_lt" ]] || { printf 'cuBLASLt path absent/non-file: %s\n' "$cublas_lt" >&2; exit 2; }
 [[ -d "$cuda_path" && -f "$cuda_path/include/cuda_runtime.h" ]] || {
   printf 'CUDA_PATH does not contain include/cuda_runtime.h: %s\n' "$cuda_path" >&2
   exit 2

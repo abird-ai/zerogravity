@@ -1,7 +1,7 @@
 //! Source-exact ordinary Qwen rotary execution.
 //!
-//! This deliberately reuses the source arithmetic/trig schedule rather than
-//! CUDA libdevice sincosf. Request coordinates choose angles only; they grant
+//! BF16 trig cache + FP32 FMA; not the CPU profile's BF16 product rounding.
+//! Request coordinates choose angles only; they grant
 //! no execution, completion, or StateRoot authority.
 
 use super::attention;
@@ -204,7 +204,7 @@ pub(crate) fn enqueue_source_exact_raw(
                 arg(trig, HALF * 2),
                 HALF,
             );
-            crate::source_rotary::kernels::apply::launch_unchecked(
+            crate::source_rotary::kernels::apply_fp32_fma::launch_unchecked(
                 client,
                 grid(QUERY_HEADS * HALF),
                 threads(),
@@ -216,7 +216,7 @@ pub(crate) fn enqueue_source_exact_raw(
                 QUERY_ELEMENTS,
                 ROTARY,
             );
-            crate::source_rotary::kernels::apply::launch_unchecked(
+            crate::source_rotary::kernels::apply_fp32_fma::launch_unchecked(
                 client,
                 grid(KV_HEADS * HALF),
                 threads(),

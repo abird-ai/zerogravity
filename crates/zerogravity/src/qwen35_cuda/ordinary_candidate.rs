@@ -8,7 +8,7 @@ use super::ordinary_source;
 use crate::{
     Error, Result,
     accelerator::program::SourceCallMode,
-    gpu::{InferenceReadback, OrdinaryCudaProviderPaths, ResidentModel, ResidentSession},
+    gpu::{InferenceReadback, ResidentModel, ResidentSession},
     qwen35::plan::{OrdinaryQwenPlan, QwenSourceProfile},
     resource_arbiter::ResourceOwner,
 };
@@ -36,7 +36,6 @@ impl Model {
         device: crate::gpu::Device,
         hf_directory: &Path,
         context_capacity_tokens: usize,
-        providers: OrdinaryCudaProviderPaths,
         host_mib: usize,
         provider_capacity_bytes: usize,
         device_capacity_bytes: u64,
@@ -61,7 +60,6 @@ impl Model {
             device,
             opened.seal.source().clone(),
             plan.plan().clone(),
-            providers,
             provider_capacity_bytes,
             device_capacity_bytes,
             cancelled,

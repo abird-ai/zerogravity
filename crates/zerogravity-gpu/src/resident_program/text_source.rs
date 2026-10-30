@@ -38,10 +38,10 @@ impl TextSourcePlan {
                         "text actual matrix source/shape/codec differs".into(),
                     ));
                 }
-                if let Some(prior) = matrices.insert(tensor.name.clone(), matrix.clone()) {
-                    if !prior.same_binding(&matrix) {
-                        return Err(Error::State("text repeated matrix binding differs".into()));
-                    }
+                if let Some(prior) = matrices.insert(tensor.name.clone(), matrix.clone())
+                    && !prior.same_binding(&matrix)
+                {
+                    return Err(Error::State("text repeated matrix binding differs".into()));
                 }
             }
         }

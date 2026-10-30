@@ -35,30 +35,6 @@ fn source_multiply_oracle(
 
 #[cfg(all(test, feature = "cuda-cublas"))]
 #[cube(launch_unchecked)]
-fn source_residual_add_oracle(
-    input: &[f32],
-    residual: &[f32],
-    output: &mut [f32],
-    status: &[Atomic<u32>],
-    #[comptime] elements: usize,
-) {
-    let i = ABSOLUTE_POS;
-    if i < elements {
-        let a = input[i];
-        let b = residual[i];
-        let y = crate::source_arithmetic::bf16(crate::source_arithmetic::add(a, b));
-        output[i] = y;
-        if !crate::source_arithmetic::source_bf16(a)
-            || !crate::source_arithmetic::source_bf16(b)
-            || !crate::source_arithmetic::finite(y)
-        {
-            status[0].fetch_or(crate::program_kernels::NONFINITE_VALUE);
-        }
-    }
-}
-
-#[cfg(all(test, feature = "cuda-cublas"))]
-#[cube(launch_unchecked)]
 fn source_silu_mul_oracle(
     gate: &[f32],
     up: &[f32],
@@ -83,6 +59,7 @@ fn source_silu_mul_oracle(
 }
 
 #[cfg(all(test, feature = "cuda-cublas"))]
+#[allow(clippy::manual_range_contains, reason = "CubeCL scalar predicates")]
 #[cube(launch_unchecked)]
 fn source_sigmoid_oracle(
     input: &[f32],
@@ -238,385 +215,8 @@ pub use crate::resident_program::typed_slice::qualification::{
     feature = "qwen-source-qualification",
     target_os = "linux"
 ))]
-fn qualify_ordinary_rms_source_parity(device: Device) -> zerogravity_core::Result<()> {
-    use crate::cuda::ordinary_text::{Access, BufferRole, Geometry, LaunchBinding, Program};
-    use zerogravity_core::{Error, Result};
-
-    const WIDTH: usize = 1024;
-    const EPSILON: f32 = 1e-6;
-    const VALUE_PATTERNS: [u16; 12] = [
-        0x3d80, 0xbd80, 0x3e80, 0xbe80, 0x3f00, 0xbf00, 0x3f80, 0xbf80, 0x4000, 0xc000, 0x4040,
-        0xc040,
-    ];
-    const GAMMA_PATTERNS: [u16; 8] = [
-        0x0000, 0x3c80, 0xbc80, 0x3d00, 0xbd00, 0x3d80, 0xbd80, 0x3e00,
-    ];
-
-    fn bf16_values(count: usize, salt: usize, patterns: &[u16]) -> Vec<u16> {
-        (0..count)
-            .map(|index| patterns[(index * 17 + salt * 13) % patterns.len()])
-            .collect()
-    }
-    fn bf16_bytes(values: &[u16]) -> Vec<u8> {
-        values
-            .iter()
-            .flat_map(|value| value.to_le_bytes())
-            .collect()
-    }
-    fn widen(values: &[u16]) -> Vec<f32> {
-        values
-            .iter()
-            .map(|&value| f32::from_bits(u32::from(value) << 16))
-            .collect()
-    }
-    fn parse_u16(bytes: &[u8], label: &str) -> Result<Vec<u16>> {
-        if !bytes.len().is_multiple_of(2) {
-            return Err(Error::State(format!("{label} BF16 readback alignment")));
-        }
-        Ok(bytes
-            .chunks_exact(2)
-            .map(|word| u16::from_le_bytes([word[0], word[1]]))
-            .collect())
-    }
-    fn parse_u32(bytes: &[u8], label: &str) -> Result<u32> {
-        let word: [u8; 4] = bytes
-            .try_into()
-            .map_err(|_| Error::State(format!("{label} status readback extent")))?;
-        Ok(u32::from_le_bytes(word))
-    }
-
-    let client = device.client();
-    let ordinary = Program::new(Geometry::qwen35_08())?;
-    let gamma_bits = bf16_values(WIDTH, 5, &GAMMA_PATTERNS);
-    let source_gamma = widen(&gamma_bits);
-
-    for rows in [1usize, 2, 17, 64] {
-        let count = rows * WIDTH;
-        let input_bits = bf16_values(count, rows, &VALUE_PATTERNS);
-        let source_input = widen(&input_bits);
-
-        let ordinary_input = client.create_from_slice(&bf16_bytes(&input_bits));
-        let ordinary_gamma = client.create_from_slice(&bf16_bytes(&gamma_bits));
-        let ordinary_output = client.empty(count * 2);
-        let ordinary_status = client.create_from_slice(u32::as_bytes(&[0u32]));
-        let definition = ordinary.rms(rows, EPSILON)?;
-        let prepared = definition.prepare_owned(
-            &client,
-            vec![
-                LaunchBinding::new(BufferRole::Input, Access::Read, ordinary_input),
-                LaunchBinding::new(BufferRole::RawGamma, Access::Read, ordinary_gamma),
-                LaunchBinding::new(BufferRole::Output, Access::Write, ordinary_output.clone()),
-            ],
-            LaunchBinding::new(
-                BufferRole::Status,
-                Access::ReadWrite,
-                ordinary_status.clone(),
-            ),
-        )?;
-        prepared.enqueue_owned(&client, &ordinary_status)?;
-
-        let source_input_handle = client.create_from_slice(f32::as_bytes(&source_input));
-        let source_gamma_handle = client.create_from_slice(f32::as_bytes(&source_gamma));
-        let source_output = client.empty(count * 4);
-        let source_status = client.create_from_slice(u32::as_bytes(&[0u32]));
-        let zero = client.create_from_slice(f32::as_bytes(&[0.0f32]));
-        let extents = [count, rows, rows, rows, rows, rows, count, count];
-        let scratch = extents
-            .into_iter()
-            .map(|elements| client.empty(elements * 4))
-            .collect::<Vec<_>>();
-        crate::source_rms::launch(
-            &client,
-            &scratch,
-            &source_input_handle,
-            Some(&source_gamma_handle),
-            &source_output,
-            &source_status,
-            &zero,
-            WIDTH,
-            rows,
-            crate::source_rms::Gamma::OnePlusRaw,
-        )?;
-
-        let ordinary_bits = parse_u16(
-            &client
-                .read_one(ordinary_output)
-                .map_err(|error| Error::State(format!("ordinary RMS output readback: {error}")))?,
-            "ordinary RMS",
-        )?;
-        let source_raw = client
-            .read_one(source_output)
-            .map_err(|error| Error::State(format!("source RMS output readback: {error}")))?;
-        let source_values = f32::from_bytes(&source_raw);
-        if ordinary_bits.len() != count || source_values.len() != count {
-            return Err(Error::State(
-                "ordinary/source RMS output extent differs".into(),
-            ));
-        }
-        let ordinary_flags = parse_u32(
-            &client
-                .read_one(ordinary_status)
-                .map_err(|error| Error::State(format!("ordinary RMS status readback: {error}")))?,
-            "ordinary RMS",
-        )?;
-        let source_flags = parse_u32(
-            &client
-                .read_one(source_status)
-                .map_err(|error| Error::State(format!("source RMS status readback: {error}")))?,
-            "source RMS",
-        )?;
-        if ordinary_flags != 0 || source_flags != 0 {
-            return Err(Error::State(format!(
-                "ordinary/source RMS status differs rows={rows}: ordinary={ordinary_flags:#x} source={source_flags:#x}"
-            )));
-        }
-        for (index, (&actual, &expected)) in ordinary_bits.iter().zip(source_values).enumerate() {
-            if expected.to_bits() & 0xffff != 0 {
-                return Err(Error::State(format!(
-                    "source RMS output is not BF16-widened rows={rows} index={index} bits={:#010x}",
-                    expected.to_bits()
-                )));
-            }
-            let expected = (expected.to_bits() >> 16) as u16;
-            if actual != expected {
-                return Err(Error::State(format!(
-                    "ordinary/source RMS bit mismatch rows={rows} index={index} ordinary={actual:#06x} source={expected:#06x}"
-                )));
-            }
-        }
-        println!("ordinary-source-rms rows={rows} PASS");
-    }
-    Ok(())
-}
-
-#[cfg(all(
-    test,
-    feature = "cuda-cublas",
-    feature = "qwen-source-qualification",
-    target_os = "linux"
-))]
-fn qualify_ordinary_residual_rms_source_parity(device: Device) -> zerogravity_core::Result<()> {
-    use crate::cuda::ordinary_text::{Access, BufferRole, Geometry, LaunchBinding, Program};
-    use zerogravity_core::{Error, Result};
-
-    const WIDTH: usize = 1024;
-    const EPSILON: f32 = 1e-6;
-    const INPUTS: [u16; 12] = [
-        0x3d80, 0xbd80, 0x3e80, 0xbe80, 0x3f00, 0xbf00, 0x3f80, 0xbf80, 0x4000, 0xc000, 0x4040,
-        0xc040,
-    ];
-    const RESIDUALS: [u16; 10] = [
-        0x3c80, 0xbc80, 0x3d00, 0xbd00, 0x3e00, 0xbe00, 0x3f00, 0xbf00, 0x3f80, 0xbf80,
-    ];
-    const GAMMA: [u16; 8] = [
-        0x0000, 0x3c80, 0xbc80, 0x3d00, 0xbd00, 0x3d80, 0xbd80, 0x3e00,
-    ];
-
-    fn bits(count: usize, salt: usize, patterns: &[u16]) -> Vec<u16> {
-        (0..count)
-            .map(|i| patterns[(i * 23 + salt * 5) % patterns.len()])
-            .collect()
-    }
-    fn bytes(values: &[u16]) -> Vec<u8> {
-        values.iter().flat_map(|v| v.to_le_bytes()).collect()
-    }
-    fn widen(values: &[u16]) -> Vec<f32> {
-        values
-            .iter()
-            .map(|&v| f32::from_bits(u32::from(v) << 16))
-            .collect()
-    }
-    fn parse_bf16(raw: &[u8], label: &str) -> Result<Vec<u16>> {
-        if !raw.len().is_multiple_of(2) {
-            return Err(Error::State(format!("{label} BF16 alignment")));
-        }
-        Ok(raw
-            .chunks_exact(2)
-            .map(|w| u16::from_le_bytes([w[0], w[1]]))
-            .collect())
-    }
-    fn parse_status(raw: &[u8], label: &str) -> Result<u32> {
-        let word: [u8; 4] = raw
-            .try_into()
-            .map_err(|_| Error::State(format!("{label} status extent")))?;
-        Ok(u32::from_le_bytes(word))
-    }
-    fn grid(elements: usize) -> CubeCount {
-        CubeCount::Static((elements as u32).div_ceil(32), 1, 1)
-    }
-    fn arg(handle: cubecl::server::Handle, elements: usize) -> BufferArg {
-        // SAFETY: qualification fixtures allocate exact typed extents.
-        unsafe { BufferArg::from_raw_parts(handle, elements) }
-    }
-
-    let client = device.client();
-    let ordinary = Program::new(Geometry::qwen35_08())?;
-    let gamma_bits = bits(WIDTH, 9, &GAMMA);
-    let source_gamma = client.create_from_slice(f32::as_bytes(&widen(&gamma_bits)));
-
-    for rows in [1usize, 2, 17, 64] {
-        let count = rows * WIDTH;
-        let input_bits = bits(count, rows, &INPUTS);
-        let residual_bits = bits(count, rows + 7, &RESIDUALS);
-
-        let ordinary_input = client.create_from_slice(&bytes(&input_bits));
-        let ordinary_residual = client.create_from_slice(&bytes(&residual_bits));
-        let ordinary_gamma = client.create_from_slice(&bytes(&gamma_bits));
-        let ordinary_output = client.empty(count * 2);
-        let ordinary_status = client.create_from_slice(u32::as_bytes(&[0u32]));
-        let definition = ordinary.residual_rms(rows, EPSILON)?;
-        let prepared = definition.prepare_owned(
-            &client,
-            vec![
-                LaunchBinding::new(BufferRole::Input, Access::Read, ordinary_input),
-                LaunchBinding::new(
-                    BufferRole::Residual,
-                    Access::ReadWrite,
-                    ordinary_residual.clone(),
-                ),
-                LaunchBinding::new(BufferRole::RawGamma, Access::Read, ordinary_gamma),
-                LaunchBinding::new(BufferRole::Output, Access::Write, ordinary_output.clone()),
-            ],
-            LaunchBinding::new(
-                BufferRole::Status,
-                Access::ReadWrite,
-                ordinary_status.clone(),
-            ),
-        )?;
-        prepared.enqueue_owned(&client, &ordinary_status)?;
-
-        let source_input = client.create_from_slice(f32::as_bytes(&widen(&input_bits)));
-        let source_residual_in = client.create_from_slice(f32::as_bytes(&widen(&residual_bits)));
-        let source_residual = client.empty(count * 4);
-        let source_status = client.create_from_slice(u32::as_bytes(&[0u32]));
-        unsafe {
-            source_residual_add_oracle::launch_unchecked(
-                &client,
-                grid(count),
-                CubeDim::new_1d(32),
-                arg(source_input, count),
-                arg(source_residual_in, count),
-                arg(source_residual.clone(), count),
-                arg(source_status.clone(), 1),
-                count,
-            );
-        }
-
-        let source_output = client.empty(count * 4);
-        let zero = client.create_from_slice(f32::as_bytes(&[0.0f32]));
-        let extents = [count, rows, rows, rows, rows, rows, count, count];
-        let scratch = extents
-            .into_iter()
-            .map(|elements| client.empty(elements * 4))
-            .collect::<Vec<_>>();
-        crate::source_rms::launch(
-            &client,
-            &scratch,
-            &source_residual,
-            Some(&source_gamma),
-            &source_output,
-            &source_status,
-            &zero,
-            WIDTH,
-            rows,
-            crate::source_rms::Gamma::OnePlusRaw,
-        )?;
-
-        let ordinary_flags = parse_status(
-            &client
-                .read_one(ordinary_status)
-                .map_err(|error| Error::State(format!("ordinary residual RMS status: {error}")))?,
-            "ordinary residual RMS",
-        )?;
-        let source_flags = parse_status(
-            &client
-                .read_one(source_status)
-                .map_err(|error| Error::State(format!("source residual RMS status: {error}")))?,
-            "source residual RMS",
-        )?;
-        if ordinary_flags != 0 || source_flags != 0 {
-            return Err(Error::State(format!(
-                "ordinary/source residual RMS status rows={rows}: ordinary={ordinary_flags:#x} source={source_flags:#x}"
-            )));
-        }
-
-        let ordinary_residual_bits = parse_bf16(
-            &client.read_one(ordinary_residual).map_err(|error| {
-                Error::State(format!("ordinary residual update readback: {error}"))
-            })?,
-            "ordinary residual",
-        )?;
-        let ordinary_output_bits = parse_bf16(
-            &client.read_one(ordinary_output).map_err(|error| {
-                Error::State(format!("ordinary residual RMS output readback: {error}"))
-            })?,
-            "ordinary residual RMS",
-        )?;
-        let source_residual_raw = client
-            .read_one(source_residual)
-            .map_err(|error| Error::State(format!("source residual update readback: {error}")))?;
-        let source_output_raw = client.read_one(source_output).map_err(|error| {
-            Error::State(format!("source residual RMS output readback: {error}"))
-        })?;
-        for (label, ordinary_bits, source_raw) in [
-            (
-                "residual",
-                ordinary_residual_bits.as_slice(),
-                &source_residual_raw[..],
-            ),
-            (
-                "output",
-                ordinary_output_bits.as_slice(),
-                &source_output_raw[..],
-            ),
-        ] {
-            let source_values = f32::from_bytes(source_raw);
-            if ordinary_bits.len() != count || source_values.len() != count {
-                return Err(Error::State(format!(
-                    "residual RMS {label} extent differs rows={rows}"
-                )));
-            }
-            for (index, (&actual, &expected)) in ordinary_bits.iter().zip(source_values).enumerate()
-            {
-                if expected.to_bits() & 0xffff != 0 {
-                    return Err(Error::State(format!(
-                        "source residual RMS {label} not BF16-widened rows={rows} index={index}"
-                    )));
-                }
-                let expected = (expected.to_bits() >> 16) as u16;
-                if actual != expected {
-                    return Err(Error::State(format!(
-                        "ordinary/source residual RMS {label} mismatch rows={rows} index={index} ordinary={actual:#06x} source={expected:#06x}"
-                    )));
-                }
-            }
-        }
-        println!("ordinary-source-residual-rms rows={rows} PASS");
-    }
-    Ok(())
-}
-
-#[cfg(all(
-    test,
-    feature = "cuda-cublas",
-    feature = "qwen-source-qualification",
-    target_os = "linux"
-))]
-#[test]
-#[ignore = "actual NVIDIA ordinary/source Qwen residual-RMS numerical parity"]
-fn ordinary_residual_rms_matches_source_reference_on_nvidia() -> zerogravity_core::Result<()> {
-    qualify_ordinary_residual_rms_source_parity(Device::cuda(0).map_err(|error| {
-        zerogravity_core::Error::State(format!("CUDA device 0 unavailable: {error}"))
-    })?)
-}
-
-#[cfg(all(
-    test,
-    feature = "cuda-cublas",
-    feature = "qwen-source-qualification",
-    target_os = "linux"
-))]
-fn qualify_ordinary_head_rms_source_parity(device: Device) -> zerogravity_core::Result<()> {
+// Cross-profile smoke on low-dynamic-range fixtures, not the CUDA rounding oracle.
+fn qualify_head_rms_low_dynamic_range(device: Device) -> zerogravity_core::Result<()> {
     use crate::cuda::ordinary_text::{Access, BufferRole, Geometry, LaunchBinding, Program};
     use zerogravity_core::{Error, Result};
 
@@ -841,22 +441,8 @@ fn qualify_ordinary_head_rms_source_parity(device: Device) -> zerogravity_core::
 ))]
 #[test]
 #[ignore = "actual NVIDIA ordinary/source Qwen query/key head RMS numerical parity"]
-fn ordinary_head_rms_matches_source_reference_on_nvidia() -> zerogravity_core::Result<()> {
-    qualify_ordinary_head_rms_source_parity(Device::cuda(0).map_err(|error| {
-        zerogravity_core::Error::State(format!("CUDA device 0 unavailable: {error}"))
-    })?)
-}
-
-#[cfg(all(
-    test,
-    feature = "cuda-cublas",
-    feature = "qwen-source-qualification",
-    target_os = "linux"
-))]
-#[test]
-#[ignore = "actual NVIDIA ordinary/source Qwen RMS numerical parity"]
-fn ordinary_rms_matches_source_reference_on_nvidia() -> zerogravity_core::Result<()> {
-    qualify_ordinary_rms_source_parity(Device::cuda(0).map_err(|error| {
+fn ordinary_head_rms_low_dynamic_range_on_nvidia() -> zerogravity_core::Result<()> {
+    qualify_head_rms_low_dynamic_range(Device::cuda(0).map_err(|error| {
         zerogravity_core::Error::State(format!("CUDA device 0 unavailable: {error}"))
     })?)
 }
@@ -1509,18 +1095,6 @@ fn ordinary_embedding_on_nvidia() -> zerogravity_core::Result<()> {
 
 #[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
 #[test]
-#[ignore = "actual NVIDIA ordinary attention wrapper active-prefix/causal qualification"]
-fn ordinary_attention_wrapper_on_nvidia() -> zerogravity_core::Result<()> {
-    let device = Device::cuda(0).map_err(|error| {
-        zerogravity_core::Error::State(format!("CUDA device 0 unavailable: {error}"))
-    })?;
-    futures_lite::future::block_on(
-        crate::resident_program::ordinary_cuda::qualify_attention_wrapper_source_semantics(device),
-    )
-}
-
-#[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
-#[test]
 #[ignore = "actual NVIDIA ordinary canonical GDN state transport roundtrip"]
 fn ordinary_state_transport_roundtrip_on_nvidia() -> zerogravity_core::Result<()> {
     let device = Device::cuda(0).map_err(|error| {
@@ -1549,7 +1123,9 @@ async fn qualify_ordinary_owned_blas_identity(
 ) -> zerogravity_core::Result<()> {
     use crate::{
         resident_leases::ResidentService,
-        resident_program::ordinary_cuda::{OrdinaryCudaBlas, OrdinaryCudaProviderPaths},
+        resident_program::ordinary_cuda::blas_reference::{
+            OrdinaryCudaBlas, OrdinaryCudaProviderPaths,
+        },
     };
     use cubecl::cuda::Bf16GemmOperation;
     use zerogravity_core::{
@@ -1699,6 +1275,29 @@ fn ordinary_owned_blas_identity_dynamic_rows_on_nvidia() -> zerogravity_core::Re
 }
 
 #[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
+fn cuda_rotary_pair_reference(a: f32, b: f32, sin: f32, cos: f32) -> [f32; 2] {
+    let bf16 = |value: f32| {
+        let bits = value.to_bits();
+        f32::from_bits(bits.wrapping_add(0x7fff + ((bits >> 16) & 1)) & 0xffff_0000)
+    };
+    let (sin, cos) = (bf16(sin), bf16(cos));
+    // Independently evaluated FMUL + FFMA order of the pinned fused Q/K image.
+    [
+        bf16(a.mul_add(cos, -(b * sin))),
+        bf16(b.mul_add(cos, a * sin)),
+    ]
+}
+
+#[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
+#[test]
+fn cuda_rotary_preserves_fp32_products_until_final_bf16() {
+    let [x, y] = cuda_rotary_pair_reference(1.0078125, 0.609375, 0.70703125, 0.70703125);
+    assert_eq!(x.to_bits(), 0x3e90_0000);
+    assert_eq!(y.to_bits(), 0x3f92_0000);
+    assert_ne!(x.to_bits(), 0x3e8f_0000); // CPU-target BF16 product boundary.
+}
+
+#[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
 fn qualify_ordinary_rope_source_parity(device: Device) -> zerogravity_core::Result<()> {
     use crate::resident_program::ordinary_cuda::rotary::enqueue_source_exact_raw;
     use zerogravity_core::{Error, Result};
@@ -1809,16 +1408,10 @@ fn qualify_ordinary_rope_source_parity(device: Device) -> zerogravity_core::Resu
             1,
         )?;
 
-        let source_query_input = client.create_from_slice(f32::as_bytes(&source_query));
-        let source_key_input = client.create_from_slice(f32::as_bytes(&source_key));
-        // Explicit caller-owned pass-through for the non-rotary 192 lanes.
-        let source_query_output = client.create_from_slice(f32::as_bytes(&source_query));
-        let source_key_output = client.create_from_slice(f32::as_bytes(&source_key));
         let source_frequency = client.create_from_slice(f32::as_bytes(&frequencies));
         let source_angles = client.empty(HALF * 4);
         let source_trig = client.empty(HALF * 2 * 4);
         let trig_tables = client.create_from_slice(f64::as_bytes(&crate::source_trig::TRIG_TABLES));
-        let source_status = client.create_from_slice(u32::as_bytes(&[0u32]));
 
         // SAFETY: all source-oracle handles have exact checked fixture extents.
         unsafe {
@@ -1840,30 +1433,6 @@ fn qualify_ordinary_rope_source_parity(device: Device) -> zerogravity_core::Resu
                 arg(source_trig.clone(), HALF * 2),
                 HALF,
             );
-            crate::source_rotary::kernels::apply::launch_unchecked(
-                &client,
-                grid((QUERY_ELEMENTS / 256) * HALF),
-                CubeDim::new_1d(32),
-                arg(source_query_input, QUERY_ELEMENTS),
-                arg(source_trig.clone(), HALF * 2),
-                arg(source_query_output.clone(), QUERY_ELEMENTS),
-                arg(source_status.clone(), 1),
-                256usize,
-                QUERY_ELEMENTS,
-                ROTARY,
-            );
-            crate::source_rotary::kernels::apply::launch_unchecked(
-                &client,
-                grid((KEY_ELEMENTS / 256) * HALF),
-                CubeDim::new_1d(32),
-                arg(source_key_input, KEY_ELEMENTS),
-                arg(source_trig, HALF * 2),
-                arg(source_key_output.clone(), KEY_ELEMENTS),
-                arg(source_status.clone(), 1),
-                256usize,
-                KEY_ELEMENTS,
-                ROTARY,
-            );
         }
 
         let ordinary_q = parse_u16(
@@ -1878,29 +1447,41 @@ fn qualify_ordinary_rope_source_parity(device: Device) -> zerogravity_core::Resu
                 .map_err(|error| Error::State(format!("ordinary RoPE key readback: {error}")))?,
             "ordinary key",
         )?;
-        let source_q_raw = client
-            .read_one(source_query_output)
-            .map_err(|error| Error::State(format!("source RoPE query readback: {error}")))?;
-        let source_k_raw = client
-            .read_one(source_key_output)
-            .map_err(|error| Error::State(format!("source RoPE key readback: {error}")))?;
-        let source_q = f32::from_bytes(&source_q_raw);
-        let source_k = f32::from_bytes(&source_k_raw);
+        let trig_raw = client
+            .read_one(source_trig)
+            .map_err(|error| Error::State(format!("reference RoPE trig readback: {error}")))?;
+        let trig = f32::from_bytes(&trig_raw);
+        if trig.len() != HALF * 2 || trig.iter().any(|value| !value.is_finite()) {
+            return Err(Error::State(
+                "reference RoPE trig extent/finite values".into(),
+            ));
+        }
+        let mut source_q = source_query.clone();
+        let mut source_k = source_key.clone();
+        // CPU evaluation is independent of the candidate's CUDA FMA kernel.
+        for values in [&mut source_q, &mut source_k] {
+            for head in values.chunks_exact_mut(256) {
+                for pair in 0..HALF {
+                    let [x, y] = cuda_rotary_pair_reference(
+                        head[pair],
+                        head[pair + HALF],
+                        trig[pair * 2],
+                        trig[pair * 2 + 1],
+                    );
+                    head[pair] = x;
+                    head[pair + HALF] = y;
+                }
+            }
+        }
         let ordinary_flags = parse_u32(
             &client
                 .read_one(ordinary_status)
                 .map_err(|error| Error::State(format!("ordinary RoPE status readback: {error}")))?,
             "ordinary",
         )?;
-        let source_flags = parse_u32(
-            &client
-                .read_one(source_status)
-                .map_err(|error| Error::State(format!("source RoPE status readback: {error}")))?,
-            "source",
-        )?;
-        if ordinary_flags != 0 || source_flags != 0 {
+        if ordinary_flags != 0 {
             return Err(Error::State(format!(
-                "RoPE status differs at position {position}: ordinary={ordinary_flags:#x} source={source_flags:#x}"
+                "RoPE status at position {position}: ordinary={ordinary_flags:#x}"
             )));
         }
         if ordinary_q.len() != QUERY_ELEMENTS
@@ -1911,8 +1492,8 @@ fn qualify_ordinary_rope_source_parity(device: Device) -> zerogravity_core::Resu
             return Err(Error::State("RoPE physical output extent differs".into()));
         }
         for (role, ordinary, source) in [
-            ("query", ordinary_q.as_slice(), source_q),
-            ("key", ordinary_k.as_slice(), source_k),
+            ("query", ordinary_q.as_slice(), source_q.as_slice()),
+            ("key", ordinary_k.as_slice(), source_k.as_slice()),
         ] {
             for (index, (&actual, &expected)) in ordinary.iter().zip(source).enumerate() {
                 if expected.to_bits() & 0xffff != 0 {
@@ -1935,7 +1516,7 @@ fn qualify_ordinary_rope_source_parity(device: Device) -> zerogravity_core::Resu
 
 #[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
 #[test]
-#[ignore = "actual NVIDIA source-independent ordinary/source RoPE parity"]
+#[ignore = "actual NVIDIA fused-FP32 RoPE versus independent host FMA reference"]
 fn ordinary_source_exact_rotary_matches_source_reference_on_nvidia() -> zerogravity_core::Result<()>
 {
     qualify_ordinary_rope_source_parity(Device::cuda(0).map_err(|error| {

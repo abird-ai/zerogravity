@@ -62,7 +62,7 @@ impl NativeCacheBudget {
         self.foreign_release_failed();
     }
     #[cfg(any(
-        feature = "cuda-cublas",
+        all(test, feature = "cuda-cublas"),
         feature = "cuda-native-qualification",
         all(
             target_os = "linux",
@@ -108,7 +108,7 @@ impl ForeignProviderOwner for NativeCacheBudget {
     }
 }
 #[cfg(any(
-    feature = "cuda-cublas",
+    all(test, feature = "cuda-cublas"),
     feature = "cuda-native-qualification",
     all(
         target_os = "linux",

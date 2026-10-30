@@ -30,6 +30,10 @@ mod faults;
 #[path = "qwen35_cuda/host.rs"]
 mod fixture_host;
 use fixture_host::FixtureHost;
+#[path = "support/qwen35_attention.rs"]
+mod attention_differential;
+#[path = "support/qwen35_gemm.rs"]
+mod gemm_differential;
 #[path = "qwen35_cuda/oracle.rs"]
 mod oracle;
 fn fail(message: impl Into<String>) -> Error {
@@ -533,14 +537,11 @@ fn ordinary_cached47_to50_compare_reference_evidence() -> Result<()> {
     let expected = std::env::var("ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256")
         .map_err(|_| fail("ZG_QWEN35_ORDINARY_PARITY_EXPECTED_SHA256 required"))
         .and_then(|value| qwen35_cuda::ordinary_parity::parse_evidence_sha256(&value))?;
-    let cublas = env("ZG_QWEN35_CUBLAS")?;
-    let cublas_lt = env("ZG_QWEN35_CUBLAS_LT")?;
-    let providers = zerogravity::gpu::OrdinaryCudaProviderPaths::new(cublas, cublas_lt)?;
     let device =
         zerogravity::gpu::Device::cuda(0).map_err(|e| fail(format!("actual CUDA device: {e}")))?;
     let receipt = block_on(
         qwen35_cuda::ordinary_parity::compare_current_source_cached_47_to_50_evidence(
-            device, &source, &evidence, expected, providers, None,
+            device, &source, &evidence, expected, None,
         ),
     )?;
     receipt.require_exact()?;

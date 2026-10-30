@@ -66,6 +66,30 @@ impl QualificationService {
     }
 }
 impl ResidentModel {
+    #[cfg(feature = "hardware-abort-probe")]
+    pub(super) async fn qualification_after_launch(&self, handles: usize) {
+        if self
+            .abort_after_launch
+            .fetch_update(
+                std::sync::atomic::Ordering::AcqRel,
+                std::sync::atomic::Ordering::Acquire,
+                |remaining| remaining.checked_sub(1),
+            )
+            .is_ok_and(|remaining| remaining == 1)
+        {
+            self.launch_seen
+                .store(handles, std::sync::atomic::Ordering::Release);
+            // Resume by clearing the count; unknown probes drop the actual flight.
+            std::future::poll_fn(|_| {
+                if self.launch_seen.load(std::sync::atomic::Ordering::Acquire) == 0 {
+                    std::task::Poll::Ready(())
+                } else {
+                    std::task::Poll::Pending
+                }
+            })
+            .await;
+        }
+    }
     pub fn qualification(&self) -> QualificationService {
         QualificationService(self.service.clone())
     }

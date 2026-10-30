@@ -32,7 +32,6 @@ pub(crate) mod final_owner_probe;
 mod foreign_provider;
 #[cfg(any(
     test,
-    feature = "cuda-cublas",
     feature = "cuda-native-qualification",
     all(
         target_os = "linux",
@@ -87,7 +86,7 @@ pub(crate) mod source_page;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod source_upload;
 #[cfg(any(
-    feature = "cuda-cublas",
+    all(test, feature = "cuda-cublas"),
     feature = "cuda-native-qualification",
     all(
         target_os = "linux",
@@ -265,7 +264,10 @@ impl ResidentService {
             .attach_inner(source, owner, provider_cap, None)
             .map(Arc::new)
     }
-    #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
+    #[cfg(all(
+        any(feature = "cuda-native-qualification", feature = "cuda-cublas"),
+        target_os = "linux"
+    ))]
     pub(crate) fn admit_cuda_compiler_context(
         &self,
         source: &zerogravity_artifacts::source_weights::VerifiedTensorSource,

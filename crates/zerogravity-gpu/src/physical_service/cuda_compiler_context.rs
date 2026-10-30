@@ -71,6 +71,7 @@ impl CudaCompilerContextBudget {
             adopted: Arc::new(AtomicBool::new(false)),
         }))
     }
+    #[cfg(feature = "cuda-native-qualification")]
     pub(crate) fn observed_reservations(
         &self,
         original: &PhysicalServiceBudget,

@@ -137,7 +137,7 @@ impl ResidentBufferLayout {
             .ok_or_else(|| Error::Limit("resident byte end overflow".into()))?;
         Ok(start..end)
     }
-    /// Dense activations/scratch only; canonical root state remains F32.
+    /// Dense data roles; the source state requirement chooses F32 or BF16.
     /// This says nothing about initialization or actual read/write completion.
     pub fn validate_role(self, role: BufferRole, access: DeviceAccess) -> Result<()> {
         self.bytes()?;

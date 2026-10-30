@@ -145,3 +145,8 @@ required-features = ["qwen35-cuda-qualification"]
 name = "qwen35_batching"
 path = "tests/qwen35_batching.rs"
 required-features = ["qwen35-cuda-qualification"]
+
+[[test]]
+name = "qwen35_cuda_lifecycle"
+path = "tests/qwen35_cuda_lifecycle.rs"
+required-features = ["qwen35-cuda-qualification", "zerogravity-gpu/hardware-abort-probe"]

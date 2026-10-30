@@ -111,20 +111,32 @@ pub async fn physical_prior_after_abort(
             ));
         }
         let mut actual = Vec::new();
-        for (lease, bytes) in domain.leases.iter().zip(data) {
-            let values = words(&bytes)?;
-            if matches!(&domain.buffers, StateBuffers::Kv { .. }) {
-                let active =
-                    lease.bytes() / 4 / snapshot.capacity * snapshot.binding.frontier() as usize;
-                if values[active..].iter().any(|value| value.to_bits() != 0) {
+        let buffers = domain.buffers.buffers();
+        if buffers.len() != data.len() {
+            return Err(Error::State("abort typed prior plane coverage".into()));
+        }
+        for (buffer, bytes) in buffers.into_iter().zip(data) {
+            let layout = buffer.physical_layout();
+            let active = if matches!(&domain.buffers, StateBuffers::Kv { .. }) {
+                if snapshot.capacity == 0 || !layout.elements().is_multiple_of(snapshot.capacity) {
+                    return Err(Error::State("abort typed prior capacity".into()));
+                }
+                let frontier = usize::try_from(snapshot.binding.frontier())
+                    .map_err(|_| Error::Limit("abort prior frontier".into()))?;
+                let active = (layout.elements() / snapshot.capacity)
+                    .checked_mul(frontier)
+                    .filter(|n| *n <= layout.elements())
+                    .ok_or_else(|| Error::Limit("abort prior active extent".into()))?;
+                if !resident_plane_tail_zero(&bytes, layout, active)? {
                     return Err(Error::State(
-                        "fused abort changed canonical prior KV tail".into(),
+                        "abort changed canonical typed prior tail".into(),
                     ));
                 }
-                actual.extend_from_slice(&values[..active]);
+                active
             } else {
-                actual.extend(values);
-            }
+                layout.elements()
+            };
+            actual.extend(resident_plane_values(&bytes, layout, active)?);
         }
         exact(
             expected_values,

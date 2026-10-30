@@ -136,6 +136,52 @@ void zg_ot_embedding_v1(void* tokens_raw, void* table_raw, void* output_raw,
     }
 }
 
+// Pinned Torch vector-four mean grouping; see ../rms/LICENSE.pytorch.
+// Logical reduction lanes need not equal this kernel's physical block width.
+__device__ __forceinline__ unsigned zg_mean_width(unsigned rows, unsigned columns) {
+    unsigned height = 1;
+    while (height < 16 && height * 2 <= rows) height *= 2;
+    const unsigned available = 512 / height;
+    return columns / 4 < available ? columns / 4 : available;
+}
+template<unsigned WIDTH, bool ADD>
+__device__ __forceinline__ float zg_square_lane(
+    const __nv_bfloat16* input, const __nv_bfloat16* residual,
+    unsigned lane, unsigned width, unsigned* status) {
+    float accum[4] = {};
+    for (unsigned index = lane; index < WIDTH / 4; index += width) {
+        #pragma unroll
+        for (unsigned part = 0; part < 4; ++part) {
+            const unsigned c = index * 4 + part;
+            const float input_value = zg_load(input + c);
+            const float residual_value = ADD ? zg_load(residual + c) : 0.0f;
+            const float x = ADD ? __fadd_rn(input_value, residual_value) : input_value;
+            accum[part] = __fadd_rn(accum[part], __fmul_rn(x, x));
+            if (!isfinite(input_value) || !isfinite(residual_value) || !isfinite(x)) zg_bad(status, 2u);
+        }
+    }
+    return __fadd_rn(__fadd_rn(__fadd_rn(accum[0], accum[1]), accum[2]), accum[3]);
+}
+template<unsigned WIDTH, bool ADD>
+__device__ __forceinline__ float zg_square_mean(
+    const __nv_bfloat16* input, const __nv_bfloat16* residual,
+    unsigned rows, unsigned* status, float* reduction) {
+    const unsigned width = zg_mean_width(rows, WIDTH);
+    const unsigned lane = threadIdx.x;
+    float value = lane < width ? zg_square_lane<WIDTH, ADD>(input, residual, lane, width, status) : 0.0f;
+    // A 512-lane source reduction folds its upper half before the 256-lane tree.
+    if (width > ZG_THREADS) value = __fadd_rn(value,
+        zg_square_lane<WIDTH, ADD>(input, residual, lane + ZG_THREADS, width, status));
+    reduction[lane] = value;
+    __syncthreads();
+    const unsigned active = width < ZG_THREADS ? width : ZG_THREADS;
+    for (unsigned stride = active / 2; stride; stride >>= 1) {
+        if (lane < stride) reduction[lane] = __fadd_rn(reduction[lane], reduction[lane + stride]);
+        __syncthreads();
+    }
+    return __fmul_rn(reduction[0], 1.0f / (float)WIDTH);
+}
+
 // words = [rows, epsilon_f32_bits].
 extern "C" __global__ __launch_bounds__(ZG_THREADS)
 void zg_ot_rms_v1(void* input_raw, void* raw_gamma_raw, void* output_raw,
@@ -148,31 +194,21 @@ void zg_ot_rms_v1(void* input_raw, void* raw_gamma_raw, void* output_raw,
     const unsigned row = blockIdx.x;
     const unsigned rows = zg_u32(scalars.words[0]);
     if (row >= rows) return;
-    float sum = 0.0f;
+    const size_t base = (size_t)row * ZG_HIDDEN_WIDTH;
+    const float mean = zg_square_mean<ZG_HIDDEN_WIDTH, false>(input + base, nullptr, rows, status, reduction);
+    const float inverse = rsqrtf(__fadd_rn(mean, zg_f32(scalars.words[1])));
+    if (threadIdx.x == 0 && (!isfinite(mean) || !isfinite(inverse) || inverse == 0.0f)) zg_bad(status, 2u);
     for (unsigned c = threadIdx.x; c < ZG_HIDDEN_WIDTH; c += blockDim.x) {
-        const float x = zg_load(input + (size_t)row * ZG_HIDDEN_WIDTH + c);
-        sum += x * x;
-        if (!isfinite(x)) zg_bad(status, 2u);
-    }
-    reduction[threadIdx.x] = sum; __syncthreads();
-    for (unsigned stride = ZG_THREADS / 2; stride; stride >>= 1) {
-        if (threadIdx.x < stride) reduction[threadIdx.x] += reduction[threadIdx.x + stride];
-        __syncthreads();
-    }
-    if (threadIdx.x == 0 && !isfinite(reduction[0])) zg_bad(status, 2u);
-    const float inverse = rsqrtf(reduction[0] / (float)ZG_HIDDEN_WIDTH + zg_f32(scalars.words[1]));
-    if (threadIdx.x == 0 && (!isfinite(inverse) || inverse == 0.0f)) zg_bad(status, 2u);
-    for (unsigned c = threadIdx.x; c < ZG_HIDDEN_WIDTH; c += blockDim.x) {
-        const size_t i = (size_t)row * ZG_HIDDEN_WIDTH + c;
-        const float x = zg_load(input + i);
+        const float x = zg_load(input + base + c);
         const float gamma = zg_load(raw_gamma + c);
-        const float y = x * inverse * (1.0f + gamma);
-        output[i] = zg_store(y);
-        if (!isfinite(x) || !isfinite(gamma) || !isfinite(inverse) || !isfinite(y)) zg_bad(status, 2u);
+        const float y = __fmul_rn(__fmul_rn(x, inverse), __fadd_rn(1.0f, gamma));
+        output[base + c] = zg_store(y);
+        if (!isfinite(x) || !isfinite(gamma) || !isfinite(y)) zg_bad(status, 2u);
     }
 }
 
-// words = [rows, epsilon_f32_bits]. Residual is updated before normalization.
+// Persist BF16 residual, but normalize the independent FP32 sum. The mean's
+// final barrier precedes every store, so rereading operands needs no scratch.
 extern "C" __global__ __launch_bounds__(ZG_THREADS)
 void zg_ot_residual_rms_v1(void* input_raw, void* residual_raw, void* raw_gamma_raw,
                            void* output_raw, void* status_raw, ZgWords2 scalars) {
@@ -185,33 +221,43 @@ void zg_ot_residual_rms_v1(void* input_raw, void* residual_raw, void* raw_gamma_
     const unsigned row = blockIdx.x;
     const unsigned rows = zg_u32(scalars.words[0]);
     if (row >= rows) return;
-    float sum = 0.0f;
+    const size_t base = (size_t)row * ZG_HIDDEN_WIDTH;
+    const float mean = zg_square_mean<ZG_HIDDEN_WIDTH, true>(input + base, residual + base, rows, status, reduction);
+    const float inverse = rsqrtf(__fadd_rn(mean, zg_f32(scalars.words[1])));
+    if (threadIdx.x == 0 && (!isfinite(mean) || !isfinite(inverse) || inverse == 0.0f)) zg_bad(status, 2u);
     for (unsigned c = threadIdx.x; c < ZG_HIDDEN_WIDTH; c += blockDim.x) {
-        const size_t i = (size_t)row * ZG_HIDDEN_WIDTH + c;
+        const size_t i = base + c;
         const float input_value = zg_load(input + i);
         const float residual_value = zg_load(residual + i);
-        const float x = input_value + residual_value;
-        const __nv_bfloat16 rounded = zg_store(x);
-        residual[i] = rounded;
-        const float r = __bfloat162float(rounded); sum += r * r;
-        if (!isfinite(input_value) || !isfinite(residual_value) || !isfinite(r)) zg_bad(status, 2u);
+        const float x = __fadd_rn(input_value, residual_value);
+        residual[i] = zg_store(x);
+        const float gamma = zg_load(raw_gamma + c);
+        const float y = __fmul_rn(__fmul_rn(x, inverse), __fadd_rn(1.0f, gamma));
+        output[i] = zg_store(y);
+        if (!isfinite(input_value) || !isfinite(residual_value) || !isfinite(gamma) || !isfinite(y)) zg_bad(status, 2u);
     }
-    reduction[threadIdx.x] = sum; __syncthreads();
-    for (unsigned stride = ZG_THREADS / 2; stride; stride >>= 1) {
-        if (threadIdx.x < stride) reduction[threadIdx.x] += reduction[threadIdx.x + stride];
+}
+
+// Fused Triton head RMS: adjacent pairs, warp butterfly, then cross-warp tree.
+// Distinct from the vector-four Torch row RMS above.
+__device__ __forceinline__ float zg_head_square_sum(
+    const __nv_bfloat16* input, unsigned* status, float* reduction) {
+    const unsigned lane = threadIdx.x;
+    if (lane < ZG_HEAD_DIM / 2) {
+        const float a = zg_load(input + lane * 2);
+        const float b = zg_load(input + lane * 2 + 1);
+        float value = __fmaf_rn(a, a, __fmul_rn(b, b));
+        if (!isfinite(a) || !isfinite(b)) zg_bad(status, 2u);
+        for (unsigned offset = 16; offset; offset >>= 1)
+            value = __fadd_rn(value, __shfl_xor_sync(0xffffffffu, value, offset));
+        if ((lane & 31u) == 0) reduction[lane / 32] = value;
+    }
+    __syncthreads();
+    for (unsigned offset = ZG_HEAD_DIM / 128; offset; offset >>= 1) {
+        if (lane < offset) reduction[lane] = __fadd_rn(reduction[lane], reduction[lane + offset]);
         __syncthreads();
     }
-    if (threadIdx.x == 0 && !isfinite(reduction[0])) zg_bad(status, 2u);
-    const float inverse = rsqrtf(reduction[0] / (float)ZG_HIDDEN_WIDTH + zg_f32(scalars.words[1]));
-    if (threadIdx.x == 0 && (!isfinite(inverse) || inverse == 0.0f)) zg_bad(status, 2u);
-    for (unsigned c = threadIdx.x; c < ZG_HIDDEN_WIDTH; c += blockDim.x) {
-        const size_t i = (size_t)row * ZG_HIDDEN_WIDTH + c;
-        const float residual_value = zg_load(residual + i);
-        const float gamma = zg_load(raw_gamma + c);
-        const float y = residual_value * inverse * (1.0f + gamma);
-        output[i] = zg_store(y);
-        if (!isfinite(residual_value) || !isfinite(gamma) || !isfinite(inverse) || !isfinite(y)) zg_bad(status, 2u);
-    }
+    return reduction[0];
 }
 
 // Q/K zero-centered RMS over packed Q/G/K/V projection rows: one block/head.
@@ -234,23 +280,15 @@ void NAME(void* input_raw, void* raw_gamma_raw, void* output_raw, \
     const unsigned lane = threadIdx.x; \
     const unsigned row = group / (HEADS); \
     const unsigned head = group % (HEADS); \
-    const size_t input_i = (size_t)row * input_stride + input_offset + (size_t)head * input_head_stride + lane; \
-    const size_t output_i = (size_t)group * ZG_HEAD_DIM + lane; \
-    const float x = zg_load(input + input_i); \
-    reduction[lane] = x * x; \
-    if (!isfinite(x)) zg_bad(status, 2u); \
-    __syncthreads(); \
-    for (unsigned stride = ZG_THREADS / 2; stride; stride >>= 1) { \
-        if (lane < stride) reduction[lane] += reduction[lane + stride]; \
-        __syncthreads(); \
-    } \
-    if (lane == 0 && !isfinite(reduction[0])) zg_bad(status, 2u); \
-    const float inverse = rsqrtf(reduction[0] / (float)ZG_HEAD_DIM + zg_f32(scalars.words[4])); \
-    if (lane == 0 && (!isfinite(inverse) || inverse == 0.0f)) zg_bad(status, 2u); \
+    const size_t base = (size_t)row * input_stride + input_offset + (size_t)head * input_head_stride; \
+    const float sum = zg_head_square_sum(input + base, status, reduction); \
+    const float mean = __fmaf_rn(sum, 1.0f / (float)ZG_HEAD_DIM, zg_f32(scalars.words[4])); \
+    const float inverse = rsqrtf(mean); \
+    const float x = zg_load(input + base + lane); \
     const float gamma = zg_load(raw_gamma + lane); \
-    const float y = x * inverse * (1.0f + gamma); \
-    output[output_i] = zg_store(y); \
-    if (!isfinite(gamma) || !isfinite(inverse) || !isfinite(y)) zg_bad(status, 2u); \
+    const float y = __fmul_rn(__fmul_rn(x, inverse), __fadd_rn(1.0f, gamma)); \
+    output[(size_t)group * ZG_HEAD_DIM + lane] = zg_store(y); \
+    if (!isfinite(x) || !isfinite(gamma) || !isfinite(mean) || !isfinite(inverse) || inverse == 0.0f || !isfinite(y)) zg_bad(status, 2u); \
 }
 
 ZG_DEFINE_HEAD_RMS(zg_ot_query_head_rms_v1, ZG_QUERY_HEADS)

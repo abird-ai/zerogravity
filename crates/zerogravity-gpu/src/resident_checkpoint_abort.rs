@@ -108,7 +108,7 @@ pub async fn abort_upload(
         exact(values, &flat, "checkpoint abort prior physical bits")?;
     }
     let key = resident.service.physical_key();
-    let weak = Arc::downgrade(resident.service());
+    let weak = Arc::downgrade(&resident.service);
     let cap = resident.service.capacity() as u64;
     drop(prior);
     drop(session);

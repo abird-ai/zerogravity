@@ -16,6 +16,7 @@ use zerogravity_core::accelerator::program::MatrixAxes;
 pub(crate) const PAGE_BYTES: usize = 1024 * 1024;
 const CONTROL_BYTES: usize = 64 * 1024;
 /// Ordinary source windows retained behind the same 1 MiB device page.
+#[cfg(feature = "hip")]
 pub(crate) const RETIRED_PAGE_TRANSFERS: usize = 2;
 
 /// Exact host charge of the retained ordinary transfers. On the HIP route at

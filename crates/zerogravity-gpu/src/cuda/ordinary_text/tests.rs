@@ -297,7 +297,8 @@ fn selectable_contract_is_raw_gamma_headwise_and_excludes_unqualified_attention(
     assert!(source.contains("ZG_DEFINE_HEAD_RMS(zg_ot_query_head_rms_v1, ZG_QUERY_HEADS)"));
     assert!(source.contains("ZG_DEFINE_HEAD_RMS(zg_ot_key_head_rms_v1, ZG_KV_HEADS)"));
     assert!(source.contains("Q/K zero-centered RMS over packed Q/G/K/V projection rows"));
-    assert!(source.contains("head * input_head_stride + lane"));
+    assert!(source.contains("head * input_head_stride;"));
+    assert!(source.contains("zg_load(input + base + lane)"));
     assert!(source.contains("head * head_stride + gate_offset + lane"));
     assert!(source.contains("UNQUALIFIED causal online-FP32 softmax diagnostic"));
     assert!(source.contains("void zg_ot_sigmoid_v1"));
@@ -368,12 +369,7 @@ fn kernel_source_flags_nonfinite_gate_embedding_and_all_arithmetic_inputs() {
     assert!(source.contains("if (!isfinite(gate) || !isfinite(sigmoid)) zg_bad(status, 2u);"));
     assert!(source.contains("!isfinite(input_value) || !isfinite(residual_value)"));
     assert!(source.contains("!isfinite(key_value) || !isfinite(value_value)"));
-    assert_eq!(
-        source
-            .matches("!isfinite(reduction[0])) zg_bad(status, 2u);")
-            .count(),
-        3
-    );
+    assert_eq!(source.matches("!isfinite(mean)").count(), 3);
     assert_eq!(source.matches("inverse == 0.0f").count(), 3);
     for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         assert!(!value.is_finite());

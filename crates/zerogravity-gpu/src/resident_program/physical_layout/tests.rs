@@ -73,7 +73,7 @@ fn typed_regions_reject_misalignment_padding_short_reads_and_overflow() {
 }
 
 #[test]
-fn typed_roles_do_not_admit_weight_control_or_bf16_canonical_state() {
+fn typed_roles_reject_weights_and_allow_explicit_state_storage() {
     for kind in [ResidentPhysicalType::F32, ResidentPhysicalType::Bf16] {
         let layout = ResidentBufferLayout::new(kind, 1024).unwrap();
         for access in [DeviceAccess::Read, DeviceAccess::Write] {
@@ -89,11 +89,10 @@ fn typed_roles_do_not_admit_weight_control_or_bf16_canonical_state() {
                     .validate_role(BufferRole::ImmutableWeights, access)
                     .is_err()
             );
-            assert_eq!(
+            assert!(
                 layout
                     .validate_role(BufferRole::RecurrentState, access)
-                    .is_ok(),
-                kind == ResidentPhysicalType::F32
+                    .is_ok()
             );
         }
     }

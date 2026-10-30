@@ -1,7 +1,40 @@
-//! Split-half source products, including proportional zero-frequency pairs.
+//! Explicit split-half arithmetic profiles; caller owns the non-rotary tail.
 use crate::program_kernels::NONFINITE_VALUE;
 use crate::source_arithmetic::*;
 use cubecl::prelude::*;
+
+// CUDA's fused profile rounds only the final FMA to BF16. The CPU-target
+// `apply` below retains its separate BF16 product boundaries.
+#[cube(launch_unchecked)]
+pub(crate) fn apply_fp32_fma(
+    input: &[f32],
+    trig: &[f32],
+    output: &mut [f32],
+    status: &[Atomic<u32>],
+    #[comptime] width: usize,
+    #[comptime] count: usize,
+    #[comptime] rotation: usize,
+) {
+    let i = ABSOLUTE_POS;
+    if i < (count / width) * rotation / 2usize {
+        let head = i / (rotation / 2usize);
+        let pair = i % (rotation / 2usize);
+        let first = head * width + pair;
+        let second = first + rotation / 2usize;
+        let a = input[first];
+        let b = input[second];
+        let sin = bf16(trig[pair * 2usize]);
+        let cos = bf16(trig[pair * 2usize + 1usize]);
+        let x = bf16(fma(a, cos, neg(mul(b, sin))));
+        let y = bf16(fma(b, cos, mul(a, sin)));
+        output[first] = x;
+        output[second] = y;
+        if !source_bf16(a) || !source_bf16(b) || !finite(x) || !finite(y) {
+            status[0].fetch_or(NONFINITE_VALUE);
+        }
+    }
+}
+
 #[cube(launch_unchecked)]
 pub(crate) fn angles(
     frequencies: &[f32],

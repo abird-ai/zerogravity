@@ -77,6 +77,109 @@ checks and one complete gate per larger unit; isolate only concrete failures.
 
 ## Uncommitted
 
+### Owned GEMM continuation — 30 Oct
+
+**Resumed by owner: continue and finish.** Exact `.8B` cached47→50 passes;
+broader lifecycle/context and final qualification precede ROCm. Implementation
+is uncommitted; the four-frontier result is not general context acceptance.
+
+- [x] Owner approved a clean, high-performance driver-only replacement; retain
+  the pinned reference, exact numerical contract and existing resource limits.
+- [x] Shared tensor-core/SIMT GEMM: 180 signed-matrix/reduction/alignment cases
+  and eight authenticated prefill/cached projections pass exactly. Every case has
+  intact guards and retired buffer leases/events. Ordered, interleaved FP32,
+  BF16-rounded segments and lane reductions remain explicit arithmetic policies.
+  No cuBLAS initialization, private exports, alternate allocator or device scratch.
+- [x] Integrate under the original queue/flight/compiler-context reservations.
+  Typed SSA producers/consumers select projection roles; no prompt, node ordinal
+  or captured-case lookup in production lowering. Old opaque-provider probes and
+  captured-case selection remain test support. All 210 GPU host tests pass
+  (43 ignored); this precedes the subsequent RMS correction.
+- [x] Preserve the original conservative admission headroom; GEMM device scratch
+  is zero. Correct the previously omitted 280-byte immutable rotary table in
+  preflight and all context totals; the original admitted/refused cells and
+  host/device limits are unchanged. All 207 GPU host tests pass after updating
+  the stale F32-only role assertion to the already-explicit state storage.
+- [x] Fix shared GDN partition binding: bind only the selected schedule, not all
+  operands from both partitions. Keep recurrent cache/initial/final alias guards.
+  All 11 runtime host tests pass, including incomplete-partition/alias controls.
+- [ ] Close exact model arithmetic. Ordered GEMM first failed frontier47 with
+  233,282 differing logits / 5,219,072 state values. Source-role reductions then
+  matched both layer0 state domains, but still failed: 228,365 logits,
+  max absolute error0.3125, 4,965,314 state values. Matching token248068 is not
+  acceptance. The earlier missing-binding/fenced-cleanup run remains failed.
+- [x] Correct row RMS: retain FP32 residual sums independently of BF16 stores;
+  preserve pinned Torch vector-four reduction/FP32 operation boundaries. Initial
+  model revalidation matches Conv/Recurrent state in layers0–2 exactly.
+- [x] Isolate the attention projection: fresh prefill and natural-feedback cached
+  captures both match exactly, with guards and retirement. The eight projection
+  cases are operator evidence, not full-model cached execution.
+- [x] Correct Q/K RMS and rotary against retained fused Triton source and pinned
+  image instructions: adjacent-pair/warp reduction, then FP32 FMA rotation with
+  final BF16 rounding. Keep CPU-target BF16 product rounding unchanged. Independent
+  host-FMA rotary comparison passes all14 positions through32767, including
+  non-rotary tails/subnormals; 211 GPU host tests pass (43 ignored).
+- [x] Replace CPU-profile attention with parameterized tile-64 CUDA online
+  softmax: FTZ FP32 reduction/exponential/reciprocal, BF16 unnormalized weights,
+  tensor-core QK/PV and final BF16 normalization. No global device scratch or new
+  owner; conservative workspace admission is unchanged. Independent prefill and
+  cached attention captures match exactly; nine analytic causal/multitile cases
+  through a32K active prefix and three nonfinite refusals pass with intact guards
+  and retirement. These synthetic32K checks are not long-context model parity.
+- [x] Fresh-process ordinary cached47→48→49→50 passes exact all248,320 logits,
+  all42 domains and natural feedback at every step; unchanged reference digest
+  `4cd19e05b31f8979a1fa6e73c0d73aa3b3f61d4392d62dc2467e57a92d7de82b`.
+  Normal real-model shutdown retires bytes/events. Earlier attention failure
+  (229,459 logits /4,359,077 state values, max error0.28125) remains failed.
+- [x] Replace obsolete CPU-profile row/residual CUDA oracles with independent
+  retained staged CUDA/Torch kernels.16 cases cover widths1024/2048, rows1/2/17/64,
+  both residual modes and non-BF16-representable sums; outputs/residuals are exact,
+  status0, guards intact, leases/events retired. CPU arithmetic is unchanged.
+  Remove the obsolete CPU attention wrapper comparison; head-RMS low-dynamic-range
+  cross-profile smoke is explicitly named as smoke, not a CUDA rounding oracle.
+- [x] Real ordinary post-launch cancellation and abandoned-future probes pass
+  in separate fresh processes:396 submitted/original quarantined handles, prior
+  bits exact, inactive KV tails zero, unchanged root, global fence/peer refusal,
+  original1,577,288,037 resident bytes retained after external owners drop.
+- [x] Real normal lifecycle passes at all13 admitted capacities: `.8B`512–32K
+  and2B512–16K. Each has48 active tokens, pre-cancel/no ownership change,
+  snapshot/restore, stale-ready refusal, cached completion and zero-only shutdown
+  followed by namespace refusal. These are physical capacity/lifecycle scopes,
+  not long-active-context or2B reference numerical parity. The first normal probe
+  failed by querying model bytes after successful namespace closure; corrected
+  test observes the closed namespace and unfenced original arbiter.
+- [x] Real2B32K load refuses at pure admission:4,840,819,049 required versus
+  4,831,838,208 available. Inspected refusal branch precedes physical owner,
+  source attachment, queue, cleanup and allocation; limits remain unchanged.
+- [x] Re-run current assembled numerical source:180 synthetic/eight authenticated
+  GEMMs, two authenticated attentions, nine analytic/three refusal attention
+  cases, and fresh exact full `.8B` cached47→50 all pass. Every finite case has
+  exact outputs, every refusal has the required status, all guards/retirement pass.
+- [x] Checkpoint strict all-target CUDA GPU/facade Clippy passes with warnings
+  denied; repeated GPU host suite passes211/0failed/43ignored; formatting and
+  diff checks pass. Narrow stale foreign-provider gates to actual native/test
+  consumers; retain shared HIP/Vulkan ownership. No runtime arithmetic changes
+  from that final lint cleanup.
+- [x] Final isolated `scripts/check.sh` passes:2,129 Rust executions,0 failures,
+  83 ignored across283 suites;14 Python suites plus release/installer/shell/Nix
+  checks pass. CUDA/native host suite passes675/0failed/54ignored. Strict CUDA,
+  HIP/Qwen/Gemma and Vulkan/Gemma all-target checks pass; narrow unused test gates
+  and mechanical lint/visibility issues without changing backend arithmetic.
+- [ ] Recover the exact additional2B reference `TextCutlassBf16Sm80` image
+  (3,965,472 bytes; identity in `cuda/native/cubin_manifests.rs`). Approved2B
+  model bytes are already in the canonical cache and load successfully. No match
+  among1,252 SM80 images extracted from retained cuBLAS/cuBLASLt/Torch/VLLM
+  libraries, nor their accessible embedded ELF inventory. No substitution/repin.
+- [ ] Obtain independently trusted active-context comparison inputs. The retained
+  Rust reference is finite cached47→50 at512 capacity; the Python reference
+  protocol is also finite, and requires retained original/capture-source,
+  observer/collector and owner inputs not found in the current qualification
+  root. Capacity-only48-token runs and analytic32K attention do not close this.
+  Do not restore deleted runs or weaken the reference to manufacture acceptance.
+- [ ] After accepted `.8B` cached47→50, finish physical lifecycle/fault/context,
+  complete repository gate and ROCm. Long-context/2B coverage and measured tuning
+  remain separate; production routing stays disabled.
+
 ### Provider boundary investigation — 30 Oct
 
 - [x] Trace the real refused call in a symbolized, isolated model-free process.
@@ -93,13 +196,12 @@ checks and one complete gate per larger unit; isolate only concrete failures.
   (`a094798c2e742e7493f20800200c0a66`). It still fails before allocation/math.
   Remove all temporary probes; allocator/provider source is byte-identical to
   `97c52ec`. These failed probes are not provider or numerical qualification.
-- [ ] Confirm permission to replace ordinary opaque BLAS execution with a genuine
-  parameterized driver-only GEMM under the existing Rust engine/queue/arbiter,
-  retaining pinned cuBLAS as reference. This changes execution implementation,
-  not model bytes, precision, exact cached47→50 acceptance or ownership limits.
-  Otherwise an audited complete runtime-interface/lifetime adapter is needed;
-  partial declarations, UUID allowlists and guessed callback ABIs are not enough.
-- [ ] CUDA parity/lifecycle/context remain open; ROCm on `pvl-x2` has not started.
+- [x] Owner approved parameterized driver-only GEMM under the existing Rust
+  engine/queue/arbiter, retaining pinned cuBLAS as reference. Model bytes,
+  precision, exact cached47→50 acceptance and ownership limits stay unchanged.
+  No partial runtime declarations, UUID allowlists or guessed callback ABIs.
+- [ ] Broader CUDA active-context/2B numerical coverage and final gate remain
+  open after the owned `.8B` pass; ROCm on `pvl-x2` has not started.
 
 ### Current physical continuation — 29 Oct
 

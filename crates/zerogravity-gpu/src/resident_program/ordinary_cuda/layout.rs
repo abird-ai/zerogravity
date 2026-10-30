@@ -33,9 +33,10 @@ const NODES: usize = 255;
 const VALUE_ALIGNMENT: usize = 512;
 const VALUE_MAX_SLOT_BYTES: usize = 2 * 1024 * 1024;
 const VALUE_MAX_TOTAL_BYTES: usize = 64 * 1024 * 1024;
-const FOREIGN_PROVIDER_BYTES: usize = 64 * 1024 * 1024;
-const BLAS_WORKSPACE_BYTES: usize = 8_519_680;
-const BLAS_SENTINEL_BYTES: usize = 4;
+// Keep the original conservative admission envelope while qualifying the new
+// executor. GEMM itself has no device scratch or opaque-provider allocation;
+// reclaiming this headroom is a separate admission-policy change.
+const ADMISSION_HEADROOM_BYTES: usize = 64 * 1024 * 1024 + 8_519_680 + 4;
 const TOKEN_BYTES: usize = MAX_ROWS * 4;
 const INVERSE_FREQUENCY_BYTES: usize = 32 * 4;
 const F32_LOGITS_BYTES: usize = VOCABULARY * 4;
@@ -84,8 +85,6 @@ pub(super) struct OrdinaryCudaLayout {
     parameters: Arc<[ParameterSpec]>,
     gdn: GdnRuntimeWorkspaceLayout,
     preflight: ResidentPreflight,
-    foreign_provider_bytes: usize,
-    blas_bytes: usize,
 }
 impl OrdinaryCudaLayout {
     pub(super) fn analyze(plan: Arc<ForwardPlan>) -> Result<Arc<Self>> {
@@ -204,9 +203,11 @@ impl OrdinaryCudaLayout {
             value_bytes: value_total_bytes,
             workspace_bytes,
             status_bytes: STATUS_BYTES,
-            parameter_bytes: parameter_bytes
-                .checked_add(INVERSE_FREQUENCY_BYTES)
-                .ok_or_else(|| Error::Limit("ordinary CUDA parameter byte sum".into()))?,
+            parameter_bytes: checked_sum([
+                parameter_bytes,
+                INVERSE_FREQUENCY_BYTES,
+                rotary::immutable_bytes(),
+            ])?,
             prior_state_bytes: state_bytes,
             candidate_state_bytes: state_bytes,
             states: states.to_vec(),
@@ -224,8 +225,6 @@ impl OrdinaryCudaLayout {
             parameters: parameters.into(),
             gdn,
             preflight,
-            foreign_provider_bytes: FOREIGN_PROVIDER_BYTES,
-            blas_bytes: BLAS_WORKSPACE_BYTES + BLAS_SENTINEL_BYTES,
         }))
     }
 
@@ -256,18 +255,8 @@ impl OrdinaryCudaLayout {
     pub(super) fn preflight(&self) -> &ResidentPreflight {
         &self.preflight
     }
-    pub(super) fn foreign_provider_bytes(&self) -> usize {
-        self.foreign_provider_bytes
-    }
-    pub(super) fn blas_bytes(&self) -> usize {
-        self.blas_bytes
-    }
     pub(super) fn total_admission_bytes(&self) -> Result<usize> {
-        checked_sum([
-            self.preflight.total_with_state()?,
-            self.foreign_provider_bytes,
-            self.blas_bytes,
-        ])
+        checked_sum([self.preflight.total_with_state()?, ADMISSION_HEADROOM_BYTES])
     }
 }
 
@@ -299,7 +288,7 @@ fn require_plan_shape(plan: &ForwardPlan) -> Result<()> {
         ));
     }
     let mut counts = OperationCounts::default();
-    for node in plan.nodes() {
+    for (index, node) in plan.nodes().iter().enumerate() {
         let PlanOperation::SourceOperatorTemplate { descriptor, .. } = &node.operation else {
             return Err(Error::Unsupported(
                 "ordinary CUDA plan contains non-template operation".into(),
@@ -313,6 +302,9 @@ fn require_plan_shape(plan: &ForwardPlan) -> Result<()> {
             return Err(Error::State(
                 "ordinary CUDA template source/rows/vocabulary differs".into(),
             ));
+        }
+        if matches!(descriptor.kind(), SourceOperatorKind::Projection { .. }) {
+            super::arithmetic::projection_use(plan, index)?;
         }
         counts.add(descriptor.kind());
     }

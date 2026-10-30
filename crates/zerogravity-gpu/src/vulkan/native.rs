@@ -17,7 +17,9 @@ use cubecl_common::device::ServiceId;
 use cubecl_core::CubeKernel;
 use cubecl_runtime::config::{CubeClRuntimeConfig, RuntimeConfig};
 use std::any::Any;
-use std::sync::{Arc, Mutex, Weak};
+#[cfg(feature = "hardware-abort-probe")]
+use std::sync::Weak;
+use std::sync::{Arc, Mutex};
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspace};
 use zerogravity_core::accelerator::SourceIdentity;
 use zerogravity_core::resource_arbiter::{
@@ -175,23 +177,13 @@ struct Context {
     _host: Arc<PersistentHost>,
     compiler: Arc<PersistentCompiler>,
 }
+#[derive(Default)]
 struct Totals {
     modules: usize,
     representation: usize,
     host: usize,
     device: usize,
     host_owners: Vec<WindowWorkspace>,
-}
-impl Default for Totals {
-    fn default() -> Self {
-        Self {
-            modules: 0,
-            representation: 0,
-            host: 0,
-            device: 0,
-            host_owners: Vec::new(),
-        }
-    }
 }
 struct Admission {
     budget: Arc<NativeCacheBudget>,

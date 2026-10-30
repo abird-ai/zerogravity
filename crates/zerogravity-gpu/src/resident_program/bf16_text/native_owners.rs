@@ -132,13 +132,6 @@ impl TextNativeOwners {
             .as_ref()
             .and_then(|native| native.source_page_actor(service))
     }
-    #[cfg(not(all(feature = "qualification", feature = "hip")))]
-    pub(super) fn source_page_actor(
-        &self,
-        _service: &crate::resident_leases::ResidentService,
-    ) -> Option<crate::resident_leases::source_page::PageActor> {
-        None
-    }
     pub(super) fn device_bytes(&self) -> usize {
         self.device_bytes
     }

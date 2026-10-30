@@ -254,6 +254,7 @@ impl OrdinaryCudaCold {
                     let projection = OrdinaryCudaProjection::prepare_with_weights(
                         descriptor,
                         find_pack(descriptor.matrices())?,
+                        super::arithmetic::projection_use(layout.plan(), index)?,
                     )?;
                     if projections.insert(index, projection).is_some() {
                         return Err(Error::State(

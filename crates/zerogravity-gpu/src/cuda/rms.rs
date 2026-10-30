@@ -273,3 +273,7 @@ pub(crate) use pooled::{
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 #[path = "rms/cohort.rs"]
 pub(crate) mod cohort;
+
+#[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
+#[path = "rms/ordinary_tests.rs"]
+mod ordinary_tests;

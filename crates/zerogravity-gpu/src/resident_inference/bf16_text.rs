@@ -171,6 +171,7 @@ impl Bf16TextCandidate {
     /// live through every prepared native, initialization, flight and quarantine
     /// owner. An arbitrary Arc is not proof. Use the validated safe facade.
     #[cfg(all(feature = "qualification", feature = "hip", target_os = "linux"))]
+    #[allow(clippy::too_many_arguments)]
     pub async unsafe fn load_hip_qualification(
         device: Device,
         source: VerifiedTensorSource,
@@ -421,7 +422,7 @@ impl Bf16TextCandidate {
     pub fn qualification_host_bytes() -> u64 {
         #[cfg(feature = "hip")]
         {
-            return crate::hip::native::SINGLE_SOURCE_QUALIFICATION_HOST_BYTES;
+            crate::hip::native::SINGLE_SOURCE_QUALIFICATION_HOST_BYTES
         }
         #[cfg(not(feature = "hip"))]
         {
@@ -448,6 +449,7 @@ impl Bf16TextCandidate {
         feature = "vulkan",
         target_os = "linux"
     ))]
+    #[allow(clippy::too_many_arguments)]
     pub async unsafe fn load_vulkan_qualification(
         device: Device,
         source: VerifiedTensorSource,

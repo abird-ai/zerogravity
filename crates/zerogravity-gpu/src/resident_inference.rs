@@ -91,7 +91,7 @@ use crate::resident_program::{
 };
 use async_lock::Mutex;
 use cubecl::{Device, bytes::Bytes, server::Handle};
-#[cfg(all(test, feature = "qualification"))]
+#[cfg(all(test, feature = "qualification", feature = "cuda"))]
 use std::path::Path;
 use std::sync::Arc;
 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
@@ -106,7 +106,7 @@ use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, ResourceOwner};
 use zerogravity_core::session_root::{RootAttempt, RootBinding, SessionAuthority};
 use zerogravity_core::source::TensorSource;
-#[cfg(all(test, feature = "qualification"))]
+#[cfg(all(test, feature = "qualification", feature = "cuda"))]
 use zerogravity_model_qwen35::LoadedQwenModel;
 
 mod state_pool;
@@ -472,7 +472,6 @@ impl ResidentModel {
         device: Device,
         source: VerifiedTensorSource,
         plan: Arc<ForwardPlan>,
-        providers: crate::OrdinaryCudaProviderPaths,
         provider_cap: usize,
         device_cap: u64,
         cancelled: Option<&std::sync::atomic::AtomicBool>,
@@ -510,14 +509,8 @@ impl ResidentModel {
         };
         let service =
             physical.attach_model(ResidentSource::Windows(source.clone()), owner, provider_cap)?;
-        let prepared = ordinary_cuda::prepare_program(
-            service.clone(),
-            admission,
-            source,
-            &providers,
-            cancelled,
-        )
-        .await?;
+        let prepared =
+            ordinary_cuda::prepare_program(service.clone(), admission, source, cancelled).await?;
         let program = prepared.program;
         if program.source_identity() != source_identity
             || program.plan().source() != source_identity
@@ -765,10 +758,6 @@ impl ResidentModel {
             }),
             allocation: Mutex::new(()),
         }))
-    }
-    #[cfg(feature = "hardware-abort-probe")]
-    pub(crate) fn service(&self) -> &Arc<ResidentService> {
-        &self.service
     }
     pub async fn session(self: &Arc<Self>) -> Result<ResidentSession> {
         self.session_with(|_| Ok(())).await
@@ -1377,28 +1366,8 @@ impl ResidentModel {
             bf16_text_source::check_cancel(step.cancelled)?;
         }
         #[cfg(feature = "hardware-abort-probe")]
-        if self
-            .abort_after_launch
-            .fetch_update(
-                std::sync::atomic::Ordering::AcqRel,
-                std::sync::atomic::Ordering::Acquire,
-                |remaining| remaining.checked_sub(1),
-            )
-            .is_ok_and(|remaining| remaining == 1)
-        {
-            self.launch_seen
-                .store(flight.handles().len(), std::sync::atomic::Ordering::Release);
-            // Owned probes may resume by clearing the observed launch count.
-            // Terminal unknown probes leave it set and drop this actual flight.
-            std::future::poll_fn(|_| {
-                if self.launch_seen.load(std::sync::atomic::Ordering::Acquire) == 0 {
-                    std::task::Poll::Ready(())
-                } else {
-                    std::task::Poll::Pending
-                }
-            })
+        self.qualification_after_launch(flight.handles().len())
             .await;
-        }
         let mut cohort = Vec::new();
         let add = |cohort: &mut Vec<_>, handle: &Handle, count: usize| -> Result<()> {
             let lease = lease_for(&accesses, handle)?;
@@ -1690,6 +1659,9 @@ impl ResidentModel {
             output,
             cancelled,
         )?;
+        #[cfg(feature = "hardware-abort-probe")]
+        self.qualification_after_launch(flight.handles().len())
+            .await;
         ordinary_not_cancelled(cancelled)?;
 
         let expected = workspace.program.plan().proposed_domains();
@@ -2613,7 +2585,7 @@ pub(crate) mod bf16_text_source;
 #[cfg(feature = "qualification")]
 pub mod diagnostics;
 
-#[cfg(all(test, feature = "qualification"))]
+#[cfg(all(test, feature = "qualification", feature = "cuda"))]
 async fn load_qualified(
     device: Device,
     model: Arc<LoadedQwenModel>,

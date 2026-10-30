@@ -540,6 +540,67 @@ fn caller_handle_binding_rejects_physical_state_aliases_and_slices_exact_views()
 }
 
 #[test]
+fn partitions_bind_only_their_own_operands_and_keep_state_alias_guards() -> Result<()> {
+    use GdnRuntimePartition::{Convolution, Recurrent};
+    use cubecl::server::Handle;
+    use cubecl_common::device::{DeviceId, ServiceId};
+    use cubecl_core::environment::stream::StreamId;
+
+    let service = ServiceId::of::<()>(DeviceId::new(0, 0));
+    let stream = StreamId::current();
+    let config = runtime_config()?;
+    let slot = GdnRuntimeCacheSlot::new(1)?;
+    for plan in [
+        GdnRuntimePlan::prefill_chunk(config, slot, 0, 1, false)?,
+        GdnRuntimePlan::prefill_chunk(config, slot, 0, 47, false)?,
+        GdnRuntimePlan::prefill_chunk(config, slot, 47, 3, true)?,
+        GdnRuntimePlan::cached_decode(config, slot, 50)?,
+    ] {
+        for partition in [Convolution, Recurrent] {
+            let range = plan.partition_range(partition)?;
+            let mut handles = BTreeMap::new();
+            for binding in plan.schedule[range.clone()]
+                .iter()
+                .flat_map(|step| &step.bindings)
+            {
+                handles.entry(binding.role).or_insert_with(|| {
+                    Handle::new(
+                        service,
+                        stream,
+                        plan.workspace.bytes(binding.role).unwrap() as u64,
+                    )
+                });
+            }
+            assert!(plan.bind_schedule_handles(&handles).is_err());
+            let bound = plan.bind_schedule_range_handles(&handles, range.clone())?;
+            assert_eq!(bound.len(), range.len());
+            for (step, actual) in plan.schedule[range.clone()].iter().zip(bound) {
+                for (binding, handle) in step.bindings.iter().zip(actual) {
+                    assert_eq!(handle.size_in_used(), binding.bytes as u64);
+                }
+            }
+            if handles.contains_key(&GdnRuntimeBuffer::InitialState) {
+                let old = handles
+                    .insert(
+                        GdnRuntimeBuffer::FinalState,
+                        handles[&GdnRuntimeBuffer::InitialState].clone(),
+                    )
+                    .unwrap();
+                assert!(
+                    plan.bind_schedule_range_handles(&handles, range.clone())
+                        .is_err()
+                );
+                handles.insert(GdnRuntimeBuffer::FinalState, old);
+            }
+            let first = plan.schedule[range.clone()][0].bindings[0].role;
+            handles.remove(&first);
+            assert!(plan.bind_schedule_range_handles(&handles, range).is_err());
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn mathematical_conv_and_recurrent_partitions_cover_each_schedule_once() -> Result<()> {
     use GdnRuntimePartition::{Convolution, Recurrent};
     use GdnRuntimeScheduleKind::*;

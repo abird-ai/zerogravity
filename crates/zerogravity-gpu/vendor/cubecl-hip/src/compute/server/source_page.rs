@@ -33,7 +33,7 @@ fn same_page(left: &BufferBinding, right: &BufferBinding) -> bool {
 }
 
 #[cfg(not(feature = "source-page-event-probe"))]
-struct SourcePageEventProbeState;
+pub(crate) struct SourcePageEventProbeState;
 
 #[cfg(feature = "source-page-event-probe")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

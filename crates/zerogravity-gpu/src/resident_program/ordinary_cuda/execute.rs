@@ -66,7 +66,7 @@ impl OrdinaryCudaBody {
             }
         }
         flight.retain_completion_owner(self.cold().clone())?;
-        flight.retain_completion_owner(self.blas().clone())?;
+        flight.retain_completion_owner(self.gemm().clone())?;
 
         let client = self.cold().service().client();
         self.clear_and_bind_call(client, call)?;
@@ -390,7 +390,7 @@ impl OrdinaryCudaBody {
                 let projection = self.cold().projection(node_index)?;
                 let input_lease = self.cold().value_lease(input.0 as usize)?;
                 let output_lease = self.cold().value_lease(output.0 as usize)?;
-                projection.enqueue(descriptor, self.blas(), flight, input_lease, output_lease)?;
+                projection.enqueue(descriptor, self.gemm(), flight, input_lease, output_lease)?;
                 let output_handle = self.value_handle(request, *output, outputs[0])?;
                 let mut launches = 1usize;
                 launches += attention::certify(

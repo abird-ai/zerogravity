@@ -1,8 +1,7 @@
 //! Bound ordinary CUDA ResidentProgram body.
-//! Request-local execution is added separately; this binding only joins the
-//! cold source owner with the one opaque BLAS owner under the existing program.
+//! Join immutable source and allocation-free GEMM under the existing program.
 
-use super::{OrdinaryCudaBlas, cold::OrdinaryCudaCold};
+use super::{OrdinaryCudaGemm, cold::OrdinaryCudaCold};
 use crate::{
     resident_leases::ResidentLease,
     resident_program::{
@@ -17,7 +16,7 @@ use zerogravity_core::{
 
 pub(in crate::resident_program) struct OrdinaryCudaBody {
     cold: Arc<OrdinaryCudaCold>,
-    blas: Arc<OrdinaryCudaBlas>,
+    gemm: Arc<OrdinaryCudaGemm>,
     owned_accesses: Arc<[(ResidentLease, DeviceAccess)]>,
     state_accesses: Arc<[(ResidentLease, DeviceAccess)]>,
     logit_accesses: Arc<[(ResidentLease, DeviceAccess)]>,
@@ -25,26 +24,12 @@ pub(in crate::resident_program) struct OrdinaryCudaBody {
 impl OrdinaryCudaBody {
     pub(super) fn bind(
         cold: Arc<OrdinaryCudaCold>,
-        blas: Arc<OrdinaryCudaBlas>,
+        gemm: Arc<OrdinaryCudaGemm>,
     ) -> Result<(ResidentProgram, Arc<Self>)> {
         cold.service().ensure_usable()?;
-        blas.require_service(cold.service())?;
-        if cold.layout().total_admission_bytes()?
-            != cold
-                .layout()
-                .preflight()
-                .total_with_state()?
-                .checked_add(cold.layout().foreign_provider_bytes())
-                .and_then(|n| n.checked_add(cold.layout().blas_bytes()))
-                .ok_or_else(|| Error::Limit("ordinary CUDA bound admission sum".into()))?
-        {
-            return Err(Error::State(
-                "ordinary CUDA cold/resource admission identity differs".into(),
-            ));
-        }
-
+        gemm.require_service(cold.service())?;
         let mut unique = BTreeMap::<BufferLeaseId, (ResidentLease, DeviceAccess)>::new();
-        for (lease, access) in cold.accesses().into_iter().chain(blas.accesses()) {
+        for (lease, access) in cold.accesses() {
             if !Arc::ptr_eq(lease.service(), cold.service())
                 || lease.source_identity() != cold.plan().source()
                 || lease.service_generation() != cold.service().generation()
@@ -80,11 +65,7 @@ impl OrdinaryCudaBody {
             ranges.push(range);
         }
 
-        let mut preflight = cold.layout().preflight().clone();
-        preflight.workspace_bytes = preflight
-            .workspace_bytes
-            .checked_add(cold.layout().blas_bytes())
-            .ok_or_else(|| Error::Limit("ordinary CUDA BLAS resident preflight".into()))?;
+        let preflight = cold.layout().preflight().clone();
         let expected_owned =
             accesses
                 .iter()
@@ -100,11 +81,7 @@ impl OrdinaryCudaBody {
             )));
         }
 
-        let logit_accesses = cold
-            .accesses()
-            .into_iter()
-            .chain(blas.execution_accesses())
-            .collect::<Vec<_>>();
+        let logit_accesses = cold.accesses();
         let logits_id = cold.logits_f32().id();
         let state_accesses = logit_accesses
             .iter()
@@ -113,7 +90,7 @@ impl OrdinaryCudaBody {
             .collect::<Vec<_>>();
         let body = Arc::new(Self {
             cold: cold.clone(),
-            blas,
+            gemm,
             owned_accesses: accesses.into(),
             state_accesses: state_accesses.into(),
             logit_accesses: logit_accesses.into(),
@@ -133,8 +110,8 @@ impl OrdinaryCudaBody {
     pub(super) fn cold(&self) -> &Arc<OrdinaryCudaCold> {
         &self.cold
     }
-    pub(super) fn blas(&self) -> &Arc<OrdinaryCudaBlas> {
-        &self.blas
+    pub(super) fn gemm(&self) -> &Arc<OrdinaryCudaGemm> {
+        &self.gemm
     }
     pub(in crate::resident_program) fn owned_accesses(&self) -> &[(ResidentLease, DeviceAccess)] {
         &self.owned_accesses
@@ -174,8 +151,7 @@ impl ResidentProgram {
                 "ordinary CUDA retirement requested from another resident body".into(),
             ));
         };
-        // Root 0 is event bookkeeping only. Shutdown publishes no logical root.
-        body.blas().retire(0).await
+        body.gemm().retire()
     }
 
     pub(crate) fn launch_ordinary_cuda(
