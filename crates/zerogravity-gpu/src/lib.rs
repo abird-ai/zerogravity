@@ -90,6 +90,8 @@ mod source_arithmetic;
 ))]
 mod source_attention;
 mod source_float;
+#[cfg(feature = "qwen-source-qualification")]
+mod source_gdn;
 #[cfg(any(
     feature = "gemma-bf16-qualification",
     feature = "qwen-source-qualification"

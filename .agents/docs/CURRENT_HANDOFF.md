@@ -38,7 +38,7 @@ restores initial GDN empty-state addition; `1f29a42` adds actual source-bound
 replays and healthy lifetime controls. Final gate passes2,136 Rust/17 Python
 suites. Canonical cache/native unknown/fault lifetimes now pass the inspected
 r1/r2 qualification below and the final gate; signed checkpoint `85f33c7` landed.
-Connected CPU padded GDN now matches64,345,520 original words; its final gate
+Signed `55536ce` CPU padded GDN matches64,345,520 original words; its final gate
 passes2,142 Rust/17 Python suites. Native multi-row integration is next, not yet
 qualified. Scalable ordinary execution, general27B, contexts/concurrency/vLLM
 remain open.
@@ -197,7 +197,8 @@ adds cumulative-overflow/observer-refusal controls. Fresh r3 original comparison
 and CPU/diagnostic strict pass. Final isolated `scripts/check.sh` passes2,142
 Rust/0fail/87ignored/283 suites,17 Python suites/178 cases plus release/installer/
 shell/Nix. Existing feature warnings and skips remain scoped; no physical replay
-is inferred. Checkpoint contains only this arithmetic, test support and plans.
+is inferred. Signed checkpoint `55536ce` contains only this arithmetic, test support and
+plans. Post-commit plan grouping is carried into the next substantive unit.
 Evidence:`gdn-connected-{original,host,strict}-r{2,3}.log`,
 `gdn-connected-diagnostic-strict-r1.log`, `gdn-connected-assembled-gate-r1.log`.
 No model/call-free/HIP integration yet. Next implement actual HIP chunk math,
@@ -210,6 +211,56 @@ histories: application/database/Ollama images, no named vLLM candidate. Only
 public repository/name fields requested, no container/device work or download.
 `x2-untagged-runtime-inventory-r1.log` is name metadata, not exhaustive package
 inspection or baseline authority; compatible approved ROCm vLLM remains open.
+
+**Native chunk continuation:** shared `source_gdn/chunk.rs` and separate rare-exp
+GPU arithmetic now compile; no model lowering/production selection exists.
+Test-only composition uses original source/native/service/queue/flight owners,
+256MiB admitted host workspace and64MiB case scratch, streams independent input
+records and compares all stages/returned state. It also reads back all inputs/
+prior state and tests four numerical refusals without exporting math through Ready.
+Original transport only widens BF16 bits/reorders records; SHA256
+`0b314ec242346caec8d7f2ed2d0e45647cf8eed37649f97c66f907c5a657a071`,
+299,795,904 bytes. R1 macro path and r3 ambiguous slice type compile failures
+are retained; strict r4 passes. Frozen source archive SHA256
+`79dac12c18259f5dea34b1199b15b0f6e32232a9050850b99551fd384cc0d5ad`,
+40,560,640 bytes/2,148 files, base55536ce plus dirty implementation, transferred
+with all bytes authenticated to bounded non-Git x2 scratch. Durable unit:
+`zg-source-gdn-chunk-20261031-r1.service`, invocation
+`fc0379a845354d57be6cc34f23ee5174`, initial MainPID974422. Watch`fba2bb67`
+observed terminal failure: release build passed, native refused `HIP original
+complete source catalogue metadata owner` before all19 cases. The diagnostic
+requested4MiB against the exact1MiB original contract. Parent101/MainPID0/empty
+recursive descendants, source/binary/log identities saved; unit stopped (failed
+state retained), starter905 closed. No numerical/in-process retirement pass.
+Caller now requests1MiB; original guard/arithmetic unchanged. R2 frozen archive
+`e3387a9ed607518c54f8425e6c39f7d2484811222f2b92222e2aa2ff476543b2`,
+invocation`ee5c37a887b94376a9c2e7837110f81b`, watch`39fc9f3d`: all19 cases/
+380 fields/64,345,520 words exact; every input/prior unchanged, per-case resident
+baseline restored. Independent all-scope inspector reconciles the pinned original
+manifest. First negative control fails a fixture mistake: completed Writes are
+physically initialized regardless of Ready export selection. Remaining3 controls
+and final retirement unverified. Preserve failed101/empty descendants/evidence;
+owned unit stopped. Fix diagnostic only: exact original service/event/root context
+and export cohort, negative Ready contains only status/no math. No completion or
+arithmetic change. R3 archive
+`2afc28f5a1987ec04e84e4b858f2672a848fb625e499336ab533c0fc1ffa5715`, binary
+`3c5db98e1c2dfdff7cc279aa6734d2d63aa5df85d99304a998e521fb6a69db79`, unit
+`zg-source-gdn-chunk-20261031-r3.service`, invocation
+`01091a34a8f54d6c92a2bb95ee11b8f0`, watch`90ef500e`: all19 cases/380 fields/
+64,345,520 words exact; all4 numerical status controls retain inputs and export
+only status, never math, through original Ready. Physical writes complete as
+specified; no model publication exists. Per-case resident baseline intact, all20
+native modules/code/host/device retire, namespace closes. All scopes independently
+inspected; parent0/MainPID0/empty recursive descendants saved; unit stopped.
+Shared HIP/Vulkan strict checks pass. Final isolated `scripts/check.sh` r2 passes
+2,142 Rust/0fail/87ignored/283 suites,17 Python suites/178 cases plus packaging.
+R1 formatting-only refusal retained; module declaration order corrected without
+math/ownership changes. Implementation checkpoint ready. Existing dotlink.service GPU context
+was idle at inspection and remains untouched; preserve the initial overbroad
+empty-FD preflight refusal. Non-timed operator run only, no performance or
+exclusive-device claim. No full-model, serving or Vulkan physical grant.
+Old receipts d35de2b5/9906f901 are closed captures; fba2bb67/39fc9f3d are closed
+native failures. R3 is inspected/stopped; do not repeat it on a stale receipt.
 Details remain in model-execution/numerics plans.
 
 Repository:

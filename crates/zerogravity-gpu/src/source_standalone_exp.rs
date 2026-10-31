@@ -4,6 +4,8 @@ use crate::program_kernels::NONFINITE_VALUE;
 use crate::source_arithmetic::{add, mul, sub};
 use cubecl::prelude::*;
 
+pub(crate) mod negative;
+
 /// Every add/multiply crosses the shared integer-rounding FP32 boundary.
 /// Tables are the mathematically derived core contract, uploaded unchanged.
 #[cube]

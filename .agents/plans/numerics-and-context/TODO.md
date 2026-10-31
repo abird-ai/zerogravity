@@ -15,6 +15,81 @@ long contexts and Qwen27B. Bindings/readers/helpers are internal steps, with foc
 checks and one complete gate per larger unit; isolate only concrete failures.
 ## Committed
 
+### `55536ce` — original multi-row references and CPU chunk GDN
+
+- [x] Inspect both new original-source call references. Existing pinned
+  Torch2.13/Transformers5.17 AVX2 CPU image, genuine0.8B/2B parameters, no GPU,
+  network/download or ZeroGravity oracle. Fresh47/48/49/50 plus two natural
+  decode calls each; common512-token inputs via64-row and ragged chunks,
+  then512→513→514. Two replays/model,66 forwards/7,608 records, full last-row
+  vocabulary/all24 layers/all populated state.0.8B/2B archives contain
+  873,649,152/939,144,192 float words and2,879,819,424/3,010,809,504 bytes.
+  Every record/selection/source mapping/replay and child/group/container/EOF
+  closure inspected; source-reference evidence only, not HIP acceptance.
+- [x] Durable local owner:`zg-source-calls-original-20261031-r1.service`,
+  invocation`dca08936d8e649b686a6e0b06e758d0e`, initial MainPID3841596;
+  watch`d35de2b5` succeeded33 checks. Both child exits0; parent0/MainPID0/empty
+  recursive descendants saved, completed owned unit stopped. Run:
+  `ordinary-hip-20261031.Jc5XWh/source-calls-original-all-scopes-r1.log`;
+  capture/driver/validator remain bounded run-local tools. Case/input data:
+  `crates/zerogravity/tests/support/qwen_source_calls.json`.
+- [x] Separate original replay from chunk invariance without rerunning models.
+  At the same512 input IDs, uniform64 versus ragged47/64/17 differs in
+  7,563,855/7,532,508 of8,555,008 state/logit words (0.8B/2B), including
+  218,352/215,987 fullV words. Both select token11; that does not establish
+  equality/quality. Same-plan replays remain exact. Cross-chunk bit equality
+  is false, not required or advertised; no tolerance change. Evidence:
+  `source-calls-original-chunk-sensitivity-r1.log`.
+- [x] Inspect original padded GDN arithmetic:19 synthetic operator cases,
+  16/48 heads, rows1/17/47/48/49/50/64, empty/initialized state and two stressed
+  decay cases. Original public HF function unchanged; trace observes its
+  unwrapped body. Two exact replays/case,484 records/74,948,432 float words,
+  280,669,088 bytes. Raw SHA256
+  `953da106117d85cbcd4310863a92ec30b39320011443c35f8c4ccf35355ec92b`.
+  Every stage/hash/shape/derived solve inspected; child/group/container/reap/EOF
+  closure and durable parent0/empty descendants saved; owned r2 unit stopped.
+  r1 targeted wrapper code incorrectly and failed; its exit1/closed ownership
+  remains preserved. Evidence:`gdn-chunk-original-validation-r2.log` under the
+  same run root. This is operator reference data, not trained-model evidence.
+- [x] Internal CPU building block: `gdn/chunk.rs` implements the original
+  padded unit-lower solve. Separate products, four interleaved accumulators,
+  `(s0+s2)+(s1+s3)`, scalar tail, then one RHS subtraction. Original SSE2 code
+  corroborates the order. All38 observed solves/7,077,888 words match exactly;
+  four host/refusal controls and CPU all-target strict check pass. Preserve the
+  initial test-literal typing failure. No native/lowering/serving eligibility;
+  assembled CPU-core qualification follows below.
+- [x] Diagnose all114 original matrix/state stages:21,233,664 words match after
+  retaining original initialized-C addition after the inner FMA chain. Existing
+  Zen kernel contains that separate C load/add/store. Earlier raw-dot candidate
+  failed685 words, all signed zeros in stressed initialized inter-chunk output;
+  no canonicalization/tolerance change. Logs:`gdn-gemm-orders-r{1,2,3}.log`,
+  `gdn-gemm-inspection-r2.log`; preserve the first inspection's incorrect
+  stage-ordinal/epilogue-mode assumption. Arithmetic is now in the CPU chunk core,
+  not yet HIP.
+- [x] Implement connected original chunk core, not a sequence of cached-one
+  approximations: BF16 inputs, source L2/scale, padded64 FP64 cumsum, causal
+  decays, both triangular solves, initialized-C matrix products, populated-state
+  correction/update and BF16 token-major output. Explicit prior state remains
+  private; a one-row chunk is not inferred to be cached recurrence.
+- [x] Implement a separate nonpositive/causal-mask exp primitive. Original rare
+  path `vsexp_cout_rare`, ELF0xb41a130: FP64 reduction/polynomial/table/compensated
+  scaling, no FMA/libm substitution. Derive64 exp2 high/relative-low pairs at180
+  digits; all128 mathematical words match original table. Original normal
+  profile and its |x|<=87 refusal remain unchanged. Positive/NaN/+inf refuse;
+  -inf is only an explicit causal-mask operand, not accepted source log-decay.
+- [x] Connected CPU comparison passes every19 case/380 computed and returned
+  fields,64,345,520 words exactly, including both stress cases and initialized
+  state. Inputs are independent original inputs, never observed intermediate
+  operands. Full archive/manifest and per-field hashes authenticate before use;
+  expected data and schedules remain Rust test support. CPU strict and60 host
+  controls pass/8ignored; retained iterator lint failure precedes correction.
+  Final review aligns observer order and adds overflow/observer-refusal controls;
+  fresh r3 comparison and diagnostic strict pass. Final isolated `scripts/check.sh`
+  passes2,142 Rust/0fail/87ignored/283 suites,17 Python suites/178 cases plus
+  release/installer/shell/Nix. Existing warnings/skips remain scoped. Logs:
+  `gdn-connected-{original,host,strict}-r3.log`,
+  `gdn-connected-diagnostic-strict-r1.log`, `gdn-connected-assembled-gate-r1.log`.
+  No new HIP, trained-model or serving acceptance follows.
 ### `85f33c7` — canonical source/native lifetime qualification
 
 - [x] Native source admission retains the original canonical snapshot lease;
@@ -386,87 +461,68 @@ checks and one complete gate per larger unit; isolate only concrete failures.
 
 ## Uncommitted
 
-### Ordinary HIP multi-row/reference unit — 31 Oct
+### Ordinary HIP multi-row implementation — 31 Oct
 
-- [x] Inspect both new original-source call references. Existing pinned
-  Torch2.13/Transformers5.17 AVX2 CPU image, genuine0.8B/2B parameters, no GPU,
-  network/download or ZeroGravity oracle. Fresh47/48/49/50 plus two natural
-  decode calls each; common512-token inputs via64-row and ragged chunks,
-  then512→513→514. Two replays/model,66 forwards/7,608 records, full last-row
-  vocabulary/all24 layers/all populated state.0.8B/2B archives contain
-  873,649,152/939,144,192 float words and2,879,819,424/3,010,809,504 bytes.
-  Every record/selection/source mapping/replay and child/group/container/EOF
-  closure inspected; source-reference evidence only, not HIP acceptance.
-- [x] Durable local owner:`zg-source-calls-original-20261031-r1.service`,
-  invocation`dca08936d8e649b686a6e0b06e758d0e`, initial MainPID3841596;
-  watch`d35de2b5` succeeded33 checks. Both child exits0; parent0/MainPID0/empty
-  recursive descendants saved, completed owned unit stopped. Run:
-  `ordinary-hip-20261031.Jc5XWh/source-calls-original-all-scopes-r1.log`;
-  capture/driver/validator remain bounded run-local tools. Case/input data:
-  `crates/zerogravity/tests/support/qwen_source_calls.json`.
-- [x] Separate original replay from chunk invariance without rerunning models.
-  At the same512 input IDs, uniform64 versus ragged47/64/17 differs in
-  7,563,855/7,532,508 of8,555,008 state/logit words (0.8B/2B), including
-  218,352/215,987 fullV words. Both select token11; that does not establish
-  equality/quality. Same-plan replays remain exact. Cross-chunk bit equality
-  is false, not required or advertised; no tolerance change. Evidence:
-  `source-calls-original-chunk-sensitivity-r1.log`.
-- [x] Inspect original padded GDN arithmetic:19 synthetic operator cases,
-  16/48 heads, rows1/17/47/48/49/50/64, empty/initialized state and two stressed
-  decay cases. Original public HF function unchanged; trace observes its
-  unwrapped body. Two exact replays/case,484 records/74,948,432 float words,
-  280,669,088 bytes. Raw SHA256
-  `953da106117d85cbcd4310863a92ec30b39320011443c35f8c4ccf35355ec92b`.
-  Every stage/hash/shape/derived solve inspected; child/group/container/reap/EOF
-  closure and durable parent0/empty descendants saved; owned r2 unit stopped.
-  r1 targeted wrapper code incorrectly and failed; its exit1/closed ownership
-  remains preserved. Evidence:`gdn-chunk-original-validation-r2.log` under the
-  same run root. This is operator reference data, not trained-model evidence.
-- [x] Internal CPU building block: `gdn/chunk.rs` implements the original
-  padded unit-lower solve. Separate products, four interleaved accumulators,
-  `(s0+s2)+(s1+s3)`, scalar tail, then one RHS subtraction. Original SSE2 code
-  corroborates the order. All38 observed solves/7,077,888 words match exactly;
-  four host/refusal controls and CPU all-target strict check pass. Preserve the
-  initial test-literal typing failure. No native/lowering/serving eligibility;
-  assembled CPU-core qualification follows below.
-- [x] Diagnose all114 original matrix/state stages:21,233,664 words match after
-  retaining original initialized-C addition after the inner FMA chain. Existing
-  Zen kernel contains that separate C load/add/store. Earlier raw-dot candidate
-  failed685 words, all signed zeros in stressed initialized inter-chunk output;
-  no canonicalization/tolerance change. Logs:`gdn-gemm-orders-r{1,2,3}.log`,
-  `gdn-gemm-inspection-r2.log`; preserve the first inspection's incorrect
-  stage-ordinal/epilogue-mode assumption. Arithmetic is now in the CPU chunk core,
-  not yet HIP.
-- [x] Implement connected original chunk core, not a sequence of cached-one
-  approximations: BF16 inputs, source L2/scale, padded64 FP64 cumsum, causal
-  decays, both triangular solves, initialized-C matrix products, populated-state
-  correction/update and BF16 token-major output. Explicit prior state remains
-  private; a one-row chunk is not inferred to be cached recurrence.
-- [x] Implement a separate nonpositive/causal-mask exp primitive. Original rare
-  path `vsexp_cout_rare`, ELF0xb41a130: FP64 reduction/polynomial/table/compensated
-  scaling, no FMA/libm substitution. Derive64 exp2 high/relative-low pairs at180
-  digits; all128 mathematical words match original table. Original normal
-  profile and its |x|<=87 refusal remain unchanged. Positive/NaN/+inf refuse;
-  -inf is only an explicit causal-mask operand, not accepted source log-decay.
-- [x] Connected CPU comparison passes every19 case/380 computed and returned
-  fields,64,345,520 words exactly, including both stress cases and initialized
-  state. Inputs are independent original inputs, never observed intermediate
-  operands. Full archive/manifest and per-field hashes authenticate before use;
-  expected data and schedules remain Rust test support. CPU strict and60 host
-  controls pass/8ignored; retained iterator lint failure precedes correction.
-  Final review aligns observer order and adds overflow/observer-refusal controls;
-  fresh r3 comparison and diagnostic strict pass. Final isolated `scripts/check.sh`
-  passes2,142 Rust/0fail/87ignored/283 suites,17 Python suites/178 cases plus
-  release/installer/shell/Nix. Existing warnings/skips remain scoped. Logs:
-  `gdn-connected-{original,host,strict}-r3.log`,
-  `gdn-connected-diagnostic-strict-r1.log`, `gdn-connected-assembled-gate-r1.log`.
-  No new HIP, trained-model or serving acceptance follows.
+Reuse signed `55536ce` original references and CPU chunk arithmetic above; no
+new native/model eligibility follows.
+
 - [ ] Implement genuine source-profile multi-row math and call-free lowering.
   Current GDN phases are `InitialOne`/`CachedOne`; attention/source records cap64.
   Pinned original multi-row GDN uses `torch.linalg.solve_triangular` on padded64
   systems, not the initial-one simplification. Preserve exact contracts and
   separate CPU-source BF16 residual/eager-attention semantics from CUDA math.
   Keep all prior accepted arithmetic/lifetime evidence; production stays disabled.
+- [x] Qualify shared GPU chunk kernels through the original HIP owner.
+  `source_gdn/chunk.rs`: grouped normalization, padded cumsum/causal decay,
+  original GEMM epilogues, triangular solves, corrected output/state and BF16
+  readout. Separate nonpositive exp preserves FP64 rounding with explicit
+  dynamic-table FMA barriers; normal-only profile remains unchanged. No model
+  lowering/eligibility yet; composition/comparison is test-only.
+  Authenticated transport `ZGGD0001` widens BF16 bits/reorders records only:
+  19 cases/484 records/74,948,432 words,299,795,904 bytes, SHA256
+  `0b314ec242346caec8d7f2ed2d0e45647cf8eed37649f97c66f907c5a657a071`.
+  Original absent state remains absent; mathematical zero controls are explicit.
+  Strict shared-HIP all-target check passes r4. Preserve r1 macro-relative-path
+  and r3 byte-slice inference failures; no numerical comparator change.
+  Frozen source `gdn-native-code-r1.tar`,40,560,640 bytes/2,148 files, SHA256
+  `79dac12c18259f5dea34b1199b15b0f6e32232a9050850b99551fd384cc0d5ad`,
+  signed base55536ce plus current dirty implementation. Durable x2 unit
+  `zg-source-gdn-chunk-20261031-r1.service`, invocation
+  `fc0379a845354d57be6cc34f23ee5174`, initial MainPID974422; watch`fba2bb67`.
+  R1 release build passes; native entry refuses `HIP original complete source
+  catalogue metadata owner` before all19 numerical cases. Caller incorrectly
+  reserved4MiB against the original exact1MiB contract. Parent101/MainPID0/empty
+  recursive descendants and source/binary/log identities saved; owned unit
+  stopped (failed state retained), job905 closed. No numerical or in-process
+  retirement acceptance. Caller now requests1MiB; guard/arithmetic unchanged.
+  R2 archive`e3387a9ed607518c54f8425e6c39f7d2484811222f2b92222e2aa2ff476543b2`,
+  invocation`ee5c37a887b94376a9c2e7837110f81b`, watch`39fc9f3d`:
+  all19 cases/380 fields/64,345,520 words exact, original input/prior bytes
+  unchanged and per-case physical baseline restored. Every field/case reconciled
+  against the pinned original manifest. First refusal then fails an incorrect
+  fixture assertion: completed Writes are physically initialized even when only
+  status is exported by Ready. Preserve r2 parent101/empty descendants, saved
+  source/binary/log evidence, stopped unit; remaining3 controls and final native/
+  namespace retirement unverified. Fix only diagnostic to require exact original
+  service/event/root context, exact Ready export set and status-only negative
+  exports; physical initialization is not publication. No completion or arithmetic
+  change. R3 archive`2afc28f5a1987ec04e84e4b858f2672a848fb625e499336ab533c0fc1ffa5715`,
+  binary`3c5db98e1c2dfdff7cc279aa6734d2d63aa5df85d99304a998e521fb6a69db79`,
+  invocation`01091a34a8f54d6c92a2bb95ee11b8f0`, watch`90ef500e`: all19/380/
+  64,345,520 words exact again;4 status refusals preserve every input/prior and
+  export only status from the original Ready. Actual writes complete, no model
+  publication exists. Per-case baseline intact;20 modules/code/host/device retire,
+  namespace closes. Every scope independently inspected; parent0/MainPID0/empty
+  recursive descendants saved, owned unit stopped. HIP/Vulkan all-target strict
+  checks pass. Final isolated `scripts/check.sh` r2 passes2,142 Rust/0fail/
+  87ignored/283 suites,17 Python suites/178 cases plus release/installer/shell/Nix.
+  Preserve r1's formatting-only refusal; module declaration ordering corrected,
+  executable math/owners unchanged. No Vulkan physical, full-model, serving or
+  performance qualification. Evidence:`gdn-native-all-scopes-r3.log`,
+  `gdn-native-assembled-gate-r2.log` under the existing ordinary-HIP run root.
+  Initial empty-device-FD preflight refused the existing dotlink.service context;
+  it remains untouched. GPU was idle at inspection. This is a non-timed operator
+  comparison, not an exclusive-device/performance or full-model claim.
 
 ### Remaining CUDA/ROCm qualification
 

@@ -36,32 +36,31 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   single rows through64. Scalable prefill/multichunk/general27B remain open.
 - [ ] Implement scalable ordinary prefill/decode beyond position-bound single-row
   capacity64; qualify populated wider contexts and serving before production.
-  - Independent original CPU references complete: fresh47/48/49/50 with two
-    natural decode calls each; equal512-token inputs via uniform64-row or
-    ragged47/64/17-row chunks, then512→513→514. Two replays/model,66 forwards/
-    7,608 records each; all scopes/source/cleanup inspected, durable parent0/
-    empty descendants, owned unit stopped. Cases/input IDs live only in test
-    support. Same-plan replay is exact; original cross-chunk state/logits differ
-    despite matching top1. No HIP or chunk-invariance claim; see numerics TODO.
-  - Reuse call-free `SourceInvocation`/`ForwardPlan` and original physical/root
-    owners; do not extend the position-indexed64-body catalogue into production.
-    Existing call-free templates are CUDA-contract-only. The CPU source contract
-    needs actual multi-row projection/Conv4, padded GDN with original triangular
-    solves, eager causal attention and BF16 residuals, not a backend relabel.
-  - Original padded-GDN operator capture is inspected/closed:19 synthetic cases,
-    484 records, exact two-replay stages; no trained-model claim. The new CPU
-    unit-lower solve matches38 original solves/7,077,888 words; four controls and
-    strict CPU checks pass. The connected CPU chunk core now also passes all19
-    original cases/380 computed fields/64,345,520 words, including populated state
-    and stressed decay. Separate rare-range/nonpositive exp is implemented; the
-    existing normal-profile guard is unchanged. Retain failed raw-dot signed-zero
-    and iterator-lint scopes. Final reviewed r3 comparison/CPU and diagnostic
-    strict pass; isolated gate passes2,142 Rust/0fail/87ignored/283 suites and
-    17 Python suites/178 cases plus packaging. This is not model/HIP support.
-    Next: actual HIP chunk execution, multi-row projection/Conv4/attention and
-    call-free lowering.
-    Details and retained failure scopes: [numerics TODO](../numerics-and-context/TODO.md).
-
+  Reuse signed `55536ce` original call references and connected CPU chunk core.
+  Next: actual HIP chunk math, multi-row projection/Conv4/attention and BF16
+  residuals, then call-free lowering. Keep explicit prefill/decode phase.
+  Reuse `SourceInvocation`/`ForwardPlan` and original physical/root owners; do
+  not turn the position-indexed64-body catalogue into production architecture.
+  Existing call-free templates remain CUDA-only; actual CPU-source contracts
+  and arithmetic must be implemented, not backend-relabeled. See
+  [numerics TODO](../numerics-and-context/TODO.md) for evidence and failures.
+  Shared GPU chunk arithmetic and a test-only original-owner comparison now
+  compile. Durable x2 `gdn-native` r1 refused its incorrect4MiB catalogue owner
+  against the existing exact1MiB contract before numerical cases; parent101,
+  empty descendants, evidence saved and owned unit stopped. Caller fixed to1MiB;
+  original guard/arithmetic unchanged. R2 matches all19 cases/380 fields/
+  64,345,520 words and immutable inputs exactly, per-case physical baseline intact.
+  Negative fixture incorrectly confused completed-write initialization with Ready
+  exports; first assertion failed,3 controls/final retirement unrun. Failed101
+  scope preserved/closed. Correct diagnostic checks actual status-only Ready
+  exports and original completion identity; runtime/arithmetic unchanged. R3
+  now passes all19/380/64,345,520 words plus4 status-only Ready exclusions and
+  actual20-module/native/namespace retirement. Independent all-scope reconciliation,
+  parent0/empty descendants saved; owned unit stopped. HIP/Vulkan strict passes.
+  Final isolated gate passes2,142 Rust/0fail/87ignored/283 suites and17 Python
+  suites/178 cases plus packaging. Initial formatting-only refusal retained;
+  module-order correction changes no arithmetic/owner. No model lowering,
+  source/profile permit or ordinary/serving grant.
 
 ### Ordinary Qwen execution checkpoint — 27 Oct
 
@@ -553,6 +552,25 @@ or model support. Qwen parity/short benchmark/long→dense27B→Gemma remains bi
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### `55536ce` — multi-row references and connected CPU GDN
+
+- [x] Capture/inspect independent original0.8B/2B call references through514
+  populated positions: fresh47/48/49/50 and uniform/ragged512-token chunks,
+  two natural decodes, two replays,66 calls/7,608 records/model. All source,
+  full last-rowV, layer/state, replay and durable closure scopes inspected;
+  owned unit stopped. Schedules/IDs are test data, never runtime routing.
+  Same-plan replay is exact; original cross-chunk equality is false.
+- [x] Implement source padded64 CPU GDN: actual triangular reductions,
+  initialized-C matrix arithmetic, FP64 cumsum/rare decay and BF16 output.
+  All19 independent original operator cases/380 fields/64,345,520 words match
+  exactly. Source state remains private; one-row chunk is not cached recurrence.
+  Normal exp-profile guard unchanged. Retain all prior failed scopes.
+- [x] Final reviewed comparison/CPU/diagnostic strict and isolated gate pass:
+  2,142 Rust/0fail/87ignored/283 suites,17 Python suites/178 cases plus packaging.
+  Unchanged native arithmetic/ownership reuse accepted evidence; this checkpoint
+  adds no multi-row HIP/model/serving eligibility. Full scope/evidence in
+  [numerics TODO](../numerics-and-context/TODO.md).
 
 ### `85f33c7` — canonical source/native lifetime qualification
 
