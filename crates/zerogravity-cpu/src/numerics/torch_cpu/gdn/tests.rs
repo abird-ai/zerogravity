@@ -131,6 +131,55 @@ fn true_sixteen_to_fortyeight_head_mapping_and_cached_prior_remain_private() {
     assert!(prior.iter().all(|v| v.to_bits() == 0));
 }
 
+#[test]
+fn initial_chunk_retains_empty_state_addition_for_signed_zero_updates() {
+    let source = SourceIdentity::for_new_allocation().unwrap();
+    let channels = 6144;
+    let mut weights = vec![0.0; channels * 4];
+    for row in weights.chunks_exact_mut(4) {
+        row[3] = 1.0;
+    }
+    let weights = bf16(&weights);
+    let zero = bf16(&[0.0; 16]);
+    let norm = bf16(&[1.0; 128]);
+    let prior = vec![0.0; 16 * 128 * 128];
+    for (key, value) in [(-1.0, 0.0), (0.0, -1.0), (-1.0, 1.0), (1.0, -1.0)] {
+        let mut qkv = vec![0.0; channels];
+        qkv[0] = 1.0;
+        qkv[2048] = key;
+        qkv[4096] = value;
+        let result = step(
+            GdnInputs {
+                source,
+                key_heads: 16,
+                value_heads: 16,
+                qkv: &qkv,
+                gate: &[0.0; 2048],
+                alpha: &[0.0; 16],
+                beta: &[0.0; 16],
+                history: &vec![0.0; channels * 3],
+                state: &prior,
+                phase: TorchCpuGdnPhase::InitialOne,
+            },
+            GdnParameters {
+                convolution: tensor(&weights, &[6144, 1, 4], QuantKind::Bf16),
+                convolution_name: "signed-zero.conv",
+                a_log: tensor(&zero, &[16], QuantKind::Bf16),
+                dt_bias: tensor(&zero, &[16], QuantKind::Bf16),
+                norm: tensor(&norm, &[128], QuantKind::Bf16),
+            },
+        )
+        .unwrap();
+        if key == 0.0 || value == 0.0 {
+            assert_eq!(result.state[0].to_bits(), 0);
+        } else {
+            assert!(result.state[0].is_finite() && result.state[0] < 0.0);
+        }
+        assert!(result.state[1..].iter().all(|v| v.to_bits() == 0));
+        assert!(prior.iter().all(|v| v.to_bits() == 0));
+    }
+}
+
 fn retired_fixture() -> Vec<Vec<f32>> {
     let path =
         std::env::var("ZG_RETIRED_H48_GDN_FIXTURE").expect("explicit retired original fixture");

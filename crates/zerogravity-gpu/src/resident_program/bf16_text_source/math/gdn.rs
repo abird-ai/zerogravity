@@ -275,10 +275,8 @@ pub(super) fn state_update(
             delta[h * 128usize + j]
         };
         let update = mul(key[h * 128usize + k], d);
-        let mut y = add(previous[at], update);
-        if comptime!(initial) {
-            y = update;
-        }
+        // Initial chunk also adds its decayed empty state; keep signed-zero semantics.
+        let y = add(previous[at], update);
         output[at] = y;
         if !finite(y) {
             status[0].fetch_or(NONFINITE_VALUE);

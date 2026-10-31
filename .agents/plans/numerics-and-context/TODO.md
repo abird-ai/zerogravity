@@ -291,6 +291,18 @@ checks and one complete gate per larger unit; isolate only concrete failures.
 
 ## Uncommitted
 
+### Initial GDN empty-state addition — verified checkpoint
+
+- [x] CPU/HIP initial recurrence retains the original decayed-empty-state addition
+  after the update product. No observed-output normalization or tolerance change.
+  The omitted addition produced negative zero: real0.8B r2 failed303 words,
+  first recurrent/layer0 word50816 `80000000` versus original `00000000`.
+- [x] Four host GDN tests pass, including signed-zero/negative-value controls;
+  actual0.8B/2B full64-position/two-replay comparison passes in assembled r3.
+  Authenticated finite27B initial state has75,497,472 nonzero words, so the added
+  zero preserves its previously accepted outputs; no redundant finite run.
+
+
 ### Remaining CUDA/ROCm qualification
 
 - [ ] Owner30Oct expands completion to `pvl-l5` CUDA `.8B`/`2B` and `pvl-x2`

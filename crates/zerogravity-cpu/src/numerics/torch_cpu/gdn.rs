@@ -279,7 +279,8 @@ pub fn step_observed_with_exp_profile(
                 }
                 out[h * 128 + j] = round(raw)?;
                 for i in 0..128 {
-                    state[(h * 128 + i) * 128 + j] = k[h * 128 + i] * vb;
+                    // Original adds the decayed empty state after padded SGEMM.
+                    state[(h * 128 + i) * 128 + j] = 0.0 + k[h * 128 + i] * vb;
                 }
             }
         }
