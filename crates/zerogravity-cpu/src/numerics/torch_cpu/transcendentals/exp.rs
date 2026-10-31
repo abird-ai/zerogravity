@@ -13,6 +13,9 @@
 //! paths refuse explicitly. No scalar-libm/SLEEF substitution outside it.
 use super::*;
 
+mod negative;
+pub use negative::exp_nonpositive_f32_contiguous16;
+
 pub use zerogravity_core::accelerator::program::StandaloneExpProfile;
 use zerogravity_core::accelerator::program::standalone_exp::MKL_EXHA_SSE2_EXP2_128 as EXP2_128;
 

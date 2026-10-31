@@ -31,31 +31,36 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ### Ordinary HIP continuation — 31 Oct
 
-- [x] Qualify canonical `CacheStore` snapshot/native lifetime ownership. The new
-  source owner retains the actual snapshot and duplicates its pinned descriptors;
-  native staging paths refuse, while cold preflight still permits staging.
-  Two schema/provenance/path controls and standalone/shared-HIP/shared-Vulkan
-  strict checks pass. Durable `source-lifetimes` r1 tests both models: canonical
-  pin controls, Session/Snapshot/Pending known/fault readers and abandoned
-  original pending completion. All14 scopes inspected; parent exit0/empty
-  descendants, completed owned unit stopped. Healthy readers release all
-  785/781 modules and source/cache pins; faults retain them with a24GiB physical
-  fence. Unknown retains752/747 handles,189 completion owners and one event;
-  cached logits stay unobserved and no root publishes. Evidence:
-  `ordinary-hip-20261031.Jc5XWh/source-lifetime-all-scopes-r1.log`.
-  Six healthy r2 scopes additionally prove physical fence clearance and other-owner
-  admission, retaining only the original4GiB context/2GiB host charges plus the
-  detached64MiB reference lease. All scopes inspected, parent0/empty descendants;
-  completed unit stopped. Final isolated gate:2,136 Rust/0fail/85ignored/283 suites,
-  17 Python suites/178 cases; protected roots unchanged. No serving enablement.
 - [ ] Generalize actual geometry/backend execution for27B and populated contexts.
   Finite27B still pins2 positions/112 domains; the new source path executes
   single rows through64. Scalable prefill/multichunk/general27B remain open.
-- [x] Qualify unknown-completion and final-reader release faults on actual
-  small-model execution through original primitives; r1/r2 above, not finite27B
-  substitution. Unknown cached logits/root publication remain unavailable.
 - [ ] Implement scalable ordinary prefill/decode beyond position-bound single-row
   capacity64; qualify populated wider contexts and serving before production.
+  - Independent original CPU references complete: fresh47/48/49/50 with two
+    natural decode calls each; equal512-token inputs via uniform64-row or
+    ragged47/64/17-row chunks, then512→513→514. Two replays/model,66 forwards/
+    7,608 records each; all scopes/source/cleanup inspected, durable parent0/
+    empty descendants, owned unit stopped. Cases/input IDs live only in test
+    support. Same-plan replay is exact; original cross-chunk state/logits differ
+    despite matching top1. No HIP or chunk-invariance claim; see numerics TODO.
+  - Reuse call-free `SourceInvocation`/`ForwardPlan` and original physical/root
+    owners; do not extend the position-indexed64-body catalogue into production.
+    Existing call-free templates are CUDA-contract-only. The CPU source contract
+    needs actual multi-row projection/Conv4, padded GDN with original triangular
+    solves, eager causal attention and BF16 residuals, not a backend relabel.
+  - Original padded-GDN operator capture is inspected/closed:19 synthetic cases,
+    484 records, exact two-replay stages; no trained-model claim. The new CPU
+    unit-lower solve matches38 original solves/7,077,888 words; four controls and
+    strict CPU checks pass. The connected CPU chunk core now also passes all19
+    original cases/380 computed fields/64,345,520 words, including populated state
+    and stressed decay. Separate rare-range/nonpositive exp is implemented; the
+    existing normal-profile guard is unchanged. Retain failed raw-dot signed-zero
+    and iterator-lint scopes. Final reviewed r3 comparison/CPU and diagnostic
+    strict pass; isolated gate passes2,142 Rust/0fail/87ignored/283 suites and
+    17 Python suites/178 cases plus packaging. This is not model/HIP support.
+    Next: actual HIP chunk execution, multi-row projection/Conv4/attention and
+    call-free lowering.
+    Details and retained failure scopes: [numerics TODO](../numerics-and-context/TODO.md).
 
 
 ### Ordinary Qwen execution checkpoint — 27 Oct
@@ -548,6 +553,29 @@ or model support. Qwen parity/short benchmark/long→dense27B→Gemma remains bi
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### `85f33c7` — canonical source/native lifetime qualification
+
+- [x] Qualify canonical `CacheStore` snapshot/native lifetime ownership. The new
+  source owner retains the actual snapshot and duplicates its pinned descriptors;
+  native staging paths refuse, while cold preflight still permits staging.
+  Two schema/provenance/path controls and standalone/shared-HIP/shared-Vulkan
+  strict checks pass. Durable `source-lifetimes` r1 tests both models: canonical
+  pin controls, Session/Snapshot/Pending known/fault readers and abandoned
+  original pending completion. All14 scopes inspected; parent exit0/empty
+  descendants, completed owned unit stopped. Healthy readers release all
+  785/781 modules and source/cache pins; faults retain them with a24GiB physical
+  fence. Unknown retains752/747 handles,189 completion owners and one event;
+  cached logits stay unobserved and no root publishes. Evidence:
+  `ordinary-hip-20261031.Jc5XWh/source-lifetime-all-scopes-r1.log`.
+  Six healthy r2 scopes additionally prove physical fence clearance and other-owner
+  admission, retaining only the original4GiB context/2GiB host charges plus the
+  detached64MiB reference lease. All scopes inspected, parent0/empty descendants;
+  completed unit stopped. Final isolated gate:2,136 Rust/0fail/85ignored/283 suites,
+  17 Python suites/178 cases; protected roots unchanged. No serving enablement.
+- [x] Qualify unknown-completion and final-reader release faults on actual
+  small-model execution through original primitives; r1/r2 above, not finite27B
+  substitution. Unknown cached logits/root publication remain unavailable.
 
 ### `1f29a42` — source-bound small-model HIP
 

@@ -37,8 +37,11 @@ restores initial GDN empty-state addition; `1f29a42` adds actual source-bound
 0.8B/2B HIP through64 populated single-row positions, fullV/all state/two natural
 replays and healthy lifetime controls. Final gate passes2,136 Rust/17 Python
 suites. Canonical cache/native unknown/fault lifetimes now pass the inspected
-r1/r2 qualification below and the final gate; signed checkpoint follows.
-Scalable ordinary execution, general27B, contexts/concurrency/vLLM remain open.
+r1/r2 qualification below and the final gate; signed checkpoint `85f33c7` landed.
+Connected CPU padded GDN now matches64,345,520 original words; its final gate
+passes2,142 Rust/17 Python suites. Native multi-row integration is next, not yet
+qualified. Scalable ordinary execution, general27B, contexts/concurrency/vLLM
+remain open.
 No pushes. Re-read git status/log.
 
 ## 2. Immediate startup for a successor
@@ -130,12 +133,83 @@ checks, later receipt stale. Source archive
 binary`55f49e93ce190fd1f3b96370bdc0ef1628059786764b4fee38001c61a54d1b6a`.
 Evidence:`source-lifetime-all-scopes-r2.log`. Final isolated gate job810 passes
 2,136 Rust/0fail/85ignored/283 suites and17 Python suites/178 cases; existing
-non-strict warnings/skips remain scoped. Signed checkpoint is next. No arithmetic
-changed; unchanged r1 fault/unknown and accepted full64/finite27B/attention evidence
-is reused. Preserve historical failures/unrun scopes. Scalable ordinary execution
+non-strict warnings/skips remain scoped. Signed checkpoint:`85f33c7`. Landing
+plan reconciliation and the next arithmetic/test-support unit remain dirty; no push.
+Lifetime arithmetic is unchanged; accepted r1 fault/unknown and full64/finite27B/
+attention evidence is reused. Preserve historical failures/unrun scopes. Scalable ordinary execution
 remains next: CPU GDN currently has only `InitialOne`/`CachedOne`; source records
 and attention arithmetic cap64. Extending metadata/capacity alone is not prefill
 or multichunk support. Production/serving remain disabled.
+
+**Next implementation unit:** genuine multi-row source math and call-free HIP
+lowering. Its independent original CPU references now pass complete inspection:
+fresh47/48/49/50 plus two natural decode calls; uniform64-row and ragged47/64/17
+prefill consume identical512 input IDs, then512→513→514. Two replays/model,
+66 forwards/7,608 records each, full last-row V/all24 layers/all populated state.
+0.8B/2B contain873,649,152/939,144,192 float words; every record/selection/source
+mapping/replay and child/group/container/EOF closure inspected. No HIP claim.
+Case/input data:`crates/zerogravity/tests/support/qwen_source_calls.json`.
+Closed local unit:`zg-source-calls-original-20261031-r1.service`, invocation
+`dca08936d8e649b686a6e0b06e758d0e`; watch`d35de2b5` succeeded33 checks.
+Both child/parent exits0, MainPID0/empty recursive descendants saved; owned unit
+stopped. Later receipt is stale. Run:`ordinary-hip-20261031.Jc5XWh`;
+`source-calls-original-all-scopes-r1.log`, `source-calls-original-r1-{08,2b}/`
+and `validate-source-calls-r1.py`. Original chunk-sensitivity analysis is separate:
+uniform/ragged512 prefixes differ in7,563,855/7,532,508 state/logit words despite
+both choosing11; same-plan replays are exact. No chunk-invariance/quality claim
+or relaxed contract. No active local/x2 model supervisor remains.
+Next backend work must reuse call-free source invocations/original owners,
+not widen the64-body diagnostic catalogue. Actual multi-row GDN includes the
+original padded64 triangular solves; CPU-source eager attention/BF16 residuals
+also differ from CUDA contracts. Production/serving remain disabled.
+**Current internal arithmetic work:** original padded-GDN capture is now fully
+inspected:19 synthetic cases,484 stage/input/output records,74,948,432 float words,
+exact two-replay results. r1 traced the wrapper rather than the original body and
+failed; its exit1/closed ownership remains preserved. r2 observes
+`inspect.unwrap(fn).__code__`, invokes the unchanged public function and succeeds.
+Closed unit:`zg-gdn-chunk-original-20261031-r2.service`, invocation
+`1deb9d18708b468282d3c78c406e4ab1`; child/parent0, empty descendants and complete
+container/group/reap/EOF closure saved; owned unit stopped. Watch`9906f901` belongs
+only to failed/closed r1. Evidence:`gdn-chunk-original-validation-r2.log`,
+`gdn-chunk-original-r2/`, terminal/stop files under the same ordinary-HIP run.
+New CPU `numerics/torch_cpu/gdn/chunk.rs` implements the padded unit-lower solve:
+nonfused products, four lanes, `(s0+s2)+(s1+s3)`, scalar tail, one RHS subtraction.
+Four host/refusal controls, strict CPU checks and all38 original solves/
+7,077,888 words pass. Test data stays under Rust test support.
+Matrix comparison matches114 source stages/21,233,664 words, including state
+updates. Raw-dot attempt failed685 signed-zero words in stressed initialized
+inter-chunk output. Original Zen GEMM loads/adds initialized C after its FMA
+chain; retaining that arithmetic resolves them without normalizing observations.
+Every stage inspected in `gdn-gemm-inspection-r2.log`; initial mode/ordinal
+inspector mistake preserved.
+Connected CPU `gdn/chunk/core.rs` now implements the whole padded chunk core:
+source L2/scale, FP64 cumsum, causal decay, both solves, all matrix/state updates
+and BF16 output. New nonpositive exp includes the original rare FP64 path
+(`vsexp_cout_rare`, ELF0xb41a130), not scalar-libm substitution. Its64 exp2 split
+pairs are independently derived at180 digits and match all128 original words.
+Existing normal-profile guard |x|<=87 is unchanged. Original -inf causal masks
+are explicit; supplied log-decay remains finite/nonpositive.
+All19 cases/380 computed/returned fields/64,345,520 words compare exactly from
+original inputs, including initialized state/strong decay; no intermediate
+reference is used as an operand. Strict CPU and60 host tests pass/8ignored.
+Retain initial iterator lint failure. Final review aligns observer order and
+adds cumulative-overflow/observer-refusal controls. Fresh r3 original comparison
+and CPU/diagnostic strict pass. Final isolated `scripts/check.sh` passes2,142
+Rust/0fail/87ignored/283 suites,17 Python suites/178 cases plus release/installer/
+shell/Nix. Existing feature warnings and skips remain scoped; no physical replay
+is inferred. Checkpoint contains only this arithmetic, test support and plans.
+Evidence:`gdn-connected-{original,host,strict}-r{2,3}.log`,
+`gdn-connected-diagnostic-strict-r1.log`, `gdn-connected-assembled-gate-r1.log`.
+No model/call-free/HIP integration yet. Next implement actual HIP chunk math,
+then multi-row projection/Conv4/attention and call-free lowering. Source
+machine-code inspections are run-local, not a replacement runtime or permission
+to call private ABIs. Local gate job875 completed0; no owned build/model job
+remains. Production/serving stay disabled.
+Read-only x2 inventory additionally resolves all25 dangling images' public name
+histories: application/database/Ollama images, no named vLLM candidate. Only
+public repository/name fields requested, no container/device work or download.
+`x2-untagged-runtime-inventory-r1.log` is name metadata, not exhaustive package
+inspection or baseline authority; compatible approved ROCm vLLM remains open.
 Details remain in model-execution/numerics plans.
 
 Repository:

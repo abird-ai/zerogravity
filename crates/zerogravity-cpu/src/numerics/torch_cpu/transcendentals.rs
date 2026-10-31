@@ -40,7 +40,9 @@ mod gelu;
 pub use gelu::gelu_tanh_bf16_widened_f32_contiguous16;
 pub(crate) use gelu::tanh_finite_lane;
 mod exp;
-pub use exp::{StandaloneExpProfile, exp_f32_contiguous16_profiled};
+pub use exp::{
+    StandaloneExpProfile, exp_f32_contiguous16_profiled, exp_nonpositive_f32_contiguous16,
+};
 mod softplus;
 pub use softplus::softplus_beta1_threshold20_f32_contiguous16;
 mod sigmoid;

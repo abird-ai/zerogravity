@@ -15,6 +15,34 @@ long contexts and Qwen27B. Bindings/readers/helpers are internal steps, with foc
 checks and one complete gate per larger unit; isolate only concrete failures.
 ## Committed
 
+### `85f33c7` — canonical source/native lifetime qualification
+
+- [x] Native source admission retains the original canonical snapshot lease;
+  staging refuses before native work. Cold staging remains allowed. Two
+  manifest/provenance/path host controls and diagnostic/shared-HIP/shared-Vulkan
+  strict checks pass; initial CUDA-only counter-gate compilation failure retained.
+- [x] Inspect all14 durable source-lifetime r1 scopes: both models, canonical
+  descriptor pins, Session/Snapshot/Pending known/release-fault final readers and
+  original pending-flight abandonment. Each seed compares76 original records,
+  fullV/all state:5,442,048/5,468,672 words exact. Unknown compares123 cached
+  records/10,366,976/10,393,600 words; only logits remain unobserved, no new root
+  publishes. Unknown retains752/747 handles,189 completion owners and one event;
+  faults/unknown retain original source/cache/native owners and24GiB physical
+  fence, reject peers, no recovery. Healthy readers precede785/781 native module
+  retirement and release all11/12 source-file pins. Parent exit0/empty descendants;
+  completed unit stopped. No full64 replay, destructive GC or serving claim.
+  `source-lifetime-all-scopes-r1.log`; healthy admission follow-up remains below.
+- [x] All six healthy r2 final-reader scopes pass the post-freeze physical
+  fence/other-owner admission control. Original4GiB context remains charged;
+  no fence, other-owner admission succeeds, native modules/source/cache retire.
+  Parent exit0/empty descendants; every scope inspected and owned unit stopped.
+  r1 fault/unknown code unchanged; its evidence is reused, no full64 replay.
+  Final isolated gate:2,136 Rust/0fail/85ignored/283 suites,17 Python suites/178
+  cases, plus standalone2 source controls and strict diagnostic/HIP/Vulkan
+  surfaces. Existing non-strict warnings/skips remain separate. Evidence:
+  `ordinary-hip-20261031.Jc5XWh/source-lifetime-all-scopes-r{1,2}.log` and
+  `source-lifetime-assembled-gate-r1.log`. Production/serving stay disabled.
+
 ### `1f29a42` — bounded small-model HIP/source qualification
 
 - [x] Original HF full forward, raw approved0.8B/2B parameters, pinned
@@ -358,33 +386,87 @@ checks and one complete gate per larger unit; isolate only concrete failures.
 
 ## Uncommitted
 
-### Source ownership/lifetime qualification — 31 Oct
+### Ordinary HIP multi-row/reference unit — 31 Oct
 
-- [x] Native source admission retains the original canonical snapshot lease;
-  staging refuses before native work. Cold staging remains allowed. Two
-  manifest/provenance/path host controls and diagnostic/shared-HIP/shared-Vulkan
-  strict checks pass; initial CUDA-only counter-gate compilation failure retained.
-- [x] Inspect all14 durable source-lifetime r1 scopes: both models, canonical
-  descriptor pins, Session/Snapshot/Pending known/release-fault final readers and
-  original pending-flight abandonment. Each seed compares76 original records,
-  fullV/all state:5,442,048/5,468,672 words exact. Unknown compares123 cached
-  records/10,366,976/10,393,600 words; only logits remain unobserved, no new root
-  publishes. Unknown retains752/747 handles,189 completion owners and one event;
-  faults/unknown retain original source/cache/native owners and24GiB physical
-  fence, reject peers, no recovery. Healthy readers precede785/781 native module
-  retirement and release all11/12 source-file pins. Parent exit0/empty descendants;
-  completed unit stopped. No full64 replay, destructive GC or serving claim.
-  `source-lifetime-all-scopes-r1.log`; healthy admission follow-up remains below.
-- [x] All six healthy r2 final-reader scopes pass the post-freeze physical
-  fence/other-owner admission control. Original4GiB context remains charged;
-  no fence, other-owner admission succeeds, native modules/source/cache retire.
-  Parent exit0/empty descendants; every scope inspected and owned unit stopped.
-  r1 fault/unknown code unchanged; its evidence is reused, no full64 replay.
-  Final isolated gate:2,136 Rust/0fail/85ignored/283 suites,17 Python suites/178
-  cases, plus standalone2 source controls and strict diagnostic/HIP/Vulkan
-  surfaces. Existing non-strict warnings/skips remain separate. Evidence:
-  `ordinary-hip-20261031.Jc5XWh/source-lifetime-all-scopes-r{1,2}.log` and
-  `source-lifetime-assembled-gate-r1.log`. Production/serving stay disabled.
+- [x] Inspect both new original-source call references. Existing pinned
+  Torch2.13/Transformers5.17 AVX2 CPU image, genuine0.8B/2B parameters, no GPU,
+  network/download or ZeroGravity oracle. Fresh47/48/49/50 plus two natural
+  decode calls each; common512-token inputs via64-row and ragged chunks,
+  then512→513→514. Two replays/model,66 forwards/7,608 records, full last-row
+  vocabulary/all24 layers/all populated state.0.8B/2B archives contain
+  873,649,152/939,144,192 float words and2,879,819,424/3,010,809,504 bytes.
+  Every record/selection/source mapping/replay and child/group/container/EOF
+  closure inspected; source-reference evidence only, not HIP acceptance.
+- [x] Durable local owner:`zg-source-calls-original-20261031-r1.service`,
+  invocation`dca08936d8e649b686a6e0b06e758d0e`, initial MainPID3841596;
+  watch`d35de2b5` succeeded33 checks. Both child exits0; parent0/MainPID0/empty
+  recursive descendants saved, completed owned unit stopped. Run:
+  `ordinary-hip-20261031.Jc5XWh/source-calls-original-all-scopes-r1.log`;
+  capture/driver/validator remain bounded run-local tools. Case/input data:
+  `crates/zerogravity/tests/support/qwen_source_calls.json`.
+- [x] Separate original replay from chunk invariance without rerunning models.
+  At the same512 input IDs, uniform64 versus ragged47/64/17 differs in
+  7,563,855/7,532,508 of8,555,008 state/logit words (0.8B/2B), including
+  218,352/215,987 fullV words. Both select token11; that does not establish
+  equality/quality. Same-plan replays remain exact. Cross-chunk bit equality
+  is false, not required or advertised; no tolerance change. Evidence:
+  `source-calls-original-chunk-sensitivity-r1.log`.
+- [x] Inspect original padded GDN arithmetic:19 synthetic operator cases,
+  16/48 heads, rows1/17/47/48/49/50/64, empty/initialized state and two stressed
+  decay cases. Original public HF function unchanged; trace observes its
+  unwrapped body. Two exact replays/case,484 records/74,948,432 float words,
+  280,669,088 bytes. Raw SHA256
+  `953da106117d85cbcd4310863a92ec30b39320011443c35f8c4ccf35355ec92b`.
+  Every stage/hash/shape/derived solve inspected; child/group/container/reap/EOF
+  closure and durable parent0/empty descendants saved; owned r2 unit stopped.
+  r1 targeted wrapper code incorrectly and failed; its exit1/closed ownership
+  remains preserved. Evidence:`gdn-chunk-original-validation-r2.log` under the
+  same run root. This is operator reference data, not trained-model evidence.
+- [x] Internal CPU building block: `gdn/chunk.rs` implements the original
+  padded unit-lower solve. Separate products, four interleaved accumulators,
+  `(s0+s2)+(s1+s3)`, scalar tail, then one RHS subtraction. Original SSE2 code
+  corroborates the order. All38 observed solves/7,077,888 words match exactly;
+  four host/refusal controls and CPU all-target strict check pass. Preserve the
+  initial test-literal typing failure. No native/lowering/serving eligibility;
+  assembled CPU-core qualification follows below.
+- [x] Diagnose all114 original matrix/state stages:21,233,664 words match after
+  retaining original initialized-C addition after the inner FMA chain. Existing
+  Zen kernel contains that separate C load/add/store. Earlier raw-dot candidate
+  failed685 words, all signed zeros in stressed initialized inter-chunk output;
+  no canonicalization/tolerance change. Logs:`gdn-gemm-orders-r{1,2,3}.log`,
+  `gdn-gemm-inspection-r2.log`; preserve the first inspection's incorrect
+  stage-ordinal/epilogue-mode assumption. Arithmetic is now in the CPU chunk core,
+  not yet HIP.
+- [x] Implement connected original chunk core, not a sequence of cached-one
+  approximations: BF16 inputs, source L2/scale, padded64 FP64 cumsum, causal
+  decays, both triangular solves, initialized-C matrix products, populated-state
+  correction/update and BF16 token-major output. Explicit prior state remains
+  private; a one-row chunk is not inferred to be cached recurrence.
+- [x] Implement a separate nonpositive/causal-mask exp primitive. Original rare
+  path `vsexp_cout_rare`, ELF0xb41a130: FP64 reduction/polynomial/table/compensated
+  scaling, no FMA/libm substitution. Derive64 exp2 high/relative-low pairs at180
+  digits; all128 mathematical words match original table. Original normal
+  profile and its |x|<=87 refusal remain unchanged. Positive/NaN/+inf refuse;
+  -inf is only an explicit causal-mask operand, not accepted source log-decay.
+- [x] Connected CPU comparison passes every19 case/380 computed and returned
+  fields,64,345,520 words exactly, including both stress cases and initialized
+  state. Inputs are independent original inputs, never observed intermediate
+  operands. Full archive/manifest and per-field hashes authenticate before use;
+  expected data and schedules remain Rust test support. CPU strict and60 host
+  controls pass/8ignored; retained iterator lint failure precedes correction.
+  Final review aligns observer order and adds overflow/observer-refusal controls;
+  fresh r3 comparison and diagnostic strict pass. Final isolated `scripts/check.sh`
+  passes2,142 Rust/0fail/87ignored/283 suites,17 Python suites/178 cases plus
+  release/installer/shell/Nix. Existing warnings/skips remain scoped. Logs:
+  `gdn-connected-{original,host,strict}-r3.log`,
+  `gdn-connected-diagnostic-strict-r1.log`, `gdn-connected-assembled-gate-r1.log`.
+  No new HIP, trained-model or serving acceptance follows.
+- [ ] Implement genuine source-profile multi-row math and call-free lowering.
+  Current GDN phases are `InitialOne`/`CachedOne`; attention/source records cap64.
+  Pinned original multi-row GDN uses `torch.linalg.solve_triangular` on padded64
+  systems, not the initial-one simplification. Preserve exact contracts and
+  separate CPU-source BF16 residual/eager-attention semantics from CUDA math.
+  Keep all prior accepted arithmetic/lifetime evidence; production stays disabled.
 
 ### Remaining CUDA/ROCm qualification
 

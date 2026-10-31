@@ -1,6 +1,8 @@
 //! Connected diagnostic CPU GDN. Cached core reuses the pinned recurrence.
 //! Initial-one contraction has bounded original evidence; standalone exp and
 //! complete model/cached arithmetic remain unqualified.
+pub mod chunk;
+
 use super::{conv, norm, recurrent, reduction, transcendentals};
 use crate::{Error, Result};
 use zerogravity_core::{

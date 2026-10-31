@@ -1,0 +1,140 @@
+{
+  "cases": [
+    {
+      "decay_scale": 0.125,
+      "heads": 16,
+      "initialized": false,
+      "rows": 1,
+      "seed": 31000
+    },
+    {
+      "decay_scale": 0.125,
+      "heads": 16,
+      "initialized": false,
+      "rows": 17,
+      "seed": 31001
+    },
+    {
+      "decay_scale": 0.125,
+      "heads": 16,
+      "initialized": true,
+      "rows": 17,
+      "seed": 31002
+    },
+    {
+      "decay_scale": 0.125,
+      "heads": 16,
+      "initialized": false,
+      "rows": 47,
+      "seed": 31003
+    },
+    {
+      "decay_scale": 0.125,
+      "heads": 16,
+      "initialized": true,
+      "rows": 47,
+      "seed": 31004
+    },
+    {
+      "decay_scale": 0.125,
+      "heads": 16,
+      "initialized": false,
+      "rows": 48,
+      "seed": 31005
+    },
+    {
+      "decay_scale": 0.125,
+      "heads": 16,
+      "initialized": true,
+      "rows": 48,
+      "seed": 31006
+    },
+    {
+      "decay_scale": 0.125,
+      "heads": 16,
+      "initialized": false,
+      "rows": 49,
+      "seed": 31007
+    },
+    {
+      "decay_scale": 0.125,
+      "heads": 16,
+      "initialized": true,
+      "rows": 49,
+      "seed": 31008
+    },
+    {
+      "decay_scale": 0.125,
+      "heads": 16,
+      "initialized": false,
+      "rows": 50,
+      "seed": 31009
+    },
+    {
+      "decay_scale": 0.125,
+      "heads": 16,
+      "initialized": true,
+      "rows": 50,
+      "seed": 31010
+    },
+    {
+      "decay_scale": 0.125,
+      "heads": 16,
+      "initialized": false,
+      "rows": 64,
+      "seed": 31011
+    },
+    {
+      "decay_scale": 0.125,
+      "heads": 16,
+      "initialized": true,
+      "rows": 64,
+      "seed": 31012
+    },
+    {
+      "decay_scale": 0.125,
+      "heads": 48,
+      "initialized": false,
+      "rows": 17,
+      "seed": 31013
+    },
+    {
+      "decay_scale": 0.125,
+      "heads": 48,
+      "initialized": true,
+      "rows": 17,
+      "seed": 31014
+    },
+    {
+      "decay_scale": 0.125,
+      "heads": 48,
+      "initialized": false,
+      "rows": 64,
+      "seed": 31015
+    },
+    {
+      "decay_scale": 0.125,
+      "heads": 48,
+      "initialized": true,
+      "rows": 64,
+      "seed": 31016
+    },
+    {
+      "decay_scale": 3.0,
+      "heads": 16,
+      "initialized": false,
+      "rows": 64,
+      "seed": 31017
+    },
+    {
+      "decay_scale": 3.0,
+      "heads": 16,
+      "initialized": true,
+      "rows": 64,
+      "seed": 31018
+    }
+  ],
+  "repeats": 2,
+  "schema": "zg.original-torch-gdn-chunk-cases.v1",
+  "trained_model": false
+}

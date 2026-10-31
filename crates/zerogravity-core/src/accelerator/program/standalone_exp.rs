@@ -1,5 +1,8 @@
 //! Closed standalone-exp numerical contracts, never provider/model eligibility.
 
+mod negative;
+pub use negative::MKL_EXHA_EXP2_64_F64;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StandaloneExpProfile {
     /// Existing unqualified diagnostic boundary; preserve its exact behavior.
