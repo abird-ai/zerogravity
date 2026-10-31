@@ -1,5 +1,12 @@
 # Fabric vNext — held future plan queue
 
+**31-Oct reconciliation:** this complete architecture remains required by the
+now-active [transition superset](../fabric-vnext-transition/README.md).
+[Plan/source crosswalk](../fabric-vnext-transition/CURRENT_SOURCE_RECONCILIATION.md)
+records recent accepted Qwen work, preserved gaps and S0-first ordering.
+Historical plan-writing holds below are not current implementation authority.
+
+
 Author: Project owner
 Co-authors: GPT-6
 Owner: @pvl — no implementation agent assigned

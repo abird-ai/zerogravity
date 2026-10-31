@@ -37,11 +37,30 @@ not acceptance inputs.
 - Physical/hardware claims remain scoped to the exact device/backend/source
   cell actually tested.
 
-## Current open physical qualification edge
+## Current Fabric and retained Qwen acceptance
 
-- Approved Qwen3.5 .8B model bytes are visible and exact.
-- `.8B` native/reference inputs are recovered offline with exact current Rust payload/provider identities; fresh phase-1 cached47→50 capture and source retirement pass.
-- Owned GEMM/RMS/rotary/attention pass exact `.8B` cached47→50: full logits/all42/natural feedback.180 synthetic and eight authenticated GEMMs, two authenticated attentions,12 analytic/refusal attention cases and16 staged CUDA RMS cases pass with guards/retirement. Original cuBLAS private exports remain refused; no opaque passthrough.
-- Owner resumed. Real post-launch cancellation/abandonment preserves prior bits/tails/root and original quarantine charges. Normal lifecycle passes all13 admitted capacities at48 active tokens;2B32K refuses at pure preflight. Long-active-context/2B numerical coverage is separate and open.
-- Last signed assembled gate:2,135 Rust/0fail/85ignored/283 suites,17 Python suites/178 cases plus packaging checks. Finite27B HIP natural/state/lifetime and shared CPU/HIP attention are accepted only for their documented scopes, not general27B or serving.
-- Independent original0.8B/2B full-model references now cover64 populated positions × two exact replays/model;15,776 records/model and source/process closure inspected. Real-source HIP cold plans and11 refusal/accounting controls pass. First native preparation refuses premature resident initialization binding. Corrected binding reaches0.8B comparison but fails303 words (first initial recurrent negative zero versus original positive zero); all785 modules retire and namespace/source/process closure passes. CPU/HIP now preserve original initial empty-state addition. Fresh r3 passes both actual models:64 populated positions × two natural replays, full logits/all layers/all state,1,396,408,320/1,399,816,192 words exact. Known controls/retirement/parent closure pass; all785/781 modules retire and the owned unit stops. The assembled isolated gate passes2,136 Rust/0fail/85ignored/283 suites,17 Python suites/178 cases plus packaging checks; affected strict surfaces/current cold controls pass. This bounded single-row diagnostic still lacks unknown/fault qualification and scalable ordinary routing. Production stays disabled; wider CUDA references, general27B, contexts/concurrency and performance remain open. See owning numerics/model-execution TODOs.
+- S0 engine/serving/SDK contracts compile and preserve one ForwardPlan/physical
+  arbiter. Refusal/authority/API tests pass; final isolated gate2,159 Rust/0fail/
+  87ignored/292 suites,17 Python suites/182 cases plus packaging. New operations
+  refuse before execution/listener side effects; no model/physical grant.
+  See [transition](fabric-vnext-transition/TODO.md) and its
+  [feature matrix](fabric-vnext-transition/FEATURE_PARITY_MATRIX.md).
+- Existing model/codec/source/CPU/GPU/CLI/HTTP behavior and deliberate refusals
+  remain required through S/F moves. Structural visibility is not migration
+  completion, physical evidence or production eligibility.
+- Signed pre-transition gate`e2559b6`:2,142 Rust/0fail/87ignored/283 suites;
+  17 Python suites/178 cases plus packaging; shared HIP/Vulkan strict pass.
+- CUDA0.8B cached47→50 fullV/all42 is exact. Capacity/lifecycle48-active-token
+  runs do not qualify full contexts or2B numerics; exact2B/wider authority open.
+- HIP0.8B/2B bounded64 single-row full-model/two replays/all state pass;
+  canonical healthy/fault/unknown final readers accepted in`85f33c7`.
+  Finite27B full64/fullV/all112 is accepted only for documented diagnostic calls.
+- CPU/HIP chunk GDN:19 cases/380 fields/64,345,520 words exact; native four
+  numerical refusals expose status only;20 modules retire. Initialized completed
+  writes are not the same as Ready exports or logical publication.
+- Original multi-row47–50/512→514 references are not ZG execution qualification.
+  Multi-row HIP integration, general27B, populated contexts, C1..C64, matched
+  vLLM and measured superiority remain deferred requirements, not dropped work.
+- Accepted unchanged evidence is retained; changed source/ABI/numerical/owner
+  paths require affected qualification. Keep original failed and unrun scopes.
+  No implicit resume of cancelled recurrence or model/device campaign.

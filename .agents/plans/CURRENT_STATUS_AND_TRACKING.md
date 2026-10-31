@@ -9,6 +9,22 @@ Current source and tests are the implementation truth. The active work queue is
 retains superseded plans, handoffs, checkouts and run evidence; they are not
 live authority.
 
+## Active direction — Fabric first (31 Oct)
+
+Owner authorizes [Fabric transition](fabric-vnext-transition/TODO.md): reconcile
+both plans against signed`1c35172`, then complete compilable S0 and
+feature-preserving S/F migration. Qwen remains deferred, not completed;
+recurrence`17aafa71` stays cancelled. No new hardware campaign or production
+route. Plan 1's full design is retained in Plan 2's S0–S3/F0–F4/Q0–Q2 ordering.
+See [source delta](fabric-vnext-transition/CURRENT_SOURCE_RECONCILIATION.md) and
+[feature preservation](fabric-vnext-transition/FEATURE_PARITY_MATRIX.md).
+Signed`7396984` lands verified S0: new cold crates/contracts/SDK and initial
+byte-preserving CLI moves; DAG18, strict and focused refusal/authority tests.
+Final isolated gate:2,159 Rust/0fail/87ignored/292 suites;17 Python suites/182
+cases (10 explicit source-input skips), release/installer/shell/Nix pass.
+S1 exact codec/source moves are next. No new physical/model/production support;
+F0/F2 shell operations remain Unsupported. Resume from the transition TODO.
+
 ## User-requested checkpoint and pause — 31 Oct
 
 - Signed `e2559b6`: actual HIP chunk-GDN arithmetic matches all19 original
@@ -21,7 +37,7 @@ live authority.
   physical, whole-model, serving or performance grant from operator evidence.
 - Owner requested pause at this checkpoint, with possible direction change.
   Recurrence`17aafa71` cancelled; no owned native/build jobs remain running.
-  Await explicit direction; stale receipts must not resume the mission.
+  Fabric is now the authorized direction; stale receipts must not resume Qwen.
 - CPU/CUDA parity means functional model coverage, not identical arithmetic.
   CUDA0.8B ordinary cached47→50 is correct;2B ordinary numerical/wider populated
   context coverage remains open despite capacity/lifecycle execution. Bounded
@@ -63,7 +79,7 @@ live authority.
   original HF full-model CPU references now cover64 populated positions × two
   exact replays/model: fullV/all layers/all populated state,15,776 records/model,
   authenticated source and actual parent/group/container/EOF closure.
-- Uncommitted HIP source assembly reuses typed SSA, shared resident storage and
+- Signed `1f29a42` HIP source assembly reuses typed SSA, shared resident storage and
   original session publication. Both cold64 plans and11 refusal/accounting
   controls pass; a root-pool130 quote is not C64 inference. First native attempt
   prepares785 modules then refuses premature matrix binding before Ready.
@@ -78,7 +94,7 @@ live authority.
   descendants. Owned unit stopped.2B canonically imported without download.
   Final assembled gate passes2,136 Rust/0fail/85ignored/283 suites,17 Python
   suites/178 cases plus packaging checks; CPU/diagnostic/HIP/shared-Vulkan strict
-  checks and both current cold-control sets pass. Unknown/fault lifetime,
+  checks and both current cold-control sets pass. Canonical unknown/fault lifetime subsequently passed in `85f33c7`;
   scalable ordinary execution and production/serving/performance remain open.
   CUDA-only seals and finite27B guards remain separate; wider contexts are open.
 

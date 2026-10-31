@@ -4,6 +4,13 @@ Owner: @pvl; future implementation coordinator to be appointed only after resync
 
 # zerogravity Fabric vNext — complete architecture reference
 
+**31-Oct reconciliation:** this complete architecture remains required by the
+now-active [transition superset](../fabric-vnext-transition/README.md).
+[Plan/source crosswalk](../fabric-vnext-transition/CURRENT_SOURCE_RECONCILIATION.md)
+records recent accepted Qwen work, preserved gaps and S0-first ordering.
+Historical plan-writing holds below are not current implementation authority.
+
+
 **Design reference frozen:** 2026-10-27.
 **Status:** REFERENCE ONLY. NOT APPROVED FOR IMPLEMENTATION OR REBASE. NOT an executable capability declaration.
 **User's latest architectural instructions:** anything may change before v1; serving MUST be a reusable Rust library separate from the CLI; ALL useful SDK, serving, model, pipeline, engine, and administration functionality MUST be accessible through the public zerogravity Rust library; the CLI MUST be only a consumer of that library and own parsing, terminal presentation, and OS command interaction. Save the design separately. On the next explicit phase, FIRST resynchronize with the changed repository, review changes and revise this design; do not implement now.

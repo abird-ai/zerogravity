@@ -1,11 +1,17 @@
 # Fabric vNext transition — COMPLETE next-agent implementation handoff
 
+**31-Oct direction:** Fabric S0 landed in signed`7396984`; source/host checks pass.
+Plan 2 includes Plan 1; Qwen expansion deferred. Historical docs-only holds below
+are superseded. [Current source/crosswalk](CURRENT_SOURCE_RECONCILIATION.md) ·
+[active phase queue](TODO.md). No new physical/production grant.
+
+
 **Canonical current entrypoint:** `.agents/docs/CURRENT_HANDOFF.md`. Current source/tests and the four-file planning spine outrank historical source snapshots in this document.
 
-**Created:** 27 October 2026. **STATUS: PLAN/HANDOFF COMPLETE; SOURCE IMPLEMENTATION NOT STARTED.**
+**Created:** 27 October 2026. **Current status: signed S0 `7396984`; S1 implementation moves next.**
 **Repo:** /home/pvl/spaces/abird/src/zerogravity; connector **dotlink-l5** (host pvl-l5), not dotlink-a1.
 **Source observation during this design pass:** HEAD fadf2b1123309a2118725f2cc005d3edc7ea39f2 at 06:50 UTC; 41 commits after prior deep-review baseline 195099ca, including codec split, model/CPU/GPU source refactors and recent fresh CUDA prefill source/oracle. Run current HEAD/status again before any implementation.
-**This handoff's central mandate:** first write complete compilable Rust architecture skeleton with both new engine/serving crates and exported public library, then move ALL current functionality in tested logical signed commits, then one full integrated heavy qualification and targeted bugfixes plus final gate. No old pre-v1 API compatibility obligation. This phase writing documents alone does not authorize code work.
+**This handoff's central mandate:** first write complete compilable Rust architecture skeleton with both new engine/serving crates and exported public library, then move ALL current functionality in tested logical signed commits, then one full integrated heavy qualification and targeted bugfixes plus final gate. No old pre-v1 API compatibility obligation. The historical planning turn alone did not authorize code work; the latest owner instruction now does.
 
 ## 1. All context is preserved in the following order
 
@@ -60,7 +66,7 @@ Read the maintained earlier Fabric design set as architecture context:
 
 ## 4. First implementation sequence, exact action
 
-Only after a **new explicit user implementation instruction**:
+The latest owner instruction authorizes this sequence:
 
 1. **Read source/plan ownership:** use dotlink-l5 current HEAD/status/recent commits, AGENTS.md and all linked docs, active TODOs, other workers. No destructive Git operations, no unapproved model/device access, never overwrite other agent uncommitted files. Treat fadf2b1 only as the last *review snapshot*.
 2. **Freeze small interface choices** and integrate shared source/type names with actual latest code. Appoint one coordinator for Cargo/runtime/root shared files and separate owners for independent lanes. Respect the repo's signed commits, explicit file ownership and main-only persistent topology.

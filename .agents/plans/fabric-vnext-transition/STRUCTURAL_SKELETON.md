@@ -1,6 +1,12 @@
 # Fabric vNext transition — FIRST full Rust skeleton and complete code relocation
 
-**The user's highest-priority implementation milestone** is visible, compilable code structure of the ENTIRE Fabric vNext architecture immediately, with all crate/module ownership layers and small typed interfaces ready for implementation. That must precede the detailed implementation migration and expensive qualification. Design only in this current conversation; no Rust was edited.
+**31-Oct direction:** Fabric S0 landed in signed`7396984`; source/host checks pass.
+Plan 2 includes Plan 1; Qwen expansion deferred. Historical docs-only holds below
+are superseded. [Current source/crosswalk](CURRENT_SOURCE_RECONCILIATION.md) ·
+[active phase queue](TODO.md). No new physical/production grant.
+
+
+**The user's highest-priority implementation milestone** is visible, compilable code structure of the ENTIRE Fabric vNext architecture immediately, with all crate/module ownership layers and small typed interfaces ready for implementation. That must precede the detailed implementation migration and expensive qualification. S0 is now being implemented against the reconciled 31-Oct source checkpoint.
 
 ## 1. S0 — complete structural skeleton in one signed logical commit
 

@@ -1,5 +1,11 @@
 # Fabric vNext — precise implementation phases, logical units and signed-commit program
 
+**31-Oct direction:** Fabric S0 landed in signed`7396984`; source/host checks pass.
+Plan 2 includes Plan 1; Qwen expansion deferred. Historical docs-only holds below
+are superseded. [Current source/crosswalk](CURRENT_SOURCE_RECONCILIATION.md) ·
+[active phase queue](TODO.md). No new physical/production grant.
+
+
 **Plan only as of 27 October 2026.** The first code milestone is a complete compilable skeleton, NOT several partial design-only commits. Then implement all currently real features through it, delete pre-v1 compatibility paths and run ONE consolidated heavyweight verification cycle. Reference source is moving; first actual implementation agent must re-read current HEAD/source before editing. Model numerical/physical safety is never silently waived.
 
 ## 0. Definitions and strict ordering
@@ -189,7 +195,7 @@ If Q0 reports regressions:
 - Existing qualified HTTP CPU/GPU source requests, token/EOS/JSON/SSE/status, batching, cancellation, graceful shutdown and model/source/codec support matrix correct.
 - Record performance baseline/p95/TTFT/true ITL, cold/warm runtime and physical memory for selected authorized source/hardware; do not assert vLLM parity without matched quality and device.
 - Confirm no duplicate legacy HTTP/router/allocator/public runtime path, no permanent compatibility glue or reachable todo! in supported routes.
-- Update docs, README/whitepaper and current plan ownership **only with source-backed facts** and explicit coordinator role; one logical signed closeout commit if warranted, no push without request.
+- Update owning plans/status/whitepaper (root README remains unchanged) and current plan ownership **only with source-backed facts** and explicit coordinator role; one logical signed closeout commit if warranted, no push without request.
 
 **Transition complete** means all previously real functionality works correctly under new architecture; all unsupported/future capabilities still truthful. It does not mean all planned multimodal/distributed/SSD/model additions suddenly completed.
 

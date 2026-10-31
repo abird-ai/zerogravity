@@ -1,5 +1,12 @@
 # Fabric vNext — architecture design context and handoff
 
+**31-Oct reconciliation:** this complete architecture remains required by the
+now-active [transition superset](../fabric-vnext-transition/README.md).
+[Plan/source crosswalk](../fabric-vnext-transition/CURRENT_SOURCE_RECONCILIATION.md)
+records recent accepted Qwen work, preserved gaps and S0-first ordering.
+Historical plan-writing holds below are not current implementation authority.
+
+
 **Canonical current entrypoint:** `.agents/docs/CURRENT_HANDOFF.md`. Current source/tests and the four-file planning spine outrank historical source snapshots in this document.
 
 **Date frozen:** 2026-10-27.

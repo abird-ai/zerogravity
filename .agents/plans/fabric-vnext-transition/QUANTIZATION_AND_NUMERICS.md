@@ -1,5 +1,11 @@
 # Fabric vNext transition — quantization, codecs, numerical equivalence and ownership
 
+**31-Oct direction:** Fabric S0 landed in signed`7396984`; source/host checks pass.
+Plan 2 includes Plan 1; Qwen expansion deferred. Historical docs-only holds below
+are superseded. [Current source/crosswalk](CURRENT_SOURCE_RECONCILIATION.md) ·
+[active phase queue](TODO.md). No new physical/production grant.
+
+
 **Contract status:** specification for code movement and new clean Rust type boundaries; source code only created after separate user instruction. Informed by commit 405a3e6 format homes, live artifact/CPU/GPU modules, .agents/plans/pipeline-composition/FORMATS.md, and the original complete Fabric vNext/derived-quant design. A directory, parser, source codec or CUDA image is NOT whole-model execution proof.
 
 ## 1. The six independent dimensions

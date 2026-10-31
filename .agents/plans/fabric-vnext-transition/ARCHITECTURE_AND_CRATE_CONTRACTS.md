@@ -1,5 +1,11 @@
 # Fabric vNext transition — complete target crate/module architecture and contracts
 
+**31-Oct direction:** Fabric S0 landed in signed`7396984`; source/host checks pass.
+Plan 2 includes Plan 1; Qwen expansion deferred. Historical docs-only holds below
+are superseded. [Current source/crosswalk](CURRENT_SOURCE_RECONCILIATION.md) ·
+[active phase queue](TODO.md). No new physical/production grant.
+
+
 **Status:** target architecture for first structural source milestone. Historical design baseline fadf2b1; current source baseline is the reviewed main state referenced by CURRENT_HANDOFF.md / CURRENT_SOURCE_RECONCILIATION.md. All APIs below are illustrative; full Rust names remain pre-v1 breakable. This design incorporates the recent codec and GPU refactors, proper resource ownership and library-first serving.
 
 ## 1. Enforce the real Cargo dependency graph

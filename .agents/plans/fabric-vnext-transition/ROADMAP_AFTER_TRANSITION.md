@@ -1,6 +1,22 @@
 # Fabric vNext — feature-expansion roadmap AFTER structural/functional transition
 
+**31-Oct direction:** Fabric S0 landed in signed`7396984`; source/host checks pass.
+Plan 2 includes Plan 1; Qwen expansion deferred. Historical docs-only holds below
+are superseded. [Current source/crosswalk](CURRENT_SOURCE_RECONCILIATION.md) ·
+[active phase queue](TODO.md). No new physical/production grant.
+
+
 **Not part of first S0–F4 / Q0–Q2 migration completion.** This document preserves all current zerogravity product targets and full future design threads, with an implementation ordering that starts only after a correct model-neutral engine, public SDK, standalone serving library and thin CLI exist. Every new capability is separately source/task/numeric/state/physical/performance qualified before being advertised.
+
+## Preserved mission resumes first
+
+After the prioritized structural/feature-preserving migration and its applicable
+acceptance, resume genuine multi-row0.8B/2B HIP on x2 using accepted chunk GDN,
+source-bound calls and independent47–50/512→514 references. Then general27B,
+l5 CUDA0.8B/2B wider numerical authority, populated fit contexts and C1/C4/C8/
+C16/C32/C64 serving/isolation/cancel/shutdown. Matched approved vLLM and measured
+optimization follow correctness. Keep all losses/refusals/unrun cells. This
+mission is deferred, not replaced by E01–E10 or a new acquisition permission.
 
 ## 1. Base prerequisite
 

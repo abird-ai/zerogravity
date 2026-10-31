@@ -2,6 +2,25 @@
 
 **Historical source baseline:** HEAD fadf2b1 on dotlink-l5, 27 Oct 2026. The functional rows remain a recovery checklist for F4/Q0/Q2, but current source/tests and CURRENT_SOURCE_RECONCILIATION.md determine today's implementation state. Break/delete pre-v1 implementation and API names freely, but do not lose actually supported model, artifact, device, service or safety behavior. Current stubs/metadata only MUST remain explicitly unsupported until genuinely implemented.
 
+## 31-Oct preservation delta (supersedes historical scope cells)
+
+| Existing accepted scope | Preserve during migration | Still unqualified/deferred |
+|---|---|---|
+| CUDA0.8B cached47→50 exact fullV/all42 | owned kernels, source/numerical identity, original flight/root/quarantine | broader populated contexts, ordinary production |
+| CUDA2B ordinary capacity/lifecycle | actual execution/refusal;2B32K pre-allocation refusal | independent whole-model numerical authority |
+| HIP0.8B/2B bounded64 single-row full-model | both natural replays/fullV/all state; canonical source pins; healthy/fault/unknown final readers | multi-row/scalable ordinary/serving |
+| HIP27B finite full64/fullV/all112 | teacher/natural/late-cancel/final-reader scope | general contexts/residency/serving |
+| CPU/HIP eager attention + chunk GDN | exact per-profile arithmetic, initialized-C/signed-zero, actual HIP retirement/status-only Ready | whole-model multi-row support, Vulkan physical GDN |
+| Fresh47–50 and512→514 original references | independent source, explicit phases, full last-rowV/all state | not ZG CPU/HIP execution; no chunk invariance claim |
+| Qwen mission | l5/x2 model-specific contexts, C1..C64, matched vLLM and all losses/refusals | deferred behind Fabric, not completed or erased |
+
+Latest source checkpoint and commit-scoped evidence:
+[reconciliation](CURRENT_SOURCE_RECONCILIATION.md),
+[model execution](../model-execution/TODO.md),
+[numerics](../numerics-and-context/TODO.md).
+All old feature rows below remain a migration checklist, not an updated physical
+capability table. S0 is structural only; F4/Q0/Q2 must account for this delta too.
+
 ## 1. Preservation policy and truth states
 
 Record separately for every feature:

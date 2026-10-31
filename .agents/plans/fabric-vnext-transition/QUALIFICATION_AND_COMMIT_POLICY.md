@@ -1,8 +1,23 @@
 # Fabric vNext — qualification, testing cadence, bugfix policy and signed commits
 
+**31-Oct direction:** Fabric S0 landed in signed`7396984`; source/host checks pass.
+Plan 2 includes Plan 1; Qwen expansion deferred. Historical docs-only holds below
+are superseded. [Current source/crosswalk](CURRENT_SOURCE_RECONCILIATION.md) ·
+[active phase queue](TODO.md). No new physical/production grant.
+
+
 **User-directed testing priority (27 Oct 2026):** Implement the complete architectural skeleton and perform all major source relocation + engine/SDK/serving/CLI migration **before** running long all-model/real-GPU/benchmark qualification. Each phase still compiles and passes a small relevant test selection; **one integrated post-transition qualification** finds cross-layer issues, followed by low-level targeted bugfixes and **one final full gate** when stable. No repeated expensive full suites after every moved file.
 
 This adapts, but does not annul, the existing all-model correctness policy at .agents/plans/numerics-and-context/CORRECTNESS_POLICY.md. Exact source arithmetic, buffer lifetime and source-rights checks are never waived. A failed critical structural check prevents that phase's commit; a long unrun hardware case stays explicitly unqualified until actually run.
+
+## 31-Oct applied checkpoint policy
+
+The assembled S0 batch also passed the complete isolated source/host
+`scripts/check.sh` before signing, as required by repository checkpoint policy.
+This was one final batch gate, not per-helper qualification; no real-model/GPU
+campaign or benchmark was repeated. S0 does not satisfy post-migration Q0/Q2.
+Keep expensive changed-source/physical acceptance at assembled milestones and
+reuse genuinely unchanged evidence within its original scope.
 
 ## 1. Three tiers of validation
 

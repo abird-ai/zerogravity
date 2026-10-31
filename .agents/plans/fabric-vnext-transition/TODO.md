@@ -6,17 +6,17 @@ Owner: @pvl — current main-session coordinator
 
 Base: `1c35172`
 
-Latest direction: Fabric first; S0 active. Plan 2 incorporates Plan 1 and the
+Latest direction: Fabric first; S0 landed, S1 next. Plan 2 incorporates Plan 1 and the
 31-Oct accepted Qwen checkpoint. Preserve deferred Qwen scopes in the owning
 plans; recurrence remains cancelled. No new physical capability from migration.
 
 **Scope:** Fabric implementation now authorized. This transition packet began as documentation-only. Historical initial read-only source observation was fadf2b1123309a2118725f2cc005d3edc7ea39f2; it is not an implementation baseline. Current source/status is owned by CURRENT_HANDOFF.md and CURRENT_SOURCE_RECONCILIATION.md.
 **Reference authority:** HANDOFF.md → README.md → PHASED_IMPLEMENTATION.md → STRUCTURAL_SKELETON.md; old preserved ../fabric-vnext entire packet.
 
-## Resume here — S0 verified, checkpointing
+## Resume here — S0 landed; S1 next
 
-Main owns the Fabric batch based on signed`1c35172`. Source review and final
-isolated gate pass; signed landing/reconciliation follows. Revalidate current
+Signed`7396984` lands S0 on the original`1c35172` checkpoint. Source review and
+final isolated gate pass; all owned jobs are closed. Revalidate current
 HEAD/status/diff before continuing. No active build/native job remains. The
 initial Qwen mission and recurrence stay deferred/cancelled, not completed.
 
@@ -41,7 +41,7 @@ Verified S0 scope:
   acceptance, physical GPU/model execution or a new production route.
 
 Next:
-1. Finish signed checkpoint/reconcile completed S0 under its landing commit.
+1. Read the current reconciliation/source map; S0 is committed, not a new task.
 2. Start S1: inspect exact QuantKind/StoredTensorEncoding, artifact scalar/quant
    decoder and all callers; move real codec ownership without arithmetic changes.
 3. Continue S2/S3 then F0–F4. Keep existing supported routes until coherently moved;
@@ -58,11 +58,10 @@ that job or re-arm the cancelled Qwen recurrence from an old receipt.
 
 ## Committed
 
-Historical documentation-only packet: `2ff3d49`; canonical handoff refresh:
-`ff89b87`. No Fabric source milestone accepted yet. Qwen implementation commits
-are preserved inputs, not S/F/Q completion proof.
+Historical documentation packet:`2ff3d49`; canonical handoff refresh:`ff89b87`.
+Qwen commits are preserved inputs, not S/F/Q completion proof.
 
-## Uncommitted — verified S0 structural batch
+### `7396984` — compilable Fabric base skeleton
 
 - [x] Owner activates Fabric implementation; clean signed main at`1c35172` inspected, current source/plans reconciled. Main session owns integration; unrelated detached checkout preserved.
 - [x] Create zerogravity-engine and zerogravity-serving as compiled independent Rust library crates, correct Cargo features and resource ownership (engine model-neutral, serving no facade/CLI).
@@ -71,18 +70,19 @@ are preserved inputs, not S/F/Q completion proof.
 - [x] Make artifact container/codec/source/acquisition/derived homes, CPU numerics/quant, GPU backend/quant/program/lease/transfer/qualification, family source/forward/state/specialization homes compile-visible.
 - [x] Make public zerogravity API visible for all user functionality (RuntimeBuilder, models, run, acquisition/cache, devices, pipeline, serving, diagnostics) with typed Unsupported for unavailable future tasks.
 - [x] Make CLI target args/commands/output/signals structure visible while preserving existing currently supported execution through source migration.
-- [x] Any todo! only private, not live/production/serve/public supported path. No fake model, zero-logit kernel, fabricated physical Ready or permit.
+- [x] New pending operations use typed Unsupported; no new todo! or public panic path, fake model, zero-logit kernel, fabricated Ready or permit.
 - [x] Update existing scripts/check-architecture.py/check fixtures for new DAG, no serving→facade cycle or engine→Qwen/GPU; ensure CPU-only default compile avoids GPU compiler/network stack.
 - [x] S0 targeted strict/contracts and final isolated repository gate pass; no physical model/GPU qualification.
-- [ ] Land the verified structural source/tests and this owning TODO in one signed checkpoint.
+- [x] Signed structural source/tests and owning TODO checkpoint; nothing pushed.
 
-## Uncommitted — future S1 source format/quant exactness
 
-- [ ] Separate source stored ScalarDType/QuantScheme, dynamic ActivationEncoding, numerical/reduction policy, packed physical layout and derived lossy artifact identity.
+## Uncommitted — next S1 source format/quant exactness
+
+- [ ] Migrate real callers to S0's separate encoding/activation/numerical/layout/derived types; remove the old codec identity only with its complete caller closure.
 - [ ] Move exact artifacts q4/q6/q8, F16/BF16 scalar codec source and malformed tests; preserve actual codec decoder only once.
 - [ ] Move CPU source-exact Q4_0/Q4_1/Q6_K/Q8_0 projection + Q8 activation and BF16 math to proper owners; keep dequantized pure F32 reference separately.
 - [ ] Retain Q4_K scalar decoding and explicit unqualified CPU physical matvec refusal; Q1/Q2/Q3/NVFP4/EXL3 unimplemented placeholders.
-- [ ] Bind existing GPU packed kernels/activation under source+nvariant+numeric+device constraints; no codec-specific model engine.
+- [ ] Bind existing GPU packed kernels/activation under source+variant+numeric+device constraints; no codec-specific model engine.
 - [ ] S1 small byte/source numerical/refusal test and affected cargo check; signed coherent commit(s).
 
 ## Uncommitted — future S2 family math and GPU provider
@@ -167,3 +167,13 @@ are preserved inputs, not S/F/Q completion proof.
 - [ ] Revalidate source-dependent claims against current main; historical source SHAs are provenance only and never an implementation base.
 - [ ] Do not recreate consolidated archives, per-file documentation SHA indexes or frozen handoff copies; Git history is the archive.
 - [ ] Keep the current S0 continuation explicit; do not revert to historical docs-only authorization or resume Qwen from stale receipts.
+
+## Tests and verification
+
+- [x] S0 DAG18 + isolated minimal strict + focused engine/server/core/SDK tests — `7396984`.
+- [x] Final isolated repository gate2,159 Rust/0fail/87ignored/292 suites;
+  17 Python suites/182 cases (10 explicit source-input skips), packaging pass — `7396984`.
+- [ ] S1–S3 affected exact codec/source/state/ownership coverage.
+- [ ] F0–F4 complete SDK/engine/serving/CLI feature/refusal migration coverage.
+- [ ] Q0/Q1/Q2 assembled transition/physical acceptance; unchanged evidence reused
+  only within actual source/numerical/owner scopes. S0 is not Q0/Q2.

@@ -1,5 +1,11 @@
 # Fabric vNext transition — settled decisions, risks, unresolved choices and acceptance law
 
+**31-Oct direction:** Fabric S0 landed in signed`7396984`; source/host checks pass.
+Plan 2 includes Plan 1; Qwen expansion deferred. Historical docs-only holds below
+are superseded. [Current source/crosswalk](CURRENT_SOURCE_RECONCILIATION.md) ·
+[active phase queue](TODO.md). No new physical/production grant.
+
+
 This is an implementation-focused decision register made 27 October 2026. It **supplements** the fully preserved historical user/architecture decision ledger at ../fabric-vnext/DECISIONS_AND_OPEN_QUESTIONS.md and the exact latest user instructions in this plan's README.md. It does not supersede source truth or active owner plans.
 
 ## 1. Explicitly binding user decisions
@@ -11,7 +17,7 @@ This is an implementation-focused decision register made 27 October 2026. It **s
 - The **complete target architecture must be visible immediately as actual compiled Rust code** in the FIRST structural source milestone, with typed TODO stubs where necessary. File tree alone is not enough.
 - Then physically move current source implementations into this structure, make current functionally supported feature set work and stay correct, delete old paths, commit in logical units as implementation proceeds.
 - Each phase is committed and tested with cheap targeted checks. **Do not repeatedly run heavyweight model/GPU/long-context/release qualification before the large structural + functional transition is complete.** Run one consolidated complete qualification afterward; follow with specific bugfix commits and targeted tests; one final full gate when stable.
-- User's **current request is to write detailed plan and handoff only**, not actually implement/refactor/commit Rust now. The ready-to-paste successor prompt will direct a future explicitly approved agent how to begin.
+- The 27-Oct request was documentation-only. The latest owner request activates Fabric implementation, before returning to the preserved Qwen mission.
 
 ## 2. Accepted technical design refinements after 41-commit source review
 

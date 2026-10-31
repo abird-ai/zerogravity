@@ -6,7 +6,32 @@ It is deliberately not a generated concatenation of every historical plan, run l
 
 A successor should be able to start here without prior chat history, understand how the project evolved, identify what is implemented versus merely designed, and continue either the current Qwen correctness critical path or the separately authorized Fabric vNext transition.
 
-## User pause — 31 Oct 2026
+## Active direction — Fabric first (31 Oct)
+
+Owner authorizes [Fabric transition](../plans/fabric-vnext-transition/TODO.md): reconcile
+both plans against signed`1c35172`, then complete compilable S0 and
+feature-preserving S/F migration. Qwen remains deferred, not completed;
+recurrence`17aafa71` stays cancelled. No new hardware campaign or production
+route. Plan 1's full design is retained in Plan 2's S0–S3/F0–F4/Q0–Q2 ordering.
+See [source delta](../plans/fabric-vnext-transition/CURRENT_SOURCE_RECONCILIATION.md) and
+[feature preservation](../plans/fabric-vnext-transition/FEATURE_PARITY_MATRIX.md).
+Signed`7396984` lands verified S0; S1 exact codec/source moves are next.
+No new model/serving capability from the skeleton.
+
+## Interruption recovery — S0 signed; S1 next
+
+Read `../plans/fabric-vnext-transition/TODO.md` **Resume here** first. Signed
+`7396984` lands S0: engine/serving/contracts/SDK and initial CLI moves reviewed;
+final isolated gate passes2,159 Rust/0fail/87ignored/292 suites,17 Python suites/
+182 cases plus packaging. Physical/model campaigns were not restarted.
+S1 real codec/source moves are next; no owned job remains active. F0/F2
+execution/serving remain Unsupported on the new shell; existing routes intact. No full migration or new inference capability claimed.
+
+Revalidate HEAD/diff/ownership, recover any active owner before starting duplicate
+work, and update the owning TODO after material steps. Completed source/testing,
+failed/unrun scopes and next concrete actions belong in repo, not only chat.
+
+## Historical Qwen pause — 31 Oct 2026
 
 - Owner requested a pause at the next reasonable checkpoint; direction may change.
 - Signed implementation checkpoint: `e2559b6` (native chunk GDN); CPU predecessor
@@ -14,7 +39,7 @@ A successor should be able to start here without prior chat history, understand 
 - Recurring mission`17aafa71` cancelled, not completed. No owned native/build job
   remains running; terminal evidence saved and owned native units stopped.
 - Do not resume implementation, re-arm recurrences or rerun accepted scopes from
-  stale automatic receipts. Await the owner's next explicit direction.
+  stale automatic receipts. Fabric is now the explicit direction; Qwen stays deferred.
 - Functional CPU/CUDA model coverage is the user's meaning of parity; numerical
   contracts may differ. Blanket coverage is not verified. Original HF CPU captures
   are reference evidence, not ZeroGravity CPU execution qualification.
@@ -61,7 +86,10 @@ retirement pass; final source gate passes. Full-model multi-row integration,
 scalable ordinary execution, general27B, contexts/concurrency/vLLM remain open.
 No pushes. Re-read git status/log.
 
-## 2. Immediate startup for a successor
+## 2. Preserved Qwen checkpoint (deferred behind Fabric)
+
+Immediate continuation is Fabric S1 in the transition TODO. The Qwen details
+below preserve accepted evidence and future work; they are not restart orders.
 
 **Paused owner mission (resume only on explicit direction):** finish CUDA `.8B`/`2B` on `pvl-l5`, ROCm `.8B`/`2B`/`27B`
 on `pvl-x2`, genuine active-context fit, then C1/C4/C8/C16/C32/C64 serving and
@@ -534,7 +562,7 @@ The user requested a clean future architecture where the whole target structure 
 
 The first structural milestone is intended to introduce model-neutral engine and reusable serving crates, visible typed contracts and explicit unsupported stubs before deep migration.
 
-This remains a design/transition plan. It has not yet been implemented as Fabric S0.
+That was the design-only checkpoint. Signed`7396984` now implements S0; functional migration remains open.
 
 ### 28 Oct: ordinary source-derived Qwen CUDA integration
 
@@ -581,8 +609,10 @@ Current workspace owners remain:
 - zerogravity
 - zerogravity-cli
 - zerogravity-gpu-qualify
+- zerogravity-engine (cold model-neutral shell; F0 migration pending)
+- zerogravity-serving (cold embedded API; F2 protocol migration pending)
 
-The future Fabric crates zerogravity-engine and zerogravity-serving do not exist yet.
+Signed`7396984` adds the two Fabric crates without enabling new model routes.
 
 Current logical ownership:
 
@@ -829,36 +859,15 @@ All fit admission.
 
 These are admission/fit results only. Every admitted context still needs real-model correctness, continuation, fault and ownership qualification.
 
-## 11. Current Qwen critical path
+## 11. Deferred Qwen mission
 
-Unless the user explicitly switches to Fabric vNext implementation, this is the main execution sequence:
-
-1. Preserve the recovered exact `.8B` native/reference inputs and approved source.
-2. Preserve passing structural preflight and fresh phase-1 capture/retirement evidence; retain its independently emitted digest.
-3. Finish qualifying owned driver-only GEMM integration without weakening admission or quarantine.
-4. Start a fresh ordinary process with `--compare-existing` and compare exact cached 47→48→49→50:
-   - 248,320 logits;
-   - all 42 state domains;
-   - natural feedback;
-   - source/root identity.
-5. Run real after-launch cancellation/fault/unknown-completion/quarantine.
-6. Run retirement/provider shutdown/real-model shutdown.
-7. Qualify .8B context ladder 512/1K/2K/4K/8K/16K/32K.
-8. Qualify 2B only for admitted cells; 32K remains a required pre-allocation refusal under current plan.
-9. Run the assembled repository gate.
-10. Qualify ROCm/HIP on `pvl-x2` next; no downloads or privilege changes without authorization.
-11. Deferred, not the current task: the serial matched ZeroGravity/vLLM campaign:
-    - canonical;
-    - ragged;
-    - queue scaling;
-    - exact context workloads;
-    - ABBA/BAAB repetitions;
-    - cold and warm separated;
-    - TTFT/prefill/decode/throughput/goodput separately reported.
-
-Benchmark plan:
-
-    ../plans/serving-and-speculation/BENCHMARK_CAMPAIGN_2026-10-27.md
+Fabric transition is now first. Do not rerun already accepted cached47→50,
+bounded64 HIP, finite27B, lifetime or GDN scopes merely to restart the campaign.
+After migration, resume genuine multi-row0.8B/2B HIP and call-free lowering,
+then general27B/populated fit contexts/C1..C64/matched vLLM. Preserve the separate
+CUDA2B/wider reference and ROCm baseline authority gaps. Exact current scope:
+`../plans/fabric-vnext-transition/CURRENT_SOURCE_RECONCILIATION.md` and owning
+model-execution/numerics/serving TODOs. Production remains disabled.
 
 ## 12. Serving and router state
 
@@ -987,7 +996,7 @@ Future/target families and tasks discussed in the design include broader Qwen, G
 
 ## 17. Fabric vNext — current canonical design
 
-Fabric vNext is the next architectural transition, not current implementation.
+Fabric vNext is active: S0 is signed in`7396984`; S1–S3/F0–F4/Q0–Q2 remain open.
 
 User intent:
 
@@ -1062,32 +1071,13 @@ The vNext documents no longer require or promise a monolithic archive or documen
 
 ## 18. Current plan queue
 
-Authoritative queue:
-
-    ../plans/TODO.md
-
-Current priorities at this handoff:
-
-P0:
-- serving-and-speculation — ordinary .8B cached47→50/lifecycle/context qualification, then matched vLLM campaign.
-
-P1:
-- numerics-and-context;
-- memory-and-streaming;
-- cpu-gpu-optimization;
-- pipeline-composition;
-- cli-device-routing.
-
-P2:
-- model-execution;
-- model-acquisition.
-
-Icebox:
-- multimodal;
-- distributed-execution;
-- platform-and-release.
-
-Fabric vNext remains a maintained architecture/transition packet; actual S0 starts only when the user explicitly asks to begin that implementation.
+`../plans/TODO.md` is authoritative. Owner promoted Fabric transition to P0:
+S0 architecture-visible skeleton, S1–S3 lower-layer moves, F0–F4 complete
+engine/SDK/serving/thin CLI, Q0/Q1/Q2 assembled acceptance. Preserve all current
+Qwen outcomes and unfinished mission in their existing owning plans.
+The original Fabric packet supplies full architecture, the transition packet
+is its implementation superset. Historical “not authorized” wording is not a
+current stop condition. No physical campaign or recurrence was restarted.
 
 ## 19. Fresh review findings and fixes immediately before this handoff
 
@@ -1200,33 +1190,14 @@ Final topology after cleanup:
 
 ## 22. How to continue safely
 
-If the user says “continue the main task”:
-
-- stay on the Qwen ordinary CUDA critical path in section 11;
-- do not start Fabric S0;
-- preserve recovered native inputs and passing phase-1 reference evidence;
-- preserve the passing owned `.8B` cached47→50/lifecycle/source-gate checkpoint;
-- recover missing exact2B and long-active-context reference inputs;
-- finish those broader numerical scopes without altering the reference;
-- latest owner order: ROCm on `pvl-x2` after CUDA correctness, no subagents;
-- benchmark only after correctness and without displacing that ROCm task.
-
-If the user says “begin Fabric vNext” or equivalent:
-
-- re-read current HEAD/source;
-- read the vNext/transition window set;
-- confirm explicit implementation authorization;
-- start with S0 full structural skeleton;
-- do not treat historical fadf2b1/195099ca source maps as current;
-- keep current source behavior/refusals intact while moving ownership;
-- no duplicate engine/resource/state authority.
-
-If the user asks for another review:
-
-- review current source afresh;
-- do not merely replay this handoff's conclusions;
-- prioritize correctness/regressions and shared low-level fixes;
-- update current plans/status when factual state changes.
+Latest owner direction is Fabric, not autonomous Qwen resumption. Read current
+source/status, the two Fabric packets and source reconciliation. Continue the
+active S/F phase with one implementation writer, exact source/state/resource
+ownership and explicit Unsupported stubs. Preserve existing runtime paths until
+replaced coherently; never claim the skeleton migrated or qualified them.
+Resume Qwen only after this prioritized structural/feature-preserving work or a
+new explicit priority change. Cancelled recurrences and stale receipts do not
+change this order.
 
 ## 23. Do not do
 
@@ -1243,18 +1214,11 @@ If the user asks for another review:
 - Do not weaken source/state/resource semantics to make a context or benchmark fit.
 - Do not modify the root README unless the user explicitly asks.
 
-## 24. The successor's first decision
+## 24. Current continuation
 
-After reading the required window set, determine which of these two paths the user's latest message requests:
-
-A. Current implementation critical path:
-   retain passing owned CUDA `.8B` cached47→50 exact parity -> finish broader
-   lifecycle/context and2B numerical coverage -> final gate ->
-   ROCm on `pvl-x2` (latest owner order). Matched benchmarking remains deferred.
-
-B. Fabric vNext transition:
-   current-source resync -> S0 full visible architecture skeleton -> S1/S2/S3 -> F0/F1/F2/F3/F4 -> Q0/Q1/Q2.
-
-Do not mix the two implicitly. The serving benchmark plan explicitly excludes Fabric vNext; the Fabric transition must preserve current verified behavior and qualification boundaries.
+Fabric source resync → S0 → S1/S2/S3 → F0/F1/F2/F3/F4 → Q0/Q1/Q2,
+then the preserved Qwen mission. Track accepted and uncommitted phase work in
+`../plans/fabric-vnext-transition/TODO.md`; don't reset to historical design
+snapshots or expand finite qualification catalogues into a production engine.
 
 This document should remain concise enough to load in one window while still carrying the complete continuity story. Detailed facts belong in the maintained linked plans, not duplicated here. When a fact changes, update the owning plan/status file first and this handoff only when the cross-window continuation materially changes.

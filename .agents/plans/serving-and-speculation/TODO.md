@@ -1,5 +1,16 @@
 # Serving and speculation
 
+## Priority override — 31 Oct: Fabric first
+
+Owner prioritizes [Fabric transition](../fabric-vnext-transition/TODO.md).
+Signed S0`7396984` is structural only; preserve all accepted model/operator/
+source/lifetime evidence and all unfinished work below. Historical “resume now”
+orders are deferred, not cancelled requirements. S1–S3/F0–F4 migration and its
+applicable acceptance precede returning to genuine multi-row HIP/general27B,
+populated CUDA/HIP contexts, C1..C64 and matched vLLM. Recurrence`17aafa71` stays
+cancelled; no automatic hardware restart or new production permit.
+
+
 Provenance commit: `6d74f76`.
 Scope: P09/P12/P15/P16/P20/P22.
 Contracts: [joint serving/goodput](../../docs/JOINT_CONCURRENT_SERVING_OPTIMIZATION_AND_GOODPUT_CONTRACT_2026-10-15.md),

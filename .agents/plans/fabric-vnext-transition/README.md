@@ -4,12 +4,18 @@ Owner: @pvl; later appointed implementation coordinator
 
 # zerogravity Fabric vNext — transition architecture and implementation plan
 
-**Created:** 27 October 2026. **STATUS: DESIGN/HANDOFF ONLY — no Rust implementation started.**
+**31-Oct direction:** Fabric S0 landed in signed`7396984`; source/host checks pass.
+Plan 2 includes Plan 1; Qwen expansion deferred. Historical docs-only holds below
+are superseded. [Current source/crosswalk](CURRENT_SOURCE_RECONCILIATION.md) ·
+[active phase queue](TODO.md). No new physical/production grant.
+
+
+**Created:** 27 October 2026. **Current status: signed S0 `7396984`; S1 implementation moves next.**
 **Read-only source observation:** HEAD fadf2b1123309a2118725f2cc005d3edc7ea39f2 (l5, 27 Oct 06:50 UTC). The 26 Oct deep review had 195099ca; preceding refresh had eb38dd5. These are evidence timestamps, not frozen ongoing source. Recheck HEAD before coding.
 **Physical root:** /home/pvl/spaces/abird/src/zerogravity via dotlink-l5.
-**Side-plan policy:** Preserve existing frozen .agents/plans/fabric-vnext, existing user/agent code, active .agents/plans/TODO.md and other owner plans. This is a sibling plan, not a silent queue promotion.
+**Ownership:** owner explicitly promoted this transition in the shared queue. Preserve Plan 1's requirements and all unrelated source/owner work; the current main session serializes integration.
 
-## 0. Current user's binding implementation-order instruction
+## 0. Binding implementation order (27-Oct design; now authorized)
 
 The user wants the fully revised architecture **made visible immediately in real compilable Rust code**, then current implementations *moved into it*, then all existing supported features functioning and correct, finally one consolidated full qualification and bounded bugfix rounds. Internal pre-v1 compatibility is not required. Build, commit and run **small focused checks for each logical phase**, but avoid repeated costly full model/physical/release suites until the large migration is assembled.
 
@@ -26,7 +32,7 @@ The previous user binding decisions remain:
 - The public **zerogravity** Rust crate exports *all* user-facing functionality including server construction/lifecycle, model loading, pull/cache, run, routing, pipelines, device selection, configuration, metrics and errors.
 - **zerogravity-cli** owns parsing, CLI UX/presentation, process/signal bridging only; calls the public zerogravity library for all actual work.
 - Everything pre-v1 may be broken/restructured for maintainable and fast architecture; model/source/quality/physical safety and real tests must be kept.
-- This turn authorizes **writing plan documents and handoff only**, NOT modifying Rust/code/build history.
+- The original 27-Oct turn authorized documentation only. The latest owner instruction authorizes Fabric implementation and logical signed checkpoints.
 
 ## 1. Read the original whole-context archive
 

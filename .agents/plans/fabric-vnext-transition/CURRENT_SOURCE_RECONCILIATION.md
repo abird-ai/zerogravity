@@ -1,15 +1,143 @@
 # Fabric vNext transition — current-source reconciliation
 
-## 29 Oct 2026 current-source refresh
+## Current landing — `7396984`
 
-- Reviewed implementation baseline: `ae8cd89` on `main`, with one persistent checkout/branch and no side branches or transient run provenance. Re-run HEAD/status before editing; current source/tests outrank every SHA/path/count below.
-- Workspace remains the nine-package set enforced by `scripts/check.sh`: core, artifacts, cpu, gpu, Qwen, Gemma, facade, CLI and gpu-qualify. Proposed `zerogravity-engine` and `zerogravity-serving` crates are still future Fabric S0 work, not current crates.
-- Ordinary Qwen CUDA is now assembled source-derived execution under ResidentProgram/ResidentInference with one queue/flight/completion/quarantine path and existing StateRoot, but it is qualification-only. This materially supersedes the 27-Oct statement that ordinary dynamic Qwen CUDA was still missing non-GDN lowering.
-- Exact two-root admission is current: .8B 512..32K fits; 2B 512..16K fits; 2B 32K exceeds the 4608 MiB provider allowance by 8,980,561 B and refuses before physical allocation. These are fit results, not correctness grants.
-- The exact approved .8B model source is accessible; the remaining physical-parity dependency is the qualified native/reference bundle, which was transient and intentionally purged. Do not recreate `.agents/runs` or use deleted archives as provenance.
-- Cache/acquisition/by-name crash consistency, serving lifecycle, release/install and source-only reference gates have advanced far beyond the 27-Oct snapshot. See `.agents/plans/CURRENT_STATUS_AND_TRACKING.md` and `.agents/plans/REQUIREMENTS_AND_TEST_TRACEABILITY.md` for current evidence navigation.
-- The historical 195099ca/eb38dd5/fadf2b1 analysis below is retained only for architecture-evolution context and old-to-new ownership reasoning. It is not the implementation baseline.
-**Read-only baseline:** dotlink-l5, /home/pvl/spaces/abird/src/zerogravity, HEAD fadf2b1123309a2118725f2cc005d3edc7ea39f2, observed 2026-10-27 06:50 UTC. The read-only Python architecture checker passed at this HEAD. No full Cargo suites, trained-model test, GPU workload, full benchmark or physical qualification run was performed for this design.
+S0 now exists in source: eleven workspace packages including engine/serving;
+public facade contracts, truthful cold Unsupported, original owners preserved,
+byte-identical CLI responsibility moves. DAG18/strict/focused tests and final
+isolated gate pass2,159 Rust/0fail/87ignored/292 suites,17 Python suites/182 cases
+plus packaging. S1 is next. No F0/F2 execution migration, physical qualification
+or production activation from this structural milestone.
+
+## 31 Oct 2026 implementation reconciliation
+
+- Signed starting point: `1c35172`, clean main, following `e2559b6` native GDN.
+  Root README remains untouched. External detached Kilo checkout is not ours.
+- Latest instruction activates Fabric S0 before returning to Qwen. Plan 1 owns
+  the complete architecture; Plan 2 adds concrete crate/SDK/server/CLI migration
+  and S/F/Q ordering. Its corrected low-level ResourceArbiter placement wins.
+- Pre-transition`1c35172`: nine workspace packages; engine/serving then absent.
+  No GPU→model production dependency needs repeating. CLI already depends on
+  the facade by Cargo name but still owns reusable runtime/HTTP/business logic.
+- Keep actual `ForwardPlan`, `SourceInvocation`, `SourceOperatorTemplate` and
+  typed source/state lowering. Do not add a parallel SemanticProgram IR or
+  expand position-indexed captured catalogues into production execution.
+- `2983bb7`: owned CUDA GEMM/RMS/rotary/attention; exact0.8B cached47→50,
+  all248,320 logits/all42 domains; cancellation/quarantine and retirement.
+  Thirteen capacity cells ran48 active tokens, not populated long contexts.
+  2B32K refuses by8,980,841B; 2B numerical/reference authority remains open.
+- `99f0232`/`825ade8`: source rank preservation and finite27B HIP natural/teacher
+  full64/fullV/all112 domains plus known/fault/unknown owner qualification.
+  This is not general27B execution or serving.
+- `d4d5df4`/`f6fa4b9`: original CPU PV and shared CPU-free Qwen traversal;
+  independent CPU/HIP attention exact1,774,240 words with physical retirement.
+- `8a1c6b1`/`1f29a42`: genuine bounded0.8B/2B HIP,64 single-row positions,
+  two natural replays, fullV/all24 layers/all state exact. `85f33c7` retains
+  canonical SnapshotLease and qualifies healthy/fault/unknown final readers.
+- `55536ce`/`e2559b6`: CPU and actual HIP padded64 chunk GDN each match
+  19 cases/380 fields/64,345,520 words. Four HIP refusal controls export status
+  only; all20 modules retire. Physical completed Writes may be initialized
+  without math being exported by Ready. This boundary must survive S3.
+- Original fresh47–50 and populated uniform/ragged512→514 captures exist;
+  they do not qualify ZG multi-row models. Original cross-chunk states/logits
+  differ; replay, chunk invariance, backend equality and quality remain distinct.
+- Pre-transition accepted isolated gate:2,142 Rust/0fail/87ignored/283 suites,
+  17 Python suites/178 cases plus packaging; shared HIP/Vulkan strict checks.
+  No repeated baseline/capture/physical runs for unchanged paths during S0.
+
+### Preserved unfinished mission
+
+After structural/feature-preserving migration and applicable acceptance, return
+first to genuine multi-row0.8B/2B HIP (projection/Conv4/attention/BF16 residuals,
+chunk GDN and call-free lowering), then general27B and genuinely populated fit
+contexts. Preserve l5 CUDA0.8B/2B qualification, x2 HIP0.8B/2B/27B,
+C1/C4/C8/C16/C32/C64 isolation/cancel/shutdown, matched vLLM and measured
+optimization. Keep losses/refusals/failed/unrun cells; do not replace this mission
+with a generic future roadmap. Wider CUDA reference authority and an approved
+ROCm vLLM runtime remain unresolved. Production routes remain disabled.
+
+Recurrence`17aafa71` stays cancelled. S0 grants no model download, SDK replacement,
+device privilege/reset, gfx90c launch, push or release. CPU/CUDA parity means
+functional model coverage, not identical numerical contracts.
+
+### S0 design choices against live source
+
+- Keep current implementation homes when they already express the owner; the
+  target tree is an ownership contract, not a demand for empty synonym modules.
+- Core adds meaningful semantic/encoding/numerical/model/task/provider/placement
+  surfaces; semantic refers to the existing ForwardPlan type. State and physical
+  exports refer to original owners, without constructing a second publisher.
+- Engine is a cold, model-neutral lifecycle/API shell until F0. No worker,
+  admitted source, executable bundle, Ready or committed event is fabricated.
+- SDK/serving pending operations return typed Unsupported. Current supported
+  low-level SDK and CLI paths remain intact until their coherent migration.
+- Separate scalar/quant encoding descriptions from numerical contracts and
+  derived artifacts. Existing decoder mappings remain the sole codec authority
+  during S0; S1 removes old names with callers, not via permanent compatibility.
+- Existing CPU/GPU/model implementation modules satisfy their physical/family
+  roles; S2 moves only remaining misplaced ownership/qualification support.
+- Architecture checker extends the existing DAG policy: engine cannot reach a
+  concrete provider/model, serving cannot reach facade/CLI/provider/model,
+  CLI reaches project functionality through the facade only.
+
+## Plan 1 → Plan 2 → current mission crosswalk
+
+| Requirement retained from Plan 1 | Binding Plan 2 / implementation placement |
+|---|---|
+| One semantic program and prepared executable | Existing ForwardPlan + ExecutableBundle; no parallel IR/traversal; S0/S2/F0 |
+| Five authorities, no duplicate runtime | Source/family, compiler, original session publisher, core physical arbiter, actual device worker; S0/S3/F0 |
+| Closed-region legality | Required observations/effects; source/numeric/shape/ABI guards; committed-frontier state conversion or recompute; refuse opaque unrecoverable state; proven fallback or typed refusal; S2/F0 |
+| Whole public SDK and independent server | S0 types; F1/F2 real load/run/pull/cache/config/pipeline/device/diagnostic/server APIs; CLI uses only facade at F3 |
+| Embedded lifecycle/security | Explicit bind/start/address/shutdown/reconfiguration, caller-owned execution; redacted credentials; stage/retryability-aware failures; admin unexposed by default; F1/F2/Q |
+| ModelAssembly ≠ TaskPipeline | Family components versus cross-model typed stages; metadata/validation ≠ execution; S0/F0/E08 |
+| Task-aware rather than token-only scheduling | Text/encoder/acoustic/codebook/denoise/decision stages, output credits, shared admission; F0/E02/E08 |
+| Realtime exactness | Received/decoded/consumed ingress; rational conversion residue; revision-bound provisional output; turn/output generations distinct from device epochs; Prepared/Committed/Delivered/ACK/Played separate; reconnect grants no neural root; S0 descriptors/E08 implementation |
+| Safe adaptive specialization | Finite qualified candidates, switching at legal boundaries, hysteresis and truthful selected mode; no per-token compiler search; S0 contract/E02/E10 |
+| Storage/numerics/derived quant separation | Existing exact codecs/source profiles; independent activation/layout/derived lineage; Q4_K operator refusal and future-codec holds; S0/S1/E06 |
+| Physical placement and lifetime | Four placements + verified transfers, complete-domain prefix state, captured/in-flight source readers, actual Ready/quarantine, SSD/remote/NPU disabled until qualified; S3/E02/E04/E09 |
+| Broad model/task roadmap | mHC and other new math require real source/reference; finite decision schemas require honest calibration/quality; E05/E08, not metadata support |
+| Extension proof drills | Known-op family, novel stateful op, fusion disabled, new provider, non-token task, remote state bridge; measure shared-code change radius. Q2 certifies transition only; unimplemented drills remain E-series gates |
+| Initial Qwen mission | Accepted CUDA/HIP/operator/lifetime scopes preserved; multi-row/general27B/populated contexts/C1..C64/matched vLLM remain first resumed capability work after migration |
+
+Plan 2 corrects Plan 1's proposed upward arbiter move: the live physical ledger
+stays in core. Ordinary CPU already uses SessionAuthority in current paths;
+S3 reconciles the remaining reference coordinator rather than replacing CPU
+with a new publisher. Root README stays byte-identical. Use typed refusal for
+all pending operations; a private feature-gated todo is not safe merely because
+it is private (all-features can select it). Existing Cargo checker enforces DAG;
+review source/test separation without new placement-policy tests.
+
+## S0 concrete source map
+
+- Core: new identity/encoding/numerics/semantic/model/task/provider/physical/
+  placement contracts; original accelerator::program, session_root/state,
+  device events/queues and resource_arbiter remain authoritative implementations.
+- Artifacts: artifact/sharded are containers; quant is the one current codec;
+  source_weights/cache/acquisition retain actual owners. Derived lineage is
+  metadata only. S1 moves implementations/callers, not duplicate decoders.
+- CPU: existing ops/numerics/source/reference_text/runtime cover operators,
+  selected arithmetic, references and physical CPU work. GPU: existing backend,
+  cuda/hip/vulkan, quantization, resident_program/inference/leases and transfers
+  retain kernels/ABI/ownership. No cosmetic kernel/image renames in S0.
+- Families: existing config/source/forward/plan/reference and Gemma text/tensors/
+  execution remain math owners. No runtime catalogue dispatch added to GPU.
+- Engine: runtime/catalog/router/model_instance/prepare/executable/scheduler/
+  session/task/state_cache/residency/placement/request/output/diagnostics compile;
+  no loaded model, source, executable, event, worker or inference success issued.
+- Serving: server/http/ingress/openai/responses/stream/auth/metrics/admin/realtime
+  compile independently; cold loopback builder validates limits; start refuses
+  without bind. Original CLI serving remains working until F2.
+- Facade: runtime/models/artifacts/run/devices/pipelines/serving/diagnostics/
+  builtins expose one public dependency. Existing low-level APIs retained during
+  migration; new high-level engine operations refuse until adapters land.
+- CLI: actual args/output/commands/signal code moved, not a second stub command
+  tree. Existing model/HTTP/business owners remain temporary F0–F3 move targets.
+
+Names reuse current responsibility homes rather than manufacturing empty synonym
+directories. Skeleton compile visibility is not F4 feature migration acceptance.
+
+The sections below retain the **27-Oct historical source inventory** for move
+planning, not current execution/capability claims.
 
 ## 1. Historical 26–27 Oct baseline and commit lineage
 

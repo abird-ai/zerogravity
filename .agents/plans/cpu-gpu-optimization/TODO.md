@@ -1,5 +1,16 @@
 # Cpu gpu optimization
 
+## Priority override — 31 Oct: Fabric first
+
+Owner prioritizes [Fabric transition](../fabric-vnext-transition/TODO.md).
+Signed S0`7396984` is structural only; preserve all accepted model/operator/
+source/lifetime evidence and all unfinished work below. Historical “resume now”
+orders are deferred, not cancelled requirements. S1–S3/F0–F4 migration and its
+applicable acceptance precede returning to genuine multi-row HIP/general27B,
+populated CUDA/HIP contexts, C1..C64 and matched vLLM. Recurrence`17aafa71` stays
+cancelled; no automatic hardware restart or new production permit.
+
+
 Provenance commit: `6d74f76`.
 Scope: P01/P06/P07/P20/P22; follow acquisition and measure before selecting complexity.
 Contracts: [fleet optimization](../../research/INITIAL_HARDWARE_TARGETS_AND_OPTIMIZATION_2026-10-16.md),
