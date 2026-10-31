@@ -171,7 +171,8 @@ pub use resident_inference::source_text::{
     target_os = "linux"
 ))]
 pub use resident_inference::source_text::{
-    SourceTextNativeProbe, SourceTextNativeState, SourceTextState,
+    SourceTextFinalReader, SourceTextNativeProbe, SourceTextNativeState,
+    SourceTextReaderObservation, SourceTextState,
 };
 #[cfg(all(
     feature = "hip",

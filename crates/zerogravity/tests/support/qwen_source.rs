@@ -8,7 +8,7 @@ use std::{
     path::Path,
     sync::Arc,
 };
-use zerogravity::cache::TransferAdmission;
+use zerogravity::cache::{SnapshotLease, TransferAdmission};
 use zerogravity::qwen35::source::binding::{OriginalWindowOperators, QwenNumericalProfile};
 use zerogravity::resource_arbiter::{
     AllocationClass, AllocationRequest, GlobalResourceLease, PhysicalDeviceKey, ResourceArbiter,
@@ -31,6 +31,7 @@ pub struct Loaded {
     pub host: TransferAdmission,
     files: BTreeMap<String, File>,
     stamps: BTreeMap<String, [u64; 7]>,
+    snapshot: Option<Arc<SnapshotLease>>,
     _control: GlobalResourceLease,
 }
 pub fn need(ok: bool, message: &str) -> Result<()> {
@@ -74,6 +75,12 @@ fn hash(file: &File, bytes: u64) -> Result<String> {
 }
 impl Loaded {
     pub fn open(label: &str, directory: &Path) -> Result<Arc<Self>> {
+        Self::open_inner(label, directory, false)
+    }
+    pub fn open_native(label: &str, directory: &Path) -> Result<Arc<Self>> {
+        Self::open_inner(label, directory, true)
+    }
+    fn open_inner(label: &str, directory: &Path, native: bool) -> Result<Arc<Self>> {
         let small = label == "08";
         let raw: &[u8] = match label {
             "08" => include_bytes!("../../src/qwen35_cuda/source08.json"),
@@ -103,6 +110,11 @@ impl Loaded {
                 bytes: 32 * 1024 * 1024,
             }],
         )?;
+        let snapshot = if native {
+            Some(super::source_import::open_native(label, directory)?)
+        } else {
+            None
+        };
         let pins: Value =
             serde_json::from_slice(raw).map_err(|e| Error::Malformed(e.to_string()))?;
         let mut members = Vec::new();
@@ -118,10 +130,15 @@ impl Loaded {
                 .as_u64()
                 .ok_or_else(|| Error::Malformed("source member bytes".into()))?;
             let sha = text(row, if small { "sha256" } else { "digest" })?.to_owned();
-            let file = std::fs::OpenOptions::new()
-                .read(true)
-                .custom_flags(0o400000 | 0o2000000)
-                .open(directory.join(&name))?;
+            let file = if let Some(snapshot) = &snapshot {
+                // Dup the original pinned description; do not reopen its pathname.
+                snapshot.file(&name)?.try_clone()?
+            } else {
+                std::fs::OpenOptions::new()
+                    .read(true)
+                    .custom_flags(0o400000 | 0o2000000)
+                    .open(directory.join(&name))?
+            };
             let before = stamp(&file)?;
             need(
                 before[2] == bytes && hash(&file, bytes)? == sha && stamp(&file)? == before,
@@ -186,8 +203,22 @@ impl Loaded {
             host,
             files,
             stamps,
+            snapshot,
             _control: control,
         }))
+    }
+    pub fn cache_witness(&self) -> Result<std::sync::Weak<SnapshotLease>> {
+        self.snapshot
+            .as_ref()
+            .map(Arc::downgrade)
+            .ok_or_else(|| Error::State("native managed snapshot absent".into()))
+    }
+    pub fn close(self: Arc<Self>) -> Result<()> {
+        need(
+            Arc::strong_count(&self) == 1,
+            "original source retains native owners",
+        )?;
+        self.verify_after()
     }
     pub fn verify_after(&self) -> Result<()> {
         for member in &self.members {

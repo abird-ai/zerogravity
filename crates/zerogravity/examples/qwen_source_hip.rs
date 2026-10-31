@@ -8,10 +8,14 @@ use sha2::{Digest, Sha256};
 use source::{Loaded, need};
 #[path = "../tests/support/drive.rs"]
 mod drive;
+#[path = "../tests/support/qwen_source_lifetime.rs"]
+mod lifetime;
 #[path = "../tests/support/qwen_source_preflight.rs"]
 mod preflight_controls;
 #[path = "../tests/support/qwen_source_import.rs"]
 mod source_import;
+#[path = "../tests/support/qwen_source_pins.rs"]
+mod source_pins;
 use std::{
     path::PathBuf,
     sync::{Arc, atomic::AtomicBool},
@@ -188,7 +192,7 @@ fn run() -> Result<()> {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     need(
         args.len() == 4,
-        "usage: qwen_source_hip import|preflight|parity|parity-import 08|2b SOURCE REFERENCE",
+        "usage: qwen_source_hip MODE 08|2b SOURCE REFERENCE (preflight, cache-preflight, import, parity, parity-import, session/snapshot/pending-known/fault, unknown)",
     )?;
     let mode = &args[0];
     if mode == "import" {
@@ -196,8 +200,12 @@ fn run() -> Result<()> {
         return Ok(());
     }
 
+    let lifetime_mode = lifetime::Mode::parse(mode);
     need(
-        matches!(mode.as_str(), "preflight" | "parity" | "parity-import"),
+        matches!(
+            mode.as_str(),
+            "preflight" | "cache-preflight" | "parity" | "parity-import"
+        ) || lifetime_mode.is_some(),
         "explicit diagnostic mode",
     )?;
     // Independent authenticated reference precedes source import/open or device work.
@@ -207,7 +215,18 @@ fn run() -> Result<()> {
     } else {
         PathBuf::from(&args[2])
     };
-    let loaded = Loaded::open(&args[1], &source_directory)?;
+    let pins = if lifetime_mode.is_some() || mode == "cache-preflight" {
+        let pins = source_pins::Pins::new(&args[1], &source_directory)?;
+        pins.require(false)?;
+        Some(pins)
+    } else {
+        None
+    };
+    let loaded = if mode == "preflight" {
+        Loaded::open(&args[1], &source_directory)?
+    } else {
+        Loaded::open_native(&args[1], &source_directory)?
+    };
     expected.require_source(&loaded)?;
     let records = (0..64)
         .map(|p| loaded.model.record_source_token(p, 64).map(Arc::new))
@@ -227,8 +246,20 @@ fn run() -> Result<()> {
         inventory.host_upper_bytes
     );
     preflight_controls::controls(&loaded, &records, &inventory)?;
-    if mode == "preflight" {
+    if mode == "preflight" || mode == "cache-preflight" {
         loaded.verify_after()?;
+        if let Some(pins) = pins {
+            pins.require(true)?;
+            let cache = loaded.cache_witness()?;
+            drop(records);
+            loaded.close()?;
+            need(cache.upgrade().is_none(), "cold canonical snapshot retired")?;
+            pins.require(false)?;
+            println!(
+                "SOURCE_MODEL_CACHE_CONTROLS files={} pinned_then_released=true device_context_created=false",
+                pins.len()
+            );
+        }
         return Ok(());
     }
     need(
@@ -247,6 +278,17 @@ fn run() -> Result<()> {
         2,
         None,
     ))?;
+    if let Some(lifetime_mode) = lifetime_mode {
+        return lifetime::run(
+            lifetime_mode,
+            mode,
+            &args[1],
+            candidate,
+            loaded,
+            &mut expected,
+            pins.ok_or_else(|| zerogravity::Error::State("lifetime pin probe absent".into()))?,
+        );
+    }
     let probe = candidate.native_probe();
     let native = probe.observe()?;
     need(
@@ -287,7 +329,12 @@ fn run() -> Result<()> {
     )?;
     let arbiter = loaded.host.arbiter.clone();
     let key = loaded.host.resource.clone();
-    drop(loaded);
+    let cache = loaded.cache_witness()?;
+    loaded.close()?;
+    need(
+        cache.upgrade().is_none(),
+        "original managed snapshot retired",
+    )?;
     let host = arbiter.snapshot(&key)?;
     println!(
         "SOURCE_MODEL_SOURCE_CLOSED host_reserved={} host_fenced={}",

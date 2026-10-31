@@ -345,11 +345,25 @@ impl Observer<'_> {
         )?;
         Ok(())
     }
+    pub fn completed_records(&self) -> usize {
+        self.done.len()
+    }
     pub fn finish(&self) -> Result<()> {
+        self.finish_scope(None)
+    }
+    pub fn finish_before_logits(&self) -> Result<()> {
+        self.finish_scope(Some(self.record("logits", None)?))
+    }
+    fn finish_scope(&self, unavailable: Option<usize>) -> Result<()> {
+        let mut required = self.expected.clone();
+        if let Some(record) = unavailable {
+            need(
+                required.remove(&record),
+                "declared unavailable original logits",
+            )?;
+        }
         need(
-            self.active.is_none()
-                && self.done == self.expected
-                && self.zero_seen == self.zero_required,
+            self.active.is_none() && self.done == required && self.zero_seen == self.zero_required,
             "all original producer/state/position/logit records observed",
         )?;
         if self.mismatches != 0 {

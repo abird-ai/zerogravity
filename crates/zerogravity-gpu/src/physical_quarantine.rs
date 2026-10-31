@@ -107,7 +107,18 @@ pub(crate) fn quarantine_uncertain_with_owners(
     });
 }
 
-#[cfg(all(feature = "qualification", feature = "cuda"))]
+#[cfg(all(
+    feature = "qualification",
+    any(
+        feature = "cuda",
+        all(
+            feature = "hip",
+            feature = "qwen-source-qualification",
+            feature = "hardware-abort-probe",
+            target_os = "linux"
+        )
+    )
+))]
 pub(crate) fn quarantined_completion_owners_for(client: &Client) -> Result<usize> {
     registry().with_items(|records| {
         records

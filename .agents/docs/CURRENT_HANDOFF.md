@@ -32,7 +32,14 @@ checkpoint `825ade8` are signed. New signed `d4d5df4` fixes CPU attention PV;
 operator comparisons pass1,774,240 words through64 active tokens;150 native
 modules retire and the durable parent exits0/empty cgroup. Final source gate
 passes2,135 Rust/17 Python suites. Ordinary HIP/model contexts/serving/performance
-remain open; operator data is not trained-model evidence. Re-read git status/log.
+remain open; operator data is not trained-model evidence. Signed `8a1c6b1`
+restores initial GDN empty-state addition; `1f29a42` adds actual source-bound
+0.8B/2B HIP through64 populated single-row positions, fullV/all state/two natural
+replays and healthy lifetime controls. Final gate passes2,136 Rust/17 Python
+suites. Canonical cache/native unknown/fault lifetimes now pass the inspected
+r1/r2 qualification below and the final gate; signed checkpoint follows.
+Scalable ordinary execution, general27B, contexts/concurrency/vLLM remain open.
+No pushes. Re-read git status/log.
 
 ## 2. Immediate startup for a successor
 
@@ -48,7 +55,7 @@ source/device or ownership requirements. Missing wider CUDA references do not
 block independent ROCm work. Finite27B diagnostics alone do not finish the mission.
 Current results are in section8 and the status/numerics TODO.
 
-**Immediate implementation lane:** ordinary0.8B/2B HIP. Uncommitted code now
+**Immediate implementation lane:** ordinary0.8B/2B HIP. Signed `1f29a42`
 assembles typed-SSA state lowering, shared resident matrices/workspace, cold
 pricing and the original session/root machinery. Source arithmetic remains
 bounded to64 positions; finite27B guards stay separate. Strict standalone/HIP
@@ -67,8 +74,9 @@ populated state, all15,776 records/model.0.8B/2B compare1,396,408,320/
 discard, pressure, independent roots, restore/reset and shutdown pass. Final
 assembled gate passes2,136 Rust/0fail/85ignored/283 suites,17 Python suites/178
 cases plus release/installer/shell/Nix. Signed arithmetic repair:`8a1c6b1`;
-source-bound execution checkpoint follows. Unknown/fault/scalable ordinary paths
-and production/serving remain unaccepted.
+source-bound execution checkpoint:`1f29a42`. New source/cache and unknown/fault
+qualification follows below. Scalable ordinary paths and production/serving
+remain unaccepted.
 Independent original HF captures are now complete: each small model has64
 populated positions × two exact replays, fullV/all layers/all populated state;
 all15,776 records/model inspected, original source and parent/group/container/
@@ -86,15 +94,49 @@ Completed r3 unit:`zg-source-models-20261031-r3.service`, invocation
 `1f79d6e982b62534a89a2632b8de6a42179145d6d8f567d28f87433c7df4bbef`.
 `source-model-physical-r3-{08,2b}.log` and every call/control/retirement inspected
 against original references in `source-model-all-scopes-r3.log`; parent exits0,
-MainPID0/empty descendants. Completed owned unit stopped; x2 is free. This is
+MainPID0/empty descendants. Completed owned r3 unit stopped. This is
 single-row position-bound execution through64, not call-free scalable prefill,
 concurrent serving or performance acceptance. Final local gate job766 passes:
 CPU/diagnostic/HIP/shared-Vulkan strict checks, both actual-source cold-control
 sets and isolated `scripts/check.sh`. Only the fail-closed identical-capacity
 check changed after physical r3; fresh cold controls cover it, with valid model
 arithmetic/storage/ownership unchanged. No physical replay claim for that guard.
-Next: signed bounded checkpoint, then new-path unknown/fault lifetimes
-and scalable ordinary execution. Details in model-execution/numerics plans.
+**Qualified source-lifetime unit:** native source loading retains the actual
+canonical `SnapshotLease` and duplicates its pinned descriptors. Native staging
+refuses; cold preflight still permits staging. New diagnostic controls reuse
+original pending-flight abandonment and final-reader release faults. Two host
+schema/provenance/path controls and standalone/shared-HIP/shared-Vulkan strict
+checks pass. All14 r1 scopes are now independently inspected: both models,
+Session/Snapshot/Pending known/fault readers, unknown completion and canonical
+pins. Healthy readers release785/781 modules and all11/12 pins; unknown/fault
+retain original source/cache/native/service with a24GiB physical fence. Unknown
+retains752/747 handles,189 completion owners and one pending event, no cached
+root publication or logits claim. Parent exits0/MainPID0/empty descendants;
+completed owned unit stopped. Watch`264d971a` succeeded after63 checks; a later
+receipt is stale. Evidence:`source-lifetime-all-scopes-r1.log`.
+Closed unit:`zg-source-lifetimes-20261031-r1.service`, invocation
+`ce8715bf40f0403fbb4a01f916f5115c`. Source archive SHA256
+`bdae47d11bbd8a1bf2c5f9a6815cca3a6bb7f0b46f88c005824ea5d7f3fa5395`;
+binary`17e767bc9e21f9558d51543083c62507d04f7b529b1ac8c0599fc01e7440e3a5`.
+Current main additionally checks healthy physical-fence clearance/other-owner
+admission. That control was added after r1 froze; all six healthy-only r2 scopes
+pass and are independently inspected. Original4GiB context charge remains,
+physical fence is clear and other-owner admission succeeds. Source/cache/native
+owners retire; parent exits0/MainPID0/empty descendants. Completed owned unit
+stopped; x2 is free. Closed unit:`zg-source-lifetimes-20261031-r2.service`,
+invocation`cad7ee91e0f44e83a7fbf284bed7661b`; watch`9a53c915` succeeded after25
+checks, later receipt stale. Source archive
+`82de51f7eb7207cbc784f07314a62cd02a1d7846dbdc9968397ad698b3ffc61b`;
+binary`55f49e93ce190fd1f3b96370bdc0ef1628059786764b4fee38001c61a54d1b6a`.
+Evidence:`source-lifetime-all-scopes-r2.log`. Final isolated gate job810 passes
+2,136 Rust/0fail/85ignored/283 suites and17 Python suites/178 cases; existing
+non-strict warnings/skips remain scoped. Signed checkpoint is next. No arithmetic
+changed; unchanged r1 fault/unknown and accepted full64/finite27B/attention evidence
+is reused. Preserve historical failures/unrun scopes. Scalable ordinary execution
+remains next: CPU GDN currently has only `InitialOne`/`CachedOne`; source records
+and attention arithmetic cap64. Extending metadata/capacity alone is not prefill
+or multichunk support. Production/serving remain disabled.
+Details remain in model-execution/numerics plans.
 
 Repository:
 

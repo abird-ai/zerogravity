@@ -15,6 +15,61 @@ long contexts and Qwen27B. Bindings/readers/helpers are internal steps, with foc
 checks and one complete gate per larger unit; isolate only concrete failures.
 ## Committed
 
+### `1f29a42` — bounded small-model HIP/source qualification
+
+- [x] Original HF full forward, raw approved0.8B/2B parameters, pinned
+  Torch2.13.0+cu129/Transformers5.17.0, AVX2 CPU/no GPU/network. Each model:
+  64 populated single-token positions × two exact independent replays;
+  128 calls/15,776 records, fullV/all layers/all populated state and rotary
+  positions. Every record/digest and all natural selections inspected. Initial
+  absent cache state is not fabricated as a populated original record.
+- [x] `.8B`:1,396,408,320 float words,5,189,864,448 raw bytes,
+  SHA256`961504e63717488859eeffa46d0b9feccbc17c47ec332a3990ef43b692027271`.
+  `2B`:1,399,816,192 float words,5,196,680,192 raw bytes,
+  SHA256`5783accbccefd5a96f10711c854efaeab50a4696cfad3c3c24f4bf7a711955b9`.
+  Original per-forward source mappings/versions, full member hashes, held FDs
+  and EOF are unchanged. Both child exits0, groups/containers absent, one reap,
+  log EOF/close. Durable parent exits0/MainPID0/empty cgroup; completed unit stops.
+- [x] Compare the assembled real HIP source-model path within64 single rows. Actual-source cold64
+  plans and11 refusal/accounting controls pass both models; full physical upper
+  bounds15,648,107,008B/17,907,000,832B include original4GiB context. This is not
+  numerical or C64 serving evidence. First0.8B native attempt prepares785
+  modules, then refuses binding before initialization Ready; parent exits1 with
+  no descendants. No mathematical call or in-process retirement acceptance.
+  Post-Ready r2 reaches actual0.8B comparison:303 differing words, first initial
+  recurrent/layer0 word50816 `80000000` vs `00000000`. All785 native modules
+  retire; namespace/source close, parent exits1/empty cgroup; owned unit stopped.
+  Shared CPU/HIP initial recurrence now keeps original decayed-empty-state
+  addition instead of returning the update alone. Exact comparison unchanged;
+  four host GDN tests and standalone strict check pass. Initial one-head test
+  fixture refusal remains recorded; corrected16-head fixture passes. Reuse
+  analysis authenticates all96 accepted finite27B initial recurrent records:
+  75,497,472 words, no positive/negative zeros. Restoring +0 leaves those accepted
+  nonzero outputs unchanged; this is not a new finite physical run. Fresh r3
+  now passes both models; final assembled gate passes below. Unknown/fault lifetime,
+  scalable ordinary execution, long context, serving and vLLM remain open.
+  Wider CUDA recovery is separate. Original-reference evidence under
+  `ordinary-hip-20261031.Jc5XWh/small-original-r1-{08,2b}`.
+- [x] Actual gfx1151 HIP r3 full-model comparison:0.8B/2B each128 calls over64
+  populated positions/two independent natural replays. All15,776 original
+  records/model consumed, all layers/fullV/all state/positions exact;
+  1,396,408,320 and1,399,816,192 floating words respectively. Initial positive-zero
+  controls remain separate from original populated-state records. Known pre/late
+  cancellation, discard, root isolation, pressure, restore/reset/context bound
+  and shutdown pass.785/781 native modules retire; namespace/source close,
+  retained native code/host/device0, process host remains unfenced with its
+  existing2GiB shared charge. Parent exit0/empty descendants verified; owned unit
+  stopped. Per-call reconciliation:`source-model-all-scopes-r3.log`.
+  Still single-row position-bound capacity64; not scalable ordinary routing,
+  C1..C64 serving, unknown/fault qualification or a performance measurement.
+- [x] Final assembled isolated `scripts/check.sh`:2,136 Rust passes/0fail/
+  85ignored/283 suites;17 Python suites/178 cases plus release/installer/shell/Nix.
+  CPU/diagnostic/HIP/shared-Vulkan strict checks pass. Review adds explicit
+  identical record-capacity refusal independent of KV presence; both real-source
+  cold preflights and11 controls rerun/pass. Physical r3 numerical/storage paths
+  are unchanged; no new physical qualification is inferred for the cold guard.
+
+
 ### `8a1c6b1` — initial GDN empty-state addition
 
 - [x] CPU/HIP initial recurrence retains the original decayed-empty-state addition
@@ -303,59 +358,33 @@ checks and one complete gate per larger unit; isolate only concrete failures.
 
 ## Uncommitted
 
-### Original small-model populated-source references — 31 Oct
+### Source ownership/lifetime qualification — 31 Oct
 
-- [x] Original HF full forward, raw approved0.8B/2B parameters, pinned
-  Torch2.13.0+cu129/Transformers5.17.0, AVX2 CPU/no GPU/network. Each model:
-  64 populated single-token positions × two exact independent replays;
-  128 calls/15,776 records, fullV/all layers/all populated state and rotary
-  positions. Every record/digest and all natural selections inspected. Initial
-  absent cache state is not fabricated as a populated original record.
-- [x] `.8B`:1,396,408,320 float words,5,189,864,448 raw bytes,
-  SHA256`961504e63717488859eeffa46d0b9feccbc17c47ec332a3990ef43b692027271`.
-  `2B`:1,399,816,192 float words,5,196,680,192 raw bytes,
-  SHA256`5783accbccefd5a96f10711c854efaeab50a4696cfad3c3c24f4bf7a711955b9`.
-  Original per-forward source mappings/versions, full member hashes, held FDs
-  and EOF are unchanged. Both child exits0, groups/containers absent, one reap,
-  log EOF/close. Durable parent exits0/MainPID0/empty cgroup; completed unit stops.
-- [ ] Compare the assembled real HIP source-model path. Actual-source cold64
-  plans and11 refusal/accounting controls pass both models; full physical upper
-  bounds15,648,107,008B/17,907,000,832B include original4GiB context. This is not
-  numerical or C64 serving evidence. First0.8B native attempt prepares785
-  modules, then refuses binding before initialization Ready; parent exits1 with
-  no descendants. No mathematical call or in-process retirement acceptance.
-  Post-Ready r2 reaches actual0.8B comparison:303 differing words, first initial
-  recurrent/layer0 word50816 `80000000` vs `00000000`. All785 native modules
-  retire; namespace/source close, parent exits1/empty cgroup; owned unit stopped.
-  Shared CPU/HIP initial recurrence now keeps original decayed-empty-state
-  addition instead of returning the update alone. Exact comparison unchanged;
-  four host GDN tests and standalone strict check pass. Initial one-head test
-  fixture refusal remains recorded; corrected16-head fixture passes. Reuse
-  analysis authenticates all96 accepted finite27B initial recurrent records:
-  75,497,472 words, no positive/negative zeros. Restoring +0 leaves those accepted
-  nonzero outputs unchanged; this is not a new finite physical run. Fresh r3
-  now passes both models; final assembled gate passes below. Unknown/fault lifetime,
-  scalable ordinary execution, long context, serving and vLLM remain open.
-  Wider CUDA recovery is separate. Original-reference evidence under
-  `ordinary-hip-20261031.Jc5XWh/small-original-r1-{08,2b}`.
-- [x] Actual gfx1151 HIP r3 full-model comparison:0.8B/2B each128 calls over64
-  populated positions/two independent natural replays. All15,776 original
-  records/model consumed, all layers/fullV/all state/positions exact;
-  1,396,408,320 and1,399,816,192 floating words respectively. Initial positive-zero
-  controls remain separate from original populated-state records. Known pre/late
-  cancellation, discard, root isolation, pressure, restore/reset/context bound
-  and shutdown pass.785/781 native modules retire; namespace/source close,
-  retained native code/host/device0, process host remains unfenced with its
-  existing2GiB shared charge. Parent exit0/empty descendants verified; owned unit
-  stopped. Per-call reconciliation:`source-model-all-scopes-r3.log`.
-  Still single-row position-bound capacity64; not scalable ordinary routing,
-  C1..C64 serving, unknown/fault qualification or a performance measurement.
-- [x] Final assembled isolated `scripts/check.sh`:2,136 Rust passes/0fail/
-  85ignored/283 suites;17 Python suites/178 cases plus release/installer/shell/Nix.
-  CPU/diagnostic/HIP/shared-Vulkan strict checks pass. Review adds explicit
-  identical record-capacity refusal independent of KV presence; both real-source
-  cold preflights and11 controls rerun/pass. Physical r3 numerical/storage paths
-  are unchanged; no new physical qualification is inferred for the cold guard.
+- [x] Native source admission retains the original canonical snapshot lease;
+  staging refuses before native work. Cold staging remains allowed. Two
+  manifest/provenance/path host controls and diagnostic/shared-HIP/shared-Vulkan
+  strict checks pass; initial CUDA-only counter-gate compilation failure retained.
+- [x] Inspect all14 durable source-lifetime r1 scopes: both models, canonical
+  descriptor pins, Session/Snapshot/Pending known/release-fault final readers and
+  original pending-flight abandonment. Each seed compares76 original records,
+  fullV/all state:5,442,048/5,468,672 words exact. Unknown compares123 cached
+  records/10,366,976/10,393,600 words; only logits remain unobserved, no new root
+  publishes. Unknown retains752/747 handles,189 completion owners and one event;
+  faults/unknown retain original source/cache/native owners and24GiB physical
+  fence, reject peers, no recovery. Healthy readers precede785/781 native module
+  retirement and release all11/12 source-file pins. Parent exit0/empty descendants;
+  completed unit stopped. No full64 replay, destructive GC or serving claim.
+  `source-lifetime-all-scopes-r1.log`; healthy admission follow-up remains below.
+- [x] All six healthy r2 final-reader scopes pass the post-freeze physical
+  fence/other-owner admission control. Original4GiB context remains charged;
+  no fence, other-owner admission succeeds, native modules/source/cache retire.
+  Parent exit0/empty descendants; every scope inspected and owned unit stopped.
+  r1 fault/unknown code unchanged; its evidence is reused, no full64 replay.
+  Final isolated gate:2,136 Rust/0fail/85ignored/283 suites,17 Python suites/178
+  cases, plus standalone2 source controls and strict diagnostic/HIP/Vulkan
+  surfaces. Existing non-strict warnings/skips remain separate. Evidence:
+  `ordinary-hip-20261031.Jc5XWh/source-lifetime-all-scopes-r{1,2}.log` and
+  `source-lifetime-assembled-gate-r1.log`. Production/serving stay disabled.
 
 ### Remaining CUDA/ROCm qualification
 
