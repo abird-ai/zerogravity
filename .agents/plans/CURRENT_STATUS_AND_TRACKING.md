@@ -9,7 +9,29 @@ Current source and tests are the implementation truth. The active work queue is
 retains superseded plans, handoffs, checkouts and run evidence; they are not
 live authority.
 
-## Current owner mission — 30 Oct
+## User-requested checkpoint and pause — 31 Oct
+
+- Signed `e2559b6`: actual HIP chunk-GDN arithmetic matches all19 original
+  cases/380 fields/64,345,520 words exactly. Four numerical status controls
+  preserve inputs/prior and export status only through the original Ready.
+  All20 modules/code/host/device retire; namespace closes; parent0 and empty
+  recursive descendants verified. Failed r1/r2 scopes remain separate.
+- Shared HIP/Vulkan strict checks pass. Final isolated gate:2,142 Rust/0fail/
+  87ignored/283 suites,17 Python suites/178 cases plus packaging. No Vulkan
+  physical, whole-model, serving or performance grant from operator evidence.
+- Owner requested pause at this checkpoint, with possible direction change.
+  Recurrence`17aafa71` cancelled; no owned native/build jobs remain running.
+  Await explicit direction; stale receipts must not resume the mission.
+- CPU/CUDA parity means functional model coverage, not identical arithmetic.
+  CUDA0.8B ordinary cached47→50 is correct;2B ordinary numerical/wider populated
+  context coverage remains open despite capacity/lifecycle execution. Bounded
+  CPU/HIP27B/Gemma evidence does not qualify equivalent CUDA execution. Original
+  HF CPU captures do not establish ZeroGravity CPU support for those calls.
+- Next if resumed: genuine multi-row0.8B/2B HIP composition and call-free
+  lowering, then general27B/contexts/C1..C64 and matched vLLM. Production remains
+  disabled; broader CUDA references and approved ROCm baseline remain gaps.
+
+## Paused owner mission — 30 Oct
 
 - Finish CUDA `.8B`/`2B` on `pvl-l5`, ROCm `.8B`/`2B`/`27B` on `pvl-x2`,
   genuine active contexts through supported fit, and C1/C4/C8/C16/C32/C64 serving.

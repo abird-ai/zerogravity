@@ -37,30 +37,14 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 - [ ] Implement scalable ordinary prefill/decode beyond position-bound single-row
   capacity64; qualify populated wider contexts and serving before production.
   Reuse signed `55536ce` original call references and connected CPU chunk core.
-  Next: actual HIP chunk math, multi-row projection/Conv4/attention and BF16
-  residuals, then call-free lowering. Keep explicit prefill/decode phase.
+  Next: multi-row projection/Conv4/attention and BF16 residuals, then call-free
+  lowering. Keep explicit prefill/decode phase.
   Reuse `SourceInvocation`/`ForwardPlan` and original physical/root owners; do
   not turn the position-indexed64-body catalogue into production architecture.
   Existing call-free templates remain CUDA-only; actual CPU-source contracts
   and arithmetic must be implemented, not backend-relabeled. See
   [numerics TODO](../numerics-and-context/TODO.md) for evidence and failures.
-  Shared GPU chunk arithmetic and a test-only original-owner comparison now
-  compile. Durable x2 `gdn-native` r1 refused its incorrect4MiB catalogue owner
-  against the existing exact1MiB contract before numerical cases; parent101,
-  empty descendants, evidence saved and owned unit stopped. Caller fixed to1MiB;
-  original guard/arithmetic unchanged. R2 matches all19 cases/380 fields/
-  64,345,520 words and immutable inputs exactly, per-case physical baseline intact.
-  Negative fixture incorrectly confused completed-write initialization with Ready
-  exports; first assertion failed,3 controls/final retirement unrun. Failed101
-  scope preserved/closed. Correct diagnostic checks actual status-only Ready
-  exports and original completion identity; runtime/arithmetic unchanged. R3
-  now passes all19/380/64,345,520 words plus4 status-only Ready exclusions and
-  actual20-module/native/namespace retirement. Independent all-scope reconciliation,
-  parent0/empty descendants saved; owned unit stopped. HIP/Vulkan strict passes.
-  Final isolated gate passes2,142 Rust/0fail/87ignored/283 suites and17 Python
-  suites/178 cases plus packaging. Initial formatting-only refusal retained;
-  module-order correction changes no arithmetic/owner. No model lowering,
-  source/profile permit or ordinary/serving grant.
+  Native chunk arithmetic is qualified in `e2559b6`; full-call lowering remains open.
 
 ### Ordinary Qwen execution checkpoint — 27 Oct
 
@@ -552,6 +536,26 @@ or model support. Qwen parity/short benchmark/long→dense27B→Gemma remains bi
 - [ ] Choose and independently qualify Gemma26B reference-framework routing/top-k/reduction/scale placement before production execution. Five analytic test-local routing cases are not trained source parity.
 
 ## Committed
+
+### `e2559b6` — original-source native chunk GDN
+
+- [x] Shared GPU chunk arithmetic and a test-only original-owner comparison now
+  compile. Durable x2 `gdn-native` r1 refused its incorrect4MiB catalogue owner
+  against the existing exact1MiB contract before numerical cases; parent101,
+  empty descendants, evidence saved and owned unit stopped. Caller fixed to1MiB;
+  original guard/arithmetic unchanged. R2 matches all19 cases/380 fields/
+  64,345,520 words and immutable inputs exactly, per-case physical baseline intact.
+  Negative fixture incorrectly confused completed-write initialization with Ready
+  exports; first assertion failed,3 controls/final retirement unrun. Failed101
+  scope preserved/closed. Correct diagnostic checks actual status-only Ready
+  exports and original completion identity; runtime/arithmetic unchanged. R3
+  now passes all19/380/64,345,520 words plus4 status-only Ready exclusions and
+  actual20-module/native/namespace retirement. Independent all-scope reconciliation,
+  parent0/empty descendants saved; owned unit stopped. HIP/Vulkan strict passes.
+  Final isolated gate passes2,142 Rust/0fail/87ignored/283 suites and17 Python
+  suites/178 cases plus packaging. Initial formatting-only refusal retained;
+  module-order correction changes no arithmetic/owner. No model lowering,
+  source/profile permit or ordinary/serving grant.
 
 ### `55536ce` — multi-row references and connected CPU GDN
 

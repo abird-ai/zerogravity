@@ -3,6 +3,13 @@
 Current source, tests, and this queue are authoritative; Git retains retired history.
 Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 
+## User pause — 31 Oct
+
+Signed native GDN checkpoint`e2559b6` is verified. Expanded Qwen mission remains
+incomplete; owner paused for possible direction change. Recurrence`17aafa71`
+cancelled, owned jobs closed. Await explicit direction; stale receipts do not
+resume work. No plan is marked complete by this pause.
+
 ## Active
 
 - [~] P0 serving-and-speculation — @pvl — l5 CUDA `.8B`/`2B`, x2 ROCm `.8B`/`2B`/`27B`: correctness/context fit, C1..C64, then measured vLLM superiority; finite27B checkpoint passed; ordinary HIP remains open — [details](serving-and-speculation/TODO.md)

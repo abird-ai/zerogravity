@@ -15,6 +15,60 @@ long contexts and Qwen27B. Bindings/readers/helpers are internal steps, with foc
 checks and one complete gate per larger unit; isolate only concrete failures.
 ## Committed
 
+### `e2559b6` — original-source native chunk GDN
+
+- [x] Qualify shared GPU chunk kernels through the original HIP owner.
+  `source_gdn/chunk.rs`: grouped normalization, padded cumsum/causal decay,
+  original GEMM epilogues, triangular solves, corrected output/state and BF16
+  readout. Separate nonpositive exp preserves FP64 rounding with explicit
+  dynamic-table FMA barriers; normal-only profile remains unchanged. No model
+  lowering/eligibility yet; composition/comparison is test-only.
+  Authenticated transport `ZGGD0001` widens BF16 bits/reorders records only:
+  19 cases/484 records/74,948,432 words,299,795,904 bytes, SHA256
+  `0b314ec242346caec8d7f2ed2d0e45647cf8eed37649f97c66f907c5a657a071`.
+  Original absent state remains absent; mathematical zero controls are explicit.
+  Strict shared-HIP all-target check passes r4. Preserve r1 macro-relative-path
+  and r3 byte-slice inference failures; no numerical comparator change.
+  Frozen source `gdn-native-code-r1.tar`,40,560,640 bytes/2,148 files, SHA256
+  `79dac12c18259f5dea34b1199b15b0f6e32232a9050850b99551fd384cc0d5ad`,
+  signed base55536ce plus current dirty implementation. Durable x2 unit
+  `zg-source-gdn-chunk-20261031-r1.service`, invocation
+  `fc0379a845354d57be6cc34f23ee5174`, initial MainPID974422; watch`fba2bb67`.
+  R1 release build passes; native entry refuses `HIP original complete source
+  catalogue metadata owner` before all19 numerical cases. Caller incorrectly
+  reserved4MiB against the original exact1MiB contract. Parent101/MainPID0/empty
+  recursive descendants and source/binary/log identities saved; owned unit
+  stopped (failed state retained), job905 closed. No numerical or in-process
+  retirement acceptance. Caller now requests1MiB; guard/arithmetic unchanged.
+  R2 archive`e3387a9ed607518c54f8425e6c39f7d2484811222f2b92222e2aa2ff476543b2`,
+  invocation`ee5c37a887b94376a9c2e7837110f81b`, watch`39fc9f3d`:
+  all19 cases/380 fields/64,345,520 words exact, original input/prior bytes
+  unchanged and per-case physical baseline restored. Every field/case reconciled
+  against the pinned original manifest. First refusal then fails an incorrect
+  fixture assertion: completed Writes are physically initialized even when only
+  status is exported by Ready. Preserve r2 parent101/empty descendants, saved
+  source/binary/log evidence, stopped unit; remaining3 controls and final native/
+  namespace retirement unverified. Fix only diagnostic to require exact original
+  service/event/root context, exact Ready export set and status-only negative
+  exports; physical initialization is not publication. No completion or arithmetic
+  change. R3 archive`2afc28f5a1987ec04e84e4b858f2672a848fb625e499336ab533c0fc1ffa5715`,
+  binary`3c5db98e1c2dfdff7cc279aa6734d2d63aa5df85d99304a998e521fb6a69db79`,
+  invocation`01091a34a8f54d6c92a2bb95ee11b8f0`, watch`90ef500e`: all19/380/
+  64,345,520 words exact again;4 status refusals preserve every input/prior and
+  export only status from the original Ready. Actual writes complete, no model
+  publication exists. Per-case baseline intact;20 modules/code/host/device retire,
+  namespace closes. Every scope independently inspected; parent0/MainPID0/empty
+  recursive descendants saved, owned unit stopped. HIP/Vulkan all-target strict
+  checks pass. Final isolated `scripts/check.sh` r2 passes2,142 Rust/0fail/
+  87ignored/283 suites,17 Python suites/178 cases plus release/installer/shell/Nix.
+  Preserve r1's formatting-only refusal; module declaration ordering corrected,
+  executable math/owners unchanged. No Vulkan physical, full-model, serving or
+  performance qualification. Evidence:`gdn-native-all-scopes-r3.log`,
+  `gdn-native-assembled-gate-r2.log` under the existing ordinary-HIP run root.
+  Initial empty-device-FD preflight refused the existing dotlink.service context;
+  it remains untouched. GPU was idle at inspection. This is a non-timed operator
+  comparison, not an exclusive-device/performance or full-model claim.
+
 ### `55536ce` — original multi-row references and CPU chunk GDN
 
 - [x] Inspect both new original-source call references. Existing pinned
@@ -472,57 +526,6 @@ new native/model eligibility follows.
   systems, not the initial-one simplification. Preserve exact contracts and
   separate CPU-source BF16 residual/eager-attention semantics from CUDA math.
   Keep all prior accepted arithmetic/lifetime evidence; production stays disabled.
-- [x] Qualify shared GPU chunk kernels through the original HIP owner.
-  `source_gdn/chunk.rs`: grouped normalization, padded cumsum/causal decay,
-  original GEMM epilogues, triangular solves, corrected output/state and BF16
-  readout. Separate nonpositive exp preserves FP64 rounding with explicit
-  dynamic-table FMA barriers; normal-only profile remains unchanged. No model
-  lowering/eligibility yet; composition/comparison is test-only.
-  Authenticated transport `ZGGD0001` widens BF16 bits/reorders records only:
-  19 cases/484 records/74,948,432 words,299,795,904 bytes, SHA256
-  `0b314ec242346caec8d7f2ed2d0e45647cf8eed37649f97c66f907c5a657a071`.
-  Original absent state remains absent; mathematical zero controls are explicit.
-  Strict shared-HIP all-target check passes r4. Preserve r1 macro-relative-path
-  and r3 byte-slice inference failures; no numerical comparator change.
-  Frozen source `gdn-native-code-r1.tar`,40,560,640 bytes/2,148 files, SHA256
-  `79dac12c18259f5dea34b1199b15b0f6e32232a9050850b99551fd384cc0d5ad`,
-  signed base55536ce plus current dirty implementation. Durable x2 unit
-  `zg-source-gdn-chunk-20261031-r1.service`, invocation
-  `fc0379a845354d57be6cc34f23ee5174`, initial MainPID974422; watch`fba2bb67`.
-  R1 release build passes; native entry refuses `HIP original complete source
-  catalogue metadata owner` before all19 numerical cases. Caller incorrectly
-  reserved4MiB against the original exact1MiB contract. Parent101/MainPID0/empty
-  recursive descendants and source/binary/log identities saved; owned unit
-  stopped (failed state retained), job905 closed. No numerical or in-process
-  retirement acceptance. Caller now requests1MiB; guard/arithmetic unchanged.
-  R2 archive`e3387a9ed607518c54f8425e6c39f7d2484811222f2b92222e2aa2ff476543b2`,
-  invocation`ee5c37a887b94376a9c2e7837110f81b`, watch`39fc9f3d`:
-  all19 cases/380 fields/64,345,520 words exact, original input/prior bytes
-  unchanged and per-case physical baseline restored. Every field/case reconciled
-  against the pinned original manifest. First refusal then fails an incorrect
-  fixture assertion: completed Writes are physically initialized even when only
-  status is exported by Ready. Preserve r2 parent101/empty descendants, saved
-  source/binary/log evidence, stopped unit; remaining3 controls and final native/
-  namespace retirement unverified. Fix only diagnostic to require exact original
-  service/event/root context, exact Ready export set and status-only negative
-  exports; physical initialization is not publication. No completion or arithmetic
-  change. R3 archive`2afc28f5a1987ec04e84e4b858f2672a848fb625e499336ab533c0fc1ffa5715`,
-  binary`3c5db98e1c2dfdff7cc279aa6734d2d63aa5df85d99304a998e521fb6a69db79`,
-  invocation`01091a34a8f54d6c92a2bb95ee11b8f0`, watch`90ef500e`: all19/380/
-  64,345,520 words exact again;4 status refusals preserve every input/prior and
-  export only status from the original Ready. Actual writes complete, no model
-  publication exists. Per-case baseline intact;20 modules/code/host/device retire,
-  namespace closes. Every scope independently inspected; parent0/MainPID0/empty
-  recursive descendants saved, owned unit stopped. HIP/Vulkan all-target strict
-  checks pass. Final isolated `scripts/check.sh` r2 passes2,142 Rust/0fail/
-  87ignored/283 suites,17 Python suites/178 cases plus release/installer/shell/Nix.
-  Preserve r1's formatting-only refusal; module declaration ordering corrected,
-  executable math/owners unchanged. No Vulkan physical, full-model, serving or
-  performance qualification. Evidence:`gdn-native-all-scopes-r3.log`,
-  `gdn-native-assembled-gate-r2.log` under the existing ordinary-HIP run root.
-  Initial empty-device-FD preflight refused the existing dotlink.service context;
-  it remains untouched. GPU was idle at inspection. This is a non-timed operator
-  comparison, not an exclusive-device/performance or full-model claim.
 
 ### Remaining CUDA/ROCm qualification
 

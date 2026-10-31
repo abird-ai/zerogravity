@@ -6,6 +6,22 @@ It is deliberately not a generated concatenation of every historical plan, run l
 
 A successor should be able to start here without prior chat history, understand how the project evolved, identify what is implemented versus merely designed, and continue either the current Qwen correctness critical path or the separately authorized Fabric vNext transition.
 
+## User pause — 31 Oct 2026
+
+- Owner requested a pause at the next reasonable checkpoint; direction may change.
+- Signed implementation checkpoint: `e2559b6` (native chunk GDN); CPU predecessor
+  `55536ce`. Final native/operator, strict-feature and isolated full gates pass.
+- Recurring mission`17aafa71` cancelled, not completed. No owned native/build job
+  remains running; terminal evidence saved and owned native units stopped.
+- Do not resume implementation, re-arm recurrences or rerun accepted scopes from
+  stale automatic receipts. Await the owner's next explicit direction.
+- Functional CPU/CUDA model coverage is the user's meaning of parity; numerical
+  contracts may differ. Blanket coverage is not verified. Original HF CPU captures
+  are reference evidence, not ZeroGravity CPU execution qualification.
+- If resumed: multi-row source-model composition/call-free lowering is next;
+  broader contexts, general27B, C1..C64 serving and matched vLLM remain open.
+  Production stays disabled. Preserve exact CUDA reference/runtime authority gaps.
+
 ## 1. Authority and read order
 
 Authority, highest first:
@@ -39,14 +55,15 @@ replays and healthy lifetime controls. Final gate passes2,136 Rust/17 Python
 suites. Canonical cache/native unknown/fault lifetimes now pass the inspected
 r1/r2 qualification below and the final gate; signed checkpoint `85f33c7` landed.
 Signed `55536ce` CPU padded GDN matches64,345,520 original words; its final gate
-passes2,142 Rust/17 Python suites. Native multi-row integration is next, not yet
-qualified. Scalable ordinary execution, general27B, contexts/concurrency/vLLM
-remain open.
+passes2,142 Rust/17 Python suites. Signed `e2559b6` adds native chunk GDN:
+64,345,520 original words exact, four status-only Ready controls and native
+retirement pass; final source gate passes. Full-model multi-row integration,
+scalable ordinary execution, general27B, contexts/concurrency/vLLM remain open.
 No pushes. Re-read git status/log.
 
 ## 2. Immediate startup for a successor
 
-**Latest owner mission:** finish CUDA `.8B`/`2B` on `pvl-l5`, ROCm `.8B`/`2B`/`27B`
+**Paused owner mission (resume only on explicit direction):** finish CUDA `.8B`/`2B` on `pvl-l5`, ROCm `.8B`/`2B`/`27B`
 on `pvl-x2`, genuine active-context fit, then C1/C4/C8/C16/C32/C64 serving and
 measured vLLM superiority in every required feasible run. Use high concurrency
 on sufficiently capable hardware, especially x2. Routine x2 resource use needs
@@ -58,7 +75,7 @@ source/device or ownership requirements. Missing wider CUDA references do not
 block independent ROCm work. Finite27B diagnostics alone do not finish the mission.
 Current results are in section8 and the status/numerics TODO.
 
-**Immediate implementation lane:** ordinary0.8B/2B HIP. Signed `1f29a42`
+**Next lane if resumed:** ordinary0.8B/2B HIP. Signed `1f29a42`
 assembles typed-SSA state lowering, shared resident matrices/workspace, cold
 pricing and the original session/root machinery. Source arithmetic remains
 bounded to64 positions; finite27B guards stay separate. Strict standalone/HIP
@@ -255,7 +272,7 @@ inspected; parent0/MainPID0/empty recursive descendants saved; unit stopped.
 Shared HIP/Vulkan strict checks pass. Final isolated `scripts/check.sh` r2 passes
 2,142 Rust/0fail/87ignored/283 suites,17 Python suites/178 cases plus packaging.
 R1 formatting-only refusal retained; module declaration order corrected without
-math/ownership changes. Implementation checkpoint ready. Existing dotlink.service GPU context
+math/ownership changes. Signed implementation checkpoint:`e2559b6`. Existing dotlink.service GPU context
 was idle at inspection and remains untouched; preserve the initial overbroad
 empty-FD preflight refusal. Non-timed operator run only, no performance or
 exclusive-device claim. No full-model, serving or Vulkan physical grant.
