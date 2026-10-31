@@ -22,7 +22,8 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
   XDG cache are allowed if needed. No subagents, source substitutions, SDK
   downloads or device-privilege changes. Current27B finite source/natural reports
   pass exact full64/fullV/all112-state with supervised exit/retirement in signed
-  `825ade8`. Ordinary small-model HIP and general27B contexts remain absent.
+  `825ade8`. Ordinary production/serving and general27B contexts remain open;
+  bounded small-model HIP results follow below.
 - [ ] Implement ordinary HIP through shared operators/physical owners, not a
   backend flag on the CUDA plan. Declare actual numerical/storage contracts;
   generalize real model geometry beyond24 layers/42 domains for27B. Preserve
@@ -30,20 +31,71 @@ Contracts: [large immutable sources](../IMMUTABLE_SHARDED_SOURCE_IMPLEMENTATION_
 
 ### Ordinary HIP implementation — 31 Oct, in progress
 
-- [ ] Assemble real source-state lowering, shared resident weights/workspace,
+- [x] Assemble real source-state lowering, shared resident weights/workspace,
   source-priced cold admission and existing session publication for0.8B/2B.
-  Preserve actual F32/BF16-widened state contracts; no renamed CUDA seal/flag.
+  Bounded implementation derives state from typed SSA producers, shares one resident
+  matrix/workspace set across actual frontiers, and reuse the original session,
+  pool, queue, flights and publication. Finite guards remain separate; explicit
+  F32/BF16-widened storage, not a renamed CUDA seal/flag. Core assembly passed
+  strict compilation. Standalone actual-source preflight now passes both models:
+  64 ordered records,11 refusal/accounting controls and root pools4/6/130.
+  This is cold pricing, not C64 inference. HIP all-target and shared Vulkan strict
+  checks pass. The first x2 physical attempt prepares785 modules, then refuses
+  premature resident binding before original initialization Ready. Move pending
+  operand binding after that barrier; do not relax initialization checks. Parent
+  exit1/MainPID0/empty cgroup verified; in-process native retirement and model
+  parity are not established. Failed log:`source-model-physical-r1-08.log`.
+  Post-Ready r2 reaches0.8B full-model comparison but fails303 words; first
+  after.recurrent/layer0 word50816 is negative zero versus original positive zero.
+  All785 modules retire and namespace/source close; parent exit1/empty cgroup
+  verified, completed unit stopped. Original initial recurrence adds its decayed
+  empty state; CPU/HIP had omitted that addition. Restore actual arithmetic,
+  not output canonicalization/tolerance. Four focused host tests and standalone
+  strict check pass; initial test's unsupported one-head fixture refusal retained
+  and corrected to genuine16-head geometry. Richer per-field mismatch reporting
+  stays in test support. Fresh r3 passes both models as detailed below. Review
+  also requires every position's capacity to equal the complete record count,
+  independently of whether the source has KV domains; both fresh actual-source
+  cold controls pass. Source/session remains position-bound/single-row through64.
+  Final isolated gate:2,136 Rust/0fail/85ignored/283 suites;17 Python suites/178
+  cases, release/installer/shell/Nix. CPU/diagnostic/HIP/shared-Vulkan strict checks
+  pass; narrower historical Vulkan lint refusal remains a separate failed scope.
 - [ ] Generalize actual geometry/backend execution for27B and populated contexts.
   Finite27B still pins2 positions/112 domains; current CPU attention arithmetic
   stops before position64. Source recording is not ordinary model execution.
-- [ ] Capture independent small-model whole-source references from approved
-  cached original runtime/weights. Both manifests pin genuine single-shard
-  indexes; all11 `.8B` and12 `2B` cached members reverified against their actual
-  manifests (488/632 indexed tensors). No fabricated provenance or self-oracle.
-  Original CUDA runtime image
-  is available locally, not in x2's named baseline store.
-- [ ] Qualify actual model prefill/decode/full logits/all state, replay, root
-  isolation, cancellation/quarantine/shutdown before enabling production routes.
+- [x] Capture independent small-model whole-source references from the approved
+  cached Torch2.13/Transformers5.17 original runtime, AVX2 CPU, raw published
+  parameters and original full forward. Each model:64 genuinely populated
+  single-token positions, two independent exact replays,128 calls/15,776 records;
+  fullV, layer outputs, rotary positions and every populated Conv4/recurrent/KV
+  state. Inspect every record/digest, natural selection, source role and closure.
+  `.8B`:1,396,408,320 float words/5,189,864,448B;
+  `2B`:1,399,816,192 float words/5,196,680,192B. Original source members remain
+  11/12 with authentic indexes,488/632 tensors. Durable local owner exits0 with
+  no descendants; both containers/groups/reaps/EOF close. Completed unit stopped.
+  These are original-reference results, not HIP parity or serving acceptance.
+  Evidence:`ordinary-hip-20261031.Jc5XWh/small-original-r1-{08,2b}` and
+  `small-source-reference-r1-validation.log`. No source/image substitution.
+- [x] Transfer29 source/reference members,16,744,116,588B, to bounded x2 staging
+  with complete size/hash/EOF checks. Import0.8B through canonical `CacheStore`:
+  snapshot`d7c7bf56e176bd70a8190acb9873cc719e65b6b306181039f2896d6f9387b36c`.
+  Legacy provenance remains Unspecified, not upgraded. No download or inference
+  claim. `2B` now imports12 exact members into canonical snapshot
+  `88606494611dfa37253320ef82c88ca6ae6f665ac873fec28859fafd216dbf52`; no download.
+- [x] Physical r3:0.8B/2B full24/full248,320V/all populated Conv4/recurrent/KV
+  state,64 positions × two independent natural replays. All15,776 records/model
+  inspected;1,396,408,320/1,399,816,192 words exact. Pre/late cancellation,
+  proposal discard, session/snapshot pressure, live-owner shutdown refusal,
+  independent complete roots, restore/reset and context64 refusal pass. Actual
+  native785/781 modules retire, namespaces/source owners close; host unfenced.
+  Durable parent exits0/MainPID0/empty descendants; completed owned unit stopped.
+  Evidence:`source-model-all-scopes-r3.log`, physical logs and original pinned
+  references. Earlier r1/r2 failures remain separate. Assembled gate passes above;
+  no production/serving/performance permit or concurrent-root throughput claim.
+- [ ] Add/qualify unknown-completion and final-reader release-fault lifetime
+  controls on this actual model path; finite27B evidence does not substitute.
+- [ ] Implement scalable ordinary prefill/decode beyond position-bound single-row
+  capacity64; qualify populated wider contexts and serving before production.
 
 
 ### Ordinary Qwen execution checkpoint — 27 Oct

@@ -16,7 +16,7 @@ mod final_owner;
 pub use final_owner::TextSourceFinalOwnerReceipt;
 
 pub(super) struct TextSourceOptions<'a, 'o> {
-    pub bodies: &'a [Arc<Bf16TextSourceBody>; 2],
+    pub bodies: &'a [Arc<Bf16TextSourceBody>],
     pub observer: &'a std::cell::RefCell<Option<&'o mut dyn TextSourceObserver>>,
     pub feedback: Option<&'a ResidentToken>,
     pub cancelled: Option<&'a AtomicBool>,

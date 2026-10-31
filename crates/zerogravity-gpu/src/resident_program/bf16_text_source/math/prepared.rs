@@ -476,6 +476,26 @@ pub(in crate::resident_program::bf16_text_source) fn enumerate(
     readout: super::super::TextSourceReadout,
 ) -> Result<Specializations> {
     super::super::require_step_pair(source, records)?;
+    for record in records {
+        layout::Layout::derive(record)?;
+    }
+    enumerate_records(client, source, records, readout.natural(), None)
+}
+pub(in crate::resident_program::bf16_text_source) fn enumerate_records(
+    client: &Client,
+    source: &zerogravity_artifacts::source_weights::VerifiedTensorSource,
+    records: &[Arc<TextStepBindings>],
+    greedy: bool,
+    operands: Option<
+        &std::collections::BTreeMap<
+            String,
+            Arc<crate::resident_program::bf16_projection::PreparedBf16Projection>,
+        >,
+    >,
+) -> Result<Specializations> {
+    if records.is_empty() {
+        return Err(Error::State("source catalogue empty".into()));
+    }
     let metadata = source.reserve_workspace(1024 * 1024)?;
     let mut b = Builder {
         properties: client.properties_shared(),
@@ -492,7 +512,7 @@ pub(in crate::resident_program::bf16_text_source) fn enumerate(
         ),
     )?;
     for record in records {
-        let l = layout::Layout::derive(record)?;
+        let l = layout::Layout::derive_source(record)?;
         let plan = record.plan();
         for node in plan.nodes() {
             for id in &node.outputs {
@@ -507,15 +527,24 @@ pub(in crate::resident_program::bf16_text_source) fn enumerate(
                 }
                 PlanOperation::TypedProject { tensor, .. } => {
                     let matrix = source.matrix(&tensor.name, tensor.axes)?;
-                    let operand = crate::resident_program::bf16_projection::PreparedBf16Projection::new(
-                        source.clone(), matrix,
-                        crate::resident_program::bf16_projection::Bf16ProjectionStorage::Streamed,
-                    )?;
-                    if operand.max_launch_rows() > 2048 {
-                        return Err(Error::Unsupported(
-                            "finite full-K native source catalogue".into(),
-                        ));
-                    }
+                    let operand = if let Some(operands) = operands {
+                        let operand = operands.get(&tensor.name).ok_or_else(|| {
+                            Error::State("source native prepared matrix absent".into())
+                        })?;
+                        if !operand.matrix().same_binding(&matrix) {
+                            return Err(Error::State("source native exact resident matrix".into()));
+                        }
+                        operand.clone()
+                    } else {
+                        let operand = crate::resident_program::bf16_projection::PreparedBf16Projection::new(
+                            source.clone(), matrix, crate::resident_program::bf16_projection::Bf16ProjectionStorage::Streamed)?;
+                        if operand.max_launch_rows() > 2048 {
+                            return Err(Error::Unsupported(
+                                "finite full-K native source catalogue".into(),
+                            ));
+                        }
+                        operand
+                    };
                     add_transport_pack(&mut b)?;
                     add_transport_projection_status(&mut b)?;
                     for rows in operand.launch_rows() {
@@ -642,7 +671,7 @@ pub(in crate::resident_program::bf16_text_source) fn enumerate(
             }
         }
     }
-    if readout.natural() {
+    if greedy {
         let plan = records[0].plan();
         let vocabulary = plan.values()[plan
             .logits()

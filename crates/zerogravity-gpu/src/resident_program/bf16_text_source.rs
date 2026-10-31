@@ -19,6 +19,9 @@ use zerogravity_core::accelerator::program::{
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
 mod layout;
 mod math;
+#[cfg(feature = "hip")]
+pub(crate) mod source_set;
+mod state_layout;
 mod transport;
 
 pub use layout::TextSourceResourceInventory;
@@ -69,6 +72,15 @@ fn require_step_source(source: &VerifiedTensorSource, record: &TextStepBindings)
         return Err(Error::State(
             "source step actual snapshot/geometry differs".into(),
         ));
+    }
+    require_source_bindings(source, record)
+}
+fn require_source_bindings(source: &VerifiedTensorSource, record: &TextStepBindings) -> Result<()> {
+    layout::Layout::require_source_record(record)?;
+    if record.source_identity() != source.source_identity()
+        || record.plan().source() != source.source_identity()
+    {
+        return Err(Error::State("source step immutable issuer differs".into()));
     }
     let parameter =
         |p: &SourceParameter| -> Result<()> { source.bind_declared_parameter(p).map(|_| ()) };
@@ -174,7 +186,7 @@ pub(crate) struct Bf16TextSourceBody {
     layout: layout::Layout,
     slots: Vec<ResidentLease>,
     parameters: BTreeMap<String, ResidentLease>,
-    projections: BTreeMap<String, Arc<PreparedBf16Projection>>,
+    projections: Arc<BTreeMap<String, Arc<PreparedBf16Projection>>>,
     scratch: Vec<ResidentLease>,
     tables: Vec<ResidentLease>,
     page: Arc<source_page::ResidentSourcePage>,
@@ -194,6 +206,52 @@ struct ParameterUpload {
     _window: ParameterWindow,
     _bytes: Vec<u8>,
     _staging: WindowWorkspace,
+}
+fn upload_parameters(
+    source: &VerifiedTensorSource,
+    declared: &BTreeMap<String, SourceParameter>,
+    init: &mut ResidentInitialization<'_>,
+) -> Result<BTreeMap<String, ResidentLease>> {
+    let mut parameters = BTreeMap::new();
+    for (name, p) in declared {
+        let window = source.read_declared_parameter(p, None)?;
+        let bytes = layout::aligned(window.parameter().elements() * 4)?;
+        let staging = source.reserve_workspace(3 * bytes)?;
+        let mut widened = vec![0u8; bytes];
+        match p.kind {
+            QuantKind::F32 => widened[..p.bytes].copy_from_slice(window.as_slice()),
+            QuantKind::Bf16 => {
+                for (out, input) in widened
+                    .chunks_exact_mut(4)
+                    .zip(window.as_slice().chunks_exact(2))
+                {
+                    out.copy_from_slice(
+                        &(u32::from(u16::from_le_bytes(input.try_into().unwrap())) << 16)
+                            .to_le_bytes(),
+                    );
+                }
+            }
+            _ => return Err(Error::State("source parameter physical dtype".into())),
+        }
+        if widened[..window.parameter().elements() * 4]
+            .chunks_exact(4)
+            .any(|b| !f32::from_le_bytes(b.try_into().unwrap()).is_finite())
+        {
+            return Err(Error::Malformed("source raw parameter nonfinite".into()));
+        }
+        let owner = Arc::new(ParameterUpload {
+            _window: window,
+            _bytes: widened,
+            _staging: staging,
+        });
+        // The original initialization retains the authentic window BEFORE copy.
+        init.retain_completion_owner(owner.clone())?;
+        parameters.insert(
+            name.clone(),
+            init.upload_bytes(&owner._bytes, BufferRole::ImmutableWeights)?,
+        );
+    }
+    Ok(parameters)
 }
 pub(crate) struct PendingBf16TextSource {
     body: Arc<Bf16TextSourceBody>,
@@ -299,45 +357,7 @@ impl Bf16TextSourceBody {
             .iter()
             .map(|n| init.allocate_empty(*n, BufferRole::Activation))
             .collect::<Result<Vec<_>>>()?;
-        let mut parameters = BTreeMap::new();
-        for (name, p) in &layout.parameters {
-            let window = source.read_declared_parameter(p, None)?;
-            let bytes = layout::aligned(window.parameter().elements() * 4)?;
-            let staging = source.reserve_workspace(3 * bytes)?;
-            let mut widened = vec![0u8; bytes];
-            match p.kind {
-                QuantKind::F32 => widened[..p.bytes].copy_from_slice(window.as_slice()),
-                QuantKind::Bf16 => {
-                    for (out, input) in widened
-                        .chunks_exact_mut(4)
-                        .zip(window.as_slice().chunks_exact(2))
-                    {
-                        out.copy_from_slice(
-                            &(u32::from(u16::from_le_bytes(input.try_into().unwrap())) << 16)
-                                .to_le_bytes(),
-                        );
-                    }
-                }
-                _ => return Err(Error::State("source parameter physical dtype".into())),
-            }
-            if widened[..window.parameter().elements() * 4]
-                .chunks_exact(4)
-                .any(|b| !f32::from_le_bytes(b.try_into().unwrap()).is_finite())
-            {
-                return Err(Error::Malformed("source raw parameter nonfinite".into()));
-            }
-            let owner = Arc::new(ParameterUpload {
-                _window: window,
-                _bytes: widened,
-                _staging: staging,
-            });
-            // The original initialization retains the authentic window BEFORE copy.
-            init.retain_completion_owner(owner.clone())?;
-            parameters.insert(
-                name.clone(),
-                init.upload_bytes(&owner._bytes, BufferRole::ImmutableWeights)?,
-            );
-        }
+        let parameters = upload_parameters(&source, &layout.parameters, init)?;
         let scratch = layout
             .math
             .iter()
@@ -411,7 +431,7 @@ impl Bf16TextSourceBody {
             layout,
             slots,
             parameters,
-            projections,
+            projections: Arc::new(projections),
             scratch,
             tables,
             page,
@@ -495,9 +515,7 @@ impl Bf16TextSourceBody {
     }
     pub(super) fn require_finished(&self) -> Result<()> {
         if self.next.load(Ordering::Acquire) != self.recorded.plan().nodes().len() {
-            return Err(Error::State(
-                "source complete full64 traversal missing".into(),
-            ));
+            return Err(Error::State("source complete traversal missing".into()));
         }
         Ok(())
     }
@@ -548,6 +566,30 @@ impl Bf16TextSourceBody {
             } => {
                 let matrix = self.source.matrix(&tensor.name, tensor.axes)?;
                 let token = execution.call().row(0)?.token() as usize;
+                if let Some(resident) = self
+                    .projections
+                    .get(&tensor.name)
+                    .and_then(|p| p.resident())
+                {
+                    resident.require_matrix(&self.source, &self.service, &matrix)?;
+                    let row = trimmed(
+                        resident.lease(),
+                        token * tensor.columns * 2,
+                        tensor.columns * 2,
+                    )?;
+                    unsafe {
+                        transport::widen::launch_unchecked(
+                            client,
+                            grid(tensor.columns),
+                            threads(),
+                            arg(&row, tensor.columns / 2),
+                            arg(&output[0].handle, tensor.columns),
+                            arg(&status, 1),
+                            crate::program_kernels::NONFINITE_VALUE,
+                        );
+                    }
+                    return Ok(1);
+                }
                 let out = self.lease(node.outputs[0]).clone();
                 execution.page(&self.page, &matrix, token..token + 1, &mut |page| {
                     if !page.matrix().same_binding(&matrix)
@@ -762,7 +804,7 @@ impl Bf16TextSourceBody {
                         Ok(1)
                     }
                     _ => Err(Error::Unsupported(
-                        "operation outside complete full64 source record".into(),
+                        "operation outside complete source record".into(),
                     )),
                 }
             }
@@ -970,11 +1012,12 @@ impl Bf16TextSourceBody {
             ranges.push(range);
         }
         let source_bytes = layout::sum(
-            self.parameters
-                .values()
-                .chain(&self.tables)
-                .chain([&self.zero])
-                .map(ResidentLease::bytes),
+            self.accesses
+                .iter()
+                .filter(|(lease, access)| {
+                    *access == DeviceAccess::Read && lease.role() == BufferRole::ImmutableWeights
+                })
+                .map(|(lease, _)| lease.bytes()),
         )?;
         let status_bytes = self.status.bytes();
         let preflight = ResidentPreflight {
@@ -1164,7 +1207,16 @@ impl ResidentProgram {
         };
         body.page.drain()?;
         let words = if matches!(slot, StateSlot::Kv(_)) {
-            active * 1024
+            let state = body
+                .layout
+                .states
+                .iter()
+                .find(|state| state.slot == slot)
+                .ok_or_else(|| Error::State("source checkpoint state absent".into()))?;
+            let StateLayout::Kv { slab, .. } = state.layout else {
+                return Err(Error::State("source checkpoint KV layout differs".into()));
+            };
+            active * slab
         } else {
             lease.bytes() / 4
         };

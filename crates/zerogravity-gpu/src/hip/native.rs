@@ -100,6 +100,8 @@ enum SingleSourceProfile {
     Gemma(GemmaColdProfile),
     #[cfg(feature = "qwen-source-qualification")]
     Qwen,
+    #[cfg(feature = "qwen-source-qualification")]
+    ResidentText,
 }
 impl SingleSourceProfile {
     fn provider_cap(self) -> usize {
@@ -108,6 +110,8 @@ impl SingleSourceProfile {
             Self::Gemma(profile) => profile.cost().provider,
             #[cfg(feature = "qwen-source-qualification")]
             Self::Qwen => PROVIDER_CAP,
+            #[cfg(feature = "qwen-source-qualification")]
+            Self::ResidentText => 24 * GIB,
         }
     }
     fn policy(self) -> &'static str {
@@ -116,6 +120,8 @@ impl SingleSourceProfile {
             Self::Gemma(profile) => profile.policy(),
             #[cfg(feature = "qwen-source-qualification")]
             Self::Qwen => "x2-gfx1151-qwen27b-initial-cached-full-catalogue-provisional-v1",
+            #[cfg(feature = "qwen-source-qualification")]
+            Self::ResidentText => "gfx1151-source-bf16-resident-projections-v1",
         }
     }
 }
@@ -387,6 +393,34 @@ pub(crate) fn begin_qwen_qualification(
 ) -> Result<ColdNativePreparation> {
     begin_single_source(device, source, source_owner, SingleSourceProfile::Qwen)
 }
+#[cfg(feature = "qwen-source-qualification")]
+pub(crate) fn resident_source_device_inventory(model_upper: usize) -> Result<(usize, usize)> {
+    let context = CONTEXT_DEVICE as usize;
+    let total = model_upper
+        .checked_add(context)
+        .ok_or_else(|| Error::Limit("resident source physical upper overflow".into()))?;
+    if total > SingleSourceProfile::ResidentText.provider_cap() {
+        return Err(Error::Limit(
+            "resident source pre-client device/native/root admission".into(),
+        ));
+    }
+    Ok((context, total))
+}
+#[cfg(feature = "qwen-source-qualification")]
+pub(crate) fn begin_resident_source(
+    device: Device,
+    source: &VerifiedTensorSource,
+    source_owner: crate::physical_quarantine::CompletionOwner,
+    model_device_upper: usize,
+) -> Result<ColdNativePreparation> {
+    resident_source_device_inventory(model_device_upper)?;
+    begin_single_source(
+        device,
+        source,
+        source_owner,
+        SingleSourceProfile::ResidentText,
+    )
+}
 fn begin_single_source(
     device: Device,
     source: &VerifiedTensorSource,
@@ -532,6 +566,7 @@ pub(crate) struct PreparedSourceNative {
     ),
     feature = "hardware-abort-probe"
 ))]
+#[derive(Clone)]
 pub(crate) struct FinalNativeProbe(std::sync::Weak<Admission>);
 #[cfg(all(
     any(

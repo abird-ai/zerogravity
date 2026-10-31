@@ -132,6 +132,11 @@ path = "examples/hip_shared_models.rs"
 required-features = ["shared-hip-qualification", "zerogravity-gpu/hardware-abort-probe"]
 
 [[example]]
+name = "qwen_source_hip"
+path = "examples/qwen_source_hip.rs"
+required-features = ["qwen27b-hip-qualification", "zerogravity-gpu/hardware-abort-probe"]
+
+[[example]]
 name = "qwen27b_hip_natural"
 path = "examples/qwen27b_hip_natural.rs"
 required-features = ["qwen27b-hip-qualification", "zerogravity-gpu/hardware-abort-probe"]

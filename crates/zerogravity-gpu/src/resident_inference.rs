@@ -1081,8 +1081,8 @@ impl ResidentModel {
                     "source-bound one-row logits/greedy call".into(),
                 ));
             }
-            // Two immutable semantic phase records share this existing serialized
-            // workspace/queue. No new actor or family traversal is selected here.
+            // Immutable source records share this serialized workspace/queue.
+            // No new actor or family traversal is selected here.
             workspace.program = step.body.bind()?;
             workspace.state_accesses = step.body.accesses().to_vec();
             workspace.logit_accesses = workspace.state_accesses.clone();
@@ -2050,8 +2050,10 @@ impl ResidentSession {
         let (_bf16_text_source_call_admission, bf16_text_source_call) =
             if let Some(options) = &bf16_text_source {
                 bf16_text_source::check_cancel(options.cancelled)?;
-                if tokens.len() != 1 || base.frontier() > 1 {
-                    return Err(Error::Unsupported("finite source teacher row".into()));
+                if tokens.len() != 1 || base.frontier() as usize >= options.bodies.len() {
+                    return Err(Error::Unsupported(
+                        "source single-row recorded frontier".into(),
+                    ));
                 }
                 let body = &options.bodies[base.frontier() as usize];
                 if body.recorded().plan().source() != base.source() {
@@ -2581,6 +2583,12 @@ pub(crate) mod bf16_text;
 
 #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
 pub(crate) mod bf16_text_source;
+#[cfg(all(
+    feature = "qwen-source-qualification",
+    feature = "hip",
+    target_os = "linux"
+))]
+pub mod source_text;
 
 #[cfg(feature = "qualification")]
 pub mod diagnostics;

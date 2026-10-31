@@ -1,4 +1,4 @@
-//! Source-derived owners for both finite token records; no admission authority.
+//! Typed source-record storage, with a separately guarded finite adapter.
 use super::*;
 use zerogravity_core::accelerator::program::{
     ProgramNumericalProfile, SourceParameter, StandaloneExpProfile, ValueStorageBinding,
@@ -54,6 +54,27 @@ pub(super) fn sum(values: impl IntoIterator<Item = usize>) -> Result<usize> {
     })
 }
 impl Layout {
+    pub(super) fn require_source_record(recorded: &TextStepBindings) -> Result<()> {
+        let p = recorded.plan();
+        if p.numerical_profile() != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+            || p.standalone_exp_profile() != Some(StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1)
+            || p.is_operator_slice()
+            || !(1..=64).contains(&recorded.capacity())
+            || p.prefix_capacity() != recorded.capacity()
+            || recorded.position() >= recorded.capacity()
+            || p.frontier_delta() != 1
+            || p.required_domains().is_empty()
+            || p.required_domains().len() > 128
+            || p.required_domains().len() != p.proposed_domains().len()
+            || p.nodes().len() > 8192
+            || p.values().len() > 8192
+        {
+            return Err(Error::Unsupported(
+                "source single-row arithmetic/state bound".into(),
+            ));
+        }
+        Ok(())
+    }
     pub(super) fn require_record(recorded: &TextStepBindings) -> Result<()> {
         let plan = recorded.plan();
         if plan.numerical_profile() != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
@@ -76,11 +97,41 @@ impl Layout {
     }
     pub(super) fn derive(recorded: &TextStepBindings) -> Result<Self> {
         Self::require_record(recorded)?;
+        let layout = Self::derive_source(recorded)?;
+        if layout.parameters.len() != 353
+            || layout.parameter_bytes > 11 * 1024 * 1024
+            || layout.states.iter().any(|state| match state.layout {
+                StateLayout::Kv { slab, capacity } => slab != 1024 || capacity != 2,
+                StateLayout::Vector { elements } => {
+                    elements
+                        != match state.slot {
+                            StateSlot::Conv(_) => 10240 * 4,
+                            StateSlot::Recurrent(_) => 48 * 128 * 128,
+                            _ => return true,
+                        }
+                }
+            })
+        {
+            return Err(Error::Unsupported(
+                "finite original parameter/state inventory".into(),
+            ));
+        }
+        Ok(layout)
+    }
+    pub(super) fn derive_source(recorded: &TextStepBindings) -> Result<Self> {
+        Self::require_source_record(recorded)?;
         let plan = recorded.plan();
         let physical = plan
             .values()
             .iter()
-            .map(|v| ResidentBufferLayout::new(ResidentPhysicalType::F32, v.capacity_elements()?))
+            .zip(plan.precisions())
+            .map(|(v, precision)| {
+                if !matches!(*precision, zerogravity_core::accelerator::program::ActivationPrecision::F32
+                    | zerogravity_core::accelerator::program::ActivationPrecision::Bf16WidenedF32) {
+                    return Err(Error::Unsupported("source explicit widened-F32 physical storage".into()));
+                }
+                ResidentBufferLayout::new(ResidentPhysicalType::F32, v.capacity_elements()?)
+            })
             .collect::<Result<Vec<_>>>()?;
         let storage = ResidentBufferLayout::plan_values(
             plan,
@@ -144,37 +195,7 @@ impl Layout {
                     {
                         return Err(Error::State("source original state-effect chain".into()));
                     }
-                    let layout = match binding.slot() {
-                        StateSlot::Kv(_) => {
-                            let n = binding.components()[0];
-                            if n != binding.components()[1] || n != (recorded.position() + 1) * 1024
-                            {
-                                return Err(Error::State(
-                                    "source authentic compact KV planes".into(),
-                                ));
-                            }
-                            StateLayout::Kv {
-                                slab: 1024,
-                                capacity: 2,
-                            }
-                        }
-                        StateSlot::Conv(_) => {
-                            if binding.components() != [10240 * 4] {
-                                return Err(Error::State("source fullConv4 state".into()));
-                            }
-                            StateLayout::Vector {
-                                elements: 10240 * 4,
-                            }
-                        }
-                        StateSlot::Recurrent(_) => {
-                            if binding.components() != [48 * 128 * 128] {
-                                return Err(Error::State("source H48 key-major state".into()));
-                            }
-                            StateLayout::Vector {
-                                elements: 48 * 128 * 128,
-                            }
-                        }
-                    };
+                    let layout = super::state_layout::derive(recorded, node, binding)?;
                     let bytes = match layout {
                         StateLayout::Vector { elements } => elements * 4,
                         StateLayout::Kv { slab, capacity } => 2 * slab * capacity * 4,
@@ -197,13 +218,13 @@ impl Layout {
                 _ => {}
             }
         }
-        if states.len() != 112
+        if states.len() != plan.required_domains().len()
             || states
                 .keys()
                 .copied()
                 .ne(plan.required_domains().iter().copied())
         {
-            return Err(Error::State("full112 source state owner inventory".into()));
+            return Err(Error::State("source state owner inventory".into()));
         }
         let max_columns = plan
             .nodes()
@@ -226,17 +247,16 @@ impl Layout {
                 aligned(elements * 4)
             })
             .collect::<Result<Vec<_>>>()?)?;
-        // The authenticated complete64 record has129 ordinary hidden RMS,
-        // 32 attention Q/K gammas and48 sets of4 original GDN parameters.
-        if parameters.len() != 353 || parameter_bytes > 11 * 1024 * 1024 {
-            return Err(Error::Unsupported(
-                "finite original raw parameter inventory".into(),
-            ));
+        let mut math = math::scratch_layout().to_vec();
+        for node in plan.nodes() {
+            if let PlanOperation::TypedTorchAttention { geometry, position } = node.operation {
+                let sizes = crate::source_attention::single_row::scratch_bytes(geometry, position)?;
+                for (index, bytes) in [21, 22, 25, 26, 27, 28, 23, 24].into_iter().zip(sizes) {
+                    math[index] = math[index].max(bytes);
+                }
+            }
         }
-        let math = math::scratch_layout()
-            .iter()
-            .map(|n| aligned(*n))
-            .collect::<Result<Vec<_>>>()?;
+        let math = math.into_iter().map(aligned).collect::<Result<Vec<_>>>()?;
         let slots = storage
             .slots()
             .iter()

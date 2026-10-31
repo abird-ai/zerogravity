@@ -37,10 +37,28 @@ live authority.
 - Final isolated gate:2,135 Rust passes/0fail/85ignored/283 suites;17 Python
   suites/178 reported cases, release/installer/shell/Nix pass. Selected CPU/HIP
   strict checks pass; existing non-strict warnings are unchanged.
-- Approved `.8B`/`2B` cache inputs reverified:11/12 members and genuine indexes.
-  Next: actual ordinary source-state/resident-weight lowering, cold pricing,
-  existing session publication and independent whole-model references. CUDA-only
-  seals and finite27B state/native policies have not been relabeled or widened.
+- Approved `.8B`/`2B` inputs:11/12 members with genuine indexes. Independent
+  original HF full-model CPU references now cover64 populated positions × two
+  exact replays/model: fullV/all layers/all populated state,15,776 records/model,
+  authenticated source and actual parent/group/container/EOF closure.
+- Uncommitted HIP source assembly reuses typed SSA, shared resident storage and
+  original session publication. Both cold64 plans and11 refusal/accounting
+  controls pass; a root-pool130 quote is not C64 inference. First native attempt
+  prepares785 modules then refuses premature matrix binding before Ready.
+  Corrected pending binding reaches actual0.8B comparison, failing303 words;
+  first initial recurrent word differs only in zero sign. All785 modules retire,
+  namespace/source close, parent exits1/empty cgroup. Original initial recurrence
+  addition restored in CPU/HIP; four host tests/strict check pass. Fresh r3
+  passes both actual models through64 populated positions × two natural replays:
+  fullV/all24 layers/all state;1,396,408,320/1,399,816,192 words exact. Known
+  cancellation/discard, root isolation, pressure, restore/reset/shutdown pass;
+  native785/781 modules retire, namespaces/source close, parent exit0/empty
+  descendants. Owned unit stopped.2B canonically imported without download.
+  Final assembled gate passes2,136 Rust/0fail/85ignored/283 suites,17 Python
+  suites/178 cases plus packaging checks; CPU/diagnostic/HIP/shared-Vulkan strict
+  checks and both current cold-control sets pass. Unknown/fault lifetime,
+  scalable ordinary execution and production/serving/performance remain open.
+  CUDA-only seals and finite27B guards remain separate; wider contexts are open.
 
 ## Owned CUDA checkpoint — `2983bb7`
 

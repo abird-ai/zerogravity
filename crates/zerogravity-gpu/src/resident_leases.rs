@@ -400,7 +400,7 @@ impl ResidentService {
 
     #[cfg(any(
         feature = "cuda-cublas",
-        all(test, feature = "hip", feature = "qwen-source-qualification")
+        all(feature = "hip", feature = "qwen-source-qualification")
     ))]
     pub(crate) fn close_model_namespace(&self) -> Result<()> {
         self.ensure_usable()?;

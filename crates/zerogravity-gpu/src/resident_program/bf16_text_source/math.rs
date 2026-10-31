@@ -466,11 +466,7 @@ pub(super) fn attention(
     geometry: zerogravity_core::accelerator::program::TorchCpuAttentionGeometry,
     position: usize,
 ) -> Result<usize> {
-    if position > 1 {
-        return Err(Error::Unsupported(
-            "finite INITIAL1/cached1 source attention".into(),
-        ));
-    }
+    // Finite callers validate their record separately; shared arithmetic validates its geometry.
     let scratch = [21, 22, 25, 26, 27, 28, 23, 24].map(|i| s.handles[i].clone());
     crate::source_attention::single_row::launch(
         client,

@@ -156,6 +156,24 @@ pub use resident_inference::bf16_text_source::{
     Bf16TextSourcePending, Bf16TextSourceResult, Bf16TextSourceSession, Bf16TextSourceSnapshot,
 };
 #[cfg(all(
+    feature = "qwen-source-qualification",
+    feature = "hip",
+    target_os = "linux"
+))]
+pub use resident_inference::source_text::{
+    SourceSetInventory, SourceTextCandidate, SourceTextOutput, SourceTextPending,
+    SourceTextSession, SourceTextSnapshot,
+};
+#[cfg(all(
+    feature = "qwen-source-qualification",
+    feature = "hardware-abort-probe",
+    feature = "hip",
+    target_os = "linux"
+))]
+pub use resident_inference::source_text::{
+    SourceTextNativeProbe, SourceTextNativeState, SourceTextState,
+};
+#[cfg(all(
     feature = "hip",
     feature = "hardware-abort-probe",
     any(

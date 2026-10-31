@@ -48,15 +48,53 @@ source/device or ownership requirements. Missing wider CUDA references do not
 block independent ROCm work. Finite27B diagnostics alone do not finish the mission.
 Current results are in section8 and the status/numerics TODO.
 
-**Immediate implementation lane:** ordinary0.8B/2B HIP. Source-only recording
-is CPU-free and geometry-derived but bounded to64 tokens; finite27B guards remain
-2 positions/112 domains. Actual shared attention is now checked on gfx1151, so
-assemble source-state/resident-weight lowering, cold admission and existing
-session/root publication rather than repeating finite27B or operator acceptance.
-Both small-model cached sources are reverified (11/12 members,488/632 index
-entries); original reference runtime is cached locally. Independent whole-model
-captures remain to be made. No native worker is left from the attention run.
-Detailed acceptance/remaining work lives in the model-execution/numerics plans.
+**Immediate implementation lane:** ordinary0.8B/2B HIP. Uncommitted code now
+assembles typed-SSA state lowering, shared resident matrices/workspace, cold
+pricing and the original session/root machinery. Source arithmetic remains
+bounded to64 positions; finite27B guards stay separate. Strict standalone/HIP
+and shared Vulkan checks pass. Both actual-source cold plans pass64 positions
+and11 refusal/accounting controls; this does not qualify C64 execution. The first
+native attempt prepares785 modules, then refuses binding before initialization
+Ready. Its exit1/empty cgroup remains failed. Post-Ready binding reaches actual
+0.8B full-model comparison:303 mismatches, first after.recurrent/layer0 word50816
+(`80000000` vs `00000000`). All785 modules retire, namespace/source close; parent
+exit1/empty cgroup verified. The initial recurrence omitted original empty-state
+addition; CPU/HIP now retain it, without canonicalizing observations. Four host
+controls and standalone strict check pass. Fresh r3 passes both actual models:
+64 populated positions × two natural replays, fullV/all24 layer outputs/all
+populated state, all15,776 records/model.0.8B/2B compare1,396,408,320/
+1,399,816,192 words exactly;785/781 native modules retire. Known cancellation,
+discard, pressure, independent roots, restore/reset and shutdown pass. Final
+assembled gate passes2,136 Rust/0fail/85ignored/283 suites,17 Python suites/178
+cases plus release/installer/shell/Nix. Signed arithmetic repair:`8a1c6b1`;
+source-bound execution checkpoint follows. Unknown/fault/scalable ordinary paths
+and production/serving remain unaccepted.
+Independent original HF captures are now complete: each small model has64
+populated positions × two exact replays, fullV/all layers/all populated state;
+all15,776 records/model inspected, original source and parent/group/container/
+EOF closure verified. The durable local reference unit completed and stopped.
+Evidence:`ordinary-hip-20261031.Jc5XWh/small-original-r1-{08,2b}`. Do not repeat
+finite27B/attention/reference capture for activity. All29 approved source/reference
+members are transferred/verified on x2;0.8B is imported canonically with original
+legacy provenance. `2B` is now canonically imported as the unchanged snapshot
+`88606494611dfa37253320ef82c88ca6ae6f665ac873fec28859fafd216dbf52`,12 exact
+members, no download. Failed r1/r2 units remain stopped; r2 invocation
+`cd0d5df490124e75b5f3ed7dc7884a79`, watch`e8a1de06` completed. Preserve
+`source-model-physical-r2-08.log` and its source/binary/parent identities.
+Completed r3 unit:`zg-source-models-20261031-r3.service`, invocation
+`3839671566394ffa83c111b9d3c3dcb6`; watch`fa8b160b` succeeded. Archive SHA256
+`1f79d6e982b62534a89a2632b8de6a42179145d6d8f567d28f87433c7df4bbef`.
+`source-model-physical-r3-{08,2b}.log` and every call/control/retirement inspected
+against original references in `source-model-all-scopes-r3.log`; parent exits0,
+MainPID0/empty descendants. Completed owned unit stopped; x2 is free. This is
+single-row position-bound execution through64, not call-free scalable prefill,
+concurrent serving or performance acceptance. Final local gate job766 passes:
+CPU/diagnostic/HIP/shared-Vulkan strict checks, both actual-source cold-control
+sets and isolated `scripts/check.sh`. Only the fail-closed identical-capacity
+check changed after physical r3; fresh cold controls cover it, with valid model
+arithmetic/storage/ownership unchanged. No physical replay claim for that guard.
+Next: signed bounded checkpoint, then new-path unknown/fault lifetimes
+and scalable ordinary execution. Details in model-execution/numerics plans.
 
 Repository:
 

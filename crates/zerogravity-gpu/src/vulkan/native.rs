@@ -220,7 +220,7 @@ impl WgpuNativeAdmission for Admission {
     fn abort_after_modules(&self) -> Option<usize> {
         #[cfg(feature = "hardware-abort-probe")]
         {
-            return self.fault_after_modules;
+            self.fault_after_modules
         }
         #[cfg(not(feature = "hardware-abort-probe"))]
         None
