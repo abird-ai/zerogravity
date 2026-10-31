@@ -1,0 +1,11 @@
+[package]
+name = "zerogravity-engine"
+version.workspace = true
+edition = "2024"
+rust-version = "1.95"
+description = "Model-neutral execution and lifecycle contracts for Zerogravity"
+publish = false
+license = "MIT"
+
+[dependencies]
+zerogravity-core = { path = "../zerogravity-core" }

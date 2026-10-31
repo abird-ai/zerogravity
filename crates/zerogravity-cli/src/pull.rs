@@ -18,8 +18,7 @@ mod object;
 mod oci;
 #[path = "pull_s3.rs"]
 mod s3;
-#[path = "pull_signals.rs"]
-mod signals;
+use crate::signals;
 #[path = "pull_xet.rs"]
 mod xet;
 use zerogravity::acquisition::http::{HttpOptions, HttpsClient};

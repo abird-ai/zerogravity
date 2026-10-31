@@ -1,28 +1,80 @@
-# Fabric vNext transition — held phase checklist and next-implementation owner plan
+# Fabric vNext transition — active implementation queue
 
 Author: Project owner
 Co-authors: GPT-6
-Owner: @pvl — successor coordinator not yet appointed
+Owner: @pvl — current main-session coordinator
 
-**Scope:** future Fabric implementation phases remain separately authorized. This transition packet began as documentation-only. Historical initial read-only source observation was fadf2b1123309a2118725f2cc005d3edc7ea39f2; it is not an implementation baseline. Current source/status is owned by CURRENT_HANDOFF.md and CURRENT_SOURCE_RECONCILIATION.md.
+Base: `1c35172`
+
+Latest direction: Fabric first; S0 active. Plan 2 incorporates Plan 1 and the
+31-Oct accepted Qwen checkpoint. Preserve deferred Qwen scopes in the owning
+plans; recurrence remains cancelled. No new physical capability from migration.
+
+**Scope:** Fabric implementation now authorized. This transition packet began as documentation-only. Historical initial read-only source observation was fadf2b1123309a2118725f2cc005d3edc7ea39f2; it is not an implementation baseline. Current source/status is owned by CURRENT_HANDOFF.md and CURRENT_SOURCE_RECONCILIATION.md.
 **Reference authority:** HANDOFF.md → README.md → PHASED_IMPLEMENTATION.md → STRUCTURAL_SKELETON.md; old preserved ../fabric-vnext entire packet.
+
+## Resume here — S0 verified, checkpointing
+
+Main owns the Fabric batch based on signed`1c35172`. Source review and final
+isolated gate pass; signed landing/reconciliation follows. Revalidate current
+HEAD/status/diff before continuing. No active build/native job remains. The
+initial Qwen mission and recurrence stay deferred/cancelled, not completed.
+
+Verified S0 scope:
+- Original ForwardPlan/issuer/root/resource owners retained; no parallel IR,
+  budget, root publisher, loaded model, Ready or synthetic inference success.
+- New cold engine/serving crates; public SDK contracts and honest Unsupported;
+  independent server accepts the same facade runtime handle.
+- Actual CLI args/output/commands and signal owner moved. Independently checked
+  moved bodies byte-identical; CPU/GPU/family numerics/source bodies unchanged.
+- Exact encoding mapping/refusals, descriptive media/selection contracts,
+  existing artifact/source/cache owners; derived lineage remains unverified.
+- DAG18 fixtures pass, including helper bypass and optional/target edges.
+  Offline isolated strict minimal engine/serving/facade/CLI passes.
+- Focused final checks: engine4, serving3, core2, facade SDK2 with serve and2
+  without serve. Source-free refusal, closed lifecycle, shared physical ledger,
+  overflow, external bind, facade-only imports and original ForwardPlan identity.
+- Final isolated `scripts/check.sh`:2,159 Rust passes/0fail/87ignored/292 suites;
+  17 Python suites/182 cases (10 explicit source-input skips), packaging/installer/
+  shell/Nix pass. Existing feature-scoped GPU warnings unchanged.
+- This is S0 structural/host verification, not F4 migration, Q0/Q2 transition
+  acceptance, physical GPU/model execution or a new production route.
+
+Next:
+1. Finish signed checkpoint/reconcile completed S0 under its landing commit.
+2. Start S1: inspect exact QuantKind/StoredTensorEncoding, artifact scalar/quant
+   decoder and all callers; move real codec ownership without arithmetic changes.
+3. Continue S2/S3 then F0–F4. Keep existing supported routes until coherently moved;
+   no compatibility/shadow runtime at F4. Full model/physical campaigns stay
+   deferred to assembled transition acceptance and applicable change scopes.
+4. Update this TODO and canonical handoff after each material step. Record any
+   failed/unrun scope and next concrete action before interruption; no chat-only
+   progress state. Do not push or touch the external detached checkout.
+
+Final logs: XDG state`abird/zerogravity/fabric-s0-KJWqbLxC/`, focused r2 and
+`assembled-gate-r1.log`; job`job-2852102-966` completed0 and all results inspected.
+Paths are recovery pointers, not model/source acceptance fixtures. Do not restart
+that job or re-arm the cancelled Qwen recurrence from an old receipt.
 
 ## Committed
 
-None. No code/refactor/source/test commit authorized during plan writing. When implementation is separately approved, append logical signed SHA and acceptance evidence here or reconcile into current owning plan per AGENTS.md. Historical implementation commits are not new Fabric S/F/Q completion proof.
+Historical documentation-only packet: `2ff3d49`; canonical handoff refresh:
+`ff89b87`. No Fabric source milestone accepted yet. Qwen implementation commits
+are preserved inputs, not S/F/Q completion proof.
 
-## Uncommitted — future S0 COMPLETE architectural skeleton FIRST
+## Uncommitted — verified S0 structural batch
 
-- [ ] User explicitly authorizes actual source implementation and integration owner; re-read live HEAD, source status, active owners/checkouts, AGENTS.md and all referenced docs; preserve unrelated work.
-- [ ] Create zerogravity-engine and zerogravity-serving as compiled independent Rust library crates, correct Cargo features and resource ownership (engine model-neutral, serving no facade/CLI).
-- [ ] Make core semantic/effects/encoding/numerics/model/task/typed media/provider/placement/root/physical contract modules visible in Rust with actual types and explicit capability/refusal.
-- [ ] Keep source exact existing ForwardPlan and original process-shared low-level ResourceArbiter, SessionAuthority, GPU event/lease as one real implementation each; avoid parallel placeholder owners.
-- [ ] Make artifact container/codec/source/acquisition/derived homes, CPU numerics/quant, GPU backend/quant/program/lease/transfer/qualification, family source/forward/state/specialization homes compile-visible.
-- [ ] Make public zerogravity API visible for all user functionality (RuntimeBuilder, models, run, acquisition/cache, devices, pipeline, serving, diagnostics) with typed Unsupported for unavailable future tasks.
-- [ ] Make CLI target args/commands/output/signals structure visible while preserving existing currently supported execution through source migration.
-- [ ] Any todo! only private, not live/production/serve/public supported path. No fake model, zero-logit kernel, fabricated physical Ready or permit.
-- [ ] Update existing scripts/check-architecture.py/check fixtures for new DAG, no serving→facade cycle or engine→Qwen/GPU; ensure CPU-only default compile avoids GPU compiler/network stack.
-- [ ] S0 targeted fast package checks and small mock/refusal, one complete signed structural commit, no full model/GPU qualification.
+- [x] Owner activates Fabric implementation; clean signed main at`1c35172` inspected, current source/plans reconciled. Main session owns integration; unrelated detached checkout preserved.
+- [x] Create zerogravity-engine and zerogravity-serving as compiled independent Rust library crates, correct Cargo features and resource ownership (engine model-neutral, serving no facade/CLI).
+- [x] Make core semantic/effects/encoding/numerics/model/task/typed media/provider/placement/root/physical contract modules visible in Rust with actual types and explicit capability/refusal.
+- [x] Keep source exact existing ForwardPlan and original process-shared low-level ResourceArbiter, SessionAuthority, GPU event/lease as one real implementation each; avoid parallel placeholder owners.
+- [x] Make artifact container/codec/source/acquisition/derived homes, CPU numerics/quant, GPU backend/quant/program/lease/transfer/qualification, family source/forward/state/specialization homes compile-visible.
+- [x] Make public zerogravity API visible for all user functionality (RuntimeBuilder, models, run, acquisition/cache, devices, pipeline, serving, diagnostics) with typed Unsupported for unavailable future tasks.
+- [x] Make CLI target args/commands/output/signals structure visible while preserving existing currently supported execution through source migration.
+- [x] Any todo! only private, not live/production/serve/public supported path. No fake model, zero-logit kernel, fabricated physical Ready or permit.
+- [x] Update existing scripts/check-architecture.py/check fixtures for new DAG, no serving→facade cycle or engine→Qwen/GPU; ensure CPU-only default compile avoids GPU compiler/network stack.
+- [x] S0 targeted strict/contracts and final isolated repository gate pass; no physical model/GPU qualification.
+- [ ] Land the verified structural source/tests and this owning TODO in one signed checkpoint.
 
 ## Uncommitted — future S1 source format/quant exactness
 
@@ -114,4 +166,4 @@ None. No code/refactor/source/test commit authorized during plan writing. When i
 - [ ] Keep every transition document UTF-8, internally linked and consistent with the canonical current handoff plus the four maintained planning/status files.
 - [ ] Revalidate source-dependent claims against current main; historical source SHAs are provenance only and never an implementation base.
 - [ ] Do not recreate consolidated archives, per-file documentation SHA indexes or frozen handoff copies; Git history is the archive.
-- [ ] Present the next-agent starting prompt in chat when handing off; actual S0 still requires the user's explicit implementation instruction.
+- [ ] Keep the current S0 continuation explicit; do not revert to historical docs-only authorization or resume Qwen from stale receipts.

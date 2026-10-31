@@ -125,8 +125,10 @@ def layer(package):
         "zerogravity-artifacts": 1,
         "zerogravity-cpu": 2,
         "zerogravity-gpu": 2,
-        "zerogravity": 4,
-        "zerogravity-cli": 5,
+        "zerogravity-engine": 4,
+        "zerogravity-serving": 5,
+        "zerogravity": 6,
+        "zerogravity-cli": 7,
     }.get(package)
 
 
@@ -151,12 +153,29 @@ def check_workspace(root):
             node, chain = queue.popleft()
             for edge in outgoing.get(node, []):
                 target_layer = layer(edge.target)
-                if target_layer is not None and target_layer > source_layer:
+                neutral = {
+                    "zerogravity-engine": {"zerogravity-core", "zerogravity-artifacts"},
+                    "zerogravity-serving": {
+                        "zerogravity-core", "zerogravity-engine",
+                    },
+                }
+                forbidden = target_layer is not None and target_layer > source_layer
+                if source in neutral and edge.target.startswith("zerogravity"):
+                    forbidden |= edge.target not in neutral[source]
+                if source == "zerogravity-cli" and edge.target.startswith("zerogravity"):
+                    forbidden |= edge.target != "zerogravity"
+                if forbidden:
                     errors.append(
                         f"forbidden dependency: {' -> '.join(chain + [edge.target])} "
                         f"({edge.manifest.relative_to(root.resolve())}: "
                         f"{edge.table}.{edge.alias})"
                     )
+                # These boundaries are checked independently from their own roots.
+                if (source, edge.target) in {
+                    ("zerogravity-cli", "zerogravity"),
+                    ("zerogravity-serving", "zerogravity-engine"),
+                }:
+                    continue
                 if edge.path in paths and edge.target not in visited:
                     visited.add(edge.target)
                     queue.append((edge.target, chain + [edge.target]))

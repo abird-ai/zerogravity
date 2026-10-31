@@ -6,6 +6,8 @@ members = [
     "crates/zerogravity-model-qwen35",
     "crates/zerogravity-model-gemma4",
     "crates/zerogravity-gpu",
+    "crates/zerogravity-engine",
+    "crates/zerogravity-serving",
     "crates/zerogravity",
     "crates/zerogravity-cli",
     "tools/gpu-qualify",

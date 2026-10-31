@@ -11,7 +11,18 @@ pub use zerogravity_artifacts::acquisition;
 #[cfg(all(feature = "cache", target_os = "linux"))]
 pub use zerogravity_artifacts::cache;
 pub use zerogravity_artifacts::{artifact, json_allocation, quant, sharded};
+pub mod artifacts;
+pub mod builtins;
+pub mod devices;
+pub mod diagnostics;
 pub mod model;
+pub mod models;
+pub mod pipelines;
+pub mod run;
+pub mod runtime;
+#[cfg(feature = "serve")]
+pub mod serving;
+pub use runtime::{Runtime, RuntimeBuilder};
 pub use zerogravity_core::context_filter;
 pub use zerogravity_core::context_snapshot;
 pub use zerogravity_core::pipeline;
@@ -19,6 +30,7 @@ pub use zerogravity_core::run_policy;
 pub use zerogravity_core::targets;
 pub use zerogravity_core::{Error, Result, accelerator, session_root};
 pub use zerogravity_core::{device_events, device_queue, resource_arbiter, state};
+pub use zerogravity_core::{encoding, identity, numerics, placement, provider, semantic, task};
 #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
 pub mod qwen35_cuda;
 #[cfg(feature = "cpu")]

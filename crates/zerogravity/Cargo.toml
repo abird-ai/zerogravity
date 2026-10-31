@@ -10,6 +10,8 @@ license = "MIT"
 # Source artifacts and third-party dependencies retain their own licenses.
 [features]
 default = ["cpu", "model-qwen35", "text"]
+# Cold embedded server API; protocol execution migrates in Fabric F2.
+serve = ["dep:zerogravity-serving"]
 cpu = ["dep:zerogravity-cpu", "zerogravity-model-qwen35?/cpu"]
 model-qwen35 = ["dep:zerogravity-model-qwen35"]
 # Source contracts only; selecting this feature does not enable Gemma inference.
@@ -43,6 +45,8 @@ diagnostic-cpu-checkpoint = ["model-qwen35", "zerogravity-model-qwen35/diagnosti
 
 [dependencies]
 zerogravity-core = { path = "../zerogravity-core" }
+zerogravity-engine = { path = "../zerogravity-engine" }
+zerogravity-serving = { path = "../zerogravity-serving", optional = true }
 zerogravity-artifacts = { path = "../zerogravity-artifacts" }
 zerogravity-cpu = { path = "../zerogravity-cpu", optional = true }
 zerogravity-model-qwen35 = { path = "../zerogravity-model-qwen35", default-features = false, optional = true }

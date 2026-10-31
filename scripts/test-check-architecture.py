@@ -173,6 +173,60 @@ model = { path = "../family", package = "zerogravity-model-next" }
                              f'[dependencies]\nalias = {{ path = "../target", package = "{target}" }}')
                 self.assertIn(f"{source} -> {target}", "\n".join(self.check()))
 
+    def test_fabric_model_neutrality_and_sdk_only_cli(self):
+        cases = [
+            ("zerogravity-engine", "zerogravity-cpu"),
+            ("zerogravity-engine", "zerogravity-gpu"),
+            ("zerogravity-engine", "zerogravity-model-new"),
+            ("zerogravity-serving", "zerogravity"),
+            ("zerogravity-serving", "zerogravity-cli"),
+            ("zerogravity-serving", "zerogravity-gpu"),
+            ("zerogravity-serving", "zerogravity-artifacts"),
+            ("zerogravity-cli", "zerogravity-engine"),
+            ("zerogravity-cli", "zerogravity-serving"),
+            ("zerogravity-cli", "zerogravity-core"),
+        ]
+        for source, target in cases:
+            with self.subTest(source=source, target=target):
+                self.package("target", target)
+                self.package("source", source, f"""
+[target.'cfg(target_os = "never")'.build-dependencies]
+hidden = {{ path = "../target", package = "{target}", optional = true }}
+""")
+                self.assertIn(f"{source} -> {target}", "\n".join(self.check()))
+
+    def test_fabric_transitive_helper_does_not_hide_provider(self):
+        self.package("gpu", "zerogravity-gpu")
+        self.package("helper", "ordinary-helper",
+                     '[dependencies]\nzerogravity-gpu = { path = "../gpu" }')
+        self.package("engine", "zerogravity-engine",
+                     '[dependencies]\nordinary-helper = { path = "../helper" }')
+        self.assertIn("zerogravity-engine -> ordinary-helper -> zerogravity-gpu",
+                      "\n".join(self.check()))
+
+    def test_serving_cannot_reach_artifacts_through_helper(self):
+        self.package("artifacts", "zerogravity-artifacts")
+        self.package("helper", "ordinary-helper",
+                     '[dependencies]\nzerogravity-artifacts = { path = "../artifacts" }')
+        self.package("serving", "zerogravity-serving",
+                     '[dependencies]\nordinary-helper = { path = "../helper" }')
+        self.assertIn("zerogravity-serving -> ordinary-helper -> zerogravity-artifacts",
+                      "\n".join(self.check()))
+
+    def test_fabric_valid_dag_and_cli_facade_transitivity(self):
+        self.package("core", "zerogravity-core")
+        self.package("artifacts", "zerogravity-artifacts",
+                     '[dependencies]\nzerogravity-core = { path = "../core" }')
+        self.package("engine", "zerogravity-engine",
+                     '[dependencies]\nzerogravity-artifacts = { path = "../artifacts" }')
+        self.package("serving", "zerogravity-serving",
+                     '[dependencies]\nzerogravity-engine = { path = "../engine" }')
+        self.package("sdk", "zerogravity",
+                     '[dependencies]\nzerogravity-serving = { path = "../serving", optional = true }')
+        self.package("cli", "zerogravity-cli",
+                     '[dependencies]\nzerogravity = { path = "../sdk" }')
+        self.assertEqual(self.check(), [])
+
     def test_missing_or_overridden_workspace_identity_refuses(self):
         self.package("core", "zerogravity-core",
                      '[dependencies]\nmissing = { workspace = true }')

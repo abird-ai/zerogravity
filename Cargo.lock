@@ -5584,9 +5584,11 @@ dependencies = [
  "zerogravity-artifacts",
  "zerogravity-core",
  "zerogravity-cpu",
+ "zerogravity-engine",
  "zerogravity-gpu",
  "zerogravity-model-gemma4",
  "zerogravity-model-qwen35",
+ "zerogravity-serving",
 ]
 
 [[package]]
@@ -5641,6 +5643,13 @@ dependencies = [
  "serde_json",
  "sha2",
  "zerogravity-artifacts",
+ "zerogravity-core",
+]
+
+[[package]]
+name = "zerogravity-engine"
+version = "0.1.0"
+dependencies = [
  "zerogravity-core",
 ]
 
@@ -5703,6 +5712,14 @@ dependencies = [
  "zerogravity-artifacts",
  "zerogravity-core",
  "zerogravity-cpu",
+]
+
+[[package]]
+name = "zerogravity-serving"
+version = "0.1.0"
+dependencies = [
+ "zerogravity-core",
+ "zerogravity-engine",
 ]
 
 [[package]]

@@ -18,7 +18,8 @@ bash scripts/check-gpu-feature-boundaries.sh
 # of default CI. Cargo's --all-features would also enable diagnostic GPU paths.
 cpu_packages=(
   -p zerogravity-core -p zerogravity-artifacts -p zerogravity-cpu
-  -p zerogravity-model-qwen35 -p zerogravity-model-gemma4 -p zerogravity -p zerogravity-cli
+  -p zerogravity-model-qwen35 -p zerogravity-model-gemma4
+  -p zerogravity-engine -p zerogravity-serving -p zerogravity -p zerogravity-cli
 )
 cpu_features='zerogravity-cli/cpu,zerogravity-cli/model-qwen35,zerogravity-cli/text,zerogravity-cli/diagnostic-cpu-checkpoint,zerogravity-cli/diagnostic-gdn-trace,zerogravity-model-qwen35/source-binding,zerogravity/model-gemma4-text-reference,zerogravity-model-gemma4/text-tokenizer,zerogravity-cli/gemma4-cpu-candidate'
 cpu_args=(--locked --offline --no-default-features "${cpu_packages[@]}" --features "$cpu_features")
@@ -30,7 +31,7 @@ metadata = json.loads(subprocess.check_output([
     "cargo", "metadata", "--locked", "--offline", "--no-deps", "--format-version", "1"
 ]))
 names = {p["id"]: p["name"] for p in metadata["packages"]}
-expected = {"zerogravity-core", "zerogravity-artifacts", "zerogravity-cpu", "zerogravity-model-qwen35", "zerogravity-model-gemma4", "zerogravity", "zerogravity-cli", "zerogravity-gpu", "zerogravity-gpu-qualify"}
+expected = {"zerogravity-core", "zerogravity-artifacts", "zerogravity-cpu", "zerogravity-model-qwen35", "zerogravity-model-gemma4", "zerogravity", "zerogravity-cli", "zerogravity-gpu", "zerogravity-gpu-qualify", "zerogravity-engine", "zerogravity-serving"}
 assert {names[m] for m in metadata["workspace_members"]} == expected
 assert {names[m] for m in metadata["workspace_default_members"]} == {"zerogravity", "zerogravity-cli"}
 for selected in ["cpu,model-qwen35,text", "cpu,model-qwen35,text,cache"]:
@@ -41,7 +42,7 @@ for selected in ["cpu,model-qwen35,text", "cpu,model-qwen35,text,cache"]:
     for line in tree.splitlines():
         name = line.split()[0]
         assert not name.startswith(("cubecl", "tracel-llvm")) and name not in {
-            "zerogravity-gpu", "ureq", "ureq-proto", "rustls", "url",
+            "zerogravity-gpu", "zerogravity-serving", "ureq", "ureq-proto", "rustls", "url",
             "signal-hook", "signal-hook-registry"
         }, (selected, line)
 PYWORKSPACE
@@ -53,6 +54,10 @@ echo "Running CPU workspace tests..."
 cargo test "${cpu_args[@]}" --all-targets
 
 echo "Checking minimal core, CPU-free family/checkpoint and inspection-only CLI..."
+# Embedded SDK tests must run as package targets, not merely CLI dependencies.
+cargo test --locked --offline -p zerogravity --no-default-features --test fabric_sdk
+cargo test --locked --offline -p zerogravity --no-default-features --features serve --test fabric_sdk
+cargo check --locked --offline -p zerogravity-engine -p zerogravity-serving --no-default-features
 cargo check --locked --offline -p zerogravity-core --no-default-features
 cargo check --locked --offline -p zerogravity-model-qwen35 --no-default-features --features diagnostic-cpu-checkpoint
 cargo check --locked --offline -p zerogravity-model-gemma4 --no-default-features

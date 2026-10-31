@@ -1,0 +1,12 @@
+[package]
+name = "zerogravity-serving"
+version.workspace = true
+edition = "2024"
+rust-version = "1.95"
+description = "Embeddable Zerogravity protocol and server lifecycle contracts"
+publish = false
+license = "MIT"
+
+[dependencies]
+zerogravity-core = { path = "../zerogravity-core" }
+zerogravity-engine = { path = "../zerogravity-engine" }
