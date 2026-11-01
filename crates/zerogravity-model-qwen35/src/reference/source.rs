@@ -49,7 +49,7 @@ impl<'a> CpuSource<'a> {
             tensor_name,
             input,
             provider,
-            zerogravity_cpu::source::SourceProjectionProfile::Source,
+            zerogravity_core::numerics::ProjectionContract::Source,
         )
     }
 
@@ -59,7 +59,7 @@ impl<'a> CpuSource<'a> {
         tensor_name: &str,
         input: &[f32],
         provider: Option<&dyn MatVecKernel>,
-        profile: zerogravity_cpu::source::SourceProjectionProfile,
+        profile: zerogravity_core::numerics::ProjectionContract,
     ) -> Result<Vec<f32>> {
         let tensor = self.bound.text_tensor(tensor_name)?;
         zerogravity_cpu::source::projection::output_first_projection_with_profile(

@@ -5,52 +5,9 @@ use crate::encoding::StoredTensorEncoding;
 use crate::source::TensorSource;
 use crate::{Error, Result};
 
-/// Mathematical precision carried in F32 storage, independent of weight codec.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum ActivationPrecision {
-    #[default]
-    F32,
-    Bf16WidenedF32,
-}
-impl ActivationPrecision {
-    pub fn validate_values(self, values: &[f32]) -> Result<()> {
-        if values.is_empty()
-            || values.iter().any(|value| {
-                !value.is_finite() || self == Self::Bf16WidenedF32 && value.to_bits() & 0xffff != 0
-            })
-        {
-            return Err(Error::Malformed(
-                "activation differs from explicit precision".into(),
-            ));
-        }
-        Ok(())
-    }
-}
-
-/// Reserved program contract, not inference support or a backend-global dtype.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum ProgramNumericalProfile {
-    #[default]
-    GgufSourceV1,
-    TorchCpuBf16Avx2MixedSourceV1,
-    /// Prior name: Vllm031CudaSm86Bf16SourceV1. Arithmetic unchanged; no eligibility.
-    SourceCudaSm86Bf16V1,
-    /// Bounded mathematical text reference; no trained/framework parity grant.
-    AnalyticF32TextV1,
-    /// Prior name: Gemma4E2bBf16TextCandidateV1. Direct gamma; no qualification.
-    DirectGammaBf16TextCandidateV1,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum EmbeddingContract {
-    Source,
-    Bf16OutputInput,
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProjectionContract {
-    Source,
-    TorchCpuBf16Avx2,
-}
+pub use crate::numerics::{
+    ActivationPrecision, EmbeddingContract, ProgramNumericalProfile, ProjectionContract,
+};
 
 /// Qualified ordinary RMS only: raw(1+weight), FP32 stages, final BF16.
 /// Epsilon1e-6 and the four CPU reduction widths are part of this contract.

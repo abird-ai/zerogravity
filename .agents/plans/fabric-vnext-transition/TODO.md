@@ -6,7 +6,7 @@ Owner: @pvl — main-session coordinator
 
 Base: `1c35172`
 
-## Current direction — active contracts after SDK/CLI ownership
+## Current direction — contract consumers and cold registration
 
 - SDK/CLI source checkpoint `d4e94b1` follows shared scheduler `ae7ec11` and
   recovery `72622ce`. Original source math, state, cancellation and ownership
@@ -88,6 +88,26 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
    retirement, and short router callbacks remain non-reentrant.
 5. Preserve the original model/context/C1..C64/matched-vLLM mission and broader
    model/media/SSD/distributed roadmap. Measure before tuning; no speedup claim.
+
+## Uncommitted — verified numerical/layout consumers
+
+- [x] Make existing program/source/projection numerical contracts canonical in
+  core; remove duplicate CPU projection profile and unused NumericalContract.
+- [x] Bind ActivationEncoding to actual CPU quantized preparation and GPU
+  activation layout; preserve original arithmetic and explicit Q4_K refusals.
+- [x] Bind checked PreparedTensorLayout to CPU source projection, GPU immutable
+  host packing and resident physical regions, retaining the u32 indexing limit.
+- [x] Core contract/layout3 and CPU source22 controls pass. GPU activation4,
+  resident-layout8 and new source-free packing/refusal2 controls pass; the trained
+  host-descriptor parity case remains ignored, not accepted.
+- [x] Combined CUDA/HIP strict, minimal/serve-only strict and approved tiny CPU
+  SDK/HTTP/direct-audit cases pass. Assembled source/host gate: 2,322 Rust executions/0fail/97ignored across302 suites (70 empty); 17 Python suites/182 cases/10 skips.
+- Exact CPU dot/repack/scalar and GPU activation kernel bodies remain unchanged.
+  This changes broader Rust source identity; physical evidence is not retagged.
+- No GPU or trained Gemma execution, acquisition, push, agent/recurrence restart,
+  source-manifest/kernel-image or protected README change. Main remains owner.
+- Logs: XDG state `abird/zerogravity/fabric-contracts-wfatmh7m/`; source review,
+  focused controls, approved CPU cases and final gate retained separately.
 
 ## Committed
 
@@ -283,16 +303,18 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 
 ## Uncommitted — remaining S1 active contracts
 
-- [ ] Bind activation/numerical/layout/derived contracts to genuine preparation consumers; real stored encoding/callers are migrated above.
+- [ ] Finish remaining preparation/derived contracts; numerical/activation/row-layout consumers are bound in the verified batch above. Derived artifacts are not a quantizer or execution permit.
 - [ ] Bind existing GPU packed kernels/activation under source+variant+numeric+device constraints; no codec-specific model engine.
 - [ ] Validate remaining active-contract integration; reuse accepted unchanged codec/numerical evidence.
 - Concrete follow-up: active `SourceNumericalContract`/source operators remain
-  authoritative. Newer `ActivationEncoding`, `NumericalContract`,
-  `PreparedTensorLayout` and `DerivedModelManifest` are descriptions, not bound
-  kernel/source/Ready authority. Generic engine preparation/catalog loading,
-  per-model retirement and paged-state restoration refuse; multi-model residency
-  remains unsupported. Bind genuine consumers; do not rename metadata as
-  execution or invent E-phase quantization/hot-reload/placement to close boxes.
+  authoritative and now have one canonical numerical owner. ActivationEncoding
+  and PreparedTensorLayout constrain real CPU/GPU consumers without granting
+  source/kernel/Ready authority; unused NumericalContract was removed.
+  DerivedModelManifest remains descriptive. Generic engine preparation,
+  per-model retirement and paged-state restoration still refuse; multi-model
+  residency remains unsupported. Cold source catalog/CLI serving integration is
+  part of this assembled batch, not live replacement or a generic compiler.
+  Do not invent E-phase quantization/hot-reload/placement to close boxes.
 
 ## Uncommitted — future S2 family math and GPU provider
 

@@ -105,7 +105,7 @@ impl WindowReferenceTextSource {
         input: &[f32],
         matrix: &zerogravity_artifacts::source_weights::VerifiedMatrix,
         cancelled: Option<&AtomicBool>,
-        profile: crate::source::SourceProjectionProfile,
+        profile: zerogravity_core::numerics::ProjectionContract,
     ) -> Result<Vec<f32>> {
         let row_bytes = usize::try_from(tensor.kind.byte_len(tensor.columns as u64)?)
             .map_err(|_| Error::Limit("text source row bytes".into()))?;
@@ -235,7 +235,7 @@ impl ReferenceTextSource for WindowReferenceTextSource {
             input,
             &matrix,
             cancelled,
-            crate::source::SourceProjectionProfile::Source,
+            zerogravity_core::numerics::ProjectionContract::Source,
         )
     }
 
@@ -296,7 +296,7 @@ impl ReferenceTextSource for WindowReferenceTextSource {
             input,
             &matrix,
             cancelled,
-            crate::source::SourceProjectionProfile::TorchCpuBf16Avx2,
+            zerogravity_core::numerics::ProjectionContract::TorchCpuBf16Avx2,
         )
     }
     fn project(
@@ -318,7 +318,7 @@ impl ReferenceTextSource for WindowReferenceTextSource {
             input,
             &matrix,
             cancelled,
-            crate::source::SourceProjectionProfile::Source,
+            zerogravity_core::numerics::ProjectionContract::Source,
         )
     }
 }

@@ -9,6 +9,7 @@ use zerogravity_core::Error;
 use zerogravity_core::Result;
 use zerogravity_core::accelerator::MatVecRegion;
 use zerogravity_core::encoding::StoredTensorEncoding;
+use zerogravity_core::placement::PreparedTensorLayout;
 
 pub struct StaticSource {
     pub kind: StoredTensorEncoding,
@@ -76,9 +77,8 @@ impl StaticSource {
 
     pub fn from_region(region: MatVecRegion<'_>) -> Result<(Self, Vec<u8>)> {
         let gpu_bytes = Self::gpu_bytes_for(region)?;
-        let row_bytes = usize::try_from(region.kind.byte_len(region.columns as u64)?)
-            .map_err(|_| Error::Limit("GPU source row bytes overflow".into()))?;
-        if row_bytes.checked_mul(region.rows) != Some(region.packed_weights.len()) {
+        let layout = PreparedTensorLayout::packed_rows(region.kind, region.columns, region.rows)?;
+        if layout.byte_len()? != region.packed_weights.len() {
             return Err(Error::Malformed("GPU source weight length mismatch".into()));
         }
         let block_width = if region.kind
@@ -423,5 +423,132 @@ mod tests {
                 println!("P07_D_STATIC_DECODE_ONCE_EXACT model={model} tensor={name}");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+    use zerogravity_core::{
+        accelerator::SourceIdentity,
+        encoding::{QuantScheme, ScalarDType},
+    };
+
+    #[test]
+    fn prepared_source_extent_matches_each_original_packing_without_a_device() {
+        let source = SourceIdentity::for_new_allocation().unwrap();
+        for (kind, columns, rows, block_bytes, scale_offset) in [
+            (
+                StoredTensorEncoding::Quantized(QuantScheme::Q4_0),
+                32,
+                8,
+                18,
+                0,
+            ),
+            (
+                StoredTensorEncoding::Quantized(QuantScheme::Q4_1),
+                32,
+                2,
+                20,
+                0,
+            ),
+            (
+                StoredTensorEncoding::Quantized(QuantScheme::Q8_0),
+                32,
+                2,
+                34,
+                0,
+            ),
+            (
+                StoredTensorEncoding::Quantized(QuantScheme::Q6K),
+                256,
+                2,
+                210,
+                208,
+            ),
+        ] {
+            let mut packed = vec![0u8; block_bytes * rows];
+            for block in packed.chunks_exact_mut(block_bytes) {
+                block[scale_offset..scale_offset + 2].copy_from_slice(&0x3800u16.to_le_bytes());
+            }
+            let input = vec![0.0; columns];
+            let region = MatVecRegion {
+                source_identity: source,
+                tensor_name: "layout.weight",
+                kind,
+                columns,
+                rows,
+                packed_weights: &packed,
+                activation: &input,
+            };
+            let (descriptor, bytes) = StaticSource::from_region(region).unwrap();
+            assert_eq!(descriptor.rows, rows);
+            assert_eq!(descriptor.cols, columns);
+            assert_eq!(&*descriptor.weight_scales, vec![0.5; rows].as_slice());
+            if kind == StoredTensorEncoding::Quantized(QuantScheme::Q4_0) {
+                assert_eq!(bytes, vec![0u8; 16 * rows]);
+            } else {
+                assert_eq!(bytes, packed);
+            }
+            assert_eq!(descriptor.gpu_bytes, bytes.len());
+            assert!(matches!(
+                StaticSource::from_region(MatVecRegion {
+                    packed_weights: &packed[..packed.len() - 1],
+                    ..region
+                }),
+                Err(Error::Malformed(_))
+            ));
+        }
+        let packed = 1.0f32.to_le_bytes().repeat(64);
+        let input = vec![0.0; 32];
+        let region = MatVecRegion {
+            source_identity: source,
+            tensor_name: "scalar.weight",
+            kind: StoredTensorEncoding::Scalar(ScalarDType::F32),
+            columns: 32,
+            rows: 2,
+            packed_weights: &packed,
+            activation: &input,
+        };
+        let (descriptor, bytes) = StaticSource::from_region(region).unwrap();
+        assert_eq!(bytes, packed);
+        assert_eq!(descriptor.gpu_elements, 64);
+        assert!(descriptor.weight_scales.is_empty());
+    }
+    #[test]
+    fn known_q4k_pairing_and_layout_do_not_grant_a_gpu_implementation() {
+        let kind = StoredTensorEncoding::Quantized(QuantScheme::Q4K);
+        assert_eq!(
+            zerogravity_core::numerics::ProjectionContract::Source
+                .activation(kind)
+                .unwrap(),
+            zerogravity_core::numerics::ActivationEncoding::GgmlQ8K
+        );
+        assert_eq!(
+            PreparedTensorLayout::packed_rows(kind, 256, 1)
+                .unwrap()
+                .byte_len()
+                .unwrap(),
+            144
+        );
+        let packed = [0u8; 144];
+        let input = [0.0; 256];
+        let region = MatVecRegion {
+            source_identity: SourceIdentity::for_new_allocation().unwrap(),
+            tensor_name: "unsupported.weight",
+            kind,
+            columns: 256,
+            rows: 1,
+            packed_weights: &packed,
+            activation: &input,
+        };
+        assert!(matches!(
+            StaticSource::from_region(region),
+            Err(Error::Unsupported(_))
+        ));
+        assert!(matches!(
+            crate::quantization::activation::ActivationLayout::new(kind, 256, 1),
+            Err(Error::Unsupported(_))
+        ));
     }
 }

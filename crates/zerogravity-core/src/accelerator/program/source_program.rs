@@ -370,20 +370,7 @@ impl BoundSourceInvocation {
     }
 }
 
-/// Exact historical arithmetic identity, independent of a model's source roles.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SourceNumericalContract {
-    // Prior arithmetic name: Vllm031CudaSm86Bf16V1.
-    ReferenceCudaSm86Bf16V1,
-    GgmlSourceF32V1,
-    GgmlQ4Repack8x8F32V1,
-    OpenBlas033Zen16Q8F32V1,
-}
-impl SourceNumericalContract {
-    pub fn is_f32(self) -> bool {
-        self != Self::ReferenceCudaSm86Bf16V1
-    }
-}
+pub use crate::numerics::SourceNumericalContract;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SourceRetainedOrigin {
     Normalized { epsilon_bits: u32 },

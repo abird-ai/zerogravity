@@ -577,7 +577,7 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
                     zerogravity_core::source::TensorSource::tensor(*source, &tensor.name)?,
                     input.as_slice()?,
                     self.region_kernel,
-                    zerogravity_cpu::source::SourceProjectionProfile::TorchCpuBf16Avx2,
+                    contract,
                 )?
             }
             #[cfg(all(feature = "source-binding", target_os = "linux"))]

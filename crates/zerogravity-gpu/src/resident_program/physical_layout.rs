@@ -109,16 +109,14 @@ impl ResidentBufferLayout {
     }
     /// Exact typed view. An aligned larger allocation is not this same extent.
     pub fn validate_region(self, offset: u64, bytes: u64) -> Result<()> {
-        let expected = self.bytes()? as u64;
-        if !offset.is_multiple_of(self.kind.byte_width() as u64)
-            || bytes != expected
-            || offset.checked_add(bytes).is_none()
-        {
-            return Err(Error::State(
-                "resident physical byte extent/alignment differs".into(),
-            ));
-        }
-        Ok(())
+        self.bytes()?; // Retain the original u32 physical index limit.
+        zerogravity_core::placement::PreparedTensorLayout::dense(
+            self.kind.byte_width(),
+            self.kind.byte_width(),
+            self.elements,
+        )?
+        .validate_region(offset, bytes)
+        .map_err(|_| Error::State("resident physical byte extent/alignment differs".into()))
     }
     pub fn element_range(self, elements: Range<usize>) -> Result<Range<usize>> {
         if elements.start >= elements.end || elements.end > self.elements {

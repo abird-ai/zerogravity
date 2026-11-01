@@ -4,12 +4,13 @@
 
 use crate::accelerator::{MatVecKernel, program::MatrixAxes, program::SourceTensor};
 use crate::numerics::torch_cpu::projection::dot_bf16_cpu_avx2;
-use crate::source::{MAX_MATRIX_ROWS, SourceProjectionProfile};
+use crate::source::MAX_MATRIX_ROWS;
 use crate::{Error, Result};
 use std::ops::Range;
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_artifacts::source_weights::TensorWindow;
 use zerogravity_core::encoding::StoredTensorEncoding;
+use zerogravity_core::numerics::ProjectionContract;
 
 /// Full original identity and the exact transported row range. This is
 /// immutable result metadata, not a source owner or resource admission.
@@ -45,8 +46,8 @@ impl WindowProjectionIdentity {
     pub fn window_bytes(&self) -> usize {
         self.window_bytes
     }
-    pub fn profile(&self) -> SourceProjectionProfile {
-        SourceProjectionProfile::TorchCpuBf16Avx2
+    pub fn profile(&self) -> ProjectionContract {
+        ProjectionContract::TorchCpuBf16Avx2
     }
 }
 

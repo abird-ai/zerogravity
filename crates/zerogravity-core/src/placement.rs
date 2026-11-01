@@ -21,9 +21,5 @@ pub struct TransferRequest {
     pub to: PlacementTarget,
     pub bytes: u64,
 }
-/// Lossless layout description only, not resident storage or first-use readiness.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PreparedTensorLayout {
-    pub alignment: std::num::NonZeroUsize,
-    pub row_stride_bytes: std::num::NonZeroUsize,
-}
+mod tensor_layout;
+pub use tensor_layout::PreparedTensorLayout;

@@ -16,6 +16,7 @@ use cubecl::prelude::*;
 use zerogravity_core::Error;
 use zerogravity_core::Result;
 use zerogravity_core::encoding::StoredTensorEncoding;
+use zerogravity_core::numerics::{ActivationEncoding, ProjectionContract};
 
 /// Parameter words for each source activation block: inverse, unrounded d,
 /// execution scale (half-roundtripped d, or Q8_K d), and source Q8_1 sum scale.
@@ -44,23 +45,29 @@ pub(crate) struct ActivationLayout {
 
 impl ActivationLayout {
     pub fn new(kind: StoredTensorEncoding, columns: usize, rows: usize) -> Result<Self> {
-        let (block_width, signed_scale, with_bias) = match kind {
-            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0)
-            | StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0) => {
-                (32, false, false)
-            }
-            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1) => {
-                (32, false, true)
-            }
-            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K) => {
-                (256, true, false)
-            }
-            _ => {
-                return Err(Error::Unsupported(
-                    "device activation encoding is Q8_0/Q8_1/Q8_K only".into(),
-                ));
-            }
-        };
+        // Existing implementation guard, independent of a known codec pairing.
+        if !matches!(
+            kind,
+            StoredTensorEncoding::Quantized(
+                zerogravity_core::encoding::QuantScheme::Q4_0
+                    | zerogravity_core::encoding::QuantScheme::Q4_1
+                    | zerogravity_core::encoding::QuantScheme::Q8_0
+                    | zerogravity_core::encoding::QuantScheme::Q6K
+            )
+        ) {
+            return Err(Error::Unsupported(
+                "device activation encoding is Q8_0/Q8_1/Q8_K only".into(),
+            ));
+        }
+        let (block_width, signed_scale, with_bias) =
+            match ProjectionContract::Source.activation(kind)? {
+                ActivationEncoding::GgmlQ8_0 => (32, false, false),
+                ActivationEncoding::GgmlQ8_1 => (32, false, true),
+                ActivationEncoding::GgmlQ8K => (256, true, false),
+                ActivationEncoding::Scalar(_) => {
+                    unreachable!("quantized source implementation checked")
+                }
+            };
         if rows == 0
             || columns == 0
             || !columns.is_multiple_of(block_width)

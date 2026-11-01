@@ -5,6 +5,7 @@ use super::dot_row;
 use crate::codecs::{f16_to_f32, f32_to_f16_rne};
 use crate::{Error, Result};
 use zerogravity_core::encoding::StoredTensorEncoding;
+use zerogravity_core::numerics::ActivationEncoding;
 
 /// Ephemeral source GGUF activation encoding, independent of model family.
 /// Dynamic scales are recomputed for every GEMV input; not a weight codec.
@@ -28,14 +29,12 @@ pub(super) enum QuantizedActivation {
 }
 
 impl QuantizedActivation {
-    pub(super) fn prepare(kind: StoredTensorEncoding, input: &[f32]) -> Result<Self> {
+    pub(super) fn prepare(encoding: ActivationEncoding, input: &[f32]) -> Result<Self> {
         if !input.iter().all(|v| v.is_finite()) {
             return Err(Error::Malformed("nonfinite GEMV input".into()));
         }
-        match kind {
-            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0)
-            | StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1)
-            | StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0) => {
+        match encoding {
+            ActivationEncoding::GgmlQ8_0 | ActivationEncoding::GgmlQ8_1 => {
                 if !input.len().is_multiple_of(32) {
                     return Err(Error::Malformed("Q8 activation width misaligned".into()));
                 }
@@ -61,8 +60,7 @@ impl QuantizedActivation {
                 }
                 Ok(Self::Small(out))
             }
-            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)
-            | StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4K) => {
+            ActivationEncoding::GgmlQ8K => {
                 if !input.len().is_multiple_of(256) {
                     return Err(Error::Malformed("Q8_K activation width misaligned".into()));
                 }
@@ -92,11 +90,7 @@ impl QuantizedActivation {
                 }
                 Ok(Self::Big(out))
             }
-            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
-            | StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F16)
-            | StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16) => {
-                Ok(Self::Direct)
-            }
+            ActivationEncoding::Scalar(_) => Ok(Self::Direct),
         }
     }
 }
@@ -327,9 +321,13 @@ mod tests {
             let kind = StoredTensorEncoding::Quantized(scheme);
             let mut input = [0.0; 32];
             input[..7].copy_from_slice(&[127.0, 0.5, 1.5, 2.5, -0.5, -1.5, -2.5]);
-            let QuantizedActivation::Small(blocks) =
-                QuantizedActivation::prepare(kind, &input).unwrap()
-            else {
+            let QuantizedActivation::Small(blocks) = QuantizedActivation::prepare(
+                zerogravity_core::numerics::ProjectionContract::Source
+                    .activation(kind)
+                    .unwrap(),
+                &input,
+            )
+            .unwrap() else {
                 panic!("expected small activation");
             };
             assert_eq!(blocks.len(), 1);
@@ -337,18 +335,26 @@ mod tests {
             assert_eq!(blocks[0].s.to_bits(), 127.0f32.to_bits());
             assert_eq!(&blocks[0].qs[..7], &[127, 0, 2, 2, 0, -2, -2]);
             assert!(blocks[0].qs[7..].iter().all(|&q| q == 0));
-            let QuantizedActivation::Small(blocks) =
-                QuantizedActivation::prepare(kind, &[1.0; 32]).unwrap()
-            else {
+            let QuantizedActivation::Small(blocks) = QuantizedActivation::prepare(
+                zerogravity_core::numerics::ProjectionContract::Source
+                    .activation(kind)
+                    .unwrap(),
+                &[1.0; 32],
+            )
+            .unwrap() else {
                 panic!("expected small activation");
             };
             assert_eq!(blocks[0].d.to_bits(), 0x3c01_0000); // f16 RNE of 1/127
             assert_eq!(blocks[0].s.to_bits(), 32.0f32.to_bits());
             assert_eq!(blocks[0].qs, [127; 32]);
             for zero in [0.0, -0.0] {
-                let QuantizedActivation::Small(blocks) =
-                    QuantizedActivation::prepare(kind, &[zero; 32]).unwrap()
-                else {
+                let QuantizedActivation::Small(blocks) = QuantizedActivation::prepare(
+                    zerogravity_core::numerics::ProjectionContract::Source
+                        .activation(kind)
+                        .unwrap(),
+                    &[zero; 32],
+                )
+                .unwrap() else {
                     panic!("expected small activation");
                 };
                 assert_eq!(blocks[0].d.to_bits(), 0);
@@ -364,9 +370,13 @@ mod tests {
         for (first, scale, code) in [(127.0, -1.0f32, -2), (-127.0, 1.0, 2)] {
             let mut input = [0.0; 256];
             input[..4].copy_from_slice(&[first, -first, 0.5, 1.5]);
-            let QuantizedActivation::Big(blocks) =
-                QuantizedActivation::prepare(kind, &input).unwrap()
-            else {
+            let QuantizedActivation::Big(blocks) = QuantizedActivation::prepare(
+                zerogravity_core::numerics::ProjectionContract::Source
+                    .activation(kind)
+                    .unwrap(),
+                &input,
+            )
+            .unwrap() else {
                 panic!("expected Q8_K activation");
             };
             assert_eq!(blocks.len(), 1);
@@ -375,9 +385,13 @@ mod tests {
             assert!(blocks[0].qs[4..].iter().all(|&q| q == 0));
         }
         for zero in [0.0, -0.0] {
-            let QuantizedActivation::Big(blocks) =
-                QuantizedActivation::prepare(kind, &[zero; 256]).unwrap()
-            else {
+            let QuantizedActivation::Big(blocks) = QuantizedActivation::prepare(
+                zerogravity_core::numerics::ProjectionContract::Source
+                    .activation(kind)
+                    .unwrap(),
+                &[zero; 256],
+            )
+            .unwrap() else {
                 panic!("expected Q8_K activation");
             };
             assert_eq!(blocks[0].d.to_bits(), 0);
@@ -396,12 +410,22 @@ mod tests {
             let kind = StoredTensorEncoding::Quantized(scheme);
             let width = kind.block().0 as usize;
             assert!(matches!(
-                QuantizedActivation::prepare(kind, &vec![0.0; width - 1]),
+                QuantizedActivation::prepare(
+                    zerogravity_core::numerics::ProjectionContract::Source
+                        .activation(kind)
+                        .unwrap(),
+                    &vec![0.0; width - 1]
+                ),
                 Err(Error::Malformed(_))
             ));
             for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
                 assert!(matches!(
-                    QuantizedActivation::prepare(kind, &vec![value; width]),
+                    QuantizedActivation::prepare(
+                        zerogravity_core::numerics::ProjectionContract::Source
+                            .activation(kind)
+                            .unwrap(),
+                        &vec![value; width]
+                    ),
                     Err(Error::Malformed(_))
                 ));
             }
@@ -420,7 +444,13 @@ mod tests {
             let kind = StoredTensorEncoding::Quantized(scheme);
             let (width, bytes) = kind.block();
             let input = vec![127.0; width as usize];
-            let activation = QuantizedActivation::prepare(kind, &input).unwrap();
+            let activation = QuantizedActivation::prepare(
+                zerogravity_core::numerics::ProjectionContract::Source
+                    .activation(kind)
+                    .unwrap(),
+                &input,
+            )
+            .unwrap();
             let mut row = vec![0u8; bytes as usize];
             match scheme {
                 QuantScheme::Q4_0 => {
@@ -473,7 +503,13 @@ mod tests {
         input[0] = -64.0;
         input[36] = 1.0;
         input[64] = 64.0;
-        let activation = QuantizedActivation::prepare(kind, &input).unwrap();
+        let activation = QuantizedActivation::prepare(
+            zerogravity_core::numerics::ProjectionContract::Source
+                .activation(kind)
+                .unwrap(),
+            &input,
+        )
+        .unwrap();
         let QuantizedActivation::Small(blocks) = &activation else {
             panic!("expected small activation");
         };

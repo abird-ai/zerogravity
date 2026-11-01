@@ -2,11 +2,10 @@
 //! Numerical profiles and provider eligibility remain explicit.
 
 use crate::accelerator::{MatVecKernel, MatVecRegion, RegionExecution, validate_completed};
-use crate::source::{
-    MAX_MATRIX_ROWS, SourceProjectionProfile, source_reference_projection_with_profile,
-};
+use crate::source::{MAX_MATRIX_ROWS, source_reference_projection_with_profile};
 use crate::{Error, Result};
 use zerogravity_core::encoding::StoredTensorEncoding;
+use zerogravity_core::numerics::ProjectionContract;
 use zerogravity_core::source::SourceTensorRef;
 
 /// Project one already source-qualified original [output,input] tensor
@@ -24,7 +23,7 @@ pub fn output_first_projection(
         tensor,
         input,
         provider,
-        SourceProjectionProfile::Source,
+        ProjectionContract::Source,
     )
 }
 
@@ -35,7 +34,7 @@ pub fn output_first_projection_with_profile(
     tensor: SourceTensorRef<'_>,
     input: &[f32],
     provider: Option<&dyn MatVecKernel>,
-    profile: SourceProjectionProfile,
+    profile: ProjectionContract,
 ) -> Result<Vec<f32>> {
     tensor.validate()?;
     if !source_id.is_bound()
@@ -70,7 +69,7 @@ pub fn output_first_projection_with_profile(
         activation: input,
     };
     if let Some(provider) = provider {
-        if profile != SourceProjectionProfile::Source {
+        if profile != ProjectionContract::Source {
             return Err(Error::Unsupported(
                 "physical provider does not declare the CPU projection profile".into(),
             ));
@@ -116,7 +115,7 @@ mod tests {
                 tensor,
                 &[1.0],
                 Some(&provider),
-                SourceProjectionProfile::TorchCpuBf16Avx2,
+                ProjectionContract::TorchCpuBf16Avx2,
             ),
             Err(Error::Unsupported(_))
         ));
@@ -128,7 +127,7 @@ mod tests {
                 tensor,
                 &[1.0],
                 None,
-                SourceProjectionProfile::TorchCpuBf16Avx2,
+                ProjectionContract::TorchCpuBf16Avx2,
             )
             .unwrap(),
             [1.0]

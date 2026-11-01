@@ -22,6 +22,8 @@ use rayon::prelude::*;
 use std::path::Path;
 use zerogravity_artifacts::SourceWeights;
 use zerogravity_core::encoding::StoredTensorEncoding;
+use zerogravity_core::numerics::ProjectionContract;
+use zerogravity_core::placement::PreparedTensorLayout;
 pub(crate) const MAX_MATRIX_ROWS: u64 = 1_000_000;
 
 #[derive(Debug)]
@@ -226,22 +228,12 @@ pub fn source_reference_embedding(r: EmbeddingRegion<'_>) -> Result<Vec<f32>> {
 /// source tensor bytes without loading a second model or duplicating the
 /// mathematical implementation. Not an idealized dequantized FP32 dot.
 pub fn source_reference_projection(region: MatVecRegion<'_>) -> Result<Vec<f32>> {
-    source_reference_projection_with_profile(region, SourceProjectionProfile::Source)
-}
-
-/// Numerical order is independent of source storage/codec eligibility.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SourceProjectionProfile {
-    /// Existing GGUF/source row arithmetic, unchanged.
-    Source,
-    /// Pinned Torch CPU AVX2 BF16 B1 GEMV, with BF16-exact activations.
-    /// FP32 accumulation only; the caller owns the final BF16 cast.
-    TorchCpuBf16Avx2,
+    source_reference_projection_with_profile(region, ProjectionContract::Source)
 }
 
 pub fn source_reference_projection_with_profile(
     region: MatVecRegion<'_>,
-    profile: SourceProjectionProfile,
+    profile: ProjectionContract,
 ) -> Result<Vec<f32>> {
     if region.rows == 0
         || region.rows as u64 > MAX_MATRIX_ROWS
@@ -254,7 +246,7 @@ pub fn source_reference_projection_with_profile(
             "invalid source reference projection region".into(),
         ));
     }
-    if profile == SourceProjectionProfile::TorchCpuBf16Avx2 {
+    if profile == ProjectionContract::TorchCpuBf16Avx2 {
         if region.kind
             != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
         {
@@ -276,16 +268,17 @@ pub fn source_reference_projection_with_profile(
             "GGUF Q4_K x Q8_K physical dot not independently qualified for this CPU runner".into(),
         ));
     }
-    let row_bytes = usize::try_from(region.kind.byte_len(region.columns as u64)?)
-        .map_err(|_| Error::Limit("source reference row bytes overflow".into()))?;
-    if row_bytes.checked_mul(region.rows) != Some(region.packed_weights.len()) {
+    let layout = PreparedTensorLayout::packed_rows(region.kind, region.columns, region.rows)?;
+    let row_bytes = layout.row_bytes();
+    if layout.byte_len()? != region.packed_weights.len() {
         return Err(Error::Malformed(
             "source reference projection weight size mismatch".into(),
         ));
     }
     // Prepare source GGML Q8 activation once, not a changed dequantized-F32
     // diagnostic. All dot_row primitives below are shared with CPU Qwen.
-    let activation = QuantizedActivation::prepare(region.kind, region.activation)?;
+    let activation =
+        QuantizedActivation::prepare(profile.activation(region.kind)?, region.activation)?;
     let mut output = vec![0f32; region.rows];
     // Bounded Rayon split: <= MAX_MATRIX_ROWS rows, depth <= 20, no nested
     // Rayon and no per-worker deque growth beyond the splitter.
@@ -294,7 +287,7 @@ pub fn source_reference_projection_with_profile(
         .par_iter_mut()
         .zip(region.packed_weights.par_chunks_exact(row_bytes))
         .for_each(|(dst, row)| {
-            *dst = if profile == SourceProjectionProfile::TorchCpuBf16Avx2 {
+            *dst = if profile == ProjectionContract::TorchCpuBf16Avx2 {
                 dot_bf16_cpu_avx2(row, region.activation)
             } else if region.kind
                 == StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0)
@@ -499,7 +492,7 @@ mod tests {
     fn bf16_projection(
         weights: &[f32],
         input: &[f32],
-        profile: SourceProjectionProfile,
+        profile: ProjectionContract,
     ) -> Result<Vec<f32>> {
         let packed = weights
             .iter()
@@ -527,11 +520,11 @@ mod tests {
         weight[64] = -16384.0;
         let input = [1.0; 128];
         assert_eq!(
-            bf16_projection(&weight, &input, SourceProjectionProfile::Source).unwrap(),
+            bf16_projection(&weight, &input, ProjectionContract::Source).unwrap(),
             [0.0]
         );
         assert_eq!(
-            bf16_projection(&weight, &input, SourceProjectionProfile::TorchCpuBf16Avx2).unwrap(),
+            bf16_projection(&weight, &input, ProjectionContract::TorchCpuBf16Avx2).unwrap(),
             [2f32.powi(-10)]
         );
     }
@@ -543,7 +536,7 @@ mod tests {
                 let result = bf16_projection(
                     &vec![zero; width],
                     &vec![1.0; width],
-                    SourceProjectionProfile::TorchCpuBf16Avx2,
+                    ProjectionContract::TorchCpuBf16Avx2,
                 )
                 .unwrap()[0];
                 assert_eq!(result.to_bits(), 0);
@@ -559,7 +552,7 @@ mod tests {
             packed_weights: &packed,
             activation: &[1.0],
         };
-        let profile = SourceProjectionProfile::TorchCpuBf16Avx2;
+        let profile = ProjectionContract::TorchCpuBf16Avx2;
         assert_eq!(
             source_reference_projection_with_profile(region, profile).unwrap(),
             [1.0]

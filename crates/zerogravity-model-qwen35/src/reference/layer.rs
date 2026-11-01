@@ -267,9 +267,9 @@ impl<'borrow, 'source> LayerMath<'borrow, 'source> {
         let rounded_input = self.round(input)?;
         let profile = match self.dtype {
             Precision::Bf16CpuAvx2Diagnostic => {
-                zerogravity_cpu::source::SourceProjectionProfile::TorchCpuBf16Avx2
+                zerogravity_core::numerics::ProjectionContract::TorchCpuBf16Avx2
             }
-            _ => zerogravity_cpu::source::SourceProjectionProfile::Source,
+            _ => zerogravity_core::numerics::ProjectionContract::Source,
         };
         self.round(
             &self

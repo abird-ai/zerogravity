@@ -96,7 +96,7 @@ impl Fixture {
             TensorSource::tensor(&full, name).unwrap(),
             input,
             None,
-            SourceProjectionProfile::TorchCpuBf16Avx2,
+            ProjectionContract::TorchCpuBf16Avx2,
         )
         .unwrap()
     }
@@ -173,10 +173,7 @@ fn row_partitions_match_complete_kernel_and_retain_full_unrounded_identity() {
             matrix.tensor().byte_offset + rows.start as u64 * 65 * 2
         );
         assert_eq!(identity.window_bytes(), rows.len() * 65 * 2);
-        assert_eq!(
-            identity.profile(),
-            SourceProjectionProfile::TorchCpuBf16Avx2
-        );
+        assert_eq!(identity.profile(), ProjectionContract::TorchCpuBf16Avx2);
         assert_eq!(reserved(&host), charge);
         let (identity, values) = projected.into_parts();
         assert_eq!(identity.descriptor().source, expected.source);
