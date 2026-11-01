@@ -1,14 +1,14 @@
-# Fabric vNext transition — COMPLETE next-agent implementation handoff
+# Fabric vNext transition — architecture and continuation
 
-**31-Oct direction:** Fabric S0 landed in signed`7396984`; source/host checks pass.
-Plan 2 includes Plan 1; Qwen expansion deferred. Historical docs-only holds below
-are superseded. [Current source/crosswalk](CURRENT_SOURCE_RECONCILIATION.md) ·
-[active phase queue](TODO.md). No new physical/production grant.
-
+**Current source/host checkpoint:** signed `ae7ec11`; shared CPU/GPU scheduling,
+real CPU SDK/HTTP and final gate pass. Physical GPU regression and remaining
+SDK/CLI/contracts remain open. Plan2 preserves Plan1 and the deferred Qwen mission.
+Main only, no new agents/recurrences or hardware launches. The original launch
+sequence below is architecture context, not an instruction to repeat S0.
 
 **Canonical current entrypoint:** `.agents/docs/CURRENT_HANDOFF.md`. Current source/tests and the four-file planning spine outrank historical source snapshots in this document.
 
-**Created:** 27 October 2026. **Current status: signed S0 `7396984`; S1 implementation moves next.**
+**Created:** 27 October 2026. **Current status: shared scheduler source/host checkpoint `ae7ec11`; follow TODO for remaining work.**
 **Repo:** /home/pvl/spaces/abird/src/zerogravity; connector **dotlink-l5** (host pvl-l5), not dotlink-a1.
 **Source observation during this design pass:** HEAD fadf2b1123309a2118725f2cc005d3edc7ea39f2 at 06:50 UTC; 41 commits after prior deep-review baseline 195099ca, including codec split, model/CPU/GPU source refactors and recent fresh CUDA prefill source/oracle. Run current HEAD/status again before any implementation.
 **This handoff's central mandate:** first write complete compilable Rust architecture skeleton with both new engine/serving crates and exported public library, then move ALL current functionality in tested logical signed commits, then one full integrated heavy qualification and targeted bugfixes plus final gate. No old pre-v1 API compatibility obligation. The historical planning turn alone did not authorize code work; the latest owner instruction now does.
@@ -64,9 +64,9 @@ Read the maintained earlier Fabric design set as architecture context:
 
 **Serving:** server consumes engine TaskRequest/CommittedEvent with output credits, auth/HTTP/SSE/openai conformance and graceful shutdown; facade reexports serving; CLI calls facade. A server cannot publish neural state or run its own Qwen/GPU scheduler.
 
-## 4. First implementation sequence, exact action
+## 4. Historical initial sequence; use current TODO for continuation
 
-The latest owner instruction authorizes this sequence:
+Original sequence; current TODO records what is already landed:
 
 1. **Read source/plan ownership:** use dotlink-l5 current HEAD/status/recent commits, AGENTS.md and all linked docs, active TODOs, other workers. No destructive Git operations, no unapproved model/device access, never overwrite other agent uncommitted files. Treat fadf2b1 only as the last *review snapshot*.
 2. **Freeze small interface choices** and integrate shared source/type names with actual latest code. Appoint one coordinator for Cargo/runtime/root shared files and separate owners for independent lanes. Respect the repo's signed commits, explicit file ownership and main-only persistent topology.
@@ -85,7 +85,7 @@ The latest owner instruction authorizes this sequence:
 
 **Critical safety:** during structural S0 old functioning CLI code can remain temporarily so user features are not destroyed before F2/F3. But the *target architecture must be fully visible and compile*. At F4 there is only ONE live runtime/serving/CLI path and no old compatibility duplication.
 
-## 5. Parallel agent guidance
+## 5. Historical parallel guidance — current work is main-only
 
 Use subagents for independent tasks with **clear module ownership**:
 - codec/format source and CPU reference (S1);
@@ -108,7 +108,7 @@ read this transition packet in the order in README.md.
 Only if the user's latest instruction explicitly authorizes Fabric implementation:
 
 1. revalidate source/ownership/current capability matrix;
-2. begin S0 with the complete compilable architecture skeleton;
+2. continue the current TODO; do not repeat the accepted skeleton/foundation;
 3. continue S1–S3 and F0–F4 in logical signed units;
 4. run Q0 once assembled, fix bounded regressions in Q1, then run Q2;
 5. preserve current source/numerical/state/resource/refusal semantics and do not
@@ -119,4 +119,4 @@ prompt text is retained only in Git history.
 
 ## 7. Current handoff/report method
 
-This file is a maintained architecture handoff inside the vNext plan, not the global cross-window entrypoint. Start a new agent at `.agents/docs/CURRENT_HANDOFF.md`; it points to the four maintained planning/status files, this transition set and the earlier vNext architecture set. Git history retains retired snapshots. Do not recreate a single-file archive or documentation SHA catalogue. When handing off, print the ready-to-paste starting prompt in chat; the user controls actual S0 start.
+This file is a maintained architecture handoff inside the vNext plan, not the global cross-window entrypoint. Start a new agent at `.agents/docs/CURRENT_HANDOFF.md`; it points to the four maintained planning/status files, this transition set and the earlier vNext architecture set. Git history retains retired snapshots. Do not recreate a single-file archive or documentation SHA catalogue. When handing off, print the ready-to-paste starting prompt in chat; the user controls further authorization; no implicit hardware campaign restart.

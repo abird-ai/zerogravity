@@ -8,9 +8,9 @@ Base: `1c35172`
 
 ## Current direction — shared scheduling, then remaining Fabric ownership
 
-- Working foundation and lifecycle refinement are signed through `d78eb55`.
-  Owner approved the next contained unit: shared CPU/GPU scheduling, preserving
-  source math, state, cancellation and ownership. This is not full F0–F4/Q acceptance.
+- Shared CPU/GPU scheduler source/host checkpoint `ae7ec11` follows foundation
+  and lifecycle `d78eb55`. Original source math, state, cancellation and ownership
+  retained; physical GPU regression remains open. This is not full F0–F4/Q acceptance.
 - **Main does all further work; no new subagents.** Previously running tasks
   finished without cancellation. Main reviewed/integrated their results.
 - Main owns all files, compiler capacity, plan reconciliation and commits. No
@@ -70,8 +70,8 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 
 ## Next refinements — one coherent unit at a time
 
-1. Finish the shared-scheduler source/host checkpoint below; reuse accepted
-   evidence for unchanged paths. Do not redo the foundation extraction.
+1. Continue from shared-scheduler checkpoint `ae7ec11`; reuse accepted evidence
+   for unchanged paths. Do not redo the foundation or scheduler extraction.
 2. Physical GPU regression remains required before qualifying moved execution.
    No launches are authorized by this source checkpoint. Preserve exact source,
    Ready/root, cancellation/fault, final-reader and serving scopes; no historical
@@ -89,6 +89,62 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 
 Historical documentation packet:`2ff3d49`; canonical handoff refresh:`ff89b87`.
 Qwen commits are preserved inputs, not S/F/Q completion proof.
+
+### `ae7ec11` — shared text scheduler, source/host checkpoint
+
+- Main-only batch based on signed `d78eb55`; no GPU launch, source acquisition,
+  recurrence restart, push or protected README/external-checkout modification.
+- One Router, admission/event path and worker loop. Typed executor associated
+  state/Ready/lease objects avoid Any/downcasts, reconstructed feedback and an
+  adapter-owned scheduler. Shared policy owns fairness, grouping, output parking,
+  band reduction and retry ordering; adapters retain original physical authority.
+- Separate common model metadata from host-logit execution. A single admitted
+  alias map is shared by routing and the typed worker; no duplicate registry.
+- Shared active rows retain opaque physical session state and a final-reader
+  lease after presentation/transport fields. GPU state remains charged by its
+  original owner, never CPU state charging. Price new control/scratch owners.
+- Preserve CPU one32-token-or-decode quantum/round and bounded output refusal;
+  GPU full ready rounds, source-specific prompt quantum, 30s output parking and
+  complete cohort publication, including non-fused GGUF final prompt tails.
+- Preserve prelaunch capacity/cancel versus known-completed discard versus fatal/
+  unknown. GGUF discard regroups immediately; captured-HF discard/cancel returns
+  to the next fair round. Never drop submitted futures or reconstruct device
+  feedback from presentation IDs. Exact route validators remain authoritative.
+- Facade owns concrete loading, source/tokenizer owners, typed execution adapters
+  and source health; CLI serve keeps configuration/presentation/signals only.
+  Ordinary GGUF and captured CUDA use distinct executor types: composition must
+  not depend on captured recipes. Explicit captured source profiles enter
+  diagnostic composition, sharing the engine rather than a diagnostic scheduler.
+  Ordinary CUDA refusal remains early.
+- [x] Actual CPU/ordinary GPU/captured-diagnostic consumers use one typed Router,
+  registry, worker and transport adapter. Remove CLI gpu_engine/gpu_batch copies.
+  Physical qualification calls actual shared step/wave primitives, not a copied loop.
+- [x] PreparedModel metadata separated from LogitModel; public load_gpu_text and
+  cold backend/runtime-limit/closed refusals. TextAdapter reports compiled wiring,
+  not source eligibility or qualification. No compatibility scheduler retained.
+- [x] Admit new registry/stats, worker/retry/scratch and adapter controls. Bound
+  retry progress; fatal/unknown never becomes capacity fallback. Reader-control
+  credit survives the model handle; tokenizer+inventory share one actual owner.
+- [x] Strict ordinary/captured CUDA and HIP consumers; Vulkan compilation;85
+  engine tests; source-free GPU feature controls25 pass/2 physical cases ignored;
+  GPU loader/reader4, tokenizer6 and public GPU SDK3 controls pass. Vulkan
+  diagnostic-only builds retain the two existing source-page dead-code warnings.
+- [x] Genuine CPU acceptance: all four approved-tokenizer GGUF fixture cases pass,
+  including SDK/tasks, aliases, JSON/SSE, cancellation, independent server stop,
+  host pressure and source retirement. Facade31/server23 plus integration/CLI
+  scopes pass; empty feature-disabled targets are not execution evidence.
+- [x] Source review: no CPU/GPU/model-crate math, kernel/image/manifest changed;
+  original numerical comparison bodies and physical teacher cases retained.
+  Issuer accessors return original source identities. Rust migration is not a
+  physical/ABI requalification or trained-model/performance claim.
+- [x] Final isolated scripts/check.sh:2,306 Rust passes/0fail/94ignored across300
+  suite runs;17 Python suites/182 cases/10 skips. Architecture/features/CPU strict,
+  minimal builds, release/installer/shell/Nix pass.68 empty feature-target suites
+  are not execution evidence. `assembled-gate-r1.log` records the complete gate.
+- [x] Signed source/host checkpoint `ae7ec11`; physical acceptance stays open.
+- Logs: XDG state `abird/zerogravity/fabric-scheduler-YeCrPeT8/`;
+  `shared-strict-r4.log`, `backend-feature-r1.log`, `cpu-http-r1.log`,
+  `source-review-r1.txt`. Initial compile/lint failures remain preserved.
 
 ### `d78eb55` — runtime self-join refusal
 
@@ -192,67 +248,15 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 - [ ] Preserve buffer leases encoded/captured/queued/submitted/unknown and safe quarantine/retire, host/UMA alias accounting.
 - [ ] S3 source-free state resource targeted checks and signed commit(s).
 
-## Uncommitted — shared CPU/GPU scheduling batch
+## Uncommitted — moved GPU physical acceptance
 
-- Main-only batch based on signed `d78eb55`; no GPU launch, source acquisition,
-  recurrence restart, push or protected README/external-checkout modification.
-- One Router, admission/event path and worker loop. Typed executor associated
-  state/Ready/lease objects avoid Any/downcasts, reconstructed feedback and an
-  adapter-owned scheduler. Shared policy owns fairness, grouping, output parking,
-  band reduction and retry ordering; adapters retain original physical authority.
-- Separate common model metadata from host-logit execution. A single admitted
-  alias map is shared by routing and the typed worker; no duplicate registry.
-- Shared active rows retain opaque physical session state and a final-reader
-  lease after presentation/transport fields. GPU state remains charged by its
-  original owner, never CPU state charging. Price new control/scratch owners.
-- Preserve CPU one32-token-or-decode quantum/round and bounded output refusal;
-  GPU full ready rounds, source-specific prompt quantum, 30s output parking and
-  complete cohort publication, including non-fused GGUF final prompt tails.
-- Preserve prelaunch capacity/cancel versus known-completed discard versus fatal/
-  unknown. GGUF discard regroups immediately; captured-HF discard/cancel returns
-  to the next fair round. Never drop submitted futures or reconstruct device
-  feedback from presentation IDs. Exact route validators remain authoritative.
-- Facade owns concrete loading, source/tokenizer owners, typed execution adapters
-  and source health; CLI keeps configuration/presentation/signals only. Ordinary
-  GGUF and captured CUDA use distinct executor types: ordinary composition must
-  not depend on captured recipes. Explicit captured source profiles enter
-  diagnostic composition, sharing the engine rather than a diagnostic scheduler.
-  Ordinary CUDA refusal remains early.
-- [x] Actual CPU/ordinary GPU/captured-diagnostic consumers use one typed Router,
-  registry, worker and transport adapter. Remove CLI gpu_engine/gpu_batch copies.
-  Physical qualification calls actual shared step/wave primitives, not a copied loop.
-- [x] PreparedModel metadata separated from LogitModel; public load_gpu_text and
-  cold backend/runtime-limit/closed refusals. TextAdapter reports compiled wiring,
-  not source eligibility or qualification. No compatibility scheduler retained.
-- [x] Admit new registry/stats, worker/retry/scratch and adapter controls. Bound
-  retry progress; fatal/unknown never becomes capacity fallback. Reader-control
-  credit survives the model handle; tokenizer+inventory share one actual owner.
-- [x] Strict ordinary/captured CUDA and HIP consumers; Vulkan compilation;85
-  engine tests; source-free GPU feature controls25 pass/2 physical cases ignored;
-  GPU loader/reader4, tokenizer6 and public GPU SDK3 controls pass. Vulkan diagnostic-only
-  builds retain the two existing source-page dead-code warnings.
-- [x] Genuine CPU acceptance: all four approved-tokenizer GGUF fixture cases pass,
-  including SDK/tasks, aliases, JSON/SSE, cancellation, independent server stop,
-  host pressure and source retirement. Facade31/server23 plus integration/CLI
-  scopes pass; empty feature-disabled targets are not execution evidence.
-- [x] Source review: no CPU/GPU/model-crate math, kernel/image/manifest changed;
-  original numerical comparison bodies and physical teacher cases retained.
-  Issuer accessors return original source identities. Rust migration is not a
-  physical/ABI requalification or trained-model/performance claim.
-- [x] Final isolated scripts/check.sh:2,306 Rust passes/0fail/94ignored across300
-  suite runs;17 Python suites/182 cases/10 skips. Architecture/features/CPU strict,
-  minimal builds, release/installer/shell/Nix pass.68 empty feature-target suites
-  are not execution evidence. `assembled-gate-r1.log` records the complete gate.
-- [ ] Sign the verified source/host checkpoint; physical acceptance stays open.
-- Logs: XDG state `abird/zerogravity/fabric-scheduler-YeCrPeT8/`;
-  `shared-strict-r4.log`, `backend-feature-r1.log`, `cpu-http-r1.log`,
-  `source-review-r1.txt`. Initial compile/lint failures remain preserved.
-- [ ] Separate physical GPU regression before qualifying moved execution; source
-  preservation, host controls and compilation cannot replace it.
+- [ ] Qualify moved execution with authorized real-source numerical/state,
+  cancellation/fault/final-reader and serving checks. Compilation/host controls
+  and source preservation do not qualify GPU execution; no old evidence retagged.
 
 ## Uncommitted — remaining F0 model-neutral engine
 
-- [x] One shared CPU/GPU Router/worker with typed private state/cohorts; source and host integration complete, physical GPU requalification remains open.
+Shared source/host scheduling landed in `ae7ec11`; remaining requirements:
 - [ ] One cold model/provider registration point in facade, same source alias source sharing and exact loaded ModelGeneration pin.
 - [ ] Preserve CPU bounded prefill/decode and GPU native B1/B2/B4/B8 true batch semantics including ragged/late arrivals and source-specific eligibility.
 - [ ] One ResourceArbiter and original worker Ready/lease/shutdown; source-valid typed committed output before HTTP.
@@ -268,7 +272,7 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 
 ## Uncommitted — remaining F2 unified-engine transport integration
 
-- [x] Connect shared CPU/GPU Router to extracted HTTP without CLI TextService dispatch; CPU protocol/negative controls pass, physical GPU serving remains open.
+Shared Router/HTTP integration landed in `ae7ec11`; remaining requirements:
 - [ ] Serve uses engine TaskRequest and CommittedEvent, not Qwen/GPU/allocator; ingress/auth/HTTP body/stream credits in serving, scheduler/state in engine.
 - [ ] Preserve CPU and eligible native CUDA request routes, real cancellation/disconnect, bounded server pending queue and 50abaf7 worker join/owned shutdown.
 - [ ] Validate remaining unified GPU/transport integration within applicable source/physical scopes; reuse accepted CPU/HTTP tests.

@@ -9,26 +9,38 @@ Current source and tests are the implementation truth. The active work queue is
 retains superseded plans, handoffs, checkouts and run evidence; they are not
 live authority.
 
-## Last accepted state — working Fabric key paths
+## Latest checkpoint — shared scheduler source/host acceptance
 
-- Signed`7fc5d17`: real encoding/codec/CPU math ownership and reference publication
-  through original SessionAuthority. Signed`8591b52`: working CPU SDK/runtime,
-  reusable HTTP JSON/SSE server, pipeline/device APIs and CLI extraction.
-- Real CPU source/alias/cancel/SDK/server/lifecycle cases pass. Original root,
-  physical arbiter, final-reader lifetime and explicit unsupported routes retained.
-- Foundation isolated gate:2,267 Rust/0fail/94ignored/297 suite runs;17 Python suites/
-  182 cases incl10 skips; architecture/feature/strict/installer/shell/Nix pass.
-  CUDA/HIP/Vulkan compile checks and23 source-free GPU controls pass; no GPU launch.
-- Lifecycle follow-up after`27ac278`: explicit worker/own-loader/retirement
-  self-shutdown returns State without mutating admission; external joins and
-  sticky failures preserved.64 engine tests and real CPU SDK/HTTP fixture pass.
-  Final isolated gate:2,271 Rust/0fail/94ignored/297 suite runs;17 Python suites/
-  182 cases incl10 skips. No new math/ABI/device qualification or per-token work.
-- Full GPU scheduler unification, remaining SDK/CLI/active-contract ownership and
-  F4/Q0–Q2 acceptance remain open. No performance or new physical-support claim.
-- Main-only work from here; prior agents/jobs terminal, recurrences cancelled.
-  Root README/external checkout untouched; no push. Continue contained refinements
-  from [transition TODO](fabric-vnext-transition/TODO.md), not a new S0 extraction.
+- Signed source/host checkpoint `ae7ec11` follows foundation `7fc5d17`/`8591b52`
+  and lifecycle `d78eb55`. CPU and GPU use one engine Router, alias registry,
+  admission/event path, fair worker, parking and cohort policy. CLI scheduler
+  copies and CPU/GPU transport dispatch are removed.
+- Facade owns ordinary GGUF and separate captured-diagnostic typed adapters;
+  original source/session/Ready/commit/feedback and physical arbiter remain the
+  authority. Public `load_gpu_text` shares the runtime; cold refusals stay early.
+  This is shared implementation, not simultaneous heterogeneous/multi-model support.
+- New controls/scratch are admitted. Final-reader credit survives the model
+  handle; tokenizer and retained inventory share one owner. CPU32-token quanta,
+  original GPU wave limits/bands, cancellation/discard/fatal distinctions and
+  complete publication remain explicit. No kernel/math/image/manifest changes.
+- 85 engine controls, GPU loader/reader4, tokenizer6 and public GPU SDK3 pass;
+  CUDA/captured and HIP strict scopes, Vulkan compilation and25 source-free GPU
+  feature controls pass (2 physical cases ignored). Genuine CPU GGUF fixture
+  cases4 pass: SDK/tasks, aliases, JSON/SSE, cancellation, server stop and retirement.
+- Final isolated gate: 2,306 Rust passes/0fail/94ignored/300 suite runs;
+  17 Python suites/182 cases/10 skips.
+  Architecture, feature/minimal/strict, release/installer/shell/Nix pass. The two
+  existing Vulkan diagnostic source-page warnings remain. Failed compile/lint
+  attempts are retained; empty targets provide no execution evidence.
+- **Physical GPU regression is unrun and required before qualifying moved
+  execution.** No GPU launch, model acquisition, privilege/recovery change or push;
+  no old source/ABI evidence retagged, trained-model or speedup claim.
+- Main-only; no new subagents. Both recurrences remain cancelled; root README
+  and protected external checkout unchanged. Remaining SDK/CLI business logic,
+  active contracts, F4/Q0/Q1/Q2 and original Qwen/context/C1..C64/vLLM work stay open.
+
+Continue from [transition TODO](fabric-vnext-transition/TODO.md). Compilation
+and metadata inventory are not physical execution eligibility.
 
 ## Historical accepted state — Fabric S0 (31 Oct)
 

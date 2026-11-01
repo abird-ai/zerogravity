@@ -1,6 +1,24 @@
 # Fabric vNext transition — current-source reconciliation
 
-## Current landing — `7396984`
+## Current source/host checkpoint — `ae7ec11`
+
+- Foundation/lifecycle through `d78eb55` retained; shared engine Router/worker now
+  owns CPU/GPU admission, scheduling, presentation and cohorts. Facade owns typed
+  ordinary/captured adapters; serving consumes the same Router. CLI copies removed.
+- Original IR, issuers, SessionAuthority, physical arbiter, Ready/commit, native
+  feedback and final readers remain. New metadata/scratch ownership is admitted.
+- Actual source retains fixed-prompt64-token wave credit and captured-Qwen
+  72×max(native_rows,1); prompt and B4 eligibility remain source-owned. The older
+  blanket67/72-over64 note was not an authority to narrow or widen these routes.
+- CPU SDK/HTTP fixtures4 pass; host/feature/strict scopes pass. Final gate:
+  2,306 Rust passes/0fail/94ignored/300 suite runs;
+  17 Python suites/182 cases/10 skips.
+- No CPU/GPU/model-crate math, kernel/image/manifest changes. Moved GPU execution
+  remains physically unqualified at this source; no historical evidence retagging.
+- Remaining SDK/CLI, active contracts and F4/Q acceptance stay in [TODO](TODO.md).
+  The dated source observations/crosswalk below are historical, not restart orders.
+
+## Historical S0 landing — `7396984`
 
 S0 now exists in source: eleven workspace packages including engine/serving;
 public facade contracts, truthful cold Unsupported, original owners preserved,
@@ -246,7 +264,7 @@ Current truthful gaps:
 - CPU GGUF serving and selected Qwen CUDA fused HTTP routes: valuable existing qualified subsets, preserve and revalidate.
 - Source/parser/device/data/HTTP refusal and physical lifecycle tests: no waiver during transition.
 
-## 5. Concrete old-to-new owner crosswalk
+## 5. Historical old-to-new owner crosswalk
 
 | Current source | Final owner/responsibility | Must preserve |
 | --- | --- | --- |

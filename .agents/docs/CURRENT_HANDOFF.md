@@ -6,50 +6,47 @@ It is deliberately not a generated concatenation of every historical plan, run l
 
 A successor should be able to start here without prior chat history, understand how the project evolved, identify what is implemented versus merely designed, and continue either the current Qwen correctness critical path or the separately authorized Fabric vNext transition.
 
-## Latest accepted checkpoint — working Fabric key paths
+## Latest checkpoint — shared text scheduler, host-tested
 
-- Signed`7fc5d17`: actual encoding/codecs/CPU math owners and canonical reference
-  publication. Signed`8591b52`: real CPU SDK/runtime, standalone embedded serving,
-  pipeline/device APIs and migrated CLI callers. S0 remains`7396984`/`c853ebb`.
-- Actual local CPU loading → direct requests/task streams → HTTP JSON/SSE works
-  through one CPU scheduler and original source/root/admission owners. Aliases,
-  cancellation, worker joins and server stop preserving SDK tasks are tested.
-- Held-source admission race and late-input disconnect masking fixed. Core/kernel
-  arithmetic bodies preserved; broader GDN family identity changed with Rust
-  binding source. No retagged physical evidence or new trained-model qualification.
-- Foundation isolated gate:2,267 Rust passes/0fail/94ignored across297 suite runs;
-  17 Python suites/182 cases incl10 input skips. Architecture/feature/strict/
-  installer/shell/Nix checks pass. Separate real CPU fixture cases4 pass;
-  updated facade30/server23; GPU source-free routing/refusal/join controls23 pass.
-- Lifecycle follow-up after`27ac278`: explicit runtime shutdown from engine
-  workers or its own loader/retirement callback returns State before changing
-  admission. External shutdown still waits for real cleanup and retains failures.
-  Strict checks,64 engine tests, real CPU SDK/HTTP fixture and final isolated gate
-  pass:2,271 Rust/0fail/94ignored/297 suites;17 Python suites/182 cases/10 skips.
-  No per-token check, new heap owner, numerical/ABI change or GPU launch.
-- CUDA/HIP/Vulkan compile checks pass. No GPU device/model execution, download,
-  privilege/recovery change, push or external-checkout/root README change.
-- All jobs/previous agents terminal. No new subagents: main does all further work.
-  Cancelled Fabric/Qwen recurrences remain cancelled; Qwen expansion deferred.
-
-This is a working foundation checkpoint, NOT completed F0–F4/Q0–Q2. GPU scheduling
-and remaining run/pull/cache business logic still reside in CLI. Placement,
-pipeline execution and future protocols continue refusing. Next: the same-router
-GPU migration and remaining SDK/CLI ownership, with measured optimization after
-correctness. Caller-deadline ergonomics remain open; direct Router/implicit drop
-still need external retirement, and short router callbacks remain non-reentrant.
+- Signed source/host checkpoint `ae7ec11` follows foundation `7fc5d17`/`8591b52`
+  and lifecycle `d78eb55`. CPU and GPU use one engine Router, alias registry,
+  admission/event path, fair worker, parking and cohort policy. CLI scheduler
+  copies and CPU/GPU transport dispatch are removed.
+- Facade owns ordinary GGUF and separate captured-diagnostic typed adapters;
+  original source/session/Ready/commit/feedback and physical arbiter remain the
+  authority. Public `load_gpu_text` shares the runtime; cold refusals stay early.
+  This is shared implementation, not simultaneous heterogeneous/multi-model support.
+- New controls/scratch are admitted. Final-reader credit survives the model
+  handle; tokenizer and retained inventory share one owner. CPU32-token quanta,
+  original GPU wave limits/bands, cancellation/discard/fatal distinctions and
+  complete publication remain explicit. No kernel/math/image/manifest changes.
+- 85 engine controls, GPU loader/reader4, tokenizer6 and public GPU SDK3 pass;
+  CUDA/captured and HIP strict scopes, Vulkan compilation and25 source-free GPU
+  feature controls pass (2 physical cases ignored). Genuine CPU GGUF fixture
+  cases4 pass: SDK/tasks, aliases, JSON/SSE, cancellation, server stop and retirement.
+- Final isolated gate: 2,306 Rust passes/0fail/94ignored/300 suite runs;
+  17 Python suites/182 cases/10 skips.
+  Architecture, feature/minimal/strict, release/installer/shell/Nix pass. The two
+  existing Vulkan diagnostic source-page warnings remain. Failed compile/lint
+  attempts are retained; empty targets provide no execution evidence.
+- **Physical GPU regression is unrun and required before qualifying moved
+  execution.** No GPU launch, model acquisition, privilege/recovery change or push;
+  no old source/ABI evidence retagged, trained-model or speedup claim.
+- Main-only; no new subagents. Both recurrences remain cancelled; root README
+  and protected external checkout unchanged. Remaining SDK/CLI business logic,
+  active contracts, F4/Q0/Q1/Q2 and original Qwen/context/C1..C64/vLLM work stay open.
 
 Recovery: [transition TODO](../plans/fabric-vnext-transition/TODO.md).
-Accepted logs: XDG state`abird/zerogravity/fabric-checkpoint-lEnE3DDm/`;
-`assembled-gate-r1.log` plus focused logs. Lifecycle follow-up:
-`abird/zerogravity/fabric-lifecycle-dfes2sdx/` (two initial test-wiring compile
-failures corrected; strict/engine-r3/SDK smoke/final gate pass). Earlier failed/zero/unrun scopes remain
-in that directory and`fabric-runtime-juOhHkRS/`; do not treat them as passes.
+Evidence: XDG state `abird/zerogravity/fabric-scheduler-YeCrPeT8/`, especially
+`assembled-gate-r1.log`, `cpu-http-r1.log`, `backend-feature-r1.log`,
+`shared-strict-r4.log` and `source-review-r1.txt`. Earlier foundation/lifecycle
+logs remain separate. Direct Router/implicit self-drop still need external
+retirement; arbitrary callback reentrancy and caller deadlines remain open.
 
 The following sections retain earlier checkpoints/design context. Latest source,
 tests and the transition TODO outrank their superseded continuation instructions.
 
-## Active direction — Fabric first (31 Oct)
+## Historical direction — Fabric first (31 Oct)
 
 Owner authorizes [Fabric transition](../plans/fabric-vnext-transition/TODO.md): reconcile
 both plans against signed`1c35172`, then complete compilable S0 and
@@ -62,23 +59,13 @@ Signed`7396984` lands verified S0;`c853ebb` records reconciled recovery.
 Owner now requests continuing until the full runtime transition is finished.
 S1/F0/F1 implementation is active; no new accepted milestone yet.
 
-## Interruption recovery — active runtime migration
+## Interruption recovery — current shared scheduling
 
-Read `../plans/fabric-vnext-transition/TODO.md` **Resume here** first; it records
-live file ownership and next integration checks. Revalidate active agents/jobs
-before editing: encoding/codecs, pipeline SDK and neutral CPU engine lanes write
-separate surfaces; coordinator owns serving transport, shared manifests and
-compiler capacity. Root protocol review is read-only. Fresh Fabric continuation
-`7cddc6c9` is independent of cancelled Qwen recurrence`17aafa71`.
-
-Signed`7396984` remains the latest accepted implementation: final isolated gate
-passes2,159 Rust/0fail/87ignored/292 suites,17 Python suites/182 cases plus
-packaging. New dirty source is in progress, not verified runtime/serving parity.
-No physical/model campaign has restarted; Q0/Q2 acceptance remains open.
-
-Revalidate HEAD/diff/ownership, recover any active owner before starting duplicate
-work, and update the owning TODO after material steps. Completed source/testing,
-failed/unrun scopes and next concrete actions belong in repo, not only chat.
+Start with the transition TODO and current `main`/diff. The source/host checkpoint
+above supersedes old S0/lane instructions below. No new agent or recurrence;
+source/build ownership stays with main. Do not restart GPU work without separate
+authority. Continue remaining ready SDK/CLI/contract work without redoing the
+accepted foundation or claiming unexecuted physical scopes.
 
 ## Historical Qwen pause — 31 Oct 2026
 

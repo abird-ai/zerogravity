@@ -39,6 +39,15 @@ not acceptance inputs.
 
 ## Current Fabric and retained Qwen acceptance
 
+- Shared scheduler source/host checkpoint `ae7ec11`: one CPU/GPU Router/worker and
+  transport path, typed original physical owners, admitted final-reader/tokenizer
+  controls; CLI scheduler copies removed.85 engine controls and4 genuine CPU
+  SDK/HTTP fixture cases pass; CUDA/HIP/Vulkan compile/host scopes pass.
+  Final gate: 2,306 Rust passes/0fail/94ignored/300 suite runs;
+  17 Python suites/182 cases/10 skips.
+  Moved GPU execution still requires separate physical numerical/state/cancel/
+  ownership/serving regression; historical source/ABI evidence is not retagged.
+
 - S0 engine/serving/SDK contracts compile and preserve one ForwardPlan/physical
   arbiter. Refusal/authority/API tests pass; final isolated gate2,159 Rust/0fail/
   87ignored/292 suites,17 Python suites/182 cases plus packaging. New operations
