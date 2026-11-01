@@ -57,8 +57,9 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
   bridge remains source-less/reference-only, never a source-bound Ready witness.
 - CPU scheduler/queue/events/presentation now engine-owned; facade composes actual
   Qwen source/tokenizer/admission. Loading, joins and source destruction are unlocked;
-  concurrent shutdown waits for cleanup and preserves failures. Synchronous
-  shutdown from its own loader/worker/destructor remains unsupported/documented.
+  concurrent shutdown waits for cleanup and preserves failures. Explicit runtime
+  shutdown from engine workers or its own loader/retirement callback now refuses
+  before changing admission, rather than waiting on itself.
 - Real reusable HTTP server and SDK pipeline checking/device APIs; no fabricated
   successful model preparation, placement, pipeline execution or future protocol.
 - Temporary CLI import-shim files removed. GPU scheduler and remaining run/pull/
@@ -70,8 +71,10 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 
 1. Continue from signed`7fc5d17`/`8591b52`; the foundation is committed, not a
    new extraction task. Reuse applicable accepted evidence.
-2. Harden lifecycle reentrancy/caller-deadline ergonomics at the shared engine
-   layer; keep ordinary paths simple and measure before performance changes.
+2. Explicit runtime self-join guards are complete below. Caller deadlines and
+   nonblocking close remain future ergonomics; direct Router/implicit last-owner
+   drop still require external retirement. Short `with_text_router` callbacks
+   remain non-reentrant. Measure before performance changes.
 3. Extend the SAME engine Router/worker to GPU, preserving the reviewed contract:
    engine owns queue/fairness/parking/presentation; coarse adapters own typed
    source/session slots, device feedback and original prepare/Ready/commit.
@@ -93,6 +96,29 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 
 Historical documentation packet:`2ff3d49`; canonical handoff refresh:`ff89b87`.
 Qwen commits are preserved inputs, not S/F/Q completion proof.
+
+### After `27ac278` — runtime self-join refusal
+
+- [x] Busy lifecycle phases retain their owning ThreadId; explicit shutdown by
+  that loader/retirement callback returns State without closing admission.
+- [x] Actual engine worker scope refuses blocking runtime shutdown, including
+  during an external join. Scope covers capture destruction/unwind; no new heap
+  owner or per-token/step check. External shutdown still joins outside the mutex,
+  waits for completed cleanup and preserves terminal failures.
+- [x] Four bounded regressions: loader open/raced close, real worker Ready/Joining,
+  source destruction after load rejection/normal retirement, nested/unwound worker
+  context. Refusing models exercise lifecycle only, never synthetic inference.
+- [x] Strict engine/serving/facade checks;64 engine tests and exact-filter real CPU
+  SDK/JSON/SSE/cancel/source-retirement test pass. Child success and completion
+  marker checked by its parent. Initial two test-module compile failures corrected.
+- [x] Final isolated `scripts/check.sh`:2,271 Rust passes/0fail/94ignored across297
+  suite runs;17 Python suites/182 cases incl10 skips. Architecture/CPU strict/
+  feature-boundary/installer/shell/Nix pass. The two Vulkan diagnostic dead-code
+  warnings match the foundation gate. Logs:
+  XDG state`abird/zerogravity/fabric-lifecycle-dfes2sdx/`.
+- No model-source, arithmetic or kernel/ABI change, new hardware qualification
+  or speedup claim. External-owner shutdown remains required; this is not arbitrary callback
+  reentrancy, implicit self-drop support, unified GPU scheduling or F4/Q completion.
 
 ### `8591b52` — working CPU runtime, public SDK and embedded serving
 
@@ -244,6 +270,8 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 - [x] Final isolated repository gate2,159 Rust/0fail/87ignored/292 suites;
   17 Python suites/182 cases (10 explicit source-input skips), packaging pass — `7396984`.
 - [x] Current codec/CPU/reference-root and CPU SDK/server batch: scoped tests and assembled gate above.
+- [x] Post-`27ac278` lifecycle refusal: strict,64 engine tests, genuine CPU SDK/HTTP
+  fixture and complete isolated gate2,271/0fail/94ignored pass; no GPU launch.
 - [ ] Remaining S1–S3 active-contract/provider/source-bound physical integration coverage.
 - [ ] F0–F4 complete SDK/engine/serving/CLI feature/refusal migration coverage.
 - [ ] Q0/Q1/Q2 assembled transition/physical acceptance; unchanged evidence reused

@@ -27,8 +27,10 @@ must be present together. Existing source/format/host-budget refusals still appl
 - `Runtime::request_text` / `Runtime::run`: direct bounded events/task streams.
 - `Runtime::server`: independent server sharing the same engine; explicit bind,
   limits and authentication policy. `stop`/`join` do not shut down SDK tasks.
-- `Runtime::shutdown`: closes admission and joins actual workers; call outside
-  its loader/worker/destructor call chains (synchronous self-join unsupported).
+- `Runtime::shutdown`: closes admission and joins actual workers. Explicit calls
+  from engine workers or the same runtime's loader/retirement callback return
+  State before changing admission. Use an external owner for real shutdown;
+  short router callbacks remain non-reentrant, implicit self-drop unsupported.
 - `pipelines::Document`: bounded YAML/schema/entrypoint checking, not execution.
 - `Runtime::devices`: inventory/policy; placement execution remains Unsupported.
 

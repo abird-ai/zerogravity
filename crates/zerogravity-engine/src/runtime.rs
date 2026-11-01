@@ -39,9 +39,9 @@ struct TextControl {
 #[allow(clippy::large_enum_variant)]
 enum TextPhase {
     Empty,
-    Loading,
+    Loading(std::thread::ThreadId),
     Ready(Router),
-    Joining,
+    Joining(std::thread::ThreadId),
     Closed,
 }
 impl TextControl {
@@ -159,7 +159,7 @@ impl Runtime {
     }
     /// Reserve the one load slot, then prepare sources outside the mutex. A
     /// racing shutdown closes admission and waits for returned workers to retire.
-    /// The loader may query status, but must not synchronously shut down this runtime.
+    /// Loader status callbacks are allowed; synchronous self-shutdown is rejected.
     pub fn configure_text(
         &self,
         load: impl FnOnce() -> std::result::Result<Router, ServiceError>,
@@ -176,7 +176,7 @@ impl Runtime {
                     "text scheduler already configured or loading",
                 ));
             }
-            text.phase = TextPhase::Loading;
+            text.phase = TextPhase::Loading(std::thread::current().id());
         }
         // Declared before the returned router: unwinding retires that owner
         // before the guard can mark loading complete or wake shutdown callers.
@@ -336,18 +336,31 @@ impl Runtime {
             .model(alias)
             .ok_or_else(|| Error::State(format!("model is not registered: {alias}")))
     }
-    /// Close admission before waiting. One caller owns retirement outside the
-    /// mutex; all concurrent/later callers observe the same terminal result.
-    /// Close admission and join workers. Call outside this runtime's loader,
-    /// worker and source-destructor call chains: they cannot synchronously join themselves.
+    /// Close admission under the lifecycle lock before waiting for retirement.
+    /// One caller retires outside the mutex; other callers see the same result.
+    /// Calls from engine workers or this runtime's loader/retirement owner are
+    /// rejected before changing admission: blocking joins could wait on themselves.
     pub fn shutdown(&self) -> Result<()> {
-        self.inner.closed.store(true, Ordering::Release);
+        if crate::router::on_worker_thread() {
+            return Err(Error::State(
+                "blocking runtime shutdown from an engine worker is unsupported".into(),
+            ));
+        }
+        let current = std::thread::current().id();
         let router = {
             let mut text = self
                 .inner
                 .text
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if matches!(&text.phase, TextPhase::Loading(owner) | TextPhase::Joining(owner) if *owner == current)
+            {
+                return Err(Error::State(
+                    "blocking runtime shutdown from its loader/retirement owner is unsupported"
+                        .into(),
+                ));
+            }
+            self.inner.closed.store(true, Ordering::Release);
             loop {
                 match &text.phase {
                     TextPhase::Empty => {
@@ -359,13 +372,13 @@ impl Runtime {
                     TextPhase::Ready(router) => {
                         router.close_admission();
                         let TextPhase::Ready(router) =
-                            std::mem::replace(&mut text.phase, TextPhase::Joining)
+                            std::mem::replace(&mut text.phase, TextPhase::Joining(current))
                         else {
                             unreachable!("matched ready router");
                         };
                         break router;
                     }
-                    TextPhase::Loading | TextPhase::Joining => {
+                    TextPhase::Loading(_) | TextPhase::Joining(_) => {
                         #[cfg(test)]
                         {
                             text.shutdown_waiters += 1;

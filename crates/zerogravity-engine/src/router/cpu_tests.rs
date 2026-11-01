@@ -38,7 +38,7 @@ impl Gate {
     }
 }
 
-struct MockTokenizer;
+pub(super) struct MockTokenizer;
 impl TextTokenizer for MockTokenizer {
     fn eos(&self) -> u32 {
         1

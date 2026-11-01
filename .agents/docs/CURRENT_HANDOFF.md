@@ -17,10 +17,16 @@ A successor should be able to start here without prior chat history, understand 
 - Held-source admission race and late-input disconnect masking fixed. Core/kernel
   arithmetic bodies preserved; broader GDN family identity changed with Rust
   binding source. No retagged physical evidence or new trained-model qualification.
-- Final isolated gate:2,267 Rust passes/0fail/94ignored across297 suite runs;
+- Foundation isolated gate:2,267 Rust passes/0fail/94ignored across297 suite runs;
   17 Python suites/182 cases incl10 input skips. Architecture/feature/strict/
   installer/shell/Nix checks pass. Separate real CPU fixture cases4 pass;
   updated facade30/server23; GPU source-free routing/refusal/join controls23 pass.
+- Lifecycle follow-up after`27ac278`: explicit runtime shutdown from engine
+  workers or its own loader/retirement callback returns State before changing
+  admission. External shutdown still waits for real cleanup and retains failures.
+  Strict checks,64 engine tests, real CPU SDK/HTTP fixture and final isolated gate
+  pass:2,271 Rust/0fail/94ignored/297 suites;17 Python suites/182 cases/10 skips.
+  No per-token check, new heap owner, numerical/ABI change or GPU launch.
 - CUDA/HIP/Vulkan compile checks pass. No GPU device/model execution, download,
   privilege/recovery change, push or external-checkout/root README change.
 - All jobs/previous agents terminal. No new subagents: main does all further work.
@@ -28,13 +34,16 @@ A successor should be able to start here without prior chat history, understand 
 
 This is a working foundation checkpoint, NOT completed F0–F4/Q0–Q2. GPU scheduling
 and remaining run/pull/cache business logic still reside in CLI. Placement,
-pipeline execution and future protocols continue refusing. Next: contained
-lifecycle hardening, then the same-router GPU migration and remaining SDK/CLI
-ownership, with measured optimization after correctness.
+pipeline execution and future protocols continue refusing. Next: the same-router
+GPU migration and remaining SDK/CLI ownership, with measured optimization after
+correctness. Caller-deadline ergonomics remain open; direct Router/implicit drop
+still need external retirement, and short router callbacks remain non-reentrant.
 
 Recovery: [transition TODO](../plans/fabric-vnext-transition/TODO.md).
 Accepted logs: XDG state`abird/zerogravity/fabric-checkpoint-lEnE3DDm/`;
-`assembled-gate-r1.log` plus focused logs. Earlier failed/zero/unrun scopes remain
+`assembled-gate-r1.log` plus focused logs. Lifecycle follow-up:
+`abird/zerogravity/fabric-lifecycle-dfes2sdx/` (two initial test-wiring compile
+failures corrected; strict/engine-r3/SDK smoke/final gate pass). Earlier failed/zero/unrun scopes remain
 in that directory and`fabric-runtime-juOhHkRS/`; do not treat them as passes.
 
 The following sections retain earlier checkpoints/design context. Latest source,

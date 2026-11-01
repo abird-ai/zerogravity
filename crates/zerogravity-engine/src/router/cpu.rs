@@ -1018,6 +1018,7 @@ impl CpuWorkerCaptures {
     /// this priced value: `Layout::new::<CpuWorkerCaptures>()` at admission is
     /// provably the captured width and cannot drift from a field mirror.
     fn run(self) {
+        let _worker = super::WorkerScope::enter();
         worker(
             self.queue,
             self.models,

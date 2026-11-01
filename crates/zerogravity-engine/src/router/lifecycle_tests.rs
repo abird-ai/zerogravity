@@ -1,4 +1,6 @@
 //! Actual router joins and runtime lifecycle, with model-free controlled workers.
+#[path = "lifecycle_tests/reentrancy.rs"]
+mod reentrancy;
 use super::*;
 use crate::{Runtime, diagnostics::RuntimeStatus, scheduler::SchedulerLimits};
 use std::sync::mpsc as signals;

@@ -16,9 +16,14 @@ live authority.
   reusable HTTP JSON/SSE server, pipeline/device APIs and CLI extraction.
 - Real CPU source/alias/cancel/SDK/server/lifecycle cases pass. Original root,
   physical arbiter, final-reader lifetime and explicit unsupported routes retained.
-- Final isolated gate:2,267 Rust/0fail/94ignored/297 suite runs;17 Python suites/
+- Foundation isolated gate:2,267 Rust/0fail/94ignored/297 suite runs;17 Python suites/
   182 cases incl10 skips; architecture/feature/strict/installer/shell/Nix pass.
   CUDA/HIP/Vulkan compile checks and23 source-free GPU controls pass; no GPU launch.
+- Lifecycle follow-up after`27ac278`: explicit worker/own-loader/retirement
+  self-shutdown returns State without mutating admission; external joins and
+  sticky failures preserved.64 engine tests and real CPU SDK/HTTP fixture pass.
+  Final isolated gate:2,271 Rust/0fail/94ignored/297 suite runs;17 Python suites/
+  182 cases incl10 skips. No new math/ABI/device qualification or per-token work.
 - Full GPU scheduler unification, remaining SDK/CLI/active-contract ownership and
   F4/Q0–Q2 acceptance remain open. No performance or new physical-support claim.
 - Main-only work from here; prior agents/jobs terminal, recurrences cancelled.

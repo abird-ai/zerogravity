@@ -86,8 +86,8 @@ impl Runtime {
     pub fn status(&self) -> RuntimeStatus {
         self.engine.status()
     }
-    /// Close admission and join workers. Invoke outside the runtime's loader,
-    /// worker and source-destructor call chains; synchronous self-join is unsupported.
+    /// Close admission and join workers. Engine-worker and same-runtime loader/
+    /// retirement callbacks return an error rather than synchronously self-joining.
     pub fn shutdown(&self) -> Result<()> {
         self.engine.shutdown()
     }
