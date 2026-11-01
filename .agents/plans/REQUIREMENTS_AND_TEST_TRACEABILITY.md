@@ -39,6 +39,13 @@ not acceptance inputs.
 
 ## Current Fabric and retained Qwen acceptance
 
+- Source-owned preparation `860ce38`: real Qwen recording/source and original graph
+  Arcs reach the resident loader through typed, model-neutral preparation; different
+  owners with equal IDs and copied programs refuse. Cache-free GPU feature fixed.
+  Four host controls, CUDA/HIP strict, CPU-free Vulkan and approved CPU recording/
+  audit/SDK/HTTP pass. Final gate: 2,326 Rust executions/0fail/97ignored/303 suites (70 empty); 17 Python suites/182 cases/10 skips.
+  No new physical/trained acceptance; remaining family/provider/full parity open.
+
 - Contract/catalog/serving checkpoints `83060e5`/`2f19224`: shared real numerical
   and layout consumers; source-bound catalog/aliases and CLI serving through the
   same runtime. Approved CPU/HTTP/audit, cold controls and strict features pass.

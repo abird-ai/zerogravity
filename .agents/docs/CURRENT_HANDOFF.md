@@ -6,35 +6,40 @@ It is deliberately not a generated concatenation of every historical plan, run l
 
 A successor should be able to start here without prior chat history, understand how the project evolved, identify what is implemented versus merely designed, and continue either the current Qwen correctness critical path or the separately authorized Fabric vNext transition.
 
-## Latest checkpoint — contract consumers and catalog/serving ownership
+## Latest checkpoint — source-owned preparation `860ce38`
 
-- Signed `83060e5` unifies original numerical contracts and binds activation/
-  checked tensor layout to real CPU/GPU preparation consumers. No new arithmetic,
-  codec or kernel capability; Q4_K dot and unsupported backend paths still refuse.
-- Signed `2f19224` adds working cold source catalog loading/alias resolution.
-  Direct SDK and CLI serving enter the same original runtime/registry/worker path;
-  SDK owns serving profile policy, including explicitly finite diagnostic guards.
-  CLI keeps config, signals and IO; startup/transport errors cannot skip retirement.
-- Retains SDK/artifact/direct-run checkpoint `d4e94b1` and shared scheduler
-  `ae7ec11`. Source issuers, actual Ready/publication, physical arbiter and final
-  readers remain original. No live model replacement or multi-model residency.
-- Approved tiny CPU SDK/HTTP/profiled catalog case passes19.04s; direct source/
-  audit/final-output case passes17.61s. Host packing/refusal, numerical/layout,
-  engine/catalog/CLI/signal tests and strict CUDA/HIP/minimal/serve-only checks pass.
-- Final isolated source/host gate: 2,322 Rust executions/0fail/97ignored/302 suites (70
-  empty); 17 Python suites/182 cases/10 skips.
-  Empty suites and ignored trained/physical cases are not execution evidence.
-- **Fabric remains unfinished:** generic ModelDefinition/provider/executable
-  preparation, remaining root/transport/whole-feature reconciliation and F4/Q
-  acceptance. Per-model unload, paged restoration and future execution refuse;
-  admin intent/status metadata is not management or inference capability.
+- Follows `83060e5`/`2f19224`/`51cd294`; earlier numerical/layout, catalog, serving,
+  SDK/artifact and shared-scheduler ownership remains accepted.
+- ModelProgram retains the actual family/source and original ForwardPlan Arcs.
+  Typed provider/ExecutableBundle preparation invokes the existing resident loader;
+  ordinary GGUF catalog loading consumes it. Equal source IDs or copied graphs
+  cannot substitute for either original Arc. No second IR, scheduler or publisher.
+- ModelDefinition stays storage-neutral; only the existing tensor-provider binding
+  requires TensorSource. Window-bound/Gemma/finite execution keeps original adapters;
+  generic partial-region/placement compilation is not implemented. CPU keeps its
+  existing source-bound TextSession/Executor, not a replacement graph interpreter.
+- Fixed standalone text+GPU without cache: tokenizer admission depends on text;
+  its original physical ledger/body is unchanged. No new acquisition dependency.
+- Four host owner-routing controls pass; combined CUDA/HIP strict and CPU-free,
+  cache-free Vulkan compilation pass. Approved sparse GGUF recording/direct CPU/
+  audit/final-reader case passes17.42s; SDK/catalog/HTTP lifecycle passes18.48s.
+- Final isolated source/host gate: 2,326 Rust executions/0fail/97ignored/303 suites (70 empty); 17 Python suites/182 cases/10 skips.
+  RUST_TEST_THREADS=4 bounds harness concurrency. An earlier full gate failed the
+  unchanged50ms HTTP header test; exact+25 HTTP controls and the bounded full rerun
+  pass without weakening deadlines. Failed log retained, not accepted.
+  Ignored/empty suites are not execution evidence; counts are suite executions.
+- Source review retains original Qwen traversal/recording and resident preflight,
+  initialization, lowering/math/event bodies after cold Arc normalization only.
+  CPU math, workers/cohorts, serving, root/arbiter and kernel/image pins unchanged.
+- **Fabric remains unfinished:** remaining family/provider and whole-feature/
+  root/transport/API/CLI reconciliation plus F4/Q acceptance. Per-model unload,
+  paged restore and future tasks still refuse; status/admin intent is not capability.
 - No GPU/trained-Gemma execution, acquisition, agents/recurrences, push or recovery
-  change. Physical numerical/state/cancellation/fault/final-reader/serving gates
-  need separate authority; historical physical evidence is not retagged.
-- Logs: XDG state `abird/zerogravity/fabric-contracts-wfatmh7m/`; focused scopes,
-  approved CPU runs, source review and `final-gate-r1.log` remain separate.
-  Root README/protected detached checkout unchanged. Qwen/context/C1..C64/vLLM
-  and E01–E10 remain deferred, not removed.
+  change. Physical numerical/state/cancel/fault/final-reader/serving acceptance
+  needs separate authority; no historical evidence retagged or speedup claimed.
+- Logs: XDG state `abird/zerogravity/fabric-parity-A94JdkGR/`. Failed compile and
+  feature scopes retained separately. Protected README/external checkout untouched;
+  Qwen/context/C1..C64/vLLM and E01–E10 remain deferred, not discarded.
 
 ## Previous checkpoint — shared scheduler `ae7ec11`
 

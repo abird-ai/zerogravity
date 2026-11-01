@@ -21,7 +21,25 @@ Latest source checkpoint and commit-scoped evidence:
 All old feature rows below remain a migration checklist, not an updated physical
 capability table. S0 is structural only; F4/Q0/Q2 must account for this delta too.
 
-## Current contract/catalog/serving reconciliation — `83060e5` / `2f19224`
+## Current source-owned preparation reconciliation — `860ce38`
+
+| Area | Actual consumer / evidence | Remaining boundary |
+|---|---|---|
+| Family recording | Qwen ModelDefinition calls the original recorder; ModelProgram retains real source/plan Arcs; approved sparse-source CPU recording passes | recording is not execution, authentication or registration |
+| Provider/prepared owner | typed engine preparation → ResidentModelProvider → original ResidentModel loader; ordinary GGUF catalog consumes it | no generic window-bound/finite/Gemma substitution or partial-region/placement compiler |
+| Owner identity | four host controls reject copied plan, different owner even with equal ID, unsupported task/context/output; final reader retains source | host probes have no execution/Ready method and do not qualify GPU |
+| Standalone GPU SDK | tokenizer admission text-gated, not cache-gated; CPU-free/cache-free Vulkan compiles; CUDA/HIP strict passes | actual GPU source/state/cancel/fault/serving regression unrun |
+| Public API/CPU | facade exports source/record/provider/bundle contracts; real CPU audit17.42s and SDK/catalog/HTTP18.48s pass | CPU keeps its original typed TextSession, not a new interpreter |
+| Root/transport/CLI review | existing publishers/worker/cohorts/serving unchanged; transport consumes original engine Request/ResponseEvent; inspected OCI/S3 delegate public provider APIs | whole-feature/root/transport/API/CLI audit remains open; intent is not a publisher or admin endpoint |
+
+Final source/host gate: 2,326 Rust executions/0fail/97ignored/303 suites (70 empty); 17 Python suites/182 cases/10 skips.
+RUST_TEST_THREADS=4; earlier50ms HTTP header failure retained. Exact+25 HTTP
+controls and the full bounded rerun pass without changed deadlines/assertions.
+No GPU/trained-Gemma execution, new capability or retagged physical evidence.
+Original traversal/lowering/init/math bodies retained after cold Arc normalization;
+failed feature/compile logs remain separate. This does not close F4/Q.
+
+## Previous contract/catalog/serving reconciliation — `83060e5` / `2f19224`
 
 Source/host only; the original feature inventory below is not physical acceptance.
 

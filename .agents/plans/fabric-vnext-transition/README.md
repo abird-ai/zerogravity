@@ -4,15 +4,14 @@ Owner: @pvl; later appointed implementation coordinator
 
 # zerogravity Fabric vNext — transition architecture and implementation plan
 
-**Latest checkpoints:** `83060e5`/`2f19224` bind real numerical/layout consumers
-and cold source catalog/serving composition. SDK owns serving policy; CLI shares
-its runtime. Approved tiny CPU and final source/host gate pass. Generic
-preparation/provider/root/final parity and physical acceptance remain open.
-Main only; no repeated extraction or physical execution from these checkpoints.
-Plan2 preserves Plan1 and deferred Qwen work. [Current source](CURRENT_SOURCE_RECONCILIATION.md)
-· [active queue](TODO.md).
+**Latest checkpoint:** `860ce38` binds source-owned family recording and typed
+provider/executable preparation to the original ordinary GGUF loader. Exact source
+and plan Arcs survive; `83060e5`/`2f19224` numerical/catalog/serving work remains.
+Approved CPU/source-host gates pass. Remaining family/provider/root/transport/whole
+parity and physical acceptance stay open. Main only; holds unchanged.
+[Current source](CURRENT_SOURCE_RECONCILIATION.md) · [active queue](TODO.md).
 
-**Created:** 27 October 2026. **Current status: numerical/layout consumers and catalog/serving source checkpoints; remaining integration and full acceptance open.**
+**Created:** 27 October 2026. **Current status: source-owned preparation `860ce38`; remaining integration and full acceptance open.**
 **Read-only source observation:** HEAD fadf2b1123309a2118725f2cc005d3edc7ea39f2 (l5, 27 Oct 06:50 UTC). The 26 Oct deep review had 195099ca; preceding refresh had eb38dd5. These are evidence timestamps, not frozen ongoing source. Recheck HEAD before coding.
 **Physical root:** /home/pvl/spaces/abird/src/zerogravity via dotlink-l5.
 **Ownership:** owner explicitly promoted this transition in the shared queue. Preserve Plan 1's requirements and all unrelated source/owner work; the current main session serializes integration.
@@ -27,6 +26,10 @@ must be present together. Existing source/format/host-budget refusals still appl
   using original loaders, alias registry and lifecycle. `resolve` retains the
   actual source. Reload/per-model unload remain unsupported.
 - `Runtime::load_text` / `load_gpu_text`: direct forms of the same catalog load.
+- `models::{ModelProgram,ProgramRequest,prepare_executable,ExecutableBundle}`:
+  original source-owned recording and typed preparation, consumed by ordinary
+  GGUF loading. A bare plan/ID is insufficient; window-bound/finite adapters
+  remain separate and arbitrary placement/partial regions are not implemented.
 - `serving::TextProfile`: source/batch/finite-profile policy used by CLI and SDK;
   captured serving still requires its explicit feature and original guards.
 - `Runtime::request_text` / `Runtime::run`: direct bounded events/task streams.

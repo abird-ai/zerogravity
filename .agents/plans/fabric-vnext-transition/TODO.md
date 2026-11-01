@@ -6,22 +6,19 @@ Owner: @pvl — main-session coordinator
 
 Base: `1c35172`
 
-## Current direction — contract consumers and cold registration
+## Current direction — source-owned preparation and remaining parity
 
-- Contract consumers `83060e5` and cold catalog/SDK serving `2f19224` follow
-  SDK/CLI `d4e94b1` and shared scheduler `ae7ec11`. Original source math/state/
-  Ready/ownership retained; approved CPU and final source/host gate pass.
-  Generic preparation/provider/root/whole parity and physical acceptance remain;
-  this is not full Fabric/F0–F4/Q completion.
-- **Main does all further work; no new subagents.** Previously running tasks
-  finished without cancellation. Main reviewed/integrated their results.
-- Main owns all files, compiler capacity, plan reconciliation and commits. No
-  push, source acquisition, GPU launch, recovery or privilege changes authorized.
-- Fabric/Qwen recurrences remain cancelled. Qwen expansion remains deferred;
-  accepted model/operator/lifetime evidence is historical and tuple-specific.
-- Signed`7fc5d17` lands source/state foundations on S0`7396984`/`c853ebb`.
-  Signed`8591b52` lands the tested runtime/SDK/server batch. Root README and
-  external checkout untouched; nothing pushed.
+- Signed `860ce38` connects real ModelDefinition/provider/ExecutableBundle preparation
+  for ordinary GGUF through original source/plan Arcs and the resident loader.
+  Retains `83060e5`/`2f19224`, `d4e94b1` and `ae7ec11`; do not repeat extraction.
+- Source/host controls, approved CPU fixtures and the final gate pass. Broader
+  family/provider/root/transport/whole-feature review and physical acceptance remain;
+  this is not whole Fabric/F0–F4/Q completion or new device/model capability.
+- Main owns files, compiler, review, plans and signing; no new subagents. No push,
+  acquisition, GPU/trained-Gemma run, recovery or privilege changes authorized.
+- Both recurrences remain cancelled. Qwen expansion remains deferred; historical
+  model/operator/lifetime evidence stays tuple-specific. Root README and protected
+  external checkout unchanged. Source-owned preparation is not placement or residency.
 
 ## Historical foundation evidence — assembled gate passed
 
@@ -74,16 +71,16 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 
 ## Next refinements — one coherent unit at a time
 
-1. Continue from `83060e5`/`2f19224`; reuse accepted unchanged evidence.
+1. Continue from `860ce38` and `83060e5`/`2f19224`; reuse unchanged evidence.
    Do not redo numerical/layout, catalog, serving policy or earlier extraction.
 2. Physical GPU regression remains required before qualifying moved execution.
    No launches are authorized by this source checkpoint. Preserve exact source,
    Ready/root, cancellation/fault, final-reader and serving scopes; no historical
    physical evidence is retagged. Fixed-prompt credit stays64; original captured
    Qwen credit is72×max(native_rows,1), with original prompt/B4 guards unchanged.
-3. Finish generic ModelDefinition/provider/executable integration and remaining
-   root/transport/whole-feature review, then F4/Q0/Q1/Q2 acceptance. Numerical/
-   layout consumers and cold registration landed; future operations still refuse.
+3. Reconcile remaining family/provider adapters and root/transport/whole-feature
+   coverage, then F4/Q0/Q1/Q2 acceptance. Source-owned ordinary GGUF preparation
+   is wired; arbitrary placement/partial regions and future operations stay absent.
 4. Explicit runtime self-join guards remain. Caller deadlines/nonblocking close
    are future work; direct Router/implicit last-owner drop needs external
    retirement, and short router callbacks remain non-reentrant.
@@ -93,6 +90,38 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 
 
 ## Committed
+
+### `860ce38` — source-owned executable preparation
+
+- [x] Replace descriptor-only preparation with ModelProgram retaining the actual
+  family/source Arc and original ForwardPlan Arc; Qwen delegates to its unchanged
+  recorder. Source/context/task/output mismatches refuse before provider work.
+  ModelDefinition stays storage-neutral; only the current tensor-provider binding
+  requires TensorSource. Window-bound source owners are not flattened.
+- [x] Bind typed RegionExecutionProvider/ExecutableBundle to the existing resident
+  GPU loader. Ordinary GGUF catalog loading uses this path; source and plan Arc
+  identity must both survive. No Any/downcast, copied IR, scheduler or publisher.
+- [x] Keep physical preflight/initialization/Ready/retirement bodies unchanged;
+  submitted preparation is awaited. Window-bound and finite diagnostic adapters
+  retain their original owners; arbitrary placement/partial regions stay absent.
+- [x] Fix standalone text+GPU without cache: tokenizer admission depends on text,
+  not cache. Original admission body and ledger unchanged; no new network stack.
+- [x] Four host routing/retention controls pass, including different source owners
+  with equal IDs. Engine and combined CUDA/HIP strict pass; cache-free, CPU-free
+  Vulkan compilation passes. These are not physical execution evidence.
+- [x] Approved sparse GGUF recording/direct CPU/audit/final-reader case passes
+  17.42s; unchanged SDK/profiled catalog/HTTP lifecycle passes18.48s. No trained Gemma run.
+- [x] Independent source comparison retains original Qwen traversal/recorder and
+  resident preflight/lowering/math/event bodies after only cold Arc normalization.
+  CPU math, scheduler/cohorts, serving, root/arbiter and kernel/image pins unchanged.
+- First final gate stopped at an unchanged HTTP test's50ms header deadline;
+  exact test and all25 HTTP controls pass with RUST_TEST_THREADS=4. No production
+  or test timeout weakened; failed whole-gate log retained, not an accepted pass.
+- [x] Final isolated source/host gate passes with RUST_TEST_THREADS=4:2,326 Rust
+  executions/0fail/97ignored across303 suites (70 empty);17 Python suites/182
+  cases/10 skips. All deadlines/assertions unchanged; prior failed gate retained.
+  Full Fabric remains open. Logs: XDG state `abird/zerogravity/fabric-parity-A94JdkGR/`.
+
 
 ### `2f19224` — cold catalog and SDK serving ownership
 
@@ -335,37 +364,6 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 
 
 
-## Uncommitted — source-owned preparation checkpoint
-
-- [x] Replace descriptor-only preparation with ModelProgram retaining the actual
-  family/source Arc and original ForwardPlan Arc; Qwen delegates to its unchanged
-  recorder. Source/context/task/output mismatches refuse before provider work.
-  ModelDefinition stays storage-neutral; only the current tensor-provider binding
-  requires TensorSource. Window-bound source owners are not flattened.
-- [x] Bind typed RegionExecutionProvider/ExecutableBundle to the existing resident
-  GPU loader. Ordinary GGUF catalog loading uses this path; source and plan Arc
-  identity must both survive. No Any/downcast, copied IR, scheduler or publisher.
-- [x] Keep physical preflight/initialization/Ready/retirement bodies unchanged;
-  submitted preparation is awaited. Window-bound and finite diagnostic adapters
-  retain their original owners; arbitrary placement/partial regions stay absent.
-- [x] Fix standalone text+GPU without cache: tokenizer admission depends on text,
-  not cache. Original admission body and ledger unchanged; no new network stack.
-- [x] Four host routing/retention controls pass, including different source owners
-  with equal IDs. Engine and combined CUDA/HIP strict pass; cache-free, CPU-free
-  Vulkan compilation passes. These are not physical execution evidence.
-- [x] Approved sparse GGUF recording/direct CPU/audit/final-reader case passes
-  17.42s; unchanged SDK/profiled catalog/HTTP lifecycle passes18.48s. No trained Gemma run.
-- [x] Independent source comparison retains original Qwen traversal/recorder and
-  resident preflight/lowering/math/event bodies after only cold Arc normalization.
-  CPU math, scheduler/cohorts, serving, root/arbiter and kernel/image pins unchanged.
-- First final gate stopped at an unchanged HTTP test's50ms header deadline;
-  exact test and all25 HTTP controls pass with RUST_TEST_THREADS=4. No production
-  or test timeout weakened; failed whole-gate log retained, not an accepted pass.
-- [x] Final isolated source/host gate passes with RUST_TEST_THREADS=4:2,326 Rust
-  executions/0fail/97ignored across303 suites (70 empty);17 Python suites/182
-  cases/10 skips. All deadlines/assertions unchanged; prior failed gate retained.
-  Full Fabric remains open. Logs: XDG state `abird/zerogravity/fabric-parity-A94JdkGR/`.
-
 ## Uncommitted — remaining S1 active contracts
 
 - [ ] Finish remaining preparation/derived contracts; numerical/activation/row-layout consumers are bound in the signed checkpoint above. Derived artifacts are not a quantizer or execution permit.
@@ -375,10 +373,10 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
   authoritative and now have one canonical numerical owner. ActivationEncoding
   and PreparedTensorLayout constrain real CPU/GPU consumers without granting
   source/kernel/Ready authority; unused NumericalContract was removed.
-  DerivedModelManifest remains descriptive. Generic engine preparation,
-  per-model retirement and paged-state restoration still refuse; multi-model
-  residency remains unsupported. Cold source catalog/CLI serving integration is
-  part of this assembled batch, not live replacement or a generic compiler.
+  DerivedModelManifest remains descriptive. Source-owned ordinary GGUF
+  preparation uses the original provider; per-model retirement and paged-state
+  restoration still refuse. Multi-model residency, live replacement and arbitrary
+  placement/partial-region compilation remain unsupported.
   Do not invent E-phase quantization/hot-reload/placement to close boxes.
 
 ## Uncommitted — future S2 family math and GPU provider
@@ -407,7 +405,8 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 
 Shared scheduling `ae7ec11` and cold catalog/alias registration `2f19224` landed;
 remaining requirements:
-- [ ] Finish generic ModelDefinition/provider/executable composition without deriving execution authority from ForwardPlan metadata.
+- [x] Bind source-owned ModelDefinition/provider/executable composition for ordinary GGUF — `860ce38`; no authority from metadata.
+- [ ] Reconcile remaining family/provider paths with original typed execution adapters; no forced shadow IR or widened capability.
 - [ ] Preserve CPU bounded prefill/decode and GPU native B1/B2/B4/B8 true batch semantics including ragged/late arrivals and source-specific eligibility.
 - [ ] One ResourceArbiter and original worker Ready/lease/shutdown; source-valid typed committed output before HTTP.
 - [ ] F0 tiny model-neutral mock/CPU tests, affected compile and signed commit(s).
