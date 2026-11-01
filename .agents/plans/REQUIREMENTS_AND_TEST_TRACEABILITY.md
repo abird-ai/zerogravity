@@ -39,6 +39,14 @@ not acceptance inputs.
 
 ## Current Fabric and retained Qwen acceptance
 
+- Contract/catalog/serving checkpoints `83060e5`/`2f19224`: shared real numerical
+  and layout consumers; source-bound catalog/aliases and CLI serving through the
+  same runtime. Approved CPU/HTTP/audit, cold controls and strict features pass.
+  Final source/host gate: 2,322 Rust executions/0fail/97ignored/302 suites (70 empty); 17 Python suites/182 cases/10 skips.
+  Original math/kernel bodies and physical authority retained; generic preparation/
+  provider/root/full parity and physical acceptance remain open. No GPU or trained
+  Gemma execution; see the owning Fabric TODO for exact source/host boundaries.
+
 - SDK/CLI source/host checkpoint `d4e94b1`: typed artifact/component/cache operations,
   original fixed source/transfer domains, direct CPU planning/audit/output lifetime,
   finite CUDA/Gemma diagnostic owners and a public-only Rust example. Exact original

@@ -21,9 +21,30 @@ Latest source checkpoint and commit-scoped evidence:
 All old feature rows below remain a migration checklist, not an updated physical
 capability table. S0 is structural only; F4/Q0/Q2 must account for this delta too.
 
+## Current contract/catalog/serving reconciliation — `83060e5` / `2f19224`
+
+Source/host only; the original feature inventory below is not physical acceptance.
+
+| Area | Actual current consumer / tested scope | Remaining refusal/hold |
+|---|---|---|
+| Numerics and activation | core canonical contracts; CPU projection/quantized preparation and GPU activation layout; exact source controls pass | no new codec/math/kernel capability; Q4_K dot refuses |
+| Tensor layout | checked rows/strides/extents in CPU source, GPU host packing and resident regions; original u32 bound retained | layout never grants source, allocation or Ready |
+| Cold catalog and aliases | facade ModelLoadRequest → original configure_text/loaders; real SDK/HTTP alias/source retirement passes | no live replacement, generic compiler or per-model unload |
+| Serving policy | SDK TextProfile owns original finite/batch guards; explicit captured-serving feature retained | physical GPU serving unrun |
+| CLI serving | public catalog/runtime/server; caller-owned config/signals/IO, cumulative shutdown failures | no alternate scheduler or physical ledger |
+| Admin/status | real list/resolve/status; metadata-only AdminOperation intent unchanged | no admin control endpoint, live residency or new capability from status |
+| Generic architecture | original ForwardPlan/session/Ready/arbiter remain authoritative | ModelDefinition/provider/executable and remaining root/transport/full parity open |
+
+Final source/host gate: 2,322 Rust executions/0fail/97ignored/302 suites (70 empty); 17
+Python suites/182 cases/10 skips.
+Approved tiny CPU SDK/HTTP and direct/audit cases pass; trained Gemma and GPU
+execution remain unrun. Counts are suite executions, not distinct tests or model
+qualification. Prior SDK/artifact acceptance remains applicable on unchanged paths.
+
 ## SDK/CLI owner reconciliation — `d4e94b1`
 
-This is the current source/host checkpoint, not whole F4/Q or physical acceptance.
+Previous source/host checkpoint; superseded above for catalog and serving policy.
+Neither checkpoint is whole F4/Q or physical acceptance.
 
 | Existing operation | Current owner / tested scope | Still open |
 |---|---|---|

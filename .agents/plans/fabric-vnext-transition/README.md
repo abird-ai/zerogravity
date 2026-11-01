@@ -4,16 +4,15 @@ Owner: @pvl; later appointed implementation coordinator
 
 # zerogravity Fabric vNext — transition architecture and implementation plan
 
-**Latest checkpoint:** signed `d4e94b1` rehomes SDK/CLI source and artifact
-ownership; shared CPU/GPU scheduler `ae7ec11` retained. Approved tiny CPU and full
-isolated source/host gate pass. Active contracts and physical/final acceptance
-remain open. Main only; do not redo the scheduler or SDK extraction.
-Plan 2 includes Plan 1; Qwen expansion deferred. Historical docs-only holds below
-are superseded. [Current source/crosswalk](CURRENT_SOURCE_RECONCILIATION.md) ·
-[active phase queue](TODO.md). No new physical/production grant.
+**Latest checkpoints:** `83060e5`/`2f19224` bind real numerical/layout consumers
+and cold source catalog/serving composition. SDK owns serving policy; CLI shares
+its runtime. Approved tiny CPU and final source/host gate pass. Generic
+preparation/provider/root/final parity and physical acceptance remain open.
+Main only; no repeated extraction or physical execution from these checkpoints.
+Plan2 preserves Plan1 and deferred Qwen work. [Current source](CURRENT_SOURCE_RECONCILIATION.md)
+· [active queue](TODO.md).
 
-
-**Created:** 27 October 2026. **Current status: shared scheduling and SDK/CLI source checkpoints; active contracts and full acceptance remain open.**
+**Created:** 27 October 2026. **Current status: numerical/layout consumers and catalog/serving source checkpoints; remaining integration and full acceptance open.**
 **Read-only source observation:** HEAD fadf2b1123309a2118725f2cc005d3edc7ea39f2 (l5, 27 Oct 06:50 UTC). The 26 Oct deep review had 195099ca; preceding refresh had eb38dd5. These are evidence timestamps, not frozen ongoing source. Recheck HEAD before coding.
 **Physical root:** /home/pvl/spaces/abird/src/zerogravity via dotlink-l5.
 **Ownership:** owner explicitly promoted this transition in the shared queue. Preserve Plan 1's requirements and all unrelated source/owner work; the current main session serializes integration.
@@ -24,7 +23,12 @@ Enable facade features `cpu,model-qwen35,text,cache,serve` for local CPU plus HT
 No automatic model acquisition; local GGUF, configuration and approved tokenizer
 must be present together. Existing source/format/host-budget refusals still apply.
 
-- `Runtime::load_text`: admitted local sources; aliases share immutable ownership.
+- `Runtime::models().load(ModelLoadRequest)`: CPU/GPU/profiled cold route set,
+  using original loaders, alias registry and lifecycle. `resolve` retains the
+  actual source. Reload/per-model unload remain unsupported.
+- `Runtime::load_text` / `load_gpu_text`: direct forms of the same catalog load.
+- `serving::TextProfile`: source/batch/finite-profile policy used by CLI and SDK;
+  captured serving still requires its explicit feature and original guards.
 - `Runtime::request_text` / `Runtime::run`: direct bounded events/task streams.
 - `Runtime::server`: independent server sharing the same engine; explicit bind,
   limits and authentication policy. `stop`/`join` do not shut down SDK tasks.

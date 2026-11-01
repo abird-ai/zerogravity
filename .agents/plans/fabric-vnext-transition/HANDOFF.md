@@ -1,15 +1,15 @@
 # Fabric vNext transition — architecture and continuation
 
-**Current source/host checkpoint:** signed `d4e94b1`; SDK owns run/source/audit,
-finite diagnostics and artifact orchestration. Shared CPU/GPU scheduler `ae7ec11`
-retained; approved tiny CPU and final source/host gate pass. Active contracts,
-provider/root/final parity and physical acceptance remain open. No trained Gemma
-or GPU run, acquisition, agents/recurrences or push. Plan2 preserves Plan1 and the
-Qwen/context/C1..C64/vLLM mission. Use TODO, not the historical launch sequence.
+**Current source/host checkpoints:** `83060e5`/`2f19224`; canonical numerical/
+layout consumers, working cold catalog/aliases and SDK-owned serving policy.
+CLI/SDK use the same runtime; approved tiny CPU and final source/host gate pass.
+Generic preparation/provider/root/whole parity and physical acceptance remain
+open. No GPU/trained Gemma run, acquisition, agents/recurrences or push. Continue
+from TODO; Plan2 preserves Plan1 and Qwen/context/C1..C64/vLLM obligations.
 
 **Canonical current entrypoint:** `.agents/docs/CURRENT_HANDOFF.md`. Current source/tests and the four-file planning spine outrank historical source snapshots in this document.
 
-**Created:** 27 October 2026. **Current status: SDK/CLI source/host checkpoint `d4e94b1`; active contracts and acceptance remain open.**
+**Created:** 27 October 2026. **Current status: contract/catalog/serving checkpoints `83060e5`/`2f19224`; remaining integration and acceptance open.**
 **Repo:** /home/pvl/spaces/abird/src/zerogravity; connector **dotlink-l5** (host pvl-l5), not dotlink-a1.
 **Source observation during this design pass:** HEAD fadf2b1123309a2118725f2cc005d3edc7ea39f2 at 06:50 UTC; 41 commits after prior deep-review baseline 195099ca, including codec split, model/CPU/GPU source refactors and recent fresh CUDA prefill source/oracle. Run current HEAD/status again before any implementation.
 **This handoff's central mandate:** first write complete compilable Rust architecture skeleton with both new engine/serving crates and exported public library, then move ALL current functionality in tested logical signed commits, then one full integrated heavy qualification and targeted bugfixes plus final gate. No old pre-v1 API compatibility obligation. The historical planning turn alone did not authorize code work; the latest owner instruction now does.

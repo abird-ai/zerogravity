@@ -8,9 +8,10 @@ Base: `1c35172`
 
 ## Current direction — contract consumers and cold registration
 
-- SDK/CLI source checkpoint `d4e94b1` follows shared scheduler `ae7ec11` and
-  recovery `72622ce`. Original source math, state, cancellation and ownership
-  retained. Active contracts/provider/root/parity and physical acceptance remain;
+- Contract consumers `83060e5` and cold catalog/SDK serving `2f19224` follow
+  SDK/CLI `d4e94b1` and shared scheduler `ae7ec11`. Original source math/state/
+  Ready/ownership retained; approved CPU and final source/host gate pass.
+  Generic preparation/provider/root/whole parity and physical acceptance remain;
   this is not full Fabric/F0–F4/Q completion.
 - **Main does all further work; no new subagents.** Previously running tasks
   finished without cancellation. Main reviewed/integrated their results.
@@ -73,16 +74,16 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 
 ## Next refinements — one coherent unit at a time
 
-1. Continue from SDK/CLI checkpoint `d4e94b1`; reuse accepted unchanged evidence.
-   Do not redo the foundation, scheduler, artifact or direct-run extraction.
+1. Continue from `83060e5`/`2f19224`; reuse accepted unchanged evidence.
+   Do not redo numerical/layout, catalog, serving policy or earlier extraction.
 2. Physical GPU regression remains required before qualifying moved execution.
    No launches are authorized by this source checkpoint. Preserve exact source,
    Ready/root, cancellation/fault, final-reader and serving scopes; no historical
    physical evidence is retagged. Fixed-prompt credit stays64; original captured
    Qwen credit is72×max(native_rows,1), with original prompt/B4 guards unchanged.
-3. Bind remaining numerical/layout/preparation/provider/root contracts to real
-   consumers; finish production/qualification and whole-matrix API/CLI/transport
-   review, then F4/Q0/Q1/Q2 acceptance. Future operations keep explicit refusal.
+3. Finish generic ModelDefinition/provider/executable integration and remaining
+   root/transport/whole-feature review, then F4/Q0/Q1/Q2 acceptance. Numerical/
+   layout consumers and cold registration landed; future operations still refuse.
 4. Explicit runtime self-join guards remain. Caller deadlines/nonblocking close
    are future work; direct Router/implicit last-owner drop needs external
    retirement, and short router callbacks remain non-reentrant.
@@ -90,7 +91,10 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
    model/media/SSD/distributed roadmap. Measure before tuning; no speedup claim.
 
 
-## Uncommitted — verified catalog and serving ownership
+
+## Committed
+
+### `2f19224` — cold catalog and SDK serving ownership
 
 - [x] Replace the unsupported engine source-loading stub with the facade's cold
   ModelCatalog/ModelLoadRequest; direct CPU/GPU and profiled serving loads use
@@ -109,14 +113,14 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 - [x] Engine85 controls, default/minimal SDK, strict combined CUDA/HIP and
   serve-only feature checks pass. SDK policy2, CLI serve4/1 ignored and native
   parser3 pass; subprocess TERM/INT/PID1 controls retain their source-less scope.
-- [x] Final assembled source/host gate: 2,322 Rust executions/0fail/97ignored across302 suites (70 empty); 17 Python suites/182 cases/10 skips.
+- [x] Final assembled source/host gate: 2,322 Rust executions/0fail/97ignored across302
+  suites (70 empty); 17 Python suites/182 cases/10 skips.
 - This is not whole S/F/Q completion or physical qualification. Generic
   ModelDefinition/provider/executable integration, final parity and authorized
   trained/physical acceptance remain open. Per-model unload/restore refuse.
 - Logs: `abird/zerogravity/fabric-contracts-wfatmh7m/`; failed/ignored/empty and
   source-free scopes are not inferred model or GPU execution.
 
-## Committed
 
 ### `83060e5` — canonical numerical/layout consumers
 
@@ -130,7 +134,9 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
   resident-layout8 and new source-free packing/refusal2 controls pass; the trained
   host-descriptor parity case remains ignored, not accepted.
 - [x] Combined CUDA/HIP strict, minimal/serve-only strict and approved tiny CPU
-  SDK/HTTP/direct-audit cases pass. Assembled source/host gate: 2,322 Rust executions/0fail/97ignored across302 suites (70 empty); 17 Python suites/182 cases/10 skips.
+  SDK/HTTP/direct-audit cases pass. Assembled source/host gate: 2,322 Rust
+  executions/0fail/97ignored across302 suites (70 empty); 17 Python suites/182 cases/10
+  skips.
 - Exact CPU dot/repack/scalar and GPU activation kernel bodies remain unchanged.
   This changes broader Rust source identity; physical evidence is not retagged.
 - No GPU or trained Gemma execution, acquisition, push, agent/recurrence restart,
@@ -331,7 +337,7 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 
 ## Uncommitted — remaining S1 active contracts
 
-- [ ] Finish remaining preparation/derived contracts; numerical/activation/row-layout consumers are bound in the verified batch above. Derived artifacts are not a quantizer or execution permit.
+- [ ] Finish remaining preparation/derived contracts; numerical/activation/row-layout consumers are bound in the signed checkpoint above. Derived artifacts are not a quantizer or execution permit.
 - [ ] Bind existing GPU packed kernels/activation under source+variant+numeric+device constraints; no codec-specific model engine.
 - [ ] Validate remaining active-contract integration; reuse accepted unchanged codec/numerical evidence.
 - Concrete follow-up: active `SourceNumericalContract`/source operators remain
@@ -368,8 +374,8 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 
 ## Uncommitted — remaining F0 model-neutral engine
 
-Shared source/host scheduling landed in `ae7ec11`; remaining requirements:
-- [x] One cold CPU/GPU/profiled registration point in facade; alias resolution retains the actual source Arc. No live generation replacement or new source issuer. See verified catalog batch.
+Shared scheduling `ae7ec11` and cold catalog/alias registration `2f19224` landed;
+remaining requirements:
 - [ ] Finish generic ModelDefinition/provider/executable composition without deriving execution authority from ForwardPlan metadata.
 - [ ] Preserve CPU bounded prefill/decode and GPU native B1/B2/B4/B8 true batch semantics including ragged/late arrivals and source-specific eligibility.
 - [ ] One ResourceArbiter and original worker Ready/lease/shutdown; source-valid typed committed output before HTTP.
