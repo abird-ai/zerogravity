@@ -101,7 +101,12 @@ impl GpuRouter {
             .max_token_bytes()
             .map_err(ServiceError::inference)?;
         let model = Arc::new(GpuModel {
-            tokenizer: TextTokenizer::FixedPrompt(loaded.clone()),
+            tokenizer: zerogravity::builtins::text::tokenizer_owner(
+                loaded.clone(),
+                |owner| owner.tokenizer(),
+                &serving_host,
+                "qwen35-cuda-serving",
+            )?,
             engine: ModelEngine::FixedPrompt(loaded),
             group: 0,
             hidden_width: 1024,
@@ -317,8 +322,9 @@ mod active8_tests {
     }
     #[test]
     fn shared_pending_queue_is_not_compiled_at_sixteen() {
+        let _host = HOST_TEST_LOCK.lock().unwrap();
         assert_eq!(MAX_ACTIVE_PER_WORKER, 8);
-        let queue = PendingQueue::new(ServingHost::isolated(512).unwrap(), None).unwrap();
+        let queue = PendingQueue::new(ServingHost::new(256).unwrap(), None).unwrap();
         let _worker = queue.worker().unwrap();
         for n in 0..17 {
             queue.enqueue(queue.reserve().unwrap(), n).unwrap();

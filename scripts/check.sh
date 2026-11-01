@@ -50,6 +50,41 @@ PYWORKSPACE
 echo "Checking CPU clippy (including explicit CPU diagnostics)..."
 cargo clippy "${cpu_args[@]}" --all-targets -- -D warnings
 
+# The standalone serving crate has loopback tests in the CPU package set.
+if [[ "$(uname -s)" == Linux ]]; then
+  # native-gpu.py creates a private network namespace with lo down. Enable
+  # only that namespace's loopback; never change a host interface or route.
+  python3 - <<'PYLOOPBACK'
+import fcntl
+import os
+import socket
+import struct
+from pathlib import Path
+
+with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as control:
+    request = struct.pack("16sH22x", b"lo", 0)
+    current = fcntl.ioctl(control, 0x8913, request)
+    flags = struct.unpack_from("H", current, 16)[0]
+    if not flags & 1:
+        mapping = Path("/proc/self/uid_map").read_text().split()
+        if len(mapping) != 3 or mapping[0] != "0" or mapping[1] == "0" or mapping[2] != "1":
+            raise SystemExit("refusing to change loopback outside a private mapped user namespace")
+        # NS_GET_USERNS returns the network namespace's owning user namespace.
+        # Unlike /proc/1/ns, these own-process handles work with restricted proc.
+        network = os.open("/proc/self/ns/net", os.O_RDONLY)
+        try:
+            owner = fcntl.ioctl(network, 0xB701)
+            try:
+                if os.fstat(owner).st_ino != os.stat("/proc/self/ns/user").st_ino:
+                    raise SystemExit("refusing to change a network namespace owned by another user namespace")
+            finally:
+                os.close(owner)
+        finally:
+            os.close(network)
+        fcntl.ioctl(control, 0x8914, struct.pack("16sH22x", b"lo", flags | 1))
+PYLOOPBACK
+fi
+
 echo "Running CPU workspace tests..."
 cargo test "${cpu_args[@]}" --all-targets
 
@@ -90,37 +125,6 @@ if [[ "$(uname -s)" == Linux ]]; then
   cargo clippy --locked --offline -p zerogravity -p zerogravity-cli --features zerogravity-cli/cache --all-targets -- -D warnings
   cargo test --locked --offline -p zerogravity -p zerogravity-cli --features zerogravity-cli/cache --all-targets
   echo "Checking optional acquisition with isolated loopback fixtures..."
-  # native-gpu.py creates a private network namespace with lo down. Enable
-  # only that namespace's loopback; never change a host interface or route.
-  python3 - <<'PYLOOPBACK'
-import fcntl
-import os
-import socket
-import struct
-from pathlib import Path
-
-with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as control:
-    request = struct.pack("16sH22x", b"lo", 0)
-    current = fcntl.ioctl(control, 0x8913, request)
-    flags = struct.unpack_from("H", current, 16)[0]
-    if not flags & 1:
-        mapping = Path("/proc/self/uid_map").read_text().split()
-        if len(mapping) != 3 or mapping[0] != "0" or mapping[1] == "0" or mapping[2] != "1":
-            raise SystemExit("refusing to change loopback outside a private mapped user namespace")
-        # NS_GET_USERNS returns the network namespace's owning user namespace.
-        # Unlike /proc/1/ns, these own-process handles work with restricted proc.
-        network = os.open("/proc/self/ns/net", os.O_RDONLY)
-        try:
-            owner = fcntl.ioctl(network, 0xB701)
-            try:
-                if os.fstat(owner).st_ino != os.stat("/proc/self/ns/user").st_ino:
-                    raise SystemExit("refusing to change a network namespace owned by another user namespace")
-            finally:
-                os.close(owner)
-        finally:
-            os.close(network)
-        fcntl.ioctl(control, 0x8914, struct.pack("16sH22x", b"lo", flags | 1))
-PYLOOPBACK
   echo "Checking serving shutdown and owned provider stop evidence..."
   cargo clippy --locked --offline -p zerogravity-cli --no-default-features --features serve --all-targets -- -D warnings
   cargo test --locked --offline -p zerogravity-cli --no-default-features --features serve --all-targets

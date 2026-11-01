@@ -2,8 +2,12 @@
 use crate::{Error, Result};
 #[derive(Clone, Copy, Debug)]
 pub struct IngressLimits {
+    /// Concurrent retained HTTP handlers (1..=64).
     pub connections: usize,
+    /// Content-Length limit (1..=1 MiB); checked before body allocation/read.
     pub body_bytes: usize,
+    /// Total emitted bytes per connection, including HTTP headers/chunk/SSE framing.
+    /// Exhaustion closes the connection and cancels its request.
     pub output_bytes: usize,
 }
 impl Default for IngressLimits {
@@ -24,6 +28,12 @@ impl IngressLimits {
             || self.connections.checked_mul(self.output_bytes).is_none()
         {
             Err(Error::Limit("Fabric ingress/output bounds".into()))
+        } else if self.connections > crate::http::MAX_CONNECTIONS
+            || self.body_bytes > crate::http::MAX_BODY
+        {
+            Err(Error::Unsupported(
+                "HTTP supports at most 64 connections and a 1 MiB body".into(),
+            ))
         } else {
             Ok(())
         }

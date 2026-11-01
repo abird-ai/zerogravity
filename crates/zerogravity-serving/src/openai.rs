@@ -10,8 +10,11 @@ pub enum Endpoint {
 }
 impl Endpoint {
     pub fn require_implemented(self) -> crate::Result<()> {
-        Err(crate::Error::Unsupported(format!(
-            "Fabric endpoint {self:?} awaits protocol migration"
-        )))
+        match self {
+            Self::Health | Self::Models | Self::Completions | Self::ChatCompletions => Ok(()),
+            Self::Embeddings | Self::Responses => Err(crate::Error::Unsupported(format!(
+                "Fabric endpoint {self:?} is not implemented"
+            ))),
+        }
     }
 }

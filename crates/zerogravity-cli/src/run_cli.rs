@@ -1,9 +1,9 @@
 //! One typed run frontend; graph/source/device validation precedes effects.
-use serde::Deserialize;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
+use zerogravity::pipelines::{DiagnosticDoc, EntryDoc, RunDoc, TaskDoc};
 use zerogravity::{Error, Result, run_policy::*};
 mod args;
 mod config;
@@ -17,61 +17,6 @@ mod source;
 #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
 pub(crate) fn qwen35_cuda_host_available(host_bytes: u64, headroom: &Headroom) -> Result<()> {
     devices::host_available(host_bytes, headroom)
-}
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct RunDoc {
-    pub entrypoint: Option<EntryDoc>,
-    pub backend: Option<String>,
-    pub device: Option<Vec<String>>,
-    pub headroom: Option<String>,
-    pub task: Option<TaskDoc>,
-    pub numerical: Option<String>,
-    pub speculation: Option<String>,
-    pub draft_device: Option<Vec<String>>,
-    pub diagnostics: Option<DiagnosticDoc>,
-}
-#[derive(Clone, Debug, Deserialize)]
-#[serde(untagged)]
-pub(super) enum EntryDoc {
-    Model(ModelEntry),
-    Pipeline(PipelineEntry),
-}
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct ModelEntry {
-    pub model: String,
-}
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct PipelineEntry {
-    pub pipeline: String,
-}
-impl EntryDoc {
-    pub(crate) fn typed(&self) -> Entrypoint {
-        match self {
-            Self::Model(v) => Entrypoint::Model(v.model.clone()),
-            Self::Pipeline(v) => Entrypoint::Pipeline(v.pipeline.clone()),
-        }
-    }
-}
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct TaskDoc {
-    pub prompt: Option<String>,
-    pub context: Option<usize>,
-    pub max_tokens: Option<usize>,
-    pub raw: Option<bool>,
-    pub teacher_ids: Option<Vec<u32>>,
-    pub prefill_chunk: Option<usize>,
-}
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct DiagnosticDoc {
-    pub explain: Option<bool>,
-    pub dry_run: Option<bool>,
-    pub audit_logits_jsonl: Option<String>,
-    pub audit_layers_jsonl: Option<String>,
 }
 #[derive(Clone, Debug, Default)]
 pub(super) struct Arguments {

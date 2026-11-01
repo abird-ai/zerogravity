@@ -5577,9 +5577,11 @@ dependencies = [
 name = "zerogravity"
 version = "0.1.0"
 dependencies = [
+ "nvml-wrapper",
  "rustix 1.1.5",
  "serde",
  "serde_json",
+ "serde_yaml",
  "sha2",
  "zerogravity-artifacts",
  "zerogravity-core",
@@ -5616,8 +5618,6 @@ name = "zerogravity-cli"
 version = "0.1.0"
 dependencies = [
  "futures-lite",
- "httparse",
- "nvml-wrapper",
  "rustix 1.1.5",
  "serde",
  "serde_json",
@@ -5650,6 +5650,9 @@ dependencies = [
 name = "zerogravity-engine"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
+ "zerogravity-artifacts",
  "zerogravity-core",
 ]
 
@@ -5718,6 +5721,9 @@ dependencies = [
 name = "zerogravity-serving"
 version = "0.1.0"
 dependencies = [
+ "httparse",
+ "serde",
+ "serde_json",
  "zerogravity-core",
  "zerogravity-engine",
 ]

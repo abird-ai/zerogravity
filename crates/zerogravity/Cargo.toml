@@ -30,7 +30,7 @@ cache = ["zerogravity-artifacts/cache", "zerogravity-cpu?/cache", "zerogravity-m
 acquisition = ["cache", "zerogravity-artifacts/acquisition"]
 diagnostic-acquisition = ["acquisition", "zerogravity-artifacts/diagnostic-acquisition"]
 vulkan = ["dep:zerogravity-gpu", "zerogravity-gpu/vulkan"]
-cuda = ["dep:zerogravity-gpu", "zerogravity-gpu/cuda"]
+cuda = ["dep:zerogravity-gpu", "zerogravity-gpu/cuda", "dep:nvml-wrapper"]
 # Source contracts and ordinary capability refusal only. Finite captured
 # execution belongs to the explicit diagnostic feature below.
 # Previous features: canonical47-serving, short-hf-serving.
@@ -55,9 +55,11 @@ zerogravity-gpu = { path = "../zerogravity-gpu", default-features = false, optio
 # Authenticated diagnostic reference manifests; already locked/cached.
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
+serde_yaml = "=0.9.34"
 sha2 = "=0.10.9"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+nvml-wrapper = { version = "=0.13.0", optional = true }
 rustix = { version = "=1.1.5", default-features = false, features = ["fs"], optional = true }
 
 [[example]]

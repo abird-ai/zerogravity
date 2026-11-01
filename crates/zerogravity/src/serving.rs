@@ -1,5 +1,5 @@
-//! Embedded server API. S0 builders are cold; start explicitly refuses until F2.
+//! Embedded bounded HTTP transport; explicit start/stop over the caller's runtime.
 pub use zerogravity_serving::{
-    Server, ServerBuilder, ServerHandle, admin, auth, http, ingress, metrics, openai, realtime,
-    responses, stream,
+    Server, ServerBuilder, ServerHandle, TextService, admin, auth, http, ingress, metrics, openai,
+    realtime, responses, service, stream,
 };

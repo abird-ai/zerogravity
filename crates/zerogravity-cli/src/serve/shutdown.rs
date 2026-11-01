@@ -44,12 +44,24 @@ impl Shutdown {
         self.requested.load(Ordering::Acquire)
     }
 
-    pub(super) fn admit(&mut self, router: &super::Router) -> Result<(), super::ServiceError> {
+    pub(super) fn admit(
+        &mut self,
+        router: &impl zerogravity::serving::TextService,
+    ) -> Result<(), super::ServiceError> {
         self._charge = Some(router.charge_ingress(
             "shutdown-signal",
             std::mem::size_of::<(usize, usize, AtomicBool)>() as u64,
         )?);
         Ok(())
+    }
+
+    pub(super) fn wait(&self, server: zerogravity::serving::ServerHandle) -> std::io::Result<()> {
+        while !self.is_requested() && !server.is_finished() {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        server
+            .shutdown()
+            .map_err(|error| std::io::Error::other(error.to_string()))
     }
 }
 
@@ -67,12 +79,95 @@ impl Drop for Shutdown {
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
-    use crate::serve::{Router, engine, http, join_router};
+    use crate::serve::{Router, engine, join_router, pending::ServingHost};
     use std::io::Write;
-    use std::net::TcpListener;
+    use zerogravity::{
+        identity::SourceIdentity,
+        runtime::{PreparedModel, TextSession, TextTokenizer},
+        serving::ServerBuilder,
+    };
 
-    /// External driver sends actual TERM/INT, including in a PID namespace.
-    /// No model route exists; this fixture proves transport/worker ownership.
+    fn refuse_execution<T>() -> zerogravity::Result<T> {
+        Err(zerogravity::Error::Unsupported(
+            "signal fixture has no tokenizer, model math or executable session".into(),
+        ))
+    }
+
+    // Test-local allocation identity and admission metadata only; no verified
+    // source, tokenizer output, logits or committed model state exists here.
+    struct RefusingModel {
+        source: SourceIdentity,
+        tokenizer: Arc<RefusingTokenizer>,
+    }
+    struct RefusingTokenizer;
+    impl TextTokenizer for RefusingTokenizer {
+        fn eos(&self) -> u32 {
+            1
+        }
+        fn decode(&self, _: &[u32], _: bool) -> zerogravity::Result<String> {
+            refuse_execution()
+        }
+        fn prompt_tokens(&self, _: &str, _: bool) -> zerogravity::Result<Vec<u32>> {
+            refuse_execution()
+        }
+        fn prompt_token_bound(&self, _: usize, _: bool) -> usize {
+            0
+        }
+        fn admitted_prompt_scratch_bound(&self, _: usize, _: bool) -> zerogravity::Result<u64> {
+            refuse_execution()
+        }
+        fn decode_scratch_bound(&self, _: usize) -> usize {
+            0
+        }
+    }
+    impl PreparedModel for RefusingModel {
+        fn source(&self) -> SourceIdentity {
+            self.source
+        }
+        fn tokenizer(&self) -> Arc<dyn TextTokenizer> {
+            self.tokenizer.clone()
+        }
+        fn max_context(&self) -> usize {
+            16
+        }
+        fn max_session_bytes(&self) -> u64 {
+            0
+        }
+        fn session_scratch_bytes(&self) -> u64 {
+            0
+        }
+        fn max_token_bytes(&self) -> usize {
+            0
+        }
+        fn vocabulary_size(&self) -> u64 {
+            2
+        }
+        fn new_session(self: Arc<Self>) -> zerogravity::Result<Box<dyn TextSession>> {
+            refuse_execution()
+        }
+    }
+
+    fn idle_engine(host: ServingHost) -> engine::Router {
+        let model: Arc<dyn PreparedModel> = Arc::new(RefusingModel {
+            source: SourceIdentity::for_new_allocation().unwrap(),
+            tokenizer: Arc::new(RefusingTokenizer),
+        });
+        engine::Router::new(
+            [("signal-fixture-unexecutable".into(), model)]
+                .into_iter()
+                .collect(),
+            1,
+            1,
+            16,
+            8,
+            host,
+            Some(8),
+        )
+        .unwrap()
+    }
+
+    /// External TERM/INT controls, including PID1 where supported, exercise
+    /// HTTP handler and idle engine-worker closure. No inference/device coverage.
     #[test]
     #[ignore = "owned subprocess for tests/fixtures/serve_shutdown.py"]
     fn process_fixture() {
@@ -81,42 +176,46 @@ mod tests {
             Ok("1")
         );
         let mut shutdown = Shutdown::install().unwrap();
-        let (router, host) = engine::Router::transport_test();
-        let router = Arc::new(Router::Cpu(router));
-        shutdown.admit(&router).unwrap();
+        let host = ServingHost::new(256).unwrap();
+        let baseline = host.snapshot().unwrap().3;
+        let engine = idle_engine(host.clone());
+        assert_eq!(engine.queue_snapshot().consumers, 1, "one real idle worker");
+        assert_eq!(engine.active_sessions(), 0);
+        let router = Arc::new(Router::Cpu(engine));
+        shutdown.admit(router.as_ref()).unwrap();
         let address =
             std::env::var("ZG_SERVE_SHUTDOWN_LISTEN").unwrap_or_else(|_| "127.0.0.1:0".into());
-        let listener = TcpListener::bind(address).unwrap();
-        listener.set_nonblocking(true).unwrap();
+        let server = ServerBuilder::from_service(router.clone())
+            .bind(address.parse().unwrap())
+            .build()
+            .unwrap()
+            .start()
+            .unwrap();
         assert!(!shutdown.is_requested(), "signal before fixture readiness");
         println!(
             "{}",
             serde_json::json!({"event":"READY","pid":std::process::id(),
-                "address":listener.local_addr().unwrap().to_string()})
+                "address":server.local_addr().to_string()})
         );
         std::io::stdout().flush().unwrap();
-        let result = http::serve(
-            listener,
-            Arc::clone(&router),
-            None,
-            false,
-            Arc::clone(&shutdown.requested),
-        );
+        let stopped = shutdown.wait(server);
+        // The embedded server must release its router borrows first. Explicitly
+        // close the original queue and join its inference worker before CLOSED.
         let joined = join_router(router);
-        result.unwrap();
+        stopped.unwrap();
         joined.unwrap();
         assert!(shutdown.is_requested());
         // Unregister/drop the final process-signal owner before observing zero.
         drop(shutdown);
         assert_eq!(
-            host.serving_bytes(),
-            0,
+            host.snapshot().unwrap().3,
+            baseline,
             "all transport and worker leases retired"
         );
         println!(
             "{}",
             serde_json::json!({"event":"CLOSED","pid":std::process::id(),
-                "serving_host_bytes":host.serving_bytes()})
+                "serving_host_bytes":host.snapshot().unwrap().3 - baseline})
         );
         std::io::stdout().flush().unwrap();
     }

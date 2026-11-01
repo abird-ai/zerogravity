@@ -154,7 +154,12 @@ impl GpuRouter {
         let model = Arc::new(GpuModel {
             hidden_width: meta.hidden_width,
             vocabulary_size: meta.vocabulary_size,
-            tokenizer: TextTokenizer::Qwen35Cuda(loaded.clone()),
+            tokenizer: zerogravity::builtins::text::tokenizer_owner(
+                loaded.clone(),
+                |owner| owner.tokenizer(),
+                &serving_host,
+                "qwen35-cuda-serving",
+            )?,
             engine: ModelEngine::Qwen35Cuda(loaded.clone()),
             group: 0,
             native_rows: profile.native_rows,

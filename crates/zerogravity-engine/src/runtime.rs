@@ -1,15 +1,20 @@
 use crate::{
-    Error, Result, catalog::ModelCatalog, diagnostics::RuntimeStatus, output::OutputStream,
-    request::TaskRequest, scheduler::SchedulerLimits,
+    Error, Result,
+    catalog::ModelCatalog,
+    diagnostics::RuntimeStatus,
+    model_instance::ModelInstance,
+    output::{OutputStream, TextOutputStream},
+    request::{TaskInput, TaskRequest},
+    router::{Request, RequestEvents, Router, ServiceError},
+    scheduler::SchedulerLimits,
 };
 use std::sync::{
-    Arc,
+    Arc, Condvar, Mutex,
     atomic::{AtomicBool, Ordering},
 };
-use zerogravity_core::physical::ResourceArbiter;
+use zerogravity_core::{physical::ResourceArbiter, resource_arbiter::AllocationClass};
 
-/// Clones share lifecycle and the process-wide physical ledger.
-/// An open shell has no loaded models or migrated execution adapters.
+/// Clones share the actual scheduler, loaded sources, lifecycle and physical ledger.
 #[derive(Clone)]
 pub struct Runtime {
     inner: Arc<Inner>,
@@ -18,7 +23,86 @@ struct Inner {
     closed: AtomicBool,
     resources: ResourceArbiter,
     limits: SchedulerLimits,
+    text: Mutex<TextControl>,
+    changed: Condvar,
+    #[cfg(test)]
+    waiters_changed: Condvar,
 }
+struct TextControl {
+    phase: TextPhase,
+    // Preserve the first lifecycle/worker failure for every shutdown caller.
+    failure: Option<String>,
+    #[cfg(test)]
+    shutdown_waiters: usize,
+}
+// One inline router per runtime avoids another allocation and ownership handle.
+#[allow(clippy::large_enum_variant)]
+enum TextPhase {
+    Empty,
+    Loading,
+    Ready(Router),
+    Joining,
+    Closed,
+}
+impl TextControl {
+    fn router(&self) -> Option<&Router> {
+        match &self.phase {
+            TextPhase::Ready(router) => Some(router),
+            _ => None,
+        }
+    }
+    fn terminal_result(&self) -> Result<()> {
+        match &self.failure {
+            Some(message) => Err(Error::State(message.clone())),
+            None => Ok(()),
+        }
+    }
+}
+
+/// A load/retirement owns the busy phase, not the mutex. On unwind its local
+/// router retires first; then this guard releases waiters with a sticky failure.
+struct LifecycleOperation<'a> {
+    inner: &'a Inner,
+    panic_message: &'static str,
+    armed: bool,
+}
+impl<'a> LifecycleOperation<'a> {
+    fn new(inner: &'a Inner, panic_message: &'static str) -> Self {
+        Self {
+            inner,
+            panic_message,
+            armed: true,
+        }
+    }
+    fn finish(mut self) {
+        self.complete(None);
+    }
+    fn complete(&mut self, failure: Option<&str>) {
+        let mut text = self
+            .inner
+            .text
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if text.failure.is_none() {
+            text.failure = failure.map(str::to_owned);
+        }
+        text.phase = if self.inner.closed.load(Ordering::Acquire) {
+            TextPhase::Closed
+        } else {
+            TextPhase::Empty
+        };
+        self.armed = false;
+        self.inner.changed.notify_all();
+    }
+}
+impl Drop for LifecycleOperation<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            self.complete(Some(self.panic_message));
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct RuntimeBuilder {
     limits: SchedulerLimits,
@@ -35,6 +119,15 @@ impl RuntimeBuilder {
                 closed: AtomicBool::new(false),
                 resources: ResourceArbiter::process_shared(),
                 limits: self.limits,
+                text: Mutex::new(TextControl {
+                    phase: TextPhase::Empty,
+                    failure: None,
+                    #[cfg(test)]
+                    shutdown_waiters: 0,
+                }),
+                changed: Condvar::new(),
+                #[cfg(test)]
+                waiters_changed: Condvar::new(),
             }),
         })
     }
@@ -44,10 +137,15 @@ impl Runtime {
         RuntimeBuilder::default()
     }
     pub fn status(&self) -> RuntimeStatus {
+        let text = self
+            .inner
+            .text
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         RuntimeStatus {
             closed: self.inner.closed.load(Ordering::Acquire),
-            loaded_models: 0,
-            execution_adapters: 0,
+            loaded_models: text.router().map_or(0, |router| router.model_ids().count()),
+            execution_adapters: usize::from(text.router().is_some()),
         }
     }
     pub fn resources(&self) -> &ResourceArbiter {
@@ -56,18 +154,261 @@ impl Runtime {
     pub fn models(&self) -> ModelCatalog<'_> {
         ModelCatalog::new(self)
     }
+    pub fn limits(&self) -> SchedulerLimits {
+        self.inner.limits
+    }
+    /// Reserve the one load slot, then prepare sources outside the mutex. A
+    /// racing shutdown closes admission and waits for returned workers to retire.
+    /// The loader may query status, but must not synchronously shut down this runtime.
+    pub fn configure_text(
+        &self,
+        load: impl FnOnce() -> std::result::Result<Router, ServiceError>,
+    ) -> std::result::Result<(), ServiceError> {
+        {
+            let mut text = self.inner.text.lock().map_err(|_| runtime_lock_error())?;
+            if self.inner.closed.load(Ordering::Acquire) {
+                return Err(runtime_closed());
+            }
+            if !matches!(text.phase, TextPhase::Empty) {
+                return Err(ServiceError::new(
+                    409,
+                    "runtime_configured",
+                    "text scheduler already configured or loading",
+                ));
+            }
+            text.phase = TextPhase::Loading;
+        }
+        // Declared before the returned router: unwinding retires that owner
+        // before the guard can mark loading complete or wake shutdown callers.
+        let mut operation = LifecycleOperation::new(&self.inner, "text loader panicked");
+        let router = match load() {
+            Ok(router) => router,
+            Err(error) => {
+                operation.finish();
+                return Err(error);
+            }
+        };
+        let valid = router.active_limit() <= self.inner.limits.max_active
+            && self
+                .inner
+                .limits
+                .allows_pending(router.queue_snapshot().limit);
+        {
+            let mut text = self
+                .inner
+                .text
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if valid && !self.inner.closed.load(Ordering::Acquire) {
+                text.phase = TextPhase::Ready(router);
+                operation.armed = false;
+                self.inner.changed.notify_all();
+                return Ok(());
+            }
+        }
+        // Invalid/raced loads still own real workers. Keep Loading until both
+        // joins and source destruction complete; no router is dropped under lock.
+        let failure = self.retire_text_router(router);
+        operation.finish();
+        if let Some(message) = failure {
+            Err(ServiceError::new(500, "worker_shutdown", message))
+        } else if self.inner.closed.load(Ordering::Acquire) {
+            Err(runtime_closed())
+        } else {
+            Err(ServiceError::new(
+                400,
+                "invalid_config",
+                "text scheduler exceeds runtime limits",
+            ))
+        }
+    }
+    /// Short snapshot/admission callback on the actual scheduler. Never hold
+    /// this lock across transport IO or re-enter the runtime from the callback.
+    pub fn with_text_router<T>(
+        &self,
+        callback: impl FnOnce(&Router) -> std::result::Result<T, ServiceError>,
+    ) -> std::result::Result<T, ServiceError> {
+        let text = self.inner.text.lock().map_err(|_| runtime_lock_error())?;
+        if self.inner.closed.load(Ordering::Acquire) {
+            return Err(runtime_closed());
+        }
+        let router = text.router().ok_or_else(|| {
+            ServiceError::new(503, "runtime_unconfigured", "no text scheduler configured")
+        })?;
+        callback(router)
+    }
+    /// Original bounded text events and exact service status/code, without HTTP.
+    pub fn request_text(
+        &self,
+        request: Request,
+    ) -> std::result::Result<RequestEvents, ServiceError> {
+        self.with_text_router(|router| {
+            if request.input.len() > self.inner.limits.max_input_bytes {
+                return Err(ServiceError::new(
+                    400,
+                    "invalid_request",
+                    "request exceeds input/output bounds",
+                ));
+            }
+            router.request(request)
+        })
+    }
     pub fn run(&self, request: &TaskRequest) -> Result<Box<dyn OutputStream>> {
         self.require_open()?;
         request.validate(self.inner.limits.max_input_bytes)?;
-        Err(Error::Unsupported(
-            "Fabric task execution awaits F0 adapters; existing source-specific APIs unchanged"
-                .into(),
-        ))
+        let TaskInput::Text(input) = &request.input else {
+            return Err(Error::Unsupported("Fabric task driver unavailable".into()));
+        };
+        let text = self
+            .inner
+            .text
+            .lock()
+            .map_err(|_| Error::State("runtime lock poisoned".into()))?;
+        self.require_open()?;
+        let router = text
+            .router()
+            .ok_or_else(|| Error::Unsupported("no source-bound text adapter configured".into()))?;
+        // Admit the SDK's owned request copy before cloning the borrowed input.
+        let stream_charge = router
+            .host()
+            .charge(
+                &request.model,
+                "sdk-output-stream",
+                AllocationClass::Output,
+                (std::mem::size_of::<TextOutputStream>() + 64) as u64,
+            )
+            .map_err(service_error)?;
+        let bytes = request
+            .model
+            .len()
+            .checked_add(input.len())
+            .and_then(|n| u64::try_from(n).ok())
+            .ok_or_else(|| Error::Limit("text request copy overflow".into()))?;
+        let ingress = router
+            .host()
+            .charge(
+                &request.model,
+                "sdk-request-copy",
+                AllocationClass::Scratch,
+                bytes,
+            )
+            .map_err(service_error)?;
+        let events = router
+            .request_admitted(
+                Request {
+                    model: request.model.clone(),
+                    input: input.clone(),
+                    chat: false,
+                    max_tokens: request.max_output.get(),
+                    stream: true,
+                    token_metrics: None,
+                },
+                vec![ingress],
+            )
+            .map_err(service_error)?;
+        Ok(Box::new(TextOutputStream::new(events, stream_charge)))
     }
-    /// Closes only this empty shell, not other runtimes or physical namespaces.
+    pub(crate) fn loaded_text_models(&self) -> Result<Vec<ModelInstance>> {
+        let text = self
+            .inner
+            .text
+            .lock()
+            .map_err(|_| Error::State("runtime lock poisoned".into()))?;
+        self.require_open()?;
+        Ok(text.router().map_or_else(Vec::new, |router| {
+            router
+                .model_ids()
+                .filter_map(|id| router.model(id))
+                .collect()
+        }))
+    }
+    pub(crate) fn resolve_text(&self, alias: &str) -> Result<ModelInstance> {
+        let text = self
+            .inner
+            .text
+            .lock()
+            .map_err(|_| Error::State("runtime lock poisoned".into()))?;
+        self.require_open()?;
+        let router = text
+            .router()
+            .ok_or_else(|| Error::Unsupported("no source-bound text adapter configured".into()))?;
+        router
+            .model(alias)
+            .ok_or_else(|| Error::State(format!("model is not registered: {alias}")))
+    }
+    /// Close admission before waiting. One caller owns retirement outside the
+    /// mutex; all concurrent/later callers observe the same terminal result.
+    /// Close admission and join workers. Call outside this runtime's loader,
+    /// worker and source-destructor call chains: they cannot synchronously join themselves.
     pub fn shutdown(&self) -> Result<()> {
         self.inner.closed.store(true, Ordering::Release);
-        Ok(())
+        let router = {
+            let mut text = self
+                .inner
+                .text
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            loop {
+                match &text.phase {
+                    TextPhase::Empty => {
+                        text.phase = TextPhase::Closed;
+                        self.inner.changed.notify_all();
+                        return text.terminal_result();
+                    }
+                    TextPhase::Closed => return text.terminal_result(),
+                    TextPhase::Ready(router) => {
+                        router.close_admission();
+                        let TextPhase::Ready(router) =
+                            std::mem::replace(&mut text.phase, TextPhase::Joining)
+                        else {
+                            unreachable!("matched ready router");
+                        };
+                        break router;
+                    }
+                    TextPhase::Loading | TextPhase::Joining => {
+                        #[cfg(test)]
+                        {
+                            text.shutdown_waiters += 1;
+                            self.inner.waiters_changed.notify_all();
+                        }
+                        text = self
+                            .inner
+                            .changed
+                            .wait(text)
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                        #[cfg(test)]
+                        {
+                            text.shutdown_waiters -= 1;
+                        }
+                    }
+                }
+            }
+        };
+        let operation = LifecycleOperation::new(&self.inner, "text shutdown panicked");
+        let _ = self.retire_text_router(router);
+        operation.finish();
+        self.inner
+            .text
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .terminal_result()
+    }
+    /// Consumes the actual router so its source/charge destruction also occurs
+    /// unlocked and before the lifecycle operation releases any waiters.
+    fn retire_text_router(&self, mut router: Router) -> Option<String> {
+        let failure = router.shutdown().err().map(|error| error.to_string());
+        if let Some(message) = &failure {
+            let mut text = self
+                .inner
+                .text
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if text.failure.is_none() {
+                text.failure = Some(message.clone());
+            }
+        }
+        drop(router);
+        failure
     }
     pub fn require_open(&self) -> Result<()> {
         if self.inner.closed.load(Ordering::Acquire) {
@@ -75,5 +416,33 @@ impl Runtime {
         } else {
             Ok(())
         }
+    }
+    #[cfg(test)]
+    pub(crate) fn wait_for_shutdown_waiters(&self, count: usize) {
+        let text = self.inner.text.lock().unwrap();
+        let (text, _) = self
+            .inner
+            .waiters_changed
+            .wait_timeout_while(text, std::time::Duration::from_secs(5), |text| {
+                text.shutdown_waiters < count
+            })
+            .unwrap();
+        assert!(
+            text.shutdown_waiters >= count,
+            "shutdown callers did not reach terminal wait"
+        );
+    }
+}
+fn runtime_lock_error() -> ServiceError {
+    ServiceError::new(500, "runtime_state", "runtime lock poisoned")
+}
+fn runtime_closed() -> ServiceError {
+    ServiceError::new(503, "runtime_closed", "Fabric runtime is shut down")
+}
+fn service_error(error: ServiceError) -> Error {
+    match error.status {
+        400 => Error::Malformed(error.to_string()),
+        429 | 503 => Error::Limit(error.to_string()),
+        _ => Error::State(error.to_string()),
     }
 }

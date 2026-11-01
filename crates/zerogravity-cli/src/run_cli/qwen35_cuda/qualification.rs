@@ -576,7 +576,7 @@ pub(in crate::run_cli) fn run(
         bad("finite HF requires --native-artifacts DIR (or model.native_artifacts)")
     })?);
     let meta = original::inspect_route(&directory, &native)?;
-    let profile = finite_source_profile(&meta.family)
+    let profile = finite_source_profile(meta.family)
         .ok_or_else(|| bad("exact HF source profile is not a finite Qwen CUDA target"))?;
     let target = profile.target;
     if m.target.is_empty() {

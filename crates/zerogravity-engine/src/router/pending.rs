@@ -5,14 +5,14 @@
 //! Count limits are optional; host admission and exact per-entry storage are
 //! always required before a request is published to a worker.
 
-use super::engine::ServiceError;
+use super::cpu::ServiceError;
 use AllocationClass::Scratch;
 use std::alloc::Layout;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant};
-use zerogravity::resource_arbiter::{
+use zerogravity_core::resource_arbiter::{
     AllocationClass, AllocationRequest, GlobalResourceLease, PhysicalDeviceKey, ResourceArbiter,
     ResourceOwner,
 };
@@ -33,13 +33,13 @@ fn domains() -> &'static Mutex<BTreeMap<PhysicalDeviceKey, Arc<ServingDomain>>> 
 /// Process-shared configured host domain used by model, session and serving
 /// storage. Clones share one arbiter/key/domain ledger.
 #[derive(Clone)]
-pub(super) struct ServingHost {
+pub struct ServingHost {
     arbiter: ResourceArbiter,
     key: PhysicalDeviceKey,
     domain: Arc<ServingDomain>,
 }
 impl ServingHost {
-    pub(super) fn new(configured_mib: usize) -> Result<Self, ServiceError> {
+    pub fn new(configured_mib: usize) -> Result<Self, ServiceError> {
         if !(256..=1_048_576).contains(&configured_mib) {
             return Err(ServiceError::new(
                 400,
@@ -76,7 +76,7 @@ impl ServingHost {
         // original arbiter/key domain, before any worker or HTTP connection
         // thread exists. A later router verifies the same domain and charge
         // instead of admitting another root.
-        zerogravity::resource_arbiter::admit_thread_control_root(
+        zerogravity_core::resource_arbiter::admit_thread_control_root(
             &arbiter,
             &key,
             ResourceOwner::new("serve-root", "thread-control").map_err(ServiceError::inference)?,
@@ -90,7 +90,7 @@ impl ServingHost {
     }
     /// Isolated domain for unit tests; never the production process ledger.
     #[cfg(test)]
-    pub(super) fn isolated(configured_mib: usize) -> Result<Self, ServiceError> {
+    pub(crate) fn isolated(configured_mib: usize) -> Result<Self, ServiceError> {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let bytes = (configured_mib as u64) * 1024 * 1024;
         let key = PhysicalDeviceKey::new(
@@ -113,7 +113,7 @@ impl ServingHost {
     }
     /// Model/session/backend storage. These owners are part of the model
     /// component, not the serving queue.
-    pub(super) fn admit(
+    pub fn admit(
         &self,
         alias: &str,
         session: &str,
@@ -124,7 +124,7 @@ impl ServingHost {
         self.reserve_lease(alias, session, kind, total)
     }
     /// Serving ingress/queue/event/output/transport storage.
-    pub(super) fn charge(
+    pub fn charge(
         &self,
         alias: &str,
         session: &str,
@@ -152,14 +152,14 @@ impl ServingHost {
         })
     }
     #[cfg(test)]
-    pub(super) fn serving_bytes(&self) -> u64 {
+    pub(crate) fn serving_bytes(&self) -> u64 {
         self.domain.bytes.load(Ordering::Acquire)
     }
     /// One coherent (limit, reserved, remaining, serving) observation. The
     /// domain lock is the seam: every serving charge/drop updates both sides
     /// under it, so `reserved.saturating_sub(serving)` is never a fabricated
     /// residual while an admission is in flight.
-    pub(super) fn snapshot(&self) -> Option<(u64, u64, u64, u64)> {
+    pub fn snapshot(&self) -> Option<(u64, u64, u64, u64)> {
         let _state = self.domain.lock.lock().ok()?;
         let snapshot = self.arbiter.snapshot(&self.key).ok()?;
         let serving = self.domain.bytes.load(Ordering::Acquire);
@@ -174,15 +174,14 @@ impl ServingHost {
     /// the existing arbiter/key and constructs the owner only: no domain,
     /// registration or reservation is created here, and the caller performs
     /// the only admission. Available wherever the cache transfer type exists.
-    #[cfg(feature = "cache")]
     /// Borrow the serving host's original arbiter/key domain. The core type
     /// keeps one public admission borrower without a second cache-only copy.
-    pub(super) fn transfer_admission(
+    pub fn transfer_admission(
         &self,
         alias: &str,
         session: &str,
-    ) -> Result<zerogravity::resource_arbiter::TransferAdmission, ServiceError> {
-        Ok(zerogravity::resource_arbiter::TransferAdmission {
+    ) -> Result<zerogravity_core::resource_arbiter::TransferAdmission, ServiceError> {
+        Ok(zerogravity_core::resource_arbiter::TransferAdmission {
             arbiter: self.arbiter.clone(),
             resource: self.key.clone(),
             owner: ResourceOwner::new(alias, session).map_err(ServiceError::inference)?,
@@ -196,7 +195,7 @@ impl ServingHost {
     /// Every charge and model/session lease uses this same envelope.
     fn lease_envelope(&self, alias: &str, session: &str) -> Result<u64, ServiceError> {
         let overflow = || ServiceError::new(400, "size_overflow", "lease envelope overflow");
-        let typed = zerogravity::resource_arbiter::lease_inventory_bytes(alias, session, 1)
+        let typed = zerogravity_core::resource_arbiter::lease_inventory_bytes(alias, session, 1)
             .map_err(|_| overflow())?;
         let device = u64::try_from(self.key.backend.len())
             .ok()
@@ -237,7 +236,7 @@ impl ServingHost {
 /// A charged serving allocation. The payload it covers must be dropped before
 /// this owner. Drop takes the domain seam before releasing the arbiter lease;
 /// no observer can see the ledger without the matching reservation.
-pub(super) struct ServingCharge {
+pub struct ServingCharge {
     bytes: u64,
     domain: Arc<ServingDomain>,
     lease: Option<GlobalResourceLease>,
@@ -256,7 +255,7 @@ impl Drop for ServingCharge {
     }
 }
 
-pub(super) fn slot_bytes<T>(capacity: usize) -> Result<u64, ServiceError> {
+pub fn slot_bytes<T>(capacity: usize) -> Result<u64, ServiceError> {
     let size = std::mem::size_of::<Option<T>>();
     if size == 0 {
         return Ok(0);
@@ -269,7 +268,7 @@ pub(super) fn slot_bytes<T>(capacity: usize) -> Result<u64, ServiceError> {
 }
 
 /// Exact byte allocation; no hidden spare capacity is published.
-pub(super) fn allocate_bytes(len: usize) -> Result<Box<[u8]>, ServiceError> {
+pub fn allocate_bytes(len: usize) -> Result<Box<[u8]>, ServiceError> {
     if len == 0 {
         return Ok(Vec::new().into_boxed_slice());
     }
@@ -285,7 +284,7 @@ pub(super) fn allocate_bytes(len: usize) -> Result<Box<[u8]>, ServiceError> {
 
 /// Exact fixed-layout backing store. `Box<[Option<T>]>` owns exactly the
 /// requested length; no hidden spare capacity is published or retained.
-pub(super) fn allocate_slots<T>(capacity: usize) -> Result<Box<[Option<T>]>, ServiceError> {
+pub fn allocate_slots<T>(capacity: usize) -> Result<Box<[Option<T>]>, ServiceError> {
     if capacity == 0 {
         return Ok(Vec::new().into_boxed_slice());
     }
@@ -308,18 +307,18 @@ pub(super) fn allocate_slots<T>(capacity: usize) -> Result<Box<[Option<T>]>, Ser
     Ok(unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(raw, capacity)) })
 }
 
-pub(super) fn queue_alloc_error() -> ServiceError {
+pub fn queue_alloc_error() -> ServiceError {
     ServiceError::new(503, "queue_allocation", "serving storage allocation failed")
 }
 
-pub(super) fn checked_sum(values: &[u64]) -> Result<u64, ServiceError> {
+pub fn checked_sum(values: &[u64]) -> Result<u64, ServiceError> {
     values
         .iter()
         .try_fold(0u64, |total, value| total.checked_add(*value))
         .ok_or_else(|| ServiceError::new(400, "size_overflow", "serving size overflow"))
 }
 
-pub(super) fn heap_strings(values: &[&String]) -> Result<u64, ServiceError> {
+pub fn heap_strings(values: &[&String]) -> Result<u64, ServiceError> {
     let mut total = 0u64;
     for value in values {
         total =
@@ -332,7 +331,7 @@ pub(super) fn heap_strings(values: &[&String]) -> Result<u64, ServiceError> {
     Ok(total)
 }
 
-pub(super) fn vec_bytes<T>(count: usize) -> Result<u64, ServiceError> {
+pub fn vec_bytes<T>(count: usize) -> Result<u64, ServiceError> {
     let count = u64::try_from(count)
         .map_err(|_| ServiceError::new(400, "size_overflow", "serving size overflow"))?;
     let size = u64::try_from(std::mem::size_of::<T>())
@@ -361,7 +360,7 @@ struct Control {
 /// Queue wake/cancel handle. It weakly notifies the queue wake state and
 /// cancellation hint; it never owns a request or the queue itself.
 #[derive(Clone)]
-pub(super) struct CancelToken {
+pub struct CancelToken {
     flag: Arc<AtomicBool>,
     control: Option<Weak<Control>>,
     _charge: Option<Arc<ServingCharge>>,
@@ -382,7 +381,7 @@ impl CancelToken {
         }
     }
     #[cfg(test)]
-    pub(super) fn from_flag(flag: Arc<AtomicBool>) -> Self {
+    pub(crate) fn from_flag(flag: Arc<AtomicBool>) -> Self {
         Self {
             flag,
             control: None,
@@ -390,20 +389,20 @@ impl CancelToken {
         }
     }
     #[cfg(test)]
-    pub(super) fn standalone() -> Self {
+    pub(crate) fn standalone() -> Self {
         Self {
             flag: Arc::new(AtomicBool::new(false)),
             control: None,
             _charge: None,
         }
     }
-    pub(super) fn flag(&self) -> &Arc<AtomicBool> {
+    pub fn flag(&self) -> &Arc<AtomicBool> {
         &self.flag
     }
-    pub(super) fn is_cancelled(&self) -> bool {
+    pub fn is_cancelled(&self) -> bool {
         self.flag.load(Ordering::Acquire)
     }
-    pub(super) fn cancel(&self) {
+    pub fn cancel(&self) {
         self.flag.store(true, Ordering::Release);
         if let Some(control) = self.control.as_ref().and_then(Weak::upgrade) {
             // A wake hint is a flag, not a counter; saturation/overflow
@@ -572,7 +571,7 @@ impl<T> Payload<T> {
 
 /// Ticket reserves optional count capacity and admission-in-progress. It is
 /// committed only after storage admission, allocation and queue publication.
-pub(super) struct AdmissionTicket {
+pub struct AdmissionTicket {
     control: Arc<Control>,
     committed: bool,
 }
@@ -593,7 +592,7 @@ impl Drop for AdmissionTicket {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct QueueSnapshot {
+pub struct QueueSnapshot {
     pub limit: Option<usize>,
     pub pending: usize,
     pub in_progress: usize,
@@ -602,13 +601,13 @@ pub(super) struct QueueSnapshot {
     pub consumers: usize,
 }
 
-pub(super) enum Pop<T> {
+pub enum Pop<T> {
     Item(T),
     Empty,
     Closed,
 }
 
-pub(super) struct PendingQueue<T> {
+pub struct PendingQueue<T> {
     // Payload is declared before control so the last handle destroys the ring
     // and its backing charges before releasing the queue-control/header charge.
     // Rust drops fields in declaration order; no Drop impl is required.
@@ -628,7 +627,7 @@ impl<T> Clone for PendingQueue<T> {
 
 /// Worker-side consumer handle. Dropping the last consumer closes admission,
 /// so a panicked or exited worker cannot leave accepted orphan jobs.
-pub(super) struct WorkerQueue<T> {
+pub struct WorkerQueue<T> {
     queue: PendingQueue<T>,
     control: Arc<Control>,
 }
@@ -665,7 +664,7 @@ impl<T> Drop for WorkerQueue<T> {
 }
 
 impl<T> PendingQueue<T> {
-    pub(super) fn new(host: ServingHost, max_pending: Option<usize>) -> Result<Self, ServiceError> {
+    pub fn new(host: ServingHost, max_pending: Option<usize>) -> Result<Self, ServiceError> {
         let control_bytes = std::mem::size_of::<Control>()
             .checked_add(std::mem::size_of::<ControlState>())
             .and_then(|n| n.checked_add(std::mem::size_of::<Payload<T>>()))
@@ -707,7 +706,7 @@ impl<T> PendingQueue<T> {
             host,
         })
     }
-    pub(super) fn worker(&self) -> Result<WorkerQueue<T>, ServiceError> {
+    pub fn worker(&self) -> Result<WorkerQueue<T>, ServiceError> {
         let mut state = self.control.state.lock().expect("pending queue control");
         if state.closed {
             return Err(ServiceError::new(
@@ -723,10 +722,10 @@ impl<T> PendingQueue<T> {
             control: Arc::clone(&self.control),
         })
     }
-    pub(super) fn cancel_token(&self, charge: Option<Arc<ServingCharge>>) -> CancelToken {
+    pub fn cancel_token(&self, charge: Option<Arc<ServingCharge>>) -> CancelToken {
         CancelToken::new(&self.control, charge)
     }
-    pub(super) fn reserve(&self) -> Result<AdmissionTicket, ServiceError> {
+    pub fn reserve(&self) -> Result<AdmissionTicket, ServiceError> {
         let mut state = self.control.state.lock().expect("pending queue control");
         if state.closed || state.consumers == 0 {
             return Err(ServiceError::new(
@@ -756,11 +755,7 @@ impl<T> PendingQueue<T> {
             committed: false,
         })
     }
-    pub(super) fn enqueue(
-        &self,
-        mut ticket: AdmissionTicket,
-        item: T,
-    ) -> Result<(), (ServiceError, T)> {
+    pub fn enqueue(&self, mut ticket: AdmissionTicket, item: T) -> Result<(), (ServiceError, T)> {
         let mut state = self.control.state.lock().expect("pending queue control");
         if state.closed {
             drop(state);
@@ -807,7 +802,7 @@ impl<T> PendingQueue<T> {
     /// locks are released, then returns as the empty spare. No allocation
     /// happens at cancellation time. If the spare is briefly busy, the hint is
     /// restored so a later worker round retries rather than losing the sweep.
-    pub(super) fn sweep<F: Fn(&T) -> bool>(&self, cancelled: F) -> Result<usize, ServiceError> {
+    pub fn sweep<F: Fn(&T) -> bool>(&self, cancelled: F) -> Result<usize, ServiceError> {
         if !self.control.cancelled_hint.swap(false, Ordering::AcqRel) {
             return Ok(0);
         }
@@ -884,7 +879,7 @@ impl<T> PendingQueue<T> {
         self.control.cancelled_hint.store(true, Ordering::Release);
     }
 
-    pub(super) fn try_pop<F: Fn(&T) -> bool>(&self, cancelled: F) -> Pop<T> {
+    pub fn try_pop<F: Fn(&T) -> bool>(&self, cancelled: F) -> Pop<T> {
         let _ = self.sweep(&cancelled);
         let mut state = self.control.state.lock().expect("pending queue control");
         if state.pending == 0 {
@@ -908,7 +903,7 @@ impl<T> PendingQueue<T> {
             None => Pop::Empty,
         }
     }
-    pub(super) fn pop_wait<F: Fn(&T) -> bool>(&self, wait: Duration, cancelled: F) -> Pop<T> {
+    pub fn pop_wait<F: Fn(&T) -> bool>(&self, wait: Duration, cancelled: F) -> Pop<T> {
         let deadline = Instant::now() + wait;
         loop {
             match self.try_pop(&cancelled) {
@@ -934,7 +929,7 @@ impl<T> PendingQueue<T> {
                 .expect("pending queue wait");
         }
     }
-    pub(super) fn snapshot(&self) -> QueueSnapshot {
+    pub fn snapshot(&self) -> QueueSnapshot {
         let state = self.control.state.lock().expect("pending queue control");
         QueueSnapshot {
             limit: self.control.max_pending,
@@ -945,8 +940,13 @@ impl<T> PendingQueue<T> {
             consumers: state.consumers,
         }
     }
-    pub(super) fn close(&self) {
-        let mut state = self.control.state.lock().expect("pending queue control");
+    pub fn close(&self) {
+        // Retirement must still close admission and join workers after a panic.
+        let mut state = self
+            .control
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         state.closed = true;
         self.control.ready.notify_all();
     }
@@ -1360,7 +1360,6 @@ mod tests {
         assert_eq!(admission.serving_bytes(), 0);
     }
 
-    #[cfg(feature = "cache")]
     #[test]
     fn transfer_admission_clones_the_domain_without_charging_it() {
         let admission = host(512);

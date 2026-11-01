@@ -1,5 +1,4 @@
 //! Opt-in release CUDA serving proof over original source/session owners.
-use super::super::pending::CancelToken;
 use super::*;
 use zerogravity::accelerator::program::StateSlot;
 use zerogravity::gpu::ResidentSnapshot;
@@ -55,6 +54,7 @@ struct Fixture {
     stats: Arc<WaveStats>,
     key: PhysicalDeviceKey,
     _host: ServingHost,
+    control: PendingQueue<()>,
 }
 impl Fixture {
     fn new(name: &str) -> Self {
@@ -131,7 +131,13 @@ impl Fixture {
         let max_token_bytes = tokenizer.max_token_bytes().unwrap();
         let model = Arc::new(GpuModel {
             engine: ModelEngine::Gguf(resident),
-            tokenizer: TextTokenizer::Shared(tokenizer),
+            tokenizer: zerogravity::builtins::text::tokenizer_owner(
+                tokenizer,
+                |owner| owner.as_ref(),
+                &host,
+                "qualification",
+            )
+            .unwrap(),
             group: 0,
             hidden_width: source.geometry().hidden_size as usize,
             vocabulary_size: source.geometry().vocab_size,
@@ -145,6 +151,7 @@ impl Fixture {
             source,
             stats: Arc::new(WaveStats::default()),
             key,
+            control: PendingQueue::new(host.clone(), Some(1)).unwrap(),
             _host: host,
         }
     }
@@ -160,8 +167,19 @@ impl Fixture {
         capacity: usize,
         observations: bool,
     ) -> (GpuActive, Trace) {
-        let (sender, receiver) = mpsc::sync_channel(capacity);
-        let cancelled = Arc::new(AtomicBool::new(false));
+        let (sender, receiver) =
+            mpsc::try_sync_channel(&self._host, "qualified", "events", capacity).unwrap();
+        let cancel_charge = self
+            ._host
+            .charge(
+                "qualified",
+                "cancel",
+                AllocationClass::Scratch,
+                super::super::event_channel::cancel_bytes().unwrap(),
+            )
+            .unwrap();
+        let cancel = self.control.cancel_token(Some(Arc::new(cancel_charge)));
+        let cancelled = Arc::clone(cancel.flag());
         let lane = GpuActive::new(
             Scheduled {
                 payload: Some(RequestLease {
@@ -184,7 +202,7 @@ impl Fixture {
                 },
                 events: sender,
                 cancelled: Arc::clone(&cancelled),
-                cancel: CancelToken::from_flag(Arc::clone(&cancelled)),
+                cancel,
                 prompt_charge: None,
                 transport: None,
             },
@@ -262,7 +280,7 @@ impl Trace {
             ResponseEvent::Error(error) => panic!("physical GPU worker error: {error:?}"),
         }
     }
-    fn verify(&mut self, reference: &Reference, tokenizer: &QwenTokenizer, maximum: usize) {
+    fn verify(&mut self, reference: &Reference, tokenizer: &dyn TextTokenizer, maximum: usize) {
         self.drain();
         let selected = reference
             .sequence
@@ -518,8 +536,8 @@ fn handoff_and_lengths(fixture: &Fixture) {
         &mut references,
         &mut [&mut left_trace, &mut right_trace],
     );
-    left_trace.verify(&references[&left_id], &fixture.model.tokenizer, 2);
-    right_trace.verify(&references[&right_id], &fixture.model.tokenizer, 5);
+    left_trace.verify(&references[&left_id], fixture.model.tokenizer.as_ref(), 2);
+    right_trace.verify(&references[&right_id], fixture.model.tokenizer.as_ref(), 5);
     assert!(
         references[&right_id].sequence.len() > references[&left_id].sequence.len(),
         "fixture did not exercise unequal generation lengths/B1 survivor"
@@ -563,7 +581,7 @@ fn cancel_before_feedback(fixture: &Fixture) {
         &mut references,
         &mut [&mut right_trace],
     );
-    right_trace.verify(&references[&right_id], &fixture.model.tokenizer, 3);
+    right_trace.verify(&references[&right_id], fixture.model.tokenizer.as_ref(), 3);
     println!("P12_B5_CANCEL_BEFORE_FEEDBACK_PASS cancelled_prior=exact survivor_B1=exact");
 }
 
@@ -630,7 +648,7 @@ fn cancel_after_ready(fixture: &Fixture) {
         &mut references,
         &mut [&mut right_trace],
     );
-    right_trace.verify(&references[&right_id], &fixture.model.tokenizer, 4);
+    right_trace.verify(&references[&right_id], fixture.model.tokenizer.as_ref(), 4);
     left_trace.drain();
     assert!(left_trace.done.is_empty());
     println!(
@@ -696,8 +714,8 @@ fn credit_park(fixture: &Fixture) {
         &mut references,
         &mut [&mut left_trace, &mut right_trace],
     );
-    left_trace.verify(&references[&left_id], &fixture.model.tokenizer, 8);
-    right_trace.verify(&references[&right_id], &fixture.model.tokenizer, 8);
+    left_trace.verify(&references[&left_id], fixture.model.tokenizer.as_ref(), 8);
+    right_trace.verify(&references[&right_id], fixture.model.tokenizer.as_ref(), 8);
     println!(
         "P12_B5_REAL_CREDIT_PARK_PASS original_bounded_channel=1 \
         parked_packet_root_unchanged=true recovered_text_usage_Done=exact"
@@ -781,8 +799,8 @@ fn source_eos(fixture: &Fixture) {
         &mut references,
         &mut [&mut left_trace, &mut right_trace],
     );
-    left_trace.verify(&references[&left_id], &fixture.model.tokenizer, 9);
-    right_trace.verify(&references[&right_id], &fixture.model.tokenizer, 12);
+    left_trace.verify(&references[&left_id], fixture.model.tokenizer.as_ref(), 9);
+    right_trace.verify(&references[&right_id], fixture.model.tokenizer.as_ref(), 12);
     assert_eq!(left_trace.done[0].3, "stop");
     println!(
         "P12_B5_TRAINED_EOS_GPU_PASS actual_original_source_selected_EOS=true \
@@ -858,8 +876,11 @@ fn finish_observed(
             .collect::<Vec<_>>(),
     );
     for row in observed {
-        row.trace
-            .verify(&references[&row.id], &fixture.model.tokenizer, row.maximum);
+        row.trace.verify(
+            &references[&row.id],
+            fixture.model.tokenizer.as_ref(),
+            row.maximum,
+        );
     }
 }
 
@@ -1334,8 +1355,8 @@ fn unequal_arrival_metrics(name: &str) {
         &mut references,
         &mut [&mut first_trace, &mut second_trace],
     );
-    first_trace.verify(&references[&first_id], &fixture.model.tokenizer, 8);
-    second_trace.verify(&references[&second_id], &fixture.model.tokenizer, 6);
+    first_trace.verify(&references[&first_id], fixture.model.tokenizer.as_ref(), 8);
+    second_trace.verify(&references[&second_id], fixture.model.tokenizer.as_ref(), 6);
     let first_tokens = first_trace.tokens.as_ref().unwrap();
     let second_tokens = second_trace.tokens.as_ref().unwrap();
     assert!(

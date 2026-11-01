@@ -85,7 +85,7 @@ fn invalid_bounds_and_request_refuse_before_future_execution() {
         Runtime::builder()
             .limits(SchedulerLimits {
                 max_active: 0,
-                max_queued: 1,
+                max_queued: Some(1),
                 max_input_bytes: 1,
             })
             .build()
@@ -94,7 +94,7 @@ fn invalid_bounds_and_request_refuse_before_future_execution() {
     let runtime = Runtime::builder()
         .limits(SchedulerLimits {
             max_active: 1,
-            max_queued: 0,
+            max_queued: Some(0),
             max_input_bytes: 1,
         })
         .build()

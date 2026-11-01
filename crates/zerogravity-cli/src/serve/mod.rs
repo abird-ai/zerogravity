@@ -1,16 +1,15 @@
 //! Opt-in local OpenAI-compatible HTTP serving.
 //! Uses original Qwen CPU source and private independent model sessions.
 
-mod engine;
-mod event_channel;
+use zerogravity::runtime::text as engine;
+#[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
+use zerogravity::runtime::text::event_channel;
 #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
 mod gpu_batch;
 #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
 mod gpu_engine;
-mod http;
-mod pending;
+use zerogravity::runtime::text::pending;
 mod shutdown;
-mod token_metrics;
 
 #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
 use crate::GpuBackend;
@@ -65,32 +64,9 @@ impl Router {
             Self::Gpu(v) => Box::new(v.model_ids()),
         }
     }
-    fn admission(&self) -> serde_json::Value {
+    fn admission(&self) -> Result<serde_json::Value, ServiceError> {
         match self {
-            Self::Cpu(v) => {
-                let (limit, reserved, remaining, serving) =
-                    v.memory_snapshot().unwrap_or((0, 0, 0, 0));
-                let model = reserved.checked_sub(serving);
-                let queue = v.queue_snapshot();
-                serde_json::json!({"kind":"configured_host_cpu",
-                    "host_limit_bytes":limit,
-                    "total_host_limit_bytes":limit,
-                    "total_host_reserved_bytes":reserved,
-                    "reserved_bytes":reserved,
-                    "remaining_bytes":remaining,
-                    "model_host_reserved_bytes":model,
-                    "backend_host_reserved_bytes":0,
-                    "serving_host_reserved_bytes":serving,
-                    "queued_requests":queue.pending,
-                    "pending_admission_in_progress":queue.in_progress,
-                    "pending_queue_capacity":queue.capacity,
-                    "pending_queue_charged_bytes":queue.backing_bytes,
-                    "pending_queue_consumers":queue.consumers,
-                    "queued_requests_limit":queue.limit,
-                    "active_sessions":v.active_sessions(),
-                    "peak_active_sessions":v.peak_active_sessions(),
-                    "active_sessions_limit":v.active_limit()})
-            }
+            Self::Cpu(v) => zerogravity::serving::TextService::admission(v),
             #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
             Self::Gpu(v) => {
                 let m = v.metrics();
@@ -144,14 +120,41 @@ impl Router {
                 if let (Some(target), Some(source)) = (value.as_object_mut(), tail.as_object()) {
                     target.extend(source.iter().map(|(key, item)| (key.clone(), item.clone())));
                 }
-                value
+                Ok(value)
             }
         }
     }
 }
 
+// Temporary GPU migration seam: the transport exists only in serving.
+impl zerogravity::serving::TextService for Router {
+    fn request_admitted(
+        &self,
+        request: Request,
+        ingress: Vec<pending::ServingCharge>,
+    ) -> Result<RequestEvents, ServiceError> {
+        Router::request_admitted(self, request, ingress)
+    }
+    fn charge_ingress(
+        &self,
+        session: &str,
+        bytes: u64,
+    ) -> Result<pending::ServingCharge, ServiceError> {
+        Router::charge_ingress(self, session, bytes)
+    }
+    fn model_ids(&self) -> Result<Vec<String>, ServiceError> {
+        Ok(Router::model_ids(self).map(str::to_owned).collect())
+    }
+    fn max_output(&self) -> Result<usize, ServiceError> {
+        Ok(Router::max_output(self))
+    }
+    fn admission(&self) -> Result<serde_json::Value, ServiceError> {
+        Router::admission(self)
+    }
+}
+
 use serde::{Deserialize, Deserializer};
-use std::net::{SocketAddr, TcpListener};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -567,7 +570,7 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
     let declared = options.models.into_iter().map(|m| (m.id, m.path)).collect();
     let backend = options.backend.as_str();
     let router = match backend {
-        "cpu" => Router::Cpu(engine::Router::new(
+        "cpu" => Router::Cpu(zerogravity::builtins::text::load_router(
             declared,
             options.workers,
             options.active_per_worker,
@@ -677,29 +680,39 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
         }
     };
     let router = Arc::new(router);
-    shutdown.admit(&router)?;
+    shutdown.admit(router.as_ref())?;
     if shutdown.is_requested() {
         return join_router(router)
             .map_err(|error| ServiceError::new(500, "shutdown_failed", error.to_string()));
     }
-    let listener = TcpListener::bind(address)
+    let service: Arc<dyn zerogravity::serving::TextService> = router.clone();
+    let server = zerogravity::serving::ServerBuilder::from_service(service)
+        .bind(address)
+        .api_key(key)
+        .limits(zerogravity::serving::ingress::IngressLimits {
+            connections: 64,
+            ..Default::default()
+        })
+        .enable_per_request_metrics(options.enable_per_request_metrics)
+        .build()
+        .and_then(|server| server.start())
         .map_err(|e| ServiceError::new(500, "bind_failed", e.to_string()))?;
     if shutdown.is_requested() {
-        drop(listener);
-        return join_router(router)
+        let stopped = shutdown.wait(server);
+        let joined = join_router(router);
+        return stopped
+            .and(joined)
             .map_err(|error| ServiceError::new(500, "shutdown_failed", error.to_string()));
     }
     eprintln!(
-        "zerogravity: serving {:?} Qwen on {address}, {} worker(s); max-context {}, max-output {}",
-        backend, options.workers, options.max_context, options.max_output
+        "zerogravity: serving {:?} Qwen on {}, {} worker(s); max-context {}, max-output {}",
+        backend,
+        server.local_addr(),
+        options.workers,
+        options.max_context,
+        options.max_output
     );
-    let result = http::serve(
-        listener,
-        Arc::clone(&router),
-        key,
-        options.enable_per_request_metrics,
-        Arc::clone(&shutdown.requested),
-    );
+    let result = shutdown.wait(server);
     // HTTP has dropped every RequestEvents before queue close/worker join.
     // A retained router Arc would mean a handler escaped that join boundary.
     let joined = join_router(router);

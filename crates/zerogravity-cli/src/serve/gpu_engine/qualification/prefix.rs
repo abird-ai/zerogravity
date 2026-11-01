@@ -284,7 +284,7 @@ fn ragged_prefixes(fixture: &Fixture) {
             let row = traces_row_index(&references, *id, arrival_id);
             2 + row % 3
         };
-        trace.verify(reference, &fixture.model.tokenizer, maximum);
+        trace.verify(reference, fixture.model.tokenizer.as_ref(), maximum);
     }
     assert_eq!(fixture.stats.active.load(Ordering::Acquire), 0);
     assert!(fixture.stats.fused_batches.load(Ordering::Acquire) > 1);
@@ -384,7 +384,7 @@ fn cancel_after_prefix_ready(fixture: &Fixture) {
         &mut references,
         &mut [&mut right_trace],
     );
-    right_trace.verify(&references[&id], &fixture.model.tokenizer, 2);
+    right_trace.verify(&references[&id], fixture.model.tokenizer.as_ref(), 2);
     no_prefix_events(&left_trace);
     drop(references);
     println!(
@@ -482,9 +482,9 @@ fn parked_decode_does_not_block_prefix(fixture: &Fixture) {
     }
     assert!(active.is_empty());
     assert!(prefix.is_empty());
-    decode_trace.verify(&references[&decode_id], &fixture.model.tokenizer, 4);
+    decode_trace.verify(&references[&decode_id], fixture.model.tokenizer.as_ref(), 4);
     for (id, trace) in &mut traces {
-        trace.verify(&references[id], &fixture.model.tokenizer, 2);
+        trace.verify(&references[id], fixture.model.tokenizer.as_ref(), 2);
     }
     no_prefix_events(&cancelled_trace);
     drop(references);

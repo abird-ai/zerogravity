@@ -14,7 +14,7 @@ fn malformed_selector_future_task_and_overflow_remain_distinct_refusals() {
     assert!(matches!(
         SchedulerLimits {
             max_active: usize::MAX,
-            max_queued: 1,
+            max_queued: Some(1),
             max_input_bytes: 1,
         }
         .validate(),

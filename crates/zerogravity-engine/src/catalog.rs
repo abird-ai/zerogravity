@@ -14,19 +14,18 @@ impl<'a> ModelCatalog<'a> {
         Self { runtime }
     }
     pub fn list(&self) -> Result<Vec<ModelInstance>> {
-        self.runtime.require_open()?;
-        Ok(Vec::new())
+        self.runtime.loaded_text_models()
     }
     pub fn load(&self, _request: &ModelLoadRequest) -> Result<ModelInstance> {
         self.runtime.require_open()?;
         Err(Error::Unsupported(
-            "Fabric model loading awaits source-bound F0 adapters".into(),
+            "source loading requires the facade's family adapter; use Runtime::load_text".into(),
         ))
     }
     pub fn unload(&self, _model: &ModelInstance) -> Result<()> {
         self.runtime.require_open()?;
         Err(Error::Unsupported(
-            "Fabric model retirement awaits F0 adapters".into(),
+            "per-model retirement is not implemented; runtime shutdown joins workers and retires its sources".into(),
         ))
     }
 }

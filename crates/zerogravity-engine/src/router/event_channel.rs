@@ -4,14 +4,15 @@
 //! serving code, but the fixed-layout slots are allocated explicitly so the
 //! router can admit their real storage before publishing a request.
 
-use super::engine::ServiceError;
+use super::cpu::ServiceError;
 use super::pending::{ServingCharge, ServingHost, allocate_slots, checked_sum, slot_bytes};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
-use zerogravity::resource_arbiter::AllocationClass;
+use zerogravity_core::resource_arbiter::AllocationClass;
 
-pub(super) mod mpsc {
+pub mod mpsc {
     use super::*;
+    pub use std::sync::mpsc::RecvError;
 
     pub struct SyncSender<T> {
         inner: Arc<Inner<T>>,
@@ -39,7 +40,6 @@ pub(super) mod mpsc {
         Full(T),
         Disconnected(T),
     }
-    #[cfg(test)]
     #[derive(Debug, PartialEq, Eq)]
     pub enum TryRecvError {
         Empty,
@@ -51,7 +51,7 @@ pub(super) mod mpsc {
         Disconnected,
     }
 
-    pub(super) fn channel_bytes<T>(capacity: usize) -> Result<u64, ServiceError> {
+    pub fn channel_bytes<T>(capacity: usize) -> Result<u64, ServiceError> {
         let slots = slot_bytes::<T>(capacity)?;
         let control = u64::try_from(
             std::mem::size_of::<Inner<T>>()
@@ -64,12 +64,12 @@ pub(super) mod mpsc {
     }
 
     #[cfg(test)]
-    pub fn sync_channel<T>(capacity: usize) -> (SyncSender<T>, Receiver<T>) {
+    pub(crate) fn sync_channel<T>(capacity: usize) -> (SyncSender<T>, Receiver<T>) {
         build_channel(capacity, None).expect("event transport allocation")
     }
     /// Charged production transport. `owner`/`session` identify the request
     /// whose payload slots are admitted; the charge stays on `Inner`.
-    pub(crate) fn try_sync_channel<T>(
+    pub fn try_sync_channel<T>(
         host: &ServingHost,
         owner: &str,
         session: &str,
@@ -164,7 +164,6 @@ pub(super) mod mpsc {
             state.len -= 1;
             value
         }
-        #[cfg(test)]
         pub fn try_recv(&self) -> Result<T, TryRecvError> {
             let mut state = self.inner.state.lock().expect("event channel");
             if let Some(value) = Self::pop(&mut state) {
@@ -200,8 +199,7 @@ pub(super) mod mpsc {
                 state = next;
             }
         }
-        #[cfg(test)]
-        pub fn recv(&self) -> Result<T, ()> {
+        pub fn recv(&self) -> Result<T, RecvError> {
             let mut state = self.inner.state.lock().expect("event channel");
             loop {
                 if let Some(value) = Self::pop(&mut state) {
@@ -209,7 +207,7 @@ pub(super) mod mpsc {
                     return Ok(value);
                 }
                 if state.senders == 0 {
-                    return Err(());
+                    return Err(RecvError);
                 }
                 state = self.inner.ready.wait(state).expect("event wait");
             }
@@ -247,7 +245,7 @@ pub(super) mod mpsc {
 
 /// Control storage for the cancel handle and its condition variable. These
 /// are actual fixed-size synchronization objects, not a request heuristic.
-pub(super) fn cancel_bytes() -> Result<u64, ServiceError> {
+pub fn cancel_bytes() -> Result<u64, ServiceError> {
     let bytes = std::mem::size_of::<super::pending::CancelToken>()
         .checked_add(std::mem::size_of::<std::sync::atomic::AtomicBool>())
         .and_then(|n| n.checked_add(4 * std::mem::size_of::<usize>()))

@@ -10,7 +10,11 @@ pub(super) enum ModelEngine {
         target_os = "linux"
     ))]
     FixedPrompt(Arc<zerogravity::qwen35_cuda::fixed_prompt::Model>),
-    #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+    #[cfg(all(
+        feature = "qwen35-cuda-serving",
+        feature = "qwen35-cuda-qualification",
+        target_os = "linux"
+    ))]
     Qwen35Cuda(Arc<zerogravity::qwen35_cuda::Model>),
 }
 pub(super) enum RequestEngine {
@@ -28,7 +32,11 @@ pub(super) enum RequestEngine {
         session: zerogravity::qwen35_cuda::fixed_prompt::Session,
         selected: Option<u32>,
     },
-    #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+    #[cfg(all(
+        feature = "qwen35-cuda-serving",
+        feature = "qwen35-cuda-qualification",
+        target_os = "linux"
+    ))]
     Qwen35Cuda {
         model: Arc<zerogravity::qwen35_cuda::Model>,
         session: zerogravity::qwen35_cuda::Session,
@@ -56,7 +64,11 @@ impl ModelEngine {
                     .map_err(|e| fixed_prompt::inference_error(e, model, cancelled))?,
                 selected: None,
             }),
-            #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+            #[cfg(all(
+                feature = "qwen35-cuda-serving",
+                feature = "qwen35-cuda-qualification",
+                target_os = "linux"
+            ))]
             Self::Qwen35Cuda(model) => Ok(RequestEngine::Qwen35Cuda {
                 model: model.clone(),
                 session: block_on(model.session(Some(cancelled)))
@@ -75,13 +87,18 @@ impl ModelEngine {
                 target_os = "linux"
             ))]
             Self::FixedPrompt(_) => None,
-            #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+            #[cfg(all(
+                feature = "qwen35-cuda-serving",
+                feature = "qwen35-cuda-qualification",
+                target_os = "linux"
+            ))]
             Self::Qwen35Cuda(_) => None,
         }
     }
+    #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
     pub(super) fn validate_request(
         &self,
-        tokenizer: &QwenTokenizer,
+        tokenizer: &dyn TextTokenizer,
         request: &Request,
     ) -> Result<(), ServiceError> {
         let _ = (tokenizer, request);
@@ -98,7 +115,11 @@ impl ModelEngine {
                 .validate_prompt(&ids, request.max_tokens)
                 .map_err(|e| ServiceError::new(400, "unsupported_source_request", e.to_string()))?;
         }
-        #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+        #[cfg(all(
+            feature = "qwen35-cuda-serving",
+            feature = "qwen35-cuda-qualification",
+            target_os = "linux"
+        ))]
         if let Self::Qwen35Cuda(model) = self {
             let ids = tokenizer
                 .prompt_tokens(&request.input, request.chat)
@@ -120,7 +141,11 @@ impl RequestEngine {
                 target_os = "linux"
             ))]
             Self::FixedPrompt { session, .. } => session.binding(),
-            #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+            #[cfg(all(
+                feature = "qwen35-cuda-serving",
+                feature = "qwen35-cuda-qualification",
+                target_os = "linux"
+            ))]
             Self::Qwen35Cuda { session, .. } => session.binding(),
         }
     }
@@ -133,7 +158,11 @@ impl RequestEngine {
                 target_os = "linux"
             ))]
             Self::FixedPrompt { .. } => true,
-            #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+            #[cfg(all(
+                feature = "qwen35-cuda-serving",
+                feature = "qwen35-cuda-qualification",
+                target_os = "linux"
+            ))]
             Self::Qwen35Cuda { .. } => false,
         }
     }
@@ -144,7 +173,11 @@ impl RequestEngine {
         self.is_qwen35_cuda()
     }
     pub(super) fn is_qwen35_cuda(&self) -> bool {
-        #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+        #[cfg(all(
+            feature = "qwen35-cuda-serving",
+            feature = "qwen35-cuda-qualification",
+            target_os = "linux"
+        ))]
         if matches!(self, Self::Qwen35Cuda { .. }) {
             return true;
         }
@@ -159,7 +192,11 @@ impl RequestEngine {
                 target_os = "linux"
             ))]
             Self::FixedPrompt { .. } => None,
-            #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+            #[cfg(all(
+                feature = "qwen35-cuda-serving",
+                feature = "qwen35-cuda-qualification",
+                target_os = "linux"
+            ))]
             Self::Qwen35Cuda { .. } => None,
         }
     }
@@ -172,7 +209,11 @@ impl RequestEngine {
                 target_os = "linux"
             ))]
             Self::FixedPrompt { .. } => None,
-            #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+            #[cfg(all(
+                feature = "qwen35-cuda-serving",
+                feature = "qwen35-cuda-qualification",
+                target_os = "linux"
+            ))]
             Self::Qwen35Cuda { .. } => None,
         }
     }
@@ -185,7 +226,11 @@ impl RequestEngine {
                 target_os = "linux"
             ))]
             Self::FixedPrompt { .. } => None,
-            #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+            #[cfg(all(
+                feature = "qwen35-cuda-serving",
+                feature = "qwen35-cuda-qualification",
+                target_os = "linux"
+            ))]
             Self::Qwen35Cuda { .. } => None,
         }
     }
@@ -201,7 +246,11 @@ impl RequestEngine {
                 target_os = "linux"
             ))]
             Self::FixedPrompt { selected, .. } => *selected,
-            #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+            #[cfg(all(
+                feature = "qwen35-cuda-serving",
+                feature = "qwen35-cuda-qualification",
+                target_os = "linux"
+            ))]
             Self::Qwen35Cuda { selected, .. } => *selected,
         }
         .ok_or_else(|| {

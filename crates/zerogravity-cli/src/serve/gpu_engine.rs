@@ -6,8 +6,8 @@
 use super::engine::{
     EVENTS_PER_REQUEST, GeneratedText, GpuTokenObservation, MAX_ACTIVE_PER_WORKER, MetricsLease,
     NativeCohortObservation, Presentation, Request, RequestEvents, RequestLease, ResponseEvent,
-    Scheduled, ServiceError, TextTokenizer, output_transport_bound, read_approved_tokenizer,
-    vecdeque_backing_bytes, workers_charge,
+    Scheduled, ServiceError, TextTokenizer, output_transport_bound, vecdeque_backing_bytes,
+    workers_charge,
 };
 use super::event_channel::mpsc;
 use super::gpu_batch::{self, Limits, Phase, Ready};
@@ -22,6 +22,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
+use zerogravity::builtins::text::read_approved_tokenizer;
 use zerogravity::gpu::{
     InferenceReadback, PreparedResidentCohort, ResidentModel, ResidentSession, ResidentToken,
     resident_batch::ResidentBatchRows,
@@ -125,7 +126,7 @@ fn preflight_cuda_toolkit(backend: GpuBackend) -> Result<(), ServiceError> {
 /// This is one host route to an already resident GPU source/graph.
 struct GpuModel {
     engine: ModelEngine,
-    tokenizer: TextTokenizer,
+    tokenizer: Arc<dyn TextTokenizer>,
     group: usize,
     hidden_width: usize,
     vocabulary_size: u64,
@@ -394,7 +395,12 @@ impl GpuRouter {
                 .map_err(ServiceError::inference)?;
             let shared = Arc::new(GpuModel {
                 engine: ModelEngine::Gguf(resident),
-                tokenizer: TextTokenizer::Shared(Arc::new(tokenizer)),
+                tokenizer: zerogravity::builtins::text::tokenizer_owner(
+                    Arc::new(tokenizer),
+                    |owner| owner.as_ref(),
+                    &host,
+                    &alias,
+                )?,
                 group: unique.len(),
                 hidden_width,
                 vocabulary_size,
@@ -473,17 +479,33 @@ impl GpuRouter {
         let queue = self.queue.snapshot();
         let host_snapshot = self.host.snapshot().unwrap_or((0, 0, 0, 0));
         let (limit, reserved, _remaining, serving) = host_snapshot;
-        #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+        #[cfg(all(
+            feature = "qwen35-cuda-serving",
+            feature = "qwen35-cuda-qualification",
+            target_os = "linux"
+        ))]
         let hf_health = qwen35_cuda::health(&self.models, host_snapshot);
-        #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+        #[cfg(all(
+            feature = "qwen35-cuda-serving",
+            feature = "qwen35-cuda-qualification",
+            target_os = "linux"
+        ))]
         let backend = hf_health
             .as_ref()
             .and_then(|(_, resources)| resources.get("backend_host_reserved_bytes"))
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0);
-        #[cfg(not(all(feature = "qwen35-cuda-qualification", target_os = "linux")))]
+        #[cfg(not(all(
+            feature = "qwen35-cuda-serving",
+            feature = "qwen35-cuda-qualification",
+            target_os = "linux"
+        )))]
         let backend = 0;
-        #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+        #[cfg(all(
+            feature = "qwen35-cuda-serving",
+            feature = "qwen35-cuda-qualification",
+            target_os = "linux"
+        ))]
         let host = if qwen35_cuda::models_present(&self.models) && hf_health.is_none() {
             None
         } else {
@@ -494,7 +516,11 @@ impl GpuRouter {
                 (limit, reserved, model, backend, serving)
             })
         };
-        #[cfg(not(all(feature = "qwen35-cuda-qualification", target_os = "linux")))]
+        #[cfg(not(all(
+            feature = "qwen35-cuda-serving",
+            feature = "qwen35-cuda-qualification",
+            target_os = "linux"
+        )))]
         let host = Some({
             let model = reserved.checked_sub(serving);
             (limit, reserved, model, backend, serving)
@@ -522,13 +548,29 @@ impl GpuRouter {
                 target_os = "linux"
             )))]
             canonical_resources: None,
-            #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+            #[cfg(all(
+                feature = "qwen35-cuda-serving",
+                feature = "qwen35-cuda-qualification",
+                target_os = "linux"
+            ))]
             hf_source: hf_health.as_ref().map(|h| h.0.clone()),
-            #[cfg(not(all(feature = "qwen35-cuda-qualification", target_os = "linux")))]
+            #[cfg(not(all(
+                feature = "qwen35-cuda-serving",
+                feature = "qwen35-cuda-qualification",
+                target_os = "linux"
+            )))]
             hf_source: None,
-            #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+            #[cfg(all(
+                feature = "qwen35-cuda-serving",
+                feature = "qwen35-cuda-qualification",
+                target_os = "linux"
+            ))]
             hf_resources: hf_health.map(|h| h.1),
-            #[cfg(not(all(feature = "qwen35-cuda-qualification", target_os = "linux")))]
+            #[cfg(not(all(
+                feature = "qwen35-cuda-serving",
+                feature = "qwen35-cuda-qualification",
+                target_os = "linux"
+            )))]
             hf_resources: None,
             groups: self.stats.groups.load(Ordering::Relaxed),
             co_scheduled: self.stats.co_scheduled.load(Ordering::Relaxed),
@@ -629,7 +671,9 @@ impl GpuRouter {
         )?;
         // Canonical/Qwen CUDA validation runs only after count/host admission.
         #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
-        model.engine.validate_request(&model.tokenizer, &request)?;
+        model
+            .engine
+            .validate_request(model.tokenizer.as_ref(), &request)?;
         let request_bytes = pending::checked_sum(&[
             pending::heap_strings(&[&request.model, &request.input])?,
             request
@@ -954,7 +998,11 @@ impl GpuActive {
     }
     /// Original B1 source execution, including all unmatched native-wave rows.
     fn step(&mut self, stats: &WaveStats) -> Result<MemberStep, ServiceError> {
-        #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+        #[cfg(all(
+            feature = "qwen35-cuda-serving",
+            feature = "qwen35-cuda-qualification",
+            target_os = "linux"
+        ))]
         if self.engine.is_qwen35_cuda() {
             return self.step_qwen35_cuda(stats);
         }
@@ -1109,7 +1157,11 @@ fn retire_if_drained(models: &BTreeMap<String, Arc<GpuModel>>, stats: &WaveStats
         target_os = "linux"
     ))]
     fixed_prompt::retire_sources(models, stats);
-    #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+    #[cfg(all(
+        feature = "qwen35-cuda-serving",
+        feature = "qwen35-cuda-qualification",
+        target_os = "linux"
+    ))]
     qwen35_cuda::retire_sources(models, stats);
 }
 struct GpuWorkerCaptures {
@@ -1325,7 +1377,11 @@ fn worker(
                     .co_scheduled
                     .fetch_add(wave.indices.len() as u64, Ordering::Relaxed);
             }
-            #[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
+            #[cfg(all(
+                feature = "qwen35-cuda-serving",
+                feature = "qwen35-cuda-qualification",
+                target_os = "linux"
+            ))]
             if native_rows == 4
                 && wave.indices.iter().all(|&index| {
                     pending[index]
@@ -1396,15 +1452,19 @@ fn worker(
 }
 
 #[cfg(test)]
+static HOST_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn shutdown_rejects_new_retirement_failures_after_join() {
+        let _host = HOST_TEST_LOCK.lock().unwrap();
         // Exercise original queue closure and a real worker join without any
         // registered model, device or inference capability.
         for (previous, fail) in [(7, false), (7, true), (u64::MAX, true)] {
-            let host = ServingHost::isolated(256).unwrap();
+            let host = ServingHost::new(256).unwrap();
             let queue = PendingQueue::<Scheduled>::new(host.clone(), Some(1)).unwrap();
             let stats = Arc::new(WaveStats::default());
             stats.failed.store(previous, Ordering::Release);
@@ -1449,7 +1509,7 @@ mod tests {
             assert_eq!(router.shutdown().is_err(), fail);
             assert!(router.worker.is_none());
             drop(router);
-            assert_eq!(host.serving_bytes(), 0);
+            assert_eq!(host.snapshot().unwrap().3, 0);
         }
     }
 

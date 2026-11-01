@@ -17,8 +17,9 @@ Base: `1c35172`
   push, source acquisition, GPU launch, recovery or privilege changes authorized.
 - Fabric/Qwen recurrences remain cancelled. Qwen expansion remains deferred;
   accepted model/operator/lifetime evidence is historical and tuple-specific.
-- HEAD at start: signed`c853ebb`, S0 source`7396984`. Dirty migration preserved,
-  integrated and tested; no new commit yet. Root README/external checkout untouched.
+- Signed`7fc5d17` lands source/state foundations on S0`7396984`/`c853ebb`.
+  The tested runtime/SDK/server batch lands separately below. Root README and
+  external checkout untouched; nothing pushed.
 
 ## Checkpoint evidence — assembled gate passed
 
@@ -92,7 +93,32 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 Historical documentation packet:`2ff3d49`; canonical handoff refresh:`ff89b87`.
 Qwen commits are preserved inputs, not S/F/Q completion proof.
 
-### Source owners — this commit
+### CPU runtime/SDK/serving — this commit
+
+- [x] One neutral CPU Router owns original queue, workers, cancellation, bounded
+  events, text presentation and token observations; concrete source/tokenizer
+  adapters and loading belong to facade. Aliases share immutable source owners.
+- [x] Actual SDK CPU load/request/task-stream and embedded HTTP JSON/SSE paths;
+  server stop preserves caller runtime/tasks, runtime shutdown closes clones and
+  joins actual workers. Source/load/destruction joins are outside runtime mutex;
+  concurrent shutdown observes terminal cleanup/sticky failures.
+- [x] New tokenizer wrapper/control storage admitted before allocation and held
+  through final source reader. One prepared model map; optional count ceiling
+  never removes physical host admission.
+- [x] Close inherited source admission pathname race with the same priced/opened
+  descriptor and extent checks. Reject late HTTP bytes that mask client closure.
+- [x] SDK pipeline schemas/validation and device inventory/policy extracted; PCI
+  aliases deduplicated. Pipeline execution/placement/future APIs still refuse.
+- [x] CLI delegates CPU scheduler/transport/pipelines/devices; obsolete import-shim
+  files removed. Real-worker TERM/INT/PID1 controls preserved. GPU CLI remains.
+- [x] GPU qualification fixtures use admitted public channels/cancel/host primitives,
+  not leaked cfg(test) helpers. Explicit captured-serving gates match callers;
+  ordinary CUDA still refuses before discovery/source/device work.
+- [x] Strict CPU/minimal/CUDA/HIP/Vulkan feature checks, actual source-bound SDK/
+  server/population cases, GPU source-free controls and final assembled gate pass.
+  No new physical or trained-model qualification; F0/F1/F3/F4 and Q acceptance open.
+
+### `7fc5d17` — source encoding, codecs, CPU math and canonical reference roots
 
 - [x] Actual core StoredTensorEncoding/ScalarDType/QuantScheme, complete caller closure;
   remove old QuantKind/quant producer, retain exact external labels/format mappings.
@@ -146,15 +172,15 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 - [ ] Preserve buffer leases encoded/captured/queued/submitted/unknown and safe quarantine/retire, host/UMA alias accounting.
 - [ ] S3 source-free state resource targeted checks and signed commit(s).
 
-## Uncommitted — future F0 model-neutral engine
+## Uncommitted — remaining F0 model-neutral engine
 
-- [ ] Move CLI/serve CPU+GPU model routing/scheduler/private state into one engine ModelInstance, PreparedModel, TaskSession and one scheduler.
+- [ ] Extend the migrated CPU engine with GPU routing/cohorts/private state; one final scheduler, not a relocated GPU-specific parallel runtime.
 - [ ] One cold model/provider registration point in facade, same source alias source sharing and exact loaded ModelGeneration pin.
 - [ ] Preserve CPU bounded prefill/decode and GPU native B1/B2/B4/B8 true batch semantics including ragged/late arrivals and source-specific eligibility.
 - [ ] One ResourceArbiter and original worker Ready/lease/shutdown; source-valid typed committed output before HTTP.
 - [ ] F0 tiny model-neutral mock/CPU tests, affected compile and signed commit(s).
 
-## Uncommitted — future F1 public zerogravity Rust library
+## Uncommitted — remaining F1 public zerogravity Rust library
 
 - [ ] Expose all real model/run/cancel/stream/inspect/model admin/alias functions through exported zerogravity API.
 - [ ] Expose all artifact pull/download/providers/cache/source selections, devices/fit/dry-run/config and pipeline checking APIs without CLI.
@@ -162,15 +188,14 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 - [ ] External Rust program depending only on zerogravity compiles/runs qualified local functionality and model-free tests; no CLI needed.
 - [ ] F1 focused acquisition/cache/devices/run/pipeline feature tests and signed commit(s).
 
-## Uncommitted — future F2 standalone reusable serving library
+## Uncommitted — remaining F2 unified-engine transport integration
 
-- [ ] Implement existing HTTP/1.1 GET health/models, POST chat/completions/completions, constrained sampling, JSON/SSE/usage/EOS/finish; source-specific unsupported arguments refuse.
+- [ ] Connect the eventual unified GPU engine to the extracted HTTP surface without the legacy CLI TextService adapter; preserve protocol/refusal behavior.
 - [ ] Serve uses engine TaskRequest and CommittedEvent, not Qwen/GPU/allocator; ingress/auth/HTTP body/stream credits in serving, scheduler/state in engine.
 - [ ] Preserve CPU and eligible native CUDA request routes, real cancellation/disconnect, bounded server pending queue and 50abaf7 worker join/owned shutdown.
-- [ ] Public zerogravity::serving reexports an independent embedded ServerBuilder/Handle; serving depends engine/core only.
-- [ ] F2 loopback tiny server/mock transport tests and signed commit(s).
+- [ ] Validate remaining unified GPU/transport integration within applicable source/physical scopes; reuse accepted CPU/HTTP tests.
 
-## Uncommitted — future F3 thin CLI / delete old runtime
+## Uncommitted — remaining F3 thin CLI / delete old runtime
 
 - [ ] Move all CLI current run, serve, pull, models, cache, inspect, devices, pipeline logic to facade/API and delete old implementation copies.
 - [ ] CLI retains argv/env/config precedence/path selection, human/JSON display, progress, process exit and Ctrl-C→cancel only.
@@ -217,7 +242,8 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 - [x] S0 DAG18 + isolated minimal strict + focused engine/server/core/SDK tests — `7396984`.
 - [x] Final isolated repository gate2,159 Rust/0fail/87ignored/292 suites;
   17 Python suites/182 cases (10 explicit source-input skips), packaging pass — `7396984`.
-- [ ] S1–S3 affected exact codec/source/state/ownership coverage.
+- [x] Current codec/CPU/reference-root and CPU SDK/server batch: scoped tests and assembled gate above.
+- [ ] Remaining S1–S3 active-contract/provider/source-bound physical integration coverage.
 - [ ] F0–F4 complete SDK/engine/serving/CLI feature/refusal migration coverage.
 - [ ] Q0/Q1/Q2 assembled transition/physical acceptance; unchanged evidence reused
   only within actual source/numerical/owner scopes. S0 is not Q0/Q2.

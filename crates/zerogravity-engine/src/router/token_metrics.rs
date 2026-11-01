@@ -1,13 +1,15 @@
 //! Bounded observations owned by one HTTP response; no inference authority.
-use super::engine::{
+// Reuse the existing JSON allocation census for transport ingress admission.
+use super::cpu::{
     GpuTokenObservation, MAX_TOKEN_OBSERVATIONS, ServiceError, TokenMetricsRequest,
     TokenObservation,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::time::Instant;
+pub use zerogravity_artifacts::json_allocation;
 
-pub(super) fn validate_wire_id(value: &str) -> Result<(), ServiceError> {
+pub fn validate_wire_id(value: &str) -> Result<(), ServiceError> {
     if value.is_empty()
         || value.len() > MAX_WIRE_ID_BYTES
         || !value
@@ -139,7 +141,7 @@ fn json_member(key: u64) -> u64 {
 /// times each record's serialized text (old + new backing at the final
 /// growth). The response-level wrapper is priced separately by
 /// `response_envelope`; the additive sum bounds the one combined buffer.
-pub(super) fn record_envelope() -> u64 {
+pub fn record_envelope() -> u64 {
     let producer_root = json_object([
         "session_id".len() as u64,
         "session_epoch".len() as u64,
@@ -185,7 +187,7 @@ pub(super) fn record_envelope() -> u64 {
 /// record backing is already charged once per emitted token by
 /// `record_envelope`; only the old backing live during the last doubling is
 /// added here.
-pub(super) fn records_growth() -> u64 {
+pub fn records_growth() -> u64 {
     (MAX_TOKEN_OBSERVATIONS as u64 / 2) * std::mem::size_of::<Record>() as u64
 }
 
@@ -193,7 +195,7 @@ pub(super) fn records_growth() -> u64 {
 /// objects, their field keys, the fixed semantic String heaps and serialized
 /// text, the bounded provider/wire identifier owners, and the serializer or
 /// SSE output buffer.
-pub(super) fn response_envelope() -> u64 {
+pub fn response_envelope() -> u64 {
     let aggregate_keys = [
         "time_to_first_token_ms",
         "generation_time_ms",
@@ -279,14 +281,14 @@ struct Record {
     gpu: Option<GpuTokenObservation>,
 }
 
-pub(super) struct TokenMetrics {
+pub struct TokenMetrics {
     request: TokenMetricsRequest,
     provider_response_id: String,
     records: Vec<Record>,
     finished: bool,
 }
 impl TokenMetrics {
-    pub(super) fn new(request: TokenMetricsRequest, provider_response_id: String) -> Self {
+    pub fn new(request: TokenMetricsRequest, provider_response_id: String) -> Self {
         Self {
             request,
             provider_response_id,
@@ -294,13 +296,13 @@ impl TokenMetrics {
             finished: false,
         }
     }
-    pub(super) fn wire_request_id(&self) -> &str {
+    pub fn wire_request_id(&self) -> &str {
         self.request
             .wire_request_id
             .as_deref()
             .unwrap_or(&self.provider_response_id)
     }
-    pub(super) fn record(&mut self, token: TokenObservation) -> Result<(), ServiceError> {
+    pub fn record(&mut self, token: TokenObservation) -> Result<(), ServiceError> {
         let received = Instant::now();
         if self.finished
             || self.records.len() >= MAX_TOKEN_OBSERVATIONS
@@ -372,16 +374,16 @@ impl TokenMetrics {
         });
         Ok(())
     }
-    pub(super) fn mark_written(&mut self) {
+    pub fn mark_written(&mut self) {
         if let Some(last) = self.records.last_mut() {
             last.http_write_completed_at_seconds =
                 Some(self.request.started.elapsed().as_secs_f64());
         }
     }
-    pub(super) fn token_ids(&self) -> Vec<u32> {
+    pub fn token_ids(&self) -> Vec<u32> {
         self.records.iter().map(|record| record.token_id).collect()
     }
-    pub(super) fn finish(&mut self, count: usize) -> Result<(Value, Value), ServiceError> {
+    pub fn finish(&mut self, count: usize) -> Result<(Value, Value), ServiceError> {
         if self.finished || count != self.records.len() {
             return Err(ServiceError::new(
                 500,
@@ -560,7 +562,7 @@ mod tests {
     }
     #[test]
     fn gpu_observations_preserve_b1_and_native_producer_frontiers() {
-        use super::super::engine::NativeCohortObservation;
+        use super::super::cpu::NativeCohortObservation;
         let started = Instant::now() - Duration::from_secs(1);
         let mut metrics = TokenMetrics::new(
             TokenMetricsRequest {

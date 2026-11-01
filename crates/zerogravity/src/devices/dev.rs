@@ -1,7 +1,11 @@
 //! Exact Linux device-node -> existing physical PCI identity.
 //! Only read-only metadata/sysfs/proc inspection; never open the GPU node.
-use super::*;
+#[cfg(test)]
+use super::discover;
+use super::{inventory::read, normalize_pci};
+use crate::{Error, Result};
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
+use std::path::Path;
 
 const DRM_MAJOR: u64 = 226;
 const NVIDIA_MAJOR: u64 = 195;
@@ -241,6 +245,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "explicit read-only Linux hardware/driver observation; not a source-free fixture"]
     fn read_only_live_gpu_nodes_resolve_to_the_same_inventory_identity() {
         let inventory = discover().unwrap();
         let mut checked = 0;

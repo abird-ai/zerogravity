@@ -1,7 +1,10 @@
 //! Model-free HTTP controls; no numerical/device qualification.
 
 use super::*;
-use crate::serve::{engine, join_router};
+use crate::{
+    ServerBuilder,
+    test_support::{self, HostBytes},
+};
 use pending::{CancelToken, PendingQueue, Pop, ServingHost};
 use std::sync::mpsc as control;
 
@@ -34,57 +37,47 @@ impl IngressCharge for Ingress {
         self.0.charge(
             "shutdown-control",
             session,
-            zerogravity::resource_arbiter::AllocationClass::Scratch,
+            zerogravity_core::resource_arbiter::AllocationClass::Scratch,
             bytes,
         )
     }
 }
 fn ingress() -> Ingress {
-    Ingress(ServingHost::isolated(256).unwrap())
+    Ingress(test_support::host())
 }
 
 #[test]
 fn idle_listener_stops_without_a_wakeup_connection() {
-    let (router, host) = engine::Router::transport_test();
-    let router = Arc::new(Router::Cpu(router));
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let shutdown = Arc::new(AtomicBool::new(false));
-    let stop = Arc::clone(&shutdown);
-    let serving = Arc::clone(&router);
-    let (ready, started) = control::channel();
-    let (done, finished) = control::channel();
-    let server = std::thread::spawn(move || {
-        ready.send(()).unwrap();
-        let result = serve(listener, serving, None, false, shutdown);
-        done.send(result).unwrap();
-    });
-    started.recv_timeout(Duration::from_secs(3)).unwrap();
-    std::thread::sleep(SHUTDOWN_POLL * 2);
-    stop.store(true, Ordering::Release);
-    finished
-        .recv_timeout(Duration::from_secs(3))
+    let _lock = test_support::lock();
+    let host = test_support::host();
+    let baseline = host.serving_bytes();
+    let server = ServerBuilder::from_service(test_support::idle(&host))
+        .bind("127.0.0.1:0".parse().unwrap())
+        .build()
         .unwrap()
+        .start()
         .unwrap();
+    let address = server.local_addr();
+    assert_ne!(address.port(), 0);
+    assert!(host.serving_bytes() > baseline);
+    server.stop();
     server.join().unwrap();
-    join_router(router).unwrap();
-    assert_eq!(host.serving_bytes(), 0);
+    assert!(TcpStream::connect(address).is_err());
+    assert_eq!(host.serving_bytes(), baseline);
 }
 
 #[test]
 fn shutdown_interrupts_idle_partial_header_and_partial_body_then_joins_workers() {
-    let (router, host) = engine::Router::transport_test();
-    let router = Arc::new(Router::Cpu(router));
+    let _lock = test_support::lock();
+    let host = test_support::host();
     let baseline = host.serving_bytes();
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let address = listener.local_addr().unwrap();
-    let shutdown = Arc::new(AtomicBool::new(false));
-    let serving = Arc::clone(&router);
-    let stop = Arc::clone(&shutdown);
-    let (done, finished) = control::channel();
-    let server = std::thread::spawn(move || {
-        done.send(serve(listener, serving, None, false, shutdown))
-            .unwrap();
-    });
+    let server = ServerBuilder::from_service(test_support::idle(&host))
+        .bind("127.0.0.1:0".parse().unwrap())
+        .build()
+        .unwrap()
+        .start()
+        .unwrap();
+    let address = server.local_addr();
     let idle = TcpStream::connect(address).unwrap();
     let mut header = TcpStream::connect(address).unwrap();
     header
@@ -93,16 +86,10 @@ fn shutdown_interrupts_idle_partial_header_and_partial_body_then_joins_workers()
     let mut body = TcpStream::connect(address).unwrap();
     body.write_all(b"POST /v1/completions HTTP/1.1\r\nHost: localhost\r\nContent-Length: 32\r\nContent-Type: application/json\r\n\r\n{\"").unwrap();
     wait_until(|| host.serving_bytes() >= baseline + 3 * HTTP_HEADER_ENVELOPE);
-    stop.store(true, Ordering::Release);
-    finished
-        .recv_timeout(Duration::from_secs(3))
-        .unwrap()
-        .unwrap();
-    server.join().unwrap();
-    join_router(router).unwrap();
+    server.shutdown().unwrap();
     assert_eq!(
         host.serving_bytes(),
-        0,
+        baseline,
         "HTTP/worker/table owners retired after joins"
     );
     assert!(
@@ -128,11 +115,13 @@ fn shutdown_interrupts_idle_partial_header_and_partial_body_then_joins_workers()
 
 #[test]
 fn shutdown_cancels_original_queued_and_active_streaming_and_nonstream_receipts() {
+    let _lock = test_support::lock();
     let ingress = ingress();
     let queue = PendingQueue::new(ingress.0.clone(), Some(8)).unwrap();
     let consumer = queue.worker().unwrap();
     let shutdown = Arc::new(AtomicBool::new(false));
-    let mut connections = Connections::new(&ingress, Arc::clone(&shutdown)).unwrap();
+    let mut connections =
+        Connections::new(&ingress, Arc::clone(&shutdown), MAX_CONNECTIONS).unwrap();
     let mut active = Vec::new();
     let mut clients = Vec::new();
     let mut tokens = Vec::new();
@@ -165,11 +154,12 @@ fn shutdown_cancels_original_queued_and_active_streaming_and_nonstream_receipts(
         let charge = ingress.charge_http_ingress("connection", 128).unwrap();
         let handle = std::thread::spawn(move || {
             begun.send(()).unwrap();
+            let mut wire = Wire::new(&mut stream, 1 << 20);
             if streaming {
-                assert!(stream_events(&mut stream, request, false, false, &stop).is_err());
+                assert!(stream_events(&mut wire, request, false, false, &stop).is_err());
             } else {
                 assert_eq!(
-                    completion_events(&mut stream, request, false, &stop)
+                    completion_events(&mut wire, request, false, &stop)
                         .unwrap_err()
                         .code,
                     "shutting_down"
@@ -203,26 +193,32 @@ fn shutdown_cancels_original_queued_and_active_streaming_and_nonstream_receipts(
 
 #[test]
 fn disconnect_cancels_generation_before_the_first_token() {
-    for streaming in [false, true] {
-        let host = ServingHost::isolated(256).unwrap();
+    let _lock = test_support::lock();
+    for (streaming, trailing) in [(false, false), (true, false), (false, true), (true, true)] {
+        let host = test_support::host();
         let (sender, receiver) = mpsc::try_sync_channel(&host, "control", "events", 2).unwrap();
-        let cancel = CancelToken::standalone();
+        let cancel = test_support::cancel(&host);
         let token = cancel.clone();
         let request = RequestEvents::new(1, "no-model".into(), receiver, cancel, None, None);
-        let (client, mut stream) = pair();
+        let (mut client, mut stream) = pair();
         let handle = std::thread::spawn(move || {
             let stop = AtomicBool::new(false);
+            let mut wire = Wire::new(&mut stream, 1 << 20);
             if streaming {
-                assert!(stream_events(&mut stream, request, false, false, &stop).is_err());
+                assert!(stream_events(&mut wire, request, false, false, &stop).is_err());
             } else {
                 assert_eq!(
-                    completion_events(&mut stream, request, false, &stop)
+                    completion_events(&mut wire, request, false, &stop)
                         .unwrap_err()
                         .status,
                     499
                 );
             }
         });
+        if trailing {
+            // Events are already admitted. Bytes arriving now must not hide EOF.
+            client.write_all(b"unexpected next request").unwrap();
+        }
         drop(client);
         wait_until(|| token.is_cancelled());
         handle.join().unwrap();
@@ -241,7 +237,7 @@ fn blocked_reader(
     let charge = ingress.charge_http_ingress("connection", 128).unwrap();
     let (done, finished) = control::channel();
     let handle = std::thread::spawn(move || {
-        assert!(read_request(&mut stream, &source).is_err());
+        assert!(read_request(&mut stream, &source, MAX_BODY).is_err());
         done.send(()).unwrap();
     });
     connections.entries.push(Connection {
@@ -254,8 +250,10 @@ fn blocked_reader(
 
 #[test]
 fn listener_failure_interrupts_and_joins_existing_partial_clients() {
+    let _lock = test_support::lock();
     let ingress = ingress();
-    let mut connections = Connections::new(&ingress, Arc::new(AtomicBool::new(false))).unwrap();
+    let mut connections =
+        Connections::new(&ingress, Arc::new(AtomicBool::new(false)), MAX_CONNECTIONS).unwrap();
     let (_client, finished) = blocked_reader(&mut connections, &ingress);
     let error = accept_connections(
         &mut connections,
@@ -272,8 +270,10 @@ fn listener_failure_interrupts_and_joins_existing_partial_clients() {
 
 #[test]
 fn handler_spawn_failure_interrupts_and_joins_existing_clients() {
+    let _lock = test_support::lock();
     let ingress = ingress();
-    let mut connections = Connections::new(&ingress, Arc::new(AtomicBool::new(false))).unwrap();
+    let mut connections =
+        Connections::new(&ingress, Arc::new(AtomicBool::new(false)), MAX_CONNECTIONS).unwrap();
     let (_blocked_client, finished) = blocked_reader(&mut connections, &ingress);
     let (_new_client, stream) = pair();
     let mut accepted = Some(stream);
@@ -292,8 +292,10 @@ fn handler_spawn_failure_interrupts_and_joins_existing_clients() {
 
 #[test]
 fn shutdown_interrupts_a_backpressured_writer_before_join() {
+    let _lock = test_support::lock();
     let ingress = ingress();
-    let mut connections = Connections::new(&ingress, Arc::new(AtomicBool::new(false))).unwrap();
+    let mut connections =
+        Connections::new(&ingress, Arc::new(AtomicBool::new(false)), MAX_CONNECTIONS).unwrap();
     let (_client, mut stream) = pair();
     stream.set_nonblocking(true).unwrap();
     let data = [0u8; 16 * 1024];
@@ -333,8 +335,10 @@ fn shutdown_interrupts_a_backpressured_writer_before_join() {
 
 #[test]
 fn unwind_interrupts_and_joins_every_existing_handler() {
+    let _lock = test_support::lock();
     let ingress = ingress();
-    let mut connections = Connections::new(&ingress, Arc::new(AtomicBool::new(false))).unwrap();
+    let mut connections =
+        Connections::new(&ingress, Arc::new(AtomicBool::new(false)), MAX_CONNECTIONS).unwrap();
     let (_client, finished) = blocked_reader(&mut connections, &ingress);
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         let _owned = connections;
@@ -347,8 +351,10 @@ fn unwind_interrupts_and_joins_every_existing_handler() {
 
 #[test]
 fn panicked_handler_is_a_failure_and_does_not_skip_other_joins() {
+    let _lock = test_support::lock();
     let ingress = ingress();
-    let mut connections = Connections::new(&ingress, Arc::new(AtomicBool::new(false))).unwrap();
+    let mut connections =
+        Connections::new(&ingress, Arc::new(AtomicBool::new(false)), MAX_CONNECTIONS).unwrap();
     let (_panicked_client, stream) = pair();
     let handle = std::thread::spawn(|| panic!("injected handler panic"));
     connections.entries.push(Connection {
