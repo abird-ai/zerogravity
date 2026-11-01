@@ -58,6 +58,55 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn repeated_cached_source_clients_share_one_unchanged_budget() {
+    use zerogravity::resource_arbiter::{AllocationClass, AllocationRequest};
+    let bytes = 128 * 1024 * 1024;
+    let a = zerogravity::prepare::cached_source_admission(bytes).unwrap();
+    let b = zerogravity::prepare::cached_source_admission(bytes).unwrap();
+    assert_eq!(a.resource, b.resource);
+    assert!(zerogravity::prepare::cached_source_admission(bytes + 1).is_err());
+    assert!(zerogravity::prepare::cached_source_admission(0).is_err());
+    let held = a
+        .arbiter
+        .admit(
+            &a.resource,
+            a.owner.clone(),
+            &[AllocationRequest {
+                kind: AllocationClass::Scratch,
+                bytes,
+            }],
+        )
+        .unwrap();
+    assert!(
+        b.arbiter
+            .admit(
+                &b.resource,
+                b.owner.clone(),
+                &[AllocationRequest {
+                    kind: AllocationClass::Scratch,
+                    bytes: 1
+                }]
+            )
+            .is_err()
+    );
+    drop(held);
+    assert_eq!(b.arbiter.snapshot(&b.resource).unwrap().reserved, 0);
+    assert_eq!(b.arbiter.snapshot(&b.resource).unwrap().limit, bytes);
+    drop(
+        b.arbiter
+            .admit(
+                &b.resource,
+                b.owner.clone(),
+                &[AllocationRequest {
+                    kind: AllocationClass::Scratch,
+                    bytes: 1,
+                }],
+            )
+            .unwrap(),
+    );
+}
+
+#[test]
 fn role_and_staging_admission_fail_without_model_source_allocation() {
     let fixture = Fixture::new();
     let store = fixture.store();
@@ -85,6 +134,42 @@ fn role_and_staging_admission_fail_without_model_source_allocation() {
     tx.commit(Some("fixture")).unwrap();
     let snapshot = store.resolve_ref("fixture").unwrap();
     let denied = admission(1);
+    use zerogravity::artifacts::SnapshotFile;
+    let selected = |path| SnapshotFile {
+        snapshot: "fixture",
+        path,
+    };
+    assert!(matches!(
+        PreparedQwen::from_cache(
+            &store,
+            selected("model.gguf"),
+            selected("config.json"),
+            selected("tokenizer.json"),
+            &denied
+        ),
+        Err(zerogravity::Error::Limit(_))
+    ));
+    assert!(matches!(
+        PreparedQwen::from_cache(
+            &store,
+            selected("config.json"),
+            selected("config.json"),
+            selected("tokenizer.json"),
+            &memory
+        ),
+        Err(zerogravity::Error::Malformed(_))
+    ));
+    assert!(
+        PreparedQwen::from_cache(
+            &store,
+            selected("../model.gguf"),
+            selected("config.json"),
+            selected("tokenizer.json"),
+            &memory
+        )
+        .is_err()
+    );
+
     assert!(matches!(
         PreparedQwen::from_snapshots(
             &snapshot,

@@ -3,8 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, atomic::AtomicBool};
 use zerogravity::cache::import_hf::{HfImportEntry, HfImportRequest};
-use zerogravity::cache::{CacheLimits, CacheOptions, CommitOutcome, FileRole, TransferAdmission};
-use zerogravity::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, ResourceOwner};
+use zerogravity::cache::{CacheLimits, CacheOptions, CommitOutcome, FileRole};
 use zerogravity::{Error, Result};
 const MEMORY_DEFAULT: u64 = 128 * 1024 * 1024;
 struct Options {
@@ -145,14 +144,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         return Ok(());
     }
     let options = parse(args)?;
-    let arbiter = ResourceArbiter::process_shared();
-    let resource = PhysicalDeviceKey::new("host", "artifact-transfer-staging")?;
-    arbiter.register(resource.clone(), options.memory)?;
-    let admission = TransferAdmission {
-        arbiter,
-        resource,
-        owner: ResourceOwner::new("local-hf-cache-import", "cli")?,
-    };
+    let admission = zerogravity::artifacts::transfer_admission(options.memory)?;
     let plan = options.request.prepare(
         &options.cache.limits,
         &admission,

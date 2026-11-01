@@ -80,9 +80,9 @@ pub(super) fn run(args: &[String]) -> Result<()> {
     }
     let (options, native) = parse(args)?;
     let request = match &options.action {
-        Action::Fetch(request) => super::FetchRequest::Files(request),
-        Action::Quant(request) => super::FetchRequest::Quant(request),
-        Action::Filters(request) => super::FetchRequest::Filters(request),
+        Action::Fetch(request) => super::HubSelection::Files(request),
+        Action::Quant(request) => super::HubSelection::Quant(request),
+        Action::Filters(request) => super::HubSelection::Filters(request),
         _ => return Err(invalid()),
     };
     super::run_fetch(&options, request, Some(&native))

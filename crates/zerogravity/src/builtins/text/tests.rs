@@ -35,6 +35,7 @@ fn approved_tokenizer_reader_rejects_wrong_extent_and_symlink() {
 mod serving_population {
     #[cfg(test)]
     mod checkpoint;
+    mod direct;
 
     use super::*;
     use std::collections::BTreeSet;

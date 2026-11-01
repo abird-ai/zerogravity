@@ -63,8 +63,10 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
   before changing admission, rather than waiting on itself.
 - Real reusable HTTP server and SDK pipeline checking/device APIs; no fabricated
   successful model preparation, placement, pipeline execution or future protocol.
-- CLI GPU scheduler/route dispatch copies removed. Remaining run/pull/cache
-  business paths still live in CLI; F0/F1/F3/F4 are NOT complete.
+- CLI GPU scheduler/route dispatch copies removed. Current uncommitted SDK batch
+  also owns direct CPU/source planning, finite CUDA/Gemma diagnostics and artifact
+  orchestration. Final batch gate/checkpoint and active contracts remain open;
+  F0–F4/Q completion is not claimed.
 - Qualification callers use real public admitted channels/host/cancel owners;
   no production test-support feature or exported isolated ledger was introduced.
 
@@ -226,11 +228,69 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 - [x] Signed structural source/tests and owning TODO checkpoint; nothing pushed.
 
 
+## Uncommitted — SDK/CLI ownership source/host checkpoint
+
+- Owner requests completing all remaining Fabric work. Main owns source, builds,
+  review and plan reconciliation; prior launch/acquisition/push holds remain.
+- [x] Rehome real direct-run/preparation/audit and cached-source business paths;
+  keep one shared scheduling/physical authority and exact existing arithmetic.
+- [x] Finish typed artifact operations and CLI delegation. Preserve provider,
+  Xet/conditional/offline/ref/durability and cancellation semantics; environment,
+  credentials, signals and human formatting stay caller-owned.
+- [ ] Reconcile remaining active contracts/catalog/transport against actual
+  consumers, not inert descriptors; keep future E-phase capabilities refused.
+- [x] Focused SDK/current-feature regressions and final assembled source/host
+  gate pass. Physical acceptance remains separate/unrun.
+- [ ] Sign this source/host checkpoint and reconcile current recovery documents.
+- Implemented: `artifacts::{HubPull,PreparedHubPull,ComponentDocument,
+  ComponentClients,SnapshotFile}`, original fixed transfer/source pools and
+  `PreparedQwen::from_cache`; no transport, publisher or source issuer replacement.
+- Run ownership: `run::cpu::Plan`, `prepare::selection::PreparedCpu`,
+  `diagnostics::{cpu_text,qwen_route,gemma_text}`; CLI keeps arguments, environment,
+  signals, bounded stdin, lazy audit sinks and presentation. Unreachable alternate
+  run/parser/GPU implementation removed; existing command behavior retained.
+- CPU returned payloads retain the original envelope until their final owner
+  drops; private fields prevent independently moving charged payloads out.
+  Context refusal and lazy audit timing keep original source/control lifetimes.
+- Finite native SDK owns allowlist validation; genuine fresh PCI/Client binding,
+  source roles, native feedback, pre-Client admission and retirement stay original.
+  Gemma returns operation plus source/accounting failures after source close, even
+  for post-open setup or presentation errors. No trained/physical pass inferred.
+- Accepted focused scopes so far: artifact SDK4/cache2/Xet1 controls; CPU input
+  controls2; CLI all-target/provider/alias tests, including genuine sparse-source
+  run forms; direct CPU source/audit/planning/final-output case passes16.84s.
+  Public-only `examples/fabric_sdk.rs` builds and runs cold help.
+- Combined CUDA/HIP, native-only, Gemma CPU-only, default/acquisition strict and
+  minimal checks pass. Reviewed native controls12 pass/2 physical ignored;
+  Gemma host control1 passes/1 trained-source CPU case ignored. SDK-only example
+  builds; cold help and actual missing-source refusal pass.
+- Final isolated `scripts/check.sh` passes:2,315 Rust executions/0fail/97ignored
+  across302 suites (70 empty feature-target suites are not execution evidence);
+  17 Python suites/182 cases/10 skips. Architecture/strict/feature/minimal,
+  release/installer/shell/SSE/Nix gates pass; only the two existing Vulkan
+  source-page dead-code warnings remain. See `final-gate-r1.log`.
+- Source review confirms16 unchanged native policy/budget helper bodies after
+  namespace/whitespace normalization. No core/CPU/GPU/model math, kernel/image,
+  source manifest or root README bytes changed. No physical evidence retagged.
+- `assembled-sdk-r1.log` was deliberately interrupted after completed compile/
+  artifact/control stages, before model execution: trained Gemma remains deferred.
+  `assembled-sdk-r2.log` finishes CLI plus the explicitly approved tiny CPU case.
+  The new existing-source Gemma CPU lifecycle case compiles but stays ignored;
+  source presence never grants execution permission. Initial failed logs retained.
+- Logs: XDG state `abird/zerogravity/fabric-finish-b9SliwEt/`.
+
 ## Uncommitted — remaining S1 active contracts
 
 - [ ] Bind activation/numerical/layout/derived contracts to genuine preparation consumers; real stored encoding/callers are migrated above.
 - [ ] Bind existing GPU packed kernels/activation under source+variant+numeric+device constraints; no codec-specific model engine.
 - [ ] Validate remaining active-contract integration; reuse accepted unchanged codec/numerical evidence.
+- Concrete follow-up: active `SourceNumericalContract`/source operators remain
+  authoritative. Newer `ActivationEncoding`, `NumericalContract`,
+  `PreparedTensorLayout` and `DerivedModelManifest` are descriptions, not bound
+  kernel/source/Ready authority. Generic engine preparation/catalog loading,
+  per-model retirement, residency and paged state still explicitly refuse.
+  Bind genuine consumers; do not rename metadata as execution or invent E-phase
+  quantization/hot-reload/placement merely to close these boxes.
 
 ## Uncommitted — future S2 family math and GPU provider
 

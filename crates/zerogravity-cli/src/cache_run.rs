@@ -1,26 +1,13 @@
 //! Explicit offline cache preparation, then the ordinary CPU execution loop.
-use super::{Command, cpu_options, infer_prepared, parse};
+use super::infer_prepared;
 use std::path::{Path, PathBuf};
-use zerogravity::cache::{CacheOptions, CacheStore, SnapshotLease, TransferAdmission};
+use zerogravity::cache::{CacheOptions, CacheStore};
 use zerogravity::prepare::PreparedQwen;
-use zerogravity::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, ResourceOwner};
 use zerogravity::{Error, Result};
 
 fn invalid() -> Error {
     Error::Malformed("invalid run-cache arguments; use run-cache --help".into())
 }
-fn snapshot(store: &CacheStore, selector: &str) -> Result<SnapshotLease> {
-    if selector.len() == 64
-        && selector
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    {
-        store.open_snapshot(selector)
-    } else {
-        store.resolve_ref(selector)
-    }
-}
-
 pub(super) fn run(args: Vec<String>) -> Result<()> {
     if args.len() == 1 && matches!(args[0].as_str(), "--help" | "-h" | "help") {
         println!(
@@ -67,7 +54,7 @@ raw source and sidecar staging, not all model/tokenizer/session memory or RAM."
     let mut tokenizer_snapshot = model_snapshot.clone();
     let mut disk = 16 * 1024 * 1024 * 1024u64;
     let mut memory = 5 * 1024 * 1024 * 1024u64;
-    let mut cpu = vec!["run".to_string(), "verified cached model".to_string()];
+    let mut cpu = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
     let mut rest = args[1..].iter();
     while let Some(flag) = rest.next() {
@@ -138,49 +125,24 @@ raw source and sidecar staging, not all model/tokenizer/session memory or RAM."
     for file in [&model_file, &config_file, &tokenizer_file] {
         zerogravity::cache::paths::validate_relative_path(file)?;
     }
-    let command = parse(cpu.iter());
-    if !matches!(command, Command::Run { .. }) {
-        return Err(invalid());
-    }
-    let (_, options) = cpu_options(command);
-    let arbiter = ResourceArbiter::process_shared();
-    let resource = PhysicalDeviceKey::new("host", "cache-model-source")?;
-    arbiter.register(resource.clone(), memory)?;
-    let admission = TransferAdmission {
-        arbiter,
-        resource,
-        owner: ResourceOwner::new("cached-model", "cli")?,
-    };
+    let options = super::run_cli::cached_cpu_options(&cpu)?;
+    let admission = zerogravity::prepare::cached_source_admission(memory)?;
     let store = CacheStore::open(CacheOptions::new(root, disk))?;
-    let model = snapshot(&store, model_snapshot)?;
-    let config = if &config_snapshot == model_snapshot {
-        None
-    } else {
-        Some(snapshot(&store, &config_snapshot)?)
-    };
-    let tokenizer =
-        if &tokenizer_snapshot == model_snapshot || tokenizer_snapshot == config_snapshot {
-            None
-        } else {
-            Some(snapshot(&store, &tokenizer_snapshot)?)
-        };
-    let config_ref = config.as_ref().unwrap_or(&model);
-    let tokenizer_ref = if &tokenizer_snapshot == model_snapshot {
-        &model
-    } else if tokenizer_snapshot == config_snapshot {
-        config_ref
-    } else {
-        tokenizer
-            .as_ref()
-            .expect("distinct tokenizer snapshot opened")
-    };
-    let prepared = PreparedQwen::from_snapshots(
-        &model,
-        &model_file,
-        config_ref,
-        &config_file,
-        tokenizer_ref,
-        &tokenizer_file,
+    use zerogravity::artifacts::SnapshotFile;
+    let prepared = PreparedQwen::from_cache(
+        &store,
+        SnapshotFile {
+            snapshot: model_snapshot,
+            path: &model_file,
+        },
+        SnapshotFile {
+            snapshot: &config_snapshot,
+            path: &config_file,
+        },
+        SnapshotFile {
+            snapshot: &tokenizer_snapshot,
+            path: &tokenizer_file,
+        },
         &admission,
     )?;
     infer_prepared("verified cached model", prepared, options)

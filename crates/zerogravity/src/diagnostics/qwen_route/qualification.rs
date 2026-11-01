@@ -1,13 +1,15 @@
 //! Finite original CUDA diagnostic route.
 use super::*;
+use crate::run_policy::{Entrypoint, Origin, SourceSelector};
+use std::{collections::BTreeMap, path::PathBuf};
+fn bad(message: impl Into<String>) -> Error {
+    Error::Malformed(message.into())
+}
 /// Finite route scalars the card proposal and refusal trace need; separated
 /// from `ShortHfRouteMetadata` so the pure proposal is unit-testable without
 /// a real source directory.
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
-pub(in crate::run_cli) struct FiniteRouteProfile {
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+pub(super) struct FiniteRouteProfile {
     /// Selected finite CUDA HOST requirement (meta.host_bytes).
     pub host_bytes: usize,
     /// Original provider bytes (meta.provider_bytes).
@@ -21,17 +23,14 @@ pub(in crate::run_cli) struct FiniteRouteProfile {
 /// card scan continues, so one trace can hold both host and card reasons.
 /// No arbiter mutation, no Client, no I/O beyond the caller-supplied
 /// snapshot state.
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
-pub(in crate::run_cli) fn select_sm86_card(
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+pub(super) fn select_sm86_card(
     request: &Request,
     profile: &FiniteRouteProfile,
     inventory: &devices::Inventory,
-    arbiter: &zerogravity::resource_arbiter::ResourceArbiter,
+    arbiter: &crate::resource_arbiter::ResourceArbiter,
 ) -> Result<(Option<devices::Observation>, Vec<String>)> {
-    use zerogravity::resource_arbiter::PhysicalDeviceKey;
+    use crate::resource_arbiter::PhysicalDeviceKey;
     let allowed = devices::allowed(request, inventory)?;
     let mut exclusions = Vec::new();
     let host = inventory
@@ -122,14 +121,8 @@ pub(in crate::run_cli) fn select_sm86_card(
 
 /// Exact refusal when nothing proposes; a host-fit failure keeps today's
 /// host limit, otherwise the no-card limit stays verbatim.
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
-pub(in crate::run_cli) fn no_route_refusal(
-    profile: &FiniteRouteProfile,
-    exclusions: &[String],
-) -> Error {
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+pub(super) fn no_route_refusal(profile: &FiniteRouteProfile, exclusions: &[String]) -> Error {
     if exclusions.iter().any(|e| e.starts_with("host:")) {
         Error::Limit(format!(
             "finite HF original HOST{}MiB plus current routing headroom does not fit",
@@ -142,32 +135,23 @@ pub(in crate::run_cli) fn no_route_refusal(
 
 /// Dry-run status fields shared with the generic decision trace: a dry-run
 /// proposal is never a reservation.
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
-pub(in crate::run_cli) fn dry_run_trace_status(trace: &mut serde_json::Value) {
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+pub(super) fn dry_run_trace_status(trace: &mut serde_json::Value) {
     trace["dry_run"] = serde_json::json!(true);
     trace["reservation"] = serde_json::json!("none");
 }
 
 /// A dry-run holds nothing; the finite adapter keeps reporting the explicit
 /// pre-Client gap until a route actually boots a Client.
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
-pub(in crate::run_cli) fn dry_run_admission_trace(trace: &mut serde_json::Value) {
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+pub(super) fn dry_run_admission_trace(trace: &mut serde_json::Value) {
     trace["pre_client_admission_gap"] = serde_json::json!(true);
 }
 
 /// Executing --explain trace: the transactional seam (below) replaced the
 /// open pre-Client gap; the boundary stays advisory exactly as before.
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
-pub(in crate::run_cli) fn executing_admission_trace(trace: &mut serde_json::Value) {
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+pub(super) fn executing_admission_trace(trace: &mut serde_json::Value) {
     trace["pre_client_admission"] =
         serde_json::json!("transactional card hold before Client; released at verified identity");
     trace["advisory_boundary"] = serde_json::json!(
@@ -184,15 +168,12 @@ pub(in crate::run_cli) fn executing_admission_trace(trace: &mut serde_json::Valu
 /// then drop it; the native backend/compiler-context reservation owns the
 /// ledger from its own admission onward. This is NOT an OS hard memory
 /// guarantee: other processes and driver allocations stay advisory.
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
-pub(crate) fn admit_pre_client_card(
-    arbiter: &zerogravity::resource_arbiter::ResourceArbiter,
-    physical: &zerogravity::resource_arbiter::PhysicalDeviceKey,
-) -> Result<zerogravity::resource_arbiter::GlobalResourceLease> {
-    use zerogravity::resource_arbiter::{AllocationClass, AllocationRequest, ResourceOwner};
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+pub(super) fn admit_pre_client_card(
+    arbiter: &crate::resource_arbiter::ResourceArbiter,
+    physical: &crate::resource_arbiter::PhysicalDeviceKey,
+) -> Result<crate::resource_arbiter::GlobalResourceLease> {
+    use crate::resource_arbiter::{AllocationClass, AllocationRequest, ResourceOwner};
     arbiter.register_matching(physical.clone(), 5120 * 1024 * 1024)?;
     arbiter.admit(
         physical,
@@ -204,13 +185,10 @@ pub(crate) fn admit_pre_client_card(
     )
 }
 
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
 fn same_host(
-    a: &zerogravity::resource_arbiter::DeviceBudgetSnapshot,
-    b: &zerogravity::resource_arbiter::DeviceBudgetSnapshot,
+    a: &crate::resource_arbiter::DeviceBudgetSnapshot,
+    b: &crate::resource_arbiter::DeviceBudgetSnapshot,
 ) -> bool {
     a.limit == b.limit
         && a.reserved == b.reserved
@@ -220,14 +198,8 @@ fn same_host(
         && a.active_models == b.active_models
         && a.fenced == b.fenced
 }
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
-fn fresh_host(
-    snapshot: &zerogravity::resource_arbiter::DeviceBudgetSnapshot,
-    limit: u64,
-) -> Result<()> {
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+fn fresh_host(snapshot: &crate::resource_arbiter::DeviceBudgetSnapshot, limit: u64) -> Result<()> {
     if snapshot.limit != limit
         || snapshot.reserved != 0
         || snapshot.remaining != limit
@@ -242,19 +214,15 @@ fn fresh_host(
     }
     Ok(())
 }
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
 fn bootstrap_baseline(
-    host: &zerogravity::cache::TransferAdmission,
+    host: &crate::cache::TransferAdmission,
     limit: u64,
-) -> Result<zerogravity::resource_arbiter::DeviceBudgetSnapshot> {
-    use zerogravity::resource_arbiter::{
+) -> Result<crate::resource_arbiter::DeviceBudgetSnapshot> {
+    use crate::resource_arbiter::{
         AllocationClass, DeviceBudgetSnapshot, ResourceOwner, lease_actual_inventory_bytes,
     };
-    let bootstrap =
-        zerogravity::tokenize_admission::approve_arbiter(host, "qwen35-cuda-bootstrap")?;
+    let bootstrap = crate::tokenize_admission::approve_arbiter(host, "qwen35-cuda-bootstrap")?;
     bootstrap.validate_domain(host)?;
     let plan = bootstrap.plan();
     let owner = ResourceOwner::new(&host.owner.model, "qwen35-cuda-bootstrap")?;
@@ -287,15 +255,12 @@ fn bootstrap_baseline(
     }
     Ok(actual)
 }
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
 fn after_backend(
-    baseline: &zerogravity::resource_arbiter::DeviceBudgetSnapshot,
+    baseline: &crate::resource_arbiter::DeviceBudgetSnapshot,
     backend_bytes: u64,
-) -> Result<zerogravity::resource_arbiter::DeviceBudgetSnapshot> {
-    use zerogravity::resource_arbiter::AllocationClass;
+) -> Result<crate::resource_arbiter::DeviceBudgetSnapshot> {
+    use crate::resource_arbiter::AllocationClass;
     if backend_bytes != 384 * 1024 * 1024 {
         return Err(Error::Limit(
             "finite HF backend HOST reservation must be exactly 384 MiB".into(),
@@ -321,16 +286,13 @@ fn after_backend(
     expected.active_models.insert("backend/cuda".into());
     Ok(expected)
 }
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
 fn request_credit_parts(
-    host: &zerogravity::cache::TransferAdmission,
+    host: &crate::cache::TransferAdmission,
     session: &str,
     bytes: u64,
 ) -> Result<(u64, u64)> {
-    use zerogravity::resource_arbiter::{ResourceOwner, lease_actual_inventory_bytes};
+    use crate::resource_arbiter::{ResourceOwner, lease_actual_inventory_bytes};
     if bytes == 0 {
         return Err(Error::Limit("zero finite HF request payload".into()));
     }
@@ -338,17 +300,14 @@ fn request_credit_parts(
     let inventory = lease_actual_inventory_bytes(&host.resource, &owner, 2)?;
     Ok((bytes, inventory))
 }
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
 fn admit_request_credit(
-    host: &zerogravity::cache::TransferAdmission,
+    host: &crate::cache::TransferAdmission,
     session: &str,
     payload: u64,
     inventory: u64,
-) -> Result<zerogravity::resource_arbiter::GlobalResourceLease> {
-    use zerogravity::resource_arbiter::{AllocationClass, AllocationRequest, ResourceOwner};
+) -> Result<crate::resource_arbiter::GlobalResourceLease> {
+    use crate::resource_arbiter::{AllocationClass, AllocationRequest, ResourceOwner};
     if payload == 0 || inventory == 0 {
         return Err(Error::Limit("zero finite HF request credit".into()));
     }
@@ -367,24 +326,18 @@ fn admit_request_credit(
         ],
     )
 }
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
 fn request_credit(
-    host: &zerogravity::cache::TransferAdmission,
+    host: &crate::cache::TransferAdmission,
     session: &str,
     bytes: u64,
-) -> Result<zerogravity::resource_arbiter::GlobalResourceLease> {
+) -> Result<crate::resource_arbiter::GlobalResourceLease> {
     let (payload, inventory) = request_credit_parts(host, session, bytes)?;
     admit_request_credit(host, session, payload, inventory)
 }
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
 fn prompt_payload_bytes(
-    tokenizer: &zerogravity::qwen35::tokenize::QwenTokenizer,
+    tokenizer: &crate::qwen35::tokenize::QwenTokenizer,
     prompt: &str,
     prompt_capacity: usize,
     chat: bool,
@@ -402,12 +355,9 @@ fn prompt_payload_bytes(
         .ok_or_else(|| Error::Limit("planned prompt payload sum".into()))?;
     Ok((payload, id_capacity))
 }
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
 fn decode_payload_bytes(
-    tokenizer: &zerogravity::qwen35::tokenize::QwenTokenizer,
+    tokenizer: &crate::qwen35::tokenize::QwenTokenizer,
     tokens: usize,
 ) -> Result<u64> {
     let scratch = u64::try_from(tokenizer.decode_scratch_bound(tokens))
@@ -422,17 +372,14 @@ fn decode_payload_bytes(
         .checked_add(text)
         .ok_or_else(|| Error::Limit("decoded payload sum".into()))
 }
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
 fn with_request_credit(
-    baseline: &zerogravity::resource_arbiter::DeviceBudgetSnapshot,
+    baseline: &crate::resource_arbiter::DeviceBudgetSnapshot,
     model: &str,
     payload: u64,
     inventory: u64,
-) -> Result<zerogravity::resource_arbiter::DeviceBudgetSnapshot> {
-    use zerogravity::resource_arbiter::AllocationClass;
+) -> Result<crate::resource_arbiter::DeviceBudgetSnapshot> {
+    use crate::resource_arbiter::AllocationClass;
     if payload == 0 || inventory == 0 {
         return Err(Error::Limit("zero finite HF request credit".into()));
     }
@@ -461,28 +408,24 @@ fn with_request_credit(
     expected.active_models.insert(model.into());
     Ok(expected)
 }
-#[cfg(not(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-)))]
-pub(in crate::run_cli) fn run(
+#[cfg(not(all(feature = "qwen35-cuda", target_os = "linux")))]
+pub(super) fn run(
     _: Request,
     _: devices::Inventory,
-    _: Vec<devices::Observation>,
+    _: impl FnOnce() -> Result<String>,
+    _: impl FnMut(Report<'_>) -> Result<()>,
 ) -> Result<()> {
     Err(Error::Unsupported("original HF CUDA direct run requires Linux and compiled qwen35-cuda; no source/model/client is loaded".into()))
 }
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux"
-))]
-pub(in crate::run_cli) fn run(
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+pub(super) fn run(
     mut request: Request,
     inventory: devices::Inventory,
-    _candidates: Vec<devices::Observation>,
+    read_prompt: impl FnOnce() -> Result<String>,
+    mut report: impl FnMut(Report<'_>) -> Result<()>,
 ) -> Result<()> {
-    use zerogravity::qwen35_cuda as original;
-    use zerogravity::resource_arbiter::{
+    use crate::qwen35_cuda as original;
+    use crate::resource_arbiter::{
         AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
         lease_inventory_bytes,
     };
@@ -492,12 +435,12 @@ pub(in crate::run_cli) fn run(
         ids: Option<Vec<u32>>,
         output: Option<Vec<u32>>,
         tokenizer: Option<original::RouteTokenizer>,
-        prompt_scratch: Option<zerogravity::resource_arbiter::GlobalResourceLease>,
+        prompt_scratch: Option<crate::resource_arbiter::GlobalResourceLease>,
         decode_payload: u64,
         decode_inventory: u64,
-        decode_credit: Option<zerogravity::resource_arbiter::GlobalResourceLease>,
-        input_credit: Option<zerogravity::resource_arbiter::GlobalResourceLease>,
-        output_credit: Option<zerogravity::resource_arbiter::GlobalResourceLease>,
+        decode_credit: Option<crate::resource_arbiter::GlobalResourceLease>,
+        input_credit: Option<crate::resource_arbiter::GlobalResourceLease>,
+        output_credit: Option<crate::resource_arbiter::GlobalResourceLease>,
     }
     if !matches!(request.backend, Backend::Auto | Backend::Cuda) {
         return Err(Error::Unsupported("exact HF route has only qualified CUDA numerical/native profile; no CPU/ROCm/Vulkan substitution".into()));
@@ -543,19 +486,19 @@ pub(in crate::run_cli) fn run(
     )?;
     // Direct Qwen CUDA selects the explicit 8 GiB HOST profile. Check current
     // RAM/headroom before metadata/native parsing, prompt reads or Client work.
-    qwen35_cuda_host_available(
+    devices::host_available(
         (original::HOST_MIB_MAX * 1024 * 1024) as u64,
         &request.headroom,
     )?;
     let cached = match &selector {
         SourceSelector::Local(_) => None,
         _ => {
-            let root = zerogravity::cache::paths::resolve_root(
+            let root = crate::cache::paths::resolve_root(
                 None,
                 std::env::var_os("XDG_CACHE_HOME").as_deref(),
                 std::env::var_os("HOME").as_deref(),
             )?;
-            let metadata = zerogravity::cache::CacheMetadata::open(&root)?;
+            let metadata = crate::cache::CacheMetadata::open(&root)?;
             let snapshot = metadata.select(&selector, m.snapshot.as_deref())?;
             Some((root, metadata.disk_limit_bytes()?, snapshot))
         }
@@ -605,10 +548,10 @@ pub(in crate::run_cli) fn run(
         let mut trace = decision.clone();
         dry_run_trace_status(&mut trace);
         dry_run_admission_trace(&mut trace);
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&trace).map_err(|e| Error::State(e.to_string()))?
-        );
+        report(Report::Decision {
+            value: &trace,
+            pretty: true,
+        })?;
         return match proposed {
             Some(_) => Ok(()),
             None => Err(no_route_refusal(&profile, &exclusions)),
@@ -617,15 +560,15 @@ pub(in crate::run_cli) fn run(
     if request.diagnostics.explain {
         let mut trace = decision.clone();
         executing_admission_trace(&mut trace);
-        eprintln!(
-            "{}",
-            serde_json::to_string(&trace).map_err(|e| Error::State(e.to_string()))?
-        );
+        report(Report::Decision {
+            value: &trace,
+            pretty: false,
+        })?;
     }
     let Some(chosen) = proposed else {
         return Err(no_route_refusal(&profile, &exclusions));
     };
-    zerogravity::gpu::cuda::compiler::validate_environment()?;
+    crate::gpu::cuda::compiler::validate_environment()?;
     let host = original::host_admission_mib(
         meta.host_bytes / (1024 * 1024),
         ResourceOwner::new("qwen35-cuda", "original-source-loader")?,
@@ -651,9 +594,10 @@ pub(in crate::run_cli) fn run(
     // intentional Client bootstrap. Original source inventory hashing still
     // owns model authority; the lease stays alive through original close.
     let cached_lease = if let Some((root, disk, snapshot)) = &cached {
-        let store = zerogravity::cache::CacheStore::open_existing(
-            zerogravity::cache::CacheOptions::new(Some(root.clone()), *disk),
-        )?;
+        let store = crate::cache::CacheStore::open_existing(crate::cache::CacheOptions::new(
+            Some(root.clone()),
+            *disk,
+        ))?;
         let lease = store.open_snapshot(&snapshot.digest)?;
         if lease.manifest() != &snapshot.manifest {
             return Err(Error::State("selected cached manifest changed".into()));
@@ -664,19 +608,12 @@ pub(in crate::run_cli) fn run(
     };
     let chat = !request.task.raw;
     let prompt = match request.task.prompt.clone() {
-        Some(p) => p,
-        None => {
-            use std::io::Read;
-            let mut p = String::new();
-            std::io::stdin()
-                .take(1024 * 1024 + 1)
-                .read_to_string(&mut p)?;
-            if p.len() > 1024 * 1024 {
-                return Err(Error::Limit("prompt stdin1MiB".into()));
-            }
-            p
-        }
+        Some(prompt) => prompt,
+        None => read_prompt()?,
     };
+    if prompt.len() > 1024 * 1024 {
+        return Err(Error::Limit("prompt input1MiB".into()));
+    }
     // Payloads are declared before their pricing leases so every early return
     // destroys the prompt/ID text and vectors before releasing their credits.
     let mut held = RequestHold {
@@ -795,16 +732,16 @@ pub(in crate::run_cli) fn run(
     // so concurrent in-process routes cannot double-admit this card. Dropped
     // at verified identity, before `original::load`, so the exact rotary/close
     // equations stay untouched; the native backend reservation then owns the
-    // ledger from its own admission onward. Called through the one shared
-    // `run_cli` seam binding; the serving frontend uses the same seam.
+    // ledger from its own admission onward. The finite SDK route owns this
+    // pre-Client seam; actual identity is checked before source/compiler work.
     let pre_client = admit_pre_client_card(&arbiter, &physical)?;
-    let device = zerogravity::gpu::Device::cuda(
+    let device = crate::gpu::Device::cuda(
         fresh
             .cuda_ordinal
             .ok_or_else(|| bad("CUDA ordinal unavailable"))?,
     )
     .map_err(|e| Error::Unsupported(e.to_string()))?;
-    let actual = zerogravity::gpu::initialize_cuda_physical_identity(&device)?;
+    let actual = crate::gpu::initialize_cuda_physical_identity(&device)?;
     drop(pre_client);
     if actual != physical {
         return Err(Error::State("runtime CUDA Client differs from selected physical card; no source/compiler work started".into()));
@@ -898,7 +835,7 @@ pub(in crate::run_cli) fn run(
         drop(loaded);
         let closed = match (text, close) {
             (Ok(text), Ok(_)) => (|| -> Result<()> {
-                println!("{text}");
+                let presented = report(Report::Text(&text));
                 drop(text);
                 let state = observation.snapshot()?;
                 drop(observation);
@@ -955,7 +892,7 @@ pub(in crate::run_cli) fn run(
                         "finite HF known close did not retire original model to exact bootstrap+384MiB backend baseline: expected host {expected_host:?}, actual host {host_state:?}"
                     )));
                 }
-                Ok(())
+                presented
             })(),
             (Err(error), Err(close)) => {
                 drop(observation);
@@ -991,15 +928,11 @@ pub(in crate::run_cli) fn run(
     drop(cached_lease);
     result
 }
-#[cfg(all(
-    any(feature = "qwen35-cuda-serving", feature = "qwen35-cuda"),
-    target_os = "linux",
-    test
-))]
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux", test))]
 mod baseline_tests {
     use super::*;
+    use crate::resource_arbiter::{AllocationClass, DeviceBudgetSnapshot};
     use std::collections::{BTreeMap, BTreeSet};
-    use zerogravity::resource_arbiter::{AllocationClass, DeviceBudgetSnapshot};
 
     fn baseline() -> DeviceBudgetSnapshot {
         let mut per_class = BTreeMap::new();

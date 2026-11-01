@@ -149,6 +149,58 @@ impl PreparedQwen {
         (self.model, self.tokenizer)
     }
 
+    /// Resolve each named snapshot once and retain those original leases through
+    /// verified preparation. Equal selectors share the same resolved generation.
+    #[cfg(all(feature = "cache", target_os = "linux"))]
+    pub fn from_cache(
+        store: &crate::cache::CacheStore,
+        model: crate::artifacts::SnapshotFile<'_>,
+        config: crate::artifacts::SnapshotFile<'_>,
+        tokenizer: crate::artifacts::SnapshotFile<'_>,
+        admission: &crate::cache::TransferAdmission,
+    ) -> Result<Self> {
+        for file in [model, config, tokenizer] {
+            crate::cache::paths::validate_relative_path(file.path)?;
+            if file.snapshot.is_empty()
+                || file.snapshot.len() > 4096
+                || file.snapshot.chars().any(char::is_control)
+            {
+                return Err(Error::Malformed("invalid cached source selector".into()));
+            }
+        }
+        let weights = crate::artifacts::cached(store, model.snapshot)?;
+        let configuration = if config.snapshot == model.snapshot {
+            None
+        } else {
+            Some(crate::artifacts::cached(store, config.snapshot)?)
+        };
+        let vocabulary =
+            if tokenizer.snapshot == model.snapshot || tokenizer.snapshot == config.snapshot {
+                None
+            } else {
+                Some(crate::artifacts::cached(store, tokenizer.snapshot)?)
+            };
+        let configuration = configuration.as_ref().unwrap_or(&weights);
+        let vocabulary = if tokenizer.snapshot == model.snapshot {
+            &weights
+        } else if tokenizer.snapshot == config.snapshot {
+            configuration
+        } else {
+            vocabulary
+                .as_ref()
+                .expect("distinct tokenizer snapshot resolved")
+        };
+        Self::from_snapshots(
+            &weights,
+            model.path,
+            configuration,
+            config.path,
+            vocabulary,
+            tokenizer.path,
+            admission,
+        )
+    }
+
     /// Explicit already-open cache inputs may come from independently pinned
     /// snapshots. Leases stay borrowed until actual owned bytes have been
     /// hashed and parsed. Cache metadata alone grants no model eligibility.
@@ -263,4 +315,24 @@ impl PreparedQwen {
         drop(sidecar_memory);
         Ok(Self { model, tokenizer })
     }
+}
+
+/// Cold source selection and owner-retaining CPU materialization.
+#[cfg(feature = "cpu")]
+pub mod selection;
+
+/// Original raw cache-source/staging pool. Not total model/session or host RAM.
+#[cfg(all(feature = "cache", target_os = "linux"))]
+pub fn cached_source_admission(memory: u64) -> Result<crate::resource_arbiter::TransferAdmission> {
+    use crate::resource_arbiter::{
+        PhysicalDeviceKey, ResourceArbiter, ResourceOwner, TransferAdmission,
+    };
+    let arbiter = ResourceArbiter::process_shared();
+    let resource = PhysicalDeviceKey::new("host", "cache-model-source")?;
+    arbiter.register_matching(resource.clone(), memory)?;
+    Ok(TransferAdmission {
+        arbiter,
+        resource,
+        owner: ResourceOwner::new("cached-model", "sdk")?,
+    })
 }

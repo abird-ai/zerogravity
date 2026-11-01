@@ -4,12 +4,11 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 use zerogravity::cache::{CacheOptions, CacheStore};
-use zerogravity::gemma4::execution::{CPU_PROFILE, Context, MAX_CONTEXT, MAX_OUTPUT, Model};
+#[cfg(feature = "gemma4-hip-resident-candidate")]
+use zerogravity::diagnostics::gemma_text::HIP_PROFILE;
+use zerogravity::diagnostics::gemma_text::{self, Backend, CPU_PROFILE, Report};
+use zerogravity::gemma4::execution::MAX_OUTPUT;
 use zerogravity::{Error, Result};
-#[cfg(feature = "gemma4-hip-resident-candidate")]
-mod gpu;
-#[cfg(feature = "gemma4-hip-resident-candidate")]
-const HIP_PROFILE: &str = "gemma4-e2b-bf16-hip-resident-candidate";
 struct Options {
     snapshot: String,
     prompt: Option<String>,
@@ -96,17 +95,6 @@ impl Drop for Signals {
         }
     }
 }
-fn context(resident_hip: bool) -> Result<Arc<Context>> {
-    if resident_hip {
-        #[cfg(feature = "gemma4-hip-resident-candidate")]
-        return Context::new_hip_qualification();
-        #[cfg(not(feature = "gemma4-hip-resident-candidate"))]
-        return Err(Error::Unsupported(
-            "Gemma HIP resident candidate feature is disabled".into(),
-        ));
-    }
-    Context::new()
-}
 pub(super) fn run(args: &[String]) -> Result<()> {
     let options = options(args)?;
     let flag = Arc::new(AtomicBool::new(false));
@@ -129,84 +117,62 @@ pub(super) fn run(args: &[String]) -> Result<()> {
             text
         }
     };
-    let context = context(options.resident_hip)?;
-    // Existing approved canonical XDG cache policy. Never creates/raises policy.
-    let store = CacheStore::open_existing(CacheOptions::new(None, 96 * 1024 * 1024 * 1024))?;
-    let snapshot = Arc::new(
-        if options.snapshot.len() == 64
-            && options
-                .snapshot
-                .bytes()
-                .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+    let backend = if options.resident_hip {
+        #[cfg(feature = "gemma4-hip-resident-candidate")]
         {
-            store.open_snapshot_cancellable(&options.snapshot, &flag)?
-        } else {
-            store.resolve_ref_cancellable(&options.snapshot, &flag)?
-        },
-    );
-    let input = context.prepare_text(&snapshot, &prompt, Some(&flag))?;
-    if input.ids().len() + options.max_output - 1 > MAX_CONTEXT {
-        return Err(Error::Limit(
-            "Gemma prompt+natural outputs exceeds64consumed rows".into(),
-        ));
-    }
-    #[cfg(feature = "gemma4-hip-resident-candidate")]
-    if options.resident_hip {
-        // Tokenizer owners retire before native preparation; decoder remains admitted.
-        let decoder = context.prepare_text(&snapshot, "One", Some(&flag))?;
-        let loaded = Model::open(snapshot.clone(), context.clone(), Some(&flag))?;
-        let result = gpu::run(&loaded, input, &decoder, options.max_output, &flag);
-        drop(decoder);
-        let closed = loaded.close(None);
-        drop(snapshot);
-        drop(store);
-        drop(context);
-        result?;
-        closed?;
-        return Ok(());
-    }
-    let loaded = Model::open(snapshot.clone(), context.clone(), Some(&flag))?;
-    let mut session = loaded.cpu_session(input)?;
-    let result = (|| -> Result<()> {
-        let first = session.infer_prompt(options.max_output, Some(&flag))?;
-        let mut calls = 1;
-        while !session.stopped() {
-            session.infer_next(Some(&flag))?;
-            calls += 1;
+            Backend::HipResident
         }
-        let text = session.decode_generated(true, Some(&flag))?;
-        println!("{}", text.as_str());
-        eprintln!(
-            "Gemma CPU candidate: {} emitted, {} calls, frontier{}, first root{}; trained/chat/native/HTTP unqualified",
-            session.generated_ids().len(),
-            calls,
-            session.binding().frontier(),
-            first.root.root()
-        );
-        Ok(())
-    })();
-    drop(session);
-    // Cooperative cancellation does not skip immutable-source final validation.
-    let closed = loaded.close(None);
-    drop(snapshot);
-    drop(store);
-    let reserved = context.reserved_bytes()?;
-    drop(context);
-    let final_bytes = zerogravity::resource_arbiter::ResourceArbiter::process_shared()
-        .snapshot(&zerogravity::resource_arbiter::PhysicalDeviceKey::new(
-            "host",
-            "system-ram",
-        )?)?
-        .reserved;
-    result?;
-    closed?;
-    if reserved != 3 * 1024 * 1024 || final_bytes != 0 {
-        return Err(Error::State(
-            "Gemma ordinary source/session/decoder owners not retired".into(),
-        ));
-    }
-    Ok(())
+        #[cfg(not(feature = "gemma4-hip-resident-candidate"))]
+        {
+            return Err(Error::Unsupported(
+                "Gemma HIP resident candidate feature is disabled".into(),
+            ));
+        }
+    } else {
+        Backend::Cpu
+    };
+    // Existing approved canonical XDG cache policy; never creates/raises policy.
+    let store = CacheStore::open_existing(CacheOptions::new(None, 96 * 1024 * 1024 * 1024))?;
+    gemma_text::generate(
+        &store,
+        &options.snapshot,
+        &prompt,
+        options.max_output,
+        backend,
+        &flag,
+        |event| {
+            match event {
+                Report::Text(text) => println!("{text}"),
+                Report::Finished {
+                    backend: Backend::Cpu,
+                    emitted,
+                    calls,
+                    frontier,
+                    first_root: Some(root),
+                } => eprintln!(
+                    "Gemma CPU candidate: {emitted} emitted, {calls} calls, frontier{frontier}, first root{root}; trained/chat/native/HTTP unqualified"
+                ),
+                #[cfg(feature = "gemma4-hip-resident-candidate")]
+                Report::Finished {
+                    backend: Backend::HipResident,
+                    emitted,
+                    calls,
+                    frontier,
+                    ..
+                } => eprintln!(
+                    "Gemma HIP resident candidate: {emitted} emitted, {calls} calls, frontier{frontier}; observer=none private_feedback=true trained/HTTP/performance unqualified"
+                ),
+                _ => {
+                    return Err(Error::State(
+                        "CPU diagnostic omitted its actual first root".into(),
+                    ));
+                }
+            }
+            Ok(())
+        },
+    )
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;

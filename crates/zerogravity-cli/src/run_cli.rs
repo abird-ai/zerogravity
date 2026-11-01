@@ -10,14 +10,7 @@ mod config;
 mod devices;
 mod execute;
 mod qwen35_cuda;
-#[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
-mod source;
 
-/// Narrow HOST-only precheck shared by direct and serving Qwen CUDA frontends.
-#[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
-pub(crate) fn qwen35_cuda_host_available(host_bytes: u64, headroom: &Headroom) -> Result<()> {
-    devices::host_available(host_bytes, headroom)
-}
 #[derive(Clone, Debug, Default)]
 pub(super) struct Arguments {
     positional: Option<String>,
@@ -94,3 +87,34 @@ fn help() {
 }
 #[cfg(test)]
 mod tests;
+
+#[cfg(all(
+    feature = "cache",
+    feature = "cpu",
+    feature = "model-qwen35",
+    feature = "text",
+    target_os = "linux"
+))]
+pub(super) fn cached_cpu_options(args: &[String]) -> Result<crate::InferenceOptions> {
+    let parsed = parse(args, None)?;
+    let prompt_supplied = parsed.task.prompt.is_some();
+    let options = zerogravity::diagnostics::cpu_text::TextOptions {
+        prompt: parsed.task.prompt.unwrap_or_default(),
+        context: 32768,
+        max_tokens: parsed.task.max_tokens.unwrap_or(16),
+        raw: parsed.task.raw.unwrap_or(false),
+        prefill_chunk: parsed.task.prefill_chunk.unwrap_or(128),
+        teacher_ids: parsed.task.teacher_ids,
+    };
+    options.validate(parsed.diagnostics.audit_logits_jsonl.is_some())?;
+    Ok(crate::InferenceOptions {
+        context: options.context,
+        prompt: prompt_supplied.then_some(options.prompt),
+        max_tokens: options.max_tokens,
+        raw: options.raw,
+        prefill_chunk: options.prefill_chunk,
+        teacher_ids: options.teacher_ids,
+        audit_jsonl: parsed.diagnostics.audit_logits_jsonl,
+        audit_layers_jsonl: parsed.diagnostics.audit_layers_jsonl,
+    })
+}

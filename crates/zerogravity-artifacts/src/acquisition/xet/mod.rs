@@ -641,6 +641,13 @@ impl XetOptions {
         self
     }
 
+    /// Restore metadata/discovery-only resolution without changing bounds or
+    /// endpoint identity. Required by explicit inspection/dry-run callers.
+    pub fn without_index_reconstruction(mut self) -> Self {
+        self.index_reconstruction = false;
+        self
+    }
+
     pub fn validate(&self) -> Result<()> {
         if self.max_terms == 0
             || self.max_terms > 65536
@@ -683,5 +690,26 @@ fn check_cancel(cancel: &AtomicBool) -> Result<()> {
         Err(Error::State("Xet acquisition canceled".into()))
     } else {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod option_tests {
+    use super::*;
+    #[test]
+    fn inspection_revokes_index_reconstruction_without_changing_bounds_or_identity() {
+        let options = XetOptions {
+            max_requests: 19,
+            max_refreshes: 1,
+            ..XetOptions::default()
+        }
+        .with_index_reconstruction();
+        assert!(options.index_reconstruction);
+        let metadata = options.clone().without_index_reconstruction();
+        assert!(!metadata.index_reconstruction);
+        assert_eq!(metadata.max_requests, options.max_requests);
+        assert_eq!(metadata.max_refreshes, options.max_refreshes);
+        assert_eq!(metadata.endpoints.hub, options.endpoints.hub);
+        assert_eq!(metadata.endpoints.cas, options.endpoints.cas);
     }
 }

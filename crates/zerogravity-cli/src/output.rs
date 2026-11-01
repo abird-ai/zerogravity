@@ -136,3 +136,24 @@ fn composed_usage() {
         "\nRun routing: zerogravity run --help; inventory: zerogravity devices list [--json].\nForced backends never fall back. Generic GPU routing refuses missing cold costs/physical binding."
     );
 }
+
+#[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
+pub(crate) struct CpuAuditFile {
+    path: String,
+    writer: Option<std::io::BufWriter<std::fs::File>>,
+}
+#[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
+impl CpuAuditFile {
+    pub(crate) fn new(path: String) -> Self {
+        Self { path, writer: None }
+    }
+}
+#[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
+impl zerogravity::diagnostics::cpu_text::AuditSink for CpuAuditFile {
+    fn open(&mut self) -> zerogravity::Result<&mut dyn std::io::Write> {
+        if self.writer.is_none() {
+            self.writer = Some(std::io::BufWriter::new(std::fs::File::create(&self.path)?));
+        }
+        Ok(self.writer.as_mut().expect("opened audit file"))
+    }
+}

@@ -1,16 +1,9 @@
 //! Device presentation; observations and selector policy belong to the SDK.
 #[cfg(all(test, target_os = "linux"))]
 pub(super) use zerogravity::devices::device_node_identity;
-#[cfg(any(
-    all(feature = "cpu", feature = "model-qwen35", feature = "text"),
-    all(feature = "qwen35-cuda-qualification", target_os = "linux")
-))]
-pub(super) use zerogravity::devices::fresh;
-#[cfg(all(feature = "qwen35-cuda-qualification", target_os = "linux"))]
-pub(super) use zerogravity::devices::host_available;
+pub(super) use zerogravity::devices::{Inventory, Observation, discover};
 #[cfg(test)]
-pub(super) use zerogravity::devices::normalize_pci;
-pub(super) use zerogravity::devices::{Inventory, Observation, allowed, discover};
+pub(super) use zerogravity::devices::{allowed, normalize_pci};
 
 /// Human inventory, not an execution-capability claim. No source is inspected.
 pub(super) fn display(device: &Observation) -> String {

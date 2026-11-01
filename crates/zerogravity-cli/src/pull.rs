@@ -23,11 +23,16 @@ use crate::signals;
 mod xet;
 use zerogravity::acquisition::http::{HttpOptions, HttpsClient};
 use zerogravity::acquisition::{self, Provider, PullLimits, PullRequest, Selection};
+use zerogravity::artifacts::{HubSelection, PullMode, cached, transfer_admission as admission};
 use zerogravity::cache::{
-    CacheOptions, CacheStore, CommitOutcome, PublishedSnapshot, SnapshotLease, TransferAdmission,
+    CacheOptions, CacheStore, CommitOutcome, PublishedSnapshot, SnapshotLease,
 };
+#[cfg(test)]
 use zerogravity::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, ResourceOwner};
 use zerogravity::{Error, Result};
+
+#[cfg(test)]
+use zerogravity::cache::TransferAdmission;
 
 const DISK_DEFAULT: u64 = 16 * 1024 * 1024 * 1024;
 const MEMORY_DEFAULT: u64 = 128 * 1024 * 1024;
@@ -374,36 +379,12 @@ fn open(options: &Options) -> Result<CacheStore> {
     cache.limits = limits(options)?.cache;
     CacheStore::open(cache)
 }
-fn cached(store: &CacheStore, name: &str) -> Result<SnapshotLease> {
-    if name.len() == 64
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    {
-        store.open_snapshot(name)
-    } else {
-        store.resolve_ref(name)
-    }
-}
 fn describe(lease: &SnapshotLease) -> Result<()> {
     use std::io::Write;
     std::io::stdout().write_all(&lease.manifest().canonical_bytes()?)?;
     eprintln!("Verified cached data; no model execution support or remote freshness inferred.");
     Ok(())
 }
-fn admission(memory: u64) -> Result<TransferAdmission> {
-    let arbiter = ResourceArbiter::process_shared();
-    let resource = PhysicalDeviceKey::new("host", "artifact-transfer-staging")?;
-    // This synchronous CLI owns the fixed domain for its process lifetime.
-    // It is not a global host-RAM, OS or cross-process reservation.
-    arbiter.register(resource.clone(), memory)?;
-    Ok(TransferAdmission {
-        arbiter,
-        resource,
-        owner: ResourceOwner::new("artifact-acquisition", "cli")?,
-    })
-}
-
 fn selected_bytes(exact: Option<u64>, maximum: u64) -> String {
     exact.map_or_else(
         || format!("unknown; reservation maximum {maximum}"),
@@ -486,141 +467,51 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         }
         Action::Inspect(name) | Action::Verify(name) => describe(&cached(&open(&options)?, name)?),
         Action::Components(path) => components::run(path, &options),
-        Action::Fetch(request) => run_fetch(&options, FetchRequest::Files(request), None),
-        Action::Quant(request) => run_fetch(&options, FetchRequest::Quant(request), None),
-        Action::Filters(request) => run_fetch(&options, FetchRequest::Filters(request), None),
-    }
-}
-#[derive(Clone, Copy)]
-enum FetchRequest<'a> {
-    Files(&'a PullRequest),
-    Quant(&'a acquisition::GgufQuantRequest),
-    Filters(&'a acquisition::filters::FilterRequest),
-}
-impl<'a> FetchRequest<'a> {
-    fn provider(self) -> Provider {
-        match self {
-            Self::Files(r) => r.provider,
-            Self::Quant(r) => r.source().provider(),
-            Self::Filters(r) => r.source().provider(),
-        }
-    }
-    fn repository(self) -> &'a str {
-        match self {
-            Self::Files(r) => &r.repository,
-            Self::Quant(r) => r.source().repository(),
-            Self::Filters(r) => r.source().repository(),
-        }
-    }
-    fn revision(self) -> &'a str {
-        match self {
-            Self::Files(r) => &r.revision,
-            Self::Quant(r) => r.source().revision(),
-            Self::Filters(r) => r.source().revision(),
-        }
+        Action::Fetch(request) => run_fetch(&options, HubSelection::Files(request), None),
+        Action::Quant(request) => run_fetch(&options, HubSelection::Quant(request), None),
+        Action::Filters(request) => run_fetch(&options, HubSelection::Filters(request), None),
     }
 }
 /// One shared fetch/publish path. Native Xet changes only cold resolution and
 /// offline eligibility; ordinary None retains its original branch/owners.
 fn run_fetch(
     options: &Options,
-    request: FetchRequest<'_>,
+    request: HubSelection<'_>,
     native: Option<&acquisition::xet::XetOptions>,
 ) -> Result<()> {
-    if let Some(native) = native {
-        native.validate()?;
-        if matches!(request, FetchRequest::Filters(r) if r.is_bundle()) {
-            return Err(Error::Unsupported(
-                "native Xet bundle selection not qualified; use original HF bundle or exact native model selection".into()
-            ));
-        }
-        if request.provider() != Provider::HuggingFace
-            || matches!(request,FetchRequest::Files(r) if !matches!(r.selection,Selection::Files{..}))
-            || options.unknown_size_cap.is_some()
-        {
-            return Err(invalid());
-        }
-    }
-
-    let reference = options.reference.clone().unwrap_or_else(|| {
-        format!(
-            "{}/{}/{}",
-            if matches!(request, FetchRequest::Filters(r) if r.is_bundle()) {
-                match request.provider() {
-                    Provider::HuggingFace => "huggingface-bundle",
-                    Provider::GitHub => "github-bundle",
-                }
-            } else {
-                request.provider().label()
-            },
-            request.repository(),
-            request.revision()
-        )
-    });
-    // Offline is terminal before client, credentials, metadata, DNS or
-    // transfer-admission construction. Local validation is still real.
+    let runtime = zerogravity::Runtime::builder().build()?;
+    let hub = runtime.artifacts().hub(
+        request,
+        limits(options)?,
+        options.reference.clone(),
+        native.cloned(),
+    )?;
+    let reference = hub.reference();
+    // Offline is terminal before client, credentials, signals or admission.
     if options.offline {
-        if let FetchRequest::Filters(filters) = request {
-            zerogravity::cache::paths::validate_digest(&reference).map_err(|_| invalid())?;
-            let mut cache = CacheOptions::new(options.root.clone(), options.disk);
-            cache.limits = limits(options)?.cache;
-            let store = CacheStore::open_existing(cache)?;
-            let lease = store.open_snapshot(&reference)?;
-            acquisition::filters::validate_cached_selection(
-                &lease,
-                filters,
-                &limits(options)?,
-                &AtomicBool::new(false),
-            )?;
-            if filters.is_bundle() {
-                eprintln!(
-                    "Exact pinned opaque Auxiliary-only bundle verified; no filtered copy, model closure, remote uniqueness or execution qualification."
-                );
-            } else {
-                eprintln!(
-                    "Full-path filters validated against the exact closed cached snapshot; no filtered copy or remote uniqueness/native execution claim."
-                );
-            }
-            return describe(&lease);
-        }
-        if let FetchRequest::Quant(quant) = request {
-            zerogravity::cache::paths::validate_digest(&reference).map_err(|_| invalid())?;
-            let mut cache = CacheOptions::new(options.root.clone(), options.disk);
-            cache.limits = limits(options)?.cache;
-            let store = CacheStore::open_existing(cache)?;
-            let lease = store.open_snapshot(&reference)?;
-            acquisition::quant::validate_cached_selection(
-                &lease,
-                quant,
-                &limits(options)?,
-                &AtomicBool::new(false),
-            )?;
-            eprintln!(
-                "Explicit quant over verified cache subset only; not remote uniqueness, native Xet execution, current freshness/access or inference qualification."
-            );
-            return describe(&lease);
-        }
-        let FetchRequest::Files(request) = request else {
-            return Err(invalid());
+        let mut cache = CacheOptions::new(options.root.clone(), options.disk);
+        cache.limits = limits(options)?.cache;
+        let store = if native.is_some() || !matches!(request, HubSelection::Files(_)) {
+            CacheStore::open_existing(cache)?
+        } else {
+            CacheStore::open(cache)?
         };
-        if native.is_some() {
-            let mut cache = CacheOptions::new(options.root.clone(), options.disk);
-            cache.limits = limits(options)?.cache;
-            let store = CacheStore::open_existing(cache)?;
-            let lease = cached(&store, &reference)?;
-            acquisition::xet::validate_cached_selection(
-                &lease,
-                request,
-                &limits(options)?,
-                &AtomicBool::new(false),
-            )?;
-            eprintln!(
+        let lease = hub.cached(&store, &AtomicBool::new(false))?;
+        match request {
+            HubSelection::Filters(filters) if filters.is_bundle() => eprintln!(
+                "Exact pinned opaque Auxiliary-only bundle verified; no filtered copy, model closure, remote uniqueness or execution qualification."
+            ),
+            HubSelection::Filters(_) => eprintln!(
+                "Full-path filters validated against the exact closed cached snapshot; no filtered copy or remote uniqueness/native execution claim."
+            ),
+            HubSelection::Quant(_) => eprintln!(
+                "Explicit quant over verified cache subset only; not remote uniqueness, native Xet execution, current freshness/access or inference qualification."
+            ),
+            HubSelection::Files(_) if native.is_some() => eprintln!(
                 "Offline verified HF data only; cached bytes do not attest native Xet protocol execution, remote freshness or current authorization."
-            );
-            return describe(&lease);
+            ),
+            HubSelection::Files(_) => {}
         }
-        let lease = cached(&open(options)?, &reference)?;
-        acquisition::validate_cached_selection(&lease, request)?;
         return describe(&lease);
     }
     let (origin, token) = match request.provider() {
@@ -643,55 +534,24 @@ fn run_fetch(
     let admission = admission(options.memory)?;
     let cancel = Arc::new(AtomicBool::new(false));
     let _signals = signals::CancellationSignals::register(cancel.clone())?;
-    // Metadata-only Xet dry-run retains the default no-CAS-grant boundary.
-    // Explicit APPLY permits required native LFS index reconstruction through
-    // the same original Xet owner, not a separate CLI mode/downloader.
-    let native_apply = native
-        .filter(|_| !options.dry_run)
-        .map(|option| option.clone().with_index_reconstruction());
-    let native = native_apply.as_ref().or(native);
-    let plan = match (request, native) {
-        (FetchRequest::Files(request), Some(native)) => acquisition::xet::resolve(
-            &client,
-            request,
-            &limits(options)?,
-            native,
-            &admission,
-            &cancel,
-        )?,
-        (FetchRequest::Files(request), None) => {
-            acquisition::resolve(&client, request, &limits(options)?, &admission, &cancel)?
-        }
-        (FetchRequest::Quant(request), Some(native)) => acquisition::xet::resolve_quant(
-            &client,
-            request,
-            &limits(options)?,
-            native,
-            &admission,
-            &cancel,
-        )?,
-        (FetchRequest::Quant(request), None) => {
-            acquisition::quant::resolve(&client, request, &limits(options)?, &admission, &cancel)?
-        }
-        (FetchRequest::Filters(request), Some(native)) => acquisition::xet::resolve_filtered(
-            &client,
-            request,
-            &limits(options)?,
-            native,
-            &admission,
-            &cancel,
-        )?,
-        (FetchRequest::Filters(request), None) => {
-            acquisition::filters::resolve(&client, request, &limits(options)?, &admission, &cancel)?
-        }
-    };
-    if let FetchRequest::Quant(request) = request {
+    let prepared = hub.resolve(
+        &client,
+        &admission,
+        &cancel,
+        if options.dry_run {
+            PullMode::Inspect
+        } else {
+            PullMode::Transfer
+        },
+    )?;
+    let plan = prepared.plan();
+    if let HubSelection::Quant(request) = request {
         eprintln!(
             "Requested GGUF filename tag: {}; not tensor encoding eligibility.",
             request.quant()
         );
     }
-    if let FetchRequest::Filters(r) = request {
+    if let HubSelection::Filters(r) = request {
         eprintln!(
             "{}: bounded Unicode full-path selection; no model fallback, auto-assembly, runtime or codec eligibility.",
             if r.is_bundle() {
@@ -732,15 +592,7 @@ fn run_fetch(
         // Progress output is best-effort; it cannot certify publication.
         let _ = display.report(event, &mut std::io::stderr());
     };
-    let receipt = acquisition::execute_with_progress(
-        &open(options)?,
-        &plan,
-        &client,
-        &admission,
-        &cancel,
-        Some(&reference),
-        &mut progress,
-    )?;
+    let receipt = prepared.execute(&open(options)?, &client, &admission, &cancel, &mut progress)?;
     match receipt.outcome() {
         CommitOutcome::Durable(snapshot) => {
             println!(

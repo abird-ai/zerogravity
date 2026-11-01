@@ -10,24 +10,12 @@ mod signals;
 use args::{Command, parse};
 use commands::run;
 #[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
-use std::fs::File;
-#[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
-use std::io::{self, BufWriter, Read, Write};
+use std::io::{self, Read};
 use std::path::Path;
 use std::process::ExitCode;
 use zerogravity::Result;
 use zerogravity::artifact::{Artifact, ArtifactFormat};
-#[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
-use zerogravity::cpu::ops::top_logit_ranks;
 use zerogravity::model::DeclaredModel;
-#[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
-use zerogravity::prepare::PreparedQwen;
-#[cfg(all(
-    feature = "model-qwen35",
-    feature = "text",
-    any(feature = "vulkan", feature = "cuda", feature = "hip")
-))]
-mod gpu;
 
 #[cfg(all(feature = "acquisition", target_os = "linux"))]
 mod pull;
@@ -106,8 +94,6 @@ struct InferenceOptions {
     prompt: Option<String>,
     max_tokens: usize,
     raw: bool,
-    config: Option<String>,
-    tokenizer: Option<String>,
     audit_jsonl: Option<String>,
     audit_layers_jsonl: Option<String>,
     teacher_ids: Option<Vec<u32>>,
@@ -115,43 +101,14 @@ struct InferenceOptions {
 }
 
 #[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
-fn infer(model: &str, options: InferenceOptions) -> Result<()> {
-    let path = Path::new(model);
-    let root = path.parent().unwrap_or_else(|| Path::new("."));
-    let default_config = root.join("config.json");
-    let default_tokenizer = root.join("tokenizer.json");
-    let config = options
-        .config
-        .as_deref()
-        .map(Path::new)
-        .unwrap_or(&default_config);
-    let tokenizer = options
-        .tokenizer
-        .as_deref()
-        .map(Path::new)
-        .unwrap_or(&default_tokenizer);
-    let prepared = PreparedQwen::from_paths(path, config, tokenizer)?;
-    infer_prepared(model, prepared, options)
-}
-
-#[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
-fn infer_prepared(model: &str, prepared: PreparedQwen, options: InferenceOptions) -> Result<()> {
-    let InferenceOptions {
-        prompt,
-        max_tokens,
-        raw,
-        config: _,
-        context,
-        tokenizer: _,
-        audit_jsonl,
-        audit_layers_jsonl,
-        teacher_ids,
-        prefill_chunk,
-    } = options;
-    let (model_source, tokenizer) = prepared.into_parts();
-    let mut engine = model_source.new_session()?;
-    let prompt = match prompt {
-        Some(p) => p,
+fn infer_prepared(
+    model: &str,
+    prepared: impl Into<zerogravity::diagnostics::cpu_text::Input>,
+    options: InferenceOptions,
+) -> Result<()> {
+    use zerogravity::diagnostics::cpu_text::{self, Diagnostics, Observation, TextOptions};
+    let prompt = match options.prompt {
+        Some(prompt) => prompt,
         None => {
             let mut text = String::new();
             io::stdin()
@@ -165,174 +122,44 @@ fn infer_prepared(model: &str, prepared: PreparedQwen, options: InferenceOptions
             text
         }
     };
-    let tokens = tokenizer.prompt_tokens(&prompt, !raw)?;
-    if tokens.is_empty() {
-        return Err(zerogravity::Error::Malformed(
-            "prompt tokenization empty".into(),
-        ));
-    }
-    if tokens
-        .len()
-        .checked_add(max_tokens - 1)
-        .is_none_or(|n| n > context.min(model_source.geometry().max_position_embeddings as usize))
-    {
-        return Err(zerogravity::Error::Limit(
-            "CPU validation maximum is 32768 input tokens; actual throughput is not guaranteed"
-                .into(),
-        ));
-    }
-    eprintln!(
-        "zerogravity: CPU prefill {} tokens on {}",
-        tokens.len(),
-        model
-    );
-    let mut layer_writer = match audit_layers_jsonl {
-        Some(path) => Some(BufWriter::new(File::create(path)?)),
-        None => None,
+    let options_text = TextOptions {
+        prompt,
+        context: options.context,
+        max_tokens: options.max_tokens,
+        raw: options.raw,
+        prefill_chunk: options.prefill_chunk,
+        teacher_ids: options.teacher_ids,
     };
-    let mut logits = Vec::new();
-    let mut done = 0usize;
-    for chunk in tokens.chunks(prefill_chunk) {
-        let final_chunk = done + chunk.len() == tokens.len();
-        if final_chunk && let Some(writer) = layer_writer.as_mut() {
-            let (result, observations) = engine.prefill_transaction_with_layer_trace(chunk)?;
-            logits = result;
-            // One numeric stage vector per JSONL record, at the final prefill
-            // token; no 248K-vocabulary vector or entire KV cache is emitted.
-            for observation in observations {
-                serde_json::to_writer(&mut *writer, &observation).map_err(|e| {
-                    zerogravity::Error::Malformed(format!("layer trace encoding: {e}"))
-                })?;
-                writer.write_all(b"\n")?;
+    let mut logits = options.audit_jsonl.map(output::CpuAuditFile::new);
+    let mut layers = options.audit_layers_jsonl.map(output::CpuAuditFile::new);
+    let diagnostics = Diagnostics {
+        logits: logits
+            .as_mut()
+            .map(|writer| writer as &mut dyn cpu_text::AuditSink),
+        layers: layers
+            .as_mut()
+            .map(|writer| writer as &mut dyn cpu_text::AuditSink),
+        top_logits: std::env::var_os("ZEROGRAVITY_DIAGNOSTIC_LOGITS").is_some(),
+    };
+    let output = cpu_text::generate(prepared, options_text, diagnostics, |event| {
+        match event {
+            Observation::Prefill { done: 0, total } => {
+                eprintln!("zerogravity: CPU prefill {total} tokens on {model}")
             }
-            writer.flush()?;
-        } else if final_chunk {
-            logits = engine.prefill_transaction(chunk)?;
-        } else {
-            // Intermediate chunk outputs are never sampled. Preserve the
-            // complete atomic StateRoot update, but avoid a redundant full
-            // 248K-vocabulary projection and allocation at each boundary.
-            engine.prefill_chunk_without_logits(chunk)?;
+            Observation::Prefill { done, total } => {
+                eprintln!("zerogravity: prefill {done}/{total}")
+            }
+            Observation::Logits { step, values } => eprintln!("ZG_LOGITS step={step} {values:?}"),
         }
-        done += chunk.len();
-        if done.is_multiple_of(128) || done == tokens.len() {
-            eprintln!("zerogravity: prefill {done}/{}", tokens.len());
-        }
-    }
-    let mut generated = Vec::with_capacity(max_tokens);
-    let mut audit = match audit_jsonl {
-        Some(path) => Some(BufWriter::new(File::create(path)?)),
-        None => None,
-    };
-    for generation_step in 0..max_tokens {
-        if let Some(writer) = audit.as_mut() {
-            let ranks = top_logit_ranks(&logits, 20)?;
-            let selected = ranks[0].id;
-            serde_json::to_writer(
-                &mut *writer,
-                &serde_json::json!({
-                    "stage":"decode",
-                    "step": generated.len(),
-                    "prefill_tokens":tokens.len(),
-                    "position":engine.position(),
-                    "root_id":engine.root_id(),
-                    "prefill_chunk":prefill_chunk,
-                    "selected_token":selected,
-                    "committed_token":teacher_ids.as_ref().map(|ids| ids[generated.len()]).unwrap_or(selected),
-                    "state_fingerprint":engine.state_fingerprint(),
-                    "state_bytes":engine.state_bytes(),
-                    "top":ranks,
-                }),
-            )
-            .map_err(|e| {
-                zerogravity::Error::Malformed(format!("cannot encode logits audit: {e}"))
-            })?;
-            writer.write_all(b"\n")?;
-        }
-        if std::env::var_os("ZEROGRAVITY_DIAGNOSTIC_LOGITS").is_some() {
-            let mut ranks: Vec<_> = logits.iter().enumerate().collect();
-            ranks.sort_unstable_by(|a, b| b.1.total_cmp(a.1));
-            let top = *ranks[0].1;
-            eprintln!(
-                "ZG_LOGITS step={} {:?}",
-                generated.len(),
-                ranks
-                    .iter()
-                    .take(8)
-                    .map(|(id, logit)| (*id, **logit - top))
-                    .collect::<Vec<_>>()
-            );
-        }
-        let greedy_id = logits
-            .iter()
-            .enumerate()
-            .max_by(|a, b| a.1.total_cmp(b.1).then_with(|| b.0.cmp(&a.0)))
-            .ok_or_else(|| zerogravity::Error::Malformed("model produced no logits".into()))?
-            .0 as u32;
-        let id = teacher_ids
-            .as_ref()
-            .map(|ids| ids[generated.len()])
-            .unwrap_or(greedy_id);
-        if id == tokenizer.eos() {
-            break;
-        }
-        generated.push(id);
-        // Last emitted token is visible output; decoding it again is wasted
-        // work and can spuriously reject a valid final context-boundary token.
-        if generation_step + 1 < max_tokens {
-            logits = engine.forward(id)?;
-        }
-    }
-    if let Some(writer) = audit.as_mut() {
-        writer.flush()?;
-    }
-    println!("{}", tokenizer.decode(&generated, true)?);
+        Ok(())
+    })?;
+    println!("{}", output.text());
     eprintln!(
         "zerogravity: {} generated tokens, {} total consumed (CPU)",
-        generated.len(),
-        engine.position()
+        output.generated().len(),
+        output.consumed()
     );
     Ok(())
-}
-
-#[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
-fn cpu_options(command: Command) -> (String, InferenceOptions) {
-    let Command::Run {
-        model,
-        prompt,
-        max_tokens,
-        raw,
-        config,
-        tokenizer,
-        audit_jsonl,
-        audit_layers_jsonl,
-        teacher_ids,
-        prefill_chunk,
-    } = command
-    else {
-        unreachable!("only CPU run reaches the CPU bridge")
-    };
-    (
-        model,
-        InferenceOptions {
-            context: 32_768,
-            prompt,
-            max_tokens,
-            raw,
-            config,
-            tokenizer,
-            audit_jsonl,
-            audit_layers_jsonl,
-            teacher_ids,
-            prefill_chunk,
-        },
-    )
-}
-
-#[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
-fn execute_cpu(command: Command) -> Result<()> {
-    let (model, options) = cpu_options(command);
-    infer(&model, options)
 }
 
 #[cfg(all(
@@ -365,34 +192,6 @@ fn execute_cache(args: Vec<String>) -> Result<()> {
         return gemma4_cpu::run(&args);
     }
     execute_qwen_cache(args)
-}
-
-#[cfg(not(all(feature = "cpu", feature = "model-qwen35", feature = "text")))]
-fn execute_cpu(_: Command) -> Result<()> {
-    Err(zerogravity::Error::Unsupported(
-        "run requires compiled features cpu, model-qwen35 and text".into(),
-    ))
-}
-
-#[cfg(all(
-    feature = "model-qwen35",
-    feature = "text",
-    any(feature = "vulkan", feature = "cuda", feature = "hip")
-))]
-fn execute_gpu(backend: GpuBackend, args: Vec<String>) -> Result<()> {
-    if !backend.compiled() {
-        return Err(backend.unavailable());
-    }
-    futures_lite::future::block_on(gpu::run(backend, args.into_iter()))
-}
-
-#[cfg(not(all(
-    feature = "model-qwen35",
-    feature = "text",
-    any(feature = "vulkan", feature = "cuda", feature = "hip")
-)))]
-fn execute_gpu(backend: GpuBackend, _: Vec<String>) -> Result<()> {
-    Err(backend.unavailable())
 }
 
 #[cfg(all(feature = "cache", target_os = "linux"))]
@@ -490,24 +289,6 @@ fn main() -> ExitCode {
         .skip(1)
         .map(|value| value.to_string_lossy().into_owned());
     let args = args.collect::<Vec<_>>();
-    let result = match args.first().map(String::as_str) {
-        Some("run") => Some(run_cli::run(args[1..].to_vec(), None)),
-        Some(
-            alias @ ("run-cpu" | "run-cuda" | "run-rocm" | "run-vulkan" | "run-vulkan-amd"
-            | "run-vulkan-nvidia"),
-        ) => Some(run_cli::run(args[1..].to_vec(), Some(alias))),
-        Some("devices") => Some(run_cli::devices(&args[1..])),
-        _ => None,
-    };
-    if let Some(result) = result {
-        return match result {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(error) => {
-                eprintln!("zerogravity run: {error}");
-                ExitCode::from(2)
-            }
-        };
-    }
     run(parse(args))
 }
 
@@ -529,7 +310,7 @@ mod tests {
     }
 
     #[test]
-    fn commands_remain_explicitly_unimplemented() {
+    fn run_and_serve_forward_to_their_single_frontends() {
         assert_eq!(
             parse(["serve", "--listen", "127.0.0.1:8000"]),
             Command::Serve(vec!["--listen".into(), "127.0.0.1:8000".into()])
@@ -537,16 +318,8 @@ mod tests {
         assert_eq!(
             parse(["run", "model.gguf"]),
             Command::Run {
-                model: "model.gguf".into(),
-                prompt: None,
-                max_tokens: 16,
-                raw: false,
-                tokenizer: None,
-                config: None,
-                audit_jsonl: None,
-                audit_layers_jsonl: None,
-                teacher_ids: None,
-                prefill_chunk: 128,
+                args: vec!["model.gguf".into()],
+                alias: None
             }
         );
     }

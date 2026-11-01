@@ -5,8 +5,7 @@ use super::pull;
 #[cfg(feature = "serve")]
 use super::serve;
 use super::{
-    Command, VERSION, execute_cache, execute_cache_manage, execute_cpu, execute_gpu, inspect,
-    models, pipeline,
+    Command, VERSION, execute_cache, execute_cache_manage, inspect, models, pipeline, run_cli,
 };
 use std::{path::Path, process::ExitCode};
 #[cfg(not(all(feature = "acquisition", target_os = "linux")))]
@@ -36,17 +35,17 @@ pub(super) fn run(command: Command) -> ExitCode {
                 ExitCode::from(2)
             }
         },
-        command @ Command::Run { .. } => match execute_cpu(command) {
+        Command::Run { args, alias } => match run_cli::run(args, alias.as_deref()) {
             Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                eprintln!("zerogravity run: {e}");
+            Err(error) => {
+                eprintln!("zerogravity run: {error}");
                 ExitCode::from(2)
             }
         },
-        Command::GpuRun { backend, args } => match execute_gpu(backend, args) {
+        Command::Devices(args) => match run_cli::devices(&args) {
             Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                eprintln!("zerogravity {}: {e}", backend.command());
+            Err(error) => {
+                eprintln!("zerogravity run: {error}");
                 ExitCode::from(2)
             }
         },
@@ -107,7 +106,7 @@ pub(super) fn run(command: Command) -> ExitCode {
         },
         Command::NotImplemented(name) => {
             eprintln!(
-                "zerogravity: '{name}' is not implemented (local Qwen3.5 CPU run/inspect exist; router, API and model management are future work)"
+                "zerogravity: '{name}' is not implemented (use explicit run/serve/pipeline configuration)"
             );
             ExitCode::from(2)
         }

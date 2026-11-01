@@ -1,14 +1,15 @@
 //! Ordinary optional-observer caller; original managed source and session publish.
 use super::*;
-use zerogravity::gemma4::execution::Input;
-use zerogravity::gpu::{Device, TextHostOwners, TextStorage};
+use crate::gemma4::execution::Input;
+use crate::gpu::{Device, TextHostOwners, TextStorage};
 
-pub(super) fn run(
+pub(super) fn generate(
     loaded: &Arc<Model>,
     input: Input,
     decoder: &Input,
     max_output: usize,
     flag: &AtomicBool,
+    report: &mut impl FnMut(Report<'_>) -> Result<()>,
 ) -> Result<()> {
     let (candidate, mut session) = futures_lite::future::block_on(loaded.load_hip_qualification(
         Device::Hip(Default::default()),
@@ -38,12 +39,14 @@ pub(super) fn run(
         calls += 1;
     }
     let text = decoder.decode_output(&ids, true, Some(flag))?;
-    println!("{}", text.as_str());
-    eprintln!(
-        "Gemma HIP resident candidate: {} emitted, {calls} calls, frontier{}; observer=none private_feedback=true trained/HTTP/performance unqualified",
-        ids.len(),
-        session.binding().frontier()
-    );
+    report(Report::Text(text.as_str()))?;
+    report(Report::Finished {
+        backend: Backend::HipResident,
+        emitted: ids.len(),
+        calls,
+        frontier: session.binding().frontier(),
+        first_root: None,
+    })?;
     drop((text, session, candidate));
     Ok(())
 }

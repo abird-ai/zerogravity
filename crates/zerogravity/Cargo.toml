@@ -162,3 +162,8 @@ required-features = ["qwen35-cuda-qualification"]
 name = "qwen35_cuda_lifecycle"
 path = "tests/qwen35_cuda_lifecycle.rs"
 required-features = ["qwen35-cuda-qualification", "zerogravity-gpu/hardware-abort-probe"]
+
+[[example]]
+name = "fabric_sdk"
+path = "examples/fabric_sdk.rs"
+required-features = ["cpu", "model-qwen35", "text", "acquisition"]

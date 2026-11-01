@@ -5618,7 +5618,6 @@ dependencies = [
 name = "zerogravity-cli"
 version = "0.1.0"
 dependencies = [
- "futures-lite",
  "rustix 1.1.5",
  "serde",
  "serde_json",

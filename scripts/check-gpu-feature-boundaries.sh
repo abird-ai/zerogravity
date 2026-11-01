@@ -49,8 +49,8 @@ grep -q 'zerogravity-gpu feature "qualification"' <<<"$qualified_tree"
 grep -q 'zerogravity-gpu feature "cuda-native-qualification"' <<<"$qualified_tree"
 cargo test --locked --offline -p zerogravity --no-default-features \
   --features qwen35-cuda-qualification --lib qwen35_cuda::templates::tests
-cargo test --locked --offline -p zerogravity-cli --no-default-features \
-  --features qwen35-cuda-qualification --bin zerogravity qwen35_cuda_route_tests
+cargo test --locked --offline -p zerogravity --no-default-features \
+  --features qwen35-cuda-qualification --lib diagnostics::qwen_route::qwen35_cuda_route_tests
 
 printf 'Checking combined Qwen CUDA qualification and serving tests...\n'
 cargo test --locked --offline -p zerogravity --no-default-features \
