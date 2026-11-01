@@ -9,7 +9,23 @@ Current source and tests are the implementation truth. The active work queue is
 retains superseded plans, handoffs, checkouts and run evidence; they are not
 live authority.
 
-## Active direction — Fabric first (31 Oct)
+## Last accepted state — working Fabric key paths
+
+- Signed`7fc5d17`: real encoding/codec/CPU math ownership and reference publication
+  through original SessionAuthority. Signed`8591b52`: working CPU SDK/runtime,
+  reusable HTTP JSON/SSE server, pipeline/device APIs and CLI extraction.
+- Real CPU source/alias/cancel/SDK/server/lifecycle cases pass. Original root,
+  physical arbiter, final-reader lifetime and explicit unsupported routes retained.
+- Final isolated gate:2,267 Rust/0fail/94ignored/297 suite runs;17 Python suites/
+  182 cases incl10 skips; architecture/feature/strict/installer/shell/Nix pass.
+  CUDA/HIP/Vulkan compile checks and23 source-free GPU controls pass; no GPU launch.
+- Full GPU scheduler unification, remaining SDK/CLI/active-contract ownership and
+  F4/Q0–Q2 acceptance remain open. No performance or new physical-support claim.
+- Main-only work from here; prior agents/jobs terminal, recurrences cancelled.
+  Root README/external checkout untouched; no push. Continue contained refinements
+  from [transition TODO](fabric-vnext-transition/TODO.md), not a new S0 extraction.
+
+## Historical accepted state — Fabric S0 (31 Oct)
 
 Owner authorizes [Fabric transition](fabric-vnext-transition/TODO.md): reconcile
 both plans against signed`1c35172`, then complete compilable S0 and

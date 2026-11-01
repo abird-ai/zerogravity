@@ -18,7 +18,7 @@ Base: `1c35172`
 - Fabric/Qwen recurrences remain cancelled. Qwen expansion remains deferred;
   accepted model/operator/lifetime evidence is historical and tuple-specific.
 - Signed`7fc5d17` lands source/state foundations on S0`7396984`/`c853ebb`.
-  The tested runtime/SDK/server batch lands separately below. Root README and
+  Signed`8591b52` lands the tested runtime/SDK/server batch. Root README and
   external checkout untouched; nothing pushed.
 
 ## Checkpoint evidence — assembled gate passed
@@ -68,7 +68,8 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 
 ## Next refinements — one coherent unit at a time
 
-1. Preserve this tested working foundation in signed logical checkpoints.
+1. Continue from signed`7fc5d17`/`8591b52`; the foundation is committed, not a
+   new extraction task. Reuse applicable accepted evidence.
 2. Harden lifecycle reentrancy/caller-deadline ergonomics at the shared engine
    layer; keep ordinary paths simple and measure before performance changes.
 3. Extend the SAME engine Router/worker to GPU, preserving the reviewed contract:
@@ -93,7 +94,7 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 Historical documentation packet:`2ff3d49`; canonical handoff refresh:`ff89b87`.
 Qwen commits are preserved inputs, not S/F/Q completion proof.
 
-### CPU runtime/SDK/serving — this commit
+### `8591b52` — working CPU runtime, public SDK and embedded serving
 
 - [x] One neutral CPU Router owns original queue, workers, cancellation, bounded
   events, text presentation and token observations; concrete source/tokenizer

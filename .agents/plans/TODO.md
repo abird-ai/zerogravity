@@ -5,6 +5,12 @@ Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 
 ## Owner priority — 31 Oct
 
+**Owner reauthorized a bounded checkpoint first:** make current Fabric key paths
+work, verify and commit; then refine parts separately. Working key-path checkpoint signed
+`7fc5d17`/`8591b52`; complete isolated gate passed. Full GPU runtime migration
+remains explicit follow-up. Main only; no new subagents. Cancelled recurrences
+stay cancelled.
+
 Fabric vNext is now authorized and precedes the unfinished Qwen campaign.
 Preserve signed native GDN`e2559b6`/pause`1c35172` and all accepted bounded
 model/lifetime evidence. Recurrence`17aafa71` remains cancelled; no implicit
@@ -13,7 +19,7 @@ model/context/C1..C64/vLLM mission. No production activation from refactoring.
 
 ## Active
 
-- [~] P0 fabric-vnext-transition — @pvl — S0 signed`7396984`; S1 exact codec moves next, then feature-preserving migration and assembled qualification — [details](fabric-vnext-transition/TODO.md)
+- [~] P0 fabric-vnext-transition — @pvl — working key paths signed`7fc5d17`/`8591b52`, gate passed; refine lifecycle, then remaining GPU/SDK/CLI migration — [details](fabric-vnext-transition/TODO.md)
 - [ ] P1 serving-and-speculation — @pvl — l5 CUDA `.8B`/`2B`, x2 ROCm `.8B`/`2B`/`27B`: correctness/context fit, C1..C64, then measured vLLM superiority; finite27B checkpoint passed; ordinary HIP remains open; deferred behind Fabric — [details](serving-and-speculation/TODO.md)
 - [~] P1 numerics-and-context — @pvl — exact cached47→50, lifecycle/capacity and final gate pass; active-context/2B reference inputs missing — [details](numerics-and-context/TODO.md)
 - [~] P1 memory-and-streaming — @pvl — exact two-root admission: `.8B` fits through 32K, `2B` through 16K, `2B`32K refuses before allocation — [details](memory-and-streaming/TODO.md)

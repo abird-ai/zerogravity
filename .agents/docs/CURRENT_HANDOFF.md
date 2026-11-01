@@ -6,6 +6,40 @@ It is deliberately not a generated concatenation of every historical plan, run l
 
 A successor should be able to start here without prior chat history, understand how the project evolved, identify what is implemented versus merely designed, and continue either the current Qwen correctness critical path or the separately authorized Fabric vNext transition.
 
+## Latest accepted checkpoint — working Fabric key paths
+
+- Signed`7fc5d17`: actual encoding/codecs/CPU math owners and canonical reference
+  publication. Signed`8591b52`: real CPU SDK/runtime, standalone embedded serving,
+  pipeline/device APIs and migrated CLI callers. S0 remains`7396984`/`c853ebb`.
+- Actual local CPU loading → direct requests/task streams → HTTP JSON/SSE works
+  through one CPU scheduler and original source/root/admission owners. Aliases,
+  cancellation, worker joins and server stop preserving SDK tasks are tested.
+- Held-source admission race and late-input disconnect masking fixed. Core/kernel
+  arithmetic bodies preserved; broader GDN family identity changed with Rust
+  binding source. No retagged physical evidence or new trained-model qualification.
+- Final isolated gate:2,267 Rust passes/0fail/94ignored across297 suite runs;
+  17 Python suites/182 cases incl10 input skips. Architecture/feature/strict/
+  installer/shell/Nix checks pass. Separate real CPU fixture cases4 pass;
+  updated facade30/server23; GPU source-free routing/refusal/join controls23 pass.
+- CUDA/HIP/Vulkan compile checks pass. No GPU device/model execution, download,
+  privilege/recovery change, push or external-checkout/root README change.
+- All jobs/previous agents terminal. No new subagents: main does all further work.
+  Cancelled Fabric/Qwen recurrences remain cancelled; Qwen expansion deferred.
+
+This is a working foundation checkpoint, NOT completed F0–F4/Q0–Q2. GPU scheduling
+and remaining run/pull/cache business logic still reside in CLI. Placement,
+pipeline execution and future protocols continue refusing. Next: contained
+lifecycle hardening, then the same-router GPU migration and remaining SDK/CLI
+ownership, with measured optimization after correctness.
+
+Recovery: [transition TODO](../plans/fabric-vnext-transition/TODO.md).
+Accepted logs: XDG state`abird/zerogravity/fabric-checkpoint-lEnE3DDm/`;
+`assembled-gate-r1.log` plus focused logs. Earlier failed/zero/unrun scopes remain
+in that directory and`fabric-runtime-juOhHkRS/`; do not treat them as passes.
+
+The following sections retain earlier checkpoints/design context. Latest source,
+tests and the transition TODO outrank their superseded continuation instructions.
+
 ## Active direction — Fabric first (31 Oct)
 
 Owner authorizes [Fabric transition](../plans/fabric-vnext-transition/TODO.md): reconcile
@@ -15,17 +49,23 @@ recurrence`17aafa71` stays cancelled. No new hardware campaign or production
 route. Plan 1's full design is retained in Plan 2's S0–S3/F0–F4/Q0–Q2 ordering.
 See [source delta](../plans/fabric-vnext-transition/CURRENT_SOURCE_RECONCILIATION.md) and
 [feature preservation](../plans/fabric-vnext-transition/FEATURE_PARITY_MATRIX.md).
-Signed`7396984` lands verified S0; S1 exact codec/source moves are next.
-No new model/serving capability from the skeleton.
+Signed`7396984` lands verified S0;`c853ebb` records reconciled recovery.
+Owner now requests continuing until the full runtime transition is finished.
+S1/F0/F1 implementation is active; no new accepted milestone yet.
 
-## Interruption recovery — S0 signed; S1 next
+## Interruption recovery — active runtime migration
 
-Read `../plans/fabric-vnext-transition/TODO.md` **Resume here** first. Signed
-`7396984` lands S0: engine/serving/contracts/SDK and initial CLI moves reviewed;
-final isolated gate passes2,159 Rust/0fail/87ignored/292 suites,17 Python suites/
-182 cases plus packaging. Physical/model campaigns were not restarted.
-S1 real codec/source moves are next; no owned job remains active. F0/F2
-execution/serving remain Unsupported on the new shell; existing routes intact. No full migration or new inference capability claimed.
+Read `../plans/fabric-vnext-transition/TODO.md` **Resume here** first; it records
+live file ownership and next integration checks. Revalidate active agents/jobs
+before editing: encoding/codecs, pipeline SDK and neutral CPU engine lanes write
+separate surfaces; coordinator owns serving transport, shared manifests and
+compiler capacity. Root protocol review is read-only. Fresh Fabric continuation
+`7cddc6c9` is independent of cancelled Qwen recurrence`17aafa71`.
+
+Signed`7396984` remains the latest accepted implementation: final isolated gate
+passes2,159 Rust/0fail/87ignored/292 suites,17 Python suites/182 cases plus
+packaging. New dirty source is in progress, not verified runtime/serving parity.
+No physical/model campaign has restarted; Q0/Q2 acceptance remains open.
 
 Revalidate HEAD/diff/ownership, recover any active owner before starting duplicate
 work, and update the owning TODO after material steps. Completed source/testing,
