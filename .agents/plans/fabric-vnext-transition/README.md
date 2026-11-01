@@ -4,15 +4,16 @@ Owner: @pvl; later appointed implementation coordinator
 
 # zerogravity Fabric vNext — transition architecture and implementation plan
 
-**Latest checkpoint:** signed`7fc5d17`/`8591b52` land source/state owners and working
-CPU SDK/embedded serving; full isolated gate passes. Main only, no new subagents.
-Continue contained refinements, not another skeleton extraction.
+**Latest checkpoint:** signed `d4e94b1` rehomes SDK/CLI source and artifact
+ownership; shared CPU/GPU scheduler `ae7ec11` retained. Approved tiny CPU and full
+isolated source/host gate pass. Active contracts and physical/final acceptance
+remain open. Main only; do not redo the scheduler or SDK extraction.
 Plan 2 includes Plan 1; Qwen expansion deferred. Historical docs-only holds below
 are superseded. [Current source/crosswalk](CURRENT_SOURCE_RECONCILIATION.md) ·
 [active phase queue](TODO.md). No new physical/production grant.
 
 
-**Created:** 27 October 2026. **Current status: working CPU/runtime/server checkpoint; full GPU/SDK/CLI migration remains open.**
+**Created:** 27 October 2026. **Current status: shared scheduling and SDK/CLI source checkpoints; active contracts and full acceptance remain open.**
 **Read-only source observation:** HEAD fadf2b1123309a2118725f2cc005d3edc7ea39f2 (l5, 27 Oct 06:50 UTC). The 26 Oct deep review had 195099ca; preceding refresh had eb38dd5. These are evidence timestamps, not frozen ongoing source. Recheck HEAD before coding.
 **Physical root:** /home/pvl/spaces/abird/src/zerogravity via dotlink-l5.
 **Ownership:** owner explicitly promoted this transition in the shared queue. Preserve Plan 1's requirements and all unrelated source/owner work; the current main session serializes integration.
@@ -33,14 +34,23 @@ must be present together. Existing source/format/host-budget refusals still appl
   short router callbacks remain non-reentrant, implicit self-drop unsupported.
 - `pipelines::Document`: bounded YAML/schema/entrypoint checking, not execution.
 - `Runtime::devices`: inventory/policy; placement execution remains Unsupported.
+- `artifacts::{HubPull,ComponentDocument,ComponentClients}` and original provider/
+  cache APIs: caller-owned transports/credentials, original publication/leases.
+- `run::cpu::Plan`, `prepare::selection`, `diagnostics::cpu_text`: source-retaining
+  planning and synchronous audits; ordinary concurrent requests use the Router.
+- `diagnostics::{qwen_route,gemma_text}`: explicit finite candidates, not ordinary
+  production or serving qualification. Source/physical guards remain authoritative.
+- `examples/fabric_sdk.rs`: public SDK + std only; cold help/refusal checked.
+  Its explicit `pull` command performs network/cache IO only when requested.
 
 Executed public composition example/test:
 `crates/zerogravity/src/builtins/text/tests/serving_population/checkpoint.rs`.
 It uses a real full-vocabulary CPU GGUF fixture, not fabricated successful events;
 this establishes runtime composition, not trained-model numerical qualification.
 
-GPU backends/routes still use their original physical owners; CPU engine migration
-is not unified GPU scheduling. Source-free feature checks do not qualify hardware.
+CPU/GPU scheduling now shares one engine while original physical owners remain.
+Source-free feature checks and SDK extraction do not qualify hardware or trained
+Gemma execution; simultaneous heterogeneous residency remains future work.
 Pipeline execution, broad model administration, placement, media/distributed tasks
 and unfinished active-contract bindings remain the tracked follow-up scope.
 

@@ -6,7 +6,42 @@ It is deliberately not a generated concatenation of every historical plan, run l
 
 A successor should be able to start here without prior chat history, understand how the project evolved, identify what is implemented versus merely designed, and continue either the current Qwen correctness critical path or the separately authorized Fabric vNext transition.
 
-## Latest checkpoint — shared text scheduler, host-tested
+## Latest checkpoint — SDK/CLI ownership, source/host only
+
+- Signed `d4e94b1` rehomes artifact selection/publication orchestration, cached
+  source preparation, direct CPU planning/audits and explicit finite CUDA/Gemma
+  diagnostics in the public SDK. CLI retains arguments, environment/credentials,
+  signals, bounded stdin, lazy sinks and presentation; alternate dead run/GPU code
+  is removed. Shared scheduling `ae7ec11` and recovery `72622ce` remain accepted.
+- Original math, source issuers, session roots, Ready/feedback and physical ledger
+  remain. Returned CPU payloads retain original admission until their final owner
+  drops. SDK native allowlists stay cold; returned Gemma operation/source/accounting
+  errors remain visible after cleanup. No generic model capability was invented.
+- Artifact/cache/Xet controls pass; current CLI/provider/alias tests and genuine
+  sparse-GGUF CPU source/audit/planning/final-reader checks pass. The public-only
+  `examples/fabric_sdk.rs` builds and passes cold help/missing-source refusal.
+  Native host controls12 pass/2 physical ignored; Gemma host1 passes, trained CPU
+  case ignored. CUDA/HIP/default/minimal strict and Vulkan compilation pass.
+- Final isolated gate:2,315 Rust test executions/0fail/97ignored across302 suites;
+  17 Python suites/182 cases/10 skips.70 empty feature-target suites are not
+  execution proof. Architecture/features/strict/release/installer/shell/SSE/Nix
+  pass; two existing Vulkan source-page warnings remain.
+- **Fabric is unfinished.** Active numerical/layout/preparation/provider/root
+  reconciliation, final catalog/transport/parity review and F4/Q0/Q1/Q2 remain.
+  Generic executable/catalog loading, per-model retirement and paged-state
+  restoration refuse; multi-model residency and future pipeline/placement/media/
+  quant execution remain unsupported.
+- No GPU or trained-Gemma execution, model acquisition, recurrence restart, push,
+  privilege/recovery change or historical physical-evidence retagging. Main only;
+  root README and protected detached checkout unchanged. Physical numerical/state/
+  cancellation/fault/final-reader/serving qualification still needs authority.
+- Logs: XDG state `abird/zerogravity/fabric-finish-b9SliwEt/` —
+  `final-gate-r1.log`, `assembled-sdk-r2.log`, `ownership-review-r2.log`,
+  `source-review-r1.txt`. Interrupted/failed scopes remain separate. The first
+  assembled SDK run was stopped before trained-model execution; source presence
+  did not grant execution permission. Qwen/context/C1..C64/vLLM and E01–E10 remain.
+
+## Previous checkpoint — shared scheduler `ae7ec11`
 
 - Signed source/host checkpoint `ae7ec11` follows foundation `7fc5d17`/`8591b52`
   and lifecycle `d78eb55`. CPU and GPU use one engine Router, alias registry,
@@ -59,13 +94,14 @@ Signed`7396984` lands verified S0;`c853ebb` records reconciled recovery.
 Owner now requests continuing until the full runtime transition is finished.
 S1/F0/F1 implementation is active; no new accepted milestone yet.
 
-## Interruption recovery — current shared scheduling
+## Interruption recovery — active contracts after SDK/CLI ownership
 
 Start with the transition TODO and current `main`/diff. The source/host checkpoint
 above supersedes old S0/lane instructions below. No new agent or recurrence;
 source/build ownership stays with main. Do not restart GPU work without separate
-authority. Continue remaining ready SDK/CLI/contract work without redoing the
-accepted foundation or claiming unexecuted physical scopes.
+authority. Continue active-contract/provider/root and final parity work without redoing
+accepted scheduler or SDK extraction. Physical/trained cases stay held; source
+compilation and existing local files never substitute for execution authority.
 
 ## Historical Qwen pause — 31 Oct 2026
 

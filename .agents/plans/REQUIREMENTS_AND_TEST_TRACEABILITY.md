@@ -39,6 +39,16 @@ not acceptance inputs.
 
 ## Current Fabric and retained Qwen acceptance
 
+- SDK/CLI source/host checkpoint `d4e94b1`: typed artifact/component/cache operations,
+  original fixed source/transfer domains, direct CPU planning/audit/output lifetime,
+  finite CUDA/Gemma diagnostic owners and a public-only Rust example. Exact original
+  math/physical owners remain; dead alternate CLI paths removed. Focused artifact/
+  CLI/approved tiny CPU tests and native/Gemma host controls pass.
+  Final gate:2,315 Rust/0fail/97ignored/302 suites (70 empty);17 Python suites/
+  182 cases/10 skips. Real trained Gemma and GPU execution remain unrun, not inferred
+  from compilation or local source presence. Active contracts and whole-transition
+  F4/Q acceptance remain open; see owning TODO and current-source reconciliation.
+
 - Shared scheduler source/host checkpoint `ae7ec11`: one CPU/GPU Router/worker and
   transport path, typed original physical owners, admitted final-reader/tokenizer
   controls; CLI scheduler copies removed.85 engine controls and4 genuine CPU

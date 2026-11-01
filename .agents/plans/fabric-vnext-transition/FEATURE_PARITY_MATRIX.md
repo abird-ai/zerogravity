@@ -21,6 +21,24 @@ Latest source checkpoint and commit-scoped evidence:
 All old feature rows below remain a migration checklist, not an updated physical
 capability table. S0 is structural only; F4/Q0/Q2 must account for this delta too.
 
+## SDK/CLI owner reconciliation — `d4e94b1`
+
+This is the current source/host checkpoint, not whole F4/Q or physical acceptance.
+
+| Existing operation | Current owner / tested scope | Still open |
+|---|---|---|
+| CPU direct GGUF/source/cache/audit | SDK `run::cpu`, `prepare::selection`, `diagnostics::cpu_text`; genuine sparse-source CLI aliases and SDK roots/audits/final output credit pass | trained model claims remain source-specific |
+| Hub/filter/quant/Xet/components | SDK `artifacts` over original acquisition/publisher; provider/conditional/offline/role/durability/cancel tests pass | no new source acquisition or codec |
+| Finite CUDA direct route | SDK diagnostic; original source/native/PCI/admission/feedback/close retained;12 host controls pass |2 physical controls ignored; moved execution not requalified |
+| Gemma CPU/HIP candidates | SDK diagnostic over original managed inputs/model/sessions; feature checks and error-combination control pass | new real-source CPU case and physical HIP remain unrun |
+| Shared CPU/GPU serving | engine/serving owners from `ae7ec11` unchanged; existing source/host evidence retained | physical GPU transport/lifecycle qualification |
+| CLI + external application | CLI IO/parser/signal boundary; no alternate GPU/parser implementation; SDK-only example cold help/missing-source refusal passes | final whole-matrix ownership/parity audit |
+| Active architecture contracts | original source/ForwardPlan/session/arbiter remain authority | numerical/layout/preparation/provider/root/catalog/residency reconciliation; no metadata-to-Ready substitution |
+
+Final source/host gate:2,315 Rust executions/0fail/97ignored/302 suites (70 empty),
+17 Python suites/182 cases/10 skips. No physical, trained-model, performance or
+new model/task/codec capability claim follows from these counts.
+
 ## 1. Preservation policy and truth states
 
 Record separately for every feature:
