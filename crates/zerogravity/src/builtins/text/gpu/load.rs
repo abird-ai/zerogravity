@@ -208,18 +208,22 @@ pub fn load_gpu_router(
         })?;
         let vocabulary_size = source.geometry().vocab_size;
         let source_identity = source.source_identity();
-        let plan = source
-            .forward_plan(GPU_CAPACITY, true, true)
-            .map_err(ServiceError::inference)?;
-        let device = backend.device().map_err(ServiceError::inference)?;
-        let resident = block_on(ResidentModel::load(
-            device,
+        let program = crate::models::ModelProgram::record(
             source,
-            plan,
-            provider_cap,
-            device_cap,
-        ))
+            crate::models::ProgramRequest {
+                task: crate::task::TaskKind::Language,
+                context: GPU_CAPACITY,
+                logits: true,
+                observations: true,
+            },
+        )
         .map_err(ServiceError::inference)?;
+        let device = backend.device().map_err(ServiceError::inference)?;
+        let provider = crate::gpu::ResidentModelProvider::new(device, provider_cap, device_cap)
+            .map_err(ServiceError::inference)?;
+        let resident = block_on(crate::models::prepare_executable(program, &provider))
+            .map_err(ServiceError::inference)?
+            .into_prepared();
         let max_token_bytes = tokenizer
             .max_token_bytes()
             .map_err(ServiceError::inference)?;

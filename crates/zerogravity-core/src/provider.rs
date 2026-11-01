@@ -1,13 +1,10 @@
-//! Coarse compilation seams. No runtime execution authority from a descriptor.
+//! Coarse source-owned preparation; no execution authority from a descriptor.
 mod selection;
-use crate::{
-    Result,
-    placement::PlacementRequest,
-    semantic::{ForwardPlan, RegionRequest},
-};
+use crate::{Result, model::ModelProgram, semantic::ForwardPlan, source::TensorSource};
 pub use selection::{
     ExecutionMode, SelectedMode, SelectionPolicy, ShapeMissPolicy, StateBridge, SwitchingBoundary,
 };
+use std::{future::Future, sync::Arc};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProviderKind {
@@ -19,16 +16,27 @@ pub enum ProviderKind {
     Remote,
 }
 
-/// Retains the original semantic program and provider-owned prepared resources.
-/// Execution/Ready adapters remain with existing providers until S2/F0.
+/// Original semantic program and provider-owned resources. This interface does
+/// not publish roots or expose Ready; existing typed execution adapters do that.
 pub trait PreparedExecutable: Send + Sync {
-    fn program(&self) -> &ForwardPlan;
+    fn source(&self) -> impl Future<Output = Result<Arc<dyn TensorSource>>>;
+    fn program(&self) -> impl Future<Output = Result<Arc<ForwardPlan>>>;
 }
+impl<T: PreparedExecutable + ?Sized> PreparedExecutable for Arc<T> {
+    fn source(&self) -> impl Future<Output = Result<Arc<dyn TensorSource>>> {
+        self.as_ref().source()
+    }
+    fn program(&self) -> impl Future<Output = Result<Arc<ForwardPlan>>> {
+        self.as_ref().program()
+    }
+}
+
+/// Whole-program closed regions only. The provider retains actual device/budget
+/// selection; arbitrary placement and partial-region replacement are not exposed.
+/// Preparation must complete original initialization or retirement before return.
+/// As with original loaders, callers must drive submitted preparation to completion.
 pub trait RegionExecutionProvider: Send + Sync {
+    type Executable: PreparedExecutable;
     fn kind(&self) -> ProviderKind;
-    fn prepare(
-        &self,
-        region: &RegionRequest<'_>,
-        placement: &PlacementRequest,
-    ) -> Result<Box<dyn PreparedExecutable>>;
+    fn prepare(&self, program: ModelProgram) -> impl Future<Output = Result<Self::Executable>>;
 }

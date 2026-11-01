@@ -51,7 +51,7 @@ pub mod prepare;
 
 /// Process-global tokenizer bootstrap and cold-constructor admission shared by
 /// the CPU, GGUF and Qwen CUDA source owners.
-#[cfg(all(feature = "text", feature = "cache"))]
+#[cfg(feature = "text")]
 pub mod tokenize_admission;
 
 #[cfg(all(feature = "qwen27b-hip-qualification", target_os = "linux"))]

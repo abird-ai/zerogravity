@@ -152,6 +152,46 @@ fn source_bound_cpu_diagnostic_and_planning_retirement() {
     let planned = selected.planning_bytes();
     let prepared = selected.prepare(&admission).unwrap();
     assert_eq!(arbiter.snapshot(&key).unwrap().reserved, planned);
+    {
+        use crate::models::{ModelProgram, ProgramRequest};
+        use std::sync::Arc;
+        // Real family recording, not GPU preparation or an execution claim.
+        let model = prepared.prepared.model().clone();
+        let original: Arc<dyn zerogravity_core::source::TensorSource> = model.clone();
+        let request = ProgramRequest {
+            task: crate::task::TaskKind::Language,
+            context: 8,
+            logits: true,
+            observations: true,
+        };
+        assert!(matches!(
+            ModelProgram::record(
+                model.clone(),
+                ProgramRequest {
+                    task: crate::task::TaskKind::Decision,
+                    ..request
+                }
+            ),
+            Err(crate::Error::Unsupported(_))
+        ));
+        assert!(matches!(
+            ModelProgram::record(
+                model.clone(),
+                ProgramRequest {
+                    context: usize::MAX,
+                    ..request
+                }
+            ),
+            Err(crate::Error::Limit(_))
+        ));
+        let program = ModelProgram::record(model, request).unwrap();
+        assert!(Arc::ptr_eq(&original, program.source()));
+        assert_eq!(program.program().source(), original.source_identity());
+        assert_eq!(program.program().prefix_capacity(), 8);
+        assert!(program.program().logits().is_some());
+        assert_eq!(program.program().required_domains().len(), 24);
+        assert_eq!(arbiter.snapshot(&key).unwrap().reserved, planned);
+    }
     let progress = Rc::new(Cell::new(0));
     let mut layers = Audit {
         progress: progress.clone(),

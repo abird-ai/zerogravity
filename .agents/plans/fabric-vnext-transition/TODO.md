@@ -335,6 +335,37 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 
 
 
+## Uncommitted — source-owned preparation checkpoint
+
+- [x] Replace descriptor-only preparation with ModelProgram retaining the actual
+  family/source Arc and original ForwardPlan Arc; Qwen delegates to its unchanged
+  recorder. Source/context/task/output mismatches refuse before provider work.
+  ModelDefinition stays storage-neutral; only the current tensor-provider binding
+  requires TensorSource. Window-bound source owners are not flattened.
+- [x] Bind typed RegionExecutionProvider/ExecutableBundle to the existing resident
+  GPU loader. Ordinary GGUF catalog loading uses this path; source and plan Arc
+  identity must both survive. No Any/downcast, copied IR, scheduler or publisher.
+- [x] Keep physical preflight/initialization/Ready/retirement bodies unchanged;
+  submitted preparation is awaited. Window-bound and finite diagnostic adapters
+  retain their original owners; arbitrary placement/partial regions stay absent.
+- [x] Fix standalone text+GPU without cache: tokenizer admission depends on text,
+  not cache. Original admission body and ledger unchanged; no new network stack.
+- [x] Four host routing/retention controls pass, including different source owners
+  with equal IDs. Engine and combined CUDA/HIP strict pass; cache-free, CPU-free
+  Vulkan compilation passes. These are not physical execution evidence.
+- [x] Approved sparse GGUF recording/direct CPU/audit/final-reader case passes
+  17.42s; unchanged SDK/profiled catalog/HTTP lifecycle passes18.48s. No trained Gemma run.
+- [x] Independent source comparison retains original Qwen traversal/recorder and
+  resident preflight/lowering/math/event bodies after only cold Arc normalization.
+  CPU math, scheduler/cohorts, serving, root/arbiter and kernel/image pins unchanged.
+- First final gate stopped at an unchanged HTTP test's50ms header deadline;
+  exact test and all25 HTTP controls pass with RUST_TEST_THREADS=4. No production
+  or test timeout weakened; failed whole-gate log retained, not an accepted pass.
+- [x] Final isolated source/host gate passes with RUST_TEST_THREADS=4:2,326 Rust
+  executions/0fail/97ignored across303 suites (70 empty);17 Python suites/182
+  cases/10 skips. All deadlines/assertions unchanged; prior failed gate retained.
+  Full Fabric remains open. Logs: XDG state `abird/zerogravity/fabric-parity-A94JdkGR/`.
+
 ## Uncommitted — remaining S1 active contracts
 
 - [ ] Finish remaining preparation/derived contracts; numerical/activation/row-layout consumers are bound in the signed checkpoint above. Derived artifacts are not a quantizer or execution permit.

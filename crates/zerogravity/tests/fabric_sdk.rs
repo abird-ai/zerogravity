@@ -51,6 +51,14 @@ fn semantic_api_is_the_original_program_type() {
     let _same_type = original;
     let _family_contract: Option<&dyn zerogravity::models::ModelDefinition> = None;
     let _assembly: Option<zerogravity::models::ModelAssembly> = None;
+    // Source-owned preparation is usable without naming an internal crate.
+    #[cfg(feature = "model-qwen35")]
+    let _record: fn(
+        std::sync::Arc<zerogravity::qwen35::LoadedQwenModel>,
+        zerogravity::models::ProgramRequest,
+    ) -> zerogravity::Result<zerogravity::models::ModelProgram> =
+        zerogravity::models::ModelProgram::record;
+    let _source_contract: Option<&dyn zerogravity::models::TensorSource> = None;
     for component in zerogravity::builtins::components() {
         let has_cpu = cfg!(all(feature = "cpu", feature = "text", feature = "cache"));
         let has_gpu = cfg!(all(

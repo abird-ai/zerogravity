@@ -754,6 +754,23 @@ fn attention_layer<B: MathematicalBackend>(
     project(model, math, QwenMatrixRole::AttentionOutput(i), &gated)
 }
 
+impl zerogravity_core::model::ModelDefinition for LoadedQwenModel {
+    fn source(&self) -> zerogravity_core::identity::SourceIdentity {
+        self.source_identity()
+    }
+    fn tasks(&self) -> &[zerogravity_core::task::TaskKind] {
+        &[zerogravity_core::task::TaskKind::Language]
+    }
+    fn program(&self, request: zerogravity_core::model::ProgramRequest) -> Result<ForwardPlan> {
+        if request.task != zerogravity_core::task::TaskKind::Language {
+            return Err(Error::Unsupported(
+                "Qwen model task has no recording implementation".into(),
+            ));
+        }
+        self.forward_plan(request.context, request.logits, request.observations)
+    }
+}
+
 impl LoadedQwenModel {
     /// Record one bounded symbolic forward. The result contains no live
     /// device/session handles and is not evidence that any backend executed.

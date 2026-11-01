@@ -424,11 +424,20 @@ fn lease_for<'a>(
         .ok_or_else(|| Error::State("unadmitted resident graph handle".into()))
 }
 
+impl zerogravity_core::provider::PreparedExecutable for ResidentModel {
+    async fn source(&self) -> Result<Arc<dyn TensorSource>> {
+        self.workspace.lock().await.program.owned_source()
+    }
+    async fn program(&self) -> Result<Arc<ForwardPlan>> {
+        Ok(self.workspace.lock().await.program.shared_plan())
+    }
+}
+
 impl ResidentModel {
     pub async fn load(
         device: Device,
         model: Arc<dyn TensorSource>,
-        plan: ForwardPlan,
+        plan: impl Into<Arc<ForwardPlan>>,
         provider_cap: usize,
         device_cap: u64,
     ) -> Result<Arc<Self>> {
@@ -438,7 +447,7 @@ impl ResidentModel {
     async fn load_inner(
         device: Device,
         model: Arc<dyn TensorSource>,
-        plan: ForwardPlan,
+        plan: impl Into<Arc<ForwardPlan>>,
         provider_cap: usize,
         device_cap: u64,
         pinned_graph: bool,
@@ -596,7 +605,7 @@ impl ResidentModel {
     async fn load_attached(
         device: Device,
         model: Arc<dyn TensorSource>,
-        plan: ForwardPlan,
+        plan: impl Into<Arc<ForwardPlan>>,
         provider_cap: usize,
         device_cap: u64,
         pinned_graph: bool,
@@ -604,6 +613,7 @@ impl ResidentModel {
     ) -> Result<Arc<Self>> {
         validate_provider(&device)?;
         let native_batch = matches!(device, Device::Cuda(_));
+        let plan = plan.into();
         let (capacity, vocab, preflight) = preflight_profile(model.as_ref(), &plan)?;
         if preflight.source != model.source_identity() {
             return Err(Error::State("resident preflight source mismatch".into()));

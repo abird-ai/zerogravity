@@ -1281,9 +1281,10 @@ impl ResidentProgram {
     pub fn prepare_with_allocator(
         client: &Client,
         model: Arc<dyn TensorSource>,
-        plan: ForwardPlan,
+        plan: impl Into<Arc<ForwardPlan>>,
         mut allocate: impl FnMut(ResidentBufferRole, usize, AllocationInit<'_>) -> Result<Handle>,
     ) -> Result<Self> {
+        let plan = plan.into();
         let preflight = Self::preflight(model.as_ref(), &plan)?;
         Self::ensure_capability(client)?;
         let mut allocation = ProgramAllocator {
@@ -1431,7 +1432,7 @@ impl ResidentProgram {
             .collect::<Result<Vec<_>>>()?;
         let mut program = Self {
             _source_owner: ResidentProgramSource::Owned(model),
-            plan: Arc::new(plan),
+            plan,
             preflight,
             values,
             status: allocation.empty(ResidentBufferRole::Status, 4)?,
@@ -1516,6 +1517,21 @@ impl ResidentProgram {
     }
     pub fn plan(&self) -> &ForwardPlan {
         &self.plan
+    }
+    pub(crate) fn shared_plan(&self) -> Arc<ForwardPlan> {
+        self.plan.clone()
+    }
+    pub(crate) fn owned_source(&self) -> Result<Arc<dyn TensorSource>> {
+        match &self._source_owner {
+            ResidentProgramSource::Owned(source) => Ok(source.clone()),
+            #[cfg(all(
+                target_os = "linux",
+                any(feature = "qualification", feature = "cuda-cublas")
+            ))]
+            ResidentProgramSource::Windows(_) => Err(Error::Unsupported(
+                "window-bound source requires its original preparation adapter".into(),
+            )),
+        }
     }
     pub fn budget(&self) -> &ResidentPreflight {
         &self.preflight

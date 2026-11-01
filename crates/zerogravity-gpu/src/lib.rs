@@ -70,7 +70,9 @@ pub use resident_program::source_bindings::{SourceBindings, SourceSelection};
 pub use resident_program::{ResidentBufferLayout, ResidentPhysicalType};
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 pub use resident_program::{StateLayout, StateRequirement};
+mod model_provider;
 mod resident_provider;
+pub use model_provider::ResidentModelProvider;
 mod resident_state_transport;
 mod rms_norm;
 mod rope_angles;
