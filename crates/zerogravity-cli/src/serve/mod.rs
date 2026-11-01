@@ -1,16 +1,17 @@
 //! Opt-in local OpenAI-compatible HTTP serving.
 //! Facade loading + shared engine/transport; CLI owns configuration and signals.
 
-use engine::{Router, ServiceError};
+#[cfg(test)]
+use engine::Router;
+use engine::ServiceError;
 use zerogravity::runtime::text as engine;
 use zerogravity::runtime::text::pending;
 mod shutdown;
-#[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
-use crate::GpuBackend;
 
 use serde::{Deserialize, Deserializer};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+#[cfg(test)]
 use std::sync::Arc;
 
 #[derive(Debug, Deserialize)]
@@ -244,115 +245,24 @@ fn parse_usize(value: &str, flag: &str) -> Result<usize, ServiceError> {
         )
     })
 }
-fn validate_batch_mode(
-    mode: &str,
-    backend: &str,
-    active: usize,
-    rows: usize,
-) -> Result<(), ServiceError> {
-    match mode {
-        "interleaved" => Ok(()),
-        "fused" if backend == "cuda" && matches!(rows, 2 | 4 | 8) && active >= rows => Ok(()),
-        _ => Err(ServiceError::new(
-            400,
-            "unsupported_batch_mode",
-            "use interleaved, or fused with CUDA, rows=2/4/8 and active>=rows",
-        )),
-    }
-}
-
-fn fixed_prompt_owner_profile(active: usize, host: usize, provider: usize) -> bool {
-    matches!(
-        (provider, host, active),
-        (2304, 3072..=16384, 1..=2) | (4096, 4096, 1..=8)
-    )
-}
-
-fn qwen35_cuda_host_profile(host_mib: usize) -> bool {
-    matches!(host_mib, 4096 | 8192)
-}
-
-fn validate_source_profile(options: &YamlConfig) -> Result<(), ServiceError> {
-    if options.native_batch_rows != 0
-        && (options.source_profile != "qwen35-cuda-bf16"
-            || options.backend != "cuda"
-            || options.batch_mode != "interleaved"
-            || options.native_batch_rows != 4
-            || options.active_per_worker < 4)
-    {
-        return Err(ServiceError::new(
-            400,
-            "unsupported_native_batch_profile",
-            "native-batch-rows=4 requires qwen35-cuda-bf16/CUDA/interleaved/active>=4; default0",
-        ));
-    }
-    match options.source_profile.as_str() {
-        "gguf" if options.native_artifacts.is_none() => Ok(()),
-        "fixed-prompt-bf16" => {
-            if options.backend != "cuda"
-                || options.workers != 1
-                || options.max_context != 512
-                || !(1..=8).contains(&options.max_output)
-                || options.batch_mode != "interleaved"
-                || options.device_mib != 5120
-                || !fixed_prompt_owner_profile(
-                    options.active_per_worker,
-                    options.host_mib,
-                    options.provider_mib,
-                )
-            {
-                return Err(ServiceError::new(
-                    400,
-                    "unsupported_fixed-prompt_profile",
-                    "fixed-prompt requires CUDA/1worker/context512/maxoutput1..8/interleaved/device5120 and finite2 or exact4GiB active8 owner profile",
-                ));
-            }
-            if !cfg!(all(
-                feature = "qwen35-cuda-serving",
-                feature = "qwen35-cuda-qualification",
-                target_os = "linux"
-            )) {
-                return Err(ServiceError::new(
-                    400,
-                    "backend_not_compiled",
-                    "fixed-prompt serving requires explicit qwen35-cuda-qualification",
-                ));
-            }
-            Ok(())
+impl YamlConfig {
+    fn profile(&self) -> zerogravity::serving::TextProfile {
+        zerogravity::serving::TextProfile {
+            workers: self.workers,
+            active_per_worker: self.active_per_worker,
+            max_context: self.max_context,
+            max_output: self.max_output,
+            host_mib: self.host_mib,
+            backend: self.backend.clone(),
+            source_profile: self.source_profile.clone(),
+            native_artifacts: self.native_artifacts.clone(),
+            provider_mib: self.provider_mib,
+            device_mib: self.device_mib,
+            batch_mode: self.batch_mode.clone(),
+            batch_rows: self.batch_rows,
+            native_batch_rows: self.native_batch_rows,
+            max_pending_requests: self.max_pending_requests,
         }
-        "qwen35-cuda-bf16" => {
-            if options.backend != "cuda"
-                || options.workers != 1
-                || options.max_context != 512
-                || !(1..=8).contains(&options.max_output)
-                || !(1..=8).contains(&options.active_per_worker)
-                || options.batch_mode != "interleaved"
-                || !qwen35_cuda_host_profile(options.host_mib)
-                || options.provider_mib == 0
-                || options.provider_mib > options.device_mib
-                || options.device_mib != 5120
-                || options.native_artifacts.is_none()
-            {
-                return Err(ServiceError::new(
-                    400,
-                    "unsupported_qwen35_cuda_profile",
-                    "Qwen CUDA requires CUDA/1worker/context512/maxoutput1..8/active1..8/interleaved/4096or8192host/provider1..5120/5120device and actual native-artifacts",
-                ));
-            }
-            if !cfg!(all(feature = "qwen35-cuda-serving", target_os = "linux")) {
-                return Err(ServiceError::new(
-                    400,
-                    "backend_not_compiled",
-                    "compile Linux qwen35-cuda-serving",
-                ));
-            }
-            Ok(())
-        }
-        _ => Err(ServiceError::new(
-            400,
-            "unsupported_source_profile",
-            "source-profile is gguf, fixed-prompt-bf16 or qwen35-cuda-bf16; native-artifacts is HF-only",
-        )),
     }
 }
 
@@ -408,181 +318,82 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
             "HTTP service is loopback-only; expose through a TLS/auth reverse proxy",
         ));
     }
-    if options.max_pending_requests == Some(0) {
-        return Err(ServiceError::new(
-            400,
-            "invalid_pending_limit",
-            "--max-pending-requests must be a positive count or none",
-        ));
-    }
-    validate_batch_mode(
-        &options.batch_mode,
-        &options.backend,
-        options.active_per_worker,
-        options.batch_rows,
-    )?;
-    validate_source_profile(&options)?;
-    let declared = options.models.into_iter().map(|m| (m.id, m.path)).collect();
-    let backend = options.backend.as_str();
-    let router = match backend {
-        "cpu" => zerogravity::builtins::text::load_router(
-            declared,
-            options.workers,
-            options.active_per_worker,
-            options.max_context,
-            options.max_output,
-            options.host_mib,
-            options.max_pending_requests,
-        )?,
-        "vulkan-nvidia" | "vulkan-amd" | "cuda" | "rocm" => {
-            #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
-            {
-                let selected = match backend {
-                    "vulkan-nvidia" => GpuBackend::VulkanNvidia,
-                    "vulkan-amd" => GpuBackend::VulkanAmd,
-                    "cuda" => GpuBackend::Cuda,
-                    _ => GpuBackend::Hip,
-                };
-                if !selected.compiled() {
-                    return Err(ServiceError::new(
-                        400,
-                        "backend_not_compiled",
-                        "selected GPU backend was not compiled into this binary",
-                    ));
-                }
-                let profile = zerogravity::builtins::text::GpuProfile {
-                    workers: options.workers,
-                    active: options.active_per_worker,
-                    context: options.max_context,
-                    output: options.max_output,
-                    provider_mib: options.provider_mib,
-                    device_mib: options.device_mib,
-                    native_rows: if options.source_profile == "qwen35-cuda-bf16" {
-                        options.native_batch_rows
-                    } else if options.batch_mode == "fused" {
-                        options.batch_rows
-                    } else {
-                        0
-                    },
-                    host_mib: options.host_mib,
-                    max_pending: options.max_pending_requests,
-                };
-                if options.source_profile == "fixed-prompt-bf16" {
-                    #[cfg(all(
-                        feature = "qwen35-cuda-serving",
-                        feature = "qwen35-cuda-qualification",
-                        target_os = "linux"
-                    ))]
-                    {
-                        zerogravity::diagnostics::text_gpu::load_fixed_prompt(
-                            declared,
-                            selected,
-                            profile,
-                            options.host_mib,
-                            options.native_artifacts.as_deref(),
-                        )?
-                    }
-                    #[cfg(not(all(
-                        feature = "qwen35-cuda-serving",
-                        feature = "qwen35-cuda-qualification",
-                        target_os = "linux"
-                    )))]
-                    {
-                        return Err(ServiceError::new(
-                            400,
-                            "backend_not_compiled",
-                            "fixed-prompt serving requires explicit qwen35-cuda-qualification",
-                        ));
-                    }
-                } else if options.source_profile == "qwen35-cuda-bf16" {
-                    #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
-                    {
-                        zerogravity::diagnostics::text_gpu::load_qwen35_cuda(
-                            declared,
-                            selected,
-                            profile,
-                            options.host_mib,
-                            options.native_artifacts.as_deref(),
-                        )?
-                    }
-                    #[cfg(not(all(feature = "qwen35-cuda-serving", target_os = "linux")))]
-                    {
-                        return Err(ServiceError::new(
-                            400,
-                            "backend_not_compiled",
-                            "qwen35-cuda-serving feature required",
-                        ));
-                    }
-                } else {
-                    zerogravity::builtins::text::load_gpu_router(declared, selected, profile)?
-                }
-            }
-            #[cfg(not(any(feature = "vulkan", feature = "cuda", feature = "hip")))]
-            {
-                return Err(ServiceError::new(
-                    400,
-                    "backend_not_compiled",
-                    "compile with --features serve,vulkan or serve,cuda or serve,hip",
-                ));
-            }
-        }
-        _ => {
-            return Err(ServiceError::new(
+    let profile = options.profile();
+    profile.validate()?;
+    let max_active = options
+        .workers
+        .checked_mul(options.active_per_worker)
+        .ok_or_else(|| {
+            ServiceError::new(
                 400,
-                "invalid_backend",
-                "backend must be cpu, vulkan-nvidia, vulkan-amd, cuda or rocm",
-            ));
-        }
-    };
-    let router = Arc::new(router);
-    shutdown.admit(router.as_ref())?;
-    if shutdown.is_requested() {
-        return join_router(router)
-            .map_err(|error| ServiceError::new(500, "shutdown_failed", error.to_string()));
-    }
-    let service: Arc<dyn zerogravity::serving::TextService> = router.clone();
-    let server = zerogravity::serving::ServerBuilder::from_service(service)
-        .bind(address)
-        .api_key(key)
-        .limits(zerogravity::serving::ingress::IngressLimits {
-            connections: 64,
+                "invalid_config",
+                "text scheduler exceeds runtime limits",
+            )
+        })?;
+    let runtime = zerogravity::Runtime::builder()
+        .limits(zerogravity::runtime::SchedulerLimits {
+            max_active,
+            max_queued: options.max_pending_requests,
             ..Default::default()
         })
-        .enable_per_request_metrics(options.enable_per_request_metrics)
         .build()
-        .and_then(|server| server.start())
-        .map_err(|e| ServiceError::new(500, "bind_failed", e.to_string()))?;
-    if shutdown.is_requested() {
-        let stopped = shutdown.wait(server);
-        let joined = join_router(router);
-        return stopped
-            .and(joined)
-            .map_err(|error| ServiceError::new(500, "shutdown_failed", error.to_string()));
-    }
-    eprintln!(
-        "zerogravity: serving {:?} Qwen on {}, {} worker(s); max-context {}, max-output {}",
-        backend,
-        server.local_addr(),
-        options.workers,
-        options.max_context,
-        options.max_output
-    );
-    let result = shutdown.wait(server);
-    // HTTP has dropped every RequestEvents before queue close/worker join.
-    // A retained router Arc would mean a handler escaped that join boundary.
-    let joined = join_router(router);
-    match result.and(joined) {
-        Ok(()) => {
+        .map_err(|error| ServiceError::new(400, "invalid_config", error.to_string()))?;
+    let result = (|| {
+        runtime
+            .models()
+            .load(zerogravity::models::ModelLoadRequest::ServingText {
+                declared: options.models.into_iter().map(|m| (m.id, m.path)).collect(),
+                profile,
+            })?;
+        shutdown.admit(&runtime)?;
+        if shutdown.is_requested() {
+            return Ok(());
+        }
+        let server = runtime
+            .server()
+            .bind(address)
+            .api_key(key)
+            .limits(zerogravity::serving::ingress::IngressLimits {
+                connections: 64,
+                ..Default::default()
+            })
+            .enable_per_request_metrics(options.enable_per_request_metrics)
+            .build()
+            .and_then(|server| server.start())
+            .map_err(|error| ServiceError::new(500, "bind_failed", error.to_string()))?;
+        if !shutdown.is_requested() {
+            eprintln!(
+                "zerogravity: serving {:?} Qwen on {}, {} worker(s); max-context {}, max-output {}",
+                options.backend,
+                server.local_addr(),
+                options.workers,
+                options.max_context,
+                options.max_output
+            );
+        }
+        shutdown
+            .wait(server)
+            .map_err(|error| ServiceError::new(500, "http_error", error.to_string()))
+    })();
+    // Transport stops first; retain source-retirement errors even after startup failure.
+    let joined = runtime
+        .shutdown()
+        .map_err(|error| ServiceError::new(500, "shutdown_failed", error.to_string()));
+    match (result, joined) {
+        (Ok(()), Ok(())) => {
             eprintln!("zerogravity: shutdown complete; HTTP handlers and inference workers joined");
             Ok(())
         }
-        Err(error) => {
-            eprintln!("zerogravity: shutdown failed: {error}");
-            Err(ServiceError::new(500, "http_error", error.to_string()))
-        }
+        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+        (Err(error), Err(close)) => Err(ServiceError::new(
+            error.status,
+            error.code,
+            format!("{}; source retirement: {}", error.message, close.message),
+        )),
     }
 }
 
+#[cfg(test)]
 fn join_router(router: Arc<Router>) -> std::io::Result<()> {
     let mut router = Arc::try_unwrap(router)
         .map_err(|_| std::io::Error::other("HTTP handler retained the serving router"))?;
@@ -591,35 +402,13 @@ fn join_router(router: Arc<Router>) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn canonical_eight_profile_needs_all_three_exact_owner_settings() {
-        for active in 1..=8 {
-            assert!(super::fixed_prompt_owner_profile(active, 4096, 4096));
-        }
-        for (active, host, provider) in [
-            (0, 4096, 4096),
-            (9, 4096, 4096),
-            (8, 3072, 4096),
-            (8, 4095, 4096),
-            (8, 4097, 4096),
-            (8, 4096, 2304),
-            (8, 4096, 4095),
-            (8, 4096, 4097),
-            (3, 4096, 2304),
-        ] {
-            assert!(!super::fixed_prompt_owner_profile(active, host, provider));
-        }
-        assert!(super::fixed_prompt_owner_profile(1, 3072, 2304));
-        assert!(super::fixed_prompt_owner_profile(2, 16384, 2304));
-    }
-
     use super::*;
     #[test]
     fn source_profile_defaults_and_finite_hf_flags_are_cold() {
         let old = YamlConfig::cli(&[]).unwrap();
         assert_eq!(old.source_profile, "gguf");
         assert!(old.native_artifacts.is_none());
-        assert!(validate_source_profile(&old).is_ok());
+        assert!(old.profile().validate().is_ok());
         let args = [
             "--source-profile",
             "fixed-prompt-bf16",
@@ -649,72 +438,33 @@ mod tests {
             feature = "qwen35-cuda-qualification",
             target_os = "linux"
         )) {
-            assert!(validate_source_profile(&cfg).is_ok());
+            assert!(cfg.profile().validate().is_ok());
         } else {
             assert_eq!(
-                validate_source_profile(&cfg).unwrap_err().code,
+                cfg.profile().validate().unwrap_err().code,
                 "backend_not_compiled"
             );
         }
         cfg.active_per_worker = 3;
         assert_eq!(
-            validate_source_profile(&cfg).unwrap_err().code,
+            cfg.profile().validate().unwrap_err().code,
             "unsupported_fixed-prompt_profile"
         );
         cfg.active_per_worker = 1;
         cfg.max_output = 9;
-        assert!(validate_source_profile(&cfg).is_err());
+        assert!(cfg.profile().validate().is_err());
         cfg.max_output = 8;
         cfg.max_context = 513;
-        assert!(validate_source_profile(&cfg).is_err());
+        assert!(cfg.profile().validate().is_err());
         cfg.max_context = 512;
         cfg.batch_mode = "fused".into();
-        assert!(validate_source_profile(&cfg).is_err());
+        assert!(cfg.profile().validate().is_err());
         cfg.source_profile = "gguf".into();
+        cfg.batch_mode = "interleaved".into();
         assert_eq!(
-            validate_source_profile(&cfg).unwrap_err().code,
+            cfg.profile().validate().unwrap_err().code,
             "unsupported_source_profile"
         );
-    }
-
-    #[test]
-    fn native_serving_mode_is_bounded_before_model_or_device_lookup() {
-        for backend in ["cpu", "cuda", "vulkan-nvidia", "vulkan-amd", "rocm"] {
-            assert!(validate_batch_mode("interleaved", backend, 1, 2).is_ok());
-            if backend != "cuda" {
-                let err = run(&[
-                    "--backend".into(),
-                    backend.into(),
-                    "--batch-mode".into(),
-                    "fused".into(),
-                    "--model".into(),
-                    "unqualified=missing.gguf".into(),
-                ])
-                .unwrap_err();
-                assert_eq!(err.code, "unsupported_batch_mode");
-            }
-        }
-        assert!(validate_batch_mode("fused", "cuda", 2, 2).is_ok());
-        assert!(validate_batch_mode("fused", "cuda", 4, 4).is_ok());
-        assert!(validate_batch_mode("fused", "cuda", 8, 8).is_ok());
-        for rows in [0, 1, 3, 5, 6, 7, 9, 16] {
-            assert!(validate_batch_mode("fused", "cuda", 8, rows).is_err());
-        }
-        assert!(validate_batch_mode("fused", "cuda", 4, 8).is_err());
-        for mode in ["fused", "fused-b4", "unknown"] {
-            let err = run(&[
-                "--backend".into(),
-                "cuda".into(),
-                "--batch-mode".into(),
-                mode.into(),
-                "--active-per-worker".into(),
-                "1".into(),
-                "--model".into(),
-                "unqualified=missing.gguf".into(),
-            ])
-            .unwrap_err();
-            assert_eq!(err.code, "unsupported_batch_mode");
-        }
     }
 
     #[test]
@@ -752,10 +502,10 @@ mod tests {
         assert_eq!(cfg.native_batch_rows, 4);
         let expect_supported = |cfg: &YamlConfig| {
             if cfg!(all(feature = "qwen35-cuda-serving", target_os = "linux")) {
-                assert!(validate_source_profile(cfg).is_ok());
+                assert!(cfg.profile().validate().is_ok());
             } else {
                 assert_eq!(
-                    validate_source_profile(cfg).unwrap_err().code,
+                    cfg.profile().validate().unwrap_err().code,
                     "backend_not_compiled"
                 );
             }
@@ -766,25 +516,25 @@ mod tests {
         for width in [1, 2, 8] {
             cfg.native_batch_rows = width;
             assert_eq!(
-                validate_source_profile(&cfg).unwrap_err().code,
+                cfg.profile().validate().unwrap_err().code,
                 "unsupported_native_batch_profile"
             );
         }
         cfg.native_batch_rows = 4;
         cfg.active_per_worker = 3;
-        assert!(validate_source_profile(&cfg).is_err());
+        assert!(cfg.profile().validate().is_err());
         cfg.active_per_worker = 8;
         cfg.batch_mode = "fused".into();
-        assert!(validate_source_profile(&cfg).is_err());
+        assert!(cfg.profile().validate().is_err());
         cfg.batch_mode = "interleaved".into();
         for backend in ["cpu", "rocm", "vulkan-nvidia"] {
             cfg.backend = backend.into();
-            assert!(validate_source_profile(&cfg).is_err());
+            assert!(cfg.profile().validate().is_err());
         }
         cfg.backend = "cuda".into();
         for source in ["gguf", "fixed-prompt-bf16"] {
             cfg.source_profile = source.into();
-            assert!(validate_source_profile(&cfg).is_err());
+            assert!(cfg.profile().validate().is_err());
         }
     }
 

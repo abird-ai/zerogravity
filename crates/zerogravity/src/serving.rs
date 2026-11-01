@@ -3,3 +3,7 @@ pub use zerogravity_serving::{
     Server, ServerBuilder, ServerHandle, TextService, admin, auth, http, ingress, metrics, openai,
     realtime, responses, service, stream,
 };
+
+mod profile;
+pub use profile::TextProfile;
+mod facade;

@@ -35,6 +35,7 @@ cuda = ["dep:futures-lite", "dep:zerogravity-gpu", "zerogravity-gpu/cuda", "dep:
 # execution belongs to the explicit diagnostic feature below.
 # Previous features: canonical47-serving, short-hf-serving.
 qwen35-cuda = ["cuda", "cache", "text", "zerogravity-gpu/cuda-cublas", "zerogravity-model-qwen35/source-binding", "dep:rustix"]
+qwen35-cuda-serving = ["serve", "qwen35-cuda"]
 qwen35-cuda-qualification = ["qwen35-cuda", "zerogravity-gpu/qualification", "zerogravity-gpu/cuda-native-qualification"]
 hip = ["dep:futures-lite", "dep:zerogravity-gpu", "zerogravity-gpu/hip"]
 all-models = ["model-qwen35", "model-gemma4"]

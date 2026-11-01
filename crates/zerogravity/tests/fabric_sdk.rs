@@ -95,7 +95,12 @@ fn ordinary_gpu_sdk_obeys_runtime_limits_and_close_before_source_or_device_looku
         )]
     };
     let error = runtime
-        .load_gpu_text(request(), zerogravity::devices::GpuBackend::Cuda, profile)
+        .models()
+        .load(zerogravity::models::ModelLoadRequest::GpuText {
+            declared: request(),
+            backend: zerogravity::devices::GpuBackend::Cuda,
+            profile,
+        })
         .unwrap_err();
     assert_eq!(error.code, "invalid_config");
     assert!(error.message.contains("runtime limits"));
@@ -118,4 +123,61 @@ fn ordinary_gpu_sdk_obeys_runtime_limits_and_close_before_source_or_device_looku
             .code,
         "runtime_closed"
     );
+}
+
+#[test]
+fn catalog_registration_uses_original_limits_and_closed_lifecycle() {
+    use zerogravity::{models::ModelLoadRequest, runtime::TextConfig};
+    let runtime = Runtime::builder().build().unwrap();
+    let mut config = TextConfig {
+        active_per_worker: 2,
+        ..Default::default()
+    };
+    let request = |config| ModelLoadRequest::CpuText {
+        declared: vec![("never-opened".into(), "/fabric-source-not-opened".into())],
+        config,
+    };
+    assert_eq!(
+        runtime.models().load(request(config)).unwrap_err().code,
+        "invalid_config"
+    );
+    config.active_per_worker = 1;
+    config.max_pending = None;
+    assert_eq!(
+        runtime.models().load(request(config)).unwrap_err().code,
+        "invalid_config"
+    );
+    assert_eq!(runtime.status().execution_adapters, 0);
+    assert!(runtime.models().list().unwrap().is_empty());
+    assert!(matches!(
+        runtime.models().resolve("never-opened"),
+        Err(Error::Unsupported(_))
+    ));
+    runtime.shutdown().unwrap();
+    assert_eq!(
+        runtime.models().load(request(config)).unwrap_err().code,
+        "runtime_closed"
+    );
+    assert!(matches!(
+        runtime.models().resolve("never-opened"),
+        Err(Error::State(_))
+    ));
+}
+
+#[cfg(not(all(feature = "cpu", feature = "text", feature = "cache")))]
+#[test]
+fn unavailable_catalog_adapter_refuses_before_source_or_worker_creation() {
+    use zerogravity::{models::ModelLoadRequest, runtime::TextConfig};
+    let runtime = Runtime::builder().build().unwrap();
+    let error = runtime
+        .models()
+        .load(ModelLoadRequest::CpuText {
+            declared: vec![("never-opened".into(), "/fabric-source-not-opened".into())],
+            config: TextConfig::default(),
+        })
+        .unwrap_err();
+    assert_eq!(error.code, "backend_not_compiled");
+    assert_eq!(runtime.status().loaded_models, 0);
+    assert_eq!(runtime.status().execution_adapters, 0);
+    runtime.shutdown().unwrap();
 }

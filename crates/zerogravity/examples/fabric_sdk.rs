@@ -86,14 +86,15 @@ mod application {
                 }
                 ["run", model, prompt] => {
                     runtime
-                        .load_text(
-                            vec![("local".into(), (*model).into())],
-                            zerogravity::runtime::TextConfig {
+                        .models()
+                        .load(zerogravity::models::ModelLoadRequest::CpuText {
+                            declared: vec![("local".into(), (*model).into())],
+                            config: zerogravity::runtime::TextConfig {
                                 max_context: 512,
                                 max_output: 8,
                                 ..Default::default()
                             },
-                        )
+                        })
                         .map_err(|error| Error::State(error.to_string()))?;
                     let mut stream = runtime.run(&zerogravity::run::TaskRequest {
                         model: "local".into(),

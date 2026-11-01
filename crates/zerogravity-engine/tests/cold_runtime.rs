@@ -1,11 +1,8 @@
-use zerogravity_core::{
-    physical::{
-        AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
-    },
-    run_policy::SourceSelector,
+use zerogravity_core::physical::{
+    AllocationClass, AllocationRequest, PhysicalDeviceKey, ResourceArbiter, ResourceOwner,
 };
+use zerogravity_engine::scheduler::SchedulerLimits;
 use zerogravity_engine::{Error, Runtime, TaskInput, TaskRequest};
-use zerogravity_engine::{catalog::ModelLoadRequest, scheduler::SchedulerLimits};
 
 #[test]
 fn cold_runtime_neither_loads_sources_nor_invents_execution() {
@@ -13,9 +10,7 @@ fn cold_runtime_neither_loads_sources_nor_invents_execution() {
     assert_eq!(runtime.models().list().unwrap().len(), 0);
     assert_eq!(runtime.status().execution_adapters, 0);
     assert!(matches!(
-        runtime.models().load(&ModelLoadRequest {
-            source: SourceSelector::Local("/no-such-fabric-model".into()),
-        }),
+        runtime.models().resolve("unloaded"),
         Err(Error::Unsupported(_))
     ));
     assert!(matches!(
@@ -60,9 +55,7 @@ fn clones_close_together_but_other_runtime_and_original_ledger_survive() {
     drop(lease);
     assert_eq!(direct.snapshot(&key).unwrap().reserved, 0);
     assert!(matches!(
-        a.models().load(&ModelLoadRequest {
-            source: SourceSelector::Local("/not-opened-after-shutdown".into()),
-        }),
+        a.models().resolve("unloaded"),
         Err(Error::State(_))
     ));
     assert!(matches!(

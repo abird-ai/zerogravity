@@ -89,7 +89,36 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 5. Preserve the original model/context/C1..C64/matched-vLLM mission and broader
    model/media/SSD/distributed roadmap. Measure before tuning; no speedup claim.
 
-## Uncommitted — verified numerical/layout consumers
+
+## Uncommitted — verified catalog and serving ownership
+
+- [x] Replace the unsupported engine source-loading stub with the facade's cold
+  ModelCatalog/ModelLoadRequest; direct CPU/GPU and profiled serving loads use
+  original configure_text, limits, source loaders, alias registry and workers.
+- [x] Resolve aliases to actual retained source owners; no minted generation,
+  duplicate source map, scheduler, resource ledger or live replacement.
+- [x] Move serving profile/batch/source policy from CLI into SDK TextProfile.
+  Original four policy helper bodies retained; explicit captured-serving feature
+  and all finite owner/shape/native-artifact guards stay separate from GGUF.
+- [x] CLI serving uses public catalog/runtime/server. Signals, config and IO stay
+  caller-owned; all startup/transport exits attempt runtime retirement and keep
+  both operation and close errors. Facade TextService delegates to one engine.
+- [x] Public-only example uses catalog. Cold limits/closed/unavailable/reload
+  controls pass; real CPU SDK/HTTP aliases, task output, cancellation and source
+  retirement pass19.04s; direct/audit final-reader case passes17.61s.
+- [x] Engine85 controls, default/minimal SDK, strict combined CUDA/HIP and
+  serve-only feature checks pass. SDK policy2, CLI serve4/1 ignored and native
+  parser3 pass; subprocess TERM/INT/PID1 controls retain their source-less scope.
+- [x] Final assembled source/host gate: 2,322 Rust executions/0fail/97ignored across302 suites (70 empty); 17 Python suites/182 cases/10 skips.
+- This is not whole S/F/Q completion or physical qualification. Generic
+  ModelDefinition/provider/executable integration, final parity and authorized
+  trained/physical acceptance remain open. Per-model unload/restore refuse.
+- Logs: `abird/zerogravity/fabric-contracts-wfatmh7m/`; failed/ignored/empty and
+  source-free scopes are not inferred model or GPU execution.
+
+## Committed
+
+### `83060e5` — canonical numerical/layout consumers
 
 - [x] Make existing program/source/projection numerical contracts canonical in
   core; remove duplicate CPU projection profile and unused NumericalContract.
@@ -109,7 +138,6 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 - Logs: XDG state `abird/zerogravity/fabric-contracts-wfatmh7m/`; source review,
   focused controls, approved CPU cases and final gate retained separately.
 
-## Committed
 
 Historical documentation packet:`2ff3d49`; canonical handoff refresh:`ff89b87`.
 Qwen commits are preserved inputs, not S/F/Q completion proof.
@@ -341,7 +369,8 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 ## Uncommitted — remaining F0 model-neutral engine
 
 Shared source/host scheduling landed in `ae7ec11`; remaining requirements:
-- [ ] One cold model/provider registration point in facade, same source alias source sharing and exact loaded ModelGeneration pin.
+- [x] One cold CPU/GPU/profiled registration point in facade; alias resolution retains the actual source Arc. No live generation replacement or new source issuer. See verified catalog batch.
+- [ ] Finish generic ModelDefinition/provider/executable composition without deriving execution authority from ForwardPlan metadata.
 - [ ] Preserve CPU bounded prefill/decode and GPU native B1/B2/B4/B8 true batch semantics including ragged/late arrivals and source-specific eligibility.
 - [ ] One ResourceArbiter and original worker Ready/lease/shutdown; source-valid typed committed output before HTTP.
 - [ ] F0 tiny model-neutral mock/CPU tests, affected compile and signed commit(s).

@@ -10,7 +10,7 @@ use crate::{
 
 #[derive(Clone)]
 pub struct Runtime {
-    engine: zerogravity_engine::Runtime,
+    pub(crate) engine: zerogravity_engine::Runtime,
 }
 #[derive(Default)]
 pub struct RuntimeBuilder {
@@ -32,7 +32,7 @@ impl Runtime {
         RuntimeBuilder::default()
     }
     pub fn models(&self) -> ModelCatalog<'_> {
-        self.engine.models()
+        ModelCatalog::new(self)
     }
     pub fn artifacts(&self) -> ArtifactService<'_> {
         ArtifactService::new(&self.engine)
@@ -51,31 +51,10 @@ impl Runtime {
         declared: Vec<(String, std::path::PathBuf)>,
         config: TextConfig,
     ) -> std::result::Result<(), text::ServiceError> {
-        self.engine.configure_text(|| {
-            let limits = self.engine.limits();
-            if config
-                .workers
-                .checked_mul(config.active_per_worker)
-                .is_none_or(|n| n > limits.max_active)
-                || !limits.allows_pending(config.max_pending)
-            {
-                return Err(text::ServiceError::new(
-                    400,
-                    "invalid_config",
-                    "text scheduler exceeds runtime limits",
-                ));
-            }
-            crate::builtins::text::load_router(
-                declared,
-                config.workers,
-                config.active_per_worker,
-                config.max_context,
-                config.max_output,
-                config.host_mib,
-                config.max_pending,
-            )
-        })
+        self.models()
+            .load(crate::models::ModelLoadRequest::CpuText { declared, config })
     }
+
     /// Ordinary GGUF device text on the same engine Router/worker. Captured
     /// finite routes remain explicit diagnostics, not ordinary SDK capability.
     #[cfg(all(
@@ -88,23 +67,14 @@ impl Runtime {
         backend: crate::devices::GpuBackend,
         profile: crate::builtins::text::GpuProfile,
     ) -> std::result::Result<(), text::ServiceError> {
-        self.engine.configure_text(|| {
-            let limits = self.engine.limits();
-            if profile
-                .workers
-                .checked_mul(profile.active)
-                .is_none_or(|n| n > limits.max_active)
-                || !limits.allows_pending(profile.max_pending)
-            {
-                return Err(text::ServiceError::new(
-                    400,
-                    "invalid_config",
-                    "text scheduler exceeds runtime limits",
-                ));
-            }
-            crate::builtins::text::load_gpu_router(declared, backend, profile)
-        })
+        self.models()
+            .load(crate::models::ModelLoadRequest::GpuText {
+                declared,
+                backend,
+                profile,
+            })
     }
+
     /// Direct bounded text events, with the original transport-compatible errors.
     pub fn request_text(
         &self,

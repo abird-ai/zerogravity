@@ -92,24 +92,75 @@ fn source_bound_sdk_http_lifecycle() {
     let runtime = Runtime::builder().build().unwrap();
     let clone = runtime.clone();
     let model = root.join("model.gguf");
+    let declared = vec![("tiny".into(), model.clone()), ("alias".into(), model)];
+    #[cfg(not(feature = "serve"))]
+    let load = crate::models::ModelLoadRequest::CpuText {
+        declared,
+        config: TextConfig {
+            workers: 1,
+            active_per_worker: 1,
+            max_context: MAX_CONTEXT,
+            max_output: MAX_OUTPUT,
+            host_mib: HOST_MIB,
+            max_pending: Some(4),
+        },
+    };
+    #[cfg(feature = "serve")]
+    let load = crate::models::ModelLoadRequest::ServingText {
+        declared,
+        profile: crate::serving::TextProfile {
+            workers: 1,
+            active_per_worker: 1,
+            max_context: MAX_CONTEXT,
+            max_output: MAX_OUTPUT,
+            host_mib: HOST_MIB,
+            max_pending_requests: Some(4),
+            backend: "cpu".into(),
+            source_profile: "gguf".into(),
+            native_artifacts: None,
+            provider_mib: 2048,
+            device_mib: 4096,
+            batch_mode: "interleaved".into(),
+            batch_rows: 2,
+            native_batch_rows: 0,
+        },
+    };
     runtime
-        .load_text(
-            vec![("tiny".into(), model.clone()), ("alias".into(), model)],
-            TextConfig {
-                workers: 1,
-                active_per_worker: 1,
-                max_context: MAX_CONTEXT,
-                max_output: MAX_OUTPUT,
-                host_mib: HOST_MIB,
-                max_pending: Some(4),
-            },
-        )
+        .models()
+        .load(load)
         .expect("public source-bound CPU load");
+    #[cfg(feature = "serve")]
+    {
+        use crate::serving::TextService;
+        let signal = runtime.charge_ingress("caller-signal", 64).unwrap();
+        assert_eq!(runtime.model_ids().unwrap(), vec!["alias", "tiny"]);
+        assert_eq!(runtime.max_output().unwrap(), MAX_OUTPUT);
+        runtime.require_open().unwrap();
+        drop(signal);
+    }
     assert_eq!(clone.status().loaded_models, 2);
     assert_eq!(clone.status().execution_adapters, 1);
     let models = clone.models().list().unwrap();
     assert_eq!(models.len(), 2);
     assert!(models[0].shares_source(&models[1]));
+    {
+        let named = clone.models().resolve("tiny").unwrap();
+        let alias = clone.models().resolve("alias").unwrap();
+        assert!(named.shares_source(&alias));
+        assert!(named.shares_source(&models[0]));
+        assert!(clone.models().resolve("absent").is_err());
+        let error = clone
+            .models()
+            .load(crate::models::ModelLoadRequest::CpuText {
+                declared: vec![(
+                    "never-opened".into(),
+                    "/source-must-not-open-on-reload".into(),
+                )],
+                config: TextConfig::default(),
+            })
+            .unwrap_err();
+        assert_eq!(error.code, "runtime_configured");
+    }
     let source = Arc::downgrade(models[0].prepared());
     let owner = models[0].prepared().tokenizer();
     assert!(Arc::ptr_eq(&owner, &models[1].prepared().tokenizer()));
