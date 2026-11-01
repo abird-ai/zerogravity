@@ -1,24 +1,30 @@
-//! Shared prepared sources, bounded multi-request CPU scheduler.
-//! Concurrent worker threads + cooperative prefill/decode within workers.
-//! This is NOT yet fused continuous-batch GEMM, paged KV, or GPU serving.
-
+//! Shared admitted routing, presentation and worker ownership.
 use super::event_channel::mpsc;
+#[cfg(test)]
+use super::pending::Pop;
 use super::pending::{
-    self, CancelToken, PendingQueue, Pop, QueueSnapshot, ServingCharge, ServingHost as HostPool,
+    self, CancelToken, PendingQueue, QueueSnapshot, ServingCharge, ServingHost as HostPool,
     WorkerQueue,
 };
+use super::{host::HostLogits, registry, statistics::WorkStats, waves, worker};
 pub use crate::model_instance::TextTokenizer;
-use crate::model_instance::{ModelInstance, PreparedModel, TextSession};
+use crate::model_instance::execution::*;
+use crate::model_instance::{LogitModel, ModelInstance};
+#[cfg(test)]
+use crate::model_instance::{PreparedModel, TextSession};
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::thread;
-use std::time::{Duration, Instant};
-use zerogravity_core::resource_arbiter::{AllocationClass, GlobalResourceLease};
+#[cfg(test)]
+use std::time::Duration;
+use std::time::Instant;
+use zerogravity_core::resource_arbiter::AllocationClass;
+#[cfg(test)]
+use zerogravity_core::resource_arbiter::GlobalResourceLease;
 
 pub const EVENTS_PER_REQUEST: usize = 16;
 pub const MAX_TOKEN_OBSERVATIONS: usize = 512;
-const PREFILL_CHUNK: usize = 32;
 pub const MAX_ACTIVE_PER_WORKER: usize = 8;
 
 /// Conservative allocator header/rounding for a `Vec`/`VecDeque` backing.
@@ -466,22 +472,11 @@ pub struct Scheduled {
     pub prompt_charge: Option<ServingCharge>,
     pub transport: Option<Arc<ServingCharge>>,
 }
-#[derive(Default)]
-struct CpuStats {
-    active: AtomicUsize,
-    peak: AtomicUsize,
-}
-struct ActiveCharge(Arc<CpuStats>);
-impl Drop for ActiveCharge {
-    fn drop(&mut self) {
-        self.0.active.fetch_sub(1, Ordering::AcqRel);
-    }
-}
 pub struct Router {
-    models: Arc<BTreeMap<String, Arc<dyn PreparedModel>>>,
+    models: Arc<dyn registry::Models>,
     host: HostPool,
     queue: PendingQueue<Scheduled>,
-    stats: Arc<CpuStats>,
+    stats: Arc<WorkStats>,
     active_limit: usize,
     workers: Vec<thread::JoinHandle<()>>,
     // Non-payload worker inventory (handles, consumer state, captures, names).
@@ -490,6 +485,8 @@ pub struct Router {
     next_id: AtomicU64,
     pub max_context: usize,
     pub max_output: usize,
+    policy: WorkPolicy,
+    _control_charge: ServingCharge,
 }
 impl Router {
     /// Model-free transport fixture: the original idle CPU worker/queue/host,
@@ -497,49 +494,52 @@ impl Router {
     #[cfg(test)]
     pub(crate) fn transport_test() -> (Self, HostPool) {
         let host = HostPool::isolated(256).unwrap();
-        let models = Arc::new(BTreeMap::new());
-        let stats = Arc::new(CpuStats::default());
-        let queue = PendingQueue::new(host.clone(), Some(8)).unwrap();
-        let charge = workers_charge(
-            &host,
-            1,
-            std::alloc::Layout::new::<CpuWorkerCaptures>(),
-            Some(worker_name_bound(1)),
-            vecdeque_backing_bytes::<Active>(1).unwrap(),
+        let router = Self::start::<HostLogits>(
+            BTreeMap::new(),
+            host.clone(),
+            WorkerConfig {
+                workers: 1,
+                active: 1,
+                context: 16,
+                output: 8,
+                max_pending: Some(8),
+                policy: WorkPolicy::Sequential,
+            },
         )
         .unwrap();
-        let captures = CpuWorkerCaptures {
-            queue: queue.worker().unwrap(),
-            models: Arc::clone(&models),
-            host: host.clone(),
-            stats: Arc::clone(&stats),
-            active_limit: 1,
-            max_context: 16,
-        };
-        let worker = thread::Builder::new()
-            .name("zg-decode-0".into())
-            .spawn(move || captures.run())
-            .unwrap();
-        (
-            Self {
-                models,
-                host: host.clone(),
-                queue,
-                stats,
-                active_limit: 1,
-                workers: vec![worker],
-                _worker_charge: charge,
-                next_id: AtomicU64::new(1),
-                max_context: 16,
-                max_output: 8,
-            },
-            host,
-        )
+        (router, host)
     }
-
-    /// Validate and take the prepared alias map without rebuilding its backing.
+    #[cfg(test)]
+    pub(crate) fn retirement_test<A: Executor>(host: HostPool) -> Self {
+        Self::start::<A>(
+            BTreeMap::new(),
+            host,
+            WorkerConfig {
+                workers: 1,
+                active: 1,
+                context: 16,
+                output: 1,
+                max_pending: Some(1),
+                policy: WorkPolicy::Waves(WavePolicy {
+                    max_members: 1,
+                    max_tokens: 32,
+                    max_scratch: 32 * 1024 * 1024,
+                    prefill_quantum: 32,
+                    unequal_prefill: false,
+                    unequal_decode: false,
+                    cohorts: Cohorts::None,
+                    native_rows: 0,
+                }),
+            },
+        )
+        .unwrap()
+    }
+    #[cfg(test)]
+    pub(crate) fn retirement_counter(&self, previous: u64) {
+        self.stats.failed.store(previous, Ordering::Release);
+    }
     pub fn new(
-        models: BTreeMap<String, Arc<dyn PreparedModel>>,
+        models: BTreeMap<String, Arc<dyn LogitModel>>,
         workers: usize,
         active_per_worker: usize,
         max_context: usize,
@@ -547,55 +547,144 @@ impl Router {
         host: HostPool,
         max_pending: Option<usize>,
     ) -> Result<Self, ServiceError> {
+        Self::with_executor::<HostLogits>(
+            models,
+            host,
+            WorkerConfig {
+                workers,
+                active: active_per_worker,
+                context: max_context,
+                output: max_output,
+                max_pending,
+                policy: WorkPolicy::Sequential,
+            },
+        )
+    }
+    /// One registry, admission path and worker algorithm; executors supply only
+    /// typed source/session/completion operations, never a second scheduler.
+    pub fn with_executor<A: Executor>(
+        models: BTreeMap<String, A::Model>,
+        host: HostPool,
+        config: WorkerConfig,
+    ) -> Result<Self, ServiceError> {
         validate_config(
             models.len(),
-            workers,
-            active_per_worker,
-            max_context,
-            max_output,
-            max_pending,
+            config.workers,
+            config.active,
+            config.context,
+            config.output,
+            config.max_pending,
         )?;
-        for (id, model) in &models {
-            validate_alias(id)?;
-            if !model.source().is_bound() || max_context > model.max_context() {
+        for (alias, handle) in &models {
+            validate_alias(alias)?;
+            let model = handle.model();
+            if !model.source().is_bound()
+                || config.context > model.max_context()
+                || matches!(A::prefill(handle), Prefill::Chunks(0))
+            {
                 return Err(ServiceError::new(
                     400,
                     "invalid_model",
-                    "unbound source or context exceeds prepared model admission",
+                    "unbound source or context/quantum exceeds prepared model admission",
                 ));
             }
         }
-        let active_limit = workers.checked_mul(active_per_worker).ok_or_else(|| {
+        if let WorkPolicy::Waves(policy) = config.policy {
+            if config.workers != 1
+                || policy.max_members == 0
+                || policy.max_members > config.active
+                || !(1..=512).contains(&policy.max_tokens)
+                || !(1..=512 * 1024 * 1024).contains(&policy.max_scratch)
+                || !(1..=512).contains(&policy.prefill_quantum)
+                || config.context > 512
+            {
+                return Err(ServiceError::new(
+                    400,
+                    "invalid_config",
+                    "bounded single-worker wave policy required",
+                ));
+            }
+            match policy.cohorts {
+                Cohorts::Native { widths, .. } => {
+                    waves::qualified_bands(0, widths)?;
+                    if !widths.contains(&policy.native_rows)
+                        || policy.native_rows > policy.max_members
+                    {
+                        return Err(ServiceError::new(
+                            400,
+                            "invalid_config",
+                            "native ceiling exceeds admitted wave or original widths",
+                        ));
+                    }
+                }
+                _ if policy.native_rows != 0 => {
+                    return Err(ServiceError::new(
+                        400,
+                        "invalid_config",
+                        "non-native policy has a native ceiling",
+                    ));
+                }
+                _ => {}
+            }
+        }
+        Self::start::<A>(models, host, config)
+    }
+    fn start<A: Executor>(
+        models: BTreeMap<String, A::Model>,
+        host: HostPool,
+        config: WorkerConfig,
+    ) -> Result<Self, ServiceError> {
+        let active_limit = config.workers.checked_mul(config.active).ok_or_else(|| {
             ServiceError::new(400, "invalid_config", "active worker capacity overflow")
         })?;
-        let models = Arc::new(models);
-        let stats = Arc::new(CpuStats::default());
-        let queue = PendingQueue::new(host.clone(), max_pending)?;
-        // Charge the whole worker inventory before the handle vector allocates
-        // or any thread is created; a partial spawn returns the charge with the
-        // router, so no unowned stack stays admitted.
-        let active_backing = vecdeque_backing_bytes::<Active>(active_per_worker)?;
+        let control_charge = host.charge(
+            "serve-workers",
+            "shared-control",
+            AllocationClass::Scratch,
+            pending::checked_sum(&[
+                arc_bytes::<registry::Registry<A>>()?,
+                arc_bytes::<WorkStats>()?,
+            ])?,
+        )?;
+        let models = Arc::new(registry::Registry::<A> { models });
+        let stats = Arc::new(WorkStats::default());
+        let queue = PendingQueue::new(host.clone(), config.max_pending)?;
+        let rows = vecdeque_backing_bytes::<worker::Active<A>>(config.active)?;
+        let extra = if matches!(config.policy, WorkPolicy::Waves(_)) {
+            // Three persistent queues plus bounded wave/group/retry temporaries.
+            // Recursive retry strictly shrinks a band or removes a cancelled row.
+            let copies = config
+                .active
+                .checked_mul(4)
+                .and_then(|n| n.checked_add(8))
+                .ok_or_else(|| ServiceError::new(400, "size_overflow", "wave scratch overflow"))?;
+            pending::checked_sum(&[
+                rows.checked_mul(copies as u64).ok_or_else(|| {
+                    ServiceError::new(400, "size_overflow", "wave scratch overflow")
+                })?,
+                pending::vec_bytes::<usize>(
+                    config
+                        .active
+                        .checked_mul(config.active)
+                        .and_then(|n| n.checked_mul(16))
+                        .ok_or_else(|| {
+                            ServiceError::new(400, "size_overflow", "wave index scratch overflow")
+                        })?,
+                )?,
+                A::scratch_bytes(config.active)?,
+            ])?
+        } else {
+            rows
+        };
         let worker_charge = workers_charge(
             &host,
-            workers,
-            std::alloc::Layout::new::<CpuWorkerCaptures>(),
-            Some(worker_name_bound(workers)),
-            active_backing,
+            config.workers,
+            std::alloc::Layout::new::<worker::WorkerCaptures<A>>(),
+            Some(worker_name_bound(config.workers)),
+            extra,
         )?;
-        let mut handles: Vec<thread::JoinHandle<()>> = Vec::with_capacity(workers);
-        let spawn_worker = |index: usize, receiver: WorkerQueue<Scheduled>| {
-            let captures = CpuWorkerCaptures {
-                queue: receiver,
-                models: Arc::clone(&models),
-                host: host.clone(),
-                stats: Arc::clone(&stats),
-                active_limit: active_per_worker,
-                max_context,
-            };
-            let builder = thread::Builder::new().name(format!("zg-decode-{index}"));
-            builder.spawn(move || captures.run())
-        };
-        for index in 0..workers {
+        let mut handles: Vec<thread::JoinHandle<()>> = Vec::with_capacity(config.workers);
+        for index in 0..config.workers {
             let receiver = match queue.worker() {
                 Ok(receiver) => receiver,
                 Err(error) => {
@@ -606,8 +695,17 @@ impl Router {
                     return Err(error);
                 }
             };
-            let spawned = spawn_worker(index, receiver);
-            match spawned {
+            let captures = worker::WorkerCaptures::<A> {
+                queue: receiver,
+                models: models.clone(),
+                host: host.clone(),
+                stats: stats.clone(),
+                config,
+            };
+            match thread::Builder::new()
+                .name(format!("zg-decode-{index}"))
+                .spawn(move || captures.run())
+            {
                 Ok(handle) => handles.push(handle),
                 Err(error) => {
                     queue.close();
@@ -627,18 +725,35 @@ impl Router {
             workers: handles,
             _worker_charge: worker_charge,
             next_id: AtomicU64::new(1),
-            max_context,
-            max_output,
+            max_context: config.context,
+            max_output: config.output,
+            policy: config.policy,
+            _control_charge: control_charge,
         })
     }
     pub fn model(&self, alias: &str) -> Option<ModelInstance> {
-        self.models.get(alias).cloned().map(ModelInstance::new)
+        registry::instance(self.models.as_ref(), alias)
     }
     pub fn host(&self) -> &HostPool {
         &self.host
     }
     pub fn model_ids(&self) -> impl Iterator<Item = &str> {
-        self.models.keys().map(String::as_str)
+        registry::ModelIds {
+            models: self.models.as_ref(),
+            index: 0,
+        }
+    }
+    pub fn admission(&self) -> Result<serde_json::Value, ServiceError> {
+        self.models.admission(&worker::SchedulerSnapshot {
+            queue: self.queue_snapshot(),
+            host: self.memory_snapshot(),
+            active_limit: self.active_limit,
+            native_rows: match self.policy {
+                WorkPolicy::Sequential => 0,
+                WorkPolicy::Waves(p) => p.native_rows,
+            },
+            counters: self.stats.snapshot(),
+        })
     }
     pub fn memory_snapshot(&self) -> Option<(u64, u64, u64, u64)> {
         self.host.snapshot()
@@ -678,10 +793,10 @@ impl Router {
         mut request: Request,
         ingress: Option<Vec<ServingCharge>>,
     ) -> Result<RequestEvents, ServiceError> {
-        let model =
-            self.models.get(&request.model).cloned().ok_or_else(|| {
-                ServiceError::new(404, "model_not_found", "model is not registered")
-            })?;
+        let model = self
+            .models
+            .model(&request.model)
+            .ok_or_else(|| ServiceError::new(404, "model_not_found", "model is not registered"))?;
         if request.input.is_empty()
             || request.input.len() > 1024 * 1024
             || request.max_tokens == 0
@@ -753,6 +868,7 @@ impl Router {
             AllocationClass::RecurrentState,
             prompt_bytes,
         )?;
+        model.validate_request(&request)?;
         let model_alias = request.model.clone();
         let token_metrics = request.token_metrics.clone();
         let output_bound = output_transport_bound(max_tokens, model.max_token_bytes())?;
@@ -814,6 +930,7 @@ impl Router {
         self.queue.close();
     }
     pub fn shutdown(&mut self) -> std::io::Result<()> {
+        let before = self.stats.failed.load(Ordering::Acquire);
         self.close_admission();
         let mut failed = false;
         for handle in self.workers.drain(..) {
@@ -821,6 +938,12 @@ impl Router {
         }
         if failed {
             Err(std::io::Error::other("CPU serving worker panicked"))
+        } else if self.stats.retirement_failed.load(Ordering::Acquire)
+            || self.models.retirement_pending()
+            || (matches!(self.policy, WorkPolicy::Waves(_))
+                && self.stats.failed.load(Ordering::Acquire) != before)
+        {
+            Err(std::io::Error::other("source retirement failed"))
         } else {
             Ok(())
         }
@@ -863,173 +986,6 @@ pub fn output_transport_bound(
         .and_then(|n| n.checked_add(super::token_metrics::response_envelope()))
         .ok_or_else(|| ServiceError::new(400, "size_overflow", "output text bound overflow"))
 }
-struct Active {
-    session: Box<dyn TextSession>,
-    prompt: Vec<u32>,
-    logits: Vec<f32>,
-    output: GeneratedText,
-    events: mpsc::SyncSender<ResponseEvent>,
-    cancelled: Arc<AtomicBool>,
-    prompt_pos: usize,
-    logits_commit_observed_at: Instant,
-    _state_charge: GlobalResourceLease,
-    _projection_charge: ServingCharge,
-    _prompt_charge: Option<ServingCharge>,
-    _transport: Option<Arc<ServingCharge>>,
-    _active: ActiveCharge,
-    // Keeps the cancel atomic's charged control alive with the flag.
-    _cancel: CancelToken,
-}
-impl Active {
-    fn new(
-        scheduled: Scheduled,
-        model: Arc<dyn PreparedModel>,
-        max_context: usize,
-        host: &HostPool,
-        stats: Arc<CpuStats>,
-    ) -> Result<Self, ServiceError> {
-        let Scheduled {
-            payload,
-            metrics,
-            events,
-            cancelled,
-            cancel,
-            prompt_charge,
-            transport,
-        } = scheduled;
-        let lease = payload.ok_or_else(|| {
-            ServiceError::new(
-                500,
-                "scheduled_payload",
-                "scheduled request lost its payload",
-            )
-        })?;
-        let request = &lease.request;
-        let prompt = model
-            .tokenizer()
-            .prompt_tokens(&request.input, request.chat)
-            .map_err(ServiceError::inference)?;
-        if prompt.is_empty()
-            || prompt.len() > max_context
-            || prompt
-                .len()
-                .checked_add(request.max_tokens - 1)
-                .is_none_or(|n| n > max_context)
-        {
-            return Err(ServiceError::new(
-                400,
-                "context_overflow",
-                "request exceeds bounded model context",
-            ));
-        }
-        let state_charge = host.admit(
-            &request.model,
-            "cpu-request-state",
-            AllocationClass::RecurrentState,
-            model.max_session_bytes(),
-        )?;
-        // A live projection's splitter can grow its two injector blocks.
-        let projection_charge = host.charge(
-            &request.model,
-            "rayon-projection",
-            AllocationClass::Scratch,
-            model.session_scratch_bytes(),
-        )?;
-        let session = model
-            .clone()
-            .new_session()
-            .map_err(ServiceError::inference)?;
-        let output = GeneratedText::new(
-            model.tokenizer(),
-            events.clone(),
-            request.stream,
-            request.max_tokens,
-            prompt.len(),
-        )
-        .observed_charged(metrics.metrics, model.vocabulary_size(), metrics._charges);
-        drop(lease);
-        let active = stats.active.fetch_add(1, Ordering::AcqRel) + 1;
-        stats.peak.fetch_max(active, Ordering::AcqRel);
-        Ok(Self {
-            session,
-            _state_charge: state_charge,
-            _projection_charge: projection_charge,
-            _prompt_charge: prompt_charge,
-            _transport: transport,
-            _active: ActiveCharge(Arc::clone(&stats)),
-            _cancel: cancel,
-            events,
-            cancelled,
-            output,
-            prompt,
-            prompt_pos: 0,
-            logits: Vec::new(),
-            logits_commit_observed_at: Instant::now(),
-        })
-    }
-    /// One cooperative service quantum: one bounded prefill chunk or
-    /// one decode token. Other active sessions advance between quanta.
-    fn step(&mut self) -> Result<bool, ServiceError> {
-        if self.prompt_pos < self.prompt.len() {
-            let end = (self.prompt_pos + PREFILL_CHUNK).min(self.prompt.len());
-            if end < self.prompt.len() {
-                self.session
-                    .prefill_chunk_without_logits(&self.prompt[self.prompt_pos..end])
-                    .map_err(ServiceError::inference)?;
-            } else {
-                self.logits = self
-                    .session
-                    .prefill_transaction(&self.prompt[self.prompt_pos..end])
-                    .map_err(ServiceError::inference)?;
-                self.logits_commit_observed_at = Instant::now();
-            }
-            self.prompt_pos = end;
-            return Ok(false);
-        }
-        let id = self
-            .logits
-            .iter()
-            .enumerate()
-            .max_by(|a, b| a.1.total_cmp(b.1).then_with(|| b.0.cmp(&a.0)))
-            .ok_or_else(|| ServiceError::new(500, "empty_logits", "inference produced no logits"))?
-            .0 as u32;
-        if self
-            .output
-            .accept_committed(id, self.logits_commit_observed_at)?
-        {
-            return Ok(true);
-        }
-        self.logits = self.session.forward(id).map_err(ServiceError::inference)?;
-        self.logits_commit_observed_at = Instant::now();
-        Ok(false)
-    }
-}
-struct CpuWorkerCaptures {
-    queue: WorkerQueue<Scheduled>,
-    models: Arc<BTreeMap<String, Arc<dyn PreparedModel>>>,
-    host: HostPool,
-    stats: Arc<CpuStats>,
-    active_limit: usize,
-    max_context: usize,
-}
-
-impl CpuWorkerCaptures {
-    /// Consume the exact admitted struct, so the start closure captures only
-    /// this priced value: `Layout::new::<CpuWorkerCaptures>()` at admission is
-    /// provably the captured width and cannot drift from a field mirror.
-    fn run(self) {
-        let _worker = super::WorkerScope::enter();
-        worker(
-            self.queue,
-            self.models,
-            self.host,
-            self.stats,
-            self.active_limit,
-            self.max_context,
-        )
-    }
-}
-
 /// Admit every decode worker's application-owned inventory before any of
 /// them exists: the pinned std thread-control row (name text, capture closure,
 /// runtime handler map), the consumer queue handle and the bounded
@@ -1079,97 +1035,6 @@ fn worker_name_bound(workers: usize) -> (usize, usize) {
     (len + 8, len)
 }
 
-fn worker(
-    queue: WorkerQueue<Scheduled>,
-    models: Arc<BTreeMap<String, Arc<dyn PreparedModel>>>,
-    host: HostPool,
-    stats: Arc<CpuStats>,
-    active_limit: usize,
-    max_context: usize,
-) {
-    // The container row is charged before spawn and never grows past the
-    // configured per-worker active limit.
-    let mut active = VecDeque::<Active>::with_capacity(active_limit);
-    let mut closing = false;
-    let cancelled = |job: &Scheduled| job.cancel.is_cancelled();
-    loop {
-        // Reclaim cancelled queued payloads even when every active or parked
-        // slot prevents promotion. The hint keeps idle rounds cheap.
-        let _ = queue.sweep(cancelled);
-        if !closing {
-            while active.len() < active_limit {
-                let next = if active.is_empty() {
-                    match queue.pop_wait(Duration::from_millis(30), cancelled) {
-                        Pop::Item(job) => Some(job),
-                        Pop::Empty => break,
-                        Pop::Closed => {
-                            closing = true;
-                            break;
-                        }
-                    }
-                } else {
-                    match queue.try_pop(cancelled) {
-                        Pop::Item(job) => Some(job),
-                        Pop::Empty => None,
-                        Pop::Closed => {
-                            closing = true;
-                            break;
-                        }
-                    }
-                };
-                let Some(job) = next else {
-                    break;
-                };
-                if job.cancelled.load(Ordering::Acquire) {
-                    continue;
-                }
-                let model = models
-                    .get(
-                        &job.payload
-                            .as_ref()
-                            .expect("scheduled payload")
-                            .request
-                            .model,
-                    )
-                    .expect("router validated model");
-                let errors = job.events.clone();
-                match Active::new(
-                    job,
-                    Arc::clone(model),
-                    max_context,
-                    &host,
-                    Arc::clone(&stats),
-                ) {
-                    Ok(inference) => active.push_back(inference),
-                    Err(err) => {
-                        let _ = errors.try_send(ResponseEvent::Error(err));
-                    }
-                }
-            }
-        }
-        if active.is_empty() {
-            if closing {
-                return;
-            }
-            continue;
-        }
-        let Some(mut current) = active.pop_front() else {
-            continue;
-        };
-        if current.cancelled.load(Ordering::Acquire) {
-            continue;
-        }
-        // Delivery detects disconnect and fails closed; no output is replayed.
-        match current.step() {
-            Ok(true) => {}
-            Ok(false) => active.push_back(current),
-            Err(error) => {
-                let _ = current.events.try_send(ResponseEvent::Error(error));
-            }
-        }
-    }
-}
-
 pub fn validate_alias(id: &str) -> Result<(), ServiceError> {
     if id.is_empty()
         || id.len() > 96
@@ -1210,6 +1075,19 @@ pub fn validate_config(
         ));
     }
     Ok(())
+}
+
+fn arc_bytes<T>() -> Result<u64, ServiceError> {
+    let overflow = || ServiceError::new(400, "size_overflow", "shared scheduler layout overflow");
+    let (layout, _) = std::alloc::Layout::new::<[AtomicUsize; 2]>()
+        .extend(std::alloc::Layout::new::<T>())
+        .map_err(|_| overflow())?;
+    layout
+        .pad_to_align()
+        .size()
+        .checked_add(64)
+        .and_then(|n| u64::try_from(n).ok())
+        .ok_or_else(overflow)
 }
 
 #[cfg(test)]
@@ -1630,7 +1508,7 @@ mod tests {
         let charge = workers_charge(
             &host,
             2,
-            std::alloc::Layout::new::<CpuWorkerCaptures>(),
+            std::alloc::Layout::new::<worker::WorkerCaptures<HostLogits>>(),
             Some((20, 12)),
             128,
         )

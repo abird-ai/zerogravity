@@ -29,14 +29,14 @@ text = ["model-qwen35", "zerogravity-model-qwen35/text"]
 cache = ["zerogravity-artifacts/cache", "zerogravity-cpu?/cache", "zerogravity-model-qwen35?/cache"]
 acquisition = ["cache", "zerogravity-artifacts/acquisition"]
 diagnostic-acquisition = ["acquisition", "zerogravity-artifacts/diagnostic-acquisition"]
-vulkan = ["dep:zerogravity-gpu", "zerogravity-gpu/vulkan"]
-cuda = ["dep:zerogravity-gpu", "zerogravity-gpu/cuda", "dep:nvml-wrapper"]
+vulkan = ["dep:futures-lite", "dep:zerogravity-gpu", "zerogravity-gpu/vulkan"]
+cuda = ["dep:futures-lite", "dep:zerogravity-gpu", "zerogravity-gpu/cuda", "dep:nvml-wrapper"]
 # Source contracts and ordinary capability refusal only. Finite captured
 # execution belongs to the explicit diagnostic feature below.
 # Previous features: canonical47-serving, short-hf-serving.
 qwen35-cuda = ["cuda", "cache", "text", "zerogravity-gpu/cuda-cublas", "zerogravity-model-qwen35/source-binding", "dep:rustix"]
 qwen35-cuda-qualification = ["qwen35-cuda", "zerogravity-gpu/qualification", "zerogravity-gpu/cuda-native-qualification"]
-hip = ["dep:zerogravity-gpu", "zerogravity-gpu/hip"]
+hip = ["dep:futures-lite", "dep:zerogravity-gpu", "zerogravity-gpu/hip"]
 all-models = ["model-qwen35", "model-gemma4"]
 all-backends = ["cpu", "vulkan", "cuda", "hip"]
 all = ["all-models", "all-backends", "text"]
@@ -57,6 +57,7 @@ serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 serde_yaml = "=0.9.34"
 sha2 = "=0.10.9"
+futures-lite = { version = "=2.6.1", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 nvml-wrapper = { version = "=0.13.0", optional = true }

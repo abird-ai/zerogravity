@@ -79,11 +79,11 @@ impl Drop for Shutdown {
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
-    use crate::serve::{Router, engine, join_router, pending::ServingHost};
+    use crate::serve::{engine, join_router, pending::ServingHost};
     use std::io::Write;
     use zerogravity::{
         identity::SourceIdentity,
-        runtime::{PreparedModel, TextSession, TextTokenizer},
+        runtime::{LogitModel, PreparedModel, TextSession, TextTokenizer},
         serving::ServerBuilder,
     };
 
@@ -130,17 +130,20 @@ mod tests {
         fn max_context(&self) -> usize {
             16
         }
-        fn max_session_bytes(&self) -> u64 {
-            0
-        }
-        fn session_scratch_bytes(&self) -> u64 {
-            0
-        }
+
         fn max_token_bytes(&self) -> usize {
             0
         }
         fn vocabulary_size(&self) -> u64 {
             2
+        }
+    }
+    impl LogitModel for RefusingModel {
+        fn max_session_bytes(&self) -> u64 {
+            0
+        }
+        fn session_scratch_bytes(&self) -> u64 {
+            0
         }
         fn new_session(self: Arc<Self>) -> zerogravity::Result<Box<dyn TextSession>> {
             refuse_execution()
@@ -148,7 +151,7 @@ mod tests {
     }
 
     fn idle_engine(host: ServingHost) -> engine::Router {
-        let model: Arc<dyn PreparedModel> = Arc::new(RefusingModel {
+        let model: Arc<dyn LogitModel> = Arc::new(RefusingModel {
             source: SourceIdentity::for_new_allocation().unwrap(),
             tokenizer: Arc::new(RefusingTokenizer),
         });
@@ -181,7 +184,7 @@ mod tests {
         let engine = idle_engine(host.clone());
         assert_eq!(engine.queue_snapshot().consumers, 1, "one real idle worker");
         assert_eq!(engine.active_sessions(), 0);
-        let router = Arc::new(Router::Cpu(engine));
+        let router = Arc::new(engine);
         shutdown.admit(router.as_ref()).unwrap();
         let address =
             std::env::var("ZG_SERVE_SHUTDOWN_LISTEN").unwrap_or_else(|_| "127.0.0.1:0".into());

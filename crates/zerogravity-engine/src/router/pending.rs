@@ -5,7 +5,7 @@
 //! Count limits are optional; host admission and exact per-entry storage are
 //! always required before a request is published to a worker.
 
-use super::cpu::ServiceError;
+use super::dispatch::ServiceError;
 use AllocationClass::Scratch;
 use std::alloc::Layout;
 use std::collections::BTreeMap;

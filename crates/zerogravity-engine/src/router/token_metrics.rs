@@ -1,6 +1,6 @@
 //! Bounded observations owned by one HTTP response; no inference authority.
 // Reuse the existing JSON allocation census for transport ingress admission.
-use super::cpu::{
+use super::dispatch::{
     GpuTokenObservation, MAX_TOKEN_OBSERVATIONS, ServiceError, TokenMetricsRequest,
     TokenObservation,
 };
@@ -562,7 +562,7 @@ mod tests {
     }
     #[test]
     fn gpu_observations_preserve_b1_and_native_producer_frontiers() {
-        use super::super::cpu::NativeCohortObservation;
+        use super::super::dispatch::NativeCohortObservation;
         let started = Instant::now() - Duration::from_secs(1);
         let mut metrics = TokenMetrics::new(
             TokenMetricsRequest {

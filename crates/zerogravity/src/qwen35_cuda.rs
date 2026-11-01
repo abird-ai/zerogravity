@@ -126,6 +126,9 @@ pub struct Model {
 }
 #[cfg(feature = "qwen35-cuda-qualification")]
 impl Model {
+    pub fn source_identity(&self) -> crate::identity::SourceIdentity {
+        self.templates.source().source().source_identity()
+    }
     pub fn source_profile(&self) -> crate::qwen35::plan::QwenSourceProfile {
         self.templates.source().model_profile()
     }

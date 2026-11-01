@@ -1,17 +1,9 @@
-//! Genuine source-owned Qwen CUDA sessions on the original fair worker.
 #[cfg(feature = "qwen35-cuda-qualification")]
-use super::super::engine::GpuRootObservation;
+use super::captured::*;
 use super::*;
+use crate::qwen35_cuda as source;
 #[cfg(feature = "qwen35-cuda-qualification")]
-mod cohort;
-#[cfg(feature = "qwen35-cuda-qualification")]
-pub(super) use cohort::advance_cohort;
-#[cfg(feature = "qwen35-cuda-qualification")]
-use zerogravity::gpu::cuda::native::TextCallReceipt;
-use zerogravity::qwen35_cuda as source;
-#[cfg(feature = "qwen35-cuda-qualification")]
-use zerogravity::resource_arbiter::ResourceArbiter;
-
+use crate::resource_arbiter::ResourceArbiter;
 fn validate_profile(
     backend: GpuBackend,
     p: &GpuProfile,
@@ -29,7 +21,7 @@ fn validate_profile(
         || p.provider_mib > p.device_mib
         || p.device_mib != 5120
         || p.host_mib != host_mib
-        || !super::super::qwen35_cuda_host_profile(host_mib)
+        || !matches!(host_mib, 4096 | 8192)
         || bundle.is_none()
     {
         return Err(ServiceError::new(
@@ -41,9 +33,9 @@ fn validate_profile(
     Ok(())
 }
 #[cfg(not(feature = "qwen35-cuda-qualification"))]
-fn unsupported_capability(error: zerogravity::Error) -> ServiceError {
+fn unsupported_capability(error: crate::Error) -> ServiceError {
     match error {
-        zerogravity::Error::Unsupported(message) => {
+        crate::Error::Unsupported(message) => {
             ServiceError::new(400, "unsupported_qwen35_cuda_capability", message)
         }
         other => ServiceError::inference(other),
@@ -51,139 +43,135 @@ fn unsupported_capability(error: zerogravity::Error) -> ServiceError {
 }
 
 #[cfg(not(feature = "qwen35-cuda-qualification"))]
-impl GpuRouter {
-    pub(in crate::serve) fn new_qwen35_cuda(
-        _declared: Vec<(String, PathBuf)>,
-        backend: GpuBackend,
-        profile: GpuProfile,
-        host_mib: usize,
-        bundle: Option<&Path>,
-    ) -> Result<Self, ServiceError> {
-        validate_profile(backend, &profile, host_mib, bundle)?;
-        source::require_ordinary_capability().map_err(unsupported_capability)?;
-        unreachable!("ordinary Qwen CUDA capability always refuses")
-    }
+pub fn load_qwen35_cuda(
+    _declared: Vec<(String, PathBuf)>,
+    backend: GpuBackend,
+    profile: GpuProfile,
+    host_mib: usize,
+    bundle: Option<&Path>,
+) -> Result<Router, ServiceError> {
+    validate_profile(backend, &profile, host_mib, bundle)?;
+    source::require_ordinary_capability().map_err(unsupported_capability)?;
+    unreachable!("ordinary Qwen CUDA capability always refuses")
 }
 
 #[cfg(feature = "qwen35-cuda-qualification")]
-impl GpuRouter {
-    pub(in crate::serve) fn new_qwen35_cuda(
-        declared: Vec<(String, PathBuf)>,
-        backend: GpuBackend,
-        profile: GpuProfile,
-        host_mib: usize,
-        bundle: Option<&Path>,
-    ) -> Result<Self, ServiceError> {
-        validate_profile(backend, &profile, host_mib, bundle)?;
-        crate::run_cli::qwen35_cuda_host_available(
-            (host_mib * 1024 * 1024) as u64,
-            &zerogravity::run_policy::Headroom::Default,
-        )
-        .map_err(ServiceError::inference)?;
-        if declared.is_empty() || declared.len() > 16 {
+pub fn load_qwen35_cuda(
+    declared: Vec<(String, PathBuf)>,
+    backend: GpuBackend,
+    profile: GpuProfile,
+    host_mib: usize,
+    bundle: Option<&Path>,
+) -> Result<Router, ServiceError> {
+    validate_profile(backend, &profile, host_mib, bundle)?;
+    crate::devices::host_available(
+        (host_mib * 1024 * 1024) as u64,
+        &crate::run_policy::Headroom::Default,
+    )
+    .map_err(ServiceError::inference)?;
+    if declared.is_empty() || declared.len() > 16 {
+        return Err(ServiceError::new(
+            400,
+            "invalid_models",
+            "one original HF source and1..16aliases",
+        ));
+    }
+    let mut aliases = BTreeMap::new();
+    let mut directory = None;
+    for (alias, path) in declared {
+        if alias.is_empty()
+            || alias.len() > 96
+            || !alias
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+            || aliases.contains_key(&alias)
+        {
             return Err(ServiceError::new(
                 400,
-                "invalid_models",
-                "one original HF source and1..16aliases",
+                "invalid_model",
+                "bad/duplicate Qwen CUDA route name",
             ));
         }
-        let mut aliases = BTreeMap::new();
-        let mut directory = None;
-        for (alias, path) in declared {
-            if alias.is_empty()
-                || alias.len() > 96
-                || !alias
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
-                || aliases.contains_key(&alias)
-            {
-                return Err(ServiceError::new(
-                    400,
-                    "invalid_model",
-                    "bad/duplicate Qwen CUDA route name",
-                ));
-            }
-            let path = std::fs::canonicalize(path).map_err(|_| {
-                ServiceError::new(400, "missing_model", "original HF directory unavailable")
-            })?;
-            if !path.is_dir() || directory.as_ref().is_some_and(|d| d != &path) {
-                return Err(ServiceError::new(
-                    400,
-                    "unsupported_source_set",
-                    "one immutable HF source per worker",
-                ));
-            }
-            directory = Some(path);
-            aliases.insert(alias, ());
-        }
-        let bundle = bundle.ok_or_else(|| {
-            ServiceError::new(
-                400,
-                "missing_native_artifacts",
-                "actual source native bundle required",
-            )
+        let path = std::fs::canonicalize(path).map_err(|_| {
+            ServiceError::new(400, "missing_model", "original HF directory unavailable")
         })?;
-        preflight_cuda_toolkit(backend)?;
-        // Borrow the configured serving host ledger; do not register another
-        // host domain for the original source loader. The loader retains
-        // R + G + V for its actual source tokenizer.
-        let serving_host = ServingHost::new(host_mib)?;
-        let admitted =
-            serving_host.transfer_admission("qwen35-cuda-serving", "original-source-loader")?;
-        let device = backend.device().map_err(ServiceError::inference)?;
-        let directory = directory
-            .as_deref()
-            .ok_or_else(|| ServiceError::new(400, "missing_model", "no actual source"))?;
-        let capacity = profile
-            .provider_mib
-            .checked_mul(1024 * 1024)
-            .ok_or_else(|| {
-                ServiceError::new(400, "invalid_provider_budget", "provider bytes overflow")
-            })?;
-        let loaded = block_on(async {
-            if profile.native_rows == 4 {
-                source::qualification::load_b4(device, directory, bundle, &admitted, capacity, None)
-                    .await
-            } else {
-                source::qualification::load(device, directory, bundle, &admitted, capacity, None)
-                    .await
-            }
-        })
-        .map_err(ServiceError::inference)?;
-        let meta = loaded.source_metadata();
-        let model = Arc::new(GpuModel {
-            hidden_width: meta.hidden_width,
-            vocabulary_size: meta.vocabulary_size,
-            tokenizer: zerogravity::builtins::text::tokenizer_owner(
-                loaded.clone(),
-                |owner| owner.tokenizer(),
-                &serving_host,
-                "qwen35-cuda-serving",
-            )?,
-            engine: ModelEngine::Qwen35Cuda(loaded.clone()),
-            group: 0,
-            native_rows: profile.native_rows,
-            max_token_bytes: loaded
-                .tokenizer()
-                .max_token_bytes()
-                .map_err(ServiceError::inference)?,
-            _inventory: None,
-            readers: Arc::new(AtomicUsize::new(0)),
-        });
-        let models = aliases.into_keys().map(|id| (id, model.clone())).collect();
-        Self::start(
-            models,
-            profile.active,
-            profile.output,
-            profile.native_rows,
-            serving_host,
-            profile.max_pending,
-        )
+        if !path.is_dir() || directory.as_ref().is_some_and(|d| d != &path) {
+            return Err(ServiceError::new(
+                400,
+                "unsupported_source_set",
+                "one immutable HF source per worker",
+            ));
+        }
+        directory = Some(path);
+        aliases.insert(alias, ());
     }
+    let bundle = bundle.ok_or_else(|| {
+        ServiceError::new(
+            400,
+            "missing_native_artifacts",
+            "actual source native bundle required",
+        )
+    })?;
+    preflight_cuda_toolkit(backend)?;
+    // Borrow the configured serving host ledger; do not register another
+    // host domain for the original source loader. The loader retains
+    // R + G + V for its actual source tokenizer.
+    let serving_host = ServingHost::new(host_mib)?;
+    let admitted =
+        serving_host.transfer_admission("qwen35-cuda-serving", "original-source-loader")?;
+    let device = backend.device().map_err(ServiceError::inference)?;
+    let directory = directory
+        .as_deref()
+        .ok_or_else(|| ServiceError::new(400, "missing_model", "no actual source"))?;
+    let capacity = profile
+        .provider_mib
+        .checked_mul(1024 * 1024)
+        .ok_or_else(|| {
+            ServiceError::new(400, "invalid_provider_budget", "provider bytes overflow")
+        })?;
+    let loaded = block_on(async {
+        if profile.native_rows == 4 {
+            source::qualification::load_b4(device, directory, bundle, &admitted, capacity, None)
+                .await
+        } else {
+            source::qualification::load(device, directory, bundle, &admitted, capacity, None).await
+        }
+    })
+    .map_err(ServiceError::inference)?;
+    let meta = loaded.source_metadata();
+    let metadata = metadata_charge(&serving_host, "captured-model-adapter")?;
+    let model = Arc::new(CapturedModel {
+        hidden_width: meta.hidden_width,
+        vocabulary_size: meta.vocabulary_size,
+        tokenizer: crate::builtins::text::tokenizer_owner(
+            loaded.clone(),
+            |owner| owner.tokenizer(),
+            &serving_host,
+            "qwen35-cuda-serving",
+        )?,
+        engine: ModelEngine::Qwen35Cuda(loaded.clone()),
+        group: 0,
+        native_rows: profile.native_rows,
+        max_token_bytes: loaded
+            .tokenizer()
+            .max_token_bytes()
+            .map_err(ServiceError::inference)?,
+        _metadata: metadata,
+        readers: Arc::new(AtomicUsize::new(0)),
+    });
+    let models = aliases.into_keys().map(|id| (id, model.clone())).collect();
+    start(
+        models,
+        profile.active,
+        profile.output,
+        profile.native_rows,
+        serving_host,
+        profile.max_pending,
+    )
 }
 
 #[cfg(feature = "qwen35-cuda-qualification")]
-pub(super) fn models_present(models: &BTreeMap<String, Arc<GpuModel>>) -> bool {
+pub(super) fn models_present(models: &BTreeMap<String, Arc<CapturedModel>>) -> bool {
     models
         .values()
         .any(|model| matches!(&model.engine, ModelEngine::Qwen35Cuda(_)))
@@ -191,7 +179,7 @@ pub(super) fn models_present(models: &BTreeMap<String, Arc<GpuModel>>) -> bool {
 
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub(super) fn health(
-    models: &BTreeMap<String, Arc<GpuModel>>,
+    models: &BTreeMap<String, Arc<CapturedModel>>,
     host_snapshot: (u64, u64, u64, u64),
 ) -> Option<(serde_json::Value, serde_json::Value)> {
     let model = models.values().find_map(|m| match &m.engine {
@@ -240,11 +228,11 @@ pub(super) fn health(
 
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub(super) fn inference_error(
-    error: zerogravity::Error,
+    error: crate::Error,
     model: &source::Model,
     cancelled: &AtomicBool,
 ) -> ServiceError {
-    let cancelled_message = matches!(&error,zerogravity::Error::State(text)if matches!(text.as_str(),
+    let cancelled_message = matches!(&error,crate::Error::State(text)if matches!(text.as_str(),
         "native fragment cancelled"|"closed original cubin qualification cancelled"|"fixed_prompt positions cancelled"|"Qwen CUDA request cancelled"));
     if cancelled.load(Ordering::Acquire)
         && cancelled_message
@@ -259,120 +247,6 @@ pub(super) fn inference_error(
         ServiceError::inference(error)
     }
 }
-#[cfg(feature = "qwen35-cuda-qualification")]
-impl GpuActive {
-    fn install_qwen35_cuda(
-        &mut self,
-        r: TextCallReceipt,
-        stats: &WaveStats,
-    ) -> Result<(), ServiceError> {
-        let consumed = if self.cursor == 0 {
-            self.prompt.len()
-        } else {
-            1
-        };
-        let RequestEngine::Qwen35Cuda {
-            session, selected, ..
-        } = &mut self.engine
-        else {
-            return Err(ServiceError::new(
-                500,
-                "source_route",
-                "Qwen CUDA result on another route",
-            ));
-        };
-        if r.root != session.binding()
-            || r.executed_nodes != 255
-            || r.native_launches == 0
-            || r.consumed_tokens != consumed
-        {
-            return Err(ServiceError::new(
-                500,
-                "qwen35_cuda_receipt",
-                "incomplete actual source traversal/commit",
-            ));
-        }
-        *selected = Some(r.selected_id);
-        stats.gpu_forwards.fetch_add(1, Ordering::Relaxed);
-        stats
-            .kernel_dispatches
-            .fetch_add(r.dispatches as u64, Ordering::Relaxed);
-        stats
-            .model_tokens
-            .fetch_add(r.consumed_tokens as u64, Ordering::Relaxed);
-        stats.committed_roots.fetch_add(1, Ordering::Relaxed);
-        self.token_gpu_observation = Some(GpuTokenObservation {
-            producer_frontier: r.root.frontier(),
-            producer_root: Some(GpuRootObservation::committed(r.root)),
-            native_cohort: None,
-        });
-        self.token_commit_observed_at = Some(Instant::now());
-        self.packet_presented = false;
-        self.blocked_since = None;
-        Ok(())
-    }
-    pub(super) fn step_qwen35_cuda(
-        &mut self,
-        stats: &WaveStats,
-    ) -> Result<MemberStep, ServiceError> {
-        let prefill = self.cursor == 0;
-        if !prefill {
-            match self.present_decode(stats)? {
-                Presentation::Finished => return Ok(MemberStep::Finished),
-                Presentation::Blocked => return Ok(MemberStep::Parked),
-                Presentation::Ready => {}
-            }
-        }
-        if self.cancelled.load(Ordering::Acquire) {
-            return Ok(MemberStep::Cancelled);
-        }
-        let RequestEngine::Qwen35Cuda { model, session, .. } = &mut self.engine else {
-            return Err(ServiceError::new(
-                500,
-                "source_route",
-                "Qwen CUDA step on another route",
-            ));
-        };
-        // Await original bounded quantum. Actual cancellation prevents commit;
-        // never drop/race a submitted inference future on HTTP disconnect.
-        let result = if prefill {
-            block_on(session.infer_prompt(&self.prompt, Some(&self.cancelled)))
-        } else {
-            block_on(session.infer_next(Some(&self.cancelled)))
-        };
-        let receipt = result.map_err(|e| inference_error(e, model, &self.cancelled))?;
-        self.install_qwen35_cuda(receipt, stats)?;
-        if prefill {
-            self.cursor = self.prompt.len();
-        }
-        Ok(MemberStep::Forwarded)
-    }
-}
-#[cfg(feature = "qwen35-cuda-qualification")]
-pub(super) fn retire_sources(models: &BTreeMap<String, Arc<GpuModel>>, stats: &WaveStats) {
-    // A model alias may share one resident source group. Any live reader in
-    // the group keeps retirement closed, even if this particular alias has
-    // already released its reader count.
-    let busy: std::collections::BTreeSet<_> = models
-        .values()
-        .filter(|m| m.readers.load(Ordering::Acquire) != 0)
-        .map(|m| m.group)
-        .collect();
-    let mut groups = std::collections::BTreeSet::new();
-    for m in models.values() {
-        if busy.contains(&m.group) {
-            continue;
-        }
-        if groups.insert(m.group)
-            && let ModelEngine::Qwen35Cuda(source) = &m.engine
-            && let Err(error) = block_on(source.resident().clone().close(None))
-        {
-            stats.failed.fetch_add(1, Ordering::Relaxed);
-            eprintln!("Qwen CUDA native retirement failed: {error}");
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -392,7 +266,7 @@ mod tests {
     #[cfg(not(feature = "qwen35-cuda-qualification"))]
     #[test]
     fn ordinary_serve_capability_refusal_is_configuration_not_inference() {
-        let error = GpuRouter::new_qwen35_cuda(
+        let error = load_qwen35_cuda(
             vec![("not-opened".into(), PathBuf::from("/source-not-opened"))],
             GpuBackend::Cuda,
             profile(),

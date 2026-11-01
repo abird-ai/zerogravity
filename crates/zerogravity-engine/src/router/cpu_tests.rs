@@ -132,17 +132,20 @@ impl PreparedModel for MockModel {
     fn max_context(&self) -> usize {
         128
     }
-    fn max_session_bytes(&self) -> u64 {
-        4096
-    }
-    fn session_scratch_bytes(&self) -> u64 {
-        1024
-    }
+
     fn max_token_bytes(&self) -> usize {
         1
     }
     fn vocabulary_size(&self) -> u64 {
         4
+    }
+}
+impl LogitModel for MockModel {
+    fn max_session_bytes(&self) -> u64 {
+        4096
+    }
+    fn session_scratch_bytes(&self) -> u64 {
+        1024
     }
     fn new_session(self: Arc<Self>) -> crate::Result<Box<dyn TextSession>> {
         let id = self.next.fetch_add(1, Ordering::AcqRel);
@@ -155,7 +158,7 @@ impl PreparedModel for MockModel {
     }
 }
 fn router(host: &HostPool, model: &Arc<MockModel>) -> Router {
-    let model: Arc<dyn PreparedModel> = model.clone();
+    let model: Arc<dyn LogitModel> = model.clone();
     Router::new(
         BTreeMap::from([("model".into(), model.clone()), ("alias".into(), model)]),
         1,
@@ -304,7 +307,7 @@ fn held_queue_ticket_refuses_with_429_then_release_admits_a_request() {
     let host = HostPool::isolated(256).unwrap();
     let model = MockModel::new(&host, None);
     let router = Router::new(
-        BTreeMap::from([("model".into(), model.clone() as Arc<dyn PreparedModel>)]),
+        BTreeMap::from([("model".into(), model.clone() as Arc<dyn LogitModel>)]),
         1,
         1,
         128,

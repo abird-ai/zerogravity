@@ -1,9 +1,14 @@
 //! Prepared-source routing and the original bounded scheduler/presentation owners.
-mod cpu;
+mod dispatch;
 pub mod event_channel;
+mod host;
 pub mod pending;
+mod registry;
+pub mod statistics;
 pub mod token_metrics;
-pub use cpu::*;
+pub mod waves;
+pub mod worker;
+pub use dispatch::*;
 
 use crate::{Result, Runtime, model_instance::ModelInstance};
 

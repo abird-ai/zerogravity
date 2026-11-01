@@ -35,6 +35,13 @@ cargo test --locked --offline -p zerogravity-cli --no-default-features \
 cargo test --locked --offline -p zerogravity-cli --no-default-features \
   --features qwen35-cuda-serving --bin zerogravity ordinary_cpu_and_gguf_routes
 
+cargo test --locked --offline -p zerogravity --no-default-features \
+  --features qwen35-cuda --lib \
+  diagnostics::text_gpu::qwen35_cuda::tests::ordinary_serve_capability_refusal_is_configuration_not_inference -- --exact
+
+cargo test --locked --offline -p zerogravity --no-default-features \
+  --features qwen35-cuda --lib builtins::text::gpu::load::tests -- --test-threads=1
+
 printf 'Checking explicit finite Qwen CUDA qualification tests...\n'
 qualified_tree="$(cargo tree --locked --offline -p zerogravity-cli --no-default-features \
   --features qwen35-cuda-qualification --edges features --invert zerogravity-gpu)"
@@ -46,9 +53,13 @@ cargo test --locked --offline -p zerogravity-cli --no-default-features \
   --features qwen35-cuda-qualification --bin zerogravity qwen35_cuda_route_tests
 
 printf 'Checking combined Qwen CUDA qualification and serving tests...\n'
-cargo test --locked --offline -p zerogravity-cli --no-default-features \
-  --features qwen35-cuda-qualification,qwen35-cuda-serving --bin zerogravity \
-  route_rejects_budget_fusion_and_context_before_source_device_or_native_load
+cargo test --locked --offline -p zerogravity --no-default-features \
+  --features qwen35-cuda-qualification --lib \
+  diagnostics::text_gpu::qwen35_cuda::tests::route_rejects_budget_fusion_and_context_before_source_device_or_native_load -- --exact
+
+cargo test --locked --offline -p zerogravity --no-default-features \
+  --features qwen35-cuda-qualification --lib \
+  diagnostics::text_gpu::fixed_prompt::active8_tests -- --test-threads=1
 
 printf 'Checking source-only native qualification regressions...\n'
 python3 -B -m unittest discover -s tools/gemma4-hip-qualification -p test_row_traffic.py

@@ -39,11 +39,14 @@ struct TokenizerOwner<T> {
 
 const ADAPTER_ALLOC_SLACK: usize = 64;
 fn tokenizer_owner_bytes<T>() -> Result<u64, ServiceError> {
-    let overflow = || ServiceError::new(400, "size_overflow", "tokenizer adapter layout overflow");
+    arc_owner_bytes::<TokenizerOwner<T>>()
+}
+pub(crate) fn arc_owner_bytes<T>() -> Result<u64, ServiceError> {
+    let overflow = || ServiceError::new(400, "size_overflow", "source adapter layout overflow");
     // Pinned std Arc: strong/weak counters, then the aligned value. The host's
     // original lease envelope separately prices reservation/owner bookkeeping.
     let (layout, _) = Layout::new::<[AtomicUsize; 2]>()
-        .extend(Layout::new::<TokenizerOwner<T>>())
+        .extend(Layout::new::<T>())
         .map_err(|_| overflow())?;
     layout
         .pad_to_align()
@@ -81,4 +84,9 @@ pub use cpu::load_router;
 #[cfg(all(test, feature = "cpu", feature = "cache"))]
 mod tests;
 #[cfg(test)]
-mod tokenizer_tests;
+pub(crate) mod tokenizer_tests;
+
+#[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
+pub(crate) mod gpu;
+#[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
+pub use gpu::{GpuProfile, load_gpu_router};

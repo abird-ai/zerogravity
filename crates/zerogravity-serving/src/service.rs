@@ -1,5 +1,5 @@
 //! Transport seam over the caller's existing scheduler; never owns shutdown.
-use serde_json::{Value, json};
+use serde_json::Value;
 pub use zerogravity_engine::router::{
     Request, RequestEvents, ServiceError, pending::ServingCharge,
 };
@@ -75,28 +75,6 @@ impl TextService for Router {
         Ok(self.max_output)
     }
     fn admission(&self) -> Result<Value> {
-        let (limit, reserved, remaining, serving) = self.memory_snapshot().ok_or_else(|| {
-            ServiceError::new(500, "host_state", "host admission snapshot unavailable")
-        })?;
-        let model = reserved.checked_sub(serving);
-        let queue = self.queue_snapshot();
-        Ok(json!({"kind":"configured_host_cpu",
-            "host_limit_bytes":limit,
-            "total_host_limit_bytes":limit,
-            "total_host_reserved_bytes":reserved,
-            "reserved_bytes":reserved,
-            "remaining_bytes":remaining,
-            "model_host_reserved_bytes":model,
-            "backend_host_reserved_bytes":0,
-            "serving_host_reserved_bytes":serving,
-            "queued_requests":queue.pending,
-            "pending_admission_in_progress":queue.in_progress,
-            "pending_queue_capacity":queue.capacity,
-            "pending_queue_charged_bytes":queue.backing_bytes,
-            "pending_queue_consumers":queue.consumers,
-            "queued_requests_limit":queue.limit,
-            "active_sessions":self.active_sessions(),
-            "peak_active_sessions":self.peak_active_sessions(),
-            "active_sessions_limit":self.active_limit()}))
+        Router::admission(self)
     }
 }

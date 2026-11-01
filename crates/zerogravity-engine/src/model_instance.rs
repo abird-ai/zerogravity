@@ -1,5 +1,6 @@
 //! Coarse source-owned text adapter; family math and publication stay in the adapter.
 use crate::Result;
+pub mod execution;
 use std::sync::Arc;
 use zerogravity_core::identity::SourceIdentity;
 
@@ -26,10 +27,21 @@ pub trait PreparedModel: Send + Sync {
     fn source(&self) -> SourceIdentity;
     fn tokenizer(&self) -> Arc<dyn TextTokenizer>;
     fn max_context(&self) -> usize;
-    fn max_session_bytes(&self) -> u64;
-    fn session_scratch_bytes(&self) -> u64;
     fn max_token_bytes(&self) -> usize;
     fn vocabulary_size(&self) -> u64;
+    /// Source-specific validation after count and host admission, before enqueue.
+    fn validate_request(
+        &self,
+        _request: &crate::router::Request,
+    ) -> std::result::Result<(), crate::router::ServiceError> {
+        Ok(())
+    }
+}
+
+/// Host-logit execution; device feedback/cohorts use their typed executor instead.
+pub trait LogitModel: PreparedModel {
+    fn max_session_bytes(&self) -> u64;
+    fn session_scratch_bytes(&self) -> u64;
     fn new_session(self: Arc<Self>) -> Result<Box<dyn TextSession>>;
 }
 

@@ -40,6 +40,9 @@ pub struct Model {
     _loader: GlobalResourceLease,
 }
 impl Model {
+    pub fn source_identity(&self) -> crate::identity::SourceIdentity {
+        self.templates.source_identity()
+    }
     pub async fn session(&self, cancelled: Option<&AtomicBool>) -> Result<Session> {
         Ok(Session::new(
             self.resident.session(cancelled).await?,

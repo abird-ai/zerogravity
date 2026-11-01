@@ -4,7 +4,7 @@ use crate::resource_arbiter::{AllocationClass, GlobalResourceLease};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use zerogravity_engine::model_instance::{PreparedModel, TextSession};
+use zerogravity_engine::model_instance::{LogitModel, PreparedModel, TextSession};
 use zerogravity_engine::router::{Router, ServiceError, pending::ServingHost, validate_config};
 
 #[path = "budget.rs"]
@@ -52,6 +52,15 @@ impl PreparedModel for Model {
     fn max_context(&self) -> usize {
         self.max_context
     }
+
+    fn max_token_bytes(&self) -> usize {
+        self.max_token_bytes
+    }
+    fn vocabulary_size(&self) -> u64 {
+        self.weights.geometry().vocab_size
+    }
+}
+impl LogitModel for Model {
     fn max_session_bytes(&self) -> u64 {
         self.max_session_bytes
     }
@@ -60,12 +69,6 @@ impl PreparedModel for Model {
         crate::cpu::runtime::RAYON_PROJECTION_INJECTOR_BYTES
             + std::mem::size_of::<Session>() as u64
             + 64
-    }
-    fn max_token_bytes(&self) -> usize {
-        self.max_token_bytes
-    }
-    fn vocabulary_size(&self) -> u64 {
-        self.weights.geometry().vocab_size
     }
     fn new_session(self: Arc<Self>) -> crate::Result<Box<dyn TextSession>> {
         Ok(Box::new(Session {

@@ -1,157 +1,12 @@
 //! Opt-in local OpenAI-compatible HTTP serving.
-//! Uses original Qwen CPU source and private independent model sessions.
+//! Facade loading + shared engine/transport; CLI owns configuration and signals.
 
+use engine::{Router, ServiceError};
 use zerogravity::runtime::text as engine;
-#[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
-use zerogravity::runtime::text::event_channel;
-#[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
-mod gpu_batch;
-#[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
-mod gpu_engine;
 use zerogravity::runtime::text::pending;
 mod shutdown;
-
 #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
 use crate::GpuBackend;
-use engine::{Request, RequestEvents, ServiceError};
-
-enum Router {
-    Cpu(engine::Router),
-    #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
-    Gpu(gpu_engine::GpuRouter),
-}
-impl Router {
-    fn shutdown(&mut self) -> std::io::Result<()> {
-        match self {
-            Self::Cpu(router) => router.shutdown(),
-            #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
-            Self::Gpu(router) => router.shutdown(),
-        }
-    }
-    fn request_admitted(
-        &self,
-        request: Request,
-        ingress: Vec<pending::ServingCharge>,
-    ) -> Result<RequestEvents, ServiceError> {
-        match self {
-            Self::Cpu(v) => v.request_admitted(request, ingress),
-            #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
-            Self::Gpu(v) => v.request_admitted(request, ingress),
-        }
-    }
-    fn max_output(&self) -> usize {
-        match self {
-            Self::Cpu(v) => v.max_output,
-            #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
-            Self::Gpu(v) => v.max_output,
-        }
-    }
-    fn charge_ingress(
-        &self,
-        session: &str,
-        bytes: u64,
-    ) -> Result<pending::ServingCharge, ServiceError> {
-        match self {
-            Self::Cpu(v) => v.charge_ingress(session, bytes),
-            #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
-            Self::Gpu(v) => v.charge_ingress(session, bytes),
-        }
-    }
-    fn model_ids(&self) -> Box<dyn Iterator<Item = &str> + '_> {
-        match self {
-            Self::Cpu(v) => Box::new(v.model_ids()),
-            #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
-            Self::Gpu(v) => Box::new(v.model_ids()),
-        }
-    }
-    fn admission(&self) -> Result<serde_json::Value, ServiceError> {
-        match self {
-            Self::Cpu(v) => zerogravity::serving::TextService::admission(v),
-            #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
-            Self::Gpu(v) => {
-                let m = v.metrics();
-                let mut value = serde_json::json!({"kind":"resident_gpu",
-                    "physical_accounting":"ResidentService/ResourceArbiter",
-                    "batch_mode":if m.native_rows != 0 {"fused"} else {"interleaved"},
-                    "native_batch_rows_max":m.native_rows.max(1),
-                    "gpu_step_attempts":m.attempted,
-                    "completed_gpu_quanta":m.completed,
-                    "completed_quantum_unit":"request work, including terminal presentation",
-                    "gpu_forward_steps_completed":m.gpu_forwards,
-                    "gpu_forward_calls_completed":m.gpu_forwards,
-                    "completed_model_token_steps":m.model_tokens,
-                    "completed_forward_kernel_dispatches":m.kernel_dispatches,
-                    "committed_gpu_roots":m.committed_roots,
-                    "native_projection_dispatches_completed":m.native_projections,
-                    "native_sampler_dispatches_completed":m.native_sampler,
-                    "gpu_fused_rows_completed":m.fused_rows,
-                    "gpu_fused_state_only_batches":m.fused_state_only_batches,
-                    "gpu_fused_state_only_rows":m.fused_state_only_rows,
-                    "gpu_fused_greedy_batches":m.fused_greedy_batches,
-                    "gpu_fused_batches_by_rows":{"2":m.native_bands[0],"4":m.native_bands[1],"8":m.native_bands[2]},
-                    "native_admission_refusals":m.native_admission_refusals,
-                    "discarded_ready_cohorts":m.discarded_cohorts,
-                    "accepted_output_tokens":m.output_tokens,
-                    "output_credit_parked_requests":m.parked,
-                    "failed_gpu_quanta":m.failed,
-                    "cancelled_requests":m.cancelled});
-                let tail = serde_json::json!({
-                    "active_sessions":m.active,
-                    "peak_active_sessions":m.peak_active,
-                    "active_sessions_limit":m.active_limit,
-                    "fixed-prompt_resources":m.canonical_resources,
-                    "hf_source":m.hf_source,"hf_resources":m.hf_resources,
-                    "queued_requests":m.queue.pending,
-                    "pending_admission_in_progress":m.queue.in_progress,
-                    "pending_queue_capacity":m.queue.capacity,
-                    "pending_queue_charged_bytes":m.queue.backing_bytes,
-                    "pending_queue_consumers":m.queue.consumers,
-                    "queued_requests_limit":m.queue.limit,
-                    "total_host_limit_bytes":m.host.map(|h|h.0),
-                    "total_host_reserved_bytes":m.host.map(|h|h.1),
-                    "model_host_reserved_bytes":m.host.map(|h|h.2),
-                    "backend_host_reserved_bytes":m.host.map(|h|h.3),
-                    "serving_host_reserved_bytes":m.host.map(|h|h.4),
-                    "scheduling_groups":m.groups,
-                    "co_scheduled_members":m.co_scheduled,
-                    "state_cohort_publications":m.cohort_publications,
-                    "state_cohort_rows":m.cohort_rows,
-                    "gpu_fused_batches":m.fused_batches});
-                if let (Some(target), Some(source)) = (value.as_object_mut(), tail.as_object()) {
-                    target.extend(source.iter().map(|(key, item)| (key.clone(), item.clone())));
-                }
-                Ok(value)
-            }
-        }
-    }
-}
-
-// Temporary GPU migration seam: the transport exists only in serving.
-impl zerogravity::serving::TextService for Router {
-    fn request_admitted(
-        &self,
-        request: Request,
-        ingress: Vec<pending::ServingCharge>,
-    ) -> Result<RequestEvents, ServiceError> {
-        Router::request_admitted(self, request, ingress)
-    }
-    fn charge_ingress(
-        &self,
-        session: &str,
-        bytes: u64,
-    ) -> Result<pending::ServingCharge, ServiceError> {
-        Router::charge_ingress(self, session, bytes)
-    }
-    fn model_ids(&self) -> Result<Vec<String>, ServiceError> {
-        Ok(Router::model_ids(self).map(str::to_owned).collect())
-    }
-    fn max_output(&self) -> Result<usize, ServiceError> {
-        Ok(Router::max_output(self))
-    }
-    fn admission(&self) -> Result<serde_json::Value, ServiceError> {
-        Router::admission(self)
-    }
-}
 
 use serde::{Deserialize, Deserializer};
 use std::net::SocketAddr;
@@ -570,7 +425,7 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
     let declared = options.models.into_iter().map(|m| (m.id, m.path)).collect();
     let backend = options.backend.as_str();
     let router = match backend {
-        "cpu" => Router::Cpu(zerogravity::builtins::text::load_router(
+        "cpu" => zerogravity::builtins::text::load_router(
             declared,
             options.workers,
             options.active_per_worker,
@@ -578,7 +433,7 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
             options.max_output,
             options.host_mib,
             options.max_pending_requests,
-        )?),
+        )?,
         "vulkan-nvidia" | "vulkan-amd" | "cuda" | "rocm" => {
             #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
             {
@@ -595,7 +450,7 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
                         "selected GPU backend was not compiled into this binary",
                     ));
                 }
-                let profile = gpu_engine::GpuProfile {
+                let profile = zerogravity::builtins::text::GpuProfile {
                     workers: options.workers,
                     active: options.active_per_worker,
                     context: options.max_context,
@@ -619,13 +474,13 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
                         target_os = "linux"
                     ))]
                     {
-                        Router::Gpu(gpu_engine::GpuRouter::new_canonical(
+                        zerogravity::diagnostics::text_gpu::load_fixed_prompt(
                             declared,
                             selected,
                             profile,
                             options.host_mib,
                             options.native_artifacts.as_deref(),
-                        )?)
+                        )?
                     }
                     #[cfg(not(all(
                         feature = "qwen35-cuda-serving",
@@ -642,13 +497,13 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
                 } else if options.source_profile == "qwen35-cuda-bf16" {
                     #[cfg(all(feature = "qwen35-cuda-serving", target_os = "linux"))]
                     {
-                        Router::Gpu(gpu_engine::GpuRouter::new_qwen35_cuda(
+                        zerogravity::diagnostics::text_gpu::load_qwen35_cuda(
                             declared,
                             selected,
                             profile,
                             options.host_mib,
                             options.native_artifacts.as_deref(),
-                        )?)
+                        )?
                     }
                     #[cfg(not(all(feature = "qwen35-cuda-serving", target_os = "linux")))]
                     {
@@ -659,7 +514,7 @@ pub fn run(args: &[String]) -> Result<(), ServiceError> {
                         ));
                     }
                 } else {
-                    Router::Gpu(gpu_engine::GpuRouter::new(declared, selected, profile)?)
+                    zerogravity::builtins::text::load_gpu_router(declared, selected, profile)?
                 }
             }
             #[cfg(not(any(feature = "vulkan", feature = "cuda", feature = "hip")))]

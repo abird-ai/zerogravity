@@ -5,8 +5,8 @@ pub(super) fn load_models(
     declared: Vec<(String, PathBuf)>,
     host: &ServingHost,
     max_context: usize,
-) -> Result<BTreeMap<String, Arc<dyn PreparedModel>>, ServiceError> {
-    let mut models: BTreeMap<String, Arc<dyn PreparedModel>> = BTreeMap::new();
+) -> Result<BTreeMap<String, Arc<dyn LogitModel>>, ServiceError> {
+    let mut models: BTreeMap<String, Arc<dyn LogitModel>> = BTreeMap::new();
     // Canonical paths reuse the SAME immutable model/host lease across
     // route aliases. A second alias does not republish a source ID.
     let mut unique_sources = BTreeMap::<PathBuf, Arc<Model>>::new();

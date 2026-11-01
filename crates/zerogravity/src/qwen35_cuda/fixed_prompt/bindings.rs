@@ -8,6 +8,9 @@ pub(super) struct Templates {
     _metadata: WindowWorkspace,
 }
 impl Templates {
+    pub(super) fn source_identity(&self) -> crate::identity::SourceIdentity {
+        self.source.source().source_identity()
+    }
     pub(super) fn prepare(source: Arc<OriginalWindowModelSource>) -> Result<Self> {
         let metadata = source.source().reserve_workspace(64 * 1024)?;
         let mut calls = Vec::with_capacity(8);

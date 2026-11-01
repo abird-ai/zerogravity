@@ -11,20 +11,12 @@ impl PrefixOracle {
     fn new(fixture: &Fixture) -> Self {
         Self {
             cpu: QwenDenseCpu::from_shared(Arc::clone(&fixture.source)).unwrap(),
-            gpu: block_on(
-                fixture
-                    .model
-                    .engine
-                    .legacy_model()
-                    .expect("legacy qualification")
-                    .session(),
-            )
-            .unwrap(),
+            gpu: block_on(fixture.model.resident.session()).unwrap(),
             consumed: 0,
             packet: None,
         }
     }
-    fn observe(&mut self, lane: &GpuActive) {
+    fn observe(&mut self, lane: &Row) {
         assert_eq!(
             lane.cursor,
             self.consumed + 1,
@@ -42,26 +34,23 @@ impl PrefixOracle {
         );
         same_domains(
             &self.cpu.snapshot().domain_values(),
-            &block_on(
-                lane.engine
-                    .legacy()
-                    .expect("legacy qualification")
-                    .snapshot()
-                    .read_domains(),
-            )
-            .unwrap(),
+            &block_on(lane.state.session.snapshot().read_domains()).unwrap(),
         );
-        assert_eq!(lane.engine.binding().frontier(), self.consumed as u64);
+        assert_eq!(
+            lane.state.session.binding().frontier(),
+            self.consumed as u64
+        );
         if self.consumed < lane.prompt.len() {
-            assert!(lane.device_token.is_none());
+            assert!(lane.state.device_token.is_none());
             assert!(lane.token_commit_observed_at.is_none());
-            assert!(lane.token_gpu_observation.is_none());
+            assert!(lane.token_observation.is_none());
             assert!(!lane.packet_presented);
             assert!(lane.blocked_since.is_none());
             assert_eq!(lane.output.generated_token_count(), 0);
         } else {
             let expected = best(&expected);
             let actual = lane
+                .state
                 .device_token
                 .as_ref()
                 .expect("prompt tail greedy packet");
@@ -78,7 +67,7 @@ impl PrefixOracle {
             self.packet = Some(packet);
         }
     }
-    fn into_reference(self, lane: &GpuActive) -> Reference {
+    fn into_reference(self, lane: &Row) -> Reference {
         assert_eq!(self.consumed, lane.prompt.len());
         let packet = self.packet.expect("independently produced B1 tail packet");
         let reference = Reference {
@@ -94,46 +83,9 @@ impl PrefixOracle {
 }
 
 /// Same eligibility, wave formation and cohort helpers as the actual worker.
-fn teacher_round(active: &mut VecDeque<GpuActive>, stats: &WaveStats) {
-    let mut parked = VecDeque::new();
-    let eligible = active
-        .drain(..)
-        .filter_map(|lane| eligible_member(lane, &mut parked, stats))
-        .collect::<Vec<_>>();
-    active.extend(parked);
-    if eligible.is_empty() {
-        return;
-    }
-    let width = eligible[0].native_rows;
-    let ready = eligible.iter().map(GpuActive::ready).collect::<Vec<_>>();
-    assert!(ready.iter().all(|row| row.tokens == 1));
-    let waves = gpu_batch::form_native(
-        &ready,
-        Limits {
-            max_members: width,
-            max_tokens: 64,
-            max_scratch: 256 * 1024 * 1024,
-        },
-    )
-    .unwrap();
-    let mut pending = eligible.into_iter().map(Some).collect::<Vec<_>>();
-    for wave in waves {
-        let members = wave
-            .indices
-            .into_iter()
-            .map(|index| pending[index].take().unwrap())
-            .collect::<Vec<_>>();
-        if members.len() > 1 && members.iter().all(|lane| lane.cursor < lane.prompt.len()) {
-            finish_prompt_cohort(members, active, stats, width);
-        } else if members.len() > 1 && members.iter().all(|lane| lane.cursor == lane.prompt.len()) {
-            advance_decode_cohort(members, active, stats, width);
-        } else {
-            for lane in members {
-                advance_member(lane, active, stats);
-            }
-        }
-    }
-    assert!(pending.iter().all(Option::is_none));
+fn teacher_round(active: &mut VecDeque<Row>, stats: &WorkStats) {
+    assert!(active.iter().all(|r| r.ready().tokens == 1));
+    round(active, stats);
 }
 
 fn no_prefix_events(trace: &Trace) {
@@ -174,51 +126,36 @@ fn ragged_prefixes(fixture: &Fixture) {
             // Genuine source EOS as a teacher token cannot end generation.
             lane.prompt[1] = fixture.model.tokenizer.eos();
         }
-        let id = lane.engine.binding().session().get();
+        let id = lane.state.session.binding().session().get();
         traces.insert(id, trace);
         prefix.insert(id, PrefixOracle::new(fixture));
         active.push_back(lane);
     }
     let before = band_counts(&fixture.stats);
-    let sampler = fixture.stats.native_sampler.load(Ordering::Acquire);
-    let state_batches = fixture
-        .stats
-        .fused_state_only_batches
-        .load(Ordering::Acquire);
-    let state_rows = fixture.stats.fused_state_only_rows.load(Ordering::Acquire);
-    let greedy_batches = fixture.stats.fused_greedy_batches.load(Ordering::Acquire);
+    let sampler = fixture.stats.snapshot().native_sampler;
+    let state_batches = fixture.stats.snapshot().fused_state_only_batches;
+    let state_rows = fixture.stats.snapshot().fused_state_only_rows;
+    let greedy_batches = fixture.stats.snapshot().fused_greedy_batches;
     teacher_round(&mut active, &fixture.stats);
     require_bands(&fixture.stats, before, &[width]);
+    assert_eq!(fixture.stats.snapshot().native_sampler, sampler);
     assert_eq!(
-        fixture.stats.native_sampler.load(Ordering::Acquire),
-        sampler
-    );
-    assert_eq!(
-        fixture
-            .stats
-            .fused_state_only_batches
-            .load(Ordering::Acquire),
+        fixture.stats.snapshot().fused_state_only_batches,
         state_batches + 1
     );
     assert_eq!(
-        fixture.stats.fused_state_only_rows.load(Ordering::Acquire),
+        fixture.stats.snapshot().fused_state_only_rows,
         state_rows + width as u64
     );
     assert_eq!(
-        fixture.stats.fused_greedy_batches.load(Ordering::Acquire),
+        fixture.stats.snapshot().fused_greedy_batches,
         greedy_batches
     );
-    assert_eq!(fixture.stats.output_tokens.load(Ordering::Acquire), 0);
-    assert_eq!(
-        fixture.stats.model_tokens.load(Ordering::Acquire),
-        width as u64
-    );
-    assert_eq!(
-        fixture.stats.committed_roots.load(Ordering::Acquire),
-        width as u64
-    );
+    assert_eq!(fixture.stats.snapshot().output_tokens, 0);
+    assert_eq!(fixture.stats.snapshot().model_tokens, width as u64);
+    assert_eq!(fixture.stats.snapshot().committed_roots, width as u64);
     for lane in &active {
-        let id = lane.engine.binding().session().get();
+        let id = lane.state.session.binding().session().get();
         prefix.get_mut(&id).unwrap().observe(lane);
         no_prefix_events(&traces[&id]);
     }
@@ -226,9 +163,11 @@ fn ragged_prefixes(fixture: &Fixture) {
         // The real worker admits at most8 active requests. Retire a cancelled
         // teacher row before creating its arrival replacement.
         let cancelled = active.pop_back().unwrap();
-        let id = cancelled.engine.binding().session().get();
+        let id = cancelled.state.session.binding().session().get();
         cancelled.cancelled.store(true, Ordering::Release);
-        assert!(eligible_member(cancelled, &mut VecDeque::new(), &fixture.stats).is_none());
+        let mut retired = VecDeque::new();
+        zerogravity_engine::router::worker::advance_single(cancelled, &mut retired, &fixture.stats);
+        assert!(retired.is_empty());
         drop(prefix.remove(&id).unwrap());
         no_prefix_events(&traces.remove(&id).unwrap());
     }
@@ -240,7 +179,7 @@ fn ragged_prefixes(fixture: &Fixture) {
         true,
     );
     assert!(arrival.prompt.len() > 2);
-    let arrival_id = arrival.engine.binding().session().get();
+    let arrival_id = arrival.state.session.binding().session().get();
     traces.insert(arrival_id, trace);
     prefix.insert(arrival_id, PrefixOracle::new(fixture));
     active.push_front(arrival);
@@ -250,7 +189,7 @@ fn ragged_prefixes(fixture: &Fixture) {
         }
         teacher_round(&mut active, &fixture.stats);
         for lane in &active {
-            let id = lane.engine.binding().session().get();
+            let id = lane.state.session.binding().session().get();
             if let Some(oracle) = prefix.get_mut(&id) {
                 oracle.observe(lane);
                 if lane.cursor == lane.prompt.len() {
@@ -286,9 +225,9 @@ fn ragged_prefixes(fixture: &Fixture) {
         };
         trace.verify(reference, fixture.model.tokenizer.as_ref(), maximum);
     }
-    assert_eq!(fixture.stats.active.load(Ordering::Acquire), 0);
-    assert!(fixture.stats.fused_batches.load(Ordering::Acquire) > 1);
-    assert!(fixture.stats.native_sampler.load(Ordering::Acquire) > 0);
+    assert_eq!(fixture.stats.snapshot().active, 0);
+    assert!(fixture.stats.snapshot().fused_batches > 1);
+    assert!(fixture.stats.snapshot().native_sampler > 0);
     drop(references);
     println!(
         "P12_NATIVE_PREFIX_WORKER_PASS rows={width} actual_teacher_EOS=true each_teacher_CPU_B1_all42=exact ragged_arrival=true no_prefix_Text_ID_Done_usage=true tail_fullV_packets_and_final_events=exact"
@@ -306,21 +245,17 @@ fn traces_row_index(references: &BTreeMap<u64, Reference>, id: u64, arrival: u64
 fn cancel_after_prefix_ready(fixture: &Fixture) {
     let (left, left_trace) = fixture.lane_configured(PROMPTS[0], 2, EVENTS_PER_REQUEST, true);
     let (right, mut right_trace) = fixture.lane_configured(PROMPTS[1], 2, EVENTS_PER_REQUEST, true);
-    let left_saved = left
-        .engine
-        .legacy()
-        .expect("legacy qualification")
-        .snapshot();
-    let left_root = left.engine.binding();
-    let right_root = right.engine.binding();
+    let left_saved = left.state.session.snapshot();
+    let left_root = left.state.session.binding();
+    let right_root = right.state.session.binding();
     let flag = Arc::clone(&left.cancelled);
     let fired = Arc::new(AtomicBool::new(false));
     let seen = Arc::clone(&fired);
-    let model_tokens = fixture.stats.model_tokens.load(Ordering::Acquire);
-    let committed = fixture.stats.committed_roots.load(Ordering::Acquire);
-    let discarded = fixture.stats.discarded_cohorts.load(Ordering::Acquire);
-    let sampler = fixture.stats.native_sampler.load(Ordering::Acquire);
-    let output = fixture.stats.output_tokens.load(Ordering::Acquire);
+    let model_tokens = fixture.stats.snapshot().model_tokens;
+    let committed = fixture.stats.snapshot().committed_roots;
+    let discarded = fixture.stats.snapshot().discarded_cohorts;
+    let sampler = fixture.stats.snapshot().native_sampler;
+    let output = fixture.stats.snapshot().output_tokens;
     AFTER_COHORT_READY.with(|slot| {
         *slot.borrow_mut() = Some(Box::new(move || {
             seen.store(true, Ordering::Release);
@@ -335,8 +270,14 @@ fn cancel_after_prefix_ready(fixture: &Fixture) {
     );
     assert_eq!(active.len(), 1);
     let mut survivor = active.pop_front().unwrap();
-    assert_eq!(survivor.engine.binding().session(), right_root.session());
-    assert_eq!(survivor.engine.binding().root(), right_root.root() + 1);
+    assert_eq!(
+        survivor.state.session.binding().session(),
+        right_root.session()
+    );
+    assert_eq!(
+        survivor.state.session.binding().root(),
+        right_root.root() + 1
+    );
     assert_eq!(survivor.cursor, 1);
     assert_eq!(left_root.frontier(), 0);
     let empty = QwenDenseCpu::from_shared(Arc::clone(&fixture.source)).unwrap();
@@ -349,33 +290,24 @@ fn cancel_after_prefix_ready(fixture: &Fixture) {
     no_prefix_events(&left_trace);
     no_prefix_events(&right_trace);
     assert_eq!(
-        fixture.stats.model_tokens.load(Ordering::Acquire),
+        fixture.stats.snapshot().model_tokens,
         model_tokens + 3,
         "actual discarded B2 launch plus survivor B1 must remain counted"
     );
-    assert_eq!(
-        fixture.stats.committed_roots.load(Ordering::Acquire),
-        committed + 1
-    );
-    assert_eq!(
-        fixture.stats.discarded_cohorts.load(Ordering::Acquire),
-        discarded + 1
-    );
-    assert_eq!(
-        fixture.stats.native_sampler.load(Ordering::Acquire),
-        sampler
-    );
-    assert_eq!(fixture.stats.output_tokens.load(Ordering::Acquire), output);
+    assert_eq!(fixture.stats.snapshot().committed_roots, committed + 1);
+    assert_eq!(fixture.stats.snapshot().discarded_cohorts, discarded + 1);
+    assert_eq!(fixture.stats.snapshot().native_sampler, sampler);
+    assert_eq!(fixture.stats.snapshot().output_tokens, output);
     drop(left_saved);
     while survivor.cursor < survivor.prompt.len() {
         assert!(matches!(
             survivor.step(&fixture.stats).unwrap(),
-            MemberStep::Forwarded
+            Progress::Forwarded
         ));
         reference.observe(&survivor);
         no_prefix_events(&right_trace);
     }
-    let id = survivor.engine.binding().session().get();
+    let id = survivor.state.session.binding().session().get();
     let mut references = BTreeMap::from([(id, reference.into_reference(&survivor))]);
     let mut active = VecDeque::from([survivor]);
     finish(
@@ -395,61 +327,51 @@ fn cancel_after_prefix_ready(fixture: &Fixture) {
 fn parked_decode_does_not_block_prefix(fixture: &Fixture) {
     let (mut decode, mut decode_trace) = fixture.lane_configured("a", 4, 1, true);
     b1_prompt(&mut decode, &fixture.stats);
-    let decode_id = decode.engine.binding().session().get();
+    let decode_id = decode.state.session.binding().session().get();
     let mut reference = Reference::new(fixture, &decode);
     assert_ne!(reference.packet.id, fixture.model.tokenizer.eos());
     assert!(matches!(
         decode.step(&fixture.stats).unwrap(),
-        MemberStep::Forwarded
+        Progress::Forwarded
     ));
     reference.sync(&decode);
     assert_ne!(reference.packet.id, fixture.model.tokenizer.eos());
     assert!(matches!(
         decode.step(&fixture.stats).unwrap(),
-        MemberStep::Parked
+        Progress::Parked
     ));
-    let parked_root = decode.engine.binding();
-    let parked_snapshot = decode
-        .engine
-        .legacy()
-        .expect("legacy qualification")
-        .snapshot();
+    let parked_root = decode.state.session.binding();
+    let parked_snapshot = decode.state.session.snapshot();
     let (left, left_trace) = fixture.lane_configured(PROMPTS[0], 2, EVENTS_PER_REQUEST, true);
     let (right, right_trace) = fixture.lane_configured(PROMPTS[1], 2, EVENTS_PER_REQUEST, true);
     let (cancelled, cancelled_trace) =
         fixture.lane_configured(PROMPTS[2], 2, EVENTS_PER_REQUEST, true);
     cancelled.cancelled.store(true, Ordering::Release);
-    let left_id = left.engine.binding().session().get();
-    let right_id = right.engine.binding().session().get();
+    let left_id = left.state.session.binding().session().get();
+    let right_id = right.state.session.binding().session().get();
     let mut prefix = BTreeMap::from([
         (left_id, PrefixOracle::new(fixture)),
         (right_id, PrefixOracle::new(fixture)),
     ]);
     let mut traces = BTreeMap::from([(left_id, left_trace), (right_id, right_trace)]);
     let mut references = BTreeMap::from([(decode_id, reference)]);
-    let sampler = fixture.stats.native_sampler.load(Ordering::Acquire);
-    let cancelled_before = fixture.stats.cancelled.load(Ordering::Acquire);
+    let sampler = fixture.stats.snapshot().native_sampler;
+    let cancelled_before = fixture.stats.snapshot().cancelled;
     let before = band_counts(&fixture.stats);
     let mut active = VecDeque::from([decode, left, right, cancelled]);
     teacher_round(&mut active, &fixture.stats);
     require_bands(&fixture.stats, before, &[2]);
-    assert_eq!(
-        fixture.stats.native_sampler.load(Ordering::Acquire),
-        sampler
-    );
-    assert_eq!(
-        fixture.stats.cancelled.load(Ordering::Acquire),
-        cancelled_before + 1
-    );
+    assert_eq!(fixture.stats.snapshot().native_sampler, sampler);
+    assert_eq!(fixture.stats.snapshot().cancelled, cancelled_before + 1);
     let parked = active
         .iter()
-        .find(|lane| lane.engine.binding().session().get() == decode_id)
+        .find(|lane| lane.state.session.binding().session().get() == decode_id)
         .unwrap();
-    assert_eq!(parked.engine.binding(), parked_root);
+    assert_eq!(parked.state.session.binding(), parked_root);
     assert!(parked.packet_presented && parked.blocked_since.is_some());
     references[&decode_id].snapshot(&parked_snapshot);
     for lane in &active {
-        let id = lane.engine.binding().session().get();
+        let id = lane.state.session.binding().session().get();
         if let Some(oracle) = prefix.get_mut(&id) {
             oracle.observe(lane);
         }
@@ -468,7 +390,7 @@ fn parked_decode_does_not_block_prefix(fixture: &Fixture) {
         }
         teacher_round(&mut active, &fixture.stats);
         for lane in &active {
-            let id = lane.engine.binding().session().get();
+            let id = lane.state.session.binding().session().get();
             if let Some(oracle) = prefix.get_mut(&id) {
                 oracle.observe(lane);
                 if lane.cursor == lane.prompt.len() {
@@ -499,16 +421,13 @@ fn qualify(name: &str, width: usize) {
     cancel_after_prefix_ready(&fixture);
     parked_decode_does_not_block_prefix(&fixture);
     assert_eq!(
-        fixture.stats.fused_batches.load(Ordering::Acquire),
-        fixture
-            .stats
-            .fused_state_only_batches
-            .load(Ordering::Acquire)
-            + fixture.stats.fused_greedy_batches.load(Ordering::Acquire)
+        fixture.stats.snapshot().fused_batches,
+        fixture.stats.snapshot().fused_state_only_batches
+            + fixture.stats.snapshot().fused_greedy_batches
     );
     assert_eq!(
-        fixture.stats.native_sampler.load(Ordering::Acquire),
-        4 * fixture.stats.fused_greedy_batches.load(Ordering::Acquire)
+        fixture.stats.snapshot().native_sampler,
+        4 * fixture.stats.snapshot().fused_greedy_batches
     );
     fixture.close();
 }

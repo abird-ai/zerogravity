@@ -5,7 +5,7 @@ use std::sync::{
 };
 use std::time::Instant;
 use zerogravity_engine::router::{GeneratedText, Presentation, ResponseEvent, event_channel::mpsc};
-static CHANNEL_TESTS: Mutex<()> = Mutex::new(());
+pub(crate) static CHANNEL_TESTS: Mutex<()> = Mutex::new(());
 fn fixture_tokenizer(byte_level: bool) -> QwenTokenizer {
     let decoder = if byte_level {
         serde_json::json!({"type":"ByteLevel", "add_prefix_space":false,
@@ -234,5 +234,46 @@ fn final_incomplete_utf8_keeps_original_replacement_flush_semantics() {
         Err(mpsc::TryRecvError::Empty)
     ));
     drop((output, receiver));
+    assert_eq!(host.snapshot().unwrap(), baseline);
+}
+
+#[test]
+fn owned_tokenizer_tuple_keeps_inventory_until_the_last_adapter_reader() {
+    let _serial = CHANNEL_TESTS.lock().unwrap();
+    let host = ServingHost::new(256).unwrap();
+    let baseline = host.snapshot().unwrap();
+    let observed = Arc::new(AtomicU64::new(u64::MAX));
+    let inventory = host
+        .admit(
+            "tuple-test",
+            "inventory",
+            AllocationClass::ImmutableWeights,
+            4096,
+        )
+        .unwrap();
+    let owner = ObservedTokenizer {
+        tokenizer: fixture_tokenizer(false),
+        host: host.clone(),
+        reserved_on_drop: observed.clone(),
+    };
+    let adapter = tokenizer_owner(
+        (owner, inventory),
+        |owner| &owner.0.tokenizer,
+        &host,
+        "tuple-test",
+    )
+    .unwrap();
+    let retained = host.snapshot().unwrap();
+    let last = adapter.clone();
+    drop(adapter);
+    assert_eq!(host.snapshot().unwrap(), retained);
+    assert_eq!(observed.load(Ordering::Acquire), u64::MAX);
+    assert_eq!(last.decode(&[2, 3], true).unwrap(), "AB");
+    drop(last);
+    assert_eq!(
+        observed.load(Ordering::Acquire),
+        retained.1,
+        "inventory and wrapper still cover the tokenizer's destruction"
+    );
     assert_eq!(host.snapshot().unwrap(), baseline);
 }

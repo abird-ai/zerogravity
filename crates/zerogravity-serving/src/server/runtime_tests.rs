@@ -8,7 +8,7 @@ use std::{
 };
 use zerogravity_core::identity::SourceIdentity;
 use zerogravity_engine::{
-    model_instance::{PreparedModel, TextSession, TextTokenizer},
+    model_instance::{LogitModel, PreparedModel, TextSession, TextTokenizer},
     router::{Request, ResponseEvent, Router},
 };
 
@@ -66,17 +66,20 @@ impl PreparedModel for RefusingModel {
     fn max_context(&self) -> usize {
         8
     }
-    fn max_session_bytes(&self) -> u64 {
-        16
-    }
-    fn session_scratch_bytes(&self) -> u64 {
-        16
-    }
+
     fn max_token_bytes(&self) -> usize {
         1
     }
     fn vocabulary_size(&self) -> u64 {
         2
+    }
+}
+impl LogitModel for RefusingModel {
+    fn max_session_bytes(&self) -> u64 {
+        16
+    }
+    fn session_scratch_bytes(&self) -> u64 {
+        16
     }
     fn new_session(self: Arc<Self>) -> Result<Box<dyn TextSession>> {
         self.gate.entered.store(true, Ordering::Release);
@@ -114,7 +117,7 @@ fn server_stop_preserves_callers_runtime_active_and_queued_sdk_tasks() {
     });
     let runtime = Runtime::builder().build().unwrap();
     let _release_on_unwind = Release(gate.clone());
-    let model: Arc<dyn PreparedModel> = Arc::new(RefusingModel {
+    let model: Arc<dyn LogitModel> = Arc::new(RefusingModel {
         source: SourceIdentity::for_new_allocation().unwrap(),
         gate: gate.clone(),
     });

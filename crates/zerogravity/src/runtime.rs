@@ -76,6 +76,35 @@ impl Runtime {
             )
         })
     }
+    /// Ordinary GGUF device text on the same engine Router/worker. Captured
+    /// finite routes remain explicit diagnostics, not ordinary SDK capability.
+    #[cfg(all(
+        feature = "text",
+        any(feature = "vulkan", feature = "cuda", feature = "hip")
+    ))]
+    pub fn load_gpu_text(
+        &self,
+        declared: Vec<(String, std::path::PathBuf)>,
+        backend: crate::devices::GpuBackend,
+        profile: crate::builtins::text::GpuProfile,
+    ) -> std::result::Result<(), text::ServiceError> {
+        self.engine.configure_text(|| {
+            let limits = self.engine.limits();
+            if profile
+                .workers
+                .checked_mul(profile.active)
+                .is_none_or(|n| n > limits.max_active)
+                || !limits.allows_pending(profile.max_pending)
+            {
+                return Err(text::ServiceError::new(
+                    400,
+                    "invalid_config",
+                    "text scheduler exceeds runtime limits",
+                ));
+            }
+            crate::builtins::text::load_gpu_router(declared, backend, profile)
+        })
+    }
     /// Direct bounded text events, with the original transport-compatible errors.
     pub fn request_text(
         &self,
@@ -105,7 +134,7 @@ impl From<Runtime> for zerogravity_engine::Runtime {
 }
 
 pub use zerogravity_engine::model_instance::{
-    ModelInstance, PreparedModel, TextSession, TextTokenizer,
+    LogitModel, ModelInstance, PreparedModel, TextSession, TextTokenizer,
 };
 pub use zerogravity_engine::router as text;
 pub use zerogravity_engine::scheduler::SchedulerLimits;

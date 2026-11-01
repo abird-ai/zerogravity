@@ -53,75 +53,7 @@ mod run_cli;
 #[cfg(feature = "serve")]
 mod serve;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum GpuBackend {
-    VulkanAmd,
-    VulkanNvidia,
-    Cuda,
-    Hip,
-}
-
-impl GpuBackend {
-    fn command(self) -> &'static str {
-        match self {
-            Self::VulkanAmd => "run-vulkan-amd",
-            Self::VulkanNvidia => "run-vulkan-nvidia",
-            Self::Cuda => "run-cuda",
-            Self::Hip => "run-rocm",
-        }
-    }
-
-    fn feature(self) -> &'static str {
-        match self {
-            Self::VulkanAmd | Self::VulkanNvidia => "vulkan",
-            Self::Cuda => "cuda",
-            Self::Hip => "hip",
-        }
-    }
-
-    fn compiled(self) -> bool {
-        match self {
-            Self::VulkanAmd | Self::VulkanNvidia => cfg!(feature = "vulkan"),
-            Self::Cuda => cfg!(feature = "cuda"),
-            Self::Hip => cfg!(feature = "hip"),
-        }
-    }
-
-    #[cfg(all(
-        feature = "model-qwen35",
-        feature = "text",
-        any(feature = "vulkan", feature = "cuda", feature = "hip")
-    ))]
-    fn device(self) -> Result<zerogravity::gpu::Device> {
-        use zerogravity::gpu::Device;
-        let device = match self {
-            #[cfg(feature = "vulkan")]
-            Self::VulkanAmd => Device::vulkan(zerogravity::gpu::WgpuDeviceKind::IntegratedGpu(0)),
-            #[cfg(feature = "vulkan")]
-            Self::VulkanNvidia => Device::vulkan(zerogravity::gpu::WgpuDeviceKind::DiscreteGpu(0)),
-            #[cfg(feature = "cuda")]
-            Self::Cuda => Device::cuda(0),
-            #[cfg(feature = "hip")]
-            Self::Hip => Device::rocm(0),
-            #[cfg(not(all(feature = "vulkan", feature = "cuda", feature = "hip")))]
-            _ => return Err(self.unavailable()),
-        };
-        device.map_err(|error| {
-            zerogravity::Error::Unsupported(format!(
-                "{} device unavailable: {error}",
-                self.command(),
-            ))
-        })
-    }
-
-    fn unavailable(self) -> zerogravity::Error {
-        zerogravity::Error::Unsupported(format!(
-            "{} requires compiled features {}, model-qwen35 and text",
-            self.command(),
-            self.feature(),
-        ))
-    }
-}
+use zerogravity::devices::GpuBackend;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 

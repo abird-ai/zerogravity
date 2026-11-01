@@ -4,7 +4,7 @@
 //! serving code, but the fixed-layout slots are allocated explicitly so the
 //! router can admit their real storage before publishing a request.
 
-use super::cpu::ServiceError;
+use super::dispatch::ServiceError;
 use super::pending::{ServingCharge, ServingHost, allocate_slots, checked_sum, slot_bytes};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};

@@ -86,17 +86,20 @@ impl PreparedModel for RefusingModel {
     fn max_context(&self) -> usize {
         16
     }
-    fn max_session_bytes(&self) -> u64 {
-        4096
-    }
-    fn session_scratch_bytes(&self) -> u64 {
-        1024
-    }
+
     fn max_token_bytes(&self) -> usize {
         1
     }
     fn vocabulary_size(&self) -> u64 {
         4
+    }
+}
+impl LogitModel for RefusingModel {
+    fn max_session_bytes(&self) -> u64 {
+        4096
+    }
+    fn session_scratch_bytes(&self) -> u64 {
+        1024
     }
     fn new_session(self: Arc<Self>) -> crate::Result<Box<dyn TextSession>> {
         let probe = self.worker.as_ref().expect("expected worker probe");
@@ -113,7 +116,7 @@ fn model_router(
     pending: Option<usize>,
 ) -> (Router, HostPool) {
     let host = HostPool::isolated(256).unwrap();
-    let model: Arc<dyn PreparedModel> = Arc::new(RefusingModel {
+    let model: Arc<dyn LogitModel> = Arc::new(RefusingModel {
         source: SourceIdentity::for_new_allocation().unwrap(),
         runtime: runtime.clone(),
         worker,

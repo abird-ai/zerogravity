@@ -3,6 +3,8 @@
 //! Discovery may inspect OS metadata and, with Linux CUDA enabled, initialize
 //! read-only CUDA/NVML metadata access. It creates no model, primary context,
 //! allocation, admission, listener or execution permit. Runtime builders stay cold.
+mod backend;
+pub use backend::GpuBackend;
 #[cfg(target_os = "linux")]
 mod dev;
 mod inventory;

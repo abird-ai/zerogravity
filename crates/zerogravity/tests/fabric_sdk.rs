@@ -52,13 +52,70 @@ fn semantic_api_is_the_original_program_type() {
     let _family_contract: Option<&dyn zerogravity::models::ModelDefinition> = None;
     let _assembly: Option<zerogravity::models::ModelAssembly> = None;
     for component in zerogravity::builtins::components() {
-        let expected = if cfg!(all(feature = "cpu", feature = "text", feature = "cache"))
-            && matches!(component.component, "cpu" | "qwen35")
+        let has_cpu = cfg!(all(feature = "cpu", feature = "text", feature = "cache"));
+        let has_gpu = cfg!(all(
+            feature = "text",
+            any(feature = "cuda", feature = "hip", feature = "vulkan")
+        ));
+        let expected = if (has_cpu && matches!(component.component, "cpu" | "qwen35"))
+            || (has_gpu
+                && component.compiled
+                && matches!(component.component, "cuda" | "hip" | "vulkan" | "qwen35"))
         {
-            zerogravity::diagnostics::MigrationStatus::CpuTextAdapter
+            zerogravity::diagnostics::MigrationStatus::TextAdapter
         } else {
             zerogravity::diagnostics::MigrationStatus::AwaitingAdapter
         };
         assert_eq!(component.fabric, expected);
     }
+}
+
+#[cfg(all(
+    feature = "text",
+    any(feature = "cuda", feature = "hip", feature = "vulkan")
+))]
+#[test]
+fn ordinary_gpu_sdk_obeys_runtime_limits_and_close_before_source_or_device_lookup() {
+    let runtime = Runtime::builder().build().unwrap();
+    let mut profile = zerogravity::builtins::text::GpuProfile {
+        workers: 1,
+        active: 2,
+        context: 512,
+        output: 1,
+        provider_mib: 256,
+        device_mib: 256,
+        native_rows: 0,
+        host_mib: 256,
+        max_pending: Some(1),
+    };
+    let request = || {
+        vec![(
+            "not-opened".into(),
+            std::path::PathBuf::from("/source-not-opened"),
+        )]
+    };
+    let error = runtime
+        .load_gpu_text(request(), zerogravity::devices::GpuBackend::Cuda, profile)
+        .unwrap_err();
+    assert_eq!(error.code, "invalid_config");
+    assert!(error.message.contains("runtime limits"));
+    profile.active = 1;
+    profile.max_pending = None;
+    assert_eq!(
+        runtime
+            .load_gpu_text(request(), zerogravity::devices::GpuBackend::Cuda, profile)
+            .unwrap_err()
+            .code,
+        "invalid_config"
+    );
+    assert_eq!(runtime.status().execution_adapters, 0);
+    runtime.shutdown().unwrap();
+    profile.max_pending = Some(1);
+    assert_eq!(
+        runtime
+            .load_gpu_text(request(), zerogravity::devices::GpuBackend::Cuda, profile)
+            .unwrap_err()
+            .code,
+        "runtime_closed"
+    );
 }

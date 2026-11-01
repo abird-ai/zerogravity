@@ -15,10 +15,18 @@ pub fn components() -> [BuiltinStatus; 6] {
     .map(|(component, compiled)| BuiltinStatus {
         component,
         compiled,
-        fabric: if cfg!(all(feature = "cpu", feature = "text", feature = "cache"))
-            && matches!(component, "cpu" | "qwen35")
-        {
-            MigrationStatus::CpuTextAdapter
+        fabric: if compiled
+            && cfg!(feature = "text")
+            && match component {
+                "cpu" => cfg!(feature = "cache"),
+                "cuda" | "hip" | "vulkan" => true,
+                "qwen35" => {
+                    cfg!(all(feature = "cpu", feature = "cache"))
+                        || cfg!(any(feature = "cuda", feature = "hip", feature = "vulkan"))
+                }
+                _ => false,
+            } {
+            MigrationStatus::TextAdapter
         } else {
             MigrationStatus::AwaitingAdapter
         },

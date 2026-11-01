@@ -4,15 +4,15 @@
 //! The GPU worker separately selects qualified native bands or original B1
 //! execution and reports actual Ready/dispatch/root receipts.
 
-use super::engine::ServiceError;
+use super::ServiceError;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Phase {
+pub enum Phase {
     Prefill,
     Decode,
 }
 #[derive(Clone, Copy, Debug)]
-pub(super) struct Ready {
+pub struct Ready {
     pub source: usize,
     pub phase: Phase,
     pub frontier: usize,
@@ -20,12 +20,12 @@ pub(super) struct Ready {
     pub scratch_bytes: usize,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Wave {
+pub struct Wave {
     pub indices: Vec<usize>,
     pub tokens: usize,
     pub scratch_bytes: usize,
 }
-pub(super) struct Limits {
+pub struct Limits {
     pub max_members: usize,
     pub max_tokens: usize,
     pub max_scratch: usize,
@@ -33,7 +33,7 @@ pub(super) struct Limits {
 
 /// Contiguous, unpadded native bands; B1 carries an unmatched survivor.
 /// Ceiling 1 is the final prelaunch capacity fallback.
-pub(super) fn native_bands(count: usize, ceiling: usize) -> Result<Vec<usize>, ServiceError> {
+pub fn native_bands(count: usize, ceiling: usize) -> Result<Vec<usize>, ServiceError> {
     if !matches!(ceiling, 1 | 2 | 4 | 8) {
         return Err(ServiceError::new(
             400,
@@ -51,7 +51,7 @@ pub(super) fn native_bands(count: usize, ceiling: usize) -> Result<Vec<usize>, S
 /// Use only the actual prepared provider's finite widths. In particular a
 /// qualified B4/B8 cohort does not imply B2; unmatched survivors stay B1.
 /// This plans membership only. A submitted/unknown error is never fallback.
-pub(super) fn qualified_bands(count: usize, widths: &[usize]) -> Result<Vec<usize>, ServiceError> {
+pub fn qualified_bands(count: usize, widths: &[usize]) -> Result<Vec<usize>, ServiceError> {
     if count > 64
         || widths.is_empty()
         || widths.len() > 4
@@ -77,12 +77,8 @@ pub(super) fn qualified_bands(count: usize, widths: &[usize]) -> Result<Vec<usiz
 }
 
 /// BF16/HF source bands never inherit the GGUF B2 qualification.
-#[cfg(all(
-    feature = "qwen35-cuda-serving",
-    feature = "qwen35-cuda-qualification",
-    target_os = "linux"
-))]
-pub(super) fn bf16_bands(count: usize, ceiling: usize) -> Result<Vec<usize>, ServiceError> {
+#[cfg(test)]
+pub fn bf16_bands(count: usize, ceiling: usize) -> Result<Vec<usize>, ServiceError> {
     if count > 64 || !matches!(ceiling, 1 | 4 | 8) {
         return Err(ServiceError::new(
             400,
@@ -105,14 +101,14 @@ pub(super) fn bf16_bands(count: usize, ceiling: usize) -> Result<Vec<usize>, Ser
 /// Every caller's ready work is included exactly once, using first-seen
 /// source/phase/frontier grouping and finite quota-split waves. No sorting
 /// across requests or silent dropping of a queue tail.
-pub(super) fn form(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, ServiceError> {
+pub fn form(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, ServiceError> {
     form_with_frontiers(slots, bounds, false, false, 32)
 }
 
 /// Atomic source prefill consumes its actual whole quantum; quotas never split
 /// a member or turn wave membership into native/completion authority.
 /// Caller already validated each source's prompt and execution route.
-pub(super) fn form_with_prefill_quantum(
+pub fn form_with_prefill_quantum(
     slots: &[Ready],
     bounds: Limits,
     prefill_quantum: usize,
@@ -138,7 +134,7 @@ pub(super) fn form_with_prefill_quantum(
 
 /// Whole original prompts retain their atomic quantum; cached requests keep
 /// individual frontiers in their row bindings while sharing a fair wave.
-pub(super) fn form_cached_with_prefill_quantum(
+pub fn form_cached_with_prefill_quantum(
     slots: &[Ready],
     bounds: Limits,
     prefill_quantum: usize,
@@ -158,13 +154,13 @@ pub(super) fn form_cached_with_prefill_quantum(
 
 /// Native decode binds every row's own causal position on the GPU. Prefill
 /// grouping remains exact-frontier until its separate input path is qualified.
-pub(super) fn form_decode(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, ServiceError> {
+pub fn form_decode(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, ServiceError> {
     form_with_frontiers(slots, bounds, true, false, 32)
 }
 
 /// Every native row consumes exactly one teacher/device token at its own
 /// committed frontier. Prompt readout barriers are partitioned by the owner.
-pub(super) fn form_native(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, ServiceError> {
+pub fn form_native(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, ServiceError> {
     if slots.iter().all(|row| row.phase == Phase::Decode) {
         form_decode(slots, bounds)
     } else {
@@ -172,7 +168,7 @@ pub(super) fn form_native(slots: &[Ready], bounds: Limits) -> Result<Vec<Wave>, 
     }
 }
 
-fn form_with_frontiers(
+pub(crate) fn form_with_frontiers(
     slots: &[Ready],
     bounds: Limits,
     unequal_decode: bool,

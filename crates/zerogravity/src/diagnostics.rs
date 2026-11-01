@@ -3,8 +3,8 @@ pub use zerogravity_engine::diagnostics::RuntimeStatus;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MigrationStatus {
     AwaitingAdapter,
-    /// Local CPU text wiring compiled; actual source/profile guards still apply.
-    CpuTextAdapter,
+    /// Shared text wiring compiled; source guards and physical qualification are separate.
+    TextAdapter,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BuiltinStatus {
@@ -12,3 +12,6 @@ pub struct BuiltinStatus {
     pub compiled: bool,
     pub fabric: MigrationStatus,
 }
+
+#[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
+pub mod text_gpu;
