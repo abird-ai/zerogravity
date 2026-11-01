@@ -15,7 +15,6 @@ pub mod physical;
 pub mod pipeline;
 pub mod placement;
 pub mod provider;
-pub mod quant;
 pub mod resource_arbiter;
 pub mod semantic;
 pub mod session_root;

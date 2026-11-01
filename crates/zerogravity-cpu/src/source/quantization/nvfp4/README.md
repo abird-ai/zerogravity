@@ -10,5 +10,5 @@ No NVFP4 source operator is implemented. No source variant is recognized.
 - [ ] Compare independent operator outputs and rejection cases, then qualify
   applicable model/state/ownership behavior under the shared correctness policy.
 
-Source layout: [NVFP4 codec](../../../../../zerogravity-artifacts/src/quant/nvfp4/README.md).
+Source layout: [NVFP4 codec](../../../../../zerogravity-artifacts/src/codecs/quant/nvfp4/README.md).
 Required acceptance: [format matrix and qualification](../../../../../../.agents/plans/pipeline-composition/FORMATS.md).

@@ -10,7 +10,8 @@ use zerogravity_artifacts::source_weights::{
     ParameterWindow, TensorWindow, VerifiedTensorSource, WindowWorkspace,
 };
 use zerogravity_core::{
-    Error, Result, accelerator::program::MatrixAxes, device_events::BufferRole, quant::QuantKind,
+    Error, Result, accelerator::program::MatrixAxes, device_events::BufferRole,
+    encoding::StoredTensorEncoding,
 };
 
 const WINDOW_BYTES: usize = 1024 * 1024;
@@ -68,7 +69,8 @@ impl AttentionWeights {
                 not_cancelled(cancelled)?;
                 let name = format!("model.language_model.layers.3.self_attn.{suffix}");
                 let matrix = source.matrix(&name, MatrixAxes::OutputInput)?;
-                if matrix.tensor().kind != QuantKind::Bf16
+                if matrix.tensor().kind
+                    != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
                     || matrix.rows() != rows
                     || matrix.columns() != columns
                 {
@@ -107,7 +109,8 @@ impl AttentionWeights {
             not_cancelled(cancelled)?;
             let name = format!("model.language_model.layers.3.self_attn.{suffix}");
             let parameter = source.parameter(&name)?;
-            if parameter.tensor().kind != QuantKind::Bf16
+            if parameter.tensor().kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
                 || parameter.tensor().shape != [256]
                 || parameter.elements() != 256
             {

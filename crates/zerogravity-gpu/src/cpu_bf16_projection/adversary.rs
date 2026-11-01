@@ -355,7 +355,10 @@ async fn probe(
     let ram = source.reserve_workspace(RAM)?; // BEFORE recipes, CPU arrays or copies.
     let (full, inputs) = kind.fixture(columns)?;
     let desc = descriptor(source, &kind.source_name(columns))?;
-    if desc.rows != SYNTHETIC_ROWS || desc.columns != columns || desc.kind != QuantKind::Bf16 {
+    if desc.rows != SYNTHETIC_ROWS
+        || desc.columns != columns
+        || desc.kind != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+    {
         return Err(malformed("synthetic full original descriptor differs"));
     }
     let matrix = source.matrix(&desc.name, MatrixAxes::OutputInput)?;

@@ -24,7 +24,7 @@ fn members(call: &QwenGdnCall, kind: GdnProjection) -> Vec<SourceTensor> {
                 "model.language_model.layers.{}.{suffix}",
                 call.layer.index()
             ),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             axes: MatrixAxes::OutputInput,
             columns: kind.input_width(),
             rows,
@@ -39,7 +39,7 @@ fn embedding(call: &QwenGdnCall) -> QwenEmbedding {
         SourceTensor {
             source: call.layer.source(),
             name: "model.language_model.embed_tokens.weight".into(),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             axes: MatrixAxes::OutputInput,
             columns: 1024,
             rows: 248320,
@@ -96,7 +96,11 @@ fn exact_projection_roles_keep_original_order_axes_widths_and_layers() {
                     match fault {
                         0 => wrong[0].source = SourceIdentity::for_new_allocation().unwrap(),
                         1 => wrong[0].axes = MatrixAxes::InputOutput,
-                        2 => wrong[0].kind = QuantKind::F32,
+                        2 => {
+                            wrong[0].kind = StoredTensorEncoding::Scalar(
+                                zerogravity_core::encoding::ScalarDType::F32,
+                            )
+                        }
                         3 => wrong[0].rows += 1,
                         4 => wrong[0].columns += 1,
                         _ => {
@@ -180,7 +184,7 @@ impl TensorSource for OriginalBa {
             _ => return Err(Error::State("unknown synthetic original Ba role".into())),
         };
         Ok(SourceTensorRef {
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             shape: &[16, 1024],
             packed_bytes: raw,
         })
@@ -230,7 +234,7 @@ fn same_plan_embedding_dual_rms_projection_activation_preserve_real_teacher_tag(
             let gamma = SourceParameter {
                 source,
                 name: binding.gamma_name(),
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 shape: vec![1024],
                 bytes: 2048,
             };
@@ -359,7 +363,7 @@ fn same_builder_wrong_teacher_or_phase_foreign_plan_and_generic_pack_refuse_with
         let gamma = SourceParameter {
             source,
             name: "model.language_model.layers.0.post_attention_layernorm.weight".into(),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             shape: vec![1024],
             bytes: 2048,
         };

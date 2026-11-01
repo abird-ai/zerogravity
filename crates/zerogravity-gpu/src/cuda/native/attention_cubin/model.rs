@@ -61,7 +61,10 @@ impl ModelAttentionParameters {
             let parameter = source.parameter(&descriptor.name)?;
             parameter.validate_source_parameter(descriptor)?;
             if descriptor.bytes != 512
-                || descriptor.kind != zerogravity_core::quant::QuantKind::Bf16
+                || descriptor.kind
+                    != zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                        zerogravity_core::encoding::ScalarDType::Bf16,
+                    )
                 || descriptor.shape.as_slice() != [256]
             {
                 return Err(Error::State("exact original attention gamma256".into()));
@@ -112,7 +115,10 @@ impl ModelAttentionParameters {
             || operator.call().rows().capacity() != 512
             || operator.call().rows().vocabulary() != 248320
             || operator.parameters().iter().any(|p| {
-                p.kind != zerogravity_core::quant::QuantKind::Bf16
+                p.kind
+                    != zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                        zerogravity_core::encoding::ScalarDType::Bf16,
+                    )
                     || p.shape.as_slice() != [256]
                     || p.bytes != 512
             })
@@ -556,7 +562,9 @@ mod source_operator_tests {
             .map(|name| SourceParameter {
                 source,
                 name: name.into(),
-                kind: zerogravity_core::quant::QuantKind::Bf16,
+                kind: zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                    zerogravity_core::encoding::ScalarDType::Bf16,
+                ),
                 shape: vec![256],
                 bytes: 512,
             })

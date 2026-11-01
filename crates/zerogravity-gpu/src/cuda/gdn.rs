@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use zerogravity_artifacts::source_weights::ParameterWindow;
 use zerogravity_core::accelerator::program::{SourceCall, SourceCallMode};
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::{Error, Result};
 
 mod arithmetic;
@@ -47,8 +47,10 @@ pub(crate) fn loaded_gamma(window: &ParameterWindow) -> Result<Vec<u8>> {
         return Err(Error::Malformed("complete original GDN gamma128".into()));
     }
     let values = match window.parameter().tensor().kind {
-        QuantKind::Bf16 => window.as_slice().to_vec(),
-        QuantKind::F32 => {
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16) => {
+            window.as_slice().to_vec()
+        }
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) => {
             let mut out = Vec::with_capacity(256);
             for raw in window.as_slice().chunks_exact(4) {
                 let bits = u32::from_le_bytes(raw.try_into().unwrap());
@@ -642,7 +644,7 @@ pub use fixed_prompt_component::{FixedPromptGdnArithmetic, FixedPromptGdnInterme
 mod text;
 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
 pub(crate) use text::GdnRuntimePartition;
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, feature = "cuda-cublas", target_os = "linux"))]
 pub(crate) use text::qualify_zero_runtime_on_nvidia;
 pub use text::{
     GdnKernelConfig, GdnKktKernel, GdnOutputKernel, GdnRecomputeKernel, GdnRuntimeAccess,

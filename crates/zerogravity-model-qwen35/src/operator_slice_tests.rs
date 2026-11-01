@@ -434,7 +434,7 @@ fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unawar
         MathematicalBackend, OrdinaryRmsContract, ProjectionContract, TensorView,
     };
     use crate::source::binding::QwenParameterRole;
-    use zerogravity_core::quant::QuantKind;
+    use zerogravity_core::encoding::StoredTensorEncoding;
     let fixture = Fixture::new();
     let (first, _, _) = bind(source_with_geometry(&fixture, true, 256, 512, true, |_| {}));
     let second_fixture = Fixture::new();
@@ -470,7 +470,7 @@ fn typed_host_ordinary_rms_revalidates_real_source_and_refuses_foreign_or_unawar
             ..parameter.clone()
         },
         crate::accelerator::program::SourceParameter {
-            kind: QuantKind::F32,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
             bytes: 1024,
             ..parameter.clone()
         },

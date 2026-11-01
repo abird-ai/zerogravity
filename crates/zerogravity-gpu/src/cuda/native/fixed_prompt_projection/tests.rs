@@ -5,7 +5,7 @@ use zerogravity_core::accelerator::program::{
     MatrixAxes, SourceCall, SourceNumericalContract, SourceOperator, SourceOperatorKind,
     SourceRows, SourceTensor, TextCallGeometry,
 };
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 fn call(source: SourceIdentity) -> SourceCall {
     SourceCall::new(
         SourceRows::new(
@@ -32,7 +32,7 @@ fn operator(call: &SourceCall, role: Role) -> SourceOperator {
             .map(|(index, rows)| SourceTensor {
                 source: call.source(),
                 name: format!("member{index}"),
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 axes: MatrixAxes::OutputInput,
                 rows,
                 columns: 1024,

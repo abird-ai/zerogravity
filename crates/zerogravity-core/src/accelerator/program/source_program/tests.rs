@@ -20,7 +20,7 @@ fn embedding(call: &SourceCall) -> SourceOperator {
         vec![SourceTensor {
             source: call.source(),
             name: "actual.embedding".into(),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
             axes: MatrixAxes::OutputInput,
             columns: 16,
             rows: 17,
@@ -40,7 +40,7 @@ fn projection(call: &SourceCall, selected_row: Option<usize>) -> SourceOperator 
             .map(|(index, rows)| SourceTensor {
                 source: call.source(),
                 name: format!("actual.member{index}"),
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
                 axes: MatrixAxes::OutputInput,
                 columns: 16,
                 rows,
@@ -105,7 +105,7 @@ fn ordered_projection_segments_and_selected_rows_are_explicit_checked_math() {
         match fault {
             0 => matrices[1].source = SourceIdentity::for_new_allocation().unwrap(),
             1 => matrices[1].axes = MatrixAxes::InputOutput,
-            2 => matrices[1].kind = QuantKind::F16,
+            2 => matrices[1].kind = StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F16),
             _ => matrices[1].columns = 32,
         }
         assert!(
@@ -186,7 +186,7 @@ fn call_free_plan_binds_dynamic_rows_without_node_or_id_capture() {
     let matrix = SourceTensor {
         source,
         name: "actual.embedding".into(),
-        kind: QuantKind::Bf16,
+        kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
         axes: MatrixAxes::OutputInput,
         columns: 16,
         rows: 17,

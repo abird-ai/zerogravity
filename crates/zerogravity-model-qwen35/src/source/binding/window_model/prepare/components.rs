@@ -692,7 +692,7 @@ fn require_ordinary_source(
     model: &OriginalWindowModelSource,
     kind: ModelComponentKind,
 ) -> Result<()> {
-    use zerogravity_core::quant::QuantKind;
+    use zerogravity_core::encoding::StoredTensorEncoding;
     let hidden = kind.columns();
     match kind {
         ModelComponentKind::Qwen2b => {
@@ -743,7 +743,9 @@ fn require_ordinary_source(
     }
     let embedding = model.matrix_descriptor(M::Embedding)?;
     model.validate_matrix(M::Embedding, &embedding)?;
-    if embedding.kind != QuantKind::Bf16 || embedding.rows != 248320 || embedding.columns != hidden
+    if embedding.kind != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+        || embedding.rows != 248320
+        || embedding.columns != hidden
     {
         return Err(Error::Unsupported(
             "component original BF16 embedding geometry".into(),
@@ -752,7 +754,10 @@ fn require_ordinary_source(
     for role in [P::InputNorm(0), P::FinalNorm] {
         let p = model.parameter_descriptor(role)?;
         model.validate_parameter(role, &p)?;
-        if p.kind != QuantKind::Bf16 || p.shape != [hidden as u64] || p.bytes != hidden * 2 {
+        if p.kind != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+            || p.shape != [hidden as u64]
+            || p.bytes != hidden * 2
+        {
             return Err(Error::Unsupported(
                 "component original raw gamma role/shape".into(),
             ));

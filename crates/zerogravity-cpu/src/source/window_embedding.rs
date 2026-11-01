@@ -4,10 +4,11 @@ use crate::accelerator::{
     MatVecKernel,
     program::{MatrixAxes, SourceTensor},
 };
-use crate::quant::{QuantKind, dequantize};
+use crate::codecs::dequantize;
 use crate::{Error, Result};
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_artifacts::source_weights::TensorWindow;
+use zerogravity_core::encoding::StoredTensorEncoding;
 
 pub fn embedding_bf16_window(
     expected: &SourceTensor,
@@ -52,8 +53,9 @@ pub fn embedding_bf16_window(
         || expected.source != matrix.source_identity()
         || expected.name.is_empty()
         || expected.name != raw.name
-        || expected.kind != QuantKind::Bf16
-        || raw.kind != QuantKind::Bf16
+        || expected.kind
+            != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+        || raw.kind != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
         || expected.axes != MatrixAxes::OutputInput
         || matrix.axes() != MatrixAxes::OutputInput
         || expected.rows != matrix.rows()
@@ -71,7 +73,11 @@ pub fn embedding_bf16_window(
             "original embedding full descriptor/row window disagreement".into(),
         ));
     }
-    let values = dequantize(QuantKind::Bf16, window.as_slice(), expected.columns)?;
+    let values = dequantize(
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+        window.as_slice(),
+        expected.columns,
+    )?;
     if values
         .iter()
         .any(|value| !value.is_finite() || value.to_bits() & 0xffff != 0)

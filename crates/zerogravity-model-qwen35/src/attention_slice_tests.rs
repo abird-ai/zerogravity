@@ -118,7 +118,12 @@ fn explicit_attention_input_uses_exact_rows_raw_norms_and_no_session() {
     let query_norm = model
         .parameter_descriptor(QwenParameterRole::QueryNorm(3))
         .unwrap();
-    assert_eq!(query_norm.kind, zerogravity_core::quant::QuantKind::F32);
+    assert_eq!(
+        query_norm.kind,
+        zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+            zerogravity_core::encoding::ScalarDType::F32
+        )
+    );
     assert!(
         model
             .tensor_bytes(&query_norm.name)

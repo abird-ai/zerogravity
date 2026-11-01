@@ -6,8 +6,8 @@ pub mod chunk;
 use super::{conv, norm, recurrent, reduction, transcendentals};
 use crate::{Error, Result};
 use zerogravity_core::{
-    accelerator::SourceIdentity, accelerator::program::TorchCpuGdnPhase, quant::QuantKind,
-    source::SourceTensorRef,
+    accelerator::SourceIdentity, accelerator::program::TorchCpuGdnPhase,
+    encoding::StoredTensorEncoding, source::SourceTensorRef,
 };
 
 pub struct GdnParameters<'a> {
@@ -75,13 +75,19 @@ fn round(v: f32) -> Result<f32> {
 }
 fn parameter(t: SourceTensorRef<'_>, elements: usize) -> Result<Vec<f32>> {
     t.validate()?;
-    if t.shape != [elements as u64] || !matches!(t.kind, QuantKind::Bf16 | QuantKind::F32) {
+    if t.shape != [elements as u64]
+        || !matches!(
+            t.kind,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+                | StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+        )
+    {
         return Err(Error::Malformed(
             "diagnostic GDN actual parameter shape/dtype".into(),
         ));
     }
     let values = match t.kind {
-        QuantKind::Bf16 => t
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16) => t
             .packed_bytes
             .chunks_exact(2)
             .map(|w| f32::from_bits(u32::from(u16::from_le_bytes(w.try_into().unwrap())) << 16))
@@ -302,7 +308,7 @@ pub fn step_observed_with_exp_profile(
     let normalized = norm::head_rms_128(
         input.source,
         SourceTensorRef {
-            kind: QuantKind::F32,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
             shape: &[128],
             packed_bytes: &bytes,
         },
@@ -313,7 +319,9 @@ pub fn step_observed_with_exp_profile(
     let gated = recurrent::collect_exact_output(
         vh * 128,
         normalized.weighted_fp32().iter().zip(gate).map(|(x, g)| {
-            let x = if p.norm.kind == QuantKind::Bf16 {
+            let x = if p.norm.kind
+                == StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+            {
                 round(*x)?
             } else {
                 *x

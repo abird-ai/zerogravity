@@ -258,7 +258,8 @@ fn validate_window(
         || !Arc::ptr_eq(window, &owner._windows[0])
         || matrix.source_identity() != source.source_identity()
         || matrix.tensor().name != "model.language_model.layers.0.mlp.down_proj.weight"
-        || matrix.tensor().kind != QuantKind::Bf16
+        || matrix.tensor().kind
+            != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
         || matrix.axes() != MatrixAxes::OutputInput
         || matrix.rows() != 1024
         || matrix.columns() != 3584

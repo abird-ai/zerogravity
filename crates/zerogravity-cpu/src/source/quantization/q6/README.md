@@ -13,5 +13,5 @@ and eight-lane F32 reduction. Other six-bit variants remain unrecognized.
   results if moving the existing arithmetic into this family directory.
 - [ ] Qualify complete models separately; no bit-width-wide support claim.
 
-Source layout: [Q6 codec](../../../../../zerogravity-artifacts/src/quant/q6/README.md).
+Source layout: [Q6 codec](../../../../../zerogravity-artifacts/src/codecs/quant/q6/README.md).
 Required acceptance: [format matrix and qualification](../../../../../../.agents/plans/pipeline-composition/FORMATS.md).

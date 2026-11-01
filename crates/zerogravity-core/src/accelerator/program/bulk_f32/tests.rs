@@ -136,7 +136,7 @@ fn same_builder_three_nodes_stay_pure_and_legacy_use_or_foreign_values_refuse() 
 
 struct Original {
     identity: SourceIdentity,
-    kind: QuantKind,
+    kind: StoredTensorEncoding,
     shape: [u64; 2],
     bytes: Vec<u8>,
 }
@@ -159,7 +159,7 @@ impl TensorSource for Original {
 fn whole_raw_source_matrix_keeps_axes_dtype_extent_and_exact_issuer() {
     let original = Original {
         identity: SourceIdentity::for_new_allocation().unwrap(),
-        kind: QuantKind::F32,
+        kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
         shape: [8, 4],
         bytes: vec![0; 128],
     };
@@ -178,14 +178,14 @@ fn whole_raw_source_matrix_keeps_axes_dtype_extent_and_exact_issuer() {
     assert!(BulkF32Operand::source_matrix(span.clone(), &foreign, "original.weight").is_err());
     let bf16 = Original {
         identity: span.source(),
-        kind: QuantKind::Bf16,
+        kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
         shape: [8, 4],
         bytes: vec![0; 64],
     };
     assert!(BulkF32Operand::source_matrix(span.clone(), &bf16, "original.weight").is_err());
     let short = Original {
         identity: span.source(),
-        kind: QuantKind::F32,
+        kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
         shape: [8, 4],
         bytes: vec![0; 124],
     };

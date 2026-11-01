@@ -25,7 +25,7 @@ fn embedding(call: &QwenSourceCall) -> QwenEmbedding {
         SourceTensor {
             source: call.source(),
             name: "model.language_model.embed_tokens.weight".into(),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             axes: MatrixAxes::OutputInput,
             rows: 248_320,
             columns: 1024,
@@ -43,7 +43,7 @@ fn rms(call: &QwenSourceCall) -> QwenOperator {
         vec![SourceParameter {
             source: call.source(),
             name: "model.language_model.layers.0.input_layernorm.weight".into(),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             shape: vec![1024],
             bytes: 2048,
         }],

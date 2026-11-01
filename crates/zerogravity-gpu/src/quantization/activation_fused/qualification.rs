@@ -303,11 +303,16 @@ fn launch_composites(
 
 async fn compare_case(
     service: &Arc<ResidentService>,
-    kind: QuantKind,
+    kind: StoredTensorEncoding,
     batch: usize,
     case: &str,
 ) -> Result<usize> {
-    let width = if kind == QuantKind::Q6K { 256 } else { 32 };
+    let width =
+        if kind == StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K) {
+            256
+        } else {
+            32
+        };
     let blocks = match case {
         "irregular_blocks" => 33,
         "single_block" => 1,
@@ -532,7 +537,7 @@ fn cuda_all_codecs_b1_b2_b4_b8_exact_original_preparation() {
         let key = service.physical_key();
         let mut words = 0usize;
         let mut cases = 0usize;
-        for kind in [QuantKind::Q4_0, QuantKind::Q4_1, QuantKind::Q8_0, QuantKind::Q6K] {
+        for kind in [StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0), StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1), StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0), StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)] {
             for batch in [1, 2, 4, 8] {
                 for case in CASES {
                     words += compare_case(&service, kind, batch, case).await?;

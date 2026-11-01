@@ -213,7 +213,12 @@ fn original_binding_retains_actual_source_pointer_dtype_axes_geometry_and_last_l
     let qkv = model.matrix_descriptor(QwenMatrixRole::GdnQkv(0)).unwrap();
     assert_eq!(
         (qkv.columns, qkv.rows, qkv.axes, qkv.kind),
-        (4, 8, MatrixAxes::OutputInput, QuantKind::Bf16)
+        (
+            4,
+            8,
+            MatrixAxes::OutputInput,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+        )
     );
     assert_eq!(qkv.name, name);
     qkv.validate_source(model.as_ref()).unwrap();
@@ -223,14 +228,19 @@ fn original_binding_retains_actual_source_pointer_dtype_axes_geometry_and_last_l
         .unwrap();
     assert_eq!(
         (gamma.source, gamma.kind, gamma.shape, gamma.bytes),
-        (id, QuantKind::F32, vec![2], 8)
+        (
+            id,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+            vec![2],
+            8
+        )
     );
     assert_eq!(
         model
             .parameter_descriptor(QwenParameterRole::GdnDt(0))
             .unwrap()
             .kind,
-        QuantKind::F16
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F16)
     );
     assert_eq!(
         model
@@ -412,25 +422,25 @@ fn parameter_source_borrows_exact_role_dtype_shape_and_payload_without_learned_c
         (
             QwenParameterRole::GdnNorm(0),
             "model.language_model.layers.0.linear_attn.norm.weight",
-            QuantKind::F32,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
             vec![2],
         ),
         (
             QwenParameterRole::GdnA(0),
             "model.language_model.layers.0.linear_attn.A_log",
-            QuantKind::F32,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
             vec![2],
         ),
         (
             QwenParameterRole::GdnDt(0),
             "model.language_model.layers.0.linear_attn.dt_bias",
-            QuantKind::F16,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F16),
             vec![2],
         ),
         (
             QwenParameterRole::GdnConvolution(0),
             "model.language_model.layers.0.linear_attn.conv1d.weight",
-            QuantKind::Bf16,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             vec![8, 1, 4],
         ),
     ] {
@@ -488,7 +498,10 @@ fn parameter_descriptor_rejects_foreign_source_and_changed_raw_metadata() {
         match mutation {
             0 => changed.source = zerogravity_core::accelerator::SourceIdentity::unbound(),
             1 => changed.name = "model.language_model.layers.0.input_layernorm.weight".into(),
-            2 => changed.kind = QuantKind::F16,
+            2 => {
+                changed.kind =
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F16)
+            }
             3 => changed.shape = vec![1, 2],
             4 => changed.bytes -= 1,
             _ => unreachable!(),
@@ -498,7 +511,10 @@ fn parameter_descriptor_rejects_foreign_source_and_changed_raw_metadata() {
     let raw = model
         .parameter_source(QwenParameterRole::GdnNorm(0))
         .unwrap();
-    assert_eq!(raw.kind, QuantKind::F32);
+    assert_eq!(
+        raw.kind,
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+    );
     assert_eq!(raw.shape, &[2]);
     assert_eq!(raw.packed_bytes, &[0, 0, 128, 62, 0, 0, 128, 62]);
     drop((model, foreign));

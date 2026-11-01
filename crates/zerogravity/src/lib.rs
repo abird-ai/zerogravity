@@ -10,7 +10,7 @@
 pub use zerogravity_artifacts::acquisition;
 #[cfg(all(feature = "cache", target_os = "linux"))]
 pub use zerogravity_artifacts::cache;
-pub use zerogravity_artifacts::{artifact, json_allocation, quant, sharded};
+pub use zerogravity_artifacts::{artifact, codecs, json_allocation, sharded};
 pub mod artifacts;
 pub mod builtins;
 pub mod devices;

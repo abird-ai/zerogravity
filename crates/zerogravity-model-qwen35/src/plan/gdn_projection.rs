@@ -282,7 +282,8 @@ impl QwenGdnProjection {
                     "reference CUDA exact ordered original source roles".into(),
                 ));
             }
-            if member.kind != QuantKind::Bf16
+            if member.kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
                 || member.axes != MatrixAxes::OutputInput
                 || member.columns != self.kind.input_width()
                 || member.rows != rows

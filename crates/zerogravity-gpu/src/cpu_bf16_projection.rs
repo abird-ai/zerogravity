@@ -28,7 +28,7 @@ use std::ops::Range;
 use std::sync::Arc;
 use zerogravity_artifacts::source_weights::{TensorWindow, VerifiedTensorSource, WindowWorkspace};
 use zerogravity_core::accelerator::program::{MatrixAxes, ProgramNumericalProfile, SourceTensor};
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::{Error, Result};
 
 pub(crate) mod adversary;
@@ -125,8 +125,10 @@ impl Bf16Window {
             || descriptor.source != matrix.source_identity()
             || descriptor.name != raw.name
             || descriptor.name.is_empty()
-            || descriptor.kind != QuantKind::Bf16
-            || raw.kind != QuantKind::Bf16
+            || descriptor.kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+            || raw.kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
             || descriptor.axes != MatrixAxes::OutputInput
             || matrix.axes() != MatrixAxes::OutputInput
             || raw.shape.as_slice() != [descriptor.rows as u64, descriptor.columns as u64]

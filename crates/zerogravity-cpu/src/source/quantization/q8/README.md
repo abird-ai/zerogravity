@@ -15,5 +15,5 @@ replacement for arbitrary Q8_0 GEMV.
   results if moving the existing arithmetic into this family directory.
 - [ ] Qualify complete models separately; no bit-width-wide support claim.
 
-Source layout: [Q8 codec](../../../../../zerogravity-artifacts/src/quant/q8/README.md).
+Source layout: [Q8 codec](../../../../../zerogravity-artifacts/src/codecs/quant/q8/README.md).
 Required acceptance: [format matrix and qualification](../../../../../../.agents/plans/pipeline-composition/FORMATS.md).

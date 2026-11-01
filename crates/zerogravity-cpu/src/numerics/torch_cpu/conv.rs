@@ -5,8 +5,8 @@
 //! This qualifies neither general GEMM nor CUDA/FLA/full-model execution.
 
 use crate::accelerator::SourceIdentity;
-use crate::quant::QuantKind;
 use crate::{Error, Result};
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::source::SourceTensorRef;
 
 const TAPS: usize = 4;
@@ -39,7 +39,9 @@ fn validate(input: &CausalConv4Inputs<'_>) -> Result<usize> {
             "pinned BF16 convolution source binding".into(),
         ));
     }
-    if input.weight.kind != QuantKind::Bf16 {
+    if input.weight.kind
+        != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+    {
         return Err(Error::Unsupported(
             "pinned BF16 convolution requires BF16 source weights".into(),
         ));
@@ -167,7 +169,7 @@ mod tests {
             source: source(),
             tensor_name: NAME,
             weight: SourceTensorRef {
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 shape: &[u64::try_from(cases.len()).unwrap(), 1, 4],
                 packed_bytes: &weights,
             },
@@ -254,7 +256,7 @@ mod tests {
             source: source(),
             tensor_name: NAME,
             weight: SourceTensorRef {
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 shape: &[2, 1, 4],
                 packed_bytes: &weight,
             },
@@ -277,7 +279,7 @@ mod tests {
             source: source(),
             tensor_name: NAME,
             weight: SourceTensorRef {
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 shape: &[1, 1, 4],
                 packed_bytes: &packed,
             },
@@ -313,7 +315,9 @@ mod tests {
         assert!(matches!(
             causal_step_bf16_4(CausalConv4Inputs {
                 weight: SourceTensorRef {
-                    kind: QuantKind::F16,
+                    kind: StoredTensorEncoding::Scalar(
+                        zerogravity_core::encoding::ScalarDType::F16
+                    ),
                     ..input.weight
                 },
                 ..input
@@ -389,7 +393,9 @@ mod tests {
                     source: source(),
                     tensor_name: NAME,
                     weight: SourceTensorRef {
-                        kind: QuantKind::Bf16,
+                        kind: StoredTensorEncoding::Scalar(
+                            zerogravity_core::encoding::ScalarDType::Bf16
+                        ),
                         shape: &[1, 1, 4],
                         packed_bytes: &packed
                     },

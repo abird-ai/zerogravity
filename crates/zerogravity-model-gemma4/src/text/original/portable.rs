@@ -89,11 +89,13 @@ fn require_geometry(model: &OriginalGemma4Text) -> Result<()> {
         || g.layers.len() != 35
         || g.ple != 256
         || g.moe.is_some()
-        || model.matrices.values().any(|m| m.kind != QuantKind::Bf16)
-        || model
-            .parameters
-            .values()
-            .any(|p| p.descriptor.kind != QuantKind::Bf16)
+        || model.matrices.values().any(|m| {
+            m.kind != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+        })
+        || model.parameters.values().any(|p| {
+            p.descriptor.kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+        })
     {
         return Err(Error::Unsupported(
             "Gemma BF16 text complete authentic E2B geometry".into(),
@@ -294,7 +296,8 @@ impl Gemma4SourceTiles {
     fn new(source: VerifiedTensorSource, matrix: VerifiedMatrix) -> Result<Self> {
         let layout = rows::Rows::new(matrix.rows(), matrix.columns())?;
         if source.source_identity() != matrix.source_identity()
-            || matrix.tensor().kind != QuantKind::Bf16
+            || matrix.tensor().kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
             || matrix.axes() != MatrixAxes::OutputInput
             || matrix.tensor().byte_len != layout.bytes() as u64
         {

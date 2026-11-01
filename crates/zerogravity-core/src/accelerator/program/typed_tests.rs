@@ -10,7 +10,7 @@ fn explicit_cpu_pointwise_preserves_legacy_refusal_and_builder_ownership() {
                 SourceTensor {
                     source,
                     name: format!("pointwise.span{elements}"),
-                    kind: QuantKind::Bf16,
+                    kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
                     rows: 1,
                     columns: elements,
                     axes: MatrixAxes::OutputInput,
@@ -108,13 +108,13 @@ impl TensorSource for Original {
         self.reads.fetch_add(1, Ordering::Relaxed);
         if name == "narrow" {
             return Ok(SourceTensorRef {
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
                 shape: &[8, 2],
                 packed_bytes: &self.packed[..32],
             });
         }
         Ok(SourceTensorRef {
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
             shape: &self.rows,
             packed_bytes: &self.packed,
         })
@@ -140,7 +140,10 @@ fn input(b: &mut PlanBuilder, matrix: SourceTensor) -> PlanValue {
 fn source_parameter_revalidates_real_kind_shape_bytes_and_foreign_owner_before_read() {
     let original = Original::new();
     let descriptor = SourceParameter::from_source(&original, "raw.parameter").unwrap();
-    assert_eq!(descriptor.kind, QuantKind::Bf16);
+    assert_eq!(
+        descriptor.kind,
+        StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16)
+    );
     assert_eq!(descriptor.shape, [8, 4]);
     assert_eq!(descriptor.bytes, 64);
     descriptor.validate_source(&original).unwrap();
@@ -149,7 +152,7 @@ fn source_parameter_revalidates_real_kind_shape_bytes_and_foreign_owner_before_r
     assert_eq!(foreign.reads.load(Ordering::Relaxed), 0);
     for changed in [
         SourceParameter {
-            kind: QuantKind::F32,
+            kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
             ..descriptor.clone()
         },
         SourceParameter {
@@ -266,7 +269,7 @@ fn typed_recorder_refuses_foreign_values_wrong_precision_axes_codec_and_legacy_m
     assert!(b.add("legacy", &embedded, &embedded).is_err());
     for matrix in [
         SourceTensor {
-            kind: QuantKind::F32,
+            kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
             ..projection.clone()
         },
         SourceTensor {
@@ -358,12 +361,12 @@ impl TensorSource for NormSource {
     fn tensor(&self, name: &str) -> Result<SourceTensorRef<'_>> {
         match name {
             "embedding" => Ok(SourceTensorRef {
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
                 shape: &self.matrix_shape,
                 packed_bytes: &self.matrix,
             }),
             "input.norm" => Ok(SourceTensorRef {
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
                 shape: &[256],
                 packed_bytes: &self.weight,
             }),
@@ -435,7 +438,7 @@ fn ordinary_rms_refuses_foreign_parameters_values_precision_and_unqualified_meta
             ..parameter.clone()
         },
         SourceParameter {
-            kind: QuantKind::F16,
+            kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F16),
             ..parameter.clone()
         },
         SourceParameter {
@@ -483,7 +486,16 @@ fn ordinary_rms_refuses_foreign_parameters_values_precision_and_unqualified_meta
         .is_err()
     );
     for width in [256usize, 1024, 2048, 5120] {
-        for (kind, bytes) in [(QuantKind::Bf16, width * 2), (QuantKind::F32, width * 4)] {
+        for (kind, bytes) in [
+            (
+                StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
+                width * 2,
+            ),
+            (
+                StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
+                width * 4,
+            ),
+        ] {
             let descriptor = SourceParameter {
                 kind,
                 bytes,
@@ -621,7 +633,7 @@ fn unaware_backend_causal_conv_refuses_before_any_callback() {
     let parameter = SourceParameter {
         source: SourceIdentity::for_new_allocation().unwrap(),
         name: "actual.conv.weight".into(),
-        kind: QuantKind::Bf16,
+        kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
         shape: vec![32, 1, 4],
         bytes: 256,
     };
@@ -656,7 +668,7 @@ fn source_operator_requires_explicit_backend_implementation() {
         vec![SourceTensor {
             source,
             name: "actual.embedding".into(),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
             axes: MatrixAxes::OutputInput,
             columns: 16,
             rows: 17,

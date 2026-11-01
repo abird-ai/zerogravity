@@ -321,7 +321,8 @@ impl UnknownWitness {
             let matrix = window.matrix();
             if matrix.source_identity() != source.source_identity()
                 || matrix.tensor().name != name
-                || matrix.tensor().kind != QuantKind::Bf16
+                || matrix.tensor().kind
+                    != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
                 || matrix.axes() != zerogravity_core::accelerator::program::MatrixAxes::OutputInput
                 || matrix.rows() != rows
                 || matrix.columns() != columns

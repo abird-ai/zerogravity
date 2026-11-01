@@ -338,7 +338,7 @@ impl OrdinaryCudaCold {
             if parameter.elements() != expected_elements
                 || (parameter.storage()
                     == crate::resident_leases::ordinary_parameter_upload::OrdinaryParameterStorage::Bf16Rne
-                    && parameter.kind() != zerogravity_core::quant::QuantKind::Bf16)
+                    && parameter.kind() != zerogravity_core::encoding::StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16))
             {
                 return Err(Error::State(
                     "ordinary CUDA cold parameter converted physical type differs".into(),

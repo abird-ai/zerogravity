@@ -91,7 +91,8 @@ impl Shape {
                 .and_then(|n| n.checked_mul(2))
                 .is_none_or(|n| n > 32 * 1024 * 1024)
             || token as usize >= embedding.rows
-            || gamma.kind != QuantKind::Bf16
+            || gamma.kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
             || gamma.source != p.source()
             || gamma.shape != [weights.columns as u64]
             || gamma.bytes != weights.columns * 2
@@ -103,11 +104,13 @@ impl Shape {
         for t in [embedding, weights] {
             let actual = source.matrix(&t.name, MatrixAxes::OutputInput)?;
             if t.source != p.source()
-                || t.kind != QuantKind::Bf16
+                || t.kind
+                    != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
                 || t.axes != MatrixAxes::OutputInput
                 || t.rows != actual.rows()
                 || t.columns != actual.columns()
-                || actual.tensor().kind != QuantKind::Bf16
+                || actual.tensor().kind
+                    != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
             {
                 return Err(Error::State(
                     "portable whole original matrix descriptor".into(),

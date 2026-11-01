@@ -5,13 +5,13 @@ use crate::transfer_retirement::{RetirementMark, TransferRetirementRing};
 use std::ops::Range;
 #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
 use std::sync::Weak;
-use zerogravity_artifacts::quant::QuantKind;
 use zerogravity_artifacts::source_weights::{
     TensorWindow, VerifiedMatrix, VerifiedTensorSource, WindowWorkspace,
 };
 #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
 use zerogravity_core::accelerator::SourceIdentity;
 use zerogravity_core::accelerator::program::MatrixAxes;
+use zerogravity_core::encoding::StoredTensorEncoding;
 
 pub(crate) const PAGE_BYTES: usize = 1024 * 1024;
 const CONTROL_BYTES: usize = 64 * 1024;
@@ -648,7 +648,8 @@ impl ResidentSourcePage {
         if !self.source.same_issuer(source)
             || !Arc::ptr_eq(&self.service, service)
             || matrix.axes() != MatrixAxes::OutputInput
-            || matrix.tensor().kind != QuantKind::Bf16
+            || matrix.tensor().kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
             || range.end - range.start != (geometry.rows * geometry.row_bytes) as u64
             || self.transport.is_none()
                 && (progress.pending.is_some() || progress.submitted != progress.completed)
@@ -916,7 +917,8 @@ impl ResidentSourcePage {
         let tensor = matrix.tensor();
         if matrix.source_identity() != self.source.source_identity()
             || matrix.axes() != MatrixAxes::OutputInput
-            || tensor.kind != QuantKind::Bf16
+            || tensor.kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
             || matrix.byte_range()?.end - matrix.byte_range()?.start
                 != (geometry.rows * geometry.row_bytes) as u64
         {
@@ -1433,7 +1435,8 @@ impl ResidentSourcePage {
         let tensor = matrix.tensor();
         if matrix.source_identity() != self.source.source_identity()
             || matrix.axes() != MatrixAxes::OutputInput
-            || tensor.kind != QuantKind::Bf16
+            || tensor.kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
             || matrix.byte_range()?.end - matrix.byte_range()?.start
                 != (geometry.rows * geometry.row_bytes) as u64
         {

@@ -1,8 +1,8 @@
 //! Declared source contracts; these tests never read a weight/tokenizer body.
 use serde_json::{Value, json};
 use zerogravity_artifacts::artifact::TensorInfo;
-use zerogravity_artifacts::quant::QuantKind;
 use zerogravity_artifacts::sharded::SafetensorsIndex;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_model_qwen35::config::LayerKind;
 use zerogravity_model_qwen35::source::safetensors::{GdnOutputGate, QwenTextConfig};
 
@@ -197,7 +197,7 @@ fn header_shape_contract_distinguishes_hf_matrix_order_and_grouped_qkv() {
     let mut header = TensorInfo {
         name: spec.name.clone(),
         shape: vec![10240, 5120],
-        kind: QuantKind::Bf16,
+        kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
         byte_offset: 0,
         byte_len: 104857600,
     };

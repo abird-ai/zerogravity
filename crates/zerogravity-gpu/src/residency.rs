@@ -5,16 +5,16 @@
 //! Host-only policy tests do not require GPU drivers.
 
 use std::collections::BTreeMap;
-use zerogravity_artifacts::quant::QuantKind;
 use zerogravity_core::Error;
 use zerogravity_core::Result;
 use zerogravity_core::accelerator::{MatVecRegion, SourceIdentity};
+use zerogravity_core::encoding::StoredTensorEncoding;
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct ResidencyKey {
     source: SourceIdentity,
     tensor: String,
-    kind: QuantKind,
+    kind: StoredTensorEncoding,
     columns: usize,
     rows: usize,
 }
@@ -469,7 +469,9 @@ mod tests {
             ResidencyKey {
                 source: SourceIdentity::unbound(),
                 tensor: name.into(),
-                kind: QuantKind::Q4_0,
+                kind: StoredTensorEncoding::Quantized(
+                    zerogravity_core::encoding::QuantScheme::Q4_0,
+                ),
                 columns: 32,
                 rows: 8,
             }
@@ -516,7 +518,9 @@ mod tests {
             ResidencyKey {
                 source: SourceIdentity::unbound(),
                 tensor: name.to_owned(),
-                kind: QuantKind::Q4_0,
+                kind: StoredTensorEncoding::Quantized(
+                    zerogravity_core::encoding::QuantScheme::Q4_0,
+                ),
                 columns: 32,
                 rows: 8,
             }
@@ -576,7 +580,9 @@ mod tests {
             ResidencyKey::from_region(MatVecRegion {
                 source_identity: SourceIdentity::unbound(),
                 tensor_name: "test",
-                kind: QuantKind::Q4_0,
+                kind: StoredTensorEncoding::Quantized(
+                    zerogravity_core::encoding::QuantScheme::Q4_0
+                ),
                 columns: 32,
                 rows: 1,
                 packed_weights: &packed,
@@ -602,7 +608,9 @@ mod tests {
             ResidencyKey::from_region(MatVecRegion {
                 source_identity: source,
                 tensor_name: tensor,
-                kind: QuantKind::Q4_0,
+                kind: StoredTensorEncoding::Quantized(
+                    zerogravity_core::encoding::QuantScheme::Q4_0,
+                ),
                 columns: 32,
                 rows: 1,
                 packed_weights: &packed,

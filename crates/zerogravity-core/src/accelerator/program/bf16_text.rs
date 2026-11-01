@@ -84,7 +84,7 @@ impl Bf16TextRow<'_> {
     /// per-output full-K contract. This is not an original GPU GEMM selection.
     pub fn projection_geometry(&self, matrix: &SourceTensor) -> Result<Bf16TextProjectionGeometry> {
         if matrix.source != self.call.attempt.base().source()
-            || matrix.kind != QuantKind::Bf16
+            || matrix.kind != StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16)
             || matrix.axes != MatrixAxes::OutputInput
             || matrix.rows == 0
             || matrix.rows > self.call.geometry.vocabulary()

@@ -145,7 +145,10 @@ fn require_source(bound: &VerifiedTensorSource, operator: &SourceOperator) -> Re
             || member.rows != actual.rows()
             || member.columns != actual.columns()
             || member.kind != actual.tensor().kind
-            || member.kind != zerogravity_core::quant::QuantKind::Bf16
+            || member.kind
+                != zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                    zerogravity_core::encoding::ScalarDType::Bf16,
+                )
             || member.axes != actual.axes()
         {
             return Err(Error::State(

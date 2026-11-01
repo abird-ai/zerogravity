@@ -1,7 +1,7 @@
 //! Config/header-bound roles only; source bytes and CPU arithmetic stay unchanged.
 use super::*;
 use crate::accelerator::program::{OrdinaryRmsContract, TorchCpuGdnContract};
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 
 const MAX_INPUT: usize = 17408;
 const MAX_OUTPUT: usize = 248320;
@@ -27,7 +27,8 @@ impl OriginalWindowOperators {
             .iter()
             .any(|(role, actual)| *role != QwenMatrixRole::Embedding && actual == tensor)
             || tensor.source != self.source_identity()
-            || tensor.kind != QuantKind::Bf16
+            || tensor.kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
             || tensor.axes != MatrixAxes::OutputInput
             || tensor.columns == 0
             || tensor.columns > MAX_INPUT

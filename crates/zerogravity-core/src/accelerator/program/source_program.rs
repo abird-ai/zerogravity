@@ -775,7 +775,12 @@ impl SourceOperator {
         }
         Ok((first.columns, rows))
     }
-    fn parameter(&self, index: usize, kinds: &[QuantKind], shape: &[usize]) -> Result<()> {
+    fn parameter(
+        &self,
+        index: usize,
+        kinds: &[StoredTensorEncoding],
+        shape: &[usize],
+    ) -> Result<()> {
         let p = self
             .parameters()
             .get(index)
@@ -784,8 +789,8 @@ impl SourceOperator {
             .iter()
             .try_fold(1usize, |n, width| Self::product(n, *width))?;
         let element_bytes = match p.kind {
-            QuantKind::Bf16 => 2,
-            QuantKind::F32 => 4,
+            StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16) => 2,
+            StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32) => 4,
             _ => {
                 return Err(Error::Unsupported(
                     "source operator original parameter codec".into(),
@@ -860,7 +865,14 @@ impl SourceOperator {
                 if !geometry.epsilon.is_finite() || geometry.epsilon <= 0.0 {
                     return Err(Error::Malformed("source RMS epsilon".into()));
                 }
-                self.parameter(0, &[QuantKind::Bf16, QuantKind::F32], &[geometry.width])?;
+                self.parameter(
+                    0,
+                    &[
+                        StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
+                        StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
+                    ],
+                    &[geometry.width],
+                )?;
                 (0, 1)
             }
             CausalConvSplit { geometry, .. } => {
@@ -868,7 +880,9 @@ impl SourceOperator {
                 Self::product(geometry.coefficient_channels, self.call.rows.len())?;
                 self.parameter(
                     0,
-                    &[QuantKind::Bf16],
+                    &[StoredTensorEncoding::Scalar(
+                        crate::encoding::ScalarDType::Bf16,
+                    )],
                     &[geometry.qkv_channels, 1, geometry.kernel],
                 )?;
                 (0, 1)
@@ -884,9 +898,27 @@ impl SourceOperator {
                 }
                 Self::product(geometry.key_heads, geometry.key_width)?;
                 Self::product(geometry.value_heads, geometry.value_width)?;
-                self.parameter(0, &[QuantKind::F32], &[geometry.value_heads])?;
-                self.parameter(1, &[QuantKind::Bf16], &[geometry.value_heads])?;
-                self.parameter(2, &[QuantKind::F32], &[geometry.value_width])?;
+                self.parameter(
+                    0,
+                    &[StoredTensorEncoding::Scalar(
+                        crate::encoding::ScalarDType::F32,
+                    )],
+                    &[geometry.value_heads],
+                )?;
+                self.parameter(
+                    1,
+                    &[StoredTensorEncoding::Scalar(
+                        crate::encoding::ScalarDType::Bf16,
+                    )],
+                    &[geometry.value_heads],
+                )?;
+                self.parameter(
+                    2,
+                    &[StoredTensorEncoding::Scalar(
+                        crate::encoding::ScalarDType::F32,
+                    )],
+                    &[geometry.value_width],
+                )?;
                 (0, 3)
             }
             QkRmsRotaryGated(geometry) => {
@@ -902,7 +934,13 @@ impl SourceOperator {
                     return Err(Error::Malformed("source QK RMS/rotary geometry".into()));
                 }
                 for index in 0..2 {
-                    self.parameter(index, &[QuantKind::Bf16], &[geometry.attention.width])?;
+                    self.parameter(
+                        index,
+                        &[StoredTensorEncoding::Scalar(
+                            crate::encoding::ScalarDType::Bf16,
+                        )],
+                        &[geometry.attention.width],
+                    )?;
                 }
                 (0, 2)
             }

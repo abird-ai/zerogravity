@@ -2,64 +2,112 @@
 
 Author: Project owner
 Co-authors: GPT-6
-Owner: @pvl — current main-session coordinator
+Owner: @pvl — main-session coordinator
 
 Base: `1c35172`
 
-Latest direction: Fabric first; S0 landed, S1 next. Plan 2 incorporates Plan 1 and the
-31-Oct accepted Qwen checkpoint. Preserve deferred Qwen scopes in the owning
-plans; recurrence remains cancelled. No new physical capability from migration.
+## Current direction — checkpoint key paths, then refine
 
-**Scope:** Fabric implementation now authorized. This transition packet began as documentation-only. Historical initial read-only source observation was fadf2b1123309a2118725f2cc005d3edc7ea39f2; it is not an implementation baseline. Current source/status is owned by CURRENT_HANDOFF.md and CURRENT_SOURCE_RECONCILIATION.md.
-**Reference authority:** HANDOFF.md → README.md → PHASED_IMPLEMENTATION.md → STRUCTURAL_SKELETON.md; old preserved ../fabric-vnext entire packet.
+- Owner reauthorized the working foundation first: close CPU/SDK/server/CLI key
+  paths, verify, sign a checkpoint, then evolve parts separately. Do not hold this
+  checkpoint for the entire GPU scheduler rewrite or mark the full plan complete.
+- **Main does all further work; no new subagents.** Previously running tasks
+  finished without cancellation. Main reviewed/integrated their results.
+- Main owns all files, compiler capacity, plan reconciliation and commits. No
+  push, source acquisition, GPU launch, recovery or privilege changes authorized.
+- Fabric/Qwen recurrences remain cancelled. Qwen expansion remains deferred;
+  accepted model/operator/lifetime evidence is historical and tuple-specific.
+- HEAD at start: signed`c853ebb`, S0 source`7396984`. Dirty migration preserved,
+  integrated and tested; no new commit yet. Root README/external checkout untouched.
 
-## Resume here — S0 landed; S1 next
+## Checkpoint evidence — assembled gate passed
 
-Signed`7396984` lands S0 on the original`1c35172` checkpoint. Source review and
-final isolated gate pass; all owned jobs are closed. Revalidate current
-HEAD/status/diff before continuing. No active build/native job remains. The
-initial Qwen mission and recurrence stay deferred/cancelled, not completed.
+Current logs: XDG state`abird/zerogravity/fabric-checkpoint-lEnE3DDm/`.
+Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 
-Verified S0 scope:
-- Original ForwardPlan/issuer/root/resource owners retained; no parallel IR,
-  budget, root publisher, loaded model, Ready or synthetic inference success.
-- New cold engine/serving crates; public SDK contracts and honest Unsupported;
-  independent server accepts the same facade runtime handle.
-- Actual CLI args/output/commands and signal owner moved. Independently checked
-  moved bodies byte-identical; CPU/GPU/family numerics/source bodies unchanged.
-- Exact encoding mapping/refusals, descriptive media/selection contracts,
-  existing artifact/source/cache owners; derived lineage remains unverified.
-- DAG18 fixtures pass, including helper bypass and optional/target edges.
-  Offline isolated strict minimal engine/serving/facade/CLI passes.
-- Focused final checks: engine4, serving3, core2, facade SDK2 with serve and2
-  without serve. Source-free refusal, closed lifecycle, shared physical ledger,
-  overflow, external bind, facade-only imports and original ForwardPlan identity.
-- Final isolated `scripts/check.sh`:2,159 Rust passes/0fail/87ignored/292 suites;
-  17 Python suites/182 cases (10 explicit source-input skips), packaging/installer/
-  shell/Nix pass. Existing feature-scoped GPU warnings unchanged.
-- This is S0 structural/host verification, not F4 migration, Q0/Q2 transition
-  acceptance, physical GPU/model execution or a new production route.
+- CPU/runtime/server/SDK/CLI strict checks pass; initial focused suites216 passes,
+  1 ignored across34 suite runs (test executions, not distinct tests).
+- Updated facade30/serving23 pass; four approved-tokenizer/full-vocabulary CPU
+  fixture cases pass, including actual public SDK loading, shared source aliases,
+  text streams, JSON/SSE, cancellation, server stop preserving SDK work and runtime
+  shutdown. Fixtures are real executable GGUF sources, not trained-model proof.
+- Held-descriptor pricing/materialization rejects source growth; trailing input
+  no longer masks HTTP disconnect. Both regression scopes pass.
+- CUDA native diagnostic-only, CUDA diagnostic+CLI, explicit captured serving,
+  ordinary held serving, HIP/Vulkan and minimal library feature strict checks pass.
+  These are compilation scopes, not hardware qualification.
+- Source-free GPU grouping/profile/join/refusal controls pass; the initially
+  zero-matching fixed-prompt filter was corrected to `active8_tests` and passed.
+- Final isolated `scripts/check.sh` passes:2,267 Rust/0fail/94ignored across297
+  suite runs;17 Python suites/182 cases, including10 explicit input skips.
+  Architecture/feature/strict/installer/shell/Nix gates pass. Every terminal scope
+  inspected; zero-test filters and physical/unrun scopes are not acceptance.
+- Prior independent review authenticated169 original snapshots and preserved34
+  CubeCL bodies, decoder and moved CPU math bodies. No tracked CUDA/image assets
+  changed. Rust selector/import/cfg changes DO change broader GDN family identity;
+  do not retag old physical evidence or silently repin it.
 
-Next:
-1. Read the current reconciliation/source map; S0 is committed, not a new task.
-2. Start S1: inspect exact QuantKind/StoredTensorEncoding, artifact scalar/quant
-   decoder and all callers; move real codec ownership without arithmetic changes.
-3. Continue S2/S3 then F0–F4. Keep existing supported routes until coherently moved;
-   no compatibility/shadow runtime at F4. Full model/physical campaigns stay
-   deferred to assembled transition acceptance and applicable change scopes.
-4. Update this TODO and canonical handoff after each material step. Record any
-   failed/unrun scope and next concrete action before interruption; no chat-only
-   progress state. Do not push or touch the external detached checkout.
+## Current batch and remaining boundaries
 
-Final logs: XDG state`abird/zerogravity/fabric-s0-KJWqbLxC/`, focused r2 and
-`assembled-gate-r1.log`; job`job-2852102-966` completed0 and all results inspected.
-Paths are recovery pointers, not model/source acceptance fixtures. Do not restart
-that job or re-arm the cancelled Qwen recurrence from an old receipt.
+- Real stored encoding/codecs and CPU quantized/BF16 owners migrated; old
+  QuantKind/quant producer removed. Q4_K decode works; exact CPU matvec refuses.
+- Reference TaskCoordinator uses original SessionAuthority/RootAttempt, including
+  caller epoch and complete-domain atomic publication. The numeric device-event
+  bridge remains source-less/reference-only, never a source-bound Ready witness.
+- CPU scheduler/queue/events/presentation now engine-owned; facade composes actual
+  Qwen source/tokenizer/admission. Loading, joins and source destruction are unlocked;
+  concurrent shutdown waits for cleanup and preserves failures. Synchronous
+  shutdown from its own loader/worker/destructor remains unsupported/documented.
+- Real reusable HTTP server and SDK pipeline checking/device APIs; no fabricated
+  successful model preparation, placement, pipeline execution or future protocol.
+- Temporary CLI import-shim files removed. GPU scheduler and remaining run/pull/
+  cache business paths still live in CLI; F0/F1/F3/F4 are NOT complete.
+- Qualification callers use real public admitted channels/host/cancel owners;
+  no production test-support feature or exported isolated ledger was introduced.
+
+## Next refinements — one coherent unit at a time
+
+1. Preserve this tested working foundation in signed logical checkpoints.
+2. Harden lifecycle reentrancy/caller-deadline ergonomics at the shared engine
+   layer; keep ordinary paths simple and measure before performance changes.
+3. Extend the SAME engine Router/worker to GPU, preserving the reviewed contract:
+   engine owns queue/fairness/parking/presentation; coarse adapters own typed
+   source/session slots, device feedback and original prepare/Ready/commit.
+   No adapter scheduler/thread or feedback reconstruction from host token IDs.
+   CPU/GGUF32-token chunks, native GGUF teacher-token quanta, captured HF atomic
+   prompts and non-fused GGUF final-tail cohorts remain distinct. Preserve B8/4/2/1
+   GGUF and B4/1 captured-HF bands, ragged/late arrivals, all-row publication,
+   cancellation/known-discard/unknown quarantine and 30s output parking. No
+   workspace while parked, state-only output usage, duplicate state charge or
+   ordinary CUDA activation. Existing67/72-token captured prompts exceed64 quota:
+   retain/report the refusal rather than silently widen eligibility.
+4. Complete remaining SDK/CLI ownership, active numerical/layout contracts and
+   production/qualification separation; then full F4/Q0/Q1/Q2 acceptance.
+5. Profile CPU scheduling/presentation and GPU cohorts independently. Prefer
+   simple shared-layer/zero-cost improvements; preserve arithmetic/source/ABI/
+   BF16/reduction/signed-zero and final-reader identities. No speedup claim yet.
 
 ## Committed
 
 Historical documentation packet:`2ff3d49`; canonical handoff refresh:`ff89b87`.
 Qwen commits are preserved inputs, not S/F/Q completion proof.
+
+### Source owners — this commit
+
+- [x] Actual core StoredTensorEncoding/ScalarDType/QuantScheme, complete caller closure;
+  remove old QuantKind/quant producer, retain exact external labels/format mappings.
+- [x] Actual artifact scalar/q4/q6/q8 codecs and malformed/refusal tests; one decoder
+  owner. CPU Q8 activation/exact quantized dots/BF16 projection moved unchanged.
+- [x] Q4_K decoding retained; source-exact CPU matvec still Unsupported. No future
+  codec or metadata-to-execution grant.
+- [x] Reference TaskCoordinator and Qwen reference preparation use original
+  SessionAuthority/RootAttempt; complete-domain/epoch/source/frontier checks and
+  overflow-before-publication; original ordinary/GPU publishers and arbiter retained.
+- [x] Narrow CUDA diagnostic cfg/import closure and unused host-observer cfg aligned
+  to real callers. No kernel/ABI/image arithmetic change or new hardware acceptance.
+- [x] Focused codec/CPU/root tests, CUDA/HIP/Vulkan strict checks and assembled gate
+  above pass. Foundational APIs compile with original higher-layer callers removed
+  or migrated in this same source group; runtime/transport landing follows separately.
 
 ### `7396984` — compilable Fabric base skeleton
 
@@ -76,14 +124,11 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 - [x] Signed structural source/tests and owning TODO checkpoint; nothing pushed.
 
 
-## Uncommitted — next S1 source format/quant exactness
+## Uncommitted — remaining S1 active contracts
 
-- [ ] Migrate real callers to S0's separate encoding/activation/numerical/layout/derived types; remove the old codec identity only with its complete caller closure.
-- [ ] Move exact artifacts q4/q6/q8, F16/BF16 scalar codec source and malformed tests; preserve actual codec decoder only once.
-- [ ] Move CPU source-exact Q4_0/Q4_1/Q6_K/Q8_0 projection + Q8 activation and BF16 math to proper owners; keep dequantized pure F32 reference separately.
-- [ ] Retain Q4_K scalar decoding and explicit unqualified CPU physical matvec refusal; Q1/Q2/Q3/NVFP4/EXL3 unimplemented placeholders.
+- [ ] Bind activation/numerical/layout/derived contracts to genuine preparation consumers; real stored encoding/callers are migrated above.
 - [ ] Bind existing GPU packed kernels/activation under source+variant+numeric+device constraints; no codec-specific model engine.
-- [ ] S1 small byte/source numerical/refusal test and affected cargo check; signed coherent commit(s).
+- [ ] Validate remaining active-contract integration; reuse accepted unchanged codec/numerical evidence.
 
 ## Uncommitted — future S2 family math and GPU provider
 
@@ -96,7 +141,6 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 
 ## Uncommitted — future S3 canonical root/resource
 
-- [ ] Converge reference TaskCoordinator and original real SessionAuthority RootBinding/RootAttempt under one logical complete-domain state publication protocol.
 - [ ] Ensure CPU/GPU/Gemma commit only after source/epoch/root/full domain/real Ready; no per-domain public commit nor device stream direct PublishRoot.
 - [ ] Keep existing process-shared PhysicalResourceArbiter low-level in core; engine will use its admitted physical ledger, no new wallet.
 - [ ] Preserve buffer leases encoded/captured/queued/submitted/unknown and safe quarantine/retire, host/UMA alias accounting.
@@ -166,7 +210,7 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 - [ ] Keep every transition document UTF-8, internally linked and consistent with the canonical current handoff plus the four maintained planning/status files.
 - [ ] Revalidate source-dependent claims against current main; historical source SHAs are provenance only and never an implementation base.
 - [ ] Do not recreate consolidated archives, per-file documentation SHA indexes or frozen handoff copies; Git history is the archive.
-- [ ] Keep the current S0 continuation explicit; do not revert to historical docs-only authorization or resume Qwen from stale receipts.
+- [ ] Keep the key-path checkpoint and unfinished migration explicit; no new subagents or Qwen restart from stale receipts.
 
 ## Tests and verification
 

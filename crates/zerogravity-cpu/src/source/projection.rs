@@ -2,11 +2,11 @@
 //! Numerical profiles and provider eligibility remain explicit.
 
 use crate::accelerator::{MatVecKernel, MatVecRegion, RegionExecution, validate_completed};
-use crate::quant::QuantKind;
 use crate::source::{
     MAX_MATRIX_ROWS, SourceProjectionProfile, source_reference_projection_with_profile,
 };
 use crate::{Error, Result};
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::source::SourceTensorRef;
 
 /// Project one already source-qualified original [output,input] tensor
@@ -47,7 +47,9 @@ pub fn output_first_projection_with_profile(
         || !input.iter().all(|x| x.is_finite())
         || !matches!(
             tensor.kind,
-            QuantKind::F32 | QuantKind::F16 | QuantKind::Bf16
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+                | StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F16)
+                | StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
         )
     {
         return Err(Error::Malformed(
@@ -102,7 +104,7 @@ mod tests {
         let provider = UnawareProvider(AtomicBool::new(false));
         let packed = 0x3f80u16.to_le_bytes();
         let tensor = SourceTensorRef {
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             shape: &[1, 1],
             packed_bytes: &packed,
         };
@@ -142,7 +144,12 @@ mod tests {
     fn source_id() -> SourceIdentity {
         SourceIdentity::for_new_allocation().unwrap()
     }
-    fn projected(kind: QuantKind, shape: &[u64], bytes: &[u8], input: &[f32]) -> Result<Vec<f32>> {
+    fn projected(
+        kind: StoredTensorEncoding,
+        shape: &[u64],
+        bytes: &[u8],
+        input: &[f32],
+    ) -> Result<Vec<f32>> {
         output_first_projection(
             source_id(),
             "original.linear.weight",
@@ -162,10 +169,24 @@ mod tests {
             bytes.extend_from_slice(&f32::to_le_bytes(x));
         }
         assert_eq!(
-            projected(QuantKind::F32, &[2, 3], &bytes, &[7., 8., 9.]).unwrap(),
+            projected(
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                &[2, 3],
+                &bytes,
+                &[7., 8., 9.]
+            )
+            .unwrap(),
             [50., 122.]
         );
-        assert!(projected(QuantKind::F32, &[3, 2], &bytes, &[7., 8., 9.]).is_err());
+        assert!(
+            projected(
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                &[3, 2],
+                &bytes,
+                &[7., 8., 9.]
+            )
+            .is_err()
+        );
     }
     #[test]
     fn original_bf16_and_f16_rows_reuse_existing_raw_source_math() {
@@ -174,7 +195,13 @@ mod tests {
             bf16.extend(bits.to_le_bytes());
         }
         assert_eq!(
-            projected(QuantKind::Bf16, &[2, 2], &bf16, &[5., 6.]).unwrap(),
+            projected(
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                &[2, 2],
+                &bf16,
+                &[5., 6.]
+            )
+            .unwrap(),
             [17., 39.]
         );
         let mut f16 = Vec::new();
@@ -182,7 +209,13 @@ mod tests {
             f16.extend(bits.to_le_bytes());
         }
         assert_eq!(
-            projected(QuantKind::F16, &[2, 2], &f16, &[5., 6.]).unwrap(),
+            projected(
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F16),
+                &[2, 2],
+                &f16,
+                &[5., 6.]
+            )
+            .unwrap(),
             [17., 39.]
         );
     }
@@ -205,7 +238,7 @@ mod tests {
             bytes.extend_from_slice(&f32::to_le_bytes(x));
         }
         let tensor = SourceTensorRef {
-            kind: QuantKind::F32,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
             shape: &[2, 2],
             packed_bytes: &bytes,
         };
@@ -250,7 +283,9 @@ mod tests {
                 source_id(),
                 "q.weight",
                 SourceTensorRef {
-                    kind: QuantKind::Q4_0,
+                    kind: StoredTensorEncoding::Quantized(
+                        zerogravity_core::encoding::QuantScheme::Q4_0
+                    ),
                     ..tensor
                 },
                 &[5., 6.],
@@ -275,7 +310,7 @@ mod tests {
         // is ever permitted to override the CPU's matrix safety cap.
         let large = vec![0u8; 2 * 1_000_001];
         let huge = SourceTensorRef {
-            kind: QuantKind::F16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F16),
             shape: &[1_000_001, 1],
             packed_bytes: &large,
         };
@@ -312,7 +347,7 @@ mod admission_tests {
         let source = SourceIdentity::for_new_allocation().unwrap();
         let bytes = vec![0u8; 2 * 1_000_001];
         let tensor = SourceTensorRef {
-            kind: QuantKind::F16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F16),
             shape: &[1_000_001, 1],
             packed_bytes: &bytes,
         };

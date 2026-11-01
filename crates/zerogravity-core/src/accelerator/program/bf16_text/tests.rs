@@ -33,7 +33,7 @@ fn embedding(source: SourceIdentity) -> SourceTensor {
     SourceTensor {
         source,
         name: "actual.embedding".into(),
-        kind: QuantKind::Bf16,
+        kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
         axes: MatrixAxes::OutputInput,
         columns: 16,
         rows: 17,
@@ -157,7 +157,7 @@ fn explicit_direct_gamma_contract_keeps_precision_and_foreign_value_guards() {
                 &SourceParameter {
                     source,
                     name: "norm".into(),
-                    kind: QuantKind::Bf16,
+                    kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
                     shape: vec![16],
                     bytes: 32
                 },

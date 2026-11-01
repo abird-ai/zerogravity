@@ -53,7 +53,9 @@ fn require_tied_member(
     tied: &TiedWeight,
     service: &Arc<ResidentService>,
 ) -> Result<()> {
-    use zerogravity_core::{accelerator::program::SourceNumericalContract, quant::QuantKind};
+    use zerogravity_core::{
+        accelerator::program::SourceNumericalContract, encoding::StoredTensorEncoding,
+    };
     descriptor.validate()?;
     let [member] = descriptor.matrices() else {
         return Err(Error::State("B4 exact tied source matrix arity".into()));
@@ -64,7 +66,8 @@ fn require_tied_member(
         || descriptor.call() != input.call()
         || descriptor.numerical_contract() != SourceNumericalContract::ReferenceCudaSm86Bf16V1
         || member.source != source.source_identity()
-        || member.kind != QuantKind::Bf16
+        || member.kind
+            != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
         || member.kind != matrix.tensor().kind
         || member.rows != matrix.rows()
         || member.columns != matrix.columns()

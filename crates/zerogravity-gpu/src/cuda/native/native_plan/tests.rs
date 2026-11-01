@@ -4,7 +4,7 @@ use zerogravity_core::accelerator::program::{
     ConvDomain, MathematicalBackend, MatrixAxes, PlanBuilder, SourceNumericalContract,
     SourceOperatorTemplate, SourcePlanGeometry, SourceRowSelection, StateSlot,
 };
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_model_qwen35::plan::QwenPlanBuilder;
 use zerogravity_model_qwen35::plan::{
     GdnProjection, QwenEmbedding, QwenGdnCall, QwenGdnProjection, QwenInputRows, QwenPrefixLayer,
@@ -48,7 +48,7 @@ fn descriptor(call: &QwenGdnCall, kind: GdnProjection) -> QwenGdnProjection {
                 "model.language_model.layers.{}.{suffix}",
                 call.layer().index()
             ),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             axes: MatrixAxes::OutputInput,
             rows,
             columns: kind.input_width(),
@@ -75,7 +75,7 @@ fn captured_native_image_selection_refuses_call_free_templates() {
     let matrix = |name: &str, rows, columns| SourceTensor {
         source,
         name: name.into(),
-        kind: QuantKind::Bf16,
+        kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
         axes: MatrixAxes::OutputInput,
         columns,
         rows,
@@ -347,7 +347,9 @@ fn immutable_plan_value_join_refuses_generic_tag_loss_wrong_id_and_precision() {
                 SourceTensor {
                     source,
                     name: "model.language_model.embed_tokens.weight".into(),
-                    kind: QuantKind::Bf16,
+                    kind: StoredTensorEncoding::Scalar(
+                        zerogravity_core::encoding::ScalarDType::Bf16,
+                    ),
                     axes: MatrixAxes::OutputInput,
                     rows: 248320,
                     columns: 1024,
@@ -388,7 +390,7 @@ fn immutable_plan_value_join_refuses_generic_tag_loss_wrong_id_and_precision() {
             SourceTensor {
                 source,
                 name: "raw".into(),
-                kind: QuantKind::F32,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
                 axes: MatrixAxes::OutputInput,
                 rows: 248320,
                 columns: 1024,
@@ -477,7 +479,9 @@ fn default_image_factory_derives_exact_projection_set_and_refuses_activation_upg
                     SourceTensor {
                         source,
                         name: "model.language_model.embed_tokens.weight".into(),
-                        kind: QuantKind::Bf16,
+                        kind: StoredTensorEncoding::Scalar(
+                            zerogravity_core::encoding::ScalarDType::Bf16,
+                        ),
                         axes: MatrixAxes::OutputInput,
                         rows: 248320,
                         columns: 1024,
@@ -528,7 +532,7 @@ fn connected_image_requirement_requires_typed_activation_but_default_still_refus
         SourceTensor {
             source: call.layer().source(),
             name: "model.language_model.embed_tokens.weight".into(),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             axes: MatrixAxes::OutputInput,
             rows: 248320,
             columns: 1024,

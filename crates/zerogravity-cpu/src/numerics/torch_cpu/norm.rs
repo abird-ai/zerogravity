@@ -12,8 +12,8 @@ pub use ordinary::{OrdinaryRms, ordinary_rms};
 
 use super::reduction::sum_inner_128;
 use crate::accelerator::SourceIdentity;
-use crate::quant::QuantKind;
 use crate::{Error, Result};
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::source::SourceTensorRef;
 
 const WIDTH: usize = 128;
@@ -62,7 +62,7 @@ fn validate(
     if !(1..=MAX_HEADS).contains(&heads) {
         return Err(Error::Limit("pinned head RMS head bound".into()));
     }
-    if gamma.kind != QuantKind::F32 {
+    if gamma.kind != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) {
         return Err(Error::Unsupported(
             "pinned head RMS requires original F32 gamma".into(),
         ));
@@ -172,7 +172,7 @@ mod tests {
     }
     fn gamma(bytes: &[u8]) -> SourceTensorRef<'_> {
         SourceTensorRef {
-            kind: QuantKind::F32,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
             shape: &[WIDTH as u64],
             packed_bytes: bytes,
         }
@@ -256,7 +256,9 @@ mod tests {
             head_rms_128(
                 source,
                 SourceTensorRef {
-                    kind: QuantKind::Bf16,
+                    kind: StoredTensorEncoding::Scalar(
+                        zerogravity_core::encoding::ScalarDType::Bf16
+                    ),
                     ..valid
                 },
                 &core,

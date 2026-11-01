@@ -253,16 +253,20 @@ pub(crate) struct MixedBatchStorage {
 }
 #[cfg(any(feature = "qualification", test))]
 pub(crate) fn validate_mixed(
-    kind: zerogravity_artifacts::quant::QuantKind,
+    kind: zerogravity_core::encoding::StoredTensorEncoding,
     rows: usize,
     cols: usize,
     batch: usize,
     storage: MixedBatchStorage,
 ) -> Result<()> {
-    use zerogravity_artifacts::quant::QuantKind;
+    use zerogravity_core::encoding::StoredTensorEncoding;
     let (width, block_bytes, bias) = match kind {
-        QuantKind::Q4_1 => (32usize, 20usize, true),
-        QuantKind::Q6K => (256usize, 210usize, false),
+        StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1) => {
+            (32usize, 20usize, true)
+        }
+        StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K) => {
+            (256usize, 210usize, false)
+        }
         _ => {
             return Err(Error::Unsupported(
                 "native batch codec must be Q4_1 or Q6K".into(),
@@ -311,8 +315,9 @@ pub(crate) fn validate_mixed(
 #[cfg(feature = "qualification")]
 pub fn qualify(device: cubecl::Device) -> Result<()> {
     use crate::source_accumulation::{self, SourceAccumulation};
-    use zerogravity_artifacts::quant::{QuantKind, f32_to_f16_rne};
+    use zerogravity_artifacts::codecs::f32_to_f16_rne;
     use zerogravity_core::accelerator::{MatVecRegion, SourceIdentity};
+    use zerogravity_core::encoding::StoredTensorEncoding;
     const ROWS: usize = 64;
     const COLS: usize = 64;
     let blocks = COLS / 32;
@@ -343,7 +348,9 @@ pub fn qualify(device: cubecl::Device) -> Result<()> {
             let prepared = crate::quantization::projection::prepare(MatVecRegion {
                 source_identity: source,
                 tensor_name: "p12.q8.source",
-                kind: QuantKind::Q8_0,
+                kind: StoredTensorEncoding::Quantized(
+                    zerogravity_core::encoding::QuantScheme::Q8_0,
+                ),
                 columns: COLS,
                 rows: ROWS,
                 packed_weights: &packed,
@@ -451,7 +458,7 @@ mod tests {
 
     #[test]
     fn source_q4_and_q6_batch_geometry_refuses_foreign_shapes() {
-        use zerogravity_artifacts::quant::QuantKind;
+        use zerogravity_core::encoding::StoredTensorEncoding;
         let good_q4 = MixedBatchStorage {
             packed_bytes: 64 * 2 * 20,
             scale_words: 2 * 64 * 2,
@@ -466,14 +473,59 @@ mod tests {
             code_words: 8 * 256,
             output_words: 8 * 64,
         };
-        assert!(validate_mixed(QuantKind::Q4_1, 64, 64, 2, good_q4).is_ok());
-        assert!(validate_mixed(QuantKind::Q6K, 64, 256, 8, good_q6).is_ok());
-        assert!(validate_mixed(QuantKind::Q4_1, 0, 64, 2, good_q4).is_err());
-        assert!(validate_mixed(QuantKind::Q4_1, 64, 65, 2, good_q4).is_err());
-        assert!(validate_mixed(QuantKind::Q6K, 64, 256, 9, good_q6).is_err());
         assert!(
             validate_mixed(
-                QuantKind::Q4_1,
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1),
+                64,
+                64,
+                2,
+                good_q4
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_mixed(
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K),
+                64,
+                256,
+                8,
+                good_q6
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_mixed(
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1),
+                0,
+                64,
+                2,
+                good_q4
+            )
+            .is_err()
+        );
+        assert!(
+            validate_mixed(
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1),
+                64,
+                65,
+                2,
+                good_q4
+            )
+            .is_err()
+        );
+        assert!(
+            validate_mixed(
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K),
+                64,
+                256,
+                9,
+                good_q6
+            )
+            .is_err()
+        );
+        assert!(
+            validate_mixed(
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1),
                 64,
                 64,
                 2,
@@ -486,7 +538,7 @@ mod tests {
         );
         assert!(
             validate_mixed(
-                QuantKind::Q6K,
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K),
                 64,
                 256,
                 8,
@@ -499,7 +551,7 @@ mod tests {
         );
         assert!(
             validate_mixed(
-                QuantKind::Q4_1,
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1),
                 64,
                 64,
                 2,
@@ -512,7 +564,7 @@ mod tests {
         );
         assert!(
             validate_mixed(
-                QuantKind::Q6K,
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K),
                 64,
                 256,
                 8,

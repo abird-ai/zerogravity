@@ -29,8 +29,8 @@ impl QwenInputRms {
             ));
         }
         let bytes = match self.parameter.kind {
-            QuantKind::Bf16 => 2048,
-            QuantKind::F32 => 4096,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16) => 2048,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) => 4096,
             _ => {
                 return Err(Error::Unsupported(
                     "reference CUDA input RMS raw BF16/F32 gamma".into(),
@@ -74,7 +74,7 @@ impl QwenGdnConv {
             &self.invocation,
             &self.parameter,
             "linear_attn.conv1d.weight",
-            QuantKind::Bf16,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             &[6144, 1, 4],
             49_152,
         )
@@ -110,9 +110,24 @@ impl QwenGdnRecurrent {
     pub fn validate(&self) -> Result<()> {
         self.invocation.validate()?;
         for (p, (suffix, kind, shape, bytes)) in self.parameters.iter().zip([
-            ("linear_attn.A_log", QuantKind::F32, 16, 64),
-            ("linear_attn.dt_bias", QuantKind::Bf16, 16, 32),
-            ("linear_attn.norm.weight", QuantKind::F32, 128, 512),
+            (
+                "linear_attn.A_log",
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                16,
+                64,
+            ),
+            (
+                "linear_attn.dt_bias",
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                16,
+                32,
+            ),
+            (
+                "linear_attn.norm.weight",
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                128,
+                512,
+            ),
         ]) {
             parameter(&self.invocation, p, suffix, kind, &[shape], bytes)?;
         }
@@ -123,7 +138,7 @@ fn parameter(
     invocation: &QwenGdnCall,
     p: &SourceParameter,
     suffix: &str,
-    kind: QuantKind,
+    kind: StoredTensorEncoding,
     shape: &[u64],
     bytes: usize,
 ) -> Result<()> {

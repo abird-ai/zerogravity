@@ -115,7 +115,7 @@ mod tests {
                 SourceTensor {
                     source,
                     name: "fixture.embedding".into(),
-                    kind: QuantKind::F32,
+                    kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
                     axes: MatrixAxes::OutputInput,
                     columns: 4,
                     rows: 4,

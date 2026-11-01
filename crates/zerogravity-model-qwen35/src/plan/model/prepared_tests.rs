@@ -35,7 +35,7 @@ fn descriptor(
                 } else {
                     name(suffix)
                 },
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 axes: MatrixAxes::OutputInput,
                 rows,
                 columns: call.model_profile().projection_input(p),
@@ -47,39 +47,61 @@ fn descriptor(
     let parameters = match kind {
         QwenOperation::InputRms | QwenOperation::ResidualRms(QwenRmsSite::Input) => vec![(
             name("input_layernorm.weight"),
-            QuantKind::Bf16,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             vec![h as u64],
             h * 2,
         )],
         QwenOperation::ResidualRms(QwenRmsSite::PostAttention) => vec![(
             name("post_attention_layernorm.weight"),
-            QuantKind::Bf16,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             vec![h as u64],
             h * 2,
         )],
         QwenOperation::ResidualRms(QwenRmsSite::Final) => vec![(
             "model.language_model.norm.weight".into(),
-            QuantKind::Bf16,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             vec![h as u64],
             h * 2,
         )],
         QwenOperation::GdnConv => vec![(
             name("linear_attn.conv1d.weight"),
-            QuantKind::Bf16,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             vec![6144, 1, 4],
             49152,
         )],
         QwenOperation::GdnRecurrent => [
-            ("linear_attn.A_log", QuantKind::F32, 16, 64),
-            ("linear_attn.dt_bias", QuantKind::Bf16, 16, 32),
-            ("linear_attn.norm.weight", QuantKind::F32, 128, 512),
+            (
+                "linear_attn.A_log",
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                16,
+                64,
+            ),
+            (
+                "linear_attn.dt_bias",
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                16,
+                32,
+            ),
+            (
+                "linear_attn.norm.weight",
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                128,
+                512,
+            ),
         ]
         .into_iter()
         .map(|(suffix, kind, n, bytes)| (name(suffix), kind, vec![n], bytes))
         .collect(),
         QwenOperation::AttentionQk => ["self_attn.q_norm.weight", "self_attn.k_norm.weight"]
             .into_iter()
-            .map(|suffix| (name(suffix), QuantKind::Bf16, vec![256], 512))
+            .map(|suffix| {
+                (
+                    name(suffix),
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                    vec![256],
+                    512,
+                )
+            })
             .collect(),
         _ => Vec::new(),
     }
@@ -103,7 +125,9 @@ fn record(call: &PromptCall) -> QwenPlan {
                 SourceTensor {
                     source: call.source(),
                     name: "model.language_model.embed_tokens.weight".into(),
-                    kind: QuantKind::Bf16,
+                    kind: StoredTensorEncoding::Scalar(
+                        zerogravity_core::encoding::ScalarDType::Bf16,
+                    ),
                     axes: MatrixAxes::OutputInput,
                     rows: 248320,
                     columns: call.model_profile().hidden_size(),

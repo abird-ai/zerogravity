@@ -162,7 +162,12 @@ fn indexed_two_shard_owned_header_bytes_dtype_and_reference_vectors_are_real() {
     );
     let t = TensorSource::tensor(source.as_ref(), "b").unwrap();
     assert_eq!(t.shape, &[2]);
-    assert_eq!(t.kind, zerogravity_core::quant::QuantKind::Bf16);
+    assert_eq!(
+        t.kind,
+        zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+            zerogravity_core::encoding::ScalarDType::Bf16
+        )
+    );
     assert_eq!(t.packed_bytes, &fx.second[fx.second.len() - 4..]);
     let cloned = Arc::clone(&source);
     assert_eq!(cloned.source_identity(), source.source_identity());
@@ -190,7 +195,9 @@ fn distinct_bundle_identity_and_foreign_tensor_metadata_do_not_select_another_sh
     forged.byte_offset = a.tensor("b").unwrap().byte_offset;
     assert!(a.bytes(&forged).is_err());
     forged = a.tensor("a").unwrap().clone();
-    forged.kind = zerogravity_core::quant::QuantKind::Bf16;
+    forged.kind = zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+        zerogravity_core::encoding::ScalarDType::Bf16,
+    );
     assert!(a.bytes(&forged).is_err());
     forged = a.tensor("a").unwrap().clone();
     forged.shape = vec![1, 2];
@@ -536,7 +543,9 @@ fn exact_single_shard_f16_header_payload_and_borrowed_tensor_source() {
     assert_eq!(source.vector("c").unwrap(), [1.0, 2.0]);
     assert_eq!(
         TensorSource::tensor(&source, "c").unwrap().kind,
-        zerogravity_core::quant::QuantKind::F16
+        zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+            zerogravity_core::encoding::ScalarDType::F16
+        )
     );
     drop(source);
     assert_eq!(admit.arbiter.snapshot(&key).unwrap().reserved, 0);

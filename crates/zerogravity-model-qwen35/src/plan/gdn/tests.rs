@@ -12,13 +12,24 @@ fn call(rows: usize) -> QwenGdnCall {
     )
     .unwrap()
 }
-fn parameter(call: &QwenGdnCall, suffix: &str, kind: QuantKind, shape: &[u64]) -> SourceParameter {
+fn parameter(
+    call: &QwenGdnCall,
+    suffix: &str,
+    kind: StoredTensorEncoding,
+    shape: &[u64],
+) -> SourceParameter {
     SourceParameter {
         source: call.layer().source(),
         name: format!("model.language_model.layers.0.{suffix}"),
         kind,
         shape: shape.to_vec(),
-        bytes: shape.iter().product::<u64>() as usize * if kind == QuantKind::Bf16 { 2 } else { 4 },
+        bytes: shape.iter().product::<u64>() as usize
+            * if kind == StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+            {
+                2
+            } else {
+                4
+            },
     }
 }
 fn embedding(call: &QwenGdnCall) -> QwenEmbedding {
@@ -26,7 +37,7 @@ fn embedding(call: &QwenGdnCall) -> QwenEmbedding {
         SourceTensor {
             source: call.layer().source(),
             name: "model.language_model.embed_tokens.weight".into(),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             axes: MatrixAxes::OutputInput,
             columns: 1024,
             rows: 248320,
@@ -49,7 +60,7 @@ fn projection(call: &QwenGdnCall, kind: GdnProjection) -> QwenGdnProjection {
             .map(|&(role, rows)| SourceTensor {
                 source: call.layer().source(),
                 name: format!("model.language_model.layers.0.linear_attn.in_proj_{role}.weight"),
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 axes: MatrixAxes::OutputInput,
                 columns: 1024,
                 rows,
@@ -62,9 +73,24 @@ fn recurrent(call: &QwenGdnCall) -> QwenGdnRecurrent {
     QwenGdnRecurrent::new(
         call.clone(),
         [
-            parameter(call, "linear_attn.A_log", QuantKind::F32, &[16]),
-            parameter(call, "linear_attn.dt_bias", QuantKind::Bf16, &[16]),
-            parameter(call, "linear_attn.norm.weight", QuantKind::F32, &[128]),
+            parameter(
+                call,
+                "linear_attn.A_log",
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                &[16],
+            ),
+            parameter(
+                call,
+                "linear_attn.dt_bias",
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                &[16],
+            ),
+            parameter(
+                call,
+                "linear_attn.norm.weight",
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                &[128],
+            ),
         ],
     )
     .unwrap()
@@ -74,7 +100,12 @@ fn prefix(call: &QwenGdnCall) -> (QwenPlanBuilder, PlanValue, PlanValue) {
     let raw = b.source_embedding(&embedding(call)).unwrap();
     let rms = QwenInputRms::new(
         call.clone(),
-        parameter(call, "input_layernorm.weight", QuantKind::Bf16, &[1024]),
+        parameter(
+            call,
+            "input_layernorm.weight",
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+            &[1024],
+        ),
     )
     .unwrap();
     let normalized = b.input_rms(&rms, &raw).unwrap();
@@ -107,7 +138,7 @@ fn original_initial_fragment_has_two_real_effects_forty_carries_and_no_publicati
             parameter(
                 &c,
                 "linear_attn.conv1d.weight",
-                QuantKind::Bf16,
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 &[6144, 1, 4],
             ),
         )
@@ -191,7 +222,7 @@ fn role_cohort_alias_faults_leave_no_partial_effects() {
         parameter(
             &c,
             "linear_attn.conv1d.weight",
-            QuantKind::Bf16,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             &[6144, 1, 4],
         ),
     )
@@ -266,13 +297,15 @@ fn exact_original_parameters_and_initial_scope_cannot_retag_dtype_layer_or_phase
     let raw = parameter(
         &c,
         "linear_attn.conv1d.weight",
-        QuantKind::Bf16,
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
         &[6144, 1, 4],
     );
     for fault in 0..5 {
         let mut p = raw.clone();
         match fault {
-            0 => p.kind = QuantKind::F32,
+            0 => {
+                p.kind = StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+            }
             1 => p.shape = vec![6144, 4, 1],
             2 => p.bytes -= 1,
             3 => p.source = SourceIdentity::for_new_allocation().unwrap(),
@@ -308,7 +341,12 @@ fn dual_rms_joins_same_teachers_and_phase_with_distinct_actual_producer_roles() 
         .input_rms(
             &QwenInputRms::new(
                 c.clone(),
-                parameter(&c, "input_layernorm.weight", QuantKind::Bf16, &[1024]),
+                parameter(
+                    &c,
+                    "input_layernorm.weight",
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                    &[1024],
+                ),
             )
             .unwrap(),
             &raw,
@@ -319,7 +357,7 @@ fn dual_rms_joins_same_teachers_and_phase_with_distinct_actual_producer_roles() 
             parameter(
                 &c,
                 "post_attention_layernorm.weight",
-                QuantKind::Bf16,
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 &[1024],
             ),
             &normalized,
@@ -352,7 +390,7 @@ fn equal_teacher_ids_cannot_remint_the_actual_conv_producer_issuer() {
         parameter(
             &c,
             "linear_attn.conv1d.weight",
-            QuantKind::Bf16,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             &[6144, 1, 4],
         ),
     )
@@ -407,7 +445,7 @@ fn equal_teacher_ids_cannot_remint_the_actual_conv_producer_issuer() {
 fn complete_parameter(
     c: &QwenGdnCall,
     suffix: &str,
-    kind: QuantKind,
+    kind: StoredTensorEncoding,
     shape: &[u64],
 ) -> SourceParameter {
     let mut p = parameter(c, suffix, kind, shape);
@@ -438,7 +476,7 @@ fn complete_projection(c: &QwenGdnCall, kind: GdnProjection) -> QwenGdnProjectio
             .map(|(suffix, rows)| SourceTensor {
                 source: c.layer().source(),
                 name: format!("model.language_model.layers.{}.{suffix}", c.layer().index()),
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 axes: MatrixAxes::OutputInput,
                 columns: kind.input_width(),
                 rows: *rows,
@@ -466,7 +504,14 @@ fn complete_metadata(rows: usize, layers: usize) -> (QwenPlanBuilder, PlanValue,
                 b.input_rms(
                     &QwenInputRms::new(
                         c.clone(),
-                        complete_parameter(&c, "input_layernorm.weight", QuantKind::Bf16, &[1024]),
+                        complete_parameter(
+                            &c,
+                            "input_layernorm.weight",
+                            StoredTensorEncoding::Scalar(
+                                zerogravity_core::encoding::ScalarDType::Bf16,
+                            ),
+                            &[1024],
+                        ),
                     )
                     .unwrap(),
                     &branch,
@@ -477,7 +522,12 @@ fn complete_metadata(rows: usize, layers: usize) -> (QwenPlanBuilder, PlanValue,
         } else {
             let pair = b
                 .residual_rms_profiled(
-                    complete_parameter(&c, "input_layernorm.weight", QuantKind::Bf16, &[1024]),
+                    complete_parameter(
+                        &c,
+                        "input_layernorm.weight",
+                        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                        &[1024],
+                    ),
                     &branch,
                     &residual,
                     QwenResidualRmsContract::GdnPrefix(
@@ -500,7 +550,7 @@ fn complete_metadata(rows: usize, layers: usize) -> (QwenPlanBuilder, PlanValue,
                     complete_parameter(
                         &c,
                         "linear_attn.conv1d.weight",
-                        QuantKind::Bf16,
+                        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                         &[6144, 1, 4],
                     ),
                 )
@@ -514,9 +564,30 @@ fn complete_metadata(rows: usize, layers: usize) -> (QwenPlanBuilder, PlanValue,
                 &QwenGdnRecurrent::new(
                     c.clone(),
                     [
-                        complete_parameter(&c, "linear_attn.A_log", QuantKind::F32, &[16]),
-                        complete_parameter(&c, "linear_attn.dt_bias", QuantKind::Bf16, &[16]),
-                        complete_parameter(&c, "linear_attn.norm.weight", QuantKind::F32, &[128]),
+                        complete_parameter(
+                            &c,
+                            "linear_attn.A_log",
+                            StoredTensorEncoding::Scalar(
+                                zerogravity_core::encoding::ScalarDType::F32,
+                            ),
+                            &[16],
+                        ),
+                        complete_parameter(
+                            &c,
+                            "linear_attn.dt_bias",
+                            StoredTensorEncoding::Scalar(
+                                zerogravity_core::encoding::ScalarDType::Bf16,
+                            ),
+                            &[16],
+                        ),
+                        complete_parameter(
+                            &c,
+                            "linear_attn.norm.weight",
+                            StoredTensorEncoding::Scalar(
+                                zerogravity_core::encoding::ScalarDType::F32,
+                            ),
+                            &[128],
+                        ),
                     ],
                 )
                 .unwrap(),
@@ -533,7 +604,7 @@ fn complete_metadata(rows: usize, layers: usize) -> (QwenPlanBuilder, PlanValue,
                 complete_parameter(
                     &c,
                     "post_attention_layernorm.weight",
-                    QuantKind::Bf16,
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                     &[1024],
                 ),
                 &out,
@@ -657,7 +728,12 @@ fn transaction_phase_records_preserve_all42_zero_frontier_and_old_initial_refusa
             .input_rms(
                 &QwenInputRms::new(
                     c.clone(),
-                    parameter(&c, "input_layernorm.weight", QuantKind::Bf16, &[1024]),
+                    parameter(
+                        &c,
+                        "input_layernorm.weight",
+                        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                        &[1024],
+                    ),
                 )
                 .unwrap(),
                 &raw,
@@ -676,7 +752,7 @@ fn transaction_phase_records_preserve_all42_zero_frontier_and_old_initial_refusa
                     parameter(
                         &c,
                         "linear_attn.conv1d.weight",
-                        QuantKind::Bf16,
+                        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                         &[6144, 1, 4],
                     ),
                 )
@@ -724,7 +800,12 @@ fn cached_record_rejects_same_shape_other_phase_or_reminted_teacher_issuer() {
     .unwrap();
     let wrong = QwenInputRms::new(
         reminted,
-        parameter(&c, "input_layernorm.weight", QuantKind::Bf16, &[1024]),
+        parameter(
+            &c,
+            "input_layernorm.weight",
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+            &[1024],
+        ),
     )
     .unwrap();
     let before = (builder.core.nodes().len(), builder.core.values().len());
@@ -741,7 +822,12 @@ fn cached_record_rejects_same_shape_other_phase_or_reminted_teacher_issuer() {
     .unwrap();
     let wrong = QwenInputRms::new(
         initial,
-        parameter(&c, "input_layernorm.weight", QuantKind::Bf16, &[1024]),
+        parameter(
+            &c,
+            "input_layernorm.weight",
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+            &[1024],
+        ),
     )
     .unwrap();
     assert!(builder.input_rms(&wrong, &raw).is_err());

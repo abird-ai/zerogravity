@@ -10,7 +10,7 @@ use zerogravity_core::accelerator::{
         SourceRmsGeometry, SourceRows, SourceTensor, TeacherSpan,
     },
 };
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::source::{SourceTensorRef, TensorSource};
 use zerogravity_core::{Error, Result};
 
@@ -99,7 +99,9 @@ fn quantized_projection_cut_refuses_before_source_callbacks() -> Result<()> {
             vec![SourceTensor {
                 source,
                 name: "fixture.projection".into(),
-                kind: QuantKind::Q8_0,
+                kind: StoredTensorEncoding::Quantized(
+                    zerogravity_core::encoding::QuantScheme::Q8_0,
+                ),
                 axes: MatrixAxes::InputOutput,
                 columns: 2048,
                 rows: 2048,
@@ -129,7 +131,7 @@ fn embedding_direct_rms_cut_refuses_before_source_callbacks() -> Result<()> {
             vec![SourceTensor {
                 source,
                 name: "fixture.embedding".into(),
-                kind: QuantKind::Q6K,
+                kind: StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K),
                 axes: MatrixAxes::InputOutput,
                 columns: 256,
                 rows: 16,
@@ -152,7 +154,7 @@ fn embedding_direct_rms_cut_refuses_before_source_callbacks() -> Result<()> {
             vec![SourceParameter {
                 source,
                 name: "fixture.gamma".into(),
-                kind: QuantKind::F32,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
                 shape: vec![256],
                 bytes: 1024,
             }],
@@ -186,7 +188,7 @@ fn quantized_conv_qk_chain_refuses_before_source_callbacks() -> Result<()> {
             vec![SourceParameter {
                 source,
                 name: "fixture.gamma".into(),
-                kind: QuantKind::F32,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
                 shape: vec![32],
                 bytes: 128,
             }],
@@ -202,7 +204,9 @@ fn quantized_conv_qk_chain_refuses_before_source_callbacks() -> Result<()> {
             vec![SourceTensor {
                 source,
                 name: "fixture.projection".into(),
-                kind: QuantKind::Q4_0,
+                kind: StoredTensorEncoding::Quantized(
+                    zerogravity_core::encoding::QuantScheme::Q4_0,
+                ),
                 axes: MatrixAxes::InputOutput,
                 columns: 32,
                 rows: 96,
@@ -224,7 +228,7 @@ fn quantized_conv_qk_chain_refuses_before_source_callbacks() -> Result<()> {
             vec![SourceParameter {
                 source,
                 name: "fixture.conv".into(),
-                kind: QuantKind::F32,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
                 shape: vec![4, 96],
                 bytes: 4 * 96 * 4,
             }],

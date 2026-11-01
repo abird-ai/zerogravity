@@ -13,7 +13,7 @@ fn norm(source: SourceIdentity) -> SourceParameter {
     SourceParameter {
         source,
         name: "fixture.norm".into(),
-        kind: QuantKind::F32,
+        kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
         shape: vec![32],
         bytes: 128,
     }
@@ -41,7 +41,7 @@ fn projection(call: SourceCall) -> SourceOperator {
         vec![SourceTensor {
             source: call.source(),
             name: "fixture.matrix".into(),
-            kind: QuantKind::Q4_0,
+            kind: StoredTensorEncoding::Quantized(crate::encoding::QuantScheme::Q4_0),
             axes: MatrixAxes::InputOutput,
             columns: 32,
             rows: 96,
@@ -85,7 +85,7 @@ fn f32_source_chain_keeps_issuer_stage_precision_and_state_free_boundary() {
         vec![SourceParameter {
             source,
             name: "fixture.conv".into(),
-            kind: QuantKind::F32,
+            kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
             shape: vec![4, 96],
             bytes: 4 * 96 * 4,
         }],
@@ -137,7 +137,7 @@ fn codecs_gamma_and_f32_numerical_schedules_cannot_substitute() {
     let call = call(rows(source));
     let good = projection(call.clone());
     let mut matrix = good.matrices()[0].clone();
-    matrix.kind = QuantKind::Q8_0;
+    matrix.kind = StoredTensorEncoding::Quantized(crate::encoding::QuantScheme::Q8_0);
     assert!(
         SourceOperator::new(
             call.clone(),

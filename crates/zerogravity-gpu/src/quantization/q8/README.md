@@ -21,5 +21,5 @@ Other eight-bit formats and alternate reductions require separate contracts.
 - [ ] Qualify full-model accuracy/state separately; operator source or a folder
   is not a serving capability. Reuse applicable unchanged evidence explicitly.
 
-Source layout: [Q8 codec](../../../../zerogravity-artifacts/src/quant/q8/README.md).
+Source layout: [Q8 codec](../../../../zerogravity-artifacts/src/codecs/quant/q8/README.md).
 Required acceptance: [format matrix and qualification](../../../../../.agents/plans/pipeline-composition/FORMATS.md).

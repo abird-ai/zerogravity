@@ -43,7 +43,7 @@ impl TorchCpuGdnContract {
             (
                 &self.convolution,
                 vec![channels as u64, 1, 4],
-                QuantKind::Bf16,
+                StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
             ),
             (&self.a_log, vec![self.value_heads as u64], self.a_log.kind),
             (
@@ -56,7 +56,11 @@ impl TorchCpuGdnContract {
             if p.source != source
                 || p.name.is_empty()
                 || p.shape != shape
-                || !matches!(kind, QuantKind::Bf16 | QuantKind::F32)
+                || !matches!(
+                    kind,
+                    StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16)
+                        | StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32)
+                )
                 || p.kind != kind
                 || p.bytes as u64 != kind.byte_len(shape.iter().product())?
             {

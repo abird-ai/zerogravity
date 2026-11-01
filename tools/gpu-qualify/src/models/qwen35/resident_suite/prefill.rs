@@ -19,12 +19,26 @@ pub(super) async fn qualify(
     // CUDA block prepare1 + composites1 reduces this exact suffix to12.
     let expected_savings = match (vocabulary_kind, cuda_blocks) {
         (
-            zerogravity_artifacts::quant::QuantKind::Q8_0
-            | zerogravity_artifacts::quant::QuantKind::Q6K,
+            zerogravity_core::encoding::StoredTensorEncoding::Quantized(
+                zerogravity_core::encoding::QuantScheme::Q8_0,
+            )
+            | zerogravity_core::encoding::StoredTensorEncoding::Quantized(
+                zerogravity_core::encoding::QuantScheme::Q6K,
+            ),
             true,
         ) => 12,
-        (zerogravity_artifacts::quant::QuantKind::Q8_0, false) => 17,
-        (zerogravity_artifacts::quant::QuantKind::Q6K, false) => 15,
+        (
+            zerogravity_core::encoding::StoredTensorEncoding::Quantized(
+                zerogravity_core::encoding::QuantScheme::Q8_0,
+            ),
+            false,
+        ) => 17,
+        (
+            zerogravity_core::encoding::StoredTensorEncoding::Quantized(
+                zerogravity_core::encoding::QuantScheme::Q6K,
+            ),
+            false,
+        ) => 15,
         _ => {
             return Err(Error::Unsupported(
                 "H17 vocabulary source codec is not qualified".into(),

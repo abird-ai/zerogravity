@@ -8,7 +8,7 @@ fn descriptor(source: SourceIdentity, rows: usize) -> QwenEmbedding {
         SourceTensor {
             source,
             name: EMBEDDING.into(),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             axes: MatrixAxes::OutputInput,
             columns: WIDTH,
             rows: VOCABULARY,
@@ -21,7 +21,7 @@ fn parameter(source: SourceIdentity) -> SourceParameter {
     SourceParameter {
         source,
         name: POST_NORM.into(),
-        kind: QuantKind::Bf16,
+        kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
         shape: vec![1024],
         bytes: 2048,
     }
@@ -91,7 +91,9 @@ fn raw_parameter_binding_dtype_shape_name_and_rows_are_closed() {
         contract
             .validate(
                 &SourceParameter {
-                    kind: QuantKind::F32,
+                    kind: StoredTensorEncoding::Scalar(
+                        zerogravity_core::encoding::ScalarDType::F32
+                    ),
                     bytes: 4096,
                     ..valid.clone()
                 },
@@ -113,7 +115,7 @@ fn raw_parameter_binding_dtype_shape_name_and_rows_are_closed() {
             ..valid.clone()
         },
         SourceParameter {
-            kind: QuantKind::Q8_0,
+            kind: StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0),
             ..valid.clone()
         },
         SourceParameter {
@@ -267,7 +269,7 @@ fn source_row_descriptor_refuses_wrong_geometry_issuer_and_teacher_vocabulary() 
             ..valid.tensor().clone()
         },
         SourceTensor {
-            kind: QuantKind::F32,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
             ..valid.tensor().clone()
         },
         SourceTensor {
@@ -326,7 +328,7 @@ fn raw_gamma_descriptor_requires_original_backing_kind_and_issuer() {
                 ));
             }
             Ok(SourceTensorRef {
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 shape: &[1024],
                 packed_bytes: &self.bytes,
             })
@@ -340,7 +342,7 @@ fn raw_gamma_descriptor_requires_original_backing_kind_and_issuer() {
     let original = SourceParameter::from_source(&owner, POST_NORM).unwrap();
     original.validate_source(&owner).unwrap();
     let changed = SourceParameter {
-        kind: QuantKind::F32,
+        kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
         bytes: 4096,
         ..original.clone()
     };

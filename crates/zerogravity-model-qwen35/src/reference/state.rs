@@ -10,6 +10,7 @@ use crate::reference::precision::Precision;
 use crate::reference::trace::{MODEL_LAYER, Trace, TraceBinding, TraceRecorder};
 use crate::{Error, Result};
 use std::sync::Arc;
+use zerogravity_core::session_root::RootAttempt;
 use zerogravity_core::state::{CommittedOutput, PreparedDomain, StateRoot, TaskCoordinator};
 
 // Previous symbols: ORIGINAL_KV_V1, ORIGINAL_CONV_V1, ORIGINAL_RECURRENCE_V1.
@@ -79,10 +80,7 @@ fn decode(raw: &[u8], count: usize) -> Result<Vec<f32>> {
 #[must_use = "dropping a prepared Qwen numerical layer does not publish a root"]
 pub struct PreparedLayer<'m, 'b, 's> {
     math: &'m LayerMath<'b, 's>,
-    coordinator_id: u64,
-    epoch: u64,
-    base_root: u64,
-    next_frontier: u64,
+    attempt: RootAttempt,
     domains: Vec<PreparedDomain>,
     output: Vec<f32>,
 }
@@ -91,30 +89,19 @@ impl PreparedLayer<'_, '_, '_> {
         &self.output
     }
     pub fn base_root(&self) -> u64 {
-        self.base_root
+        self.attempt.base().root()
     }
     pub fn proposed_frontier(&self) -> u64 {
-        self.next_frontier
+        self.attempt.frontier()
     }
     pub fn required_domains(&self) -> usize {
         self.domains.len()
     }
     pub fn publish(self, coordinator: &mut TaskCoordinator) -> Result<CommittedOutput> {
-        if coordinator.coordinator_id() != self.coordinator_id
-            || coordinator.epoch != self.epoch
-            || coordinator.source_identity() != Some(self.math.source_identity())
-            || coordinator.root().id != self.base_root
-            || coordinator.root().frontier.checked_add(1) != Some(self.next_frontier)
-        {
-            return Err(Error::State(
-                "stale/foreign model, session or root for Qwen publish".into(),
-            ));
-        }
         let payload = encode(&self.output)?; // all errors before publication
         coordinator.publish_source_bound(
             self.math.source_identity(),
-            self.base_root,
-            self.next_frontier,
+            self.attempt,
             self.domains,
             payload,
         )
@@ -323,11 +310,9 @@ impl<'m, 'b, 's> StateBridge<'m, 'b, 's> {
         selected_gdn_state: Option<Option<usize>>,
     ) -> Result<PreparedToken<'m, 'b, 's>> {
         self.validate_model_owner(coordinator)?;
+        let attempt = coordinator.begin_advance(1)?;
         let root = coordinator.root();
-        let next_frontier = root
-            .frontier
-            .checked_add(1)
-            .ok_or_else(|| Error::Limit("original Qwen next token frontier".into()))?;
+        let next_frontier = attempt.frontier();
         // Model-source token index/embedding validation occurs before
         // registering a single tentative state change.
         let embedded = self.math.embed_token(token)?;
@@ -409,10 +394,10 @@ impl<'m, 'b, 's> StateBridge<'m, 'b, 's> {
         let trace = recorder
             .map(|t| {
                 t.finish(TraceBinding {
-                    source: self.math.source_identity(),
-                    coordinator_id: coordinator.coordinator_id(),
-                    root_id: root.id,
-                    epoch: coordinator.epoch,
+                    source: attempt.base().source(),
+                    coordinator_id: attempt.base().session().get(),
+                    root_id: attempt.base().root(),
+                    epoch: attempt.base().session_epoch(),
                     token,
                     dtype: self.math.dtype(),
                     config_sha256: self.math.config_sha256().to_owned(),
@@ -425,10 +410,7 @@ impl<'m, 'b, 's> StateBridge<'m, 'b, 's> {
             trace,
             step: PreparedLayer {
                 math: self.math,
-                coordinator_id: coordinator.coordinator_id(),
-                epoch: coordinator.epoch,
-                base_root: root.id,
-                next_frontier,
+                attempt,
                 domains,
                 output: logits,
             },
@@ -647,18 +629,13 @@ impl<'m, 'b, 's> StateBridge<'m, 'b, 's> {
         hidden: &[f32],
     ) -> Result<PreparedLayer<'m, 'b, 's>> {
         self.validate_owner(layer, coordinator)?;
+        let attempt = coordinator.begin_advance(1)?;
         let root = coordinator.root();
-        let next_frontier = root
-            .frontier
-            .checked_add(1)
-            .ok_or_else(|| Error::Limit("Qwen original frontier overflow".into()))?;
-        let (output, domains) = self.prepare_layer(layer, root, hidden, next_frontier, None)?;
+        let (output, domains) =
+            self.prepare_layer(layer, root, hidden, attempt.frontier(), None)?;
         Ok(PreparedLayer {
             math: self.math,
-            coordinator_id: coordinator.coordinator_id(),
-            epoch: coordinator.epoch,
-            base_root: root.id,
-            next_frontier,
+            attempt,
             domains,
             output,
         })

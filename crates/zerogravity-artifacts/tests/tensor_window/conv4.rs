@@ -71,7 +71,11 @@ fn declared_binding_preserves_rank_and_rejects_forged_metadata_without_staging()
             match field {
                 0 => forged.source = foreign.source_identity(),
                 1 => forged.name = "matrix".into(),
-                2 => forged.kind = zerogravity_core::quant::QuantKind::F16,
+                2 => {
+                    forged.kind = zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                        zerogravity_core::encoding::ScalarDType::F16,
+                    )
+                }
                 3 => forged.shape = vec![bound.elements() as u64, 1],
                 4 => forged.bytes += 2,
                 _ => unreachable!(),

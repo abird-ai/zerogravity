@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use zerogravity::artifact::Artifact;
 use zerogravity::cache::TransferAdmission;
-use zerogravity::quant::QuantKind;
+use zerogravity::encoding::StoredTensorEncoding;
 use zerogravity::qwen35::reference::source::CpuSource;
 use zerogravity::qwen35::source::safetensors::QwenTextConfig;
 use zerogravity::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, ResourceOwner};
@@ -209,17 +209,17 @@ fn original_borrowed_tensor_source_uses_one_owner_and_existing_cpu_value_operato
     let names = [
         (
             "model.language_model.layers.3.self_attn.k_proj.weight",
-            QuantKind::F32,
+            StoredTensorEncoding::Scalar(zerogravity::encoding::ScalarDType::F32),
             4,
         ),
         (
             "model.language_model.layers.3.self_attn.q_proj.weight",
-            QuantKind::Bf16,
+            StoredTensorEncoding::Scalar(zerogravity::encoding::ScalarDType::Bf16),
             16,
         ),
         (
             "model.language_model.layers.0.mlp.gate_proj.weight",
-            QuantKind::F16,
+            StoredTensorEncoding::Scalar(zerogravity::encoding::ScalarDType::F16),
             8,
         ),
     ];
@@ -611,6 +611,15 @@ mod original_coordinator_tests {
         );
         assert_eq!(coordinator.root().id, 0);
         assert_eq!(coordinator.root().frontier, 0);
+        assert_eq!(coordinator.binding().root(), 0);
+        assert_eq!(coordinator.binding().frontier(), 0);
+        assert_eq!(coordinator.epoch(), 77);
+        assert_eq!(coordinator.binding().session_epoch(), 77);
+        assert_eq!(coordinator.binding().source(), source.source_identity());
+        assert_eq!(
+            coordinator.coordinator_id(),
+            coordinator.binding().session().get()
+        );
         assert_eq!(coordinator.root().domains.len(), 2);
         assert_eq!(
             coordinator.root().domains["qwen.original.conv.0"].schema,
@@ -713,10 +722,16 @@ mod original_coordinator_tests {
         let bridge = StateBridge::new(&math);
         let mut own = bridge.coordinator_for_layer(0, 1).unwrap();
         let mut another = bridge.coordinator_for_layer(0, 1).unwrap();
-        assert_ne!(own.coordinator_id(), another.coordinator_id());
+        assert_ne!(own.binding().session(), another.binding().session());
+        assert_eq!(own.binding().source(), another.binding().source());
+        assert_eq!(own.epoch(), another.epoch());
+        assert_eq!(own.root(), another.root());
+        let sibling_binding = another.binding();
+        let sibling_root = another.root().clone();
         let step = bridge.prepare(0, &own, &[1.0; 4]).unwrap();
         assert!(step.publish(&mut another).is_err());
-        assert_eq!(another.root().id, 0);
+        assert_eq!(another.binding(), sibling_binding);
+        assert_eq!(another.root(), &sibling_root);
         let step = bridge.prepare(0, &own, &[1.0; 4]).unwrap();
         let initial = own.root().clone();
         assert!(own.publish(0, 1, vec![], vec![]).is_err());
@@ -761,18 +776,24 @@ mod original_coordinator_tests {
             bytes: vec![1, 2, 3],
             frontier: 1,
         };
+        let attempt = forged.begin_advance(1).unwrap();
         forged
-            .publish_source_bound(source.source_identity(), 0, 1, vec![wrong_stored], vec![])
+            .publish_source_bound(
+                source.source_identity(),
+                attempt,
+                vec![wrong_stored],
+                vec![],
+            )
             .unwrap();
         let unchanged = forged.root().clone();
         assert!(bridge.prepare(3, &forged, &[1.0; 4]).is_err());
         assert_eq!(forged.root(), &unchanged);
         let mut forged = bridge.coordinator_for_layer(3, 56).unwrap();
+        let attempt = forged.begin_advance(1).unwrap();
         forged
             .publish_source_bound(
                 source.source_identity(),
-                0,
-                1,
+                attempt,
                 vec![PreparedDomain {
                     name: "qwen.original.kv.3".into(),
                     schema: KV_V1,
@@ -925,9 +946,15 @@ mod original_full_model_tests {
         let mut first = bridge.coordinator_for_model(8).unwrap();
         let mut second = bridge.coordinator_for_model(8).unwrap();
         let prepared = bridge.prepare_diagnostic_token_f32(&first, 0).unwrap();
-        assert_ne!(first.coordinator_id(), second.coordinator_id());
+        assert_ne!(first.binding().session(), second.binding().session());
+        assert_eq!(first.binding().source(), second.binding().source());
+        assert_eq!(first.epoch(), second.epoch());
+        assert_eq!(first.root(), second.root());
+        let sibling_binding = second.binding();
+        let sibling_root = second.root().clone();
         assert!(prepared.publish(&mut second).is_err());
-        assert_eq!(second.root().id, 0);
+        assert_eq!(second.binding(), sibling_binding);
+        assert_eq!(second.root(), &sibling_root);
         let prepared = bridge.prepare_diagnostic_token_f32(&first, 0).unwrap();
         prepared.publish(&mut first).unwrap();
         let retained = first.root().clone();
@@ -964,8 +991,9 @@ mod original_full_model_tests {
                 },
             })
             .collect();
+        let attempt = damaged.begin_advance(1).unwrap();
         damaged
-            .publish_source_bound(source.source_identity(), 0, 1, bogus, Vec::new())
+            .publish_source_bound(source.source_identity(), attempt, bogus, Vec::new())
             .unwrap();
         let untouched = damaged.root().clone();
         assert!(bridge.prepare_diagnostic_token_f32(&damaged, 0).is_err());
@@ -1247,7 +1275,12 @@ mod original_reference_trace_tests {
         assert_eq!(trace.position(), 0);
         assert_eq!(trace.epoch(), 122);
         assert_eq!(trace.root_id(), 0);
-        assert_eq!(trace.coordinator_id(), session.coordinator_id());
+        let binding = session.binding();
+        assert_eq!(trace.source_identity(), binding.source());
+        assert_eq!(trace.position() as u64, binding.frontier());
+        assert_eq!(trace.epoch(), binding.session_epoch());
+        assert_eq!(trace.root_id(), binding.root());
+        assert_eq!(trace.coordinator_id(), binding.session().get());
         assert_eq!(trace.config_sha256(), sha(&config));
         assert_eq!(trace.index_sha256(), sha(&index));
         assert_eq!(

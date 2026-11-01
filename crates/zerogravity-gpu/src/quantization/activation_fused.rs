@@ -8,7 +8,7 @@ use crate::quantization::activation::{ActivationLayout, PARAMETER_WORDS};
 use crate::source_float::{round_source, widen_source};
 use cubecl::{client::Client, prelude::*, server::Handle};
 use cubecl_common::device::ServiceId;
-use zerogravity_artifacts::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::{Error, Result};
 
 const LANES: usize = 32;
@@ -162,11 +162,11 @@ fn geometry(layout: &ActivationLayout, batch: usize) -> Result<Geometry> {
         ));
     }
     let kind = if layout.signed_scale {
-        QuantKind::Q6K
+        StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)
     } else if layout.with_bias {
-        QuantKind::Q4_1
+        StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1)
     } else {
-        QuantKind::Q8_0
+        StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0)
     };
     let expected = ActivationLayout::new(kind, layout.columns, layout.rows)?;
     if layout.block_width != expected.block_width
@@ -388,10 +388,10 @@ mod tests {
     #[test]
     fn geometry_preserves_real_request_and_block_boundaries() {
         for kind in [
-            QuantKind::Q4_0,
-            QuantKind::Q4_1,
-            QuantKind::Q8_0,
-            QuantKind::Q6K,
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0),
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1),
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0),
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K),
         ] {
             for batch in [1, 2, 4, 8] {
                 let l = ActivationLayout::new(kind, 1024, 8).unwrap();
@@ -417,7 +417,12 @@ mod tests {
 
     #[test]
     fn geometry_refuses_padding_and_forged_codec_or_shader_counts() {
-        let l = ActivationLayout::new(QuantKind::Q4_1, 64, 8).unwrap();
+        let l = ActivationLayout::new(
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1),
+            64,
+            8,
+        )
+        .unwrap();
         for batch in [0, 3, 5, 7, 9, usize::MAX] {
             assert!(geometry(&l, batch).is_err());
         }
@@ -442,7 +447,12 @@ mod tests {
         ] {
             assert!(geometry(&bad, 2).is_err());
         }
-        let huge = ActivationLayout::new(QuantKind::Q8_0, 1 << 29, 1).unwrap();
+        let huge = ActivationLayout::new(
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0),
+            1 << 29,
+            1,
+        )
+        .unwrap();
         assert!(geometry(&huge, 8).is_err());
     }
 }

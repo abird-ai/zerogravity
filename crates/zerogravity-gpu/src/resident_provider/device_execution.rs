@@ -25,55 +25,63 @@ impl PreparedStep {
         // cross the host before the existing GEMV consumes them.
         unsafe {
             match p.kind {
-                QuantKind::Q4_0 => crate::quantization::q4_0::source_q4_q8_gemv::launch_unchecked(
-                    client,
-                    grid,
-                    threads,
-                    BufferArg::from_raw_parts(source.handle.clone(), source.elements),
-                    BufferArg::from_raw_parts(prepared.scales.clone(), l.composite_count),
-                    BufferArg::from_raw_parts(prepared.codes.clone(), l.columns),
-                    BufferArg::from_raw_parts(output.clone(), l.rows),
-                    l.blocks,
-                    l.rows,
-                    numeric_mode == SourceAccumulation::WideF64,
-                ),
-                QuantKind::Q4_1 => crate::quantization::q4_1::q4_1_q8_1_gemv::launch_unchecked(
-                    client,
-                    grid,
-                    threads,
-                    BufferArg::from_raw_parts(source.handle.clone(), source.elements),
-                    BufferArg::from_raw_parts(prepared.scales.clone(), l.composite_count),
-                    BufferArg::from_raw_parts(prepared.offsets.clone(), l.composite_count),
-                    BufferArg::from_raw_parts(prepared.codes.clone(), l.columns),
-                    BufferArg::from_raw_parts(output.clone(), l.rows),
-                    l.blocks,
-                    l.rows,
-                    numeric_mode == SourceAccumulation::WideF64,
-                ),
-                QuantKind::Q8_0 => crate::quantization::q8_0::q8_0_q8_0_gemv::launch_unchecked(
-                    client,
-                    grid,
-                    threads,
-                    BufferArg::from_raw_parts(source.handle.clone(), source.elements),
-                    BufferArg::from_raw_parts(prepared.scales.clone(), l.composite_count),
-                    BufferArg::from_raw_parts(prepared.codes.clone(), l.columns),
-                    BufferArg::from_raw_parts(output.clone(), l.rows),
-                    l.blocks,
-                    l.rows,
-                    numeric_mode == SourceAccumulation::WideF64,
-                ),
-                QuantKind::Q6K => crate::quantization::q6_k::q6_k_q8_k_gemv::launch_unchecked(
-                    client,
-                    grid,
-                    threads,
-                    BufferArg::from_raw_parts(source.handle.clone(), source.elements),
-                    BufferArg::from_raw_parts(prepared.scales.clone(), l.composite_count),
-                    BufferArg::from_raw_parts(prepared.codes.clone(), l.columns),
-                    BufferArg::from_raw_parts(output.clone(), l.rows),
-                    l.blocks,
-                    l.rows,
-                    numeric_mode == SourceAccumulation::WideF64,
-                ),
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0) => {
+                    crate::quantization::q4_0::source_q4_q8_gemv::launch_unchecked(
+                        client,
+                        grid,
+                        threads,
+                        BufferArg::from_raw_parts(source.handle.clone(), source.elements),
+                        BufferArg::from_raw_parts(prepared.scales.clone(), l.composite_count),
+                        BufferArg::from_raw_parts(prepared.codes.clone(), l.columns),
+                        BufferArg::from_raw_parts(output.clone(), l.rows),
+                        l.blocks,
+                        l.rows,
+                        numeric_mode == SourceAccumulation::WideF64,
+                    )
+                }
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1) => {
+                    crate::quantization::q4_1::q4_1_q8_1_gemv::launch_unchecked(
+                        client,
+                        grid,
+                        threads,
+                        BufferArg::from_raw_parts(source.handle.clone(), source.elements),
+                        BufferArg::from_raw_parts(prepared.scales.clone(), l.composite_count),
+                        BufferArg::from_raw_parts(prepared.offsets.clone(), l.composite_count),
+                        BufferArg::from_raw_parts(prepared.codes.clone(), l.columns),
+                        BufferArg::from_raw_parts(output.clone(), l.rows),
+                        l.blocks,
+                        l.rows,
+                        numeric_mode == SourceAccumulation::WideF64,
+                    )
+                }
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0) => {
+                    crate::quantization::q8_0::q8_0_q8_0_gemv::launch_unchecked(
+                        client,
+                        grid,
+                        threads,
+                        BufferArg::from_raw_parts(source.handle.clone(), source.elements),
+                        BufferArg::from_raw_parts(prepared.scales.clone(), l.composite_count),
+                        BufferArg::from_raw_parts(prepared.codes.clone(), l.columns),
+                        BufferArg::from_raw_parts(output.clone(), l.rows),
+                        l.blocks,
+                        l.rows,
+                        numeric_mode == SourceAccumulation::WideF64,
+                    )
+                }
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K) => {
+                    crate::quantization::q6_k::q6_k_q8_k_gemv::launch_unchecked(
+                        client,
+                        grid,
+                        threads,
+                        BufferArg::from_raw_parts(source.handle.clone(), source.elements),
+                        BufferArg::from_raw_parts(prepared.scales.clone(), l.composite_count),
+                        BufferArg::from_raw_parts(prepared.codes.clone(), l.columns),
+                        BufferArg::from_raw_parts(output.clone(), l.rows),
+                        l.blocks,
+                        l.rows,
+                        numeric_mode == SourceAccumulation::WideF64,
+                    )
+                }
                 _ => {
                     return Err(Error::Unsupported(
                         "device-quantized source GEMV codec".into(),

@@ -589,7 +589,7 @@ mod tests {
     }
     fn graph(required: Vec<StateSlot>) -> ForwardPlan {
         use zerogravity_core::accelerator::{SourceIdentity, program::*};
-        use zerogravity_core::quant::QuantKind;
+        use zerogravity_core::encoding::StoredTensorEncoding;
         let source = SourceIdentity::for_new_allocation().unwrap();
         let call = SourceCall::new(
             SourceRows::new(
@@ -609,7 +609,7 @@ mod tests {
             vec![SourceTensor {
                 source,
                 name: "fixture.embedding".into(),
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 axes: MatrixAxes::OutputInput,
                 rows: 8,
                 columns: 4,

@@ -4,9 +4,9 @@ use crate::accelerator::program::{
     EmbeddingContract, MathematicalBackend, MatrixAxes, PlanBuilder, ProgramNumericalProfile,
     RecordedOperatorSlice, SourceTensor,
 };
-use crate::quant::QuantKind;
+use crate::encoding::StoredTensorEncoding;
 
-fn tensor(source: SourceIdentity, kind: QuantKind) -> SourceTensor {
+fn tensor(source: SourceIdentity, kind: StoredTensorEncoding) -> SourceTensor {
     SourceTensor {
         source,
         name: "embedding".into(),
@@ -30,14 +30,23 @@ fn chain(count: usize, bf16: bool) -> RecordedOperatorSlice {
     .unwrap();
     let mut value = if bf16 {
         b.embed_profiled(
-            tensor(source, QuantKind::Bf16),
+            tensor(
+                source,
+                StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
+            ),
             PlanBuilder::inputs().token,
             EmbeddingContract::Bf16OutputInput,
         )
         .unwrap()
     } else {
-        b.embed(tensor(source, QuantKind::F32), PlanBuilder::inputs().token)
-            .unwrap()
+        b.embed(
+            tensor(
+                source,
+                StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
+            ),
+            PlanBuilder::inputs().token,
+        )
+        .unwrap()
     };
     for index in 1..count {
         value = if bf16 {
@@ -236,7 +245,13 @@ fn exact_aligned_policy_never_grows_or_borrows_a_different_native_size_class() {
     let mut b =
         PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1).unwrap();
     let mut value = b
-        .embed(tensor(source, QuantKind::F32), PlanBuilder::inputs().token)
+        .embed(
+            tensor(
+                source,
+                StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
+            ),
+            PlanBuilder::inputs().token,
+        )
         .unwrap();
     let mut columns = 16;
     for (index, rows) in [8, 32, 4, 16].into_iter().enumerate() {
@@ -245,7 +260,7 @@ fn exact_aligned_policy_never_grows_or_borrows_a_different_native_size_class() {
                 SourceTensor {
                     source,
                     name: format!("projection{index}"),
-                    kind: QuantKind::F32,
+                    kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
                     axes: MatrixAxes::OutputInput,
                     columns,
                     rows,
@@ -293,7 +308,13 @@ fn fork_and_late_residual_keep_all_actual_node_operands_nonaliasing() {
     let mut b =
         PlanBuilder::new_operator_slice(source, ProgramNumericalProfile::GgufSourceV1).unwrap();
     let original = b
-        .embed(tensor(source, QuantKind::F32), PlanBuilder::inputs().token)
+        .embed(
+            tensor(
+                source,
+                StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
+            ),
+            PlanBuilder::inputs().token,
+        )
         .unwrap();
     let left = b.silu("left", &original, None).unwrap();
     let right = b.silu("right", &original, None).unwrap();

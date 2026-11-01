@@ -239,14 +239,14 @@ mod tests {
     #[test]
     fn learned_weight_reuse_is_source_layer_role_bound_and_request_independent() {
         use zerogravity_core::accelerator::program::MatrixAxes;
-        use zerogravity_core::quant::QuantKind;
+        use zerogravity_core::encoding::StoredTensorEncoding;
         let source = SourceIdentity::for_new_allocation().unwrap();
         let first = call(source, SourceCallMode::Prefill, 0, 64);
         let next = call(source, SourceCallMode::Prefill, 64, 2);
         let out = |invocation: SourceCall, layer: usize| {
             let source = invocation.source();
             SourceOperator::new(invocation,SourceOperatorKind::Projection{selected_row:None},zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1,
-                vec![SourceTensor{source,name:format!("layer{layer}.output"),kind:QuantKind::Bf16,axes:MatrixAxes::OutputInput,rows:1024,columns:2048}],vec![]).unwrap()
+                vec![SourceTensor{source,name:format!("layer{layer}.output"),kind:StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),axes:MatrixAxes::OutputInput,rows:1024,columns:2048}],vec![]).unwrap()
         };
         let a = out(first, 0);
         let b = out(next.clone(), 0);

@@ -30,7 +30,9 @@ pub(super) fn validate(op: &SourceOperator) -> Result<()> {
     let arity = match (op.numerical_contract(), op.kind()) {
         (GgmlSourceF32V1, EmbeddingRows) => {
             let m = op.matrices().first().ok_or_else(bad)?;
-            if m.kind != QuantKind::Q6K || m.rows != op.call().rows().vocabulary() {
+            if m.kind != StoredTensorEncoding::Quantized(crate::encoding::QuantScheme::Q6K)
+                || m.rows != op.call().rows().vocabulary()
+            {
                 return Err(bad());
             }
             (1, 0)
@@ -39,7 +41,13 @@ pub(super) fn validate(op: &SourceOperator) -> Result<()> {
             if g.gamma != SourceGamma::Direct || !g.epsilon.is_finite() || g.epsilon <= 0.0 {
                 return Err(bad());
             }
-            op.parameter(0, &[QuantKind::F32], &[g.width])?;
+            op.parameter(
+                0,
+                &[StoredTensorEncoding::Scalar(
+                    crate::encoding::ScalarDType::F32,
+                )],
+                &[g.width],
+            )?;
             (0, 1)
         }
         (
@@ -53,7 +61,13 @@ pub(super) fn validate(op: &SourceOperator) -> Result<()> {
             if !epsilon.is_finite() || epsilon <= 0.0 {
                 return Err(bad());
             }
-            op.parameter(0, &[QuantKind::F32], &[width])?;
+            op.parameter(
+                0,
+                &[StoredTensorEncoding::Scalar(
+                    crate::encoding::ScalarDType::F32,
+                )],
+                &[width],
+            )?;
             (0, 1)
         }
         (
@@ -71,13 +85,13 @@ pub(super) fn validate(op: &SourceOperator) -> Result<()> {
         (GgmlQ4Repack8x8F32V1 | OpenBlas033Zen16Q8F32V1, Projection { selected_row: None }) => {
             let m = op.matrices().first().ok_or_else(bad)?;
             if op.numerical_contract() == GgmlQ4Repack8x8F32V1 {
-                if m.kind != QuantKind::Q4_0
+                if m.kind != StoredTensorEncoding::Quantized(crate::encoding::QuantScheme::Q4_0)
                     || !m.rows.is_multiple_of(8)
                     || !m.columns.is_multiple_of(32)
                 {
                     return Err(bad());
                 }
-            } else if m.kind != QuantKind::Q8_0
+            } else if m.kind != StoredTensorEncoding::Quantized(crate::encoding::QuantScheme::Q8_0)
                 || m.columns != 2048
                 || m.rows != 2048
                 || op.call().rows().len() != 64
@@ -90,7 +104,13 @@ pub(super) fn validate(op: &SourceOperator) -> Result<()> {
             if kernel != 4 {
                 return Err(bad());
             }
-            op.parameter(0, &[QuantKind::F32], &[kernel, channels])?;
+            op.parameter(
+                0,
+                &[StoredTensorEncoding::Scalar(
+                    crate::encoding::ScalarDType::F32,
+                )],
+                &[kernel, channels],
+            )?;
             (0, 1)
         }
         (GgmlSourceF32V1, GroupedQkNormalize(g)) => {

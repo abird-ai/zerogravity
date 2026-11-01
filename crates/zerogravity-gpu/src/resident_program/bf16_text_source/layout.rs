@@ -157,7 +157,13 @@ impl Layout {
             if p.source != plan.source()
                 || p.name.is_empty()
                 || p.bytes > 1024 * 1024
-                || !matches!(p.kind, QuantKind::F32 | QuantKind::Bf16)
+                || !matches!(
+                    p.kind,
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+                        | StoredTensorEncoding::Scalar(
+                            zerogravity_core::encoding::ScalarDType::Bf16
+                        )
+                )
             {
                 return Err(Error::State("authentic finite source parameter".into()));
             }

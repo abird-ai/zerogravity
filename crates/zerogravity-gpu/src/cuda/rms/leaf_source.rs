@@ -7,7 +7,7 @@ use zerogravity_artifacts::source_weights::{
 use zerogravity_core::accelerator::program::{
     MatrixAxes, SourceNumericalContract, SourceParameter, SourceRmsGeometry, SourceTensor,
 };
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::{Error, Result};
 struct LeafOwner {
     source: VerifiedTensorSource,
@@ -29,12 +29,14 @@ impl RmsLeafSource {
         metadata: Arc<WindowWorkspace>,
     ) -> Result<Self> {
         if embedding.source != source.source_identity()
-            || embedding.kind != QuantKind::Bf16
+            || embedding.kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
             || embedding.axes != MatrixAxes::OutputInput
             || embedding.rows != 248320
             || embedding.columns != geometry.width
             || input_gamma.source != source.source_identity()
-            || input_gamma.kind != QuantKind::Bf16
+            || input_gamma.kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
             || input_gamma.shape != [geometry.width as u64]
             || input_gamma.bytes != geometry.width * 2
         {

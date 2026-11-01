@@ -21,7 +21,7 @@ fn typed_original_slice_refuses_before_source_reads_or_resident_budget_work() {
     let tensor = SourceTensor {
         source,
         name: "original.embedding".into(),
-        kind: QuantKind::Bf16,
+        kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
         axes: MatrixAxes::OutputInput,
         columns: 4,
         rows: 8,
@@ -55,7 +55,7 @@ fn call_free_source_template_refuses_before_legacy_source_or_batch_lowering() {
     let matrix = |name: &str, rows, columns| SourceTensor {
         source,
         name: name.into(),
-        kind: QuantKind::Bf16,
+        kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
         axes: MatrixAxes::OutputInput,
         columns,
         rows,
@@ -122,7 +122,7 @@ fn even_legacy_operator_fragment_cannot_impersonate_full_state_transition() {
     let tensor = SourceTensor {
         source,
         name: "embedding".into(),
-        kind: QuantKind::F32,
+        kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
         axes: MatrixAxes::InputOutput,
         columns: 4,
         rows: 8,

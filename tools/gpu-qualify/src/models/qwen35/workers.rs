@@ -8,10 +8,10 @@ use std::{
     path::Path,
     sync::{Arc, Barrier},
 };
-use zerogravity_artifacts::quant::QuantKind;
 use zerogravity_core::Error;
 use zerogravity_core::Result as ZgResult;
 use zerogravity_core::accelerator::{MatVecKernel, MatVecRegion, RegionExecution};
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::resource_arbiter::{AllocationClass, ResourceArbiter, ResourceOwner};
 use zerogravity_cpu::source::CpuWeights;
 use zerogravity_gpu::Device;
@@ -23,7 +23,9 @@ const PROVIDER_CAP: usize = 256 * 1024 * 1024;
 
 fn tensor_activation(weights: &CpuWeights, salt: usize) -> Result<Vec<f32>, String> {
     let tensor = weights.tensor(TENSOR).map_err(|e| e.to_string())?;
-    if tensor.kind != QuantKind::Q4_0 || tensor.shape.len() != 2 {
+    if tensor.kind != StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0)
+        || tensor.shape.len() != 2
+    {
         return Err("physical worker checkpoint tensor is not a Q4_0 matrix".into());
     }
     let cols = usize::try_from(tensor.shape[0]).map_err(|_| "tensor width overflow")?;

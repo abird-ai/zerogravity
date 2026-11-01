@@ -47,7 +47,10 @@ impl Selection {
                     if matrix.rows() != tensor.rows
                         || matrix.columns() != tensor.columns
                         || matrix.source_identity() != recorded.plan().source()
-                        || matrix.tensor().kind != zerogravity_core::quant::QuantKind::Bf16
+                        || matrix.tensor().kind
+                            != zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                                zerogravity_core::encoding::ScalarDType::Bf16,
+                            )
                     {
                         return Err(Error::State(
                             "BF16 text resident actual projection descriptor".into(),

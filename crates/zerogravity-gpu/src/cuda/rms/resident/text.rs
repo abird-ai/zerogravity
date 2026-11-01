@@ -78,7 +78,8 @@ impl EmbeddingRows {
         let matrix = source_embedding(scope.record())?;
         if matrix.rows() != 248320
             || matrix.columns() != columns
-            || matrix.tensor().kind != QuantKind::Bf16
+            || matrix.tensor().kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
         {
             return Err(Error::State(
                 "text actual embedding source geometry differs".into(),

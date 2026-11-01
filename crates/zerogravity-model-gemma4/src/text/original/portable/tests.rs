@@ -26,7 +26,9 @@ impl Metadata {
                     SourceTensor {
                         source,
                         name,
-                        kind: QuantKind::Bf16,
+                        kind: StoredTensorEncoding::Scalar(
+                            zerogravity_core::encoding::ScalarDType::Bf16,
+                        ),
                         axes: MatrixAxes::OutputInput,
                         rows: s.shape[0],
                         columns: s.shape[1],

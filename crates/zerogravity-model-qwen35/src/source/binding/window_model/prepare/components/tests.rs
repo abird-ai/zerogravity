@@ -425,7 +425,7 @@ mod projection_source_policy {
     use zerogravity_core::accelerator::program::MatrixAxes;
     use zerogravity_core::accelerator::program::SourceTensor;
     use zerogravity_core::accelerator::program::TeacherSpan;
-    use zerogravity_core::quant::QuantKind;
+    use zerogravity_core::encoding::StoredTensorEncoding;
     fn call(ids: &[u32], base: usize) -> QwenSourceCall {
         let source = SourceIdentity::for_new_allocation().unwrap();
         let teachers = if ids.len() == 1 {
@@ -455,7 +455,7 @@ mod projection_source_policy {
             .map(|(name, rows)| SourceTensor {
                 source: call.source(),
                 name: format!("model.language_model.layers.{layer}.linear_attn.{name}.weight"),
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 axes: MatrixAxes::OutputInput,
                 rows,
                 columns: 1024,

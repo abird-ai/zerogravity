@@ -795,7 +795,7 @@ mod matrix_axes_tests {
     use super::*;
     use crate::accelerator::program::{MatrixAxes, SourceTensor};
     use crate::accelerator::{MatVecRegion, SourceIdentity};
-    use zerogravity_core::quant::QuantKind;
+    use zerogravity_core::encoding::StoredTensorEncoding;
     use zerogravity_core::source::{SourceTensorRef, TensorSource};
 
     struct OriginalRows {
@@ -809,7 +809,7 @@ mod matrix_axes_tests {
         }
         fn tensor(&self, _name: &str) -> Result<SourceTensorRef<'_>> {
             Ok(SourceTensorRef {
-                kind: QuantKind::F32,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
                 shape: &self.shape,
                 packed_bytes: &self.bytes,
             })

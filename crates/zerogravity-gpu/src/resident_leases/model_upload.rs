@@ -7,7 +7,7 @@ use zerogravity_artifacts::source_weights::{TensorWindow, VerifiedMatrix, Window
 use zerogravity_core::accelerator::program::{
     SourceNumericalContract, SourceOperator, SourceOperatorKind,
 };
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 
 mod coverage;
 mod qwen2b_mlp;
@@ -40,7 +40,10 @@ fn require_layout(operator: &SourceOperator, shape: SourceWeightLayout) -> Resul
             .zip(members.members())
             .any(|(matrix, &rows)| {
                 matrix.source != operator.call().source()
-                    || matrix.kind != QuantKind::Bf16
+                    || matrix.kind
+                        != StoredTensorEncoding::Scalar(
+                            zerogravity_core::encoding::ScalarDType::Bf16,
+                        )
                     || matrix.rows != rows
                     || matrix.columns != shape.columns()
                     || matrix.axes
@@ -231,7 +234,8 @@ impl ResidentInitialization<'_> {
         for (member, &rows) in descriptor.matrices().iter().zip(coverage.members()) {
             let matrix = source.matrix(&member.name, member.axes)?;
             if matrix.source_identity() != source.source_identity()
-                || matrix.tensor().kind != QuantKind::Bf16
+                || matrix.tensor().kind
+                    != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
                 || matrix.rows() != rows
                 || matrix.rows() != member.rows
                 || matrix.columns() != shape.columns()
@@ -405,7 +409,7 @@ mod layout_tests {
             .map(|(index, &(rows, columns))| SourceTensor {
                 source,
                 name: format!("member{index}"),
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 rows,
                 columns,
                 axes: MatrixAxes::OutputInput,

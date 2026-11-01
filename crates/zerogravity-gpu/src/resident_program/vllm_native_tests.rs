@@ -1,7 +1,7 @@
 //! Source-free native contract refusal, before source/device/provider access.
 use super::ResidentProgram;
 use zerogravity_core::accelerator::{SourceIdentity, program::*};
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::source::{SourceTensorRef, TensorSource};
 use zerogravity_core::{Error, Result};
 use zerogravity_model_qwen35::plan::QwenPlanBuilder;
@@ -37,7 +37,7 @@ fn both_native_typed_operators_refuse_cold_before_source_access() -> Result<()> 
             SourceTensor {
                 source,
                 name: "model.language_model.embed_tokens.weight".into(),
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 axes: MatrixAxes::OutputInput,
                 columns: 1024,
                 rows: 248320,
@@ -52,7 +52,9 @@ fn both_native_typed_operators_refuse_cold_before_source_access() -> Result<()> 
                 .map(|role| SourceTensor {
                     source,
                     name: format!("model.language_model.layers.0.mlp.{role}_proj.weight"),
-                    kind: QuantKind::Bf16,
+                    kind: StoredTensorEncoding::Scalar(
+                        zerogravity_core::encoding::ScalarDType::Bf16,
+                    ),
                     axes: MatrixAxes::OutputInput,
                     columns: 1024,
                     rows: 3584,

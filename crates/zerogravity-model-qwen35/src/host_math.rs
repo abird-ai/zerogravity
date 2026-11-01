@@ -490,7 +490,10 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
         self.tensor(&tensor)?;
         if self.source.program_numerical_profile()
             != ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
-            || tensor.kind != zerogravity_core::quant::QuantKind::Bf16
+            || tensor.kind
+                != zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                    zerogravity_core::encoding::ScalarDType::Bf16,
+                )
             || tensor.axes != crate::accelerator::program::MatrixAxes::OutputInput
             || tensor
                 != self
@@ -542,7 +545,10 @@ impl MathematicalBackend for HostMath<'_, '_, '_> {
             || input.precision != ActivationPrecision::Bf16WidenedF32
             || input.source != Some(self.source.source_identity())
             || input.profile != Some(self.source.program_numerical_profile())
-            || tensor.kind != zerogravity_core::quant::QuantKind::Bf16
+            || tensor.kind
+                != zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                    zerogravity_core::encoding::ScalarDType::Bf16,
+                )
             || tensor.axes != crate::accelerator::program::MatrixAxes::OutputInput
         {
             return Err(Error::Unsupported(

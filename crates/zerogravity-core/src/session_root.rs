@@ -25,7 +25,9 @@ impl SessionId {
 ///
 /// Private fields prevent callers from synthesizing a snapshot binding from a
 /// proposed frontier. Source identity is local allocation identity, not a model
-/// checksum. A portable checkpoint must independently validate its source.
+/// checksum. Reference tasks may remain source-less; their binding confers no
+/// source-qualified execution permission. A portable checkpoint must independently
+/// validate its source.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RootBinding {
     source: SourceIdentity,
@@ -86,6 +88,13 @@ impl SessionAuthority {
                 "session requires a bound source identity".into(),
             ));
         }
+        Self::new_reference(source, 0)
+    }
+
+    /// Reference coordinator only: preserve its caller-supplied epoch and allow
+    /// genuinely source-less tasks without inventing a model allocation.
+    /// All sessions use the same non-wrapping identity issuer.
+    pub(crate) fn new_reference(source: SourceIdentity, epoch: u64) -> Result<Self> {
         let session = NEXT_SESSION
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
                 next.checked_add(1)
@@ -96,7 +105,7 @@ impl SessionAuthority {
                 source,
                 session: SessionId(session),
                 root: 0,
-                session_epoch: 0,
+                session_epoch: epoch,
                 frontier: 0,
             },
         })
@@ -368,6 +377,55 @@ mod tests {
         forged.frontier = 1;
         assert!(a.begin_restore(forged).is_err());
         assert_eq!(a.binding(), initial);
+    }
+
+    #[test]
+    fn reference_publication_checks_every_base_field_before_payload_mutation() {
+        use crate::state::{PreparedDomain, TaskCoordinator};
+        use std::sync::Arc;
+
+        let source = SourceIdentity::for_new_allocation().unwrap();
+        let foreign_source = SourceIdentity::for_new_allocation().unwrap();
+        let sibling = SessionAuthority::new(source).unwrap();
+        let mut coordinator =
+            TaskCoordinator::new_source_bound(9, source, [("kv".into(), 1)]).unwrap();
+        let initial = coordinator.binding();
+        let root = coordinator.root().clone();
+        let domains = || {
+            vec![PreparedDomain {
+                name: "kv".into(),
+                schema: 1,
+                bytes: vec![1, 2],
+                frontier: 4,
+            }]
+        };
+        for field in 0..5 {
+            let mut attempt = coordinator.begin_advance(4).unwrap();
+            match field {
+                0 => attempt.base.source = foreign_source,
+                1 => attempt.base.session = sibling.binding().session(),
+                2 => attempt.base.root += 1,
+                3 => attempt.base.session_epoch += 1,
+                _ => attempt.base.frontier += 1,
+            }
+            assert!(
+                coordinator
+                    .publish_source_bound(source, attempt, domains(), vec![42])
+                    .is_err()
+            );
+            assert_eq!(coordinator.binding(), initial);
+            assert_eq!(coordinator.root(), &root);
+            assert!(Arc::ptr_eq(
+                &coordinator.root().domains["kv"].bytes,
+                &root.domains["kv"].bytes
+            ));
+        }
+        let attempt = coordinator.begin_advance(4).unwrap();
+        let out = coordinator
+            .publish_source_bound(source, attempt, domains(), vec![42])
+            .unwrap();
+        assert_eq!((out.root_id, out.epoch, out.sequence), (1, 9, 1));
+        assert_eq!(coordinator.binding().frontier(), 4);
     }
 
     #[test]

@@ -139,7 +139,9 @@ fn matching_width_does_not_replace_actual_native_operator_kind() {
             vec![SourceParameter {
                 source,
                 name: "gamma".into(),
-                kind: zerogravity_core::quant::QuantKind::Bf16,
+                kind: zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                    zerogravity_core::encoding::ScalarDType::Bf16,
+                ),
                 shape: vec![columns as u64],
                 bytes: columns * 2,
             }],
@@ -183,7 +185,7 @@ fn shared_weights_preserve_reference_call_eligibility_for_fresh_issuers() -> Res
         MatrixAxes, SourceCall, SourceCallMode, SourceOperator, SourceRows, SourceTensor,
         TextCallGeometry,
     };
-    use zerogravity_core::quant::QuantKind;
+    use zerogravity_core::encoding::StoredTensorEncoding;
     let source = SourceIdentity::for_new_allocation()?;
     let call = SourceCall::new(
         SourceRows::new(
@@ -196,7 +198,7 @@ fn shared_weights_preserve_reference_call_eligibility_for_fresh_issuers() -> Res
     let member = |suffix: &str, rows| SourceTensor {
         source,
         name: format!("model.language_model.layers.0.linear_attn.{suffix}.weight"),
-        kind: QuantKind::Bf16,
+        kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
         axes: MatrixAxes::OutputInput,
         rows,
         columns: 2048,

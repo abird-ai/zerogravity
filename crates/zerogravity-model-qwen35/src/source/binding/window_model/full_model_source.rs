@@ -150,7 +150,7 @@ pub(super) fn require_source(
     parameter(
         model,
         QwenParameterRole::FinalNorm,
-        QuantKind::Bf16,
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
         &[h as u64],
     )?;
     for i in 0..24 {
@@ -158,7 +158,12 @@ pub(super) fn require_source(
             QwenParameterRole::InputNorm(i),
             QwenParameterRole::FfnNorm(i),
         ] {
-            parameter(model, role, QuantKind::Bf16, &[h as u64])?;
+            parameter(
+                model,
+                role,
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                &[h as u64],
+            )?;
         }
         for (role, rows, columns) in [
             (QwenMatrixRole::FfnGate(i), m, h),
@@ -180,7 +185,12 @@ pub(super) fn require_source(
                 QwenParameterRole::QueryNorm(i),
                 QwenParameterRole::KeyNorm(i),
             ] {
-                parameter(model, role, QuantKind::Bf16, &[256])?;
+                parameter(
+                    model,
+                    role,
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                    &[256],
+                )?;
             }
         } else {
             for (role, rows, columns) in [
@@ -195,12 +205,27 @@ pub(super) fn require_source(
             parameter(
                 model,
                 QwenParameterRole::GdnConvolution(i),
-                QuantKind::Bf16,
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 &[6144, 1, 4],
             )?;
-            parameter(model, QwenParameterRole::GdnA(i), QuantKind::F32, &[16])?;
-            parameter(model, QwenParameterRole::GdnDt(i), QuantKind::Bf16, &[16])?;
-            parameter(model, QwenParameterRole::GdnNorm(i), QuantKind::F32, &[128])?;
+            parameter(
+                model,
+                QwenParameterRole::GdnA(i),
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                &[16],
+            )?;
+            parameter(
+                model,
+                QwenParameterRole::GdnDt(i),
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                &[16],
+            )?;
+            parameter(
+                model,
+                QwenParameterRole::GdnNorm(i),
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                &[128],
+            )?;
         }
     }
     Ok(())
@@ -213,7 +238,8 @@ fn matrix(
     columns: usize,
 ) -> Result<()> {
     let descriptor = model.matrix_descriptor(role)?;
-    if descriptor.kind != QuantKind::Bf16
+    if descriptor.kind
+        != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
         || descriptor.axes != MatrixAxes::OutputInput
         || descriptor.rows != rows
         || descriptor.columns != columns
@@ -227,7 +253,7 @@ fn matrix(
 fn parameter(
     model: &OriginalWindowModelSource,
     role: QwenParameterRole,
-    kind: QuantKind,
+    kind: StoredTensorEncoding,
     shape: &[u64],
 ) -> Result<()> {
     let descriptor = model.parameter_descriptor(role)?;
@@ -236,7 +262,13 @@ fn parameter(
         .try_fold(1usize, |n, &d| n.checked_mul(usize::try_from(d).ok()?))
         .ok_or_else(|| Error::Limit("full-model source parameter extent".into()))?;
     let bytes = elements
-        .checked_mul(if kind == QuantKind::Bf16 { 2 } else { 4 })
+        .checked_mul(
+            if kind == StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16) {
+                2
+            } else {
+                4
+            },
+        )
         .ok_or_else(|| Error::Limit("full-model source parameter bytes".into()))?;
     if descriptor.kind != kind || descriptor.shape != shape || descriptor.bytes != bytes {
         return Err(Error::State(

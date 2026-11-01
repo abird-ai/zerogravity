@@ -5,7 +5,7 @@
 //! Output equality is checked for EVERY real device sample. Diagnostic-only,
 //! never used as an unchecked runtime auto-selection or benchmarked model TPS.
 use std::{path::Path, time::Instant};
-use zerogravity_artifacts::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::resource_arbiter::{ResourceArbiter, ResourceOwner};
 use zerogravity_cpu::source::CpuWeights;
 use zerogravity_gpu::CubeResidentProvider;
@@ -20,7 +20,9 @@ const CARD_CAP: u64 = 512 * 1024 * 1024;
 pub fn run(device: Device, model: &Path) -> Result<(), String> {
     let weights = CpuWeights::open(model).map_err(|e| e.to_string())?;
     let tensor = weights.tensor(TENSOR).map_err(|e| e.to_string())?;
-    if tensor.kind != QuantKind::Q4_0 || tensor.shape.len() != 2 {
+    if tensor.kind != StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0)
+        || tensor.shape.len() != 2
+    {
         return Err("source-trained Q4_0 measurement tensor missing".into());
     }
     let cols = usize::try_from(tensor.shape[0]).map_err(|_| "source columns overflow")?;

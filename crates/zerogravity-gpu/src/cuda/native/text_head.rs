@@ -21,7 +21,7 @@ use zerogravity_core::accelerator::program::PlanOperation;
 use zerogravity_core::accelerator::program::SourceTensor;
 use zerogravity_core::accelerator::program::ValueId;
 use zerogravity_core::device_events::DeviceAccess;
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 mod mode;
 pub(crate) use super::prepared_bf16_head::{
     HeadFault as StreamedHeadFault, STREAMED_WINDOW_STAGING_UPPER,
@@ -114,7 +114,8 @@ impl StreamedHead {
                 ));
             }
         };
-        if matrix.matrix().tensor().kind != QuantKind::Bf16
+        if matrix.matrix().tensor().kind
+            != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
             || matrix.source().source_identity() != source.source_identity()
             || !Arc::ptr_eq(rms_scope.record(), scope.record())
         {

@@ -5,7 +5,7 @@
 //! bound after compilation; the plan never contains a session or GPU handle.
 
 use super::SourceIdentity;
-use crate::quant::QuantKind;
+use crate::encoding::StoredTensorEncoding;
 use crate::source::{SourceTensorRef, TensorSource};
 use crate::{Error, Result};
 use std::collections::{BTreeMap, BTreeSet};
@@ -139,7 +139,7 @@ impl MatrixAxes {
 pub struct SourceTensor {
     pub source: SourceIdentity,
     pub name: String,
-    pub kind: QuantKind,
+    pub kind: StoredTensorEncoding,
     pub axes: MatrixAxes,
     pub columns: usize,
     pub rows: usize,
@@ -2214,7 +2214,7 @@ mod tests {
 
     struct MatrixSource {
         identity: SourceIdentity,
-        kind: QuantKind,
+        kind: StoredTensorEncoding,
         shape: Vec<u64>,
         packed: Vec<u8>,
     }
@@ -2236,7 +2236,7 @@ mod tests {
     fn matrix_source(shape: &[u64]) -> MatrixSource {
         MatrixSource {
             identity: source(),
-            kind: QuantKind::F32,
+            kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
             shape: shape.into(),
             packed: [1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0]
                 .into_iter()
@@ -2291,7 +2291,7 @@ mod tests {
                 ..tensor.clone()
             },
             SourceTensor {
-                kind: QuantKind::F16,
+                kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F16),
                 ..tensor.clone()
             },
             SourceTensor {
@@ -2343,7 +2343,7 @@ mod tests {
             );
         }
         let mut original = matrix_source(&[16, 2]);
-        original.kind = QuantKind::Q8_0;
+        original.kind = StoredTensorEncoding::Quantized(crate::encoding::QuantScheme::Q8_0);
         original.packed = vec![0; 34];
         // Total source elements form one block, but output rows do not.
         assert!(original.tensor("matrix").unwrap().validate().is_ok());
@@ -2364,7 +2364,7 @@ mod tests {
         SourceTensor {
             source: source(),
             name: "token_embd.weight".into(),
-            kind: QuantKind::F32,
+            kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
             axes: MatrixAxes::InputOutput,
             columns,
             rows: 4,

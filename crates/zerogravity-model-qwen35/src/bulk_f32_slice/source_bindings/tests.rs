@@ -31,12 +31,16 @@ mod prefix {
         fn tensor(&self, name: &str) -> Result<SourceTensorRef<'_>> {
             match name {
                 "token_embd.weight" => Ok(SourceTensorRef {
-                    kind: QuantKind::Q6K,
+                    kind: StoredTensorEncoding::Quantized(
+                        zerogravity_core::encoding::QuantScheme::Q6K,
+                    ),
                     shape: &[2048, 16],
                     packed_bytes: &self.embedding,
                 }),
                 "blk.0.attn_norm.weight" => Ok(SourceTensorRef {
-                    kind: QuantKind::F32,
+                    kind: StoredTensorEncoding::Scalar(
+                        zerogravity_core::encoding::ScalarDType::F32,
+                    ),
                     shape: &[2048],
                     packed_bytes: &self.norm,
                 }),
@@ -50,8 +54,14 @@ mod prefix {
         let mut source = Original::new();
         let span = source.span();
         let descriptor = source.descriptor(span.clone());
-        assert_eq!(descriptor.embedding().kind, QuantKind::Q6K);
-        assert_eq!(descriptor.norm().kind, QuantKind::F32);
+        assert_eq!(
+            descriptor.embedding().kind,
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)
+        );
+        assert_eq!(
+            descriptor.norm().kind,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+        );
         assert_eq!(descriptor.layout().shape(), [2048, 64, 1, 1]);
         assert_eq!(descriptor.epsilon().to_bits(), 1e-6_f32.to_bits());
         assert!(PrefixBinding::new(span.clone(), &source, descriptor.contract(), 1e-5).is_err());
@@ -201,11 +211,31 @@ mod upstream {
         }
         fn tensor(&self, name: &str) -> Result<SourceTensorRef<'_>> {
             let (kind, shape, packed_bytes): (_, &[u64], &[u8]) = match name {
-                "token_embd.weight" => (QuantKind::Q6K, &[2048, 16], &self.embedding),
-                "blk.0.attn_norm.weight" => (QuantKind::F32, &[2048], &self.norm),
-                "blk.0.attn_qkv.weight" => (QuantKind::Q4_0, &[2048, 6144], &self.qkv),
-                "blk.0.attn_gate.weight" => (QuantKind::Q4_0, &[2048, 2048], &self.z),
-                "blk.0.ssm_conv1d.weight" => (QuantKind::F32, &[4, 6144], &self.conv),
+                "token_embd.weight" => (
+                    StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K),
+                    &[2048, 16],
+                    &self.embedding,
+                ),
+                "blk.0.attn_norm.weight" => (
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                    &[2048],
+                    &self.norm,
+                ),
+                "blk.0.attn_qkv.weight" => (
+                    StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0),
+                    &[2048, 6144],
+                    &self.qkv,
+                ),
+                "blk.0.attn_gate.weight" => (
+                    StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0),
+                    &[2048, 2048],
+                    &self.z,
+                ),
+                "blk.0.ssm_conv1d.weight" => (
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                    &[4, 6144],
+                    &self.conv,
+                ),
                 _ => return Err(Error::Malformed("unknown original test tensor".into())),
             };
             Ok(SourceTensorRef {
@@ -326,7 +356,7 @@ mod output {
 
     struct Original {
         identity: SourceIdentity,
-        kind: QuantKind,
+        kind: StoredTensorEncoding,
         shape: [u64; 2],
         bytes: Vec<u8>,
     }
@@ -334,7 +364,9 @@ mod output {
         fn new() -> Self {
             Self {
                 identity: SourceIdentity::for_new_allocation().unwrap(),
-                kind: QuantKind::Q8_0,
+                kind: StoredTensorEncoding::Quantized(
+                    zerogravity_core::encoding::QuantScheme::Q8_0,
+                ),
                 shape: [2048, 2048],
                 bytes: vec![0; 2048 * 2048 / 32 * 34],
             }
@@ -372,7 +404,10 @@ mod output {
         let mut source = Original::new();
         let span = source.span();
         let descriptor = source.descriptor(span.clone()).unwrap();
-        assert_eq!(descriptor.tensor().kind, QuantKind::Q8_0);
+        assert_eq!(
+            descriptor.tensor().kind,
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0)
+        );
         assert_eq!(descriptor.tensor().axes, MatrixAxes::InputOutput);
         assert_eq!(descriptor.layout().shape(), [2048, 64, 1, 1]);
         assert_eq!(
@@ -390,9 +425,10 @@ mod output {
         source.shape = [1024, 4096];
         assert!(source.descriptor(span.clone()).is_err());
         source.shape = [2048, 2048];
-        source.kind = QuantKind::F32;
+        source.kind = StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32);
         assert!(source.descriptor(span.clone()).is_err());
-        source.kind = QuantKind::Q8_0;
+        source.kind =
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0);
         source.identity = SourceIdentity::for_new_allocation().unwrap();
         assert!(source.descriptor(span).is_err());
     }

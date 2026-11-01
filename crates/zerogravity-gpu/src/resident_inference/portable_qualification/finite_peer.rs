@@ -7,7 +7,6 @@ use crate::resident_inference::*;
 use cubecl::device::AmdDevice;
 use cubecl_common::device::ServiceId;
 use std::sync::atomic::Ordering;
-use zerogravity_artifacts::quant::QuantKind;
 use zerogravity_core::accelerator::{
     SourceIdentity,
     program::{
@@ -15,6 +14,7 @@ use zerogravity_core::accelerator::{
         PlanBuilder, SourceTensor, SourceVector,
     },
 };
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::resource_arbiter::{
     AllocationClass, AllocationRequest, GlobalResourceLease, PhysicalDeviceKey, ResourceArbiter,
     ResourceOwner,
@@ -162,7 +162,7 @@ impl TensorSource for PeerSource {
             return Err(Error::Malformed("finite peer source role".into()));
         }
         Ok(SourceTensorRef {
-            kind: QuantKind::Q8_0,
+            kind: StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0),
             shape: &self.shape,
             packed_bytes: &self.packed,
         })

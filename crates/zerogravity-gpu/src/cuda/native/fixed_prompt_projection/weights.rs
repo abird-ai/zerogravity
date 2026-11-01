@@ -57,7 +57,10 @@ impl PendingProjectionWeights {
             for member in operator.matrices() {
                 not_cancelled(cancelled)?;
                 let matrix = bound.matrix(&member.name, member.axes)?;
-                if matrix.tensor().kind != zerogravity_core::quant::QuantKind::Bf16
+                if matrix.tensor().kind
+                    != zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                        zerogravity_core::encoding::ScalarDType::Bf16,
+                    )
                     || matrix.rows() != member.rows
                     || matrix.columns() != 1024
                     || matrix.source_identity() != bound.source_identity()

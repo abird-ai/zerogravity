@@ -1,6 +1,6 @@
 use super::*;
 use std::sync::atomic::{AtomicBool, Ordering};
-use zerogravity_core::{quant::QuantKind, session_root::SessionAuthority};
+use zerogravity_core::{encoding::StoredTensorEncoding, session_root::SessionAuthority};
 use zerogravity_cpu::reference_text::{
     ReferenceTextMath, ReferenceTextSource, ReferenceTextState, TextAdmission,
 };
@@ -45,7 +45,9 @@ impl Fixture {
                 SourceTensor {
                     source,
                     name: name.clone(),
-                    kind: QuantKind::F32,
+                    kind: StoredTensorEncoding::Scalar(
+                        zerogravity_core::encoding::ScalarDType::F32,
+                    ),
                     axes: MatrixAxes::OutputInput,
                     columns: k,
                     rows: n,
@@ -67,7 +69,9 @@ impl Fixture {
                     TextExpertTensor {
                         source,
                         name: name.clone(),
-                        kind: QuantKind::F32,
+                        kind: StoredTensorEncoding::Scalar(
+                            zerogravity_core::encoding::ScalarDType::F32,
+                        ),
                         experts: moe.experts(),
                         rows: n,
                         columns: k,

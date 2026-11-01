@@ -23,7 +23,10 @@ fn legacy_cpu_weights_ufcs_and_mutable_architecture_api_remain_available() {
 
 #[test]
 fn facade_descriptor_and_error_types_are_the_same_concrete_core_types() {
-    let encoding: zerogravity::quant::QuantKind = zerogravity_core::quant::QuantKind::Q6K;
+    let encoding: zerogravity::encoding::StoredTensorEncoding =
+        zerogravity_core::encoding::StoredTensorEncoding::Quantized(
+            zerogravity::encoding::QuantScheme::Q6K,
+        );
     assert_eq!(encoding.byte_len(256).unwrap(), 210);
     let error: zerogravity::Error = zerogravity_core::Error::State("same authority".into());
     assert_eq!(error.to_string(), "invalid session state: same authority");

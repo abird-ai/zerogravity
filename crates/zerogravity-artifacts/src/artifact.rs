@@ -4,7 +4,7 @@
 //! layouts. No tokenizer, model-specific tensor naming, trained math or complete
 //! model-shard verification is implied by successful directory inspection.
 
-use crate::quant::{QuantKind, dequantize};
+use crate::codecs::dequantize;
 use crate::{Error, Result};
 use serde::Deserialize;
 use serde::de::{MapAccess, Visitor};
@@ -15,6 +15,7 @@ use std::io::{Cursor, Read, Seek, SeekFrom};
 #[cfg(unix)]
 use std::os::unix::fs::FileExt;
 use std::path::Path;
+use zerogravity_core::encoding::StoredTensorEncoding;
 
 const MAX_HEADER: u64 = 64 * 1024 * 1024;
 const MAX_METADATA: u64 = 128 * 1024 * 1024;
@@ -35,7 +36,7 @@ pub struct TensorInfo {
     pub name: String,
     /// Logical tensor shape in source-file dimension order.
     pub shape: Vec<u64>,
-    pub kind: QuantKind,
+    pub kind: StoredTensorEncoding,
     /// Absolute byte offset in this file (not a GGUF relative tensor offset).
     pub byte_offset: u64,
     pub byte_len: u64,
@@ -356,7 +357,7 @@ pub fn parse_safetensors<R: Read + Seek>(reader: &mut R, file_len: u64) -> Resul
         if name.is_empty() || name.len() > MAX_NAME || tensor.shape.len() > 16 {
             return Err(Error::Malformed("invalid tensor name or rank".into()));
         }
-        let kind = QuantKind::from_safetensors(&tensor.dtype)?;
+        let kind = StoredTensorEncoding::from_safetensors(&tensor.dtype)?;
         let elements = checked_elements(&tensor.shape)?;
         let len = kind.byte_len(elements)?;
         let [begin, end] = tensor.data_offsets;
@@ -614,7 +615,7 @@ pub fn parse_gguf<R: Read + Seek>(reader: &mut R, file_len: u64) -> Result<Artif
         for _ in 0..rank {
             shape.push(r.u64()?);
         }
-        let kind = QuantKind::from_ggml(r.u32()?)?;
+        let kind = StoredTensorEncoding::from_ggml(r.u32()?)?;
         let (block_elements, _) = kind.block();
         if !shape[0].is_multiple_of(block_elements) {
             return Err(Error::Malformed(
@@ -718,7 +719,10 @@ mod tests {
             &[0, 0, 128, 63, 0, 0, 0, 64],
         );
         let info = check_safe(&bytes).unwrap();
-        assert_eq!(info.tensors[0].kind, QuantKind::F32);
+        assert_eq!(
+            info.tensors[0].kind,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+        );
         assert_eq!(info.tensors[0].shape, [2]);
         assert_eq!(info.tensors[0].byte_offset, 8 + (bytes.len() - 16) as u64);
     }

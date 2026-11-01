@@ -385,7 +385,9 @@ fn original_index_whole_hash_header_axes_dtype_and_bundle_are_exact() {
     assert_eq!(matrix.axes(), MatrixAxes::OutputInput);
     assert_eq!(
         matrix.tensor().kind,
-        zerogravity_core::quant::QuantKind::F32
+        zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+            zerogravity_core::encoding::ScalarDType::F32
+        )
     );
     let tile = source.read_rows(&matrix, 1..3).unwrap();
     assert_eq!(tile.row_range(), 1..3);
@@ -407,7 +409,9 @@ fn original_index_whole_hash_header_axes_dtype_and_bundle_are_exact() {
     assert_eq!(bf16.as_slice(), &[0x80, 0x40, 0xa0, 0x40, 0xc0, 0x40]);
     assert_eq!(
         other.tensor().kind,
-        zerogravity_core::quant::QuantKind::Bf16
+        zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+            zerogravity_core::encoding::ScalarDType::Bf16
+        )
     );
     // Existing complete materialization independently uses the same bundle hash.
     let owned = SourceWeights::prepare_verified_shards(
@@ -835,7 +839,7 @@ impl Drop for ParameterFixture {
 
 #[test]
 fn raw_rank1_parameter_kind_original_descriptor_and_contiguous_ranges_are_exact() {
-    use zerogravity_core::quant::QuantKind;
+    use zerogravity_core::encoding::StoredTensorEncoding;
     let fixture = ParameterFixture::new();
     let host = admission(64 * 1024 * 1024, "host");
     let source = fixture.plan(&host).unwrap().open().unwrap();
@@ -843,12 +847,22 @@ fn raw_rank1_parameter_kind_original_descriptor_and_contiguous_ranges_are_exact(
     for (name, kind, shape, raw) in [
         (
             "norm",
-            QuantKind::Bf16,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             vec![40u64],
             fixture.norm.as_slice(),
         ),
-        ("bias", QuantKind::F32, vec![5], fixture.bias.as_slice()),
-        ("half", QuantKind::F16, vec![4], fixture.half.as_slice()),
+        (
+            "bias",
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+            vec![5],
+            fixture.bias.as_slice(),
+        ),
+        (
+            "half",
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F16),
+            vec![4],
+            fixture.half.as_slice(),
+        ),
     ] {
         let parameter = source.parameter(name).unwrap();
         let descriptor = parameter.source_parameter();
@@ -912,7 +926,7 @@ fn raw_rank1_parameter_kind_original_descriptor_and_contiguous_ranges_are_exact(
 #[test]
 fn rank1_parameter_sealed_issuer_rejects_foreign_owner_changed_typed_metadata_and_bad_ranges() {
     use zerogravity_core::accelerator::program::SourceParameter;
-    use zerogravity_core::quant::QuantKind;
+    use zerogravity_core::encoding::StoredTensorEncoding;
     let fixture = ParameterFixture::new();
     let host = admission(64 * 1024 * 1024, "host");
     let first = fixture.plan(&host).unwrap().open().unwrap();
@@ -931,11 +945,11 @@ fn rank1_parameter_sealed_issuer_rejects_foreign_owner_changed_typed_metadata_an
             ..descriptor.clone()
         },
         SourceParameter {
-            kind: QuantKind::F32,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
             ..descriptor.clone()
         },
         SourceParameter {
-            kind: QuantKind::Q4_0,
+            kind: StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0),
             ..descriptor.clone()
         },
         SourceParameter {
@@ -996,7 +1010,7 @@ fn parameter_window_keeps_raw_bytes_and_metadata_live_after_all_caller_owners_dr
 
 #[test]
 fn parameter_actual_header_and_retained_fd_ignore_public_info_and_path_replacement() {
-    use zerogravity_core::quant::QuantKind;
+    use zerogravity_core::encoding::StoredTensorEncoding;
     let fixture = ParameterFixture::new();
     let host = admission(64 * 1024 * 1024, "host");
     let mut artifact = fixture.artifact();
@@ -1006,7 +1020,7 @@ fn parameter_actual_header_and_retained_fd_ignore_public_info_and_path_replaceme
         .iter_mut()
         .find(|tensor| tensor.name == "norm")
         .unwrap();
-    untrusted.kind = QuantKind::F32;
+    untrusted.kind = StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32);
     untrusted.shape = vec![1, 40];
     untrusted.byte_len = 1;
     untrusted.byte_offset = 0;
@@ -1019,7 +1033,10 @@ fn parameter_actual_header_and_retained_fd_ignore_public_info_and_path_replaceme
     fs::write(fixture.path.join(PARAMETERS), vec![0; fixture.bytes.len()]).unwrap();
     let source = plan.open().unwrap();
     let parameter = source.parameter("norm").unwrap();
-    assert_eq!(parameter.tensor().kind, QuantKind::Bf16);
+    assert_eq!(
+        parameter.tensor().kind,
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+    );
     assert_eq!(parameter.tensor().shape, [40u64]);
     assert_eq!(parameter.source_parameter().bytes, 80);
     let window = source.read_parameter(&parameter, 0..40).unwrap();
@@ -1164,7 +1181,9 @@ fn sealed_headers_and_same_owner_workspace_retain_metadata_and_refuse_exhaustion
     assert_eq!(reserved(&host), META + 12288);
     assert_eq!(
         retained.source().tensor_info("bf16").unwrap().kind,
-        zerogravity_artifacts::quant::QuantKind::Bf16
+        zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+            zerogravity_core::encoding::ScalarDType::Bf16
+        )
     );
     drop(retained);
     assert_eq!(reserved(&host), 0);

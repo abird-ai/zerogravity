@@ -430,7 +430,10 @@ impl MathematicalBackend for ReferenceTextMath<'_> {
         if tensor.source != self.source.source_identity()
             || token >= tensor.rows
             || self.arithmetic == ReferenceTextArithmetic::Bf16EagerCandidate
-                && tensor.kind != zerogravity_core::quant::QuantKind::Bf16
+                && tensor.kind
+                    != zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                        zerogravity_core::encoding::ScalarDType::Bf16,
+                    )
         {
             return Err(Error::State("text embedding original source/token".into()));
         }

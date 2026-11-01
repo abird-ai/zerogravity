@@ -1,6 +1,6 @@
 //! One immutable original source allocation and bounded cold decoding.
 use crate::artifact::{Artifact, ArtifactFormat, ArtifactInfo, TensorInfo};
-use crate::quant::dequantize;
+use crate::codecs::dequantize;
 #[cfg(all(feature = "cache", target_os = "linux"))]
 pub use crate::verified_shards::{ExpectedSourceShard, SourceOpenLimits, VerifiedShardPlan};
 use crate::{Error, Result};

@@ -3,7 +3,7 @@
 use crate::accelerator::program::{MatrixAxes, SourceTensor};
 use crate::{Error, Result};
 #[cfg(all(feature = "source-binding", target_os = "linux"))]
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 
 #[cfg(all(feature = "source-binding", target_os = "linux"))]
 mod raw_state;
@@ -242,7 +242,9 @@ fn resolve_qwen_roles(
     let mut matrices = std::collections::BTreeMap::new();
     let mut matrix = |role, name: String| -> Result<()> {
         let tensor = resolve_matrix(&name)?;
-        if tensor.kind != QuantKind::Bf16 {
+        if tensor.kind
+            != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+        {
             return Err(Error::Unsupported(
                 "original HF CPU BF16 target requires original BF16 matrices".into(),
             ));

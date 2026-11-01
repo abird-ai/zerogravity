@@ -16,7 +16,6 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
-use zerogravity_artifacts::quant::QuantKind;
 use zerogravity_core::Error;
 use zerogravity_core::Result as ZgResult;
 use zerogravity_core::accelerator::{
@@ -27,6 +26,7 @@ use zerogravity_core::accelerator::{
     MatVecRegion, RegionExecution, RmsNormRegion, RopeKvCompleted, RopeKvExecution, RopeKvRegion,
     SiluRegion,
 };
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::resource_arbiter::{ResourceArbiter, ResourceOwner};
 use zerogravity_cpu::source::{source_reference_embedding, source_reference_projection};
 use zerogravity_gpu::CubeResidentProvider;
@@ -926,16 +926,34 @@ fn choose_projection_names(
         let rows = usize::try_from(info.shape[1]).map_err(|_| "rows overflow")?;
         let qualified = matches!(
             info.kind,
-            QuantKind::Q4_0 | QuantKind::Q4_1 | QuantKind::Q8_0 | QuantKind::Q6K | QuantKind::F32
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0)
+                | StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1)
+                | StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0)
+                | StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)
+                | StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
         );
         if !qualified
             || rows == 0
             || rows > MAX_SELECTED_ROWS
-            || (matches!(info.kind, QuantKind::Q4_0)
-                && (!rows.is_multiple_of(8) || !cols.is_multiple_of(32)))
-            || (matches!(info.kind, QuantKind::F32) && !cols.is_multiple_of(32))
-            || (matches!(info.kind, QuantKind::Q6K) && !cols.is_multiple_of(256))
-            || (matches!(info.kind, QuantKind::Q4_1 | QuantKind::Q8_0) && !cols.is_multiple_of(32))
+            || (matches!(
+                info.kind,
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0)
+            ) && (!rows.is_multiple_of(8) || !cols.is_multiple_of(32)))
+            || (matches!(
+                info.kind,
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+            ) && !cols.is_multiple_of(32))
+            || (matches!(
+                info.kind,
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)
+            ) && !cols.is_multiple_of(256))
+            || (matches!(
+                info.kind,
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1)
+                    | StoredTensorEncoding::Quantized(
+                        zerogravity_core::encoding::QuantScheme::Q8_0
+                    )
+            ) && !cols.is_multiple_of(32))
         {
             return Err(format!(
                 "required GPU projection is not source-qualified by current kernels: {name} {:?} {rows}x{cols}",
@@ -1056,7 +1074,11 @@ pub fn run(device: Device, path: &Path, config: SweepConfig) -> Result<(), Strin
             }
             let name = format!("blk.{index}.ssm_conv1d.weight");
             let info = model.tensor_info(&name).map_err(|e| e.to_string())?;
-            if info.kind != QuantKind::F32 || info.shape.len() != 2 || info.shape.contains(&0) {
+            if info.kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+                || info.shape.len() != 2
+                || info.shape.contains(&0)
+            {
                 return Err(format!(
                     "original GDN conv source matrix not F32 rank2: {name} {:?}",
                     info.shape
@@ -1322,18 +1344,21 @@ pub fn run(device: Device, path: &Path, config: SweepConfig) -> Result<(), Strin
     let quantized_matrices = matrix_names
         .iter()
         .filter(|name| {
-            model
-                .tensor_info(name)
-                .is_ok_and(|t| t.kind != QuantKind::F32)
+            model.tensor_info(name).is_ok_and(|t| {
+                t.kind != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+            })
         })
         .count();
     let quantized_final_only = matrix_names
         .iter()
         .filter(|name| {
             final_only(name)
-                && model
-                    .tensor_info(name)
-                    .is_ok_and(|t| t.kind != QuantKind::F32)
+                && model.tensor_info(name).is_ok_and(|t| {
+                    t.kind
+                        != StoredTensorEncoding::Scalar(
+                            zerogravity_core::encoding::ScalarDType::F32,
+                        )
+                })
         })
         .count();
     let expected_device_quantized = if device_activation {

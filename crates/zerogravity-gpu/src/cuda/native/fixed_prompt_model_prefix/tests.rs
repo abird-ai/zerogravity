@@ -7,7 +7,7 @@ use zerogravity_core::accelerator::program::SourceCallMode;
 use zerogravity_core::accelerator::program::SourceParameter;
 use zerogravity_core::accelerator::program::SourceTensor;
 use zerogravity_core::accelerator::program::TeacherSpan;
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_model_qwen35::plan::QwenGdnCall;
 use zerogravity_model_qwen35::plan::QwenInputRows;
 use zerogravity_model_qwen35::plan::QwenOperator;
@@ -35,7 +35,7 @@ fn extension() -> (Vec<PlanNode>, BTreeMap<usize, QwenOperator>) {
     let parameter = |suffix: &str, width: usize| SourceParameter {
         source,
         name: format!("model.language_model.layers.3.{suffix}"),
-        kind: QuantKind::Bf16,
+        kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
         shape: vec![width as u64],
         bytes: width * 2,
     };
@@ -60,7 +60,7 @@ fn extension() -> (Vec<PlanNode>, BTreeMap<usize, QwenOperator>) {
         .map(|(name, rows)| SourceTensor {
             source,
             name: format!("model.language_model.layers.3.self_attn.{name}"),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             axes: MatrixAxes::OutputInput,
             rows,
             columns: 1024,
@@ -298,7 +298,7 @@ fn layer3_extension() -> (Vec<PlanNode>, BTreeMap<usize, QwenOperator>) {
     let matrix = |suffix: &str, rows, columns| SourceTensor {
         source,
         name: format!("model.language_model.layers.3.{suffix}"),
-        kind: QuantKind::Bf16,
+        kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
         axes: MatrixAxes::OutputInput,
         rows,
         columns,
@@ -309,7 +309,7 @@ fn layer3_extension() -> (Vec<PlanNode>, BTreeMap<usize, QwenOperator>) {
     let parameter = |layer, suffix: &str| SourceParameter {
         source,
         name: format!("model.language_model.layers.{layer}.{suffix}"),
-        kind: QuantKind::Bf16,
+        kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
         shape: vec![1024],
         bytes: 2048,
     };

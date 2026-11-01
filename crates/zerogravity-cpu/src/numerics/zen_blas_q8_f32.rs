@@ -42,7 +42,8 @@ use super::haswell_bulk_f32::{BulkF32Admission, verify_environment};
 use crate::accelerator::SourceIdentity;
 use crate::{Error, Result};
 use std::sync::atomic::{AtomicBool, Ordering};
-use zerogravity_artifacts::quant::{QuantKind, dequantize};
+use zerogravity_artifacts::codecs::dequantize;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, GlobalResourceLease};
 
 const WIDTH: usize = 2048;
@@ -184,7 +185,11 @@ pub fn execute(
         }],
     )?;
     not_cancelled(cancelled)?;
-    let weights = dequantize(QuantKind::Q8_0, request.weights, WEIGHT_WORDS)?;
+    let weights = dequantize(
+        StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0),
+        request.weights,
+        WEIGHT_WORDS,
+    )?;
     if weights.len() != WEIGHT_WORDS || weights.capacity() != WEIGHT_WORDS {
         return Err(Error::Limit("Zen Q8/F32 decoded capacity".into()));
     }

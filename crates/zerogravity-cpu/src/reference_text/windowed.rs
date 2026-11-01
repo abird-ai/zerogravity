@@ -1,7 +1,7 @@
 //! Same immutable original-index row windows and shared CPU projection kernel.
 use super::*;
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
-use zerogravity_core::{quant::QuantKind, source::SourceTensorRef};
+use zerogravity_core::{encoding::StoredTensorEncoding, source::SourceTensorRef};
 
 pub struct WindowReferenceTextSource {
     source: VerifiedTensorSource,
@@ -20,8 +20,11 @@ impl WindowReferenceTextSource {
     }
     pub fn matrix(&self, name: &str) -> Result<SourceTensor> {
         let matrix = self.source.matrix(name, MatrixAxes::OutputInput)?;
-        if !matches!(matrix.tensor().kind, QuantKind::Bf16 | QuantKind::F32)
-            || matrix.columns() > 21504
+        if !matches!(
+            matrix.tensor().kind,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+                | StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+        ) || matrix.columns() > 21504
             || matrix.rows() > 1_048_576
         {
             return Err(Error::Unsupported(
@@ -175,10 +178,10 @@ fn check(cancelled: Option<&AtomicBool>) -> Result<()> {
         Ok(())
     }
 }
-fn decode(kind: QuantKind, raw: &[u8]) -> Result<Vec<f32>> {
+fn decode(kind: StoredTensorEncoding, raw: &[u8]) -> Result<Vec<f32>> {
     let width = match kind {
-        QuantKind::Bf16 => 2,
-        QuantKind::F32 => 4,
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16) => 2,
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) => 4,
         _ => return Err(Error::Unsupported("original text parameter dtype".into())),
     };
     if !raw.len().is_multiple_of(width) {
@@ -279,7 +282,10 @@ impl ReferenceTextSource for WindowReferenceTextSource {
         }
         check(cancelled)?;
         self.validate(tensor)?;
-        if input.len() != tensor.columns || tensor.kind != QuantKind::Bf16 {
+        if input.len() != tensor.columns
+            || tensor.kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+        {
             return Err(Error::Unsupported(
                 "candidate BF16 projection actual source/input".into(),
             ));

@@ -15,10 +15,10 @@ use crate::artifact::TensorInfo;
 use crate::{Error, Result};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
-use zerogravity_artifacts::quant::QuantKind;
 use zerogravity_artifacts::source_weights::SourceWeights;
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspace};
 use zerogravity_core::accelerator::{EmbeddingRegion, SourceIdentity};
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::source::{SourceTensorRef, TensorSource};
 
 const MAX_CONFIG: usize = 1024 * 1024;
@@ -156,7 +156,12 @@ fn validate_text_headers<'a>(
         }
         let info = header(&spec.name)?;
         spec.validate_header(info)?;
-        if !matches!(info.kind, QuantKind::Bf16 | QuantKind::F16 | QuantKind::F32) {
+        if !matches!(
+            info.kind,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+                | StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F16)
+                | StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+        ) {
             return Err(Error::Unsupported(format!(
                 "unregistered Qwen original text tensor encoding: {}",
                 spec.name

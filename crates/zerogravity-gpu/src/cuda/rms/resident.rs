@@ -12,7 +12,7 @@ use zerogravity_artifacts::source_weights::{
 };
 use zerogravity_core::accelerator::program::MatrixAxes;
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::{Error, Result};
 
 fn require_not_cancelled(cancelled: Option<&std::sync::atomic::AtomicBool>) -> Result<()> {
@@ -148,8 +148,10 @@ pub(super) fn loaded_gamma_for(window: &ParameterWindow, columns: Columns) -> Re
         )));
     }
     let bytes = match window.parameter().tensor().kind {
-        QuantKind::Bf16 => window.as_slice().to_vec(),
-        QuantKind::F32 => {
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16) => {
+            window.as_slice().to_vec()
+        }
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) => {
             let mut output = Vec::with_capacity(columns * 2);
             for raw in window.as_slice().chunks_exact(4) {
                 let bits = u32::from_le_bytes(raw.try_into().unwrap());
@@ -273,7 +275,8 @@ fn source_owner_rows_storage_bound(
     let parameter = source.read_parameter(&parameter, 0..count)?;
     if matrix.rows() != VOCABULARY
         || matrix.columns() != count
-        || matrix.tensor().kind != QuantKind::Bf16
+        || matrix.tensor().kind
+            != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
         || parameter.parameter().source_identity() != source.source_identity()
     {
         return Err(Error::Unsupported(

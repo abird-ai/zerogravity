@@ -16,7 +16,7 @@ use zerogravity_core::accelerator::{
     SourceIdentity,
     program::{MatrixAxes, SourceParameter},
 };
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, GlobalResourceLease};
 
 const METADATA_BASE: u64 = 8 * 1024 * 1024;
@@ -628,7 +628,9 @@ impl VerifiedTensorSource {
         // No block codec interpretation or numerical execution eligibility.
         if !matches!(
             location.info.kind,
-            QuantKind::F32 | QuantKind::F16 | QuantKind::Bf16
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+                | StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F16)
+                | StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
         ) {
             return Err(Error::Unsupported(
                 "original parameter window raw dtype".into(),
@@ -764,7 +766,11 @@ impl VerifiedTensorSource {
                 "original expert matrix requires rank3".into(),
             ));
         };
-        if !matches!(location.info.kind, QuantKind::Bf16 | QuantKind::F32) {
+        if !matches!(
+            location.info.kind,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+                | StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+        ) {
             return Err(Error::Unsupported(
                 "original expert raw BF16/F32 only".into(),
             ));

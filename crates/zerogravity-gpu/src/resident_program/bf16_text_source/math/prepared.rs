@@ -608,7 +608,10 @@ pub(in crate::resident_program::bf16_text_source) fn enumerate_records(
                     add_coefficients_gated(
                         &mut b,
                         values,
-                        contract.norm.kind == zerogravity_core::quant::QuantKind::Bf16,
+                        contract.norm.kind
+                            == zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                                zerogravity_core::encoding::ScalarDType::Bf16,
+                            ),
                     )?;
                 }
                 PlanOperation::TypedTorchFullConvolution => {

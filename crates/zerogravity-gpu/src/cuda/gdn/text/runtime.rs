@@ -1915,7 +1915,7 @@ fn build_stage(
 #[cfg(test)]
 mod tests;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "cuda-cublas"))]
 pub(crate) fn qualify_zero_runtime_on_nvidia(device: cubecl::Device) -> Result<()> {
     use cubecl::bytes::Bytes;
 

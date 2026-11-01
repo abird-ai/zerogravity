@@ -10,5 +10,5 @@ No Q3 source operator is implemented. No source variant is recognized.
 - [ ] Compare independent operator outputs and rejection cases, then qualify
   applicable model/state/ownership behavior under the shared correctness policy.
 
-Source layout: [Q3 codec](../../../../../zerogravity-artifacts/src/quant/q3/README.md).
+Source layout: [Q3 codec](../../../../../zerogravity-artifacts/src/codecs/quant/q3/README.md).
 Required acceptance: [format matrix and qualification](../../../../../../.agents/plans/pipeline-composition/FORMATS.md).

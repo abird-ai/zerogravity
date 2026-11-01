@@ -4,13 +4,14 @@
 //! live activation plus retained small metadata, never walks/copied weights.
 //! Numeric order is source-compatible with P07-A/B.
 use std::sync::Arc;
-use zerogravity_artifacts::quant::{QuantKind, f16_to_f32, f32_to_f16_rne};
+use zerogravity_artifacts::codecs::{f16_to_f32, f32_to_f16_rne};
 use zerogravity_core::Error;
 use zerogravity_core::Result;
 use zerogravity_core::accelerator::MatVecRegion;
+use zerogravity_core::encoding::StoredTensorEncoding;
 
 pub struct StaticSource {
-    pub kind: QuantKind,
+    pub kind: StoredTensorEncoding,
     pub rows: usize,
     pub cols: usize,
     pub blocks: usize,
@@ -25,7 +26,7 @@ pub enum DynamicStep {
 }
 
 pub struct DeviceStep {
-    pub kind: QuantKind,
+    pub kind: StoredTensorEncoding,
     pub layout: crate::quantization::activation::ActivationLayout,
     pub input: Vec<f32>,
     pub scales: Arc<[f32]>,
@@ -38,7 +39,7 @@ impl StaticSource {
             return Err(Error::Malformed("source tensor dimensions zero".into()));
         }
         match region.kind {
-            QuantKind::Q4_0 => {
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0) => {
                 if !region.columns.is_multiple_of(32) || !region.rows.is_multiple_of(8) {
                     return Err(Error::Unsupported(
                         "Q4_0 source requires 8-row alignment".into(),
@@ -49,8 +50,13 @@ impl StaticSource {
                     .checked_mul(region.columns / 2)
                     .ok_or_else(|| Error::Limit("Q4_0 GPU buffer size overflow".into()))
             }
-            QuantKind::Q4_1 | QuantKind::Q8_0 | QuantKind::Q6K | QuantKind::F32 => {
-                let block = if region.kind == QuantKind::Q6K {
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1)
+            | StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0)
+            | StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)
+            | StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) => {
+                let block = if region.kind
+                    == StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)
+                {
                     256
                 } else {
                     32
@@ -75,7 +81,9 @@ impl StaticSource {
         if row_bytes.checked_mul(region.rows) != Some(region.packed_weights.len()) {
             return Err(Error::Malformed("GPU source weight length mismatch".into()));
         }
-        let block_width = if region.kind == QuantKind::Q6K {
+        let block_width = if region.kind
+            == StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)
+        {
             256
         } else {
             32
@@ -84,18 +92,27 @@ impl StaticSource {
         let count = blocks
             .checked_mul(region.rows)
             .ok_or_else(|| Error::Limit("GPU source block count overflow".into()))?;
-        let mut scales = Vec::with_capacity(if region.kind == QuantKind::F32 {
-            0
-        } else {
-            count
-        });
-        let mut biases = Vec::with_capacity(if region.kind == QuantKind::Q4_1 {
-            count
-        } else {
-            0
-        });
+        let mut scales = Vec::with_capacity(
+            if region.kind
+                == StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+            {
+                0
+            } else {
+                count
+            },
+        );
+        let mut biases = Vec::with_capacity(
+            if region.kind
+                == StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1)
+            {
+                count
+            } else {
+                0
+            },
+        );
         let mut gpu = Vec::with_capacity(gpu_bytes);
-        if region.kind == QuantKind::F32 {
+        if region.kind == StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+        {
             for chunk in region.packed_weights.chunks_exact(4) {
                 if !f32::from_le_bytes(chunk.try_into().expect("validated F32 chunk")).is_finite() {
                     return Err(Error::Malformed("GPU source F32 weight nonfinite".into()));
@@ -104,14 +121,24 @@ impl StaticSource {
             gpu.extend_from_slice(region.packed_weights);
         } else {
             let physical = match region.kind {
-                QuantKind::Q4_0 => 18,
-                QuantKind::Q4_1 => 20,
-                QuantKind::Q8_0 => 34,
-                QuantKind::Q6K => 210,
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0) => {
+                    18
+                }
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1) => {
+                    20
+                }
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0) => {
+                    34
+                }
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K) => {
+                    210
+                }
                 _ => unreachable!("admitted source format"),
             };
             for chunk in region.packed_weights.chunks_exact(physical) {
-                let scale = if region.kind == QuantKind::Q6K {
+                let scale = if region.kind
+                    == StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)
+                {
                     f16_to_f32(u16::from_le_bytes([chunk[208], chunk[209]]))
                 } else {
                     f16_to_f32(u16::from_le_bytes([chunk[0], chunk[1]]))
@@ -120,14 +147,22 @@ impl StaticSource {
                     return Err(Error::Malformed("GPU source scale nonfinite".into()));
                 }
                 scales.push(scale);
-                if region.kind == QuantKind::Q4_1 {
+                if region.kind
+                    == StoredTensorEncoding::Quantized(
+                        zerogravity_core::encoding::QuantScheme::Q4_1,
+                    )
+                {
                     let bias = f16_to_f32(u16::from_le_bytes([chunk[2], chunk[3]]));
                     if !bias.is_finite() {
                         return Err(Error::Malformed("GPU source bias nonfinite".into()));
                     }
                     biases.push(bias);
                 }
-                if region.kind == QuantKind::Q4_0 {
+                if region.kind
+                    == StoredTensorEncoding::Quantized(
+                        zerogravity_core::encoding::QuantScheme::Q4_0,
+                    )
+                {
                     gpu.extend_from_slice(&chunk[2..18]);
                 } else {
                     gpu.extend_from_slice(chunk);
@@ -136,7 +171,9 @@ impl StaticSource {
         }
         if gpu.len() != gpu_bytes
             || scales.len()
-                != if region.kind == QuantKind::F32 {
+                != if region.kind
+                    == StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+                {
                     0
                 } else {
                     count
@@ -144,7 +181,9 @@ impl StaticSource {
         {
             return Err(Error::State("static GPU source incomplete".into()));
         }
-        let elements = if region.kind == QuantKind::F32 {
+        let elements = if region.kind
+            == StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+        {
             gpu_bytes / 4
         } else {
             gpu_bytes
@@ -197,7 +236,7 @@ impl StaticSource {
                 "GPU live activation geometry/finite mismatch".into(),
             ));
         }
-        if self.kind == QuantKind::F32 {
+        if self.kind == StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) {
             return Ok(DynamicStep::Mixed(
                 crate::quantization::projection::Prepared {
                     kind: self.kind,
@@ -215,12 +254,20 @@ impl StaticSource {
                 },
             ));
         }
-        let width = if self.kind == QuantKind::Q6K { 256 } else { 32 };
+        let width = if self.kind
+            == StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)
+        {
+            256
+        } else {
+            32
+        };
         let mut input_scales = Vec::with_capacity(self.blocks);
         let mut input_sums = Vec::with_capacity(self.blocks);
         let mut q8 = Vec::with_capacity(self.cols);
         for input in activation.chunks_exact(width) {
-            if self.kind == QuantKind::Q6K {
+            if self.kind
+                == StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)
+            {
                 let mut largest = 0f32;
                 let mut signed = 0f32;
                 for &v in input {
@@ -266,7 +313,9 @@ impl StaticSource {
                 "GPU dynamic source scales nonfinite".into(),
             ));
         }
-        if self.kind == QuantKind::Q4_0 {
+        if self.kind
+            == StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0)
+        {
             Ok(DynamicStep::Q4(crate::quantization::q4_0::PreparedQ4Q8 {
                 rows: self.rows,
                 blocks_per_row: self.blocks,
@@ -321,7 +370,10 @@ mod tests {
                     }
                     DynamicStep::Mixed(new) => {
                         let old = crate::quantization::projection::prepare(r)?;
-                        let source = if r.kind == QuantKind::F32 {
+                        let source = if r.kind
+                            == StoredTensorEncoding::Scalar(
+                                zerogravity_core::encoding::ScalarDType::F32,
+                            ) {
                             f32::as_bytes(&old.weights_f32)
                         } else {
                             &old.source

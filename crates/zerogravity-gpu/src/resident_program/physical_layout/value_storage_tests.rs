@@ -6,7 +6,7 @@ use zerogravity_core::accelerator::{
         ValueStorageFormat, ValueStorageLimits, ValueStorageRetention, ValueStorageReusePolicy,
     },
 };
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 
 #[test]
 fn physical_adapter_refuses_growing_slots_and_preserves_explicit_exact_classes() {
@@ -18,7 +18,7 @@ fn physical_adapter_refuses_growing_slots_and_preserves_explicit_exact_classes()
             SourceTensor {
                 source,
                 name: "embedding".into(),
-                kind: QuantKind::F32,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
                 axes: MatrixAxes::OutputInput,
                 columns: 16,
                 rows: 8,
@@ -31,7 +31,7 @@ fn physical_adapter_refuses_growing_slots_and_preserves_explicit_exact_classes()
             SourceTensor {
                 source,
                 name: "large".into(),
-                kind: QuantKind::F32,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
                 axes: MatrixAxes::OutputInput,
                 columns: 16,
                 rows: 256,
@@ -44,7 +44,7 @@ fn physical_adapter_refuses_growing_slots_and_preserves_explicit_exact_classes()
             SourceTensor {
                 source,
                 name: "small".into(),
-                kind: QuantKind::F32,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
                 axes: MatrixAxes::OutputInput,
                 columns: 256,
                 rows: 16,

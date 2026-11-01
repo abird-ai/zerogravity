@@ -33,7 +33,10 @@ impl BulkGdnGatedSlice {
         if observed.span != *coefficients.span()
             || model.source_identity() != coefficients.source_identity()
             || model.numerical_profile() != QwenNumericalProfile::GgufSourceV1
-            || gamma.kind != zerogravity_core::quant::QuantKind::F32
+            || gamma.kind
+                != zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                    zerogravity_core::encoding::ScalarDType::F32,
+                )
             || gamma.shape != [128]
             || model.layers[0].ssm_norm.as_ref().map(Vec::len) != Some(128)
             || observed.z.len() != recurrent.core().len()
@@ -99,7 +102,10 @@ impl BulkGdnGatedSlice {
         }
         let model = coefficients.model().clone();
         let gamma = model.tensor_info("blk.0.ssm_norm.weight")?;
-        if gamma.kind != zerogravity_core::quant::QuantKind::F32
+        if gamma.kind
+            != zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                zerogravity_core::encoding::ScalarDType::F32,
+            )
             || gamma.shape != [128]
             || model.layers[0].ssm_norm.as_ref().map(Vec::len) != Some(128)
         {

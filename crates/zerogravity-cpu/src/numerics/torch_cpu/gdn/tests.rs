@@ -4,7 +4,11 @@ fn bf16(v: &[f32]) -> Vec<u8> {
         .flat_map(|v| ((v.to_bits() >> 16) as u16).to_le_bytes())
         .collect()
 }
-fn tensor<'a>(bytes: &'a [u8], shape: &'a [u64], kind: QuantKind) -> SourceTensorRef<'a> {
+fn tensor<'a>(
+    bytes: &'a [u8],
+    shape: &'a [u64],
+    kind: StoredTensorEncoding,
+) -> SourceTensorRef<'a> {
     SourceTensorRef {
         kind,
         shape,
@@ -75,11 +79,27 @@ fn true_sixteen_to_fortyeight_head_mapping_and_cached_prior_remain_private() {
                 phase,
             },
             GdnParameters {
-                convolution: tensor(&w, &[10240, 1, 4], QuantKind::Bf16),
+                convolution: tensor(
+                    &w,
+                    &[10240, 1, 4],
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                ),
                 convolution_name: "actual.conv.weight",
-                a_log: tensor(&a, &[48], QuantKind::Bf16),
-                dt_bias: tensor(&a, &[48], QuantKind::Bf16),
-                norm: tensor(&norm, &[128], QuantKind::Bf16),
+                a_log: tensor(
+                    &a,
+                    &[48],
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                ),
+                dt_bias: tensor(
+                    &a,
+                    &[48],
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                ),
+                norm: tensor(
+                    &norm,
+                    &[128],
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                ),
             },
         )
     };
@@ -162,11 +182,27 @@ fn initial_chunk_retains_empty_state_addition_for_signed_zero_updates() {
                 phase: TorchCpuGdnPhase::InitialOne,
             },
             GdnParameters {
-                convolution: tensor(&weights, &[6144, 1, 4], QuantKind::Bf16),
+                convolution: tensor(
+                    &weights,
+                    &[6144, 1, 4],
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                ),
                 convolution_name: "signed-zero.conv",
-                a_log: tensor(&zero, &[16], QuantKind::Bf16),
-                dt_bias: tensor(&zero, &[16], QuantKind::Bf16),
-                norm: tensor(&norm, &[128], QuantKind::Bf16),
+                a_log: tensor(
+                    &zero,
+                    &[16],
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                ),
+                dt_bias: tensor(
+                    &zero,
+                    &[16],
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                ),
+                norm: tensor(
+                    &norm,
+                    &[128],
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                ),
             },
         )
         .unwrap();
@@ -235,11 +271,27 @@ fn retired_step_profile(
             phase: TorchCpuGdnPhase::CachedOne,
         },
         GdnParameters {
-            convolution: tensor(&conv, &[10240, 1, 4], QuantKind::Bf16),
+            convolution: tensor(
+                &conv,
+                &[10240, 1, 4],
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+            ),
             convolution_name: "model.language_model.layers.0.linear_attn.conv1d.weight",
-            a_log: tensor(&a, &[48], QuantKind::Bf16),
-            dt_bias: tensor(&dt, &[48], QuantKind::Bf16),
-            norm: tensor(&norm, &[128], QuantKind::Bf16),
+            a_log: tensor(
+                &a,
+                &[48],
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+            ),
+            dt_bias: tensor(
+                &dt,
+                &[48],
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+            ),
+            norm: tensor(
+                &norm,
+                &[128],
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+            ),
         },
         profile,
         None,
@@ -395,11 +447,27 @@ fn initial_observer_borrows_existing_computation_and_error_cannot_mutate_inputs(
         phase,
     };
     let params = || GdnParameters {
-        convolution: tensor(&w, &[10240, 1, 4], QuantKind::Bf16),
+        convolution: tensor(
+            &w,
+            &[10240, 1, 4],
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+        ),
         convolution_name: "analytic.conv.weight",
-        a_log: tensor(&a, &[48], QuantKind::Bf16),
-        dt_bias: tensor(&a, &[48], QuantKind::Bf16),
-        norm: tensor(&norm, &[128], QuantKind::Bf16),
+        a_log: tensor(
+            &a,
+            &[48],
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+        ),
+        dt_bias: tensor(
+            &a,
+            &[48],
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+        ),
+        norm: tensor(
+            &norm,
+            &[128],
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+        ),
     };
     let default = step(inputs(TorchCpuGdnPhase::InitialOne), params()).unwrap();
     let mut seen = Vec::new();

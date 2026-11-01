@@ -50,7 +50,9 @@ pub(super) fn dot(x: &[f32], y: &[f32]) -> Result<f32> {
     for v in y {
         bytes.extend_from_slice(&((v.to_bits() >> 16) as u16).to_le_bytes());
     }
-    Ok(crate::source::dot_bf16_cpu_avx2(&bytes, x))
+    Ok(crate::numerics::torch_cpu::projection::dot_bf16_cpu_avx2(
+        &bytes, x,
+    ))
 }
 pub(super) fn rotary(x: &[f32], position: usize, g: TextRotary) -> Result<Vec<f32>> {
     g.validate(x.len())?;

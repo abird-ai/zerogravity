@@ -115,7 +115,8 @@ impl RmsPrepared {
         let matrix = source_embedding(input.record())?;
         if matrix.rows() != 248320
             || matrix.columns() != 1024
-            || matrix.tensor().kind != QuantKind::Bf16
+            || matrix.tensor().kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
         {
             return Err(Error::State(
                 "natural actual embedding geometry differs".into(),

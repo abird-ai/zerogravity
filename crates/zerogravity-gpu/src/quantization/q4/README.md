@@ -24,5 +24,5 @@ complete-eight-row eligibility and the Q4_1 zero-point contribution.
 - [ ] Qualify full-model accuracy/state separately; operator source or a folder
   is not a serving capability. Reuse applicable unchanged evidence explicitly.
 
-Source layout: [Q4 codec](../../../../zerogravity-artifacts/src/quant/q4/README.md).
+Source layout: [Q4 codec](../../../../zerogravity-artifacts/src/codecs/quant/q4/README.md).
 Required acceptance: [format matrix and qualification](../../../../../.agents/plans/pipeline-composition/FORMATS.md).

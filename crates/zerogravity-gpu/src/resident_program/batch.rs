@@ -302,7 +302,9 @@ impl BatchProgram {
                 let PlanOperation::Project { tensor } = &node.operation else {
                     return Ok(None);
                 };
-                if tensor.kind == QuantKind::F32 {
+                if tensor.kind
+                    == StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+                {
                     return Ok(None);
                 }
                 let layout = inner.legacy()?.tensors[&tensor.name]
@@ -967,7 +969,10 @@ impl BatchProgram {
                         tensor.rows,
                         tensor.columns,
                         self.rows,
-                        tensor.kind == QuantKind::Q6K,
+                        tensor.kind
+                            == StoredTensorEncoding::Quantized(
+                                zerogravity_core::encoding::QuantScheme::Q6K,
+                            ),
                     );
                     crate::resident_bindings::merge_status::launch_unchecked(
                         client,
@@ -1483,7 +1488,9 @@ impl BatchProgram {
     ) -> Result<usize> {
         let t = &self.inner.legacy()?.tensors[&tensor.name];
         unsafe {
-            if tensor.kind == QuantKind::F32 {
+            if tensor.kind
+                == StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+            {
                 crate::batch_projection::f32_source_batched_projection::launch_unchecked(
                     client,
                     grid(output.elements),
@@ -1551,7 +1558,7 @@ impl BatchProgram {
                 dispatches += 1;
             }
             match tensor.kind {
-                QuantKind::Q4_0 => crate::quantization::batch_projection::q4_0_batched::launch_unchecked(
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0) => crate::quantization::batch_projection::q4_0_batched::launch_unchecked(
                     client,
                     grid(rows),
                     threads(),
@@ -1565,7 +1572,7 @@ impl BatchProgram {
                     self.rows,
                     true,
                 ),
-                QuantKind::Q4_1 => crate::quantization::batch_projection::q4_1_batched::launch_unchecked(
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1) => crate::quantization::batch_projection::q4_1_batched::launch_unchecked(
                     client,
                     grid(rows),
                     threads(),
@@ -1580,7 +1587,7 @@ impl BatchProgram {
                     self.rows,
                     true,
                 ),
-                QuantKind::Q8_0 => {
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0) => {
                     crate::quantization::batch_projection::q8_source_batched_projection::launch_unchecked(
                         client,
                         grid(rows),
@@ -1596,7 +1603,7 @@ impl BatchProgram {
                         true,
                     )
                 }
-                QuantKind::Q6K => crate::quantization::batch_projection::q6_k_batched::launch_unchecked(
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K) => crate::quantization::batch_projection::q6_k_batched::launch_unchecked(
                     client,
                     grid(rows),
                     threads(),

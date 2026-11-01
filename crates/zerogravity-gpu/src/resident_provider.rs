@@ -27,7 +27,6 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-use zerogravity_artifacts::quant::QuantKind;
 use zerogravity_core::Error;
 use zerogravity_core::Result;
 use zerogravity_core::accelerator::{
@@ -39,6 +38,7 @@ use zerogravity_core::accelerator::{
     RegionExecution, RmsNormRegion, RopeKvCompleted, RopeKvExecution, RopeKvRegion, SiluRegion,
 };
 use zerogravity_core::device_events::DeviceEventLedger;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::resource_arbiter::{AllocationClass, AllocationRequest, ResourceOwner};
 
 use crate::async_bridge::InFlightRegion;
@@ -65,7 +65,7 @@ struct ResidentHandle {
     bytes: usize,
     elements: usize,
     rows: usize,
-    kind: QuantKind,
+    kind: StoredTensorEncoding,
 }
 
 struct ResidentWeightLease {
@@ -117,7 +117,9 @@ impl PreparedStep {
             Self::Q4(p) => p.scales.len().checked_add(p.activations.len()),
             Self::Device(_) => unreachable!("device admission handled above"),
             Self::Mixed(p) => {
-                if p.kind == QuantKind::F32 {
+                if p.kind
+                    == StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+                {
                     Some(p.input_f32.len())
                 } else {
                     p.scales
@@ -150,9 +152,11 @@ impl PreparedStep {
             .ok_or_else(|| Error::Limit("source output cohort overflow".into()))
     }
 
-    fn kind(&self) -> QuantKind {
+    fn kind(&self) -> StoredTensorEncoding {
         match self {
-            Self::Q4(_) => QuantKind::Q4_0,
+            Self::Q4(_) => {
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0)
+            }
             Self::Mixed(p) => p.kind,
             Self::Device(p) => p.kind,
         }
@@ -220,7 +224,9 @@ impl PreparedStep {
                 }
             }
             Self::Mixed(p) => {
-                if p.kind == QuantKind::F32 {
+                if p.kind
+                    == StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+                {
                     let input = client.create_from_slice(f32::as_bytes(&p.input_f32));
                     in_flight.retain_gpu_buffers(client, std::slice::from_ref(&input))?;
                     dynamic_bytes = p.input_f32.len() * 4;
@@ -244,7 +250,9 @@ impl PreparedStep {
                     in_flight.retain_gpu_buffers(client, &[scales.clone(), q8.clone()])?;
                     dynamic_bytes = p.scales.len() * 4 + p.activation.len() * 4;
                     match p.kind {
-                        QuantKind::Q4_1 => {
+                        StoredTensorEncoding::Quantized(
+                            zerogravity_core::encoding::QuantScheme::Q4_1,
+                        ) => {
                             let offsets = client.create_from_slice(f32::as_bytes(&p.offsets));
                             in_flight.retain_gpu_buffers(client, std::slice::from_ref(&offsets))?;
                             dynamic_bytes += p.offsets.len() * 4;
@@ -269,7 +277,9 @@ impl PreparedStep {
                                 );
                             }
                         }
-                        QuantKind::Q8_0 => {
+                        StoredTensorEncoding::Quantized(
+                            zerogravity_core::encoding::QuantScheme::Q8_0,
+                        ) => {
                             // SAFETY: original source block/row geometry is
                             // checked before this Q8_0 source kernel launch.
                             unsafe {
@@ -290,7 +300,9 @@ impl PreparedStep {
                                 );
                             }
                         }
-                        QuantKind::Q6K => {
+                        StoredTensorEncoding::Quantized(
+                            zerogravity_core::encoding::QuantScheme::Q6K,
+                        ) => {
                             // SAFETY: original 210-byte Q6_K source blocks
                             // and 256-code signed Q8_K inputs were checked.
                             unsafe {
@@ -518,11 +530,15 @@ impl CubeResidentProvider {
             || region.rows > self.max_rows
             || !matches!(
                 region.kind,
-                QuantKind::Q4_0
-                    | QuantKind::Q4_1
-                    | QuantKind::Q8_0
-                    | QuantKind::Q6K
-                    | QuantKind::F32
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0)
+                    | StoredTensorEncoding::Quantized(
+                        zerogravity_core::encoding::QuantScheme::Q4_1
+                    )
+                    | StoredTensorEncoding::Quantized(
+                        zerogravity_core::encoding::QuantScheme::Q8_0
+                    )
+                    | StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)
+                    | StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
             )
         {
             return Ok(RegionExecution::Unsupported);
@@ -549,12 +565,16 @@ impl CubeResidentProvider {
         // share one ALREADY charged provider envelope. This is preflight
         // geometry, not a second GPU memory reservation or a source decode.
         let blocks = region.columns
-            / if region.kind == QuantKind::Q6K {
+            / if region.kind
+                == StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)
+            {
                 256
             } else {
                 32
             };
-        let scale_blocks = if region.kind == QuantKind::F32 {
+        let scale_blocks = if region.kind
+            == StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+        {
             0
         } else {
             region
@@ -562,7 +582,13 @@ impl CubeResidentProvider {
                 .checked_mul(blocks)
                 .ok_or_else(|| Error::Limit("queued source block count overflow".into()))?
         };
-        let scale_fields = if region.kind == QuantKind::Q4_1 { 2 } else { 1 };
+        let scale_fields = if region.kind
+            == StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1)
+        {
+            2
+        } else {
+            1
+        };
         let dynamic_count = region
             .columns
             .checked_add(
@@ -571,7 +597,10 @@ impl CubeResidentProvider {
                     .ok_or_else(|| Error::Limit("queued source scale count overflow".into()))?,
             )
             .ok_or_else(|| Error::Limit("queued activation geometry overflow".into()))?;
-        let device_layout = if self.device_activation && region.kind != QuantKind::F32 {
+        let device_layout = if self.device_activation
+            && region.kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+        {
             if !self
                 .device
                 .client()

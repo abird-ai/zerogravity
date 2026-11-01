@@ -261,7 +261,7 @@ fn source_name_axes_dtype_full_geometry_and_exact_requested_range_refuse() {
     changed.axes = MatrixAxes::InputOutput;
     invalid.push(changed);
     let mut changed = expected.clone();
-    changed.kind = QuantKind::F32;
+    changed.kind = StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32);
     invalid.push(changed);
     for rows in [0, 2, 10240, 1_000_001, usize::MAX] {
         let mut changed = expected.clone();

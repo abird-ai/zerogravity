@@ -391,6 +391,7 @@ impl ResidentService {
             .ok_or_else(|| Error::State("resident capacity accounting invalid".into()))
     }
 
+    #[cfg(any(feature = "qualification", feature = "cuda-cublas"))]
     pub(crate) fn model_events(&self) -> Result<usize> {
         self.ledger
             .lock()

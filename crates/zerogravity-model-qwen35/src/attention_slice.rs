@@ -7,7 +7,7 @@ use crate::accelerator::program::{
 };
 use crate::source::binding::{QwenMatrixRole, QwenParameterRole};
 use crate::{Error, LoadedQwenModel, Result};
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 
 pub(crate) struct AttentionRoles {
     pub(crate) hidden: usize,
@@ -77,7 +77,8 @@ pub(crate) fn attention_roles(
     ] {
         if matrix.name != format!("{namespace}.{suffix}.weight")
             || matrix.source != source.source_identity()
-            || matrix.kind != QuantKind::Bf16
+            || matrix.kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
             || matrix.axes != MatrixAxes::OutputInput
             || matrix.columns != hidden
             || matrix.rows != rows

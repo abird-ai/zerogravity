@@ -4,7 +4,7 @@ use super::*;
 use zerogravity_core::accelerator::program::{
     SourceGamma, SourceNumericalContract, SourceRmsGeometry,
 };
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 const CONFIG: &str = "ed1c1723241f23f7f4e23430759cbd7dcfb4103cbdfe052bfe7626b57c2615b4";
 const INDEX: &str = "aca8afed9da75b0f050b408d270766fd77627f1af401e240f61c3b47d0db02f9";
 const SOURCE_BYTES: u64 = 4_548_221_488;
@@ -177,7 +177,8 @@ fn require_reference_source(model: &OriginalWindowModelSource) -> Result<()> {
         "model.language_model.embed_tokens.weight",
         MatrixAxes::OutputInput,
     )?;
-    if matrix.tensor().kind != QuantKind::Bf16
+    if matrix.tensor().kind
+        != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
         || matrix.rows() != 248320
         || matrix.columns() != 2048
     {
@@ -190,7 +191,8 @@ fn require_reference_source(model: &OriginalWindowModelSource) -> Result<()> {
         FINAL_GAMMA,
     ] {
         let parameter = model.source().parameter(name)?;
-        if parameter.tensor().kind != QuantKind::Bf16
+        if parameter.tensor().kind
+            != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
             || parameter.tensor().shape != [2048]
             || parameter.elements() != 2048
         {
@@ -209,10 +211,10 @@ fn require_fixed_source(model: &OriginalWindowModelSource) -> Result<()> {
     )?;
     let embedding = model.matrix_descriptor(QwenMatrixRole::Embedding)?;
     let gamma = model.parameter_descriptor(QwenParameterRole::InputNorm(0))?;
-    if embedding.kind != QuantKind::Bf16
+    if embedding.kind != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
         || embedding.rows != 248320
         || embedding.columns != 1024
-        || gamma.kind != QuantKind::Bf16
+        || gamma.kind != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
         || gamma.name != "model.language_model.layers.0.input_layernorm.weight"
         || gamma.shape != [1024_u64]
         || gamma.bytes != 1024 * 2
@@ -233,7 +235,8 @@ fn require_final_parameter(model: &OriginalWindowModelSource) -> Result<SourcePa
         || model.geometry().layers.len() != 24
         || model.owner().config().rms_norm_eps() != 1e-6
         || parameter.name != "model.language_model.norm.weight"
-        || parameter.kind != QuantKind::Bf16
+        || parameter.kind
+            != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
         || parameter.shape != [1024]
         || parameter.bytes != 2048
     {

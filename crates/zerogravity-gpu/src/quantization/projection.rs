@@ -25,9 +25,8 @@ use cubecl::prelude::*;
 
 #[cfg(feature = "qualification")]
 use std::sync::atomic::{AtomicUsize, Ordering};
-use zerogravity_artifacts::quant::QuantKind;
 #[cfg(any(test, feature = "qualification"))]
-use zerogravity_artifacts::quant::{f16_to_f32, f32_to_f16_rne};
+use zerogravity_artifacts::codecs::{f16_to_f32, f32_to_f16_rne};
 #[cfg(any(test, feature = "qualification"))]
 use zerogravity_core::Error;
 #[cfg(any(test, feature = "qualification"))]
@@ -36,9 +35,10 @@ use zerogravity_core::Result;
 use zerogravity_core::accelerator::MatVecRegion;
 #[cfg(feature = "qualification")]
 use zerogravity_core::accelerator::{MatVecKernel, RegionExecution};
+use zerogravity_core::encoding::StoredTensorEncoding;
 
 pub(crate) struct Prepared {
-    pub(crate) kind: QuantKind,
+    pub(crate) kind: StoredTensorEncoding,
     pub(crate) rows: usize,
     pub(crate) cols: usize,
     pub(crate) blocks: usize,
@@ -61,10 +61,16 @@ pub(crate) struct Prepared {
 pub(crate) fn prepare(region: MatVecRegion<'_>) -> Result<Prepared> {
     let kind = region.kind;
     let (block_width, source_bytes, row_multiple) = match kind {
-        QuantKind::Q4_1 => (32, 20, 1),
-        QuantKind::Q8_0 => (32, 34, 1),
-        QuantKind::Q6K => (256, 210, 1),
-        QuantKind::F32 => (32, 128, 1),
+        StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1) => {
+            (32, 20, 1)
+        }
+        StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0) => {
+            (32, 34, 1)
+        }
+        StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K) => {
+            (256, 210, 1)
+        }
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) => (32, 128, 1),
         _ => {
             return Err(Error::Unsupported(
                 "P07-B supports Q4_1, Q8_0, Q6_K and aligned F32".into(),
@@ -98,7 +104,7 @@ pub(crate) fn prepare(region: MatVecRegion<'_>) -> Result<Prepared> {
     // F32 source has no dynamic quantization, only the verified 4x8 reduction
     // schedule. Restrict to complete 32-element SIMD groups, as present in
     // the actual Qwen checkpoint matrices, avoiding unvalidated scalar tails.
-    if kind == QuantKind::F32 {
+    if kind == StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) {
         let mut f32_weights = Vec::with_capacity(region.rows * region.columns);
         for chunk in region.packed_weights.chunks_exact(4) {
             let val = f32::from_le_bytes(chunk.try_into().expect("validated f32 bytes"));
@@ -124,7 +130,7 @@ pub(crate) fn prepare(region: MatVecRegion<'_>) -> Result<Prepared> {
     let mut input_scale = Vec::with_capacity(blocks);
     let mut input_sum = Vec::with_capacity(blocks);
     for x in region.activation.chunks_exact(block_width) {
-        if kind == QuantKind::Q6K {
+        if kind == StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K) {
             let mut largest = 0f32;
             let mut signed_largest = 0f32;
             for &v in x {
@@ -159,9 +165,17 @@ pub(crate) fn prepare(region: MatVecRegion<'_>) -> Result<Prepared> {
         }
     }
     let mut scales = Vec::with_capacity(count);
-    let mut offsets = Vec::with_capacity(if kind == QuantKind::Q4_1 { count } else { 0 });
+    let mut offsets = Vec::with_capacity(
+        if kind == StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1) {
+            count
+        } else {
+            0
+        },
+    );
     for (idx, block) in region.packed_weights.chunks_exact(source_bytes).enumerate() {
-        let wscale = if kind == QuantKind::Q6K {
+        let wscale = if kind
+            == StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)
+        {
             f16_to_f32(u16::from_le_bytes([block[208], block[209]]))
         } else {
             f16_to_f32(u16::from_le_bytes([block[0], block[1]]))
@@ -172,7 +186,7 @@ pub(crate) fn prepare(region: MatVecRegion<'_>) -> Result<Prepared> {
             ));
         }
         scales.push(wscale * input_scale[idx % blocks]);
-        if kind == QuantKind::Q4_1 {
+        if kind == StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1) {
             let m = f16_to_f32(u16::from_le_bytes([block[2], block[3]]));
             if !m.is_finite() {
                 return Err(Error::Malformed("P07-B source Q4_1 bias nonfinite".into()));
@@ -225,7 +239,12 @@ impl MatVecKernel for CubeMixedProvider {
             || region.rows > self.max_rows
             || !matches!(
                 region.kind,
-                QuantKind::Q4_1 | QuantKind::Q8_0 | QuantKind::Q6K | QuantKind::F32
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1)
+                    | StoredTensorEncoding::Quantized(
+                        zerogravity_core::encoding::QuantScheme::Q8_0
+                    )
+                    | StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)
+                    | StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
             )
         {
             return Ok(RegionExecution::Unsupported);
@@ -237,7 +256,7 @@ impl MatVecKernel for CubeMixedProvider {
         let launch_rows = CubeCount::Static((prepared.rows as u32).div_ceil(32), 1, 1);
         let dims = CubeDim::new_1d(32);
         match prepared.kind {
-            QuantKind::F32 => {
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) => {
                 let weights = client.create_from_slice(f32::as_bytes(&prepared.weights_f32));
                 let x = client.create_from_slice(f32::as_bytes(&prepared.input_f32));
                 unsafe {
@@ -254,7 +273,7 @@ impl MatVecKernel for CubeMixedProvider {
                     );
                 }
             }
-            QuantKind::Q4_1 => {
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1) => {
                 let weights = client.create_from_slice(&prepared.source);
                 let scales = client.create_from_slice(f32::as_bytes(&prepared.scales));
                 let offsets = client.create_from_slice(f32::as_bytes(&prepared.offsets));
@@ -275,7 +294,7 @@ impl MatVecKernel for CubeMixedProvider {
                     );
                 }
             }
-            QuantKind::Q8_0 => {
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0) => {
                 let weights = client.create_from_slice(&prepared.source);
                 let scales = client.create_from_slice(f32::as_bytes(&prepared.scales));
                 let q8 = client.create_from_slice(i32::as_bytes(&prepared.activation));
@@ -294,7 +313,7 @@ impl MatVecKernel for CubeMixedProvider {
                     );
                 }
             }
-            QuantKind::Q6K => {
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K) => {
                 let weights = client.create_from_slice(&prepared.source);
                 let scales = client.create_from_slice(f32::as_bytes(&prepared.scales));
                 let q8 = client.create_from_slice(i32::as_bytes(&prepared.activation));
@@ -347,7 +366,7 @@ mod tests {
         let mut out = vec![0.0f32; prepared.rows];
         for (row, slot) in out.iter_mut().enumerate() {
             match prepared.kind {
-                QuantKind::Q4_1 => {
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1) => {
                     let mut lanes = [0f32; 8];
                     let mut summs = 0f32;
                     for block in 0..prepared.blocks {
@@ -372,7 +391,7 @@ mod tests {
                         + ((lanes[1] + lanes[5]) + (lanes[3] + lanes[7]))
                         + summs;
                 }
-                QuantKind::Q8_0 => {
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0) => {
                     let mut lanes = [0f32; 8];
                     for block in 0..prepared.blocks {
                         let id = row * prepared.blocks + block;
@@ -389,7 +408,7 @@ mod tests {
                     *slot = ((lanes[0] + lanes[4]) + (lanes[2] + lanes[6]))
                         + ((lanes[1] + lanes[5]) + (lanes[3] + lanes[7]));
                 }
-                QuantKind::Q6K => {
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K) => {
                     let mut lanes = [0f32; 8];
                     for block in 0..prepared.blocks {
                         let id = row * prepared.blocks + block;
@@ -431,7 +450,7 @@ mod tests {
                     *slot = ((lanes[0] + lanes[4]) + (lanes[2] + lanes[6]))
                         + ((lanes[1] + lanes[5]) + (lanes[3] + lanes[7]));
                 }
-                QuantKind::F32 => {
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) => {
                     let mut lanes = [0f32; 32];
                     for at in 0..prepared.cols {
                         let lane = at % 32;
@@ -465,7 +484,7 @@ mod tests {
         let original = MatVecRegion {
             source_identity: zerogravity_core::accelerator::SourceIdentity::unbound(),
             tensor_name: "blk.0.ffn_down.weight",
-            kind: QuantKind::Q4_1,
+            kind: StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1),
             columns: cols,
             rows,
             packed_weights: &block,

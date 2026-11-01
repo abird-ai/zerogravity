@@ -21,5 +21,5 @@ integer/scale accumulation. Do not replace it with a dequantized F32 dot.
 - [ ] Qualify full-model accuracy/state separately; operator source or a folder
   is not a serving capability. Reuse applicable unchanged evidence explicitly.
 
-Source layout: [Q6 codec](../../../../zerogravity-artifacts/src/quant/q6/README.md).
+Source layout: [Q6 codec](../../../../zerogravity-artifacts/src/codecs/quant/q6/README.md).
 Required acceptance: [format matrix and qualification](../../../../../.agents/plans/pipeline-composition/FORMATS.md).

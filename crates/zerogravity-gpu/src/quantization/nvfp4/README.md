@@ -17,5 +17,5 @@ The exact source format must be specified and implemented before lowering.
 - [ ] Qualify full-model accuracy/state separately; operator source or a folder
   is not a serving capability. Reuse applicable unchanged evidence explicitly.
 
-Source layout: [NVFP4 codec](../../../../zerogravity-artifacts/src/quant/nvfp4/README.md).
+Source layout: [NVFP4 codec](../../../../zerogravity-artifacts/src/codecs/quant/nvfp4/README.md).
 Required acceptance: [format matrix and qualification](../../../../../.agents/plans/pipeline-composition/FORMATS.md).

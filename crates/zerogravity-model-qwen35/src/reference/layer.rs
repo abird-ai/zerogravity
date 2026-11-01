@@ -800,7 +800,7 @@ impl<'borrow, 'source> LayerMath<'borrow, 'source> {
         let conv_weight_len = qkv
             .checked_mul(kernel)
             .ok_or_else(|| Error::Limit("Qwen GDN conv source size".into()))?;
-        let conv_weights = zerogravity_artifacts::quant::dequantize(
+        let conv_weights = zerogravity_artifacts::codecs::dequantize(
             weights.kind,
             weights.packed_bytes,
             conv_weight_len,

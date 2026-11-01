@@ -5,7 +5,7 @@
 | `Q6_K` | 256 | 210 |
 
 Existing private scalar bodies: [q6.rs](../q6.rs).
-Common byte-length/allocation checks: [quant.rs](../../quant.rs).
+Common byte-length/allocation checks: [codecs](../mod.rs).
 
 Q6_K preserves its packed low/high bits, signed local scales and global scale.
 No other six-bit variant is implied.
@@ -18,5 +18,5 @@ No other six-bit variant is implied.
   malformed/truncated/overflow tests; keep other encodings unsupported.
 - [ ] Qualify each consuming operator separately from scalar decoding.
 
-Shared metadata authority: [QuantKind](../../../../zerogravity-core/src/quant.rs).
+Shared metadata authority: [StoredTensorEncoding](../../../../zerogravity-core/src/encoding.rs).
 Execution/qualification: [format matrix](../../../../../.agents/plans/pipeline-composition/FORMATS.md).

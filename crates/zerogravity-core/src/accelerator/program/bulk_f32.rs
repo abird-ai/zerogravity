@@ -233,7 +233,7 @@ impl RetainedRmsRows {
             || shape != [width, self.span.len(), 1, 1]
             || self.norm.source != self.span.source()
             || self.norm.name.is_empty()
-            || self.norm.kind != QuantKind::F32
+            || self.norm.kind != StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32)
             || self.norm.shape != [width as u64]
             || width.checked_mul(4) != Some(self.norm.bytes)
             || !epsilon.is_finite()
@@ -297,7 +297,9 @@ impl BulkF32Operand {
             return Err(Error::Malformed("bulk learned input label bound".into()));
         }
         let tensor = SourceTensor::from_source(source, name, MatrixAxes::InputOutput)?;
-        if tensor.kind != QuantKind::F32 || tensor.source != span.source() {
+        if tensor.kind != StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32)
+            || tensor.source != span.source()
+        {
             return Err(Error::Unsupported(
                 "bulk original F32 source matrix only".into(),
             ));
@@ -343,7 +345,7 @@ impl BulkF32Operand {
         if let BulkF32Origin::SourceMatrix(tensor) = &self.origin
             && (self.side != BulkF32Side::Left
                 || tensor.source != self.span.source()
-                || tensor.kind != QuantKind::F32
+                || tensor.kind != StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32)
                 || tensor.axes != MatrixAxes::InputOutput
                 || self.layout != BulkF32Layout::dense([tensor.columns, tensor.rows, 1, 1])?)
         {

@@ -5,7 +5,7 @@
 | `Q8_0` | 32 | 34 |
 
 Existing private scalar bodies: [q8.rs](../q8.rs).
-Common byte-length/allocation checks: [quant.rs](../../quant.rs).
+Common byte-length/allocation checks: [codecs](../mod.rs).
 
 Q8_0 preserves signed codes and its F16 scale. Dynamic Q8_1/Q8_K activation
 coding in operators is separate from this recognized source storage variant.
@@ -18,5 +18,5 @@ coding in operators is separate from this recognized source storage variant.
   malformed/truncated/overflow tests; keep other encodings unsupported.
 - [ ] Qualify each consuming operator separately from scalar decoding.
 
-Shared metadata authority: [QuantKind](../../../../zerogravity-core/src/quant.rs).
+Shared metadata authority: [StoredTensorEncoding](../../../../zerogravity-core/src/encoding.rs).
 Execution/qualification: [format matrix](../../../../../.agents/plans/pipeline-composition/FORMATS.md).

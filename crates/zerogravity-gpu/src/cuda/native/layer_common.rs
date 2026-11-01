@@ -211,10 +211,30 @@ pub(super) fn load_parameters(source: &VerifiedTensorSource) -> Result<OriginalG
     let mut windows = Vec::new();
     let mut values: [Vec<u8>; 4] = std::array::from_fn(|_| Vec::new());
     for (index, suffix, elements, kind) in [
-        (0, "conv1d.weight", 6144 * 4, QuantKind::Bf16),
-        (1, "A_log", 16, QuantKind::F32),
-        (2, "dt_bias", 16, QuantKind::Bf16),
-        (3, "norm.weight", 128, QuantKind::F32),
+        (
+            0,
+            "conv1d.weight",
+            6144 * 4,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+        ),
+        (
+            1,
+            "A_log",
+            16,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+        ),
+        (
+            2,
+            "dt_bias",
+            16,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+        ),
+        (
+            3,
+            "norm.weight",
+            128,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+        ),
     ] {
         let name = format!("model.language_model.layers.0.linear_attn.{suffix}");
         let parameter = if index == 0 {
@@ -272,7 +292,8 @@ pub(super) fn qkvz_weights(
         let matrix = source.matrix(&name, MatrixAxes::OutputInput)?;
         if matrix.rows() != rows
             || matrix.columns() != 1024
-            || matrix.tensor().kind != QuantKind::Bf16
+            || matrix.tensor().kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
         {
             return Err(Error::Malformed(
                 "original pinned BF16 QKVZ geometry".into(),
@@ -318,7 +339,8 @@ pub(super) fn projection_weight(
         let matrix = source.matrix(&name, MatrixAxes::OutputInput)?;
         if matrix.rows() != rows
             || matrix.columns() != columns
-            || matrix.tensor().kind != QuantKind::Bf16
+            || matrix.tensor().kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
         {
             return Err(Error::Malformed(
                 "original pinned BF16 GDN projection geometry".into(),

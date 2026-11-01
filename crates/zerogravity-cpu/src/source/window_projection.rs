@@ -3,12 +3,13 @@
 //! unchanged. No partial provider region, BF16 cast or physical output admission.
 
 use crate::accelerator::{MatVecKernel, program::MatrixAxes, program::SourceTensor};
-use crate::quant::QuantKind;
-use crate::source::{MAX_MATRIX_ROWS, SourceProjectionProfile, dot_bf16_cpu_avx2};
+use crate::numerics::torch_cpu::projection::dot_bf16_cpu_avx2;
+use crate::source::{MAX_MATRIX_ROWS, SourceProjectionProfile};
 use crate::{Error, Result};
 use std::ops::Range;
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_artifacts::source_weights::TensorWindow;
+use zerogravity_core::encoding::StoredTensorEncoding;
 
 /// Full original identity and the exact transported row range. This is
 /// immutable result metadata, not a source owner or resource admission.
@@ -85,7 +86,10 @@ fn validate(
     not_cancelled(cancelled)?;
     let matrix = window.matrix();
     let original = matrix.tensor();
-    if expected.kind != QuantKind::Bf16 || original.kind != QuantKind::Bf16 {
+    if expected.kind != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+        || original.kind
+            != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+    {
         return Err(Error::Unsupported(
             "original CPU window projection requires BF16 source rows".into(),
         ));

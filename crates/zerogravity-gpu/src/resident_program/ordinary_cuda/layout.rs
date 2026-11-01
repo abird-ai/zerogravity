@@ -578,7 +578,11 @@ fn parameter_resident_bytes(
         OrdinaryParameterStorage::Bf16Rne => {
             if !matches!(
                 parameter.kind,
-                zerogravity_core::quant::QuantKind::Bf16 | zerogravity_core::quant::QuantKind::F32
+                zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                    zerogravity_core::encoding::ScalarDType::Bf16
+                ) | zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                    zerogravity_core::encoding::ScalarDType::F32
+                )
             ) {
                 return Err(Error::Unsupported(
                     "ordinary CUDA converted parameter codec".into(),

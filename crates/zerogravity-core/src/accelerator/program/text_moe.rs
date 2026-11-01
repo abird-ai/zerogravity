@@ -4,7 +4,7 @@ use super::*;
 pub struct TextExpertTensor {
     pub source: SourceIdentity,
     pub name: String,
-    pub kind: QuantKind,
+    pub kind: StoredTensorEncoding,
     pub experts: usize,
     pub rows: usize,
     pub columns: usize,
@@ -68,7 +68,13 @@ impl TextMoeContract {
                 .any(|n| n.is_empty())
             || [self.router.kind, self.gate_up.kind, self.down.kind]
                 .iter()
-                .any(|k| !matches!(k, QuantKind::Bf16 | QuantKind::F32))
+                .any(|k| {
+                    !matches!(
+                        k,
+                        StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16)
+                            | StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32)
+                    )
+                })
         {
             return Err(Error::Malformed(
                 "analytic MoE immutable source/geometry/parameters".into(),

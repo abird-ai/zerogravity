@@ -13,5 +13,5 @@ contract is implemented. The family name specifies no container layout.
 - [ ] Keep unknown variants `Unsupported`; codec availability alone grants
   no CPU/GPU operator or complete model support.
 
-Shared metadata authority: [QuantKind](../../../../zerogravity-core/src/quant.rs).
+Shared metadata authority: [StoredTensorEncoding](../../../../zerogravity-core/src/encoding.rs).
 Execution/qualification: [format matrix](../../../../../.agents/plans/pipeline-composition/FORMATS.md).

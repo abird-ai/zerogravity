@@ -6,9 +6,9 @@
 //! mandatory; this module neither submits work nor publishes model state.
 use crate::source_float::{round_source, widen_source};
 use cubecl::prelude::*;
-use zerogravity_artifacts::quant::QuantKind;
 use zerogravity_core::Error;
 use zerogravity_core::Result;
+use zerogravity_core::encoding::StoredTensorEncoding;
 
 pub(crate) const TOKEN_OUT_OF_RANGE: u32 = 1;
 pub(crate) const NONFINITE_SCALE: u32 = 2;
@@ -25,10 +25,14 @@ pub(crate) struct EmbeddingLayout {
 }
 
 impl EmbeddingLayout {
-    pub fn new(kind: QuantKind, vocabulary: usize, width: usize) -> Result<Self> {
+    pub fn new(kind: StoredTensorEncoding, vocabulary: usize, width: usize) -> Result<Self> {
         let (block_width, block_bytes, q6_k) = match kind {
-            QuantKind::Q8_0 => (32, 34, false),
-            QuantKind::Q6K => (256, 210, true),
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0) => {
+                (32, 34, false)
+            }
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K) => {
+                (256, 210, true)
+            }
             _ => {
                 return Err(Error::Unsupported(
                     "source embedding GPU codec is Q8_0/Q6_K only".into(),
@@ -69,7 +73,7 @@ impl EmbeddingLayout {
     }
 }
 
-/// Integer-only IEEE binary16 expansion, identical to quant::f16_to_f32.
+/// Integer-only IEEE binary16 expansion, identical to codecs::f16_to_f32.
 /// Half subnormals become normal binary32 values; both zero signs survive.
 #[cube]
 pub(crate) fn half_to_float(bits: u32) -> f32 {

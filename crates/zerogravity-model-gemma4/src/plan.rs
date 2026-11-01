@@ -93,7 +93,7 @@ impl Bf16TextGreedy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zerogravity_core::quant::QuantKind;
+    use zerogravity_core::encoding::StoredTensorEncoding;
     use zerogravity_core::session_root::SessionAuthority;
 
     fn builder(source: SourceIdentity) -> PlanBuilder {
@@ -103,7 +103,7 @@ mod tests {
         SourceTensor {
             source,
             name: "actual.embedding".into(),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             axes: MatrixAxes::OutputInput,
             columns: 1536,
             rows: BF16_TEXT_VOCABULARY,
@@ -184,7 +184,9 @@ mod tests {
                     &SourceParameter {
                         source,
                         name: "norm".into(),
-                        kind: QuantKind::Bf16,
+                        kind: StoredTensorEncoding::Scalar(
+                            zerogravity_core::encoding::ScalarDType::Bf16
+                        ),
                         shape: vec![1536],
                         bytes: 3072,
                     },

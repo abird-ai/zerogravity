@@ -329,7 +329,8 @@ impl QwenOperator {
             if matrix.source != self.call.source()
                 || matrix.name != name
                 || matrix.axes != MatrixAxes::OutputInput
-                || matrix.kind != QuantKind::Bf16
+                || matrix.kind
+                    != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
                 || matrix.columns != self.call.model_profile.projection_input(p)
                 || matrix.rows != rows
             {
@@ -339,10 +340,10 @@ impl QwenOperator {
             }
             matrix.packed_bytes()?;
         }
-        let expected: Vec<(String, QuantKind, Vec<u64>, usize)> = match self.kind {
+        let expected: Vec<(String, StoredTensorEncoding, Vec<u64>, usize)> = match self.kind {
             QwenOperation::InputRms => vec![(
                 self.layer.unwrap().name("input_layernorm.weight"),
-                QuantKind::Bf16,
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 vec![self.call.model_profile.hidden_size() as u64],
                 self.call.model_profile.hidden_size() * 2,
             )],
@@ -354,20 +355,35 @@ impl QwenOperator {
                     }
                     QwenRmsSite::Final => "model.language_model.norm.weight".into(),
                 },
-                QuantKind::Bf16,
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 vec![self.call.model_profile.hidden_size() as u64],
                 self.call.model_profile.hidden_size() * 2,
             )],
             QwenOperation::GdnConv => vec![(
                 self.layer.unwrap().name("linear_attn.conv1d.weight"),
-                QuantKind::Bf16,
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 vec![6144, 1, 4],
                 49152,
             )],
             QwenOperation::GdnRecurrent => [
-                ("linear_attn.A_log", QuantKind::F32, 16, 64),
-                ("linear_attn.dt_bias", QuantKind::Bf16, 16, 32),
-                ("linear_attn.norm.weight", QuantKind::F32, 128, 512),
+                (
+                    "linear_attn.A_log",
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                    16,
+                    64,
+                ),
+                (
+                    "linear_attn.dt_bias",
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                    16,
+                    32,
+                ),
+                (
+                    "linear_attn.norm.weight",
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                    128,
+                    512,
+                ),
             ]
             .into_iter()
             .map(|(name, kind, n, bytes)| (self.layer.unwrap().name(name), kind, vec![n], bytes))
@@ -377,7 +393,7 @@ impl QwenOperator {
                 .map(|name| {
                     (
                         self.layer.unwrap().name(name),
-                        QuantKind::Bf16,
+                        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                         vec![256],
                         512,
                     )

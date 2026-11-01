@@ -1,6 +1,6 @@
 //! CPU operations and numerical profiles for the shared mathematical engine.
 
-pub use zerogravity_artifacts::{artifact, quant};
+pub use zerogravity_artifacts::{artifact, codecs};
 pub use zerogravity_core::{Error, Result, accelerator};
 
 pub mod numerics;

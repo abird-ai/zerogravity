@@ -2,23 +2,24 @@
 #![cfg(feature = "qualification")]
 
 use cubecl::prelude::*;
-use zerogravity_artifacts::quant::{QuantKind, f32_to_f16_rne};
+use zerogravity_artifacts::codecs::f32_to_f16_rne;
 use zerogravity_core::accelerator::{MatVecRegion, SourceIdentity};
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::{Error, Result};
 
 const ROWS: usize = 64;
 
-fn packed_source(kind: QuantKind, columns: usize) -> Result<Vec<u8>> {
+fn packed_source(kind: StoredTensorEncoding, columns: usize) -> Result<Vec<u8>> {
     let (width, block_bytes) = match kind {
-        QuantKind::Q4_1 => (32, 20),
-        QuantKind::Q6K => (256, 210),
+        StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1) => (32, 20),
+        StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K) => (256, 210),
         _ => return Err(Error::Unsupported("Q4_1/Q6K source-only qualifier".into())),
     };
     let mut source = Vec::with_capacity(ROWS * (columns / width) * block_bytes);
     for row in 0..ROWS {
         for block in 0..columns / width {
             match kind {
-                QuantKind::Q4_1 => {
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1) => {
                     source.extend_from_slice(
                         &f32_to_f16_rne(0.5 + ((row + block) % 5) as f32 * 0.125).to_le_bytes(),
                     );
@@ -29,7 +30,7 @@ fn packed_source(kind: QuantKind, columns: usize) -> Result<Vec<u8>> {
                         source.push(((row * 17 + block * 11 + at * 37) % 256) as u8);
                     }
                 }
-                QuantKind::Q6K => {
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K) => {
                     for at in 0..192 {
                         source.push(((row * 17 + block * 19 + at * 71) % 256) as u8);
                     }
@@ -50,10 +51,26 @@ pub(super) fn qualify(device: &cubecl::Device) -> Result<()> {
     use crate::source_accumulation::{self, SourceAccumulation};
     let client = device.client();
     source_accumulation::ensure_capability(&client, SourceAccumulation::WideF64)?;
-    for (kind, cols) in [(QuantKind::Q4_1, 64usize), (QuantKind::Q6K, 256usize)] {
+    for (kind, cols) in [
+        (
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1),
+            64usize,
+        ),
+        (
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K),
+            256usize,
+        ),
+    ] {
         let packed = packed_source(kind, cols)?;
         let source = SourceIdentity::for_new_allocation()?;
-        let blocks = cols / if kind == QuantKind::Q4_1 { 32 } else { 256 };
+        let blocks = cols
+            / if kind
+                == StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1)
+            {
+                32
+            } else {
+                256
+            };
         let weight = client.create_from_slice(&packed);
         let mut proven = 0usize;
         for batch in [2usize, 4, 8] {
@@ -104,39 +121,39 @@ pub(super) fn qualify(device: &cubecl::Device) -> Result<()> {
             // source GGUF projection kernel and one immutable weight buffer.
             unsafe {
                 match kind {
-                    QuantKind::Q4_1 => {
-                        crate::quantization::batch_projection::q4_1_batched::launch_unchecked(
-                            &client,
-                            CubeCount::Static(((ROWS * batch) as u32).div_ceil(32), 1, 1),
-                            CubeDim::new_1d(32),
-                            BufferArg::from_raw_parts(weight.clone(), packed.len()),
-                            BufferArg::from_raw_parts(scale, scales.len()),
-                            BufferArg::from_raw_parts(offset, offsets.len()),
-                            BufferArg::from_raw_parts(activation, codes.len()),
-                            BufferArg::from_raw_parts(output.clone(), ROWS * batch),
-                            blocks,
-                            cols,
-                            ROWS,
-                            batch,
-                            true,
-                        )
-                    }
-                    QuantKind::Q6K => {
-                        crate::quantization::batch_projection::q6_k_batched::launch_unchecked(
-                            &client,
-                            CubeCount::Static(((ROWS * batch) as u32).div_ceil(32), 1, 1),
-                            CubeDim::new_1d(32),
-                            BufferArg::from_raw_parts(weight.clone(), packed.len()),
-                            BufferArg::from_raw_parts(scale, scales.len()),
-                            BufferArg::from_raw_parts(activation, codes.len()),
-                            BufferArg::from_raw_parts(output.clone(), ROWS * batch),
-                            blocks,
-                            cols,
-                            ROWS,
-                            batch,
-                            true,
-                        )
-                    }
+                    StoredTensorEncoding::Quantized(
+                        zerogravity_core::encoding::QuantScheme::Q4_1,
+                    ) => crate::quantization::batch_projection::q4_1_batched::launch_unchecked(
+                        &client,
+                        CubeCount::Static(((ROWS * batch) as u32).div_ceil(32), 1, 1),
+                        CubeDim::new_1d(32),
+                        BufferArg::from_raw_parts(weight.clone(), packed.len()),
+                        BufferArg::from_raw_parts(scale, scales.len()),
+                        BufferArg::from_raw_parts(offset, offsets.len()),
+                        BufferArg::from_raw_parts(activation, codes.len()),
+                        BufferArg::from_raw_parts(output.clone(), ROWS * batch),
+                        blocks,
+                        cols,
+                        ROWS,
+                        batch,
+                        true,
+                    ),
+                    StoredTensorEncoding::Quantized(
+                        zerogravity_core::encoding::QuantScheme::Q6K,
+                    ) => crate::quantization::batch_projection::q6_k_batched::launch_unchecked(
+                        &client,
+                        CubeCount::Static(((ROWS * batch) as u32).div_ceil(32), 1, 1),
+                        CubeDim::new_1d(32),
+                        BufferArg::from_raw_parts(weight.clone(), packed.len()),
+                        BufferArg::from_raw_parts(scale, scales.len()),
+                        BufferArg::from_raw_parts(activation, codes.len()),
+                        BufferArg::from_raw_parts(output.clone(), ROWS * batch),
+                        blocks,
+                        cols,
+                        ROWS,
+                        batch,
+                        true,
+                    ),
                     _ => unreachable!(),
                 }
             }
@@ -159,35 +176,35 @@ pub(super) fn qualify(device: &cubecl::Device) -> Result<()> {
                 let oracle = client.empty(ROWS * 4);
                 unsafe {
                     match kind {
-                        QuantKind::Q4_1 => {
-                            crate::quantization::q4_1::q4_1_q8_1_gemv::launch_unchecked(
-                                &client,
-                                CubeCount::Static((ROWS as u32).div_ceil(32), 1, 1),
-                                CubeDim::new_1d(32),
-                                BufferArg::from_raw_parts(weight.clone(), packed.len()),
-                                BufferArg::from_raw_parts(scales, original.scales.len()),
-                                BufferArg::from_raw_parts(offsets, original.offsets.len()),
-                                BufferArg::from_raw_parts(codes, original.activation.len()),
-                                BufferArg::from_raw_parts(oracle.clone(), ROWS),
-                                blocks,
-                                ROWS,
-                                true,
-                            )
-                        }
-                        QuantKind::Q6K => {
-                            crate::quantization::q6_k::q6_k_q8_k_gemv::launch_unchecked(
-                                &client,
-                                CubeCount::Static((ROWS as u32).div_ceil(32), 1, 1),
-                                CubeDim::new_1d(32),
-                                BufferArg::from_raw_parts(weight.clone(), packed.len()),
-                                BufferArg::from_raw_parts(scales, original.scales.len()),
-                                BufferArg::from_raw_parts(codes, original.activation.len()),
-                                BufferArg::from_raw_parts(oracle.clone(), ROWS),
-                                blocks,
-                                ROWS,
-                                true,
-                            )
-                        }
+                        StoredTensorEncoding::Quantized(
+                            zerogravity_core::encoding::QuantScheme::Q4_1,
+                        ) => crate::quantization::q4_1::q4_1_q8_1_gemv::launch_unchecked(
+                            &client,
+                            CubeCount::Static((ROWS as u32).div_ceil(32), 1, 1),
+                            CubeDim::new_1d(32),
+                            BufferArg::from_raw_parts(weight.clone(), packed.len()),
+                            BufferArg::from_raw_parts(scales, original.scales.len()),
+                            BufferArg::from_raw_parts(offsets, original.offsets.len()),
+                            BufferArg::from_raw_parts(codes, original.activation.len()),
+                            BufferArg::from_raw_parts(oracle.clone(), ROWS),
+                            blocks,
+                            ROWS,
+                            true,
+                        ),
+                        StoredTensorEncoding::Quantized(
+                            zerogravity_core::encoding::QuantScheme::Q6K,
+                        ) => crate::quantization::q6_k::q6_k_q8_k_gemv::launch_unchecked(
+                            &client,
+                            CubeCount::Static((ROWS as u32).div_ceil(32), 1, 1),
+                            CubeDim::new_1d(32),
+                            BufferArg::from_raw_parts(weight.clone(), packed.len()),
+                            BufferArg::from_raw_parts(scales, original.scales.len()),
+                            BufferArg::from_raw_parts(codes, original.activation.len()),
+                            BufferArg::from_raw_parts(oracle.clone(), ROWS),
+                            blocks,
+                            ROWS,
+                            true,
+                        ),
                         _ => unreachable!(),
                     }
                 }
@@ -259,7 +276,9 @@ pub(super) fn qualify_q4_0(device: &cubecl::Device) -> Result<()> {
             let prepared = crate::quantization::q4_0::prepare_source(MatVecRegion {
                 source_identity: source,
                 tensor_name: "p12.q4_0",
-                kind: QuantKind::Q4_0,
+                kind: StoredTensorEncoding::Quantized(
+                    zerogravity_core::encoding::QuantScheme::Q4_0,
+                ),
                 columns: COLS,
                 rows: ROWS,
                 packed_weights: &original,

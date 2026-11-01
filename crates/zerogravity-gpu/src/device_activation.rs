@@ -8,9 +8,9 @@
 use crate::quantization::activation::{ActivationLayout, PARAMETER_WORDS};
 use crate::quantization::activation_fused::{BlockBindings, PreparedBlocks};
 use cubecl::{client::Client, prelude::*, server::Handle};
-use zerogravity_artifacts::quant::QuantKind;
 use zerogravity_core::Error;
 use zerogravity_core::Result;
+use zerogravity_core::encoding::StoredTensorEncoding;
 
 /// Ten original handles: input/static metadata and seven quant work buffers.
 /// Source bytes and final GEMV output are separately owned by the caller.
@@ -37,12 +37,12 @@ impl DeviceActivation {
             if layout.with_bias {
                 return Err(Error::Malformed("Q8_K has no bias sum".into()));
             }
-            QuantKind::Q6K
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)
         } else if layout.with_bias {
-            QuantKind::Q4_1
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1)
         } else {
             // Q4_0 and Q8_0 have identical activation layouts.
-            QuantKind::Q8_0
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0)
         };
         let expected = ActivationLayout::new(kind, layout.columns, layout.rows)?;
         if layout.block_width != expected.block_width

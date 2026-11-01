@@ -134,7 +134,14 @@ impl ResidentProgram {
         let mut handle_checks = 0usize;
         for (index, node) in self.plan.nodes().iter().enumerate() {
             let tensor = match &node.operation {
-                PlanOperation::Project { tensor } if tensor.kind != QuantKind::F32 => tensor,
+                PlanOperation::Project { tensor }
+                    if tensor.kind
+                        != StoredTensorEncoding::Scalar(
+                            zerogravity_core::encoding::ScalarDType::F32,
+                        ) =>
+                {
+                    tensor
+                }
                 operation => {
                     f32_nodes += usize::from(matches!(operation, PlanOperation::Project { .. }));
                     if bindings.projections[index].is_some() {

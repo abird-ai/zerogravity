@@ -315,8 +315,8 @@ fn observations(plan: &ForwardPlan, frame_limit: usize) -> Result<Vec<TextObserv
 }
 fn validate_parameter(source: SourceIdentity, parameter: &SourceParameter) -> Result<()> {
     let width = match parameter.kind {
-        QuantKind::Bf16 => 2,
-        QuantKind::F32 => 4,
+        StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16) => 2,
+        StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32) => 4,
         _ => return Err(Error::Unsupported("text source parameter codec".into())),
     };
     let count = parameter.shape.iter().try_fold(1usize, |n, width| {
@@ -397,7 +397,7 @@ mod tests {
                 SourceTensor {
                     source,
                     name: "fixture.embedding".into(),
-                    kind: QuantKind::F32,
+                    kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
                     axes: MatrixAxes::OutputInput,
                     columns: 1,
                     rows: 4,

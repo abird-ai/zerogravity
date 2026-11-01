@@ -11,7 +11,7 @@ use std::sync::{
 };
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspace};
 use zerogravity_core::{
-    quant::QuantKind,
+    encoding::StoredTensorEncoding,
     session_root::{RootBinding, SessionAuthority},
 };
 use zerogravity_cpu::reference_text::{
@@ -116,7 +116,13 @@ impl OriginalGemma4Text {
                         })
                         .collect::<Result<Vec<_>>>()?;
                     spec.validate_shape(&shape)?;
-                    if !matches!(raw.kind, QuantKind::Bf16 | QuantKind::F32) {
+                    if !matches!(
+                        raw.kind,
+                        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+                            | StoredTensorEncoding::Scalar(
+                                zerogravity_core::encoding::ScalarDType::F32
+                            )
+                    ) {
                         return Err(Error::Unsupported(format!(
                             "original Gemma BF16/F32 member {}",
                             spec.name
@@ -285,11 +291,14 @@ impl Gemma4ReferenceSession {
             || g.layers.len() != 35
             || g.ple != 256
             || g.moe.is_some()
-            || model.matrices.values().any(|x| x.kind != QuantKind::Bf16)
-            || model
-                .parameters
-                .values()
-                .any(|x| x.descriptor.kind != QuantKind::Bf16)
+            || model.matrices.values().any(|x| {
+                x.kind
+                    != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+            })
+            || model.parameters.values().any(|x| {
+                x.descriptor.kind
+                    != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+            })
         {
             return Err(Error::Unsupported(
                 "E2B candidate requires authentic whole BF16 source geometry".into(),

@@ -10,7 +10,7 @@
 //! may be published. Unsupported permits deliberate CPU fallback; device
 //! errors and invalid output must fail the entire prepared state.
 
-use crate::quant::QuantKind;
+use crate::encoding::StoredTensorEncoding;
 use crate::{Error, Result};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -67,7 +67,7 @@ pub struct MatVecRegion<'a> {
     /// with tensor name, quant codec and matrix geometry.
     pub source_identity: SourceIdentity,
     pub tensor_name: &'a str,
-    pub kind: QuantKind,
+    pub kind: StoredTensorEncoding,
     pub columns: usize,
     pub rows: usize,
     pub packed_weights: &'a [u8],
@@ -552,7 +552,7 @@ impl BinaryRegion<'_> {
 pub struct EmbeddingRegion<'a> {
     pub source_identity: SourceIdentity,
     pub tensor_name: &'a str,
-    pub kind: QuantKind,
+    pub kind: StoredTensorEncoding,
     pub packed_weights: &'a [u8],
     pub token: u32,
     pub width: usize,
@@ -854,7 +854,7 @@ mod tests {
         let region = MatVecRegion {
             source_identity: SourceIdentity::unbound(),
             tensor_name: "blk.0.attn_gate.weight",
-            kind: QuantKind::Q4_0,
+            kind: StoredTensorEncoding::Quantized(crate::encoding::QuantScheme::Q4_0),
             columns: 32,
             rows: 1,
             packed_weights: &weight,

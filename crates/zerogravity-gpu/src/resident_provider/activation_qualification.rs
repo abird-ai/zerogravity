@@ -3,7 +3,7 @@
 //! returned as an engine output. Uses the same physical ownership boundaries.
 use super::*;
 use crate::device_activation::DeviceActivation;
-use zerogravity_artifacts::quant::{f16_to_f32, f32_to_f16_rne};
+use zerogravity_artifacts::codecs::{f16_to_f32, f32_to_f16_rne};
 
 fn compare_source_f32(
     label: &str,
@@ -43,7 +43,14 @@ impl CubeResidentProvider {
             || region.rows > self.max_rows
             || !matches!(
                 region.kind,
-                QuantKind::Q4_0 | QuantKind::Q4_1 | QuantKind::Q8_0 | QuantKind::Q6K
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0)
+                    | StoredTensorEncoding::Quantized(
+                        zerogravity_core::encoding::QuantScheme::Q4_1
+                    )
+                    | StoredTensorEncoding::Quantized(
+                        zerogravity_core::encoding::QuantScheme::Q8_0
+                    )
+                    | StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)
             )
         {
             return Err(Error::Unsupported(

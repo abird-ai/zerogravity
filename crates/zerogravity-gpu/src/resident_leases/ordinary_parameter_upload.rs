@@ -6,14 +6,12 @@
 
 use super::{ResidentInitialization, ResidentLease, ResidentService};
 use std::sync::{Arc, atomic::AtomicBool};
-use zerogravity_artifacts::{
-    quant::QuantKind,
-    source_weights::{ParameterWindow, VerifiedTensorSource},
-};
+use zerogravity_artifacts::source_weights::{ParameterWindow, VerifiedTensorSource};
 use zerogravity_core::{
     Error, Result,
     accelerator::{SourceIdentity, program::SourceParameter},
     device_events::BufferRole,
+    encoding::StoredTensorEncoding,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -35,7 +33,7 @@ pub(crate) struct OrdinaryParameter {
     owner: Arc<ParameterOwner>,
     lease: ResidentLease,
     storage: OrdinaryParameterStorage,
-    kind: QuantKind,
+    kind: StoredTensorEncoding,
     elements: usize,
 }
 
@@ -52,7 +50,7 @@ impl OrdinaryParameter {
     pub(crate) fn storage(&self) -> OrdinaryParameterStorage {
         self.storage
     }
-    pub(crate) fn kind(&self) -> QuantKind {
+    pub(crate) fn kind(&self) -> StoredTensorEncoding {
         self.kind
     }
     pub(crate) fn elements(&self) -> usize {
@@ -131,8 +129,14 @@ impl ResidentInitialization<'_> {
         let (payload, kind) = match storage {
             OrdinaryParameterStorage::Original => (window.as_slice().to_vec(), descriptor.kind),
             OrdinaryParameterStorage::Bf16Rne => match descriptor.kind {
-                QuantKind::Bf16 => (window.as_slice().to_vec(), QuantKind::Bf16),
-                QuantKind::F32 => (f32_bytes_to_bf16_rne(window.as_slice())?, QuantKind::Bf16),
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16) => (
+                    window.as_slice().to_vec(),
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                ),
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) => (
+                    f32_bytes_to_bf16_rne(window.as_slice())?,
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                ),
                 _ => {
                     return Err(Error::Unsupported(
                         "ordinary CUDA BF16 parameter source codec".into(),

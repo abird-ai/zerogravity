@@ -24,7 +24,7 @@ fn operator(call: &QwenSourceCall, projection: QwenProjection) -> QwenOperator {
         .map(|(suffix, rows)| SourceTensor {
             source: call.source(),
             name: layer.map_or_else(|| suffix.into(), |l| l.name(suffix)),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             axes: MatrixAxes::OutputInput,
             rows,
             columns: call.model_profile().projection_input(projection),
@@ -45,7 +45,7 @@ fn embedding(call: &QwenSourceCall) -> QwenEmbedding {
         SourceTensor {
             source: call.source(),
             name: "model.language_model.embed_tokens.weight".into(),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             axes: MatrixAxes::OutputInput,
             rows: 248320,
             columns: call.model_profile().hidden_size(),
@@ -64,7 +64,7 @@ fn rms(call: &QwenSourceCall) -> QwenOperator {
         vec![SourceParameter {
             source: call.source(),
             name: "model.language_model.layers.0.input_layernorm.weight".into(),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             shape: vec![h as u64],
             bytes: h * 2,
         }],
@@ -156,7 +156,9 @@ fn qwen2b_exact_source_members_and_truephase_head_dimensions() {
                 .map(|(s, rows)| SourceTensor {
                     source,
                     name: layer.name(s),
-                    kind: QuantKind::Bf16,
+                    kind: StoredTensorEncoding::Scalar(
+                        zerogravity_core::encoding::ScalarDType::Bf16,
+                    ),
                     axes: MatrixAxes::OutputInput,
                     rows,
                     columns: 2048,
@@ -286,7 +288,7 @@ fn qwen2b_parameter_shape_and_layer_kind_do_not_accept_legacy_width() {
             d.kind(),
             Vec::new(),
             vec![SourceParameter {
-                kind: QuantKind::F32,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
                 bytes: 8192,
                 ..d.parameters()[0].clone()
             }]

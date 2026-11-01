@@ -28,7 +28,12 @@ fn input_words(bytes: &[u8]) -> Vec<f32> {
         .collect()
 }
 
-fn synthetic(width: usize, rows: usize, kind: QuantKind, mode: u32) -> (Vec<f32>, Vec<u8>) {
+fn synthetic(
+    width: usize,
+    rows: usize,
+    kind: StoredTensorEncoding,
+    mode: u32,
+) -> (Vec<f32>, Vec<u8>) {
     let input = (0..rows)
         .flat_map(|row| {
             (0..width).map(move |index| {
@@ -67,7 +72,7 @@ fn synthetic(width: usize, rows: usize, kind: QuantKind, mode: u32) -> (Vec<f32>
     let weight = (0..width)
         .flat_map(|index| {
             let word = [0xbf80_0000u32, 0xbf00_0000, 0, 0x3e80_0000, 0x3f80_0347][index % 5];
-            if kind == QuantKind::Bf16 {
+            if kind == StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16) {
                 ((word >> 16) as u16).to_le_bytes().to_vec()
             } else {
                 word.to_le_bytes().to_vec()
@@ -111,8 +116,8 @@ fn pinned_actual_and_public_goldens_cover_all_stages_and_cascade_widths() {
         let width = data.u32() as usize;
         let rows = data.u32() as usize;
         let kind = match data.u32() {
-            0 => QuantKind::Bf16,
-            1 => QuantKind::F32,
+            0 => StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+            1 => StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
             _ => panic!("golden weight kind"),
         };
         let mode = data.u32();
@@ -162,7 +167,7 @@ fn malformed_source_shape_dtype_and_values_refuse_without_source_mutation() {
     let weight = vec![0u8; width * 2];
     let shape = [width as u64];
     let raw = SourceTensorRef {
-        kind: QuantKind::Bf16,
+        kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
         shape: &shape,
         packed_bytes: &weight,
     };
@@ -193,7 +198,11 @@ fn malformed_source_shape_dtype_and_values_refuse_without_source_mutation() {
             .is_err()
         );
     }
-    for kind in [QuantKind::F16, QuantKind::Q4_0, QuantKind::Q8_0] {
+    for kind in [
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F16),
+        StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0),
+        StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0),
+    ] {
         assert!(matches!(
             ordinary_rms(source, SourceTensorRef { kind, ..raw }, &input, width),
             Err(Error::Unsupported(_))
@@ -229,7 +238,7 @@ fn malformed_source_shape_dtype_and_values_refuse_without_source_mutation() {
         let mut bytes = vec![0u8; width * 4];
         bytes[4..8].copy_from_slice(&word.to_le_bytes());
         let f32_weight = SourceTensorRef {
-            kind: QuantKind::F32,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
             packed_bytes: &bytes,
             ..raw
         };

@@ -4,7 +4,7 @@ use std::sync::Weak;
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_artifacts::source_weights::{TensorWindow, VerifiedMatrix, WindowWorkspace};
 use zerogravity_core::accelerator::program::SourceTensor;
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 
 use super::resident_matrix::layout::{Coverage, Geometry};
 
@@ -371,7 +371,8 @@ fn require_member(
     source.require_matrix_binding(matrix)?;
     if member.source != source.source_identity()
         || member.name != matrix.tensor().name
-        || member.kind != QuantKind::Bf16
+        || member.kind
+            != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
         || member.kind != matrix.tensor().kind
         || member.rows != matrix.rows()
         || member.columns != matrix.columns()
@@ -388,7 +389,9 @@ fn descriptor(
     embed: SourceTensor,
     service: &Arc<ResidentService>,
 ) -> Result<(SourceTensor, VerifiedMatrix)> {
-    if embed.source != service.source_identity() || embed.kind != QuantKind::Bf16 {
+    if embed.source != service.source_identity()
+        || embed.kind != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+    {
         return Err(Error::Unsupported("source-bound tied BF16 matrix".into()));
     }
     let matrix = source.matrix(&embed.name, embed.axes)?;
@@ -478,7 +481,8 @@ impl ResidentInitialization<'_> {
                 || window.as_slice().len() != region.bytes
                 || window.matrix().source_identity() != owner.source.source_identity()
                 || window.matrix().tensor().name != owner.descriptor.name
-                || window.matrix().tensor().kind != QuantKind::Bf16
+                || window.matrix().tensor().kind
+                    != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
                 || window
                     .as_slice()
                     .chunks_exact(2)

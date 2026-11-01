@@ -8,10 +8,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use zerogravity_artifacts::{
-    quant::QuantKind,
-    source_weights::{VerifiedMatrix, VerifiedTensorSource},
-};
+use zerogravity_artifacts::source_weights::{VerifiedMatrix, VerifiedTensorSource};
 use zerogravity_core::{
     Error, Result,
     accelerator::{
@@ -19,6 +16,7 @@ use zerogravity_core::{
         program::{MatrixAxes, SourceTensor},
     },
     device_events::BufferRole,
+    encoding::StoredTensorEncoding,
 };
 
 const WINDOW_BYTES: usize = 1024 * 1024;
@@ -59,7 +57,8 @@ impl PackedSourceMatrices {
         }
         for (member, matrix) in members.iter().zip(self.owner.matrices.iter()) {
             if member.source != self.source_identity()
-                || member.kind != QuantKind::Bf16
+                || member.kind
+                    != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
                 || member.axes != MatrixAxes::OutputInput
                 || member.rows != matrix.rows()
                 || member.columns != matrix.columns()
@@ -115,7 +114,8 @@ impl ResidentInitialization<'_> {
         let mut total_bytes = 0usize;
         for member in members {
             if member.source != source.source_identity()
-                || member.kind != QuantKind::Bf16
+                || member.kind
+                    != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
                 || member.axes != MatrixAxes::OutputInput
                 || member.rows == 0
                 || member.columns == 0
@@ -126,7 +126,8 @@ impl ResidentInitialization<'_> {
             }
             let matrix = source.matrix(&member.name, member.axes)?;
             if matrix.source_identity() != member.source
-                || matrix.tensor().kind != QuantKind::Bf16
+                || matrix.tensor().kind
+                    != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
                 || matrix.rows() != member.rows
                 || matrix.columns() != member.columns
             {

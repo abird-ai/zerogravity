@@ -174,7 +174,7 @@ pub(crate) fn prepare_code(queue: &cubecl::cuda::OwnedCudaQueue) -> Result<usize
     Ok(4)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "cuda-cublas"))]
 pub(crate) async fn qualify_roundtrip_on_nvidia(device: cubecl::Device) -> Result<()> {
     use crate::resident_leases::ResidentService;
     use zerogravity_core::{

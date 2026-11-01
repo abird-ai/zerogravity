@@ -8,7 +8,7 @@ use zerogravity_artifacts::source_weights::{
     ParameterWindow, VerifiedTensorSource, WindowWorkspace,
 };
 use zerogravity_core::device_events::{BufferRole, DeviceAccess};
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::resource_arbiter::{
     AllocationClass, AllocationRequest, ResourceArbiter, ResourceOwner,
 };

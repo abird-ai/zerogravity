@@ -1,7 +1,7 @@
 //! Closed Qwen GGUF roles and finite recipes; common graph contains only math.
 use zerogravity_core::accelerator::SourceIdentity;
 use zerogravity_core::accelerator::program::*;
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::source::TensorSource;
 use zerogravity_core::{Error, Result};
 
@@ -74,13 +74,15 @@ impl PrefixBinding {
                 .any(|&id| u64::from(id) >= self.embedding.rows as u64)
             || self.embedding.source != self.source()
             || self.embedding.name != "token_embd.weight"
-            || self.embedding.kind != QuantKind::Q6K
+            || self.embedding.kind
+                != StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K)
             || self.embedding.axes != MatrixAxes::InputOutput
             || self.embedding.columns != 2048
             || !(1..=248320).contains(&self.embedding.rows)
             || self.norm.source != self.source()
             || self.norm.name != "blk.0.attn_norm.weight"
-            || self.norm.kind != QuantKind::F32
+            || self.norm.kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
             || self.norm.shape != [2048]
             || self.norm.bytes != 8192
             || self.epsilon_bits != 1e-6_f32.to_bits()
@@ -173,7 +175,10 @@ impl GdnUpstreamBinding {
         ] {
             if tensor.source != self.source()
                 || tensor.name != name
-                || tensor.kind != QuantKind::Q4_0
+                || tensor.kind
+                    != StoredTensorEncoding::Quantized(
+                        zerogravity_core::encoding::QuantScheme::Q4_0,
+                    )
                 || tensor.axes != MatrixAxes::InputOutput
                 || tensor.columns != 2048
                 || tensor.rows != rows
@@ -185,7 +190,8 @@ impl GdnUpstreamBinding {
         }
         if self.convolution.source != self.source()
             || self.convolution.name != "blk.0.ssm_conv1d.weight"
-            || self.convolution.kind != QuantKind::F32
+            || self.convolution.kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
             || self.convolution.shape != [4, 6144]
             || self.convolution.bytes != 4 * 6144 * 4
         {
@@ -246,7 +252,8 @@ impl GdnOutputBinding {
         if self.span.len() != 64
             || self.tensor.source != self.source()
             || self.tensor.name != "blk.0.ssm_out.weight"
-            || self.tensor.kind != QuantKind::Q8_0
+            || self.tensor.kind
+                != StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0)
             || self.tensor.axes != MatrixAxes::InputOutput
             || self.tensor.columns != 2048
             || self.tensor.rows != 2048

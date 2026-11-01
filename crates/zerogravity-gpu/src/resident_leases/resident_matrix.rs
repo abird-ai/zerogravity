@@ -60,7 +60,7 @@ fn require_portable(service: &Arc<ResidentService>, geometry: Geometry) -> Resul
     Ok(())
 }
 use zerogravity_artifacts::source_weights::{VerifiedMatrix, VerifiedTensorSource};
-use zerogravity_core::{accelerator::program::MatrixAxes, quant::QuantKind};
+use zerogravity_core::{accelerator::program::MatrixAxes, encoding::StoredTensorEncoding};
 
 pub(crate) struct ResidentMatrix {
     lease: ResidentLease,
@@ -103,7 +103,8 @@ impl ResidentMatrix {
     ) -> Result<Geometry> {
         source.require_matrix_binding(matrix)?;
         if matrix.source_identity() != source.source_identity()
-            || matrix.tensor().kind != QuantKind::Bf16
+            || matrix.tensor().kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
             || matrix.axes() != MatrixAxes::OutputInput
         {
             return Err(Error::State(
@@ -147,7 +148,8 @@ impl ResidentMatrix {
         service.check_lease(&self.lease)?;
         if !self.source.same_issuer(source)
             || self.matrix.source_identity() != service.source_identity()
-            || self.matrix.tensor().kind != QuantKind::Bf16
+            || self.matrix.tensor().kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
             || self.matrix.axes() != MatrixAxes::OutputInput
             || self.layout.rows() != rows
             || self.layout.row_bytes() != columns.checked_mul(2).unwrap_or(0)

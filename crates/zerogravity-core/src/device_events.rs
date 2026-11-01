@@ -310,7 +310,7 @@ impl DeviceEventLedger {
             .get(&id)
             .ok_or_else(|| Error::State("unknown ready event".into()))?;
         if id.epoch != self.epoch
-            || coordinator.epoch != self.epoch
+            || coordinator.epoch() != self.epoch
             || event.phase != EventPhase::Ready
         {
             return Err(Error::State(

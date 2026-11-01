@@ -4,10 +4,10 @@ BF16 is a floating-point precision, separate from integer quantization and
 NVFP4 source-format contracts. File encoding, activation/output casts and
 accumulation/reduction policy remain distinct fields.
 
-Existing scalar BF16 decoding remains in [quant.rs](../../quant.rs):
+Exact scalar BF16 decoding lives in [codecs](../../codecs/mod.rs):
 little-endian 16-bit words are widened by their exact bit representation.
 It retains floating special values; consumers enforce their own finite-input
-policy. [QuantKind](../../../../zerogravity-core/src/quant.rs) recognizes BF16 metadata;
+policy. [StoredTensorEncoding](../../../../zerogravity-core/src/encoding.rs) recognizes BF16 metadata;
 [artifact readers](../../artifact.rs) validate bounded byte geometry.
 
 ## TODO

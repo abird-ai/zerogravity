@@ -64,8 +64,8 @@ impl QwenPrefixRmsBinding {
             return Err(Error::State("GDN RMS exact layer/site/source key".into()));
         }
         let bytes = match parameter.kind {
-            QuantKind::Bf16 => 2048,
-            QuantKind::F32 => 4096,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16) => 2048,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) => 4096,
             _ => return Err(Error::Unsupported("GDN RMS original BF16/F32 gamma".into())),
         };
         if parameter.shape != [1024] || parameter.bytes != bytes {
@@ -111,7 +111,7 @@ mod tests {
         let valid = SourceParameter {
             source,
             name: key.gamma_name(),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             shape: vec![1024],
             bytes: 2048,
         };
@@ -151,7 +151,16 @@ mod tests {
             .unwrap()
             .rms(QwenPrefixRmsSite::PostAttention)
             .unwrap();
-        for (kind, bytes) in [(QuantKind::Bf16, 2048), (QuantKind::F32, 4096)] {
+        for (kind, bytes) in [
+            (
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                2048,
+            ),
+            (
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                4096,
+            ),
+        ] {
             let parameter = SourceParameter {
                 source,
                 name: binding.gamma_name(),
@@ -169,7 +178,7 @@ mod tests {
         let f16 = SourceParameter {
             source,
             name: binding.gamma_name(),
-            kind: QuantKind::F16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F16),
             shape: vec![1024],
             bytes: 2048,
         };
@@ -196,7 +205,9 @@ mod tests {
                         SourceTensor {
                             source,
                             name: "model.language_model.embed_tokens.weight".into(),
-                            kind: QuantKind::Bf16,
+                            kind: StoredTensorEncoding::Scalar(
+                                zerogravity_core::encoding::ScalarDType::Bf16,
+                            ),
                             axes: MatrixAxes::OutputInput,
                             columns: 1024,
                             rows: 248320,
@@ -213,7 +224,9 @@ mod tests {
                     let gamma = SourceParameter {
                         source,
                         name: key.gamma_name(),
-                        kind: QuantKind::Bf16,
+                        kind: StoredTensorEncoding::Scalar(
+                            zerogravity_core::encoding::ScalarDType::Bf16,
+                        ),
                         shape: vec![1024],
                         bytes: 2048,
                     };

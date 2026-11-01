@@ -72,7 +72,8 @@ pub(super) fn mlp_weight(
         let matrix = source.matrix(&name, MatrixAxes::OutputInput)?;
         if matrix.rows() != rows
             || matrix.columns() != columns
-            || matrix.tensor().kind != QuantKind::Bf16
+            || matrix.tensor().kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
         {
             return Err(Error::Malformed("original MLP BF16 matrix geometry".into()));
         }

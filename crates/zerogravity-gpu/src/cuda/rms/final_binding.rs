@@ -4,7 +4,7 @@ use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspac
 use zerogravity_core::accelerator::program::{
     SourceGamma, SourceNumericalContract, SourceParameter, SourceRmsGeometry,
 };
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::{Error, Result};
 struct FinalRmsOwner {
     source: VerifiedTensorSource,
@@ -27,7 +27,8 @@ impl BoundFinalRmsSource {
             || geometry.gamma != SourceGamma::OnePlus
             || contract != SourceNumericalContract::ReferenceCudaSm86Bf16V1
             || parameter.source != source.source_identity()
-            || parameter.kind != QuantKind::Bf16
+            || parameter.kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
             || parameter.shape != [geometry.width as u64]
             || parameter.bytes != geometry.width * 2
         {

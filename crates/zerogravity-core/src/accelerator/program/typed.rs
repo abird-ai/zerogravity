@@ -1,7 +1,7 @@
 //! Explicit closed numerical contracts; none grants model/backend eligibility.
 use super::{MatrixAxes, SourceTensor};
 use crate::accelerator::SourceIdentity;
-use crate::quant::QuantKind;
+use crate::encoding::StoredTensorEncoding;
 use crate::source::TensorSource;
 use crate::{Error, Result};
 
@@ -74,8 +74,8 @@ impl OrdinaryRmsContract {
             ));
         }
         let bytes_per_element = match parameter.kind {
-            QuantKind::Bf16 => 2,
-            QuantKind::F32 => 4,
+            StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16) => 2,
+            StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32) => 4,
             _ => {
                 return Err(Error::Unsupported(
                     "ordinary RMS raw parameter dtype".into(),
@@ -98,7 +98,9 @@ impl OrdinaryRmsContract {
 }
 
 pub(super) fn validate_bf16_matrix(tensor: &SourceTensor) -> Result<()> {
-    if tensor.kind != QuantKind::Bf16 || tensor.axes != MatrixAxes::OutputInput {
+    if tensor.kind != StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16)
+        || tensor.axes != MatrixAxes::OutputInput
+    {
         return Err(Error::Unsupported(
             "closed original projection requires BF16 output-first source".into(),
         ));
@@ -111,7 +113,7 @@ pub(super) fn validate_bf16_matrix(tensor: &SourceTensor) -> Result<()> {
 pub struct SourceParameter {
     pub source: SourceIdentity,
     pub name: String,
-    pub kind: QuantKind,
+    pub kind: StoredTensorEncoding,
     pub shape: Vec<u64>,
     pub bytes: usize,
 }

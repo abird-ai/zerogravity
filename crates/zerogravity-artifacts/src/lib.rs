@@ -1,9 +1,9 @@
 pub use zerogravity_core::{Error, Result, accelerator};
 pub mod artifact;
+pub mod codecs;
 pub mod config;
 pub mod derived;
 pub mod json_allocation;
-pub mod quant;
 pub mod sharded;
 pub mod source_weights;
 #[cfg(all(feature = "cache", target_os = "linux"))]

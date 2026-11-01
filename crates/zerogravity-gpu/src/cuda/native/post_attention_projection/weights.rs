@@ -58,7 +58,10 @@ impl PendingOutWeights {
         // Shadow, write copy, and D2H validation capacity. Source chunks are separately admitted.
         let host = source.reserve_workspace(3 * bytes)?;
         let matrix = source.matrix(&member.name, member.axes)?;
-        if matrix.tensor().kind != zerogravity_core::quant::QuantKind::Bf16
+        if matrix.tensor().kind
+            != zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                zerogravity_core::encoding::ScalarDType::Bf16,
+            )
             || matrix.rows() != hidden
             || matrix.columns() != 2048
             || member.rows != hidden

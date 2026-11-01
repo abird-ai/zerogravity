@@ -25,8 +25,10 @@ impl QwenResidualRmsContract {
             ));
         }
         let bytes = match parameter.kind {
-            QuantKind::Bf16 => WIDTH * 2,
-            QuantKind::F32 => WIDTH * 4,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16) => {
+                WIDTH * 2
+            }
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) => WIDTH * 4,
             _ => return Err(Error::Unsupported("residual RMS raw BF16/F32 gamma".into())),
         };
         if parameter.shape.as_slice() != [WIDTH as u64] || parameter.bytes != bytes {
@@ -257,7 +259,8 @@ impl QwenEmbedding {
         if !self.tensor.source.is_bound()
             || self.tensor.source != self.teachers.source()
             || self.tensor.name != EMBEDDING
-            || self.tensor.kind != QuantKind::Bf16
+            || self.tensor.kind
+                != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
             || self.tensor.axes != MatrixAxes::OutputInput
             || self.tensor.rows != VOCABULARY
             || self.tensor.columns != self.model_profile.hidden_size()

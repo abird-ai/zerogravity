@@ -21,7 +21,6 @@ use std::{
     ops::Range,
     sync::Arc,
 };
-use zerogravity_artifacts::quant::QuantKind;
 use zerogravity_core::Error;
 use zerogravity_core::Result;
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
@@ -33,6 +32,7 @@ use zerogravity_core::accelerator::{
         TensorView, ValueId,
     },
 };
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::source::TensorSource;
 #[cfg(all(test, feature = "qualification"))]
 use zerogravity_model_qwen35::LoadedQwenModel;
@@ -906,17 +906,32 @@ impl ResidentProgram {
                 if matches!(node.operation, PlanOperation::Project { .. })
                     && projected.insert(tensor.name.clone())
                 {
-                    let block = if tensor.kind == QuantKind::Q6K {
+                    let block = if tensor.kind
+                        == StoredTensorEncoding::Quantized(
+                            zerogravity_core::encoding::QuantScheme::Q6K,
+                        ) {
                         256
                     } else {
                         32
                     };
-                    if tensor.kind != QuantKind::F32 {
+                    if tensor.kind
+                        != StoredTensorEncoding::Scalar(
+                            zerogravity_core::encoding::ScalarDType::F32,
+                        )
+                    {
                         source_bytes = checked_sum([
                             source_bytes,
                             bytes(
                                 (tensor.columns / block) * tensor.rows,
-                                if tensor.kind == QuantKind::Q4_1 { 8 } else { 4 },
+                                if tensor.kind
+                                    == StoredTensorEncoding::Quantized(
+                                        zerogravity_core::encoding::QuantScheme::Q4_1,
+                                    )
+                                {
+                                    8
+                                } else {
+                                    4
+                                },
                             )?,
                         ])?;
                     }
@@ -1019,7 +1034,12 @@ impl ResidentProgram {
                     status_bytes = checked_sum([status_bytes, tensor.columns * 4])?;
                     vec![]
                 }
-                PlanOperation::Project { tensor } if tensor.kind != QuantKind::F32 => {
+                PlanOperation::Project { tensor }
+                    if tensor.kind
+                        != StoredTensorEncoding::Scalar(
+                            zerogravity_core::encoding::ScalarDType::F32,
+                        ) =>
+                {
                     let l = ActivationLayout::new(tensor.kind, tensor.columns, tensor.rows)?;
                     status_bytes = checked_sum([status_bytes, (l.blocks + l.rows) * 4])?;
                     vec![
@@ -1323,7 +1343,11 @@ impl ResidentProgram {
                     descriptor.gpu_elements,
                     scales,
                     biases,
-                    if tensor.kind == QuantKind::F32 {
+                    if tensor.kind
+                        == StoredTensorEncoding::Scalar(
+                            zerogravity_core::encoding::ScalarDType::F32,
+                        )
+                    {
                         None
                     } else {
                         Some(ActivationLayout::new(
@@ -1435,9 +1459,16 @@ impl ResidentProgram {
             .iter()
             .enumerate()
             .map(|(index, node)| match &node.operation {
-                PlanOperation::Project { tensor } if tensor.kind != QuantKind::F32 => program
-                    .projection_binding(client, index, tensor)
-                    .map(|binding| Some(Box::new(binding))),
+                PlanOperation::Project { tensor }
+                    if tensor.kind
+                        != StoredTensorEncoding::Scalar(
+                            zerogravity_core::encoding::ScalarDType::F32,
+                        ) =>
+                {
+                    program
+                        .projection_binding(client, index, tensor)
+                        .map(|binding| Some(Box::new(binding)))
+                }
                 _ => Ok(None),
             })
             .collect::<Result<Vec<_>>>()?;
@@ -2432,7 +2463,10 @@ impl ResidentProgram {
                         arg(status, tensor.columns),
                         tensor.rows,
                         tensor.columns,
-                        tensor.kind == QuantKind::Q6K,
+                        tensor.kind
+                            == StoredTensorEncoding::Quantized(
+                                zerogravity_core::encoding::QuantScheme::Q6K,
+                            ),
                     );
                     crate::resident_bindings::merge_status::launch_unchecked(
                         client,
@@ -2447,7 +2481,11 @@ impl ResidentProgram {
                 PlanOperation::Project { tensor } => {
                     let t = &legacy.tensors[&tensor.name];
                     let out = output(0);
-                    if tensor.kind == QuantKind::F32 {
+                    if tensor.kind
+                        == StoredTensorEncoding::Scalar(
+                            zerogravity_core::encoding::ScalarDType::F32,
+                        )
+                    {
                         crate::projection_f32::f32_ggml_dot_gemv::launch_unchecked(
                             client,
                             grid(tensor.rows),
@@ -2483,63 +2521,63 @@ impl ResidentProgram {
                         l.rows,
                     );
                     match tensor.kind {
-                        QuantKind::Q4_0 => {
-                            crate::quantization::q4_0::source_q4_q8_gemv::launch_unchecked(
-                                client,
-                                grid(tensor.rows),
-                                threads(),
-                                arg(&t.packed, t.elements),
-                                arg(&dynamic.scales, l.composite_count),
-                                arg(&dynamic.codes, l.columns),
-                                arg(&out.handle, tensor.rows),
-                                l.blocks,
-                                tensor.rows,
-                                true,
-                            )
-                        }
-                        QuantKind::Q4_1 => {
-                            crate::quantization::q4_1::q4_1_q8_1_gemv::launch_unchecked(
-                                client,
-                                grid(tensor.rows),
-                                threads(),
-                                arg(&t.packed, t.elements),
-                                arg(&dynamic.scales, l.composite_count),
-                                arg(&dynamic.offsets, l.composite_count),
-                                arg(&dynamic.codes, l.columns),
-                                arg(&out.handle, tensor.rows),
-                                l.blocks,
-                                tensor.rows,
-                                true,
-                            )
-                        }
-                        QuantKind::Q8_0 => {
-                            crate::quantization::q8_0::q8_0_q8_0_gemv::launch_unchecked(
-                                client,
-                                grid(tensor.rows),
-                                threads(),
-                                arg(&t.packed, t.elements),
-                                arg(&dynamic.scales, l.composite_count),
-                                arg(&dynamic.codes, l.columns),
-                                arg(&out.handle, tensor.rows),
-                                l.blocks,
-                                tensor.rows,
-                                true,
-                            )
-                        }
-                        QuantKind::Q6K => {
-                            crate::quantization::q6_k::q6_k_q8_k_gemv::launch_unchecked(
-                                client,
-                                grid(tensor.rows),
-                                threads(),
-                                arg(&t.packed, t.elements),
-                                arg(&dynamic.scales, l.composite_count),
-                                arg(&dynamic.codes, l.columns),
-                                arg(&out.handle, tensor.rows),
-                                l.blocks,
-                                tensor.rows,
-                                true,
-                            )
-                        }
+                        StoredTensorEncoding::Quantized(
+                            zerogravity_core::encoding::QuantScheme::Q4_0,
+                        ) => crate::quantization::q4_0::source_q4_q8_gemv::launch_unchecked(
+                            client,
+                            grid(tensor.rows),
+                            threads(),
+                            arg(&t.packed, t.elements),
+                            arg(&dynamic.scales, l.composite_count),
+                            arg(&dynamic.codes, l.columns),
+                            arg(&out.handle, tensor.rows),
+                            l.blocks,
+                            tensor.rows,
+                            true,
+                        ),
+                        StoredTensorEncoding::Quantized(
+                            zerogravity_core::encoding::QuantScheme::Q4_1,
+                        ) => crate::quantization::q4_1::q4_1_q8_1_gemv::launch_unchecked(
+                            client,
+                            grid(tensor.rows),
+                            threads(),
+                            arg(&t.packed, t.elements),
+                            arg(&dynamic.scales, l.composite_count),
+                            arg(&dynamic.offsets, l.composite_count),
+                            arg(&dynamic.codes, l.columns),
+                            arg(&out.handle, tensor.rows),
+                            l.blocks,
+                            tensor.rows,
+                            true,
+                        ),
+                        StoredTensorEncoding::Quantized(
+                            zerogravity_core::encoding::QuantScheme::Q8_0,
+                        ) => crate::quantization::q8_0::q8_0_q8_0_gemv::launch_unchecked(
+                            client,
+                            grid(tensor.rows),
+                            threads(),
+                            arg(&t.packed, t.elements),
+                            arg(&dynamic.scales, l.composite_count),
+                            arg(&dynamic.codes, l.columns),
+                            arg(&out.handle, tensor.rows),
+                            l.blocks,
+                            tensor.rows,
+                            true,
+                        ),
+                        StoredTensorEncoding::Quantized(
+                            zerogravity_core::encoding::QuantScheme::Q6K,
+                        ) => crate::quantization::q6_k::q6_k_q8_k_gemv::launch_unchecked(
+                            client,
+                            grid(tensor.rows),
+                            threads(),
+                            arg(&t.packed, t.elements),
+                            arg(&dynamic.scales, l.composite_count),
+                            arg(&dynamic.codes, l.columns),
+                            arg(&out.handle, tensor.rows),
+                            l.blocks,
+                            tensor.rows,
+                            true,
+                        ),
                         _ => {
                             return Err(Error::Unsupported(
                                 "resident matrix codec unsupported".into(),
@@ -3611,7 +3649,7 @@ mod tests {
                         .nodes()
                         .iter()
                         .filter(|node| {
-                            matches!(&node.operation, PlanOperation::Project { tensor } if tensor.kind != QuantKind::F32)
+                            matches!(&node.operation, PlanOperation::Project { tensor } if tensor.kind != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32))
                         })
                         .count();
                     assert!(prepared_projections > 0);
@@ -3660,10 +3698,32 @@ mod tests {
                     for t in tensors.values() {
                         source += StaticSource::gpu_bytes_for(region(model.as_ref(), t).unwrap())
                             .unwrap();
-                        if projections.contains(&t.name) && t.kind != QuantKind::F32 {
+                        if projections.contains(&t.name)
+                            && t.kind
+                                != StoredTensorEncoding::Scalar(
+                                    zerogravity_core::encoding::ScalarDType::F32,
+                                )
+                        {
                             source += t.rows
-                                * (t.columns / if t.kind == QuantKind::Q6K { 256 } else { 32 })
-                                * if t.kind == QuantKind::Q4_1 { 8 } else { 4 };
+                                * (t.columns
+                                    / if t.kind
+                                        == StoredTensorEncoding::Quantized(
+                                            zerogravity_core::encoding::QuantScheme::Q6K,
+                                        )
+                                    {
+                                        256
+                                    } else {
+                                        32
+                                    })
+                                * if t.kind
+                                    == StoredTensorEncoding::Quantized(
+                                        zerogravity_core::encoding::QuantScheme::Q4_1,
+                                    )
+                                {
+                                    8
+                                } else {
+                                    4
+                                };
                         }
                     }
                     source += plan

@@ -367,6 +367,11 @@ fn mm08_dummy_non_token_decisions_publish_schema_atomically() {
     let mut c =
         TaskCoordinator::new(909, [("decision".into(), 1), ("provenance".into(), 3)]).unwrap();
     let original = c.root().clone();
+    let initial = c.binding();
+    assert!(c.source_identity().is_none());
+    assert!(!initial.source().is_bound());
+    assert_eq!(c.epoch(), 909);
+    assert_eq!(c.coordinator_id(), initial.session().get());
     assert!(
         c.publish(0, 1, vec![prepared("decision", 1, 1, vec![3])], vec![])
             .is_err()
@@ -389,6 +394,10 @@ fn mm08_dummy_non_token_decisions_publish_schema_atomically() {
         )
         .unwrap();
     assert_eq!((first.root_id, first.sequence, first.epoch), (1, 1, 909));
+    assert_eq!(c.binding().session(), initial.session());
+    assert_eq!(c.binding().source(), initial.source());
+    assert_eq!(c.binding().session_epoch(), 909);
+    assert_eq!((c.binding().root(), c.binding().frontier()), (1, 1));
     assert!(
         c.publish(
             0,
@@ -443,6 +452,46 @@ fn mm07_av_synchronization_is_single_root_and_fail_closed() {
         .map(|(k, v)| (k.clone(), v.bytes.len()))
         .collect();
     assert_eq!(d.len(), 2);
+}
+
+/// The reference ledger's numeric root/epoch is not a source-bound Ready permit.
+#[test]
+fn numeric_ready_bridge_cannot_publish_a_source_bound_session() {
+    use zerogravity::accelerator::SourceIdentity;
+    use zerogravity::device_events::{BufferRole, DeviceAccess, DeviceEventLedger, EventPhase};
+
+    let source = SourceIdentity::for_new_allocation().unwrap();
+    let mut coordinator =
+        TaskCoordinator::new_source_bound(73, source, [("audio".into(), 5)]).unwrap();
+    let binding = coordinator.binding();
+    let root = coordinator.root().clone();
+    let mut device = DeviceEventLedger::new(73, 128).unwrap();
+    let audio = device.admit(128, BufferRole::Output).unwrap();
+    let event = device
+        .submit(binding.root(), &[(audio, DeviceAccess::Write)])
+        .unwrap();
+    device.report_physical_ready(event).unwrap();
+    // Matching numeric counters and a complete domain map still cannot bind
+    // this reference event to the actual source/session/attempt.
+    assert!(
+        device
+            .publish_ready(
+                event,
+                &mut coordinator,
+                1,
+                vec![prepared("audio", 5, 1, vec![1])],
+                vec![42],
+            )
+            .is_err()
+    );
+    assert_eq!(coordinator.binding(), binding);
+    assert_eq!(coordinator.root(), &root);
+    assert_eq!(device.phase(event).unwrap(), EventPhase::Ready);
+    assert_eq!(device.pending_events(), 1);
+    assert!(device.release_lease(audio).is_err());
+    device.request_cancel(event).unwrap();
+    device.release_lease(audio).unwrap();
+    assert_eq!(device.resident_bytes(), 0);
 }
 
 /// MM-06 adversarial duplex lifecycle: queued old-turn GPU audio can never

@@ -22,7 +22,10 @@ impl VerifiedTensorSource {
         let bytes = elements
             .checked_mul(2)
             .ok_or_else(|| Error::Limit("original conv4 byte count".into()))?;
-        if location.info.kind != QuantKind::Bf16 || location.info.byte_len != bytes as u64 {
+        if location.info.kind
+            != StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+            || location.info.byte_len != bytes as u64
+        {
             return Err(Error::Unsupported("original conv4 raw dtype/length".into()));
         }
         Ok(VerifiedParameter {

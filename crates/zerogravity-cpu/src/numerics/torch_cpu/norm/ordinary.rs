@@ -5,8 +5,8 @@
 //! uses four Vec8 groups and16-iteration carries at these four widths.
 
 use crate::accelerator::SourceIdentity;
-use crate::quant::QuantKind;
 use crate::{Error, Result};
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::source::SourceTensorRef;
 
 const MAX_ELEMENTS: usize = 1_048_576;
@@ -97,7 +97,11 @@ fn validate(
     if input.is_empty() || !input.len().is_multiple_of(width) || weight.shape != [width as u64] {
         return Err(Error::Malformed("pinned ordinary RMS geometry".into()));
     }
-    if !matches!(weight.kind, QuantKind::Bf16 | QuantKind::F32) {
+    if !matches!(
+        weight.kind,
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+            | StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+    ) {
         return Err(Error::Unsupported(
             "pinned ordinary RMS requires raw BF16/F32 weight".into(),
         ));
@@ -112,12 +116,12 @@ fn validate(
         ));
     }
     let values = match weight.kind {
-        QuantKind::Bf16 => weight
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16) => weight
             .packed_bytes
             .chunks_exact(2)
             .map(|bytes| f32::from_bits(u32::from(u16::from_le_bytes([bytes[0], bytes[1]])) << 16))
             .collect::<Vec<_>>(),
-        QuantKind::F32 => weight
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) => weight
             .packed_bytes
             .chunks_exact(4)
             .map(|bytes| f32::from_le_bytes(bytes.try_into().expect("validated F32 weight")))

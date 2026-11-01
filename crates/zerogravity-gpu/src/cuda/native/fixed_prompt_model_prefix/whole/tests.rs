@@ -8,7 +8,7 @@ use zerogravity_core::accelerator::program::SourceParameter;
 use zerogravity_core::accelerator::program::SourceTensor;
 use zerogravity_core::accelerator::program::StateVersion;
 use zerogravity_core::accelerator::program::TeacherSpan;
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_model_qwen35::plan::QwenGdnCall;
 use zerogravity_model_qwen35::plan::QwenInputRows;
 use zerogravity_model_qwen35::plan::QwenOperator;
@@ -33,7 +33,7 @@ fn fixture(index: usize) -> (QwenSourceCall, Vec<PlanNode>, BTreeMap<usize, Qwen
     let matrix = |name: &str, rows, columns| SourceTensor {
         source,
         name: format!("model.language_model.layers.{index}.self_attn.{name}.weight"),
-        kind: QuantKind::Bf16,
+        kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
         axes: MatrixAxes::OutputInput,
         rows,
         columns,
@@ -41,7 +41,7 @@ fn fixture(index: usize) -> (QwenSourceCall, Vec<PlanNode>, BTreeMap<usize, Qwen
     let gamma = |name: &str| SourceParameter {
         source,
         name: format!("model.language_model.layers.{index}.self_attn.{name}.weight"),
-        kind: QuantKind::Bf16,
+        kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
         shape: vec![256],
         bytes: 512,
     };

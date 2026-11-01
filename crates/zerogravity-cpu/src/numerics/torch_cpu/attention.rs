@@ -120,7 +120,7 @@ pub fn eager_bf16(
         for t in 0..tokens {
             let begin = t * kv + group * g.width;
             encode(&keys[begin..begin + g.width], &mut packed);
-            let dot = rounded(crate::source::dot_bf16_cpu_avx2(
+            let dot = rounded(super::projection::dot_bf16_cpu_avx2(
                 &packed,
                 &rotated_query[h * g.width..(h + 1) * g.width],
             ))?;

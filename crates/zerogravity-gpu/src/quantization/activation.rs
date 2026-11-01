@@ -13,9 +13,9 @@
 
 use crate::source_float::{round_source, widen_source};
 use cubecl::prelude::*;
-use zerogravity_artifacts::quant::QuantKind;
 use zerogravity_core::Error;
 use zerogravity_core::Result;
+use zerogravity_core::encoding::StoredTensorEncoding;
 
 /// Parameter words for each source activation block: inverse, unrounded d,
 /// execution scale (half-roundtripped d, or Q8_K d), and source Q8_1 sum scale.
@@ -43,11 +43,18 @@ pub(crate) struct ActivationLayout {
 }
 
 impl ActivationLayout {
-    pub fn new(kind: QuantKind, columns: usize, rows: usize) -> Result<Self> {
+    pub fn new(kind: StoredTensorEncoding, columns: usize, rows: usize) -> Result<Self> {
         let (block_width, signed_scale, with_bias) = match kind {
-            QuantKind::Q4_0 | QuantKind::Q8_0 => (32, false, false),
-            QuantKind::Q4_1 => (32, false, true),
-            QuantKind::Q6K => (256, true, false),
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0)
+            | StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0) => {
+                (32, false, false)
+            }
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1) => {
+                (32, false, true)
+            }
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K) => {
+                (256, true, false)
+            }
             _ => {
                 return Err(Error::Unsupported(
                     "device activation encoding is Q8_0/Q8_1/Q8_K only".into(),
@@ -472,7 +479,7 @@ pub(crate) fn composites(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zerogravity_artifacts::quant::{f16_to_f32, f32_to_f16_rne};
+    use zerogravity_artifacts::codecs::{f16_to_f32, f32_to_f16_rne};
 
     #[test]
     fn integer_division_matches_source_binary32_rounding() {
@@ -571,18 +578,44 @@ mod tests {
     #[test]
     fn layout_refuses_bad_geometry_and_accounts_every_workspace_buffer() {
         for (kind, columns, rows) in [
-            (QuantKind::Q4_0, 1024usize, 2048usize),
-            (QuantKind::Q4_1, 1024, 2048),
-            (QuantKind::Q8_0, 2048, 128),
-            (QuantKind::Q6K, 2048, 4096),
+            (
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0),
+                1024usize,
+                2048usize,
+            ),
+            (
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1),
+                1024,
+                2048,
+            ),
+            (
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0),
+                2048,
+                128,
+            ),
+            (
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K),
+                2048,
+                4096,
+            ),
         ] {
             let layout = ActivationLayout::new(kind, columns, rows).unwrap();
             assert_eq!(layout.columns, columns);
             assert_eq!(layout.rows, rows);
             assert_eq!(layout.blocks * layout.block_width, columns);
             assert_eq!(layout.composite_count, rows * layout.blocks);
-            assert_eq!(layout.signed_scale, kind == QuantKind::Q6K);
-            assert_eq!(layout.with_bias, kind == QuantKind::Q4_1);
+            assert_eq!(
+                layout.signed_scale,
+                kind == StoredTensorEncoding::Quantized(
+                    zerogravity_core::encoding::QuantScheme::Q6K
+                )
+            );
+            assert_eq!(
+                layout.with_bias,
+                kind == StoredTensorEncoding::Quantized(
+                    zerogravity_core::encoding::QuantScheme::Q4_1
+                )
+            );
             let offsets = if layout.with_bias {
                 rows * layout.blocks
             } else {
@@ -593,11 +626,53 @@ mod tests {
                 4 * (layout.blocks * 5 + columns * 2 + rows * layout.blocks + offsets + rows)
             );
         }
-        assert!(ActivationLayout::new(QuantKind::Q4_0, 0, 1).is_err());
-        assert!(ActivationLayout::new(QuantKind::Q4_0, 32, 0).is_err());
-        assert!(ActivationLayout::new(QuantKind::Q6K, 32, 1).is_err());
-        assert!(ActivationLayout::new(QuantKind::F32, 32, 1).is_err());
-        assert!(ActivationLayout::new(QuantKind::Q4_1, usize::MAX, 1).is_err());
-        assert!(ActivationLayout::new(QuantKind::Q4_1, 64, u32::MAX as usize).is_err());
+        assert!(
+            ActivationLayout::new(
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0),
+                0,
+                1
+            )
+            .is_err()
+        );
+        assert!(
+            ActivationLayout::new(
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0),
+                32,
+                0
+            )
+            .is_err()
+        );
+        assert!(
+            ActivationLayout::new(
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q6K),
+                32,
+                1
+            )
+            .is_err()
+        );
+        assert!(
+            ActivationLayout::new(
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                32,
+                1
+            )
+            .is_err()
+        );
+        assert!(
+            ActivationLayout::new(
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1),
+                usize::MAX,
+                1
+            )
+            .is_err()
+        );
+        assert!(
+            ActivationLayout::new(
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1),
+                64,
+                u32::MAX as usize
+            )
+            .is_err()
+        );
     }
 }

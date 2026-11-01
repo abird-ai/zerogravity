@@ -1,9 +1,9 @@
 //! Borrowed, immutable source binding used only during cold preparation.
-use crate::{Error, Result, accelerator::SourceIdentity, quant::QuantKind};
+use crate::{Error, Result, accelerator::SourceIdentity, encoding::StoredTensorEncoding};
 
 #[derive(Clone, Copy, Debug)]
 pub struct SourceTensorRef<'a> {
-    pub kind: QuantKind,
+    pub kind: StoredTensorEncoding,
     pub shape: &'a [u64],
     pub packed_bytes: &'a [u8],
 }
@@ -64,7 +64,7 @@ mod tests {
     fn borrowed_source_geometry_rejects_overflow_truncation_and_empty_axes() {
         let packed = [0u8; 8];
         let valid = SourceTensorRef {
-            kind: QuantKind::F32,
+            kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
             shape: &[2],
             packed_bytes: &packed,
         };
@@ -74,7 +74,7 @@ mod tests {
         }
         assert!(
             SourceTensorRef {
-                kind: QuantKind::Q8_0,
+                kind: StoredTensorEncoding::Quantized(crate::encoding::QuantScheme::Q8_0),
                 shape: &[1],
                 packed_bytes: &packed
             }

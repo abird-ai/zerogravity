@@ -9,7 +9,7 @@ use crate::accelerator::MatVecKernel;
 use crate::source::owned::QwenOriginalText;
 use crate::{Error, Result};
 use zerogravity_artifacts::SourceWeights;
-use zerogravity_artifacts::quant::dequantize;
+use zerogravity_artifacts::codecs::dequantize;
 
 /// One borrowed verified Safetensors allocation and exact Qwen text geometry.
 /// This does not mint any new model/source identity or resource reservation.

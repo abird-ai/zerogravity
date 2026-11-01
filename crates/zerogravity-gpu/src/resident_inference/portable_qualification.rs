@@ -14,7 +14,8 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
     task::{Context, Poll, Waker},
 };
-use zerogravity_artifacts::quant::{QuantKind, dequantize};
+use zerogravity_artifacts::codecs::dequantize;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::{
     accelerator::{
         SourceIdentity,
@@ -124,7 +125,7 @@ impl TensorSource for Source {
             return Err(Error::Malformed("portable source role".into()));
         }
         Ok(SourceTensorRef {
-            kind: QuantKind::Q8_0,
+            kind: StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0),
             shape: &self.shape,
             packed_bytes: &self.packed,
         })
@@ -145,7 +146,11 @@ struct Expected {
 }
 impl Oracle {
     fn new(source: Arc<Source>) -> Result<Self> {
-        let embedding = dequantize(QuantKind::Q8_0, &source.packed, VOCAB * WIDTH)?;
+        let embedding = dequantize(
+            StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0),
+            &source.packed,
+            VOCAB * WIDTH,
+        )?;
         Ok(Self {
             source,
             embedding,

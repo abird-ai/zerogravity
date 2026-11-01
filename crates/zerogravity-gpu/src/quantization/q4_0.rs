@@ -11,9 +11,7 @@ use cubecl::prelude::*;
 #[cfg(feature = "qualification")]
 use std::sync::atomic::{AtomicUsize, Ordering};
 #[cfg(any(test, feature = "qualification"))]
-use zerogravity_artifacts::quant::QuantKind;
-#[cfg(any(test, feature = "qualification"))]
-use zerogravity_artifacts::quant::{f16_to_f32, f32_to_f16_rne};
+use zerogravity_artifacts::codecs::{f16_to_f32, f32_to_f16_rne};
 #[cfg(any(test, feature = "qualification"))]
 use zerogravity_core::Error;
 #[cfg(any(test, feature = "qualification"))]
@@ -22,6 +20,8 @@ use zerogravity_core::Result;
 use zerogravity_core::accelerator::MatVecRegion;
 #[cfg(feature = "qualification")]
 use zerogravity_core::accelerator::{MatVecKernel, RegionExecution};
+#[cfg(any(test, feature = "qualification"))]
+use zerogravity_core::encoding::StoredTensorEncoding;
 
 pub(crate) struct PreparedQ4Q8 {
     pub(crate) rows: usize,
@@ -36,7 +36,7 @@ pub(crate) struct PreparedQ4Q8 {
 /// No output matvec is executed on CPU for a supported GPU region.
 #[cfg(any(test, feature = "qualification"))]
 pub(crate) fn prepare_source(region: MatVecRegion<'_>) -> Result<PreparedQ4Q8> {
-    if region.kind != QuantKind::Q4_0
+    if region.kind != StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0)
         || region.columns == 0
         || !region.columns.is_multiple_of(32)
         || region.rows == 0
@@ -184,7 +184,8 @@ impl CubeQ4Q8Provider {
 impl MatVecKernel for CubeQ4Q8Provider {
     fn try_execute(&self, region: MatVecRegion<'_>) -> Result<RegionExecution> {
         if region.tensor_name != self.selected_tensor
-            || region.kind != QuantKind::Q4_0
+            || region.kind
+                != StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0)
             || region.rows > self.max_rows
             || !region.rows.is_multiple_of(8)
         {
@@ -284,7 +285,10 @@ mod tests {
             let weights = CpuWeights::open(&path).expect("source GGUF model");
             let input = weights.embed(11, "token_embd.weight").unwrap();
             let name = "blk.0.attn_gate.weight";
-            assert_eq!(weights.tensor(name).unwrap().kind, QuantKind::Q4_0);
+            assert_eq!(
+                weights.tensor(name).unwrap().kind,
+                StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0)
+            );
             let expected = weights.matvec(name, &input).unwrap();
             let actual = weights
                 .matvec_with(name, &input, Some(&SourceFixtureProvider))
@@ -367,7 +371,7 @@ mod tests {
         let original = MatVecRegion {
             source_identity: zerogravity_core::accelerator::SourceIdentity::unbound(),
             tensor_name: "blk.0.attn_gate.weight",
-            kind: QuantKind::Q4_0,
+            kind: StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0),
             columns,
             rows,
             packed_weights: &packed,
@@ -385,7 +389,7 @@ mod tests {
         wrong.rows = 9;
         assert!(prepare_source(wrong).is_err());
         wrong = original;
-        wrong.kind = QuantKind::Q8_0;
+        wrong.kind = StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0);
         assert!(prepare_source(wrong).is_err());
         let not_finite = [f32::NAN; 64];
         wrong = original;

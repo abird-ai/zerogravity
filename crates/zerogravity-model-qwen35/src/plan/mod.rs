@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use zerogravity_core::accelerator::program::PlanBuilder as CorePlanBuilder;
 use zerogravity_core::accelerator::{SourceIdentity, program::*};
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::source::TensorSource;
 mod source_profile;
 pub use source_profile::QwenSourceProfile;

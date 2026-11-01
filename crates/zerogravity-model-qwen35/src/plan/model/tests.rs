@@ -30,7 +30,7 @@ fn descriptor(call: &QwenSourceCall, index: Option<usize>, kind: QwenOperation) 
                 } else {
                     layer.unwrap().name(suffix)
                 },
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 axes: MatrixAxes::OutputInput,
                 rows,
                 columns: projection.input_width(),
@@ -41,7 +41,7 @@ fn descriptor(call: &QwenSourceCall, index: Option<usize>, kind: QwenOperation) 
         QwenOperation::InputRms => vec![SourceParameter {
             source: call.source(),
             name: layer.unwrap().name("input_layernorm.weight"),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             shape: vec![1024],
             bytes: 2048,
         }],
@@ -50,7 +50,7 @@ fn descriptor(call: &QwenSourceCall, index: Option<usize>, kind: QwenOperation) 
             .map(|suffix| SourceParameter {
                 source: call.source(),
                 name: layer.unwrap().name(suffix),
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
                 shape: vec![256],
                 bytes: 512,
             })
@@ -58,14 +58,29 @@ fn descriptor(call: &QwenSourceCall, index: Option<usize>, kind: QwenOperation) 
         QwenOperation::GdnConv => vec![SourceParameter {
             source: call.source(),
             name: layer.unwrap().name("linear_attn.conv1d.weight"),
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             shape: vec![6144, 1, 4],
             bytes: 49152,
         }],
         QwenOperation::GdnRecurrent => [
-            ("linear_attn.A_log", QuantKind::F32, 16, 64),
-            ("linear_attn.dt_bias", QuantKind::Bf16, 16, 32),
-            ("linear_attn.norm.weight", QuantKind::F32, 128, 512),
+            (
+                "linear_attn.A_log",
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                16,
+                64,
+            ),
+            (
+                "linear_attn.dt_bias",
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+                16,
+                32,
+            ),
+            (
+                "linear_attn.norm.weight",
+                StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+                128,
+                512,
+            ),
         ]
         .into_iter()
         .map(|(suffix, kind, n, bytes)| SourceParameter {
@@ -87,7 +102,9 @@ fn embedding(builder: &mut QwenPlanBuilder, call: &QwenSourceCall) -> PlanValue 
                 SourceTensor {
                     source: call.source(),
                     name: "model.language_model.embed_tokens.weight".into(),
-                    kind: QuantKind::Bf16,
+                    kind: StoredTensorEncoding::Scalar(
+                        zerogravity_core::encoding::ScalarDType::Bf16,
+                    ),
                     axes: MatrixAxes::OutputInput,
                     rows: 248320,
                     columns: 1024,
@@ -270,7 +287,10 @@ fn packed_original_member_order_kind_axes_and_layer_cannot_be_substituted() {
         match mode {
             0 => bad.matrices.swap(1, 2),
             1 => bad.matrices[0].axes = MatrixAxes::InputOutput,
-            2 => bad.matrices[0].kind = QuantKind::F32,
+            2 => {
+                bad.matrices[0].kind =
+                    StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32)
+            }
             3 => bad.matrices[0].source = SourceIdentity::for_new_allocation().unwrap(),
             4 => {
                 bad.matrices[0].name =

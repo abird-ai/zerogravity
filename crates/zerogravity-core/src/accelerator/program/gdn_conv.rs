@@ -20,7 +20,7 @@ impl CausalConvSiluContract {
         if channels == 0
             || channels > 16384
             || !channels.is_multiple_of(32)
-            || parameter.kind != QuantKind::Bf16
+            || parameter.kind != StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16)
             || parameter.shape.as_slice() != [channels as u64, 1, 4]
             || channels.checked_mul(8) != Some(parameter.bytes)
             || channels.checked_mul(3) != Some(history)
@@ -109,7 +109,7 @@ mod tests {
             SourceParameter {
                 source,
                 name: "original.conv.weight".into(),
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
                 shape: vec![32, 1, 4],
                 bytes: 256,
             },
@@ -122,7 +122,7 @@ mod tests {
                 SourceTensor {
                     source: builder.source,
                     name: format!("synthetic.{width}"),
-                    kind: QuantKind::Bf16,
+                    kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
                     axes: MatrixAxes::OutputInput,
                     columns: width,
                     rows: 2,
@@ -174,7 +174,7 @@ mod tests {
                 ..p.clone()
             },
             SourceParameter {
-                kind: QuantKind::F32,
+                kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
                 ..p.clone()
             },
             SourceParameter {

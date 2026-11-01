@@ -4,24 +4,24 @@ use std::{
     path::Path,
     sync::{Arc, Mutex},
 };
-use zerogravity_artifacts::quant::QuantKind;
 use zerogravity_core::Result as ZgResult;
 use zerogravity_core::accelerator::{MatVecKernel, MatVecRegion, RegionExecution};
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::resource_arbiter::ResourceOwner;
 use zerogravity_cpu::source::source_reference_projection;
 use zerogravity_gpu::CubeResidentProvider;
 use zerogravity_gpu::Device;
 use zerogravity_model_qwen35::LoadedQwenModel;
 struct Sample {
-    kind: QuantKind,
+    kind: StoredTensorEncoding,
     columns: usize,
     source: Vec<u8>,
     activation: Vec<f32>,
 }
-struct Capture(Mutex<BTreeMap<QuantKind, Sample>>);
+struct Capture(Mutex<BTreeMap<StoredTensorEncoding, Sample>>);
 impl MatVecKernel for Capture {
     fn try_execute(&self, r: MatVecRegion<'_>) -> ZgResult<RegionExecution> {
-        if r.kind == QuantKind::F32 {
+        if r.kind == StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) {
             return Ok(RegionExecution::Unsupported);
         }
         let mut samples = self

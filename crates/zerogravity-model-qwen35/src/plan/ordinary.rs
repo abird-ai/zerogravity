@@ -625,7 +625,7 @@ fn diagnostic_matrix(
     SourceTensor {
         source,
         name,
-        kind: QuantKind::Bf16,
+        kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
         axes: MatrixAxes::OutputInput,
         columns,
         rows,
@@ -640,37 +640,58 @@ fn diagnostic_parameter(
 ) -> SourceParameter {
     let hidden = profile.hidden_size();
     let (name, kind, shape) = match role {
-        QwenParameterRole::FinalNorm => ("final_norm".into(), QuantKind::Bf16, vec![hidden as u64]),
+        QwenParameterRole::FinalNorm => (
+            "final_norm".into(),
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+            vec![hidden as u64],
+        ),
         QwenParameterRole::InputNorm(index) => (
             format!("layer.{index}.input_norm"),
-            QuantKind::Bf16,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             vec![hidden as u64],
         ),
         QwenParameterRole::FfnNorm(index) => (
             format!("layer.{index}.ffn_norm"),
-            QuantKind::Bf16,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             vec![hidden as u64],
         ),
         QwenParameterRole::GdnConvolution(index) => (
             format!("layer.{index}.conv"),
-            QuantKind::Bf16,
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             vec![6144, 1, 4],
         ),
-        QwenParameterRole::GdnNorm(index) => {
-            (format!("layer.{index}.gdn_norm"), QuantKind::F32, vec![128])
-        }
-        QwenParameterRole::GdnA(index) => {
-            (format!("layer.{index}.A_log"), QuantKind::F32, vec![16])
-        }
-        QwenParameterRole::GdnDt(index) => (format!("layer.{index}.dt"), QuantKind::Bf16, vec![16]),
-        QwenParameterRole::QueryNorm(index) => {
-            (format!("layer.{index}.q_norm"), QuantKind::Bf16, vec![256])
-        }
-        QwenParameterRole::KeyNorm(index) => {
-            (format!("layer.{index}.k_norm"), QuantKind::Bf16, vec![256])
-        }
+        QwenParameterRole::GdnNorm(index) => (
+            format!("layer.{index}.gdn_norm"),
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+            vec![128],
+        ),
+        QwenParameterRole::GdnA(index) => (
+            format!("layer.{index}.A_log"),
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+            vec![16],
+        ),
+        QwenParameterRole::GdnDt(index) => (
+            format!("layer.{index}.dt"),
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+            vec![16],
+        ),
+        QwenParameterRole::QueryNorm(index) => (
+            format!("layer.{index}.q_norm"),
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+            vec![256],
+        ),
+        QwenParameterRole::KeyNorm(index) => (
+            format!("layer.{index}.k_norm"),
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
+            vec![256],
+        ),
     };
-    let element_bytes = if kind == QuantKind::Bf16 { 2 } else { 4 };
+    let element_bytes =
+        if kind == StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16) {
+            2
+        } else {
+            4
+        };
     let bytes = shape.iter().map(|n| *n as usize).product::<usize>() * element_bytes;
     SourceParameter {
         source,

@@ -11,7 +11,7 @@ use zerogravity_artifacts::SourceWeights;
 use zerogravity_artifacts::artifact::Artifact;
 use zerogravity_artifacts::cache::TransferAdmission;
 use zerogravity_artifacts::source_weights::{ExpectedSourceShard, SourceOpenLimits};
-use zerogravity_core::quant::QuantKind;
+use zerogravity_core::encoding::StoredTensorEncoding;
 use zerogravity_core::resource_arbiter::{PhysicalDeviceKey, ResourceArbiter, ResourceOwner};
 use zerogravity_model_qwen35::source::owned::QwenOriginalText;
 use zerogravity_model_qwen35::source::safetensors::QwenTextConfig;
@@ -334,12 +334,18 @@ fn original_small_hybrid_all_text_tensor_headers_bind_to_the_same_owned_index() 
     let q = bound
         .text_tensor("model.language_model.layers.3.self_attn.q_proj.weight")
         .unwrap();
-    assert_eq!(q.kind, QuantKind::Bf16);
+    assert_eq!(
+        q.kind,
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16)
+    );
     assert_eq!(q.shape, &[16, 4]);
     let gate = bound
         .text_tensor("model.language_model.layers.0.mlp.gate_proj.weight")
         .unwrap();
-    assert_eq!(gate.kind, QuantKind::F16);
+    assert_eq!(
+        gate.kind,
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F16)
+    );
     assert_eq!(gate.shape, &[8, 4]);
     assert!(
         bound

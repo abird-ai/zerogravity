@@ -140,7 +140,7 @@ fn descriptor(source: &VerifiedTensorSource, name: &str) -> Result<SourceTensor>
     Ok(SourceTensor {
         source: source.source_identity(),
         name: name.into(),
-        kind: QuantKind::Bf16,
+        kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
         axes: MatrixAxes::OutputInput,
         rows: m.rows(),
         columns: m.columns(),
@@ -223,7 +223,7 @@ fn compare_cpu(
     let reference = zerogravity_cpu::numerics::torch_cpu::norm::ordinary_rms(
         source.source_identity(),
         zerogravity_core::source::SourceTensorRef {
-            kind: QuantKind::Bf16,
+            kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16),
             shape: &[h as u64],
             packed_bytes: g.as_slice(),
         },

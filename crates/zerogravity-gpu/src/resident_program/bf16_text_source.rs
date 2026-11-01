@@ -219,8 +219,10 @@ fn upload_parameters(
         let staging = source.reserve_workspace(3 * bytes)?;
         let mut widened = vec![0u8; bytes];
         match p.kind {
-            QuantKind::F32 => widened[..p.bytes].copy_from_slice(window.as_slice()),
-            QuantKind::Bf16 => {
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) => {
+                widened[..p.bytes].copy_from_slice(window.as_slice())
+            }
+            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16) => {
                 for (out, input) in widened
                     .chunks_exact_mut(4)
                     .zip(window.as_slice().chunks_exact(2))

@@ -407,7 +407,10 @@ pub(super) fn gdn(
             arg(output[5], values),
             arg(status, 1),
             values,
-            c.norm.kind == zerogravity_core::quant::QuantKind::Bf16,
+            c.norm.kind
+                == zerogravity_core::encoding::StoredTensorEncoding::Scalar(
+                    zerogravity_core::encoding::ScalarDType::Bf16,
+                ),
         );
     }
     Ok(launches + 1)

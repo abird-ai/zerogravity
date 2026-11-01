@@ -143,7 +143,7 @@ mod tests {
             SourceTensor {
                 source: b.source,
                 name: format!("actual-{n}"),
-                kind: QuantKind::Bf16,
+                kind: StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
                 columns: n,
                 rows: 512,
                 axes: MatrixAxes::OutputInput,
@@ -154,7 +154,7 @@ mod tests {
         .unwrap()
     }
     fn contract(source: SourceIdentity, exp: StandaloneExpProfile) -> TorchCpuGdnContract {
-        let p = |name: &str, shape: Vec<u64>, kind: QuantKind| SourceParameter {
+        let p = |name: &str, shape: Vec<u64>, kind: StoredTensorEncoding| SourceParameter {
             source,
             name: name.into(),
             bytes: kind.byte_len(shape.iter().product()).unwrap() as usize,
@@ -163,10 +163,26 @@ mod tests {
         };
         TorchCpuGdnContract {
             standalone_exp: exp,
-            convolution: p("conv", vec![10240, 1, 4], QuantKind::Bf16),
-            a_log: p("a", vec![48], QuantKind::Bf16),
-            dt_bias: p("dt", vec![48], QuantKind::F32),
-            norm: p("gamma", vec![128], QuantKind::F32),
+            convolution: p(
+                "conv",
+                vec![10240, 1, 4],
+                StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
+            ),
+            a_log: p(
+                "a",
+                vec![48],
+                StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::Bf16),
+            ),
+            dt_bias: p(
+                "dt",
+                vec![48],
+                StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
+            ),
+            norm: p(
+                "gamma",
+                vec![128],
+                StoredTensorEncoding::Scalar(crate::encoding::ScalarDType::F32),
+            ),
             key_heads: 16,
             value_heads: 48,
         }

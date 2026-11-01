@@ -9,7 +9,7 @@ use zerogravity_core::{
             PlanBuilder, SourceTensor, SourceVector, TensorView,
         },
     },
-    quant::QuantKind,
+    encoding::StoredTensorEncoding,
     source::SourceTensorRef,
 };
 
@@ -18,7 +18,7 @@ struct Source {
     reads: AtomicUsize,
     shape: [u64; 2],
     packed: Vec<u8>,
-    secondary: Option<(QuantKind, Vec<u8>)>,
+    secondary: Option<(StoredTensorEncoding, Vec<u8>)>,
 }
 impl Source {
     fn new() -> Self {
@@ -47,7 +47,7 @@ impl TensorSource for Source {
             });
         }
         Ok(SourceTensorRef {
-            kind: QuantKind::Q8_0,
+            kind: StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q8_0),
             shape: &self.shape,
             packed_bytes: &self.packed,
         })
@@ -72,7 +72,9 @@ fn plan(
             SourceTensor {
                 source,
                 name: "embedding".into(),
-                kind: QuantKind::Q8_0,
+                kind: StoredTensorEncoding::Quantized(
+                    zerogravity_core::encoding::QuantScheme::Q8_0,
+                ),
                 axes: MatrixAxes::InputOutput,
                 columns: 32,
                 rows,
@@ -175,7 +177,7 @@ fn cold_source_capacity_and_packed_shape_guards_precede_device_ownership() {
 
 struct OutputFirstSource {
     identity: SourceIdentity,
-    kind: QuantKind,
+    kind: StoredTensorEncoding,
     embedding: Vec<u8>,
     projection: Vec<u8>,
 }
@@ -186,7 +188,9 @@ impl TensorSource for OutputFirstSource {
     fn tensor(&self, name: &str) -> Result<SourceTensorRef<'_>> {
         match name {
             "embedding" => Ok(SourceTensorRef {
-                kind: QuantKind::Q8_0,
+                kind: StoredTensorEncoding::Quantized(
+                    zerogravity_core::encoding::QuantScheme::Q8_0,
+                ),
                 shape: &[32, 64],
                 packed_bytes: &self.embedding,
             }),
@@ -236,7 +240,7 @@ fn output_first_plan(source: &OutputFirstSource, axes: MatrixAxes) -> ForwardPla
 fn cold_output_first_descriptor_keeps_raw_shape_and_existing_codec_gates() {
     let mut source = OutputFirstSource {
         identity: SourceIdentity::for_new_allocation().unwrap(),
-        kind: QuantKind::F32,
+        kind: StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
         embedding: vec![0; 64 * 34],
         projection: vec![0; 64 * 32 * 4],
     };
@@ -245,7 +249,7 @@ fn cold_output_first_descriptor_keeps_raw_shape_and_existing_codec_gates() {
     let wrong = output_first_plan(&source, MatrixAxes::InputOutput);
     assert!(preflight_profile(&source, &wrong).is_err());
     // Axis metadata alone cannot enable an unimplemented native source codec.
-    source.kind = QuantKind::Bf16;
+    source.kind = StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16);
     source.projection = vec![0; 64 * 32 * 2];
     let unsupported = output_first_plan(&source, MatrixAxes::OutputInput);
     assert!(matches!(
@@ -323,7 +327,11 @@ fn assert_public_load_refuses(device: Device) {
 
 #[test]
 fn projection_storage_reuse_cannot_bypass_embedding_codec_validation() {
-    for kind in [QuantKind::Q4_0, QuantKind::Q4_1, QuantKind::F32] {
+    for kind in [
+        StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_0),
+        StoredTensorEncoding::Quantized(zerogravity_core::encoding::QuantScheme::Q4_1),
+        StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32),
+    ] {
         let mut source = Source::new();
         source.secondary = Some((kind, vec![0; kind.byte_len(32 * 32).unwrap() as usize]));
         let mut builder = PlanBuilder::new(
@@ -338,7 +346,9 @@ fn projection_storage_reuse_cannot_bypass_embedding_codec_validation() {
                 SourceTensor {
                     source: source.identity,
                     name: "embedding".into(),
-                    kind: QuantKind::Q8_0,
+                    kind: StoredTensorEncoding::Quantized(
+                        zerogravity_core::encoding::QuantScheme::Q8_0,
+                    ),
                     axes: MatrixAxes::InputOutput,
                     columns: 32,
                     rows: 32,
@@ -403,7 +413,9 @@ fn every_attention_state_reference_matches_the_appended_kv_slab() {
                 SourceTensor {
                     source: source.identity,
                     name: "embedding".into(),
-                    kind: QuantKind::Q8_0,
+                    kind: StoredTensorEncoding::Quantized(
+                        zerogravity_core::encoding::QuantScheme::Q8_0,
+                    ),
                     axes: MatrixAxes::InputOutput,
                     columns: 256,
                     rows: 32,

@@ -17,5 +17,5 @@ for Q4_K: a diagnostic dequantized dot is not a qualified Q4_K × Q8_K runner.
   explicit CPU projection refusal; scalar codec tests cannot authorize it.
 - [ ] Qualify complete models separately; no bit-width-wide support claim.
 
-Source layout: [Q4 codec](../../../../../zerogravity-artifacts/src/quant/q4/README.md).
+Source layout: [Q4 codec](../../../../../zerogravity-artifacts/src/codecs/quant/q4/README.md).
 Required acceptance: [format matrix and qualification](../../../../../../.agents/plans/pipeline-composition/FORMATS.md).

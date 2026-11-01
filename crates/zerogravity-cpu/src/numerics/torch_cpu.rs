@@ -4,6 +4,7 @@ pub mod attention;
 pub mod conv;
 pub mod gdn;
 pub mod norm;
+pub mod projection;
 pub mod pv;
 pub mod recurrent;
 pub mod reduction;
