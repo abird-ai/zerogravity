@@ -36,6 +36,7 @@ pub enum Report<'a> {
 }
 
 /// Standalone candidate ownership, as before; not simultaneous model residency.
+/// HIP retains its cold-only runtime: one successful candidate load per process.
 /// Cache policy, cancellation, signals and all process IO belong to the caller.
 pub fn generate(
     store: &CacheStore,

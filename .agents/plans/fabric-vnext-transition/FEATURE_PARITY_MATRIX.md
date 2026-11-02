@@ -21,12 +21,31 @@ Latest source checkpoint and commit-scoped evidence:
 All old feature rows below remain a migration checklist, not an updated physical
 capability table. S0 is structural only; F4/Q0/Q2 must account for this delta too.
 
-## Current source ownership audit — `fef7123`
+## Current authorized execution delta
 
-This audits the current features in §§2–8, not broader model support. `S` means
-retained/re-homed implementation with source/host coverage; `H` means trained or
-physical transition acceptance remains held; `U` means deliberately unsupported
-or descriptive-only, as before. `S` never transfers old physical qualification.
+- CUDA GGUF0.8B/2B:14 worker and12 HTTP cases pass, including actual B2/B4/B8,
+  source-state/CPU parity, prefix/tail/EOS counts, cancellation and idle retirement.
+  Original feedback packets are3 words; no math/kernel/owner relaxation.
+- Ordinary CUDA0.8B source/numerics/lifetimes; finite dry-run/admission/SDK/CLI and
+  byte-identical legacy capture pass. Missing exact legacy2B image stays unavailable.
+- HIP0.8B/2B:16 source/lifetime scopes pass. Gemma CPU52 exact comparisons plus
+  SDK lifecycle, HIP8 and Vulkan10 numerical/ownership scopes pass. GPU process/
+  compiler baselines remain nonzero; unknown/final-reader faults retain/fence.
+- Gemma HIP SDK remains cold-only. Cache/private HF-import isolation passes for
+  both GGUF sources. Five-codec live preparation is preparation, not every codec's
+  inference qualification.
+- CUDA repair signed `8d761c4`; final isolated host gate passes. Finite27B teacher/
+  final-reader6 scopes pass; natural/shared-HIP Q2 remains in progress. Full scopes,
+  source identities, failures and exclusions live in [TODO.md](TODO.md).
+  No broader context, residency, ordinary serving, quantization or performance grant.
+
+## Checkpoint source ownership audit — `fef7123`
+
+This audits features in §§2–8 at that source/host checkpoint, not broader model
+support. `S` means retained/re-homed implementation with source/host coverage;
+`H` records then-held execution acceptance, superseded only by the exact scopes
+above; `U` remains deliberately unsupported/descriptive. `S` never transfers
+old physical qualification.
 
 | Matrix scope | Actual owner / public entry | State |
 |---|---|---|

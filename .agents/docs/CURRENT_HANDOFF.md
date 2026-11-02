@@ -6,7 +6,77 @@ It is deliberately not a generated concatenation of every historical plan, run l
 
 A successor should be able to start here without prior chat history, understand how the project evolved, identify what is implemented versus merely designed, and continue either the current Qwen correctness critical path or the separately authorized Fabric vNext transition.
 
-## Latest checkpoint — source/host parity `fef7123`
+## Active acceptance — explicit execution grant
+
+- User confirmed lifting GPU/trained-source test holds for existing approved
+  sources/devices. Main only; no new subagents, acquisition, resets, privilege/
+  recovery changes, gfx90c launches, pushes or recurrence restarts.
+- CUDA repair signed `8d761c4`, following `1f40880` / source `fef7123`.
+  Do not repeat extraction; earlier held statements describe historical checkpoints.
+- Trained Gemma CPU SDK lifecycle passes91.78s: real completion/root, presentation
+  failure, pre-cancel and original-owner retirement. Not independent numerical
+  or serving qualification. CUDA/HIP/Vulkan scopes remain separate below.
+- CUDA0.8B four-step cached47–50 full-logit/all42-domain natural-feedback parity
+  passes against the original captured payload. Normal/cancel/unknown lifecycle
+  pass, including exact restore, original quarantine/charges and final retirement.
+  Fresh processes; no populated long-context or wider-model claim.
+- Local RTX3060 and remote PCI `0000:c6:00.0` / gfx1151 identities inspected.
+  Nix CUDA12.9 paths are absent; installed13.4 fails unsupported PTX. Existing
+  sealed baseline12.9 compiler/headers plus installed GCC15 runtime resolve this
+  without downloads/patching/driver changes. Failed environment scopes retained.
+  Remote approved ROCm7.2.4 remains; current-source HIP build verified.
+- HIP0.8B/2B:16 fresh-process numerical/lifetime cells verified, including all256
+  call records, fullV/all-state, independent roots/reset/restore, final readers,
+  known release faults and unknown quarantine. Each model128 calls at context64;
+  1,396,408,320/1,399,816,192 exact words. Unit success/MainPID0/empty cgroup.
+  Healthy model owners retire; original process context remains. Not serving.
+- CUDA worker acceptance discovered a pre-existing strict-layout regression:
+  12-byte greedy packet described as one word. Fresh B2 reports exact binding
+  refusal. Signed `8d761c4` validates full3-word packets in single/cohort
+  paths; one-word kernel read and all original owners/strict checks unchanged.
+  All14 isolated workers now pass (R3 ten, R4 four corrected wide EOS cases),
+  including exact prefix/tail/width/token accounting and final physical-device
+  reservation0/unfenced. HTTP R4 stopped before execution on an obsolete direct-GPU
+  CLI feature argument; corrected facade-only R5 passes all12 guarded HTTP cases:
+  JSON/SSE, disconnect/replay, unequal arrivals and native prefix rows2/4/8.
+  Original failed/panic-contaminated scopes retained; final host gate passes below.
+- Trained Gemma CPU matrix:7 prompt cases,50 natural calls plus completed refusal/
+  cancel; all52 comparisons exact, full boundaries/KV/logits/actual IDs through
+  frontier64, source closed/final host0. Not serving/performance qualification.
+- HIP SDK passes separate fresh completion/presentation-error children, exact
+  pre-cancel and unchanged2GiB host/4GiB device baseline. Original cold-only warm
+  refusal is asserted, not disabled. Caller wrapper retains matched ld.so via
+  original argv executable. Loader/fixture/constant-assert lint failures retained;
+  release guard preserved, cancellation assertion strengthened.
+- Gemma HIP8/Vulkan10 matrix/unknown/final-reader/partial-native/same-PCI scopes
+  independently verified. Both resident matrices preserve full35/all KV/fullV,
+  actual source IDs,50 observer-free state checks and selected-row reuse. Known
+  final readers unload184/183 modules; faults retain originals/fence20GiB; streamed
+  HIP unknown fences16GiB. Vulkan retains two actually constructed partial modules;
+  both same-PCI directions refuse peer work without root/queue/upload effects.
+  Healthy Vulkan host baseline is10GiB (2GiB context+8GiB compiler), not global0.
+  One unobserved Vulkan hit makes no observed-full35 claim. Initial stale BF16
+  cancellation-label failure retained; production cancellation/math unchanged.
+- Approved cache/private HF-import routes pass both GGUF models: fullV/all42
+  domains, source mutation/reclamation isolation, independent sessions and final
+  raw-source lease release. No acquisition or original input mutation.
+- Finite CUDA SDK/CLI dry-run and whole-card pre-Client controls pass. Fresh legacy
+  0.8B cached47–50 result is byte-identical to the original captured evidence;
+  no reference repinning. Thin CLI→SDK47-row/raw2-token generation emits ` a a`
+  and retires cleanly. Missing exact legacy2B CUDA image remains an explicit limit.
+- Finite27B teacher/unknown/final-reader6 cases inspected:240,896,000 exact words,
+  full64/fullV/all128 physical planes (112 logical domains), independent sessions;
+  separate Ready-discard/cancel preserve root. Known retires117 modules; faults
+  retain117/1,602 handles/source and fence16GiB. Natural/shared-HIP still in flight.
+- Combined CUDA/HIP and shared-HIP strict pass; Vulkan examples retain two known
+  unused-probe warnings. Final isolated gate passes2,340 Rust/0fail/97ignored/
+  307 suites (72 empty); Python17/182/10skips. Source review complete; CUDA repair
+  signed `8d761c4`. Gemma diagnostic/SDK checkpoint follows. No math/owner/timeout/
+  tolerance relaxation.
+- Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
+  Owning transition TODO tracks acceptance; no full Fabric completion claimed.
+
+## Previous signed checkpoint — source/host parity `fef7123`
 
 - SDK `run::config::resolve` and typed PipelinePatch/ChatContextPatch now own run
   precedence, graph overrides, path anchoring and provenance. CLI keeps argv/XDG/

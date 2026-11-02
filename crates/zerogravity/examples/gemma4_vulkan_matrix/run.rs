@@ -155,12 +155,13 @@ fn cancelled_and_discarded(
     let before = s.binding();
     let flag = AtomicBool::new(true);
     e.begin(0);
+    let result = block_on(s.prepare_prompt(8, Some(e), Some(&flag)));
+    events.push(json!({"kind":"pre-cancel","root":binding(before),"after":binding(s.binding()),"error":result.as_ref().err().map(ToString::to_string)}));
     need(
-        matches!(block_on(s.prepare_prompt(8,Some(e),Some(&flag))),Err(Error::State(why))if why=="Gemma source-bound GPU call cancelled")
+        matches!(result,Err(Error::State(why))if why=="BF16 text source-bound GPU call cancelled")
             && s.binding() == before,
         "pre-cancel has no root/private feedback change",
     )?;
-    events.push(json!({"kind":"pre-cancel","root":binding(before)}));
     e.begin(0);
     let pending = block_on(s.prepare_prompt(8, Some(e), None))?;
     let comparison = e.completed(pending.readback(), before)?;
@@ -213,7 +214,7 @@ fn cancelled_and_discarded(
             return Ok(false);
         }
         let expected = if cancel {
-            "Gemma source-bound GPU call cancelled"
+            "BF16 text source-bound GPU call cancelled"
         } else {
             "deliberate completed Gemma refusal"
         };

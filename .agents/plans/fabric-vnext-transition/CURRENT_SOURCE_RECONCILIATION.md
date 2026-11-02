@@ -1,6 +1,25 @@
 # Fabric vNext transition — current-source reconciliation
 
-## Latest checkpoint — source/host parity `fef7123`
+## Current execution acceptance — in progress
+
+- User authorized existing approved GPU/trained sources. S1–S3/F0–F4 ownership
+  remains reconciled; do not repeat extraction.
+- CUDA's original12-byte feedback packet now has exact3-word descriptors and
+  validation, with unchanged ID-only kernel/math/leases. All14 real workers and
+  12 guarded-loopback HTTP cases pass. Exact EOS prefix/tail accounting retained.
+- Accepted separately: CUDA0.8B ordinary parity/lifetimes and finite SDK/CLI/
+  captured execution; HIP0.8B/2B sixteen source/lifetime cases; trained Gemma
+  CPU52 comparisons, HIP8/Vulkan10 numerical/ownership scopes and cold-only SDK
+  lifecycle; both models' cache/import isolation. No scope grants broader serving.
+- Affected strict and final isolated host gate pass:2,340 Rust/0fail/97ignored/
+  307 suites (72 empty); Python17/182/10skips. Source reviewed. Finite27B teacher/
+  final-reader6 scopes pass; natural/shared-HIP and signed landing remain open.
+  Exact scopes, baselines, retained failures and exclusions: [transition TODO](TODO.md).
+- Main only; cancelled recurrences remain cancelled. No acquisition, gfx90c
+  launches, reset/recovery/privilege change or push. Root README/external checkout
+  protected; Qwen context/C1..C64/matched-vLLM and future families remain deferred.
+
+## Previous checkpoint — source/host parity `fef7123`
 
 - SDK `run::config::resolve` and typed PipelinePatch/ChatContextPatch now own run
   precedence, graph overrides, path anchoring and provenance. CLI keeps argv/XDG/

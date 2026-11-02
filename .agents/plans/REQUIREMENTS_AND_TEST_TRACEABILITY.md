@@ -39,6 +39,18 @@ not acceptance inputs.
 
 ## Current Fabric and retained Qwen acceptance
 
+- GPU/trained execution is now explicitly authorized with existing approved
+  inputs/devices. CUDA14 workers/12 HTTP, ordinary/finite CUDA source/SDK/CLI,
+  HIP0.8B/2B source/lifetime16, Gemma CPU52 comparisons and HIP8/Vulkan10 scopes,
+  cold-only HIP SDK and cache/import isolation pass. Exact numerical/state/final-
+  reader scopes and nonzero process baselines: [transition TODO](fabric-vnext-transition/TODO.md).
+  CUDA repair signed `8d761c4`; final isolated gate passes2,340 Rust/0fail/
+  97ignored/307 suites (72 empty), Python17/182/10skips. Finite27B natural/shared-HIP
+  remains in progress. No acquisition, recovery, unsupported feature activation
+  or wider serving/performance claim.
+
+Historical source/host checkpoints below record the authority then in effect.
+
 - Source/host parity `fef7123`: SDK configuration/typed graph policy replaces CLI-only
   merging; current full feature/source ownership audit reconciled. Original typed
   family/provider/root/transport boundaries retained; physical/trained Q0/Q2 stays

@@ -3,13 +3,14 @@
 **Current source/host checkpoint:** `fef7123` — public SDK config/graph policy,
 current feature/source ownership audit and final isolated host gate passed.
 Original `860ce38` source preparation and earlier engine/numerical/catalog/serving
-owners remain. No current source-ownership blocker; whole Fabric remains open for
-separately authorized trained/physical Q0/Q2 acceptance. Holds remain; Plan2
-preserves Plan1 and deferred Qwen/context/C1..C64/vLLM work.
+owners remain. GPU/trained acceptance is now explicitly authorized. CUDA/Gemma/
+HIP/cache and final host gate pass; CUDA repair signed `8d761c4`. Finite27B
+natural/shared-HIP and final signed reconciliation remain in progress. Whole Fabric stays open; Plan2 preserves Plan1 and deferred
+Qwen/context/C1..C64/vLLM work. No acquisition/gfx90c/recovery/recurrence restart.
 
 **Canonical current entrypoint:** `.agents/docs/CURRENT_HANDOFF.md`. Current source/tests and the four-file planning spine outrank historical source snapshots in this document.
 
-**Created:** 27 October 2026. **Current status: source/host parity `fef7123`; trained/physical acceptance held.**
+**Created:** 27 October 2026. **Current status: authorized trained/physical acceptance; final Q2 open.**
 **Repo:** /home/pvl/spaces/abird/src/zerogravity; connector **dotlink-l5** (host pvl-l5), not dotlink-a1.
 **Source observation during this design pass:** HEAD fadf2b1123309a2118725f2cc005d3edc7ea39f2 at 06:50 UTC; 41 commits after prior deep-review baseline 195099ca, including codec split, model/CPU/GPU source refactors and recent fresh CUDA prefill source/oracle. Run current HEAD/status again before any implementation.
 **This handoff's central mandate:** first write complete compilable Rust architecture skeleton with both new engine/serving crates and exported public library, then move ALL current functionality in tested logical signed commits, then one full integrated heavy qualification and targeted bugfixes plus final gate. No old pre-v1 API compatibility obligation. The historical planning turn alone did not authorize code work; the latest owner instruction now does.

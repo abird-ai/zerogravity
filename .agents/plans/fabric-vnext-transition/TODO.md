@@ -6,19 +6,21 @@ Owner: @pvl — main-session coordinator
 
 Base: `1c35172`
 
-## Current direction — source ownership reconciled; execution acceptance held
+## Current direction — source ownership reconciled; execution acceptance authorized
 
 - Signed `fef7123`: SDK configuration/graph override policy is shared with CLI; the current
   feature matrix maps all source owners, original typed family adapters, root/
   physical authority and transport boundaries. No new interpreter or scheduler.
 - Source/host migration and static parity review are assembled. Whole Fabric
   remains unfinished: Q0/Q2 trained/physical numerical/state/cancellation/fault/
-  final-reader/serving acceptance is held, not waived by host checks.
+  final-reader/serving acceptance is now authorized on existing approved sources/
+  devices; it remains incomplete, not waived by host checks.
 - Retain source preparation `860ce38`, numerical/catalog `83060e5`/`2f19224`,
   SDK `d4e94b1` and scheduler `ae7ec11`; do not redo accepted extraction.
-- Main only; no new subagents. No push, acquisition, GPU/trained-Gemma execution,
-  recurrence restart or recovery/privilege change. Protected README/external
-  checkout unchanged. Qwen/context/C1..C64/vLLM and E01–E10 remain deferred.
+- User explicitly confirmed lifting GPU/trained-source test holds. Main only;
+  no new subagents, push, acquisition, gfx90c launch, recurrence restart or
+  recovery/privilege change. Protected README/external checkout unchanged.
+  Qwen/context/C1..C64/vLLM and E01–E10 remain deferred.
 
 ## Historical foundation evidence — assembled gate passed
 
@@ -65,15 +67,15 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 - CLI scheduler/route dispatch copies removed; signed `d4e94b1` also rehomes
   direct CPU/source planning, finite CUDA/Gemma diagnostics and artifact
   orchestration. `fef7123` closes remaining config policy and source parity;
-  full trained/physical Q acceptance remains held.
+  full trained/physical Q acceptance remains outstanding.
 - Qualification callers use real public admitted channels/host/cancel owners;
   no production test-support feature or exported isolated ledger was introduced.
 
 ## Next acceptance unit
 
-1. Obtain separate execution authority and exact allowed source/device scopes for
-   the held migration regression. Existing files are not permission. Neither
-   cancelled recurrence may restart implicitly.
+1. Execute the separately authorized migration regression on existing approved
+   sources/devices. Validate actual inputs and device identity before each scope;
+   the grant does not permit acquisition or either cancelled recurrence.
 2. Preserve original source/numerical/ABI identities and state/physical Ready,
    cancellation/fault/quarantine, final readers and serving scopes. No historical
    evidence retagging; fixed-prompt credit64 and Qwen72×max(native_rows,1) unchanged.
@@ -395,33 +397,113 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 
 
 
-## Uncommitted — verified CUDA feedback repair
+## `8d761c4` — exact CUDA feedback packet and serving acceptance
 
-- [x] Restore the original12-byte greedy packet's exact3-word descriptors and
-  single/cohort validation. Kernels still read ID only; strict service/extent/
-  alias/lease/Ready/root checks unchanged. No scheduler/math/image change.
-- [x] All14 genuine CUDA worker and12 guarded-loopback HTTP cases pass in fresh
-  processes: B2/B4/B8, unequal arrival, prefix work, source/CPU state equality,
-  cancellation, JSON/SSE/disconnect/replay and final physical-device retirement.
-  EOS checks assert exact prefix/tail/total/band/token counts, not one greedy
-  batch per prefix. Production statistics unchanged; immediate traces expose errors.
-- [x] Affected strict checks and assembled repository gate pass. Source reviewed.
-  Earlier descriptor/panic-contaminated/stale-EOS/invocation failures retained;
-  no timeout/tolerance or owner relaxation. Existing-source execution is explicitly
-  authorized; acquisition/gfx90c/recovery/push/recurrence exclusions remain.
-- [ ] Land separately reviewed Gemma diagnostics/SDK coverage and finish broader
-  finite27B/shared-HIP acceptance; this repair alone does not finish Fabric.
+- [x] Q1 discovered GGUF CUDA feedback defect: original12-byte greedy packet was
+  described/validated as one word after `9abd1d9` made physical extents exact.
+  Fresh B2 exposes the typed binding error. B1/cohort descriptors and validators
+  now use all3 words; kernel still consumes only ID. Exact extent/alias/producer/
+  lease/completion checks unchanged. No scheduler/math/kernel/image change.
+  R3: both B2 workers, both unequal-arrival and all6 native teacher-prefix workers
+  pass in fresh processes; each semantic/retirement result inspected. Four wide
+  workers pass handoff/cancel/credit subscopes but expose the same stale EOS count:
+  all prefix batches were mistaken for one greedy tail. Tests now require exact
+  prefix, greedy-tail, total-token and width counts; production stats unchanged.
+  All4 corrected wide cases pass, including every semantic marker and final
+  physical-device reservation0/unfenced:14 accepted processes across R3/R4. HTTP R4
+  stopped before execution on obsolete direct-GPU CLI feature syntax; corrected
+  facade-only R5 passes all12 guarded-loopback HTTP cases. Each result/health
+  inspected: JSON/SSE, disconnect/replay, unequal arrivals and prefix rows2/4/8;
+  no failures/refusals or active/queued rows at idle. Affected strict and final
+  assembled host gate pass; exact sources/tests reviewed.
+  Original eight-case batch failed; later panic-contaminated baselines are not
+  independent failures. All failed batch/diagnostic scopes retained.
 
-## Uncommitted — held transition execution acceptance
+## Uncommitted — authorized transition execution acceptance
 
 The S1–S3/F0–F4 source responsibilities above are reconciled against actual
 current paths; physical/trained transition acceptance is still outstanding.
+Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
 
-- [ ] Authorize and execute exact moved GPU numerical/source/state/cancellation/
-  fault/final-reader/serving regression. Compilation and source preservation do
-  not qualify execution; CUDA/HIP/Vulkan scopes remain separate.
-- [ ] Resolve explicitly deferred trained-source acceptance, including Gemma CPU,
-  only after separate authority. Do not infer permission from cached inputs.
+- [x] User explicitly authorizes GPU/trained-source acceptance with existing
+  approved inputs/devices. Continuing exclusions above remain authoritative.
+- [x] Trained Gemma CPU SDK case passes91.78s: actual completion/root, caller
+  presentation failure, pre-cancel, original source/session/decoder retirement,
+  final host zero/unfenced. One parent test also verifies its isolated child;
+  this is lifecycle acceptance, not independent numerical or serving proof.
+- [x] CUDA0.8B ordinary four-step cached47–50 parity passes8.61s against the
+  original captured payload: full logits/all42 domains/natural feedback exact.
+  Normal lifecycle passes7.74s: pre-cancel, stale Ready refusal, exact restore,
+  frontier48 and final retirement. Cancel/unknown pass6.30s/6.35s:396 original
+  handles quarantined, prior bits exact, unchanged root, peer refusal, original
+  retained charges and no recovery. Each scope uses a fresh process.
+- [x] Resolve environment-only CUDA blockers: installed13.4 PTX is unsupported
+  by driver595.91.07; existing cached12.9 initially lacked libstdc++ lookup.
+  Existing12.9 headers/compiler plus installed GCC15 runtime pass original-source
+  host compilation and the four physical cases. No SDK patch/download, driver
+  change or source/assertion change. Failed r1/r2 remain separate from r3.
+- [x] HIP0.8B/2B source/lifetime16 fresh-process cells: each model128 calls,
+  context64/fullV/all-state/natural replay/snapshot/reset;1,396,408,320 and
+  1,399,816,192 exact compared words, zero mismatches. All256 call records checked.
+  Healthy final readers unload785/781 modules and release model owners; original
+  4GiB device/2GiB host context remains. Faults retain original source/cache/modules
+  and fence24GiB; unknown retains189 completion owners. No recovery or serving claim.
+  All16 semantic/cleanup logs inspected; supervisor success/MainPID0/empty cgroup.
+- [x] Trained five-codec live preparation passes3.00s; tensor preparation only.
+- [ ] Execute exact moved GPU numerical/source/state/cancellation/fault/final-reader/
+  serving regression. Compilation and source preservation do not qualify execution;
+  CUDA/HIP/Vulkan scopes remain separate.
+- [ ] Resolve remaining trained-source acceptance within the explicit grant.
+- [x] Trained Gemma CPU matrix:7 genuine prompt cases/50 natural calls plus
+  completed refusal/cancel,52 exact comparisons, full boundaries/KV/logits and
+  actual IDs; frontier through64. Every comparison inspected, no mismatch/output
+  difference; source closed, final host0. Not chat/HTTP/performance qualification.
+- [x] Correct stale Gemma HIP/Vulkan cancellation diagnostics after the `c90b8cd`
+  model-neutral rename. Retain exact current error and before/after roots;
+  runtime cancellation/numerics unchanged. Initial HIP pre-cancel failure retained.
+- [x] Gemma HIP8/Vulkan10 numerical/ownership scopes independently inspected:
+  each resident matrix52 complete proposals/full35/all KV/fullV,50 observer-free
+  source-state checks, genuine decoding and selected-row reuse; no mismatch.
+  Ready-drop/refusal/late-cancel preserve original root. Healthy final readers
+  unload184 HIP/183 Vulkan modules; faults retain them and fence20GiB. Streamed
+  HIP unknown fences16GiB; resident/row unknown publishes no faulted root.
+  Vulkan partial construction retains its2 original modules; both real same-PCI
+  cross-backend directions refuse peer work with unchanged root/queue/uploads.
+  HIP context baseline2GiB host/4GiB device; Vulkan10GiB host (including8GiB compiler)/
+  4GiB device, not global zero. One unobserved Vulkan reuse explicitly makes no
+  observed-full35 claim; its later observed hit does. No recovery/serving claim.
+- [x] Public-only HIP SDK test: separate fresh children verify completion and
+  presentation refusal, exact cache pre-cancel error and unchanged2GiB/4GiB
+  unfenced baseline. Original `configure_single_stream` warm refusal is asserted,
+  not disabled; cold-only scope documented. Wrapper uses original argv executable
+  under matched ld.so. Initial loader/warm-fixture/constant-assert lint failures
+  retained; release guard unchanged, cancellation assertion strengthened.
+- [x] Original/private HF-import cache routes: both approved GGUF models retain
+  exact full-vocabulary/all42-domain results at2 positions, independent sessions,
+  immutable source after private mutation/reclamation and final raw-lease release.
+  Tests pass18.20s/23.68s; only private imported copies changed, no acquisition.
+- [x] CUDA finite controls: SDK/CLI dry-run remains read-only and registers no
+  budget; original pre-Client whole-card admission refuses a peer and retires.
+  Fresh legacy0.8B cached47–50 execution matches the original89,549,413-byte
+  evidence byte-for-byte, including source/state/logits/retirement; no repinning.
+  Thin CLI→SDK actual47-row/raw2-token generation also passes, emits ` a a`, and
+  retires cleanly. Legacy2B image remains unavailable; no substitution/private ABI.
+- [x] Affected combined CUDA/HIP and shared-HIP strict pass; Vulkan diagnostic
+  examples compile with two pre-existing unused-probe warnings. Compilation
+  remains distinct from the separately executed numerical/ownership scopes.
+- [x] Finite27B teacher6 scopes: four comparisons across two independent sessions,
+  full64/fullV/all128 physical state planes (112 logical domains);1,036 float
+  records/240,896,000 words/12 positions exact. Additional full Ready-discard and
+  late-cancel calls preserve root; they are not additional numerical comparisons.
+  Unknown retains/fences16GiB with one completed producer and zero published roots.
+  Pending/snapshot final readers hit once before native retirement; known unloads
+  all117 modules, faults retain117/1,602 handles/source and fence16GiB. Healthy
+  baseline2GiB host+64MiB diagnostic/4GiB device; no natural/serving claim here.
+- [x] Final isolated assembled gate:2,340 Rust/0fail/97ignored/307 suites (72 empty);
+  17 Python suites/182 cases/10 skips. All summaries inspected; source review
+  preserves math/kernels/ABI/source pins, scheduler/root/lease/arbiter semantics.
+- [ ] Finish finite27B natural/shared-HIP cases, independent result/terminal-owner
+  inspection and signed landing. No new code defect currently established.
 - [ ] Accept each case's semantics and cleanup, preserving failed/interrupted/
   ignored/unavailable scopes and exact code/source/backend identities.
 
