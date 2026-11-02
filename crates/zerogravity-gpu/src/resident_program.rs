@@ -1773,8 +1773,8 @@ impl ResidentProgram {
         )
     }
 
-    /// Direct device-token binding (for example the first word of the compact
-    /// GPU greedy packet). Caller retains this extra original before launch.
+    /// Full original three-word greedy packet; the kernel reads only its ID.
+    /// Caller retains this extra original before launch.
     pub fn launch_device_token(
         &mut self,
         client: &Client,
@@ -1784,7 +1784,7 @@ impl ResidentProgram {
         output: ResidentOutput,
     ) -> Result<ResidentSubmission> {
         self.legacy()?;
-        token.check(client, 1)?;
+        token.check(client, 3)?;
         self.launch_impl(
             client,
             CurrentExecution::Single {

@@ -1206,7 +1206,7 @@ impl ResidentModel {
                 self.service.client(),
                 parameters,
                 &bindings,
-                &DeviceBuffer::new(token.lease.handle(), 1),
+                &DeviceBuffer::new(token.lease.handle(), 3),
                 output,
             )?
         } else {

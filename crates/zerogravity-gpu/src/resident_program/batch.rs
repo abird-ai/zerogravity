@@ -465,7 +465,8 @@ impl BatchProgram {
         }
         let mut ranges = Vec::with_capacity(tokens.len());
         for token in tokens {
-            let range = token.check(client, 1)?;
+            // Validate/alias-check the full packet, not just the consumed ID.
+            let range = token.check(client, 3)?;
             if self.inner.owned_ranges.overlaps(&range)
                 || ranges
                     .iter()

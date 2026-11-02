@@ -494,6 +494,8 @@ fn handoff_and_lengths(fixture: &Fixture) {
     let sampler = fixture.stats.snapshot().native_sampler;
     let mut active = VecDeque::from([left, right]);
     round(&mut active, &fixture.stats);
+    left_trace.drain();
+    right_trace.drain();
     update(&active, &mut references);
     assert!(
         fixture.stats.snapshot().fused_batches > fused_before,
@@ -729,7 +731,7 @@ fn source_eos(fixture: &Fixture) {
     let left_id = left.state.session.binding().session().get();
     let right_id = right.state.session.binding().session().get();
     let mut active = VecDeque::from([left, right]);
-    let fused_before = fixture.stats.snapshot().fused_batches;
+    let before = fixture.stats.snapshot();
     for _ in 0..32 {
         if active.iter().all(|lane| lane.cursor == lane.prompt.len()) {
             break;
@@ -738,11 +740,19 @@ fn source_eos(fixture: &Fixture) {
     }
     assert_eq!(active.len(), 2);
     assert!(active.iter().all(|lane| lane.cursor == lane.prompt.len()));
+    let after = fixture.stats.snapshot();
     assert_eq!(
-        fixture.stats.snapshot().fused_batches,
-        fused_before + 1,
+        after.fused_greedy_batches,
+        before.fused_greedy_batches + 1,
         "actual final prompt tokens did not execute the native model cohort"
     );
+    assert_eq!(
+        after.fused_state_only_batches,
+        before.fused_state_only_batches + (length - 1) as u64,
+        "every teacher prefix must execute its state-only native cohort"
+    );
+    assert_eq!(after.fused_batches, before.fused_batches + length as u64);
+    assert_eq!(after.model_tokens, before.model_tokens + 2 * length as u64);
     let mut references = active
         .iter()
         .map(|lane| {
@@ -1159,6 +1169,7 @@ fn wide_source_eos(fixture: &Fixture) {
         active.push_back(lane);
         observed.push(trace);
     }
+    let before = fixture.stats.snapshot();
     let bands = band_counts(&fixture.stats);
     for _ in 0..32 {
         if active.iter().all(|lane| lane.cursor == lane.prompt.len()) {
@@ -1168,7 +1179,18 @@ fn wide_source_eos(fixture: &Fixture) {
     }
     assert_eq!(active.len(), width);
     assert!(active.iter().all(|lane| lane.cursor == lane.prompt.len()));
-    require_bands(&fixture.stats, bands, &[width]);
+    require_bands(&fixture.stats, bands, &vec![width; length]);
+    let after = fixture.stats.snapshot();
+    assert_eq!(after.fused_greedy_batches, before.fused_greedy_batches + 1);
+    assert_eq!(
+        after.fused_state_only_batches,
+        before.fused_state_only_batches + (length - 1) as u64
+    );
+    assert_eq!(after.fused_batches, before.fused_batches + length as u64);
+    assert_eq!(
+        after.model_tokens,
+        before.model_tokens + (width * length) as u64
+    );
     let mut references = reference_rows(fixture, &active);
     finish_observed(&mut active, fixture, &mut references, &mut observed);
     assert_eq!(

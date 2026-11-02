@@ -434,7 +434,7 @@ impl ResidentModel {
         let device_buffers = device_tokens.map(|tokens| {
             tokens
                 .iter()
-                .map(|token| DeviceBuffer::new(token.lease.handle(), 1))
+                .map(|token| DeviceBuffer::new(token.lease.handle(), 3))
                 .collect::<Vec<_>>()
         });
         if let Some(tokens) = &device_buffers {

@@ -395,6 +395,23 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 
 
 
+## Uncommitted — verified CUDA feedback repair
+
+- [x] Restore the original12-byte greedy packet's exact3-word descriptors and
+  single/cohort validation. Kernels still read ID only; strict service/extent/
+  alias/lease/Ready/root checks unchanged. No scheduler/math/image change.
+- [x] All14 genuine CUDA worker and12 guarded-loopback HTTP cases pass in fresh
+  processes: B2/B4/B8, unequal arrival, prefix work, source/CPU state equality,
+  cancellation, JSON/SSE/disconnect/replay and final physical-device retirement.
+  EOS checks assert exact prefix/tail/total/band/token counts, not one greedy
+  batch per prefix. Production statistics unchanged; immediate traces expose errors.
+- [x] Affected strict checks and assembled repository gate pass. Source reviewed.
+  Earlier descriptor/panic-contaminated/stale-EOS/invocation failures retained;
+  no timeout/tolerance or owner relaxation. Existing-source execution is explicitly
+  authorized; acquisition/gfx90c/recovery/push/recurrence exclusions remain.
+- [ ] Land separately reviewed Gemma diagnostics/SDK coverage and finish broader
+  finite27B/shared-HIP acceptance; this repair alone does not finish Fabric.
+
 ## Uncommitted — held transition execution acceptance
 
 The S1–S3/F0–F4 source responsibilities above are reconciled against actual
