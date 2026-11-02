@@ -87,7 +87,7 @@ The final reconciliation changes docs only; source remains the tested `8c43844`.
   source-page query/wait/destroy injections refuse both sources/reentry before
   publication, with unchanged bindings/ledgers/native state. Those three cases
   complete no full model; destroy has no pending-window witness claim.
-- Final19-process supervisor (SDK+18 finite scopes) succeeds/exit0. Unit collected,
+- Final19-case supervisor (SDK+18 finite scopes) succeeds/exit0. Unit collected,
   inactive/MainPID0/cgroup absent; no owned executable and GPU idle. Monitor stopped.
 - Combined CUDA/HIP and shared-HIP strict pass; Vulkan examples retain two known
   unused-probe warnings. Final isolated gate passes2,340 Rust/0fail/97ignored/

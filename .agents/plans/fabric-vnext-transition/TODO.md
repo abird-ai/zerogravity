@@ -505,7 +505,7 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   no numerical claim. Query/wait retain pending-window/run-owner witnesses;
   destroy instead refuses destruction after known completion, no pending claim.
   Both original sessions/reentry refuse without binding/ledger/native/probe changes.
-- [x] Final supervisor: all19 processes (SDK+18 finite) exit0, success; terminal
+- [x] Final supervisor: all19 top-level cases (SDK+18 finite) exit0, success; terminal
   collected/inactive/MainPID0/cgroup absent, no owned executable/GPU idle. Owned
   monitor stopped. Every semantic and cleanup result independently inspected.
 - [x] Final isolated assembled gate:2,340 Rust/0fail/97ignored/307 suites (72 empty);
