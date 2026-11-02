@@ -9,24 +9,33 @@ Current source and tests are the implementation truth. The active work queue is
 retains superseded plans, handoffs, checkouts and run evidence; they are not
 live authority.
 
-## Current execution acceptance — in progress
+## Accepted functional transition — source `8c43844`
 
-- User authorized existing approved GPU/trained sources. S1–S3/F0–F4 ownership
-  remains reconciled; do not repeat extraction.
-- CUDA's original12-byte feedback packet now has exact3-word descriptors and
-  validation, with unchanged ID-only kernel/math/leases. All14 real workers and
-  12 guarded-loopback HTTP cases pass. Exact EOS prefix/tail accounting retained.
-- Accepted separately: CUDA0.8B ordinary parity/lifetimes and finite SDK/CLI/
-  captured execution; HIP0.8B/2B sixteen source/lifetime cases; trained Gemma
-  CPU52 comparisons, HIP8/Vulkan10 numerical/ownership scopes and cold-only SDK
-  lifecycle; both models' cache/import isolation. No scope grants broader serving.
-- Affected strict and final isolated host gate pass:2,340 Rust/0fail/97ignored/
-  307 suites (72 empty); Python17/182/10skips. Source reviewed. Finite27B teacher/
-  final-reader6 scopes pass; natural/shared-HIP and signed landing remain open.
-  Exact scopes, baselines, retained failures and exclusions: [transition TODO](fabric-vnext-transition/TODO.md).
-- Main only; cancelled recurrences remain cancelled. No acquisition, gfx90c
-  launches, reset/recovery/privilege change or push. Root README/external checkout
-  protected; Qwen context/C1..C64/matched-vLLM and future families remain deferred.
+- S0–S3/F0–F4 and scoped Q0/Q1/Q2 complete: one Rust mathematical/source engine,
+  original root/physical arbiter, shared CPU/GPU worker, public SDK, independent
+  serving library and thin CLI. Future/descriptive capabilities still refuse.
+- Signed repairs: `8d761c4` full12-byte feedback bounds; `8c43844` cold-only Gemma
+  SDK and exact model-neutral diagnostics. No math/kernel/ABI/source pin, timeout,
+  tolerance, cancellation or owner relaxation; original failed scopes retained.
+- Verified separately: CUDA14 workers/12 real HTTP, ordinary0.8B parity/lifetimes,
+  finite SDK/CLI/captured equality; HIP0.8B/2B16 source/lifetime cases; trained
+  Gemma CPU52 comparisons, HIP8/Vulkan10 scopes and SDK lifecycle; cache/import;
+  all18 finite27B/shared-HIP scopes. Each case's semantics and cleanup inspected.
+- Final isolated gate:2,340 Rust/0fail/97ignored/307 suites (72 empty), Python17/
+  182/10skips. Affected strict/features pass. Source reviewed; all19 S/F/repair
+  commits through `8c43844` have verified good signatures. No source change after
+  this gate; final reconciliation is documentation only.
+- Finite27B natural remains bounded to two positions; source-page fault cases
+  complete no full model and claim no numerics. Unknown retains/fences original
+  owners. Healthy process/compiler baselines remain nonzero. Final remote unit
+  success/exit0, collected/inactive/MainPID0/empty cgroup; no owned executable,
+  GPU idle. Full scoped evidence and retained failures: [transition TODO](fabric-vnext-transition/TODO.md).
+- Not qualified: missing legacy2B CUDA image, wider independent/populated contexts,
+  general HIP/27B serving/residency, future codecs/tasks and matched performance.
+  No new p95/TTFT/ITL or vLLM superiority claim. These remain the deferred Qwen/
+  E01–E10 mission, not inferred from diagnostics or suite durations.
+- Main only; recurrences cancelled. No acquisition, gfx90c launch, recovery/
+  privilege change, push or release. Root README/external checkout preserved.
 
 ## Previous checkpoint — source/host parity `fef7123`
 

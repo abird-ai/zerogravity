@@ -6,21 +6,19 @@ Owner: @pvl — main-session coordinator
 
 Base: `1c35172`
 
-## Current direction — source ownership reconciled; execution acceptance authorized
+## Current direction — functional transition and scoped Q2 accepted
 
-- Signed `fef7123`: SDK configuration/graph override policy is shared with CLI; the current
-  feature matrix maps all source owners, original typed family adapters, root/
-  physical authority and transport boundaries. No new interpreter or scheduler.
-- Source/host migration and static parity review are assembled. Whole Fabric
-  remains unfinished: Q0/Q2 trained/physical numerical/state/cancellation/fault/
-  final-reader/serving acceptance is now authorized on existing approved sources/
-  devices; it remains incomplete, not waived by host checks.
-- Retain source preparation `860ce38`, numerical/catalog `83060e5`/`2f19224`,
-  SDK `d4e94b1` and scheduler `ae7ec11`; do not redo accepted extraction.
-- User explicitly confirmed lifting GPU/trained-source test holds. Main only;
-  no new subagents, push, acquisition, gfx90c launch, recurrence restart or
-  recovery/privilege change. Protected README/external checkout unchanged.
-  Qwen/context/C1..C64/vLLM and E01–E10 remain deferred.
+- Source `8c43844`, CUDA repair `8d761c4`; S0–S3/F0–F4 ownership and current
+  functionality accepted. Original ForwardPlan/source, SessionAuthority/root,
+  physical arbiter, one worker and independent serving remain authoritative.
+- Final isolated gate and authorized CPU/CUDA/HIP/Vulkan/SDK/HTTP/cache scopes
+  pass. Every finite27B/shared-HIP case and terminal owner inspected. Failed,
+  interrupted, ignored, empty, unsafe and unavailable scopes remain distinct.
+- Future E01–E10/Qwen contexts/C1..C64/matched-vLLM are not this acceptance.
+  Missing legacy2B image, ordinary broader HIP/27B and future tasks remain
+  unqualified/Unsupported; no new performance or general residency claim.
+- Main only. Both recurrences remain cancelled; no push, acquisition, gfx90c,
+  recovery/privilege change. Root README/external checkout preserved.
 
 ## Historical foundation evidence — assembled gate passed
 
@@ -67,24 +65,17 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 - CLI scheduler/route dispatch copies removed; signed `d4e94b1` also rehomes
   direct CPU/source planning, finite CUDA/Gemma diagnostics and artifact
   orchestration. `fef7123` closes remaining config policy and source parity;
-  full trained/physical Q acceptance remains outstanding.
+  scoped trained/physical Q acceptance is recorded below.
 - Qualification callers use real public admitted channels/host/cancel owners;
   no production test-support feature or exported isolated ledger was introduced.
 
-## Next acceptance unit
+## Next unit — deferred expansion, not migration repair
 
-1. Execute the separately authorized migration regression on existing approved
-   sources/devices. Validate actual inputs and device identity before each scope;
-   the grant does not permit acquisition or either cancelled recurrence.
-2. Preserve original source/numerical/ABI identities and state/physical Ready,
-   cancellation/fault/quarantine, final readers and serving scopes. No historical
-   evidence retagging; fixed-prompt credit64 and Qwen72×max(native_rows,1) unchanged.
-3. Reuse the accepted source/host gate for unchanged paths. Any physical-discovered
-   defect becomes a bounded lowest-owner Q1 fix, with affected checks and final
-   assembled acceptance; no repeated extraction or invented future capabilities.
-4. Explicit runtime self-join refusals remain; deadlines/nonblocking close and
-   implicit self-drop/reentrant retirement are not newly implemented.
-5. Only after applicable transition acceptance resume the original Qwen mission.
+- Continue from tested `8c43844`; do not repeat S/F extraction or broad gates for
+  unchanged paths. The signed phase history and scoped evidence below are current.
+- Preserve all unsupported/unavailable cells, source/numerical/ABI identities,
+  original root/physical owners and the cancelled recurrences. No implicit
+  acquisition or restart of the wider model/context/serving/performance campaign.
 
 ## Committed
 
@@ -419,10 +410,9 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
   Original eight-case batch failed; later panic-contaminated baselines are not
   independent failures. All failed batch/diagnostic scopes retained.
 
-## Uncommitted — authorized transition execution acceptance
+## `8c43844` — original-source GPU/SDK acceptance
 
-The S1–S3/F0–F4 source responsibilities above are reconciled against actual
-current paths; physical/trained transition acceptance is still outstanding.
+Accepted scopes preserve original owners; their exact limits remain binding.
 Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
 
 - [x] User explicitly authorizes GPU/trained-source acceptance with existing
@@ -450,10 +440,6 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   and fence24GiB; unknown retains189 completion owners. No recovery or serving claim.
   All16 semantic/cleanup logs inspected; supervisor success/MainPID0/empty cgroup.
 - [x] Trained five-codec live preparation passes3.00s; tensor preparation only.
-- [ ] Execute exact moved GPU numerical/source/state/cancellation/fault/final-reader/
-  serving regression. Compilation and source preservation do not qualify execution;
-  CUDA/HIP/Vulkan scopes remain separate.
-- [ ] Resolve remaining trained-source acceptance within the explicit grant.
 - [x] Trained Gemma CPU matrix:7 genuine prompt cases/50 natural calls plus
   completed refusal/cancel,52 exact comparisons, full boundaries/KV/logits and
   actual IDs; frontier through64. Every comparison inspected, no mismatch/output
@@ -499,20 +485,53 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
   Pending/snapshot final readers hit once before native retirement; known unloads
   all117 modules, faults retain117/1,602 handles/source and fence16GiB. Healthy
   baseline2GiB host+64MiB diagnostic/4GiB device; no natural/serving claim here.
+- [x] Finite27B natural6 diagnostic modes: unchanged five FD-pinned original
+  artifacts; healthy9 full64 calls, four main comparisons240,896,000 words,
+  restore/late-cancel80,114,176 each, ordinary committed112 domains/39,780,352
+  words exact. Actual independent roots follow11→220→16; no recaptured authority.
+  Cached unknown preserves root/fences16GiB: completed prefix40,333,824 words,
+  cached10,240 observed/80,103,936 unavailable; no full cached comparison claim.
+  Actual12-byte final readers precede native retirement: known unloads121 modules,
+  faults retain121/1,477 handles/source and fence16GiB. Healthy baseline2GiB host+
+  384MiB diagnostic/4GiB device. Report remains diagnostic/unqualified, not serving.
+- [x] Shared-HIP6 scopes: actual same-actor scoped sets protect8 colliding original
+  keys. Known Qwen retirement/reload preserves live Gemma; Qwen3 full64 calls/
+  160,781,824 exact words, Gemma1 full35 plus3 ordinary packet/full-KV checks.
+  Fourth preparation refuses pre-effect. Final native sets/resident bytes0;
+  device4GiB, host26GiB+128MiB+64KiB including24GiB persistent compiler.
+  Both actual final-reader faults retain117/184 modules and fence32GiB, refusing
+  both source closes and eligible peer work. Query/wait/destroy event injections
+  retain/fence original native/source owners; zero completed full model/commits,
+  no numerical claim. Query/wait retain pending-window/run-owner witnesses;
+  destroy instead refuses destruction after known completion, no pending claim.
+  Both original sessions/reentry refuse without binding/ledger/native/probe changes.
+- [x] Final supervisor: all19 processes (SDK+18 finite) exit0, success; terminal
+  collected/inactive/MainPID0/cgroup absent, no owned executable/GPU idle. Owned
+  monitor stopped. Every semantic and cleanup result independently inspected.
 - [x] Final isolated assembled gate:2,340 Rust/0fail/97ignored/307 suites (72 empty);
   17 Python suites/182 cases/10 skips. All summaries inspected; source review
   preserves math/kernels/ABI/source pins, scheduler/root/lease/arbiter semantics.
-- [ ] Finish finite27B natural/shared-HIP cases, independent result/terminal-owner
-  inspection and signed landing. No new code defect currently established.
-- [ ] Accept each case's semantics and cleanup, preserving failed/interrupted/
-  ignored/unavailable scopes and exact code/source/backend identities.
 
-## Uncommitted — future Q0/Q1/Q2 consolidated qualification
+## Accepted Q0/Q1/Q2 — tested source `8c43844`
 
-- [ ] Q0 source/identity frozen, one full trusted scripts/check.sh and applicable independent model/CPU/GPU/HIP/Vulkan/codec/HTTP/SDK/CLI hardware qualification only with approved sources/devices. Report passed/failed/ignored/unexecuted/unsafe separately.
-- [ ] Q1 create bounded transition bugfix queue; fix at lowest generic layer with focused regression source/test and signed commits, run only changed small tests (do NOT repeat huge suites per bug).
-- [ ] Q2 one final complete gate and necessary permitted real model/device scopes, full current feature matrix, public SDK/server embedded tests, HTTP and CLI parity, no shadow/old runtime, no false benchmark claims.
-- [ ] Present full signed phase commit SHA list, tests, actual capability/quant/device status, known held scopes, Pareto perf baseline where measured, and remaining roadmap. No push/tag/release without explicit authorization.
+- [x] Q0: source/identity frozen; applicable full host and independent trained/
+  CPU/GPU/HIP/Vulkan/codec/HTTP/SDK/CLI scopes executed on approved inputs/devices.
+  Historical failures and current ignored/empty/unavailable/unsafe cells retained.
+- [x] Q1: lowest-layer packet repair `8d761c4`; exact diagnostic/cold-SDK regression
+  coverage `8c43844`. No tolerance, timeout, owner, Ready or publication relaxation.
+- [x] Q2: complete final isolated gate plus necessary authorized physical/model
+  scopes; original SDK/server/HTTP/CLI and source-owner parity. No shadow runner,
+  duplicate wallet/publisher or supported-route stubs. Unsupported stays explicit.
+- [x] All19 signed S/F/repair commits through `8c43844` verified and presented;
+  owner/tests recorded under their source commits. No new matched performance
+  campaign: suite durations are not TTFT/ITL/p95 or vLLM superiority evidence.
+- [x] Canonical plans/status/feature matrix reconciled; source and protected paths
+  reviewed. Final closeout is docs only; applicable assembled evidence reused.
+
+## Uncommitted
+
+- No remaining functional migration implementation or acceptance work.
+- No push/tag/release authorized.
 
 ## Future expansion AFTER transition, not initial acceptance
 
@@ -529,10 +548,10 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
 
 ## Handoff and documentation maintenance
 
-- [ ] Keep every transition document UTF-8, internally linked and consistent with the canonical current handoff plus the four maintained planning/status files.
-- [ ] Revalidate source-dependent claims against current main; historical source SHAs are provenance only and never an implementation base.
-- [ ] Do not recreate consolidated archives, per-file documentation SHA indexes or frozen handoff copies; Git history is the archive.
-- [ ] Keep the key-path checkpoint and unfinished migration explicit; no new subagents or Qwen restart from stale receipts.
+- [x] Keep every transition document UTF-8, internally linked and consistent with the canonical current handoff plus the four maintained planning/status files.
+- [x] Revalidate source-dependent claims against current main; historical source SHAs are provenance only and never an implementation base.
+- [x] Do not recreate consolidated archives, per-file documentation SHA indexes or frozen handoff copies; Git history is the archive.
+- [x] Keep the accepted key-path checkpoint and deferred expansion explicit; no new subagents or Qwen restart from stale receipts.
 
 ## Tests and verification
 
@@ -545,7 +564,8 @@ Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
 - [x] SDK/CLI source/host checkpoint `d4e94b1`: artifact/cache/CLI/approved CPU
   scopes, strict/minimal/native host checks and final gate2,315/0fail/97ignored;
   trained Gemma/GPU ignored, not inferred or retagged.
-- [x] S1–S3 source contract/provider/root ownership review and host gates above; physical execution held separately.
-- [x] F0–F4 source/host SDK/engine/serving/CLI parity review above; hardware/trained cells remain held, not passed.
-- [ ] Q0/Q1/Q2 assembled transition/physical acceptance; unchanged evidence reused
+- [x] S1–S3 source contract/provider/root and F0–F4 SDK/engine/serving/CLI reviews:
+  physical/trained cells were held at those source checkpoints; current accepted
+  scopes are recorded above, without retagging historical evidence.
+- [x] Q0/Q1/Q2 assembled transition/physical acceptance; unchanged evidence reused
   only within actual source/numerical/owner scopes. S0 is not Q0/Q2.

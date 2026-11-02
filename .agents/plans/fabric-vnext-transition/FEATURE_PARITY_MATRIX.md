@@ -34,9 +34,13 @@ capability table. S0 is structural only; F4/Q0/Q2 must account for this delta to
 - Gemma HIP SDK remains cold-only. Cache/private HF-import isolation passes for
   both GGUF sources. Five-codec live preparation is preparation, not every codec's
   inference qualification.
-- CUDA repair signed `8d761c4`; final isolated host gate passes. Finite27B teacher/
-  final-reader6 scopes pass; natural/shared-HIP Q2 remains in progress. Full scopes,
-  source identities, failures and exclusions live in [TODO.md](TODO.md).
+- Source `8c43844` / CUDA repair `8d761c4`: final isolated host gate and all18
+  finite27B/shared-HIP scopes pass. Teacher/natural full64 source comparisons,
+  final readers, actual two-source reload and global source-page fencing retain
+  distinct evidence. Source-page faults complete no full model; unknown cached
+  words remain explicitly unavailable. Original process/compiler baselines are
+  not zero. Functional transition/scoped Q2 accepted, not expanded capability.
+  Source identities, failures and exclusions live in [TODO.md](TODO.md).
   No broader context, residency, ordinary serving, quantization or performance grant.
 
 ## Checkpoint source ownership audit — `fef7123`

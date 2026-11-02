@@ -5,23 +5,21 @@ Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 
 ## Owner priority — 31 Oct
 
-**Authorized execution acceptance follows `fef7123`/`1f40880`:** original owners
-remain reconciled. CUDA14 workers/12 HTTP, Gemma CPU/HIP/Vulkan, HIP0.8B/2B,
-finite CUDA SDK/CLI/capture and cache/import scopes pass. CUDA repair signed
-`8d761c4`; final host gate passes. Finite27B natural/shared-HIP and final signed
-reconciliation remain in progress; Fabric stays open.
-Main only; no new subagents. Both recurrences stay cancelled.
+**Fabric functional transition accepted:** source `8c43844`, CUDA repair
+`8d761c4`; scoped model/GPU/SDK/HTTP/cache acceptance and final isolated gate pass.
+Original unsupported/unavailable cells and Qwen expansion remain explicit.
+Main only; no new subagents, acquisition or recurrence restart.
 
-Fabric vNext is now authorized and precedes the unfinished Qwen campaign.
+Fabric migration is complete; the unfinished Qwen campaign remains next.
 Preserve signed native GDN`e2559b6`/pause`1c35172` and all accepted bounded
 model/lifetime evidence. Recurrence`17aafa71` remains cancelled; no implicit
-hardware restart. S0 → S1–S3 → F0–F4 → Q0/Q1/Q2, then return to the Qwen
-model/context/C1..C64/vLLM mission. No production activation from refactoring.
+hardware restart. S0 → S1–S3 → F0–F4 → Q0/Q1/Q2 are accepted within their named
+scopes. Return to the Qwen model/context/C1..C64/vLLM mission without silently
+activating held routes.
 
 ## Active
 
-- [~] P0 fabric-vnext-transition — @pvl — source ownership reconciled; CUDA repair `8d761c4`; GPU/SDK/cache and final host gate pass; finite27B natural/shared-HIP Q2 open — [details](fabric-vnext-transition/TODO.md)
-- [ ] P1 serving-and-speculation — @pvl — l5 CUDA `.8B`/`2B`, x2 ROCm `.8B`/`2B`/`27B`: correctness/context fit, C1..C64, then measured vLLM superiority; finite27B checkpoint passed; ordinary HIP remains open; deferred behind Fabric — [details](serving-and-speculation/TODO.md)
+- [ ] P1 serving-and-speculation — @pvl — l5 CUDA `.8B`/`2B`, x2 ROCm `.8B`/`2B`/`27B`: correctness/context fit, C1..C64, then measured vLLM superiority; finite27B checkpoint passed; ordinary HIP remains open; next mission, no recurrence restart — [details](serving-and-speculation/TODO.md)
 - [~] P1 numerics-and-context — @pvl — exact cached47→50, lifecycle/capacity and final gate pass; active-context/2B reference inputs missing — [details](numerics-and-context/TODO.md)
 - [~] P1 memory-and-streaming — @pvl — exact two-root admission: `.8B` fits through 32K, `2B` through 16K, `2B`32K refuses before allocation — [details](memory-and-streaming/TODO.md)
 - [~] P1 cpu-gpu-optimization — @pvl — ordinary kernel/transport checks pass; exact whole-model parity before measured tuning and the matched benchmark campaign — [details](cpu-gpu-optimization/TODO.md)
@@ -38,6 +36,7 @@ model/context/C1..C64/vLLM mission. No production activation from refactoring.
 
 ## Closed
 
+- [x] fabric-vnext-transition — @pvl — source `8c43844`; S/F and scoped Q0/Q1/Q2 accepted, deferred expansion unchanged — [details](fabric-vnext-transition/TODO.md)
 - [x] accepted-baseline — `6d74f76` — 2026-10-18
 - [x] handoff-cleanup — `bfe672c` — 2026-10-18
 - [x] historical-records — `9239719` — 2026-10-18

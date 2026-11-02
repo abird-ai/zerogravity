@@ -45,9 +45,11 @@ not acceptance inputs.
   cold-only HIP SDK and cache/import isolation pass. Exact numerical/state/final-
   reader scopes and nonzero process baselines: [transition TODO](fabric-vnext-transition/TODO.md).
   CUDA repair signed `8d761c4`; final isolated gate passes2,340 Rust/0fail/
-  97ignored/307 suites (72 empty), Python17/182/10skips. Finite27B natural/shared-HIP
-  remains in progress. No acquisition, recovery, unsupported feature activation
-  or wider serving/performance claim.
+  97ignored/307 suites (72 empty), Python17/182/10skips. Source `8c43844` also passes
+  all18 finite27B/shared-HIP scopes; every semantic/retirement report and terminal
+  owner inspected. Functional transition/scoped Q2 accepted. Unavailable legacy2B
+  image, broader contexts/serving and matched performance remain unqualified;
+  no acquisition, recovery or unsupported feature activation.
 
 Historical source/host checkpoints below record the authority then in effect.
 

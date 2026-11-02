@@ -4,16 +4,15 @@ Owner: @pvl; later appointed implementation coordinator
 
 # zerogravity Fabric vNext — transition architecture and implementation plan
 
-**Latest checkpoint:** `fef7123` closes SDK configuration/typed graph policy and
-reconciles current source/host ownership parity. Retains `860ce38` preparation,
-`83060e5`/`2f19224` numerical/catalog/serving and earlier shared-engine work.
-The approved GPU/trained campaign is active: CUDA repair signed `8d761c4`;
-CUDA/Gemma/HIP/cache and final host gate pass. Finite27B natural/shared-HIP and
-final signed Q2 reconciliation remain in progress.
-Main only; no acquisition, gfx90c launch, recovery or campaign recurrence restart.
+**Functional transition accepted:** source `8c43844`, CUDA repair `8d761c4`.
+S0–S3/F0–F4 and scoped Q0/Q1/Q2 pass, including all18 finite27B/shared-HIP scopes
+and the final isolated host gate. Earlier SDK/config/source/root/engine owners
+remain authoritative. Unsupported/future features and unqualified model/context/
+performance cells remain explicit; this is no general serving or speed grant.
+Main only; no acquisition, gfx90c launch, recovery or recurrence restart.
 [Current source](CURRENT_SOURCE_RECONCILIATION.md) · [active queue](TODO.md).
 
-**Created:** 27 October 2026. **Current status: authorized trained/physical acceptance; final Q2 still open.**
+**Created:** 27 October 2026. **Current status: functional migration and scoped Q2 accepted; expansion deferred.**
 **Read-only source observation:** HEAD fadf2b1123309a2118725f2cc005d3edc7ea39f2 (l5, 27 Oct 06:50 UTC). The 26 Oct deep review had 195099ca; preceding refresh had eb38dd5. These are evidence timestamps, not frozen ongoing source. Recheck HEAD before coding.
 **Physical root:** /home/pvl/spaces/abird/src/zerogravity via dotlink-l5.
 **Ownership:** owner explicitly promoted this transition in the shared queue. Preserve Plan 1's requirements and all unrelated source/owner work; the current main session serializes integration.

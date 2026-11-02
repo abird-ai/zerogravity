@@ -6,13 +6,19 @@ It is deliberately not a generated concatenation of every historical plan, run l
 
 A successor should be able to start here without prior chat history, understand how the project evolved, identify what is implemented versus merely designed, and continue either the current Qwen correctness critical path or the separately authorized Fabric vNext transition.
 
-## Active acceptance — explicit execution grant
+## Functional transition accepted — `8d761c4` / `8c43844`
+
+S0–S3/F0–F4 and scoped Q0/Q1/Q2 are complete. This closes migration of existing
+functionality, not deferred Qwen contexts/concurrency/performance or future tasks.
+The final reconciliation changes docs only; source remains the tested `8c43844`.
+
 
 - User confirmed lifting GPU/trained-source test holds for existing approved
   sources/devices. Main only; no new subagents, acquisition, resets, privilege/
   recovery changes, gfx90c launches, pushes or recurrence restarts.
-- CUDA repair signed `8d761c4`, following `1f40880` / source `fef7123`.
-  Do not repeat extraction; earlier held statements describe historical checkpoints.
+- CUDA repair signed `8d761c4`; Gemma diagnostics/SDK and accepted scopes signed
+  `8c43844`, following `1f40880` / `fef7123`. Do not repeat extraction; older held
+  statements describe historical checkpoints.
 - Trained Gemma CPU SDK lifecycle passes91.78s: real completion/root, presentation
   failure, pre-cancel and original-owner retirement. Not independent numerical
   or serving qualification. CUDA/HIP/Vulkan scopes remain separate below.
@@ -67,14 +73,30 @@ A successor should be able to start here without prior chat history, understand 
 - Finite27B teacher/unknown/final-reader6 cases inspected:240,896,000 exact words,
   full64/fullV/all128 physical planes (112 logical domains), independent sessions;
   separate Ready-discard/cancel preserve root. Known retires117 modules; faults
-  retain117/1,602 handles/source and fence16GiB. Natural/shared-HIP still in flight.
+  retain117/1,602 handles/source and fence16GiB.
+- Finite27B natural6 modes independently verified: genuine11→220→16, four main
+  comparisons240,896,000 words, restore/late-cancel80,114,176 each, committed112
+  domains exact. Healthy9 full64 calls; cached unknown keeps its80,103,936
+  unavailable words explicitly unqualified. Known final readers unload121 modules;
+  faults retain121/1,477 handles/source/fence16GiB. No serving/general-context claim.
+- All six shared-HIP scopes verified. Known reload preserves live Gemma while
+  retiring/reloading Qwen:3 full64 comparisons/160,781,824 words; Gemma1 observed
+  full35 plus3 ordinary packet/full-KV calls. Final native sets/resident bytes0,
+  device4GiB; host26GiB+128MiB+64KiB includes24GiB compiler, not global zero.
+  Both final-reader faults retain117/184 original modules and fence32GiB. Actual
+  source-page query/wait/destroy injections refuse both sources/reentry before
+  publication, with unchanged bindings/ledgers/native state. Those three cases
+  complete no full model; destroy has no pending-window witness claim.
+- Final19-process supervisor (SDK+18 finite scopes) succeeds/exit0. Unit collected,
+  inactive/MainPID0/cgroup absent; no owned executable and GPU idle. Monitor stopped.
 - Combined CUDA/HIP and shared-HIP strict pass; Vulkan examples retain two known
   unused-probe warnings. Final isolated gate passes2,340 Rust/0fail/97ignored/
   307 suites (72 empty); Python17/182/10skips. Source review complete; CUDA repair
-  signed `8d761c4`. Gemma diagnostic/SDK checkpoint follows. No math/owner/timeout/
-  tolerance relaxation.
+  signed `8d761c4`, Gemma diagnostics/SDK signed `8c43844`. No math/owner/timeout/
+  tolerance relaxation. All19 S/F/repair signatures through `8c43844` verified.
 - Logs: XDG state `abird/zerogravity/fabric-acceptance-oEz7801w/`.
-  Owning transition TODO tracks acceptance; no full Fabric completion claimed.
+  Owning transition TODO records exact acceptance and remaining unsupported cells.
+  No new matched performance or broader serving claim; deferred mission preserved.
 
 ## Previous signed checkpoint — source/host parity `fef7123`
 
