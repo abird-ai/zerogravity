@@ -3,6 +3,8 @@
 //! Successful checking is not execution eligibility: no models, context store,
 //! devices or APIs are started. Native pipeline execution remains unsupported.
 mod document;
+mod patch;
+pub use patch::{ChatContextPatch, PipelinePatch};
 mod yaml;
 
 pub use document::{

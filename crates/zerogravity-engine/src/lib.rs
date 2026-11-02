@@ -1,5 +1,5 @@
-//! Cold Fabric shell. Existing execution is migrated here in F0, not duplicated.
-//! No concrete model/backend, source load, worker, socket or new physical ledger.
+//! Model-neutral runtime, typed execution adapters and shared fair workers.
+//! Concrete source/provider composition stays in callers; physical authority stays in core.
 pub use zerogravity_core::{Error, Result};
 pub mod catalog;
 pub mod diagnostics;

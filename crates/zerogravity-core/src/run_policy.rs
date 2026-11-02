@@ -375,6 +375,7 @@ pub struct Diagnostics {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Origin {
+    Caller,
     Cli,
     Config(PathBuf),
     Builtin,

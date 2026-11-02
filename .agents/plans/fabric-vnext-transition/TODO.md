@@ -6,19 +6,19 @@ Owner: @pvl — main-session coordinator
 
 Base: `1c35172`
 
-## Current direction — source-owned preparation and remaining parity
+## Current direction — source ownership reconciled; execution acceptance held
 
-- Signed `860ce38` connects real ModelDefinition/provider/ExecutableBundle preparation
-  for ordinary GGUF through original source/plan Arcs and the resident loader.
-  Retains `83060e5`/`2f19224`, `d4e94b1` and `ae7ec11`; do not repeat extraction.
-- Source/host controls, approved CPU fixtures and the final gate pass. Broader
-  family/provider/root/transport/whole-feature review and physical acceptance remain;
-  this is not whole Fabric/F0–F4/Q completion or new device/model capability.
-- Main owns files, compiler, review, plans and signing; no new subagents. No push,
-  acquisition, GPU/trained-Gemma run, recovery or privilege changes authorized.
-- Both recurrences remain cancelled. Qwen expansion remains deferred; historical
-  model/operator/lifetime evidence stays tuple-specific. Root README and protected
-  external checkout unchanged. Source-owned preparation is not placement or residency.
+- SDK configuration/graph override policy is now shared with CLI; the current
+  feature matrix maps all source owners, original typed family adapters, root/
+  physical authority and transport boundaries. No new interpreter or scheduler.
+- Source/host migration and static parity review are assembled. Whole Fabric
+  remains unfinished: Q0/Q2 trained/physical numerical/state/cancellation/fault/
+  final-reader/serving acceptance is held, not waived by host checks.
+- Retain source preparation `860ce38`, numerical/catalog `83060e5`/`2f19224`,
+  SDK `d4e94b1` and scheduler `ae7ec11`; do not redo accepted extraction.
+- Main only; no new subagents. No push, acquisition, GPU/trained-Gemma execution,
+  recurrence restart or recovery/privilege change. Protected README/external
+  checkout unchanged. Qwen/context/C1..C64/vLLM and E01–E10 remain deferred.
 
 ## Historical foundation evidence — assembled gate passed
 
@@ -69,25 +69,55 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 - Qualification callers use real public admitted channels/host/cancel owners;
   no production test-support feature or exported isolated ledger was introduced.
 
-## Next refinements — one coherent unit at a time
+## Next acceptance unit
 
-1. Continue from `860ce38` and `83060e5`/`2f19224`; reuse unchanged evidence.
-   Do not redo numerical/layout, catalog, serving policy or earlier extraction.
-2. Physical GPU regression remains required before qualifying moved execution.
-   No launches are authorized by this source checkpoint. Preserve exact source,
-   Ready/root, cancellation/fault, final-reader and serving scopes; no historical
-   physical evidence is retagged. Fixed-prompt credit stays64; original captured
-   Qwen credit is72×max(native_rows,1), with original prompt/B4 guards unchanged.
-3. Reconcile remaining family/provider adapters and root/transport/whole-feature
-   coverage, then F4/Q0/Q1/Q2 acceptance. Source-owned ordinary GGUF preparation
-   is wired; arbitrary placement/partial regions and future operations stay absent.
-4. Explicit runtime self-join guards remain. Caller deadlines/nonblocking close
-   are future work; direct Router/implicit last-owner drop needs external
-   retirement, and short router callbacks remain non-reentrant.
-5. Preserve the original model/context/C1..C64/matched-vLLM mission and broader
-   model/media/SSD/distributed roadmap. Measure before tuning; no speedup claim.
+1. Obtain separate execution authority and exact allowed source/device scopes for
+   the held migration regression. Existing files are not permission. Neither
+   cancelled recurrence may restart implicitly.
+2. Preserve original source/numerical/ABI identities and state/physical Ready,
+   cancellation/fault/quarantine, final readers and serving scopes. No historical
+   evidence retagging; fixed-prompt credit64 and Qwen72×max(native_rows,1) unchanged.
+3. Reuse the accepted source/host gate for unchanged paths. Any physical-discovered
+   defect becomes a bounded lowest-owner Q1 fix, with affected checks and final
+   assembled acceptance; no repeated extraction or invented future capabilities.
+4. Explicit runtime self-join refusals remain; deadlines/nonblocking close and
+   implicit self-drop/reentrant retirement are not newly implemented.
+5. Only after applicable transition acceptance resume the original Qwen mission.
 
+## Uncommitted — SDK configuration and source-ownership audit
 
+- [x] Move config-relative paths, caller overrides, scalar/list precedence,
+  provenance and final graph policy into public `run::config::resolve` and typed
+  `PipelinePatch`/`ChatContextPatch`. CLI retains argv/XDG/env/IO/signals only.
+- [x] Preserve explicit false/empty values, malformed-config and source-selector
+  refusals. Whole model replacement anchors sidecars and clears removed origins;
+  Caller provenance is metadata, not source/execution authority.
+- [x] Public-only SDK example and approved tiny CPU planning fixture consume the
+  same resolver. No source/device/network/audit IO during config-only resolution.
+- [x] Seven public controls pass default and minimal; thirteen existing CLI
+  controls pass. Combined CUDA/HIP, shared-HIP and minimal strict pass; CPU-free/
+  cache-free Vulkan compiles. Approved direct CPU18.19s and HTTP18.55s pass.
+- [x] Resolve S1–S3/F0–F3 source-ownership questions and F4 matrix source review:
+  canonical codecs/numerics/layout; original CPU/window/Gemma/captured adapters;
+  one ForwardPlan/source issuer, SessionAuthority and process-shared arbiter;
+  engine worker and original Request/ResponseEvent transport seam. Finite routes
+  remain explicit diagnostics; no ordinary test-case dispatcher or new capability.
+- [x] Keep original source-bound CPU TextSession, window-backed VerifiedTensorSource/
+  PreparedPlan and Gemma sessions rather than forcing a new borrowed-tensor graph.
+  Derived manifests/placement/partial regions/unload/restore stay descriptive or
+  unsupported. Future E work is not invented to close migration checkboxes.
+- [x] Whole CLI/provider/status/alias/config/device/pipeline/HTTP parity mapped in
+  FEATURE_PARITY_MATRIX; public admin intent is not an authenticated endpoint.
+  No supported-route TODO panic, old CLI worker/HTTP copy or second physical ledger.
+- [x] Independent source comparison preserves scalar/source/task/diagnostic/device
+  merge and final validation bodies after provenance and formatting normalization.
+  No model/CPU/GPU math, session/root/resource, kernel/image or source-pin change.
+- [x] Final isolated bounded-thread source/host gate passes: 2,340 Rust executions/0fail/97ignored/305 suite runs (70 empty); 17 Python suites/182 cases/10 skips.
+  Counts are suite executions, not distinct tests; ignored/empty scopes are not
+  execution proof. Initial new graph fixture failure is retained; corrected to
+  use an actual typed context consumer without relaxing existing validation.
+- Physical/trained acceptance remains held. Logs: XDG state
+  `abird/zerogravity/fabric-config-eJobTiNW/`. Source/host completion is not Q2.
 
 ## Committed
 
@@ -364,83 +394,18 @@ Qwen commits are preserved inputs, not S/F/Q completion proof.
 
 
 
-## Uncommitted — remaining S1 active contracts
+## Uncommitted — held transition execution acceptance
 
-- [ ] Finish remaining preparation/derived contracts; numerical/activation/row-layout consumers are bound in the signed checkpoint above. Derived artifacts are not a quantizer or execution permit.
-- [ ] Bind existing GPU packed kernels/activation under source+variant+numeric+device constraints; no codec-specific model engine.
-- [ ] Validate remaining active-contract integration; reuse accepted unchanged codec/numerical evidence.
-- Concrete follow-up: active `SourceNumericalContract`/source operators remain
-  authoritative and now have one canonical numerical owner. ActivationEncoding
-  and PreparedTensorLayout constrain real CPU/GPU consumers without granting
-  source/kernel/Ready authority; unused NumericalContract was removed.
-  DerivedModelManifest remains descriptive. Source-owned ordinary GGUF
-  preparation uses the original provider; per-model retirement and paged-state
-  restoration still refuse. Multi-model residency, live replacement and arbitrary
-  placement/partial-region compilation remain unsupported.
-  Do not invent E-phase quantization/hot-reload/placement to close boxes.
+The S1–S3/F0–F4 source responsibilities above are reconciled against actual
+current paths; physical/trained transition acceptance is still outstanding.
 
-## Uncommitted — future S2 family math and GPU provider
-
-- [ ] Keep one Qwen forward traversal and independent Gemma source math, one existing ForwardPlan recorded as canonical SemanticProgram.
-- [ ] Preserve GPU production model dependency removal (263ff79) and concrete source-independent provider/ABI preparation.
-- [ ] Separate CUDA GDN kernel implementation and exact code+driver/ISA/numerical identities from historical finite Qwen prompt fixtures/qualification source.
-- [ ] Preserve newest captured fresh-prefill/reference layout identities, short contexts, original source permission; no automatic ordinary CUDA enable.
-- [ ] Move only remaining genuine source/model wrappers; no giant unnecessary compiled .cu rename/rewrite.
-- [ ] Independent CUDA/HIP/Vulkan feature source-only check, family and source refusal fixtures; signed commit(s), hardware later.
-
-## Uncommitted — future S3 canonical root/resource
-
-- [ ] Ensure CPU/GPU/Gemma commit only after source/epoch/root/full domain/real Ready; no per-domain public commit nor device stream direct PublishRoot.
-- [ ] Keep existing process-shared PhysicalResourceArbiter low-level in core; engine will use its admitted physical ledger, no new wallet.
-- [ ] Preserve buffer leases encoded/captured/queued/submitted/unknown and safe quarantine/retire, host/UMA alias accounting.
-- [ ] S3 source-free state resource targeted checks and signed commit(s).
-
-## Uncommitted — moved GPU physical acceptance
-
-- [ ] Qualify moved execution with authorized real-source numerical/state,
-  cancellation/fault/final-reader and serving checks. Compilation/host controls
-  and source preservation do not qualify GPU execution; no old evidence retagged.
-
-## Uncommitted — remaining F0 model-neutral engine
-
-Shared scheduling `ae7ec11` and cold catalog/alias registration `2f19224` landed;
-remaining requirements:
-- [x] Bind source-owned ModelDefinition/provider/executable composition for ordinary GGUF — `860ce38`; no authority from metadata.
-- [ ] Reconcile remaining family/provider paths with original typed execution adapters; no forced shadow IR or widened capability.
-- [ ] Preserve CPU bounded prefill/decode and GPU native B1/B2/B4/B8 true batch semantics including ragged/late arrivals and source-specific eligibility.
-- [ ] One ResourceArbiter and original worker Ready/lease/shutdown; source-valid typed committed output before HTTP.
-- [ ] F0 tiny model-neutral mock/CPU tests, affected compile and signed commit(s).
-
-## Uncommitted — F1 final public-API parity review
-
-SDK run/source/audit/native/Gemma/artifact/cache owners and public-only example
-landed in `d4e94b1`; earlier runtime/devices/pipeline/server APIs remain accepted.
-- [ ] Close complete FEATURE_PARITY_MATRIX public API review, including existing
-  admin/alias/status and provider-specific behavior. Generic catalog/executable/
-  residency placeholders must not be mistaken for working future operations.
-
-## Uncommitted — remaining F2 unified-engine transport integration
-
-Shared Router/HTTP integration landed in `ae7ec11`; remaining requirements:
-- [ ] Serve uses engine TaskRequest and CommittedEvent, not Qwen/GPU/allocator; ingress/auth/HTTP body/stream credits in serving, scheduler/state in engine.
-- [ ] Preserve CPU and eligible native CUDA request routes, real cancellation/disconnect, bounded server pending queue and 50abaf7 worker join/owned shutdown.
-- [ ] Validate remaining unified GPU/transport integration within applicable source/physical scopes; reuse accepted CPU/HTTP tests.
-
-## Uncommitted — F3 final thin-CLI parity review
-
-Current SDK/CLI extraction lands in `d4e94b1`; shared scheduler/HTTP removal in
-`ae7ec11` remains. CLI args/env/signals/IO stay caller-owned; no alternate GPU or
-legacy run parser survives. Command/provider/alias/negative tests pass.
-- [ ] Finish whole-feature residual ownership/compatibility audit alongside F4;
-  no model math/source parser/HTTP scheduler or physical ledger may remain in CLI.
-
-## Uncommitted — future F4 whole current feature completeness
-
-- [ ] Review every row of FEATURE_PARITY_MATRIX.md, mark real supported, held/unsupported, migrated and targeted-tested.
-- [ ] All current CPU/GGUF, source codecs, physical GPU qualified modules, source acquisition/cache, device selection, pipeline validation, HTTP JSON/SSE/worker lifecycle, state/leases operate on new owners.
-- [ ] No reachable TODO panic on any supported API/CLI/serve path, no false Q4_K / Q1/2/3 / NVFP4 / general CUDA / Gemma/27B/media/distributed capability.
-- [ ] Remove obsolete actual duplicate compatibility paths, address targeted small failures, signed source cleanup commit(s).
-- [ ] Ready for Q0; no heavyweight test yet.
+- [ ] Authorize and execute exact moved GPU numerical/source/state/cancellation/
+  fault/final-reader/serving regression. Compilation and source preservation do
+  not qualify execution; CUDA/HIP/Vulkan scopes remain separate.
+- [ ] Resolve explicitly deferred trained-source acceptance, including Gemma CPU,
+  only after separate authority. Do not infer permission from cached inputs.
+- [ ] Accept each case's semantics and cleanup, preserving failed/interrupted/
+  ignored/unavailable scopes and exact code/source/backend identities.
 
 ## Uncommitted — future Q0/Q1/Q2 consolidated qualification
 
@@ -480,7 +445,7 @@ legacy run parser survives. Command/provider/alias/negative tests pass.
 - [x] SDK/CLI source/host checkpoint `d4e94b1`: artifact/cache/CLI/approved CPU
   scopes, strict/minimal/native host checks and final gate2,315/0fail/97ignored;
   trained Gemma/GPU ignored, not inferred or retagged.
-- [ ] Remaining S1–S3 active-contract/provider/source-bound physical integration coverage.
-- [ ] F0–F4 complete SDK/engine/serving/CLI feature/refusal migration coverage.
+- [x] S1–S3 source contract/provider/root ownership review and host gates above; physical execution held separately.
+- [x] F0–F4 source/host SDK/engine/serving/CLI parity review above; hardware/trained cells remain held, not passed.
 - [ ] Q0/Q1/Q2 assembled transition/physical acceptance; unchanged evidence reused
   only within actual source/numerical/owner scopes. S0 is not Q0/Q2.

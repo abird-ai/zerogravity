@@ -47,3 +47,5 @@ pub fn validate_source_request(request: &crate::run_policy::Request) -> crate::R
 }
 #[cfg(all(feature = "cpu", feature = "model-qwen35", feature = "text"))]
 pub mod cpu;
+
+pub mod config;

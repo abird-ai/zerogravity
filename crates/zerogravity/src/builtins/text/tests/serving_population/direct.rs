@@ -47,33 +47,34 @@ fn source_bound_cpu_diagnostic_and_planning_retirement() {
     let arbiter = ResourceArbiter::process_shared();
     let host_key = PhysicalDeviceKey::new("host", "system-ram").unwrap();
     assert!(arbiter.snapshot(&host_key).is_err());
-    use crate::run_policy::{Backend, Devices, Entrypoint, Headroom, Request, Speculation, Task};
-    let request = Request {
-        graph: crate::pipeline::Config {
-            models: vec![source.clone()],
-            pipelines: Vec::new(),
-            routes: Vec::new(),
-        },
-        entrypoint: Entrypoint::Model(source.id.clone()),
-        task: Task {
-            context: 8,
-            max_tokens: 2,
-            raw: true,
+    use crate::run_policy::{Backend, Entrypoint, Headroom, Origin, Speculation};
+    let request = crate::run::config::resolve(
+        None,
+        crate::run::config::RunOverrides {
+            model: source.source.clone(),
+            entrypoint: Some(Entrypoint::Model(source.id.clone())),
+            task: crate::pipelines::TaskDoc {
+                context: Some(8),
+                max_tokens: Some(2),
+                raw: Some(true),
+                ..Default::default()
+            },
+            backend: Some(Backend::Cpu),
+            headroom: Some(Headroom::Bytes(0)),
+            numerical: Some("source".into()),
+            speculation: Some(Speculation::Off),
+            diagnostics: crate::pipelines::DiagnosticDoc {
+                dry_run: Some(true),
+                ..Default::default()
+            },
             ..Default::default()
         },
-        backend: Backend::Cpu,
-        devices: Devices::Auto,
-        headroom: Headroom::Bytes(0),
-        numerical: Some("source".into()),
-        speculation: Speculation::Off,
-        draft_device: None,
-        diagnostics: crate::run_policy::Diagnostics {
-            dry_run: true,
-            ..Default::default()
-        },
-        provenance: Default::default(),
-        vendor_filter: None,
-    };
+        &root,
+        Origin::Caller,
+    )
+    .unwrap();
+    assert_eq!(request.provenance["task.context"], Origin::Caller);
+    assert!(arbiter.snapshot(&host_key).is_err());
     let inventory = crate::devices::Inventory {
         observed_unix_ms: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

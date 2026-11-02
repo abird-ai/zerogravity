@@ -1,4 +1,4 @@
-//! Command dispatch; existing execution owners migrate in F0–F3.
+//! Process command dispatch over the public SDK.
 use super::output::usage;
 #[cfg(all(feature = "acquisition", target_os = "linux"))]
 use super::pull;

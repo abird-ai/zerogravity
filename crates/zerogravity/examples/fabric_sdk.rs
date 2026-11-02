@@ -14,46 +14,31 @@ fn main() -> zerogravity::Result<()> {
 #[cfg(target_os = "linux")]
 mod application {
     use std::{
-        collections::BTreeMap,
         num::NonZeroUsize,
         path::Path,
         sync::{Arc, atomic::AtomicBool},
     };
-    use zerogravity::run_policy::{
-        Backend, Devices, Diagnostics, Entrypoint, Headroom, Origin, Request, Speculation, Task,
-    };
+    use zerogravity::run_policy::{Backend, Entrypoint, Origin, Request, Speculation};
     use zerogravity::{Error, Result, Runtime};
 
-    fn direct_request(source: &str) -> Request {
-        Request {
-            graph: zerogravity::pipeline::Config {
-                models: vec![zerogravity::pipeline::ModelInstance {
-                    id: "local".into(),
-                    target: String::new(),
-                    source: Some(source.into()),
-                    model_config: None,
-                    tokenizer: None,
-                    snapshot: None,
-                    native_artifacts: None,
-                }],
-                pipelines: Vec::new(),
-                routes: Vec::new(),
-            },
-            entrypoint: Entrypoint::Model("local".into()),
-            task: Task::default(),
-            backend: Backend::Cpu,
-            devices: Devices::Auto,
-            headroom: Headroom::Default,
-            numerical: Some("source".into()),
-            speculation: Speculation::Off,
-            draft_device: None,
-            diagnostics: Diagnostics {
-                dry_run: true,
+    fn direct_request(source: &str) -> Result<Request> {
+        zerogravity::run::config::resolve(
+            None,
+            zerogravity::run::config::RunOverrides {
+                model: Some(source.into()),
+                entrypoint: Some(Entrypoint::Model("local".into())),
+                backend: Some(Backend::Cpu),
+                numerical: Some("source".into()),
+                speculation: Some(Speculation::Off),
+                diagnostics: zerogravity::pipelines::DiagnosticDoc {
+                    dry_run: Some(true),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
-            vendor_filter: None,
-            provenance: BTreeMap::from([("backend".into(), Origin::Builtin)]),
-        }
+            &std::env::current_dir()?,
+            Origin::Caller,
+        )
     }
     pub fn run() -> Result<()> {
         let args: Vec<String> = std::env::args().skip(1).collect();
@@ -78,7 +63,7 @@ mod application {
                 }
                 ["dry-run", source] => {
                     let plan = zerogravity::run::cpu::Plan::new(
-                        direct_request(source),
+                        direct_request(source)?,
                         zerogravity::devices::discover()?,
                     )?;
                     println!("{}", plan.decision());

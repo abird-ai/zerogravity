@@ -1,9 +1,6 @@
 //! One typed run frontend; graph/source/device validation precedes effects.
-use std::{
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-};
-use zerogravity::pipelines::{DiagnosticDoc, EntryDoc, RunDoc, TaskDoc};
+use std::path::{Path, PathBuf};
+use zerogravity::pipelines::{DiagnosticDoc, TaskDoc};
 use zerogravity::{Error, Result, run_policy::*};
 mod args;
 mod config;

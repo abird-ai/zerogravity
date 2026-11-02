@@ -21,6 +21,74 @@ Latest source checkpoint and commit-scoped evidence:
 All old feature rows below remain a migration checklist, not an updated physical
 capability table. S0 is structural only; F4/Q0/Q2 must account for this delta too.
 
+## Current source ownership audit — SDK configuration batch
+
+This audits the current features in §§2–8, not broader model support. `S` means
+retained/re-homed implementation with source/host coverage; `H` means trained or
+physical transition acceptance remains held; `U` means deliberately unsupported
+or descriptive-only, as before. `S` never transfers old physical qualification.
+
+| Matrix scope | Actual owner / public entry | State |
+|---|---|---|
+| §2 Qwen GGUF CPU0.8B/2B; tokenizer/config | family `QwenModel`/`TextSession`; CPU source math; facade `run::cpu`, `diagnostics::cpu_text`, `models` | S; approved tiny-source execution, not new trained-source proof |
+| §2 original HF BF16;27B; Gemma E2B | original Qwen window binders/`PreparedPlan` and Gemma `execution`/`text::original`; SDK explicit diagnostics; original GPU source loaders | S/H; finite source contracts retained, no new ordinary serving |
+| §2 Gemma26B-A4B/31B; metadata-only targets | family config/tensors and core `targets`; metadata listing cannot populate loaded catalog | S/U; unimplemented variants still refuse |
+| §2 aliases/loaded sources | facade `ModelCatalog` → engine `configure_text`/registry; actual source Arc retained once | S; no replacement/unload/multi-model-residency claim |
+| §3 GGUF/safetensors/indexed shards; F32/F16/BF16 | artifacts `artifact`, `sharded`, `codecs`, `SourceWeights`; family source validation | S; original length/shape/hash/lease guards |
+| §3 Q4_0/Q4_1/Q6_K/Q8_0; activation packing | artifact codecs; CPU `source`; GPU `quantization`/host/resident layout; core numerics | S/H; exact math unchanged, device acceptance held |
+| §3 Q4_K; Q1/Q2/Q3/NVFP4; EXL3/QTIP/trellis | original Q4_K decoder only; source-exact dot refuses; remaining codecs/derived manifests descriptive | S/U; no quantizer or kernel grant |
+| §3 immutable windows/cache | original `SourceWeights`/`SnapshotLease`/tensor windows/cache publisher and shared arbiter | S/H; no SSD-streaming or new residency implementation |
+| §4 HF/GitHub/file/index/filter/quant/Xet/components | facade `artifacts::{HubSelection,HubPull,ComponentDocument,ComponentClients}` → original acquisition/publisher | S; inspect cannot transfer/reconstruct; no acquisition run |
+| §4 ModelScope/S3/GCS/Azure/OCI/HTTP object | facade reexports original typed provider request/pin/content/conditional/resolve/open_cached APIs; `execute_with_progress` | S; caller owns credentials/transports, prefixes remain independent publications |
+| §4 cache import/manage/run/inventory | public cache/store/import/maintenance and `PreparedQwen::from_cache`; original immutable publisher | S; cache pin is not execution authority |
+| §5 PCI/device aliases, allowlists, fit/headroom, dry-run | facade `devices`, core `run_policy`, SDK `run::cpu::Plan`; CLI formats observations | S; no discovery in builders or implicit GPU execution |
+| §5 configuration/defaults/overrides/provenance | SDK `run::config::{RunOverrides,resolve}`, `pipelines::{PipelinePatch,ChatContextPatch}`; CLI argv/XDG/env only | S; new public-only/default/minimal and existing CLI controls |
+| §5 source/quant/numeric/backend selection | original family/source guards, SDK planner and explicit diagnostic selector; backend refuses missing kernels | S/H; no pressure-driven model change or ordinary CUDA activation |
+| §6 CPU HTTP/models/chat/completions; greedy API; JSON/SSE | independent serving `http`/`TextService` over engine Request/ResponseEvent; SDK server builder | S; approved tiny CPU/HTTP case; unsupported sampling still refuses |
+| §6 CPU concurrency; aliases/private sessions | engine shared registry/worker/admission/events; CPU quantum32 and original session publication | S; no HTTP scheduler/publisher |
+| §6 GGUF GPU/native B2/B4/B8 cohorts | same engine worker/cohorts with typed original resident/captured adapters | S/H; actual batch/Ready contracts preserved, physical serving unrun |
+| §6 resource credits/cancel/backpressure/shutdown | serving ingress/wire budgets; engine queue/output parking/join; original ResourceArbiter/flight/quarantine | S/H; host controls retained, device fault/final-reader regression held |
+| §6 unsupported endpoints; vLLM parity | no embeddings/Responses/tools/media execution or authenticated admin endpoint; no superiority claim | U; intent/status is not management or inference |
+| §7 YAML/flags/typed graphs; context/source grants | SDK bounded parser/core structural checker and typed patch; core context snapshots/filtering | S; configuration does not acquire data/grants |
+| §7 pipeline/media/remote execution; assemblies | pipeline `run` refuses; ModelAssembly is not an executable cross-model pipeline | U; no output fabricated from metadata |
+| §8 source/numeric/ABI/shape; fallback | unchanged source issuers/SourceInvocation/SourceOperatorTemplate/ForwardPlan and provider kernels | S/H; original guards, no unknown-execution fallback |
+| §8 root/epoch/domain publication | core SessionAuthority/RootAttempt; Qwen CPU, Gemma and resident sessions use original publishers; TaskCoordinator remains reference-only | S/H; transport never publishes state; source-less device bridge is not Ready |
+| §8 physical backing/captured/final readers | original process-shared ResourceArbiter, resident leases and completion/quarantine; metadata is not a second wallet | S/H; cancellation cannot drop submitted futures or free unknown readers |
+
+### Resolved ownership decisions
+
+- Existing CPU `LogitModel`/`TextSession`, ordinary resident typed executor and
+  captured typed executor share the same engine worker. Direct CPU/Gemma diagnostics
+  remain synchronous original adapters, not alternative schedulers.
+- Only tensor-backed ordinary GGUF uses `ModelProgram`/`ResidentModelProvider`.
+  Window-backed Qwen retains `VerifiedTensorSource`/`PreparedPlan`; Gemma retains
+  its original source/session types. Forcing these into borrowed tensors or a new
+  graph interpreter would violate source/lifetime semantics. Generic partial-region,
+  placement and future-family compilation are not existing features to fabricate.
+- Source/numeric/state definitions live with core/families; GPU owns implementations,
+  ABI and real completion. Finite captures remain explicit diagnostics; ordinary
+  routes do not depend on expected-output or fault orchestration to select work.
+- Engine Request/ResponseEvent are the actual typed request/committed-presentation
+  seam. Do not synthesize reference CommittedOutput roots merely to match old plan
+  names. Delivery/ACK/playback and status/admin intent remain distinct authorities.
+- Config resolution was the remaining concrete CLI-only policy found in this audit.
+  It now uses a public typed SDK path; explicit false/empty values, config-relative
+  paths, caller-relative overrides and final core graph validation remain intact.
+  Whole model-list replacement resets removed provenance and anchors supplied
+  sidecars. Callers select config files/default locations; the SDK reads no env.
+- No supported route contains `todo!`/`unimplemented!`; intentional missing
+  capability returns stay. Old CLI scheduler/HTTP/parser copies are absent.
+  Protected README, detached checkout, source pins, arithmetic and kernel images
+  remain unchanged. This audit does not complete the held Q0/Q2 execution gates.
+
+Coverage: new seven public config controls (default and no-default-features),
+existing thirteen CLI policy controls, combined CUDA/HIP strict, minimal strict,
+CPU-free/cache-free Vulkan compilation, approved direct CPU18.19s and HTTP18.55s,
+and cold public-example help. Initial new fixture lacked a typed context consumer;
+its failure is retained, fixture corrected, existing validation unchanged.
+Final isolated source/host gate: 2,340 Rust executions/0fail/97ignored/305 suite runs (70 empty); 17 Python suites/182 cases/10 skips.
+No physical/trained scope inferred from this gate; Q0/Q2 execution acceptance stays held.
+
 ## Current source-owned preparation reconciliation — `860ce38`
 
 | Area | Actual consumer / evidence | Remaining boundary |

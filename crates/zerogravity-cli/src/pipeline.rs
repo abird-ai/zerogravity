@@ -1,12 +1,11 @@
 //! Pipeline argv and presentation; YAML/schema/checking live in the public SDK.
 use zerogravity::context_filter::{
-    ContextFilter, ContextFilterPlan, ContextSource, DecisionUnavailable, FilterAction, MatchField,
-    default_sources,
+    ContextFilter, ContextSource, DecisionUnavailable, FilterAction, MatchField,
 };
 pub(super) use zerogravity::pipelines::load_document;
 use zerogravity::pipelines::{
-    self, ApiRoute, ChatContextPolicy, Config, ModelInstance, Pipeline, PipelineEdge, PipelineNode,
-    ValueKind,
+    self, ApiRoute, ChatContextPatch, ChatContextPolicy, Config, ModelInstance, PipelineEdge,
+    PipelineNode, PipelinePatch, ValueKind,
 };
 use zerogravity::{Error, Result};
 
@@ -21,34 +20,54 @@ fn assignment(input: &str) -> Result<(&str, &str)> {
     Ok((a, b))
 }
 pub(super) fn flags(args: &[String]) -> Result<Config> {
+    patch(args, false)?.compile()
+}
+
+/// Argv syntax only; inheritance and whole-list replacement belong to the SDK.
+pub(super) fn patch(args: &[String], overrides: bool) -> Result<PipelinePatch> {
     if args.len() > 1024 {
         return Err(Error::Limit("pipeline flag count".into()));
     }
     let mut name = None;
     let mut input = None;
     let mut output = None;
-    let mut realtime = false;
+    let mut realtime = None;
     let mut chat_context_from = None;
     let mut chat_context_enabled = None;
     let mut chat_context_max_bytes = None;
-    let mut chat_context_sources = Vec::new();
-    let mut chat_context_stages = Vec::new();
-    let mut models = Vec::new();
-    let mut steps = Vec::new();
-    let mut links = Vec::new();
-    let mut routes = Vec::new();
+    let mut chat_context_sources = None;
+    let mut chat_context_stages = None;
+    let mut models = None;
+    let mut steps = None;
+    let mut links = None;
+    let mut routes = None;
     let mut seen = std::collections::BTreeSet::new();
+    let mut cleared = std::collections::BTreeSet::new();
+    let mut lists = std::collections::BTreeSet::new();
     let mut iter = args.iter();
-    while let Some(flag) = iter.next() {
-        if flag == "--realtime" {
-            if realtime {
+    while let Some(raw) = iter.next() {
+        let flag = if overrides && raw == "--define-model" {
+            "--model"
+        } else {
+            raw.as_str()
+        };
+        if flag == "--realtime" || (overrides && flag == "--realtime-value") {
+            if realtime.is_some() {
                 return Err(invalid());
             }
-            realtime = true;
+            realtime = Some(if flag == "--realtime" {
+                true
+            } else {
+                match iter.next().map(String::as_str) {
+                    Some("true") => true,
+                    Some("false") => false,
+                    _ => return Err(invalid()),
+                }
+            });
             continue;
         }
         if !matches!(
-            flag.as_str(),
+            flag,
             "--model"
                 | "--step"
                 | "--link"
@@ -56,12 +75,56 @@ pub(super) fn flags(args: &[String]) -> Result<Config> {
                 | "--chat-context-source"
                 | "--chat-context-match"
                 | "--chat-context-decision"
-        ) && !seen.insert(flag.as_str())
+        ) && !seen.insert(flag)
         {
             return Err(invalid());
         }
         let value = iter.next().ok_or_else(invalid)?;
-        match flag.as_str() {
+        if overrides {
+            let is_list = matches!(
+                flag,
+                "--model"
+                    | "--step"
+                    | "--link"
+                    | "--route"
+                    | "--chat-context-source"
+                    | "--chat-context-match"
+                    | "--chat-context-decision"
+            );
+            if value == "[]" {
+                if !is_list || lists.contains(flag) || !cleared.insert(flag) {
+                    return Err(invalid());
+                }
+                match flag {
+                    "--model" => {
+                        models.get_or_insert_with(Vec::new);
+                    }
+                    "--step" => {
+                        steps.get_or_insert_with(Vec::new);
+                    }
+                    "--link" => {
+                        links.get_or_insert_with(Vec::new);
+                    }
+                    "--route" => {
+                        routes.get_or_insert_with(Vec::new);
+                    }
+                    "--chat-context-source" => {
+                        chat_context_sources.get_or_insert_with(Vec::new);
+                    }
+                    _ => {
+                        chat_context_stages.get_or_insert_with(Vec::new);
+                    }
+                }
+                continue;
+            }
+            if is_list {
+                if cleared.contains(flag) {
+                    return Err(invalid());
+                }
+                lists.insert(flag);
+            }
+        }
+        match flag {
             "--name" => name = Some(value.to_string()),
             "--input" => input = Some(ValueKind::parse(value)?),
             "--output" => output = Some(ValueKind::parse(value)?),
@@ -77,18 +140,22 @@ pub(super) fn flags(args: &[String]) -> Result<Config> {
                 chat_context_max_bytes = Some(value.parse::<usize>().map_err(|_| invalid())?);
             }
             "--chat-context-source" => {
-                chat_context_sources.push(ContextSource::parse(value)?);
+                chat_context_sources
+                    .get_or_insert_with(Vec::new)
+                    .push(ContextSource::parse(value)?);
             }
             "--chat-context-match" => {
                 let mut parts = value.splitn(3, ':');
                 let action = FilterAction::parse(parts.next().ok_or_else(invalid)?)?;
                 let field = MatchField::parse(parts.next().ok_or_else(invalid)?)?;
                 let terms = parts.next().ok_or_else(invalid)?;
-                chat_context_stages.push(ContextFilter::Match {
-                    action,
-                    field,
-                    values: terms.split(',').map(str::to_owned).collect(),
-                });
+                chat_context_stages
+                    .get_or_insert_with(Vec::new)
+                    .push(ContextFilter::Match {
+                        action,
+                        field,
+                        values: terms.split(',').map(str::to_owned).collect(),
+                    });
             }
             "--chat-context-decision" => {
                 let mut parts = value.splitn(4, ':');
@@ -100,12 +167,14 @@ pub(super) fn flags(args: &[String]) -> Result<Config> {
                     .map_err(|_| invalid())?;
                 let unavailable = DecisionUnavailable::parse(parts.next().ok_or_else(invalid)?)?;
                 let question = parts.next().ok_or_else(invalid)?.to_owned();
-                chat_context_stages.push(ContextFilter::Decision {
-                    model,
-                    question,
-                    min_confidence_bps,
-                    unavailable,
-                });
+                chat_context_stages
+                    .get_or_insert_with(Vec::new)
+                    .push(ContextFilter::Decision {
+                        model,
+                        question,
+                        min_confidence_bps,
+                        unavailable,
+                    });
             }
             "--model" => {
                 let (id, right) = assignment(value)?;
@@ -117,7 +186,7 @@ pub(super) fn flags(args: &[String]) -> Result<Config> {
                         "declared model target must be nonempty".into(),
                     ));
                 }
-                models.push(ModelInstance {
+                models.get_or_insert_with(Vec::new).push(ModelInstance {
                     id: id.into(),
                     target: target.into(),
                     source: source.map(str::to_owned),
@@ -132,7 +201,7 @@ pub(super) fn flags(args: &[String]) -> Result<Config> {
                 let (kind, model) = right
                     .split_once(':')
                     .map_or((right, None), |(a, b)| (a, Some(b)));
-                steps.push(PipelineNode {
+                steps.get_or_insert_with(Vec::new).push(PipelineNode {
                     id: id.into(),
                     kind: kind.into(),
                     model: model.map(str::to_owned),
@@ -140,14 +209,14 @@ pub(super) fn flags(args: &[String]) -> Result<Config> {
             }
             "--link" => {
                 let (from, to) = assignment(value)?;
-                links.push(PipelineEdge {
+                links.get_or_insert_with(Vec::new).push(PipelineEdge {
                     from: from.into(),
                     to: to.into(),
                 });
             }
             "--route" => {
                 let (path, protocol) = assignment(value)?;
-                routes.push(ApiRoute {
+                routes.get_or_insert_with(Vec::new).push(ApiRoute {
                     path: path.into(),
                     protocol: protocol.into(),
                     pipeline: String::new(),
@@ -156,45 +225,33 @@ pub(super) fn flags(args: &[String]) -> Result<Config> {
             _ => return Err(invalid()),
         }
     }
-    if chat_context_from.is_none()
-        && (chat_context_enabled.is_some()
-            || chat_context_max_bytes.is_some()
-            || !chat_context_sources.is_empty()
-            || !chat_context_stages.is_empty())
-    {
+    let has_context = chat_context_from.is_some()
+        || chat_context_enabled.is_some()
+        || chat_context_max_bytes.is_some()
+        || chat_context_sources.is_some()
+        || chat_context_stages.is_some();
+    if !overrides && has_context && chat_context_from.is_none() {
         return Err(invalid());
     }
-    let chat_context = chat_context_from.map(|from_model| ChatContextPolicy {
-        enabled: chat_context_enabled.unwrap_or(true),
-        from_model,
-        max_bytes: chat_context_max_bytes.unwrap_or(ChatContextPolicy::DEFAULT_BYTES),
-        selection: ContextFilterPlan {
-            sources: if chat_context_sources.is_empty() {
-                default_sources()
-            } else {
-                chat_context_sources
-            },
-            stages: chat_context_stages,
-        },
-    });
-    let name = name.ok_or_else(invalid)?;
-    for route in &mut routes {
-        route.pipeline.clone_from(&name);
-    }
-    Ok(Config {
+    Ok(PipelinePatch {
+        name,
+        input,
+        output,
+        realtime,
         models,
-        pipelines: vec![Pipeline {
-            name,
-            input: input.ok_or_else(invalid)?,
-            output: output.ok_or_else(invalid)?,
-            realtime,
-            chat_context,
-            steps,
-            links,
-        }],
+        steps,
+        links,
         routes,
+        chat_context: has_context.then_some(ChatContextPatch {
+            from_model: chat_context_from,
+            enabled: chat_context_enabled,
+            max_bytes: chat_context_max_bytes,
+            sources: chat_context_sources,
+            stages: chat_context_stages,
+        }),
     })
 }
+
 pub(super) fn run(args: &[String]) -> Result<()> {
     if args.len() == 1 && matches!(args[0].as_str(), "--help" | "help" | "-h") {
         println!(
