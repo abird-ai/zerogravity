@@ -39,6 +39,17 @@ not acceptance inputs.
 
 ## Current Fabric and retained Qwen acceptance
 
+- Source/host parity `fef7123`: SDK configuration/typed graph policy replaces CLI-only
+  merging; current full feature/source ownership audit reconciled. Original typed
+  family/provider/root/transport boundaries retained; physical/trained Q0/Q2 stays
+  held. Seven default/minimal SDK controls, thirteen CLI controls, strict features,
+  direct CPU18.19s and HTTP18.55s pass. Final gate: 2,340 Rust executions/0fail/97ignored/305 suite runs (70 empty); 17 Python suites/182 cases/10 skips.
+  Source matrix separates retained implementation, held execution and original
+  Unsupported; no new GPU, trained Gemma or acquisition permission.
+
+Earlier checkpoint scopes below are historical; use the owning TODO for current
+source completion versus still-held physical/trained acceptance.
+
 - Source-owned preparation `860ce38`: real Qwen recording/source and original graph
   Arcs reach the resident loader through typed, model-neutral preparation; different
   owners with equal IDs and copied programs refuse. Cache-free GPU feature fixed.

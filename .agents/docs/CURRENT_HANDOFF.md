@@ -6,7 +6,39 @@ It is deliberately not a generated concatenation of every historical plan, run l
 
 A successor should be able to start here without prior chat history, understand how the project evolved, identify what is implemented versus merely designed, and continue either the current Qwen correctness critical path or the separately authorized Fabric vNext transition.
 
-## Latest checkpoint — source-owned preparation `860ce38`
+## Latest checkpoint — source/host parity `fef7123`
+
+- SDK `run::config::resolve` and typed PipelinePatch/ChatContextPatch now own run
+  precedence, graph overrides, path anchoring and provenance. CLI keeps argv/XDG/
+  environment/signals/presentation. Public example and genuine tiny CPU planning
+  fixture use the same resolver; no source/device/network IO from config resolution.
+- Current feature matrix source audit reconciles S1–S3/F0–F4 ownership: original
+  codecs/numerics/layout, typed CPU/window/Gemma/resident/captured adapters, one
+  ForwardPlan/source issuer, SessionAuthority/arbiter, shared worker and transport.
+  No forced TensorSource for windows, shadow interpreter, scheduler or publisher.
+- Whole API/provider/status/alias/CLI review found and closed the config policy gap.
+  Per-model unload, paged restore, partial-region/placement compilation, derived
+  quantization and future tasks remain unsupported/descriptive, not new capability.
+- Seven SDK controls pass default/minimal; thirteen existing CLI controls pass;
+  combined CUDA/HIP, shared-HIP and minimal strict pass, CPU-free/cache-free Vulkan
+  compiles. Approved direct CPU18.19s and HTTP18.55s pass; cold example help passes.
+- Final isolated host gate: 2,340 Rust executions/0fail/97ignored/305 suite runs (70 empty); 17 Python suites/182 cases/10 skips.
+  RUST_TEST_THREADS=4. Counts are suite executions; ignored/empty scopes are not
+  model/device proof. Initial new context-fixture failure retained and corrected
+  without weakening validation. No timeout/assertion was relaxed.
+- Source review preserves existing merge/validation bodies after provenance and
+  formatting normalization. Model/CPU/GPU math, roots/resources, workers, serving,
+  kernel images and source pins unchanged. Historical physical evidence stays old.
+- **Fabric remains unfinished:** applicable Q0/Q2 trained-source and physical GPU
+  numerical/state/cancel/fault/final-reader/serving acceptance needs separate
+  authority. No current compile/host/source-ownership blocker is known; do not
+  redo extraction or fabricate future features while physical acceptance is held.
+- Main only; both recurrences cancelled. No GPU/trained-Gemma execution,
+  acquisition, push, agent restart or recovery/privilege change. Protected README
+  and external detached checkout unchanged. Qwen/context/C1..C64/matched-vLLM and
+  E01–E10 remain deferred. Logs: `abird/zerogravity/fabric-config-eJobTiNW/`.
+
+## Previous checkpoint — source-owned preparation `860ce38`
 
 - Follows `83060e5`/`2f19224`/`51cd294`; earlier numerical/layout, catalog, serving,
   SDK/artifact and shared-scheduler ownership remains accepted.

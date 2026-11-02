@@ -4,14 +4,14 @@ Owner: @pvl; later appointed implementation coordinator
 
 # zerogravity Fabric vNext — transition architecture and implementation plan
 
-**Latest checkpoint:** `860ce38` binds source-owned family recording and typed
-provider/executable preparation to the original ordinary GGUF loader. Exact source
-and plan Arcs survive; `83060e5`/`2f19224` numerical/catalog/serving work remains.
-Approved CPU/source-host gates pass. Remaining family/provider/root/transport/whole
-parity and physical acceptance stay open. Main only; holds unchanged.
+**Latest checkpoint:** `fef7123` closes SDK configuration/typed graph policy and
+reconciles current source/host ownership parity. Retains `860ce38` preparation,
+`83060e5`/`2f19224` numerical/catalog/serving and earlier shared-engine work.
+Full isolated host gate passes; trained/physical Q0/Q2 remains held. Main only;
+no implicit source acquisition, hardware execution or campaign restart.
 [Current source](CURRENT_SOURCE_RECONCILIATION.md) · [active queue](TODO.md).
 
-**Created:** 27 October 2026. **Current status: source-owned preparation `860ce38`; remaining integration and full acceptance open.**
+**Created:** 27 October 2026. **Current status: source/host parity `fef7123`; trained/physical acceptance open.**
 **Read-only source observation:** HEAD fadf2b1123309a2118725f2cc005d3edc7ea39f2 (l5, 27 Oct 06:50 UTC). The 26 Oct deep review had 195099ca; preceding refresh had eb38dd5. These are evidence timestamps, not frozen ongoing source. Recheck HEAD before coding.
 **Physical root:** /home/pvl/spaces/abird/src/zerogravity via dotlink-l5.
 **Ownership:** owner explicitly promoted this transition in the shared queue. Preserve Plan 1's requirements and all unrelated source/owner work; the current main session serializes integration.
@@ -39,6 +39,8 @@ must be present together. Existing source/format/host-budget refusals still appl
   from engine workers or the same runtime's loader/retirement callback return
   State before changing admission. Use an external owner for real shutdown;
   short router callbacks remain non-reentrant, implicit self-drop unsupported.
+- `run::config::{RunOverrides,resolve}` and `pipelines::{PipelinePatch,ChatContextPatch}`:
+  shared typed precedence/path/graph policy; callers choose default files/env.
 - `pipelines::Document`: bounded YAML/schema/entrypoint checking, not execution.
 - `Runtime::devices`: inventory/policy; placement execution remains Unsupported.
 - `artifacts::{HubPull,ComponentDocument,ComponentClients}` and original provider/

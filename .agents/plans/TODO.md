@@ -5,11 +5,11 @@ Cross-window entrypoint: [CURRENT_HANDOFF.md](../docs/CURRENT_HANDOFF.md).
 
 ## Owner priority — 31 Oct
 
-**Source-owned preparation signed `860ce38`:** actual source/ForwardPlan Arcs reach
-original resident preparation through model-neutral typed contracts. Retains
-`83060e5`/`2f19224` and previous SDK/scheduler work. Approved CPU/source-host gate
-passes; remaining family/provider/root/transport/full parity and physical acceptance
-stay open. Main only; no new subagents. Both recurrences stay cancelled.
+**Source/host parity signed `fef7123`:** SDK run/config/graph policy now shares
+with CLI; full current feature/source-owner audit reconciled. Original typed
+adapters/root/arbiter/transport retained. Final host gate passes; whole Fabric
+remains open for separately authorized trained/physical Q0/Q2 acceptance.
+Main only; no new subagents. Both recurrences stay cancelled.
 
 Fabric vNext is now authorized and precedes the unfinished Qwen campaign.
 Preserve signed native GDN`e2559b6`/pause`1c35172` and all accepted bounded
@@ -19,7 +19,7 @@ model/context/C1..C64/vLLM mission. No production activation from refactoring.
 
 ## Active
 
-- [~] P0 fabric-vnext-transition — @pvl — source-owned preparation `860ce38`; source/host gate passed; remaining family/provider/root/transport and physical/final parity open — [details](fabric-vnext-transition/TODO.md)
+- [~] P0 fabric-vnext-transition — @pvl — source/host parity `fef7123`; source ownership reconciled and gate passed; trained/physical Q0/Q2 acceptance held — [details](fabric-vnext-transition/TODO.md)
 - [ ] P1 serving-and-speculation — @pvl — l5 CUDA `.8B`/`2B`, x2 ROCm `.8B`/`2B`/`27B`: correctness/context fit, C1..C64, then measured vLLM superiority; finite27B checkpoint passed; ordinary HIP remains open; deferred behind Fabric — [details](serving-and-speculation/TODO.md)
 - [~] P1 numerics-and-context — @pvl — exact cached47→50, lifecycle/capacity and final gate pass; active-context/2B reference inputs missing — [details](numerics-and-context/TODO.md)
 - [~] P1 memory-and-streaming — @pvl — exact two-root admission: `.8B` fits through 32K, `2B` through 16K, `2B`32K refuses before allocation — [details](memory-and-streaming/TODO.md)

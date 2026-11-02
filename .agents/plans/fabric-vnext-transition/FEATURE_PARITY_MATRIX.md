@@ -21,7 +21,7 @@ Latest source checkpoint and commit-scoped evidence:
 All old feature rows below remain a migration checklist, not an updated physical
 capability table. S0 is structural only; F4/Q0/Q2 must account for this delta too.
 
-## Current source ownership audit — SDK configuration batch
+## Current source ownership audit — `fef7123`
 
 This audits the current features in §§2–8, not broader model support. `S` means
 retained/re-homed implementation with source/host coverage; `H` means trained or
@@ -89,7 +89,7 @@ its failure is retained, fixture corrected, existing validation unchanged.
 Final isolated source/host gate: 2,340 Rust executions/0fail/97ignored/305 suite runs (70 empty); 17 Python suites/182 cases/10 skips.
 No physical/trained scope inferred from this gate; Q0/Q2 execution acceptance stays held.
 
-## Current source-owned preparation reconciliation — `860ce38`
+## Previous source-owned preparation reconciliation — `860ce38`
 
 | Area | Actual consumer / evidence | Remaining boundary |
 |---|---|---|

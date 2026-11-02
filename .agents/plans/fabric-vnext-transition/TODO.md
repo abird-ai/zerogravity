@@ -8,7 +8,7 @@ Base: `1c35172`
 
 ## Current direction — source ownership reconciled; execution acceptance held
 
-- SDK configuration/graph override policy is now shared with CLI; the current
+- Signed `fef7123`: SDK configuration/graph override policy is shared with CLI; the current
   feature matrix maps all source owners, original typed family adapters, root/
   physical authority and transport boundaries. No new interpreter or scheduler.
 - Source/host migration and static parity review are assembled. Whole Fabric
@@ -22,7 +22,7 @@ Base: `1c35172`
 
 ## Historical foundation evidence — assembled gate passed
 
-Current logs: XDG state`abird/zerogravity/fabric-checkpoint-lEnE3DDm/`.
+Foundation logs: XDG state`abird/zerogravity/fabric-checkpoint-lEnE3DDm/`.
 Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 
 - CPU/runtime/server/SDK/CLI strict checks pass; initial focused suites216 passes,
@@ -64,8 +64,8 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
   successful model preparation, placement, pipeline execution or future protocol.
 - CLI scheduler/route dispatch copies removed; signed `d4e94b1` also rehomes
   direct CPU/source planning, finite CUDA/Gemma diagnostics and artifact
-  orchestration. Final batch source/host gate passes; active contracts and whole
-  F4/Q acceptance remain open.
+  orchestration. `fef7123` closes remaining config policy and source parity;
+  full trained/physical Q acceptance remains held.
 - Qualification callers use real public admitted channels/host/cancel owners;
   no production test-support feature or exported isolated ledger was introduced.
 
@@ -84,7 +84,9 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
    implicit self-drop/reentrant retirement are not newly implemented.
 5. Only after applicable transition acceptance resume the original Qwen mission.
 
-## Uncommitted — SDK configuration and source-ownership audit
+## Committed
+
+### `fef7123` — SDK configuration and source-ownership audit
 
 - [x] Move config-relative paths, caller overrides, scalar/list precedence,
   provenance and final graph policy into public `run::config::resolve` and typed
@@ -119,7 +121,6 @@ Earlier failures/source comparisons:`fabric-runtime-juOhHkRS/`.
 - Physical/trained acceptance remains held. Logs: XDG state
   `abird/zerogravity/fabric-config-eJobTiNW/`. Source/host completion is not Q2.
 
-## Committed
 
 ### `860ce38` — source-owned executable preparation
 
