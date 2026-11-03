@@ -24,8 +24,8 @@ pub fn bf16_pv_f32_accumulator(
     if !source.is_bound() {
         return Err(Error::State("BF16 PV actual source".into()));
     }
-    if !(1..=64).contains(&geometry.contraction)
-        || !(1..=geometry.contraction).contains(&geometry.query_rows)
+    if !(1..=32_768).contains(&geometry.contraction)
+        || !(1..=geometry.contraction.min(64)).contains(&geometry.query_rows)
         || !matches!(geometry.output_width, 256 | 512)
         || probabilities.is_empty()
         || probabilities.len() != values.len()
@@ -174,7 +174,7 @@ mod tests {
     fn malformed_precision_extent_probability_and_nonfinite_refuse() {
         for shape in [
             geometry(0, 256),
-            geometry(65, 512),
+            geometry(32_769, 512),
             geometry(1, 128),
             Bf16PvGeometry {
                 query_rows: 0,

@@ -217,7 +217,7 @@ impl ResidentLedger {
             any(feature = "hip", feature = "vulkan"),
             any(
                 feature = "gemma-bf16-qualification",
-                feature = "qwen-source-qualification",
+                feature = "hip-source",
                 all(test, feature = "qualification", feature = "hip")
             )
         )
@@ -236,7 +236,7 @@ impl ResidentLedger {
             any(feature = "hip", feature = "vulkan"),
             any(
                 feature = "gemma-bf16-qualification",
-                feature = "qwen-source-qualification",
+                feature = "hip-source",
                 all(test, feature = "qualification", feature = "hip")
             )
         )
@@ -272,7 +272,7 @@ impl Deref for ResidentLedger {
         any(feature = "hip", feature = "vulkan"),
         any(
             feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification",
+            feature = "hip-source",
             all(test, feature = "qualification", feature = "hip")
         )
     )
@@ -292,7 +292,7 @@ pub(crate) trait ForeignProviderOwner: Send + Sync {
         any(feature = "hip", feature = "vulkan"),
         any(
             feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification",
+            feature = "hip-source",
             all(test, feature = "qualification", feature = "hip")
         )
     )
@@ -311,7 +311,7 @@ pub(crate) struct ForeignProviderCharge<
         any(feature = "hip", feature = "vulkan"),
         any(
             feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification",
+            feature = "hip-source",
             all(test, feature = "qualification", feature = "hip")
         )
     )
@@ -346,7 +346,7 @@ impl ForeignProviderCharge<super::native_cache::NativeCacheBudget> {
         any(feature = "hip", feature = "vulkan"),
         any(
             feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification",
+            feature = "hip-source",
             all(test, feature = "qualification", feature = "hip")
         )
     )

@@ -2,6 +2,7 @@
 //! Initial-one contraction has bounded original evidence; standalone exp and
 //! complete model/cached arithmetic remain unqualified.
 pub mod chunk;
+pub mod rows;
 
 use super::{conv, norm, recurrent, reduction, transcendentals};
 use crate::{Error, Result};

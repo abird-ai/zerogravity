@@ -38,7 +38,7 @@ mod foreign_provider;
         any(feature = "hip", feature = "vulkan"),
         any(
             feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification",
+            feature = "hip-source",
             all(test, feature = "qualification", feature = "hip")
         )
     )
@@ -54,16 +54,13 @@ pub(crate) use enqueue::{
     any(feature = "hip", feature = "vulkan"),
     any(
         feature = "gemma-bf16-qualification",
-        feature = "qwen-source-qualification",
+        feature = "hip-source",
         all(test, feature = "qualification", feature = "hip")
     )
 ))]
 pub(crate) use native_cache::NativeCacheBudget;
 #[cfg(all(
-    any(
-        feature = "gemma-bf16-qualification",
-        feature = "qwen-source-qualification"
-    ),
+    any(feature = "gemma-bf16-qualification", feature = "hip-source"),
     target_os = "linux"
 ))]
 pub(crate) mod frame_checkpoint;
@@ -73,13 +70,13 @@ mod model_upload;
 pub(crate) mod ordinary_parameter_upload;
 #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
 pub(crate) mod ordinary_projection_upload;
-#[cfg(all(feature = "qualification", target_os = "linux"))]
+#[cfg(all(
+    any(feature = "qualification", feature = "hip-source"),
+    target_os = "linux"
+))]
 pub(crate) mod resident_matrix;
 #[cfg(all(
-    any(
-        feature = "gemma-bf16-qualification",
-        feature = "qwen-source-qualification"
-    ),
+    any(feature = "gemma-bf16-qualification", feature = "hip-source"),
     target_os = "linux"
 ))]
 pub(crate) mod source_page;
@@ -93,7 +90,7 @@ mod source_upload;
         feature = "hip",
         any(
             feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification",
+            feature = "hip-source",
             all(test, feature = "qualification")
         )
     )
@@ -121,7 +118,7 @@ static NEXT_SERVICE_GENERATION: AtomicU64 = AtomicU64::new(1);
     any(feature = "hip", feature = "vulkan"),
     any(
         feature = "gemma-bf16-qualification",
-        feature = "qwen-source-qualification",
+        feature = "hip-source",
         all(test, feature = "qualification", feature = "hip")
     )
 ))]
@@ -354,7 +351,7 @@ impl ResidentService {
     pub fn generation(&self) -> u64 {
         self.generation
     }
-    #[cfg(feature = "qualification")]
+    #[cfg(any(feature = "qualification", feature = "hip-source"))]
     pub fn capacity(&self) -> usize {
         self.cap
     }
@@ -365,7 +362,10 @@ impl ResidentService {
     }
     #[cfg(all(
         target_os = "linux",
-        any(feature = "qualification", feature = "cuda-cublas")
+        any(
+            any(feature = "qualification", feature = "hip-source"),
+            feature = "cuda-cublas"
+        )
     ))]
     pub(crate) fn record_value_upload(&self, bytes: usize) {
         self.uploaded_value_bytes
@@ -391,7 +391,10 @@ impl ResidentService {
             .ok_or_else(|| Error::State("resident capacity accounting invalid".into()))
     }
 
-    #[cfg(any(feature = "qualification", feature = "cuda-cublas"))]
+    #[cfg(any(
+        any(feature = "qualification", feature = "hip-source"),
+        feature = "cuda-cublas"
+    ))]
     pub(crate) fn model_events(&self) -> Result<usize> {
         self.ledger
             .lock()
@@ -399,10 +402,7 @@ impl ResidentService {
             .map_err(|_| Error::State("resident event ledger poisoned".into()))
     }
 
-    #[cfg(any(
-        feature = "cuda-cublas",
-        all(feature = "hip", feature = "qwen-source-qualification")
-    ))]
+    #[cfg(any(feature = "cuda-cublas", all(feature = "hip", feature = "hip-source")))]
     pub(crate) fn close_model_namespace(&self) -> Result<()> {
         self.ensure_usable()?;
         if self.resident_bytes()? != 0 || self.model_events()? != 0 {
@@ -543,7 +543,10 @@ impl ResidentService {
             uploaded: BTreeSet::new(),
             #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             source_uploads: Vec::new(),
-            #[cfg(all(feature = "qualification", target_os = "linux"))]
+            #[cfg(all(
+                any(feature = "qualification", feature = "hip-source"),
+                target_os = "linux"
+            ))]
             matrix_source_uploads: Vec::new(),
             #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
             model_source_uploads: Vec::new(),
@@ -945,7 +948,6 @@ impl ResidentSubmission<'_> {
         }
         Ok(())
     }
-    #[cfg(any(feature = "qualification", feature = "cuda-cublas"))]
     pub(crate) fn retain_completion_owner(
         &mut self,
         owner: crate::physical_quarantine::CompletionOwner,
@@ -1252,7 +1254,10 @@ pub(crate) struct ResidentInitialization<'a> {
     uploaded: BTreeSet<BufferLeaseId>,
     #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     source_uploads: Vec<Arc<source_upload::UploadOwner>>,
-    #[cfg(all(feature = "qualification", target_os = "linux"))]
+    #[cfg(all(
+        any(feature = "qualification", feature = "hip-source"),
+        target_os = "linux"
+    ))]
     matrix_source_uploads: Vec<Arc<resident_matrix::upload::UploadOwner>>,
     #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
     model_source_uploads: Vec<Arc<model_upload::ModelUploadOwner>>,
@@ -1261,7 +1266,10 @@ pub(crate) struct ResidentInitialization<'a> {
     armed: bool,
 }
 impl ResidentInitialization<'_> {
-    #[cfg(any(feature = "qualification", feature = "cuda-cublas"))]
+    #[cfg(any(
+        any(feature = "qualification", feature = "hip-source"),
+        feature = "cuda-cublas"
+    ))]
     pub(crate) fn require_service(&self, service: &Arc<ResidentService>) -> Result<()> {
         if !Arc::ptr_eq(self.service, service) {
             return Err(Error::State(
@@ -1270,7 +1278,10 @@ impl ResidentInitialization<'_> {
         }
         service.ensure_usable()
     }
-    #[cfg(any(feature = "qualification", feature = "cuda-cublas"))]
+    #[cfg(any(
+        any(feature = "qualification", feature = "hip-source"),
+        feature = "cuda-cublas"
+    ))]
     pub(crate) fn retain_completion_owner(
         &mut self,
         owner: crate::physical_quarantine::CompletionOwner,
@@ -1379,7 +1390,10 @@ impl ResidentInitialization<'_> {
         Ok(lease)
     }
     pub async fn complete_sync(mut self) -> Result<ResidentReady> {
-        #[cfg(all(feature = "qualification", target_os = "linux"))]
+        #[cfg(all(
+            any(feature = "qualification", feature = "hip-source"),
+            target_os = "linux"
+        ))]
         for upload in &self.matrix_source_uploads {
             upload.require_complete()?;
         }
@@ -1557,3 +1571,6 @@ mod qwen2b_projection;
 
 #[cfg(all(feature = "cuda-native-qualification", target_os = "linux"))]
 mod rms_scratch;
+
+#[cfg(all(feature = "hip-source", target_os = "linux"))]
+pub(crate) mod source_parameters;

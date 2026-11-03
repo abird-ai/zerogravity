@@ -9,7 +9,7 @@ pub(crate) enum ResidentSource {
             feature = "cuda-cublas",
             feature = "cuda-native-qualification",
             feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification"
+            feature = "hip-source"
         ),
         target_os = "linux"
     ))]
@@ -24,7 +24,7 @@ impl ResidentSource {
                     feature = "cuda-cublas",
                     feature = "cuda-native-qualification",
                     feature = "gemma-bf16-qualification",
-                    feature = "qwen-source-qualification"
+                    feature = "hip-source"
                 ),
                 target_os = "linux"
             ))]
@@ -36,7 +36,7 @@ impl ResidentSource {
 pub struct ResidentPhysical {
     device: Device,
     pub(super) client: Client,
-    #[cfg(feature = "qualification")]
+    #[cfg(any(feature = "qualification", feature = "hip-source"))]
     pub(super) provider: crate::backend::Provider,
     #[cfg(all(
         feature = "cuda",
@@ -54,7 +54,7 @@ pub struct ResidentPhysical {
         any(feature = "hip", feature = "vulkan"),
         any(
             feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification",
+            feature = "hip-source",
             all(test, feature = "qualification", feature = "hip")
         )
     ))]
@@ -193,7 +193,7 @@ impl ResidentPhysical {
         device_cap: u64,
         provider: crate::backend::Provider,
     ) -> Result<Self> {
-        #[cfg(not(feature = "qualification"))]
+        #[cfg(not(any(feature = "qualification", feature = "hip-source")))]
         let _ = provider;
         crate::physical_quarantine::ensure_service_safe(&client)?;
         let budget = PhysicalServiceBudget::attach(
@@ -239,16 +239,19 @@ impl ResidentPhysical {
         budget: PhysicalServiceBudget,
     ) -> Result<Self> {
         let _ = provider_cap;
-        #[cfg(not(feature = "qualification"))]
+        #[cfg(not(any(feature = "qualification", feature = "hip-source")))]
         let _ = provider;
-        #[cfg(not(any(feature = "qualification", feature = "cuda-cublas")))]
+        #[cfg(not(any(
+            any(feature = "qualification", feature = "hip-source"),
+            feature = "cuda-cublas"
+        )))]
         let _ = provider;
         let generation = issue(&NEXT_SERVICE_GENERATION)?;
         let queue = queue_for(budget.physical_key())?;
         Ok(Self {
             device,
             client,
-            #[cfg(feature = "qualification")]
+            #[cfg(any(feature = "qualification", feature = "hip-source"))]
             provider,
             #[cfg(all(
                 feature = "cuda",
@@ -270,7 +273,7 @@ impl ResidentPhysical {
                 any(feature = "hip", feature = "vulkan"),
                 any(
                     feature = "gemma-bf16-qualification",
-                    feature = "qwen-source-qualification",
+                    feature = "hip-source",
                     all(test, feature = "qualification", feature = "hip")
                 )
             ))]
@@ -394,7 +397,7 @@ impl ResidentPhysical {
         any(feature = "hip", feature = "vulkan"),
         any(
             feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification",
+            feature = "hip-source",
             all(test, feature = "qualification", feature = "hip")
         )
     ))]

@@ -1,18 +1,22 @@
-//! Call-free ordinary original-HF Qwen CUDA plan metadata.
+//! Call-free ordinary original-HF Qwen plan metadata.
 //! The shared core plan owns math/SSA/state effects only; source authentication
 //! and family roles stay with the model, while roots/completion stay external.
 use super::*;
-use crate::source::binding::{OrdinaryCudaSourceSeal, QwenMatrixRole, QwenParameterRole};
+use crate::source::binding::{OrdinarySourceSeal, QwenMatrixRole, QwenParameterRole};
 
 #[derive(Debug)]
 struct OrdinaryQwenPlanOwner {
-    source: OrdinaryCudaSourceSeal,
+    source: OrdinarySourceSeal,
     plan: Arc<ForwardPlan>,
 }
 
-pub const ORDINARY_CUDA_MAX_CHUNK_ROWS: usize = 64;
-pub const ORDINARY_CUDA_MIN_CONTEXT: usize = 512;
-pub const ORDINARY_CUDA_MAX_CONTEXT: usize = 32_768;
+pub const ORDINARY_SOURCE_MAX_CHUNK_ROWS: usize = 64;
+pub const ORDINARY_SOURCE_MIN_CONTEXT: usize = 512;
+pub const ORDINARY_SOURCE_MAX_CONTEXT: usize = 32_768;
+// Existing CUDA callers retain the same bounds and source plan.
+pub use ORDINARY_SOURCE_MAX_CHUNK_ROWS as ORDINARY_CUDA_MAX_CHUNK_ROWS;
+pub use ORDINARY_SOURCE_MAX_CONTEXT as ORDINARY_CUDA_MAX_CONTEXT;
+pub use ORDINARY_SOURCE_MIN_CONTEXT as ORDINARY_CUDA_MIN_CONTEXT;
 
 #[derive(Clone, Debug)]
 pub struct OrdinaryQwenPlan {
@@ -27,7 +31,7 @@ impl OrdinaryQwenPlan {
         &self.owner.plan
     }
     /// Authenticated source capability retained with the static plan.
-    pub fn source_seal(&self) -> &OrdinaryCudaSourceSeal {
+    pub fn source_seal(&self) -> &OrdinarySourceSeal {
         &self.owner.source
     }
     /// Exact immutable source backing for GPU preparation and validation.
@@ -41,7 +45,7 @@ impl OrdinaryQwenPlan {
         self.owner.plan.prefix_capacity()
     }
     pub fn max_chunk_rows(&self) -> usize {
-        ORDINARY_CUDA_MAX_CHUNK_ROWS
+        ORDINARY_SOURCE_MAX_CHUNK_ROWS
     }
     pub fn boundaries(&self) -> &[[ValueId; 2]] {
         &self.boundaries
@@ -60,6 +64,12 @@ impl OrdinaryQwenPlan {
         ids: Arc<[u32]>,
         emit_logits: bool,
     ) -> Result<OrdinaryQwenInvocation> {
+        require_source_phase(
+            self.source_seal().numerical_contract(),
+            mode,
+            base,
+            ids.len(),
+        )?;
         let invocation = SourceInvocation::new(
             TextCallGeometry::new(
                 self.owner.plan.source(),
@@ -90,10 +100,14 @@ pub struct OrdinaryQwenInvocation {
     mode: SourceCallMode,
 }
 impl OrdinaryQwenInvocation {
+    /// Borrow the original core binding; providers materialize it under admission.
+    pub fn bound_invocation(&self) -> &BoundSourceInvocation {
+        &self.bound
+    }
     pub fn plan(&self) -> &Arc<ForwardPlan> {
         self.bound.plan()
     }
-    pub fn source_seal(&self) -> &OrdinaryCudaSourceSeal {
+    pub fn source_seal(&self) -> &OrdinarySourceSeal {
         &self.owner.source
     }
     pub fn source(&self) -> &zerogravity_artifacts::source_weights::VerifiedTensorSource {
@@ -131,6 +145,26 @@ impl OrdinaryQwenInvocation {
     }
 }
 
+fn require_source_phase(
+    numerical: SourceNumericalContract,
+    mode: SourceCallMode,
+    base: usize,
+    rows: usize,
+) -> Result<()> {
+    // Original HF takes cached recurrence for every initialized single-row call.
+    // Refuse a contradictory declaration; never silently rewrite the phase.
+    if numerical == SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1
+        && base > 0
+        && rows == 1
+        && mode != SourceCallMode::Decode
+    {
+        return Err(Error::Unsupported(
+            "original CPU-source cached row requires explicit decode".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn domains() -> Result<Vec<StateSlot>> {
     hybrid_state_domains((0..24).map(|index| index % 4 == 3))
 }
@@ -143,7 +177,7 @@ struct RecordedOrdinaryPlan {
 }
 
 pub(crate) fn build_ordinary_plan(
-    source: &OrdinaryCudaSourceSeal,
+    source: &OrdinarySourceSeal,
     context_capacity_tokens: usize,
     matrix: impl FnMut(QwenMatrixRole) -> Result<SourceTensor>,
     parameter: impl FnMut(QwenParameterRole) -> Result<SourceParameter>,
@@ -152,6 +186,7 @@ pub(crate) fn build_ordinary_plan(
     let recorded = record_ordinary_plan(
         source.source_identity(),
         profile,
+        source.numerical_contract(),
         context_capacity_tokens,
         matrix,
         parameter,
@@ -171,25 +206,33 @@ pub(crate) fn build_ordinary_plan(
 fn record_ordinary_plan(
     identity: SourceIdentity,
     profile: QwenSourceProfile,
+    numerical: SourceNumericalContract,
     context_capacity_tokens: usize,
     mut matrix: impl FnMut(QwenMatrixRole) -> Result<SourceTensor>,
     mut parameter: impl FnMut(QwenParameterRole) -> Result<SourceParameter>,
 ) -> Result<RecordedOrdinaryPlan> {
-    if !(ORDINARY_CUDA_MIN_CONTEXT..=ORDINARY_CUDA_MAX_CONTEXT).contains(&context_capacity_tokens) {
+    if !(ORDINARY_SOURCE_MIN_CONTEXT..=ORDINARY_SOURCE_MAX_CONTEXT)
+        .contains(&context_capacity_tokens)
+    {
         return Err(Error::Unsupported(
-            "ordinary CUDA context capacity must be 512..32768".into(),
+            "ordinary source context capacity must be 512..32768".into(),
         ));
     }
     let geometry = SourcePlanGeometry::new(
         identity,
         profile.vocabulary_size(),
         context_capacity_tokens,
-        ORDINARY_CUDA_MAX_CHUNK_ROWS,
+        ORDINARY_SOURCE_MAX_CHUNK_ROWS,
     )?;
     let mut recorder = OrdinaryRecorder {
         profile,
+        numerical,
         geometry,
-        builder: CorePlanBuilder::new_source_template(geometry, domains()?)?,
+        builder: CorePlanBuilder::new_source_template_with_contract(
+            geometry,
+            domains()?,
+            numerical,
+        )?,
         matrix: &mut matrix,
         parameter: &mut parameter,
         boundaries: Vec::with_capacity(24),
@@ -245,6 +288,7 @@ type MatrixResolver<'a> = &'a mut dyn FnMut(QwenMatrixRole) -> Result<SourceTens
 type ParameterResolver<'a> = &'a mut dyn FnMut(QwenParameterRole) -> Result<SourceParameter>;
 struct OrdinaryRecorder<'a> {
     profile: QwenSourceProfile,
+    numerical: SourceNumericalContract,
     geometry: SourcePlanGeometry,
     builder: CorePlanBuilder,
     matrix: MatrixResolver<'a>,
@@ -277,8 +321,8 @@ impl OrdinaryRecorder<'_> {
             } else {
                 SourceRowSelection::AllActive
             },
-            mathematical_kind(self.profile, layer, operation)?,
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            mathematical_kind(self.profile, self.numerical, layer, operation)?,
+            self.numerical,
             matrices,
             parameters,
         )
@@ -336,7 +380,7 @@ impl crate::hybrid_decoder::HybridDecoder for OrdinaryRecorder<'_> {
             self.geometry,
             SourceRowSelection::AllActive,
             SourceOperatorKind::EmbeddingRows,
-            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            self.numerical,
             vec![(self.matrix)(QwenMatrixRole::Embedding)?],
             vec![],
         )?;
@@ -473,6 +517,7 @@ impl crate::hybrid_decoder::HybridDecoder for OrdinaryRecorder<'_> {
 
 fn mathematical_kind(
     profile: QwenSourceProfile,
+    numerical: SourceNumericalContract,
     layer: Option<usize>,
     operation: QwenOperation,
 ) -> Result<SourceOperatorKind> {
@@ -503,7 +548,11 @@ fn mathematical_kind(
                 key_width: 128,
                 value_width: 128,
                 epsilon: 1e-6,
-                contract: SourceGdnContract::ReferenceCudaSm86L2SiluBf16V1,
+                contract: if numerical == SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1 {
+                    SourceGdnContract::TorchCpuAvx2L2SiluBf16V1
+                } else {
+                    SourceGdnContract::ReferenceCudaSm86L2SiluBf16V1
+                },
             },
         },
         QwenOperation::AttentionQk => {
@@ -523,7 +572,7 @@ fn mathematical_kind(
             key_width: 512,
             packed_value: TensorView {
                 offset: 4608,
-                rows: ORDINARY_CUDA_MAX_CHUNK_ROWS,
+                rows: ORDINARY_SOURCE_MAX_CHUNK_ROWS,
                 width: 512,
                 row_stride: 5120,
             },
@@ -588,6 +637,7 @@ pub fn diagnostic_ordinary_plan(
     let recorded = record_ordinary_plan(
         source,
         profile,
+        SourceNumericalContract::ReferenceCudaSm86Bf16V1,
         context_capacity_tokens,
         |role| Ok(diagnostic_matrix(source, profile, role)),
         |role| Ok(diagnostic_parameter(source, profile, role)),
@@ -704,7 +754,7 @@ fn diagnostic_parameter(
 
 #[cfg(all(test, feature = "cpu"))]
 pub(crate) fn build_test_ordinary_plan(
-    source: &OrdinaryCudaSourceSeal,
+    source: &OrdinarySourceSeal,
     context_capacity_tokens: usize,
 ) -> Result<OrdinaryQwenPlan> {
     let identity = source.source_identity();

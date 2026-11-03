@@ -269,13 +269,21 @@ impl GeneratedText {
         self._metrics_charge = charge;
         self
     }
-    /// CPU policy: bounded output refusal terminates this presenter.
+    /// Sequential policy: bounded output refusal terminates this presenter.
     #[cfg(test)]
     pub(crate) fn accept(&mut self, id: u32) -> Result<bool, ServiceError> {
         self.accept_committed(id, Instant::now())
     }
     pub fn accept_committed(&mut self, id: u32, committed: Instant) -> Result<bool, ServiceError> {
-        match self.present_committed(id, committed)? {
+        self.accept_observed(id, committed, None)
+    }
+    pub(crate) fn accept_observed(
+        &mut self,
+        id: u32,
+        committed: Instant,
+        observation: Option<GpuTokenObservation>,
+    ) -> Result<bool, ServiceError> {
+        match self.present_observed(id, committed, observation)? {
             Presentation::Ready => Ok(false),
             Presentation::Finished => Ok(true),
             Presentation::Blocked => Err(self.fail(ServiceError::new(
@@ -1357,6 +1365,60 @@ mod tests {
             receiver.try_recv(),
             Err(mpsc::TryRecvError::Empty)
         ));
+    }
+
+    #[test]
+    fn sequential_presentation_preserves_supplied_publication_observation() {
+        for stream in [false, true] {
+            let (sender, receiver) = mpsc::sync_channel(4);
+            let when = Instant::now();
+            let observation = GpuTokenObservation {
+                producer_frontier: 47,
+                producer_root: Some(GpuRootObservation {
+                    session_id: 17,
+                    root: 3,
+                    session_epoch: 2,
+                }),
+                native_cohort: None,
+            };
+            let mut output = GeneratedText::new(output_tokenizer(false), sender, stream, 1, 47)
+                .observed(
+                    Some(TokenMetricsRequest {
+                        started: when,
+                        wire_request_id: None,
+                    }),
+                    7,
+                );
+            assert!(output.accept_observed(2, when, Some(observation)).unwrap());
+            match receiver.recv().unwrap() {
+                ResponseEvent::TokenText { token, .. } => {
+                    assert_eq!((token.index, token.id), (0, 2));
+                    assert_eq!(token.commit_observed_at, when);
+                    assert_eq!(token.gpu, Some(observation));
+                }
+                _ => panic!("original supplied observation missing"),
+            }
+            match receiver.recv().unwrap() {
+                ResponseEvent::Done {
+                    output,
+                    prompt_tokens,
+                    completion_tokens,
+                    finish_reason,
+                } => {
+                    assert_eq!(
+                        (
+                            output.as_str(),
+                            prompt_tokens,
+                            completion_tokens,
+                            finish_reason
+                        ),
+                        ("A", 47, 1, "length")
+                    );
+                }
+                _ => panic!("sequential terminal output missing"),
+            }
+            assert_eq!(output.generated_token_count(), 1);
+        }
     }
 
     #[test]

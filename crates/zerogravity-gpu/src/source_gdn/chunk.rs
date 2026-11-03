@@ -4,8 +4,15 @@ use crate::program_kernels::NONFINITE_VALUE;
 use crate::source_arithmetic::{add, bf16, div, finite, fused, mul, source_bf16, sub};
 use crate::source_standalone_exp::negative::{add64, lane as exp};
 use cubecl::prelude::*;
+pub(crate) mod execution;
+pub(crate) mod prepared;
 
-#[cfg(all(test, feature = "hip", feature = "hardware-abort-probe"))]
+#[cfg(all(
+    test,
+    feature = "qwen-source-qualification",
+    feature = "hip",
+    feature = "hardware-abort-probe"
+))]
 mod physical;
 
 #[cube(launch_unchecked)]

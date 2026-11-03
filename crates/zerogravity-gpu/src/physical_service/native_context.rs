@@ -45,7 +45,7 @@ impl NativeContextBudget {
         any(feature = "hip", feature = "vulkan"),
         any(
             feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification",
+            feature = "hip-source",
             all(test, feature = "qualification", feature = "hip")
         )
     ))]
@@ -75,7 +75,7 @@ impl NativeContextBudget {
         any(feature = "hip", feature = "vulkan"),
         any(
             feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification",
+            feature = "hip-source",
             all(test, feature = "qualification", feature = "hip")
         )
     ))]

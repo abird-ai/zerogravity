@@ -90,7 +90,11 @@ impl BufferRange {
     }
     #[cfg(all(
         target_os = "linux",
-        any(feature = "qualification", feature = "cuda-cublas")
+        any(
+            feature = "qualification",
+            feature = "cuda-cublas",
+            feature = "hip-source"
+        )
     ))]
     pub(crate) fn require_exact_len(&self, bytes: usize) -> Result<()> {
         if self.bytes.end - self.bytes.start != bytes as u64 {
@@ -252,7 +256,11 @@ impl DeviceBuffer {
     /// Original admitted lease only; public handle metadata cannot retarget it.
     #[cfg(all(
         target_os = "linux",
-        any(feature = "cuda-native-qualification", feature = "cuda-cublas")
+        any(
+            feature = "cuda-native-qualification",
+            feature = "cuda-cublas",
+            feature = "hip-source"
+        )
     ))]
     pub(crate) fn original_lease(&self) -> Result<&crate::resident_leases::ResidentLease> {
         let lease = self.lease.as_ref().ok_or_else(|| {
@@ -551,7 +559,11 @@ enum ResidentProgramSource {
     Owned(Arc<dyn TensorSource>),
     #[cfg(all(
         target_os = "linux",
-        any(feature = "qualification", feature = "cuda-cublas")
+        any(
+            feature = "qualification",
+            feature = "cuda-cublas",
+            feature = "hip-source"
+        )
     ))]
     Windows(zerogravity_artifacts::source_weights::VerifiedTensorSource),
 }
@@ -561,7 +573,11 @@ impl ResidentProgramSource {
             Self::Owned(source) => source.source_identity(),
             #[cfg(all(
                 target_os = "linux",
-                any(feature = "qualification", feature = "cuda-cublas")
+                any(
+                    feature = "qualification",
+                    feature = "cuda-cublas",
+                    feature = "hip-source"
+                )
             ))]
             Self::Windows(source) => source.source_identity(),
         }
@@ -578,6 +594,8 @@ struct LegacyProgram {
     trig_tables: Handle,
 }
 enum ResidentProgramBody {
+    #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+    SourceCall(Arc<source_call::Cold>),
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
     OrdinaryCuda(Arc<ordinary_cuda::body::OrdinaryCudaBody>),
     #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
@@ -621,10 +639,7 @@ pub(crate) mod qwen2b_component;
 pub mod source_bindings;
 
 #[cfg(all(
-    any(
-        feature = "gemma-bf16-qualification",
-        feature = "qwen-source-qualification"
-    ),
+    any(feature = "gemma-bf16-qualification", feature = "hip-source"),
     target_os = "linux"
 ))]
 pub(crate) mod bf16_projection;
@@ -635,6 +650,13 @@ pub(crate) mod text_source;
 
 #[cfg(all(feature = "qwen-source-qualification", target_os = "linux"))]
 pub(crate) mod bf16_text_source;
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
+mod ordinary_source;
+#[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+pub(crate) mod source_call;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ResidentSubmission {
@@ -699,6 +721,10 @@ impl ResidentProgram {
     fn legacy(&self) -> Result<&LegacyProgram> {
         match &self.body {
             ResidentProgramBody::Legacy(body) => Ok(body),
+            #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+            ResidentProgramBody::SourceCall(_) => Err(Error::Unsupported(
+                "source-call body cannot enter legacy execution".into(),
+            )),
             #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
             ResidentProgramBody::OrdinaryCuda(_) => Err(Error::Unsupported(
                 "ordinary CUDA body cannot enter legacy execution".into(),
@@ -727,6 +753,10 @@ impl ResidentProgram {
     fn legacy_mut(&mut self) -> Result<&mut LegacyProgram> {
         match &mut self.body {
             ResidentProgramBody::Legacy(body) => Ok(body),
+            #[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+            ResidentProgramBody::SourceCall(_) => Err(Error::Unsupported(
+                "source-call body cannot enter legacy execution".into(),
+            )),
             #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
             ResidentProgramBody::OrdinaryCuda(_) => Err(Error::Unsupported(
                 "ordinary CUDA body cannot enter legacy execution".into(),
@@ -1526,7 +1556,11 @@ impl ResidentProgram {
             ResidentProgramSource::Owned(source) => Ok(source.clone()),
             #[cfg(all(
                 target_os = "linux",
-                any(feature = "qualification", feature = "cuda-cublas")
+                any(
+                    feature = "qualification",
+                    feature = "cuda-cublas",
+                    feature = "hip-source"
+                )
             ))]
             ResidentProgramSource::Windows(_) => Err(Error::Unsupported(
                 "window-bound source requires its original preparation adapter".into(),
@@ -3800,3 +3834,9 @@ pub(crate) mod bf16_greedy;
 pub(crate) mod text_positions;
 
 mod silu;
+
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
+pub(crate) mod source_observation;

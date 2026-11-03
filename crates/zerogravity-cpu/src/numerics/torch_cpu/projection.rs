@@ -1,4 +1,4 @@
-//! Pinned Torch CPU AVX2 BF16 B1 GEMV accumulation; the caller owns the BF16 cast.
+//! Pinned Torch CPU AVX2 BF16 output-first projection; original dot reduction.
 
 // Numerical topology follows PyTorch cf30153c4c131c8164ee7798e5022d810682e2cb,
 // ReducedPrecisionFloatGemvFastPathKernel.cpp and functional_base.h (AVX2).
@@ -64,6 +64,77 @@ pub(crate) fn dot_bf16_cpu_avx2(row: &[u8], x: &[f32]) -> f32 {
     }
     result
 }
+
+/// Token-major source rows against an original `[output,input]` BF16 tensor.
+/// Private BF16 results only; caller admits storage and retains source ownership.
+/// The original F.linear transposed-weight path uses this same dot for each row.
+/// This does not select a model, physical backend or recurrent execution phase.
+pub fn project_bf16_rows(
+    source: crate::accelerator::SourceIdentity,
+    weights: zerogravity_core::source::SourceTensorRef<'_>,
+    input: &[f32],
+    rows: usize,
+) -> crate::Result<Vec<f32>> {
+    use crate::Error;
+    use zerogravity_core::{
+        encoding::{ScalarDType, StoredTensorEncoding},
+        numerics::ActivationPrecision,
+    };
+    if !source.is_bound() || !(1..=64).contains(&rows) {
+        return Err(Error::Malformed(
+            "BF16 projection source/row geometry".into(),
+        ));
+    }
+    weights.validate()?;
+    if weights.kind != StoredTensorEncoding::Scalar(ScalarDType::Bf16) || weights.shape.len() != 2 {
+        return Err(Error::Unsupported(
+            "BF16 projection original output-first tensor".into(),
+        ));
+    }
+    let dimension = |n: u64| {
+        usize::try_from(n)
+            .ok()
+            .filter(|n| *n > 0 && *n <= u32::MAX as usize)
+            .ok_or_else(|| Error::Limit("BF16 projection dimension".into()))
+    };
+    let outputs = dimension(weights.shape[0])?;
+    let columns = dimension(weights.shape[1])?;
+    if columns.checked_mul(rows) != Some(input.len()) {
+        return Err(Error::Malformed(
+            "BF16 projection complete input rows".into(),
+        ));
+    }
+    ActivationPrecision::Bf16WidenedF32.validate_values(input)?;
+    if weights
+        .packed_bytes
+        .chunks_exact(2)
+        .any(|v| u16::from_le_bytes([v[0], v[1]]) & 0x7f80 == 0x7f80)
+    {
+        return Err(Error::Malformed(
+            "BF16 projection finite source weights".into(),
+        ));
+    }
+    let count = outputs
+        .checked_mul(rows)
+        .filter(|n| n.checked_mul(4).is_some())
+        .ok_or_else(|| Error::Limit("BF16 projection output extent".into()))?;
+    let mut result = Vec::new();
+    result
+        .try_reserve_exact(count)
+        .map_err(|_| Error::Limit("BF16 projection output allocation".into()))?;
+    if result.capacity() != count {
+        return Err(Error::Limit("BF16 projection output capacity".into()));
+    }
+    for row in input.chunks_exact(columns) {
+        for weight in weights.packed_bytes.chunks_exact(columns * 2) {
+            result.push(super::norm::round_bf16(dot_bf16_cpu_avx2(weight, row))?);
+        }
+    }
+    Ok(result)
+}
+
+#[cfg(test)]
+mod rows_tests;
 
 #[cfg(test)]
 mod tests {

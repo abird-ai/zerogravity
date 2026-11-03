@@ -152,10 +152,10 @@ impl OriginalWindowModelSource {
 mod gdn_fragment;
 
 mod full_model_source;
-mod ordinary_cuda;
+mod ordinary_source;
 mod source_plan;
 pub use full_model_source::{BoundFullModelSource, BoundPromptCall};
-pub use ordinary_cuda::OrdinaryCudaSourceSeal;
+pub use ordinary_source::{OrdinaryCudaSourceSeal, OrdinarySourceSeal};
 mod prepare;
 pub use prepare::{
     ComponentImplementation, ComponentKernelCapture, ComponentOutput, PreparedComponent,

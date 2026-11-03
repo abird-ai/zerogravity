@@ -94,7 +94,10 @@ use cubecl::{Device, bytes::Bytes, server::Handle};
 #[cfg(all(test, feature = "qualification", feature = "cuda"))]
 use std::path::Path;
 use std::sync::Arc;
-#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_core::Error;
 use zerogravity_core::Result;
@@ -322,7 +325,10 @@ fn publish_prepared_cohort(
     Ok(())
 }
 
-#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
 fn ordinary_not_cancelled(cancelled: Option<&std::sync::atomic::AtomicBool>) -> Result<()> {
     if cancelled.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Acquire)) {
         return Err(Error::State("ordinary CUDA request cancelled".into()));
@@ -866,7 +872,10 @@ impl ResidentModel {
         F: FnOnce(&mut crate::resident_leases::ResidentInitialization<'_>) -> Result<()>,
     {
         if let Some(storage) = self.state_pool.get() {
-            #[cfg(all(feature = "qualification", target_os = "linux"))]
+            #[cfg(all(
+                any(feature = "qualification", feature = "hip-source"),
+                target_os = "linux"
+            ))]
             let host = if zero {
                 let bytes = self
                     .state_bytes
@@ -881,7 +890,10 @@ impl ResidentModel {
                 None
             };
             return state_pool::allocate_pooled_state(self, &storage.pool, zero, None, |init| {
-                #[cfg(all(feature = "qualification", target_os = "linux"))]
+                #[cfg(all(
+                    any(feature = "qualification", feature = "hip-source"),
+                    target_os = "linux"
+                ))]
                 if let Some(host) = host {
                     init.retain_completion_owner(host)?;
                 }
@@ -1583,17 +1595,26 @@ impl ResidentModel {
     }
 }
 
-#[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
 impl ResidentModel {
-    async fn execute_ordinary_cuda(
+    async fn execute_ordinary_source(
         &self,
         base: RootBinding,
         prior: &[Domain],
         candidate: Vec<Domain>,
         request: &ForwardPlan,
-        output: ResidentOutput,
-        cancelled: Option<&std::sync::atomic::AtomicBool>,
+        options: OrdinarySourceOptions<'_, '_>,
     ) -> Result<(Vec<Domain>, ResidentReady, InferenceReadback)> {
+        let OrdinarySourceOptions {
+            output,
+            cancelled,
+            observer,
+            completion_owner,
+            submitted: submitted_flag,
+        } = options;
         ordinary_not_cancelled(cancelled)?;
         self.service.ensure_usable()?;
         let call = request
@@ -1630,12 +1651,18 @@ impl ResidentModel {
         let mut slot = ticket.wait().await?;
         ordinary_not_cancelled(cancelled)?;
         let workspace = self.workspace.lock().await;
-        if !workspace.program.is_ordinary_cuda() {
+        if !workspace.program.is_ordinary_source() {
             return Err(Error::State(
                 "ordinary CUDA request reached another resident model".into(),
             ));
         }
-        workspace.program.validate_ordinary_cuda_request(request)?;
+        workspace
+            .program
+            .validate_ordinary_source_request(request)?;
+        workspace
+            .program
+            .validate_source_call_states(request, &bindings)?;
+        let wait_on_cancel = workspace.program.source_call_waits_on_cancel();
 
         let mut accesses = match output {
             ResidentOutput::StateOnly => workspace.state_accesses.clone(),
@@ -1662,17 +1689,22 @@ impl ResidentModel {
         ordinary_not_cancelled(cancelled)?;
         slot.begin_submission()?;
         let mut flight = self.service.submit(base.root(), &accesses)?;
-        let submitted = workspace.program.launch_ordinary_cuda(
-            &mut flight,
-            request,
-            &bindings,
-            output,
-            cancelled,
-        )?;
+        if let Some(owner) = completion_owner {
+            flight.retain_completion_owner(owner)?;
+        }
+        if let Some(flag) = submitted_flag {
+            flag.store(true, std::sync::atomic::Ordering::Release);
+        }
+        let submitted = workspace
+            .program
+            .launch_ordinary_source(&mut flight, request, &bindings, output, cancelled, observer)
+            .await?;
         #[cfg(feature = "hardware-abort-probe")]
         self.qualification_after_launch(flight.handles().len())
             .await;
-        ordinary_not_cancelled(cancelled)?;
+        if !wait_on_cancel {
+            ordinary_not_cancelled(cancelled)?;
+        }
 
         let expected = workspace.program.plan().proposed_domains();
         if submitted.proposals.len() != expected.len() {
@@ -1721,7 +1753,9 @@ impl ResidentModel {
             .flat_map(|domain| domain.leases.iter().cloned())
             .collect::<Vec<_>>();
         let expected_readback_bytes = cohort.iter().map(|item| item.bytes()).sum();
-        ordinary_not_cancelled(cancelled)?;
+        if !wait_on_cancel {
+            ordinary_not_cancelled(cancelled)?;
+        }
         let (ready, read) = flight
             .complete_with_readback(&promoted, &cohort, |values| {
                 if !all_zero(&values[0]) {
@@ -1738,7 +1772,9 @@ impl ResidentModel {
             })
             .await?;
         slot.finish()?;
-        ordinary_not_cancelled(cancelled)?;
+        if !wait_on_cancel {
+            ordinary_not_cancelled(cancelled)?;
+        }
 
         Ok((
             candidate,
@@ -1839,6 +1875,12 @@ fn bind_domains(
 }
 impl ResidentSnapshot {
     pub async fn read_domains(&self) -> Result<Vec<(StateSlot, Vec<f32>)>> {
+        self.read_domains_retaining(None).await
+    }
+    async fn read_domains_retaining(
+        &self,
+        owner: Option<crate::physical_quarantine::CompletionOwner>,
+    ) -> Result<Vec<(StateSlot, Vec<f32>)>> {
         let service = self
             .domains
             .first()
@@ -1891,7 +1933,10 @@ impl ResidentSnapshot {
         )?;
         let mut slot = ticket.wait().await?;
         slot.begin_submission()?;
-        let flight = service.submit(self.binding.root(), &accesses)?;
+        let mut flight = service.submit(self.binding.root(), &accesses)?;
+        if let Some(owner) = owner {
+            flight.retain_completion_owner(owner)?;
+        }
         let read = flight
             .complete_read_only_readback(&cohort, |data| {
                 if data.len() != layouts.len() {
@@ -2156,7 +2201,9 @@ impl ResidentSession {
     }
     #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
     pub async fn prepare_ordinary_cuda(&self, request: ForwardPlan) -> Result<PreparedInference> {
-        self.prepare_ordinary_cuda_mode(request, ResidentOutput::Logits, None)
+        self.prepare_ordinary_source_mode(request,
+            zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            OrdinarySourceOptions { output: ResidentOutput::Logits, cancelled: None, observer: None, completion_owner: None, submitted: None })
             .await
     }
 
@@ -2166,7 +2213,9 @@ impl ResidentSession {
         request: ForwardPlan,
         cancelled: &std::sync::atomic::AtomicBool,
     ) -> Result<PreparedInference> {
-        self.prepare_ordinary_cuda_mode(request, ResidentOutput::Logits, Some(cancelled))
+        self.prepare_ordinary_source_mode(request,
+            zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            OrdinarySourceOptions { output: ResidentOutput::Logits, cancelled: Some(cancelled), observer: None, completion_owner: None, submitted: None })
             .await
     }
 
@@ -2175,7 +2224,9 @@ impl ResidentSession {
         &self,
         request: ForwardPlan,
     ) -> Result<PreparedInference> {
-        self.prepare_ordinary_cuda_mode(request, ResidentOutput::StateOnly, None)
+        self.prepare_ordinary_source_mode(request,
+            zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            OrdinarySourceOptions { output: ResidentOutput::StateOnly, cancelled: None, observer: None, completion_owner: None, submitted: None })
             .await
     }
 
@@ -2185,18 +2236,29 @@ impl ResidentSession {
         request: ForwardPlan,
         cancelled: &std::sync::atomic::AtomicBool,
     ) -> Result<PreparedInference> {
-        self.prepare_ordinary_cuda_mode(request, ResidentOutput::StateOnly, Some(cancelled))
+        self.prepare_ordinary_source_mode(request,
+            zerogravity_core::accelerator::program::SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+            OrdinarySourceOptions { output: ResidentOutput::StateOnly, cancelled: Some(cancelled), observer: None, completion_owner: None, submitted: None })
             .await
     }
 
-    #[cfg(all(feature = "cuda-cublas", target_os = "linux"))]
-    async fn prepare_ordinary_cuda_mode(
+    #[cfg(all(
+        target_os = "linux",
+        any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+    ))]
+    async fn prepare_ordinary_source_mode(
         &self,
         request: ForwardPlan,
-        output: ResidentOutput,
-        cancelled: Option<&std::sync::atomic::AtomicBool>,
+        contract: zerogravity_core::accelerator::program::SourceNumericalContract,
+        options: OrdinarySourceOptions<'_, '_>,
     ) -> Result<PreparedInference> {
+        let cancelled = options.cancelled;
         ordinary_not_cancelled(cancelled)?;
+        if request.numerical_profile() != contract.program_profile() {
+            return Err(Error::Unsupported(
+                "ordinary source request numerical contract differs".into(),
+            ));
+        }
         let call = request
             .source_call()
             .ok_or_else(|| Error::State("ordinary CUDA request call absent".into()))?
@@ -2216,12 +2278,14 @@ impl ResidentSession {
         // Validate source semantics/topology before candidate-root allocation.
         {
             let workspace = self.model.workspace.lock().await;
-            if !workspace.program.is_ordinary_cuda() {
+            if !workspace.program.is_ordinary_source() {
                 return Err(Error::State(
                     "ordinary CUDA request belongs to another resident model".into(),
                 ));
             }
-            workspace.program.validate_ordinary_cuda_request(&request)?;
+            workspace
+                .program
+                .validate_ordinary_source_request(&request)?;
         }
 
         ordinary_not_cancelled(cancelled)?;
@@ -2233,9 +2297,11 @@ impl ResidentSession {
         ordinary_not_cancelled(cancelled)?;
         let (domains, ready, readback) = self
             .model
-            .execute_ordinary_cuda(base, &self.domains, candidate, &request, output, cancelled)
+            .execute_ordinary_source(base, &self.domains, candidate, &request, options)
             .await?;
-        ordinary_not_cancelled(cancelled)?;
+        if contract != zerogravity_core::accelerator::program::SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1 {
+            ordinary_not_cancelled(cancelled)?;
+        }
         Ok(PreparedInference {
             attempt,
             domains,
@@ -2418,8 +2484,14 @@ impl ResidentSession {
         Ok(())
     }
     pub async fn reset(&mut self) -> Result<()> {
+        self.reset_retaining(|_| Ok(())).await
+    }
+    async fn reset_retaining<F>(&mut self, retain: F) -> Result<()>
+    where
+        F: FnOnce(&mut crate::resident_leases::ResidentInitialization<'_>) -> Result<()>,
+    {
         let attempt = self.authority.begin_reset()?;
-        let mut displaced = self.model.allocate_state(true).await?;
+        let mut displaced = self.model.allocate_state_with(true, retain).await?;
         self.model.service.publish_if_usable(|| {
             let transition = self.authority.prepare_publish(attempt)?;
             std::mem::swap(&mut self.domains, &mut displaced);
@@ -2636,6 +2708,18 @@ impl CheckpointFixture for ResidentSession {
     }
 }
 
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
+struct OrdinarySourceOptions<'a, 'b> {
+    output: ResidentOutput,
+    cancelled: Option<&'a std::sync::atomic::AtomicBool>,
+    observer: Option<&'b mut dyn crate::resident_program::source_observation::SourceCallObserver>,
+    completion_owner: Option<crate::physical_quarantine::CompletionOwner>,
+    submitted: Option<&'a std::sync::atomic::AtomicBool>,
+}
+
 #[cfg(test)]
 mod ordinary_shutdown_owner_tests {
     use super::into_unique_owner;
@@ -2726,3 +2810,27 @@ mod ordinary_shutdown_owner_tests {
         assert!(!super::resident_plane_tail_zero(&dirty, layout, 4).unwrap());
     }
 }
+
+#[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+mod source_call;
+#[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+pub use source_call::{
+    SourceCallInventory, SourceCallModel, SourceCallPending, SourceCallPreparation,
+    SourceCallPublication, SourceCallReadback, SourceCallSession, SourceCallSnapshot,
+};
+
+#[cfg(all(
+    feature = "hip-source",
+    feature = "hip",
+    feature = "hardware-abort-probe",
+    feature = "qwen-source-qualification",
+    target_os = "linux"
+))]
+pub use source_call::{SourceCallFinalReader, SourceCallReaderObservation};
+
+#[cfg(all(
+    feature = "hip-source",
+    feature = "hardware-abort-probe",
+    target_os = "linux"
+))]
+pub(crate) mod source_native_probe;

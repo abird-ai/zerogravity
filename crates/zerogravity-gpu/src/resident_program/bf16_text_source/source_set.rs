@@ -170,7 +170,7 @@ impl SourceStepSet {
             .root_bytes
             .checked_mul(root_count)
             .ok_or_else(|| Error::Limit("source root pool total".into()))?;
-        let (native_host, native_device) = crate::hip::native::qwen_preparation_upper_bytes();
+        let (native_host, native_device) = crate::hip::native::source_preparation_upper_bytes();
         let root_planes = first
             .states
             .iter()

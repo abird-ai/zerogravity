@@ -81,6 +81,14 @@ impl Loaded {
         Self::open_inner(label, directory, true)
     }
     fn open_inner(label: &str, directory: &Path, native: bool) -> Result<Arc<Self>> {
+        Self::open_with_chunk(label, directory, native, 4 * 1024 * 1024)
+    }
+    pub fn open_with_chunk(
+        label: &str,
+        directory: &Path,
+        native: bool,
+        chunk: usize,
+    ) -> Result<Arc<Self>> {
         let small = label == "08";
         let raw: &[u8] = match label {
             "08" => include_bytes!("../../src/qwen35_cuda/source08.json"),
@@ -185,7 +193,7 @@ impl Loaded {
                 max_metadata_bytes: 64 * 1024 * 1024,
                 max_shards: 2,
                 max_tensors: 2048,
-                scan_chunk_bytes: 4 * 1024 * 1024,
+                scan_chunk_bytes: chunk,
             },
             &host,
         )?;

@@ -1,8 +1,8 @@
 //! Held directory capability shared by Qwen CUDA source loaders.
 //! Symlink traversal and mutable-path reopening are refused.
 
-use super::*;
-use crate::qwen35_cuda::held_file::{HeldFile, open_absolute_directory};
+use super::held_file::{HeldFile, open_absolute_directory};
+use crate::{Error, Result};
 use rustix::fs::{Mode, OFlags, openat};
 use std::{fs::File, path::Path, sync::atomic::AtomicBool};
 

@@ -1,4 +1,5 @@
 //! Hardware-only hooks over original owners; case orchestration stays in test support.
+use super::super::source_native_probe::SourceTextNativeState;
 use super::*;
 use crate::resident_leases::final_owner_probe;
 use std::sync::{Weak, atomic::Ordering};

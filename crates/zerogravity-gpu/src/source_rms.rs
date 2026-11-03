@@ -3,13 +3,15 @@
 use cubecl::{client::Client, prelude::*, server::Handle};
 use zerogravity_core::{Error, Result};
 pub(crate) mod kernels;
+#[cfg(all(feature = "hip-source", feature = "hip"))]
+pub(crate) mod prepared;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Gamma {
     Unit,
     #[cfg(feature = "gemma-bf16-qualification")]
     DirectBf16,
-    #[cfg(feature = "qwen-source-qualification")]
+    #[cfg(feature = "hip-source")]
     OnePlusRaw,
     DirectF32AfterBf16,
 }
@@ -19,7 +21,7 @@ impl Gamma {
             Self::Unit => 0,
             #[cfg(feature = "gemma-bf16-qualification")]
             Self::DirectBf16 => 1,
-            #[cfg(feature = "qwen-source-qualification")]
+            #[cfg(feature = "hip-source")]
             Self::OnePlusRaw => 2,
             Self::DirectF32AfterBf16 => 3,
         }

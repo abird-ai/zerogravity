@@ -19,7 +19,10 @@ use zerogravity_core::resource_arbiter::{
     ResourceOwner,
 };
 use zerogravity_core::{Error, Result};
-#[cfg(feature = "qualification")]
+#[cfg(any(
+    feature = "gemma-bf16-qualification",
+    feature = "qwen-source-qualification"
+))]
 mod diagnostic;
 #[cfg(all(
     feature = "qwen-source-qualification",
@@ -32,6 +35,10 @@ mod shared;
 ))]
 pub use shared::{SharedHipColdPlan, SharedHipNative};
 
+#[cfg(any(
+    feature = "qwen-source-qualification",
+    feature = "gemma-bf16-qualification"
+))]
 pub(crate) enum HipColdOwner {
     Single(Device),
     #[cfg(all(
@@ -40,6 +47,10 @@ pub(crate) enum HipColdOwner {
     ))]
     Shared(Arc<SharedHipNative>),
 }
+#[cfg(any(
+    feature = "qwen-source-qualification",
+    feature = "gemma-bf16-qualification"
+))]
 impl HipColdOwner {
     pub(crate) fn device(&self) -> Device {
         match self {
@@ -64,9 +75,18 @@ impl HipColdOwner {
 }
 
 const GIB: usize = 1024 * 1024 * 1024;
-pub(crate) const SINGLE_SOURCE_QUALIFICATION_HOST_BYTES: u64 = (16 * GIB) as u64;
+pub(crate) const SOURCE_HOST_BYTES: u64 = (16 * GIB) as u64;
+#[cfg(any(
+    feature = "qwen-source-qualification",
+    feature = "gemma-bf16-qualification"
+))]
+pub(crate) const SINGLE_SOURCE_QUALIFICATION_HOST_BYTES: u64 = SOURCE_HOST_BYTES;
 #[cfg(feature = "gemma-bf16-qualification")]
 pub(crate) const GEMMA_QUALIFICATION_HOST_BYTES: u64 = SINGLE_SOURCE_QUALIFICATION_HOST_BYTES;
+#[cfg(any(
+    feature = "qwen-source-qualification",
+    feature = "gemma-bf16-qualification"
+))]
 const PROVIDER_CAP: usize = 16 * GIB;
 const DEVICE_CAP: u64 = (64 * GIB) as u64;
 const CONTEXT_DEVICE: u64 = (4 * GIB) as u64;
@@ -75,8 +95,8 @@ const COMPILER_HOST: usize = 8 * GIB;
 const MODULE_OPAQUE: usize = 8 * GIB;
 const MAX_CODE: usize = GIB;
 const MAX_MODULES: usize = 1024;
-#[cfg(feature = "qwen-source-qualification")]
-pub(crate) fn qwen_preparation_upper_bytes() -> (usize, usize) {
+#[cfg(feature = "hip-source")]
+pub(crate) fn source_preparation_upper_bytes() -> (usize, usize) {
     // Backend-owned fixed policy ceilings; these are costs, not admission.
     (
         COMPILER_HOST + 2 * MAX_CODE + 2 * 1024 * 1024,
@@ -100,7 +120,7 @@ enum SingleSourceProfile {
     Gemma(GemmaColdProfile),
     #[cfg(feature = "qwen-source-qualification")]
     Qwen,
-    #[cfg(feature = "qwen-source-qualification")]
+    #[cfg(feature = "hip-source")]
     ResidentText,
 }
 impl SingleSourceProfile {
@@ -110,7 +130,7 @@ impl SingleSourceProfile {
             Self::Gemma(profile) => profile.cost().provider,
             #[cfg(feature = "qwen-source-qualification")]
             Self::Qwen => PROVIDER_CAP,
-            #[cfg(feature = "qwen-source-qualification")]
+            #[cfg(feature = "hip-source")]
             Self::ResidentText => 24 * GIB,
         }
     }
@@ -120,7 +140,7 @@ impl SingleSourceProfile {
             Self::Gemma(profile) => profile.policy(),
             #[cfg(feature = "qwen-source-qualification")]
             Self::Qwen => "x2-gfx1151-qwen27b-initial-cached-full-catalogue-provisional-v1",
-            #[cfg(feature = "qwen-source-qualification")]
+            #[cfg(feature = "hip-source")]
             Self::ResidentText => "gfx1151-source-bf16-resident-projections-v1",
         }
     }
@@ -328,32 +348,43 @@ impl HipNativeAdmission for Admission {
             device: device_total,
             metadata: totals.metadata,
         };
-        use sha2::{Digest, Sha256};
-        let mut hash = Sha256::new();
-        let mut bytes = [0u8; 65536];
-        for chunk in code.chunks(bytes.len()) {
-            for (out, input) in bytes.iter_mut().zip(chunk) {
-                *out = *input as u8;
+        #[cfg(any(
+            feature = "qwen-source-qualification",
+            feature = "gemma-bf16-qualification"
+        ))]
+        {
+            use sha2::{Digest, Sha256};
+            let mut hash = Sha256::new();
+            let mut bytes = [0u8; 65536];
+            for chunk in code.chunks(bytes.len()) {
+                for (out, input) in bytes.iter_mut().zip(chunk) {
+                    *out = *input as u8;
+                }
+                hash.update(&bytes[..chunk.len()]);
             }
-            hash.update(&bytes[..chunk.len()]);
-        }
-        eprintln!(
-            "GEMMA_NATIVE_CODE module={modules} bytes={} load={} retained_host={} sha256={:x}",
-            code.len(),
-            inventory.code_object_load_bytes,
-            inventory.retained_host_bytes,
-            hash.clone().finalize()
-        );
-        if self.compiler_preparation.is_some() {
             eprintln!(
-                "HIP_SCOPED_NATIVE_CODE source={:?} module={modules} bytes={} load={} retained_host={} sha256={:x}",
-                self.source.source_identity(),
+                "GEMMA_NATIVE_CODE module={modules} bytes={} load={} retained_host={} sha256={:x}",
                 code.len(),
                 inventory.code_object_load_bytes,
                 inventory.retained_host_bytes,
                 hash.clone().finalize()
             );
+            if self.compiler_preparation.is_some() {
+                eprintln!(
+                    "HIP_SCOPED_NATIVE_CODE source={:?} module={modules} bytes={} load={} retained_host={} sha256={:x}",
+                    self.source.source_identity(),
+                    code.len(),
+                    inventory.code_object_load_bytes,
+                    inventory.retained_host_bytes,
+                    hash.clone().finalize()
+                );
+            }
         }
+        #[cfg(not(any(
+            feature = "qwen-source-qualification",
+            feature = "gemma-bf16-qualification"
+        )))]
+        let _ = code;
         Ok(Arc::new(Module {
             _device: device,
             _host: host_owner,
@@ -393,7 +424,7 @@ pub(crate) fn begin_qwen_qualification(
 ) -> Result<ColdNativePreparation> {
     begin_single_source(device, source, source_owner, SingleSourceProfile::Qwen)
 }
-#[cfg(feature = "qwen-source-qualification")]
+#[cfg(feature = "hip-source")]
 pub(crate) fn resident_source_device_inventory(model_upper: usize) -> Result<(usize, usize)> {
     let context = CONTEXT_DEVICE as usize;
     let total = model_upper
@@ -406,7 +437,7 @@ pub(crate) fn resident_source_device_inventory(model_upper: usize) -> Result<(us
     }
     Ok((context, total))
 }
-#[cfg(feature = "qwen-source-qualification")]
+#[cfg(feature = "hip-source")]
 pub(crate) fn begin_resident_source(
     device: Device,
     source: &VerifiedTensorSource,
@@ -427,7 +458,7 @@ fn begin_single_source(
     source_owner: crate::physical_quarantine::CompletionOwner,
     profile: SingleSourceProfile,
 ) -> Result<ColdNativePreparation> {
-    source.require_process_host_workspace(SINGLE_SOURCE_QUALIFICATION_HOST_BYTES)?;
+    source.require_process_host_workspace(SOURCE_HOST_BYTES)?;
     if !matches!(device, Device::Hip(_)) {
         return Err(Error::State(
             "Gemma exact pre-bound HIP host/provider policy".into(),
@@ -437,7 +468,7 @@ fn begin_single_source(
     let host_key = PhysicalDeviceKey::new("host", "system-ram")?;
     let arbiter = ResourceArbiter::process_shared();
     // Register_matching never upgrades an existing128MiB CPU contract.
-    arbiter.register_matching(host_key.clone(), SINGLE_SOURCE_QUALIFICATION_HOST_BYTES)?;
+    arbiter.register_matching(host_key.clone(), SOURCE_HOST_BYTES)?;
     let persistent_host = persistent_context_host(&arbiter, &host_key)?;
     let (physical, context_device) =
         crate::resident_leases::ResidentPhysical::new_with_native_context(
@@ -493,6 +524,7 @@ fn configure_single_stream() -> Result<()> {
             "Gemma qualifier requires cold runtime configuration".into(),
         ));
     }
+    #[cfg(feature = "qualification")]
     eprintln!("GEMMA_NATIVE_RUNTIME_CONFIG {config:?}");
     Ok(())
 }
@@ -524,6 +556,7 @@ fn require_environment(client: &Client, physical: PhysicalDeviceKey) -> Result<(
             "Gemma provisional exact x2 native environment".into(),
         ));
     }
+    #[cfg(feature = "qualification")]
     eprintln!("GEMMA_NATIVE_ENVIRONMENT {environment:?}");
     Ok(())
 }
@@ -551,28 +584,19 @@ pub(crate) struct PreparedSourceNative {
     device_bytes: usize,
     _metadata: WindowWorkspace,
     #[cfg(all(
-        any(
-            feature = "qwen-source-qualification",
-            feature = "gemma-bf16-qualification"
-        ),
+        any(feature = "hip-source", feature = "gemma-bf16-qualification"),
         feature = "hardware-abort-probe"
     ))]
     final_owner_admission: std::sync::Weak<Admission>,
 }
 #[cfg(all(
-    any(
-        feature = "qwen-source-qualification",
-        feature = "gemma-bf16-qualification"
-    ),
+    any(feature = "hip-source", feature = "gemma-bf16-qualification"),
     feature = "hardware-abort-probe"
 ))]
 #[derive(Clone)]
 pub(crate) struct FinalNativeProbe(std::sync::Weak<Admission>);
 #[cfg(all(
-    any(
-        feature = "qwen-source-qualification",
-        feature = "gemma-bf16-qualification"
-    ),
+    any(feature = "hip-source", feature = "gemma-bf16-qualification"),
     feature = "hardware-abort-probe"
 ))]
 #[derive(Clone, Copy, Debug, Default)]
@@ -584,10 +608,7 @@ pub(crate) struct FinalNativeObservation {
     pub(crate) device_bytes: usize,
 }
 #[cfg(all(
-    any(
-        feature = "qwen-source-qualification",
-        feature = "gemma-bf16-qualification"
-    ),
+    any(feature = "hip-source", feature = "gemma-bf16-qualification"),
     feature = "hardware-abort-probe"
 ))]
 impl FinalNativeProbe {
@@ -645,10 +666,7 @@ impl SourcePageAuthority for ResidentPageAuthority {
 }
 impl PreparedSourceNative {
     #[cfg(all(
-        any(
-            feature = "qwen-source-qualification",
-            feature = "gemma-bf16-qualification"
-        ),
+        any(feature = "hip-source", feature = "gemma-bf16-qualification"),
         feature = "hardware-abort-probe"
     ))]
     pub(crate) fn final_owner_probe(&self) -> FinalNativeProbe {
@@ -750,6 +768,7 @@ impl ColdNativePreparation {
                 "Gemma complete native specialization bound".into(),
             ));
         }
+        #[cfg(feature = "qualification")]
         for kernel in &kernels {
             eprintln!("GEMMA_NATIVE_KERNEL {:?}", kernel.id());
         }
@@ -824,6 +843,7 @@ impl ColdNativePreparation {
                 .ok_or_else(|| Error::Limit("Gemma native host inventory".into()))?;
             (host_bytes, totals.device)
         };
+        #[cfg(feature = "qualification")]
         eprintln!(
             "GEMMA_NATIVE_INVENTORY kernels={kernel_count} host={host_bytes} device={device_bytes} persistent_device={CONTEXT_DEVICE} persistent_host={CONTEXT_HOST} {:?}",
             prepared.inventory()
@@ -838,10 +858,7 @@ impl ColdNativePreparation {
             device_bytes,
             _metadata: metadata,
             #[cfg(all(
-                any(
-                    feature = "qwen-source-qualification",
-                    feature = "gemma-bf16-qualification"
-                ),
+                any(feature = "hip-source", feature = "gemma-bf16-qualification"),
                 feature = "hardware-abort-probe"
             ))]
             final_owner_admission: Arc::downgrade(&admission),

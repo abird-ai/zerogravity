@@ -407,6 +407,7 @@ pub struct SourceConvGeometry {
 pub enum SourceGdnContract {
     // Prior arithmetic name: Vllm031CudaSm86L2SiluBf16V1.
     ReferenceCudaSm86L2SiluBf16V1,
+    TorchCpuAvx2L2SiluBf16V1,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SourceGdnGeometry {
@@ -529,7 +530,7 @@ impl SourceOperatorTemplate {
         let source = geometry.source();
         let vocabulary = geometry.vocabulary();
         let max_rows = geometry.max_rows();
-        if numerical != SourceNumericalContract::ReferenceCudaSm86Bf16V1
+        if numerical.is_f32()
             || row_selection == SourceRowSelection::LastActive
                 && !matches!(kind, SourceOperatorKind::Projection { selected_row: None })
         {
@@ -875,6 +876,17 @@ impl SourceOperator {
                 (0, 1)
             }
             GatedDelta { geometry, .. } => {
+                let expected = match self.numerical_contract() {
+                    SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1 => {
+                        SourceGdnContract::TorchCpuAvx2L2SiluBf16V1
+                    }
+                    _ => SourceGdnContract::ReferenceCudaSm86L2SiluBf16V1,
+                };
+                if geometry.contract != expected {
+                    return Err(Error::Unsupported(
+                        "source GDN arithmetic contract differs".into(),
+                    ));
+                }
                 if geometry.key_heads == 0
                     || geometry.value_heads == 0
                     || !geometry.value_heads.is_multiple_of(geometry.key_heads)
@@ -1082,14 +1094,34 @@ impl PlanBuilder {
         geometry: SourcePlanGeometry,
         required: Vec<StateSlot>,
     ) -> Result<Self> {
+        Self::new_source_template_with_contract(
+            geometry,
+            required,
+            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        )
+    }
+    /// Same recorder/issuers; selecting arithmetic grants no backend capability.
+    pub fn new_source_template_with_contract(
+        geometry: SourcePlanGeometry,
+        required: Vec<StateSlot>,
+        numerical: SourceNumericalContract,
+    ) -> Result<Self> {
+        if numerical.is_f32() {
+            return Err(Error::Unsupported(
+                "source template BF16 arithmetic contract".into(),
+            ));
+        }
         let mut builder = Self::new_inner(
             geometry.source(),
             geometry.context_capacity(),
             required,
             false,
-            ProgramNumericalProfile::SourceCudaSm86Bf16V1,
+            numerical.program_profile(),
             false,
         )?;
+        if numerical == SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1 {
+            builder.standalone_exp = Some(StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1);
+        }
         builder.source_template = Some(geometry);
         Ok(builder)
     }
@@ -1103,14 +1135,33 @@ impl PlanBuilder {
     }
     /// Complete source arithmetic without a frontier/logits publication capability.
     pub fn new_source_program(call: SourceCall, required: Vec<StateSlot>) -> Result<Self> {
+        Self::new_source_program_with_contract(
+            call,
+            required,
+            SourceNumericalContract::ReferenceCudaSm86Bf16V1,
+        )
+    }
+    pub fn new_source_program_with_contract(
+        call: SourceCall,
+        required: Vec<StateSlot>,
+        numerical: SourceNumericalContract,
+    ) -> Result<Self> {
+        if numerical.is_f32() {
+            return Err(Error::Unsupported(
+                "source program BF16 arithmetic contract".into(),
+            ));
+        }
         let mut builder = Self::new_inner(
             call.source(),
             call.rows.capacity(),
             required,
             false,
-            ProgramNumericalProfile::SourceCudaSm86Bf16V1,
+            numerical.program_profile(),
             false,
         )?;
+        if numerical == SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1 {
+            builder.standalone_exp = Some(StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1);
+        }
         builder.source_call = Some(call);
         Ok(builder)
     }
@@ -1426,6 +1477,12 @@ impl ForwardPlan {
             .ok_or_else(overflow)
     }
 }
+fn matches_numerical(builder: &PlanBuilder, numerical: SourceNumericalContract) -> bool {
+    builder.profile == numerical.program_profile()
+        && (numerical != SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1
+            || builder.standalone_exp == Some(StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1))
+}
+
 pub(super) fn template_precision(
     builder: &PlanBuilder,
     descriptor: &SourceOperatorTemplate,
@@ -1436,7 +1493,7 @@ pub(super) fn template_precision(
         .source_template
         .ok_or_else(|| Error::State("source template builder geometry absent".into()))?;
     if builder.source_call.is_some()
-        || builder.profile != ProgramNumericalProfile::SourceCudaSm86Bf16V1
+        || !matches_numerical(builder, descriptor.numerical_contract())
         || builder.source != descriptor.source()
         || descriptor.source() != geometry.source()
         || descriptor.vocabulary() != geometry.vocabulary()
@@ -1468,7 +1525,7 @@ pub(super) fn precision(
     if descriptor.numerical_contract().is_f32() {
         return quantized::precision(builder, descriptor, inputs);
     }
-    if builder.profile != ProgramNumericalProfile::SourceCudaSm86Bf16V1
+    if !matches_numerical(builder, descriptor.numerical_contract())
         || !(builder.operator_slice || builder.source_call.is_some())
         || builder.source != descriptor.call.source()
         || builder

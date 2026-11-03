@@ -9,3 +9,8 @@ pub mod pv;
 pub mod recurrent;
 pub mod reduction;
 pub mod transcendentals;
+
+#[cfg(test)]
+mod rows_reference;
+#[cfg(test)]
+mod rows_tests;

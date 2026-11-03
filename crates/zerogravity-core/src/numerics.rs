@@ -55,13 +55,30 @@ pub enum ProjectionContract {
 pub enum SourceNumericalContract {
     // Prior arithmetic name: Vllm031CudaSm86Bf16V1.
     ReferenceCudaSm86Bf16V1,
+    /// Original Torch CPU AVX2 BF16/mixed parameters and normal-domain MKL exp.
+    /// A mathematical identity, not CPU/HIP execution eligibility.
+    TorchCpuBf16Avx2MixedSourceV1,
     GgmlSourceF32V1,
     GgmlQ4Repack8x8F32V1,
     OpenBlas033Zen16Q8F32V1,
 }
 impl SourceNumericalContract {
     pub fn is_f32(self) -> bool {
-        self != Self::ReferenceCudaSm86Bf16V1
+        matches!(
+            self,
+            Self::GgmlSourceF32V1 | Self::GgmlQ4Repack8x8F32V1 | Self::OpenBlas033Zen16Q8F32V1
+        )
+    }
+    pub fn program_profile(self) -> ProgramNumericalProfile {
+        match self {
+            Self::ReferenceCudaSm86Bf16V1 => ProgramNumericalProfile::SourceCudaSm86Bf16V1,
+            Self::TorchCpuBf16Avx2MixedSourceV1 => {
+                ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+            }
+            Self::GgmlSourceF32V1 | Self::GgmlQ4Repack8x8F32V1 | Self::OpenBlas033Zen16Q8F32V1 => {
+                ProgramNumericalProfile::GgufSourceV1
+            }
+        }
     }
 }
 /// Input coding for an explicit numerical operation; not a kernel permit.
@@ -104,9 +121,45 @@ impl ProjectionContract {
     }
 }
 
+/// Finite greedy readout: first numeric maximum, including ±0 ties.
+/// Returns the original selected value, without normalizing its bits.
+pub fn greedy_finite(logits: &[f32]) -> Result<(u32, f32)> {
+    if logits.is_empty() || u32::try_from(logits.len()).is_err() {
+        return Err(Error::Limit("greedy vocabulary extent".into()));
+    }
+    let mut best = 0;
+    for (i, &value) in logits.iter().enumerate() {
+        if !value.is_finite() {
+            return Err(Error::State("greedy requires finite logits".into()));
+        }
+        if value > logits[best] {
+            best = i;
+        }
+    }
+    Ok((best as u32, logits[best]))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finite_greedy_preserves_first_numeric_tie_and_source_bits() {
+        for values in [[-0.0, 0.0], [0.0, -0.0], [3.0, 3.0]] {
+            let (id, maximum) = greedy_finite(&values).unwrap();
+            assert_eq!(id, 0);
+            assert_eq!(maximum.to_bits(), values[0].to_bits());
+        }
+        assert_eq!(greedy_finite(&[-2.0, 4.0, 4.0]).unwrap(), (1, 4.0));
+        for values in [
+            &[][..],
+            &[f32::NAN, 1.0],
+            &[1.0, f32::INFINITY],
+            &[f32::NEG_INFINITY],
+        ] {
+            assert!(greedy_finite(values).is_err());
+        }
+    }
 
     #[test]
     fn source_storage_does_not_select_the_numerical_profile() {

@@ -38,6 +38,7 @@ impl Geometry {
     pub(in crate::resident_leases) fn windows(self) -> usize {
         self.rows.div_ceil(WINDOW / self.row_bytes)
     }
+    #[cfg(any(feature = "qualification", test))]
     pub(in crate::resident_leases) fn output_bytes(self, ids: &[u32]) -> Result<usize> {
         ids.len()
             .checked_mul(self.row_bytes)

@@ -6,12 +6,13 @@ use crate::accelerator::program::{
 };
 use crate::operator_slice::OperatorSliceSource;
 use crate::source::owned::QwenOriginalWindowText;
+use std::sync::Arc;
 #[cfg(feature = "cpu")]
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerogravity_artifacts::source_weights::{VerifiedTensorSource, WindowWorkspace};
 
 pub struct OriginalWindowOperators {
-    checked: QwenOriginalWindowText,
+    checked: Arc<QwenOriginalWindowText>,
     binding: OriginalQwenBinding,
     _metadata: WindowWorkspace,
 }
@@ -28,8 +29,12 @@ impl OriginalWindowOperators {
                 "window operators require the explicit pinned CPU profile".into(),
             ));
         }
-        let checked =
-            QwenOriginalWindowText::bind(source, config_json, config_sha256, index_sha256)?;
+        let checked = Arc::new(QwenOriginalWindowText::bind(
+            source,
+            config_json,
+            config_sha256,
+            index_sha256,
+        )?);
         let metadata = checked.source().reserve_workspace(4 * 1024 * 1024)?;
         let binding = OriginalQwenBinding::bind_resolved(
             config_json,
@@ -86,6 +91,10 @@ impl OriginalWindowOperators {
     }
     pub fn source(&self) -> &VerifiedTensorSource {
         self.checked.source()
+    }
+    /// Original authenticated owner; model binding never reopens or reparses it.
+    pub fn owner(&self) -> &Arc<QwenOriginalWindowText> {
+        &self.checked
     }
     pub fn binding(&self) -> &OriginalQwenBinding {
         &self.binding

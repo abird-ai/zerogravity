@@ -41,6 +41,46 @@ fn external_sdk_compiles_without_cli_or_concrete_model_features() {
     );
 }
 
+#[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
+#[test]
+fn canonical_hip_registration_checks_runtime_limits_and_aliases_before_source_io() {
+    use zerogravity::{
+        cache::CacheOptions,
+        models::{ModelLoadRequest, QwenHipProfile},
+    };
+    let runtime = Runtime::builder().build().unwrap();
+    let request = |active, aliases| ModelLoadRequest::QwenHip {
+        aliases,
+        cache: CacheOptions::new(Some("/source-not-opened".into()), 96 * 1024 * 1024 * 1024),
+        snapshot: "88606494611dfa37253320ef82c88ca6ae6f665ac873fec28859fafd216dbf52".into(),
+        profile: QwenHipProfile {
+            active,
+            context: 514,
+            output: 2,
+            max_pending: Some(1),
+        },
+    };
+    let error = runtime
+        .models()
+        .load(request(2, vec!["source".into()]))
+        .unwrap_err();
+    assert_eq!(error.code, "invalid_config");
+    let error = runtime
+        .models()
+        .load(request(1, vec!["source".into(), "source".into()]))
+        .unwrap_err();
+    assert_eq!(error.code, "invalid_model");
+    assert!(runtime.models().list().unwrap().is_empty());
+    assert_eq!(runtime.status().execution_adapters, 0);
+    runtime.shutdown().unwrap();
+    assert!(
+        runtime
+            .models()
+            .load(request(1, vec!["source".into()]))
+            .is_err()
+    );
+}
+
 #[test]
 fn semantic_api_is_the_original_program_type() {
     fn original(

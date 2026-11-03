@@ -3,7 +3,7 @@ use super::*;
 #[cfg(any(
     feature = "cuda-native-qualification",
     feature = "gemma-bf16-qualification",
-    feature = "qwen-source-qualification"
+    feature = "hip-source"
 ))]
 use crate::resident_leases::backing_pool::ResidentPlaneLayout;
 use crate::resident_leases::backing_pool::ResidentPool;
@@ -11,7 +11,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 pub(super) struct PooledStates {
     pub pool: Arc<ResidentPool>,
-    #[cfg(all(feature = "qualification", target_os = "linux"))]
+    #[cfg(all(
+        any(feature = "qualification", feature = "hip-source"),
+        target_os = "linux"
+    ))]
     pub source: Option<zerogravity_artifacts::source_weights::VerifiedTensorSource>,
 }
 fn check_cancel(flag: Option<&AtomicBool>) -> Result<()> {
@@ -88,7 +91,7 @@ impl ResidentModel {
     #[cfg(any(
         feature = "cuda-native-qualification",
         feature = "gemma-bf16-qualification",
-        feature = "qwen-source-qualification"
+        feature = "hip-source"
     ))]
     pub(crate) fn root_pool_layout(&self) -> Result<Vec<ResidentPlaneLayout>> {
         let alignment = usize::try_from(self.service.client().properties().memory.alignment)
@@ -116,10 +119,7 @@ impl ResidentModel {
         Ok(layout)
     }
     #[cfg(all(
-        any(
-            feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification"
-        ),
+        any(feature = "gemma-bf16-qualification", feature = "hip-source"),
         target_os = "linux"
     ))]
     pub(crate) fn install_window_root_pool(

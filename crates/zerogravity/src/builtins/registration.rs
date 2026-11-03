@@ -10,6 +10,17 @@ pub(crate) fn load_text(
     limits: SchedulerLimits,
 ) -> Result<Router, ServiceError> {
     match request {
+        #[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
+        ModelLoadRequest::QwenHip {
+            aliases,
+            cache,
+            snapshot,
+            profile,
+        } => {
+            profile.validate()?;
+            validate_limits(1, profile.active, profile.max_pending, limits)?;
+            super::text::qwen_hip::load_router(aliases, cache, snapshot, profile)
+        }
         #[cfg(feature = "serve")]
         ModelLoadRequest::ServingText { declared, profile } => {
             profile.validate()?;

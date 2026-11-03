@@ -113,7 +113,7 @@ pub(crate) fn quarantine_uncertain_with_owners(
         feature = "cuda",
         all(
             feature = "hip",
-            feature = "qwen-source-qualification",
+            feature = "hip-source",
             feature = "hardware-abort-probe",
             target_os = "linux"
         )

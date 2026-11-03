@@ -6,6 +6,75 @@ It is deliberately not a generated concatenation of every historical plan, run l
 
 A successor should be able to start here without prior chat history, understand how the project evolved, identify what is implemented versus merely designed, and continue either the current Qwen correctness critical path or the separately authorized Fabric vNext transition.
 
+## Active work — ordinary multi-row HIP
+
+Owner resumed after the signed Fabric closeout `1c99929`. Next: genuine0.8B/2B
+multi-row prefill/decode through original source/physical/session owners; then
+broader contexts/serving and matched performance. Existing references retained.
+Native trajectories, public SDK, source state/lifetimes and final isolated gate
+pass for both models; reviewed signed checkpoint is next. See [model execution](../plans/model-execution/TODO.md).
+Main only, no acquisition,
+recovery, gfx90c, push or recurrence restart. Fabric's accepted evidence below
+covers its landed source, not the new dirty implementation.
+
+- CPU-contract resident body now connects the original template traversal,
+  native kernels, root pool and prepared publication; HIP strict compilation
+  passes. Cancellation waits for submitted work before discarding publication.
+- Bounded original-flight observation and retained66-call consumer added.
+  Both real-model preflights pass: original data/owner/plan identities, all66
+  materializations, capacity514/six roots. HIP/examples and CUDA strict checks
+  plus two helper geometry tests pass. Fixed the diagnostic's2B4MiB/1MiB owner
+  mismatch, not the source guard. Last-row/full-vocabulary readout unchanged.
+  This was host-only evidence; later native acceptance is scoped below.
+- Original resident objects now have source-priced model/session/pending/snapshot/
+  immutable-readback owners. Guards follow actual flights and final readers;
+  completed cancellation keeps completion metrics without publication. HIP/CUDA/
+  minimal HIP strict and one failure-classification test pass (ownership R2).
+  These compiled lifetimes still need physical final-reader/fault qualification.
+- Runtime `hip-source` now compiles without qualification/CPU/model dependencies.
+  Runtime-only and weak-probe all-target, combined CUDA/Vulkan library, original
+  shared/source examples and CUDA all-target strict pass. Finite harnesses,
+  fault cuts and injected kernels stay diagnostic; original weak observation is
+  shared.
+- Canonical source/SDK now assembled behind `qwen35-hip`: original authentication
+  shared with CUDA, actual snapshot/source/host ownership, existing registry and
+  worker. Explicit cold raw-text route; no chat/warm/native-cohort grant. Runtime,
+  mixed and legacy-only strict checks pass. Canonical2B host source/tokenizer/
+  plan/last-reader and public SDK pre-IO refusal tests pass; dependency closure
+  has no CPU/qualification edge. These are not native inference/SDK acceptance.
+- Native observed trajectories pass:66calls/7608records per model, full24layers/
+  fullV/all42domains through populated514, true chunks and actual feedback.
+  Exact float words0.8B873,649,152 /2B939,144,192; initial/tail zeros and position
+  metadata remain separate. Both original native sets retire (95/90modules),
+  resident bytes0, persistent4GiB context/unfenced. Every case checked; terminal
+  KFD/cgroups empty. R4 immediate sampled-utilization guard stopped only the
+  supervisor after successful0.8B; R5 ran2B alone. Setup failures retained.
+- Public native SDK found two integration gaps: finite waves reject context514;
+  original sequential presentation omitted supplied GPU publication metadata.
+  Adapter now reuses the sequential/fair worker with64-row chunks; shared
+  presentation forwards original observations and counts accepted tokens.
+  Engine strict/regression and four fresh native SDK cases now pass: both models
+  × complete/disconnect, exact IDs/generic run/aliases/65-token tail replay and
+  native/tokenizer/source/cache/host final readers. Runtime-only executable.
+  SDK R1/R2 failures retained. First R3 test passed; immediate KFD retirement
+  sampling stopped its batch supervisor. Remaining cells passed R4; terminal
+  ownership verified empty/idle throughout. No observed trajectory repeated.
+- Observer-free66-call trajectories and20lifecycle cells now pass both models:
+  450,794,496 post-commit state/full-logit words/model exact; original readers
+  check114,647,040 KV-tail words separately. Capacity/cancel/completed discard,
+  snapshots/reset/restore, independent roots, final readers and release faults
+  retain/retire original owners correctly. Known paths leave device4GiB/host2GiB
+  (+64MiB reference support); faults retain originals and fence24GiB.
+  Unknown retains495/491submitted and543/539quarantined handles/1pending event;
+  post-fence state/readout remains unavailable. R1's two invalid post-fence
+  diagnostic reads were refused correctly; that path was removed and only the
+  two unknown cells rerun successfully. Every case/terminal ownership inspected.
+- Final complete isolated gate passes:2348Rust passes/0failures/101ignored,
+  309suites including74empty;17Python suites/182cases/10skips. Two existing
+  Vulkan-peer HIP probe-hook warnings remain; no suppression or runtime change.
+- Next: reviewed signed checkpoint, then populated contexts/serving concurrency
+  and matched performance. No new commit yet.
+
 ## Functional transition accepted — `8d761c4` / `8c43844`
 
 S0–S3/F0–F4 and scoped Q0/Q1/Q2 are complete. This closes migration of existing

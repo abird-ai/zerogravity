@@ -10,7 +10,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 use zerogravity_artifacts::source_weights::{
-    ParameterWindow, VerifiedMatrix, VerifiedTensorSource, WindowWorkspace,
+    VerifiedMatrix, VerifiedTensorSource, WindowWorkspace,
 };
 use zerogravity_core::accelerator::program::TextStepBindings;
 use zerogravity_core::accelerator::program::{
@@ -202,59 +202,7 @@ pub(crate) struct Bf16TextSourceBody {
     _metadata: WindowWorkspace,
     _native: Arc<crate::hip::native::PreparedSourceNative>,
 }
-struct ParameterUpload {
-    _window: ParameterWindow,
-    _bytes: Vec<u8>,
-    _staging: WindowWorkspace,
-}
-fn upload_parameters(
-    source: &VerifiedTensorSource,
-    declared: &BTreeMap<String, SourceParameter>,
-    init: &mut ResidentInitialization<'_>,
-) -> Result<BTreeMap<String, ResidentLease>> {
-    let mut parameters = BTreeMap::new();
-    for (name, p) in declared {
-        let window = source.read_declared_parameter(p, None)?;
-        let bytes = layout::aligned(window.parameter().elements() * 4)?;
-        let staging = source.reserve_workspace(3 * bytes)?;
-        let mut widened = vec![0u8; bytes];
-        match p.kind {
-            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::F32) => {
-                widened[..p.bytes].copy_from_slice(window.as_slice())
-            }
-            StoredTensorEncoding::Scalar(zerogravity_core::encoding::ScalarDType::Bf16) => {
-                for (out, input) in widened
-                    .chunks_exact_mut(4)
-                    .zip(window.as_slice().chunks_exact(2))
-                {
-                    out.copy_from_slice(
-                        &(u32::from(u16::from_le_bytes(input.try_into().unwrap())) << 16)
-                            .to_le_bytes(),
-                    );
-                }
-            }
-            _ => return Err(Error::State("source parameter physical dtype".into())),
-        }
-        if widened[..window.parameter().elements() * 4]
-            .chunks_exact(4)
-            .any(|b| !f32::from_le_bytes(b.try_into().unwrap()).is_finite())
-        {
-            return Err(Error::Malformed("source raw parameter nonfinite".into()));
-        }
-        let owner = Arc::new(ParameterUpload {
-            _window: window,
-            _bytes: widened,
-            _staging: staging,
-        });
-        // The original initialization retains the authentic window BEFORE copy.
-        init.retain_completion_owner(owner.clone())?;
-        parameters.insert(
-            name.clone(),
-            init.upload_bytes(&owner._bytes, BufferRole::ImmutableWeights)?,
-        );
-    }
-    Ok(parameters)
-}
+use crate::resident_leases::source_parameters::upload_parameters;
 pub(crate) struct PendingBf16TextSource {
     body: Arc<Bf16TextSourceBody>,
 }
@@ -1282,7 +1230,7 @@ pub(crate) fn preparation_inventory(
     records: &[Arc<TextStepBindings>; 2],
     readout: TextSourceReadout,
 ) -> Result<TextSourceResourceInventory> {
-    let (host, device) = crate::hip::native::qwen_preparation_upper_bytes();
+    let (host, device) = crate::hip::native::source_preparation_upper_bytes();
     inventory_charges(source, records, host, device, readout)
 }
 #[cfg(feature = "gemma-bf16-qualification")]
@@ -1291,7 +1239,7 @@ pub(crate) fn scoped_preparation_inventory(
     records: &[Arc<TextStepBindings>; 2],
     readout: TextSourceReadout,
 ) -> Result<TextSourceResourceInventory> {
-    let (host, device) = crate::hip::native::qwen_preparation_upper_bytes();
+    let (host, device) = crate::hip::native::source_preparation_upper_bytes();
     let host = host
         .checked_add(crate::hip::native::scoped_metadata_upper_bytes()?)
         .ok_or_else(|| Error::Limit("BF16 text source scoped host sum".into()))?;

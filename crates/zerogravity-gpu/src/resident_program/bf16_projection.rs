@@ -1,4 +1,4 @@
-//! Prepared exact source operand; one full-K64lane dot implementation and original flight.
+//! Prepared exact source operand; shared full-K64lane dots and original flight.
 use super::*;
 use crate::resident_leases::resident_matrix::{
     Bf16MatrixSource, PendingResidentMatrix, ResidentMatrix,
@@ -40,7 +40,7 @@ pub(crate) struct Bf16ProjectionBindings<'a> {
     pub zero: &'a ResidentLease,
 }
 impl PreparedBf16Projection {
-    #[cfg(any(feature = "qwen-source-qualification", test))]
+    #[cfg(any(feature = "hip-source", test))]
     pub(crate) fn new(
         source: VerifiedTensorSource,
         matrix: VerifiedMatrix,
@@ -99,12 +99,20 @@ impl PreparedBf16Projection {
             resident: OnceLock::new(),
         }))
     }
+    #[cfg(any(
+        feature = "qwen-source-qualification",
+        feature = "gemma-bf16-qualification"
+    ))]
     pub(crate) fn source(&self) -> &VerifiedTensorSource {
         &self.source
     }
     pub(crate) fn matrix(&self) -> &VerifiedMatrix {
         &self.matrix
     }
+    #[cfg(any(
+        feature = "qwen-source-qualification",
+        feature = "gemma-bf16-qualification"
+    ))]
     pub(crate) fn storage(&self) -> Bf16ProjectionStorage {
         self.storage
     }
@@ -191,6 +199,10 @@ impl PreparedBf16Projection {
             )),
         }
     }
+    #[cfg(any(
+        feature = "qwen-source-qualification",
+        feature = "gemma-bf16-qualification"
+    ))]
     pub(crate) async fn enqueue(
         &self,
         flight: &mut Flight<'_>,
@@ -198,6 +210,20 @@ impl PreparedBf16Projection {
         b: Bf16ProjectionBindings<'_>,
         flag: Option<&AtomicBool>,
     ) -> Result<usize> {
+        self.enqueue_rows(flight, page, b, 1, flag).await
+    }
+    /// One source call's token-major rows, retaining the same weight window and
+    /// original flight. Projection rows do not publish independent model steps.
+    pub(crate) async fn enqueue_rows(
+        &self,
+        flight: &mut Flight<'_>,
+        page: &Arc<source_page::ResidentSourcePage>,
+        b: Bf16ProjectionBindings<'_>,
+        input_rows: usize,
+        flag: Option<&AtomicBool>,
+    ) -> Result<usize> {
+        let (input_elements, output_elements) =
+            row_extents(input_rows, self.matrix.columns(), self.matrix.rows())?;
         cancelled(flag)?;
         let service = b.output_lease.service();
         self.require_capability(service)?;
@@ -212,8 +238,8 @@ impl PreparedBf16Projection {
         ])?;
         let columns = self.matrix.columns();
         let total_rows = self.matrix.rows();
-        require_view(b.input_lease, b.input, columns * 4)?;
-        require_view(b.output_lease, b.output, total_rows * 4)?;
+        require_view(b.input_lease, b.input, input_elements * 4)?;
+        require_view(b.output_lease, b.output, output_elements * 4)?;
         if b.output_lease.role() != BufferRole::Activation
             || b.input_lease.id() == b.output_lease.id()
             || b.zero.role() != BufferRole::ImmutableWeights
@@ -276,14 +302,14 @@ impl PreparedBf16Projection {
                 }
             }
         }
-        let packed = view(b.packed, 0, columns * 2)?;
+        let packed = view(b.packed, 0, input_elements * 2)?;
         unsafe {
             pack::launch_unchecked(
                 service.client(),
-                grid(columns / 2),
+                grid(input_elements / 2),
                 threads(),
-                arg(b.input, columns),
-                arg(&packed, columns / 2),
+                arg(b.input, input_elements),
+                arg(&packed, input_elements / 2),
                 arg(&b.status.handle(), 1),
             );
         }
@@ -292,34 +318,43 @@ impl PreparedBf16Projection {
             cancelled(flag)?;
             let rows = self.rows_per_launch.min(total_rows - first);
             let range = first..first + rows;
-            let destination = b
-                .output
-                .clone()
-                .offset_start((first * 4) as u64)
-                .offset_end(((total_rows - range.end) * 4) as u64);
             let accumulation = view(b.accumulation, 0, rows * 4)?;
             let flags = view(b.flags, 0, rows * 4)?;
             let launch = |weights: &Handle| unsafe {
-                crate::bf16_projection_kernel::project_cpu_bf16::launch_unchecked(
-                    service.client(),
-                    CubeCount::Static(rows as u32, 1, 1),
-                    CubeDim::new_1d(64),
-                    arg(weights, rows * columns / 2),
-                    arg(&packed, columns / 2),
-                    arg(&b.zero.handle(), 1),
-                    arg(&accumulation, rows),
-                    arg(&destination, rows),
-                    arg(&flags, rows),
-                    rows,
-                    columns,
-                );
-                projection_status::launch_unchecked(
-                    service.client(),
-                    grid(rows),
-                    threads(),
-                    arg(&flags, rows),
-                    arg(&b.status.handle(), 1),
-                );
+                // Same prepared image/ABI and reduction for every source row.
+                // Scratch reuse is ordered on the original submitting queue.
+                for token in 0..input_rows {
+                    let start = token * total_rows + first;
+                    let destination = b
+                        .output
+                        .clone()
+                        .offset_start((start * 4) as u64)
+                        .offset_end(((output_elements - start - rows) * 4) as u64);
+                    let activation = packed
+                        .clone()
+                        .offset_start((token * columns * 2) as u64)
+                        .offset_end(((input_rows - token - 1) * columns * 2) as u64);
+                    crate::bf16_projection_kernel::project_cpu_bf16::launch_unchecked(
+                        service.client(),
+                        CubeCount::Static(rows as u32, 1, 1),
+                        CubeDim::new_1d(64),
+                        arg(weights, rows * columns / 2),
+                        arg(&activation, columns / 2),
+                        arg(&b.zero.handle(), 1),
+                        arg(&accumulation, rows),
+                        arg(&destination, rows),
+                        arg(&flags, rows),
+                        rows,
+                        columns,
+                    );
+                    projection_status::launch_unchecked(
+                        service.client(),
+                        grid(rows),
+                        threads(),
+                        arg(&flags, rows),
+                        arg(&b.status.handle(), 1),
+                    );
+                }
             };
             match self.storage {
                 Bf16ProjectionStorage::Resident => {
@@ -339,7 +374,7 @@ impl PreparedBf16Projection {
                                 return Err(Error::State("BF16 resident exact full-K view".into()));
                             }
                             launch(actual.handle());
-                            Ok(2)
+                            Ok(2 * input_rows)
                         },
                     )?;
                 }
@@ -362,10 +397,22 @@ impl PreparedBf16Projection {
                     .await?;
                 }
             }
-            commands += 2;
+            commands += 2 * input_rows;
         }
         Ok(commands)
     }
+}
+fn row_extents(input_rows: usize, columns: usize, outputs: usize) -> Result<(usize, usize)> {
+    if !(1..=64).contains(&input_rows) || columns == 0 || outputs == 0 {
+        return Err(Error::Limit("BF16 projection source row geometry".into()));
+    }
+    let elements = |width: usize| {
+        input_rows
+            .checked_mul(width)
+            .filter(|n| *n <= u32::MAX as usize && n.checked_mul(4).is_some())
+            .ok_or_else(|| Error::Limit("BF16 projection row extent overflow".into()))
+    };
+    Ok((elements(columns)?, elements(outputs)?))
 }
 fn cancelled(flag: Option<&AtomicBool>) -> Result<()> {
     if flag.is_some_and(|f| f.load(Ordering::Acquire)) {
@@ -449,5 +496,36 @@ pub(crate) fn widen(
             status[0].fetch_or(nonfinite_mask);
         }
         output[i] = f32::reinterpret(bits);
+    }
+}
+
+#[cfg(test)]
+mod row_tests {
+    use super::row_extents;
+
+    #[test]
+    fn rows_price_complete_inputs_and_outputs_without_changing_weight_tiles() {
+        assert_eq!(row_extents(1, 1024, 3072).unwrap(), (1024, 3072));
+        assert_eq!(row_extents(47, 2048, 6144).unwrap(), (47 * 2048, 47 * 6144));
+        assert_eq!(
+            row_extents(64, 6144, 248320).unwrap(),
+            (64 * 6144, 64 * 248320)
+        );
+    }
+
+    #[test]
+    fn invalid_or_overflowing_complete_row_extents_refuse() {
+        for (rows, columns, outputs) in [
+            (0, 64, 64),
+            (65, 64, 64),
+            (1, 0, 64),
+            (1, 64, 0),
+            (64, usize::MAX, 64),
+            (64, 64, usize::MAX),
+            (64, u32::MAX as usize, 64),
+            (64, 64, u32::MAX as usize),
+        ] {
+            assert!(row_extents(rows, columns, outputs).is_err());
+        }
     }
 }

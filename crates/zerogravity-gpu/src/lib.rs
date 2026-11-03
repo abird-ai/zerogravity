@@ -17,7 +17,10 @@ mod batch_kv;
 mod batch_projection;
 #[cfg(any(feature = "qualification", test))]
 mod batch_recurrent;
-#[cfg(all(feature = "qualification", target_os = "linux"))]
+#[cfg(all(
+    any(feature = "qualification", feature = "hip-source"),
+    target_os = "linux"
+))]
 mod bf16_projection_kernel;
 #[cfg(all(feature = "qualification", feature = "cuda", target_os = "linux"))]
 mod cpu_bf16_projection;
@@ -79,44 +82,40 @@ mod rope_angles;
 mod rope_kv;
 mod silu;
 mod source_accumulation;
+#[cfg(feature = "hip-source")]
+mod source_activation;
 #[cfg(any(
     feature = "cuda-cublas",
     feature = "gemma-bf16-qualification",
-    feature = "qwen-source-qualification"
+    feature = "hip-source"
 ))]
 mod source_arithmetic;
 #[cfg(any(
     feature = "cuda-cublas",
     feature = "gemma-bf16-qualification",
-    feature = "qwen-source-qualification"
+    feature = "hip-source"
 ))]
 mod source_attention;
 mod source_float;
-#[cfg(feature = "qwen-source-qualification")]
+#[cfg(feature = "hip-source")]
 mod source_gdn;
-#[cfg(any(
-    feature = "gemma-bf16-qualification",
-    feature = "qwen-source-qualification"
-))]
+#[cfg(any(feature = "gemma-bf16-qualification", feature = "hip-source"))]
 mod source_rms;
 #[cfg(any(
     feature = "cuda-cublas",
     feature = "gemma-bf16-qualification",
-    feature = "qwen-source-qualification"
+    feature = "hip-source"
 ))]
 mod source_rotary;
-#[cfg(feature = "qwen-source-qualification")]
+#[cfg(feature = "hip-source")]
 mod source_sigmoid;
 #[cfg(any(
     feature = "cuda-cublas",
     feature = "gemma-bf16-qualification",
-    feature = "qwen-source-qualification"
+    feature = "hip-source"
 ))]
 mod source_sleef;
-#[cfg(any(
-    feature = "gemma-bf16-qualification",
-    feature = "qwen-source-qualification"
-))]
+#[cfg(any(feature = "gemma-bf16-qualification", feature = "hip-source"))]
 mod source_standalone_exp;
 mod source_transcendentals;
 mod source_trig;
@@ -175,8 +174,7 @@ pub use resident_inference::source_text::{
     target_os = "linux"
 ))]
 pub use resident_inference::source_text::{
-    SourceTextFinalReader, SourceTextNativeProbe, SourceTextNativeState,
-    SourceTextReaderObservation, SourceTextState,
+    SourceTextFinalReader, SourceTextReaderObservation, SourceTextState,
 };
 #[cfg(all(
     feature = "hip",
@@ -236,3 +234,34 @@ pub use vulkan::native::retained_partial_native_modules;
     target_os = "linux"
 ))]
 pub use hip::native::{HipSourceSetIdentity, SharedHipColdPlan, SharedHipNative};
+
+#[cfg(all(
+    feature = "hip-source",
+    feature = "hip",
+    feature = "hardware-abort-probe",
+    feature = "qwen-source-qualification",
+    target_os = "linux"
+))]
+pub use resident_inference::{SourceCallFinalReader, SourceCallReaderObservation};
+#[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+pub use resident_inference::{
+    SourceCallInventory, SourceCallModel, SourceCallPending, SourceCallPreparation,
+    SourceCallPublication, SourceCallReadback, SourceCallSession, SourceCallSnapshot,
+};
+#[cfg(all(feature = "hip-source", feature = "hip", target_os = "linux"))]
+pub use resident_program::ResidentOutput;
+
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "cuda-cublas", all(feature = "hip-source", feature = "hip"))
+))]
+pub use resident_program::source_observation::{
+    SourceCallFrame, SourceCallFrameKind, SourceCallObserver,
+};
+
+#[cfg(all(
+    feature = "hip-source",
+    feature = "hardware-abort-probe",
+    target_os = "linux"
+))]
+pub use resident_inference::source_native_probe::{SourceTextNativeProbe, SourceTextNativeState};

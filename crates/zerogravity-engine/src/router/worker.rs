@@ -168,7 +168,15 @@ impl<A: Executor> Active<A> {
             let committed = self
                 .token_commit_observed_at
                 .ok_or_else(missing_observation)?;
-            return self.output.accept_committed(id, committed).map(|done| {
+            let before = self.output.generated_token_count();
+            let presented = self
+                .output
+                .accept_observed(id, committed, self.token_observation);
+            stats.output_tokens.fetch_add(
+                (self.output.generated_token_count() - before) as u64,
+                Ordering::Relaxed,
+            );
+            return presented.map(|done| {
                 if done {
                     Presentation::Finished
                 } else {

@@ -429,3 +429,103 @@ fn prepared_rebind_shares_topology_semantics_and_accounts_local_allocations() {
     assert!(witness.upgrade().is_none());
     assert_eq!(arbiter.snapshot(&key).unwrap().reserved, 0);
 }
+
+#[test]
+fn cpu_source_templates_preserve_arithmetic_issuer_and_reject_cuda_mixing() {
+    let source = SourceIdentity::for_new_allocation().unwrap();
+    let geometry = SourcePlanGeometry::new(source, 17, 514, 64).unwrap();
+    let slot = StateSlot::Recurrent(RecurrentDomain(0));
+    let numerical = SourceNumericalContract::TorchCpuBf16Avx2MixedSourceV1;
+    let original = embedding(&call(source, &[1]));
+    let template = SourceOperatorTemplate::new(
+        geometry,
+        SourceRowSelection::AllActive,
+        SourceOperatorKind::EmbeddingRows,
+        numerical,
+        original.matrices().to_vec(),
+        vec![],
+    )
+    .unwrap();
+    let mut cpu =
+        PlanBuilder::new_source_template_with_contract(geometry, vec![slot], numerical).unwrap();
+    let value = cpu
+        .record_source_template("source.embedding", &template, &[])
+        .unwrap()[0];
+    let carry = SourceOperatorTemplate::new(
+        geometry,
+        SourceRowSelection::AllActive,
+        SourceOperatorKind::StateCarry { slot },
+        numerical,
+        vec![],
+        vec![],
+    )
+    .unwrap();
+    cpu.record_source_template("source.state", &carry, &[])
+        .unwrap();
+    let head = SourceOperatorTemplate::new(
+        geometry,
+        SourceRowSelection::LastActive,
+        SourceOperatorKind::Projection { selected_row: None },
+        numerical,
+        original.matrices().to_vec(),
+        vec![],
+    )
+    .unwrap();
+    let logits = cpu
+        .record_source_template("source.head", &head, &[value])
+        .unwrap()[0];
+    let plan = Arc::new(cpu.finish_source_template(logits).unwrap());
+    assert_eq!(
+        plan.numerical_profile(),
+        ProgramNumericalProfile::TorchCpuBf16Avx2MixedSourceV1
+    );
+    assert_eq!(
+        plan.standalone_exp_profile(),
+        Some(StandaloneExpProfile::MklExHaSse2HaFtzOffNormalV1)
+    );
+    let invocation = SourceInvocation::new(
+        TextCallGeometry::new(source, 17, 514).unwrap(),
+        0,
+        vec![1; 47].into(),
+        true,
+    )
+    .unwrap();
+    let bound = plan.bind_source_invocation(invocation).unwrap();
+    assert!(Arc::ptr_eq(&plan, bound.plan()));
+    let materialized = bound
+        .materialize_source_plan(SourceCallMode::Prefill)
+        .unwrap();
+    assert_eq!(materialized.numerical_profile(), plan.numerical_profile());
+    assert_eq!(materialized.source_call().unwrap().rows().len(), 47);
+    for node in materialized.nodes() {
+        let PlanOperation::SourceOperator { descriptor, .. } = &node.operation else {
+            panic!("original template lowering")
+        };
+        assert_eq!(descriptor.numerical_contract(), numerical);
+    }
+    let mut cuda = PlanBuilder::new_source_template(geometry, vec![slot]).unwrap();
+    assert!(
+        cuda.record_source_template("wrong.arithmetic", &template, &[])
+            .is_err()
+    );
+    let cuda_template = SourceOperatorTemplate::new(
+        geometry,
+        SourceRowSelection::AllActive,
+        SourceOperatorKind::EmbeddingRows,
+        NUMERICAL,
+        original.matrices().to_vec(),
+        vec![],
+    )
+    .unwrap();
+    let mut cpu =
+        PlanBuilder::new_source_template_with_contract(geometry, vec![slot], numerical).unwrap();
+    assert!(
+        cpu.record_source_template("wrong.arithmetic", &cuda_template, &[])
+            .is_err()
+    );
+    cpu.standalone_exp = Some(StandaloneExpProfile::ScalarLibmDiagnostic);
+    assert!(
+        cpu.record_source_template("wrong.exp", &template, &[])
+            .is_err()
+    );
+}

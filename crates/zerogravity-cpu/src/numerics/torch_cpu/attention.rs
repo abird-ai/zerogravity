@@ -2,6 +2,8 @@
 //! Pinned HF source: modeling_qwen3_5.py 762feb6c…12c3b, lines143–214/674–826.
 //! QK and PV retain distinct original reductions. Operator checks do not grant
 //! learned-model parity; libm rotary still needs its own source comparison.
+pub mod rows;
+
 use crate::accelerator::SourceIdentity;
 use crate::accelerator::program::{
     ActivationPrecision, TorchCpuAttentionInputs, TorchCpuAttentionValues,

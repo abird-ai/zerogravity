@@ -3,12 +3,26 @@ use super::*;
 #[cfg(feature = "hip")]
 use crate::transfer_retirement::{RetirementMark, TransferRetirementRing};
 use std::ops::Range;
-#[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+#[cfg(all(
+    feature = "hip",
+    feature = "hardware-abort-probe",
+    any(
+        feature = "qwen-source-qualification",
+        feature = "gemma-bf16-qualification"
+    )
+))]
 use std::sync::Weak;
 use zerogravity_artifacts::source_weights::{
     TensorWindow, VerifiedMatrix, VerifiedTensorSource, WindowWorkspace,
 };
-#[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+#[cfg(all(
+    feature = "hip",
+    feature = "hardware-abort-probe",
+    any(
+        feature = "qwen-source-qualification",
+        feature = "gemma-bf16-qualification"
+    )
+))]
 use zerogravity_core::accelerator::SourceIdentity;
 use zerogravity_core::accelerator::program::MatrixAxes;
 use zerogravity_core::encoding::StoredTensorEncoding;
@@ -118,9 +132,23 @@ fn transport_host_charge(chunk: usize, cache: usize) -> Result<usize> {
     let run = std::mem::size_of::<PageRunState>()
         .checked_add(std::mem::size_of::<RunInner>())
         .ok_or_else(|| Error::Limit("source page retained host run".into()))?;
-    #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+    #[cfg(all(
+        feature = "hip",
+        feature = "hardware-abort-probe",
+        any(
+            feature = "qwen-source-qualification",
+            feature = "gemma-bf16-qualification"
+        )
+    ))]
     let probe = source_page_event_probe_control_bytes()?;
-    #[cfg(not(all(feature = "hip", feature = "hardware-abort-probe")))]
+    #[cfg(not(all(
+        feature = "hip",
+        feature = "hardware-abort-probe",
+        any(
+            feature = "qwen-source-qualification",
+            feature = "gemma-bf16-qualification"
+        )
+    )))]
     let probe = 0usize;
     let metadata = [pending, reusable, outputs, records, run, probe]
         .into_iter()
@@ -249,14 +277,28 @@ struct PageRunOwner {
     _window: Option<Arc<WindowBytes>>,
     outputs: Mutex<Vec<ResidentLease>>,
 }
-#[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+#[cfg(all(
+    feature = "hip",
+    feature = "hardware-abort-probe",
+    any(
+        feature = "qwen-source-qualification",
+        feature = "gemma-bf16-qualification"
+    )
+))]
 #[derive(Clone)]
 pub struct SourcePageProbeParts {
     pub source: SourceIdentity,
     state: Arc<cubecl::hip::SourcePageEventProbeState>,
     witness: Arc<SourcePageProbeWitness>,
 }
-#[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+#[cfg(all(
+    feature = "hip",
+    feature = "hardware-abort-probe",
+    any(
+        feature = "qwen-source-qualification",
+        feature = "gemma-bf16-qualification"
+    )
+))]
 impl SourcePageProbeParts {
     /// Scalar state only; still valid when the weak run/window witness expired.
     pub fn snapshot_state(&self) -> Result<cubecl::hip::SourcePageEventProbeSnapshot> {
@@ -286,7 +328,14 @@ impl SourcePageProbeParts {
         Ok((snapshot, run, window))
     }
 }
-#[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+#[cfg(all(
+    feature = "hip",
+    feature = "hardware-abort-probe",
+    any(
+        feature = "qwen-source-qualification",
+        feature = "gemma-bf16-qualification"
+    )
+))]
 #[derive(Clone)]
 struct ProbeSlot {
     event: u64,
@@ -296,14 +345,28 @@ struct ProbeSlot {
 }
 /// Weak-only diagnostic witnesses. The slots never own a run or window, so a
 /// probe cannot extend the original ring/consumer retirement lifetime.
-#[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+#[cfg(all(
+    feature = "hip",
+    feature = "hardware-abort-probe",
+    any(
+        feature = "qwen-source-qualification",
+        feature = "gemma-bf16-qualification"
+    )
+))]
 pub(crate) struct SourcePageProbeWitness {
     page_allocation_id: u64,
     source: SourceIdentity,
     slots: Mutex<[Option<ProbeSlot>; RETIRED_PAGE_TRANSFERS]>,
     next: std::sync::atomic::AtomicUsize,
 }
-#[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+#[cfg(all(
+    feature = "hip",
+    feature = "hardware-abort-probe",
+    any(
+        feature = "qwen-source-qualification",
+        feature = "gemma-bf16-qualification"
+    )
+))]
 impl SourcePageProbeWitness {
     pub(crate) fn new(page_allocation_id: u64, source: SourceIdentity) -> Self {
         Self {
@@ -398,7 +461,14 @@ fn probe_arc_bytes<T>() -> Result<usize> {
         .map(|n| n & !(align - 1))
         .ok_or_else(|| Error::Limit("source page probe Arc layout".into()))
 }
-#[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+#[cfg(all(
+    feature = "hip",
+    feature = "hardware-abort-probe",
+    any(
+        feature = "qwen-source-qualification",
+        feature = "gemma-bf16-qualification"
+    )
+))]
 pub(crate) fn source_page_event_probe_control_bytes() -> Result<usize> {
     // Parts are stored inline by both the page and the original actor. The
     // probe state and weak witness are each one Arc allocation. A weak-only
@@ -491,7 +561,14 @@ pub(crate) struct ResidentSourcePage {
     lease: ResidentLease,
     progress: Mutex<Progress>,
     transport: Option<PageActor>,
-    #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+    #[cfg(all(
+        feature = "hip",
+        feature = "hardware-abort-probe",
+        any(
+            feature = "qwen-source-qualification",
+            feature = "gemma-bf16-qualification"
+        )
+    ))]
     probe: Mutex<Option<SourcePageProbeParts>>,
     _control: WindowWorkspace,
 }
@@ -538,7 +615,10 @@ impl ResidentSourcePage {
         init: &mut ResidentInitialization<'_>,
         actor: Option<PageActor>,
     ) -> Result<Arc<Self>> {
-        Self::allocate_with(source, service, init, actor)
+        match actor {
+            Some(actor) => Self::allocate_with(source, service, init, Some(actor)),
+            None => Self::allocate(source, service, init),
+        }
     }
     fn allocate_with(
         source: VerifiedTensorSource,
@@ -575,7 +655,14 @@ impl ResidentSourcePage {
             lease,
             progress: Mutex::new(Progress::default()),
             transport,
-            #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+            #[cfg(all(
+                feature = "hip",
+                feature = "hardware-abort-probe",
+                any(
+                    feature = "qwen-source-qualification",
+                    feature = "gemma-bf16-qualification"
+                )
+            ))]
             probe: Mutex::new(None),
             _control: control,
         });
@@ -585,7 +672,14 @@ impl ResidentSourcePage {
     pub(crate) fn lease(&self) -> &ResidentLease {
         &self.lease
     }
-    #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+    #[cfg(all(
+        feature = "hip",
+        feature = "hardware-abort-probe",
+        any(
+            feature = "qwen-source-qualification",
+            feature = "gemma-bf16-qualification"
+        )
+    ))]
     pub(crate) fn arm_source_page_event_probe(
         &self,
         mode: cubecl::hip::SourcePageEventProbeMode,
@@ -1133,7 +1227,14 @@ impl ResidentSourcePage {
             .transport
             .as_ref()
             .ok_or_else(|| Error::State("source page original actor absent".into()))?;
-        #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+        #[cfg(all(
+            feature = "hip",
+            feature = "hardware-abort-probe",
+            any(
+                feature = "qwen-source-qualification",
+                feature = "gemma-bf16-qualification"
+            )
+        ))]
         let probe_parts = match self.probe.lock() {
             Ok(held) => held.as_ref().cloned(),
             Err(_) => {
@@ -1142,7 +1243,14 @@ impl ResidentSourcePage {
                 return Err(Error::State("source page probe poisoned".into()));
             }
         };
-        #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+        #[cfg(all(
+            feature = "hip",
+            feature = "hardware-abort-probe",
+            any(
+                feature = "qwen-source-qualification",
+                feature = "gemma-bf16-qualification"
+            )
+        ))]
         let (payload, charge) = owner
             ._window
             .as_ref()
@@ -1153,7 +1261,14 @@ impl ResidentSourcePage {
                 )
             })
             .unwrap_or((0, 0));
-        #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+        #[cfg(all(
+            feature = "hip",
+            feature = "hardware-abort-probe",
+            any(
+                feature = "qwen-source-qualification",
+                feature = "gemma-bf16-qualification"
+            )
+        ))]
         if let Some(parts) = &probe_parts {
             if owner._window.is_some()
                 && let Err(error) = parts.state.note_copy(payload, charge)
@@ -1170,7 +1285,14 @@ impl ResidentSourcePage {
                 return Err(Error::State(format!("source page probe consumer: {error}")));
             }
         }
-        #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+        #[cfg(all(
+            feature = "hip",
+            feature = "hardware-abort-probe",
+            any(
+                feature = "qwen-source-qualification",
+                feature = "gemma-bf16-qualification"
+            )
+        ))]
         let recorded = match (&probe_parts, reusable) {
             (Some(parts), reusable) => actor.record_probed(
                 page,
@@ -1182,7 +1304,14 @@ impl ResidentSourcePage {
             ),
             (None, reusable) => actor.record(page, bindings, reusable),
         };
-        #[cfg(not(all(feature = "hip", feature = "hardware-abort-probe")))]
+        #[cfg(not(all(
+            feature = "hip",
+            feature = "hardware-abort-probe",
+            any(
+                feature = "qwen-source-qualification",
+                feature = "gemma-bf16-qualification"
+            )
+        )))]
         let recorded = actor.record(page, bindings, reusable);
         let mark = match recorded {
             Ok(mark) => mark,
@@ -1193,7 +1322,14 @@ impl ResidentSourcePage {
                 )));
             }
         };
-        #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+        #[cfg(all(
+            feature = "hip",
+            feature = "hardware-abort-probe",
+            any(
+                feature = "qwen-source-qualification",
+                feature = "gemma-bf16-qualification"
+            )
+        ))]
         let captured = if let Some(parts) = &probe_parts {
             let event = mark.event_identity();
             parts.witness.capture(event, mark.serial(), &owner)
@@ -1232,7 +1368,14 @@ impl ResidentSourcePage {
         };
         match pushed {
             Ok(()) => {
-                #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+                #[cfg(all(
+                    feature = "hip",
+                    feature = "hardware-abort-probe",
+                    any(
+                        feature = "qwen-source-qualification",
+                        feature = "gemma-bf16-qualification"
+                    )
+                ))]
                 if let Err(error) = captured {
                     self.fence_probe();
                     if let Ok(mut p) = self.progress.lock() {
@@ -1318,7 +1461,14 @@ impl ResidentSourcePage {
     }
     /// Diagnostic failures also fence the original native actor; coarse
     /// quarantine alone is a distinct authority.
-    #[cfg(all(feature = "hip", feature = "hardware-abort-probe"))]
+    #[cfg(all(
+        feature = "hip",
+        feature = "hardware-abort-probe",
+        any(
+            feature = "qwen-source-qualification",
+            feature = "gemma-bf16-qualification"
+        )
+    ))]
     fn fence_probe(&self) {
         if let Some(actor) = self.transport.as_ref() {
             let _ = actor.fence_diagnostic();

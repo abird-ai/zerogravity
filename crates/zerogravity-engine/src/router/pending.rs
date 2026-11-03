@@ -51,6 +51,49 @@ impl ServingHost {
         let arbiter = ResourceArbiter::process_shared();
         let key = PhysicalDeviceKey::new("host", "zerogravity-serve-cpu")
             .map_err(ServiceError::inference)?;
+        match arbiter.register_matching(key.clone(), bytes) {
+            Ok(()) => {}
+            Err(_) => {
+                return Err(ServiceError::new(
+                    409,
+                    "host_budget_conflict",
+                    "existing host admission pool uses a different configured limit",
+                ));
+            }
+        }
+        Self::from_process_admission(&zerogravity_core::resource_arbiter::TransferAdmission {
+            arbiter,
+            resource: key,
+            owner: ResourceOwner::new("serve-root", "thread-control")
+                .map_err(ServiceError::inference)?,
+        })
+    }
+    /// Borrow an already registered physical host domain; no second budget.
+    /// Model, tokenizer, worker and transport allocations use this same owner.
+    pub fn from_process_admission(
+        host: &zerogravity_core::resource_arbiter::TransferAdmission,
+    ) -> Result<Self, ServiceError> {
+        if !host.arbiter.is_process_shared() || host.resource.backend != "host" {
+            return Err(ServiceError::new(
+                400,
+                "host_domain",
+                "serving requires the original process host arbiter",
+            ));
+        }
+        let limit = host
+            .arbiter
+            .snapshot(&host.resource)
+            .map_err(ServiceError::inference)?
+            .limit;
+        if !(256 * 1024 * 1024..=1_048_576 * 1024 * 1024).contains(&limit) {
+            return Err(ServiceError::new(
+                400,
+                "invalid_host_budget",
+                "registered host limit is outside serving bounds",
+            ));
+        }
+        let arbiter = host.arbiter.clone();
+        let key = host.resource.clone();
         let domain = domains()
             .lock()
             .map_err(|_| ServiceError::new(500, "host_state", "serving domain lock poisoned"))?
@@ -62,16 +105,6 @@ impl ServingHost {
                 })
             })
             .clone();
-        match arbiter.register_matching(key.clone(), bytes) {
-            Ok(()) => {}
-            Err(_) => {
-                return Err(ServiceError::new(
-                    409,
-                    "host_budget_conflict",
-                    "existing host admission pool uses a different configured limit",
-                ));
-            }
-        }
         // One process-retained runtime thread-control root allowance in this
         // original arbiter/key domain, before any worker or HTTP connection
         // thread exists. A later router verifies the same domain and charge
@@ -955,6 +988,40 @@ impl<T> PendingQueue<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn borrowed_process_host_shares_original_credit_and_serving_observation() {
+        let arbiter = ResourceArbiter::process_shared();
+        let key = PhysicalDeviceKey::new("host", "sdk-source-host-unit").unwrap();
+        arbiter
+            .register_matching(key.clone(), 256 * 1024 * 1024)
+            .unwrap();
+        let admission = zerogravity_core::resource_arbiter::TransferAdmission {
+            arbiter: arbiter.clone(),
+            resource: key.clone(),
+            owner: ResourceOwner::new("source", "host").unwrap(),
+        };
+        let first = ServingHost::from_process_admission(&admission).unwrap();
+        let baseline = first.snapshot().unwrap();
+        let second = ServingHost::from_process_admission(&admission).unwrap();
+        assert_eq!(second.snapshot().unwrap(), baseline);
+        assert_eq!(
+            second.transfer_admission("alias", "call").unwrap().resource,
+            key
+        );
+        let charge = first.charge("source", "worker", Scratch, 4096).unwrap();
+        let observed = second.snapshot().unwrap();
+        assert_eq!(first.snapshot().unwrap(), observed);
+        assert_eq!(arbiter.snapshot(&key).unwrap().reserved, observed.1);
+        assert_eq!(observed.1 - baseline.1, observed.3 - baseline.3);
+        drop(charge);
+        assert_eq!(first.snapshot().unwrap(), baseline);
+        let private = zerogravity_core::resource_arbiter::TransferAdmission {
+            arbiter: ResourceArbiter::new(),
+            ..admission
+        };
+        assert!(ServingHost::from_process_admission(&private).is_err());
+    }
 
     fn host(limit_mib: usize) -> ServingHost {
         ServingHost::isolated(limit_mib).unwrap()

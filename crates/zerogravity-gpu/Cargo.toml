@@ -17,7 +17,9 @@ qualification = ["zerogravity-artifacts/cache", "zerogravity-cpu/cache", "dep:ze
 hardware-abort-probe = ["qualification", "cubecl-hip?/source-page-event-probe"]
 source-page-event-probe = ["hip", "hardware-abort-probe"]
 gemma-bf16-qualification = ["qualification", "dep:sha2"]
-qwen-source-qualification = ["qualification", "hip", "dep:sha2", "dep:cubecl-hip"]
+# Runtime source arithmetic/transport only; no captured model or fault harness.
+hip-source = ["hip", "zerogravity-artifacts/cache"]
+qwen-source-qualification = ["qualification", "hip-source", "dep:sha2"]
 portable-checkpoint = ["zerogravity-core/diagnostic-cpu-checkpoint"]
 # Production CUDA transport/compiler ownership only; no captured cases or
 # qualification API surface.

@@ -1,8 +1,10 @@
 //! Exact original row coverage, credited only after the original buffer barrier.
 use super::*;
 use layout::{CONTROL, Coverage};
+#[cfg(feature = "qualification")]
 use std::sync::Weak;
 
+#[cfg(feature = "qualification")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Cut {
     Never,
@@ -11,8 +13,10 @@ pub(super) enum Cut {
 }
 pub(super) enum Attempt {
     Complete(PendingResidentMatrix),
+    #[cfg(feature = "qualification")]
     Cut(Weak<UploadOwner>),
 }
+#[cfg(feature = "qualification")]
 pub(super) struct Snapshot {
     pub(super) commands: usize,
     pub(super) checkpoints: usize,
@@ -40,6 +44,7 @@ pub(in crate::resident_leases) struct UploadOwner {
     _control: WindowWorkspace,
 }
 impl UploadOwner {
+    #[cfg(feature = "qualification")]
     pub(super) fn snapshot(&self) -> Result<Snapshot> {
         let p = self
             .progress
@@ -74,13 +79,11 @@ pub(crate) struct PendingResidentMatrix {
     owner: Arc<UploadOwner>,
 }
 impl PendingResidentMatrix {
-    #[cfg(any(
-        feature = "gemma-bf16-qualification",
-        feature = "qwen-source-qualification"
-    ))]
+    #[cfg(any(feature = "gemma-bf16-qualification", feature = "hip-source"))]
     pub(crate) fn lease(&self) -> &ResidentLease {
         &self.owner.lease
     }
+    #[cfg(feature = "qualification")]
     pub(super) fn counts(&self) -> Result<[usize; 2]> {
         let p = self.owner.snapshot()?;
         Ok([p.commands, p.checkpoints])
@@ -109,19 +112,37 @@ impl ResidentInitialization<'_> {
         cancelled: Option<&AtomicBool>,
     ) -> Result<PendingResidentMatrix> {
         match self
-            .upload_bf16_matrix_cut(source, matrix, cancelled, Cut::Never)
+            .upload_bf16_matrix_inner(
+                source,
+                matrix,
+                cancelled,
+                #[cfg(feature = "qualification")]
+                Cut::Never,
+            )
             .await?
         {
             Attempt::Complete(pending) => Ok(pending),
+            #[cfg(feature = "qualification")]
             Attempt::Cut(_) => Err(Error::State("unexpected BF16 upload cut".into())),
         }
     }
+    #[cfg(feature = "qualification")]
     pub(super) async fn upload_bf16_matrix_cut(
         &mut self,
         source: VerifiedTensorSource,
         matrix: VerifiedMatrix,
         cancelled: Option<&AtomicBool>,
         cut: Cut,
+    ) -> Result<Attempt> {
+        self.upload_bf16_matrix_inner(source, matrix, cancelled, cut)
+            .await
+    }
+    async fn upload_bf16_matrix_inner(
+        &mut self,
+        source: VerifiedTensorSource,
+        matrix: VerifiedMatrix,
+        cancelled: Option<&AtomicBool>,
+        #[cfg(feature = "qualification")] cut: Cut,
     ) -> Result<Attempt> {
         not_cancelled(cancelled)?;
         self.service.ensure_usable()?;
@@ -207,6 +228,7 @@ impl ResidentInitialization<'_> {
                 .map_err(|_| Error::State("BF16 upload progress poisoned".into()))?
                 .commands += 1;
             self.service.record_value_upload(region.bytes);
+            #[cfg(feature = "qualification")]
             if (cut == Cut::First && region.first == 0)
                 || (cut == Cut::Last && region.end == geometry.rows())
             {

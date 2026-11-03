@@ -90,3 +90,8 @@ pub(crate) mod tokenizer_tests;
 pub(crate) mod gpu;
 #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]
 pub use gpu::{GpuProfile, load_gpu_router};
+
+#[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
+pub(crate) mod qwen_hip;
+#[cfg(all(feature = "qwen35-hip", target_os = "linux"))]
+pub use qwen_hip::QwenHipProfile;

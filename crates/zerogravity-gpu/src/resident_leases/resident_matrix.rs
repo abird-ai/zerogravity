@@ -1,13 +1,12 @@
 //! Authenticated contiguous BF16 residency; transport only, never model permission.
 use super::*;
 pub(in crate::resident_leases) mod layout;
+#[cfg(feature = "qualification")]
 pub(crate) mod qualification;
+#[cfg(feature = "qualification")]
 mod rows;
 mod source;
-#[cfg(any(
-    feature = "gemma-bf16-qualification",
-    feature = "qwen-source-qualification"
-))]
+#[cfg(any(feature = "gemma-bf16-qualification", feature = "hip-source"))]
 pub(crate) mod view;
 pub(crate) use source::Bf16MatrixSource;
 pub(in crate::resident_leases) mod upload;
@@ -29,6 +28,7 @@ fn require_upload(service: &Arc<ResidentService>, geometry: Geometry) -> Result<
     geometry.portable_limits(service.client().properties().memory.max_page_size)
 }
 
+#[cfg(feature = "qualification")]
 fn require_portable(service: &Arc<ResidentService>, geometry: Geometry) -> Result<()> {
     service.ensure_usable()?;
     if !matches!(

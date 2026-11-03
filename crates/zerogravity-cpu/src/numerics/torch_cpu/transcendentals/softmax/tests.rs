@@ -50,7 +50,7 @@ fn source_geometry_and_element_guards_refuse() {
     assert!(softmax_f32_lastdim_avx2(SourceIdentity::unbound(), &[0.0], 1).is_err());
     assert!(softmax_f32_lastdim_avx2(source(), &[], 1).is_err());
     assert!(softmax_f32_lastdim_avx2(source(), &[0.0], 0).is_err());
-    assert!(softmax_f32_lastdim_avx2(source(), &[0.0; 513], 513).is_err());
+    assert!(softmax_f32_lastdim_avx2(source(), &vec![0.0; MAX_WIDTH + 1], MAX_WIDTH + 1).is_err());
     assert!(softmax_f32_lastdim_avx2(source(), &[0.0; 9], 8).is_err());
     let oversized = vec![0.0; MAX_ELEMENTS + 1];
     assert!(matches!(

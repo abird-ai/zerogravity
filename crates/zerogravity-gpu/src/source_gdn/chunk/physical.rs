@@ -1,7 +1,6 @@
 //! Actual-HIP operator diagnostic through original source/queue/flight owners.
 use super::*;
 use crate::resident_leases::{ResidentLease, ResidentService};
-use cubecl::{client::Client, server::Handle};
 use std::sync::Arc;
 use zerogravity_artifacts::source_weights::VerifiedTensorSource;
 use zerogravity_core::{
@@ -11,7 +10,6 @@ use zerogravity_core::{
 };
 #[path = "../../../../../tests/support/torch_cpu_gdn.rs"]
 mod archive;
-mod prepared;
 mod source;
 
 #[test]
@@ -40,7 +38,7 @@ async fn run() -> Result<()> {
     let mut catalogue = Vec::new();
     let mut ids = std::collections::HashSet::new();
     for heads in archive.heads() {
-        for kernel in prepared::kernels(cold.client(), heads) {
+        for kernel in super::prepared::kernels(cold.client(), heads)? {
             if ids.insert(kernel.id()) {
                 catalogue.push(kernel);
             }
@@ -123,7 +121,6 @@ async fn execute(
     refusal: bool,
 ) -> Result<(usize, usize)> {
     let h = case.heads;
-    let rows = case.rows as u32;
     let mut slot = service
         .queue()
         .submit(
@@ -198,153 +195,16 @@ async fn execute(
     let normal = tables[0].handle();
     let rare = tables[1].handle();
     let status_handle = status.handle();
-    let client = service.client();
-    let dim = CubeDim::new_1d(32);
-    let grid = |n: usize| CubeCount::Static((n as u32).div_ceil(32), 1, 1);
-    let arg = |handle: &Handle, n: usize, word_bytes: usize| -> BufferArg {
-        assert_eq!(handle.service, client.service_id());
-        let available = handle
-            .size()
-            .checked_sub(handle.offset_start.unwrap_or(0))
-            .and_then(|bytes| bytes.checked_sub(handle.offset_end.unwrap_or(0)))
-            .unwrap();
-        assert!(available >= (n * word_bytes) as u64);
-        // Original initialization owns each checked, non-overlapping allocation.
-        unsafe { BufferArg::from_raw_parts(handle.clone(), n) }
-    };
-    // BufferArg lengths are elements, not bytes.
-    let f = |handle: &Handle, n: usize| arg(handle, n, 4);
-    let status_arg = || f(&status_handle, 1);
-    unsafe {
-        normalize::launch_unchecked(
-            client,
-            grid(h * 64),
-            dim,
-            f(&i[0], case.rows * h * 128),
-            f(&i[1], case.rows * h * 128),
-            f(&o[0], h * 8192),
-            f(&o[1], h * 8192),
-            status_arg(),
-            rows,
-            h,
-        );
-        beta_vectors::launch_unchecked(
-            client,
-            grid(h * 8192),
-            dim,
-            f(&o[1], h * 8192),
-            f(&i[2], case.rows * h * 128),
-            f(&i[3], case.rows * h),
-            f(&o[2], h * 8192),
-            f(&o[3], h * 8192),
-            status_arg(),
-            rows,
-            h,
-        );
-        cumulative::launch_unchecked(
-            client,
-            grid(h),
-            dim,
-            f(&i[4], case.rows * h),
-            arg(&rare, 128, 8),
-            f(&o[4], h * 64),
-            status_arg(),
-            rows,
-            h,
-        );
-        decays::launch_unchecked(
-            client,
-            grid(h * 4096),
-            dim,
-            f(&o[4], h * 64),
-            f(&normal, 256),
-            arg(&rare, 128, 8),
-            f(&o[5], h * 4096),
-            f(&s[0], h * 64),
-            f(&s[1], h * 64),
-            f(&o[13], h),
-            status_arg(),
-            h,
-        );
-        gram::launch_unchecked(
-            client,
-            grid(h * 4096),
-            dim,
-            f(&o[0], h * 8192),
-            f(&o[1], h * 8192),
-            f(&o[2], h * 8192),
-            f(&o[5], h * 4096),
-            f(&o[6], h * 4096),
-            f(&o[7], h * 4096),
-            status_arg(),
-            h,
-        );
-        decay_vectors::launch_unchecked(
-            client,
-            grid(h * 8192),
-            dim,
-            f(&o[0], h * 8192),
-            f(&o[1], h * 8192),
-            f(&o[2], h * 8192),
-            f(&s[0], h * 64),
-            f(&s[1], h * 64),
-            f(&o[8], h * 8192),
-            f(&o[11], h * 8192),
-            f(&o[12], h * 8192),
-            status_arg(),
-            h,
-        );
-        triangular::launch_unchecked(
-            client,
-            grid(h * 128),
-            dim,
-            f(&o[6], h * 4096),
-            f(&o[3], h * 8192),
-            f(&o[8], h * 8192),
-            f(&o[9], h * 8192),
-            f(&o[10], h * 8192),
-            status_arg(),
-            h,
-        );
-        prior_products::launch_unchecked(
-            client,
-            grid(h * 8192),
-            dim,
-            f(&o[10], h * 8192),
-            f(&o[11], h * 8192),
-            f(&i[5], h * 16384),
-            f(&o[9], h * 8192),
-            f(&o[14], h * 8192),
-            f(&o[15], h * 8192),
-            status_arg(),
-            h,
-        );
-        core_product::launch_unchecked(
-            client,
-            grid(h * 8192),
-            dim,
-            f(&o[7], h * 4096),
-            f(&o[14], h * 8192),
-            f(&o[15], h * 8192),
-            f(&o[16], h * 8192),
-            f(&o[18], case.rows * h * 128),
-            status_arg(),
-            rows,
-            h,
-        );
-        state_product::launch_unchecked(
-            client,
-            grid(h * 16384),
-            dim,
-            f(&o[12], h * 8192),
-            f(&o[14], h * 8192),
-            f(&i[5], h * 16384),
-            f(&o[13], h),
-            f(&o[17], h * 16384),
-            status_arg(),
-            h,
-        );
-    }
+    super::execution::launch(
+        service.client(),
+        super::execution::Geometry::new(case.rows, h)?,
+        std::array::from_fn(|n| &i[n]),
+        std::array::from_fn(|n| &o[n]),
+        std::array::from_fn(|n| &s[n]),
+        &normal,
+        &rare,
+        &status_handle,
+    )?;
     // Known physical writes complete normally; refusals export only status.
     let mut produced = if refusal { Vec::new() } else { outputs.clone() };
     produced.push(status.clone());

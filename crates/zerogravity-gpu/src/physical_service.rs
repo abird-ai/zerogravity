@@ -67,7 +67,7 @@ fn checked_caps(reported: Option<u64>, operator: u64, provider: u64) -> Result<(
         any(feature = "hip", feature = "vulkan"),
         any(
             feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification",
+            feature = "hip-source",
             all(test, feature = "qualification", feature = "hip")
         )
     )
@@ -78,7 +78,7 @@ mod native_context;
     any(feature = "hip", feature = "vulkan"),
     any(
         feature = "gemma-bf16-qualification",
-        feature = "qwen-source-qualification",
+        feature = "hip-source",
         all(test, feature = "qualification", feature = "hip")
     )
 ))]
@@ -331,7 +331,7 @@ impl PhysicalServiceBudget {
         any(feature = "hip", feature = "vulkan"),
         any(
             feature = "gemma-bf16-qualification",
-            feature = "qwen-source-qualification",
+            feature = "hip-source",
             all(test, feature = "qualification", feature = "hip")
         )
     ))]

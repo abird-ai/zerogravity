@@ -1,8 +1,10 @@
-//! Diagnostic prepares actual arithmetic kernels, never prompt/position recipes.
-use super::*;
+//! Native definitions for the shared chunk primitive, independent of captured calls.
 use cubecl::prelude::{AddressType, BufferCompilationArg, ExecutionMode, KernelSettings};
+use cubecl::{client::Client, prelude::CubeDim};
 use cubecl_server::kernel::CubeKernel;
-pub(super) fn kernels(client: &Client, heads: usize) -> Vec<Box<dyn CubeKernel>> {
+use zerogravity_core::Result;
+pub(crate) fn kernels(client: &Client, heads: usize) -> Result<Vec<Box<dyn CubeKernel>>> {
+    super::execution::Geometry::new(1, heads)?;
     let mut output: Vec<Box<dyn CubeKernel>> = Vec::new();
     let b = || BufferCompilationArg { inplace: None };
     macro_rules! kernel {
@@ -14,7 +16,7 @@ pub(super) fn kernels(client: &Client, heads: usize) -> Vec<Box<dyn CubeKernel>>
         };
     }
     kernel!(
-        super::super::normalize::Normalize,
+        super::normalize::Normalize,
         b(),
         b(),
         b(),
@@ -24,7 +26,7 @@ pub(super) fn kernels(client: &Client, heads: usize) -> Vec<Box<dyn CubeKernel>>
         heads
     );
     kernel!(
-        super::super::beta_vectors::BetaVectors,
+        super::beta_vectors::BetaVectors,
         b(),
         b(),
         b(),
@@ -34,17 +36,9 @@ pub(super) fn kernels(client: &Client, heads: usize) -> Vec<Box<dyn CubeKernel>>
         (),
         heads
     );
+    kernel!(super::cumulative::Cumulative, b(), b(), b(), b(), (), heads);
     kernel!(
-        super::super::cumulative::Cumulative,
-        b(),
-        b(),
-        b(),
-        b(),
-        (),
-        heads
-    );
-    kernel!(
-        super::super::decays::Decays,
+        super::decays::Decays,
         b(),
         b(),
         b(),
@@ -55,19 +49,9 @@ pub(super) fn kernels(client: &Client, heads: usize) -> Vec<Box<dyn CubeKernel>>
         b(),
         heads
     );
+    kernel!(super::gram::Gram, b(), b(), b(), b(), b(), b(), b(), heads);
     kernel!(
-        super::super::gram::Gram,
-        b(),
-        b(),
-        b(),
-        b(),
-        b(),
-        b(),
-        b(),
-        heads
-    );
-    kernel!(
-        super::super::decay_vectors::DecayVectors,
+        super::decay_vectors::DecayVectors,
         b(),
         b(),
         b(),
@@ -80,7 +64,7 @@ pub(super) fn kernels(client: &Client, heads: usize) -> Vec<Box<dyn CubeKernel>>
         heads
     );
     kernel!(
-        super::super::triangular::Triangular,
+        super::triangular::Triangular,
         b(),
         b(),
         b(),
@@ -90,7 +74,7 @@ pub(super) fn kernels(client: &Client, heads: usize) -> Vec<Box<dyn CubeKernel>>
         heads
     );
     kernel!(
-        super::super::prior_products::PriorProducts,
+        super::prior_products::PriorProducts,
         b(),
         b(),
         b(),
@@ -101,7 +85,7 @@ pub(super) fn kernels(client: &Client, heads: usize) -> Vec<Box<dyn CubeKernel>>
         heads
     );
     kernel!(
-        super::super::core_product::CoreProduct,
+        super::core_product::CoreProduct,
         b(),
         b(),
         b(),
@@ -112,7 +96,7 @@ pub(super) fn kernels(client: &Client, heads: usize) -> Vec<Box<dyn CubeKernel>>
         heads
     );
     kernel!(
-        super::super::state_product::StateProduct,
+        super::state_product::StateProduct,
         b(),
         b(),
         b(),
@@ -121,5 +105,5 @@ pub(super) fn kernels(client: &Client, heads: usize) -> Vec<Box<dyn CubeKernel>>
         b(),
         heads
     );
-    output
+    Ok(output)
 }

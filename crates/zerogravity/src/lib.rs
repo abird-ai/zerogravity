@@ -33,6 +33,11 @@ pub use zerogravity_core::{device_events, device_queue, resource_arbiter, state}
 pub use zerogravity_core::{encoding, identity, numerics, placement, provider, semantic, task};
 #[cfg(all(feature = "qwen35-cuda", target_os = "linux"))]
 pub mod qwen35_cuda;
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "qwen35-hip", feature = "qwen35-cuda-qualification")
+))]
+mod qwen35_source;
 #[cfg(feature = "cpu")]
 pub use zerogravity_cpu as cpu;
 #[cfg(any(feature = "vulkan", feature = "cuda", feature = "hip"))]

@@ -4,6 +4,8 @@
 //! GEMM, AVX2 build: four independent FMA partials, then three direct adds.
 //! This qualifies neither general GEMM nor CUDA/FLA/full-model execution.
 
+pub mod rows;
+
 use crate::accelerator::SourceIdentity;
 use crate::{Error, Result};
 use zerogravity_core::encoding::StoredTensorEncoding;

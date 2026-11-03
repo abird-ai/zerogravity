@@ -11,7 +11,7 @@ use crate::accelerator::SourceIdentity;
 use crate::{Error, Result};
 
 const LANES: usize = 8;
-const MAX_WIDTH: usize = 512;
+const MAX_WIDTH: usize = 32_768;
 const MAX_ELEMENTS: usize = 1_048_576;
 
 fn validate(source: SourceIdentity, input: &[f32], width: usize) -> Result<()> {
@@ -74,7 +74,7 @@ fn reduce(row: &[f32], combine: impl Fn(f32, f32) -> f32) -> f32 {
     )
 }
 
-/// Independent contiguous logical F32 rows, width1..512 and total<=1,048,576.
+/// Independent contiguous logical F32 rows, width1..32768 and total<=1,048,576.
 /// Negative-infinity masks require a finite value in every row. NaN, +Inf and
 /// all-masked rows refuse before allocation/math. No source/cache mutation,
 /// BF16 conversion, provider dispatch, model/profile or session eligibility.

@@ -4,12 +4,14 @@
 //! before/after inode metadata are checked on that same descriptor.
 
 use crate::{Error, Result};
+#[cfg(any(test, feature = "qwen35-cuda-qualification"))]
 use rustix::fs::{Mode, OFlags, open, openat};
 use sha2::{Digest, Sha256};
+#[cfg(any(test, feature = "qwen35-cuda-qualification"))]
+use std::path::{Component, Path};
 use std::{
     fs::File,
     os::unix::fs::{FileExt, MetadataExt},
-    path::{Component, Path},
     sync::atomic::{AtomicBool, Ordering},
 };
 
@@ -36,6 +38,7 @@ fn stamp(metadata: &std::fs::Metadata) -> Stamp {
     }
 }
 
+#[cfg(any(test, feature = "qwen35-cuda-qualification"))]
 fn os<T>(result: rustix::io::Result<T>) -> Result<T> {
     result.map_err(|error| std::io::Error::from(error).into())
 }
@@ -47,6 +50,7 @@ fn not_cancelled(flag: Option<&AtomicBool>) -> Result<()> {
     Ok(())
 }
 
+#[cfg(any(test, feature = "qwen35-cuda-qualification"))]
 fn absolute_parts(path: &Path) -> Result<Vec<&std::ffi::OsStr>> {
     if !path.is_absolute() {
         return Err(Error::Malformed(
@@ -68,6 +72,7 @@ fn absolute_parts(path: &Path) -> Result<Vec<&std::ffi::OsStr>> {
     Ok(parts)
 }
 
+#[cfg(any(test, feature = "qwen35-cuda-qualification"))]
 fn open_absolute(path: &Path, leaf: OFlags, allow_root: bool) -> Result<File> {
     let parts = absolute_parts(path)?;
     if parts.is_empty() && !allow_root {
@@ -92,6 +97,7 @@ fn open_absolute(path: &Path, leaf: OFlags, allow_root: bool) -> Result<File> {
     Ok(current)
 }
 
+#[cfg(feature = "qwen35-cuda-qualification")]
 pub(crate) fn open_absolute_directory(path: &Path) -> Result<File> {
     open_absolute(
         path,
@@ -106,6 +112,7 @@ pub(crate) struct HeldFile {
 }
 
 impl HeldFile {
+    #[cfg(any(test, feature = "qwen35-cuda-qualification"))]
     pub(crate) fn open_absolute(path: &Path) -> Result<Self> {
         Self::from_file(open_absolute(
             path,
@@ -127,14 +134,17 @@ impl HeldFile {
         })
     }
 
+    #[cfg(feature = "qwen35-cuda-qualification")]
     pub(crate) const fn len(&self) -> u64 {
         self.stamp.bytes
     }
 
+    #[cfg(feature = "qwen35-cuda-qualification")]
     pub(crate) fn file_mut(&mut self) -> &mut File {
         &mut self.file
     }
 
+    #[cfg(feature = "qwen35-cuda-qualification")]
     pub(crate) fn into_file(self) -> File {
         self.file
     }

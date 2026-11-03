@@ -24,9 +24,9 @@ mod cohort;
 #[cfg(feature = "qwen35-cuda-qualification")]
 pub mod fixed_prompt;
 #[cfg(feature = "qwen35-cuda-qualification")]
-mod held_directory;
+use crate::qwen35_source::held_directory;
 #[cfg(feature = "qwen35-cuda-qualification")]
-mod held_file;
+use crate::qwen35_source::held_file;
 #[cfg(feature = "qwen35-cuda-qualification")]
 mod manifest;
 mod ordinary;
@@ -43,7 +43,7 @@ mod session;
 #[cfg(feature = "qwen35-cuda-qualification")]
 mod source;
 #[cfg(feature = "qwen35-cuda-qualification")]
-mod source_inventory;
+use crate::qwen35_source::source_inventory;
 #[cfg(feature = "qwen35-cuda-qualification")]
 mod templates;
 #[cfg(feature = "qwen35-cuda-qualification")]
